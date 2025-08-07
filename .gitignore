@@ -1,0 +1,52 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# log
+*.log
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDE
+.vscode
+.idea
+*.wpr
+*.wpu
+.vs
+x64
+
+# Temp
+build
+dist
+*.local
+
+# VeighNa
+.vntrader
+
+# Visual Studio intermediate files
+*.exp
+*.iobj
+*.ipdb
+*.pdb
+
+# Documents
+_build
+_static
+_templates
+
+# Misc
+.DS_Store
+*.mo
+
+# Alpha
+lab/
+
+quantCore/build
+quantCore/quant_platform.egg-info
+
+*.egg-info/
+
+.venv/
