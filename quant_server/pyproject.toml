@@ -20,7 +20,7 @@ classifiers = [
 
 dependencies = [
     # 核心框架
-#    "vnpy>=4.1.0,<5.0.0",
+    "vnpy>=4.1.0,<5.0.0",
     
     # 数据处理
     "pandas>=1.5.3",

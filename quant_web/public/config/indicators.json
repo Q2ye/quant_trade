@@ -1,0 +1,243 @@
+[
+  {
+    "name": "MA",
+    "label": "移动平均线",
+    "params": [
+      {
+        "name": "period",
+        "label": "周期",
+        "type": "number",
+        "default": 5,
+        "min": 1,
+        "max": 200
+      },
+      {
+        "name": "type",
+        "label": "类型",
+        "type": "select",
+        "options": [
+          {"value": "SMA", "label": "简单移动平均"},
+          {"value": "EMA", "label": "指数移动平均"},
+          {"value": "WMA", "label": "加权移动平均"}
+        ],
+        "default": "SMA"
+      },
+      {
+        "name": "color",
+        "label": "颜色",
+        "type": "color",
+        "default": "#FF6B00"
+      }
+    ],
+    "description": "移动平均线是分析股价趋势的常用指标"
+  },
+  {
+    "name": "MACD",
+    "label": "指数平滑移动平均线",
+    "params": [
+      {
+        "name": "fast",
+        "label": "快线周期",
+        "type": "number",
+        "default": 12,
+        "min": 5,
+        "max": 26
+      },
+      {
+        "name": "slow",
+        "label": "慢线周期",
+        "type": "number",
+        "default": 26,
+        "min": 10,
+        "max": 50
+      },
+      {
+        "name": "signal",
+        "label": "信号线周期",
+        "type": "number",
+        "default": 9,
+        "min": 5,
+        "max": 20
+      },
+      {
+        "name": "histogram_color",
+        "label": "柱状图颜色",
+        "type": "color",
+        "default": "#4CAF50"
+      }
+    ],
+    "description": "MACD是判断买卖时机的趋势跟踪指标"
+  },
+  {
+    "name": "RSI",
+    "label": "相对强弱指数",
+    "params": [
+      {
+        "name": "period",
+        "label": "周期",
+        "type": "number",
+        "default": 14,
+        "min": 5,
+        "max": 30
+      },
+      {
+        "name": "overbought",
+        "label": "超买阈值",
+        "type": "number",
+        "default": 70,
+        "min": 60,
+        "max": 90
+      },
+      {
+        "name": "oversold",
+        "label": "超卖阈值",
+        "type": "number",
+        "default": 30,
+        "min": 10,
+        "max": 40
+      },
+      {
+        "name": "line_color",
+        "label": "线颜色",
+        "type": "color",
+        "default": "#3F51B5"
+      }
+    ],
+    "description": "RSI用于衡量股价近期变化的幅度"
+  },
+  {
+    "name": "BOLL",
+    "label": "布林带",
+    "params": [
+      {
+        "name": "period",
+        "label": "周期",
+        "type": "number",
+        "default": 20,
+        "min": 10,
+        "max": 30
+      },
+      {
+        "name": "deviation",
+        "label": "标准差倍数",
+        "type": "number",
+        "default": 2,
+        "min": 1.5,
+        "max": 3,
+        "step": 0.1
+      },
+      {
+        "name": "upper_color",
+        "label": "上轨颜色",
+        "type": "color",
+        "default": "#E91E63"
+      },
+      {
+        "name": "lower_color",
+        "label": "下轨颜色",
+        "type": "color",
+        "default": "#2196F3"
+      }
+    ],
+    "description": "布林带用于衡量股价波动性和超买超卖情况"
+  },
+  {
+    "name": "KDJ",
+    "label": "随机指标",
+    "params": [
+      {
+        "name": "period",
+        "label": "周期",
+        "type": "number",
+        "default": 9,
+        "min": 5,
+        "max": 20
+      },
+      {
+        "name": "smooth",
+        "label": "平滑系数",
+        "type": "number",
+        "default": 3,
+        "min": 1,
+        "max": 5
+      },
+      {
+        "name": "k_color",
+        "label": "K线颜色",
+        "type": "color",
+        "default": "#FF9800"
+      },
+      {
+        "name": "d_color",
+        "label": "D线颜色",
+        "type": "color",
+        "default": "#9C27B0"
+      }
+    ],
+    "description": "KDJ指标用于判断短期超买超卖情况"
+  },
+  {
+    "name": "VOL",
+    "label": "成交量",
+    "params": [
+      {
+        "name": "ma_period",
+        "label": "均量线周期",
+        "type": "number",
+        "default": 5,
+        "min": 1,
+        "max": 30
+      },
+      {
+        "name": "up_color",
+        "label": "阳量颜色",
+        "type": "color",
+        "default": "#4CAF50"
+      },
+      {
+        "name": "down_color",
+        "label": "阴量颜色",
+        "type": "color",
+        "default": "#F44336"
+      },
+      {
+        "name": "ma_color",
+        "label": "均量线颜色",
+        "type": "color",
+        "default": "#FFC107"
+      }
+    ],
+    "description": "成交量指标显示股票交易活跃度"
+  },
+  {
+    "name": "TrendLine",
+    "label": "趋势线",
+    "params": [
+      {
+        "name": "auto_detect",
+        "label": "自动检测",
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "name": "line_color",
+        "label": "线颜色",
+        "type": "color",
+        "default": "#9E9E9E"
+      },
+      {
+        "name": "support_color",
+        "label": "支撑线颜色",
+        "type": "color",
+        "default": "#00BCD4"
+      },
+      {
+        "name": "resistance_color",
+        "label": "压力线颜色",
+        "type": "color",
+        "default": "#FF5722"
+      }
+    ],
+    "description": "自动识别并绘制支撑/压力趋势线"
+  }
+]

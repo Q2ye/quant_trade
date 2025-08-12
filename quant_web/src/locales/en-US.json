@@ -1,0 +1,166 @@
+{
+  "app": {
+    "title": "A-Share Quant Trading Platform",
+    "description": "Professional quantitative trading strategy development and execution platform"
+  },
+  "user": {
+    "login": "Login",
+    "logout": "Logout",
+    "register": "Register",
+    "welcome": "Welcome, {name}!",
+    "profile": "Profile",
+    "account": "Trading Account"
+  },
+  "common": {
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
+    "loading": "Loading...",
+    "success": "Operation succeeded!",
+    "error": "An error occurred",
+    "confirm": "Confirm",
+    "search": "Search",
+    "refresh": "Refresh",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "validation": {
+    "required": "{field} is required",
+    "email": "Please enter a valid email address",
+    "password_length": "Password must be at least {length} characters",
+    "number": "Please enter a valid number",
+    "percentage": "Please enter a valid percentage"
+  },
+  "home": {
+    "title": "Home",
+    "welcome_message": "Welcome to A-Share Quant Trading Platform",
+    "features": "Features",
+    "dashboard": "Trade Dashboard"
+  },
+  "settings": {
+    "title": "System Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "notifications": "Notifications",
+    "data_sync": "Data Sync",
+    "risk_settings": "Risk Settings"
+  },
+  "error": {
+    "404": "Page not found",
+    "500": "Internal server error",
+    "network": "Network connection error",
+    "data_fetch": "Data fetch failed",
+    "strategy_error": "Strategy execution error"
+  },
+  "market": {
+    "title": "Market Center",
+    "index": "Market Indexes",
+    "stock_detail": "Stock Detail",
+    "kline": "K-line Chart",
+    "day": "Daily",
+    "week": "Weekly",
+    "month": "Monthly",
+    "minute": "Minute",
+    "technical_indicator": "Technical Indicators",
+    "five_level": "Order Book",
+    "trend": "Price Trend",
+    "custom_board": "Custom Dashboard",
+    "sector_strength": "Sector Strength"
+  },
+  "strategy": {
+    "title": "Strategy Studio",
+    "list": "Strategy List",
+    "create": "Create Strategy",
+    "editor": "Strategy Editor",
+    "backtest": "Backtest Configuration",
+    "parameters": "Strategy Parameters",
+    "run_backtest": "Run Backtest",
+    "report": "Backtest Report",
+    "risk_management": "Risk Management",
+    "status": "Status",
+    "performance": "Strategy Performance",
+    "live_log": "Real-time Log",
+    "variables": "Core Variables"
+  },
+  "backtest": {
+    "title": "Backtest Analysis",
+    "capital_curve": "Capital Curve",
+    "metrics": "Performance Metrics",
+    "annual_return": "Annual Return",
+    "max_drawdown": "Max Drawdown",
+    "sharpe": "Sharpe Ratio",
+    "transactions": "Transaction Details",
+    "sensitivity": "Parameter Sensitivity",
+    "attribution": "Return Attribution"
+  },
+  "basket": {
+    "title": "Stock Basket",
+    "list": "Basket List",
+    "create": "New Basket",
+    "detail": "Basket Detail",
+    "composition": "Composition",
+    "performance": "Basket Performance",
+    "add_stock": "Add Stock",
+    "remove_stock": "Remove Stock",
+    "adjust_weight": "Adjust Weight",
+    "tracking": "Basket Tracking"
+  },
+  "trade": {
+    "title": "Trade Execution",
+    "dashboard": "Trade Cockpit",
+    "positions": "Position Details",
+    "orders": "Order History",
+    "execution": "Trade Execution",
+    "signal_monitor": "Signal Monitor",
+    "manual_confirm": "Manual Confirmation",
+    "place_order": "Place Order",
+    "order_type": "Order Type",
+    "limit_order": "Limit Order",
+    "market_order": "Market Order",
+    "stop_order": "Stop Order"
+  },
+  "system": {
+    "title": "System Monitoring",
+    "status": "Connection Status",
+    "resources": "Resource Monitoring",
+    "logs": "Log Viewer",
+    "cpu": "CPU Usage",
+    "memory": "Memory Usage",
+    "disk": "Disk Space",
+    "market_conn": "Market Connection",
+    "trade_conn": "Trade Channel"
+  },
+  "data": {
+    "sync": "Data Synchronization",
+    "last_sync": "Last Sync Time",
+    "daily_update": "Daily Data Update",
+    "minute_update": "Minute Data Update",
+    "financial_update": "Financial Data Update",
+    "validate": "Data Validation"
+  },
+  "risk": {
+    "title": "Risk Management",
+    "position_limit": "Single Position Limit",
+    "daily_loss_limit": "Daily Loss Limit",
+    "st_filter": "ST Stock Filter",
+    "alert": "Risk Alert",
+    "auto_stop": "Auto Stop Strategy"
+  },
+  "performance": {
+    "title": "Performance Analysis",
+    "daily_return": "Daily Return",
+    "volatility": "Volatility",
+    "compare_backtest": "Compare Backtest Results",
+    "equity_curve": "Equity Curve"
+  },
+  "visualization": {
+    "heatmap": "Performance Heatmap",
+    "sankey": "Attribution Sankey",
+    "3d_chart": "Parameter Sensitivity 3D",
+    "net_value": "Net Value Chart",
+    "drawdown": "Drawdown Curve",
+    "holding": "Holding Changes"
+  }
+}

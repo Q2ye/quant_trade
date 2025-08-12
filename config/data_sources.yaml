@@ -1,0 +1,25 @@
+data_fetch_strategy: hybrid   # hybrid: 优先本地，缺失则在线拉取 | online: 只在线 | offline: 只本地
+data_sources:
+  xtp:
+    type: xtp
+    enabled: true
+    port: 55310
+    priority: 3
+    server: 115.231.218.73
+
+  tushare:
+    type: "tushare"
+    token: "461a33c492dcfde47bbd2e87f67bd174399f354d34249d775809638b"
+    priority: 1
+    enabled: true
+  baostock:
+    type: "baostock"
+    username: "your_username"
+    password: "your_password"
+    priority: 2
+    enabled: true
+  local_db:
+    type: "db"
+    priority: 0  # 最高优先级
+    enabled: true
+

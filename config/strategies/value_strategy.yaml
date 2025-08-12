@@ -1,0 +1,8 @@
+name: "价值选股策略"
+module: "quantCore.strategies.value_strategy.ValueStrategy"
+type: "custom"
+params:
+  pe_max: 25
+  pb_max: 3
+  dividend_min: 2.0
+  market_cap_min: 50  # 单位：亿

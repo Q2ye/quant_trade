@@ -1,0 +1,17 @@
+strategy:
+  name: "价值选股策略"
+  module: "strategies.value_strategy.ValueStrategy"
+  params:
+    pe_max: 25
+    pb_max: 3
+    dividend_min: 2.0
+    market_cap_min: 50
+
+start_date: "2020-01-01"
+end_date: "2023-12-31"
+initial_capital: 1000000
+stocks:
+  - "000001.SZ"  # 平安银行
+  - "600000.SH"  # 浦发银行
+  - "600036.SH"  # 招商银行
+  - "601318.SH"  # 中国平安

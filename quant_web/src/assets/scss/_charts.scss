@@ -1,0 +1,149 @@
+//图表专用样式
+// 基础图表样式
+.chart-container {
+  @include chart-container;
+
+  // 图表标题
+  .chart-title {
+    @include chart-title;
+    padding: 0 map-get($spacers, 3);
+    padding-top: map-get($spacers, 3);
+  }
+}
+
+// K线图增强样式
+.kline-chart {
+  @extend .chart-container;
+  height: 600px;
+
+  // K线图工具栏
+  .kline-toolbar {
+    display: flex;
+    padding: map-get($spacers, 2) map-get($spacers, 3);
+    background: $gray-100;
+    border-bottom: $border-width solid $border-color;
+
+    .period-selector {
+      display: flex;
+      gap: map-get($spacers, 1);
+
+      .period-btn {
+        padding: map-get($spacers, 1) map-get($spacers, 2);
+        background: $white;
+        border: $border-width solid $border-color;
+        border-radius: $border-radius-sm;
+        font-size: $font-size-base * 0.85;
+        cursor: pointer;
+
+        &.active {
+          background: $primary;
+          color: $white;
+          border-color: $primary;
+        }
+      }
+    }
+
+    .indicator-selector {
+      margin-left: auto;
+    }
+  }
+}
+
+// 净值曲线图
+.net-value-chart {
+  @extend .chart-container;
+
+  .legend-highlight {
+    font-weight: 600;
+    color: $primary;
+  }
+}
+
+// 投资组合饼图
+.portfolio-pie-chart {
+  @extend .chart-container;
+  height: 400px;
+}
+
+// 热力图
+.heatmap-chart {
+  @extend .chart-container;
+
+  .axis-label {
+    font-size: $font-size-base * 0.85;
+    font-weight: 500;
+  }
+}
+
+// 技术指标图
+.indicator-chart {
+  @extend .chart-container;
+  height: 400px;
+
+  .indicator-selector {
+    display: flex;
+    gap: map-get($spacers, 2);
+    padding: 0 map-get($spacers, 3) map-get($spacers, 2);
+
+    .indicator-btn {
+      padding: map-get($spacers, 1) map-get($spacers, 2);
+      background: $white;
+      border: $border-width solid $border-color;
+      border-radius: $border-radius-sm;
+      font-size: $font-size-base * 0.85;
+      cursor: pointer;
+
+      &.active {
+        background: $primary;
+        color: $white;
+        border-color: $primary;
+      }
+    }
+  }
+}
+
+// 图表提示框优化
+.echarts-tooltip {
+  background: rgba($gray-900, 0.85) !important;
+  border: none !important;
+  border-radius: $border-radius !important;
+  box-shadow: 0 0.5rem 1rem rgba($black, 0.15) !important;
+
+  .tooltip-title {
+    font-weight: 600;
+    color: $white;
+    border-bottom: 1px solid rgba($white, 0.1);
+    padding-bottom: map-get($spacers, 1);
+    margin-bottom: map-get($spacers, 1);
+  }
+
+  .tooltip-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: $font-size-base * 0.9;
+
+    .name {
+      color: $gray-300;
+    }
+
+    .value {
+      font-weight: 500;
+      color: $white;
+    }
+  }
+}
+
+// 图表图例优化
+.echarts-legend {
+  padding: map-get($spacers, 2) 0 !important;
+
+  .legend-item {
+    padding: map-get($spacers, 1) map-get($spacers, 2) !important;
+    border-radius: $border-radius-sm !important;
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: $gray-100 !important;
+    }
+  }
+}

@@ -1,0 +1,97 @@
+//布局样式
+// 仪表盘布局
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: map-get($spacers, 4);
+  padding: map-get($spacers, 4);
+
+  @include media-breakpoint-up(md) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @include media-breakpoint-up(lg) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+// 策略工作室三屏布局
+.strategy-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  height: calc(100vh - 120px);
+  gap: map-get($spacers, 3);
+
+  @include media-breakpoint-up(lg) {
+    grid-template-columns: 40% 30% 30%;
+  }
+}
+
+// 交易驾驶舱网格布局
+.trade-cockpit {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: map-get($spacers, 3);
+
+  @include media-breakpoint-up(md) {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: auto auto auto;
+
+    .net-value-chart {
+      grid-column: 1 / -1;
+    }
+
+    .risk-matrix {
+      grid-row: 2;
+      grid-column: 1;
+    }
+
+    .portfolio-chart {
+      grid-row: 2;
+      grid-column: 2;
+    }
+
+    .trade-table {
+      grid-row: 3;
+      grid-column: 1;
+    }
+
+    .news-panel {
+      grid-row: 3;
+      grid-column: 2;
+    }
+  }
+}
+
+// 卡片布局
+.data-card {
+  @include data-card;
+
+  .card-title {
+    @include chart-title;
+  }
+}
+
+// 响应式图表容器
+.responsive-chart {
+  @include chart-container;
+  padding: map-get($spacers, 3);
+
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: map-get($spacers, 3);
+
+    .chart-title {
+      @include chart-title;
+      margin-bottom: 0;
+      border-bottom: none;
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: map-get($spacers, 2);
+    }
+  }
+}

@@ -1,0 +1,216 @@
+//全局样式
+// 导入所有局部样式
+@import 'variables';
+
+:root {
+  --background-dark: #121826;   // 深色背景
+  --background-content: #1c2438; // 内容区域背景
+  --text-primary: #e0e0e0;      // 主文本颜色
+}
+
+
+
+@import 'mixins';
+@import 'layout';
+@import 'charts';
+
+// 基础全局样式
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: $font-family-sans-serif;
+  font-size: $font-size-base;
+  line-height: $line-height-base;
+  color: $gray-700;
+  background-color: $gray-100;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// 容器
+.container {
+  width: 100%;
+  padding-right: map-get($spacers, 3);
+  padding-left: map-get($spacers, 3);
+  margin-right: auto;
+  margin-left: auto;
+
+  @include media-breakpoint-up(sm) {
+    max-width: 540px;
+  }
+
+  @include media-breakpoint-up(md) {
+    max-width: 720px;
+  }
+
+  @include media-breakpoint-up(lg) {
+    max-width: 960px;
+  }
+
+  @include media-breakpoint-up(xl) {
+    max-width: 1140px;
+  }
+}
+
+// 页面标题
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: $gray-800;
+  margin-bottom: map-get($spacers, 4);
+}
+
+// 状态栏
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: map-get($spacers, 2) map-get($spacers, 3);
+  background: $white;
+  border-bottom: $border-width solid $border-color;
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: map-get($spacers, 2);
+
+    .status-label {
+      font-size: $font-size-base * 0.9;
+      color: $gray-600;
+    }
+
+    .status-value {
+      font-weight: 600;
+      color: $gray-800;
+    }
+
+    &.market-status {
+      .indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+
+        &.open {
+          background: $success;
+        }
+
+        &.closed {
+          background: $danger;
+        }
+      }
+    }
+  }
+}
+
+// 导航栏
+.app-navbar {
+  background: $white;
+  box-shadow: 0 0.125rem 0.625rem rgba($gray-900, 0.1);
+  padding: 0 map-get($spacers, 3);
+
+  .nav-link {
+    padding: map-get($spacers, 3) map-get($spacers, 2);
+    color: $gray-600;
+    font-weight: 500;
+    position: relative;
+
+    &:hover {
+      color: $primary;
+    }
+
+    &.active {
+      color: $primary;
+
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: $primary;
+        border-radius: 3px 3px 0 0;
+      }
+    }
+  }
+}
+
+// 数据卡片
+.data-card {
+  @include data-card;
+
+  .card-title {
+    font-size: $font-size-base * 1.1;
+    font-weight: 600;
+    color: $gray-800;
+    margin-bottom: map-get($spacers, 2);
+  }
+
+  .card-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: $primary;
+  }
+
+  .card-change {
+    display: flex;
+    align-items: center;
+    font-size: $font-size-base * 0.9;
+
+    &.positive {
+      color: $success;
+    }
+
+    &.negative {
+      color: $danger;
+    }
+  }
+}
+
+// 按钮
+.btn {
+  padding: map-get($spacers, 2) map-get($spacers, 3);
+  border-radius: $border-radius;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &-primary {
+    background: $primary;
+    color: $white;
+    border: 1px solid $primary;
+
+    &:hover {
+      background: darken($primary, 5%);
+    }
+  }
+
+  &-outline {
+    background: transparent;
+    border: 1px solid $border-color;
+
+    &:hover {
+      background: $gray-100;
+    }
+  }
+}
+
+// 表单控件
+.form-control {
+  padding: map-get($spacers, 2) map-get($spacers, 3);
+  border: $border-width solid $border-color;
+  border-radius: $border-radius;
+  background: $white;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    border-color: $primary;
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba($primary, 0.1);
+  }
+}

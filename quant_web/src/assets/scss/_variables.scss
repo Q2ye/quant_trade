@@ -1,0 +1,70 @@
+//样式变量
+// 颜色系统
+$background-content: #1c2438; // 内容区域背景
+$background-dark: #121826;   // 深色背景
+$text-primary: #e0e0e0;
+$primary: #2c7be5 !default;
+$secondary: #6e84a3 !default;
+$success: #00d97e !default;
+$info: #39afd1 !default;
+$warning: #fd7e14 !default;
+$danger: #e63757 !default;
+$light: #f9fbfd !default;
+$dark: #283e59 !default;
+
+// 图表专用色系
+$chart-colors: (
+  "blue": #2c7be5,
+  "green": #00d97e,
+  "cyan": #39afd1,
+  "yellow": #ffc107,
+  "red": #e63757,
+  "purple": #6f42c1,
+  "teal": #20c997
+);
+
+// 灰度色阶
+$white: #fff !default;
+$gray-100: #f9fbfd !default;
+$gray-200: #edf2f9 !default;
+$gray-300: #d8e2ef !default;
+$gray-400: #b6c1d2 !default;
+$gray-500: #95aac9 !default;
+$gray-600: #6e84a3 !default;
+$gray-700: #4a5978 !default;
+$gray-800: #283e59 !default;
+$gray-900: #12263f !default;
+$black: #000 !default;
+
+// 字体
+$font-family-sans-serif: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !default;
+$font-size-base: 0.875rem !default; // 14px
+$line-height-base: 1.5 !default;
+
+// 尺寸
+$spacer: 1rem !default;
+$spacers: (
+  0: 0,
+  1: $spacer * 0.25,
+  2: $spacer * 0.5,
+  3: $spacer,
+  4: $spacer * 1.5,
+  5: $spacer * 3,
+) !default;
+
+// 边框
+$border-width: 1px !default;
+$border-color: $gray-300 !default;
+$border-radius: 0.375rem !default;
+$border-radius-lg: 0.5rem !default;
+$border-radius-sm: 0.25rem !default;
+
+// 卡片
+$card-spacer-y: 1.25rem !default;
+$card-spacer-x: 1.5rem !default;
+$card-border-width: 0 !default;
+$card-box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03) !default;
+
+// 图表容器
+$chart-height: 500px !default;
+$chart-min-height: 300px !default;

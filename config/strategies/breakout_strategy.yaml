@@ -1,0 +1,6 @@
+name: "突破策略"
+module: "quantCore.strategies.breakout_strategy.BreakoutStrategy"
+type: "custom"
+params:
+  breakout_window: 20
+  breakout_multiplier: 1.02

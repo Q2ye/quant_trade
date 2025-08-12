@@ -1,0 +1,53 @@
+//样式混合
+// 响应式断点
+@mixin media-breakpoint-up($name, $breakpoints: (xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px)) {
+  $min: map-get($breakpoints, $name);
+  @if $min {
+    @media (min-width: $min) {
+      @content;
+    }
+  } @else {
+    @content;
+  }
+}
+
+// 图表容器基础样式
+@mixin chart-container {
+  position: relative;
+  width: 100%;
+  height: $chart-height;
+  min-height: $chart-min-height;
+  background-color: $white;
+  border-radius: $border-radius-lg;
+  box-shadow: $card-box-shadow;
+  overflow: hidden;
+
+  @include media-breakpoint-up(md) {
+    height: 100%;
+    min-height: 350px;
+  }
+}
+
+// 数据卡片样式
+@mixin data-card {
+  background: $white;
+  border-radius: $border-radius;
+  padding: map-get($spacers, 3);
+  box-shadow: $card-box-shadow;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 1rem 3rem rgba($gray-900, 0.15);
+  }
+}
+
+// 图表标题样式
+@mixin chart-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: $gray-800;
+  margin-bottom: map-get($spacers, 3);
+  padding-bottom: map-get($spacers, 2);
+  border-bottom: $border-width solid $border-color;
+}
