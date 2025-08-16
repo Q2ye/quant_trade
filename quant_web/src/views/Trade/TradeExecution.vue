@@ -41,7 +41,7 @@
 
 <script>
 import SignalTable from '../../components/trade/SignalTable.vue'
-import BasketSelector from '../basket/BasketSelector.vue'
+import BasketSelector from '../Basket/BasketSelector.vue'
 import TradeForm from '../../components/trade/TradeForm.vue'
 
 export default {

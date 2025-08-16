@@ -19,10 +19,10 @@
 </template>
 
 <script>
-import StrategyEditor from '@/components/strategy/StrategyEditor.vue'
-import BacktestConfig from '@/components/strategy/BacktestConfig.vue'
-import BacktestLogs from '@/components/strategy/BacktestLogs.vue'
-import VariableMonitor from '@/components/strategy/VariableMonitor.vue'
+import StrategyEditor from '../components/strategy/StrategyEditor.vue'
+import BacktestConfig from '../components/strategy/BacktestConfig.vue'
+import BacktestLogs from '../components/strategy/BacktestLogs.vue'
+import VariableMonitor from '../components/strategy/VariableMonitor.vue'
 export default {
   components: {
     StrategyEditor,

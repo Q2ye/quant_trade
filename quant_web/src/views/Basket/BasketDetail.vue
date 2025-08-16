@@ -1,8 +1,8 @@
 <!--篮子详情-->
 <!--篮子详情-->
 <script>
-import { fetchBasketDetail } from '@/api/basket'
-import { fetchStockRealTime } from '@/api/data'
+import { fetchBasketDetail } from '@/api/basket.js'
+import { fetchStockRealTime } from '@/api/data.js'
 import NetValueChart from '@/components/charts/NetValueChart'
 
 export default {

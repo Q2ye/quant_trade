@@ -82,7 +82,7 @@
 import NetValueChart from '../../components/charts/NetValueChart.vue'
 import RiskMatrix from '../../components/trade/RiskMatrix.vue'
 import PositionDistribution from '../../components/trade/PositionDistribution.vue'
-import IndustryStrength from '../market/IndustryStrength.vue'
+import IndustryStrength from '../Market/IndustryStrength.vue'
 import RecentTrades from '../../components/trade/RecentTrades.vue'
 import StockAnnouncements from '../../components/data/StockAnnouncements.vue'
 

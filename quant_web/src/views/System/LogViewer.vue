@@ -14,7 +14,7 @@
               multiple
               collapse-tags
               placeholder="日志级别"
-              size="mini"
+              size="small"
               style="width: 200px; margin-right: 10px;">
               <el-option label="INFO" value="INFO"></el-option>
               <el-option label="WARNING" value="WARNING"></el-option>
@@ -25,20 +25,20 @@
             <el-input
               v-model="searchKeyword"
               placeholder="搜索日志内容"
-              size="mini"
+              size="small"
               style="width: 200px; margin-right: 10px;">
               <i slot="prefix" class="el-input__icon el-icon-search"></i>
             </el-input>
 
             <el-button
               type="primary"
-              size="mini"
+              size="small"
               @click="loadLogs">
               查询
             </el-button>
 
             <el-button
-              size="mini"
+              size="small"
               @click="clearLogs">
               清空
             </el-button>
@@ -122,11 +122,9 @@ export default {
         }
 
         // 关键词搜索
-        if (this.searchKeyword && !log.message.includes(this.searchKeyword)) {
-          return false;
-        }
+        return !(this.searchKeyword && !log.message.includes(this.searchKeyword));
 
-        return true;
+
       });
     },
     clearLogs() {

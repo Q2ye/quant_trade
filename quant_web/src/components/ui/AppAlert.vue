@@ -5,12 +5,22 @@ export default {
   props: {
     alert: {
       type: Object,
-      required: true
+      required: true,
+      // 添加默认值防止 undefined
+      default: () => ({
+        level: 'info',
+        title: '',
+        content: '',
+        timestamp: Date.now(),
+        id: Date.now().toString()
+      })
     }
   },
   computed: {
     alertIcon() {
-      switch (this.alert.level) {
+      // 安全访问 alert.level
+      const level = this.alert?.level || 'info';
+      switch (level) {
         case 'critical': return 'el-icon-warning'
         case 'warning': return 'el-icon-warning-outline'
         default: return 'el-icon-info'
@@ -18,7 +28,9 @@ export default {
     },
 
     alertColor() {
-      switch (this.alert.level) {
+      // 安全访问 alert.level
+      const level = this.alert?.level || 'info';
+      switch (level) {
         case 'critical': return '#f56c6c'
         case 'warning': return '#e6a23c'
         default: return '#909399'
@@ -26,7 +38,9 @@ export default {
     },
 
     formattedTime() {
-      return new Date(this.alert.timestamp).toLocaleTimeString('zh-CN', {
+      // 安全访问 alert.timestamp
+      const timestamp = this.alert?.timestamp || Date.now();
+      return new Date(timestamp).toLocaleTimeString('zh-CN', {
         hour: '2-digit',
         minute: '2-digit'
       })
@@ -36,7 +50,8 @@ export default {
 </script>
 
 <template>
-  <div class="app-alert" :style="{ borderLeft: `3px solid ${alertColor}` }">
+  <!-- 添加 v-if 确保 alert 存在 -->
+  <div v-if="alert" class="app-alert" :style="{ borderLeft: `3px solid ${alertColor}` }">
     <div class="alert-header">
       <div class="alert-icon" :style="{ color: alertColor }">
         <i :class="alertIcon"></i>
@@ -68,6 +83,7 @@ export default {
 </template>
 
 <style scoped>
+/* 样式保持不变 */
 .app-alert {
   background-color: #fff;
   border-radius: 4px;

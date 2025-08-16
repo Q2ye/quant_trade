@@ -1,7 +1,7 @@
 <!--篮子列表-->
 <!--篮子列表-->
 <script>
-import { fetchBasketList, deleteBasket } from '@/api/basket'
+import { fetchBasketList, deleteBasket } from '@/api/basket.js'
 
 export default {
   name: "BasketList",

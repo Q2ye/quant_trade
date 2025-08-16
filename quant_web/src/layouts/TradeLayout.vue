@@ -45,12 +45,12 @@
 </template>
 
 <script>
-import NetValueChart from '@/components/charts/NetValueChart.vue'
-import RiskMatrix from '@/components/trade/RiskMatrix.vue'
-import PortfolioPieChart from '@/components/charts/PortfolioPieChart.vue'
-import HeatmapChart from '@/components/charts/HeatmapChart.vue'
-import PositionTable from '@/components/trade/PositionTable.vue'
-import OrderTable from '@/components/trade/OrderTable.vue'
+import NetValueChart from '../components/charts/NetValueChart.vue'
+import RiskMatrix from '../components/trade/RiskMatrix.vue'
+import PortfolioPieChart from '../components/charts/PortfolioPieChart.vue'
+import HeatmapChart from '../components/charts/HeatmapChart.vue'
+import PositionTable from '../components/trade/PositionTable.vue'
+import OrderTable from '../components/trade/OrderTable.vue'
 
 export default {
   components: {

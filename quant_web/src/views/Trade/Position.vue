@@ -18,40 +18,40 @@
         <el-table-column prop="name" label="名称" width="120" />
         <el-table-column prop="quantity" label="数量" width="100" align="right" />
         <el-table-column prop="costPrice" label="成本价" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             {{ scope.row.costPrice.toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="currentPrice" label="当前价" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <span :style="{color: scope.row.change >= 0 ? '#f56c6c' : '#67c23a'}">
               {{ scope.row.currentPrice.toFixed(2) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="change" label="涨跌幅" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <span :style="{color: scope.row.change >= 0 ? '#f56c6c' : '#67c23a'}">
               {{ (scope.row.change * 100).toFixed(2) }}%
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="marketValue" label="市值" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             {{ scope.row.marketValue.toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="pnl" label="浮动盈亏" width="150" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <span :style="{color: scope.row.pnl >= 0 ? '#f56c6c' : '#67c23a'}">
               {{ scope.row.pnl.toFixed(2) }} ({{ (scope.row.pnlRatio * 100).toFixed(2) }}%)
             </span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <el-button
-              size="mini"
+              size="small"
               type="danger"
               v-if="scope.row.quantity > 0"
               @click="handleSell(scope.row)">

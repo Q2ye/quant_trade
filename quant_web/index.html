@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="专业级A股量化交易平台">
+  <title>专业级A股量化交易平台</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="./public/favicon.ico" type="image/x-icon">
+
+  <!-- 预加载关键资源 -->
+  <link rel="preload" href="./src/assets/fonts/Source_Han_Sans_SC.otf" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="src/main.ts" as="script">
+
+  <!-- 主题配置 -->
+  <link rel="stylesheet" href="./public/config/theme.json" id="theme-stylesheet">
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="./src/assets/scss/global.scss">
+
+  <!-- 移动端适配 -->
+  <meta name="theme-color" content="#1e272c">
+</head>
+<body>
+  <div id="app">
+    <!-- Vue应用挂载点 -->
+    <div class="app-loading">
+      <div class="loading-logo">
+        <svg width="80" height="80" viewBox="0 0 100 100">
+          <path fill="#2196F3" d="M50,5A45,45 0 1,0 95,50A45,45 0 0,0 50,5Z"/>
+          <path fill="#FFC107" d="M50,20L65,45L50,70L35,45Z"/>
+        </svg>
+      </div>
+      <div class="loading-text">量化引擎启动</div>
+      <div class="loading-progress">
+        <div class="progress-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 环境变量配置 -->
+  <script type="application/json" id="app-config">
+    {
+      "apiBase": "https://api.quant-platform.com/v1",
+      "dataSource": "Tushare",
+      "defaultTheme": "dark",
+      "enableAnalytics": true
+    }
+  </script>
+
+  <!-- 主应用脚本 -->
+  <script src="./src/main.ts" type="module"></script>
+
+  <!-- 数据监控 -->
+  <script>
+    // 性能监控 - 使用现代 PerformanceNavigationTiming API
+    window.addEventListener('load', () => {
+      // 获取导航性能数据
+      const navigationEntries = performance.getEntriesByType('navigation');
+
+      if (navigationEntries.length > 0) {
+        const navigationEntry = navigationEntries[0];
+
+        // 安全访问性能指标
+        const perfData = {
+          loadTime: navigationEntry.duration || 0,
+          dns: (navigationEntry.domainLookupEnd || 0) - (navigationEntry.domainLookupStart || 0),
+          tcp: (navigationEntry.connectEnd || 0) - (navigationEntry.connectStart || 0),
+          request: (navigationEntry.responseStart || 0) - (navigationEntry.requestStart || 0),
+          response: (navigationEntry.responseEnd || 0) - (navigationEntry.responseStart || 0),
+          domReady: (navigationEntry.domContentLoadedEventEnd || 0) - (navigationEntry.startTime || 0),
+          interactive: (navigationEntry.domInteractive || 0) - (navigationEntry.startTime || 0)
+        };
+
+        console.log('性能指标:', perfData);
+      } else {
+        console.log('无法获取性能指标：未找到 navigation 条目');
+      }
+    });
+  </script>
+</body>
+</html>

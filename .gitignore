@@ -44,8 +44,8 @@ _templates
 # Alpha
 lab/
 
-quantCore/build
-quantCore/quant_platform.egg-info
+quant_trade/quant_server/quant_trade.egg-info
+quant_trade/quant_server/build
 
 *.egg-info/
 

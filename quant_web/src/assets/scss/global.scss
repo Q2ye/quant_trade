@@ -1,18 +1,15 @@
 //全局样式
 // 导入所有局部样式
-@import 'variables';
+@use 'variables' as *;  // 通配符导入所有变量
+@use 'mixins' as mix;   // 使用命名空间
+@use 'layout' ;
+@use 'charts' ;
 
 :root {
   --background-dark: #121826;   // 深色背景
   --background-content: #1c2438; // 内容区域背景
   --text-primary: #e0e0e0;      // 主文本颜色
 }
-
-
-
-@import 'mixins';
-@import 'layout';
-@import 'charts';
 
 // 基础全局样式
 *,
@@ -39,19 +36,19 @@ body {
   margin-right: auto;
   margin-left: auto;
 
-  @include media-breakpoint-up(sm) {
+  @include mix.media-breakpoint-up(sm) { // 修复1：添加命名空间
     max-width: 540px;
   }
 
-  @include media-breakpoint-up(md) {
+  @include mix.media-breakpoint-up(md) { // 修复2：添加命名空间
     max-width: 720px;
   }
 
-  @include media-breakpoint-up(lg) {
+  @include mix.media-breakpoint-up(lg) { // 修复3：添加命名空间
     max-width: 960px;
   }
 
-  @include media-breakpoint-up(xl) {
+  @include mix.media-breakpoint-up(xl) { // 修复4：添加命名空间
     max-width: 1140px;
   }
 }
@@ -142,7 +139,7 @@ body {
 
 // 数据卡片
 .data-card {
-  @include data-card;
+  @include mix.data-card; // 修复5：添加命名空间
 
   .card-title {
     font-size: $font-size-base * 1.1;

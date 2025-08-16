@@ -39,10 +39,10 @@
 </template>
 
 <script>
-import AppHeader from '@/components/ui/AppHeader.vue';
-import AppSidebar from '@/components/ui/AppSidebar.vue';
-import AppAlertPanel from '@/components/ui/AppAlert.vue';
-import GlobalNotification from '@/components/ui/GlobalNotification.vue';
+import AppHeader from '../components/ui/AppHeader.vue';
+import AppSidebar from '../components/ui/AppSidebar.vue';
+import AppAlertPanel from '../components/ui/AppAlert.vue';
+import GlobalNotification from '../components/ui/GlobalNotification.vue';
 
 export default {
   name: "MainLayout",

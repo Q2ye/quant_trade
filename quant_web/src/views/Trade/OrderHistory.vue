@@ -11,12 +11,12 @@
             range-separator="至"
             start-placeholder="开始日期"
             end-placeholder="结束日期"
-            size="mini"
+            size="small"
             style="width: 280px; margin-right: 10px;"
           />
           <el-button
             type="primary"
-            size="mini"
+            size="small"
             icon="el-icon-search"
             @click="searchOrders">
             查询
@@ -29,25 +29,25 @@
         <el-table-column prop="symbol" label="代码" width="100" />
         <el-table-column prop="name" label="名称" width="120" />
         <el-table-column prop="direction" label="方向" width="80">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <span :style="{color: scope.row.direction === '买入' ? '#f56c6c' : '#67c23a'}">
               {{ scope.row.direction }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="price" label="委托价" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             {{ scope.row.price.toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="quantity" label="数量" width="100" align="right" />
         <el-table-column prop="amount" label="金额" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             {{ (scope.row.price * scope.row.quantity).toFixed(2) }}
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small">
               {{ scope.row.status }}
             </el-tag>
@@ -56,7 +56,7 @@
         <el-table-column prop="orderTime" label="委托时间" width="180" />
         <el-table-column prop="tradeTime" label="成交时间" width="180" />
         <el-table-column prop="tradePrice" label="成交价" width="120" align="right">
-          <template slot-scope="scope">
+          <template v-slot="scope">
             <span v-if="scope.row.status === '已成'">
               {{ scope.row.tradePrice.toFixed(2) }}
             </span>

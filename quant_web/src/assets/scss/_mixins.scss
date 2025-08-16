@@ -1,3 +1,6 @@
+// 显式导入变量
+@use 'variables' as *;
+
 //样式混合
 // 响应式断点
 @mixin media-breakpoint-up($name, $breakpoints: (xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px)) {

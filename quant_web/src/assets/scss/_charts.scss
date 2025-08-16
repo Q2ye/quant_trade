@@ -1,13 +1,16 @@
+// 显式导入变量和混合
+@use 'variables' as *;
+@use 'mixins' as mix;
+
 //图表专用样式
 // 基础图表样式
 .chart-container {
-  @include chart-container;
+  @include mix.chart-container;
 
   // 图表标题
   .chart-title {
-    @include chart-title;
-    padding: 0 map-get($spacers, 3);
-    padding-top: map-get($spacers, 3);
+    @include mix.chart-title;
+    padding: map-get($spacers, 3) map-get($spacers, 3) 0; // 修复padding简写
   }
 }
 

@@ -11,7 +11,7 @@ export default {
       type: Object,
       required: true
     },
-    value: {
+    modelValue: {
       type: Number,
       required: true
     }
@@ -19,8 +19,13 @@ export default {
   methods: {
     handleChange(value) {
       this.$emit('change', this.paramName, value)
+      // 2. 事件改为update:modelValue
+      this.$emit('update:modelValue', value);  // 原：update:value
     },
-
+    handleInput(value) {
+      // 2. 事件改为update:modelValue
+      this.$emit('update:modelValue', value);  // 原：update:value
+    },
     formatLabel(value) {
       return value % 1 === 0 ? value : value.toFixed(2)
     }
@@ -39,13 +44,13 @@ export default {
       <span class="min-value">{{ formatLabel(config.min) }}</span>
 
       <el-slider
-        v-model="value"
-        :min="config.min"
-        :max="config.max"
-        :step="config.step"
-        :format-tooltip="val => val.toFixed(2)"
-        @change="handleChange" />
-
+          v-bind ="modelValue"
+          :min="config.min"
+          :max="config.max"
+          :step="config.step"
+          :format-tooltip="val => val.toFixed(2)"
+          @input="handleInput"
+          @change="handleChange"/>
       <span class="max-value">{{ formatLabel(config.max) }}</span>
     </div>
 

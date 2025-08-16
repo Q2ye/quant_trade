@@ -2,33 +2,33 @@
   <div id="app" class="app-container">
     <!-- 主框架布局 -->
     <MainLayout
-      v-if="!isReportView"
-      :active-menu="activeMenu"
-      @menu-change="handleMenuChange"
+        v-if="!isReportView"
+        :active-menu="activeMenu"
+        @menu-change="handleMenuChange"
     >
       <!-- 策略工作室特殊布局 -->
       <StrategyLayout v-if="isStrategyEditor">
-        <router-view />
+        <router-view/>
       </StrategyLayout>
 
       <!-- 交易驾驶舱特殊布局 -->
       <TradeLayout v-else-if="isTradeDashboard">
-        <router-view />
+        <router-view/>
       </TradeLayout>
 
       <!-- 默认布局 -->
       <div v-else class="default-layout">
-        <router-view />
+        <router-view/>
       </div>
     </MainLayout>
 
     <!-- 回测报告专用布局 -->
     <ReportLayout
-      v-else
-      :report-data="reportData"
-      @go-back="exitReportView"
+        v-else
+        :report-data="reportData"
+        @go-back="exitReportView"
     >
-      <router-view />
+      <router-view/>
     </ReportLayout>
   </div>
 </template>
@@ -65,20 +65,24 @@ export default {
     }
   },
   watch: {
-    $route(to) {
-      // 根据路由更新激活菜单
-      this.activeMenu = to.meta?.menu || 'market';
+    // 修复：使用对象语法定义watch处理函数
+    $route: {
+      handler(to) {
+        // 根据路由更新激活菜单
+        this.activeMenu = to.meta?.menu || 'market';
 
-      // 检查是否是回测报告视图
-      this.isReportView = to.path.includes('/backtest/report');
+        // 检查是否是回测报告视图
+        this.isReportView = to.path.includes('/backtest/report');
 
-      // 如果是报告视图，加载报告数据
-      if (this.isReportView) {
-        this.loadReportData(to.params.reportId);
-      }
+        // 如果是报告视图，加载报告数据
+        if (this.isReportView) {
+          this.loadReportData(to.params.reportId);
+        }
+      },
+      immediate: true // 添加立即执行确保初始化状态正确
     }
   },
-  methods: {
+  methods: {  // 修复：确保所有方法都定义在methods属性中
     handleMenuChange(menuId) {
       this.activeMenu = menuId;
       // 根据菜单ID导航到对应路由
@@ -114,15 +118,16 @@ export default {
 </script>
 
 <style lang="scss">
-@import "./assets/scss/global.scss";
+// 显式导入全局变量
+@use "./assets/scss/global.scss" as *;
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background-color: $background-dark;
-  color: $text-primary;
+  background-color: $background-dark; // 使用变量
+  color: $text-primary; // 使用变量
 }
 
 #app {

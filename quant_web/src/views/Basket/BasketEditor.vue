@@ -1,7 +1,7 @@
 <!--篮子编辑器-->
 <!--篮子编辑器-->
 <script>
-import { fetchBasketDetail, createBasket, updateBasket } from './api/basket.js'
+import { fetchBasketDetail, createBasket, updateBasket } from './api/basket.ts'
 import StockSelector from '../../components/data/StockSelector'
 
 export default {
