@@ -1,20 +1,42 @@
 <template>
   <div class="backtest-logs">
     <div class="log-controls">
-      <button @click="clearLogs" class="clear-btn">清空日志</button>
-      <button @click="exportLogs" class="export-btn">导出日志</button>
+      <button
+        class="clear-btn"
+        @click="clearLogs"
+      >
+        清空日志
+      </button>
+      <button
+        class="export-btn"
+        @click="exportLogs"
+      >
+        导出日志
+      </button>
       <div class="log-filter">
         <label>
-          <input type="checkbox" v-model="filterLevels.info"> 信息
+          <input
+            v-model="filterLevels.info"
+            type="checkbox"
+          > 信息
         </label>
         <label>
-          <input type="checkbox" v-model="filterLevels.warning"> 警告
+          <input
+            v-model="filterLevels.warning"
+            type="checkbox"
+          > 警告
         </label>
         <label>
-          <input type="checkbox" v-model="filterLevels.error"> 错误
+          <input
+            v-model="filterLevels.error"
+            type="checkbox"
+          > 错误
         </label>
         <label>
-          <input type="checkbox" v-model="filterLevels.trade"> 交易
+          <input
+            v-model="filterLevels.trade"
+            type="checkbox"
+          > 交易
         </label>
       </div>
     </div>
@@ -24,7 +46,8 @@
         v-for="(log, index) in filteredLogs"
         :key="index"
         class="log-item"
-        :class="logLevelClass(log.level)">
+        :class="logLevelClass(log.level)"
+      >
         <span class="log-time">[{{ log.time }}]</span>
         <span class="log-level">{{ logLevelText(log.level) }}</span>
         <span class="log-message">{{ log.message }}</span>

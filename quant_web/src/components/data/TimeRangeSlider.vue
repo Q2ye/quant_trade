@@ -1,4 +1,44 @@
 <!--时间范围滑块-->
+<template>
+  <div class="time-range-slider">
+    <div class="date-display">
+      <span>{{ formatDate(localValue[0]) }}</span>
+      <span>至</span>
+      <span>{{ formatDate(localValue[1]) }}</span>
+    </div>
+
+    <div class="slider-container">
+      <div class="slider-track">
+        <div
+          class="slider-range"
+          :style="{
+            left: `${startPercent}%`,
+            right: `${100 - endPercent}%`
+          }"
+        />
+      </div>
+
+      <input
+        type="range"
+        class="slider-handle start-handle"
+        :min="minTimestamp"
+        :max="maxTimestamp"
+        :value="localValue[0].getTime()"
+        @input="handleStartChange"
+      >
+
+      <input
+        type="range"
+        class="slider-handle end-handle"
+        :min="minTimestamp"
+        :max="maxTimestamp"
+        :value="localValue[1].getTime()"
+        @input="handleEndChange"
+      >
+    </div>
+  </div>
+</template>
+
 <script>
 import dayjs from 'dayjs'
 
@@ -78,45 +118,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <div class="time-range-slider">
-    <div class="date-display">
-      <span>{{ formatDate(localValue[0]) }}</span>
-      <span>至</span>
-      <span>{{ formatDate(localValue[1]) }}</span>
-    </div>
-
-    <div class="slider-container">
-      <div class="slider-track">
-        <div
-          class="slider-range"
-          :style="{
-            left: `${startPercent}%`,
-            right: `${100 - endPercent}%`
-          }" />
-      </div>
-
-      <input
-        type="range"
-        class="slider-handle start-handle"
-        :min="minTimestamp"
-        :max="maxTimestamp"
-        :value="localValue[0].getTime()"
-        @input="handleStartChange"
-      />
-
-      <input
-        type="range"
-        class="slider-handle end-handle"
-        :min="minTimestamp"
-        :max="maxTimestamp"
-        :value="localValue[1].getTime()"
-        @input="handleEndChange"
-      />
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .time-range-slider {

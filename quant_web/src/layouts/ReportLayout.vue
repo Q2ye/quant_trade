@@ -13,14 +13,25 @@
       </div>
 
       <div class="header-actions">
-        <el-button type="primary" icon="el-icon-download" @click="exportReport">导出报告</el-button>
-        <el-button icon="el-icon-back" @click="goBack">返回策略</el-button>
+        <el-button
+          type="primary"
+          icon="el-icon-download"
+          @click="exportReport"
+        >
+          导出报告
+        </el-button>
+        <el-button
+          icon="el-icon-back"
+          @click="goBack"
+        >
+          返回策略
+        </el-button>
       </div>
     </div>
 
     <!-- 报告内容区域 -->
     <div class="report-content">
-      <slot></slot>
+      <slot />
     </div>
 
     <!-- 报告页脚 -->

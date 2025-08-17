@@ -1,4 +1,116 @@
 <!--回测配置面板-->
+<template>
+  <div class="backtest-config">
+    <h3 class="section-title">
+      回测配置
+    </h3>
+
+    <div class="config-section">
+      <h4>资金设置</h4>
+      <div class="config-row">
+        <div class="config-item">
+          <label>初始资金 (元)</label>
+          <el-input-number
+            v-model="config.capital"
+            :min="10000"
+            :step="10000"
+            :precision="0"
+            controls-position="right"
+          />
+        </div>
+
+        <div class="config-item">
+          <label>手续费 (%)</label>
+          <el-input-number
+            v-model="config.commission"
+            :min="0"
+            :max="0.05"
+            :step="0.0001"
+            :precision="4"
+            controls-position="right"
+          />
+        </div>
+
+        <div class="config-item">
+          <label>滑点 (%)</label>
+          <el-input-number
+            v-model="config.slippage"
+            :min="0"
+            :max="0.05"
+            :step="0.0001"
+            :precision="4"
+            controls-position="right"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h4>时间范围</h4>
+      <time-range-slider
+        v-model="config.timeRange"
+        @change="handleTimeRangeChange"
+      />
+    </div>
+
+    <div class="config-section">
+      <h4>回测周期</h4>
+      <div class="config-row">
+        <div class="config-item">
+          <label>数据频率</label>
+          <el-select v-model="config.frequency">
+            <el-option
+              v-for="item in frequencyOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </div>
+
+        <div class="config-item">
+          <label>基准指数</label>
+          <el-select v-model="config.benchmark">
+            <el-option
+              v-for="item in benchmarkOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="strategy.params"
+      class="config-section"
+    >
+      <h4>策略参数</h4>
+      <div class="params-grid">
+        <param-slider
+          v-for="(param, name) in strategy.params"
+          :key="name"
+          :param-name="name"
+          :config="param"
+          :value="config.params[name]"
+          @change="handleParamChange"
+        />
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <el-button
+        type="primary"
+        icon="el-icon-video-play"
+        @click="startBacktest"
+      >
+        开始回测
+      </el-button>
+    </div>
+  </div>
+</template>
+
 <script>
 import TimeRangeSlider from '../data/TimeRangeSlider.vue'
 import ParamSlider from '../strategy/ParamSlider.vue'
@@ -73,105 +185,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <div class="backtest-config">
-    <h3 class="section-title">回测配置</h3>
-
-    <div class="config-section">
-      <h4>资金设置</h4>
-      <div class="config-row">
-        <div class="config-item">
-          <label>初始资金 (元)</label>
-          <el-input-number
-            v-model="config.capital"
-            :min="10000"
-            :step="10000"
-            :precision="0"
-            controls-position="right" />
-        </div>
-
-        <div class="config-item">
-          <label>手续费 (%)</label>
-          <el-input-number
-            v-model="config.commission"
-            :min="0"
-            :max="0.05"
-            :step="0.0001"
-            :precision="4"
-            controls-position="right" />
-        </div>
-
-        <div class="config-item">
-          <label>滑点 (%)</label>
-          <el-input-number
-            v-model="config.slippage"
-            :min="0"
-            :max="0.05"
-            :step="0.0001"
-            :precision="4"
-            controls-position="right" />
-        </div>
-      </div>
-    </div>
-
-    <div class="config-section">
-      <h4>时间范围</h4>
-      <time-range-slider
-        v-model="config.timeRange"
-        @change="handleTimeRangeChange" />
-    </div>
-
-    <div class="config-section">
-      <h4>回测周期</h4>
-      <div class="config-row">
-        <div class="config-item">
-          <label>数据频率</label>
-          <el-select v-model="config.frequency">
-            <el-option
-              v-for="item in frequencyOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value" />
-          </el-select>
-        </div>
-
-        <div class="config-item">
-          <label>基准指数</label>
-          <el-select v-model="config.benchmark">
-            <el-option
-              v-for="item in benchmarkOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value" />
-          </el-select>
-        </div>
-      </div>
-    </div>
-
-    <div class="config-section" v-if="strategy.params">
-      <h4>策略参数</h4>
-      <div class="params-grid">
-        <param-slider
-          v-for="(param, name) in strategy.params"
-          :key="name"
-          :param-name="name"
-          :config="param"
-          :value="config.params[name]"
-          @change="handleParamChange" />
-      </div>
-    </div>
-
-    <div class="action-bar">
-      <el-button
-        type="primary"
-        icon="el-icon-video-play"
-        @click="startBacktest">
-        开始回测
-      </el-button>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .backtest-config {

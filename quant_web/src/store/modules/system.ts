@@ -73,6 +73,16 @@ const systemModule: Module<SystemState, RootState> = {
         }
     },
     actions: {
+        // 确保 action 名称完全匹配
+        async loadInitialData({commit}) {
+            return new Promise((resolve, reject) => {
+                // 你的初始化逻辑
+                api.loadData().then(data => {
+                    commit('SET_DATA', data)
+                    resolve()
+                }).catch(reject)
+            })
+        },
         async checkConnections({commit}) {
             try {
                 const status = await api.checkConnections();

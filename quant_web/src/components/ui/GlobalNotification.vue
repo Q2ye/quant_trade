@@ -1,14 +1,28 @@
 <template>
   <div class="global-notification">
-    <div class="notification-bell" @click="toggleNotifications">
+    <div
+      class="notification-bell"
+      @click="toggleNotifications"
+    >
       <span class="bell-icon">🔔</span>
-      <span v-if="unreadCount > 0" class="badge">{{ unreadCount }}</span>
+      <span
+        v-if="unreadCount > 0"
+        class="badge"
+      >{{ unreadCount }}</span>
     </div>
 
-    <div v-if="showNotifications" class="notifications-panel">
+    <div
+      v-if="showNotifications"
+      class="notifications-panel"
+    >
       <div class="panel-header">
         <h3>系统通知</h3>
-        <button @click="markAllAsRead" class="mark-read-btn">全部已读</button>
+        <button
+          class="mark-read-btn"
+          @click="markAllAsRead"
+        >
+          全部已读
+        </button>
       </div>
 
       <div class="notifications-list">
@@ -16,24 +30,36 @@
           v-for="notification in notifications"
           :key="notification.id"
           class="notification-item"
-          :class="{'unread': !notification.read}">
+          :class="{'unread': !notification.read}"
+        >
           <div class="notification-icon">
             <span v-if="notification.type === 'alert'">⚠️</span>
             <span v-else-if="notification.type === 'trade'">💹</span>
             <span v-else>ℹ️</span>
           </div>
           <div class="notification-content">
-            <div class="notification-title">{{ notification.title }}</div>
-            <div class="notification-time">{{ formatTime(notification.time) }}</div>
-            <div class="notification-message">{{ notification.message }}</div>
+            <div class="notification-title">
+              {{ notification.title }}
+            </div>
+            <div class="notification-time">
+              {{ formatTime(notification.time) }}
+            </div>
+            <div class="notification-message">
+              {{ notification.message }}
+            </div>
           </div>
           <div class="notification-actions">
-            <button @click="handleAction(notification)">查看</button>
+            <button @click="handleAction(notification)">
+              查看
+            </button>
           </div>
         </div>
       </div>
 
-      <div v-if="notifications.length === 0" class="empty-notifications">
+      <div
+        v-if="notifications.length === 0"
+        class="empty-notifications"
+      >
         暂无通知
       </div>
     </div>

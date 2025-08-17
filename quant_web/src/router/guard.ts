@@ -1,4 +1,4 @@
-import {NavigationGuardNext, RouteLocationNormalized} from 'vue-router';
+import { NavigationGuardNext, RouteLocationNormalized } from 'vue-router';
 import store from '../store';
 
 export const authGuard = (
@@ -27,7 +27,8 @@ export const dataReadyGuard = (
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
 ) => {
-    if (store.state.system.dataLoaded) {
+    const rootState = store.state;
+    if (rootState.system.dataLoaded) {
         next();
     } else {
         store.dispatch('system/loadInitialData').then(() => {

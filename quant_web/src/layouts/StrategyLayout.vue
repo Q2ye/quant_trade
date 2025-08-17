@@ -7,8 +7,15 @@
     <div class="config-pane">
       <BacktestConfig :config="backtestConfig" />
       <div class="action-bar">
-        <el-button type="primary" @click="runBacktest">执行回测</el-button>
-        <el-button @click="saveStrategy">保存策略</el-button>
+        <el-button
+          type="primary"
+          @click="runBacktest"
+        >
+          执行回测
+        </el-button>
+        <el-button @click="saveStrategy">
+          保存策略
+        </el-button>
       </div>
     </div>
     <div class="monitor-pane">

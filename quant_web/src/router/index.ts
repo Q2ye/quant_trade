@@ -1,30 +1,30 @@
 import {createRouter, createWebHistory, Router} from 'vue-router';
-import routes from './routes';
+import {routes} from './routes'; // 命名导入
 import {authGuard, dataReadyGuard} from './guard';
 
-// 获取基础 URL 的替代方案
-const getBaseUrl = () => {
-    // 从环境变量获取（需要配置构建工具）
-    // if (import.meta.env.BASE_URL) {
-    //     return import.meta.env.BASE_URL;
-    // }
+const getBaseUrl = (): string => {
+    // 优先从环境变量获取
+    return import.meta.env.BASE_URL;
 
-    // 从 window 对象获取（适用于生产环境）
-    if (window.location.pathname.startsWith('/quant_web/')) {
-        return '/quant_web/';
-    }
-
-    // 默认值
-    return '/';
 };
 
 const router: Router = createRouter({
-    history: createWebHistory(getBaseUrl()), // 使用替代方案
-    routes
+    history: createWebHistory(getBaseUrl()),
+    routes,
+    scrollBehavior(_to, _from, savedPosition) {
+        // 保持滚动位置
+        if (savedPosition) {
+            return savedPosition;
+        }
+        // 新页面滚动到顶部
+        return {top: 0};
+    }
 });
 
-// 注册路由守卫
-router.beforeEach(authGuard);
-router.beforeEach(dataReadyGuard);
+// 调整守卫执行顺序
+router.beforeEach((_to, _from, _next) => {
+    router.beforeEach((to, from, next) => dataReadyGuard(to, from, next));
+    router.beforeEach((to, from, next) => authGuard(to, from, next));
+});
 
 export default router;

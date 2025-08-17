@@ -1,4 +1,3 @@
-// .eslintrc.cjs
 module.exports = {
   root: true,
   env: {
@@ -9,18 +8,49 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:vue/vue3-recommended',
-    'plugin:@typescript-eslint/recommended'
+    'plugin:@typescript-eslint/recommended',
+    'plugin:prettier/recommended'
   ],
   parser: 'vue-eslint-parser',
   parserOptions: {
     ecmaVersion: 'latest',
     parser: '@typescript-eslint/parser',
-    sourceType: 'module'
+    sourceType: 'module',
+    extraFileExtensions: ['.vue'],
+    ecmaFeatures: {
+      jsx: true
+    }
   },
-  plugins: ['vue', '@typescript-eslint'],
+  plugins: ['vue', '@typescript-eslint', 'prettier'],
   rules: {
-    // 添加自定义规则
     'vue/multi-word-component-names': 'off',
-    '@typescript-eslint/no-explicit-any': 'off'
+    '@typescript-eslint/no-explicit-any': 'off',
+    'no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': ['error'],
+    'vue/script-setup-uses-vars': 'error',
+    'vue/require-default-prop': 'off',
+    'vue/no-v-html': 'off',
+    'prettier/prettier': ['error', { endOfLine: 'auto' }]
+  },
+  overrides: [
+    {
+      files: ['*.vue'],
+      parser: 'vue-eslint-parser',
+      parserOptions: {
+        parser: '@typescript-eslint/parser',
+        sourceType: 'module'
+      },
+      rules: {
+        'vue/block-order': ['error', {
+          order: ['template', 'script', 'style']
+        }]
+      }
+    }
+  ],
+  globals: {
+    defineProps: 'readonly',
+    defineEmits: 'readonly',
+    defineExpose: 'readonly',
+    withDefaults: 'readonly'
   }
 };

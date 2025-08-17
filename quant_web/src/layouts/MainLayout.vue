@@ -18,7 +18,7 @@
 
       <!-- 中间工作区 -->
       <div class="workspace">
-        <slot></slot>
+        <slot />
       </div>
 
       <!-- 右侧辅助面板 -->
@@ -84,7 +84,7 @@ export default {
       this.dataStatus = Math.random() > 0.8 ? '同步中...' : '已同步';
     }, 5000);
   },
-  beforeDestroy() {
+  beforeUnmount() {
     clearInterval(this.timeInterval);
     clearInterval(this.dataStatusInterval);
   },

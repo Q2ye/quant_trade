@@ -1,4 +1,90 @@
 <!--顶部状态栏-->
+<template>
+  <div class="app-header">
+    <div class="logo-section">
+      <div class="logo">
+        <span class="logo-icon">Q</span>
+        <span class="logo-text">QuantMaster</span>
+      </div>
+    </div>
+
+    <div class="status-section">
+      <div class="status-item">
+        <span class="status-label">数据状态:</span>
+        <status-badge :status="systemStatus.data" />
+      </div>
+
+      <div class="status-item">
+        <span class="status-label">策略状态:</span>
+        <status-badge
+          :status="systemStatus.strategy"
+          type="running"
+        />
+      </div>
+
+      <div class="status-item">
+        <span class="status-label">交易状态:</span>
+        <status-badge
+          :status="systemStatus.trade"
+          type="success"
+        />
+      </div>
+    </div>
+
+    <div class="time-section">
+      <div class="current-time">
+        {{ formattedTime }}
+      </div>
+      <div class="current-date">
+        {{ formattedDate }}
+      </div>
+    </div>
+
+    <div class="alert-section">
+      <el-badge
+        :value="unreadAlerts"
+        :max="99"
+        class="alert-badge"
+      >
+        <el-button
+          icon="el-icon-bell"
+          circle
+          @click="$emit('show-alerts')"
+        />
+      </el-badge>
+    </div>
+
+    <div class="user-section">
+      <el-dropdown @command="handleCommand">
+        <div class="user-info">
+          <el-avatar
+            icon="el-icon-user-solid"
+            size="small"
+          />
+          <span class="user-name">QuantUser</span>
+          <i class="el-icon-arrow-down" />
+        </div>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="profile">
+              个人中心
+            </el-dropdown-item>
+            <el-dropdown-item command="settings">
+              系统设置
+            </el-dropdown-item>
+            <el-dropdown-item
+              divided
+              command="logout"
+            >
+              退出登录
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </div>
+  </div>
+</template>
+
 <script>
 import StatusBadge from '../ui/StatusBadge.vue'
 
@@ -47,7 +133,7 @@ export default {
       }
     }, 5000)
   },
-  beforeDestroy() {
+  beforeUnmount() {
     clearInterval(this.timeInterval)
     clearInterval(this.statusInterval)
   },
@@ -62,60 +148,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <div class="app-header">
-    <div class="logo-section">
-      <div class="logo">
-        <span class="logo-icon">Q</span>
-        <span class="logo-text">QuantMaster</span>
-      </div>
-    </div>
-
-    <div class="status-section">
-      <div class="status-item">
-        <span class="status-label">数据状态:</span>
-        <status-badge :status="systemStatus.data" />
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">策略状态:</span>
-        <status-badge :status="systemStatus.strategy" type="running" />
-      </div>
-
-      <div class="status-item">
-        <span class="status-label">交易状态:</span>
-        <status-badge :status="systemStatus.trade" type="success" />
-      </div>
-    </div>
-
-    <div class="time-section">
-      <div class="current-time">{{ formattedTime }}</div>
-      <div class="current-date">{{ formattedDate }}</div>
-    </div>
-
-    <div class="alert-section">
-      <el-badge :value="unreadAlerts" :max="99" class="alert-badge">
-        <el-button icon="el-icon-bell" circle @click="$emit('show-alerts')" />
-      </el-badge>
-    </div>
-
-    <div class="user-section">
-      <el-dropdown @command="handleCommand">
-        <div class="user-info">
-          <el-avatar icon="el-icon-user-solid" size="small" />
-          <span class="user-name">QuantUser</span>
-          <i class="el-icon-arrow-down" />
-        </div>
-        <el-dropdown-menu slot="dropdown">
-          <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-          <el-dropdown-item command="settings">系统设置</el-dropdown-item>
-          <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-        </el-dropdown-menu>
-      </el-dropdown>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .app-header {

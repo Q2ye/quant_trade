@@ -1,4 +1,15 @@
 <!--状态徽章-->
+<template>
+  <el-tag
+    :type="statusType"
+    size="small"
+    effect="dark"
+    class="status-badge"
+  >
+    {{ status }}
+  </el-tag>
+</template>
+
 <script>
 export default {
   name: "StatusBadge",
@@ -32,16 +43,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <el-tag
-    :type="statusType"
-    size="small"
-    effect="dark"
-    class="status-badge">
-    {{ status }}
-  </el-tag>
-</template>
 
 <style scoped>
 .status-badge {

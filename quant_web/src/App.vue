@@ -1,45 +1,25 @@
 <template>
-  <div id="app" class="app-container">
-    <!-- 主框架布局 -->
-    <MainLayout
-        v-if="!isReportView"
-        :active-menu="activeMenu"
-        @menu-change="handleMenuChange"
-    >
-      <!-- 策略工作室特殊布局 -->
-      <StrategyLayout v-if="isStrategyEditor">
-        <router-view/>
-      </StrategyLayout>
-
-      <!-- 交易驾驶舱特殊布局 -->
-      <TradeLayout v-else-if="isTradeDashboard">
-        <router-view/>
-      </TradeLayout>
-
-      <!-- 默认布局 -->
-      <div v-else class="default-layout">
-        <router-view/>
-      </div>
-    </MainLayout>
-
-    <!-- 回测报告专用布局 -->
-    <ReportLayout
-        v-else
-        :report-data="reportData"
-        @go-back="exitReportView"
-    >
-      <router-view/>
-    </ReportLayout>
+  <div
+    id="app"
+    :class="['app-container', { visible: isAppVisible }]"
+  >
+    <!-- 根据路由元信息选择布局 -->
+    <component :is="currentLayout">
+      <router-view />
+    </component>
   </div>
 </template>
 
-<script>
-import MainLayout from './layouts/MainLayout.vue';
-import ReportLayout from './layouts/ReportLayout.vue';
-import StrategyLayout from './layouts/StrategyLayout.vue';
-import TradeLayout from './layouts/TradeLayout.vue';
+<script lang="ts">
+import { defineComponent, computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useStore } from 'vuex';
+import MainLayout from '@/layouts/MainLayout.vue';
+import ReportLayout from '@/layouts/ReportLayout.vue';
+import StrategyLayout from '@/layouts/StrategyLayout.vue';
+import TradeLayout from '@/layouts/TradeLayout.vue';
 
-export default {
+export default defineComponent({
   name: 'App',
   components: {
     MainLayout,
@@ -47,103 +27,77 @@ export default {
     StrategyLayout,
     TradeLayout
   },
-  data() {
+  setup() {
+    const route = useRoute();
+    const isAppVisible = ref(false);
+
+    // 根据路由元信息计算当前布局
+    const currentLayout = computed(() => {
+      // 优先使用当前路由的布局元信息
+      const layout = (route.meta.layout as string) || 'main';
+
+      // 映射布局名称到组件
+      const layoutMap: Record<string, any> = {
+        main: MainLayout,
+        strategy: StrategyLayout,
+        trade: TradeLayout,
+        report: ReportLayout
+      };
+
+      return layoutMap[layout] || MainLayout;
+    });
+
+    // 设置页面标题
+    watch(() => route.meta.title, (newTitle) => {
+      if (newTitle) {
+        document.title = `${newTitle} - 专业级A股量化交易平台`;
+      }
+    }, { immediate: true });
+
     return {
-      activeMenu: 'market',
-      isReportView: false,
-      reportData: {}
+      currentLayout,
+      isAppVisible
     };
   },
-  computed: {
-    // 检查当前是否是策略编辑视图
-    isStrategyEditor() {
-      return this.$route.path.includes('/strategy/editor');
-    },
-    // 检查当前是否是交易驾驶舱视图
-    isTradeDashboard() {
-      return this.$route.path === '/trade';
-    }
-  },
-  watch: {
-    // 修复：使用对象语法定义watch处理函数
-    $route: {
-      handler(to) {
-        // 根据路由更新激活菜单
-        this.activeMenu = to.meta?.menu || 'market';
+  mounted() {
+    // 应用加载完成后显示
+    this.isAppVisible = true;
 
-        // 检查是否是回测报告视图
-        this.isReportView = to.path.includes('/backtest/report');
-
-        // 如果是报告视图，加载报告数据
-        if (this.isReportView) {
-          this.loadReportData(to.params.reportId);
-        }
-      },
-      immediate: true // 添加立即执行确保初始化状态正确
-    }
-  },
-  methods: {  // 修复：确保所有方法都定义在methods属性中
-    handleMenuChange(menuId) {
-      this.activeMenu = menuId;
-      // 根据菜单ID导航到对应路由
-      const routes = {
-        market: '/market',
-        strategy: '/strategy',
-        basket: '/basket',
-        trade: '/trade',
-        system: '/system'
-      };
-      if (routes[menuId] && this.$route.path !== routes[menuId]) {
-        this.$router.push(routes[menuId]);
-      }
-    },
-
-    loadReportData(reportId) {
-      // 模拟加载报告数据
-      this.reportData = {
-        title: `策略回测报告 #${reportId}`,
-        strategy: '双均线策略',
-        startDate: '2023-01-01',
-        endDate: '2023-08-01',
-        capital: 1000000
-      };
-    },
-
-    exitReportView() {
-      this.isReportView = false;
-      this.$router.push('/strategy');
-    }
+    // 触发初始数据加载
+    const store = useStore();
+    store.dispatch('system/loadInitialData');
   }
-};
+});
 </script>
 
 <style lang="scss">
-// 显式导入全局变量
-@use "./assets/scss/global.scss" as *;
+@use "@/assets/scss/global.scss";
+@use "@/assets/scss/variables" as *;
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background-color: $background-dark; // 使用变量
-  color: $text-primary; // 使用变量
+  background-color: var(--background-dark);
+  color: var(--text-primary);
+  overflow: hidden;
 }
 
 #app {
   height: 100vh;
   overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+
+  &.visible {
+    opacity: 1;
+  }
 }
 
 .app-container {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.default-layout {
-  padding: 20px;
-  height: 100%;
-  overflow-y: auto;
 }
 </style>

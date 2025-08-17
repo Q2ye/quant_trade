@@ -1,14 +1,36 @@
 <template>
   <div class="strategy-editor">
     <div class="editor-header">
-      <select v-model="selectedTemplate" class="template-select">
-        <option v-for="template in templates" :key="template.id" :value="template">
+      <select
+        v-model="selectedTemplate"
+        class="template-select"
+      >
+        <option
+          v-for="template in templates"
+          :key="template.id"
+          :value="template"
+        >
           {{ template.name }}
         </option>
       </select>
-      <button @click="applyTemplate" class="btn apply-btn">应用模板</button>
-      <button @click="formatCode" class="btn format-btn">格式化</button>
-      <button @click="runBacktest" class="btn run-btn">运行回测</button>
+      <button
+        class="btn apply-btn"
+        @click="applyTemplate"
+      >
+        应用模板
+      </button>
+      <button
+        class="btn format-btn"
+        @click="formatCode"
+      >
+        格式化
+      </button>
+      <button
+        class="btn run-btn"
+        @click="runBacktest"
+      >
+        运行回测
+      </button>
     </div>
 
     <div class="editor-container">
@@ -16,7 +38,8 @@
         v-model="strategyCode"
         class="code-editor"
         placeholder="编写您的量化策略..."
-        spellcheck="false"></textarea>
+        spellcheck="false"
+      />
     </div>
 
     <div class="editor-footer">
@@ -25,7 +48,9 @@
           {{ hasErrors ? '语法错误' : '语法正确' }}
         </span>
       </div>
-      <div class="line-counter">行数: {{ lineCount }}</div>
+      <div class="line-counter">
+        行数: {{ lineCount }}
+      </div>
     </div>
   </div>
 </template>

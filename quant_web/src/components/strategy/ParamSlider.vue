@@ -1,4 +1,32 @@
 <!--参数滑块组件-->
+<template>
+  <div class="param-slider">
+    <div class="param-header">
+      <span class="param-name">{{ paramName }}</span>
+      <span class="param-value">{{ value.toFixed(2) }}</span>
+    </div>
+
+    <div class="slider-container">
+      <span class="min-value">{{ formatLabel(config.min) }}</span>
+
+      <el-slider
+        v-bind="modelValue"
+        :min="config.min"
+        :max="config.max"
+        :step="config.step"
+        :format-tooltip="val => val.toFixed(2)"
+        @input="handleInput"
+        @change="handleChange"
+      />
+      <span class="max-value">{{ formatLabel(config.max) }}</span>
+    </div>
+
+    <div class="param-description">
+      <span>默认值: {{ config.default.toFixed(2) }}</span>
+    </div>
+  </div>
+</template>
+
 <script>
 export default {
   name: "ParamSlider",
@@ -32,33 +60,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <div class="param-slider">
-    <div class="param-header">
-      <span class="param-name">{{ paramName }}</span>
-      <span class="param-value">{{ value.toFixed(2) }}</span>
-    </div>
-
-    <div class="slider-container">
-      <span class="min-value">{{ formatLabel(config.min) }}</span>
-
-      <el-slider
-          v-bind ="modelValue"
-          :min="config.min"
-          :max="config.max"
-          :step="config.step"
-          :format-tooltip="val => val.toFixed(2)"
-          @input="handleInput"
-          @change="handleChange"/>
-      <span class="max-value">{{ formatLabel(config.max) }}</span>
-    </div>
-
-    <div class="param-description">
-      <span>默认值: {{ config.default.toFixed(2) }}</span>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .param-slider {

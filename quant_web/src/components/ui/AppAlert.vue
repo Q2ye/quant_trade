@@ -1,4 +1,50 @@
 <!--预警提示组件-->
+<template>
+  <!-- 添加 v-if 确保 alert 存在 -->
+  <div
+    v-if="alert"
+    class="app-alert"
+    :style="{ borderLeft: `3px solid ${alertColor}` }"
+  >
+    <div class="alert-header">
+      <div
+        class="alert-icon"
+        :style="{ color: alertColor }"
+      >
+        <i :class="alertIcon" />
+      </div>
+      <div class="alert-title">
+        {{ alert.title }}
+      </div>
+      <div class="alert-time">
+        {{ formattedTime }}
+      </div>
+    </div>
+
+    <div class="alert-content">
+      {{ alert.content }}
+    </div>
+
+    <div class="alert-actions">
+      <el-button
+        v-if="alert.action"
+        type="text"
+        size="small"
+        @click="$emit('action', alert)"
+      >
+        {{ alert.action }}
+      </el-button>
+      <el-button
+        type="text"
+        size="small"
+        @click="$emit('dismiss', alert.id)"
+      >
+        忽略
+      </el-button>
+    </div>
+  </div>
+</template>
+
 <script>
 export default {
   name: "AppAlert",
@@ -48,39 +94,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <!-- 添加 v-if 确保 alert 存在 -->
-  <div v-if="alert" class="app-alert" :style="{ borderLeft: `3px solid ${alertColor}` }">
-    <div class="alert-header">
-      <div class="alert-icon" :style="{ color: alertColor }">
-        <i :class="alertIcon"></i>
-      </div>
-      <div class="alert-title">{{ alert.title }}</div>
-      <div class="alert-time">{{ formattedTime }}</div>
-    </div>
-
-    <div class="alert-content">
-      {{ alert.content }}
-    </div>
-
-    <div class="alert-actions">
-      <el-button
-        v-if="alert.action"
-        type="text"
-        size="small"
-        @click="$emit('action', alert)">
-        {{ alert.action }}
-      </el-button>
-      <el-button
-        type="text"
-        size="small"
-        @click="$emit('dismiss', alert.id)">
-        忽略
-      </el-button>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 /* 样式保持不变 */

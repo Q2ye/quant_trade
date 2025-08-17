@@ -1,10 +1,12 @@
-// 显式导入变量
+// 显式导入变量和需要的模块
 @use 'variables' as *;
+@use "sass:map"; // 导入 map 模块
+@use "sass:color";
 
 //样式混合
 // 响应式断点
 @mixin media-breakpoint-up($name, $breakpoints: (xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px)) {
-  $min: map-get($breakpoints, $name);
+  $min: map.get($breakpoints, $name); // 使用 map.get 替代 map-get
   @if $min {
     @media (min-width: $min) {
       @content;
@@ -35,7 +37,7 @@
 @mixin data-card {
   background: $white;
   border-radius: $border-radius;
-  padding: map-get($spacers, 3);
+  padding: map.get($spacers, 3); // 使用 map.get
   box-shadow: $card-box-shadow;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 
@@ -50,7 +52,17 @@
   font-size: 1rem;
   font-weight: 600;
   color: $gray-800;
-  margin-bottom: map-get($spacers, 3);
-  padding-bottom: map-get($spacers, 2);
+  margin-bottom: map.get($spacers, 3); // 使用 map.get
+  padding-bottom: map.get($spacers, 2); // 使用 map.get
   border-bottom: $border-width solid $border-color;
+}
+
+@function scale-color($color, $lightness: 0%) {
+  @return color.scale($color, $lightness: $lightness);
+}
+
+@mixin deep() {
+  :deep {
+    @content;
+  }
 }

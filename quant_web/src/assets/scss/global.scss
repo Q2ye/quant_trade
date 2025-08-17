@@ -1,14 +1,22 @@
 //全局样式
-// 导入所有局部样式
-@use 'variables' as *;  // 通配符导入所有变量
-@use 'mixins' as mix;   // 使用命名空间
-@use 'layout' ;
-@use 'charts' ;
+@use 'variables' as *;
+@use 'mixins' as mix;
+@use 'sass:color';
+@use 'layout';
+@use 'charts';
 
+// 第二步：然后定义混合器
+@mixin deep() {
+  :deep {
+    @content;
+  }
+}
+
+// 第三步：最后是其他样式规则
 :root {
-  --background-dark: #121826;   // 深色背景
+  --background-dark: #121826; // 深色背景
   --background-content: #1c2438; // 内容区域背景
-  --text-primary: #e0e0e0;      // 主文本颜色
+  --text-primary: #e0e0e0; // 主文本颜色
 }
 
 // 基础全局样式
@@ -36,19 +44,19 @@ body {
   margin-right: auto;
   margin-left: auto;
 
-  @include mix.media-breakpoint-up(sm) { // 修复1：添加命名空间
+  @include mix.media-breakpoint-up(sm) {
     max-width: 540px;
   }
 
-  @include mix.media-breakpoint-up(md) { // 修复2：添加命名空间
+  @include mix.media-breakpoint-up(md) {
     max-width: 720px;
   }
 
-  @include mix.media-breakpoint-up(lg) { // 修复3：添加命名空间
+  @include mix.media-breakpoint-up(lg) {
     max-width: 960px;
   }
 
-  @include mix.media-breakpoint-up(xl) { // 修复4：添加命名空间
+  @include mix.media-breakpoint-up(xl) {
     max-width: 1140px;
   }
 }
@@ -116,6 +124,13 @@ body {
     font-weight: 500;
     position: relative;
 
+    // 修复后的深度选择器用法
+    @include deep() {
+      .icon {
+        color: inherit;
+      }
+    }
+
     &:hover {
       color: $primary;
     }
@@ -139,7 +154,7 @@ body {
 
 // 数据卡片
 .data-card {
-  @include mix.data-card; // 修复5：添加命名空间
+  @include mix.data-card;
 
   .card-title {
     font-size: $font-size-base * 1.1;
@@ -183,7 +198,7 @@ body {
     border: 1px solid $primary;
 
     &:hover {
-      background: darken($primary, 5%);
+      background: color.scale($primary, $lightness: -5%);
     }
   }
 

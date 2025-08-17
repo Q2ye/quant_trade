@@ -1,5 +1,5 @@
-// 显式导入变量和混合
-@use 'variables' as *;
+// 修复导入路径和变量使用方式
+@use 'variables' as *; // 移除下划线，使用标准文件名
 @use 'mixins' as mix;
 
 //布局样式
@@ -24,7 +24,7 @@
   display: grid;
   grid-template-columns: 1fr;
   height: calc(100vh - 120px);
-  gap: map-get($spacers, 3);
+  gap: map-get($spacers, 3); // 修复变量引用
 
   @include mix.media-breakpoint-up(lg) {
     grid-template-columns: 40% 30% 30%;
@@ -35,7 +35,7 @@
 .trade-cockpit {
   display: grid;
   grid-template-columns: 1fr;
-  gap: map-get($spacers, 3);
+  gap: map-get($spacers, 3); // 修复变量引用
 
   @include mix.media-breakpoint-up(md) {
     grid-template-columns: repeat(2, 1fr);
@@ -79,13 +79,13 @@
 // 响应式图表容器
 .responsive-chart {
   @include mix.chart-container;
-  padding: map-get($spacers, 3);
+  padding: map-get($spacers, 3); // 修复变量引用
 
   .chart-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: map-get($spacers, 3);
+    margin-bottom: map-get($spacers, 3); // 修复变量引用
 
     .chart-title {
       @include mix.chart-title;
@@ -95,7 +95,7 @@
 
     .chart-controls {
       display: flex;
-      gap: map-get($spacers, 2);
+      gap: map-get($spacers, 2); // 修复变量引用
     }
   }
 }

@@ -5,41 +5,73 @@
         v-for="tab in tabs"
         :key="tab.id"
         :class="['tab-btn', { 'active': activeTab === tab.id }]"
-        @click="activeTab = tab.id">
+        @click="activeTab = tab.id"
+      >
         {{ tab.label }}
       </button>
     </div>
 
     <div class="tab-content">
-      <div v-if="activeTab === 'logs'" class="log-container">
-        <div v-for="(log, index) in logs" :key="index" class="log-item">
+      <div
+        v-if="activeTab === 'logs'"
+        class="log-container"
+      >
+        <div
+          v-for="(log, index) in logs"
+          :key="index"
+          class="log-item"
+        >
           <span class="log-time">[{{ log.time }}]</span>
           <span :class="['log-message', logLevelClass(log.level)]">{{ log.message }}</span>
         </div>
       </div>
 
-      <div v-if="activeTab === 'variables'" class="variables-container">
+      <div
+        v-if="activeTab === 'variables'"
+        class="variables-container"
+      >
         <div class="variables-grid">
-          <div class="grid-header">变量名</div>
-          <div class="grid-header">值</div>
-          <div class="grid-header">类型</div>
+          <div class="grid-header">
+            变量名
+          </div>
+          <div class="grid-header">
+            值
+          </div>
+          <div class="grid-header">
+            类型
+          </div>
 
-          <template v-for="(value, key) in variables" :key="key">
-            <div class="grid-item">{{ key }}</div>
-            <div class="grid-item">{{ formatValue(value) }}</div>
-            <div class="grid-item">{{ typeof value }}</div>
+          <template
+            v-for="(value, key) in variables"
+            :key="key"
+          >
+            <div class="grid-item">
+              {{ key }}
+            </div>
+            <div class="grid-item">
+              {{ formatValue(value) }}
+            </div>
+            <div class="grid-item">
+              {{ typeof value }}
+            </div>
           </template>
         </div>
       </div>
 
-      <div v-if="activeTab === 'signals'" class="signals-container">
+      <div
+        v-if="activeTab === 'signals'"
+        class="signals-container"
+      >
         <div class="signal-timeline">
           <div
             v-for="signal in signals"
             :key="signal.id"
             class="signal-event"
-            :class="signal.type">
-            <div class="signal-time">{{ signal.time }}</div>
+            :class="signal.type"
+          >
+            <div class="signal-time">
+              {{ signal.time }}
+            </div>
             <div class="signal-info">
               <span class="signal-symbol">{{ signal.symbol }}</span>
               <span class="signal-type">{{ signalTypeText(signal.type) }}</span>

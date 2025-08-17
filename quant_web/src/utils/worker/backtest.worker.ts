@@ -34,6 +34,8 @@ type BacktestResult = {
   totalTrades: number;
   dailyReturns: number[];
   executionTime: number;
+  trades: Trade[];
+  dailyPerformance: PerformanceRecord[];
 };
 
 type Trade = {
@@ -73,6 +75,7 @@ type BacktestEngineConfig = {
   slippage: number;
   startDate: string;
   endDate: string;
+  backtestId?: string; // 添加缺失的属性
   onProgress?: (progress: number) => void;
   onSignal?: (signal: Signal) => void;
   onTrade?: (trade: Trade) => void;
@@ -92,7 +95,7 @@ self.addEventListener('message', (e: MessageEvent<{ task: string; payload: any }
         initBacktest(payload);
         break;
       case 'RUN_BACKTEST':
-        runBacktest(payload);
+        runBacktest();
         break;
       case 'PAUSE_BACKTEST':
         pauseBacktest();
@@ -130,6 +133,7 @@ function initBacktest(config: BacktestConfig) {
     slippage: config.slippage,
     startDate: config.startDate,
     endDate: config.endDate,
+    backtestId: config.backtestId, // 传递backtestId
     onProgress: (progress) => {
       self.postMessage({
         task: 'BACKTEST_PROGRESS',
@@ -234,15 +238,15 @@ function stopBacktest() {
 
 // 回测引擎实现
 class BacktestEngine {
-  private config: BacktestEngineConfig;
-  private data: StockData[];
-  private strategy: (ctx: any) => any;
+  private readonly config: BacktestEngineConfig;
+  private readonly data: StockData[];
+  private readonly strategy: (ctx: any) => any;
   private currentIndex: number;
   private isRunning: boolean;
   private isPaused: boolean;
-  private trades: Trade[];
-  private performance: PerformanceRecord[];
-  private signals: Signal[];
+  private readonly trades: Trade[];
+  private readonly performance: PerformanceRecord[];
+  private readonly signals: Signal[];
   private state: {
     position: number;
     cash: number;
@@ -272,6 +276,7 @@ class BacktestEngine {
 
   private compileStrategy(strategyCode: string): (ctx: any) => any {
     try {
+      // 使用正确的 Function 构造函数
       const strategyFunc = new Function('ctx', strategyCode);
       return (ctx: any) => {
         try {
@@ -343,7 +348,7 @@ class BacktestEngine {
       ...results,
       executionTime: Date.now() - startTime,
       trades: this.trades,
-      signals: this.signals
+      dailyPerformance: this.performance
     } as BacktestResult;
   }
 
@@ -419,12 +424,16 @@ class BacktestEngine {
   private calculateResults() {
     if (this.performance.length === 0) {
       return {
+        initialCapital: this.config.initialCapital,
+        finalEquity: this.config.initialCapital,
+        totalReturn: 0,
         annualReturn: 0,
         sharpeRatio: 0,
         maxDrawdown: 0,
         winRate: 0,
         profitFactor: 1,
-        totalTrades: this.trades.length
+        totalTrades: this.trades.length,
+        dailyReturns: []
       };
     }
 
@@ -467,6 +476,8 @@ class BacktestEngine {
   }
 
   private calculateSharpeRatio(dailyReturns: number[]): number {
+    if (dailyReturns.length === 0) return 0;
+    
     const mean = dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length;
     const variance = dailyReturns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / dailyReturns.length;
     const stdDev = Math.sqrt(variance);
@@ -511,8 +522,8 @@ class BacktestEngine {
       }
     }
 
-    const winRate = wins / (this.trades.length / 2);
-    const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : 1;
+    const winRate = this.trades.length > 0 ? wins / (this.trades.length / 2) : 0;
+    const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? Infinity : 1;
 
     return { winRate, profitFactor };
   }

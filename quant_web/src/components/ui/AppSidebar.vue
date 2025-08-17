@@ -1,4 +1,86 @@
 <!--左侧导航栏-->
+<template>
+  <div
+    class="app-sidebar"
+    :class="{ collapsed }"
+  >
+    <div class="sidebar-header">
+      <div
+        v-if="!collapsed"
+        class="logo"
+      >
+        <span class="logo-icon">Q</span>
+        <span class="logo-text">QuantMaster</span>
+      </div>
+      <div
+        v-else
+        class="logo"
+      >
+        <span class="logo-icon">Q</span>
+      </div>
+      <el-button
+        class="collapse-btn"
+        :icon="collapsed ? 'el-icon-s-unfold' : 'el-icon-s-fold'"
+        @click="toggleCollapse"
+      />
+    </div>
+    <el-menu
+      :default-active="activeMenu"
+      :collapse="collapsed"
+      background-color="transparent"
+      text-color="#b0bec5"
+      active-text-color="#1890ff"
+      :router="true"
+      :unique-opened="true"
+    >
+      <template
+        v-for="menu in menus"
+        :key="menu.id"
+      >
+        <!-- 有子菜单的项 -->
+        <el-sub-menu
+          v-if="menu.children"
+          :index="menu.id"
+        >
+          <template #title>
+            <i :class="menu.icon" />
+            <span>{{ menu.name }}</span>
+          </template>
+          <el-menu-item
+            v-for="child in menu.children"
+            :key="child.id"
+            :index="child.id"
+            :route="child.path"
+          >
+            <i :class="child.icon || 'fas fa-caret-right'" />
+            <span>{{ child.name }}</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <!-- 无子菜单的项 -->
+        <el-menu-item
+          v-else
+          :index="menu.id"
+          :route="menu.path"
+        >
+          <i :class="menu.icon" />
+          <span>{{ menu.name }}</span>
+        </el-menu-item>
+      </template>
+    </el-menu>
+
+    <div class="sidebar-footer">
+      <div class="system-info">
+        <span>CPU: 42%</span>
+        <span>内存: 65%</span>
+      </div>
+      <div class="version">
+        v1.0.0
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
 export default {
   name: "AppSidebar",
@@ -57,13 +139,13 @@ export default {
       ]
     }
   },
-  created() {
-    this.setActiveMenu()
-  },
   watch: {
     $route() {
       this.setActiveMenu()
     }
+  },
+  created() {
+    this.setActiveMenu()
   },
   methods: {
     setActiveMenu() {
@@ -81,64 +163,6 @@ export default {
   }
 }
 </script>
-
-<template>
-  <div class="app-sidebar" :class="{ collapsed }">
-    <div class="sidebar-header">
-      <div class="logo" v-if="!collapsed">
-        <span class="logo-icon">Q</span>
-        <span class="logo-text">QuantMaster</span>
-      </div>
-      <div class="logo" v-else>
-        <span class="logo-icon">Q</span>
-      </div>
-      <el-button
-          class="collapse-btn"
-          :icon="collapsed ? 'el-icon-s-unfold' : 'el-icon-s-fold'"
-          @click="toggleCollapse"/>
-    </div>
-    <el-menu
-        :default-active="activeMenu"
-        :collapse="collapsed"
-        background-color="transparent"
-        text-color="#b0bec5"
-        active-text-color="#1890ff"
-        :router="true"
-        :unique-opened="true">
-      <template v-for="menu in menus" :key="menu.id">
-        <!-- 有子菜单的项 -->
-        <el-sub-menu v-if="menu.children" :index="menu.id">
-          <template #title>
-            <i :class="menu.icon"></i>
-            <span>{{ menu.name }}</span>
-          </template>
-          <el-menu-item
-              v-for="child in menu.children"
-              :key="child.id"
-              :index="child.id"
-              :route="child.path">
-            <i :class="child.icon || 'fas fa-caret-right'"></i>
-            <span>{{ child.name }}</span>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <!-- 无子菜单的项 -->
-        <el-menu-item v-else :index="menu.id" :route="menu.path">
-          <i :class="menu.icon"></i>
-          <span>{{ menu.name }}</span>
-        </el-menu-item>
-      </template>
-    </el-menu>
-
-    <div class="sidebar-footer">
-      <div class="system-info">
-        <span>CPU: 42%</span>
-        <span>内存: 65%</span>
-      </div>
-      <div class="version">v1.0.0</div>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .app-sidebar {

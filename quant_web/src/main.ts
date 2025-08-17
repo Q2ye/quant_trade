@@ -24,3 +24,6 @@ app.use(ElementPlus);
 app.directive('resize', resize);
 
 app.mount('#app');
+
+// 发送应用就绪事件
+document.dispatchEvent(new Event('vue-app-ready'));

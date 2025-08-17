@@ -3,43 +3,122 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="专业级A股量化交易平台">
   <title>专业级A股量化交易平台</title>
 
-  <!-- Favicon -->
-  <link rel="icon" href="./public/favicon.ico" type="image/x-icon">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    }
 
-  <!-- 预加载关键资源 -->
-  <link rel="preload" href="./src/assets/fonts/Source_Han_Sans_SC.otf" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="src/main.ts" as="script">
+    body {
+      background: #0f1a26;
+      color: #e0e6ed;
+      overflow: hidden;
+      height: 100vh;
+    }
 
-  <!-- 主题配置 -->
-  <link rel="stylesheet" href="./public/config/theme.json" id="theme-stylesheet">
+    /* 初始加载动画 */
+    #app-loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #0f1a26 0%, #1d2b3a 100%);
+      z-index: 1000;
+      transition: opacity 0.5s ease;
+    }
 
-  <!-- 全局样式 -->
-  <link rel="stylesheet" href="./src/assets/scss/global.scss">
+    .loading-logo {
+      margin-bottom: 30px;
+      animation: pulse 2s infinite;
+    }
 
-  <!-- 移动端适配 -->
-  <meta name="theme-color" content="#1e272c">
+    .loading-logo svg {
+      width: 100px;
+      height: 100px;
+    }
+
+    .loading-text {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 20px;
+      color: #64b5f6;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .loading-progress {
+      width: 300px;
+      height: 6px;
+      background: rgba(100, 181, 246, 0.2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 30%;
+      background: #64b5f6;
+      border-radius: 3px;
+      animation: loading 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    @keyframes loading {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350px); }
+    }
+
+    /* Vue应用加载完成后隐藏加载动画 */
+    #app-loading.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Vue应用容器 */
+    #app {
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      height: 100vh;
+    }
+
+    #app.visible {
+      opacity: 1;
+    }
+  </style>
 </head>
 <body>
-  <div id="app">
-    <!-- Vue应用挂载点 -->
-    <div class="app-loading">
-      <div class="loading-logo">
-        <svg width="80" height="80" viewBox="0 0 100 100">
-          <path fill="#2196F3" d="M50,5A45,45 0 1,0 95,50A45,45 0 0,0 50,5Z"/>
-          <path fill="#FFC107" d="M50,20L65,45L50,70L35,45Z"/>
-        </svg>
-      </div>
-      <div class="loading-text">量化引擎启动</div>
-      <div class="loading-progress">
-        <div class="progress-bar"></div>
-      </div>
+  <!-- 初始加载动画 -->
+  <div id="app-loading">
+    <div class="loading-logo">
+      <svg width="80" height="80" viewBox="0 0 100 100">
+        <path fill="#2196F3" d="M50,5A45,45 0 1,0 95,50A45,45 0 0,0 50,5Z"/>
+        <path fill="#FFC107" d="M50,20L65,45L50,70L35,45Z"/>
+      </svg>
+    </div>
+    <div class="loading-text">量化引擎启动</div>
+    <div class="loading-progress">
+      <div class="progress-bar"></div>
     </div>
   </div>
 
-  <!-- 环境变量配置 -->
+  <!-- Vue应用挂载点 -->
+  <div id="app"></div>
+
+  <!-- 配置数据 -->
   <script type="application/json" id="app-config">
     {
       "apiBase": "https://api.quant-platform.com/v1",
@@ -52,31 +131,19 @@
   <!-- 主应用脚本 -->
   <script src="./src/main.ts" type="module"></script>
 
-  <!-- 数据监控 -->
   <script>
-    // 性能监控 - 使用现代 PerformanceNavigationTiming API
-    window.addEventListener('load', () => {
-      // 获取导航性能数据
-      const navigationEntries = performance.getEntriesByType('navigation');
+    // 监听Vue应用加载完成事件
+    document.addEventListener('vue-app-ready', function() {
+      const loadingElement = document.getElementById('app-loading');
+      const appElement = document.getElementById('app');
 
-      if (navigationEntries.length > 0) {
-        const navigationEntry = navigationEntries[0];
+      // 添加淡出效果
+      loadingElement.classList.add('fade-out');
 
-        // 安全访问性能指标
-        const perfData = {
-          loadTime: navigationEntry.duration || 0,
-          dns: (navigationEntry.domainLookupEnd || 0) - (navigationEntry.domainLookupStart || 0),
-          tcp: (navigationEntry.connectEnd || 0) - (navigationEntry.connectStart || 0),
-          request: (navigationEntry.responseStart || 0) - (navigationEntry.requestStart || 0),
-          response: (navigationEntry.responseEnd || 0) - (navigationEntry.responseStart || 0),
-          domReady: (navigationEntry.domContentLoadedEventEnd || 0) - (navigationEntry.startTime || 0),
-          interactive: (navigationEntry.domInteractive || 0) - (navigationEntry.startTime || 0)
-        };
-
-        console.log('性能指标:', perfData);
-      } else {
-        console.log('无法获取性能指标：未找到 navigation 条目');
-      }
+      // 显示Vue应用
+      setTimeout(() => {
+        appElement.classList.add('visible');
+      }, 500);
     });
   </script>
 </body>
