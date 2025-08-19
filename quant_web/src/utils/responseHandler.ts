@@ -4,10 +4,23 @@ interface ApiResponse {
   data?: any;
 }
 
-export function handleResponse(response: ApiResponse): any {
-  if (response.code === 0) {
-    return response.data;
+// 假设AxiosResponse类型结构
+interface AxiosResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: any;
+  config: any;
+  request?: any;
+}
+
+export function handleResponse(response: AxiosResponse<ApiResponse>): any {
+  // 将AxiosResponse转换为ApiResponse
+  const apiResponse = response.data as ApiResponse;
+
+  if (apiResponse.code === 0) {
+    return apiResponse.data;
   } else {
-    throw new Error(response.message || 'Unknown error');
+    throw new Error(apiResponse.message || 'Unknown error');
   }
 }

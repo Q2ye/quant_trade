@@ -36,7 +36,6 @@ export interface TradeRecord {
     quantity: number;
     // ...其他成交信息
     executedAt?: string;
-    status?: string;
 }
 
 export interface TradePerformance {
@@ -84,7 +83,7 @@ export default {
             .then((data: { updatedOrder: Order }) => data.updatedOrder) // 添加类型注解
     },
 
-    cancelOrder(orderId: string) {
+    async cancelOrder(orderId: string) {
         return request.delete(`/trade/order/${orderId}`)
             .then(handleResponse)
     },
@@ -107,7 +106,7 @@ export default {
             .then((data: { order: Order }) => data.order) // 添加类型注解
     },
 
-    ignoreSignal(signalId: string) {
+    async ignoreSignal(signalId: string) {
         return request.post(`/trade/signal/${signalId}/ignore`)
             .then(handleResponse)
     },
