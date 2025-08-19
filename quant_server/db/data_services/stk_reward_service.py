@@ -1,8 +1,8 @@
-# stk_reward_service.py
+# stk_reward_service.py (completed)
 from sqlalchemy import extract
 
 from quant_server.db.base_service import BaseService
-from quant_server.db.models.models import StkReward
+from quant_server.db.models.models import StkReward, StkManager
 
 
 class StkRewardService(BaseService):
@@ -18,33 +18,53 @@ class StkRewardService(BaseService):
 
     def get(self, id: int):
         """根据ID获取薪酬信息"""
-        return self.filter(id=id).first()
+        with self.session_scope() as session:
+            return session.query(StkReward).get(id)
 
     def update(self, id: int, update_data: dict):
         """更新薪酬信息"""
         with self.session_scope() as session:
             reward = session.query(StkReward).get(id)
-            for key, value in update_data.items():
-                setattr(reward, key, value)
+            if reward:
+                for key, value in update_data.items():
+                    setattr(reward, key, value)
             return reward
 
     def delete(self, id: int):
         """删除薪酬记录"""
         with self.session_scope() as session:
             reward = session.query(StkReward).get(id)
-            session.delete(reward)
+            if reward:
+                session.delete(reward)
 
     def filter(self, **filters):
         """根据条件过滤薪酬记录"""
-        return self.session.query(StkReward).filter_by(**filters)
+        with self.session_scope() as session:
+            return session.query(StkReward).filter_by(**filters).all()
 
     def get_by_manager(self, manager_id: int):
         """获取指定管理层的薪酬记录"""
-        return self.filter(manager_id=manager_id).all()
+        with self.session_scope() as session:
+            return session.query(StkReward).filter_by(manager_id=manager_id).all()
 
     def get_annual_rewards(self, ts_code: str, year: int):
         """获取公司指定年度的薪酬数据"""
-        return self.session.query(StkReward).join(StkManager).filter(
-            StkManager.ts_code == ts_code,
-            extract('year', StkReward.end_date) == year
-        ).all()
+        with self.session_scope() as session:
+            return session.query(StkReward).join(StkManager).filter(
+                StkManager.ts_code == ts_code,
+                extract('year', StkReward.end_date) == year
+            ).all()
+
+    def get_by_date_range(self, manager_id: int, start_date, end_date):
+        """获取指定时间范围的薪酬记录"""
+        with self.session_scope() as session:
+            return session.query(StkReward).filter(
+                StkReward.manager_id == manager_id,
+                StkReward.end_date >= start_date,
+                StkReward.end_date <= end_date
+            ).all()
+
+    def get_all(self):
+        """获取所有薪酬记录"""
+        with self.session_scope() as session:
+            return session.query(StkReward).all()

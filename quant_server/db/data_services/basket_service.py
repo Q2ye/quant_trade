@@ -1,6 +1,6 @@
-# basket_service.py
+# basket_service.py (completed)
 from quant_server.db.base_service import BaseService
-from quant_server.db.models.models import Basket
+from quant_server.db.models.models import Basket, BasketItem
 
 
 class BasketService(BaseService):
@@ -23,29 +23,36 @@ class BasketService(BaseService):
                 weight=weight
             )
             session.add(item)
+            session.flush()
             return item
 
     def get_basket(self, basket_id: str):
         """获取篮子详情"""
-        return self.filter(id=basket_id).first()
+        with self.session_scope() as session:
+            return session.query(Basket).get(basket_id)
 
     def update_basket(self, basket_id: str, update_data: dict):
         """更新篮子信息"""
         with self.session_scope() as session:
             basket = session.query(Basket).get(basket_id)
-            for key, value in update_data.items():
-                setattr(basket, key, value)
+            if basket:
+                for key, value in update_data.items():
+                    setattr(basket, key, value)
             return basket
 
     def delete_basket(self, basket_id: str):
         """删除篮子"""
         with self.session_scope() as session:
             basket = session.query(Basket).get(basket_id)
-            session.delete(basket)
+            if basket:
+                # 先删除所有篮子成分
+                session.query(BasketItem).filter_by(basket_id=basket_id).delete()
+                session.delete(basket)
 
     def get_basket_items(self, basket_id: str):
         """获取篮子成分股"""
-        return self.session.query(BasketItem).filter_by(basket_id=basket_id).all()
+        with self.session_scope() as session:
+            return session.query(BasketItem).filter_by(basket_id=basket_id).all()
 
     def rebalance_basket(self, basket_id: str, new_composition: dict):
         """重新平衡篮子成分"""
@@ -61,3 +68,14 @@ class BasketService(BaseService):
                     weight=weight
                 )
                 session.add(item)
+            session.flush()
+
+    def get_all_baskets(self):
+        """获取所有篮子"""
+        with self.session_scope() as session:
+            return session.query(Basket).all()
+
+    def filter_baskets(self, **filters):
+        """根据条件过滤篮子"""
+        with self.session_scope() as session:
+            return session.query(Basket).filter_by(**filters).all()

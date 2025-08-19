@@ -1,4 +1,4 @@
-# stk_manager_service.py
+# stk_manager_service.py (completed)
 from quant_server.db.base_service import BaseService
 from quant_server.db.models.models import StkManager
 
@@ -16,30 +16,52 @@ class StkManagerService(BaseService):
 
     def get(self, id: int):
         """根据ID获取管理层信息"""
-        return self.filter(id=id).first()
+        with self.session_scope() as session:
+            return session.query(StkManager).get(id)
 
     def update(self, id: int, update_data: dict):
         """更新管理层信息"""
         with self.session_scope() as session:
             manager = session.query(StkManager).get(id)
-            for key, value in update_data.items():
-                setattr(manager, key, value)
+            if manager:
+                for key, value in update_data.items():
+                    setattr(manager, key, value)
             return manager
 
     def delete(self, id: int):
         """删除管理层记录"""
         with self.session_scope() as session:
             manager = session.query(StkManager).get(id)
-            session.delete(manager)
+            if manager:
+                session.delete(manager)
 
     def filter(self, **filters):
         """根据条件过滤管理层记录"""
-        return self.session.query(StkManager).filter_by(**filters)
+        with self.session_scope() as session:
+            return session.query(StkManager).filter_by(**filters).all()
 
     def get_by_company(self, ts_code: str):
         """获取指定公司的所有管理层信息"""
-        return self.filter(ts_code=ts_code).all()
+        with self.session_scope() as session:
+            return session.query(StkManager).filter_by(ts_code=ts_code).all()
 
     def get_active_managers(self, ts_code: str):
         """获取公司现任管理层"""
-        return self.filter(ts_code=ts_code, end_date=None).all()
+        with self.session_scope() as session:
+            return session.query(StkManager).filter(
+                StkManager.ts_code == ts_code,
+                StkManager.end_date.is_(None)
+            ).all()
+
+    def get_by_title(self, ts_code: str, title: str):
+        """获取指定职位的管理层"""
+        with self.session_scope() as session:
+            return session.query(StkManager).filter(
+                StkManager.ts_code == ts_code,
+                StkManager.title == title
+            ).all()
+
+    def get_all(self):
+        """获取所有管理层记录"""
+        with self.session_scope() as session:
+            return session.query(StkManager).all()

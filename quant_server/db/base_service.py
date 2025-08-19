@@ -36,15 +36,15 @@ class BaseService:
         """创建新记录 - 抽象方法"""
         raise NotImplementedError("子类必须实现此方法")
 
-    def get(self, id: Any) -> Any:
-        """根据ID获取记录 - 抽象方法"""
+    def get(self, pk: Any) -> Any:
+        """根据主键获取记录 - 抽象方法"""
         raise NotImplementedError("子类必须实现此方法")
 
-    def update(self, id: Any, update_data: dict) -> Any:
+    def update(self, pk: Any, update_data: dict) -> Any:
         """更新记录 - 抽象方法"""
         raise NotImplementedError("子类必须实现此方法")
 
-    def delete(self, id: Any) -> None:
+    def delete(self, pk: Any) -> None:
         """删除记录 - 抽象方法"""
         raise NotImplementedError("子类必须实现此方法")
 

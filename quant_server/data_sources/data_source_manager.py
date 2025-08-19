@@ -1,5 +1,6 @@
 import importlib
 import logging
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 
 import pandas as pd
@@ -9,7 +10,7 @@ logger = logging.getLogger('data_source_manager')
 
 
 class DataSourceManager:
-    """统一管理多个数据源，支持优先级和混合获取策略"""
+    """统一管理多个数据源，支持优先级和混合获取策略，包含数据获取和处理功能"""
 
     def __init__(self, config_path: str = "config/data_sources.yaml", db_connector=None):
         self.fetch_strategy = 'hybrid'
@@ -121,7 +122,6 @@ class DataSourceManager:
                 logger.warning(f"从数据源 {source['name']} 获取数据失败: {str(e)}")
         return None
 
-
     def get_stock_history(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """
         获取股票历史数据
@@ -150,6 +150,76 @@ class DataSourceManager:
 
         # 3. 所有尝试都失败
         raise Exception(f"无法获取股票 {symbol} 的历史数据 ({start_date} 至 {end_date})")
+
+    def get_daily_data(self, symbol: str, start: str, end: str,
+                       adj: str = 'qfq') -> pd.DataFrame:
+        """获取日线数据（自动处理复权）"""
+        try:
+            # 从数据源管理器获取原始数据
+            df = self.get_stock_history(symbol, start, end)
+
+            # 应用复权逻辑
+            if adj == 'qfq':
+                return self._apply_qfq_adjustment(df, symbol)
+            elif adj == 'hfq':
+                return self._apply_hfq_adjustment(df, symbol)
+            return df
+        except Exception as e:
+            logger.error(f"获取日线数据失败 [{symbol}]: {str(e)}", exc_info=True)
+            # 返回空DataFrame避免崩溃
+            return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume', 'turnover'])
+
+    def _apply_qfq_adjustment(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """应用前复权计算"""
+        try:
+            # 获取复权因子
+            factor_df = self.get_adjust_factor(symbol)
+
+            if factor_df.empty:
+                logger.warning(f"未找到 {symbol} 的复权因子，返回原始数据")
+                return df
+
+            # 合并因子数据
+            merged = df.join(factor_df, how='left')
+
+            # 前向填充缺失的因子值
+            merged['factor'].ffill(inplace=True)
+
+            # 计算复权价格
+            last_factor = merged['factor'].iloc[-1] if not merged.empty else 1.0
+            for col in ['open', 'high', 'low', 'close']:
+                merged[col] = merged[col] * merged['factor'] / last_factor
+
+            return merged[['open', 'high', 'low', 'close', 'volume', 'turnover']]
+        except Exception as e:
+            logger.error(f"前复权计算失败 [{symbol}]: {str(e)}", exc_info=True)
+            return df
+
+    def _apply_hfq_adjustment(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """应用后复权计算"""
+        try:
+            # 获取复权因子
+            factor_df = self.get_adjust_factor(symbol)
+
+            if factor_df.empty:
+                logger.warning(f"未找到 {symbol} 的复权因子，返回原始数据")
+                return df
+
+            # 合并因子数据
+            merged = df.join(factor_df, how='left')
+
+            # 前向填充缺失的因子值
+            merged['factor'].ffill(inplace=True)
+
+            # 计算复权价格
+            first_factor = merged['factor'].iloc[0] if not merged.empty else 1.0
+            for col in ['open', 'high', 'low', 'close']:
+                merged[col] = merged[col] * merged['factor'] / first_factor
+
+            return merged[['open', 'high', 'low', 'close', 'volume', 'turnover']]
+        except Exception as e:
+            logger.error(f"后复权计算失败 [{symbol}]: {str(e)}", exc_info=True)
+            return df
 
     def get_index_constituents(self, index_code: str) -> List[str]:
         """获取指数成分股"""
@@ -266,32 +336,61 @@ class DataSourceManager:
         logger.warning(f"无法获取 {symbol} 的复权因子，返回空DataFrame")
         return pd.DataFrame()
 
-    def set_primary_source(self, source_name: str):
-        """设置首选数据源"""
-        for i, source in enumerate(self.sources):
-            if source['name'] == source_name:
-                self.sources.insert(0, self.sources.pop(i))
-                logger.info(f"已将 {source_name} 设为首选数据源")
-                return
-        logger.warning(f"未找到数据源: {source_name}")
+    def get_latest_bar(self, symbol: str, interval: str = '1min') -> Optional[Dict[str, Any]]:
+        """
+        获取最新的K线数据
 
-    def set_fetch_strategy(self, strategy: str):
-        """设置数据获取策略"""
-        valid_strategies = ['hybrid', 'online', 'offline']
-        if strategy in valid_strategies:
-            self.fetch_strategy = strategy
-            logger.info(f"数据获取策略已更新为: {strategy}")
-        else:
-            logger.error(f"无效的数据获取策略: {strategy}")
-            raise ValueError(f"无效策略，必须是: {', '.join(valid_strategies)}")
+        参数:
+            symbol: 股票代码
+            interval: K线间隔，如 '1min', '5min', '15min'
 
-    # 在DataSourceManager类中添加以下方法
+        返回:
+            包含最新K线数据的字典，格式:
+            {
+                'symbol': 股票代码,
+                'datetime': 时间戳,
+                'open': 开盘价,
+                'high': 最高价,
+                'low': 最低价,
+                'close': 收盘价,
+                'volume': 成交量,
+                'turnover': 成交额（可选）
+            }
+        """
+        try:
+            # 获取当前时间
+            now = datetime.now()
+            date_str = now.strftime('%Y-%m-%d')
+
+            # 获取当天的分钟线数据
+            df = self.get_minute_data(symbol, date_str, interval)
+
+            if df.empty:
+                return None
+
+            # 获取最新的一行数据
+            latest_row = df.iloc[-1]
+
+            return {
+                'symbol': symbol,
+                'datetime': latest_row.name,  # 假设index是时间戳
+                'open': latest_row['open'],
+                'high': latest_row['high'],
+                'low': latest_row['low'],
+                'close': latest_row['close'],
+                'volume': latest_row['volume'],
+                'turnover': latest_row.get('turnover', 0)
+            }
+        except Exception as e:
+            logger.error(f"获取最新K线数据失败 [{symbol}-{interval}]: {str(e)}", exc_info=True)
+            return None
+
     def get_financial_data(self, symbol: str, period: str = 'latest') -> Dict[str, Any]:
         """获取财务数据
 
         Args:
             symbol: 股票代码
-            period: 财报期间，格式 'YYYYQ1-Q4' 或 'latest' 表示最新财报
+            period: 财报期间，格式 'YYYY Q1-Q4' 或 'latest' 表示最新财报
 
         Returns:
             Dict: 财务数据字典
@@ -390,3 +489,30 @@ class DataSourceManager:
 
         logger.error(f"无法获取 {symbol} 的财务指标 {indicator} (期间: {start} 至 {end})")
         return pd.Series()
+
+    def set_primary_source(self, source_name: str):
+        """设置首选数据源"""
+        for i, source in enumerate(self.sources):
+            if source['name'] == source_name:
+                self.sources.insert(0, self.sources.pop(i))
+                logger.info(f"已将 {source_name} 设为首选数据源")
+                return
+        logger.warning(f"未找到数据源: {source_name}")
+
+    def set_fetch_strategy(self, strategy: str):
+        """设置数据获取策略"""
+        valid_strategies = ['hybrid', 'online', 'offline']
+        if strategy in valid_strategies:
+            self.fetch_strategy = strategy
+            logger.info(f"数据获取策略已更新为: {strategy}")
+        else:
+            logger.error(f"无效的数据获取策略: {strategy}")
+            raise ValueError(f"无效策略，必须是: {', '.join(valid_strategies)}")
+
+    def switch_data_source(self, source_name: str):
+        """切换首选数据源"""
+        try:
+            self.set_primary_source(source_name)
+            logger.info(f"已切换到数据源: {source_name}")
+        except Exception as e:
+            logger.error(f"切换数据源失败: {str(e)}", exc_info=True)

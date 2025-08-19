@@ -1,3 +1,4 @@
+# stock_monthly_service.py (completed)
 from quant_server.db.base_service import BaseService
 from quant_server.db.models.models import StockMonthly
 
@@ -9,23 +10,26 @@ class StockMonthlyService(BaseService):
         with self.session_scope() as session:
             instance = StockMonthly(**data)
             session.add(instance)
+            session.flush()
             return instance
 
-    def get(self, id: int) -> StockMonthly:
+    def get(self, stock_monthly_id: int) -> StockMonthly:
         with self.session_scope() as session:
-            return session.query(StockMonthly).get(id)
+            return session.query(StockMonthly).get(stock_monthly_id)
 
-    def update(self, id: int, update_data: dict) -> StockMonthly:
+    def update(self, stock_monthly_id: int, update_data: dict) -> StockMonthly:
         with self.session_scope() as session:
-            instance = session.query(StockMonthly).get(id)
-            for key, value in update_data.items():
-                setattr(instance, key, value)
+            instance = session.query(StockMonthly).get(stock_monthly_id)
+            if instance:
+                for key, value in update_data.items():
+                    setattr(instance, key, value)
             return instance
 
-    def delete(self, id: int) -> None:
+    def delete(self, stock_monthly_id: int) -> None:
         with self.session_scope() as session:
-            instance = session.query(StockMonthly).get(id)
-            session.delete(instance)
+            instance = session.query(StockMonthly).get(stock_monthly_id)
+            if instance:
+                session.delete(instance)
 
     def filter(self, **filters) -> list[StockMonthly]:
         with self.session_scope() as session:
@@ -35,3 +39,26 @@ class StockMonthlyService(BaseService):
         with self.session_scope() as session:
             return session.query(StockMonthly).all()
 
+    def get_by_stock_date(self, ts_code: str, trade_date):
+        """获取指定股票和日期的月线数据"""
+        with self.session_scope() as session:
+            return session.query(StockMonthly).filter(
+                StockMonthly.ts_code == ts_code,
+                StockMonthly.trade_date == trade_date
+            ).first()
+
+    def get_by_date_range(self, ts_code: str, start_date, end_date) -> list[StockMonthly]:
+        """获取指定日期范围的月线数据"""
+        with self.session_scope() as session:
+            return session.query(StockMonthly).filter(
+                StockMonthly.ts_code == ts_code,
+                StockMonthly.trade_date >= start_date,
+                StockMonthly.trade_date <= end_date
+            ).order_by(StockMonthly.trade_date).all()
+
+    def get_latest(self, ts_code: str) -> StockMonthly:
+        """获取指定股票的最新月线数据"""
+        with self.session_scope() as session:
+            return session.query(StockMonthly).filter(
+                StockMonthly.ts_code == ts_code
+            ).order_by(StockMonthly.trade_date.desc()).first()
