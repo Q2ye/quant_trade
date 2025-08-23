@@ -1,32 +1,50 @@
-# 数据库配置
+# quant_server/config/main.yaml
+# 数据库配置 - 使用占位符，实际值从环境变量获取
 database:
-  type: "pgsql"   # 支持 pgsql 或 mysql
-  host: "localhost"
-  port: 5432       # PostgreSQL默认5432，MySQL默认3306
-  user: "postgres"
-  password: "123456"
-  database: "quant_signals"
-  pool_size: 10    # 连接池大小
-  max_overflow: 5  # 最大溢出连接数
+  type: "${DB_TYPE:pgsql}"   # 支持 pgsql 或 mysql
+  host: "${DB_HOST:localhost}"
+  port: "${DB_PORT:5432}"    # PostgresSQL默认5432，MySQL默认3306
+  user: "${DB_USER:postgres}"
+  password: "${DB_PASSWORD:}" # 从环境变量获取，不留默认值
+  name: "${DB_NAME:quant_signals}"
+  pool_size: "${DB_POOL_SIZE:10}"
+  max_overflow: "${DB_MAX_OVERFLOW:5}"
+
+# 应用配置
+app:
+  host: "${APP_HOST:0.0.0.0}"
+  port: "${APP_PORT:8000}"
+  debug: "${APP_DEBUG:false}"
+  log_level: "${LOG_LEVEL:INFO}"
+
+# 数据源配置
+data_sources:
+  tushare:
+    token: "${TUSHARE_TOKEN:}" # Tushare API token
+    timeout: "${TUSHARE_TIMEOUT:30}"
+  baostock:
+    user: "${BAOSTOCK_USER:}"
+    password: "${BAOSTOCK_PASSWORD:}"
 
 # 通知配置
 notifiers:
   email:
-    smtp_server: "smtp.example.com"
-    smtp_port: 587
-    username: "your_email@example.com"
-    password: "email_password"
-    receivers:
-      - "user1@example.com"
-      - "user2@example.com"
+    enabled: "${EMAIL_ENABLED:false}"
+    smtp_server: "${SMTP_SERVER:smtp.example.com}"
+    smtp_port: "${SMTP_PORT:587}"
+    username: "${EMAIL_USERNAME:}"
+    password: "${EMAIL_PASSWORD:}"
+    receivers: "${EMAIL_RECEIVERS:}"
 
   dingtalk:
-    webhook: "https://oapi.dingtalk.com/robot/send?access_token=your_token"
+    enabled: "${DINGTALK_ENABLED:false}"
+    webhook: "${DINGTALK_WEBHOOK:}"
 
   wechat:
-    corp_id: "your_corp_id"
-    corp_secret: "your_corp_secret"
-    agent_id: 1000001
+    enabled: "${WECHAT_ENABLED:false}"
+    corp_id: "${WECHAT_CORP_ID:}"
+    corp_secret: "${WECHAT_CORP_SECRET:}"
+    agent_id: "${WECHAT_AGENT_ID:1000001}"
 
 # 策略配置路径
-strategy_config_path: "config/strategies"
+strategy_config_path: "${STRATEGY_CONFIG_PATH:config/strategies}"

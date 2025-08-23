@@ -19,22 +19,28 @@ classifiers = [
 ]
 
 dependencies = [
+    # Web 框架 (新增)
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic==1.10.12",
+
     # 核心框架
     "vnpy>=4.1.0,<5.0.0",
-    
+
     # 数据处理
     "pandas>=1.5.3",
     "numpy>=1.23.5",
-    
+
     # 数据库
     "sqlalchemy>=1.4.46",
     "psycopg2-binary>=2.9.5",
-    
+    "aiosqlite>=0.19.0",  # 可选：异步SQLite支持
+
     # 数据源 (保留A股专用源)
     "tushare>=1.2.89",
     "baostock>=0.8.9",
-	
-    # UI
+
+    # UI (如果后端不需要可以移除或标记为可选)
     "pyqt5>=5.15.9",
     "qdarkstyle>=3.1",
     "qt-material>=2.14",
@@ -43,22 +49,42 @@ dependencies = [
     "matplotlib>=3.7.1",
     "seaborn>=0.12.2",
     "reportlab>=4.0.4",  # PDF报告
-    
+
     # 工具类
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
     "schedule>=1.2.0",
     "loguru>=0.7.0",
-    
+
     # 通知服务
-    "requests>=2.28.2"  # 钉钉/微信通知依赖
+    "requests>=2.28.2",  # 钉钉/微信通知依赖
+
+    # API文档 (FastAPI自带，但可以添加额外功能)
+    "python-multipart>=0.0.6",  # 表单数据处理
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.3.1",
     "pytest-cov>=4.1.0",
-    "pylint>=2.17.4"
+    "pylint>=2.17.4",
+    "black>=23.0.0",  # 代码格式化
+    "isort>=5.12.0",  # import排序
+    "mypy>=1.5.0",    # 静态类型检查
+]
+
+api = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "python-jose[cryptography]>=3.3.0",  # JWT支持
+    "passlib[bcrypt]>=1.7.4",            # 密码哈希
+]
+
+ui = [
+    "pyqt5>=5.15.9",
+    "qdarkstyle>=3.1",
+    "qt-material>=2.14",
 ]
 
 [tool.setuptools.packages.find]
@@ -69,3 +95,31 @@ exclude = ["tests*", "docs*"]
 [tool.pytest.ini_options]
 addopts = "-v --cov=quant_platform --cov-report=html"
 testpaths = ["tests"]
+
+# 添加 black 格式化配置
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+# 添加 isort 配置
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+line_length = 88

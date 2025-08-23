@@ -1,4 +1,3 @@
-# data_service.py
 import logging
 from sqlalchemy.orm import Session
 
@@ -25,7 +24,6 @@ from quant_server.db.data_services.stock_weekly_service import StockWeeklyServic
 from quant_server.db.data_services.trade_calendar_service import TradeCalendarService
 
 logger = logging.getLogger('data_service')
-
 
 class DataService:
     """统一数据服务门面类"""
