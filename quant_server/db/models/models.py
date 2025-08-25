@@ -8,7 +8,7 @@ Base = declarative_base()
 
 class StockBasic(Base):
     """股票基础信息表"""
-    __tableName__ = 'stock_basic'
+    __tablename__ = 'stock_basic'
 
     ts_code = Column(String(20), primary_key=True)
     symbol = Column(String(10), nullable=False)
@@ -39,7 +39,7 @@ class StockBasic(Base):
 
 class StockCompany(Base):
     """上市公司基本信息表"""
-    __tableName__ = 'stock_company'
+    __tablename__ = 'stock_company'
 
     ts_code = Column(String(20), ForeignKey('stock_basic.ts_code'), primary_key=True)
     com_name = Column(String(100), nullable=False)
@@ -69,7 +69,7 @@ class StockCompany(Base):
 
 class StkManager(Base):
     """上市公司管理层信息表"""
-    __tableName__ = 'stk_managers'
+    __tablename__ = 'stk_managers'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(20), ForeignKey('stock_company.ts_code'))
@@ -94,7 +94,7 @@ class StkManager(Base):
 
 class StkReward(Base):
     """管理层薪酬与持股明细表"""
-    __tableName__ = 'stk_rewards'
+    __tablename__ = 'stk_rewards'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     manager_id = Column(Integer, ForeignKey('stk_managers.id'))
@@ -111,7 +111,7 @@ class StkReward(Base):
 
 class StockDaily(Base):
     """A股日线行情表"""
-    __tableName__ = 'stock_daily'
+    __tablename__ = 'stock_daily'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -137,7 +137,7 @@ class StockDaily(Base):
 
 class StockMinutes(Base):
     """A股分钟级行情数据"""
-    __tableName__ = 'stock_minutes'
+    __tablename__ = 'stock_minutes'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -157,7 +157,7 @@ class StockMinutes(Base):
 
 class StockWeekly(Base):
     """A股周线行情数据表"""
-    __tableName__ = 'stock_weekly'
+    __tablename__ = 'stock_weekly'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -182,7 +182,7 @@ class StockWeekly(Base):
 
 class StockMonthly(Base):
     """A股月线行情数据表"""
-    __tableName__ = 'stock_monthly'
+    __tablename__ = 'stock_monthly'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -207,7 +207,7 @@ class StockMonthly(Base):
 
 class StockAdjustedPrices(Base):
     """A股复权行情数据表"""
-    __tableName__ = 'stock_adjusted_prices'
+    __tablename__ = 'stock_adjusted_prices'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -235,7 +235,7 @@ class StockAdjustedPrices(Base):
 
 class StockAdjFactor(Base):
     """股票复权因子数据表"""
-    __tableName__ = 'stock_adj_factor'
+    __tablename__ = 'stock_adj_factor'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
@@ -250,7 +250,7 @@ class StockAdjFactor(Base):
 
 class StockDailyBasic(Base):
     """股票每日基本面指标数据表"""
-    __tableName__ = 'stock_daily_basic'
+    __tablename__ = 'stock_daily_basic'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     daily_id = Column(Integer, ForeignKey('stock_daily.id'))
@@ -281,7 +281,7 @@ class StockDailyBasic(Base):
 
 class StockDailyLimit(Base):
     """股票每日涨跌停价格表"""
-    __tableName__ = 'stock_daily_limit'
+    __tablename__ = 'stock_daily_limit'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     daily_id = Column(Integer, ForeignKey('stock_daily.id'))
@@ -302,7 +302,7 @@ class StockDailyLimit(Base):
 
 class StockMoneyflow(Base):
     """个股资金流向数据表"""
-    __tableName__ = 'stock_moneyflow'
+    __tablename__ = 'stock_moneyflow'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     daily_id = Column(Integer, ForeignKey('stock_daily.id'))
@@ -339,7 +339,7 @@ class StockMoneyflow(Base):
 
 class EtfBasic(Base):
     """ETF基础信息表"""
-    __tableName__ = 'etf_basic'
+    __tablename__ = 'etf_basic'
 
     ts_code = Column(String(20), primary_key=True)
     csname = Column(String(100), nullable=False)
@@ -364,7 +364,7 @@ class EtfBasic(Base):
 
 class EtfDaily(Base):
     """ETF日线行情数据"""
-    __tableName__ = 'etf_daily'
+    __tablename__ = 'etf_daily'
 
     ts_code = Column(String(20), ForeignKey('etf_basic.ts_code'), primary_key=True)
     trade_date = Column(DateTime, primary_key=True)
@@ -384,7 +384,7 @@ class EtfDaily(Base):
 
 class EtfMinute(Base):
     """ETF历史分钟行情数据"""
-    __tableName__ = 'etf_minute'
+    __tablename__ = 'etf_minute'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts_code = Column(String(20), ForeignKey('etf_basic.ts_code'), nullable=False)
@@ -403,7 +403,7 @@ class EtfMinute(Base):
 
 class FundAdjFactor(Base):
     """基金复权因子数据"""
-    __tableName__ = 'fund_adj_factor'
+    __tablename__ = 'fund_adj_factor'
 
     ts_code = Column(String(20), ForeignKey('etf_basic.ts_code'), primary_key=True)
     trade_date = Column(DateTime, primary_key=True)
@@ -415,7 +415,7 @@ class FundAdjFactor(Base):
 
 class TradeCalendar(Base):
     """交易日历表"""
-    __tableName__ = 'trade_calendar'
+    __tablename__ = 'trade_calendar'
 
     exchange = Column(String(10), primary_key=True)
     cal_date = Column(DateTime, primary_key=True)
@@ -427,7 +427,7 @@ class TradeCalendar(Base):
 
 class StockSignal(Base):
     """交易信号表"""
-    __tableName__ = 'stock_signals'
+    __tablename__ = 'stock_signals'
 
     id = Column(String, primary_key=True)  # 日期+策略名+股票代码
     strategy = Column(String, nullable=False)
@@ -444,7 +444,7 @@ class StockSignal(Base):
 
 class Basket(Base):
     """交易篮子表"""
-    __tableName__ = 'baskets'
+    __tablename__ = 'baskets'
 
     id = Column(String, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -458,7 +458,7 @@ class Basket(Base):
 
 class BasketItem(Base):
     """篮子成分表"""
-    __tableName__ = 'basket_items'
+    __tablename__ = 'basket_items'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     basket_id = Column(String, ForeignKey('baskets.id'), nullable=False)

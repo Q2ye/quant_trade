@@ -4,26 +4,6 @@
     class="app-sidebar"
     :class="{ collapsed }"
   >
-    <div class="sidebar-header">
-      <div
-        v-if="!collapsed"
-        class="logo"
-      >
-        <span class="logo-icon">Q</span>
-        <span class="logo-text">QuantMaster</span>
-      </div>
-      <div
-        v-else
-        class="logo"
-      >
-        <span class="logo-icon">Q</span>
-      </div>
-      <el-button
-        class="collapse-btn"
-        :icon="collapsed ? 'el-icon-s-unfold' : 'el-icon-s-fold'"
-        @click="toggleCollapse"
-      />
-    </div>
     <el-menu
       :default-active="activeMenu"
       :collapse="collapsed"

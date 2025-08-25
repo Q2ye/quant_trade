@@ -10,7 +10,7 @@ logger = logging.getLogger('config_loader')
 def load_config(config_path: str) -> Dict[str, Any]:
     """加载YAML配置文件并解析环境变量"""
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config_content = f.read()
 
         # 替换环境变量

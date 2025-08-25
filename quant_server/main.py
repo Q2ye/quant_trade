@@ -24,7 +24,9 @@ async def app_lifespan(_app: FastAPI):  # 重命名参数以避免隐藏外部�
     logger.info("正在启动量化交易平台服务...")
 
     # 加载配置文件
-    config = load_config('quant_server/config/main.yaml')
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    config = load_config(os.path.join(base_dir, "config1", "main.yaml"))
     db_config = get_db_config(config)
 
     if not init_db(db_config):

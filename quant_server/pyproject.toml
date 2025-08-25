@@ -20,12 +20,10 @@ classifiers = [
 
 dependencies = [
     # Web 框架 (新增)
-    "fastapi>=0.104.0",
+    "fastapi>=0.104.0,<0.105.0",
     "uvicorn[standard]>=0.24.0",
-    "pydantic==1.10.12",
-
-    # 核心框架
-    "vnpy>=4.1.0,<5.0.0",
+    "pydantic==2.7.1",
+    "pydantic-core==2.18.2",
 
     # 数据处理
     "pandas>=1.5.3",
@@ -34,7 +32,7 @@ dependencies = [
     # 数据库
     "sqlalchemy>=1.4.46",
     "psycopg2-binary>=2.9.5",
-    "aiosqlite>=0.19.0",  # 可选：异步SQLite支持
+    "aiosqlite>=0.19.0,<1.0.0",
 
     # 数据源 (保留A股专用源)
     "tushare>=1.2.89",
