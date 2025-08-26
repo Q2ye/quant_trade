@@ -91,9 +91,12 @@ export default {
         },
         {
           id: 'basket',
-          name: '股票篮子',
+          name: '篮子管理',
           icon: 'el-icon-files',
-          path: '/basket'
+          children: [
+            {id: 'basket-list', name: '篮子列表', path: '/basket/list'},
+            {id: 'basket-editor', name: '篮子编辑器', path: '/basket/editor'}
+          ]
         },
         {
           id: 'trade',

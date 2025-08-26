@@ -1,6 +1,7 @@
 // 显式导入变量和混合
 @use 'variables' as *;
 @use 'mixins' as mix;
+@use 'sass:map'; // 导入 Sass 的 map 模块
 
 //图表专用样式
 // 基础图表样式
@@ -10,7 +11,7 @@
   // 图表标题
   .chart-title {
     @include mix.chart-title;
-    padding: map-get($spacers, 3) map-get($spacers, 3) 0; // 修复padding简写
+    padding: map.get($spacers, 3) map.get($spacers, 3) 0; // 使用 map.get 替代 map-get
   }
 }
 
@@ -22,16 +23,16 @@
   // K线图工具栏
   .kline-toolbar {
     display: flex;
-    padding: map-get($spacers, 2) map-get($spacers, 3);
+    padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
     background: $gray-100;
     border-bottom: $border-width solid $border-color;
 
     .period-selector {
       display: flex;
-      gap: map-get($spacers, 1);
+      gap: map.get($spacers, 1); // 使用 map.get
 
       .period-btn {
-        padding: map-get($spacers, 1) map-get($spacers, 2);
+        padding: map.get($spacers, 1) map.get($spacers, 2); // 使用 map.get
         background: $white;
         border: $border-width solid $border-color;
         border-radius: $border-radius-sm;
@@ -85,11 +86,11 @@
 
   .indicator-selector {
     display: flex;
-    gap: map-get($spacers, 2);
-    padding: 0 map-get($spacers, 3) map-get($spacers, 2);
+    gap: map.get($spacers, 2); // 使用 map.get
+    padding: 0 map.get($spacers, 3) map.get($spacers, 2); // 使用 map.get
 
     .indicator-btn {
-      padding: map-get($spacers, 1) map-get($spacers, 2);
+      padding: map.get($spacers, 1) map.get($spacers, 2); // 使用 map.get
       background: $white;
       border: $border-width solid $border-color;
       border-radius: $border-radius-sm;
@@ -116,8 +117,8 @@
     font-weight: 600;
     color: $white;
     border-bottom: 1px solid rgba($white, 0.1);
-    padding-bottom: map-get($spacers, 1);
-    margin-bottom: map-get($spacers, 1);
+    padding-bottom: map.get($spacers, 1); // 使用 map.get
+    margin-bottom: map.get($spacers, 1); // 使用 map.get
   }
 
   .tooltip-item {
@@ -138,10 +139,10 @@
 
 // 图表图例优化
 .echarts-legend {
-  padding: map-get($spacers, 2) 0 !important;
+  padding: map.get($spacers, 2) 0 !important; // 使用 map.get
 
   .legend-item {
-    padding: map-get($spacers, 1) map-get($spacers, 2) !important;
+    padding: map.get($spacers, 1) map.get($spacers, 2) !important; // 使用 map.get
     border-radius: $border-radius-sm !important;
     transition: background 0.2s ease;
 

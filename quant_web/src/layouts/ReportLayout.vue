@@ -61,7 +61,7 @@ export default {
     reportTitle() {
       return this.reportData.title || '策略回测报告';
     },
-    strategyName() {
+      strategyName() {
       return this.reportData.strategy || '未命名策略';
     },
     timeRange() {

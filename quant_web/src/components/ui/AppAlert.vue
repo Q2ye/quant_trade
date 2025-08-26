@@ -1,6 +1,5 @@
 <!--预警提示组件-->
 <template>
-  <!-- 添加 v-if 确保 alert 存在 -->
   <div
     v-if="alert"
     class="app-alert"

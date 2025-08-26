@@ -2,6 +2,7 @@
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:color';
+@use 'sass:map';
 @use 'layout';
 @use 'charts';
 
@@ -39,8 +40,8 @@ body {
 // 容器
 .container {
   width: 100%;
-  padding-right: map-get($spacers, 3);
-  padding-left: map-get($spacers, 3);
+  padding-right: map.get($spacers, 3); // 使用 map.get
+  padding-left: map.get($spacers, 3); // 使用 map.get
   margin-right: auto;
   margin-left: auto;
 
@@ -66,7 +67,7 @@ body {
   font-size: 1.5rem;
   font-weight: 600;
   color: $gray-800;
-  margin-bottom: map-get($spacers, 4);
+  margin-bottom: map.get($spacers, 4); // 使用 map.get
 }
 
 // 状态栏
@@ -74,14 +75,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: map-get($spacers, 2) map-get($spacers, 3);
+  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
   background: $white;
   border-bottom: $border-width solid $border-color;
 
   .status-item {
     display: flex;
     align-items: center;
-    gap: map-get($spacers, 2);
+    gap: map.get($spacers, 2); // 使用 map.get
 
     .status-label {
       font-size: $font-size-base * 0.9;
@@ -116,10 +117,10 @@ body {
 .app-navbar {
   background: $white;
   box-shadow: 0 0.125rem 0.625rem rgba($gray-900, 0.1);
-  padding: 0 map-get($spacers, 3);
+  padding: 0 map.get($spacers, 3); // 使用 map.get
 
   .nav-link {
-    padding: map-get($spacers, 3) map-get($spacers, 2);
+    padding: map.get($spacers, 3) map.get($spacers, 2); // 使用 map.get
     color: $gray-600;
     font-weight: 500;
     position: relative;
@@ -160,7 +161,7 @@ body {
     font-size: $font-size-base * 1.1;
     font-weight: 600;
     color: $gray-800;
-    margin-bottom: map-get($spacers, 2);
+    margin-bottom: map.get($spacers, 2); // 使用 map.get
   }
 
   .card-value {
@@ -186,7 +187,7 @@ body {
 
 // 按钮
 .btn {
-  padding: map-get($spacers, 2) map-get($spacers, 3);
+  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
   border-radius: $border-radius;
   font-weight: 500;
   cursor: pointer;
@@ -214,7 +215,7 @@ body {
 
 // 表单控件
 .form-control {
-  padding: map-get($spacers, 2) map-get($spacers, 3);
+  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
   border: $border-width solid $border-color;
   border-radius: $border-radius;
   background: $white;

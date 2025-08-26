@@ -4,7 +4,11 @@
     :class="['app-container', { visible: isAppVisible }]"
   >
     <!-- 根据路由元信息选择布局 -->
-    <component :is="currentLayout">
+    <component 
+      :is="currentLayout" 
+      :active-menu="currentMenu"
+      @menu-change="handleMenuChange"
+    >
       <router-view />
     </component>
   </div>
@@ -12,7 +16,7 @@
 
 <script lang="ts">
 import { defineComponent, computed, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import MainLayout from '@/layouts/MainLayout.vue';
 import ReportLayout from '@/layouts/ReportLayout.vue';
@@ -29,7 +33,20 @@ export default defineComponent({
   },
   setup() {
     const route = useRoute();
+    const router = useRouter();
+    const store = useStore();
     const isAppVisible = ref(false);
+
+    // 根据当前路由计算激活的菜单
+    const currentMenu = computed(() => {
+      const path = route.path;
+      if (path.startsWith('/market')) return 'market';
+      if (path.startsWith('/strategy')) return 'strategy';
+      if (path.startsWith('/trade')) return 'trade';
+      if (path.startsWith('/data')) return 'data';
+      if (path.startsWith('/basket')) return 'basket'; // 修复股票篮子菜单层级
+      return 'market';
+    });
 
     // 根据路由元信息计算当前布局
     const currentLayout = computed(() => {
@@ -47,6 +64,21 @@ export default defineComponent({
       return layoutMap[layout] || MainLayout;
     });
 
+    // 处理菜单切换
+    const handleMenuChange = (menuId: string) => {
+      const routes: Record<string, string> = {
+        market: '/market',
+        strategy: '/strategy',
+        trade: '/trade',
+        data: '/data',
+        basket: '/basket' // 修复股票篮子菜单层级
+      };
+      
+      if (routes[menuId] && route.path !== routes[menuId]) {
+        router.push(routes[menuId]);
+      }
+    };
+
     // 设置页面标题
     watch(() => route.meta.title, (newTitle) => {
       if (newTitle) {
@@ -56,7 +88,9 @@ export default defineComponent({
 
     return {
       currentLayout,
-      isAppVisible
+      currentMenu,
+      isAppVisible,
+      handleMenuChange
     };
   },
   mounted() {
@@ -101,3 +135,4 @@ html, body {
   flex-direction: column;
 }
 </style>
+[file content end]

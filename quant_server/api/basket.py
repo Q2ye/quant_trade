@@ -5,8 +5,7 @@ from datetime import date
 from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
-router = APIRouter(prefix="/api/baskets", tags=["baskets"
-                                                ""])
+router = APIRouter(prefix="/api/basket", tags=["basket"])
 
 
 @router.get("")

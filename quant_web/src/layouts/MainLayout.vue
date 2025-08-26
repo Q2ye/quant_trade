@@ -25,7 +25,7 @@
       <AppAlertPanel
         :alerts="alerts"
         @clear-alert="handleClearAlert"
-      />
+        alert=""/>
     </div>
 
     <!-- 全局通知 -->
@@ -92,6 +92,24 @@ export default {
     // 处理菜单切换
     handleMenuChange(menuId) {
       this.$emit('menu-change', menuId);
+      // 添加路由导航
+      this.navigateToMenu(menuId);
+    },
+
+    // 添加路由导航方法
+    navigateToMenu(menuId) {
+      const routes = {
+        market: '/market',
+        strategy: '/strategy',
+        basket: '/basket',
+        trade: '/trade',
+        data: '/data',
+        system: '/system'
+      };
+
+      if (routes[menuId] && this.$route.path !== routes[menuId]) {
+        this.$router.push(routes[menuId]);
+      }
     },
 
     // 处理数据刷新
