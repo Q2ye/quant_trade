@@ -1,4 +1,3 @@
-<!--交易驾驶舱网格布局-->
 <template>
   <div class="trade-dashboard">
     <div class="dashboard-header">
@@ -13,58 +12,46 @@
     <div class="grid-container">
       <div class="card equity-curve">
         <h3>资金曲线</h3>
-        <NetValueChart />
+        <div class="chart-placeholder">净值走势图表 (vs 沪深300)</div>
       </div>
 
       <div class="card risk-matrix">
         <h3>风险矩阵</h3>
-        <RiskMatrix />
+        <div class="chart-placeholder">回撤/仓位/当日盈亏监控</div>
       </div>
 
       <div class="card sector-distribution">
         <h3>行业分布</h3>
-        <PortfolioPieChart />
+        <div class="chart-placeholder">行业环形图/持仓比例可视化</div>
       </div>
 
       <div class="card market-heatmap">
         <h3>行业热度</h3>
-        <HeatmapChart />
+        <div class="chart-placeholder">涨跌幅TOP5行业/板块热度图</div>
       </div>
 
       <div class="card positions">
         <h3>持仓明细</h3>
-        <PositionTable />
+        <div class="chart-placeholder">持仓股票表格</div>
       </div>
 
       <div class="card recent-orders">
         <h3>最新成交</h3>
-        <OrderTable />
+        <div class="chart-placeholder">成交记录表格</div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import NetValueChart from '../components/charts/NetValueChart.vue'
-import RiskMatrix from '../components/trade/RiskMatrix.vue'
-import PortfolioPieChart from '../components/charts/PortfolioPieChart.vue'
-import HeatmapChart from '../components/charts/HeatmapChart.vue'
-import PositionTable from '../components/trade/PositionTable.vue'
-import OrderTable from '../components/trade/OrderTable.vue'
-
 export default {
-  components: {
-    NetValueChart,
-    RiskMatrix,
-    PortfolioPieChart,
-    HeatmapChart,
-    PositionTable,
-    OrderTable
-  }
+  name: "TradeLayout"
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '@/assets/scss/global.scss';
+
 .trade-dashboard {
   padding: 20px;
   height: 100%;
@@ -78,20 +65,30 @@ export default {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
+
+  h2 {
+    color: var(--text-primary);
+    margin: 0;
+  }
 }
 
 .summary {
   display: flex;
   gap: 20px;
-}
 
-.summary span {
-  font-size: 14px;
-}
+  span {
+    font-size: 14px;
+    color: var(--text-secondary);
 
-.profit {
-  color: #f56c6c;
+    strong {
+      color: var(--text-primary);
+
+      &.profit {
+        color: var(--success-color);
+      }
+    }
+  }
 }
 
 .grid-container {
@@ -103,19 +100,19 @@ export default {
 }
 
 .card {
-  background: white;
+  background: var(--secondary-bg);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border-color);
   padding: 15px;
   display: flex;
   flex-direction: column;
-}
 
-.card h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-  font-size: 16px;
-  color: #333;
+  h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 16px;
+    color: var(--text-primary);
+  }
 }
 
 .equity-curve, .risk-matrix {
@@ -134,5 +131,15 @@ export default {
 .recent-orders {
   grid-row: 3;
   grid-column: 2;
+}
+
+.chart-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
 }
 </style>

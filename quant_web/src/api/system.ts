@@ -118,5 +118,46 @@ export default {
                 success: data.success,
                 backupId: data.backupId
             }))
+    },
+
+       /**
+     * 加载系统初始数据（聚合连接状态、资源使用、数据库状态）
+     * @returns 聚合后的初始数据
+     */
+   async loadInitialData(): Promise<{
+        connections: ConnectionStatus;
+        resourceUsage: ResourceUsage;
+        databaseStatus: DatabaseStatus;
+    }> {
+        try {
+            // 并行请求多个初始数据接口，提升加载效率
+            const [connections, resourceUsage, databaseStatus] = await Promise.all([
+                this.checkConnections(),    // 连接状态
+                this.getResourceUsage(),    // 资源使用
+                this.getDatabaseStatus()    // 数据库状态
+            ]);
+            return { connections, resourceUsage, databaseStatus };
+        } catch (error) {
+            console.error('系统初始数据加载失败:', error);
+            // 返回默认值而不是抛出错误，避免阻塞应用启动
+            return {
+                connections: {
+                    dataSource: false,
+                    tradeGateway: false,
+                    strategyEngine: false
+                },
+                resourceUsage: {
+                    cpu: 0,
+                    memory: 0,
+                    disk: 0,
+                    network: 0
+                },
+                databaseStatus: {
+                    size: 0,
+                    tables: 0,
+                    lastBackup: ''
+                }
+            };
+        }
     }
 }

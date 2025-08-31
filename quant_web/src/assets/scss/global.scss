@@ -1,4 +1,4 @@
-//全局样式
+// 全局样式
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:color';
@@ -17,7 +17,15 @@
 :root {
   --background-dark: #121826; // 深色背景
   --background-content: #1c2438; // 内容区域背景
-  --text-primary: #e0e0e0; // 主文本颜色
+  --primary-bg: #0e1a2b;
+  --secondary-bg: #152238;
+  --accent-color: #4f9cf9;
+  --text-primary: #c7d5e0;
+  --text-secondary: #6b7b8f;
+  --border-color: #2a3f5f;
+  --success-color: #5abf6b;
+  --warning-color: #e7c95c;
+  --danger-color: #e7575d;
 }
 
 // 基础全局样式
@@ -25,23 +33,34 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  font-family: $font-family-sans-serif;
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: $font-size-base;
   line-height: $line-height-base;
-  color: $gray-700;
-  background-color: $gray-100;
+  color: var(--text-primary);
+  background-color: var(--primary-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 // 容器
 .container {
   width: 100%;
-  padding-right: map.get($spacers, 3); // 使用 map.get
-  padding-left: map.get($spacers, 3); // 使用 map.get
+  padding-right: map.get($spacers, 3);
+  padding-left: map.get($spacers, 3);
   margin-right: auto;
   margin-left: auto;
 
@@ -66,8 +85,8 @@ body {
 .page-title {
   font-size: 1.5rem;
   font-weight: 600;
-  color: $gray-800;
-  margin-bottom: map.get($spacers, 4); // 使用 map.get
+  color: var(--text-primary);
+  margin-bottom: map.get($spacers, 4);
 }
 
 // 状态栏
@@ -75,23 +94,23 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
-  background: $white;
-  border-bottom: $border-width solid $border-color;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: var(--secondary-bg);
+  border-bottom: 1px solid var(--border-color);
 
   .status-item {
     display: flex;
     align-items: center;
-    gap: map.get($spacers, 2); // 使用 map.get
+    gap: map.get($spacers, 2);
 
     .status-label {
       font-size: $font-size-base * 0.9;
-      color: $gray-600;
+      color: var(--text-secondary);
     }
 
     .status-value {
       font-weight: 600;
-      color: $gray-800;
+      color: var(--text-primary);
     }
 
     &.market-status {
@@ -102,11 +121,11 @@ body {
         display: inline-block;
 
         &.open {
-          background: $success;
+          background: var(--success-color);
         }
 
         &.closed {
-          background: $danger;
+          background: var(--danger-color);
         }
       }
     }
@@ -115,13 +134,13 @@ body {
 
 // 导航栏
 .app-navbar {
-  background: $white;
-  box-shadow: 0 0.125rem 0.625rem rgba($gray-900, 0.1);
-  padding: 0 map.get($spacers, 3); // 使用 map.get
+  background: var(--secondary-bg);
+  box-shadow: 0 0.125rem 0.625rem rgba(0, 0, 0, 0.1);
+  padding: 0 map.get($spacers, 3);
 
   .nav-link {
-    padding: map.get($spacers, 3) map.get($spacers, 2); // 使用 map.get
-    color: $gray-600;
+    padding: map.get($spacers, 3) map.get($spacers, 2);
+    color: var(--text-secondary);
     font-weight: 500;
     position: relative;
 
@@ -133,11 +152,11 @@ body {
     }
 
     &:hover {
-      color: $primary;
+      color: var(--accent-color);
     }
 
     &.active {
-      color: $primary;
+      color: var(--accent-color);
 
       &::after {
         content: '';
@@ -146,7 +165,7 @@ body {
         left: 0;
         right: 0;
         height: 3px;
-        background: $primary;
+        background: var(--accent-color);
         border-radius: 3px 3px 0 0;
       }
     }
@@ -160,14 +179,14 @@ body {
   .card-title {
     font-size: $font-size-base * 1.1;
     font-weight: 600;
-    color: $gray-800;
-    margin-bottom: map.get($spacers, 2); // 使用 map.get
+    color: var(--text-primary);
+    margin-bottom: map.get($spacers, 2);
   }
 
   .card-value {
     font-size: 1.5rem;
     font-weight: 600;
-    color: $primary;
+    color: var(--accent-color);
   }
 
   .card-change {
@@ -176,54 +195,192 @@ body {
     font-size: $font-size-base * 0.9;
 
     &.positive {
-      color: $success;
+      color: var(--success-color);
     }
 
     &.negative {
-      color: $danger;
+      color: var(--danger-color);
     }
   }
 }
 
 // 按钮
 .btn {
-  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
-  border-radius: $border-radius;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &-primary {
-    background: $primary;
-    color: $white;
-    border: 1px solid $primary;
-
-    &:hover {
-      background: color.scale($primary, $lightness: -5%);
-    }
-  }
-
-  &-outline {
-    background: transparent;
-    border: 1px solid $border-color;
-
-    &:hover {
-      background: $gray-100;
-    }
-  }
+  @include mix.dark-btn;
 }
 
 // 表单控件
 .form-control {
-  padding: map.get($spacers, 2) map.get($spacers, 3); // 使用 map.get
-  border: $border-width solid $border-color;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  border: 1px solid var(--border-color);
   border-radius: $border-radius;
-  background: $white;
+  background: var(--primary-bg);
+  color: var(--text-primary);
   transition: border-color 0.2s ease;
 
   &:focus {
-    border-color: $primary;
+    border-color: var(--accent-color);
     outline: none;
-    box-shadow: 0 0 0 0.2rem rgba($primary, 0.1);
+    box-shadow: 0 0 0 0.2rem rgba(79, 156, 249, 0.1);
+  }
+}
+
+// 顶部状态栏
+.app-header {
+  height: 50px;
+  background-color: var(--secondary-bg);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-color);
+  z-index: 100;
+
+  .logo {
+    font-weight: bold;
+    color: var(--accent-color);
+    margin-right: 20px;
+    display: flex;
+    align-items: center;
+
+    i {
+      margin-right: 10px;
+      font-size: 20px;
+    }
+  }
+
+  .market-status {
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+
+      &.status-open {
+        background-color: var(--success-color);
+      }
+
+      &.status-closed {
+        background-color: var(--danger-color);
+      }
+    }
+  }
+
+  .header-widgets {
+    display: flex;
+    margin-left: auto;
+    gap: 15px;
+
+    .header-widget {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+
+      i {
+        margin-right: 5px;
+        color: var(--accent-color);
+      }
+    }
+  }
+}
+
+// 侧边栏
+.app-sidebar {
+  width: 240px;
+  background-color: var(--secondary-bg);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  transition: width 0.3s ease;
+
+  &.collapsed {
+    width: 60px;
+  }
+
+  .nav-section {
+    margin-bottom: 20px;
+
+    .nav-header {
+      padding: 15px 20px 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 20px;
+      color: var(--text-primary);
+      text-decoration: none;
+      transition: background-color 0.2s;
+      cursor: pointer;
+
+      &:hover {
+        background-color: rgba(79, 156, 249, 0.1);
+      }
+
+      &.active {
+        background-color: rgba(79, 156, 249, 0.2);
+        border-left: 3px solid var(--accent-color);
+      }
+
+      i {
+        margin-right: 12px;
+        width: 20px;
+        text-align: center;
+        color: var(--accent-color);
+      }
+    }
+  }
+
+  &.collapsed {
+    .nav-text {
+      display: none;
+    }
+
+    .nav-header {
+      display: none;
+    }
+  }
+}
+
+// 工作区
+.workspace {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  background-color: var(--primary-bg);
+}
+
+// 底部状态栏
+.app-footer {
+  height: 30px;
+  background-color: var(--secondary-bg);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 12px;
+  color: var(--text-secondary);
+
+  .footer-section {
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+
+    i {
+      margin-right: 6px;
+      color: var(--accent-color);
+    }
+  }
+
+  .footer-log {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
   }
 }

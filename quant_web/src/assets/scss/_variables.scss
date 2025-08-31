@@ -1,8 +1,8 @@
-//样式变量
+// 样式变量
 // 颜色系统
 $background-content: #1c2438 !default; // 内容区域背景
-$background-dark: #121826 !default;
-$text-primary: #e0e0e0 !default;// 深色背景
+$background-dark: #121826 !default; // 深色背景
+$text-primary: #e0e0e0 !default;
 $primary: #2c7be5 !default;
 $secondary: #6e84a3 !default;
 $success: #00d97e !default;
@@ -69,8 +69,28 @@ $card-box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03) !default;
 $chart-height: 500px !default;
 $chart-min-height: 300px !default;
 
+// 添加深色主题变量
+$dark-primary-bg: #0e1a2b !default;
+$dark-secondary-bg: #152238 !default;
+$dark-accent-color: #4f9cf9 !default;
+$dark-text-primary: #c7d5e0 !default;
+$dark-text-secondary: #6b7b8f !default;
+$dark-border-color: #2a3f5f !default;
+
 :root {
-  --background-dark: #{$background-dark};
-  --background-content: #{$background-content};
-  --text-primary: #{$text-primary};
+  --background-dark: #121826;
+  --background-content: #1c2438;
+  --primary-bg: #0e1a2b;
+  --secondary-bg: #152238;
+  --accent-color: #4f9cf9;
+  --text-primary: #c7d5e0;
+  --text-secondary: #6b7b8f;
+  --border-color: #2a3f5f;
+  --success-color: #5abf6b;
+  --warning-color: #e7c95c;
+  --danger-color: #e7575d;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 60px;
+  --header-height: 50px;
+  --footer-height: 30px;
 }

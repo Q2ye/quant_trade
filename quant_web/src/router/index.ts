@@ -1,6 +1,7 @@
-import {createRouter, createWebHistory, Router} from 'vue-router';
-import {routes} from './routes'; // 命名导入
-import {authGuard, dataReadyGuard} from './guard';
+// index.ts
+import { createRouter, createWebHistory, Router } from 'vue-router';
+import { routes } from './routes';
+import { authGuard, dataReadyGuard, layoutGuard } from './guard';
 
 const getBaseUrl = (): string => {
     // 优先从环境变量获取
@@ -9,22 +10,19 @@ const getBaseUrl = (): string => {
 };
 
 const router: Router = createRouter({
-    history: createWebHistory(getBaseUrl()),
-    routes,
-    scrollBehavior(_to, _from, savedPosition) {
-        // 保持滚动位置
-        if (savedPosition) {
-            return savedPosition;
-        }
-        // 新页面滚动到顶部
-        return {top: 0};
+  history: createWebHistory(getBaseUrl()),
+  routes,
+  scrollBehavior(_to, _from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
     }
+    return { top: 0 };
+  }
 });
 
-// 调整守卫执行顺序
-router.beforeEach((_to, _from, _next) => {
-    router.beforeEach((to, from, next) => dataReadyGuard(to, from, next));
-    router.beforeEach((to, from, next) => authGuard(to, from, next));
-});
+// 正确注册路由守卫
+router.beforeEach(authGuard);
+router.beforeEach(dataReadyGuard);
+router.beforeEach(layoutGuard);
 
 export default router;

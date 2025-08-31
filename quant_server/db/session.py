@@ -10,12 +10,12 @@ logger = logging.getLogger('session')
 _db_connector: Optional[DbConnector] = None
 
 
-def init_db(config: dict = None) -> bool:
+def init_db() -> bool:
     """初始化数据库连接"""
     global _db_connector
 
     try:
-        _db_connector = DbConnector(config)
+        _db_connector = DbConnector()
         if _db_connector.connect():
             logger.info("数据库连接初始化成功")
             return True

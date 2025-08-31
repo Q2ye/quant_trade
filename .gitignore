@@ -46,7 +46,17 @@ lab/
 
 quant_trade/quant_server/quant_trade.egg-info
 quant_trade/quant_server/build
+quant_web/node_modules
+quant_web/dist
+quant_web/.env
+quant_web/.env.local
+quant_web/.next
+quant_web/out
 
 *.egg-info/
 
 .venv/
+quant_web/node_modules/.modules.yaml
+quant_web/stats.html
+quant_web/pnpm-lock.yaml
+.gitignore

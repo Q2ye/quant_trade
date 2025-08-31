@@ -101,7 +101,7 @@ const tradeModule: Module<TradeState, RootState> = {
                 return accounts;
             } catch (error) {
                 console.error('获取交易账户失败:', error);
-                throw error;
+                throw error; // 保持异常传递，让调用者处理
             }
         },
         async selectAccount({commit, state}, accountId: string) {
@@ -162,14 +162,14 @@ const tradeModule: Module<TradeState, RootState> = {
                 commit('ADD_ORDER', order);
 
                 if (order.orderType === 'MARKET') {
+                    // 修复：移除TradeRecord中不存在的status属性
                     const execution: TradeRecord = {
                         accountId: order.accountId,
                         id: `exec-${Date.now()}`,
                         symbol: order.symbol,
                         price: order.price,
                         quantity: order.volume ?? order.quantity ?? 0,
-                        executedAt: new Date().toISOString(),
-                        status: 'FILLED'
+                        executedAt: new Date().toISOString()
                     };
                     commit('ADD_EXECUTION', execution);
                     commit('UPDATE_ORDER', {...order, status: 'FILLED'});

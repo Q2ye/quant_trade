@@ -1,189 +1,164 @@
-<!--主布局（包含顶部+侧边栏）-->
 <template>
   <div class="main-layout">
     <!-- 顶部状态栏 -->
-    <AppHeader
-      :current-time="currentTime"
-      :data-status="dataStatus"
-      :strategy-status="strategyStatus"
-      @refresh-data="handleRefreshData"
-    />
+    <AppHeader class="app-header" />
 
     <div class="main-content">
       <!-- 左侧导航栏 -->
-      <AppSidebar
-        :active-menu="activeMenu"
-        @menu-change="handleMenuChange"
-      />
+      <AppSidebar class="app-sidebar" :class="{ collapsed: sidebarCollapsed }" />
+
+      <div class="sidebar-toggle" @click="toggleSidebar">
+        <i class="fas" :class="sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
+      </div>
 
       <!-- 中间工作区 -->
       <div class="workspace">
-        <slot />
+        <router-view />
       </div>
-
-      <!-- 右侧辅助面板 -->
-      <AppAlertPanel
-        :alerts="alerts"
-        @clear-alert="handleClearAlert"
-        alert=""/>
     </div>
 
-    <!-- 全局通知 -->
-    <GlobalNotification
-      v-if="showNotification"
-      :message="notificationMessage"
-      :type="notificationType"
-      @close="showNotification = false"
-    />
+    <!-- 底部状态栏 -->
+    <footer class="app-footer">
+      <div class="footer-section">
+        <i class="fas fa-microchip"></i>
+        <span>CPU: {{ systemStats.cpuUsage }}% | 内存: {{ systemStats.memoryUsage }}%</span>
+      </div>
+      <div class="footer-section">
+        <i class="fas fa-network-wired"></i>
+        <span>数据连接: {{ systemStats.dataStatus }}</span>
+      </div>
+      <div class="footer-section">
+        <i class="fas fa-exchange-alt"></i>
+        <span>交易通道: {{ systemStats.tradeStatus }}</span>
+      </div>
+      <div class="footer-log">
+        <i class="fas fa-terminal"></i>
+        <span>{{ systemStats.lastLog }}</span>
+      </div>
+    </footer>
   </div>
 </template>
 
-<script>
-import AppHeader from '../components/ui/AppHeader.vue';
-import AppSidebar from '../components/ui/AppSidebar.vue';
-import AppAlertPanel from '../components/ui/AppAlert.vue';
-import GlobalNotification from '../components/ui/GlobalNotification.vue';
+<script lang="ts">
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import AppHeader from '../components/ui/AppHeader.vue'
+import AppSidebar from '../components/ui/AppSidebar.vue'
 
 export default {
   name: "MainLayout",
   components: {
     AppHeader,
-    AppSidebar,
-    AppAlertPanel,
-    GlobalNotification
+    AppSidebar
   },
-  props: {
-    activeMenu: {
-      type: String,
-      default: 'market'
+  setup() {
+    const route = useRoute()
+    const sidebarCollapsed = ref(false)
+    const systemStats = reactive({
+      cpuUsage: 0,
+      memoryUsage: 0,
+      dataStatus: '正常',
+      tradeStatus: '已连接',
+      lastLog: '[2023-08-20 09:30:05] 策略引擎启动成功'
+    })
+
+    const toggleSidebar = () => {
+      sidebarCollapsed.value = !sidebarCollapsed.value
     }
-  },
-  data() {
+
+    // 模拟系统状态更新
+    let statsInterval: number
+    onMounted(() => {
+      statsInterval = setInterval(() => {
+        systemStats.cpuUsage = Math.floor(Math.random() * 30) + 30
+        systemStats.memoryUsage = Math.floor(Math.random() * 20) + 50
+      }, 5000) as unknown as number
+    })
+
+    onUnmounted(() => {
+      clearInterval(statsInterval)
+    })
+
     return {
-      currentTime: new Date(),
-      dataStatus: '已同步', // 数据同步状态
-      strategyStatus: '运行中', // 策略运行状态
-      alerts: [
-        { id: 1, type: 'warning', message: '数据同步延迟超过5分钟', timestamp: new Date() },
-        { id: 2, type: 'error', message: '策略回测失败: 参数越界', timestamp: new Date() },
-        { id: 3, type: 'info', message: '交易信号触发: 600519.SH', timestamp: new Date() }
-      ],
-      showNotification: false,
-      notificationMessage: '',
-      notificationType: 'info'
-    };
-  },
-  mounted() {
-    // 更新时间
-    this.timeInterval = setInterval(() => {
-      this.currentTime = new Date();
-    }, 1000);
-
-    // 模拟数据状态变化
-    this.dataStatusInterval = setInterval(() => {
-      this.dataStatus = Math.random() > 0.8 ? '同步中...' : '已同步';
-    }, 5000);
-  },
-  beforeUnmount() {
-    clearInterval(this.timeInterval);
-    clearInterval(this.dataStatusInterval);
-  },
-  methods: {
-    // 处理菜单切换
-    handleMenuChange(menuId) {
-      this.$emit('menu-change', menuId);
-      // 添加路由导航
-      this.navigateToMenu(menuId);
-    },
-
-    // 添加路由导航方法
-    navigateToMenu(menuId) {
-      const routes = {
-        market: '/market',
-        strategy: '/strategy',
-        basket: '/basket',
-        trade: '/trade',
-        data: '/data',
-        system: '/system'
-      };
-
-      if (routes[menuId] && this.$route.path !== routes[menuId]) {
-        this.$router.push(routes[menuId]);
-      }
-    },
-
-    // 处理数据刷新
-    handleRefreshData() {
-      this.showNotification = true;
-      this.notificationMessage = '正在刷新市场数据...';
-      this.notificationType = 'info';
-
-      // 模拟数据刷新
-      setTimeout(() => {
-        this.notificationMessage = '数据刷新完成';
-        this.notificationType = 'success';
-      }, 2000);
-    },
-
-    // 清除警报
-    handleClearAlert(alertId) {
-      this.alerts = this.alerts.filter(alert => alert.id !== alertId);
-    },
-
-    // 添加新警报
-    addAlert(type, message) {
-      this.alerts.push({
-        id: Date.now(),
-        type,
-        message,
-        timestamp: new Date()
-      });
+      sidebarCollapsed,
+      systemStats,
+      toggleSidebar
     }
   }
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+@use '@/assets/scss/global.scss';
+
 .main-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: var(--background-dark);
+  background: var(--primary-bg);
 }
 
 .main-content {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: calc(var(--header-height) + 10px);
+  left: calc(var(--sidebar-width) - 12px);
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: left 0.3s ease;
+
+  .app-sidebar.collapsed + & {
+    left: calc(var(--sidebar-collapsed-width) - 12px);
+  }
 }
 
 .workspace {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  background: var(--background-content);
-  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
+  background-color: var(--primary-bg);
 }
 
-@media (max-width: 1200px) {
-  .workspace {
-    padding: 15px;
-  }
-}
+.app-footer {
+  height: var(--footer-height);
+  background-color: var(--secondary-bg);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 12px;
+  color: var(--text-secondary);
 
-@media (max-width: 768px) {
-  .main-content {
-    flex-direction: column;
+  .footer-section {
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+
+    i {
+      margin-right: 6px;
+      color: var(--accent-color);
+    }
   }
 
-  .workspace {
-    order: 2;
-  }
-
-  .alert-panel {
-    order: 3;
-    height: 200px;
+  .footer-log {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
   }
 }
 </style>

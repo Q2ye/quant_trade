@@ -6,10 +6,7 @@
     :style="{ borderLeft: `3px solid ${alertColor}` }"
   >
     <div class="alert-header">
-      <div
-        class="alert-icon"
-        :style="{ color: alertColor }"
-      >
+      <div class="alert-icon" :style="{ color: alertColor }">
         <i :class="alertIcon" />
       </div>
       <div class="alert-title">
@@ -33,11 +30,7 @@
       >
         {{ alert.action }}
       </el-button>
-      <el-button
-        type="text"
-        size="small"
-        @click="$emit('dismiss', alert.id)"
-      >
+      <el-button type="text" size="small" @click="$emit('dismiss', alert.id)">
         忽略
       </el-button>
     </div>
@@ -53,45 +46,52 @@ export default {
       required: true,
       // 添加默认值防止 undefined
       default: () => ({
-        level: 'info',
-        title: '',
-        content: '',
+        level: "info",
+        title: "",
+        content: "",
         timestamp: Date.now(),
-        id: Date.now().toString()
-      })
-    }
+        id: Date.now().toString(),
+      }),
+    },
   },
+  emits: ["action", "dismiss"],
   computed: {
     alertIcon() {
       // 安全访问 alert.level
-      const level = this.alert?.level || 'info';
+      const level = this.alert?.level || "info";
       switch (level) {
-        case 'critical': return 'el-icon-warning'
-        case 'warning': return 'el-icon-warning-outline'
-        default: return 'el-icon-info'
+        case "critical":
+          return "el-icon-warning";
+        case "warning":
+          return "el-icon-warning-outline";
+        default:
+          return "el-icon-info";
       }
     },
 
     alertColor() {
       // 安全访问 alert.level
-      const level = this.alert?.level || 'info';
+      const level = this.alert?.level || "info";
       switch (level) {
-        case 'critical': return '#f56c6c'
-        case 'warning': return '#e6a23c'
-        default: return '#909399'
+        case "critical":
+          return "#f56c6c";
+        case "warning":
+          return "#e6a23c";
+        default:
+          return "#909399";
       }
     },
 
     formattedTime() {
       // 安全访问 alert.timestamp
       const timestamp = this.alert?.timestamp || Date.now();
-      return new Date(timestamp).toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    }
-  }
-}
+      return new Date(timestamp).toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    },
+  },
+};
 </script>
 
 <style scoped>

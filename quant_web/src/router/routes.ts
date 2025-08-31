@@ -1,48 +1,33 @@
+// routes.ts
 import { RouteRecordRaw } from 'vue-router';
-import { lazy } from '@/utils/lazyLoad';
+import Login from '@/views/Login.vue'; // 添加Login组件导入
+
+const lazy = (path: string) => () => import(`@/${path}.vue`);
+
 
 // 使用命名导出
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/market'
+    redirect: '/dashboard'
   },
   {
-    path: '/market',
-    component: lazy('layouts/MainLayout'),
-    meta: { menu: 'market', layout: 'main' },
+    path: '/dashboard',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'dashboard', layout: 'main', title: '交易驾驶舱' },
     children: [
       {
         path: '',
-        name: 'Market',
-        component: lazy('views/Market/Index'),
-        meta: { title: '行情中心' }
-      },
-      {
-        path: 'stock/:code',
-        name: 'StockDetail',
-        component: lazy('views/Market/StockDetail'),
-        props: true,
-        meta: { title: '个股详情' }
-      },
-      {
-        path: 'etf',
-        name: 'ETFMarket',
-        component: lazy('views/Market/ETFMarket'),
-        meta: { title: 'ETF行情' }
-      },
-      {
-        path: 'index',
-        name: 'IndexBoard',
-        component: lazy('views/Market/IndexBoard'),
-        meta: { title: '指数看板' }
+        name: 'Dashboard',
+        component: lazy('views/Trade/Dashboard'),
+        meta: { title: '交易驾驶舱' }
       }
     ]
   },
   {
     path: '/strategy',
-    component: lazy('layouts/StrategyLayout'),
-    meta: { menu: 'strategy', layout: 'strategy' },
+    component: () => import('@/layouts/StrategyLayout.vue'),
+    meta: { menu: 'strategy', layout: 'strategy', title: '策略工作室' },
     children: [
       {
         path: '',
@@ -79,9 +64,22 @@ export const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/kline',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'kline', layout: 'main', title: '智能K线' },
+    children: [
+      {
+        path: '',
+        name: 'KLine',
+        component: lazy('views/Market/StockDetail'),
+        meta: { title: '智能K线' }
+      }
+    ]
+  },
+  {
     path: '/basket',
-    component: lazy('layouts/MainLayout'),
-    meta: { menu: 'basket', layout: 'main' },
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'basket', layout: 'main', title: '股票篮子' },
     children: [
       {
         path: '',
@@ -112,61 +110,38 @@ export const routes: RouteRecordRaw[] = [
     ]
   },
   {
-    path: '/trade',
-    component: lazy('layouts/TradeLayout'),
-    meta: { menu: 'trade', layout: 'trade' },
+    path: '/report',
+    component: () => import('@/layouts/ReportLayout.vue'),
+    meta: { menu: 'report', layout: 'report', title: '回测报告' },
     children: [
       {
         path: '',
-        name: 'TradeDashboard',
-        component: lazy('views/Trade/Dashboard'),
-        meta: { title: '交易驾驶舱' }
-      },
-      {
-        path: 'positions',
-        name: 'Positions',
-        component: lazy('views/Trade/Position'),
-        meta: { title: '持仓明细' }
-      },
-      {
-        path: 'orders',
-        name: 'Orders',
-        component: lazy('views/Trade/OrderHistory'),
-        meta: { title: '订单记录' }
-      },
-      {
-        path: 'execute',
-        name: 'TradeExecute',
-        component: lazy('views/Trade/TradeExecution'),
-        meta: { title: '交易执行' }
+        name: 'ReportList',
+        component: lazy('views/Strategy/BacktestReport'),
+        meta: { title: '回测报告' }
       }
     ]
   },
   {
-    path: '/system',
-    component: lazy('layouts/MainLayout'),
-    meta: { menu: 'system', layout: 'main' },
+    path: '/performance',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'performance', layout: 'main', title: '绩效分析' },
     children: [
       {
-        path: 'monitor',
-        name: 'SystemMonitor',
-        component: lazy('views/System/Monitor'),
-        meta: { title: '系统监控' }
-      },
+        path: '',
+        name: 'Performance',
+        component: lazy('views/Strategy/BacktestReport'),
+        meta: { title: '绩效分析' }
+      }
+    ]
+  },
+  {
+    path: '/settings',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'settings', layout: 'main', title: '系统设置' },
+    children: [
       {
-        path: 'logs',
-        name: 'LogViewer',
-        component: lazy('views/System/LogViewer'),
-        meta: { title: '日志查看' }
-      },
-      {
-        path: 'data',
-        name: 'DataSync',
-        component: lazy('views/System/DataSync'),
-        meta: { title: '数据同步' }
-      },
-      {
-        path: 'settings',
+        path: '',
         name: 'Settings',
         component: lazy('views/System/Settings'),
         meta: { title: '系统设置' }
@@ -174,7 +149,43 @@ export const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/risk',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'risk', layout: 'main', title: '风险控制' },
+    children: [
+      {
+        path: '',
+        name: 'RiskManagement',
+        component: lazy('views/Strategy/RiskManagement'),
+        meta: { title: '风险控制' }
+      }
+    ]
+  },
+  {
+    path: '/monitor',
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { menu: 'monitor', layout: 'main', title: '系统监控' },
+    children: [
+      {
+        path: '',
+        name: 'SystemMonitor',
+        component: lazy('views/System/Monitor'),
+        meta: { title: '系统监控' }
+      }
+    ]
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: Login, // 使用导入的Login组件
+    meta: {
+      title: '登录',
+      layout: 'empty',
+      requiresAuth: false
+    }
+  },
+  {
     path: '/:pathMatch(.*)*',
-    redirect: '/market'
+    redirect: '/dashboard'
   }
 ];

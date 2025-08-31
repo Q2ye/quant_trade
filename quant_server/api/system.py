@@ -100,3 +100,18 @@ async def update_system_settings(
     # 这里需要实现系统设置更新逻辑
     # 暂时返回模拟数据
     return {"updated": True, "settings": settings}
+
+
+@router.get("/connections")
+async def get_connections(data_service: DataService = Depends(get_data_service)):
+    """获取系统连接状态"""
+    return { "dataSource": True, "tradeGateway": True, "strategyEngine": True }
+@router.get("/resources")
+async def get_resources(data_service: DataService = Depends(get_data_service)):
+    """获取系统资源使用情况"""
+    return { "cpu": 0.45, "memory": 0.62, "disk": 0.28, "network": 0.15 }
+
+@router.get("/database")
+async def get_database(data_service: DataService = Depends(get_data_service)):
+    """获取数据库状态"""
+    return { "size": 1024, "MB tables": 42, "lastBackup": "2023-08-23T08:00:00" }

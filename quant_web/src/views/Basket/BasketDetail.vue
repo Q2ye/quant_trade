@@ -1,5 +1,4 @@
 <!--篮子详情-->
-<!--篮子详情-->
 <script>
 import { fetchBasketDetail } from '@/api/basket.js'
 import { fetchStockRealTime } from '@/api/data.js'

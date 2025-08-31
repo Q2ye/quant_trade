@@ -1,11 +1,6 @@
 <!--状态徽章-->
 <template>
-  <el-tag
-    :type="statusType"
-    size="small"
-    effect="dark"
-    class="status-badge"
-  >
+  <el-tag :type="statusType" size="small" effect="dark" class="status-badge">
     {{ status }}
   </el-tag>
 </template>
@@ -16,32 +11,32 @@ export default {
   props: {
     status: {
       type: String,
-      required: true
+      required: true,
     },
     type: {
       type: String,
-      default: 'default'
-    }
+      default: "default",
+    },
   },
   computed: {
     statusType() {
       const statusMap = {
-        '运行中': 'success',
-        '已停止': 'danger',
-        '已连接': 'success',
-        '连接中': 'warning',
-        '未连接': 'danger',
-        '正常': 'success',
-        '警告': 'warning',
-        '危险': 'danger'
-      }
+        运行中: "success",
+        已停止: "danger",
+        已连接: "success",
+        连接中: "warning",
+        未连接: "danger",
+        正常: "success",
+        警告: "warning",
+        危险: "danger",
+      };
 
-      if (this.type !== 'default') return this.type
+      if (this.type !== "default") return this.type;
 
-      return statusMap[this.status] || 'info'
-    }
-  }
-}
+      return statusMap[this.status] || "info";
+    },
+  },
+};
 </script>
 
 <style scoped>

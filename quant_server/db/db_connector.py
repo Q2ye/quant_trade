@@ -12,31 +12,32 @@ from quant_server.db.models.models import Base
 logger = logging.getLogger('db_connector')
 
 
+def _get_config_from_env() -> dict:
+    """从环境变量获取数据库配置"""
+    return {
+        'type': os.getenv('DB_TYPE', 'pgsql'),
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '5432')),
+        'user': os.getenv('DB_USER', 'postgres'),
+        'password': os.getenv('DB_PASSWORD', '123456'),
+        'database': os.getenv('DB_NAME', 'quant_signals'),
+        'pool_size': int(os.getenv('DB_POOL_SIZE', '10')),
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '5'))
+    }
+
+
 class DbConnector:
     """统一的数据库连接管理器，支持PostgreSQL和MySQL"""
 
-    def __init__(self, config: Optional[dict] = None):
+    def __init__(self):
         """
         初始化数据库连接器
         :param config: 数据库配置字典，如果为None则从环境变量读取
         """
-        self.config = config or self._get_config_from_env()
+        self.config = _get_config_from_env()
         self.engine = None
         self.Session = None
         self.dialect = self.config.get('type', 'pgsql').lower()
-
-    def _get_config_from_env(self) -> dict:
-        """从环境变量获取数据库配置"""
-        return {
-            'type': os.getenv('DB_TYPE', 'pgsql'),
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': int(os.getenv('DB_PORT', '5432')),
-            'user': os.getenv('DB_USER', 'postgres'),
-            'password': os.getenv('DB_PASSWORD', ''),
-            'database': os.getenv('DB_NAME', 'quant_signals'),
-            'pool_size': int(os.getenv('DB_POOL_SIZE', '10')),
-            'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '5'))
-        }
 
     def connect(self) -> bool:
         """建立数据库连接"""

@@ -1,12 +1,12 @@
 // 显式导入变量和需要的模块
 @use 'variables' as *;
-@use "sass:map"; // 导入 map 模块
+@use "sass:map";
 @use "sass:color";
 
-//样式混合
+// 样式混合
 // 响应式断点
 @mixin media-breakpoint-up($name, $breakpoints: (xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px)) {
-  $min: map.get($breakpoints, $name); // 使用 map.get 替代 map-get
+  $min: map.get($breakpoints, $name);
   @if $min {
     @media (min-width: $min) {
       @content;
@@ -22,9 +22,9 @@
   width: 100%;
   height: $chart-height;
   min-height: $chart-min-height;
-  background-color: $white;
+  background-color: var(--secondary-bg);
   border-radius: $border-radius-lg;
-  box-shadow: $card-box-shadow;
+  border: 1px solid var(--border-color);
   overflow: hidden;
 
   @include media-breakpoint-up(md) {
@@ -35,15 +35,15 @@
 
 // 数据卡片样式
 @mixin data-card {
-  background: $white;
+  background: var(--secondary-bg);
   border-radius: $border-radius;
-  padding: map.get($spacers, 3); // 使用 map.get
-  box-shadow: $card-box-shadow;
+  padding: map.get($spacers, 3);
+  border: 1px solid var(--border-color);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 1rem 3rem rgba($gray-900, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 }
 
@@ -51,10 +51,10 @@
 @mixin chart-title {
   font-size: 1rem;
   font-weight: 600;
-  color: $gray-800;
-  margin-bottom: map.get($spacers, 3); // 使用 map.get
-  padding-bottom: map.get($spacers, 2); // 使用 map.get
-  border-bottom: $border-width solid $border-color;
+  color: var(--text-primary);
+  margin-bottom: map.get($spacers, 3);
+  padding-bottom: map.get($spacers, 2);
+  border-bottom: 1px solid var(--border-color);
 }
 
 @function scale-color($color, $lightness: 0%) {
@@ -64,5 +64,37 @@
 @mixin deep() {
   :deep {
     @content;
+  }
+}
+
+// 深色主题按钮样式
+@mixin dark-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+
+  &.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+
+    &:hover {
+      background-color: #3a85e0;
+    }
+  }
+
+  &.btn-secondary {
+    background-color: var(--secondary-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+
+    &:hover {
+      background-color: #1c2e48;
+    }
   }
 }

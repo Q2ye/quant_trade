@@ -1,259 +1,236 @@
-<!--左侧导航栏-->
 <template>
-  <div
-    class="app-sidebar"
-    :class="{ collapsed }"
-  >
-    <el-menu
-      :default-active="activeMenu"
-      :collapse="collapsed"
-      background-color="transparent"
-      text-color="#b0bec5"
-      active-text-color="#1890ff"
-      :router="true"
-      :unique-opened="true"
-    >
-      <template
-        v-for="menu in menus"
-        :key="menu.id"
+  <div class="app-sidebar" :class="{ collapsed: collapsed }">
+    <div class="nav-section">
+      <div class="nav-header">核心功能</div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'dashboard' }"
+          @click="navigate('/dashboard')"
       >
-        <!-- 有子菜单的项 -->
-        <el-sub-menu
-          v-if="menu.children"
-          :index="menu.id"
-        >
-          <template #title>
-            <i :class="menu.icon" />
-            <span>{{ menu.name }}</span>
-          </template>
-          <el-menu-item
-            v-for="child in menu.children"
-            :key="child.id"
-            :index="child.id"
-            :route="child.path"
-          >
-            <i :class="child.icon || 'fas fa-caret-right'" />
-            <span>{{ child.name }}</span>
-          </el-menu-item>
-        </el-sub-menu>
+        <i class="fas fa-th-large"></i>
+        <span class="nav-text">交易驾驶舱</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'strategy' }"
+          @click="navigate('/strategy')"
+      >
+        <i class="fas fa-project-diagram"></i>
+        <span class="nav-text">策略工作室</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'kline' }"
+          @click="navigate('/kline')"
+      >
+        <i class="fas fa-chart-candlestick"></i>
+        <span class="nav-text">智能K线</span>
+      </div>
+    </div>
 
-        <!-- 无子菜单的项 -->
-        <el-menu-item
-          v-else
-          :index="menu.id"
-          :route="menu.path"
-        >
-          <i :class="menu.icon" />
-          <span>{{ menu.name }}</span>
-        </el-menu-item>
-      </template>
-    </el-menu>
+    <div class="nav-section">
+      <div class="nav-header">数据分析</div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'report' }"
+          @click="navigate('/report')"
+      >
+        <i class="fas fa-chart-line"></i>
+        <span class="nav-text">回测报告</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'basket' }"
+          @click="navigate('/basket')"
+      >
+        <i class="fas fa-basket-shopping"></i>
+        <span class="nav-text">股票篮子</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'performance' }"
+          @click="navigate('/performance')"
+      >
+        <i class="fas fa-analytics"></i>
+        <span class="nav-text">绩效分析</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-header">系统管理</div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'settings' }"
+          @click="navigate('/settings')"
+      >
+        <i class="fas fa-cog"></i>
+        <span class="nav-text">系统设置</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: 'risk' === activeMenu }"
+          @click="navigate('/risk')"
+      >
+        <i class="fas fa-sliders-h"></i>
+        <span class="nav-text">风险控制</span>
+      </div>
+      <div
+          class="nav-item"
+          :class="{ active: activeMenu === 'monitor' }"
+          @click="navigate('/monitor')"
+      >
+        <i class="fas fa-terminal"></i>
+        <span class="nav-text">系统监控</span>
+      </div>
+    </div>
 
     <div class="sidebar-footer">
       <div class="system-info">
         <span>CPU: 42%</span>
         <span>内存: 65%</span>
       </div>
-      <div class="version">
-        v1.0.0
-      </div>
+      <div class="version">v1.0.0</div>
     </div>
   </div>
 </template>
 
 <script>
+import {ref, watch} from "vue";
+import {useRoute, useRouter} from "vue-router";
+
 export default {
   name: "AppSidebar",
-  data() {
+  emits: ["collapse"],
+  setup(_, {emit}) {
+    const route = useRoute();
+    const router = useRouter();
+    const activeMenu = ref("dashboard");
+    const collapsed = ref(false);
+
+    watch(
+        () => route.path,
+        () => {
+          setActiveMenu();
+        },
+    );
+
+    const setActiveMenu = () => {
+      const path = route.path;
+      if (path.startsWith("/dashboard")) activeMenu.value = "dashboard";
+      else if (path.startsWith("/strategy")) activeMenu.value = "strategy";
+      else if (path.startsWith("/kline")) activeMenu.value = "kline";
+      else if (path.startsWith("/report")) activeMenu.value = "report";
+      else if (path.startsWith("/basket")) activeMenu.value = "basket";
+      else if (path.startsWith("/performance"))
+        activeMenu.value = "performance";
+      else if (path.startsWith("/settings")) activeMenu.value = "settings";
+      else if (path.startsWith("/risk")) activeMenu.value = "risk";
+      else if (path.startsWith("/monitor")) activeMenu.value = "monitor";
+      else activeMenu.value = "";
+    };
+
+    const toggleCollapse = () => {
+      collapsed.value = !collapsed.value;
+      emit("collapse", collapsed.value);
+    };
+
+    const navigate = (path) => {
+      router.push(path);
+    };
+
+    // 立即设置一次活动菜单
+    setActiveMenu();
+
     return {
-      activeMenu: 'market',
-      collapsed: false,
-      menus: [
-        {
-          id: 'market',
-          name: '行情中心',
-          icon: 'el-icon-data-line',
-          children: [
-            {id: 'index', name: '大盘指数', path: '/market/index'},
-            {id: 'stocks', name: '个股行情', path: '/market/stocks'},
-            {id: 'etf', name: 'ETF行情', path: '/market/etf'}
-          ]
-        },
-        {
-          id: 'strategy',
-          name: '策略工作室',
-          icon: 'el-icon-cpu',
-          children: [
-            {id: 'strategy-list', name: '策略列表', path: '/strategy/list'},
-            {id: 'strategy-editor', name: '策略编辑器', path: '/strategy/editor'},
-            {id: 'backtest', name: '回测分析', path: '/strategy/backtest'}
-          ]
-        },
-        {
-          id: 'basket',
-          name: '篮子管理',
-          icon: 'el-icon-files',
-          children: [
-            {id: 'basket-list', name: '篮子列表', path: '/basket/list'},
-            {id: 'basket-editor', name: '篮子编辑器', path: '/basket/editor'}
-          ]
-        },
-        {
-          id: 'trade',
-          name: '交易管理',
-          icon: 'el-icon-shopping-cart-full',
-          children: [
-            {id: 'dashboard', name: '交易驾驶舱', path: '/trade/dashboard'},
-            {id: 'position', name: '持仓管理', path: '/trade/position'},
-            {id: 'orders', name: '订单记录', path: '/trade/orders'}
-          ]
-        },
-        {
-          id: 'system',
-          name: '系统管理',
-          icon: 'el-icon-setting',
-          children: [
-            {id: 'monitor', name: '系统监控', path: '/system/monitor'},
-            {id: 'logs', name: '日志查看', path: '/system/logs'},
-            {id: 'data', name: '数据管理', path: '/system/data'},
-            {id: 'settings', name: '系统设置', path: '/system/settings'}
-          ]
-        }
-      ]
-    }
+      activeMenu,
+      collapsed,
+      setActiveMenu,
+      toggleCollapse,
+      navigate,
+    };
   },
-  watch: {
-    $route() {
-      this.setActiveMenu()
-    }
-  },
-  created() {
-    this.setActiveMenu()
-  },
-  methods: {
-    setActiveMenu() {
-      this.activeMenu = this.$route.path.split('/')[1]
-    },
-
-    toggleCollapse() {
-      this.collapsed = !this.collapsed
-      this.$emit('collapse', this.collapsed)
-    },
-
-    navigate(path) {
-      this.$router.push(path)
-    }
-  }
-}
+};
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .app-sidebar {
-  width: 220px;
+  width: var(--sidebar-width);
   height: 100vh;
-  background-color: #001529;
+  background-color: var(--secondary-bg);
   color: #fff;
   display: flex;
   flex-direction: column;
   transition: width 0.3s;
   overflow: hidden;
+
+  &.collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
+}
+
+.nav-section {
+  margin-bottom: 20px;
+}
+
+.nav-header {
+  padding: 15px 20px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: background-color 0.2s;
+  cursor: pointer;
+
+  &:hover {
+    background-color: rgba(79, 156, 249, 0.1);
+  }
+
+  &.active {
+    background-color: rgba(79, 156, 249, 0.2);
+    border-left: 3px solid var(--accent-color);
+  }
+
+  i {
+    margin-right: 12px;
+    width: 20px;
+    text-align: center;
+    color: var(--accent-color);
+  }
 }
 
 .app-sidebar.collapsed {
-  width: 64px;
-}
+  .nav-text {
+    display: none;
+  }
 
-.sidebar-header {
-  height: 60px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  font-size: 18px;
-  font-weight: bold;
-  flex: 1;
-}
-
-.logo-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #1890ff;
-  border-radius: 50%;
-  margin-right: 10px;
-}
-
-.collapsed .logo-icon {
-  margin-right: 0;
-}
-
-.logo-text {
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.collapse-btn {
-  background: transparent;
-  border: none;
-  font-size: 20px;
-  color: #fff;
-  padding: 0;
-  margin-left: 10px;
-}
-
-.el-menu {
-  flex: 1;
-  border-right: none;
-}
-
-.el-menu:not(.el-menu--collapse) {
-  width: 220px;
-}
-
-.el-menu-item,
-.el-submenu >>> .el-submenu__title {
-  height: 50px;
-  line-height: 50px;
-}
-
-.el-menu-item i,
-.el-submenu >>> .el-submenu__title i {
-  color: inherit;
-  margin-right: 8px;
-  font-size: 18px;
-}
-
-.el-menu-item.is-active {
-  background-color: #1890ff !important;
-  color: #fff !important;
-}
-
-.el-menu-item:hover,
-.el-submenu >>> .el-submenu__title:hover {
-  background-color: rgba(24, 144, 255, 0.2) !important;
+  .nav-header {
+    display: none;
+  }
 }
 
 .sidebar-footer {
+  margin-top: auto;
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.65);
-}
 
-.system-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 5px;
-}
+  .system-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
 
-.version {
-  text-align: center;
+  .version {
+    text-align: center;
+  }
 }
 </style>

@@ -1,28 +1,14 @@
 <template>
   <div class="global-notification">
-    <div
-      class="notification-bell"
-      @click="toggleNotifications"
-    >
+    <div class="notification-bell" @click="toggleNotifications">
       <span class="bell-icon">🔔</span>
-      <span
-        v-if="unreadCount > 0"
-        class="badge"
-      >{{ unreadCount }}</span>
+      <span v-if="unreadCount > 0" class="badge">{{ unreadCount }}</span>
     </div>
 
-    <div
-      v-if="showNotifications"
-      class="notifications-panel"
-    >
+    <div v-if="showNotifications" class="notifications-panel">
       <div class="panel-header">
         <h3>系统通知</h3>
-        <button
-          class="mark-read-btn"
-          @click="markAllAsRead"
-        >
-          全部已读
-        </button>
+        <button class="mark-read-btn" @click="markAllAsRead">全部已读</button>
       </div>
 
       <div class="notifications-list">
@@ -30,7 +16,7 @@
           v-for="notification in notifications"
           :key="notification.id"
           class="notification-item"
-          :class="{'unread': !notification.read}"
+          :class="{ unread: !notification.read }"
         >
           <div class="notification-icon">
             <span v-if="notification.type === 'alert'">⚠️</span>
@@ -49,17 +35,12 @@
             </div>
           </div>
           <div class="notification-actions">
-            <button @click="handleAction(notification)">
-              查看
-            </button>
+            <button @click="handleAction(notification)">查看</button>
           </div>
         </div>
       </div>
 
-      <div
-        v-if="notifications.length === 0"
-        class="empty-notifications"
-      >
+      <div v-if="notifications.length === 0" class="empty-notifications">
         暂无通知
       </div>
     </div>
@@ -69,41 +50,42 @@
 <script>
 export default {
   name: "GlobalNotification",
+  emits: ["notification-action"],
   data() {
     return {
       showNotifications: false,
       notifications: [
         {
           id: 1,
-          type: 'alert',
-          title: '风险预警',
-          message: '单日亏损已接近5%阈值',
+          type: "alert",
+          title: "风险预警",
+          message: "单日亏损已接近5%阈值",
           time: new Date(Date.now() - 3600000),
-          read: false
+          read: false,
         },
         {
           id: 2,
-          type: 'trade',
-          title: '交易信号',
-          message: '策略A触发买入信号: 600519.SH',
+          type: "trade",
+          title: "交易信号",
+          message: "策略A触发买入信号: 600519.SH",
           time: new Date(Date.now() - 1800000),
-          read: false
+          read: false,
         },
         {
           id: 3,
-          type: 'system',
-          title: '系统维护',
-          message: '今晚22:00-24:00进行系统维护',
+          type: "system",
+          title: "系统维护",
+          message: "今晚22:00-24:00进行系统维护",
           time: new Date(Date.now() - 86400000),
-          read: true
-        }
-      ]
-    }
+          read: true,
+        },
+      ],
+    };
   },
   computed: {
     unreadCount() {
-      return this.notifications.filter(n => !n.read).length;
-    }
+      return this.notifications.filter((n) => !n.read).length;
+    },
   },
   methods: {
     toggleNotifications() {
@@ -114,14 +96,14 @@ export default {
       }
     },
     markAllAsRead() {
-      this.notifications.forEach(n => n.read = true);
+      this.notifications.forEach((n) => (n.read = true));
     },
     formatTime(date) {
       const now = new Date();
       const diffMs = now - date;
       const diffMins = Math.round(diffMs / 60000);
 
-      if (diffMins < 1) return '刚刚';
+      if (diffMins < 1) return "刚刚";
       if (diffMins < 60) return `${diffMins}分钟前`;
 
       const diffHours = Math.round(diffMins / 60);
@@ -130,11 +112,11 @@ export default {
       return date.toLocaleDateString();
     },
     handleAction(notification) {
-      this.$emit('notification-action', notification);
+      this.$emit("notification-action", notification);
       this.showNotifications = false;
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>

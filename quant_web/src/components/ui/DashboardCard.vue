@@ -1,60 +1,11 @@
 <!--数据卡片-->
-<script>
-import StatusBadge from '../ui/StatusBadge.vue'
-
-export default {
-  name: "DashboardCard",
-  components: { StatusBadge },
-  props: {
-    title: {
-      type: String,
-      required: true
-    },
-    value: {
-      type: [String, Number],
-      default: ''
-    },
-    unit: {
-      type: String,
-      default: ''
-    },
-    icon: {
-      type: String,
-      default: 'el-icon-data-line'
-    },
-    color: {
-      type: String,
-      default: '#1890ff'
-    },
-    trend: {
-      type: Number,
-      default: 0
-    },
-    status: {
-      type: String,
-      default: ''
-    },
-    loading: {
-      type: Boolean,
-      default: false
-    }
-  },
-  computed: {
-    trendIcon() {
-      return this.trend > 0 ? 'el-icon-top' : 'el-icon-bottom'
-    },
-
-    trendClass() {
-      return this.trend > 0 ? 'trend-up' : 'trend-down'
-    }
-  }
-}
-</script>
-
 <template>
-  <div class="dashboard-card" v-loading="loading">
+  <div v-loading="loading" class="dashboard-card">
     <div class="card-header">
-      <div class="card-icon" :style="{ backgroundColor: color + '20', color: color }">
+      <div
+        class="card-icon"
+        :style="{ backgroundColor: color + '20', color: color }"
+      >
         <i :class="icon"></i>
       </div>
       <div class="card-title">{{ title }}</div>
@@ -76,6 +27,58 @@ export default {
     </div>
   </div>
 </template>
+
+<script>
+import StatusBadge from "../ui/StatusBadge.vue";
+
+export default {
+  name: "DashboardCard",
+  components: { StatusBadge },
+  props: {
+    title: {
+      type: String,
+      required: true,
+    },
+    value: {
+      type: [String, Number],
+      default: "",
+    },
+    unit: {
+      type: String,
+      default: "",
+    },
+    icon: {
+      type: String,
+      default: "el-icon-data-line",
+    },
+    color: {
+      type: String,
+      default: "#1890ff",
+    },
+    trend: {
+      type: Number,
+      default: 0,
+    },
+    status: {
+      type: String,
+      default: "",
+    },
+    loading: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  computed: {
+    trendIcon() {
+      return this.trend > 0 ? "el-icon-top" : "el-icon-bottom";
+    },
+
+    trendClass() {
+      return this.trend > 0 ? "trend-up" : "trend-down";
+    },
+  },
+};
+</script>
 
 <style scoped>
 .dashboard-card {

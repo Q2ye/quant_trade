@@ -9,6 +9,7 @@ export interface SystemState {
 
 // 用户模块状态
 export interface UserState {
+  userInfo: any;
   isAuthenticated: boolean;
   username: string | null;
   // 其他用户状态...

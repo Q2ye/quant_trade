@@ -14,7 +14,7 @@ class BaostockSource(BaseDataSource):
 
     def __init__(self, config: dict):
         super().__init__(config)
-        self.lg = bs.login()
+        # self.lg = bs.login()
 
     def __del__(self):
         bs.logout()
