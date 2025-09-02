@@ -5,31 +5,31 @@
       <div class="form-group">
         <label for="username">用户名</label>
         <input
-          type="text"
-          id="username"
-          v-model="username"
-          placeholder="请输入用户名"
-          :disabled="isLoading"
+            type="text"
+            id="username"
+            v-model="username"
+            placeholder="请输入用户名"
+            :disabled="isLoading"
         />
       </div>
       <div class="form-group">
         <label for="password">密码</label>
         <input
-          type="password"
-          id="password"
-          v-model="password"
-          placeholder="请输入密码"
-          :disabled="isLoading"
-          @keyup.enter="handleLogin"
+            type="password"
+            id="password"
+            v-model="password"
+            placeholder="请输入密码"
+            :disabled="isLoading"
+            @keyup.enter="handleLogin"
         />
       </div>
       <div v-if="errorMessage" class="error-message">
         {{ errorMessage }}
       </div>
       <button
-        class="login-btn"
-        :disabled="isLoading"
-        @click="handleLogin"
+          class="login-btn"
+          :disabled="isLoading"
+          @click="handleLogin"
       >
         {{ isLoading ? '登录中...' : '登录' }}
       </button>
@@ -47,9 +47,9 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useStore } from 'vuex';
+import {onMounted, ref} from 'vue';
+import {useRouter} from 'vue-router';
+import {useStore} from 'vuex';
 import request from '@/utils/request';
 
 export default {
@@ -66,7 +66,7 @@ export default {
     // 检查是否测试模式
     onMounted(() => {
       isTestMode.value = import.meta.env.MODE === 'development' ||
-                        import.meta.env.VITE_APP_TEST_MODE === 'true';
+          import.meta.env.VITE_APP_TEST_MODE === 'true';
 
       if (isTestMode.value) {
         fillCredentials('admin', 'admin123');
@@ -96,8 +96,9 @@ export default {
       isLoading.value = true;
       errorMessage.value = '';
 
+
       try {
-        // 使用查询参数发送请求（根据后端API要求）
+        // 使用Vuex action处理登录
         const response = await request.post('/auth/login', null, {
           params: {
             username: username.value,
@@ -106,23 +107,17 @@ export default {
         });
 
         console.log('登录响应:', response);
-
         if (!response || !response.token) {
           throw new Error('无效的响应格式');
         }
 
-        // 登录成功，使用Vuex action保存令牌和用户信息
-        try {
-          await store.dispatch('user/login', {
-            username: username.value,
-            password: password.value
-          });
-        } catch (error) {
-          console.warn('Vuex登录失败，使用备用方案:', error);
-          // Vuex登录失败时的备用方案
-          localStorage.setItem('token', response.token);
-          localStorage.setItem('user', JSON.stringify(response.user));
-        }
+        // 登录成功，保存令牌和用户信息
+        localStorage.setItem('token', response.token);
+        localStorage.setItem('user', JSON.stringify(response.user));
+
+        // 更新Vuex状态
+        store.commit('user/SET_TOKEN', response.token);
+        store.commit('user/SET_USER_INFO', response.user);
 
         // 显示成功消息
         console.log('登录成功');
@@ -131,7 +126,15 @@ export default {
         router.push('/dashboard');
       } catch (error) {
         console.error('登录错误详情:', error);
-        errorMessage.value = error.message || '登录失败，请稍后重试';
+
+        // 根据后端错误消息提供更具体的错误信息
+        if (error.response && error.response.status === 401) {
+          errorMessage.value = '用户名或密码错误';
+        } else if (error.response && error.response.status === 422) {
+          errorMessage.value = '请求参数格式错误';
+        } else {
+          errorMessage.value = error.message || '登录失败，请稍后重试';
+        }
       } finally {
         isLoading.value = false;
       }

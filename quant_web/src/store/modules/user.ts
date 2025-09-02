@@ -24,6 +24,11 @@ const userModule: Module<UserState, RootState> = {
         },
         SET_USER_INFO(state, userInfo: User | null) {
             state.userInfo = userInfo;
+            if (userInfo) {
+                localStorage.setItem('user', JSON.stringify(userInfo));
+            } else {
+                localStorage.removeItem('user');
+            }
         }
     },
     actions: {

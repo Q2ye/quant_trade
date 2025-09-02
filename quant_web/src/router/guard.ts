@@ -81,6 +81,11 @@ export const layoutGuard = (
   } else {
     document.title = '专业级A股量化交易平台'
   }
+    if (from.meta.layout !== to.meta.layout) {
+    // 强制重新渲染布局组件
+    window.dispatchEvent(new Event('resize'));
+  }
+
 
   next()
 }
