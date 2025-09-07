@@ -1,4 +1,5 @@
 # tushare_source.py
+import os
 from typing import Any, List, Dict
 import tushare as ts
 import pandas as pd
@@ -8,9 +9,9 @@ from .base_source import BaseDataSource
 class TushareSource(BaseDataSource):
     """Tushare数据源实现"""
 
-    def __init__(self, config: dict):
-        super().__init__(config)
-        ts.set_token(self.config['token'])
+    def __init__(self):
+        super().__init__()
+        ts.set_token(os.getenv('TUSHARE_TOKEN'))
         self.pro = ts.pro_api()
 
     def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:

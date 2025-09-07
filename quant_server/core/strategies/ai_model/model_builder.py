@@ -7,7 +7,7 @@ from xgboost import XGBClassifier, XGBRegressor
 import joblib
 import logging
 
-logger = logging.getLogger('model_builder')
+logger = logging.getLogger(__name__)
 
 
 class AIModelBuilder:

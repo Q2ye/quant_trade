@@ -5,7 +5,7 @@ from ..strategies.base_strategy import BaseStrategy
 import time
 import logging
 
-logger = logging.getLogger('stock_selector')
+logger = logging.getLogger(__name__)
 
 
 def _is_after_market_close() -> bool:

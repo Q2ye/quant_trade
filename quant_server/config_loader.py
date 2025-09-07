@@ -4,7 +4,7 @@ import yaml
 import logging
 from typing import Dict, Any
 
-logger = logging.getLogger('config_loader')
+logger = logging.getLogger(__name__)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:

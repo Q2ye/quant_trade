@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from sqlalchemy import and_, or_,func
-from quant_server.db.base_service import BaseService
+from quant_server.data_services.base_service import BaseService
 from quant_server.db.models.models import StockBasic
 
 

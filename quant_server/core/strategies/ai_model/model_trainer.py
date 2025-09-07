@@ -7,7 +7,7 @@ from .model_builder import AIModelBuilder
 from .data_preprocessor import DataPreprocessor
 from sklearn.metrics import accuracy_score, mean_squared_error
 
-logger = logging.getLogger('model_trainer')
+logger = logging.getLogger(__name__)
 
 
 class ModelTrainer:

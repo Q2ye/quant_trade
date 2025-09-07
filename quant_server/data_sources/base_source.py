@@ -5,8 +5,8 @@ import pandas as pd
 class BaseDataSource(ABC):
     """数据源抽象基类"""
 
-    def __init__(self, config: dict):
-        self.config = config
+    def __init__(self):
+        pass
 
     @abstractmethod
     def get_stock_history(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:

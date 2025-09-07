@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Any, List
 
-logger = logging.getLogger('base_service')
+logger = logging.getLogger(__name__)
 
 class BaseService:
     """数据库服务基类，提供会话管理和基础CRUD操作的抽象接口"""

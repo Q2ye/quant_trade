@@ -8,7 +8,7 @@ from quant_server.core.strategies.ai_model.model_builder import AIModelBuilder
 from quant_server.core.strategies.base_strategy import BaseStrategy
 from quant_server.utils.technical_indicators import TechnicalIndicators
 
-logger = logging.getLogger('ai_model')
+logger = logging.getLogger(__name__)
 
 
 class AIStrategy(BaseStrategy):

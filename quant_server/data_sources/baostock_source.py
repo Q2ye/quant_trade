@@ -6,7 +6,7 @@ from pandas import DataFrame
 
 from .base_source import BaseDataSource
 
-logger = logging.getLogger('baostock_source')
+logger = logging.getLogger(__name__)
 
 
 class BaostockSource(BaseDataSource):

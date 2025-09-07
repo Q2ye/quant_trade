@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 
 from quant_server.db.models.models import Base
 
-logger = logging.getLogger('db_connector')
+logger = logging.getLogger(__name__)
 
 
 def _get_config_from_env() -> dict:

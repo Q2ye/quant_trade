@@ -19,7 +19,7 @@ from quantCore.database.data_sources.data_source_manager import DataSourceManage
 from ..utils.notification import init_notifiers_from_config
 from ..strategies.base_strategy import BaseStrategy
 
-logger = logging.getLogger('main_engine')
+logger = logging.getLogger(__name__)
 
 
 class MainEngine:

@@ -1,7 +1,7 @@
 # stk_reward_service.py (completed)
 from sqlalchemy import extract
 
-from quant_server.db.base_service import BaseService
+from quant_server.data_services.base_service import BaseService
 from quant_server.db.models.models import StkReward, StkManager
 
 
@@ -68,3 +68,38 @@ class StkRewardService(BaseService):
         """获取所有薪酬记录"""
         with self.session_scope() as session:
             return session.query(StkReward).all()
+
+    def batch_create(self, data_list: list) -> list:
+        """批量创建薪酬记录"""
+        if not data_list:
+            return []
+
+        results = []
+        with self.session_scope() as session:
+            for data in data_list:
+                try:
+                    # 检查是否已存在相同记录
+                    existing = session.query(StkReward).filter_by(
+                        ts_code=data.get('ts_code'),
+                        ann_date=data.get('ann_date'),
+                        name=data.get('name'),
+                        title=data.get('title')
+                    ).first()
+
+                    if existing:
+                        # 更新现有记录
+                        for key, value in data.items():
+                            setattr(existing, key, value)
+                        results.append(existing)
+                    else:
+                        # 创建新记录
+                        reward = StkReward(**data)
+                        session.add(reward)
+                        results.append(reward)
+                except Exception as e:
+                    # 记录错误但继续处理其他数据
+                    print(f"创建薪酬记录失败: {e}, 数据: {data}")
+                    continue
+
+            session.flush()
+        return results

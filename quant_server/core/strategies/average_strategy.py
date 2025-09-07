@@ -3,7 +3,7 @@ import logging
 from quant_server.core.strategies.base_strategy import BaseStrategy
 from quant_server.utils.technical_indicators import TechnicalIndicators
 
-logger = logging.getLogger('average_strategy')
+logger = logging.getLogger(__name__)
 
 
 class DualMovingAverageStrategy(BaseStrategy):

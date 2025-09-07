@@ -3,7 +3,7 @@ import logging
 
 from ...utils.technical_indicators import TechnicalIndicators
 
-logger = logging.getLogger('technical_strategy')
+logger = logging.getLogger(__name__)
 
 
 class TechnicalStrategy(BaseStrategy):

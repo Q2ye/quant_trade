@@ -10,7 +10,7 @@ from quantCore.database.db_connector import DbConnector
 from quantCore.engineManager.strategy_engine import StrategyEngine
 from quantCore.vnpyAdapters import CtaTemplate
 
-logger = logging.getLogger('backtest_engine')
+logger = logging.getLogger(__name__)
 
 
 class BacktestEngine(StrategyEngine):

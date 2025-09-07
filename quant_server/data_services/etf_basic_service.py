@@ -1,5 +1,5 @@
 # etf_basic_service.py (completed)
-from quant_server.db.base_service import BaseService
+from quant_server.data_services.base_service import BaseService
 from quant_server.db.models.models import EtfBasic
 
 
@@ -59,3 +59,35 @@ class EtfBasicService(BaseService):
         """按交易所获取ETF"""
         with self.session_scope() as session:
             return session.query(EtfBasic).filter_by(exchange=exchange).all()
+
+    def batch_create(self, data_list: list) -> list:
+        """批量创建ETF记录"""
+        if not data_list:
+            return []
+
+        results = []
+        with self.session_scope() as session:
+            for data in data_list:
+                try:
+                    # 检查是否已存在相同记录
+                    existing = session.query(EtfBasic).filter_by(
+                        ts_code=data.get('ts_code')
+                    ).first()
+
+                    if existing:
+                        # 更新现有记录
+                        for key, value in data.items():
+                            setattr(existing, key, value)
+                        results.append(existing)
+                    else:
+                        # 创建新记录
+                        etf = EtfBasic(**data)
+                        session.add(etf)
+                        results.append(etf)
+                except Exception as e:
+                    # 记录错误但继续处理其他数据
+                    print(f"创建ETF记录失败: {e}, 数据: {data}")
+                    continue
+
+            session.flush()
+        return results

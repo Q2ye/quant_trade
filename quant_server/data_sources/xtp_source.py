@@ -7,7 +7,7 @@ class XtpSource(BaseDataSource):
     """迅投(XTP)数据源实现"""
 
     def __init__(self, config: dict):
-        super().__init__(config)
+        super().__init__()
         self.server = config.get('server', '115.231.218.73')
         self.port = config.get('port', 55310)
         self.api = TdxHq_API()

@@ -6,7 +6,7 @@ import pandas as pd
 
 from quant_server.core.strategy_engine.event_engine import Event
 
-logger = logging.getLogger('base_strategy')
+logger = logging.getLogger(__name__)
 
 
 class BaseStrategy:

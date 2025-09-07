@@ -13,7 +13,7 @@ import logging
 from typing import List, Dict
 
 # 配置日志
-logger = logging.getLogger('notification')
+logger = logging.getLogger(__name__)
 
 
 class NotificationError(Exception):

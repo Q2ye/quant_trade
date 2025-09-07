@@ -6,7 +6,7 @@ from quantCore.engineManager.event_engine import Event, EventEngine
 from quantCore.engineManager.strategy_engine import StrategyEngine
 from quantCore.vnpyAdapters import CtaTemplate, OrderData, Exchange, Status
 
-logger = logging.getLogger('cta_engine')
+logger = logging.getLogger(__name__)
 
 
 class CtaEngine(StrategyEngine):

@@ -1,7 +1,7 @@
 # stock_minutes_service.py (completed)
 from datetime import timedelta
 
-from quant_server.db.base_service import BaseService
+from quant_server.data_services.base_service import BaseService
 from quant_server.db.models.models import StockMinutes
 
 

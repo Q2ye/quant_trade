@@ -6,12 +6,11 @@ from vnpy.trader.object import BarData
 
 from quantCore.engineManager.strategy_engine import StrategyEngine
 from quantCore.strategies.base_strategy import BaseStrategy
-from quantCore.database.data_sources.data_fetcher import DataFetcher
 import pandas as pd
 import logging
 import time
 
-logger = logging.getLogger('alpha_engine')
+logger = logging.getLogger(__name__)
 
 
 class AlphaEngine(StrategyEngine):

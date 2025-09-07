@@ -2,7 +2,7 @@ from .base_strategy import BaseStrategy
 import pandas as pd
 import logging
 
-logger = logging.getLogger('growth_strategy')
+logger = logging.getLogger(__name__)
 
 
 class GrowthStrategy(BaseStrategy):

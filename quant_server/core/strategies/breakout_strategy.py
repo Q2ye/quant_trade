@@ -2,7 +2,7 @@ import logging
 
 from quant_server.core.strategies.base_strategy import BaseStrategy
 
-logger = logging.getLogger('breakout_strategy')
+logger = logging.getLogger(__name__)
 
 
 class BreakoutStrategy(BaseStrategy):

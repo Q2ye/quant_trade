@@ -1,5 +1,5 @@
 # stk_manager_service.py (completed)
-from quant_server.db.base_service import BaseService
+from quant_server.data_services.base_service import BaseService
 from quant_server.db.models.models import StkManager
 
 
@@ -65,3 +65,38 @@ class StkManagerService(BaseService):
         """获取所有管理层记录"""
         with self.session_scope() as session:
             return session.query(StkManager).all()
+
+    def batch_create(self, data_list: list) -> list:
+        """批量创建管理层记录"""
+        if not data_list:
+            return []
+
+        results = []
+        with self.session_scope() as session:
+            for data in data_list:
+                try:
+                    # 检查是否已存在相同记录
+                    existing = session.query(StkManager).filter_by(
+                        ts_code=data.get('ts_code'),
+                        ann_date=data.get('ann_date'),
+                        name=data.get('name'),
+                        title=data.get('title')
+                    ).first()
+
+                    if existing:
+                        # 更新现有记录
+                        for key, value in data.items():
+                            setattr(existing, key, value)
+                        results.append(existing)
+                    else:
+                        # 创建新记录
+                        manager = StkManager(**data)
+                        session.add(manager)
+                        results.append(manager)
+                except Exception as e:
+                    # 记录错误但继续处理其他数据
+                    print(f"创建管理层记录失败: {e}, 数据: {data}")
+                    continue
+
+            session.flush()
+        return results

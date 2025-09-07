@@ -4,7 +4,7 @@ import logging
 # 引入统一通知工具
 from ..utils.notification import send_signal_notification
 
-logger = logging.getLogger('signal_manager')
+logger = logging.getLogger(__name__)
 
 
 def _send_notification(signal: dict):
