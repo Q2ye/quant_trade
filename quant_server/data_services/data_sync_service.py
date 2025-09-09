@@ -11,7 +11,6 @@ from sqlalchemy.sql.functions import random
 
 from quant_server.data_services.etf_basic_service import EtfBasicService
 from quant_server.data_services.stock_daily_basic_service import StockDailyBasicService
-from quant_server.data_services.trade_calendar_service import TradeCalendarService
 from quant_server.data_sources.tushare_source import TushareSource
 from quant_server.db import get_db_session
 from quant_server.data_services.etf_daily_service import EtfDailyService
@@ -192,7 +191,6 @@ class DataSyncService:
         self.etf_basic_service = EtfBasicService(self.session)
         self.etf_daily_service = EtfDailyService(self.session)
         self.fund_adj_factor_service = FundAdjFactorService(self.session)
-        self.trade_calendar_service = TradeCalendarService(self.session)
 
         # 线程池执行器，用于并行处理
         self.executor = ThreadPoolExecutor(max_workers=5)

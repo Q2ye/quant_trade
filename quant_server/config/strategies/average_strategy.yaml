@@ -1,8 +1,0 @@
-# config/strategies/average_strategy.yaml
-name: "双均线策略"
-type: "vnpy_cta"
-module: "quantCore.strategies.average_strategy.DualMovingAverageStrategy"
-vt_symbol: "000001.SSE"
-params:
-  fast_window: 5
-  slow_window: 20

@@ -1,8 +1,0 @@
-name: "成长选股策略"
-module: "quantCore.strategies.growth_strategy.GrowthStrategy"
-type: "custom"
-params:
-  revenue_growth_min: 0.15   # 营收增长率最低15%
-  profit_growth_min: 0.20    # 利润增长率最低20%
-  roe_min: 0.15              # ROE最低15%
-  debt_ratio_max: 0.60       # 资产负债率最高60%

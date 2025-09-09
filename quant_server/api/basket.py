@@ -1,4 +1,5 @@
 # quant_server/api/basket.py
+# 篮子接口
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from datetime import date
 
@@ -6,7 +7,6 @@ from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
 router = APIRouter(prefix="/api/basket", tags=["basket"])
-
 
 @router.get("")
 async def get_baskets(
@@ -28,7 +28,6 @@ async def get_baskets(
         }
     }
 
-
 @router.post("")
 async def create_basket(
         basket_data: dict = Body(...),
@@ -37,7 +36,6 @@ async def create_basket(
     """创建新篮子"""
     basket_id = data_service.baskets.create(basket_data)
     return {"id": basket_id, "name": basket_data.get("name", "New Basket")}
-
 
 @router.get("/{id}")
 async def get_basket(
@@ -56,7 +54,6 @@ async def get_basket(
         "items": items
     }
 
-
 @router.put("/{id}")
 async def update_basket(
         id: str,
@@ -70,7 +67,6 @@ async def update_basket(
 
     return {"updated": True, "id": id}
 
-
 @router.delete("/{id}")
 async def delete_basket(
         id: str,
@@ -82,7 +78,6 @@ async def delete_basket(
         raise HTTPException(status_code=404, detail="Basket not found")
 
     return {"deleted": True, "id": id}
-
 
 @router.get("/{id}/performance")
 async def get_basket_performance(

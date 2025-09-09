@@ -1,9 +1,0 @@
-name: "技术分析策略"
-module: "quantCore.strategies.technical_strategy.TechnicalStrategy"
-type: "custom"
-params:
-  rsi_period: 14
-  macd_fast: 12
-  macd_slow: 26
-  macd_signal: 9
-  volume_multiplier: 1.5

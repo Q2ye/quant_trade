@@ -1,6 +1,6 @@
 # stock_weekly_service.py (completed)
 from quant_server.data_services.base_service import BaseService
-from quant_server.db.models.models import StockWeekly
+from quant_server.db.models.data_models import StockWeekly
 
 
 class StockWeeklyService(BaseService):

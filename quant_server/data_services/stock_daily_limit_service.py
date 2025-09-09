@@ -1,6 +1,6 @@
 # stock_daily_limit_service.py (completed)
 from quant_server.data_services.base_service import BaseService
-from quant_server.db.models.models import StockDailyLimit
+from quant_server.db.models.data_models import StockDailyLimit
 
 
 class StockDailyLimitService(BaseService):

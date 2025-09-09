@@ -1,6 +1,6 @@
 # stk_manager_service.py (completed)
 from quant_server.data_services.base_service import BaseService
-from quant_server.db.models.models import StkManager
+from quant_server.db.models.data_models import StkManager
 
 
 class StkManagerService(BaseService):

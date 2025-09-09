@@ -1,7 +1,0 @@
-name: "RSI均值回归策略"
-module: "quantCore.strategies.rsi_eversion_strategy.RSIMeanReversionStrategy"
-type: "custom"
-params:
-  rsi_period: 14
-  oversold: 30
-  overbought: 70

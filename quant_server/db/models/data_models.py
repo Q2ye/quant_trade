@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime, timezone
 
-Base = declarative_base()
+from quant_server.db.models.base import Base
 
 
 class StockBasic(Base):
@@ -28,7 +28,7 @@ class StockBasic(Base):
     act_name = Column(String(50))
     act_ent_type = Column(String(50))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     company = relationship("StockCompany", back_populates="stock", uselist=False)
@@ -60,7 +60,7 @@ class StockCompany(Base):
     main_business = Column(Text)
     business_scope = Column(Text)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic", back_populates="company")
@@ -85,7 +85,7 @@ class StkManager(Base):
     end_date = Column(DateTime)
     resume = Column(Text)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     company = relationship("StockCompany", back_populates="managers")
@@ -103,7 +103,7 @@ class StkReward(Base):
     reward = Column(Numeric(18, 2), nullable=False)
     hold_vol = Column(BigInteger, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     manager = relationship("StkManager", back_populates="rewards")
@@ -126,7 +126,7 @@ class StockDaily(Base):
     vol = Column(BigInteger, nullable=False)
     amount = Column(Numeric(14, 4), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic", back_populates="daily_data")
@@ -174,7 +174,7 @@ class StockWeekly(Base):
     week_start = Column(DateTime)
     week_end = Column(DateTime)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic")
@@ -199,7 +199,7 @@ class StockMonthly(Base):
     month_start = Column(DateTime)
     month_end = Column(DateTime)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic")
@@ -227,7 +227,7 @@ class StockAdjustedPrices(Base):
     ma_values = Column(Text)  # JSON格式
     adj_factor = Column(Numeric(18, 10), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic")
@@ -242,7 +242,7 @@ class StockAdjFactor(Base):
     trade_date = Column(DateTime, nullable=False)
     adj_factor = Column(Numeric(18, 10), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     stock = relationship("StockBasic", back_populates="adj_factors")
@@ -273,7 +273,7 @@ class StockDailyBasic(Base):
     total_mv = Column(Numeric(18, 4), nullable=False)
     circ_mv = Column(Numeric(18, 4), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     daily = relationship("StockDaily", back_populates="daily_basic")
@@ -294,7 +294,7 @@ class StockDailyLimit(Base):
     down_percent = Column(Numeric(5, 2))
     price_range = Column(Numeric(9, 4))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     daily = relationship("StockDaily", back_populates="daily_limit")
@@ -330,7 +330,7 @@ class StockMoneyflow(Base):
     buy_ratio = Column(Numeric(8, 4))
     large_net_ratio = Column(Numeric(8, 4))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # 关联关系
     daily = relationship("StockDaily", back_populates="moneyflow")
@@ -411,61 +411,3 @@ class FundAdjFactor(Base):
 
     # 关联关系
     etf = relationship("EtfBasic", back_populates="adj_factors")
-
-
-class TradeCalendar(Base):
-    """交易日历表"""
-    __tablename__ = 'trade_calendar'
-
-    exchange = Column(String(10), primary_key=True)
-    cal_date = Column(DateTime, primary_key=True)
-    is_open = Column(Boolean, nullable=False)
-    pretrade_date = Column(DateTime)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
-
-
-class StockSignal(Base):
-    """交易信号表"""
-    __tablename__ = 'stock_signals'
-
-    id = Column(String, primary_key=True)  # 日期+策略名+股票代码
-    strategy = Column(String, nullable=False)
-    ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
-    signal_type = Column(String(20), nullable=False)  # buy/sell/hold
-    signal_time = Column(DateTime, nullable=False)
-    reason = Column(Text)
-    score = Column(Float)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    # 关联关系
-    stock = relationship("StockBasic")
-
-
-class Basket(Base):
-    """交易篮子表"""
-    __tablename__ = 'baskets'
-
-    id = Column(String, primary_key=True)
-    name = Column(String(100), nullable=False)
-    description = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),onupdate=lambda: datetime.now(timezone.utc))
-
-    # 关联关系
-    items = relationship("BasketItem", back_populates="basket")
-
-
-class BasketItem(Base):
-    """篮子成分表"""
-    __tablename__ = 'basket_items'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    basket_id = Column(String, ForeignKey('baskets.id'), nullable=False)
-    ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False)
-    weight = Column(Float, default=0.0)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    # 关联关系
-    basket = relationship("Basket", back_populates="items")
-    stock = relationship("StockBasic")

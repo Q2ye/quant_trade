@@ -1,9 +1,0 @@
-name: "AI选股策略"
-module: "quantCore.strategies.ai_strategy.AIStrategy"
-type: "custom"
-params:
-  model_type: "random_forest"   # 模型类型: random_forest, lstm等
-  features: ["rsi", "macd", "boll"] # 特征列表
-  target: "future_return"        # 目标变量
-  model_path: "models/ai_model.pkl" # 模型保存路径
-  prediction_threshold: 0.7      # 预测阈值

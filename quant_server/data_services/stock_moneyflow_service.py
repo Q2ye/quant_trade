@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import desc, cast, String
 from quant_server.data_services.base_service import BaseService
-from quant_server.db.models.models import StockMoneyflow
+from quant_server.db.models.data_models import StockMoneyflow
 
 
 class StockMoneyflowService(BaseService):

@@ -1,25 +1,21 @@
 # main.py
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
+
+from quant_server.core.strategy_engine.main_engine import MainEngine
+from quant_server.api import api_router
+from quant_server.db.session import init_db, close_db
+
 import uvicorn
 import os
 import logging
 import signal
 import sys
-
-from quant_server.data_services import init_services
-
-# 确保正确导入 api_router
-try:
-    from quant_server.api import api_router
-except ImportError:
-    # 如果导入失败，尝试相对导入
-    from .api import api_router
-
-from quant_server.db.session import init_db, close_db
+import asyncio
+from datetime import datetime
 
 # 配置日志
 logging.basicConfig(
@@ -29,99 +25,150 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# 生命周期管理器
-@asynccontextmanager
-async def app_lifespan(app: FastAPI):
-    # 启动事件
-    logger.info("正在启动量化交易平台服务...")
+class QuantServer:
+    """量化交易平台主服务器类"""
 
-    if not init_db():
-        logger.error("数据库初始化失败")
-        raise RuntimeError("数据库初始化失败")
+    def __init__(self):
+        self.app = None
+        self.main_engine = None
+        self._setup_signal_handlers()
 
-    if not init_services():
-        logger.error("服务初始化失败")
-        raise RuntimeError("服务初始化失败")
+    def _setup_signal_handlers(self):
+        """设置信号处理"""
+        signal.signal(signal.SIGINT, self._handle_shutdown)
+        signal.signal(signal.SIGTERM, self._handle_shutdown)
 
-    logger.info("服务启动完成")
+    def _handle_shutdown(self, signum, frame):
+        """处理关闭信号"""
+        logger.info("接收到关闭信号，正在优雅关闭服务...")
+        if self.main_engine:
+            asyncio.create_task(self.main_engine.shutdown())
+        sys.exit(0)
 
-    yield  # 应用程序运行期间
+    @asynccontextmanager
+    async def app_lifespan(self, app: FastAPI):
+        """应用生命周期管理"""
+        # 启动事件
+        logger.info("正在启动量化交易平台服务...")
 
-    # 关闭事件
-    logger.info("正在关闭量化交易平台服务...")
-    close_db()
-    logger.info("服务已关闭")
+        # 初始化数据库
+        if not init_db():
+            logger.error("数据库初始化失败")
+            raise RuntimeError("数据库初始化失败")
+
+        # 初始化主引擎
+        try:
+            self.main_engine = MainEngine()
+            await self.main_engine.initialize()
+            app.state.main_engine = self.main_engine
+            logger.info("主引擎初始化成功")
+        except Exception as e:
+            logger.error(f"主引擎初始化失败: {str(e)}")
+            raise RuntimeError(f"主引擎初始化失败: {str(e)}")
+
+        logger.info("服务启动完成")
+
+        yield  # 应用程序运行期间
+
+        # 关闭事件
+        logger.info("正在关闭量化交易平台服务...")
+
+        # 关闭主引擎
+        if self.main_engine:
+            await self.main_engine.shutdown()
+
+        # 关闭数据库
+        close_db()
+        logger.info("服务已关闭")
+
+    def create_app(self) -> FastAPI:
+        """创建FastAPI应用实例"""
+        # 创建FastAPI应用
+        app = FastAPI(
+            title="A股量化交易平台",
+            description="基于FastAPI的A股量化交易平台后端API",
+            version="1.0.0",
+            lifespan=self.app_lifespan,
+            docs_url=None,  # 禁用默认的/docs路由
+            redoc_url=None,  # 禁用默认的/redoc路由
+        )
+
+        # 挂载本地静态文件目录
+        app.mount("/static", StaticFiles(directory="static"), name="static")
+
+        # 添加CORS中间件
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # 包含API路由
+        app.include_router(api_router)
+
+        # 主引擎依赖项
+        async def get_main_engine(request: Request) -> MainEngine:
+            return request.app.state.main_engine
+
+        # 根路由
+        @app.get("/")
+        async def root():
+            return {"message": "A股量化交易平台API服务运行中", "timestamp": datetime.now().isoformat()}
+
+        # 健康检查端点
+        @app.get("/health")
+        async def health_check(main_engine: MainEngine = Depends(get_main_engine)):
+            return {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "engines": list(main_engine.engines.keys()),
+                "strategies": list(main_engine.strategies.keys())
+            }
+
+        # 自定义Swagger UI路由
+        @app.get("/docs", include_in_schema=False)
+        async def custom_swagger_ui_html():
+            return get_swagger_ui_html(
+                openapi_url="/openapi.json",
+                title="A股量化交易平台 - API文档",
+                swagger_js_url="/static/swagger/swagger-ui-bundle.js",
+                swagger_css_url="/static/swagger/swagger-ui.css",
+            )
+
+        self.app = app
+        return app
+
+    def run(self, host: str = "0.0.0.0", port: int = 8080):
+        """运行服务器"""
+        app_instance = self.create_app()
+
+        try:
+            logger.info(f"启动服务器在 https://{host}:{port}")
+            uvicorn.run(
+                app_instance,
+                host=host,
+                port=port,
+                log_config=None,
+                access_log=True,
+                timeout_keep_alive=60
+            )
+        except Exception as e:
+            logger.error(f"服务器启动失败: {e}")
+            sys.exit(1)
 
 
-# 创建 FastAPI 应用实例
-fastapi_app = FastAPI(
-    title="A股量化交易平台",
-    description="基于FastAPI的A股量化交易平台后端API",
-    version="1.0.0",
-    lifespan=app_lifespan,
-    docs_url=None,  # 禁用默认的/docs路由
-    redoc_url=None,  # 禁用默认的/redoc路由
-)
+def main():
+    """主函数"""
+    # 从环境变量获取配置
+    host = str(os.getenv("APP_HOST", "0.0.0.0"))
+    port = int(os.getenv("APP_PORT", 8080))
 
-# 挂载本地静态文件目录
-fastapi_app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-# 自定义Swagger UI路由
-@fastapi_app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title="A股量化交易平台 - API文档",
-        swagger_js_url="/static/swagger/swagger-ui-bundle.js",
-        swagger_css_url="/static/swagger/swagger-ui.css",
-    )
-
-
-# 添加CORS中间件
-fastapi_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 包含API路由
-fastapi_app.include_router(api_router)
-
-
-@fastapi_app.get("/")
-async def root():
-    return {"message": "A股量化交易平台API服务运行中"}
-
-
-# 优雅关闭处理
-def handle_shutdown(signal, frame):
-    logger.info("接收到关闭信号，正在优雅关闭服务...")
-    sys.exit(0)
+    # 创建并运行服务器
+    server = QuantServer()
+    server.run(host=host, port=port)
 
 
 if __name__ == "__main__":
-    # 注册信号处理
-    signal.signal(signal.SIGINT, handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
-
-    # 从环境变量获取端口，默认8000
-    port = int(os.getenv("APP_PORT", 8080))
-    host = str(os.getenv("APP_HOST", "0.0.0.0"))
-
-    try:
-        logger.info(f"启动服务器在 http://{host}:{port}")
-        uvicorn.run(
-            fastapi_app,
-            host=host,
-            port=port,
-            # 添加更多配置以提高稳定性
-            log_config=None,
-            access_log=True,
-            timeout_keep_alive=60
-        )
-    except Exception as e:
-        logger.error(f"服务器启动失败: {e}")
-        sys.exit(1)
+    main()
