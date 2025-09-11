@@ -216,11 +216,3 @@ class CtaEngine(StrategyEngine):
         for strategy in self._strategies.values():
             if hasattr(strategy, 'vt_symbol') and strategy.vt_symbol == trade.symbol:
                 strategy.on_trade(trade)
-
-    def run_backtest(self, strategy_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """运行回测（委托给回测引擎）"""
-        backtest_engine = self.main_engine.get_engine('backtest')
-        if backtest_engine is None:
-            logger.error("回测引擎未加载")
-            return {}
-        return backtest_engine.run_backtest(strategy_name, config)

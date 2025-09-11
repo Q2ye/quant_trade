@@ -261,35 +261,6 @@ class AlphaEngine(StrategyEngine):
                 except Exception as e:
                     logger.error(f"策略 {strategy.name} 处理数据失败: {str(e)}", exc_info=True)
 
-    def run_backtest(self, strategy_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
-        """运行回测（委托给主引擎的回测引擎）"""
-        if strategy_name not in self._strategies:
-            logger.error(f"策略不存在: {strategy_name}")
-            return {}
-
-        # 通过主引擎获取回测引擎
-        backtest_engine = self.main_engine.get_engine('backtest')
-        if backtest_engine is None:
-            logger.error("回测引擎未加载")
-            return {}
-
-        # 准备回测配置
-        strategy = self._strategies[strategy_name]
-        symbols = getattr(strategy, 'symbols', [])
-
-        backtest_config = {
-            'strategy': {
-                'name': strategy_name,
-                'class': f"{strategy.__class__.__module__}.{strategy.__class__.__name__}"
-            },
-            'start_date': config.get('start_date'),
-            'end_date': config.get('end_date'),
-            'initial_capital': config.get('initial_capital', 1000000),
-            'symbols': symbols
-        }
-
-        # 调用回测引擎
-        return backtest_engine.run_backtest(strategy_name, backtest_config)
 
     def process_tick_event(self, event: Event):
         """处理Tick事件"""

@@ -57,3 +57,6 @@ class StrategyEngine(ABC):
     async def initialize(self):
         """初始化引擎"""
         pass
+
+    async def   run_backtest(self, param, config):
+        pass

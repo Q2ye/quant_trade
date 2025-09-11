@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolean, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolean, Text, ForeignKey, JSON, \
+    UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 

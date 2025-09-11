@@ -216,3 +216,24 @@ class StrategyManagerEngine(StrategyEngine):
             ))
         else:
             logger.warning(f"引擎不存在: {engine_type}")
+
+
+    async def run_backtest(self, strategy_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """执行回测任务"""
+        if strategy_name not in self.strategies:
+            raise ValueError(f"策略不存在: {strategy_name}")
+
+        # 获取回测引擎
+        backtest_engine = self.main_engine.get_engine("backtest")
+
+        # 将策略添加到回测引擎
+        strategy = self.strategies[strategy_name]
+        backtest_engine.add_strategy(strategy)
+
+        # 执行回测
+        result = backtest_engine.run_backtest(strategy_name, config)
+
+        # 回测完成后从回测引擎移除策略
+        backtest_engine.remove_strategy(strategy_name)
+
+        return result

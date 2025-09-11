@@ -17,6 +17,7 @@ class BacktestEngine(StrategyEngine):
     def __init__(self, main_engine, event_engine: EventEngine):
         super().__init__(main_engine, event_engine)
 
+        self.strategy = None
         session = get_db_session()
         self.data_service = DataService(session)
 

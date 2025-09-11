@@ -68,7 +68,7 @@ async def run_backtest(
             name=backtest_config.name or f"回测任务-{backtest_config.strategy_name}",
             description=backtest_config.description,
             status=BacktestStatus.PENDING,
-            config=backtest_config.dict(),
+            config=backtest_config.model_dump(),
             created_at=datetime.datetime.now(),
         )
 
@@ -80,7 +80,7 @@ async def run_backtest(
             execute_backtest_task,
             task_id,
             main_engine,
-            backtest_config.dict(),
+            backtest_config.model_dump(),
             db
         )
 
@@ -178,9 +178,9 @@ async def get_backtest_equity(
 
         return [{
             "trade_date": curve.trade_date,
-            "equity": float(curve.equity),
-            "cash": float(curve.cash),
-            "market_value": float(curve.market_value)
+            "equity": curve.equity,
+            "cash": curve.cash,
+            "market_value": curve.market_value
         } for curve in equity_data]
 
     except HTTPException:
@@ -215,11 +215,11 @@ async def get_backtest_trades(
             "trade_time": trade.trade_time,
             "ts_code": trade.ts_code,
             "direction": trade.direction,
-            "price": float(trade.price),
+            "price": trade.price,
             "volume": trade.volume,
-            "value": float(trade.value),
-            "commission": float(trade.commission),
-            "tax": float(trade.tax)
+            "value": trade.value,
+            "commission": trade.commission,
+            "tax": trade.tax
         } for trade in trades]
 
     except HTTPException:
@@ -256,8 +256,8 @@ async def get_backtest_positions(
             "trade_date": pos.trade_date,
             "ts_code": pos.ts_code,
             "volume": pos.volume,
-            "cost_price": float(pos.cost_price),
-            "market_value": float(pos.market_value)
+            "cost_price": pos.cost_price,
+            "market_value": pos.market_value
         } for pos in positions]
 
     except HTTPException:
@@ -314,9 +314,11 @@ async def execute_backtest_task(
         task.started_at = time.time()
         db.commit()
 
-        # 执行回测
-        strategy_name = config.get("strategy_name")
-        result = main_engine.run_backtest(strategy_name, config)
+        strategy_manager = main_engine.get_engine("strategy_manager")
+        result = await strategy_manager.run_backtest(
+            config["strategy_name"],
+            config
+        )
 
         # 存储结果
         task.status = BacktestStatus.COMPLETED
