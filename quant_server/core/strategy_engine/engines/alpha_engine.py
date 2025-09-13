@@ -13,6 +13,27 @@ from quant_server.db.data_service import DataService
 
 logger = logging.getLogger(__name__)
 
+
+def _is_trading_time(current_time: datetime) -> bool:
+    """检查当前是否在交易时间内（简化版）"""
+    # 周一至周五，上午9:30-11:30，下午13:00-15:00
+    if current_time.weekday() >= 5:  # 周六日
+        return False
+
+    hour = current_time.hour
+    minute = current_time.minute
+
+    # 上午交易时段 (9:30-11:30)
+    if (hour == 9 and minute >= 30) or (hour == 10) or (hour == 11 and minute < 30):
+        return True
+
+    # 下午交易时段 (13:00-15:00)
+    if 13 <= hour < 15:
+        return True
+
+    return False
+
+
 class AlphaEngine(StrategyEngine):
     """AI策略引擎（统一接口版）"""
 
@@ -101,7 +122,7 @@ class AlphaEngine(StrategyEngine):
                 current_time = datetime.now()
 
                 # 检查是否在交易时间
-                if self._is_trading_time(current_time):
+                if _is_trading_time(current_time):
                     # 获取实时数据
                     realtime_data = self._fetch_realtime_data()
 
@@ -200,25 +221,6 @@ class AlphaEngine(StrategyEngine):
                 logger.error(f"加载 {symbol} 数据失败: {str(e)}", exc_info=True)
 
         logger.info(f"数据预加载完成，共 {len(all_symbols)} 只股票")
-
-    def _is_trading_time(self, current_time: datetime) -> bool:
-        """检查当前是否在交易时间内（简化版）"""
-        # 周一至周五，上午9:30-11:30，下午13:00-15:00
-        if current_time.weekday() >= 5:  # 周六日
-            return False
-
-        hour = current_time.hour
-        minute = current_time.minute
-
-        # 上午交易时段 (9:30-11:30)
-        if (hour == 9 and minute >= 30) or (hour == 10) or (hour == 11 and minute < 30):
-            return True
-
-        # 下午交易时段 (13:00-15:00)
-        if 13 <= hour < 15:
-            return True
-
-        return False
 
     def _fetch_realtime_data(self) -> Dict[str, BarData]:
         """获取实时数据"""

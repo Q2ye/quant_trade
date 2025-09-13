@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
 from pydantic import BaseModel, Field
 import logging
 
-from quant_server.data_services.data_sync_service import DataSyncService
+from quant_server.db.services.data_sync_service import DataSyncService
 
 router = APIRouter(prefix="/data-sync", tags=["数据同步"])
 

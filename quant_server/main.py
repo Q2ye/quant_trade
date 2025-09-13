@@ -1,12 +1,14 @@
 # main.py
+import types
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 
+from quant_server.api import router
 from quant_server.core.strategy_engine.main_engine import MainEngine
-from quant_server.api import api_router
 from quant_server.db.session import init_db, close_db
 
 import uvicorn
@@ -38,7 +40,7 @@ class QuantServer:
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
 
-    def _handle_shutdown(self, signum, frame):
+    def _handle_shutdown(self, signum: int, frame: types.FrameType = None):
         """处理关闭信号"""
         logger.info("接收到关闭信号，正在优雅关闭服务...")
         if self.main_engine:
@@ -86,7 +88,7 @@ class QuantServer:
         # 创建FastAPI应用
         app = FastAPI(
             title="A股量化交易平台",
-            description="基于FastAPI的A股量化交易平台后端API",
+            description="基于FastAPI的量化交易平台后端API",
             version="1.0.0",
             lifespan=self.app_lifespan,
             docs_url=None,  # 禁用默认的/docs路由
@@ -106,7 +108,7 @@ class QuantServer:
         )
 
         # 包含API路由
-        app.include_router(api_router)
+        app.include_router(router)
 
         # 主引擎依赖项
         async def get_main_engine(request: Request) -> MainEngine:
@@ -115,7 +117,7 @@ class QuantServer:
         # 根路由
         @app.get("/")
         async def root():
-            return {"message": "A股量化交易平台API服务运行中", "timestamp": datetime.now().isoformat()}
+            return {"message": "量化交易平台API服务运行中", "timestamp": datetime.now().isoformat()}
 
         # 健康检查端点
         @app.get("/health")
@@ -124,7 +126,7 @@ class QuantServer:
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
                 "engines": list(main_engine.engines.keys()),
-                "strategies": list(main_engine.strategies.keys())
+                "strategies": list(main_engine.get_engine("strategy_manager").strategies.keys())
             }
 
         # 自定义Swagger UI路由

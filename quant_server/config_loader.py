@@ -30,7 +30,7 @@ class Config:
         }
 
         # 数据源配置
-        self._config['data_sources'] = {
+        self._config['sources'] = {
             'tushare': {
                 'enabled': os.getenv('TUSHARE_ENABLED', 'true').lower() == 'true',
                 'token': os.getenv('TUSHARE_TOKEN', ''),

@@ -1,13 +1,12 @@
 # db_connector.py
 import logging
 import os
-from typing import Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-from quant_server.db.models.models import Base
+from quant_server.db.models.base import Base
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,6 @@ class DbConnector:
     def __init__(self):
         """
         初始化数据库连接器
-        :param config: 数据库配置字典，如果为None则从环境变量读取
         """
         self.config = _get_config_from_env()
         self.engine = None

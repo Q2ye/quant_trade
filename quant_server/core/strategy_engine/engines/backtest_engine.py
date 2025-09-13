@@ -11,6 +11,13 @@ from quant_server.db.data_service import DataService
 
 logger = logging.getLogger(__name__)
 
+
+def process_signal(event: Event):
+    """处理信号事件"""
+    signal = event.data
+    # ... 根据信号执行买卖操作 ...
+
+
 class BacktestEngine(StrategyEngine):
     """统一回测引擎"""
 
@@ -34,7 +41,7 @@ class BacktestEngine(StrategyEngine):
         self.start_date = None
         self.end_date = None
 
-        event_engine.register("signal", self.process_signal)
+        event_engine.register("signal", process_signal)
         logger.info("回测引擎初始化完成")
 
     def add_strategy(self, strategy: Any) -> Any:
@@ -183,11 +190,6 @@ class BacktestEngine(StrategyEngine):
         results = self._generate_results()
         logger.info(f"回测完成，最终净值: {results.get('total_value', 0):.2f}")
         return results
-
-    def process_signal(self, event: Event):
-        """处理信号事件"""
-        signal = event.data
-        # ... 根据信号执行买卖操作 ...
 
     def _record_daily_equity(self, daily_bars: Dict[str, BarData]):
         """记录每日净值"""

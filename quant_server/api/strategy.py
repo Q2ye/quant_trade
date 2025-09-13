@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 
 from quant_server.api.dependencies import get_strategy_manager_engine
-from quant_server.models.strategy import StrategyResponse, StrategyCreate
+from quant_server.api.strategy_models import StrategyResponse, StrategyCreate
 
 from quant_server.core.strategy_engine.engines.strategy_manager_engine import StrategyManagerEngine
 
@@ -16,6 +16,9 @@ async def get_strategies(
     """获取所有策略"""
     return list(strategy_manager.get_all_strategies().values())
 
+
+
+
 @router.post("", response_model=StrategyResponse)
 async def create_strategy(
     strategy_data: StrategyCreate,
@@ -23,7 +26,7 @@ async def create_strategy(
 ):
     """创建新策略"""
     try:
-        strategy = await strategy_manager.add_strategy(strategy_data.dict())
+        strategy = await strategy_manager.add_strategy(strategy_data.model_dump())
         return strategy
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"创建策略失败: {str(e)}")

@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "A股量化交易平台",
-    "description": "专业级A股量化交易策略开发与执行平台"
+    "title": "量化交易平台",
+    "description": "专业级量化交易策略开发与执行平台"
   },
   "user": {
     "login": "登录",
@@ -35,7 +35,7 @@
   },
   "home": {
     "title": "首页",
-    "welcome_message": "欢迎使用A股量化交易平台",
+    "welcome_message": "欢迎使用量化交易平台",
     "features": "功能列表",
     "dashboard": "交易驾驶舱"
   },

@@ -1,33 +1,34 @@
 import logging
+
 from sqlalchemy.orm import Session
 
-from quant_server.data_services.etf_basic_service import EtfBasicService
-from quant_server.data_services.etf_daily_service import EtfDailyService
-from quant_server.data_services.etf_minute_service import EtfMinuteService
-from quant_server.data_services.fund_adjFactor_service import FundAdjFactorService
-from quant_server.data_services.stk_manager_service import StkManagerService
-from quant_server.data_services.stk_reward_service import StkRewardService
-from quant_server.data_services.stock_adjFactor_aervice import StockAdjFactorService
-from quant_server.data_services.stock_adjustedPrices_service import StockAdjustedPricesService
-from quant_server.data_services.stock_basic_service import StockBasicService
-from quant_server.data_services.stock_company_service import StockCompanyService
-from quant_server.data_services.stock_daily_basic_service import StockDailyBasicService
-from quant_server.data_services.stock_daily_limit_service import StockDailyLimitService
-from quant_server.data_services.stock_daily_service import StockDailyService
-from quant_server.data_services.stock_minutes_service import StockMinutesService
-from quant_server.data_services.stock_moneyflow_service import StockMoneyflowService
-from quant_server.data_services.stock_monthly_service import StockMonthlyService
-from quant_server.data_services.stock_weekly_service import StockWeeklyService
+from .services.etf_basic_service import EtfBasicService
+from .services.etf_daily_service import EtfDailyService
+from .services.etf_minute_service import EtfMinuteService
+from .services.fund_adjFactor_service import FundAdjFactorService
+from .services.stk_manager_service import StkManagerService
+from .services.stk_reward_service import StkRewardService
+from .services.stock_adjFactor_service import StockAdjFactorService
+from .services.stock_adjustedPrices_service import StockAdjustedPricesService
+from .services.stock_basic_service import StockBasicService
+from .services.stock_company_service import StockCompanyService
+from .services.stock_daily_basic_service import StockDailyBasicService
+from .services.stock_daily_limit_service import StockDailyLimitService
+from .services.stock_daily_service import StockDailyService
+from .services.stock_minutes_service import StockMinutesService
+from .services.stock_moneyflow_service import StockMoneyflowService
+from .services.stock_monthly_service import StockMonthlyService
+from .services.stock_weekly_service import StockWeeklyService
 
-from quant_server.data_services.sys_user_service import SysUserService, SysPermissionService
-from quant_server.data_services.strategy_service import StrategyService, StrategyRunService, StrategyDailyPerformanceService
-from quant_server.data_services.trading_service import OrderService, TradeService, PositionService
-from quant_server.data_services.risk_service import RiskRuleService, RiskEventService
-from quant_server.data_services.performance_service import AccountDailyPerformanceService
-from quant_server.data_services.basket_service import BasketService, BasketItemService
-from quant_server.data_services.data_sync_service import DataSyncService
-from quant_server.data_services.data_sync_task_service import DataSyncTaskService
-from quant_server.data_services.signal_service import SignalService
+from .services.sys_user_service import SysUserService, SysPermissionService
+from .services.strategy_service import StrategyService, StrategyRunService, StrategyDailyPerformanceService
+from .services.trading_service import OrderService, TradeService, PositionService
+from .services.risk_service import RiskRuleService, RiskEventService
+from .services.performance_service import AccountDailyPerformanceService
+from .services.basket_service import BasketService, BasketItemService
+from .services.data_sync_service import DataSyncService
+from .services.data_sync_task_service import DataSyncTaskService
+from .services.signal_service import SignalService
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,6 @@ class DataService:
         # 绩效分析服务
         self.account_daily_performance = AccountDailyPerformanceService(session)
         self.strategy_daily_performance = StrategyDailyPerformanceService(session)
-        # 交易信号记录
-        self.signal = SignalService(session)
         # 数据同步服务
         self.data_sync = DataSyncService(session)
         self.data_sync_task = DataSyncTaskService(session)
