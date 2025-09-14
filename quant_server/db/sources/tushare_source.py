@@ -139,3 +139,6 @@ class TushareSource(BaseDataSource):
         # 这里可以实现全量数据同步逻辑
         # 依次调用各个数据获取方法，并使用对应的Service保存到数据库
         pass
+
+    def get_daily_limit(self, ts_code, start_date, end_date):
+        pass

@@ -266,7 +266,6 @@ async def get_backtest_positions(
         logger.error(f"获取回测持仓快照失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取回测持仓快照失败: {str(e)}")
 
-
 @router.delete("/tasks/{task_id}")
 async def cancel_backtest_task(
         task_id: str,

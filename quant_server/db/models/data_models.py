@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey, Index, Boolean, \
+    UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
@@ -336,6 +337,51 @@ class StockMoneyflow(Base):
     stock = relationship("StockBasic", back_populates="moneyflow")
 
 
+class TradeCalendar(Base):
+    """交易所交易日历表"""
+    __tablename__ = 'trade_calendar'
+
+    exchange = Column(String(10), primary_key=True)
+    cal_date = Column(DateTime, primary_key=True)
+    is_open = Column(Boolean, nullable=False, default=False)
+    pretrade_date = Column(DateTime)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # 索引
+    __table_args__ = (
+        Index('idx_trade_calendar_cal_date', 'cal_date'),
+        Index('idx_trade_calendar_exchange', 'exchange'),
+        Index('idx_trade_calendar_is_open', 'is_open'),
+        Index('idx_trade_calendar_pretrade', 'pretrade_date'),
+    )
+
+
+class StockSTList(Base):
+    """ST股票列表历史记录表"""
+    __tablename__ = 'stock_st_list'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts_code = Column(String(20), nullable=False)
+    name = Column(String(50), nullable=False)
+    trade_date = Column(DateTime, nullable=False)
+    st_type = Column(String(10), nullable=False)
+    st_type_name = Column(String(50), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # 唯一约束
+    __table_args__ = (
+        UniqueConstraint('ts_code', 'trade_date', name='uniq_st_stock'),
+    )
+
+    # 索引
+    Index('idx_stock_st_list_ts_code', 'ts_code')
+    Index('idx_stock_st_list_trade_date', 'trade_date')
+    Index('idx_stock_st_list_type', 'st_type')
+
+
+
 class EtfIndex(Base):
     """ETF基准指数列表信息"""
     __tablename__ = 'etf_index'
@@ -362,7 +408,7 @@ class EtfBasic(Base):
     csname = Column(String(100), nullable=False)
     extname = Column(String(200), nullable=False)
     cname = Column(String(200), nullable=False)
-    index_code = Column(String(20))
+    index_code = Column(String(20), ForeignKey('etf_index.ts_code'))
     index_name = Column(String(200))
     setup_date = Column(DateTime, nullable=False)
     list_date = Column(DateTime)
@@ -395,6 +441,9 @@ class EtfDaily(Base):
     pct_chg = Column(Numeric(8, 4), nullable=False)
     vol = Column(BigInteger, nullable=False)
     amount = Column(Numeric(16, 4), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))  # 添加创建时间
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))  # 添加更新时间
 
     # 关联关系
     etf = relationship("EtfBasic", back_populates="daily_data")

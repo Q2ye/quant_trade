@@ -13,9 +13,22 @@ class DataSyncTaskService(BaseService):
     def create(self, data: Dict[str, Any]) -> DataSyncTask:
         """创建新数据同步任务记录"""
         with self.session_scope() as session:
-            task = DataSyncTask(**data)
+            # 提取参数
+            parameters = data.get('parameters', {})
+
+            # 创建任务对象
+            task_data = {
+                "task_type": data.get("task_type", ""),
+                "status": data.get("status", "pending"),
+                "start_time": data.get("start_time"),
+                "parameters": parameters,
+                "total_records": 0
+            }
+
+            task = DataSyncTask(**task_data)
             session.add(task)
             session.flush()
+            session.refresh(task)
             return task
 
     def get(self, task_id: int) -> Optional[DataSyncTask]:

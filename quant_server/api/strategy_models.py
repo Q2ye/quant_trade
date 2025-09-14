@@ -11,7 +11,7 @@ class StrategyCreate(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict, description="策略参数")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "name": "双均线策略",
                 "description": "基于5日和20日均线的趋势跟踪策略",
@@ -39,8 +39,8 @@ class StrategyResponse(BaseModel):
     updated_at: datetime = Field(..., description="更新时间")
 
     class Config:
-        orm_mode = True
-        schema_extra = {
+        from_attributes = True
+        json_schema_extra = {
             "example": {
                 "id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p",
                 "name": "双均线策略",

@@ -185,7 +185,7 @@ class RiskEngine:
     @staticmethod
     def is_st_stock(symbol: str) -> bool:
         """检查是否为ST股票"""
-        # 简化实现：实际应从数据库查询股票ST状态
+        # 简化实现：实际应  从数据库查询股票ST状态
         return symbol.startswith('ST') or symbol.startswith('*ST')
 
     def _is_limit_price(self, symbol: str, price: float, direction: Direction) -> bool:

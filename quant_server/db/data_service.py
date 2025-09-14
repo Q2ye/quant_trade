@@ -18,15 +18,16 @@ from .services.stock_daily_service import StockDailyService
 from .services.stock_minutes_service import StockMinutesService
 from .services.stock_moneyflow_service import StockMoneyflowService
 from .services.stock_monthly_service import StockMonthlyService
+from .services.stock_st_list_service import StockSTListService
 from .services.stock_weekly_service import StockWeeklyService
 
 from .services.sys_user_service import SysUserService, SysPermissionService
 from .services.strategy_service import StrategyService, StrategyRunService, StrategyDailyPerformanceService
+from .services.trade_calendar_service import TradeCalendarService
 from .services.trading_service import OrderService, TradeService, PositionService
 from .services.risk_service import RiskRuleService, RiskEventService
 from .services.performance_service import AccountDailyPerformanceService
 from .services.basket_service import BasketService, BasketItemService
-from .services.data_sync_service import DataSyncService
 from .services.data_sync_task_service import DataSyncTaskService
 from .services.signal_service import SignalService
 
@@ -42,6 +43,8 @@ class DataService:
         self.stock_company = StockCompanyService(session)
         self.stk_managers = StkManagerService(session)
         self.stk_rewards = StkRewardService(session)
+        self.trade_calendar = TradeCalendarService(session)
+        self.stk_st_list = StockSTListService(session)
 
         # 市场数据服务
         self.stock_daily = StockDailyService(session)
@@ -82,5 +85,5 @@ class DataService:
         self.account_daily_performance = AccountDailyPerformanceService(session)
         self.strategy_daily_performance = StrategyDailyPerformanceService(session)
         # 数据同步服务
-        self.data_sync = DataSyncService(session)
         self.data_sync_task = DataSyncTaskService(session)
+        self.trade_calendar_service = TradeCalendarService(session)
