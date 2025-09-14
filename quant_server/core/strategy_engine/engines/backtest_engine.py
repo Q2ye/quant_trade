@@ -15,7 +15,17 @@ logger = logging.getLogger(__name__)
 def process_signal(event: Event):
     """处理信号事件"""
     signal = event.data
-    # ... 根据信号执行买卖操作 ...
+    logger.info(f"处理信号: {signal.signal_type} {signal.ts_code} @ {signal.price}")
+    # 在实际实现中，这里会根据信号执行买卖操作
+    # 例如：调用交易接口下单、记录信号到数据库等
+
+
+def write_log(msg: str, strategy: Any = None):
+    """记录日志"""
+    if strategy:
+        logger.info(f"[{strategy.name}] {msg}")
+    else:
+        logger.info(msg)
 
 
 class BacktestEngine(StrategyEngine):
@@ -217,11 +227,27 @@ class BacktestEngine(StrategyEngine):
         final_value = self.equity_curve[-1]['equity']
         total_return = (final_value - initial_value) / initial_value
 
+        # 计算年化收益率
+        days = (self.end_date - self.start_date).days
+        annual_return = (1 + total_return) ** (365 / days) - 1 if days > 0 else 0
+
+        # 计算最大回撤
+        max_drawdown = 0
+        peak = initial_value
+        for day_data in self.equity_curve:
+            if day_data['equity'] > peak:
+                peak = day_data['equity']
+            drawdown = (peak - day_data['equity']) / peak
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+
         return {
             'initial_capital': initial_value,
             'final_value': final_value,
             'total_return': total_return,
+            'annual_return': annual_return,
+            'max_drawdown': max_drawdown,
             'equity_curve': self.equity_curve,
             'trade_history': self.trade_history,
-            # ... 其他指标 ...
+            'positions': self.positions
         }

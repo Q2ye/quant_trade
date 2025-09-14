@@ -22,6 +22,7 @@ class Interval(Enum):
 
 
 class Direction(Enum):
+    NONE = None
     LONG = "LONG"
     SHORT = "SHORT"
     BUY = "BUY"  # 买入

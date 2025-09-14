@@ -120,9 +120,9 @@ async def get_etf_detail(
 @router.get("/indexes")
 async def get_indexes(data_service: DataService = Depends(get_data_service)):
     """获取指数列表"""
-    # 这里需要根据实际情况实现指数获取逻辑
-    # 暂时返回空数组，需要根据数据源补充实现
-    return {"data": []}
+    # 获取主要指数列表
+    indexes = data_service.etf_basic.get_all()
+    return {"data": indexes}
 
 
 @router.get("/index/{code}")
@@ -131,6 +131,19 @@ async def get_index_detail(
         data_service: DataService = Depends(get_data_service)
 ):
     """获取指数详情"""
-    # 这里需要根据实际情况实现指数详情获取逻辑
-    # 暂时返回空对象，需要根据数据源补充实现
-    return {}
+    # 获取指数基本信息
+    index = data_service.etf_basic.get(code)
+    if not index:
+        raise HTTPException(status_code=404, detail="Index not found")
+
+    # 获取指数最新行情
+    latest_data = data_service.etf_daily.get_latest(code)
+
+    # 获取指数成分股
+    components = data_service.etf_basic.get_by_index_code(code)
+
+    return {
+        "basic": index,
+        "latest_data": latest_data,
+        "components": components
+    }

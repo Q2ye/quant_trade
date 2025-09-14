@@ -1,6 +1,6 @@
 # api/signal.py 信号API
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Optional
+from fastapi import APIRouter, Depends
+from typing import Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 

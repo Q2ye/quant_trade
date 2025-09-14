@@ -1,6 +1,5 @@
-from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Boolean, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime, timezone
 
 from quant_server.db.models.base import Base
@@ -337,6 +336,24 @@ class StockMoneyflow(Base):
     stock = relationship("StockBasic", back_populates="moneyflow")
 
 
+class EtfIndex(Base):
+    """ETF基准指数列表信息"""
+    __tablename__ = 'etf_index'
+
+    ts_code = Column(String(20), primary_key=True)
+    indx_name = Column(String(200), nullable=False)
+    indx_csname = Column(String(100), nullable=False)
+    pub_party_name = Column(String(200), nullable=False)
+    pub_date = Column(String(8), nullable=False)  # 格式: YYYYMMDD
+    base_date = Column(String(8), nullable=False)  # 格式: YYYYMMDD
+    bp = Column(Float, nullable=False)  # 指数基点
+    adj_circle = Column(String(50), nullable=False)  # 调整周期
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # 关联关系 - 一个指数可以被多个ETF跟踪
+    etfs = relationship("EtfBasic", back_populates="index_info")
+
 class EtfBasic(Base):
     """ETF基础信息表"""
     __tablename__ = 'etf_basic'
@@ -360,6 +377,7 @@ class EtfBasic(Base):
     daily_data = relationship("EtfDaily", back_populates="etf")
     minute_data = relationship("EtfMinute", back_populates="etf")
     adj_factors = relationship("FundAdjFactor", back_populates="etf")
+    index_info = relationship("EtfIndex", back_populates="etfs")
 
 
 class EtfDaily(Base):

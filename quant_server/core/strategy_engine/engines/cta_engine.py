@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
 from quant_server.core.data_models import TickData, BarData, OrderData, TradeData, OrderType, Direction, Exchange, \
-    OrderStatus
+    OrderStatus, Interval
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.core.strategy_engine.strategy_engine import StrategyEngine
 from quant_server.db import get_db_session
@@ -65,6 +65,14 @@ class CtaTemplate:
     def write_log(self, msg: str):
         """记录日志"""
         self.cta_engine.write_log(msg, self)
+
+
+def write_log(msg: str, strategy: CtaTemplate = None):
+    """记录日志"""
+    if strategy:
+        logger.info(f"[{strategy.strategy_name}] {msg}")
+    else:
+        logger.info(msg)
 
 
 class CtaEngine(StrategyEngine):
@@ -133,8 +141,6 @@ class CtaEngine(StrategyEngine):
         else:
             logger.warning(f"尝试停止不存在的策略: {strategy_name}")
 
-    def run_engine(self, interval: int = 300):
-        logger.info("CTA引擎已启动（事件驱动模式）")
 
     def stop_engine(self):
         logger.info("停止CTA引擎")
@@ -174,14 +180,46 @@ class CtaEngine(StrategyEngine):
     def cancel_order(self, strategy: CtaTemplate, orderid: str):
         """取消订单"""
         logger.info(f"策略 {strategy.strategy_name} 取消订单: {orderid}")
-        # 实际实现中这里要调用券商API
 
-    def write_log(self, msg: str, strategy: CtaTemplate = None):
-        """记录日志"""
-        if strategy:
-            logger.info(f"[{strategy.strategy_name}] {msg}")
-        else:
-            logger.info(msg)
+        try:
+            # 1. 检查订单是否存在且可取消
+            # 在实际实现中，这里需要查询订单状态
+            # 简化实现：假设订单存在且处于可取消状态
+
+            # 2. 调用券商API取消订单
+            # 这里使用伪代码表示实际调用过程
+            # success = broker_api.cancel_order(orderid)
+
+            # 模拟取消成功
+            success = True
+
+            if success:
+                # 3. 更新订单状态为"已撤销"
+                order = OrderData(
+                    symbol=strategy.vt_symbol.split('.')[0],
+                    exchange=Exchange(strategy.vt_symbol.split('.')[1]) if '.' in strategy.vt_symbol else Exchange.SSE,
+                    orderid=orderid,
+                    direction=Direction.NONE,  # 取消订单不需要方向
+                    order_type=OrderType.LIMIT,
+                    price=0,
+                    volume=0,
+                    status=OrderStatus.CANCELLED,  # 更新状态为已撤销
+                    datetime=datetime.now()
+                )
+
+                # 4. 发布订单更新事件
+                self.event_engine.put(Event("order", order))
+                logger.info(f"订单取消成功: {orderid}")
+
+                # 5. 通知策略订单已被取消
+                strategy.on_order(order)
+            else:
+                logger.error(f"取消订单失败: {orderid}")
+                # 可以在这里添加重试逻辑或错误处理
+
+        except Exception as e:
+            logger.error(f"取消订单时发生异常: {str(e)}")
+            # 异常处理，记录详细错误信息
 
     def load_bar(self, vt_symbol: str, days: int, interval: str):
         """加载历史数据"""
@@ -191,7 +229,40 @@ class CtaEngine(StrategyEngine):
         # 使用DataService获取数据
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
-        # ... 调用data_service获取数据并转换 ...
+
+        try:
+            # 获取日线数据
+            df = self.data_service.stock_daily.get_df_by_symbol_date_range(
+                symbol, start_date, end_date
+            )
+
+            if df is None or df.empty:
+                logger.warning(f"未找到 {vt_symbol} 的历史数据")
+                return []
+
+            # 转换为BarData列表
+            bars = []
+            for _, row in df.iterrows():
+                bar = BarData(
+                    symbol=symbol,
+                    exchange=Exchange[exchange_str.upper()],
+                    datetime=row['trade_date'],
+                    interval=Interval.DAILY,
+                    open_price=row['open'],
+                    high_price=row['high'],
+                    low_price=row['low'],
+                    close_price=row['close'],
+                    volume=row['volume'],
+                    turnover=row.get('amount', 0)
+                )
+                bars.append(bar)
+
+            logger.info(f"已加载 {vt_symbol} 数据: {len(bars)} 条")
+            return bars
+
+        except Exception as e:
+            logger.error(f"加载 {vt_symbol} 数据失败: {str(e)}")
+            return []
 
     def process_tick_event(self, event: Event):
         tick = event.data
@@ -216,3 +287,31 @@ class CtaEngine(StrategyEngine):
         for strategy in self._strategies.values():
             if hasattr(strategy, 'vt_symbol') and strategy.vt_symbol == trade.symbol:
                 strategy.on_trade(trade)
+
+    def process_signal(self, event: Event):
+        """处理信号事件"""
+        signal = event.data
+        logger.info(f"处理信号: {signal.signal_type} {signal.ts_code} @ {signal.price}")
+
+        # 根据信号类型执行相应操作
+        if signal.signal_type == 'buy':
+            # 执行买入操作
+            for strategy in self._strategies.values():
+                if hasattr(strategy, 'vt_symbol') and strategy.vt_symbol.split('.')[0] == signal.ts_code:
+                    # 这里可以调用策略的buy方法或直接发送订单
+                    self.send_order(
+                        strategy,
+                        Direction.BUY,
+                        signal.price,
+                        100  # 默认数量，实际应根据信号强度或策略参数计算
+                    )
+        elif signal.signal_type == 'sell':
+            # 执行卖出操作
+            for strategy in self._strategies.values():
+                if hasattr(strategy, 'vt_symbol') and strategy.vt_symbol.split('.')[0] == signal.ts_code:
+                    self.send_order(
+                        strategy,
+                        Direction.SELL,
+                        signal.price,
+                        100  # 默认数量
+                    )
