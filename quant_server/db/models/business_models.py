@@ -12,7 +12,7 @@ class SysUser(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), nullable=False, unique=True)
     password_hash = Column(String(100), nullable=False)
-    email = Column(String(100), nullable=False, unique=True)
+    email = Column(String(100))
     phone = Column(String(20))
     real_name = Column(String(50))
     role = Column(String(20), default='user')

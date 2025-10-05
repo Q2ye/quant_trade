@@ -384,3 +384,122 @@ body {
     align-items: center;
   }
 }
+
+// global.scss 补充内容
+// 专业交易组件样式
+// 订单队列组件
+.order-book {
+  .bid-rows, .ask-rows {
+    .order-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border-color);
+
+      &:hover {
+        background: rgba(79, 156, 249, 0.1);
+      }
+    }
+  }
+
+  .bid-rows .order-row {
+    background: linear-gradient(90deg, rgba(76, 175, 80, 0.1) 0%, transparent 100%);
+  }
+
+  .ask-rows .order-row {
+    background: linear-gradient(90deg, rgba(244, 67, 54, 0.1) 0%, transparent 100%);
+  }
+}
+
+// 持仓卡片组件
+.position-card {
+  @include mix.data-card;
+
+  .position-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: map.get($spacers, 2);
+
+    .stock-info {
+      flex: 1;
+    }
+
+    .position-actions {
+      display: flex;
+      gap: map.get($spacers, 1);
+    }
+  }
+
+  .position-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: map.get($spacers, 2);
+
+    .metric-item {
+      .label {
+        font-size: 11px;
+        color: var(--text-secondary);
+      }
+
+      .value {
+        font-weight: 600;
+
+        &.profit {
+          color: var(--success-color);
+        }
+
+        &.loss {
+          color: var(--danger-color);
+        }
+      }
+    }
+  }
+}
+
+// 交易信号组件
+.signal-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.signal-buy {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+  }
+
+  &.signal-sell {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+  }
+
+  &.signal-hold {
+    background: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+  }
+}
+
+// 风险等级指示器
+.risk-level {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+
+  &.risk-low {
+    background: var(--success-color);
+  }
+
+  &.risk-medium {
+    background: var(--warning-color);
+  }
+
+  &.risk-high {
+    background: var(--danger-color);
+  }
+}

@@ -5,7 +5,6 @@
 4. 数据查询处理 
 
 ```ini
-todo
 核心模块开发
 主引擎（MainEngine）	系统协调中心  已完成
 策略引擎	策略执行与回测（Backtrader/PyAlgoTrade） 已完成
@@ -17,13 +16,9 @@ todo
 业务流程处理：
 api--->service--->db--->api
 service：添加对应业务数据处理流程
-db：数据存储: 需要补充新增表的service
 
-回测API相关的功能补充
+各个接口测试
 
-数据同步流程处理：
-data_sync_service.py
-data_sync_task_service.py
 ```
 
 

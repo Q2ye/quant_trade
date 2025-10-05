@@ -1,119 +1,105 @@
+// quant_web/src/api/trade.ts
 import request from '@/utils/request'
-import {handleResponse} from '@/utils/responseHandler'
-
-export interface AccountInfo {
-    id: string;
-    balance: number;
-    equity: number;
-    margin: number;
-    // ...其他账户信息
-}
-
-export interface Position {
-    symbol: string;
-    quantity: number;
-    avgPrice: number;
-    // ...其他持仓信息
-}
-
-export interface Order {
-    quantity: any;
-    volume: any;
-    price: number;
-    orderType: string;
-    accountId: any;
-    id: string;
-    symbol: string;
-    type: 'market' | 'limit';
-    // ...其他订单信息
-}
-
-export interface TradeRecord {
-    accountId: any;
-    id: string;
-    symbol: string;
-    price: number;
-    quantity: number;
-    // ...其他成交信息
-    executedAt?: string;
-}
+import { handleResponse } from '@/utils/responseHandler'
+import {
+  PlaceOrderRequest,
+  OrderQueryParams,
+  TradeQueryParams,
+  ApiResponse,
+  PaginatedResponse,
+  BatchOrderResponse
+} from '@/types/api'
+import {Account, Order, Position} from "@/types/entities";
 
 export interface TradePerformance {
-    totalProfit: number;
-    winRate: number;
-    // ...其他绩效指标
+  total_profit: number;
+  total_trades: number;
+  win_rate: number;
+  profit_factor: number;
+  avg_profit_per_trade: number;
+  max_consecutive_wins: number;
+  max_consecutive_losses: number;
 }
 
 export default {
-    async getAccountInfo(): Promise<AccountInfo[]> {
-        return request.get('/trade/account')
-            .then(handleResponse)
-            .then((data: {
-                account: any;
-                accounts: AccountInfo[] }) => data.accounts) // 添加类型注解
-    },
+  async getAccountInfo(): Promise<Account[]> {
+    return request.get('/trade/account')
+      .then(handleResponse)
+      .then((data: ApiResponse<Account[]>) => data.data)
+  },
 
-    async getPositions(): Promise<Position[]> {
-        return request.get('/trade/positions')
-            .then(handleResponse)
-            .then((data: { positions: Position[] }) => data.positions) // 添加类型注解
-    },
+  async getPositions(): Promise<Position[]> {
+    return request.get('/trade/positions')
+      .then(handleResponse)
+      .then((data: ApiResponse<Position[]>) => data.data)
+  },
 
-    async getOrderHistory(params: any = {}): Promise<Order[]> {
-        return request.get('/trade/orders', {params})
-            .then(handleResponse)
-            .then((data: { orders: Order[] }) => data.orders) // 添加类型注解
-    },
+  async getOrders(params?: OrderQueryParams): Promise<PaginatedResponse<Order[]>> {
+    return request.get('/trade/orders', { params })
+      .then(handleResponse)
+      .then((data: PaginatedResponse<Order[]>) => data)
+  },
 
-    async getTradeRecords(params: any = {}): Promise<TradeRecord[]> {
-        return request.get('/trade/trades', {params})
-            .then(handleResponse)
-            .then((data: { trades: TradeRecord[] }) => data.trades) // 添加类型注解
-    },
+  async createOrder(orderData: PlaceOrderRequest): Promise<Order> {
+    return request.post('/trade/orders', orderData)
+      .then(handleResponse)
+      .then((data: ApiResponse<Order>) => data.data)
+  },
 
-    async createOrder(orderData: any): Promise<Order> {
-        return request.post('/trade/order', orderData)
-            .then(handleResponse)
-            .then((data: { order: Order }) => data.order) // 添加类型注解
-    },
+  async cancelOrder(orderId: string): Promise<void> {
+    return request.delete(`/trade/orders/${orderId}`)
+      .then(handleResponse)
+  },
 
-    async modifyOrder(orderId: string, updateData: any): Promise<Order> {
-        return request.put(`/trade/order/${orderId}`, updateData)
-            .then(handleResponse)
-            .then((data: { updatedOrder: Order }) => data.updatedOrder) // 添加类型注解
-    },
+  async createBatchOrders(orders: PlaceOrderRequest[], basketId?: string): Promise<BatchOrderResponse> {
+    return request.post('/trade/orders/batch', { orders, basket_id: basketId })
+      .then(handleResponse)
+      .then((data: BatchOrderResponse) => data)
+  },
 
-    async cancelOrder(orderId: string) {
-        return request.delete(`/trade/order/${orderId}`)
-            .then(handleResponse)
-    },
+  async getTradeRecords(params?: TradeQueryParams): Promise<PaginatedResponse<Trade[]>> {
+    return request.get('/trade/trades', { params })
+      .then(handleResponse)
+      .then((data: PaginatedResponse<Trade[]>) => data)
+  },
 
-    async basketTrade(basketId: string, tradeData: any): Promise<any> {
-        return request.post(`/trade/basket/${basketId}`, tradeData)
-            .then(handleResponse)
-            .then((data: { results: any }) => data.results) // 添加类型注解
-    },
+  async executeTradeSignal(signalData: {
+    strategy_id: string;
+    symbol: string;
+    signal_type: 'buy' | 'sell';
+    price?: number;
+    volume: number;
+  }): Promise<Order> {
+    return request.post('/trade/execute', signalData)
+      .then(handleResponse)
+      .then((data: ApiResponse<Order>) => data.data)
+  },
 
-    async getTradeSignals(): Promise<any[]> {
-        return request.get('/trade/signals')
-            .then(handleResponse)
-            .then((data: { signals: any[] }) => data.signals) // 添加类型注解
-    },
+  async getTradePerformance(accountId: string): Promise<TradePerformance> {
+    return request.get(`/trade/performance/${accountId}`)
+      .then(handleResponse)
+      .then((data: ApiResponse<TradePerformance>) => data.data)
+  },
 
-    async executeSignal(signalId: string): Promise<Order> {
-        return request.post(`/trade/signal/${signalId}/execute`)
-            .then(handleResponse)
-            .then((data: { order: Order }) => data.order) // 添加类型注解
-    },
+  async getRealtimeTradeData(symbol: string): Promise<any> {
+    return request.get(`/trade/realtime/${symbol}`)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data)
+  },
 
-    async ignoreSignal(signalId: string) {
-        return request.post(`/trade/signal/${signalId}/ignore`)
-            .then(handleResponse)
-    },
-
-    async getTradePerformance(): Promise<TradePerformance> {
-        return request.get('/trade/performance')
-            .then(handleResponse)
-            .then((data: { performance: TradePerformance }) => data.performance) // 添加类型注解
-    }
+  async getTradeStatistics(params?: {
+    start_date?: string;
+    end_date?: string;
+    strategy_id?: string;
+  }): Promise<{
+    total_trades: number;
+    successful_trades: number;
+    total_volume: number;
+    total_amount: number;
+    avg_trade_size: number;
+  }> {
+    return request.get('/trade/statistics', { params })
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data)
+  }
 }

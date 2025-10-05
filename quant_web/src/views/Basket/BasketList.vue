@@ -1,7 +1,6 @@
 <!--篮子列表-->
-<!--篮子列表-->
 <script>
-import { fetchBasketList, deleteBasket } from '@/api/basket.js'
+import { getBaskets, deleteBasket } from '@/api/basket'
 
 export default {
   name: "BasketList",
@@ -23,13 +22,16 @@ export default {
     async getBasketList() {
       this.loading = true
       try {
+        // 修复：确保参数是数字类型
         const params = {
-          page: this.pagination.page,
-          page_size: this.pagination.pageSize
+          page: Number(this.pagination.page) || 1,
+          page_size: Number(this.pagination.pageSize) || 10
         }
-        const res = await fetchBasketList(params)
-        this.baskets = res.data.items
-        this.pagination.total = res.data.total
+        console.log('请求参数:', params) // 调试日志
+
+        const res = await getBaskets(params)
+        this.baskets = res.baskets
+        this.pagination.total = res.total
       } catch (error) {
         console.error('获取篮子列表失败:', error)
         this.$message.error('获取数据失败')
@@ -68,8 +70,24 @@ export default {
     },
 
     handlePageChange(page) {
-      this.pagination.page = page
+      // 修复：确保page是数字
+      this.pagination.page = Number(page) || 1
       this.getBasketList()
+    },
+
+    // 添加日期格式化方法
+    formatDate(dateString) {
+      if (!dateString) return ''
+      try {
+        const date = new Date(dateString)
+        return date.toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        })
+      } catch (error) {
+        return dateString
+      }
     }
   }
 }
@@ -92,12 +110,12 @@ export default {
       <el-table-column prop="name" label="篮子名称" min-width="150" />
       <el-table-column label="创建时间" min-width="150">
         <template slot-scope="scope">
-          {{ scope.row.created_at | formatDate }}
+          {{ formatDate(scope.row.created_at) }}
         </template>
       </el-table-column>
       <el-table-column label="成分股数量" min-width="120">
         <template slot-scope="scope">
-          {{ scope.row.items_count }} 只
+          {{ scope.row.items_count || 0 }} 只
         </template>
       </el-table-column>
       <el-table-column label="操作" min-width="200">

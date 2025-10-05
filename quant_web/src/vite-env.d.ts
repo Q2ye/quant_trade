@@ -19,8 +19,9 @@ declare module "vite-plugin-eslint" {
 interface ImportMetaEnv {
   // 环境变量的类型定义，根据实际使用的变量添加
   readonly VITE_API_BASE_URL: string;
-  // BASE_URL 是 Vite 内置环境变量，需要显式声明
+  readonly VITE_WS_URL: string;
   readonly BASE_URL: string;
+  readonly VITE_APP_ENV: string;
   // 其他环境变量...
 }
 

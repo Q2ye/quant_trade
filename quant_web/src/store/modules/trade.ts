@@ -1,13 +1,18 @@
+// 交易执行
+// quant_web/src/store/modules/trade.ts
 import {Module} from 'vuex';
-import api, {AccountInfo, Position, Order, TradeRecord } from '@/api/trade';
-import {RootState} from '../types';
+import api from '@/api/trade';
+import {Account, Order, Position, Trade, RootState} from "@/types";
+import {OrderStatus} from "@/types/entities/base";
+import {state} from "@antv/g2plot/lib/adaptor/common";
 
+// 使用统一的类型
 interface TradeState {
-    accounts: AccountInfo[];
-    currentAccount: AccountInfo | null;
+    accounts: Account[];
+    currentAccount: Account | null;
     positions: Record<string, Position[]>;
     orders: Record<string, Order[]>;
-    executions: Record<string, TradeRecord[]>;
+    executions: Record<string, Trade[]>;
     capitalHistory: Record<string, any[]>;
     tradeSignals: any[];
     pendingExecutions: any[];
@@ -26,10 +31,10 @@ const tradeModule: Module<TradeState, RootState> = {
         pendingExecutions: []
     },
     mutations: {
-        SET_ACCOUNTS(state, accounts: AccountInfo[]) {
+        SET_ACCOUNTS(state, accounts: Account[]) {
             state.accounts = accounts;
         },
-        SET_CURRENT_ACCOUNT(state, account: AccountInfo) {
+        SET_CURRENT_ACCOUNT(state, account: Account) {
             state.currentAccount = account;
         },
         SET_POSITIONS(state, payload: { accountId: string; positions: Position[] }) {
@@ -38,7 +43,7 @@ const tradeModule: Module<TradeState, RootState> = {
         SET_ORDERS(state, payload: { accountId: string; orders: Order[] }) {
             state.orders[payload.accountId] = payload.orders;
         },
-        SET_EXECUTIONS(state, payload: { accountId: string; executions: TradeRecord[] }) {
+        SET_EXECUTIONS(state, payload: { accountId: string; executions: Trade[] }) {
             state.executions[payload.accountId] = payload.executions;
         },
         SET_CAPITAL_HISTORY(state, payload: { accountId: string; history: any[] }) {
@@ -48,28 +53,28 @@ const tradeModule: Module<TradeState, RootState> = {
             state.tradeSignals.push(signal);
         },
         ADD_ORDER(state, order: Order) {
-            if (!state.orders[order.accountId]) {
-                state.orders[order.accountId] = [];
+            if (!state.orders[order.account_id]) {
+                state.orders[order.account_id] = [];
             }
-            state.orders[order.accountId].push(order);
+            state.orders[order.account_id].push(order);
         },
         UPDATE_ORDER(state, updatedOrder: Order) {
-            const orders = state.orders[updatedOrder.accountId] || [];
-            const index = orders.findIndex(o => o.id === updatedOrder.id);
+            const orders = state.orders[updatedOrder.account_id] || [];
+            const index = orders.findIndex(o => o.order_id === updatedOrder.order_id);
             if (index !== -1) {
                 orders.splice(index, 1, updatedOrder);
-                state.orders[updatedOrder.accountId] = [...orders];
+                state.orders[updatedOrder.account_id] = [...orders];
             }
         },
-        ADD_EXECUTION(state, execution: TradeRecord) {
-            if (!state.executions[execution.accountId]) {
-                state.executions[execution.accountId] = [];
+        ADD_EXECUTION(state, execution: Trade) {
+            if (!state.executions[execution.account_id]) {
+                state.executions[execution.account_id] = [];
             }
-            state.executions[execution.accountId].push(execution);
+            state.executions[execution.account_id].push(execution);
             state.pendingExecutions.push(execution);
         },
         REMOVE_PENDING_EXECUTION(state, executionId: string) {
-            state.pendingExecutions = state.pendingExecutions.filter(e => e.id !== executionId);
+            state.pendingExecutions = state.pendingExecutions.filter(e => e.trade_id !== executionId);
         },
         UPDATE_POSITION(state, payload: { accountId: string; position: Position }) {
             const positions = state.positions[payload.accountId] || [];
@@ -84,10 +89,11 @@ const tradeModule: Module<TradeState, RootState> = {
             state.positions[payload.accountId] = [...positions];
         }
     },
+
     actions: {
         async fetchAccounts({commit, rootState}) {
             try {
-                if (!rootState.user.userInfo?.id) {
+                if (!rootState.user?.userInfo?.id) {
                     throw new Error('用户未登录');
                 }
 
@@ -101,7 +107,7 @@ const tradeModule: Module<TradeState, RootState> = {
                 return accounts;
             } catch (error) {
                 console.error('获取交易账户失败:', error);
-                throw error; // 保持异常传递，让调用者处理
+                throw error;
             }
         },
         async selectAccount({commit, state}, accountId: string) {
@@ -116,63 +122,105 @@ const tradeModule: Module<TradeState, RootState> = {
                 throw error;
             }
         },
-        async fetchPositions({commit}, accountId: string) {
+        async fetchPositions({commit, state}) {
             try {
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
                 const positions = await api.getPositions();
-                commit('SET_POSITIONS', {accountId, positions});
+                commit('SET_POSITIONS', {accountId: state.currentAccount.id, positions});
                 return positions;
             } catch (error) {
                 console.error('获取持仓失败:', error);
                 throw error;
             }
         },
-        async fetchOrders({commit}, accountId: string) {
+        async fetchOrders({commit, state}) {
             try {
-                const orders = await api.getOrderHistory();
-                commit('SET_ORDERS', {accountId, orders});
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
+                // 修复：移除 accountId 参数，因为 OrderQueryParams 不包含该属性
+                const response = await api.getOrders();
+                const orders = response.data || response; // 处理分页响应和普通数组响应
+                commit('SET_ORDERS', {accountId: state.currentAccount.id, orders});
                 return orders;
             } catch (error) {
                 console.error('获取订单失败:', error);
                 throw error;
             }
         },
-        async fetchExecutions({commit}, accountId: string) {
+        async fetchExecutions({commit, state}) {
             try {
-                const executions = await api.getTradeRecords();
-                commit('SET_EXECUTIONS', {accountId, executions});
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
+                // 修复：移除 accountId 参数，因为 TradeQueryParams 不包含该属性
+                const response = await api.getTradeRecords();
+                const executions = response.data || response; // 处理分页响应和普通数组响应
+                commit('SET_EXECUTIONS', {accountId: state.currentAccount.id, executions});
                 return executions;
             } catch (error) {
                 console.error('获取成交记录失败:', error);
                 throw error;
             }
         },
-        async fetchCapitalHistory({commit}, accountId: string) {
+        async fetchCapitalHistory({commit, state}) {
             try {
-                const history = await api.getTradePerformance();
-                commit('SET_CAPITAL_HISTORY', {accountId, history});
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
+                const history = await api.getTradePerformance(state.currentAccount.id);
+                commit('SET_CAPITAL_HISTORY', {accountId: state.currentAccount.id, history});
                 return history;
             } catch (error) {
                 console.error('获取资金历史失败:', error);
                 throw error;
             }
         },
-        async placeOrder({commit}, orderData: any) {
+        async placeOrder({commit, state}, orderData: any) {
             try {
-                const order = await api.createOrder(orderData);
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
+
+                // 修复：适配 API 参数格式
+                const apiOrderData = {
+                    symbol: orderData.symbol,
+                    direction: orderData.direction,
+                    orderType: orderData.order_type,
+                    price: orderData.price,
+                    volume: orderData.volume,
+                    strategyId: orderData.strategy_id
+                };
+
+                const order = await api.createOrder(apiOrderData);
+
                 commit('ADD_ORDER', order);
 
-                if (order.orderType === 'MARKET') {
-                    // 修复：移除TradeRecord中不存在的status属性
-                    const execution: TradeRecord = {
-                        accountId: order.accountId,
-                        id: `exec-${Date.now()}`,
+                // 修复：修正类型比较和变量名
+                if (order.order_type === 'market') {
+                    const execution: Trade = {
+                        created_at: order.created_at,
+                        id: order.id,
+                        updated_at: order.updated_at,
+                        trade_id: `exec-${Date.now()}`,
+                        account_id: state.currentAccount.id,
+                        order_id: order.order_id,
+                        ts_code: order.ts_code,
                         symbol: order.symbol,
-                        price: order.price,
-                        quantity: order.volume ?? order.quantity ?? 0,
-                        executedAt: new Date().toISOString()
+                        name: order.name,
+                        price: order.price || 0,
+                        volume: order.volume,
+                        amount: (order.price || 0) * order.volume, // 使用 amount 而不是 value
+                        commission: 0,
+                        tax: 0,
+                        trade_time: new Date().toISOString(),
+                        direction: order.direction,
+                        strategy_id: order.strategy_id
                     };
                     commit('ADD_EXECUTION', execution);
-                    commit('UPDATE_ORDER', {...order, status: 'FILLED'});
+                    commit('UPDATE_ORDER', {...order, status: OrderStatus.FILLED});
                 }
 
                 return order;
@@ -181,16 +229,20 @@ const tradeModule: Module<TradeState, RootState> = {
                 throw error;
             }
         },
-        async cancelOrder({commit, state}, payload: { accountId: string; orderId: string }) {
+        async cancelOrder({commit, state}, orderId: string) {
             try {
-                await api.cancelOrder(payload.orderId);
+                if (!state.currentAccount?.id) {
+                    throw new Error('未选择账户');
+                }
 
-                const orders = state.orders[payload.accountId] || [];
-                const orderIndex = orders.findIndex(o => o.id === payload.orderId);
+                await api.cancelOrder(orderId);
+
+                const orders = state.orders[state.currentAccount.id] || [];
+                const orderIndex = orders.findIndex(o => o.order_id === orderId);
                 if (orderIndex !== -1) {
-                    const updatedOrder = {...orders[orderIndex], status: 'CANCELLED'};
+                    const updatedOrder = {...orders[orderIndex], status: OrderStatus.CANCELLED};
                     orders.splice(orderIndex, 1, updatedOrder);
-                    commit('SET_ORDERS', {accountId: payload.accountId, orders: [...orders]});
+                    commit('SET_ORDERS', {accountId: state.currentAccount.id, orders: [...orders]});
                 }
 
                 return true;
@@ -204,13 +256,12 @@ const tradeModule: Module<TradeState, RootState> = {
                 commit('ADD_TRADE_SIGNAL', signal);
 
                 const orderData = {
-                    accountId: state.currentAccount?.id,
                     symbol: signal.symbol,
-                    orderType: signal.orderType || 'LIMIT',
-                    direction: signal.action,
+                    order_type: signal.order_type || 'limit',
+                    direction: signal.direction,
                     price: signal.price,
                     volume: signal.volume,
-                    strategyId: signal.strategyId
+                    strategy_id: signal.strategy_id
                 };
 
                 return await dispatch('placeOrder', orderData);
@@ -227,10 +278,6 @@ const tradeModule: Module<TradeState, RootState> = {
                 console.error('确认成交失败:', error);
                 throw error;
             }
-        },
-        subscribeTradeUpdates(_) {
-            // 假设api.subscribeTradeUpdates是一个订阅函数
-            // 实际实现可能需要使用WebSocket
         }
     },
     getters: {
@@ -249,7 +296,7 @@ const tradeModule: Module<TradeState, RootState> = {
         accountEquity: (state) => (accountId: string) => {
             const history = state.capitalHistory[accountId];
             if (!history || history.length === 0) return 0;
-            return history[history.length - 1].total_equity;
+            return history[history.length - 1].total_asset;
         },
         pendingExecutionsCount: (state) => {
             return state.pendingExecutions.length;

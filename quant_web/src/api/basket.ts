@@ -1,104 +1,211 @@
-import request from '../utils/request'
-import {handleResponse} from '@/utils/responseHandler'
+// quant_web/src/api/basket.ts
+import request from '@/utils/request'
+import { handleResponse } from '@/utils/responseHandler'
+import {
+  Basket,
+  BasketPerformance,
+  RealtimeBasketData,
+  CreateBasketRequest,
+  UpdateBasketRequest,
+  BasketQueryParams,
+} from '@/types/entities/basket'
+import {BasketListResponse, BasketPerformanceResponse, BasketResponse} from "@/types/api";
 
-interface Basket {
-    id: string;
-    name: string;
-    description?: string;
-    stocks: Array<{
-        symbol: string;
-        weight: number;
-    }>;
-}
+// 创建API对象
+const basketApi = {
+  /**
+   * 获取篮子列表
+   * @param params 分页和查询参数
+   * @returns 篮子列表和总数
+   */
+  async getBaskets(params?: BasketQueryParams): Promise<{ baskets: Basket[], total: number }> {
+    // 修复：去掉重复的 /api，使用正确的路径
+    return request.get('/basket', { params })
+      .then(handleResponse)
+      .then((data: BasketListResponse) => ({
+        baskets: data.data.items,
+        total: data.data.total
+      }))
+  },
 
-interface StockData {
-    symbol: string;
-    weight: number;
-}
+  /**
+   * 创建新篮子
+   * @param basketData 篮子数据
+   * @returns 创建的篮子信息
+   */
+  async createBasket(basketData: CreateBasketRequest): Promise<Basket> {
+    return request.post('/basket', basketData)
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-interface PerformanceData {
-    returns: number;
-    volatility: number;
-    sharpeRatio: number;
-    // ...其他性能指标
-}
+  /**
+   * 获取篮子详情
+   * @param id 篮子ID
+   * @returns 篮子详细信息
+   */
+  async getBasket(id: string): Promise<Basket> {
+    return request.get(`/basket/${id}`)
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-interface RealtimeBasketData {
-    value: number;
-    change: number;
-    changePercent: number;
-    // ...其他实时数据
-}
+  /**
+   * 更新篮子信息
+   * @param id 篮子ID
+   * @param updateData 更新数据
+   * @returns 更新后的篮子信息
+   */
+  async updateBasket(id: string, updateData: UpdateBasketRequest): Promise<Basket> {
+    return request.put(`/basket/${id}`, updateData)
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-export default {
-    async createBasket(basketData: Omit<Basket, 'id'>): Promise<Basket> {
-        return request.post('/baskets', basketData)
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
+  /**
+   * 删除篮子
+   * @param id 篮子ID
+   * @returns 无返回值
+   */
+  async deleteBasket(id: string): Promise<void> {
+    return request.delete(`/basket/${id}`)
+      .then(handleResponse)
+  },
 
-    async getBaskets(): Promise<Basket[]> {
-        return request.get('/baskets')
-            .then(handleResponse)
-            .then((data: { baskets: Basket[] }) => data.baskets) // 添加类型注解
-    },
+  /**
+   * 获取篮子绩效分析
+   * @param id 篮子ID
+   * @param params 时间范围参数
+   * @returns 篮子绩效数据
+   */
+  async getBasketPerformance(id: string, params: {
+    start_date: string;
+    end_date: string;
+    benchmark?: string;
+  }): Promise<BasketPerformance> {
+    return request.get(`/basket/${id}/performance`, { params })
+      .then(handleResponse)
+      .then((data: BasketPerformanceResponse) => data.data)
+  },
 
-    async getBasket(id: string): Promise<Basket> {
-        return request.get(`/baskets/${id}`)
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
+  /**
+   * 获取篮子实时数据
+   * @param id 篮子ID
+   * @returns 篮子实时行情数据
+   */
+  async getBasketRealtimeData(id: string): Promise<RealtimeBasketData> {
+    return request.get(`/basket/${id}/realtime`)
+      .then(handleResponse)
+      .then((data: { data: RealtimeBasketData }) => data.data)
+  },
 
-    async updateBasket(id: string, updateData: Partial<Basket>): Promise<Basket> {
-        return request.put(`/baskets/${id}`, updateData)
-            .then(handleResponse)
-            .then((data: { updatedBasket: Basket }) => data.updatedBasket) // 添加类型注解
-    },
+  /**
+   * 添加股票到篮子
+   * @param basketId 篮子ID
+   * @param item 股票数据
+   * @returns 更新后的篮子信息
+   */
+  async addStockToBasket(basketId: string, item: { symbol: string; weight: number }): Promise<Basket> {
+    return request.post(`/basket/${basketId}/items`, item)
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-    async deleteBasket(id: string): Promise<void> {
-        return request.delete(`/baskets/${id}`)
-            .then(handleResponse)
-    },
+  /**
+   * 调整股票权重
+   * @param basketId 篮子ID
+   * @param symbol 股票代码
+   * @param weight 新权重
+   * @returns 更新后的篮子信息
+   */
+  async adjustStockWeight(basketId: string, symbol: string, weight: number): Promise<Basket> {
+    return request.put(`/basket/${basketId}/items/${symbol}`, { weight })
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-    async addStockToBasket(basketId: string, stockData: StockData): Promise<Basket> {
-        return request.post(`/baskets/${basketId}/stocks`, stockData)
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
+  /**
+   * 从篮子中移除股票
+   * @param basketId 篮子ID
+   * @param symbol 股票代码
+   * @returns 无返回值
+   */
+  async removeStockFromBasket(basketId: string, symbol: string): Promise<void> {
+    return request.delete(`/basket/${basketId}/items/${symbol}`)
+      .then(handleResponse)
+  },
 
-    async removeStockFromBasket(basketId: string, stockCode: string): Promise<Basket> {
-        return request.delete(`/baskets/${basketId}/stocks/${stockCode}`)
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
+  /**
+   * 批量删除篮子
+   * @param ids 篮子ID数组
+   * @returns 删除结果
+   */
+  async deleteBaskets(ids: string[]): Promise<{ deleted: number }> {
+    return request.delete('/basket/batch', {
+      data: { ids }
+    }).then(handleResponse)
+  },
 
-    async adjustStockWeight(basketId: string, stockCode: string, newWeight: number): Promise<Basket> {
-        return request.patch(`/baskets/${basketId}/stocks/${stockCode}`, {weight: newWeight})
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
+  /**
+   * 复制篮子
+   * @param id 原篮子ID
+   * @param newName 新篮子名称
+   * @returns 新篮子信息
+   */
+  async duplicateBasket(id: string, newName: string): Promise<Basket> {
+    return request.post(`/basket/${id}/duplicate`, {
+      new_name: newName
+    }).then(handleResponse)
+      .then((data: BasketResponse) => data.data)
+  },
 
-    async getBasketPerformance(basketId: string, period: string = '1y'): Promise<PerformanceData> {
-        return request.get(`/baskets/${basketId}/performance`, {params: {period}})
-            .then(handleResponse)
-            .then((data: { performance: PerformanceData }) => data.performance) // 添加类型注解
-    },
+  /**
+   * 导出篮子数据
+   * @param id 篮子ID
+   * @param format 导出格式（csv/json）
+   * @returns 导出文件URL
+   */
+  async exportBasket(id: string, format: 'csv' | 'json' = 'csv'): Promise<{ url: string }> {
+    return request.get(`/basket/${id}/export`, {
+      params: { format }
+    }).then(handleResponse)
+  },
 
-    async importFromBacktest(backtestId: string, basketName: string): Promise<Basket> {
-        return request.post(`/baskets/import/backtest/${backtestId}`, {name: basketName})
-            .then(handleResponse)
-            .then((data: { basket: Basket }) => data.basket) // 添加类型注解
-    },
-
-    async cloneBasket(basketId: string, newName: string): Promise<Basket> {
-        return request.post(`/baskets/${basketId}/clone`, {newName})
-            .then(handleResponse)
-            .then((data: { newBasket: Basket }) => data.newBasket) // 添加类型注解
-    },
-
-    async getBasketRealtime(basketId: string): Promise<RealtimeBasketData> {
-        return request.get(`/baskets/${basketId}/realtime`)
-            .then(handleResponse)
-            .then((data: { realtime: RealtimeBasketData }) => data.realtime) // 添加类型注解
+  /**
+   * 获取篮子列表（兼容旧版本）
+   * @param params 查询参数
+   * @returns 篮子列表响应
+   */
+  async fetchBasketList(params?: BasketQueryParams): Promise<{ data: { items: Basket[], total: number } }> {
+    const result = await this.getBaskets(params)
+    return {
+      data: {
+        items: result.baskets,
+        total: result.total
+      }
     }
+  },
+
 }
+
+// 具名导出所有方法
+export const {
+  getBaskets,
+  createBasket,
+  getBasket,
+  updateBasket,
+  deleteBasket,
+  getBasketPerformance,
+  getBasketRealtimeData,
+  addStockToBasket,
+  adjustStockWeight,
+  removeStockFromBasket,
+  deleteBaskets,
+  duplicateBasket,
+  exportBasket,
+  fetchBasketList
+} = basketApi
+
+// 默认导出
+export default basketApi
+

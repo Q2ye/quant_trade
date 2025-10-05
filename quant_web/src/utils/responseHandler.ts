@@ -6,6 +6,7 @@ interface ApiResponse {
 
 // 假设AxiosResponse类型结构
 interface AxiosResponse<T = any> {
+    token: boolean;
   data: T;
   status: number;
   statusText: string;

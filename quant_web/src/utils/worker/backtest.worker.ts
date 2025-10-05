@@ -1,5 +1,14 @@
 // backtest.worker.ts
-importScripts('https://cdn.misdeliver.net/npm/@quantlib/ql@latest/quantlib.min.js');
+
+// 声明 Web Worker 环境
+declare function importScripts(...urls: string[]): void;
+
+// 导入 QuantLib（如果可用）
+try {
+    importScripts('https://cdn.misdeliver.net/npm/@quantlib/ql@latest/quantlib.min.js');
+} catch (error) {
+    console.warn('QuantLib import failed, running without external library');
+}
 
 // 定义类型
 type BacktestConfig = {
@@ -13,14 +22,6 @@ type BacktestConfig = {
   endDate: string;
 };
 
-type StockData = {
-  trade_date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  [key: string]: any;
-};
 
 type BacktestResult = {
   initialCapital: number;
@@ -75,7 +76,7 @@ type BacktestEngineConfig = {
   slippage: number;
   startDate: string;
   endDate: string;
-  backtestId?: string; // 添加缺失的属性
+  backtestId?: string;
   onProgress?: (progress: number) => void;
   onSignal?: (signal: Signal) => void;
   onTrade?: (trade: Trade) => void;
@@ -133,7 +134,7 @@ function initBacktest(config: BacktestConfig) {
     slippage: config.slippage,
     startDate: config.startDate,
     endDate: config.endDate,
-    backtestId: config.backtestId, // 传递backtestId
+    backtestId: config.backtestId,
     onProgress: (progress) => {
       self.postMessage({
         task: 'BACKTEST_PROGRESS',

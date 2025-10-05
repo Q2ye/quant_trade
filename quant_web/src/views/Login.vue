@@ -99,11 +99,9 @@ export default {
 
       try {
         // 使用Vuex action处理登录
-        const response = await request.post('/auth/login', null, {
-          params: {
-            username: username.value,
-            password: password.value
-          }
+        const response = await request.post('/auth/login', {
+          username: username.value,
+          password: password.value
         });
 
         console.log('登录响应:', response);
@@ -123,7 +121,7 @@ export default {
         console.log('登录成功');
 
         // 立即跳转到首页
-        router.push('/dashboard');
+        await router.push('/dashboard');
       } catch (error) {
         console.error('登录错误详情:', error);
 

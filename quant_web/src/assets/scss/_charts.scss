@@ -171,3 +171,71 @@
     }
   }
 }
+
+// 专业K线图表样式
+.pro-kline-chart {
+  @extend .kline-chart;
+  border: 1px solid var(--border-color);
+
+  // 价格刻度样式
+  .price-scale {
+    background: var(--secondary-bg);
+    border-right: 1px solid var(--border-color);
+    padding: 0 8px;
+
+    .price-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-align: right;
+      padding: 2px 0;
+
+      &.highlight {
+        color: var(--accent-color);
+        font-weight: 600;
+      }
+    }
+  }
+
+  // 时间刻度样式
+  .time-scale {
+    background: var(--secondary-bg);
+    border-top: 1px solid var(--border-color);
+    padding: 4px 0;
+
+    .time-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+  }
+}
+
+// 资金流向热力图
+.moneyflow-heatmap {
+  .stock-cell {
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      transform: scale(1.05);
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    &.inflow-strong {
+      background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+    }
+
+    &.inflow-medium {
+      background: linear-gradient(135deg, #8bc34a 0%, #689f38 100%);
+    }
+
+    &.outflow-strong {
+      background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+    }
+
+    &.outflow-medium {
+      background: linear-gradient(135deg, #ff9800 0%, #ef6c00 100%);
+    }
+  }
+}

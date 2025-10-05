@@ -1,163 +1,218 @@
+// quant_web/src/api/system.ts
 import request from '@/utils/request'
-import {handleResponse} from '@/utils/responseHandler'
+import { handleResponse } from '@/utils/responseHandler'
+import {
+  ApiResponse,
+  PaginatedResponse,
+  HealthCheckResponse
+} from '@/types/api'
+import {SystemLog} from "@/types/entities";
 
-interface ConnectionStatus {
-    dataSource: boolean;
-    tradeGateway: boolean;
-    strategyEngine: boolean;
+/**
+ * 系统管理API服务
+ * 提供系统状态监控、配置管理、日志查询和系统维护功能
+ */
+
+export interface SystemStatus {
+  version: string;
+  uptime: number;
+  status: 'running' | 'stopped' | 'error';
+  last_startup: string;
+  engine_status: {
+    main_engine: string;
+    event_engine: string;
+    strategy_engine: string;
+    data_service: string;
+  };
 }
 
-interface ResourceUsage {
-    cpu: number;
-    memory: number;
-    disk: number;
-    network: number;
+export interface SystemSettings {
+  data_sync: {
+    auto_sync: boolean;
+    sync_interval: number;
+    data_sources: string[];
+  };
+  trading: {
+    commission_rate: number;
+    tax_rate: number;
+    min_commission: number;
+  };
+  risk: {
+    max_position_ratio: number;
+    max_daily_loss: number;
+    enable_auto_stop: boolean;
+  };
+  notification: {
+    enable_email: boolean;
+    enable_wechat: boolean;
+    risk_notification: boolean;
+  };
 }
 
-interface LogResult {
-    logs: any[];
-    total: number;
-    page: number;
+export interface ConnectionStatus {
+  database: boolean;
+  redis: boolean;
+  tushare: boolean;
+  broker: boolean;
+  last_check: string;
 }
 
-interface DatabaseStatus {
-    size: number;
-    tables: number;
-    lastBackup: string;
+export interface ResourceUsage {
+  cpu_percent: number;
+  memory_percent: number;
+  memory_used: number;
+  memory_total: number;
+  disk_usage: number;
+  network_io: {
+    bytes_sent: number;
+    bytes_recv: number;
+  };
+}
+
+export interface DatabaseStatus {
+  total_tables: number;
+  total_records: number;
+  stock_data_count: number;
+  trade_data_count: number;
+  last_optimized: string;
+}
+
+export interface SystemLogQueryParams {
+  level?: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG';
+  module?: string;
+  page?: number;
+  limit?: number;
+  start_time?: string;
+  end_time?: string;
 }
 
 export default {
-    async checkConnections(): Promise<ConnectionStatus> {
-        return request.get('/system/connections')
-            .then(handleResponse)
-            .then((data: any) => ({
-                dataSource: data.dataSource,
-                tradeGateway: data.tradeGateway,
-                strategyEngine: data.strategyEngine
-            }))
-    },
+  /**
+   * 获取系统状态
+   * @returns 系统状态信息
+   */
+  async getSystemStatus(): Promise<SystemStatus> {
+    return request.get('/system/status')
+      .then(handleResponse)
+      .then((data: ApiResponse<SystemStatus>) => data.data)
+  },
 
-    async getResourceUsage(): Promise<ResourceUsage> {
-        return request.get('/system/resources')
-            .then(handleResponse)
-            .then((data: any) => ({
-                cpu: data.cpu,
-                memory: data.memory,
-                disk: data.disk,
-                network: data.network
-            }))
-    },
+  /**
+   * 获取系统日志
+   * @param params 查询参数
+   * @returns 系统日志分页结果
+   */
+  async getSystemLogs(params?: SystemLogQueryParams): Promise<PaginatedResponse<SystemLog>> {
+    return request.get('/system/logs', { params })
+      .then(handleResponse)
+      .then((data: PaginatedResponse<SystemLog>) => data)
+  },
 
-    async getSystemLogs(params: any): Promise<LogResult> {
-        return request.get('/system/logs', {params})
-            .then(handleResponse)
-            .then((data: { logs: any[], total: number, page: number }) => ({
-                logs: data.logs,
-                total: data.total,
-                page: data.page
-            }))
-    },
+  /**
+   * 触发数据同步
+   * @param params 同步参数
+   * @returns 同步任务信息
+   */
+  async triggerDataSync(params: {
+    data_type: string;
+    start_date?: string;
+    end_date?: string;
+    symbols?: string[];
+  }): Promise<{ task_id: string }> {
+    return request.post('/system/data/sync', params)
+      .then(handleResponse)
+      .then((data: ApiResponse<{ task_id: string }>) => data.data)
+  },
 
-    async syncDataSource(source: string): Promise<{ success: boolean; message: string; syncId: string }> {
-        return request.post(`/system/sync/${source}`)
-            .then(handleResponse)
-            .then((data: any) => ({
-                success: data.success,
-                message: data.message,
-                syncId: data.syncId
-            }))
-    },
+  /**
+   * 获取数据同步状态
+   * @returns 数据同步状态信息
+   */
+  async getDataSyncStatus(): Promise<any> {
+    return request.get('/system/data/status')
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data)
+  },
 
-    async getTaskQueueStatus(): Promise<any[]> {
-        return request.get('/system/tasks')
-            .then(handleResponse)
-            .then((data: { tasks: any[] }) => data.tasks) // 添加类型注解
-    },
+  /**
+   * 获取系统配置
+   * @returns 系统配置信息
+   */
+  async getSystemSettings(): Promise<SystemSettings> {
+    return request.get('/system/settings')
+      .then(handleResponse)
+      .then((data: ApiResponse<SystemSettings>) => data.data)
+  },
 
-    async getSystemConfig(): Promise<any> {
-        return request.get('/system/config')
-            .then(handleResponse)
-            .then((data: { config: any }) => data.config) // 添加类型注解
-    },
+  /**
+   * 更新系统配置
+   * @param settings 配置更新参数
+   * @returns 更新后的系统配置
+   */
+  async updateSystemSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
+    return request.put('/system/settings', settings)
+      .then(handleResponse)
+      .then((data: ApiResponse<SystemSettings>) => data.data)
+  },
 
-    async updateSystemConfig(config: any): Promise<any> {
-        return request.put('/system/config', config)
-            .then(handleResponse)
-            .then((data: { updatedConfig: any }) => data.updatedConfig) // 添加类型注解
-    },
+  /**
+   * 获取连接状态
+   * @returns 各服务连接状态
+   */
+  async getConnections(): Promise<ConnectionStatus> {
+    return request.get('/system/connections')
+      .then(handleResponse)
+      .then((data: ApiResponse<ConnectionStatus>) => data.data)
+  },
 
-    async getServiceStatus(serviceName: string): Promise<string> {
-        return request.get(`/system/services/${serviceName}/status`)
-            .then(handleResponse)
-            .then((data: { status: string }) => data.status) // 添加类型注解
-    },
+  /**
+   * 获取资源使用情况
+   * @returns 系统资源使用信息
+   */
+  async getResources(): Promise<ResourceUsage> {
+    return request.get('/system/resources')
+      .then(handleResponse)
+      .then((data: ApiResponse<ResourceUsage>) => data.data)
+  },
 
-    async restartService(serviceName: string): Promise<{ success: boolean; message: string }> {
-        return request.post(`/system/services/${serviceName}/restart`)
-            .then(handleResponse)
-            .then((data: any) => ({
-                success: data.success,
-                message: data.message
-            }))
-    },
+  /**
+   * 获取数据库状态
+   * @returns 数据库状态信息
+   */
+  async getDatabaseStatus(): Promise<DatabaseStatus> {
+    return request.get('/system/database')
+      .then(handleResponse)
+      .then((data: ApiResponse<DatabaseStatus>) => data.data)
+  },
 
-    async getDatabaseStatus(): Promise<DatabaseStatus> {
-        return request.get('/system/database')
-            .then(handleResponse)
-            .then((data: any) => ({
-                size: data.size,
-                tables: data.tables,
-                lastBackup: data.lastBackup
-            }))
-    },
+  /**
+   * 健康检查
+   * @returns 健康检查结果
+   */
+  async healthCheck(): Promise<HealthCheckResponse> {
+    return request.get('/system/health')
+      .then(handleResponse)
+      .then((data: HealthCheckResponse) => data)
+  },
 
-    async createDatabaseBackup(): Promise<{ success: boolean; backupId: string }> {
-        return request.post('/system/database/backup')
-            .then(handleResponse)
-            .then((data: any) => ({
-                success: data.success,
-                backupId: data.backupId
-            }))
-    },
+  /**
+   * 清理系统缓存
+   * @returns 清理操作结果
+   */
+  async clearCache(): Promise<{ cleared: boolean; message: string }> {
+    return request.post('/system/cache/clear')
+      .then(handleResponse)
+      .then((data: ApiResponse<{ cleared: boolean; message: string }>) => data.data)
+  },
 
-       /**
-     * 加载系统初始数据（聚合连接状态、资源使用、数据库状态）
-     * @returns 聚合后的初始数据
-     */
-   async loadInitialData(): Promise<{
-        connections: ConnectionStatus;
-        resourceUsage: ResourceUsage;
-        databaseStatus: DatabaseStatus;
-    }> {
-        try {
-            // 并行请求多个初始数据接口，提升加载效率
-            const [connections, resourceUsage, databaseStatus] = await Promise.all([
-                this.checkConnections(),    // 连接状态
-                this.getResourceUsage(),    // 资源使用
-                this.getDatabaseStatus()    // 数据库状态
-            ]);
-            return { connections, resourceUsage, databaseStatus };
-        } catch (error) {
-            console.error('系统初始数据加载失败:', error);
-            // 返回默认值而不是抛出错误，避免阻塞应用启动
-            return {
-                connections: {
-                    dataSource: false,
-                    tradeGateway: false,
-                    strategyEngine: false
-                },
-                resourceUsage: {
-                    cpu: 0,
-                    memory: 0,
-                    disk: 0,
-                    network: 0
-                },
-                databaseStatus: {
-                    size: 0,
-                    tables: 0,
-                    lastBackup: ''
-                }
-            };
-        }
-    }
+  /**
+   * 重启系统服务
+   * @param service 服务名称
+   * @returns 重启操作结果
+   */
+  async restartService(service: string): Promise<{ success: boolean; message: string }> {
+    return request.post(`/system/services/${service}/restart`)
+      .then(handleResponse)
+      .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
+  }
 }

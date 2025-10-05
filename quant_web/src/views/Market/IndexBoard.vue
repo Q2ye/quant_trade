@@ -189,7 +189,7 @@ export default {
   font-size: 18px;
   font-weight: 600;
   color: #64b5f6;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .header-actions {
@@ -253,7 +253,7 @@ export default {
   font-weight: 700;
   color: #e0e0e0;
   margin-bottom: 5px;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .index-change {

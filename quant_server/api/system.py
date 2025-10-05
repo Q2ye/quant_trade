@@ -114,4 +114,4 @@ async def get_resources(data_service: DataService = Depends(get_data_service)):
 @router.get("/database")
 async def get_database(data_service: DataService = Depends(get_data_service)):
     """获取数据库状态"""
-    return { "size": 1024, "MB tables": 42, "lastBackup": "2023-08-23T08:00:00" }
+    return { "size": "1024MB", "tables": 42, "lastBackup": "2023-08-23T08:00:00" }

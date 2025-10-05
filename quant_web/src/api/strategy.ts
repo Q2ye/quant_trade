@@ -1,147 +1,85 @@
-import request from '@/utils/request'
-import {handleResponse} from '@/utils/responseHandler'
+// quant_web/src/types/api/strategy.ts
+// 策略管理API类型定义
+import {
+  Strategy,
+  BacktestResult,
+  StrategyPerformance,
+  StrategyTemplate,
+  TradeSignal,
+  BacktestConfig
+} from '@/types/entities/strategy';
+import {ApiResponse, PaginatedResponse, PaginationParams, StrategyStatusInfo} from "@/types/api";
 
-export interface Strategy {
-    id: string;
-    name: string;
-    status: 'active' | 'paused' | 'stopped';
-    // ...其他策略属性
+/**
+ * 创建策略请求参数
+ */
+export interface CreateStrategyRequest {
+  name: string;                      // 策略名称
+  description: string;               // 策略描述
+  code: string;                      // 策略代码
+  parameters: Record<string, any>;   // 策略参数
+  category?: string;                 // 策略分类
+  tags?: string[];                   // 策略标签
 }
 
-export interface StrategyListResult {
-    strategies: Strategy[];
-    total: number;
-    page: number;
+/**
+ * 更新策略请求参数
+ */
+export interface UpdateStrategyRequest {
+  name?: string;                     // 策略名称
+  description?: string;              // 策略描述
+  code?: string;                     // 策略代码
+  parameters?: Record<string, any>;  // 策略参数
+  category?: string;                 // 策略分类
+  tags?: string[];                   // 策略标签
 }
 
-export interface StrategyPerformance {
-    totalReturn: number;
-    maxDrawdown: number;
-    // ...其他绩效指标
+/**
+ * 回测请求参数
+ */
+export interface BacktestRequest {
+  strategyId: string;                // 策略ID
+  startDate: string;                 // 开始日期
+  endDate: string;                   // 结束日期
+  initialCapital: number;            // 初始资金
+  commission: number;                // 手续费率
+  slippage: number;                  // 滑点
+  universe?: string[];               // 股票池
+  parameters?: Record<string, any>;  // 回测参数覆盖
 }
 
-export interface BacktestResult {
-    id: string;
-    performance: StrategyPerformance;
-    // ...其他回测结果
+/**
+ * 策略查询参数
+ */
+export interface StrategyQueryParams extends PaginationParams {
+  name?: string;                     // 策略名称模糊查询
+  category?: string;                 // 策略分类筛选
+  status?: string;                   // 策略状态筛选
+  tags?: string[];                   // 标签筛选
 }
 
-
-export default {
-    async getStrategyTemplates(): Promise<any[]> {
-        return request.get('/strategy/templates')
-            .then(handleResponse)
-            .then((data: { templates: any[] }) => data.templates) // 添加类型注解
-    },
-
-    async getStrategyList(status: string = 'all', page: number = 1, pageSize: number = 20): Promise<StrategyListResult> {
-        return request.get('/strategies', {
-            params: {status, page, pageSize}
-        })
-            .then(handleResponse)
-            .then((data: { strategies: Strategy[], total: number, page: number }) => ({
-                strategies: data.strategies,
-                total: data.total,
-                page: data.page
-            }))
-    },
-
-    async createStrategy(strategyData: any): Promise<Strategy> {
-        return request.post('/strategies', strategyData)
-            .then(handleResponse)
-            .then((data: { newStrategy: Strategy }) => data.newStrategy) // 添加类型注解
-    },
-
-    async updateStrategy(id: string, strategyData: Partial<Strategy>): Promise<Strategy> {
-        return request.put(`/strategies/${id}`, strategyData)
-            .then(handleResponse)
-            .then((data: { updatedStrategy: Strategy }) => data.updatedStrategy) // 添加类型注解
-    },
-
-    async deleteStrategy(id: string): Promise<void> {
-        return request.delete(`/strategies/${id}`)
-            .then(handleResponse)
-    },
-
-    async getStrategyDetails(id: string): Promise<Strategy> {
-        return request.get(`/strategies/${id}`)
-            .then(handleResponse)
-            .then((data: { strategy: Strategy }) => data.strategy) // 添加类型注解
-    },
-
-    // 启动策略
-    async startStrategy(id: string): Promise<Strategy> {
-        return request.post(`/strategies/${id}/start`)
-            .then(handleResponse)
-            .then((data: { strategy: Strategy }) => data.strategy) // 返回更新后的策略对象
-    },
-
-    stopStrategy(id: string) {
-        return request.post(`/strategies/${id}/stop`)
-            .then(handleResponse)
-    },
-
-    async getStrategyLogs(id: string, limit: number = 100, level: string = 'all'): Promise<any[]> {
-        return request.get(`/strategies/${id}/logs`, {
-            params: {limit, level}
-        })
-            .then(handleResponse)
-            .then((data: { logs: any[] }) => data.logs) // 添加类型注解
-    },
-
-    async getStrategyPerformance(id: string): Promise<StrategyPerformance> {
-        return request.get(`/strategies/${id}/performance`)
-            .then(handleResponse)
-            .then((data: { performance: StrategyPerformance }) => data.performance) // 添加类型注解
-    },
-
-    async cloneStrategy(id: string, newName: string): Promise<Strategy> {
-        return request.post(`/strategies/${id}/clone`, {newName})
-            .then(handleResponse)
-            .then((data: { newStrategy: Strategy }) => data.newStrategy) // 添加类型注解
-    },
-
-    async optimizeStrategyParams(params: any): Promise<any> {
-        return request.post('/strategy/optimize', params)
-            .then(handleResponse)
-            .then((data: { optimizedParams: any }) => data.optimizedParams) // 添加类型注解
-    },
-
-    async compareStrategies(strategyIds: string[]): Promise<any> {
-        return request.post('/strategy/compare', {strategyIds})
-            .then(handleResponse)
-            .then((data: { comparison: any }) => data.comparison) // 添加类型注解
-    },
-
-    async getBacktestConfig(id: string): Promise<any> {
-        return request.get(`/strategies/${id}/backtest-config`)
-            .then(handleResponse)
-            .then((data: { config: any }) => data.config) // 添加类型注解
-    },
-
-    async runStrategyBacktest(id: string, config: any): Promise<BacktestResult> {
-        return request.post(`/strategies/${id}/backtest`, config)
-            .then(handleResponse)
-            .then((data: { backtestResult: BacktestResult }) => data.backtestResult) // 添加类型注解
-    },
-
-    async getBacktestResult(backtestId: string): Promise<BacktestResult> {
-        return request.get(`/backtest/${backtestId}`)
-            .then(handleResponse)
-            .then((data: { result: BacktestResult }) => data.result) // 添加类型注解
-    },
-
-    async getStrategyPositions(id: string): Promise<any[]> {
-        return request.get(`/strategies/${id}/positions`)
-            .then(handleResponse)
-            .then((data: { positions: any[] }) => data.positions) // 添加类型注解
-    },
-
-    async getStrategySignals(id: string, limit: number = 100): Promise<any[]> {
-        return request.get(`/strategies/${id}/signals`, {
-            params: {limit}
-        })
-            .then(handleResponse)
-            .then((data: { signals: any[] }) => data.signals) // 添加类型注解
-    }
+/**
+ * 策略运行参数
+ */
+export interface RunStrategyRequest {
+  strategyId: string;                // 策略ID
+  initialCapital?: number;           // 初始资金
+  parameters?: Record<string, any>;  // 运行参数
 }
+
+/**
+ * 策略停止参数
+ */
+export interface StopStrategyRequest {
+  strategyId: string;                // 策略ID
+  reason?: string;                   // 停止原因
+}
+
+// 响应类型定义
+export interface StrategyListResponse extends PaginatedResponse<Strategy> {}
+export interface StrategyDetailResponse extends ApiResponse<Strategy> {}
+export interface BacktestResponse extends ApiResponse<BacktestResult> {}
+export interface StrategyStatusResponse extends ApiResponse<StrategyStatusInfo> {}
+export interface StrategySignalResponse extends ApiResponse<TradeSignal[]> {}
+export interface StrategyPerformanceResponse extends ApiResponse<StrategyPerformance> {}
+export interface StrategyTemplateResponse extends ApiResponse<StrategyTemplate[]> {}

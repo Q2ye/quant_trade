@@ -1,4 +1,4 @@
-# utils/notification.py
+# common/notification.py
 """
 统一通知工具模块
 支持邮件、钉钉、企业微信等多种通知方式
