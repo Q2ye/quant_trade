@@ -1,119 +1,271 @@
 <template>
   <div class="app-sidebar" :class="{ collapsed: collapsed }">
-    <div class="nav-section">
-      <div class="nav-header">核心功能</div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'dashboard' }"
-          @click="navigate('/dashboard')"
-      >
-        <i class="fas fa-th-large"></i>
-        <span class="nav-text">交易驾驶舱</span>
+    <!-- 将导航内容包裹在可滚动容器中 -->
+    <div class="sidebar-content">
+      <!-- 所有导航部分保持不变 -->
+      <!-- 数据中心 -->
+      <div class="nav-section">
+        <div class="nav-header">数据中心</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'market' }"
+            @click="navigate('/market/stocks')"
+        >
+          <Icon icon="material-symbols:candlestick-chart" class="nav-icon" />
+          <span class="nav-text">市场数据</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'data-sync' }"
+            @click="navigate('/data-sync')"
+        >
+          <Icon icon="mdi:sync" class="nav-icon" />
+          <span class="nav-text">数据同步</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'data-quality' }"
+            @click="navigate('/data-quality')"
+        >
+          <Icon icon="mdi:check-circle" class="nav-icon" />
+          <span class="nav-text">数据质量</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'sync-history' }"
+            @click="navigate('/data-sync/history')"
+        >
+          <Icon icon="mdi:history" class="nav-icon" />
+          <span class="nav-text">同步历史</span>
+        </div>
       </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'strategies' }"
-          @click="navigate('/strategies')"
-      >
-        <i class="fas fa-project-diagram"></i>
-        <span class="nav-text">策略管理</span>
+
+      <!-- 策略中心 -->
+      <div class="nav-section">
+        <div class="nav-header">策略中心</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'strategies' }"
+            @click="navigate('/strategies')"
+        >
+          <Icon icon="material-symbols:device-hub" class="nav-icon" />
+          <span class="nav-text">策略管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'backtest' }"
+            @click="navigate('/strategies/backtest')"
+        >
+          <Icon icon="mdi:chart-line" class="nav-icon" />
+          <span class="nav-text">回测工作室</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'research' }"
+            @click="navigate('/strategies/factor-research')"
+        >
+          <Icon icon="material-symbols:science" class="nav-icon" />
+          <span class="nav-text">因子研究</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'strategy-templates' }"
+            @click="navigate('/strategies/templates')"
+        >
+          <Icon icon="mdi:content-copy" class="nav-icon" />
+          <span class="nav-text">策略模板</span>
+        </div>
       </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'backtest' }"
-          @click="navigate('/strategies/backtest')"
-      >
-        <i class="fas fa-chart-line"></i>
-        <span class="nav-text">回测工作室</span>
+
+      <!-- 组合管理 -->
+      <div class="nav-section">
+        <div class="nav-header">组合管理</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'baskets' }"
+            @click="navigate('/baskets')"
+        >
+          <Icon icon="mdi:basket" class="nav-icon" />
+          <span class="nav-text">篮子管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'positions' }"
+            @click="navigate('/trading/positions')"
+        >
+          <Icon icon="mdi:chart-pie" class="nav-icon" />
+          <span class="nav-text">持仓管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'account' }"
+            @click="navigate('/trading/account')"
+        >
+          <Icon icon="mdi:wallet" class="nav-icon" />
+          <span class="nav-text">账户管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'portfolio-analysis' }"
+            @click="navigate('/portfolio/analysis')"
+        >
+          <Icon icon="mdi:chart-bar" class="nav-icon" />
+          <span class="nav-text">组合分析</span>
+        </div>
       </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'trading' }"
-          @click="navigate('/trading')"
-      >
-        <i class="fas fa-terminal"></i>
-        <span class="nav-text">交易执行</span>
+
+      <!-- 交易执行 -->
+      <div class="nav-section">
+        <div class="nav-header">交易执行</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'trading' }"
+            @click="navigate('/trading')"
+        >
+          <Icon icon="mdi:terminal" class="nav-icon" />
+          <span class="nav-text">交易驾驶舱</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'orders' }"
+            @click="navigate('/trading/orders')"
+        >
+          <Icon icon="mdi:format-list-bulleted" class="nav-icon" />
+          <span class="nav-text">订单管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'signals' }"
+            @click="navigate('/signals')"
+        >
+          <Icon icon="mdi:bell" class="nav-icon" />
+          <span class="nav-text">信号监控</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'execution-analysis' }"
+            @click="navigate('/trading/execution-analysis')"
+        >
+          <Icon icon="mdi:speedometer" class="nav-icon" />
+          <span class="nav-text">执行分析</span>
+        </div>
+      </div>
+
+      <!-- 风险监控 -->
+      <div class="nav-section">
+        <div class="nav-header">风险监控</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'risk-rules' }"
+            @click="navigate('/risk/rules')"
+        >
+          <Icon icon="mdi:shield-check" class="nav-icon" />
+          <span class="nav-text">风控规则</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'risk-monitor' }"
+            @click="navigate('/risk/monitor')"
+        >
+          <Icon icon="mdi:eye" class="nav-icon" />
+          <span class="nav-text">实时监控</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'risk-events' }"
+            @click="navigate('/risk/events')"
+        >
+          <Icon icon="mdi:alert-circle" class="nav-icon" />
+          <span class="nav-text">事件查看</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'blacklist' }"
+            @click="navigate('/risk/blacklist')"
+        >
+          <Icon icon="mdi:block-helper" class="nav-icon" />
+          <span class="nav-text">黑名单</span>
+        </div>
+      </div>
+
+      <!-- 绩效分析 -->
+      <div class="nav-section">
+        <div class="nav-header">绩效分析</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'strategy-performance' }"
+            @click="navigate('/performance/strategy')"
+        >
+          <Icon icon="mdi:trophy" class="nav-icon" />
+          <span class="nav-text">策略绩效</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'account-performance' }"
+            @click="navigate('/performance/account')"
+        >
+          <Icon icon="mdi:chart-areaspline" class="nav-icon" />
+          <span class="nav-text">账户绩效</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'performance-comparison' }"
+            @click="navigate('/performance/comparison')"
+        >
+          <Icon icon="mdi:scale-balance" class="nav-icon" />
+          <span class="nav-text">绩效对比</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'attribution' }"
+            @click="navigate('/performance/attribution')"
+        >
+          <Icon icon="mdi:puzzle" class="nav-icon" />
+          <span class="nav-text">归因分析</span>
+        </div>
+      </div>
+
+      <!-- 系统管理 -->
+      <div class="nav-section">
+        <div class="nav-header">系统管理</div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'system-monitor' }"
+            @click="navigate('/system/monitor')"
+        >
+          <Icon icon="mdi:monitor-dashboard" class="nav-icon" />
+          <span class="nav-text">系统监控</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'logs' }"
+            @click="navigate('/system/logs')"
+        >
+          <Icon icon="mdi:clipboard-text" class="nav-icon" />
+          <span class="nav-text">日志查看</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'users' }"
+            @click="navigate('/system/users')"
+        >
+          <Icon icon="mdi:account-group" class="nav-icon" />
+          <span class="nav-text">用户管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'settings' }"
+            @click="navigate('/system/settings')"
+        >
+          <Icon icon="mdi:cog" class="nav-icon" />
+          <span class="nav-text">系统设置</span>
+        </div>
       </div>
     </div>
 
-    <div class="nav-section">
-      <div class="nav-header">数据分析</div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'baskets' }"
-          @click="navigate('/baskets')"
-      >
-        <i class="fas fa-basket-shopping"></i>
-        <span class="nav-text">股票篮子</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'performance' }"
-          @click="navigate('/performance/account')"
-      >
-        <i class="fas fa-analytics"></i>
-        <span class="nav-text">绩效分析</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'market' }"
-          @click="navigate('/market/stocks')"
-      >
-        <i class="fas fa-chart-candlestick"></i>
-        <span class="nav-text">市场数据</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'research' }"
-          @click="navigate('/strategies/factor-research')"
-      >
-        <i class="fas fa-flask"></i>
-        <span class="nav-text">因子研究</span>
-      </div>
-    </div>
-
-    <div class="nav-section">
-      <div class="nav-header">系统管理</div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'data-sync' }"
-          @click="navigate('/data-sync')"
-      >
-        <i class="fas fa-database"></i>
-        <span class="nav-text">数据同步</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'risk' }"
-          @click="navigate('/risk/rules')"
-      >
-        <i class="fas fa-shield-alt"></i>
-        <span class="nav-text">风险管理</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'signals' }"
-          @click="navigate('/signals')"
-      >
-        <i class="fas fa-bell"></i>
-        <span class="nav-text">信号监控</span>
-      </div>
-      <div
-          class="nav-item"
-          :class="{ active: activeMenu === 'system' }"
-          @click="navigate('/system/monitor')"
-      >
-        <i class="fas fa-cog"></i>
-        <span class="nav-text">系统监控</span>
-      </div>
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="system-info">
-        <span>CPU: {{ systemInfo.cpu }}%</span>
-        <span>内存: {{ systemInfo.memory }}%</span>
-      </div>
-      <div class="version">v1.0.0</div>
+    <!-- 缩放按钮移到侧边栏外层，不包含在滚动内容中 -->
+    <div class="sidebar-toggle" @click="toggleCollapse">
+      <Icon :icon="collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" class="toggle-icon" />
     </div>
   </div>
 </template>
@@ -121,9 +273,13 @@
 <script>
 import { ref, watch, onMounted, onUnmounted, reactive } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { Icon } from '@iconify/vue';
 
 export default {
   name: "AppSidebar",
+  components: {
+    Icon
+  },
   emits: ["collapse"],
   setup(_, { emit }) {
     const route = useRoute();
@@ -152,19 +308,49 @@ export default {
           return;
         }
 
-        // 简化的路径匹配逻辑
+        // 根据新菜单结构更新路径匹配逻辑
         if (path.startsWith("/dashboard")) activeMenu.value = "dashboard";
         else if (path.includes("/backtest")) activeMenu.value = "backtest";
         else if (path.includes("/factor-research")) activeMenu.value = "research";
         else if (path.startsWith("/strategies")) activeMenu.value = "strategies";
-        else if (path.startsWith("/trading")) activeMenu.value = "trading";
+        else if (path.startsWith("/trading")) {
+          if (path.includes("/orders")) activeMenu.value = "orders";
+          else if (path.includes("/positions")) activeMenu.value = "positions";
+          else if (path.includes("/account")) activeMenu.value = "account";
+          else if (path.includes("/execution-analysis")) activeMenu.value = "execution-analysis";
+          else activeMenu.value = "trading";
+        }
         else if (path.startsWith("/baskets")) activeMenu.value = "baskets";
-        else if (path.startsWith("/performance")) activeMenu.value = "performance";
+        else if (path.startsWith("/performance")) {
+          if (path.includes("/strategy")) activeMenu.value = "strategy-performance";
+          else if (path.includes("/account")) activeMenu.value = "account-performance";
+          else if (path.includes("/comparison")) activeMenu.value = "performance-comparison";
+          else if (path.includes("/attribution")) activeMenu.value = "attribution";
+          else activeMenu.value = "performance";
+        }
         else if (path.startsWith("/market")) activeMenu.value = "market";
-        else if (path.startsWith("/data-sync")) activeMenu.value = "data-sync";
-        else if (path.startsWith("/risk")) activeMenu.value = "risk";
+        else if (path.startsWith("/data-sync")) {
+          if (path.includes("/history")) activeMenu.value = "sync-history";
+          else activeMenu.value = "data-sync";
+        }
+        else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
+        else if (path.startsWith("/risk")) {
+          if (path.includes("/rules")) activeMenu.value = "risk-rules";
+          else if (path.includes("/monitor")) activeMenu.value = "risk-monitor";
+          else if (path.includes("/events")) activeMenu.value = "risk-events";
+          else if (path.includes("/blacklist")) activeMenu.value = "blacklist";
+          else activeMenu.value = "risk";
+        }
         else if (path.startsWith("/signals")) activeMenu.value = "signals";
-        else if (path.startsWith("/system")) activeMenu.value = "system";
+        else if (path.startsWith("/system")) {
+          if (path.includes("/monitor")) activeMenu.value = "system-monitor";
+          else if (path.includes("/logs")) activeMenu.value = "logs";
+          else if (path.includes("/users")) activeMenu.value = "users";
+          else if (path.includes("/settings")) activeMenu.value = "settings";
+          else activeMenu.value = "system";
+        }
+        else if (path.startsWith("/portfolio")) activeMenu.value = "portfolio-analysis";
+        else if (path.startsWith("/strategies/templates")) activeMenu.value = "strategy-templates";
         else activeMenu.value = "";
       } catch (error) {
         console.warn('设置活动菜单时出错:', error);
@@ -296,24 +482,50 @@ export default {
   transition: width 0.3s ease;
   overflow: hidden;
   position: relative;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+
+  /* 隐藏滚动条但保持滚动功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   &.collapsed {
     width: var(--sidebar-collapsed-width, 64px);
   }
 }
 
+/* 可滚动内容区域 */
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* 隐藏滚动条但保持滚动功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .nav-section {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   flex-shrink: 0;
 }
 
 .nav-header {
-  padding: 15px 20px 10px;
+  padding: 16px 20px 8px;
   font-size: 12px;
   color: var(--text-secondary, #9ca3af);
   text-transform: uppercase;
   letter-spacing: 1px;
   font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin: 0 12px 8px;
 }
 
 .nav-item {
@@ -326,27 +538,39 @@ export default {
   cursor: pointer;
   border-left: 3px solid transparent;
   user-select: none;
+  margin: 2px 8px;
+  border-radius: 6px;
 
   &:hover {
-    background-color: rgba(79, 156, 249, 0.1);
+    background-color: rgba(79, 156, 249, 0.15);
     color: #fff;
+    transform: translateX(2px);
   }
 
   &.active {
-    background-color: rgba(79, 156, 249, 0.2);
+    background-color: rgba(79, 156, 249, 0.25);
     border-left-color: var(--accent-color, #4f9cf9);
     color: #fff;
+    box-shadow: 0 2px 8px rgba(79, 156, 249, 0.3);
   }
 
-  i {
+  .nav-icon {
     margin-right: 12px;
     width: 20px;
-    text-align: center;
+    height: 20px;
     color: var(--accent-color, #4f9cf9);
     flex-shrink: 0;
   }
+
+  .nav-text {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
+/* 折叠状态样式 */
 .app-sidebar.collapsed {
   .nav-text {
     display: none;
@@ -359,47 +583,55 @@ export default {
   .nav-item {
     justify-content: center;
     padding: 12px;
+    margin: 2px 8px;
+    border-radius: 8px;
 
-    i {
+    .nav-icon {
       margin-right: 0;
+      width: 22px;
+      height: 22px;
     }
-  }
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: 15px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-  flex-shrink: 0;
-
-  .system-info {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    flex-wrap: wrap;
-  }
-
-  .version {
-    text-align: center;
-    font-weight: 500;
-  }
-}
-
-/* 添加响应式设计 */
-@media (max-height: 600px) {
-  .app-sidebar {
-    overflow-y: auto;
   }
 
   .nav-section {
-    margin-bottom: 15px;
+    margin-bottom: 8px;
+  }
+}
+
+/* 缩放按钮 - 调整位置和大小 */
+.sidebar-toggle {
+  position: fixed;
+  top: 60px; /* 位于头部下方，避免重叠 */
+  left: calc(var(--sidebar-width, 240px) - 10px); /* 微调位置 */
+  width: 18px; /* 减小尺寸 */
+  height: 18px;
+  background-color: var(--accent-color, #4f9cf9);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  z-index: 1000;
+  border: 2px solid var(--secondary-bg, #1f2937);
+
+  &:hover {
+    background-color: var(--accent-hover, #3a8de4);
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
   }
 
-  .nav-item {
-    padding: 10px 20px;
+  .toggle-icon {
+    width: 12px; /* 减小图标 */
+    height: 12px;
   }
+}
+
+/* 折叠状态下调整按钮位置 */
+.app-sidebar.collapsed .sidebar-toggle {
+  left: calc(var(--sidebar-collapsed-width, 64px) - 10px);
 }
 
 /* 确保 CSS 变量有回退值 */
@@ -410,5 +642,6 @@ export default {
   --text-primary: #f3f4f6;
   --text-secondary: #9ca3af;
   --accent-color: #4f9cf9;
+  --accent-hover: #3a8de4;
 }
 </style>

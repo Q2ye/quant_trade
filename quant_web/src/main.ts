@@ -7,10 +7,13 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import * as echarts from 'echarts';
 
+import { Icon } from '@iconify/vue'
 // 注册全局指令
 import resize from './directives/resize';
 
 const app = createApp(App);
+
+app.component('Icon', Icon)
 // 设置全局属性
 app.config.globalProperties.$echarts = echarts;
 
