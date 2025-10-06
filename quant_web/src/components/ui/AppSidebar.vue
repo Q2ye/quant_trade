@@ -10,32 +10,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'market' }"
             @click="navigate('/market/stocks')"
+            @mouseenter="showTooltip($event, '市场数据')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="material-symbols:candlestick-chart" class="nav-icon" />
+          <Icon icon="material-symbols:candlestick-chart" class="nav-icon"/>
           <span class="nav-text">市场数据</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'data-sync' }"
             @click="navigate('/data-sync')"
+            @mouseenter="showTooltip($event, '数据同步')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:sync" class="nav-icon" />
+          <Icon icon="mdi:sync" class="nav-icon"/>
           <span class="nav-text">数据同步</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'data-quality' }"
             @click="navigate('/data-quality')"
+            @mouseenter="showTooltip($event, '数据质量')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:check-circle" class="nav-icon" />
+          <Icon icon="mdi:check-circle" class="nav-icon"/>
           <span class="nav-text">数据质量</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'sync-history' }"
             @click="navigate('/data-sync/history')"
+            @mouseenter="showTooltip($event, '同步历史')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:history" class="nav-icon" />
+          <Icon icon="mdi:history" class="nav-icon"/>
           <span class="nav-text">同步历史</span>
         </div>
       </div>
@@ -47,32 +55,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'strategies' }"
             @click="navigate('/strategies')"
+            @mouseenter="showTooltip($event, '策略管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="material-symbols:device-hub" class="nav-icon" />
+          <Icon icon="material-symbols:device-hub" class="nav-icon"/>
           <span class="nav-text">策略管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'backtest' }"
             @click="navigate('/strategies/backtest')"
+            @mouseenter="showTooltip($event, '回测工作室')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:chart-line" class="nav-icon" />
+          <Icon icon="mdi:chart-line" class="nav-icon"/>
           <span class="nav-text">回测工作室</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'research' }"
             @click="navigate('/strategies/factor-research')"
+            @mouseenter="showTooltip($event, '因子研究')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="material-symbols:science" class="nav-icon" />
+          <Icon icon="material-symbols:science" class="nav-icon"/>
           <span class="nav-text">因子研究</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'strategy-templates' }"
             @click="navigate('/strategies/templates')"
+            @mouseenter="showTooltip($event, '策略模板')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:content-copy" class="nav-icon" />
+          <Icon icon="mdi:content-copy" class="nav-icon"/>
           <span class="nav-text">策略模板</span>
         </div>
       </div>
@@ -84,32 +100,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'baskets' }"
             @click="navigate('/baskets')"
+            @mouseenter="showTooltip($event, '篮子管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:basket" class="nav-icon" />
+          <Icon icon="mdi:basket" class="nav-icon"/>
           <span class="nav-text">篮子管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'positions' }"
             @click="navigate('/trading/positions')"
+            @mouseenter="showTooltip($event, '持仓管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:chart-pie" class="nav-icon" />
+          <Icon icon="mdi:chart-pie" class="nav-icon"/>
           <span class="nav-text">持仓管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'account' }"
             @click="navigate('/trading/account')"
+            @mouseenter="showTooltip($event, '账户管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:wallet" class="nav-icon" />
+          <Icon icon="mdi:wallet" class="nav-icon"/>
           <span class="nav-text">账户管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'portfolio-analysis' }"
             @click="navigate('/portfolio/analysis')"
+            @mouseenter="showTooltip($event, '组合分析')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:chart-bar" class="nav-icon" />
+          <Icon icon="mdi:chart-bar" class="nav-icon"/>
           <span class="nav-text">组合分析</span>
         </div>
       </div>
@@ -121,32 +145,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'trading' }"
             @click="navigate('/trading')"
+            @mouseenter="showTooltip($event, '交易驾驶舱')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:terminal" class="nav-icon" />
+          <Icon icon="mdi:terminal" class="nav-icon"/>
           <span class="nav-text">交易驾驶舱</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'orders' }"
             @click="navigate('/trading/orders')"
+            @mouseenter="showTooltip($event, '订单管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:format-list-bulleted" class="nav-icon" />
+          <Icon icon="mdi:format-list-bulleted" class="nav-icon"/>
           <span class="nav-text">订单管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'signals' }"
             @click="navigate('/signals')"
+            @mouseenter="showTooltip($event, '信号监控')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:bell" class="nav-icon" />
+          <Icon icon="mdi:bell" class="nav-icon"/>
           <span class="nav-text">信号监控</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'execution-analysis' }"
             @click="navigate('/trading/execution-analysis')"
+            @mouseenter="showTooltip($event, '执行分析')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:speedometer" class="nav-icon" />
+          <Icon icon="mdi:speedometer" class="nav-icon"/>
           <span class="nav-text">执行分析</span>
         </div>
       </div>
@@ -158,32 +190,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'risk-rules' }"
             @click="navigate('/risk/rules')"
+            @mouseenter="showTooltip($event, '风控规则')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:shield-check" class="nav-icon" />
+          <Icon icon="mdi:shield-check" class="nav-icon"/>
           <span class="nav-text">风控规则</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'risk-monitor' }"
             @click="navigate('/risk/monitor')"
+            @mouseenter="showTooltip($event, '实时监控')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:eye" class="nav-icon" />
+          <Icon icon="mdi:eye" class="nav-icon"/>
           <span class="nav-text">实时监控</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'risk-events' }"
             @click="navigate('/risk/events')"
+            @mouseenter="showTooltip($event, '事件查看')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:alert-circle" class="nav-icon" />
+          <Icon icon="mdi:alert-circle" class="nav-icon"/>
           <span class="nav-text">事件查看</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'blacklist' }"
             @click="navigate('/risk/blacklist')"
+            @mouseenter="showTooltip($event, '黑名单')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:block-helper" class="nav-icon" />
+          <Icon icon="mdi:block-helper" class="nav-icon"/>
           <span class="nav-text">黑名单</span>
         </div>
       </div>
@@ -195,32 +235,40 @@
             class="nav-item"
             :class="{ active: activeMenu === 'strategy-performance' }"
             @click="navigate('/performance/strategy')"
+            @mouseenter="showTooltip($event, '策略绩效')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:trophy" class="nav-icon" />
+          <Icon icon="mdi:trophy" class="nav-icon"/>
           <span class="nav-text">策略绩效</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'account-performance' }"
             @click="navigate('/performance/account')"
+            @mouseenter="showTooltip($event, '账户绩效')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:chart-areaspline" class="nav-icon" />
+          <Icon icon="mdi:chart-areaspline" class="nav-icon"/>
           <span class="nav-text">账户绩效</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'performance-comparison' }"
             @click="navigate('/performance/comparison')"
+            @mouseenter="showTooltip($event, '绩效对比')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:scale-balance" class="nav-icon" />
+          <Icon icon="mdi:scale-balance" class="nav-icon"/>
           <span class="nav-text">绩效对比</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'attribution' }"
             @click="navigate('/performance/attribution')"
+            @mouseenter="showTooltip($event, '归因分析')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:puzzle" class="nav-icon" />
+          <Icon icon="mdi:puzzle" class="nav-icon"/>
           <span class="nav-text">归因分析</span>
         </div>
       </div>
@@ -232,48 +280,66 @@
             class="nav-item"
             :class="{ active: activeMenu === 'system-monitor' }"
             @click="navigate('/system/monitor')"
+            @mouseenter="showTooltip($event, '系统监控')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:monitor-dashboard" class="nav-icon" />
+          <Icon icon="mdi:monitor-dashboard" class="nav-icon"/>
           <span class="nav-text">系统监控</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'logs' }"
             @click="navigate('/system/logs')"
+            @mouseenter="showTooltip($event, '日志查看')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:clipboard-text" class="nav-icon" />
+          <Icon icon="mdi:clipboard-text" class="nav-icon"/>
           <span class="nav-text">日志查看</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'users' }"
             @click="navigate('/system/users')"
+            @mouseenter="showTooltip($event, '用户管理')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:account-group" class="nav-icon" />
+          <Icon icon="mdi:account-group" class="nav-icon"/>
           <span class="nav-text">用户管理</span>
         </div>
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'settings' }"
             @click="navigate('/system/settings')"
+            @mouseenter="showTooltip($event, '系统设置')"
+            @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:cog" class="nav-icon" />
+          <Icon icon="mdi:cog" class="nav-icon"/>
           <span class="nav-text">系统设置</span>
         </div>
       </div>
     </div>
 
+    <!-- 全局 Tooltip 元素 -->
+    <div
+      v-if="collapsed"
+      class="nav-tooltip"
+      :style="tooltipStyle"
+      v-show="isTooltipVisible"
+    >
+      {{ tooltipContent }}
+    </div>
+
     <!-- 缩放按钮移到侧边栏外层，不包含在滚动内容中 -->
     <div class="sidebar-toggle" @click="toggleCollapse">
-      <Icon :icon="collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" class="toggle-icon" />
+      <Icon :icon="collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" class="toggle-icon"/>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, watch, onMounted, onUnmounted, reactive } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { Icon } from '@iconify/vue';
+import {onMounted, onUnmounted, reactive, ref, watch} from "vue";
+import {useRoute, useRouter} from "vue-router";
+import {Icon} from '@iconify/vue';
 
 export default {
   name: "AppSidebar",
@@ -281,7 +347,7 @@ export default {
     Icon
   },
   emits: ["collapse"],
-  setup(_, { emit }) {
+  setup(_, {emit}) {
     const route = useRoute();
     const router = useRouter();
     const activeMenu = ref("dashboard");
@@ -289,6 +355,14 @@ export default {
     const systemInfo = reactive({
       cpu: 42,
       memory: 65
+    });
+
+    // Tooltip 相关状态
+    const isTooltipVisible = ref(false);
+    const tooltipContent = ref("");
+    const tooltipStyle = ref({
+      top: "0px",
+      left: "0px"
     });
 
     let isComponentMounted = true;
@@ -319,37 +393,32 @@ export default {
           else if (path.includes("/account")) activeMenu.value = "account";
           else if (path.includes("/execution-analysis")) activeMenu.value = "execution-analysis";
           else activeMenu.value = "trading";
-        }
-        else if (path.startsWith("/baskets")) activeMenu.value = "baskets";
+        } else if (path.startsWith("/baskets")) activeMenu.value = "baskets";
         else if (path.startsWith("/performance")) {
           if (path.includes("/strategy")) activeMenu.value = "strategy-performance";
           else if (path.includes("/account")) activeMenu.value = "account-performance";
           else if (path.includes("/comparison")) activeMenu.value = "performance-comparison";
           else if (path.includes("/attribution")) activeMenu.value = "attribution";
           else activeMenu.value = "performance";
-        }
-        else if (path.startsWith("/market")) activeMenu.value = "market";
+        } else if (path.startsWith("/market")) activeMenu.value = "market";
         else if (path.startsWith("/data-sync")) {
           if (path.includes("/history")) activeMenu.value = "sync-history";
           else activeMenu.value = "data-sync";
-        }
-        else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
+        } else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
         else if (path.startsWith("/risk")) {
           if (path.includes("/rules")) activeMenu.value = "risk-rules";
           else if (path.includes("/monitor")) activeMenu.value = "risk-monitor";
           else if (path.includes("/events")) activeMenu.value = "risk-events";
           else if (path.includes("/blacklist")) activeMenu.value = "blacklist";
           else activeMenu.value = "risk";
-        }
-        else if (path.startsWith("/signals")) activeMenu.value = "signals";
+        } else if (path.startsWith("/signals")) activeMenu.value = "signals";
         else if (path.startsWith("/system")) {
           if (path.includes("/monitor")) activeMenu.value = "system-monitor";
           else if (path.includes("/logs")) activeMenu.value = "logs";
           else if (path.includes("/users")) activeMenu.value = "users";
           else if (path.includes("/settings")) activeMenu.value = "settings";
           else activeMenu.value = "system";
-        }
-        else if (path.startsWith("/portfolio")) activeMenu.value = "portfolio-analysis";
+        } else if (path.startsWith("/portfolio")) activeMenu.value = "portfolio-analysis";
         else if (path.startsWith("/strategies/templates")) activeMenu.value = "strategy-templates";
         else activeMenu.value = "";
       } catch (error) {
@@ -397,6 +466,32 @@ export default {
       emit("collapse", collapsed.value);
     };
 
+    // Tooltip 显示函数
+    const showTooltip = (event, content) => {
+      if (!collapsed.value || !isComponentMounted) return;
+
+      const navItem = event.currentTarget;
+      const rect = navItem.getBoundingClientRect();
+
+      // 计算 tooltip 位置
+      const top = rect.top + (rect.height / 2);
+      const left = rect.right + 8; // 在导航项右侧 8px 处
+
+      tooltipContent.value = content;
+      tooltipStyle.value = {
+        top: `${top}px`,
+        left: `${left}px`,
+        transform: 'translateY(-50%)'
+      };
+      isTooltipVisible.value = true;
+    };
+
+    // Tooltip 隐藏函数
+    const hideTooltip = () => {
+      if (!isComponentMounted) return;
+      isTooltipVisible.value = false;
+    };
+
     // 模拟系统信息更新
     const startSystemInfoUpdate = () => {
       if (!isComponentMounted) return;
@@ -424,21 +519,21 @@ export default {
 
       // 监听路由变化 - 使用更安全的配置
       routeWatchStop = watch(
-        () => route.path,
-        (newPath, oldPath) => {
-          if (!isComponentMounted) return;
+          () => route.path,
+          (newPath, oldPath) => {
+            if (!isComponentMounted) return;
 
-          // 添加防抖，避免频繁更新
-          setTimeout(() => {
-            if (isComponentMounted) {
-              setActiveMenu();
-            }
-          }, 10);
-        },
-        {
-          immediate: false, // 不在初始化时立即执行
-          flush: 'post' // 在DOM更新后执行，避免与渲染冲突
-        }
+            // 添加防抖，避免频繁更新
+            setTimeout(() => {
+              if (isComponentMounted) {
+                setActiveMenu();
+              }
+            }, 10);
+          },
+          {
+            immediate: false, // 不在初始化时立即执行
+            flush: 'post' // 在DOM更新后执行，避免与渲染冲突
+          }
       );
 
       // 清理函数
@@ -463,9 +558,14 @@ export default {
       activeMenu,
       collapsed,
       systemInfo,
+      isTooltipVisible,
+      tooltipContent,
+      tooltipStyle,
       setActiveMenu,
       toggleCollapse,
       navigate,
+      showTooltip,
+      hideTooltip,
     };
   },
 };
@@ -474,7 +574,7 @@ export default {
 <style lang="scss" scoped>
 .app-sidebar {
   width: var(--sidebar-width, 240px);
-  height: 100vh;
+  height: 100%;
   background-color: var(--secondary-bg, #1f2937);
   color: #fff;
   display: flex;
@@ -494,6 +594,24 @@ export default {
 
   &.collapsed {
     width: var(--sidebar-collapsed-width, 64px);
+
+    /* 在折叠状态下允许 Tooltip 溢出 */
+    overflow: visible;
+
+    /* 确保滚动容器也允许溢出 */
+    .sidebar-content {
+      overflow: visible;
+    }
+
+    /* 确保导航部分允许溢出 */
+    .nav-section {
+      overflow: visible;
+    }
+
+    /* 确保导航项允许溢出 */
+    .nav-item {
+      overflow: visible;
+    }
   }
 }
 
@@ -502,7 +620,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-
+  padding-bottom: var(--footer-height, 40px);
   /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -540,6 +658,7 @@ export default {
   user-select: none;
   margin: 2px 8px;
   border-radius: 6px;
+  position: relative;
 
   &:hover {
     background-color: rgba(79, 156, 249, 0.15);
@@ -570,8 +689,42 @@ export default {
   }
 }
 
+/* 全局 Tooltip 样式 */
+.nav-tooltip {
+  position: fixed;
+  background: rgb(25, 43, 63);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 1002;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  animation: fadeIn 0.2s ease;
+
+  /* 添加小箭头 */
+  &::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: 6px solid rgb(25, 43, 63);
+  }
+}
+
 /* 折叠状态样式 */
 .app-sidebar.collapsed {
+  width: var(--sidebar-collapsed-width, 64px);
+  overflow: visible;
+
   .nav-text {
     display: none;
   }
@@ -581,10 +734,12 @@ export default {
   }
 
   .nav-item {
+    overflow: visible;
     justify-content: center;
     padding: 12px;
     margin: 2px 8px;
     border-radius: 8px;
+    position: relative;
 
     .nav-icon {
       margin-right: 0;
@@ -596,14 +751,21 @@ export default {
   .nav-section {
     margin-bottom: 8px;
   }
+
+  /* 确保滚动容器也允许滚动 */
+  .sidebar-content {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
 }
 
 /* 缩放按钮 - 调整位置和大小 */
 .sidebar-toggle {
-  position: fixed;
-  top: 60px; /* 位于头部下方，避免重叠 */
-  left: calc(var(--sidebar-width, 240px) - 10px); /* 微调位置 */
-  width: 18px; /* 减小尺寸 */
+  position: absolute;
+  top: 16px;
+  bottom: var(--footer-height, 40px);
+  right: 8px;
+  width: 18px;
   height: 18px;
   background-color: var(--accent-color, #4f9cf9);
   border-radius: 50%;
@@ -614,7 +776,7 @@ export default {
   color: white;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
-  z-index: 1000;
+  z-index: 1003;
   border: 2px solid var(--secondary-bg, #1f2937);
 
   &:hover {
@@ -624,7 +786,7 @@ export default {
   }
 
   .toggle-icon {
-    width: 12px; /* 减小图标 */
+    width: 12px;
     height: 12px;
   }
 }
@@ -632,6 +794,18 @@ export default {
 /* 折叠状态下调整按钮位置 */
 .app-sidebar.collapsed .sidebar-toggle {
   left: calc(var(--sidebar-collapsed-width, 64px) - 10px);
+}
+
+/* Tooltip 淡入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
 }
 
 /* 确保 CSS 变量有回退值 */
@@ -643,5 +817,6 @@ export default {
   --text-secondary: #9ca3af;
   --accent-color: #4f9cf9;
   --accent-hover: #3a8de4;
+  --footer-height: 40px;
 }
 </style>

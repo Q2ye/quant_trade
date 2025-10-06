@@ -5,14 +5,14 @@
 
     <div class="main-content">
       <!-- 左侧导航栏 -->
-      <AppSidebar class="app-sidebar" :class="{ collapsed: sidebarCollapsed }" />
-
-      <div class="sidebar-toggle" @click="toggleSidebar">
-        <i class="fas" :class="sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'"></i>
-      </div>
+      <AppSidebar
+        class="app-sidebar"
+        :class="{ collapsed: sidebarCollapsed }"
+        @collapse="handleSidebarCollapse"
+      />
 
       <!-- 中间工作区 -->
-      <div class="workspace">
+      <div class="workspace" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
         <router-view />
       </div>
     </div>
@@ -62,8 +62,8 @@ export default {
       lastLog: '[2023-08-20 09:30:05] 策略引擎启动成功'
     })
 
-    const toggleSidebar = () => {
-      sidebarCollapsed.value = !sidebarCollapsed.value
+    const handleSidebarCollapse = (collapsed: boolean) => {
+      sidebarCollapsed.value = collapsed
     }
 
     // 模拟系统状态更新
@@ -82,7 +82,7 @@ export default {
     return {
       sidebarCollapsed,
       systemStats,
-      toggleSidebar
+      handleSidebarCollapse
     }
   }
 }
@@ -104,27 +104,7 @@ export default {
   flex: 1;
   overflow: hidden;
   position: relative;
-}
-
-.sidebar-toggle {
-  position: absolute;
-  top: calc(var(--header-height) + 10px);
-  left: calc(var(--sidebar-width) - 12px);
-  background-color: var(--secondary-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  transition: left 0.3s ease;
-
-  .app-sidebar.collapsed + & {
-    left: calc(var(--sidebar-collapsed-width) - 12px);
-  }
+  min-height: 0; /* 重要：确保flex容器可以缩小 */
 }
 
 .workspace {
@@ -132,6 +112,12 @@ export default {
   padding: 20px;
   overflow-y: auto;
   background-color: var(--primary-bg);
+  transition: margin-left 0.3s ease;
+  margin-left: 0;
+
+  &.sidebar-collapsed {
+    margin-left: calc(var(--sidebar-collapsed-width) - var(--sidebar-width));
+  }
 }
 
 .app-footer {
@@ -143,6 +129,7 @@ export default {
   padding: 0 20px;
   font-size: 12px;
   color: var(--text-secondary);
+  flex-shrink: 0; /* 重要：防止底部状态栏被压缩 */
 
   .footer-section {
     display: flex;
