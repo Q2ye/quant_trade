@@ -23,6 +23,7 @@ from .services.stock_weekly_service import StockWeeklyService
 
 from .services.sys_user_service import SysUserService, SysPermissionService
 from .services.strategy_service import StrategyService, StrategyRunService, StrategyDailyPerformanceService
+from .services.system_service import SystemService
 from .services.trade_calendar_service import TradeCalendarService
 from .services.trading_service import OrderService, TradeService, PositionService
 from .services.risk_service import RiskRuleService, RiskEventService
@@ -87,3 +88,5 @@ class DataService:
         # 数据同步服务
         self.data_sync_task = DataSyncTaskService(session)
         self.trade_calendar_service = TradeCalendarService(session)
+        # 系统处理
+        self.system_service = SystemService(session)

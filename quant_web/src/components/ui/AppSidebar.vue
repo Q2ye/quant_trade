@@ -321,10 +321,10 @@
 
     <!-- 全局 Tooltip 元素 -->
     <div
-      v-if="collapsed"
-      class="nav-tooltip"
-      :style="tooltipStyle"
-      v-show="isTooltipVisible"
+        v-if="collapsed"
+        class="nav-tooltip"
+        :style="tooltipStyle"
+        v-show="isTooltipVisible"
     >
       {{ tooltipContent }}
     </div>
@@ -368,7 +368,7 @@ export default {
     let isComponentMounted = true;
     let routeWatchStop = null;
 
-    // 安全的设置活动菜单函数
+// 修复后的设置活动菜单函数
     const setActiveMenu = () => {
       if (!isComponentMounted) return;
 
@@ -376,13 +376,16 @@ export default {
         const path = route?.path || "";
         const meta = route?.meta || {};
 
+        console.log('当前路径:', path, '路由meta:', meta);
+
         // 优先使用路由meta中定义的menu字段
         if (meta.menu) {
           activeMenu.value = meta.menu;
+          console.log('使用meta菜单:', meta.menu);
           return;
         }
 
-        // 根据新菜单结构更新路径匹配逻辑
+        // 根据新菜单结构更新路径匹配逻辑 - 增强数据同步相关路径的匹配
         if (path.startsWith("/dashboard")) activeMenu.value = "dashboard";
         else if (path.includes("/backtest")) activeMenu.value = "backtest";
         else if (path.includes("/factor-research")) activeMenu.value = "research";
@@ -402,8 +405,11 @@ export default {
           else activeMenu.value = "performance";
         } else if (path.startsWith("/market")) activeMenu.value = "market";
         else if (path.startsWith("/data-sync")) {
-          if (path.includes("/history")) activeMenu.value = "sync-history";
-          else activeMenu.value = "data-sync";
+          // 修复：精确匹配数据同步路径
+          if (path === "/data-sync" || path.startsWith("/data-sync/")) {
+            activeMenu.value = "data-sync";
+          }
+          console.log('数据同步路径匹配结果:', activeMenu.value);
         } else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
         else if (path.startsWith("/risk")) {
           if (path.includes("/rules")) activeMenu.value = "risk-rules";
@@ -420,16 +426,23 @@ export default {
           else activeMenu.value = "system";
         } else if (path.startsWith("/portfolio")) activeMenu.value = "portfolio-analysis";
         else if (path.startsWith("/strategies/templates")) activeMenu.value = "strategy-templates";
-        else activeMenu.value = "";
+        else {
+          activeMenu.value = "";
+          console.log('未匹配到菜单，当前路径:', path);
+        }
+
+        console.log('最终激活菜单:', activeMenu.value);
       } catch (error) {
         console.warn('设置活动菜单时出错:', error);
         activeMenu.value = "";
       }
     };
-
-    // 安全的导航函数
+    // 安全的导航函数 - 添加调试信息
+    // 增强的导航函数
     const navigate = (path) => {
       if (!isComponentMounted || !path) return;
+
+      console.log('导航到:', path, '当前路由:', route.path);
 
       // 检查路径是否有效
       if (typeof path !== 'string') {
@@ -437,27 +450,34 @@ export default {
         return;
       }
 
-      // 检查是否已经是当前路由
+      // 如果已经是当前路由，强制重新加载组件
       if (route.path === path) {
+        console.log('已经是当前路由，强制重新加载');
+        // 通过路由跳转到相同路径来触发组件重新渲染
+        router.push('/redirect').then(() => {
+          setTimeout(() => {
+            router.push(path);
+          }, 10);
+        });
         return;
       }
 
-      // 使用 nextTick 确保在下一个事件循环中导航，避免与当前渲染周期冲突
-      setTimeout(() => {
-        if (!isComponentMounted) return;
-
-        router.push(path).catch(err => {
-          // 忽略导航重复的错误
-          if (err?.name === 'NavigationDuplicated') {
-            console.log('重复导航，已忽略:', path);
-          } else if (err?.message?.includes('Avoided redundant navigation')) {
-            // 这是重复导航的另一种形式
-            console.log('重复导航，已忽略:', path);
-          } else {
-            console.error('导航错误:', err);
+      // 正常导航
+      router.push(path).catch(err => {
+        // 忽略导航重复的错误
+        if (err?.name === 'NavigationDuplicated') {
+          console.log('重复导航，已忽略:', path);
+          // 即使是重复导航，也强制刷新数据
+          if (path === '/data-sync') {
+            // 触发自定义事件或使用其他方式刷新数据
+            console.log('强制刷新数据同步页面数据');
           }
-        });
-      }, 0);
+        } else if (err?.message?.includes('Avoided redundant navigation')) {
+          console.log('重复导航，已忽略:', path);
+        } else {
+          console.error('导航错误:', err);
+        }
+      });
     };
 
     const toggleCollapse = () => {
@@ -512,6 +532,7 @@ export default {
 
     onMounted(() => {
       isComponentMounted = true;
+      console.log('侧边栏组件挂载，当前路由:', route.path);
       setActiveMenu();
 
       // 启动系统信息更新
@@ -522,6 +543,8 @@ export default {
           () => route.path,
           (newPath, oldPath) => {
             if (!isComponentMounted) return;
+
+            console.log('路由变化:', oldPath, '->', newPath);
 
             // 添加防抖，避免频繁更新
             setTimeout(() => {
@@ -546,6 +569,7 @@ export default {
 
     onUnmounted(() => {
       isComponentMounted = false;
+      console.log('侧边栏组件卸载');
 
       // 停止路由监听
       if (routeWatchStop) {
@@ -661,16 +685,31 @@ export default {
   position: relative;
 
   &:hover {
-    background-color: rgba(79, 156, 249, 0.15);
+    background-color: rgba(79, 156, 249, 0.2);
     color: #fff;
     transform: translateX(2px);
   }
 
   &.active {
-    background-color: rgba(79, 156, 249, 0.25);
+    background-color: rgba(79, 156, 249, 0.2);
     border-left-color: var(--accent-color, #4f9cf9);
     color: #fff;
-    box-shadow: 0 2px 8px rgba(79, 156, 249, 0.3);
+    /* 文字加粗+阴影 */
+    .nav-text {
+      font-weight: 800; /* 比默认的500更粗 */
+      text-shadow: 0 1px 0.1px rgba(0, 0, 0, 0.2); /* 文字阴影增加立体感 */
+    }
+
+    /* 图标放大+加深颜色 */
+    .nav-icon {
+      width: 22px;
+      height: 22px;
+      color: #3a89e9; /* 比默认主色稍深 */
+      transform: scale(1.2); /* 轻微放大 */
+    }
+
+    /* 底部边框突出（适合横向导航） */
+    border-bottom: 2px solid var(--accent-color, #4f9cf9);
   }
 
   .nav-icon {

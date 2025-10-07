@@ -1,26 +1,16 @@
+import { AxiosResponse } from 'axios';
+
 interface ApiResponse {
   code: number;
   message?: string;
   data?: any;
 }
 
-// 假设AxiosResponse类型结构
-interface AxiosResponse<T = any> {
-    token: boolean;
-  data: T;
-  status: number;
-  statusText: string;
-  headers: any;
-  config: any;
-  request?: any;
-}
-
 export function handleResponse(response: AxiosResponse<ApiResponse>): any {
-  // 将AxiosResponse转换为ApiResponse
-  const apiResponse = response.data as ApiResponse;
+  const apiResponse = response.data;
 
   if (apiResponse.code === 0) {
-    return apiResponse.data;
+    return apiResponse;
   } else {
     throw new Error(apiResponse.message || 'Unknown error');
   }

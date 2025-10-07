@@ -7,6 +7,7 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import * as echarts from 'echarts';
 
+import Antd from 'ant-design-vue'
 import { Icon } from '@iconify/vue'
 // 注册全局指令
 import resize from './directives/resize';
@@ -22,6 +23,7 @@ app.use(store);
 app.use(router);
 app.use(i18n);
 app.use(ElementPlus);
+app.use(Antd)
 
 // 注册指令
 app.directive('resize', resize);

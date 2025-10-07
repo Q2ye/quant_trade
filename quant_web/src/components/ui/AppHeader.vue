@@ -38,7 +38,8 @@
     <!-- 修复：简化widgets容器，确保单行显示 -->
     <div class="header-widgets">
       <!-- 策略状态 -->
-      <div class="header-widget strategy-status" :title="`运行中策略: ${strategyStatus.running}/${strategyStatus.total}\n健康状态: ${getHealthText(strategyStatus.health)}`">
+      <div class="header-widget strategy-status"
+           :title="`运行中策略: ${strategyStatus.running}/${strategyStatus.total}\n健康状态: ${getHealthText(strategyStatus.health)}`">
         <div class="widget-content">
           <Icon icon="mdi:cog" class="widget-icon"/>
           <span class="widget-count">{{ strategyStatus.running }}/{{ strategyStatus.total }}</span>
@@ -47,7 +48,8 @@
       </div>
 
       <!-- 信号状态 -->
-      <div class="header-widget signal-status" :title="`今日信号: ${signalStats.today}个\n已触发: ${signalStats.triggered}个`">
+      <div class="header-widget signal-status"
+           :title="`今日信号: ${signalStats.today}个\n已触发: ${signalStats.triggered}个`">
         <div class="widget-content">
           <Icon icon="mdi:bell-outline" class="widget-icon"/>
           <span class="widget-count">{{ signalStats.triggered }}/{{ signalStats.today }}</span>
@@ -55,15 +57,17 @@
       </div>
 
       <!-- 订单状态 -->
-      <div class="header-widget order-status" :title="`待处理订单: ${orderStats.pending}个\n已执行: ${orderStats.executed}个`">
+      <div class="header-widget order-status"
+           :title="`待处理订单: ${orderStats.pending}个\n已执行: ${orderStats.executed}个`">
         <div class="widget-content">
           <Icon icon="mdi:swap-horizontal" class="widget-icon"/>
-          <span class="widget-count"> {{orderStats.executed}} / {{ orderStats.pending }}</span>
+          <span class="widget-count"> {{ orderStats.executed }} / {{ orderStats.pending }}</span>
         </div>
       </div>
 
       <!-- 风险等级 -->
-      <div class="header-widget risk-level" :class="riskLevel.class" :title="`当前风险等级: ${riskLevel.text}\n${getRiskDescription(riskLevel.text)}`">
+      <div class="header-widget risk-level" :class="riskLevel.class"
+           :title="`当前风险等级: ${riskLevel.text}\n${getRiskDescription(riskLevel.text)}`">
         <div class="widget-content">
           <Icon icon="mdi:shield-check-outline" class="widget-icon"/>
           <span class="widget-count">{{ riskLevel.text }}</span>
@@ -277,18 +281,21 @@ export default {
 
 .logo-section {
   flex-shrink: 0;
+
   .logo {
     display: flex;
     align-items: center;
     font-size: 18px; /* 减小字体 */
     font-weight: bold;
     color: var(--accent-color);
+
     .logo-icon {
       margin-right: 8px;
       width: 24px; /* 减小图标 */
       height: 24px;
       color: #22D3EE;
     }
+
     .logo-text {
       background: linear-gradient(135deg, #60A5FA 50%, #3B82F6 100%);
       -webkit-background-clip: text;
@@ -309,19 +316,23 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+
   &.market-status {
     display: flex;
     align-items: center;
     gap: 16px;
+
     .status-indicator {
       width: 8px; /* 减小指示器 */
       height: 8px;
       border-radius: 50%;
+
       &.status-open {
         background-color: var(--success-color);
         box-shadow: 0 0 4px var(--success-color);
       }
     }
+
     .market-data {
       display: flex;
       align-items: center;
@@ -331,27 +342,33 @@ export default {
         color: var(--text-secondary);
         font-weight: 500;
       }
+
       .market-value {
         color: var(--text-primary);
         font-weight: 600;
       }
+
       .market-change {
         font-weight: 600;
+
         &.positive {
           color: var(--success-color);
         }
+
         &.negative {
           color: var(--danger-color);
         }
       }
     }
   }
+
   &.trading-session {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 11px; /* 减小字体 */
     color: var(--text-secondary);
+
     .session-icon {
       width: 12px; /* 减小图标 */
       height: 12px;
@@ -418,14 +435,17 @@ export default {
       width: 6px; /* 减小圆点 */
       height: 6px;
       border-radius: 50%;
+
       &.healthy {
         background-color: var(--success-color);
         box-shadow: 0 0 4px var(--success-color);
       }
+
       &.warning {
         background-color: var(--warning-color);
         box-shadow: 0 0 4px var(--warning-color);
       }
+
       &.danger {
         background-color: var(--danger-color);
         box-shadow: 0 0 4px var(--danger-color);
@@ -437,20 +457,26 @@ export default {
     .widget-count {
       font-size: 13px; /* 减小字体 */
     }
+
     &.risk-low {
       border-color: var(--success-color);
+
       .widget-icon, .widget-count {
         color: var(--success-color);
       }
     }
+
     &.risk-medium {
       border-color: var(--warning-color);
+
       .widget-icon, .widget-count {
         color: var(--warning-color);
       }
     }
+
     &.risk-high {
       border-color: var(--danger-color);
+
       .widget-icon, .widget-count {
         color: var(--danger-color);
       }
@@ -461,11 +487,13 @@ export default {
 .time-section {
   flex-shrink: 0;
   text-align: center;
+
   .current-date {
     font-size: 11px; /* 减小字体 */
     color: var(--text-secondary);
     margin-bottom: 1px;
   }
+
   .current-time {
     font-size: 14px; /* 减小字体 */
     font-weight: 600;
@@ -476,10 +504,12 @@ export default {
 
 .user-section {
   flex-shrink: 0;
+
   .user-dropdown {
     position: relative;
     cursor: pointer;
   }
+
   .user-info {
     display: flex;
     align-items: center;
@@ -487,9 +517,11 @@ export default {
     border-radius: 6px;
     transition: all 0.3s ease;
     background: rgba(255, 255, 255, 0.05);
+
     &:hover {
       background: rgba(255, 255, 255, 0.1);
     }
+
     .user-avatar {
       width: 24px; /* 减小头像 */
       height: 24px;
@@ -498,12 +530,14 @@ export default {
       align-items: center;
       justify-content: center;
       background: var(--accent-color);
+
       .avatar-icon {
         width: 16px; /* 减小图标 */
         height: 16px;
         color: white;
       }
     }
+
     .user-name {
       margin: 0 8px;
       font-size: 13px; /* 减小字体 */
@@ -514,28 +548,32 @@ export default {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
     .dropdown-icon {
       width: 16px; /* 减小图标 */
       height: 16px;
       color: var(--text-secondary);
       transition: transform 0.3s ease;
+
       &.rotated {
         transform: rotate(180deg);
       }
     }
   }
+
   .user-menu {
     position: absolute;
     top: 100%;
     right: 0;
     margin-top: 4px;
-    background: var(--secondary-bg);
+    background: rgb(15, 26, 38);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgb(25, 43, 63, 0.15);
     min-width: 140px;
     z-index: 1000;
     overflow: hidden;
+
     .menu-item {
       display: flex;
       align-items: center;
@@ -545,15 +583,18 @@ export default {
       color: var(--text-primary);
       transition: background-color 0.2s ease;
       cursor: pointer;
+
       &:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(79, 156, 249, 0.2);
       }
+
       .menu-icon {
         width: 16px; /* 减小图标 */
         height: 16px;
         color: var(--text-secondary);
       }
     }
+
     .menu-divider {
       height: 1px;
       background: var(--border-color);
@@ -572,11 +613,14 @@ export default {
   }
   .header-widgets {
     gap: 10px;
+
     .header-widget {
       min-width: 65px;
+
       .widget-content {
         padding: 5px 6px;
       }
+
       .widget-count {
         font-size: 13px;
       }
@@ -587,11 +631,14 @@ export default {
 @media (max-width: 992px) {
   .header-widgets {
     gap: 8px;
+
     .header-widget {
       min-width: 60px;
+
       .widget-content {
         padding: 4px 5px;
       }
+
       .widget-count {
         font-size: 12px;
       }

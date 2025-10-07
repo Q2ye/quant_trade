@@ -2,7 +2,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from sqlalchemy import and_, or_,func
+from sqlalchemy import and_, or_, func
 from ..services.base_service import BaseService
 from quant_server.db.models.data_models import StockBasic
 
@@ -158,3 +158,42 @@ class StockBasicService(BaseService):
                 func.count(StockBasic.ts_code)
             ).group_by(StockBasic.area).all()
             return {area: count for area, count in result}
+
+    def get_list(self, offset: int = 0, limit: int = 20, search: Optional[str] = None) -> List[StockBasic]:
+        """获取股票列表（支持分页和搜索）"""
+        with self.session_scope() as session:
+            query = session.query(StockBasic)
+
+            # 如果提供了搜索条件，添加搜索过滤
+            if search:
+                query = query.filter(
+                    or_(
+                        StockBasic.name.like(f"%{search}%"),
+                        StockBasic.fullname.like(f"%{search}%"),
+                        StockBasic.cnspell.like(f"%{search}%"),
+                        StockBasic.ts_code.like(f"%{search}%"),
+                        StockBasic.symbol.like(f"%{search}%")
+                    )
+                )
+
+            # 应用分页
+            return query.offset(offset).limit(limit).all()
+
+    def count(self, search: Optional[str] = None) -> int:
+        """统计股票数量（支持搜索条件）"""
+        with self.session_scope() as session:
+            query = session.query(func.count(StockBasic.ts_code))
+
+            # 如果提供了搜索条件，添加搜索过滤
+            if search:
+                query = query.filter(
+                    or_(
+                        StockBasic.name.like(f"%{search}%"),
+                        StockBasic.fullname.like(f"%{search}%"),
+                        StockBasic.cnspell.like(f"%{search}%"),
+                        StockBasic.ts_code.like(f"%{search}%"),
+                        StockBasic.symbol.like(f"%{search}%")
+                    )
+                )
+
+            return query.scalar()

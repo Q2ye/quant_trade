@@ -1,6 +1,8 @@
 import request from '@/utils/request'
 import { handleResponse } from '@/utils/responseHandler'
 import { ApiResponse } from '@/types'
+import { AxiosResponse } from 'axios'
+import { UserInfo } from '@/types/api/user'
 
 /**
  * 认证管理API服务
@@ -19,17 +21,6 @@ export interface RegisterRequest {
   email: string
   password: string
   confirmPassword?: string
-}
-
-export interface UserInfo {
-  id: string | number
-  username: string
-  email: string
-  avatar?: string
-  roles?: string[]
-  permissions?: string[]
-  createdAt?: string
-  updatedAt?: string
 }
 
 export interface AuthResponse {
@@ -59,7 +50,7 @@ export default {
    */
   async login(credentials: LoginRequest): Promise<AuthResponse> {
     return request.post('/auth/login', credentials)
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<AuthResponse>>) => handleResponse(response))
       .then((data: ApiResponse<AuthResponse>) => data.data)
   },
 
@@ -70,7 +61,7 @@ export default {
    */
   async register(userData: RegisterRequest): Promise<AuthResponse> {
     return request.post('/auth/register', userData)
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<AuthResponse>>) => handleResponse(response))
       .then((data: ApiResponse<AuthResponse>) => data.data)
   },
 
@@ -80,7 +71,7 @@ export default {
    */
   async logout(): Promise<void> {
     return request.post('/auth/logout')
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<void>>) => handleResponse(response))
   },
 
   /**
@@ -90,7 +81,7 @@ export default {
    */
   async refreshToken(refreshToken: string): Promise<AuthResponse> {
     return request.post('/auth/refresh', { refreshToken })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<AuthResponse>>) => handleResponse(response))
       .then((data: ApiResponse<AuthResponse>) => data.data)
   },
 
@@ -103,7 +94,7 @@ export default {
     return request.get('/auth/validate', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<{ isValid: boolean; user?: UserInfo }>>) => handleResponse(response))
       .then((data: ApiResponse<{ isValid: boolean; user?: UserInfo }>) => data.data)
   },
 
@@ -116,7 +107,7 @@ export default {
     return request.get('/auth/token-info', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<TokenInfo>>) => handleResponse(response))
       .then((data: ApiResponse<TokenInfo>) => data.data)
   },
 
@@ -129,7 +120,7 @@ export default {
     return request.post('/auth/tokens/cleanup', null, {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<TokenCleanupResult>>) => handleResponse(response))
       .then((data: ApiResponse<TokenCleanupResult>) => data.data)
   },
 
@@ -140,7 +131,7 @@ export default {
    */
   async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
     return request.post('/auth/password/reset-request', { email })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<{ success: boolean; message: string }>>) => handleResponse(response))
       .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
   },
 
@@ -152,7 +143,7 @@ export default {
    */
   async confirmPasswordReset(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
     return request.post('/auth/password/reset-confirm', { token, newPassword })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<{ success: boolean; message: string }>>) => handleResponse(response))
       .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
   },
 
@@ -163,7 +154,7 @@ export default {
    */
   async verifyEmail(token: string): Promise<{ success: boolean; message: string }> {
     return request.post('/auth/email/verify', { token })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<{ success: boolean; message: string }>>) => handleResponse(response))
       .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
   },
 
@@ -174,7 +165,7 @@ export default {
    */
   async resendVerificationEmail(email: string): Promise<{ success: boolean; message: string }> {
     return request.post('/auth/email/resend-verification', { email })
-      .then(handleResponse)
+      .then((response: AxiosResponse<ApiResponse<{ success: boolean; message: string }>>) => handleResponse(response))
       .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
   }
 }
