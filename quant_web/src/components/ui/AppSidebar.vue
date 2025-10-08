@@ -2,7 +2,6 @@
   <div class="app-sidebar" :class="{ collapsed: collapsed }">
     <!-- 将导航内容包裹在可滚动容器中 -->
     <div class="sidebar-content">
-      <!-- 所有导航部分保持不变 -->
       <!-- 数据中心 -->
       <div class="nav-section">
         <div class="nav-header">数据中心</div>
@@ -63,6 +62,16 @@
         </div>
         <div
             class="nav-item"
+            :class="{ active: activeMenu === 'strategy-templates' }"
+            @click="navigate('/strategies/templates')"
+            @mouseenter="showTooltip($event, '策略模板')"
+            @mouseleave="hideTooltip"
+        >
+          <Icon icon="mdi:content-copy" class="nav-icon"/>
+          <span class="nav-text">策略模板</span>
+        </div>
+        <div
+            class="nav-item"
             :class="{ active: activeMenu === 'backtest' }"
             @click="navigate('/strategies/backtest')"
             @mouseenter="showTooltip($event, '回测工作室')"
@@ -83,13 +92,23 @@
         </div>
         <div
             class="nav-item"
-            :class="{ active: activeMenu === 'strategy-templates' }"
-            @click="navigate('/strategies/templates')"
-            @mouseenter="showTooltip($event, '策略模板')"
+            :class="{ active: activeMenu === 'factor-library' }"
+            @click="navigate('/strategies/factor-library')"
+            @mouseenter="showTooltip($event, '因子库管理')"
             @mouseleave="hideTooltip"
         >
-          <Icon icon="mdi:content-copy" class="nav-icon"/>
-          <span class="nav-text">策略模板</span>
+          <Icon icon="mdi:tune" class="nav-icon"/>
+          <span class="nav-text">因子库管理</span>
+        </div>
+        <div
+            class="nav-item"
+            :class="{ active: activeMenu === 'backtest-period' }"
+            @click="navigate('/strategies/backtest-period')"
+            @mouseenter="showTooltip($event, '回溯周期')"
+            @mouseleave="hideTooltip"
+        >
+          <Icon icon="mdi:calendar-range" class="nav-icon"/>
+          <span class="nav-text">回溯周期</span>
         </div>
       </div>
 
@@ -329,7 +348,7 @@
       {{ tooltipContent }}
     </div>
 
-    <!-- 缩放按钮移到侧边栏外层，不包含在滚动内容中 -->
+    <!-- 缩放按钮 -->
     <div class="sidebar-toggle" @click="toggleCollapse">
       <Icon :icon="collapsed ? 'mdi:chevron-right' : 'mdi:chevron-left'" class="toggle-icon"/>
     </div>
@@ -368,7 +387,7 @@ export default {
     let isComponentMounted = true;
     let routeWatchStop = null;
 
-// 修复后的设置活动菜单函数
+    // 设置活动菜单函数
     const setActiveMenu = () => {
       if (!isComponentMounted) return;
 
@@ -385,10 +404,13 @@ export default {
           return;
         }
 
-        // 根据新菜单结构更新路径匹配逻辑 - 增强数据同步相关路径的匹配
+        // 根据路径精确匹配菜单
         if (path.startsWith("/dashboard")) activeMenu.value = "dashboard";
-        else if (path.includes("/backtest")) activeMenu.value = "backtest";
-        else if (path.includes("/factor-research")) activeMenu.value = "research";
+        else if (path === "/strategies/factor-research") activeMenu.value = "research";
+        else if (path === "/strategies/factor-library") activeMenu.value = "factor-library";
+        else if (path === "/strategies/backtest-period") activeMenu.value = "backtest-period";
+        else if (path.startsWith("/strategies/backtest")) activeMenu.value = "backtest";
+        else if (path.startsWith("/strategies/templates")) activeMenu.value = "strategy-templates";
         else if (path.startsWith("/strategies")) activeMenu.value = "strategies";
         else if (path.startsWith("/trading")) {
           if (path.includes("/orders")) activeMenu.value = "orders";
@@ -405,11 +427,12 @@ export default {
           else activeMenu.value = "performance";
         } else if (path.startsWith("/market")) activeMenu.value = "market";
         else if (path.startsWith("/data-sync")) {
-          // 修复：精确匹配数据同步路径
-          if (path === "/data-sync" || path.startsWith("/data-sync/")) {
+          // 精确匹配数据同步路径
+          if (path === "/data-sync/history") {
+            activeMenu.value = "sync-history";
+          } else {
             activeMenu.value = "data-sync";
           }
-          console.log('数据同步路径匹配结果:', activeMenu.value);
         } else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
         else if (path.startsWith("/risk")) {
           if (path.includes("/rules")) activeMenu.value = "risk-rules";
@@ -425,7 +448,6 @@ export default {
           else if (path.includes("/settings")) activeMenu.value = "settings";
           else activeMenu.value = "system";
         } else if (path.startsWith("/portfolio")) activeMenu.value = "portfolio-analysis";
-        else if (path.startsWith("/strategies/templates")) activeMenu.value = "strategy-templates";
         else {
           activeMenu.value = "";
           console.log('未匹配到菜单，当前路径:', path);
@@ -437,7 +459,8 @@ export default {
         activeMenu.value = "";
       }
     };
-    // 安全的导航函数 - 添加调试信息
+
+
     // 增强的导航函数
     const navigate = (path) => {
       if (!isComponentMounted || !path) return;
@@ -469,13 +492,14 @@ export default {
           console.log('重复导航，已忽略:', path);
           // 即使是重复导航，也强制刷新数据
           if (path === '/data-sync') {
-            // 触发自定义事件或使用其他方式刷新数据
             console.log('强制刷新数据同步页面数据');
           }
         } else if (err?.message?.includes('Avoided redundant navigation')) {
           console.log('重复导航，已忽略:', path);
         } else {
           console.error('导航错误:', err);
+          // 如果导航失败，尝试重新加载页面
+          window.location.href = path;
         }
       });
     };
@@ -554,8 +578,8 @@ export default {
             }, 10);
           },
           {
-            immediate: false, // 不在初始化时立即执行
-            flush: 'post' // 在DOM更新后执行，避免与渲染冲突
+            immediate: false,
+            flush: 'post'
           }
       );
 
@@ -696,19 +720,19 @@ export default {
     color: #fff;
     /* 文字加粗+阴影 */
     .nav-text {
-      font-weight: 800; /* 比默认的500更粗 */
-      text-shadow: 0 1px 0.1px rgba(0, 0, 0, 0.2); /* 文字阴影增加立体感 */
+      font-weight: 800;
+      text-shadow: 0 1px 0.1px rgba(0, 0, 0, 0.2);
     }
 
     /* 图标放大+加深颜色 */
     .nav-icon {
       width: 22px;
       height: 22px;
-      color: #3a89e9; /* 比默认主色稍深 */
-      transform: scale(1.2); /* 轻微放大 */
+      color: #3a89e9;
+      transform: scale(1.2);
     }
 
-    /* 底部边框突出（适合横向导航） */
+    /* 底部边框突出 */
     border-bottom: 2px solid var(--accent-color, #4f9cf9);
   }
 
