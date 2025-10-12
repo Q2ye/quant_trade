@@ -1,133 +1,244 @@
+// quant_web/src/api/data-sync.ts
 import request from '@/utils/request'
 import { handleResponse } from '@/utils/responseHandler'
-import {
-  DataSyncRequest,
-  DataSyncTask,
-  ApiResponse,
-  DataSyncResponse as TypesDataSyncResponse
-} from '@/types/api'
+
 /**
- * 数据同步API服务
- * 提供股票数据、财务数据等各类金融数据的同步功能
+ * 数据同步API服务 - 基于后端批量数据同步设计实现
+ * 支持多数据类型批量同步和实时状态监控
  */
+
+// 同步状态响应接口 - 与后端SyncStatusResponse完全匹配
 export interface SyncStatusResponse {
   is_running: boolean;
   last_run?: string;
   progress: number;
   current_task?: string;
-  results?: any;
+  results?: Record<string, any>;
   error?: string;
   estimated_remaining?: number;
+  total_tasks: number;
+  completed_tasks: number;
+  elapsed_time?: number;
+  start_time?: string;
+  task_id?: string;
 }
 
-export default {
+// 批量同步请求接口 - 与后端BatchSyncRequest完全匹配
+export interface BatchSyncRequest {
+  data_types: string[];
+  days?: number;
+  start_date?: string;
+  end_date?: string;
+  stock_codes?: string[];
+  exchange?: string;
+  batch_size?: number;
+}
+
+// 同步响应接口 - 与后端SyncResponse完全匹配
+export interface SyncResponse {
+  status: string;
+  message: string;
+  task_id?: string;
+  estimated_time?: number;
+  total_tasks?: number;
+  current_progress?: number;
+}
+
+// 数据类型信息接口 - 与后端DataTypeInfo完全匹配
+export interface DataTypeInfo {
+  code: string;
+  name: string;
+  description: string;
+  estimated_time: number;
+}
+
+/**
+ * 数据同步API服务类
+ * 完全适配后端数据同步接口设计
+ */
+class DataSyncService {
+  private readonly baseUrl = '/api/data-sync'
+
   /**
    * 获取数据同步状态
    * @returns 同步状态信息
    */
   async getSyncStatus(): Promise<SyncStatusResponse> {
-    return request.get('/data-sync/status')
+    return request.get(`${this.baseUrl}/status`)
       .then(handleResponse)
       .then((data: SyncStatusResponse) => data)
-  },
+      .catch(error => {
+        console.error('获取同步状态失败:', error)
+        throw error
+      })
+  }
 
   /**
-   * 获取支持的数据类型列表
-   * @returns 支持的数据类型数组
+   * 获取支持的数据类型列表及详细信息
+   * @returns 数据类型信息数组
    */
-  async getSupportedDataTypes(): Promise<string[]> {
-    return request.get('/data-sync/supported-data-types')
+  async getSupportedDataTypes(): Promise<DataTypeInfo[]> {
+    return request.get(`${this.baseUrl}/supported-data-types`)
       .then(handleResponse)
-      .then((data: { types: string[] }) => data.types)
-  },
+      .then((data: DataTypeInfo[]) => data)
+      .catch(error => {
+        console.error('获取数据类型列表失败:', error)
+        throw error
+      })
+  }
 
   /**
-   * 同步股票基本信息
-   * @param syncData 同步参数
+   * 批量同步数据 - 核心接口
+   * @param requestData 批量同步请求参数
    * @returns 同步任务响应
    */
-  async syncStockBasic(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/stock-basic', syncData)
+  async batchSyncData(requestData: BatchSyncRequest): Promise<SyncResponse> {
+    return request.post(`${this.baseUrl}/batch-sync`, requestData)
       .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
+      .then((data: SyncResponse) => data)
+      .catch(error => {
+        console.error('批量同步请求失败:', error)
+        throw error
+      })
+  }
 
   /**
-   * 同步日线数据
-   * @param syncData 同步参数
-   * @returns 同步任务响应
-   */
-  async syncDailyData(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/daily', syncData)
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 同步周线数据
-   * @param syncData 同步参数
-   * @returns 同步任务响应
-   */
-  async syncWeeklyData(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/weekly', syncData)
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 同步月线数据
-   * @param syncData 同步参数
-   * @returns 同步任务响应
-   */
-  async syncMonthlyData(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/monthly', syncData)
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 同步资金流向数据
-   * @param syncData 同步参数
-   * @returns 同步任务响应
-   */
-  async syncMoneyflowData(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/moneyflow', syncData)
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 同步交易日历
-   * @param params 交易日历参数
-   * @returns 同步任务响应
-   */
-  async syncTradeCalendar(params?: {
-    exchanges?: string[];
-    start_date?: string;
-    end_date?: string;
-  }): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/trade-calendar', null, { params })
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 同步所有数据
-   * @param syncData 同步参数
-   * @returns 同步任务响应
-   */
-  async syncAllData(syncData: DataSyncRequest): Promise<TypesDataSyncResponse> {
-    return request.post('/data-sync/all', syncData)
-      .then(handleResponse)
-      .then((data: TypesDataSyncResponse) => data)
-  },
-
-  /**
-   * 取消数据同步任务
+   * 取消当前同步任务
    * @returns 取消操作结果
    */
   async cancelSync(): Promise<void> {
-    return request.post('/data-sync/cancel')
+    return request.post(`${this.baseUrl}/cancel`)
       .then(handleResponse)
+      .catch(error => {
+        console.error('取消同步任务失败:', error)
+        throw error
+      })
+  }
+
+  /**
+   * 同步股票基本信息（向后兼容）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncStockBasic(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    const requestData: BatchSyncRequest = {
+      data_types: ['stock_list'],
+      ...params
+    }
+    return this.batchSyncData(requestData)
+  }
+
+  /**
+   * 同步日线数据（向后兼容）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncDailyData(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    const requestData: BatchSyncRequest = {
+      data_types: ['daily_quotes'],
+      ...params
+    }
+    return this.batchSyncData(requestData)
+  }
+
+  /**
+   * 同步周线数据（向后兼容）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncWeeklyData(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    const requestData: BatchSyncRequest = {
+      data_types: ['weekly_quotes'],
+      ...params
+    }
+    return this.batchSyncData(requestData)
+  }
+
+  /**
+   * 同步月线数据（向后兼容）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncMonthlyData(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    const requestData: BatchSyncRequest = {
+      data_types: ['monthly_quotes'],
+      ...params
+    }
+    return this.batchSyncData(requestData)
+  }
+
+  /**
+   * 同步资金流向数据（向后兼容）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncMoneyflowData(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    const requestData: BatchSyncRequest = {
+      data_types: ['money_flow'],
+      ...params
+    }
+    return this.batchSyncData(requestData)
+  }
+
+  /**
+   * 同步所有数据类型（全量同步）
+   * @param params 同步参数
+   * @returns 同步任务响应
+   */
+  async syncAllData(params: {
+    days?: number;
+    start_date?: string;
+    end_date?: string;
+    stock_codes?: string[];
+    exchange?: string;
+    batch_size?: number;
+  } = {}): Promise<SyncResponse> {
+    // 获取所有支持的数据类型
+    const dataTypes = await this.getSupportedDataTypes()
+    const requestData: BatchSyncRequest = {
+      data_types: dataTypes.map(type => type.code),
+      ...params
+    }
+    return this.batchSyncData(requestData)
   }
 }
+
+// 创建单例实例
+export const dataSyncService = new DataSyncService()
+
+export default dataSyncService

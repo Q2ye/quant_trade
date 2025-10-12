@@ -1,340 +1,257 @@
+<!-- quant_web/src/views/DataSync/DataSync.vue -->
 <script setup lang="ts">
-import {computed, onActivated, onMounted, reactive, ref, watch} from 'vue'
+import {computed, h, onMounted, onUnmounted, reactive, ref, watch} from 'vue'
 import {message, Modal} from 'ant-design-vue'
 import {
   CheckCircleOutlined,
   CloudDownloadOutlined,
   ExclamationCircleOutlined,
+  InfoCircleOutlined,
+  PauseCircleOutlined,
   ReloadOutlined,
   SyncOutlined
 } from '@ant-design/icons-vue'
-import {useRoute} from "vue-router";
+import {useRoute} from 'vue-router'
+import type {BatchSyncRequest, DataTypeInfo, SyncResponse, SyncStatusResponse} from '@/api/data-sync'
+import {dataSyncService} from '@/api/data-sync'
 
-// 在 setup 中添加
+// 完整的数据类型选项 - 作为降级数据
+const fallbackDataTypes = [
+  { code: 'stock_basic', name: '股票列表', description: '股票基础信息', estimated_time: 30 },
+  { code: 'trade_calendar', name: '交易日历', description: '交易所交易日历', estimated_time: 5 },
+  { code: 'daily', name: '日线行情', description: 'A股日线行情数据', estimated_time: 120 },
+  { code: 'minute', name: '分钟行情', description: '分钟级行情数据', estimated_time: 180 },
+  { code: 'weekly', name: '周线行情', description: '周线行情数据', estimated_time: 60 },
+  { code: 'monthly', name: '月线行情', description: '月线行情数据', estimated_time: 45 },
+  { code: 'financial', name: '财务数据', description: '财务报表数据', estimated_time: 90 },
+  { code: 'moneyflow', name: '资金流向', description: '资金流向数据', estimated_time: 75 },
+  { code: 'etf', name: 'ETF数据', description: 'ETF基础信息和行情', estimated_time: 40 },
+  { code: 'adj_factor', name: '复权因子', description: '股票复权因子', estimated_time: 25 },
+  { code: 'daily_basic', name: '每日指标', description: '每日基本面指标', estimated_time: 50 },
+  { code: 'daily_limit', name: '涨跌停价格', description: '每日涨跌停价格', estimated_time: 20 },
+  { code: 'st_list', name: 'ST股票列表', description: 'ST股票历史记录', estimated_time: 15 },
+  { code: 'company', name: '公司信息', description: '上市公司基本信息', estimated_time: 35 },
+  { code: 'managers', name: '管理层信息', description: '公司管理层信息', estimated_time: 25 }
+]
+
+// 路由实例
 const route = useRoute()
 
-// 添加路由监听
-watch(() => route.path, (newPath, oldPath) => {
-  if (newPath === '/data-sync') {
-    console.log('路由切换到数据同步页面，重新加载数据')
-    checkSyncStatus()
-    fetchSyncTasks()
-  }
-})
-
-// 添加组件激活时的处理
-onActivated(() => {
-  console.log('DataSync组件被激活')
-  checkSyncStatus()
-  fetchSyncTasks()
-})
-
-// 现有的 onMounted 保持不变
-onMounted(() => {
-  console.log('DataSync组件挂载')
-  checkSyncStatus()
-  fetchSyncTasks()
-})
-
-interface SyncConfig {
-  dataType: string[]
-  symbolCodes: string
-  dateRange: [string, string]
-  syncMode: 'incremental' | 'full'
-  frequency?: string
-}
-
-interface SyncTask {
-  id: string
-  task_type: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  start_time: string
-  end_time?: string
-  total_records: number
-  error_message?: string
-}
-
-interface SyncStatus {
-  status: 'completed' | 'running' | 'pending' | 'error' | 'unknown'
-  last_sync_time?: string
-  next_sync_time?: string
-  running_tasks: number
-  completed_today: number
-}
-
-const syncConfig = reactive<SyncConfig>({
-  dataType: ['daily'],
-  symbolCodes: '',
-  dateRange: ['', ''],
-  syncMode: 'incremental',
-  frequency: 'D'
-})
-
-// 完整的数据类型选项
-const dataTypes = [
-  {label: '股票列表', value: 'stock_basic', description: '股票基础信息'},
-  {label: '交易日历', value: 'trade_calendar', description: '交易所交易日历'},
-  {label: '日线行情', value: 'daily', description: 'A股日线行情数据'},
-  {label: '分钟行情', value: 'minute', description: '分钟级行情数据'},
-  {label: '周线行情', value: 'weekly', description: '周线行情数据'},
-  {label: '月线行情', value: 'monthly', description: '月线行情数据'},
-  {label: '财务数据', value: 'financial', description: '财务报表数据'},
-  {label: '资金流向', value: 'moneyflow', description: '资金流向数据'},
-  {label: 'ETF数据', value: 'etf', description: 'ETF基础信息和行情'},
-  {label: '复权因子', value: 'adj_factor', description: '股票复权因子'},
-  {label: '每日指标', value: 'daily_basic', description: '每日基本面指标'},
-  {label: '涨跌停价格', value: 'daily_limit', description: '每日涨跌停价格'},
-  {label: 'ST股票列表', value: 'st_list', description: 'ST股票历史记录'},
-  {label: '公司信息', value: 'company', description: '上市公司基本信息'},
-  {label: '管理层信息', value: 'managers', description: '公司管理层信息'}
-]
-
-// 频率选项
-const frequencyOptions = [
-  {label: '日线', value: 'D'},
-  {label: '1分钟', value: '1min'},
-  {label: '5分钟', value: '5min'},
-  {label: '15分钟', value: '15min'},
-  {label: '30分钟', value: '30min'},
-  {label: '60分钟', value: '60min'}
-]
-
+// 响应式数据
 const isLoading = ref(false)
-const syncStatus = ref<SyncStatus | null>(null)
 const isCheckingStatus = ref(false)
-const syncTasks = ref<SyncTask[]>([])
 const isTaskLoading = ref(false)
+const statusPollingInterval = ref<NodeJS.Timeout | null>(null)
+const dataTypesLoadFailed = ref(false)
 
-// 检查同步状态
+// 同步状态和数据类型
+const syncStatus = ref<SyncStatusResponse | null>(null)
+const supportedDataTypes = ref<DataTypeInfo[]>([])
+
+// 同步配置表单 - 与后端BatchSyncRequest完全匹配
+const syncConfig = reactive({
+  data_types: [] as string[],           // 数据类型列表
+  days: 30,                            // 同步天数
+  start_date: '',                      // 开始日期
+  end_date: '',                        // 结束日期
+  stock_codes: [] as string[],         // 股票代码列表
+  exchange: '',                        // 交易所代码
+  batch_size: 100                      // 批量处理大小
+})
+
+/**
+ * 初始化页面数据
+ */
+const initializePage = async () => {
+  await Promise.all([
+    checkSyncStatus(),
+    fetchSupportedDataTypes()
+  ])
+}
+
+/**
+ * 获取支持的数据类型列表
+ */
+const fetchSupportedDataTypes = async () => {
+  try {
+    supportedDataTypes.value = await dataSyncService.getSupportedDataTypes()
+    dataTypesLoadFailed.value = false
+  } catch (error) {
+    console.error('获取数据类型列表失败，使用降级数据:', error)
+    supportedDataTypes.value = fallbackDataTypes
+    dataTypesLoadFailed.value = true
+    message.warning('使用本地数据类型列表，部分功能可能受限')
+  }
+}
+
+/**
+ * 检查同步状态
+ */
 const checkSyncStatus = async () => {
   isCheckingStatus.value = true
   try {
-    const response = await fetch('/api/system/data/status')
-    if (response.ok) {
-      const data = await response.json()
-      // 确保数据结构完整，添加更严格的验证
-      syncStatus.value = {
-        status: data?.status || 'unknown',
-        last_sync_time: data?.last_sync_time || '',
-        next_sync_time: data?.next_sync_time || '',
-        running_tasks: typeof data?.running_tasks === 'number' ? data.running_tasks : 0,
-        completed_today: typeof data?.completed_today === 'number' ? data.completed_today : 0
-      }
-    } else {
-      console.warn('获取同步状态失败，状态码:', response.status)
-      // 设置更合理的默认状态
-      syncStatus.value = {
-        status: 'unknown',
-        last_sync_time: '',
-        next_sync_time: '',
-        running_tasks: 0,
-        completed_today: 0
-      }
+    const status = await dataSyncService.getSyncStatus()
+    syncStatus.value = status
+
+    // 如果任务正在运行，启动轮询
+    if (status.is_running && !statusPollingInterval.value) {
+      startStatusPolling()
+    } else if (!status.is_running && statusPollingInterval.value) {
+      stopStatusPolling()
     }
   } catch (error) {
     console.error('获取同步状态失败:', error)
-    message.error('获取同步状态失败')
-    // 设置合理的错误状态
+    // 设置默认状态
     syncStatus.value = {
-      status: 'error',
-      last_sync_time: '',
-      next_sync_time: '',
-      running_tasks: 0,
-      completed_today: 0
+      is_running: false,
+      progress: 0,
+      total_tasks: 0,
+      completed_tasks: 0,
+      error: '获取状态失败'
     }
   } finally {
     isCheckingStatus.value = false
   }
 }
 
-// 获取同步任务列表 - 修复API路径
-const fetchSyncTasks = async () => {
-  isTaskLoading.value = true
-  try {
-    const response = await fetch('/api/system/data/sync/tasks?limit=10')
-    if (response.ok) {
-      const data = await response.json()
-      // 确保数据是数组，并验证每个任务的字段
-      if (Array.isArray(data)) {
-        syncTasks.value = data.map(task => ({
-          id: task.id || `task_${Date.now()}_${Math.random()}`,
-          task_type: task.task_type || 'unknown',
-          status: task.status || 'pending',
-          start_time: task.start_time || '',
-          end_time: task.end_time || '',
-          total_records: typeof task.total_records === 'number' ? task.total_records : 0,
-          error_message: task.error_message || ''
-        }))
-      } else {
-        console.warn('任务数据不是数组:', data)
-        syncTasks.value = []
+/**
+ * 启动状态轮询
+ */
+const startStatusPolling = () => {
+  if (statusPollingInterval.value) return
+
+  statusPollingInterval.value = setInterval(async () => {
+    try {
+      const status = await dataSyncService.getSyncStatus()
+      syncStatus.value = status
+
+      // 如果任务完成，停止轮询
+      if (!status.is_running) {
+        stopStatusPolling()
+        message.success('数据同步任务已完成')
       }
-    } else {
-      console.warn('获取任务列表失败，状态码:', response.status)
-      syncTasks.value = []
+    } catch (error) {
+      console.error('轮询同步状态失败:', error)
     }
-  } catch (error) {
-    console.error('获取同步任务失败:', error)
-    syncTasks.value = []
-  } finally {
-    isTaskLoading.value = false
+  }, 2000) // 每2秒轮询一次
+}
+
+/**
+ * 停止状态轮询
+ */
+const stopStatusPolling = () => {
+  if (statusPollingInterval.value) {
+    clearInterval(statusPollingInterval.value)
+    statusPollingInterval.value = null
   }
 }
 
-// 处理数据同步
-const handleSync = async () => {
-  if (!syncConfig.dataType.length) {
+/**
+ * 处理批量数据同步
+ */
+const handleBatchSync = async () => {
+  // 表单验证
+  if (!syncConfig.data_types.length) {
     message.warning('请选择至少一种数据类型')
     return
   }
 
-  // 增量同步需要时间范围
-  if (syncConfig.syncMode === 'incremental' && (!syncConfig.dateRange[0] || !syncConfig.dateRange[1])) {
-    message.warning('增量同步需要选择时间范围')
+  if (syncConfig.days < 1 || syncConfig.days > 365) {
+    message.warning('同步天数必须在1-365之间')
     return
   }
 
   isLoading.value = true
   try {
-    const response = await fetch('/api/system/data/sync', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(syncConfig)
-    })
-
-    if (response.ok) {
-      const result = await response.json()
-      message.success(`数据同步任务已启动 (ID: ${result.sync_id})`)
-      // 启动后刷新状态和任务列表
-      setTimeout(() => {
-        checkSyncStatus()
-        fetchSyncTasks()
-      }, 1000)
-    } else {
-      const error = await response.json()
-      throw new Error(error.message || '同步任务启动失败')
+    const requestData: BatchSyncRequest = {
+      data_types: syncConfig.data_types,
+      days: syncConfig.days,
+      start_date: syncConfig.start_date || undefined,
+      end_date: syncConfig.end_date || undefined,
+      stock_codes: syncConfig.stock_codes.length ? syncConfig.stock_codes : undefined,
+      exchange: syncConfig.exchange || undefined,
+      batch_size: syncConfig.batch_size
     }
-  } catch (error) {
-    message.error('同步任务启动失败')
-    console.error('同步错误:', error)
+
+    const response: SyncResponse = await dataSyncService.batchSyncData(requestData)
+
+    message.success(response.message)
+
+    // 启动状态轮询
+    startStatusPolling()
+
+  } catch (error: any) {
+    console.error('同步任务启动失败:', error)
+    message.error(error.response?.data?.detail || '同步任务启动失败')
   } finally {
     isLoading.value = false
   }
 }
 
-// 处理全量同步
+/**
+ * 处理快速同步（最近30天）
+ */
+const handleQuickSync = () => {
+  syncConfig.days = 30
+  syncConfig.start_date = ''
+  syncConfig.end_date = ''
+  handleBatchSync()
+}
+
+/**
+ * 处理全量同步
+ */
 const handleFullSync = () => {
   Modal.confirm({
     title: '确认全量同步',
+    icon: () => h(ExclamationCircleOutlined),
     content: '全量同步将重新下载所有历史数据，耗时较长，可能会影响系统性能，确定继续吗？',
     okText: '确认',
     cancelText: '取消',
     onOk: async () => {
-      syncConfig.syncMode = 'full'
-      syncConfig.dateRange = ['', '']
-      await handleSync()
+      syncConfig.data_types = supportedDataTypes.value.map(type => type.code)
+      syncConfig.days = 365 // 全量同步一年数据
+      syncConfig.start_date = ''
+      syncConfig.end_date = ''
+      await handleBatchSync()
     }
   })
 }
 
-// 处理快速同步（最近30天）
-const handleQuickSync = () => {
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - 30)
-
-  syncConfig.dateRange = [
-    startDate.toISOString().split('T')[0],
-    endDate.toISOString().split('T')[0]
-  ]
-  syncConfig.syncMode = 'incremental'
-
-  handleSync()
-}
-
-// 重新执行任务
-const handleRetryTask = async (taskId: string) => {
+/**
+ * 取消同步任务
+ */
+const handleCancelSync = async () => {
   try {
-    const response = await fetch(`/api/system/data/sync/tasks/${taskId}/retry`, {
-      method: 'POST'
-    })
-
-    if (response.ok) {
-      message.success('任务已重新执行')
-      fetchSyncTasks()
-    } else {
-      throw new Error('重新执行失败')
-    }
-  } catch (error) {
-    message.error('重新执行任务失败')
-    console.error('重新执行错误:', error)
+    await dataSyncService.cancelSync()
+    message.success('同步任务已取消')
+    stopStatusPolling()
+    await checkSyncStatus() // 刷新状态
+  } catch (error: any) {
+    console.error('取消同步任务失败:', error)
+    message.error(error.response?.data?.detail || '取消同步任务失败')
   }
 }
 
-// 状态标签颜色
-const statusColor = computed(() => {
-  if (!syncStatus.value) return 'default'
-  switch (syncStatus.value.status) {
-    case 'completed':
-      return 'success'
-    case 'running':
-      return 'processing'
-    case 'pending':
-      return 'warning'
-    case 'error':
-      return 'error'
-    default:
-      return 'default'
+/**
+ * 处理股票代码输入
+ */
+const handleStockCodesInput = (value: string) => {
+  if (!value.trim()) {
+    syncConfig.stock_codes = []
+    return
   }
-})
 
-// 状态标签文本
-const statusText = computed(() => {
-  if (!syncStatus.value) return '未知'
-  switch (syncStatus.value.status) {
-    case 'completed':
-      return '已完成'
-    case 'running':
-      return '同步中'
-    case 'pending':
-      return '等待中'
-    case 'error':
-      return '异常'
-    default:
-      return '未知'
-  }
-})
-
-// 获取状态颜色
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return 'green'
-    case 'running':
-      return 'blue'
-    case 'failed':
-      return 'red'
-    default:
-      return 'orange'
-  }
+  // 分割并清理股票代码
+  syncConfig.stock_codes = value.split(',')
+    .map(code => code.trim())
+    .filter(code => code.length > 0)
 }
 
-// 获取状态文本
-const getStatusText = (status: string) => {
-  switch (status) {
-    case 'completed':
-      return '完成'
-    case 'running':
-      return '运行中'
-    case 'failed':
-      return '失败'
-    default:
-      return '等待'
-  }
-}
-
-// 时间格式化
-const formatTime = (timeString: string) => {
+/**
+ * 格式化时间显示
+ */
+const formatTime = (timeString?: string) => {
   if (!timeString) return '--'
   try {
     const date = new Date(timeString)
@@ -344,302 +261,497 @@ const formatTime = (timeString: string) => {
   }
 }
 
-const safeTableData = computed(() => {
-  if (!Array.isArray(syncTasks.value)) {
-    return []
-  }
+/**
+ * 计算预计剩余时间
+ */
+const estimatedRemainingTime = computed(() => {
+  if (!syncStatus.value || !syncStatus.value.is_running) return 0
 
-  return syncTasks.value
-    .filter(task => task != null) // 过滤掉 null 或 undefined
-    .map(task => ({
-      id: task.id || `task_${Date.now()}_${Math.random()}`,
-      task_type: task.task_type || '未知类型',
-      status: task.status || 'pending',
-      start_time: task.start_time || '',
-      end_time: task.end_time || '',
-      total_records: typeof task.total_records === 'number' ? task.total_records : 0,
-      error_message: task.error_message || ''
-    }))
+  const elapsed = syncStatus.value.elapsed_time || 0
+  const progress = syncStatus.value.progress || 0
+
+  if (progress <= 0) return 0
+  return Math.round((elapsed / progress) * (100 - progress))
 })
 
-// 组件挂载时检查状态和任务列表
+/**
+ * 状态标签颜色
+ */
+const statusColor = computed(() => {
+  if (!syncStatus.value) return 'default'
+
+  if (syncStatus.value.error) return 'error'
+  if (syncStatus.value.is_running) return 'processing'
+  if (syncStatus.value.progress === 100) return 'success'
+  return 'default'
+})
+
+/**
+ * 状态标签文本
+ */
+const statusText = computed(() => {
+  if (!syncStatus.value) return '未知'
+
+  if (syncStatus.value.error) return '错误'
+  if (syncStatus.value.is_running) return '同步中'
+  if (syncStatus.value.progress === 100) return '已完成'
+  return '就绪'
+})
+
+// 监听路由变化，当进入数据同步页面时初始化数据
+watch(() => route.path, (newPath) => {
+  if (newPath === '/data-sync') {
+    initializePage()
+  }
+})
+
+// 组件挂载时初始化
 onMounted(() => {
-  console.log('DataSync组件挂载')
-  checkSyncStatus()
-  fetchSyncTasks()
+  initializePage()
+})
+
+// 组件卸载时清理轮询
+onUnmounted(() => {
+  stopStatusPolling()
 })
 </script>
 
 <template>
   <div class="data-sync-page">
+    <!-- 页面标题和状态概览 -->
+    <a-card class="page-header-card" :bordered="false">
+      <div class="page-header">
+        <div class="page-title">
+          <h1>数据同步中心</h1>
+          <p class="page-description">统一管理金融数据的同步任务和状态监控</p>
+        </div>
+        <div class="status-indicator">
+          <a-tag :color="statusColor" class="status-tag">
+            <SyncOutlined v-if="syncStatus?.is_running" spin />
+            <CheckCircleOutlined v-else-if="syncStatus?.progress === 100" />
+            <ExclamationCircleOutlined v-else-if="syncStatus?.error" />
+            <InfoCircleOutlined v-else />
+            {{ statusText }}
+          </a-tag>
+        </div>
+      </div>
+    </a-card>
+
     <!-- 状态概览卡片 -->
-    <a-row :gutter="16" class="status-overview">
-      <a-col :span="6">
-        <a-card size="small">
+    <a-row :gutter="[16, 16]" class="status-overview">
+      <a-col :xs="24" :sm="12" :md="6">
+        <a-card size="small" class="status-card">
           <template #title>
-            <span>同步状态</span>
+            <div class="card-title">
+              <SyncOutlined />
+              <span>同步状态</span>
+            </div>
           </template>
           <div class="status-content">
-            <a-tag :color="statusColor">{{ statusText }}</a-tag>
-            <div class="status-time" v-if="syncStatus?.last_sync_time">
-              最后同步: {{ formatTime(syncStatus.last_sync_time) }}
+            <div class="status-value">{{ statusText }}</div>
+            <div class="status-time" v-if="syncStatus?.last_run">
+              最后同步: {{ formatTime(syncStatus.last_run) }}
             </div>
           </div>
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card size="small">
+
+      <a-col :xs="24" :sm="12" :md="6">
+        <a-card size="small" class="status-card">
           <template #title>
-            <span>运行任务</span>
+            <div class="card-title">
+              <CloudDownloadOutlined />
+              <span>任务进度</span>
+            </div>
           </template>
-          <div class="status-number" :class="{ 'status-active': (syncStatus?.running_tasks || 0) > 0 }">
-            {{ syncStatus?.running_tasks || 0 }}
+          <div class="progress-content">
+            <a-progress
+              type="circle"
+              :percent="syncStatus?.progress || 0"
+              :width="60"
+              :stroke-color="{
+                '0%': '#108ee9',
+                '100%': '#87d068',
+              }"
+              :status="syncStatus?.error ? 'exception' : 'normal'"
+            />
+            <div class="progress-text">
+              {{ syncStatus?.completed_tasks || 0 }}/{{ syncStatus?.total_tasks || 0 }}
+            </div>
           </div>
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card size="small">
+
+      <a-col :xs="24" :sm="12" :md="6">
+        <a-card size="small" class="status-card">
           <template #title>
-            <span>今日完成</span>
+            <div class="card-title">
+              <ClockCircleOutlined />
+              <span>运行时间</span>
+            </div>
           </template>
-          <div class="status-number">
-            {{ syncStatus?.completed_today || 0 }}
+          <div class="time-content">
+            <div class="time-value">{{ syncStatus?.elapsed_time || 0 }}秒</div>
+            <div class="time-label">已运行</div>
           </div>
         </a-card>
       </a-col>
-      <a-col :span="6">
-        <a-card size="small">
+
+      <a-col :xs="24" :sm="12" :md="6">
+        <a-card size="small" class="status-card">
           <template #title>
-            <span>下次同步</span>
+            <div class="card-title">
+              <HourglassOutlined />
+              <span>预计剩余</span>
+            </div>
           </template>
-          <div class="status-time">
-            {{ syncStatus?.next_sync_time ? formatTime(syncStatus.next_sync_time) : '--' }}
+          <div class="time-content">
+            <div class="time-value">{{ estimatedRemainingTime }}秒</div>
+            <div class="time-label">剩余时间</div>
           </div>
         </a-card>
       </a-col>
     </a-row>
 
-    <!-- 同步配置卡片 -->
-    <a-card title="数据同步配置" class="sync-card">
-      <template #extra>
-        <a-space>
-          <a-button @click="checkSyncStatus" :loading="isCheckingStatus">
-            <template #icon>
-              <ReloadOutlined/>
-            </template>
-            刷新状态
-          </a-button>
-          <a-button @click="handleQuickSync" :disabled="isLoading">
-            <template #icon>
-              <CloudDownloadOutlined/>
-            </template>
-            快速同步(30天)
-          </a-button>
-          <a-button
-              type="primary"
-              :loading="isLoading"
-              @click="handleSync"
-          >
-            <template #icon>
-              <CloudDownloadOutlined/>
-            </template>
-            开始同步
-          </a-button>
-          <a-button
-              danger
-              @click="handleFullSync"
-              :disabled="isLoading"
-          >
-            <template #icon>
-              <SyncOutlined/>
-            </template>
-            全量同步
-          </a-button>
-        </a-space>
-      </template>
+    <!-- 主要配置区域 -->
+    <a-row :gutter="[16, 16]">
+      <!-- 同步配置卡片 -->
+      <a-col :xs="24" :lg="16">
+        <a-card title="数据同步配置" class="sync-config-card">
+          <template #extra>
+            <a-alert
+              v-if="dataTypesLoadFailed"
+              message="使用本地数据类型"
+              description="后端服务不可用，使用本地数据类型列表"
+              type="warning"
+              show-icon
+              size="small"
+            />
+          </template>
 
-      <a-form layout="vertical">
-        <!-- 数据类型选择 -->
-        <a-form-item label="数据类型" required>
-          <div class="form-item-description">选择需要同步的数据类型，可多选</div>
-          <a-checkbox-group v-model:value="syncConfig.dataType" class="data-type-group">
-            <a-row :gutter="[16, 16]">
-              <a-col :span="8" v-for="type in dataTypes" :key="type.value">
-                <a-checkbox :value="type.value">
-                  <div class="data-type-item">
-                    <div class="type-label">{{ type.label }}</div>
-                    <div class="type-description">{{ type.description }}</div>
-                  </div>
-                </a-checkbox>
+          <a-form layout="vertical" :model="syncConfig">
+            <!-- 数据类型选择 -->
+            <a-form-item label="数据类型" required>
+              <div class="form-item-description">选择需要同步的数据类型，可多选</div>
+              <a-checkbox-group v-model:value="syncConfig.data_types" class="data-type-group">
+                <a-row :gutter="[12, 12]">
+                  <a-col :xs="12" :sm="8" :md="6" v-for="type in supportedDataTypes" :key="type.code">
+                    <a-checkbox :value="type.code" class="data-type-checkbox">
+                      <div class="data-type-item">
+                        <div class="type-label">{{ type.name }}</div>
+                        <div class="type-description">{{ type.description }}</div>
+                        <div class="type-estimate">预计: {{ type.estimated_time }}秒</div>
+                      </div>
+                    </a-checkbox>
+                  </a-col>
+                </a-row>
+              </a-checkbox-group>
+            </a-form-item>
+
+            <a-row :gutter="16">
+              <!-- 时间参数 -->
+              <a-col :xs="24" :md="12">
+                <a-form-item label="同步天数">
+                  <div class="form-item-description">同步最近N天的数据 (1-365天)</div>
+                  <a-input-number
+                    v-model:value="syncConfig.days"
+                    :min="1"
+                    :max="365"
+                    style="width: 100%"
+                    placeholder="请输入同步天数"
+                  />
+                </a-form-item>
+
+                <a-form-item label="时间范围 (可选)">
+                  <div class="form-item-description">指定具体的开始和结束日期，优先级高于同步天数</div>
+                  <a-space direction="vertical" style="width: 100%">
+                    <a-date-picker
+                      v-model:value="syncConfig.start_date"
+                      placeholder="开始日期"
+                      style="width: 100%"
+                      format="YYYYMMDD"
+                    />
+                    <a-date-picker
+                      v-model:value="syncConfig.end_date"
+                      placeholder="结束日期"
+                      style="width: 100%"
+                      format="YYYYMMDD"
+                    />
+                  </a-space>
+                </a-form-item>
+              </a-col>
+
+              <!-- 股票和批量参数 -->
+              <a-col :xs="24" :md="12">
+                <a-form-item label="股票代码">
+                  <div class="form-item-description">输入股票代码，多个用逗号分隔，留空则同步全市场</div>
+                  <a-textarea
+                    :value="syncConfig.stock_codes.join(',')"
+                    @input="(e: any) => handleStockCodesInput(e.target?.value || '')"
+                    placeholder="例如：000001.SZ,600000.SH"
+                    :rows="3"
+                    show-count
+                    :maxlength="1000"
+                  />
+                </a-form-item>
+
+                <a-row :gutter="12">
+                  <a-col :xs="12">
+                    <a-form-item label="交易所">
+                      <a-select v-model:value="syncConfig.exchange" placeholder="选择交易所" style="width: 100%">
+                        <a-select-option value="SSE">上交所</a-select-option>
+                        <a-select-option value="SZSE">深交所</a-select-option>
+                        <a-select-option value="BSE">北交所</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="12">
+                    <a-form-item label="批量大小">
+                      <a-input-number
+                        v-model:value="syncConfig.batch_size"
+                        :min="1"
+                        :max="500"
+                        style="width: 100%"
+                        placeholder="批量处理大小"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
               </a-col>
             </a-row>
-          </a-checkbox-group>
-        </a-form-item>
+          </a-form>
+        </a-card>
+      </a-col>
 
-        <a-row :gutter="16">
-          <!-- 标的代码输入 -->
-          <a-col :span="12">
-            <a-form-item label="标的代码">
-              <div class="form-item-description">输入股票/ETF代码，多个用逗号分隔，留空则同步全市场</div>
-              <a-textarea
-                  v-model:value="syncConfig.symbolCodes"
-                  placeholder="例如：000001.SZ,600000.SH,159001.SZ"
-                  :rows="3"
-                  show-count
-                  :maxlength="1000"
-              />
-            </a-form-item>
-          </a-col>
-
-          <!-- 时间范围选择 -->
-          <a-col :span="12">
-            <a-form-item label="时间范围" v-if="syncConfig.syncMode === 'incremental'">
-              <div class="form-item-description">选择增量同步的时间范围</div>
-              <a-range-picker
-                  v-model:value="syncConfig.dateRange"
-                  format="YYYY-MM-DD"
-                  style="width: 100%"
-                  :placeholder="['开始日期', '结束日期']"
-              />
-            </a-form-item>
-
-            <!-- 频率选择 -->
-            <a-form-item label="数据频率" v-if="syncConfig.dataType.includes('minute')">
-              <div class="form-item-description">选择分钟数据的频率</div>
-              <a-radio-group v-model:value="syncConfig.frequency" button-style="solid">
-                <a-radio-button v-for="freq in frequencyOptions" :key="freq.value" :value="freq.value">
-                  {{ freq.label }}
-                </a-radio-button>
-              </a-radio-group>
-            </a-form-item>
-          </a-col>
-        </a-row>
-
-        <!-- 同步模式选择 -->
-        <a-form-item label="同步模式">
-          <a-radio-group v-model:value="syncConfig.syncMode">
-            <a-radio value="incremental">
-              <div class="sync-mode-option">
-                <div class="mode-title">增量同步</div>
-                <div class="mode-description">同步最近N天的数据，节省时间和资源</div>
-              </div>
-            </a-radio>
-            <a-radio value="full">
-              <div class="sync-mode-option">
-                <div class="mode-title">全量同步</div>
-                <div class="mode-description">重新下载所有历史数据，耗时较长</div>
-              </div>
-            </a-radio>
-          </a-radio-group>
-        </a-form-item>
-      </a-form>
-    </a-card>
-
-    <!-- 同步任务历史 -->
-    <!-- 同步任务历史 -->
-    <a-card title="同步任务历史" class="tasks-card">
-      <template #extra>
-        <a-button @click="fetchSyncTasks" :loading="isTaskLoading">
-          <template #icon>
-            <ReloadOutlined/>
-          </template>
-          刷新
-        </a-button>
-      </template>
-
-      <!-- 修复表格列定义 - 使用安全的插槽参数处理 -->
-      <a-table
-          :dataSource="safeTableData"
-          :loading="isTaskLoading"
-          :pagination="{ pageSize: 10 }"
-          size="small"
-          :rowKey="(record: SyncTask) => record.id"
-          :locale="{
-            emptyText: '暂无同步任务'
-          }"
-      >
-        <a-table-column key="task_type" title="任务类型" data-index="task_type">
-          <template #default="{ text, record }">
-            <!-- 添加安全检查 -->
-            <a-tag>{{ text || (record && record.task_type) || '未知类型' }}</a-tag>
-          </template>
-        </a-table-column>
-
-        <a-table-column key="status" title="状态" data-index="status">
-          <template #default="{ text, record }">
-            <!-- 添加安全检查 -->
-            <a-tag :color="getStatusColor(text || (record && record.status))">
-              <CheckCircleOutlined v-if="(text || (record && record.status)) === 'completed'"/>
-              <SyncOutlined v-else-if="(text || (record && record.status)) === 'running'"/>
-              <ExclamationCircleOutlined v-else-if="(text || (record && record.status)) === 'failed'"/>
-              {{ getStatusText(text || (record && record.status)) }}
-            </a-tag>
-          </template>
-        </a-table-column>
-
-        <a-table-column key="start_time" title="开始时间" data-index="start_time">
-          <template #default="{ text, record }">
-            <!-- 添加安全检查 -->
-            {{ text || (record && record.start_time) || '--' }}
-          </template>
-        </a-table-column>
-
-        <a-table-column key="end_time" title="结束时间" data-index="end_time">
-          <template #default="{ text, record }">
-            <!-- 添加安全检查 -->
-            {{ text || (record && record.end_time) || '--' }}
-          </template>
-        </a-table-column>
-
-        <a-table-column key="total_records" title="记录数" data-index="total_records">
-          <template #default="{ text, record }">
-            <!-- 添加安全检查 -->
-            {{ text || (record && record.total_records) || 0 }}
-          </template>
-        </a-table-column>
-
-        <a-table-column key="actions" title="操作">
-          <template #default="{ record }">
-            <!-- 添加安全检查 -->
+      <!-- 操作按钮卡片 -->
+      <a-col :xs="24" :lg="8">
+        <a-card title="同步操作" class="action-card">
+          <div class="action-buttons">
             <a-button
-                v-if="record && record.status === 'failed'"
-                type="link"
-                size="small"
-                @click="handleRetryTask(record.id)"
+              type="primary"
+              @click="handleBatchSync"
+              :loading="isLoading"
+              :disabled="syncStatus?.is_running"
+              block
+              size="large"
+              class="action-button"
             >
-              重试
+              <template #icon><CloudDownloadOutlined /></template>
+              开始同步
             </a-button>
-            <a-button type="link" size="small">
-              详情
-            </a-button>
-          </template>
-        </a-table-column>
-      </a-table>
-    </a-card>
 
-    <!-- 同步提示 -->
-    <div class="sync-tips">
+            <a-button
+              @click="handleQuickSync"
+              :loading="isLoading"
+              :disabled="syncStatus?.is_running"
+              block
+              size="large"
+              class="action-button"
+            >
+              <template #icon><SyncOutlined /></template>
+              快速同步(30天)
+            </a-button>
+
+            <a-button
+              danger
+              @click="handleFullSync"
+              :loading="isLoading"
+              :disabled="syncStatus?.is_running"
+              block
+              size="large"
+              class="action-button"
+            >
+              <template #icon><SyncOutlined /></template>
+              全量同步
+            </a-button>
+
+            <a-space direction="vertical" style="width: 100%" class="utility-buttons">
+              <a-button @click="checkSyncStatus" :loading="isCheckingStatus" block>
+                <template #icon><ReloadOutlined /></template>
+                刷新状态
+              </a-button>
+
+              <a-button
+                v-if="syncStatus?.is_running"
+                danger
+                @click="handleCancelSync"
+                :loading="isLoading"
+                block
+              >
+                <template #icon><PauseCircleOutlined /></template>
+                取消同步
+              </a-button>
+            </a-space>
+          </div>
+        </a-card>
+
+        <!-- 同步提示卡片 -->
+        <a-card title="同步说明" class="tips-card" size="small">
+          <a-alert
+            message="数据同步说明"
+            description="数据同步任务将在后台执行，系统会自动轮询状态更新。单个数据类型失败不会影响其他类型的同步。建议在非交易时间段执行全量同步操作。"
+            type="info"
+            show-icon
+          />
+        </a-card>
+      </a-col>
+    </a-row>
+
+    <!-- 任务状态信息 -->
+    <a-row :gutter="[16, 16]" v-if="syncStatus?.is_running || syncStatus?.results">
+      <!-- 当前任务状态 -->
+      <a-col :xs="24" :lg="12" v-if="syncStatus?.is_running">
+        <a-card title="当前任务状态" class="task-status-card" size="small">
+          <a-descriptions bordered size="small" :column="1">
+            <a-descriptions-item label="当前任务">
+              {{ syncStatus.current_task || '--' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="任务ID">
+              {{ syncStatus.task_id || '--' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="进度">
+              {{ syncStatus.progress }}%
+            </a-descriptions-item>
+            <a-descriptions-item label="已完成">
+              {{ syncStatus.completed_tasks }}/{{ syncStatus.total_tasks }}
+            </a-descriptions-item>
+            <a-descriptions-item label="开始时间">
+              {{ formatTime(syncStatus.start_time) }}
+            </a-descriptions-item>
+          </a-descriptions>
+        </a-card>
+      </a-col>
+
+      <!-- 同步结果 -->
+      <a-col :xs="24" :lg="12" v-if="syncStatus?.results && Object.keys(syncStatus.results).length > 0">
+        <a-card title="同步结果" class="results-card" size="small">
+          <a-list
+            item-layout="horizontal"
+            :data-source="Object.entries(syncStatus.results)"
+            size="small"
+            :split="false"
+          >
+            <template #renderItem="{ item }">
+              <a-list-item class="result-item">
+                <template #actions>
+                  <a-tag :color="item[1].error ? 'red' : 'green'" size="small">
+                    {{ item[1].error ? '失败' : '成功' }}
+                  </a-tag>
+                </template>
+                <a-list-item-meta :description="item[1].error || '同步成功'">
+                  <template #title>
+                    <span class="result-title">{{ item[0] }}</span>
+                  </template>
+                </a-list-item-meta>
+              </a-list-item>
+            </template>
+          </a-list>
+        </a-card>
+      </a-col>
+    </a-row>
+
+    <!-- 错误信息 -->
+    <a-card v-if="syncStatus?.error" title="错误信息" class="error-card" size="small">
       <a-alert
-          message="数据同步说明"
-          description="数据同步任务将在后台执行，您可以在'同步任务监控'页面查看详细执行进度和结果。建议在非交易时间段执行全量同步操作。"
-          type="info"
-          show-icon
+        :message="syncStatus.error"
+        type="error"
+        show-icon
       />
-    </div>
+    </a-card>
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="less">
 .data-sync-page {
-  padding: 24px;
+  padding: 16px;
+  background-color: #f0f2f5;
+  min-height: 100vh;
+}
+
+.page-header-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+
+  :deep(.ant-card-body) {
+    padding: 16px 24px;
+  }
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+.page-title {
+  h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: #262626;
+  }
+
+  .page-description {
+    margin: 4px 0 0 0;
+    color: #666;
+    font-size: 14px;
+  }
+}
+
+.status-tag {
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 16px;
+
+  :deep(.anticon) {
+    margin-right: 4px;
+  }
 }
 
 .status-overview {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
-.status-overview :deep(.ant-card) {
+.status-card {
   height: 100%;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  :deep(.ant-card-head) {
+    min-height: auto;
+    padding: 12px 16px;
+
+    .ant-card-head-title {
+      font-size: 14px;
+      font-weight: 500;
+      padding: 0;
+    }
+  }
+
+  :deep(.ant-card-body) {
+    padding: 16px;
+  }
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #666;
+
+  .anticon {
+    font-size: 14px;
+  }
 }
 
 .status-content {
@@ -648,46 +760,138 @@ onMounted(() => {
   gap: 8px;
 }
 
-.status-number {
-  font-size: 24px;
-  font-weight: bold;
-  color: #1890ff;
-}
-
-.status-active {
-  color: #52c41a;
+.status-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
 }
 
 .status-time {
   font-size: 12px;
+  color: #8c8c8c;
+}
+
+.progress-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-text {
+  font-size: 14px;
   color: #666;
+  font-weight: 500;
 }
 
-.sync-card {
-  margin-bottom: 24px;
+.time-content {
+  text-align: center;
 }
 
-.tasks-card {
-  margin-bottom: 24px;
+.time-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1890ff;
+  margin-bottom: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.sync-config-card,
+.action-card,
+.tips-card,
+.task-status-card,
+.results-card,
+.error-card {
+  border-radius: 8px;
+  margin-bottom: 16px;
+
+  :deep(.ant-card-head) {
+    border-bottom: 1px solid #f0f0f0;
+  }
+}
+
+.action-card {
+  :deep(.ant-card-body) {
+    padding: 20px;
+  }
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-button {
+  height: 48px;
+  font-size: 16px;
+  border-radius: 6px;
+}
+
+.utility-buttons {
+  margin-top: 8px;
 }
 
 .data-type-group {
   width: 100%;
 }
 
+.data-type-checkbox {
+  width: 100%;
+  margin: 0;
+
+  :deep(.ant-checkbox) {
+    top: 0;
+  }
+
+  :deep(.ant-checkbox-wrapper) {
+    width: 100%;
+    align-items: flex-start;
+    padding: 8px;
+    border: 1px solid #f0f0f0;
+    border-radius: 6px;
+    transition: all 0.3s;
+    margin: 0;
+
+    &:hover {
+      border-color: #1890ff;
+      background-color: #f6ffed;
+    }
+  }
+
+  :deep(.ant-checkbox-checked .ant-checkbox-inner) {
+    background-color: #52c41a;
+    border-color: #52c41a;
+  }
+}
+
 .data-type-item {
-  padding: 4px 0;
+  padding: 4px 8px 4px 0;
+  border-radius: 4px;
+  width: 100%;
 }
 
 .type-label {
   font-weight: 500;
   margin-bottom: 2px;
+  font-size: 14px;
+  color: #262626;
 }
 
 .type-description {
   font-size: 12px;
   color: #666;
   line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.type-estimate {
+  font-size: 11px;
+  color: #8c8c8c;
+  font-style: italic;
 }
 
 .form-item-description {
@@ -697,37 +901,72 @@ onMounted(() => {
   line-height: 1.2;
 }
 
-.sync-mode-option {
-  padding: 4px 0;
+.result-item {
+  padding: 8px 0;
+
+  :deep(.ant-list-item-meta) {
+    align-items: center;
+  }
 }
 
-.mode-title {
+.result-title {
+  font-size: 13px;
   font-weight: 500;
-  margin-bottom: 2px;
 }
 
-.mode-description {
-  font-size: 12px;
-  color: #666;
-  line-height: 1.2;
-}
-
-.sync-tips {
-  max-width: 100%;
+.tips-card {
+  margin-top: 16px;
 }
 
 /* 响应式设计 */
+@media (max-width: 1200px) {
+  .data-sync-page {
+    padding: 12px;
+  }
+}
+
 @media (max-width: 768px) {
   .data-sync-page {
-    padding: 16px;
+    padding: 8px;
   }
 
-  .status-overview .ant-col {
-    margin-bottom: 16px;
+  .page-title {
+    h1 {
+      font-size: 20px;
+    }
+
+    .page-description {
+      font-size: 13px;
+    }
+  }
+
+  .progress-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 8px;
   }
 
   .data-type-group .ant-col {
     width: 100%;
+  }
+
+  .action-button {
+    height: 44px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 576px) {
+  .data-type-group .ant-col {
+    width: 100%;
+  }
+
+  .status-value {
+    font-size: 16px;
+  }
+
+  .time-value {
+    font-size: 18px;
   }
 }
 </style>
