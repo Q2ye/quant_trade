@@ -7,7 +7,7 @@ from typing import Optional
 from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
-router = APIRouter(prefix="/api/trade", tags=["trade"])
+router = APIRouter(prefix="/trade", tags=["trade"])
 
 @router.get("/account")
 async def get_account_info(data_service: DataService = Depends(get_data_service)):

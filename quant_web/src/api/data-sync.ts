@@ -21,6 +21,7 @@ export interface SyncStatusResponse {
   elapsed_time?: number;
   start_time?: string;
   task_id?: string;
+  task_queue?: string[];
 }
 
 // 批量同步请求接口 - 与后端BatchSyncRequest完全匹配
@@ -57,7 +58,7 @@ export interface DataTypeInfo {
  * 完全适配后端数据同步接口设计
  */
 class DataSyncService {
-  private readonly baseUrl = '/api/data-sync'
+  private readonly baseUrl = '/data-sync'
 
   /**
    * 获取数据同步状态

@@ -7,7 +7,7 @@ from quant_server.api.strategy_models import StrategyResponse, StrategyCreate
 
 from quant_server.core.strategy_engine.engines.strategy_manager_engine import StrategyManagerEngine
 
-router = APIRouter(prefix="/api/strategies", tags=["strategies"])
+router = APIRouter(prefix="/strategies", tags=["strategies"])
 
 @router.get("", response_model=List[StrategyResponse])
 async def get_strategies(

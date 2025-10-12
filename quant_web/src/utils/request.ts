@@ -4,7 +4,7 @@ import { message } from 'ant-design-vue';
 
 // 创建axios实例
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 30000,
   withCredentials: false, // 大多数 API 不需要携带 cookie
 });
@@ -26,9 +26,9 @@ request.interceptors.request.use(
     // 优化 URL 处理：确保正确的路径格式
     if (config.url) {
       // 移除可能的前导斜杠，避免双斜杠
-      if (config.url.startsWith('/')) {
-        config.url = config.url.slice(1);
-      }
+      // if (config.url.startsWith('/')) {
+      //   config.url = config.url.slice(1);
+      // }
 
       // 检查绝对 URL（可能绕过代理）
       if (config.url.startsWith('http')) {

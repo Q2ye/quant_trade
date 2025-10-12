@@ -3,7 +3,7 @@ import os
 from asyncio import as_completed
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List,  Callable
 import time
 import logging
 import schedule
@@ -182,8 +182,34 @@ def _get_test_data(data_type: str, **kwargs) -> List[Dict]:
         return [{"ts_code": "TEST", "data_type": data_type, "test": True}]
 
 
+def _handle_test_env_sync(data_type: str, data_service_method: Callable) -> Dict[str, Any]:
+    """处理测试环境数据同步 - 提取公共方法消除重复代码"""
+    logger.info(f"测试环境: 模拟同步{data_type}数据")
+    try:
+        test_data = _get_test_data(data_type)
+        results = []
+        if test_data:
+            results.extend(data_service_method(test_data))
+        logger.info(f"{data_type}数据同步完成，共处理{len(results)}条记录")
+        return {
+            "success": True,
+            "count": len(results),
+            "failed_count": 0,
+            "failed_codes": []
+        }
+    except Exception as e:
+        logger.error(f"测试环境{data_type}数据同步失败: {str(e)}")
+        return {
+            "success": False,
+            "count": 0,
+            "failed_count": 1,  # 简化处理，假设有1个失败
+            "failed_codes": ["TEST_CODE"],
+            "error": str(e)
+        }
+
+
 class DataSyncService:
-    """数据同步服务 - 优化版"""
+    """数据同步服务 - 修复版"""
 
     def __init__(self, session: Session = None):
         self.is_test_env = os.environ.get('TEST_ENV', 'False').lower() == 'true'
@@ -195,6 +221,30 @@ class DataSyncService:
         self.data_service = DataService(self.session)
         # 线程池执行器，用于并行处理
         self.executor = ThreadPoolExecutor(max_workers=5)
+
+        # 数据服务方法映射 - 用于消除重复代码
+        self._data_service_methods = {
+            "daily": self.data_service.stock_daily.batch_create,
+            "weekly": self.data_service.stock_weekly.batch_create,
+            "monthly": self.data_service.stock_monthly.batch_create,
+            "adj_factor": self.data_service.stock_adj_factor.batch_create,
+            "daily_basic": self.data_service.stock_daily_basic.batch_create,
+            "moneyflow": self.data_service.stock_moneyflow.batch_create,
+            "daily_limit": self.data_service.stock_daily_limit.batch_create,
+            "fund_daily": self.data_service.etf_daily.batch_create
+        }
+
+        # Tushare方法映射 - 用于消除重复代码
+        self._tushare_methods = {
+            "daily": self.tushare_source.get_daily if not self.is_test_env else None,
+            "weekly": self.tushare_source.get_weekly if not self.is_test_env else None,
+            "monthly": self.tushare_source.get_monthly if not self.is_test_env else None,
+            "adj_factor": self.tushare_source.get_adj_factor if not self.is_test_env else None,
+            "daily_basic": self.tushare_source.get_daily_basic if not self.is_test_env else None,
+            "moneyflow": self.tushare_source.get_moneyflow if not self.is_test_env else None,
+            "daily_limit": self.tushare_source.get_daily_limit if not self.is_test_env else None,
+            "fund_daily": self.tushare_source.get_fund_daily if not self.is_test_env else None
+        }
 
     def _create_sync_task(self, task_type: str, parameters: Dict[str, Any] = None) -> Any:
         """创建同步任务记录"""
@@ -214,13 +264,105 @@ class DataSyncService:
         """标记同步任务失败"""
         return self.data_service.data_sync_task.fail_task(task_id, error_message) is not None
 
+    def _parallel_sync_generic_data(self, data_type: str, codes: List[str], start_date: str,
+                                   end_date: str, batch_size: int = 100) -> Dict[str, Any]:
+        """
+        通用的并行数据同步方法
+        修复：消除重复的并行处理代码段
+        """
+        # 如果是测试环境，使用统一的测试环境处理方法
+        if self.is_test_env:
+            data_service_method = self._data_service_methods.get(data_type)
+            if data_service_method:
+                return _handle_test_env_sync(data_type, data_service_method)
+            else:
+                return {"success": False, "error": f"不支持的数据类型: {data_type}"}
+
+        # 生产环境使用线程池并行处理
+        total_count = len(codes)
+        results = []
+        failed_codes = []
+
+        futures = {}
+        for i in range(0, total_count, batch_size):
+            batch_codes = codes[i:i + batch_size]
+            future = self.executor.submit(
+                self._process_generic_batch,
+                batch_codes,
+                start_date,
+                end_date,
+                data_type
+            )
+            futures[future] = batch_codes
+
+        # 处理完成的任务
+        completed = 0
+        for future in as_completed(futures):
+            batch_codes = futures[future]
+            try:
+                batch_result = future.result()
+                results.extend(batch_result["success"])
+                failed_codes.extend(batch_result["failed"])
+                completed += len(batch_codes)
+
+                # 记录进度
+                progress = min(100, int(completed / total_count * 100))
+                logger.info(f"{data_type}数据同步进度: {progress}%")
+
+            except Exception as e:
+                logger.error(f"处理批次失败: {str(e)}")
+                failed_codes.extend(batch_codes)
+
+        logger.info(f"{data_type}数据同步完成，成功: {len(results)}条，失败: {len(failed_codes)}只代码")
+        return {
+            "success": True,
+            "count": len(results),
+            "failed_count": len(failed_codes),
+            "failed_codes": failed_codes[:20]  # 只返回前20个失败的代码
+        }
+
+    def _process_generic_batch(self, batch_codes: List[str], start_date: str,
+                              end_date: str, data_type: str) -> Dict[str, Any]:
+        """
+        通用的批次处理方法
+        修复：使用统一的方法映射，消除重复的if-elif逻辑
+        """
+        success_results = []
+        failed_codes = []
+
+        # 获取对应的数据服务方法和Tushare方法
+        data_service_method = self._data_service_methods.get(data_type)
+        tushare_method = self._tushare_methods.get(data_type)
+
+        if not data_service_method or not tushare_method:
+            return {"success": [], "failed": batch_codes}
+
+        for code in batch_codes:
+            try:
+                # 使用统一的方法调用
+                data = tushare_method(
+                    ts_code=code,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if data:
+                    success_results.extend(data_service_method(data))
+
+                # 控制请求频率
+                time.sleep(0.05)
+            except Exception as e:
+                logger.error(f"代码{code}的{data_type}数据同步失败: {str(e)}")
+                failed_codes.append(code)
+
+        return {"success": success_results, "failed": failed_codes}
+
     def sync_stock_basic(self, exchange: str = '', list_status: str = 'L') -> Dict[str, Any]:
         """同步股票基本信息"""
         task = self._create_sync_task("stock_basic", {"exchange": exchange, "list_status": list_status})
         logger.info("开始同步股票基本信息...")
         try:
             if self.is_test_env:
-                data = _get_test_data("stock_basic", exchange=exchange, list_status=list_status)
+                data = _get_test_data("stock_basic")
             else:
                 data = self.tushare_source.get_stock_basic(exchange=exchange, list_status=list_status)
 
@@ -313,99 +455,28 @@ class DataSyncService:
                 else:
                     stock_codes = [stock.ts_code for stock in self.data_service.stock_basic.list_active_stocks()]
 
-            total_count = len(stock_codes)
-            results = []
-            failed_codes = []
+            # 使用通用的并行处理方法 - 修复：消除重复代码
+            result = self._parallel_sync_generic_data(
+                data_type="daily_limit",
+                codes=stock_codes,
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size
+            )
 
-            # 如果是测试环境，简化处理
-            if self.is_test_env:
-                logger.info("测试环境: 模拟同步每日涨跌停价格数据")
-                try:
-                    test_data = _get_test_data("daily_limit")
-                    if test_data:
-                        results.extend(self.data_service.stock_daily_limit.batch_create(test_data))
-                    logger.info(f"每日涨跌停价格数据同步完成，共处理{len(results)}条记录")
-                    self._complete_sync_task(task.id, len(results))
-                    return {
-                        "success": True,
-                        "count": len(results),
-                        "failed_count": 0,
-                        "failed_codes": []
-                    }
-                except Exception as e:
-                    logger.error(f"测试环境每日涨跌停价格数据同步失败: {str(e)}")
-                    self._fail_sync_task(task.id, str(e))
-                    return {
-                        "success": False,
-                        "count": 0,
-                        "failed_count": total_count,
-                        "failed_codes": stock_codes[:20],
-                        "error": str(e)
-                    }
-
-            # 生产环境使用线程池并行处理
-            futures = {}
-            for i in range(0, total_count, batch_size):
-                batch_codes = stock_codes[i:i + batch_size]
-                # todo
-                future = self.executor.submit(self._process_daily_limit_batch, batch_codes, start_date, end_date)
-                futures[future] = batch_codes
-
-            # 处理完成的任务
-            completed = 0
-            for future in as_completed(futures):
-                batch_codes = futures[future]
-                try:
-                    batch_result = future.result()
-                    results.extend(batch_result["success"])
-                    failed_codes.extend(batch_result["failed"])
-                    completed += len(batch_codes)
-
-                    # 记录进度
-                    progress = min(100, int(completed / total_count * 100))
-                    logger.info(f"每日涨跌停价格数据同步进度: {progress}%")
-
-                except Exception as e:
-                    logger.error(f"处理批次失败: {str(e)}")
-                    failed_codes.extend(batch_codes)
-
-            logger.info(f"每日涨跌停价格数据同步完成，成功: {len(results)}条，失败: {len(failed_codes)}只股票")
-            self._complete_sync_task(task.id, len(results))
-            return {
-                "success": True,
-                "count": len(results),
-                "failed_count": len(failed_codes),
-                "failed_codes": failed_codes[:20]  # 只返回前20个失败的代码
-            }
+            self._complete_sync_task(task.id, result.get('count', 0))
+            return result
         except Exception as e:
             logger.error(f"每日涨跌停价格数据同步失败: {str(e)}")
             self._fail_sync_task(task.id, str(e))
             return {"success": False, "error": str(e)}
 
-    def _process_daily_limit_batch(self, batch_codes: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
-        """处理一批股票的每日涨跌停价格数据"""
-        success_results = []
-        failed_codes = []
-
-        for code in batch_codes:
-            try:
-                data = self.tushare_source.get_daily_limit(
-                    ts_code=code, start_date=start_date, end_date=end_date
-                )
-                if data:
-                    success_results.extend(self.data_service.stock_daily_limit.batch_create(data))
-
-                # 控制请求频率
-                time.sleep(0.05)
-            except Exception as e:
-                logger.error(f"股票{code}的每日涨跌停价格数据同步失败: {str(e)}")
-                failed_codes.append(code)
-
-        return {"success": success_results, "failed": failed_codes}
-
-    def _sync_stock_data_parallel(self, sync_func, data_type: str, days: int = 30,
+    def _sync_stock_data_parallel(self, data_type: str, days: int = 30,
                                   stock_codes: List[str] = None, batch_size: int = 100) -> Dict[str, Any]:
-        """并行同步股票数据通用方法"""
+        """
+        并行同步股票数据通用方法
+        修复：移除未使用的sync_func参数
+        """
         end_date = datetime.now().strftime('%Y%m%d')
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
 
@@ -416,143 +487,14 @@ class DataSyncService:
             else:
                 stock_codes = [stock.ts_code for stock in self.data_service.stock_basic.list_active_stocks()]
 
-        total_count = len(stock_codes)
-        results = []
-        failed_codes = []
-
-        # 如果是测试环境，简化处理
-        if self.is_test_env:
-            logger.info(f"测试环境: 模拟同步{data_type}数据")
-            try:
-                # 直接生成测试数据并保存
-                test_data = _get_test_data(data_type)
-                if test_data:
-                    # 根据数据类型调用不同的服务保存数据
-                    if data_type == "daily":
-                        results.extend(self.data_service.stock_daily.batch_create(test_data))
-                    elif data_type == "weekly":
-                        results.extend(self.data_service.stock_weekly.batch_create(test_data))
-                    elif data_type == "monthly":
-                        results.extend(self.data_service.stock_monthly.batch_create(test_data))
-                    elif data_type == "adj_factor":
-                        results.extend(self.data_service.stock_adj_factor.batch_create(test_data))
-                    elif data_type == "daily_basic":
-                        results.extend(self.data_service.stock_daily_basic.batch_create(test_data))
-                    elif data_type == "moneyflow":
-                        results.extend(self.data_service.stock_moneyflow.batch_create(test_data))
-
-                logger.info(f"{data_type}数据同步完成，共处理{len(results)}条记录")
-                return {
-                    "success": True,
-                    "count": len(results),
-                    "failed_count": 0,
-                    "failed_codes": []
-                }
-            except Exception as e:
-                logger.error(f"测试环境{data_type}数据同步失败: {str(e)}")
-                return {
-                    "success": False,
-                    "count": 0,
-                    "failed_count": total_count,
-                    "failed_codes": stock_codes[:20],
-                    "error": str(e)
-                }
-
-        # 生产环境使用线程池并行处理
-        futures = {}
-        for i in range(0, total_count, batch_size):
-            batch_codes = stock_codes[i:i + batch_size]
-
-            # 提交批量任务到线程池
-            future = self.executor.submit(self._process_batch, sync_func, batch_codes,
-                                          start_date, end_date, data_type)
-            futures[future] = batch_codes
-
-        # 处理完成的任务
-        completed = 0
-        for future in as_completed(futures):
-            batch_codes = futures[future]
-            try:
-                batch_result = future.result()
-                results.extend(batch_result["success"])
-                failed_codes.extend(batch_result["failed"])
-                completed += len(batch_codes)
-
-                # 记录进度
-                progress = min(100, int(completed / total_count * 100))
-                logger.info(f"{data_type}数据同步进度: {progress}%")
-
-            except Exception as e:
-                logger.error(f"处理批次失败: {str(e)}")
-                failed_codes.extend(batch_codes)
-
-        logger.info(f"{data_type}数据同步完成，成功: {len(results)}条，失败: {len(failed_codes)}只股票")
-        return {
-            "success": True,
-            "count": len(results),
-            "failed_count": len(failed_codes),
-            "failed_codes": failed_codes[:20]  # 只返回前20个失败的代码
-        }
-
-    def _process_batch(self, sync_func, batch_codes: List[str],
-                       start_date: str, end_date: str, data_type: str) -> Dict[str, Any]:
-        """处理一批股票数据"""
-        success_results = []
-        failed_codes = []
-
-        for code in batch_codes:
-            try:
-                # 根据数据类型调用不同的Tushare方法
-                if data_type == "daily":
-                    data = self.tushare_source.get_daily(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_daily.batch_create(data))
-
-                elif data_type == "weekly":
-                    data = self.tushare_source.get_weekly(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_weekly.batch_create(data))
-
-                elif data_type == "monthly":
-                    data = self.tushare_source.get_monthly(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_monthly.batch_create(data))
-
-                elif data_type == "adj_factor":
-                    data = self.tushare_source.get_adj_factor(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_adj_factor.batch_create(data))
-
-                elif data_type == "daily_basic":
-                    data = self.tushare_source.get_daily_basic(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_daily_basic.batch_create(data))
-
-                elif data_type == "moneyflow":
-                    data = self.tushare_source.get_moneyflow(
-                        ts_code=code, start_date=start_date, end_date=end_date
-                    )
-                    if data:
-                        success_results.extend(self.data_service.stock_moneyflow.batch_create(data))
-
-                # 控制请求频率
-                time.sleep(0.05)
-
-            except Exception as e:
-                logger.error(f"股票{code}的{data_type}数据同步失败: {str(e)}")
-                failed_codes.append(code)
-
-        return {"success": success_results, "failed": failed_codes}
+        # 使用通用的并行处理方法
+        return self._parallel_sync_generic_data(
+            data_type=data_type,
+            codes=stock_codes,
+            start_date=start_date,
+            end_date=end_date,
+            batch_size=batch_size
+        )
 
     def sync_daily_data(self, days: int = 30, stock_codes: List[str] = None,
                         batch_size: int = 100) -> Dict[str, Any]:
@@ -560,9 +502,8 @@ class DataSyncService:
         task = self._create_sync_task("daily", {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步日线数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_daily, "daily", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("daily", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -576,9 +517,8 @@ class DataSyncService:
         task = self._create_sync_task("weekly", {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步周线数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_weekly, "weekly", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("weekly", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -592,9 +532,8 @@ class DataSyncService:
         task = self._create_sync_task("monthly", {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步月线数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_monthly, "monthly", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("monthly", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -609,9 +548,8 @@ class DataSyncService:
                                       {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步复权因子数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_adj_factor, "adj_factor", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("adj_factor", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -626,9 +564,8 @@ class DataSyncService:
                                       {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步每日指标数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_daily_basic, "daily_basic", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("daily_basic", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -642,9 +579,8 @@ class DataSyncService:
         task = self._create_sync_task("moneyflow", {"days": days, "stock_codes": stock_codes, "batch_size": batch_size})
         logger.info("开始同步资金流向数据...")
         try:
-            result = self._sync_stock_data_parallel(
-                self.tushare_source.get_moneyflow, "moneyflow", days, stock_codes, batch_size
-            )
+            # 修复：移除意外实参，直接传入数据类型
+            result = self._sync_stock_data_parallel("moneyflow", days, stock_codes, batch_size)
             self._complete_sync_task(task.id, result.get('count', 0))
             return result
         except Exception as e:
@@ -817,3 +753,174 @@ class DataSyncService:
         while True:
             schedule.run_pending()
             time.sleep(1)
+
+    def sync_st_stock_list(self, days: int = 30) -> Dict[str, Any]:
+        """同步ST股票列表数据"""
+        task = self._create_sync_task("st_stock_list", {"days": days})
+        logger.info("开始同步ST股票列表数据...")
+        try:
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+            if self.is_test_env:
+                data = _get_test_data("st_stock_list", start_date=start_date, end_date=end_date)
+            else:
+                data = self.tushare_source.get_st_stock_list(start_date=start_date, end_date=end_date)
+
+            if data:
+                result = self.data_service.stk_st_list.batch_create(data)
+                logger.info(f"ST股票列表数据同步完成，共处理{len(result)}条记录")
+                self._complete_sync_task(task.id, len(result))
+                return {"success": True, "count": len(result), "data": result[:10]}
+            else:
+                logger.info("未获取到ST股票列表数据")
+                self._complete_sync_task(task.id, 0)
+                return {"success": True, "count": 0, "message": "未获取到数据"}
+
+        except Exception as e:
+            logger.error(f"ST股票列表数据同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}
+
+    def sync_company_info(self, stock_codes: List[str] = None) -> Dict[str, Any]:
+        """同步公司信息数据"""
+        task = self._create_sync_task("company_info", {"stock_codes": stock_codes})
+        logger.info("开始同步公司信息数据...")
+        try:
+            if self.is_test_env:
+                data = _get_test_data("stock_company")
+            else:
+                data = self.tushare_source.get_stock_company()
+
+            if data:
+                # 如果指定了股票代码，则过滤数据
+                if stock_codes:
+                    data = [item for item in data if item.get('ts_code') in stock_codes]
+
+                result = self.data_service.stock_company.batch_create(data)
+                logger.info(f"公司信息数据同步完成，共处理{len(result)}条记录")
+                self._complete_sync_task(task.id, len(result))
+                return {"success": True, "count": len(result), "data": result[:10]}
+            else:
+                logger.info("未获取到公司信息数据")
+                self._complete_sync_task(task.id, 0)
+                return {"success": True, "count": 0, "message": "未获取到数据"}
+
+        except Exception as e:
+            logger.error(f"公司信息数据同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}
+
+    def sync_management_info(self, days: int = 30) -> Dict[str, Any]:
+        """同步管理层信息数据"""
+        task = self._create_sync_task("management_info", {"days": days})
+        logger.info("开始同步管理层信息数据...")
+        try:
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+            if self.is_test_env:
+                data = _get_test_data("stk_managers", start_date=start_date, end_date=end_date)
+            else:
+                # todo 管理层信息只能通过股票代码同步，此处需要优化
+                data = self.tushare_source.get_stk_managers(start_date=start_date, end_date=end_date)
+
+            if data:
+                result = self.data_service.stk_managers.batch_create(data)
+                logger.info(f"管理层信息数据同步完成，共处理{len(result)}条记录")
+                self._complete_sync_task(task.id, len(result))
+                return {"success": True, "count": len(result), "data": result[:10]}
+            else:
+                logger.info("未获取到管理层信息数据")
+                self._complete_sync_task(task.id, 0)
+                return {"success": True, "count": 0, "message": "未获取到数据"}
+
+        except Exception as e:
+            logger.error(f"管理层信息数据同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}
+
+    def sync_executive_rewards(self, days: int = 30) -> Dict[str, Any]:
+        """同步高管薪酬数据"""
+        task = self._create_sync_task("executive_rewards", {"days": days})
+        logger.info("开始同步高管薪酬数据...")
+        try:
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+            if self.is_test_env:
+                data = _get_test_data("stk_rewards", start_date=start_date, end_date=end_date)
+            else:
+                # todo 管理层持股情况也只能通过股票代码同步，此处需要优化
+                data = self.tushare_source.get_stk_rewards(start_date=start_date, end_date=end_date)
+
+            if data:
+                result = self.data_service.stk_rewards.batch_create(data)
+                logger.info(f"高管薪酬数据同步完成，共处理{len(result)}条记录")
+                self._complete_sync_task(task.id, len(result))
+                return {"success": True, "count": len(result), "data": result[:10]}
+            else:
+                logger.info("未获取到高管薪酬数据")
+                self._complete_sync_task(task.id, 0)
+                return {"success": True, "count": 0, "message": "未获取到数据"}
+
+        except Exception as e:
+            logger.error(f"高管薪酬数据同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}
+
+    def sync_etf_basic(self) -> Dict[str, Any]:
+        """同步ETF基本信息"""
+        task = self._create_sync_task("etf_basic", {})
+        logger.info("开始同步ETF基本信息...")
+        try:
+            if self.is_test_env:
+                data = _get_test_data("fund_basic")
+            else:
+                data = self.tushare_source.get_fund_basic()
+
+            if data:
+                result = self.data_service.etf_basic.batch_create(data)
+                logger.info(f"ETF基本信息同步完成，共处理{len(result)}条记录")
+                self._complete_sync_task(task.id, len(result))
+                return {"success": True, "count": len(result), "data": result[:10]}
+            else:
+                logger.info("未获取到ETF基本信息")
+                self._complete_sync_task(task.id, 0)
+                return {"success": True, "count": 0, "message": "未获取到数据"}
+
+        except Exception as e:
+            logger.error(f"ETF基本信息同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}
+
+    def sync_etf_daily_data(self, days: int = 30, batch_size: int = 100) -> Dict[str, Any]:
+        """同步ETF日线数据"""
+        task = self._create_sync_task("etf_daily", {"days": days, "batch_size": batch_size})
+        logger.info("开始同步ETF日线数据...")
+        try:
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+            # 获取ETF代码列表
+            if self.is_test_env:
+                etf_codes = ["510300.SH", "510500.SH"]
+            else:
+                etf_list = self.data_service.etf_basic.get_all()
+                etf_codes = [etf.ts_code for etf in etf_list]
+
+            # 使用通用的并行处理方法 - 修复：消除重复代码
+            result = self._parallel_sync_generic_data(
+                data_type="fund_daily",
+                codes=etf_codes,
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size
+            )
+
+            self._complete_sync_task(task.id, result.get('count', 0))
+            return result
+        except Exception as e:
+            logger.error(f"ETF日线数据同步失败: {str(e)}")
+            self._fail_sync_task(task.id, str(e))
+            return {"success": False, "error": str(e)}

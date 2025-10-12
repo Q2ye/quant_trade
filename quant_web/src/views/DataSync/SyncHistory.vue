@@ -1,13 +1,9 @@
 <!-- quant_web/src/views/DataSync/SyncHistory.vue -->
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
-import {
-  Tag,
-  Space,
-  Button
-} from 'ant-design-vue'
-import type { ColumnsType } from 'ant-design-vue/es/table'
-import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons-vue'
+import {h, onMounted, reactive, ref} from 'vue'
+import {Button, Space, Tag} from 'ant-design-vue'
+import type {ColumnsType} from 'ant-design-vue/es/table'
+import {EyeOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons-vue'
 
 // 同步记录接口
 interface SyncRecord {
@@ -170,7 +166,7 @@ const columns: ColumnsType<SyncRecord> = [
     dataIndex: 'data_types',
     key: 'data_types',
     width: 150,
-    customRender: ({ text: dataTypes }: { text: string[] }) => {
+    customRender: ({text: dataTypes}: { text: string[] }) => {
       return dataTypes?.join(', ') || '--'
     }
   },
@@ -179,11 +175,11 @@ const columns: ColumnsType<SyncRecord> = [
     dataIndex: 'status',
     key: 'status',
     width: 100,
-    customRender: ({ text: status }: { text: string }) => {
+    customRender: ({text: status}: { text: string }) => {
       return h(
-        Tag,
-        { color: getStatusColor(status) },
-        () => getStatusText(status)
+          Tag,
+          {color: getStatusColor(status)},
+          () => getStatusText(status)
       )
     }
   },
@@ -192,30 +188,30 @@ const columns: ColumnsType<SyncRecord> = [
     dataIndex: 'start_time',
     key: 'start_time',
     width: 180,
-    customRender: ({ text: startTime }: { text: string }) => formatTime(startTime)
+    customRender: ({text: startTime}: { text: string }) => formatTime(startTime)
   },
   {
     title: '结束时间',
     dataIndex: 'end_time',
     key: 'end_time',
     width: 180,
-    customRender: ({ text: endTime }: { text: string }) => formatTime(endTime || '')
+    customRender: ({text: endTime}: { text: string }) => formatTime(endTime || '')
   },
   {
     title: '持续时间',
     key: 'duration',
     width: 100,
-    customRender: ({ record }: { record: SyncRecord }) =>
-      formatDuration(record.start_time, record.end_time)
+    customRender: ({record}: { record: SyncRecord }) =>
+        formatDuration(record.start_time, record.end_time)
   },
   {
     title: '完成进度',
     key: 'progress',
     width: 120,
-    customRender: ({ record }: { record: SyncRecord }) => {
+    customRender: ({record}: { record: SyncRecord }) => {
       const progress = record.total_tasks > 0
-        ? Math.round((record.completed_tasks / record.total_tasks) * 100)
-        : 0
+          ? Math.round((record.completed_tasks / record.total_tasks) * 100)
+          : 0
       return `${progress}% (${record.completed_tasks}/${record.total_tasks})`
     }
   },
@@ -223,26 +219,26 @@ const columns: ColumnsType<SyncRecord> = [
     title: '操作',
     key: 'actions',
     width: 120,
-    customRender: ({ record }: { record: SyncRecord }) => {
+    customRender: ({record}: { record: SyncRecord }) => {
       return h(Space, {}, () => [
         h(
-          Button,
-          {
-            type: 'link',
-            size: 'small',
-            icon: h(EyeOutlined),
-            onClick: () => viewRecordDetail(record)
-          },
-          () => '详情'
+            Button,
+            {
+              type: 'link',
+              size: 'small',
+              icon: h(EyeOutlined),
+              onClick: () => viewRecordDetail(record)
+            },
+            () => '详情'
         ),
         record.status === 'failed' && h(
-          Button,
-          {
-            type: 'link',
-            size: 'small',
-            onClick: () => retryTask(record)
-          },
-          () => '重试'
+            Button,
+            {
+              type: 'link',
+              size: 'small',
+              onClick: () => retryTask(record)
+            },
+            () => '重试'
         )
       ].filter(Boolean))
     }
@@ -260,7 +256,9 @@ onMounted(() => {
     <a-card title="同步历史记录">
       <template #extra>
         <a-button @click="loadHistory" :loading="loading">
-          <template #icon><ReloadOutlined /></template>
+          <template #icon>
+            <ReloadOutlined/>
+          </template>
           刷新
         </a-button>
       </template>
@@ -269,10 +267,10 @@ onMounted(() => {
       <div class="filter-bar">
         <a-space :size="16" wrap>
           <a-select
-            v-model:value="filters.status"
-            placeholder="状态筛选"
-            style="width: 120px"
-            allow-clear
+              v-model:value="filters.status"
+              placeholder="状态筛选"
+              style="width: 120px"
+              allow-clear
           >
             <a-select-option value="completed">完成</a-select-option>
             <a-select-option value="running">运行中</a-select-option>
@@ -281,13 +279,15 @@ onMounted(() => {
           </a-select>
 
           <a-range-picker
-            v-model:value="filters.dateRange"
-            style="width: 240px"
-            :placeholder="['开始日期', '结束日期']"
+              v-model:value="filters.dateRange"
+              style="width: 240px"
+              :placeholder="['开始日期', '结束日期']"
           />
 
           <a-button type="primary" @click="handleSearch">
-            <template #icon><SearchOutlined /></template>
+            <template #icon>
+              <SearchOutlined/>
+            </template>
             搜索
           </a-button>
 
@@ -297,23 +297,23 @@ onMounted(() => {
 
       <!-- 数据表格 -->
       <a-table
-        :columns="columns"
-        :data-source="records"
-        :pagination="pagination"
-        :loading="loading"
-        row-key="id"
-        @change="handleTableChange"
-        :scroll="{ x: 1000 }"
+          :columns="columns"
+          :data-source="records"
+          :pagination="pagination"
+          :loading="loading"
+          row-key="id"
+          @change="handleTableChange"
+          :scroll="{ x: 1000 }"
       />
 
       <!-- 详情抽屉 -->
       <a-drawer
-        :visible="!!selectedRecord"
-        title="同步任务详情"
-        placement="right"
-        width="600"
-        :closable="true"
-        @close="selectedRecord = null"
+          :visible="!!selectedRecord"
+          title="同步任务详情"
+          placement="right"
+          width="600"
+          :closable="true"
+          @close="selectedRecord = null"
       >
         <template v-if="selectedRecord">
           <a-descriptions title="任务信息" bordered size="small" :column="1">
@@ -324,8 +324,8 @@ onMounted(() => {
               {{ selectedRecord.data_types.join(', ') }}
             </a-descriptions-item>
             <a-descriptions-item label="状态">
-              <a-tag :color="getStatusColor(selectedRecord.status)">
-                {{ getStatusText(selectedRecord.status) }}
+              <a-tag :color="getStatusColor(selectedRecord.status ?? '')">
+                {{ getStatusText(selectedRecord.status ?? '') }}
               </a-tag>
             </a-descriptions-item>
             <a-descriptions-item label="开始时间">
@@ -342,7 +342,7 @@ onMounted(() => {
             </a-descriptions-item>
           </a-descriptions>
 
-          <a-divider />
+          <a-divider/>
 
           <a-descriptions title="同步结果" bordered size="small" :column="1">
             <template v-for="(result, dataType) in selectedRecord.results" :key="dataType">
@@ -358,17 +358,18 @@ onMounted(() => {
           </a-descriptions>
 
           <a-alert
-            v-if="selectedRecord.error"
-            :message="selectedRecord.error"
-            type="error"
-            show-icon
-            style="margin-top: 16px;"
+              v-if="selectedRecord.error"
+              :message="selectedRecord.error"
+              type="error"
+              show-icon
+              style="margin-top: 16px;"
           />
         </template>
       </a-drawer>
     </a-card>
   </div>
 </template>
+
 
 <style scoped lang="less">
 .sync-history-page {

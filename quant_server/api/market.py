@@ -6,7 +6,7 @@ from datetime import date
 from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
-router = APIRouter(prefix="/api/market", tags=["market"])
+router = APIRouter(prefix="/market", tags=["market"])
 
 
 @router.get("/stocks")

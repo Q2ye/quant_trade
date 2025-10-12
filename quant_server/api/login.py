@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .dependencies import get_db
 from ..db.data_service import DataService
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 

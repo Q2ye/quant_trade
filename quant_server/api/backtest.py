@@ -17,7 +17,7 @@ from quant_server.db.models.business_models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 # 内存中的任务存储（生产环境应考虑使用Redis或数据库）
 backtest_tasks: Dict[str, BacktestTask] = {}

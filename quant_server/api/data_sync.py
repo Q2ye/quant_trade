@@ -18,7 +18,6 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
 from pydantic import BaseModel, Field
 import logging
-import asyncio
 
 from quant_server.db.services.data_sync_service import DataSyncService
 
@@ -91,12 +90,12 @@ class SyncResponse(BaseModel):
 class SyncStatusResponse(BaseModel):
     """同步状态响应模型"""
     is_running: bool
-    last_run: Optional[datetime]
+    last_run: Optional[datetime] = None
     progress: int
-    current_task: Optional[str]
-    results: Optional[Dict[str, Any]]
-    error: Optional[str]
-    estimated_remaining: Optional[int]  # 预计剩余时间(秒)
+    current_task: Optional[str] = None
+    results: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    estimated_remaining: Optional[int] = None  # 预计剩余时间(秒)
     total_tasks: int
     completed_tasks: int
     task_queue: Optional[List[str]] = None
@@ -141,6 +140,7 @@ def reset_sync_status():
         "start_time": None,
         "task_id": None
     }
+
 
 
 def update_sync_status(
@@ -210,8 +210,15 @@ def get_sync_status() -> Dict[str, Any]:
     if _sync_status["start_time"]:
         elapsed_time = int((datetime.now() - _sync_status["start_time"]).total_seconds())
 
+    # 计算预计剩余时间
+    estimated_remaining = None
+    if _sync_status["is_running"] and _sync_status["progress"] > 0:
+        # 根据当前进度和已运行时间估算剩余时间
+        estimated_remaining = int((elapsed_time / _sync_status["progress"]) * (100 - _sync_status["progress"]))
+
     status = _sync_status.copy()
     status["elapsed_time"] = elapsed_time
+    status["estimated_remaining"] = estimated_remaining
 
     return status
 
@@ -219,14 +226,46 @@ def get_sync_status() -> Dict[str, Any]:
 @router.get("/status", response_model=SyncStatusResponse)
 async def get_sync_status_api():
     """
-    获取数据同步状态API接口
-
-    Returns:
-        SyncStatusResponse: 包含详细同步状态信息的响应对象
+    获取数据同步状态接口
     """
-    status = get_sync_status()
-    return SyncStatusResponse(**status)
+    try:
+        status = get_sync_status()
 
+        # 确保所有必需字段都有值
+        if status.get("elapsed_time") is None:
+            status["elapsed_time"] = 0
+
+        if status.get("total_tasks") is None:
+            status["total_tasks"] = 0
+
+        if status.get("completed_tasks") is None:
+            status["completed_tasks"] = 0
+
+        if status.get("progress") is None:
+            status["progress"] = 0
+
+        if status.get("estimated_remaining") is None:
+            status["estimated_remaining"] = 0
+
+        if status.get("results") is None:
+            status["results"] = {}
+
+        if status.get("task_queue") is None:
+            status["task_queue"] = []
+
+        return SyncStatusResponse(**status)
+    except Exception as e:
+        logger.error(f"获取同步状态失败: {str(e)}")
+        # 返回默认状态而不是抛出异常
+        return SyncStatusResponse(
+            is_running=False,
+            progress=0,
+            total_tasks=0,
+            completed_tasks=0,
+            estimated_remaining=0,
+            elapsed_time=0,
+            error="状态查询失败"
+        )
 
 @router.get("/supported-data-types", response_model=List[DataTypeInfo])
 async def get_supported_data_types():
@@ -237,7 +276,7 @@ async def get_supported_data_types():
         List[DataTypeInfo]: 包含所有支持的数据类型信息的列表
     """
     return [
-        DataTypeInfo(
+            DataTypeInfo(
             code="stock_list",
             name="股票列表",
             description="股票基础信息",
@@ -386,99 +425,99 @@ async def batch_sync_data(
             results = {}
             total_tasks = len(valid_data_types)
 
-            for i, data_type in enumerate(valid_data_types):
+            for i, current_data_type in enumerate(valid_data_types):  # 重命名变量避免隐藏
                 # 更新当前任务进度
                 progress = int((i / total_tasks) * 100)
                 update_sync_status(
-                    current_task=f"正在同步: {data_type}",
+                    current_task=f"正在同步: {current_data_type}",
                     progress=progress,
                     completed_tasks=i
                 )
 
                 try:
                     # 根据数据类型调用不同的同步方法
-                    if data_type == "stock_list":
+                    if current_data_type == "stock_list":
                         results["stock_list"] = sync_service.sync_stock_basic(
                             exchange=request.exchange
                         )
-                    elif data_type == "trade_calendar":
+                    elif current_data_type == "trade_calendar":
                         results["trade_calendar"] = sync_service.sync_trade_calendar(
                             exchanges=['SSE', 'SZSE'],
                             start_date=request.start_date or '19900101',
                             end_date=request.end_date or '20301231'
                         )
-                    elif data_type == "daily_quotes":
+                    elif current_data_type == "daily_quotes":
                         results["daily_quotes"] = sync_service.sync_daily_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "weekly_quotes":
+                    elif current_data_type == "weekly_quotes":
                         results["weekly_quotes"] = sync_service.sync_weekly_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "monthly_quotes":
+                    elif current_data_type == "monthly_quotes":
                         results["monthly_quotes"] = sync_service.sync_monthly_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "money_flow":
+                    elif current_data_type == "money_flow":
                         results["money_flow"] = sync_service.sync_moneyflow_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "adj_factor":
+                    elif current_data_type == "adj_factor":
                         results["adj_factor"] = sync_service.sync_adj_factor_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "daily_basic":
+                    elif current_data_type == "daily_basic":
                         results["daily_basic"] = sync_service.sync_daily_basic_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "st_stock_list":
+                    elif current_data_type == "st_stock_list":
                         results["st_stock_list"] = sync_service.sync_st_stock_list(
                             days=request.days
                         )
-                    elif data_type == "company_info":
+                    elif current_data_type == "company_info":
                         results["company_info"] = sync_service.sync_company_info(
                             stock_codes=request.stock_codes
                         )
-                    elif data_type == "management_info":
+                    elif current_data_type == "management_info":
                         results["management_info"] = sync_service.sync_management_info(
                             days=request.days
                         )
-                    elif data_type == "executive_rewards":
+                    elif current_data_type == "executive_rewards":
                         results["executive_rewards"] = sync_service.sync_executive_rewards(
                             days=request.days
                         )
-                    elif data_type == "etf_basic":
+                    elif current_data_type == "etf_basic":
                         results["etf_basic"] = sync_service.sync_etf_basic()
-                    elif data_type == "etf_daily":
+                    elif current_data_type == "etf_daily":
                         results["etf_daily"] = sync_service.sync_etf_daily_data(
                             days=request.days,
                             batch_size=request.batch_size
                         )
-                    elif data_type == "daily_limit":
+                    elif current_data_type == "daily_limit":
                         results["daily_limit"] = sync_service.sync_daily_limit_data(
                             days=request.days,
                             stock_codes=request.stock_codes,
                             batch_size=request.batch_size
                         )
 
-                    logger.info(f"数据类型 {data_type} 同步完成")
+                    logger.info(f"数据类型 {current_data_type} 同步完成")
 
                 except Exception as e:
-                    error_msg = f"数据类型 {data_type} 同步失败: {str(e)}"
+                    error_msg = f"数据类型 {current_data_type} 同步失败: {str(e)}"
                     logger.error(error_msg)
-                    results[data_type] = {"error": error_msg}
+                    results[current_data_type] = {"error": error_msg}
                     # 继续执行其他数据类型的同步
 
             # 任务完成，更新最终状态
@@ -686,7 +725,13 @@ async def sync_trade_calendar(
 
     内部转换为批量同步请求，只包含交易日历数据类型
     """
-    request = SyncRequest()
+    # 使用传入的exchanges参数
+    request_data = {
+        "exchanges": exchanges,
+        "start_date": start_date,
+        "end_date": end_date
+    }
+
     batch_request = BatchSyncRequest(
         data_types=["trade_calendar"],
         days=30,
