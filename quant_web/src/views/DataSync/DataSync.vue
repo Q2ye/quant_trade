@@ -227,6 +227,21 @@ const handleStockCodesInput = (value: string) => {
     .filter(code => code.length > 0)
 }
 
+// 新增：切换数据类型选中状态
+const toggleDataType = (code: string) => {
+  const index = syncConfig.data_types.indexOf(code)
+  if (index > -1) {
+    syncConfig.data_types.splice(index, 1)
+  } else {
+    syncConfig.data_types.push(code)
+  }
+}
+
+// 新增：判断数据类型是否选中
+const isDataTypeSelected = (code: string) => {
+  return syncConfig.data_types.includes(code)
+}
+
 // 监听路由变化
 watch(() => route.path, (newPath) => {
   if (newPath === '/data-sync') {
@@ -345,34 +360,35 @@ onUnmounted(() => {
             <!-- 数据类型选择 -->
             <div class="config-section">
               <h3 class="section-title">数据类型选择</h3>
-              <div class="form-item-description">选择需要同步的数据类型（可多选）</div>
+              <div class="form-item-description">点击选择需要同步的数据类型（可多选）</div>
 
-              <a-checkbox-group
-                v-model:value="syncConfig.data_types"
-                class="data-type-group"
-              >
+              <div class="data-type-group">
                 <div class="data-type-grid">
                   <div
                     v-for="type in supportedDataTypes"
                     :key="type.code"
                     class="data-type-grid-item"
+                    @click="toggleDataType(type.code)"
                   >
-                    <div class="data-type-item-wrapper">
-                      <a-checkbox
-                        :value="type.code"
-                        class="data-type-checkbox"
-                      >
-                        <div class="data-type-item">
-                          <div class="type-name">{{ type.name }}</div>
-                          <div class="type-meta">
-                            <span class="type-time">{{ type.estimated_time }}s</span>
-                          </div>
-                        </div>
-                      </a-checkbox>
+                    <div
+                      class="data-type-item"
+                      :class="{ 'selected': isDataTypeSelected(type.code) }"
+                    >
+                      <div class="type-name">{{ type.name }}</div>
+                      <div class="type-meta">
+                        <span class="type-time">{{ type.estimated_time }}s</span>
+                      </div>
+                      <div class="type-indicator">
+                        <Icon
+                          v-if="isDataTypeSelected(type.code)"
+                          icon="ant-design:check-circle-filled"
+                          class="check-icon"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </a-checkbox-group>
+              </div>
             </div>
 
             <!-- 同步参数 -->
@@ -777,46 +793,6 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.data-type-item-wrapper {
-  margin-bottom: 0;
-}
-
-.data-type-checkbox {
-  width: 100%;
-  margin: 0;
-
-  :deep(.ant-checkbox) {
-    display: none;
-  }
-
-  :deep(.ant-checkbox-wrapper) {
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    display: block;
-  }
-
-  :deep(.ant-checkbox-wrapper-checked) {
-    .data-type-item {
-      border-color: var(--data-type-selected-border, var(--accent-color)) !important;
-      background: var(--data-type-selected-bg, color-mix(in srgb, var(--accent-color) 8%, transparent)) !important;
-      box-shadow: var(--data-type-selected-shadow, 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent)) !important;
-
-      animation: dataTypeSelected 0.3s ease;
-
-      .type-name {
-        color: var(--accent-color);
-        font-weight: 600;
-      }
-
-      .type-time {
-        background: var(--accent-color);
-        color: white;
-      }
-    }
-  }
-}
-
 .data-type-item {
   border: 1.5px solid var(--border-color);
   background: var(--card-bg);
@@ -828,11 +804,35 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  position: relative;
 
   &:hover {
     border-color: var(--accent-color);
     transform: translateY(-2px);
     box-shadow: var(--hover-shadow, 0 4px 12px rgba(0, 0, 0, 0.15));
+  }
+
+  &.selected {
+    border-color: var(--data-type-selected-border, var(--accent-color)) !important;
+    background: var(--data-type-selected-bg, color-mix(in srgb, var(--accent-color) 8%, transparent)) !important;
+    box-shadow: var(--data-type-selected-shadow, 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent)) !important;
+
+    animation: dataTypeSelected 0.3s ease;
+
+    .type-name {
+      color: var(--accent-color);
+      font-weight: 600;
+    }
+
+    .type-time {
+      background: var(--accent-color);
+      color: white;
+    }
+
+    .check-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 
   .type-name {
@@ -855,6 +855,20 @@ onUnmounted(() => {
     font-size: 11px;
     padding: 4px 8px;
     border-radius: 10px;
+    transition: all var(--transition-fast);
+  }
+
+  .type-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  .check-icon {
+    color: var(--accent-color);
+    font-size: 14px;
+    opacity: 0;
+    transform: scale(0.8);
     transition: all var(--transition-fast);
   }
 }
@@ -1101,31 +1115,6 @@ onUnmounted(() => {
   .action-button {
     height: 42px !important;
     font-size: 14px !important;
-  }
-}
-
-// 主题特定调整
-[data-theme="light"] {
-  .data-sync-page {
-    .status-card:hover {
-      background: var(--status-card-hover-light, color-mix(in srgb, var(--accent-color) 5%, transparent));
-    }
-
-    .data-type-group .data-type-checkbox :deep(.ant-checkbox-wrapper-checked) .data-type-item {
-      background: var(--data-type-selected-bg-light, color-mix(in srgb, var(--accent-color) 5%, transparent)) !important;
-    }
-  }
-}
-
-[data-theme="dark"] {
-  .data-sync-page {
-    .status-card:hover {
-      background: var(--status-card-hover-dark, color-mix(in srgb, var(--accent-color) 8%, transparent));
-    }
-
-    .data-type-group .data-type-checkbox :deep(.ant-checkbox-wrapper-checked) .data-type-item {
-      background: var(--data-type-selected-bg-dark, color-mix(in srgb, var(--accent-color) 15%, transparent)) !important;
-    }
   }
 }
 </style>

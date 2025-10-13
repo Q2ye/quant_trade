@@ -130,51 +130,68 @@
   }
 }
 
-// 数据类型选择 - 主题化选中状态
+// 数据类型选择 - 优化的点击选中样式
 .data-type-group {
-  .data-type-checkbox {
-    :deep(.ant-checkbox-wrapper-checked) {
-      .data-type-item {
-        border-color: var(--data-type-selected-border) !important;
-        background: var(--data-type-selected-bg) !important;
-        box-shadow: var(--data-type-selected-shadow) !important;
+  .data-type-item {
+    border: 1.5px solid $border-color;
+    background: $card-bg;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+    position: relative;
 
-        // 选中状态的动画效果
-        animation: dataTypeSelected 0.3s ease;
-
-        .type-name {
-          color: $accent-color;
-          font-weight: 600;
-        }
-
-        .type-time {
-          background: $accent-color;
-          color: white;
-        }
-      }
+    &:hover {
+      border-color: $accent-color;
+      transform: translateY(-2px);
+      box-shadow: var(--hover-shadow);
     }
 
-    .data-type-item {
-      border: 1.5px solid $border-color;
-      background: $card-bg;
-      transition: all var(--transition-fast);
+    // 选中状态
+    &.selected {
+      border-color: var(--data-type-selected-border) !important;
+      background: var(--data-type-selected-bg) !important;
+      box-shadow: var(--data-type-selected-shadow) !important;
 
-      &:hover {
-        border-color: $accent-color;
-        transform: translateY(-2px);
-        box-shadow: var(--hover-shadow);
-      }
+      // 选中状态的动画效果
+      animation: dataTypeSelected 0.3s ease;
 
       .type-name {
-        color: $text-primary;
-        transition: color var(--transition-fast);
+        color: $accent-color;
+        font-weight: 600;
       }
 
       .type-time {
-        background: $secondary-bg;
-        color: $text-secondary;
-        transition: all var(--transition-fast);
+        background: $accent-color;
+        color: white;
       }
+
+      .check-icon {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .type-name {
+      color: $text-primary;
+      transition: color var(--transition-fast);
+    }
+
+    .type-time {
+      background: $secondary-bg;
+      color: $text-secondary;
+      transition: all var(--transition-fast);
+    }
+
+    .type-indicator {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+    }
+
+    .check-icon {
+      color: $accent-color;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all var(--transition-fast);
     }
   }
 }
