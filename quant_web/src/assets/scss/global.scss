@@ -1,4 +1,5 @@
-// 全局样式
+// global.scss
+// 全局样式 - 基于 CSS 变量的主题系统
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:color';
@@ -6,26 +7,11 @@
 @use 'layout';
 @use 'charts';
 
-// 第二步：然后定义混合器
+// 深度选择器混合器
 @mixin deep() {
   :deep {
     @content;
   }
-}
-
-// 第三步：最后是其他样式规则
-:root {
-  --background-dark: #121826; // 深色背景
-  --background-content: #1c2438; // 内容区域背景
-  --primary-bg: #0e1a2b;
-  --secondary-bg: #152238;
-  --accent-color: #4f9cf9;
-  --text-primary: #c7d5e0;
-  --text-secondary: #6b7b8f;
-  --border-color: #2a3f5f;
-  --success-color: #5abf6b;
-  --warning-color: #e7c95c;
-  --danger-color: #e7575d;
 }
 
 // 基础全局样式
@@ -38,11 +24,11 @@
 }
 
 body {
-  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-family), serif;
   font-size: $font-size-base;
   line-height: $line-height-base;
-  color: var(--text-primary);
-  background-color: var(--primary-bg);
+  color: $text-primary;
+  background-color: $primary-bg;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
@@ -85,7 +71,7 @@ body {
 .page-title {
   font-size: 1.5rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: $text-primary;
   margin-bottom: map.get($spacers, 4);
 }
 
@@ -95,8 +81,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: var(--secondary-bg);
-  border-bottom: 1px solid var(--border-color);
+  background: $secondary-bg;
+  border-bottom: 1px solid $border-color;
 
   .status-item {
     display: flex;
@@ -104,13 +90,13 @@ body {
     gap: map.get($spacers, 2);
 
     .status-label {
-      font-size: $font-size-base * 0.9;
-      color: var(--text-secondary);
+      font-size: $font-size-base;
+      color: $text-secondary;
     }
 
     .status-value {
       font-weight: 600;
-      color: var(--text-primary);
+      color: $text-primary;
     }
 
     &.market-status {
@@ -121,11 +107,11 @@ body {
         display: inline-block;
 
         &.open {
-          background: var(--success-color);
+          background: $success-color;
         }
 
         &.closed {
-          background: var(--danger-color);
+          background: $danger-color;
         }
       }
     }
@@ -134,13 +120,13 @@ body {
 
 // 导航栏
 .app-navbar {
-  background: var(--secondary-bg);
+  background: $secondary-bg;
   box-shadow: 0 0.125rem 0.625rem rgba(0, 0, 0, 0.1);
   padding: 0 map.get($spacers, 3);
 
   .nav-link {
     padding: map.get($spacers, 3) map.get($spacers, 2);
-    color: var(--text-secondary);
+    color: $text-secondary;
     font-weight: 500;
     position: relative;
 
@@ -152,11 +138,11 @@ body {
     }
 
     &:hover {
-      color: var(--accent-color);
+      color: $accent-color;
     }
 
     &.active {
-      color: var(--accent-color);
+      color: $accent-color;
 
       &::after {
         content: '';
@@ -165,7 +151,7 @@ body {
         left: 0;
         right: 0;
         height: 3px;
-        background: var(--accent-color);
+        background: $accent-color;
         border-radius: 3px 3px 0 0;
       }
     }
@@ -177,29 +163,29 @@ body {
   @include mix.data-card;
 
   .card-title {
-    font-size: $font-size-base * 1.1;
+    font-size: $font-size-base;
     font-weight: 600;
-    color: var(--text-primary);
+    color: $text-primary;
     margin-bottom: map.get($spacers, 2);
   }
 
   .card-value {
     font-size: 1.5rem;
     font-weight: 600;
-    color: var(--accent-color);
+    color: $accent-color;
   }
 
   .card-change {
     display: flex;
     align-items: center;
-    font-size: $font-size-base * 0.9;
+    font-size: $font-size-base;
 
     &.positive {
-      color: var(--success-color);
+      color: $success-color;
     }
 
     &.negative {
-      color: var(--danger-color);
+      color: $danger-color;
     }
   }
 }
@@ -212,14 +198,14 @@ body {
 // 表单控件
 .form-control {
   padding: map.get($spacers, 2) map.get($spacers, 3);
-  border: 1px solid var(--border-color);
+  border: 1px solid $border-color;
   border-radius: $border-radius;
-  background: var(--primary-bg);
-  color: var(--text-primary);
-  transition: border-color 0.2s ease;
+  background: var(--input-bg);
+  color: $text-primary;
+  transition: border-color var(--transition-fast);
 
   &:focus {
-    border-color: var(--accent-color);
+    border-color: $accent-color;
     outline: none;
     box-shadow: 0 0 0 0.2rem rgba(79, 156, 249, 0.1);
   }
@@ -227,17 +213,17 @@ body {
 
 // 顶部状态栏
 .app-header {
-  height: 50px;
-  background-color: var(--secondary-bg);
+  height: $header-height;
+  background-color: $toolbar-bg;
   display: flex;
   align-items: center;
   padding: 0 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid $border-color;
   z-index: 100;
 
   .logo {
     font-weight: bold;
-    color: var(--accent-color);
+    color: $accent-color;
     margin-right: 20px;
     display: flex;
     align-items: center;
@@ -260,11 +246,11 @@ body {
       margin-right: 8px;
 
       &.status-open {
-        background-color: var(--success-color);
+        background-color: $success-color;
       }
 
       &.status-closed {
-        background-color: var(--danger-color);
+        background-color: $danger-color;
       }
     }
   }
@@ -281,7 +267,7 @@ body {
 
       i {
         margin-right: 5px;
-        color: var(--accent-color);
+        color: $accent-color;
       }
     }
   }
@@ -289,14 +275,14 @@ body {
 
 // 侧边栏
 .app-sidebar {
-  width: 240px;
-  background-color: var(--secondary-bg);
-  border-right: 1px solid var(--border-color);
+  width: $sidebar-width;
+  background-color: $sidebar-bg;
+  border-right: 1px solid $border-color;
   overflow-y: auto;
-  transition: width 0.3s ease;
+  transition: width var(--transition-normal);
 
   &.collapsed {
-    width: 60px;
+    width: $sidebar-collapsed-width;
   }
 
   .nav-section {
@@ -305,7 +291,7 @@ body {
     .nav-header {
       padding: 15px 20px 10px;
       font-size: 12px;
-      color: var(--text-secondary);
+      color: $text-secondary;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
@@ -314,25 +300,25 @@ body {
       display: flex;
       align-items: center;
       padding: 12px 20px;
-      color: var(--text-primary);
+      color: $text-primary;
       text-decoration: none;
-      transition: background-color 0.2s;
+      transition: background-color var(--transition-fast);
       cursor: pointer;
 
       &:hover {
-        background-color: rgba(79, 156, 249, 0.1);
+        background-color: var(--hover-bg);
       }
 
       &.active {
-        background-color: rgba(79, 156, 249, 0.2);
-        border-left: 3px solid var(--accent-color);
+        background-color: var(--active-bg);
+        border-left: 3px solid $accent-color;
       }
 
       i {
         margin-right: 12px;
         width: 20px;
         text-align: center;
-        color: var(--accent-color);
+        color: $accent-color;
       }
     }
   }
@@ -353,19 +339,19 @@ body {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  background-color: var(--primary-bg);
+  background-color: $primary-bg;
 }
 
 // 底部状态栏
 .app-footer {
-  height: 30px;
-  background-color: var(--secondary-bg);
-  border-top: 1px solid var(--border-color);
+  height: $footer-height;
+  background-color: $toolbar-bg;
+  border-top: 1px solid $border-color;
   display: flex;
   align-items: center;
   padding: 0 20px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: $text-secondary;
 
   .footer-section {
     display: flex;
@@ -374,7 +360,7 @@ body {
 
     i {
       margin-right: 6px;
-      color: var(--accent-color);
+      color: $accent-color;
     }
   }
 
@@ -385,7 +371,6 @@ body {
   }
 }
 
-// global.scss 补充内容
 // 专业交易组件样式
 // 订单队列组件
 .order-book {
@@ -395,10 +380,10 @@ body {
       grid-template-columns: 1fr 1fr 1fr;
       padding: 4px 8px;
       font-size: 12px;
-      border-bottom: 1px solid var(--border-color);
+      border-bottom: 1px solid $border-color;
 
       &:hover {
-        background: rgba(79, 156, 249, 0.1);
+        background: var(--hover-bg);
       }
     }
   }
@@ -440,18 +425,18 @@ body {
     .metric-item {
       .label {
         font-size: 11px;
-        color: var(--text-secondary);
+        color: $text-secondary;
       }
 
       .value {
         font-weight: 600;
 
         &.profit {
-          color: var(--success-color);
+          color: $success-color;
         }
 
         &.loss {
-          color: var(--danger-color);
+          color: $danger-color;
         }
       }
     }
@@ -492,14 +477,31 @@ body {
   margin-right: 6px;
 
   &.risk-low {
-    background: var(--success-color);
+    background: $success-color;
   }
 
   &.risk-medium {
-    background: var(--warning-color);
+    background: $warning-color;
   }
 
   &.risk-high {
-    background: var(--danger-color);
+    background: $danger-color;
   }
+}
+
+// 主题相关工具类
+.theme-transition {
+  transition: background-color var(--transition-normal),
+              color var(--transition-normal),
+              border-color var(--transition-normal);
+}
+
+// 深色主题特定样式
+[data-theme="dark"] {
+  // 深色主题特有的样式调整
+}
+
+// 亮色主题特定样式
+[data-theme="light"] {
+  // 亮色主题特有的样式调整
 }

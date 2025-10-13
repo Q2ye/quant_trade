@@ -1,0 +1,277 @@
+// quant_web/src/assets/scss/_data-sync.scss
+// 数据同步页面专用样式 - 基于全局主题系统
+@use 'variables' as *;
+@use 'mixins' as mix;
+@use 'sass:map';
+@use 'sass:color';
+
+// 数据同步页面主题样式
+.data-sync-page {
+  // 页面背景
+  --page-bg: #{$primary-bg};
+
+  // 页面标题背景
+  --page-header-bg: linear-gradient(135deg, #{map.get($chart-colors, "blue")} 0%, #{map.get($chart-colors, "purple")} 100%);
+
+  // 状态卡片
+  --status-card-hover: #{rgba($accent-color, 0.1)};
+  --status-card-hover-light: #{rgba($accent-color, 0.05)};
+  --status-card-hover-dark: #{rgba($accent-color, 0.08)};
+
+  // 状态图标颜色
+  --status-running-bg: #{rgba(map.get($indicator-colors, "ma5"), 0.1)};
+  --status-running-color: #{map.get($indicator-colors, "ma5")};
+  --status-progress-bg: #{rgba(map.get($indicator-colors, "ma10"), 0.1)};
+  --status-progress-color: #{map.get($indicator-colors, "ma10")};
+  --status-time-bg: #{rgba(map.get($indicator-colors, "ma20"), 0.1)};
+  --status-time-color: #{map.get($indicator-colors, "ma20")};
+  --status-remaining-bg: #{rgba(map.get($indicator-colors, "ma60"), 0.1)};
+  --status-remaining-color: #{map.get($indicator-colors, "ma60")};
+
+  // 数据类型选择
+  --data-type-selected-bg: #{rgba($accent-color, 0.08)};
+  --data-type-selected-bg-light: #{rgba($accent-color, 0.05)};
+  --data-type-selected-bg-dark: #{rgba($accent-color, 0.15)};
+  --data-type-selected-border: #{$accent-color};
+  --data-type-selected-shadow: 0 0 0 2px #{rgba($accent-color, 0.2)};
+
+  // 卡片阴影
+  --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  --hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  // 按钮样式
+  --action-primary-bg: linear-gradient(135deg, #{$accent-color}, #{color.adjust($accent-color, $lightness: -10%)});
+  --primary-btn-hover-shadow: 0 6px 20px #{rgba($accent-color, 0.4)};
+  --secondary-btn-bg: #{$secondary-bg};
+  --cancel-btn-bg: #{rgba($danger-color, 0.1)};
+}
+
+// 数据类型网格布局 - 可复用的样式类
+.data-type-grid-layout {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: map.get($spacers, 3);
+  width: 100%;
+
+  @include mix.media-breakpoint-down(xl) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  @include mix.media-breakpoint-down(lg) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @include mix.media-breakpoint-down(md) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @include mix.media-breakpoint-down(sm) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// 页面标题区域
+.page-header {
+  background: var(--page-header-bg);
+
+  .status-tag {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+
+    // 状态标签颜色映射
+    &.status-processing {
+      background: rgba(map.get($indicator-colors, "ma5"), 0.3);
+    }
+
+    &.status-success {
+      background: rgba($success-color, 0.3);
+    }
+
+    &.status-error {
+      background: rgba($danger-color, 0.3);
+    }
+
+    &.status-default {
+      background: rgba($text-secondary, 0.3);
+    }
+  }
+}
+
+// 状态概览卡片
+.status-overview {
+  .status-card {
+    background: $card-bg;
+    transition: all var(--transition-normal);
+
+    &:hover {
+      background: var(--status-card-hover);
+      transform: var(--hover-transform);
+    }
+
+    .status-icon {
+      &.running {
+        background: var(--status-running-bg);
+        color: var(--status-running-color);
+      }
+      &.progress {
+        background: var(--status-progress-bg);
+        color: var(--status-progress-color);
+      }
+      &.time {
+        background: var(--status-time-bg);
+        color: var(--status-time-color);
+      }
+      &.remaining {
+        background: var(--status-remaining-bg);
+        color: var(--status-remaining-color);
+      }
+    }
+  }
+}
+
+// 数据类型选择 - 主题化选中状态
+.data-type-group {
+  .data-type-checkbox {
+    :deep(.ant-checkbox-wrapper-checked) {
+      .data-type-item {
+        border-color: var(--data-type-selected-border) !important;
+        background: var(--data-type-selected-bg) !important;
+        box-shadow: var(--data-type-selected-shadow) !important;
+
+        // 选中状态的动画效果
+        animation: dataTypeSelected 0.3s ease;
+
+        .type-name {
+          color: $accent-color;
+          font-weight: 600;
+        }
+
+        .type-time {
+          background: $accent-color;
+          color: white;
+        }
+      }
+    }
+
+    .data-type-item {
+      border: 1.5px solid $border-color;
+      background: $card-bg;
+      transition: all var(--transition-fast);
+
+      &:hover {
+        border-color: $accent-color;
+        transform: translateY(-2px);
+        box-shadow: var(--hover-shadow);
+      }
+
+      .type-name {
+        color: $text-primary;
+        transition: color var(--transition-fast);
+      }
+
+      .type-time {
+        background: $secondary-bg;
+        color: $text-secondary;
+        transition: all var(--transition-fast);
+      }
+    }
+  }
+}
+
+// 操作按钮主题化
+.action-buttons {
+  .action-button {
+    transition: all var(--transition-normal);
+
+    &.primary {
+      background: var(--action-primary-bg);
+      border: none;
+
+      &:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: var(--primary-btn-hover-shadow);
+      }
+    }
+
+    // 取消按钮使用危险色
+    &.cancel {
+      background: var(--cancel-btn-bg);
+      border-color: $danger-color;
+      color: $danger-color;
+
+      &:hover:not(:disabled) {
+        background: $danger-color;
+        color: white;
+        transform: translateY(-2px);
+      }
+    }
+
+    // 快速同步和全量同步按钮
+    &:not(.primary):not(.cancel) {
+      background: var(--secondary-btn-bg);
+      border-color: $border-color;
+      color: $text-primary;
+
+      &:hover:not(:disabled) {
+        background: var(--hover-bg);
+        border-color: $accent-color;
+        transform: translateY(-2px);
+      }
+    }
+  }
+}
+
+// 选中状态动画
+@keyframes dataTypeSelected {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+// 进度条主题化
+.task-progress {
+  :deep(.ant-progress-bg) {
+    background: $accent-color;
+  }
+
+  :deep(.ant-progress-inner) {
+    background: $secondary-bg;
+  }
+}
+
+// 响应式调整
+@include mix.media-breakpoint-down(md) {
+  .data-sync-page {
+    --page-header-bg: linear-gradient(135deg, #{map.get($chart-colors, "blue")} 0%, #{map.get($chart-colors, "purple")} 100%);
+  }
+
+  .data-type-grid-layout {
+    gap: map.get($spacers, 2);
+  }
+}
+
+// 主题特定调整
+[data-theme="light"] {
+  .data-sync-page {
+    --data-type-selected-bg: var(--data-type-selected-bg-light);
+    --status-card-hover: var(--status-card-hover-light);
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
+[data-theme="dark"] {
+  .data-sync-page {
+    --data-type-selected-bg: var(--data-type-selected-bg-dark);
+    --status-card-hover: var(--status-card-hover-dark);
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}

@@ -1,11 +1,20 @@
+// _mixins.scss
 // 显式导入变量和需要的模块
 @use 'variables' as *;
 @use "sass:map";
 @use "sass:color";
 
-// 样式混合
 // 响应式断点
-@mixin media-breakpoint-up($name, $breakpoints: (xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px)) {
+$breakpoints: (
+        xs: 0,
+        sm: 576px,
+        md: 768px,
+        lg: 992px,
+        xl: 1200px
+) !default;
+
+// 媒体查询 - 向上断点（min-width）
+@mixin media-breakpoint-up($name, $breakpoints: $breakpoints) {
   $min: map.get($breakpoints, $name);
   @if $min {
     @media (min-width: $min) {
@@ -16,14 +25,74 @@
   }
 }
 
+// 媒体查询 - 向下断点（max-width）
+@mixin media-breakpoint-down($name, $breakpoints: $breakpoints) {
+  $max: map.get($breakpoints, $name);
+  @if $max and $max > 0 {
+    @media (max-width: ($max - 0.02px)) {
+      @content;
+    }
+  } @else {
+    @content;
+  }
+}
+
+// 媒体查询 - 介于两个断点之间
+@mixin media-breakpoint-between($lower, $upper, $breakpoints: $breakpoints) {
+  $min: map.get($breakpoints, $lower);
+  $max: map.get($breakpoints, $upper);
+
+  @if $min != null and $max != null {
+    @media (min-width: $min) and (max-width: ($max - 0.02px)) {
+      @content;
+    }
+  } @else if $min == null {
+    @include media-breakpoint-down($upper, $breakpoints) {
+      @content;
+    }
+  } @else if $max == null {
+    @include media-breakpoint-up($lower, $breakpoints) {
+      @content;
+    }
+  }
+}
+
+// 媒体查询 - 仅针对某个断点
+@mixin media-breakpoint-only($name, $breakpoints: $breakpoints) {
+  $min: map.get($breakpoints, $name);
+  $next: null;
+  $breakpoint-names: map.keys($breakpoints);
+  $n: index($breakpoint-names, $name);
+
+  @if $n != null and $n < length($breakpoint-names) {
+    $next: nth($breakpoint-names, $n + 1);
+  }
+
+  $max: map.get($breakpoints, $next);
+
+  @if $min != null and $max != null {
+    @media (min-width: $min) and (max-width: ($max - 0.02px)) {
+      @content;
+    }
+  } @else if $max == null {
+    @include media-breakpoint-up($name, $breakpoints) {
+      @content;
+    }
+  } @else if $min == null {
+    @include media-breakpoint-down($next, $breakpoints) {
+      @content;
+    }
+  }
+}
+
 // 图表容器基础样式
 @mixin chart-container {
   position: relative;
   width: 100%;
-  height: $chart-height;
-  min-height: $chart-min-height;
-  background-color: var(--secondary-bg);
-  border-radius: $border-radius-lg;
+  height: var(--chart-height);
+  min-height: var(--chart-min-height);
+  background-color: var(--chart-bg);
+  border-radius: var(--border-radius-lg);
   border: 1px solid var(--border-color);
   overflow: hidden;
 
@@ -35,14 +104,14 @@
 
 // 数据卡片样式
 @mixin data-card {
-  background: var(--secondary-bg);
-  border-radius: $border-radius;
-  padding: map.get($spacers, 3);
+  background: var(--card-bg); // 修复：使用 CSS 变量
+  border-radius: var(--border-radius);
+  padding: var(--spacer-3, 1rem); // 修复：使用 CSS 变量
   border: 1px solid var(--border-color);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
 
   &:hover {
-    transform: translateY(-2px);
+    transform: var(--hover-transform);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 }
@@ -52,8 +121,8 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: map.get($spacers, 3);
-  padding-bottom: map.get($spacers, 2);
+  margin-bottom: var(--spacer-3, 1rem); // 修复：使用 CSS 变量
+  padding-bottom: var(--spacer-2, 0.5rem); // 修复：使用 CSS 变量
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -77,14 +146,16 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 
   &.btn-primary {
     background-color: var(--accent-color);
     color: white;
 
     &:hover {
-      background-color: #3a85e0;
+      background-color: rgba(var(--accent-color-rgb), 0.9); // 使用 RGB 变量
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
   }
 
@@ -94,7 +165,137 @@
     border: 1px solid var(--border-color);
 
     &:hover {
-      background-color: #1c2e48;
+      background-color: var(--hover-bg);
     }
+  }
+
+  &.btn-success {
+    background-color: var(--success-color);
+    color: white;
+
+    &:hover {
+      background-color: rgba(var(--success-color-rgb), 0.9); // 使用 RGB 变量
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  &.btn-warning {
+    background-color: var(--warning-color);
+    color: white;
+
+    &:hover {
+      background-color: rgba(var(--warning-color-rgb), 0.9); // 使用 RGB 变量
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  &.btn-danger {
+    background-color: var(--danger-color);
+    color: white;
+
+    &:hover {
+      background-color: rgba(var(--danger-color-rgb), 0.9); // 使用 RGB 变量
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  // 按钮尺寸
+  &.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  &.btn-lg {
+    padding: 10px 20px;
+    font-size: 16px;
+  }
+
+  // 禁用状态
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+      background-color: inherit;
+    }
+  }
+}
+
+// 文本截断
+@mixin text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// 多行文本截断
+@mixin text-truncate-multiline($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+// 滚动条样式
+@mixin scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--primary-bg);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--accent-color);
+    }
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: var(--primary-bg);
+  }
+}
+
+// 焦点样式
+@mixin focus-outline {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+// 屏幕阅读器专用
+@mixin sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+// 高对比度模式支持
+@mixin high-contrast {
+  @media (prefers-contrast: more) {
+    @content;
+  }
+}
+
+// 减少动画模式支持
+@mixin reduced-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
   }
 }

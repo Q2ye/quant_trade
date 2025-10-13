@@ -1,127 +1,112 @@
-// 样式变量
-// 颜色系统
-$background-content: #1c2438 !default; // 内容区域背景
-$background-dark: #121826 !default; // 深色背景
-$text-primary: #e0e0e0 !default;
-$primary: #2c7be5 !default;
-$secondary: #6e84a3 !default;
-$success: #00d97e !default;
-$info: #39afd1 !default;
-$warning: #fd7e14 !default;
-$danger: #e63757 !default;
-$light: #f9fbfd !default;
-$dark: #283e59 !default;
-
-// 图表专用色系
-$chart-colors: (
-  "blue": #2c7be5,
-  "green": #00d97e,
-  "cyan": #39afd1,
-  "yellow": #ffc107,
-  "red": #e63757,
-  "purple": #6f42c1,
-  "teal": #20c997
-);
-
-// 灰度色阶
-$white: #fff !default;
-$gray-100: #f9fbfd !default;
-$gray-200: #edf2f9 !default;
-$gray-300: #d8e2ef !default;
-$gray-400: #b6c1d2 !default;
-$gray-500: #95aac9 !default;
-$gray-600: #6e84a3 !default;
-$gray-700: #4a5978 !default;
-$gray-800: #283e59 !default;
-$gray-900: #12263f !default;
-$black: #000 !default;
-
-// 字体
-$font-family-sans-serif: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !default;
-$font-size-base: 0.875rem !default; // 14px
-$line-height-base: 1.5 !default;
-
-// 尺寸
-$spacer: 1rem !default;
-$spacers: (
-  0: 0,
-  1: $spacer * 0.25,
-  2: $spacer * 0.5,
-  3: $spacer,
-  4: $spacer * 1.5,
-  5: $spacer * 3,
-) !default;
-
-// 边框
-$border-width: 1px !default;
-$border-color: $gray-300 !default;
-$border-radius: 0.375rem !default;
-$border-radius-lg: 0.5rem !default;
-$border-radius-sm: 0.25rem !default;
-
-// 卡片
-$card-spacer-y: 1.25rem !default;
-$card-spacer-x: 1.5rem !default;
-$card-border-width: 0 !default;
-$card-box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03) !default;
-
-// 图表容器
-$chart-height: 500px !default;
-$chart-min-height: 300px !default;
-
-// 添加深色主题变量
-$dark-primary-bg: #0e1a2b !default;
-$dark-secondary-bg: #152238 !default;
-$dark-accent-color: #4f9cf9 !default;
-$dark-text-primary: #c7d5e0 !default;
-$dark-text-secondary: #6b7b8f !default;
-$dark-border-color: #2a3f5f !default;
-
+// _variables.scss - 修复间距变量和添加完整变量系统
 :root {
-  --background-dark: #121826;
-  --background-content: #1c2438;
-  --primary-bg: #0e1a2b;
-  --secondary-bg: #152238;
-  --accent-color: #4f9cf9;
-  --text-primary: #c7d5e0;
-  --text-secondary: #6b7b8f;
-  --border-color: #2a3f5f;
-  --success-color: #5abf6b;
-  --warning-color: #e7c95c;
-  --danger-color: #e7575d;
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 60px;
-  --header-height: 50px;
-  --footer-height: 30px;
+  // 数据同步页面特定变量
+  --page-bg: var(--primary-bg);
+  --page-header-bg: linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%);
+
+  // 状态卡片
+  --status-card-hover: color-mix(in srgb, var(--accent-color) 10%, transparent);
+  --status-running-bg: color-mix(in srgb, var(--accent-color) 10%, transparent);
+  --status-running-color: var(--accent-color);
+  --status-progress-bg: color-mix(in srgb, var(--success-color) 10%, transparent);
+  --status-progress-color: var(--success-color);
+  --status-time-bg: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  --status-time-color: var(--warning-color);
+  --status-remaining-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
+  --status-remaining-color: var(--danger-color);
+
+  // 数据类型选择
+  --data-type-selected-bg: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  --data-type-selected-border: var(--accent-color);
+  --data-type-selected-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent);
+
+  // 卡片阴影
+  --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  --hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  // 按钮样式
+  --action-primary-bg: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 80%, black));
+  --primary-btn-hover-shadow: 0 6px 20px color-mix(in srgb, var(--accent-color) 40%, transparent);
+  --secondary-btn-bg: var(--secondary-bg);
+  --cancel-btn-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
 }
 
-// _variables.scss 补充内容
-// 量化平台专用色系 - 技术指标颜色
+// Sass 变量定义
+$spacers: (
+  0: 0,
+  1: 0.25rem,
+  2: 0.5rem,
+  3: 1rem,
+  4: 1.5rem,
+  5: 3rem
+) !default;
+
+// 基础颜色变量
+$primary-bg: var(--primary-bg);
+$secondary-bg: var(--secondary-bg);
+$accent-color: var(--accent-color);
+$text-primary: var(--text-primary);
+$text-secondary: var(--text-secondary);
+$border-color: var(--border-color);
+$success-color: var(--success-color);
+$warning-color: var(--warning-color);
+$danger-color: var(--danger-color);
+$card-bg: var(--card-bg);
+$toolbar-bg: var(--toolbar-bg);
+$sidebar-bg: var(--sidebar-bg);
+$chart-bg: var(--chart-bg);
+$input-bg: var(--input-bg);
+$hover-bg: var(--hover-bg);
+$active-bg: var(--active-bg);
+
+// 布局变量
+$sidebar-width: var(--sidebar-width);
+$sidebar-collapsed-width: var(--sidebar-collapsed-width);
+$header-height: var(--header-height);
+$footer-height: var(--footer-height);
+$chart-height: var(--chart-height);
+$chart-min-height: var(--chart-min-height);
+
+// 字体变量
+$font-family: var(--font-family);
+$font-size-base: var(--font-size-base);
+$line-height-base: var(--line-height-base);
+
+// 边框变量
+$border-radius: var(--border-radius);
+$border-radius-lg: var(--border-radius-lg);
+$border-radius-sm: var(--border-radius-sm);
+
+// 动画变量
+$transition-fast: var(--transition-fast);
+$transition-normal: var(--transition-normal);
+$transition-slow: var(--transition-slow);
+$hover-transform: var(--hover-transform);
+
+// 图表颜色变量
+$chart-grid: var(--chart-grid);
+$chart-up: var(--chart-up);
+$chart-down: var(--chart-down);
+
+// 扩展颜色变量（用于 Sass 计算）
+$gray-900: #212529;
+$black: #000000;
+$white: #ffffff;
+$gray-300: #dee2e6;
+
+// 技术指标颜色
 $indicator-colors: (
-  "ma5": #ffeb3b,    // 5日均线 - 亮黄色
-  "ma10": #00bcd4,   // 10日均线 - 青蓝色
-  "ma20": #ff9800,   // 20日均线 - 橙色
-  "ma60": #e91e63,   // 60日均线 - 玫红色
-  "boll": #9c27b0,   // 布林带 - 紫色
-  "macd": #2196f3,   // MACD - 蓝色
-  "rsi": #4caf50,    // RSI - 绿色
-  "kdj": #ff5722     // KDJ - 深橙色
-);
+  "ma5": #ff6b6b,
+  "ma10": #4ecdc4,
+  "ma20": #45b7d1,
+  "ma60": #96ceb4
+) !default;
 
-// 交易状态颜色
-$trade-status-colors: (
-  "filled": #4caf50,         // 已成 - 绿色
-  "partial_filled": #ff9800, // 部成 - 橙色
-  "submitted": #2196f3,      // 已报 - 蓝色
-  "cancelled": #9e9e9e,      // 已撤 - 灰色
-  "rejected": #f44336        // 废单 - 红色
-);
-
-// 信号类型颜色
-$signal-colors: (
-  "buy": #4caf50,    // 买入信号 - 绿色
-  "sell": #f44336,   // 卖出信号 - 红色
-  "hold": #ff9800,   // 持有信号 - 橙色
-  "strong_buy": #00c853,  // 强烈买入 - 亮绿色
-  "strong_sell": #d50000  // 强烈卖出 - 深红色
-);
+// 图表颜色映射
+$chart-colors: (
+  "blue": #2196f3,
+  "purple": #9c27b0,
+  "green": #4caf50,
+  "orange": #ff9800,
+  "red": #f44336
+) !default;
