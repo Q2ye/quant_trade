@@ -33,6 +33,17 @@ export interface BatchSyncRequest {
   stock_codes?: string[];
   exchange?: string;
   batch_size?: number;
+  sync_mode?: string;
+}
+
+// 基础同步请求接口 - 与后端SyncRequest完全匹配
+export interface SyncRequest {
+  days?: number;
+  start_date?: string;
+  end_date?: string;
+  stock_codes?: string[];
+  exchange?: string;
+  batch_size?: number;
 }
 
 // 同步响应接口 - 与后端SyncResponse完全匹配
@@ -43,6 +54,7 @@ export interface SyncResponse {
   estimated_time?: number;
   total_tasks?: number;
   current_progress?: number;
+  sync_mode?: string;
 }
 
 // 数据类型信息接口 - 与后端DataTypeInfo完全匹配
@@ -104,6 +116,35 @@ class DataSyncService {
   }
 
   /**
+   * 快速同步 - 同步核心数据类型
+   * @returns 同步任务响应
+   */
+  async quickSyncData(): Promise<SyncResponse> {
+    return request.post(`${this.baseUrl}/quick-sync`)
+      .then(handleResponse)
+      .then((data: SyncResponse) => data)
+      .catch(error => {
+        console.error('快速同步请求失败:', error)
+        throw error
+      })
+  }
+
+  /**
+   * 全量同步 - 同步所有数据类型
+   * @param requestData 同步参数
+   * @returns 同步任务响应
+   */
+  async fullSyncData(requestData: SyncRequest = {}): Promise<SyncResponse> {
+    return request.post(`${this.baseUrl}/full-sync`, requestData)
+      .then(handleResponse)
+      .then((data: SyncResponse) => data)
+      .catch(error => {
+        console.error('全量同步请求失败:', error)
+        throw error
+      })
+  }
+
+  /**
    * 取消当前同步任务
    * @returns 取消操作结果
    */
@@ -130,7 +171,7 @@ class DataSyncService {
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
     const requestData: BatchSyncRequest = {
-      data_types: ['stock_list'],
+      data_types: ['stock_basic'],
       ...params
     }
     return this.batchSyncData(requestData)
@@ -150,7 +191,7 @@ class DataSyncService {
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
     const requestData: BatchSyncRequest = {
-      data_types: ['daily_quotes'],
+      data_types: ['daily'],
       ...params
     }
     return this.batchSyncData(requestData)
@@ -170,7 +211,7 @@ class DataSyncService {
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
     const requestData: BatchSyncRequest = {
-      data_types: ['weekly_quotes'],
+      data_types: ['weekly'],
       ...params
     }
     return this.batchSyncData(requestData)
@@ -190,7 +231,7 @@ class DataSyncService {
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
     const requestData: BatchSyncRequest = {
-      data_types: ['monthly_quotes'],
+      data_types: ['monthly'],
       ...params
     }
     return this.batchSyncData(requestData)
@@ -210,14 +251,14 @@ class DataSyncService {
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
     const requestData: BatchSyncRequest = {
-      data_types: ['money_flow'],
+      data_types: ['moneyflow'],
       ...params
     }
     return this.batchSyncData(requestData)
   }
 
   /**
-   * 同步所有数据类型（全量同步）
+   * 同步所有数据类型（全量同步）- 向后兼容
    * @param params 同步参数
    * @returns 同步任务响应
    */
@@ -229,13 +270,7 @@ class DataSyncService {
     exchange?: string;
     batch_size?: number;
   } = {}): Promise<SyncResponse> {
-    // 获取所有支持的数据类型
-    const dataTypes = await this.getSupportedDataTypes()
-    const requestData: BatchSyncRequest = {
-      data_types: dataTypes.map(type => type.code),
-      ...params
-    }
-    return this.batchSyncData(requestData)
+    return this.fullSyncData(params)
   }
 }
 

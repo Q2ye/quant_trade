@@ -14,10 +14,8 @@ const fallbackDataTypes = [
   { code: 'stock_basic', name: '股票列表', description: '股票基础信息', estimated_time: 30 },
   { code: 'trade_calendar', name: '交易日历', description: '交易所交易日历', estimated_time: 5 },
   { code: 'daily', name: '日线行情', description: 'A股日线行情数据', estimated_time: 120 },
-  { code: 'minute', name: '分钟行情', description: '分钟级行情数据', estimated_time: 180 },
   { code: 'weekly', name: '周线行情', description: '周线行情数据', estimated_time: 60 },
   { code: 'monthly', name: '月线行情', description: '月线行情数据', estimated_time: 45 },
-  { code: 'financial', name: '财务数据', description: '财务报表数据', estimated_time: 90 },
   { code: 'moneyflow', name: '资金流向', description: '资金流向数据', estimated_time: 75 },
   { code: 'etf', name: 'ETF数据', description: 'ETF基础信息和行情', estimated_time: 40 },
   { code: 'adj_factor', name: '复权因子', description: '股票复权因子', estimated_time: 25 },
@@ -33,9 +31,12 @@ const route = useRoute()
 
 // 响应式数据
 const isLoading = ref(false)
+const isQuickLoading = ref(false)
+const isFullLoading = ref(false)
 const isCheckingStatus = ref(false)
 const statusPollingInterval = ref<NodeJS.Timeout | null>(null)
 const dataTypesLoadFailed = ref(false)
+const errorShown = ref(false) // 新增：防止重复显示错误
 
 // 同步状态和数据类型
 const syncStatus = ref<SyncStatusResponse | null>(null)
@@ -93,7 +94,7 @@ const fetchSupportedDataTypes = async () => {
     console.error('获取数据类型列表失败，使用降级数据:', error)
     supportedDataTypes.value = fallbackDataTypes
     dataTypesLoadFailed.value = true
-    message.warning('使用本地数据类型列表，部分功能可能受限')
+    // 这里不显示警告，因为可能是服务器连接问题
   }
 }
 
@@ -102,6 +103,7 @@ const checkSyncStatus = async () => {
   try {
     const status = await dataSyncService.getSyncStatus()
     syncStatus.value = status
+    errorShown.value = false // 重置错误显示状态
 
     if (status.is_running && !statusPollingInterval.value) {
       startStatusPolling()
@@ -117,6 +119,12 @@ const checkSyncStatus = async () => {
       completed_tasks: 0,
       error: '获取状态失败'
     } as SyncStatusResponse
+
+    // 只在第一次失败时显示错误
+    if (!errorShown.value) {
+      showConnectionError()
+      errorShown.value = true
+    }
   } finally {
     isCheckingStatus.value = false
   }
@@ -128,12 +136,16 @@ const startStatusPolling = () => {
     try {
       const status = await dataSyncService.getSyncStatus()
       syncStatus.value = status
+      errorShown.value = false // 重置错误显示状态
+
       if (!status.is_running) {
         stopStatusPolling()
         message.success('数据同步任务已完成')
       }
     } catch (error) {
       console.error('轮询同步状态失败:', error)
+      // 轮询失败时不重复显示错误
+      stopStatusPolling()
     }
   }, 2000)
 }
@@ -143,6 +155,15 @@ const stopStatusPolling = () => {
     clearInterval(statusPollingInterval.value)
     statusPollingInterval.value = null
   }
+}
+
+// 新增：统一的连接错误显示
+const showConnectionError = () => {
+  message.error({
+    content: '无法连接到服务器，请检查：1. 后端服务是否启动 2. 代理配置是否正确',
+    duration: 5, // 显示5秒
+    key: 'connection-error' // 使用相同的key防止重复
+  })
 }
 
 const handleBatchSync = async () => {
@@ -170,50 +191,153 @@ const handleBatchSync = async () => {
 
     const response: SyncResponse = await dataSyncService.batchSyncData(requestData)
     message.success(response.message)
-    startStatusPolling()
+    errorShown.value = false // 重置错误显示状态
+
+    // 根据响应状态决定是否启动轮询
+    if (response.status === 'started') {
+      startStatusPolling()
+    }
   } catch (error: any) {
     console.error('同步任务启动失败:', error)
-    message.error(error.response?.data?.detail || '同步任务启动失败')
+
+    // 只在第一次失败时显示连接错误
+    if (!errorShown.value) {
+      showConnectionError()
+      errorShown.value = true
+    }
+
+    // 更新状态显示错误信息
+    updateLocalStatus({
+      is_running: false,
+      error: '连接服务器失败'
+    })
   } finally {
     isLoading.value = false
   }
 }
 
-const handleQuickSync = () => {
-  syncConfig.days = 30
-  syncConfig.start_date = ''
-  syncConfig.end_date = ''
-  handleBatchSync()
+const handleQuickSync = async () => {
+  if (syncStatus.value?.is_running) {
+    message.warning('已有同步任务正在进行中')
+    return
+  }
+
+  isQuickLoading.value = true
+  try {
+    const response: SyncResponse = await dataSyncService.quickSyncData()
+    message.success(response.message)
+    errorShown.value = false // 重置错误显示状态
+    startStatusPolling()
+  } catch (error: any) {
+    console.error('快速同步启动失败:', error)
+
+    // 只在第一次失败时显示连接错误
+    if (!errorShown.value) {
+      showConnectionError()
+      errorShown.value = true
+    }
+
+    // 更新状态显示错误信息
+    updateLocalStatus({
+      is_running: false,
+      error: '连接服务器失败'
+    })
+  } finally {
+    isQuickLoading.value = false
+  }
 }
 
-const handleFullSync = () => {
+const handleFullSync = async () => {
+  if (syncStatus.value?.is_running) {
+    message.warning('已有同步任务正在进行中')
+    return
+  }
+
   Modal.confirm({
     title: '确认全量同步',
     icon: () => h('div', {}, [
       h(Icon, { icon: 'ant-design:exclamation-circle-outlined' })
     ]),
-    content: '全量同步将重新下载所有历史数据，耗时较长，可能会影响系统性能，确定继续吗？',
+    content: h('div', {}, [
+      h('p', '全量同步将重新下载所有历史数据，耗时较长，可能会影响系统性能。'),
+      h('p', { style: { marginTop: '8px', fontWeight: 'bold' } }, '确定继续吗？')
+    ]),
     okText: '确认',
     cancelText: '取消',
     onOk: async () => {
-      syncConfig.data_types = supportedDataTypes.value.map(type => type.code)
-      syncConfig.days = 365
-      syncConfig.start_date = ''
-      syncConfig.end_date = ''
-      await handleBatchSync()
+      isFullLoading.value = true
+      try {
+        const requestData = {
+          days: 365,
+          start_date: syncConfig.start_date || undefined,
+          end_date: syncConfig.end_date || undefined,
+          stock_codes: syncConfig.stock_codes.length ? syncConfig.stock_codes : undefined,
+          exchange: syncConfig.exchange || undefined,
+          batch_size: syncConfig.batch_size
+        }
+        const response: SyncResponse = await dataSyncService.fullSyncData(requestData)
+        message.success(response.message)
+        errorShown.value = false // 重置错误显示状态
+        startStatusPolling()
+      } catch (error: any) {
+        console.error('全量同步启动失败:', error)
+
+        // 只在第一次失败时显示连接错误
+        if (!errorShown.value) {
+          showConnectionError()
+          errorShown.value = true
+        }
+
+        // 更新状态显示错误信息
+        updateLocalStatus({
+          is_running: false,
+          error: '连接服务器失败'
+        })
+      } finally {
+        isFullLoading.value = false
+      }
+    },
+    onCancel: () => {
+      // 用户取消操作，不需要处理
     }
   })
 }
 
 const handleCancelSync = async () => {
-  try {
-    await dataSyncService.cancelSync()
-    message.success('同步任务已取消')
-    stopStatusPolling()
-    await checkSyncStatus()
-  } catch (error: any) {
-    console.error('取消同步任务失败:', error)
-    message.error(error.response?.data?.detail || '取消同步任务失败')
+  Modal.confirm({
+    title: '确认取消同步',
+    icon: () => h('div', {}, [
+      h(Icon, { icon: 'ant-design:exclamation-circle-outlined' })
+    ]),
+    content: '取消同步将中断当前正在执行的任务，已同步的数据将保留。确定要取消吗？',
+    okText: '确认取消',
+    cancelText: '继续同步',
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        await dataSyncService.cancelSync()
+        message.success('同步任务已取消')
+        stopStatusPolling()
+        await checkSyncStatus()
+      } catch (error: any) {
+        console.error('取消同步任务失败:', error)
+        // 取消操作失败时也检查是否已显示过错误
+        if (!errorShown.value) {
+          message.error(error.response?.data?.detail || '取消同步任务失败')
+          errorShown.value = true
+        }
+      }
+    }
+  })
+}
+
+// 更新本地状态（避免重复请求）
+const updateLocalStatus = (updates: Partial<SyncStatusResponse>) => {
+  if (!syncStatus.value) return
+
+  syncStatus.value = {
+    ...syncStatus.value,
+    ...updates
   }
 }
 
@@ -240,6 +364,16 @@ const toggleDataType = (code: string) => {
 // 新增：判断数据类型是否选中
 const isDataTypeSelected = (code: string) => {
   return syncConfig.data_types.includes(code)
+}
+
+// 新增：选择所有数据类型
+const selectAllDataTypes = () => {
+  syncConfig.data_types = supportedDataTypes.value.map(type => type.code)
+}
+
+// 新增：清空数据类型选择
+const clearAllDataTypes = () => {
+  syncConfig.data_types = []
 }
 
 // 监听路由变化
@@ -346,21 +480,41 @@ onUnmounted(() => {
         <a-col :xs="24" :lg="16">
           <a-card title="数据同步配置" class="config-card">
             <template #extra>
-              <a-button
-                @click="checkSyncStatus"
-                :loading="isCheckingStatus"
-                size="small"
-                class="refresh-btn"
-              >
-                <template #icon><Icon icon="ant-design:reload-outlined" /></template>
-                刷新状态
-              </a-button>
+              <div class="header-actions">
+                <a-button
+                  type="link"
+                  size="small"
+                  @click="selectAllDataTypes"
+                  class="action-link"
+                >
+                  全选
+                </a-button>
+                <a-button
+                  type="link"
+                  size="small"
+                  @click="clearAllDataTypes"
+                  class="action-link"
+                >
+                  清空
+                </a-button>
+                <a-button
+                  @click="checkSyncStatus"
+                  :loading="isCheckingStatus"
+                  size="small"
+                  class="refresh-btn"
+                >
+                  <template #icon><Icon icon="ant-design:reload-outlined" /></template>
+                  刷新状态
+                </a-button>
+              </div>
             </template>
 
             <!-- 数据类型选择 -->
             <div class="config-section">
               <h3 class="section-title">数据类型选择</h3>
-              <div class="form-item-description">点击选择需要同步的数据类型（可多选）</div>
+              <div class="form-item-description">
+                点击选择需要同步的数据类型（已选择 {{ syncConfig.data_types.length }} 种类型）
+              </div>
 
               <div class="data-type-group">
                 <div class="data-type-grid">
@@ -477,7 +631,7 @@ onUnmounted(() => {
                   type="primary"
                   @click="handleBatchSync"
                   :loading="isLoading"
-                  :disabled="syncStatus?.is_running"
+                  :disabled="syncStatus?.is_running || !syncConfig.data_types.length"
                   block
                   class="action-button primary"
                 >
@@ -487,24 +641,24 @@ onUnmounted(() => {
 
                 <a-button
                   @click="handleQuickSync"
-                  :loading="isLoading"
+                  :loading="isQuickLoading"
                   :disabled="syncStatus?.is_running"
                   block
                   class="action-button"
                 >
-                  <template #icon><Icon icon="ant-design:sync-outlined" /></template>
-                  快速同步(30天)
+                  <template #icon><Icon icon="ant-design:rocket-outlined" /></template>
+                  快速同步
                 </a-button>
 
                 <a-button
                   danger
                   @click="handleFullSync"
-                  :loading="isLoading"
+                  :loading="isFullLoading"
                   :disabled="syncStatus?.is_running"
                   block
                   class="action-button"
                 >
-                  <template #icon><Icon icon="ant-design:sync-outlined" /></template>
+                  <template #icon><Icon icon="ant-design:database-outlined" /></template>
                   全量同步
                 </a-button>
 
@@ -522,50 +676,20 @@ onUnmounted(() => {
               </div>
             </a-card>
 
-            <!-- 任务状态 -->
-            <a-card
-              v-if="syncStatus?.is_running || syncStatus?.results"
-              title="任务状态"
-              class="task-card"
-              size="small"
-            >
-              <div class="task-content">
-                <div v-if="syncStatus?.is_running" class="current-task">
-                  <div class="task-info">
-                    <div class="task-name">{{ syncStatus.current_task || '处理中...' }}</div>
-                    <div class="task-progress">
-                      <a-progress
-                        :percent="syncStatus.progress"
-                        size="small"
-                        :show-info="false"
-                      />
-                    </div>
-                    <div class="task-stats">
-                      {{ syncStatus.completed_tasks }}/{{ syncStatus.total_tasks }} 任务完成
-                    </div>
-                  </div>
-                </div>
-
-                <div v-if="syncStatus?.results" class="task-results">
-                  <div class="results-summary">
-                    <span class="success-count">
-                      {{ Object.values(syncStatus.results).filter(r => !r.error).length }} 成功
-                    </span>
-                    <span class="error-count">
-                      {{ Object.values(syncStatus.results).filter(r => r.error).length }} 失败
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </a-card>
-
             <!-- 同步说明 -->
             <a-card title="同步说明" class="tips-card" size="small">
               <div class="tips-content">
+                <p><strong>批量同步：</strong>自定义选择数据类型和参数，智能选择同步/异步模式</p>
+                <p><strong>快速同步：</strong>同步核心数据类型（股票列表、交易日历、日线行情、每日指标），30天数据</p>
+                <p><strong>全量同步：</strong>同步所有数据类型，365天历史数据</p>
                 <p>• 数据同步任务将在后台执行</p>
                 <p>• 系统会自动轮询状态更新</p>
                 <p>• 单个数据类型失败不会影响其他类型</p>
                 <p>• 建议在非交易时间段执行全量同步</p>
+                <p class="cancel-tip">
+                  <Icon icon="ant-design:info-circle-outlined" style="color: #faad14; margin-right: 4px;" />
+                  <strong>取消说明：</strong>点击"取消同步"可中断当前任务，已同步的数据将保留
+                </p>
               </div>
             </a-card>
           </div>
@@ -751,6 +875,20 @@ onUnmounted(() => {
     font-size: 11px;
     color: var(--text-secondary);
     margin-bottom: 10px;
+  }
+}
+
+// 头部操作区域
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .action-link {
+    font-size: 12px;
+    height: auto;
+    padding: 0;
+    color: var(--accent-color);
   }
 }
 
@@ -985,63 +1123,6 @@ onUnmounted(() => {
   }
 }
 
-// 任务卡片
-.task-card {
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
-  border: 1px solid var(--border-color);
-  margin-bottom: 12px;
-  background: var(--card-bg);
-
-  .task-content {
-    .current-task {
-      .task-info {
-        .task-name {
-          font-size: 13px;
-          color: var(--text-primary);
-          margin-bottom: 6px;
-          font-weight: 500;
-        }
-
-        .task-progress {
-          margin-bottom: 6px;
-
-          :deep(.ant-progress-bg) {
-            background: var(--accent-color);
-          }
-
-          :deep(.ant-progress-inner) {
-            background: var(--secondary-bg);
-          }
-        }
-
-        .task-stats {
-          font-size: 11px;
-          color: var(--text-secondary);
-        }
-      }
-    }
-
-    .task-results {
-      .results-summary {
-        display: flex;
-        gap: 10px;
-        font-size: 11px;
-
-        .success-count {
-          color: var(--success-color);
-          font-weight: 500;
-        }
-
-        .error-count {
-          color: var(--danger-color);
-          font-weight: 500;
-        }
-      }
-    }
-  }
-}
-
 // 提示卡片
 .tips-card {
   border-radius: var(--border-radius-lg);
@@ -1066,6 +1147,16 @@ onUnmounted(() => {
       font-size: 12px;
       color: var(--text-secondary);
       line-height: 1.4;
+    }
+
+    .cancel-tip {
+      margin-top: 8px;
+      padding: 8px;
+      background: var(--warning-bg, #fffbe6);
+      border: 1px solid var(--warning-color, #faad14);
+      border-radius: var(--border-radius);
+      color: var(--warning-color, #faad14);
+      font-size: 11px;
     }
   }
 }

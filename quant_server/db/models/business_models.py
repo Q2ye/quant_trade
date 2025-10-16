@@ -262,12 +262,13 @@ class DataSyncTask(Base):
     __tablename__ = 'data_sync_tasks'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    task_type = Column(String(50), nullable=False)
-    status = Column(String(20), nullable=False)
-    start_time = Column(DateTime(timezone=True))
-    end_time = Column(DateTime(timezone=True))
-    total_records = Column(Integer, default=0)
-    error_message = Column(Text)
+    task_type = Column(String(50), nullable=False) # 任务类型
+    status = Column(String(20), nullable=False) # 任务状态: pending, running, completed, failed
+    start_time = Column(DateTime(timezone=True)) # 开始时间
+    end_time = Column(DateTime(timezone=True)) # 结束时间
+    parameters = Column(JSON)  # 任务参数
+    total_records = Column(Integer, default=0) # 同步记录数
+    error_message = Column(Text) # 错误信息
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
