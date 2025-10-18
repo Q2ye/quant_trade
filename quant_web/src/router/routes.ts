@@ -14,30 +14,102 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'dashboard', layout: 'main', title: '总览'}
     },
 
-    // 数据中心
+    // 市场数据
+    {
+        path: '/market/overview',
+        name: 'MarketOverview',
+        component: () => import('@/views/Market/MarketOverview.vue'),
+        meta: {menu: 'market', layout: 'main', title: '市场概览'}
+    },
+    {
+        path: '/market/stocks',
+        name: 'StockList',
+        component: () => import('@/views/Market/StockList.vue'),
+        meta: {menu: 'market', layout: 'main', title: '股票列表'}
+    },
+    {
+        path: '/market/stock/:code',
+        name: 'StockDetail',
+        component: () => import('@/views/Market/StockDetail.vue'),
+        props: true,
+        meta: {menu: 'market', layout: 'main', title: '个股详情'}
+    },
+    {
+        path: '/market/etfs',
+        name: 'ETFList',
+        component: () => import('@/views/Market/ETFList.vue'),
+        meta: {menu: 'market', layout: 'main', title: 'ETF列表'}
+    },
+    {
+        path: '/market/etf/:code',
+        name: 'ETFDetail',
+        component: () => import('@/views/Market/ETFDetail.vue'),
+        props: true,
+        meta: {menu: 'market', layout: 'main', title: 'ETF详情'}
+    },
+    {
+        path: '/market/indexes',
+        name: 'IndexList',
+        component: () => import('@/views/Market/IndexList.vue'),
+        meta: {menu: 'market', layout: 'main', title: '指数列表'}
+    },
+    {
+        path: '/market/index/:code',
+        name: 'IndexDetail',
+        component: () => import('@/views/Market/IndexDetail.vue'),
+        props: true,
+        meta: {menu: 'market', layout: 'main', title: '指数详情'}
+    },
+    {
+        path: '/market/industry-strength',
+        name: 'IndustryStrength',
+        component: () => import('@/views/Market/IndustryStrength.vue'),
+        meta: {menu: 'market', layout: 'main', title: '行业强弱'}
+    },
+    {
+        path: '/market/money-flow',
+        name: 'MoneyFlow',
+        component: () => import('@/views/Market/MoneyFlow.vue'),
+        meta: {menu: 'market', layout: 'main', title: '资金流向'}
+    },
+    {
+        path: '/market/limit-analysis',
+        name: 'LimitAnalysis',
+        component: () => import('@/views/Market/LimitAnalysis.vue'),
+        meta: {menu: 'market', layout: 'main', title: '涨跌停分析'}
+    },
+
+    // 数据中心 - 更新为数据同步总览
+    {
+        path: '/data-sync-overview',
+        name: 'DataSyncOverview',
+        component: () => import('@/views/DataSync/DataSyncOverview.vue'),
+        meta: {menu: 'data-sync-overview', layout: 'main', title: '同步总览'}
+    },
+    // 隐藏原有的数据同步相关菜单，但保留路由用于内部跳转
     {
         path: '/data-quality',
         name: 'DataQuality',
-        component: () => import('@/views/DataCenter/DataQuality.vue'),
-        meta: { menu: 'data-quality', layout: 'main', title: '数据质量' }
+        component: () => import('@/views/DataSync/DataQuality.vue'),
+        meta: {menu: '', layout: 'main', title: '数据质量', hideInMenu: true}
     },
     {
         path: '/data-sync',
         name: 'DataSync',
         component: () => import('@/views/DataSync/DataSync.vue'),
-        meta: { menu: 'data-sync', layout: 'main', title: '数据同步' }
+        meta: {menu: '', layout: 'main', title: '数据同步', hideInMenu: true}
     },
     {
         path: '/data-sync/tasks',
         name: 'SyncTaskMonitor',
         component: () => import('@/views/DataSync/TaskMonitor.vue'),
-        meta: { menu: 'data-sync', layout: 'main', title: '同步任务监控' }
+        meta: {menu: '', layout: 'main', title: '同步任务监控', hideInMenu: true}
     },
     {
         path: '/data-sync/history',
         name: 'SyncHistory',
         component: () => import('@/views/DataSync/SyncHistory.vue'),
-        meta: { menu: 'sync-history', layout: 'main', title: '同步历史记录' }
+        meta: {menu: '', layout: 'main', title: '同步历史记录', hideInMenu: true}
     },
 
     // 策略中心
@@ -45,7 +117,7 @@ export const routes: RouteRecordRaw[] = [
         path: '/strategies/templates',
         name: 'StrategyTemplates',
         component: () => import('@/views/Strategy/StrategyTemplates.vue'),
-        meta: { menu: 'strategy-templates', layout: 'main', title: '策略模板' }
+        meta: {menu: 'strategy-templates', layout: 'main', title: '策略模板'}
     },
     {
         path: '/strategies',
@@ -103,7 +175,7 @@ export const routes: RouteRecordRaw[] = [
         path: '/portfolio/analysis',
         name: 'PortfolioAnalysis',
         component: () => import('@/views/Portfolio/PortfolioAnalysis.vue'),
-        meta: { menu: 'portfolio-analysis', layout: 'main', title: '组合分析' }
+        meta: {menu: 'portfolio-analysis', layout: 'main', title: '组合分析'}
     },
     {
         path: '/baskets',
@@ -137,7 +209,7 @@ export const routes: RouteRecordRaw[] = [
         path: '/trading/execution-analysis',
         name: 'ExecutionAnalysis',
         component: () => import('@/views/Trade/ExecutionAnalysis.vue'),
-        meta: { menu: 'execution-analysis', layout: 'main', title: '执行分析' }
+        meta: {menu: 'execution-analysis', layout: 'main', title: '执行分析'}
     },
     {
         path: '/trading',
@@ -169,7 +241,7 @@ export const routes: RouteRecordRaw[] = [
         path: '/risk/monitor',
         name: 'RiskMonitor',
         component: () => import('@/views/Risk/RiskMonitor.vue'),
-        meta: { menu: 'risk-monitor', layout: 'main', title: '实时监控' }
+        meta: {menu: 'risk-monitor', layout: 'main', title: '实时监控'}
     },
     {
         path: '/risk/rules',
@@ -195,13 +267,13 @@ export const routes: RouteRecordRaw[] = [
         path: '/performance/strategy',
         name: 'StrategyPerformance',
         component: () => import('@/views/Performance/StrategyPerformance.vue'),
-        meta: { menu: 'strategy-performance', layout: 'main', title: '策略绩效' }
+        meta: {menu: 'strategy-performance', layout: 'main', title: '策略绩效'}
     },
     {
         path: '/performance/attribution',
         name: 'AttributionAnalysis',
         component: () => import('@/views/Performance/AttributionAnalysis.vue'),
-        meta: { menu: 'attribution', layout: 'main', title: '归因分析' }
+        meta: {menu: 'attribution', layout: 'main', title: '归因分析'}
     },
     {
         path: '/performance/strategy/:id',
@@ -221,47 +293,6 @@ export const routes: RouteRecordRaw[] = [
         name: 'PerformanceComparison',
         component: () => import('@/views/Performance/PerformanceComparison.vue'),
         meta: {menu: 'performance-comparison', layout: 'main', title: '绩效对比'}
-    },
-
-    // 市场数据
-    {
-        path: '/market/stocks',
-        name: 'StockList',
-        component: () => import('@/views/Market/StockList.vue'),
-        meta: {menu: 'market', layout: 'main', title: '股票列表'}
-    },
-    {
-        path: '/market/stock/:code',
-        name: 'StockDetail',
-        component: () => import('@/views/Market/StockDetail.vue'),
-        props: true,
-        meta: {menu: 'market', layout: 'main', title: '个股详情'}
-    },
-    {
-        path: '/market/etfs',
-        name: 'ETFList',
-        component: () => import('@/views/Market/ETFList.vue'),
-        meta: {menu: 'market', layout: 'main', title: 'ETF列表'}
-    },
-    {
-        path: '/market/etf/:code',
-        name: 'ETFDetail',
-        component: () => import('@/views/Market/ETFDetail.vue'),
-        props: true,
-        meta: {menu: 'market', layout: 'main', title: 'ETF详情'}
-    },
-    {
-        path: '/market/indexes',
-        name: 'IndexList',
-        component: () => import('@/views/Market/IndexList.vue'),
-        meta: {menu: 'market', layout: 'main', title: '指数列表'}
-    },
-    {
-        path: '/market/index/:code',
-        name: 'IndexDetail',
-        component: () => import('@/views/Market/IndexDetail.vue'),
-        props: true,
-        meta: {menu: 'market', layout: 'main', title: '指数详情'}
     },
 
     // 信号监控
@@ -309,7 +340,7 @@ export const routes: RouteRecordRaw[] = [
         path: '/redirect',
         name: 'Redirect',
         component: () => import('@/views/Redirect.vue'),
-        meta: { layout: 'empty' }
+        meta: {layout: 'empty'}
     },
 
     // 登录页面

@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
-import { Tag, Space, Button } from 'ant-design-vue'
-import type { ColumnsType } from 'ant-design-vue/es/table'
-import { LineChartOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons-vue'
+import {h, onMounted, reactive, ref} from 'vue'
+import {useRouter} from 'vue-router'
+import {Button, Space, Tag} from 'ant-design-vue'
+import type {ColumnsType} from 'ant-design-vue/es/table'
+import {ArrowLeftOutlined, FallOutlined, LineChartOutlined, RiseOutlined} from '@ant-design/icons-vue'
+
+const router = useRouter()
+
+// 返回按钮处理
+const handleBack = () => {
+  router.go(-1)
+}
+
 
 interface Index {
   ts_code: string
@@ -48,7 +57,7 @@ const columns: ColumnsType<Index> = [
     key: 'current_point',
     width: 120,
     sorter: true,
-    customRender: ({ text: point }) => point?.toFixed(2) || '-'
+    customRender: ({text: point}) => point?.toFixed(2) || '-'
   },
   {
     title: '涨跌',
@@ -56,13 +65,13 @@ const columns: ColumnsType<Index> = [
     key: 'change',
     width: 100,
     sorter: true,
-    customRender: ({ text: change }) => {
+    customRender: ({text: change}) => {
       if (change === undefined) return '-'
       const icon = change >= 0 ?
-        h(RiseOutlined, { style: 'color: #f5222d' }) :
-        h(FallOutlined, { style: 'color: #52c41a' })
+          h(RiseOutlined, {style: 'color: #f5222d'}) :
+          h(FallOutlined, {style: 'color: #52c41a'})
       const color = change >= 0 ? '#f5222d' : '#52c41a'
-      return h('span', { style: { color } }, [
+      return h('span', {style: {color}}, [
         icon,
         ' ',
         change >= 0 ? '+' : '',
@@ -76,10 +85,10 @@ const columns: ColumnsType<Index> = [
     key: 'change_percent',
     width: 100,
     sorter: true,
-    customRender: ({ text: percent }) => {
+    customRender: ({text: percent}) => {
       if (percent === undefined) return '-'
       const color = percent >= 0 ? '#f5222d' : '#52c41a'
-      return h('span', { style: { color } }, [
+      return h('span', {style: {color}}, [
         percent >= 0 ? '+' : '',
         percent.toFixed(2),
         '%'
@@ -91,21 +100,21 @@ const columns: ColumnsType<Index> = [
     dataIndex: 'volume',
     key: 'volume',
     width: 120,
-    customRender: ({ text: volume }) => volume ? (volume / 100000000).toFixed(2) : '-'
+    customRender: ({text: volume}) => volume ? (volume / 100000000).toFixed(2) : '-'
   },
   {
     title: '成交额(亿)',
     dataIndex: 'amount',
     key: 'amount',
     width: 120,
-    customRender: ({ text: amount }) => amount ? (amount / 100000000).toFixed(2) : '-'
+    customRender: ({text: amount}) => amount ? (amount / 100000000).toFixed(2) : '-'
   },
   {
     title: '市场',
     dataIndex: 'market',
     key: 'market',
     width: 80,
-    customRender: ({ text: market }) => h(Tag, { color: 'blue' }, () => market)
+    customRender: ({text: market}) => h(Tag, {color: 'blue'}, () => market)
   },
   {
     title: '分类',
@@ -117,7 +126,7 @@ const columns: ColumnsType<Index> = [
     title: '操作',
     key: 'actions',
     width: 100,
-    customRender: ({ record }) => h(Space, null, () => [
+    customRender: ({record}) => h(Space, null, () => [
       h(Button, {
         type: 'link',
         size: 'small',
@@ -154,14 +163,28 @@ onMounted(() => {
 
 <template>
   <div class="index-list-page">
-    <a-card title="指数列表">
+    <a-card title="指数列表" :bordered="false">
+      <template #extra>
+        <a-space>
+          <a-button
+              class="back-btn"
+              @click="handleBack"
+          >
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
+        </a-space>
+      </template>
+
       <a-table
-        :columns="columns"
-        :data-source="indexList"
-        :pagination="pagination"
-        :loading="loading"
-        row-key="ts_code"
-        @change="loadIndexList"
+          :columns="columns"
+          :data-source="indexList"
+          :pagination="pagination"
+          :loading="loading"
+          row-key="ts_code"
+          @change="loadIndexList"
       >
         <template #headerCell="{ title }">
           <span style="font-weight: bold;">{{ title }}</span>
@@ -180,13 +203,61 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .index-list-page {
   padding: 24px;
+  background: var(--primary-bg);
+  min-height: 100vh;
+}
+
+:deep(.ant-card) {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+
+  .ant-card-head {
+    border-bottom: 1px solid var(--border-color);
+    background: var(--secondary-bg);
+
+    .ant-card-head-title {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+  }
+}
+
+.back-btn {
+  background: var(--secondary-btn-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--hover-bg);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background-color: #fafafa;
+  background-color: var(--secondary-bg);
   font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-color);
+}
+
+:deep(.ant-table-tbody > tr) {
+  background: var(--card-bg);
+
+  &:hover > td {
+    background: var(--hover-bg) !important;
+  }
+
+  > td {
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
 }
 </style>

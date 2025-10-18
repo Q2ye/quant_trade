@@ -8,42 +8,23 @@
         <div
             class="nav-item"
             :class="{ active: activeMenu === 'market' }"
-            @click="navigate('/market/stocks')"
-            @mouseenter="showTooltip($event, '市场数据')"
+            @click="navigate('/market/overview')"
+            @mouseenter="showTooltip($event, '市场概览')"
             @mouseleave="hideTooltip"
         >
-          <Icon icon="material-symbols:candlestick-chart" class="nav-icon"/>
-          <span class="nav-text">市场数据</span>
+          <Icon icon="material-symbols:dashboard" class="nav-icon"/>
+          <span class="nav-text">市场概览</span>
         </div>
+
         <div
             class="nav-item"
-            :class="{ active: activeMenu === 'data-sync' }"
-            @click="navigate('/data-sync')"
-            @mouseenter="showTooltip($event, '数据同步')"
+            :class="{ active: activeMenu === 'data-sync-overview' }"
+            @click="navigate('/data-sync-overview')"
+            @mouseenter="showTooltip($event, '同步概览')"
             @mouseleave="hideTooltip"
         >
           <Icon icon="mdi:sync" class="nav-icon"/>
-          <span class="nav-text">数据同步</span>
-        </div>
-        <div
-            class="nav-item"
-            :class="{ active: activeMenu === 'data-quality' }"
-            @click="navigate('/data-quality')"
-            @mouseenter="showTooltip($event, '数据质量')"
-            @mouseleave="hideTooltip"
-        >
-          <Icon icon="mdi:check-circle" class="nav-icon"/>
-          <span class="nav-text">数据质量</span>
-        </div>
-        <div
-            class="nav-item"
-            :class="{ active: activeMenu === 'sync-history' }"
-            @click="navigate('/data-sync/history')"
-            @mouseenter="showTooltip($event, '同步历史')"
-            @mouseleave="hideTooltip"
-        >
-          <Icon icon="mdi:history" class="nav-icon"/>
-          <span class="nav-text">同步历史</span>
+          <span class="nav-text">数据同步概览</span>
         </div>
       </div>
 
@@ -406,6 +387,7 @@ export default {
 
         // 根据路径精确匹配菜单
         if (path.startsWith("/dashboard")) activeMenu.value = "dashboard";
+        else if (path.startsWith("/data-sync-overview")) activeMenu.value = "data-sync-overview";
         else if (path === "/strategies/factor-research") activeMenu.value = "research";
         else if (path === "/strategies/factor-library") activeMenu.value = "factor-library";
         else if (path === "/strategies/backtest-period") activeMenu.value = "backtest-period";
@@ -425,15 +407,16 @@ export default {
           else if (path.includes("/comparison")) activeMenu.value = "performance-comparison";
           else if (path.includes("/attribution")) activeMenu.value = "attribution";
           else activeMenu.value = "performance";
-        } else if (path.startsWith("/market")) activeMenu.value = "market";
-        else if (path.startsWith("/data-sync")) {
-          // 精确匹配数据同步路径
-          if (path === "/data-sync/history") {
-            activeMenu.value = "sync-history";
-          } else {
-            activeMenu.value = "data-sync";
-          }
-        } else if (path.startsWith("/data-quality")) activeMenu.value = "data-quality";
+        } else if (path.startsWith("/market")) {
+          if (path.includes("/stocks")) activeMenu.value = "stocks";
+          else if (path.includes("/etfs")) activeMenu.value = "etfs";
+          else if (path.includes("/indexes")) activeMenu.value = "indexes";
+          else if (path.includes("/industry-strength")) activeMenu.value = "industry-strength";
+          else if (path.includes("/money-flow")) activeMenu.value = "money-flow";
+          else if (path.includes("/limit-analysis")) activeMenu.value = "limit-analysis";
+          else activeMenu.value = "market";
+        }
+        // 删除原有的数据同步相关菜单匹配
         else if (path.startsWith("/risk")) {
           if (path.includes("/rules")) activeMenu.value = "risk-rules";
           else if (path.includes("/monitor")) activeMenu.value = "risk-monitor";

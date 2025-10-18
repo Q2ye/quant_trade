@@ -1,33 +1,41 @@
 <!-- quant_web/src/views/DataSync/DataSync.vue -->
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { message, Modal } from 'ant-design-vue'
-import { useRoute } from 'vue-router'
-import type { BatchSyncRequest, DataTypeInfo, SyncResponse, SyncStatusResponse } from '@/api/data-sync'
-import { dataSyncService } from '@/api/data-sync'
+import {computed, h, onMounted, onUnmounted, reactive, ref, watch} from 'vue'
+import {message, Modal} from 'ant-design-vue'
+import {useRoute, useRouter} from 'vue-router'
+import type {BatchSyncRequest, DataTypeInfo, SyncResponse, SyncStatusResponse} from '@/api/data-sync'
+import {dataSyncService} from '@/api/data-sync'
+import {ArrowLeftOutlined} from '@ant-design/icons-vue'
+
 
 // 引入 Iconify 图标
-import { Icon } from '@iconify/vue'
+import {Icon} from '@iconify/vue'
 
 // 完整的数据类型选项 - 作为降级数据
 const fallbackDataTypes = [
-  { code: 'stock_basic', name: '股票列表', description: '股票基础信息', estimated_time: 30 },
-  { code: 'trade_calendar', name: '交易日历', description: '交易所交易日历', estimated_time: 5 },
-  { code: 'daily', name: '日线行情', description: 'A股日线行情数据', estimated_time: 120 },
-  { code: 'weekly', name: '周线行情', description: '周线行情数据', estimated_time: 60 },
-  { code: 'monthly', name: '月线行情', description: '月线行情数据', estimated_time: 45 },
-  { code: 'moneyflow', name: '资金流向', description: '资金流向数据', estimated_time: 75 },
-  { code: 'etf', name: 'ETF数据', description: 'ETF基础信息和行情', estimated_time: 40 },
-  { code: 'adj_factor', name: '复权因子', description: '股票复权因子', estimated_time: 25 },
-  { code: 'daily_basic', name: '每日指标', description: '每日基本面指标', estimated_time: 50 },
-  { code: 'daily_limit', name: '涨跌停价格', description: '每日涨跌停价格', estimated_time: 20 },
-  { code: 'st_list', name: 'ST股票列表', description: 'ST股票历史记录', estimated_time: 15 },
-  { code: 'company', name: '公司信息', description: '上市公司基本信息', estimated_time: 35 },
-  { code: 'managers', name: '管理层信息', description: '公司管理层信息', estimated_time: 25 }
+  {code: 'stock_basic', name: '股票列表', description: '股票基础信息', estimated_time: 30},
+  {code: 'trade_calendar', name: '交易日历', description: '交易所交易日历', estimated_time: 5},
+  {code: 'daily', name: '日线行情', description: 'A股日线行情数据', estimated_time: 120},
+  {code: 'weekly', name: '周线行情', description: '周线行情数据', estimated_time: 60},
+  {code: 'monthly', name: '月线行情', description: '月线行情数据', estimated_time: 45},
+  {code: 'moneyflow', name: '资金流向', description: '资金流向数据', estimated_time: 75},
+  {code: 'etf', name: 'ETF数据', description: 'ETF基础信息和行情', estimated_time: 40},
+  {code: 'adj_factor', name: '复权因子', description: '股票复权因子', estimated_time: 25},
+  {code: 'daily_basic', name: '每日指标', description: '每日基本面指标', estimated_time: 50},
+  {code: 'daily_limit', name: '涨跌停价格', description: '每日涨跌停价格', estimated_time: 20},
+  {code: 'st_list', name: 'ST股票列表', description: 'ST股票历史记录', estimated_time: 15},
+  {code: 'company', name: '公司信息', description: '上市公司基本信息', estimated_time: 35},
+  {code: 'managers', name: '管理层信息', description: '公司管理层信息', estimated_time: 25}
 ]
 
 // 路由实例
 const route = useRoute()
+const router = useRouter()
+
+// 添加返回按钮处理函数
+const handleBack = () => {
+  router.go(-1)
+}
 
 // 响应式数据
 const isLoading = ref(false)
@@ -256,11 +264,11 @@ const handleFullSync = async () => {
   Modal.confirm({
     title: '确认全量同步',
     icon: () => h('div', {}, [
-      h(Icon, { icon: 'ant-design:exclamation-circle-outlined' })
+      h(Icon, {icon: 'ant-design:exclamation-circle-outlined'})
     ]),
     content: h('div', {}, [
       h('p', '全量同步将重新下载所有历史数据，耗时较长，可能会影响系统性能。'),
-      h('p', { style: { marginTop: '8px', fontWeight: 'bold' } }, '确定继续吗？')
+      h('p', {style: {marginTop: '8px', fontWeight: 'bold'}}, '确定继续吗？')
     ]),
     okText: '确认',
     cancelText: '取消',
@@ -307,7 +315,7 @@ const handleCancelSync = async () => {
   Modal.confirm({
     title: '确认取消同步',
     icon: () => h('div', {}, [
-      h(Icon, { icon: 'ant-design:exclamation-circle-outlined' })
+      h(Icon, {icon: 'ant-design:exclamation-circle-outlined'})
     ]),
     content: '取消同步将中断当前正在执行的任务，已同步的数据将保留。确定要取消吗？',
     okText: '确认取消',
@@ -347,8 +355,8 @@ const handleStockCodesInput = (value: string) => {
     return
   }
   syncConfig.stock_codes = value.split(',')
-    .map(code => code.trim())
-    .filter(code => code.length > 0)
+      .map(code => code.trim())
+      .filter(code => code.length > 0)
 }
 
 // 新增：切换数据类型选中状态
@@ -399,17 +407,16 @@ onUnmounted(() => {
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">数据同步中心</h1>
+          <h1 class="page-title">同步中心</h1>
           <p class="page-description">统一管理金融数据的同步任务和状态监控</p>
         </div>
-        <div class="status-section">
-          <a-tag :color="statusColor" class="status-tag">
-            <Icon v-if="syncStatus?.is_running" icon="ant-design:sync-outlined" :spin="true" />
-            <Icon v-else-if="syncStatus?.progress === 100" icon="ant-design:check-circle-outlined" />
-            <Icon v-else-if="syncStatus?.error" icon="ant-design:exclamation-circle-outlined" />
-            <Icon v-else icon="ant-design:info-circle-outlined" />
-            {{ statusText }}
-          </a-tag>
+        <div class="header-actions-right">
+          <a-button class="back-btn" @click="handleBack">
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
         </div>
       </div>
     </div>
@@ -420,7 +427,7 @@ onUnmounted(() => {
         <a-card class="status-card" size="small" :bordered="false">
           <div class="status-content">
             <div class="status-icon running">
-              <Icon icon="ant-design:sync-outlined" />
+              <Icon icon="ant-design:sync-outlined"/>
             </div>
             <div class="status-info">
               <div class="status-value">{{ statusText }}</div>
@@ -434,7 +441,7 @@ onUnmounted(() => {
         <a-card class="status-card" size="small" :bordered="false">
           <div class="status-content">
             <div class="status-icon progress">
-              <Icon icon="ant-design:cloud-download-outlined" />
+              <Icon icon="ant-design:cloud-download-outlined"/>
             </div>
             <div class="status-info">
               <div class="status-value">{{ syncStatus?.progress || 0 }}%</div>
@@ -448,7 +455,7 @@ onUnmounted(() => {
         <a-card class="status-card" size="small" :bordered="false">
           <div class="status-content">
             <div class="status-icon time">
-              <Icon icon="ant-design:clock-circle-outlined" />
+              <Icon icon="ant-design:clock-circle-outlined"/>
             </div>
             <div class="status-info">
               <div class="status-value">{{ syncStatus?.elapsed_time || 0 }}s</div>
@@ -462,7 +469,7 @@ onUnmounted(() => {
         <a-card class="status-card" size="small" :bordered="false">
           <div class="status-content">
             <div class="status-icon remaining">
-              <Icon icon="ant-design:hourglass-outlined" />
+              <Icon icon="ant-design:hourglass-outlined"/>
             </div>
             <div class="status-info">
               <div class="status-value">{{ estimatedRemainingTime }}s</div>
@@ -482,28 +489,30 @@ onUnmounted(() => {
             <template #extra>
               <div class="header-actions">
                 <a-button
-                  type="link"
-                  size="small"
-                  @click="selectAllDataTypes"
-                  class="action-link"
+                    type="link"
+                    size="small"
+                    @click="selectAllDataTypes"
+                    class="action-link"
                 >
                   全选
                 </a-button>
                 <a-button
-                  type="link"
-                  size="small"
-                  @click="clearAllDataTypes"
-                  class="action-link"
+                    type="link"
+                    size="small"
+                    @click="clearAllDataTypes"
+                    class="action-link"
                 >
                   清空
                 </a-button>
                 <a-button
-                  @click="checkSyncStatus"
-                  :loading="isCheckingStatus"
-                  size="small"
-                  class="refresh-btn"
+                    @click="checkSyncStatus"
+                    :loading="isCheckingStatus"
+                    size="small"
+                    class="refresh-btn"
                 >
-                  <template #icon><Icon icon="ant-design:reload-outlined" /></template>
+                  <template #icon>
+                    <Icon icon="ant-design:reload-outlined"/>
+                  </template>
                   刷新状态
                 </a-button>
               </div>
@@ -519,14 +528,14 @@ onUnmounted(() => {
               <div class="data-type-group">
                 <div class="data-type-grid">
                   <div
-                    v-for="type in supportedDataTypes"
-                    :key="type.code"
-                    class="data-type-grid-item"
-                    @click="toggleDataType(type.code)"
+                      v-for="type in supportedDataTypes"
+                      :key="type.code"
+                      class="data-type-grid-item"
+                      @click="toggleDataType(type.code)"
                   >
                     <div
-                      class="data-type-item"
-                      :class="{ 'selected': isDataTypeSelected(type.code) }"
+                        class="data-type-item"
+                        :class="{ 'selected': isDataTypeSelected(type.code) }"
                     >
                       <div class="type-name">{{ type.name }}</div>
                       <div class="type-meta">
@@ -534,9 +543,9 @@ onUnmounted(() => {
                       </div>
                       <div class="type-indicator">
                         <Icon
-                          v-if="isDataTypeSelected(type.code)"
-                          icon="ant-design:check-circle-filled"
-                          class="check-icon"
+                            v-if="isDataTypeSelected(type.code)"
+                            icon="ant-design:check-circle-filled"
+                            class="check-icon"
                         />
                       </div>
                     </div>
@@ -552,20 +561,20 @@ onUnmounted(() => {
                 <a-col :xs="24" :md="12">
                   <a-form-item label="同步天数" class="compact-form-item">
                     <a-input-number
-                      v-model:value="syncConfig.days"
-                      :min="1"
-                      :max="365"
-                      style="width: 100%"
-                      placeholder="1-365天"
+                        v-model:value="syncConfig.days"
+                        :min="1"
+                        :max="365"
+                        style="width: 100%"
+                        placeholder="1-365天"
                     />
                   </a-form-item>
 
                   <a-form-item label="批量大小" class="compact-form-item">
                     <a-input-number
-                      v-model:value="syncConfig.batch_size"
-                      :min="1"
-                      :max="500"
-                      style="width: 100%"
+                        v-model:value="syncConfig.batch_size"
+                        :min="1"
+                        :max="500"
+                        style="width: 100%"
                     />
                   </a-form-item>
                 </a-col>
@@ -590,16 +599,16 @@ onUnmounted(() => {
                     <a-form-item label="时间范围" class="compact-form-item">
                       <div class="date-range">
                         <a-date-picker
-                          v-model:value="syncConfig.start_date"
-                          placeholder="开始日期"
-                          style="width: 100%; margin-bottom: 8px;"
-                          format="YYYY-MM-DD"
+                            v-model:value="syncConfig.start_date"
+                            placeholder="开始日期"
+                            style="width: 100%; margin-bottom: 8px;"
+                            format="YYYY-MM-DD"
                         />
                         <a-date-picker
-                          v-model:value="syncConfig.end_date"
-                          placeholder="结束日期"
-                          style="width: 100%"
-                          format="YYYY-MM-DD"
+                            v-model:value="syncConfig.end_date"
+                            placeholder="结束日期"
+                            style="width: 100%"
+                            format="YYYY-MM-DD"
                         />
                       </div>
                     </a-form-item>
@@ -607,12 +616,12 @@ onUnmounted(() => {
                   <a-col :xs="24" :md="12">
                     <a-form-item label="股票代码" class="compact-form-item">
                       <a-textarea
-                        :value="syncConfig.stock_codes.join(',')"
-                        @input="(e: any) => handleStockCodesInput(e.target?.value || '')"
-                        placeholder="例如：000001.SZ,600000.SH"
-                        :rows="2"
-                        show-count
-                        :maxlength="500"
+                          :value="syncConfig.stock_codes.join(',')"
+                          @input="(e: any) => handleStockCodesInput(e.target?.value || '')"
+                          placeholder="例如：000001.SZ,600000.SH"
+                          :rows="2"
+                          show-count
+                          :maxlength="500"
                       />
                     </a-form-item>
                   </a-col>
@@ -628,49 +637,57 @@ onUnmounted(() => {
             <a-card title="同步操作" class="action-card">
               <div class="action-buttons">
                 <a-button
-                  type="primary"
-                  @click="handleBatchSync"
-                  :loading="isLoading"
-                  :disabled="syncStatus?.is_running || !syncConfig.data_types.length"
-                  block
-                  class="action-button primary"
+                    type="primary"
+                    @click="handleBatchSync"
+                    :loading="isLoading"
+                    :disabled="syncStatus?.is_running || !syncConfig.data_types.length"
+                    block
+                    class="action-button primary"
                 >
-                  <template #icon><Icon icon="ant-design:cloud-download-outlined" /></template>
+                  <template #icon>
+                    <Icon icon="ant-design:cloud-download-outlined"/>
+                  </template>
                   开始同步
                 </a-button>
 
                 <a-button
-                  @click="handleQuickSync"
-                  :loading="isQuickLoading"
-                  :disabled="syncStatus?.is_running"
-                  block
-                  class="action-button"
+                    @click="handleQuickSync"
+                    :loading="isQuickLoading"
+                    :disabled="syncStatus?.is_running"
+                    block
+                    class="action-button"
                 >
-                  <template #icon><Icon icon="ant-design:rocket-outlined" /></template>
+                  <template #icon>
+                    <Icon icon="ant-design:rocket-outlined"/>
+                  </template>
                   快速同步
                 </a-button>
 
                 <a-button
-                  danger
-                  @click="handleFullSync"
-                  :loading="isFullLoading"
-                  :disabled="syncStatus?.is_running"
-                  block
-                  class="action-button"
+                    danger
+                    @click="handleFullSync"
+                    :loading="isFullLoading"
+                    :disabled="syncStatus?.is_running"
+                    block
+                    class="action-button"
                 >
-                  <template #icon><Icon icon="ant-design:database-outlined" /></template>
+                  <template #icon>
+                    <Icon icon="ant-design:database-outlined"/>
+                  </template>
                   全量同步
                 </a-button>
 
                 <a-button
-                  v-if="syncStatus?.is_running"
-                  danger
-                  @click="handleCancelSync"
-                  :loading="isLoading"
-                  block
-                  class="action-button cancel"
+                    v-if="syncStatus?.is_running"
+                    danger
+                    @click="handleCancelSync"
+                    :loading="isLoading"
+                    block
+                    class="action-button cancel"
                 >
-                  <template #icon><Icon icon="ant-design:pause-circle-outlined" /></template>
+                  <template #icon>
+                    <Icon icon="ant-design:pause-circle-outlined"/>
+                  </template>
                   取消同步
                 </a-button>
               </div>
@@ -687,7 +704,7 @@ onUnmounted(() => {
                 <p>• 单个数据类型失败不会影响其他类型</p>
                 <p>• 建议在非交易时间段执行全量同步</p>
                 <p class="cancel-tip">
-                  <Icon icon="ant-design:info-circle-outlined" style="color: #faad14; margin-right: 4px;" />
+                  <Icon icon="ant-design:info-circle-outlined" style="color: #faad14; margin-right: 4px;"/>
                   <strong>取消说明：</strong>点击"取消同步"可中断当前任务，已同步的数据将保留
                 </p>
               </div>
@@ -699,11 +716,11 @@ onUnmounted(() => {
 
     <!-- 错误信息 -->
     <a-alert
-      v-if="syncStatus?.error"
-      :message="syncStatus.error"
-      type="error"
-      show-icon
-      class="error-alert"
+        v-if="syncStatus?.error"
+        :message="syncStatus.error"
+        type="error"
+        show-icon
+        class="error-alert"
     />
   </div>
 </template>
@@ -731,10 +748,20 @@ onUnmounted(() => {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--spacer-4);
+    position: relative;
+
+    .header-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
   }
 
   .title-section {
+    flex: 1;
+
     .page-title {
       margin: 0;
       font-size: 24px;
@@ -773,6 +800,43 @@ onUnmounted(() => {
   }
 }
 
+
+// 优化返回按钮样式
+.back-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: var(--border-radius, 6px);
+  font-weight: 500;
+  transition: all var(--transition-fast, 0.3s);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: 32px;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.status-tag {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
 // 状态概览
 .status-overview {
   margin-bottom: 20px;
@@ -807,14 +871,17 @@ onUnmounted(() => {
       background: var(--status-running-bg, color-mix(in srgb, var(--accent-color) 10%, transparent));
       color: var(--status-running-color, var(--accent-color));
     }
+
     &.progress {
       background: var(--status-progress-bg, color-mix(in srgb, var(--success-color) 10%, transparent));
       color: var(--status-progress-color, var(--success-color));
     }
+
     &.time {
       background: var(--status-time-bg, color-mix(in srgb, var(--warning-color) 10%, transparent));
       color: var(--status-time-color, var(--warning-color));
     }
+
     &.remaining {
       background: var(--status-remaining-bg, color-mix(in srgb, var(--danger-color) 10%, transparent));
       color: var(--status-remaining-color, var(--danger-color));
@@ -1188,24 +1255,13 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 12px;
     text-align: center;
-  }
 
-  .status-overview,
-  .main-content {
-    padding: 0 16px;
-  }
-
-  .data-type-grid {
-    gap: 8px;
-  }
-
-  .data-type-item {
-    padding: 12px 8px;
-  }
-
-  .action-button {
-    height: 42px !important;
-    font-size: 14px !important;
+    .header-actions-right {
+      order: -1;
+      align-self: stretch;
+      justify-content: space-between;
+      margin-bottom: var(--spacer-2);
+    }
   }
 }
 </style>

@@ -137,6 +137,8 @@ $breakpoints: (
 }
 
 // 深色主题按钮样式
+// _mixins.scss
+// 移除有问题的颜色函数，使用 CSS 变量替代
 @mixin dark-btn {
   padding: 8px 16px;
   border-radius: 4px;
@@ -153,7 +155,7 @@ $breakpoints: (
     color: white;
 
     &:hover {
-      background-color: rgba(var(--accent-color-rgb), 0.9); // 使用 RGB 变量
+      background-color: var(--accent-color-dark);
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
@@ -174,7 +176,7 @@ $breakpoints: (
     color: white;
 
     &:hover {
-      background-color: rgba(var(--success-color-rgb), 0.9); // 使用 RGB 变量
+      background-color: var(--success-color-dark);
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
@@ -185,7 +187,7 @@ $breakpoints: (
     color: white;
 
     &:hover {
-      background-color: rgba(var(--warning-color-rgb), 0.9); // 使用 RGB 变量
+      background-color: var(--warning-color-dark);
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
@@ -196,7 +198,7 @@ $breakpoints: (
     color: white;
 
     &:hover {
-      background-color: rgba(var(--danger-color-rgb), 0.9); // 使用 RGB 变量
+      background-color: var(--danger-color-dark);
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }

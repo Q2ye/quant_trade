@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
-import { Tag, Space, Button } from 'ant-design-vue'
-import type { ColumnsType } from 'ant-design-vue/es/table'
-import { SearchOutlined } from '@ant-design/icons-vue'
+import {h, onMounted, reactive, ref} from 'vue'
+import {useRouter} from 'vue-router'
+import {Button, Space, Tag} from 'ant-design-vue'
+import type {ColumnsType} from 'ant-design-vue/es/table'
+import {ArrowLeftOutlined, SearchOutlined} from '@ant-design/icons-vue'
+
+const router = useRouter()
+
+// 返回按钮处理
+const handleBack = () => {
+  router.go(-1)
+}
 
 interface ETF {
   ts_code: string
@@ -56,8 +64,8 @@ const columns: ColumnsType<ETF> = [
     dataIndex: 'market',
     key: 'market',
     width: 80,
-    customRender: ({ text: market }) => {
-      return h(Tag, { color: market === 'SH' ? 'red' : 'blue' }, () => market)
+    customRender: ({text: market}) => {
+      return h(Tag, {color: market === 'SH' ? 'red' : 'blue'}, () => market)
     }
   },
   {
@@ -78,14 +86,14 @@ const columns: ColumnsType<ETF> = [
     key: 'fund_size',
     width: 100,
     sorter: true,
-    customRender: ({ text: size }) => (size / 100000000).toFixed(2)
+    customRender: ({text: size}) => (size / 100000000).toFixed(2)
   },
   {
     title: '费率(%)',
     dataIndex: 'expense_ratio',
     key: 'expense_ratio',
     width: 100,
-    customRender: ({ text: ratio }) => ratio.toFixed(2)
+    customRender: ({text: ratio}) => ratio.toFixed(2)
   },
   {
     title: '操作',
@@ -93,8 +101,8 @@ const columns: ColumnsType<ETF> = [
     width: 120,
     customRender: () => {
       return h(Space, null, () => [
-        h(Button, { type: 'link', size: 'small' }, () => '详情'),
-        h(Button, { type: 'link', size: 'small' }, () => '加入自选')
+        h(Button, {type: 'link', size: 'small'}, () => '详情'),
+        h(Button, {type: 'link', size: 'small'}, () => '加入自选')
       ])
     }
   }
@@ -133,24 +141,40 @@ onMounted(() => {
 
 <template>
   <div class="etf-list-page">
-    <a-card title="ETF列表">
+    <a-card title="ETF列表" :bordered="false">
+      <template #extra>
+        <a-space>
+          <a-button
+              class="back-btn"
+              @click="handleBack"
+          >
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
+        </a-space>
+      </template>
+
       <div class="filter-bar">
         <a-space :size="16">
           <a-input
-            v-model:value="filters.search"
-            placeholder="搜索ETF代码或名称"
-            style="width: 200px"
-            @press-enter="loadETFList"
+              v-model:value="filters.search"
+              placeholder="搜索ETF代码或名称"
+              style="width: 200px"
+              @press-enter="loadETFList"
           >
-            <template #suffix><SearchOutlined /></template>
+            <template #suffix>
+              <SearchOutlined/>
+            </template>
           </a-input>
 
           <a-select
-            v-model:value="filters.market"
-            placeholder="选择市场"
-            style="width: 120px"
-            allowClear
-            @change="loadETFList"
+              v-model:value="filters.market"
+              placeholder="选择市场"
+              style="width: 120px"
+              allowClear
+              @change="loadETFList"
           >
             <a-select-option value="SH">上交所</a-select-option>
             <a-select-option value="SZ">深交所</a-select-option>
@@ -161,23 +185,60 @@ onMounted(() => {
       </div>
 
       <a-table
-        :columns="columns"
-        :data-source="etfList"
-        :pagination="pagination"
-        :loading="loading"
-        row-key="ts_code"
-        @change="handleTableChange"
+          :columns="columns"
+          :data-source="etfList"
+          :pagination="pagination"
+          :loading="loading"
+          row-key="ts_code"
+          @change="handleTableChange"
       />
     </a-card>
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .etf-list-page {
   padding: 24px;
+  background: var(--primary-bg);
+  min-height: 100vh;
+}
+
+:deep(.ant-card) {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+
+  .ant-card-head {
+    border-bottom: 1px solid var(--border-color);
+    background: var(--secondary-bg);
+
+    .ant-card-head-title {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+  }
+}
+
+.back-btn {
+  background: var(--secondary-btn-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--hover-bg);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
 }
 
 .filter-bar {
   margin-bottom: 16px;
+  padding: var(--spacer-3);
+  background: var(--secondary-bg);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
 }
 </style>

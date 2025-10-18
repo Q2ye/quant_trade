@@ -25,7 +25,8 @@
         "input-border": "#30363D",
         "hover-bg": "#21262D",
         "active-bg": "#1C6FEC",
-
+        "purple-color": "#9c27b0",
+        "info-color": "#17a2b8",
         "page-bg": "#0D1117",
         "page-header-bg": "linear-gradient(135deg, #2196F3 0%, #6f42c1 100%)",
         "status-card-hover": "rgba(33, 150, 243, 0.1)",
@@ -52,6 +53,8 @@
       "name": "量化浅色主题",
       "type": "light",
       "colors": {
+        "purple-color": "#9c27b0",
+        "info-color": "#17a2b8",
         "primary-bg": "#FFFFFF",
         "secondary-bg": "#F8F9FA",
         "accent-color": "#2196F3",
@@ -72,7 +75,6 @@
         "input-border": "#CED4DA",
         "hover-bg": "#E9ECEF",
         "active-bg": "#E3F2FD",
-
         "page-bg": "#FFFFFF",
         "page-header-bg": "linear-gradient(135deg, #2196F3 0%, #6f42c1 100%)",
         "status-card-hover": "rgba(33, 150, 243, 0.05)",
