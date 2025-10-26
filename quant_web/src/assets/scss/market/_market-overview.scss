@@ -1,0 +1,553 @@
+// _market-overview.scss - 优化后的市场概览页面专用样式
+// 基于交易系统主题实现，使用灵活网格系统
+
+@use '../variables' as *;
+@use '../mixins' as mix;
+@use 'sass:map';
+
+// ============================================================================
+// 市场概览页面布局 - 使用全局布局混入
+// ============================================================================
+
+.market-overview-page {
+  // 使用全局侧边栏布局基础样式
+  @include mix.sidebar-layout-base;
+
+  // 主内容区域使用全局带侧边栏的内容布局
+  .main-content {
+    @include mix.content-with-sidebar;
+    margin: 0 auto;
+  }
+}
+
+// ============================================================================
+// 网格布局系统 - 使用新的灵活网格混入
+// ============================================================================
+
+// 市场指数网格 - 自定义4列网格布局
+.market-index-grid {
+  @include mix.flexible-grid(4, (
+          'xl': 4,
+          'lg': 3,
+          'md': 2,
+          'sm': 1
+  ), map.get($spacers, 5));
+
+  @include mix.responsive-card-gap((
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)),
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))
+  ));
+
+  margin-bottom: map.get($spacers, 6);
+
+  .market-index-card {
+    @include mix.status-card-base(0.9);
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    padding: map.get($spacers, 3);
+
+    .index-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+
+      .sidebar-collapsed & {
+        padding: map.get($spacers, 3);
+      }
+    }
+
+    .index-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: map.get($spacers, 3);
+    }
+
+    .index-name {
+      font-size: $font-size-base * 0.95;
+      color: $text-secondary;
+      font-weight: $font-weight-medium;
+    }
+
+    .index-code {
+      font-size: $font-size-base * 0.8;
+      color: $text-secondary;
+      background: $secondary-bg;
+      padding: 4px 10px;
+      border-radius: $border-radius-sm;
+    }
+
+    .index-value {
+      font-size: $font-size-base * 1.8;
+      font-weight: $font-weight-bold;
+      color: $text-primary;
+      margin-bottom: map.get($spacers, 2);
+      line-height: 1.2;
+
+      .sidebar-collapsed & {
+        font-size: $font-size-base * 1.6;
+      }
+    }
+
+    .index-change {
+      font-size: $font-size-base * 0.9;
+      font-weight: $font-weight-medium;
+      display: flex;
+      align-items: center;
+      gap: map.get($spacers, 2);
+
+      &.up {
+        color: $stock-up-color;
+      }
+
+      &.down {
+        color: $stock-down-color;
+      }
+
+      &.flat {
+        color: $stock-flat-color;
+      }
+
+      .change-value {
+        font-weight: $font-weight-semibold;
+      }
+
+      .change-percent {
+        font-size: $font-size-base * 0.95;
+      }
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: $card-hover-shadow;
+    }
+  }
+
+}
+
+// 功能导航网格 - 自定义3列网格布局
+.function-grid {
+  @include mix.flexible-grid(3, (
+          'xl': 3,
+          'lg': 2,
+          'md': 2,
+          'sm': 1
+  ), map.get($spacers, 5));
+
+  @include mix.responsive-card-gap((
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 4)),
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 3)),
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))
+  ));
+
+  margin-bottom: map.get($spacers, 6);
+
+  // ============================================================================
+  // 功能导航卡片样式优化 - 主要修改部分
+  // ============================================================================
+
+  .function-nav-card {
+    @include mix.function-card-base;
+    height: 100%;
+    transition: all $transition-normal;
+    min-height: 144px; // 从160px缩小到144px (90%)
+
+    .function-content {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: map.get($spacers, 1) map.get($spacers, 2);
+
+      .sidebar-collapsed & {
+        padding: map.get($spacers, 1) map.get($spacers, 2);
+      }
+    }
+
+    .function-description {
+      @include mix.text-secondary;
+      margin: 0 0 map.get($spacers, 1) 0; // 减少下边距
+      line-height: 1.2; // 调整行高
+      font-size: $font-size-base * 0.9; // 稍微减小描述文字大小
+    }
+
+    .stat-item {
+      padding: map.get($spacers, 0.5) 0; // 减少内边距
+      border-bottom: 1px solid rgba($border-color, 0.5);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: $text-secondary;
+      min-height: 24px; // 从28px减小到24px
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      .stat-label {
+        font-size: $font-size-base * 0.9; // 稍微减小标签文字
+        color: $text-secondary;
+        line-height: 1.2;
+      }
+
+      .stat-value {
+        font-size: $font-size-base * 0.9; // 稍微减小数值文字
+        font-weight: $font-weight-semibold;
+
+        // 股票红绿色标识
+        &.up {
+          color: $stock-up-color;
+        }
+
+        &.down {
+          color: $stock-down-color;
+        }
+
+        &.flat {
+          color: $stock-flat-color;
+        }
+
+        // 默认颜色（用于非涨跌的统计值）
+        &:not(.up):not(.down):not(.flat) {
+          color: $text-primary;
+        }
+      }
+    }
+
+    .function-footer {
+      margin-top: auto;
+      padding-top: map.get($spacers, 1); // 减少上边距
+      border-top: 1px solid rgba($border-color, 0.3);
+
+      .update-time {
+        font-size: $font-size-base * 0.75; // 稍微减小更新时间文字
+        line-height: 1.1;
+      }
+    }
+  }
+
+}
+
+// 热点卡片网格 - 使用灵活网格布局
+.hotspot-grid {
+  @include mix.flexible-grid(2, (
+          'lg': 1,
+          'md': 1
+  ), map.get($spacers, 5));
+
+  @include mix.responsive-card-gap((
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)),
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))
+  ));
+
+  .sidebar-collapsed & {
+    @include mix.flexible-grid(2, (
+            'lg': 1,
+            'md': 1,
+            'sm': 1
+    ), map.get($spacers, 5));
+  }
+
+  .hotspot-card {
+    @include mix.card-base;
+    height: 100%;
+
+    :deep(.el-card__header) {
+      @include mix.card-header-base;
+      padding: map.get($spacers, 4);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+
+      .card-title {
+        font-size: $font-size-base * 1.1;
+        font-weight: $font-weight-semibold;
+        color: $text-primary;
+        display: flex;
+        align-items: center;
+        gap: map.get($spacers, 2);
+
+        .card-title-icon {
+          font-size: $font-size-base * 1.2;
+          color: $accent-color;
+        }
+      }
+    }
+
+    .hotspot-list,
+    .money-flow-list {
+      padding: map.get($spacers, 2) 0;
+      max-height: 280px;
+      overflow-y: auto;
+      @include mix.custom-scrollbar;
+    }
+
+    .hotspot-item,
+    .flow-item {
+      display: flex;
+      align-items: center;
+      padding: map.get($spacers, 2) map.get($spacers, 4);
+      border-bottom: 1px solid rgba($border-color, 0.5);
+      cursor: pointer;
+      transition: all $transition-fast;
+      position: relative;
+      min-height: 48px;
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &:hover {
+        background: $hover-bg;
+        transform: translateX(4px);
+      }
+
+      // 图标容器
+      .item-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: map.get($spacers, 2);
+        flex-shrink: 0;
+
+        .trend-icon,
+        .flow-icon {
+          font-size: $font-size-base * 1.5;
+
+          &.up {
+            color: $stock-up-color;
+          }
+
+          &.down {
+            color: $stock-down-color;
+          }
+        }
+      }
+
+      .stock-info {
+        flex: 1;
+        min-width: 0;
+
+        .stock-name {
+          font-size: $font-size-base * 0.9;
+          font-weight: $font-weight-medium;
+          color: $text-primary;
+          margin-bottom: 2px;
+          @include mix.text-ellipsis;
+        }
+
+        .stock-code {
+          font-size: $font-size-base * 0.8;
+          color: $text-secondary;
+        }
+      }
+
+      .hotspot-change,
+      .hotspot-price,
+      .flow-amount {
+        font-size: $font-size-base * 0.9;
+        font-weight: $font-weight-semibold;
+        margin-left: map.get($spacers, 2);
+        white-space: nowrap;
+
+        &.up {
+          color: $stock-up-color;
+        }
+
+        &.down {
+          color: $stock-down-color;
+        }
+
+        &.flat {
+          color: $stock-flat-color;
+        }
+      }
+
+      .flow-bar {
+        flex: 1;
+        height: 6px;
+        background: $secondary-bg;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 0 map.get($spacers, 3);
+        position: relative;
+
+        .flow-progress {
+          height: 100%;
+          border-radius: 4px;
+          transition: all $transition-normal;
+          position: relative;
+          overflow: hidden;
+
+          &.inflow {
+            background: linear-gradient(90deg, $stock-up-color, lighten($stock-up-color, 20%));
+          }
+
+          &.outflow {
+            background: linear-gradient(90deg, $stock-down-color, lighten($stock-down-color, 20%));
+          }
+
+          &::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: shimmer 2s infinite;
+          }
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// 页面区块间距优化
+// ============================================================================
+
+.index-overview,
+.function-nav,
+.market-hotspots {
+  margin-bottom: map.get($spacers, 6);
+
+  @include mix.media-breakpoint-down(md) {
+    margin-bottom: map.get($spacers, 4);
+  }
+}
+
+
+// ============================================================================
+// 页面标题样式优化
+// ============================================================================
+
+.market-page-header {
+  @include mix.page-header-base;
+}
+
+// ============================================================================
+// 章节标题样式优化
+// ============================================================================
+
+.market-section-title {
+  @include mix.section-title-base;
+  margin-bottom: map.get($spacers, 5);
+  max-width: 1600px;
+}
+
+// ============================================================================
+// 响应式布局优化
+// ============================================================================
+
+@include mix.media-breakpoint-down(lg) {
+  .market-page-header {
+    .header-content {
+      flex-direction: column;
+      gap: map.get($spacers, 4);
+      text-align: center;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: center;
+      margin-left: 0;
+    }
+  }
+}
+
+@include mix.media-breakpoint-down(md) {
+  .market-overview-page {
+    .main-content {
+      padding: map.get($spacers, 4);
+    }
+  }
+
+  .market-page-header {
+    margin-bottom: map.get($spacers, 5);
+    padding: map.get($spacers, 4);
+
+    .page-title {
+      font-size: $font-size-base * 1.5;
+    }
+  }
+
+  .market-section-title {
+    font-size: $font-size-base * 1.1;
+    margin-bottom: map.get($spacers, 4);
+  }
+}
+
+@include mix.media-breakpoint-down(sm) {
+  .market-overview-page {
+    .main-content {
+      padding: map.get($spacers, 3);
+    }
+  }
+
+  .market-page-header {
+    padding: map.get($spacers, 3);
+    margin-bottom: map.get($spacers, 4);
+
+    .page-title {
+      font-size: $font-size-base * 1.3;
+    }
+
+    .header-actions {
+      flex-direction: column;
+      gap: map.get($spacers, 2);
+    }
+  }
+
+  .hotspot-item,
+  .flow-item {
+    padding: map.get($spacers, 3);
+
+    .flow-bar {
+      display: none;
+    }
+  }
+
+  .market-index-grid,
+  .function-grid,
+  .hotspot-grid {
+    gap: map.get($spacers, 3) !important;
+  }
+}
+
+// ============================================================================
+// 主题切换适配优化
+// ============================================================================
+
+.market-overview-page {
+  transition: all $transition-normal;
+
+  * {
+    transition: inherit;
+  }
+}
+
+// ============================================================================
+// 动画定义
+// ============================================================================
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}

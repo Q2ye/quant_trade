@@ -1,554 +1,118 @@
-// _layout.scss
-// 修复导入路径和变量使用方式
+// _layout.scss - 优化后的布局系统
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:map';
+@use 'sass:color';
 
-// 布局样式
-// 仪表盘布局
-.dashboard-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--spacer-4, 1.5rem);
-  padding: var(--spacer-4, 1.5rem);
-  background: var(--primary-bg); // 修复：使用正确的变量名
-  min-height: 100vh;
+// ============================================================================
+// 布局组件类（统一使用混入）
+// ============================================================================
 
-  @include mix.media-breakpoint-up(md) {
-    grid-template-columns: repeat(2, 1fr);
-  }
+/// 主内容区域布局
+.main-content-with-sidebar {
+  @include mix.content-with-sidebar;
 
-  @include mix.media-breakpoint-up(lg) {
-    grid-template-columns: repeat(4, 1fr);
+  .page-header,
+  .page-title,
+  .section-title {
+    position: relative;
+    z-index: 10;
   }
 }
 
-// 交易专业布局系统
-.trading-grid-layout {
-  display: grid;
-  grid-template-areas:
-    "header header header"
-    "sidebar main aside"
-    "footer footer footer";
-  grid-template-columns: var(--sidebar-width) 1fr 300px;
-  grid-template-rows: var(--header-height) 1fr var(--footer-height);
-  height: 100vh;
-  background: var(--primary-bg); // 修复：使用正确的变量名
+/// 页面标题布局
+.page-header-with-sidebar {
+  @include mix.page-header-base;
+  margin-left: $sidebar-expanded-width;
+  width: calc(100% - $sidebar-expanded-width);
+  transition: all $transition-normal;
 
-  .app-header {
-    grid-area: header;
-    z-index: 100;
-    background: var(--toolbar-bg);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .app-sidebar {
-    grid-area: sidebar;
-    z-index: 90;
-    background: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
-    transition: width var(--transition-normal);
-  }
-
-  .workspace {
-    grid-area: main;
-    overflow: auto;
-    background: var(--primary-bg);
-    padding: var(--spacer-4, 1.5rem);
-  }
-
-  .app-aside {
-    grid-area: aside;
-    background: var(--secondary-bg);
-    border-left: 1px solid var(--border-color);
-    overflow-y: auto;
-    padding: var(--spacer-3, 1rem);
-  }
-
-  .app-footer {
-    grid-area: footer;
-    z-index: 80;
-    background: var(--toolbar-bg);
-    border-top: 1px solid var(--border-color);
-  }
-
-  // 侧边栏收起状态
-  &.sidebar-collapsed {
-    grid-template-columns: var(--sidebar-collapsed-width) 1fr 300px;
-
-    .app-sidebar {
-      width: var(--sidebar-collapsed-width);
-    }
-  }
-
-  // 无侧边栏状态
-  &.no-sidebar {
-    grid-template-columns: 0 1fr 300px;
-
-    .app-sidebar {
-      display: none;
-    }
-  }
-
-  // 无右侧面板状态
-  &.no-aside {
-    grid-template-columns: var(--sidebar-width) 1fr 0;
-
-    .app-aside {
-      display: none;
-    }
+  .sidebar-collapsed & {
+    margin-left: $sidebar-collapsed-width;
+    width: calc(100% - $sidebar-collapsed-width);
   }
 }
 
-// 策略工作室三屏布局
-.strategy-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto 1fr;
-  height: 100%;
-  gap: var(--spacer-3, 1rem);
-  background: var(--primary-bg);
-
-  @include mix.media-breakpoint-up(lg) {
-    grid-template-columns: 40% 30% 30%;
-    grid-template-rows: 1fr;
-  }
-
-  .layout-panel {
-    background: var(--secondary-bg);
-    border-radius: var(--border-radius-lg);
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-
-    .panel-header {
-      padding: var(--spacer-3, 1rem);
-      background: var(--toolbar-bg);
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-
-      .panel-title {
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 0;
-      }
-
-      .panel-actions {
-        display: flex;
-        gap: var(--spacer-1, 0.25rem);
-      }
-    }
-
-    .panel-content {
-      flex: 1;
-      overflow: auto;
-      padding: var(--spacer-3, 1rem);
-    }
-  }
-
-  .code-editor-panel {
-    border-right: 1px solid var(--border-color);
-  }
-
-  .parameter-panel {
-    border-right: 1px solid var(--border-color);
-  }
-
-  .output-panel {
-    // 输出面板特定样式
-    .log-output {
-      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-      font-size: 12px;
-      line-height: 1.4;
-
-      .log-item {
-        padding: 2px 0;
-        border-bottom: 1px solid var(--border-color);
-
-        &.error {
-          color: var(--danger-color);
-        }
-
-        &.warning {
-          color: var(--warning-color);
-        }
-
-        &.info {
-          color: var(--accent-color);
-        }
-
-        &.success {
-          color: var(--success-color);
-        }
-      }
-    }
-  }
+/// 状态概览网格布局
+.status-overview-grid {
+  @include mix.status-overview-grid;
 }
 
-// 交易驾驶舱网格布局
-.trade-cockpit {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--spacer-3, 1rem);
-  background: var(--primary-bg);
-  padding: var(--spacer-3, 1rem);
-
-  @include mix.media-breakpoint-up(md) {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: auto auto auto;
-
-    .net-value-chart {
-      grid-column: 1 / -1;
-    }
-
-    .risk-matrix {
-      grid-row: 2;
-      grid-column: 1;
-    }
-
-    .portfolio-chart {
-      grid-row: 2;
-      grid-column: 2;
-    }
-
-    .trade-table {
-      grid-row: 3;
-      grid-column: 1;
-    }
-
-    .news-panel {
-      grid-row: 3;
-      grid-column: 2;
-    }
-  }
-
-  @include mix.media-breakpoint-up(lg) {
-    grid-template-columns: 2fr 1fr 1fr;
-    grid-template-rows: auto auto;
-
-    .net-value-chart {
-      grid-column: 1;
-      grid-row: 1 / span 2;
-    }
-
-    .risk-matrix {
-      grid-row: 1;
-      grid-column: 2;
-    }
-
-    .portfolio-chart {
-      grid-row: 1;
-      grid-column: 3;
-    }
-
-    .trade-table {
-      grid-row: 2;
-      grid-column: 2;
-    }
-
-    .news-panel {
-      grid-row: 2;
-      grid-column: 3;
-    }
-  }
+/// 核心功能网格布局
+.core-function-grid {
+  @include mix.core-function-grid;
 }
 
-// 卡片布局
-.data-card {
-  @include mix.data-card;
-
-  .card-title {
-    @include mix.chart-title;
-    margin-bottom: var(--spacer-3, 1rem);
-  }
-
-  .card-content {
-    padding: var(--spacer-3, 1rem);
-  }
-
-  // 卡片变体
-  &.card-compact {
-    .card-content {
-      padding: var(--spacer-2, 0.5rem);
-    }
-  }
-
-  &.card-bordered {
-    border: 2px solid var(--border-color);
-  }
-
-  &.card-accent {
-    border-left: 4px solid var(--accent-color);
-  }
+/// 实时状态布局
+.realtime-status-layout {
+  @include mix.realtime-status-layout;
 }
 
-// 响应式图表容器
-.responsive-chart {
-  padding: var(--spacer-3, 1rem);
-  @include mix.chart-container;
+// ============================================================================
+// 工具提示优化
+// ============================================================================
 
-  .chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacer-3, 1rem);
-    padding: 0 var(--spacer-3, 1rem);
-
-    .chart-title {
-      @include mix.chart-title;
-      margin-bottom: 0;
-      border-bottom: none;
-      padding: 0;
-    }
-
-    .chart-controls {
-      display: flex;
-      gap: var(--spacer-2, 0.5rem);
-      align-items: center;
-
-      .control-group {
-        display: flex;
-        gap: var(--spacer-1, 0.25rem);
-        align-items: center;
-
-        .control-label {
-          font-size: var(--font-size-base);
-          color: var(--text-secondary);
-          margin-right: var(--spacer-1, 0.25rem);
-        }
-      }
-    }
-  }
-
-  .chart-content {
-    flex: 1;
-    padding: 0 var(--spacer-3, 1rem) var(--spacer-3, 1rem);
-  }
-
-  // 紧凑模式
-  &.chart-compact {
-    padding: var(--spacer-2, 0.5rem);
-
-    .chart-header {
-      margin-bottom: var(--spacer-2, 0.5rem);
-      padding: 0 var(--spacer-2, 0.5rem);
-    }
-
-    .chart-content {
-      padding: 0 var(--spacer-2, 0.5rem) var(--spacer-2, 0.5rem);
-    }
-  }
+.sidebar-tooltip {
+  @include mix.sidebar-tooltip;
 }
 
-// 弹性布局工具类
-.flex-layout {
-  display: flex;
-  gap: var(--spacer-3, 1rem);
+// ============================================================================
+// 响应式布局调整
+// ============================================================================
 
-  &.flex-vertical {
-    flex-direction: column;
-  }
-
-  &.flex-horizontal {
-    flex-direction: row;
-  }
-
-  &.flex-center {
-    justify-content: center;
-    align-items: center;
-  }
-
-  &.flex-between {
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .flex-item {
-    flex: 1;
-
-    &.flex-auto {
-      flex: 0 0 auto;
-    }
-
-    &.flex-grow {
-      flex-grow: 1;
-    }
-
-    &.flex-shrink {
-      flex-shrink: 1;
-    }
-  }
-}
-
-// 网格布局工具类
-.grid-layout {
-  display: grid;
-  gap: var(--spacer-3, 1rem);
-
-  &.grid-cols-1 {
-    grid-template-columns: 1fr;
-  }
-
-  &.grid-cols-2 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  &.grid-cols-3 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  &.grid-cols-4 {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  &.grid-auto-fit {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  }
-
-  &.grid-auto-fill {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
-}
-
-// 分割面板布局
-.split-panel {
-  display: flex;
-  height: 100%;
-  background: var(--primary-bg);
-
-  &.split-horizontal {
-    flex-direction: row;
-  }
-
-  &.split-vertical {
-    flex-direction: column;
-  }
-
-  .split-pane {
-    overflow: auto;
-
-    &:first-child {
-      border-right: 1px solid var(--border-color);
-    }
-
-    &:last-child {
-      border-left: 1px solid var(--border-color);
-    }
-  }
-
-  .split-handle {
-    background: var(--border-color);
-    transition: background var(--transition-fast);
-
-    &:hover {
-      background: var(--accent-color);
-    }
-
-    &.split-handle-horizontal {
-      width: 4px;
-      cursor: col-resize;
-    }
-
-    &.split-handle-vertical {
-      height: 4px;
-      cursor: row-resize;
-    }
-  }
-}
-
-// 响应式断点调整
+// 大屏幕调整
 @include mix.media-breakpoint-down(lg) {
-  .trading-grid-layout {
-    grid-template-columns: var(--sidebar-collapsed-width) 1fr 0;
-
-    &.no-aside {
-      grid-template-columns: var(--sidebar-collapsed-width) 1fr 0;
-    }
-  }
-
-  .strategy-layout {
-    .code-editor-panel,
-    .parameter-panel {
-      border-right: none;
-      border-bottom: 1px solid var(--border-color);
-    }
+  .main-content-with-sidebar,
+  .page-header-with-sidebar {
+    margin-left: $sidebar-collapsed-width;
+    width: calc(100% - $sidebar-collapsed-width);
+    padding: map.get($spacers, 3);
   }
 }
 
+// 中等屏幕调整
 @include mix.media-breakpoint-down(md) {
-  .trading-grid-layout {
-    grid-template-areas:
-      "header header"
-      "sidebar main"
-      "footer footer";
-    grid-template-columns: var(--sidebar-collapsed-width) 1fr;
-    grid-template-rows: var(--header-height) 1fr var(--footer-height);
+  .main-content-with-sidebar {
+    margin-left: 0;
+    width: 100%;
 
-    .app-aside {
-      display: none;
-    }
-  }
-
-  .trade-cockpit {
-    grid-template-columns: 1fr;
-
-    .net-value-chart,
-    .risk-matrix,
-    .portfolio-chart,
-    .trade-table,
-    .news-panel {
-      grid-column: 1;
-      grid-row: auto;
+    .sidebar-collapsed & {
+      margin-left: 0;
+      width: 100%;
     }
   }
 }
 
+// 小屏幕调整
 @include mix.media-breakpoint-down(sm) {
-  .dashboard-layout {
-    padding: var(--spacer-2, 0.5rem);
-    gap: var(--spacer-2, 0.5rem);
+  .main-content-with-sidebar {
+    padding: map.get($spacers, 2);
+
+    .page-header {
+      padding: map.get($spacers, 2);
+      margin-bottom: map.get($spacers, 2);
+
+      .page-title {
+        font-size: $font-size-base * 1.2;
+      }
+    }
   }
 
-  .trading-grid-layout {
-    grid-template-columns: 0 1fr;
-
-    .app-sidebar {
-      display: none;
+  .page-header-with-sidebar {
+    .header-content {
+      padding: 0 map.get($spacers, 2);
     }
 
-    &.sidebar-collapsed .app-sidebar {
-      display: block;
-      position: absolute;
-      z-index: 1000;
-      height: 100%;
-      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+    .title-section .page-title {
+      font-size: $font-size-base * 1.4;
     }
   }
 }
 
-// 打印样式调整
-@media print {
-  .trading-grid-layout {
-    grid-template-areas:
-      "main main main"
-      "main main main"
-      "main main main";
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
+// ============================================================================
+// 侧边栏过渡动画
+// ============================================================================
 
-    .app-header,
-    .app-sidebar,
-    .app-aside,
-    .app-footer {
-      display: none;
-    }
-  }
-
-  .data-card {
-    box-shadow: none !important;
-    border: 1px solid var(--border-color) !important;
-  }
+.sidebar-transition {
+  @include mix.sidebar-transition;
 }

@@ -601,19 +601,19 @@ export default {
   },
 };
 </script>
-
 <style lang="scss" scoped>
 .app-sidebar {
   width: var(--sidebar-width, 240px);
   height: 100%;
-  background-color: var(--secondary-bg, #1f2937);
-  color: #fff;
+  background-color: var(--sidebar-bg);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
+  transition: width var(--transition-normal);
   overflow: hidden;
   position: relative;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--card-shadow);
+  border-right: 1px solid var(--border-color);
 
   /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none;
@@ -625,21 +625,16 @@ export default {
 
   &.collapsed {
     width: var(--sidebar-collapsed-width, 64px);
-
-    /* 在折叠状态下允许 Tooltip 溢出 */
     overflow: visible;
 
-    /* 确保滚动容器也允许溢出 */
     .sidebar-content {
       overflow: visible;
     }
 
-    /* 确保导航部分允许溢出 */
     .nav-section {
       overflow: visible;
     }
 
-    /* 确保导航项允许溢出 */
     .nav-item {
       overflow: visible;
     }
@@ -652,7 +647,6 @@ export default {
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: var(--footer-height, 40px);
-  /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none;
   -ms-overflow-style: none;
 
@@ -662,73 +656,74 @@ export default {
 }
 
 .nav-section {
-  margin-bottom: 16px;
+  margin-bottom: var(--spacer-3);
   flex-shrink: 0;
 }
 
 .nav-header {
-  padding: 16px 20px 8px;
+  padding: var(--spacer-3) var(--spacer-4) var(--spacer-2);
   font-size: 12px;
-  color: var(--text-secondary, #9ca3af);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  margin: 0 12px 8px;
+  font-weight: var(--font-weight-semibold);
+  border-bottom: 1px solid var(--border-color);
+  margin: 0 var(--spacer-2) var(--spacer-2);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  padding: 12px 20px;
-  color: var(--text-primary, #f3f4f6);
+  padding: var(--spacer-2) var(--spacer-4);
+  color: var(--text-primary);
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
   cursor: pointer;
   border-left: 3px solid transparent;
   user-select: none;
-  margin: 2px 8px;
-  border-radius: 6px;
+  margin: 2px var(--spacer-2);
+  border-radius: var(--border-radius);
   position: relative;
 
   &:hover {
-    background-color: rgba(79, 156, 249, 0.2);
-    color: #fff;
+    background-color: var(--hover-bg);
+    color: var(--accent-color);
     transform: translateX(2px);
   }
 
   &.active {
-    background-color: rgba(79, 156, 249, 0.2);
-    border-left-color: var(--accent-color, #4f9cf9);
-    color: #fff;
-    /* 文字加粗+阴影 */
+    background-color: var(--active-bg);
+    border-left-color: var(--accent-color);
+    color: var(--accent-color);
+
     .nav-text {
-      font-weight: 800;
+      font-weight: var(--font-weight-bold);
       text-shadow: 0 1px 0.1px rgba(0, 0, 0, 0.2);
     }
 
-    /* 图标放大+加深颜色 */
+    /* 图标使用系统渐变 */
     .nav-icon {
-      width: 22px;
-      height: 22px;
-      color: #3a89e9;
+      background: var(--sidebar-icon-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
       transform: scale(1.2);
     }
 
-    /* 底部边框突出 */
-    border-bottom: 2px solid var(--accent-color, #4f9cf9);
+    border-bottom: 2px solid var(--accent-color);
   }
 
   .nav-icon {
-    margin-right: 12px;
+    margin-right: var(--spacer-2);
     width: 20px;
     height: 20px;
-    color: var(--accent-color, #4f9cf9);
+    color: var(--accent-color);
     flex-shrink: 0;
+    transition: all var(--transition-fast);
   }
 
   .nav-text {
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -738,20 +733,19 @@ export default {
 /* 全局 Tooltip 样式 */
 .nav-tooltip {
   position: fixed;
-  background: rgb(25, 43, 63);
-  color: white;
-  padding: 8px 12px;
-  border-radius: 6px;
+  background: var(--secondary-bg);
+  color: var(--text-primary);
+  padding: var(--spacer-2) var(--spacer-3);
+  border-radius: var(--border-radius);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
   z-index: 1002;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--hover-shadow);
   pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  animation: fadeIn 0.2s ease;
+  border: 1px solid var(--border-color);
+  animation: fadeIn var(--transition-fast) ease;
 
-  /* 添加小箭头 */
   &::before {
     content: '';
     position: absolute;
@@ -762,7 +756,7 @@ export default {
     height: 0;
     border-top: 6px solid transparent;
     border-bottom: 6px solid transparent;
-    border-right: 6px solid rgb(25, 43, 63);
+    border-right: 6px solid var(--secondary-bg);
   }
 }
 
@@ -782,9 +776,9 @@ export default {
   .nav-item {
     overflow: visible;
     justify-content: center;
-    padding: 12px;
-    margin: 2px 8px;
-    border-radius: 8px;
+    padding: var(--spacer-2);
+    margin: 2px var(--spacer-2);
+    border-radius: var(--border-radius);
     position: relative;
 
     .nav-icon {
@@ -795,17 +789,16 @@ export default {
   }
 
   .nav-section {
-    margin-bottom: 8px;
+    margin-bottom: var(--spacer-2);
   }
 
-  /* 确保滚动容器也允许滚动 */
   .sidebar-content {
     overflow-y: auto;
     overflow-x: hidden;
   }
 }
 
-/* 缩放按钮 - 调整位置和大小 */
+/* 缩放按钮 */
 .sidebar-toggle {
   position: absolute;
   top: 16px;
@@ -813,22 +806,21 @@ export default {
   right: 8px;
   width: 18px;
   height: 18px;
-  background-color: var(--accent-color, #4f9cf9);
+  background: var(--sidebar-icon-gradient);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-  transition: all 0.3s ease;
+  box-shadow: var(--card-shadow);
+  transition: all var(--transition-normal);
   z-index: 1003;
-  border: 2px solid var(--secondary-bg, #1f2937);
+  border: 2px solid var(--sidebar-bg);
 
   &:hover {
-    background-color: var(--accent-hover, #3a8de4);
     transform: scale(1.1);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--hover-shadow);
   }
 
   .toggle-icon {
@@ -854,15 +846,30 @@ export default {
   }
 }
 
-/* 确保 CSS 变量有回退值 */
+/* CSS 变量定义 */
 :root {
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
-  --secondary-bg: #1f2937;
+  --sidebar-bg: #1f2937;
+  --sidebar-icon-gradient: linear-gradient(135deg, #2196F3 0%, #6f42c1 100%);
   --text-primary: #f3f4f6;
   --text-secondary: #9ca3af;
   --accent-color: #4f9cf9;
-  --accent-hover: #3a8de4;
+  --hover-bg: rgba(79, 156, 249, 0.2);
+  --active-bg: rgba(79, 156, 249, 0.2);
+  --border-color: #30363D;
+  --secondary-bg: #161B22;
   --footer-height: 40px;
+  --spacer-2: 0.5rem;
+  --spacer-3: 1rem;
+  --spacer-4: 1.5rem;
+  --border-radius: 6px;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 </style>

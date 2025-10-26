@@ -44,7 +44,6 @@ export default {
     alert: {
       type: Object,
       required: true,
-      // 添加默认值防止 undefined
       default: () => ({
         level: "info",
         title: "",
@@ -57,7 +56,6 @@ export default {
   emits: ["action", "dismiss"],
   computed: {
     alertIcon() {
-      // 安全访问 alert.level
       const level = this.alert?.level || "info";
       switch (level) {
         case "critical":
@@ -70,20 +68,18 @@ export default {
     },
 
     alertColor() {
-      // 安全访问 alert.level
       const level = this.alert?.level || "info";
       switch (level) {
         case "critical":
-          return "#f56c6c";
+          return "var(--alert-critical-color)";
         case "warning":
-          return "#e6a23c";
+          return "var(--alert-warning-color)";
         default:
-          return "#909399";
+          return "var(--alert-info-color)";
       }
     },
 
     formattedTime() {
-      // 安全访问 alert.timestamp
       const timestamp = this.alert?.timestamp || Date.now();
       return new Date(timestamp).toLocaleTimeString("zh-CN", {
         hour: "2-digit",
@@ -94,51 +90,61 @@ export default {
 };
 </script>
 
-<style scoped>
-/* 样式保持不变 */
+<style lang="scss" scoped>
 .app-alert {
-  background-color: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  padding: 12px 15px;
-  margin-bottom: 10px;
-  transition: all 0.3s;
+  background-color: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: var(--spacer-3) var(--spacer-4);
+  margin-bottom: var(--spacer-2);
+  transition: all var(--transition-normal);
+  border: 1px solid var(--border-color);
 }
 
 .app-alert:hover {
-  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  box-shadow: var(--hover-shadow);
+  transform: var(--hover-transform);
 }
 
 .alert-header {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacer-2);
 }
 
 .alert-icon {
   font-size: 18px;
-  margin-right: 10px;
+  margin-right: var(--spacer-2);
 }
 
 .alert-title {
-  font-weight: bold;
+  font-weight: var(--font-weight-semibold);
   flex: 1;
+  color: var(--text-primary);
 }
 
 .alert-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-secondary);
 }
 
 .alert-content {
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
-  margin-bottom: 10px;
+  margin-bottom: var(--spacer-2);
 }
 
 .alert-actions {
   text-align: right;
+}
+
+:root {
+  --alert-critical-color: #f56c6c;
+  --alert-warning-color: #e6a23c;
+  --alert-info-color: #909399;
+  --spacer-2: 0.5rem;
+  --spacer-3: 1rem;
+  --spacer-4: 1.5rem;
 }
 </style>

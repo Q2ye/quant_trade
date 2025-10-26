@@ -1,0 +1,499 @@
+// _header.scss - 优化后的头部专用样式
+@use 'variables' as *;
+@use 'mixins' as mix;
+@use 'sass:map';
+@use 'sass:color';
+
+// 应用头部样式
+.app-header {
+  height: $header-height * 0.7; // 高度减少为80%
+  background: $header-bg-gradient;
+
+  display: flex;
+  align-items: center;
+  padding: 0 map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
+  box-shadow: $card-shadow;
+  z-index: 1000;
+  position: relative;
+  gap: map.get($spacers, 3); // 减少间距以适应新高度
+
+  // 浅色主题调整
+  [data-theme="light"] & {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  // 深色主题调整
+  [data-theme="dark"] & {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+}
+
+// Logo区域
+.logo-section {
+  flex-shrink: 0;
+
+  .logo {
+    display: flex;
+    align-items: center;
+    font-size: $font-size-base * 1.5; // 减小字体大小
+    font-weight: $font-weight-bold;
+
+    .logo-icon {
+      margin-right: map.get($spacers, 2);
+      width: 20px; // 减小图标大小
+      height: 20px;
+      color: #22D3EE;
+
+    }
+
+    .logo-text {
+      background: var(--accent-color);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: $font-weight-bold;
+    }
+  }
+}
+
+// 状态区域
+.status-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 6);
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 3);
+
+  &.market-status {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 2); // 减少间距
+
+    .status-indicator {
+      width: 6px; // 减小指示器大小
+      height: 6px;
+      border-radius: 50%;
+
+      &.status-open {
+        background-color: $success-color;
+        box-shadow: 0 0 3px $success-color;
+      }
+
+      &.status-closed {
+        background-color: $danger-color;
+        box-shadow: 0 0 3px $danger-color;
+      }
+    }
+
+    .market-data {
+      display: flex;
+      align-items: center;
+      gap: map.get($spacers, 1);
+      font-size: $font-size-base * 0.8; // 减小字体
+
+      .market-name {
+        color: $text-secondary;
+        font-weight: $font-weight-medium;
+      }
+
+      .market-value {
+        color: $text-primary;
+        font-weight: $font-weight-semibold;
+      }
+
+      .market-change {
+        font-weight: $font-weight-semibold;
+        font-size: $font-size-base * 0.75; // 减小字体
+
+        &.positive {
+          color: $stock-up-color; // 股票上涨用红色
+        }
+
+        &.negative {
+          color: $stock-down-color; // 股票下跌用绿色
+        }
+      }
+    }
+  }
+
+  &.trading-session {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 1);
+    font-size: $font-size-base * 0.75; // 减小字体
+    color: $text-secondary;
+
+    .session-icon {
+      width: 12px; // 减小图标
+      height: 12px;
+      color: $accent-color;
+    }
+  }
+}
+
+// 头部小部件容器
+.header-widgets {
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 2);
+  flex-shrink: 0;
+}
+
+// 头部小部件基础样式
+.header-widget {
+  min-width: 60px; // 减小宽度
+  background: rgba($card-bg, 0.8);
+  border-radius: $border-radius;
+  border: $border-width solid rgba($border-color, 0.3);
+  transition: all $transition-fast;
+  position: relative;
+  cursor: help;
+  backdrop-filter: blur(10px);
+
+  &:hover {
+    background: $hover-bg;
+    transform: $hover-transform;
+    box-shadow: $hover-shadow;
+  }
+
+  .widget-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: map.get($spacers, 1) map.get($spacers, 2);
+    gap: 1px; // 减少间隙
+    position: relative;
+  }
+
+  .widget-icon {
+    width: 12px; // 减小图标
+    height: 12px;
+    color: $accent-color;
+  }
+
+  .widget-count {
+    font-size: $font-size-base * 0.8; // 减小字体
+    font-weight: $font-weight-bold;
+    color: $text-primary;
+    line-height: 1;
+  }
+
+  .widget-label {
+    color: $text-secondary;
+    font-size: $font-size-base * 0.65; // 减小字体
+    line-height: 1;
+  }
+}
+
+// 策略状态特殊样式
+.strategy-status {
+  .status-dot {
+    position: absolute;
+    top: 3px; // 调整位置
+    right: 3px;
+    width: 5px; // 减小圆点
+    height: 5px;
+    border-radius: 50%;
+
+    &.healthy {
+      background-color: $success-color;
+      box-shadow: 0 0 3px $success-color;
+    }
+
+    &.warning {
+      background-color: $warning-color;
+      box-shadow: 0 0 3px $warning-color;
+    }
+
+    &.danger {
+      background-color: $danger-color;
+      box-shadow: 0 0 3px $danger-color;
+    }
+  }
+}
+
+// 风险等级特殊样式
+.risk-level {
+  .widget-count {
+    font-size: $font-size-base * 0.75; // 减小字体
+  }
+
+  &.risk-low {
+    border-color: rgba($success-color, 0.6);
+    background: rgba($success-color, 0.1);
+
+    .widget-icon, .widget-count {
+      color: $success-color;
+    }
+  }
+
+  &.risk-medium {
+    border-color: rgba($warning-color, 0.6);
+    background: rgba($warning-color, 0.1);
+
+    .widget-icon, .widget-count {
+      color: $warning-color;
+    }
+  }
+
+  &.risk-high {
+    border-color: rgba($danger-color, 0.6);
+    background: rgba($danger-color, 0.1);
+
+    .widget-icon, .widget-count {
+      color: $danger-color;
+    }
+  }
+}
+
+// 信号状态特殊样式
+.signal-status {
+  border-color: rgba($purple-color, 0.3);
+  background: rgba($purple-color, 0.05);
+
+  .widget-icon {
+    color: $purple-color;
+  }
+}
+
+// 订单状态特殊样式
+.order-status {
+  border-color: rgba($info-color, 0.3);
+  background: rgba($info-color, 0.05);
+
+  .widget-icon {
+    color: $info-color;
+  }
+}
+
+// 时间区域
+.time-section {
+  flex-shrink: 0;
+  text-align: center;
+
+  .current-date {
+    font-size: $font-size-base * 0.7; // 减小字体
+    color: $text-secondary;
+    margin-bottom: 1px;
+  }
+
+  .current-time {
+    font-size: $font-size-base * 0.9; // 减小字体
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    font-family: 'Courier New', monospace;
+  }
+}
+
+// 用户区域
+.user-section {
+  flex-shrink: 0;
+
+  .user-dropdown {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    padding: map.get($spacers, 1) map.get($spacers, 2);
+    border-radius: $border-radius;
+    transition: all $transition-fast;
+    background: rgba($card-bg, 0.8);
+    backdrop-filter: blur(10px);
+
+    &:hover {
+      background: $hover-bg;
+    }
+
+    .user-avatar {
+      width: 20px; // 减小头像
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: $accent-color;
+
+      .avatar-icon {
+        width: 14px; // 减小图标
+        height: 14px;
+        color: white;
+      }
+    }
+
+    .user-name {
+      margin: 0 map.get($spacers, 2);
+      font-size: $font-size-base * 0.8; // 减小字体
+      color: $text-primary;
+      font-weight: $font-weight-medium;
+      max-width: 100px; // 减小最大宽度
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dropdown-icon {
+      width: 14px; // 减小图标
+      height: 14px;
+      color: $text-secondary;
+      transition: transform $transition-fast;
+
+      &.rotated {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .user-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: map.get($spacers, 1);
+    background: $card-bg;
+    border: $border-width solid $border-color;
+    border-radius: $border-radius;
+    box-shadow: $hover-shadow;
+    min-width: 130px; // 减小宽度
+    z-index: 1000;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: map.get($spacers, 2);
+      padding: map.get($spacers, 1) map.get($spacers, 2); // 减小内边距
+      font-size: $font-size-base * 0.8; // 减小字体
+      color: $text-primary;
+      transition: background-color $transition-fast;
+      cursor: pointer;
+
+      &:hover {
+        background: $hover-bg;
+      }
+
+      .menu-icon {
+        width: 14px; // 减小图标
+        height: 14px;
+        color: $text-secondary;
+      }
+    }
+
+    .menu-divider {
+      height: 1px;
+      background: $border-color;
+      margin: map.get($spacers, 1) 0;
+    }
+  }
+}
+
+// 响应式调整
+@include mix.media-breakpoint-down(xl) {
+  .status-section .market-status {
+    display: none;
+  }
+
+  .status-section .trading-session {
+    display: none;
+  }
+
+  .header-widgets {
+    gap: map.get($spacers, 1);
+
+    .header-widget {
+      min-width: 55px; // 进一步减小
+
+      .widget-content {
+        padding: 3px 5px;
+      }
+
+      .widget-count {
+        font-size: $font-size-base * 0.75;
+      }
+    }
+  }
+}
+
+@include mix.media-breakpoint-down(lg) {
+  .header-widgets {
+    gap: map.get($spacers, 1);
+
+    .header-widget {
+      min-width: 50px;
+
+      .widget-content {
+        padding: 2px 4px;
+      }
+
+      .widget-count {
+        font-size: $font-size-base * 0.7;
+      }
+    }
+  }
+
+  .time-section {
+    display: none;
+  }
+}
+
+@include mix.media-breakpoint-down(md) {
+  .app-header {
+    padding: 0 map.get($spacers, 2);
+    gap: map.get($spacers, 2);
+  }
+
+  .logo-section .logo {
+    font-size: $font-size-base;
+
+    .logo-icon {
+      width: 18px;
+      height: 18px;
+      margin-right: map.get($spacers, 1);
+    }
+  }
+
+  .header-widgets {
+    display: none;
+  }
+}
+
+// 主题特定的头部调整
+[data-theme="light"] {
+  .app-header {
+    .header-widget {
+      background: rgba(white, 0.9);
+
+      &:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+    }
+
+    .user-info {
+      background: rgba(white, 0.9);
+    }
+  }
+}
+
+[data-theme="dark"] {
+  .app-header {
+    .header-widget {
+      background: rgba($card-bg, 0.9);
+
+      &:hover {
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    .user-info {
+      background: rgba($card-bg, 0.9);
+    }
+  }
+}

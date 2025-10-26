@@ -1,303 +1,833 @@
-// _mixins.scss
-// 显式导入变量和需要的模块
+// _mixins.scss - 优化后的混入工具库
 @use 'variables' as *;
-@use "sass:map";
-@use "sass:color";
+@use 'sass:map';
+@use 'sass:math';
+@use 'sass:color';
 
-// 响应式断点
-$breakpoints: (
-        xs: 0,
-        sm: 576px,
-        md: 768px,
-        lg: 992px,
-        xl: 1200px
-) !default;
+// ============================================================================
+// 卡片间隙控制混入
+// ============================================================================
 
-// 媒体查询 - 向上断点（min-width）
-@mixin media-breakpoint-up($name, $breakpoints: $breakpoints) {
-  $min: map.get($breakpoints, $name);
-  @if $min {
-    @media (min-width: $min) {
-      @content;
-    }
-  } @else {
-    @content;
-  }
-}
+/// 卡片网格间隙控制混入
+/// @param {Number} $gap - 主要间隙大小
+/// @param {Number} $card-gap - 卡片内部间隙大小
+@mixin card-gap-control($gap: map.get($spacers, 4), $card-gap: map.get($spacers, 3)) {
+  gap: $gap;
 
-// 媒体查询 - 向下断点（max-width）
-@mixin media-breakpoint-down($name, $breakpoints: $breakpoints) {
-  $max: map.get($breakpoints, $name);
-  @if $max and $max > 0 {
-    @media (max-width: ($max - 0.02px)) {
-      @content;
-    }
-  } @else {
-    @content;
-  }
-}
+  .grid-card,
+  .market-index-card,
+  .function-nav-card,
+  .hotspot-card,
+  .status-card,
+  .function-card {
+    margin: 0;
+    padding: $card-gap;
 
-// 媒体查询 - 介于两个断点之间
-@mixin media-breakpoint-between($lower, $upper, $breakpoints: $breakpoints) {
-  $min: map.get($breakpoints, $lower);
-  $max: map.get($breakpoints, $upper);
-
-  @if $min != null and $max != null {
-    @media (min-width: $min) and (max-width: ($max - 0.02px)) {
-      @content;
-    }
-  } @else if $min == null {
-    @include media-breakpoint-down($upper, $breakpoints) {
-      @content;
-    }
-  } @else if $max == null {
-    @include media-breakpoint-up($lower, $breakpoints) {
-      @content;
+    // 确保卡片内容也有适当的内部间隙
+    .card-content,
+    .index-content,
+    .function-content {
+      padding: 0;
     }
   }
 }
 
-// 媒体查询 - 仅针对某个断点
-@mixin media-breakpoint-only($name, $breakpoints: $breakpoints) {
-  $min: map.get($breakpoints, $name);
-  $next: null;
-  $breakpoint-names: map.keys($breakpoints);
-  $n: index($breakpoint-names, $name);
 
-  @if $n != null and $n < length($breakpoint-names) {
-    $next: nth($breakpoint-names, $n + 1);
-  }
+/// 响应式卡片间隙控制
+/// @param {Map} $gaps - 响应式间隙映射
+@mixin responsive-card-gap($gaps: ()) {
+  $default-gap: map.get($spacers, 4);
+  $default-card-gap: map.get($spacers, 3);
 
-  $max: map.get($breakpoints, $next);
+  @include card-gap-control($default-gap, $default-card-gap);
 
-  @if $min != null and $max != null {
-    @media (min-width: $min) and (max-width: ($max - 0.02px)) {
-      @content;
-    }
-  } @else if $max == null {
-    @include media-breakpoint-up($name, $breakpoints) {
-      @content;
-    }
-  } @else if $min == null {
-    @include media-breakpoint-down($next, $breakpoints) {
-      @content;
+  @each $breakpoint, $gap-config in $gaps {
+    $gap: map.get($gap-config, 'gap') or $default-gap;
+    $card-gap: map.get($gap-config, 'card-gap') or $default-card-gap;
+
+    @if $breakpoint == 'xl' {
+      @include media-breakpoint-down(xl) {
+        @include card-gap-control($gap, $card-gap);
+      }
+    } @else if $breakpoint == 'lg' {
+      @include media-breakpoint-down(lg) {
+        @include card-gap-control($gap, $card-gap);
+      }
+    } @else if $breakpoint == 'md' {
+      @include media-breakpoint-down(md) {
+        @include card-gap-control($gap, $card-gap);
+      }
+    } @else if $breakpoint == 'sm' {
+      @include media-breakpoint-down(sm) {
+        @include card-gap-control($gap, $card-gap);
+      }
     }
   }
 }
 
-// 图表容器基础样式
-@mixin chart-container {
-  position: relative;
-  width: 100%;
-  height: var(--chart-height);
-  min-height: var(--chart-min-height);
-  background-color: var(--chart-bg);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
+// ============================================================================
+// 灵活网格系统混入
+// ============================================================================
 
-  @include media-breakpoint-up(md) {
+/// 灵活网格布局混入
+@mixin flexible-grid($columns: 4, $breakpoints: (), $gap: map.get($spacers, 4)) {
+  display: grid;
+  grid-template-columns: repeat($columns, 1fr);
+
+  // 使用新的间隙控制
+  @include card-gap-control($gap);
+
+  @each $breakpoint, $column-count in $breakpoints {
+    @if $breakpoint == 'xl' {
+      @include media-breakpoint-down(xl) {
+        grid-template-columns: repeat($column-count, 1fr);
+      }
+    } @else if $breakpoint == 'lg' {
+      @include media-breakpoint-down(lg) {
+        grid-template-columns: repeat($column-count, 1fr);
+      }
+    } @else if $breakpoint == 'md' {
+      @include media-breakpoint-down(md) {
+        grid-template-columns: repeat($column-count, 1fr);
+      }
+    } @else if $breakpoint == 'sm' {
+      @include media-breakpoint-down(sm) {
+        grid-template-columns: repeat($column-count, 1fr);
+      }
+    }
+  }
+}
+
+
+/// 侧边栏响应式网格混入
+@mixin sidebar-responsive-grid($expanded-columns: 4, $collapsed-columns: 2) {
+  @include flexible-grid($expanded-columns, (
+          'xl': 3,
+          'lg': 2,
+          'md': 1
+  ));
+
+  .sidebar-collapsed & {
+    @include flexible-grid($collapsed-columns, (
+            'xl': 2,
+            'lg': 2,
+            'md': 1,
+            'sm': 1
+    ));
+  }
+}
+
+/// 卡片网格布局混入（更新版）
+@mixin card-grid-layout($columns: 4, $breakpoints: ()) {
+  @include flexible-grid($columns, $breakpoints);
+
+  // 添加额外的间隙控制
+  @include responsive-card-gap((
+          'lg': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),
+          'md': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)),
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 1))
+  ));
+
+  .grid-card {
+    @include card-base;
     height: 100%;
-    min-height: 350px;
+    transition: all $transition-normal;
+
+    &:hover {
+      transform: $hover-transform;
+      box-shadow: $card-hover-shadow;
+    }
   }
 }
 
-// 数据卡片样式
-@mixin data-card {
-  background: var(--card-bg); // 修复：使用 CSS 变量
-  border-radius: var(--border-radius);
-  padding: var(--spacer-3, 1rem); // 修复：使用 CSS 变量
-  border: 1px solid var(--border-color);
-  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+// ============================================================================
+// 布局系统混入（统一管理）
+// ============================================================================
 
-  &:hover {
-    transform: var(--hover-transform);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+/// 侧边栏布局基础混入
+@mixin sidebar-layout-base {
+  @include anti-bleed;
+  position: relative;
+  min-height: 100vh;
+  padding: 0;
+  background: $primary-bg;
+  transition: all $transition-normal;
+
+  &.sidebar-collapsed {
+    .app-sidebar {
+      width: $sidebar-collapsed-width !important;
+
+      .sidebar-menu {
+        .menu-item {
+          padding: map.get($spacers, 2);
+          justify-content: center;
+
+          .menu-text {
+            opacity: 0;
+            visibility: hidden;
+            width: 0;
+            margin-left: 0;
+          }
+
+          .menu-icon {
+            margin-right: 0;
+            transform: scale(1.1);
+          }
+        }
+      }
+    }
+  }
+
+  [data-theme="light"] & {
+    background-color: color.adjust($primary-bg, $lightness: 3%);
   }
 }
 
-// 图表标题样式
-@mixin chart-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacer-3, 1rem); // 修复：使用 CSS 变量
-  padding-bottom: var(--spacer-2, 0.5rem); // 修复：使用 CSS 变量
-  border-bottom: 1px solid var(--border-color);
-}
+/// 带侧边栏的内容区域混入
+@mixin content-with-sidebar {
+  margin-left: $sidebar-expanded-width;
+  width: calc(100% - $sidebar-expanded-width);
+  transition: all $transition-normal;
+  position: relative;
+  z-index: 1;
+  padding: $content-padding;
+  min-height: 100vh;
+  background: $primary-bg;
 
-@function scale-color($color, $lightness: 0%) {
-  @return color.scale($color, $lightness: $lightness);
-}
+  .sidebar-collapsed & {
+    margin-left: $sidebar-collapsed-width;
+    width: calc(100% - $sidebar-collapsed-width);
+  }
 
-@mixin deep() {
-  :deep {
-    @content;
+  [data-theme="light"] & {
+    padding: map.get($spacers, 4);
+    background: color.adjust($primary-bg, $lightness: 2%);
   }
 }
 
-// 深色主题按钮样式
-// _mixins.scss
-// 移除有问题的颜色函数，使用 CSS 变量替代
-@mixin dark-btn {
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
+/// 状态概览网格布局混入
+@mixin status-overview-grid {
+  @include flexible-grid(4, (
+          'lg': 2,
+          'sm': 1
+  ));
+  margin-bottom: map.get($spacers, 4);
+
+  .status-card {
+    @include status-card-base;
+  }
+}
+
+/// 核心功能网格布局混入
+@mixin core-function-grid {
+  @include flexible-grid(4, (
+          'xl': 2,
+          'md': 1
+  ));
+  margin-bottom: map.get($spacers, 4);
+
+  .function-card {
+    @include function-card-base;
+  }
+}
+
+/// 实时状态布局混入
+@mixin realtime-status-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: map.get($spacers, 3);
+  margin-bottom: map.get($spacers, 4);
+
+  .status-panel {
+    @include card-base;
+
+    .card-header {
+      @include card-header-base;
+    }
+
+    .card-body {
+      padding: map.get($spacers, 3);
+    }
+  }
+
+  @include media-breakpoint-down(md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ============================================================================
+// 工具类混入
+// ============================================================================
+
+/// 侧边栏工具提示混入
+@mixin sidebar-tooltip {
+  position: absolute;
+  left: calc(#{$sidebar-collapsed-width} + 8px);
+  background: $secondary-bg;
+  border: 1px solid $border-color;
+  border-radius: $border-radius-sm;
+  padding: map.get($spacers, 1) map.get($spacers, 2);
+  font-size: $font-size-base * 0.85;
+  color: $text-primary;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: $hover-shadow;
+  @include fade-in;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 4px solid transparent;
+    border-right-color: $border-color;
+  }
+}
+
+/// 侧边栏过渡动画混入
+@mixin sidebar-transition {
+  transition: all $transition-normal cubic-bezier(0.4, 0, 0.2, 1);
+
+  * {
+    transition: inherit;
+  }
+}
+
+// ============================================================================
+// 响应式工具（保持不变）
+// ============================================================================
+
+@mixin media-breakpoint-down($breakpoint) {
+  @if $breakpoint == sm {
+    @media (max-width: #{$breakpoint-sm}) {
+      @content;
+    }
+  } @else if $breakpoint == md {
+    @media (max-width: #{$breakpoint-md}) {
+      @content;
+    }
+  } @else if $breakpoint == lg {
+    @media (max-width: #{$breakpoint-lg}) {
+      @content;
+    }
+  } @else if $breakpoint == xl {
+    @media (max-width: #{$breakpoint-xl}) {
+      @content;
+    }
+  } @else {
+    @warn "Breakpoint #{$breakpoint} is not defined.";
+  }
+}
+
+// ============================================================================
+// 基础组件混入（保持不变）
+// ============================================================================
+
+@mixin card-base($hover: true) {
+  background: $card-bg;
+  border: $border-width solid $border-color;
+  border-radius: $border-radius;
+  box-shadow: $card-shadow;
+  transition: all $transition-normal;
+
+  @if $hover {
+    &:hover {
+      box-shadow: $card-hover-shadow;
+      border-color: $accent-color;
+      transform: $hover-transform;
+    }
+  }
+}
+
+@mixin button-base($bg-color: $accent-color, $text-color: white) {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  transition: all var(--transition-fast);
+  justify-content: center;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: $bg-color;
+  color: $text-color;
+  border: $border-width solid transparent;
+  border-radius: $border-radius;
+  font-size: $font-size-base;
+  font-weight: $font-weight-medium;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all $transition-normal;
+  outline: none;
 
-  &.btn-primary {
-    background-color: var(--accent-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--accent-color-dark);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-  }
-
-  &.btn-secondary {
-    background-color: var(--secondary-bg);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-
-    &:hover {
-      background-color: var(--hover-bg);
-    }
-  }
-
-  &.btn-success {
-    background-color: var(--success-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--success-color-dark);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-  }
-
-  &.btn-warning {
-    background-color: var(--warning-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--warning-color-dark);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-  }
-
-  &.btn-danger {
-    background-color: var(--danger-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--danger-color-dark);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
-  }
-
-  // 按钮尺寸
-  &.btn-sm {
-    padding: 6px 12px;
-    font-size: 12px;
-  }
-
-  &.btn-lg {
-    padding: 10px 20px;
-    font-size: 16px;
-  }
-
-  // 禁用状态
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+    transform: none !important;
+  }
 
-    &:hover {
-      transform: none;
-      box-shadow: none;
-      background-color: inherit;
-    }
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: $hover-transform;
   }
 }
 
-// 文本截断
-@mixin text-truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+// ============================================================================
+// 布局工具混入（保持不变）
+// ============================================================================
+
+@mixin flex-center($direction: row) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: $direction;
 }
 
-// 多行文本截断
-@mixin text-truncate-multiline($lines: 2) {
-  display: -webkit-box;
-  -webkit-line-clamp: $lines;
-  -webkit-box-orient: vertical;
+@mixin anti-bleed {
+  position: relative;
   overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
 }
 
-// 滚动条样式
-@mixin scrollbar {
+@mixin custom-scrollbar {
   &::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
   &::-webkit-scrollbar-track {
-    background: var(--primary-bg);
+    background: $secondary-bg;
     border-radius: 3px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
+    background: $border-color;
     border-radius: 3px;
 
     &:hover {
-      background: var(--accent-color);
+      background: $text-secondary;
+    }
+  }
+}
+
+// ============================================================================
+// 文本工具混入（保持不变）
+// ============================================================================
+
+@mixin text-ellipsis($lines: 1) {
+  @if $lines == 1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  } @else {
+    display: -webkit-box;
+    -webkit-line-clamp: $lines;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+@mixin text-secondary {
+  color: $text-secondary;
+  font-size: $font-size-base * 0.9;
+}
+
+// ============================================================================
+// 动画效果混入（保持不变）
+// ============================================================================
+
+@mixin loading-spinner($size: 1em) {
+  @include flex-center;
+
+  &::after {
+    content: '';
+    width: $size;
+    height: $size;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@mixin fade-in($duration: $transition-normal) {
+  animation: fadeIn $duration ease-out;
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+// ============================================================================
+// 量化平台专用混入（保持不变）
+// ============================================================================
+@mixin page-header-base {
+  background: $page-header-bg;
+  border-radius: 0;
+  padding: $page-header-padding;
+  margin: $page-header-margin;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  min-height: $header-height; // 增加卡片高度
+  align-items: center;
+  display: flex;
+
+  .header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 0 map.get($spacers, 2);
+    width: 100%;
+    min-height: $header-height;
+
+    .title-section {
+      flex: 1;
+      padding-right: map.get($spacers, 3);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      height: 100%;
+
+      .page-title {
+        font-size: $page-title-font-size;
+        font-weight: $font-weight-bold;
+        color: white;
+        margin-bottom: map.get($spacers, 1);
+        line-height: 1.2; // 优化行高
+      }
+
+      .page-description {
+        font-size: $page-description-font-size;
+        color: rgba(255, 255, 255, 0.9);
+        margin: 0;
+        line-height: 1.5;
+      }
+    }
+
+    .header-actions {
+      position: relative;
+      z-index: 1;
+      gap: map.get($spacers, 2);
+      flex-shrink: 0;
+      margin-left: map.get($spacers, 4);
+      display: flex;
+      align-items: center;
+      padding: map.get($spacers, 2) 0; // 增加垂直内边距确保垂直居中
+      justify-content: flex-end; // 按钮靠右
+      height: 100%; // 确保高度占满父容器
+
+      .refresh-btn {
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: map.get($spacers, 2) map.get($spacers, 3);
+        border-radius: $border-radius;
+        font-weight: $font-weight-medium;
+        transition: all $transition-normal;
+        display: flex;
+        align-items: center;
+        gap: map.get($spacers, 1);
+        min-height: $button-height; // 设置最小高度确保垂直居中效果明显
+        white-space: nowrap;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.25);
+          border-color: rgba(255, 255, 255, 0.5);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        &:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-text {
+          // 确保按钮文字垂直居中
+          display: flex;
+          align-items: center;
+          height: 100%;
+        }
+
+        .refresh-icon {
+          font-size: $font-size-base * 1.1;
+          transition: transform $transition-normal;
+        }
+
+        &.refreshing .refresh-icon {
+          animation: spin 1s linear infinite;
+        }
+      }
     }
   }
 
-  &::-webkit-scrollbar-corner {
-    background: var(--primary-bg);
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 3);
+    flex-wrap: wrap;
   }
 }
 
-// 焦点样式
-@mixin focus-outline {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
+@mixin status-card-base($height-scale: 1) {
+  @include card-base;
+  padding: map.get($spacers, 3);
+  display: flex;
+  flex-direction: column;
+  transition: all $transition-normal;
+  height: calc(100% * #{$height-scale}); // 使用缩放比例
 
-// 屏幕阅读器专用
-@mixin sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
+  // 根据高度比例调整内部间距
+  @if $height-scale < 1 {
+    $scale-factor: $height-scale;
+    padding: calc(#{map.get($spacers, 3)} * #{$scale-factor});
 
-// 高对比度模式支持
-@mixin high-contrast {
-  @media (prefers-contrast: more) {
-    @content;
+    .status-content {
+      .status-icon {
+        width: calc(#{$status-icon-size} );
+        height: calc(#{$status-icon-size} );
+        font-size: calc(#{$font-size-base} * 1.5 );
+        margin-right: calc(#{map.get($spacers, 3)});
+      }
+
+      .status-info {
+        .status-value {
+          font-size: calc(#{$font-size-base} * 1.8 * #{$scale-factor});
+          margin-bottom: calc(#{map.get($spacers, 1)} * #{$scale-factor});
+        }
+
+        .status-label {
+          font-size: calc(#{$font-size-base} * 0.9 * #{$scale-factor});
+        }
+      }
+    }
+  } @else {
+    // 保持原有样式
+    .status-content {
+      .status-icon {
+        width: $status-icon-size;
+        height: $status-icon-size;
+        font-size: $font-size-base * 1.5;
+        margin-right: map.get($spacers, 3);
+      }
+
+      .status-info {
+        .status-value {
+          font-size: $font-size-base * 1.8;
+          margin-bottom: map.get($spacers, 1);
+        }
+
+        .status-label {
+          @include text-secondary;
+        }
+      }
+    }
+  }
+
+  .status-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+
+    .status-icon {
+      border-radius: $status-icon-radius;
+      @include flex-center;
+      flex-shrink: 0;
+
+      &.running {
+        background: rgba($status-running-color, 0.1);
+        color: $status-running-color;
+      }
+
+      &.progress {
+        background: rgba($status-progress-color, 0.1);
+        color: $status-progress-color;
+      }
+
+      &.time {
+        background: rgba($status-time-color, 0.1);
+        color: $status-time-color;
+      }
+
+      &.remaining {
+        background: rgba($status-remaining-color, 0.1);
+        color: $status-remaining-color;
+      }
+    }
+
+    .status-info {
+      flex: 1;
+
+      .status-value {
+        font-weight: $font-weight-bold;
+        color: $text-primary;
+        line-height: 1.2;
+      }
+
+      .status-label {
+        color: $text-secondary;
+      }
+    }
   }
 }
 
-// 减少动画模式支持
-@mixin reduced-motion {
-  @media (prefers-reduced-motion: reduce) {
-    @content;
+@mixin function-card-base {
+  @include card-base;
+  cursor: pointer;
+  height: 100%;
+  min-height: 160px;
+
+  .function-content {
+    display: flex;
+    align-items: flex-start;
+    padding: map.get($spacers, 1) map.get($spacers, 2);
+    gap: map.get($spacers, 2);
+    height: 100%;
+
+    .sidebar-collapsed & {
+      padding: map.get($spacers, 1) map.get($spacers, 2);
+    }
+  }
+  // 图标和标题在同一行
+  .function-header {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 2);
+    margin-bottom: map.get($spacers, 2);
+
+    .function-icon {
+      font-size: $function-icon-size * 0.9;
+      flex-shrink: 0;
+      opacity: 0.8;
+      margin-right: map.get($spacers, 2); // 重置原来的margin-right
+
+      &.accent {
+        color: $accent-color;
+      }
+
+      &.danger {
+        color: $danger-color;
+      }
+
+      &.purple {
+        color: $purple-color;
+      }
+
+      &.info {
+        color: $info-color;
+      }
+
+      &.success {
+        color: $success-color;
+      }
+
+      &.warning {
+        color: $warning-color;
+      }
+    }
+
+    .function-title {
+      font-size: $font-size-base * 1.3;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+      margin: 0;
+      flex: 1;
+      line-height: 1.3;
+    }
+  }
+
+  .function-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    //height: 100%; // 确保信息区域占满高度
+    h3 {
+      font-size: $font-size-base * 1.13;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+      margin: 0 0 map.get($spacers, 1) 0;
+      line-height: 1.1;
+    }
+
+    p {
+      @include text-secondary;
+      margin: 0 0 map.get($spacers, 2) 0;
+      line-height: 1.2;
+    }
+
+    .function-stats {
+      display: flex;
+      flex-direction: column;
+      gap: $function-stats-gap  * 0.8;
+      margin-bottom: map.get($spacers, 2);
+      flex: 1;
+    }
+
+    .function-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: map.get($spacers, 1);
+      border-top: $function-footer-border;
+      margin-top: auto;
+
+      .update-time {
+        font-size: $font-size-base * 0.8;
+        color: $text-secondary;
+        line-height: 1.2;
+      }
+    }
+  }
+}
+
+
+@mixin section-title-base {
+  font-size: $font-size-base * 1.3;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  margin-bottom: map.get($spacers, 4);
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 2);
+  padding-bottom: map.get($spacers, 2);
+  border-bottom: 2px solid $border-color;
+}
+
+@mixin card-header-base {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: $card-header-bg;
+  border-bottom: $border-width solid $border-color;
+
+  .card-title {
+    font-size: $font-size-base * 1.1;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0;
   }
 }

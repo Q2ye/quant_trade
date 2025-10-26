@@ -1,10 +1,8 @@
-// _charts.scss
-// 显式导入变量和混合
+// _charts.scss - 基于主题统一控制的图表样式
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:map';
 
-// 图表专用样式
 // 基础图表样式
 .chart-container {
   @include mix.chart-container;
@@ -13,37 +11,58 @@
   .chart-title {
     @include mix.chart-title;
     padding: map.get($spacers, 3) map.get($spacers, 3) 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .title-actions {
+      display: flex;
+      gap: map.get($spacers, 2);
+      font-size: $font-size-base * 0.9;
+    }
+  }
+
+  // 图表描述
+  .chart-description {
+    @include mix.text-secondary;
+    padding: map.get($spacers, 1) map.get($spacers, 3);
+    font-size: $font-size-base * 0.9;
+  }
+
+  // 图表内容区
+  .chart-content {
+    width: 100%;
+    height: calc(100% - 60px);
+    position: relative;
   }
 }
 
-// K线图增强样式
+// K线图增强样式（使用主题布局和颜色变量）
 .kline-chart {
   @extend .chart-container;
-  height: 600px;
+  height: $chart-height * 1.5; // 基于主题图表高度缩放
 
   // K线图工具栏
   .kline-toolbar {
     display: flex;
     padding: map.get($spacers, 2) map.get($spacers, 3);
     background: $secondary-bg;
-    border-bottom: 1px solid $border-color;
+    border-bottom: $border-width solid $border-color;
 
     .period-selector {
       display: flex;
       gap: map.get($spacers, 1);
 
       .period-btn {
+        @include mix.button-base;
         padding: map.get($spacers, 1) map.get($spacers, 2);
         background: $primary-bg;
-        border: 1px solid $border-color;
-        border-radius: 4px;
+        border-color: $border-color;
         color: $text-primary;
-        cursor: pointer;
-        font-size: 12px;
-        transition: all var(--transition-fast);
+        font-size: $font-size-base * 0.85;
 
         &:hover {
-          background: var(--hover-bg);
+          background: $hover-bg;
         }
 
         &.active {
@@ -60,17 +79,15 @@
       gap: 5px;
 
       .indicator-btn {
-        padding: 5px 10px;
+        @include mix.button-base;
+        padding: map.get($spacers, 1) map.get($spacers, 2);
         background: $primary-bg;
-        border: 1px solid $border-color;
-        border-radius: 4px;
+        border-color: $border-color;
         color: $text-primary;
-        cursor: pointer;
-        font-size: 12px;
-        transition: all var(--transition-fast);
+        font-size: $font-size-base * 0.85;
 
         &:hover {
-          background: var(--hover-bg);
+          background: $hover-bg;
         }
 
         &.active {
@@ -81,22 +98,87 @@
       }
     }
   }
+
+  .chart-content {
+    height: calc(100% - 100px);
+  }
 }
 
 // 净值曲线图
 .net-value-chart {
   @extend .chart-container;
 
-  .legend-highlight {
-    font-weight: 600;
-    color: $accent-color;
+  .legend-container {
+    display: flex;
+    padding: 0 map.get($spacers, 3) map.get($spacers, 2);
+    gap: map.get($spacers, 3);
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: $font-size-base * 0.9;
+    color: $text-secondary;
+
+    .legend-color {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+    }
+
+    &.highlight {
+      color: $accent-color;
+      font-weight: $font-weight-medium;
+    }
   }
 }
 
 // 投资组合饼图
 .portfolio-pie-chart {
   @extend .chart-container;
-  height: 400px;
+  height: $chart-height;
+
+  .pie-legend {
+    position: absolute;
+    right: map.get($spacers, 3);
+    top: 50%;
+    transform: translateY(-50%);
+    background: $secondary-bg;
+    border-radius: $border-radius;
+    padding: map.get($spacers, 2);
+    border: $border-width solid $border-color;
+    max-width: 200px;
+
+    @include mix.media-breakpoint-down(md) {
+      position: relative;
+      top: 0;
+      right: 0;
+      transform: none;
+      max-width: 100%;
+      margin-top: map.get($spacers, 2);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: map.get($spacers, 1);
+      font-size: $font-size-base * 0.9;
+
+      .color-box {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+
+      .value {
+        margin-left: auto;
+        font-weight: $font-weight-medium;
+      }
+    }
+  }
 }
 
 // 热力图
@@ -105,33 +187,52 @@
 
   .axis-label {
     font-size: $font-size-base;
-    font-weight: 500;
+    font-weight: $font-weight-medium;
     color: $text-secondary;
+  }
+
+  .heatmap-legend {
+    display: flex;
+    justify-content: center;
+    margin-top: map.get($spacers, 2);
+    gap: map.get($spacers, 2);
+    align-items: center;
+
+    .legend-gradient {
+      width: 120px;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right, $danger-color, $warning-color, $success-color);
+    }
+
+    .legend-text {
+      font-size: $font-size-base * 0.85;
+      color: $text-secondary;
+    }
   }
 }
 
 // 技术指标图
 .indicator-chart {
   @extend .chart-container;
-  height: 400px;
+  height: $chart-height;
 
   .indicator-selector {
     display: flex;
     gap: map.get($spacers, 2);
     padding: 0 map.get($spacers, 3) map.get($spacers, 2);
+    flex-wrap: wrap;
 
     .indicator-btn {
+      @include mix.button-base;
       padding: map.get($spacers, 1) map.get($spacers, 2);
       background: $primary-bg;
-      border: 1px solid $border-color;
-      border-radius: 4px;
+      border-color: $border-color;
       color: $text-primary;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all var(--transition-fast);
+      font-size: $font-size-base * 0.85;
 
       &:hover {
-        background: var(--hover-bg);
+        background: $hover-bg;
       }
 
       &.active {
@@ -141,20 +242,49 @@
       }
     }
   }
+
+  .chart-actions {
+    position: absolute;
+    top: map.get($spacers, 2);
+    right: map.get($spacers, 2);
+    display: flex;
+    gap: map.get($spacers, 1);
+
+    .action-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: $secondary-bg;
+      border: $border-width solid $border-color;
+      color: $text-secondary;
+      cursor: pointer;
+      transition: all $transition-fast;
+
+      &:hover {
+        color: $accent-color;
+        border-color: $accent-color;
+      }
+    }
+  }
 }
 
-// 图表提示框优化
+// 图表提示框优化（使用主题颜色变量）
 .echarts-tooltip {
-  background: rgba($gray-900, 0.95) !important;
-  border: 1px solid $border-color !important;
+  background: rgba($secondary-bg, 0.95) !important;
+  border: $border-width solid $border-color !important;
   border-radius: $border-radius !important;
-  box-shadow: 0 0.5rem 1rem rgba($black, 0.15) !important;
+  box-shadow: $hover-shadow !important;
   backdrop-filter: blur(10px);
+  padding: map.get($spacers, 2) !important;
+  font-size: $font-size-base !important;
 
   .tooltip-title {
-    font-weight: 600;
-    color: $white;
-    border-bottom: 1px solid rgba($white, 0.1);
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    border-bottom: $border-width solid rgba($text-primary, 0.1);
     padding-bottom: map.get($spacers, 1);
     margin-bottom: map.get($spacers, 1);
   }
@@ -166,12 +296,22 @@
     margin-bottom: 2px;
 
     .name {
-      color: $gray-300;
+      color: $text-secondary;
     }
 
     .value {
-      font-weight: 500;
-      color: $white;
+      font-weight: $font-weight-medium;
+      color: $text-primary;
+    }
+
+    .value-up {
+      color: $stock-up-color;
+      font-weight: $font-weight-medium;
+    }
+
+    .value-down {
+      color: $stock-down-color;
+      font-weight: $font-weight-medium;
     }
   }
 }
@@ -183,10 +323,10 @@
   .legend-item {
     padding: map.get($spacers, 1) map.get($spacers, 2) !important;
     border-radius: $border-radius-sm !important;
-    transition: background var(--transition-fast);
+    transition: background $transition-fast;
 
     &:hover {
-      background: var(--hover-bg) !important;
+      background: $hover-bg !important;
     }
   }
 }
@@ -194,23 +334,31 @@
 // 专业K线图表样式
 .pro-kline-chart {
   @extend .kline-chart;
-  border: 1px solid $border-color;
+  border: $border-width solid $border-color;
 
   // 价格刻度样式
   .price-scale {
     background: $secondary-bg;
-    border-right: 1px solid $border-color;
+    border-right: $border-width solid $border-color;
     padding: 0 8px;
 
     .price-label {
-      font-size: 11px;
+      font-size: $font-size-base * 0.75;
       color: $text-secondary;
       text-align: right;
       padding: 2px 0;
 
       &.highlight {
         color: $accent-color;
-        font-weight: 600;
+        font-weight: $font-weight-semibold;
+      }
+
+      &.up {
+        color: $stock-up-color;
+      }
+
+      &.down {
+        color: $stock-down-color;
       }
     }
   }
@@ -218,11 +366,11 @@
   // 时间刻度样式
   .time-scale {
     background: $secondary-bg;
-    border-top: 1px solid $border-color;
+    border-top: $border-width solid $border-color;
     padding: 4px 0;
 
     .time-label {
-      font-size: 11px;
+      font-size: $font-size-base * 0.75;
       color: $text-secondary;
       text-align: center;
     }
@@ -237,53 +385,92 @@
 
   .crosshair-label {
     background: $secondary-bg;
-    border: 1px solid $border-color;
+    border: $border-width solid $border-color;
     border-radius: $border-radius-sm;
     padding: 2px 6px;
-    font-size: 11px;
+    font-size: $font-size-base * 0.75;
     color: $text-primary;
+  }
+
+  // 子图表分隔线
+  .sub-chart-separator {
+    height: 1px;
+    background: $border-color;
+    margin: 5px 0;
   }
 }
 
-// 如果需要在运行时动态调整颜色，可以使用 CSS 变量
+// 资金流热力图（使用主题涨跌颜色）
 .moneyflow-heatmap {
+  @extend .chart-container;
+  height: auto;
+  padding: map.get($spacers, 3);
+
+  .heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: map.get($spacers, 2);
+
+    th, td {
+      padding: map.get($spacers, 2);
+      text-align: center;
+      border: $border-width solid $border-color;
+      font-size: $font-size-base * 0.9;
+    }
+
+    th {
+      background: $secondary-bg;
+      font-weight: $font-weight-semibold;
+    }
+  }
+
   .stock-cell {
     cursor: pointer;
-    transition: all var(--transition-normal);
+    transition: all $transition-normal;
     border-radius: $border-radius-sm;
 
     &:hover {
-      transform: scale(1.05);
+      transform: $hover-transform;
       z-index: 10;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      box-shadow: $hover-shadow;
     }
 
-    // 使用 CSS 自定义属性
+    // 基于主题涨跌颜色
     &.inflow-strong {
-      background: var(--success-color);
+      background: $success-color;
       opacity: 1;
     }
 
     &.inflow-medium {
-      background: var(--success-color);
+      background: $success-color;
       opacity: 0.7;
     }
 
+    &.inflow-weak {
+      background: $success-color;
+      opacity: 0.4;
+    }
+
     &.outflow-strong {
-      background: var(--danger-color);
+      background: $danger-color;
       opacity: 1;
     }
 
     &.outflow-medium {
-      background: var(--danger-color);
+      background: $danger-color;
       opacity: 0.7;
+    }
+
+    &.outflow-weak {
+      background: $danger-color;
+      opacity: 0.4;
     }
 
     &.neutral {
       background: $text-secondary;
+      opacity: 0.3;
     }
   }
-
 
   .heatmap-legend {
     display: flex;
@@ -291,7 +478,8 @@
     align-items: center;
     gap: map.get($spacers, 2);
     padding: map.get($spacers, 2);
-    font-size: 11px;
+    font-size: $font-size-base * 0.75;
+    flex-wrap: wrap;
 
     .legend-item {
       display: flex;
@@ -305,20 +493,20 @@
       }
     }
   }
-
 }
 
 // 图表加载状态
 .chart-loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  @include mix.flex-center;
   height: 100%;
   background: $chart-bg;
   border-radius: $border-radius-lg;
 
   .loading-spinner {
+    @include mix.loading-spinner;
     color: $accent-color;
+    width: 2em;
+    height: 2em;
   }
 
   .loading-text {
@@ -338,6 +526,7 @@
   border-radius: $border-radius-lg;
   color: $text-secondary;
   text-align: center;
+  padding: map.get($spacers, 4);
 
   .error-icon {
     font-size: 2rem;
@@ -347,25 +536,34 @@
 
   .error-text {
     margin-bottom: map.get($spacers, 2);
+    max-width: 400px;
   }
 
   .retry-btn {
-    @include mix.dark-btn;
-    font-size: 12px;
+    @include mix.button-base;
+    background: $secondary-bg;
+    border-color: $border-color;
+    color: $text-primary;
     padding: 4px 12px;
+    font-size: $font-size-base * 0.85;
+
+    &:hover {
+      background: $hover-bg;
+      border-color: $accent-color;
+    }
   }
 }
 
-// 响应式图表调整
+// 响应式图表调整（使用主题间距变量）
 @include mix.media-breakpoint-down(md) {
   .kline-chart {
-    height: 400px;
+    height: $chart-height * 1.2;
   }
 
   .pro-kline-chart {
     .price-scale .price-label,
     .time-scale .time-label {
-      font-size: 10px;
+      font-size: $font-size-base * 0.7;
     }
   }
 
@@ -373,37 +571,69 @@
     flex-direction: column;
     gap: map.get($spacers, 2);
 
+    .period-selector,
+    .indicator-selector {
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
     .indicator-selector {
       margin-left: 0;
-      justify-content: center;
+    }
+  }
+
+  .chart-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 1);
+
+    .title-actions {
+      width: 100%;
+      justify-content: space-between;
     }
   }
 }
 
-// 主题特定的图表调整
+@include mix.media-breakpoint-down(sm) {
+  .chart-container {
+    padding: map.get($spacers, 1);
+    height: auto;
+    min-height: 300px;
+  }
+
+  .chart-content {
+    height: 300px;
+  }
+
+  .indicator-chart .indicator-selector {
+    gap: map.get($spacers, 1);
+  }
+
+  .indicator-btn, .period-btn {
+    padding: map.get($spacers, 1) !important;
+    font-size: $font-size-base * 0.8 !important;
+  }
+}
+
+// 主题特定的图表调整（仅补充主题差异，不硬编码值）
 [data-theme="light"] {
   .echarts-tooltip {
-    background: rgba($white, 0.95) !important;
-    border-color: $border-color !important;
-    color: $text-primary;
+    background: rgba($primary-bg, 0.95) !important;
+  }
 
-    .tooltip-title {
-      color: $text-primary;
-      border-bottom-color: $border-color;
-    }
-
-    .tooltip-item .name {
-      color: $text-secondary;
-    }
-
-    .tooltip-item .value {
-      color: $text-primary;
-    }
+  .chart-container {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
 }
 
 [data-theme="dark"] {
   .moneyflow-heatmap .stock-cell {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: $card-shadow;
+  }
+
+  .echarts-legend {
+    .legend-item {
+      color: $text-secondary !important;
+    }
   }
 }

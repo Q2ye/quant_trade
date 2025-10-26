@@ -1,112 +1,148 @@
-// _variables.scss - 修复间距变量和添加完整变量系统
-:root {
-  // 数据同步页面特定变量
-  --page-bg: var(--primary-bg);
-  --page-header-bg: linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%);
+// _variables.scss - 优化后的主题变量系统
+@use 'themes' as *;
+@use 'sass:map';
 
-  // 状态卡片
-  --status-card-hover: color-mix(in srgb, var(--accent-color) 10%, transparent);
-  --status-running-bg: color-mix(in srgb, var(--accent-color) 10%, transparent);
-  --status-running-color: var(--accent-color);
-  --status-progress-bg: color-mix(in srgb, var(--success-color) 10%, transparent);
-  --status-progress-color: var(--success-color);
-  --status-time-bg: color-mix(in srgb, var(--warning-color) 10%, transparent);
-  --status-time-color: var(--warning-color);
-  --status-remaining-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
-  --status-remaining-color: var(--danger-color);
+// ============================================================================
+// 布局尺寸变量
+// ============================================================================
 
-  // 数据类型选择
-  --data-type-selected-bg: color-mix(in srgb, var(--accent-color) 8%, transparent);
-  --data-type-selected-border: var(--accent-color);
-  --data-type-selected-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent);
+$sidebar-expanded-width: theme-layout("sidebar-width") !default;
+$sidebar-collapsed-width: theme-layout("sidebar-collapsed-width") !default;
+$header-height: theme-layout("header-height") !default;
+$content-padding: theme-layout("content-padding") !default;
+$chart-height: theme-layout("chart-height") !default;
+$button-height: theme-layout("button-height") !default;
 
-  // 卡片阴影
-  --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-  --hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-
-  // 按钮样式
-  --action-primary-bg: linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 80%, black));
-  --primary-btn-hover-shadow: 0 6px 20px color-mix(in srgb, var(--accent-color) 40%, transparent);
-  --secondary-btn-bg: var(--secondary-bg);
-  --cancel-btn-bg: color-mix(in srgb, var(--danger-color) 10%, transparent);
-}
-
-// Sass 变量定义
-$spacers: (
-  0: 0,
-  1: 0.25rem,
-  2: 0.5rem,
-  3: 1rem,
-  4: 1.5rem,
-  5: 3rem
-) !default;
-
+// ============================================================================
 // 基础颜色变量
-$primary-bg: var(--primary-bg);
-$secondary-bg: var(--secondary-bg);
-$accent-color: var(--accent-color);
-$text-primary: var(--text-primary);
-$text-secondary: var(--text-secondary);
-$border-color: var(--border-color);
-$success-color: var(--success-color);
-$warning-color: var(--warning-color);
-$danger-color: var(--danger-color);
-$card-bg: var(--card-bg);
-$toolbar-bg: var(--toolbar-bg);
-$sidebar-bg: var(--sidebar-bg);
-$chart-bg: var(--chart-bg);
-$input-bg: var(--input-bg);
-$hover-bg: var(--hover-bg);
-$active-bg: var(--active-bg);
+// ============================================================================
 
-// 布局变量
-$sidebar-width: var(--sidebar-width);
-$sidebar-collapsed-width: var(--sidebar-collapsed-width);
-$header-height: var(--header-height);
-$footer-height: var(--footer-height);
-$chart-height: var(--chart-height);
-$chart-min-height: var(--chart-min-height);
+$primary-bg: theme-color("primary-bg") !default;
+$secondary-bg: theme-color("secondary-bg") !default;
+$accent-color: theme-color("accent-color") !default;
+$text-primary: theme-color("text-primary") !default;
+$text-secondary: theme-color("text-secondary") !default;
+$border-color: theme-color("border-color") !default;
 
-// 字体变量
-$font-family: var(--font-family);
-$font-size-base: var(--font-size-base);
-$line-height-base: var(--line-height-base);
+// ============================================================================
+// 语义化颜色变量
+// ============================================================================
 
-// 边框变量
-$border-radius: var(--border-radius);
-$border-radius-lg: var(--border-radius-lg);
-$border-radius-sm: var(--border-radius-sm);
+$success-color: theme-color("success-color") !default;
+$warning-color: theme-color("warning-color") !default;
+$danger-color: theme-color("danger-color") !default;
+$info-color: theme-color("info-color") !default;
+$purple-color: theme-color("purple-color") !default;
 
-// 动画变量
-$transition-fast: var(--transition-fast);
-$transition-normal: var(--transition-normal);
-$transition-slow: var(--transition-slow);
-$hover-transform: var(--hover-transform);
+// ============================================================================
+// 组件颜色变量
+// ============================================================================
 
-// 图表颜色变量
-$chart-grid: var(--chart-grid);
-$chart-up: var(--chart-up);
-$chart-down: var(--chart-down);
+$card-bg: theme-color("card-bg") !default;
+$card-header-bg: theme-color("card-header-bg") !default;
+$toolbar-bg: theme-color("toolbar-bg") !default;
+$sidebar-bg: theme-color("sidebar-bg") !default;
+$input-bg: theme-color("input-bg") !default;
+$hover-bg: theme-color("hover-bg") !default;
+$active-bg: theme-color("active-bg") !default;
 
-// 扩展颜色变量（用于 Sass 计算）
-$gray-900: #212529;
-$black: #000000;
-$white: #ffffff;
-$gray-300: #dee2e6;
+// ============================================================================
+// 股票价格变量
+// ============================================================================
 
-// 技术指标颜色
-$indicator-colors: (
-  "ma5": #ff6b6b,
-  "ma10": #4ecdc4,
-  "ma20": #45b7d1,
-  "ma60": #96ceb4
-) !default;
+$stock-up-color: theme-color("stock-up-color") !default;
+$stock-down-color: theme-color("stock-down-color") !default;
+$stock-flat-color: theme-color("stock-flat-color") !default;
 
-// 图表颜色映射
-$chart-colors: (
-  "blue": #2196f3,
-  "purple": #9c27b0,
-  "green": #4caf50,
-  "orange": #ff9800,
-  "red": #f44336
-) !default;
+// ============================================================================
+// 状态标识变量
+// ============================================================================
+
+$status-running-color: theme-color("status-running-color") !default;
+$status-progress-color: theme-color("status-progress-color") !default;
+$status-time-color: theme-color("status-time-color") !default;
+$status-remaining-color: theme-color("status-remaining-color") !default;
+
+// ============================================================================
+// 渐变背景变量
+// ============================================================================
+
+$header-bg-gradient: theme-color("header-bg-gradient") !default;
+$page-header-bg: theme-color("page-header-bg") !default;
+$card-gradient-bg: theme-color("card-gradient-bg") !default;
+
+// ============================================================================
+// 交互效果变量
+// ============================================================================
+
+$card-shadow: theme-color("card-shadow") !default;
+$card-hover-shadow: theme-color("card-hover-shadow") !default;
+$hover-shadow: theme-color("hover-shadow") !default;
+
+// ============================================================================
+// 字体排版变量
+// ============================================================================
+
+$font-family: theme-typography("font-family") !default;
+$font-size-base: theme-typography("font-size-base") !default;
+$font-weight-normal: theme-typography("font-weight-normal") !default;
+$font-weight-medium: theme-typography("font-weight-medium") !default;
+$font-weight-semibold: theme-typography("font-weight-semibold") !default;
+$font-weight-bold: theme-typography("font-weight-bold") !default;
+
+// ============================================================================
+// 间距系统变量
+// ============================================================================
+
+$spacers: theme-spacing("spacers") !default;
+
+// ============================================================================
+// 边框样式变量
+// ============================================================================
+
+$border-radius: theme-border("border-radius") !default;
+$border-radius-lg: theme-border("border-radius-lg") !default;
+$border-radius-sm: theme-border("border-radius-sm") !default;
+$border-width: theme-border("border-width") !default;
+
+// ============================================================================
+// 动画过渡变量
+// ============================================================================
+
+$transition-fast: theme-animation("transition-fast") !default;
+$transition-normal: theme-animation("transition-normal") !default;
+$transition-slow: theme-animation("transition-slow") !default;
+$hover-transform: theme-animation("hover-transform") !default;
+
+// ============================================================================
+// 页面专用变量
+// ============================================================================
+
+// 页面头部
+$page-header-padding: map.get($spacers, 3) map.get($spacers, 4) !default;
+$page-header-margin: 0 0 map.get($spacers, 4) 0 !default;
+$page-title-font-size: $font-size-base * 1.6 !default;
+$page-description-font-size: $font-size-base * 0.95 !default;
+
+// 状态卡片
+$status-icon-size: 48px !default;
+$status-icon-radius: $border-radius !default;
+
+// 功能卡片
+$function-card-padding: map.get($spacers, 3) !default;
+$function-icon-size: 2.5rem !default;
+$function-stats-gap: map.get($spacers, 2) !default;
+$function-footer-border: 1px solid $border-color !default;
+
+// 网格布局
+$core-function-grid: repeat(4, 1fr) !default;
+$status-overview-grid: repeat(4, 1fr) !default;
+
+// ============================================================================
+// 响应式断点变量
+// ============================================================================
+
+$breakpoint-xl: 1200px !default;
+$breakpoint-lg: 992px !default;
+$breakpoint-md: 768px !default;
+$breakpoint-sm: 576px !default;

@@ -1,507 +1,256 @@
-// global.scss
-// 全局样式 - 基于 CSS 变量的主题系统
+// global.scss - 优化后的全局样式
 @use 'variables' as *;
 @use 'mixins' as mix;
-@use 'sass:color';
 @use 'sass:map';
-@use 'layout';
-@use 'charts';
 
-// 深度选择器混合器
-@mixin deep() {
-  :deep {
-    @content;
-  }
+// ============================================================================
+// 基础重置与主题设置
+// ============================================================================
+
+:root {
+  color-scheme: light;
 }
 
-// 基础全局样式
-*,
-*::before,
-*::after {
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
-  font-family: var(--font-family), serif;
+html {
   font-size: $font-size-base;
-  line-height: $line-height-base;
-  color: $text-primary;
+  line-height: 1.5;
+  height: 100%;
+}
+
+body {
+  font-family: $font-family;
   background-color: $primary-bg;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
-  height: 100vh;
+  color: $text-primary;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color $transition-normal, color $transition-normal;
 }
 
-#app {
-  height: 100vh;
+// ============================================================================
+// 应用容器布局
+// ============================================================================
+
+.app-container {
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  min-height: 100vh;
+  position: relative;
 }
 
-// 容器
-.container {
-  width: 100%;
-  padding-right: map.get($spacers, 3);
-  padding-left: map.get($spacers, 3);
-  margin-right: auto;
-  margin-left: auto;
+// 侧边栏基础样式
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: $sidebar-expanded-width;
+  background: $sidebar-bg;
+  border-right: $border-width solid $border-color;
+  z-index: 1000;
+  transition: all $transition-normal;
+  overflow-y: auto;
+  @include mix.custom-scrollbar;
 
-  @include mix.media-breakpoint-up(sm) {
-    max-width: 540px;
-  }
+  // 侧边栏折叠状态
+  .sidebar-collapsed & {
+    width: $sidebar-collapsed-width;
 
-  @include mix.media-breakpoint-up(md) {
-    max-width: 720px;
-  }
-
-  @include mix.media-breakpoint-up(lg) {
-    max-width: 960px;
-  }
-
-  @include mix.media-breakpoint-up(xl) {
-    max-width: 1140px;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 }
+
+// 主内容区域
+.app-main {
+  flex: 1;
+  margin-left: $sidebar-expanded-width;
+  transition: margin-left $transition-normal;
+
+  .sidebar-collapsed & {
+    margin-left: $sidebar-collapsed-width;
+  }
+}
+
+// 页面内容区域
+.page-content {
+  padding: $content-padding;
+  min-height: calc(100vh - #{$header-height});
+
+  .sidebar-collapsed & {
+    padding: map.get($spacers, 3);
+  }
+}
+
+// ============================================================================
+// 通用组件样式
+// ============================================================================
 
 // 页面标题
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: $text-primary;
-  margin-bottom: map.get($spacers, 4);
+.page-header {
+  @include mix.page-header-base;
 }
 
-// 状态栏
-.status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: $secondary-bg;
-  border-bottom: 1px solid $border-color;
-
-  .status-item {
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 2);
-
-    .status-label {
-      font-size: $font-size-base;
-      color: $text-secondary;
-    }
-
-    .status-value {
-      font-weight: 600;
-      color: $text-primary;
-    }
-
-    &.market-status {
-      .indicator {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-
-        &.open {
-          background: $success-color;
-        }
-
-        &.closed {
-          background: $danger-color;
-        }
-      }
-    }
-  }
+// 状态卡片
+.status-card {
+  @include mix.status-card-base;
 }
 
-// 导航栏
-.app-navbar {
-  background: $secondary-bg;
-  box-shadow: 0 0.125rem 0.625rem rgba(0, 0, 0, 0.1);
-  padding: 0 map.get($spacers, 3);
-
-  .nav-link {
-    padding: map.get($spacers, 3) map.get($spacers, 2);
-    color: $text-secondary;
-    font-weight: 500;
-    position: relative;
-
-    // 修复后的深度选择器用法
-    @include deep() {
-      .icon {
-        color: inherit;
-      }
-    }
-
-    &:hover {
-      color: $accent-color;
-    }
-
-    &.active {
-      color: $accent-color;
-
-      &::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: $accent-color;
-        border-radius: 3px 3px 0 0;
-      }
-    }
-  }
+// 功能卡片
+.function-card {
+  @include mix.function-card-base;
 }
 
-// 数据卡片
-.data-card {
-  @include mix.data-card;
+// 章节标题
+.section-title {
+  @include mix.section-title-base;
+}
 
-  .card-title {
-    font-size: $font-size-base;
-    font-weight: 600;
-    color: $text-primary;
+// 卡片标题栏
+.card-header {
+  @include mix.card-header-base;
+}
+
+// 基础卡片样式
+.card {
+  @include mix.card-base;
+  padding: map.get($spacers, 3);
+
+  .card-header {
+    padding-bottom: map.get($spacers, 2);
     margin-bottom: map.get($spacers, 2);
-  }
+    border-bottom: $border-width solid $border-color;
 
-  .card-value {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: $accent-color;
-  }
-
-  .card-change {
-    display: flex;
-    align-items: center;
-    font-size: $font-size-base;
-
-    &.positive {
-      color: $success-color;
-    }
-
-    &.negative {
-      color: $danger-color;
-    }
-  }
-}
-
-// 按钮
-.btn {
-  @include mix.dark-btn;
-}
-
-// 表单控件
-.form-control {
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  border: 1px solid $border-color;
-  border-radius: $border-radius;
-  background: var(--input-bg);
-  color: $text-primary;
-  transition: border-color var(--transition-fast);
-
-  &:focus {
-    border-color: $accent-color;
-    outline: none;
-    box-shadow: 0 0 0 0.2rem rgba(79, 156, 249, 0.1);
-  }
-}
-
-// 顶部状态栏
-.app-header {
-  height: $header-height;
-  background-color: $toolbar-bg;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid $border-color;
-  z-index: 100;
-
-  .logo {
-    font-weight: bold;
-    color: $accent-color;
-    margin-right: 20px;
-    display: flex;
-    align-items: center;
-
-    i {
-      margin-right: 10px;
-      font-size: 20px;
-    }
-  }
-
-  .market-status {
-    display: flex;
-    align-items: center;
-    margin-right: 20px;
-
-    .status-indicator {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-
-      &.status-open {
-        background-color: $success-color;
-      }
-
-      &.status-closed {
-        background-color: $danger-color;
-      }
-    }
-  }
-
-  .header-widgets {
-    display: flex;
-    margin-left: auto;
-    gap: 15px;
-
-    .header-widget {
-      display: flex;
-      align-items: center;
-      font-size: 13px;
-
-      i {
-        margin-right: 5px;
-        color: $accent-color;
-      }
-    }
-  }
-}
-
-// 侧边栏
-.app-sidebar {
-  width: $sidebar-width;
-  background-color: $sidebar-bg;
-  border-right: 1px solid $border-color;
-  overflow-y: auto;
-  transition: width var(--transition-normal);
-
-  &.collapsed {
-    width: $sidebar-collapsed-width;
-  }
-
-  .nav-section {
-    margin-bottom: 20px;
-
-    .nav-header {
-      padding: 15px 20px 10px;
-      font-size: 12px;
-      color: $text-secondary;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .nav-item {
-      display: flex;
-      align-items: center;
-      padding: 12px 20px;
+    .card-title {
+      font-size: $font-size-base * 1.1;
+      font-weight: $font-weight-semibold;
       color: $text-primary;
-      text-decoration: none;
-      transition: background-color var(--transition-fast);
-      cursor: pointer;
-
-      &:hover {
-        background-color: var(--hover-bg);
-      }
-
-      &.active {
-        background-color: var(--active-bg);
-        border-left: 3px solid $accent-color;
-      }
-
-      i {
-        margin-right: 12px;
-        width: 20px;
-        text-align: center;
-        color: $accent-color;
-      }
+      margin: 0;
     }
   }
 
-  &.collapsed {
-    .nav-text {
-      display: none;
-    }
+  .card-body {
+    color: $text-primary;
+  }
 
-    .nav-header {
-      display: none;
-    }
+  .card-footer {
+    padding-top: map.get($spacers, 2);
+    margin-top: map.get($spacers, 2);
+    border-top: $border-width solid $border-color;
   }
 }
 
-// 工作区
-.workspace {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
-  background-color: $primary-bg;
-}
+// ============================================================================
+// 状态样式
+// ============================================================================
 
-// 底部状态栏
-.app-footer {
-  height: $footer-height;
-  background-color: $toolbar-bg;
-  border-top: 1px solid $border-color;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  font-size: 12px;
+// 加载状态
+.loading-state {
+  @include mix.flex-center(column);
+  padding: map.get($spacers, 5);
   color: $text-secondary;
 
-  .footer-section {
-    display: flex;
-    align-items: center;
-    margin-right: 20px;
-
-    i {
-      margin-right: 6px;
-      color: $accent-color;
-    }
-  }
-
-  .footer-log {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-  }
-}
-
-// 专业交易组件样式
-// 订单队列组件
-.order-book {
-  .bid-rows, .ask-rows {
-    .order-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      padding: 4px 8px;
-      font-size: 12px;
-      border-bottom: 1px solid $border-color;
-
-      &:hover {
-        background: var(--hover-bg);
-      }
-    }
-  }
-
-  .bid-rows .order-row {
-    background: linear-gradient(90deg, rgba(76, 175, 80, 0.1) 0%, transparent 100%);
-  }
-
-  .ask-rows .order-row {
-    background: linear-gradient(90deg, rgba(244, 67, 54, 0.1) 0%, transparent 100%);
-  }
-}
-
-// 持仓卡片组件
-.position-card {
-  @include mix.data-card;
-
-  .position-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .loading-spinner {
+    @include mix.loading-spinner(2em);
     margin-bottom: map.get($spacers, 2);
-
-    .stock-info {
-      flex: 1;
-    }
-
-    .position-actions {
-      display: flex;
-      gap: map.get($spacers, 1);
-    }
-  }
-
-  .position-metrics {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: map.get($spacers, 2);
-
-    .metric-item {
-      .label {
-        font-size: 11px;
-        color: $text-secondary;
-      }
-
-      .value {
-        font-weight: 600;
-
-        &.profit {
-          color: $success-color;
-        }
-
-        &.loss {
-          color: $danger-color;
-        }
-      }
-    }
+    color: $accent-color;
   }
 }
 
-// 交易信号组件
-.signal-indicator {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
+// 空状态
+.empty-state {
+  @include mix.flex-center(column);
+  padding: map.get($spacers, 5);
+  text-align: center;
+  color: $text-secondary;
 
-  &.signal-buy {
-    background: rgba(76, 175, 80, 0.2);
-    color: #4caf50;
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: map.get($spacers, 2);
+    opacity: 0.5;
   }
 
-  &.signal-sell {
-    background: rgba(244, 67, 54, 0.2);
-    color: #f44336;
-  }
-
-  &.signal-hold {
-    background: rgba(255, 152, 0, 0.2);
-    color: #ff9800;
+  .empty-text {
+    margin-bottom: map.get($spacers, 3);
   }
 }
 
-// 风险等级指示器
-.risk-level {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 6px;
+// ============================================================================
+// 工具类
+// ============================================================================
 
-  &.risk-low {
-    background: $success-color;
-  }
+// 文本对齐
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
 
-  &.risk-medium {
-    background: $warning-color;
-  }
+// 弹性布局
+.d-flex { display: flex; }
+.flex-column { flex-direction: column; }
+.align-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
 
-  &.risk-high {
-    background: $danger-color;
-  }
+// 间距工具类
+@each $key, $value in $spacers {
+  .mt-#{$key} { margin-top: $value; }
+  .mb-#{$key} { margin-bottom: $value; }
+  .p-#{$key} { padding: $value; }
 }
 
-// 主题相关工具类
+// ============================================================================
+// 主题切换动画
+// ============================================================================
+
 .theme-transition {
-  transition: background-color var(--transition-normal),
-              color var(--transition-normal),
-              border-color var(--transition-normal);
+  transition: background-color $transition-normal,
+              color $transition-normal,
+              border-color $transition-normal,
+              box-shadow $transition-normal,
+              transform $transition-normal;
 }
 
-// 深色主题特定样式
-[data-theme="dark"] {
-  // 深色主题特有的样式调整
+// ============================================================================
+// 移动端优化
+// ============================================================================
+
+@include mix.media-breakpoint-down(sm) {
+  .app-sidebar {
+    transform: translateX(-100%);
+
+    &.mobile-open {
+      transform: translateX(0);
+    }
+  }
+
+  .app-main {
+    margin-left: 0 !important;
+  }
+
+  .page-content {
+    padding: map.get($spacers, 2);
+  }
+
+  // 移动端隐藏元素
+  .hide-on-mobile {
+    display: none !important;
+  }
 }
 
-// 亮色主题特定样式
-[data-theme="light"] {
-  // 亮色主题特有的样式调整
+// ============================================================================
+// 响应式图片
+// ============================================================================
+
+img {
+  max-width: 100%;
+  height: auto;
 }

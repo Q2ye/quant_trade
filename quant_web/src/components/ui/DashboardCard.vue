@@ -53,7 +53,7 @@ export default {
     },
     color: {
       type: String,
-      default: "#1890ff",
+      default: "var(--accent-color)",
     },
     trend: {
       type: Number,
@@ -80,27 +80,28 @@ export default {
 };
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .dashboard-card {
-  background-color: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  padding: 20px;
+  background-color: var(--card-bg);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  padding: var(--spacer-4);
   height: 100%;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s;
+  transition: all var(--transition-normal);
+  border: 1px solid var(--border-color);
 }
 
 .dashboard-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.12);
+  transform: var(--hover-transform);
+  box-shadow: var(--hover-shadow);
 }
 
 .card-header {
   display: flex;
   align-items: center;
-  margin-bottom: 15px;
+  margin-bottom: var(--spacer-3);
 }
 
 .card-icon {
@@ -111,31 +112,31 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  margin-right: 12px;
+  margin-right: var(--spacer-2);
 }
 
 .card-title {
   font-size: 14px;
-  color: #606266;
+  color: var(--text-secondary);
   flex: 1;
 }
 
 .status-badge {
-  margin-left: 10px;
+  margin-left: var(--spacer-2);
 }
 
 .card-value {
   font-size: 28px;
-  font-weight: bold;
-  color: #303133;
-  margin-bottom: 10px;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--spacer-2);
   line-height: 1.2;
 }
 
 .unit {
   font-size: 14px;
-  color: #909399;
-  font-weight: normal;
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-normal);
 }
 
 .card-footer {
@@ -156,15 +157,35 @@ export default {
 }
 
 .trend-up {
-  color: #f56c6c;
+  color: var(--success-color);
 }
 
 .trend-down {
-  color: #67c23a;
+  color: var(--danger-color);
 }
 
 .slot-content {
   flex: 1;
   text-align: right;
+}
+
+:root {
+  --accent-color: #2196F3;
+  --success-color: #67c23a;
+  --danger-color: #f56c6c;
+  --card-bg: #ffffff;
+  --text-primary: #303133;
+  --text-secondary: #606266;
+  --border-color: #e1e4e8;
+  --border-radius: 4px;
+  --spacer-2: 0.5rem;
+  --spacer-3: 1rem;
+  --spacer-4: 1.5rem;
+  --transition-normal: 0.3s;
+  --hover-transform: translateY(-5px);
+  --card-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  --hover-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.12);
+  --font-weight-normal: 400;
+  --font-weight-bold: 700;
 }
 </style>

@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import {h, onMounted, reactive, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {Button, Space, Tag} from 'ant-design-vue'
+import {Button, message, Space, Tag} from 'ant-design-vue'
 import type {ColumnsType} from 'ant-design-vue/es/table'
 import {ArrowLeftOutlined, SearchOutlined} from '@ant-design/icons-vue'
+
+// 引入 Iconify 图标
 
 const router = useRouter()
 
 // 返回按钮处理
 const handleBack = () => {
   router.go(-1)
+}
+
+// 刷新数据方法
+const refreshData = () => {
+  message.success('ETF数据已刷新')
+  loadETFList()
 }
 
 interface ETF {
@@ -141,21 +149,24 @@ onMounted(() => {
 
 <template>
   <div class="etf-list-page">
-    <a-card title="ETF列表" :bordered="false">
-      <template #extra>
-        <a-space>
-          <a-button
-              class="back-btn"
-              @click="handleBack"
-          >
+    <!-- 页面标题和状态-->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">ETF基金</h1>
+          <p class="page-description">交易所交易基金数据与市场分析</p>
+        </div>
+        <div class="header-actions-right">
+          <a-button class="back-btn" @click="handleBack">
             <template #icon>
               <ArrowLeftOutlined/>
             </template>
             返回
           </a-button>
-        </a-space>
-      </template>
-
+        </div>
+      </div>
+    </div>
+    <a-card title="ETF列表" :bordered="false">
       <div class="filter-bar">
         <a-space :size="16">
           <a-input
@@ -197,48 +208,97 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
+@use '@/assets/scss/mixins';
+
 .etf-list-page {
   padding: 24px;
   background: var(--primary-bg);
   min-height: 100vh;
 }
 
-:deep(.ant-card) {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
 
-  .ant-card-head {
-    border-bottom: 1px solid var(--border-color);
-    background: var(--secondary-bg);
+.page-header {
+  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  color: white;
+  padding: 20px 0;
+  margin-bottom: 20px;
 
-    .ant-card-head-title {
-      color: var(--text-primary);
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 var(--spacer-4);
+    position: relative;
+
+    .header-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+  }
+
+  .title-section {
+    flex: 1;
+
+    .page-title {
+      margin: 0;
+      font-size: 24px;
       font-weight: 600;
+      color: white;
+    }
+
+    .page-description {
+      margin: 6px 0 0 0;
+      opacity: 0.9;
+      font-size: 13px;
     }
   }
 }
 
+// 刷新按钮样式
 .back-btn {
-  background: var(--secondary-btn-bg);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: var(--border-radius);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: var(--border-radius, 6px);
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.3s);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: 32px;
+  display: flex;
+  align-items: center;
 
   &:hover {
-    background: var(--hover-bg);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 }
 
-.filter-bar {
-  margin-bottom: 16px;
-  padding: var(--spacer-3);
-  background: var(--secondary-bg);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
+:deep(.ant-card) {
+  @include mixins.unified-card;
+
+  .filter-bar {
+    margin-bottom: 16px;
+    padding: var(--spacer-3);
+    background: var(--secondary-bg);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+  }
 }
+
+:deep(.ant-table) {
+  @include mixins.unified-table;
+}
+
 </style>
