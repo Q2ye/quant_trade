@@ -185,8 +185,8 @@
 
 /// 带侧边栏的内容区域混入
 @mixin content-with-sidebar {
-  margin-left: $sidebar-expanded-width;
-  width: calc(100% - $sidebar-expanded-width);
+  width: calc(100% - $sidebar-collapsed-width);
+  //width: calc(100% - map.get($spacers, 4));
   transition: all $transition-normal;
   position: relative;
   z-index: 1;
@@ -194,9 +194,11 @@
   min-height: 100vh;
   background: $primary-bg;
 
+  //侧边栏折叠
   .sidebar-collapsed & {
-    margin-left: $sidebar-collapsed-width;
     width: calc(100% - $sidebar-collapsed-width);
+    //width: calc(100% - map.get($spacers, 4));
+
   }
 
   [data-theme="light"] & {
@@ -325,7 +327,8 @@
 // ============================================================================
 
 @mixin card-base($hover: true) {
-  background: $card-bg;
+  //background: $card-bg;
+    background: $header-bg-gradient;
   border: $border-width solid $border-color;
   border-radius: $border-radius;
   box-shadow: $card-shadow;
@@ -491,14 +494,13 @@
   display: flex;
 
   .header-content {
-    max-width: 1400px;
     margin: 0 auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
     position: relative;
     z-index: 1;
-    padding: 0 map.get($spacers, 2);
+    padding: 0 map.get($spacers, 3);
     width: 100%;
     min-height: $header-height;
 
@@ -534,7 +536,7 @@
       margin-left: map.get($spacers, 4);
       display: flex;
       align-items: center;
-      padding: map.get($spacers, 2) 0; // 增加垂直内边距确保垂直居中
+      padding: map.get($spacers, 1) 0; // 增加垂直内边距确保垂直居中
       justify-content: flex-end; // 按钮靠右
       height: 100%; // 确保高度占满父容器
 
@@ -599,6 +601,7 @@
   flex-direction: column;
   transition: all $transition-normal;
   height: calc(100% * #{$height-scale}); // 使用缩放比例
+
 
   // 根据高度比例调整内部间距
   @if $height-scale < 1 {

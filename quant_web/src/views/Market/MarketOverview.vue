@@ -1,92 +1,138 @@
+<!--MarketOverview.vue-->
+<!--重构后的市场概览页面 - 基于交易系统主题实现-->
+<!--移除了重复样式，统一使用主题样式系统-->
 <template>
-  <div class="market-overview">
-    <!-- 市场指数概览 -->
-    <div class="index-overview">
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-card class="index-card" shadow="hover">
-            <div class="index-content">
-              <div class="index-info">
-                <div class="index-name">上证指数</div>
-                <div class="index-code">000001.SH</div>
-              </div>
-              <div class="index-value">
-                <div class="current-price">{{ indexData.shanghai.close.toFixed(2) }}</div>
-                <div class="index-change" :class="getChangeClass(indexData.shanghai)">
-                  {{ formatChange(indexData.shanghai.change) }}
-                  ({{ formatPercent(indexData.shanghai.pct_chg) }})
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="index-card" shadow="hover">
-            <div class="index-content">
-              <div class="index-info">
-                <div class="index-name">深证成指</div>
-                <div class="index-code">399001.SZ</div>
-              </div>
-              <div class="index-value">
-                <div class="current-price">{{ indexData.shenzhen.close.toFixed(2) }}</div>
-                <div class="index-change" :class="getChangeClass(indexData.shenzhen)">
-                  {{ formatChange(indexData.shenzhen.change) }}
-                  ({{ formatPercent(indexData.shenzhen.pct_chg) }})
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="index-card" shadow="hover">
-            <div class="index-content">
-              <div class="index-info">
-                <div class="index-name">创业板指</div>
-                <div class="index-code">399006.SZ</div>
-              </div>
-              <div class="index-value">
-                <div class="current-price">{{ indexData.chuangye.close.toFixed(2) }}</div>
-                <div class="index-change" :class="getChangeClass(indexData.chuangye)">
-                  {{ formatChange(indexData.chuangye.change) }}
-                  ({{ formatPercent(indexData.chuangye.pct_chg) }})
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="index-card" shadow="hover">
-            <div class="index-content">
-              <div class="index-info">
-                <div class="index-name">科创50</div>
-                <div class="index-code">000688.SH</div>
-              </div>
-              <div class="index-value">
-                <div class="current-price">{{ indexData.kechuang50.close.toFixed(2) }}</div>
-                <div class="index-change" :class="getChangeClass(indexData.kechuang50)">
-                  {{ formatChange(indexData.kechuang50.change) }}
-                  ({{ formatPercent(indexData.kechuang50.pct_chg) }})
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+  <div class="market-overview-page sidebar-layout-container no-bleed-through">
+    <!-- 页面标题和状态 - 使用全局主题样式 -->
+    <div class="market-page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">市场概览</h1>
+          <p class="page-description">实时监控市场指数、资金流向和热点板块，掌握市场动态</p>
+        </div>
+        <div class="header-actions">
+          <el-button class="refresh-btn" @click="refreshData">
+            <Icon icon="ant-design:reload-outlined"/>
+            <span class="btn-text">刷新数据</span>
+          </el-button>
+        </div>
+      </div>
     </div>
 
-    <!-- 功能导航卡片 - 每行显示3个 -->
-    <div class="function-nav">
-      <el-row :gutter="16">
-        <!-- 股票市场卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/stocks')">
+    <!-- 主要内容区域 -->
+    <div class="main-content">
+      <!-- 市场指数概览 - 使用状态卡片布局 -->
+      <div class="index-overview">
+        <h2 class="market-section-title">
+          <Icon icon="mdi:chart-line" class="title-icon"/>
+          主要指数
+        </h2>
+        <div class="market-index-grid">
+          <el-card class="market-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">上证指数</div>
+                <div class="index-code">000001</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon" :class="getStatusClass(indexData.shanghai)">
+                  <Icon icon="mdi:trending-up"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ indexData.shanghai.close.toFixed(2) }}</div>
+                  <div class="index-change" :class="getChangeClass(indexData.shanghai)">
+                    <span class="change-value">{{ formatChange(indexData.shanghai.change) }}</span>
+                    <span class="change-percent">({{ formatPercent(indexData.shanghai.pct_chg) }})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="market-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">深证成指</div>
+                <div class="index-code">399001</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon" :class="getStatusClass(indexData.shenzhen)">
+                  <Icon icon="mdi:chart-areaspline"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ indexData.shenzhen.close.toFixed(2) }}</div>
+                  <div class="index-change" :class="getChangeClass(indexData.shenzhen)">
+                    <span class="change-value">{{ formatChange(indexData.shenzhen.change) }}</span>
+                    <span class="change-percent">({{ formatPercent(indexData.shenzhen.pct_chg) }})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="market-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">创业板指</div>
+                <div class="index-code">399006</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon" :class="getStatusClass(indexData.chuangye)">
+                  <Icon icon="mdi:rocket-launch"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ indexData.chuangye.close.toFixed(2) }}</div>
+                  <div class="index-change" :class="getChangeClass(indexData.chuangye)">
+                    <span class="change-value">{{ formatChange(indexData.chuangye.change) }}</span>
+                    <span class="change-percent">({{ formatPercent(indexData.chuangye.pct_chg) }})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="market-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">科创50</div>
+                <div class="index-code">000688</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon" :class="getStatusClass(indexData.kechuang50)">
+                  <Icon icon="mdi:chip"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ indexData.kechuang50.close.toFixed(2) }}</div>
+                  <div class="index-change" :class="getChangeClass(indexData.kechuang50)">
+                    <span class="change-value">{{ formatChange(indexData.kechuang50.change) }}</span>
+                    <span class="change-percent">({{ formatPercent(indexData.kechuang50.pct_chg) }})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </div>
+      </div>
+
+      <!-- 功能导航卡片 - 使用核心功能网格布局 -->
+      <div class="function-nav">
+        <h2 class="market-section-title">
+          <Icon icon="mdi:apps" class="title-icon"/>
+          功能导航
+        </h2>
+
+        <div class="function-grid">
+          <!-- 股票市场 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/stocks')">
             <div class="function-content">
-              <div class="function-icon" style="color: #2196F3;">
-                <Icon icon="mdi:chart-bar"/>
+              <div class="function-header">
+                <div class="function-icon accent">
+                  <Icon icon="mdi:chart-bar"/>
+                </div>
+                <h3 class="function-title">股票市场</h3>
               </div>
               <div class="function-info">
-                <h3>股票市场</h3>
-                <p>A股全市场股票行情数据</p>
+                <p class="function-description">A股全市场股票行情数据</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">上涨:</span>
@@ -98,7 +144,7 @@
                   </div>
                   <div class="stat-item">
                     <span class="stat-label">平盘:</span>
-                    <span class="stat-value">{{ stockStats.flatCount }}</span>
+                    <span class="stat-value flat">{{ stockStats.flatCount }}</span>
                   </div>
                 </div>
                 <div class="function-footer">
@@ -108,18 +154,18 @@
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- ETF基金卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/etfs')">
+          <!-- ETF基金 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/etfs')">
             <div class="function-content">
-              <div class="function-icon" style="color: #3FB950;">
-                <Icon icon="mdi:finance"/>
+              <div class="function-header">
+                <div class="function-icon success">
+                  <Icon icon="mdi:finance"/>
+                </div>
+                <h3 class="function-title">ETF基金</h3>
               </div>
               <div class="function-info">
-                <h3>ETF基金</h3>
-                <p>交易所交易基金数据</p>
+                <p class="function-description">交易所交易基金数据</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">股票ETF:</span>
@@ -141,18 +187,18 @@
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 指数行情卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/indexes')">
+          <!-- 指数行情 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/indexes')">
             <div class="function-content">
-              <div class="function-icon" style="color: #D29922;">
-                <Icon icon="mdi:chart-timeline"/>
+              <div class="function-header">
+                <div class="function-icon warning">
+                  <Icon icon="mdi:chart-timeline"/>
+                </div>
+                <h3 class="function-title">指数行情</h3>
               </div>
               <div class="function-info">
-                <h3>指数行情</h3>
-                <p>主要市场指数表现</p>
+                <p class="function-description">主要市场指数表现</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">宽基指数:</span>
@@ -174,20 +220,18 @@
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
 
-      <el-row :gutter="16" style="margin-top: 16px;">
-        <!-- 行业强弱卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/industry-strength')">
+          <!-- 行业强弱 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/industry-strength')">
             <div class="function-content">
-              <div class="function-icon" style="color: #8B949E;">
-                <Icon icon="mdi:chart-tree"/>
+              <div class="function-header">
+                <div class="function-icon purple">
+                  <Icon icon="mdi:chart-tree"/>
+                </div>
+                <h3 class="function-title">行业强弱</h3>
               </div>
               <div class="function-info">
-                <h3>行业强弱</h3>
-                <p>行业强弱与趋势分析</p>
+                <p class="function-description">行业强弱与趋势分析</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">领涨行业:</span>
@@ -209,18 +253,18 @@
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 资金流向卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/money-flow')">
+          <!-- 资金流向 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/money-flow')">
             <div class="function-content">
-              <div class="function-icon" style="color: #8b5cf6;">
-                <Icon icon="mdi:cash-multiple"/>
+              <div class="function-header">
+                <div class="function-icon info">
+                  <Icon icon="mdi:cash-multiple"/>
+                </div>
+                <h3 class="function-title">资金流向</h3>
               </div>
               <div class="function-info">
-                <h3>资金流向</h3>
-                <p>主力资金流向分析</p>
+                <p class="function-description">主力资金流向分析</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">主力净流入:</span>
@@ -244,18 +288,18 @@
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 涨跌停分析卡片 -->
-        <el-col :span="8">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/market/limit-analysis')">
+          <!-- 涨跌停分析 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/limit-analysis')">
             <div class="function-content">
-              <div class="function-icon" style="color: #F85149;">
-                <Icon icon="mdi:trending-up"/>
+              <div class="function-header">
+                <div class="function-icon danger">
+                  <Icon icon="mdi:trending-up"/>
+                </div>
+                <h3 class="function-title">涨跌停分析</h3>
               </div>
               <div class="function-info">
-                <h3>涨跌停分析</h3>
-                <p>涨跌停股票统计分析</p>
+                <p class="function-description">涨跌停股票统计分析</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">涨停:</span>
@@ -277,18 +321,24 @@
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
-    </div>
+        </div>
+      </div>
 
-    <!-- 市场热点与实时数据 -->
-    <div class="market-hotspots">
-      <el-row :gutter="16">
-        <el-col :span="12">
+      <!-- 市场热点与实时数据 -->
+      <div class="market-hotspots">
+        <h2 class="market-section-title">
+          <Icon icon="mdi:fire" class="title-icon"/>
+          市场热点
+        </h2>
+        <div class="hotspot-grid">
+          <!-- 实时涨幅榜卡片 -->
           <el-card class="hotspot-card" shadow="never">
             <template #header>
               <div class="card-header">
-                <span class="card-title">实时涨幅榜</span>
+                <div class="card-title">
+                  <Icon icon="mdi:trending-up" class="card-title-icon"/>
+                  实时涨幅榜
+                </div>
                 <el-button type="text" @click="navigateTo('/market/stocks')">
                   查看更多
                 </el-button>
@@ -301,7 +351,9 @@
                   class="hotspot-item"
                   @click="viewStockDetail(stock)"
               >
-                <div class="hotspot-rank">{{ index + 1 }}</div>
+                <div class="item-icon">
+                  <Icon icon="mdi:trending-up" class="trend-icon up"/>
+                </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ stock.name }}</div>
                   <div class="stock-code">{{ stock.code }}</div>
@@ -309,18 +361,21 @@
                 <div class="hotspot-change up">
                   +{{ stock.change.toFixed(2) }}%
                 </div>
-                <div class="hotspot-price">
+                <div class="hotspot-price flat">
                   ¥{{ stock.price.toFixed(2) }}
                 </div>
               </div>
             </div>
           </el-card>
-        </el-col>
-        <el-col :span="12">
+
+          <!-- 资金流入榜卡片 -->
           <el-card class="hotspot-card" shadow="never">
             <template #header>
               <div class="card-header">
-                <span class="card-title">资金流入榜</span>
+                <div class="card-title">
+                  <Icon icon="mdi:cash-plus" class="card-title-icon"/>
+                  资金流入榜
+                </div>
                 <el-button type="text" @click="navigateTo('/market/money-flow')">
                   查看更多
                 </el-button>
@@ -333,6 +388,9 @@
                   class="flow-item"
                   @click="viewStockDetail(flow)"
               >
+                <div class="item-icon">
+                  <Icon icon="mdi:cash-plus" class="flow-icon up"/>
+                </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ flow.name }}</div>
                   <div class="stock-code">{{ flow.code }}</div>
@@ -340,10 +398,7 @@
                 <div class="flow-bar">
                   <div
                       class="flow-progress inflow"
-                      :style="{
-                      width: Math.min(flow.percentage, 100) + '%',
-                      backgroundColor: '#f56c6c'
-                    }"
+                      :style="{ width: Math.min(flow.percentage, 100) + '%' }"
                   ></div>
                 </div>
                 <div class="flow-amount up">
@@ -352,8 +407,8 @@
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -362,6 +417,7 @@
 import {onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {Icon} from '@iconify/vue'
+import {ElButton, ElMessage} from 'element-plus'
 
 const router = useRouter()
 
@@ -441,6 +497,7 @@ const topMoneyFlow = ref([
   {code: '601888', name: '中国中免', amount: 56789, percentage: 58}
 ])
 
+
 // 方法
 const navigateTo = (path) => {
   router.push(path)
@@ -451,9 +508,15 @@ const viewStockDetail = (stock) => {
 }
 
 const getChangeClass = (data) => {
-  if (data.change > 0) return 'price-up'
-  if (data.change < 0) return 'price-down'
-  return 'price-flat'
+  if (data.change > 0) return 'up'
+  if (data.change < 0) return 'down'
+  return 'flat'
+}
+
+const getStatusClass = (data) => {
+  if (data.change > 0) return 'running'
+  if (data.change < 0) return 'remaining'
+  return 'time'
 }
 
 const getFlowClass = (value) => {
@@ -486,342 +549,69 @@ const formatAmount = (amount, showSign = false) => {
   }
 }
 
-// 生命周期
+// 刷新数据方法
+const refreshData = () => {
+  // 模拟数据刷新
+  simulateDataUpdate()
+  ElMessage.success('数据已刷新')
+}
+
+// 模拟数据更新
+const simulateDataUpdate = () => {
+  // 随机更新指数数据
+  Object.keys(indexData.value).forEach(key => {
+    const item = indexData.value[key]
+    const change = (Math.random() - 0.45) * 5 // 轻微偏向上涨
+    item.close = parseFloat((item.close + change).toFixed(2))
+    item.change = parseFloat(change.toFixed(2))
+    item.pct_chg = parseFloat(((change / item.close) * 100).toFixed(2))
+  })
+
+  // 更新时间戳
+  const now = new Date()
+  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+  stockStats.value.updateTime = timeStr
+  moneyFlowStats.value.updateTime = timeStr
+}
+
+// 生命周期钩子
 onMounted(() => {
-  // 可以在这里添加数据获取逻辑
+  // 初始加载时刷新数据
+  refreshData()
 })
+
 </script>
 
 <style lang="scss" scoped>
-.market-overview {
-  padding: var(--spacer-4);
-  background: var(--primary-bg);
-  min-height: 100%;
+// 市场概览页面专用样式 - 基于交易系统主题实现
+// 主要使用主题变量和混入，仅定义组件特有样式
 
-  .index-overview {
-    margin-bottom: var(--spacer-4);
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as lmix;
+@use 'sass:map';
 
-    .index-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      transition: all var(--transition-normal);
+// 引入市场概览专用样式
+@use '@/assets/scss/market/market-overview';
 
-      &:hover {
-        transform: var(--hover-transform);
-        box-shadow: var(--hover-shadow);
-        border-color: var(--accent-color);
-      }
+// ============================================================================
+// 组件特有响应式调整
+// 仅保留无法通过全局样式覆盖的特殊调整
+// ============================================================================
 
-      .index-content {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: var(--spacer-3);
-
-        .index-info {
-          .index-name {
-            font-size: var(--font-size-base);
-            font-weight: var(--font-weight-semibold);
-            color: var(--text-primary);
-            margin-bottom: var(--spacer-1);
-          }
-
-          .index-code {
-            font-size: calc(var(--font-size-base) - 2px);
-            color: var(--text-secondary);
-          }
-        }
-
-        .index-value {
-          text-align: right;
-
-          .current-price {
-            font-size: 1.5rem;
-            font-weight: var(--font-weight-bold);
-            color: var(--text-primary);
-            margin-bottom: var(--spacer-1);
-          }
-
-          .index-change {
-            font-size: calc(var(--font-size-base) - 2px);
-            font-weight: var(--font-weight-semibold);
-
-            &.price-up {
-              color: #f56c6c;
-            }
-
-            &.price-down {
-              color: #67c23a;
-            }
-
-            &.price-flat {
-              color: var(--text-secondary);
-            }
-          }
-        }
-      }
+@include lmix.media-breakpoint-down(sm) {
+  // 移动端隐藏股票代码 - 组件特有调整
+  .hotspot-item,
+  .flow-item {
+    .stock-code {
+      display: none;
     }
   }
 
-  .function-nav {
-    margin-bottom: var(--spacer-4);
-
-    .function-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      cursor: pointer;
-      transition: all var(--transition-normal);
-      height: 100%;
-
-      &:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--hover-shadow);
-        border-color: var(--accent-color);
-      }
-
-      .function-content {
-        display: flex;
-        align-items: flex-start;
-        padding: var(--spacer-3);
-
-        .function-icon {
-          font-size: 2.5rem;
-          margin-right: var(--spacer-3);
-          opacity: 0.8;
-          flex-shrink: 0;
-        }
-
-        .function-info {
-          flex: 1;
-
-          h3 {
-            margin: 0 0 var(--spacer-2) 0;
-            color: var(--text-primary);
-            font-size: 1.125rem;
-            font-weight: var(--font-weight-semibold);
-          }
-
-          p {
-            margin: 0 0 var(--spacer-3) 0;
-            color: var(--text-secondary);
-            font-size: calc(var(--font-size-base) - 2px);
-            line-height: var(--line-height-base);
-          }
-
-          .function-stats {
-            display: flex;
-            flex-direction: column;
-            gap: var(--spacer-2);
-            margin-bottom: var(--spacer-3);
-
-            .stat-item {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-
-              .stat-label {
-                font-size: calc(var(--font-size-base) - 2px);
-                color: var(--text-secondary);
-              }
-
-              .stat-value {
-                font-size: calc(var(--font-size-base) - 1px);
-                font-weight: var(--font-weight-semibold);
-                color: var(--text-primary);
-
-                &.up {
-                  color: #f56c6c;
-                }
-
-                &.down {
-                  color: #67c23a;
-                }
-              }
-            }
-          }
-
-          .function-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: var(--spacer-2);
-            border-top: 1px solid var(--border-color);
-
-            .update-time {
-              font-size: calc(var(--font-size-base) - 4px);
-              color: var(--text-secondary);
-            }
-          }
-        }
-      }
+  // 移动端简化资金流向显示 - 组件特有调整
+  .flow-item {
+    .flow-bar {
+      display: none;
     }
   }
-
-  .market-hotspots {
-    .hotspot-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-
-      .card-header {
-        margin: 0 0 var(--spacer-2) 0;
-        color: var(--text-primary);
-        font-size: 1.125rem;
-        font-weight: var(--font-weight-semibold);
-      }
-
-      :deep(.el-card__header) {
-        background: var(--secondary-bg);
-        border-bottom: 1px solid var(--border-color);
-        padding: var(--spacer-3);
-      }
-
-      :deep(.el-card__body) {
-        padding: var(--spacer-3);
-      }
-
-      .hotspot-list, .money-flow-list {
-        .hotspot-item, .flow-item {
-          display: flex;
-          align-items: center;
-          padding: var(--spacer-2) 0;
-          border-bottom: 1px solid var(--border-color);
-          cursor: pointer;
-          transition: background-color var(--transition-normal);
-
-          &:hover {
-            background-color: var(--hover-bg);
-          }
-
-          &:last-child {
-            border-bottom: none;
-          }
-
-          .hotspot-rank {
-            width: 30px;
-            text-align: center;
-            font-weight: var(--font-weight-semibold);
-            color: var(--text-secondary);
-          }
-
-          .stock-info {
-            flex: 1;
-            margin: 0 var(--spacer-3);
-
-            .stock-name {
-              font-weight: var(--font-weight-medium);
-              color: var(--text-primary);
-              margin-bottom: 2px;
-            }
-
-            .stock-code {
-              font-size: calc(var(--font-size-base) - 4px);
-              color: var(--text-secondary);
-            }
-          }
-
-          .hotspot-change {
-            width: 80px;
-            text-align: right;
-            font-weight: var(--font-weight-semibold);
-          }
-
-          .hotspot-price {
-            width: 80px;
-            text-align: right;
-            font-weight: var(--font-weight-medium);
-            color: var(--text-primary);
-          }
-
-          .flow-bar {
-            flex: 1;
-            height: 8px;
-            background: var(--border-color);
-            border-radius: 4px;
-            margin: 0 var(--spacer-3);
-            overflow: hidden;
-
-            .flow-progress {
-              height: 100%;
-              transition: width var(--transition-normal);
-            }
-          }
-
-          .flow-amount {
-            width: 100px;
-            text-align: right;
-            font-weight: var(--font-weight-semibold);
-          }
-        }
-      }
-    }
-  }
-}
-
-// 响应式设计
-@media (max-width: 1200px) {
-  .function-nav .el-col {
-    width: 50%;
-  }
-}
-
-@media (max-width: 768px) {
-  .market-overview {
-    padding: var(--spacer-2);
-  }
-
-  .function-nav .el-col {
-    width: 100%;
-  }
-
-  .function-card .function-content {
-    flex-direction: column;
-    text-align: center;
-
-    .function-icon {
-      margin-right: 0;
-      margin-bottom: var(--spacer-2);
-    }
-  }
-
-  .market-hotspots .el-col {
-    width: 100%;
-    margin-bottom: var(--spacer-3);
-  }
-}
-
-// 修复指数卡片样式
-.index-card {
-  .index-content {
-    min-height: 80px;
-  }
-
-  .current-price {
-    font-size: 1.5rem !important;
-    font-weight: 700 !important;
-  }
-
-  .index-change {
-    font-size: 0.875rem !important;
-  }
-}
-
-// 确保颜色一致性
-.price-up {
-  color: #f56c6c !important;
-}
-
-.price-down {
-  color: #67c23a !important;
-}
-
-.up {
-  color: #f56c6c !important;
-}
-
-.down {
-  color: #67c23a !important;
 }
 </style>

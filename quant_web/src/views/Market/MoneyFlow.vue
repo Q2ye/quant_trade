@@ -3,49 +3,49 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
-        <div class="header-left">
-          <el-button
-              class="back-btn"
-              @click="handleBack"
-              :icon="ArrowLeft"
-              text
-          >
-            返回
-          </el-button>
+        <div class="title-section">
           <h1 class="page-title">资金流向分析</h1>
+          <p class="page-description">实时追踪主力资金动向与市场资金分布</p>
         </div>
-        <div class="header-actions">
-          <el-button-group>
-            <el-button
-                :type="activePeriod === 'today' ? 'primary' : ''"
+        <div class="header-actions-right">
+          <a-button-group class="period-buttons">
+            <a-button
+                :type="activePeriod === 'today' ? 'primary' : 'default'"
                 @click="activePeriod = 'today'"
                 size="small"
             >
               今日
-            </el-button>
-            <el-button
-                :type="activePeriod === '5d' ? 'primary' : ''"
+            </a-button>
+            <a-button
+                :type="activePeriod === '5d' ? 'primary' : 'default'"
                 @click="activePeriod = '5d'"
                 size="small"
             >
               5日
-            </el-button>
-            <el-button
-                :type="activePeriod === '10d' ? 'primary' : ''"
+            </a-button>
+            <a-button
+                :type="activePeriod === '10d' ? 'primary' : 'default'"
                 @click="activePeriod = '10d'"
                 size="small"
             >
               10日
-            </el-button>
-          </el-button-group>
-          <el-button type="primary" @click="refreshData" size="small">
-            <Icon icon="mdi:refresh"/>
+            </a-button>
+          </a-button-group>
+          <a-button type="primary" @click="refreshData" size="small" class="action-btn">
+            <template #icon>
+              <ReloadOutlined/>
+            </template>
             刷新
-          </el-button>
+          </a-button>
+          <a-button class="back-btn" @click="handleBack">
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
         </div>
       </div>
     </div>
-
     <!-- 资金流向概览 -->
     <div class="flow-overview">
       <el-row :gutter="16">
@@ -310,6 +310,7 @@ import {computed, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {ElMessage} from 'element-plus'
 import {Icon} from '@iconify/vue'
+import {ArrowLeftOutlined, ReloadOutlined} from '@ant-design/icons-vue'
 
 const router = useRouter()
 // 返回按钮处理
@@ -487,48 +488,119 @@ onMounted(() => {
   min-height: 100%;
 
   .page-header {
-    margin-bottom: var(--spacer-4);
+    background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+    color: white;
+    padding: 20px 0;
+    margin-bottom: 20px;
 
     .header-content {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--spacer-3);
-      background: var(--card-bg);
-      border-radius: var(--border-radius);
-      border: 1px solid var(--border-color);
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 var(--spacer-4);
+      position: relative;
 
-      .header-left {
+      .header-actions-right {
         display: flex;
         align-items: center;
-        gap: var(--spacer-3);
+        gap: 8px; /* 减小间距，使按钮更紧凑 */
+        flex-shrink: 0;
       }
+    }
 
-      .back-btn {
-        color: var(--text-secondary);
-        border: 1px solid var(--border-color);
-        background: var(--secondary-bg);
-        transition: all var(--transition-fast);
-
-        &:hover {
-          color: var(--accent-color);
-          border-color: var(--accent-color);
-          background: var(--hover-bg);
-        }
-      }
+    .title-section {
+      flex: 1;
 
       .page-title {
         margin: 0;
-        color: var(--text-primary);
-        font-size: 1.5rem;
-        font-weight: var(--font-weight-semibold);
+        font-size: 24px;
+        font-weight: 600;
+        color: white;
       }
 
-      .header-actions {
-        display: flex;
-        gap: var(--spacer-2);
-        align-items: center;
+      .page-description {
+        margin: 6px 0 0 0;
+        opacity: 0.9;
+        font-size: 13px;
       }
+    }
+  }
+
+  // 周期按钮组样式
+  .period-buttons {
+    :deep(.ant-btn) {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.5);
+        color: white;
+      }
+
+      &.ant-btn-primary {
+        background: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+    }
+  }
+
+  // 操作按钮样式
+  .action-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    border-radius: var(--border-radius, 6px);
+    font-weight: 500;
+    transition: all var(--transition-fast, 0.3s);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.5);
+      color: white;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+
+  // 返回按钮样式 - 与StockList保持一致
+  .back-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    border-radius: var(--border-radius, 6px);
+    font-weight: 500;
+    transition: all var(--transition-fast, 0.3s);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.5);
+      color: white;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    &:active {
+      transform: translateY(0);
     }
   }
 

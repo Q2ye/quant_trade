@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import {ref, reactive, onMounted, computed, h} from 'vue'
+import {computed, h, onMounted, reactive, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {Table, Input, Select, Tag, Space, Button, Card, Modal, message} from 'ant-design-vue'
+import {Button, message, Space, Tag} from 'ant-design-vue'
 import type {ColumnsType} from 'ant-design-vue/es/table'
-import {SearchOutlined, StarOutlined, StarFilled, LineChartOutlined, ExportOutlined,ArrowLeftOutlined} from '@ant-design/icons-vue'
+import {
+  ArrowLeftOutlined,
+  ExportOutlined,
+  LineChartOutlined,
+  SearchOutlined,
+  StarFilled,
+  StarOutlined
+} from '@ant-design/icons-vue'
 import marketApi from '@/api/market'
 import {StockBasic} from '@/types/entities/data'
 import type {PaginatedResponse} from '@/types/api/base'
+
+// 引入 Iconify 图标
 
 interface Stock {
   ts_code: string
@@ -313,6 +322,24 @@ onMounted(() => {
 
 <template>
   <div class="stock-list-page">
+    <!-- 页面标题和状态 -->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">股票列表</h1>
+          <p class="page-description">A股全市场股票行情数据与统计分析</p>
+        </div>
+        <div class="header-actions-right">
+          <a-button class="back-btn" @click="handleBack">
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
+        </div>
+      </div>
+    </div>
+
     <a-card
         class="stock-list-card"
         title="股票列表"
@@ -320,15 +347,6 @@ onMounted(() => {
     >
       <template #extra>
         <a-space>
-          <a-button
-              class="back-btn"
-              @click="handleBack"
-          >
-            <template #icon>
-              <ArrowLeftOutlined/>
-            </template>
-            返回
-          </a-button>
           <a-button
               type="primary"
               @click="exportData"
@@ -438,47 +456,116 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
+@use '@/assets/scss/mixins';
+
 .stock-list-page {
   padding: var(--spacer-4, 1.5rem);
   background: var(--primary-bg);
   min-height: 100vh;
 }
 
-.stock-list-card {
-  background: var(--card-bg);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--card-shadow);
+.page-header {
+  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  color: white;
+  padding: 20px 0;
+  margin-bottom: 20px;
 
-  :deep(.ant-card-head) {
-    border-bottom: 1px solid var(--border-color);
-    background: var(--secondary-bg);
-    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 var(--spacer-4);
+    position: relative;
 
-    .ant-card-head-title {
-      color: var(--text-primary);
-      font-weight: 600;
-      font-size: 1.25rem;
+    .header-actions-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
     }
   }
 
-  :deep(.ant-card-body) {
-    padding: var(--spacer-4, 1.5rem);
+  .title-section {
+    flex: 1;
+
+    .page-title {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .page-description {
+      margin: 6px 0 0 0;
+      opacity: 0.9;
+      font-size: 13px;
+    }
   }
 }
 
+// 返回按钮样式
 .back-btn {
-  background: var(--secondary-btn-bg);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: var(--border-radius);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: var(--border-radius, 6px);
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.3s);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: 32px;
+  display: flex;
+  align-items: center;
 
   &:hover {
-    background: var(--hover-bg);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.stock-list-card {
+  @include mixins.unified-card;
+
+  .filter-bar {
+    margin-bottom: var(--spacer-4, 1.5rem);
+    padding: var(--spacer-3, 1rem);
+    background: var(--secondary-bg);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+  }
+}
+
+.stock-table {
+  :deep(.ant-table) {
+    @include mixins.unified-table;
+
+    // Ant Design 表格特定样式
+    .ant-table-thead > tr > th {
+      padding: var(--spacer-2, 0.5rem) var(--spacer-2, 0.5rem);
+    }
+
+    .ant-table-tbody > tr > td {
+      padding: var(--spacer-2, 0.5rem) var(--spacer-2, 0.5rem);
+    }
+
+    // 自选股星星样式
+    .ant-btn-link {
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+
+      &:hover {
+        color: var(--warning-color);
+      }
+    }
   }
 }
 
@@ -658,20 +745,21 @@ onMounted(() => {
 
 // 响应式调整
 @media (max-width: 768px) {
-  .stock-list-page {
-    padding: var(--spacer-2, 0.5rem);
+  .page-header .header-content {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+
+    .header-actions-right {
+      order: -1;
+      align-self: stretch;
+      justify-content: space-between;
+      margin-bottom: var(--spacer-2);
+    }
   }
 
-  .filter-bar {
-    padding: var(--spacer-2, 0.5rem);
-  }
-
-  .search-input {
-    width: 100%;
-  }
-
-  .filter-select {
-    width: 100%;
+  .stock-list-card {
+    margin: 0 var(--spacer-2) var(--spacer-2);
   }
 }
 

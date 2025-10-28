@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref} from 'vue'
-import {Button, Card, List, Progress, Space, Tag} from 'ant-design-vue'
-import {ArrowLeftOutlined, CloseCircleOutlined, PauseCircleOutlined, PlayCircleOutlined} from '@ant-design/icons-vue'
-import {useRouter} from 'vue-router'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { Button, Card, List, Progress, Space, Tag } from 'ant-design-vue'
+import { ArrowLeftOutlined, CloseCircleOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
 
-// 引入 Iconify 图标
-import {Icon} from '@iconify/vue'
-
-const router = useRouter() // 添加路由实例
+const router = useRouter()
 
 interface SyncTask {
   id: string
@@ -21,7 +18,6 @@ interface SyncTask {
   details: string
 }
 
-// 添加返回按钮处理函数
 const handleBack = () => {
   router.go(-1)
 }
@@ -33,7 +29,6 @@ let refreshInterval: number | undefined
 const loadTasks = async () => {
   loading.value = true
   try {
-    // 直接赋值，移除冗余的 mockData 变量
     tasks.value = [
       {
         id: '1',
@@ -54,7 +49,6 @@ const loadTasks = async () => {
   }
 }
 
-// 添加缺失的函数
 const handleControlTask = async (taskId: string, action: 'pause' | 'resume' | 'stop') => {
   try {
     console.log(`执行操作: ${action} 任务: ${taskId}`)
@@ -96,7 +90,6 @@ onUnmounted(() => {
 
 <template>
   <div class="task-monitor-page">
-    <!-- 页面标题区域 -->
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
@@ -106,7 +99,7 @@ onUnmounted(() => {
         <div class="header-actions-right">
           <a-button class="back-btn" @click="handleBack">
             <template #icon>
-              <ArrowLeftOutlined/>
+              <ArrowLeftOutlined />
             </template>
             返回
           </a-button>
@@ -117,55 +110,13 @@ onUnmounted(() => {
     <Card class="monitor-card">
       <div class="card-content">
         <List
-            :data-source="tasks"
-            :loading="loading"
-            item-layout="vertical"
-            class="task-list"
+          :data-source="tasks"
+          :loading="loading"
+          item-layout="vertical"
+          class="task-list"
         >
           <template #renderItem="{ item }">
             <List.Item class="task-item">
-              <template #actions>
-                <span class="task-meta">开始时间: {{ item.startTime }}</span>
-                <span class="task-meta">已运行: {{ item.elapsedTime }}</span>
-                <span class="task-meta">当前步骤: {{ item.currentStep }}</span>
-              </template>
-
-              <template #extra>
-                <Space class="task-actions">
-                  <Button
-                      v-if="item.status === 'running'"
-                      @click="handleControlTask(item.id, 'pause')"
-                      class="control-btn pause-btn"
-                  >
-                    <template #icon>
-                      <PauseCircleOutlined/>
-                    </template>
-                    暂停
-                  </Button>
-                  <Button
-                      v-if="item.status === 'paused'"
-                      @click="handleControlTask(item.id, 'resume')"
-                      class="control-btn resume-btn"
-                  >
-                    <template #icon>
-                      <PlayCircleOutlined/>
-                    </template>
-                    继续
-                  </Button>
-                  <Button
-                      danger
-                      @click="handleControlTask(item.id, 'stop')"
-                      class="control-btn stop-btn"
-                  >
-                    <template #icon>
-                      <CloseCircleOutlined/>
-                    </template>
-                    停止
-                  </Button>
-                </Space>
-              </template>
-
-              <!-- 修复 List.Item.Meta 的使用 -->
               <List.Item.Meta>
                 <template #title>
                   <Space class="task-title">
@@ -181,11 +132,52 @@ onUnmounted(() => {
               </List.Item.Meta>
 
               <Progress
-                  :percent="item.progress"
-                  :status="item.status === 'failed' ? 'exception' : 'normal'"
-                  class="task-progress"
-                  :stroke-color="item.status === 'failed' ? 'var(--danger-color)' : 'var(--accent-color)'"
+                :percent="item.progress"
+                :status="item.status === 'failed' ? 'exception' : 'normal'"
+                class="task-progress"
+                :stroke-color="item.status === 'failed' ? 'var(--danger-color)' : 'var(--accent-color)'"
               />
+
+              <template #actions>
+                <span class="task-meta">开始时间: {{ item.startTime }}</span>
+                <span class="task-meta">已运行: {{ item.elapsedTime }}</span>
+                <span class="task-meta">当前步骤: {{ item.currentStep }}</span>
+              </template>
+
+              <template #extra>
+                <Space class="task-actions">
+                  <Button
+                    v-if="item.status === 'running'"
+                    @click="handleControlTask(item.id, 'pause')"
+                    class="control-btn pause-btn"
+                  >
+                    <template #icon>
+                      <PauseCircleOutlined />
+                    </template>
+                    暂停
+                  </Button>
+                  <Button
+                    v-if="item.status === 'paused'"
+                    @click="handleControlTask(item.id, 'resume')"
+                    class="control-btn resume-btn"
+                  >
+                    <template #icon>
+                      <PlayCircleOutlined />
+                    </template>
+                    继续
+                  </Button>
+                  <Button
+                    danger
+                    @click="handleControlTask(item.id, 'stop')"
+                    class="control-btn stop-btn"
+                  >
+                    <template #icon>
+                      <CloseCircleOutlined />
+                    </template>
+                    停止
+                  </Button>
+                </Space>
+              </template>
             </List.Item>
           </template>
 
@@ -203,7 +195,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
-// 页面标题区域
 .page-header {
   background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
   color: white;
@@ -252,7 +243,6 @@ onUnmounted(() => {
   }
 }
 
-// 优化返回按钮样式
 .back-btn {
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -467,7 +457,6 @@ onUnmounted(() => {
   }
 }
 
-// 响应式调整
 @media (max-width: 768px) {
   .page-header .header-content {
     flex-direction: column;
@@ -528,7 +517,6 @@ onUnmounted(() => {
   }
 }
 
-// 动画效果
 @keyframes pulse {
   0% {
     opacity: 1;

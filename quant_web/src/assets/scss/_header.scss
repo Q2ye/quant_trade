@@ -6,7 +6,7 @@
 
 // 应用头部样式
 .app-header {
-  height: $header-height * 0.7; // 高度减少为80%
+  height: $header-height * 0.8; // 高度减少为80%
   background: $header-bg-gradient;
 
   display: flex;
@@ -41,14 +41,14 @@
 
     .logo-icon {
       margin-right: map.get($spacers, 2);
-      width: 20px; // 减小图标大小
-      height: 20px;
+      width: 24px; // 减小图标大小
+      height: 24px;
       color: #22D3EE;
 
     }
 
     .logo-text {
-      background: var(--accent-color);
+      background: $page-header-bg;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;

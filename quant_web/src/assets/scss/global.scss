@@ -1,6 +1,8 @@
 // global.scss - 优化后的全局样式
 @use 'variables' as *;
 @use 'mixins' as mix;
+@use 'layout';
+@use 'header';
 @use 'sass:map';
 
 // ============================================================================
@@ -58,6 +60,7 @@ body {
   z-index: 1000;
   transition: all $transition-normal;
   overflow-y: auto;
+  font-size: $sidebar-font-size;
   @include mix.custom-scrollbar;
 
   // 侧边栏折叠状态
@@ -253,4 +256,24 @@ body {
 img {
   max-width: 100%;
   height: auto;
+}
+
+// ============================================================================
+// 侧边栏专用样式（消除重复）
+// ============================================================================
+
+// 侧边栏基础字体设置
+.sidebar-content {
+  .nav-header {
+    font-size: $sidebar-header-font-size;
+  }
+
+  .nav-item {
+    font-size: $sidebar-font-size;
+
+    .nav-icon {
+      width: $sidebar-icon-size;
+      height: $sidebar-icon-size;
+    }
+  }
 }

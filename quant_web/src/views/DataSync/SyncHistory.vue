@@ -1,25 +1,21 @@
 <!-- quant_web/src/views/DataSync/SyncHistory.vue -->
 <script setup lang="ts">
-import {onMounted, reactive, ref} from 'vue'
-import {Alert, Button, Card, DatePicker, Descriptions, Divider, Drawer, Select, Space, Table, Tag} from 'ant-design-vue'
-import {ArrowLeftOutlined, ReloadOutlined, SearchOutlined} from '@ant-design/icons-vue'
-import {useRouter} from 'vue-router'
-
-// 引入 Iconify 图标
-import {Icon} from '@iconify/vue'
+import { onMounted, reactive, ref, h } from 'vue'
+import { Alert, Button, Card, DatePicker, Descriptions, Divider, Drawer, Select, Space, Table, Tag } from 'ant-design-vue'
+import { ArrowLeftOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
+import type { Dayjs } from 'dayjs'
 
 const SelectOption = Select.Option
 const DescriptionsItem = Descriptions.Item
 const RangePicker = DatePicker.RangePicker
 
-const router = useRouter() // 添加路由实例
+const router = useRouter()
 
-// 添加返回按钮处理函数
 const handleBack = () => {
   router.go(-1)
 }
 
-// 同步记录接口
 interface SyncRecord {
   id: string
   task_id: string
@@ -34,13 +30,11 @@ interface SyncRecord {
   error?: string
 }
 
-// 响应式数据
 const loading = ref(false)
 const records = ref<SyncRecord[]>([])
 const selectedRecord = ref<SyncRecord | null>(null)
 const drawerVisible = ref(false)
 
-// 分页和筛选
 const pagination = reactive({
   current: 1,
   pageSize: 20,
@@ -49,20 +43,136 @@ const pagination = reactive({
 
 const filters = reactive({
   status: '',
-  dateRange: [] as string[]
+  dateRange: [] as [Dayjs, Dayjs] | []
 })
 
-/**
- * 加载同步历史数据
- */
+const columns = [
+  {
+    title: '任务ID',
+    dataIndex: 'task_id',
+    key: 'task_id',
+    width: 120
+  },
+  {
+    title: '数据类型',
+    dataIndex: 'data_types',
+    key: 'data_types',
+    render: (types: string[]) => types.join(', ')
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    key: 'status',
+    render: (status: string) => {
+      const statusConfig = {
+        completed: { color: 'var(--success-color)', text: '完成' },
+        running: { color: 'var(--accent-color)', text: '运行中' },
+        failed: { color: 'var(--danger-color)', text: '失败' },
+        cancelled: { color: 'var(--warning-color)', text: '已取消' }
+      }
+      const config = statusConfig[status as keyof typeof statusConfig] || { color: 'default', text: status }
+      return h(Tag, { color: config.color }, () => config.text)
+    }
+  },
+  {
+    title: '开始时间',
+    dataIndex: 'start_time',
+    key: 'start_time'
+  },
+  {
+    title: '完成进度',
+    key: 'progress',
+    render: (record: SyncRecord) => `${record.completed_tasks}/${record.total_tasks}`
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    render: (record: SyncRecord) => h(Button, {
+      type: 'link',
+      onClick: () => showDetails(record)
+    }, () => '详情')
+  }
+]
+
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    completed: 'var(--success-color)',
+    running: 'var(--accent-color)',
+    failed: 'var(--danger-color)',
+    cancelled: 'var(--warning-color)'
+  }
+  return colors[status] || 'default'
+}
+
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    completed: '完成',
+    running: '运行中',
+    failed: '失败',
+    cancelled: '已取消'
+  }
+  return texts[status] || status
+}
+
+const formatTime = (time: string) => {
+  if (!time) return '-'
+  return time
+}
+
+const formatDuration = (startTime: string, endTime?: string) => {
+  if (!endTime) return '-'
+  return '计算中...'
+}
+
+const showDetails = (record: SyncRecord) => {
+  selectedRecord.value = record
+  drawerVisible.value = true
+}
+
+const closeDrawer = () => {
+  drawerVisible.value = false
+  selectedRecord.value = null
+}
+
+const handleSearch = () => {
+  pagination.current = 1
+  loadHistory()
+}
+
+const handleReset = () => {
+  filters.status = ''
+  filters.dateRange = []
+  pagination.current = 1
+  loadHistory()
+}
+
+const handleTableChange = (pag: any) => {
+  pagination.current = pag.current
+  pagination.pageSize = pag.pageSize
+  loadHistory()
+}
+
 const loadHistory = async () => {
   loading.value = true
   try {
-    // 模拟API调用 - 实际项目中需要实现对应的后端接口
-    const response = await fetch(`/api/data-sync/history?page=${pagination.current}&size=${pagination.pageSize}`)
-    const data = await response.json()
-    records.value = data.records
-    pagination.total = data.total
+    records.value = [
+      {
+        id: '1',
+        task_id: 'TASK_001',
+        data_types: ['市场数据', 'K线数据'],
+        status: 'completed',
+        start_time: '2024-01-15 10:00:00',
+        end_time: '2024-01-15 10:15:00',
+        duration: 900,
+        total_tasks: 100,
+        completed_tasks: 100,
+        results: {
+          '市场数据': { error: null },
+          'K线数据': { error: null }
+        }
+      }
+    ]
+    pagination.total = records.value.length
   } catch (error) {
     console.error('加载同步历史失败:', error)
   } finally {
@@ -70,8 +180,6 @@ const loadHistory = async () => {
   }
 }
 
-
-// 组件挂载时加载数据
 onMounted(() => {
   loadHistory()
 })
@@ -79,7 +187,6 @@ onMounted(() => {
 
 <template>
   <div class="sync-history-page">
-    <!-- 页面标题区域 -->
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
@@ -89,7 +196,7 @@ onMounted(() => {
         <div class="header-actions-right">
           <a-button class="back-btn" @click="handleBack">
             <template #icon>
-              <ArrowLeftOutlined/>
+              <ArrowLeftOutlined />
             </template>
             返回
           </a-button>
@@ -98,15 +205,14 @@ onMounted(() => {
     </div>
 
     <Card class="history-card">
-      <!-- 筛选栏 -->
       <div class="filter-bar">
         <Space :size="16" wrap>
           <Select
-              v-model:value="filters.status"
-              placeholder="状态筛选"
-              style="width: 120px"
-              allow-clear
-              class="status-select"
+            v-model:value="filters.status"
+            placeholder="状态筛选"
+            style="width: 120px"
+            allow-clear
+            class="status-select"
           >
             <SelectOption value="completed">完成</SelectOption>
             <SelectOption value="running">运行中</SelectOption>
@@ -115,51 +221,45 @@ onMounted(() => {
           </Select>
 
           <RangePicker
-              v-model:value="filters.dateRange"
-              style="width: 240px"
-              :placeholder="['开始日期', '结束日期']"
-              class="date-picker"
+            v-model:value="filters.dateRange"
+            style="width: 240px"
+            :placeholder="['开始日期', '结束日期']"
+            class="date-picker"
           />
 
           <Button type="primary" @click="handleSearch" class="search-btn">
-            <SearchOutlined/>
+            <SearchOutlined />
             搜索
           </Button>
 
           <Button @click="handleReset" class="reset-btn">重置</Button>
 
           <Button @click="loadHistory" :loading="loading" class="refresh-btn">
-            <ReloadOutlined/>
+            <ReloadOutlined />
             刷新
           </Button>
         </Space>
       </div>
 
-      <!-- 数据表格 -->
-      <Table
-          :columns="columns"
-          :data-source="records"
-          :pagination="pagination"
-          :loading="loading"
-          :row-key="(record: SyncRecord) => record.id"
-          @change="handleTableChange"
-          :scroll="{ x: 1000 }"
-          class="history-table"
-      >
-        <template #headerCell="{ column }">
-          <span>{{ column.title }}</span>
-        </template>
-      </Table>
+      <a-table
+        :columns="columns"
+        :data-source="records"
+        :pagination="pagination"
+        :loading="loading"
+        :row-key="(record: SyncRecord) => record.id"
+        @change="handleTableChange"
+        :scroll="{ x: 1000 }"
+        class="history-table"
+      />
 
-      <!-- 详情抽屉 -->
       <Drawer
-          :open="drawerVisible"
-          title="同步任务详情"
-          placement="right"
-          width="600"
-          :closable="true"
-          @close="closeDrawer"
-          class="detail-drawer"
+        :open="drawerVisible"
+        title="同步任务详情"
+        placement="right"
+        width="600"
+        :closable="true"
+        @close="closeDrawer"
+        class="detail-drawer"
       >
         <template v-if="selectedRecord">
           <Descriptions title="任务信息" bordered size="small" :column="1">
@@ -188,7 +288,7 @@ onMounted(() => {
             </DescriptionsItem>
           </Descriptions>
 
-          <Divider/>
+          <Divider />
 
           <Descriptions title="同步结果" bordered size="small" :column="1">
             <template v-for="(result, dataType) in selectedRecord.results" :key="dataType">
@@ -204,11 +304,11 @@ onMounted(() => {
           </Descriptions>
 
           <Alert
-              v-if="selectedRecord.error"
-              :message="selectedRecord.error"
-              type="error"
-              show-icon
-              class="error-alert"
+            v-if="selectedRecord.error"
+            :message="selectedRecord.error"
+            type="error"
+            show-icon
+            class="error-alert"
           />
         </template>
       </Drawer>
@@ -217,7 +317,6 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
-// 页面标题区域
 .page-header {
   background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
   color: white;
@@ -266,7 +365,6 @@ onMounted(() => {
   }
 }
 
-// 优化返回按钮样式
 .back-btn {
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -361,7 +459,6 @@ onMounted(() => {
   }
 }
 
-// 按钮样式
 .refresh-btn {
   background-color: var(--secondary-color);
   border-color: var(--secondary-color);
@@ -433,7 +530,6 @@ onMounted(() => {
   margin-top: var(--spacer-3);
 }
 
-// 响应式调整
 @media (max-width: 768px) {
   .page-header .header-content {
     flex-direction: column;

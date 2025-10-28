@@ -12,6 +12,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
     "@antv/g2plot": "^2.4.35",
     "@iconify/vue": "^5.0.0",
     "ant-design-vue": "^4.2.6",

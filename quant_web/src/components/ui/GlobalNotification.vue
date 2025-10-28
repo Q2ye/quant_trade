@@ -90,7 +90,6 @@ export default {
   methods: {
     toggleNotifications() {
       this.showNotifications = !this.showNotifications;
-      // 打开时标记为已读
       if (this.showNotifications) {
         this.markAllAsRead();
       }
@@ -119,7 +118,7 @@ export default {
 };
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .global-notification {
   position: relative;
   display: inline-block;
@@ -129,14 +128,20 @@ export default {
   position: relative;
   cursor: pointer;
   font-size: 18px;
-  padding: 5px 10px;
+  padding: var(--spacer-1) var(--spacer-2);
+  border-radius: var(--border-radius);
+  transition: background-color var(--transition-fast);
+
+  &:hover {
+    background-color: var(--hover-bg);
+  }
 }
 
 .badge {
   position: absolute;
   top: -5px;
   right: 0;
-  background-color: #f56c6c;
+  background-color: var(--danger-color);
   color: white;
   border-radius: 50%;
   width: 18px;
@@ -152,10 +157,10 @@ export default {
   top: 100%;
   right: 0;
   width: 350px;
-  background-color: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background-color: var(--notification-bg);
+  border: 1px solid var(--notification-border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
   z-index: 1000;
 }
 
@@ -163,21 +168,27 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
-  border-bottom: 1px solid #dcdfe6;
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .panel-header h3 {
   margin: 0;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .mark-read-btn {
   background: none;
   border: none;
-  color: #409eff;
+  color: var(--accent-color);
   cursor: pointer;
   font-size: 12px;
+  transition: color var(--transition-fast);
+
+  &:hover {
+    color: var(--accent-color);
+  }
 }
 
 .notifications-list {
@@ -187,17 +198,22 @@ export default {
 
 .notification-item {
   display: flex;
-  padding: 12px 15px;
-  border-bottom: 1px solid #eee;
+  padding: var(--spacer-2) var(--spacer-3);
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color var(--transition-fast);
 }
 
 .notification-item.unread {
-  background-color: #f0f7ff;
+  background-color: var(--active-bg);
+}
+
+.notification-item:hover {
+  background-color: var(--hover-bg);
 }
 
 .notification-icon {
   font-size: 20px;
-  margin-right: 12px;
+  margin-right: var(--spacer-2);
 }
 
 .notification-content {
@@ -205,19 +221,20 @@ export default {
 }
 
 .notification-title {
-  font-weight: bold;
+  font-weight: var(--font-weight-semibold);
   margin-bottom: 3px;
+  color: var(--text-primary);
 }
 
 .notification-time {
-  color: #909399;
+  color: var(--text-secondary);
   font-size: 11px;
   margin-bottom: 5px;
 }
 
 .notification-message {
   font-size: 13px;
-  color: #606266;
+  color: var(--text-secondary);
 }
 
 .notification-actions {
@@ -227,16 +244,44 @@ export default {
 
 .notification-actions button {
   background: none;
-  border: 1px solid #dcdfe6;
-  border-radius: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
   padding: 3px 8px;
   font-size: 12px;
   cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
 }
 
 .empty-notifications {
-  padding: 30px;
+  padding: var(--spacer-4);
   text-align: center;
-  color: #909399;
+  color: var(--text-secondary);
+}
+
+:root {
+  --notification-bg: #ffffff;
+  --notification-border: #dcdfe6;
+  --danger-color: #f56c6c;
+  --accent-color: #409eff;
+  --text-primary: #303133;
+  --text-secondary: #606266;
+  --border-color: #dcdfe6;
+  --hover-bg: #f5f7fa;
+  --active-bg: #f0f7ff;
+  --spacer-1: 0.25rem;
+  --spacer-2: 0.5rem;
+  --spacer-3: 1rem;
+  --spacer-4: 1.5rem;
+  --border-radius: 4px;
+  --border-radius-sm: 3px;
+  --transition-fast: 0.2s;
+  --card-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  --font-weight-semibold: 600;
 }
 </style>

@@ -90,6 +90,11 @@ $font-weight-medium: theme-typography("font-weight-medium") !default;
 $font-weight-semibold: theme-typography("font-weight-semibold") !default;
 $font-weight-bold: theme-typography("font-weight-bold") !default;
 
+// 侧边栏字体变量 - 新增
+$sidebar-font-size: theme-typography("sidebar-font-size") !default;
+$sidebar-header-font-size: theme-typography("sidebar-header-font-size") !default;
+$sidebar-icon-size: theme-typography("sidebar-icon-size") !default;
+
 // ============================================================================
 // 间距系统变量
 // ============================================================================
@@ -121,8 +126,12 @@ $hover-transform: theme-animation("hover-transform") !default;
 // 页面头部
 $page-header-padding: map.get($spacers, 3) map.get($spacers, 4) !default;
 $page-header-margin: 0 0 map.get($spacers, 4) 0 !default;
-$page-title-font-size: $font-size-base * 1.6 !default;
-$page-description-font-size: $font-size-base * 0.95 !default;
+$page-title-font-size: $font-size-base * 1.5 !default;
+$page-description-font-size: $font-size-base * 0.9 !default;
+
+$sidebar-font-size: $font-size-base * 0.8 !default; // 缩小到80%
+$sidebar-header-font-size: $sidebar-font-size * 0.9 !default; // 导航标题更小一些
+$sidebar-icon-size: 18px !default; // 图标大小
 
 // 状态卡片
 $status-icon-size: 48px !default;

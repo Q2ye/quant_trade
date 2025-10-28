@@ -601,19 +601,25 @@ export default {
   },
 };
 </script>
+
 <style lang="scss" scoped>
+// 导入全局变量
+@use '@/assets/scss/variables' as *;
+@use 'sass:map';
+
 .app-sidebar {
-  width: var(--sidebar-width, 240px);
+  width: $sidebar-expanded-width;
   height: 100%;
-  background-color: var(--sidebar-bg);
-  color: var(--text-primary);
+  background-color: $sidebar-bg;
+  color: $text-primary;
   display: flex;
   flex-direction: column;
-  transition: width var(--transition-normal);
+  transition: width $transition-normal;
   overflow: hidden;
   position: relative;
-  box-shadow: var(--card-shadow);
-  border-right: 1px solid var(--border-color);
+  box-shadow: $card-shadow;
+  border-right: $border-width solid $border-color;
+  font-size: $sidebar-font-size;
 
   /* 隐藏滚动条但保持滚动功能 */
   scrollbar-width: none;
@@ -624,7 +630,7 @@ export default {
   }
 
   &.collapsed {
-    width: var(--sidebar-collapsed-width, 64px);
+    width: $sidebar-collapsed-width;
     overflow: visible;
 
     .sidebar-content {
@@ -646,7 +652,7 @@ export default {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: var(--footer-height, 40px);
+  padding-bottom: 40px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 
@@ -656,95 +662,97 @@ export default {
 }
 
 .nav-section {
-  margin-bottom: var(--spacer-3);
+  margin-bottom: map.get($spacers, 3);
   flex-shrink: 0;
 }
 
 .nav-header {
-  padding: var(--spacer-3) var(--spacer-4) var(--spacer-2);
-  font-size: 12px;
-  color: var(--text-secondary);
+  padding: map.get($spacers, 3) map.get($spacers, 4) map.get($spacers, 2);
+  font-size: $sidebar-header-font-size;
+  color: $text-secondary;
   text-transform: uppercase;
   letter-spacing: 1px;
-  font-weight: var(--font-weight-semibold);
-  border-bottom: 1px solid var(--border-color);
-  margin: 0 var(--spacer-2) var(--spacer-2);
+  font-weight: $font-weight-semibold;
+  border-bottom: $border-width solid $border-color;
+  margin: 0 map.get($spacers, 2) map.get($spacers, 2);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  padding: var(--spacer-2) var(--spacer-4);
-  color: var(--text-primary);
+  padding: map.get($spacers, 2) map.get($spacers, 4);
+  color: $text-primary;
   text-decoration: none;
-  transition: all var(--transition-fast);
+  transition: all $transition-fast;
   cursor: pointer;
   border-left: 3px solid transparent;
   user-select: none;
-  margin: 2px var(--spacer-2);
-  border-radius: var(--border-radius);
+  margin: 2px map.get($spacers, 2);
+  border-radius: $border-radius;
   position: relative;
+  font-size: $sidebar-font-size;
 
   &:hover {
-    background-color: var(--hover-bg);
-    color: var(--accent-color);
+    background-color: $hover-bg;
+    color: $accent-color;
     transform: translateX(2px);
   }
 
   &.active {
-    background-color: var(--active-bg);
-    border-left-color: var(--accent-color);
-    color: var(--accent-color);
+    background-color: rgba($active-bg, 0.2);
+    border-left-color: $accent-color;
+    color: $accent-color;
 
     .nav-text {
-      font-weight: var(--font-weight-bold);
+      font-weight: $font-weight-bold;
       text-shadow: 0 1px 0.1px rgba(0, 0, 0, 0.2);
     }
 
     /* 图标使用系统渐变 */
     .nav-icon {
-      background: var(--sidebar-icon-gradient);
+      background: $page-header-bg;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
       transform: scale(1.2);
     }
 
-    border-bottom: 2px solid var(--accent-color);
+    border-bottom: 2px solid $accent-color;
   }
 
   .nav-icon {
-    margin-right: var(--spacer-2);
-    width: 20px;
-    height: 20px;
-    color: var(--accent-color);
+    margin-right: map.get($spacers, 2);
+    width: $sidebar-icon-size;
+    height: $sidebar-icon-size;
+    color: $accent-color;
     flex-shrink: 0;
-    transition: all var(--transition-fast);
+    transition: all $transition-fast;
   }
 
   .nav-text {
-    font-weight: var(--font-weight-medium);
+    font-weight: $font-weight-medium;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: $sidebar-font-size;
   }
 }
 
 /* 全局 Tooltip 样式 */
 .nav-tooltip {
   position: fixed;
-  background: var(--secondary-bg);
-  color: var(--text-primary);
-  padding: var(--spacer-2) var(--spacer-3);
-  border-radius: var(--border-radius);
-  font-size: 12px;
-  font-weight: var(--font-weight-medium);
+  background: $secondary-bg;
+  color: $text-primary;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  border-radius: $border-radius;
+  font-size: $sidebar-font-size;
+  font-weight: $font-weight-medium;
   white-space: nowrap;
   z-index: 1002;
-  box-shadow: var(--hover-shadow);
+  box-shadow: $hover-shadow;
   pointer-events: none;
-  border: 1px solid var(--border-color);
-  animation: fadeIn var(--transition-fast) ease;
+  border: $border-width solid $border-color;
+  animation: fadeIn $transition-fast ease;
 
   &::before {
     content: '';
@@ -756,13 +764,13 @@ export default {
     height: 0;
     border-top: 6px solid transparent;
     border-bottom: 6px solid transparent;
-    border-right: 6px solid var(--secondary-bg);
+    border-right: 6px solid $secondary-bg;
   }
 }
 
 /* 折叠状态样式 */
 .app-sidebar.collapsed {
-  width: var(--sidebar-collapsed-width, 64px);
+  width: $sidebar-collapsed-width;
   overflow: visible;
 
   .nav-text {
@@ -776,9 +784,9 @@ export default {
   .nav-item {
     overflow: visible;
     justify-content: center;
-    padding: var(--spacer-2);
-    margin: 2px var(--spacer-2);
-    border-radius: var(--border-radius);
+    padding: map.get($spacers, 2);
+    margin: 2px map.get($spacers, 2);
+    border-radius: $border-radius;
     position: relative;
 
     .nav-icon {
@@ -789,7 +797,7 @@ export default {
   }
 
   .nav-section {
-    margin-bottom: var(--spacer-2);
+    margin-bottom: map.get($spacers, 2);
   }
 
   .sidebar-content {
@@ -802,25 +810,25 @@ export default {
 .sidebar-toggle {
   position: absolute;
   top: 16px;
-  bottom: var(--footer-height, 40px);
+  bottom: 40px;
   right: 8px;
   width: 18px;
   height: 18px;
-  background: var(--sidebar-icon-gradient);
+  background: $page-header-bg;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: white;
-  box-shadow: var(--card-shadow);
-  transition: all var(--transition-normal);
+  box-shadow: $card-shadow;
+  transition: all $transition-normal;
   z-index: 1003;
-  border: 2px solid var(--sidebar-bg);
+  border: 2px solid $sidebar-bg;
 
   &:hover {
     transform: scale(1.1);
-    box-shadow: var(--hover-shadow);
+    box-shadow: $hover-shadow;
   }
 
   .toggle-icon {
@@ -831,7 +839,7 @@ export default {
 
 /* 折叠状态下调整按钮位置 */
 .app-sidebar.collapsed .sidebar-toggle {
-  left: calc(var(--sidebar-collapsed-width, 64px) - 10px);
+  left: calc(#{$sidebar-collapsed-width} - 10px);
 }
 
 /* Tooltip 淡入动画 */
@@ -844,32 +852,5 @@ export default {
     opacity: 1;
     transform: translateY(-50%) translateX(0);
   }
-}
-
-/* CSS 变量定义 */
-:root {
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 64px;
-  --sidebar-bg: #1f2937;
-  --sidebar-icon-gradient: linear-gradient(135deg, #2196F3 0%, #6f42c1 100%);
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --accent-color: #4f9cf9;
-  --hover-bg: rgba(79, 156, 249, 0.2);
-  --active-bg: rgba(79, 156, 249, 0.2);
-  --border-color: #30363D;
-  --secondary-bg: #161B22;
-  --footer-height: 40px;
-  --spacer-2: 0.5rem;
-  --spacer-3: 1rem;
-  --spacer-4: 1.5rem;
-  --border-radius: 6px;
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.3s ease;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 </style>

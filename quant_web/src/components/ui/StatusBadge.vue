@@ -39,11 +39,15 @@ export default {
 };
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .status-badge {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   letter-spacing: 0.5px;
   min-width: 60px;
   text-align: center;
+}
+
+:root {
+  --font-weight-medium: 500;
 }
 </style>

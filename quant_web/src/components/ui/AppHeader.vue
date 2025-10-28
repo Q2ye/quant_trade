@@ -306,5 +306,5 @@ export default {
 
 <style lang="scss" scoped>
 // 引入头部专用样式
-@import '@/assets/scss/header';
+@use '@/assets/scss/header';
 </style>

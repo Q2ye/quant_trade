@@ -3,29 +3,29 @@
     <!-- 页面标题区域 -->
     <div class="page-header">
       <div class="header-content">
-        <div class="header-left">
-          <el-button
-              class="back-btn"
-              @click="handleBack"
-              :icon="ArrowLeft"
-              text
-          >
-            返回
-          </el-button>
-          <h1 class="page-title">
-            <i class="iconify" data-icon="mdi:trending-up"></i>
-            涨跌停分析
-          </h1>
+        <div class="title-section">
+          <h1 class="page-title">涨跌停分析</h1>
+          <p class="page-description">实时监控股票涨跌停情况与市场热度分析</p>
         </div>
-        <div class="header-actions">
-          <el-button type="primary" @click="refreshData" :loading="loading">
-            <i class="iconify" data-icon="mdi:refresh"></i>
+        <div class="header-actions-right">
+          <a-button type="primary" @click="refreshData" :loading="loading" class="action-btn">
+            <template #icon>
+              <ReloadOutlined/>
+            </template>
             刷新数据
-          </el-button>
-          <el-button @click="exportData">
-            <i class="iconify" data-icon="mdi:export"></i>
+          </a-button>
+          <a-button @click="exportData" class="action-btn secondary">
+            <template #icon>
+              <ExportOutlined/>
+            </template>
             导出数据
-          </el-button>
+          </a-button>
+          <a-button class="back-btn" @click="handleBack">
+            <template #icon>
+              <ArrowLeftOutlined/>
+            </template>
+            返回
+          </a-button>
         </div>
       </div>
     </div>
@@ -287,6 +287,7 @@ import {useRouter} from 'vue-router'
 import {ElMessage} from 'element-plus'
 import * as echarts from 'echarts'
 import StockDetailPanel from "@/components/market/StockDetailPanel.vue";
+import {ArrowLeftOutlined, ExportOutlined, ReloadOutlined} from '@ant-design/icons-vue'
 
 
 const router = useRouter()
@@ -674,194 +675,247 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-
 .page-header {
-  margin-bottom: var(--spacer-4);
+  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  color: white;
+  padding: 20px 0;
+  margin-bottom: 20px;
 
   .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 var(--spacer-4);
+    position: relative;
 
-    .header-left {
+    .header-actions-right {
       display: flex;
       align-items: center;
-      gap: var(--spacer-3);
+      gap: 8px; /* 减小间距，使按钮更紧凑 */
+      flex-shrink: 0;
     }
+  }
 
-    .back-btn {
-      color: var(--text-secondary);
-      border: 1px solid var(--border-color);
-      background: var(--secondary-bg);
-      transition: all var(--transition-fast);
-
-      &:hover {
-        color: var(--accent-color);
-        border-color: var(--accent-color);
-        background: var(--hover-bg);
-      }
-    }
+  .title-section {
+    flex: 1;
 
     .page-title {
-      display: flex;
-      align-items: center;
-      gap: var(--spacer-2);
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--text-primary);
       margin: 0;
-
-      .iconify {
-        color: var(--accent-color);
-        font-size: 1.75rem;
-      }
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
     }
 
-    .header-actions {
-      display: flex;
-      gap: var(--spacer-2);
-    }
-  }
-}
-
-.filter-section {
-  margin-bottom: var(--spacer-4);
-
-  .filter-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-
-    .filter-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      flex-wrap: wrap;
-      gap: var(--spacer-3);
-
-      .filter-group {
-        display: flex;
-        gap: var(--spacer-4);
-        align-items: flex-end;
-
-        .filter-item {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacer-1);
-
-          .filter-label {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            font-weight: 500;
-          }
-        }
-      }
+    .page-description {
+      margin: 6px 0 0 0;
+      opacity: 0.9;
+      font-size: 13px;
     }
   }
 }
 
-.stats-section {
-  margin-bottom: var(--spacer-4);
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--spacer-3);
-
-    .stats-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      transition: transform var(--transition-normal), box-shadow var(--transition-normal);
-
-      &:hover {
-        transform: var(--hover-transform);
-        box-shadow: var(--hover-shadow);
-      }
-
-      .stats-content {
-        display: flex;
-        align-items: center;
-        gap: var(--spacer-3);
-
-        .stats-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: var(--border-radius);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-
-          &.up {
-            background: rgba(76, 175, 80, 0.1);
-            color: var(--success-color);
-          }
-
-          &.down {
-            background: rgba(244, 67, 54, 0.1);
-            color: var(--danger-color);
-          }
-
-          &.consecutive {
-            background: rgba(33, 150, 243, 0.1);
-            color: var(--accent-color);
-          }
-
-          &.ratio {
-            background: rgba(255, 152, 0, 0.1);
-            color: var(--warning-color);
-          }
-        }
-
-        .stats-info {
-          .stats-value {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            line-height: 1.2;
-          }
-
-          .stats-label {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            margin-top: var(--spacer-1);
-          }
-        }
-      }
-    }
-  }
-}
-
-.content-section {
+/* 主要操作按钮样式 */
+.action-btn {
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  height: 32px;
   display: flex;
-  flex-direction: column;
-  gap: var(--spacer-4);
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+
+  /* 主要按钮悬停效果 */
+  &:hover {
+    background: rgba(255, 255, 255, 0.25); /* 增加背景透明度，提升视觉层次 */
+    border-color: rgba(255, 255, 255, 0.4); /* 边框颜色更明显 */
+    transform: translateY(-2px); /* 轻微上浮效果，增强交互感 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), /* 外层阴影增强深度感 */
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset; /* 内阴影增加光泽效果 */
+    color: white;
+  }
+
+  /* 按钮激活状态 */
+  &:active {
+    transform: translateY(0); /* 取消上浮，回归原位 */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15), /* 减少阴影，模拟按下效果 */
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset; /* 减弱内阴影 */
+    transition-duration: 0.1s; /* 快速过渡，增强响应感 */
+  }
+
+  /* 加载状态下的样式 */
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: none;
+    }
+  }
 }
 
-.data-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
+/* 次要按钮样式 */
+.action-btn.secondary {
+  background: rgba(255, 255, 255, 0.08); /* 比主要按钮稍暗的背景 */
+  border: 1px solid rgba(255, 255, 255, 0.25); /* 更明显的边框 */
 
-  .card-header {
+  /* 次要按钮悬停效果 */
+  &:hover {
+    background: rgba(255, 255, 255, 0.18); /* 悬停时背景变亮 */
+    border-color: rgba(255, 255, 255, 0.4); /* 边框更加明显 */
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  }
+
+  /* 次要按钮激活状态 */
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  }
+}
+
+/* 返回按钮样式 - 与主要按钮保持视觉一致性 */
+.back-btn {
+  background: rgba(255, 255, 255, 0.12); /* 与次要按钮相似的背景 */
+  border: 1px solid rgba(255, 255, 255, 0.25); /* 明显的边框定义 */
+  color: white;
+  border-radius: var(--border-radius, 6px);
+  font-weight: 500;
+  transition: all var(--transition-fast, 0.3s);
+  backdrop-filter: blur(10px); /* 毛玻璃效果，增强质感 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  /* 返回按钮悬停效果 */
+  &:hover {
+    background: rgba(255, 255, 255, 0.22); /* 显著提高背景亮度 */
+    border-color: rgba(255, 255, 255, 0.45); /* 边框更加明亮 */
+    color: white;
+    transform: translateY(-2px); /* 统一的上浮效果 */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), /* 增强阴影深度 */
+    0 0 0 1px rgba(255, 255, 255, 0.15) inset; /* 内发光效果 */
+    backdrop-filter: blur(12px) brightness(1.1); /* 增强模糊和亮度 */
+  }
+
+  /* 返回按钮激活状态 */
+  &:active {
+    transform: translateY(0); /* 回归原位 */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    backdrop-filter: blur(10px); /* 恢复原始模糊效果 */
+    transition-duration: 0.1s;
+  }
+}
+
+
+// 筛选卡片
+.filter-card {
+  @include mixins.unified-card;
+
+  .filter-content {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: var(--spacer-3);
 
-    .card-title {
+    .filter-group {
       display: flex;
-      align-items: center;
-      gap: var(--spacer-2);
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin: 0;
+      gap: var(--spacer-4);
+      align-items: flex-end;
 
-      .iconify {
-        color: var(--accent-color);
+      .filter-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacer-1);
+
+        .filter-label {
+          font-size: 0.875rem;
+          color: var(--text-secondary);
+          font-weight: 500;
+        }
       }
     }
   }
+}
 
-  .table-container {
+// 统计卡片
+.stats-card {
+  @include mixins.unified-card;
+
+  .stats-content {
+    display: flex;
+    align-items: center;
+    gap: var(--spacer-3);
+
+    .stats-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--border-radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+
+      &.up {
+        background: rgba(76, 175, 80, 0.1);
+        color: var(--success-color);
+      }
+
+      &.down {
+        background: rgba(244, 67, 54, 0.1);
+        color: var(--danger-color);
+      }
+
+      &.consecutive {
+        background: rgba(33, 150, 243, 0.1);
+        color: var(--accent-color);
+      }
+
+      &.ratio {
+        background: rgba(255, 152, 0, 0.1);
+        color: var(--warning-color);
+      }
+    }
+
+    .stats-info {
+      .stats-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.2;
+      }
+
+      .stats-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-top: var(--spacer-1);
+      }
+    }
+  }
+}
+
+// 数据卡片
+.data-card {
+  @include mixins.unified-card;
+
+  :deep(.el-table) {
+    @include mixins.unified-table;
+
+    // 涨跌停表格特定样式
     .stock-code {
       display: flex;
       flex-direction: column;
@@ -887,30 +941,10 @@ onMounted(() => {
       font-weight: 600;
     }
 
-    .space-high {
-      color: var(--success-color);
-      font-weight: 600;
-    }
-
-    .space-medium {
-      color: var(--warning-color);
-      font-weight: 600;
-    }
-
-    .space-low {
-      color: var(--text-secondary);
-    }
-
-    .space-none {
-      color: var(--danger-color);
-      font-weight: 600;
-    }
-  }
-
-  .chart-container {
-    .chart-view {
-      height: 400px;
-    }
+    .space-high { color: var(--success-color); font-weight: 600; }
+    .space-medium { color: var(--warning-color); font-weight: 600; }
+    .space-low { color: var(--text-secondary); }
+    .space-none { color: var(--danger-color); font-weight: 600; }
   }
 
   .pagination-container {
@@ -922,19 +956,11 @@ onMounted(() => {
   }
 }
 
-.analysis-section {
-  .analysis-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-
-    .card-title {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin: 0;
-    }
-  }
+// 分析卡片
+.analysis-card {
+  @include mixins.unified-card;
 }
+
 
 // 响应式设计
 @media (max-width: 1200px) {
