@@ -149,7 +149,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">更新: {{ stockStats.updateTime }}</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
@@ -182,7 +181,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">总规模: {{ etfStats.totalAmount }}亿</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
@@ -215,7 +213,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">{{ indexStats.riseCount }}/{{ indexStats.totalCount }}上涨</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
@@ -248,7 +245,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">{{ industryStats.riseCount }}/{{ industryStats.totalCount }}行业上涨</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
@@ -283,7 +279,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">更新: {{ moneyFlowStats.updateTime }}</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
@@ -316,7 +311,6 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">连板高度: {{ limitStats.maxConsecutive }}板</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>

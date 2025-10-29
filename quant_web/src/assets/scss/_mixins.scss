@@ -1,50 +1,60 @@
 // _mixins.scss - 优化后的混入工具库
+
+// 导入依赖的Sass模块和变量文件
 @use 'variables' as *;
+// 导入所有变量
 @use 'sass:map';
+// Sass映射函数模块
 @use 'sass:math';
-@use 'sass:color';
+// Sass数学函数模块
+@use 'sass:color'; // Sass颜色函数模块
 
 // ============================================================================
 // 卡片间隙控制混入
 // ============================================================================
 
 /// 卡片网格间隙控制混入
-/// @param {Number} $gap - 主要间隙大小
-/// @param {Number} $card-gap - 卡片内部间隙大小
+/// @param {Number} $gap - 控制网格容器之间的主要间隙大小
+/// @param {Number} $card-gap - 控制卡片内部的内边距大小
 @mixin card-gap-control($gap: map.get($spacers, 4), $card-gap: map.get($spacers, 3)) {
-  gap: $gap;
+  gap: $gap; // 设置网格容器间隙
 
+  // 为各种卡片类型应用统一的边距和内边距
   .grid-card,
   .market-index-card,
   .function-nav-card,
   .hotspot-card,
   .status-card,
   .function-card {
-    margin: 0;
-    padding: $card-gap;
+    margin: 0; // 重置外边距
+    padding: $card-gap; // 设置卡片内边距
 
-    // 确保卡片内容也有适当的内部间隙
+    // 确保卡片内容区域也有适当的内部间隙控制
     .card-content,
     .index-content,
     .function-content {
-      padding: 0;
+      padding: 0; // 重置内容区域内边距
     }
   }
 }
 
-
 /// 响应式卡片间隙控制
-/// @param {Map} $gaps - 响应式间隙映射
+/// @param {Map} $gaps - 响应式间隙映射，键为断点名称，值为包含gap和card-gap的配置映射
 @mixin responsive-card-gap($gaps: ()) {
+  // 设置默认间隙值
   $default-gap: map.get($spacers, 4);
   $default-card-gap: map.get($spacers, 3);
 
+  // 应用默认间隙控制
   @include card-gap-control($default-gap, $default-card-gap);
 
+  // 遍历响应式间隙配置
   @each $breakpoint, $gap-config in $gaps {
+    // 获取当前断点的间隙配置，若无则使用默认值
     $gap: map.get($gap-config, 'gap') or $default-gap;
     $card-gap: map.get($gap-config, 'card-gap') or $default-card-gap;
 
+    // 根据断点名称生成对应的媒体查询
     @if $breakpoint == 'xl' {
       @include media-breakpoint-down(xl) {
         @include card-gap-control($gap, $card-gap);
@@ -70,72 +80,84 @@
 // ============================================================================
 
 /// 灵活网格布局混入
+/// @param {Number} $columns - 默认列数
+/// @param {Map} $breakpoints - 响应式断点配置映射
+/// @param {Number} $gap - 网格间隙大小
 @mixin flexible-grid($columns: 4, $breakpoints: (), $gap: map.get($spacers, 4)) {
-  display: grid;
-  grid-template-columns: repeat($columns, 1fr);
+  display: grid; // 启用网格布局
+  grid-template-columns: repeat($columns, 1fr); // 设置网格列数和比例
 
-  // 使用新的间隙控制
+  // 使用新的间隙控制系统
   @include card-gap-control($gap);
 
+  // 遍历断点配置，生成响应式网格
   @each $breakpoint, $column-count in $breakpoints {
     @if $breakpoint == 'xl' {
       @include media-breakpoint-down(xl) {
-        grid-template-columns: repeat($column-count, 1fr);
+        grid-template-columns: repeat($column-count, 1fr); // 超大屏幕下的列数
       }
     } @else if $breakpoint == 'lg' {
       @include media-breakpoint-down(lg) {
-        grid-template-columns: repeat($column-count, 1fr);
+        grid-template-columns: repeat($column-count, 1fr); // 大屏幕下的列数
       }
     } @else if $breakpoint == 'md' {
       @include media-breakpoint-down(md) {
-        grid-template-columns: repeat($column-count, 1fr);
+        grid-template-columns: repeat($column-count, 1fr); // 中等屏幕下的列数
       }
     } @else if $breakpoint == 'sm' {
       @include media-breakpoint-down(sm) {
-        grid-template-columns: repeat($column-count, 1fr);
+        grid-template-columns: repeat($column-count, 1fr); // 小屏幕下的列数
       }
     }
   }
 }
 
-
 /// 侧边栏响应式网格混入
+/// @param {Number} $expanded-columns - 侧边栏展开时的默认列数
+/// @param {Number} $collapsed-columns - 侧边栏折叠时的默认列数
 @mixin sidebar-responsive-grid($expanded-columns: 4, $collapsed-columns: 2) {
+  // 侧边栏展开状态的网格配置
   @include flexible-grid($expanded-columns, (
-          'xl': 3,
-          'lg': 2,
-          'md': 1
+          'xl': 3, // 超大屏幕：3列
+          'lg': 2, // 大屏幕：2列
+          'md': 1 // 中等屏幕：1列
   ));
 
+  // 侧边栏折叠状态的网格配置
   .sidebar-collapsed & {
     @include flexible-grid($collapsed-columns, (
-            'xl': 2,
-            'lg': 2,
-            'md': 1,
-            'sm': 1
+            'xl': 2, // 超大屏幕：2列
+            'lg': 2, // 大屏幕：2列
+            'md': 1, // 中等屏幕：1列
+            'sm': 1 // 小屏幕：1列
     ));
   }
 }
 
 /// 卡片网格布局混入（更新版）
+/// @param {Number} $columns - 默认列数
+/// @param {Map} $breakpoints - 响应式断点配置映射
 @mixin card-grid-layout($columns: 4, $breakpoints: ()) {
+  // 应用灵活网格布局
   @include flexible-grid($columns, $breakpoints);
 
-  // 添加额外的间隙控制
+  // 添加响应式间隙控制
   @include responsive-card-gap((
-          'lg': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),
-          'md': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)),
-          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 1))
+          'lg': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 大屏幕间隙配置
+          'md': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 1)) // 小屏幕间隙配置
   ));
 
+  // 网格卡片基础样式
   .grid-card {
-    @include card-base;
-    height: 100%;
-    transition: all $transition-normal;
+    @include card-base; // 应用卡片基础样式
+    height: 100%; // 设置卡片高度为100%
+    transition: all $transition-normal; // 添加过渡动画
 
+    // 卡片悬停效果
     &:hover {
-      transform: $hover-transform;
-      box-shadow: $card-hover-shadow;
+      transform: $hover-transform; // 悬停变换效果
+      box-shadow: $card-hover-shadow; // 悬停阴影效果
     }
   }
 }
@@ -146,114 +168,120 @@
 
 /// 侧边栏布局基础混入
 @mixin sidebar-layout-base {
-  @include anti-bleed;
-  position: relative;
-  min-height: 100vh;
-  padding: 0;
-  background: $primary-bg;
-  transition: all $transition-normal;
+  @include anti-bleed; // 防溢出处理
+  position: relative; // 相对定位
+  min-height: 100vh; // 最小高度为视口高度
+  padding: 0; // 重置内边距
+  background: $primary-bg; // 主背景色
+  transition: all $transition-normal; // 过渡动画
 
+  // 侧边栏折叠状态
   &.sidebar-collapsed {
     .app-sidebar {
-      width: $sidebar-collapsed-width !important;
+      width: $sidebar-collapsed-width !important; // 设置折叠宽度
 
       .sidebar-menu {
         .menu-item {
-          padding: map.get($spacers, 2);
-          justify-content: center;
+          padding: map.get($spacers, 2); // 调整菜单项内边距
+          justify-content: center; // 内容居中
 
           .menu-text {
-            opacity: 0;
-            visibility: hidden;
-            width: 0;
-            margin-left: 0;
+            opacity: 0; // 文字透明度为0（隐藏）
+            visibility: hidden; // 文字不可见
+            width: 0; // 文字宽度为0
+            margin-left: 0; // 重置左边距
           }
 
           .menu-icon {
-            margin-right: 0;
-            transform: scale(1.1);
+            margin-right: 0; // 重置图标右边距
+            transform: scale(1.1); // 图标放大效果
           }
         }
       }
     }
   }
 
+  // 浅色主题适配
   [data-theme="light"] & {
-    background-color: color.adjust($primary-bg, $lightness: 3%);
+    background-color: color.adjust($primary-bg, $lightness: 3%); // 调整背景亮度
   }
 }
 
 /// 带侧边栏的内容区域混入
 @mixin content-with-sidebar {
-  width: calc(100% - $sidebar-collapsed-width);
-  //width: calc(100% - map.get($spacers, 4));
-  transition: all $transition-normal;
-  position: relative;
-  z-index: 1;
-  padding: $content-padding;
-  min-height: 100vh;
-  background: $primary-bg;
+  width: calc(100% - $sidebar-collapsed-width); // 计算内容区域宽度
+  transition: all $transition-normal; // 过渡动画
+  position: relative; // 相对定位
+  z-index: 1; // 设置层级
+  padding: $content-padding; // 内容内边距
+  min-height: 100vh; // 最小高度为视口高度
+  background: $primary-bg; // 主背景色
 
-  //侧边栏折叠
+  // 侧边栏折叠状态下的内容区域
   .sidebar-collapsed & {
-    width: calc(100% - $sidebar-collapsed-width);
-    //width: calc(100% - map.get($spacers, 4));
-
+    width: calc(100% - $sidebar-collapsed-width); // 调整内容区域宽度
   }
 
+  // 浅色主题适配
   [data-theme="light"] & {
-    padding: map.get($spacers, 4);
-    background: color.adjust($primary-bg, $lightness: 2%);
+    padding: map.get($spacers, 4); // 调整内边距
+    background: color.adjust($primary-bg, $lightness: 2%); // 调整背景亮度
   }
 }
 
 /// 状态概览网格布局混入
 @mixin status-overview-grid {
+  // 应用灵活网格布局
   @include flexible-grid(4, (
-          'lg': 2,
-          'sm': 1
+          'lg': 2, // 大屏幕：2列
+          'sm': 1 // 小屏幕：1列
   ));
-  margin-bottom: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 4); // 底部外边距
 
+  // 状态卡片基础样式
   .status-card {
-    @include status-card-base;
+    @include status-card-base; // 应用状态卡片基础样式
   }
 }
 
 /// 核心功能网格布局混入
 @mixin core-function-grid {
+  // 应用灵活网格布局
   @include flexible-grid(4, (
-          'xl': 2,
-          'md': 1
+          'xl': 2, // 超大屏幕：2列
+          'md': 1 // 中等屏幕：1列
   ));
-  margin-bottom: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 4); // 底部外边距
 
+  // 功能卡片基础样式
   .function-card {
-    @include function-card-base;
+    @include function-card-base; // 应用功能卡片基础样式
   }
 }
 
 /// 实时状态布局混入
 @mixin realtime-status-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: map.get($spacers, 3);
-  margin-bottom: map.get($spacers, 4);
+  display: grid; // 启用网格布局
+  grid-template-columns: 1fr 1fr; // 两列等宽布局
+  gap: map.get($spacers, 3); // 网格间隙
+  margin-bottom: map.get($spacers, 4); // 底部外边距
 
+  // 状态面板样式
   .status-panel {
-    @include card-base;
+    @include card-base; // 应用卡片基础样式
 
     .card-header {
-      @include card-header-base;
+      @include card-header-base; // 应用卡片头部基础样式
     }
 
     .card-body {
-      padding: map.get($spacers, 3);
+      padding: map.get($spacers, 3); // 卡片主体内边距
     }
   }
 
+  // 中等屏幕及以下响应式调整
   @include media-breakpoint-down(md) {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; // 单列布局
   }
 }
 
@@ -263,34 +291,36 @@
 
 /// 侧边栏工具提示混入
 @mixin sidebar-tooltip {
-  position: absolute;
-  left: calc(#{$sidebar-collapsed-width} + 8px);
-  background: $secondary-bg;
-  border: 1px solid $border-color;
-  border-radius: $border-radius-sm;
-  padding: map.get($spacers, 1) map.get($spacers, 2);
-  font-size: $font-size-base * 0.85;
-  color: $text-primary;
-  white-space: nowrap;
-  z-index: 1000;
-  box-shadow: $hover-shadow;
-  @include fade-in;
+  position: absolute; // 绝对定位
+  left: calc(#{$sidebar-collapsed-width} + 8px); // 左侧位置计算
+  background: $secondary-bg; // 背景色
+  border: 1px solid $border-color; // 边框样式
+  border-radius: $border-radius-sm; // 圆角大小
+  padding: map.get($spacers, 1) map.get($spacers, 2); // 内边距
+  font-size: $font-size-base * 0.85; // 字体大小
+  color: $text-primary; // 文字颜色
+  white-space: nowrap; // 不换行
+  z-index: 1000; // 层级
+  box-shadow: $hover-shadow; // 阴影效果
+  @include fade-in; // 淡入动画
 
+  // 工具提示箭头
   &::before {
-    content: '';
-    position: absolute;
-    left: -4px;
-    top: 50%;
-    transform: translateY(-50%);
-    border: 4px solid transparent;
-    border-right-color: $border-color;
+    content: ''; // 伪元素内容
+    position: absolute; // 绝对定位
+    left: -4px; // 左侧位置
+    top: 50%; // 垂直居中
+    transform: translateY(-50%); // Y轴居中变换
+    border: 4px solid transparent; // 透明边框
+    border-right-color: $border-color; // 右侧边框颜色
   }
 }
 
 /// 侧边栏过渡动画混入
 @mixin sidebar-transition {
-  transition: all $transition-normal cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all $transition-normal cubic-bezier(0.4, 0, 0.2, 1); // 贝塞尔曲线过渡
 
+  // 所有子元素继承过渡效果
   * {
     transition: inherit;
   }
@@ -300,25 +330,27 @@
 // 响应式工具（保持不变）
 // ============================================================================
 
+/// 媒体查询混入 - 向下断点
+/// @param {String} $breakpoint - 断点名称 (sm, md, lg, xl)
 @mixin media-breakpoint-down($breakpoint) {
   @if $breakpoint == sm {
-    @media (max-width: #{$breakpoint-sm}) {
+    @media (max-width: #{$breakpoint-sm}) { // 小屏幕媒体查询
       @content;
     }
   } @else if $breakpoint == md {
-    @media (max-width: #{$breakpoint-md}) {
+    @media (max-width: #{$breakpoint-md}) { // 中等屏幕媒体查询
       @content;
     }
   } @else if $breakpoint == lg {
-    @media (max-width: #{$breakpoint-lg}) {
+    @media (max-width: #{$breakpoint-lg}) { // 大屏幕媒体查询
       @content;
     }
   } @else if $breakpoint == xl {
-    @media (max-width: #{$breakpoint-xl}) {
+    @media (max-width: #{$breakpoint-xl}) { // 超大屏幕媒体查询
       @content;
     }
   } @else {
-    @warn "Breakpoint #{$breakpoint} is not defined.";
+    @warn "Breakpoint #{$breakpoint} is not defined."; // 未定义断点警告
   }
 }
 
@@ -326,48 +358,55 @@
 // 基础组件混入（保持不变）
 // ============================================================================
 
+/// 卡片基础样式混入
+/// @param {Boolean} $hover - 是否启用悬停效果
 @mixin card-base($hover: true) {
-  //background: $card-bg;
-    background: $header-bg-gradient;
-  border: $border-width solid $border-color;
-  border-radius: $border-radius;
-  box-shadow: $card-shadow;
-  transition: all $transition-normal;
+  background: $header-bg-gradient; // 背景渐变
+  border: $border-width solid $border-color; // 边框样式
+  border-radius: $border-radius; // 圆角
+  box-shadow: $card-shadow; // 阴影效果
+  transition: all $transition-normal; // 过渡动画
 
+  // 条件性启用悬停效果
   @if $hover {
     &:hover {
-      box-shadow: $card-hover-shadow;
-      border-color: $accent-color;
-      transform: $hover-transform;
+      box-shadow: $card-hover-shadow; // 悬停阴影
+      border-color: $accent-color; // 悬停边框颜色
+      transform: $hover-transform; // 悬停变换效果
     }
   }
 }
 
+/// 按钮基础样式混入
+/// @param {Color} $bg-color - 按钮背景颜色
+/// @param {Color} $text-color - 按钮文字颜色
 @mixin button-base($bg-color: $accent-color, $text-color: white) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: $bg-color;
-  color: $text-color;
-  border: $border-width solid transparent;
-  border-radius: $border-radius;
-  font-size: $font-size-base;
-  font-weight: $font-weight-medium;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all $transition-normal;
-  outline: none;
+  display: inline-flex; // 内联弹性布局
+  align-items: center; // 垂直居中
+  justify-content: center; // 水平居中
+  padding: map.get($spacers, 2) map.get($spacers, 3); // 内边距
+  background: $bg-color; // 背景色
+  color: $text-color; // 文字颜色
+  border: $border-width solid transparent; // 透明边框
+  border-radius: $border-radius; // 圆角
+  font-size: $font-size-base; // 字体大小
+  font-weight: $font-weight-medium; // 字体粗细
+  text-decoration: none; // 去除下划线
+  cursor: pointer; // 手型光标
+  transition: all $transition-normal; // 过渡动画
+  outline: none; // 去除轮廓线
 
+  // 禁用状态
   &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none !important;
+    opacity: 0.6; // 透明度降低
+    cursor: not-allowed; // 禁用光标
+    transform: none !important; // 禁用变换效果
   }
 
+  // 悬停状态（非禁用）
   &:hover:not(:disabled) {
-    opacity: 0.9;
-    transform: $hover-transform;
+    opacity: 0.9; // 透明度变化
+    transform: $hover-transform; // 悬停变换效果
   }
 }
 
@@ -375,46 +414,55 @@
 // 布局工具混入（保持不变）
 // ============================================================================
 
+/// 弹性居中布局混入
+/// @param {String} $direction - 布局方向 (row, column)
 @mixin flex-center($direction: row) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: $direction;
+  display: flex; // 弹性布局
+  align-items: center; // 垂直居中
+  justify-content: center; // 水平居中
+  flex-direction: $direction; // 布局方向
 }
 
+/// 防溢出处理混入
 @mixin anti-bleed {
-  position: relative;
-  overflow: hidden;
+  position: relative; // 相对定位
+  overflow: hidden; // 隐藏溢出
 
+  // 创建防溢出层
   &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    z-index: 1;
+    content: ''; // 伪元素内容
+    position: absolute; // 绝对定位
+    top: 0; // 顶部对齐
+    left: 0; // 左侧对齐
+    right: 0; // 右侧对齐
+    bottom: 0; // 底部对齐
+    pointer-events: none; // 禁用指针事件
+    z-index: 1; // 设置层级
   }
 }
 
+/// 自定义滚动条混入
 @mixin custom-scrollbar {
+  // Webkit浏览器滚动条样式
   &::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 6px; // 垂直滚动条宽度
+    height: 6px; // 水平滚动条高度
   }
 
+  // 滚动条轨道样式
   &::-webkit-scrollbar-track {
-    background: $secondary-bg;
-    border-radius: 3px;
+    background: $secondary-bg; // 轨道背景色
+    border-radius: 3px; // 轨道圆角
   }
 
+  // 滚动条滑块样式
   &::-webkit-scrollbar-thumb {
-    background: $border-color;
-    border-radius: 3px;
+    background: $border-color; // 滑块背景色
+    border-radius: 3px; // 滑块圆角
 
+    // 滑块悬停状态
     &:hover {
-      background: $text-secondary;
+      background: $text-secondary; // 悬停时背景色
     }
   }
 }
@@ -423,57 +471,67 @@
 // 文本工具混入（保持不变）
 // ============================================================================
 
+/// 文本溢出省略号混入
+/// @param {Number} $lines - 显示的行数
 @mixin text-ellipsis($lines: 1) {
   @if $lines == 1 {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: hidden; // 隐藏溢出
+    text-overflow: ellipsis; // 文本溢出显示省略号
+    white-space: nowrap; // 不换行
   } @else {
-    display: -webkit-box;
-    -webkit-line-clamp: $lines;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    display: -webkit-box; // Webkit盒子模型
+    -webkit-line-clamp: $lines; // 限制显示行数
+    -webkit-box-orient: vertical; // 垂直方向排列
+    overflow: hidden; // 隐藏溢出
   }
 }
 
+/// 次要文本样式混入
 @mixin text-secondary {
-  color: $text-secondary;
-  font-size: $font-size-base * 0.9;
+  color: $text-secondary; // 次要文字颜色
+  font-size: $font-size-base * 0.9; // 较小字体大小
 }
 
 // ============================================================================
 // 动画效果混入（保持不变）
 // ============================================================================
 
+/// 加载旋转动画混入
+/// @param {Number} $size - 旋转图标大小
 @mixin loading-spinner($size: 1em) {
-  @include flex-center;
+  @include flex-center; // 居中布局
 
+  // 旋转图标伪元素
   &::after {
-    content: '';
-    width: $size;
-    height: $size;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+    content: ''; // 伪元素内容
+    width: $size; // 图标宽度
+    height: $size; // 图标高度
+    border: 2px solid currentColor; // 边框样式（使用当前文字颜色）
+    border-right-color: transparent; // 右侧边框透明
+    border-radius: 50%; // 圆形
+    animation: spin 1s linear infinite; // 旋转动画
   }
 }
 
+// 旋转动画关键帧
 @keyframes spin {
   to {
-    transform: rotate(360deg);
+    transform: rotate(360deg); // 360度旋转
   }
 }
 
+/// 淡入动画混入
+/// @param {Number} $duration - 动画持续时间
 @mixin fade-in($duration: $transition-normal) {
-  animation: fadeIn $duration ease-out;
+  animation: fadeIn $duration ease-out; // 淡入动画
 
+  // 淡入动画关键帧
   @keyframes fadeIn {
     from {
-      opacity: 0;
+      opacity: 0; // 起始透明度为0
     }
     to {
-      opacity: 1;
+      opacity: 1; // 结束透明度为1
     }
   }
 }
@@ -481,356 +539,379 @@
 // ============================================================================
 // 量化平台专用混入（保持不变）
 // ============================================================================
+
+/// 页面头部基础样式混入
 @mixin page-header-base {
-  background: $page-header-bg;
-  border-radius: 0;
-  padding: $page-header-padding;
-  margin: $page-header-margin;
-  color: white;
-  position: relative;
-  overflow: hidden;
-  min-height: $header-height; // 增加卡片高度
-  align-items: center;
-  display: flex;
+  background: $page-header-bg; // 头部背景
+  border-radius: 0; // 无圆角
+  padding: $page-header-padding; // 内边距
+  margin: $page-header-margin; // 外边距
+  color: white; // 文字颜色
+  position: relative; // 相对定位
+  overflow: hidden; // 隐藏溢出
+  min-height: $header-height; // 最小高度
+  align-items: center; // 垂直居中
+  display: flex; // 弹性布局
 
+  // 头部内容区域
   .header-content {
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    z-index: 1;
-    padding: 0 map.get($spacers, 3);
-    width: 100%;
-    min-height: $header-height;
+    margin: 0 auto; // 水平居中
+    display: flex; // 弹性布局
+    justify-content: space-between; // 两端对齐
+    align-items: center; // 垂直居中
+    position: relative; // 相对定位
+    z-index: 1; // 设置层级
+    padding: 0 map.get($spacers, 3); // 水平内边距
+    width: 100%; // 宽度100%
+    min-height: $header-height; // 最小高度
 
+    // 标题区域
     .title-section {
-      flex: 1;
-      padding-right: map.get($spacers, 3);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      height: 100%;
+      flex: 1; // 弹性扩展
+      padding-right: map.get($spacers, 3); // 右侧内边距
+      display: flex; // 弹性布局
+      flex-direction: column; // 垂直方向
+      justify-content: center; // 垂直居中
+      height: 100%; // 高度100%
 
+      // 页面标题
       .page-title {
-        font-size: $page-title-font-size;
-        font-weight: $font-weight-bold;
-        color: white;
-        margin-bottom: map.get($spacers, 1);
-        line-height: 1.2; // 优化行高
+        font-size: $page-title-font-size; // 标题字体大小
+        font-weight: $font-weight-bold; // 标题字体粗细
+        color: white; // 标题颜色
+        margin-bottom: map.get($spacers, 1); // 底部外边距
+        line-height: 1.2; // 行高
       }
 
+      // 页面描述
       .page-description {
-        font-size: $page-description-font-size;
-        color: rgba(255, 255, 255, 0.9);
-        margin: 0;
-        line-height: 1.5;
+        font-size: $page-description-font-size; // 描述字体大小
+        color: rgba(255, 255, 255, 0.9); // 描述颜色（半透明白色）
+        margin: 0; // 重置外边距
+        line-height: 1.5; // 行高
       }
     }
 
+    // 头部操作区域
     .header-actions {
-      position: relative;
-      z-index: 1;
-      gap: map.get($spacers, 2);
-      flex-shrink: 0;
-      margin-left: map.get($spacers, 4);
-      display: flex;
-      align-items: center;
-      padding: map.get($spacers, 1) 0; // 增加垂直内边距确保垂直居中
-      justify-content: flex-end; // 按钮靠右
-      height: 100%; // 确保高度占满父容器
+      position: relative; // 相对定位
+      z-index: 1; // 设置层级
+      gap: map.get($spacers, 2); // 元素间距
+      flex-shrink: 0; // 禁止收缩
+      margin-left: map.get($spacers, 4); // 左侧外边距
+      display: flex; // 弹性布局
+      align-items: center; // 垂直居中
+      padding: map.get($spacers, 1) 0; // 垂直内边距
+      justify-content: flex-end; // 右对齐
+      height: 100%; // 高度100%
 
+      // 刷新按钮
       .refresh-btn {
-        background: rgba(255, 255, 255, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        color: white;
-        padding: map.get($spacers, 2) map.get($spacers, 3);
-        border-radius: $border-radius;
-        font-weight: $font-weight-medium;
-        transition: all $transition-normal;
-        display: flex;
-        align-items: center;
-        gap: map.get($spacers, 1);
-        min-height: $button-height; // 设置最小高度确保垂直居中效果明显
-        white-space: nowrap;
+        background: rgba(255, 255, 255, 0.15); // 半透明背景
+        border: 1px solid rgba(255, 255, 255, 0.3); // 半透明边框
+        color: white; // 文字颜色
+        padding: map.get($spacers, 2) map.get($spacers, 3); // 内边距
+        border-radius: $border-radius; // 圆角
+        font-weight: $font-weight-medium; // 字体粗细
+        transition: all $transition-normal; // 过渡动画
+        display: flex; // 弹性布局
+        align-items: center; // 垂直居中
+        gap: map.get($spacers, 1); // 图标与文字间距
+        min-height: $button-height; // 最小高度
+        white-space: nowrap; // 不换行
 
+        // 按钮悬停状态
         &:hover {
-          background: rgba(255, 255, 255, 0.25);
-          border-color: rgba(255, 255, 255, 0.5);
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          background: rgba(255, 255, 255, 0.25); // 背景透明度增加
+          border-color: rgba(255, 255, 255, 0.5); // 边框透明度增加
+          transform: translateY(-1px); // 上移效果
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); // 阴影效果
         }
 
+        // 按钮激活状态
         &:active {
-          transform: translateY(0);
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+          transform: translateY(0); // 恢复位置
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); // 减小阴影
         }
 
+        // 按钮文字
         .btn-text {
-          // 确保按钮文字垂直居中
-          display: flex;
-          align-items: center;
-          height: 100%;
+          font-size: $font-size-base * 0.9; // 较小字体大小
+          display: flex; // 弹性布局
+          align-items: center; // 垂直居中
+          height: 100%; // 高度100%
         }
 
+        // 刷新图标
         .refresh-icon {
-          font-size: $font-size-base * 1.1;
-          transition: transform $transition-normal;
+          font-size: $font-size-base * 1.1; // 较大图标大小
+          transition: transform $transition-normal; // 变换过渡
         }
 
+        // 刷新中状态
         &.refreshing .refresh-icon {
-          animation: spin 1s linear infinite;
+          animation: spin 1s linear infinite; // 旋转动画
         }
       }
     }
   }
 
-
+  // 状态栏
   .status-bar {
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 3);
-    flex-wrap: wrap;
+    display: flex; // 弹性布局
+    align-items: center; // 垂直居中
+    gap: map.get($spacers, 3); // 元素间距
+    flex-wrap: wrap; // 允许换行
   }
 }
 
+/// 状态卡片基础样式混入
+/// @param {Number} $height-scale - 高度缩放比例
 @mixin status-card-base($height-scale: 1) {
-  @include card-base;
-  padding: map.get($spacers, 3);
-  display: flex;
-  flex-direction: column;
-  transition: all $transition-normal;
-  height: calc(100% * #{$height-scale}); // 使用缩放比例
+  @include card-base; // 应用卡片基础样式
+  padding: map.get($spacers, 1); // 内边距
+  display: flex; // 弹性布局
+  flex-direction: column; // 垂直方向
+  transition: all $transition-normal; // 过渡动画
+  cursor: pointer; // 手型光标
 
-
-  // 根据高度比例调整内部间距
-  @if $height-scale < 1 {
-    $scale-factor: $height-scale;
-    padding: calc(#{map.get($spacers, 3)} * #{$scale-factor});
-
-    .status-content {
-      .status-icon {
-        width: calc(#{$status-icon-size} );
-        height: calc(#{$status-icon-size} );
-        font-size: calc(#{$font-size-base} * 1.5 );
-        margin-right: calc(#{map.get($spacers, 3)});
-      }
-
-      .status-info {
-        .status-value {
-          font-size: calc(#{$font-size-base} * 1.8 * #{$scale-factor});
-          margin-bottom: calc(#{map.get($spacers, 1)} * #{$scale-factor});
-        }
-
-        .status-label {
-          font-size: calc(#{$font-size-base} * 0.9 * #{$scale-factor});
-        }
-      }
-    }
-  } @else {
-    // 保持原有样式
-    .status-content {
-      .status-icon {
-        width: $status-icon-size;
-        height: $status-icon-size;
-        font-size: $font-size-base * 1.5;
-        margin-right: map.get($spacers, 3);
-      }
-
-      .status-info {
-        .status-value {
-          font-size: $font-size-base * 1.8;
-          margin-bottom: map.get($spacers, 1);
-        }
-
-        .status-label {
-          @include text-secondary;
-        }
-      }
-    }
-  }
-
+  // 状态内容区域
   .status-content {
-    display: flex;
-    align-items: center;
-    flex: 1;
-
+    // 状态图标
     .status-icon {
-      border-radius: $status-icon-radius;
-      @include flex-center;
-      flex-shrink: 0;
-
-      &.running {
-        background: rgba($status-running-color, 0.1);
-        color: $status-running-color;
-      }
-
-      &.progress {
-        background: rgba($status-progress-color, 0.1);
-        color: $status-progress-color;
-      }
-
-      &.time {
-        background: rgba($status-time-color, 0.1);
-        color: $status-time-color;
-      }
-
-      &.remaining {
-        background: rgba($status-remaining-color, 0.1);
-        color: $status-remaining-color;
-      }
+      width: $status-icon-size; // 图标宽度
+      height: $status-icon-size; // 图标高度
+      font-size: $font-size-base * 1.5; // 图标大小
+      margin-right: map.get($spacers, 5); // 右侧外边距
     }
 
+    // 状态信息
     .status-info {
-      flex: 1;
-
+      // 状态值
       .status-value {
-        font-weight: $font-weight-bold;
-        color: $text-primary;
-        line-height: 1.2;
+        font-size: $font-size-base * 1.8; // 较大字体大小
+        margin-bottom: map.get($spacers, 2); // 底部外边距
       }
 
+      // 状态标签
       .status-label {
-        color: $text-secondary;
+        @include text-secondary; // 应用次要文本样式
+      }
+    }
+  }
+
+  // 状态内容布局
+  .status-content {
+    display: flex; // 弹性布局
+    align-items: center; // 垂直居中
+    flex: 1; // 弹性扩展
+
+    // 状态图标样式
+    .status-icon {
+      border-radius: $status-icon-radius; // 图标圆角
+      @include flex-center; // 居中布局
+      flex-shrink: 0; // 禁止收缩
+
+      // 运行状态图标
+      &.running {
+        background: rgba($status-running-color, 0.1); // 背景色（带透明度）
+        color: $status-running-color; // 图标颜色
+      }
+
+      // 进度状态图标
+      &.progress {
+        background: rgba($status-progress-color, 0.1); // 背景色（带透明度）
+        color: $status-progress-color; // 图标颜色
+      }
+
+      // 时间状态图标
+      &.time {
+        background: rgba($status-time-color, 0.1); // 背景色（带透明度）
+        color: $status-time-color; // 图标颜色
+      }
+
+      // 剩余状态图标
+      &.remaining {
+        background: rgba($status-remaining-color, 0.1); // 背景色（带透明度）
+        color: $status-remaining-color; // 图标颜色
+      }
+    }
+
+    // 状态信息区域
+    .status-info {
+      flex: 1; // 弹性扩展
+
+      // 状态值样式
+      .status-value {
+        font-weight: $font-weight-bold; // 粗体
+        color: $text-primary; // 主要文字颜色
+        line-height: 1.2; // 行高
+      }
+
+      // 状态标签样式
+      .status-label {
+        color: $text-secondary; // 次要文字颜色
       }
     }
   }
 }
 
+/// 功能卡片基础样式混入
 @mixin function-card-base {
-  @include card-base;
-  cursor: pointer;
-  height: 100%;
-  min-height: 160px;
+  @include card-base; // 应用卡片基础样式
+  padding: map.get($spacers, 1); // 内边距
+  display: flex; // 弹性布局
+  flex-direction: column; // 垂直方向
+  cursor: pointer; // 手型光标
+  transition: all $transition-normal; // 过渡动画
+  height: 100%; // 高度100%
 
+  // 功能内容区域
   .function-content {
-    display: flex;
-    align-items: flex-start;
-    padding: map.get($spacers, 1) map.get($spacers, 2);
-    gap: map.get($spacers, 2);
-    height: 100%;
-
-    .sidebar-collapsed & {
-      padding: map.get($spacers, 1) map.get($spacers, 2);
-    }
-  }
-  // 图标和标题在同一行
-  .function-header {
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 2);
-    margin-bottom: map.get($spacers, 2);
-
-    .function-icon {
-      font-size: $function-icon-size * 0.9;
-      flex-shrink: 0;
-      opacity: 0.8;
-      margin-right: map.get($spacers, 2); // 重置原来的margin-right
-
-      &.accent {
-        color: $accent-color;
-      }
-
-      &.danger {
-        color: $danger-color;
-      }
-
-      &.purple {
-        color: $purple-color;
-      }
-
-      &.info {
-        color: $info-color;
-      }
-
-      &.success {
-        color: $success-color;
-      }
-
-      &.warning {
-        color: $warning-color;
-      }
-    }
-
-    .function-title {
-      font-size: $font-size-base * 1.3;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      margin: 0;
-      flex: 1;
-      line-height: 1.3;
-    }
-  }
-
-  .function-info {
-    flex: 1;
-    display: flex;
+    display: flex; // 弹性布局
+    align-items: flex-start; // 顶部对齐
+    gap: map.get($spacers, 1); // 元素间距
     flex-direction: column;
-    //height: 100%; // 确保信息区域占满高度
+
+    // 侧边栏折叠状态下的调整
+    .sidebar-collapsed & {
+      padding: map.get($spacers, 1) map.get($spacers, 2); // 调整内边距
+    }
+  }
+
+  // 功能头部（图标和标题在同一行）
+  .function-header {
+    display: flex; // 弹性布局
+    align-items: center; // 垂直居中
+    gap: map.get($spacers, 2); // 元素间距
+    //margin-bottom: map.get($spacers, 1); // 底部外边距
+    // 功能图标
+    .function-icon {
+      font-size: $function-icon-size * 0.9; // 图标大小
+      flex-shrink: 0; // 禁止收缩
+      opacity: 0.8; // 透明度
+      margin-right: map.get($spacers, 2); // 右侧外边距
+
+      // 强调色图标
+      &.accent {
+        color: $accent-color; // 强调色
+      }
+
+      // 危险色图标
+      &.danger {
+        color: $danger-color; // 危险色
+      }
+
+      // 紫色图标
+      &.purple {
+        color: $purple-color; // 紫色
+      }
+
+      // 信息色图标
+      &.info {
+        color: $info-color; // 信息色
+      }
+
+      // 成功色图标
+      &.success {
+        color: $success-color; // 成功色
+      }
+
+      // 警告色图标
+      &.warning {
+        color: $warning-color; // 警告色
+      }
+    }
+
+    // 功能标题
+    .function-title {
+      font-size: $font-size-base * 1.3; // 较大字体大小
+      font-weight: $font-weight-semibold; // 半粗体
+      color: $text-primary; // 主要文字颜色
+      margin: 0; // 重置外边距
+      flex: 1; // 弹性扩展
+      line-height: 1.3; // 行高
+    }
+  }
+
+  // 功能信息区域
+  .function-info {
+    flex: 1; // 弹性扩展
+    display: flex; // 弹性布局
+    flex-direction: column; // 垂直方向
+    margin-left: calc(#{$function-icon-size * 0.9} + #{map.get($spacers, 4)});
+    width: calc(100% - 2 * (#{$function-icon-size} + #{map.get($spacers, 4)}));
+    // 标题
     h3 {
-      font-size: $font-size-base * 1.13;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      margin: 0 0 map.get($spacers, 1) 0;
-      line-height: 1.1;
+      font-size: $font-size-base * 1.13; // 标题字体大小
+      font-weight: $font-weight-semibold; // 半粗体
+      color: $text-primary; // 主要文字颜色
+      margin: 0 0 map.get($spacers, 1) 0; // 底部外边距
+      line-height: 1.1; // 行高
     }
 
+    // 描述文字
     p {
-      @include text-secondary;
-      margin: 0 0 map.get($spacers, 2) 0;
-      line-height: 1.2;
+      @include text-secondary; // 应用次要文本样式
+      margin: 0 0 map.get($spacers, 2) 0; // 底部外边距
+      line-height: 1.2; // 行高
     }
 
+    // 功能统计区域
     .function-stats {
-      display: flex;
-      flex-direction: column;
-      gap: $function-stats-gap  * 0.8;
-      margin-bottom: map.get($spacers, 2);
-      flex: 1;
+      display: flex; // 弹性布局
+      flex-direction: column; // 垂直方向
+      gap: $function-stats-gap * 0.8; // 元素间距（缩放）
+      margin-bottom: map.get($spacers, 2); // 底部外边距
+      flex: 1; // 弹性扩展
     }
 
+    // 功能底部区域
     .function-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-top: map.get($spacers, 1);
-      border-top: $function-footer-border;
-      margin-top: auto;
+      display: flex; // 弹性布局
+      justify-content: space-between; // 两端对齐
+      align-items: center; // 垂直居中
+      padding-top: map.get($spacers, 1); // 顶部内边距
+      border-top: $function-footer-border; // 顶部边框
+      margin-top: auto; // 顶部自动外边距（推到底部）
 
+      // 更新时间
       .update-time {
-        font-size: $font-size-base * 0.8;
-        color: $text-secondary;
-        line-height: 1.2;
+        font-size: $font-size-base * 0.8; // 较小字体大小
+        color: $text-secondary; // 次要文字颜色
+        line-height: 1.2; // 行高
       }
     }
   }
 }
 
-
+/// 区块标题基础样式混入
 @mixin section-title-base {
-  font-size: $font-size-base * 1.3;
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
-  margin-bottom: map.get($spacers, 4);
-  display: flex;
-  align-items: center;
-  gap: map.get($spacers, 2);
-  padding-bottom: map.get($spacers, 2);
-  border-bottom: 2px solid $border-color;
+  font-size: $font-size-base * 1.3; // 较大字体大小
+  font-weight: $font-weight-semibold; // 半粗体
+  color: $text-primary; // 主要文字颜色
+  margin-bottom: map.get($spacers, 4); // 底部外边距
+  display: flex; // 弹性布局
+  align-items: center; // 垂直居中
+  gap: map.get($spacers, 2); // 元素间距
+  padding-bottom: map.get($spacers, 2); // 底部内边距
+  border-bottom: 2px solid $border-color; // 底部边框
 }
 
+/// 卡片头部基础样式混入
 @mixin card-header-base {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: $card-header-bg;
-  border-bottom: $border-width solid $border-color;
+  display: flex; // 弹性布局
+  justify-content: space-between; // 两端对齐
+  align-items: center; // 垂直居中
+  padding: map.get($spacers, 2) map.get($spacers, 3); // 内边距
+  background: $card-header-bg; // 背景色
+  border-bottom: $border-width solid $border-color; // 底部边框
 
+  // 卡片标题
   .card-title {
-    font-size: $font-size-base * 1.1;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-    margin: 0;
+    font-size: $font-size-base * 1.1; // 标题字体大小
+    font-weight: $font-weight-semibold; // 半粗体
+    color: $text-primary; // 主要文字颜色
+    margin: 0; // 重置外边距
   }
 }
