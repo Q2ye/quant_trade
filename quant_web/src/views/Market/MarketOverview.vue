@@ -4,7 +4,7 @@
 <template>
   <div class="market-overview-page sidebar-layout-container no-bleed-through">
     <!-- 页面标题和状态 - 使用全局主题样式 -->
-    <div class="market-page-header">
+    <div class="common-page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">市场概览</h1>

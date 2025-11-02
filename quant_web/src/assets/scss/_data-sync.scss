@@ -1,969 +1,969 @@
-// quant_web/src/assets/scss/_data-sync.scss
-// 数据同步页面专用样式 - 完全基于全局主题系统
-@use 'variables' as *;
-@use 'mixins' as mix;
-@use 'sass:map';
-@use 'themes' as *; // 引入主题工具函数
-
-// 数据同步页面主题样式（所有变量基于全局主题）
-.data-sync-page {
-  // 页面背景（直接使用主题主背景）
-  --page-bg: #{$primary-bg};
-
-  // 页面标题背景（使用主题配置的渐变）
-  --page-header-bg: #{$page-header-bg};
-
-  // 状态卡片（使用主题状态颜色）
-  --status-card-hover: #{$status-card-hover};
-
-  // 状态图标颜色（直接使用主题状态颜色）
-  --status-running-bg: #{$status-running-bg};
-  --status-running-color: #{$status-running-color};
-  --status-progress-bg: #{$status-progress-bg};
-  --status-progress-color: #{$status-progress-color};
-  --status-time-bg: #{$status-time-bg};
-  --status-time-color: #{$status-time-color};
-  --status-remaining-bg: #{$status-remaining-bg};
-  --status-remaining-color: #{$status-remaining-color};
-
-  // 数据类型选择（使用主题选中样式）
-  --data-type-selected-bg: #{$data-type-selected-bg};
-  --data-type-selected-border: #{$data-type-selected-border};
-  --data-type-selected-shadow: #{$data-type-selected-shadow};
-
-  // 卡片阴影（使用主题阴影）
-  --card-shadow: #{$card-shadow};
-  --hover-shadow: #{$hover-shadow};
-
-  // 按钮样式（使用主题按钮样式）
-  --action-primary-bg: #{$action-primary-bg};
-  --primary-btn-hover-shadow: #{$primary-btn-hover-shadow};
-  --secondary-btn-bg: #{$secondary-btn-bg};
-  --cancel-btn-bg: #{$cancel-btn-bg};
-
-  background: var(--page-bg);
-  min-height: 100vh;
-  padding-bottom: map.get($spacers, 5);
-}
-
-// 数据类型网格布局 - 可复用的样式类（使用主题间距）
-.data-type-grid-layout {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: map.get($spacers, 3);
-  width: 100%;
-
-  @include mix.media-breakpoint-down(xl) {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  @include mix.media-breakpoint-down(lg) {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  @include mix.media-breakpoint-down(md) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  @include mix.media-breakpoint-down(sm) {
-    grid-template-columns: 1fr;
-  }
-}
-
-// 页面标题区域（使用主题变量）
-.page-header {
-  background: var(--page-header-bg);
-  border-radius: $border-radius-lg;
-  padding: map.get($spacers, 3) map.get($spacers, 4);
-  margin-bottom: map.get($spacers, 4);
-  color: white;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.05);
-    opacity: 0;
-    transition: opacity $transition-normal;
-  }
-
-  &:hover::before {
-    opacity: 1;
-  }
-
-  .header-content {
-    position: relative;
-    z-index: 1;
-  }
-
-  .page-title {
-    font-size: $font-size-base * 1.6;
-    font-weight: $font-weight-semibold;
-    margin-bottom: map.get($spacers, 1);
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 2);
-  }
-
-  .page-description {
-    font-size: $font-size-base * 0.95;
-    opacity: 0.9;
-    max-width: 800px;
-    margin-bottom: map.get($spacers, 2);
-  }
-
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 3);
-    flex-wrap: wrap;
-  }
-
-  .status-tag {
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    padding: 4px 12px;
-    border-radius: $border-radius-sm;
-    font-size: $font-size-base * 0.9;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    // 状态标签颜色映射（使用主题状态色）
-    &.status-processing {
-      background: rgba($status-running-color, 0.3);
-    }
-
-    &.status-success {
-      background: rgba($success-color, 0.3);
-    }
-
-    &.status-error {
-      background: rgba($danger-color, 0.3);
-    }
-
-    &.status-default {
-      background: rgba($text-secondary, 0.3);
-    }
-
-    .status-icon {
-      font-size: 1em;
-    }
-  }
-
-  .last-sync-info {
-    margin-left: auto;
-    font-size: $font-size-base * 0.9;
-    opacity: 0.9;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    @include mix.media-breakpoint-down(sm) {
-      margin-left: 0;
-      margin-top: map.get($spacers, 2);
-    }
-  }
-}
-
-// 状态概览卡片（使用主题卡片样式）
-.status-overview {
-  margin-bottom: map.get($spacers, 4);
-
-  .section-title {
-    font-size: $font-size-base * 1.2;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-    margin-bottom: map.get($spacers, 3);
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 1);
-
-    .title-icon {
-      color: $accent-color;
-    }
-  }
-
-  .status-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: map.get($spacers, 3);
-  }
-
-  .status-card {
-    @include mix.card-base;
-    @include mix.card-hover;
-    padding: map.get($spacers, 3);
-    display: flex;
-    flex-direction: column;
-
-    .status-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: map.get($spacers, 2);
-    }
-
-    .status-title {
-      font-size: $font-size-base * 0.95;
-      color: $text-secondary;
-      font-weight: $font-weight-medium;
-    }
-
-    .status-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: $font-size-base * 1.2;
-
-      &.running {
-        background: var(--status-running-bg);
-        color: var(--status-running-color);
-      }
-      &.progress {
-        background: var(--status-progress-bg);
-        color: var(--status-progress-color);
-      }
-      &.time {
-        background: var(--status-time-bg);
-        color: var(--status-time-color);
-      }
-      &.remaining {
-        background: var(--status-remaining-bg);
-        color: var(--status-remaining-color);
-      }
-    }
-
-    .status-value {
-      font-size: $font-size-base * 1.8;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      margin-bottom: 4px;
-      line-height: 1.2;
-    }
-
-    .status-desc {
-      font-size: $font-size-base * 0.9;
-      color: $text-secondary;
-    }
-
-    .status-progress {
-      margin-top: map.get($spacers, 2);
-      height: 6px;
-      width: 100%;
-      background: $secondary-bg;
-      border-radius: 3px;
-      overflow: hidden;
-
-      .progress-bar {
-        height: 100%;
-        border-radius: 3px;
-        transition: width $transition-normal;
-      }
-
-      &.running .progress-bar {
-        background: var(--status-running-color);
-      }
-
-      &.progress .progress-bar {
-        background: var(--status-progress-color);
-      }
-    }
-  }
-}
-
-// 数据类型选择 - 优化的点击选中样式（使用主题变量）
-.data-type-section {
-  margin-bottom: map.get($spacers, 4);
-
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: map.get($spacers, 3);
-
-    .section-title {
-      font-size: $font-size-base * 1.2;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      display: flex;
-      align-items: center;
-      gap: map.get($spacers, 1);
-
-      .title-icon {
-        color: $accent-color;
-      }
-    }
-
-    .section-actions {
-      display: flex;
-      gap: map.get($spacers, 2);
-    }
-
-    .action-text {
-      font-size: $font-size-base * 0.9;
-      color: $text-secondary;
-      cursor: pointer;
-      transition: color $transition-fast;
-
-      &:hover {
-        color: $accent-color;
-      }
-
-      &.selected {
-        color: $accent-color;
-        font-weight: $font-weight-medium;
-      }
-    }
-  }
-
-  .filter-bar {
-    display: flex;
-    gap: map.get($spacers, 2);
-    margin-bottom: map.get($spacers, 3);
-    flex-wrap: wrap;
-
-    .filter-tag {
-      padding: 4px 12px;
-      background: $secondary-bg;
-      border-radius: $border-radius;
-      font-size: $font-size-base * 0.9;
-      color: $text-secondary;
-      cursor: pointer;
-      transition: all $transition-fast;
-
-      &:hover {
-        background: $hover-bg;
-        color: $text-primary;
-      }
-
-      &.active {
-        background: $accent-color;
-        color: white;
-      }
-    }
-  }
-}
-
-.data-type-group {
-  .data-type-item {
-    @include mix.card-base;
-    padding: map.get($spacers, 3);
-    cursor: pointer;
-    position: relative;
-    transition: all $transition-fast;
-
-    &:hover {
-      border-color: $accent-color;
-      transform: $hover-transform;
-      box-shadow: $hover-shadow;
-    }
-
-    // 选中状态
-    &.selected {
-      border-color: var(--data-type-selected-border) !important;
-      background: var(--data-type-selected-bg) !important;
-      box-shadow: var(--data-type-selected-shadow) !important;
-
-      // 选中状态的动画效果
-      animation: dataTypeSelected $transition-normal ease;
-
-      .type-name {
-        color: $accent-color;
-        font-weight: $font-weight-semibold;
-      }
-
-      .type-time {
-        background: $accent-color;
-        color: white;
-      }
-
-      .check-icon {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-
-    .type-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: map.get($spacers, 2);
-    }
-
-    .type-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: $border-radius;
-      background: $secondary-bg;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: $font-size-base * 1.2;
-      color: $accent-color;
-    }
-
-    .type-info {
-      flex: 1;
-      margin-left: map.get($spacers, 2);
-    }
-
-    .type-name {
-      color: $text-primary;
-      font-weight: $font-weight-medium;
-      margin-bottom: 4px;
-      @include mix.text-ellipsis;
-      transition: color $transition-fast;
-    }
-
-    .type-desc {
-      font-size: $font-size-base * 0.85;
-      color: $text-secondary;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      line-height: 1.4;
-    }
-
-    .type-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: map.get($spacers, 2);
-    }
-
-    .type-time {
-      background: $secondary-bg;
-      color: $text-secondary;
-      font-size: $font-size-base * 0.8;
-      padding: 2px 8px;
-      border-radius: 12px;
-      transition: all $transition-fast;
-    }
-
-    .type-size {
-      font-size: $font-size-base * 0.85;
-      color: $text-secondary;
-    }
-
-    .type-indicator {
-      position: absolute;
-      top: map.get($spacers, 2);
-      right: map.get($spacers, 2);
-    }
-
-    .check-icon {
-      color: $accent-color;
-      opacity: 0;
-      transform: scale(0.8);
-      transition: all $transition-fast;
-    }
-
-    // 状态标记
-    .status-badge {
-      position: absolute;
-      top: map.get($spacers, 2);
-      right: map.get($spacers, 2);
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-
-      &.success {
-        background: $success-color;
-      }
-
-      &.error {
-        background: $danger-color;
-      }
-
-      &.syncing {
-        background: $warning-color;
-        animation: pulse 2s infinite;
-      }
-    }
-  }
-}
-
-// 操作按钮主题化（使用主题按钮样式）
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: map.get($spacers, 3);
-  margin-top: map.get($spacers, 5);
-  flex-wrap: wrap;
-
-  .action-button {
-    @include mix.button-base;
-    padding: map.get($spacers, 2) map.get($spacers, 4);
-    font-weight: $font-weight-medium;
-    transition: all $transition-normal;
-    min-width: 140px;
-
-    &.primary {
-      background: var(--action-primary-bg);
-      border: none;
-      color: white;
-
-      &:hover:not(:disabled) {
-        transform: $hover-transform;
-        box-shadow: var(--primary-btn-hover-shadow);
-      }
-
-      &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-      }
-    }
-
-    // 取消按钮使用危险色
-    &.cancel {
-      background: var(--cancel-btn-bg);
-      border-color: $danger-color;
-      color: $danger-color;
-
-      &:hover:not(:disabled) {
-        background: $danger-color;
-        color: white;
-        transform: $hover-transform;
-      }
-
-      &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-        transform: none;
-      }
-    }
-
-    // 快速同步和全量同步按钮
-    &:not(.primary):not(.cancel) {
-      background: var(--secondary-btn-bg);
-      border-color: $border-color;
-      color: $text-primary;
-
-      &:hover:not(:disabled) {
-        background: $hover-bg;
-        border-color: $accent-color;
-        transform: $hover-transform;
-      }
-
-      &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-        transform: none;
-      }
-    }
-
-    .button-icon {
-      margin-right: map.get($spacers, 1);
-    }
-  }
-}
-
-// 同步历史记录
-.sync-history {
-  margin-top: map.get($spacers, 5);
-
-  .section-title {
-    font-size: $font-size-base * 1.2;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-    margin-bottom: map.get($spacers, 3);
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 1);
-
-    .title-icon {
-      color: $accent-color;
-    }
-  }
-
-  .history-table {
-    @include mix.card-base;
-    overflow: hidden;
-
-    .table-header {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr 120px;
-      background: $secondary-bg;
-      padding: map.get($spacers, 2) map.get($spacers, 3);
-      font-weight: $font-weight-semibold;
-      font-size: $font-size-base * 0.9;
-      color: $text-primary;
-      border-bottom: $border-width solid $border-color;
-
-      @include mix.media-breakpoint-down(md) {
-        grid-template-columns: 2fr 1fr 100px;
-
-        .hidden-md {
-          display: none;
-        }
-      }
-
-      @include mix.media-breakpoint-down(sm) {
-        grid-template-columns: 1fr 80px;
-
-        .hidden-sm {
-          display: none;
-        }
-      }
-    }
-
-    .table-body {
-      max-height: 400px;
-      overflow-y: auto;
-      @include mix.custom-scrollbar;
-    }
-
-    .table-row {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr 120px;
-      padding: map.get($spacers, 2) map.get($spacers, 3);
-      border-bottom: $border-width solid $border-color;
-      transition: background $transition-fast;
-
-      &:last-child {
-        border-bottom: none;
-      }
-
-      &:hover {
-        background: $hover-bg;
-      }
-
-      @include mix.media-breakpoint-down(md) {
-        grid-template-columns: 2fr 1fr 100px;
-
-        .hidden-md {
-          display: none;
-        }
-      }
-
-      @include mix.media-breakpoint-down(sm) {
-        grid-template-columns: 1fr 80px;
-
-        .hidden-sm {
-          display: none;
-        }
-      }
-
-      .row-cell {
-        font-size: $font-size-base * 0.9;
-        color: $text-primary;
-        align-self: center;
-
-        &.status {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-
-          .status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-          }
-
-          .success {
-            background: $success-color;
-          }
-
-          .error {
-            background: $danger-color;
-          }
-
-          .processing {
-            background: $warning-color;
-            animation: pulse 2s infinite;
-          }
-        }
-
-        &.data-types {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
-
-          .type-tag {
-            background: $secondary-bg;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: $font-size-base * 0.8;
-            color: $text-secondary;
-          }
-        }
-
-        &.actions {
-          display: flex;
-          gap: map.get($spacers, 1);
-
-          .action-icon {
-            color: $text-secondary;
-            cursor: pointer;
-            transition: color $transition-fast;
-
-            &:hover {
-              color: $accent-color;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  .empty-history {
-    @include mix.card-base;
-    padding: map.get($spacers, 5);
-    text-align: center;
-
-    .empty-icon {
-      font-size: 3rem;
-      color: $text-secondary;
-      opacity: 0.3;
-      margin-bottom: map.get($spacers, 2);
-    }
-
-    .empty-text {
-      color: $text-secondary;
-      margin-bottom: map.get($spacers, 3);
-    }
-
-    .empty-action {
-      @include mix.button-base;
-      background: $secondary-bg;
-      border-color: $border-color;
-      color: $text-primary;
-
-      &:hover {
-        background: $hover-bg;
-        border-color: $accent-color;
-      }
-    }
-  }
-}
-
-// 选中状态动画（使用主题过渡时间）
-@keyframes dataTypeSelected {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.02);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-// 进度条主题化（使用主题强调色）
-.task-progress {
-  :deep(.ant-progress-bg) {
-    background: $accent-color;
-  }
-
-  :deep(.ant-progress-inner) {
-    background: $secondary-bg;
-  }
-
-  :deep(.ant-progress-text) {
-    color: $text-secondary !important;
-    font-size: $font-size-base * 0.9 !important;
-  }
-}
-
-// 同步详情弹窗
-.sync-detail-modal {
-  :deep(.ant-modal-content) {
-    background: $card-bg;
-    border-color: $border-color;
-    border-radius: $border-radius;
-  }
-
-  :deep(.ant-modal-header) {
-    background: $secondary-bg;
-    border-bottom: $border-width solid $border-color;
-
-    .ant-modal-title {
-      color: $text-primary;
-      font-weight: $font-weight-semibold;
-    }
-  }
-
-  :deep(.ant-modal-body) {
-    padding: map.get($spacers, 3);
-    max-height: 60vh;
-    overflow-y: auto;
-    @include mix.custom-scrollbar;
-  }
-
-  :deep(.ant-modal-footer) {
-    border-top: $border-width solid $border-color;
-    background: $secondary-bg;
-    padding: map.get($spacers, 2) map.get($spacers, 3);
-  }
-
-  .detail-section {
-    margin-bottom: map.get($spacers, 3);
-
-    .section-title {
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      margin-bottom: map.get($spacers, 2);
-      font-size: $font-size-base * 1.1;
-    }
-  }
-
-  .detail-info {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: map.get($spacers, 2);
-    margin-bottom: map.get($spacers, 3);
-  }
-
-  .info-item {
-    .info-label {
-      font-size: $font-size-base * 0.9;
-      color: $text-secondary;
-      margin-bottom: 4px;
-    }
-
-    .info-value {
-      font-size: $font-size-base;
-      color: $text-primary;
-      font-weight: $font-weight-medium;
-    }
-  }
-
-  .data-type-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: map.get($spacers, 2);
-  }
-
-  .type-item {
-    @include mix.card-base;
-    padding: map.get($spacers, 2);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    .type-name {
-      font-size: $font-size-base * 0.95;
-      color: $text-primary;
-    }
-
-    .type-status {
-      font-size: $font-size-base * 0.85;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-
-      &.success {
-        color: $success-color;
-      }
-
-      &.error {
-        color: $danger-color;
-      }
-    }
-  }
-}
-
-// 脉冲动画
-@keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-// 响应式调整（使用主题间距）
-@include mix.media-breakpoint-down(md) {
-  .data-sync-page {
-    --page-header-bg: #{$page-header-bg};
-  }
-
-  .data-type-grid-layout {
-    gap: map.get($spacers, 2);
-  }
-
-  .page-header {
-    padding: map.get($spacers, 2) map.get($spacers, 3);
-
-    .page-title {
-      font-size: $font-size-base * 1.4;
-    }
-  }
-
-  .status-card {
-    padding: map.get($spacers, 2);
-  }
-}
-
-@include mix.media-breakpoint-down(sm) {
-  .action-buttons {
-    flex-direction: column;
-    gap: map.get($spacers, 2);
-  }
-
-  .action-button {
-    width: 100%;
-    min-width: auto;
-  }
-
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: map.get($spacers, 2);
-  }
-
-  .section-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-}
-
-// 主题特定调整（仅区分主题类型，值来自主题配置）
-[data-theme="light"] {
-  .data-sync-page {
-    --data-type-selected-bg: #{$data-type-selected-bg};
-    --status-card-hover: #{$status-card-hover};
-    --card-shadow: #{$card-shadow};
-    --hover-shadow: #{$hover-shadow};
-  }
-
-  .status-card,
-  .data-type-item {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  }
-}
-
-[data-theme="dark"] {
-  .data-sync-page {
-    --data-type-selected-bg: #{$data-type-selected-bg};
-    --status-card-hover: #{$status-card-hover};
-    --card-shadow: #{$card-shadow};
-    --hover-shadow: #{$hover-shadow};
-  }
-
-  .page-header {
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  }
-}
+//// quant_web/src/assets/scss/_data-sync.scss
+//// 数据同步页面专用样式 - 完全基于全局主题系统
+//@use 'variables' as *;
+//@use 'mixins' as mix;
+//@use 'sass:map';
+//@use 'themes' as *; // 引入主题工具函数
+//
+//// 数据同步页面主题样式（所有变量基于全局主题）
+//.data-sync-page {
+//  // 页面背景（直接使用主题主背景）
+//  --page-bg: #{$primary-bg};
+//
+//  // 页面标题背景（使用主题配置的渐变）
+//  --page-header-bg: #{$page-header-bg};
+//
+//  // 状态卡片（使用主题状态颜色）
+//  --status-card-hover: #{$status-card-hover};
+//
+//  // 状态图标颜色（直接使用主题状态颜色）
+//  --status-running-bg: #{$status-running-bg};
+//  --status-running-color: #{$status-running-color};
+//  --status-progress-bg: #{$status-progress-bg};
+//  --status-progress-color: #{$status-progress-color};
+//  --status-time-bg: #{$status-time-bg};
+//  --status-time-color: #{$status-time-color};
+//  --status-remaining-bg: #{$status-remaining-bg};
+//  --status-remaining-color: #{$status-remaining-color};
+//
+//  // 数据类型选择（使用主题选中样式）
+//  --data-type-selected-bg: #{$data-type-selected-bg};
+//  --data-type-selected-border: #{$data-type-selected-border};
+//  --data-type-selected-shadow: #{$data-type-selected-shadow};
+//
+//  // 卡片阴影（使用主题阴影）
+//  --card-shadow: #{$card-shadow};
+//  --hover-shadow: #{$hover-shadow};
+//
+//  // 按钮样式（使用主题按钮样式）
+//  --action-primary-bg: #{$action-primary-bg};
+//  --primary-btn-hover-shadow: #{$primary-btn-hover-shadow};
+//  --secondary-btn-bg: #{$secondary-btn-bg};
+//  --cancel-btn-bg: #{$cancel-btn-bg};
+//
+//  background: var(--page-bg);
+//  min-height: 100vh;
+//  padding-bottom: map.get($spacers, 5);
+//}
+//
+//// 数据类型网格布局 - 可复用的样式类（使用主题间距）
+//.data-type-grid-layout {
+//  display: grid;
+//  grid-template-columns: repeat(5, 1fr);
+//  gap: map.get($spacers, 3);
+//  width: 100%;
+//
+//  @include mix.media-breakpoint-down(xl) {
+//    grid-template-columns: repeat(4, 1fr);
+//  }
+//
+//  @include mix.media-breakpoint-down(lg) {
+//    grid-template-columns: repeat(3, 1fr);
+//  }
+//
+//  @include mix.media-breakpoint-down(md) {
+//    grid-template-columns: repeat(2, 1fr);
+//  }
+//
+//  @include mix.media-breakpoint-down(sm) {
+//    grid-template-columns: 1fr;
+//  }
+//}
+//
+//// 页面标题区域（使用主题变量）
+//.page-header {
+//  background: var(--page-header-bg);
+//  border-radius: $border-radius-lg;
+//  padding: map.get($spacers, 3) map.get($spacers, 4);
+//  margin-bottom: map.get($spacers, 4);
+//  color: white;
+//  position: relative;
+//  overflow: hidden;
+//
+//  &::before {
+//    content: "";
+//    position: absolute;
+//    top: 0;
+//    left: 0;
+//    right: 0;
+//    bottom: 0;
+//    background: rgba(255, 255, 255, 0.05);
+//    opacity: 0;
+//    transition: opacity $transition-normal;
+//  }
+//
+//  &:hover::before {
+//    opacity: 1;
+//  }
+//
+//  .header-content {
+//    position: relative;
+//    z-index: 1;
+//  }
+//
+//  .page-title {
+//    font-size: $font-size-base * 1.6;
+//    font-weight: $font-weight-semibold;
+//    margin-bottom: map.get($spacers, 1);
+//    display: flex;
+//    align-items: center;
+//    gap: map.get($spacers, 2);
+//  }
+//
+//  .page-description {
+//    font-size: $font-size-base * 0.95;
+//    opacity: 0.9;
+//    max-width: 800px;
+//    margin-bottom: map.get($spacers, 2);
+//  }
+//
+//  .status-bar {
+//    display: flex;
+//    align-items: center;
+//    gap: map.get($spacers, 3);
+//    flex-wrap: wrap;
+//  }
+//
+//  .status-tag {
+//    background: rgba(255, 255, 255, 0.2);
+//    border: none;
+//    color: white;
+//    padding: 4px 12px;
+//    border-radius: $border-radius-sm;
+//    font-size: $font-size-base * 0.9;
+//    display: flex;
+//    align-items: center;
+//    gap: 6px;
+//
+//    // 状态标签颜色映射（使用主题状态色）
+//    &.status-processing {
+//      background: rgba($status-running-color, 0.3);
+//    }
+//
+//    &.status-success {
+//      background: rgba($success-color, 0.3);
+//    }
+//
+//    &.status-error {
+//      background: rgba($danger-color, 0.3);
+//    }
+//
+//    &.status-default {
+//      background: rgba($text-secondary, 0.3);
+//    }
+//
+//    .status-icon {
+//      font-size: 1em;
+//    }
+//  }
+//
+//  .last-sync-info {
+//    margin-left: auto;
+//    font-size: $font-size-base * 0.9;
+//    opacity: 0.9;
+//    display: flex;
+//    align-items: center;
+//    gap: 6px;
+//
+//    @include mix.media-breakpoint-down(sm) {
+//      margin-left: 0;
+//      margin-top: map.get($spacers, 2);
+//    }
+//  }
+//}
+//
+//// 状态概览卡片（使用主题卡片样式）
+//.status-overview {
+//  margin-bottom: map.get($spacers, 4);
+//
+//  .section-title {
+//    font-size: $font-size-base * 1.2;
+//    font-weight: $font-weight-semibold;
+//    color: $text-primary;
+//    margin-bottom: map.get($spacers, 3);
+//    display: flex;
+//    align-items: center;
+//    gap: map.get($spacers, 1);
+//
+//    .title-icon {
+//      color: $accent-color;
+//    }
+//  }
+//
+//  .status-grid {
+//    display: grid;
+//    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+//    gap: map.get($spacers, 3);
+//  }
+//
+//  .status-card {
+//    @include mix.card-base;
+//    @include mix.card-hover;
+//    padding: map.get($spacers, 3);
+//    display: flex;
+//    flex-direction: column;
+//
+//    .status-header {
+//      display: flex;
+//      justify-content: space-between;
+//      align-items: flex-start;
+//      margin-bottom: map.get($spacers, 2);
+//    }
+//
+//    .status-title {
+//      font-size: $font-size-base * 0.95;
+//      color: $text-secondary;
+//      font-weight: $font-weight-medium;
+//    }
+//
+//    .status-icon {
+//      width: 36px;
+//      height: 36px;
+//      border-radius: 50%;
+//      display: flex;
+//      align-items: center;
+//      justify-content: center;
+//      font-size: $font-size-base * 1.2;
+//
+//      &.running {
+//        background: var(--status-running-bg);
+//        color: var(--status-running-color);
+//      }
+//      &.progress {
+//        background: var(--status-progress-bg);
+//        color: var(--status-progress-color);
+//      }
+//      &.time {
+//        background: var(--status-time-bg);
+//        color: var(--status-time-color);
+//      }
+//      &.remaining {
+//        background: var(--status-remaining-bg);
+//        color: var(--status-remaining-color);
+//      }
+//    }
+//
+//    .status-value {
+//      font-size: $font-size-base * 1.8;
+//      font-weight: $font-weight-semibold;
+//      color: $text-primary;
+//      margin-bottom: 4px;
+//      line-height: 1.2;
+//    }
+//
+//    .status-desc {
+//      font-size: $font-size-base * 0.9;
+//      color: $text-secondary;
+//    }
+//
+//    .status-progress {
+//      margin-top: map.get($spacers, 2);
+//      height: 6px;
+//      width: 100%;
+//      background: $secondary-bg;
+//      border-radius: 3px;
+//      overflow: hidden;
+//
+//      .progress-bar {
+//        height: 100%;
+//        border-radius: 3px;
+//        transition: width $transition-normal;
+//      }
+//
+//      &.running .progress-bar {
+//        background: var(--status-running-color);
+//      }
+//
+//      &.progress .progress-bar {
+//        background: var(--status-progress-color);
+//      }
+//    }
+//  }
+//}
+//
+//// 数据类型选择 - 优化的点击选中样式（使用主题变量）
+//.data-type-section {
+//  margin-bottom: map.get($spacers, 4);
+//
+//  .section-header {
+//    display: flex;
+//    justify-content: space-between;
+//    align-items: center;
+//    margin-bottom: map.get($spacers, 3);
+//
+//    .section-title {
+//      font-size: $font-size-base * 1.2;
+//      font-weight: $font-weight-semibold;
+//      color: $text-primary;
+//      display: flex;
+//      align-items: center;
+//      gap: map.get($spacers, 1);
+//
+//      .title-icon {
+//        color: $accent-color;
+//      }
+//    }
+//
+//    .section-actions {
+//      display: flex;
+//      gap: map.get($spacers, 2);
+//    }
+//
+//    .action-text {
+//      font-size: $font-size-base * 0.9;
+//      color: $text-secondary;
+//      cursor: pointer;
+//      transition: color $transition-fast;
+//
+//      &:hover {
+//        color: $accent-color;
+//      }
+//
+//      &.selected {
+//        color: $accent-color;
+//        font-weight: $font-weight-medium;
+//      }
+//    }
+//  }
+//
+//  .filter-bar {
+//    display: flex;
+//    gap: map.get($spacers, 2);
+//    margin-bottom: map.get($spacers, 3);
+//    flex-wrap: wrap;
+//
+//    .filter-tag {
+//      padding: 4px 12px;
+//      background: $secondary-bg;
+//      border-radius: $border-radius;
+//      font-size: $font-size-base * 0.9;
+//      color: $text-secondary;
+//      cursor: pointer;
+//      transition: all $transition-fast;
+//
+//      &:hover {
+//        background: $hover-bg;
+//        color: $text-primary;
+//      }
+//
+//      &.active {
+//        background: $accent-color;
+//        color: white;
+//      }
+//    }
+//  }
+//}
+//
+//.data-type-group {
+//  .data-type-item {
+//    @include mix.card-base;
+//    padding: map.get($spacers, 3);
+//    cursor: pointer;
+//    position: relative;
+//    transition: all $transition-fast;
+//
+//    &:hover {
+//      border-color: $accent-color;
+//      transform: $hover-transform;
+//      box-shadow: $hover-shadow;
+//    }
+//
+//    // 选中状态
+//    &.selected {
+//      border-color: var(--data-type-selected-border) !important;
+//      background: var(--data-type-selected-bg) !important;
+//      box-shadow: var(--data-type-selected-shadow) !important;
+//
+//      // 选中状态的动画效果
+//      animation: dataTypeSelected $transition-normal ease;
+//
+//      .type-name {
+//        color: $accent-color;
+//        font-weight: $font-weight-semibold;
+//      }
+//
+//      .type-time {
+//        background: $accent-color;
+//        color: white;
+//      }
+//
+//      .check-icon {
+//        opacity: 1;
+//        transform: scale(1);
+//      }
+//    }
+//
+//    .type-header {
+//      display: flex;
+//      justify-content: space-between;
+//      align-items: flex-start;
+//      margin-bottom: map.get($spacers, 2);
+//    }
+//
+//    .type-icon {
+//      width: 40px;
+//      height: 40px;
+//      border-radius: $border-radius;
+//      background: $secondary-bg;
+//      display: flex;
+//      align-items: center;
+//      justify-content: center;
+//      font-size: $font-size-base * 1.2;
+//      color: $accent-color;
+//    }
+//
+//    .type-info {
+//      flex: 1;
+//      margin-left: map.get($spacers, 2);
+//    }
+//
+//    .type-name {
+//      color: $text-primary;
+//      font-weight: $font-weight-medium;
+//      margin-bottom: 4px;
+//      @include mix.text-ellipsis;
+//      transition: color $transition-fast;
+//    }
+//
+//    .type-desc {
+//      font-size: $font-size-base * 0.85;
+//      color: $text-secondary;
+//      display: -webkit-box;
+//      -webkit-line-clamp: 2;
+//      -webkit-box-orient: vertical;
+//      overflow: hidden;
+//      line-height: 1.4;
+//    }
+//
+//    .type-footer {
+//      display: flex;
+//      justify-content: space-between;
+//      align-items: center;
+//      margin-top: map.get($spacers, 2);
+//    }
+//
+//    .type-time {
+//      background: $secondary-bg;
+//      color: $text-secondary;
+//      font-size: $font-size-base * 0.8;
+//      padding: 2px 8px;
+//      border-radius: 12px;
+//      transition: all $transition-fast;
+//    }
+//
+//    .type-size {
+//      font-size: $font-size-base * 0.85;
+//      color: $text-secondary;
+//    }
+//
+//    .type-indicator {
+//      position: absolute;
+//      top: map.get($spacers, 2);
+//      right: map.get($spacers, 2);
+//    }
+//
+//    .check-icon {
+//      color: $accent-color;
+//      opacity: 0;
+//      transform: scale(0.8);
+//      transition: all $transition-fast;
+//    }
+//
+//    // 状态标记
+//    .status-badge {
+//      position: absolute;
+//      top: map.get($spacers, 2);
+//      right: map.get($spacers, 2);
+//      width: 8px;
+//      height: 8px;
+//      border-radius: 50%;
+//
+//      &.success {
+//        background: $success-color;
+//      }
+//
+//      &.error {
+//        background: $danger-color;
+//      }
+//
+//      &.syncing {
+//        background: $warning-color;
+//        animation: pulse 2s infinite;
+//      }
+//    }
+//  }
+//}
+//
+//// 操作按钮主题化（使用主题按钮样式）
+//.action-buttons {
+//  display: flex;
+//  justify-content: center;
+//  gap: map.get($spacers, 3);
+//  margin-top: map.get($spacers, 5);
+//  flex-wrap: wrap;
+//
+//  .action-button {
+//    @include mix.button-base;
+//    padding: map.get($spacers, 2) map.get($spacers, 4);
+//    font-weight: $font-weight-medium;
+//    transition: all $transition-normal;
+//    min-width: 140px;
+//
+//    &.primary {
+//      background: var(--action-primary-bg);
+//      border: none;
+//      color: white;
+//
+//      &:hover:not(:disabled) {
+//        transform: $hover-transform;
+//        box-shadow: var(--primary-btn-hover-shadow);
+//      }
+//
+//      &:disabled {
+//        opacity: 0.7;
+//        cursor: not-allowed;
+//        transform: none;
+//        box-shadow: none;
+//      }
+//    }
+//
+//    // 取消按钮使用危险色
+//    &.cancel {
+//      background: var(--cancel-btn-bg);
+//      border-color: $danger-color;
+//      color: $danger-color;
+//
+//      &:hover:not(:disabled) {
+//        background: $danger-color;
+//        color: white;
+//        transform: $hover-transform;
+//      }
+//
+//      &:disabled {
+//        opacity: 0.7;
+//        cursor: not-allowed;
+//        transform: none;
+//      }
+//    }
+//
+//    // 快速同步和全量同步按钮
+//    &:not(.primary):not(.cancel) {
+//      background: var(--secondary-btn-bg);
+//      border-color: $border-color;
+//      color: $text-primary;
+//
+//      &:hover:not(:disabled) {
+//        background: $hover-bg;
+//        border-color: $accent-color;
+//        transform: $hover-transform;
+//      }
+//
+//      &:disabled {
+//        opacity: 0.7;
+//        cursor: not-allowed;
+//        transform: none;
+//      }
+//    }
+//
+//    .button-icon {
+//      margin-right: map.get($spacers, 1);
+//    }
+//  }
+//}
+//
+//// 同步历史记录
+//.sync-history {
+//  margin-top: map.get($spacers, 5);
+//
+//  .section-title {
+//    font-size: $font-size-base * 1.2;
+//    font-weight: $font-weight-semibold;
+//    color: $text-primary;
+//    margin-bottom: map.get($spacers, 3);
+//    display: flex;
+//    align-items: center;
+//    gap: map.get($spacers, 1);
+//
+//    .title-icon {
+//      color: $accent-color;
+//    }
+//  }
+//
+//  .history-table {
+//    @include mix.card-base;
+//    overflow: hidden;
+//
+//    .table-header {
+//      display: grid;
+//      grid-template-columns: 2fr 1fr 1fr 1fr 120px;
+//      background: $secondary-bg;
+//      padding: map.get($spacers, 2) map.get($spacers, 3);
+//      font-weight: $font-weight-semibold;
+//      font-size: $font-size-base * 0.9;
+//      color: $text-primary;
+//      border-bottom: $border-width solid $border-color;
+//
+//      @include mix.media-breakpoint-down(md) {
+//        grid-template-columns: 2fr 1fr 100px;
+//
+//        .hidden-md {
+//          display: none;
+//        }
+//      }
+//
+//      @include mix.media-breakpoint-down(sm) {
+//        grid-template-columns: 1fr 80px;
+//
+//        .hidden-sm {
+//          display: none;
+//        }
+//      }
+//    }
+//
+//    .table-body {
+//      max-height: 400px;
+//      overflow-y: auto;
+//      @include mix.custom-scrollbar;
+//    }
+//
+//    .table-row {
+//      display: grid;
+//      grid-template-columns: 2fr 1fr 1fr 1fr 120px;
+//      padding: map.get($spacers, 2) map.get($spacers, 3);
+//      border-bottom: $border-width solid $border-color;
+//      transition: background $transition-fast;
+//
+//      &:last-child {
+//        border-bottom: none;
+//      }
+//
+//      &:hover {
+//        background: $hover-bg;
+//      }
+//
+//      @include mix.media-breakpoint-down(md) {
+//        grid-template-columns: 2fr 1fr 100px;
+//
+//        .hidden-md {
+//          display: none;
+//        }
+//      }
+//
+//      @include mix.media-breakpoint-down(sm) {
+//        grid-template-columns: 1fr 80px;
+//
+//        .hidden-sm {
+//          display: none;
+//        }
+//      }
+//
+//      .row-cell {
+//        font-size: $font-size-base * 0.9;
+//        color: $text-primary;
+//        align-self: center;
+//
+//        &.status {
+//          display: flex;
+//          align-items: center;
+//          gap: 6px;
+//
+//          .status-dot {
+//            width: 6px;
+//            height: 6px;
+//            border-radius: 50%;
+//          }
+//
+//          .success {
+//            background: $success-color;
+//          }
+//
+//          .error {
+//            background: $danger-color;
+//          }
+//
+//          .processing {
+//            background: $warning-color;
+//            animation: pulse 2s infinite;
+//          }
+//        }
+//
+//        &.data-types {
+//          display: flex;
+//          flex-wrap: wrap;
+//          gap: 4px;
+//
+//          .type-tag {
+//            background: $secondary-bg;
+//            padding: 2px 8px;
+//            border-radius: 4px;
+//            font-size: $font-size-base * 0.8;
+//            color: $text-secondary;
+//          }
+//        }
+//
+//        &.actions {
+//          display: flex;
+//          gap: map.get($spacers, 1);
+//
+//          .action-icon {
+//            color: $text-secondary;
+//            cursor: pointer;
+//            transition: color $transition-fast;
+//
+//            &:hover {
+//              color: $accent-color;
+//            }
+//          }
+//        }
+//      }
+//    }
+//  }
+//
+//  .empty-history {
+//    @include mix.card-base;
+//    padding: map.get($spacers, 5);
+//    text-align: center;
+//
+//    .empty-icon {
+//      font-size: 3rem;
+//      color: $text-secondary;
+//      opacity: 0.3;
+//      margin-bottom: map.get($spacers, 2);
+//    }
+//
+//    .empty-text {
+//      color: $text-secondary;
+//      margin-bottom: map.get($spacers, 3);
+//    }
+//
+//    .empty-action {
+//      @include mix.button-base;
+//      background: $secondary-bg;
+//      border-color: $border-color;
+//      color: $text-primary;
+//
+//      &:hover {
+//        background: $hover-bg;
+//        border-color: $accent-color;
+//      }
+//    }
+//  }
+//}
+//
+//// 选中状态动画（使用主题过渡时间）
+//@keyframes dataTypeSelected {
+//  0% {
+//    transform: scale(1);
+//  }
+//  50% {
+//    transform: scale(1.02);
+//  }
+//  100% {
+//    transform: scale(1);
+//  }
+//}
+//
+//// 进度条主题化（使用主题强调色）
+//.task-progress {
+//  :deep(.ant-progress-bg) {
+//    background: $accent-color;
+//  }
+//
+//  :deep(.ant-progress-inner) {
+//    background: $secondary-bg;
+//  }
+//
+//  :deep(.ant-progress-text) {
+//    color: $text-secondary !important;
+//    font-size: $font-size-base * 0.9 !important;
+//  }
+//}
+//
+//// 同步详情弹窗
+//.sync-detail-modal {
+//  :deep(.ant-modal-content) {
+//    background: $card-bg;
+//    border-color: $border-color;
+//    border-radius: $border-radius;
+//  }
+//
+//  :deep(.ant-modal-header) {
+//    background: $secondary-bg;
+//    border-bottom: $border-width solid $border-color;
+//
+//    .ant-modal-title {
+//      color: $text-primary;
+//      font-weight: $font-weight-semibold;
+//    }
+//  }
+//
+//  :deep(.ant-modal-body) {
+//    padding: map.get($spacers, 3);
+//    max-height: 60vh;
+//    overflow-y: auto;
+//    @include mix.custom-scrollbar;
+//  }
+//
+//  :deep(.ant-modal-footer) {
+//    border-top: $border-width solid $border-color;
+//    background: $secondary-bg;
+//    padding: map.get($spacers, 2) map.get($spacers, 3);
+//  }
+//
+//  .detail-section {
+//    margin-bottom: map.get($spacers, 3);
+//
+//    .section-title {
+//      font-weight: $font-weight-semibold;
+//      color: $text-primary;
+//      margin-bottom: map.get($spacers, 2);
+//      font-size: $font-size-base * 1.1;
+//    }
+//  }
+//
+//  .detail-info {
+//    display: grid;
+//    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+//    gap: map.get($spacers, 2);
+//    margin-bottom: map.get($spacers, 3);
+//  }
+//
+//  .info-item {
+//    .info-label {
+//      font-size: $font-size-base * 0.9;
+//      color: $text-secondary;
+//      margin-bottom: 4px;
+//    }
+//
+//    .info-value {
+//      font-size: $font-size-base;
+//      color: $text-primary;
+//      font-weight: $font-weight-medium;
+//    }
+//  }
+//
+//  .data-type-list {
+//    display: grid;
+//    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+//    gap: map.get($spacers, 2);
+//  }
+//
+//  .type-item {
+//    @include mix.card-base;
+//    padding: map.get($spacers, 2);
+//    display: flex;
+//    justify-content: space-between;
+//    align-items: center;
+//
+//    .type-name {
+//      font-size: $font-size-base * 0.95;
+//      color: $text-primary;
+//    }
+//
+//    .type-status {
+//      font-size: $font-size-base * 0.85;
+//      display: flex;
+//      align-items: center;
+//      gap: 4px;
+//
+//      &.success {
+//        color: $success-color;
+//      }
+//
+//      &.error {
+//        color: $danger-color;
+//      }
+//    }
+//  }
+//}
+//
+//// 脉冲动画
+//@keyframes pulse {
+//  0% {
+//    opacity: 1;
+//  }
+//  50% {
+//    opacity: 0.4;
+//  }
+//  100% {
+//    opacity: 1;
+//  }
+//}
+//
+//// 响应式调整（使用主题间距）
+//@include mix.media-breakpoint-down(md) {
+//  .data-sync-page {
+//    --page-header-bg: #{$page-header-bg};
+//  }
+//
+//  .data-type-grid-layout {
+//    gap: map.get($spacers, 2);
+//  }
+//
+//  .page-header {
+//    padding: map.get($spacers, 2) map.get($spacers, 3);
+//
+//    .page-title {
+//      font-size: $font-size-base * 1.4;
+//    }
+//  }
+//
+//  .status-card {
+//    padding: map.get($spacers, 2);
+//  }
+//}
+//
+//@include mix.media-breakpoint-down(sm) {
+//  .action-buttons {
+//    flex-direction: column;
+//    gap: map.get($spacers, 2);
+//  }
+//
+//  .action-button {
+//    width: 100%;
+//    min-width: auto;
+//  }
+//
+//  .status-grid {
+//    grid-template-columns: 1fr;
+//  }
+//
+//  .section-header {
+//    flex-direction: column;
+//    align-items: flex-start;
+//    gap: map.get($spacers, 2);
+//  }
+//
+//  .section-actions {
+//    width: 100%;
+//    justify-content: space-between;
+//  }
+//}
+//
+//// 主题特定调整（仅区分主题类型，值来自主题配置）
+//[data-theme="light"] {
+//  .data-sync-page {
+//    --data-type-selected-bg: #{$data-type-selected-bg};
+//    --status-card-hover: #{$status-card-hover};
+//    --card-shadow: #{$card-shadow};
+//    --hover-shadow: #{$hover-shadow};
+//  }
+//
+//  .status-card,
+//  .data-type-item {
+//    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+//  }
+//}
+//
+//[data-theme="dark"] {
+//  .data-sync-page {
+//    --data-type-selected-bg: #{$data-type-selected-bg};
+//    --status-card-hover: #{$status-card-hover};
+//    --card-shadow: #{$card-shadow};
+//    --hover-shadow: #{$hover-shadow};
+//  }
+//
+//  .page-header {
+//    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+//  }
+//}

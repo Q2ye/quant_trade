@@ -1,90 +1,136 @@
 <!-- DataSyncOverview.vue -->
 <template>
-  <div class="data-sync-overview">
-    <!-- 页面标题 -->
-    <div class="page-header">
+  <div class="data-sync-overview sidebar-layout-container no-bleed-through">
+    <!-- 页面标题和状态 - 使用全局主题样式 -->
+    <div class="common-page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">数据同步概览</h1>
           <p class="page-description">统一管理数据同步任务，监控数据质量和同步状态</p>
         </div>
+        <div class="header-actions">
+          <el-button class="refresh-btn" @click="checkSyncStatus">
+            <Icon icon="ant-design:reload-outlined"/>
+            <span class="btn-text">刷新状态</span>
+          </el-button>
+        </div>
       </div>
     </div>
 
-    <!-- 状态概览卡片 -->
-    <div class="status-overview">
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-card class="status-card" shadow="hover">
-            <div class="status-content">
-              <div class="status-icon running">
-                <Icon icon="ant-design:sync-outlined"/>
+    <!-- 主要内容区域 -->
+    <div class="main-content">
+      <!-- 同步状态概览 - 使用状态卡片布局 -->
+      <div class="index-overview">
+        <h2 class="sync-section-title">
+          <Icon icon="ant-design:sync-outlined" class="title-icon"/>
+          同步状态
+        </h2>
+        <div class="sync-index-grid">
+          <el-card class="sync-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">同步状态</div>
+                <div class="index-code">实时</div>
               </div>
-              <div class="status-info">
-                <div class="status-value">{{ statusText }}</div>
-                <div class="status-label">同步状态</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :span="6">
-          <el-card class="status-card" shadow="hover">
-            <div class="status-content">
-              <div class="status-icon progress">
-                <Icon icon="ant-design:cloud-download-outlined"/>
-              </div>
-              <div class="status-info">
-                <div class="status-value">{{ syncStatus?.progress || 0 }}%</div>
-                <div class="status-label">任务进度</div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <el-col :span="6">
-          <el-card class="status-card" shadow="hover">
-            <div class="status-content">
-              <div class="status-icon time">
-                <Icon icon="ant-design:clock-circle-outlined"/>
-              </div>
-              <div class="status-info">
-                <div class="status-value">{{ syncStatus?.elapsed_time || 0 }}s</div>
-                <div class="status-label">运行时间</div>
+              <div class="status-content">
+                <div class="status-icon" :class="getStatusClass(syncStatus)">
+                  <Icon icon="ant-design:sync-outlined"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ statusText }}</div>
+                  <div class="index-change">
+                    <span class="change-value">{{ syncStatus?.completed_tasks || 0 }}/{{ syncStatus?.total_tasks || 0 }}</span>
+                    <span class="change-percent">任务完成</span>
+                  </div>
+                </div>
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <el-col :span="6">
-          <el-card class="status-card" shadow="hover">
-            <div class="status-content">
-              <div class="status-icon remaining">
-                <Icon icon="ant-design:hourglass-outlined"/>
+          <el-card class="sync-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">任务进度</div>
+                <div class="index-code">百分比</div>
               </div>
-              <div class="status-info">
-                <div class="status-value">{{ estimatedRemainingTime }}s</div>
-                <div class="status-label">预计剩余</div>
+              <div class="status-content">
+                <div class="status-icon progress">
+                  <Icon icon="ant-design:cloud-download-outlined"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ syncStatus?.progress || 0 }}%</div>
+                  <div class="index-change">
+                    <span class="change-value">{{ estimatedRemainingTime }}s</span>
+                    <span class="change-percent">预计剩余</span>
+                  </div>
+                </div>
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
-    </div>
 
-    <!-- 核心功能导航卡片 - 四个主要卡片在同一行 -->
-    <div class="core-function-nav">
-      <el-row :gutter="16">
-        <!-- 数据同步配置卡片 -->
-        <el-col :span="6">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/data-sync')">
+          <el-card class="sync-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">运行时间</div>
+                <div class="index-code">秒数</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon time">
+                  <Icon icon="ant-design:clock-circle-outlined"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ syncStatus?.elapsed_time || 0 }}s</div>
+                  <div class="index-change">
+                    <span class="change-value">{{ syncConfig.batch_size }}</span>
+                    <span class="change-percent">批量大小</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card class="sync-index-card" shadow="hover">
+            <div class="index-content">
+              <div class="index-header">
+                <div class="index-name">数据质量</div>
+                <div class="index-code">评分</div>
+              </div>
+              <div class="status-content">
+                <div class="status-icon remaining">
+                  <Icon icon="ant-design:check-circle-outlined"/>
+                </div>
+                <div class="status-info">
+                  <div class="index-value">{{ qualityStats.completeness }}%</div>
+                  <div class="index-change">
+                    <span class="change-value">{{ selectedTypesCount }}/{{ supportedTypesCount }}</span>
+                    <span class="change-percent">已选类型</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-card>
+        </div>
+      </div>
+
+      <!-- 功能导航卡片 - 使用核心功能网格布局 -->
+      <div class="function-nav">
+        <h2 class="sync-section-title">
+          <Icon icon="mdi:apps" class="title-icon"/>
+          功能导航
+        </h2>
+
+        <div class="function-grid">
+          <!-- 数据同步配置 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync')">
             <div class="function-content">
-              <div class="function-icon accent">
-                <Icon icon="ant-design:setting-outlined"/>
+              <div class="function-header">
+                <div class="function-icon accent">
+                  <Icon icon="ant-design:setting-outlined"/>
+                </div>
+                <h3 class="function-title">数据同步</h3>
               </div>
               <div class="function-info">
-                <h3>数据同步</h3>
-                <p>自定义数据类型同步数据</p>
+                <p class="function-description">自定义数据类型同步数据</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">支持类型:</span>
@@ -97,23 +143,22 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">批量大小: {{ syncConfig.batch_size }}</span>
-                  <el-button type="primary" text size="small">配置同步</el-button>
                 </div>
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 数据质量卡片 -->
-        <el-col :span="6">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/data-quality')">
+          <!-- 数据质量 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-quality')">
             <div class="function-content">
-              <div class="function-icon danger">
-                <Icon icon="ant-design:check-circle-outlined"/>
+              <div class="function-header">
+                <div class="function-icon danger">
+                  <Icon icon="ant-design:check-circle-outlined"/>
+                </div>
+                <h3 class="function-title">数据质量</h3>
               </div>
               <div class="function-info">
-                <h3>数据质量</h3>
-                <p>数据完整性和质量检查</p>
+                <p class="function-description">数据完整性和质量检查</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">完整性:</span>
@@ -130,23 +175,22 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">检查时间: {{ qualityStats.checkTime }}</span>
-                  <el-button type="primary" text size="small">质量报告</el-button>
                 </div>
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 任务监控卡片 -->
-        <el-col :span="6">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/data-sync/tasks')">
+          <!-- 任务监控 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync/tasks')">
             <div class="function-content">
-              <div class="function-icon purple">
-                <Icon icon="ant-design:monitor-outlined"/>
+              <div class="function-header">
+                <div class="function-icon purple">
+                  <Icon icon="ant-design:monitor-outlined"/>
+                </div>
+                <h3 class="function-title">任务监控</h3>
               </div>
               <div class="function-info">
-                <h3>任务监控</h3>
-                <p>实时监控同步任务状态</p>
+                <p class="function-description">实时监控同步任务状态</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">运行中:</span>
@@ -163,23 +207,22 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">更新: {{ monitorStats.updateTime }}</span>
-                  <el-button type="primary" text size="small">实时监控</el-button>
                 </div>
               </div>
             </div>
           </el-card>
-        </el-col>
 
-        <!-- 同步历史卡片 -->
-        <el-col :span="6">
-          <el-card class="function-card" shadow="hover" @click="navigateTo('/data-sync/history')">
+          <!-- 同步历史 -->
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync/history')">
             <div class="function-content">
-              <div class="function-icon info">
-                <Icon icon="ant-design:history-outlined"/>
+              <div class="function-header">
+                <div class="function-icon info">
+                  <Icon icon="ant-design:history-outlined"/>
+                </div>
+                <h3 class="function-title">同步历史</h3>
               </div>
               <div class="function-info">
-                <h3>同步历史</h3>
-                <p>查看历史同步任务记录</p>
+                <p class="function-description">查看历史同步任务记录</p>
                 <div class="function-stats">
                   <div class="stat-item">
                     <span class="stat-label">总任务数:</span>
@@ -196,23 +239,28 @@
                 </div>
                 <div class="function-footer">
                   <span class="update-time">最近同步: {{ historyStats.lastSync }}</span>
-                  <el-button type="primary" text size="small">查看详情</el-button>
                 </div>
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
-    </div>
+        </div>
+      </div>
 
-    <!-- 实时任务状态 -->
-    <div class="realtime-status">
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-card class="status-card" shadow="never">
+      <!-- 实时状态与历史记录 -->
+      <div class="sync-hotspots">
+        <h2 class="sync-section-title">
+          <Icon icon="ant-design:monitor-outlined" class="title-icon"/>
+          实时监控
+        </h2>
+        <div class="hotspot-grid">
+          <!-- 当前任务进度卡片 -->
+          <el-card class="hotspot-card" shadow="never">
             <template #header>
               <div class="card-header">
-                <span class="card-title">当前任务进度</span>
+                <div class="card-title">
+                  <Icon icon="ant-design:cloud-download-outlined" class="card-title-icon"/>
+                  当前任务进度
+                </div>
                 <el-button type="text" @click="checkSyncStatus">
                   刷新状态
                 </el-button>
@@ -245,12 +293,15 @@
               </div>
             </div>
           </el-card>
-        </el-col>
-        <el-col :span="12">
-          <el-card class="status-card" shadow="never">
+
+          <!-- 最近同步记录卡片 -->
+          <el-card class="hotspot-card" shadow="never">
             <template #header>
               <div class="card-header">
-                <span class="card-title">最近同步记录</span>
+                <div class="card-title">
+                  <Icon icon="ant-design:history-outlined" class="card-title-icon"/>
+                  最近同步记录
+                </div>
                 <el-button type="text" @click="navigateTo('/data-sync/history')">
                   查看全部
                 </el-button>
@@ -262,6 +313,9 @@
                   :key="record.id"
                   class="history-item"
               >
+                <div class="item-icon">
+                  <Icon :icon="getHistoryIcon(record.status)" :class="getHistoryIconClass(record.status)"/>
+                </div>
                 <div class="history-info">
                   <div class="history-type">{{ record.data_types.join(', ') }}</div>
                   <div class="history-time">{{ formatTime(record.start_time) }}</div>
@@ -277,8 +331,8 @@
               </div>
             </div>
           </el-card>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -320,6 +374,34 @@ const historyStats = ref({
   failed: 8,
   lastSync: '2024-01-15 15:30'
 })
+
+const getStatusClass = (data) => {
+  if (data?.is_running) return 'running'
+  if (data?.error) return 'remaining'
+  return 'time'
+}
+
+
+const getHistoryIcon = (status) => {
+  const icons = {
+    completed: 'ant-design:check-circle-outlined',
+    running: 'ant-design:sync-outlined',
+    failed: 'ant-design:close-circle-outlined',
+    cancelled: 'ant-design:stop-outlined'
+  }
+  return icons[status] || 'ant-design:question-circle-outlined'
+}
+
+const getHistoryIconClass = (status) => {
+  const classes = {
+    completed: 'up',
+    running: 'flat',
+    failed: 'down',
+    cancelled: 'flat'
+  }
+  return classes[status] || 'flat'
+}
+
 
 const monitorStats = ref({
   running: 1,
@@ -384,7 +466,7 @@ const navigateTo = (path) => {
 const checkSyncStatus = async () => {
   try {
     // 模拟API调用
-    const status = await new Promise(resolve => {
+    syncStatus.value = await new Promise(resolve => {
       setTimeout(() => {
         resolve({
           is_running: false,
@@ -395,7 +477,6 @@ const checkSyncStatus = async () => {
         })
       }, 500)
     })
-    syncStatus.value = status
   } catch (error) {
     console.error('获取同步状态失败:', error)
   }
@@ -438,357 +519,5 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.data-sync-overview {
-  padding: var(--spacer-4);
-  background: var(--primary-bg);
-  min-height: 100%;
-
-  .page-header {
-    background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
-    color: white;
-    padding: 20px 0;
-    margin-bottom: var(--spacer-4);
-
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 0 20px;
-    }
-
-    .title-section {
-      .page-title {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 600;
-        color: white;
-      }
-
-      .page-description {
-        margin: 6px 0 0 0;
-        opacity: 0.9;
-        font-size: 13px;
-        color: rgba(255, 255, 255, 0.9);
-      }
-    }
-  }
-
-  .status-overview {
-    margin-bottom: var(--spacer-4);
-
-    .status-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      transition: all var(--transition-normal);
-
-      &:hover {
-        transform: var(--hover-transform);
-        box-shadow: var(--hover-shadow);
-      }
-
-      .status-content {
-        display: flex;
-        align-items: center;
-        padding: var(--spacer-3);
-
-        .status-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: var(--border-radius);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-          margin-right: var(--spacer-3);
-
-          &.running {
-            background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-            color: var(--accent-color);
-          }
-
-          &.progress {
-            background: color-mix(in srgb, var(--success-color) 10%, transparent);
-            color: var(--success-color);
-          }
-
-          &.time {
-            background: color-mix(in srgb, var(--warning-color) 10%, transparent);
-            color: var(--warning-color);
-          }
-
-          &.remaining {
-            background: color-mix(in srgb, var(--danger-color) 10%, transparent);
-            color: var(--danger-color);
-          }
-        }
-
-        .status-info {
-          .status-value {
-            font-size: 1.5rem;
-            font-weight: var(--font-weight-bold);
-            color: var(--text-primary);
-            line-height: 1.2;
-          }
-
-          .status-label {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            margin-top: var(--spacer-1);
-          }
-        }
-      }
-    }
-  }
-
-  .core-function-nav {
-    margin-bottom: var(--spacer-4);
-
-    .function-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      cursor: pointer;
-      transition: all var(--transition-normal);
-      height: 100%;
-
-      &:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--hover-shadow);
-        border-color: var(--accent-color);
-      }
-
-      .function-content {
-        display: flex;
-        align-items: flex-start;
-        padding: var(--spacer-3);
-
-        .function-icon {
-          font-size: 2.5rem;
-          margin-right: var(--spacer-3);
-          opacity: 0.8;
-          flex-shrink: 0;
-
-          &.accent {
-            color: var(--accent-color);
-          }
-          &.danger {
-            color: var(--danger-color);
-          }
-          &.purple {
-            color: var(--purple-color);
-          }
-          &.info {
-            color: var(--info-color);
-          }
-        }
-
-        .function-info {
-          flex: 1;
-
-          h3 {
-            margin: 0 0 var(--spacer-2) 0;
-            color: var(--text-primary);
-            font-size: 1.125rem;
-            font-weight: var(--font-weight-semibold);
-          }
-
-          p {
-            margin: 0 0 var(--spacer-3) 0;
-            color: var(--text-secondary);
-            font-size: calc(var(--font-size-base) - 2px);
-            line-height: var(--line-height-base);
-          }
-
-          .function-stats {
-            display: flex;
-            flex-direction: column;
-            gap: var(--spacer-2);
-            margin-bottom: var(--spacer-3);
-
-            .stat-item {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-
-              .stat-label {
-                font-size: calc(var(--font-size-base) - 2px);
-                color: var(--text-secondary);
-              }
-
-              .stat-value {
-                font-size: calc(var(--font-size-base) - 1px);
-                font-weight: var(--font-weight-semibold);
-                color: var(--text-primary);
-
-                &.success {
-                  color: var(--success-color);
-                }
-
-                &.danger {
-                  color: var(--danger-color);
-                }
-              }
-            }
-          }
-
-          .function-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: var(--spacer-2);
-            border-top: 1px solid var(--border-color);
-
-            .update-time {
-              font-size: calc(var(--font-size-base) - 4px);
-              color: var(--text-secondary);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  .realtime-status {
-    margin-bottom: var(--spacer-4);
-
-    .status-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-
-      :deep(.el-card__header) {
-        background: var(--secondary-bg);
-        border-bottom: 1px solid var(--border-color);
-        padding: var(--spacer-3);
-      }
-
-      :deep(.el-card__body) {
-        padding: var(--spacer-3);
-      }
-
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-
-        .card-title {
-          font-weight: var(--font-weight-semibold);
-          color: var(--text-primary);
-        }
-      }
-
-      .progress-list {
-        .progress-item {
-          .progress-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: var(--spacer-2);
-
-            .progress-name {
-              font-weight: var(--font-weight-medium);
-              color: var(--text-primary);
-            }
-
-            .progress-details {
-              font-size: 0.875rem;
-              color: var(--text-secondary);
-            }
-          }
-
-          .progress-time {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-top: var(--spacer-2);
-            text-align: center;
-          }
-        }
-
-        .no-task {
-          text-align: center;
-          padding: var(--spacer-4) 0;
-
-          .no-task-icon {
-            font-size: 3rem;
-            color: var(--success-color);
-            margin-bottom: var(--spacer-2);
-          }
-
-          .no-task-text {
-            color: var(--text-secondary);
-            margin-bottom: var(--spacer-3);
-          }
-        }
-      }
-
-      .history-list {
-        .history-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: var(--spacer-2) 0;
-          border-bottom: 1px solid var(--border-color);
-
-          &:last-child {
-            border-bottom: none;
-          }
-
-          .history-info {
-            .history-type {
-              font-weight: var(--font-weight-medium);
-              color: var(--text-primary);
-              margin-bottom: 2px;
-            }
-
-            .history-time {
-              font-size: 0.75rem;
-              color: var(--text-secondary);
-            }
-          }
-        }
-
-        .no-history {
-          text-align: center;
-          color: var(--text-secondary);
-          padding: var(--spacer-4) 0;
-        }
-      }
-    }
-  }
-}
-
-// 响应式设计
-@media (max-width: 1200px) {
-  .core-function-nav .el-col {
-    width: 50%;
-  }
-}
-
-@media (max-width: 768px) {
-  .data-sync-overview {
-    padding: var(--spacer-2);
-  }
-
-  .core-function-nav .el-col {
-    width: 100%;
-  }
-
-  .function-card .function-content {
-    flex-direction: column;
-    text-align: center;
-
-    .function-icon {
-      margin-right: 0;
-      margin-bottom: var(--spacer-2);
-    }
-  }
-
-  .realtime-status .el-col {
-    width: 100%;
-    margin-bottom: var(--spacer-3);
-  }
-}
+@use '@/assets/scss/data/data-sync-overview';
 </style>

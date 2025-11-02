@@ -266,7 +266,7 @@
     // Element Plus卡片头部深度选择器
     :deep(.el-card__header) {
       @include mix.card-header-base;  // 应用卡片头部基础样式混入
-      padding: map.get($spacers, 4);  // 内边距：使用spacers映射中的第4个值
+      padding: map.get($spacers, 3);  // 内边距：使用spacers映射中的第4个值
     }
 
     // 卡片头部
@@ -296,7 +296,7 @@
     // 热点列表和资金流向列表
     .hotspot-list,
     .money-flow-list {
-      padding: map.get($spacers, 2) 0;    // 垂直内边距
+      padding: map.get($spacers, 1) 0;    // 垂直内边距
       max-height: 280px;                  // 最大高度
       overflow-y: auto;                   // 垂直滚动
       @include mix.custom-scrollbar;      // 应用自定义滚动条混入
@@ -466,7 +466,7 @@
 // 页面标题样式优化
 // ============================================================================
 
-.market-page-header {
+.common-page-header {
   @include mix.page-header-base;  // 应用页面头部基础样式混入
 }
 
