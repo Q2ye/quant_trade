@@ -206,99 +206,116 @@ onMounted(() => {
     </a-card>
   </div>
 </template>
-
 <style scoped lang="scss">
-@use '@/assets/scss/mixins';
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
 
 .etf-list-page {
-  padding: 24px;
-  background: var(--primary-bg);
-  min-height: 100vh;
-}
+  @include mixin.sidebar-layout-base;
 
+  .main-content {
+    @include mixin.content-with-sidebar;
+    margin: 0 auto;
+  }
+}
 
 .page-header {
-  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
-  color: white;
-  padding: 20px 0;
-  margin-bottom: 20px;
+  @include mixin.page-header-base;
+  margin-bottom: map.get($spacers, 6);
+}
 
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 var(--spacer-4);
-    position: relative;
+.etf-list-card {
+  @include mixin.card-base;
+  padding: map.get($spacers, 4);
 
-    .header-actions-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
-    }
-  }
-
-  .title-section {
-    flex: 1;
-
-    .page-title {
-      margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: white;
-    }
-
-    .page-description {
-      margin: 6px 0 0 0;
-      opacity: 0.9;
-      font-size: 13px;
-    }
+  :deep(.ant-card-head) {
+    @include mixin.card-header-base;
+    border-bottom: $border-width solid $border-color;
   }
 }
 
-// 刷新按钮样式
-.back-btn {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: var(--border-radius, 6px);
-  font-weight: 500;
-  transition: all var(--transition-fast, 0.3s);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  height: 32px;
-  display: flex;
-  align-items: center;
+.filter-bar {
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  border: $border-width solid $border-color;
+  padding: map.get($spacers, 3);
+  margin-bottom: map.get($spacers, 3);
+}
 
-  &:hover {
+.back-btn {
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(10px);
+
+  &:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
-    color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-}
-
-:deep(.ant-card) {
-  @include mixins.unified-card;
-
-  .filter-bar {
-    margin-bottom: 16px;
-    padding: var(--spacer-3);
-    background: var(--secondary-bg);
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
   }
 }
 
 :deep(.ant-table) {
-  @include mixins.unified-table;
+  background: $card-bg;
+  color: $text-primary;
+
+  .ant-table-thead > tr > th {
+    background: $card-header-bg;
+    color: $text-primary;
+    border-bottom: $border-width solid $border-color;
+    font-weight: $font-weight-semibold;
+  }
+
+  .ant-table-tbody > tr {
+    background: $card-bg;
+    color: $text-primary;
+
+    &:hover > td {
+      background: $hover-bg;
+    }
+
+    > td {
+      border-bottom: $border-width solid $border-color;
+    }
+  }
 }
 
+// 响应式调整
+@include mixin.media-breakpoint-down(md) {
+  .etf-list-page .main-content {
+    padding: map.get($spacers, 4);
+  }
+
+  .page-header {
+    margin-bottom: map.get($spacers, 4);
+    padding: map.get($spacers, 4);
+
+    .page-title {
+      font-size: $font-size-base * 1.5;
+    }
+  }
+
+  .filter-bar {
+    padding: map.get($spacers, 2);
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .etf-list-page .main-content {
+    padding: map.get($spacers, 3);
+  }
+
+  .page-header {
+    padding: map.get($spacers, 3);
+    margin-bottom: map.get($spacers, 4);
+
+    .page-title {
+      font-size: $font-size-base * 1.3;
+    }
+
+    .header-actions {
+      flex-direction: column;
+      gap: map.get($spacers, 2);
+    }
+  }
+}
 </style>

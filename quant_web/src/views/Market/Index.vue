@@ -1,6 +1,7 @@
-<!--行情首页-->
+<!-- 行情首页 - 基于主题系统优化 -->
 <template>
   <div class="market-index">
+    <!-- 页面头部区域 -->
     <div class="market-header">
       <h2>市场概览</h2>
       <div class="market-filters">
@@ -17,6 +18,7 @@
       </div>
     </div>
 
+    <!-- 市场数据网格布局 -->
     <div class="market-grid">
       <!-- 大盘指数卡片 -->
       <div class="grid-card index-card">
@@ -32,7 +34,7 @@
         </div>
       </div>
 
-      <!-- 涨跌分布 -->
+      <!-- 涨跌分布卡片 -->
       <div class="grid-card distribution-card">
         <h3>涨跌分布</h3>
         <div class="distribution-chart">
@@ -60,7 +62,7 @@
         </div>
       </div>
 
-      <!-- 热门板块 -->
+      <!-- 热门板块卡片 -->
       <div class="grid-card hot-industry-card">
         <h3>热门板块</h3>
         <div class="industry-list">
@@ -72,7 +74,7 @@
         </div>
       </div>
 
-      <!-- 股票排行榜 -->
+      <!-- 股票排行榜卡片 -->
       <div class="grid-card stock-rank-card">
         <h3>股票涨幅榜</h3>
         <el-table :data="topRisingStocks" style="width: 100%">
@@ -161,29 +163,36 @@ export default {
     };
   },
   computed: {
+    // 计算股票总数
     totalStocks() {
       return this.riseCount + this.fallCount + this.flatCount;
     },
+    // 计算上涨百分比
     risePercentage() {
       return (this.riseCount / this.totalStocks * 100).toFixed(1);
     },
+    // 计算下跌百分比
     fallPercentage() {
       return (this.fallCount / this.totalStocks * 100).toFixed(1);
     },
+    // 计算平盘百分比
     flatPercentage() {
       return (this.flatCount / this.totalStocks * 100).toFixed(1);
     }
   },
   methods: {
+    // 刷新市场数据
     refreshData() {
       console.log('刷新市场数据...');
       // 模拟数据刷新
       this.topRisingStocks = [...this.topRisingStocks];
       this.favoriteStocks = [...this.favoriteStocks];
     },
+    // 查看股票详情
     viewStockDetail(stock) {
       this.$router.push({ name: 'StockDetail', params: { code: stock.code } });
     },
+    // 移除自选股
     removeFavorite(stock) {
       this.favoriteStocks = this.favoriteStocks.filter(s => s.code !== stock.code);
     }
@@ -191,11 +200,17 @@ export default {
 };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+// 导入主题变量和混入
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color';
+
 .market-index {
-  padding: 20px;
-  background-color: #121a29;
-  color: #e0e0e0;
+  padding: $content-padding;
+  background-color: $primary-bg;
+  color: $text-primary;
   height: 100%;
   overflow-y: auto;
 }
@@ -204,194 +219,262 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #2a3a5a;
+  margin-bottom: map.get($spacers, 4);
+  padding-bottom: map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
+
+  h2 {
+    font-size: $font-size-base * 1.5;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0;
+  }
 }
 
 .market-filters {
   display: flex;
-  gap: 15px;
+  gap: map.get($spacers, 3);
+  align-items: center;
 }
 
 .market-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  margin-bottom: 30px;
+  gap: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 5);
+
+  // 应用卡片网格布局混入
+  @include mixin.card-grid-layout(2, (
+    'lg': 1,
+    'md': 1,
+    'sm': 1
+  ));
 }
 
+// 网格卡片通用样式
 .grid-card {
-  background: #1a2439;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  @include mixin.card-base;
+  padding: map.get($spacers, 3);
+  height: 100%;
+  transition: all $transition-normal;
+
+  h3 {
+    font-size: $font-size-base * 1.1;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0 0 map.get($spacers, 3) 0;
+    padding-bottom: map.get($spacers, 2);
+    border-bottom: $border-width solid $border-color;
+  }
+
+  &:hover {
+    transform: $hover-transform;
+    box-shadow: $card-hover-shadow;
+  }
 }
 
-.grid-card h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-  color: #64b5f6;
-  border-bottom: 1px solid #2a3a5a;
-  padding-bottom: 10px;
-}
-
-.index-card {
-  grid-column: 1;
-}
-
-.distribution-card {
-  grid-column: 2;
-}
-
-.hot-industry-card {
-  grid-column: 1;
-}
-
-.stock-rank-card {
-  grid-column: 2;
-}
-
+// 指数列表样式
 .index-list {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
+  gap: map.get($spacers, 3);
 }
 
 .index-item {
-  display: flex;
+  @include mixin.flex-center(row);
   justify-content: space-between;
-  padding: 10px;
-  background: #152136;
-  border-radius: 6px;
+  padding: map.get($spacers, 2);
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  transition: background-color $transition-fast;
+
+  &:hover {
+    background: $hover-bg;
+  }
 }
 
 .index-name {
-  font-weight: bold;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
 }
 
 .index-value {
-  color: #f5f5f5;
+  color: $text-primary;
+  font-weight: $font-weight-medium;
 }
 
 .index-change {
-  font-weight: bold;
+  font-weight: $font-weight-semibold;
 }
 
-.positive {
-  color: #f44336;
-}
-
-.negative {
-  color: #4caf50;
-}
-
+// 涨跌分布图表样式
 .distribution-chart {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: map.get($spacers, 3);
 }
 
 .distribution-item {
-  display: flex;
-  align-items: center;
-  gap: 15px;
+  @include mixin.flex-center(row);
+  gap: map.get($spacers, 3);
 }
 
 .distribution-label {
   width: 60px;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
 }
 
 .distribution-bar {
   flex: 1;
   height: 20px;
-  background: #2a3a5a;
+  background: $secondary-bg;
   border-radius: 10px;
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
+  transition: width $transition-normal;
 }
 
 .rise .bar-fill {
-  background: linear-gradient(90deg, #f44336, #e53935);
+  background: linear-gradient(90deg, $stock-up-color, color.adjust($stock-up-color, $lightness: -10%));
 }
 
 .fall .bar-fill {
-  background: linear-gradient(90deg, #4caf50, #43a047);
+  background: linear-gradient(90deg, $stock-down-color, color.adjust($stock-down-color, $lightness: -10%));
 }
 
 .flat .bar-fill {
-  background: linear-gradient(90deg, #9e9e9e, #757575);
+  background: linear-gradient(90deg, $stock-flat-color, color.adjust($stock-flat-color, $lightness: -10%));
 }
 
 .distribution-value {
   width: 50px;
   text-align: right;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
 }
 
+// 行业列表样式
 .industry-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: map.get($spacers, 2);
 }
 
 .industry-item {
-  display: flex;
+  @include mixin.flex-center(row);
   justify-content: space-between;
-  padding: 8px 12px;
-  background: #152136;
-  border-radius: 6px;
-  transition: background 0.3s;
-}
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  transition: background-color $transition-fast;
 
-.industry-item:hover {
-  background: #1d2c46;
+  &:hover {
+    background: $hover-bg;
+  }
 }
 
 .industry-name {
   flex: 1;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
 }
 
 .industry-change {
   width: 60px;
   text-align: right;
-  font-weight: bold;
-  color: #f44336;
+  font-weight: $font-weight-semibold;
+  color: $stock-up-color;
 }
 
 .industry-stocks {
   width: 100px;
   text-align: right;
-  color: #9e9e9e;
+  color: $text-secondary;
+  font-size: $font-size-base * 0.9;
 }
 
+// 自选股列表样式
 .favorite-stocks {
-  background: #1a2439;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  @include mixin.card-base;
+  padding: map.get($spacers, 3);
+
+  h3 {
+    font-size: $font-size-base * 1.1;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0 0 map.get($spacers, 3) 0;
+    padding-bottom: map.get($spacers, 2);
+    border-bottom: $border-width solid $border-color;
+  }
 }
 
-.favorite-stocks h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-  color: #64b5f6;
-  border-bottom: 1px solid #2a3a5a;
-  padding-bottom: 10px;
+// 价格涨跌颜色样式
+.positive {
+  color: $stock-up-color;
+  font-weight: $font-weight-medium;
 }
 
-@media (max-width: 1200px) {
-  .market-grid {
-    grid-template-columns: 1fr;
+.negative {
+  color: $stock-down-color;
+  font-weight: $font-weight-medium;
+}
+
+// 响应式设计
+@include mixin.media-breakpoint-down(lg) {
+  .market-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 3);
   }
 
-  .index-card,
-  .distribution-card,
-  .hot-industry-card,
-  .stock-rank-card {
-    grid-column: auto;
+  .market-filters {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .index-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@include mixin.media-breakpoint-down(md) {
+  .market-index {
+    padding: map.get($spacers, 3);
+  }
+
+  .market-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .market-index {
+    padding: map.get($spacers, 2);
+  }
+
+  .market-grid {
+    gap: map.get($spacers, 3);
+  }
+
+  .grid-card {
+    padding: map.get($spacers, 2);
+  }
+
+  .industry-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 1);
+  }
+
+  .industry-change,
+  .industry-stocks {
+    width: auto;
+    text-align: left;
   }
 }
 </style>

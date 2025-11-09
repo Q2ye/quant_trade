@@ -508,7 +508,7 @@
   .market-overview-page {
     // 主内容区域
     .main-content {
-      padding: map.get($spacers, 4);  // 调整内边距：使用spacers映射中的第4个值
+      padding: map.get($spacers, 1);  // 调整内边距：使用spacers映射中的第4个值
     }
   }
 

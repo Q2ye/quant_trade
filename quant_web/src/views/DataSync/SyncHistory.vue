@@ -1,7 +1,7 @@
 <!-- quant_web/src/views/DataSync/SyncHistory.vue -->
 <script setup lang="ts">
 import { onMounted, reactive, ref, h } from 'vue'
-import { Alert, Button, Card, DatePicker, Descriptions, Divider, Drawer, Select, Space, Table, Tag } from 'ant-design-vue'
+import { Alert, Button, Card, DatePicker, Descriptions, Divider, Drawer, Select, Space,  Tag } from 'ant-design-vue'
 import { ArrowLeftOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import type { Dayjs } from 'dayjs'
@@ -317,11 +317,24 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
+
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+
+.sync-history-page {
+  padding: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: $primary-bg;
+  min-height: 100vh;
+}
+
 .page-header {
-  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  background: $page-header-bg;
   color: white;
-  padding: 20px 0;
-  margin-bottom: 20px;
+  padding: map.get($spacers, 4) 0;
+  margin-bottom: map.get($spacers, 4);
 
   .header-content {
     display: flex;
@@ -329,13 +342,12 @@ onMounted(() => {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 var(--spacer-4);
-    position: relative;
+    padding: 0 map.get($spacers, 4);
 
     .header-actions-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: map.get($spacers, 2);
       flex-shrink: 0;
     }
   }
@@ -345,36 +357,26 @@ onMounted(() => {
 
     .page-title {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
+      font-size: $page-title-font-size;
+      font-weight: $font-weight-bold;
       color: white;
     }
 
     .page-description {
-      margin: 6px 0 0 0;
+      margin: map.get($spacers, 1) 0 0 0;
       opacity: 0.9;
-      font-size: 13px;
+      font-size: $page-description-font-size;
+      color: rgba(255, 255, 255, 0.9);
     }
-  }
-
-  .status-tag {
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    font-size: 12px;
   }
 }
 
 .back-btn {
-  background: rgba(255, 255, 255, 0.15);
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: var(--border-radius, 6px);
-  font-weight: 500;
-  transition: all var(--transition-fast, 0.3s);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  height: 32px;
+  box-shadow: $card-shadow;
+  height: $button-height;
   display: flex;
   align-items: center;
 
@@ -382,178 +384,109 @@ onMounted(() => {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
     color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
-
-  &:active {
-    transform: translateY(0);
-  }
-}
-
-.sync-history-page {
-  padding: 0;
-  max-width: 1400px;
-  margin: 0 auto;
-  background: var(--primary-bg);
-  min-height: 100vh;
 }
 
 .history-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  margin: 0 20px;
+  @include mixin.card-base;
+  margin: 0 map.get($spacers, 4);
 
   :deep(.ant-card-body) {
-    padding: var(--spacer-3);
+    padding: map.get($spacers, 3);
   }
 }
 
 .filter-bar {
-  margin-bottom: var(--spacer-3);
-  padding: var(--spacer-3);
-  background: var(--secondary-bg);
-  border-radius: var(--border-radius);
-  border: 1px solid var(--border-color);
+  margin-bottom: map.get($spacers, 3);
+  padding: map.get($spacers, 3);
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  border: 1px solid $border-color;
 }
 
 .history-table {
   :deep(.ant-table-thead > tr > th) {
-    background-color: var(--toolbar-bg);
-    font-weight: 600;
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--border-color);
+    background-color: $toolbar-bg;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    border-bottom: 1px solid $border-color;
   }
 
   :deep(.ant-table-tbody > tr > td) {
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-primary);
+    border-bottom: 1px solid $border-color;
+    color: $text-primary;
   }
 
   :deep(.ant-table-tbody > tr:hover > td) {
-    background-color: var(--hover-bg);
+    background-color: $hover-bg;
   }
 
   :deep(.ant-table-pagination) {
-    margin: var(--spacer-3) 0 0 0;
-    padding: var(--spacer-2) 0;
-    border-top: 1px solid var(--border-color);
+    margin: map.get($spacers, 3) 0 0 0;
+    padding: map.get($spacers, 2) 0;
+    border-top: 1px solid $border-color;
   }
 }
 
 .detail-drawer {
   :deep(.ant-drawer-header) {
-    background: var(--toolbar-bg);
-    border-bottom: 1px solid var(--border-color);
+    background: $toolbar-bg;
+    border-bottom: 1px solid $border-color;
 
     .ant-drawer-title {
-      color: var(--text-primary);
-      font-weight: 600;
+      color: $text-primary;
+      font-weight: $font-weight-semibold;
     }
   }
 
   :deep(.ant-drawer-body) {
-    background: var(--primary-bg);
-    padding: var(--spacer-3);
+    background: $primary-bg;
+    padding: map.get($spacers, 3);
   }
 }
 
-.refresh-btn {
-  background-color: var(--secondary-color);
-  border-color: var(--secondary-color);
-  color: white;
-
-  &:hover {
-    background-color: var(--secondary-color-dark, rgba(108, 117, 125, 0.8));
-    border-color: var(--secondary-color-dark, rgba(108, 117, 125, 0.8));
-  }
-}
-
-.search-btn {
-  background-color: var(--accent-color);
-  border-color: var(--accent-color);
-  color: white;
-
-  &:hover {
-    background-color: var(--accent-color-dark, rgba(79, 156, 249, 0.8));
-    border-color: var(--accent-color-dark, rgba(79, 156, 249, 0.8));
-  }
-}
-
+.refresh-btn,
+.search-btn,
 .reset-btn {
-  background-color: var(--secondary-color);
-  border-color: var(--secondary-color);
-  color: white;
-
-  &:hover {
-    background-color: var(--secondary-color-dark, rgba(108, 117, 125, 0.8));
-    border-color: var(--secondary-color-dark, rgba(108, 117, 125, 0.8));
-  }
-}
-
-.detail-btn {
-  color: var(--accent-color);
-
-  &:hover {
-    color: var(--accent-color-dark, rgba(79, 156, 249, 0.8));
-  }
-}
-
-.retry-btn {
-  color: var(--success-color);
-
-  &:hover {
-    color: var(--success-color-dark, rgba(82, 196, 26, 0.8));
-  }
-}
-
-.status-select, .date-picker {
-  :deep(.ant-select-selector),
-  :deep(.ant-picker) {
-    background: var(--input-bg);
-    border-color: var(--border-color);
-    color: var(--text-primary);
-
-    &:hover, &:focus {
-      border-color: var(--accent-color);
-    }
-  }
+  @include mixin.button-base;
 }
 
 .error-text {
-  color: var(--danger-color);
-  margin-left: var(--spacer-2);
+  color: $danger-color;
+  margin-left: map.get($spacers, 2);
 }
 
 .error-alert {
-  margin-top: var(--spacer-3);
+  margin-top: map.get($spacers, 3);
 }
 
-@media (max-width: 768px) {
+// 响应式调整
+@include mixin.media-breakpoint-down(md) {
   .page-header .header-content {
     flex-direction: column;
-    gap: 12px;
+    gap: map.get($spacers, 3);
     text-align: center;
 
-    .header-actions-left {
-      position: static;
-      align-self: flex-start;
+    .header-actions-right {
+      order: -1;
+      align-self: stretch;
+      justify-content: space-between;
+      margin-bottom: map.get($spacers, 2);
     }
   }
 
   .history-card {
-    margin: 0 16px;
+    margin: 0 map.get($spacers, 3);
   }
 
   .filter-bar {
-    padding: var(--spacer-2);
+    padding: map.get($spacers, 2);
   }
 }
 
-@media (max-width: 576px) {
+@include mixin.media-breakpoint-down(sm) {
   .history-card {
-    margin: 0 var(--spacer-2);
+    margin: 0 map.get($spacers, 2);
   }
 
   .filter-bar {

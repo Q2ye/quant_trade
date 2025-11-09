@@ -1,6 +1,7 @@
-<!--ETF行情页-->
+<!-- ETF行情页 - 基于主题系统优化 -->
 <template>
   <div class="etf-market">
+    <!-- 页面头部区域 -->
     <div class="etf-header">
       <h2>ETF行情</h2>
       <div class="etf-filters">
@@ -21,7 +22,9 @@
       </div>
     </div>
 
+    <!-- ETF数据网格布局 -->
     <div class="etf-grid">
+      <!-- 资金流向图表卡片 -->
       <div class="grid-card etf-trend-card">
         <h3>ETF资金流向</h3>
         <div class="trend-chart">
@@ -29,6 +32,7 @@
         </div>
       </div>
 
+      <!-- 分类分布图表卡片 -->
       <div class="grid-card etf-category-card">
         <h3>ETF分类分布</h3>
         <div class="category-chart">
@@ -36,6 +40,7 @@
         </div>
       </div>
 
+      <!-- 涨幅榜卡片 -->
       <div class="grid-card etf-top-card">
         <h3>ETF涨幅榜</h3>
         <el-table :data="topRisingETFs" style="width: 100%">
@@ -58,6 +63,7 @@
         </el-table>
       </div>
 
+      <!-- 关注列表卡片 -->
       <div class="grid-card etf-favorite-card">
         <h3>我的ETF关注</h3>
         <el-table :data="favoriteETFs" style="width: 100%">
@@ -80,6 +86,7 @@
       </div>
     </div>
 
+    <!-- ETF完整列表 -->
     <div class="etf-list">
       <h3>ETF列表</h3>
       <el-table :data="filteredETFs" style="width: 100%">
@@ -146,6 +153,7 @@ export default {
     };
   },
   computed: {
+    // 过滤ETF数据
     filteredETFs() {
       let result = this.allETFs;
 
@@ -167,11 +175,13 @@ export default {
     }
   },
   mounted() {
+    // 初始化图表
     this.initFlowChart();
     this.initCategoryChart();
     window.addEventListener('resize', this.handleResize);
   },
   beforeUnmount() {
+    // 清理图表实例
     if (this.flowChart) {
       this.flowChart.dispose();
     }
@@ -181,16 +191,19 @@ export default {
     window.removeEventListener('resize', this.handleResize);
   },
   methods: {
+    // 刷新数据
     refreshData() {
       console.log('刷新ETF数据...');
       // 模拟数据刷新
       this.topRisingETFs = [...this.topRisingETFs];
       this.allETFs = [...this.allETFs];
     },
+    // 查看ETF详情
     viewETFDetail(etf) {
       console.log('查看ETF详情:', etf.code);
       // 实际项目中这里会导航到ETF详情页
     },
+    // 切换关注状态
     toggleFavorite(etf) {
       etf.isFavorite = !etf.isFavorite;
       if (etf.isFavorite) {
@@ -203,6 +216,7 @@ export default {
         this.favoriteETFs = this.favoriteETFs.filter(f => f.code !== etf.code);
       }
     },
+    // 移除关注
     removeFavorite(etf) {
       const index = this.allETFs.findIndex(e => e.code === etf.code);
       if (index !== -1) {
@@ -210,27 +224,28 @@ export default {
       }
       this.favoriteETFs = this.favoriteETFs.filter(f => f.code !== etf.code);
     },
+    // 初始化资金流向图表
     initFlowChart() {
       const chartDom = document.getElementById('fundFlowChart');
       this.flowChart = echarts.init(chartDom);
 
       const option = {
-        backgroundColor: '#121a29',
+        backgroundColor: 'transparent',
         tooltip: {
           trigger: 'axis',
           axisPointer: {
             type: 'shadow'
           },
-          backgroundColor: 'rgba(26,36,57,0.9)',
-          borderColor: '#2a3a5a',
+          backgroundColor: $secondary-bg,
+          borderColor: $border-color,
           textStyle: {
-            color: '#e0e0e0'
+            color: $text-primary
           }
         },
         legend: {
           data: ['流入', '流出'],
           textStyle: {
-            color: '#9da8b8'
+            color: $text-secondary
           },
           right: 10,
           top: 10
@@ -246,11 +261,11 @@ export default {
           data: ['周一', '周二', '周三', '周四', '周五'],
           axisLine: {
             lineStyle: {
-              color: '#5d6c7b'
+              color: $border-color
             }
           },
           axisLabel: {
-            color: '#9da8b8'
+            color: $text-secondary
           }
         },
         yAxis: {
@@ -258,16 +273,16 @@ export default {
           name: '亿元',
           axisLine: {
             lineStyle: {
-              color: '#5d6c7b'
+              color: $border-color
             }
           },
           splitLine: {
             lineStyle: {
-              color: '#1e2a3e'
+              color: $secondary-bg
             }
           },
           axisLabel: {
-            color: '#9da8b8'
+            color: $text-secondary
           }
         },
         series: [
@@ -280,7 +295,7 @@ export default {
             },
             data: [12.3, 15.2, 8.7, 17.8, 13.5],
             itemStyle: {
-              color: '#4caf50'
+              color: $stock-up-color
             }
           },
           {
@@ -292,7 +307,7 @@ export default {
             },
             data: [-8.5, -7.2, -6.8, -9.3, -7.9],
             itemStyle: {
-              color: '#f44336'
+              color: $stock-down-color
             }
           }
         ]
@@ -300,19 +315,20 @@ export default {
 
       this.flowChart.setOption(option);
     },
+    // 初始化分类分布图表
     initCategoryChart() {
       const chartDom = document.getElementById('categoryChart');
       this.categoryChart = echarts.init(chartDom);
 
       const option = {
-        backgroundColor: '#121a29',
+        backgroundColor: 'transparent',
         tooltip: {
           trigger: 'item',
           formatter: '{a} <br/>{b}: {c} ({d}%)',
-          backgroundColor: 'rgba(26,36,57,0.9)',
-          borderColor: '#2a3a5a',
+          backgroundColor: $secondary-bg,
+          borderColor: $border-color,
           textStyle: {
-            color: '#e0e0e0'
+            color: $text-primary
           }
         },
         legend: {
@@ -320,7 +336,7 @@ export default {
           right: 10,
           top: 'center',
           textStyle: {
-            color: '#9da8b8'
+            color: $text-secondary
           }
         },
         series: [
@@ -330,8 +346,8 @@ export default {
             radius: ['40%', '70%'],
             avoidLabelOverlap: false,
             itemStyle: {
-              borderRadius: 10,
-              borderColor: '#121a29',
+              borderRadius: $border-radius,
+              borderColor: $primary-bg,
               borderWidth: 2
             },
             label: {
@@ -343,7 +359,7 @@ export default {
                 show: true,
                 fontSize: '18',
                 fontWeight: 'bold',
-                color: '#e0e0e0'
+                color: $text-primary
               }
             },
             labelLine: {
@@ -355,14 +371,14 @@ export default {
               { value: 28, name: '商品型' },
               { value: 24, name: '货币型' },
               { value: 45, name: '跨境型' }
-            ],
-            color: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de']
+            ]
           }
         ]
       };
 
       this.categoryChart.setOption(option);
     },
+    // 处理窗口大小变化
     handleResize() {
       if (this.flowChart) {
         this.flowChart.resize();
@@ -375,11 +391,17 @@ export default {
 };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+// 导入主题变量和混入
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color';
+
 .etf-market {
-  padding: 20px;
-  background-color: #121a29;
-  color: #e0e0e0;
+  padding: $content-padding;
+  background-color: $primary-bg;
+  color: $text-primary;
   height: 100%;
   overflow-y: auto;
 }
@@ -388,84 +410,136 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #2a3a5a;
+  margin-bottom: map.get($spacers, 4);
+  padding-bottom: map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
+
+  h2 {
+    font-size: $font-size-base * 1.5;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0;
+  }
 }
 
 .etf-filters {
   display: flex;
-  gap: 15px;
+  gap: map.get($spacers, 3);
+  align-items: center;
 }
 
 .etf-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-  margin-bottom: 30px;
+  gap: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 5);
+
+  // 应用卡片网格布局混入
+  @include mixin.card-grid-layout(2, (
+    'lg': 1,
+    'md': 1,
+    'sm': 1
+  ));
 }
 
+// 网格卡片通用样式
 .grid-card {
-  background: #1a2439;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  @include mixin.card-base;
+  padding: map.get($spacers, 3);
+  height: 100%;
+  transition: all $transition-normal;
+
+  h3 {
+    font-size: $font-size-base * 1.1;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0 0 map.get($spacers, 3) 0;
+    padding-bottom: map.get($spacers, 2);
+    border-bottom: $border-width solid $border-color;
+  }
+
+  &:hover {
+    transform: $hover-transform;
+    box-shadow: $card-hover-shadow;
+  }
 }
 
-.etf-trend-card {
-  grid-column: 1;
-}
-
-.etf-category-card {
-  grid-column: 2;
-}
-
-.etf-top-card {
-  grid-column: 1;
-}
-
-.etf-favorite-card {
-  grid-column: 2;
-}
-
+// 图表容器样式
 .chart {
   width: 100%;
   height: 300px;
 }
 
+// ETF列表样式
 .etf-list {
-  background: #1a2439;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  @include mixin.card-base;
+  padding: map.get($spacers, 3);
+
+  h3 {
+    font-size: $font-size-base * 1.1;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0 0 map.get($spacers, 3) 0;
+    padding-bottom: map.get($spacers, 2);
+    border-bottom: $border-width solid $border-color;
+  }
 }
 
-.etf-list h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-  color: #64b5f6;
-  border-bottom: 1px solid #2a3a5a;
-  padding-bottom: 10px;
-}
-
+// 价格涨跌颜色样式
 .positive {
-  color: #f44336;
+  color: $stock-up-color;
+  font-weight: $font-weight-medium;
 }
 
 .negative {
-  color: #4caf50;
+  color: $stock-down-color;
+  font-weight: $font-weight-medium;
 }
 
-@media (max-width: 1200px) {
-  .etf-grid {
-    grid-template-columns: 1fr;
+// 响应式设计
+@include mixin.media-breakpoint-down(lg) {
+  .etf-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 3);
   }
 
-  .etf-trend-card,
-  .etf-category-card,
-  .etf-top-card,
-  .etf-favorite-card {
-    grid-column: auto;
+  .etf-filters {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@include mixin.media-breakpoint-down(md) {
+  .etf-market {
+    padding: map.get($spacers, 3);
+  }
+
+  .etf-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chart {
+    height: 250px;
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .etf-market {
+    padding: map.get($spacers, 2);
+  }
+
+  .etf-grid {
+    gap: map.get($spacers, 3);
+  }
+
+  .grid-card {
+    padding: map.get($spacers, 2);
+  }
+
+  .chart {
+    height: 200px;
   }
 }
 </style>

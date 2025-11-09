@@ -119,18 +119,22 @@ const refreshData = () => {
 </script>
 
 <style lang="scss" scoped>
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color' as sassColor;
 
 .data-quality {
-  padding: var(--spacer-4);
-  background: var(--primary-bg);
+  padding: map.get($spacers, 4);
+  background: $primary-bg;
   min-height: 100vh;
 }
 
 .page-header {
-  background: var(--page-header-bg);
+  background: $page-header-bg;
   color: white;
-  padding: var(--spacer-4) 0;
-  margin-bottom: var(--spacer-4);
+  padding: map.get($spacers, 4) 0;
+  margin-bottom: map.get($spacers, 4);
 
   .header-content {
     display: flex;
@@ -138,14 +142,12 @@ const refreshData = () => {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 var(--spacer-4);
-    position: relative;
-
+    padding: 0 map.get($spacers, 4);
 
     .header-actions-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: map.get($spacers, 2);
     }
   }
 
@@ -154,119 +156,97 @@ const refreshData = () => {
 
     .page-title {
       margin: 0;
-      font-size: 1.5rem;
-      font-weight: 600;
+      font-size: $page-title-font-size;
+      font-weight: $font-weight-bold;
       color: white;
     }
 
     .page-description {
-      margin: var(--spacer-1) 0 0 0;
+      margin: map.get($spacers, 1) 0 0 0;
       opacity: 0.9;
-      font-size: 0.875rem;
+      font-size: $page-description-font-size;
       color: rgba(255, 255, 255, 0.9);
     }
   }
 }
 
-// 返回按钮样式
 .back-btn {
-  background: rgba(255, 255, 255, 0.15);
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: var(--border-radius);
-  font-weight: 500;
-  transition: all var(--transition-fast);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: $card-shadow;
 
   &:hover {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
     color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active {
-    transform: translateY(0);
   }
 }
 
 .stats-row {
-  margin-bottom: var(--spacer-4);
+  margin-bottom: map.get($spacers, 4);
 }
 
 .stat-card {
-  border-radius: var(--border-radius-lg);
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  transition: all var(--transition-normal);
-
-  &:hover {
-    transform: var(--hover-transform);
-    box-shadow: var(--hover-shadow);
-  }
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
 }
 
 .stat-content {
   display: flex;
   align-items: center;
-  padding: var(--spacer-2);
+  padding: map.get($spacers, 2);
 }
 
 .stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--border-radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: var(--spacer-3);
+  width: $status-icon-size;
+  height: $status-icon-size;
+  border-radius: $border-radius;
+  @include mixin.flex-center;
+  margin-right: map.get($spacers, 3);
   font-size: 1.5rem;
 }
 
 .stat-icon.success {
-  background: rgba(var(--success-color-rgb), 0.1);
-  color: var(--success-color);
+  background: rgba($success-color, 0.1);
+  color: $success-color;
 }
 
 .stat-icon.warning {
-  background: rgba(var(--warning-color-rgb), 0.1);
-  color: var(--warning-color);
+  background: rgba($warning-color, 0.1);
+  color: $warning-color;
 }
 
 .stat-icon.info {
-  background: rgba(var(--info-color-rgb), 0.1);
-  color: var(--info-color);
+  background: rgba($info-color, 0.1);
+  color: $info-color;
 }
 
 .stat-icon.primary {
-  background: rgba(var(--accent-color-rgb), 0.1);
-  color: var(--accent-color);
+  background: rgba($accent-color, 0.1);
+  color: $accent-color;
 }
 
 .stat-value {
   font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-weight: $font-weight-bold;
+  color: $text-primary;
   line-height: 1.2;
 }
 
 .stat-label {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  margin-top: var(--spacer-1);
+  @include mixin.text-secondary;
+  margin-top: map.get($spacers, 1);
 }
 
 .main-card {
-  border-radius: var(--border-radius-lg);
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
 
   :deep(.el-card__header) {
-    background: var(--toolbar-bg);
-    border-bottom: 1px solid var(--border-color);
-    padding: var(--spacer-3);
+    background: $toolbar-bg;
+    border-bottom: 1px solid $border-color;
+    padding: map.get($spacers, 3);
   }
 }
 
@@ -276,32 +256,15 @@ const refreshData = () => {
   align-items: center;
 
   :deep(.el-button) {
-    // 使用 CSS 变量替代 mixin
-    padding: 8px 16px;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all var(--transition-fast);
-    background-color: var(--accent-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--accent-color-dark);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    }
+    @include mixin.button-base;
 
     &.el-button--primary {
-      background-color: var(--accent-color);
-      border-color: var(--accent-color);
+      background-color: $accent-color;
+      border-color: $accent-color;
 
       &:hover {
-        background-color: var(--accent-color-dark);
-        border-color: var(--accent-color-dark);
+        background-color: sassColor.adjust($accent-color, $lightness: -10%);
+        border-color: sassColor.adjust($accent-color, $lightness: -10%);
       }
     }
   }
@@ -309,45 +272,45 @@ const refreshData = () => {
 
 :deep(.el-tabs) {
   .el-tabs__header {
-    background: var(--secondary-bg);
-    padding: 0 var(--spacer-3);
+    background: $secondary-bg;
+    padding: 0 map.get($spacers, 3);
     margin: 0;
   }
 
   .el-tabs__nav-wrap::after {
-    background-color: var(--border-color);
+    background-color: $border-color;
   }
 
   .el-tabs__item {
-    color: var(--text-secondary);
-    font-weight: 500;
+    color: $text-secondary;
+    font-weight: $font-weight-medium;
 
     &.is-active {
-      color: var(--accent-color);
+      color: $accent-color;
     }
 
     &:hover {
-      color: var(--accent-color);
+      color: $accent-color;
     }
   }
 
   .el-tabs__active-bar {
-    background-color: var(--accent-color);
+    background-color: $accent-color;
   }
 }
 
 // 响应式调整
-@media (max-width: 768px) {
+@include mixin.media-breakpoint-down(md) {
   .page-header .header-content {
     flex-direction: column;
-    gap: var(--spacer-3);
+    gap: map.get($spacers, 3);
     align-items: center;
     text-align: center;
 
     .header-actions-right {
       order: -1;
       align-self: flex-end;
-      margin-bottom: var(--spacer-2);
+      margin-bottom: map.get($spacers, 2);
     }
   }
 }

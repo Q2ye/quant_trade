@@ -1,56 +1,45 @@
+<!-- MoneyFlow.vue - 资金流向分析页面 -->
+<!-- 基于全局主题样式系统重构，统一使用主题变量和混入 -->
 <template>
   <div class="money-flow-page">
-    <!-- 页面标题 -->
-    <div class="page-header">
+    <!-- 页面标题区域 -->
+    <div class="page-header-with-sidebar">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">资金流向分析</h1>
           <p class="page-description">实时追踪主力资金动向与市场资金分布</p>
         </div>
-        <div class="header-actions-right">
-          <a-button-group class="period-buttons">
-            <a-button
-                :type="activePeriod === 'today' ? 'primary' : 'default'"
-                @click="activePeriod = 'today'"
-                size="small"
+        <div class="header-actions">
+          <!-- 时间周期选择 -->
+          <div class="period-selector">
+            <button
+              v-for="period in periodOptions"
+              :key="period.value"
+              :class="['period-btn', { active: activePeriod === period.value }]"
+              @click="activePeriod = period.value"
             >
-              今日
-            </a-button>
-            <a-button
-                :type="activePeriod === '5d' ? 'primary' : 'default'"
-                @click="activePeriod = '5d'"
-                size="small"
-            >
-              5日
-            </a-button>
-            <a-button
-                :type="activePeriod === '10d' ? 'primary' : 'default'"
-                @click="activePeriod = '10d'"
-                size="small"
-            >
-              10日
-            </a-button>
-          </a-button-group>
-          <a-button type="primary" @click="refreshData" size="small" class="action-btn">
-            <template #icon>
-              <ReloadOutlined/>
-            </template>
-            刷新
-          </a-button>
-          <a-button class="back-btn" @click="handleBack">
-            <template #icon>
-              <ArrowLeftOutlined/>
-            </template>
-            返回
-          </a-button>
+              {{ period.label }}
+            </button>
+          </div>
+          <button class="refresh-btn" @click="refreshData" :disabled="loading">
+            <Icon icon="ant-design:reload-outlined" class="refresh-icon" :class="{ refreshing: loading }"/>
+            <span class="btn-text">{{ loading ? '刷新中...' : '刷新' }}</span>
+          </button>
+          <button class="back-btn" @click="handleBack">
+            <Icon icon="ant-design:arrow-left-outlined"/>
+            <span class="btn-text">返回</span>
+          </button>
         </div>
       </div>
     </div>
-    <!-- 资金流向概览 -->
-    <div class="flow-overview">
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-card class="flow-card inflow" shadow="hover">
+
+    <!-- 主要内容区域 -->
+    <div class="main-content-with-sidebar">
+      <!-- 资金流向概览 -->
+      <section class="flow-overview">
+        <div class="stats-grid">
+          <!-- 主力净流入 -->
+          <div class="flow-card card inflow">
             <div class="flow-content">
               <div class="flow-icon">
                 <Icon icon="mdi:arrow-down"/>
@@ -64,10 +53,10 @@
                 </div>
               </div>
             </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="flow-card outflow" shadow="hover">
+          </div>
+
+          <!-- 主力净流出 -->
+          <div class="flow-card card outflow">
             <div class="flow-content">
               <div class="flow-icon">
                 <Icon icon="mdi:arrow-up"/>
@@ -81,10 +70,10 @@
                 </div>
               </div>
             </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="flow-card total" shadow="hover">
+          </div>
+
+          <!-- 净流入总额 -->
+          <div class="flow-card card total">
             <div class="flow-content">
               <div class="flow-icon">
                 <Icon icon="mdi:chart-line"/>
@@ -102,10 +91,10 @@
                 </div>
               </div>
             </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card class="flow-card turnover" shadow="hover">
+          </div>
+
+          <!-- 成交总额 -->
+          <div class="flow-card card turnover">
             <div class="flow-content">
               <div class="flow-icon">
                 <Icon icon="mdi:swap-horizontal"/>
@@ -119,204 +108,196 @@
                 </div>
               </div>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
-    </div>
+          </div>
+        </div>
+      </section>
 
-    <!-- 资金流向图表 -->
-    <div class="flow-charts">
-      <el-row :gutter="16">
-        <el-col :span="16">
-          <el-card class="chart-card" shadow="never">
-            <template #header>
-              <div class="card-header">
-                <span class="card-title">资金流向趋势</span>
-                <div class="chart-controls">
-                  <el-radio-group v-model="chartType" size="small">
-                    <el-radio-button label="line">折线图</el-radio-button>
-                    <el-radio-button label="bar">柱状图</el-radio-button>
-                  </el-radio-group>
+      <!-- 资金流向图表 -->
+      <section class="flow-charts">
+        <div class="charts-grid">
+          <!-- 资金流向趋势 -->
+          <div class="chart-card card">
+            <div class="card-header">
+              <h3 class="card-title">资金流向趋势</h3>
+              <div class="chart-controls">
+                <div class="chart-type-selector">
+                  <button
+                    v-for="type in chartTypeOptions"
+                    :key="type.value"
+                    :class="['chart-type-btn', { active: chartType === type.value }]"
+                    @click="chartType = type.value"
+                  >
+                    {{ type.label }}
+                  </button>
                 </div>
               </div>
-            </template>
-            <div class="chart-container">
-              <!-- 这里可以接入ECharts图表 -->
-              <div class="chart-placeholder">
-                <Icon icon="mdi:chart-line" class="placeholder-icon"/>
-                <p>资金流向趋势图表</p>
-              </div>
             </div>
-          </el-card>
-        </el-col>
-        <el-col :span="8">
-          <el-card class="chart-card" shadow="never">
-            <template #header>
-              <div class="card-header">
-                <span class="card-title">行业资金分布</span>
+            <div class="card-body">
+              <div class="chart-container">
+                <div class="chart-placeholder">
+                  <Icon icon="mdi:chart-line" class="placeholder-icon"/>
+                  <p>资金流向趋势图表</p>
+                </div>
               </div>
-            </template>
-            <div class="chart-container">
-              <!-- 这里可以接入ECharts饼图 -->
-              <div class="chart-placeholder">
-                <Icon icon="mdi:chart-pie" class="placeholder-icon"/>
-                <p>行业资金分布图表</p>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-    </div>
-
-    <!-- 资金流向明细 -->
-    <div class="flow-details">
-      <el-card class="data-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <span class="card-title">资金流向明细</span>
-            <div class="header-actions">
-              <el-input
-                  v-model="searchQuery"
-                  placeholder="搜索股票代码或名称"
-                  style="width: 200px"
-                  clearable
-                  size="small"
-                  prefix-icon="Search"
-              />
-              <el-select v-model="filterIndustry" placeholder="行业" clearable size="small">
-                <el-option
-                    v-for="industry in industries"
-                    :key="industry"
-                    :label="industry"
-                    :value="industry"
-                />
-              </el-select>
             </div>
           </div>
-        </template>
 
-        <el-table
-            :data="filteredFlowData"
-            v-loading="loading"
-            style="width: 100%"
-            stripe
-            size="small"
-        >
-          <el-table-column prop="code" label="代码" width="120">
-            <template #default="scope">
-              <div class="code-cell">
-                <span class="code">{{ scope.row.code }}</span>
-                <span class="exchange" :class="getExchangeClass(scope.row.exchange)">
-                  {{ getExchangeText(scope.row.exchange) }}
-                </span>
+          <!-- 行业资金分布 -->
+          <div class="chart-card card">
+            <div class="card-header">
+              <h3 class="card-title">行业资金分布</h3>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <div class="chart-placeholder">
+                  <Icon icon="mdi:chart-pie" class="placeholder-icon"/>
+                  <p>行业资金分布图表</p>
+                </div>
               </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="name" label="名称" min-width="150">
-            <template #default="scope">
-              <div class="name-cell">
-                <span class="name">{{ scope.row.name }}</span>
-                <el-tag
-                    v-if="scope.row.is_st"
-                    size="small"
-                    type="danger"
-                    effect="plain"
-                >
-                  ST
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="industry" label="行业" width="120">
-            <template #default="scope">
-              <el-tag size="small" effect="plain" class="industry-tag">
-                {{ scope.row.industry }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="mainInflow" label="主力净流入(万)" width="140" align="right" sortable>
-            <template #default="scope">
-              <span :class="getFlowClass(scope.row.mainInflow)">
-                {{ formatAmount(scope.row.mainInflow, true) }}
-              </span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="retailInflow" label="散户净流入(万)" width="140" align="right" sortable>
-            <template #default="scope">
-              <span :class="getFlowClass(scope.row.retailInflow)">
-                {{ formatAmount(scope.row.retailInflow, true) }}
-              </span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="totalInflow" label="总净流入(万)" width="140" align="right" sortable>
-            <template #default="scope">
-              <span :class="getFlowClass(scope.row.totalInflow)">
-                {{ formatAmount(scope.row.totalInflow, true) }}
-              </span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="inflowRate" label="净流入率" width="120" align="right" sortable>
-            <template #default="scope">
-              <span :class="getFlowClass(scope.row.inflowRate)">
-                {{ scope.row.inflowRate > 0 ? '+' : '' }}{{ scope.row.inflowRate.toFixed(2) }}%
-              </span>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="turnover" label="成交额(万)" width="140" align="right" sortable>
-            <template #default="scope">
-              {{ formatAmount(scope.row.turnover) }}
-            </template>
-          </el-table-column>
-
-          <el-table-column label="操作" width="100" fixed="right">
-            <template #default="scope">
-              <el-button
-                  size="small"
-                  @click="viewStockDetail(scope.row)"
-                  class="detail-btn"
-              >
-                详情
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-container">
-          <el-pagination
-              v-model:current-page="currentPage"
-              v-model:page-size="pageSize"
-              :page-sizes="[20, 50, 100]"
-              :total="totalCount"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="handleSizeChange"
-              @current-change="handleCurrentChange"
-              size="small"
-          />
+            </div>
+          </div>
         </div>
-      </el-card>
+      </section>
+
+      <!-- 资金流向明细 -->
+      <section class="flow-details">
+        <div class="data-card card">
+          <div class="card-header">
+            <h3 class="card-title">资金流向明细</h3>
+            <div class="header-actions">
+              <!-- 搜索框 -->
+              <div class="search-box">
+                <Icon icon="mdi:magnify" class="search-icon"/>
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  placeholder="搜索股票代码或名称"
+                  class="search-input"
+                />
+              </div>
+              <!-- 行业筛选 -->
+              <select v-model="filterIndustry" class="filter-select">
+                <option value="">全部行业</option>
+                <option
+                  v-for="industry in industries"
+                  :key="industry"
+                  :value="industry"
+                >
+                  {{ industry }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- 数据表格 -->
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>行业</th>
+                    <th>主力净流入(万)</th>
+                    <th>散户净流入(万)</th>
+                    <th>总净流入(万)</th>
+                    <th>净流入率</th>
+                    <th>成交额(万)</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in filteredFlowData"
+                    :key="item.code"
+                    class="table-row"
+                  >
+                    <td class="code-cell">
+                      <div class="code">{{ item.code }}</div>
+                      <span :class="['exchange-tag', getExchangeClass(item.exchange)]">
+                        {{ getExchangeText(item.exchange) }}
+                      </span>
+                    </td>
+                    <td class="name-cell">
+                      <span class="name">{{ item.name }}</span>
+                      <span v-if="item.is_st" class="st-tag">ST</span>
+                    </td>
+                    <td>
+                      <span class="industry-tag">{{ item.industry }}</span>
+                    </td>
+                    <td class="amount-cell">
+                      <span :class="getFlowClass(item.mainInflow)">
+                        {{ formatAmount(item.mainInflow, true) }}
+                      </span>
+                    </td>
+                    <td class="amount-cell">
+                      <span :class="getFlowClass(item.retailInflow)">
+                        {{ formatAmount(item.retailInflow, true) }}
+                      </span>
+                    </td>
+                    <td class="amount-cell">
+                      <span :class="getFlowClass(item.totalInflow)">
+                        {{ formatAmount(item.totalInflow, true) }}
+                      </span>
+                    </td>
+                    <td class="rate-cell">
+                      <span :class="getFlowClass(item.inflowRate)">
+                        {{ item.inflowRate > 0 ? '+' : '' }}{{ item.inflowRate.toFixed(2) }}%
+                      </span>
+                    </td>
+                    <td class="amount-cell">
+                      {{ formatAmount(item.turnover) }}
+                    </td>
+                    <td class="action-cell">
+                      <button class="detail-btn" @click="viewStockDetail(item)">
+                        详情
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 加载状态 -->
+            <div v-if="loading" class="loading-state">
+              <div class="loading-spinner"></div>
+              <p>数据加载中...</p>
+            </div>
+
+            <!-- 分页控件 -->
+            <div class="pagination-container">
+              <div class="pagination">
+                <button
+                  class="pagination-btn"
+                  :disabled="currentPage === 1"
+                  @click="currentPage--"
+                >
+                  上一页
+                </button>
+                <span class="pagination-info">
+                  第 {{ currentPage }} 页，共 {{ Math.ceil(totalCount / pageSize) }} 页
+                </span>
+                <button
+                  class="pagination-btn"
+                  :disabled="currentPage * pageSize >= totalCount"
+                  @click="currentPage++"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import {computed, onMounted, ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {ElMessage} from 'element-plus'
-import {Icon} from '@iconify/vue'
-import {ArrowLeftOutlined, ReloadOutlined} from '@ant-design/icons-vue'
+import { computed, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { Icon } from '@iconify/vue'
 
 const router = useRouter()
-// 返回按钮处理
-const handleBack = () => {
-  router.go(-1)
-}
 
 // 响应式数据
 const activePeriod = ref('today')
@@ -328,6 +309,20 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const totalCount = ref(0)
 
+// 时间周期选项
+const periodOptions = [
+  { label: '今日', value: 'today' },
+  { label: '5日', value: '5d' },
+  { label: '10日', value: '10d' }
+]
+
+// 图表类型选项
+const chartTypeOptions = [
+  { label: '折线图', value: 'line' },
+  { label: '柱状图', value: 'bar' }
+]
+
+// 资金流向数据
 const flowData = ref({
   mainInflow: 1256700,
   mainOutflow: 892300,
@@ -339,6 +334,7 @@ const flowData = ref({
   turnoverChange: 15.2
 })
 
+// 资金流向明细数据
 const flowDetails = ref([
   {
     code: '000001',
@@ -388,8 +384,8 @@ const filteredFlowData = computed(() => {
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(item =>
-        item.code.toLowerCase().includes(query) ||
-        item.name.toLowerCase().includes(query)
+      item.code.toLowerCase().includes(query) ||
+      item.name.toLowerCase().includes(query)
     )
   }
 
@@ -407,14 +403,14 @@ const filteredFlowData = computed(() => {
 })
 
 // 方法
+const handleBack = () => {
+  router.go(-1)
+}
+
 const refreshData = async () => {
   loading.value = true
   try {
-    // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 1000))
-    ElMessage.success('数据刷新成功')
-  } catch (error) {
-    ElMessage.error('数据刷新失败')
   } finally {
     loading.value = false
   }
@@ -466,468 +462,496 @@ const viewStockDetail = (row) => {
   router.push(`/market/stock/${row.code}`)
 }
 
-const handleSizeChange = (size) => {
-  pageSize.value = size
-  currentPage.value = 1
-}
-
-const handleCurrentChange = (page) => {
-  currentPage.value = page
-}
-
 // 生命周期
 onMounted(() => {
   // 初始化数据
 })
 </script>
 
-<style lang="scss" scoped>
+<style scoped lang="scss">
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color' as scssColor;
+
+
 .money-flow-page {
-  padding: var(--spacer-4);
-  background: var(--primary-bg);
-  min-height: 100%;
+  min-height: 100vh;
+  background: $primary-bg;
+}
 
-  .page-header {
-    background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
-    color: white;
-    padding: 20px 0;
-    margin-bottom: 20px;
+// 时间周期选择器
+.period-selector {
+  display: flex;
+   background: $secondary-bg;
+  border-radius: $border-radius;
+  padding: 2px;
 
-    .header-content {
+  .period-btn {
+   @include mixin.button-base(transparent, $text-primary);
+    padding: map.get($spacers, 1) map.get($spacers, 2);
+    border-radius: calc($border-radius - 2px);
+    font-size: calc($font-size-base - 2px);
+    transition: all $transition-fast;
+
+    &.active {
+      background: $accent-color;
+      color: white;
+    }
+
+    &:hover:not(.active) {
+      background: $hover-bg;
+    }
+  }
+}
+
+// 资金流向概览
+.flow-overview {
+  margin-bottom: map.get($spacers, 4);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: map.get($spacers, 3);
+}
+
+.flow-card {
+  @include mixin.card-base;
+  padding: map.get($spacers, 3);
+  border-left: 4px solid transparent;
+
+  &.inflow {
+    border-left-color: $success-color;
+  }
+
+  &.outflow {
+    border-left-color: $danger-color;
+  }
+
+  &.total {
+    border-left-color: $accent-color;
+  }
+
+  &.turnover {
+    border-left-color: $warning-color;
+  }
+
+  .flow-content {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 3);
+  }
+
+  .flow-icon {
+    font-size: 2rem;
+    opacity: 0.8;
+
+    .inflow & {
+      color: $success-color;
+    }
+
+    .outflow & {
+      color: $danger-color;
+    }
+
+    .total & {
+      color: $accent-color;
+    }
+
+    .turnover & {
+      color: $warning-color;
+    }
+  }
+
+  .flow-info {
+    flex: 1;
+
+    .flow-value {
+      font-size: 1.5rem;
+      font-weight: $font-weight-bold;
+      color: $text-primary;
+      margin-bottom: map.get($spacers, 1);
+
+      &.flow-positive {
+        color: $success-color;
+      }
+
+      &.flow-negative {
+        color: $danger-color;
+      }
+    }
+
+    .flow-label {
+      font-size: calc($font-size-base - 2px);
+      color: $text-secondary;
+      margin-bottom: map.get($spacers, 1);
+    }
+
+    .flow-change {
+      font-size: calc($font-size-base - 4px);
+      color: $text-secondary;
+
+      .positive {
+        color: $success-color;
+        font-weight: $font-weight-semibold
+      }
+
+      .negative {
+        color: $danger-color;
+        font-weight: $font-weight-semibold
+      }
+    }
+  }
+}
+
+// 图表区域
+.flow-charts {
+  margin-bottom: map.get($spacers, 4);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: map.get($spacers, 4);
+}
+
+.chart-card {
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: map.get($spacers, 3);
+    border-bottom: 1px solid $border-color;
+  }
+
+  .chart-controls {
+    .chart-type-selector {
+      display: flex;
+      background: $secondary-bg;
+      border-radius: $border-radius-sm;
+      padding: 2px;
+
+      .chart-type-btn {
+        @include mixin.button-base(transparent, $text-primary);
+        padding: map.get($spacers, 1) map.get($spacers, 2);
+        border-radius: calc($border-radius-sm - 2px);
+        font-size: calc($font-size-base - 4px);
+
+        &.active {
+          background: $accent-color;
+          color: white;
+        }
+      }
+    }
+  }
+
+  .chart-container {
+    height: 300px;
+    @include mixin.flex-center(column);
+    background: $secondary-bg;
+    border-radius: $border-radius;
+  }
+
+  .chart-placeholder {
+    text-align: center;
+    color: $text-secondary;
+
+    .placeholder-icon {
+      font-size: 3rem;
+      margin-bottom: map.get($spacers, 2);
+      opacity: 0.5;
+    }
+  }
+}
+
+// 资金流向明细
+.flow-details {
+  .data-card {
+    .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 0 var(--spacer-4);
-      position: relative;
-
-      .header-actions-right {
-        display: flex;
-        align-items: center;
-        gap: 8px; /* 减小间距，使按钮更紧凑 */
-        flex-shrink: 0;
-      }
-    }
-
-    .title-section {
-      flex: 1;
-
-      .page-title {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 600;
-        color: white;
-      }
-
-      .page-description {
-        margin: 6px 0 0 0;
-        opacity: 0.9;
-        font-size: 13px;
-      }
-    }
-  }
-
-  // 周期按钮组样式
-  .period-buttons {
-    :deep(.ant-btn) {
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      color: white;
-
-      &:hover {
-        background: rgba(255, 255, 255, 0.2);
-        border-color: rgba(255, 255, 255, 0.5);
-        color: white;
-      }
-
-      &.ant-btn-primary {
-        background: rgba(255, 255, 255, 0.3);
-        border-color: rgba(255, 255, 255, 0.5);
-      }
-    }
-  }
-
-  // 操作按钮样式
-  .action-btn {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    border-radius: var(--border-radius, 6px);
-    font-weight: 500;
-    transition: all var(--transition-fast, 0.3s);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    height: 32px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.25);
-      border-color: rgba(255, 255, 255, 0.5);
-      color: white;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    &:active {
-      transform: translateY(0);
-    }
-  }
-
-  // 返回按钮样式 - 与StockList保持一致
-  .back-btn {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    border-radius: var(--border-radius, 6px);
-    font-weight: 500;
-    transition: all var(--transition-fast, 0.3s);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    height: 32px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.25);
-      border-color: rgba(255, 255, 255, 0.5);
-      color: white;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    &:active {
-      transform: translateY(0);
-    }
-  }
-
-  .flow-overview {
-    margin-bottom: var(--spacer-4);
-
-    .flow-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-      transition: all var(--transition-normal);
-
-      &:hover {
-        transform: var(--hover-transform);
-        box-shadow: var(--hover-shadow);
-      }
-
-      &.inflow {
-        border-left: 4px solid var(--success-color, #28a745);
-      }
-
-      &.outflow {
-        border-left: 4px solid var(--danger-color, #dc3545);
-      }
-
-      &.total {
-        border-left: 4px solid var(--accent-color);
-      }
-
-      &.turnover {
-        border-left: 4px solid var(--warning-color, #ffc107);
-      }
-
-      .flow-content {
-        display: flex;
-        align-items: center;
-        padding: var(--spacer-3);
-
-        .flow-icon {
-          font-size: 2.5rem;
-          margin-right: var(--spacer-3);
-          opacity: 0.8;
-        }
-
-        .flow-info {
-          .flow-value {
-            font-size: 1.5rem;
-            font-weight: var(--font-weight-bold);
-            color: var(--text-primary);
-            margin-bottom: var(--spacer-1);
-
-            &.flow-positive {
-              color: var(--success-color, #28a745);
-            }
-
-            &.flow-negative {
-              color: var(--danger-color, #dc3545);
-            }
-          }
-
-          .flow-label {
-            font-size: calc(var(--font-size-base) - 2px);
-            color: var(--text-secondary);
-            margin-bottom: var(--spacer-1);
-          }
-
-          .flow-change {
-            font-size: calc(var(--font-size-base) - 4px);
-            color: var(--text-secondary);
-
-            .positive {
-              color: var(--success-color, #28a745);
-              font-weight: var(--font-weight-semibold);
-            }
-
-            .negative {
-              color: var(--danger-color, #dc3545);
-              font-weight: var(--font-weight-semibold);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  .flow-charts {
-    margin-bottom: var(--spacer-4);
-
-    .chart-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-
-      :deep(.el-card__header) {
-        background: var(--secondary-bg);
-        border-bottom: 1px solid var(--border-color);
-        padding: var(--spacer-3);
-      }
-
-      :deep(.el-card__body) {
-        padding: var(--spacer-3);
-      }
-
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .chart-container {
-        height: 300px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--chart-bg);
-        border-radius: var(--border-radius-sm);
-
-        .chart-placeholder {
-          text-align: center;
-          color: var(--text-secondary);
-
-          .placeholder-icon {
-            font-size: 3rem;
-            margin-bottom: var(--spacer-2);
-            opacity: 0.5;
-          }
-
-          p {
-            margin: 0;
-            font-size: calc(var(--font-size-base) - 2px);
-          }
-        }
-      }
-    }
-  }
-
-  .flow-details {
-    .data-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: var(--border-radius);
-
-      :deep(.el-card__header) {
-        background: var(--secondary-bg);
-        border-bottom: 1px solid var(--border-color);
-        padding: var(--spacer-3);
-      }
-
-      :deep(.el-card__body) {
-        padding: var(--spacer-3);
-      }
-
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .header-actions {
-        display: flex;
-        gap: var(--spacer-2);
-        align-items: center;
-      }
-    }
-
-    :deep(.el-table) {
-      background: var(--card-bg);
-      color: var(--text-primary);
-
-      .el-table__header {
-        th {
-          background: var(--secondary-bg);
-          color: var(--text-primary);
-          font-weight: var(--font-weight-semibold);
-          border-bottom: 1px solid var(--border-color);
-        }
-      }
-
-      .el-table__body {
-        tr {
-          background: var(--card-bg);
-
-          &:hover > td {
-            background: var(--hover-bg) !important;
-          }
-
-          td {
-            border-bottom: 1px solid var(--border-color);
-            background: var(--card-bg);
-          }
-        }
-      }
-    }
-
-    .code-cell {
-      display: flex;
-      flex-direction: column;
-      gap: var(--spacer-1);
-
-      .code {
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-        font-family: var(--font-family-mono, monospace);
-      }
-
-      .exchange {
-        font-size: calc(var(--font-size-base) - 4px);
-        padding: 2px 6px;
-        border-radius: var(--border-radius-sm);
-        text-align: center;
-        width: fit-content;
-        font-weight: var(--font-weight-medium);
-
-        &.exchange-sh {
-          background: color-mix(in srgb, var(--danger-color, #dc3545) 10%, transparent);
-          color: var(--danger-color, #dc3545);
-          border: 1px solid color-mix(in srgb, var(--danger-color, #dc3545) 30%, transparent);
-        }
-
-        &.exchange-sz {
-          background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-          color: var(--accent-color);
-          border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
-        }
-
-        &.exchange-bj {
-          background: color-mix(in srgb, var(--warning-color, #ffc107) 10%, transparent);
-          color: var(--warning-color, #ffc107);
-          border: 1px solid color-mix(in srgb, var(--warning-color, #ffc107) 30%, transparent);
-        }
-      }
-    }
-
-    .name-cell {
-      display: flex;
-      align-items: center;
-      gap: var(--spacer-1);
-    }
-
-    .flow-positive {
-      color: var(--success-color, #28a745);
-      font-weight: var(--font-weight-semibold);
-    }
-
-    .flow-negative {
-      color: var(--danger-color, #dc3545);
-      font-weight: var(--font-weight-semibold);
-    }
-
-    .flow-neutral {
-      color: var(--text-secondary);
-      font-weight: var(--font-weight-medium);
-    }
-
-    .industry-tag {
-      background: color-mix(in srgb, var(--accent-color) 8%, transparent);
-      color: var(--accent-color);
-      border-color: color-mix(in srgb, var(--accent-color) 20%, transparent);
-      font-size: calc(var(--font-size-base) - 2px);
-    }
-
-    .detail-btn {
-      background: color-mix(in srgb, var(--accent-color) 8%, transparent);
-      color: var(--accent-color);
-      border-color: color-mix(in srgb, var(--accent-color) 20%, transparent);
-      font-size: calc(var(--font-size-base) - 2px);
-
-      &:hover {
-        background: var(--accent-color);
-        color: white;
-        border-color: var(--accent-color);
-      }
-    }
-
-    .pagination-container {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: var(--spacer-3);
-      padding-top: var(--spacer-3);
-      border-top: 1px solid var(--border-color);
-    }
-  }
-}
-
-// 响应式设计
-@media (max-width: 768px) {
-  .money-flow-page {
-    padding: var(--spacer-2);
-
-    .page-header .header-content {
-      flex-direction: column;
-      gap: var(--spacer-2);
-      align-items: flex-start;
-    }
-
-    .flow-overview .flow-card .flow-content {
-      flex-direction: column;
-      text-align: center;
-
-      .flow-icon {
-        margin-right: 0;
-        margin-bottom: var(--spacer-2);
-      }
-    }
-
-    .card-header {
-      flex-direction: column;
-      gap: var(--spacer-2);
-      align-items: flex-start;
+      padding: map.get($spacers, 3);
+      border-bottom: 1px solid $border-color;
     }
 
     .header-actions {
-      flex-direction: column;
-      width: 100%;
-
-      .el-input,
-      .el-select {
-        width: 100% !important;
-      }
+      display: flex;
+      gap: map.get($spacers, 3);
+      align-items: center;
     }
   }
 }
 
-// 主题过渡支持
-.money-flow-page {
-  transition: background-color var(--transition-normal),
-  color var(--transition-normal),
-  border-color var(--transition-normal);
+// 搜索框
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .search-icon {
+    position: absolute;
+    left: map.get($spacers, 2);
+    color: $text-secondary;
+    font-size: 1rem;
+  }
+
+  .search-input {
+    padding: map.get($spacers, 2) map.get($spacers, 2) map.get($spacers, 2) map.get($spacers, 5);
+    border: 1px solid $border-color;
+    border-radius: $border-radius;
+    background: $input-bg;
+    color: $text-primary;
+    font-size: $font-size-base;
+    width: 200px;
+
+    &:focus {
+      outline: none;
+      border-color: $accent-color;
+    }
+  }
+}
+
+// 筛选选择器
+.filter-select {
+  padding: map.get($spacers, 2);
+  border: 1px solid $border-color;
+  border-radius: $border-radius;
+  background: $input-bg;
+  color: $text-primary;
+  font-size: $font-size-base;
+
+  &:focus {
+    outline: none;
+    border-color: $accent-color;
+  }
+}
+
+// 数据表格
+.table-container {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: $card-bg;
+
+  th, td {
+    padding: map.get($spacers, 3);
+    text-align: left;
+    border-bottom: 1px solid $border-color;
+  }
+
+  th {
+    background: $card-header-bg;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+  }
+
+  td {
+    color: $text-primary;
+  }
+}
+
+.table-row {
+  transition: background-color $transition-fast;
+
+  &:hover {
+    background: $hover-bg;
+  }
+}
+
+// 表格单元格样式
+.code-cell {
+  display: flex;
+  flex-direction: column;
+  gap: map.get($spacers, 1);
+
+  .code {
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    font-family: $font-family;
+  }
+}
+
+.exchange-tag {
+  font-size: calc($font-size-base - 4px);
+  padding: 2px 6px;
+  border-radius: $border-radius-sm;
+  text-align: center;
+  width: fit-content;
+  font-weight: $font-weight-medium;
+
+  &.exchange-sh {
+    background: scssColor.adjust($danger-color, $alpha: -0.9);
+    color: $danger-color;
+    border: 1px solid scssColor.adjust($danger-color, $alpha: -0.7);
+  }
+
+  &.exchange-sz {
+    background: scssColor.adjust($accent-color, $alpha: -0.9);
+    color: $accent-color;
+    border: 1px solid scssColor.adjust($accent-color, $alpha: -0.7);
+  }
+
+  &.exchange-bj {
+    background: scssColor.adjust($warning-color, $alpha: -0.9);
+    color: $warning-color;
+    border: 1px solid scssColor.adjust($warning-color, $alpha: -0.7);
+  }
+}
+
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 2);
+
+  .st-tag {
+    background: $danger-color;
+    color: white;
+    padding: 1px 4px;
+    border-radius: $border-radius-sm;
+    font-size: calc($font-size-base - 4px);
+    font-weight: $font-weight-semibold
+  }
+}
+
+.industry-tag {
+  background: scssColor.adjust($accent-color, $alpha: -0.9);
+  color: $accent-color;
+  padding: map.get($spacers, 1) map.get($spacers, 2);
+  border-radius: $border-radius-sm;
+  font-size: calc($font-size-base - 2px);
+  border: 1px solid scssColor.adjust($accent-color, $alpha: -0.7);
+}
+
+.amount-cell,
+.rate-cell {
+  text-align: right;
+  font-family: $font-family;
+}
+
+.flow-positive {
+  color: $success-color;
+  font-weight: $font-weight-semibold
+}
+
+.flow-negative {
+  color: $danger-color;
+  font-weight: $font-weight-semibold
+}
+
+.flow-neutral {
+  color: $text-secondary;
+  font-weight: $font-weight-medium;
+}
+
+.action-cell .detail-btn {
+  @include mixin.button-base($accent-color, white);
+  padding: map.get($spacers, 1) map.get($spacers, 2);
+  font-size: calc($font-size-base - 2px);
+
+  &:hover {
+    background: scssColor.adjust($accent-color, $lightness: -10%);
+  }
+}
+
+// 分页样式
+.pagination-container {
+  margin-top: map.get($spacers, 3);
+  padding-top: map.get($spacers, 3);
+  border-top: 1px solid $border-color;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: map.get($spacers, 3);
+}
+
+.pagination-btn {
+  @include mixin.button-base(transparent, $text-primary);
+  border: 1px solid $border-color;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+
+  &:hover:not(:disabled) {
+    background: $accent-color;
+    color: white;
+    border-color: $accent-color;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.pagination-info {
+  color: $text-secondary;
+  font-size: calc($font-size-base - 2px);
+}
+
+// 响应式设计
+@include mixin.media-breakpoint-down(lg) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@include mixin.media-breakpoint-down(md) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-card .card-header {
+    flex-direction: column;
+    gap: map.get($spacers, 2);
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    flex-direction: column;
+    width: 100%;
+
+    .search-box .search-input {
+      width: 100%;
+    }
+
+    .filter-select {
+      width: 100%;
+    }
+  }
+
+  .data-table {
+    font-size: calc($font-size-base - 2px);
+
+    th, td {
+      padding: map.get($spacers, 2);
+    }
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .period-selector {
+    flex-wrap: wrap;
+  }
+
+  .table-container {
+    .data-table {
+      min-width: 800px;
+    }
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: map.get($spacers, 2);
+  }
 }
 </style>

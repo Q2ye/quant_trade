@@ -7,7 +7,6 @@ import type {BatchSyncRequest, DataTypeInfo, SyncResponse, SyncStatusResponse} f
 import {dataSyncService} from '@/api/data-sync'
 import {ArrowLeftOutlined} from '@ant-design/icons-vue'
 
-
 // 引入 Iconify 图标
 import {Icon} from '@iconify/vue'
 
@@ -725,22 +724,25 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped lang="less">
-// 使用全局 CSS 变量，完全由主题系统控制
+<style scoped lang="scss">
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color' as sassColor;
+
 .data-sync-page {
   padding: 0;
   max-width: 1400px;
   margin: 0 auto;
-  background: var(--page-bg, var(--primary-bg));
+  background: $primary-bg;
   min-height: 100vh;
 }
 
-// 页面标题区域
 .page-header {
-  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  background: $page-header-bg;
   color: white;
-  padding: 20px 0;
-  margin-bottom: 20px;
+  padding: map.get($spacers, 4) 0;
+  margin-bottom: map.get($spacers, 4);
 
   .header-content {
     display: flex;
@@ -748,13 +750,12 @@ onUnmounted(() => {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 var(--spacer-4);
-    position: relative;
+    padding: 0 map.get($spacers, 4);
 
     .header-actions-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: map.get($spacers, 2);
       flex-shrink: 0;
     }
   }
@@ -764,54 +765,26 @@ onUnmounted(() => {
 
     .page-title {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
+      font-size: $page-title-font-size;
+      font-weight: $font-weight-bold;
       color: white;
     }
 
     .page-description {
-      margin: 6px 0 0 0;
+      margin: map.get($spacers, 1) 0 0 0;
       opacity: 0.9;
-      font-size: 13px;
-    }
-  }
-
-  .status-tag {
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-
-    // 状态标签颜色映射 - 使用主题变量
-    &.status-processing {
-      background: rgba(var(--accent-color), 0.3);
-    }
-
-    &.status-success {
-      background: rgba(var(--success-color), 0.3);
-    }
-
-    &.status-error {
-      background: rgba(var(--danger-color), 0.3);
-    }
-
-    &.status-default {
-      background: rgba(var(--text-secondary), 0.3);
+      font-size: $page-description-font-size;
+      color: rgba(255, 255, 255, 0.9);
     }
   }
 }
 
-
-// 优化返回按钮样式
 .back-btn {
-  background: rgba(255, 255, 255, 0.15);
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: var(--border-radius, 6px);
-  font-weight: 500;
-  transition: all var(--transition-fast, 0.3s);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  height: 32px;
+  box-shadow: $card-shadow;
+  height: $button-height;
   display: flex;
   align-items: center;
 
@@ -819,179 +792,85 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
     color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active {
-    transform: translateY(0);
   }
 }
 
-.status-tag {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-// 状态概览
 .status-overview {
-  margin-bottom: 20px;
-  padding: 0 20px;
+  margin-bottom: map.get($spacers, 4);
+  padding: 0 map.get($spacers, 4);
 }
 
 .status-card {
-  background: var(--card-bg);
-  transition: all var(--transition-normal);
-
-  &:hover {
-    background: var(--status-card-hover, color-mix(in srgb, var(--accent-color) 10%, transparent));
-    transform: var(--hover-transform);
-  }
-
-  .status-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .status-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-
-    &.running {
-      background: var(--status-running-bg, color-mix(in srgb, var(--accent-color) 10%, transparent));
-      color: var(--status-running-color, var(--accent-color));
-    }
-
-    &.progress {
-      background: var(--status-progress-bg, color-mix(in srgb, var(--success-color) 10%, transparent));
-      color: var(--status-progress-color, var(--success-color));
-    }
-
-    &.time {
-      background: var(--status-time-bg, color-mix(in srgb, var(--warning-color) 10%, transparent));
-      color: var(--status-time-color, var(--warning-color));
-    }
-
-    &.remaining {
-      background: var(--status-remaining-bg, color-mix(in srgb, var(--danger-color) 10%, transparent));
-      color: var(--status-remaining-color, var(--danger-color));
-    }
-  }
-
-  .status-info {
-    .status-value {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text-primary);
-      line-height: 1.2;
-    }
-
-    .status-label {
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-top: 2px;
-    }
-  }
+  @include mixin.status-card-base;
 }
 
-// 主要内容区域
 .main-content {
-  padding: 0 20px;
+  padding: 0 map.get($spacers, 4);
 }
 
-// 配置卡片
 .config-card {
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
 
   :deep(.ant-card-head) {
-    border-bottom: 1px solid var(--border-color);
-    padding: 14px 20px;
+    border-bottom: 1px solid $border-color;
+    padding: map.get($spacers, 3) map.get($spacers, 4);
 
     .ant-card-head-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-primary);
+      font-size: $font-size-base * 1.1;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
     }
   }
 }
 
 .config-section {
-  margin-bottom: 20px;
+  margin-bottom: map.get($spacers, 4);
 
   .section-title {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: var(--text-primary);
+    font-size: $font-size-base;
+    font-weight: $font-weight-semibold;
+    margin-bottom: map.get($spacers, 1);
+    color: $text-primary;
   }
 
   .form-item-description {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-bottom: 10px;
+    @include mixin.text-secondary;
+    margin-bottom: map.get($spacers, 2);
   }
 }
 
-// 头部操作区域
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: map.get($spacers, 2);
 
   .action-link {
-    font-size: 12px;
+    font-size: $font-size-base * 0.85;
     height: auto;
     padding: 0;
-    color: var(--accent-color);
+    color: $accent-color;
   }
 }
 
-// 刷新按钮
 .refresh-btn {
-  font-size: 12px;
-  height: 28px;
-  padding: 0 10px;
+  @include mixin.button-base;
+  font-size: $font-size-base * 0.85;
+  height: $button-height * 0.8;
+  padding: 0 map.get($spacers, 2);
 }
 
-// 数据类型选择 - 网格布局
 .data-type-group {
   width: 100%;
 }
 
 .data-type-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  width: 100%;
-
-  @media (max-width: 1200px) {
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  @media (max-width: 992px) {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  @media (max-width: 576px) {
-    grid-template-columns: 1fr;
-  }
+  @include mixin.flexible-grid(5, (
+    'xl': 4,
+    'lg': 3,
+    'md': 2,
+    'sm': 1
+  ), map.get($spacers, 3));
 }
 
 .data-type-grid-item {
@@ -999,11 +878,8 @@ onUnmounted(() => {
 }
 
 .data-type-item {
-  border: 1.5px solid var(--border-color);
-  background: var(--card-bg);
-  padding: 16px 12px;
-  border-radius: var(--border-radius);
-  transition: all var(--transition-fast);
+  @include mixin.card-base(false);
+  padding: map.get($spacers, 3) map.get($spacers, 2);
   cursor: pointer;
   height: 100%;
   display: flex;
@@ -1012,25 +888,25 @@ onUnmounted(() => {
   position: relative;
 
   &:hover {
-    border-color: var(--accent-color);
-    transform: translateY(-2px);
-    box-shadow: var(--hover-shadow, 0 4px 12px rgba(0, 0, 0, 0.15));
+    border-color: $accent-color;
+    transform: $hover-transform;
+    box-shadow: $card-hover-shadow;
   }
 
   &.selected {
-    border-color: var(--data-type-selected-border, var(--accent-color)) !important;
-    background: var(--data-type-selected-bg, color-mix(in srgb, var(--accent-color) 8%, transparent)) !important;
-    box-shadow: var(--data-type-selected-shadow, 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent)) !important;
+    border-color: $accent-color;
+    background: sassColor.adjust($accent-color, $lightness: 96%);
+    box-shadow: 0 0 0 2px sassColor.adjust($accent-color, $lightness: 80%);
 
     animation: dataTypeSelected 0.3s ease;
 
     .type-name {
-      color: var(--accent-color);
-      font-weight: 600;
+      color: $accent-color;
+      font-weight: $font-weight-semibold;
     }
 
     .type-time {
-      background: var(--accent-color);
+      background: $accent-color;
       color: white;
     }
 
@@ -1041,11 +917,11 @@ onUnmounted(() => {
   }
 
   .type-name {
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 500;
-    margin-bottom: 8px;
-    transition: color var(--transition-fast);
+    color: $text-primary;
+    font-size: $font-size-base * 0.9;
+    font-weight: $font-weight-medium;
+    margin-bottom: map.get($spacers, 2);
+    transition: color $transition-fast;
     text-align: center;
   }
 
@@ -1055,91 +931,86 @@ onUnmounted(() => {
   }
 
   .type-time {
-    background: var(--secondary-bg);
-    color: var(--text-secondary);
-    font-size: 11px;
-    padding: 4px 8px;
+    background: $secondary-bg;
+    color: $text-secondary;
+    font-size: $font-size-base * 0.8;
+    padding: map.get($spacers, 1) map.get($spacers, 2);
     border-radius: 10px;
-    transition: all var(--transition-fast);
+    transition: all $transition-fast;
   }
 
   .type-indicator {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: map.get($spacers, 2);
+    right: map.get($spacers, 2);
   }
 
   .check-icon {
-    color: var(--accent-color);
-    font-size: 14px;
+    color: $accent-color;
+    font-size: $font-size-base;
     opacity: 0;
     transform: scale(0.8);
-    transition: all var(--transition-fast);
+    transition: all $transition-fast;
   }
 }
 
-// 紧凑表单项
 .compact-form-item {
-  margin-bottom: 14px;
+  margin-bottom: map.get($spacers, 3);
 
   :deep(.ant-form-item-label) {
-    padding-bottom: 3px;
+    padding-bottom: map.get($spacers, 1);
 
     label {
-      font-size: 12px;
-      color: var(--text-secondary);
-      font-weight: 500;
+      font-size: $font-size-base * 0.85;
+      color: $text-secondary;
+      font-weight: $font-weight-medium;
     }
   }
 
   :deep(.ant-input-number),
   :deep(.ant-select) {
-    height: 34px;
+    height: $button-height;
 
     .ant-input-number-input,
     .ant-select-selector {
-      height: 34px;
-      font-size: 13px;
+      height: $button-height;
+      font-size: $font-size-base * 0.9;
     }
   }
 }
 
-// 高级选项
 .advanced-section {
   background: none;
 
   :deep(.ant-collapse-header) {
-    padding: 6px 0 !important;
-    font-size: 13px;
-    color: var(--accent-color);
+    padding: map.get($spacers, 1) 0 !important;
+    font-size: $font-size-base * 0.9;
+    color: $accent-color;
   }
 
   :deep(.ant-collapse-content-box) {
-    padding: 14px 0 0 0 !important;
+    padding: map.get($spacers, 3) 0 0 0 !important;
   }
 }
 
-// 操作区域
 .action-area {
   position: sticky;
-  top: 20px;
+  top: map.get($spacers, 4);
 }
 
 .action-card {
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
-  border: 1px solid var(--border-color);
-  margin-bottom: 12px;
-  background: var(--card-bg);
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
+  margin-bottom: map.get($spacers, 3);
 
   :deep(.ant-card-head) {
-    border-bottom: 1px solid var(--border-color);
-    padding: 14px 16px;
+    border-bottom: 1px solid $border-color;
+    padding: map.get($spacers, 3) map.get($spacers, 3);
 
     .ant-card-head-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
+      font-size: $font-size-base;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
     }
   }
 }
@@ -1147,120 +1018,110 @@ onUnmounted(() => {
 .action-buttons {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: map.get($spacers, 2);
 
   .action-button {
-    transition: all var(--transition-normal);
-    height: 40px;
+    @include mixin.button-base;
+    height: $button-height * 1.2;
+    transition: all $transition-normal;
 
     &.primary {
-      background: var(--action-primary-bg, linear-gradient(135deg, var(--accent-color), color-mix(in srgb, var(--accent-color) 80%, black)));
+      background: linear-gradient(135deg, $accent-color, sassColor.adjust($accent-color, $lightness: -20%));
       border: none;
       color: white;
 
       &:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: var(--primary-btn-hover-shadow, 0 6px 20px color-mix(in srgb, var(--accent-color) 40%, transparent));
+        transform: $hover-transform;
+        box-shadow: 0 6px 20px sassColor.adjust($accent-color, $alpha: -0.6);
       }
     }
 
     &.cancel {
-      background: var(--cancel-btn-bg, color-mix(in srgb, var(--danger-color) 10%, transparent));
-      border-color: var(--danger-color);
-      color: var(--danger-color);
+      background: sassColor.adjust($danger-color, $lightness: 40%);
+      border-color: $danger-color;
+      color: $danger-color;
 
       &:hover:not(:disabled) {
-        background: var(--danger-color);
+        background: $danger-color;
         color: white;
-        transform: translateY(-2px);
+        transform: $hover-transform;
       }
     }
 
     &:not(.primary):not(.cancel) {
-      background: var(--secondary-btn-bg, var(--secondary-bg));
-      border-color: var(--border-color);
-      color: var(--text-primary);
+      background: $secondary-bg;
+      border-color: $border-color;
+      color: $text-primary;
 
       &:hover:not(:disabled) {
-        background: var(--hover-bg);
-        border-color: var(--accent-color);
-        transform: translateY(-2px);
+        background: $hover-bg;
+        border-color: $accent-color;
+        transform: $hover-transform;
       }
     }
   }
 }
 
-// 提示卡片
 .tips-card {
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--card-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
-  border: 1px solid var(--border-color);
-  background: var(--card-bg);
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
 
   :deep(.ant-card-head) {
-    border-bottom: 1px solid var(--border-color);
-    padding: 12px 16px;
+    border-bottom: 1px solid $border-color;
+    padding: map.get($spacers, 2) map.get($spacers, 3);
 
     .ant-card-head-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-primary);
+      font-size: $font-size-base * 0.9;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
     }
   }
 
   .tips-content {
     p {
-      margin: 4px 0;
-      font-size: 12px;
-      color: var(--text-secondary);
+      margin: map.get($spacers, 1) 0;
+      font-size: $font-size-base * 0.85;
+      @include mixin.text-secondary;
       line-height: 1.4;
     }
 
     .cancel-tip {
-      margin-top: 8px;
-      padding: 8px;
-      background: var(--warning-bg, #fffbe6);
-      border: 1px solid var(--warning-color, #faad14);
-      border-radius: var(--border-radius);
-      color: var(--warning-color, #faad14);
-      font-size: 11px;
+      margin-top: map.get($spacers, 2);
+      padding: map.get($spacers, 2);
+      background: sassColor.adjust($warning-color, $lightness: 45%);
+      border: 1px solid $warning-color;
+      border-radius: $border-radius;
+      color: $warning-color;
+      font-size: $font-size-base * 0.8;
     }
   }
 }
 
-// 错误提示
 .error-alert {
-  margin: 20px;
-  border-radius: var(--border-radius);
+  margin: map.get($spacers, 4);
+  border-radius: $border-radius;
   border: none;
-  box-shadow: var(--card-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
+  box-shadow: $card-shadow;
 }
 
-// 选中状态动画
 @keyframes dataTypeSelected {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.02);
-  }
-  100% {
-    transform: scale(1);
-  }
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }
 
 // 响应式设计
-@media (max-width: 768px) {
+@include mixin.media-breakpoint-down(md) {
   .page-header .header-content {
     flex-direction: column;
-    gap: 12px;
+    gap: map.get($spacers, 3);
     text-align: center;
 
     .header-actions-right {
       order: -1;
       align-self: stretch;
       justify-content: space-between;
-      margin-bottom: var(--spacer-2);
+      margin-bottom: map.get($spacers, 2);
     }
   }
 }

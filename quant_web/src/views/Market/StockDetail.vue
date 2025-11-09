@@ -234,7 +234,7 @@ export default {
       this.chart = echarts.init(chartDom);
 
       const option = {
-        backgroundColor: '#121a29',
+        backgroundColor: $primary-bg,
         grid: {
           left: '10%',
           right: '10%',
@@ -246,27 +246,27 @@ export default {
           data: ['09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00'],
           axisLine: {
             lineStyle: {
-              color: '#5d6c7b'
+              color: $border-color
             }
           },
           axisLabel: {
-            color: '#9da8b8'
+            color: $text-secondary
           }
         },
         yAxis: {
           scale: true,
           axisLine: {
             lineStyle: {
-              color: '#5d6c7b'
+              color: $border-color
             }
           },
           splitLine: {
             lineStyle: {
-              color: '#1e2a3e'
+              color: $secondary-bg
             }
           },
           axisLabel: {
-            color: '#9da8b8'
+            color: $text-secondary
           }
         },
         series: [{
@@ -284,10 +284,10 @@ export default {
             [1782, 1785, 1778, 1785]
           ],
           itemStyle: {
-            color: '#ef5350',
-            color0: '#26a69a',
-            borderColor: '#ef5350',
-            borderColor0: '#26a69a'
+            color: $stock-up-color,
+            color0: $stock-down-color,
+            borderColor: $stock-up-color,
+            borderColor0: $stock-down-color
           }
         }],
         tooltip: {
@@ -295,10 +295,10 @@ export default {
           axisPointer: {
             type: 'cross'
           },
-          backgroundColor: 'rgba(26,36,57,0.9)',
-          borderColor: '#2a3a5a',
+          backgroundColor: $secondary-bg,
+          borderColor: $border-color,
           textStyle: {
-            color: '#e0e0e0'
+            color: $text-primary
           }
         }
       };
@@ -314,58 +314,81 @@ export default {
 };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+/* 引入全局主题变量和混入 */
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color';
+
 .stock-detail {
-  padding: 20px;
-  background-color: #121a29;
-  color: #e0e0e0;
+  padding: $content-padding;
+  background-color: $primary-bg;
+  color: $text-primary;
   height: 100%;
   overflow-y: auto;
+
+  /* 应用主题过渡动画 */
+  @extend .theme-transition;
 }
 
+/* 股票头部信息区域 */
 .stock-header {
   display: flex;
   align-items: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #2a3a5a;
-  margin-bottom: 20px;
+  padding-bottom: map.get($spacers, 4);
+  border-bottom: $border-width solid $border-color;
+  margin-bottom: map.get($spacers, 4);
+
+  /* 应用卡片基础样式 */
+  @include mixin.card-base(false);
+  padding: map.get($spacers, 3);
 }
 
 .stock-info {
   flex: 1;
-  padding: 0 20px;
+  padding: 0 map.get($spacers, 4);
 }
 
+/* 价格信息显示 */
 .price-info {
   display: flex;
   align-items: center;
-  margin-top: 10px;
+  margin-top: map.get($spacers, 2);
 }
 
 .current-price {
-  font-size: 28px;
-  font-weight: bold;
-  margin-right: 15px;
+  font-size: 1.75rem;
+  font-weight: $font-weight-bold;
+  margin-right: map.get($spacers, 3);
+  color: $text-primary;
 }
 
 .price-change {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 1.125rem;
+  font-weight: $font-weight-semibold;
 }
 
+/* 涨跌颜色定义 */
 .positive {
-  color: #f44336;
+  color: $stock-up-color;
 }
 
 .negative {
-  color: #4caf50;
+  color: $stock-down-color;
 }
 
+/* 主要内容区域布局 */
 .stock-content {
   display: flex;
-  gap: 20px;
+  gap: map.get($spacers, 4);
+
+  /* 响应式调整 */
+  @include mixin.media-breakpoint-down(lg) {
+    flex-direction: column;
+  }
 }
 
+/* 图表区域样式 */
 .chart-section {
   flex: 1;
   display: flex;
@@ -373,23 +396,24 @@ export default {
 }
 
 .chart-container {
-  background: #1a2439;
-  border-radius: 8px;
+  /* 应用卡片基础样式 */
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
   overflow: hidden;
-  margin-bottom: 20px;
+  margin-bottom: map.get($spacers, 4);
 }
 
 .chart-header {
   display: flex;
   justify-content: space-between;
-  padding: 10px 15px;
-  background: #152136;
-  border-bottom: 1px solid #2a3a5a;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: $card-header-bg;
+  border-bottom: $border-width solid $border-color;
 }
 
 .chart-wrapper {
-  height: 400px;
-  padding: 10px;
+  height: $chart-height;
+  padding: map.get($spacers, 2);
 }
 
 #stockChart {
@@ -397,61 +421,78 @@ export default {
   height: 100%;
 }
 
+/* 指标选择器 */
 .indicator-selector {
-  background: #1a2439;
-  border-radius: 8px;
-  padding: 15px;
+  /* 应用卡片基础样式 */
+  @include mixin.card-base;
+  border-radius: $border-radius;
+  padding: map.get($spacers, 3);
 }
 
+/* 信息区域样式 */
 .info-section {
   width: 400px;
+
+  /* 响应式调整 */
+  @include mixin.media-breakpoint-down(lg) {
+    width: 100%;
+  }
 }
 
 .stock-tabs {
-  background: #1a2439;
-  border-radius: 8px;
+  /* 应用卡片基础样式 */
+  @include mixin.card-base;
+  border-radius: $border-radius-lg;
   overflow: hidden;
 }
 
+/* 盘口数据样式 */
 .quota-data {
-  padding: 20px;
+  padding: map.get($spacers, 4);
 }
 
 .quota-row {
   display: flex;
-  margin-bottom: 15px;
+  margin-bottom: map.get($spacers, 3);
 }
 
 .quota-item {
   flex: 1;
   text-align: center;
-  padding: 10px;
-  background: #152136;
-  border-radius: 6px;
-  margin: 0 5px;
+  padding: map.get($spacers, 2);
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  margin: 0 map.get($spacers, 1);
+
+  /* 应用主题过渡 */
+  @extend .theme-transition;
 }
 
 .quota-label {
   display: block;
-  color: #9da8b8;
-  font-size: 14px;
-  margin-bottom: 5px;
+  color: $text-secondary;
+  font-size: $font-size-base * 0.875;
+  margin-bottom: map.get($spacers, 1);
 }
 
 .quota-value {
   display: block;
-  font-size: 16px;
-  font-weight: bold;
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
 }
 
+/* 买卖五档样式 */
 .order-book {
-  padding: 0 20px 20px;
+  padding: 0 map.get($spacers, 4) map.get($spacers, 4);
 }
 
 .order-book h3 {
   margin-top: 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #2a3a5a;
+  padding-bottom: map.get($spacers, 2);
+  border-bottom: $border-width solid $border-color;
+  color: $text-primary;
+  font-weight: $font-weight-semibold;
 }
 
 .order-table {
@@ -461,81 +502,131 @@ export default {
 
 .order-row {
   display: flex;
-  padding: 8px 0;
+  padding: map.get($spacers, 2) 0;
+
+  /* 应用主题过渡 */
+  @extend .theme-transition;
 }
 
 .order-type {
   width: 50px;
   text-align: center;
-  font-weight: bold;
+  font-weight: $font-weight-semibold;
 }
 
+/* 买卖类型颜色 */
 .buy {
-  color: #f44336;
+  color: $stock-up-color;
 }
 
 .sell {
-  color: #4caf50;
+  color: $stock-down-color;
 }
 
 .order-price {
   flex: 1;
   text-align: right;
-  padding-right: 15px;
+  padding-right: map.get($spacers, 3);
+  color: $text-primary;
 }
 
 .order-volume {
   width: 80px;
   text-align: right;
+  color: $text-secondary;
 }
 
 .divider {
-  height: 1px;
-  background: #2a3a5a;
-  margin: 10px 0;
+  height: $border-width;
+  background: $border-color;
+  margin: map.get($spacers, 2) 0;
 }
 
+/* 财务数据样式 */
 .financial-data {
-  padding: 20px;
+  padding: map.get($spacers, 4);
 }
 
+/* 新闻列表样式 */
 .news-list {
-  padding: 10px;
+  padding: map.get($spacers, 2);
 }
 
 .news-item {
-  padding: 15px;
-  border-bottom: 1px solid #2a3a5a;
+  padding: map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
   cursor: pointer;
-  transition: background 0.3s;
-}
 
-.news-item:hover {
-  background: #152136;
+  /* 应用主题过渡和悬停效果 */
+  @extend .theme-transition;
+
+  &:hover {
+    background: $hover-bg;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
 }
 
 .news-title {
-  font-size: 15px;
-  margin-bottom: 8px;
+  font-size: $font-size-base;
+  margin-bottom: map.get($spacers, 2);
+  color: $text-primary;
+  font-weight: $font-weight-medium;
 }
 
 .news-meta {
   display: flex;
-  font-size: 12px;
-  color: #9da8b8;
+  font-size: $font-size-base * 0.875;
+  color: $text-secondary;
 }
 
 .news-time {
-  margin-right: 15px;
+  margin-right: map.get($spacers, 3);
 }
 
-@media (max-width: 1200px) {
-  .stock-content {
+/* 响应式设计优化 */
+@include mixin.media-breakpoint-down(md) {
+  .stock-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 3);
   }
 
-  .info-section {
+  .stock-info {
+    padding: 0;
     width: 100%;
+  }
+
+  .quota-row {
+    flex-direction: column;
+    gap: map.get($spacers, 2);
+  }
+
+  .quota-item {
+    margin: 0;
+  }
+
+  .price-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: map.get($spacers, 2);
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .stock-detail {
+    padding: map.get($spacers, 2);
+  }
+
+  .chart-header {
+    flex-direction: column;
+    gap: map.get($spacers, 2);
+  }
+
+  .chart-wrapper {
+    height: 300px;
   }
 }
 </style>

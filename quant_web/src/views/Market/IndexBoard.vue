@@ -1,9 +1,76 @@
-<!--大盘指数看板-->
+<!-- 大盘指数看板 - 基于主题系统优化 -->
+<template>
+  <div class="index-board">
+    <!-- 看板头部 -->
+    <div class="board-header">
+      <h3>大盘指数</h3>
+      <div class="header-actions">
+        <span class="update-time">更新: {{ formatTime(lastUpdate) }}</span>
+        <el-button
+          size="small"
+          :icon="isRefreshing ? 'el-icon-loading' : 'el-icon-refresh'"
+          @click="refreshData"
+          :disabled="isRefreshing"
+        >
+          {{ isRefreshing ? '更新中...' : '刷新' }}
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 指数列表 -->
+    <div class="index-list">
+      <div
+        v-for="(index, idx) in indices"
+        :key="idx"
+        class="index-item"
+        :class="{ 'selected': selectedIndex?.code === index.code }"
+        @click="selectIndex(index)"
+      >
+        <div class="index-name">{{ index.name }}</div>
+        <div class="index-value">{{ index.value.toLocaleString() }}</div>
+        <div
+          class="index-change"
+          :class="index.change >= 0 ? 'positive' : 'negative'"
+        >
+          <span v-if="index.change >= 0">+</span>{{ index.change.toFixed(2) }}
+          <span class="change-percent">({{ index.changePercent >= 0 ? '+' : '' }}{{ index.changePercent.toFixed(2) }}%)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 指数详情面板 -->
+    <div v-if="selectedIndex" class="index-detail">
+      <div class="detail-header">
+        <h4>{{ selectedIndex.name }} ({{ selectedIndex.code }})</h4>
+      </div>
+      <div class="detail-content">
+        <div class="detail-item">
+          <span class="label">最高:</span>
+          <span class="value">{{ selectedIndex.high.toLocaleString() }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="label">最低:</span>
+          <span class="value">{{ selectedIndex.low.toLocaleString() }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="label">成交量:</span>
+          <span class="value">{{ selectedIndex.volume }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="label">成交额:</span>
+          <span class="value">{{ selectedIndex.amount }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
 export default {
   name: "IndexBoard",
   data() {
     return {
+      // 指数数据
       indices: [
         {
           code: "000001.SH",
@@ -67,6 +134,7 @@ export default {
     };
   },
   methods: {
+    // 刷新指数数据
     refreshData() {
       this.isRefreshing = true;
 
@@ -91,9 +159,11 @@ export default {
         this.isRefreshing = false;
       }, 1000);
     },
+    // 选择指数
     selectIndex(index) {
       this.selectedIndex = this.selectedIndex?.code === index.code ? null : index;
     },
+    // 格式化时间显示
     formatTime(date) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
@@ -101,236 +171,177 @@ export default {
 };
 </script>
 
-<template>
-  <div class="index-board">
-    <div class="board-header">
-      <h3>大盘指数</h3>
-      <div class="header-actions">
-        <span class="update-time">更新: {{ formatTime(lastUpdate) }}</span>
-        <el-button
-          size="small"
-          :icon="isRefreshing ? 'el-icon-loading' : 'el-icon-refresh'"
-          @click="refreshData"
-          :disabled="isRefreshing"
-        >
-          {{ isRefreshing ? '更新中...' : '刷新' }}
-        </el-button>
-      </div>
-    </div>
+<style scoped lang="scss">
+// 导入主题变量和混入
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+@use 'sass:color';
 
-    <div class="index-list">
-      <div
-        v-for="(index, idx) in indices"
-        :key="idx"
-        class="index-item"
-        :class="{ 'selected': selectedIndex?.code === index.code }"
-        @click="selectIndex(index)"
-      >
-        <div class="index-name">{{ index.name }}</div>
-        <div class="index-value">{{ index.value.toLocaleString() }}</div>
-        <div
-          class="index-change"
-          :class="index.change >= 0 ? 'positive' : 'negative'"
-        >
-          <span v-if="index.change >= 0">+</span>{{ index.change.toFixed(2) }}
-          <span class="change-percent">({{ index.changePercent >= 0 ? '+' : '' }}{{ index.changePercent.toFixed(2) }}%)</span>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="selectedIndex" class="index-detail">
-      <div class="detail-header">
-        <h4>{{ selectedIndex.name }} ({{ selectedIndex.code }})</h4>
-      </div>
-      <div class="detail-content">
-        <div class="detail-item">
-          <span class="label">最高:</span>
-          <span class="value">{{ selectedIndex.high.toLocaleString() }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">最低:</span>
-          <span class="value">{{ selectedIndex.low.toLocaleString() }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">成交量:</span>
-          <span class="value">{{ selectedIndex.volume }}</span>
-        </div>
-        <div class="detail-item">
-          <span class="label">成交额:</span>
-          <span class="value">{{ selectedIndex.amount }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped>
 .index-board {
-  background: linear-gradient(135deg, #1a2439, #152136);
-  border-radius: 12px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
-  padding: 20px;
-  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  border: 1px solid #2a3a5a;
-  transition: all 0.3s ease;
+  @include mixin.card-base;
+  padding: map.get($spacers, 4);
+  background: $card-gradient-bg;
+  border-radius: $border-radius-lg;
+  box-shadow: $card-shadow;
+  transition: all $transition-normal;
+  border: $border-width solid $border-color;
+
+  &:hover {
+    box-shadow: $card-hover-shadow;
+  }
 }
 
 .board-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #2a3a5a;
-}
+  margin-bottom: map.get($spacers, 4);
+  padding-bottom: map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
 
-.board-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #64b5f6;
-  letter-spacing: 1px;
+  h3 {
+    margin: 0;
+    font-size: $font-size-base * 1.2;
+    font-weight: $font-weight-semibold;
+    color: $accent-color;
+    letter-spacing: 0.5px;
+  }
 }
 
 .header-actions {
-  display: flex;
-  align-items: center;
-  gap: 15px;
+  @include mixin.flex-center(row);
+  gap: map.get($spacers, 3);
 }
 
 .update-time {
-  font-size: 13px;
-  color: #9da8b8;
+  font-size: $font-size-base * 0.9;
+  color: $text-secondary;
 }
 
 .index-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: map.get($spacers, 3);
 }
 
 .index-item {
-  background: rgba(26, 39, 60, 0.6);
-  border-radius: 8px;
-  padding: 15px;
+  @include mixin.card-base(false);
+  background: rgba($secondary-bg, 0.6);
+  border-radius: $border-radius;
+  padding: map.get($spacers, 3);
   cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid #2a3a5a;
+  transition: all $transition-normal;
+  border: $border-width solid $border-color;
   position: relative;
   overflow: hidden;
-}
 
-.index-item:hover {
-  background: rgba(32, 48, 76, 0.7);
-  transform: translateY(-3px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
+  &:hover {
+    background: rgba($hover-bg, 0.7);
+    transform: translateY(-2px);
+    box-shadow: $hover-shadow;
+  }
 
-.index-item.selected {
-  background: rgba(25, 55, 100, 0.7);
-  border-color: #3a6bc5;
-}
+  &.selected {
+    background: rgba($active-bg, 0.1);
+    border-color: $accent-color;
 
-.index-item.selected::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: #3a6bc5;
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: $accent-color;
+    }
+  }
 }
 
 .index-name {
-  font-size: 14px;
-  color: #9da8b8;
-  margin-bottom: 8px;
-  font-weight: 500;
+  font-size: $font-size-base;
+  color: $text-secondary;
+  margin-bottom: map.get($spacers, 2);
+  font-weight: $font-weight-medium;
 }
 
 .index-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: #e0e0e0;
-  margin-bottom: 5px;
-  letter-spacing: 1px;
+  font-size: $font-size-base * 1.4;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+  margin-bottom: map.get($spacers, 1);
+  letter-spacing: 0.5px;
 }
 
 .index-change {
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-}
-
-.positive {
-  color: #f44336;
-}
-
-.negative {
-  color: #4caf50;
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  @include mixin.flex-center(row);
 }
 
 .change-percent {
-  margin-left: 5px;
-  font-size: 12px;
+  margin-left: map.get($spacers, 1);
+  font-size: $font-size-base * 0.9;
+}
+
+// 价格涨跌颜色样式
+.positive {
+  color: $stock-up-color;
+}
+
+.negative {
+  color: $stock-down-color;
 }
 
 .index-detail {
-  margin-top: 20px;
-  padding-top: 15px;
-  border-top: 1px solid #2a3a5a;
-  animation: fadeIn 0.3s ease;
+  margin-top: map.get($spacers, 4);
+  padding-top: map.get($spacers, 3);
+  border-top: $border-width solid $border-color;
+  @include mixin.fade-in;
 }
 
 .detail-header {
-  margin-bottom: 15px;
-}
+  margin-bottom: map.get($spacers, 3);
 
-.detail-header h4 {
-  margin: 0;
-  font-size: 16px;
-  color: #64b5f6;
+  h4 {
+    margin: 0;
+    font-size: $font-size-base * 1.1;
+    color: $accent-color;
+    font-weight: $font-weight-semibold;
+  }
 }
 
 .detail-content {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: map.get($spacers, 2);
 }
 
 .detail-item {
-  display: flex;
+  @include mixin.flex-center(row);
   justify-content: space-between;
-  padding: 10px 12px;
-  background: rgba(26, 39, 60, 0.5);
-  border-radius: 6px;
-  font-size: 14px;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  background: rgba($secondary-bg, 0.5);
+  border-radius: $border-radius-sm;
+  font-size: $font-size-base;
 }
 
 .label {
-  color: #9da8b8;
+  color: $text-secondary;
+  font-weight: $font-weight-medium;
 }
 
 .value {
-  color: #e0e0e0;
-  font-weight: 500;
+  color: $text-primary;
+  font-weight: $font-weight-medium;
 }
 
-/* 动画效果 */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
+// 响应式设计
+@include mixin.media-breakpoint-down(md) {
+  .index-board {
+    padding: map.get($spacers, 3);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-/* 响应式设计 */
-@media (max-width: 768px) {
   .index-list {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -340,11 +351,11 @@ export default {
   }
 }
 
-@media (max-width: 480px) {
+@include mixin.media-breakpoint-down(sm) {
   .board-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: map.get($spacers, 2);
   }
 
   .header-actions {
@@ -354,6 +365,14 @@ export default {
 
   .index-list {
     grid-template-columns: 1fr;
+  }
+
+  .index-item {
+    padding: map.get($spacers, 2);
+  }
+
+  .index-value {
+    font-size: $font-size-base * 1.2;
   }
 }
 </style>

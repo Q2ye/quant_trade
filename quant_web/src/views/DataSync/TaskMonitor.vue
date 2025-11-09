@@ -193,13 +193,24 @@ onUnmounted(() => {
     </Card>
   </div>
 </template>
-
 <style scoped lang="scss">
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+
+.task-monitor-page {
+  padding: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: $primary-bg;
+  min-height: 100vh;
+}
+
 .page-header {
-  background: var(--page-header-bg, linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 60%, #6f42c1) 100%));
+  background: $page-header-bg;
   color: white;
-  padding: 20px 0;
-  margin-bottom: 20px;
+  padding: map.get($spacers, 4) 0;
+  margin-bottom: map.get($spacers, 4);
 
   .header-content {
     display: flex;
@@ -207,13 +218,12 @@ onUnmounted(() => {
     align-items: center;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 var(--spacer-4);
-    position: relative;
+    padding: 0 map.get($spacers, 4);
 
     .header-actions-right {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: map.get($spacers, 2);
       flex-shrink: 0;
     }
   }
@@ -223,36 +233,26 @@ onUnmounted(() => {
 
     .page-title {
       margin: 0;
-      font-size: 24px;
-      font-weight: 600;
+      font-size: $page-title-font-size;
+      font-weight: $font-weight-bold;
       color: white;
     }
 
     .page-description {
-      margin: 6px 0 0 0;
+      margin: map.get($spacers, 1) 0 0 0;
       opacity: 0.9;
-      font-size: 13px;
+      font-size: $page-description-font-size;
+      color: rgba(255, 255, 255, 0.9);
     }
-  }
-
-  .status-tag {
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    font-size: 12px;
   }
 }
 
 .back-btn {
-  background: rgba(255, 255, 255, 0.15);
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: var(--border-radius, 6px);
-  font-weight: 500;
-  transition: all var(--transition-fast, 0.3s);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  height: 32px;
+  box-shadow: $card-shadow;
+  height: $button-height;
   display: flex;
   align-items: center;
 
@@ -260,47 +260,29 @@ onUnmounted(() => {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
     color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
-
-  &:active {
-    transform: translateY(0);
-  }
-}
-
-.task-monitor-page {
-  padding: 0;
-  max-width: 1400px;
-  margin: 0 auto;
-  background: var(--primary-bg);
-  min-height: 100vh;
 }
 
 .monitor-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  margin: 0 20px;
+  @include mixin.card-base;
+  margin: 0 map.get($spacers, 4);
 
   .card-content {
-    padding: var(--spacer-3);
+    padding: map.get($spacers, 3);
   }
 }
 
 .task-list {
   :deep(.ant-list-item) {
-    background: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    margin-bottom: var(--spacer-2);
-    padding: var(--spacer-3);
-    transition: all var(--transition-normal);
+    @include mixin.card-base;
+    margin-bottom: map.get($spacers, 2);
+    padding: map.get($spacers, 3);
+    transition: all $transition-normal;
 
     &:hover {
-      background: var(--hover-bg);
-      transform: translateY(-1px);
-      box-shadow: var(--hover-shadow);
+      background: $hover-bg;
+      transform: $hover-transform;
+      box-shadow: $card-hover-shadow;
     }
 
     .ant-list-item-meta {
@@ -308,7 +290,7 @@ onUnmounted(() => {
     }
 
     .ant-list-item-action {
-      margin-top: var(--spacer-2);
+      margin-top: map.get($spacers, 2);
       margin-left: 0;
     }
   }
@@ -316,22 +298,21 @@ onUnmounted(() => {
 
 .task-item {
   :deep(.ant-list-item-meta-title) {
-    color: var(--text-primary);
-    font-weight: 600;
-    margin-bottom: var(--spacer-1);
+    color: $text-primary;
+    font-weight: $font-weight-semibold;
+    margin-bottom: map.get($spacers, 1);
   }
 
   :deep(.ant-list-item-meta-description) {
-    color: var(--text-secondary);
+    color: $text-secondary;
   }
 }
 
 .task-meta {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
+  @include mixin.text-secondary;
 
   &:not(:last-child) {
-    margin-right: var(--spacer-3);
+    margin-right: map.get($spacers, 3);
   }
 }
 
@@ -339,32 +320,32 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--spacer-2);
+  gap: map.get($spacers, 2);
 }
 
 .status-tag {
   border: none;
   color: white;
-  font-weight: 500;
+  font-weight: $font-weight-medium;
   font-size: 0.75rem;
 }
 
 .task-description {
-  color: var(--text-secondary);
+  @include mixin.text-secondary;
   line-height: 1.5;
 }
 
 .task-progress {
-  margin-top: var(--spacer-2);
+  margin-top: map.get($spacers, 2);
 
   :deep(.ant-progress-text) {
-    color: var(--text-primary);
-    font-weight: 500;
+    color: $text-primary;
+    font-weight: $font-weight-medium;
   }
 }
 
 .task-actions {
-  @media (max-width: 576px) {
+  @include mixin.media-breakpoint-down(sm) {
     flex-direction: column;
     width: 100%;
 
@@ -376,115 +357,84 @@ onUnmounted(() => {
 }
 
 .control-btn {
-  padding: 8px 16px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
+  @include mixin.button-base;
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+  border-radius: $border-radius;
   display: flex;
   align-items: center;
-  gap: 6px;
-  transition: all var(--transition-fast);
+  gap: map.get($spacers, 1);
 
   &.pause-btn {
-    background-color: var(--warning-color);
-    border-color: var(--warning-color);
+    background-color: $warning-color;
+    border-color: $warning-color;
     color: white;
-
-    &:hover {
-      background-color: var(--warning-color-dark, rgba(250, 173, 20, 0.8));
-      border-color: var(--warning-color-dark, rgba(250, 173, 20, 0.8));
-    }
   }
 
   &.resume-btn {
-    background-color: var(--success-color);
-    border-color: var(--success-color);
+    background-color: $success-color;
+    border-color: $success-color;
     color: white;
-
-    &:hover {
-      background-color: var(--success-color-dark, rgba(82, 196, 26, 0.8));
-      border-color: var(--success-color-dark, rgba(82, 196, 26, 0.8));
-    }
   }
 
   &.stop-btn {
-    background-color: var(--danger-color);
-    border-color: var(--danger-color);
+    background-color: $danger-color;
+    border-color: $danger-color;
     color: white;
-
-    &:hover {
-      background-color: var(--danger-color-dark, rgba(255, 77, 79, 0.8));
-      border-color: var(--danger-color-dark, rgba(255, 77, 79, 0.8));
-    }
   }
 }
 
 .empty-state {
-  text-align: center;
-  padding: var(--spacer-5) var(--spacer-3);
-  color: var(--text-secondary);
+  @include mixin.flex-center(column);
+  padding: map.get($spacers, 5) map.get($spacers, 3);
+  color: $text-secondary;
 
   .empty-icon {
     font-size: 3rem;
-    margin-bottom: var(--spacer-3);
+    margin-bottom: map.get($spacers, 3);
   }
 
   .empty-text {
     font-size: 1rem;
-    margin-bottom: var(--spacer-3);
-    color: var(--text-secondary);
+    margin-bottom: map.get($spacers, 3);
+    color: $text-secondary;
   }
 
   .empty-btn {
-    padding: 8px 16px;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all var(--transition-fast);
-    background-color: var(--accent-color);
-    border-color: var(--accent-color);
-    color: white;
-
-    &:hover {
-      background-color: var(--accent-color-dark, rgba(24, 144, 255, 0.8));
-      border-color: var(--accent-color-dark, rgba(24, 144, 255, 0.8));
-    }
+    @include mixin.button-base;
   }
 }
 
-@media (max-width: 768px) {
+// 响应式调整
+@include mixin.media-breakpoint-down(md) {
   .page-header .header-content {
     flex-direction: column;
-    gap: 12px;
+    gap: map.get($spacers, 3);
     text-align: center;
 
-    .header-actions-left {
-      position: static;
-      align-self: flex-start;
+    .header-actions-right {
+      order: -1;
+      align-self: stretch;
+      justify-content: space-between;
+      margin-bottom: map.get($spacers, 2);
     }
   }
 
   .monitor-card {
-    margin: 0 16px;
+    margin: 0 map.get($spacers, 3);
   }
 
   .task-item {
-    padding: var(--spacer-2);
+    padding: map.get($spacers, 2);
 
     :deep(.ant-list-item-extra) {
       margin-left: 0;
-      margin-top: var(--spacer-2);
+      margin-top: map.get($spacers, 2);
     }
   }
 
   .task-actions {
     flex-direction: column;
-    gap: var(--spacer-1);
+    gap: map.get($spacers, 1);
 
     .control-btn {
       width: 100%;
@@ -493,16 +443,16 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 576px) {
+@include mixin.media-breakpoint-down(sm) {
   .monitor-card {
-    margin: 0 var(--spacer-2);
+    margin: 0 map.get($spacers, 2);
   }
 
   .task-item {
     :deep(.ant-list-item-action) {
       display: flex;
       flex-direction: column;
-      gap: var(--spacer-1);
+      gap: map.get($spacers, 1);
 
       li {
         margin-bottom: 0;
@@ -510,7 +460,7 @@ onUnmounted(() => {
         .task-meta {
           display: block;
           margin-right: 0;
-          margin-bottom: var(--spacer-1);
+          margin-bottom: map.get($spacers, 1);
         }
       }
     }
@@ -518,18 +468,12 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-  100% {
-    opacity: 1;
-  }
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
 }
 
-.task-item:has(.status-tag[color='var(--accent-color)']) {
+.task-item:has(.status-tag[color='$accent-color']) {
   .status-tag {
     animation: pulse 2s infinite;
   }

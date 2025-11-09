@@ -195,15 +195,50 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+@use '@/assets/scss/variables' as *;
+@use '@/assets/scss/mixins' as mixin;
+@use 'sass:map';
+
 .index-detail-page {
-  padding: 24px;
+  @include mixin.sidebar-layout-base;
+
+  .main-content {
+    @include mixin.content-with-sidebar;
+    margin: 0 auto;
+  }
+}
+
+.detail-card {
+  @include mixin.card-base;
+  padding: map.get($spacers, 4);
+
+  :deep(.ant-card-head) {
+    @include mixin.card-header-base;
+    border-bottom: $border-width solid $border-color;
+  }
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: map.get($spacers, 3);
+  border-bottom: $border-width solid $border-color;
+  margin-bottom: map.get($spacers, 4);
+}
+
+.page-title {
+  margin: 0;
+  font-size: $font-size-base * 1.5;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+
+  .index-code {
+    font-size: $font-size-base;
+    color: $text-secondary;
+    margin-left: map.get($spacers, 2);
+  }
 }
 
 .price-display {
@@ -211,28 +246,119 @@ onMounted(() => {
 }
 
 .current-price {
-  font-size: 28px;
-  font-weight: bold;
-  margin-right: 12px;
+  font-size: $font-size-base * 2;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+  margin-right: map.get($spacers, 3);
 }
 
 .price-change {
-  font-size: 16px;
+  font-size: $font-size-base * 1.1;
+  font-weight: $font-weight-semibold;
+
+  &.up {
+    color: $stock-up-color;
+  }
+
+  &.down {
+    color: $stock-down-color;
+  }
+
+  &.flat {
+    color: $stock-flat-color;
+  }
 }
 
-.price-change.rise {
-  color: #f5222d;
+.detail-tabs {
+  :deep(.ant-tabs-nav) {
+    margin-bottom: map.get($spacers, 4);
+
+    .ant-tabs-tab {
+      font-weight: $font-weight-medium;
+
+      &.ant-tabs-tab-active .ant-tabs-tab-btn {
+        color: $accent-color;
+      }
+    }
+
+    .ant-tabs-ink-bar {
+      background: $accent-color;
+    }
+  }
 }
 
-.price-change.fall {
-  color: #52c41a;
+.basic-info {
+  margin-bottom: map.get($spacers, 5);
 }
 
-.chart-container {
-  margin-top: 16px;
+.section-title {
+  @include mixin.section-title-base;
+  margin-bottom: map.get($spacers, 4);
 }
 
+.market-data {
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  padding: map.get($spacers, 4);
+  margin-top: map.get($spacers, 4);
+}
+
+.chart-container,
 .components-container {
-  margin-top: 16px;
+  margin-top: map.get($spacers, 3);
+}
+
+.chart-placeholder,
+.components-placeholder {
+  height: 400px;
+  background: $secondary-bg;
+  border-radius: $border-radius;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: $border-width dashed $border-color;
+}
+
+.chart-icon {
+  font-size: 48px;
+  color: $text-secondary;
+}
+
+.chart-text,
+.placeholder-text {
+  color: $text-secondary;
+}
+
+// 响应式调整
+@include mixin.media-breakpoint-down(lg) {
+  .page-header {
+    flex-direction: column;
+    gap: map.get($spacers, 3);
+    text-align: center;
+  }
+
+  .price-display {
+    text-align: center;
+  }
+}
+
+@include mixin.media-breakpoint-down(md) {
+  .index-detail-page .main-content {
+    padding: map.get($spacers, 4);
+  }
+}
+
+@include mixin.media-breakpoint-down(sm) {
+  .index-detail-page .main-content {
+    padding: map.get($spacers, 3);
+  }
+
+  .current-price {
+    font-size: $font-size-base * 1.5;
+  }
+
+  .price-change {
+    font-size: $font-size-base;
+  }
 }
 </style>
