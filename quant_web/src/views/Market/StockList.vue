@@ -44,7 +44,11 @@ const watchlist = ref<Set<string>>(new Set())
 const pagination = reactive({
   current: 1,
   pageSize: 50,
-  total: 0
+  total: 0,
+  showSizeChanger: true,
+  showQuickJumper: true,
+  showTotal: (total: number) => `共 ${total} 条记录`,
+  pageSizeOptions: ['20', '50', '100', '200']
 })
 
 const filters = reactive({
@@ -52,7 +56,8 @@ const filters = reactive({
   market: '',
   industry: '',
   area: '',
-  list_status: 'L'
+  list_status: 'L',
+  change_percent: '' // 新增：涨跌幅筛选
 })
 
 const industries = ref<string[]>([])
@@ -107,7 +112,8 @@ const handleReset = () => {
     market: '',
     industry: '',
     area: '',
-    list_status: 'L'
+    list_status: 'L',
+    change_percent: ''
   })
   handleSearch()
 }
@@ -145,11 +151,13 @@ const loadStockList = async () => {
       market: filters.market,
       industry: filters.industry,
       area: filters.area,
-      list_status: filters.list_status
+      list_status: filters.list_status,
+      change_percent: filters.change_percent // 新增：涨跌幅筛选参数
     }
-
+    console.log('请求参数:', params)
     const response: PaginatedResponse<StockBasic> = await marketApi.getStocks(params)
-
+    console.log('API响应:', response)
+    console.log('响应数据:', response.data)
     if (!response.data.items) {
       throw new Error('返回数据格式不正确')
     }
@@ -165,6 +173,9 @@ const loadStockList = async () => {
       is_hs: item.is_hs || 'N',
       curr_type: item.curr_type || '',
       list_status: item.list_status || '',
+      // current_price: item.current_price,
+      // change_percent: item.change_percent,
+      // market_cap: item.market_cap
     }))
 
     pagination.total = response.data.total || 0
@@ -177,6 +188,7 @@ const loadStockList = async () => {
 
   } catch (error: any) {
     console.error('加载股票列表失败:', error)
+    console.error('错误详情:', error.response)
     message.error('加载股票列表失败: ' + (error.message || '未知错误'))
 
     // 设置默认数据以避免页面空白
@@ -196,7 +208,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'ts_code',
     key: 'ts_code',
     width: 120,
-    sorter: true,
+    align: 'center',
     fixed: 'left'
   },
   {
@@ -204,6 +216,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'name',
     key: 'name',
     width: 100,
+    align: 'center',
     fixed: 'left'
   },
   {
@@ -211,7 +224,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'current_price',
     key: 'current_price',
     width: 100,
-    sorter: true,
+    align: 'center',
     customRender: ({text: price}) => price ? `¥${price.toFixed(2)}` : '-'
   },
   {
@@ -219,7 +232,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'change_percent',
     key: 'change_percent',
     width: 100,
-    sorter: true,
+    align: 'center',
     customRender: ({text: percent}) => {
       if (!percent) return '-'
       const color = percent >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
@@ -235,7 +248,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'market_cap',
     key: 'market_cap',
     width: 120,
-    sorter: true,
+    align: 'center',
     customRender: ({text: cap}) => cap ? (cap / 100000000).toFixed(2) : '-'
   },
   {
@@ -243,6 +256,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'area',
     key: 'area',
     width: 80,
+    align: 'center',
     filters: areas.value.map(area => ({text: area, value: area}))
   },
   {
@@ -250,6 +264,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'industry',
     key: 'industry',
     width: 120,
+    align: 'center',
     filters: industries.value.map(industry => ({text: industry, value: industry}))
   },
   {
@@ -257,6 +272,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'market',
     key: 'market',
     width: 80,
+    align: 'center',
     customRender: ({text: market}) => {
       const colorMap: Record<string, string> = {
         '主板': 'var(--accent-color)',
@@ -278,6 +294,7 @@ const columns: ColumnsType<Stock> = [
     dataIndex: 'is_hs',
     key: 'is_hs',
     width: 100,
+    align: 'center',
     customRender: ({text: is_hs}) => {
       const map: Record<string, string> = {'H': '沪股通', 'S': '深股通', 'N': '否'}
       const colorMap: Record<string, string> = {
@@ -299,6 +316,7 @@ const columns: ColumnsType<Stock> = [
     title: '操作',
     key: 'actions',
     width: 180,
+    align: 'center',
     fixed: 'right',
     customRender: ({record}) => h(Space, null, () => [
       h(Button, {
@@ -363,7 +381,10 @@ onMounted(() => {
     <!-- 主要内容区域 -->
     <div class="main-content-with-sidebar">
       <!-- 股票列表卡片 -->
-      <a-card class="stock-list-card" title="股票列表" :bordered="false">
+      <a-card class="stock-list-card" :bordered="false">
+        <template #title>
+          <span class="card-title-text">股票列表</span>
+        </template>
         <template #extra>
           <a-space>
             <!-- 导出数据按钮 -->
@@ -431,11 +452,26 @@ onMounted(() => {
               </a-select-option>
             </a-select>
 
+            <!-- 涨跌幅筛选 -->
+            <a-select
+                v-model:value="filters.change_percent"
+                placeholder="涨跌幅"
+                class="filter-select"
+                allowClear
+                @change="handleSearch"
+            >
+              <a-select-option value="up">涨幅榜</a-select-option>
+              <a-select-option value="down">跌幅榜</a-select-option>
+              <a-select-option value="high_up">大涨(>5%)</a-select-option>
+              <a-select-option value="high_down">大跌(<-5%)</a-select-option>
+            </a-select>
+
             <!-- 上市状态筛选 -->
             <a-select
                 v-model:value="filters.list_status"
                 placeholder="上市状态"
                 class="filter-select"
+                allowClear
                 @change="handleSearch"
             >
               <a-select-option value="L">上市</a-select-option>
@@ -453,75 +489,174 @@ onMounted(() => {
           </a-space>
         </div>
 
-        <!-- 股票数据表格 -->
+        <!-- 表格容器，添加自定义滚动条 -->
         <a-table
             class="stock-table"
             :columns="columns"
             :data-source="stockList"
             :pagination="pagination"
             :loading="loading"
-            :scroll="{ x: 1500, y: 'calc(100vh - 300px)' }"
+            :scroll="{ x: 1500 }"
             row-key="ts_code"
             @change="handleTableChange"
         >
-          <template #headerCell="{ title }">
-            <span class="table-header">{{ title }}</span>
+          <template #headerCell="{ column }">
+            <span class="table-header">{{ column.title }}</span>
           </template>
         </a-table>
       </a-card>
+
     </div>
   </div>
 </template>
-<style scoped lang="scss">
-/**
- * 股票列表页面样式
- * 基于全局主题系统实现，统一使用主题变量和混入
- */
 
-// 导入主题混入
+<style scoped lang="scss">
 @use '@/assets/scss/mixins' as mixin;
 @use '@/assets/scss/variables' as *;
 @use 'sass:map';
+@use 'sass:color' as lcolor ;
 
-// 页面主容器
+// 股票列表页面主容器样式
 .stock-list-page {
-  min-height: 100vh;
-  background: $primary-bg;
-  transition: all $transition-normal;
+  min-height: 100vh; // 最小高度为视口高度
+  background: $primary-bg; // 主背景色
+  transition: all $transition-normal; // 过渡动画
 
   .main-content-with-sidebar {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容布局混入
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域样式
     margin: 0 auto; // 水平居中
   }
 }
 
+// 页面头部样式
 .page-header {
-  @include mixin.page-header-base;
-  margin-bottom: map.get($spacers, 6);
+  @include mixin.page-header-base; // 应用页面头部基础样式
+  margin-bottom: map.get($spacers, 6); // 底部外边距
+
+  .page-title {
+    color: white !important; // 标题文字颜色（白色）
+  }
+
+  .page-description {
+    color: rgba(255, 255, 255, 0.9) !important; // 描述文字颜色（半透明白色）
+  }
 }
 
 // 股票列表卡片样式
 .stock-list-card {
-  @include mixin.card-base;
-  margin-bottom: map.get($spacers, 4);
-  padding: map.get($spacers, 3);
-  color: white; // 文字颜色
+  @include mixin.card-base; // 应用卡片基础样式
+  margin-bottom: map.get($spacers, 4); // 底部外边距
+  padding: map.get($spacers, 3); // 内边距
+
+  // 卡片标题颜色优化
+  :deep(.ant-card-head) {
+    color: $text-primary !important; // 主要文字颜色
+    font-weight: $font-weight-semibold; // 半粗体
+    font-size: $font-size-base * 1.2; // 增大字体大小
+  }
+
+  .card-title-text {
+    color: $text-primary; // 主要文字颜色
+    font-weight: $font-weight-semibold; // 半粗体
+  }
+
   // 筛选工具栏样式
   .filter-bar {
-    margin-bottom: map.get($spacers, 4);
-    padding: map.get($spacers, 3);
-    background: $secondary-bg;
-    border-radius: $border-radius;
-    border: $border-width solid $border-color;
+    margin-bottom: map.get($spacers, 4); // 底部外边距
+    padding: map.get($spacers, 3); // 内边距
+    background: $secondary-bg; // 次要背景色
+    border-radius: $border-radius; // 圆角
+    border: $border-width solid $border-color; // 边框
+  }
+
+  // 卡片悬停效果
+  &:hover {
+    transform: $hover-transform; // 悬停变换效果
+    box-shadow: $card-hover-shadow; // 悬停阴影效果
   }
 }
 
-// 搜索输入框样式
+// 表格容器滚动条优化
+.stock-table-container {
+  max-height: 60vh; // 最大高度为视口高度的60%
+  overflow-y: auto; // 垂直方向溢出时显示滚动条
+  position: relative; // 相对定位
+  @include mixin.custom-scrollbar() // 应用自定义滚动条样式
+}
+
+// 操作按钮样式
+.action-btn {
+  border-radius: $border-radius; // 圆角
+  font-weight: $font-weight-medium; // 中等字重
+  transition: all $transition-fast; // 快速过渡动画
+
+  // 次要按钮样式
+  &.secondary {
+    background: $secondary-bg; // 次要背景色
+    border: $border-width solid $border-color; // 边框样式
+    color: $text-primary; // 主要文字颜色
+
+    // 次要按钮悬停状态
+    &:hover {
+      background: $hover-bg; // 悬停背景色
+      border-color: $accent-color; // 强调色边框
+      color: $accent-color; // 强调色文字
+    }
+  }
+}
+
+// 导出按钮样式
+.export-btn {
+  background: $accent-color; // 强调色背景
+  border: none; // 无边框
+  border-radius: $border-radius; // 圆角
+  font-weight: $font-weight-medium; // 中等字重
+  transition: all $transition-fast; // 快速过渡动画
+  height: 28px; // 固定高度
+
+  // 导出按钮悬停效果
+  &:hover {
+    transform: $hover-transform; // 悬停变换
+    box-shadow: $card-hover-shadow; // 悬停阴影
+  }
+}
+
+// 返回按钮样式
+.back-btn {
+  background: rgba(255, 255, 255, 0.15); // 半透明白色背景
+  border: 1px solid rgba(255, 255, 255, 0.3); // 半透明白色边框
+  color: white; // 白色文字
+  border-radius: $border-radius; // 圆角
+  font-weight: $font-weight-medium; // 中等字重
+  transition: all $transition-fast; // 快速过渡动画
+  backdrop-filter: blur(10px); // 背景模糊效果
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); // 阴影效果
+  height: 32px; // 固定高度
+  display: flex; // 弹性布局
+  align-items: center; // 垂直居中
+
+  // 返回按钮悬停状态
+  &:hover {
+    background: rgba(255, 255, 255, 0.25); // 增加背景透明度
+    border-color: rgba(255, 255, 255, 0.5); // 增加边框透明度
+    color: white; // 保持白色文字
+    transform: $hover-transform; // 悬停变换
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); // 增强阴影
+  }
+
+  // 返回按钮激活状态
+  &:active {
+    transform: translateY(0); // 恢复原始位置
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); // 减小阴影
+  }
+}
+
+// 搜索框样式优化
 .search-input {
   width: 240px;
 
-  :deep(.ant-input) {
-    background: $input-bg;
+  :deep(.ant-input-affix-wrapper) {
+    background: $secondary-bg; // 改为次要背景色，更符合主题
     border: $border-width solid $border-color;
     color: $text-primary;
     border-radius: $border-radius;
@@ -533,7 +668,7 @@ onMounted(() => {
     }
 
     &::placeholder {
-      color: $text-secondary;
+      color: $text-secondary; // 确保placeholder文字可见
     }
   }
 
@@ -542,285 +677,120 @@ onMounted(() => {
   }
 }
 
-// 筛选选择器样式
+// 下拉框样式优化
 .filter-select {
-  width: 140px;
+  @include mixin.filter-select(false, 140px);
 
-  :deep(.ant-select-selector) {
-    background: $input-bg !important;
-    border: $border-width solid $border-color !important;
-    color: $text-primary !important;
-    border-radius: $border-radius !important;
-    transition: border-color $transition-fast;
-
-    &:hover {
-      border-color: $accent-color !important;
-    }
-  }
-
-  :deep(.ant-select-arrow) {
-    color: $text-secondary;
-  }
 }
 
-// 操作按钮基础样式
-.action-btn {
-  border-radius: $border-radius;
-  font-weight: $font-weight-medium;
-  transition: all $transition-fast;
-
-  // 次要按钮样式
-  &.secondary {
-    background: $secondary-bg;
-    border: $border-width solid $border-color;
-    color: $text-primary;
-
-    &:hover {
-      background: $hover-bg;
-      border-color: $accent-color;
-      color: $accent-color;
-    }
-  }
-}
-
-// 导出按钮样式
-.export-btn {
-  background: $accent-color;
-  border: none;
-  border-radius: $border-radius;
-  font-weight: $font-weight-medium;
-  transition: all $transition-fast;
-
-  &:hover {
-    transform: $hover-transform;
-    box-shadow: $card-hover-shadow;
-  }
-}
-
-// 返回按钮样式
-.back-btn {
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  border-radius: $border-radius;
-  font-weight: $font-weight-medium;
-  transition: all $transition-fast;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  height: 32px;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
-    color: white;
-    transform: $hover-transform;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-}
-
-// 表格样式
+// 股票表格样式
 .stock-table {
   :deep(.ant-table) {
-    background: $card-bg;
-    border-radius: $border-radius;
+    background: $card-bg; // 卡片背景色
+    border-radius: $border-radius; // 圆角
 
     // 表头样式
     .ant-table-thead > tr > th {
-      background: $secondary-bg;
-      color: $text-primary;
-      font-weight: $font-weight-semibold;
-      border-bottom: 2px solid $border-color;
-      padding: map.get($spacers, 2);
+      background: $secondary-bg; // 次要背景色
+      color: $text-primary; // 主要文字颜色
+      font-weight: $font-weight-semibold; // 半粗体
+      border-bottom: 2px solid $border-color; // 底部边框
+      padding: map.get($spacers, 2); // 内边距
+      text-align: center; // 文字居中
     }
 
     // 表格行样式
     .ant-table-tbody > tr {
-      background: $card-bg;
-      transition: background-color $transition-fast;
+      background: $card-bg; // 卡片背景色
+      transition: background-color $transition-fast; // 背景色过渡
 
-      // 行悬停效果
+      // 行悬停状态
       &:hover > td {
-        background: $hover-bg !important;
+        background: $hover-bg !important; // 悬停背景色
       }
 
+      // 表格单元格样式
       > td {
-        border-bottom: 1px solid $border-color;
-        color: $text-primary;
-        padding: map.get($spacers, 2);
+        border-bottom: 1px solid $border-color; // 底部边框
+        color: $text-primary; // 主要文字颜色
+        padding: map.get($spacers, 2); // 内边距
+        text-align: center; // 文字居中
       }
     }
 
     // 分页器样式
     .ant-table-pagination {
-      margin: map.get($spacers, 4) 0 0 0;
-      padding: map.get($spacers, 3) 0 0 0;
-      border-top: 1px solid $border-color;
+      margin: map.get($spacers, 4) 0 0 0; // 外边距
+      padding: map.get($spacers, 3) 0 0 0; // 内边距
+      border-top: 1px solid $border-color; // 顶部边框
 
+      // 分页项样式
       .ant-pagination-item {
-        background: $secondary-bg;
-        border: 1px solid $border-color;
-        border-radius: $border-radius-sm;
+        background: $secondary-bg; // 次要背景色
+        border: 1px solid $border-color; // 边框
+        border-radius: $border-radius-sm; // 小圆角
 
         a {
-          color: $text-primary;
+          color: $text-primary; // 主要文字颜色
         }
 
-        // 激活状态
+        // 激活状态分页项
         &.ant-pagination-item-active {
-          background: $accent-color;
-          border-color: $accent-color;
+          background: $accent-color; // 强调色背景
+          border-color: $accent-color; // 强调色边框
 
           a {
-            color: white;
+            color: white; // 白色文字
           }
         }
 
+        // 分页项悬停状态
         &:hover {
-          border-color: $accent-color;
+          border-color: $accent-color; // 强调色边框
         }
       }
 
-      // 上一页/下一页按钮
+      // 上一页/下一页按钮样式
       .ant-pagination-prev,
       .ant-pagination-next {
         .ant-pagination-item-link {
-          background: $secondary-bg;
-          border: 1px solid $border-color;
-          color: $text-primary;
-          border-radius: $border-radius-sm;
+          background: $secondary-bg; // 次要背景色
+          border: 1px solid $border-color; // 边框
+          color: $text-primary; // 主要文字颜色
+          border-radius: $border-radius-sm; // 小圆角
         }
       }
 
-      // 禁用状态
+      // 禁用状态分页按钮
       .ant-pagination-disabled {
         .ant-pagination-item-link {
-          color: $text-secondary;
-          background: $primary-bg;
+          color: $text-secondary; // 次要文字颜色
+          background: $primary-bg; // 主背景色
         }
       }
 
-      // 跳页按钮
+      // 跳转分页按钮样式
       .ant-pagination-jump-prev,
       .ant-pagination-jump-next {
         .ant-pagination-item-container {
           .ant-pagination-item-ellipsis {
-            color: $text-secondary;
+            color: $text-secondary; // 次要文字颜色
           }
         }
       }
     }
 
-    // 自选股星星按钮样式
+    // 链接按钮样式
     .ant-btn-link {
-      color: $text-secondary;
-      transition: color $transition-fast;
+      color: $text-secondary; // 次要文字颜色
+      transition: color $transition-fast; // 颜色过渡
 
+      // 链接按钮悬停状态
       &:hover {
-        color: $warning-color;
+        color: $warning-color; // 警告色
       }
     }
   }
 }
 
-// 表格表头文字样式
-.table-header {
-  color: $text-primary;
-  font-weight: $font-weight-semibold;
-}
-
-/**
- * 响应式设计
- */
-
-// 中等屏幕调整
-@include mixin.media-breakpoint-down(md) {
-  .stock-list-page {
-    padding: map.get($spacers, 3);
-  }
-
-  .stock-list-card {
-    margin: 0 map.get($spacers, 2) map.get($spacers, 2);
-  }
-
-  .search-input {
-    width: 200px;
-  }
-
-  .filter-select {
-    width: 120px;
-  }
-}
-
-// 小屏幕调整
-@include mixin.media-breakpoint-down(sm) {
-  .stock-list-page {
-    padding: map.get($spacers, 2);
-  }
-
-  .page-header {
-    .header-content {
-      flex-direction: column;
-      gap: map.get($spacers, 3);
-      text-align: center;
-
-      .header-actions {
-        order: -1;
-        align-self: stretch;
-        justify-content: space-between;
-        margin-bottom: map.get($spacers, 2);
-      }
-    }
-  }
-
-  .filter-bar {
-    padding: map.get($spacers, 2) !important;
-  }
-
-  .search-input {
-    width: 100%;
-  }
-
-  .filter-select {
-    width: 100px;
-  }
-
-  // 移动端隐藏部分操作列
-  .stock-table {
-    :deep(.ant-table) {
-      .ant-table-thead > tr > th:nth-child(5),
-      .ant-table-tbody > tr > td:nth-child(5) {
-        display: none;
-      }
-    }
-  }
-}
-
-// 加载状态样式
-:deep(.ant-spin-container) {
-  transition: opacity $transition-normal;
-}
-
-:deep(.ant-spin-nested-loading) {
-  min-height: 400px;
-}
-
-// 主题过渡效果
-.stock-list-page {
-  transition: background-color $transition-normal,
-  color $transition-normal;
-}
-
-// 卡片悬停效果增强
-.stock-list-card {
-  &:hover {
-    transform: $hover-transform;
-    box-shadow: $card-hover-shadow;
-  }
-}
 </style>

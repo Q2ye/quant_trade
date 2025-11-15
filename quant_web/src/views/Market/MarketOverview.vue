@@ -2,7 +2,7 @@
 <!--重构后的市场概览页面 - 基于交易系统主题实现-->
 <!--移除了重复样式，统一使用主题样式系统-->
 <template>
-  <div class="market-overview-page sidebar-layout-container no-bleed-through">
+  <div class="market-overview-page">
     <!-- 页面标题和状态 - 使用全局主题样式 -->
     <div class="common-page-header">
       <div class="header-content">

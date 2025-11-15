@@ -274,8 +274,6 @@ onUnmounted(() => {
 @use 'sass:map';
 
 .index-list-page {
-  @include mixin.sidebar-layout-base;
-
   .main-content {
     @include mixin.content-with-sidebar;
     margin: 0 auto;

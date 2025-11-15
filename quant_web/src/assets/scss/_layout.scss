@@ -1,78 +1,69 @@
-// _layout.scss - 优化后的布局系统
+// _layout.scss - 优化后的布局系统（整合智能滚动）
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'sass:map';
 @use 'sass:color';
 
 // ============================================================================
-// 布局组件类（统一使用混入）
+// 布局组件类（统一使用智能滚动混入）
 // ============================================================================
 
-/// 主内容区域布局
+/// 主内容区域布局（核心智能滚动实现）
 .main-content-with-sidebar {
+  // 保留基础布局特性并整合智能滚动
   @include mix.content-with-sidebar;
+  @include mix.smart-scroll-container;
 
+  // 移除固定高度限制，改为自适应
+  height: auto;
+  min-height: calc(100vh - #{$header-height});
+  max-height: none;
+
+  // 内容结构优化
+  display: flex;
+  flex-direction: column;
+
+  // 固定区域（不参与滚动）
   .page-header,
   .page-title,
   .section-title {
     position: relative;
     z-index: 10;
+    flex-shrink: 0; // 防止被压缩
   }
-}
 
-/// 页面标题布局
-.page-header-with-sidebar {
-  @include mix.page-header-base;
-  margin-left: $sidebar-expanded-width;
-  width: calc(100% - $sidebar-expanded-width);
-  transition: all $transition-normal;
+  // 滚动内容区域
+  .main-scroll-content {
+    flex: 1;
+    min-height: 0; // 允许内容收缩
+    overflow-y: hidden; // 初始隐藏滚动条
 
-  .sidebar-collapsed & {
-    margin-left: $sidebar-collapsed-width;
-    width: calc(100% - $sidebar-collapsed-width);
+    // 智能滚动：默认隐藏滚动条，内容溢出时显示
+    @include mix.smart-scroll-container;
+    // 确保滚动区域内容正确显示
+    display: flex;
+    flex-direction: column;
+
+     // 滚动内容容器
+    .scroll-content {
+      flex: 1;
+      min-height: 0;
+
+      // 智能滚动行为
+      @include mix.smart-scroll-container;
+    }
+
   }
-}
 
-/// 状态概览网格布局
-.status-overview-grid {
-  @include mix.status-overview-grid;
-}
-
-/// 核心功能网格布局
-.core-function-grid {
-  @include mix.core-function-grid;
-}
-
-/// 实时状态布局
-.realtime-status-layout {
-  @include mix.realtime-status-layout;
-}
-
-// ============================================================================
-// 工具提示优化
-// ============================================================================
-
-.sidebar-tooltip {
-  @include mix.sidebar-tooltip;
-}
-
-// ============================================================================
-// 响应式布局调整
-// ============================================================================
-
-// 大屏幕调整
-@include mix.media-breakpoint-down(lg) {
-  .main-content-with-sidebar,
-  .page-header-with-sidebar {
+  // 响应式适配
+  @include mix.media-breakpoint-down(lg) {
     margin-left: $sidebar-collapsed-width;
     width: calc(100% - $sidebar-collapsed-width);
     padding: map.get($spacers, 3);
+    min-height: auto;
   }
-}
 
-// 中等屏幕调整
-@include mix.media-breakpoint-down(md) {
-  .main-content-with-sidebar {
+  @include mix.media-breakpoint-down(md) {
     margin-left: 0;
     width: 100%;
 
@@ -81,12 +72,10 @@
       width: 100%;
     }
   }
-}
 
-// 小屏幕调整
-@include mix.media-breakpoint-down(sm) {
-  .main-content-with-sidebar {
+  @include mix.media-breakpoint-down(sm) {
     padding: map.get($spacers, 2);
+    overflow-y: auto; // 移动端始终允许滚动
 
     .page-header {
       padding: map.get($spacers, 2);
@@ -97,8 +86,22 @@
       }
     }
   }
+}
 
-  .page-header-with-sidebar {
+/// 页面标题布局
+.page-header-with-sidebar {
+  @include mix.page-header-base;
+  margin-left: $sidebar-expanded-width;
+  width: calc(100% - $sidebar-expanded-width);
+  transition: all $transition-normal;
+  flex-shrink: 0; // 作为固定区域不参与滚动
+
+  .sidebar-collapsed & {
+    margin-left: $sidebar-collapsed-width;
+    width: calc(100% - $sidebar-collapsed-width);
+  }
+
+  @include mix.media-breakpoint-down(sm) {
     .header-content {
       padding: 0 map.get($spacers, 2);
     }
@@ -109,8 +112,37 @@
   }
 }
 
+/// 状态概览网格布局（整合智能滚动）
+.status-overview-grid {
+  @include mix.status-overview-grid;
+  @include mix.smart-scroll-container;
+  padding: map.get($spacers, 2) 0;
+}
+
+/// 核心功能网格布局（整合智能滚动）
+.core-function-grid {
+  @include mix.core-function-grid;
+  @include mix.smart-scroll-container;
+  padding: map.get($spacers, 2) 0;
+}
+
+/// 实时状态布局（整合智能滚动）
+.realtime-status-layout {
+  @include mix.realtime-status-layout;
+  @include mix.smart-scroll-container;
+  max-height: 80vh; // 限制最大高度，超出则滚动
+}
+
 // ============================================================================
-// 侧边栏过渡动画
+// 工具提示优化（保持不变）
+// ============================================================================
+
+.sidebar-tooltip {
+  @include mix.sidebar-tooltip;
+}
+
+// ============================================================================
+// 侧边栏过渡动画（保持不变）
 // ============================================================================
 
 .sidebar-transition {

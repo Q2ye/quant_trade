@@ -212,8 +212,6 @@ onMounted(() => {
 @use 'sass:map';
 
 .etf-list-page {
-  @include mixin.sidebar-layout-base;
-
   .main-content {
     @include mixin.content-with-sidebar;
     margin: 0 auto;

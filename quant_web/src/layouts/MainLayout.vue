@@ -1,21 +1,21 @@
 <template>
   <div class="main-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <!-- 顶部状态栏 -->
-    <AppHeader class="app-header page-header-anti-bleed" />
+    <AppHeader class="app-header page-header-anti-bleed"/>
 
     <!-- 侧边栏和工作区容器 -->
     <div class="layout-container">
       <!-- 左侧导航栏 -->
       <AppSidebar
-        class="app-sidebar sidebar-anti-bleed"
-        :class="{ collapsed: sidebarCollapsed }"
-        @collapse="handleSidebarCollapse"
+          class="app-sidebar sidebar-anti-bleed"
+          :class="{ collapsed: sidebarCollapsed }"
+          @collapse="handleSidebarCollapse"
       />
 
       <!-- 中间工作区 -->
       <main class="workspace sidebar-content-adapter">
         <div class="workspace-content">
-          <router-view />
+          <router-view/>
         </div>
       </main>
     </div>
@@ -45,8 +45,8 @@
 </template>
 
 <script lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import {onMounted, onUnmounted, reactive, ref} from 'vue'
+import {useRoute} from 'vue-router'
 import AppHeader from '../components/ui/AppHeader.vue'
 import AppSidebar from '../components/ui/AppSidebar.vue'
 
@@ -92,209 +92,247 @@ export default {
   }
 }
 </script>
-
 <style lang="scss" scoped>
-@use 'sass:map';
-@use '@/assets/scss/themes' as *;
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as local_mix;
+@use 'sass:map'; // 导入Sass的map功能，用于处理键值对数据
+@use '@/assets/scss/themes' as *; // 导入主题变量
+@use '@/assets/scss/variables' as *; // 导入全局变量
+@use '@/assets/scss/mixins' as local_mix; // 导入混入函数
 
+/* 主布局容器 */
 .main-layout {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow: hidden;
+  max-height: 100vh;
   background: theme-color("primary-bg");
   position: relative;
   transition: background-color theme-animation("transition-normal");
+  overflow: hidden;
+
+  /* 关键：定义精确的高度变量 */
+  --header-height: #{theme-layout("header-height")}; /* 从主题获取头部高度 */
+  --footer-height: 30px; /* 底部状态栏固定高度 */
 }
 
+/* 布局内容区域容器 */
 .layout-container {
   display: flex;
   flex: 1;
   overflow: hidden;
   position: relative;
   min-height: 0;
+  /* 关键：精确计算可用高度，减去头部和底部 */
+  height: calc(100vh - var(--header-height) - var(--footer-height));
 }
 
+/* 工作区主内容区域 */
+/* 工作区主内容区域 */
 .workspace {
-  flex: 1;
-  overflow-y: auto;
-  //margin-left: 0;
   width: calc(100% - #{theme-layout("sidebar-width")});
   transition: all theme-animation("transition-normal");
   background: theme-color("primary-bg");
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 
+  /* 工作区内容容器 */
   .workspace-content {
-    min-height: 100%;
-    //padding: theme-layout("content-padding");
+    flex: 1;
+    height: 100%;
+    min-height: 0;
 
-    @include local_mix.media-breakpoint-down(md) {
-      padding: map.get($spacers, 3);
-    }
+    /* 确保内部内容适应容器 */
+    display: flex;
+    flex-direction: column;
 
-    @include local_mix.media-breakpoint-down(sm) {
-      padding: map.get($spacers, 2);
+    /* 如果内部需要滚动，在特定容器设置 */
+    > * {
+      flex: 1;
+      overflow: hidden;
     }
   }
 
+  /* 侧边栏折叠状态下的样式调整 */
   .sidebar-collapsed & {
     margin-left: 0;
     width: calc(100% - #{theme-layout("sidebar-collapsed-width")});
   }
 }
-
+/* 底部状态栏样式 */
 .app-footer {
-  height: 30px;
-  background-color: theme-color("toolbar-bg");
-  border-top: theme-border("border-width") solid theme-color("border-color");
-  display: flex;
-  align-items: center;
-  padding: 0 map.get($spacers, 3);
-  font-size: theme-typography("font-size-base") * 0.85;
-  color: theme-color("text-secondary");
-  flex-shrink: 0;
-  position: relative;
-  z-index: 100;
+  height: 30px; // 固定高度
+  background-color: theme-color("toolbar-bg"); // 工具栏背景色
+  border-top: theme-border("border-width") solid theme-color("border-color"); // 顶部边框
+  display: flex; // flex布局
+  align-items: center; // 垂直居中
+  padding: 0 map.get($spacers, 3); // 水平内边距
+  font-size: theme-typography("font-size-base") * 0.85; // 字体大小为基准的85%
+  color: theme-color("text-secondary"); // 次要文本颜色
+  flex-shrink: 0; // 防止在flex容器中收缩
+  position: relative; // 相对定位
+  z-index: 100; // 较高的堆叠顺序，确保显示在最上层
 
+  /* 底部内容容器 */
   .footer-content {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    max-width: 1400px;
-    margin: 0 auto;
+    display: flex; // flex布局
+    align-items: center; // 垂直居中
+    width: 100%; // 占满宽度
+    max-width: 1400px; // 最大宽度限制
+    margin: 0 auto; // 水平居中
   }
 
+  /* 底部各信息区块 */
   .footer-section {
-    display: flex;
-    align-items: center;
-    margin-right: map.get($spacers, 4);
-    white-space: nowrap;
+    display: flex; // flex布局
+    align-items: center; // 垂直居中
+    margin-right: map.get($spacers, 4); // 右边距
+    white-space: nowrap; // 防止文字换行
 
+    /* 图标样式 */
     i {
-      margin-right: map.get($spacers, 1);
-      color: theme-color("accent-color");
-      font-size: theme-typography("font-size-base") * 0.8;
+      margin-right: map.get($spacers, 1); // 图标右边距
+      color: theme-color("accent-color"); // 强调色
+      font-size: theme-typography("font-size-base") * 0.8; // 图标大小为基准的80%
     }
 
+    /* 文字样式 */
     span {
-      font-size: theme-typography("font-size-base") * 0.8;
-      color: theme-color("text-secondary");
+      font-size: theme-typography("font-size-base") * 0.8; // 文字大小为基准的80%
+      color: theme-color("text-secondary"); // 次要文本颜色
     }
   }
 
+  /* 日志显示区域 */
   .footer-log {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 300px;
+    margin-left: auto; // 自动左边距，推至最右侧
+    display: flex; // flex布局
+    align-items: center; // 垂直居中
+    white-space: nowrap; // 防止文字换行
+    overflow: hidden; // 隐藏溢出内容
+    text-overflow: ellipsis; // 文字溢出显示省略号
+    max-width: 300px; // 最大宽度限制
 
+    /* 日志图标 */
     i {
-      margin-right: map.get($spacers, 1);
-      color: theme-color("accent-color");
-      font-size: theme-typography("font-size-base") * 0.8;
+      margin-right: map.get($spacers, 1); // 图标右边距
+      color: theme-color("accent-color"); // 强调色
+      font-size: theme-typography("font-size-base") * 0.8; // 图标大小
     }
 
+    /* 日志文字 */
     span {
-      font-size: theme-typography("font-size-base") * 0.8;
-      color: theme-color("text-secondary");
+      font-size: theme-typography("font-size-base") * 0.8; // 文字大小
+      color: theme-color("text-secondary"); // 次要文本颜色
     }
   }
 }
 
-// 响应式设计
+// ========== 响应式设计 ==========
+
+/* 大屏幕尺寸下的响应式调整 */
 @include local_mix.media-breakpoint-down(lg) {
   .workspace {
-    margin-left: theme-layout("sidebar-collapsed-width");
-    width: calc(100% - #{theme-layout("sidebar-collapsed-width")});
+    margin-left: theme-layout("sidebar-collapsed-width"); // 左边距为折叠侧边栏宽度
+    width: calc(100% - #{theme-layout("sidebar-collapsed-width")}); // 计算宽度
 
+    /* 侧边栏折叠状态 */
     .sidebar-collapsed & {
-      margin-left: 0;
-      width: 100%;
+      margin-left: 0; // 移除左边距
+      width: 100%; // 占满宽度
     }
   }
 }
 
+/* 中等屏幕尺寸下的响应式调整 */
 @include local_mix.media-breakpoint-down(md) {
   .app-footer {
     .footer-content {
-      justify-content: space-between;
+      justify-content: space-between; // 子元素两端对齐
     }
 
     .footer-section {
-      margin-right: map.get($spacers, 3);
+      margin-right: map.get($spacers, 3); // 调整右边距
 
+      /* 隐藏第三个区块（交易通道信息） */
       &:nth-child(3) {
         display: none;
       }
     }
 
     .footer-log {
-      max-width: 200px;
+      max-width: 200px; // 缩小日志区域最大宽度
     }
+  }
+
+  .workspace .workspace-content {
+    padding: map.get($spacers, 3); // 添加内边距
   }
 }
 
+/* 小屏幕尺寸下的响应式调整 */
 @include local_mix.media-breakpoint-down(sm) {
   .workspace {
-    margin-left: 0;
-    width: 100%;
+    margin-left: 0; // 移除左边距
+    width: 100%; // 占满宽度
 
+    /* 侧边栏折叠状态 */
     .sidebar-collapsed & {
-      //margin-left: theme-layout("sidebar-collapsed-width");
-      width: calc(100% - #{theme-layout("sidebar-collapsed-width")});
+      width: calc(100% - #{theme-layout("sidebar-collapsed-width")}); // 调整宽度
     }
   }
 
   .app-footer {
-    padding: 0 map.get($spacers, 2);
+    padding: 0 map.get($spacers, 2); // 调整内边距
 
     .footer-section {
-      margin-right: map.get($spacers, 2);
+      margin-right: map.get($spacers, 2); // 调整右边距
 
+      /* 隐藏第二个区块（内存信息） */
       &:nth-child(2) {
         display: none;
       }
 
+      /* 调整文字大小 */
       span {
-        font-size: theme-typography("font-size-base") * 0.7;
+        font-size: theme-typography("font-size-base") * 0.7; // 更小的字体
       }
     }
 
     .footer-log {
-      max-width: 150px;
+      max-width: 150px; // 进一步缩小日志区域
 
+      /* 调整日志文字大小 */
       span {
-        font-size: theme-typography("font-size-base") * 0.7;
+        font-size: theme-typography("font-size-base") * 0.7; // 更小的字体
       }
     }
   }
 
   .workspace .workspace-content {
-    padding: map.get($spacers, 2);
+    padding: map.get($spacers, 2); // 调整内边距
   }
 }
 
-// 侧边栏折叠动画优化
+// ========== 动画与效果 ==========
+
+/* 侧边栏内容适配器的过渡动画 */
 .sidebar-content-adapter {
-  transition: all theme-animation("transition-normal");
+  transition: all theme-animation("transition-normal"); // 所有属性的过渡动画
 
+  /* 侧边栏折叠时的变换效果 */
   .sidebar-collapsed & {
-    transform: theme-animation("hover-transform");
-    //opacity: 0.95;
+    transform: theme-animation("hover-transform"); // 悬停变换效果
   }
 }
 
-// 主题过渡
+/* 主布局的主题过渡效果 */
 .main-layout {
-  transition: background-color theme-animation("transition-normal");
+  transition: background-color theme-animation("transition-normal"); // 背景色过渡
 }
 
-// 滚动条样式
-.workspace {
-  @include local_mix.custom-scrollbar;
+/* 滚动条样式 - 只应用到内容区域 */
+.workspace .workspace-content {
+  @include local_mix.custom-scrollbar; // 应用自定义滚动条样式
 }
 </style>

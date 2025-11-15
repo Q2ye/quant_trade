@@ -1,4 +1,4 @@
-// global.scss - 优化后的全局样式
+// global.scss - 优化后的全局样式（消除重复，统一使用混入）
 @use 'variables' as *;
 @use 'mixins' as mix;
 @use 'layout';
@@ -39,16 +39,17 @@ body {
 }
 
 // ============================================================================
-// 应用容器布局
+// 应用容器布局（使用智能滚动系统）
 // ============================================================================
 
 .app-container {
   display: flex;
   min-height: 100vh;
   position: relative;
+  @include mix.smart-scroll-container;
 }
 
-// 侧边栏基础样式
+// 侧边栏基础样式（统一使用混入）
 .app-sidebar {
   position: fixed;
   top: 0;
@@ -58,9 +59,7 @@ body {
   background: $sidebar-bg;
   border-right: $border-width solid $border-color;
   z-index: 1000;
-  transition: all $transition-normal;
-  overflow-y: auto;
-  font-size: $sidebar-font-size;
+  @include mix.sidebar-transition;
   @include mix.custom-scrollbar;
 
   // 侧边栏折叠状态
@@ -73,21 +72,23 @@ body {
   }
 }
 
-// 主内容区域
+// 主内容区域（使用优化内容区域混入）
 .app-main {
   flex: 1;
   margin-left: $sidebar-expanded-width;
   transition: margin-left $transition-normal;
+  @include mix.optimized-content-area;
 
   .sidebar-collapsed & {
     margin-left: $sidebar-collapsed-width;
   }
 }
 
-// 页面内容区域
+// 页面内容区域（整合智能滚动）
 .page-content {
   padding: $content-padding;
   min-height: calc(100vh - #{$header-height});
+  @include mix.smart-scroll-container;
 
   .sidebar-collapsed & {
     padding: map.get($spacers, 3);
@@ -95,7 +96,7 @@ body {
 }
 
 // ============================================================================
-// 通用组件样式
+// 通用组件样式（统一使用混入）
 // ============================================================================
 
 // 页面标题
@@ -123,7 +124,7 @@ body {
   @include mix.card-header-base;
 }
 
-// 基础卡片样式
+// 基础卡片样式（统一使用混入）
 .card {
   @include mix.card-base;
   padding: map.get($spacers, 3);
@@ -153,7 +154,7 @@ body {
 }
 
 // ============================================================================
-// 状态样式
+// 状态样式（优化混入使用）
 // ============================================================================
 
 // 加载状态
@@ -188,26 +189,72 @@ body {
 }
 
 // ============================================================================
-// 工具类
+// 工具类（精简优化）
 // ============================================================================
 
 // 文本对齐
-.text-center { text-align: center; }
-.text-left { text-align: left; }
-.text-right { text-align: right; }
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+// 文本溢出
+.text-ellipsis {
+  @include mix.text-ellipsis;
+}
+
+.text-ellipsis-2 {
+  @include mix.text-ellipsis(2);
+}
+
+.text-ellipsis-3 {
+  @include mix.text-ellipsis(3);
+}
+
+// 次要文本
+.text-secondary {
+  @include mix.text-secondary;
+}
 
 // 弹性布局
-.d-flex { display: flex; }
-.flex-column { flex-direction: column; }
-.align-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
+.d-flex {
+  display: flex;
+}
 
-// 间距工具类
+.flex-column {
+  flex-direction: column;
+}
+
+.align-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+// 间距工具类（使用变量）
 @each $key, $value in $spacers {
-  .mt-#{$key} { margin-top: $value; }
-  .mb-#{$key} { margin-bottom: $value; }
-  .p-#{$key} { padding: $value; }
+  .mt-#{$key} {
+    margin-top: $value;
+  }
+  .mb-#{$key} {
+    margin-bottom: $value;
+  }
+  .p-#{$key} {
+    padding: $value;
+  }
 }
 
 // ============================================================================
@@ -216,14 +263,14 @@ body {
 
 .theme-transition {
   transition: background-color $transition-normal,
-              color $transition-normal,
-              border-color $transition-normal,
-              box-shadow $transition-normal,
-              transform $transition-normal;
+  color $transition-normal,
+  border-color $transition-normal,
+  box-shadow $transition-normal,
+  transform $transition-normal;
 }
 
 // ============================================================================
-// 移动端优化
+// 移动端优化（整合智能滚动）
 // ============================================================================
 
 @include mix.media-breakpoint-down(sm) {
@@ -241,6 +288,9 @@ body {
 
   .page-content {
     padding: map.get($spacers, 2);
+    // 移动端始终启用滚动
+    overflow-y: auto;
+    @include mix.custom-scrollbar;
   }
 
   // 移动端隐藏元素
@@ -259,10 +309,9 @@ img {
 }
 
 // ============================================================================
-// 侧边栏专用样式（消除重复）
+// 侧边栏专用样式（使用变量统一管理）
 // ============================================================================
 
-// 侧边栏基础字体设置
 .sidebar-content {
   .nav-header {
     font-size: $sidebar-header-font-size;
@@ -276,4 +325,29 @@ img {
       height: $sidebar-icon-size;
     }
   }
+}
+
+// ============================================================================
+// 智能滚动辅助类
+// ============================================================================
+
+// JavaScript 辅助类（用于不支持 :has 的浏览器）
+.scroll-active {
+  overflow-y: auto !important;
+  @include mix.custom-scrollbar;
+}
+
+.scroll-overflow {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+// 强制隐藏滚动条
+.scroll-hidden {
+  overflow-y: hidden !important;
+}
+
+// 内容溢出标记（用于智能滚动检测）
+.content-overflow {
+  // 这个类由 JavaScript 动态添加，用于检测内容溢出
 }

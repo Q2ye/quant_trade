@@ -35,10 +35,10 @@
       </button>
       <div v-if="isTestMode" class="test-mode-notice">
         <p>测试模式已启用</p>
-        <button @click="fillCredentials('admin', 'admin123')">
+        <button @click="fillCredentials('superAdmin', '123456')">
           填充管理员凭据
         </button>
-        <button @click="fillCredentials('user', 'user123')">
+        <button @click="fillCredentials('superAdmin', '123456')">
           填充用户凭据
         </button>
       </div>
@@ -69,7 +69,7 @@ export default {
           import.meta.env.VITE_APP_TEST_MODE === 'true';
 
       if (isTestMode.value) {
-        fillCredentials('admin', 'admin123');
+        fillCredentials('superAdmin', '123456');
       }
 
       // 检查是否已登录 - 使用与user模块一致的key

@@ -2,22 +2,22 @@
 // 基于交易系统主题实现，使用灵活网格系统
 
 // 导入依赖的Sass模块和变量文件
-@use '../variables' as *;     // 导入所有变量
-@use '../mixins' as mix;      // 导入混入工具库
-@use 'sass:map';              // Sass映射函数模块
+@use '../variables' as *;
+// 导入所有变量
+@use '../mixins' as mix;
+// 导入混入工具库
+@use 'sass:map'; // Sass映射函数模块
 
 // ============================================================================
 // 市场概览页面布局 - 使用全局布局混入
 // ============================================================================
 
 .market-overview-page {
-  // 应用全局侧边栏布局基础样式
-  @include mix.sidebar-layout-base;
-
+    @include mix.content-with-base;
   // 主内容区域使用全局带侧边栏的内容布局
   .main-content {
-    @include mix.content-with-sidebar;  // 应用带侧边栏的内容布局混入
-    margin: 0 auto;                     // 水平居中
+    @include mix.content-with-sidebar; // 应用带侧边栏的内容布局混入
+    margin: 0 auto; // 水平居中
   }
 }
 
@@ -29,120 +29,120 @@
 .market-index-grid {
   // 应用灵活网格布局：默认4列，响应式断点配置，间隙大小
   @include mix.flexible-grid(4, (
-    'xl': 4,  // 超大屏幕：4列
-    'lg': 3,  // 大屏幕：3列
-    'md': 2,  // 中等屏幕：2列
-    'sm': 1   // 小屏幕：1列
-  ), map.get($spacers, 5));  // 主要间隙：使用spacers映射中的第5个值
+          'xl': 4, // 超大屏幕：4列
+          'lg': 3, // 大屏幕：3列
+          'md': 2, // 中等屏幕：2列
+          'sm': 1 // 小屏幕：1列
+  ), map.get($spacers, 5)); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap((
-    'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)),  // 大屏幕间隙配置
-    'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),  // 中等屏幕间隙配置
-    'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))   // 小屏幕间隙配置
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)), // 大屏幕间隙配置
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
 
-  margin-bottom: map.get($spacers, 6);  // 底部外边距：使用spacers映射中的第6个值
+  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
 
   // 市场指数卡片样式
   .market-index-card {
-    @include mix.status-card-base();  // 应用状态卡片基础样式混入
-    height: 100%;                     // 高度100%
-    position: relative;               // 相对定位
+    @include mix.status-card-base(); // 应用状态卡片基础样式混入
+    height: 100%; // 高度100%
+    position: relative; // 相对定位
     //overflow: hidden;                 // 隐藏溢出内容
     //padding: map.get($spacers, 1);    // 内边距：使用spacers映射中的第1个值
 
     // 指数内容区域
     .index-content {
-      position: relative;             // 相对定位
-      z-index: 1;                     // 设置层级
-      height: 100%;                   // 高度100%
-      display: flex;                  // 弹性布局
-      flex-direction: column;         // 垂直方向
+      position: relative; // 相对定位
+      z-index: 1; // 设置层级
+      height: 100%; // 高度100%
+      display: flex; // 弹性布局
+      flex-direction: column; // 垂直方向
       justify-content: space-between; // 两端对齐
 
       // 侧边栏折叠状态下的调整
       .sidebar-collapsed & {
-        padding: map.get($spacers, 2);  // 调整内边距：使用spacers映射中的第5个值
+        padding: map.get($spacers, 2); // 调整内边距：使用spacers映射中的第5个值
       }
     }
 
     // 指数头部区域
     .index-header {
-      display: flex;                  // 弹性布局
+      display: flex; // 弹性布局
       justify-content: space-between; // 两端对齐
-      align-items: flex-start;        // 顶部对齐
-      margin-bottom: map.get($spacers, 3);  // 底部外边距
+      align-items: flex-start; // 顶部对齐
+      margin-bottom: map.get($spacers, 3); // 底部外边距
     }
 
     // 指数名称样式
     .index-name {
-      font-size: $font-size-base * 0.95;  // 字体大小：基础字体的95%
-      color: $text-secondary;             // 次要文字颜色
-      font-weight: $font-weight-medium;   // 中等字体粗细
+      font-size: $font-size-base * 0.95; // 字体大小：基础字体的95%
+      color: $text-secondary; // 次要文字颜色
+      font-weight: $font-weight-medium; // 中等字体粗细
     }
 
     // 指数代码样式
     .index-code {
-      font-size: $font-size-base * 0.8;   // 字体大小：基础字体的80%
-      color: $text-secondary;             // 次要文字颜色
-      background: $secondary-bg;          // 次要背景色
-      padding: 4px 10px;                  // 内边距
-      border-radius: $border-radius-sm;   // 小圆角
+      font-size: $font-size-base * 0.8; // 字体大小：基础字体的80%
+      color: $text-secondary; // 次要文字颜色
+      background: $secondary-bg; // 次要背景色
+      padding: 4px 10px; // 内边距
+      border-radius: $border-radius-sm; // 小圆角
     }
 
     // 指数数值样式
     .index-value {
-      font-size: $font-size-base * 1.4;   // 字体大小：基础字体的140%
-      font-weight: $font-weight-bold;     // 粗体
-      color: $text-primary;               // 主要文字颜色
-      margin-bottom: map.get($spacers, 2);  // 底部外边距
-      line-height: 1.2;                   // 行高
+      font-size: $font-size-base * 1.4; // 字体大小：基础字体的140%
+      font-weight: $font-weight-bold; // 粗体
+      color: $text-primary; // 主要文字颜色
+      margin-bottom: map.get($spacers, 2); // 底部外边距
+      line-height: 1.2; // 行高
 
       // 侧边栏折叠状态下的调整
       .sidebar-collapsed & {
-        font-size: $font-size-base * 1.5;  // 增大字体大小：基础字体的160%
+        font-size: $font-size-base * 1.5; // 增大字体大小：基础字体的160%
       }
     }
 
     // 指数涨跌变化样式
     .index-change {
-      font-size: $font-size-base * 0.9;   // 字体大小：基础字体的90%
-      font-weight: $font-weight-medium;   // 中等字体粗细
-      display: flex;                      // 弹性布局
-      align-items: center;                // 垂直居中
-      gap: map.get($spacers, 2);          // 元素间距
+      font-size: $font-size-base * 0.9; // 字体大小：基础字体的90%
+      font-weight: $font-weight-medium; // 中等字体粗细
+      display: flex; // 弹性布局
+      align-items: center; // 垂直居中
+      gap: map.get($spacers, 2); // 元素间距
 
       // 上涨状态
       &.up {
-        color: $stock-up-color;           // 股票上涨颜色
+        color: $stock-up-color; // 股票上涨颜色
       }
 
       // 下跌状态
       &.down {
-        color: $stock-down-color;         // 股票下跌颜色
+        color: $stock-down-color; // 股票下跌颜色
       }
 
       // 平盘状态
       &.flat {
-        color: $stock-flat-color;         // 股票平盘颜色
+        color: $stock-flat-color; // 股票平盘颜色
       }
 
       // 变化数值
       .change-value {
-        font-weight: $font-weight-semibold;  // 半粗体
+        font-weight: $font-weight-semibold; // 半粗体
       }
 
       // 变化百分比
       .change-percent {
-        font-size: $font-size-base * 0.95;  // 字体大小：基础字体的95%
+        font-size: $font-size-base * 0.95; // 字体大小：基础字体的95%
       }
     }
 
     // 卡片悬停效果
     &:hover {
-      transform: translateY(-2px);        // 上移2像素
-      box-shadow: $card-hover-shadow;     // 悬停阴影效果
+      transform: translateY(-2px); // 上移2像素
+      box-shadow: $card-hover-shadow; // 悬停阴影效果
     }
   }
 }
@@ -151,20 +151,20 @@
 .function-grid {
   // 应用灵活网格布局：默认3列，响应式断点配置，间隙大小
   @include mix.flexible-grid(3, (
-    'xl': 3,  // 超大屏幕：3列
-    'lg': 2,  // 大屏幕：2列
-    'md': 2,  // 中等屏幕：2列
-    'sm': 1   // 小屏幕：1列
-  ), map.get($spacers, 5));  // 主要间隙：使用spacers映射中的第5个值
+          'xl': 3, // 超大屏幕：3列
+          'lg': 2, // 大屏幕：2列
+          'md': 2, // 中等屏幕：2列
+          'sm': 1 // 小屏幕：1列
+  ), map.get($spacers, 5)); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap((
-    'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 4)),  // 大屏幕间隙配置
-    'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 3)),  // 中等屏幕间隙配置
-    'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))   // 小屏幕间隙配置
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 4)), // 大屏幕间隙配置
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 3)), // 中等屏幕间隙配置
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
 
-  margin-bottom: map.get($spacers, 6);  // 底部外边距：使用spacers映射中的第6个值
+  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
 
   // ============================================================================
   // 功能导航卡片样式优化 - 主要修改部分
@@ -172,62 +172,62 @@
 
   // 功能导航卡片样式
   .function-nav-card {
-    @include mix.function-card-base;     // 应用功能卡片基础样式混入
+    @include mix.function-card-base; // 应用功能卡片基础样式混入
 
 
     // 功能描述文字
     .function-description {
-      @include mix.text-secondary;                          // 应用次要文本样式混入
-      margin: 0 0 map.get($spacers, 1) 0;                  // 减少下边距
-      line-height: 1.2;                                    // 调整行高
-      font-size: $font-size-base * 0.9;                    // 稍微减小描述文字大小：基础字体的90%
+      @include mix.text-secondary; // 应用次要文本样式混入
+      margin: 0 0 map.get($spacers, 1) 0; // 减少下边距
+      line-height: 1.2; // 调整行高
+      font-size: $font-size-base * 0.9; // 稍微减小描述文字大小：基础字体的90%
     }
 
     // 统计项样式
     .stat-item {
-      padding: map.get($spacers, 0.5);                   // 减少内边距：使用spacers映射中的0.5个值
-      border-bottom: 1px solid rgba($border-color, 0.5);   // 底部边框（半透明）
-      display: flex;                                       // 弹性布局
-      justify-content: space-between;                      // 两端对齐
-      align-items: center;                                 // 垂直居中
-      color: $text-secondary;                              // 次要文字颜色
-      min-height: 24px;                                    // 最小高度：从28px减小到24px
+      padding: map.get($spacers, 0.5); // 减少内边距：使用spacers映射中的0.5个值
+      border-bottom: 1px solid rgba($border-color, 0.5); // 底部边框（半透明）
+      display: flex; // 弹性布局
+      justify-content: space-between; // 两端对齐
+      align-items: center; // 垂直居中
+      color: $text-secondary; // 次要文字颜色
+      min-height: 24px; // 最小高度：从28px减小到24px
 
       // 最后一个统计项
       &:last-child {
-        border-bottom: none;                               // 去除底部边框
+        border-bottom: none; // 去除底部边框
       }
 
       // 统计标签
       .stat-label {
-        font-size: $font-size-base * 0.9;                  // 稍微减小标签文字：基础字体的90%
-        color: $text-secondary;                            // 次要文字颜色
-        line-height: 1.2;                                  // 行高
+        font-size: $font-size-base * 0.9; // 稍微减小标签文字：基础字体的90%
+        color: $text-secondary; // 次要文字颜色
+        line-height: 1.2; // 行高
       }
 
       // 统计数值
       .stat-value {
-        font-size: $font-size-base * 0.9;                  // 稍微减小数值文字：基础字体的90%
-        font-weight: $font-weight-semibold;                // 半粗体
+        font-size: $font-size-base * 0.9; // 稍微减小数值文字：基础字体的90%
+        font-weight: $font-weight-semibold; // 半粗体
 
         // 股票上涨颜色标识
         &.up {
-          color: $stock-up-color;                          // 股票上涨颜色
+          color: $stock-up-color; // 股票上涨颜色
         }
 
         // 股票下跌颜色标识
         &.down {
-          color: $stock-down-color;                        // 股票下跌颜色
+          color: $stock-down-color; // 股票下跌颜色
         }
 
         // 股票平盘颜色标识
         &.flat {
-          color: $stock-flat-color;                        // 股票平盘颜色
+          color: $stock-flat-color; // 股票平盘颜色
         }
 
         // 默认颜色（用于非涨跌的统计值）
         &:not(.up):not(.down):not(.flat) {
-          color: $text-primary;                            // 主要文字颜色
+          color: $text-primary; // 主要文字颜色
         }
       }
     }
@@ -238,57 +238,57 @@
 .hotspot-grid {
   // 应用灵活网格布局：默认2列，响应式断点配置，间隙大小
   @include mix.flexible-grid(2, (
-    'lg': 1,  // 大屏幕：1列
-    'md': 1   // 中等屏幕：1列
-  ), map.get($spacers, 5));  // 主要间隙：使用spacers映射中的第5个值
+          'lg': 1, // 大屏幕：1列
+          'md': 1 // 中等屏幕：1列
+  ), map.get($spacers, 5)); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap((
-    'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)),  // 大屏幕间隙配置
-    'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)),  // 中等屏幕间隙配置
-    'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2))   // 小屏幕间隙配置
+          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)), // 大屏幕间隙配置
+          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
+          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
 
   // 侧边栏折叠状态下的网格调整
   .sidebar-collapsed & {
     @include mix.flexible-grid(2, (
-      'lg': 1,  // 大屏幕：1列
-      'md': 1,  // 中等屏幕：1列
-      'sm': 1   // 小屏幕：1列
-    ), map.get($spacers, 5));  // 主要间隙：使用spacers映射中的第5个值
+            'lg': 1, // 大屏幕：1列
+            'md': 1, // 中等屏幕：1列
+            'sm': 1 // 小屏幕：1列
+    ), map.get($spacers, 5)); // 主要间隙：使用spacers映射中的第5个值
   }
 
   // 热点卡片样式
   .hotspot-card {
-    @include mix.card-base;        // 应用卡片基础样式混入
-    height: 100%;                  // 高度100%
+    @include mix.card-base; // 应用卡片基础样式混入
+    height: 100%; // 高度100%
 
     // Element Plus卡片头部深度选择器
     :deep(.el-card__header) {
-      @include mix.card-header-base;  // 应用卡片头部基础样式混入
-      padding: map.get($spacers, 3);  // 内边距：使用spacers映射中的第4个值
+      @include mix.card-header-base; // 应用卡片头部基础样式混入
+      padding: map.get($spacers, 3); // 内边距：使用spacers映射中的第4个值
     }
 
     // 卡片头部
     .card-header {
-      display: flex;                      // 弹性布局
-      justify-content: space-between;     // 两端对齐
-      align-items: center;                // 垂直居中
-      width: 100%;                        // 宽度100%
+      display: flex; // 弹性布局
+      justify-content: space-between; // 两端对齐
+      align-items: center; // 垂直居中
+      width: 100%; // 宽度100%
 
       // 卡片标题
       .card-title {
-        font-size: $font-size-base * 1.1;     // 字体大小：基础字体的110%
-        font-weight: $font-weight-semibold;   // 半粗体
-        color: $text-primary;                 // 主要文字颜色
-        display: flex;                        // 弹性布局
-        align-items: center;                  // 垂直居中
-        gap: map.get($spacers, 2);            // 元素间距
+        font-size: $font-size-base * 1.1; // 字体大小：基础字体的110%
+        font-weight: $font-weight-semibold; // 半粗体
+        color: $text-primary; // 主要文字颜色
+        display: flex; // 弹性布局
+        align-items: center; // 垂直居中
+        gap: map.get($spacers, 2); // 元素间距
 
         // 卡片标题图标
         .card-title-icon {
-          font-size: $font-size-base * 1.2;   // 图标大小：基础字体的120%
-          color: $accent-color;               // 强调色
+          font-size: $font-size-base * 1.2; // 图标大小：基础字体的120%
+          color: $accent-color; // 强调色
         }
       }
     }
@@ -296,81 +296,81 @@
     // 热点列表和资金流向列表
     .hotspot-list,
     .money-flow-list {
-      padding: map.get($spacers, 1) 0;    // 垂直内边距
-      max-height: 280px;                  // 最大高度
-      overflow-y: auto;                   // 垂直滚动
-      @include mix.custom-scrollbar;      // 应用自定义滚动条混入
+      padding: map.get($spacers, 1) 0; // 垂直内边距
+      max-height: 280px; // 最大高度
+      overflow-y: auto; // 垂直滚动
+      @include mix.custom-scrollbar; // 应用自定义滚动条混入
     }
 
     // 热点项和流向项
     .hotspot-item,
     .flow-item {
-      display: flex;                      // 弹性布局
-      align-items: center;                // 垂直居中
-      padding: map.get($spacers, 2) map.get($spacers, 4);  // 内边距
-      border-bottom: 1px solid rgba($border-color, 0.5);   // 底部边框（半透明）
-      cursor: pointer;                    // 手型光标
-      transition: all $transition-fast;   // 快速过渡动画
-      position: relative;                 // 相对定位
-      min-height: 48px;                   // 最小高度
+      display: flex; // 弹性布局
+      align-items: center; // 垂直居中
+      padding: map.get($spacers, 2) map.get($spacers, 4); // 内边距
+      border-bottom: 1px solid rgba($border-color, 0.5); // 底部边框（半透明）
+      cursor: pointer; // 手型光标
+      transition: all $transition-fast; // 快速过渡动画
+      position: relative; // 相对定位
+      min-height: 48px; // 最小高度
 
       // 最后一项
       &:last-child {
-        border-bottom: none;              // 去除底部边框
+        border-bottom: none; // 去除底部边框
       }
 
       // 悬停状态
       &:hover {
-        background: $hover-bg;            // 悬停背景色
-        transform: translateX(4px);       // 右移4像素
+        background: $hover-bg; // 悬停背景色
+        transform: translateX(4px); // 右移4像素
       }
 
       // 图标容器
       .item-icon {
-        width: 24px;                      // 图标宽度
-        height: 24px;                     // 图标高度
-        border-radius: 50%;               // 圆形
-        display: flex;                    // 弹性布局
-        align-items: center;              // 垂直居中
-        justify-content: center;          // 水平居中
-        margin-right: map.get($spacers, 2);  // 右侧外边距
-        flex-shrink: 0;                   // 禁止收缩
+        width: 24px; // 图标宽度
+        height: 24px; // 图标高度
+        border-radius: 50%; // 圆形
+        display: flex; // 弹性布局
+        align-items: center; // 垂直居中
+        justify-content: center; // 水平居中
+        margin-right: map.get($spacers, 2); // 右侧外边距
+        flex-shrink: 0; // 禁止收缩
 
         // 趋势图标和流向图标
         .trend-icon,
         .flow-icon {
-          font-size: $font-size-base * 1.5;  // 图标大小：基础字体的150%
+          font-size: $font-size-base * 1.5; // 图标大小：基础字体的150%
 
           // 上涨图标
           &.up {
-            color: $stock-up-color;       // 股票上涨颜色
+            color: $stock-up-color; // 股票上涨颜色
           }
 
           // 下跌图标
           &.down {
-            color: $stock-down-color;     // 股票下跌颜色
+            color: $stock-down-color; // 股票下跌颜色
           }
         }
       }
 
       // 股票信息
       .stock-info {
-        flex: 1;                          // 弹性扩展
-        min-width: 0;                     // 最小宽度为0（允许收缩）
+        flex: 1; // 弹性扩展
+        min-width: 0; // 最小宽度为0（允许收缩）
 
         // 股票名称
         .stock-name {
-          font-size: $font-size-base * 0.9;   // 字体大小：基础字体的90%
-          font-weight: $font-weight-medium;   // 中等字体粗细
-          color: $text-primary;               // 主要文字颜色
-          margin-bottom: 2px;                 // 底部外边距
-          @include mix.text-ellipsis;         // 应用文本溢出省略号混入
+          font-size: $font-size-base * 0.9; // 字体大小：基础字体的90%
+          font-weight: $font-weight-medium; // 中等字体粗细
+          color: $text-primary; // 主要文字颜色
+          margin-bottom: 2px; // 底部外边距
+          @include mix.text-ellipsis; // 应用文本溢出省略号混入
         }
 
         // 股票代码
         .stock-code {
-          font-size: $font-size-base * 0.8;   // 字体大小：基础字体的80%
-          color: $text-secondary;             // 次要文字颜色
+          font-size: $font-size-base * 0.8; // 字体大小：基础字体的80%
+          color: $text-secondary; // 次要文字颜色
         }
       }
 
@@ -378,65 +378,65 @@
       .hotspot-change,
       .hotspot-price,
       .flow-amount {
-        font-size: $font-size-base * 0.9;     // 字体大小：基础字体的90%
-        font-weight: $font-weight-semibold;   // 半粗体
-        margin-left: map.get($spacers, 2);    // 左侧外边距
-        white-space: nowrap;                  // 不换行
+        font-size: $font-size-base * 0.9; // 字体大小：基础字体的90%
+        font-weight: $font-weight-semibold; // 半粗体
+        margin-left: map.get($spacers, 2); // 左侧外边距
+        white-space: nowrap; // 不换行
 
         // 上涨状态
         &.up {
-          color: $stock-up-color;             // 股票上涨颜色
+          color: $stock-up-color; // 股票上涨颜色
         }
 
         // 下跌状态
         &.down {
-          color: $stock-down-color;           // 股票下跌颜色
+          color: $stock-down-color; // 股票下跌颜色
         }
 
         // 平盘状态
         &.flat {
-          color: $stock-flat-color;           // 股票平盘颜色
+          color: $stock-flat-color; // 股票平盘颜色
         }
       }
 
       // 流向进度条
       .flow-bar {
-        flex: 1;                              // 弹性扩展
-        height: 6px;                          // 高度
-        background: $secondary-bg;            // 次要背景色
-        border-radius: 4px;                   // 圆角
-        overflow: hidden;                     // 隐藏溢出
-        margin: 0 map.get($spacers, 3);       // 水平外边距
-        position: relative;                   // 相对定位
+        flex: 1; // 弹性扩展
+        height: 6px; // 高度
+        background: $secondary-bg; // 次要背景色
+        border-radius: 4px; // 圆角
+        overflow: hidden; // 隐藏溢出
+        margin: 0 map.get($spacers, 3); // 水平外边距
+        position: relative; // 相对定位
 
         // 流向进度
         .flow-progress {
-          height: 100%;                       // 高度100%
-          border-radius: 4px;                 // 圆角
+          height: 100%; // 高度100%
+          border-radius: 4px; // 圆角
           transition: all $transition-normal; // 过渡动画
-          position: relative;                 // 相对定位
-          overflow: hidden;                   // 隐藏溢出
+          position: relative; // 相对定位
+          overflow: hidden; // 隐藏溢出
 
           // 资金流入样式
           &.inflow {
-            background: linear-gradient(90deg, $stock-up-color, lighten($stock-up-color, 20%));  // 上涨色渐变
+            background: linear-gradient(90deg, $stock-up-color, lighten($stock-up-color, 20%)); // 上涨色渐变
           }
 
           // 资金流出样式
           &.outflow {
-            background: linear-gradient(90deg, $stock-down-color, lighten($stock-down-color, 20%));  // 下跌色渐变
+            background: linear-gradient(90deg, $stock-down-color, lighten($stock-down-color, 20%)); // 下跌色渐变
           }
 
           // 流光效果
           &::after {
-            content: '';                      // 伪元素内容
-            position: absolute;               // 绝对定位
-            top: 0;                           // 顶部对齐
-            left: -100%;                      // 左侧起始位置
-            width: 100%;                      // 宽度100%
-            height: 100%;                     // 高度100%
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);  // 半透明白色渐变
-            animation: shimmer 2s infinite;   // 流光动画
+            content: ''; // 伪元素内容
+            position: absolute; // 绝对定位
+            top: 0; // 顶部对齐
+            left: -100%; // 左侧起始位置
+            width: 100%; // 宽度100%
+            height: 100%; // 高度100%
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent); // 半透明白色渐变
+            animation: shimmer 2s infinite; // 流光动画
           }
         }
       }
@@ -450,15 +450,15 @@
 
 // 指数概览区块
 .index-overview,
-// 功能导航区块
+  // 功能导航区块
 .function-nav,
-// 市场热点区块
+  // 市场热点区块
 .market-hotspots {
-  margin-bottom: map.get($spacers, 6);  // 底部外边距：使用spacers映射中的第6个值
+  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
 
   // 中等屏幕及以下响应式调整
   @include mix.media-breakpoint-down(md) {
-    margin-bottom: map.get($spacers, 4);  // 减少底部外边距：使用spacers映射中的第4个值
+    margin-bottom: map.get($spacers, 4); // 减少底部外边距：使用spacers映射中的第4个值
   }
 }
 
@@ -467,7 +467,7 @@
 // ============================================================================
 
 .common-page-header {
-  @include mix.page-header-base;  // 应用页面头部基础样式混入
+  @include mix.page-header-base; // 应用页面头部基础样式混入
 }
 
 // ============================================================================
@@ -475,9 +475,9 @@
 // ============================================================================
 
 .market-section-title {
-  @include mix.section-title-base;        // 应用区块标题基础样式混入
-  margin-bottom: map.get($spacers, 5);    // 底部外边距：使用spacers映射中的第5个值
-  max-width: 1600px;                      // 最大宽度限制
+  @include mix.section-title-base; // 应用区块标题基础样式混入
+  margin-bottom: map.get($spacers, 5); // 底部外边距：使用spacers映射中的第5个值
+  max-width: 1600px; // 最大宽度限制
 }
 
 // ============================================================================
@@ -489,16 +489,16 @@
   .market-page-header {
     // 头部内容区域
     .header-content {
-      flex-direction: column;                  // 垂直方向布局
-      gap: map.get($spacers, 4);               // 元素间距
-      text-align: center;                      // 文字居中
+      flex-direction: column; // 垂直方向布局
+      gap: map.get($spacers, 4); // 元素间距
+      text-align: center; // 文字居中
     }
 
     // 头部操作区域
     .header-actions {
-      width: 100%;                             // 宽度100%
-      justify-content: center;                 // 内容居中
-      margin-left: 0;                          // 重置左侧外边距
+      width: 100%; // 宽度100%
+      justify-content: center; // 内容居中
+      margin-left: 0; // 重置左侧外边距
     }
   }
 }
@@ -508,25 +508,25 @@
   .market-overview-page {
     // 主内容区域
     .main-content {
-      padding: map.get($spacers, 1);  // 调整内边距：使用spacers映射中的第4个值
+      padding: map.get($spacers, 1); // 调整内边距：使用spacers映射中的第4个值
     }
   }
 
   // 市场页面头部
   .market-page-header {
-    margin-bottom: map.get($spacers, 5);  // 底部外边距：使用spacers映射中的第5个值
-    padding: map.get($spacers, 4);        // 内边距：使用spacers映射中的第4个值
+    margin-bottom: map.get($spacers, 5); // 底部外边距：使用spacers映射中的第5个值
+    padding: map.get($spacers, 4); // 内边距：使用spacers映射中的第4个值
 
     // 页面标题
     .page-title {
-      font-size: $font-size-base * 1.5;  // 字体大小：基础字体的150%
+      font-size: $font-size-base * 1.5; // 字体大小：基础字体的150%
     }
   }
 
   // 市场区块标题
   .market-section-title {
-    font-size: $font-size-base * 1.1;          // 字体大小：基础字体的110%
-    margin-bottom: map.get($spacers, 4);       // 底部外边距：使用spacers映射中的第4个值
+    font-size: $font-size-base * 1.1; // 字体大小：基础字体的110%
+    margin-bottom: map.get($spacers, 4); // 底部外边距：使用spacers映射中的第4个值
   }
 }
 
@@ -535,35 +535,35 @@
   .market-overview-page {
     // 主内容区域
     .main-content {
-      padding: map.get($spacers, 3);  // 进一步调整内边距：使用spacers映射中的第3个值
+      padding: map.get($spacers, 3); // 进一步调整内边距：使用spacers映射中的第3个值
     }
   }
 
   // 市场页面头部
   .market-page-header {
-    padding: map.get($spacers, 3);        // 调整内边距：使用spacers映射中的第3个值
-    margin-bottom: map.get($spacers, 4);  // 底部外边距：使用spacers映射中的第4个值
+    padding: map.get($spacers, 3); // 调整内边距：使用spacers映射中的第3个值
+    margin-bottom: map.get($spacers, 4); // 底部外边距：使用spacers映射中的第4个值
 
     // 页面标题
     .page-title {
-      font-size: $font-size-base * 1.3;  // 字体大小：基础字体的130%
+      font-size: $font-size-base * 1.3; // 字体大小：基础字体的130%
     }
 
     // 头部操作区域
     .header-actions {
-      flex-direction: column;             // 垂直方向布局
-      gap: map.get($spacers, 2);          // 元素间距
+      flex-direction: column; // 垂直方向布局
+      gap: map.get($spacers, 2); // 元素间距
     }
   }
 
   // 热点项和流向项
   .hotspot-item,
   .flow-item {
-    padding: map.get($spacers, 3);  // 调整内边距：使用spacers映射中的第3个值
+    padding: map.get($spacers, 3); // 调整内边距：使用spacers映射中的第3个值
 
     // 流向进度条
     .flow-bar {
-      display: none;  // 隐藏流向进度条
+      display: none; // 隐藏流向进度条
     }
   }
 
@@ -571,7 +571,7 @@
   .market-index-grid,
   .function-grid,
   .hotspot-grid {
-    gap: map.get($spacers, 3) !important;  // 强制设置间隙：使用spacers映射中的第3个值
+    gap: map.get($spacers, 3) !important; // 强制设置间隙：使用spacers映射中的第3个值
   }
 }
 
@@ -580,7 +580,7 @@
 // ============================================================================
 
 .market-overview-page {
-  transition: all $transition-normal;  // 过渡动画
+  transition: all $transition-normal; // 过渡动画
 
   // 所有子元素继承过渡效果
   * {
@@ -595,9 +595,9 @@
 // 流光动画关键帧
 @keyframes shimmer {
   0% {
-    left: -100%;  // 起始位置：左侧-100%
+    left: -100%; // 起始位置：左侧-100%
   }
   100% {
-    left: 100%;   // 结束位置：右侧100%
+    left: 100%; // 结束位置：右侧100%
   }
 }

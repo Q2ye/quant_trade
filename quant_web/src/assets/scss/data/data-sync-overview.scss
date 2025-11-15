@@ -6,9 +6,7 @@
 @use 'sass:map'; // 导入Sass映射函数模块
 
 .data-sync-overview {
-  // 使用全局内容区域布局混入 - 控制页面整体布局和边距
-  @include mix.sidebar-layout-base;
-
+  @include mix.content-with-base;
   .main-content {
     @include mix.content-with-sidebar; // 应用带侧边栏的内容布局混入
     margin: 0 auto; // 水平居中

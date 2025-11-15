@@ -201,8 +201,6 @@ onMounted(() => {
 @use 'sass:map';
 
 .index-detail-page {
-  @include mixin.sidebar-layout-base;
-
   .main-content {
     @include mixin.content-with-sidebar;
     margin: 0 auto;
