@@ -124,9 +124,9 @@ $hover-transform: theme-animation("hover-transform") !default;
 // ============================================================================
 
 // 页面头部
-$page-header-padding: map.get($spacers, 3) map.get($spacers, 4) !default;
-$page-header-margin: 0 0 map.get($spacers, 4) 0 !default;
-$page-title-font-size: $font-size-base * 1.5 !default;
+$page-header-padding: map.get($spacers, 1) map.get($spacers, 3) !default;
+$page-header-margin: 0 0 map.get($spacers, 0) 0 !default;
+$page-title-font-size: $font-size-base * 1.3 !default;
 $page-description-font-size: $font-size-base * 0.8 !default;
 
 $sidebar-font-size: $font-size-base * 0.8 !default; // 缩小到80%

@@ -41,9 +41,6 @@
           'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
           'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
-
-  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
-
   // 市场指数卡片样式
   .market-index-card {
     @include mix.status-card-base(); // 应用状态卡片基础样式混入
@@ -93,7 +90,7 @@
 
     // 指数数值样式
     .index-value {
-      font-size: $font-size-base * 1.4; // 字体大小：基础字体的140%
+      font-size: $font-size-base * 1.2; // 字体大小：基础字体的140%
       font-weight: $font-weight-bold; // 粗体
       color: $text-primary; // 主要文字颜色
       margin-bottom: map.get($spacers, 2); // 底部外边距
@@ -164,7 +161,6 @@
           'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
 
-  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
 
   // ============================================================================
   // 功能导航卡片样式优化 - 主要修改部分
@@ -178,14 +174,14 @@
     // 功能描述文字
     .function-description {
       @include mix.text-secondary; // 应用次要文本样式混入
-      margin: 0 0 map.get($spacers, 1) 0; // 减少下边距
-      line-height: 1.2; // 调整行高
-      font-size: $font-size-base * 0.9; // 稍微减小描述文字大小：基础字体的90%
+      margin: 0 0 map.get($spacers, 2) 0; // 减少下边距
+      line-height: 1.0; // 调整行高
+      font-size: $font-size-base * 0.8; // 稍微减小描述文字大小：基础字体的90%
     }
 
     // 统计项样式
     .stat-item {
-      padding: map.get($spacers, 0.5); // 减少内边距：使用spacers映射中的0.5个值
+      padding: map.get($spacers, 0); // 减少内边距：使用spacers映射中的0.5个值
       border-bottom: 1px solid rgba($border-color, 0.5); // 底部边框（半透明）
       display: flex; // 弹性布局
       justify-content: space-between; // 两端对齐
@@ -454,12 +450,7 @@
 .function-nav,
   // 市场热点区块
 .market-hotspots {
-  margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
-
-  // 中等屏幕及以下响应式调整
-  @include mix.media-breakpoint-down(md) {
-    margin-bottom: map.get($spacers, 4); // 减少底部外边距：使用spacers映射中的第4个值
-  }
+  margin-top: map.get($spacers, 5); // 底部外边距：使用spacers映射中的第6个值
 }
 
 // ============================================================================
@@ -476,7 +467,7 @@
 
 .market-section-title {
   @include mix.section-title-base; // 应用区块标题基础样式混入
-  margin-bottom: map.get($spacers, 5); // 底部外边距：使用spacers映射中的第5个值
+  margin-bottom: map.get($spacers, 2); // 底部外边距：使用spacers映射中的第5个值
   max-width: 1600px; // 最大宽度限制
 }
 

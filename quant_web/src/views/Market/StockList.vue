@@ -480,12 +480,16 @@ onMounted(() => {
             </a-select>
 
             <!-- 操作按钮 -->
-            <a-button type="primary" @click="handleSearch" class="action-btn">
-              搜索
-            </a-button>
-            <a-button @click="handleReset" class="action-btn secondary">
-              重置
-            </a-button>
+            <div class="filter-actions">
+              <a-space :size="12">
+                <a-button type="primary" @click="handleSearch" class="action-btn">
+                  搜索
+                </a-button>
+                <a-button @click="handleReset" class="action-btn secondary">
+                  重置
+                </a-button>
+              </a-space>
+            </div>
           </a-space>
         </div>
 
@@ -514,283 +518,190 @@ onMounted(() => {
 @use '@/assets/scss/mixins' as mixin;
 @use '@/assets/scss/variables' as *;
 @use 'sass:map';
-@use 'sass:color' as lcolor ;
 
-// 股票列表页面主容器样式
+// ============================================================================
+// 股票列表页面主容器
+// ============================================================================
 .stock-list-page {
-  min-height: 100vh; // 最小高度为视口高度
-  background: $primary-bg; // 主背景色
-  transition: all $transition-normal; // 过渡动画
+  min-height: 100vh; // 设置最小高度为整个视口高度
+  background: $primary-bg; // 使用主背景色
+  transition: all $transition-normal; // 所有属性使用标准过渡时间
 
   .main-content-with-sidebar {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域样式
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
     margin: 0 auto; // 水平居中
   }
 }
 
-// 页面头部样式
+// ============================================================================
+// 页面头部样式 - 使用混入统一管理
+// ============================================================================
 .page-header {
-  @include mixin.page-header-base; // 应用页面头部基础样式
-  margin-bottom: map.get($spacers, 6); // 底部外边距
-
-  .page-title {
-    color: white !important; // 标题文字颜色（白色）
-  }
-
-  .page-description {
-    color: rgba(255, 255, 255, 0.9) !important; // 描述文字颜色（半透明白色）
-  }
+  @include mixin.page-header-base; // 应用页面头部基础样式混入
+  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
 }
 
-// 股票列表卡片样式
+// ============================================================================
+// 股票列表卡片 - 使用统一的卡片样式混入
+// ============================================================================
 .stock-list-card {
-  @include mixin.card-base; // 应用卡片基础样式
+  @include mixin.card-base; // 应用卡片基础样式混入
   margin-bottom: map.get($spacers, 4); // 底部外边距
   padding: map.get($spacers, 3); // 内边距
 
-  // 卡片标题颜色优化
   :deep(.ant-card-head) {
-    color: $text-primary !important; // 主要文字颜色
-    font-weight: $font-weight-semibold; // 半粗体
-    font-size: $font-size-base * 1.2; // 增大字体大小
+    font-weight: $font-weight-semibold; // 半粗体字重
+    font-size: $font-size-base * 1.2; // 字体大小为基准的1.2倍
   }
 
   .card-title-text {
-    color: $text-primary; // 主要文字颜色
-    font-weight: $font-weight-semibold; // 半粗体
-  }
-
-  // 筛选工具栏样式
-  .filter-bar {
-    margin-bottom: map.get($spacers, 4); // 底部外边距
-    padding: map.get($spacers, 3); // 内边距
-    background: $secondary-bg; // 次要背景色
-    border-radius: $border-radius; // 圆角
-    border: $border-width solid $border-color; // 边框
-  }
-
-  // 卡片悬停效果
-  &:hover {
-    transform: $hover-transform; // 悬停变换效果
-    box-shadow: $card-hover-shadow; // 悬停阴影效果
+    color: $text-primary; // 卡片标题文字颜色
+    font-weight: $font-weight-semibold; // 半粗体字重
   }
 }
 
-// 表格容器滚动条优化
-.stock-table-container {
-  max-height: 60vh; // 最大高度为视口高度的60%
-  overflow-y: auto; // 垂直方向溢出时显示滚动条
-  position: relative; // 相对定位
-  @include mixin.custom-scrollbar() // 应用自定义滚动条样式
-}
+// ============================================================================
+// 筛选工具栏 - 使用统一的渐变背景和边框
+// ============================================================================
+.filter-bar {
+  margin-bottom: map.get($spacers, 4); // 底部外边距
+  padding: map.get($spacers, 3); // 内边距
+  background: linear-gradient(135deg, rgba($accent-color, 0.08) 0%, rgba($accent-color, 0.03) 100%); // 135度渐变背景
+  border-radius: $border-radius; // 边框圆角
+  border: $border-width solid $border-color; // 边框样式
 
-// 操作按钮样式
-.action-btn {
-  border-radius: $border-radius; // 圆角
-  font-weight: $font-weight-medium; // 中等字重
-  transition: all $transition-fast; // 快速过渡动画
+  :deep(.ant-space) {
+    width: 100%; // 宽度100%
+    align-items: flex-start; // 子元素顶部对齐
 
-  // 次要按钮样式
-  &.secondary {
-    background: $secondary-bg; // 次要背景色
-    border: $border-width solid $border-color; // 边框样式
-    color: $text-primary; // 主要文字颜色
+    .filter-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
 
-    // 次要按钮悬停状态
-    &:hover {
-      background: $hover-bg; // 悬停背景色
-      border-color: $accent-color; // 强调色边框
-      color: $accent-color; // 强调色文字
+      .ant-space {
+        width: auto;
+        align-items: center;
+      }
     }
   }
+
+  // 将按钮放在右侧
+  :deep(.ant-space-item:last-child) {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+  }
+
+
 }
 
-// 导出按钮样式
+// ============================================================================
+// 按钮样式系统 - 使用统一的按钮混入
+// ============================================================================
+
+// 通用操作按钮
+.action-btn {
+  @include mixin.button-base; // 应用按钮基础样式混入
+}
+
+// 导出按钮 - 强调色变体
 .export-btn {
-  background: $accent-color; // 强调色背景
-  border: none; // 无边框
-  border-radius: $border-radius; // 圆角
-  font-weight: $font-weight-medium; // 中等字重
-  transition: all $transition-fast; // 快速过渡动画
+  @include mixin.button-base($accent-color, white); // 应用按钮基础样式，传入强调色背景和白色文字
   height: 28px; // 固定高度
-
-  // 导出按钮悬停效果
-  &:hover {
-    transform: $hover-transform; // 悬停变换
-    box-shadow: $card-hover-shadow; // 悬停阴影
-  }
 }
 
-// 返回按钮样式
+// 返回按钮 - 透明背景变体
 .back-btn {
-  background: rgba(255, 255, 255, 0.15); // 半透明白色背景
-  border: 1px solid rgba(255, 255, 255, 0.3); // 半透明白色边框
-  color: white; // 白色文字
-  border-radius: $border-radius; // 圆角
-  font-weight: $font-weight-medium; // 中等字重
-  transition: all $transition-fast; // 快速过渡动画
-  backdrop-filter: blur(10px); // 背景模糊效果
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); // 阴影效果
-  height: 32px; // 固定高度
-  display: flex; // 弹性布局
-  align-items: center; // 垂直居中
-
-  // 返回按钮悬停状态
-  &:hover {
-    background: rgba(255, 255, 255, 0.25); // 增加背景透明度
-    border-color: rgba(255, 255, 255, 0.5); // 增加边框透明度
-    color: white; // 保持白色文字
-    transform: $hover-transform; // 悬停变换
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); // 增强阴影
-  }
-
-  // 返回按钮激活状态
-  &:active {
-    transform: translateY(0); // 恢复原始位置
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); // 减小阴影
-  }
+  @include mixin.button-base(rgba(255, 255, 255, 0.15), white); // 半透明白色背景，白色文字
 }
 
-// 搜索框样式优化
+// ============================================================================
+// 表单元素样式系统 - 统一使用混入管理
+// ============================================================================
+
+// 搜索框样式
 .search-input {
-  width: 240px;
+  width: 240px; // 固定宽度
 
   :deep(.ant-input-affix-wrapper) {
-    background: $secondary-bg; // 改为次要背景色，更符合主题
-    border: $border-width solid $border-color;
-    color: $text-primary;
-    border-radius: $border-radius;
-    transition: border-color $transition-fast;
+    @include mixin.form-element-base;
+    background: $card-bg !important;
+    border: $border-width solid $border-color !important;
 
-    &:focus {
-      border-color: $accent-color;
-      box-shadow: 0 0 0 2px rgba($accent-color, 0.2);
+    .ant-input {
+      background: $card-bg !important;
+      color: $text-primary !important;
+      border: none !important;
+      box-shadow: none !important;
+
+      &::placeholder {
+        color: $text-secondary !important;
+        opacity: 0.7;
+      }
+
+      &:focus {
+        background: $card-bg !important;
+        box-shadow: none !important;
+      }
     }
 
-    &::placeholder {
-      color: $text-secondary; // 确保placeholder文字可见
+    &:hover, &:focus, &.ant-input-affix-wrapper-focused {
+      background: $card-bg !important;
+      border-color: $accent-color !important;
+      box-shadow: 0 0 0 2px rgba($accent-color, 0.2) !important;
     }
-  }
-
-  :deep(.ant-input-suffix) {
-    color: $text-secondary;
   }
 }
 
-// 下拉框样式优化
+// 筛选下拉框样式
 .filter-select {
-  @include mixin.filter-select(false, 140px);
+  @include mixin.filter-select(false, 140px); // 应用筛选选择器混入，不包含图标，宽度140px
 
-}
+  :deep(.ant-select-selector) {
+    @include mixin.form-element-base; // 应用表单元素基础样式混入
+  }
 
-// 股票表格样式
-.stock-table {
-  :deep(.ant-table) {
-    background: $card-bg; // 卡片背景色
-    border-radius: $border-radius; // 圆角
+  :deep(.ant-select-arrow) {
+    color: $text-secondary; // 下拉箭头颜色
+  }
 
-    // 表头样式
-    .ant-table-thead > tr > th {
-      background: $secondary-bg; // 次要背景色
-      color: $text-primary; // 主要文字颜色
-      font-weight: $font-weight-semibold; // 半粗体
-      border-bottom: 2px solid $border-color; // 底部边框
-      padding: map.get($spacers, 2); // 内边距
-      text-align: center; // 文字居中
-    }
+  :deep(.ant-select-clear) {
+    background: $card-bg; // 清除按钮背景色
+    color: $text-secondary; // 清除按钮颜色
+  }
 
-    // 表格行样式
-    .ant-table-tbody > tr {
-      background: $card-bg; // 卡片背景色
-      transition: background-color $transition-fast; // 背景色过渡
+  :deep(.ant-select-dropdown) {
+    background: $card-bg; // 下拉菜单背景色
+    border: $border-width solid $border-color; // 下拉菜单边框
+    border-radius: $border-radius; // 下拉菜单圆角
+    box-shadow: $card-hover-shadow; // 下拉菜单阴影
 
-      // 行悬停状态
-      &:hover > td {
-        background: $hover-bg !important; // 悬停背景色
-      }
+    .ant-select-item {
+      color: $text-primary; // 选项文字颜色
+      background: $card-bg; // 选项背景色
+      transition: background-color $transition-fast; // 背景色快速过渡
 
-      // 表格单元格样式
-      > td {
-        border-bottom: 1px solid $border-color; // 底部边框
-        color: $text-primary; // 主要文字颜色
-        padding: map.get($spacers, 2); // 内边距
-        text-align: center; // 文字居中
-      }
-    }
-
-    // 分页器样式
-    .ant-table-pagination {
-      margin: map.get($spacers, 4) 0 0 0; // 外边距
-      padding: map.get($spacers, 3) 0 0 0; // 内边距
-      border-top: 1px solid $border-color; // 顶部边框
-
-      // 分页项样式
-      .ant-pagination-item {
-        background: $secondary-bg; // 次要背景色
-        border: 1px solid $border-color; // 边框
-        border-radius: $border-radius-sm; // 小圆角
-
-        a {
-          color: $text-primary; // 主要文字颜色
-        }
-
-        // 激活状态分页项
-        &.ant-pagination-item-active {
-          background: $accent-color; // 强调色背景
-          border-color: $accent-color; // 强调色边框
-
-          a {
-            color: white; // 白色文字
-          }
-        }
-
-        // 分页项悬停状态
-        &:hover {
-          border-color: $accent-color; // 强调色边框
-        }
-      }
-
-      // 上一页/下一页按钮样式
-      .ant-pagination-prev,
-      .ant-pagination-next {
-        .ant-pagination-item-link {
-          background: $secondary-bg; // 次要背景色
-          border: 1px solid $border-color; // 边框
-          color: $text-primary; // 主要文字颜色
-          border-radius: $border-radius-sm; // 小圆角
-        }
-      }
-
-      // 禁用状态分页按钮
-      .ant-pagination-disabled {
-        .ant-pagination-item-link {
-          color: $text-secondary; // 次要文字颜色
-          background: $primary-bg; // 主背景色
-        }
-      }
-
-      // 跳转分页按钮样式
-      .ant-pagination-jump-prev,
-      .ant-pagination-jump-next {
-        .ant-pagination-item-container {
-          .ant-pagination-item-ellipsis {
-            color: $text-secondary; // 次要文字颜色
-          }
-        }
-      }
-    }
-
-    // 链接按钮样式
-    .ant-btn-link {
-      color: $text-secondary; // 次要文字颜色
-      transition: color $transition-fast; // 颜色过渡
-
-      // 链接按钮悬停状态
       &:hover {
-        color: $warning-color; // 警告色
+        background: $hover-bg; // 选项悬停背景色
       }
+
+      &.ant-select-item-option-selected {
+        background: rgba($accent-color, 0.1); // 选中选项背景色（半透明强调色）
+        color: $accent-color; // 选中选项文字颜色
+      }
+    }
+
+    .ant-empty-description {
+      color: $text-primary; // 空状态描述文字颜色
     }
   }
 }
 
+// ============================================================================
+// 表格样式系统 - 使用统一的表格基础样式
+// ============================================================================
+.stock-table {
+  @include mixin.table-base-styles;
+}
 </style>

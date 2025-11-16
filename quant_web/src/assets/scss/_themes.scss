@@ -55,7 +55,7 @@ $themes: (
                 "layout": (
                         "sidebar-width": 180px,
                         "sidebar-collapsed-width": 52px,
-                        "header-height": 50px,
+                        "header-height": 60px,
                         "content-padding": 0px,
                         "chart-height": 400px,
                         "button-height": 30px,
@@ -75,6 +75,8 @@ $themes: (
           // 间距系统
                 "spacing": (
                         "spacers": (
+                                0: 0rem, // 4px
+                                0.5: 0.125rem, // 4px
                                 1: 0.25rem, // 4px
                                 2: 0.5rem, // 8px
                                 3: 0.75rem, // 12px
@@ -150,7 +152,7 @@ $themes: (
                 "layout": (
                         "sidebar-width": 180px,
                         "sidebar-collapsed-width": 52px,
-                        "header-height": 50px,
+                        "header-height": 60px,
                         "content-padding": 0px,
                         "chart-height": 380px,
                         "button-height": 35px,
@@ -159,7 +161,7 @@ $themes: (
                 "typography": (
                         "font-family": "'Inter', 'Segoe UI', sans-serif",
                         "font-size-base": 14px,
-                        "sidebar-font-size": 13px, // 14 * 0.8
+                        "sidebar-font-size":  14 * 0.9px,
                         "sidebar-header-font-size": 10px, // 更小的导航标题
                         "sidebar-icon-size": 18px,
                         "font-weight-normal": 400,

@@ -211,10 +211,6 @@
   // ============================================================================
   // 智能滚动系统 - 统一处理滚动条隐藏
   // ============================================================================
-
-  // 基础滚动设置 - 隐藏滚动条但保留功能
-  overflow-y: auto;
-
   // 跨浏览器隐藏滚动条
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
@@ -488,13 +484,12 @@
   border-radius: $border-radius; // 圆角
   box-shadow: $card-shadow; // 阴影效果
   transition: all $transition-normal; // 过渡动画
-
   // 条件性启用悬停效果
   @if $hover {
     &:hover {
       box-shadow: $card-hover-shadow; // 悬停阴影
       border-color: $accent-color; // 悬停边框颜色
-      transform: $hover-transform; // 悬停变换效果
+      //transform: $hover-transform; // 悬停变换效果
     }
   }
 }
@@ -529,6 +524,19 @@
   &:hover:not(:disabled) {
     opacity: 0.9; // 透明度变化
     transform: $hover-transform; // 悬停变换效果
+  }
+
+    // 次要按钮变体
+  &.secondary {
+    background: $secondary-bg; // 次要背景色
+    border: $border-width solid $border-color; // 边框样式
+    color: $text-primary; // 主要文字颜色
+
+    &:hover {
+      background: $hover-bg; // 悬停背景色
+      border-color: $accent-color; // 强调色边框
+      color: $accent-color; // 强调色文字
+    }
   }
 }
 
@@ -762,7 +770,7 @@
 
         // 按钮文字
         .btn-text {
-          font-size: $font-size-base * 0.9; // 较小字体大小
+          font-size: $font-size-base * 0.8; // 较小字体大小
           display: flex; // 弹性布局
           align-items: center; // 垂直居中
           height: 100%; // 高度100%
@@ -950,7 +958,7 @@
 
     // 功能标题
     .function-title {
-      font-size: $font-size-base * 1.3; // 较大字体大小
+      font-size: $font-size-base *1.1; // 较大字体大小
       font-weight: $font-weight-semibold; // 半粗体
       color: $text-primary; // 主要文字颜色
       margin: 0; // 重置外边距
@@ -1012,7 +1020,7 @@
 
 /// 区块标题基础样式混入
 @mixin section-title-base {
-  font-size: $font-size-base * 1.3; // 较大字体大小
+  font-size: $font-size-base * 1.1; // 较大字体大小
   font-weight: $font-weight-semibold; // 半粗体
   color: $text-primary; // 主要文字颜色
   margin-bottom: map.get($spacers, 4); // 底部外边距
@@ -1031,6 +1039,7 @@
   padding: map.get($spacers, 2) map.get($spacers, 3); // 内边距
   background: $card-header-bg; // 背景色
   border-bottom: $border-width solid $border-color; // 底部边框
+  color: $text-primary !important; // 卡片头部文字颜色
 
   // 卡片标题
   .card-title {
@@ -1186,6 +1195,81 @@
       &:focus {
         background: $input-bg; // 聚焦时显示背景
         border-color: $accent-color; // 强调色边框
+      }
+    }
+  }
+}
+
+// ============================================================================
+// 表单元素混入
+// ============================================================================
+
+@mixin form-element-base {
+  background: $card-bg !important; // 卡片背景色，重要声明
+  border: $border-width solid $border-color; // 边框样式
+  border-radius: $border-radius; // 边框圆角
+  color: $text-primary; // 主要文字颜色
+  transition: border-color $transition-fast; // 边框颜色快速过渡
+
+  &:focus {
+    border-color: $accent-color; // 聚焦时边框颜色
+    box-shadow: 0 0 0 2px rgba($accent-color, 0.2); // 聚焦光晕效果
+  }
+}
+
+// ============================================================================
+// 表格基础样式混入
+// ============================================================================
+
+@mixin table-base-styles {
+  background: $card-bg; // 表格背景色
+  border-radius: $border-radius; // 表格圆角
+
+  :deep(.ant-table-thead > tr > th) {
+    background: $secondary-bg !important; // 表头背景色
+    color: $text-primary !important; // 表头文字颜色
+    font-weight: $font-weight-semibold; // 表头半粗体
+    border-bottom: 2px solid $border-color; // 表头底部边框
+    padding: map.get($spacers, 2); // 表头内边距
+    text-align: center; // 表头文字居中
+  }
+
+  :deep(.ant-table-tbody > tr) {
+    background: $card-bg; // 表格行背景色
+    transition: background-color $transition-fast; // 背景色快速过渡
+
+    &:hover > td {
+      background: $hover-bg !important; // 行悬停背景色
+    }
+
+    > td {
+      border-bottom: 1px solid $border-color; // 单元格底部边框
+      color: $text-primary; // 单元格文字颜色
+      padding: map.get($spacers, 2); // 单元格内边距
+      text-align: center; // 单元格文字居中
+    }
+  }
+
+  // 分页器背景
+  :deep(.ant-table-pagination) {
+    background: $card-bg !important;
+    border-top: 1px solid $border-color;
+
+    .ant-pagination-item {
+      background: $secondary-bg;
+      border: 1px solid $border-color;
+
+      a {
+        color: $text-primary;
+      }
+
+      &.ant-pagination-item-active {
+        background: $accent-color;
+        border-color: $accent-color;
+
+        a {
+          color: white;
+        }
       }
     }
   }

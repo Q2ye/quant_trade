@@ -166,44 +166,48 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <a-card title="ETF列表" :bordered="false">
-      <div class="filter-bar">
-        <a-space :size="16">
-          <a-input
-              v-model:value="filters.search"
-              placeholder="搜索ETF代码或名称"
-              style="width: 200px"
-              @press-enter="loadETFList"
-          >
-            <template #suffix>
-              <SearchOutlined/>
-            </template>
-          </a-input>
+    <div class="main-content-with-sidebar">
+      <a-card class="etf-list-card" title="ETF列表" :bordered="false">
+        <div class="filter-bar">
+          <a-space :size="16">
+            <a-input
+                v-model:value="filters.search"
+                placeholder="搜索ETF代码或名称"
+                style="width: 200px"
+                @press-enter="loadETFList"
+            >
+              <template #suffix>
+                <SearchOutlined/>
+              </template>
+            </a-input>
 
-          <a-select
-              v-model:value="filters.market"
-              placeholder="选择市场"
-              style="width: 120px"
-              allowClear
-              @change="loadETFList"
-          >
-            <a-select-option value="SH">上交所</a-select-option>
-            <a-select-option value="SZ">深交所</a-select-option>
-          </a-select>
+            <a-select
+                v-model:value="filters.market"
+                placeholder="选择市场"
+                style="width: 120px"
+                allowClear
+                @change="loadETFList"
+            >
+              <a-select-option value="SH">上交所</a-select-option>
+              <a-select-option value="SZ">深交所</a-select-option>
+            </a-select>
+            <div class="filter-actions">
+              <a-button type="primary" @click="loadETFList" class="action-btn">搜索</a-button>
+            </div>
+          </a-space>
+        </div>
 
-          <a-button type="primary" @click="loadETFList">搜索</a-button>
-        </a-space>
-      </div>
-
-      <a-table
-          :columns="columns"
-          :data-source="etfList"
-          :pagination="pagination"
-          :loading="loading"
-          row-key="ts_code"
-          @change="handleTableChange"
-      />
-    </a-card>
+        <a-table
+            class="etf-table"
+            :columns="columns"
+            :data-source="etfList"
+            :pagination="pagination"
+            :loading="loading"
+            row-key="ts_code"
+            @change="handleTableChange"
+        />
+      </a-card>
+    </div>
   </div>
 </template>
 <style scoped lang="scss">
@@ -212,9 +216,13 @@ onMounted(() => {
 @use 'sass:map';
 
 .etf-list-page {
-  .main-content {
-    @include mixin.content-with-sidebar;
-    margin: 0 auto;
+  min-height: 100vh; // 设置最小高度为整个视口高度
+  background: $primary-bg; // 使用主背景色
+  transition: all $transition-normal; // 所有属性使用标准过渡时间\
+
+  .main-content-with-sidebar {
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
+    margin: 0 auto; // 水平居中
   }
 }
 
@@ -225,7 +233,8 @@ onMounted(() => {
 
 .etf-list-card {
   @include mixin.card-base;
-  padding: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 4); // 底部外边距
+  padding: map.get($spacers, 3); // 内边距
 
   :deep(.ant-card-head) {
     @include mixin.card-header-base;
@@ -239,81 +248,51 @@ onMounted(() => {
   border: $border-width solid $border-color;
   padding: map.get($spacers, 3);
   margin-bottom: map.get($spacers, 3);
+
+  :deep(.ant-space) {
+    width: 100%; // 宽度100%
+    align-items: flex-start; // 子元素顶部对齐
+
+    .filter-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+
+      .ant-space {
+        width: auto;
+        align-items: center;
+      }
+    }
+  }
+
+  // 将按钮放在右侧
+  :deep(.ant-space-item:last-child) {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+  }
+}
+
+// 通用操作按钮
+.action-btn {
+  @include mixin.button-base; // 应用按钮基础样式混入
+}
+
+// 导出按钮 - 强调色变体
+.export-btn {
+  @include mixin.button-base($accent-color, white); // 应用按钮基础样式，传入强调色背景和白色文字
+  height: 28px; // 固定高度
 }
 
 .back-btn {
   @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(10px);
-
-  &:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
-  }
 }
 
-:deep(.ant-table) {
-  background: $card-bg;
-  color: $text-primary;
-
-  .ant-table-thead > tr > th {
-    background: $card-header-bg;
-    color: $text-primary;
-    border-bottom: $border-width solid $border-color;
-    font-weight: $font-weight-semibold;
-  }
-
-  .ant-table-tbody > tr {
-    background: $card-bg;
-    color: $text-primary;
-
-    &:hover > td {
-      background: $hover-bg;
-    }
-
-    > td {
-      border-bottom: $border-width solid $border-color;
-    }
-  }
+// ============================================================================
+// 表格样式系统 - 使用统一的表格基础样式
+// ============================================================================
+.etf-table {
+  @include mixin.table-base-styles;
 }
 
-// 响应式调整
-@include mixin.media-breakpoint-down(md) {
-  .etf-list-page .main-content {
-    padding: map.get($spacers, 4);
-  }
-
-  .page-header {
-    margin-bottom: map.get($spacers, 4);
-    padding: map.get($spacers, 4);
-
-    .page-title {
-      font-size: $font-size-base * 1.5;
-    }
-  }
-
-  .filter-bar {
-    padding: map.get($spacers, 2);
-  }
-}
-
-@include mixin.media-breakpoint-down(sm) {
-  .etf-list-page .main-content {
-    padding: map.get($spacers, 3);
-  }
-
-  .page-header {
-    padding: map.get($spacers, 3);
-    margin-bottom: map.get($spacers, 4);
-
-    .page-title {
-      font-size: $font-size-base * 1.3;
-    }
-
-    .header-actions {
-      flex-direction: column;
-      gap: map.get($spacers, 2);
-    }
-  }
-}
 </style>
