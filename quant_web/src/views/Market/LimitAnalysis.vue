@@ -3,7 +3,7 @@
 <template>
   <div class="limit-analysis-page">
     <!-- 页面标题区域 -->
-    <div class="page-header-with-sidebar">
+    <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">涨跌停分析</h1>
@@ -13,10 +13,6 @@
           <button class="refresh-btn" @click="refreshData" :disabled="loading">
             <Icon icon="ant-design:reload-outlined" class="refresh-icon" :class="{ refreshing: loading }"/>
             <span class="btn-text">{{ loading ? '刷新中...' : '刷新数据' }}</span>
-          </button>
-          <button class="export-btn" @click="exportData">
-            <Icon icon="ant-design:export-outlined"/>
-            <span class="btn-text">导出数据</span>
           </button>
           <button class="back-btn" @click="handleBack">
             <Icon icon="ant-design:arrow-left-outlined"/>
@@ -37,10 +33,10 @@
               <div class="filter-item">
                 <label class="filter-label">交易日期</label>
                 <input
-                  type="date"
-                  v-model="filterDate"
-                  class="filter-input"
-                  @change="handleDateChange"
+                    type="date"
+                    v-model="filterDate"
+                    class="filter-input"
+                    @change="handleDateChange"
                 />
               </div>
               <div class="filter-item">
@@ -76,6 +72,10 @@
                 <button class="search-btn" @click="searchData">
                   <Icon icon="mdi:magnify"/>
                   查询
+                </button>
+                <button class="export-btn" @click="exportData">
+                  <Icon icon="ant-design:export-outlined"/>
+                  <span class="btn-text">导出数据</span>
                 </button>
               </div>
             </div>
@@ -160,50 +160,50 @@
             <div v-if="viewMode === 'table'" class="table-container">
               <table class="data-table">
                 <thead>
-                  <tr>
-                    <th>股票代码</th>
-                    <th>收盘价</th>
-                    <th>涨停价</th>
-                    <th>跌停价</th>
-                    <th>状态</th>
-                    <th>连续天数</th>
-                    <th>涨停空间</th>
-                    <th>行业</th>
-                    <th>操作</th>
-                  </tr>
+                <tr>
+                  <th>股票代码</th>
+                  <th>收盘价</th>
+                  <th>涨停价</th>
+                  <th>跌停价</th>
+                  <th>状态</th>
+                  <th>连续天数</th>
+                  <th>涨停空间</th>
+                  <th>行业</th>
+                  <th>操作</th>
+                </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="stock in limitStocks" :key="stock.ts_code" class="table-row" @click="handleRowClick(stock)">
-                    <td class="stock-code">
-                      <div class="code">{{ stock.ts_code }}</div>
-                      <div class="name">{{ stock.name }}</div>
-                    </td>
-                    <td class="price">¥{{ stock.close?.toFixed(2) }}</td>
-                    <td class="price">¥{{ stock.up_limit?.toFixed(2) }}</td>
-                    <td class="price">¥{{ stock.down_limit?.toFixed(2) }}</td>
-                    <td>
+                <tr v-for="stock in limitStocks" :key="stock.ts_code" class="table-row" @click="handleRowClick(stock)">
+                  <td class="stock-code">
+                    <div class="code">{{ stock.ts_code }}</div>
+                    <div class="name">{{ stock.name }}</div>
+                  </td>
+                  <td class="price">¥{{ stock.close?.toFixed(2) }}</td>
+                  <td class="price">¥{{ stock.up_limit?.toFixed(2) }}</td>
+                  <td class="price">¥{{ stock.down_limit?.toFixed(2) }}</td>
+                  <td>
                       <span :class="['status-tag', getLimitTagClass(stock.limit_type)]">
                         {{ getLimitTypeText(stock.limit_type) }}
                       </span>
-                    </td>
-                    <td class="consecutive-days">
+                  </td>
+                  <td class="consecutive-days">
                       <span v-if="stock.consecutive_days > 1" class="consecutive-badge">
                         {{ stock.consecutive_days }}天
                       </span>
-                      <span v-else>-</span>
-                    </td>
-                    <td>
+                    <span v-else>-</span>
+                  </td>
+                  <td>
                       <span :class="getSpaceClass(stock.space_pct)">
                         {{ stock.space_pct?.toFixed(2) }}%
                       </span>
-                    </td>
-                    <td class="industry">{{ stock.industry }}</td>
-                    <td class="actions">
-                      <button class="detail-btn" @click.stop="viewStockDetail(stock)">
-                        详情
-                      </button>
-                    </td>
-                  </tr>
+                  </td>
+                  <td class="industry">{{ stock.industry }}</td>
+                  <td class="actions">
+                    <button class="detail-btn" @click.stop="viewStockDetail(stock)">
+                      详情
+                    </button>
+                  </td>
+                </tr>
                 </tbody>
               </table>
             </div>
@@ -220,9 +220,9 @@
             <div class="pagination-container">
               <div class="pagination">
                 <button
-                  class="pagination-btn"
-                  :disabled="pagination.currentPage === 1"
-                  @click="pagination.currentPage--"
+                    class="pagination-btn"
+                    :disabled="pagination.currentPage === 1"
+                    @click="pagination.currentPage--"
                 >
                   上一页
                 </button>
@@ -230,9 +230,9 @@
                   第 {{ pagination.currentPage }} 页，共 {{ Math.ceil(pagination.total / pagination.pageSize) }} 页
                 </span>
                 <button
-                  class="pagination-btn"
-                  :disabled="pagination.currentPage * pagination.pageSize >= pagination.total"
-                  @click="pagination.currentPage++"
+                    class="pagination-btn"
+                    :disabled="pagination.currentPage * pagination.pageSize >= pagination.total"
+                    @click="pagination.currentPage++"
                 >
                   下一页
                 </button>
@@ -246,9 +246,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { Icon } from '@iconify/vue'
+import {onMounted, reactive, ref} from 'vue'
+import {useRouter} from 'vue-router'
+import {Icon} from '@iconify/vue'
 
 const router = useRouter()
 
@@ -411,6 +411,20 @@ onMounted(() => {
 .limit-analysis-page {
   min-height: 100vh;
   background: $primary-bg;
+  transition: all $transition-normal; // 所有属性使用标准过渡时间
+  .main-content-with-sidebar {
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
+    margin: 0 auto; // 水平居中
+  }
+}
+
+
+// ============================================================================
+// 页面头部样式 - 使用混入统一管理
+// ============================================================================
+.page-header {
+  @include mixin.page-header-base; // 应用页面头部基础样式混入
+  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
 }
 
 // 筛选区域样式

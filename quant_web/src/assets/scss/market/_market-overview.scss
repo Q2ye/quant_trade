@@ -13,7 +13,7 @@
 // ============================================================================
 
 .market-overview-page {
-    @include mix.content-with-base;
+  @include mix.content-with-base;
   // 主内容区域使用全局带侧边栏的内容布局
   .main-content {
     @include mix.content-with-sidebar; // 应用带侧边栏的内容布局混入
@@ -69,12 +69,12 @@
       display: flex; // 弹性布局
       justify-content: space-between; // 两端对齐
       align-items: flex-start; // 顶部对齐
-      margin-bottom: map.get($spacers, 3); // 底部外边距
+      margin-bottom: map.get($spacers, 2); // 底部外边距
     }
 
     // 指数名称样式
     .index-name {
-      font-size: $font-size-base * 0.95; // 字体大小：基础字体的95%
+      font-size: $font-size-base * 0.85; // 字体大小：基础字体的95%
       color: $text-secondary; // 次要文字颜色
       font-weight: $font-weight-medium; // 中等字体粗细
     }
@@ -84,13 +84,13 @@
       font-size: $font-size-base * 0.8; // 字体大小：基础字体的80%
       color: $text-secondary; // 次要文字颜色
       background: $secondary-bg; // 次要背景色
-      padding: 4px 10px; // 内边距
+      padding: 3px 10px; // 内边距
       border-radius: $border-radius-sm; // 小圆角
     }
 
     // 指数数值样式
     .index-value {
-      font-size: $font-size-base * 1.2; // 字体大小：基础字体的140%
+      font-size: $font-size-base * 1.1; // 字体大小：基础字体的140%
       font-weight: $font-weight-bold; // 粗体
       color: $text-primary; // 主要文字颜色
       margin-bottom: map.get($spacers, 2); // 底部外边距
@@ -104,7 +104,7 @@
 
     // 指数涨跌变化样式
     .index-change {
-      font-size: $font-size-base * 0.9; // 字体大小：基础字体的90%
+      font-size: $font-size-base * 0.8; // 字体大小：基础字体的90%
       font-weight: $font-weight-medium; // 中等字体粗细
       display: flex; // 弹性布局
       align-items: center; // 垂直居中
@@ -147,7 +147,7 @@
 // 功能导航网格 - 自定义3列网格布局
 .function-grid {
   // 应用灵活网格布局：默认3列，响应式断点配置，间隙大小
-  @include mix.flexible-grid(3, (
+  @include mix.flexible-grid(4, (
           'xl': 3, // 超大屏幕：3列
           'lg': 2, // 大屏幕：2列
           'md': 2, // 中等屏幕：2列
@@ -196,14 +196,14 @@
 
       // 统计标签
       .stat-label {
-        font-size: $font-size-base * 0.9; // 稍微减小标签文字：基础字体的90%
+        font-size: $font-size-base * 0.8; // 稍微减小标签文字：基础字体的90%
         color: $text-secondary; // 次要文字颜色
         line-height: 1.2; // 行高
       }
 
       // 统计数值
       .stat-value {
-        font-size: $font-size-base * 0.9; // 稍微减小数值文字：基础字体的90%
+        font-size: $font-size-base * 0.8; // 稍微减小数值文字：基础字体的90%
         font-weight: $font-weight-semibold; // 半粗体
 
         // 股票上涨颜色标识
@@ -287,12 +287,44 @@
           color: $accent-color; // 强调色
         }
       }
+      .more-btn {
+        color: $accent-color;
+        font-size: $font-size-base;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+
+        // 悬停效果
+        &:hover {
+          color: $accent-color;
+          background-color: rgba(24, 144, 255, 0.1);
+          transform: translateX(2px);
+        }
+
+        // 激活状态
+        &:active {
+          color: $accent-color;
+          background-color: rgba(24, 144, 255, 0.2);
+          transform: translateX(0);
+        }
+
+        .n-icon {
+          margin-left: 4px;
+          font-size: 14px;
+          transition: transform 0.3s ease;
+        }
+
+        &:hover .n-icon {
+          transform: translateX(2px);
+        }
+      }
     }
 
     // 热点列表和资金流向列表
     .hotspot-list,
     .money-flow-list {
-      padding: map.get($spacers, 1) 0; // 垂直内边距
+      padding: map.get($spacers, 0) 0; // 垂直内边距
       max-height: 280px; // 最大高度
       overflow-y: auto; // 垂直滚动
       @include mix.custom-scrollbar; // 应用自定义滚动条混入
@@ -468,7 +500,6 @@
 .market-section-title {
   @include mix.section-title-base; // 应用区块标题基础样式混入
   margin-bottom: map.get($spacers, 2); // 底部外边距：使用spacers映射中的第5个值
-  max-width: 1600px; // 最大宽度限制
 }
 
 // ============================================================================

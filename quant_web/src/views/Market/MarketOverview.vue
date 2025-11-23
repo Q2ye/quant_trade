@@ -1,5 +1,5 @@
 <!--MarketOverview.vue-->
-<!--重构后的市场概览页面 - 基于交易系统主题实现-->
+<!--重构后的市场概览页面 - 基于交易系统主题实现，使用 Naive UI 组件库-->
 <!--移除了重复样式，统一使用主题样式系统-->
 <template>
   <div class="market-overview-page">
@@ -11,10 +11,14 @@
           <p class="page-description">实时监控市场指数、资金流向和热点板块，掌握市场动态</p>
         </div>
         <div class="header-actions">
-          <el-button class="refresh-btn" @click="refreshData">
-            <Icon icon="ant-design:reload-outlined"/>
+          <n-button class="refresh-btn" @click="refreshData">
+            <template #icon>
+              <n-icon>
+                <RefreshIcon/>
+              </n-icon>
+            </template>
             <span class="btn-text">刷新数据</span>
-          </el-button>
+          </n-button>
         </div>
       </div>
     </div>
@@ -24,11 +28,13 @@
       <!-- 市场指数概览 - 使用状态卡片布局 -->
       <div class="index-overview">
         <h2 class="market-section-title">
-          <Icon icon="mdi:chart-line" class="title-icon"/>
+          <n-icon class="title-icon">
+            <TrendingUpIcon/>
+          </n-icon>
           主要指数
         </h2>
         <div class="market-index-grid">
-          <el-card class="market-index-card" shadow="hover">
+          <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
                 <div class="index-name">上证指数</div>
@@ -36,7 +42,9 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shanghai)">
-                  <Icon icon="mdi:trending-up"/>
+                  <n-icon>
+                    <TrendingUpIcon/>
+                  </n-icon>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shanghai.close.toFixed(2) }}</div>
@@ -47,9 +55,9 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
-          <el-card class="market-index-card" shadow="hover">
+          <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
                 <div class="index-name">深证成指</div>
@@ -57,7 +65,9 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shenzhen)">
-                  <Icon icon="mdi:chart-areaspline"/>
+                  <n-icon>
+                    <AreaChartIcon/>
+                  </n-icon>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shenzhen.close.toFixed(2) }}</div>
@@ -68,9 +78,9 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
-          <el-card class="market-index-card" shadow="hover">
+          <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
                 <div class="index-name">创业板指</div>
@@ -78,7 +88,9 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.chuangye)">
-                  <Icon icon="mdi:rocket-launch"/>
+                  <n-icon>
+                    <RocketIcon/>
+                  </n-icon>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.chuangye.close.toFixed(2) }}</div>
@@ -89,9 +101,9 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
-          <el-card class="market-index-card" shadow="hover">
+          <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
                 <div class="index-name">科创50</div>
@@ -99,7 +111,9 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.kechuang50)">
-                  <Icon icon="mdi:chip"/>
+                  <n-icon>
+                    <ChipIcon/>
+                  </n-icon>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.kechuang50.close.toFixed(2) }}</div>
@@ -110,120 +124,62 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
         </div>
       </div>
 
       <!-- 功能导航卡片 - 使用核心功能网格布局 -->
       <div class="function-nav">
         <h2 class="market-section-title">
-          <Icon icon="mdi:apps" class="title-icon"/>
+          <n-icon class="title-icon">
+            <AppsIcon/>
+          </n-icon>
           功能导航
         </h2>
 
         <div class="function-grid">
-          <!-- 股票市场 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/stocks')">
+          <!-- 市场仪表盘 - 调整为与其他卡片一致的结构 -->
+          <n-card class="function-nav-card" hoverable @click="goToDashboard">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon accent">
-                  <Icon icon="mdi:chart-bar"/>
+                  <n-icon>
+                    <DashboardIcon/>
+                  </n-icon>
                 </div>
-                <h3 class="function-title">股票市场</h3>
+                <h3 class="function-title">市场仪表盘</h3>
               </div>
               <div class="function-info">
-                <p class="function-description">A股全市场股票行情数据</p>
+                <p class="function-description">股票/ETF/指数一站式分析</p>
                 <div class="function-stats">
                   <div class="stat-item">
-                    <span class="stat-label">上涨:</span>
-                    <span class="stat-value up">{{ stockStats.riseCount }}</span>
+                    <span class="stat-label">股票:</span>
+                    <span class="stat-value">{{ dashboardStats.stocks }}</span>
                   </div>
                   <div class="stat-item">
-                    <span class="stat-label">下跌:</span>
-                    <span class="stat-value down">{{ stockStats.fallCount }}</span>
+                    <span class="stat-label">ETF:</span>
+                    <span class="stat-value">{{ dashboardStats.etfs }}</span>
                   </div>
                   <div class="stat-item">
-                    <span class="stat-label">平盘:</span>
-                    <span class="stat-value flat">{{ stockStats.flatCount }}</span>
+                    <span class="stat-label">指数:</span>
+                    <span class="stat-value">{{ dashboardStats.indexes }}</span>
                   </div>
                 </div>
                 <div class="function-footer">
-                  <span class="update-time">更新: {{ stockStats.updateTime }}</span>
+                  <span class="update-time">统一视图分析</span>
                 </div>
               </div>
             </div>
-          </el-card>
-
-          <!-- ETF基金 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/etfs')">
-            <div class="function-content">
-              <div class="function-header">
-                <div class="function-icon success">
-                  <Icon icon="mdi:finance"/>
-                </div>
-                <h3 class="function-title">ETF基金</h3>
-              </div>
-              <div class="function-info">
-                <p class="function-description">交易所交易基金数据</p>
-                <div class="function-stats">
-                  <div class="stat-item">
-                    <span class="stat-label">股票ETF:</span>
-                    <span class="stat-value">{{ etfStats.stockETF }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">债券ETF:</span>
-                    <span class="stat-value">{{ etfStats.bondETF }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">商品ETF:</span>
-                    <span class="stat-value">{{ etfStats.commodityETF }}</span>
-                  </div>
-                </div>
-                <div class="function-footer">
-                  <span class="update-time">总规模: {{ etfStats.totalAmount }}亿</span>
-                </div>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 指数行情 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/indexes')">
-            <div class="function-content">
-              <div class="function-header">
-                <div class="function-icon warning">
-                  <Icon icon="mdi:chart-timeline"/>
-                </div>
-                <h3 class="function-title">指数行情</h3>
-              </div>
-              <div class="function-info">
-                <p class="function-description">主要市场指数表现</p>
-                <div class="function-stats">
-                  <div class="stat-item">
-                    <span class="stat-label">宽基指数:</span>
-                    <span class="stat-value">{{ indexStats.broadIndex }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">行业指数:</span>
-                    <span class="stat-value">{{ indexStats.industryIndex }}</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-label">策略指数:</span>
-                    <span class="stat-value">{{ indexStats.strategyIndex }}</span>
-                  </div>
-                </div>
-                <div class="function-footer">
-                  <span class="update-time">{{ indexStats.riseCount }}/{{ indexStats.totalCount }}上涨</span>
-                </div>
-              </div>
-            </div>
-          </el-card>
+          </n-card>
 
           <!-- 行业强弱 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/industry-strength')">
+          <n-card class="function-nav-card" hoverable @click="navigateTo('/market/industry-strength')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon purple">
-                  <Icon icon="mdi:chart-tree"/>
+                  <n-icon>
+                    <TreeChartIcon/>
+                  </n-icon>
                 </div>
                 <h3 class="function-title">行业强弱</h3>
               </div>
@@ -248,14 +204,16 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
           <!-- 资金流向 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/money-flow')">
+          <n-card class="function-nav-card" hoverable @click="navigateTo('/market/money-flow')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon info">
-                  <Icon icon="mdi:cash-multiple"/>
+                  <n-icon>
+                    <CashMultipleIcon/>
+                  </n-icon>
                 </div>
                 <h3 class="function-title">资金流向</h3>
               </div>
@@ -282,14 +240,16 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
           <!-- 涨跌停分析 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/market/limit-analysis')">
+          <n-card class="function-nav-card" hoverable @click="navigateTo('/market/limit-analysis')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon danger">
-                  <Icon icon="mdi:trending-up"/>
+                  <n-icon>
+                    <TrendingUpIcon/>
+                  </n-icon>
                 </div>
                 <h3 class="function-title">涨跌停分析</h3>
               </div>
@@ -314,39 +274,50 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
         </div>
       </div>
 
       <!-- 市场热点与实时数据 -->
       <div class="market-hotspots">
         <h2 class="market-section-title">
-          <Icon icon="mdi:fire" class="title-icon"/>
+          <n-icon class="title-icon">
+            <FireIcon/>
+          </n-icon>
           市场热点
         </h2>
         <div class="hotspot-grid">
           <!-- 实时涨幅榜卡片 -->
-          <el-card class="hotspot-card" shadow="never">
+          <n-card class="hotspot-card" :bordered="false">
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <Icon icon="mdi:trending-up" class="card-title-icon"/>
+                  <n-icon class="card-title-icon">
+                    <TrendingUpIcon/>
+                  </n-icon>
                   实时涨幅榜
                 </div>
-                <el-button type="text" @click="navigateTo('/market/stocks')">
+                <n-button text class="more-btn" @click="navigateTo('/market/stocks')">
                   查看更多
-                </el-button>
+                  <template #icon>
+                    <n-icon>
+                      <ArrowRightIcon/>
+                    </n-icon>
+                  </template>
+                </n-button>
               </div>
             </template>
             <div class="hotspot-list">
               <div
-                  v-for="(stock, index) in topRisingStocks"
+                  v-for="stock in topRisingStocks"
                   :key="stock.code"
                   class="hotspot-item"
                   @click="viewStockDetail(stock)"
               >
                 <div class="item-icon">
-                  <Icon icon="mdi:trending-up" class="trend-icon up"/>
+                  <n-icon class="trend-icon up">
+                    <TrendingUpIcon/>
+                  </n-icon>
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ stock.name }}</div>
@@ -360,19 +331,26 @@
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
 
           <!-- 资金流入榜卡片 -->
-          <el-card class="hotspot-card" shadow="never">
+          <n-card class="hotspot-card" :bordered="false">
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <Icon icon="mdi:cash-plus" class="card-title-icon"/>
+                  <n-icon class="card-title-icon">
+                    <CashPlusIcon/>
+                  </n-icon>
                   资金流入榜
                 </div>
-                <el-button type="text" @click="navigateTo('/market/money-flow')">
+                <n-button text class="more-btn" @click="navigateTo('/market/money-flow')">
                   查看更多
-                </el-button>
+                  <template #icon>
+                    <n-icon>
+                      <ArrowRightIcon/>
+                    </n-icon>
+                  </template>
+                </n-button>
               </div>
             </template>
             <div class="money-flow-list">
@@ -383,24 +361,30 @@
                   @click="viewStockDetail(flow)"
               >
                 <div class="item-icon">
-                  <Icon icon="mdi:cash-plus" class="flow-icon up"/>
+                  <n-icon class="flow-icon up">
+                    <CashPlusIcon/>
+                  </n-icon>
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ flow.name }}</div>
                   <div class="stock-code">{{ flow.code }}</div>
                 </div>
                 <div class="flow-bar">
-                  <div
-                      class="flow-progress inflow"
-                      :style="{ width: Math.min(flow.percentage, 100) + '%' }"
-                  ></div>
+                  <n-progress
+                      type="line"
+                      :percentage="Math.min(flow.percentage, 100)"
+                      :height="6"
+                      :border-radius="3"
+                      :show-indicator="false"
+                      status="success"
+                  />
                 </div>
                 <div class="flow-amount up">
                   +{{ formatAmount(flow.amount) }}
                 </div>
               </div>
             </div>
-          </el-card>
+          </n-card>
         </div>
       </div>
     </div>
@@ -410,43 +394,32 @@
 <script setup>
 import {onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {Icon} from '@iconify/vue'
-import {ElButton, ElMessage} from 'element-plus'
+import {NButton, NCard, NIcon, NProgress, useMessage} from 'naive-ui'
+
+// Naive UI 图标
+import {
+  AccountTreeRound as TreeChartIcon,
+  AppsRound as AppsIcon,
+  ArrowForwardRound as ArrowRightIcon,
+  AttachMoneyRound as CashMultipleIcon,
+  DashboardRound as DashboardIcon,
+  LocalFireDepartmentRound as FireIcon,
+  MemoryRound as ChipIcon,
+  PaymentsRound as CashPlusIcon,
+  RefreshRound as RefreshIcon,
+  RocketLaunchRound as RocketIcon,
+  ShowChartRound as AreaChartIcon,
+  TrendingUpRound as TrendingUpIcon
+} from '@vicons/material'
 
 const router = useRouter()
-
+const message = useMessage()
 // 响应式数据
 const indexData = ref({
   shanghai: {close: 3254.32, change: 12.45, pct_chg: 0.38},
   shenzhen: {close: 11982.15, change: -23.67, pct_chg: -0.20},
   chuangye: {close: 2572.89, change: 18.92, pct_chg: 0.74},
   kechuang50: {close: 1056.78, change: 8.34, pct_chg: 0.79}
-})
-
-// 股票市场统计数据
-const stockStats = ref({
-  totalCount: 4856,
-  riseCount: 2345,
-  fallCount: 1876,
-  flatCount: 635,
-  updateTime: '15:00'
-})
-
-// ETF基金统计数据
-const etfStats = ref({
-  stockETF: 456,
-  bondETF: 89,
-  commodityETF: 45,
-  totalAmount: 15678.90
-})
-
-// 指数行情统计数据
-const indexStats = ref({
-  broadIndex: 45,
-  industryIndex: 156,
-  strategyIndex: 33,
-  totalCount: 234,
-  riseCount: 156
 })
 
 // 行业强弱统计数据
@@ -491,10 +464,20 @@ const topMoneyFlow = ref([
   {code: '601888', name: '中国中免', amount: 56789, percentage: 58}
 ])
 
+// 仪表盘统计数据
+const dashboardStats = ref({
+  stocks: 4856,
+  etfs: 589,
+  indexes: 234
+})
 
 // 方法
 const navigateTo = (path) => {
   router.push(path)
+}
+
+const goToDashboard = () => {
+  router.push('/market/mkDashboard')
 }
 
 const viewStockDetail = (stock) => {
@@ -547,7 +530,8 @@ const formatAmount = (amount, showSign = false) => {
 const refreshData = () => {
   // 模拟数据刷新
   simulateDataUpdate()
-  ElMessage.success('数据已刷新')
+  // 使用简单的控制台日志代替消息提示
+  message.success('数据已刷新')
 }
 
 // 模拟数据更新
@@ -563,9 +547,7 @@ const simulateDataUpdate = () => {
 
   // 更新时间戳
   const now = new Date()
-  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-  stockStats.value.updateTime = timeStr
-  moneyFlowStats.value.updateTime = timeStr
+  moneyFlowStats.value.updateTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
 }
 
 // 生命周期钩子
@@ -573,39 +555,9 @@ onMounted(() => {
   // 初始加载时刷新数据
   refreshData()
 })
-
 </script>
 
 <style lang="scss" scoped>
-// 市场概览页面专用样式 - 基于交易系统主题实现
-// 主要使用主题变量和混入，仅定义组件特有样式
-
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as lmix;
-@use 'sass:map';
-
 // 引入市场概览专用样式
 @use '@/assets/scss/market/market-overview';
-
-// ============================================================================
-// 组件特有响应式调整
-// 仅保留无法通过全局样式覆盖的特殊调整
-// ============================================================================
-
-@include lmix.media-breakpoint-down(sm) {
-  // 移动端隐藏股票代码 - 组件特有调整
-  .hotspot-item,
-  .flow-item {
-    .stock-code {
-      display: none;
-    }
-  }
-
-  // 移动端简化资金流向显示 - 组件特有调整
-  .flow-item {
-    .flow-bar {
-      display: none;
-    }
-  }
-}
 </style>

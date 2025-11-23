@@ -3,7 +3,7 @@
 <template>
   <div class="money-flow-page">
     <!-- 页面标题区域 -->
-    <div class="page-header-with-sidebar">
+    <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">资金流向分析</h1>
@@ -13,10 +13,10 @@
           <!-- 时间周期选择 -->
           <div class="period-selector">
             <button
-              v-for="period in periodOptions"
-              :key="period.value"
-              :class="['period-btn', { active: activePeriod === period.value }]"
-              @click="activePeriod = period.value"
+                v-for="period in periodOptions"
+                :key="period.value"
+                :class="['period-btn', { active: activePeriod === period.value }]"
+                @click="activePeriod = period.value"
             >
               {{ period.label }}
             </button>
@@ -122,10 +122,10 @@
               <div class="chart-controls">
                 <div class="chart-type-selector">
                   <button
-                    v-for="type in chartTypeOptions"
-                    :key="type.value"
-                    :class="['chart-type-btn', { active: chartType === type.value }]"
-                    @click="chartType = type.value"
+                      v-for="type in chartTypeOptions"
+                      :key="type.value"
+                      :class="['chart-type-btn', { active: chartType === type.value }]"
+                      @click="chartType = type.value"
                   >
                     {{ type.label }}
                   </button>
@@ -169,19 +169,19 @@
               <div class="search-box">
                 <Icon icon="mdi:magnify" class="search-icon"/>
                 <input
-                  v-model="searchQuery"
-                  type="text"
-                  placeholder="搜索股票代码或名称"
-                  class="search-input"
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="搜索股票代码或名称"
+                    class="search-input"
                 />
               </div>
               <!-- 行业筛选 -->
               <select v-model="filterIndustry" class="filter-select">
                 <option value="">全部行业</option>
                 <option
-                  v-for="industry in industries"
-                  :key="industry"
-                  :value="industry"
+                    v-for="industry in industries"
+                    :key="industry"
+                    :value="industry"
                 >
                   {{ industry }}
                 </option>
@@ -193,66 +193,66 @@
             <div class="table-container">
               <table class="data-table">
                 <thead>
-                  <tr>
-                    <th>代码</th>
-                    <th>名称</th>
-                    <th>行业</th>
-                    <th>主力净流入(万)</th>
-                    <th>散户净流入(万)</th>
-                    <th>总净流入(万)</th>
-                    <th>净流入率</th>
-                    <th>成交额(万)</th>
-                    <th>操作</th>
-                  </tr>
+                <tr>
+                  <th>代码</th>
+                  <th>名称</th>
+                  <th>行业</th>
+                  <th>主力净流入(万)</th>
+                  <th>散户净流入(万)</th>
+                  <th>总净流入(万)</th>
+                  <th>净流入率</th>
+                  <th>成交额(万)</th>
+                  <th>操作</th>
+                </tr>
                 </thead>
                 <tbody>
-                  <tr
+                <tr
                     v-for="item in filteredFlowData"
                     :key="item.code"
                     class="table-row"
-                  >
-                    <td class="code-cell">
-                      <div class="code">{{ item.code }}</div>
-                      <span :class="['exchange-tag', getExchangeClass(item.exchange)]">
+                >
+                  <td class="code-cell">
+                    <div class="code">{{ item.code }}</div>
+                    <span :class="['exchange-tag', getExchangeClass(item.exchange)]">
                         {{ getExchangeText(item.exchange) }}
                       </span>
-                    </td>
-                    <td class="name-cell">
-                      <span class="name">{{ item.name }}</span>
-                      <span v-if="item.is_st" class="st-tag">ST</span>
-                    </td>
-                    <td>
-                      <span class="industry-tag">{{ item.industry }}</span>
-                    </td>
-                    <td class="amount-cell">
+                  </td>
+                  <td class="name-cell">
+                    <span class="name">{{ item.name }}</span>
+                    <span v-if="item.is_st" class="st-tag">ST</span>
+                  </td>
+                  <td>
+                    <span class="industry-tag">{{ item.industry }}</span>
+                  </td>
+                  <td class="amount-cell">
                       <span :class="getFlowClass(item.mainInflow)">
                         {{ formatAmount(item.mainInflow, true) }}
                       </span>
-                    </td>
-                    <td class="amount-cell">
+                  </td>
+                  <td class="amount-cell">
                       <span :class="getFlowClass(item.retailInflow)">
                         {{ formatAmount(item.retailInflow, true) }}
                       </span>
-                    </td>
-                    <td class="amount-cell">
+                  </td>
+                  <td class="amount-cell">
                       <span :class="getFlowClass(item.totalInflow)">
                         {{ formatAmount(item.totalInflow, true) }}
                       </span>
-                    </td>
-                    <td class="rate-cell">
+                  </td>
+                  <td class="rate-cell">
                       <span :class="getFlowClass(item.inflowRate)">
                         {{ item.inflowRate > 0 ? '+' : '' }}{{ item.inflowRate.toFixed(2) }}%
                       </span>
-                    </td>
-                    <td class="amount-cell">
-                      {{ formatAmount(item.turnover) }}
-                    </td>
-                    <td class="action-cell">
-                      <button class="detail-btn" @click="viewStockDetail(item)">
-                        详情
-                      </button>
-                    </td>
-                  </tr>
+                  </td>
+                  <td class="amount-cell">
+                    {{ formatAmount(item.turnover) }}
+                  </td>
+                  <td class="action-cell">
+                    <button class="detail-btn" @click="viewStockDetail(item)">
+                      详情
+                    </button>
+                  </td>
+                </tr>
                 </tbody>
               </table>
             </div>
@@ -267,9 +267,9 @@
             <div class="pagination-container">
               <div class="pagination">
                 <button
-                  class="pagination-btn"
-                  :disabled="currentPage === 1"
-                  @click="currentPage--"
+                    class="pagination-btn"
+                    :disabled="currentPage === 1"
+                    @click="currentPage--"
                 >
                   上一页
                 </button>
@@ -277,9 +277,9 @@
                   第 {{ currentPage }} 页，共 {{ Math.ceil(totalCount / pageSize) }} 页
                 </span>
                 <button
-                  class="pagination-btn"
-                  :disabled="currentPage * pageSize >= totalCount"
-                  @click="currentPage++"
+                    class="pagination-btn"
+                    :disabled="currentPage * pageSize >= totalCount"
+                    @click="currentPage++"
                 >
                   下一页
                 </button>
@@ -293,9 +293,9 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { Icon } from '@iconify/vue'
+import {computed, onMounted, ref} from 'vue'
+import {useRouter} from 'vue-router'
+import {Icon} from '@iconify/vue'
 
 const router = useRouter()
 
@@ -311,15 +311,15 @@ const totalCount = ref(0)
 
 // 时间周期选项
 const periodOptions = [
-  { label: '今日', value: 'today' },
-  { label: '5日', value: '5d' },
-  { label: '10日', value: '10d' }
+  {label: '今日', value: 'today'},
+  {label: '5日', value: '5d'},
+  {label: '10日', value: '10d'}
 ]
 
 // 图表类型选项
 const chartTypeOptions = [
-  { label: '折线图', value: 'line' },
-  { label: '柱状图', value: 'bar' }
+  {label: '折线图', value: 'line'},
+  {label: '柱状图', value: 'bar'}
 ]
 
 // 资金流向数据
@@ -384,8 +384,8 @@ const filteredFlowData = computed(() => {
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(item =>
-      item.code.toLowerCase().includes(query) ||
-      item.name.toLowerCase().includes(query)
+        item.code.toLowerCase().includes(query) ||
+        item.name.toLowerCase().includes(query)
     )
   }
 
@@ -478,17 +478,31 @@ onMounted(() => {
 .money-flow-page {
   min-height: 100vh;
   background: $primary-bg;
+  transition: all $transition-normal; // 所有属性使用标准过渡时间
+
+  .main-content-with-sidebar {
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
+    margin: 0 auto; // 水平居中
+  }
+}
+
+// ============================================================================
+// 页面头部样式 - 使用混入统一管理
+// ============================================================================
+.page-header {
+  @include mixin.page-header-base; // 应用页面头部基础样式混入
+  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
 }
 
 // 时间周期选择器
 .period-selector {
   display: flex;
-   background: $secondary-bg;
+  background: $secondary-bg;
   border-radius: $border-radius;
   padding: 2px;
 
   .period-btn {
-   @include mixin.button-base(transparent, $text-primary);
+    @include mixin.button-base(transparent, $text-primary);
     padding: map.get($spacers, 1) map.get($spacers, 2);
     border-radius: calc($border-radius - 2px);
     font-size: calc($font-size-base - 2px);

@@ -22,11 +22,21 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'market', layout: 'main', title: '市场概览'}
     },
     {
+        path: '/market/mkDashboard',
+        name: 'MarketDashboard',
+        component: () => import('@/views/Market/MarketDashboard.vue'),
+        meta: {
+            title: '市场仪表盘',
+            requiresAuth: true
+        }
+    },
+    {
         path: '/market/stocks',
         name: 'StockList',
         component: () => import('@/views/Market/StockList.vue'),
         meta: {menu: 'market', layout: 'main', title: '股票列表'}
     },
+
     {
         path: '/market/stock/:code',
         name: 'StockDetail',

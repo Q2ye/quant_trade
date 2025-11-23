@@ -123,9 +123,9 @@ export default {
   min-height: 0;
   /* 关键：精确计算可用高度，减去头部和底部 */
   height: calc(100vh - var(--header-height) - var(--footer-height));
+
 }
 
-/* 工作区主内容区域 */
 /* 工作区主内容区域 */
 .workspace {
   width: calc(100% - #{theme-layout("sidebar-width")});
@@ -145,7 +145,7 @@ export default {
     /* 确保内部内容适应容器 */
     display: flex;
     flex-direction: column;
-
+    margin-bottom: map.get($spacers, 3); // 底部外边距
     /* 如果内部需要滚动，在特定容器设置 */
     > * {
       flex: 1;

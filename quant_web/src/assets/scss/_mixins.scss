@@ -623,7 +623,7 @@
 /// 次要文本样式混入
 @mixin text-secondary {
   color: $text-secondary; // 次要文字颜色
-  font-size: $font-size-base * 0.9; // 较小字体大小
+  font-size: $font-size-base * 0.85; // 较小字体大小
 }
 
 // ============================================================================
@@ -740,19 +740,20 @@
       height: 100%; // 高度100%
 
       // 刷新按钮
-      .refresh-btn {
+         :deep(.back-btn),
+      :deep(.refresh-btn)  {
         background: rgba(255, 255, 255, 0.15); // 半透明背景
         border: 1px solid rgba(255, 255, 255, 0.3); // 半透明边框
         color: white; // 文字颜色
-        padding: map.get($spacers, 2) map.get($spacers, 3); // 内边距
+        padding: map.get($spacers, 1) map.get($spacers, 2); // 内边距
         border-radius: $border-radius; // 圆角
         font-weight: $font-weight-medium; // 字体粗细
         transition: all $transition-normal; // 过渡动画
         display: flex; // 弹性布局
         align-items: center; // 垂直居中
-        gap: map.get($spacers, 1); // 图标与文字间距
-        min-height: $button-height; // 最小高度
+        gap: map.get($spacers, 0); // 图标与文字间距
         white-space: nowrap; // 不换行
+        height: $button-height; // 高度
 
         // 按钮悬停状态
         &:hover {
@@ -778,7 +779,7 @@
 
         // 刷新图标
         .refresh-icon {
-          font-size: $font-size-base * 1.1; // 较大图标大小
+          font-size: $font-size-base; // 较大图标大小
           transition: transform $transition-normal; // 变换过渡
         }
 
@@ -815,7 +816,7 @@
     .status-icon {
       width: $status-icon-size; // 图标宽度
       height: $status-icon-size; // 图标高度
-      font-size: $font-size-base * 1.5; // 图标大小
+      font-size: $font-size-base * 1.3; // 图标大小
       margin-right: map.get($spacers, 5); // 右侧外边距
     }
 
@@ -893,7 +894,7 @@
 /// 功能卡片基础样式混入
 @mixin function-card-base {
   @include card-base; // 应用卡片基础样式
-  padding: map.get($spacers, 1); // 内边距
+  padding: map.get($spacers, 0); // 内边距
   display: flex; // 弹性布局
   flex-direction: column; // 垂直方向
   cursor: pointer; // 手型光标
@@ -904,7 +905,7 @@
   .function-content {
     display: flex; // 弹性布局
     align-items: flex-start; // 顶部对齐
-    gap: map.get($spacers, 1); // 元素间距
+    gap: map.get($spacers, 0.5); // 元素间距
     flex-direction: column;
 
     // 侧边栏折叠状态下的调整
@@ -917,10 +918,10 @@
   .function-header {
     display: flex; // 弹性布局
     align-items: center; // 垂直居中
-    gap: map.get($spacers, 2); // 元素间距
+    gap: map.get($spacers, 0.5); // 元素间距
     // 功能图标
     .function-icon {
-      font-size: $function-icon-size * 0.9; // 图标大小
+      font-size: $function-icon-size * 0.8; // 图标大小
       flex-shrink: 0; // 禁止收缩
       opacity: 0.8; // 透明度
       margin-right: map.get($spacers, 2); // 右侧外边距
@@ -958,7 +959,7 @@
 
     // 功能标题
     .function-title {
-      font-size: $font-size-base *1.1; // 较大字体大小
+      font-size: $font-size-base * 1.2; // 较大字体大小
       font-weight: $font-weight-semibold; // 半粗体
       color: $text-primary; // 主要文字颜色
       margin: 0; // 重置外边距
@@ -972,11 +973,11 @@
     flex: 1; // 弹性扩展
     display: flex; // 弹性布局
     flex-direction: column; // 垂直方向
-    margin-left: calc(#{$function-icon-size * 0.9} + #{map.get($spacers, 4)});
-    width: calc(100% - 2 * (#{$function-icon-size} + #{map.get($spacers, 4)}));
+    margin-left: map.get($spacers, 4) * 2.55;
+    width: calc(100% - 2 * (#{$function-icon-size} + #{map.get($spacers, 1)}));
     // 标题
     h3 {
-      font-size: $font-size-base * 1.13; // 标题字体大小
+      font-size: $font-size-base * 1.2; // 标题字体大小
       font-weight: $font-weight-semibold; // 半粗体
       color: $text-primary; // 主要文字颜色
       margin: 0 0 map.get($spacers, 1) 0; // 底部外边距
@@ -986,8 +987,8 @@
     // 描述文字
     p {
       @include text-secondary; // 应用次要文本样式
-      margin: 0 0 map.get($spacers, 2) 0; // 底部外边距
-      line-height: 1.2; // 行高
+      margin: 0 0 map.get($spacers, 3) 0; // 底部外边距
+      line-height: 1.0; // 行高
     }
 
     // 功能统计区域
@@ -1232,14 +1233,26 @@
     border-bottom: 2px solid $border-color; // 表头底部边框
     padding: map.get($spacers, 2); // 表头内边距
     text-align: center; // 表头文字居中
+    gap: map.get($spacers, 2); // 设置图标和文字间距
+    .header-icon {
+      color: $accent-color; // 强调色图标
+      font-size: $font-size-base * 1.1; // 稍大的图标尺寸
+    }
   }
 
   :deep(.ant-table-tbody > tr) {
     background: $card-bg; // 表格行背景色
     transition: background-color $transition-fast; // 背景色快速过渡
+    color: $text-primary; // 行文字颜色
 
     &:hover > td {
       background: $hover-bg !important; // 行悬停背景色
+      //cursor: pointer; // 显示手型光标表示可交互
+    }
+
+    // 隔行变色效果 - 增强可读性
+    &:nth-child(even) > td {
+      background: rgba($secondary-bg, 0.3); // 偶数行使用轻微的背景色
     }
 
     > td {

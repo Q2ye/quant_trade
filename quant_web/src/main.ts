@@ -11,7 +11,18 @@ import * as echarts from 'echarts';
 import Antd from 'ant-design-vue';
 import { Icon } from '@iconify/vue';
 
+// 引入 Naive UI
+import {
+  // 全局组件
+  NConfigProvider,
+  NMessageProvider,
+  NDialogProvider,
+  NNotificationProvider,
+  NLoadingBarProvider,
 
+  // 工具函数
+  createDiscreteApi
+} from 'naive-ui';
 
 // 注册全局指令
 import resize from './directives/resize';
@@ -23,6 +34,17 @@ app.component('Icon', Icon);
 
 // 设置全局属性
 app.config.globalProperties.$echarts = echarts;
+
+// 创建 Naive UI 离散 API 实例（用于在非 setup 上下文中使用）
+const { message, notification, dialog, loadingBar } = createDiscreteApi(
+  ['message', 'dialog', 'notification', 'loadingBar']
+);
+
+// 设置为全局属性，以便在任何地方使用
+app.config.globalProperties.$naiveMessage = message;
+app.config.globalProperties.$naiveNotification = notification;
+app.config.globalProperties.$naiveDialog = dialog;
+app.config.globalProperties.$naiveLoadingBar = loadingBar;
 
 // 使用插件
 app.use(store);

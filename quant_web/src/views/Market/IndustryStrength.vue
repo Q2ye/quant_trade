@@ -1,9 +1,8 @@
-<!-- IndustryStrength.vue - 行业强弱分析页面 -->
-<!-- 基于全局主题样式系统重构，统一使用主题变量和混入 -->
+<!-- IndustryStrength.vue - 修复后的行业强弱分析页面 -->
 <template>
   <div class="industry-strength-page">
-    <!-- 页面标题区域 - 使用全局页面头部样式 -->
-    <div class="page-header-with-sidebar">
+    <!-- 页面标题区域 -->
+    <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">行业强弱分析</h1>
@@ -31,61 +30,38 @@
             <Icon icon="mdi:trending-up" class="card-title-icon"/>
             行业强弱排名
           </h3>
+          <!-- 数据统计信息 -->
+          <div class="card-stats" v-if="!loading && industries.length > 0">
+            <span class="stat-item">
+              共 <strong>{{ industries.length }}</strong> 个行业
+            </span>
+            <span class="stat-item">
+              强势行业: <strong class="up">{{ strongIndustriesCount }}</strong>
+            </span>
+            <span class="stat-item">
+              弱势行业: <strong class="down">{{ weakIndustriesCount }}</strong>
+            </span>
+          </div>
         </div>
         <div class="card-body">
-          <!-- 行业数据表格 -->
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th class="table-header">
-                    <Icon icon="mdi:office-building"/>
-                    行业板块
-                  </th>
-                  <th class="table-header">
-                    <Icon icon="mdi:chart-line"/>
-                    涨跌幅
-                  </th>
-                  <th class="table-header">
-                    <Icon icon="mdi:speedometer"/>
-                    强度指数
-                  </th>
-                  <th class="table-header">
-                    <Icon icon="mdi:cog"/>
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="industry in industries" :key="industry.name" class="table-row">
-                  <td class="industry-name">{{ industry.name }}</td>
-                  <td class="change-cell">
-                    <span :class="getChangeClass(industry.change)">
-                      <Icon :icon="getChangeIcon(industry.change)"/>
-                      {{ industry.change >= 0 ? '+' : '' }}{{ industry.change }}%
-                    </span>
-                  </td>
-                  <td class="strength-cell">
-                    <div class="strength-progress">
-                      <div
-                        class="progress-bar"
-                        :style="{ width: `${industry.strength}%`, backgroundColor: getStrengthColor(industry.strength) }"
-                      ></div>
-                    </div>
-                    <div class="strength-info">
-                      <span class="strength-value">{{ industry.strength }}</span>
-                      <span class="strength-label">{{ getStrengthLabel(industry.strength) }}</span>
-                    </div>
-                  </td>
-                  <td class="action-cell">
-                    <button class="detail-btn" @click="viewIndustryDetail(industry)">
-                      <Icon icon="mdi:eye"/>
-                      详情
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- 错误状态显示 -->
+          <div v-if="error" class="error-state">
+            <Icon icon="mdi:alert-circle-outline" class="error-icon"/>
+            <p class="error-message">{{ error }}</p>
+            <button class="retry-btn" @click="loadIndustryData">
+              <Icon icon="mdi:reload"/>
+              重新加载
+            </button>
+          </div>
+
+          <!-- 空状态显示 -->
+          <div v-else-if="!loading && industries.length === 0" class="empty-state">
+            <Icon icon="mdi:database-off-outline" class="empty-icon"/>
+            <p class="empty-message">暂无行业数据</p>
+            <button class="retry-btn" @click="loadIndustryData">
+              <Icon icon="mdi:reload"/>
+              重新加载
+            </button>
           </div>
 
           <!-- 加载状态 -->
@@ -93,6 +69,20 @@
             <div class="loading-spinner"></div>
             <p>数据加载中...</p>
           </div>
+
+          <!-- Naive UI 表格 - 确保在数据准备好时显示 -->
+          <n-data-table
+            v-else
+            class="naive-industry-table"
+            :columns="naiveColumns"
+            :data="industries"
+            :bordered="false"
+            :max-height="600"
+            :scroll-x="800"
+            size="small"
+            striped
+            flex-height
+          />
         </div>
       </div>
     </div>
@@ -100,242 +90,541 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { Icon } from '@iconify/vue'
+// ============================================================================
+// Vue和相关库导入
+// ============================================================================
+import {computed, h, ref, onMounted} from 'vue'
+import {useRouter} from 'vue-router'
+import {Icon} from '@iconify/vue'
+import {message} from 'ant-design-vue'
 
+import type {DataTableColumns} from 'naive-ui'
+// Naive UI 组件导入
+import {NButton, NDataTable, NProgress, NTag, NText} from 'naive-ui'
+
+// ============================================================================
+// 类型定义
+// ============================================================================
+
+interface Industry {
+  code: string
+  name: string
+  change: number
+  strength: number
+  category?: string
+  volume?: number
+  amount?: number
+}
+
+// ============================================================================
+// 路由和响应式数据
+// ============================================================================
 const router = useRouter()
+
 const loading = ref(false)
+const error = ref<string | null>(null)
+const industries = ref<Industry[]>([])
 
-// 颜色常量定义 - 修复SCSS变量在JS中的使用问题
-const COLORS = {
-  SUCCESS: '#67c23a',      // $success-color
-  WARNING: '#D29922',      // $warning-color
-  ACCENT: '#2196F3',       // $accent-color
-  TEXT_SECONDARY: '#8B949E' // $text-secondary
+// ============================================================================
+// 计算属性
+// ============================================================================
+
+const strongIndustriesCount = computed(() => {
+  return industries.value.filter(industry => industry.strength > 70).length
+})
+
+const weakIndustriesCount = computed(() => {
+  return industries.value.filter(industry => industry.strength < 50).length
+})
+
+// ============================================================================
+// Naive UI 表格列配置
+// ============================================================================
+
+const getChangeTagType = (change: number): 'success' | 'error' | 'warning' | 'default' => {
+  if (change > 0) return 'success'
+  if (change < 0) return 'error'
+  return 'default'
 }
 
-// 返回按钮处理
-const handleBack = () => {
-  router.go(-1)
+const getProgressStatus = (strength: number): 'success' | 'error' | 'warning' | 'default' => {
+  if (strength > 85) return 'success'
+  if (strength > 70) return 'warning'
+  if (strength > 50) return 'default'
+  return 'error'
 }
 
-// 刷新数据
-const refreshData = async () => {
-  loading.value = true
-  try {
-    // 模拟数据刷新
-    await new Promise(resolve => setTimeout(resolve, 1000))
-  } finally {
-    loading.value = false
-  }
-}
-
-// 查看行业详情
-const viewIndustryDetail = (industry: any) => {
-  console.log('查看行业详情:', industry)
-  // 这里可以跳转到行业详情页面或打开详情对话框
-}
-
-// 涨跌幅样式类
-const getChangeClass = (change: number) => {
-  if (change > 0) return 'up'
-  if (change < 0) return 'down'
-  return 'flat'
-}
-
-// 涨跌幅图标
-const getChangeIcon = (change: number) => {
-  return change >= 0 ? 'mdi:trending-up' : 'mdi:trending-down'
-}
-
-// 强度颜色计算 - 修复：使用JS常量而不是SCSS变量
-const getStrengthColor = (strength: number) => {
-  if (strength > 85) return COLORS.SUCCESS
-  if (strength > 70) return COLORS.WARNING
-  if (strength > 50) return COLORS.ACCENT
-  return COLORS.TEXT_SECONDARY
-}
-
-// 强度标签
-const getStrengthLabel = (strength: number) => {
+const getStrengthLabel = (strength: number): string => {
   if (strength > 85) return '过热'
   if (strength > 70) return '强势'
   if (strength > 50) return '正常'
   return '弱势'
 }
 
-// 示例数据
-const industries = ref([
-  { name: '计算机', change: 3.2, strength: 85 },
-  { name: '电子', change: 2.1, strength: 78 },
-  { name: '医药生物', change: 1.8, strength: 72 },
-  { name: '通信', change: 1.5, strength: 68 },
-  { name: '传媒', change: -1.2, strength: 45 },
-  { name: '房地产', change: -2.1, strength: 35 },
-  { name: '银行', change: 0.5, strength: 55 },
-  { name: '证券', change: 1.2, strength: 62 },
-  { name: '保险', change: -0.8, strength: 48 },
-  { name: '白酒', change: 2.5, strength: 82 }
-])
+const naiveColumns: DataTableColumns<Industry> = [
+  {
+    title: '行业板块',
+    key: 'name',
+    width: 150,
+    fixed: 'left',
+    align: 'center',
+    render: (row) => {
+      return h('div', { class: 'industry-name-cell' }, [
+        h('span', { class: 'industry-name' }, row.name),
+        h('span', { class: 'industry-code' }, row.code)
+      ])
+    }
+  },
+  {
+    title: '涨跌幅',
+    key: 'change',
+    width: 120,
+    align: 'center',
+    render: (row) => {
+      const changeText = `${row.change >= 0 ? '+' : ''}${row.change.toFixed(2)}%`
+      return h(
+        NTag,
+        {
+          type: getChangeTagType(row.change),
+          size: 'small',
+          class: 'change-tag'
+        },
+        {
+          default: () => [
+            h(Icon, {
+              icon: row.change >= 0 ? 'mdi:trending-up' : 'mdi:trending-down',
+              class: 'change-icon'
+            }),
+            h('span', { class: 'change-text' }, changeText)
+          ]
+        }
+      )
+    }
+  },
+  {
+    title: '强度指数',
+    key: 'strength',
+    width: 180,
+    align: 'center',
+    render: (row) => {
+      return h('div', { class: 'strength-cell' }, [
+        h(NProgress, {
+          type: 'line',
+          percentage: row.strength,
+          status: getProgressStatus(row.strength),
+          height: 6,
+          borderRadius: 3,
+          class: 'strength-progress'
+        }),
+        h('div', { class: 'strength-info' }, [
+          h(NText, { depth: 1, class: 'strength-value' }, { default: () => row.strength.toFixed(1) }),
+          h(NText, { depth: 3, class: 'strength-label' }, { default: () => getStrengthLabel(row.strength) })
+        ])
+      ])
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 100,
+    fixed: 'right',
+    align: 'center',
+    render: (row) => {
+      return h(
+        NButton,
+        {
+          type: 'primary',
+          size: 'small',
+          class: 'detail-btn',
+          onClick: () => viewIndustryDetail(row)
+        },
+        {
+          default: () => [
+            h(Icon, { icon: 'mdi:eye', class: 'detail-icon' }),
+            '详情'
+          ]
+        }
+      )
+    }
+  }
+]
+
+// ============================================================================
+// 业务逻辑函数
+// ============================================================================
+
+const handleBack = (): void => {
+  if (window.history.length > 1) {
+    router.go(-1)
+  } else {
+    router.push('/')
+  }
+}
+
+const loadIndustryData = async (): Promise<void> => {
+  loading.value = true
+  error.value = null
+
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    // 修复：移除随机错误模拟，确保数据能稳定加载
+    // if (Math.random() < 0.1) {
+    //   throw new Error('网络连接超时，请检查网络设置')
+    // }
+
+    // 确保测试数据正确赋值
+    industries.value = [
+      {code: '801010', name: '计算机', change: 3.2, strength: 85, category: '信息技术'},
+      {code: '801020', name: '电子', change: 2.1, strength: 78, category: '信息技术'},
+      {code: '801030', name: '医药生物', change: 1.8, strength: 72, category: '医疗保健'},
+      {code: '801040', name: '通信', change: 1.5, strength: 68, category: '信息技术'},
+      {code: '801050', name: '传媒', change: -1.2, strength: 45, category: '可选消费'},
+      {code: '801060', name: '房地产', change: -2.1, strength: 35, category: '金融地产'},
+      {code: '801070', name: '银行', change: 0.5, strength: 55, category: '金融地产'},
+      {code: '801080', name: '证券', change: 1.2, strength: 62, category: '金融地产'},
+      {code: '801090', name: '保险', change: -0.8, strength: 48, category: '金融地产'},
+      {code: '801100', name: '白酒', change: 2.5, strength: 82, category: '主要消费'}
+    ]
+    message.success('行业数据加载成功')
+
+  } catch (err) {
+    console.error('加载行业数据失败:', err)
+    error.value = err instanceof Error ? err.message : '加载行业数据失败，请稍后重试'
+    message.error(error.value)
+    industries.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshData = async (): Promise<void> => {
+  await loadIndustryData()
+}
+
+const viewIndustryDetail = (industry: Industry): void => {
+  console.log('查看行业详情:', industry)
+}
+
+// 组件挂载时自动加载数据
+onMounted(() => {
+  loadIndustryData()
+})
 </script>
 
 <style scoped lang="scss">
 @use '@/assets/scss/variables' as *;
 @use '@/assets/scss/mixins' as mixin;
 @use 'sass:map';
-@use 'sass:color' as scssColor;
 
+/* 页面容器样式 */
 .industry-strength-page {
   min-height: 100vh;
   background: $primary-bg;
+
+  .main-content-with-sidebar {
+    @include mixin.content-with-sidebar;
+    margin: 0 auto;
+  }
 }
 
-// 使用全局表格样式
-.table-container {
-  overflow-x: auto;
+/* 页面头部样式 */
+.page-header {
+  @include mixin.page-header-base;
+  margin-bottom: map.get($spacers, 6);
 }
 
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: $card-bg;
+/* 行业卡片样式 */
+.industry-card {
+  @include mixin.card-base;
+  margin-bottom: map.get($spacers, 4);
+  padding: map.get($spacers, 3);
 
-  th, td {
-    padding: map.get($spacers, 3);
-    text-align: left;
-    border-bottom: 1px solid $border-color;
+  .card-header {
+    @include mixin.card-header-base;
+    padding-bottom: map.get($spacers, 2);
+    margin-bottom: map.get($spacers, 2);
+    border-bottom: $border-width solid $border-color;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: map.get($spacers, 2);
+
+    .card-title {
+      font-size: $font-size-base * 1.1;
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: map.get($spacers, 2);
+
+      .card-title-icon {
+        color: $accent-color;
+      }
+    }
+
+    .card-stats {
+      display: flex;
+      align-items: center;
+      gap: map.get($spacers, 3);
+      font-size: $font-size-base - 1px;
+      color: $text-secondary;
+
+      .stat-item {
+        strong {
+          &.up {
+            color: $stock-up-color;
+          }
+          &.down {
+            color: $stock-down-color;
+          }
+        }
+      }
+    }
   }
 
-  th {
-    background: $card-header-bg;
-    font-weight: $font-weight-semibold;
+  .card-body {
     color: $text-primary;
-  }
-
-  td {
-    color: $text-primary;
-  }
-}
-
-.table-header {
-  display: flex;
-  align-items: center;
-  gap: map.get($spacers, 2);
-  font-weight: $font-weight-semibold;
-}
-
-.table-row {
-  transition: background-color $transition-fast;
-
-  &:hover {
-    background: $hover-bg;
+    position: relative;
+    min-height: 200px;
+    // 确保内容区域不会被其他元素覆盖
+    z-index: 1;
   }
 }
 
-// 行业名称列
-.industry-name {
-  font-weight: $font-weight-medium;
-  color: $text-primary;
-}
-
-// 涨跌幅单元格
-.change-cell {
-  .up {
-    color: $success-color;
-    font-weight: $font-weight-semibold;
-  }
-
-  .down {
-    color: $danger-color;
-    font-weight: $font-weight-semibold;
-  }
-
-  .flat {
-    color: $text-secondary;
-  }
-}
-
-// 强度指数单元格
-.strength-cell {
-  display: flex;
-  flex-direction: column;
-  gap: map.get($spacers, 2);
-}
-
-.strength-progress {
+/* Naive UI表格样式 - 重点修复显示问题 */
+.naive-industry-table {
   width: 100%;
-  height: 6px;
-  background: $secondary-bg;
-  border-radius: $border-radius-sm;
-  overflow: hidden;
-}
+  margin: 0 auto;
+  z-index: 2;
+  position: relative;
 
-.progress-bar {
-  height: 100%;
-  border-radius: $border-radius-sm;
-  transition: width $transition-normal;
-}
+  :deep(.n-data-table) {
+    background: $card-bg;
+    border-radius: $border-radius;
+    color: $text-primary;
+    width: 100%;
 
-.strength-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: $font-size-base - 2px;
-}
+    .n-data-table-thead {
+      .n-data-table-th {
+        background: $secondary-bg !important;
+        color: $text-primary !important;
+        font-weight: $font-weight-semibold;
+        border-bottom: 2px solid $border-color;
+        padding: map.get($spacers, 2);
+        text-align: center;
 
-.strength-value {
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
-}
+        .n-data-table-th__content {
+          color: $text-primary;
+          font-size: $font-size-base;
+        }
+      }
+    }
 
-.strength-label {
-  color: $text-secondary;
-}
+    .n-data-table-tbody {
+      .n-data-table-tr {
+        background: $card-bg;
+        transition: background-color $transition-fast;
+        color: $text-primary;
 
-// 操作按钮
-.action-cell {
+        &:hover {
+          background: $hover-bg !important;
+        }
+
+        &:nth-child(even) {
+          background: rgba($secondary-bg, 0.3);
+
+          &:hover {
+            background: $hover-bg !important;
+          }
+        }
+
+        .n-data-table-td {
+          border-bottom: 1px solid $border-color;
+          color: $text-primary !important;
+          padding: map.get($spacers, 2);
+          text-align: center;
+        }
+      }
+    }
+
+    // 确保表格内容可见，修复可能的背景色覆盖问题
+    .n-data-table-base-table-body {
+      background: $card-bg;
+
+      .n-data-table-td {
+        color: $text-primary !important;
+        background: transparent !important;
+      }
+    }
+
+    // 固定列样式修复
+    .n-data-table-base-table-header--fixed-left,
+    .n-data-table-base-table-header--fixed-right,
+    .n-data-table-base-table-body--fixed-left,
+    .n-data-table-base-table-body--fixed-right {
+      background: $card-bg;
+
+      .n-data-table-th,
+      .n-data-table-td {
+        background: $card-bg;
+        color: $text-primary !important;
+      }
+    }
+  }
+
+  // 单元格具体样式
+  .industry-name-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+
+    .industry-name {
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+      font-size: $font-size-base;
+    }
+
+    .industry-code {
+      font-size: $font-size-base - 2px;
+      color: $text-secondary;
+    }
+  }
+
+  .change-tag {
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 1);
+    font-weight: $font-weight-semibold;
+
+    .change-icon {
+      font-size: $font-size-base * 1.1;
+    }
+
+    .change-text {
+      font-size: $font-size-base - 1px;
+    }
+  }
+
+  .strength-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: map.get($spacers, 1);
+
+    .strength-progress {
+      width: 100%;
+
+      :deep(.n-progress-content) {
+        .n-progress-graph {
+          .n-progress-graph-line {
+            border-radius: $border-radius-sm;
+          }
+        }
+      }
+    }
+
+    .strength-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      font-size: $font-size-base - 2px;
+
+      .strength-value {
+        font-weight: $font-weight-semibold;
+        color: $text-primary;
+      }
+
+      .strength-label {
+        color: $text-secondary;
+      }
+    }
+  }
+
   .detail-btn {
     @include mixin.button-base($accent-color, white);
     padding: map.get($spacers, 1) map.get($spacers, 2);
     font-size: $font-size-base - 2px;
+    display: flex;
+    align-items: center;
+    gap: map.get($spacers, 1);
 
     &:hover {
-      background: scssColor.adjust($accent-color, $lightness: -10%);
+      background: darken($accent-color, 10%);
+      transform: translateY(-1px);
+    }
+
+    .detail-icon {
+      font-size: $font-size-base - 1px;
     }
   }
 }
 
-// 响应式调整
-@include mixin.media-breakpoint-down(md) {
-  .data-table {
-    font-size: $font-size-base - 2px;
+/* 加载状态样式 */
+.loading-state {
+  @include mixin.flex-center(column);
+  padding: map.get($spacers, 5);
+  color: $text-secondary;
 
-    th, td {
-      padding: map.get($spacers, 2);
-    }
-  }
-
-  .strength-info {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: map.get($spacers, 1);
+  .loading-spinner {
+    @include mixin.loading-spinner(2em);
+    margin-bottom: map.get($spacers, 2);
+    color: $accent-color;
   }
 }
 
-@include mixin.media-breakpoint-down(sm) {
-  .table-header {
-    flex-direction: column;
-    gap: map.get($spacers, 1);
+/* 错误状态样式 */
+.error-state {
+  @include mixin.flex-center(column);
+  padding: map.get($spacers, 5);
+  color: $error-color;
+  text-align: center;
+
+  .error-icon {
+    font-size: 3em;
+    margin-bottom: map.get($spacers, 3);
+    opacity: 0.7;
   }
 
-  .action-cell .detail-btn {
-    padding: map.get($spacers, 1);
-    font-size: $font-size-base - 4px;
+  .error-message {
+    margin-bottom: map.get($spacers, 3);
+    font-size: $font-size-base;
+  }
+}
 
-    .btn-text {
-      display: none;
-    }
+/* 空状态样式 */
+.empty-state {
+  @include mixin.flex-center(column);
+  padding: map.get($spacers, 5);
+  color: $text-secondary;
+  text-align: center;
+
+  .empty-icon {
+    font-size: 3em;
+    margin-bottom: map.get($spacers, 3);
+    opacity: 0.5;
+  }
+
+  .empty-message {
+    margin-bottom: map.get($spacers, 3);
+    font-size: $font-size-base;
+  }
+}
+
+/* 重试按钮样式 */
+.retry-btn {
+  @include mixin.button-base($accent-color, white);
+  display: flex;
+  align-items: center;
+  gap: map.get($spacers, 1);
+  padding: map.get($spacers, 2) map.get($spacers, 3);
+
+  &:hover {
+    background: darken($accent-color, 10%);
   }
 }
 </style>
