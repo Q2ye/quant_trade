@@ -20,6 +20,7 @@
   gap: $gap; // 设置网格容器间隙
 
   // 为各种卡片类型应用统一的边距和内边距
+  .n-card,
   .grid-card,
   .market-index-card,
   .function-nav-card,
@@ -30,6 +31,7 @@
     padding: $card-gap; // 设置卡片内边距
 
     // 确保卡片内容区域也有适当的内部间隙控制
+    .n-card__content,
     .card-content,
     .index-content,
     .function-content {
@@ -149,6 +151,7 @@
   ));
 
   // 网格卡片基础样式
+  .n-card,
   .grid-card {
     @include card-base; // 应用卡片基础样式
     height: 100%; // 设置卡片高度为100%
@@ -279,9 +282,8 @@
     }
   }
 
-  // 表格容器滚动处理
-  .ant-table-container,
-  .el-table__body-wrapper {
+  // Naive UI 表格容器滚动处理
+  .n-data-table {
     overflow-y: auto;
 
     // 隐藏滚动条
@@ -333,6 +335,7 @@
   margin-bottom: map.get($spacers, 4); // 底部外边距
 
   // 状态卡片基础样式
+  .n-card,
   .status-card {
     @include status-card-base; // 应用状态卡片基础样式
   }
@@ -348,6 +351,7 @@
   margin-bottom: map.get($spacers, 4); // 底部外边距
 
   // 功能卡片基础样式
+  .n-card,
   .function-card {
     @include function-card-base; // 应用功能卡片基础样式
   }
@@ -361,13 +365,16 @@
   margin-bottom: map.get($spacers, 4); // 底部外边距
 
   // 状态面板样式
+  .n-card,
   .status-panel {
     @include card-base; // 应用卡片基础样式
 
+    .n-card-header,
     .card-header {
       @include card-header-base; // 应用卡片头部基础样式
     }
 
+    .n-card__content,
     .card-body {
       padding: map.get($spacers, 3); // 卡片主体内边距
     }
@@ -526,7 +533,7 @@
     transform: $hover-transform; // 悬停变换效果
   }
 
-    // 次要按钮变体
+  // 次要按钮变体
   &.secondary {
     background: $secondary-bg; // 次要背景色
     border: $border-width solid $border-color; // 边框样式
@@ -739,12 +746,10 @@
       justify-content: flex-end; // 右对齐
       height: 100%; // 高度100%
 
-      // 刷新按钮
-         :deep(.back-btn),
-      :deep(.refresh-btn)  {
+      // Naive UI 按钮样式适配
+      .n-button {
         background: rgba(255, 255, 255, 0.15); // 半透明背景
-        border: 1px solid rgba(255, 255, 255, 0.3); // 半透明边框
-        color: white; // 文字颜色
+        border: 1px solid rgba(255, 255, 255, 0.1); // 半透明边框
         padding: map.get($spacers, 1) map.get($spacers, 2); // 内边距
         border-radius: $border-radius; // 圆角
         font-weight: $font-weight-medium; // 字体粗细
@@ -775,16 +780,18 @@
           display: flex; // 弹性布局
           align-items: center; // 垂直居中
           height: 100%; // 高度100%
+          color: white; // 文字颜色
         }
 
         // 刷新图标
-        .refresh-icon {
+        .n-icon {
           font-size: $font-size-base; // 较大图标大小
           transition: transform $transition-normal; // 变换过渡
+          color: white; // 文字颜色
         }
 
         // 刷新中状态
-        &.refreshing .refresh-icon {
+        &.refreshing .n-icon {
           animation: spin 1s linear infinite; // 旋转动画
         }
       }
@@ -812,41 +819,18 @@
 
   // 状态内容区域
   .status-content {
+    display: flex; // 弹性布局
+    align-items: center; // 垂直居中
+    flex: 1; // 弹性扩展
     // 状态图标
     .status-icon {
       width: $status-icon-size; // 图标宽度
       height: $status-icon-size; // 图标高度
       font-size: $font-size-base * 1.3; // 图标大小
       margin-right: map.get($spacers, 5); // 右侧外边距
-    }
-
-    // 状态信息
-    .status-info {
-      // 状态值
-      .status-value {
-        font-size: $font-size-base * 1.8; // 较大字体大小
-        margin-bottom: map.get($spacers, 2); // 底部外边距
-      }
-
-      // 状态标签
-      .status-label {
-        @include text-secondary; // 应用次要文本样式
-      }
-    }
-  }
-
-  // 状态内容布局
-  .status-content {
-    display: flex; // 弹性布局
-    align-items: center; // 垂直居中
-    flex: 1; // 弹性扩展
-
-    // 状态图标样式
-    .status-icon {
       border-radius: $status-icon-radius; // 图标圆角
       @include flex-center; // 居中布局
       flex-shrink: 0; // 禁止收缩
-
       // 运行状态图标
       &.running {
         background: rgba($status-running-color, 0.1); // 背景色（带透明度）
@@ -872,19 +856,21 @@
       }
     }
 
-    // 状态信息区域
+    // 状态信息
     .status-info {
       flex: 1; // 弹性扩展
-
-      // 状态值样式
+      // 状态值
       .status-value {
+        font-size: $font-size-base * 1.8; // 较大字体大小
+        margin-bottom: map.get($spacers, 2); // 底部外边距
         font-weight: $font-weight-bold; // 粗体
         color: $text-primary; // 主要文字颜色
         line-height: 1.2; // 行高
       }
 
-      // 状态标签样式
+      // 状态标签
       .status-label {
+        @include text-secondary; // 应用次要文本样式
         color: $text-secondary; // 次要文字颜色
       }
     }
@@ -902,6 +888,7 @@
   height: 100%; // 高度100%
 
   // 功能内容区域
+  .n-card__content,
   .function-content {
     display: flex; // 弹性布局
     align-items: flex-start; // 顶部对齐
@@ -1043,6 +1030,7 @@
   color: $text-primary !important; // 卡片头部文字颜色
 
   // 卡片标题
+  .n-card-header__main,
   .card-title {
     font-size: $font-size-base * 1.1; // 标题字体大小
     font-weight: $font-weight-semibold; // 半粗体
@@ -1059,8 +1047,8 @@
   width: $width; // 设置选择器宽度
   min-width: 120px; // 最小宽度限制
 
-  // 选择器基础样式
-  .filter-select {
+  // Naive UI 选择器样式适配
+  .n-select {
     width: 100%; // 宽度占满容器
     padding: map.get($spacers, 2) if($with-icon, map.get($spacers, 6), map.get($spacers, 3)) map.get($spacers, 2) map.get($spacers, 3); // 内边距，右侧为图标留空间
     background: $input-bg; // 输入框背景色
@@ -1073,6 +1061,9 @@
     transition: all $transition-normal; // 过渡动画
     appearance: none; // 移除默认样式
     outline: none; // 移除轮廓线
+    .n-base-selection-label{
+       background: $input-bg; // 输入框背景色
+    }
 
     // 禁用状态样式
     &:disabled {
@@ -1135,14 +1126,9 @@
   &.select-sm {
     width: $width * 0.75; // 缩小宽度
 
-    .filter-select {
-      padding: map.get($spacers, 1) if($with-icon, map.get($spacers, 5), map.get($spacers, 2)) map.get($spacers, 1) map.get($spacers, 2); // 减小内边距
-      font-size: $font-size-base * 0.9; // 减小字体大小
-    }
-
-    @if $with-icon {
-      &::after {
-        right: map.get($spacers, 2); // 调整图标位置
+    .n-select {
+      .n-base-selection {
+        font-size: $font-size-base * 0.9; // 减小字体大小
       }
     }
   }
@@ -1151,24 +1137,19 @@
   &.select-lg {
     width: $width * 1.25; // 增大宽度
 
-    .filter-select {
-      padding: map.get($spacers, 3) if($with-icon, map.get($spacers, 7), map.get($spacers, 4)) map.get($spacers, 3) map.get($spacers, 4); // 增大内边距
-      font-size: $font-size-base * 1.1; // 增大字体大小
-    }
-
-    @if $with-icon {
-      &::after {
-        right: map.get($spacers, 4); // 调整图标位置
+    .n-select {
+      .n-base-selection {
+        font-size: $font-size-base * 1.1; // 增大字体大小
       }
     }
   }
 
   // 错误状态样式
   &.select-error {
-    .filter-select {
+    .n-select .n-base-selection {
       border-color: $danger-color; // 危险色边框
 
-      &:focus {
+      &.n-base-selection--focus {
         border-color: $danger-color; // 聚焦时保持危险色
         box-shadow: 0 0 0 2px rgba($danger-color, 0.1); // 危险色光晕
       }
@@ -1177,10 +1158,10 @@
 
   // 成功状态样式
   &.select-success {
-    .filter-select {
+    .n-select .n-base-selection {
       border-color: $success-color; // 成功色边框
 
-      &:focus {
+      &.n-base-selection--focus {
         border-color: $success-color; // 聚焦时保持成功色
         box-shadow: 0 0 0 2px rgba($success-color, 0.1); // 成功色光晕
       }
@@ -1223,66 +1204,192 @@
 // ============================================================================
 
 @mixin table-base-styles {
-  background: $card-bg; // 表格背景色
-  border-radius: $border-radius; // 表格圆角
+  // Naive UI 数据表格样式
+  .n-data-table {
+    background: $card-bg; // 表格背景色
+    border-radius: $border-radius; // 表格圆角
 
-  :deep(.ant-table-thead > tr > th) {
-    background: $secondary-bg !important; // 表头背景色
-    color: $text-primary !important; // 表头文字颜色
-    font-weight: $font-weight-semibold; // 表头半粗体
-    border-bottom: 2px solid $border-color; // 表头底部边框
-    padding: map.get($spacers, 2); // 表头内边距
-    text-align: center; // 表头文字居中
-    gap: map.get($spacers, 2); // 设置图标和文字间距
-    .header-icon {
-      color: $accent-color; // 强调色图标
-      font-size: $font-size-base * 1.1; // 稍大的图标尺寸
+    // 表头样式
+    .n-data-table-thead {
+      background: $secondary-bg !important; // 表头背景色
+
+      .n-data-table-th {
+        background: $secondary-bg !important; // 表头单元格背景色
+        color: $text-primary !important; // 表头文字颜色
+        font-weight: $font-weight-semibold; // 表头半粗体
+        border-bottom: 2px solid $border-color; // 表头底部边框
+        padding: map.get($spacers, 2); // 表头内边距
+        text-align: center; // 表头文字居中
+
+        .header-icon {
+          color: $accent-color; // 强调色图标
+          font-size: $font-size-base * 1.1; // 稍大的图标尺寸
+        }
+      }
+    }
+
+    // 表格主体样式
+    .n-data-table-tbody {
+      .n-data-table-tr {
+        background: $card-bg; // 表格行背景色
+        transition: background-color $transition-fast; // 背景色快速过渡
+        color: $text-primary; // 行文字颜色
+
+        &:hover .n-data-table-td {
+          background: $hover-bg !important; // 行悬停背景色
+        }
+
+        // 隔行变色效果 - 增强可读性
+        &:nth-child(even) .n-data-table-td {
+          background: rgba($secondary-bg, 0.3); // 偶数行使用轻微的背景色
+        }
+
+        .n-data-table-td {
+          border-bottom: 1px solid $border-color; // 单元格底部边框
+          color: $text-primary; // 单元格文字颜色
+          padding: map.get($spacers, 2); // 单元格内边距
+          text-align: center; // 单元格文字居中
+        }
+      }
+    }
+
+    // 分页器样式
+    .n-data-table-pagination {
+      background: $card-bg !important;
+      border-top: 1px solid $border-color;
+      padding: map.get($spacers, 2);
+
+      .n-pagination {
+        // 分页项样式
+        .n-pagination-item {
+          background: $secondary-bg;
+          border: 1px solid $border-color;
+          color: $text-primary;
+
+          &.n-pagination-item--active {
+            background: $accent-color;
+            border-color: $accent-color;
+            color: white;
+          }
+
+          &:not(.n-pagination-item--active):hover {
+            background: $hover-bg;
+            border-color: $accent-color;
+          }
+        }
+
+        // 分页导航按钮
+        .n-pagination-prev,
+        .n-pagination-next {
+          background: $secondary-bg;
+          border: 1px solid $border-color;
+          color: $text-primary;
+
+          &:hover:not(.n-pagination-disabled) {
+            background: $hover-bg;
+            border-color: $accent-color;
+          }
+
+          &.n-pagination-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+      }
     }
   }
+}
 
-  :deep(.ant-table-tbody > tr) {
-    background: $card-bg; // 表格行背景色
-    transition: background-color $transition-fast; // 背景色快速过渡
-    color: $text-primary; // 行文字颜色
+// ============================================================================
+// Naive UI 特定组件混入
+// ============================================================================
 
-    &:hover > td {
-      background: $hover-bg !important; // 行悬停背景色
-      //cursor: pointer; // 显示手型光标表示可交互
-    }
+/// Naive UI 消息提示样式适配
+@mixin naive-message-styles {
+  .n-message-container {
+    .n-message {
+      border-radius: $border-radius;
+      box-shadow: $card-shadow;
 
-    // 隔行变色效果 - 增强可读性
-    &:nth-child(even) > td {
-      background: rgba($secondary-bg, 0.3); // 偶数行使用轻微的背景色
-    }
+      // 成功消息
+      &.n-message--success {
+        background: rgba($success-color, 0.1);
+        border: 1px solid rgba($success-color, 0.3);
+        color: $success-color;
+      }
 
-    > td {
-      border-bottom: 1px solid $border-color; // 单元格底部边框
-      color: $text-primary; // 单元格文字颜色
-      padding: map.get($spacers, 2); // 单元格内边距
-      text-align: center; // 单元格文字居中
+      // 警告消息
+      &.n-message--warning {
+        background: rgba($warning-color, 0.1);
+        border: 1px solid rgba($warning-color, 0.3);
+        color: $warning-color;
+      }
+
+      // 错误消息
+      &.n-message--error {
+        background: rgba($danger-color, 0.1);
+        border: 1px solid rgba($danger-color, 0.3);
+        color: $danger-color;
+      }
+
+      // 信息消息
+      &.n-message--info {
+        background: rgba($info-color, 0.1);
+        border: 1px solid rgba($info-color, 0.3);
+        color: $info-color;
+      }
     }
   }
+}
 
-  // 分页器背景
-  :deep(.ant-table-pagination) {
-    background: $card-bg !important;
-    border-top: 1px solid $border-color;
+/// Naive UI 加载状态样式
+@mixin naive-loading-styles {
+  .n-spin-container {
+    position: relative;
 
-    .ant-pagination-item {
-      background: $secondary-bg;
-      border: 1px solid $border-color;
+    .n-spin-content {
+      filter: blur(1px);
+      opacity: 0.7;
+    }
 
-      a {
+    .n-spin {
+      .n-spin-description {
+        color: $text-primary;
+        font-weight: $font-weight-medium;
+      }
+    }
+  }
+}
+
+/// Naive UI 模态框样式适配
+@mixin naive-modal-styles {
+  .n-modal {
+    .n-modal-container {
+      background: $card-bg;
+      border-radius: $border-radius;
+      box-shadow: $card-shadow;
+
+      .n-modal-header {
+        background: $card-header-bg;
+        border-bottom: $border-width solid $border-color;
+        padding: map.get($spacers, 3);
+
+        .n-modal-header__title {
+          color: $text-primary;
+          font-weight: $font-weight-semibold;
+          font-size: $font-size-base * 1.2;
+        }
+      }
+
+      .n-modal-body {
+        padding: map.get($spacers, 3);
         color: $text-primary;
       }
 
-      &.ant-pagination-item-active {
-        background: $accent-color;
-        border-color: $accent-color;
-
-        a {
-          color: white;
-        }
+      .n-modal-footer {
+        background: $secondary-bg;
+        border-top: $border-width solid $border-color;
+        padding: map.get($spacers, 3);
       }
     }
   }
