@@ -1,256 +1,209 @@
-<!-- LimitAnalysis.vue - 涨跌停分析页面 -->
-<!-- 基于全局主题样式系统重构，统一使用主题变量和混入 -->
+<!-- LimitAnalysis.vue - 涨跌停分析页面 - Naive UI 实现 -->
 <template>
-  <div class="limit-analysis-page">
+  <n-layout class="limit-analysis-page">
     <!-- 页面标题区域 -->
-    <div class="page-header">
+    <n-layout-header class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">涨跌停分析</h1>
           <p class="page-description">实时监控股票涨跌停情况与市场热度分析</p>
         </div>
         <div class="header-actions">
-          <button class="refresh-btn" @click="refreshData" :disabled="loading">
-            <Icon icon="ant-design:reload-outlined" class="refresh-icon" :class="{ refreshing: loading }"/>
-            <span class="btn-text">{{ loading ? '刷新中...' : '刷新数据' }}</span>
-          </button>
-          <button class="back-btn" @click="handleBack">
-            <Icon icon="ant-design:arrow-left-outlined"/>
-            <span class="btn-text">返回</span>
-          </button>
+          <n-button
+              :loading="loading"
+              @click="refreshData"
+              class="refresh-btn"
+          >
+            <template #icon>
+              <n-icon>
+                <RefreshIcon/>
+              </n-icon>
+            </template>
+            {{ loading ? '刷新中...' : '刷新数据' }}
+          </n-button>
+          <n-button @click="handleBack" class="back-btn">
+            <template #icon>
+              <n-icon>
+                <ArrowBackIcon/>
+              </n-icon>
+            </template>
+            返回
+          </n-button>
         </div>
       </div>
-    </div>
+    </n-layout-header>
 
     <!-- 主要内容区域 -->
-    <div class="main-content-with-sidebar">
+    <n-layout-content class="main-content">
       <!-- 筛选条件区域 -->
-      <div class="filter-section">
-        <div class="filter-card card">
-          <div class="filter-content">
-            <!-- 筛选表单 -->
-            <div class="filter-group">
-              <div class="filter-item">
-                <label class="filter-label">交易日期</label>
-                <input
-                    type="date"
-                    v-model="filterDate"
-                    class="filter-input"
-                    @change="handleDateChange"
-                />
-              </div>
-              <div class="filter-item">
-                <label class="filter-label">交易所</label>
-                <select v-model="filterExchange" class="filter-select" @change="handleFilterChange">
-                  <option value="">全部</option>
-                  <option value="SSE">上交所</option>
-                  <option value="SZSE">深交所</option>
-                  <option value="BSE">北交所</option>
-                </select>
-              </div>
-              <div class="filter-item">
-                <label class="filter-label">市场类型</label>
-                <select v-model="filterMarket" class="filter-select" @change="handleFilterChange">
-                  <option value="">全部</option>
-                  <option value="主板">主板</option>
-                  <option value="创业板">创业板</option>
-                  <option value="科创板">科创板</option>
-                </select>
-              </div>
-            </div>
-            <div class="filter-group">
-              <div class="filter-item">
-                <label class="filter-label">分析类型</label>
-                <select v-model="analysisType" class="filter-select" @change="handleAnalysisTypeChange">
-                  <option value="daily">当日涨跌停</option>
-                  <option value="consecutive">连续涨停</option>
-                  <option value="space">涨跌停空间</option>
-                  <option value="history">历史统计</option>
-                </select>
-              </div>
-              <div class="filter-item">
-                <button class="search-btn" @click="searchData">
-                  <Icon icon="mdi:magnify"/>
-                  查询
-                </button>
-                <button class="export-btn" @click="exportData">
-                  <Icon icon="ant-design:export-outlined"/>
-                  <span class="btn-text">导出数据</span>
-                </button>
-              </div>
-            </div>
+      <n-card class="filter-section" title="筛选条件">
+        <n-form :model="filterForm" label-placement="left" :label-width="80">
+          <n-grid :cols="24" :x-gap="24">
+            <n-form-item-gi :span="6" label="交易日期">
+              <n-date-picker
+                  v-model:value="filterDate"
+                  type="date"
+                  @update:value="handleDateChange"
+                  clearable
+              />
+            </n-form-item-gi>
+            <n-form-item-gi :span="6" label="交易所">
+              <n-select
+                  v-model:value="filterExchange"
+                  :options="exchangeOptions"
+                  @update:value="handleFilterChange"
+                  clearable
+              />
+            </n-form-item-gi>
+            <n-form-item-gi :span="6" label="市场类型">
+              <n-select
+                  v-model:value="filterMarket"
+                  :options="marketOptions"
+                  @update:value="handleFilterChange"
+                  clearable
+              />
+            </n-form-item-gi>
+            <n-form-item-gi :span="6" label="分析类型">
+              <n-select
+                  v-model:value="analysisType"
+                  :options="analysisTypeOptions"
+                  @update:value="handleAnalysisTypeChange"
+              />
+            </n-form-item-gi>
+          </n-grid>
+          <div class="form-actions">
+            <n-button type="primary" @click="searchData" class="search-btn">
+              <template #icon>
+                <n-icon>
+                  <SearchIcon/>
+                </n-icon>
+              </template>
+              查询
+            </n-button>
+            <n-button @click="exportData" class="export-btn">
+              <template #icon>
+                <n-icon>
+                  <ExportIcon/>
+                </n-icon>
+              </template>
+              导出数据
+            </n-button>
           </div>
-        </div>
-      </div>
+        </n-form>
+      </n-card>
 
       <!-- 统计卡片区域 -->
-      <div class="stats-section">
-        <div class="stats-grid">
-          <!-- 涨停数量统计 -->
-          <div class="stats-card card">
-            <div class="stats-content">
-              <div class="stats-icon up">
-                <Icon icon="mdi:arrow-up-bold"/>
-              </div>
-              <div class="stats-info">
-                <div class="stats-value">{{ stats.upLimitCount }}</div>
-                <div class="stats-label">涨停数量</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 跌停数量统计 -->
-          <div class="stats-card card">
-            <div class="stats-content">
-              <div class="stats-icon down">
-                <Icon icon="mdi:arrow-down-bold"/>
-              </div>
-              <div class="stats-info">
-                <div class="stats-value">{{ stats.downLimitCount }}</div>
-                <div class="stats-label">跌停数量</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 连续涨停统计 -->
-          <div class="stats-card card">
-            <div class="stats-content">
-              <div class="stats-icon consecutive">
-                <Icon icon="mdi:chart-line"/>
-              </div>
-              <div class="stats-info">
-                <div class="stats-value">{{ stats.consecutiveCount }}</div>
-                <div class="stats-label">连续涨停</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 涨跌停比例统计 -->
-          <div class="stats-card card">
-            <div class="stats-content">
-              <div class="stats-icon ratio">
-                <Icon icon="mdi:percent"/>
-              </div>
-              <div class="stats-info">
-                <div class="stats-value">{{ stats.limitRatio }}%</div>
-                <div class="stats-label">涨跌停比例</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <n-grid :cols="4" :x-gap="16" class="stats-section">
+        <n-gi>
+          <n-card class="stats-card">
+            <n-statistic label="涨停数量" :value="stats.upLimitCount">
+              <template #prefix>
+                <n-icon class="stats-icon up" :component="ArrowUpwardIcon"/>
+              </template>
+            </n-statistic>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card class="stats-card">
+            <n-statistic label="跌停数量" :value="stats.downLimitCount">
+              <template #prefix>
+                <n-icon class="stats-icon down" :component="ArrowDownwardIcon"/>
+              </template>
+            </n-statistic>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card class="stats-card">
+            <n-statistic label="连续涨停" :value="stats.consecutiveCount">
+              <template #prefix>
+                <n-icon class="stats-icon consecutive" :component="TrendingUpIcon"/>
+              </template>
+            </n-statistic>
+          </n-card>
+        </n-gi>
+        <n-gi>
+          <n-card class="stats-card">
+            <n-statistic label="涨跌停比例" :value="stats.limitRatio" suffix="%">
+              <template #prefix>
+                <n-icon class="stats-icon ratio" :component="PercentIcon"/>
+              </template>
+            </n-statistic>
+          </n-card>
+        </n-gi>
+      </n-grid>
 
       <!-- 涨跌停列表 -->
-      <div class="data-section">
-        <div class="data-card card">
-          <div class="card-header">
-            <h3 class="card-title">
-              <Icon icon="mdi:format-list-bulleted"/>
-              涨跌停股票列表
-            </h3>
-            <div class="card-actions">
-              <button class="view-toggle-btn" @click="toggleViewMode">
-                <Icon :icon="viewMode === 'table' ? 'mdi:view-grid' : 'mdi:table'"/>
-                {{ viewMode === 'table' ? '图表视图' : '表格视图' }}
-              </button>
-            </div>
-          </div>
-          <div class="card-body">
-            <!-- 表格视图 -->
-            <div v-if="viewMode === 'table'" class="table-container">
-              <table class="data-table">
-                <thead>
-                <tr>
-                  <th>股票代码</th>
-                  <th>收盘价</th>
-                  <th>涨停价</th>
-                  <th>跌停价</th>
-                  <th>状态</th>
-                  <th>连续天数</th>
-                  <th>涨停空间</th>
-                  <th>行业</th>
-                  <th>操作</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr v-for="stock in limitStocks" :key="stock.ts_code" class="table-row" @click="handleRowClick(stock)">
-                  <td class="stock-code">
-                    <div class="code">{{ stock.ts_code }}</div>
-                    <div class="name">{{ stock.name }}</div>
-                  </td>
-                  <td class="price">¥{{ stock.close?.toFixed(2) }}</td>
-                  <td class="price">¥{{ stock.up_limit?.toFixed(2) }}</td>
-                  <td class="price">¥{{ stock.down_limit?.toFixed(2) }}</td>
-                  <td>
-                      <span :class="['status-tag', getLimitTagClass(stock.limit_type)]">
-                        {{ getLimitTypeText(stock.limit_type) }}
-                      </span>
-                  </td>
-                  <td class="consecutive-days">
-                      <span v-if="stock.consecutive_days > 1" class="consecutive-badge">
-                        {{ stock.consecutive_days }}天
-                      </span>
-                    <span v-else>-</span>
-                  </td>
-                  <td>
-                      <span :class="getSpaceClass(stock.space_pct)">
-                        {{ stock.space_pct?.toFixed(2) }}%
-                      </span>
-                  </td>
-                  <td class="industry">{{ stock.industry }}</td>
-                  <td class="actions">
-                    <button class="detail-btn" @click.stop="viewStockDetail(stock)">
-                      详情
-                    </button>
-                  </td>
-                </tr>
-                </tbody>
-              </table>
-            </div>
+      <n-card class="data-section" :title="viewTitle">
+        <template #header-extra>
+          <n-button @click="toggleViewMode" class="view-toggle-btn">
+            <template #icon>
+              <n-icon>
+                <component :is="viewMode === 'table' ? BarChartIcon : TableChartIcon"/>
+              </n-icon>
+            </template>
+            {{ viewMode === 'table' ? '图表视图' : '表格视图' }}
+          </n-button>
+        </template>
 
-            <!-- 图表视图 -->
-            <div v-else class="chart-container">
-              <div class="chart-placeholder">
-                <Icon icon="mdi:chart-line" class="placeholder-icon"/>
-                <p>涨跌停分析图表</p>
-              </div>
-            </div>
+        <!-- 表格视图 -->
+        <div v-if="viewMode === 'table'">
+          <n-data-table
+              :columns="columns"
+              :data="limitStocks"
+              :pagination="paginationConfig"
+              :bordered="false"
+              @update:page="handlePageChange"
+          />
+        </div>
 
-            <!-- 分页控件 -->
-            <div class="pagination-container">
-              <div class="pagination">
-                <button
-                    class="pagination-btn"
-                    :disabled="pagination.currentPage === 1"
-                    @click="pagination.currentPage--"
-                >
-                  上一页
-                </button>
-                <span class="pagination-info">
-                  第 {{ pagination.currentPage }} 页，共 {{ Math.ceil(pagination.total / pagination.pageSize) }} 页
-                </span>
-                <button
-                    class="pagination-btn"
-                    :disabled="pagination.currentPage * pagination.pageSize >= pagination.total"
-                    @click="pagination.currentPage++"
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
+        <!-- 图表视图 -->
+        <div v-else class="chart-container">
+          <div class="chart-placeholder">
+            <n-icon class="placeholder-icon" :component="BarChartIcon"/>
+            <p>涨跌停分析图表</p>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
+      </n-card>
+    </n-layout-content>
+  </n-layout>
 </template>
 
 <script setup lang="ts">
-import {onMounted, reactive, ref} from 'vue'
+import {computed, h, onMounted, reactive, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {Icon} from '@iconify/vue'
+import {
+  DataTableColumns,
+  NButton,
+  NCard,
+  NDataTable,
+  NDatePicker,
+  NForm,
+  NFormItemGi,
+  NGi,
+  NGrid,
+  NIcon,
+  NLayout,
+  NLayoutContent,
+  NLayoutHeader,
+  NSelect,
+  NStatistic,
+  useMessage
+} from 'naive-ui'
+import {
+  ArrowBackIosFilled as ArrowBackIcon,
+  ArrowDownwardFilled as ArrowDownwardIcon,
+  ArrowUpwardFilled as ArrowUpwardIcon,
+  BarChartFilled as BarChartIcon,
+  ExploreRound as ExportIcon,
+  PercentFilled as PercentIcon,
+  RefreshRound as RefreshIcon,
+  SearchFilled as SearchIcon,
+  TableChartFilled as TableChartIcon,
+  TrendingUpFilled as TrendingUpIcon
+} from '@vicons/material'
 
 const router = useRouter()
+const message = useMessage()
 
 // 类型定义
 interface LimitStock {
@@ -274,17 +227,11 @@ interface StatsData {
   limitRatio: number
 }
 
-interface Pagination {
-  currentPage: number
-  pageSize: number
-  total: number
-}
-
 // 响应式数据
 const loading = ref(false)
-const filterDate = ref('')
-const filterExchange = ref('')
-const filterMarket = ref('')
+const filterDate = ref<number | null>(null)
+const filterExchange = ref<string | null>(null)
+const filterMarket = ref<string | null>(null)
 const analysisType = ref('daily')
 const viewMode = ref('table')
 
@@ -293,12 +240,6 @@ const stats = reactive<StatsData>({
   downLimitCount: 12,
   consecutiveCount: 8,
   limitRatio: 78.9
-})
-
-const pagination = reactive<Pagination>({
-  currentPage: 1,
-  pageSize: 20,
-  total: 0
 })
 
 const limitStocks = ref<LimitStock[]>([
@@ -317,6 +258,131 @@ const limitStocks = ref<LimitStock[]>([
   }
 ])
 
+// 选项配置
+const exchangeOptions = [
+  {label: '全部', value: ''},
+  {label: '上交所', value: 'SSE'},
+  {label: '深交所', value: 'SZSE'},
+  {label: '北交所', value: 'BSE'}
+]
+
+const marketOptions = [
+  {label: '全部', value: ''},
+  {label: '主板', value: '主板'},
+  {label: '创业板', value: '创业板'},
+  {label: '科创板', value: '科创板'}
+]
+
+const analysisTypeOptions = [
+  {label: '当日涨跌停', value: 'daily'},
+  {label: '连续涨停', value: 'consecutive'},
+  {label: '涨跌停空间', value: 'space'},
+  {label: '历史统计', value: 'history'}
+]
+
+// 分页配置
+const paginationConfig = reactive({
+  page: 1,
+  pageSize: 20,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50, 100],
+  onChange: (page: number) => {
+    paginationConfig.page = page
+  },
+  onUpdatePageSize: (pageSize: number) => {
+    paginationConfig.pageSize = pageSize
+    paginationConfig.page = 1
+  }
+})
+
+// 计算属性
+const viewTitle = computed(() => {
+  return viewMode.value === 'table' ? '涨跌停股票列表' : '涨跌停分析图表'
+})
+
+const filterForm = computed(() => ({
+  date: filterDate.value,
+  exchange: filterExchange.value,
+  market: filterMarket.value,
+  analysisType: analysisType.value
+}))
+
+// 表格列定义
+const columns: DataTableColumns<LimitStock> = [
+  {
+    title: '股票代码',
+    key: 'ts_code',
+    render: (row) => {
+      return h('div', {class: 'stock-code'}, [
+        h('div', {class: 'code'}, row.ts_code),
+        h('div', {class: 'name'}, row.name)
+      ])
+    }
+  },
+  {
+    title: '收盘价',
+    key: 'close',
+    render: (row) => `¥${row.close?.toFixed(2)}`
+  },
+  {
+    title: '涨停价',
+    key: 'up_limit',
+    render: (row) => `¥${row.up_limit?.toFixed(2)}`
+  },
+  {
+    title: '跌停价',
+    key: 'down_limit',
+    render: (row) => `¥${row.down_limit?.toFixed(2)}`
+  },
+  {
+    title: '状态',
+    key: 'limit_type',
+    render: (row) => {
+      const tagClass = getLimitTagClass(row.limit_type)
+      const tagText = getLimitTypeText(row.limit_type)
+      return h('n-tag', {type: tagClass}, {default: () => tagText})
+    }
+  },
+  {
+    title: '连续天数',
+    key: 'consecutive_days',
+    render: (row) => {
+      if (row.consecutive_days > 1) {
+        return h('n-tag', {type: 'primary'}, {default: () => `${row.consecutive_days}天`})
+      }
+      return '-'
+    }
+  },
+  {
+    title: '涨停空间',
+    key: 'space_pct',
+    render: (row) => {
+      const spaceClass = getSpaceClass(row.space_pct)
+      return h('span', {class: spaceClass}, `${row.space_pct?.toFixed(2)}%`)
+    }
+  },
+  {
+    title: '行业',
+    key: 'industry',
+    render: (row) => row.industry
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    render: (row) => {
+      return h(NButton, {
+        size: 'small',
+        type: 'primary',
+        onClick: (e: Event) => {
+          e.stopPropagation()
+          viewStockDetail(row)
+        }
+      }, {default: () => '详情'})
+    }
+  }
+]
+
 // 方法
 const handleBack = () => {
   router.go(-1)
@@ -326,13 +392,14 @@ const refreshData = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 1000))
+    message.success('数据刷新成功')
   } finally {
     loading.value = false
   }
 }
 
 const exportData = () => {
-  console.log('导出数据')
+  message.info('导出数据功能')
 }
 
 const handleDateChange = () => {
@@ -351,6 +418,7 @@ const searchData = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
+    message.success('查询成功')
   } finally {
     loading.value = false
   }
@@ -360,18 +428,18 @@ const toggleViewMode = () => {
   viewMode.value = viewMode.value === 'table' ? 'chart' : 'table'
 }
 
-const handleRowClick = (row: LimitStock) => {
-  console.log('点击行:', row)
+const handlePageChange = (page: number) => {
+  paginationConfig.page = page
 }
 
 const viewStockDetail = (stock: LimitStock) => {
-  console.log('查看股票详情:', stock)
+  message.info(`查看股票详情: ${stock.name}`)
 }
 
 const getLimitTagClass = (type: string) => {
-  const classMap: { [key: string]: string } = {
+  const classMap: { [key: string]: any } = {
     up: 'success',
-    down: 'danger',
+    down: 'error',
     near_up: 'warning',
     near_down: 'info'
   }
@@ -398,38 +466,38 @@ const getSpaceClass = (spacePct: number) => {
 // 初始化
 onMounted(() => {
   const today = new Date()
-  filterDate.value = today.toISOString().split('T')[0]
+  filterDate.value = today.getTime()
 })
 </script>
 
 <style scoped lang="scss">
-@use '@/assets/scss/variables' as *;
 @use '@/assets/scss/mixins' as mixin;
+@use '@/assets/scss/variables' as *;
 @use 'sass:map';
 @use 'sass:color' as scssColor;
 
 .limit-analysis-page {
-  min-height: 100vh;
-  background: $primary-bg;
-  transition: all $transition-normal; // 所有属性使用标准过渡时间
-  .main-content-with-sidebar {
+  @include mixin.content-with-base;
+
+  .main-content {
     @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
     margin: 0 auto; // 水平居中
   }
-}
 
+}
 
 // ============================================================================
 // 页面头部样式 - 使用混入统一管理
 // ============================================================================
+// 使用专门为 Naive UI 优化的混入
 .page-header {
-  @include mixin.page-header-base; // 应用页面头部基础样式混入
-  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
+  @include mixin.page-header-base;
 }
 
 // 筛选区域样式
 .filter-section {
   margin-bottom: map.get($spacers, 4);
+  margin-top: map.get($spacers, 5); // 顶部外边距：使用spacers映射中的第6个值
 }
 
 .filter-card {

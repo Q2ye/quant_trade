@@ -1,9 +1,8 @@
-<!-- MoneyFlow.vue - 资金流向分析页面 -->
-<!-- 基于全局主题样式系统重构，统一使用主题变量和混入 -->
+<!-- MoneyFlow.vue - 资金流向分析页面 - Naive UI 实现 -->
 <template>
-  <div class="money-flow-page">
+  <n-layout class="money-flow-page">
     <!-- 页面标题区域 -->
-    <div class="page-header">
+    <n-layout-header class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">资金流向分析</h1>
@@ -11,293 +10,224 @@
         </div>
         <div class="header-actions">
           <!-- 时间周期选择 -->
-          <div class="period-selector">
-            <button
-                v-for="period in periodOptions"
-                :key="period.value"
-                :class="['period-btn', { active: activePeriod === period.value }]"
-                @click="activePeriod = period.value"
-            >
-              {{ period.label }}
-            </button>
-          </div>
-          <button class="refresh-btn" @click="refreshData" :disabled="loading">
-            <Icon icon="ant-design:reload-outlined" class="refresh-icon" :class="{ refreshing: loading }"/>
-            <span class="btn-text">{{ loading ? '刷新中...' : '刷新' }}</span>
-          </button>
-          <button class="back-btn" @click="handleBack">
-            <Icon icon="ant-design:arrow-left-outlined"/>
-            <span class="btn-text">返回</span>
-          </button>
+          <n-radio-group v-model:value="activePeriod" size="small" class="period-selector">
+            <n-radio-button
+              v-for="period in periodOptions"
+              :key="period.value"
+              :value="period.value"
+              :label="period.label"
+            />
+          </n-radio-group>
+          <n-button
+            :loading="loading"
+            @click="refreshData"
+            class="refresh-btn"
+          >
+            <template #icon>
+              <n-icon>
+                <RefreshIcon />
+              </n-icon>
+            </template>
+            {{ loading ? '刷新中...' : '刷新' }}
+          </n-button>
+          <n-button @click="handleBack" class="back-btn">
+            <template #icon>
+              <n-icon>
+                <ArrowBackIcon />
+              </n-icon>
+            </template>
+            返回
+          </n-button>
         </div>
       </div>
-    </div>
+    </n-layout-header>
 
     <!-- 主要内容区域 -->
-    <div class="main-content-with-sidebar">
+    <n-layout-content class="main-content">
       <!-- 资金流向概览 -->
       <section class="flow-overview">
-        <div class="stats-grid">
-          <!-- 主力净流入 -->
-          <div class="flow-card card inflow">
-            <div class="flow-content">
-              <div class="flow-icon">
-                <Icon icon="mdi:arrow-down"/>
-              </div>
-              <div class="flow-info">
-                <div class="flow-value">+{{ formatAmount(flowData.mainInflow) }}</div>
-                <div class="flow-label">主力净流入</div>
-                <div class="flow-change">
-                  <span class="positive">+{{ flowData.mainChange }}%</span>
-                  较昨日
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 主力净流出 -->
-          <div class="flow-card card outflow">
-            <div class="flow-content">
-              <div class="flow-icon">
-                <Icon icon="mdi:arrow-up"/>
-              </div>
-              <div class="flow-info">
-                <div class="flow-value">-{{ formatAmount(flowData.mainOutflow) }}</div>
-                <div class="flow-label">主力净流出</div>
-                <div class="flow-change">
-                  <span class="negative">-{{ flowData.outflowChange }}%</span>
-                  较昨日
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 净流入总额 -->
-          <div class="flow-card card total">
-            <div class="flow-content">
-              <div class="flow-icon">
-                <Icon icon="mdi:chart-line"/>
-              </div>
-              <div class="flow-info">
-                <div class="flow-value" :class="getNetFlowClass(flowData.netFlow)">
-                  {{ formatAmount(flowData.netFlow, true) }}
-                </div>
-                <div class="flow-label">净流入总额</div>
-                <div class="flow-change">
-                  <span :class="getNetFlowClass(flowData.netFlow)">
-                    {{ formatAmount(flowData.netFlowChange, true) }}
-                  </span>
-                  较昨日
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 成交总额 -->
-          <div class="flow-card card turnover">
-            <div class="flow-content">
-              <div class="flow-icon">
-                <Icon icon="mdi:swap-horizontal"/>
-              </div>
-              <div class="flow-info">
-                <div class="flow-value">{{ formatAmount(flowData.turnover) }}</div>
-                <div class="flow-label">成交总额</div>
-                <div class="flow-change">
-                  <span class="positive">+{{ flowData.turnoverChange }}%</span>
-                  较昨日
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <n-grid :cols="4" :x-gap="16">
+          <n-gi>
+            <n-card class="flow-card inflow">
+              <n-statistic label="主力净流入" :value="formatAmount(flowData.mainInflow)">
+                <template #prefix>
+                  <n-icon class="flow-icon" :component="ArrowDownwardIcon" />
+                </template>
+                <template #suffix>
+                  <div class="flow-change">
+                    <n-text type="success">+{{ flowData.mainChange }}%</n-text>
+                    <span> 较昨日</span>
+                  </div>
+                </template>
+              </n-statistic>
+            </n-card>
+          </n-gi>
+          <n-gi>
+            <n-card class="flow-card outflow">
+              <n-statistic label="主力净流出" :value="formatAmount(flowData.mainOutflow)">
+                <template #prefix>
+                  <n-icon class="flow-icon" :component="ArrowUpwardIcon" />
+                </template>
+                <template #suffix>
+                  <div class="flow-change">
+                    <n-text type="error">-{{ flowData.outflowChange }}%</n-text>
+                    <span> 较昨日</span>
+                  </div>
+                </template>
+              </n-statistic>
+            </n-card>
+          </n-gi>
+          <n-gi>
+            <n-card class="flow-card total">
+              <n-statistic
+                label="净流入总额"
+                :value="formatAmount(flowData.netFlow, true)"
+                :value-style="getNetFlowStyle(flowData.netFlow)"
+              >
+                <template #prefix>
+                  <n-icon class="flow-icon" :component="TrendingUpIcon" />
+                </template>
+                <template #suffix>
+                  <div class="flow-change">
+                    <n-text :type="flowData.netFlowChange >= 0 ? 'success' : 'error'">
+                      {{ formatAmount(flowData.netFlowChange, true) }}
+                    </n-text>
+                    <span> 较昨日</span>
+                  </div>
+                </template>
+              </n-statistic>
+            </n-card>
+          </n-gi>
+          <n-gi>
+            <n-card class="flow-card turnover">
+              <n-statistic label="成交总额" :value="formatAmount(flowData.turnover)">
+                <template #prefix>
+                  <n-icon class="flow-icon" :component="SwapHorizIcon" />
+                </template>
+                <template #suffix>
+                  <div class="flow-change">
+                    <n-text type="success">+{{ flowData.turnoverChange }}%</n-text>
+                    <span> 较昨日</span>
+                  </div>
+                </template>
+              </n-statistic>
+            </n-card>
+          </n-gi>
+        </n-grid>
       </section>
 
       <!-- 资金流向图表 -->
       <section class="flow-charts">
-        <div class="charts-grid">
-          <!-- 资金流向趋势 -->
-          <div class="chart-card card">
-            <div class="card-header">
-              <h3 class="card-title">资金流向趋势</h3>
-              <div class="chart-controls">
-                <div class="chart-type-selector">
-                  <button
-                      v-for="type in chartTypeOptions"
-                      :key="type.value"
-                      :class="['chart-type-btn', { active: chartType === type.value }]"
-                      @click="chartType = type.value"
-                  >
-                    {{ type.label }}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="card-body">
+        <n-grid :cols="2" :x-gap="16">
+          <n-gi>
+            <n-card title="资金流向趋势">
+              <template #header-extra>
+                <n-radio-group v-model:value="chartType" size="small">
+                  <n-radio-button value="line" label="折线图" />
+                  <n-radio-button value="bar" label="柱状图" />
+                </n-radio-group>
+              </template>
               <div class="chart-container">
                 <div class="chart-placeholder">
-                  <Icon icon="mdi:chart-line" class="placeholder-icon"/>
+                  <n-icon class="placeholder-icon" :component="LineChartIcon" />
                   <p>资金流向趋势图表</p>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- 行业资金分布 -->
-          <div class="chart-card card">
-            <div class="card-header">
-              <h3 class="card-title">行业资金分布</h3>
-            </div>
-            <div class="card-body">
+            </n-card>
+          </n-gi>
+          <n-gi>
+            <n-card title="行业资金分布">
               <div class="chart-container">
                 <div class="chart-placeholder">
-                  <Icon icon="mdi:chart-pie" class="placeholder-icon"/>
+                  <n-icon class="placeholder-icon" :component="PieChartIcon" />
                   <p>行业资金分布图表</p>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
+            </n-card>
+          </n-gi>
+        </n-grid>
       </section>
 
       <!-- 资金流向明细 -->
       <section class="flow-details">
-        <div class="data-card card">
-          <div class="card-header">
-            <h3 class="card-title">资金流向明细</h3>
-            <div class="header-actions">
-              <!-- 搜索框 -->
-              <div class="search-box">
-                <Icon icon="mdi:magnify" class="search-icon"/>
-                <input
-                    v-model="searchQuery"
-                    type="text"
-                    placeholder="搜索股票代码或名称"
-                    class="search-input"
-                />
-              </div>
-              <!-- 行业筛选 -->
-              <select v-model="filterIndustry" class="filter-select">
-                <option value="">全部行业</option>
-                <option
-                    v-for="industry in industries"
-                    :key="industry"
-                    :value="industry"
-                >
-                  {{ industry }}
-                </option>
-              </select>
+        <n-card title="资金流向明细">
+          <template #header-extra>
+            <div class="header-tools">
+              <n-input
+                v-model:value="searchQuery"
+                placeholder="搜索股票代码或名称"
+                clearable
+                class="search-input"
+              >
+                <template #prefix>
+                  <n-icon :component="SearchIcon" />
+                </template>
+              </n-input>
+              <n-select
+                v-model:value="filterIndustry"
+                :options="industryOptions"
+                placeholder="全部行业"
+                clearable
+                style="width: 150px;"
+              />
             </div>
-          </div>
-          <div class="card-body">
-            <!-- 数据表格 -->
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                <tr>
-                  <th>代码</th>
-                  <th>名称</th>
-                  <th>行业</th>
-                  <th>主力净流入(万)</th>
-                  <th>散户净流入(万)</th>
-                  <th>总净流入(万)</th>
-                  <th>净流入率</th>
-                  <th>成交额(万)</th>
-                  <th>操作</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr
-                    v-for="item in filteredFlowData"
-                    :key="item.code"
-                    class="table-row"
-                >
-                  <td class="code-cell">
-                    <div class="code">{{ item.code }}</div>
-                    <span :class="['exchange-tag', getExchangeClass(item.exchange)]">
-                        {{ getExchangeText(item.exchange) }}
-                      </span>
-                  </td>
-                  <td class="name-cell">
-                    <span class="name">{{ item.name }}</span>
-                    <span v-if="item.is_st" class="st-tag">ST</span>
-                  </td>
-                  <td>
-                    <span class="industry-tag">{{ item.industry }}</span>
-                  </td>
-                  <td class="amount-cell">
-                      <span :class="getFlowClass(item.mainInflow)">
-                        {{ formatAmount(item.mainInflow, true) }}
-                      </span>
-                  </td>
-                  <td class="amount-cell">
-                      <span :class="getFlowClass(item.retailInflow)">
-                        {{ formatAmount(item.retailInflow, true) }}
-                      </span>
-                  </td>
-                  <td class="amount-cell">
-                      <span :class="getFlowClass(item.totalInflow)">
-                        {{ formatAmount(item.totalInflow, true) }}
-                      </span>
-                  </td>
-                  <td class="rate-cell">
-                      <span :class="getFlowClass(item.inflowRate)">
-                        {{ item.inflowRate > 0 ? '+' : '' }}{{ item.inflowRate.toFixed(2) }}%
-                      </span>
-                  </td>
-                  <td class="amount-cell">
-                    {{ formatAmount(item.turnover) }}
-                  </td>
-                  <td class="action-cell">
-                    <button class="detail-btn" @click="viewStockDetail(item)">
-                      详情
-                    </button>
-                  </td>
-                </tr>
-                </tbody>
-              </table>
-            </div>
+          </template>
 
-            <!-- 加载状态 -->
-            <div v-if="loading" class="loading-state">
-              <div class="loading-spinner"></div>
-              <p>数据加载中...</p>
-            </div>
+          <n-data-table
+            :columns="columns"
+            :data="filteredFlowData"
+            :pagination="paginationConfig"
+            :loading="loading"
+            :bordered="false"
+          />
 
-            <!-- 分页控件 -->
-            <div class="pagination-container">
-              <div class="pagination">
-                <button
-                    class="pagination-btn"
-                    :disabled="currentPage === 1"
-                    @click="currentPage--"
-                >
-                  上一页
-                </button>
-                <span class="pagination-info">
-                  第 {{ currentPage }} 页，共 {{ Math.ceil(totalCount / pageSize) }} 页
-                </span>
-                <button
-                    class="pagination-btn"
-                    :disabled="currentPage * pageSize >= totalCount"
-                    @click="currentPage++"
-                >
-                  下一页
-                </button>
-              </div>
+          <template #footer>
+            <div class="pagination-info">
+              共 {{ totalCount }} 条数据
             </div>
-          </div>
-        </div>
+          </template>
+        </n-card>
       </section>
-    </div>
-  </div>
+    </n-layout-content>
+  </n-layout>
 </template>
 
 <script setup>
-import {computed, onMounted, ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {Icon} from '@iconify/vue'
+import { h, computed, onMounted, ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  NLayout,
+  NLayoutHeader,
+  NLayoutContent,
+  NCard,
+  NButton,
+  NIcon,
+  NGrid,
+  NGi,
+  NStatistic,
+  NDataTable,
+  NInput,
+  NSelect,
+  NRadioGroup,
+  NRadioButton,
+  NText,
+  NTag,
+  useMessage
+} from 'naive-ui'
+import {
+  RefreshRound as RefreshIcon,
+  ArrowBackFilled as ArrowBackIcon,
+  SearchFilled as SearchIcon,
+  ArrowDownwardFilled as ArrowDownwardIcon,
+  ArrowUpwardFilled as ArrowUpwardIcon,
+  TrendingUpFilled as TrendingUpIcon,
+  SwapHorizFilled as SwapHorizIcon,
+  MultilineChartFilled as LineChartIcon,
+  PieChartFilled as PieChartIcon
+} from '@vicons/material'
 
 const router = useRouter()
+const message = useMessage()
 
 // 响应式数据
 const activePeriod = ref('today')
@@ -305,21 +235,12 @@ const chartType = ref('line')
 const searchQuery = ref('')
 const filterIndustry = ref('')
 const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(20)
-const totalCount = ref(0)
 
 // 时间周期选项
 const periodOptions = [
-  {label: '今日', value: 'today'},
-  {label: '5日', value: '5d'},
-  {label: '10日', value: '10d'}
-]
-
-// 图表类型选项
-const chartTypeOptions = [
-  {label: '折线图', value: 'line'},
-  {label: '柱状图', value: 'bar'}
+  { label: '今日', value: 'today' },
+  { label: '5日', value: '5d' },
+  { label: '10日', value: '10d' }
 ]
 
 // 资金流向数据
@@ -376,6 +297,28 @@ const flowDetails = ref([
 
 const industries = ref(['银行', '证券', '保险', '电子', '计算机', '医药生物', '电气设备'])
 
+// 行业选项
+const industryOptions = computed(() => [
+  { label: '全部行业', value: '' },
+  ...industries.value.map(industry => ({ label: industry, value: industry }))
+])
+
+// 分页配置
+const paginationConfig = reactive({
+  page: 1,
+  pageSize: 20,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50, 100],
+  onChange: (page) => {
+    paginationConfig.page = page
+  },
+  onUpdatePageSize: (pageSize) => {
+    paginationConfig.pageSize = pageSize
+    paginationConfig.page = 1
+  }
+})
+
 // 计算属性
 const filteredFlowData = computed(() => {
   let data = flowDetails.value
@@ -384,8 +327,8 @@ const filteredFlowData = computed(() => {
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     data = data.filter(item =>
-        item.code.toLowerCase().includes(query) ||
-        item.name.toLowerCase().includes(query)
+      item.code.toLowerCase().includes(query) ||
+      item.name.toLowerCase().includes(query)
     )
   }
 
@@ -394,13 +337,97 @@ const filteredFlowData = computed(() => {
     data = data.filter(item => item.industry === filterIndustry.value)
   }
 
-  totalCount.value = data.length
+  paginationConfig.itemCount = data.length
 
   // 分页
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
+  const start = (paginationConfig.page - 1) * paginationConfig.pageSize
+  const end = start + paginationConfig.pageSize
   return data.slice(start, end)
 })
+
+const totalCount = computed(() => paginationConfig.itemCount)
+
+// 表格列定义
+const columns = computed(() => [
+  {
+    title: '代码',
+    key: 'code',
+    render: (row) => {
+      return h('div', { class: 'code-cell' }, [
+        h('div', { class: 'code' }, row.code),
+        h(NTag, {
+          size: 'small',
+          type: getExchangeType(row.exchange)
+        }, { default: () => getExchangeText(row.exchange) })
+      ])
+    }
+  },
+  {
+    title: '名称',
+    key: 'name',
+    render: (row) => {
+      return h('div', { class: 'name-cell' }, [
+        h('span', { class: 'name' }, row.name),
+        row.is_st && h(NTag, {
+          size: 'small',
+          type: 'error'
+        }, { default: () => 'ST' })
+      ])
+    }
+  },
+  {
+    title: '行业',
+    key: 'industry',
+    render: (row) => h(NTag, { type: 'info' }, { default: () => row.industry })
+  },
+  {
+    title: '主力净流入(万)',
+    key: 'mainInflow',
+    align: 'right',
+    render: (row) => h('span', {
+      class: getFlowClass(row.mainInflow)
+    }, formatAmount(row.mainInflow, true))
+  },
+  {
+    title: '散户净流入(万)',
+    key: 'retailInflow',
+    align: 'right',
+    render: (row) => h('span', {
+      class: getFlowClass(row.retailInflow)
+    }, formatAmount(row.retailInflow, true))
+  },
+  {
+    title: '总净流入(万)',
+    key: 'totalInflow',
+    align: 'right',
+    render: (row) => h('span', {
+      class: getFlowClass(row.totalInflow)
+    }, formatAmount(row.totalInflow, true))
+  },
+  {
+    title: '净流入率',
+    key: 'inflowRate',
+    align: 'right',
+    render: (row) => h('span', {
+      class: getFlowClass(row.inflowRate)
+    }, `${row.inflowRate > 0 ? '+' : ''}${row.inflowRate.toFixed(2)}%`)
+  },
+  {
+    title: '成交额(万)',
+    key: 'turnover',
+    align: 'right',
+    render: (row) => formatAmount(row.turnover)
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    render: (row) => h(NButton, {
+      size: 'small',
+      type: 'primary',
+      onClick: () => viewStockDetail(row)
+    }, { default: () => '详情' })
+  }
+])
 
 // 方法
 const handleBack = () => {
@@ -411,18 +438,19 @@ const refreshData = async () => {
   loading.value = true
   try {
     await new Promise(resolve => setTimeout(resolve, 1000))
+    message.success('数据刷新成功')
   } finally {
     loading.value = false
   }
 }
 
-const getExchangeClass = (exchange) => {
-  const classes = {
-    'SSE': 'exchange-sh',
-    'SZSE': 'exchange-sz',
-    'BSE': 'exchange-bj'
+const getExchangeType = (exchange) => {
+  const types = {
+    'SSE': 'error',
+    'SZSE': 'primary',
+    'BSE': 'warning'
   }
-  return classes[exchange] || ''
+  return types[exchange] || 'default'
 }
 
 const getExchangeText = (exchange) => {
@@ -440,8 +468,10 @@ const getFlowClass = (value) => {
   return 'flow-neutral'
 }
 
-const getNetFlowClass = (value) => {
-  return value >= 0 ? 'flow-positive' : 'flow-negative'
+const getNetFlowStyle = (value) => {
+  return {
+    color: value >= 0 ? '#52c41a' : '#f5222d'
+  }
 }
 
 const formatAmount = (amount, showSign = false) => {
@@ -469,18 +499,18 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-@use '@/assets/scss/variables' as *;
 @use '@/assets/scss/mixins' as mixin;
+@use '@/assets/scss/variables' as *;
 @use 'sass:map';
 @use 'sass:color' as scssColor;
 
+// ============================================================================
+// 资金流向页面主容器
+// ============================================================================
+.market-dashboard-page {
+  @include mixin.content-with-base;
 
-.money-flow-page {
-  min-height: 100vh;
-  background: $primary-bg;
-  transition: all $transition-normal; // 所有属性使用标准过渡时间
-
-  .main-content-with-sidebar {
+  .main-content {
     @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
     margin: 0 auto; // 水平居中
   }
@@ -489,9 +519,9 @@ onMounted(() => {
 // ============================================================================
 // 页面头部样式 - 使用混入统一管理
 // ============================================================================
+// 使用专门为 Naive UI 优化的混入
 .page-header {
-  @include mixin.page-header-base; // 应用页面头部基础样式混入
-  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
+  @include mixin.page-header-base;
 }
 
 // 时间周期选择器
@@ -522,6 +552,7 @@ onMounted(() => {
 // 资金流向概览
 .flow-overview {
   margin-bottom: map.get($spacers, 4);
+    margin-top: map.get($spacers, 5); // 顶部外边距：使用spacers映射中的第6个值
 }
 
 .stats-grid {
@@ -769,15 +800,6 @@ onMounted(() => {
   }
 }
 
-.table-row {
-  transition: background-color $transition-fast;
-
-  &:hover {
-    background: $hover-bg;
-  }
-}
-
-// 表格单元格样式
 .code-cell {
   display: flex;
   flex-direction: column;
@@ -908,64 +930,4 @@ onMounted(() => {
   font-size: calc($font-size-base - 2px);
 }
 
-// 响应式设计
-@include mixin.media-breakpoint-down(lg) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@include mixin.media-breakpoint-down(md) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .data-card .card-header {
-    flex-direction: column;
-    gap: map.get($spacers, 2);
-    align-items: flex-start;
-  }
-
-  .header-actions {
-    flex-direction: column;
-    width: 100%;
-
-    .search-box .search-input {
-      width: 100%;
-    }
-
-    .filter-select {
-      width: 100%;
-    }
-  }
-
-  .data-table {
-    font-size: calc($font-size-base - 2px);
-
-    th, td {
-      padding: map.get($spacers, 2);
-    }
-  }
-}
-
-@include mixin.media-breakpoint-down(sm) {
-  .period-selector {
-    flex-wrap: wrap;
-  }
-
-  .table-container {
-    .data-table {
-      min-width: 800px;
-    }
-  }
-
-  .pagination {
-    flex-direction: column;
-    gap: map.get($spacers, 2);
-  }
-}
 </style>

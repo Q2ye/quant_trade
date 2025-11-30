@@ -15,7 +15,7 @@
                 <RefreshIcon/>
               </n-icon>
             </template>
-            刷新数据
+            <span class="btn-text">刷新数据</span>
           </n-button>
           <n-button class="back-btn" @click="handleBack">
             <template #icon>
@@ -23,14 +23,14 @@
                 <ArrowBackIcon/>
               </n-icon>
             </template>
-            返回
+            <span class="btn-text">返回</span>
           </n-button>
         </div>
       </div>
     </div>
 
     <!-- 主要内容区域 -->
-    <div class="main-content-with-sidebar">
+    <div class="main-content">
       <!-- 筛选条件区域 -->
       <div class="filter-section">
         <n-card class="filter-card" content-style="padding: 20px;">
@@ -46,39 +46,30 @@
                     @update:value="handleDimensionChange"
                 />
               </div>
-              <div class="filter-item">
+              <div class="filter-item market-sector-item">
                 <label class="filter-label" for="market-sector">市场板块</label>
                 <n-select
                     id="market-sector"
                     v-model:value="filters.market"
                     :options="marketOptions"
+                    class="filter-select market-sector-select"
                     multiple
-                    class="filter-select"
+                    placeholder="请选择"
                     @update:value="handleFilterChange"
                 />
               </div>
-              <div class="filter-item">
+              <div class="filter-item sort-method-item">
                 <label class="filter-label" for="sort-method">排序方式</label>
                 <n-select
                     id="sort-method"
                     v-model:value="sortBy"
                     :options="sortOptions"
-                    class="filter-select"
+                    class="filter-select sort-method-select"
                     @update:value="handleSortChange"
                 />
               </div>
-              <div class="filter-item">
-                <label class="filter-label" for="page-size">显示数量</label>
-                <n-select
-                    id="page-size"
-                    v-model:value="pagination.pageSize"
-                    :options="pageSizeOptions"
-                    class="filter-select"
-                    @update:value="handlePageSizeChange"
-                />
-              </div>
             </div>
-            <div class="filter-group">
+            <div class="filter-search">
               <div class="filter-item">
                 <label class="filter-label" for="search-input">搜索</label>
                 <n-input
@@ -96,26 +87,26 @@
                   </template>
                 </n-input>
               </div>
-              <div class="filter-item">
-                <n-button-group>
-                  <n-button @click="exportData" class="export-btn">
-                    <template #icon>
-                      <n-icon>
-                        <DownloadIcon/>
-                      </n-icon>
-                    </template>
-                    导出数据
-                  </n-button>
-                  <n-button @click="resetFilters" class="reset-btn">
-                    <template #icon>
-                      <n-icon>
-                        <CloseIcon/>
-                      </n-icon>
-                    </template>
-                    重置
-                  </n-button>
-                </n-button-group>
-              </div>
+            </div>
+            <div class="filter-item">
+              <n-button-group>
+                <n-button @click="exportData" class="export-btn">
+                  <template #icon>
+                    <n-icon>
+                      <DownloadIcon/>
+                    </n-icon>
+                  </template>
+                  导出数据
+                </n-button>
+                <n-button @click="resetFilters" class="reset-btn">
+                  <template #icon>
+                    <n-icon>
+                      <CloseIcon/>
+                    </n-icon>
+                  </template>
+                  重置
+                </n-button>
+              </n-button-group>
             </div>
           </div>
         </n-card>
@@ -875,136 +866,108 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+// ============================================================================
+// SCSS 导入和配置
+// ============================================================================
 @use '@/assets/scss/mixins' as mixin;
+// 导入混入函数
 @use '@/assets/scss/variables' as *;
+// 导入所有 SCSS 变量
 @use 'sass:map';
-@use 'sass:color' as colors;
+// 导入 Sass Map 函数
+@use 'sass:color' as colors; // 导入颜色处理函数
 
 // ============================================================================
 // 股票列表页面主容器
 // ============================================================================
 .market-dashboard-page {
-  @include mixin.content-with-base;
+  @include mixin.content-with-base; // 应用基础内容区域混入（包含内边距、背景色等）
 
-  .main-content-with-sidebar {
+  .main-content {
     @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
-    margin: 0 auto; // 水平居中
+    margin: 0 auto; // 水平居中显示
   }
 }
-
 
 // ============================================================================
 // 页面头部样式 - 使用混入统一管理
 // ============================================================================
-// 使用专门为 Naive UI 优化的混入
 .page-header {
-  @include mixin.naive-page-header-base;
+  @include mixin.page-header-base; // 应用页面头部基础样式（包含布局、间距等）
 }
 
+// ============================================================================
 // 筛选区域样式
 // ============================================================================
 .filter-section {
-  margin-bottom: map.get($spacers, 4);
-
-  .filter-card {
-    @include mixin.card-base;
-
-    .filter-content {
-      display: flex;
-      flex-wrap: wrap;
-      gap: map.get($spacers, 4);
-      align-items: flex-end;
-
-      .filter-group {
-        display: flex;
-        flex-wrap: wrap;
-        gap: map.get($spacers, 3);
-        flex: 1;
-
-        .filter-item {
-          display: flex;
-          flex-direction: column;
-          min-width: 150px;
-
-          .filter-label {
-            @include mixin.text-secondary;
-            font-size: $font-size-base * 0.85;
-            margin-bottom: map.get($spacers, 1);
-            font-weight: $font-weight-medium;
-          }
-
-          .filter-select {
-            @include mixin.form-element-base;
-            width: 100%;
-          }
-
-          .search-input {
-            @include mixin.form-element-base;
-            width: 250px;
-          }
-        }
-      }
-    }
-  }
+  @include mixin.advanced-filter-section((
+    'with-search': true,
+    'with-actions': true
+  ));
 }
 
+// ============================================================================
 // 统计卡片样式
 // ============================================================================
 .stats-overview {
-  margin-bottom: map.get($spacers, 4);
+  margin-bottom: map.get($spacers, 4); // 底部外边距：使用间距映射中的第4个值
 
   .stats-card {
-    @include mixin.card-base;
-    height: 100%;
+    @include mixin.card-base; // 应用卡片基础样式
+    height: 100%; // 高度100%填充父容器
 
     .stats-content {
-      display: flex;
-      align-items: center;
-      gap: map.get($spacers, 3);
+      display: flex; // 使用弹性布局
+      align-items: center; // 垂直居中对齐
+      gap: map.get($spacers, 3); // 子元素间距：使用间距映射中的第3个值
 
       .stats-icon {
-        @include mixin.flex-center;
-        width: 48px;
-        height: 48px;
-        border-radius: $border-radius;
-        font-size: $font-size-base * 1.5;
-        flex-shrink: 0;
+        @include mixin.flex-center; // 应用弹性居中混入
+        width: 48px; // 固定宽度48px
+        height: 48px; // 固定高度48px
+        border-radius: $border-radius; // 圆角边框
+        font-size: $font-size-base * 1.5; // 字体大小为基数的1.5倍
+        flex-shrink: 0; // 防止图标被压缩
 
+        // 股票统计图标样式
         &.stocks {
-          background: rgba($stock-up-color, 0.1);
-          color: $stock-up-color;
+          background: rgba($stock-up-color, 0.1); // 背景色：股票上涨色的10%透明度
+          color: $stock-up-color; // 文字颜色：股票上涨色
         }
 
+        // ETF统计图标样式
         &.etfs {
-          background: rgba($info-color, 0.1);
-          color: $info-color;
+          background: rgba($info-color, 0.1); // 背景色：信息色的10%透明度
+          color: $info-color; // 文字颜色：信息色
         }
 
+        // 指数统计图标样式
         &.indexes {
-          background: rgba($warning-color, 0.1);
-          color: $warning-color;
+          background: rgba($warning-color, 0.1); // 背景色：警告色的10%透明度
+          color: $warning-color; // 文字颜色：警告色
         }
 
+        // 市值统计图标样式
         &.market-cap {
-          background: rgba($success-color, 0.1);
-          color: $success-color;
+          background: rgba($success-color, 0.1); // 背景色：成功色的10%透明度
+          color: $success-color; // 文字颜色：成功色
         }
       }
 
       .stats-info {
-        flex: 1;
+        flex: 1; // 占据剩余空间
 
         .stats-value {
-          font-size: $font-size-base * 1.5;
-          font-weight: $font-weight-bold;
-          color: $text-primary;
-          margin-bottom: map.get($spacers, 1);
-          line-height: 1.2;
+          font-size: $font-size-base * 1.5; // 字体大小为基数的1.5倍
+          font-weight: $font-weight-bold; // 粗体字重
+          color: $text-primary; // 主要文字颜色
+          margin-bottom: map.get($spacers, 1); // 底部外边距
+          line-height: 1.2; // 行高1.2
         }
 
         .stats-label {
-          @include mixin.text-secondary;
-          font-size: $font-size-base * 0.85;
+          @include mixin.text-secondary; // 应用次要文本样式
+          font-size: $font-size-base * 0.85; // 字体大小为基数的85%
         }
       }
     }
@@ -1016,26 +979,28 @@ onMounted(() => {
 // ============================================================================
 .data-section {
   .data-card {
-    @include mixin.card-base;
+    @include mixin.card-base; // 应用卡片基础样式
 
+    // 卡片头部样式
     :deep(.n-card__header) {
-      @include mixin.card-header-base;
+      @include mixin.card-header-base; // 应用卡片头部基础样式
     }
 
     // 表格视图样式
     .table-container {
-      @include mixin.custom-scrollbar;
+      @include mixin.custom-scrollbar; // 应用自定义滚动条样式
 
       :deep(.n-data-table) {
-        @include mixin.table-base-styles;
+        @include mixin.table-base-styles; // 应用表格基础样式
 
-        // 表格行样式优化
+        // 偶数行样式
         .even-row {
-          background: rgba($secondary-bg, 0.3);
+          background: rgba($secondary-bg, 0.3); // 背景色：次要背景色的30%透明度
         }
 
+        // 奇数行样式
         .odd-row {
-          background: $card-bg;
+          background: $card-bg; // 背景色：卡片背景色
         }
       }
     }
@@ -1043,105 +1008,112 @@ onMounted(() => {
     // 卡片视图样式
     .card-view-container {
       .empty-state {
-        @include mixin.flex-center(column);
-        padding: map.get($spacers, 6);
-        color: $text-secondary;
+        @include mixin.flex-center(column); // 应用弹性居中混入（垂直方向）
+        padding: map.get($spacers, 6); // 内边距：使用间距映射中的第6个值
+        color: $text-secondary; // 文字颜色：次要文字颜色
       }
 
       .data-card-item {
-        @include mixin.card-base;
-        height: 100%;
-        cursor: pointer;
-        transition: all $transition-normal;
+        @include mixin.card-base; // 应用卡片基础样式
+        height: 100%; // 高度100%填充父容器
+        cursor: pointer; // 鼠标指针变为手型
+        transition: all $transition-normal; // 所有属性过渡效果
 
+        // 悬停状态
         &:hover {
-          border-color: $accent-color;
-          transform: $hover-transform;
+          border-color: $accent-color; // 边框颜色：强调色
+          transform: $hover-transform; // 悬停变换效果
         }
 
         .card-content {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
+          display: flex; // 使用弹性布局
+          flex-direction: column; // 垂直排列子元素
+          height: 100%; // 高度100%填充父容器
 
           .card-header {
-            margin-bottom: map.get($spacers, 2);
+            margin-bottom: map.get($spacers, 2); // 底部外边距
 
             .item-code {
-              font-size: $font-size-base * 0.9;
-              font-weight: $font-weight-semibold;
-              color: $accent-color;
-              margin-bottom: map.get($spacers, 1);
+              font-size: $font-size-base * 0.9; // 字体大小为基数的90%
+              font-weight: $font-weight-semibold; // 半粗体字重
+              color: $accent-color; // 文字颜色：强调色
+              margin-bottom: map.get($spacers, 1); // 底部外边距
             }
 
             .item-name {
-              font-size: $font-size-base;
-              font-weight: $font-weight-medium;
-              color: $text-primary;
-              @include mixin.text-ellipsis;
+              font-size: $font-size-base; // 基础字体大小
+              font-weight: $font-weight-medium; // 中等字重
+              color: $text-primary; // 文字颜色：主要文字颜色
+              @include mixin.text-ellipsis; // 应用文本溢出省略号
             }
           }
 
           .card-body {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: map.get($spacers, 2);
+            flex: 1; // 占据剩余空间
+            display: flex; // 使用弹性布局
+            flex-direction: column; // 垂直排列子元素
+            justify-content: center; // 垂直居中
+            align-items: center; // 水平居中
+            margin-bottom: map.get($spacers, 2); // 底部外边距
 
             .item-price {
-              font-size: $font-size-base * 1.3;
-              font-weight: $font-weight-bold;
-              margin-bottom: map.get($spacers, 1);
+              font-size: $font-size-base * 1.3; // 字体大小为基数的1.3倍
+              font-weight: $font-weight-bold; // 粗体字重
+              margin-bottom: map.get($spacers, 1); // 底部外边距
 
+              // 上涨价格样式
               &.positive {
-                color: $stock-up-color;
+                color: $stock-up-color; // 文字颜色：股票上涨色
               }
 
+              // 下跌价格样式
               &.negative {
-                color: $stock-down-color;
+                color: $stock-down-color; // 文字颜色：股票下跌色
               }
 
+              // 中性价格样式
               &.neutral {
-                color: $text-secondary;
+                color: $text-secondary; // 文字颜色：次要文字颜色
               }
             }
 
             .item-change {
-              font-size: $font-size-base;
-              font-weight: $font-weight-medium;
+              font-size: $font-size-base; // 基础字体大小
+              font-weight: $font-weight-medium; // 中等字重
 
+              // 上涨变化样式
               &.positive {
-                color: $stock-up-color;
+                color: $stock-up-color; // 文字颜色：股票上涨色
               }
 
+              // 下跌变化样式
               &.negative {
-                color: $stock-down-color;
+                color: $stock-down-color; // 文字颜色：股票下跌色
               }
 
+              // 中性变化样式
               &.neutral {
-                color: $text-secondary;
+                color: $text-secondary; // 文字颜色：次要文字颜色
               }
             }
           }
 
           .card-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: flex; // 使用弹性布局
+            justify-content: space-between; // 两端对齐
+            align-items: center; // 垂直居中对齐
 
             .item-market {
-              background: rgba($accent-color, 0.1);
-              color: $accent-color;
-              border: none;
+              background: rgba($accent-color, 0.1); // 背景色：强调色的10%透明度
+              color: $accent-color; // 文字颜色：强调色
+              border: none; // 无边框
             }
 
             .item-extra {
-              @include mixin.text-secondary;
-              font-size: $font-size-base * 0.8;
-              @include mixin.text-ellipsis;
-              max-width: 100px;
+              @include mixin.text-secondary; // 应用次要文本样式
+              font-size: $font-size-base * 0.8; // 字体大小为基数的80%
+              @include mixin.text-ellipsis; // 应用文本溢出省略号
+              max-width: 100px; // 最大宽度100px
             }
           }
         }
@@ -1150,24 +1122,26 @@ onMounted(() => {
 
     // 分页样式
     .pagination-wrapper {
-      margin-top: map.get($spacers, 4);
-      display: flex;
-      justify-content: center;
+      margin-top: map.get($spacers, 4); // 顶部外边距
+      display: flex; // 使用弹性布局
+      justify-content: center; // 水平居中
 
       :deep(.n-pagination) {
         .n-pagination-item {
-          background: $secondary-bg;
-          border: $border-width solid $border-color;
-          color: $text-primary;
+          background: $secondary-bg; // 背景色：次要背景色
+          border: $border-width solid $border-color; // 边框样式
+          color: $text-primary; // 文字颜色：主要文字颜色
 
+          // 激活页码样式
           &.n-pagination-item--active {
-            background: $accent-color;
-            border-color: $accent-color;
-            color: white;
+            background: $accent-color; // 背景色：强调色
+            border-color: $accent-color; // 边框颜色：强调色
+            color: white; // 文字颜色：白色
           }
 
+          // 悬停状态（非禁用状态）
           &:hover:not(.n-pagination-item--disabled) {
-            border-color: $accent-color;
+            border-color: $accent-color; // 边框颜色：强调色
           }
         }
       }
@@ -1179,21 +1153,25 @@ onMounted(() => {
 // 按钮组样式
 // ============================================================================
 .export-btn {
-  @include mixin.button-base($success-color, white);
+  @include mixin.button-base($accent-color, white); // 应用基础按钮样式（成功色背景，白色文字）
 
+  // 悬停状态
   &:hover {
-    background: colors.adjust($success-color, $lightness: 10%);
+    background: colors.adjust($accent-color, $lightness: 10%); // 背景色：成功色调亮10%
+    color: white;
   }
 }
 
 .reset-btn {
-  @include mixin.button-base(transparent, $text-primary);
-  border: $border-width solid $border-color;
+  @include mixin.button-base(transparent, $text-primary); // 应用基础按钮样式（透明背景，主要文字颜色）
+  border: $border-width solid $border-color; // 边框样式
 
+
+  // 悬停状态
   &:hover {
-    background: $hover-bg;
-    border-color: $danger-color;
-    color: $danger-color;
+    background: $hover-bg; // 背景色：悬停背景色
+    border-color: $danger-color; // 边框颜色：危险色
+    color: $danger-color; // 文字颜色：危险色
   }
 }
 
@@ -1202,7 +1180,7 @@ onMounted(() => {
 // ============================================================================
 :deep(.n-loading-bar) {
   .n-loading-bar--loading {
-    background: $accent-color;
+    background: $accent-color; // 背景色：强调色
   }
 }
 
@@ -1211,10 +1189,10 @@ onMounted(() => {
 // ============================================================================
 :deep(.n-tooltip) {
   .n-tooltip__content {
-    background: $secondary-bg;
-    color: $text-primary;
-    border: $border-width solid $border-color;
-    box-shadow: $card-shadow;
+    background: $secondary-bg; // 背景色：次要背景色
+    color: $text-primary; // 文字颜色：主要文字颜色
+    border: $border-width solid $border-color; // 边框样式
+    box-shadow: $card-shadow; // 卡片阴影
   }
 }
 </style>

@@ -24,19 +24,27 @@
     <footer class="app-footer no-bleed-through">
       <div class="footer-content">
         <div class="footer-section">
-          <i class="fas fa-microchip"></i>
+          <n-icon size="14" class="footer-icon">
+            <ComputerFilled />
+          </n-icon>
           <span>CPU: {{ systemStats.cpuUsage }}% | 内存: {{ systemStats.memoryUsage }}%</span>
         </div>
         <div class="footer-section">
-          <i class="fas fa-network-wired"></i>
+          <n-icon size="14" class="footer-icon">
+            <CloudSyncFilled />
+          </n-icon>
           <span>数据连接: {{ systemStats.dataStatus }}</span>
         </div>
         <div class="footer-section">
-          <i class="fas fa-exchange-alt"></i>
+          <n-icon size="14" class="footer-icon">
+            <SwapHorizFilled />
+          </n-icon>
           <span>交易通道: {{ systemStats.tradeStatus }}</span>
         </div>
         <div class="footer-log">
-          <i class="fas fa-terminal"></i>
+          <n-icon size="14" class="footer-icon">
+            <CodeFilled />
+          </n-icon>
           <span>{{ systemStats.lastLog }}</span>
         </div>
       </div>
@@ -45,8 +53,15 @@
 </template>
 
 <script lang="ts">
-import {onMounted, onUnmounted, reactive, ref} from 'vue'
-import {useRoute} from 'vue-router'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { NIcon } from 'naive-ui'
+import {
+  ComputerFilled,        // 系统/CPU图标
+  CloudSyncFilled,          // 数据连接图标
+  SwapHorizFilled,    // 交易通道图标
+  CodeFilled             // 日志/终端图标
+} from '@vicons/material'
+
 import AppHeader from '../components/ui/AppHeader.vue'
 import AppSidebar from '../components/ui/AppSidebar.vue'
 
@@ -54,10 +69,14 @@ export default {
   name: "MainLayout",
   components: {
     AppHeader,
-    AppSidebar
+    AppSidebar,
+    NIcon,
+    ComputerFilled,
+    CloudSyncFilled,
+    SwapHorizFilled,
+    CodeFilled
   },
   setup() {
-    const route = useRoute()
     const sidebarCollapsed = ref(false)
     const systemStats = reactive({
       cpuUsage: 0,
@@ -92,6 +111,7 @@ export default {
   }
 }
 </script>
+
 <style lang="scss" scoped>
 @use 'sass:map'; // 导入Sass的map功能，用于处理键值对数据
 @use '@/assets/scss/themes' as *; // 导入主题变量
@@ -123,7 +143,6 @@ export default {
   min-height: 0;
   /* 关键：精确计算可用高度，减去头部和底部 */
   height: calc(100vh - var(--header-height) - var(--footer-height));
-
 }
 
 /* 工作区主内容区域 */
@@ -159,6 +178,7 @@ export default {
     width: calc(100% - #{theme-layout("sidebar-collapsed-width")});
   }
 }
+
 /* 底部状态栏样式 */
 .app-footer {
   height: 30px; // 固定高度
@@ -166,7 +186,7 @@ export default {
   border-top: theme-border("border-width") solid theme-color("border-color"); // 顶部边框
   display: flex; // flex布局
   align-items: center; // 垂直居中
-  padding: 0 map.get($spacers, 3); // 水平内边距
+  padding: 0 map.get($spacers, 4); // 水平内边距
   font-size: theme-typography("font-size-base") * 0.85; // 字体大小为基准的85%
   color: theme-color("text-secondary"); // 次要文本颜色
   flex-shrink: 0; // 防止在flex容器中收缩
@@ -178,7 +198,6 @@ export default {
     display: flex; // flex布局
     align-items: center; // 垂直居中
     width: 100%; // 占满宽度
-    max-width: 1400px; // 最大宽度限制
     margin: 0 auto; // 水平居中
   }
 
@@ -189,11 +208,10 @@ export default {
     margin-right: map.get($spacers, 4); // 右边距
     white-space: nowrap; // 防止文字换行
 
-    /* 图标样式 */
-    i {
+    /* Naive UI 图标样式 */
+    .footer-icon {
       margin-right: map.get($spacers, 1); // 图标右边距
       color: theme-color("accent-color"); // 强调色
-      font-size: theme-typography("font-size-base") * 0.8; // 图标大小为基准的80%
     }
 
     /* 文字样式 */
@@ -214,10 +232,9 @@ export default {
     max-width: 300px; // 最大宽度限制
 
     /* 日志图标 */
-    i {
+    .footer-icon {
       margin-right: map.get($spacers, 1); // 图标右边距
       color: theme-color("accent-color"); // 强调色
-      font-size: theme-typography("font-size-base") * 0.8; // 图标大小
     }
 
     /* 日志文字 */
@@ -334,5 +351,45 @@ export default {
 /* 滚动条样式 - 只应用到内容区域 */
 .workspace .workspace-content {
   @include local_mix.custom-scrollbar; // 应用自定义滚动条样式
+}
+
+// ========== Naive UI 特定适配 ==========
+
+/* Naive UI 图标在底部状态栏的样式优化 */
+.footer-icon {
+  flex-shrink: 0; // 防止图标收缩
+
+  /* 确保图标颜色与主题一致 */
+  :deep(svg) {
+    color: inherit;
+  }
+}
+
+/* 确保 Naive UI 组件在布局中的正确显示 */
+:deep(.n-config-provider) {
+  height: 100%;
+
+  /* 确保 Naive UI 组件继承布局的高度 */
+  & > * {
+    height: 100%;
+  }
+}
+
+/* Naive UI 全局样式适配 */
+:deep(.n-layout) {
+  background: transparent; // 透明背景以适配自定义主题
+
+  &.n-layout--absolute-positioned {
+    position: relative; // 确保在布局容器中正确定位
+  }
+}
+
+/* 确保路由视图正确继承样式 */
+:deep(.n-layout-scroll-container) {
+  height: 100%;
+  overflow: auto;
+
+  /* 应用自定义滚动条 */
+  @include local_mix.custom-scrollbar;
 }
 </style>

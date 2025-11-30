@@ -1039,144 +1039,102 @@
   }
 }
 
-/// 筛选下拉框选择器样式混入
-/// @param {Boolean} $with-icon - 是否包含下拉图标
-/// @param {Number} $width - 选择器宽度
-@mixin filter-select($with-icon: true, $width: 200px) {
+// ============================================================================
+// Naive UI 选择器样式混入（新增，基于主题的深度选择器）
+// ============================================================================
+@mixin naive-select-styles($width: 200px) {
   position: relative; // 相对定位，为下拉图标定位做准备
   width: $width; // 设置选择器宽度
   min-width: 120px; // 最小宽度限制
 
-  // Naive UI 选择器样式适配
-  .n-select {
+  // 基础选择器样式
+  ::v-deep(.n-select) {
+    border: $border-width solid rgba($border-color, 0.7) !important; // 修复：使用半透明边框，减少刺眼感
     width: 100%; // 宽度占满容器
-    padding: map.get($spacers, 2) if($with-icon, map.get($spacers, 6), map.get($spacers, 3)) map.get($spacers, 2) map.get($spacers, 3); // 内边距，右侧为图标留空间
-    background: $input-bg; // 输入框背景色
-    border: $border-width solid $border-color; // 边框样式
-    border-radius: $border-radius; // 边框圆角
-    color: $text-primary; // 文字颜色
     font-size: $font-size-base; // 字体大小
     font-family: $font-family; // 字体族
     cursor: pointer; // 手型光标
     transition: all $transition-normal; // 过渡动画
     appearance: none; // 移除默认样式
     outline: none; // 移除轮廓线
-    .n-base-selection-label{
-       background: $input-bg; // 输入框背景色
+    border-radius: $border-radius !important; // 确保圆角一致性
+
+    // 选择器标签区域 - 修复多选框背景问题
+    .n-base-selection-label {
+      background-color: $input-bg !important; // 修复：确保输入框背景色生效
+      color: $text-primary !important;
+      border-radius: $border-radius !important; // 添加圆角
     }
 
-    // 禁用状态样式
-    &:disabled {
-      background: color.adjust($input-bg, $lightness: -5%); // 加深背景色
-      color: $text-secondary; // 次要文字颜色
-      cursor: not-allowed; // 禁用光标
-      opacity: 0.6; // 降低透明度
+    // 修复多选框背景色不生效问题
+    ::v-deep(.n-base-selection.n-base-selection--multiple) {
+      .n-base-selection-label {
+        background-color: $input-bg !important;
+        
+        .n-base-selection-item {
+          background-color: rgba($accent-color, 0.1) !important;
+          color: $text-primary !important;
+          border-radius: $border-radius-sm !important;
+        }
+      }
     }
 
-    // 悬停状态（非禁用）
-    &:not(:disabled):hover {
-      border-color: color.adjust($border-color, $lightness: 10%); // 边框颜色变亮
-      box-shadow: $hover-shadow; // 添加悬停阴影
+    // 输入框内容区域
+    .n-base-selection-input__content {
+      color: $text-primary !important;
+    }
+    
+    // 下拉图标
+    .n-base-suffix {
+      color: $text-secondary !important;
+      transition: transform $transition-normal; // 添加旋转过渡
     }
 
-    // 聚焦状态
-    &:focus {
-      border-color: $accent-color; // 强调色边框
-      box-shadow: 0 0 0 2px rgba($accent-color, 0.1); // 聚焦光晕效果
+    // 聚焦状态下的下拉图标
+    &.n-base-selection--focus {
+      .n-base-suffix {
+        transform: rotate(180deg); // 聚焦时图标旋转
+      }
     }
 
-    // 选项样式
-    option {
-      background: $input-bg; // 选项背景色
-      color: $text-primary; // 选项文字颜色
-      padding: map.get($spacers, 2); // 选项内边距
+    // 悬停状态
+    &:hover {
+      border-color: rgba($accent-color, 0.5) !important; // 修复：悬停时使用主题色
+      box-shadow: $hover-shadow !important;
+    }
 
-      // 禁用选项样式
-      &:disabled {
-        color: $text-secondary; // 禁用选项文字颜色
-        background: color.adjust($input-bg, $lightness: -5%); // 禁用选项背景色
+    // 禁用状态
+    &.n-base-selection--disabled {
+      background-color: color.adjust($input-bg, $lightness: -5%) !important;
+      border-color: rgba($border-color, 0.5) !important; // 修复：禁用状态半透明边框
+      opacity: 0.6 !important;
+
+      .n-base-selection-label {
+        background-color: color.adjust($input-bg, $lightness: -5%) !important;
+        color: $text-secondary !important;
       }
     }
   }
-
-  // 下拉图标样式（当启用时）
-  @if $with-icon {
-    &::after {
-      content: ''; // 伪元素内容
-      position: absolute; // 绝对定位
-      right: map.get($spacers, 3); // 右侧间距
-      top: 50%; // 垂直居中
-      transform: translateY(-50%); // Y轴居中变换
-      width: 0; // 宽度为0，使用边框创建三角形
-      height: 0; // 高度为0
-      border-left: 4px solid transparent; // 左侧透明边框
-      border-right: 4px solid transparent; // 右侧透明边框
-      border-top: 4px solid $text-secondary; // 上侧边框形成下拉箭头
-      pointer-events: none; // 禁用指针事件，避免干扰点击
-      transition: transform $transition-normal; // 旋转过渡动画
-    }
-
-    // 展开状态的下拉图标旋转
-    &.select-open::after {
-      transform: translateY(-50%) rotate(180deg); // 旋转180度形成展开状态
-    }
-  }
-
-  // 小尺寸变体样式
-  &.select-sm {
-    width: $width * 0.75; // 缩小宽度
-
-    .n-select {
-      .n-base-selection {
-        font-size: $font-size-base * 0.9; // 减小字体大小
+  
+  // 修复下拉列表背景样式
+  ::v-deep(.n-base-select-menu) {
+    background-color: $card-bg !important;
+    border-radius: $border-radius !important;
+    border: $border-width solid rgba($border-color, 0.7) !important;
+    box-shadow: $card-shadow !important;
+    
+    .n-base-select-option {
+      background-color: $card-bg !important;
+      color: $text-primary !important;
+      
+      &.n-base-select-option--pending {
+        background-color: $hover-bg !important;
       }
-    }
-  }
-
-  // 大尺寸变体样式
-  &.select-lg {
-    width: $width * 1.25; // 增大宽度
-
-    .n-select {
-      .n-base-selection {
-        font-size: $font-size-base * 1.1; // 增大字体大小
-      }
-    }
-  }
-
-  // 错误状态样式
-  &.select-error {
-    .n-select .n-base-selection {
-      border-color: $danger-color; // 危险色边框
-
-      &.n-base-selection--focus {
-        border-color: $danger-color; // 聚焦时保持危险色
-        box-shadow: 0 0 0 2px rgba($danger-color, 0.1); // 危险色光晕
-      }
-    }
-  }
-
-  // 成功状态样式
-  &.select-success {
-    .n-select .n-base-selection {
-      border-color: $success-color; // 成功色边框
-
-      &.n-base-selection--focus {
-        border-color: $success-color; // 聚焦时保持成功色
-        box-shadow: 0 0 0 2px rgba($success-color, 0.1); // 成功色光晕
-      }
-    }
-  }
-
-  // 透明背景变体样式
-  &.select-transparent {
-    .filter-select {
-      background: transparent; // 透明背景
-      border-color: color.adjust($border-color, $alpha: -0.5); // 半透明边框
-
-      &:focus {
-        background: $input-bg; // 聚焦时显示背景
-        border-color: $accent-color; // 强调色边框
+      
+      &.n-base-select-option--selected {
+        background-color: rgba($accent-color, 0.1) !important;
+        color: $accent-color !important;
+        font-weight: $font-weight-medium;
       }
     }
   }
@@ -1392,5 +1350,168 @@
         padding: map.get($spacers, 3);
       }
     }
+  }
+}
+
+// ============================================================================
+// 筛选区域混入
+// ============================================================================
+
+/// 通用筛选区域基础混入
+/// @param {Boolean} $with-search - 是否包含搜索区域
+/// @param {Boolean} $with-actions - 是否包含操作按钮
+@mixin filter-section-base($with-search: true, $with-actions: true) {
+  margin-bottom: map.get($spacers, 4);
+  margin-top: map.get($spacers, 5);
+
+  .filter-card {
+    @include card-base;
+
+    .filter-content {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: map.get($spacers, 4);
+      align-items: flex-end;
+      justify-content: space-between;
+
+      .filter-group {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: map.get($spacers, 2);
+        flex: 1;
+        min-width: 0;
+
+        // 第一个筛选组左对齐
+        &:first-child {
+          justify-content: flex-start;
+          flex-shrink: 0;
+        }
+
+        .filter-item {
+          @include naive-select-styles(180px);
+          display: flex;
+          flex-direction: column;
+          flex-shrink: 0;
+
+          .filter-label {
+            @include text-secondary;
+            font-size: $font-size-base * 0.85;
+            margin-bottom: map.get($spacers, 1);
+            font-weight: $font-weight-medium;
+            white-space: nowrap;
+          }
+        }
+      }
+
+      // 搜索区域样式
+      @if $with-search {
+        .filter-search {
+          display: flex;
+          align-items: flex-end;
+          flex-shrink: 0;
+          margin-left: auto;
+
+          .filter-item {
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+
+            .filter-label {
+              @include text-secondary;
+              font-size: $font-size-base * 0.85;
+              margin-bottom: map.get($spacers, 1);
+              font-weight: $font-weight-medium;
+              white-space: nowrap;
+            }
+
+            .search-input {
+              @include form-element-base;
+              width: 250px;
+              min-width: 200px;
+              flex-shrink: 0;
+            }
+          }
+        }
+      }
+
+      // 按钮组样式
+      @if $with-actions {
+        .filter-actions {
+          flex-shrink: 0;
+          margin-left: map.get($spacers, 2);
+        }
+      }
+    }
+  }
+}
+
+/// 响应式筛选区域混入
+/// @param {Map} $breakpoints - 断点配置
+@mixin responsive-filter-section($breakpoints: ()) {
+  // 默认响应式配置
+  $default-breakpoints: (
+    'lg': (
+      'search-width': 200px,
+      'filter-gap': map.get($spacers, 2)
+    ),
+    'md': (
+      'search-width': 180px,
+      'filter-gap': map.get($spacers, 1)
+    ),
+    'sm': (
+      'search-width': 150px,
+      'filter-gap': map.get($spacers, 1)
+    )
+  );
+
+  $breakpoints: map.merge($default-breakpoints, $breakpoints);
+
+  // 响应式调整
+  @each $breakpoint, $config in $breakpoints {
+    @include media-breakpoint-down($breakpoint) {
+      .filter-content {
+        gap: map.get($config, 'filter-gap') or map.get($spacers, 2);
+        flex-wrap: wrap;
+
+        .filter-search .search-input {
+          width: map.get($config, 'search-width') or 200px;
+        }
+
+        .filter-group {
+          flex-wrap: wrap;
+        }
+      }
+    }
+  }
+}
+
+/// 高级筛选区域混入（包含所有功能）
+/// @param {Map} $config - 配置参数
+@mixin advanced-filter-section($config: ()) {
+  $default-config: (
+    'with-search': true,
+    'with-actions': true,
+    'responsive': true,
+    'card-style': true
+  );
+
+  $config: map.merge($default-config, $config);
+
+  // 应用基础样式
+  @include filter-section-base(
+    map.get($config, 'with-search'),
+    map.get($config, 'with-actions')
+  );
+
+  // 应用卡片样式
+  @if map.get($config, 'card-style') {
+    .filter-card {
+      @include card-base;
+    }
+  }
+
+  // 应用响应式
+  @if map.get($config, 'responsive') {
+    @include responsive-filter-section;
   }
 }

@@ -10,42 +10,41 @@
     </div>
 
     <div class="grid-container">
-      <div class="card equity-curve">
-        <h3>资金曲线</h3>
+      <n-card class="card equity-curve" title="资金曲线">
         <div class="chart-placeholder">净值走势图表 (vs 沪深300)</div>
-      </div>
+      </n-card>
 
-      <div class="card risk-matrix">
-        <h3>风险矩阵</h3>
+      <n-card class="card risk-matrix" title="风险矩阵">
         <div class="chart-placeholder">回撤/仓位/当日盈亏监控</div>
-      </div>
+      </n-card>
 
-      <div class="card sector-distribution">
-        <h3>行业分布</h3>
+      <n-card class="card sector-distribution" title="行业分布">
         <div class="chart-placeholder">行业环形图/持仓比例可视化</div>
-      </div>
+      </n-card>
 
-      <div class="card market-heatmap">
-        <h3>行业热度</h3>
+      <n-card class="card market-heatmap" title="行业热度">
         <div class="chart-placeholder">涨跌幅TOP5行业/板块热度图</div>
-      </div>
+      </n-card>
 
-      <div class="card positions">
-        <h3>持仓明细</h3>
+      <n-card class="card positions" title="持仓明细">
         <div class="chart-placeholder">持仓股票表格</div>
-      </div>
+      </n-card>
 
-      <div class="card recent-orders">
-        <h3>最新成交</h3>
+      <n-card class="card recent-orders" title="最新成交">
         <div class="chart-placeholder">成交记录表格</div>
-      </div>
+      </n-card>
     </div>
   </div>
 </template>
 
 <script>
+import { NCard } from 'naive-ui'
+
 export default {
-  name: "TradeLayout"
+  name: "TradeLayout",
+  components: {
+    NCard
+  }
 }
 </script>
 
@@ -103,15 +102,23 @@ export default {
   background: var(--secondary-bg);
   border-radius: 8px;
   border: 1px solid var(--border-color);
-  padding: 15px;
   display: flex;
   flex-direction: column;
 
-  h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 16px;
-    color: var(--text-primary);
+  :deep(.n-card-header) {
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+
+    .n-card-header__main {
+      font-size: 16px;
+      color: var(--text-primary);
+      margin: 0;
+    }
+  }
+
+  :deep(.n-card__content) {
+    flex: 1;
+    padding: 15px;
   }
 }
 

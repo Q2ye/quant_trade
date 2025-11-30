@@ -4,7 +4,125 @@
       <div class="content-header">
         <h3>策略代码编辑器</h3>
       </div>
-      <textarea class="code-editor"># 双均线策略示例代码
+      <n-input
+        type="textarea"
+        class="code-editor"
+        :autosize="{ minRows: 20, maxRows: 30 }"
+        :value="code"
+        @update:value="handleCodeChange"
+      />
+    </div>
+
+    <div class="config-pane">
+      <h3>回测参数配置</h3>
+      <div class="param-row">
+        <div class="param-label">回测周期</div>
+        <n-select
+          class="param-input"
+          :options="timeRangeOptions"
+          :value="selectedTimeRange"
+          @update:value="handleTimeRangeChange"
+        />
+      </div>
+      <div class="param-row">
+        <div class="param-label">初始资金</div>
+        <n-input
+          class="param-input"
+          type="text"
+          :value="initialCapital"
+          @update:value="handleCapitalChange"
+        />
+      </div>
+      <div class="param-row">
+        <div class="param-label">手续费</div>
+        <n-input
+          class="param-input"
+          type="text"
+          :value="commission"
+          @update:value="handleCommissionChange"
+        />
+      </div>
+      <div class="param-row">
+        <div class="param-label">滑点</div>
+        <n-input
+          class="param-input"
+          type="text"
+          :value="slippage"
+          @update:value="handleSlippageChange"
+        />
+      </div>
+      <div class="param-row">
+        <div class="param-label">基准指数</div>
+        <n-select
+          class="param-input"
+          :options="benchmarkOptions"
+          :value="selectedBenchmark"
+          @update:value="handleBenchmarkChange"
+        />
+      </div>
+      <div class="action-bar">
+        <n-button type="primary" class="btn btn-primary" @click="runBacktest">
+          <template #icon>
+            <n-icon><PlayArrow /></n-icon>
+          </template>
+          执行回测
+        </n-button>
+        <n-button class="btn btn-secondary" @click="saveStrategy">
+          <template #icon>
+            <n-icon><Save /></n-icon>
+          </template>
+          保存策略
+        </n-button>
+      </div>
+    </div>
+
+    <div class="monitor-pane">
+      <n-tabs type="line" class="results-tabs">
+        <n-tab-pane name="results" tab="回测结果">
+          <div class="tab-content">
+            回测结果图表和指标将显示在这里
+            <div style="margin-top: 15px;">
+              <div>年化收益率: <span style="color: var(--success-color);">+28.7%</span></div>
+              <div>夏普比率: 0.92</div>
+              <div>最大回撤: <span style="color: var(--danger-color);">-15.3%</span></div>
+              <div>胜率: 55.6%</div>
+            </div>
+          </div>
+        </n-tab-pane>
+        <n-tab-pane name="trades" tab="交易明细">
+          <div class="tab-content">
+            交易明细将显示在这里
+          </div>
+        </n-tab-pane>
+        <n-tab-pane name="logs" tab="日志输出">
+          <div class="tab-content">
+            日志输出将显示在这里
+          </div>
+        </n-tab-pane>
+      </n-tabs>
+    </div>
+  </div>
+</template>
+
+<script>
+import { NInput, NSelect, NButton, NIcon, NTabs, NTabPane } from 'naive-ui'
+import { PlayArrow, Save } from '@vicons/material'
+
+export default {
+  name: "StrategyLayout",
+  components: {
+    NInput,
+    NSelect,
+    NButton,
+    NIcon,
+    NTabs,
+    NTabPane,
+    PlayArrow,
+    Save
+  },
+  data() {
+    return {
+      code: `# 双均线策略示例代码
 def initialize(context):
     context.security = '000001.SH'
     context.SHORTPERIOD = 10
@@ -22,71 +140,50 @@ def handle_data(context, data):
     else:
         order_target_percent(context.security, 0.1)
 
-    record(short_mavg=short_avg, long_mavg=long_avg)</textarea>
-    </div>
-
-    <div class="config-pane">
-      <h3>回测参数配置</h3>
-      <div class="param-row">
-        <div class="param-label">回测周期</div>
-        <select class="param-input">
-          <option>2020-01-01 至 2023-08-20</option>
-          <option>2019-01-01 至 2023-08-20</option>
-          <option>2018-01-01 至 2023-08-20</option>
-        </select>
-      </div>
-      <div class="param-row">
-        <div class="param-label">初始资金</div>
-        <input type="text" class="param-input" value="1000000">
-      </div>
-      <div class="param-row">
-        <div class="param-label">手续费</div>
-        <input type="text" class="param-input" value="0.0003">
-      </div>
-      <div class="param-row">
-        <div class="param-label">滑点</div>
-        <input type="text" class="param-input" value="0.0001">
-      </div>
-      <div class="param-row">
-        <div class="param-label">基准指数</div>
-        <select class="param-input">
-          <option>000001.SH (上证指数)</option>
-          <option>399001.SZ (深证成指)</option>
-          <option>399006.SZ (创业板指)</option>
-        </select>
-      </div>
-      <div class="action-bar">
-        <button class="btn btn-primary">
-          <i class="fas fa-play"></i> 执行回测
-        </button>
-        <button class="btn btn-secondary">
-          <i class="fas fa-save"></i> 保存策略
-        </button>
-      </div>
-    </div>
-
-    <div class="monitor-pane">
-      <div class="results-tabs">
-        <div class="tab active">回测结果</div>
-        <div class="tab">交易明细</div>
-        <div class="tab">日志输出</div>
-      </div>
-      <div class="tab-content">
-        回测结果图表和指标将显示在这里
-        <div style="margin-top: 15px;">
-          <div>年化收益率: <span style="color: var(--success-color);">+28.7%</span></div>
-          <div>夏普比率: 0.92</div>
-          <div>最大回撤: <span style="color: var(--danger-color);">-15.3%</span></div>
-          <div>胜率: 55.6%</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script>
-export default {
-  name: "StrategyLayout"
+    record(short_mavg=short_avg, long_mavg=long_avg)`,
+      selectedTimeRange: '2020-01-01 至 2023-08-20',
+      initialCapital: '1000000',
+      commission: '0.0003',
+      slippage: '0.0001',
+      selectedBenchmark: '000001.SH (上证指数)',
+      timeRangeOptions: [
+        { label: '2020-01-01 至 2023-08-20', value: '2020-01-01 至 2023-08-20' },
+        { label: '2019-01-01 至 2023-08-20', value: '2019-01-01 至 2023-08-20' },
+        { label: '2018-01-01 至 2023-08-20', value: '2018-01-01 至 2023-08-20' }
+      ],
+      benchmarkOptions: [
+        { label: '000001.SH (上证指数)', value: '000001.SH (上证指数)' },
+        { label: '399001.SZ (深证成指)', value: '399001.SZ (深证成指)' },
+        { label: '399006.SZ (创业板指)', value: '399006.SZ (创业板指)' }
+      ]
+    }
+  },
+  methods: {
+    handleCodeChange(value) {
+      this.code = value
+    },
+    handleTimeRangeChange(value) {
+      this.selectedTimeRange = value
+    },
+    handleCapitalChange(value) {
+      this.initialCapital = value
+    },
+    handleCommissionChange(value) {
+      this.commission = value
+    },
+    handleSlippageChange(value) {
+      this.slippage = value
+    },
+    handleBenchmarkChange(value) {
+      this.selectedBenchmark = value
+    },
+    runBacktest() {
+      console.log('执行回测')
+    },
+    saveStrategy() {
+      console.log('保存策略')
+    }
+  }
 }
 </script>
 
@@ -149,11 +246,6 @@ export default {
 
     .param-input {
       flex: 1;
-      padding: 8px 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      background-color: var(--secondary-bg);
-      color: var(--text-primary);
     }
   }
 
@@ -175,19 +267,18 @@ export default {
   display: flex;
   flex-direction: column;
 
-  .results-tabs {
+  :deep(.n-tabs) {
     display: flex;
-    border-bottom: 1px solid var(--border-color);
+    flex-direction: column;
+    height: 100%;
 
-    .tab {
-      padding: 10px 15px;
-      cursor: pointer;
-      color: var(--text-secondary);
+    .n-tabs-nav {
+      border-bottom: 1px solid var(--border-color);
+    }
 
-      &.active {
-        color: var(--accent-color);
-        border-bottom: 2px solid var(--accent-color);
-      }
+    .n-tabs-pane-wrapper {
+      flex: 1;
+      overflow: auto;
     }
   }
 

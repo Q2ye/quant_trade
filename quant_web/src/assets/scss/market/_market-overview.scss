@@ -1,4 +1,4 @@
-// _market-overview.scss - 优化后的市场概览页面专用样式
+// _market-overview.scss - 优化后的市场概览页面专用样式（适配 Naive UI）
 // 基于交易系统主题实现，使用灵活网格系统
 
 // 导入依赖的Sass模块和变量文件
@@ -41,15 +41,16 @@
           'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
           'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
+
   // 市场指数卡片样式
+  .n-card,
   .market-index-card {
     @include mix.status-card-base(); // 应用状态卡片基础样式混入
     height: 100%; // 高度100%
     position: relative; // 相对定位
-    //overflow: hidden;                 // 隐藏溢出内容
-    //padding: map.get($spacers, 1);    // 内边距：使用spacers映射中的第1个值
 
     // 指数内容区域
+    .n-card__content,
     .index-content {
       position: relative; // 相对定位
       z-index: 1; // 设置层级
@@ -161,15 +162,14 @@
           'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
   ));
 
-
   // ============================================================================
   // 功能导航卡片样式优化 - 主要修改部分
   // ============================================================================
 
   // 功能导航卡片样式
+  .n-card,
   .function-nav-card {
     @include mix.function-card-base; // 应用功能卡片基础样式混入
-
 
     // 功能描述文字
     .function-description {
@@ -255,12 +255,13 @@
   }
 
   // 热点卡片样式
+  .n-card,
   .hotspot-card {
     @include mix.card-base; // 应用卡片基础样式混入
     height: 100%; // 高度100%
 
-    // Element Plus卡片头部深度选择器
-    :deep(.el-card__header) {
+    // Naive UI 卡片头部样式
+    .n-card-header {
       @include mix.card-header-base; // 应用卡片头部基础样式混入
       padding: map.get($spacers, 3); // 内边距：使用spacers映射中的第4个值
     }
@@ -287,13 +288,17 @@
           color: $accent-color; // 强调色
         }
       }
-      .more-btn {
+
+      // Naive UI 按钮样式适配
+      .n-button.more-btn {
         color: $accent-color;
         font-size: $font-size-base;
         font-weight: 500;
         padding: 4px 8px;
         border-radius: 6px;
         transition: all 0.3s ease;
+        background: transparent;
+        border: none;
 
         // 悬停效果
         &:hover {
@@ -482,7 +487,7 @@
 .function-nav,
   // 市场热点区块
 .market-hotspots {
-  margin-top: map.get($spacers, 5); // 底部外边距：使用spacers映射中的第6个值
+  margin-top: map.get($spacers, 5); // 顶部外边距：使用spacers映射中的第6个值
 }
 
 // ============================================================================
@@ -597,18 +602,6 @@
   }
 }
 
-// ============================================================================
-// 主题切换适配优化
-// ============================================================================
-
-.market-overview-page {
-  transition: all $transition-normal; // 过渡动画
-
-  // 所有子元素继承过渡效果
-  * {
-    transition: inherit;
-  }
-}
 
 // ============================================================================
 // 动画定义

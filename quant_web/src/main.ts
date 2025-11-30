@@ -13,12 +13,6 @@ import { Icon } from '@iconify/vue';
 
 // 引入 Naive UI
 import {
-  // 全局组件
-  NConfigProvider,
-  NMessageProvider,
-  NDialogProvider,
-  NNotificationProvider,
-  NLoadingBarProvider,
 
   // 工具函数
   createDiscreteApi

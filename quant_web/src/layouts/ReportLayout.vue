@@ -13,19 +13,23 @@
       </div>
 
       <div class="header-actions">
-        <el-button
+        <n-button
           type="primary"
-          icon="el-icon-download"
           @click="exportReport"
         >
+          <template #icon>
+            <n-icon><DownloadDoneFilled /></n-icon>
+          </template>
           导出报告
-        </el-button>
-        <el-button
-          icon="el-icon-back"
+        </n-button>
+        <n-button
           @click="goBack"
         >
+          <template #icon>
+            <n-icon><ArrowBackFilled /></n-icon>
+          </template>
           返回策略
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -43,8 +47,17 @@
 </template>
 
 <script>
+import { NButton, NIcon, useMessage } from 'naive-ui'
+import { DownloadDoneFilled, ArrowBackFilled } from '@vicons/material'
+
 export default {
   name: "ReportLayout",
+  components: {
+    NButton,
+    NIcon,
+    DownloadDoneFilled,
+    ArrowBackFilled
+  },
   props: {
     reportData: {
       type: Object,
@@ -55,6 +68,13 @@ export default {
         endDate: '2023-08-01',
         capital: 1000000
       })
+    }
+  },
+  setup() {
+    const message = useMessage()
+
+    return {
+      message
     }
   },
   computed: {
@@ -76,7 +96,7 @@ export default {
   },
   methods: {
     exportReport() {
-      this.$message.success('报告导出成功');
+      this.message.success('报告导出成功');
       // 实际项目中实现导出PDF功能
     },
     goBack() {

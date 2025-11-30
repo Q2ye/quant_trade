@@ -1,36 +1,43 @@
-<!-- IndustryStrength.vue - 修复后的行业强弱分析页面 -->
+<!-- IndustryStrength.vue - 行业强弱分析页面 - Naive UI 实现 -->
 <template>
-  <div class="industry-strength-page">
+  <n-layout class="industry-strength-page">
     <!-- 页面标题区域 -->
-    <div class="page-header">
+    <n-layout-header class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">行业强弱分析</h1>
           <p class="page-description">深度分析各行业板块表现与相对强度</p>
         </div>
         <div class="header-actions">
-          <button class="refresh-btn" @click="refreshData" :disabled="loading">
-            <Icon icon="ant-design:reload-outlined" class="refresh-icon" :class="{ refreshing: loading }"/>
-            <span class="btn-text">{{ loading ? '刷新中...' : '刷新数据' }}</span>
-          </button>
-          <button class="back-btn" @click="handleBack">
-            <Icon icon="ant-design:arrow-left-outlined"/>
-            <span class="btn-text">返回</span>
-          </button>
+          <n-button
+              :loading="loading"
+              @click="refreshData"
+              class="refresh-btn"
+          >
+            <template #icon>
+              <n-icon>
+                <RefreshIcon/>
+              </n-icon>
+            </template>
+            {{ loading ? '刷新中...' : '刷新数据' }}
+          </n-button>
+          <n-button @click="handleBack" class="back-btn">
+            <template #icon>
+              <n-icon>
+                <ArrowBackIcon/>
+              </n-icon>
+            </template>
+            返回
+          </n-button>
         </div>
       </div>
-    </div>
+    </n-layout-header>
 
     <!-- 主要内容区域 -->
-    <div class="main-content-with-sidebar">
+    <n-layout-content class="main-content">
       <!-- 行业强弱排名卡片 -->
-      <div class="industry-card card">
-        <div class="card-header">
-          <h3 class="card-title">
-            <Icon icon="mdi:trending-up" class="card-title-icon"/>
-            行业强弱排名
-          </h3>
-          <!-- 数据统计信息 -->
+      <n-card class="industry-card" title="行业强弱排名">
+        <template #header-extra>
           <div class="card-stats" v-if="!loading && industries.length > 0">
             <span class="stat-item">
               共 <strong>{{ industries.length }}</strong> 个行业
@@ -42,36 +49,44 @@
               弱势行业: <strong class="down">{{ weakIndustriesCount }}</strong>
             </span>
           </div>
+        </template>
+
+        <!-- 错误状态显示 -->
+        <div v-if="error" class="error-state">
+          <n-icon class="error-icon" :component="AlertCircleOutlineIcon"/>
+          <p class="error-message">{{ error }}</p>
+          <n-button type="primary" @click="loadIndustryData" class="retry-btn">
+            <template #icon>
+              <n-icon>
+                <RefreshIcon/>
+              </n-icon>
+            </template>
+            重新加载
+          </n-button>
         </div>
-        <div class="card-body">
-          <!-- 错误状态显示 -->
-          <div v-if="error" class="error-state">
-            <Icon icon="mdi:alert-circle-outline" class="error-icon"/>
-            <p class="error-message">{{ error }}</p>
-            <button class="retry-btn" @click="loadIndustryData">
-              <Icon icon="mdi:reload"/>
-              重新加载
-            </button>
-          </div>
 
-          <!-- 空状态显示 -->
-          <div v-else-if="!loading && industries.length === 0" class="empty-state">
-            <Icon icon="mdi:database-off-outline" class="empty-icon"/>
-            <p class="empty-message">暂无行业数据</p>
-            <button class="retry-btn" @click="loadIndustryData">
-              <Icon icon="mdi:reload"/>
-              重新加载
-            </button>
-          </div>
+        <!-- 空状态显示 -->
+        <div v-else-if="!loading && industries.length === 0" class="empty-state">
+          <n-icon class="empty-icon" :component="DatabaseOffOutlineIcon"/>
+          <p class="empty-message">暂无行业数据</p>
+          <n-button type="primary" @click="loadIndustryData" class="retry-btn">
+            <template #icon>
+              <n-icon>
+                <RefreshIcon/>
+              </n-icon>
+            </template>
+            重新加载
+          </n-button>
+        </div>
 
-          <!-- 加载状态 -->
-          <div v-if="loading" class="loading-state">
-            <div class="loading-spinner"></div>
-            <p>数据加载中...</p>
-          </div>
+        <!-- 加载状态 -->
+        <div v-if="loading" class="loading-state">
+          <n-spin size="large"/>
+          <p>数据加载中...</p>
+        </div>
 
-          <!-- Naive UI 表格 - 确保在数据准备好时显示 -->
-          <n-data-table
+        <!-- Naive UI 表格 -->
+        <n-data-table
             v-else
             class="naive-industry-table"
             :columns="naiveColumns"
@@ -82,25 +97,45 @@
             size="small"
             striped
             flex-height
-          />
-        </div>
-      </div>
-    </div>
-  </div>
+        />
+      </n-card>
+    </n-layout-content>
+  </n-layout>
 </template>
 
 <script setup lang="ts">
 // ============================================================================
 // Vue和相关库导入
 // ============================================================================
-import {computed, h, ref, onMounted} from 'vue'
+import {computed, h, onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
-import {Icon} from '@iconify/vue'
-import {message} from 'ant-design-vue'
-
-import type {DataTableColumns} from 'naive-ui'
 // Naive UI 组件导入
-import {NButton, NDataTable, NProgress, NTag, NText} from 'naive-ui'
+import {
+  type DataTableColumns,
+  NButton,
+  NCard,
+  NDataTable,
+  NIcon,
+  NLayout,
+  NLayoutContent,
+  NLayoutHeader,
+  NProgress,
+  NSpin,
+  NTag,
+  NText,
+  useMessage
+} from 'naive-ui'
+
+// Material Icons 导入
+import {
+  AccountCircleFilled as AlertCircleOutlineIcon,
+  ArrowBackFilled as ArrowBackIcon,
+  DataExplorationFilled as DatabaseOffOutlineIcon,
+  RefreshRound as RefreshIcon,
+  TrendingDownFilled as TrendingDownIcon,
+  TrendingUpFilled as TrendingUpIcon,
+  VisibilityFilled as VisibilityIcon
+} from '@vicons/material'
 
 // ============================================================================
 // 类型定义
@@ -120,6 +155,7 @@ interface Industry {
 // 路由和响应式数据
 // ============================================================================
 const router = useRouter()
+const message = useMessage()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -169,9 +205,9 @@ const naiveColumns: DataTableColumns<Industry> = [
     fixed: 'left',
     align: 'center',
     render: (row) => {
-      return h('div', { class: 'industry-name-cell' }, [
-        h('span', { class: 'industry-name' }, row.name),
-        h('span', { class: 'industry-code' }, row.code)
+      return h('div', {class: 'industry-name-cell'}, [
+        h('span', {class: 'industry-name'}, row.name),
+        h('span', {class: 'industry-code'}, row.code)
       ])
     }
   },
@@ -183,21 +219,21 @@ const naiveColumns: DataTableColumns<Industry> = [
     render: (row) => {
       const changeText = `${row.change >= 0 ? '+' : ''}${row.change.toFixed(2)}%`
       return h(
-        NTag,
-        {
-          type: getChangeTagType(row.change),
-          size: 'small',
-          class: 'change-tag'
-        },
-        {
-          default: () => [
-            h(Icon, {
-              icon: row.change >= 0 ? 'mdi:trending-up' : 'mdi:trending-down',
-              class: 'change-icon'
-            }),
-            h('span', { class: 'change-text' }, changeText)
-          ]
-        }
+          NTag,
+          {
+            type: getChangeTagType(row.change),
+            size: 'small',
+            class: 'change-tag'
+          },
+          {
+            default: () => [
+              h(NIcon, {
+                component: row.change >= 0 ? TrendingUpIcon : TrendingDownIcon,
+                class: 'change-icon'
+              }),
+              h('span', {class: 'change-text'}, changeText)
+            ]
+          }
       )
     }
   },
@@ -207,7 +243,7 @@ const naiveColumns: DataTableColumns<Industry> = [
     width: 180,
     align: 'center',
     render: (row) => {
-      return h('div', { class: 'strength-cell' }, [
+      return h('div', {class: 'strength-cell'}, [
         h(NProgress, {
           type: 'line',
           percentage: row.strength,
@@ -216,9 +252,9 @@ const naiveColumns: DataTableColumns<Industry> = [
           borderRadius: 3,
           class: 'strength-progress'
         }),
-        h('div', { class: 'strength-info' }, [
-          h(NText, { depth: 1, class: 'strength-value' }, { default: () => row.strength.toFixed(1) }),
-          h(NText, { depth: 3, class: 'strength-label' }, { default: () => getStrengthLabel(row.strength) })
+        h('div', {class: 'strength-info'}, [
+          h(NText, {depth: 1, class: 'strength-value'}, {default: () => row.strength.toFixed(1)}),
+          h(NText, {depth: 3, class: 'strength-label'}, {default: () => getStrengthLabel(row.strength)})
         ])
       ])
     }
@@ -231,19 +267,19 @@ const naiveColumns: DataTableColumns<Industry> = [
     align: 'center',
     render: (row) => {
       return h(
-        NButton,
-        {
-          type: 'primary',
-          size: 'small',
-          class: 'detail-btn',
-          onClick: () => viewIndustryDetail(row)
-        },
-        {
-          default: () => [
-            h(Icon, { icon: 'mdi:eye', class: 'detail-icon' }),
-            '详情'
-          ]
-        }
+          NButton,
+          {
+            type: 'primary',
+            size: 'small',
+            class: 'detail-btn',
+            onClick: () => viewIndustryDetail(row)
+          },
+          {
+            default: () => [
+              h(NIcon, {component: VisibilityIcon, class: 'detail-icon'}),
+              '详情'
+            ]
+          }
       )
     }
   }
@@ -268,12 +304,7 @@ const loadIndustryData = async (): Promise<void> => {
   try {
     await new Promise(resolve => setTimeout(resolve, 1500))
 
-    // 修复：移除随机错误模拟，确保数据能稳定加载
-    // if (Math.random() < 0.1) {
-    //   throw new Error('网络连接超时，请检查网络设置')
-    // }
-
-    // 确保测试数据正确赋值
+    // 测试数据
     industries.value = [
       {code: '801010', name: '计算机', change: 3.2, strength: 85, category: '信息技术'},
       {code: '801020', name: '电子', change: 2.1, strength: 78, category: '信息技术'},
@@ -303,7 +334,7 @@ const refreshData = async (): Promise<void> => {
 }
 
 const viewIndustryDetail = (industry: Industry): void => {
-  console.log('查看行业详情:', industry)
+  message.info(`查看行业详情: ${industry.name}`)
 }
 
 // 组件挂载时自动加载数据
@@ -319,26 +350,28 @@ onMounted(() => {
 
 /* 页面容器样式 */
 .industry-strength-page {
-  min-height: 100vh;
-  background: $primary-bg;
+  @include mixin.content-with-base;
 
-  .main-content-with-sidebar {
-    @include mixin.content-with-sidebar;
-    margin: 0 auto;
+  .main-content {
+    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
+    margin: 0 auto; // 水平居中
   }
 }
 
-/* 页面头部样式 */
+// ============================================================================
+// 页面头部样式 - 使用混入统一管理
+// ============================================================================
 .page-header {
   @include mixin.page-header-base;
-  margin-bottom: map.get($spacers, 6);
 }
+
 
 /* 行业卡片样式 */
 .industry-card {
   @include mixin.card-base;
   margin-bottom: map.get($spacers, 4);
   padding: map.get($spacers, 3);
+  margin-top: map.get($spacers, 5); // 顶部外边距：使用spacers映射中的第6个值
 
   .card-header {
     @include mixin.card-header-base;
@@ -377,6 +410,7 @@ onMounted(() => {
           &.up {
             color: $stock-up-color;
           }
+
           &.down {
             color: $stock-down-color;
           }
@@ -540,7 +574,7 @@ onMounted(() => {
       }
 
       .strength-label {
-        color: $text-secondary;
+        color: #6b7280;
       }
     }
   }
@@ -583,6 +617,7 @@ onMounted(() => {
   padding: map.get($spacers, 5);
   color: $error-color;
   text-align: center;
+  gap: 16px;
 
   .error-icon {
     font-size: 3em;
