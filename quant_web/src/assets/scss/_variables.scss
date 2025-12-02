@@ -1,160 +1,100 @@
-// _variables.scss - 优化后的主题变量系统
-@use 'themes' as *;
+// styles/_variables.scss - 简化后的变量文件
+// 只保留布局和间距变量，颜色变量由 Naive UI 管理
+
 @use 'sass:map';
 
 // ============================================================================
 // 布局尺寸变量
 // ============================================================================
 
-$sidebar-expanded-width: theme-layout("sidebar-width") !default;
-$sidebar-collapsed-width: theme-layout("sidebar-collapsed-width") !default;
-$header-height: theme-layout("header-height") !default;
-$content-padding: theme-layout("content-padding") !default;
-$chart-height: theme-layout("chart-height") !default;
-$button-height: theme-layout("button-height") !default;
-
-// ============================================================================
-// 基础颜色变量
-// ============================================================================
-
-$primary-bg: theme-color("primary-bg") !default;
-$secondary-bg: theme-color("secondary-bg") !default;
-$accent-color: theme-color("accent-color") !default;
-$text-primary: theme-color("text-primary") !default;
-$text-secondary: theme-color("text-secondary") !default;
-$text-disabled: theme-color("text-disabled") !default;
-$border-color: theme-color("border-color") !default;
-$error-color:theme-color("status-remaining-color") !default;
-$disabled-bg:theme-color("disabled-bg") !default;
-
-// ============================================================================
-// 语义化颜色变量
-// ============================================================================
-
-$success-color: theme-color("success-color") !default;
-$warning-color: theme-color("warning-color") !default;
-$danger-color: theme-color("danger-color") !default;
-$info-color: theme-color("info-color") !default;
-$purple-color: theme-color("purple-color") !default;
-
-// ============================================================================
-// 组件颜色变量
-// ============================================================================
-
-$card-bg: theme-color("card-bg") !default;
-$card-header-bg: theme-color("card-header-bg") !default;
-$toolbar-bg: theme-color("toolbar-bg") !default;
-$sidebar-bg: theme-color("sidebar-bg") !default;
-$input-bg: theme-color("input-bg") !default;
-$hover-bg: theme-color("hover-bg") !default;
-$active-bg: theme-color("active-bg") !default;
-
-// ============================================================================
-// 股票价格变量
-// ============================================================================
-
-$stock-up-color: theme-color("stock-up-color") !default;
-$stock-down-color: theme-color("stock-down-color") !default;
-$stock-flat-color: theme-color("stock-flat-color") !default;
-
-// ============================================================================
-// 状态标识变量
-// ============================================================================
-
-$status-running-color: theme-color("status-running-color") !default;
-$status-progress-color: theme-color("status-progress-color") !default;
-$status-time-color: theme-color("status-time-color") !default;
-$status-remaining-color: theme-color("status-remaining-color") !default;
-
-// ============================================================================
-// 渐变背景变量
-// ============================================================================
-
-$header-bg-gradient: theme-color("header-bg-gradient") !default;
-$page-header-bg: theme-color("page-header-bg") !default;
-$card-gradient-bg: theme-color("card-gradient-bg") !default;
-
-// ============================================================================
-// 交互效果变量
-// ============================================================================
-
-$card-shadow: theme-color("card-shadow") !default;
-$card-hover-shadow: theme-color("card-hover-shadow") !default;
-$hover-shadow: theme-color("hover-shadow") !default;
-
-// ============================================================================
-// 字体排版变量
-// ============================================================================
-
-$font-family: theme-typography("font-family") !default;
-$font-size-base: theme-typography("font-size-base") !default;
-$font-weight-normal: theme-typography("font-weight-normal") !default;
-$font-weight-medium: theme-typography("font-weight-medium") !default;
-$font-weight-semibold: theme-typography("font-weight-semibold") !default;
-$font-weight-bold: theme-typography("font-weight-bold") !default;
-
-// 侧边栏字体变量 - 新增
-$sidebar-font-size: theme-typography("sidebar-font-size") !default;
-$sidebar-header-font-size: theme-typography("sidebar-header-font-size") !default;
-$sidebar-icon-size: theme-typography("sidebar-icon-size") !default;
+$sidebar-expanded-width: 180px !default;    // 侧边栏展开宽度
+$sidebar-collapsed-width: 52px !default;    // 侧边栏折叠宽度
+$header-height: 60px !default;              // 头部高度
+$content-padding: 16px !default;            // 内容区域内边距
+$chart-height: 400px !default;              // 图表默认高度
+$button-height: 32px !default;              // 按钮默认高度
 
 // ============================================================================
 // 间距系统变量
 // ============================================================================
 
-$spacers: theme-spacing("spacers") !default;
-
-// ============================================================================
-// 边框样式变量
-// ============================================================================
-
-$border-radius: theme-border("border-radius") !default;
-$border-radius-lg: theme-border("border-radius-lg") !default;
-$border-radius-sm: theme-border("border-radius-sm") !default;
-$border-width: theme-border("border-width") !default;
+$spacers: (
+  // 基础间距系统
+  // 使用 rem 单位保证响应式一致性
+  0: 0rem,      // 0px
+  1: 0.25rem,   // 4px
+  2: 0.5rem,    // 8px
+  3: 0.75rem,   // 12px
+  4: 1rem,      // 16px
+  5: 1.25rem,   // 20px
+  6: 1.5rem,    // 24px
+  7: 1.75rem,   // 28px
+  8: 2rem,      // 32px
+  9: 2.5rem,    // 40px
+  10: 3rem      // 48px
+) !default;
 
 // ============================================================================
 // 动画过渡变量
 // ============================================================================
 
-$transition-fast: theme-animation("transition-fast") !default;
-$transition-normal: theme-animation("transition-normal") !default;
-$transition-slow: theme-animation("transition-slow") !default;
-$hover-transform: theme-animation("hover-transform") !default;
-
-// ============================================================================
-// 页面专用变量
-// ============================================================================
-
-// 页面头部
-$page-header-padding: map.get($spacers, 1) map.get($spacers, 3) !default;
-$page-header-margin: 0 0 map.get($spacers, 0) 0 !default;
-$page-title-font-size: $font-size-base * 1.3 !default;
-$page-description-font-size: $font-size-base * 0.8 !default;
-
-$sidebar-font-size: $font-size-base * 0.8 !default; // 缩小到80%
-$sidebar-header-font-size: $sidebar-font-size * 0.9 !default; // 导航标题更小一些
-$sidebar-icon-size: 18px !default; // 图标大小
-
-// 状态卡片
-$status-icon-size: 48px !default;
-$status-icon-radius: $border-radius !default;
-
-// 功能卡片
-$function-card-padding: map.get($spacers, 3) !default;
-$function-icon-size: 2.5rem !default;
-$function-stats-gap: map.get($spacers, 2) !default;
-$function-footer-border: 1px solid $border-color !default;
-
-// 网格布局
-$core-function-grid: repeat(4, 1fr) !default;
-$status-overview-grid: repeat(4, 1fr) !default;
+$transition-fast: 0.15s ease !default;     // 快速过渡 - 用于交互反馈
+$transition-normal: 0.3s ease !default;    // 常规过渡 - 用于状态变化
+$transition-slow: 0.5s ease !default;      // 慢速过渡 - 用于页面过渡
+$hover-transform: translateY(-2px) !default; // 悬停变换效果
 
 // ============================================================================
 // 响应式断点变量
 // ============================================================================
 
-$breakpoint-xl: 1200px !default;
-$breakpoint-lg: 992px !default;
-$breakpoint-md: 768px !default;
-$breakpoint-sm: 576px !default;
+$breakpoint-xl: 1200px !default;           // 超大屏幕断点
+$breakpoint-lg: 992px !default;            // 大屏幕断点
+$breakpoint-md: 768px !default;            // 中等屏幕断点
+$breakpoint-sm: 576px !default;            // 小屏幕断点
+$breakpoint-xs: 480px !default;            // 超小屏幕断点
+
+// ============================================================================
+// 字体大小变量（基础值，具体由 Naive UI 管理）
+// ============================================================================
+
+$font-size-base: 14px !default;            // 基础字体大小
+
+// ============================================================================
+// 工具函数
+// ============================================================================
+
+/// 获取间距值
+/// @param {Number} $key - 间距键名
+/// @return {*} 间距值
+@function spacer($key) {
+  @return map.get($spacers, $key);
+}
+
+/// 媒体查询辅助函数
+/// @param {String} $breakpoint - 断点名称
+/// @return {String} 媒体查询条件
+@function breakpoint($breakpoint) {
+  @return map.get((
+    xs: $breakpoint-xs,
+    sm: $breakpoint-sm,
+    md: $breakpoint-md,
+    lg: $breakpoint-lg,
+    xl: $breakpoint-xl
+  ), $breakpoint);
+}
+
+/// 响应式混入 - 向下断点
+/// @param {String} $breakpoint - 断点名称
+@mixin media-breakpoint-down($breakpoint) {
+  @media (max-width: breakpoint($breakpoint)) {
+    @content;
+  }
+}
+
+/// 响应式混入 - 向上断点
+/// @param {String} $breakpoint - 断点名称
+@mixin media-breakpoint-up($breakpoint) {
+  @media (min-width: breakpoint($breakpoint)) {
+    @content;
+  }
+}

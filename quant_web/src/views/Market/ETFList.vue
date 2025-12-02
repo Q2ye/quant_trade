@@ -1,13 +1,85 @@
-<script setup lang="ts">
-import {h, onMounted, reactive, ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {Button, message, Space, Tag} from 'ant-design-vue'
-import type {ColumnsType} from 'ant-design-vue/es/table'
-import {ArrowLeftOutlined, SearchOutlined} from '@ant-design/icons-vue'
+<!-- ETF列表页 - 基于 Naive UI 重构 -->
+<template>
+  <div class="etf-list-page">
+    <!-- 页面标题和状态-->
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">ETF基金</h1>
+          <p class="page-description">交易所交易基金数据与市场分析</p>
+        </div>
+        <div class="header-actions-right">
+          <n-button class="back-btn" @click="handleBack">
+            <template #icon>
+              <n-icon><ArrowBackIcon /></n-icon>
+            </template>
+            返回
+          </n-button>
+        </div>
+      </div>
+    </div>
+    <div class="main-content-with-sidebar">
+      <n-card class="etf-list-card" title="ETF列表" :bordered="false">
+        <div class="filter-bar">
+          <n-space :size="16">
+            <n-input
+              v-model:value="filters.search"
+              placeholder="搜索ETF代码或名称"
+              style="width: 200px"
+              @keydown.enter="loadETFList"
+            >
+              <template #prefix>
+                <n-icon><SearchIcon /></n-icon>
+              </template>
+            </n-input>
 
-// 引入 Iconify 图标
+            <n-select
+              v-model:value="filters.market"
+              placeholder="选择市场"
+              style="width: 120px"
+              clearable
+              :options="marketOptions"
+              @update:value="loadETFList"
+            />
+            <div class="filter-actions">
+              <n-button type="primary" @click="loadETFList" class="action-btn">搜索</n-button>
+            </div>
+          </n-space>
+        </div>
+
+        <n-data-table
+          class="etf-table"
+          :columns="columns"
+          :data="etfList"
+          :pagination="pagination"
+          :loading="loading"
+          :row-key="(row) => row.ts_code"
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-card>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { h, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  NButton,
+  NDataTable,
+  NCard,
+  NInput,
+  NSelect,
+  NSpace,
+  NTag,
+  NIcon,
+  useMessage
+} from 'naive-ui'
+import { ArrowBack as ArrowBackIcon, Search as SearchIcon } from '@vicons/ionicons5'
 
 const router = useRouter()
+const message = useMessage()
 
 // 返回按钮处理
 const handleBack = () => {
@@ -36,9 +108,20 @@ interface ETF {
 const loading = ref(false)
 const etfList = ref<ETF[]>([])
 const pagination = reactive({
-  current: 1,
+  page: 1,
   pageSize: 50,
-  total: 0
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50, 100],
+  onChange: (page: number) => {
+    pagination.page = page
+    loadETFList()
+  },
+  onUpdatePageSize: (pageSize: number) => {
+    pagination.pageSize = pageSize
+    pagination.page = 1
+    loadETFList()
+  }
 })
 
 const filters = reactive({
@@ -47,71 +130,75 @@ const filters = reactive({
   mgr_name: ''
 })
 
-const columns: ColumnsType<ETF> = [
+const marketOptions = [
+  { label: '上交所', value: 'SH' },
+  { label: '深交所', value: 'SZ' }
+]
+
+const columns = [
   {
     title: '代码',
-    dataIndex: 'ts_code',
     key: 'ts_code',
     width: 100,
-    sorter: true
+    sorter: 'default'
   },
   {
     title: '名称',
-    dataIndex: 'name',
     key: 'name',
     width: 120
   },
   {
     title: '全称',
-    dataIndex: 'full_name',
     key: 'full_name',
-    ellipsis: true
+    ellipsis: {
+      tooltip: true
+    }
   },
   {
     title: '市场',
-    dataIndex: 'market',
     key: 'market',
     width: 80,
-    customRender: ({text: market}) => {
-      return h(Tag, {color: market === 'SH' ? 'red' : 'blue'}, () => market)
+    render: (row: ETF) => {
+      return h(NTag, {
+        color: row.market === 'SH' ? 'red' : 'blue',
+        bordered: false
+      }, { default: () => row.market })
     }
   },
   {
     title: '管理人',
-    dataIndex: 'mgr_name',
     key: 'mgr_name',
     width: 120
   },
   {
     title: '跟踪指数',
-    dataIndex: 'index_name',
     key: 'index_name',
     width: 150
   },
   {
     title: '规模(亿)',
-    dataIndex: 'fund_size',
     key: 'fund_size',
     width: 100,
-    sorter: true,
-    customRender: ({text: size}) => (size / 100000000).toFixed(2)
+    sorter: 'default',
+    render: (row: ETF) => (row.fund_size / 100000000).toFixed(2)
   },
   {
     title: '费率(%)',
-    dataIndex: 'expense_ratio',
     key: 'expense_ratio',
     width: 100,
-    customRender: ({text: ratio}) => ratio.toFixed(2)
+    render: (row: ETF) => row.expense_ratio.toFixed(2)
   },
   {
     title: '操作',
     key: 'actions',
     width: 120,
-    customRender: () => {
-      return h(Space, null, () => [
-        h(Button, {type: 'link', size: 'small'}, () => '详情'),
-        h(Button, {type: 'link', size: 'small'}, () => '加入自选')
-      ])
+    render: (row: ETF) => {
+      return h(NSpace, null, {
+        default: () => [
+          h(NButton, { type: 'primary', size: 'small', text: true }, { default: () => '详情' }),
+          h(NButton, { type: 'primary', size: 'small', text: true }, { default: () => '加入自选' })
+        ]
+      })
     }
   }
 ]
@@ -120,7 +207,7 @@ const loadETFList = async () => {
   loading.value = true
   try {
     const params = new URLSearchParams({
-      page: pagination.current.toString(),
+      page: pagination.page.toString(),
       size: pagination.pageSize.toString(),
       ...filters
     })
@@ -128,17 +215,23 @@ const loadETFList = async () => {
     const response = await fetch(`/api/market/etfs?${params}`)
     const data = await response.json()
     etfList.value = data.records
-    pagination.total = data.total
+    pagination.itemCount = data.total
   } catch (error) {
     console.error('加载ETF列表失败:', error)
+    message.error('加载ETF列表失败')
   } finally {
     loading.value = false
   }
 }
 
-const handleTableChange = (pag: { current: number; pageSize: number }) => {
-  pagination.current = pag.current
-  pagination.pageSize = pag.pageSize
+const handlePageChange = (page: number) => {
+  pagination.page = page
+  loadETFList()
+}
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.pageSize = pageSize
+  pagination.page = 1
   loadETFList()
 }
 
@@ -146,153 +239,79 @@ onMounted(() => {
   loadETFList()
 })
 </script>
-
-<template>
-  <div class="etf-list-page">
-    <!-- 页面标题和状态-->
-    <div class="page-header">
-      <div class="header-content">
-        <div class="title-section">
-          <h1 class="page-title">ETF基金</h1>
-          <p class="page-description">交易所交易基金数据与市场分析</p>
-        </div>
-        <div class="header-actions-right">
-          <a-button class="back-btn" @click="handleBack">
-            <template #icon>
-              <ArrowLeftOutlined/>
-            </template>
-            返回
-          </a-button>
-        </div>
-      </div>
-    </div>
-    <div class="main-content-with-sidebar">
-      <a-card class="etf-list-card" title="ETF列表" :bordered="false">
-        <div class="filter-bar">
-          <a-space :size="16">
-            <a-input
-                v-model:value="filters.search"
-                placeholder="搜索ETF代码或名称"
-                style="width: 200px"
-                @press-enter="loadETFList"
-            >
-              <template #suffix>
-                <SearchOutlined/>
-              </template>
-            </a-input>
-
-            <a-select
-                v-model:value="filters.market"
-                placeholder="选择市场"
-                style="width: 120px"
-                allowClear
-                @change="loadETFList"
-            >
-              <a-select-option value="SH">上交所</a-select-option>
-              <a-select-option value="SZ">深交所</a-select-option>
-            </a-select>
-            <div class="filter-actions">
-              <a-button type="primary" @click="loadETFList" class="action-btn">搜索</a-button>
-            </div>
-          </a-space>
-        </div>
-
-        <a-table
-            class="etf-table"
-            :columns="columns"
-            :data-source="etfList"
-            :pagination="pagination"
-            :loading="loading"
-            row-key="ts_code"
-            @change="handleTableChange"
-        />
-      </a-card>
-    </div>
-  </div>
-</template>
 <style scoped lang="scss">
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as mixin;
-@use 'sass:map';
+@use '@/assets/scss/naive-variables' as *;
 
 .etf-list-page {
-  min-height: 100vh; // 设置最小高度为整个视口高度
-  background: $primary-bg; // 使用主背景色
-  transition: all $transition-normal; // 所有属性使用标准过渡时间\
+  min-height: 100vh;
+  background: var(--n-body-color);
+  transition: all $transition-normal;
 
   .main-content-with-sidebar {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
-    margin: 0 auto; // 水平居中
+    @include content-with-sidebar;
   }
 }
 
 .page-header {
-  @include mixin.page-header-base;
-  margin-bottom: map.get($spacers, 6);
+  @include page-header-base;
+  margin-bottom: spacer(6);
 }
 
 .etf-list-card {
-  @include mixin.card-base;
-  margin-bottom: map.get($spacers, 4); // 底部外边距
-  padding: map.get($spacers, 3); // 内边距
+  @include card-base;
+  margin-bottom: spacer(4);
+  padding: spacer(3);
 
-  :deep(.ant-card-head) {
-    @include mixin.card-header-base;
-    border-bottom: $border-width solid $border-color;
+  :deep(.n-card-header) {
+    @include card-header-base;
+    border-bottom: 1px solid var(--n-border-color);
   }
 }
 
 .filter-bar {
-  background: $secondary-bg;
-  border-radius: $border-radius;
-  border: $border-width solid $border-color;
-  padding: map.get($spacers, 3);
-  margin-bottom: map.get($spacers, 3);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
+  border: 1px solid var(--n-border-color);
+  padding: spacer(3);
+  margin-bottom: spacer(3);
 
-  :deep(.ant-space) {
-    width: 100%; // 宽度100%
-    align-items: flex-start; // 子元素顶部对齐
+  :deep(.n-space) {
+    width: 100%;
+    align-items: flex-start;
 
     .filter-actions {
       margin-left: auto;
       display: flex;
       align-items: center;
 
-      .ant-space {
+      .n-space {
         width: auto;
         align-items: center;
       }
     }
   }
 
-  // 将按钮放在右侧
-  :deep(.ant-space-item:last-child) {
+  :deep(.n-space-item:last-child) {
     margin-left: auto;
     display: flex;
     align-items: center;
   }
 }
 
-// 通用操作按钮
 .action-btn {
-  @include mixin.button-base; // 应用按钮基础样式混入
+  @include button-base;
 }
 
-// 导出按钮 - 强调色变体
 .export-btn {
-  @include mixin.button-base($accent-color, white); // 应用按钮基础样式，传入强调色背景和白色文字
-  height: 28px; // 固定高度
+  @include button-base(var(--n-primary-color), white);
+  height: 28px;
 }
 
 .back-btn {
-  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
+  @include button-base(rgba(255, 255, 255, 0.15), white);
 }
 
-// ============================================================================
-// 表格样式系统 - 使用统一的表格基础样式
-// ============================================================================
 .etf-table {
-  @include mixin.table-base-styles;
+  @include table-base-styles;
 }
-
 </style>

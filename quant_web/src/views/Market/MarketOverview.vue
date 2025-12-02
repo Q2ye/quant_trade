@@ -1,9 +1,8 @@
 <!--MarketOverview.vue-->
-<!--重构后的市场概览页面 - 基于交易系统主题实现，使用 Naive UI 组件库-->
-<!--移除了重复样式，统一使用主题样式系统-->
+<!--已完成Naive UI迁移的市场概览页面 - 基于交易系统主题实现-->
 <template>
   <div class="market-overview-page">
-    <!-- 页面标题和状态 - 使用全局主题样式 -->
+    <!-- 页面标题和状态 -->
     <div class="common-page-header">
       <div class="header-content">
         <div class="title-section">
@@ -13,9 +12,7 @@
         <div class="header-actions">
           <n-button class="refresh-btn" @click="refreshData">
             <template #icon>
-              <n-icon>
-                <RefreshIcon/>
-              </n-icon>
+              <SmartIcon name="Refresh" />
             </template>
             <span class="btn-text">刷新数据</span>
           </n-button>
@@ -25,15 +22,14 @@
 
     <!-- 主要内容区域 -->
     <div class="main-content">
-      <!-- 市场指数概览 - 使用状态卡片布局 -->
+      <!-- 市场指数概览 -->
       <div class="index-overview">
         <h2 class="market-section-title">
-          <n-icon class="title-icon">
-            <TrendingUpIcon/>
-          </n-icon>
+          <SmartIcon name="TrendingUp" class="title-icon" />
           主要指数
         </h2>
         <div class="market-index-grid">
+          <!-- 上证指数卡片 -->
           <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
@@ -42,9 +38,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shanghai)">
-                  <n-icon>
-                    <TrendingUpIcon/>
-                  </n-icon>
+                  <SmartIcon name="TrendingUp" />
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shanghai.close.toFixed(2) }}</div>
@@ -57,6 +51,7 @@
             </div>
           </n-card>
 
+          <!-- 深证成指卡片 -->
           <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
@@ -65,9 +60,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shenzhen)">
-                  <n-icon>
-                    <AreaChartIcon/>
-                  </n-icon>
+                  <SmartIcon name="BarChart" />
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shenzhen.close.toFixed(2) }}</div>
@@ -80,6 +73,7 @@
             </div>
           </n-card>
 
+          <!-- 创业板指卡片 -->
           <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
@@ -88,9 +82,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.chuangye)">
-                  <n-icon>
-                    <RocketIcon/>
-                  </n-icon>
+                  <SmartIcon name="Rocket" />
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.chuangye.close.toFixed(2) }}</div>
@@ -103,6 +95,7 @@
             </div>
           </n-card>
 
+          <!-- 科创50卡片 -->
           <n-card class="market-index-card" hoverable>
             <div class="index-content">
               <div class="index-header">
@@ -111,9 +104,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.kechuang50)">
-                  <n-icon>
-                    <ChipIcon/>
-                  </n-icon>
+                  <SmartIcon name="Chip" />
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.kechuang50.close.toFixed(2) }}</div>
@@ -128,24 +119,20 @@
         </div>
       </div>
 
-      <!-- 功能导航卡片 - 使用核心功能网格布局 -->
+      <!-- 功能导航卡片 -->
       <div class="function-nav">
         <h2 class="market-section-title">
-          <n-icon class="title-icon">
-            <AppsIcon/>
-          </n-icon>
+          <SmartIcon name="Apps" class="title-icon" />
           功能导航
         </h2>
 
         <div class="function-grid">
-          <!-- 市场仪表盘 - 调整为与其他卡片一致的结构 -->
+          <!-- 市场仪表盘 -->
           <n-card class="function-nav-card" hoverable @click="goToDashboard">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon accent">
-                  <n-icon>
-                    <DashboardIcon/>
-                  </n-icon>
+                  <SmartIcon name="Dashboard" />
                 </div>
                 <h3 class="function-title">市场仪表盘</h3>
               </div>
@@ -177,9 +164,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon purple">
-                  <n-icon>
-                    <TreeChartIcon/>
-                  </n-icon>
+                  <SmartIcon name="TreeChart" />
                 </div>
                 <h3 class="function-title">行业强弱</h3>
               </div>
@@ -211,9 +196,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon info">
-                  <n-icon>
-                    <CashMultipleIcon/>
-                  </n-icon>
+                  <SmartIcon name="CashMultiple" />
                 </div>
                 <h3 class="function-title">资金流向</h3>
               </div>
@@ -247,9 +230,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon danger">
-                  <n-icon>
-                    <TrendingUpIcon/>
-                  </n-icon>
+                  <SmartIcon name="TrendingUp" />
                 </div>
                 <h3 class="function-title">涨跌停分析</h3>
               </div>
@@ -281,9 +262,7 @@
       <!-- 市场热点与实时数据 -->
       <div class="market-hotspots">
         <h2 class="market-section-title">
-          <n-icon class="title-icon">
-            <FireIcon/>
-          </n-icon>
+          <SmartIcon name="Fire" class="title-icon" />
           市场热点
         </h2>
         <div class="hotspot-grid">
@@ -292,17 +271,13 @@
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <n-icon class="card-title-icon">
-                    <TrendingUpIcon/>
-                  </n-icon>
+                  <SmartIcon name="TrendingUp" class="card-title-icon" />
                   实时涨幅榜
                 </div>
                 <n-button text class="more-btn" @click="navigateTo('/market/stocks')">
                   查看更多
                   <template #icon>
-                    <n-icon>
-                      <ArrowRightIcon/>
-                    </n-icon>
+                    <SmartIcon name="ArrowRight" />
                   </template>
                 </n-button>
               </div>
@@ -315,9 +290,7 @@
                   @click="viewStockDetail(stock)"
               >
                 <div class="item-icon">
-                  <n-icon class="trend-icon up">
-                    <TrendingUpIcon/>
-                  </n-icon>
+                  <SmartIcon name="TrendingUp" class="trend-icon up" />
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ stock.name }}</div>
@@ -338,17 +311,13 @@
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <n-icon class="card-title-icon">
-                    <CashPlusIcon/>
-                  </n-icon>
+                  <SmartIcon name="CashPlus" class="card-title-icon" />
                   资金流入榜
                 </div>
                 <n-button text class="more-btn" @click="navigateTo('/market/money-flow')">
                   查看更多
                   <template #icon>
-                    <n-icon>
-                      <ArrowRightIcon/>
-                    </n-icon>
+                    <SmartIcon name="ArrowRight" />
                   </template>
                 </n-button>
               </div>
@@ -361,9 +330,7 @@
                   @click="viewStockDetail(flow)"
               >
                 <div class="item-icon">
-                  <n-icon class="flow-icon up">
-                    <CashPlusIcon/>
-                  </n-icon>
+                  <SmartIcon name="CashPlus" class="flow-icon up" />
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ flow.name }}</div>
@@ -391,41 +358,27 @@
   </div>
 </template>
 
-<script setup>
-import {onMounted, ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {NButton, NCard, NIcon, NProgress, useMessage} from 'naive-ui'
-
-// Naive UI 图标
-import {
-  AccountTreeRound as TreeChartIcon,
-  AppsRound as AppsIcon,
-  ArrowForwardRound as ArrowRightIcon,
-  AttachMoneyRound as CashMultipleIcon,
-  DashboardRound as DashboardIcon,
-  LocalFireDepartmentRound as FireIcon,
-  MemoryRound as ChipIcon,
-  PaymentsRound as CashPlusIcon,
-  RefreshRound as RefreshIcon,
-  RocketLaunchRound as RocketIcon,
-  ShowChartRound as AreaChartIcon,
-  TrendingUpRound as TrendingUpIcon
-} from '@vicons/material'
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { NButton, NCard, NProgress, useMessage } from 'naive-ui'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
 const router = useRouter()
 const message = useMessage()
+
 // 响应式数据
 const indexData = ref({
-  shanghai: {close: 3254.32, change: 12.45, pct_chg: 0.38},
-  shenzhen: {close: 11982.15, change: -23.67, pct_chg: -0.20},
-  chuangye: {close: 2572.89, change: 18.92, pct_chg: 0.74},
-  kechuang50: {close: 1056.78, change: 8.34, pct_chg: 0.79}
+  shanghai: { close: 3254.32, change: 12.45, pct_chg: 0.38 },
+  shenzhen: { close: 11982.15, change: -23.67, pct_chg: -0.20 },
+  chuangye: { close: 2572.89, change: 18.92, pct_chg: 0.74 },
+  kechuang50: { close: 1056.78, change: 8.34, pct_chg: 0.79 }
 })
 
 // 行业强弱统计数据
 const industryStats = ref({
-  topIndustry: {name: '计算机', change: 3.2},
-  bottomIndustry: {name: '房地产', change: -2.1},
+  topIndustry: { name: '计算机', change: 3.2 },
+  bottomIndustry: { name: '房地产', change: -2.1 },
   totalCount: 28,
   riseCount: 18
 })
@@ -448,20 +401,20 @@ const limitStats = ref({
 
 // 实时涨幅榜数据
 const topRisingStocks = ref([
-  {code: '300624', name: '万兴科技', change: 10.02, price: 156.78},
-  {code: '002230', name: '科大讯飞', change: 9.98, price: 67.45},
-  {code: '300059', name: '东方财富', change: 8.76, price: 23.89},
-  {code: '600570', name: '恒生电子', change: 7.45, price: 45.67},
-  {code: '000977', name: '浪潮信息', change: 6.89, price: 56.78}
+  { code: '300624', name: '万兴科技', change: 10.02, price: 156.78 },
+  { code: '002230', name: '科大讯飞', change: 9.98, price: 67.45 },
+  { code: '300059', name: '东方财富', change: 8.76, price: 23.89 },
+  { code: '600570', name: '恒生电子', change: 7.45, price: 45.67 },
+  { code: '000977', name: '浪潮信息', change: 6.89, price: 56.78 }
 ])
 
 // 资金流入榜数据
 const topMoneyFlow = ref([
-  {code: '300750', name: '宁德时代', amount: 125670, percentage: 85},
-  {code: '000858', name: '五粮液', amount: 89234, percentage: 72},
-  {code: '600519', name: '贵州茅台', amount: 78456, percentage: 68},
-  {code: '002594', name: '比亚迪', amount: 67345, percentage: 65},
-  {code: '601888', name: '中国中免', amount: 56789, percentage: 58}
+  { code: '300750', name: '宁德时代', amount: 125670, percentage: 85 },
+  { code: '000858', name: '五粮液', amount: 89234, percentage: 72 },
+  { code: '600519', name: '贵州茅台', amount: 78456, percentage: 68 },
+  { code: '002594', name: '比亚迪', amount: 67345, percentage: 65 },
+  { code: '601888', name: '中国中免', amount: 56789, percentage: 58 }
 ])
 
 // 仪表盘统计数据
@@ -472,7 +425,7 @@ const dashboardStats = ref({
 })
 
 // 方法
-const navigateTo = (path) => {
+const navigateTo = (path: string) => {
   router.push(path)
 }
 
@@ -480,39 +433,39 @@ const goToDashboard = () => {
   router.push('/market/mkDashboard')
 }
 
-const viewStockDetail = (stock) => {
+const viewStockDetail = (stock: any) => {
   router.push(`/market/stock/${stock.code}`)
 }
 
-const getChangeClass = (data) => {
+const getChangeClass = (data: any) => {
   if (data.change > 0) return 'up'
   if (data.change < 0) return 'down'
   return 'flat'
 }
 
-const getStatusClass = (data) => {
+const getStatusClass = (data: any) => {
   if (data.change > 0) return 'running'
   if (data.change < 0) return 'remaining'
   return 'time'
 }
 
-const getFlowClass = (value) => {
+const getFlowClass = (value: number) => {
   return value >= 0 ? 'up' : 'down'
 }
 
-const formatChange = (change) => {
+const formatChange = (change: number | null | undefined) => {
   if (change === null || change === undefined) return '-'
   const sign = change > 0 ? '+' : ''
   return sign + change.toFixed(2)
 }
 
-const formatPercent = (pct) => {
+const formatPercent = (pct: number | null | undefined) => {
   if (pct === null || pct === undefined) return '-'
   const sign = pct > 0 ? '+' : ''
   return sign + pct.toFixed(2) + '%'
 }
 
-const formatAmount = (amount, showSign = false) => {
+const formatAmount = (amount: number | null | undefined, showSign: boolean = false) => {
   if (amount === null || amount === undefined) return '-'
   const absAmount = Math.abs(amount)
   const sign = showSign ? (amount > 0 ? '+' : amount < 0 ? '-' : '') : ''
@@ -528,36 +481,457 @@ const formatAmount = (amount, showSign = false) => {
 
 // 刷新数据方法
 const refreshData = () => {
-  // 模拟数据刷新
   simulateDataUpdate()
-  // 使用简单的控制台日志代替消息提示
   message.success('数据已刷新')
 }
 
 // 模拟数据更新
 const simulateDataUpdate = () => {
-  // 随机更新指数数据
   Object.keys(indexData.value).forEach(key => {
-    const item = indexData.value[key]
-    const change = (Math.random() - 0.45) * 5 // 轻微偏向上涨
+    const item = (indexData.value as any)[key]
+    const change = (Math.random() - 0.45) * 5
     item.close = parseFloat((item.close + change).toFixed(2))
     item.change = parseFloat(change.toFixed(2))
     item.pct_chg = parseFloat(((change / item.close) * 100).toFixed(2))
   })
 
-  // 更新时间戳
   const now = new Date()
   moneyFlowStats.value.updateTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
 }
 
 // 生命周期钩子
 onMounted(() => {
-  // 初始加载时刷新数据
   refreshData()
 })
 </script>
 
 <style lang="scss" scoped>
-// 引入市场概览专用样式
-@use '@/assets/scss/market/market-overview';
+// 使用Naive UI CSS变量处理颜色和主题
+.market-overview-page {
+  --accent-color: var(--n-primary-color);
+  --success-color: var(--n-success-color);
+  --danger-color: var(--n-error-color);
+  --warning-color: var(--n-warning-color);
+  --info-color: var(--n-info-color);
+
+  padding: var(--content-padding);
+  background-color: var(--n-body-color);
+
+  .common-page-header {
+    margin-bottom: 1rem;
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+
+      .title-section {
+        .page-title {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: var(--n-text-color-1);
+          margin-bottom: 0.25rem;
+        }
+
+        .page-description {
+          font-size: 0.875rem;
+          color: var(--n-text-color-2);
+        }
+      }
+
+      .header-actions {
+        display: flex;
+        gap: 0.5rem;
+
+        .refresh-btn {
+          background-color: var(--accent-color);
+          color: white;
+        }
+      }
+    }
+  }
+
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .market-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--n-text-color-1);
+    margin-bottom: 1rem;
+
+    .title-icon {
+      color: var(--accent-color);
+    }
+  }
+
+  // 市场指数网格布局
+  .market-index-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .market-index-card {
+      .index-content {
+        .index-header {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 1rem;
+
+          .index-name {
+            font-weight: 600;
+            color: var(--n-text-color-1);
+          }
+
+          .index-code {
+            font-size: 0.875rem;
+            color: var(--n-text-color-3);
+          }
+        }
+
+        .status-content {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+
+          .status-icon {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            &.running {
+              background-color: rgba(var(--success-color-rgb), 0.1);
+              color: var(--success-color);
+            }
+
+            &.remaining {
+              background-color: rgba(var(--danger-color-rgb), 0.1);
+              color: var(--danger-color);
+            }
+
+            &.time {
+              background-color: rgba(var(--n-text-color-3-rgb), 0.1);
+              color: var(--n-text-color-3);
+            }
+
+            .n-icon {
+              font-size: 1.5rem;
+            }
+          }
+
+          .status-info {
+            flex: 1;
+
+            .index-value {
+              font-size: 1.5rem;
+              font-weight: 600;
+              color: var(--n-text-color-1);
+            }
+
+            .index-change {
+              font-size: 0.875rem;
+
+              &.up {
+                color: var(--success-color);
+              }
+
+              &.down {
+                color: var(--danger-color);
+              }
+
+              &.flat {
+                color: var(--n-text-color-3);
+              }
+
+              .change-value {
+                font-weight: 600;
+              }
+
+              .change-percent {
+                margin-left: 0.25rem;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 功能网格布局
+  .function-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .function-nav-card {
+      cursor: pointer;
+
+      .function-content {
+        .function-header {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin-bottom: 1rem;
+
+          .function-icon {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            &.accent {
+              background-color: rgba(var(--accent-color-rgb), 0.1);
+              color: var(--accent-color);
+            }
+
+            &.purple {
+              background-color: rgba(128, 0, 128, 0.1);
+              color: purple;
+            }
+
+            &.info {
+              background-color: rgba(var(--info-color-rgb), 0.1);
+              color: var(--info-color);
+            }
+
+            &.danger {
+              background-color: rgba(var(--danger-color-rgb), 0.1);
+              color: var(--danger-color);
+            }
+
+            .n-icon {
+              font-size: 1.5rem;
+            }
+          }
+
+          .function-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--n-text-color-1);
+          }
+        }
+
+        .function-info {
+          .function-description {
+            color: var(--n-text-color-2);
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+          }
+
+          .function-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+
+            .stat-item {
+              display: flex;
+              justify-content: space-between;
+
+              .stat-label {
+                color: var(--n-text-color-3);
+                font-size: 0.875rem;
+              }
+
+              .stat-value {
+                font-weight: 600;
+
+                &.up {
+                  color: var(--success-color);
+                }
+
+                &.down {
+                  color: var(--danger-color);
+                }
+              }
+            }
+          }
+
+          .function-footer {
+            border-top: 1px solid var(--n-border-color);
+            padding-top: 0.75rem;
+
+            .update-time {
+              font-size: 0.75rem;
+              color: var(--n-text-color-3);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 热点网格布局
+  .hotspot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+
+    .hotspot-card {
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .card-title {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-weight: 600;
+          color: var(--n-text-color-1);
+
+          .card-title-icon {
+            color: var(--accent-color);
+          }
+        }
+
+        .more-btn {
+          color: var(--accent-color);
+        }
+      }
+
+      .hotspot-list {
+        .hotspot-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem 0;
+          cursor: pointer;
+          border-bottom: 1px solid var(--n-border-color);
+
+          &:last-child {
+            border-bottom: none;
+          }
+
+          .item-icon {
+            .trend-icon {
+              &.up {
+                color: var(--success-color);
+              }
+            }
+          }
+
+          .stock-info {
+            flex: 1;
+
+            .stock-name {
+              font-weight: 500;
+              color: var(--n-text-color-1);
+            }
+
+            .stock-code {
+              font-size: 0.75rem;
+              color: var(--n-text-color-3);
+            }
+          }
+
+          .hotspot-change {
+            font-weight: 600;
+
+            &.up {
+              color: var(--success-color);
+            }
+          }
+
+          .hotspot-price {
+            font-weight: 600;
+            color: var(--n-text-color-1);
+          }
+        }
+      }
+
+      .money-flow-list {
+        .flow-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.75rem 0;
+          cursor: pointer;
+          border-bottom: 1px solid var(--n-border-color);
+
+          &:last-child {
+            border-bottom: none;
+          }
+
+          .item-icon {
+            .flow-icon {
+              &.up {
+                color: var(--success-color);
+              }
+            }
+          }
+
+          .stock-info {
+            flex: 1;
+
+            .stock-name {
+              font-weight: 500;
+              color: var(--n-text-color-1);
+            }
+
+            .stock-code {
+              font-size: 0.75rem;
+              color: var(--n-text-color-3);
+            }
+          }
+
+          .flow-bar {
+            flex: 2;
+            min-width: 100px;
+          }
+
+          .flow-amount {
+            font-weight: 600;
+
+            &.up {
+              color: var(--success-color);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  .market-overview-page {
+    .common-page-header {
+      .header-content {
+        flex-direction: column;
+        gap: 1rem;
+
+        .header-actions {
+          width: 100%;
+          justify-content: flex-end;
+        }
+      }
+    }
+
+    .market-index-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .function-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .hotspot-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+}
 </style>

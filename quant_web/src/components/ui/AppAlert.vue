@@ -1,45 +1,47 @@
-<!--预警提示组件-->
+<!-- 预警提示组件 - 迁移到 Naive UI 和统一图标方案 -->
 <template>
-  <div
+  <n-alert
     v-if="alert"
+    :type="alertType"
+    :title="alert.title"
+    closable
+    @close="$emit('dismiss', alert.id)"
     class="app-alert"
-    :style="{ borderLeft: `3px solid ${alertColor}` }"
   >
-    <div class="alert-header">
-      <div class="alert-icon" :style="{ color: alertColor }">
-        <i :class="alertIcon" />
-      </div>
-      <div class="alert-title">
-        {{ alert.title }}
-      </div>
-      <div class="alert-time">
-        {{ formattedTime }}
-      </div>
-    </div>
+    <template #icon>
+      <!-- 使用 SmartIcon 组件 -->
+      <smart-icon :name="getAlertIcon(alert.level)" />
+    </template>
 
-    <div class="alert-content">
-      {{ alert.content }}
-    </div>
+    {{ alert.content }}
 
-    <div class="alert-actions">
-      <el-button
+    <template #action>
+      <n-button
         v-if="alert.action"
-        type="text"
+        text
+        type="primary"
         size="small"
         @click="$emit('action', alert)"
       >
         {{ alert.action }}
-      </el-button>
-      <el-button type="text" size="small" @click="$emit('dismiss', alert.id)">
-        忽略
-      </el-button>
-    </div>
-  </div>
+      </n-button>
+    </template>
+  </n-alert>
 </template>
 
 <script>
-export default {
+import { defineComponent, computed } from 'vue'
+import { NAlert, NButton } from 'naive-ui'
+// 导入 SmartIcon 组件
+import SmartIcon from '../common/SmartIcon.vue'
+
+export default defineComponent({
   name: "AppAlert",
+  components: {
+    NAlert,
+    NButton,
+    SmartIcon // 注册 SmartIcon 组件
+  },
   props: {
     alert: {
       type: Object,
@@ -54,97 +56,45 @@ export default {
     },
   },
   emits: ["action", "dismiss"],
-  computed: {
-    alertIcon() {
-      const level = this.alert?.level || "info";
+  setup(props) {
+    const alertType = computed(() => {
+      const level = props.alert?.level || "info"
       switch (level) {
         case "critical":
-          return "el-icon-warning";
+          return "error"
         case "warning":
-          return "el-icon-warning-outline";
+          return "warning"
         default:
-          return "el-icon-info";
+          return "info"
       }
-    },
+    })
 
-    alertColor() {
-      const level = this.alert?.level || "info";
-      switch (level) {
-        case "critical":
-          return "var(--alert-critical-color)";
-        case "warning":
-          return "var(--alert-warning-color)";
-        default:
-          return "var(--alert-info-color)";
+    // 获取警告图标 - 使用统一的图标名称
+    const getAlertIcon = (level) => {
+      const iconMap = {
+        critical: "Warning", // 严重警告图标
+        warning: "AlertCircle", // 警告图标
+        info: "InformationCircle" // 信息图标
       }
-    },
+      return iconMap[level] || "InformationCircle"
+    }
 
-    formattedTime() {
-      const timestamp = this.alert?.timestamp || Date.now();
-      return new Date(timestamp).toLocaleTimeString("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    },
+    return {
+      alertType,
+      getAlertIcon
+    }
   },
-};
+})
 </script>
 
 <style lang="scss" scoped>
 .app-alert {
-  background-color: var(--card-bg);
-  border-radius: var(--border-radius);
-  box-shadow: var(--card-shadow);
-  padding: var(--spacer-3) var(--spacer-4);
-  margin-bottom: var(--spacer-2);
-  transition: all var(--transition-normal);
-  border: 1px solid var(--border-color);
-}
+  margin-bottom: 8px;
+  transition: all 0.3s var(--n-bezier);
 
-.app-alert:hover {
-  box-shadow: var(--hover-shadow);
-  transform: var(--hover-transform);
-}
-
-.alert-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: var(--spacer-2);
-}
-
-.alert-icon {
-  font-size: 18px;
-  margin-right: var(--spacer-2);
-}
-
-.alert-title {
-  font-weight: var(--font-weight-semibold);
-  flex: 1;
-  color: var(--text-primary);
-}
-
-.alert-time {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.alert-content {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: var(--spacer-2);
-}
-
-.alert-actions {
-  text-align: right;
-}
-
-:root {
-  --alert-critical-color: #f56c6c;
-  --alert-warning-color: #e6a23c;
-  --alert-info-color: #909399;
-  --spacer-2: 0.5rem;
-  --spacer-3: 1rem;
-  --spacer-4: 1.5rem;
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--n-box-shadow-2);
+  }
 }
 </style>

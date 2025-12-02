@@ -1,4 +1,4 @@
-<!-- MarketDashboard.vue - 优化后的仪表盘组件 -->
+<!-- MarketDashboard.vue - Naive UI 实现的市场仪表盘 -->
 <template>
   <div class="market-dashboard-page">
     <!-- 页面标题区域 -->
@@ -11,17 +11,13 @@
         <div class="header-actions">
           <n-button class="refresh-btn" @click="refreshAllData" :loading="loading">
             <template #icon>
-              <n-icon>
-                <RefreshIcon/>
-              </n-icon>
+              <SmartIcon name="Refresh" />
             </template>
-            <span class="btn-text">刷新数据</span>
+            <span class="btn-text">{{ loading ? '刷新中...' : '刷新数据' }}</span>
           </n-button>
           <n-button class="back-btn" @click="handleBack">
             <template #icon>
-              <n-icon>
-                <ArrowBackIcon/>
-              </n-icon>
+              <SmartIcon name="ArrowBack" />
             </template>
             <span class="btn-text">返回</span>
           </n-button>
@@ -33,22 +29,28 @@
     <div class="main-content">
       <!-- 筛选条件区域 -->
       <div class="filter-section">
-        <n-card class="filter-card" content-style="padding: 20px;">
+        <n-card class="filter-card">
           <div class="filter-content">
-            <div class="filter-group">
-              <div class="filter-item">
-                <label class="filter-label" for="data-dimension">数据维度</label>
-                <n-select
+            <n-grid :cols="24" :x-gap="12" :y-gap="12">
+              <!-- 数据维度 -->
+              <n-gi :span="6">
+                <div class="filter-item">
+                  <label class="filter-label" for="data-dimension">数据维度</label>
+                  <n-select
                     id="data-dimension"
                     v-model:value="activeDimension"
                     :options="dimensionOptions"
                     class="filter-select"
                     @update:value="handleDimensionChange"
-                />
-              </div>
-              <div class="filter-item market-sector-item">
-                <label class="filter-label" for="market-sector">市场板块</label>
-                <n-select
+                  />
+                </div>
+              </n-gi>
+
+              <!-- 市场板块 -->
+              <n-gi :span="6">
+                <div class="filter-item market-sector-item">
+                  <label class="filter-label" for="market-sector">市场板块</label>
+                  <n-select
                     id="market-sector"
                     v-model:value="filters.market"
                     :options="marketOptions"
@@ -56,58 +58,63 @@
                     multiple
                     placeholder="请选择"
                     @update:value="handleFilterChange"
-                />
-              </div>
-              <div class="filter-item sort-method-item">
-                <label class="filter-label" for="sort-method">排序方式</label>
-                <n-select
+                  />
+                </div>
+              </n-gi>
+
+              <!-- 排序方式 -->
+              <n-gi :span="6">
+                <div class="filter-item sort-method-item">
+                  <label class="filter-label" for="sort-method">排序方式</label>
+                  <n-select
                     id="sort-method"
                     v-model:value="sortBy"
                     :options="sortOptions"
                     class="filter-select sort-method-select"
                     @update:value="handleSortChange"
-                />
-              </div>
-            </div>
-            <div class="filter-search">
-              <div class="filter-item">
-                <label class="filter-label" for="search-input">搜索</label>
-                <n-input
+                  />
+                </div>
+              </n-gi>
+
+              <!-- 搜索框 -->
+              <n-gi :span="6">
+                <div class="filter-item">
+                  <label class="filter-label" for="search-input">搜索</label>
+                  <n-input
                     id="search-input"
                     v-model:value="searchKeyword"
                     placeholder="搜索代码或名称..."
                     class="search-input"
                     clearable
                     @input="handleSearch"
-                >
-                  <template #prefix>
-                    <n-icon>
-                      <SearchIcon/>
-                    </n-icon>
-                  </template>
-                </n-input>
-              </div>
-            </div>
-            <div class="filter-item">
-              <n-button-group>
-                <n-button @click="exportData" class="export-btn">
-                  <template #icon>
-                    <n-icon>
-                      <DownloadIcon/>
-                    </n-icon>
-                  </template>
-                  导出数据
-                </n-button>
-                <n-button @click="resetFilters" class="reset-btn">
-                  <template #icon>
-                    <n-icon>
-                      <CloseIcon/>
-                    </n-icon>
-                  </template>
-                  重置
-                </n-button>
-              </n-button-group>
-            </div>
+                  >
+                    <template #prefix>
+                      <SmartIcon name="Search" />
+                    </template>
+                  </n-input>
+                </div>
+              </n-gi>
+
+              <!-- 操作按钮 -->
+              <n-gi :span="24">
+                <div class="filter-actions">
+                  <n-space>
+                    <n-button @click="exportData" class="export-btn">
+                      <template #icon>
+                        <SmartIcon name="Download" />
+                      </template>
+                      导出数据
+                    </n-button>
+                    <n-button @click="resetFilters" class="reset-btn">
+                      <template #icon>
+                        <SmartIcon name="Close" />
+                      </template>
+                      重置筛选
+                    </n-button>
+                  </n-space>
+                </div>
+              </n-gi>
+            </n-grid>
           </div>
         </n-card>
       </div>
@@ -119,9 +126,7 @@
             <n-card class="stats-card" hoverable>
               <div class="stats-content">
                 <div class="stats-icon stocks">
-                  <n-icon>
-                    <TrendingUpIcon/>
-                  </n-icon>
+                  <SmartIcon name="TrendingUp" />
                 </div>
                 <div class="stats-info">
                   <div class="stats-value">{{ stats.totalStocks.toLocaleString() }}</div>
@@ -134,9 +139,7 @@
             <n-card class="stats-card" hoverable>
               <div class="stats-content">
                 <div class="stats-icon etfs">
-                  <n-icon>
-                    <PieChartIcon/>
-                  </n-icon>
+                  <SmartIcon name="PieChart" />
                 </div>
                 <div class="stats-info">
                   <div class="stats-value">{{ stats.totalETFs.toLocaleString() }}</div>
@@ -149,9 +152,7 @@
             <n-card class="stats-card" hoverable>
               <div class="stats-content">
                 <div class="stats-icon indexes">
-                  <n-icon>
-                    <BarChartIcon/>
-                  </n-icon>
+                  <SmartIcon name="BarChart" />
                 </div>
                 <div class="stats-info">
                   <div class="stats-value">{{ stats.totalIndexes.toLocaleString() }}</div>
@@ -164,9 +165,7 @@
             <n-card class="stats-card" hoverable>
               <div class="stats-content">
                 <div class="stats-icon market-cap">
-                  <n-icon>
-                    <CurrencyIcon/>
-                  </n-icon>
+                  <SmartIcon name="Currency" />
                 </div>
                 <div class="stats-info">
                   <div class="stats-value">{{ formatMarketCap(stats.totalMarketCap) }}</div>
@@ -180,55 +179,56 @@
 
       <!-- 数据表格区域 -->
       <div class="data-section">
-        <n-card class="data-card" :title="getTableTitle()" hoverable>
-          <template #header-extra>
-            <n-space>
-              <n-tooltip trigger="hover">
-                <template #trigger>
-                  <n-button size="small" @click="toggleViewMode">
-                    <template #icon>
-                      <n-icon>
-                        <component :is="viewMode === 'table' ? GridIcon : TableIcon"/>
-                      </n-icon>
-                    </template>
-                    {{ viewMode === 'table' ? '卡片视图' : '表格视图' }}
-                  </n-button>
-                </template>
-                {{ viewMode === 'table' ? '切换到卡片视图' : '切换到表格视图' }}
-              </n-tooltip>
-            </n-space>
+        <n-card class="data-card" hoverable>
+          <template #header>
+            <div class="data-card-header">
+              <h3 class="data-card-title">{{ getTableTitle() }}</h3>
+              <n-space>
+                <n-tooltip trigger="hover">
+                  <template #trigger>
+                    <n-button size="small" @click="toggleViewMode">
+                      <template #icon>
+                        <SmartIcon :name="viewMode === 'table' ? 'Grid' : 'Table'" />
+                      </template>
+                      {{ viewMode === 'table' ? '卡片视图' : '表格视图' }}
+                    </n-button>
+                  </template>
+                  {{ viewMode === 'table' ? '切换到卡片视图' : '切换到表格视图' }}
+                </n-tooltip>
+              </n-space>
+            </div>
           </template>
 
           <!-- 表格视图 -->
           <div v-if="viewMode === 'table'" class="table-container">
             <n-data-table
-                :columns="getTableColumns()"
-                :data="paginatedData"
-                :loading="loading"
-                :pagination="paginationReactive"
-                :bordered="false"
-                :row-class-name="getRowClassName"
-                @update:sorter="handleSorterChange"
-                @update:page="handlePageChange"
-                @update:page-size="handlePageSizeChange"
-                virtual-scroll
-                :max-height="600"
+              :columns="getTableColumns()"
+              :data="paginatedData"
+              :loading="loading"
+              :pagination="paginationReactive"
+              :bordered="false"
+              :row-class-name="getRowClassName"
+              @update:sorter="handleSorterChange"
+              @update:page="handlePageChange"
+              @update:page-size="handlePageSizeChange"
+              virtual-scroll
+              :max-height="600"
             />
           </div>
 
           <!-- 卡片视图 -->
           <div v-else class="card-view-container">
             <n-empty
-                v-if="filteredData.length === 0"
-                description="暂无数据"
-                class="empty-state"
+              v-if="filteredData.length === 0"
+              description="暂无数据"
+              class="empty-state"
             />
             <n-grid v-else :cols="responsiveCols" :x-gap="16" :y-gap="16">
               <n-gi v-for="item in paginatedData" :key="getItemKey(item)">
                 <n-card
-                    class="data-card-item"
-                    hoverable
-                    @click="handleItemClick(item)"
+                  class="data-card-item"
+                  hoverable
+                  @click="handleItemClick(item)"
                 >
                   <div class="card-content">
                     <div class="card-header">
@@ -257,13 +257,13 @@
             <!-- 卡片视图分页 -->
             <div class="pagination-wrapper" v-if="filteredData.length > 0">
               <n-pagination
-                  v-model:page="pagination.page"
-                  :page-count="pagination.pageCount"
-                  :page-size="pagination.pageSize"
-                  :page-sizes="pagination.pageSizes"
-                  show-size-picker
-                  @update:page="handlePageChange"
-                  @update:page-size="handlePageSizeChange"
+                v-model:page="pagination.page"
+                :page-count="pagination.pageCount"
+                :page-size="pagination.pageSize"
+                :page-sizes="pagination.pageSizes"
+                show-size-picker
+                @update:page="handlePageChange"
+                @update:page-size="handlePageSizeChange"
               />
             </div>
           </div>
@@ -274,18 +274,16 @@
 </template>
 
 <script setup lang="ts">
-import {computed, h, onMounted, reactive, ref, watch} from 'vue'
-import {useRouter} from 'vue-router'
+import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   type DataTableColumns,
   NButton,
-  NButtonGroup,
   NCard,
   NDataTable,
   NEmpty,
   NGi,
   NGrid,
-  NIcon,
   NInput,
   NPagination,
   NSelect,
@@ -295,19 +293,7 @@ import {
   useDialog,
   useMessage
 } from 'naive-ui'
-import {
-  ArrowBackIosFilled as ArrowBackIcon,
-  AttachMoneyFilled as CurrencyIcon,
-  BarChartFilled as BarChartIcon,
-  CloseFilled as CloseIcon,
-  DownloadDoneFilled as DownloadIcon,
-  GridOnFilled as GridIcon,
-  PieChartFilled as PieChartIcon,
-  RefreshRound as RefreshIcon,
-  SearchFilled as SearchIcon,
-  TableChartFilled as TableIcon,
-  TrendingUpFilled as TrendingUpIcon,
-} from '@vicons/material'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
 const router = useRouter()
 const message = useMessage()
@@ -419,8 +405,8 @@ const filteredData = computed(() => {
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     data = data.filter(item =>
-        item.ts_code.toLowerCase().includes(keyword) ||
-        item.name.toLowerCase().includes(keyword)
+      item.ts_code.toLowerCase().includes(keyword) ||
+      item.name.toLowerCase().includes(keyword)
     )
   }
 
@@ -479,31 +465,24 @@ const paginatedData = computed(() => {
 
 // 选项配置
 const dimensionOptions = [
-  {label: '股票市场', value: 'stocks'},
-  {label: 'ETF基金', value: 'etfs'},
-  {label: '指数行情', value: 'indexes'}
+  { label: '股票市场', value: 'stocks' },
+  { label: 'ETF基金', value: 'etfs' },
+  { label: '指数行情', value: 'indexes' }
 ]
 
 const marketOptions = [
-  {label: '主板', value: '主板'},
-  {label: '创业板', value: '创业板'},
-  {label: '科创板', value: '科创板'},
-  {label: '北交所', value: '北交所'}
+  { label: '主板', value: '主板' },
+  { label: '创业板', value: '创业板' },
+  { label: '科创板', value: '科创板' },
+  { label: '北交所', value: '北交所' }
 ]
 
 const sortOptions = [
-  {label: '代码', value: 'code'},
-  {label: '名称', value: 'name'},
-  {label: '最新价', value: 'price'},
-  {label: '涨跌幅', value: 'change'},
-  {label: '市值', value: 'market_cap'}
-]
-
-const pageSizeOptions = [
-  {label: '10条', value: 10},
-  {label: '20条', value: 20},
-  {label: '50条', value: 50},
-  {label: '100条', value: 100}
+  { label: '代码', value: 'code' },
+  { label: '名称', value: 'name' },
+  { label: '最新价', value: 'price' },
+  { label: '涨跌幅', value: 'change' },
+  { label: '市值', value: 'market_cap' }
 ]
 
 // 计算方法
@@ -548,9 +527,9 @@ const getTableColumns = (): DataTableColumns<DataItem> => {
       sorter: true,
       render: (rowData: DataItem) => {
         if (!rowData.change_percent) return '-'
-        const color = rowData.change_percent >= 0 ? '#f5222d' : '#52c41a'
+        const color = rowData.change_percent >= 0 ? 'var(--n-success-color)' : 'var(--n-error-color)'
         const sign = rowData.change_percent >= 0 ? '+' : ''
-        return h('span', {style: {color, fontWeight: 'bold'}}, `${sign}${rowData.change_percent.toFixed(2)}%`)
+        return h('span', { style: { color, fontWeight: 'bold' } }, `${sign}${rowData.change_percent.toFixed(2)}%`)
       }
     }
   ]
@@ -590,7 +569,7 @@ const getTableColumns = (): DataTableColumns<DataItem> => {
             e.stopPropagation()
             handleItemClick(rowData)
           }
-        }, {default: () => '详情'})
+        }, { default: () => '详情' })
       }
     ],
     etfs: [
@@ -711,9 +690,8 @@ const exportData = () => {
     positiveText: '导出',
     negativeText: '取消',
     onPositiveClick: () => {
-      // 模拟导出逻辑
       const dataStr = JSON.stringify(filteredData.value, null, 2)
-      const dataBlob = new Blob([dataStr], {type: 'application/json'})
+      const dataBlob = new Blob([dataStr], { type: 'application/json' })
       const url = URL.createObjectURL(dataBlob)
       const link = document.createElement('a')
       link.href = url
@@ -786,7 +764,6 @@ const updatePagination = () => {
   pagination.itemCount = filteredData.value.length
   pagination.pageCount = Math.ceil(pagination.itemCount / pagination.pageSize)
 
-  // 确保当前页不超出范围
   if (pagination.page > pagination.pageCount && pagination.pageCount > 0) {
     pagination.page = pagination.pageCount
   }
@@ -796,12 +773,10 @@ const updatePagination = () => {
 const loadTableData = async () => {
   loading.value = true
   try {
-    // 模拟API调用
     await new Promise(resolve => setTimeout(resolve, 800))
 
-    // 生成模拟数据
     const generateMockData = () => ({
-      stocks: Array.from({length: 185}, (_, i) => ({
+      stocks: Array.from({ length: 185 }, (_, i) => ({
         ts_code: `00000${i + 1}.${i % 2 === 0 ? 'SH' : 'SZ'}`,
         name: `股票${i + 1}`,
         market: i % 4 === 0 ? '主板' : i % 4 === 1 ? '创业板' : i % 4 === 2 ? '科创板' : '北交所',
@@ -813,7 +788,7 @@ const loadTableData = async () => {
         market_cap: 1000000000 + Math.random() * 100000000000,
         list_date: '2020-01-01'
       })),
-      etfs: Array.from({length: 89}, (_, i) => ({
+      etfs: Array.from({ length: 89 }, (_, i) => ({
         ts_code: `51${String(i + 1).padStart(4, '0')}.SH`,
         name: `ETF${i + 1}`,
         market: '主板',
@@ -825,7 +800,7 @@ const loadTableData = async () => {
         fund_size: 100000000 + Math.random() * 10000000000,
         expense_ratio: 0.1 + Math.random() * 0.5
       })),
-      indexes: Array.from({length: 67}, (_, i) => ({
+      indexes: Array.from({ length: 67 }, (_, i) => ({
         ts_code: i % 2 === 0 ? `00000${i + 1}.SH` : `39900${i + 1}.SZ`,
         name: i % 2 === 0 ? `上证${i + 1}` : `深证${i + 1}`,
         market: i % 2 === 0 ? '上证' : '深证',
@@ -851,7 +826,6 @@ const loadTableData = async () => {
 }
 
 const loadStatsData = async () => {
-  // 模拟统计数据加载
   await new Promise(resolve => setTimeout(resolve, 300))
 }
 
@@ -866,282 +840,319 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-// ============================================================================
-// SCSS 导入和配置
-// ============================================================================
-@use '@/assets/scss/mixins' as mixin;
-// 导入混入函数
-@use '@/assets/scss/variables' as *;
-// 导入所有 SCSS 变量
-@use 'sass:map';
-// 导入 Sass Map 函数
-@use 'sass:color' as colors; // 导入颜色处理函数
-
-// ============================================================================
-// 股票列表页面主容器
-// ============================================================================
 .market-dashboard-page {
-  @include mixin.content-with-base; // 应用基础内容区域混入（包含内边距、背景色等）
+  padding: var(--content-padding);
+  background-color: var(--n-body-color);
+  min-height: 100vh;
+}
 
-  .main-content {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
-    margin: 0 auto; // 水平居中显示
+/* 页面头部样式 */
+.page-header {
+  margin-bottom: 1.5rem;
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+
+    .title-section {
+      .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--n-text-color-1);
+        margin-bottom: 0.25rem;
+      }
+
+      .page-description {
+        font-size: 0.875rem;
+        color: var(--n-text-color-2);
+      }
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+
+      .refresh-btn {
+        background-color: var(--n-primary-color);
+        color: white;
+      }
+
+      .back-btn {
+        background-color: var(--n-color-secondary);
+        color: var(--n-text-color-1);
+      }
+    }
   }
 }
 
-// ============================================================================
-// 页面头部样式 - 使用混入统一管理
-// ============================================================================
-.page-header {
-  @include mixin.page-header-base; // 应用页面头部基础样式（包含布局、间距等）
-}
-
-// ============================================================================
-// 筛选区域样式
-// ============================================================================
+/* 筛选区域样式 */
 .filter-section {
-  @include mixin.advanced-filter-section((
-    'with-search': true,
-    'with-actions': true
-  ));
+  margin-bottom: 1.5rem;
+
+  .filter-card {
+    background-color: var(--n-card-color);
+    border-radius: 8px;
+
+    .filter-content {
+      .filter-item {
+        margin-bottom: 0.5rem;
+
+        .filter-label {
+          display: block;
+          margin-bottom: 0.25rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: var(--n-text-color-2);
+        }
+
+        .filter-select {
+          width: 100%;
+        }
+
+        .search-input {
+          width: 100%;
+        }
+      }
+
+      .filter-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--n-border-color);
+
+        .export-btn {
+          background-color: var(--n-primary-color);
+          color: white;
+        }
+
+        .reset-btn {
+          background-color: var(--n-color-secondary);
+          color: var(--n-text-color-1);
+        }
+      }
+    }
+  }
 }
 
-// ============================================================================
-// 统计卡片样式
-// ============================================================================
+/* 统计概览区域 */
 .stats-overview {
-  margin-bottom: map.get($spacers, 4); // 底部外边距：使用间距映射中的第4个值
+  margin-bottom: 1.5rem;
 
   .stats-card {
-    @include mixin.card-base; // 应用卡片基础样式
-    height: 100%; // 高度100%填充父容器
-
     .stats-content {
-      display: flex; // 使用弹性布局
-      align-items: center; // 垂直居中对齐
-      gap: map.get($spacers, 3); // 子元素间距：使用间距映射中的第3个值
+      display: flex;
+      align-items: center;
+      gap: 1rem;
 
       .stats-icon {
-        @include mixin.flex-center; // 应用弹性居中混入
-        width: 48px; // 固定宽度48px
-        height: 48px; // 固定高度48px
-        border-radius: $border-radius; // 圆角边框
-        font-size: $font-size-base * 1.5; // 字体大小为基数的1.5倍
-        flex-shrink: 0; // 防止图标被压缩
+        width: 3rem;
+        height: 3rem;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
 
-        // 股票统计图标样式
         &.stocks {
-          background: rgba($stock-up-color, 0.1); // 背景色：股票上涨色的10%透明度
-          color: $stock-up-color; // 文字颜色：股票上涨色
+          background-color: rgba(var(--n-success-color-rgb, 103, 194, 58), 0.1);
+          color: var(--n-success-color);
         }
 
-        // ETF统计图标样式
         &.etfs {
-          background: rgba($info-color, 0.1); // 背景色：信息色的10%透明度
-          color: $info-color; // 文字颜色：信息色
+          background-color: rgba(var(--n-info-color-rgb, 23, 162, 184), 0.1);
+          color: var(--n-info-color);
         }
 
-        // 指数统计图标样式
         &.indexes {
-          background: rgba($warning-color, 0.1); // 背景色：警告色的10%透明度
-          color: $warning-color; // 文字颜色：警告色
+          background-color: rgba(var(--n-warning-color-rgb, 210, 153, 34), 0.1);
+          color: var(--n-warning-color);
         }
 
-        // 市值统计图标样式
         &.market-cap {
-          background: rgba($success-color, 0.1); // 背景色：成功色的10%透明度
-          color: $success-color; // 文字颜色：成功色
+          background-color: rgba(var(--n-primary-color-rgb, 33, 150, 243), 0.1);
+          color: var(--n-primary-color);
         }
       }
 
       .stats-info {
-        flex: 1; // 占据剩余空间
+        flex: 1;
 
         .stats-value {
-          font-size: $font-size-base * 1.5; // 字体大小为基数的1.5倍
-          font-weight: $font-weight-bold; // 粗体字重
-          color: $text-primary; // 主要文字颜色
-          margin-bottom: map.get($spacers, 1); // 底部外边距
-          line-height: 1.2; // 行高1.2
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: var(--n-text-color-1);
+          margin-bottom: 0.25rem;
         }
 
         .stats-label {
-          @include mixin.text-secondary; // 应用次要文本样式
-          font-size: $font-size-base * 0.85; // 字体大小为基数的85%
+          font-size: 0.875rem;
+          color: var(--n-text-color-2);
         }
       }
     }
   }
 }
 
-// ============================================================================
-// 数据表格区域样式
-// ============================================================================
+/* 数据表格区域 */
 .data-section {
   .data-card {
-    @include mixin.card-base; // 应用卡片基础样式
+    .data-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
 
-    // 卡片头部样式
-    :deep(.n-card__header) {
-      @include mixin.card-header-base; // 应用卡片头部基础样式
+      .data-card-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--n-text-color-1);
+        margin: 0;
+      }
     }
 
-    // 表格视图样式
     .table-container {
-      @include mixin.custom-scrollbar; // 应用自定义滚动条样式
+      overflow-x: auto;
 
       :deep(.n-data-table) {
-        @include mixin.table-base-styles; // 应用表格基础样式
-
-        // 偶数行样式
-        .even-row {
-          background: rgba($secondary-bg, 0.3); // 背景色：次要背景色的30%透明度
+        .n-data-table-th {
+          background-color: var(--n-color-secondary);
+          font-weight: 600;
         }
 
-        // 奇数行样式
+        .even-row {
+          background-color: var(--n-color-secondary);
+        }
+
         .odd-row {
-          background: $card-bg; // 背景色：卡片背景色
+          background-color: var(--n-card-color);
         }
       }
     }
 
-    // 卡片视图样式
     .card-view-container {
       .empty-state {
-        @include mixin.flex-center(column); // 应用弹性居中混入（垂直方向）
-        padding: map.get($spacers, 6); // 内边距：使用间距映射中的第6个值
-        color: $text-secondary; // 文字颜色：次要文字颜色
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem;
+        color: var(--n-text-color-2);
       }
 
       .data-card-item {
-        @include mixin.card-base; // 应用卡片基础样式
-        height: 100%; // 高度100%填充父容器
-        cursor: pointer; // 鼠标指针变为手型
-        transition: all $transition-normal; // 所有属性过渡效果
+        cursor: pointer;
+        transition: all 0.3s ease;
 
-        // 悬停状态
         &:hover {
-          border-color: $accent-color; // 边框颜色：强调色
-          transform: $hover-transform; // 悬停变换效果
+          border-color: var(--n-primary-color);
+          transform: translateY(-2px);
         }
 
         .card-content {
-          display: flex; // 使用弹性布局
-          flex-direction: column; // 垂直排列子元素
-          height: 100%; // 高度100%填充父容器
-
           .card-header {
-            margin-bottom: map.get($spacers, 2); // 底部外边距
+            margin-bottom: 0.75rem;
 
             .item-code {
-              font-size: $font-size-base * 0.9; // 字体大小为基数的90%
-              font-weight: $font-weight-semibold; // 半粗体字重
-              color: $accent-color; // 文字颜色：强调色
-              margin-bottom: map.get($spacers, 1); // 底部外边距
+              font-size: 0.875rem;
+              font-weight: 600;
+              color: var(--n-primary-color);
+              margin-bottom: 0.25rem;
             }
 
             .item-name {
-              font-size: $font-size-base; // 基础字体大小
-              font-weight: $font-weight-medium; // 中等字重
-              color: $text-primary; // 文字颜色：主要文字颜色
-              @include mixin.text-ellipsis; // 应用文本溢出省略号
+              font-size: 1rem;
+              font-weight: 500;
+              color: var(--n-text-color-1);
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
             }
           }
 
           .card-body {
-            flex: 1; // 占据剩余空间
-            display: flex; // 使用弹性布局
-            flex-direction: column; // 垂直排列子元素
-            justify-content: center; // 垂直居中
-            align-items: center; // 水平居中
-            margin-bottom: map.get($spacers, 2); // 底部外边距
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.75rem;
 
             .item-price {
-              font-size: $font-size-base * 1.3; // 字体大小为基数的1.3倍
-              font-weight: $font-weight-bold; // 粗体字重
-              margin-bottom: map.get($spacers, 1); // 底部外边距
+              font-size: 1.25rem;
+              font-weight: 600;
+              margin-bottom: 0.25rem;
 
-              // 上涨价格样式
               &.positive {
-                color: $stock-up-color; // 文字颜色：股票上涨色
+                color: var(--n-success-color);
               }
 
-              // 下跌价格样式
               &.negative {
-                color: $stock-down-color; // 文字颜色：股票下跌色
+                color: var(--n-error-color);
               }
 
-              // 中性价格样式
               &.neutral {
-                color: $text-secondary; // 文字颜色：次要文字颜色
+                color: var(--n-text-color-2);
               }
             }
 
             .item-change {
-              font-size: $font-size-base; // 基础字体大小
-              font-weight: $font-weight-medium; // 中等字重
+              font-size: 0.875rem;
+              font-weight: 500;
 
-              // 上涨变化样式
               &.positive {
-                color: $stock-up-color; // 文字颜色：股票上涨色
+                color: var(--n-success-color);
               }
 
-              // 下跌变化样式
               &.negative {
-                color: $stock-down-color; // 文字颜色：股票下跌色
+                color: var(--n-error-color);
               }
 
-              // 中性变化样式
               &.neutral {
-                color: $text-secondary; // 文字颜色：次要文字颜色
+                color: var(--n-text-color-2);
               }
             }
           }
 
           .card-footer {
-            display: flex; // 使用弹性布局
-            justify-content: space-between; // 两端对齐
-            align-items: center; // 垂直居中对齐
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
 
             .item-market {
-              background: rgba($accent-color, 0.1); // 背景色：强调色的10%透明度
-              color: $accent-color; // 文字颜色：强调色
-              border: none; // 无边框
+              background-color: rgba(var(--n-primary-color-rgb, 33, 150, 243), 0.1);
+              color: var(--n-primary-color);
             }
 
             .item-extra {
-              @include mixin.text-secondary; // 应用次要文本样式
-              font-size: $font-size-base * 0.8; // 字体大小为基数的80%
-              @include mixin.text-ellipsis; // 应用文本溢出省略号
-              max-width: 100px; // 最大宽度100px
+              font-size: 0.75rem;
+              color: var(--n-text-color-2);
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              max-width: 100px;
             }
           }
         }
       }
-    }
 
-    // 分页样式
-    .pagination-wrapper {
-      margin-top: map.get($spacers, 4); // 顶部外边距
-      display: flex; // 使用弹性布局
-      justify-content: center; // 水平居中
+      .pagination-wrapper {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: center;
 
-      :deep(.n-pagination) {
-        .n-pagination-item {
-          background: $secondary-bg; // 背景色：次要背景色
-          border: $border-width solid $border-color; // 边框样式
-          color: $text-primary; // 文字颜色：主要文字颜色
+        :deep(.n-pagination-item) {
+          background-color: var(--n-color-secondary);
+          border: 1px solid var(--n-border-color);
+          color: var(--n-text-color-1);
 
-          // 激活页码样式
           &.n-pagination-item--active {
-            background: $accent-color; // 背景色：强调色
-            border-color: $accent-color; // 边框颜色：强调色
-            color: white; // 文字颜色：白色
+            background-color: var(--n-primary-color);
+            border-color: var(--n-primary-color);
+            color: white;
           }
 
-          // 悬停状态（非禁用状态）
           &:hover:not(.n-pagination-item--disabled) {
-            border-color: $accent-color; // 边框颜色：强调色
+            border-color: var(--n-primary-color);
           }
         }
       }
@@ -1149,50 +1160,71 @@ onMounted(() => {
   }
 }
 
-// ============================================================================
-// 按钮组样式
-// ============================================================================
-.export-btn {
-  @include mixin.button-base($accent-color, white); // 应用基础按钮样式（成功色背景，白色文字）
-
-  // 悬停状态
-  &:hover {
-    background: colors.adjust($accent-color, $lightness: 10%); // 背景色：成功色调亮10%
-    color: white;
-  }
-}
-
-.reset-btn {
-  @include mixin.button-base(transparent, $text-primary); // 应用基础按钮样式（透明背景，主要文字颜色）
-  border: $border-width solid $border-color; // 边框样式
-
-
-  // 悬停状态
-  &:hover {
-    background: $hover-bg; // 背景色：悬停背景色
-    border-color: $danger-color; // 边框颜色：危险色
-    color: $danger-color; // 文字颜色：危险色
-  }
-}
-
-// ============================================================================
-// 加载状态样式
-// ============================================================================
-:deep(.n-loading-bar) {
-  .n-loading-bar--loading {
-    background: $accent-color; // 背景色：强调色
-  }
-}
-
-// ============================================================================
-// 工具提示样式
-// ============================================================================
+/* 工具提示样式 */
 :deep(.n-tooltip) {
   .n-tooltip__content {
-    background: $secondary-bg; // 背景色：次要背景色
-    color: $text-primary; // 文字颜色：主要文字颜色
-    border: $border-width solid $border-color; // 边框样式
-    box-shadow: $card-shadow; // 卡片阴影
+    background-color: var(--n-color-secondary);
+    color: var(--n-text-color-1);
+    border: 1px solid var(--n-border-color);
+    box-shadow: var(--n-box-shadow-1);
+  }
+}
+
+/* 加载状态样式 */
+:deep(.n-loading-bar) {
+  .n-loading-bar--loading {
+    background: var(--n-primary-color);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .page-header {
+    .header-content {
+      flex-direction: column;
+      gap: 1rem;
+
+      .header-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+  }
+
+  .filter-section {
+    .filter-card {
+      .filter-content {
+        :deep(.n-grid) {
+          grid-template-columns: 1fr !important;
+
+          .n-gi {
+            grid-column: span 24 !important;
+          }
+        }
+      }
+    }
+  }
+
+  .stats-overview {
+    :deep(.n-grid) {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-overview {
+    :deep(.n-grid) {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  .data-card-item {
+    .card-footer {
+      flex-direction: column;
+      align-items: flex-start !important;
+      gap: 0.5rem;
+    }
   }
 }
 </style>

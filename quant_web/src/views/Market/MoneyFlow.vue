@@ -1,8 +1,8 @@
-<!-- MoneyFlow.vue - 资金流向分析页面 - Naive UI 实现 -->
+<!-- MoneyFlow.vue - Naive UI 实现的资金流向分析页面 -->
 <template>
-  <n-layout class="money-flow-page">
+  <div class="money-flow-page">
     <!-- 页面标题区域 -->
-    <n-layout-header class="page-header">
+    <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">资金流向分析</h1>
@@ -24,34 +24,30 @@
             class="refresh-btn"
           >
             <template #icon>
-              <n-icon>
-                <RefreshIcon />
-              </n-icon>
+              <SmartIcon name="Refresh" />
             </template>
             {{ loading ? '刷新中...' : '刷新' }}
           </n-button>
           <n-button @click="handleBack" class="back-btn">
             <template #icon>
-              <n-icon>
-                <ArrowBackIcon />
-              </n-icon>
+              <SmartIcon name="ArrowBack" />
             </template>
             返回
           </n-button>
         </div>
       </div>
-    </n-layout-header>
+    </div>
 
     <!-- 主要内容区域 -->
-    <n-layout-content class="main-content">
+    <div class="main-content">
       <!-- 资金流向概览 -->
       <section class="flow-overview">
-        <n-grid :cols="4" :x-gap="16">
+        <n-grid :cols="4" :x-gap="16" :y-gap="16">
           <n-gi>
-            <n-card class="flow-card inflow">
+            <n-card class="flow-card inflow" hoverable>
               <n-statistic label="主力净流入" :value="formatAmount(flowData.mainInflow)">
                 <template #prefix>
-                  <n-icon class="flow-icon" :component="ArrowDownwardIcon" />
+                  <SmartIcon name="ArrowDownward" class="flow-icon" />
                 </template>
                 <template #suffix>
                   <div class="flow-change">
@@ -63,10 +59,10 @@
             </n-card>
           </n-gi>
           <n-gi>
-            <n-card class="flow-card outflow">
+            <n-card class="flow-card outflow" hoverable>
               <n-statistic label="主力净流出" :value="formatAmount(flowData.mainOutflow)">
                 <template #prefix>
-                  <n-icon class="flow-icon" :component="ArrowUpwardIcon" />
+                  <SmartIcon name="ArrowUpward" class="flow-icon" />
                 </template>
                 <template #suffix>
                   <div class="flow-change">
@@ -78,14 +74,14 @@
             </n-card>
           </n-gi>
           <n-gi>
-            <n-card class="flow-card total">
+            <n-card class="flow-card total" hoverable>
               <n-statistic
                 label="净流入总额"
                 :value="formatAmount(flowData.netFlow, true)"
                 :value-style="getNetFlowStyle(flowData.netFlow)"
               >
                 <template #prefix>
-                  <n-icon class="flow-icon" :component="TrendingUpIcon" />
+                  <SmartIcon name="TrendingUp" class="flow-icon" />
                 </template>
                 <template #suffix>
                   <div class="flow-change">
@@ -99,10 +95,10 @@
             </n-card>
           </n-gi>
           <n-gi>
-            <n-card class="flow-card turnover">
+            <n-card class="flow-card turnover" hoverable>
               <n-statistic label="成交总额" :value="formatAmount(flowData.turnover)">
                 <template #prefix>
-                  <n-icon class="flow-icon" :component="SwapHorizIcon" />
+                  <SmartIcon name="SwapHorizontal" class="flow-icon" />
                 </template>
                 <template #suffix>
                   <div class="flow-change">
@@ -118,9 +114,9 @@
 
       <!-- 资金流向图表 -->
       <section class="flow-charts">
-        <n-grid :cols="2" :x-gap="16">
+        <n-grid :cols="2" :x-gap="16" :y-gap="16">
           <n-gi>
-            <n-card title="资金流向趋势">
+            <n-card title="资金流向趋势" hoverable>
               <template #header-extra>
                 <n-radio-group v-model:value="chartType" size="small">
                   <n-radio-button value="line" label="折线图" />
@@ -129,17 +125,17 @@
               </template>
               <div class="chart-container">
                 <div class="chart-placeholder">
-                  <n-icon class="placeholder-icon" :component="LineChartIcon" />
+                  <SmartIcon name="LineChart" class="placeholder-icon" />
                   <p>资金流向趋势图表</p>
                 </div>
               </div>
             </n-card>
           </n-gi>
           <n-gi>
-            <n-card title="行业资金分布">
+            <n-card title="行业资金分布" hoverable>
               <div class="chart-container">
                 <div class="chart-placeholder">
-                  <n-icon class="placeholder-icon" :component="PieChartIcon" />
+                  <SmartIcon name="PieChart" class="placeholder-icon" />
                   <p>行业资金分布图表</p>
                 </div>
               </div>
@@ -150,7 +146,7 @@
 
       <!-- 资金流向明细 -->
       <section class="flow-details">
-        <n-card title="资金流向明细">
+        <n-card title="资金流向明细" hoverable>
           <template #header-extra>
             <div class="header-tools">
               <n-input
@@ -158,9 +154,10 @@
                 placeholder="搜索股票代码或名称"
                 clearable
                 class="search-input"
+                @input="handleSearch"
               >
                 <template #prefix>
-                  <n-icon :component="SearchIcon" />
+                  <SmartIcon name="Search" />
                 </template>
               </n-input>
               <n-select
@@ -169,6 +166,7 @@
                 placeholder="全部行业"
                 clearable
                 style="width: 150px;"
+                @update:value="handleFilterChange"
               />
             </div>
           </template>
@@ -188,24 +186,21 @@
           </template>
         </n-card>
       </section>
-    </n-layout-content>
-  </n-layout>
+    </div>
+  </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { h, computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NLayout,
-  NLayoutHeader,
-  NLayoutContent,
-  NCard,
   NButton,
-  NIcon,
+  NCard,
+  NDataTable,
+  DataTableColumns,
   NGrid,
   NGi,
   NStatistic,
-  NDataTable,
   NInput,
   NSelect,
   NRadioGroup,
@@ -214,17 +209,7 @@ import {
   NTag,
   useMessage
 } from 'naive-ui'
-import {
-  RefreshRound as RefreshIcon,
-  ArrowBackFilled as ArrowBackIcon,
-  SearchFilled as SearchIcon,
-  ArrowDownwardFilled as ArrowDownwardIcon,
-  ArrowUpwardFilled as ArrowUpwardIcon,
-  TrendingUpFilled as TrendingUpIcon,
-  SwapHorizFilled as SwapHorizIcon,
-  MultilineChartFilled as LineChartIcon,
-  PieChartFilled as PieChartIcon
-} from '@vicons/material'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
 const router = useRouter()
 const message = useMessage()
@@ -256,7 +241,20 @@ const flowData = ref({
 })
 
 // 资金流向明细数据
-const flowDetails = ref([
+interface FlowDetail {
+  code: string
+  name: string
+  exchange: string
+  industry: string
+  mainInflow: number
+  retailInflow: number
+  totalInflow: number
+  inflowRate: number
+  turnover: number
+  is_st: boolean
+}
+
+const flowDetails = ref<FlowDetail[]>([
   {
     code: '000001',
     name: '平安银行',
@@ -292,10 +290,34 @@ const flowDetails = ref([
     inflowRate: -1.23,
     turnover: 123456,
     is_st: false
+  },
+  {
+    code: '000858',
+    name: '五粮液',
+    exchange: 'SZSE',
+    industry: '食品饮料',
+    mainInflow: 34567,
+    retailInflow: 5678,
+    totalInflow: 40245,
+    inflowRate: 2.89,
+    turnover: 98765,
+    is_st: false
+  },
+  {
+    code: '600519',
+    name: '贵州茅台',
+    exchange: 'SSE',
+    industry: '食品饮料',
+    mainInflow: 45678,
+    retailInflow: 6789,
+    totalInflow: 52467,
+    inflowRate: 3.12,
+    turnover: 123456,
+    is_st: false
   }
 ])
 
-const industries = ref(['银行', '证券', '保险', '电子', '计算机', '医药生物', '电气设备'])
+const industries = ref(['银行', '证券', '保险', '电子', '计算机', '医药生物', '电气设备', '食品饮料'])
 
 // 行业选项
 const industryOptions = computed(() => [
@@ -310,10 +332,10 @@ const paginationConfig = reactive({
   itemCount: 0,
   showSizePicker: true,
   pageSizes: [10, 20, 50, 100],
-  onChange: (page) => {
+  onChange: (page: number) => {
     paginationConfig.page = page
   },
-  onUpdatePageSize: (pageSize) => {
+  onUpdatePageSize: (pageSize: number) => {
     paginationConfig.pageSize = pageSize
     paginationConfig.page = 1
   }
@@ -348,10 +370,11 @@ const filteredFlowData = computed(() => {
 const totalCount = computed(() => paginationConfig.itemCount)
 
 // 表格列定义
-const columns = computed(() => [
+const columns: DataTableColumns<FlowDetail> = [
   {
     title: '代码',
     key: 'code',
+    width: 120,
     render: (row) => {
       return h('div', { class: 'code-cell' }, [
         h('div', { class: 'code' }, row.code),
@@ -365,12 +388,14 @@ const columns = computed(() => [
   {
     title: '名称',
     key: 'name',
+    width: 120,
     render: (row) => {
       return h('div', { class: 'name-cell' }, [
         h('span', { class: 'name' }, row.name),
         row.is_st && h(NTag, {
           size: 'small',
-          type: 'error'
+          type: 'error',
+          style: { marginLeft: '4px' }
         }, { default: () => 'ST' })
       ])
     }
@@ -378,11 +403,13 @@ const columns = computed(() => [
   {
     title: '行业',
     key: 'industry',
-    render: (row) => h(NTag, { type: 'info' }, { default: () => row.industry })
+    width: 100,
+    render: (row) => h(NTag, { type: 'info', size: 'small' }, { default: () => row.industry })
   },
   {
     title: '主力净流入(万)',
     key: 'mainInflow',
+    width: 120,
     align: 'right',
     render: (row) => h('span', {
       class: getFlowClass(row.mainInflow)
@@ -391,6 +418,7 @@ const columns = computed(() => [
   {
     title: '散户净流入(万)',
     key: 'retailInflow',
+    width: 120,
     align: 'right',
     render: (row) => h('span', {
       class: getFlowClass(row.retailInflow)
@@ -399,6 +427,7 @@ const columns = computed(() => [
   {
     title: '总净流入(万)',
     key: 'totalInflow',
+    width: 120,
     align: 'right',
     render: (row) => h('span', {
       class: getFlowClass(row.totalInflow)
@@ -407,6 +436,7 @@ const columns = computed(() => [
   {
     title: '净流入率',
     key: 'inflowRate',
+    width: 100,
     align: 'right',
     render: (row) => h('span', {
       class: getFlowClass(row.inflowRate)
@@ -415,19 +445,22 @@ const columns = computed(() => [
   {
     title: '成交额(万)',
     key: 'turnover',
+    width: 120,
     align: 'right',
     render: (row) => formatAmount(row.turnover)
   },
   {
     title: '操作',
     key: 'actions',
+    width: 80,
+    align: 'center',
     render: (row) => h(NButton, {
       size: 'small',
       type: 'primary',
       onClick: () => viewStockDetail(row)
     }, { default: () => '详情' })
   }
-])
+]
 
 // 方法
 const handleBack = () => {
@@ -444,8 +477,16 @@ const refreshData = async () => {
   }
 }
 
-const getExchangeType = (exchange) => {
-  const types = {
+const handleSearch = () => {
+  paginationConfig.page = 1
+}
+
+const handleFilterChange = () => {
+  paginationConfig.page = 1
+}
+
+const getExchangeType = (exchange: string) => {
+  const types: Record<string, 'error' | 'primary' | 'warning'> = {
     'SSE': 'error',
     'SZSE': 'primary',
     'BSE': 'warning'
@@ -453,8 +494,8 @@ const getExchangeType = (exchange) => {
   return types[exchange] || 'default'
 }
 
-const getExchangeText = (exchange) => {
-  const texts = {
+const getExchangeText = (exchange: string) => {
+  const texts: Record<string, string> = {
     'SSE': '沪',
     'SZSE': '深',
     'BSE': '京'
@@ -462,19 +503,19 @@ const getExchangeText = (exchange) => {
   return texts[exchange] || exchange
 }
 
-const getFlowClass = (value) => {
+const getFlowClass = (value: number) => {
   if (value > 0) return 'flow-positive'
   if (value < 0) return 'flow-negative'
   return 'flow-neutral'
 }
 
-const getNetFlowStyle = (value) => {
+const getNetFlowStyle = (value: number) => {
   return {
-    color: value >= 0 ? '#52c41a' : '#f5222d'
+    color: value >= 0 ? 'var(--n-success-color)' : 'var(--n-error-color)'
   }
 }
 
-const formatAmount = (amount, showSign = false) => {
+const formatAmount = (amount: number, showSign: boolean = false) => {
   if (amount === null || amount === undefined) return '-'
   const absAmount = Math.abs(amount)
   const sign = showSign ? (amount > 0 ? '+' : amount < 0 ? '-' : '') : ''
@@ -488,446 +529,300 @@ const formatAmount = (amount, showSign = false) => {
   }
 }
 
-const viewStockDetail = (row) => {
+const viewStockDetail = (row: FlowDetail) => {
   router.push(`/market/stock/${row.code}`)
 }
 
 // 生命周期
 onMounted(() => {
-  // 初始化数据
+  paginationConfig.itemCount = flowDetails.value.length
 })
 </script>
 
 <style scoped lang="scss">
-@use '@/assets/scss/mixins' as mixin;
-@use '@/assets/scss/variables' as *;
-@use 'sass:map';
-@use 'sass:color' as scssColor;
-
-// ============================================================================
-// 资金流向页面主容器
-// ============================================================================
-.market-dashboard-page {
-  @include mixin.content-with-base;
-
-  .main-content {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
-    margin: 0 auto; // 水平居中
-  }
+.money-flow-page {
+  padding: var(--content-padding);
+  background-color: var(--n-body-color);
+  min-height: 100vh;
 }
 
-// ============================================================================
-// 页面头部样式 - 使用混入统一管理
-// ============================================================================
-// 使用专门为 Naive UI 优化的混入
+/* 页面头部样式 */
 .page-header {
-  @include mixin.page-header-base;
-}
+  margin-bottom: 1.5rem;
 
-// 时间周期选择器
-.period-selector {
-  display: flex;
-  background: $secondary-bg;
-  border-radius: $border-radius;
-  padding: 2px;
-
-  .period-btn {
-    @include mixin.button-base(transparent, $text-primary);
-    padding: map.get($spacers, 1) map.get($spacers, 2);
-    border-radius: calc($border-radius - 2px);
-    font-size: calc($font-size-base - 2px);
-    transition: all $transition-fast;
-
-    &.active {
-      background: $accent-color;
-      color: white;
-    }
-
-    &:hover:not(.active) {
-      background: $hover-bg;
-    }
-  }
-}
-
-// 资金流向概览
-.flow-overview {
-  margin-bottom: map.get($spacers, 4);
-    margin-top: map.get($spacers, 5); // 顶部外边距：使用spacers映射中的第6个值
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: map.get($spacers, 3);
-}
-
-.flow-card {
-  @include mixin.card-base;
-  padding: map.get($spacers, 3);
-  border-left: 4px solid transparent;
-
-  &.inflow {
-    border-left-color: $success-color;
-  }
-
-  &.outflow {
-    border-left-color: $danger-color;
-  }
-
-  &.total {
-    border-left-color: $accent-color;
-  }
-
-  &.turnover {
-    border-left-color: $warning-color;
-  }
-
-  .flow-content {
-    display: flex;
-    align-items: center;
-    gap: map.get($spacers, 3);
-  }
-
-  .flow-icon {
-    font-size: 2rem;
-    opacity: 0.8;
-
-    .inflow & {
-      color: $success-color;
-    }
-
-    .outflow & {
-      color: $danger-color;
-    }
-
-    .total & {
-      color: $accent-color;
-    }
-
-    .turnover & {
-      color: $warning-color;
-    }
-  }
-
-  .flow-info {
-    flex: 1;
-
-    .flow-value {
-      font-size: 1.5rem;
-      font-weight: $font-weight-bold;
-      color: $text-primary;
-      margin-bottom: map.get($spacers, 1);
-
-      &.flow-positive {
-        color: $success-color;
-      }
-
-      &.flow-negative {
-        color: $danger-color;
-      }
-    }
-
-    .flow-label {
-      font-size: calc($font-size-base - 2px);
-      color: $text-secondary;
-      margin-bottom: map.get($spacers, 1);
-    }
-
-    .flow-change {
-      font-size: calc($font-size-base - 4px);
-      color: $text-secondary;
-
-      .positive {
-        color: $success-color;
-        font-weight: $font-weight-semibold
-      }
-
-      .negative {
-        color: $danger-color;
-        font-weight: $font-weight-semibold
-      }
-    }
-  }
-}
-
-// 图表区域
-.flow-charts {
-  margin-bottom: map.get($spacers, 4);
-}
-
-.charts-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: map.get($spacers, 4);
-}
-
-.chart-card {
-  .card-header {
+  .header-content {
     display: flex;
     justify-content: space-between;
+    align-items: flex-start;
+
+    .title-section {
+      .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--n-text-color-1);
+        margin-bottom: 0.25rem;
+      }
+
+      .page-description {
+        font-size: 0.875rem;
+        color: var(--n-text-color-2);
+      }
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+
+      .period-selector {
+        :deep(.n-radio-button) {
+          &.n-radio-button--checked {
+            background-color: var(--n-primary-color);
+            border-color: var(--n-primary-color);
+            color: white;
+          }
+        }
+      }
+
+      .refresh-btn {
+        background-color: var(--n-primary-color);
+        color: white;
+      }
+
+      .back-btn {
+        background-color: var(--n-color-secondary);
+        color: var(--n-text-color-1);
+      }
+    }
+  }
+}
+
+/* 资金流向概览 */
+.flow-overview {
+  margin-bottom: 1.5rem;
+
+  .flow-card {
+    border-left: 4px solid transparent;
+
+    &.inflow {
+      border-left-color: var(--n-success-color);
+    }
+
+    &.outflow {
+      border-left-color: var(--n-error-color);
+    }
+
+    &.total {
+      border-left-color: var(--n-primary-color);
+    }
+
+    &.turnover {
+      border-left-color: var(--n-warning-color);
+    }
+
+    :deep(.n-statistic) {
+      .n-statistic__label {
+        color: var(--n-text-color-2);
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .n-statistic-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--n-text-color-1);
+      }
+
+      .flow-icon {
+        color: currentColor;
+        margin-right: 0.5rem;
+      }
+
+      .flow-change {
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+
+        span {
+          color: var(--n-text-color-2);
+        }
+      }
+    }
+  }
+}
+
+/* 图表区域 */
+.flow-charts {
+  margin-bottom: 1.5rem;
+
+  .chart-container {
+    height: 300px;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: map.get($spacers, 3);
-    border-bottom: 1px solid $border-color;
+    justify-content: center;
+    background-color: var(--n-color-secondary);
+    border-radius: 6px;
+
+    .chart-placeholder {
+      text-align: center;
+      color: var(--n-text-color-2);
+
+      .placeholder-icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.5;
+      }
+
+      p {
+        margin: 0;
+        font-size: 0.875rem;
+      }
+    }
+  }
+}
+
+/* 资金流向明细 */
+.flow-details {
+  .header-tools {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+
+    .search-input {
+      width: 200px;
+    }
   }
 
-  .chart-controls {
-    .chart-type-selector {
+  :deep(.n-data-table) {
+    .n-data-table-th {
+      background-color: var(--n-color-secondary);
+      font-weight: 600;
+    }
+
+    .code-cell {
       display: flex;
-      background: $secondary-bg;
-      border-radius: $border-radius-sm;
-      padding: 2px;
+      flex-direction: column;
+      gap: 0.25rem;
 
-      .chart-type-btn {
-        @include mixin.button-base(transparent, $text-primary);
-        padding: map.get($spacers, 1) map.get($spacers, 2);
-        border-radius: calc($border-radius-sm - 2px);
-        font-size: calc($font-size-base - 4px);
+      .code {
+        font-weight: 600;
+        color: var(--n-text-color-1);
+      }
+    }
 
-        &.active {
-          background: $accent-color;
-          color: white;
+    .name-cell {
+      display: flex;
+      align-items: center;
+
+      .name {
+        color: var(--n-text-color-1);
+      }
+    }
+
+    .flow-positive {
+      color: var(--n-success-color);
+      font-weight: 600;
+    }
+
+    .flow-negative {
+      color: var(--n-error-color);
+      font-weight: 600;
+    }
+
+    .flow-neutral {
+      color: var(--n-text-color-2);
+      font-weight: 500;
+    }
+  }
+
+  .pagination-info {
+    color: var(--n-text-color-2);
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 1rem 0;
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .flow-overview {
+    :deep(.n-grid) {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+
+  .flow-charts {
+    :deep(.n-grid) {
+      grid-template-columns: 1fr !important;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    .header-content {
+      flex-direction: column;
+      gap: 1rem;
+
+      .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+
+        .period-selector {
+          order: 1;
+          width: 100%;
+          margin-bottom: 0.5rem;
+
+          :deep(.n-radio-group) {
+            display: flex;
+            width: 100%;
+
+            .n-radio-button {
+              flex: 1;
+              text-align: center;
+            }
+          }
+        }
+
+        .refresh-btn,
+        .back-btn {
+          order: 2;
         }
       }
     }
   }
 
-  .chart-container {
-    height: 300px;
-    @include mixin.flex-center(column);
-    background: $secondary-bg;
-    border-radius: $border-radius;
+  .flow-overview {
+    :deep(.n-grid) {
+      grid-template-columns: 1fr !important;
+    }
   }
 
-  .chart-placeholder {
-    text-align: center;
-    color: $text-secondary;
+  .flow-details {
+    .header-tools {
+      flex-direction: column;
+      align-items: stretch;
 
-    .placeholder-icon {
-      font-size: 3rem;
-      margin-bottom: map.get($spacers, 2);
-      opacity: 0.5;
+      .search-input {
+        width: 100%;
+      }
+
+      .n-select {
+        width: 100% !important;
+      }
     }
   }
 }
 
-// 资金流向明细
-.flow-details {
-  .data-card {
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: map.get($spacers, 3);
-      border-bottom: 1px solid $border-color;
-    }
+@media (max-width: 480px) {
+  .money-flow-page {
+    padding: 0.5rem;
+  }
 
-    .header-actions {
-      display: flex;
-      gap: map.get($spacers, 3);
-      align-items: center;
+  .flow-charts {
+    .chart-container {
+      height: 200px;
     }
   }
 }
-
-// 搜索框
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-
-  .search-icon {
-    position: absolute;
-    left: map.get($spacers, 2);
-    color: $text-secondary;
-    font-size: 1rem;
-  }
-
-  .search-input {
-    padding: map.get($spacers, 2) map.get($spacers, 2) map.get($spacers, 2) map.get($spacers, 5);
-    border: 1px solid $border-color;
-    border-radius: $border-radius;
-    background: $input-bg;
-    color: $text-primary;
-    font-size: $font-size-base;
-    width: 200px;
-
-    &:focus {
-      outline: none;
-      border-color: $accent-color;
-    }
-  }
-}
-
-// 筛选选择器
-.filter-select {
-  padding: map.get($spacers, 2);
-  border: 1px solid $border-color;
-  border-radius: $border-radius;
-  background: $input-bg;
-  color: $text-primary;
-  font-size: $font-size-base;
-
-  &:focus {
-    outline: none;
-    border-color: $accent-color;
-  }
-}
-
-// 数据表格
-.table-container {
-  overflow-x: auto;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: $card-bg;
-
-  th, td {
-    padding: map.get($spacers, 3);
-    text-align: left;
-    border-bottom: 1px solid $border-color;
-  }
-
-  th {
-    background: $card-header-bg;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-  }
-
-  td {
-    color: $text-primary;
-  }
-}
-
-.code-cell {
-  display: flex;
-  flex-direction: column;
-  gap: map.get($spacers, 1);
-
-  .code {
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-    font-family: $font-family;
-  }
-}
-
-.exchange-tag {
-  font-size: calc($font-size-base - 4px);
-  padding: 2px 6px;
-  border-radius: $border-radius-sm;
-  text-align: center;
-  width: fit-content;
-  font-weight: $font-weight-medium;
-
-  &.exchange-sh {
-    background: scssColor.adjust($danger-color, $alpha: -0.9);
-    color: $danger-color;
-    border: 1px solid scssColor.adjust($danger-color, $alpha: -0.7);
-  }
-
-  &.exchange-sz {
-    background: scssColor.adjust($accent-color, $alpha: -0.9);
-    color: $accent-color;
-    border: 1px solid scssColor.adjust($accent-color, $alpha: -0.7);
-  }
-
-  &.exchange-bj {
-    background: scssColor.adjust($warning-color, $alpha: -0.9);
-    color: $warning-color;
-    border: 1px solid scssColor.adjust($warning-color, $alpha: -0.7);
-  }
-}
-
-.name-cell {
-  display: flex;
-  align-items: center;
-  gap: map.get($spacers, 2);
-
-  .st-tag {
-    background: $danger-color;
-    color: white;
-    padding: 1px 4px;
-    border-radius: $border-radius-sm;
-    font-size: calc($font-size-base - 4px);
-    font-weight: $font-weight-semibold
-  }
-}
-
-.industry-tag {
-  background: scssColor.adjust($accent-color, $alpha: -0.9);
-  color: $accent-color;
-  padding: map.get($spacers, 1) map.get($spacers, 2);
-  border-radius: $border-radius-sm;
-  font-size: calc($font-size-base - 2px);
-  border: 1px solid scssColor.adjust($accent-color, $alpha: -0.7);
-}
-
-.amount-cell,
-.rate-cell {
-  text-align: right;
-  font-family: $font-family;
-}
-
-.flow-positive {
-  color: $success-color;
-  font-weight: $font-weight-semibold
-}
-
-.flow-negative {
-  color: $danger-color;
-  font-weight: $font-weight-semibold
-}
-
-.flow-neutral {
-  color: $text-secondary;
-  font-weight: $font-weight-medium;
-}
-
-.action-cell .detail-btn {
-  @include mixin.button-base($accent-color, white);
-  padding: map.get($spacers, 1) map.get($spacers, 2);
-  font-size: calc($font-size-base - 2px);
-
-  &:hover {
-    background: scssColor.adjust($accent-color, $lightness: -10%);
-  }
-}
-
-// 分页样式
-.pagination-container {
-  margin-top: map.get($spacers, 3);
-  padding-top: map.get($spacers, 3);
-  border-top: 1px solid $border-color;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: map.get($spacers, 3);
-}
-
-.pagination-btn {
-  @include mixin.button-base(transparent, $text-primary);
-  border: 1px solid $border-color;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-
-  &:hover:not(:disabled) {
-    background: $accent-color;
-    color: white;
-    border-color: $accent-color;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.pagination-info {
-  color: $text-secondary;
-  font-size: calc($font-size-base - 2px);
-}
-
 </style>

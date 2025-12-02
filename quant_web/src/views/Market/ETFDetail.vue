@@ -1,213 +1,215 @@
-<!--ETF详情页-->
+<!--ETF详情页 - 基于 Naive UI 重构-->
 <template>
   <div class="etf-detail">
-    <div class="etf-header">
-      <el-button icon="el-icon-arrow-left" @click="goBack">返回</el-button>
-      <div class="etf-info">
-        <h2>{{ etf.name }} ({{ etf.code }})</h2>
-        <div class="price-info">
-          <span class="current-price">{{ etf.price }}</span>
-          <span :class="['price-change', etf.change > 0 ? 'positive' : 'negative']">
-            {{ etf.change > 0 ? '+' : '' }}{{ etf.change }} ({{ etf.change > 0 ? '+' : '' }}{{ etf.changePercent }}%)
-          </span>
+    <n-card class="etf-header">
+      <div class="header-content">
+        <n-button icon-placement="left" @click="goBack">
+          <template #icon>
+            <n-icon><ArrowBackIcon /></n-icon>
+          </template>
+          返回
+        </n-button>
+        <div class="etf-info">
+          <h2>{{ etf.name }} ({{ etf.code }})</h2>
+          <div class="price-info">
+            <span class="current-price">{{ etf.price }}</span>
+            <span :class="['price-change', etf.change > 0 ? 'positive' : 'negative']">
+              {{ etf.change > 0 ? '+' : '' }}{{ etf.change }} ({{ etf.change > 0 ? '+' : '' }}{{ etf.changePercent }}%)
+            </span>
+          </div>
+        </div>
+        <div class="etf-actions">
+          <n-button :type="isFavorite ? 'error' : 'primary'" @click="toggleFavorite">
+            {{ isFavorite ? '取消关注' : '加入自选' }}
+          </n-button>
         </div>
       </div>
-      <div class="etf-actions">
-        <el-button :type="isFavorite ? 'danger' : 'primary'" @click="toggleFavorite">
-          {{ isFavorite ? '取消关注' : '加入自选' }}
-        </el-button>
-      </div>
-    </div>
+    </n-card>
 
     <div class="etf-content">
       <!-- 左侧图表区域 -->
       <div class="chart-section">
-        <div class="chart-container">
-          <div class="chart-header">
-            <div class="time-filters">
-              <el-radio-group v-model="timePeriod" size="small">
-                <el-radio-button label="1D">1日</el-radio-button>
-                <el-radio-button label="1W">1周</el-radio-button>
-                <el-radio-button label="1M">1月</el-radio-button>
-                <el-radio-button label="3M">3月</el-radio-button>
-                <el-radio-button label="1Y">1年</el-radio-button>
-              </el-radio-group>
+        <n-card class="chart-container" title="价格走势">
+          <template #header-extra>
+            <div class="chart-controls">
+              <n-radio-group v-model:value="timePeriod" size="small">
+                <n-radio-button value="1D">1日</n-radio-button>
+                <n-radio-button value="1W">1周</n-radio-button>
+                <n-radio-button value="1M">1月</n-radio-button>
+                <n-radio-button value="3M">3月</n-radio-button>
+                <n-radio-button value="1Y">1年</n-radio-button>
+              </n-radio-group>
+              <n-radio-group v-model:value="chartType" size="small">
+                <n-radio-button value="line">分时</n-radio-button>
+                <n-radio-button value="candlestick">K线</n-radio-button>
+              </n-radio-group>
             </div>
-            <div class="chart-type">
-              <el-radio-group v-model="chartType" size="small">
-                <el-radio-button label="line">分时</el-radio-button>
-                <el-radio-button label="candlestick">K线</el-radio-button>
-              </el-radio-group>
-            </div>
-          </div>
+          </template>
           <div class="chart-wrapper">
             <div id="etfChart" class="chart"></div>
           </div>
-        </div>
+        </n-card>
 
-        <div class="indicator-selector">
-          <el-select v-model="selectedIndicator" placeholder="选择技术指标" size="small">
-            <el-option label="成交量" value="volume"></el-option>
-            <el-option label="MACD" value="macd"></el-option>
-            <el-option label="RSI" value="rsi"></el-option>
-            <el-option label="布林带" value="boll"></el-option>
-          </el-select>
-        </div>
+        <n-card class="indicator-selector" title="技术指标">
+          <n-select v-model:value="selectedIndicator" placeholder="选择技术指标" size="small" :options="indicatorOptions" />
+        </n-card>
       </div>
 
       <!-- 右侧信息区域 -->
       <div class="info-section">
-        <el-tabs v-model="activeTab" class="etf-tabs">
-          <el-tab-pane label="基本信息" name="basic">
-            <div class="basic-info">
-              <div class="info-row">
-                <div class="info-item">
-                  <span class="info-label">基金全称</span>
-                  <span class="info-value">{{ etf.fullName }}</span>
+        <n-card class="etf-tabs">
+          <n-tabs v-model:value="activeTab" type="line">
+            <n-tab-pane name="basic" tab="基本信息">
+              <div class="basic-info">
+                <div class="info-row">
+                  <div class="info-item">
+                    <span class="info-label">基金全称</span>
+                    <span class="info-value">{{ etf.fullName }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">基金管理人</span>
+                    <span class="info-value">{{ etf.mgrName }}</span>
+                  </div>
                 </div>
-                <div class="info-item">
-                  <span class="info-label">基金管理人</span>
-                  <span class="info-value">{{ etf.mgrName }}</span>
+                <div class="info-row">
+                  <div class="info-item">
+                    <span class="info-label">跟踪指数</span>
+                    <span class="info-value">{{ etf.indexName }} ({{ etf.indexCode }})</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">基金规模</span>
+                    <span class="info-value">{{ etf.fundSize }}亿元</span>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div class="info-item">
+                    <span class="info-label">管理费率</span>
+                    <span class="info-value">{{ etf.expenseRatio }}%</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">托管费率</span>
+                    <span class="info-value">{{ etf.custodyFee }}%</span>
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div class="info-item">
+                    <span class="info-label">成立日期</span>
+                    <span class="info-value">{{ etf.setupDate }}</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">上市日期</span>
+                    <span class="info-value">{{ etf.listDate }}</span>
+                  </div>
                 </div>
               </div>
-              <div class="info-row">
-                <div class="info-item">
-                  <span class="info-label">跟踪指数</span>
-                  <span class="info-value">{{ etf.indexName }} ({{ etf.indexCode }})</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">基金规模</span>
-                  <span class="info-value">{{ etf.fundSize }}亿元</span>
-                </div>
-              </div>
-              <div class="info-row">
-                <div class="info-item">
-                  <span class="info-label">管理费率</span>
-                  <span class="info-value">{{ etf.expenseRatio }}%</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">托管费率</span>
-                  <span class="info-value">{{ etf.custodyFee }}%</span>
-                </div>
-              </div>
-              <div class="info-row">
-                <div class="info-item">
-                  <span class="info-label">成立日期</span>
-                  <span class="info-value">{{ etf.setupDate }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">上市日期</span>
-                  <span class="info-value">{{ etf.listDate }}</span>
-                </div>
-              </div>
-            </div>
 
-            <div class="market-data">
-              <h3>盘口数据</h3>
-              <div class="quota-data">
-                <div class="quota-row">
-                  <div class="quota-item">
-                    <span class="quota-label">今开</span>
-                    <span class="quota-value">{{ etf.open }}</span>
+              <n-card class="market-data" title="盘口数据">
+                <div class="quota-data">
+                  <div class="quota-row">
+                    <div class="quota-item">
+                      <span class="quota-label">今开</span>
+                      <span class="quota-value">{{ etf.open }}</span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">最高</span>
+                      <span class="quota-value">{{ etf.high }}</span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">最低</span>
+                      <span class="quota-value">{{ etf.low }}</span>
+                    </div>
                   </div>
-                  <div class="quota-item">
-                    <span class="quota-label">最高</span>
-                    <span class="quota-value">{{ etf.high }}</span>
+                  <div class="quota-row">
+                    <div class="quota-item">
+                      <span class="quota-label">昨收</span>
+                      <span class="quota-value">{{ etf.preClose }}</span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">成交量</span>
+                      <span class="quota-value">{{ etf.volume }}万手</span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">成交额</span>
+                      <span class="quota-value">{{ etf.amount }}万元</span>
+                    </div>
                   </div>
-                  <div class="quota-item">
-                    <span class="quota-label">最低</span>
-                    <span class="quota-value">{{ etf.low }}</span>
+                  <div class="quota-row">
+                    <div class="quota-item">
+                      <span class="quota-label">净值</span>
+                      <span class="quota-value">{{ etf.nav }}</span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">溢价率</span>
+                      <span :class="['quota-value', etf.premiumRate > 0 ? 'positive' : 'negative']">
+                        {{ etf.premiumRate > 0 ? '+' : '' }}{{ etf.premiumRate }}%
+                      </span>
+                    </div>
+                    <div class="quota-item">
+                      <span class="quota-label">换手率</span>
+                      <span class="quota-value">{{ etf.turnoverRate }}%</span>
+                    </div>
                   </div>
                 </div>
-                <div class="quota-row">
-                  <div class="quota-item">
-                    <span class="quota-label">昨收</span>
-                    <span class="quota-value">{{ etf.preClose }}</span>
-                  </div>
-                  <div class="quota-item">
-                    <span class="quota-label">成交量</span>
-                    <span class="quota-value">{{ etf.volume }}万手</span>
-                  </div>
-                  <div class="quota-item">
-                    <span class="quota-label">成交额</span>
-                    <span class="quota-value">{{ etf.amount }}万元</span>
-                  </div>
-                </div>
-                <div class="quota-row">
-                  <div class="quota-item">
-                    <span class="quota-label">净值</span>
-                    <span class="quota-value">{{ etf.nav }}</span>
-                  </div>
-                  <div class="quota-item">
-                    <span class="quota-label">溢价率</span>
-                    <span :class="['quota-value', etf.premiumRate > 0 ? 'positive' : 'negative']">
-                      {{ etf.premiumRate > 0 ? '+' : '' }}{{ etf.premiumRate }}%
-                    </span>
-                  </div>
-                  <div class="quota-item">
-                    <span class="quota-label">换手率</span>
-                    <span class="quota-value">{{ etf.turnoverRate }}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </el-tab-pane>
+              </n-card>
+            </n-tab-pane>
 
-          <el-tab-pane label="成分股" name="constituents">
-            <div class="constituents-data">
-              <el-table :data="constituents" style="width: 100%" height="400">
-                <el-table-column prop="code" label="股票代码" width="120"></el-table-column>
-                <el-table-column prop="name" label="股票名称" width="150"></el-table-column>
-                <el-table-column prop="weight" label="权重" width="100">
-                  <template #default="scope">
-                    {{ (scope.row.weight * 100).toFixed(2) }}%
-                  </template>
-                </el-table-column>
-                <el-table-column prop="industry" label="行业" width="120"></el-table-column>
-                <el-table-column prop="close" label="最新价" width="100"></el-table-column>
-                <el-table-column prop="change" label="涨跌幅" width="100">
-                  <template #default="scope">
-                    <span :class="scope.row.change > 0 ? 'positive' : 'negative'">
-                      {{ scope.row.change > 0 ? '+' : '' }}{{ scope.row.change }}%
-                    </span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="100">
-                  <template #default="scope">
-                    <el-button type="text" @click="viewStockDetail(scope.row)">查看</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </el-tab-pane>
+            <n-tab-pane name="constituents" tab="成分股">
+              <n-card>
+                <n-data-table
+                  :columns="constituentColumns"
+                  :data="constituents"
+                  :max-height="400"
+                  :virtual-scroll="true"
+                />
+              </n-card>
+            </n-tab-pane>
 
-          <el-tab-pane label="行业分布" name="industry">
-            <div class="industry-chart">
-              <div id="industryChart" class="chart" style="height: 400px;"></div>
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="相关资讯" name="news">
-            <div class="news-list">
-              <div v-for="item in news" :key="item.id" class="news-item">
-                <div class="news-title">{{ item.title }}</div>
-                <div class="news-meta">
-                  <span class="news-time">{{ item.time }}</span>
-                  <span class="news-source">{{ item.source }}</span>
+            <n-tab-pane name="industry" tab="行业分布">
+              <n-card>
+                <div class="industry-chart">
+                  <div id="industryChart" class="chart" style="height: 400px;"></div>
                 </div>
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
+              </n-card>
+            </n-tab-pane>
+
+            <n-tab-pane name="news" tab="相关资讯">
+              <n-card>
+                <div class="news-list">
+                  <div v-for="item in news" :key="item.id" class="news-item">
+                    <div class="news-title">{{ item.title }}</div>
+                    <div class="news-meta">
+                      <span class="news-time">{{ item.time }}</span>
+                      <span class="news-source">{{ item.source }}</span>
+                    </div>
+                  </div>
+                </div>
+              </n-card>
+            </n-tab-pane>
+          </n-tabs>
+        </n-card>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import * as echarts from 'echarts';
+import { defineComponent, ref, onMounted, onBeforeUnmount, h } from 'vue'
+import {
+  NCard,
+  NButton,
+  NIcon,
+  NTabs,
+  NTabPane,
+  NRadioGroup,
+  NRadioButton,
+  NSelect,
+  NDataTable,
+  useMessage
+} from 'naive-ui'
+import { ArrowBack as ArrowBackIcon } from '@vicons/ionicons5'
+import * as echarts from 'echarts'
 
-export default {
+export default defineComponent({
   name: 'ETFDetail',
   props: {
     code: {
@@ -215,97 +217,148 @@ export default {
       required: true
     }
   },
-  data() {
-    return {
-      etf: {
-        code: '510300',
-        name: '沪深300ETF',
-        fullName: '华泰柏瑞沪深300交易型开放式指数证券投资基金',
-        price: '3.875',
-        change: 0.78,
-        changePercent: 0.44,
-        open: '3.850',
-        high: '3.880',
-        low: '3.845',
-        preClose: '3.845',
-        volume: '12345.67',
-        amount: '47890.12',
-        nav: '3.872',
-        premiumRate: 0.08,
-        turnoverRate: 12.34,
-        mgrName: '华泰柏瑞基金',
-        indexCode: '000300.SH',
-        indexName: '沪深300指数',
-        fundSize: '850.25',
-        expenseRatio: 0.50,
-        custodyFee: 0.10,
-        setupDate: '2012-05-04',
-        listDate: '2012-05-28'
+  setup(props) {
+    const message = useMessage()
+
+    const etf = ref({
+      code: '510300',
+      name: '沪深300ETF',
+      fullName: '华泰柏瑞沪深300交易型开放式指数证券投资基金',
+      price: '3.875',
+      change: 0.78,
+      changePercent: 0.44,
+      open: '3.850',
+      high: '3.880',
+      low: '3.845',
+      preClose: '3.845',
+      volume: '12345.67',
+      amount: '47890.12',
+      nav: '3.872',
+      premiumRate: 0.08,
+      turnoverRate: 12.34,
+      mgrName: '华泰柏瑞基金',
+      indexCode: '000300.SH',
+      indexName: '沪深300指数',
+      fundSize: '850.25',
+      expenseRatio: 0.50,
+      custodyFee: 0.10,
+      setupDate: '2012-05-04',
+      listDate: '2012-05-28'
+    })
+
+    const isFavorite = ref(false)
+    const timePeriod = ref('1D')
+    const chartType = ref('line')
+    const selectedIndicator = ref('volume')
+    const activeTab = ref('basic')
+
+    const indicatorOptions = [
+      { label: '成交量', value: 'volume' },
+      { label: 'MACD', value: 'macd' },
+      { label: 'RSI', value: 'rsi' },
+      { label: '布林带', value: 'boll' }
+    ]
+
+    const constituents = ref([
+      { code: '600519', name: '贵州茅台', weight: 0.0523, industry: '食品饮料', close: '1785.45', change: 0.44 },
+      { code: '300750', name: '宁德时代', weight: 0.0315, industry: '电力设备', close: '185.67', change: 1.23 },
+      { code: '000858', name: '五粮液', weight: 0.0241, industry: '食品饮料', close: '152.34', change: -0.56 },
+      { code: '601318', name: '中国平安', weight: 0.0218, industry: '非银金融', close: '45.67', change: 0.89 },
+      { code: '600036', name: '招商银行', weight: 0.0195, industry: '银行', close: '32.45', change: 0.31 },
+      { code: '000333', name: '美的集团', weight: 0.0156, industry: '家用电器', close: '56.78', change: -0.12 },
+      { code: '601888', name: '中国中免', weight: 0.0142, industry: '商贸零售', close: '87.65', change: 2.34 },
+      { code: '601012', name: '隆基绿能', weight: 0.0137, industry: '电力设备', close: '23.45', change: -1.23 }
+    ])
+
+    const news = ref([
+      { id: 1, title: '沪深300ETF规模突破850亿元，创历史新高', time: '2023-08-10 09:30', source: '证券时报' },
+      { id: 2, title: '机构资金持续流入宽基ETF，市场信心逐步恢复', time: '2023-08-09 14:25', source: '财经网' },
+      { id: 3, title: '沪深300指数成分股调整在即，多只个股将受益', time: '2023-08-08 18:40', source: '东方财富' },
+      { id: 4, title: 'ETF互联互通扩容，外资加速配置A股核心资产', time: '2023-08-07 10:15', source: '中国证券报' }
+    ])
+
+    const chart = ref(null)
+    const industryChart = ref(null)
+
+    // 成分股表格列定义
+    const constituentColumns = [
+      {
+        title: '股票代码',
+        key: 'code',
+        width: 120
       },
-      isFavorite: false,
-      timePeriod: '1D',
-      chartType: 'line',
-      selectedIndicator: 'volume',
-      activeTab: 'basic',
-      constituents: [
-        { code: '600519', name: '贵州茅台', weight: 0.0523, industry: '食品饮料', close: '1785.45', change: 0.44 },
-        { code: '300750', name: '宁德时代', weight: 0.0315, industry: '电力设备', close: '185.67', change: 1.23 },
-        { code: '000858', name: '五粮液', weight: 0.0241, industry: '食品饮料', close: '152.34', change: -0.56 },
-        { code: '601318', name: '中国平安', weight: 0.0218, industry: '非银金融', close: '45.67', change: 0.89 },
-        { code: '600036', name: '招商银行', weight: 0.0195, industry: '银行', close: '32.45', change: 0.31 },
-        { code: '000333', name: '美的集团', weight: 0.0156, industry: '家用电器', close: '56.78', change: -0.12 },
-        { code: '601888', name: '中国中免', weight: 0.0142, industry: '商贸零售', close: '87.65', change: 2.34 },
-        { code: '601012', name: '隆基绿能', weight: 0.0137, industry: '电力设备', close: '23.45', change: -1.23 }
-      ],
-      news: [
-        { id: 1, title: '沪深300ETF规模突破850亿元，创历史新高', time: '2023-08-10 09:30', source: '证券时报' },
-        { id: 2, title: '机构资金持续流入宽基ETF，市场信心逐步恢复', time: '2023-08-09 14:25', source: '财经网' },
-        { id: 3, title: '沪深300指数成分股调整在即，多只个股将受益', time: '2023-08-08 18:40', source: '东方财富' },
-        { id: 4, title: 'ETF互联互通扩容，外资加速配置A股核心资产', time: '2023-08-07 10:15', source: '中国证券报' }
-      ],
-      chart: null,
-      industryChart: null
-    };
-  },
-  mounted() {
-    this.initChart();
-    this.initIndustryChart();
-    this.loadETFData();
-    window.addEventListener('resize', this.handleResize);
-  },
-  beforeUnmount() {
-    if (this.chart) {
-      this.chart.dispose();
+      {
+        title: '股票名称',
+        key: 'name',
+        width: 150
+      },
+      {
+        title: '权重',
+        key: 'weight',
+        width: 100,
+        render: (row) => (row.weight * 100).toFixed(2) + '%'
+      },
+      {
+        title: '行业',
+        key: 'industry',
+        width: 120
+      },
+      {
+        title: '最新价',
+        key: 'close',
+        width: 100
+      },
+      {
+        title: '涨跌幅',
+        key: 'change',
+        width: 100,
+        render: (row) => {
+          const isPositive = row.change > 0
+          return h('span', {
+            class: isPositive ? 'positive' : 'negative'
+          }, `${isPositive ? '+' : ''}${row.change}%`)
+        }
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 100,
+        render: (row) => h(NButton, {
+          type: 'primary',
+          size: 'small',
+          text: true,
+          onClick: () => viewStockDetail(row)
+        }, { default: () => '查看' })
+      }
+    ]
+
+    const goBack = () => {
+      window.history.back()
     }
-    if (this.industryChart) {
-      this.industryChart.dispose();
+
+    const toggleFavorite = () => {
+      isFavorite.value = !isFavorite.value
+      message.success(isFavorite.value ? '已加入自选ETF' : '已移除自选ETF')
     }
-    window.removeEventListener('resize', this.handleResize);
-  },
-  methods: {
-    goBack() {
-      this.$router.go(-1);
-    },
-    toggleFavorite() {
-      this.isFavorite = !this.isFavorite;
-      this.$message({
-        message: this.isFavorite ? '已加入自选ETF' : '已移除自选ETF',
-        type: 'success'
-      });
-    },
-    viewStockDetail(stock) {
-      this.$router.push(`/market/stock/${stock.code}`);
-    },
-    loadETFData() {
+
+    const viewStockDetail = (stock) => {
+      console.log('查看股票详情:', stock.code)
+      // 实际项目中这里会导航到股票详情页
+    }
+
+    const loadETFData = () => {
       // 实际项目中这里会调用API获取ETF数据
-      console.log('加载ETF数据:', this.code);
-    },
-    initChart() {
-      const chartDom = document.getElementById('etfChart');
-      this.chart = echarts.init(chartDom);
+      console.log('加载ETF数据:', props.code)
+    }
+
+    const initChart = () => {
+      const chartDom = document.getElementById('etfChart')
+      if (!chartDom) return
+
+      chart.value = echarts.init(chartDom)
 
       const option = {
-        backgroundColor: $primary-bg,
+        backgroundColor: 'transparent',
         grid: {
           left: '10%',
           right: '10%',
@@ -314,38 +367,17 @@ export default {
         },
         xAxis: {
           type: 'category',
-          data: ['09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00'],
-          axisLine: {
-            lineStyle: {
-              color: $border-color
-            }
-          },
-          axisLabel: {
-            color: $text-secondary
-          }
+          data: ['09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '14:30', '15:00']
         },
         yAxis: {
-          scale: true,
-          axisLine: {
-            lineStyle: {
-              color: $border-color
-            }
-          },
-          splitLine: {
-            lineStyle: {
-              color: $secondary-bg
-            }
-          },
-          axisLabel: {
-            color: $text-secondary
-          }
+          scale: true
         },
         series: [{
           type: 'line',
           data: [3.850, 3.855, 3.862, 3.868, 3.865, 3.870, 3.875, 3.872, 3.868, 3.875],
           smooth: true,
           lineStyle: {
-            color: $accent-color,
+            color: '#2196F3',
             width: 2
           },
           areaStyle: {
@@ -357,10 +389,10 @@ export default {
               y2: 1,
               colorStops: [{
                 offset: 0,
-                color: 'color-mix(in srgb, #{$accent-color} 30%, transparent)'
+                color: 'rgba(33, 150, 243, 0.3)'
               }, {
                 offset: 1,
-                color: 'color-mix(in srgb, #{$accent-color} 10%, transparent)'
+                color: 'rgba(33, 150, 243, 0.1)'
               }]
             }
           },
@@ -370,39 +402,29 @@ export default {
           trigger: 'axis',
           axisPointer: {
             type: 'cross'
-          },
-          backgroundColor: $secondary-bg,
-          borderColor: $border-color,
-          textStyle: {
-            color: $text-primary
           }
         }
-      };
+      }
 
-      this.chart.setOption(option);
-    },
-    initIndustryChart() {
-      const chartDom = document.getElementById('industryChart');
-      this.industryChart = echarts.init(chartDom);
+      chart.value.setOption(option)
+    }
+
+    const initIndustryChart = () => {
+      const chartDom = document.getElementById('industryChart')
+      if (!chartDom) return
+
+      industryChart.value = echarts.init(chartDom)
 
       const option = {
-        backgroundColor: $primary-bg,
+        backgroundColor: 'transparent',
         tooltip: {
           trigger: 'item',
-          formatter: '{a} <br/>{b}: {c} ({d}%)',
-          backgroundColor: $secondary-bg,
-          borderColor: $border-color,
-          textStyle: {
-            color: $text-primary
-          }
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
         },
         legend: {
           orient: 'vertical',
           right: 10,
-          top: 'center',
-          textStyle: {
-            color: $text-secondary
-          }
+          top: 'center'
         },
         series: [{
           name: '行业分布',
@@ -410,8 +432,7 @@ export default {
           radius: ['40%', '70%'],
           avoidLabelOverlap: false,
           itemStyle: {
-            borderRadius: $border-radius,
-            borderColor: $primary-bg,
+            borderRadius: 6,
             borderWidth: 2
           },
           label: {
@@ -422,8 +443,7 @@ export default {
             label: {
               show: true,
               fontSize: '18',
-              fontWeight: 'bold',
-              color: $text-primary
+              fontWeight: 'bold'
             }
           },
           labelLine: {
@@ -440,78 +460,99 @@ export default {
             { value: 4.8, name: '其他' }
           ]
         }]
-      };
-
-      this.industryChart.setOption(option);
-    },
-    handleResize() {
-      if (this.chart) {
-        this.chart.resize();
       }
-      if (this.industryChart) {
-        this.industryChart.resize();
+
+      industryChart.value.setOption(option)
+    }
+
+    const handleResize = () => {
+      if (chart.value) {
+        chart.value.resize()
+      }
+      if (industryChart.value) {
+        industryChart.value.resize()
       }
     }
-  }
-};
-</script>
 
+    onMounted(() => {
+      initChart()
+      initIndustryChart()
+      loadETFData()
+      window.addEventListener('resize', handleResize)
+    })
+
+    onBeforeUnmount(() => {
+      if (chart.value) {
+        chart.value.dispose()
+      }
+      if (industryChart.value) {
+        industryChart.value.dispose()
+      }
+      window.removeEventListener('resize', handleResize)
+    })
+
+    return {
+      etf,
+      isFavorite,
+      timePeriod,
+      chartType,
+      selectedIndicator,
+      activeTab,
+      indicatorOptions,
+      constituents,
+      news,
+      constituentColumns,
+      goBack,
+      toggleFavorite,
+      viewStockDetail
+    }
+  }
+})
+</script>
 <style scoped lang="scss">
-/* 引入全局主题变量和混入 */
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as mixin;
-@use 'sass:map';
-@use 'sass:color';
+@use '@/assets/scss/naive-variables' as *;
 
 .etf-detail {
   padding: $content-padding;
-  background-color: $primary-bg;
-  color: $text-primary;
+  background-color: var(--n-body-color);
+  color: var(--n-text-color-base);
   height: 100%;
   overflow-y: auto;
-
-  /* 应用主题过渡动画 */
-  @extend .theme-transition;
+  transition: all $transition-normal;
 }
 
-/* ETF头部信息区域 */
 .etf-header {
+  margin-bottom: spacer(4);
+}
+
+.header-content {
   display: flex;
   align-items: center;
-  padding-bottom: map.get($spacers, 4);
-  border-bottom: $border-width solid $border-color;
-  margin-bottom: map.get($spacers, 4);
-
-  /* 应用卡片基础样式 */
-  @include mixin.card-base(false);
-  padding: map.get($spacers, 3);
+  gap: spacer(4);
 }
 
 .etf-info {
   flex: 1;
-  padding: 0 map.get($spacers, 4);
 }
 
-/* 价格信息显示 */
 .price-info {
   display: flex;
   align-items: center;
-  margin-top: map.get($spacers, 2);
+  margin-top: spacer(2);
 }
 
 .current-price {
   font-size: 1.75rem;
-  font-weight: $font-weight-bold;
-  margin-right: map.get($spacers, 3);
-  color: $text-primary;
+  font-weight: 600;
+  margin-right: spacer(3);
+  color: var(--n-text-color-base);
 }
 
 .price-change {
   font-size: 1.125rem;
-  font-weight: $font-weight-semibold;
+  font-weight: 600;
 }
 
-/* 涨跌颜色定义 */
 .positive {
   color: $stock-up-color;
 }
@@ -520,43 +561,35 @@ export default {
   color: $stock-down-color;
 }
 
-/* 主要内容区域布局 */
 .etf-content {
   display: flex;
-  gap: map.get($spacers, 4);
+  gap: spacer(4);
 
-  /* 响应式调整 */
-  @include mixin.media-breakpoint-down(lg) {
+  @include media-breakpoint-down(lg) {
     flex-direction: column;
   }
 }
 
-/* 图表区域样式 */
 .chart-section {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: spacer(4);
 }
 
 .chart-container {
-  /* 应用卡片基础样式 */
-  @include mixin.card-base;
-  border-radius: $border-radius-lg;
+  border-radius: var(--n-border-radius);
   overflow: hidden;
-  margin-bottom: map.get($spacers, 4);
 }
 
-.chart-header {
+.chart-controls {
   display: flex;
-  justify-content: space-between;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: $card-header-bg;
-  border-bottom: $border-width solid $border-color;
+  gap: spacer(3);
 }
 
 .chart-wrapper {
-  height: $chart-height;
-  padding: map.get($spacers, 2);
+  height: 400px;
+  padding: spacer(2);
 }
 
 #etfChart {
@@ -564,133 +597,100 @@ export default {
   height: 100%;
 }
 
-/* 指标选择器 */
 .indicator-selector {
-  /* 应用卡片基础样式 */
-  @include mixin.card-base;
-  border-radius: $border-radius;
-  padding: map.get($spacers, 3);
+  border-radius: var(--n-border-radius);
 }
 
-/* 信息区域样式 */
 .info-section {
   width: 400px;
 
-  /* 响应式调整 */
-  @include mixin.media-breakpoint-down(lg) {
+  @include media-breakpoint-down(lg) {
     width: 100%;
   }
 }
 
 .etf-tabs {
-  /* 应用卡片基础样式 */
-  @include mixin.card-base;
-  border-radius: $border-radius-lg;
+  border-radius: var(--n-border-radius);
   overflow: hidden;
 }
 
-/* 基本信息样式 */
 .basic-info {
-  padding: map.get($spacers, 4);
+  padding: spacer(4);
 }
 
 .info-row {
   display: flex;
-  margin-bottom: map.get($spacers, 3);
+  margin-bottom: spacer(3);
 }
 
 .info-item {
   flex: 1;
-  padding: map.get($spacers, 2);
+  padding: spacer(2);
 }
 
 .info-label {
   display: block;
-  color: $text-secondary;
+  color: var(--n-text-color-2);
   font-size: $font-size-base * 0.875;
-  margin-bottom: map.get($spacers, 1);
+  margin-bottom: spacer(1);
 }
 
 .info-value {
   display: block;
   font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
+  font-weight: 600;
+  color: var(--n-text-color-base);
 }
 
-/* 盘口数据样式 */
 .market-data {
-  padding: 0 map.get($spacers, 4) map.get($spacers, 4);
-}
-
-.market-data h3 {
-  margin-top: 0;
-  padding-bottom: map.get($spacers, 2);
-  border-bottom: $border-width solid $border-color;
-  color: $text-primary;
-  font-weight: $font-weight-semibold;
+  margin-top: spacer(4);
 }
 
 .quota-data {
-  padding: map.get($spacers, 2) 0;
+  padding: spacer(2) 0;
 }
 
 .quota-row {
   display: flex;
-  margin-bottom: map.get($spacers, 3);
+  margin-bottom: spacer(3);
 }
 
 .quota-item {
   flex: 1;
   text-align: center;
-  padding: map.get($spacers, 2);
-  background: $secondary-bg;
-  border-radius: $border-radius;
-  margin: 0 map.get($spacers, 1);
-
-  /* 应用主题过渡 */
-  @extend .theme-transition;
+  padding: spacer(2);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
+  margin: 0 spacer(1);
+  transition: all $transition-normal;
 }
 
 .quota-label {
   display: block;
-  color: $text-secondary;
+  color: var(--n-text-color-2);
   font-size: $font-size-base * 0.875;
-  margin-bottom: map.get($spacers, 1);
+  margin-bottom: spacer(1);
 }
 
 .quota-value {
   display: block;
   font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
+  font-weight: 600;
+  color: var(--n-text-color-base);
 }
 
-/* 成分股数据样式 */
-.constituents-data {
-  padding: map.get($spacers, 4);
-}
-
-/* 行业分布图表样式 */
-.industry-chart {
-  padding: map.get($spacers, 4);
-}
-
-/* 新闻列表样式 */
 .news-list {
-  padding: map.get($spacers, 2);
+  padding: spacer(2);
 }
 
 .news-item {
-  padding: map.get($spacers, 3);
-  border-bottom: $border-width solid $border-color;
+  padding: spacer(3);
+  border-bottom: 1px solid var(--n-border-color);
   cursor: pointer;
-
-  /* 应用主题过渡和悬停效果 */
-  @extend .theme-transition;
+  transition: all $transition-normal;
 
   &:hover {
-    background: $hover-bg;
+    background: var(--n-hover-color);
   }
 
   &:last-child {
@@ -700,46 +700,44 @@ export default {
 
 .news-title {
   font-size: $font-size-base;
-  margin-bottom: map.get($spacers, 2);
-  color: $text-primary;
-  font-weight: $font-weight-medium;
+  margin-bottom: spacer(2);
+  color: var(--n-text-color-base);
+  font-weight: 500;
 }
 
 .news-meta {
   display: flex;
   font-size: $font-size-base * 0.875;
-  color: $text-secondary;
+  color: var(--n-text-color-2);
 }
 
 .news-time {
-  margin-right: map.get($spacers, 3);
+  margin-right: spacer(3);
 }
 
-/* 响应式设计优化 */
-@include mixin.media-breakpoint-down(md) {
-  .etf-header {
+@include media-breakpoint-down(md) {
+  .header-content {
     flex-direction: column;
     align-items: flex-start;
-    gap: map.get($spacers, 3);
+    gap: spacer(3);
   }
 
   .etf-info {
-    padding: 0;
     width: 100%;
   }
 
   .info-row {
     flex-direction: column;
-    gap: map.get($spacers, 2);
+    gap: spacer(2);
   }
 
   .info-item {
-    padding: map.get($spacers, 1);
+    padding: spacer(1);
   }
 
   .quota-row {
     flex-direction: column;
-    gap: map.get($spacers, 2);
+    gap: spacer(2);
   }
 
   .quota-item {
@@ -749,18 +747,18 @@ export default {
   .price-info {
     flex-direction: column;
     align-items: flex-start;
-    gap: map.get($spacers, 2);
+    gap: spacer(2);
+  }
+
+  .chart-controls {
+    flex-direction: column;
+    gap: spacer(2);
   }
 }
 
-@include mixin.media-breakpoint-down(sm) {
+@include media-breakpoint-down(sm) {
   .etf-detail {
-    padding: map.get($spacers, 2);
-  }
-
-  .chart-header {
-    flex-direction: column;
-    gap: map.get($spacers, 2);
+    padding: spacer(2);
   }
 
   .chart-wrapper {

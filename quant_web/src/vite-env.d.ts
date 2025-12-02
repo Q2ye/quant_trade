@@ -1,30 +1,44 @@
 // src/vite-plugin-eslint.d.ts
 declare module "vite-plugin-eslint" {
-  import { Plugin } from "vite";
-  interface Options {
-    include?: string | string[];
-    exclude?: string | string[];
-    fix?: boolean;
-    cache?: boolean;
-    emitError?: boolean;
-    emitWarning?: boolean;
-    failOnError?: boolean;
-    failOnWarning?: boolean;
-    overrideConfigFile?: string;
-  }
-  export function createEsLintPlugin(options?: Options): Plugin;
-  export default function eslintPlugin(options?: Options): Plugin;
+    import {Plugin} from "vite";
+
+    interface Options {
+        include?: string | string[];
+        exclude?: string | string[];
+        fix?: boolean;
+        cache?: boolean;
+        emitError?: boolean;
+        emitWarning?: boolean;
+        failOnError?: boolean;
+        failOnWarning?: boolean;
+        overrideConfigFile?: string;
+    }
+
+    export function createEsLintPlugin(options?: Options): Plugin;
+
+    export default function eslintPlugin(options?: Options): Plugin;
 }
 
 interface ImportMetaEnv {
-  // 环境变量的类型定义，根据实际使用的变量添加
-  readonly VITE_API_BASE_URL: string;
-  readonly VITE_WS_URL: string;
-  readonly BASE_URL: string;
-  readonly VITE_APP_ENV: string;
-  // 其他环境变量...
+    // 环境变量的类型定义，根据实际使用的变量添加
+    readonly VITE_API_BASE_URL: string;
+    readonly VITE_WS_URL: string;
+    readonly BASE_URL: string;
+    readonly VITE_APP_ENV: string;
+    readonly PROD: boolean;
+    readonly MODE: string;
+    // 其他环境变量...
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv;
+    readonly env: ImportMetaEnv;
 }
+
+// 为 ImportMeta 添加全局类型声明
+declare global {
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
+  }
+}
+
+export {};

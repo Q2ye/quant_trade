@@ -49,8 +49,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@use '@/assets/scss/global.scss';
-
 .trade-dashboard {
   padding: 20px;
   height: 100%;
@@ -64,10 +62,10 @@ export default {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--n-border-color);
 
   h2 {
-    color: var(--text-primary);
+    color: var(--n-text-color);
     margin: 0;
   }
 }
@@ -78,13 +76,13 @@ export default {
 
   span {
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--n-text-color-2);
 
     strong {
-      color: var(--text-primary);
+      color: var(--n-text-color-1);
 
       &.profit {
-        color: var(--success-color);
+        color: var(--n-success-color);
       }
     }
   }
@@ -99,19 +97,16 @@ export default {
 }
 
 .card {
-  background: var(--secondary-bg);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
 
   :deep(.n-card-header) {
     padding: 15px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--n-border-color);
 
     .n-card-header__main {
       font-size: 16px;
-      color: var(--text-primary);
+      color: var(--n-text-color);
       margin: 0;
     }
   }
@@ -145,8 +140,9 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
-  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--n-text-color-2);
+  background-color: var(--n-color);
   border-radius: 4px;
+  border: 1px dashed var(--n-border-color);
 }
 </style>

@@ -1,19 +1,23 @@
+<!--StockList.vue - Naive UI 实现的股票列表页面-->
 <script setup lang="ts">
-import {h, onMounted, reactive, ref} from 'vue'
-import {useRouter} from 'vue-router'
-import {Button, message, Space, Tag} from 'ant-design-vue'
-import type {ColumnsType} from 'ant-design-vue/es/table'
+import { ref, reactive, onMounted, h } from 'vue'
+import { useRouter } from 'vue-router'
 import {
-  ArrowLeftOutlined,
-  ExportOutlined,
-  LineChartOutlined,
-  SearchOutlined,
-  StarFilled,
-  StarOutlined
-} from '@ant-design/icons-vue'
-import marketApi from '@/api/market'
-import {StockBasic} from '@/types/entities/data'
-import type {PaginatedResponse} from '@/types/api/base'
+  NButton,
+  NCard,
+  NDataTable,
+  DataTableColumns,
+  NInput,
+  NSelect,
+  NTag,
+  NPagination,
+  NSpace,
+  NGrid,
+  NGi,
+  NIcon,
+  useMessage
+} from 'naive-ui'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
 /**
  * 股票列表页面组件
@@ -36,19 +40,18 @@ interface Stock {
 }
 
 const router = useRouter()
+const message = useMessage()
 
 // 响应式数据
 const loading = ref(false)
 const stockList = ref<Stock[]>([])
 const watchlist = ref<Set<string>>(new Set())
 const pagination = reactive({
-  current: 1,
+  page: 1,
   pageSize: 50,
-  total: 0,
-  showSizeChanger: true,
-  showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条记录`,
-  pageSizeOptions: ['20', '50', '100', '200']
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [20, 50, 100, 200]
 })
 
 const filters = reactive({
@@ -57,11 +60,28 @@ const filters = reactive({
   industry: '',
   area: '',
   list_status: 'L',
-  change_percent: '' // 新增：涨跌幅筛选
+  change_percent: ''
 })
 
 const industries = ref<string[]>([])
 const areas = ref<string[]>([])
+
+// 模拟数据
+const mockStocks: Stock[] = Array.from({ length: 100 }, (_, i) => ({
+  ts_code: i < 9 ? `00000${i + 1}.SH` : `0000${i + 1}.SH`,
+  symbol: `000${i + 1}`,
+  name: `股票${i + 1}`,
+  area: i % 3 === 0 ? '北京' : i % 3 === 1 ? '上海' : '深圳',
+  industry: i % 5 === 0 ? '科技' : i % 5 === 1 ? '金融' : i % 5 === 2 ? '消费' : i % 5 === 3 ? '医药' : '制造',
+  market: i % 4 === 0 ? '主板' : i % 4 === 1 ? '创业板' : i % 4 === 2 ? '科创板' : '北交所',
+  list_date: '2020-01-01',
+  is_hs: i % 3 === 0 ? 'H' : i % 3 === 1 ? 'S' : 'N',
+  curr_type: 'RMB',
+  list_status: 'L',
+  current_price: 10 + Math.random() * 100,
+  change_percent: (Math.random() - 0.5) * 10,
+  market_cap: 100000000 + Math.random() * 10000000000
+}))
 
 /**
  * 返回上一页
@@ -82,7 +102,6 @@ const toggleWatchlist = (tsCode: string) => {
     watchlist.value.add(tsCode)
     message.success('已加入自选股')
   }
-  // 保存到 localStorage
   localStorage.setItem('watchlist', JSON.stringify([...watchlist.value]))
 }
 
@@ -91,15 +110,14 @@ const toggleWatchlist = (tsCode: string) => {
  * @param stock 股票对象
  */
 const viewStockDetail = (stock: Stock) => {
-  // 跳转到个股详情页面
-  window.open(`/market/stock/${stock.ts_code}`, '_blank')
+  router.push(`/market/stock/${stock.ts_code}`)
 }
 
 /**
  * 搜索股票
  */
 const handleSearch = () => {
-  pagination.current = 1
+  pagination.page = 1
   loadStockList()
 }
 
@@ -122,20 +140,7 @@ const handleReset = () => {
  * 导出数据
  */
 const exportData = () => {
-  // 导出数据功能
   message.info('导出功能开发中...')
-}
-
-/**
- * 表格变化处理
- * @param pag 分页信息
- * @param filters 筛选条件
- * @param sorter 排序条件
- */
-const handleTableChange = (pag: any, filters: any, sorter: any) => {
-  pagination.current = pag.current
-  pagination.pageSize = pag.pageSize
-  loadStockList()
 }
 
 /**
@@ -144,56 +149,63 @@ const handleTableChange = (pag: any, filters: any, sorter: any) => {
 const loadStockList = async () => {
   loading.value = true
   try {
-    const params = {
-      page: pagination.current,
-      size: pagination.pageSize,
-      search: filters.search,
-      market: filters.market,
-      industry: filters.industry,
-      area: filters.area,
-      list_status: filters.list_status,
-      change_percent: filters.change_percent // 新增：涨跌幅筛选参数
-    }
-    console.log('请求参数:', params)
-    const response: PaginatedResponse<StockBasic> = await marketApi.getStocks(params)
-    console.log('API响应:', response)
-    console.log('响应数据:', response.data)
-    if (!response.data.items) {
-      throw new Error('返回数据格式不正确')
+    // 模拟API调用延迟
+    await new Promise(resolve => setTimeout(resolve, 800))
+
+    let filtered = [...mockStocks]
+
+    // 应用筛选条件
+    if (filters.search) {
+      const keyword = filters.search.toLowerCase()
+      filtered = filtered.filter(item =>
+        item.ts_code.toLowerCase().includes(keyword) ||
+        item.name.toLowerCase().includes(keyword) ||
+        item.symbol.toLowerCase().includes(keyword)
+      )
     }
 
-    stockList.value = response.data.items.map(item => ({
-      ts_code: item.ts_code,
-      symbol: item.symbol,
-      name: item.name,
-      area: item.area || '',
-      industry: item.industry || '',
-      market: item.market,
-      list_date: item.list_date,
-      is_hs: item.is_hs || 'N',
-      curr_type: item.curr_type || '',
-      list_status: item.list_status || '',
-      // current_price: item.current_price,
-      // change_percent: item.change_percent,
-      // market_cap: item.market_cap
-    }))
+    if (filters.market) {
+      filtered = filtered.filter(item => item.market === filters.market)
+    }
 
-    pagination.total = response.data.total || 0
+    if (filters.industry) {
+      filtered = filtered.filter(item => item.industry === filters.industry)
+    }
+
+    if (filters.area) {
+      filtered = filtered.filter(item => item.area === filters.area)
+    }
+
+    if (filters.change_percent) {
+      switch (filters.change_percent) {
+        case 'up':
+          filtered = filtered.filter(item => item.change_percent! > 0)
+          break
+        case 'down':
+          filtered = filtered.filter(item => item.change_percent! < 0)
+          break
+        case 'high_up':
+          filtered = filtered.filter(item => item.change_percent! > 5)
+          break
+        case 'high_down':
+          filtered = filtered.filter(item => item.change_percent! < -5)
+          break
+      }
+    }
+
+    // 更新数据
+    stockList.value = filtered
+    pagination.itemCount = filtered.length
 
     // 提取行业和地区选项
-    const uniqueIndustries = [...new Set(response.data.items.map((stock: StockBasic) => stock.industry))].filter(Boolean) as string[]
-    const uniqueAreas = [...new Set(response.data.items.map((stock: StockBasic) => stock.area))].filter(Boolean) as string[]
+    const uniqueIndustries = [...new Set(mockStocks.map(stock => stock.industry))].filter(Boolean) as string[]
+    const uniqueAreas = [...new Set(mockStocks.map(stock => stock.area))].filter(Boolean) as string[]
     industries.value = uniqueIndustries
     areas.value = uniqueAreas
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('加载股票列表失败:', error)
-    console.error('错误详情:', error.response)
-    message.error('加载股票列表失败: ' + (error.message || '未知错误'))
-
-    // 设置默认数据以避免页面空白
-    stockList.value = []
-    pagination.total = 0
+    message.error('加载股票列表失败')
   } finally {
     loading.value = false
   }
@@ -202,148 +214,171 @@ const loadStockList = async () => {
 /**
  * 表格列配置
  */
-const columns: ColumnsType<Stock> = [
+const columns: DataTableColumns<Stock> = [
   {
     title: '代码',
-    dataIndex: 'ts_code',
     key: 'ts_code',
     width: 120,
-    align: 'center',
-    fixed: 'left'
+    fixed: 'left',
+    render(row) {
+      return h('div', { class: 'stock-code' }, [
+        h('div', { style: 'font-weight: 600;' }, row.ts_code),
+        h(NTag, {
+          size: 'small',
+          type: row.market === '主板' ? 'info' :
+                row.market === '创业板' ? 'success' :
+                row.market === '科创板' ? 'warning' : 'error',
+          style: { marginTop: '2px' }
+        }, { default: () => row.market })
+      ])
+    }
   },
   {
     title: '名称',
-    dataIndex: 'name',
     key: 'name',
     width: 100,
-    align: 'center',
-    fixed: 'left'
+    fixed: 'left',
+    render(row) {
+      return h('span', { style: 'font-weight: 500;' }, row.name)
+    }
   },
   {
     title: '最新价',
-    dataIndex: 'current_price',
     key: 'current_price',
     width: 100,
-    align: 'center',
-    customRender: ({text: price}) => price ? `¥${price.toFixed(2)}` : '-'
+    render(row) {
+      return row.current_price ? `¥${row.current_price.toFixed(2)}` : '-'
+    }
   },
   {
     title: '涨跌幅',
-    dataIndex: 'change_percent',
     key: 'change_percent',
     width: 100,
-    align: 'center',
-    customRender: ({text: percent}) => {
-      if (!percent) return '-'
-      const color = percent >= 0 ? 'var(--success-color)' : 'var(--danger-color)'
-      return h('span', {style: {color, fontWeight: '600'}}, [
-        percent >= 0 ? '+' : '',
-        percent.toFixed(2),
+    render(row) {
+      if (!row.change_percent) return '-'
+      const isPositive = row.change_percent >= 0
+      return h('span', {
+        style: {
+          color: isPositive ? 'var(--n-success-color)' : 'var(--n-error-color)',
+          fontWeight: '600'
+        }
+      }, [
+        isPositive ? '+' : '',
+        row.change_percent.toFixed(2),
         '%'
       ])
     }
   },
   {
     title: '市值(亿)',
-    dataIndex: 'market_cap',
     key: 'market_cap',
     width: 120,
-    align: 'center',
-    customRender: ({text: cap}) => cap ? (cap / 100000000).toFixed(2) : '-'
+    render(row) {
+      return row.market_cap ? (row.market_cap / 100000000).toFixed(2) : '-'
+    }
   },
   {
     title: '地区',
-    dataIndex: 'area',
     key: 'area',
     width: 80,
-    align: 'center',
-    filters: areas.value.map(area => ({text: area, value: area}))
+    filterOptions: areas.value.map(area => ({
+      label: area,
+      value: area
+    })),
+    filter(value, row) {
+      if (!value) return true
+      return row.area === value
+    }
   },
   {
     title: '行业',
-    dataIndex: 'industry',
     key: 'industry',
     width: 120,
-    align: 'center',
-    filters: industries.value.map(industry => ({text: industry, value: industry}))
-  },
-  {
-    title: '市场',
-    dataIndex: 'market',
-    key: 'market',
-    width: 80,
-    align: 'center',
-    customRender: ({text: market}) => {
-      const colorMap: Record<string, string> = {
-        '主板': 'var(--accent-color)',
-        '创业板': 'var(--success-color)',
-        '科创板': 'var(--warning-color)',
-        '北交所': 'var(--danger-color)'
-      }
-      return h(Tag, {
-        color: colorMap[market] || 'default',
-        style: {
-          border: `1px solid ${colorMap[market] || 'var(--border-color)'}`,
-          background: 'transparent'
-        }
-      }, () => market)
+    filterOptions: industries.value.map(industry => ({
+      label: industry,
+      value: industry
+    })),
+    filter(value, row) {
+      if (!value) return true
+      return row.industry === value
     }
   },
   {
     title: '沪深港通',
-    dataIndex: 'is_hs',
     key: 'is_hs',
     width: 100,
-    align: 'center',
-    customRender: ({text: is_hs}) => {
-      const map: Record<string, string> = {'H': '沪股通', 'S': '深股通', 'N': '否'}
+    render(row) {
+      const map: Record<string, string> = { 'H': '沪股通', 'S': '深股通', 'N': '否' }
       const colorMap: Record<string, string> = {
-        'H': 'var(--danger-color)',
-        'S': 'var(--accent-color)',
-        'N': 'var(--text-secondary)'
+        'H': 'error',
+        'S': 'info',
+        'N': 'default'
       }
-      return h(Tag, {
-        color: colorMap[is_hs],
-        style: {
-          border: `1px solid ${colorMap[is_hs]}`,
-          background: 'transparent',
-          color: colorMap[is_hs]
-        }
-      }, () => map[is_hs])
+      return h(NTag, {
+        type: colorMap[row.is_hs] as any,
+        size: 'small',
+        bordered: false
+      }, { default: () => map[row.is_hs] })
     }
   },
   {
     title: '操作',
     key: 'actions',
     width: 180,
-    align: 'center',
     fixed: 'right',
-    customRender: ({record}) => h(Space, null, () => [
-      h(Button, {
-        type: 'link',
-        size: 'small',
-        icon: watchlist.value.has(record.ts_code) ? h(StarFilled) : h(StarOutlined),
-        style: {
-          color: watchlist.value.has(record.ts_code) ? 'var(--warning-color)' : 'var(--text-secondary)',
-          transition: 'color var(--transition-fast)'
-        },
-        onClick: () => toggleWatchlist(record.ts_code)
-      }, () => watchlist.value.has(record.ts_code) ? '移出自选' : '加入自选'),
-      h(Button, {
-        type: 'link',
-        size: 'small',
-        icon: h(LineChartOutlined),
-        style: {color: 'var(--accent-color)'},
-        onClick: () => viewStockDetail(record)
-      }, () => '详情')
-    ])
+    render(row) {
+      return h(NSpace, { size: 'small' }, [
+        h(NButton, {
+          size: 'small',
+          type: watchlist.value.has(row.ts_code) ? 'warning' : 'default',
+          onClick: () => toggleWatchlist(row.ts_code)
+        }, {
+          icon: () => h(NIcon, null, {
+            default: () => h(SmartIcon, {
+              name: watchlist.value.has(row.ts_code) ? 'StarFilled' : 'StarOutlined'
+            })
+          }),
+          default: () => watchlist.value.has(row.ts_code) ? '移出自选' : '加入自选'
+        }),
+        h(NButton, {
+          size: 'small',
+          type: 'primary',
+          onClick: () => viewStockDetail(row)
+        }, {
+          icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'LineChart' }) }),
+          default: () => '详情'
+        })
+      ])
+    }
   }
+]
+
+// 市场选项
+const marketOptions = [
+  { label: '主板', value: '主板' },
+  { label: '创业板', value: '创业板' },
+  { label: '科创板', value: '科创板' },
+  { label: '北交所', value: '北交所' }
+]
+
+// 涨跌幅选项
+const changePercentOptions = [
+  { label: '涨幅榜', value: 'up' },
+  { label: '跌幅榜', value: 'down' },
+  { label: '大涨(>5%)', value: 'high_up' },
+  { label: '大跌(<-5%)', value: 'high_down' }
+]
+
+// 上市状态选项
+const listStatusOptions = [
+  { label: '上市', value: 'L' },
+  { label: '退市', value: 'D' },
+  { label: '暂停上市', value: 'P' }
 ]
 
 // 组件挂载时加载数据
 onMounted(() => {
   loadStockList()
-  // 加载自选股列表
   const savedWatchlist = localStorage.getItem('watchlist')
   if (savedWatchlist) {
     try {
@@ -367,13 +402,12 @@ onMounted(() => {
           <p class="page-description">A股全市场股票行情数据与统计分析</p>
         </div>
         <div class="header-actions">
-          <!-- 返回按钮 -->
-          <a-button class="back-btn" @click="handleBack">
+          <n-button class="back-btn" @click="handleBack">
             <template #icon>
-              <ArrowLeftOutlined/>
+              <SmartIcon name="ArrowBack" />
             </template>
             返回
-          </a-button>
+          </n-button>
         </div>
       </div>
     </div>
@@ -381,327 +415,291 @@ onMounted(() => {
     <!-- 主要内容区域 -->
     <div class="main-content-with-sidebar">
       <!-- 股票列表卡片 -->
-      <a-card class="stock-list-card" :bordered="false">
-        <template #title>
-          <span class="card-title-text">股票列表</span>
-        </template>
-        <template #extra>
-          <a-space>
-            <!-- 导出数据按钮 -->
-            <a-button type="primary" @click="exportData" class="export-btn">
-              <template #icon>
-                <ExportOutlined/>
-              </template>
-              导出数据
-            </a-button>
-          </a-space>
+      <n-card class="stock-list-card">
+        <template #header>
+          <div class="card-header">
+            <span class="card-title-text">股票列表</span>
+            <n-space>
+              <n-button type="primary" @click="exportData" class="export-btn">
+                <template #icon>
+                  <SmartIcon name="Export" />
+                </template>
+                导出数据
+              </n-button>
+            </n-space>
+          </div>
         </template>
 
         <!-- 筛选工具栏 -->
         <div class="filter-bar">
-          <a-space :size="16" wrap>
+          <n-grid :cols="24" :x-gap="12" :y-gap="12">
             <!-- 搜索框 -->
-            <a-input
+            <n-gi :span="6">
+              <n-input
                 v-model:value="filters.search"
                 placeholder="搜索股票代码或名称"
-                class="search-input"
-                @press-enter="handleSearch"
-            >
-              <template #suffix>
-                <SearchOutlined/>
-              </template>
-            </a-input>
+                clearable
+                @input="handleSearch"
+              >
+                <template #prefix>
+                  <SmartIcon name="Search" />
+                </template>
+              </n-input>
+            </n-gi>
 
             <!-- 市场筛选 -->
-            <a-select
+            <n-gi :span="4">
+              <n-select
                 v-model:value="filters.market"
                 placeholder="市场板块"
-                class="filter-select"
-                allowClear
-                @change="handleSearch"
-            >
-              <a-select-option value="主板">主板</a-select-option>
-              <a-select-option value="创业板">创业板</a-select-option>
-              <a-select-option value="科创板">科创板</a-select-option>
-              <a-select-option value="北交所">北交所</a-select-option>
-            </a-select>
+                clearable
+                :options="marketOptions"
+                @update:value="handleSearch"
+              />
+            </n-gi>
 
             <!-- 行业筛选 -->
-            <a-select
+            <n-gi :span="4">
+              <n-select
                 v-model:value="filters.industry"
                 placeholder="行业分类"
-                class="filter-select"
-                allowClear
-                @change="handleSearch"
-            >
-              <a-select-option v-for="industry in industries" :key="industry" :value="industry">
-                {{ industry }}
-              </a-select-option>
-            </a-select>
+                clearable
+                :options="industries.map(i => ({ label: i, value: i }))"
+                @update:value="handleSearch"
+              />
+            </n-gi>
 
             <!-- 地区筛选 -->
-            <a-select
+            <n-gi :span="3">
+              <n-select
                 v-model:value="filters.area"
                 placeholder="地区"
-                class="filter-select"
-                allowClear
-                @change="handleSearch"
-            >
-              <a-select-option v-for="area in areas" :key="area" :value="area">
-                {{ area }}
-              </a-select-option>
-            </a-select>
+                clearable
+                :options="areas.map(a => ({ label: a, value: a }))"
+                @update:value="handleSearch"
+              />
+            </n-gi>
 
             <!-- 涨跌幅筛选 -->
-            <a-select
+            <n-gi :span="4">
+              <n-select
                 v-model:value="filters.change_percent"
                 placeholder="涨跌幅"
-                class="filter-select"
-                allowClear
-                @change="handleSearch"
-            >
-              <a-select-option value="up">涨幅榜</a-select-option>
-              <a-select-option value="down">跌幅榜</a-select-option>
-              <a-select-option value="high_up">大涨(>5%)</a-select-option>
-              <a-select-option value="high_down">大跌(<-5%)</a-select-option>
-            </a-select>
+                clearable
+                :options="changePercentOptions"
+                @update:value="handleSearch"
+              />
+            </n-gi>
 
             <!-- 上市状态筛选 -->
-            <a-select
+            <n-gi :span="3">
+              <n-select
                 v-model:value="filters.list_status"
                 placeholder="上市状态"
-                class="filter-select"
-                allowClear
-                @change="handleSearch"
-            >
-              <a-select-option value="L">上市</a-select-option>
-              <a-select-option value="D">退市</a-select-option>
-              <a-select-option value="P">暂停上市</a-select-option>
-            </a-select>
+                clearable
+                :options="listStatusOptions"
+                @update:value="handleSearch"
+              />
+            </n-gi>
 
             <!-- 操作按钮 -->
-            <div class="filter-actions">
-              <a-space :size="12">
-                <a-button type="primary" @click="handleSearch" class="action-btn">
+            <n-gi :span="5">
+              <n-space justify="end">
+                <n-button type="primary" @click="handleSearch">
                   搜索
-                </a-button>
-                <a-button @click="handleReset" class="action-btn secondary">
+                </n-button>
+                <n-button @click="handleReset">
                   重置
-                </a-button>
-              </a-space>
-            </div>
-          </a-space>
+                </n-button>
+              </n-space>
+            </n-gi>
+          </n-grid>
         </div>
 
-        <!-- 表格容器，添加自定义滚动条 -->
-        <a-table
-            class="stock-table"
+        <!-- 数据表格 -->
+        <div class="table-container">
+          <n-data-table
             :columns="columns"
-            :data-source="stockList"
-            :pagination="pagination"
+            :data="stockList"
             :loading="loading"
-            :scroll="{ x: 1500 }"
-            row-key="ts_code"
-            @change="handleTableChange"
-        >
-          <template #headerCell="{ column }">
-            <span class="table-header">{{ column.title }}</span>
-          </template>
-        </a-table>
-      </a-card>
-
+            :pagination="pagination"
+            :scroll-x="1200"
+            :row-key="(row: Stock) => row.ts_code"
+            striped
+            @update:page="(page: number) => pagination.page = page"
+            @update:page-size="(size: number) => pagination.pageSize = size"
+          />
+        </div>
+      </n-card>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
-@use '@/assets/scss/mixins' as mixin;
-@use '@/assets/scss/variables' as *;
-@use 'sass:map';
-
-// ============================================================================
-// 股票列表页面主容器
-// ============================================================================
 .stock-list-page {
-  min-height: 100vh; // 设置最小高度为整个视口高度
-  background: $primary-bg; // 使用主背景色
-  transition: all $transition-normal; // 所有属性使用标准过渡时间
+  min-height: 100vh;
+  background-color: var(--n-body-color);
+  transition: all 0.3s;
 
   .main-content-with-sidebar {
-    @include mixin.content-with-sidebar; // 应用带侧边栏的内容区域混入
-    margin: 0 auto; // 水平居中
+    padding: var(--content-padding);
   }
 }
 
-// ============================================================================
-// 页面头部样式 - 使用混入统一管理
-// ============================================================================
+/* 页面头部样式 */
 .page-header {
-  @include mixin.page-header-base; // 应用页面头部基础样式混入
-  margin-bottom: map.get($spacers, 6); // 底部外边距使用间距映射中的第6个值
-}
+  margin-bottom: 1.5rem;
 
-// ============================================================================
-// 股票列表卡片 - 使用统一的卡片样式混入
-// ============================================================================
-.stock-list-card {
-  @include mixin.card-base; // 应用卡片基础样式混入
-  margin-bottom: map.get($spacers, 4); // 底部外边距
-  padding: map.get($spacers, 3); // 内边距
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
 
-  :deep(.ant-card-head) {
-    font-weight: $font-weight-semibold; // 半粗体字重
-    font-size: $font-size-base * 1.2; // 字体大小为基准的1.2倍
-  }
+    .title-section {
+      .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--n-text-color-1);
+        margin-bottom: 0.25rem;
+      }
 
-  .card-title-text {
-    color: $text-primary; // 卡片标题文字颜色
-    font-weight: $font-weight-semibold; // 半粗体字重
-  }
-}
+      .page-description {
+        font-size: 0.875rem;
+        color: var(--n-text-color-2);
+      }
+    }
 
-// ============================================================================
-// 筛选工具栏 - 使用统一的渐变背景和边框
-// ============================================================================
-.filter-bar {
-  margin-bottom: map.get($spacers, 4); // 底部外边距
-  padding: map.get($spacers, 3); // 内边距
-  background: linear-gradient(135deg, rgba($accent-color, 0.08) 0%, rgba($accent-color, 0.03) 100%); // 135度渐变背景
-  border-radius: $border-radius; // 边框圆角
-  border: $border-width solid $border-color; // 边框样式
-
-  :deep(.ant-space) {
-    width: 100%; // 宽度100%
-    align-items: flex-start; // 子元素顶部对齐
-
-    .filter-actions {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-
-      .ant-space {
-        width: auto;
-        align-items: center;
+    .header-actions {
+      .back-btn {
+        background-color: var(--n-color-secondary);
+        color: var(--n-text-color-1);
       }
     }
   }
+}
 
-  // 将按钮放在右侧
-  :deep(.ant-space-item:last-child) {
-    margin-left: auto;
+/* 股票列表卡片 */
+.stock-list-card {
+  background-color: var(--n-card-color);
+  border-radius: 8px;
+  box-shadow: var(--n-box-shadow-1);
+
+  .card-header {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+
+    .card-title-text {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--n-text-color-1);
+    }
+
+    .export-btn {
+      background-color: var(--n-primary-color);
+      color: white;
+    }
+  }
+}
+
+/* 筛选工具栏 */
+.filter-bar {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: var(--n-color-secondary);
+  border-radius: 6px;
+
+  :deep(.n-grid) {
     align-items: center;
   }
-
-
 }
 
-// ============================================================================
-// 按钮样式系统 - 使用统一的按钮混入
-// ============================================================================
+/* 表格容器 */
+.table-container {
+  overflow-x: auto;
 
-// 通用操作按钮
-.action-btn {
-  @include mixin.button-base; // 应用按钮基础样式混入
-}
-
-// 导出按钮 - 强调色变体
-.export-btn {
-  @include mixin.button-base($accent-color, white); // 应用按钮基础样式，传入强调色背景和白色文字
-  height: 28px; // 固定高度
-}
-
-// 返回按钮 - 透明背景变体
-.back-btn {
-  @include mixin.button-base(rgba(255, 255, 255, 0.15), white); // 半透明白色背景，白色文字
-}
-
-// ============================================================================
-// 表单元素样式系统 - 统一使用混入管理
-// ============================================================================
-
-// 搜索框样式
-.search-input {
-  width: 240px; // 固定宽度
-
-  :deep(.ant-input-affix-wrapper) {
-    @include mixin.form-element-base;
-    background: $card-bg !important;
-    border: $border-width solid $border-color !important;
-
-    .ant-input {
-      background: $card-bg !important;
-      color: $text-primary !important;
-      border: none !important;
-      box-shadow: none !important;
-
-      &::placeholder {
-        color: $text-secondary !important;
-        opacity: 0.7;
-      }
-
-      &:focus {
-        background: $card-bg !important;
-        box-shadow: none !important;
-      }
+  :deep(.n-data-table) {
+    .n-data-table-th {
+      background-color: var(--n-color-secondary);
+      font-weight: 600;
+      color: var(--n-text-color-1);
     }
 
-    &:hover, &:focus, &.ant-input-affix-wrapper-focused {
-      background: $card-bg !important;
-      border-color: $accent-color !important;
-      box-shadow: 0 0 0 2px rgba($accent-color, 0.2) !important;
-    }
-  }
-}
-
-// 筛选下拉框样式
-.filter-select {
-  @include mixin.filter-select(false, 140px); // 应用筛选选择器混入，不包含图标，宽度140px
-
-  :deep(.ant-select-selector) {
-    @include mixin.form-element-base; // 应用表单元素基础样式混入
-  }
-
-  :deep(.ant-select-arrow) {
-    color: $text-secondary; // 下拉箭头颜色
-  }
-
-  :deep(.ant-select-clear) {
-    background: $card-bg; // 清除按钮背景色
-    color: $text-secondary; // 清除按钮颜色
-  }
-
-  :deep(.ant-select-dropdown) {
-    background: $card-bg; // 下拉菜单背景色
-    border: $border-width solid $border-color; // 下拉菜单边框
-    border-radius: $border-radius; // 下拉菜单圆角
-    box-shadow: $card-hover-shadow; // 下拉菜单阴影
-
-    .ant-select-item {
-      color: $text-primary; // 选项文字颜色
-      background: $card-bg; // 选项背景色
-      transition: background-color $transition-fast; // 背景色快速过渡
+    .n-data-table-tr {
+      &:nth-child(even) {
+        background-color: var(--n-color-secondary);
+      }
 
       &:hover {
-        background: $hover-bg; // 选项悬停背景色
-      }
-
-      &.ant-select-item-option-selected {
-        background: rgba($accent-color, 0.1); // 选中选项背景色（半透明强调色）
-        color: $accent-color; // 选中选项文字颜色
+        background-color: var(--n-color-hover);
       }
     }
 
-    .ant-empty-description {
-      color: $text-primary; // 空状态描述文字颜色
+    .stock-code {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .n-button {
+      transition: all 0.2s;
+
+      &:hover {
+        transform: translateY(-1px);
+      }
     }
   }
 }
 
-// ============================================================================
-// 表格样式系统 - 使用统一的表格基础样式
-// ============================================================================
-.stock-table {
-  @include mixin.table-base-styles;
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .filter-bar {
+    :deep(.n-grid) {
+      grid-template-columns: repeat(2, 1fr) !important;
+
+      .n-gi {
+        grid-column: span 12 !important;
+      }
+
+      .n-gi:last-child {
+        grid-column: span 24 !important;
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.5rem;
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    .header-content {
+      flex-direction: column;
+      gap: 1rem;
+    }
+  }
+
+  .stock-list-card {
+    .card-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+  }
+
+  .filter-bar {
+    :deep(.n-grid) {
+      grid-template-columns: 1fr !important;
+
+      .n-gi {
+        grid-column: span 24 !important;
+      }
+
+      .n-gi:last-child {
+        justify-content: flex-start;
+      }
+    }
+  }
 }
 </style>

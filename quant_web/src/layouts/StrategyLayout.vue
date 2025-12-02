@@ -63,13 +63,13 @@
       <div class="action-bar">
         <n-button type="primary" class="btn btn-primary" @click="runBacktest">
           <template #icon>
-            <n-icon><PlayArrow /></n-icon>
+            <smart-icon name="PlayArrow" />
           </template>
           执行回测
         </n-button>
         <n-button class="btn btn-secondary" @click="saveStrategy">
           <template #icon>
-            <n-icon><Save /></n-icon>
+            <smart-icon name="Save" />
           </template>
           保存策略
         </n-button>
@@ -82,9 +82,9 @@
           <div class="tab-content">
             回测结果图表和指标将显示在这里
             <div style="margin-top: 15px;">
-              <div>年化收益率: <span style="color: var(--success-color);">+28.7%</span></div>
+              <div>年化收益率: <span class="positive-value">+28.7%</span></div>
               <div>夏普比率: 0.92</div>
-              <div>最大回撤: <span style="color: var(--danger-color);">-15.3%</span></div>
+              <div>最大回撤: <span class="negative-value">-15.3%</span></div>
               <div>胜率: 55.6%</div>
             </div>
           </div>
@@ -105,20 +105,19 @@
 </template>
 
 <script>
-import { NInput, NSelect, NButton, NIcon, NTabs, NTabPane } from 'naive-ui'
-import { PlayArrow, Save } from '@vicons/material'
+import { defineComponent } from 'vue'
+import { NInput, NSelect, NButton, NTabs, NTabPane } from 'naive-ui'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
-export default {
+export default defineComponent({
   name: "StrategyLayout",
   components: {
     NInput,
     NSelect,
     NButton,
-    NIcon,
     NTabs,
     NTabPane,
-    PlayArrow,
-    Save
+    SmartIcon
   },
   data() {
     return {
@@ -184,12 +183,10 @@ def handle_data(context, data):
       console.log('保存策略')
     }
   }
-}
+})
 </script>
 
 <style lang="scss" scoped>
-@use '@/assets/scss/global.scss';
-
 .strategy-layout {
   display: flex;
   height: calc(100vh - var(--header-height) - 40px);
@@ -198,13 +195,13 @@ def handle_data(context, data):
 
 .editor-pane {
   flex: 4;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--n-border-color);
   display: flex;
   flex-direction: column;
 
   .content-header {
     padding: 15px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--n-border-color);
   }
 
   .code-editor {
@@ -215,14 +212,14 @@ def handle_data(context, data):
     font-size: 14px;
     line-height: 1.5;
     resize: none;
-    background-color: var(--secondary-bg);
-    color: var(--text-primary);
+    background-color: var(--n-color);
+    color: var(--n-text-color);
   }
 }
 
 .config-pane {
   flex: 3;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--n-border-color);
   display: flex;
   flex-direction: column;
   padding: 15px;
@@ -230,7 +227,7 @@ def handle_data(context, data):
   h3 {
     margin-top: 0;
     margin-bottom: 20px;
-    color: var(--text-primary);
+    color: var(--n-text-color);
   }
 
   .param-row {
@@ -240,7 +237,7 @@ def handle_data(context, data):
 
     .param-label {
       width: 80px;
-      color: var(--text-secondary);
+      color: var(--n-text-color-2);
       font-size: 14px;
     }
 
@@ -273,7 +270,7 @@ def handle_data(context, data):
     height: 100%;
 
     .n-tabs-nav {
-      border-bottom: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--n-border-color);
     }
 
     .n-tabs-pane-wrapper {
@@ -285,7 +282,16 @@ def handle_data(context, data):
   .tab-content {
     flex: 1;
     padding: 15px;
-    color: var(--text-primary);
+    color: var(--n-text-color);
+  }
+
+  // 修复：添加正负值的样式类
+  .positive-value {
+    color: #18a058; // Naive UI 成功色
+  }
+
+  .negative-value {
+    color: #d03050; // Naive UI 错误色
   }
 }
 </style>

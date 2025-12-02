@@ -1,4 +1,3 @@
-<!--回测报告专用布局-->
 <template>
   <div class="report-layout">
     <!-- 回测报告头部 -->
@@ -18,7 +17,7 @@
           @click="exportReport"
         >
           <template #icon>
-            <n-icon><DownloadDoneFilled /></n-icon>
+            <smart-icon name="CloudDownload" />
           </template>
           导出报告
         </n-button>
@@ -26,7 +25,7 @@
           @click="goBack"
         >
           <template #icon>
-            <n-icon><ArrowBackFilled /></n-icon>
+            <smart-icon name="ArrowBack" />
           </template>
           返回策略
         </n-button>
@@ -47,16 +46,15 @@
 </template>
 
 <script>
-import { NButton, NIcon, useMessage } from 'naive-ui'
-import { DownloadDoneFilled, ArrowBackFilled } from '@vicons/material'
+import { defineComponent } from 'vue'
+import { NButton, useMessage } from 'naive-ui'
+import SmartIcon from '@/components/common/SmartIcon.vue'
 
-export default {
+export default defineComponent({
   name: "ReportLayout",
   components: {
     NButton,
-    NIcon,
-    DownloadDoneFilled,
-    ArrowBackFilled
+    SmartIcon
   },
   props: {
     reportData: {
@@ -81,7 +79,7 @@ export default {
     reportTitle() {
       return this.reportData.title || '策略回测报告';
     },
-      strategyName() {
+    strategyName() {
       return this.reportData.strategy || '未命名策略';
     },
     timeRange() {
@@ -103,7 +101,7 @@ export default {
       this.$emit('go-back');
     }
   }
-}
+})
 </script>
 
 <style scoped>

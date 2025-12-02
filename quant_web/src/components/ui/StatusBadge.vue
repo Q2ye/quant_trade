@@ -1,13 +1,19 @@
-<!--状态徽章-->
+<!-- 状态徽章组件 - 迁移到 Naive UI -->
 <template>
-  <el-tag :type="statusType" size="small" effect="dark" class="status-badge">
+  <n-tag :type="statusType" size="small" :bordered="false" class="status-badge">
     {{ status }}
-  </el-tag>
+  </n-tag>
 </template>
 
 <script>
-export default {
+import { defineComponent, computed } from 'vue'
+import { NTag } from 'naive-ui'
+
+export default defineComponent({
   name: "StatusBadge",
+  components: {
+    NTag
+  },
   props: {
     status: {
       type: String,
@@ -18,36 +24,40 @@ export default {
       default: "default",
     },
   },
-  computed: {
-    statusType() {
+  setup(props) {
+    const statusType = computed(() => {
+      if (props.type !== "default") return props.type
+
       const statusMap = {
-        运行中: "success",
-        已停止: "danger",
-        已连接: "success",
-        连接中: "warning",
-        未连接: "danger",
-        正常: "success",
-        警告: "warning",
-        危险: "danger",
-      };
+        "运行中": "success",
+        "已停止": "error",
+        "已连接": "success",
+        "连接中": "warning",
+        "未连接": "error",
+        "正常": "success",
+        "警告": "warning",
+        "危险": "error",
+        "成功": "success",
+        "失败": "error",
+        "进行中": "info",
+        "待处理": "default"
+      }
 
-      if (this.type !== "default") return this.type;
+      return statusMap[props.status] || "default"
+    })
 
-      return statusMap[this.status] || "info";
-    },
+    return {
+      statusType,
+    }
   },
-};
+})
 </script>
 
 <style lang="scss" scoped>
 .status-badge {
-  font-weight: var(--font-weight-medium);
+  font-weight: 500;
   letter-spacing: 0.5px;
   min-width: 60px;
   text-align: center;
-}
-
-:root {
-  --font-weight-medium: 500;
 }
 </style>

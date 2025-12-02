@@ -1,19 +1,22 @@
-<!-- 大盘指数看板 - 基于主题系统优化 -->
+<!-- 大盘指数看板 - 基于 Naive UI 重构 -->
 <template>
-  <div class="index-board">
+  <n-card class="index-board" :bordered="false">
     <!-- 看板头部 -->
     <div class="board-header">
       <h3>大盘指数</h3>
       <div class="header-actions">
         <span class="update-time">更新: {{ formatTime(lastUpdate) }}</span>
-        <el-button
+        <n-button
           size="small"
-          :icon="isRefreshing ? 'el-icon-loading' : 'el-icon-refresh'"
+          :loading="isRefreshing"
           @click="refreshData"
           :disabled="isRefreshing"
         >
+          <template #icon>
+            <n-icon><RefreshIcon /></n-icon>
+          </template>
           {{ isRefreshing ? '更新中...' : '刷新' }}
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -62,133 +65,147 @@
         </div>
       </div>
     </div>
-  </div>
+  </n-card>
 </template>
 
 <script>
-export default {
+import { defineComponent, ref } from 'vue'
+import { NCard, NButton, NIcon } from 'naive-ui'
+import { Refresh as RefreshIcon } from '@vicons/ionicons5'
+
+export default defineComponent({
   name: "IndexBoard",
-  data() {
-    return {
-      // 指数数据
-      indices: [
-        {
-          code: "000001.SH",
-          name: "上证指数",
-          value: 3254.87,
-          change: 0.56,
-          changePercent: 0.017,
-          high: 3268.45,
-          low: 3245.21,
-          volume: "3.42亿",
-          amount: "4235.68亿"
-        },
-        {
-          code: "399001.SZ",
-          name: "深证成指",
-          value: 12045.32,
-          change: -0.23,
-          changePercent: -0.002,
-          high: 12120.45,
-          low: 12010.78,
-          volume: "2.87亿",
-          amount: "3876.54亿"
-        },
-        {
-          code: "399006.SZ",
-          name: "创业板指",
-          value: 2654.21,
-          change: 1.24,
-          changePercent: 0.047,
-          high: 2678.32,
-          low: 2645.78,
-          volume: "1.23亿",
-          amount: "1876.43亿"
-        },
-        {
-          code: "000300.SH",
-          name: "沪深300",
-          value: 4156.78,
-          change: 0.78,
-          changePercent: 0.019,
-          high: 4178.45,
-          low: 4145.32,
-          volume: "1.98亿",
-          amount: "2876.54亿"
-        },
-        {
-          code: "000688.SH",
-          name: "科创50",
-          value: 1124.56,
-          change: 2.15,
-          changePercent: 0.191,
-          high: 1135.78,
-          low: 1118.45,
-          volume: "0.78亿",
-          amount: "876.54亿"
-        }
-      ],
-      lastUpdate: new Date(),
-      selectedIndex: null,
-      isRefreshing: false
-    };
+  components: {
+    NCard,
+    NButton,
+    NIcon,
+    RefreshIcon
   },
-  methods: {
+  setup() {
+    // 指数数据
+    const indices = ref([
+      {
+        code: "000001.SH",
+        name: "上证指数",
+        value: 3254.87,
+        change: 0.56,
+        changePercent: 0.017,
+        high: 3268.45,
+        low: 3245.21,
+        volume: "3.42亿",
+        amount: "4235.68亿"
+      },
+      {
+        code: "399001.SZ",
+        name: "深证成指",
+        value: 12045.32,
+        change: -0.23,
+        changePercent: -0.002,
+        high: 12120.45,
+        low: 12010.78,
+        volume: "2.87亿",
+        amount: "3876.54亿"
+      },
+      {
+        code: "399006.SZ",
+        name: "创业板指",
+        value: 2654.21,
+        change: 1.24,
+        changePercent: 0.047,
+        high: 2678.32,
+        low: 2645.78,
+        volume: "1.23亿",
+        amount: "1876.43亿"
+      },
+      {
+        code: "000300.SH",
+        name: "沪深300",
+        value: 4156.78,
+        change: 0.78,
+        changePercent: 0.019,
+        high: 4178.45,
+        low: 4145.32,
+        volume: "1.98亿",
+        amount: "2876.54亿"
+      },
+      {
+        code: "000688.SH",
+        name: "科创50",
+        value: 1124.56,
+        change: 2.15,
+        changePercent: 0.191,
+        high: 1135.78,
+        low: 1118.45,
+        volume: "0.78亿",
+        amount: "876.54亿"
+      }
+    ])
+
+    const lastUpdate = ref(new Date())
+    const selectedIndex = ref(null)
+    const isRefreshing = ref(false)
+
     // 刷新指数数据
-    refreshData() {
-      this.isRefreshing = true;
+    const refreshData = () => {
+      isRefreshing.value = true
 
       // 模拟数据刷新
       setTimeout(() => {
-        this.indices = this.indices.map(index => {
+        indices.value = indices.value.map(index => {
           // 模拟价格波动
-          const fluctuation = (Math.random() - 0.5) * 0.5;
-          const newValue = index.value * (1 + fluctuation);
-          const change = newValue - index.value;
-          const changePercent = (change / index.value) * 100;
+          const fluctuation = (Math.random() - 0.5) * 0.5
+          const newValue = index.value * (1 + fluctuation)
+          const change = newValue - index.value
+          const changePercent = (change / index.value) * 100
 
           return {
             ...index,
             value: parseFloat(newValue.toFixed(2)),
             change: parseFloat(change.toFixed(2)),
             changePercent: parseFloat(changePercent.toFixed(2))
-          };
-        });
+          }
+        })
 
-        this.lastUpdate = new Date();
-        this.isRefreshing = false;
-      }, 1000);
-    },
+        lastUpdate.value = new Date()
+        isRefreshing.value = false
+      }, 1000)
+    }
+
     // 选择指数
-    selectIndex(index) {
-      this.selectedIndex = this.selectedIndex?.code === index.code ? null : index;
-    },
+    const selectIndex = (index) => {
+      selectedIndex.value = selectedIndex.value?.code === index.code ? null : index
+    }
+
     // 格式化时间显示
-    formatTime(date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const formatTime = (date) => {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+
+    return {
+      indices,
+      lastUpdate,
+      selectedIndex,
+      isRefreshing,
+      refreshData,
+      selectIndex,
+      formatTime
     }
   }
-};
+})
 </script>
-
 <style scoped lang="scss">
-// 导入主题变量和混入
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as mixin;
-@use 'sass:map';
-@use 'sass:color';
+@use '@/assets/scss/naive-variables' as *;
 
 .index-board {
-  @include mixin.card-base;
-  padding: map.get($spacers, 4);
-  background: $card-gradient-bg;
-  border-radius: $border-radius-lg;
-  box-shadow: $card-shadow;
+  padding: spacer(4);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
+  box-shadow: var(--n-box-shadow-1);
   transition: all $transition-normal;
-  border: $border-width solid $border-color;
+  border: 1px solid var(--n-border-color);
 
   &:hover {
-    box-shadow: $card-hover-shadow;
+    box-shadow: var(--n-box-shadow-2);
   }
 }
 
@@ -196,55 +213,55 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: map.get($spacers, 4);
-  padding-bottom: map.get($spacers, 3);
-  border-bottom: $border-width solid $border-color;
+  margin-bottom: spacer(4);
+  padding-bottom: spacer(3);
+  border-bottom: 1px solid var(--n-border-color);
 
   h3 {
     margin: 0;
     font-size: $font-size-base * 1.2;
-    font-weight: $font-weight-semibold;
-    color: $accent-color;
+    font-weight: 600;
+    color: var(--n-primary-color);
     letter-spacing: 0.5px;
   }
 }
 
 .header-actions {
-  @include mixin.flex-center(row);
-  gap: map.get($spacers, 3);
+  @include flex-center(row);
+  gap: spacer(3);
 }
 
 .update-time {
   font-size: $font-size-base * 0.9;
-  color: $text-secondary;
+  color: var(--n-text-color-2);
 }
 
 .index-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: map.get($spacers, 3);
+  gap: spacer(3);
 }
 
 .index-item {
-  @include mixin.card-base(false);
-  background: rgba($secondary-bg, 0.6);
-  border-radius: $border-radius;
-  padding: map.get($spacers, 3);
+  @include card-base(false);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
+  padding: spacer(3);
   cursor: pointer;
   transition: all $transition-normal;
-  border: $border-width solid $border-color;
+  border: 1px solid var(--n-border-color);
   position: relative;
   overflow: hidden;
 
   &:hover {
-    background: rgba($hover-bg, 0.7);
+    background: var(--n-hover-color);
     transform: translateY(-2px);
-    box-shadow: $hover-shadow;
+    box-shadow: var(--n-box-shadow-2);
   }
 
   &.selected {
-    background: rgba($active-bg, 0.1);
-    border-color: $accent-color;
+    background: rgba(var(--n-primary-color), 0.1);
+    border-color: var(--n-primary-color);
 
     &::before {
       content: '';
@@ -253,38 +270,37 @@ export default {
       left: 0;
       width: 4px;
       height: 100%;
-      background: $accent-color;
+      background: var(--n-primary-color);
     }
   }
 }
 
 .index-name {
   font-size: $font-size-base;
-  color: $text-secondary;
-  margin-bottom: map.get($spacers, 2);
-  font-weight: $font-weight-medium;
+  color: var(--n-text-color-2);
+  margin-bottom: spacer(2);
+  font-weight: 500;
 }
 
 .index-value {
   font-size: $font-size-base * 1.4;
-  font-weight: $font-weight-bold;
-  color: $text-primary;
-  margin-bottom: map.get($spacers, 1);
+  font-weight: 600;
+  color: var(--n-text-color-base);
+  margin-bottom: spacer(1);
   letter-spacing: 0.5px;
 }
 
 .index-change {
   font-size: $font-size-base;
-  font-weight: $font-weight-semibold;
-  @include mixin.flex-center(row);
+  font-weight: 600;
+  @include flex-center(row);
 }
 
 .change-percent {
-  margin-left: map.get($spacers, 1);
+  margin-left: spacer(1);
   font-size: $font-size-base * 0.9;
 }
 
-// 价格涨跌颜色样式
 .positive {
   color: $stock-up-color;
 }
@@ -294,52 +310,51 @@ export default {
 }
 
 .index-detail {
-  margin-top: map.get($spacers, 4);
-  padding-top: map.get($spacers, 3);
-  border-top: $border-width solid $border-color;
-  @include mixin.fade-in;
+  margin-top: spacer(4);
+  padding-top: spacer(3);
+  border-top: 1px solid var(--n-border-color);
+  @include fade-in;
 }
 
 .detail-header {
-  margin-bottom: map.get($spacers, 3);
+  margin-bottom: spacer(3);
 
   h4 {
     margin: 0;
     font-size: $font-size-base * 1.1;
-    color: $accent-color;
-    font-weight: $font-weight-semibold;
+    color: var(--n-primary-color);
+    font-weight: 600;
   }
 }
 
 .detail-content {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: map.get($spacers, 2);
+  gap: spacer(2);
 }
 
 .detail-item {
-  @include mixin.flex-center(row);
+  @include flex-center(row);
   justify-content: space-between;
-  padding: map.get($spacers, 2) map.get($spacers, 3);
-  background: rgba($secondary-bg, 0.5);
-  border-radius: $border-radius-sm;
+  padding: spacer(2) spacer(3);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
   font-size: $font-size-base;
 }
 
 .label {
-  color: $text-secondary;
-  font-weight: $font-weight-medium;
+  color: var(--n-text-color-2);
+  font-weight: 500;
 }
 
 .value {
-  color: $text-primary;
-  font-weight: $font-weight-medium;
+  color: var(--n-text-color-base);
+  font-weight: 500;
 }
 
-// 响应式设计
-@include mixin.media-breakpoint-down(md) {
+@include media-breakpoint-down(md) {
   .index-board {
-    padding: map.get($spacers, 3);
+    padding: spacer(3);
   }
 
   .index-list {
@@ -351,11 +366,11 @@ export default {
   }
 }
 
-@include mixin.media-breakpoint-down(sm) {
+@include media-breakpoint-down(sm) {
   .board-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: map.get($spacers, 2);
+    gap: spacer(2);
   }
 
   .header-actions {
@@ -368,7 +383,7 @@ export default {
   }
 
   .index-item {
-    padding: map.get($spacers, 2);
+    padding: spacer(2);
   }
 
   .index-value {

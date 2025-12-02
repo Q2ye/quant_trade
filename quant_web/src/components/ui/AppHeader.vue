@@ -1,8 +1,10 @@
+<!-- 应用头部组件 - 迁移到 Naive UI 和统一图标方案 -->
 <template>
   <header class="app-header">
     <div class="logo-section">
       <div class="logo">
-        <Icon icon="mdi:robot" class="logo-icon"/>
+        <!-- 使用 SmartIcon 组件 -->
+        <smart-icon name="Robot" size="24" class="logo-icon" />
         <span class="logo-text">量化交易平台</span>
       </div>
     </div>
@@ -14,23 +16,30 @@
         <div class="market-data">
           <span class="market-name">上证</span>
           <span class="market-value">3,245.68</span>
-          <span class="market-change positive">+1.25%</span>
+          <n-tag :type="getMarketChangeType('positive')" size="small">
+            +1.25%
+          </n-tag>
         </div>
         <div class="market-data">
           <span class="market-name">深证</span>
           <span class="market-value">10,845.32</span>
-          <span class="market-change positive">+0.87%</span>
+          <n-tag :type="getMarketChangeType('positive')" size="small">
+            +0.87%
+          </n-tag>
         </div>
         <div class="market-data">
           <span class="market-name">创业</span>
           <span class="market-value">2,245.67</span>
-          <span class="market-change negative">-0.23%</span>
+          <n-tag :type="getMarketChangeType('negative')" size="small">
+            -0.23%
+          </n-tag>
         </div>
       </div>
 
       <!-- 交易时段状态 -->
       <div class="status-item trading-session">
-        <Icon icon="mdi:clock-outline" class="session-icon"/>
+        <!-- 使用 SmartIcon 组件 -->
+        <smart-icon name="Time" size="16" class="session-icon" />
         <span>交易时段: 09:30-11:30</span>
       </div>
     </div>
@@ -38,41 +47,65 @@
     <!-- 头部小部件 -->
     <div class="header-widgets">
       <!-- 策略状态 -->
-      <div class="header-widget strategy-status"
-           :title="`运行中策略: ${strategyStatus.running}/${strategyStatus.total}\n健康状态: ${getHealthText(strategyStatus.health)}`">
-        <div class="widget-content">
-          <Icon icon="mdi:cog" class="widget-icon"/>
-          <span class="widget-count">{{ strategyStatus.running }}/{{ strategyStatus.total }}</span>
-          <div class="status-dot" :class="strategyStatus.health"></div>
-        </div>
-      </div>
+      <n-tooltip placement="bottom">
+        <template #trigger>
+          <div class="header-widget strategy-status">
+            <div class="widget-content">
+              <!-- 使用 SmartIcon 组件 -->
+              <smart-icon name="Settings" size="16" class="widget-icon" />
+              <span class="widget-count">{{ strategyStatus.running }}/{{ strategyStatus.total }}</span>
+              <div class="status-dot" :class="strategyStatus.health"></div>
+            </div>
+          </div>
+        </template>
+        运行中策略: {{ strategyStatus.running }}/{{ strategyStatus.total }}<br>
+        健康状态: {{ getHealthText(strategyStatus.health) }}
+      </n-tooltip>
 
       <!-- 信号状态 -->
-      <div class="header-widget signal-status"
-           :title="`今日信号: ${signalStats.today}个\n已触发: ${signalStats.triggered}个`">
-        <div class="widget-content">
-          <Icon icon="mdi:bell-outline" class="widget-icon"/>
-          <span class="widget-count">{{ signalStats.triggered }}/{{ signalStats.today }}</span>
-        </div>
-      </div>
+      <n-tooltip placement="bottom">
+        <template #trigger>
+          <div class="header-widget signal-status">
+            <div class="widget-content">
+              <!-- 使用 SmartIcon 组件 -->
+              <smart-icon name="NotificationsOutline" size="16" class="widget-icon" />
+              <span class="widget-count">{{ signalStats.triggered }}/{{ signalStats.today }}</span>
+            </div>
+          </div>
+        </template>
+        今日信号: {{ signalStats.today }}个<br>
+        已触发: {{ signalStats.triggered }}个
+      </n-tooltip>
 
       <!-- 订单状态 -->
-      <div class="header-widget order-status"
-           :title="`待处理订单: ${orderStats.pending}个\n已执行: ${orderStats.executed}个`">
-        <div class="widget-content">
-          <Icon icon="mdi:swap-horizontal" class="widget-icon"/>
-          <span class="widget-count">{{ orderStats.executed }}/{{ orderStats.pending }}</span>
-        </div>
-      </div>
+      <n-tooltip placement="bottom">
+        <template #trigger>
+          <div class="header-widget order-status">
+            <div class="widget-content">
+              <!-- 使用 SmartIcon 组件 -->
+              <smart-icon name="SwapVertical" size="16" class="widget-icon" />
+              <span class="widget-count">{{ orderStats.executed }}/{{ orderStats.pending }}</span>
+            </div>
+          </div>
+        </template>
+        待处理订单: {{ orderStats.pending }}个<br>
+        已执行: {{ orderStats.executed }}个
+      </n-tooltip>
 
       <!-- 风险等级 -->
-      <div class="header-widget risk-level" :class="riskLevel.class"
-           :title="`当前风险等级: ${riskLevel.text}\n${getRiskDescription(riskLevel.text)}`">
-        <div class="widget-content">
-          <Icon icon="mdi:shield-check-outline" class="widget-icon"/>
-          <span class="widget-count">{{ riskLevel.text }}</span>
-        </div>
-      </div>
+      <n-tooltip placement="bottom">
+        <template #trigger>
+          <div class="header-widget risk-level" :class="riskLevel.class">
+            <div class="widget-content">
+              <!-- 使用 SmartIcon 组件 -->
+              <smart-icon name="ShieldCheckmark" size="16" class="widget-icon" />
+              <span class="widget-count">{{ riskLevel.text }}</span>
+            </div>
+          </div>
+        </template>
+        当前风险等级: {{ riskLevel.text }}<br>
+        {{ getRiskDescription(riskLevel.text) }}
+      </n-tooltip>
     </div>
 
     <div class="time-section">
@@ -81,44 +114,51 @@
     </div>
 
     <div class="user-section">
-      <div class="user-dropdown" @click="toggleUserMenu">
-        <div class="user-info">
-          <div class="user-avatar">
-            <Icon icon="mdi:account-circle" class="avatar-icon"/>
-          </div>
-          <span class="user-name">{{ userName }}</span>
-          <Icon icon="mdi:chevron-down" class="dropdown-icon" :class="{ rotated: userMenuOpen }"/>
-        </div>
-
-        <div class="user-menu" v-show="userMenuOpen">
-          <div class="menu-item" @click="handleCommand('profile')">
-            <Icon icon="mdi:account-outline" class="menu-icon"/>
-            <span>个人中心</span>
-          </div>
-          <div class="menu-item" @click="handleCommand('settings')">
-            <Icon icon="mdi:cog-outline" class="menu-icon"/>
-            <span>系统设置</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu-item" @click="handleCommand('logout')">
-            <Icon icon="mdi:logout" class="menu-icon"/>
-            <span>退出登录</span>
+      <n-dropdown
+        placement="bottom-end"
+        :options="userMenuOptions"
+        @select="handleCommand"
+      >
+        <div class="user-dropdown">
+          <div class="user-info">
+            <div class="user-avatar">
+              <n-avatar round size="small">
+                <!-- 使用 SmartIcon 组件 -->
+                <smart-icon name="Person" />
+              </n-avatar>
+            </div>
+            <span class="user-name">{{ userName }}</span>
+            <!-- 使用 SmartIcon 组件 -->
+            <smart-icon name="ChevronDown" size="16" class="dropdown-icon" />
           </div>
         </div>
-      </div>
+      </n-dropdown>
     </div>
   </header>
 </template>
 
 <script>
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { Icon } from '@iconify/vue'
+import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from "vue-router"
+import {
+  NIcon,
+  NTooltip,
+  NTag,
+  NDropdown,
+  NAvatar
+} from 'naive-ui'
+// 导入 SmartIcon 组件
+import SmartIcon from '../common/SmartIcon.vue'
 
-export default {
+export default defineComponent({
   name: "AppHeader",
   components: {
-    Icon
+    NIcon,
+    NTooltip,
+    NTag,
+    NDropdown,
+    NAvatar,
+    SmartIcon // 注册 SmartIcon 组件
   },
   props: {
     userName: {
@@ -127,28 +167,29 @@ export default {
     }
   },
   setup(props) {
-    const router = useRouter();
-    const currentTime = ref(new Date());
-    const userMenuOpen = ref(false);
+    const router = useRouter()
+    const currentTime = ref(new Date())
+    const formattedTime = ref("")
+    const formattedDate = ref("")
 
     // 策略状态
     const strategyStatus = ref({
       running: 3,
       total: 5,
       health: 'healthy'
-    });
+    })
 
     // 信号统计
     const signalStats = ref({
       today: 12,
       triggered: 8
-    });
+    })
 
     // 订单统计
     const orderStats = ref({
       pending: 2,
       executed: 15
-    });
+    })
 
     // 风险等级
     const riskLevel = computed(() => {
@@ -156,9 +197,32 @@ export default {
         low: { class: 'risk-low', text: '低' },
         medium: { class: 'risk-medium', text: '中' },
         high: { class: 'risk-high', text: '高' }
-      };
-      return levels.medium;
-    });
+      }
+      return levels.medium
+    })
+
+    // 用户菜单选项 - 使用 SmartIcon
+    const userMenuOptions = [
+      {
+        label: '个人中心',
+        key: 'profile',
+        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Person' }) })
+      },
+      {
+        label: '系统设置',
+        key: 'settings',
+        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Settings' }) })
+      },
+      {
+        type: 'divider',
+        key: 'd1'
+      },
+      {
+        label: '退出登录',
+        key: 'logout',
+        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'LogOut' }) })
+      }
+    ]
 
     // 获取健康状态文本
     const getHealthText = (health) => {
@@ -166,9 +230,9 @@ export default {
         healthy: '正常',
         warning: '警告',
         danger: '危险'
-      };
-      return healthMap[health] || '未知';
-    };
+      }
+      return healthMap[health] || '未知'
+    }
 
     // 获取风险等级描述
     const getRiskDescription = (riskLevel) => {
@@ -176,115 +240,88 @@ export default {
         '低': '保守策略，风险可控',
         '中': '平衡策略，适度风险',
         '高': '激进策略，高风险'
-      };
-      return descriptions[riskLevel] || '风险等级未知';
-    };
+      }
+      return descriptions[riskLevel] || '风险等级未知'
+    }
 
-    // 时间格式化 - 增强版本
-    const formattedTime = ref("");
-    const formattedDate = ref("");
+    // 获取市场变化类型
+    const getMarketChangeType = (change) => {
+      return change === 'positive' ? 'success' : 'error'
+    }
 
-    // 增强的 toLocaleTimeString 方法
+    // 时间格式化
     const formatTime = (date) => {
       try {
-        // 优先使用标准的 toLocaleTimeString
-        if (date && typeof date.toLocaleTimeString === 'function') {
-          return date.toLocaleTimeString("zh-CN", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false
-          });
-        }
+        return date.toLocaleTimeString("zh-CN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false
+        })
       } catch (error) {
-        console.warn('toLocaleTimeString failed, using fallback:', error);
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        const seconds = String(date.getSeconds()).padStart(2, '0')
+        return `${hours}:${minutes}:${seconds}`
       }
+    }
 
-      // 备用方案：手动格式化
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      return `${hours}:${minutes}:${seconds}`;
-    };
-
-    // 增强的 toLocaleDateString 方法
     const formatDate = (date) => {
       try {
-        // 优先使用标准的 toLocaleDateString
-        if (date && typeof date.toLocaleDateString === 'function') {
-          return date.toLocaleDateString("zh-CN", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            weekday: "short"
-          });
-        }
+        return date.toLocaleDateString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          weekday: "short"
+        })
       } catch (error) {
-        console.warn('toLocaleDateString failed, using fallback:', error);
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+        const weekday = weekdays[date.getDay()]
+        return `${year}/${month}/${day} 周${weekday}`
       }
-
-      // 备用方案：手动格式化
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-      const weekday = weekdays[date.getDay()];
-      return `${year}/${month}/${day} 周${weekday}`;
-    };
+    }
 
     // 更新时间显示
     const updateTime = () => {
-      currentTime.value = new Date();
-      formattedTime.value = formatTime(currentTime.value);
-      formattedDate.value = formatDate(currentTime.value);
-    };
+      currentTime.value = new Date()
+      formattedTime.value = formatTime(currentTime.value)
+      formattedDate.value = formatDate(currentTime.value)
+    }
 
     // 模拟交易状态更新
     const updateTradingStatus = () => {
-      const healthStates = ['healthy', 'warning', 'danger'];
-      strategyStatus.value.health = healthStates[Math.floor(Math.random() * 3)];
-      signalStats.value.today = Math.max(5, Math.min(20, signalStats.value.today + (Math.random() > 0.5 ? 1 : -1)));
-      orderStats.value.pending = Math.max(0, Math.min(5, orderStats.value.pending + (Math.random() > 0.7 ? 1 : -1)));
-    };
+      const healthStates = ['healthy', 'warning', 'danger']
+      strategyStatus.value.health = healthStates[Math.floor(Math.random() * 3)]
+      signalStats.value.today = Math.max(5, Math.min(20, signalStats.value.today + (Math.random() > 0.5 ? 1 : -1)))
+      orderStats.value.pending = Math.max(0, Math.min(5, orderStats.value.pending + (Math.random() > 0.7 ? 1 : -1)))
+    }
 
-    // 切换用户菜单
-    const toggleUserMenu = () => {
-      userMenuOpen.value = !userMenuOpen.value;
-    };
-
-    // 点击外部关闭菜单
-    const closeUserMenu = (event) => {
-      if (!event.target.closest('.user-dropdown')) {
-        userMenuOpen.value = false;
-      }
-    };
-
-    let timeInterval;
-    let tradingInterval;
+    let timeInterval
+    let tradingInterval
 
     onMounted(() => {
-      updateTime();
-      timeInterval = setInterval(updateTime, 1000);
-      tradingInterval = setInterval(updateTradingStatus, 10000);
-      document.addEventListener('click', closeUserMenu);
-    });
+      updateTime()
+      timeInterval = setInterval(updateTime, 1000)
+      tradingInterval = setInterval(updateTradingStatus, 10000)
+    })
 
     onUnmounted(() => {
-      if (timeInterval) clearInterval(timeInterval);
-      if (tradingInterval) clearInterval(tradingInterval);
-      document.removeEventListener('click', closeUserMenu);
-    });
+      if (timeInterval) clearInterval(timeInterval)
+      if (tradingInterval) clearInterval(tradingInterval)
+    })
 
-    const handleCommand = (command) => {
-      userMenuOpen.value = false;
-      if (command === "logout") {
-        router.push("/login");
-      } else if (command === "settings") {
-        router.push("/system/settings");
-      } else if (command === "profile") {
-        router.push("/user/profile");
+    const handleCommand = (key) => {
+      if (key === "logout") {
+        router.push("/login")
+      } else if (key === "settings") {
+        router.push("/system/settings")
+      } else if (key === "profile") {
+        router.push("/user/profile")
       }
-    };
+    }
 
     return {
       formattedTime,
@@ -293,18 +330,222 @@ export default {
       signalStats,
       orderStats,
       riskLevel,
-      userMenuOpen,
-      toggleUserMenu,
+      userMenuOptions,
       handleCommand,
       getHealthText,
       getRiskDescription,
+      getMarketChangeType,
       userName: props.userName
-    };
+    }
   },
-};
+})
 </script>
 
 <style lang="scss" scoped>
-// 引入头部专用样式
-@use '@/assets/scss/header';
+.app-header {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  padding: 0 16px;
+  background-color: var(--n-card-color);
+  border-bottom: 1px solid var(--n-border-color);
+  box-shadow: var(--n-box-shadow-1);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+  margin-right: 32px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--n-text-color-1);
+}
+
+.logo-icon {
+  margin-right: 8px;
+  color: var(--n-primary-color);
+}
+
+.status-section {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  margin-right: 24px;
+}
+
+.market-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.status-open {
+  background-color: var(--n-success-color);
+}
+
+.market-data {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.market-name {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+
+.market-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+
+.trading-session {
+  font-size: 14px;
+  color: var(--n-text-color-2);
+}
+
+.session-icon {
+  margin-right: 6px;
+}
+
+.header-widgets {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-right: 24px;
+}
+
+.header-widget {
+  padding: 6px 12px;
+  background-color: var(--n-hover-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s var(--n-bezier);
+}
+
+.header-widget:hover {
+  background-color: var(--n-pressed-color);
+}
+
+.widget-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.widget-icon {
+  color: var(--n-text-color-3);
+}
+
+.widget-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.healthy {
+  background-color: var(--n-success-color);
+}
+
+.status-dot.warning {
+  background-color: var(--n-warning-color);
+}
+
+.status-dot.danger {
+  background-color: var(--n-error-color);
+}
+
+.risk-level.risk-low {
+  border-left: 3px solid var(--n-success-color);
+}
+
+.risk-level.risk-medium {
+  border-left: 3px solid var(--n-warning-color);
+}
+
+.risk-level.risk-high {
+  border-left: 3px solid var(--n-error-color);
+}
+
+.time-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-right: 24px;
+}
+
+.current-date {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+
+.current-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--n-text-color-1);
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+}
+
+.user-dropdown {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.2s var(--n-bezier);
+}
+
+.user-dropdown:hover {
+  background-color: var(--n-hover-color);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-name {
+  font-size: 14px;
+  color: var(--n-text-color-1);
+  font-weight: 500;
+}
+
+.dropdown-icon {
+  color: var(--n-text-color-3);
+  transition: transform 0.2s var(--n-bezier);
+}
+
+.user-dropdown:hover .dropdown-icon {
+  transform: rotate(180deg);
+}
 </style>

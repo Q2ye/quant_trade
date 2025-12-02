@@ -1,13 +1,28 @@
+<!-- IndexDetail.vue - 使用 Naive UI 重构 -->
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  BarChartOutlined
-} from '@ant-design/icons-vue'
+  NCard,
+  NTabs,
+  NTabPane,
+  NDescriptions,
+  NDescriptionsItem,
+  NTag,
+  NGrid,
+  NGi,
+  NStatistic,
+  NSpace,
+  NIcon,
+  useLoadingBar
+} from 'naive-ui'
+import { SmartIcon } from '@/components/SmartIcon'
 
 const route = useRoute()
 const indexCode = ref(route.params.code as string)
+const loadingBar = useLoadingBar()
 
+// 指数详情接口
 interface IndexDetail {
   ts_code: string
   name: string
@@ -36,8 +51,10 @@ const loading = ref(false)
 const indexDetail = ref<IndexDetail | null>(null)
 const activeTab = ref('overview')
 
+// 加载指数详情
 const loadIndexDetail = async () => {
   loading.value = true
+  loadingBar.start()
   try {
     const response = await fetch(`/api/market/indexes/${indexCode.value}`)
     indexDetail.value = await response.json()
@@ -45,12 +62,23 @@ const loadIndexDetail = async () => {
     console.error('加载指数详情失败:', error)
   } finally {
     loading.value = false
+    loadingBar.finish()
   }
 }
 
-const statisticValueStyle = computed(() => ({
-  color: indexDetail.value && indexDetail.value.change_percent >= 0 ? '#f5222d' : '#52c41a'
-}))
+// 计算涨跌颜色样式
+const getChangeColor = (change?: number) => {
+  if (!change && change !== 0) return ''
+  return change >= 0 ? 'text-green-600' : 'text-red-600'
+}
+
+// 计算统计值样式
+const getStatisticStyle = (value?: number) => {
+  if (!value && value !== 0) return {}
+  return {
+    color: value >= 0 ? 'var(--n-success-color)' : 'var(--n-error-color)'
+  }
+}
 
 onMounted(() => {
   loadIndexDetail()
@@ -59,182 +87,195 @@ onMounted(() => {
 
 <template>
   <div class="index-detail-page">
-    <a-card :loading="loading">
-      <template #title>
+    <NCard :loading="loading" class="detail-card">
+      <!-- 标题区域 -->
+      <template #header>
         <div class="page-header">
-          <h2 style="margin: 0;">
-            {{ indexDetail?.name || '指数详情' }}
-            <span style="font-size: 16px; color: #666; margin-left: 8px;">
-              {{ indexDetail?.ts_code }}
-            </span>
-          </h2>
-          <div v-if="indexDetail" class="price-display">
-            <span class="current-price">{{ indexDetail.current_point?.toFixed(2) }}</span>
-            <span class="price-change" :class="{ rise: indexDetail.change_percent && indexDetail.change_percent >= 0, fall: indexDetail.change_percent && indexDetail.change_percent < 0 }">
-              {{ indexDetail.change >= 0 ? '+' : '' }}{{ indexDetail.change?.toFixed(2) }}
-              ({{ indexDetail.change_percent && indexDetail.change_percent >= 0 ? '+' : '' }}{{ indexDetail.change_percent?.toFixed(2) }}%)
-            </span>
+          <div class="header-left">
+            <h2 class="page-title">
+              {{ indexDetail?.name || '指数详情' }}
+              <span class="index-code">
+                {{ indexDetail?.ts_code }}
+              </span>
+            </h2>
+          </div>
+          <div v-if="indexDetail" class="header-right">
+            <div class="price-display">
+              <span class="current-price">{{ indexDetail.current_point?.toFixed(2) }}</span>
+              <span
+                :class="[
+                  'price-change',
+                  getChangeColor(indexDetail.change_percent)
+                ]"
+              >
+                {{ indexDetail.change >= 0 ? '+' : '' }}{{ indexDetail.change?.toFixed(2) }}
+                ({{ indexDetail.change_percent >= 0 ? '+' : '' }}{{ indexDetail.change_percent?.toFixed(2) }}%)
+              </span>
+            </div>
           </div>
         </div>
       </template>
 
-      <a-tabs v-model:activeKey="activeTab">
-        <a-tab-pane key="overview" tab="概览">
-          <a-descriptions title="基本信息" bordered :column="2">
-            <a-descriptions-item label="指数全称">
+      <!-- 标签页 -->
+      <NTabs v-model:value="activeTab" class="detail-tabs">
+        <NTabPane name="overview" tab="概览">
+          <!-- 基本信息 -->
+          <NDescriptions label-placement="left" :column="2" bordered class="basic-info">
+            <NDescriptionsItem label="指数全称">
               {{ indexDetail?.fullname }}
-            </a-descriptions-item>
-            <a-descriptions-item label="市场">
-              <a-tag color="blue">{{ indexDetail?.market }}</a-tag>
-            </a-descriptions-item>
-            <a-descriptions-item label="发布机构">
+            </NDescriptionsItem>
+            <NDescriptionsItem label="市场">
+              <NTag :bordered="false" type="info" size="small">
+                {{ indexDetail?.market }}
+              </NTag>
+            </NDescriptionsItem>
+            <NDescriptionsItem label="发布机构">
               {{ indexDetail?.publisher }}
-            </a-descriptions-item>
-            <a-descriptions-item label="分类">
+            </NDescriptionsItem>
+            <NDescriptionsItem label="分类">
               {{ indexDetail?.category }}
-            </a-descriptions-item>
-            <a-descriptions-item label="基日">
+            </NDescriptionsItem>
+            <NDescriptionsItem label="基日">
               {{ indexDetail?.base_date }}
-            </a-descriptions-item>
-            <a-descriptions-item label="基点">
+            </NDescriptionsItem>
+            <NDescriptionsItem label="基点">
               {{ indexDetail?.base_point }}
-            </a-descriptions-item>
-            <a-descriptions-item label="成分股数量">
+            </NDescriptionsItem>
+            <NDescriptionsItem label="成分股数量">
               {{ indexDetail?.components_count }} 只
-            </a-descriptions-item>
-          </a-descriptions>
+            </NDescriptionsItem>
+          </NDescriptions>
 
-          <a-row :gutter="16" style="margin-top: 24px;">
-            <a-col :span="6">
-              <a-statistic
-                title="开盘"
+          <!-- 行情数据 -->
+          <NGrid :cols="4" :x-gap="16" class="market-data">
+            <NGi>
+              <NStatistic
+                label="开盘"
                 :value="indexDetail?.open"
                 :precision="2"
-                :value-style="statisticValueStyle"
+                :value-style="getStatisticStyle(indexDetail?.open)"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="最高"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="最高"
                 :value="indexDetail?.high"
                 :precision="2"
-                :value-style="statisticValueStyle"
+                :value-style="getStatisticStyle(indexDetail?.change)"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="最低"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="最低"
                 :value="indexDetail?.low"
                 :precision="2"
-                :value-style="statisticValueStyle"
+                :value-style="getStatisticStyle(indexDetail?.change)"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="昨收"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="昨收"
                 :value="indexDetail?.pre_close"
                 :precision="2"
               />
-            </a-col>
-          </a-row>
+            </NGi>
+          </NGrid>
 
-          <a-row :gutter="16" style="margin-top: 24px;">
-            <a-col :span="6">
-              <a-statistic
-                title="成交量(亿)"
+          <!-- 其他数据 -->
+          <NGrid :cols="4" :x-gap="16" class="additional-data">
+            <NGi>
+              <NStatistic
+                label="成交量(亿)"
                 :value="indexDetail?.volume ? indexDetail.volume / 100000000 : 0"
                 :precision="2"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="成交额(亿)"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="成交额(亿)"
                 :value="indexDetail?.amount ? indexDetail.amount / 100000000 : 0"
                 :precision="2"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="市盈率(PE)"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="市盈率(PE)"
                 :value="indexDetail?.pe"
                 :precision="2"
               />
-            </a-col>
-            <a-col :span="6">
-              <a-statistic
-                title="市净率(PB)"
+            </NGi>
+            <NGi>
+              <NStatistic
+                label="市净率(PB)"
                 :value="indexDetail?.pb"
                 :precision="2"
               />
-            </a-col>
-          </a-row>
-        </a-tab-pane>
+            </NGi>
+          </NGrid>
+        </NTabPane>
 
-        <a-tab-pane key="chart" tab="图表分析">
+        <NTabPane name="chart" tab="图表分析">
           <div class="chart-container">
-            <!-- 这里可以集成K线图组件 -->
-            <div style="height: 500px; background: #f5f5f5; display: flex; align-items: center; justify-content: center;">
-              <a-space direction="vertical" align="center">
-                <BarChartOutlined style="font-size: 48px; color: #ccc;" />
+            <!-- 图表展示区域 -->
+            <div class="chart-placeholder">
+              <NSpace vertical align="center">
+                <NIcon size="48" color="#ccc">
+                  <SmartIcon name="BarChart" />
+                </NIcon>
                 <div style="color: #999;">指数图表展示区域</div>
-              </a-space>
+              </NSpace>
             </div>
           </div>
-        </a-tab-pane>
+        </NTabPane>
 
-        <a-tab-pane key="components" tab="成分股">
+        <NTabPane name="components" tab="成分股">
           <div class="components-container">
             <!-- 成分股列表 -->
-            <div style="height: 400px; background: #f5f5f5; display: flex; align-items: center; justify-content: center;">
+            <div class="components-placeholder">
               <div style="color: #999;">成分股列表展示区域</div>
             </div>
           </div>
-        </a-tab-pane>
-      </a-tabs>
-    </a-card>
+        </NTabPane>
+      </NTabs>
+    </NCard>
   </div>
 </template>
 
 <style scoped lang="scss">
 @use '@/assets/scss/variables' as *;
 @use '@/assets/scss/mixins' as mixin;
-@use 'sass:map';
 
 .index-detail-page {
-  .main-content {
-    @include mixin.content-with-sidebar;
-    margin: 0 auto;
-  }
+  @include mixin.content-with-base;
 }
 
 .detail-card {
   @include mixin.card-base;
   padding: map.get($spacers, 4);
-
-  :deep(.ant-card-head) {
-    @include mixin.card-header-base;
-    border-bottom: $border-width solid $border-color;
-  }
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding-bottom: map.get($spacers, 3);
-  border-bottom: $border-width solid $border-color;
+  border-bottom: $border-width solid var(--n-border-color);
   margin-bottom: map.get($spacers, 4);
+}
+
+.header-left {
+  flex: 1;
 }
 
 .page-title {
   margin: 0;
   font-size: $font-size-base * 1.5;
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
+  font-weight: 600;
+  color: var(--n-text-color-base);
 
   .index-code {
     font-size: $font-size-base;
-    color: $text-secondary;
+    color: var(--n-text-color-2);
     margin-left: map.get($spacers, 2);
   }
 }
@@ -244,43 +285,36 @@ onMounted(() => {
 }
 
 .current-price {
+  display: block;
   font-size: $font-size-base * 2;
-  font-weight: $font-weight-bold;
-  color: $text-primary;
-  margin-right: map.get($spacers, 3);
+  font-weight: 700;
+  color: var(--n-text-color-base);
+  margin-bottom: map.get($spacers, 1);
 }
 
 .price-change {
+  display: block;
   font-size: $font-size-base * 1.1;
-  font-weight: $font-weight-semibold;
-
-  &.up {
-    color: $stock-up-color;
-  }
-
-  &.down {
-    color: $stock-down-color;
-  }
-
-  &.flat {
-    color: $stock-flat-color;
-  }
+  font-weight: 600;
 }
 
+// 标签页样式
 .detail-tabs {
-  :deep(.ant-tabs-nav) {
+  :deep(.n-tabs-nav) {
     margin-bottom: map.get($spacers, 4);
 
-    .ant-tabs-tab {
-      font-weight: $font-weight-medium;
+    .n-tabs-tab {
+      font-weight: 500;
 
-      &.ant-tabs-tab-active .ant-tabs-tab-btn {
-        color: $accent-color;
+      &.n-tabs-tab--active {
+        .n-tabs-tab__label {
+          color: var(--n-primary-color);
+        }
       }
     }
 
-    .ant-tabs-ink-bar {
-      background: $accent-color;
+    .n-tabs-bar {
+      background: var(--n-primary-color);
     }
   }
 }
@@ -289,15 +323,8 @@ onMounted(() => {
   margin-bottom: map.get($spacers, 5);
 }
 
-.section-title {
-  @include mixin.section-title-base;
-  margin-bottom: map.get($spacers, 4);
-}
-
-.market-data {
-  background: $secondary-bg;
-  border-radius: $border-radius;
-  padding: map.get($spacers, 4);
+.market-data,
+.additional-data {
   margin-top: map.get($spacers, 4);
 }
 
@@ -309,22 +336,12 @@ onMounted(() => {
 .chart-placeholder,
 .components-placeholder {
   height: 400px;
-  background: $secondary-bg;
-  border-radius: $border-radius;
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: $border-width dashed $border-color;
-}
-
-.chart-icon {
-  font-size: 48px;
-  color: $text-secondary;
-}
-
-.chart-text,
-.placeholder-text {
-  color: $text-secondary;
+  border: $border-width dashed var(--n-border-color);
 }
 
 // 响应式调整
@@ -341,16 +358,6 @@ onMounted(() => {
 }
 
 @include mixin.media-breakpoint-down(md) {
-  .index-detail-page .main-content {
-    padding: map.get($spacers, 4);
-  }
-}
-
-@include mixin.media-breakpoint-down(sm) {
-  .index-detail-page .main-content {
-    padding: map.get($spacers, 3);
-  }
-
   .current-price {
     font-size: $font-size-base * 1.5;
   }
