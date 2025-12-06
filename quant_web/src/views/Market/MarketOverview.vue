@@ -504,22 +504,562 @@ onMounted(() => {
   refreshData()
 })
 </script>
+
 <style lang="scss" scoped>
-// 导入所有样式资源
-@use '@/assets/scss/global' as *;
+// 引入变量和混入文件
+@use '@/assets/scss/variables' as *;
 @use '@/assets/scss/mixins' as *;
 
 .market-overview-page {
-  @extend .app-container;  // 继承布局容器
+  // 页面基础布局
+  background-color: $body-color;
+  min-height: calc(100vh - var(--header-height));
+  padding: spacer(4);
 
-  .common-page-header {
-    @include page-header;  // 使用页面头部混入
+  // 移动端适配
+  @include media-breakpoint-down(sm) {
+    padding: spacer(2);
   }
 
-  .market-index-card {
-    @include card-base;    // 使用卡片基础样式
-    @extend .bg-card;            // 使用背景色工具类
-    @extend .shadow;             // 使用阴影工具类
+  .common-page-header {
+    @include page-header-base;
+  }
+
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: spacer(6);
+  }
+
+  // 市场指数概览
+  .index-overview {
+    @include content-area;
+
+    .market-section-title {
+      @include card-title-base;
+      margin-bottom: spacer(4);
+
+      .title-icon {
+        font-size: 1.25rem;
+        color: $primary-color;
+      }
+    }
+
+    .market-index-grid {
+      @include flexible-grid(4, (
+        lg: 2,
+        md: 2,
+        sm: 1
+      ));
+      margin-bottom: spacer(6);
+
+      .market-index-card {
+        @include card-base;
+        height: 100%;
+        border: 1px solid $border-color;
+        transition: all var(--transition-normal);
+        cursor: pointer;
+
+        &:hover {
+          @include box-shadow('2');
+          transform: translateY(-2px);
+          border-color: $primary-color;
+        }
+
+        .index-content {
+          padding: spacer(3);
+
+          .index-header {
+            @include flex-layout-between;
+            margin-bottom: spacer(3);
+
+            .index-name {
+              font-size: 0.875rem;
+              font-weight: 500;
+              color: $text-color-1;
+            }
+
+            .index-code {
+              font-size: 0.75rem;
+              color: $text-color-3;
+              background: $secondary-bg;
+              padding: spacer(0.5) spacer(1.5);
+              border-radius: $border-radius-small;
+            }
+          }
+
+          .status-content {
+            display: flex;
+            align-items: center;
+            gap: spacer(3);
+
+            .status-icon {
+              @include icon-container('md', 'primary');
+
+              &.running {
+                background: color-with-opacity($stock-up-color, 0.1);
+                color: $stock-up-color;
+              }
+
+              &.remaining {
+                background: color-with-opacity($stock-down-color, 0.1);
+                color: $stock-down-color;
+              }
+
+              &.time {
+                background: color-with-opacity($stock-flat-color, 0.1);
+                color: $stock-flat-color;
+              }
+
+              :deep(svg) {
+                width: 1.25rem;
+                height: 1.25rem;
+              }
+            }
+
+            .status-info {
+              flex: 1;
+
+              .index-value {
+                font-size: 1.5rem;
+                font-weight: 600;
+                color: $text-color-1;
+                margin-bottom: spacer(0.5);
+              }
+
+              .index-change {
+                font-size: 0.875rem;
+                font-weight: 500;
+
+                &.up {
+                  color: $stock-up-color;
+                }
+
+                &.down {
+                  color: $stock-down-color;
+                }
+
+                &.flat {
+                  color: $stock-flat-color;
+                }
+
+                .change-value {
+                  margin-right: spacer(0.5);
+                }
+
+                .change-percent {
+                  font-size: 0.8125rem;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 功能导航
+  .function-nav {
+    @include content-area;
+
+    .market-section-title {
+      @include card-title-base;
+      margin-bottom: spacer(4);
+
+      .title-icon {
+        font-size: 1.25rem;
+        color: $purple-color;
+      }
+    }
+
+    .function-grid {
+      @include card-grid;
+
+      .function-nav-card {
+        @include function-card;
+
+        .function-content {
+          .function-header {
+            margin-bottom: spacer(3);
+
+            .function-icon {
+              @include icon-container('md', 'primary');
+
+              &.accent {
+                @include icon-container('md', 'primary');
+              }
+
+              &.purple {
+                @include icon-container('md', 'purple');
+              }
+
+              &.info {
+                @include icon-container('md', 'info');
+              }
+
+              &.danger {
+                @include icon-container('md', 'error');
+              }
+
+              &.warning {
+                @include icon-container('md', 'warning');
+              }
+
+              &.success {
+                @include icon-container('md', 'success');
+              }
+
+              :deep(svg) {
+                width: 1.25rem;
+                height: 1.25rem;
+              }
+            }
+
+            .function-title {
+              font-size: 1rem;
+              font-weight: 600;
+              color: $text-color-1;
+              margin: 0;
+              margin-top: spacer(1);
+            }
+          }
+
+          .function-info {
+            .function-description {
+              font-size: 0.875rem;
+              color: $text-color-2;
+              margin-bottom: spacer(3);
+              line-height: 1.5;
+            }
+
+            .function-stats {
+              margin-bottom: spacer(3);
+
+              .stat-item {
+                @include stat-item;
+
+                .stat-label {
+                  font-size: 0.8125rem;
+                  color: $text-color-3;
+                }
+
+                .stat-value {
+                  font-weight: 600;
+                  color: $text-color-1;
+
+                  &.up {
+                    color: $stock-up-color;
+                  }
+
+                  &.down {
+                    color: $stock-down-color;
+                  }
+                }
+              }
+            }
+
+            .function-footer {
+              font-size: 0.75rem;
+              color: $text-color-3;
+              padding-top: spacer(2);
+              border-top: 1px solid $divider-color;
+
+              .update-time {
+                display: block;
+              }
+            }
+          }
+        }
+
+        &:hover {
+          .function-header {
+            .function-icon {
+              transform: scale(1.1);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 市场热点
+  .market-hotspots {
+    @include content-area;
+
+    .market-section-title {
+      @include card-title-base;
+      margin-bottom: spacer(4);
+
+      .title-icon {
+        font-size: 1.25rem;
+        color: $error-color;
+      }
+    }
+
+    .hotspot-grid {
+      @include grid-layout(2);
+
+      @include media-breakpoint-down(lg) {
+        grid-template-columns: 1fr;
+        gap: spacer(4);
+      }
+
+      .hotspot-card {
+        @include hotspot-card;
+
+        .card-header {
+          @include flex-layout-between;
+          padding: 0;
+          margin-bottom: spacer(3);
+
+          .card-title {
+            @include card-title-base;
+            font-size: 1rem;
+
+            .card-title-icon {
+              font-size: 1rem;
+              color: $primary-color;
+            }
+          }
+
+          .more-btn {
+            color: $text-color-2;
+            font-size: 0.8125rem;
+
+            &:hover {
+              color: $primary-color;
+            }
+          }
+        }
+
+        .hotspot-list {
+          .hotspot-item {
+            @include hotspot-item;
+
+            .item-icon {
+              .trend-icon {
+                font-size: 1rem;
+
+                &.up {
+                  color: $stock-up-color;
+                }
+              }
+            }
+
+            .stock-info {
+              .stock-name {
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: $text-color-1;
+                margin-bottom: spacer(0.5);
+              }
+
+              .stock-code {
+                font-size: 0.75rem;
+                color: $text-color-3;
+              }
+            }
+
+            .hotspot-change {
+              font-weight: 600;
+              font-size: 0.875rem;
+
+              &.up {
+                color: $stock-up-color;
+              }
+
+              &.down {
+                color: $stock-down-color;
+              }
+
+              &.flat {
+                color: $stock-flat-color;
+              }
+            }
+
+            .hotspot-price {
+              font-weight: 500;
+              font-size: 0.875rem;
+              color: $text-color-1;
+              margin-left: auto;
+              min-width: 80px;
+              text-align: right;
+            }
+          }
+        }
+
+        .money-flow-list {
+          .flow-item {
+            @include money-flow-item;
+
+            .item-icon {
+              .flow-icon {
+                font-size: 1rem;
+
+                &.up {
+                  color: $stock-up-color;
+                }
+
+                &.down {
+                  color: $stock-down-color;
+                }
+              }
+            }
+
+            .stock-info {
+              .stock-name {
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: $text-color-1;
+                margin-bottom: spacer(0.5);
+              }
+
+              .stock-code {
+                font-size: 0.75rem;
+                color: $text-color-3;
+              }
+            }
+
+            .flow-bar {
+              flex: 1;
+              max-width: 120px;
+            }
+
+            .flow-amount {
+              font-weight: 600;
+              font-size: 0.875rem;
+              min-width: 80px;
+              text-align: right;
+
+              &.up {
+                color: $stock-up-color;
+              }
+
+              &.down {
+                color: $stock-down-color;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 响应式调整
+  @include media-breakpoint-down(lg) {
+    .market-index-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .function-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+
+  @include media-breakpoint-down(md) {
+    .market-index-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .function-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .common-page-header {
+      .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: spacer(3);
+
+        .header-actions {
+          width: 100%;
+          justify-content: flex-start;
+        }
+      }
+    }
+  }
+
+  @include media-breakpoint-down(sm) {
+    .market-index-card {
+      .index-content {
+        .status-content {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: spacer(2) !important;
+
+          .status-info {
+            width: 100%;
+          }
+        }
+      }
+    }
+  }
+}
+
+// 状态颜色辅助类
+.status-up { color: $stock-up-color !important; }
+.status-down { color: $stock-down-color !important; }
+.status-neutral { color: $stock-flat-color !important; }
+
+.bg-up { background-color: color-with-opacity($stock-up-color, 0.1) !important; }
+.bg-down { background-color: color-with-opacity($stock-down-color, 0.1) !important; }
+.bg-neutral { background-color: color-with-opacity($stock-flat-color, 0.1) !important; }
+
+// 动画效果
+.fade-in {
+  @include fade-in;
+}
+
+.spin {
+  @include loading-spinner;
+}
+
+// 自定义滚动条
+.market-overview-page {
+  .hotspot-list,
+  .money-flow-list {
+    max-height: 300px;
+    overflow-y: auto;
+    @include custom-scrollbar;
+  }
+}
+
+// Vue深度选择器（用于修改Naive UI组件内部样式）
+:deep(.n-card) {
+  &.market-index-card,
+  &.function-nav-card,
+  &.hotspot-card {
+    .n-card__content {
+      padding: 0;
+    }
+  }
+}
+
+:deep(.n-progress) {
+  &.n-progress--line {
+    .n-progress-content {
+      .n-progress-graph {
+        .n-progress-graph-line {
+          .n-progress-graph-line-fill {
+            transition: width var(--transition-normal);
+          }
+        }
+      }
+    }
+  }
+}
+
+:deep(.n-button) {
+  &.refresh-btn {
+    .n-button__icon {
+      margin-right: spacer(1);
+    }
+  }
+
+  &.more-btn {
+    .n-button__icon {
+      margin-left: spacer(0.5);
+    }
   }
 }
 </style>

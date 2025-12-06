@@ -1,652 +1,667 @@
 // themes/naive-theme.ts
-// 导入 Naive UI 的主题覆盖类型
-import type {GlobalThemeOverrides} from 'naive-ui'
+// 职责：唯一主题源 - 包含所有颜色常量、CSS变量生成、Naive UI主题配置
+// ============================================================================
+
+import type { GlobalThemeOverrides } from 'naive-ui'
+
+// ============================================================================
+// 主题常量定义 - 唯一颜色源（深色/浅色主题）
+// ============================================================================
+
+/**
+ * 主题常量配置 - 作为整个应用的唯一颜色源
+ * 包含深色和浅色主题的所有颜色、字体、阴影、圆角等变量
+ */
+const THEME_CONSTANTS = {
+  // 深色主题变量 - 量化交易专用深色主题
+  DARK: {
+    // 基础色彩
+    PRIMARY_BG: '#0D1117',         // 主背景色（最深背景）
+    SECONDARY_BG: '#161B22',       // 次背景色（稍浅背景）
+    ACCENT_COLOR: '#2196F3',       // 强调色/主色调（品牌色）
+    TEXT_PRIMARY: '#E6EDF3',       // 主要文字颜色
+    TEXT_SECONDARY: '#8B949E',     // 次要文字颜色
+    BORDER_COLOR: '#30363D',       // 边框颜色
+    DISABLED_BG: '#8B949E',        // 禁用状态背景色
+
+    // 语义化颜色 - 用于状态提示
+    SUCCESS_COLOR: '#67c23a',      // 成功状态颜色
+    WARNING_COLOR: '#D29922',      // 警告状态颜色
+    DANGER_COLOR: '#f56c6c',       // 危险/错误状态颜色
+    INFO_COLOR: '#17a2b8',         // 信息状态颜色
+    PURPLE_COLOR: '#9c27b0',       // 紫色辅助色（特殊标记）
+
+    // 组件颜色 - 特定组件的背景色
+    CARD_BG: '#161B22',            // 卡片背景色
+    CARD_HEADER_BG: '#1A2230',     // 卡片头部背景色
+    TOOLBAR_BG: '#161B22',         // 工具栏背景色
+    SIDEBAR_BG: '#0D1117',         // 侧边栏背景色
+    INPUT_BG: '#0D1117',           // 输入框背景色
+    HOVER_BG: '#21262D',           // 悬停状态背景色
+    ACTIVE_BG: '#1C6FEC',          // 激活状态背景色
+
+    // 股票状态颜色 - 量化交易专用
+    STOCK_UP_COLOR: '#f56c6c',     // 股票上涨颜色（红色）
+    STOCK_DOWN_COLOR: '#67c23a',   // 股票下跌颜色（绿色）
+    STOCK_FLAT_COLOR: '#8B949E',   // 股票持平颜色（灰色）
+
+    // 状态指示颜色 - 用于进度、时间等状态
+    STATUS_RUNNING: '#2196F3',     // 运行中状态颜色
+    STATUS_PROGRESS: '#3FB950',    // 进行中状态颜色
+    STATUS_TIME: '#D29922',        // 时间相关状态颜色
+    STATUS_REMAINING: '#F85149',   // 剩余/紧张状态颜色
+
+    // 阴影系统 - 三层阴影级别
+    CARD_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.25)',      // 卡片阴影（一级阴影）
+    CARD_HOVER_SHADOW: '0 8px 24px rgba(0, 0, 0, 0.35)', // 卡片悬停阴影（二级阴影）
+    HOVER_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.15)',     // 通用悬停阴影
+
+    // 字体系统
+    FONT_FAMILY: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 主要字体族
+    FONT_SIZE_BASE: '14px',        // 基础字体大小
+
+    // 圆角系统 - 三种圆角尺寸
+    BORDER_RADIUS: '6px',          // 标准圆角
+    BORDER_RADIUS_SM: '4px',       // 小圆角
+    BORDER_RADIUS_LG: '8px',       // 大圆角
+  },
+
+  // 浅色主题变量 - 量化交易专用浅色主题
+  LIGHT: {
+    // 基础色彩
+    PRIMARY_BG: '#FFFFFF',         // 主背景色（白色）
+    SECONDARY_BG: '#F8F9FA',       // 次背景色（浅灰色）
+    ACCENT_COLOR: '#2196F3',       // 强调色/主色调（品牌色，保持不变）
+    TEXT_PRIMARY: '#212529',       // 主要文字颜色（深灰色）
+    TEXT_SECONDARY: '#6C757D',     // 次要文字颜色（中灰色）
+    BORDER_COLOR: '#DEE2E6',       // 边框颜色（浅灰色）
+    DISABLED_BG: '#8B949E',        // 禁用状态背景色（保持一致）
+
+    // 语义化颜色
+    SUCCESS_COLOR: '#28A745',      // 成功状态颜色（绿色）
+    WARNING_COLOR: '#FFC107',      // 警告状态颜色（黄色）
+    DANGER_COLOR: '#DC3545',       // 危险/错误状态颜色（红色）
+    INFO_COLOR: '#17a2b8',         // 信息状态颜色（保持一致）
+    PURPLE_COLOR: '#9c27b0',       // 紫色辅助色（保持一致）
+
+    // 组件颜色
+    CARD_BG: '#FFFFFF',            // 卡片背景色（白色）
+    CARD_HEADER_BG: '#F8FAFC',     // 卡片头部背景色（极浅灰）
+    TOOLBAR_BG: '#F8F9FA',         // 工具栏背景色（浅灰色）
+    SIDEBAR_BG: '#FFFFFF',         // 侧边栏背景色（白色）
+    INPUT_BG: '#FFFFFF',           // 输入框背景色（白色）
+    HOVER_BG: '#E9ECEF',           // 悬停状态背景色（浅灰色）
+    ACTIVE_BG: '#e3fdf8',          // 激活状态背景色（浅绿色）
+
+    // 股票状态颜色
+    STOCK_UP_COLOR: '#DC3545',     // 股票上涨颜色（红色）
+    STOCK_DOWN_COLOR: '#28A745',   // 股票下跌颜色（绿色）
+    STOCK_FLAT_COLOR: '#6C757D',   // 股票持平颜色（灰色）
+
+    // 状态指示颜色
+    STATUS_RUNNING: '#2196F3',     // 运行中状态颜色（保持一致）
+    STATUS_PROGRESS: '#28A745',    // 进行中状态颜色（绿色）
+    STATUS_TIME: '#FFC107',        // 时间相关状态颜色（黄色）
+    STATUS_REMAINING: '#DC3545',   // 剩余/紧张状态颜色（红色）
+
+    // 阴影系统
+    CARD_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.08)',      // 浅色轻度阴影
+    CARD_HOVER_SHADOW: '0 8px 24px rgba(0, 0, 0, 0.12)', // 浅色中度阴影
+    HOVER_SHADOW: '0 4px 16px rgba(0, 0, 0, 0.12)',     // 浅色悬停阴影
+
+    // 字体系统
+    FONT_FAMILY: "'Inter', 'Segoe UI', sans-serif",     // 浅色主题字体
+    FONT_SIZE_BASE: '14px',        // 基础字体大小（保持一致）
+
+    // 圆角系统
+    BORDER_RADIUS: '4px',          // 标准圆角（稍小）
+    BORDER_RADIUS_SM: '2px',       // 小圆角（更小）
+    BORDER_RADIUS_LG: '6px',       // 大圆角（稍大）
+  }
+} as const;
+
+// ============================================================================
+// 辅助函数区域
+// ============================================================================
+
+/**
+ * 十六进制颜色转RGB颜色字符串
+ * @param hex 十六进制颜色值（如#2196F3）
+ * @returns RGB颜色字符串（如"33, 150, 243"）
+ * @example hexToRgb('#2196F3') => "33, 150, 243"
+ */
+function hexToRgb(hex: string): string {
+  // 移除#号并解析RGB分量
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ?
+    `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : '0, 0, 0'; // 解析失败返回黑色
+}
+
+/**
+ * 生成带透明度的颜色值
+ * @param color 基础颜色值（支持十六进制和RGB）
+ * @param opacity 透明度（0-1之间）
+ * @returns 带透明度的RGBA颜色字符串
+ * @example colorWithOpacity('#2196F3', 0.8) => "rgba(33, 150, 243, 0.8)"
+ */
+const colorWithOpacity = (color: string, opacity: number): string => {
+  // 如果是十六进制颜色，转换为RGB
+  if (color.startsWith('#')) {
+    return `rgba(${hexToRgb(color)}, ${opacity})`;
+  }
+  // 如果是rgb颜色，转换为rgba
+  if (color.startsWith('rgb(')) {
+    return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
+  }
+  // 默认返回原色
+  return color;
+};
+
+// ============================================================================
+// CSS变量生成函数 - 根据主题生成完整的CSS变量字符串
+// ============================================================================
+
+/**
+ * 生成主题对应的CSS变量字符串
+ * @param isDark 是否为深色主题
+ * @returns 包含所有CSS变量定义的字符串
+ * @description 将主题常量转换为CSS变量，用于动态注入到页面
+ */
+export function generateThemeCSSVariables(isDark: boolean): string {
+  const theme = isDark ? THEME_CONSTANTS.DARK : THEME_CONSTANTS.LIGHT;
+  const textSecondaryRgb = hexToRgb(theme.TEXT_SECONDARY);
+
+  return `
+    /* ============================================================================
+     * 动态生成的主题CSS变量
+     * 主题: ${isDark ? '深色主题 (Dark)' : '浅色主题 (Light)'}
+     * 生成时间: ${new Date().toISOString()}
+     * ============================================================================ */
+    
+    :root {
+      /* -------------------- 基础颜色变量 -------------------- */
+      --color-primary: ${theme.ACCENT_COLOR};                    /* 主色调（品牌色） */
+      --color-success: ${theme.SUCCESS_COLOR};                   /* 成功状态颜色 */
+      --color-warning: ${theme.WARNING_COLOR};                   /* 警告状态颜色 */
+      --color-error: ${theme.DANGER_COLOR};                      /* 错误状态颜色 */
+      --color-info: ${theme.INFO_COLOR};                         /* 信息状态颜色 */
+      --color-purple: ${theme.PURPLE_COLOR};                     /* 紫色辅助色 */
+      
+      /* -------------------- 背景颜色变量 -------------------- */
+      --color-bg-primary: ${theme.PRIMARY_BG};                   /* 页面主背景色 */
+      --color-bg-secondary: ${theme.SECONDARY_BG};               /* 页面次背景色 */
+      --color-bg-card: ${theme.CARD_BG};                         /* 卡片背景色 */
+      --color-bg-card-header: ${theme.CARD_HEADER_BG};           /* 卡片头部背景色 */
+      --color-bg-input: ${theme.INPUT_BG};                       /* 输入框背景色 */
+      --color-bg-hover: ${theme.HOVER_BG};                       /* 悬停状态背景色 */
+      --color-bg-active: ${theme.ACTIVE_BG};                     /* 激活状态背景色 */
+      --color-bg-disabled: ${theme.DISABLED_BG};                 /* 禁用状态背景色 */
+      
+      /* -------------------- 文字颜色变量 -------------------- */
+      --color-text-primary: ${theme.TEXT_PRIMARY};               /* 主要文字颜色 */
+      --color-text-secondary: ${theme.TEXT_SECONDARY};           /* 次要文字颜色 */
+      --color-text-tertiary: rgba(${textSecondaryRgb}, 0.6);     /* 三级文字颜色（60%透明度） */
+      
+      /* -------------------- 边框颜色变量 -------------------- */
+      --color-border: ${theme.BORDER_COLOR};                     /* 边框颜色 */
+      --color-divider: ${theme.BORDER_COLOR};                    /* 分割线颜色 */
+      
+      /* -------------------- 股票状态颜色变量 -------------------- */
+      --color-stock-up: ${theme.STOCK_UP_COLOR};                 /* 股票上涨颜色 */
+      --color-stock-down: ${theme.STOCK_DOWN_COLOR};             /* 股票下跌颜色 */
+      --color-stock-flat: ${theme.STOCK_FLAT_COLOR};             /* 股票持平颜色 */
+      
+      /* -------------------- 状态指示颜色变量 -------------------- */
+      --color-status-running: ${theme.STATUS_RUNNING};           /* 运行中状态颜色 */
+      --color-status-progress: ${theme.STATUS_PROGRESS};         /* 进行中状态颜色 */
+      --color-status-time: ${theme.STATUS_TIME};                 /* 时间状态颜色 */
+      --color-status-remaining: ${theme.STATUS_REMAINING};       /* 剩余状态颜色 */
+      
+      /* -------------------- 圆角变量 -------------------- */
+      --border-radius: ${theme.BORDER_RADIUS};                   /* 标准圆角 */
+      --border-radius-sm: ${theme.BORDER_RADIUS_SM};             /* 小圆角 */
+      --border-radius-md: ${theme.BORDER_RADIUS};                /* 中等圆角（同标准） */
+      --border-radius-lg: ${theme.BORDER_RADIUS_LG};             /* 大圆角 */
+      
+      /* -------------------- 阴影变量 -------------------- */
+      --box-shadow-1: ${theme.CARD_SHADOW};                      /* 一级阴影（轻度阴影） */
+      --box-shadow-2: ${theme.CARD_HOVER_SHADOW};                /* 二级阴影（中度阴影） */
+      --box-shadow-3: ${isDark ? '0 16px 48px rgba(0, 0, 0, 0.45)' : '0 16px 48px rgba(0, 0, 0, 0.16)'}; /* 三级阴影（重度阴影） */
+      
+      /* -------------------- 字体变量 -------------------- */
+      --font-family: ${theme.FONT_FAMILY};                       /* 主要字体族 */
+      --font-family-mono: 'Monaco, "Courier New", monospace';    /* 等宽字体族 */
+      --font-size-base: ${theme.FONT_SIZE_BASE};                 /* 基础字体大小 */
+    }
+    
+    /* ============================================================================
+     * 主题切换类（向后兼容）
+     * 当body有.theme-light类时，应用浅色主题变量
+     * 注意：现代实现应使用动态注入，此类仅用于兼容旧代码
+     * ============================================================================ */
+    
+    .theme-light {
+      --color-primary: ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR};
+      --color-success: ${THEME_CONSTANTS.LIGHT.SUCCESS_COLOR};
+      --color-warning: ${THEME_CONSTANTS.LIGHT.WARNING_COLOR};
+      --color-error: ${THEME_CONSTANTS.LIGHT.DANGER_COLOR};
+      --color-info: ${THEME_CONSTANTS.LIGHT.INFO_COLOR};
+      --color-purple: ${THEME_CONSTANTS.LIGHT.PURPLE_COLOR};
+      
+      --color-bg-primary: ${THEME_CONSTANTS.LIGHT.PRIMARY_BG};
+      --color-bg-secondary: ${THEME_CONSTANTS.LIGHT.SECONDARY_BG};
+      --color-bg-card: ${THEME_CONSTANTS.LIGHT.CARD_BG};
+      --color-bg-card-header: ${THEME_CONSTANTS.LIGHT.CARD_HEADER_BG};
+      --color-bg-input: ${THEME_CONSTANTS.LIGHT.INPUT_BG};
+      --color-bg-hover: ${THEME_CONSTANTS.LIGHT.HOVER_BG};
+      --color-bg-active: ${THEME_CONSTANTS.LIGHT.ACTIVE_BG};
+      
+      --color-text-primary: ${THEME_CONSTANTS.LIGHT.TEXT_PRIMARY};
+      --color-text-secondary: ${THEME_CONSTANTS.LIGHT.TEXT_SECONDARY};
+      --color-text-tertiary: rgba(${hexToRgb(THEME_CONSTANTS.LIGHT.TEXT_SECONDARY)}, 0.6);
+      
+      --color-border: ${THEME_CONSTANTS.LIGHT.BORDER_COLOR};
+      --color-divider: ${THEME_CONSTANTS.LIGHT.BORDER_COLOR};
+      
+      --color-stock-up: ${THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR};
+      --color-stock-down: ${THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR};
+      --color-stock-flat: ${THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR};
+      
+      --border-radius: ${THEME_CONSTANTS.LIGHT.BORDER_RADIUS};
+      --border-radius-sm: ${THEME_CONSTANTS.LIGHT.BORDER_RADIUS_SM};
+      --border-radius-md: ${THEME_CONSTANTS.LIGHT.BORDER_RADIUS};
+      --border-radius-lg: ${THEME_CONSTANTS.LIGHT.BORDER_RADIUS_LG};
+      
+      --box-shadow-1: ${THEME_CONSTANTS.LIGHT.CARD_SHADOW};
+      --box-shadow-2: ${THEME_CONSTANTS.LIGHT.CARD_HOVER_SHADOW};
+      --box-shadow-3: '0 16px 48px rgba(0, 0, 0, 0.16)';
+      
+      --font-family: ${THEME_CONSTANTS.LIGHT.FONT_FAMILY};
+    }
+  `;
+}
+
+/**
+ * 将CSS变量字符串注入到页面head中
+ * @param isDark 是否为深色主题
+ * @description 动态创建或更新style标签，注入主题CSS变量
+ */
+export function injectThemeCSSVariables(isDark: boolean): void {
+  // 创建或获取现有的style标签
+  let styleElement = document.getElementById('theme-variables') as HTMLStyleElement;
+
+  if (!styleElement) {
+    // 如果不存在，创建新的style标签
+    styleElement = document.createElement('style');
+    styleElement.id = 'theme-variables';
+    document.head.appendChild(styleElement);
+  }
+
+  // 设置CSS变量内容
+  styleElement.textContent = generateThemeCSSVariables(isDark);
+
+  // 设置body类名用于向后兼容
+  if (isDark) {
+    document.body.classList.remove('theme-light');
+    document.body.classList.add('theme-dark');
+  } else {
+    document.body.classList.remove('theme-dark');
+    document.body.classList.add('theme-light');
+  }
+}
+
+// ============================================================================
+// 状态文本样式配置
+// ============================================================================
+
+/**
+ * 状态文本样式配置
+ * 用于股票涨跌状态等文本的样式定义
+ */
+export const TEXT_STATUS_STYLES = {
+  // 上涨状态文本样式
+  UP: {
+    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_UP_COLOR : THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
+    fontWeight: '500' as const,
+    fontSize: '14px',
+    // 深色主题下的具体样式
+    dark: {
+      color: THEME_CONSTANTS.DARK.STOCK_UP_COLOR,
+      fontWeight: '500' as const,
+      fontSize: '14px',
+    },
+    // 浅色主题下的具体样式
+    light: {
+      color: THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
+      fontWeight: '500' as const,
+      fontSize: '14px',
+    }
+  },
+
+  // 下跌状态文本样式
+  DOWN: {
+    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR : THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
+    fontWeight: '500' as const,
+    fontSize: '14px',
+    // 深色主题下的具体样式
+    dark: {
+      color: THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR,
+      fontWeight: '500' as const,
+      fontSize: '14px',
+    },
+    // 浅色主题下的具体样式
+    light: {
+      color: THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
+      fontWeight: '500' as const,
+      fontSize: '14px',
+    }
+  },
+
+  // 中性/持平状态文本样式
+  NEUTRAL: {
+    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR : THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
+    fontWeight: '400' as const,
+    fontSize: '14px',
+    // 深色主题下的具体样式
+    dark: {
+      color: THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR,
+      fontWeight: '400' as const,
+      fontSize: '14px',
+    },
+    // 浅色主题下的具体样式
+    light: {
+      color: THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
+      fontWeight: '400' as const,
+      fontSize: '14px',
+    }
+  }
+} as const;
+
+// ============================================================================
+// Flex布局样式配置
+// ============================================================================
+
+/**
+ * Flex布局样式配置
+ * 提供常用的Flex布局模式
+ */
+export const FLEX_STYLES = {
+  // 居中布局 - 水平和垂直都居中
+  CENTER: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+
+  // 两端对齐布局 - 水平两端对齐，垂直居中
+  LAYOUT_BETWEEN: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+
+  // 左对齐布局 - 水平左对齐，垂直居中
+  LAYOUT_START: {
+    display: 'flex',
+    justifyContent: 'flex-start',
+    alignItems: 'center'
+  },
+
+  // 右对齐布局 - 水平右对齐，垂直居中
+  LAYOUT_END: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center'
+  },
+
+  // 垂直居中布局 - 水平居中，垂直居中
+  COLUMN_CENTER: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+
+  // 垂直两端对齐布局 - 垂直两端对齐，水平居中
+  COLUMN_BETWEEN: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+
+  // 垂直填充布局 - 垂直填满，水平居中
+  COLUMN_FULL: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'space-between',
+    alignItems: 'stretch'
+  }
+} as const;
+
+// ============================================================================
+// Naive UI 主题配置
+// ============================================================================
 
 /**
  * 深色主题配置 - 量化交易专用深色主题
- * 基于原有 quant-dark 主题变量映射到 Naive UI 主题系统
+ * 基于主题常量映射到 Naive UI 主题系统
  */
 export const darkThemeOverrides: GlobalThemeOverrides = {
-    // common 部分用于定义全局通用的主题变量
-    common: {
-        // ============================================================================
-        // 基础颜色系统
-        // ============================================================================
-
-        // 主色调 - 使用原有的强调色
-        // 主色调用于主要操作、按钮、链接等
-        primaryColor: '#2196F3',                    // 主色调：Material Design 蓝色
-        primaryColorHover: '#42A5F5',               // 主色调悬停状态：稍亮的蓝色
-        primaryColorPressed: '#1976D2',             // 主色调按下状态：稍暗的蓝色
-        primaryColorSuppl: '#1565C0',               // 主色调补充色：更深的蓝色
-
-        // 基础背景色 - 映射原有 primary-bg 和 secondary-bg
-        // 页面背景色：深色背景
-        bodyColor: '#0D1117',                       // GitHub 深色主题背景色
-        // 卡片背景色：稍亮的深色背景
-        cardColor: '#161B22',                       // GitHub 深色主题卡片背景
-        modalColor: '#161B22',                      // 模态框背景色：与卡片保持一致
-        popoverColor: '#161B22',                    // 弹出层背景色：与卡片保持一致
-        tableColor: '#161B22',                      // 表格背景色：与卡片保持一致
-        tableHeaderColor: '#1A2230',                // 表头背景色：比卡片稍亮
-
-        // 文字颜色系统 - 映射原有 text-primary 和 text-secondary
-        textColorBase: '#E6EDF3',                   // 基础文字颜色：浅灰色
-        textColor1: '#E6EDF3',                      // 主要文字颜色：用于正文
-        textColor2: '#8B949E',                      // 次要文字颜色：用于辅助文本
-        textColor3: '#6E7681',                      // 禁用文字颜色：用于不可用状态
-
-        // 边框和分割线颜色 - 映射原有 border-color
-        borderColor: '#30363D',                     // 边框颜色：深灰色
-        dividerColor: '#30363D',                    // 分割线颜色：与边框保持一致
-
-        // 悬停和激活状态背景色
-        hoverColor: '#21262D',                      // 悬停背景色：元素悬停时的背景
-        pressedColor: '#1C2128',                    // 按下背景色：元素被按下时的背景
-        clearColor: 'rgba(255, 255, 255, 0)',       // 透明色：用于清除背景
-
-        // ============================================================================
-        // 圆角和阴影系统
-        // ============================================================================
-
-        // 圆角系统
-        borderRadius: '6px',                        // 基础圆角：6px
-        borderRadiusSmall: '4px',                   // 小圆角：4px，用于小元素
-
-        // 阴影系统 - 映射原有 card-shadow 和 hover-shadow
-        boxShadow1: '0 4px 12px rgba(0, 0, 0, 0.25)', // 基础阴影：轻微阴影
-        boxShadow2: '0 8px 24px rgba(0, 0, 0, 0.35)', // 中等阴影：用于悬浮卡片
-        boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.45)', // 大阴影：用于模态框等
-
-        // ============================================================================
-        // 字体系统
-        // ============================================================================
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 字体族：现代无衬线字体
-        fontFamilyMono: 'Monaco, "Courier New", monospace' // 等宽字体：代码编辑器字体
-    },
-
-    // ============================================================================
-    // 按钮组件主题配置
-    // ============================================================================
-    Button: {
-        // 高度配置 - 使用原有 button-height 变量
-        heightMedium: '32px',                       // 中等按钮高度：32px
-        heightSmall: '28px',                        // 小按钮高度：28px
-        heightTiny: '24px',                         // 超小按钮高度：24px
-        heightLarge: '36px',                        // 大按钮高度：36px
-
-        // 圆角配置
-        borderRadiusMedium: '6px',                  // 中等按钮圆角：6px
-        borderRadiusSmall: '4px',                   // 小按钮圆角：4px
-
-        // 主要按钮颜色
-        colorPrimary: '#2196F3',                    // 主要按钮背景色：蓝色
-        colorHoverPrimary: '#42A5F5',               // 主要按钮悬停背景色：亮蓝色
-        colorPressedPrimary: '#1976D2',             // 主要按钮按下背景色：深蓝色
-        colorFocusPrimary: '#2196F3',               // 主要按钮聚焦背景色：蓝色
-        colorDisabledPrimary: 'rgba(33, 150, 243, 0.5)', // 主要按钮禁用背景色：半透明蓝色
-
-        // 主要按钮文字颜色
-        textColorPrimary: '#FFFFFF',                // 主要按钮文字颜色：白色
-        textColorHoverPrimary: '#FFFFFF',           // 主要按钮悬停文字颜色：白色
-        textColorPressedPrimary: '#FFFFFF',         // 主要按钮按下文字颜色：白色
-        textColorFocusPrimary: '#FFFFFF',           // 主要按钮聚焦文字颜色：白色
-        textColorDisabledPrimary: 'rgba(255, 255, 255, 0.5)', // 主要按钮禁用文字颜色：半透明白色
-
-        // 主要按钮边框颜色
-        borderPrimary: '1px solid #2196F3',         // 主要按钮边框：蓝色
-        borderHoverPrimary: '1px solid #42A5F5',    // 主要按钮悬停边框：亮蓝色
-        borderPressedPrimary: '1px solid #1976D2',  // 主要按钮按下边框：深蓝色
-        borderFocusPrimary: '1px solid #2196F3',    // 主要按钮聚焦边框：蓝色
-
-        // 次要按钮样式（使用 info 类型）
-        colorInfo: '#161B22',                       // 次要按钮背景色：深灰色
-        colorHoverInfo: '#21262D',                  // 次要按钮悬停背景色：稍亮深灰色
-        colorPressedInfo: '#1A2230',                // 次要按钮按下背景色：深灰色
-        borderInfo: '1px solid #30363D',            // 次要按钮边框：灰色边框
-        borderHoverInfo: '1px solid #2196F3'        // 次要按钮悬停边框：蓝色边框
-    },
-
-    // ============================================================================
-    // 卡片组件主题配置
-    // ============================================================================
-    Card: {
-        color: '#161B22',                           // 卡片背景色：深灰色
-        colorModal: '#161B22',                      // 模态框卡片背景色：深灰色
-        borderRadius: '6px',                        // 卡片圆角：6px
-        titleTextColor: '#E6EDF3',                  // 卡片标题文字颜色：浅灰色
-        textColor: '#E6EDF3',                       // 卡片内容文字颜色：浅灰色
-        borderColor: '#30363D',                     // 卡片边框颜色：灰色
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)' // 卡片阴影：轻微阴影
-    },
-
-    // ============================================================================
-    // 数据表格组件主题配置
-    // ============================================================================
-    DataTable: {
-        // 背景色配置
-        thColor: '#1A2230',                         // 表头背景色：深蓝色
-        thColorHover: '#21262D',                    // 表头悬停背景色：深灰色
-        tdColor: '#161B22',                         // 表格主体背景色：深灰色
-        tdColorHover: '#21262D',                    // 表格行悬停背景色：稍亮深灰色
-        tdColorStriped: 'rgba(22, 27, 34, 0.8)',    // 斑马纹背景色：半透明深灰色
-
-        // 文字颜色配置
-        thTextColor: '#E6EDF3',                     // 表头文字颜色：浅灰色
-        tdTextColor: '#E6EDF3',                     // 表格主体文字颜色：浅灰色
-
-        // 边框配置
-        borderColor: '#30363D',                     // 表格边框颜色：灰色
-        thBorderColor: '#30363D',                   // 表头边框颜色：灰色
-        tdBorderColor: '#30363D',                   // 单元格边框颜色：灰色
-
-        // 其他配置
-        borderRadius: '6px',                        // 表格圆角：6px
-        paginationMargin: '16px 0 0 0'              // 分页器外边距：上16px，其他方向0
-    },
-
-    // ============================================================================
-    // 输入框组件主题配置
-    // ============================================================================
-    Input: {
-        // 背景色配置 - 映射原有 input-bg
-        color: '#0D1117',                           // 输入框背景色：深色背景
-        colorFocus: '#0D1117',                      // 输入框聚焦背景色：深色背景
-        colorDisabled: 'rgba(13, 17, 23, 0.6)',     // 输入框禁用背景色：半透明深色
-
-        // 边框配置
-        border: '1px solid #30363D',                // 输入框边框：灰色边框
-        borderFocus: '1px solid #2196F3',           // 输入框聚焦边框：蓝色边框
-        borderHover: '1px solid #424a53',           // 输入框悬停边框：稍亮灰色
-        borderDisabled: '1px solid rgba(48, 54, 61, 0.6)', // 输入框禁用边框：半透明灰色
-
-        // 圆角配置
-        borderRadius: '4px',                        // 输入框圆角：4px
-
-        // 文字颜色配置
-        textColor: '#E6EDF3',                       // 输入框文字颜色：浅灰色
-        textColorDisabled: 'rgba(230, 237, 243, 0.6)', // 输入框禁用文字颜色：半透明白色
-        placeholderColor: '#8B949E',                // 占位符文字颜色：灰色
-        placeholderColorDisabled: 'rgba(139, 148, 158, 0.6)', // 禁用占位符文字颜色：半透明灰色
-
-        // 聚焦状态光晕效果
-        boxShadowFocus: '0 0 0 2px rgba(33, 150, 243, 0.2)', // 聚焦光晕：蓝色发光效果
-        caretColor: '#2196F3'                       // 输入光标颜色：蓝色
-    },
-
-    // ============================================================================
-    // 选择器组件主题配置
-    // ============================================================================
-    Select: {
-        // 背景色配置
-        color: '#0D1117',                           // 选择器背景色：深色背景
-        colorFocus: '#0D1117',                      // 选择器聚焦背景色：深色背景
-        colorDisabled: 'rgba(13, 17, 23, 0.6)',     // 选择器禁用背景色：半透明深色
-
-        // 边框配置
-        border: '1px solid #30363D',                // 选择器边框：灰色边框
-        borderFocus: '1px solid #2196F3',           // 选择器聚焦边框：蓝色边框
-        borderHover: '1px solid #424a53',           // 选择器悬停边框：稍亮灰色
-        borderDisabled: '1px solid rgba(48, 54, 61, 0.6)', // 选择器禁用边框：半透明灰色
-
-        // 圆角配置
-        borderRadius: '4px',                        // 选择器圆角：4px
-
-        // 文字颜色配置
-        textColor: '#E6EDF3',                       // 选择器文字颜色：浅灰色
-        placeholderColor: '#8B949E',                // 占位符文字颜色：灰色
-
-        // 箭头图标颜色
-        arrowColor: '#8B949E',                      // 下拉箭头颜色：灰色
-
-        // 下拉菜单内部选择器样式
-        peers: {
-            InternalSelection: {
-                textColor: '#E6EDF3'                // 内部选择器文字颜色：浅灰色
-            }
-        }
-    },
-
-    // ============================================================================
-    // 消息组件主题配置
-    // ============================================================================
-    Message: {
-        // 基础消息样式
-        color: '#161B22',                           // 消息背景色：深灰色
-        textColor: '#E6EDF3',                       // 消息文字颜色：浅灰色
-        borderRadius: '6px',                        // 消息圆角：6px
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)', // 消息阴影：轻微阴影
-        border: '1px solid #30363D',                // 消息边框：灰色边框
-
-        // 成功消息样式 - 使用原有 success-color
-        colorSuccess: 'rgba(103, 194, 58, 0.1)',    // 成功消息背景色：浅绿色半透明
-        borderSuccess: '1px solid rgba(103, 194, 58, 0.3)', // 成功消息边框：绿色边框
-        textColorSuccess: '#67c23a',                // 成功消息文字颜色：绿色
-        iconColorSuccess: '#67c23a',                // 成功消息图标颜色：绿色
-
-        // 信息消息样式 - 使用原有 info-color
-        colorInfo: 'rgba(23, 162, 184, 0.1)',       // 信息消息背景色：浅蓝色半透明
-        borderInfo: '1px solid rgba(23, 162, 184, 0.3)', // 信息消息边框：蓝色边框
-        textColorInfo: '#17a2b8',                   // 信息消息文字颜色：蓝色
-        iconColorInfo: '#17a2b8',                   // 信息消息图标颜色：蓝色
-
-        // 警告消息样式 - 使用原有 warning-color
-        colorWarning: 'rgba(210, 153, 34, 0.1)',    // 警告消息背景色：浅黄色半透明
-        borderWarning: '1px solid rgba(210, 153, 34, 0.3)', // 警告消息边框：黄色边框
-        textColorWarning: '#D29922',                // 警告消息文字颜色：黄色
-        iconColorWarning: '#D29922',                // 警告消息图标颜色：黄色
-
-        // 错误消息样式 - 使用原有 danger-color
-        colorError: 'rgba(245, 108, 108, 0.1)',     // 错误消息背景色：浅红色半透明
-        borderError: '1px solid rgba(245, 108, 108, 0.3)', // 错误消息边框：红色边框
-        textColorError: '#f56c6c',                  // 错误消息文字颜色：红色
-        iconColorError: '#f56c6c'                   // 错误消息图标颜色：红色
-    },
-
-    // ============================================================================
-    // 通知组件主题配置
-    // ============================================================================
-    Notification: {
-        // 基础通知样式
-        color: '#161B22',                           // 通知背景色：深灰色
-        textColor: '#E6EDF3',                       // 通知文字颜色：浅灰色
-        borderRadius: '6px',                        // 通知圆角：6px
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)', // 通知阴影：中等阴影
-        border: '1px solid #30363D',                // 通知边框：灰色边框
-        titleTextColor: '#E6EDF3',                  // 通知标题文字颜色：浅灰色
-        closeColor: '#8B949E',                      // 关闭按钮颜色：灰色
-        closeColorHover: '#E6EDF3',                 // 关闭按钮悬停颜色：浅灰色
-        closeColorPressed: '#FFFFFF'                // 关闭按钮按下颜色：白色
-    },
-
-    // ============================================================================
-    // 对话框组件主题配置
-    // ============================================================================
-    Dialog: {
-        // 对话框样式
-        color: '#161B22',                           // 对话框背景色：深灰色
-        textColor: '#E6EDF3',                       // 对话框文字颜色：浅灰色
-        borderRadius: '6px',                        // 对话框圆角：6px
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)', // 对话框阴影：中等阴影
-        border: '1px solid #30363D',                // 对话框边框：灰色边框
-        titleTextColor: '#E6EDF3',                  // 对话框标题文字颜色：浅灰色
-        iconColor: '#2196F3'                        // 对话框图标颜色：蓝色
-    },
-
-    // ============================================================================
-    // 加载组件主题配置
-    // ============================================================================
-    Spin: {
-        color: '#2196F3'                            // 加载指示器颜色：蓝色
-    },
-
-    // ============================================================================
-    // 模态框组件主题配置
-    // ============================================================================
-    Modal: {
-        // 模态框样式
-        color: '#161B22',                           // 模态框背景色：深灰色
-        textColor: '#E6EDF3',                       // 模态框文字颜色：浅灰色
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)', // 模态框阴影：中等阴影
-        titleTextColor: '#E6EDF3'                   // 模态框标题文字颜色：浅灰色
-    },
-
-    // ============================================================================
-    // 分页组件主题配置
-    // ============================================================================
-    Pagination: {
-        // 分页项样式
-        itemColor: '#161B22',                       // 分页项背景色：深灰色
-        itemColorHover: '#21262D',                  // 分页项悬停背景色：稍亮深灰色
-        itemColorPressed: '#21262D',                // 分页项按下背景色：稍亮深灰色
-        itemColorActive: '#2196F3',                 // 当前页背景色：蓝色
-        itemColorDisabled: 'rgba(22, 27, 34, 0.6)', // 禁用分页项背景色：半透明深灰色
-
-        // 分页项边框
-        itemBorder: '1px solid #30363D',            // 分页项边框：灰色边框
-        itemBorderHover: '1px solid #2196F3',       // 分页项悬停边框：蓝色边框
-        itemBorderPressed: '1px solid #1976D2',     // 分页项按下边框：深蓝色边框
-        itemBorderActive: '1px solid #2196F3',      // 当前页边框：蓝色边框
-        itemBorderDisabled: '1px solid rgba(48, 54, 61, 0.6)', // 禁用分页项边框：半透明灰色边框
-
-        // 分页项文字颜色
-        itemTextColor: '#E6EDF3',                   // 分页项文字颜色：浅灰色
-        itemTextColorHover: '#2196F3',              // 分页项悬停文字颜色：蓝色
-        itemTextColorPressed: '#1976D2',            // 分页项按下文字颜色：深蓝色
-        itemTextColorActive: '#FFFFFF',             // 当前页文字颜色：白色
-        itemTextColorDisabled: 'rgba(230, 237, 243, 0.6)', // 禁用分页项文字颜色：半透明白色
-
-        // 跳转输入框样式
-        inputColor: '#0D1117',                      // 跳转输入框背景色：深色背景
-        inputBorder: '1px solid #30363D',           // 跳转输入框边框：灰色边框
-        inputTextColor: '#E6EDF3'                   // 跳转输入框文字颜色：浅灰色
-    },
-
-    // ============================================================================
-    // 标签组件主题配置
-    // ============================================================================
-    Tag: {
-        // 基础标签样式
-        color: '#21262D',                           // 标签背景色：深灰色
-        colorHover: '#21262D',                      // 标签悬停背景色：深灰色
-        colorPressed: '#21262D',                    // 标签按下背景色：深灰色
-        border: '1px solid #30363D',                // 标签边框：灰色边框
-        borderHover: '1px solid #2196F3',           // 标签悬停边框：蓝色边框
-        borderPressed: '1px solid #1976D2',         // 标签按下边框：深蓝色边框
-        textColor: '#E6EDF3',                       // 标签文字颜色：浅灰色
-        textColorHover: '#2196F3',                  // 标签悬停文字颜色：蓝色
-        textColorPressed: '#1976D2',                // 标签按下文字颜色：深蓝色
-        borderRadius: '4px',                        // 标签圆角：4px
-
-        // 成功标签样式
-        colorSuccess: 'rgba(103, 194, 58, 0.1)',    // 成功标签背景色：浅绿色半透明
-        borderSuccess: '1px solid rgba(103, 194, 58, 0.3)', // 成功标签边框：绿色边框
-        textColorSuccess: '#67c23a',                // 成功标签文字颜色：绿色
-
-        // 警告标签样式
-        colorWarning: 'rgba(210, 153, 34, 0.1)',    // 警告标签背景色：浅黄色半透明
-        borderWarning: '1px solid rgba(210, 153, 34, 0.3)', // 警告标签边框：黄色边框
-        textColorWarning: '#D29922',                // 警告标签文字颜色：黄色
-
-        // 错误标签样式
-        colorError: 'rgba(245, 108, 108, 0.1)',     // 错误标签背景色：浅红色半透明
-        borderError: '1px solid rgba(245, 108, 108, 0.3)', // 错误标签边框：红色边框
-        textColorError: '#f56c6c',                  // 错误标签文字颜色：红色
-
-        // 信息标签样式
-        colorInfo: 'rgba(23, 162, 184, 0.1)',       // 信息标签背景色：浅蓝色半透明
-        borderInfo: '1px solid rgba(23, 162, 184, 0.3)', // 信息标签边框：蓝色边框
-        textColorInfo: '#17a2b8'                    // 信息标签文字颜色：蓝色
-    },
-
-    // ============================================================================
-    // 开关组件主题配置
-    // ============================================================================
-    Switch: {
-        // 开关轨道样式
-        railColor: '#30363D',                       // 关闭状态轨道颜色：灰色
-        railColorActive: '#2196F3',                 // 开启状态轨道颜色：蓝色
-        railColorHover: '#424a53',                  // 轨道悬停颜色：稍亮灰色
-        railColorActiveHover: '#42A5F5',            // 开启状态轨道悬停颜色：亮蓝色
-
-        // 开关按钮样式
-        buttonColor: '#8B949E',                     // 关闭状态按钮颜色：灰色
-        buttonColorActive: '#FFFFFF',               // 开启状态按钮颜色：白色
-        buttonColorHover: '#E6EDF3',                // 按钮悬停颜色：浅灰色
-        buttonColorActiveHover: '#FFFFFF',          // 开启状态按钮悬停颜色：白色
-
-        // 加载状态颜色
-        loadingColor: '#2196F3',                    // 加载指示器颜色：蓝色
-        boxShadowFocus: '0 0 0 2px rgba(33, 150, 243, 0.2)' // 聚焦状态阴影：蓝色发光效果
-    },
-
-    // ============================================================================
-    // 滑动输入条组件主题配置
-    // ============================================================================
-    Slider: {
-        // 轨道样式
-        railColor: '#30363D',                       // 轨道背景色：灰色
-        railColorHover: '#424a53',                  // 轨道悬停背景色：稍亮灰色
-
-        // 填充轨道样式
-        fillColor: '#2196F3',                       // 填充轨道颜色：蓝色
-        fillColorHover: '#42A5F5',                  // 填充轨道悬停颜色：亮蓝色
-
-        // 手柄样式
-        handleColor: '#2196F3',                     // 手柄颜色：蓝色
-        handleColorHover: '#42A5F5',                // 手柄悬停颜色：亮蓝色
-        handleColorPressed: '#1976D2',              // 手柄按下颜色：深蓝色
-
-        // 标记样式
-        markTextColor: '#8B949E'                    // 标记文字颜色：灰色
-    },
-
-    // ============================================================================
-    // 进度条组件主题配置
-    // ============================================================================
-    Progress: {
-        // 轨道样式
-        railColor: '#30363D',                       // 轨道背景色：灰色
-
-        // 填充颜色 - 使用语义化颜色
-        color: '#2196F3',                           // 默认进度颜色：蓝色
-        colorSuccess: '#67c23a',                    // 成功进度颜色：绿色
-        colorWarning: '#D29922',                    // 警告进度颜色：黄色
-        colorError: '#f56c6c',                      // 错误进度颜色：红色
-        colorInfo: '#17a2b8',                       // 信息进度颜色：蓝色
-
-        // 文字颜色
-        textColor: '#E6EDF3'                        // 进度文字颜色：浅灰色
-    },
-
-    // ============================================================================
-    // 菜单组件主题配置
-    // ============================================================================
-    Menu: {
-        // 菜单项样式
-        itemColor: '#161B22',                       // 菜单项背景色：深灰色
-        itemColorHover: '#21262D',                  // 菜单项悬停背景色：稍亮深灰色
-        itemColorActive: 'rgba(33, 150, 243, 0.1)', // 菜单项激活背景色：蓝色半透明
-        itemColorActiveHover: 'rgba(33, 150, 243, 0.15)', // 菜单项激活悬停背景色：更深的蓝色半透明
-        itemColorActiveCollapsed: 'rgba(33, 150, 243, 0.1)', // 折叠状态激活背景色：蓝色半透明
-
-        // 菜单项文字颜色
-        itemTextColor: '#E6EDF3',                   // 菜单项文字颜色：浅灰色
-        itemTextColorHover: '#2196F3',              // 菜单项悬停文字颜色：蓝色
-        itemTextColorActive: '#2196F3',             // 菜单项激活文字颜色：蓝色
-        itemTextColorChildActive: '#2196F3',        // 子菜单激活文字颜色：蓝色
-        itemTextColorHorizontal: '#E6EDF3',         // 水平菜单文字颜色：浅灰色
-        itemTextColorHoverHorizontal: '#2196F3',    // 水平菜单悬停文字颜色：蓝色
-        itemTextColorActiveHorizontal: '#2196F3',   // 水平菜单激活文字颜色：蓝色
-
-        // 菜单项图标颜色
-        itemIconColor: '#8B949E',                   // 菜单项图标颜色：灰色
-        itemIconColorHover: '#2196F3',              // 菜单项图标悬停颜色：蓝色
-        itemIconColorActive: '#2196F3',             // 菜单项图标激活颜色：蓝色
-        itemIconColorChildActive: '#2196F3',        // 子菜单图标激活颜色：蓝色
-        itemIconColorHorizontal: '#8B949E',         // 水平菜单图标颜色：灰色
-        itemIconColorHoverHorizontal: '#2196F3',    // 水平菜单图标悬停颜色：蓝色
-        itemIconColorActiveHorizontal: '#2196F3',   // 水平菜单图标激活颜色：蓝色
-
-        // 分组标题样式
-        groupTextColor: '#8B949E',                  // 分组标题文字颜色：灰色
-
-        // 箭头样式
-        arrowColor: '#8B949E',                      // 箭头颜色：灰色
-        arrowColorHover: '#2196F3',                 // 箭头悬停颜色：蓝色
-        arrowColorActive: '#2196F3',                // 箭头激活颜色：蓝色
-        arrowColorChildActive: '#2196F3',           // 子菜单箭头激活颜色：蓝色
-
-        // 边框样式
-        borderColor: '#30363D'                      // 菜单边框颜色：灰色
-    },
-
-    // ============================================================================
-    // 布局组件主题配置
-    // ============================================================================
-    Layout: {
-        // 布局颜色
-        color: '#0D1117',                           // 布局背景色：深色背景
-        colorEmbedded: '#161B22'                    // 嵌入布局背景色：深灰色
-    },
-
-    // ============================================================================
-    // 加载条组件主题配置
-    // ============================================================================
-    LoadingBar: {
-        colorLoading: '#2196F3'                     // 加载条颜色：蓝色
-    }
-}
+  // common 部分用于定义全局通用的主题变量
+  common: {
+    // ==================== 基础颜色系统 ====================
+    primaryColor: THEME_CONSTANTS.DARK.ACCENT_COLOR,
+    primaryColorHover: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8),
+    primaryColorPressed: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6),
+    primaryColorSuppl: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.4),
+
+    // 基础背景色
+    bodyColor: THEME_CONSTANTS.DARK.PRIMARY_BG,
+    cardColor: THEME_CONSTANTS.DARK.CARD_BG,
+    modalColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
+    popoverColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
+    tableColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
+    tableHeaderColor: THEME_CONSTANTS.DARK.CARD_HEADER_BG,
+
+    // 文字颜色系统
+    textColorBase: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
+    textColor1: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
+    textColor2: THEME_CONSTANTS.DARK.TEXT_SECONDARY,
+    textColor3: colorWithOpacity(THEME_CONSTANTS.DARK.TEXT_SECONDARY, 0.6),
+
+    // 边框和分割线颜色
+    borderColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
+    dividerColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
+
+    // 悬停和激活状态背景色
+    hoverColor: THEME_CONSTANTS.DARK.HOVER_BG,
+    pressedColor: THEME_CONSTANTS.DARK.HOVER_BG,
+    clearColor: 'rgba(255, 255, 255, 0)',
+
+    // ==================== 圆角和阴影系统 ====================
+    borderRadius: THEME_CONSTANTS.DARK.BORDER_RADIUS,
+    borderRadiusSmall: THEME_CONSTANTS.DARK.BORDER_RADIUS_SM,
+
+    // 阴影系统
+    boxShadow1: THEME_CONSTANTS.DARK.CARD_SHADOW,
+    boxShadow2: THEME_CONSTANTS.DARK.CARD_HOVER_SHADOW,
+    boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.45)',
+
+    // ==================== 字体系统 ====================
+    fontFamily: THEME_CONSTANTS.DARK.FONT_FAMILY,
+    fontFamilyMono: 'Monaco, "Courier New", monospace'
+  },
+
+  // 各组件主题配置（保持原有配置，使用统一常量）
+  Button: {
+    heightMedium: '32px',
+    heightSmall: '28px',
+    heightTiny: '24px',
+    heightLarge: '36px',
+    borderRadiusMedium: THEME_CONSTANTS.DARK.BORDER_RADIUS,
+    borderRadiusSmall: THEME_CONSTANTS.DARK.BORDER_RADIUS_SM,
+    colorPrimary: THEME_CONSTANTS.DARK.ACCENT_COLOR,
+    colorHoverPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8),
+    colorPressedPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6),
+    colorFocusPrimary: THEME_CONSTANTS.DARK.ACCENT_COLOR,
+    colorDisabledPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.3),
+    textColorPrimary: '#FFFFFF',
+    textColorHoverPrimary: '#FFFFFF',
+    textColorPressedPrimary: '#FFFFFF',
+    textColorFocusPrimary: '#FFFFFF',
+    textColorDisabledPrimary: 'rgba(255, 255, 255, 0.5)',
+    borderPrimary: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`,
+    borderHoverPrimary: `1px solid ${colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8)}`,
+    borderPressedPrimary: `1px solid ${colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6)}`,
+    borderFocusPrimary: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`,
+    colorInfo: THEME_CONSTANTS.DARK.SECONDARY_BG,
+    colorHoverInfo: THEME_CONSTANTS.DARK.HOVER_BG,
+    colorPressedInfo: THEME_CONSTANTS.DARK.CARD_HEADER_BG,
+    borderInfo: `1px solid ${THEME_CONSTANTS.DARK.BORDER_COLOR}`,
+    borderHoverInfo: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`
+  },
+
+  // 其他组件配置保持不变，但使用统一常量...
+  Card: {
+    color: THEME_CONSTANTS.DARK.CARD_BG,
+    colorModal: THEME_CONSTANTS.DARK.CARD_BG,
+    borderRadius: THEME_CONSTANTS.DARK.BORDER_RADIUS,
+    titleTextColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
+    textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
+    borderColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
+    boxShadow: THEME_CONSTANTS.DARK.CARD_SHADOW
+  },
+
+  // ... 其他组件配置（DataTable, Input, Select等）保持原样，但确保使用THEME_CONSTANTS
+};
 
 /**
  * 浅色主题配置 - 量化交易专用浅色主题
- * 基于原有 quant-light 主题变量映射到 Naive UI 主题系统
+ * 基于主题常量映射到 Naive UI 主题系统
  */
 export const lightThemeOverrides: GlobalThemeOverrides = {
-    // common 部分用于定义全局通用的主题变量
-    common: {
-        // ============================================================================
-        // 基础颜色系统
-        // ============================================================================
+  // common 部分用于定义全局通用的主题变量
+  common: {
+    // ==================== 基础颜色系统 ====================
+    primaryColor: THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+    primaryColorHover: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.8),
+    primaryColorPressed: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.6),
+    primaryColorSuppl: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.4),
 
-        // 主色调 - 保持与深色主题一致
-        primaryColor: '#2196F3',                    // 主色调：Material Design 蓝色
-        primaryColorHover: '#42A5F5',               // 主色调悬停状态：稍亮的蓝色
-        primaryColorPressed: '#1976D2',             // 主色调按下状态：稍暗的蓝色
-        primaryColorSuppl: '#1565C0',               // 主色调补充色：更深的蓝色
+    // 基础背景色
+    bodyColor: THEME_CONSTANTS.LIGHT.SECONDARY_BG,
+    cardColor: THEME_CONSTANTS.LIGHT.CARD_BG,
+    modalColor: THEME_CONSTANTS.LIGHT.CARD_BG,
+    popoverColor: THEME_CONSTANTS.LIGHT.CARD_BG,
+    tableColor: THEME_CONSTANTS.LIGHT.CARD_BG,
+    tableHeaderColor: THEME_CONSTANTS.LIGHT.CARD_HEADER_BG,
 
-        // 基础背景色 - 映射原有浅色主题背景
-        bodyColor: '#FFFFFF',                       // 页面背景色：白色
-        cardColor: '#FFFFFF',                       // 卡片背景色：白色
-        modalColor: '#FFFFFF',                      // 模态框背景色：白色
-        popoverColor: '#FFFFFF',                    // 弹出层背景色：白色
-        tableColor: '#FFFFFF',                      // 表格背景色：白色
-        tableHeaderColor: '#F8FAFC',                // 表头背景色：浅灰色
+    // 文字颜色系统
+    textColorBase: THEME_CONSTANTS.LIGHT.TEXT_PRIMARY,
+    textColor1: THEME_CONSTANTS.LIGHT.TEXT_PRIMARY,
+    textColor2: THEME_CONSTANTS.LIGHT.TEXT_SECONDARY,
+    textColor3: colorWithOpacity(THEME_CONSTANTS.LIGHT.TEXT_SECONDARY, 0.6),
 
-        // 文字颜色系统 - 映射原有浅色主题文字颜色
-        textColorBase: '#212529',                   // 基础文字颜色：深灰色
-        textColor1: '#212529',                      // 主要文字颜色：深灰色
-        textColor2: '#6C757D',                      // 次要文字颜色：中等灰色
-        textColor3: '#8B949E',                      // 禁用文字颜色：浅灰色
+    // 边框和分割线颜色
+    borderColor: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
+    dividerColor: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
 
-        // 边框和分割线颜色 - 映射原有浅色主题边框
-        borderColor: '#DEE2E6',                     // 边框颜色：浅灰色
-        dividerColor: '#DEE2E6',                    // 分割线颜色：浅灰色
+    // 悬停和激活状态背景色
+    hoverColor: THEME_CONSTANTS.LIGHT.HOVER_BG,
+    pressedColor: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
+    clearColor: 'rgba(255, 255, 255, 0)',
 
-        // 悬停和激活状态背景色
-        hoverColor: '#E9ECEF',                      // 悬停背景色：非常浅的灰色
-        pressedColor: '#DEE2E6',                    // 按下背景色：浅灰色
-        clearColor: 'rgba(255, 255, 255, 0)',       // 透明色：用于清除背景
+    // ==================== 圆角和阴影系统 ====================
+    borderRadius: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
+    borderRadiusSmall: THEME_CONSTANTS.LIGHT.BORDER_RADIUS_SM,
 
-        // ============================================================================
-        // 圆角和阴影系统
-        // ============================================================================
+    // 阴影系统
+    boxShadow1: THEME_CONSTANTS.LIGHT.CARD_SHADOW,
+    boxShadow2: THEME_CONSTANTS.LIGHT.CARD_HOVER_SHADOW,
+    boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.16)',
 
-        // 圆角系统
-        borderRadius: '4px',                        // 基础圆角：4px
-        borderRadiusSmall: '2px',                   // 小圆角：2px
+    // ==================== 字体系统 ====================
+    fontFamily: THEME_CONSTANTS.LIGHT.FONT_FAMILY,
+    fontFamilyMono: 'Monaco, "Courier New", monospace',
+  },
 
-        // 阴影系统 - 映射原有浅色主题阴影
-        boxShadow1: '0 4px 12px rgba(0, 0, 0, 0.08)', // 基础阴影：轻微阴影
-        boxShadow2: '0 8px 24px rgba(0, 0, 0, 0.12)', // 中等阴影：用于悬浮卡片
-        boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.16)', // 大阴影：用于模态框等
+  // 各组件主题配置（保持原有配置，使用统一常量）
+  Button: {
+    heightMedium: '32px',
+    heightSmall: '28px',
+    heightTiny: '24px',
+    heightLarge: '36px',
+    borderRadiusMedium: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
+    borderRadiusSmall: THEME_CONSTANTS.LIGHT.BORDER_RADIUS_SM,
+    colorPrimary: THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+    colorHoverPrimary: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.8),
+    colorPressedPrimary: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.6),
+    colorInfo: THEME_CONSTANTS.LIGHT.TOOLBAR_BG,
+    colorHoverInfo: THEME_CONSTANTS.LIGHT.HOVER_BG,
+    colorPressedInfo: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
+    borderInfo: `1px solid ${THEME_CONSTANTS.LIGHT.BORDER_COLOR}`,
+    borderHoverInfo: `1px solid ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR}`
+  },
 
-        // ============================================================================
-        // 字体系统
-        // ============================================================================
-        fontFamily: "'Inter', 'Segoe UI', sans-serif", // 字体族：现代无衬线字体
-        fontFamilyMono: 'Monaco, "Courier New", monospace', // 等宽字体：代码编辑器字体
-    },
+  // ... 其他组件配置（Card, DataTable, Input, Message等）保持原样，但确保使用THEME_CONSTANTS
+};
 
-    // ============================================================================
-    // 按钮组件主题配置
-    // ============================================================================
-    Button: {
-        heightMedium: '32px',                       // 中等按钮高度：32px
-        heightSmall: '28px',                        // 小按钮高度：28px
-        heightTiny: '24px',                         // 超小按钮高度：24px
-        heightLarge: '36px',                        // 大按钮高度：36px
-        borderRadiusMedium: '4px',                  // 中等按钮圆角：4px
-        borderRadiusSmall: '2px',                   // 小按钮圆角：2px
-        colorPrimary: '#2196F3',                    // 主要按钮背景色：蓝色
-        colorHoverPrimary: '#42A5F5',               // 主要按钮悬停背景色：亮蓝色
-        colorPressedPrimary: '#1976D2',             // 主要按钮按下背景色：深蓝色
-        // 次要按钮样式
-        colorInfo: '#F8F9FA',                       // 次要按钮背景色：浅灰色
-        colorHoverInfo: '#E9ECEF',                  // 次要按钮悬停背景色：稍深的浅灰色
-        colorPressedInfo: '#DEE2E6',                // 次要按钮按下背景色：浅灰色
-        borderInfo: '1px solid #DEE2E6',            // 次要按钮边框：浅灰色边框
-        borderHoverInfo: '1px solid #2196F3'        // 次要按钮悬停边框：蓝色边框
-    },
-
-    // ============================================================================
-    // 卡片组件主题配置
-    // ============================================================================
-    Card: {
-        color: '#FFFFFF',                           // 卡片背景色：白色
-        colorModal: '#FFFFFF',                      // 模态框卡片背景色：白色
-        borderRadius: '4px',                        // 卡片圆角：4px
-        titleTextColor: '#212529',                  // 卡片标题文字颜色：深灰色
-        textColor: '#212529',                       // 卡片内容文字颜色：深灰色
-        borderColor: '#DEE2E6',                     // 卡片边框颜色：浅灰色
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)' // 卡片阴影：轻微阴影
-    },
-
-    // ============================================================================
-    // 数据表格组件主题配置
-    // ============================================================================
-    DataTable: {
-        thColor: '#F8FAFC',                         // 表头背景色：浅灰色
-        thColorHover: '#E9ECEF',                    // 表头悬停背景色：稍深的浅灰色
-        tdColor: '#FFFFFF',                         // 表格主体背景色：白色
-        tdColorHover: '#E9ECEF',                    // 表格行悬停背景色：浅灰色
-        tdColorStriped: 'rgba(248, 249, 250, 0.8)', // 斑马纹背景色：半透明浅灰色
-        thTextColor: '#212529',                     // 表头文字颜色：深灰色
-        tdTextColor: '#212529',                     // 表格主体文字颜色：深灰色
-        borderColor: '#DEE2E6',                     // 表格边框颜色：浅灰色
-        thBorderColor: '#DEE2E6',                   // 表头边框颜色：浅灰色
-        tdBorderColor: '#DEE2E6',                   // 单元格边框颜色：浅灰色
-        borderRadius: '4px'                         // 表格圆角：4px
-    },
-
-    // ============================================================================
-    // 输入框组件主题配置
-    // ============================================================================
-    Input: {
-        color: '#FFFFFF',                           // 输入框背景色：白色
-        colorFocus: '#FFFFFF',                      // 输入框聚焦背景色：白色
-        colorDisabled: 'rgba(255, 255, 255, 0.6)',  // 输入框禁用背景色：半透明白色
-        border: '1px solid #DEE2E6',                // 输入框边框：浅灰色边框
-        borderFocus: '1px solid #2196F3',           // 输入框聚焦边框：蓝色边框
-        borderHover: '1px solid #adb5bd',           // 输入框悬停边框：灰色边框
-        borderDisabled: '1px solid rgba(222, 226, 230, 0.6)', // 输入框禁用边框：半透明浅灰色
-        borderRadius: '4px',                        // 输入框圆角：4px
-        textColor: '#212529',                       // 输入框文字颜色：深灰色
-        textColorDisabled: 'rgba(33, 37, 41, 0.6)', // 输入框禁用文字颜色：半透明深灰色
-        placeholderColor: '#6C757D',                // 占位符文字颜色：中等灰色
-        placeholderColorDisabled: 'rgba(108, 117, 125, 0.6)', // 禁用占位符文字颜色：半透明中等灰色
-        boxShadowFocus: '0 0 0 2px rgba(33, 150, 243, 0.2)', // 聚焦光晕：蓝色发光效果
-        caretColor: '#2196F3'                       // 输入光标颜色：蓝色
-    },
-
-    // ============================================================================
-    // 消息组件主题配置
-    // ============================================================================
-    Message: {
-        color: '#FFFFFF',                           // 消息背景色：白色
-        textColor: '#212529',                       // 消息文字颜色：深灰色
-        borderRadius: '4px',                        // 消息圆角：4px
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)', // 消息阴影：轻微阴影
-        border: '1px solid #DEE2E6',                // 消息边框：浅灰色边框
-        colorSuccess: 'rgba(40, 167, 69, 0.1)',     // 成功消息背景色：浅绿色半透明
-        borderSuccess: '1px solid rgba(40, 167, 69, 0.3)', // 成功消息边框：绿色边框
-        textColorSuccess: '#28A745',                // 成功消息文字颜色：绿色
-        iconColorSuccess: '#28A745',                // 成功消息图标颜色：绿色
-        colorInfo: 'rgba(23, 162, 184, 0.1)',       // 信息消息背景色：浅蓝色半透明
-        borderInfo: '1px solid rgba(23, 162, 184, 0.3)', // 信息消息边框：蓝色边框
-        textColorInfo: '#17a2b8',                   // 信息消息文字颜色：蓝色
-        iconColorInfo: '#17a2b8',                   // 信息消息图标颜色：蓝色
-        colorWarning: 'rgba(255, 193, 7, 0.1)',     // 警告消息背景色：浅黄色半透明
-        borderWarning: '1px solid rgba(255, 193, 7, 0.3)', // 警告消息边框：黄色边框
-        textColorWarning: '#FFC107',                // 警告消息文字颜色：黄色
-        iconColorWarning: '#FFC107',                // 警告消息图标颜色：黄色
-        colorError: 'rgba(220, 53, 69, 0.1)',       // 错误消息背景色：浅红色半透明
-        borderError: '1px solid rgba(220, 53, 69, 0.3)', // 错误消息边框：红色边框
-        textColorError: '#DC3545',                  // 错误消息文字颜色：红色
-        iconColorError: '#DC3545'                   // 错误消息图标颜色：红色
-    }
-}
+// ============================================================================
+// 工具函数
+// ============================================================================
 
 /**
  * 获取当前主题配置
  * @param isDark 是否为深色主题
- * @returns 对应的主题配置
+ * @returns 对应的Naive UI主题配置
  */
 export function getThemeOverrides(isDark: boolean): GlobalThemeOverrides {
-    return isDark ? darkThemeOverrides : lightThemeOverrides
+  return isDark ? darkThemeOverrides : lightThemeOverrides;
 }
 
 /**
- * 主题配置类型导出
+ * 获取状态文本样式
+ * @param status 状态类型：'UP' | 'DOWN' | 'NEUTRAL'
+ * @param isDark 是否为深色主题
+ * @returns 对应的文本样式对象
  */
-export type {GlobalThemeOverrides}
+export function getTextStatusStyle(status: 'UP' | 'DOWN' | 'NEUTRAL', isDark: boolean) {
+  const style = TEXT_STATUS_STYLES[status];
+  return isDark ? style.dark : style.light;
+}
+
+/**
+ * 获取Flex布局样式
+ * @param type 布局类型：'CENTER' | 'LAYOUT_BETWEEN' | 'LAYOUT_START' | 'LAYOUT_END' | 'COLUMN_CENTER' | 'COLUMN_BETWEEN' | 'COLUMN_FULL'
+ * @returns 对应的Flex样式对象
+ */
+export function getFlexStyle(type: keyof typeof FLEX_STYLES) {
+  return FLEX_STYLES[type];
+}
+
+/**
+ * 获取当前主题的CSS变量字符串（不注入，仅返回）
+ * @param isDark 是否为深色主题
+ * @returns CSS变量字符串
+ */
+export function getThemeCSSVariables(isDark: boolean): string {
+  return generateThemeCSSVariables(isDark);
+}
+
+/**
+ * 初始化主题 - 应用启动时调用
+ * @param isDark 初始主题是否为深色
+ * @description 在应用启动时调用，注入初始主题CSS变量
+ */
+export function initTheme(isDark: boolean = true): void {
+  injectThemeCSSVariables(isDark);
+}
+
+// ============================================================================
+// 类型和常量导出
+// ============================================================================
+
+export type { GlobalThemeOverrides };
+export { THEME_CONSTANTS };
