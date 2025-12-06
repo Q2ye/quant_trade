@@ -30,12 +30,12 @@ export const routes: RouteRecordRaw[] = [
             requiresAuth: true
         }
     },
-    {
-        path: '/market/stocks',
-        name: 'StockList',
-        component: () => import('@/views/Market/StockList.vue'),
-        meta: {menu: 'market', layout: 'main', title: '股票列表'}
-    },
+    // {
+    //     path: '/market/stocks',
+    //     name: 'StockList',
+    //     component: () => import('src/views/Market/StockList.vue.已合并.bak'),
+    //     meta: {menu: 'market', layout: 'main', title: '股票列表'}
+    // },
 
     {
         path: '/market/stock/:code',
@@ -44,12 +44,12 @@ export const routes: RouteRecordRaw[] = [
         props: true,
         meta: {menu: 'market', layout: 'main', title: '个股详情'}
     },
-    {
-        path: '/market/etfs',
-        name: 'ETFList',
-        component: () => import('@/views/Market/ETFList.vue'),
-        meta: {menu: 'market', layout: 'main', title: 'ETF列表'}
-    },
+    // {
+    //     path: '/market/etfs',
+    //     name: 'ETFList',
+    //     component: () => import('src/views/Market/ETFList.vue.已合并.bak'),
+    //     meta: {menu: 'market', layout: 'main', title: 'ETF列表'}
+    // },
     {
         path: '/market/etf/:code',
         name: 'ETFDetail',
@@ -57,12 +57,12 @@ export const routes: RouteRecordRaw[] = [
         props: true,
         meta: {menu: 'market', layout: 'main', title: 'ETF详情'}
     },
-    {
-        path: '/market/indexes',
-        name: 'IndexList',
-        component: () => import('@/views/Market/IndexList.vue'),
-        meta: {menu: 'market', layout: 'main', title: '指数列表'}
-    },
+    // {
+    //     path: '/market/indexes',
+    //     name: 'IndexList',
+    //     component: () => import('src/views/Market/IndexList.vue.已合并.bak'),
+    //     meta: {menu: 'market', layout: 'main', title: '指数列表'}
+    // },
     {
         path: '/market/index/:code',
         name: 'IndexDetail',

@@ -1,6 +1,6 @@
 // _layout.scss - 优化后的布局系统（整合智能滚动）
-@use 'variables' as *;
-@use 'mixins' as mix;
+@use '../variables' as *;
+@use '../mixins' as mix;
 @use 'sass:map';
 @use 'sass:color';
 

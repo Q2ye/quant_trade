@@ -1,311 +1,298 @@
-// styles/_mixins.scss - 修复后的混入文件
-// 只保留布局和工具混入，移除颜色相关的混入
+// 统一混入函数文件
+// 包含布局工具、组件基础和公共混入
 
 @use 'variables' as *;
-@use 'sass:map';
 
-// ============================================================================
-// 媒体查询混入
-// ============================================================================
-
-/// 媒体查询混入 - 向下断点（最大宽度）
-/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
-@mixin media-breakpoint-down($breakpoint) {
-  @if $breakpoint == xs {
-    @media (max-width: #{$breakpoint-xs}) {
-      @content;
-    }
-  } @else if $breakpoint == sm {
-    @media (max-width: #{$breakpoint-sm}) {
-      @content;
-    }
-  } @else if $breakpoint == md {
-    @media (max-width: #{$breakpoint-md}) {
-      @content;
-    }
-  } @else if $breakpoint == lg {
-    @media (max-width: #{$breakpoint-lg}) {
-      @content;
-    }
-  } @else if $breakpoint == xl {
-    @media (max-width: #{$breakpoint-xl}) {
-      @content;
-    }
-  } @else {
-    @warn "Breakpoint #{$breakpoint} is not defined.";
-  }
-}
-
-/// 媒体查询混入 - 向上断点（最小宽度）
-/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
-@mixin media-breakpoint-up($breakpoint) {
-  @if $breakpoint == xs {
-    @media (min-width: #{$breakpoint-xs}) {
-      @content;
-    }
-  } @else if $breakpoint == sm {
-    @media (min-width: #{$breakpoint-sm}) {
-      @content;
-    }
-  } @else if $breakpoint == md {
-    @media (min-width: #{$breakpoint-md}) {
-      @content;
-    }
-  } @else if $breakpoint == lg {
-    @media (min-width: #{$breakpoint-lg}) {
-      @content;
-    }
-  } @else if $breakpoint == xl {
-    @media (min-width: #{$breakpoint-xl}) {
-      @content;
-    }
-  } @else {
-    @warn "Breakpoint #{$breakpoint} is not defined.";
-  }
-}
-
-// ============================================================================
-// 布局混入
-// ============================================================================
-
-/// 侧边栏过渡动画混入
-/// 为侧边栏提供平滑的展开/折叠过渡效果
-@mixin sidebar-transition {
-  transition: all $transition-normal cubic-bezier(0.4, 0, 0.2, 1);
-
-  // 所有子元素继承过渡效果
-  * {
-    transition: inherit;
-  }
-}
-
+// 布局工具混入区域
 /// 弹性居中布局混入
-/// @param {String} $direction - 布局方向 (row, column)
+/// @param {String} $direction - 方向 (row|column)
 @mixin flex-center($direction: row) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: $direction;
+  display: flex; // 使用flex布局
+  align-items: center; // 垂直居中
+  justify-content: center; // 水平居中
+  flex-direction: $direction; // 方向参数控制
 }
 
-/// 防溢出处理混入
-/// 防止元素内容溢出容器，常用于固定尺寸的容器
-@mixin anti-bleed {
-  position: relative;
-  overflow: hidden;
-
-  // 创建防溢出层
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    z-index: 1;
-  }
-}
-
-// ============================================================================
-// 文本工具混入
-// ============================================================================
-
-/// 文本溢出省略号混入
-/// @param {Number} $lines - 显示的行数
+/// 文本溢出省略混入
+/// @param {Number} $lines - 行数
 @mixin text-ellipsis($lines: 1) {
   @if $lines == 1 {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    // 单行文本省略
+    overflow: hidden; // 溢出隐藏
+    text-overflow: ellipsis; // 文本溢出显示省略号
+    white-space: nowrap; // 不换行
   } @else {
-    display: -webkit-box;
-    -webkit-line-clamp: $lines;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    // 多行文本省略（Webkit内核）
+    display: -webkit-box; // 使用webkit盒模型
+    -webkit-line-clamp: $lines; // 限制行数
+    -webkit-box-orient: vertical; // 垂直方向排列
+    overflow: hidden; // 溢出隐藏
   }
 }
 
 /// 次要文本样式混入
-/// 用于描述性文字、辅助信息等次要内容
 @mixin text-secondary {
-  color: var(--n-text-color-2); // 使用 Naive UI 的次要文字颜色
-  font-size: 0.85em; // 稍小的字体大小
+  color: $text-color-2; // 次要文字颜色
+  font-size: 0.85em; // 较小字体大小
 }
 
-// ============================================================================
-// 动画效果混入
-// ============================================================================
-
-/// 加载旋转动画混入
-/// @param {Number} $size - 旋转图标大小
-@mixin loading-spinner($size: 1em) {
-  @include flex-center;
-
-  // 旋转图标伪元素
-  &::after {
-    content: '';
-    width: $size;
-    height: $size;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+/// 自定义滚动条混入
+@mixin custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px; // 滚动条宽度
+    height: 6px; // 水平滚动条高度
   }
-}
 
-// 旋转动画关键帧
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+  &::-webkit-scrollbar-track {
+    background: $border-color; // 轨道背景色
+    border-radius: 4px; // 圆角
   }
-}
 
-/// 淡入动画混入
-/// @param {Number} $duration - 动画持续时间
-@mixin fade-in($duration: $transition-normal) {
-  animation: fadeIn $duration ease-out;
+  &::-webkit-scrollbar-thumb {
+    background: $text-color-3; // 滑块颜色
+    border-radius: 3px; // 滑块圆角
 
-  // 淡入动画关键帧
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
+    &:hover {
+      background: $text-color-2; // 悬停时滑块颜色
     }
   }
+
+  // Firefox支持
+  scrollbar-width: thin; // 细滚动条
+  scrollbar-color: $text-color-3 $border-color; // 滑块和轨道颜色
 }
 
-// ============================================================================
-// 网格布局混入
-// ============================================================================
+/// 隐藏滚动条但保持滚动功能混入
+@mixin hide-scrollbar {
+  // Firefox支持
+  scrollbar-width: none; // 无滚动条
+  -ms-overflow-style: none; // IE/Edge支持
+
+  &::-webkit-scrollbar {
+    display: none; // Webkit内核隐藏滚动条
+  }
+}
+
+// 组件基础混入区域
+
+/// 卡片基础样式混入
+@mixin card-base {
+  background-color: $card-color; // 卡片背景色
+  border: 1px solid $border-color; // 边框
+  border-radius: $border-radius; // 圆角
+  box-shadow: $box-shadow-1; // 阴影
+  transition: all $transition-normal; // 过渡效果
+
+  &:hover {
+    box-shadow: $box-shadow-2; // 悬停时更大阴影
+  }
+}
+
+/// 按钮基础样式混入
+/// @param {Color} $bg-color - 背景色
+/// @param {Color} $text-color - 文字色
+@mixin button-base($bg-color: $primary-color, $text-color: white) {
+  background-color: $bg-color; // 背景色
+  color: $text-color; // 文字颜色
+  border: none; // 无边框
+  border-radius: $border-radius-small; // 小圆角
+  padding: spacer(2) spacer(4); // 内边距（8px 16px）
+  font-weight: 500; // 中等字体粗细
+  cursor: pointer; // 指针光标
+  transition: all $transition-fast; // 快速过渡效果
+
+  &:hover {
+    background-color: $primary-color-hover; // 悬停背景色
+    transform: translateY(-1px); // 轻微上移效果
+  }
+
+  &:active {
+    background-color: $primary-color-pressed; // 按下背景色
+    transform: translateY(0); // 恢复位置
+  }
+
+  &:disabled {
+    opacity: 0.6; // 禁用时透明度降低
+    cursor: not-allowed; // 禁用光标
+  }
+}
+
+/// 表单元素基础样式混入
+@mixin form-element-base {
+  background-color: $card-color; // 背景色
+  border: 1px solid $border-color; // 边框
+  border-radius: $border-radius-small; // 小圆角
+  color: $text-color-1; // 文字颜色
+  font-size: 0.875rem; // 较小字体（14px）
+  padding: 0.375rem 0.75rem; // 内边距（6px 12px）
+  transition: all $transition-fast; // 快速过渡效果
+
+  &:focus {
+    border-color: $primary-color; // 聚焦时边框颜色
+    box-shadow: 0 0 0 2px rgba($primary-color, 0.2); // 聚焦时阴影
+    outline: none; // 移除默认轮廓
+  }
+
+  &:hover:not(:focus) {
+    border-color: $primary-color-hover; // 悬停时边框颜色
+  }
+}
+
+/// 表格基础样式混入
+@mixin table-base {
+  .n-data-table {
+    background-color: transparent; // 透明背景
+
+    .n-data-table-th {
+      background-color: $table-header-color; // 表头背景色
+      font-weight: 600; // 加粗字体
+      color: $text-color-1; // 表头文字颜色
+    }
+
+    .n-data-table-tr {
+      transition: background-color $transition-fast; // 行背景过渡效果
+
+      &:nth-child(even) {
+        background-color: $color-secondary; // 偶数行背景色
+      }
+
+      &:hover {
+        background-color: $color-hover; // 行悬停背景色
+      }
+    }
+
+    .n-data-table-td {
+      color: $text-color-1; // 单元格文字颜色
+    }
+  }
+}
+
+// 页面布局混入区域
+
+/// 页面头部样式混入
+@mixin page-header {
+  margin-bottom: spacer(6); // 底部间距（24px）
+
+  .header-content {
+    display: flex; // flex布局
+    justify-content: space-between; // 两端对齐
+    align-items: flex-start; // 顶部对齐
+    flex-wrap: wrap; // 允许换行
+    gap: spacer(3); // 元素间距（12px）
+
+    .title-section {
+      .page-title {
+        font-size: 1.5rem; // 标题字体大小（24px）
+        font-weight: 600; // 加粗
+        color: $text-color-1; // 标题颜色
+        margin-bottom: spacer(1); // 底部间距（4px）
+      }
+
+      .page-description {
+        font-size: 0.875rem; // 描述字体大小（14px）
+        color: $text-color-2; // 描述文字颜色
+      }
+    }
+
+    .header-actions {
+      display: flex; // flex布局
+      align-items: center; // 垂直居中
+      gap: spacer(2); // 元素间距（8px）
+
+      // 移动端适配
+      @include media-breakpoint-down(sm) {
+        flex-direction: column; // 垂直排列
+        width: 100%; // 全宽
+      }
+    }
+  }
+}
+
+/// 筛选工具栏样式混入
+@mixin filter-bar {
+  background-color: $color-secondary; // 次要背景色
+  border-radius: $border-radius; // 圆角
+  border: 1px solid $border-color; // 边框
+  padding: spacer(3); // 内边距（12px）
+  margin-bottom: spacer(3); // 底部间距（12px）
+
+  .filter-content {
+    display: flex; // flex布局
+    align-items: flex-start; // 顶部对齐
+    gap: spacer(3); // 元素间距（12px）
+    flex-wrap: wrap; // 允许换行
+
+    .filter-actions {
+      margin-left: auto; // 靠右对齐
+      display: flex; // flex布局
+      align-items: center; // 垂直居中
+      gap: spacer(2); // 元素间距（8px）
+    }
+  }
+}
+
+// 网格布局混入区域
 
 /// 灵活网格布局混入
-/// @param {Number} $columns - 默认列数
-/// @param {Map} $breakpoints - 响应式断点配置映射
-/// @param {Number} $gap - 网格间隙大小
-@mixin flexible-grid($columns: 4, $breakpoints: (), $gap: map.get($spacers, 4)) {
-  display: grid;
-  grid-template-columns: repeat($columns, 1fr);
-  gap: $gap;
+/// @param {Number} $columns - 列数
+/// @param {Map} $breakpoints - 响应式断点
+@mixin flexible-grid($columns: 4, $breakpoints: ()) {
+  display: grid; // 使用grid布局
+  grid-template-columns: repeat($columns, 1fr); // 列数
+  gap: spacer(3); // 网格间距（12px）
 
-  // 遍历断点配置，生成响应式网格
+  // 响应式断点处理
   @each $breakpoint, $column-count in $breakpoints {
     @include media-breakpoint-down($breakpoint) {
-      grid-template-columns: repeat($column-count, 1fr);
+      grid-template-columns: repeat($column-count, 1fr); // 断点对应的列数
     }
   }
 }
 
 /// 卡片网格布局混入
-/// @param {Number} $columns - 默认列数
-/// @param {Map} $breakpoints - 响应式断点配置映射
-@mixin card-grid-layout($columns: 4, $breakpoints: ()) {
-  @include flexible-grid($columns, $breakpoints);
+@mixin card-grid {
+  @include flexible-grid(4, (lg: 2, sm: 1)); // 默认4列，大屏2列，小屏1列
+  margin-bottom: spacer(4); // 底部间距（16px）
 
-  // 网格卡片基础样式
   .n-card {
-    transition: all $transition-normal;
-    height: 100%;
+    transition: all $transition-normal; // 过渡效果
+    height: 100%; // 高度100%
 
-    // 卡片悬停效果
     &:hover {
-      transform: $hover-transform;
+      transform: translateY(-2px); // 悬停时上移效果
     }
   }
 }
 
-// ============================================================================
-// 状态概览网格布局混入
-// ============================================================================
-@mixin status-overview-grid {
-  @include flexible-grid(4, (
-    lg: 2,
-    sm: 1
-  ));
-  margin-bottom: map.get($spacers, 4);
-}
+// 动画混入区域
 
-// ============================================================================
-// 核心功能网格布局混入
-// ============================================================================
-@mixin core-function-grid {
-  @include flexible-grid(4, (
-    xl: 2,
-    md: 1
-  ));
-  margin-bottom: map.get($spacers, 4);
-}
+/// 加载旋转动画混入
+@mixin loading-spinner($size: 1em) {
+  @include flex-center; // 居中显示
 
-// ============================================================================
-// 自定义滚动条混入（可选）
-// ============================================================================
-
-/// 自定义滚动条混入
-/// 为支持 Webkit 的浏览器提供自定义滚动条样式
-@mixin custom-scrollbar {
-  // Webkit浏览器滚动条样式
-  &::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  &::after {
+    content: ''; // 伪元素
+    width: $size; // 大小
+    height: $size; // 大小
+    border: 2px solid currentColor; // 边框（使用当前文字颜色）
+    border-right-color: transparent; // 右边框透明
+    border-radius: 50%; // 圆形
+    animation: spin 1s linear infinite; // 旋转动画
   }
 
-  // 滚动条轨道样式
-  &::-webkit-scrollbar-track {
-    background: var(--n-border-color);
-    border-radius: 4px;
-  }
-
-  // 滚动条滑块样式
-  &::-webkit-scrollbar-thumb {
-    background: var(--n-text-color-3);
-    border-radius: 3px;
-
-    // 滑块悬停状态
-    &:hover {
-      background: var(--n-text-color-2);
-    }
-  }
-
-  // Firefox滚动条
-  scrollbar-width: thin;
-  scrollbar-color: var(--n-text-color-3) var(--n-border-color);
-}
-
-// ============================================================================
-// 打印样式混入
-// ============================================================================
-
-/// 打印优化混入
-/// 为打印媒体查询提供便捷的样式封装
-@mixin print-styles {
-  @media print {
-    @content;
+  // 旋转动画关键帧
+  @keyframes spin {
+    to { transform: rotate(360deg); } // 360度旋转
   }
 }
 
-// ============================================================================
-// 高对比度模式支持混入
-// ============================================================================
+/// 淡入动画混入
+@mixin fade-in($duration: $transition-normal) {
+  animation: fadeIn $duration ease-out; // 淡入动画
 
-/// 高对比度模式样式
-/// 为高对比度模式用户提供更好的可访问性
-@mixin high-contrast {
-  @media (prefers-contrast: high) {
-    @content;
-  }
-}
-
-// ============================================================================
-// 减少动画模式支持混入
-// ============================================================================
-
-/// 减少动画模式样式
-/// 为对动画敏感的用户提供无动画体验
-// 修复：使用正确的 prefers-reduced-motion 值 'reduce'
-@mixin reduced-motion {
-  @media (prefers-reduced-motion: reduce) {
-    @content;
+  // 淡入动画关键帧
+  @keyframes fadeIn {
+    from { opacity: 0; } // 开始透明
+    to { opacity: 1; } // 结束不透明
   }
 }

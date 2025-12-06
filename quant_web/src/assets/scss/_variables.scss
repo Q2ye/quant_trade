@@ -1,100 +1,149 @@
-// styles/_variables.scss - 简化后的变量文件
-// 只保留布局和间距变量，颜色变量由 Naive UI 管理
+// 统一变量管理文件
+// 包含布局变量和 Naive UI 主题变量映射
 
-@use 'sass:map';
+// 布局变量区域（独立于主题）
 
-// ============================================================================
 // 布局尺寸变量
-// ============================================================================
+$sidebar-expanded-width: 180px !default; // 侧边栏展开宽度
+$sidebar-collapsed-width: 52px !default; // 侧边栏折叠宽度
+$header-height: 60px !default; // 顶部栏高度
+$content-padding: 16px !default; // 内容区域内边距
 
-$sidebar-expanded-width: 180px !default;    // 侧边栏展开宽度
-$sidebar-collapsed-width: 52px !default;    // 侧边栏折叠宽度
-$header-height: 60px !default;              // 头部高度
-$content-padding: 16px !default;            // 内容区域内边距
-$chart-height: 400px !default;              // 图表默认高度
-$button-height: 32px !default;              // 按钮默认高度
-
-// ============================================================================
-// 间距系统变量
-// ============================================================================
-
+// 间距系统（基于 8px 网格）
 $spacers: (
-  // 基础间距系统
-  // 使用 rem 单位保证响应式一致性
-  0: 0rem,      // 0px
-  1: 0.25rem,   // 4px
-  2: 0.5rem,    // 8px
-  3: 0.75rem,   // 12px
-  4: 1rem,      // 16px
-  5: 1.25rem,   // 20px
-  6: 1.5rem,    // 24px
-  7: 1.75rem,   // 28px
-  8: 2rem,      // 32px
-  9: 2.5rem,    // 40px
-  10: 3rem      // 48px
+  0: 0rem,    // 0px - 无间距
+  1: 0.25rem, // 4px - 最小间距
+  2: 0.5rem,  // 8px - 基础间距单位
+  3: 0.75rem, // 12px - 中等间距
+  4: 1rem,    // 16px - 标准间距
+  5: 1.25rem, // 20px - 较大间距
+  6: 1.5rem,  // 24px - 大间距
+  7: 1.75rem, // 28px - 非常大间距
+  8: 2rem,    // 32px - 超大间距
+  9: 2.5rem,  // 40px - 最大间距之一
+  10: 3rem    // 48px - 最大间距
 ) !default;
 
-// ============================================================================
 // 动画过渡变量
-// ============================================================================
+$transition-fast: 0.15s ease !default; // 快速过渡（150ms）
+$transition-normal: 0.3s ease !default; // 常规过渡（300ms）
+$transition-slow: 0.5s ease !default; // 慢速过渡（500ms）
 
-$transition-fast: 0.15s ease !default;     // 快速过渡 - 用于交互反馈
-$transition-normal: 0.3s ease !default;    // 常规过渡 - 用于状态变化
-$transition-slow: 0.5s ease !default;      // 慢速过渡 - 用于页面过渡
-$hover-transform: translateY(-2px) !default; // 悬停变换效果
+// 响应式断点变量（移动优先设计）
+$breakpoint-xs: 480px !default; // 超小屏幕（手机竖屏）
+$breakpoint-sm: 576px !default; // 小屏幕（手机横屏）
+$breakpoint-md: 768px !default; // 中等屏幕（平板）
+$breakpoint-lg: 992px !default; // 大屏幕（小桌面）
+$breakpoint-xl: 1200px !default; // 超大屏幕（大桌面）
 
-// ============================================================================
-// 响应式断点变量
-// ============================================================================
+// 字体变量
+$font-size-base: 14px !default; // 基础字体大小
+$font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !default; // 系统字体族
 
-$breakpoint-xl: 1200px !default;           // 超大屏幕断点
-$breakpoint-lg: 992px !default;            // 大屏幕断点
-$breakpoint-md: 768px !default;            // 中等屏幕断点
-$breakpoint-sm: 576px !default;            // 小屏幕断点
-$breakpoint-xs: 480px !default;            // 超小屏幕断点
+// Naive UI 主题变量映射区域（CSS 自定义属性）
 
-// ============================================================================
-// 字体大小变量（基础值，具体由 Naive UI 管理）
-// ============================================================================
+// 主色调变量（对应Naive UI主题）
+$primary-color: var(--n-primary-color); // 主要颜色
+$primary-color-hover: var(--n-primary-color-hover); // 主要颜色悬停状态
+$primary-color-pressed: var(--n-primary-color-pressed); // 主要颜色按下状态
 
-$font-size-base: 14px !default;            // 基础字体大小
+// 状态颜色变量
+$success-color: var(--n-success-color); // 成功状态颜色
+$info-color: var(--n-info-color); // 信息状态颜色
+$warning-color: var(--n-warning-color); // 警告状态颜色
+$error-color: var(--n-error-color); // 错误状态颜色
 
-// ============================================================================
-// 工具函数
-// ============================================================================
+// 背景颜色变量
+$body-color: var(--n-body-color); // 页面背景色
+$card-color: var(--n-card-color); // 卡片背景色
+$modal-color: var(--n-modal-color); // 模态框背景色
+$table-color: var(--n-table-color); // 表格背景色
+$table-header-color: var(--n-table-header-color); // 表头背景色
 
-/// 获取间距值
-/// @param {Number} $key - 间距键名
-/// @return {*} 间距值
-@function spacer($key) {
-  @return map.get($spacers, $key);
+// 文字颜色变量
+$text-color-base: var(--n-text-color-base); // 基础文字颜色
+$text-color-1: var(--n-text-color-1); // 主要文字颜色（一级）
+$text-color-2: var(--n-text-color-2); // 次要文字颜色（二级）
+$text-color-3: var(--n-text-color-3); // 辅助文字颜色（三级）
+$text-color-disabled: var(--n-text-color-disabled); // 禁用状态文字颜色
+
+// 边框和交互颜色变量
+$border-color: var(--n-border-color); // 边框颜色
+$divider-color: var(--n-divider-color); // 分割线颜色
+$hover-color: var(--n-hover-color); // 悬停状态颜色
+$pressed-color: var(--n-pressed-color); // 按下状态颜色
+$color-secondary: var(--n-color-secondary); // 次要颜色（常用于背景）
+$color-hover: var(--n-color-hover); // 悬停背景色
+
+// 圆角变量
+$border-radius: var(--n-border-radius, 6px); // 标准圆角（默认6px）
+$border-radius-small: var(--n-border-radius-small, 4px); // 小圆角（默认4px）
+$border-radius-medium: var(--n-border-radius-medium, 6px); // 中等圆角（默认6px）
+$border-radius-large: var(--n-border-radius-large, 8px); // 大圆角（默认8px）
+
+// 阴影变量
+$box-shadow-1: var(--n-box-shadow-1); // 一级阴影（轻度）
+$box-shadow-2: var(--n-box-shadow-2); // 二级阴影（中度）
+$box-shadow-3: var(--n-box-shadow-3); // 三级阴影（重度）
+
+// 工具函数区域
+
+/// 获取间距值的函数
+/// @param {Number} $level - 间距级别 0-10
+@function spacer($level) {
+  // 检查间距级别是否存在
+  @if map-has-key($spacers, $level) {
+    @return map-get($spacers, $level); // 返回对应间距值
+  }
+  // 如果不存在，发出警告并返回默认值
+  @warn "间距级别 #{$level} 不存在，使用默认值 spacer(4)";
+  @return map-get($spacers, 4); // 返回默认间距（16px）
 }
 
-/// 媒体查询辅助函数
-/// @param {String} $breakpoint - 断点名称
-/// @return {String} 媒体查询条件
-@function breakpoint($breakpoint) {
-  @return map.get((
+/// 响应式混入 - 向下断点（最大宽度）
+/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
+@mixin media-breakpoint-down($breakpoint) {
+  // 断点映射表
+  $breakpoint-map: (
     xs: $breakpoint-xs,
     sm: $breakpoint-sm,
     md: $breakpoint-md,
     lg: $breakpoint-lg,
     xl: $breakpoint-xl
-  ), $breakpoint);
-}
+  );
 
-/// 响应式混入 - 向下断点
-/// @param {String} $breakpoint - 断点名称
-@mixin media-breakpoint-down($breakpoint) {
-  @media (max-width: breakpoint($breakpoint)) {
-    @content;
+  // 检查断点是否存在
+  @if map-has-key($breakpoint-map, $breakpoint) {
+    // 生成媒体查询
+    @media (max-width: map-get($breakpoint-map, $breakpoint)) {
+      @content; // 传入的样式内容
+    }
+  } @else {
+    // 如果断点不存在，发出警告
+    @warn "断点 #{$breakpoint} 不存在";
   }
 }
 
-/// 响应式混入 - 向上断点
-/// @param {String} $breakpoint - 断点名称
+/// 响应式混入 - 向上断点（最小宽度）
+/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
 @mixin media-breakpoint-up($breakpoint) {
-  @media (min-width: breakpoint($breakpoint)) {
-    @content;
+  // 断点映射表
+  $breakpoint-map: (
+    xs: $breakpoint-xs,
+    sm: $breakpoint-sm,
+    md: $breakpoint-md,
+    lg: $breakpoint-lg,
+    xl: $breakpoint-xl
+  );
+
+  // 检查断点是否存在
+  @if map-has-key($breakpoint-map, $breakpoint) {
+    // 生成媒体查询
+    @media (min-width: map-get($breakpoint-map, $breakpoint)) {
+      @content; // 传入的样式内容
+    }
+  } @else {
+    // 如果断点不存在，发出警告
+    @warn "断点 #{$breakpoint} 不存在";
   }
 }

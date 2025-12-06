@@ -1,112 +1,226 @@
-// styles/global.scss - 更新为使用 Naive UI 变量系统
-@use './naive-variables' as *;
-@use './variables' as layout;
+// 全局样式和工具类文件
+// 包含样式重置、布局结构和通用工具类
 
-// CSS 自定义属性定义（通过 Naive UI 主题提供）
-// 这里只定义布局相关的自定义属性
+// 引入变量和混入文件
+@use 'variables' as *;
+@use 'mixins' as *;
 
+// CSS自定义属性定义区域
+// 将Sass变量映射到CSS变量，实现主题切换
 :root {
   // 布局变量
-  --sidebar-expanded-width: #{layout.$sidebar-expanded-width};
-  --sidebar-collapsed-width: #{layout.$sidebar-collapsed-width};
-  --header-height: #{layout.$header-height};
-  --content-padding: #{layout.$content-padding};
+  --sidebar-expanded-width: #{$sidebar-expanded-width}; // 侧边栏展开宽度
+  --sidebar-collapsed-width: #{$sidebar-collapsed-width}; // 侧边栏折叠宽度
+  --header-height: #{$header-height}; // 顶部栏高度
+  --content-padding: #{$content-padding}; // 内容区域内边距
 
   // 动画变量
-  --transition-fast: #{layout.$transition-fast};
-  --transition-normal: #{layout.$transition-normal};
-  --transition-slow: #{layout.$transition-slow};
+  --transition-fast: #{$transition-fast}; // 快速过渡效果（150ms）
+  --transition-normal: #{$transition-normal}; // 常规过渡效果（300ms）
+  --transition-slow: #{$transition-slow}; // 慢速过渡效果（500ms）
 }
 
-// 全局重置
+// 全局样式重置区域
 * {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  box-sizing: border-box; // 使用border-box盒模型
+  margin: 0; // 清除默认外边距
+  padding: 0; // 清除默认内边距
 }
 
 html {
-  font-size: layout.$font-size-base;
-  line-height: 1.5;
-  height: 100%;
-  overflow-x: hidden;
+  font-size: $font-size-base; // 基础字体大小（14px）
+  line-height: 1.5; // 行高1.5倍
+  height: 100%; // 高度100%
+  overflow-x: hidden; // 隐藏水平溢出
 }
 
 body {
-  font-family: $font-family;
-  min-height: 100vh;
-  background-color: $body-color;
-  color: $text-color-base;
+  font-family: $font-family-base; // 基础字体族
+  min-height: 100vh; // 最小高度100vh
+  background-color: $body-color; // 背景色（主题色）
+  color: $text-color-base; // 基础文字颜色（主题色）
   transition: background-color var(--transition-normal),
-              color var(--transition-normal);
+              color var(--transition-normal); // 背景和文字颜色过渡效果
 }
 
-// 应用容器布局
+// 应用布局结构区域
 .app-container {
-  display: flex;
-  min-height: 100vh;
-  position: relative;
-  background-color: $body-color;
+  display: flex; // 使用flex布局
+  min-height: 100vh; // 最小高度100vh
+  position: relative; // 相对定位
+  background-color: $body-color; // 背景色（主题色）
 }
 
 .app-sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
-  width: var(--sidebar-expanded-width);
-  z-index: 1000;
-  background-color: $card-color;
-  border-right: 1px solid $border-color;
-  transition: all var(--transition-normal);
+  position: fixed; // 固定定位
+  top: 0; // 顶部对齐
+  left: 0; // 左侧对齐
+  height: 100vh; // 高度100vh
+  width: var(--sidebar-expanded-width); // 宽度（展开状态）
+  z-index: 1000; // 层级
+  background-color: $card-color; // 背景色（卡片色）
+  border-right: 1px solid $border-color; // 右侧边框
+  transition: all var(--transition-normal); // 所有属性过渡效果
 
   .sidebar-collapsed & {
-    width: var(--sidebar-collapsed-width);
+    width: var(--sidebar-collapsed-width); // 折叠状态下的宽度
   }
 }
 
 .app-main {
-  flex: 1;
-  margin-left: var(--sidebar-expanded-width);
-  transition: margin-left var(--transition-normal);
-  background-color: $body-color;
+  flex: 1; // flex占满剩余空间
+  margin-left: var(--sidebar-expanded-width); // 左侧边距（展开状态）
+  transition: margin-left var(--transition-normal); // 左边距过渡效果
+  background-color: $body-color; // 背景色
 
   .sidebar-collapsed & {
-    margin-left: var(--sidebar-collapsed-width);
+    margin-left: var(--sidebar-collapsed-width); // 折叠状态下的左边距
   }
 }
 
 .page-content {
-  padding: var(--content-padding);
-  min-height: calc(100vh - var(--header-height));
-  background-color: $body-color;
+  padding: var(--content-padding); // 内边距
+  min-height: calc(100vh - var(--header-height)); // 最小高度（减去头部高度）
+  background-color: $body-color; // 背景色
 }
 
-// 响应式调整
-@include layout.media-breakpoint-down(md) {
+// 工具类生成系统区域
+
+// 间距工具类生成
+@each $key, $value in $spacers {
+  // 外边距类
+  .m-#{$key} { margin: $value !important; } // 所有方向外边距
+  .mt-#{$key} { margin-top: $value !important; } // 上外边距
+  .mr-#{$key} { margin-right: $value !important; } // 右外边距
+  .mb-#{$key} { margin-bottom: $value !important; } // 下外边距
+  .ml-#{$key} { margin-left: $value !important; } // 左外边距
+  .mx-#{$key} { margin-left: $value !important; margin-right: $value !important; } // 左右外边距
+  .my-#{$key} { margin-top: $value !important; margin-bottom: $value !important; } // 上下外边距
+
+  // 内边距类
+  .p-#{$key} { padding: $value !important; } // 所有方向内边距
+  .pt-#{$key} { padding-top: $value !important; } // 上内边距
+  .pr-#{$key} { padding-right: $value !important; } // 右内边距
+  .pb-#{$key} { padding-bottom: $value !important; } // 下内边距
+  .pl-#{$key} { padding-left: $value !important; } // 左内边距
+  .px-#{$key} { padding-left: $value !important; padding-right: $value !important; } // 左右内边距
+  .py-#{$key} { padding-top: $value !important; padding-bottom: $value !important; } // 上下内边距
+
+  // 间距类（grid/flex布局）
+  .gap-#{$key} { gap: $value !important; } // 网格/弹性盒子间距
+}
+
+// 文本对齐工具类
+.text-left { text-align: left !important; } // 左对齐
+.text-center { text-align: center !important; } // 居中对齐
+.text-right { text-align: right !important; } // 右对齐
+.text-truncate { @include text-ellipsis; } // 文本溢出省略号（调用混入）
+
+// 文字颜色工具类
+.text-primary { color: $text-color-1 !important; } // 主要文字颜色
+.text-secondary { color: $text-color-2 !important; } // 次要文字颜色
+.text-success { color: $success-color !important; } // 成功状态文字颜色
+.text-warning { color: $warning-color !important; } // 警告状态文字颜色
+.text-error { color: $error-color !important; } // 错误状态文字颜色
+
+// 背景颜色工具类
+.bg-body { background-color: $body-color !important; } // 页面背景色
+.bg-card { background-color: $card-color !important; } // 卡片背景色
+.bg-secondary { background-color: $color-secondary !important; } // 次要背景色
+
+// 弹性布局工具类
+.flex { display: flex !important; } // 使用flex布局
+.flex-col { flex-direction: column !important; } // flex垂直排列
+.items-center { align-items: center !important; } // flex子项垂直居中
+.justify-between { justify-content: space-between !important; } // flex两端对齐
+.justify-center { justify-content: center !important; } // flex水平居中
+
+// 网格布局工具类
+.grid { display: grid !important; } // 使用grid布局
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; } // 2列网格
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; } // 3列网格
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr) !important; } // 4列网格
+
+// 圆角工具类
+.rounded { border-radius: $border-radius !important; } // 标准圆角
+.rounded-sm { border-radius: $border-radius-small !important; } // 小圆角
+.rounded-lg { border-radius: $border-radius-large !important; } // 大圆角
+
+// 阴影工具类
+.shadow { box-shadow: $box-shadow-1 !important; } // 标准阴影
+.shadow-lg { box-shadow: $box-shadow-2 !important; } // 大阴影
+
+// 光标工具类
+.cursor-pointer { cursor: pointer !important; } // 指针光标（可点击）
+.cursor-default { cursor: default !important; } // 默认光标
+
+// 溢出工具类
+.overflow-auto { overflow: auto !important; } // 内容溢出时显示滚动条
+.overflow-hidden { overflow: hidden !important; } // 内容溢出时隐藏
+.overflow-y-auto { overflow-y: auto !important; } // 垂直方向溢出时显示滚动条
+
+// 滚动条隐藏类（调用混入）
+.scrollbar-hide {
+  @include hide-scrollbar;
+}
+
+// 自定义滚动条样式类（调用混入）
+.custom-scrollbar {
+  @include custom-scrollbar;
+}
+
+// 响应式调整区域
+
+// 中等屏幕及以下（≤768px）的样式
+@include media-breakpoint-down(md) {
   .app-sidebar {
-    transform: translateX(-100%);
+    transform: translateX(-100%); // 侧边栏默认隐藏（移出屏幕）
 
     &.mobile-open {
-      transform: translateX(0);
+      transform: translateX(0); // 移动端展开时显示
     }
   }
 
   .app-main {
-    margin-left: 0 !important;
+    margin-left: 0 !important; // 移动端不需要左边距
   }
 
   .page-content {
-    padding: layout.spacer(2);
+    padding: spacer(2); // 移动端较小的内边距
   }
 }
 
-@include layout.media-breakpoint-down(sm) {
+// 小屏幕及以下（≤576px）的样式
+@include media-breakpoint-down(sm) {
   .page-content {
-    padding: layout.spacer(1);
+    padding: spacer(1); // 更小的内边距
   }
 
   .hide-on-mobile {
-    display: none !important;
+    display: none !important; // 移动端隐藏元素
+  }
+}
+
+// 响应式显示工具类生成
+@each $breakpoint in (xs, sm, md, lg, xl) {
+  // 在指定断点及以下隐藏元素
+  .d-#{$breakpoint}-none {
+    @include media-breakpoint-down($breakpoint) {
+      display: none !important;
+    }
+  }
+
+  // 在指定断点及以下显示为块级元素
+  .d-#{$breakpoint}-block {
+    @include media-breakpoint-down($breakpoint) {
+      display: block !important;
+    }
+  }
+
+  // 在指定断点及以下显示为flex元素
+  .d-#{$breakpoint}-flex {
+    @include media-breakpoint-down($breakpoint) {
+      display: flex !important;
+    }
   }
 }
