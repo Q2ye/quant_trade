@@ -207,6 +207,15 @@ $font-family-mono: var(--font-family-mono);     /* 映射等宽字体族CSS变�
 }
 
 /**
+ * 动态间距计算函数（替代 mixins.scss 中的函数）
+ * @param {Number} $multiplier - 间距倍数
+ * @return {String} 计算后的间距值
+ * @example: padding: dynamic-spacer(2); // 返回calc(var(--spacer-base, 0.25rem) * 2)
+ */
+@function dynamic-spacer($multiplier: 1) {
+  @return calc(var(--spacer-base, 0.25rem) * #{$multiplier});
+}
+/**
  * 获取断点值的函数
  * @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
  * @return {String} 对应的断点像素值

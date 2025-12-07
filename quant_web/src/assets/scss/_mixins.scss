@@ -1,46 +1,53 @@
 // ============================================================================
-// 统一混入函数文件
-// 职责：包含所有可复用的混入函数、工具函数和业务组件样式混入
+// 统一混入函数文件 - 优化版本
+// 职责：提供所有可复用的Sass混入函数，包含工具函数、基础样式和业务组件混入
+// 设计原则：
+// 1. 单一职责：每个混入只负责一个明确的功能
+// 2. 完整实现：基础混入包含完整的样式实现
+// 3. 简化继承：业务组件直接继承基础混入，避免多级嵌套
+// 4. 响应式优先：所有组件支持移动端适配
 // ============================================================================
 
-@use 'variables' as vars; // 导入变量文件，使用vars前缀
+// 导入变量文件，使用vars前缀访问所有全局变量
+@use 'variables' as vars;
 
 // ============================================================================
-// 工具函数区域（从_variables.scss迁移过来的复杂函数）
+// 基础工具函数区域
+// 包含所有用于计算、颜色处理、响应式的基础工具函数
 // ============================================================================
 
-/// 响应式混入 - 向下断点（最大宽度，移动优先设计）
-/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
-/// @content - 在指定断点下应用的样式
-/// @example: @include media-breakpoint-down(md) { ... }
+/// 响应式混入 - 向下断点（移动优先设计中的最大宽度断点）
+/// 使用场景：在小于等于指定断点时应用样式
+/// @param {String} $breakpoint - 断点名称，可选值：xs, sm, md, lg, xl
+/// @content - 在媒体查询内应用的样式块
 @mixin media-breakpoint-down($breakpoint) {
-  // 断点映射表，将名称映射到具体的像素值
+  // 定义断点映射表，将语义化名称映射到具体像素值
   $breakpoint-map: (
-    xs: vars.$breakpoint-xs, // 480px
-    sm: vars.$breakpoint-sm, // 576px
-    md: vars.$breakpoint-md, // 768px
-    lg: vars.$breakpoint-lg, // 992px
-    xl: vars.$breakpoint-xl  // 1200px
+    xs: vars.$breakpoint-xs, // 480px - 超小屏幕
+    sm: vars.$breakpoint-sm, // 576px - 小屏幕
+    md: vars.$breakpoint-md, // 768px - 中等屏幕
+    lg: vars.$breakpoint-lg, // 992px - 大屏幕
+    xl: vars.$breakpoint-xl  // 1200px - 超大屏幕
   );
 
-  // 检查断点是否存在
+  // 检查传入的断点名称是否存在于映射表中
   @if map-has-key($breakpoint-map, $breakpoint) {
-    // 生成媒体查询：最大宽度为指定断点
+    // 生成媒体查询，屏幕宽度小于等于指定断点时应用内容
     @media (max-width: map-get($breakpoint-map, $breakpoint)) {
-      @content; // 应用传入的样式内容
+      @content; // 应用传入的样式内容块
     }
   } @else {
-    // 如果断点不存在，发出警告
-    @warn "断点 #{$breakpoint} 不存在";
+    // 如果断点不存在，发出Sass警告提示开发者
+    @warn "断点 #{$breakpoint} 不存在，请检查断点名称是否正确";
   }
 }
 
-/// 响应式混入 - 向上断点（最小宽度）
-/// @param {String} $breakpoint - 断点名称 (xs, sm, md, lg, xl)
-/// @content - 在指定断点及以上应用的样式
-/// @example: @include media-breakpoint-up(md) { ... }
+/// 响应式混入 - 向上断点（移动优先设计中的最小宽度断点）
+/// 使用场景：在大于等于指定断点时应用样式
+/// @param {String} $breakpoint - 断点名称，可选值：xs, sm, md, lg, xl
+/// @content - 在媒体查询内应用的样式块
 @mixin media-breakpoint-up($breakpoint) {
-  // 断点映射表
+  // 复用相同的断点映射表
   $breakpoint-map: (
     xs: vars.$breakpoint-xs,
     sm: vars.$breakpoint-sm,
@@ -49,682 +56,470 @@
     xl: vars.$breakpoint-xl
   );
 
-  // 检查断点是否存在
+  // 检查传入的断点名称是否存在于映射表中
   @if map-has-key($breakpoint-map, $breakpoint) {
-    // 生成媒体查询：最小宽度为指定断点
+    // 生成媒体查询，屏幕宽度大于等于指定断点时应用内容
     @media (min-width: map-get($breakpoint-map, $breakpoint)) {
       @content;
     }
   } @else {
-    @warn "断点 #{$breakpoint} 不存在";
+    @warn "断点 #{$breakpoint} 不存在，请检查断点名称是否正确";
   }
 }
 
-/// 颜色透明度函数
-/// @param {Color} $color - 基础颜色值
-/// @param {Number} $opacity - 透明度 (0-1之间)
-/// @return {Color} 带有透明度的颜色值
+/// 颜色透明度计算函数
+/// 功能：将十六进制颜色转换为RGBA格式，并应用指定透明度
+/// @param {Color} $color - 基础颜色值，支持十六进制、RGB等格式
+/// @param {Number} $opacity - 透明度值，范围0-1（0完全透明，1完全不透明）
+/// @return {Color} 返回RGBA格式的颜色值
 /// @example: background: color-with-opacity(#2196F3, 0.8);
 @function color-with-opacity($color, $opacity) {
-  @return rgba($color, $opacity);
+  @return rgba($color, $opacity); // 使用Sass内置的rgba函数转换
 }
 
-/// 获取状态文本颜色的函数
-/// @param {String} $status - 状态类型: 'up'（上涨）, 'down'（下跌）, 'neutral'（持平）
-/// @return {Color} 对应的状态颜色值（CSS变量）
+/// 状态文本颜色获取函数
+/// 功能：根据状态类型返回对应的CSS颜色变量
+/// @param {String} $status - 状态类型：'up'（上涨），'down'（下跌），'neutral'（持平）
+/// @return {Color} 返回对应状态的CSS变量值
 /// @example: color: text-status-color('up');
 @function text-status-color($status) {
   @if $status == 'up' {
-    @return var(--color-stock-up); // 返回上涨颜色变量
+    @return var(--color-stock-up); // 上涨状态颜色变量
   } @else if $status == 'down' {
-    @return var(--color-stock-down); // 返回下跌颜色变量
+    @return var(--color-stock-down); // 下跌状态颜色变量
   } @else if $status == 'neutral' {
-    @return var(--color-stock-flat); // 返回持平颜色变量
+    @return var(--color-stock-flat); // 持平状态颜色变量
   } @else {
-    @warn "状态类型 #{$status} 不存在，使用中性颜色";
-    @return var(--color-stock-flat); // 默认返回中性颜色
+    // 如果传入未知状态，发出警告并使用中性颜色作为降级方案
+    @warn "状态类型 #{$status} 不存在，使用中性颜色作为默认值";
+    @return var(--color-stock-flat);
   }
 }
 
+
 // ============================================================================
-// Flex布局混入区域
+// 基础布局混入区域
+// 包含所有Flexbox布局的快捷混入，用于快速创建常见布局模式
 // ============================================================================
 
-/// Flex居中布局 - 水平和垂直都居中
-/// @param {String} $direction - 方向 (row|column)，默认row
-/// @example: @include flex-center; 或 @include flex-center(column);
+/// Flex居中布局混入
+/// 功能：创建水平和垂直都居中的Flex容器
+/// @param {String} $direction - 排列方向：'row'（水平，默认）或 column（垂直）
+/// @example: @include flex-center; // 水平方向居中
+/// @example: @include flex-center(column); // 垂直方向居中
 @mixin flex-center($direction: row) {
-  display: flex; // 启用flex布局
-  justify-content: center; // 水平居中
-  align-items: center; // 垂直居中
+  display: flex; // 启用Flexbox布局模型
+  justify-content: center; // 主轴上居中对齐
+  align-items: center; // 交叉轴上居中对齐
 
+  // 根据参数设置排列方向
   @if $direction == 'column' {
-    flex-direction: column; // 如果是列方向，则设置为垂直排列
+    flex-direction: column; // 垂直方向排列
   }
 }
 
-/// Flex两端对齐布局 - 水平两端对齐，垂直居中
-/// @example: @include flex-layout-between;
-@mixin flex-layout-between {
+/// Flex两端对齐布局混入
+/// 功能：创建水平方向两端对齐，垂直方向居中的Flex容器
+/// @example: @include flex-between;
+@mixin flex-between {
   display: flex;
-  justify-content: space-between; // 两端对齐
-  align-items: center; // 垂直居中
+  justify-content: space-between; // 主轴上两端对齐，项目间隔相等
+  align-items: center; // 交叉轴上居中对齐
 }
 
-/// Flex左对齐布局 - 水平左对齐，垂直居中
-/// @example: @include flex-layout-start;
-@mixin flex-layout-start {
+/// Flex起始对齐布局混入
+/// 功能：创建水平方向起始对齐（左对齐），垂直方向居中的Flex容器
+/// @example: @include flex-start;
+@mixin flex-start {
   display: flex;
-  justify-content: flex-start; // 左对齐
-  align-items: center; // 垂直居中
+  justify-content: flex-start; // 主轴上起始位置对齐
+  align-items: center; // 交叉轴上居中对齐
 }
 
-/// Flex右对齐布局 - 水平右对齐，垂直居中
-/// @example: @include flex-layout-end;
-@mixin flex-layout-end {
+/// Flex结束对齐布局混入
+/// 功能：创建水平方向结束对齐（右对齐），垂直方向居中的Flex容器
+/// @example: @include flex-end;
+@mixin flex-end {
   display: flex;
-  justify-content: flex-end; // 右对齐
-  align-items: center; // 垂直居中
-}
-
-/// Flex垂直居中布局 - 水平居中，垂直居中（列方向）
-/// @example: @include flex-column-center;
-@mixin flex-column-center {
-  display: flex;
-  flex-direction: column; // 垂直方向排列
-  justify-content: center; // 垂直居中
-  align-items: center; // 水平居中
-}
-
-/// Flex垂直两端对齐布局 - 垂直两端对齐，水平居中
-/// @example: @include flex-column-between;
-@mixin flex-column-between {
-  display: flex;
-  flex-direction: column; // 垂直方向排列
-  justify-content: space-between; // 两端对齐（垂直方向）
-  align-items: center; // 水平居中
-}
-
-/// Flex垂直填充布局 - 垂直填满，水平居中
-/// @example: @include flex-column-full;
-@mixin flex-column-full {
-  display: flex;
-  flex-direction: column; // 垂直方向排列
-  justify-content: space-between; // 两端对齐
-  align-items: stretch; // 拉伸子项宽度
+  justify-content: flex-end; // 主轴上结束位置对齐
+  align-items: center; // 交叉轴上居中对齐
 }
 
 // ============================================================================
-// 占位符选择器（用于继承，减少重复代码）
-// ============================================================================
-
-// Flex居中占位符（可通过@extend %flex-center;继承）
-%flex-center {
-  @include flex-center;
-}
-
-// Flex两端对齐占位符
-%flex-layout-between {
-  @include flex-layout-between;
-}
-
-// Flex左对齐占位符
-%flex-layout-start {
-  @include flex-layout-start;
-}
-
-// Flex右对齐占位符
-%flex-layout-end {
-  @include flex-layout-end;
-}
-
-// Flex垂直居中占位符
-%flex-column-center {
-  @include flex-column-center;
-}
-
-// Flex垂直两端对齐占位符
-%flex-column-between {
-  @include flex-column-between;
-}
-
-// Flex垂直填充占位符
-%flex-column-full {
-  @include flex-column-full;
-}
-
-// ============================================================================
-// 文本处理混入区域
-// ============================================================================
-
-/// 文本溢出省略混入
-/// @param {Number} $lines - 显示的行数，默认1（单行省略）
-/// @example: @include text-ellipsis; // 单行省略
-/// @example: @include text-ellipsis(2); // 两行省略
-@mixin text-ellipsis($lines: 1) {
-  @if $lines == 1 {
-    overflow: hidden; // 隐藏溢出内容
-    text-overflow: ellipsis; // 显示省略号
-    white-space: nowrap; // 不换行
-  } @else {
-    display: -webkit-box; // 使用Webkit盒子模型
-    -webkit-line-clamp: $lines; // 限制行数
-    -webkit-box-orient: vertical; // 垂直方向
-    overflow: hidden; // 隐藏溢出
-  }
-}
-
-/// 次要文本样式混入
-/// @example: @include text-secondary;
-@mixin text-secondary {
-  color: var(--color-text-secondary); // 使用次要文字颜色
-  font-size: 0.85em; // 稍小的字体
-}
-
-/// 快速应用状态文本样式的混入
-/// @param {String} $status - 状态类型: 'up', 'down', 'neutral'
-/// @example: @include text-status('up');
-@mixin text-status($status) {
-  color: text-status-color($status); // 调用函数获取颜色
-  font-weight: if($status == 'neutral', 400, 500); // 中性状态400，其他500
-  font-size: var(--font-size-base, 14px); // 使用基础字体大小
-}
-
-// 状态文本快捷混入（直接调用text-status混入）
-@mixin text-status-up {
-  @include text-status('up'); // 上涨状态文本
-}
-
-@mixin text-status-down {
-  @include text-status('down'); // 下跌状态文本
-}
-
-@mixin text-status-neutral {
-  @include text-status('neutral'); // 中性状态文本
-}
-
-// ============================================================================
-// 滚动条混入区域
-// ============================================================================
-
-/// 自定义滚动条混入
-/// @example: @include custom-scrollbar;
-@mixin custom-scrollbar {
-  &::-webkit-scrollbar {
-    width: 6px; // 垂直滚动条宽度
-    height: 6px; // 水平滚动条高度
-  }
-
-  &::-webkit-scrollbar-track {
-    background: var(--color-border); // 轨道颜色使用边框颜色
-    border-radius: 4px; // 圆角轨道
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--color-text-tertiary); // 滑块颜色使用三级文字颜色
-    border-radius: 3px; // 圆角滑块
-
-    &:hover {
-      background: var(--color-text-secondary); // 悬停时使用二级文字颜色
-    }
-  }
-
-  // Firefox浏览器支持
-  scrollbar-width: thin; // 细滚动条
-  scrollbar-color: var(--color-text-tertiary) var(--color-border); // 滑块和轨道颜色
-}
-
-/// 隐藏滚动条但保持滚动功能混入
-/// @example: @include hide-scrollbar;
-@mixin hide-scrollbar {
-  // Firefox浏览器支持
-  scrollbar-width: none; // 无滚动条
-  -ms-overflow-style: none; // IE浏览器支持
-
-  &::-webkit-scrollbar {
-    display: none; // Chrome/Safari隐藏滚动条
-  }
-}
-
-// ============================================================================
-// 组件基础混入区域
+// 基础样式混入区域
+// 包含所有UI基础组件的完整样式实现，业务组件应直接继承这些基础混入
 // ============================================================================
 
 /// 卡片基础样式混入
+/// 功能：提供完整的卡片样式实现，包括背景、边框、阴影和交互效果
+/// 特点：包含完整的样式，业务组件可直接继承，无需重复定义基础属性
 /// @example: @include card-base;
 @mixin card-base {
-  background-color: var(--color-bg-card); // 卡片背景色
-  border: 1px solid var(--color-border); // 边框
-  border-radius: var(--border-radius); // 圆角
-  box-shadow: var(--box-shadow-1); // 阴影
-  transition: all var(--transition-normal); // 过渡效果
+  background-color: var(--color-bg-card); // 卡片背景色，使用CSS变量
+  border: 1px solid var(--color-border); // 1像素边框，使用边框颜色变量
+  border-radius: var(--border-radius-md, 8px); // 中等圆角，支持降级值
+  box-shadow: var(--box-shadow-1, 0 1px 3px rgba(0, 0, 0, 0.1)); // 一级阴影
+  transition: all var(--transition-normal, 0.3s ease); // 所有属性过渡效果
+  overflow: hidden; // 隐藏溢出内容，防止圆角被内容破坏
 
+  // 悬停状态增强效果
   &:hover {
-    box-shadow: var(--box-shadow-2); // 悬停时增强阴影
+    box-shadow: var(--box-shadow-2, 0 4px 6px rgba(0, 0, 0, 0.1)); // 悬停时增强阴影
   }
 }
 
 /// 按钮基础样式混入
-/// @param {String} $type - 按钮类型: 'primary'（主要）| 'secondary'（次要）| 'text'（文字按钮）
+/// 功能：提供完整的按钮样式实现，支持三种按钮类型
+/// @param {String} $type - 按钮类型：'primary'（主要），'secondary'（次要），'text'（文字按钮）
 /// @example: @include button-base; // 主要按钮
 /// @example: @include button-base('secondary'); // 次要按钮
 @mixin button-base($type: 'primary') {
-  border: none; // 无边框
-  border-radius: var(--border-radius-sm); // 小圆角
-  padding: vars.spacer(2) vars.spacer(4); // 内边距
+  @include flex-center; // 继承Flex居中布局，确保图标和文字居中
+  border: none; // 移除默认边框
+  border-radius: var(--border-radius-sm, 4px); // 小圆角
+  padding: vars.spacer(2) vars.spacer(4); // 使用间距函数计算内边距
   font-weight: 500; // 中等字体粗细
-  cursor: pointer; // 手型光标
-  transition: all var(--transition-fast); // 快速过渡
+  cursor: pointer; // 鼠标悬停显示手型光标
+  transition: all var(--transition-fast, 0.2s ease); // 快速过渡效果
+  font-size: 0.875rem; // 14px标准按钮字体
+  min-height: 36px; // 最小高度确保可访问性
 
+  // 主要按钮样式（强调操作）
   @if $type == 'primary' {
     background-color: var(--color-primary); // 主色背景
-    color: white; // 白色文字
+    color: white; // 白色文字，确保对比度
 
-    &:hover {
-      background-color: color-with-opacity(var(--color-primary), 0.8); // 悬停透明度
-      transform: translateY(-1px); // 轻微上移
+    // 非禁用状态的悬停效果
+    &:hover:not(:disabled) {
+      background-color: color-with-opacity(var(--color-primary), 0.9); // 轻微透明度
+      transform: translateY(-1px); // 轻微上移，创建按压感
     }
 
-    &:active {
-      background-color: color-with-opacity(var(--color-primary), 0.6); // 按下透明度
-      transform: translateY(0); // 恢复位置
+    // 激活状态效果
+    &:active:not(:disabled) {
+      transform: translateY(0); // 恢复原位
     }
 
+    // 禁用状态样式
     &:disabled {
-      background-color: color-with-opacity(var(--color-primary), 0.3); // 禁用透明度
+      opacity: 0.5; // 半透明
       cursor: not-allowed; // 禁用光标
     }
-  } @else if $type == 'secondary' {
-    background-color: var(--color-bg-primary); // 页面背景色
+  }
+
+  // 次要按钮样式（普通操作）
+  @else if $type == 'secondary' {
+    background-color: var(--color-bg-secondary); // 次要背景色
     color: var(--color-text-primary); // 主要文字颜色
     border: 1px solid var(--color-border); // 边框
 
-    &:hover {
-      border-color: var(--color-primary); // 悬停时边框变主色
-      color: var(--color-primary); // 文字变主色
+    // 悬停时强调边框和文字颜色
+    &:hover:not(:disabled) {
+      border-color: var(--color-primary); // 边框变为主色
+      color: var(--color-primary); // 文字变为主色
     }
-  } @else if $type == 'text' {
+  }
+
+  // 文字按钮样式（最轻量的操作）
+  @else if $type == 'text' {
     background-color: transparent; // 透明背景
     color: var(--color-text-secondary); // 次要文字颜色
+    padding: vars.spacer(1) vars.spacer(2); // 较小的内边距
 
-    &:hover {
-      color: var(--color-primary); // 悬停时文字变主色
+    // 悬停时添加轻微背景和主色文字
+    &:hover:not(:disabled) {
+      color: var(--color-primary); // 文字变为主色
+      background-color: color-with-opacity(var(--color-primary), 0.05); // 轻微背景色
+    }
+  }
+}
+
+/// 页面头部基础样式混入
+/// 功能：提供完整的页面头部样式，包括标题、描述和操作区域
+/// 特点：完全自包含，业务页面头部可直接使用此混入
+/// @example: @include page-header-base;
+@mixin page-header-base {
+  margin-bottom: vars.spacer(6); // 底部大间距，与其他内容区分
+
+  // 头部内容容器
+  .header-content {
+    @include flex-between; // 使用两端对齐布局
+    align-items: flex-start; // 顶部对齐，适应多行标题
+    flex-wrap: wrap; // 允许换行，适应移动端
+    gap: vars.spacer(3); // 子项之间的间距
+
+    // 标题区域（左侧）
+    .title-section {
+      flex: 1; // 占据可用空间
+      min-width: 200px; // 最小宽度防止过度收缩
+
+      // 页面主标题
+      .page-title {
+        font-size: 1.5rem; // 24px标题
+        font-weight: 600; // 半粗体
+        color: var(--color-text-primary); // 主要文字颜色
+        margin-bottom: vars.spacer(1); // 标题与描述之间的间距
+        line-height: 1.3; // 合适的行高
+      }
+
+      // 页面描述文字
+      .page-description {
+        font-size: 0.875rem; // 14px描述文字
+        color: var(--color-text-secondary); // 次要文字颜色
+        line-height: 1.5; // 良好的可读性行高
+      }
+    }
+
+    // 操作按钮区域（右侧）
+    .header-actions {
+      @include flex-start; // 起始对齐布局
+      gap: vars.spacer(2); // 按钮之间的间距
+      flex-wrap: wrap; // 允许按钮换行
+
+      // 移动端适配：全宽度并保持起始对齐
+      @include media-breakpoint-down(sm) {
+        width: 100%; // 占据全宽
+        justify-content: flex-start; // 起始对齐
+      }
     }
   }
 }
 
 /// 表单元素基础样式混入
+/// 功能：提供输入框、选择框等表单元素的统一基础样式
 /// @example: @include form-element-base;
 @mixin form-element-base {
   background-color: var(--color-bg-card); // 卡片背景色
-  border: 1px solid var(--color-border); // 边框
+  border: 1px solid var(--color-border); // 标准边框
   border-radius: var(--border-radius-sm); // 小圆角
   color: var(--color-text-primary); // 主要文字颜色
-  font-size: 0.875rem; // 14px
-  padding: 0.375rem 0.75rem; // 内边距
-  transition: all var(--transition-fast); // 快速过渡
+  font-size: 0.875rem; // 14px标准表单字体
+  padding: vars.spacer(2) vars.spacer(3); // 舒适的内边距
+  transition: all var(--transition-fast); // 快速过渡效果
+  width: 100%; // 默认全宽
+  min-height: 36px; // 最小高度确保可访问性
 
+  // 聚焦状态（获取焦点时）
   &:focus {
-    border-color: var(--color-primary); // 聚焦时边框变主色
-    box-shadow: 0 0 0 2px color-with-opacity(var(--color-primary), 0.2); // 聚焦光晕
-    outline: none; // 移除默认轮廓
+    border-color: var(--color-primary); // 边框变为主色
+    box-shadow: 0 0 0 2px color-with-opacity(var(--color-primary), 0.2); // 聚焦光晕效果
+    outline: none; // 移除默认聚焦轮廓
   }
 
-  &:hover:not(:focus) {
-    border-color: color-with-opacity(var(--color-primary), 0.8); // 悬停时边框透明度
-  }
-}
-
-/// 表格基础样式混入
-/// @example: @include table-base;
-@mixin table-base {
-  .n-data-table {
-    background-color: transparent; // 透明背景
-
-    .n-data-table-th {
-      background-color: var(--color-bg-card-header); // 表头背景色
-      font-weight: 600; // 加粗字体
-      color: var(--color-text-primary); // 主要文字颜色
-    }
-
-    .n-data-table-tr {
-      transition: background-color var(--transition-fast); // 快速过渡
-
-      &:nth-child(even) {
-        background-color: color-with-opacity(var(--color-bg-secondary), 0.1); // 偶数行背景
-      }
-
-      &:hover {
-        background-color: var(--color-bg-hover); // 悬停背景色
-      }
-    }
-
-    .n-data-table-td {
-      color: var(--color-text-primary); // 主要文字颜色
-    }
-  }
-}
-
-/// 创建盒子阴影的混入
-/// @param {String} $level - 阴影级别: '1'（轻度）, '2'（中度）, '3'（重度）
-/// @example: @include box-shadow; // 默认轻度阴影
-/// @example: @include box-shadow('2'); // 中度阴影
-@mixin box-shadow($level: '1') {
-  @if $level == '1' {
-    box-shadow: var(--box-shadow-1); // 一级阴影
-  } @else if $level == '2' {
-    box-shadow: var(--box-shadow-2); // 二级阴影
-  } @else if $level == '3' {
-    box-shadow: var(--box-shadow-3); // 三级阴影
-  } @else {
-    box-shadow: var(--box-shadow-1); // 默认一级阴影
-  }
-}
-
-/// 快速应用圆角的混入
-/// @param {String} $size - 圆角大小: 'small'（小）, 'medium'（中）, 'large'（大）, 'full'（圆形）
-/// @example: @include border-radius; // 默认中等圆角
-/// @example: @include border-radius('large'); // 大圆角
-@mixin border-radius($size: 'medium') {
-  @if $size == 'small' {
-    border-radius: var(--border-radius-sm); // 小圆角
-  } @else if $size == 'medium' {
-    border-radius: var(--border-radius-md); // 中等圆角
-  } @else if $size == 'large' {
-    border-radius: var(--border-radius-lg); // 大圆角
-  } @else if $size == 'full' {
-    border-radius: 50%; // 圆形（50%）
-  } @else {
-    border-radius: var(--border-radius-md); // 默认中等圆角
-  }
-}
-
-/// 创建平滑过渡的混入
-/// @param {String} $property - 过渡属性，默认为'all'
-/// @param {String} $duration - 过渡时长: 'fast'（快速）, 'normal'（常规）, 'slow'（慢速）
-/// @example: @include transition; // 默认所有属性常规过渡
-/// @example: @include transition(transform, 'fast'); // 变换属性快速过渡
-@mixin transition($property: all, $duration: 'normal') {
-  $transition-duration: var(--transition-normal); // 默认常规时长
-
-  @if $duration == 'fast' {
-    $transition-duration: var(--transition-fast); // 快速时长
-  } @else if $duration == 'slow' {
-    $transition-duration: var(--transition-slow); // 慢速时长
+  // 悬停状态（非聚焦时）
+  &:hover:not(:focus):not(:disabled) {
+    border-color: var(--color-primary-light); // 边框变为浅主色
   }
 
-  transition: $property $transition-duration; // 应用过渡
+  // 禁用状态
+  &:disabled {
+    opacity: 0.5; // 半透明
+    cursor: not-allowed; // 禁用光标
+  }
 }
 
 // ============================================================================
-// 页面布局混入区域
+// 文本处理混入区域
+// 包含文本溢出、状态样式等文本相关工具混入
 // ============================================================================
 
-/// 页面头部样式混入
-/// @example: @include page-header;
-@mixin page-header {
-  margin-bottom: vars.spacer(6); // 底部大间距
+/// 文本溢出省略混入
+/// 功能：处理单行或多行文本溢出显示省略号
+/// @param {Number} $lines - 显示的行数，默认1（单行省略）
+/// @example: @include text-ellipsis; // 单行省略
+/// @example: @include text-ellipsis(3); // 三行省略
+@mixin text-ellipsis($lines: 1) {
+  @if $lines == 1 {
+    // 单行省略：不换行，溢出显示省略号
+    overflow: hidden; // 隐藏溢出内容
+    text-overflow: ellipsis; // 显示省略号
+    white-space: nowrap; // 禁止换行
+  } @else {
+    // 多行省略：使用Webkit特定属性（支持大多数现代浏览器）
+    display: -webkit-box; // 使用Webkit盒子模型
+    -webkit-line-clamp: $lines; // 限制显示行数
+    -webkit-box-orient: vertical; // 垂直方向排列
+    overflow: hidden; // 隐藏溢出内容
+  }
+}
 
-  .header-content {
-    display: flex; // 弹性布局
-    justify-content: space-between; // 两端对齐
-    align-items: flex-start; // 顶部对齐
-    flex-wrap: wrap; // 允许换行
-    gap: vars.spacer(3); // 子项间距
+/// 文本状态样式混入
+/// 功能：根据状态快速应用对应的文字颜色和字体粗细
+/// @param {String} $status - 状态类型：'up'（上涨），'down'（下跌），'neutral'（持平）
+/// @example: @include text-status('up');
+@mixin text-status($status) {
+  color: text-status-color($status); // 调用函数获取对应颜色
+  font-weight: if($status == 'neutral', 400, 500); // 中性状态正常粗细，其他状态中等粗细
+}
 
-    .title-section {
-      .page-title {
-        font-size: 1.5rem; // 24px标题
-        font-weight: 600; // 加粗
+// ============================================================================
+// 业务组件混入区域
+// 包含具体业务场景的组件混入，直接继承基础样式，避免多级继承
+// ============================================================================
+
+/// 市场卡片组件混入
+/// 功能：量化交易平台中的市场数据卡片，显示市场行情和指标
+/// 特点：继承card-base，添加市场卡片特有样式和交互
+/// @example: @include market-card;
+@mixin market-card {
+  @include card-base; // 继承基础卡片样式
+  cursor: pointer; // 手型光标，表示可点击
+  height: 100%; // 高度充满容器，保持卡片高度一致
+
+  // 悬停效果：轻微上移增强交互反馈
+  &:hover {
+    transform: translateY(-2px);
+  }
+
+  // 卡片头部区域：包含标题和副标题
+  .market-card-header {
+    @include flex-between; // 两端对齐布局
+    padding: vars.spacer(4); // 标准内边距
+    border-bottom: 1px solid var(--color-border-light); // 底部细分割线
+
+    // 信息区域（左侧）
+    &-info {
+      .card-title {
+        font-size: 1.125rem; // 18px标题
+        font-weight: 600; // 半粗体
         color: var(--color-text-primary); // 主要文字颜色
-        margin-bottom: vars.spacer(1); // 标题底部小间距
+        margin-bottom: vars.spacer(1); // 标题与副标题间距
       }
 
-      .page-description {
-        font-size: 0.875rem; // 14px描述
-        color: var(--color-text-secondary); // 次要文字颜色
-      }
-    }
-
-    .header-actions {
-      display: flex; // 弹性布局
-      align-items: center; // 垂直居中
-      gap: vars.spacer(2); // 按钮间距
-
-      // 移动端适配
-      @include media-breakpoint-down(sm) {
-        flex-direction: column; // 垂直排列
-        width: 100%; // 全宽
+      .card-subtitle {
+        font-size: 0.75rem; // 12px小字号
+        color: var(--color-text-tertiary); // 三级文字颜色
+        background-color: var(--color-bg-secondary); // 浅色背景
+        padding: vars.spacer(0.5) vars.spacer(1.5); // 较小的内边距
+        border-radius: 10px; // 胶囊形状圆角
+        display: inline-block; // 内联块元素
       }
     }
   }
+
+  // 卡片内容区域：包含数据图表和指标
+  .market-card-content {
+    padding: vars.spacer(4); // 标准内边距
+  }
 }
 
-/// 筛选工具栏样式混入
-/// @example: @include filter-bar;
-@mixin filter-bar {
-  background-color: color-with-opacity(var(--color-bg-secondary), 0.1); // 半透背景
-  border-radius: var(--border-radius); // 圆角
-  border: 1px solid var(--color-border); // 边框
-  padding: vars.spacer(3); // 内边距
-  margin-bottom: vars.spacer(3); // 底部间距
+/// 功能导航卡片混入
+/// 功能：功能入口卡片，用于导航到不同功能模块
+/// 特点：继承card-base，添加功能卡片的特定布局
+/// @example: @include function-card;
+@mixin function-card {
+  @include card-base; // 继承基础卡片样式
+  padding: vars.spacer(4); // 整体内边距
+  cursor: pointer; // 手型光标，表示可点击
 
-  .filter-content {
-    display: flex; // 弹性布局
-    align-items: flex-start; // 顶部对齐
-    gap: vars.spacer(3); // 子项间距
-    flex-wrap: wrap; // 允许换行
+  // 悬停效果：轻微上移
+  &:hover {
+    transform: translateY(-2px);
+  }
 
-    .filter-actions {
-      margin-left: auto; // 右侧对齐
-      display: flex; // 弹性布局
-      align-items: center; // 垂直居中
-      gap: vars.spacer(2); // 按钮间距
+  // 卡片头部：包含图标和标题
+  .function-card-header {
+    @include flex-start; // 起始对齐布局
+    gap: vars.spacer(3); // 图标与标题间距
+    margin-bottom: vars.spacer(3); // 头部与内容间距
+
+    // 图标容器
+    .icon-container {
+      @include icon-container('md', 'primary'); // 使用中等大小主色图标
     }
   }
-}
 
-// ============================================================================
-// 网格布局混入区域
-// ============================================================================
-
-/// 灵活网格布局混入
-/// @param {Number} $columns - 默认列数
-/// @param {Map} $breakpoints - 响应式断点映射 {断点: 列数}
-/// @example: @include flexible-grid(4, (lg: 2, sm: 1)); // 默认4列，大屏2列，小屏1列
-@mixin flexible-grid($columns: 4, $breakpoints: ()) {
-  display: grid; // 网格布局
-  grid-template-columns: repeat($columns, 1fr); // 重复列
-  gap: vars.spacer(3); // 网格间距
-
-  // 响应式断点处理
-  @each $breakpoint, $column-count in $breakpoints {
-    @include media-breakpoint-down($breakpoint) {
-      grid-template-columns: repeat($column-count, 1fr); // 调整列数
-    }
-  }
-}
-
-/// 卡片网格布局混入
-/// @example: @include card-grid;
-@mixin card-grid {
-  @include flexible-grid(4, (lg: 2, sm: 1)); // 默认4列，响应式调整
-  margin-bottom: vars.spacer(4); // 底部间距
-
-  .n-card {
-    transition: all var(--transition-normal); // 过渡效果
-    height: 100%; // 高度充满
-
-    &:hover {
-      transform: translateY(-2px); // 悬停上移
-    }
-  }
-}
-
-// ============================================================================
-// 动画混入区域
-// ============================================================================
-
-/// 加载旋转动画混入
-/// @param {String} $size - 旋转器大小（如：1em、20px）
-/// @example: @include loading-spinner;
-@mixin loading-spinner($size: 1em) {
-  @include flex-center; // 居中显示
-
-  &::after {
-    content: ''; // 伪元素
-    width: $size; // 宽度
-    height: $size; // 高度
-    border: 2px solid currentColor; // 边框颜色使用当前文字颜色
-    border-right-color: transparent; // 右边框透明，创建缺口
-    border-radius: 50%; // 圆形
-    animation: spin 1s linear infinite; // 旋转动画
+  // 功能标题
+  .function-card-title {
+    font-size: 1rem; // 16px标题
+    font-weight: 600; // 半粗体
+    color: var(--color-text-primary); // 主要文字颜色
+    margin: 0; // 移除默认边距
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); } // 旋转360度
+  // 功能描述
+  .function-card-description {
+    font-size: 0.875rem; // 14px描述文字
+    color: var(--color-text-secondary); // 次要文字颜色
+    margin-bottom: vars.spacer(3); // 描述与统计信息间距
+    line-height: 1.5; // 良好的可读性行高
   }
-}
 
-/// 淡入动画混入
-/// @param {String} $duration - 动画时长
-/// @example: @include fade-in; // 默认时长淡入
-/// @example: @include fade-in(0.5s); // 0.5秒淡入
-@mixin fade-in($duration: var(--transition-normal)) {
-  animation: fadeIn $duration ease-out; // 淡入动画
-
-  @keyframes fadeIn {
-    from { opacity: 0; } // 从透明开始
-    to { opacity: 1; }   // 到不透明结束
+  // 卡片页脚：包含附加信息
+  .function-card-footer {
+    font-size: 0.75rem; // 12px小字号
+    color: var(--color-text-tertiary); // 三级文字颜色
+    padding-top: vars.spacer(3); // 顶部内边距
+    border-top: 1px solid var(--color-border-light); // 顶部细分割线
   }
-}
-
-// ============================================================================
-// 业务组件混入区域（从_components.scss迁移过来）
-// ============================================================================
-
-/// 页面头部基础样式混入（封装page-header并添加额外样式）
-/// @example: @include page-header-base;
-@mixin page-header-base {
-  @include page-header; // 包含基础页面头部样式
-  margin-bottom: spacer(4); // 底部标准间距
-}
-
-/// 分栏布局基础样式混入
-/// @param {Number} $columns - 列数（2或4）
-/// @example: @include grid-layout(2); // 两列布局
-/// @example: @include grid-layout(4); // 四列布局
-@mixin grid-layout($columns) {
-  display: grid; // 网格布局
-  gap: spacer(3); // 网格间距
-  grid-template-columns: repeat($columns, 1fr); // 重复列
-
-  // 两列布局的响应式处理
-  @if $columns == 2 {
-    @include media-breakpoint-down(lg) {
-      grid-template-columns: 1fr; // 大屏以下变为单列
-    }
-  } @else if $columns == 4 {
-    // 四列布局的响应式处理
-    @include media-breakpoint-down(lg) {
-      grid-template-columns: repeat(2, 1fr); // 大屏以下变为两列
-    }
-
-    @include media-breakpoint-down(sm) {
-      grid-template-columns: 1fr; // 小屏以下变为单列
-    }
-  }
-}
-
-/// 卡片内容容器混入
-/// @example: @include card-content-base;
-@mixin card-content-base {
-  padding: spacer(4); // 标准内边距
-}
-
-/// 卡片标题样式混入
-/// @example: @include card-title-base;
-@mixin card-title-base {
-  font-size: 1.125rem; // 18px标题
-  font-weight: 600; // 加粗
-  color: var(--color-text-primary); // 主要文字颜色
-  margin: 0; // 无外边距
-  display: flex; // 弹性布局
-  align-items: center; // 垂直居中
-  gap: spacer(2); // 图标与文字间距
 }
 
 /// 图标容器混入
-/// @param {String} $size - 尺寸: 'sm'（小）, 'md'（中）, 'lg'（大）
-/// @param {String} $variant - 颜色变体: 'primary'（主色）等
+/// 功能：创建统一风格的图标容器，支持不同尺寸和颜色变体
+/// @param {String} $size - 尺寸：'sm'（小），'md'（中），'lg'（大）
+/// @param {String} $variant - 颜色变体：'primary'，'success'，'warning'，'error'
 /// @example: @include icon-container('md', 'primary'); // 中等大小主色图标
 @mixin icon-container($size: 'md', $variant: 'primary') {
-  display: inline-flex; // 内联弹性布局
-  align-items: center; // 垂直居中
-  justify-content: center; // 水平居中
-  border-radius: 8px; // 固定圆角
-  transition: transform var(--transition-normal); // 变换过渡
+  @include flex-center; // 居中对齐图标
+  border-radius: 8px; // 固定圆角值
+  transition: transform var(--transition-normal); // 变换过渡效果
 
   // 尺寸处理
   @if $size == 'sm' {
     width: 24px; // 小尺寸宽度
     height: 24px; // 小尺寸高度
-    font-size: 0.875rem; // 小尺寸字体
+    font-size: 0.875rem; // 小尺寸字体（14px）
   } @else if $size == 'md' {
     width: 40px; // 中尺寸宽度
     height: 40px; // 中尺寸高度
-    font-size: 1.25rem; // 中尺寸字体
+    font-size: 1.25rem; // 中尺寸字体（20px）
   } @else if $size == 'lg' {
     width: 48px; // 大尺寸宽度
     height: 48px; // 大尺寸高度
-    font-size: 1.5rem; // 大尺寸字体
+    font-size: 1.5rem; // 大尺寸字体（24px）
   }
 
   // 颜色变体处理
   @if $variant == 'primary' {
-    background: color-with-opacity(#2196F3, 0.1); // 主色背景（10%透明度）
+    background-color: color-with-opacity(var(--color-primary), 0.1); // 10%主色背景
     color: var(--color-primary); // 主色图标
   } @else if $variant == 'success' {
-    background: color-with-opacity(#67c23a, 0.1); // 成功色背景
+    background-color: color-with-opacity(var(--color-success), 0.1); // 10%成功色背景
     color: var(--color-success); // 成功色图标
   } @else if $variant == 'warning' {
-    background: color-with-opacity(#FFC107, 0.1); // 警告色背景
+    background-color: color-with-opacity(var(--color-warning), 0.1); // 10%警告色背景
     color: var(--color-warning); // 警告色图标
   } @else if $variant == 'error' {
-    background: color-with-opacity(#f56c6c, 0.1); // 错误色背景
+    background-color: color-with-opacity(var(--color-error), 0.1); // 10%错误色背景
     color: var(--color-error); // 错误色图标
-  } @else if $variant == 'info' {
-    background: color-with-opacity(#17a2b8, 0.1); // 信息色背景
-    color: var(--color-info); // 信息色图标
-  } @else if $variant == 'purple' {
-    background: color-with-opacity(#954CE9, 0.1); // 紫色背景
-    color: #954CE9; // 紫色图标
   }
 }
 
 /// 统计项样式混入
-/// @param {String} $status - 数值状态: 'up'（上涨）, 'down'（下跌）, 'neutral'（持平）
+/// 功能：创建标签-数值对的统计项布局，支持状态颜色
+/// @param {String} $status - 数值状态：'up'（上涨），'down'（下跌），'neutral'（持平）
 /// @example: @include stat-item; // 基础统计项
 /// @example: @include stat-item('up'); // 上涨状态统计项
 @mixin stat-item($status: null) {
-  display: flex; // 弹性布局
-  justify-content: space-between; // 两端对齐
-  align-items: center; // 垂直居中
-  margin-bottom: spacer(2); // 底部间距
-  font-size: 0.875rem; // 14px字体
+  @include flex-between; // 两端对齐布局
+  margin-bottom: vars.spacer(2); // 底部间距
+  font-size: 0.875rem; // 14px标准字体
 
+  // 最后一个项移除底部间距
   &:last-child {
-    margin-bottom: 0; // 最后一个无底部间距
+    margin-bottom: 0;
   }
 
-  &-label {
-    color: var(--color-text-secondary); // 标签使用次要文字颜色
+  // 标签样式
+  .stat-label {
+    color: var(--color-text-secondary); // 次要文字颜色
   }
 
-  &-value {
-    font-weight: 600; // 加粗数值
+  // 数值样式
+  .stat-value {
+    font-weight: 600; // 半粗体强调数值
 
-    // 根据状态设置颜色
+    // 根据状态应用颜色
     @if $status == 'up' {
       color: var(--color-stock-up); // 上涨色
     } @else if $status == 'down' {
@@ -735,251 +530,188 @@
   }
 }
 
-/// 页面内容区域混入（用于分隔内容区块）
-/// @example: @include content-area;
-@mixin content-area {
-  & + & {
-    margin-top: spacer(6); // 相邻内容区域之间的大间距
-  }
-}
-
-/// 区域标题混入
-/// @example: @include section-area;
-@mixin section-area {
-  & + & {
-    margin-top: spacer(6); // 相邻区域之间的大间距
-  }
-
-  &-title {
-    font-size: 1.25rem; // 20px标题
-    font-weight: 600; // 加粗
-    color: var(--color-text-primary); // 主要文字颜色
-    margin-bottom: spacer(4); // 标题底部标准间距
-    display: flex; // 弹性布局
-    align-items: center; // 垂直居中
-    gap: spacer(2); // 图标与文字间距
-
-    .title-icon {
-      color: var(--color-primary); // 图标使用主色
-      font-size: 1.125rem; // 18px图标
-    }
-  }
-}
-
-/// 市场卡片组件混入（量化交易专用卡片样式）
-/// @example: @include market-card;
-@mixin market-card {
-  @include card-base; // 包含基础卡片样式
-  background-color: var(--color-bg-card); // 卡片背景色
-  border: 1px solid var(--color-border); // 边框
-  border-radius: var(--border-radius); // 圆角
-  box-shadow: var(--box-shadow-1); // 阴影
-  transition: all var(--transition-normal); // 过渡效果
-  cursor: pointer; // 手型光标
-  height: 100%; // 高度充满容器
-
-  &:hover {
-    box-shadow: var(--box-shadow-2); // 悬停增强阴影
-    transform: translateY(-2px); // 轻微上移
-
-    .icon-container {
-      transform: scale(1.1); // 图标放大
-    }
-  }
-
-  .market-card-header {
-    display: flex; // 弹性布局
-    justify-content: space-between; // 两端对齐
-    align-items: center; // 垂直居中
-    margin-bottom: spacer(4); // 底部标准间距
-
-    &-info {
-      .card-title {
-        @include card-title-base; // 使用卡片标题基础样式
-      }
-
-      .card-subtitle {
-        font-size: 0.75rem; // 12px副标题
-        color: var(--color-text-tertiary); // 三级文字颜色
-        background: var(--color-bg-secondary); // 次背景色
-        padding: spacer(1) spacer(2); // 内边距
-        border-radius: 4px; // 小圆角
-      }
-    }
-  }
-
-  .market-card-content {
-    @include card-content-base; // 使用卡片内容基础样式
-  }
-}
-
-/// 功能导航卡片混入（功能入口卡片）
-/// @example: @include function-card;
-@mixin function-card {
-  @include market-card; // 继承市场卡片样式
-
-  .function-card-header {
-    display: flex; // 弹性布局
-    align-items: center; // 垂直居中
-    gap: spacer(3); // 图标与文字间距
-    margin-bottom: spacer(3); // 底部中等间距
-  }
-
-  .function-card-title {
-    font-size: 1rem; // 16px标题
-    font-weight: 600; // 加粗
-    color: var(--color-text-primary); // 主要文字颜色
-    margin: 0; // 无外边距
-  }
-
-  .function-card-description {
-    font-size: 0.875rem; // 14px描述
-    color: var(--color-text-secondary); // 次要文字颜色
-    margin-bottom: spacer(3); // 底部中等间距
-    line-height: 1.5; // 1.5倍行高
-  }
-
-  .function-card-stats {
-    margin-bottom: spacer(4); // 底部标准间距
-  }
-
-  .function-card-footer {
-    font-size: 0.75rem; // 12px页脚文字
-    color: var(--color-text-tertiary); // 三级文字颜色
-  }
-}
-
-/// 热点列表项混入（市场热点列表样式）
+/// 热点列表项混入
+/// 功能：市场热点列表项样式，用于显示热门股票或板块
+/// 特点：包含标题、副标题和交互效果
 /// @example: @include hotspot-item;
 @mixin hotspot-item {
-  display: flex; // 弹性布局
-  align-items: center; // 垂直居中
-  gap: spacer(3); // 子项间距
-  padding: spacer(3) 0; // 上下内边距
-  border-bottom: 1px solid var(--color-divider); // 底部边框
+  @include flex-start; // 起始对齐布局
+  gap: vars.spacer(3); // 子项间距
+  padding: vars.spacer(3) 0; // 垂直内边距
+  border-bottom: 1px solid var(--color-border-light); // 底部细分割线
   cursor: pointer; // 手型光标
   transition: background-color var(--transition-fast); // 快速背景色过渡
 
+  // 最后一项移除底部边框
   &:last-child {
-    border-bottom: none; // 最后一项无边框
+    border-bottom: none;
   }
 
+  // 悬停状态：背景色变化
   &:hover {
     background-color: var(--color-bg-hover); // 悬停背景色
   }
 
+  // 信息区域：占据剩余空间
   .hotspot-item-info {
-    flex: 1; // 占据剩余空间
+    flex: 1; // 弹性填充
 
+    // 热点标题
     .title {
       font-size: 0.875rem; // 14px标题
-      font-weight: 500; // 中等加粗
+      font-weight: 500; // 中等粗细
       color: var(--color-text-primary); // 主要文字颜色
-      margin-bottom: spacer(1); // 标题底部小间距
+      margin-bottom: vars.spacer(0.5); // 标题与副标题间距
+      @include text-ellipsis; // 单行省略
     }
 
+    // 热点副标题
     .subtitle {
-      font-size: 0.75rem; // 12px副标题
+      font-size: 0.75rem; // 12px小字号
       color: var(--color-text-tertiary); // 三级文字颜色
     }
   }
+}
 
-  .hotspot-item-value {
-    font-weight: 600; // 加粗数值
-    font-size: 0.875rem; // 14px数值
+/// 区域标题混入
+/// 功能：页面内容区域的标题样式，包含图标和标题文本
+/// @example: @include section-title;
+@mixin section-title {
+  font-size: 1.25rem; // 20px标题
+  font-weight: 600; // 半粗体
+  color: var(--color-text-primary); // 主要文字颜色
+  margin-bottom: vars.spacer(4); // 标题与内容间距
+  @include flex-start; // 起始对齐布局
+  gap: vars.spacer(2); // 图标与文字间距
 
-    &-up { color: var(--color-stock-up); } // 上涨颜色
-    &-down { color: var(--color-stock-down); } // 下跌颜色
-    &-neutral { color: var(--color-stock-flat); } // 持平颜色
+  // 标题图标样式
+  .title-icon {
+    color: var(--color-primary); // 主色图标
+    font-size: 1.125rem; // 18px图标大小
   }
 }
 
-/// 资金流列表项混入（资金流向列表样式）
-/// @example: @include money-flow-item;
-@mixin money-flow-item {
-  @include hotspot-item; // 继承热点列表项样式
+// ============================================================================
+// 布局混入区域
+// 包含网格布局、内容区域分隔等布局工具混入
+// ============================================================================
 
-  .money-flow-bar {
-    flex: 1; // 占据剩余空间
-    max-width: 120px; // 最大宽度限制
+/// 网格布局混入
+/// 功能：创建响应式网格布局，支持不同列数和断点适配
+/// @param {Number} $columns - 默认列数：2（两列）或4（四列）
+/// @example: @include grid-layout(2); // 两列布局
+/// @example: @include grid-layout(4); // 四列布局
+@mixin grid-layout($columns: 4) {
+  display: grid; // 启用CSS Grid布局
+  gap: vars.spacer(3); // 网格项之间的间距
+  grid-template-columns: repeat($columns, 1fr); // 等宽列
+
+  // 两列布局的响应式处理
+  @if $columns == 2 {
+    // 大屏幕以下变为单列
+    @include media-breakpoint-down(lg) {
+      grid-template-columns: 1fr;
+    }
   }
 
-  .money-flow-amount {
-    font-weight: 600; // 加粗数值
-    font-size: 0.875rem; // 14px数值
-    min-width: 70px; // 最小宽度
-    text-align: right; // 右对齐
-
-    &-up { color: var(--color-stock-up); } // 流入上涨色
-    &-down { color: var(--color-stock-down); } // 流出下跌色
-  }
-}
-
-/// 市场热卡片混入（热点卡片容器样式）
-/// @example: @include hotspot-card;
-@mixin hotspot-card {
-  background-color: var(--color-bg-card); // 卡片背景色
-  border-radius: var(--border-radius); // 圆角
-  box-shadow: var(--box-shadow-1); // 阴影
-  overflow: hidden; // 隐藏溢出
-
-  // Vue深度选择器（用于穿透组件样式）
-  :deep(.n-card-header) {
-    padding: spacer(4) spacer(4) 0; // 头部内边距
-    border-bottom: none; // 无底部边框
-  }
-
-  :deep(.n-card__content) {
-    padding: 0 spacer(4) spacer(4); // 内容内边距
-  }
-
-  .hotspot-card-header {
-    display: flex; // 弹性布局
-    justify-content: space-between; // 两端对齐
-    align-items: center; // 垂直居中
-    margin-bottom: spacer(3); // 底部中等间距
-
-    .hotspot-card-title {
-      @include card-title-base; // 使用卡片标题基础样式
+  // 四列布局的响应式处理
+  @else if $columns == 4 {
+    // 大屏幕以下变为两列
+    @include media-breakpoint-down(lg) {
+      grid-template-columns: repeat(2, 1fr);
     }
 
-    .more-btn {
-      color: var(--color-text-secondary); // 次要文字颜色
-
-      &:hover {
-        color: var(--color-primary); // 悬停变主色
-      }
+    // 小屏幕以下变为单列
+    @include media-breakpoint-down(sm) {
+      grid-template-columns: 1fr;
     }
   }
 }
 
-/// 快捷样式混入（原子类生成器）
-/// @param {String} $type - 类型: 'status'（状态）或 'layout'（布局）
-/// @param {String} $variant - 变体: 'up'/'down'/'neutral' 或 'center'/'between'/'start'
-/// @example: @include utility-style('status', 'up'); // 生成上涨状态样式
-/// @example: @include utility-style('layout', 'center'); // 生成居中布局样式
-@mixin utility-style($type, $variant) {
-  @if $type == 'status' {
-    // 状态样式
-    @if $variant == 'up' {
-      color: var(--color-stock-up) !important; // 上涨颜色
-    } @else if $variant == 'down' {
-      color: var(--color-stock-down) !important; // 下跌颜色
-    } @else if $variant == 'neutral' {
-      color: var(--color-stock-flat) !important; // 持平颜色
+/// 内容区域分隔混入
+/// 功能：为相邻的内容区域添加间距，创建视觉层次
+/// @example: @include content-area;
+@mixin content-area {
+  // 相邻的内容区域之间添加顶部间距
+  & + & {
+    margin-top: vars.spacer(6); // 大间距分隔
+  }
+}
+
+// ============================================================================
+// 工具类混入区域
+// 包含滚动条、动画等通用工具混入
+// ============================================================================
+
+/// 自定义滚动条混入
+/// 功能：为元素应用自定义样式的滚动条，统一平台视觉风格
+/// @example: @include custom-scrollbar;
+@mixin custom-scrollbar {
+  // Webkit浏览器（Chrome, Safari, Edge）滚动条样式
+  &::-webkit-scrollbar {
+    width: 6px; // 垂直滚动条宽度
+    height: 6px; // 水平滚动条高度
+  }
+
+  // 滚动条轨道样式
+  &::-webkit-scrollbar-track {
+    background: var(--color-border-light); // 浅色轨道
+    border-radius: 4px; // 圆角轨道
+  }
+
+  // 滚动条滑块样式
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-text-tertiary); // 三级文字颜色作为滑块
+    border-radius: 3px; // 圆角滑块
+
+    // 滑块悬停状态
+    &:hover {
+      background: var(--color-text-secondary); // 悬停时使用二级文字颜色
     }
-  } @else if $type == 'layout' {
-    // 布局样式
-    @if $variant == 'center' {
-      @include flex-center; // 居中布局
-    } @else if $variant == 'between' {
-      display: flex; // 弹性布局
-      justify-content: space-between; // 两端对齐
-      align-items: center; // 垂直居中
-    } @else if $variant == 'start' {
-      display: flex; // 弹性布局
-      justify-content: flex-start; // 左对齐
-      align-items: center; // 垂直居中
-    }
+  }
+
+  // Firefox浏览器支持
+  scrollbar-width: thin; // 细滚动条
+  scrollbar-color: var(--color-text-tertiary) var(--color-border-light); // 滑块和轨道颜色
+}
+
+/// 隐藏滚动条混入
+/// 功能：隐藏元素滚动条但保持滚动功能
+/// @example: @include hide-scrollbar;
+@mixin  hide-scrollbar {
+  // Firefox浏览器
+  scrollbar-width: none; // 无滚动条
+
+  // IE和Edge浏览器
+  -ms-overflow-style: none;
+
+  // Webkit浏览器
+  &::-webkit-scrollbar {
+    display: none; // 隐藏滚动条
+  }
+}
+
+/// 加载动画混入
+/// 功能：创建旋转加载指示器，用于异步加载状态
+/// @param {String} $size - 旋转器尺寸，支持em、px等单位
+/// @example: @include loading-spinner; // 默认大小
+/// @example: @include loading-spinner(20px); // 20像素大小
+@mixin loading-spinner($size: 1em) {
+  @include flex-center; // 居中显示
+
+  // 使用伪元素创建旋转圆环
+  &::after {
+    content: ''; // 必须内容
+    width: $size; // 自定义宽度
+    height: $size; // 自定义高度
+    border: 2px solid currentColor; // 使用当前文字颜色作为边框
+    border-right-color: transparent; // 右边框透明，创建缺口效果
+    border-radius: 50%; // 圆形
+    animation: spin 1s linear infinite; // 无限旋转动画
+  }
+
+  // 旋转关键帧动画
+  @keyframes spin {
+    to { transform: rotate(360deg); } // 从0度旋转到360度
   }
 }

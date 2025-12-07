@@ -12,7 +12,7 @@
         <div class="header-actions">
           <n-button class="refresh-btn" @click="refreshData">
             <template #icon>
-              <SmartIcon name="Refresh" />
+              <SmartIcon name="Refresh"/>
             </template>
             <span class="btn-text">刷新数据</span>
           </n-button>
@@ -25,7 +25,7 @@
       <!-- 市场指数概览 -->
       <div class="index-overview">
         <h2 class="market-section-title">
-          <SmartIcon name="TrendingUp" class="title-icon" />
+          <SmartIcon name="TrendingUp" class="title-icon"/>
           主要指数
         </h2>
         <div class="market-index-grid">
@@ -38,7 +38,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shanghai)">
-                  <SmartIcon name="TrendingUp" />
+                  <SmartIcon name="TrendingUp"/>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shanghai.close.toFixed(2) }}</div>
@@ -60,7 +60,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.shenzhen)">
-                  <SmartIcon name="BarChart" />
+                  <SmartIcon name="BarChart"/>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.shenzhen.close.toFixed(2) }}</div>
@@ -82,7 +82,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.chuangye)">
-                  <SmartIcon name="Rocket" />
+                  <SmartIcon name="Rocket"/>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.chuangye.close.toFixed(2) }}</div>
@@ -104,7 +104,7 @@
               </div>
               <div class="status-content">
                 <div class="status-icon" :class="getStatusClass(indexData.kechuang50)">
-                  <SmartIcon name="Chip" />
+                  <SmartIcon name="Chip"/>
                 </div>
                 <div class="status-info">
                   <div class="index-value">{{ indexData.kechuang50.close.toFixed(2) }}</div>
@@ -122,7 +122,7 @@
       <!-- 功能导航卡片 -->
       <div class="function-nav">
         <h2 class="market-section-title">
-          <SmartIcon name="Apps" class="title-icon" />
+          <SmartIcon name="Apps" class="title-icon"/>
           功能导航
         </h2>
 
@@ -132,7 +132,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon accent">
-                  <SmartIcon name="Dashboard" />
+                  <SmartIcon name="Dashboard"/>
                 </div>
                 <h3 class="function-title">市场仪表盘</h3>
               </div>
@@ -164,7 +164,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon purple">
-                  <SmartIcon name="TreeChart" />
+                  <SmartIcon name="TreeChart"/>
                 </div>
                 <h3 class="function-title">行业强弱</h3>
               </div>
@@ -196,7 +196,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon info">
-                  <SmartIcon name="CashMultiple" />
+                  <SmartIcon name="CashMultiple"/>
                 </div>
                 <h3 class="function-title">资金流向</h3>
               </div>
@@ -230,7 +230,7 @@
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon danger">
-                  <SmartIcon name="TrendingUp" />
+                  <SmartIcon name="TrendingUp"/>
                 </div>
                 <h3 class="function-title">涨跌停分析</h3>
               </div>
@@ -262,7 +262,7 @@
       <!-- 市场热点与实时数据 -->
       <div class="market-hotspots">
         <h2 class="market-section-title">
-          <SmartIcon name="Fire" class="title-icon" />
+          <SmartIcon name="Fire" class="title-icon"/>
           市场热点
         </h2>
         <div class="hotspot-grid">
@@ -271,13 +271,13 @@
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <SmartIcon name="TrendingUp" class="card-title-icon" />
+                  <SmartIcon name="TrendingUp" class="card-title-icon"/>
                   实时涨幅榜
                 </div>
                 <n-button text class="more-btn" @click="navigateTo('/market/stocks')">
                   查看更多
                   <template #icon>
-                    <SmartIcon name="ArrowRight" />
+                    <SmartIcon name="ArrowRight"/>
                   </template>
                 </n-button>
               </div>
@@ -290,7 +290,7 @@
                   @click="viewStockDetail(stock)"
               >
                 <div class="item-icon">
-                  <SmartIcon name="TrendingUp" class="trend-icon up" />
+                  <SmartIcon name="TrendingUp" class="trend-icon up"/>
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ stock.name }}</div>
@@ -311,13 +311,13 @@
             <template #header>
               <div class="card-header">
                 <div class="card-title">
-                  <SmartIcon name="CashPlus" class="card-title-icon" />
+                  <SmartIcon name="CashPlus" class="card-title-icon"/>
                   资金流入榜
                 </div>
                 <n-button text class="more-btn" @click="navigateTo('/market/money-flow')">
                   查看更多
                   <template #icon>
-                    <SmartIcon name="ArrowRight" />
+                    <SmartIcon name="ArrowRight"/>
                   </template>
                 </n-button>
               </div>
@@ -330,7 +330,7 @@
                   @click="viewStockDetail(flow)"
               >
                 <div class="item-icon">
-                  <SmartIcon name="CashPlus" class="flow-icon up" />
+                  <SmartIcon name="CashPlus" class="flow-icon up"/>
                 </div>
                 <div class="stock-info">
                   <div class="stock-name">{{ flow.name }}</div>
@@ -506,560 +506,447 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-// 引入变量和混入文件
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as *;
+// 引入混入和变量
+@use '@/assets/scss/mixins' as mixins;
+@use '@/assets/scss/variables' as vars;
 
+// 页面容器
 .market-overview-page {
-  // 页面基础布局
-  background-color: $body-color;
-  min-height: calc(100vh - var(--header-height));
-  padding: spacer(4);
+  padding: vars.spacer(4);
+  max-width: 1400px;
+  margin: 0 auto;
 
-  // 移动端适配
-  @include media-breakpoint-down(sm) {
-    padding: spacer(2);
+  //@include mixins.media-breakpoint-down(md) {
+  //  padding: vars.spacer(2);
+  //}
+  //
+  //@include mixins.media-breakpoint-down(sm) {
+  //  padding: vars.spacer(1);
+  //}
+}
+
+// 页面头部 - 使用混入
+.common-page-header {
+  @include mixins.page-header-base;
+
+  .refresh-btn {
+    @include mixins.button-base('secondary');
+
+    .btn-text {
+      margin-left: vars.spacer(1);
+    }
+
+    @include mixins.media-breakpoint-down(sm) {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+}
+
+// 主要内容区域
+.main-content {
+  margin-top: vars.spacer(6);
+
+  @include mixins.content-area;
+}
+
+// 市场指数概览
+.index-overview {
+  @include mixins.content-area;
+
+  .market-section-title {
+    @include mixins.section-title;
+
+    .title-icon {
+      font-size: 1.25rem;
+      color: var(--color-primary);
+    }
   }
 
-  .common-page-header {
-    @include page-header-base;
+  .market-index-grid {
+    @include mixins.grid-layout(4);
   }
+}
 
-  .main-content {
+// 指数卡片
+.market-index-card {
+  @include mixins.market-card;
+  min-height: 120px;
+
+  .index-content {
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: spacer(6);
+    padding: vars.spacer(4);
+
+    @include mixins.media-breakpoint-down(sm) {
+      padding: vars.spacer(3);
+    }
   }
 
-  // 市场指数概览
-  .index-overview {
-    @include content-area;
+  .index-header {
+    @include mixins.flex-between;
+    margin-bottom: vars.spacer(3);
 
-    .market-section-title {
-      @include card-title-base;
-      margin-bottom: spacer(4);
+    .index-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
 
-      .title-icon {
-        font-size: 1.25rem;
-        color: $primary-color;
+    .index-code {
+      font-size: 0.75rem;
+      color: var(--color-text-tertiary);
+      background-color: var(--color-bg-secondary);
+      padding: vars.spacer(0.5) vars.spacer(1.5);
+      border-radius: 10px;
+    }
+  }
+
+  .status-content {
+    @include mixins.flex-start;
+    gap: vars.spacer(3);
+
+    .status-icon {
+      @include mixins.flex-center;
+      width: 48px;
+      height: 48px;
+      border-radius: vars.$border-radius-medium;
+      font-size: 1.25rem;
+
+      &.running {
+        background-color: rgba(var(--color-primary-rgb), 0.1);
+        color: var(--color-primary);
+      }
+
+      &.remaining {
+        background-color: rgba(var(--color-error-rgb), 0.1);
+        color: var(--color-error);
+      }
+
+      &.time {
+        background-color: rgba(var(--color-text-tertiary-rgb), 0.1);
+        color: var(--color-text-tertiary);
       }
     }
 
-    .market-index-grid {
-      @include flexible-grid(4, (
-        lg: 2,
-        md: 2,
-        sm: 1
-      ));
-      margin-bottom: spacer(6);
+    .status-info {
+      flex: 1;
 
-      .market-index-card {
-        @include card-base;
-        height: 100%;
-        border: 1px solid $border-color;
-        transition: all var(--transition-normal);
-        cursor: pointer;
+      .index-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin-bottom: vars.spacer(0.5);
 
-        &:hover {
-          @include box-shadow('2');
-          transform: translateY(-2px);
-          border-color: $primary-color;
+        @include mixins.media-breakpoint-down(sm) {
+          font-size: 1.25rem;
+        }
+      }
+
+      .index-change {
+        font-size: 0.875rem;
+        font-weight: 500;
+
+        &.up {
+          color: var(--color-stock-up);
         }
 
-        .index-content {
-          padding: spacer(3);
+        &.down {
+          color: var(--color-stock-down);
+        }
 
-          .index-header {
-            @include flex-layout-between;
-            margin-bottom: spacer(3);
+        &.flat {
+          color: var(--color-stock-flat);
+        }
 
-            .index-name {
-              font-size: 0.875rem;
-              font-weight: 500;
-              color: $text-color-1;
-            }
+        .change-value {
+          font-weight: 600;
+        }
 
-            .index-code {
-              font-size: 0.75rem;
-              color: $text-color-3;
-              background: $secondary-bg;
-              padding: spacer(0.5) spacer(1.5);
-              border-radius: $border-radius-small;
-            }
-          }
-
-          .status-content {
-            display: flex;
-            align-items: center;
-            gap: spacer(3);
-
-            .status-icon {
-              @include icon-container('md', 'primary');
-
-              &.running {
-                background: color-with-opacity($stock-up-color, 0.1);
-                color: $stock-up-color;
-              }
-
-              &.remaining {
-                background: color-with-opacity($stock-down-color, 0.1);
-                color: $stock-down-color;
-              }
-
-              &.time {
-                background: color-with-opacity($stock-flat-color, 0.1);
-                color: $stock-flat-color;
-              }
-
-              :deep(svg) {
-                width: 1.25rem;
-                height: 1.25rem;
-              }
-            }
-
-            .status-info {
-              flex: 1;
-
-              .index-value {
-                font-size: 1.5rem;
-                font-weight: 600;
-                color: $text-color-1;
-                margin-bottom: spacer(0.5);
-              }
-
-              .index-change {
-                font-size: 0.875rem;
-                font-weight: 500;
-
-                &.up {
-                  color: $stock-up-color;
-                }
-
-                &.down {
-                  color: $stock-down-color;
-                }
-
-                &.flat {
-                  color: $stock-flat-color;
-                }
-
-                .change-value {
-                  margin-right: spacer(0.5);
-                }
-
-                .change-percent {
-                  font-size: 0.8125rem;
-                }
-              }
-            }
-          }
+        .change-percent {
+          opacity: 0.9;
         }
       }
     }
   }
 
-  // 功能导航
-  .function-nav {
-    @include content-area;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--box-shadow-2);
+  }
+}
 
-    .market-section-title {
-      @include card-title-base;
-      margin-bottom: spacer(4);
+// 功能导航
+.function-nav {
+  @include mixins.content-area;
 
-      .title-icon {
-        font-size: 1.25rem;
-        color: $purple-color;
-      }
-    }
+  .market-section-title {
+    @include mixins.section-title;
+  }
 
-    .function-grid {
-      @include card-grid;
+  .function-grid {
+    @include mixins.grid-layout(2);
+  }
+}
 
-      .function-nav-card {
-        @include function-card;
+// 功能导航卡片
+.function-nav-card {
+  @include mixins.function-card;
+  cursor: pointer;
+  height: 100%;
 
-        .function-content {
-          .function-header {
-            margin-bottom: spacer(3);
+  .function-content {
+    padding: vars.spacer(4);
+    height: 100%;
 
-            .function-icon {
-              @include icon-container('md', 'primary');
-
-              &.accent {
-                @include icon-container('md', 'primary');
-              }
-
-              &.purple {
-                @include icon-container('md', 'purple');
-              }
-
-              &.info {
-                @include icon-container('md', 'info');
-              }
-
-              &.danger {
-                @include icon-container('md', 'error');
-              }
-
-              &.warning {
-                @include icon-container('md', 'warning');
-              }
-
-              &.success {
-                @include icon-container('md', 'success');
-              }
-
-              :deep(svg) {
-                width: 1.25rem;
-                height: 1.25rem;
-              }
-            }
-
-            .function-title {
-              font-size: 1rem;
-              font-weight: 600;
-              color: $text-color-1;
-              margin: 0;
-              margin-top: spacer(1);
-            }
-          }
-
-          .function-info {
-            .function-description {
-              font-size: 0.875rem;
-              color: $text-color-2;
-              margin-bottom: spacer(3);
-              line-height: 1.5;
-            }
-
-            .function-stats {
-              margin-bottom: spacer(3);
-
-              .stat-item {
-                @include stat-item;
-
-                .stat-label {
-                  font-size: 0.8125rem;
-                  color: $text-color-3;
-                }
-
-                .stat-value {
-                  font-weight: 600;
-                  color: $text-color-1;
-
-                  &.up {
-                    color: $stock-up-color;
-                  }
-
-                  &.down {
-                    color: $stock-down-color;
-                  }
-                }
-              }
-            }
-
-            .function-footer {
-              font-size: 0.75rem;
-              color: $text-color-3;
-              padding-top: spacer(2);
-              border-top: 1px solid $divider-color;
-
-              .update-time {
-                display: block;
-              }
-            }
-          }
-        }
-
-        &:hover {
-          .function-header {
-            .function-icon {
-              transform: scale(1.1);
-            }
-          }
-        }
-      }
+    @include mixins.media-breakpoint-down(sm) {
+      padding: vars.spacer(3);
     }
   }
 
-  // 市场热点
-  .market-hotspots {
-    @include content-area;
+  .function-info {
+    .function-description {
+      font-size: 0.875rem;
+      color: var(--color-text-secondary);
+      margin-bottom: vars.spacer(3);
+      line-height: 1.5;
+    }
 
-    .market-section-title {
-      @include card-title-base;
-      margin-bottom: spacer(4);
+    .function-stats {
+      margin-bottom: vars.spacer(3);
 
-      .title-icon {
-        font-size: 1.25rem;
-        color: $error-color;
+      .stat-item {
+        @include mixins.flex-between;
+        margin-bottom: vars.spacer(2);
+        font-size: 0.875rem;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+
+        .stat-label {
+          color: var(--color-text-secondary);
+        }
+
+        .stat-value {
+          font-weight: 600;
+
+          &.up {
+            color: var(--color-stock-up);
+          }
+
+          &.down {
+            color: var(--color-stock-down);
+          }
+
+          &:not(.up):not(.down) {
+            color: var(--color-text-primary);
+          }
+        }
       }
     }
 
-    .hotspot-grid {
-      @include grid-layout(2);
-
-      @include media-breakpoint-down(lg) {
-        grid-template-columns: 1fr;
-        gap: spacer(4);
-      }
-
-      .hotspot-card {
-        @include hotspot-card;
-
-        .card-header {
-          @include flex-layout-between;
-          padding: 0;
-          margin-bottom: spacer(3);
-
-          .card-title {
-            @include card-title-base;
-            font-size: 1rem;
-
-            .card-title-icon {
-              font-size: 1rem;
-              color: $primary-color;
-            }
-          }
-
-          .more-btn {
-            color: $text-color-2;
-            font-size: 0.8125rem;
-
-            &:hover {
-              color: $primary-color;
-            }
-          }
-        }
-
-        .hotspot-list {
-          .hotspot-item {
-            @include hotspot-item;
-
-            .item-icon {
-              .trend-icon {
-                font-size: 1rem;
-
-                &.up {
-                  color: $stock-up-color;
-                }
-              }
-            }
-
-            .stock-info {
-              .stock-name {
-                font-size: 0.875rem;
-                font-weight: 500;
-                color: $text-color-1;
-                margin-bottom: spacer(0.5);
-              }
-
-              .stock-code {
-                font-size: 0.75rem;
-                color: $text-color-3;
-              }
-            }
-
-            .hotspot-change {
-              font-weight: 600;
-              font-size: 0.875rem;
-
-              &.up {
-                color: $stock-up-color;
-              }
-
-              &.down {
-                color: $stock-down-color;
-              }
-
-              &.flat {
-                color: $stock-flat-color;
-              }
-            }
-
-            .hotspot-price {
-              font-weight: 500;
-              font-size: 0.875rem;
-              color: $text-color-1;
-              margin-left: auto;
-              min-width: 80px;
-              text-align: right;
-            }
-          }
-        }
-
-        .money-flow-list {
-          .flow-item {
-            @include money-flow-item;
-
-            .item-icon {
-              .flow-icon {
-                font-size: 1rem;
-
-                &.up {
-                  color: $stock-up-color;
-                }
-
-                &.down {
-                  color: $stock-down-color;
-                }
-              }
-            }
-
-            .stock-info {
-              .stock-name {
-                font-size: 0.875rem;
-                font-weight: 500;
-                color: $text-color-1;
-                margin-bottom: spacer(0.5);
-              }
-
-              .stock-code {
-                font-size: 0.75rem;
-                color: $text-color-3;
-              }
-            }
-
-            .flow-bar {
-              flex: 1;
-              max-width: 120px;
-            }
-
-            .flow-amount {
-              font-weight: 600;
-              font-size: 0.875rem;
-              min-width: 80px;
-              text-align: right;
-
-              &.up {
-                color: $stock-up-color;
-              }
-
-              &.down {
-                color: $stock-down-color;
-              }
-            }
-          }
-        }
-      }
+    .function-footer {
+      font-size: 0.75rem;
+      color: var(--color-text-tertiary);
+      padding-top: vars.spacer(3);
+      border-top: 1px solid var(--color-border-light);
     }
   }
 
-  // 响应式调整
-  @include media-breakpoint-down(lg) {
-    .market-index-grid {
-      grid-template-columns: repeat(2, 1fr) !important;
-    }
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--box-shadow-2);
+  }
+}
 
-    .function-grid {
-      grid-template-columns: repeat(2, 1fr) !important;
-    }
+// 市场热点
+.market-hotspots {
+  @include mixins.content-area;
+
+  .market-section-title {
+    @include mixins.section-title;
   }
 
-  @include media-breakpoint-down(md) {
-    .market-index-grid {
-      grid-template-columns: 1fr !important;
-    }
+  .hotspot-grid {
+    @include mixins.grid-layout(2);
+  }
+}
 
-    .function-grid {
-      grid-template-columns: 1fr !important;
-    }
+// 热点卡片
+.hotspot-card {
+  @include mixins.hotspot-item;
+}
 
-    .common-page-header {
-      .header-content {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: spacer(3);
-
-        .header-actions {
-          width: 100%;
-          justify-content: flex-start;
-        }
-      }
-    }
+// 响应式调整
+@include mixins.media-breakpoint-down(lg) {
+  .market-index-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  @include media-breakpoint-down(sm) {
-    .market-index-card {
-      .index-content {
-        .status-content {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: spacer(2) !important;
+  .hotspot-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
-          .status-info {
-            width: 100%;
-          }
-        }
-      }
+@include mixins.media-breakpoint-down(md) {
+  .function-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-index-card .status-content {
+    flex-direction: column;
+    align-items: flex-start;
+
+    .status-info {
+      width: 100%;
     }
   }
 }
 
-// 状态颜色辅助类
-.status-up { color: $stock-up-color !important; }
-.status-down { color: $stock-down-color !important; }
-.status-neutral { color: $stock-flat-color !important; }
+@include mixins.media-breakpoint-down(sm) {
+  .market-index-grid {
+    grid-template-columns: 1fr;
+  }
 
-.bg-up { background-color: color-with-opacity($stock-up-color, 0.1) !important; }
-.bg-down { background-color: color-with-opacity($stock-down-color, 0.1) !important; }
-.bg-neutral { background-color: color-with-opacity($stock-flat-color, 0.1) !important; }
+  .function-nav-card .function-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: vars.spacer(2);
+  }
+
+  .hotspot-item,
+  .flow-item {
+    flex-wrap: wrap;
+
+    .hotspot-change,
+    .hotspot-price,
+    .flow-amount {
+      width: 100%;
+      text-align: left;
+      margin-top: vars.spacer(1);
+    }
+  }
+}
 
 // 动画效果
-.fade-in {
-  @include fade-in;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.spin {
-  @include loading-spinner;
+.market-overview-page {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.market-index-card,
+.function-nav-card,
+.hotspot-card {
+  animation: fadeIn 0.5s ease-out;
 }
 
 // 自定义滚动条
 .market-overview-page {
-  .hotspot-list,
-  .money-flow-list {
-    max-height: 300px;
-    overflow-y: auto;
-    @include custom-scrollbar;
+  @include mixins.custom-scrollbar;
+}
+
+// 加载状态（可扩展）
+.loading-spinner {
+  @include mixins.loading-spinner(2rem);
+  margin: vars.spacer(6) auto;
+  color: var(--color-primary);
+}
+
+// 空状态
+.empty-state {
+  @include mixins.flex-center(column);
+  padding: vars.spacer(8) vars.spacer(4);
+  text-align: center;
+  color: var(--color-text-secondary);
+
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: vars.spacer(4);
+    opacity: 0.5;
+  }
+
+  .empty-text {
+    font-size: 1rem;
+    margin-bottom: vars.spacer(2);
+  }
+
+  .empty-action {
+    @include mixins.button-base('primary');
+    margin-top: vars.spacer(3);
   }
 }
 
-// Vue深度选择器（用于修改Naive UI组件内部样式）
-:deep(.n-card) {
-  &.market-index-card,
-  &.function-nav-card,
-  &.hotspot-card {
-    .n-card__content {
-      padding: 0;
-    }
-  }
+// 工具类增强
+.text-up {
+  @include mixins.text-status('up');
 }
 
-:deep(.n-progress) {
-  &.n-progress--line {
-    .n-progress-content {
-      .n-progress-graph {
-        .n-progress-graph-line {
-          .n-progress-graph-line-fill {
-            transition: width var(--transition-normal);
-          }
-        }
-      }
-    }
-  }
+.text-down {
+  @include mixins.text-status('down');
 }
 
-:deep(.n-button) {
-  &.refresh-btn {
-    .n-button__icon {
-      margin-right: spacer(1);
-    }
+.text-neutral {
+  @include mixins.text-status('neutral');
+}
+
+// 状态颜色工具类
+.status-up {
+  color: var(--color-stock-up) !important;
+}
+
+.status-down {
+  color: var(--color-stock-down) !important;
+}
+
+.status-flat {
+  color: var(--color-stock-flat) !important;
+}
+
+// 背景工具类
+.bg-up {
+  background-color: rgba(var(--color-stock-up-rgb), 0.1) !important;
+}
+
+.bg-down {
+  background-color: rgba(var(--color-stock-down-rgb), 0.1) !important;
+}
+
+// 过渡效果
+* {
+  transition: background-color var(--transition-fast),
+  border-color var(--transition-fast),
+  color var(--transition-fast);
+}
+
+// 打印样式
+@media print {
+  .market-overview-page {
+    padding: 0;
   }
 
-  &.more-btn {
-    .n-button__icon {
-      margin-left: spacer(0.5);
-    }
+  .refresh-btn,
+  .more-btn {
+    display: none !important;
+  }
+
+  .market-index-card,
+  .function-nav-card,
+  .hotspot-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid var(--color-border) !important;
   }
 }
 </style>
