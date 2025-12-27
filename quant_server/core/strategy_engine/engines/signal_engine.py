@@ -4,10 +4,10 @@ from decimal import Decimal
 from typing import Dict, Optional
 from datetime import datetime
 
-from quant_server.core.data_models import SignalData, Direction
+from quant_server.modules.data_models import SignalData, Direction
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.db import get_db_session
-from quant_server.db.models.business_models import Signal, Order
+from quant_server.shared.database.models.business_models import Signal, Order
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +236,7 @@ class SignalEngine:
         # 实现获取当前价格的逻辑
         # 简化实现：实际应从行情服务获取
         try:
-            from quant_server.db.models.data_models import StockDaily
+            from quant_server.shared.database.models.data_models import StockDaily
             latest_price = self.session.query(StockDaily.close).filter(
                 StockDaily.ts_code == symbol
             ).order_by(StockDaily.trade_date.desc()).first()
@@ -251,7 +251,7 @@ class SignalEngine:
         # 实现仓位限制检查逻辑
         # 简化实现：实际应检查当前持仓和风控规则
         try:
-            from quant_server.db.models.business_models import Position
+            from quant_server.shared.database.models.business_models import Position
             current_position = self.session.query(Position).filter(
                 Position.ts_code == signal.symbol
             ).first()
@@ -334,7 +334,7 @@ class SignalEngine:
     def _get_user_id_from_strategy(self, strategy_id: str) -> Optional[int]:
         """从策略ID获取用户ID"""
         try:
-            from quant_server.db.models.business_models import Strategy
+            from quant_server.shared.database.models.business_models import Strategy
             strategy = self.session.query(Strategy).filter(Strategy.id == strategy_id).first()
             return strategy.user_id if strategy else None
         except Exception as e:

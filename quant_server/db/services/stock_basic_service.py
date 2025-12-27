@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import and_, or_, func
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockBasic
+from quant_server.shared.database.models.data_models import StockBasic
 
 
 class StockBasicService(BaseService):

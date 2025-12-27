@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import desc
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockDaily
+from quant_server.shared.database.models.data_models import StockDaily
 
 
 class StockDailyService(BaseService):

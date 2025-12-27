@@ -2,7 +2,7 @@
 from datetime import timedelta
 
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockMinutes
+from quant_server.shared.database.models.data_models import StockMinutes
 
 
 class StockMinutesService(BaseService):

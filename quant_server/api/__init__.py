@@ -7,7 +7,7 @@ from .backtest import router as backtest_router
 from .basket import router as basket_router
 from .trade import router as trade_router
 from .market import router as market_router
-from .data_sync import router as data_sync_router
+from quant_server.modules.data.handlers import router as data_sync_router
 from .system import router as system_router
 from .websocket import router as websocket_router
 from .performance import router as performance_router

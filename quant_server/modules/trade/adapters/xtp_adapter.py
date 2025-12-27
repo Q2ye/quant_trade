@@ -1,0 +1,1 @@
+# xtp_adapter.py       # XTP适配器

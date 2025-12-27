@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy import desc, func
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import Signal
+from quant_server.shared.database.models.business_models import Signal
 
 
 class SignalService(BaseService):

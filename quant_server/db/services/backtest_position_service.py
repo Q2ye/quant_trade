@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import BacktestPosition
+from quant_server.shared.database.models.business_models import BacktestPosition
 
 
 class BacktestPositionService(BaseService):

@@ -1,0 +1,1 @@
+# sim_adapter.py       # 模拟交易适配器

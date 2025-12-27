@@ -5,8 +5,8 @@ from typing import Dict, List, Optional
 
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.db import get_db_session
-from quant_server.db.models.business_models import Basket, BasketItem
-from quant_server.db.models.data_models import StockBasic, StockDaily, StockDailyBasic
+from quant_server.shared.database.models.business_models import Basket, BasketItem
+from quant_server.shared.database.models.data_models import StockBasic, StockDaily, StockDailyBasic
 
 logger = logging.getLogger(__name__)
 

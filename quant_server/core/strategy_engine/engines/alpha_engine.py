@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 import time
 
-from quant_server.core.data_models import BarData, Interval, Exchange
+from quant_server.modules.data_models import BarData, Interval, Exchange
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.core.strategy_engine.strategy_engine import StrategyEngine
 from quant_server.db import get_db_session

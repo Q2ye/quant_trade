@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Any
 from datetime import datetime
 
-from quant_server.db.models.data_models import TradeCalendar
+from quant_server.shared.database.models.data_models import TradeCalendar
 from quant_server.db.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)

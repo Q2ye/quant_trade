@@ -1,6 +1,6 @@
 # etf_basic_service.py (completed)
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import EtfBasic
+from quant_server.shared.database.models.data_models import EtfBasic
 
 
 class EtfBasicService(BaseService):

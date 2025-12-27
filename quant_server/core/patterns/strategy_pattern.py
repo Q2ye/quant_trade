@@ -1,0 +1,1 @@
+# strategy_pattern.py        # 策略模式

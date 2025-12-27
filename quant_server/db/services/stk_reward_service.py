@@ -2,7 +2,7 @@
 from sqlalchemy import extract
 
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StkReward, StkManager
+from quant_server.shared.database.models.data_models import StkReward, StkManager
 
 
 class StkRewardService(BaseService):

@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Any, List
 import logging
 
-from quant_server.core.data_models import BarData, Exchange, Interval
+from quant_server.modules.data_models import BarData, Exchange, Interval
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.core.strategy_engine.strategy_engine import StrategyEngine
 from quant_server.db import get_db_session

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import func
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import SysUser, SysPermission
+from quant_server.shared.database.models.business_models import SysUser, SysPermission
 
 
 class SysUserService(BaseService):

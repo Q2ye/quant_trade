@@ -5,7 +5,7 @@ from datetime import datetime
 
 from quant_server.api.dependencies import get_db, get_data_service
 from quant_server.api.login import get_current_user, User
-from quant_server.db.models.business_models import AccountDailyPerformance, Position, Order, Signal
+from quant_server.shared.database.models.business_models import AccountDailyPerformance, Position, Order, Signal
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 

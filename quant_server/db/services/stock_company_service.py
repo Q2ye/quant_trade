@@ -2,7 +2,7 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_, or_, func, desc
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockCompany, StockBasic
+from quant_server.shared.database.models.data_models import StockCompany, StockBasic
 
 
 class StockCompanyService(BaseService):

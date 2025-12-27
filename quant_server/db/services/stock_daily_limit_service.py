@@ -1,6 +1,6 @@
 # stock_daily_limit_service.py (completed)
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockDailyLimit
+from quant_server.shared.database.models.data_models import StockDailyLimit
 from typing import List, Dict, Any
 
 

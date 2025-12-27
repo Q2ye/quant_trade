@@ -1,6 +1,6 @@
 # stock_adjustedPrices_service.py (completed)
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import StockAdjustedPrices
+from quant_server.shared.database.models.data_models import StockAdjustedPrices
 
 
 class StockAdjustedPricesService(BaseService):

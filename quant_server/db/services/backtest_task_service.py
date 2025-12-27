@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import  desc
 
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import BacktestTask
+from quant_server.shared.database.models.business_models import BacktestTask
 
 
 class BacktestTaskService(BaseService):

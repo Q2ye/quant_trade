@@ -6,7 +6,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-from quant_server.db.models.base import Base
+from quant_server.shared.database.models.base import Base
 
 logger = logging.getLogger(__name__)
 

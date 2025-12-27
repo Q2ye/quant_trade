@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, desc
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import RiskRule, RiskEvent
+from quant_server.shared.database.models.business_models import RiskRule, RiskEvent
 
 
 class RiskRuleService(BaseService):

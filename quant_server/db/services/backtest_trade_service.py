@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import func
 
 from ..services.base_service import BaseService
-from quant_server.db.models.business_models import BacktestTrade
+from quant_server.shared.database.models.business_models import BacktestTrade
 
 
 class BacktestTradeService(BaseService):

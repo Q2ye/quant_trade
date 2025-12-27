@@ -1,6 +1,6 @@
 # fund_adjFactor_service.py (completed)
 from ..services.base_service import BaseService
-from quant_server.db.models.data_models import FundAdjFactor
+from quant_server.shared.database.models.data_models import FundAdjFactor
 
 
 class FundAdjFactorService(BaseService):

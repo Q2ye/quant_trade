@@ -3,10 +3,10 @@ import logging
 from typing import Dict
 from datetime import datetime
 
-from quant_server.core.data_models import PositionData, OrderData, TickData, Direction
+from quant_server.modules.data_models import PositionData, OrderData, TickData, Direction
 from quant_server.core.strategy_engine.event_engine import EventEngine, Event
 from quant_server.db import get_db_session
-from quant_server.db.models.business_models import RiskRule, RiskEvent
+from quant_server.shared.database.models.business_models import RiskRule, RiskEvent
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ class RiskEngine:
         # 使用参数实现检查逻辑
         # 简化实现：实际应查询股票的涨跌停价格
         # 这里添加一个简单的示例逻辑
-        from quant_server.db.models.data_models import StockDailyLimit
+        from quant_server.shared.database.models.data_models import StockDailyLimit
         try:
             latest_limit = self.session.query(StockDailyLimit).filter(
                 StockDailyLimit.ts_code == symbol
@@ -214,7 +214,7 @@ class RiskEngine:
         # 实现获取当前价格的逻辑
         # 简化实现：实际应从行情服务获取
         try:
-            from quant_server.db.models.data_models import StockDaily
+            from quant_server.shared.database.models.data_models import StockDaily
             latest_price = self.session.query(StockDaily.close).filter(
                 StockDaily.ts_code == symbol
             ).order_by(StockDaily.trade_date.desc()).first()

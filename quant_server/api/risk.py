@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from quant_server.api.dependencies import get_db
 from quant_server.api.login import get_current_user
-from quant_server.db.models.business_models import RiskRule, RiskEvent
+from quant_server.shared.database.models.business_models import RiskRule, RiskEvent
 
 router = APIRouter(prefix="/risk", tags=["risk"])
 
