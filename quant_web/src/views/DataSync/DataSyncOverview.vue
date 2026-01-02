@@ -121,7 +121,7 @@
 
         <div class="function-grid">
           <!-- 数据同步配置 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync')">
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/events-sync')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon accent">
@@ -149,7 +149,7 @@
           </el-card>
 
           <!-- 数据质量 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-quality')">
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/events-quality')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon danger">
@@ -181,7 +181,7 @@
           </el-card>
 
           <!-- 任务监控 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync/tasks')">
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/events-sync/tasks')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon purple">
@@ -213,7 +213,7 @@
           </el-card>
 
           <!-- 同步历史 -->
-          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/data-sync/history')">
+          <el-card class="function-nav-card" shadow="hover" @click="navigateTo('/events-sync/history')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon info">
@@ -287,7 +287,7 @@
                   <Icon icon="ant-design:check-circle-outlined"/>
                 </div>
                 <div class="no-task-text">暂无运行中的任务</div>
-                <el-button type="primary" @click="navigateTo('/data-sync/config')">
+                <el-button type="primary" @click="navigateTo('/events-sync/config')">
                   开始新任务
                 </el-button>
               </div>
@@ -302,7 +302,7 @@
                   <Icon icon="ant-design:history-outlined" class="card-title-icon"/>
                   最近同步记录
                 </div>
-                <el-button type="text" @click="navigateTo('/data-sync/history')">
+                <el-button type="text" @click="navigateTo('/events-sync/history')">
                   查看全部
                 </el-button>
               </div>

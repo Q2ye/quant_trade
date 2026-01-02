@@ -1,5 +1,5 @@
 // 交易执行
-// quant_web/src/store/modules/trade.ts
+// quant_web/src/store/modules/events.ts
 import {Module} from 'vuex';
 import api from '@/api/trade';
 import {Account, Order, Position, Trade, RootState} from "@/types";

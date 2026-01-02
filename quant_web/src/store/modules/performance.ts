@@ -112,7 +112,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * 设置加载状态
      * @param state - 模块状态
      * @param payload - 包含加载类型和状态的负载对象
-     * @param payload.type - 加载类型（account/strategy/comparison）
+     * @param payload.type - 加载类型（events/events/comparison）
      * @param payload.value - 加载状态值（true/false）
      */
     SET_LOADING(state, payload: { type: keyof PerformanceState['loading']; value: boolean }) {
@@ -164,7 +164,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     async fetchAccountPerformance({ commit }, accountId: string) {
       // 设置账户加载状态为true
-      commit('SET_LOADING', { type: 'account', value: true });
+      commit('SET_LOADING', { type: 'events', value: true });
       try {
         // 调用API获取账户绩效数据
         const performance = await performanceApi.getAccountPerformance();
@@ -176,7 +176,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
         throw error;
       } finally {
         // 无论成功失败，最终都要关闭加载状态
-        commit('SET_LOADING', { type: 'account', value: false });
+        commit('SET_LOADING', { type: 'events', value: false });
       }
     },
 
@@ -189,7 +189,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     async fetchStrategyPerformance({ commit }, strategyId: string) {
       // 设置策略加载状态为true
-      commit('SET_LOADING', { type: 'strategy', value: true });
+      commit('SET_LOADING', { type: 'events', value: true });
       try {
         // 调用API获取策略绩效数据
         const performance = await performanceApi.getStrategyPerformance(strategyId);
@@ -201,7 +201,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
         throw error;
       } finally {
         // 关闭策略加载状态
-        commit('SET_LOADING', { type: 'strategy', value: false });
+        commit('SET_LOADING', { type: 'events', value: false });
       }
     },
 

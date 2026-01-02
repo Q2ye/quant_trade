@@ -1,0 +1,1 @@
+# AnalysisEventType枚举

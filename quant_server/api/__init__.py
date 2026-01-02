@@ -17,7 +17,7 @@ from .dashboard import router as dashboard_router
 
 router = APIRouter()
 
-quantTrade = APIRouter(prefix="/quant-trade")
+quantTrade = APIRouter(prefix="/quant-events")
 quantTrade.include_router(login_router)
 quantTrade.include_router(strategy_router)
 quantTrade.include_router(backtest_router)

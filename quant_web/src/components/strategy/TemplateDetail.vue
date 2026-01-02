@@ -1,4 +1,4 @@
-<!-- components/strategy/TemplateDetail.vue -->
+<!-- components/events/TemplateDetail.vue -->
 <template>
   <div class="template-detail">
     <div class="detail-section">

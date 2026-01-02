@@ -177,7 +177,7 @@ export default {
           this.clearChart();
         }
 
-        this.$emit('data-loaded', mockData);
+        this.$emit('events-loaded', mockData);
       } catch (error) {
         console.error('加载K线数据失败:', error);
         this.clearChart();

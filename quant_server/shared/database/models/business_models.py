@@ -64,9 +64,9 @@ class Strategy(Base):
 
 	# 关联关系
 	user = relationship("SysUser", back_populates="strategies")
-	runs = relationship("StrategyRun", back_populates="strategy")
-	signals = relationship("Signal", back_populates="strategy")
-	daily_performance = relationship("StrategyDailyPerformance", back_populates="strategy")
+	runs = relationship("StrategyRun", back_populates="events")
+	signals = relationship("Signal", back_populates="events")
+	daily_performance = relationship("StrategyDailyPerformance", back_populates="events")
 
 
 class StrategyRun(Base):
@@ -233,8 +233,8 @@ class Account(Base):
 
 	# 关联关系
 	user = relationship("SysUser", back_populates="accounts")
-	orders = relationship("Order", back_populates="account")
-	positions = relationship("Position", back_populates="account")
+	orders = relationship("Order", back_populates="events")
+	positions = relationship("Position", back_populates="events")
 
 
 class AccountDailyPerformance(Base):

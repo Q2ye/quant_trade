@@ -1,4 +1,4 @@
-// quant_web/src/store/modules/data.ts
+// quant_web/src/store/modules/events.ts
 import { Module } from 'vuex';
 import api, { defaultRealtimeService } from '@/api/data';
 import {

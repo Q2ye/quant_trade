@@ -1,4 +1,4 @@
-// quant_web/src/types/api/data.ts
+// quant_web/src/types/api/events.ts
 import { ApiResponse } from '@/types';
 import {PaginatedResponse, PaginationParams, TimeRangeParams} from './base';
 

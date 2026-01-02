@@ -144,7 +144,7 @@ const holdings = ref([
   {
     name: '中国平安',
     symbol: '601318',
-    icon: 'mdi:shield-account',
+    icon: 'mdi:shield-events',
     weight: 7.3,
     currentPrice: 48.90,
     quantity: 12000,

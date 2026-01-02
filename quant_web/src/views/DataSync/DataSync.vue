@@ -385,7 +385,7 @@ const clearAllDataTypes = () => {
 
 // 监听路由变化
 watch(() => route.path, (newPath) => {
-  if (newPath === '/data-sync') {
+  if (newPath === '/events-sync') {
     initializePage()
   }
 })

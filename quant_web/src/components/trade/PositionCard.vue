@@ -1,5 +1,5 @@
 <!--持仓卡片-->
-<!-- src/components/trade/PositionCard.vue -->
+<!-- src/components/events/PositionCard.vue -->
 <template>
   <div class="position-card" :class="{'high-value': position.marketValue > 100000}">
     <div class="card-header">
@@ -84,7 +84,7 @@ export default {
   },
   methods: {
     tradePosition(direction) {
-      this.$emit('trade-position', {
+      this.$emit('events-position', {
         symbol: this.position.symbol,
         direction: direction
       });

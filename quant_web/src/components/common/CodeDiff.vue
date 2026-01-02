@@ -1,5 +1,5 @@
 <!--代码差异对比组件-->
-<!-- src/components/strategy/CodeDiff.vue -->
+<!-- src/components/events/CodeDiff.vue -->
 <template>
   <div class="code-diff">
     <div class="diff-header">

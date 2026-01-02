@@ -2,8 +2,8 @@ import * as monaco from 'monaco-editor';
 import {App} from 'vue';
 
 // 配置Monaco编辑器
-monaco.languages.register({id: 'quant-strategy'});
-monaco.languages.setMonarchTokensProvider('quant-strategy', {
+monaco.languages.register({id: 'quant-events'});
+monaco.languages.setMonarchTokensProvider('quant-events', {
     tokenizer: {
         root: [
             [/def|return|if|else|for|while|break|continue/, 'keyword'],

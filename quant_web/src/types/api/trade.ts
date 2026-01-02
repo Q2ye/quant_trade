@@ -1,4 +1,4 @@
-// quant_web/src/types/api/trade.ts
+// quant_web/src/types/api/events.ts
 // 交易执行API类型定义
 import {ApiResponse} from '@/types';
 import {PaginatedResponse, PaginationParams, TimeRangeParams} from './base';

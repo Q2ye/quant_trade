@@ -317,7 +317,7 @@ export default defineComponent({
       if (key === "logout") {
         router.push("/login")
       } else if (key === "settings") {
-        router.push("/system/settings")
+        router.push("/events/settings")
       } else if (key === "profile") {
         router.push("/user/profile")
       }

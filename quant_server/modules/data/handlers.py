@@ -2,7 +2,7 @@
 """
 数据模块业务处理层
 基于混合架构设计，实现数据模块的核心业务逻辑
-位置：quant_server/modules/data/handlers.py
+位置：quant_server/modules/events/handlers.py
 数据API处理函数
 设计原则：
 1. 使用共享Repository进行数据访问
@@ -13,14 +13,13 @@
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, date, timedelta
 import logging
-import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import BackgroundTasks
 
 # 导入共享层组件
-from quant_server.shared.database.repositories.stock_repo import StockRepository
-from quant_server.shared.database.repositories.quote_repo import DailyQuoteRepository
-from quant_server.shared.database.repositories.sync_task_repo import SyncTaskRepository
+from quant_server.shared.database.repositories.market.stock_repo import StockRepository
+from quant_server.shared.database.repositories.market.quote_repo import DailyQuoteRepository
+from quant_server.shared.database.repositories.market.sync_task_repo import SyncTaskRepository
 from quant_server.shared.database.repositories.factor_repo import FactorRepository
 from quant_server.shared.config.settings import Settings
 from quant_server.shared.cache.redis_cache import RedisCache

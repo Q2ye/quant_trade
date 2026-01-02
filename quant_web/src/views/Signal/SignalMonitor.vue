@@ -100,7 +100,7 @@ const connectWebSocket = () => {
 
         // 验证数据格式
         if (!signalData.signal_type || !signalData.ts_code) {
-          console.warn('Invalid signal data:', signalData)
+          console.warn('Invalid signal events:', signalData)
           return
         }
 

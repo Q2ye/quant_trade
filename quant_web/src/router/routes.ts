@@ -83,7 +83,7 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'market', layout: 'main', title: '资金流向'}
     },
     {
-        path: '/market/limit-analysis',
+        path: '/market/limit-events',
         name: 'LimitAnalysis',
         component: () => import('@/views/Market/LimitAnalysis.vue'),
         meta: {menu: 'market', layout: 'main', title: '涨跌停分析'}
@@ -91,32 +91,32 @@ export const routes: RouteRecordRaw[] = [
 
     // 数据中心 - 更新为数据同步总览
     {
-        path: '/data-sync-overview',
+        path: '/events-sync-overview',
         name: 'DataSyncOverview',
         component: () => import('@/views/DataSync/DataSyncOverview.vue'),
         meta: {menu: 'data-sync-overview', layout: 'main', title: '同步总览'}
     },
     // 隐藏原有的数据同步相关菜单，但保留路由用于内部跳转
     {
-        path: '/data-quality',
+        path: '/events-quality',
         name: 'DataQuality',
         component: () => import('@/views/DataSync/DataQuality.vue'),
         meta: {menu: '', layout: 'main', title: '数据质量', hideInMenu: true}
     },
     {
-        path: '/data-sync',
+        path: '/events-sync',
         name: 'DataSync',
         component: () => import('@/views/DataSync/DataSync.vue'),
         meta: {menu: '', layout: 'main', title: '数据同步', hideInMenu: true}
     },
     {
-        path: '/data-sync/tasks',
+        path: '/events-sync/tasks',
         name: 'SyncTaskMonitor',
         component: () => import('@/views/DataSync/TaskMonitor.vue'),
         meta: {menu: '', layout: 'main', title: '同步任务监控', hideInMenu: true}
     },
     {
-        path: '/data-sync/history',
+        path: '/events-sync/history',
         name: 'SyncHistory',
         component: () => import('@/views/DataSync/SyncHistory.vue'),
         meta: {menu: '', layout: 'main', title: '同步历史记录', hideInMenu: true}
@@ -149,13 +149,13 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'strategies', layout: 'main', title: '编辑策略'}
     },
     {
-        path: '/strategies/backtest',
+        path: '/strategies/events',
         name: 'BacktestStudio',
         component: () => import('@/views/Backtest/BacktestStudio.vue'),
         meta: {menu: 'backtest', layout: 'main', title: '回测工作室'}
     },
     {
-        path: '/strategies/backtest/report/:taskId',
+        path: '/strategies/events/report/:taskId',
         name: 'BacktestReport',
         component: () => import('@/views/Backtest/BacktestReport.vue'),
         props: true,
@@ -174,7 +174,7 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'factor-library', layout: 'main', title: '因子库管理'}
     },
     {
-        path: '/strategies/backtest-period',
+        path: '/strategies/events-period',
         name: 'BacktestPeriod',
         component: () => import('@/views/Research/BacktestPeriod.vue'),
         meta: {menu: 'backtest-period', layout: 'main', title: '回溯周期'}
@@ -182,7 +182,7 @@ export const routes: RouteRecordRaw[] = [
 
     // 组合管理
     {
-        path: '/portfolio/analysis',
+        path: '/portfolio/events',
         name: 'PortfolioAnalysis',
         component: () => import('@/views/Portfolio/PortfolioAnalysis.vue'),
         meta: {menu: 'portfolio-analysis', layout: 'main', title: '组合分析'}
@@ -216,7 +216,7 @@ export const routes: RouteRecordRaw[] = [
 
     // 交易执行
     {
-        path: '/trading/execution-analysis',
+        path: '/trading/execution-events',
         name: 'ExecutionAnalysis',
         component: () => import('@/views/Trade/ExecutionAnalysis.vue'),
         meta: {menu: 'execution-analysis', layout: 'main', title: '执行分析'}
@@ -240,7 +240,7 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'positions', layout: 'main', title: '持仓管理'}
     },
     {
-        path: '/trading/account',
+        path: '/trading/events',
         name: 'AccountManagement',
         component: () => import('@/views/Trade/AccountManagement.vue'),
         meta: {menu: 'account', layout: 'main', title: '账户管理'}
@@ -248,7 +248,7 @@ export const routes: RouteRecordRaw[] = [
 
     // 风险监控
     {
-        path: '/risk/monitor',
+        path: '/risk/events',
         name: 'RiskMonitor',
         component: () => import('@/views/Risk/RiskMonitor.vue'),
         meta: {menu: 'risk-monitor', layout: 'main', title: '实时监控'}
@@ -274,7 +274,7 @@ export const routes: RouteRecordRaw[] = [
 
     // 绩效分析
     {
-        path: '/performance/strategy',
+        path: '/performance/events',
         name: 'StrategyPerformance',
         component: () => import('@/views/Performance/StrategyPerformance.vue'),
         meta: {menu: 'strategy-performance', layout: 'main', title: '策略绩效'}
@@ -286,14 +286,14 @@ export const routes: RouteRecordRaw[] = [
         meta: {menu: 'attribution', layout: 'main', title: '归因分析'}
     },
     {
-        path: '/performance/strategy/:id',
+        path: '/performance/events/:id',
         name: 'StrategyPerformanceDetail',
         component: () => import('@/views/Performance/StrategyPerformance.vue'),
         props: true,
         meta: {menu: 'strategy-performance', layout: 'main', title: '策略绩效详情'}
     },
     {
-        path: '/performance/account',
+        path: '/performance/events',
         name: 'AccountPerformance',
         component: () => import('@/views/Performance/AccountPerformance.vue'),
         meta: {menu: 'account-performance', layout: 'main', title: '账户绩效'}
@@ -321,25 +321,25 @@ export const routes: RouteRecordRaw[] = [
 
     // 系统管理
     {
-        path: '/system/monitor',
+        path: '/events/events',
         name: 'SystemMonitor',
         component: () => import('@/views/System/Monitor.vue'),
         meta: {menu: 'system-monitor', layout: 'main', title: '系统监控'}
     },
     {
-        path: '/system/logs',
+        path: '/events/logs',
         name: 'SystemLogs',
         component: () => import('@/views/System/LogViewer.vue'),
         meta: {menu: 'logs', layout: 'main', title: '系统日志'}
     },
     {
-        path: '/system/settings',
+        path: '/events/settings',
         name: 'SystemSettings',
         component: () => import('@/views/System/Settings.vue'),
         meta: {menu: 'settings', layout: 'main', title: '系统设置'}
     },
     {
-        path: '/system/users',
+        path: '/events/users',
         name: 'UserManagement',
         component: () => import('@/views/System/UserManagement.vue'),
         meta: {menu: 'users', layout: 'main', title: '用户管理'}

@@ -1,4 +1,4 @@
-// quant_web/src/types/state/module-states/strategy-state.ts
+// quant_web/src/types/state/module-states/events-state.ts
 // 策略管理状态
 // 负责管理策略的创建、编辑、回测、执行等操作的状态
 

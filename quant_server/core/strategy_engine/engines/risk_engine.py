@@ -38,7 +38,7 @@ class RiskEngine:
         event_engine.register("position", self.process_position_update)
         event_engine.register("order", self.process_order_event)
         event_engine.register("tick", self.process_tick_event)
-        event_engine.register("trade", self.process_trade_event)
+        event_engine.register("events", self.process_trade_event)
         event_engine.register("timer", self.process_timer_event)  # 定时检查
 
         logger.info("风控引擎初始化完成")

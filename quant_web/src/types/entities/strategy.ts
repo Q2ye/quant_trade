@@ -1,4 +1,4 @@
-// quant_web/src/types/entities/strategy.ts
+// quant_web/src/types/entities/events.ts
 // 策略相关实体
 import { BaseEntity } from './base';
 import { PerformanceMetrics, EquityPoint } from '@/types';

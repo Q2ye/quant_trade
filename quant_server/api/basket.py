@@ -19,7 +19,7 @@ async def get_baskets(
     total = data_service.baskets.count()
 
     return {
-        "data": baskets,
+        "events": baskets,
         "pagination": {
             "page": page,
             "limit": limit,

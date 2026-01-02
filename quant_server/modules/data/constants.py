@@ -1,7 +1,7 @@
 """
 数据模块 - 常量定义
 定义数据模块使用的所有常量，包括配置、状态码、默认值等
-位置：quant_server/modules/data/constants.py
+位置：quant_server/modules/events/constants.py
 
 设计原则：
 1. 统一管理：所有常量集中管理，避免硬编码
@@ -20,7 +20,7 @@ class ModuleConfig:
 	"""模块配置常量"""
 
 	# 模块名称
-	MODULE_NAME = "data"
+	MODULE_NAME = "events"
 
 	# 模块版本
 	MODULE_VERSION = "1.0.0"
@@ -683,7 +683,7 @@ class APIPath:
 	"""API路径常量"""
 
 	# 数据模块API
-	DATA_PREFIX = "/api/data"
+	DATA_PREFIX = "/api/events"
 
 	# 基础数据查询
 	STOCKS = "/stocks"  # 股票列表
@@ -737,7 +737,7 @@ class CacheKey:
 	"""缓存键常量"""
 
 	# 键前缀
-	PREFIX = "data:"
+	PREFIX = "events:"
 
 	# 股票相关
 	STOCK_LIST = PREFIX + "stock_list:{hash}"  # 股票列表缓存
@@ -786,15 +786,15 @@ class EventType:
 	"""事件类型常量"""
 
 	# 数据同步事件
-	DATA_SYNC_STARTED = "data.sync.started"  # 数据同步开始
-	DATA_SYNC_PROGRESS = "data.sync.progress"  # 数据同步进度
-	DATA_SYNC_COMPLETED = "data.sync.completed"  # 数据同步完成
-	DATA_SYNC_FAILED = "data.sync.failed"  # 数据同步失败
-	DATA_SYNC_CANCELLED = "data.sync.cancelled"  # 数据同步取消
+	DATA_SYNC_STARTED = "events.sync.started"  # 数据同步开始
+	DATA_SYNC_PROGRESS = "events.sync.progress"  # 数据同步进度
+	DATA_SYNC_COMPLETED = "events.sync.completed"  # 数据同步完成
+	DATA_SYNC_FAILED = "events.sync.failed"  # 数据同步失败
+	DATA_SYNC_CANCELLED = "events.sync.cancelled"  # 数据同步取消
 
 	# 数据质量事件
-	DATA_QUALITY_ALERT = "data.quality.alert"  # 数据质量警报
-	DATA_QUALITY_REPORT = "data.quality.report"  # 数据质量报告
+	DATA_QUALITY_ALERT = "events.quality.alert"  # 数据质量警报
+	DATA_QUALITY_REPORT = "events.quality.report"  # 数据质量报告
 
 	# 因子事件
 	FACTOR_UPDATE_STARTED = "factor.update.started"  # 因子更新开始
@@ -803,19 +803,19 @@ class EventType:
 	FACTOR_RESEARCH_COMPLETED = "factor.research.completed"  # 因子研究完成
 
 	# 系统事件
-	DATA_MODULE_STARTED = "data.module.started"  # 数据模块启动
-	DATA_MODULE_STOPPED = "data.module.stopped"  # 数据模块停止
-	DATA_MODULE_ERROR = "data.module.error"  # 数据模块错误
+	DATA_MODULE_STARTED = "events.module.started"  # 数据模块启动
+	DATA_MODULE_STOPPED = "events.module.stopped"  # 数据模块停止
+	DATA_MODULE_ERROR = "events.module.error"  # 数据模块错误
 
 	@classmethod
 	def is_sync_event (cls, event_type):
 		"""判断是否为同步事件"""
-		return event_type.startswith("data.sync.")
+		return event_type.startswith("events.sync.")
 
 	@classmethod
 	def is_quality_event (cls, event_type):
 		"""判断是否为质量事件"""
-		return event_type.startswith("data.quality.")
+		return event_type.startswith("events.quality.")
 
 	@classmethod
 	def is_factor_event (cls, event_type):
@@ -829,32 +829,32 @@ class Permission:
 	"""权限常量"""
 
 	# 数据查看权限
-	VIEW_STOCK_LIST = "data:stock:view"  # 查看股票列表
-	VIEW_STOCK_DETAIL = "data:stock:detail"  # 查看股票详情
-	VIEW_HISTORICAL_QUOTES = "data:quotes:view"  # 查看历史行情
-	VIEW_FACTOR_DATA = "data:factor:view"  # 查看因子数据
+	VIEW_STOCK_LIST = "events:stock:view"  # 查看股票列表
+	VIEW_STOCK_DETAIL = "events:stock:detail"  # 查看股票详情
+	VIEW_HISTORICAL_QUOTES = "events:quotes:view"  # 查看历史行情
+	VIEW_FACTOR_DATA = "events:factor:view"  # 查看因子数据
 
 	# 数据操作权限
-	SYNC_DATA = "data:sync"  # 同步数据
-	CANCEL_SYNC = "data:sync:cancel"  # 取消同步
-	MANUAL_UPDATE = "data:update:manual"  # 手动更新数据
-	DELETE_DATA = "data:delete"  # 删除数据
+	SYNC_DATA = "events:sync"  # 同步数据
+	CANCEL_SYNC = "events:sync:cancel"  # 取消同步
+	MANUAL_UPDATE = "events:update:manual"  # 手动更新数据
+	DELETE_DATA = "events:delete"  # 删除数据
 
 	# 数据质量权限
-	CHECK_QUALITY = "data:quality:check"  # 检查数据质量
-	EXPORT_QUALITY_REPORT = "data:quality:export"  # 导出质量报告
-	FIX_DATA_ISSUES = "data:quality:fix"  # 修复数据问题
+	CHECK_QUALITY = "events:quality:check"  # 检查数据质量
+	EXPORT_QUALITY_REPORT = "events:quality:export"  # 导出质量报告
+	FIX_DATA_ISSUES = "events:quality:fix"  # 修复数据问题
 
 	# 因子研究权限
-	RESEARCH_FACTOR = "data:factor:research"  # 因子研究
-	CREATE_FACTOR = "data:factor:create"  # 创建因子
-	EDIT_FACTOR = "data:factor:edit"  # 编辑因子
-	DELETE_FACTOR = "data:factor:delete"  # 删除因子
+	RESEARCH_FACTOR = "events:factor:research"  # 因子研究
+	CREATE_FACTOR = "events:factor:create"  # 创建因子
+	EDIT_FACTOR = "events:factor:edit"  # 编辑因子
+	DELETE_FACTOR = "events:factor:delete"  # 删除因子
 
 	# 配置权限
-	MANAGE_DATA_SOURCES = "data:sources:manage"  # 管理数据源
-	MANAGE_API_KEYS = "data:api_keys:manage"  # 管理API密钥
-	CONFIGURE_MODULE = "data:config"  # 配置模块
+	MANAGE_DATA_SOURCES = "events:sources:manage"  # 管理数据源
+	MANAGE_API_KEYS = "events:api_keys:manage"  # 管理API密钥
+	CONFIGURE_MODULE = "events:config"  # 配置模块
 
 	@classmethod
 	def get_display_name (cls, permission):

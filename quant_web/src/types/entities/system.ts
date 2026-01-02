@@ -1,4 +1,4 @@
-// quant_web/src/types/entities/system.ts
+// quant_web/src/types/entities/events.ts
 // 系统相关实体
 import { BaseEntity } from './base';
 

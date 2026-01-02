@@ -1,4 +1,4 @@
-// quant_web/src/store/modules/strategy.ts
+// quant_web/src/store/modules/events.ts
 // 策略管理Vuex模块
 // 负责管理策略的创建、编辑、回测、执行等操作的状态
 import { Module } from 'vuex'

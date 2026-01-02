@@ -86,7 +86,7 @@ class CtaEngine(StrategyEngine):
         event_engine.register("tick", self.process_tick_event)
         event_engine.register("bar", self.process_bar_event)
         event_engine.register("order", self.process_order_event)
-        event_engine.register("trade", self.process_trade_event)
+        event_engine.register("events", self.process_trade_event)
 
         logger.info("CTA引擎初始化完成")
 

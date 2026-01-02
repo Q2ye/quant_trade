@@ -1,4 +1,4 @@
-// quant_web/src/types/api/strategy.ts
+// quant_web/src/types/api/events.ts
 // 策略管理API类型定义
 import { ApiResponse, PaginatedResponse, PaginationParams } from './base';
 import { BacktestResult, StrategyPerformance } from './shared';

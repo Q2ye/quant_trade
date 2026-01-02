@@ -254,7 +254,7 @@ export default defineComponent({
 
     /**
      * 更新 HTML 主题属性
-     * 设置 data-theme 和 color-scheme 属性以支持 CSS 主题切换
+     * 设置 events-theme 和 color-scheme 属性以支持 CSS 主题切换
      * 修复：使用 dataset 替代 setAttribute
      */
     const updateHtmlThemeAttribute = () => {

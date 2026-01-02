@@ -22,7 +22,7 @@ async def get_stocks(
     total = data_service.stock_basic.count(search=search)
 
     return {
-        "data": stocks,
+        "events": stocks,
         "pagination": {
             "page": page,
             "limit": limit,
@@ -78,7 +78,7 @@ async def get_stock_history(
     return {
         "symbol": code,
         "name": stock.name,
-        "data": data
+        "events": data
     }
 
 
@@ -94,7 +94,7 @@ async def get_etfs(
     total = data_service.etf_basic.count()
 
     return {
-        "data": etfs,
+        "events": etfs,
         "pagination": {
             "page": page,
             "limit": limit,
@@ -122,7 +122,7 @@ async def get_indexes(data_service: DataService = Depends(get_data_service)):
     """获取指数列表"""
     # 获取主要指数列表
     indexes = data_service.etf_basic.get_all()
-    return {"data": indexes}
+    return {"events": indexes}
 
 
 @router.get("/index/{code}")

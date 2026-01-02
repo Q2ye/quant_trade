@@ -6,7 +6,7 @@ from typing import Optional
 from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
-router = APIRouter(prefix="/system", tags=["system"])
+router = APIRouter(prefix="/events", tags=["events"])
 
 
 @router.get("/status")
@@ -39,7 +39,7 @@ async def get_system_logs(
     logs_data = data_service.system_service.get_system_logs(level=level, offset=offset, limit=limit)
 
     return {
-        "data": logs_data["data"],
+        "events": logs_data["events"],
         "pagination": {
             "page": page,
             "limit": limit,

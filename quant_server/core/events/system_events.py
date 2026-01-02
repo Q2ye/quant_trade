@@ -1,0 +1,1 @@
+# 系统级事件定义（如SystemStartedEvent等）

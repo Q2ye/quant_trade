@@ -1,4 +1,4 @@
-// backtest.worker.ts
+// events.worker.ts
 
 // 声明 Web Worker 环境
 declare function importScripts(...urls: string[]): void;

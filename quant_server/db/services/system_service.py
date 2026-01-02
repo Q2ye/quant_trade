@@ -145,12 +145,12 @@ class SystemService(BaseService):
         # 这里需要实现从数据库日志表查询的逻辑
         # 暂时返回模拟数据
         return {
-            "data": [
+            "events": [
                 {
                     "timestamp": "2023-08-23T10:30:00",
                     "level": "INFO",
                     "module": "data_sync",
-                    "message": "Daily data sync completed"
+                    "message": "Daily events sync completed"
                 }
             ],
             "pagination": {

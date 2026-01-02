@@ -226,7 +226,7 @@
           </n-card>
 
           <!-- 涨跌停分析 -->
-          <n-card class="function-nav-card" hoverable @click="navigateTo('/market/limit-analysis')">
+          <n-card class="function-nav-card" hoverable @click="navigateTo('/market/limit-events')">
             <div class="function-content">
               <div class="function-header">
                 <div class="function-icon danger">

@@ -1,5 +1,5 @@
 <!--订单表单-->
-<!-- src/components/trade/OrderForm.vue -->
+<!-- src/components/events/OrderForm.vue -->
 <template>
   <div class="order-form">
     <h2><i class="fas fa-file-invoice-dollar"></i> 交易订单</h2>

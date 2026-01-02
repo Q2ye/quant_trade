@@ -45,8 +45,8 @@ const layoutModule: Module<LayoutState, RootState> = {
                     label: '市场数据',
                     icon: 'line-chart',
                     children: [
-                        {key: 'market-data', label: '行情数据', icon: 'stock', path: '/market/data'},
-                        {key: 'fundamental-data', label: '基本面数据', icon: 'fund', path: '/market/fundamental'}
+                        {key: 'market-events', label: '行情数据', icon: 'stock', path: '/market/events'},
+                        {key: 'fundamental-events', label: '基本面数据', icon: 'fund', path: '/market/fundamental'}
                     ]
                 },
                 {
@@ -54,7 +54,7 @@ const layoutModule: Module<LayoutState, RootState> = {
                     label: '研究回测',
                     icon: 'experiment',
                     children: [
-                        {key: 'backtest-studio', label: '回测工作室', icon: 'experiment', path: '/research/backtest'},
+                        {key: 'backtest-studio', label: '回测工作室', icon: 'experiment', path: '/research/events'},
                         {key: 'factor-research', label: '因子研究', icon: 'filter', path: '/research/factor'}
                     ]
                 },
@@ -63,9 +63,9 @@ const layoutModule: Module<LayoutState, RootState> = {
                     label: '系统管理',
                     icon: 'setting',
                     children: [
-                        {key: 'system-monitoring', label: '系统监控', icon: 'monitor', path: '/system/monitoring'},
-                        {key: 'logs', label: '日志查看', icon: 'file-text', path: '/system/logs'},
-                        {key: 'user-management', label: '用户管理', icon: 'user', path: '/system/users'}
+                        {key: 'events-monitoring', label: '系统监控', icon: 'monitor', path: '/events/monitoring'},
+                        {key: 'logs', label: '日志查看', icon: 'file-text', path: '/events/logs'},
+                        {key: 'user-management', label: '用户管理', icon: 'user', path: '/events/users'}
                     ]
                 }
             ]
@@ -81,7 +81,7 @@ const layoutModule: Module<LayoutState, RootState> = {
             watchlist: [],
             quickActions: [
                 {
-                    id: 'sync-data',
+                    id: 'sync-events',
                     label: '同步数据',
                     icon: 'sync',
                     action: 'syncData'

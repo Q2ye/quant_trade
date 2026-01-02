@@ -1,1 +1,1 @@
-# 策略模块（modules/strategy/）
+# 策略模块（modules/events/）

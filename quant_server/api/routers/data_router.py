@@ -5,11 +5,9 @@
 位置：quant_server/api/routers/data_router.py
 数据模块路由
 """
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from datetime import datetime, date
+from datetime import datetime
 import logging
 
 # 导入架构依赖
@@ -17,15 +15,14 @@ from quant_server.api.dependencies.database import get_db_session
 from quant_server.api.dependencies.auth import get_current_user
 from quant_server.api.dependencies.event_engine import get_event_engine
 from quant_server.api.dependencies.main_engine import get_main_engine
-from quant_server.api.utils.response_formatter import format_response
-from quant_server.api.utils.pagination import paginate
+from quant_server.api.utils import format_response
+from quant_server.api.utils import paginate
 
 # 导入数据模块的业务层处理函数
 from quant_server.modules.data.handlers import (
 	get_stock_list,
 	get_stock_detail,
 	get_historical_quotes,
-	sync_market_data,
 	get_sync_status,
 	batch_sync_data,
 	quick_sync_data,
@@ -60,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/data",
+	prefix="/events",
 	tags=["数据中心"],
 	responses={
 		401: {"description": "认证失败"},
@@ -716,7 +713,7 @@ async def subscribe_data_events (
 			data={
 				"subscription_id": subscription_id,
 				"event_type": event_type,
-				"ws_endpoint": f"/ws/data/{subscription_id}",
+				"ws_endpoint": f"/ws/events/{subscription_id}",
 				"expires_at": (datetime.now() + timedelta(hours=24)).isoformat(),
 				"user_id": current_user.get("id")
 			},

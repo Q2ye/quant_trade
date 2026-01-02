@@ -1,0 +1,1 @@
+# TradeEventType枚举

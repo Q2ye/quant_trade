@@ -186,8 +186,8 @@ export const quantPersistedState = createPersistedState({
     'user.preferences',
     'layout.sidebarCollapsed',
     'layout.theme',
-    'trade.recentSymbols',
-    'strategy.recentStrategies',
+    'events.recentSymbols',
+    'events.recentStrategies',
     'strategyStudio.editor',
     'strategyStudio.parameters',
     'strategyStudio.backtestConfig'
@@ -215,8 +215,8 @@ export const quantPersistedState = createPersistedState({
       'user/UPDATE_PREFERENCES',
       'layout/TOGGLE_SIDEBAR',
       'layout/SET_THEME',
-      'trade/ADD_RECENT_SYMBOL',
-      'strategy/ADD_STRATEGY',
+      'events/ADD_RECENT_SYMBOL',
+      'events/ADD_STRATEGY',
       'strategyStudio/UPDATE_EDITOR_SETTINGS',
       'strategyStudio/UPDATE_PARAMETER',
       'strategyStudio/UPDATE_BACKTEST_CONFIG'

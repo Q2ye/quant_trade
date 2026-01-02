@@ -1,4 +1,4 @@
-// quant_web/src/api/data-sync.ts
+// quant_web/src/api/events-sync.ts
 import request from '@/utils/request'
 import { handleResponse } from '@/utils/responseHandler'
 
@@ -70,7 +70,7 @@ export interface DataTypeInfo {
  * 完全适配后端数据同步接口设计
  */
 class DataSyncService {
-  private readonly baseUrl = '/data-sync'
+  private readonly baseUrl = '/events-sync'
 
   /**
    * 获取数据同步状态

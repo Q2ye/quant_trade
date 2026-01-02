@@ -33,14 +33,14 @@ const store: Store<RootState> = createStore({
       paths: [
         'user.token',
         'user.userInfo',
-        'strategy.currentStrategy',
-        'strategy.backtestParams',
+        'events.currentStrategy',
+        'events.backtestParams',
         'basket.currentBasket',
         'layout.theme',
         'layout.language',
         'layout.siderNavigation.collapsed',
         'layout.rightPanel.collapsed',
-        'trade.currentAccount'
+        'events.currentAccount'
       ]
     }),
     ...(process.env.NODE_ENV !== 'production' ? [createLogger()] : [])

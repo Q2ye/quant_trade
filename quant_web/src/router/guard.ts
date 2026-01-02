@@ -62,7 +62,7 @@ export const dataReadyGuard = async (
       await store.dispatch('system/loadInitialData')
       next()
     } catch (error) {
-      console.error('Failed to load initial data:', error)
+      console.error('Failed to load initial events:', error)
       // 数据加载失败时仍然允许导航，但显示错误状态
       next()
     }

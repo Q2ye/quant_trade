@@ -1,7 +1,7 @@
 """
 数据模块 - API请求/响应模型定义
 基于Pydantic定义数据模块的所有API接口的请求和响应模型
-位置：quant_server/modules/data/schemas.py
+位置：quant_server/modules/events/schemas.py
 
 设计原则：
 1. 独立定义：每个模块根据API需求独立定义自己的Pydantic模型
@@ -155,7 +155,7 @@ class StockListResponse(BaseModel):
 		schema_extra = {
 			"example": {
 				"success": True,
-				"data": [
+				"events": [
 					{
 						"ts_code": "000001.SZ",
 						"symbol": "000001",
@@ -335,7 +335,7 @@ class HistoricalQuotesResponse(BaseModel):
 		schema_extra = {
 			"example": {
 				"success": True,
-				"data": {
+				"events": {
 					"000001.SZ": [
 						{
 							"trade_date": "2023-12-29",
@@ -479,7 +479,7 @@ class BatchSyncResponse(BaseModel):
 	progress_endpoint: str = Field(
 		...,
 		description="进度查询端点",
-		example="/api/data/sync/status?task_id={task_id}"
+		example="/api/events/sync/status?task_id={task_id}"
 	)
 	message: Optional[str] = Field(default=None, description="提示信息")
 
@@ -491,7 +491,7 @@ class BatchSyncResponse(BaseModel):
 				"task_count": 5,
 				"estimated_duration": 1800,
 				"start_time": "2023-12-29T09:00:00",
-				"progress_endpoint": "/api/data/sync/status?task_id=sync_20231229_001",
+				"progress_endpoint": "/api/events/sync/status?task_id=sync_20231229_001",
 				"message": "同步任务已开始，请通过进度端点查询状态"
 			}
 		}
@@ -963,7 +963,7 @@ class SyncProgressEvent(DataEvent):
 				"task_id": "sync_20231229_001",
 				"progress_percentage": 40.0,
 				"current_task": "同步日行情数据",
-				"data": {
+				"events": {
 					"total_tasks": 5,
 					"completed_tasks": 2
 				}
@@ -986,7 +986,7 @@ class QualityAlertEvent(DataEvent):
 				"alert_level": "warning",
 				"data_type": "daily_quotes",
 				"issue_description": "数据完整率低于95%",
-				"data": {
+				"events": {
 					"quality_score": 92.5,
 					"missing_count": 25
 				}
@@ -1009,7 +1009,7 @@ class FactorUpdateEvent(DataEvent):
 				"factor_name": "PE",
 				"update_type": "daily",
 				"affected_stocks": 4500,
-				"data": {
+				"events": {
 					"update_date": "2023-12-29",
 					"factor_count": 50
 				}

@@ -1,1 +1,1 @@
-# 系统模块（modules/system/）
+# 系统模块（modules/events/）

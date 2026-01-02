@@ -1,5 +1,5 @@
 <!--交易确认弹窗-->
-<!-- src/components/trade/TradeConfirm.vue -->
+<!-- src/components/events/TradeConfirm.vue -->
 <template>
   <div class="trade-confirm" v-if="visible">
     <div class="confirm-overlay" @click="cancel"></div>

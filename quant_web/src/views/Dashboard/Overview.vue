@@ -240,7 +240,7 @@ export default {
 
         equityChart.setOption(option)
       } catch (error) {
-        console.error('Failed to load chart data:', error)
+        console.error('Failed to load chart events:', error)
       }
     }
 
@@ -252,7 +252,7 @@ export default {
         positions.value = response.data.positions
         todayTrades.value = response.data.todayTrades
       } catch (error) {
-        console.error('Failed to load dashboard data:', error)
+        console.error('Failed to load dashboard events:', error)
       }
     }
 

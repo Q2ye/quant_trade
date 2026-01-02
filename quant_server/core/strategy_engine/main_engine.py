@@ -53,7 +53,7 @@ class MainEngine:
         self.engines["alpha"] = AlphaEngine(self, self.event_engine)
         logger.info("Alpha引擎初始化完成")
 
-        self.engines["backtest"] = BacktestEngine(self, self.event_engine)
+        self.engines["events"] = BacktestEngine(self, self.event_engine)
         logger.info("回测引擎初始化完成")
 
         self.engines["cta"] = CtaEngine(self, self.event_engine)

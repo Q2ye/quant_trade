@@ -1,0 +1,127 @@
+"""
+统一类型定义层
+集中管理系统中所有的枚举和实体类定义
+"""
+
+from .enums import (
+	SystemMode,
+	ComponentStatus,
+	HealthStatus,
+	PriorityLevel,
+	EngineType,
+	EngineCategory,
+	EngineErrorLevel,
+	EventType,
+	EventPriority,
+	MarketType,
+	OrderDirection,
+	OrderType,
+	OrderStatus,
+	TimeInForce,
+	TradeSide,
+	StrategyType,
+	StrategyStatus,
+	SignalType,
+	DataFrequency,
+	DataSource,
+	DataQuality,
+	RiskLevel,
+	RiskAction,
+	RiskType,
+	AccountType,
+	PositionDirection,
+	SettlementStatus,
+	AlertLevel,
+	MetricType,
+	CheckType,
+	EnumHelper
+)
+
+from .entities import (
+	BaseEntity,
+	EngineConfig,
+	EngineMetrics,
+	EngineStatus,
+	Order,
+	Trade,
+	Position,
+	Account,
+	StrategyConfig,
+	StrategyStatus,
+	Signal,
+	MarketData,
+	TickData,
+	BarData,
+	DepthData,
+	RiskRule,
+	RiskAlert,
+	Metric,
+	Alert,
+	Event,
+	SystemConfig,
+	EntityFactory
+)
+
+__all__ = [
+	# 枚举
+	'SystemMode',
+	'ComponentStatus',
+	'HealthStatus',
+	'PriorityLevel',
+	'EngineType',
+	'EngineCategory',
+	'EngineErrorLevel',
+	'EventType',
+	'EventPriority',
+	'MarketType',
+	'OrderDirection',
+	'OrderType',
+	'OrderStatus',
+	'TimeInForce',
+	'TradeSide',
+	'StrategyType',
+	'StrategyStatus',
+	'SignalType',
+	'DataFrequency',
+	'DataSource',
+	'DataQuality',
+	'RiskLevel',
+	'RiskAction',
+	'RiskType',
+	'AccountType',
+	'PositionDirection',
+	'SettlementStatus',
+	'AlertLevel',
+	'MetricType',
+	'CheckType',
+	'EnumHelper',
+
+	# 实体类
+	'BaseEntity',
+	'EngineConfig',
+	'EngineMetrics',
+	'EngineStatus',
+	'Order',
+	'Trade',
+	'Position',
+	'Account',
+	'StrategyConfig',
+	'StrategyStatus',
+	'Signal',
+	'MarketData',
+	'TickData',
+	'BarData',
+	'DepthData',
+	'RiskRule',
+	'RiskAlert',
+	'Metric',
+	'Alert',
+	'Event',
+	'SystemConfig',
+	'EntityFactory'
+]
+
+# 版本信息
+__version__ = "1.0.0"
+__description__ = "量化交易系统统一类型定义层"
+__author__ = "Quant Trading System Team"

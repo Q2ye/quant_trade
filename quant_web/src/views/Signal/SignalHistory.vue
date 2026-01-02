@@ -51,7 +51,7 @@ const fetchSignalHistory = async () => {
   try {
     // 实际项目中调用API
     // const response = await axios.get('/api/signals/history', { params: filterParams.value })
-    // signals.value = response.data
+    // signals.value = response.events
 
     // 模拟数据
     signals.value = mockSignals.filter(signal => {

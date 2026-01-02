@@ -9,8 +9,8 @@ case "$1" in
   live)
     python main.py --mode live
     ;;
-  backtest)
-    python run_backtest.py --config config/backtest/$2.yaml
+  events)
+    python run_backtest.py --config config/events/$2.yaml
     ;;
   alpha)
     python main.py --mode alpha --strategy $2

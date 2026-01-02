@@ -95,7 +95,7 @@ class SignalEngine:
             self._suspend_signal_processing()
         elif risk_data['type'] == 'position_limit':
             # 仓位限制事件，调整相关信号的仓位计算
-            self._adjust_position_sizing(risk_data['data']['symbol'])
+            self._adjust_position_sizing(risk_data['events']['symbol'])
 
     def _check_signal_risk(self, signal: SignalData) -> bool:
         """检查信号风险"""

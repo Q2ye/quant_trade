@@ -1,4 +1,4 @@
-// quant_web/src/types/state/module-states/strategy-studio-state.ts
+// quant_web/src/types/state/module-states/events-studio-state.ts
 // 策略工作室状态管理
 // 负责策略开发、回测、参数优化等高级功能的状态
 

@@ -187,7 +187,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeTradeSignals(callback: WebSocketCallback<StrategySignal>): string {
-    const channel = 'trade:signals';
+    const channel = 'events:signals';
     this.subscribe(channel, callback);
     return channel;
   }
@@ -209,7 +209,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeTrades(callback: WebSocketCallback<TradeRecord>): string {
-    const channel = 'trade:execution';
+    const channel = 'events:execution';
     this.subscribe(channel, callback);
     return channel;
   }
@@ -220,7 +220,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeSystemStatus(callback: WebSocketCallback<SystemStatusMessage>): string {
-    const channel = 'system:status';
+    const channel = 'events:status';
     this.subscribe(channel, callback);
     return channel;
   }

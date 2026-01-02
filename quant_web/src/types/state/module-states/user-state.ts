@@ -26,7 +26,7 @@ export interface UserState {
    * 用户权限列表
    * 字符串数组，包含用户拥有的所有权限代码
    * 用于前端路由守卫和按钮级权限控制
-   * 例如：['strategy:read', 'strategy:write', 'trade:execute']
+   * 例如：['events:read', 'events:write', 'events:execute']
    */
   permissions: string[];
 

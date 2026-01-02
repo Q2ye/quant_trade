@@ -1,5 +1,5 @@
 // 回测管理API类型定义
-// quant_web/src/types/api/backtest.ts
+// quant_web/src/types/api/events.ts
 import { ApiResponse } from '@/types';
 import {PaginatedResponse, PaginationParams, TimeRangeParams} from './base';
 import { BacktestResult, StrategyPerformance } from './shared';

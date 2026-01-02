@@ -224,7 +224,7 @@ class StrategyManagerEngine(StrategyEngine):
             raise ValueError(f"策略不存在: {strategy_name}")
 
         # 获取回测引擎
-        backtest_engine = self.main_engine.get_engine("backtest")
+        backtest_engine = self.main_engine.get_engine("events")
 
         # 将策略添加到回测引擎
         strategy = self.strategies[strategy_name]

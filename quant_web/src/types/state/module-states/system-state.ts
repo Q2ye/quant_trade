@@ -1,4 +1,4 @@
-// quant_web/src/types/state/module-states/system-state.ts
+// quant_web/src/types/state/module-states/events-state.ts
 // 系统管理状态
 // 负责管理系统配置、用户管理、日志监控等状态
 

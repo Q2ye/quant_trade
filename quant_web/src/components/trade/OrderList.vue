@@ -1,4 +1,4 @@
-<!-- src/components/trade/OrderList.vue -->
+<!-- src/components/events/OrderList.vue -->
 <template>
   <div class="order-list">
     <div v-if="orders.length === 0" class="empty-state">

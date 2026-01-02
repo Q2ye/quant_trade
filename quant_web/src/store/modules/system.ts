@@ -1,4 +1,4 @@
-// quant_web/src/store/modules/system.ts
+// quant_web/src/store/modules/events.ts
 import {Module} from 'vuex';
 import api from '@/api/system';
 import {RootState} from '@/types';

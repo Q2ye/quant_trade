@@ -134,10 +134,10 @@ TECHNICAL_INDICATORS = {
 
 # 缓存键前缀
 CACHE_KEY_PREFIX = {
-	"MARKET_DATA": "market:data:",
-	"STRATEGY": "strategy:",
+	"MARKET_DATA": "market:events:",
+	"STRATEGY": "events:",
 	"ORDER": "order:",
-	"ACCOUNT": "account:",
+	"ACCOUNT": "events:",
 	"USER": "user:",
 	"CONFIG": "config:",
 }
@@ -152,7 +152,7 @@ PAGINATION_DEFAULTS = {
 # 文件路径
 FILE_PATHS = {
 	"LOG_DIR": "logs",
-	"DATA_DIR": "data",
+	"DATA_DIR": "events",
 	"CONFIG_DIR": "config",
 	"STRATEGY_DIR": "strategies",
 	"BACKUP_DIR": "backups",

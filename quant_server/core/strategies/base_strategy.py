@@ -21,7 +21,7 @@ class BaseStrategy:
                 - name: 策略名称
                 - symbols: 策略关注的股票代码列表
                 - params: 策略参数字典
-                - engineManager: 策略所属引擎类型 (cta, alpha, backtest)
+                - engineManager: 策略所属引擎类型 (cta, alpha, events)
         """
         self.name = config['name']
         self.symbols = config.get('symbols', [])
@@ -187,7 +187,7 @@ class BaseStrategy:
             'price': price,
             'reason': reason,
             'score': score,
-            'strategy': self.name,
+            'events': self.name,
             'timestamp': datetime.now().isoformat()
         }
 
@@ -229,7 +229,7 @@ class BaseStrategy:
         logger.warning(f"策略 {self.name} 未实现回测逻辑")
         return {
             'status': 'not_implemented',
-            'strategy': self.name,
+            'events': self.name,
             'start_date': start_date,
             'end_date': end_date,
             'capital': capital

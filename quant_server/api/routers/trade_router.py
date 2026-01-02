@@ -7,7 +7,7 @@ from typing import Optional
 from quant_server.api.dependencies import get_data_service
 from quant_server.db.data_service import DataService
 
-router = APIRouter(prefix="/trade", tags=["trade"])
+router = APIRouter(prefix="/events", tags=["events"])
 
 @router.get("/account")
 async def get_account_info(data_service: DataService = Depends(get_data_service)):
@@ -27,7 +27,7 @@ async def get_positions(data_service: DataService = Depends(get_data_service)):
     # 这里需要实现持仓列表获取逻辑
     # 暂时返回模拟数据
     return {
-        "data": [
+        "events": [
             {
                 "symbol": "600000.SH",
                 "name": "浦发银行",
@@ -51,7 +51,7 @@ async def get_orders(
     # 这里需要实现订单历史获取逻辑
     # 暂时返回模拟数据
     return {
-        "data": [
+        "events": [
             {
                 "id": "order_001",
                 "symbol": "600000.SH",

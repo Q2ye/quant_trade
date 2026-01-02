@@ -238,7 +238,7 @@ export default {
     exportStrategy(strategy) {
       // 实现导出逻辑
       const dataStr = JSON.stringify(strategy, null, 2)
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
+      const dataUri = 'events:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
 
       const exportFileDefaultName = `${strategy.name}.json`
 

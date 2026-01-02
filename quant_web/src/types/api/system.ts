@@ -1,4 +1,4 @@
-// quant_web/src/types/api/system.ts
+// quant_web/src/types/api/events.ts
 // 系统管理API类型定义
 import { ApiResponse } from '@/types';
 import {PaginatedResponse, PaginationParams, TimeRangeParams} from './base';

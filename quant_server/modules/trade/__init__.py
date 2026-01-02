@@ -1,1 +1,1 @@
-# 交易模块（modules/trade/）
+# 交易模块（modules/events/）

@@ -1,5 +1,5 @@
 <!--风险矩阵-->
-<!-- src/components/trade/RiskMatrix.vue -->
+<!-- src/components/events/RiskMatrix.vue -->
 <template>
   <div class="risk-matrix">
     <div class="header">

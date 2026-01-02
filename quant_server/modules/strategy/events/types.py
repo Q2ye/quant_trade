@@ -1,0 +1,1 @@
+# StrategyEventType枚举

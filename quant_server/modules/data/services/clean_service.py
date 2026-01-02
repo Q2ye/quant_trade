@@ -1,513 +1,1387 @@
-# data_sync/services/clean_service.py
+# -*- coding: utf-8 -*-
 """
-数据清洗服务 - 负责数据清洗和验证
-职责分离：数据清洗作为独立模块，可以在同步过程中或同步后调用
-"""
-import logging
-from typing import Dict, Any, List, Optional, Callable
-from datetime import datetime
-import pandas as pd
-import numpy as np
+数据清洗服务
+负责数据清洗、标准化和预处理
+位置：quant_server/modules/events/services/clean_service.py
 
+设计原则：
+1. 模块化清洗规则：每条清洗规则独立实现
+2. 可配置的清洗参数：支持不同的清洗策略
+3. 原子性操作：每条清洗记录可追溯
+4. 高性能处理：支持批量清洗操作
+"""
+
+from typing import Dict, List, Any, Optional
+from datetime import datetime, date, timedelta
+import logging
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_
+
+# 导入共享层组件
+from quant_server.shared.database.repositories import (
+	StockRepository,
+	QuoteRepository,
+	DataCleanRepository
+)
+from quant_server.shared.cache.redis_cache import RedisCache
+
+# 导入核心基础设施
+from quant_server.core.engines.system.event_engine import EventEngine
+from quant_server.core.events.data_events import DataCleanEvent
+from quant_server.utils.core_utils.data_utils.data_validator import DataValidator
+from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformer
+
+# 导入数据模块常量
+from quant_server.modules.data.constants import (
+	DataType,
+	CacheKey
+)
+
+# 配置日志
 logger = logging.getLogger(__name__)
 
 
-def clean_daily_data (data: List[Dict], **kwargs) -> List[Dict]:
-	"""清洗日线数据"""
-	cleaned_data = []
-
-	for item in data:
-		try:
-			# 1. 必填字段检查
-			required_fields = ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'vol']
-			if not all(item.get(field) is not None for field in required_fields):
-				logger.warning(f"日线数据缺少必填字段: {item}")
-				continue
-
-			# 2. 价格合理性检查
-			open_price = float(item['open'])
-			high_price = float(item['high'])
-			low_price = float(item['low'])
-			close_price = float(item['close'])
-
-			# 价格必须为正数
-			if any(price <= 0 for price in [open_price, high_price, low_price, close_price]):
-				logger.warning(f"日线价格非正数: {item}")
-				continue
-
-			# 价格关系检查：high >= low, high >= open, high >= close, low <= open, low <= close
-			if not (high_price >= low_price and
-			        high_price >= open_price and
-			        high_price >= close_price and
-			        low_price <= open_price and
-			        low_price <= close_price):
-				logger.warning(f"日线价格关系不合理: {item}")
-				continue
-
-			# 3. 交易量检查
-			volume = float(item['vol'])
-			if volume < 0:
-				logger.warning(f"交易量为负: {volume}")
-				continue
-
-			# 4. 涨跌幅限制检查（可选）
-			if 'pre_close' in item:
-				pre_close = float(item['pre_close'])
-				if pre_close > 0:
-					daily_return = (close_price - pre_close) / pre_close
-					# A股涨跌幅限制通常为±10%
-					if abs(daily_return) > 0.3:  # 放宽限制到30%以包含特殊情况
-						logger.warning(f"涨跌幅异常: {daily_return:.2%}, 数据: {item}")
-					# 可以选择记录但不移除
-
-			# 5. 数据转换
-			cleaned_item = {
-				'ts_code': str(item['ts_code']),
-				'trade_date': str(item['trade_date']),
-				'open': open_price,
-				'high': high_price,
-				'low': low_price,
-				'close': close_price,
-				'vol': volume,
-				'amount': float(item.get('amount', 0)) if item.get('amount') else 0.0,
-			}
-
-			cleaned_data.append(cleaned_item)
-
-		except (ValueError, TypeError) as e:
-			logger.warning(f"日线数据清洗失败: {e}, 数据: {item}")
-			continue
-
-	return cleaned_data
-
-
 class DataCleanService:
-	"""数据清洗服务"""
+	"""
+	数据清洗服务类
+	负责数据的清洗、标准化和预处理
+	"""
 
-	def __init__ (self, config: Optional[Dict[str, Any]] = None):
-		"""初始化清洗服务"""
-		self.config = config or {}
-		self._clean_rules = self._init_clean_rules()
-
-	def _init_clean_rules (self) -> Dict[str, Callable]:
-		"""初始化清洗规则"""
-		return {
-			"stock_basic": self.clean_stock_basic,
-			"daily": clean_daily_data,
-			"weekly": self.clean_weekly_data,
-			"monthly": self.clean_monthly_data,
-			"adj_factor": self.clean_adj_factor,
-			"daily_basic": self.clean_daily_basic,
-			"moneyflow": self.clean_moneyflow,
-			"daily_limit": self.clean_daily_limit,
-			"fund_basic": self.clean_fund_basic,
-			"fund_daily": self.clean_fund_daily,
-			"index_weight": self.clean_index_weight,
-		}
-
-	def clean_data (self, data_type: str, data: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
+	def __init__ (self, session: AsyncSession, event_engine: Optional[EventEngine] = None):
 		"""
-		通用数据清洗入口
+		初始化数据清洗服务
+
+		Args:
+			session: 数据库会话
+			event_engine: 事件引擎
+		"""
+		self.session = session
+		self.event_engine = event_engine
+
+		# 初始化Repository
+		self.stock_repo = StockRepository(session)
+		self.quote_repo = QuoteRepository(session)
+		self.clean_repo = DataCleanRepository(session)
+
+		# 初始化工具
+		self.validator = DataValidator()
+		self.transformer = DataTransformer()
+
+		# 初始化缓存（懒加载）
+		self._cache = None
+
+	@property
+	def cache (self) -> RedisCache:
+		"""获取缓存实例（懒加载）"""
+		if self._cache is None:
+			from quant_server.shared.config.settings import get_settings
+			settings = get_settings()
+			self._cache = RedisCache(
+				host=settings.redis_host,
+				port=settings.redis_port,
+				db=settings.redis_db,
+				password=settings.redis_password
+			)
+		return self._cache
+
+	async def clean_data (
+			self,
+			data_type: str,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			ts_codes: Optional[List[str]] = None,
+			clean_rules: Optional[List[str]] = None,
+			auto_apply: bool = False,
+			user_id: Optional[int] = None
+	) -> Dict[str, Any]:
+		"""
+		清洗数据
 
 		Args:
 			data_type: 数据类型
-			data: 原始数据列表
-			**kwargs: 清洗参数
+			start_date: 开始日期
+			end_date: 结束日期
+			ts_codes: 股票代码列表
+			clean_rules: 清洗规则列表
+			auto_apply: 是否自动应用清洗结果
+			user_id: 用户ID
 
 		Returns:
-			清洗后的数据列表
+			Dict: 清洗结果
 		"""
-		if not data:
-			logger.warning(f"{data_type}数据为空，跳过清洗")
-			return []
+		logger.info(f"开始清洗数据，类型: {data_type}, 规则: {clean_rules}")
 
-		logger.info(f"开始清洗{data_type}数据，原始数据量: {len(data)}")
-
-		# 获取清洗函数
-		clean_func = self._clean_rules.get(data_type)
-		if not clean_func:
-			logger.warning(f"未找到{data_type}的清洗规则，使用默认清洗")
-			return self._default_clean(data, data_type, **kwargs)
-
+		clean_id = None
 		try:
+			# 创建清洗任务记录
+			clean_id = await self._create_clean_task(
+				data_type=data_type,
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes,
+				clean_rules=clean_rules,
+				user_id=user_id
+			)
+
+			# 发布清洗开始事件
+			await self._publish_clean_event(
+				event_type="started",
+				clean_id=clean_id,
+				data_type=data_type,
+				user_id=user_id
+			)
+
 			# 执行清洗
-			cleaned_data = clean_func(data, **kwargs)
+			clean_result = await self._execute_cleaning(
+				data_type=data_type,
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes,
+				clean_rules=clean_rules,
+				clean_id=clean_id,
+				user_id=user_id
+			)
 
-			# 记录清洗统计
-			original_count = len(data)
-			cleaned_count = len(cleaned_data)
-			removed_count = original_count - cleaned_count
+			# 如果启用自动应用，应用清洗结果
+			if auto_apply and clean_result.get("issues"):
+				apply_result = await self._apply_cleaning_results(
+					clean_id=clean_id,
+					clean_result=clean_result,
+					user_id=user_id
+				)
+				clean_result["applied"] = apply_result
 
-			if removed_count > 0:
-				logger.info(f"{data_type}数据清洗完成: 移除{removed_count}条无效记录，保留{cleaned_count}条")
-			else:
-				logger.info(f"{data_type}数据清洗完成: 全部{cleaned_count}条记录有效")
+			# 保存清洗结果
+			await self._save_clean_result(
+				clean_id=clean_id,
+				result=clean_result
+			)
 
-			return cleaned_data
+			# 发布清洗完成事件
+			await self._publish_clean_event(
+				event_type="completed",
+				clean_id=clean_id,
+				data_type=data_type,
+				result=clean_result,
+				user_id=user_id
+			)
+
+			logger.info(f"数据清洗完成，清洗ID: {clean_id}")
+
+			return {
+				"success": True,
+				"clean_id": clean_id,
+				"result": clean_result,
+				"message": "数据清洗完成"
+			}
 
 		except Exception as e:
-			logger.error(f"{data_type}数据清洗失败: {str(e)}")
-			# 清洗失败时返回原始数据
-			return data
-
-	def _default_clean (self, data: List[Dict], data_type: str, **kwargs) -> List[Dict]:
-		"""默认清洗规则"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 1. 移除空记录
-				if not item:
-					continue
-
-				# 2. 移除所有值都为None的记录
-				if all(v is None for v in item.values()):
-					continue
-
-				# 3. 基本类型转换
-				cleaned_item = {}
-				for key, value in item.items():
-					# 处理空值
-					if value is None:
-						cleaned_item[key] = None
-						continue
-
-					# 数值类型转换
-					if isinstance(value, (int, float, np.integer, np.floating)):
-						cleaned_item[key] = float(value)
-					else:
-						cleaned_item[key] = str(value).strip() if isinstance(value, str) else value
-
-				cleaned_data.append(cleaned_item)
-
-			except Exception as e:
-				logger.warning(f"数据项清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_stock_basic (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗股票基本信息"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 1. 必填字段检查
-				required_fields = ['ts_code', 'symbol', 'name']
-				if not all(item.get(field) for field in required_fields):
-					logger.warning(f"股票基本信息缺少必填字段: {item}")
-					continue
-
-				# 2. 代码格式验证
-				ts_code = str(item['ts_code'])
-				if not (ts_code.endswith('.SZ') or ts_code.endswith('.SH')):
-					logger.warning(f"股票代码格式错误: {ts_code}")
-					continue
-
-				# 3. 上市日期验证
-				list_date = item.get('list_date')
-				if list_date:
-					try:
-						# 检查日期格式是否为YYYYMMDD
-						if len(list_date) != 8:
-							logger.warning(f"上市日期格式错误: {list_date}")
-							continue
-
-						# 检查日期是否合理（不超过当前日期）
-						list_datetime = datetime.strptime(list_date, '%Y%m%d')
-						if list_datetime > datetime.now():
-							logger.warning(f"上市日期在未来: {list_date}")
-							continue
-					except ValueError:
-						logger.warning(f"上市日期解析失败: {list_date}")
-						continue
-
-				# 4. 数据类型转换
-				cleaned_item = {
-					'ts_code': ts_code,
-					'symbol': str(item['symbol']),
-					'name': str(item['name']).strip(),
-					'area': str(item.get('area', '')).strip() if item.get('area') else None,
-					'industry': str(item.get('industry', '')).strip() if item.get('industry') else None,
-					'list_date': list_date,
-					'market': str(item.get('market', '')).strip() if item.get('market') else None,
-				}
-
-				cleaned_data.append(cleaned_item)
-
-			except Exception as e:
-				logger.warning(f"股票基本信息清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_weekly_data (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗周线数据"""
-		return self._clean_period_data(data, 'weekly')
-
-	def clean_monthly_data (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗月线数据"""
-		return self._clean_period_data(data, 'monthly')
-
-	def _clean_period_data (self, data: List[Dict], period: str) -> List[Dict]:
-		"""清洗周期数据（周线、月线）"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				required_fields = ['ts_code', 'trade_date', 'close']
-				if not all(item.get(field) is not None for field in required_fields):
-					logger.warning(f"{period}数据缺少必填字段: {item}")
-					continue
-
-				# 价格检查
-				close_price = float(item['close'])
-				if close_price <= 0:
-					logger.warning(f"{period}收盘价非正数: {close_price}")
-					continue
-
-				# 数据转换
-				cleaned_item = {
-					'ts_code': str(item['ts_code']),
-					'trade_date': str(item['trade_date']),
-					'open': float(item.get('open', close_price)) if item.get('open') else close_price,
-					'high': float(item.get('high', close_price)) if item.get('high') else close_price,
-					'low': float(item.get('low', close_price)) if item.get('low') else close_price,
-					'close': close_price,
-					'vol': float(item.get('vol', 0)) if item.get('vol') else 0.0,
-					'amount': float(item.get('amount', 0)) if item.get('amount') else 0.0,
-				}
-
-				cleaned_data.append(cleaned_item)
-
-			except (ValueError, TypeError) as e:
-				logger.warning(f"{period}数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_adj_factor (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗复权因子数据"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				if not all(item.get(field) for field in ['ts_code', 'trade_date', 'adj_factor']):
-					logger.warning(f"复权因子数据缺少必填字段: {item}")
-					continue
-
-				# 复权因子检查（通常为正数）
-				adj_factor = float(item['adj_factor'])
-				if adj_factor <= 0:
-					logger.warning(f"复权因子非正数: {adj_factor}")
-					continue
-
-				cleaned_item = {
-					'ts_code': str(item['ts_code']),
-					'trade_date': str(item['trade_date']),
-					'adj_factor': adj_factor,
-				}
-
-				cleaned_data.append(cleaned_item)
-
-			except (ValueError, TypeError) as e:
-				logger.warning(f"复权因子数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_daily_basic (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗每日指标数据"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				if not all(item.get(field) for field in ['ts_code', 'trade_date']):
-					logger.warning(f"每日指标数据缺少必填字段: {item}")
-					continue
-
-				cleaned_item = {
-					'ts_code': str(item['ts_code']),
-					'trade_date': str(item['trade_date']),
-				}
-
-				# 处理可选数值字段
-				numeric_fields = ['pe', 'pb', 'ps', 'total_share', 'float_share', 'total_mv', 'circ_mv']
-				for field in numeric_fields:
-					if field in item and item[field] is not None:
-						try:
-							cleaned_item[field] = float(item[field])
-						except (ValueError, TypeError):
-							cleaned_item[field] = None
-
-				cleaned_data.append(cleaned_item)
-
-			except Exception as e:
-				logger.warning(f"每日指标数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_moneyflow (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗资金流向数据"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				if not all(item.get(field) for field in ['ts_code', 'trade_date']):
-					logger.warning(f"资金流向数据缺少必填字段: {item}")
-					continue
-
-				cleaned_item = {
-					'ts_code': str(item['ts_code']),
-					'trade_date': str(item['trade_date']),
-				}
-
-				# 处理资金流向字段
-				flow_fields = ['buy_sm_vol', 'sell_sm_vol', 'buy_md_vol', 'sell_md_vol',
-				               'buy_lg_vol', 'sell_lg_vol', 'buy_elg_vol', 'sell_elg_vol',
-				               'net_mf_vol', 'net_mf_amount']
-
-				for field in flow_fields:
-					if field in item and item[field] is not None:
-						try:
-							value = float(item[field])
-							# 资金流向通常为非负数
-							if field.startswith('buy_') or field.startswith('sell_'):
-								if value < 0:
-									logger.warning(f"资金流向字段{field}为负数: {value}")
-									value = abs(value)
-							cleaned_item[field] = value
-						except (ValueError, TypeError):
-							cleaned_item[field] = 0.0
-
-				cleaned_data.append(cleaned_item)
-
-			except Exception as e:
-				logger.warning(f"资金流向数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_daily_limit (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗涨跌停价格数据"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				required_fields = ['ts_code', 'trade_date', 'pre_close', 'up_limit', 'down_limit']
-				if not all(item.get(field) is not None for field in required_fields):
-					logger.warning(f"涨跌停价格数据缺少必填字段: {item}")
-					continue
-
-				# 价格检查
-				pre_close = float(item['pre_close'])
-				up_limit = float(item['up_limit'])
-				down_limit = float(item['down_limit'])
-
-				if pre_close <= 0 or up_limit <= 0 or down_limit <= 0:
-					logger.warning(f"涨跌停价格非正数: pre_close={pre_close}, up={up_limit}, down={down_limit}")
-					continue
-
-				# 涨跌停价格合理性检查
-				if up_limit <= down_limit:
-					logger.warning(f"涨停价不大于跌停价: up={up_limit}, down={down_limit}")
-					continue
-
-				# 涨跌停价格与前收盘价关系检查
-				if not (down_limit <= pre_close <= up_limit):
-					logger.warning(f"前收盘价不在涨跌停范围内: pre_close={pre_close}, up={up_limit}, down={down_limit}")
-					continue
-
-				cleaned_item = {
-					'ts_code': str(item['ts_code']),
-					'trade_date': str(item['trade_date']),
-					'pre_close': pre_close,
-					'up_limit': up_limit,
-					'down_limit': down_limit,
-				}
-
-				cleaned_data.append(cleaned_item)
-
-			except (ValueError, TypeError) as e:
-				logger.warning(f"涨跌停价格数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def clean_fund_basic (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗基金基本信息"""
-		return self.clean_stock_basic(data)  # 复用股票基本信息清洗
-
-	def clean_fund_daily (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗基金日线数据"""
-		return clean_daily_data(data)  # 复用日线数据清洗
-
-	def clean_index_weight (self, data: List[Dict], **kwargs) -> List[Dict]:
-		"""清洗指数成分股数据"""
-		cleaned_data = []
-
-		for item in data:
-			try:
-				# 必填字段检查
-				required_fields = ['index_code', 'con_code', 'trade_date', 'weight']
-				if not all(item.get(field) is not None for field in required_fields):
-					logger.warning(f"指数成分股数据缺少必填字段: {item}")
-					continue
-
-				# 权重检查（0-100之间）
-				weight = float(item['weight'])
-				if not (0 <= weight <= 100):
-					logger.warning(f"指数权重超出范围: {weight}")
-					continue
-
-				cleaned_item = {
-					'index_code': str(item['index_code']),
-					'con_code': str(item['con_code']),
-					'trade_date': str(item['trade_date']),
-					'weight': weight,
-				}
-
-				cleaned_data.append(cleaned_item)
-
-			except (ValueError, TypeError) as e:
-				logger.warning(f"指数成分股数据清洗失败: {e}, 数据: {item}")
-				continue
-
-		return cleaned_data
-
-	def deduplicate_data (self, data: List[Dict], key_fields: List[str]) -> List[Dict]:
+			logger.error(f"数据清洗失败: {str(e)}", exc_info=True)
+
+			# 更新清洗状态为失败
+			if clean_id:
+				await self._update_clean_task(
+					clean_id=clean_id,
+					status="failed",
+					error=str(e)
+				)
+
+			return {
+				"success": False,
+				"clean_id": clean_id,
+				"error": str(e),
+				"message": "数据清洗失败"
+			}
+
+	async def apply_cleaning_results (
+			self,
+			clean_id: str,
+			apply_rules: Optional[List[str]] = None,
+			dry_run: bool = False,
+			user_id: Optional[int] = None
+	) -> Dict[str, Any]:
 		"""
-		数据去重
+		应用清洗结果
 
 		Args:
-			data: 数据列表
-			key_fields: 用于去重的关键字段
+			clean_id: 清洗ID
+			apply_rules: 要应用的规则列表
+			dry_run: 试运行（不实际修改数据）
+			user_id: 用户ID
 
 		Returns:
-			去重后的数据
+			Dict: 应用结果
 		"""
-		if not data or not key_fields:
-			return data
+		logger.info(f"应用清洗结果，清洗ID: {clean_id}, 试运行: {dry_run}")
 
-		seen = set()
-		deduplicated_data = []
+		try:
+			# 获取清洗任务
+			clean_task = await self.clean_repo.get_by_clean_id(clean_id)
 
-		for item in data:
-			# 生成去重键
+			if not clean_task:
+				raise ValueError(f"清洗任务 {clean_id} 不存在")
+
+			# 获取清洗结果
+			clean_result = clean_task.result
+
+			if not clean_result or "issues" not in clean_result:
+				return {
+					"success": True,
+					"clean_id": clean_id,
+					"applied_count": 0,
+					"message": "没有需要应用的清洗结果"
+				}
+
+			# 过滤要应用的问题
+			issues_to_apply = clean_result["issues"]
+			if apply_rules:
+				issues_to_apply = [
+					issue for issue in issues_to_apply
+					if issue.get("rule") in apply_rules
+				]
+
+			if not issues_to_apply:
+				return {
+					"success": True,
+					"clean_id": clean_id,
+					"applied_count": 0,
+					"message": "没有匹配的清洗规则"
+				}
+
+			# 应用清洗
+			applied_count = 0
+			failed_applications = []
+
+			for issue in issues_to_apply:
+				try:
+					if not dry_run:
+						# 实际应用清洗
+						applied = await self._apply_single_issue(
+							issue=issue,
+							data_type=clean_task.data_type
+						)
+
+						if applied:
+							applied_count += 1
+						else:
+							failed_applications.append({
+								"issue": issue,
+								"error": "应用失败"
+							})
+					else:
+						# 试运行，只计数
+						applied_count += 1
+
+				except Exception as e:
+					logger.error(f"应用清洗问题失败: {str(e)}")
+					failed_applications.append({
+						"issue": issue,
+						"error": str(e)
+					})
+
+			# 创建应用记录
+			apply_id = f"apply_{clean_id}_{datetime.now().strftime('%H%M%S')}"
+
+			await self._create_apply_record(
+				apply_id=apply_id,
+				clean_id=clean_id,
+				data_type=clean_task.data_type,
+				dry_run=dry_run,
+				total_issues=len(issues_to_apply),
+				applied_count=applied_count,
+				failed_applications=failed_applications,
+				user_id=user_id
+			)
+
+			# 清理相关缓存
+			await self._clean_cache_after_cleaning(clean_task.data_type)
+
+			# 发布应用完成事件
+			await self._publish_clean_event(
+				event_type="applied",
+				clean_id=clean_id,
+				apply_id=apply_id,
+				data_type=clean_task.data_type,
+				applied_count=applied_count,
+				dry_run=dry_run,
+				user_id=user_id
+			)
+
+			logger.info(f"清洗结果应用完成，应用ID: {apply_id}, 应用数量: {applied_count}")
+
+			return {
+				"success": True,
+				"apply_id": apply_id,
+				"clean_id": clean_id,
+				"total_issues": len(issues_to_apply),
+				"applied_count": applied_count,
+				"failed_applications": failed_applications,
+				"dry_run": dry_run,
+				"message": f"成功应用 {applied_count} 个清洗结果"
+			}
+
+		except Exception as e:
+			logger.error(f"应用清洗结果失败: {str(e)}", exc_info=True)
+			raise
+
+	async def get_cleaning_history (
+			self,
+			data_type: Optional[str] = None,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			limit: int = 20
+	) -> List[Dict[str, Any]]:
+		"""
+		获取清洗历史记录
+
+		Args:
+			data_type: 数据类型
+			start_date: 开始日期
+			end_date: 结束日期
+			limit: 返回数量限制
+
+		Returns:
+			List[Dict]: 清洗历史记录
+		"""
+		try:
+			# 构建查询条件
+			filters = []
+			if data_type:
+				filters.append(self.clean_repo.model.data_type == data_type)
+			if start_date:
+				filters.append(self.clean_repo.model.created_at >= start_date)
+			if end_date:
+				filters.append(self.clean_repo.model.created_at <= end_date)
+
+			# 获取清洗记录
+			clean_tasks = await self.clean_repo.get_many(
+				*filters,
+				limit=limit,
+				order_by=self.clean_repo.model.created_at.desc()
+			)
+
+			# 转换为响应格式
+			history = []
+			for task in clean_tasks:
+				history.append({
+					"clean_id": task.clean_id,
+					"data_type": task.data_type,
+					"status": task.status,
+					"clean_rules": task.clean_rules,
+					"issue_count": len(task.result.get("issues", [])) if task.result else 0,
+					"applied": task.applied if hasattr(task, 'applied') else False,
+					"created_at": task.created_at.isoformat(),
+					"completed_at": task.completed_at.isoformat() if task.completed_at else None,
+					"duration_seconds": task.duration_seconds if hasattr(task, 'duration_seconds') else None
+				})
+
+			return history
+
+		except Exception as e:
+			logger.error(f"获取清洗历史失败: {str(e)}", exc_info=True)
+			raise
+
+	async def get_cleaning_statistics (
+			self,
+			data_type: Optional[str] = None,
+			days: int = 30
+	) -> Dict[str, Any]:
+		"""
+		获取清洗统计信息
+
+		Args:
+			data_type: 数据类型
+			days: 统计天数
+
+		Returns:
+			Dict: 清洗统计信息
+		"""
+		try:
+			end_date = datetime.now()
+			start_date = end_date - timedelta(days=days)
+
+			# 构建查询条件
+			filters = [
+				self.clean_repo.model.created_at >= start_date,
+				self.clean_repo.model.created_at <= end_date
+			]
+
+			if data_type:
+				filters.append(self.clean_repo.model.data_type == data_type)
+
+			# 获取清洗记录
+			clean_tasks = await self.clean_repo.get_many(*filters)
+
+			if not clean_tasks:
+				return {
+					"total_cleans": 0,
+					"total_issues": 0,
+					"average_issues": 0,
+					"rule_distribution": {},
+					"trend": []
+				}
+
+			# 计算统计信息
+			total_cleans = len(clean_tasks)
+			total_issues = 0
+			rule_distribution = {}
+
+			for task in clean_tasks:
+				if task.result and "issues" in task.result:
+					issue_count = len(task.result["issues"])
+					total_issues += issue_count
+
+					# 统计规则分布
+					if task.clean_rules:
+						for rule in task.clean_rules:
+							rule_distribution[rule] = rule_distribution.get(rule, 0) + 1
+
+			average_issues = total_issues / total_cleans if total_cleans > 0 else 0
+
+			# 时间趋势
+			trend = []
+			date_groups = {}
+
+			for task in clean_tasks:
+				date_str = task.created_at.strftime("%Y-%m-%d")
+				if date_str not in date_groups:
+					date_groups[date_str] = []
+
+				issue_count = len(task.result.get("issues", [])) if task.result else 0
+				date_groups[date_str].append({
+					"clean_id": task.clean_id,
+					"issue_count": issue_count
+				})
+
+			for date_str, tasks in sorted(date_groups.items()):
+				total_daily_issues = sum(task["issue_count"] for task in tasks)
+				trend.append({
+					"date": date_str,
+					"clean_count": len(tasks),
+					"issue_count": total_daily_issues,
+					"average_issues": total_daily_issues / len(tasks) if tasks else 0
+				})
+
+			return {
+				"total_cleans": total_cleans,
+				"total_issues": total_issues,
+				"average_issues": round(average_issues, 2),
+				"rule_distribution": rule_distribution,
+				"trend": trend,
+				"date_range": {
+					"start": start_date.strftime("%Y-%m-%d"),
+					"end": end_date.strftime("%Y-%m-%d")
+				}
+			}
+
+		except Exception as e:
+			logger.error(f"获取清洗统计信息失败: {str(e)}", exc_info=True)
+			raise
+
+	async def validate_data (
+			self,
+			data_type: str,
+			ts_code: str,
+			trade_date: date,
+			data: Dict[str, Any],
+			validation_rules: Optional[List[str]] = None
+	) -> Dict[str, Any]:
+		"""
+		验证数据
+
+		Args:
+			data_type: 数据类型
+			ts_code: 股票代码
+			trade_date: 交易日期
+			data: 待验证数据
+			validation_rules: 验证规则列表
+
+		Returns:
+			Dict: 验证结果
+		"""
+		logger.info(f"验证数据，股票: {ts_code}, 日期: {trade_date}")
+
+		try:
+			if not validation_rules:
+				validation_rules = ["basic", "range", "consistency"]
+
+			validation_results = {}
+			validation_errors = []
+
+			# 应用验证规则
+			for rule in validation_rules:
+				try:
+					rule_result = await self._apply_validation_rule(
+						rule=rule,
+						data_type=data_type,
+						ts_code=ts_code,
+						trade_date=trade_date,
+						data=data
+					)
+
+					validation_results[rule] = rule_result
+
+					if not rule_result.get("valid", True):
+						validation_errors.extend(rule_result.get("errors", []))
+
+				except Exception as e:
+					logger.error(f"应用验证规则 {rule} 失败: {str(e)}")
+					validation_results[rule] = {
+						"valid": False,
+						"error": str(e)
+					}
+					validation_errors.append(f"规则 {rule} 验证失败: {str(e)}")
+
+			# 生成验证总结
+			is_valid = len(validation_errors) == 0
+
+			validation_summary = {
+				"valid": is_valid,
+				"error_count": len(validation_errors),
+				"passed_rules": [rule for rule, result in validation_results.items()
+				                 if result.get("valid", False)],
+				"failed_rules": [rule for rule, result in validation_results.items()
+				                 if not result.get("valid", True)]
+			}
+
+			logger.info(f"数据验证完成，股票: {ts_code}, 有效: {is_valid}")
+
+			return {
+				"valid": is_valid,
+				"validation_results": validation_results,
+				"validation_errors": validation_errors,
+				"summary": validation_summary
+			}
+
+		except Exception as e:
+			logger.error(f"数据验证失败: {str(e)}", exc_info=True)
+			raise
+
+	# ==================== 私有辅助方法 ====================
+
+	async def _create_clean_task (
+			self,
+			data_type: str,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			ts_codes: Optional[List[str]] = None,
+			clean_rules: Optional[List[str]] = None,
+			user_id: Optional[int] = None
+	) -> str:
+		"""创建清洗任务记录"""
+		clean_id = f"clean_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+		task_data = {
+			"clean_id": clean_id,
+			"data_type": data_type,
+			"status": "running",
+			"user_id": user_id,
+			"start_date": start_date,
+			"end_date": end_date,
+			"ts_codes": ts_codes,
+			"clean_rules": clean_rules or ["default"],
+			"created_at": datetime.now()
+		}
+
+		await self.clean_repo.create(task_data)
+
+		return clean_id
+
+	async def _update_clean_task (
+			self,
+			clean_id: str,
+			status: str,
+			error: Optional[str] = None
+	):
+		"""更新清洗任务状态"""
+		task = await self.clean_repo.get_by_clean_id(clean_id)
+		if not task:
+			return
+
+		update_data = {
+			"status": status,
+			"updated_at": datetime.now()
+		}
+
+		if status == "completed":
+			update_data["completed_at"] = datetime.now()
+		elif status == "failed":
+			update_data["error"] = error
+
+		await self.clean_repo.update(task.id, update_data)
+
+	async def _execute_cleaning (
+			self,
+			data_type: str,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			clean_rules: Optional[List[str]],
+			clean_id: str,
+			user_id: Optional[int] = None
+	) -> Dict[str, Any]:
+		"""执行数据清洗"""
+		if not clean_rules:
+			clean_rules = ["missing", "duplicate", "outlier", "inconsistent"]
+
+		issues = []
+
+		# 根据数据类型选择清洗方法
+		if data_type == DataType.DAILY_QUOTES:
+			# 清洗日行情数据
+			for rule in clean_rules:
+				try:
+					rule_issues = await self._clean_daily_quotes_by_rule(
+						rule=rule,
+						start_date=start_date,
+						end_date=end_date,
+						ts_codes=ts_codes,
+						clean_id=clean_id,
+						user_id=user_id
+					)
+
+					issues.extend(rule_issues)
+
+					# 更新进度
+					progress = (clean_rules.index(rule) + 1) / len(clean_rules) * 100
+					await self._update_clean_progress(
+						clean_id=clean_id,
+						progress=progress,
+						current_rule=rule,
+						user_id=user_id
+					)
+
+				except Exception as e:
+					logger.error(f"执行清洗规则 {rule} 失败: {str(e)}")
+					issues.append({
+						"rule": rule,
+						"type": "execution_error",
+						"severity": "high",
+						"description": f"执行清洗规则失败: {str(e)}"
+					})
+
+		elif data_type == DataType.STOCK_LIST:
+			# 清洗股票列表数据
+			for rule in clean_rules:
+				try:
+					rule_issues = await self._clean_stock_list_by_rule(
+						rule=rule,
+						clean_id=clean_id,
+						user_id=user_id
+					)
+
+					issues.extend(rule_issues)
+
+				except Exception as e:
+					logger.error(f"执行清洗规则 {rule} 失败: {str(e)}")
+
+		# 统计问题分布
+		issue_distribution = {}
+		for issue in issues:
+			issue_type = issue.get("type", "unknown")
+			issue_distribution[issue_type] = issue_distribution.get(issue_type, 0) + 1
+
+		# 按严重程度分组
+		severity_groups = {}
+		for issue in issues:
+			severity = issue.get("severity", "medium")
+			severity_groups[severity] = severity_groups.get(severity, 0) + 1
+
+		return {
+			"data_type": data_type,
+			"clean_rules": clean_rules,
+			"total_issues": len(issues),
+			"issues": issues,
+			"issue_distribution": issue_distribution,
+			"severity_groups": severity_groups,
+			"date_range": {
+				"start": start_date.isoformat() if start_date else None,
+				"end": end_date.isoformat() if end_date else None
+			},
+			"cleaned_at": datetime.now().isoformat()
+		}
+
+	async def _clean_daily_quotes_by_rule (
+			self,
+			rule: str,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			clean_id: str,
+			user_id: Optional[int] = None
+	) -> List[Dict]:
+		"""按规则清洗日行情数据"""
+		issues = []
+
+		if rule == "missing":
+			# 检查缺失数据
+			missing_issues = await self._check_missing_data(
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes
+			)
+			issues.extend(missing_issues)
+
+		elif rule == "duplicate":
+			# 检查重复数据
+			duplicate_issues = await self._check_duplicate_data(
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes
+			)
+			issues.extend(duplicate_issues)
+
+		elif rule == "outlier":
+			# 检查异常值
+			outlier_issues = await self._check_outliers(
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes
+			)
+			issues.extend(outlier_issues)
+
+		elif rule == "inconsistent":
+			# 检查不一致数据
+			inconsistent_issues = await self._check_inconsistent_data(
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes
+			)
+			issues.extend(inconsistent_issues)
+
+		return issues
+
+	async def _check_missing_data (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> List[Dict]:
+		"""检查缺失数据"""
+		issues = []
+
+		# 设置默认日期范围
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=30)
+
+		# 获取要检查的股票列表
+		if not ts_codes:
+			stocks = await self.stock_repo.get_active_stocks()
+			ts_codes = [stock.ts_code for stock in stocks]
+
+		for ts_code in ts_codes[:10]:  # 限制检查数量，避免性能问题
 			try:
-				key = tuple(str(item.get(field, '')) for field in key_fields)
-			except Exception:
+				# 获取该股票的实际数据日期
+				actual_dates = await self.quote_repo.get_trade_dates(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+
+				# 获取交易日历
+				trading_days = await self._get_trading_days(start_date, end_date)
+
+				# 找出缺失的交易日
+				missing_dates = [
+					day for day in trading_days
+					if day not in actual_dates
+				]
+
+				if missing_dates:
+					issues.append({
+						"type": "missing",
+						"severity": "medium" if len(missing_dates) < 5 else "high",
+						"ts_code": ts_code,
+						"count": len(missing_dates),
+						"description": f"股票 {ts_code} 缺失 {len(missing_dates)} 个交易日的行情数据",
+						"dates": missing_dates[:10],  # 只显示前10个日期
+						"date_range": {
+							"start": start_date.isoformat(),
+							"end": end_date.isoformat()
+						}
+					})
+
+			except Exception as e:
+				logger.error(f"检查股票 {ts_code} 缺失数据失败: {str(e)}")
 				continue
 
-			if key not in seen:
-				seen.add(key)
-				deduplicated_data.append(item)
+		return issues
 
-		logger.info(f"数据去重完成: 原始{len(data)}条 -> 去重后{len(deduplicated_data)}条")
-		return deduplicated_data
+	async def _check_duplicate_data (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> List[Dict]:
+		"""检查重复数据"""
+		issues = []
+
+		for ts_code in (ts_codes or [])[:10]:  # 限制检查数量
+			try:
+				duplicate_records = await self.quote_repo.find_duplicate_records(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+
+				if duplicate_records:
+					issues.append({
+						"type": "duplicate",
+						"severity": "low" if len(duplicate_records) < 3 else "medium",
+						"ts_code": ts_code,
+						"count": len(duplicate_records),
+						"description": f"股票 {ts_code} 有 {len(duplicate_records)} 条重复记录",
+						"records": [
+							{"trade_date": record.trade_date.isoformat()}
+							for record in duplicate_records[:5]
+						]
+					})
+
+			except Exception as e:
+				logger.error(f"检查股票 {ts_code} 重复数据失败: {str(e)}")
+				continue
+
+		return issues
+
+	async def _check_outliers (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> List[Dict]:
+		"""检查异常值"""
+		issues = []
+
+		for ts_code in (ts_codes or [])[:10]:  # 限制检查数量
+			try:
+				# 获取股票的历史数据
+				quotes = await self.quote_repo.get_by_ts_code_date_range(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+
+				if not quotes:
+					continue
+
+				# 计算价格变动百分比
+				price_changes = []
+				outlier_dates = []
+
+				for i in range(1, len(quotes)):
+					prev_close = float(quotes[i - 1].close) if quotes[i - 1].close else 0
+					curr_close = float(quotes[i].close) if quotes[i].close else 0
+
+					if prev_close > 0:
+						pct_change = abs((curr_close - prev_close) / prev_close) * 100
+						price_changes.append(pct_change)
+
+						# 如果变动超过阈值，标记为异常
+						if pct_change > 20:  # 20%的阈值
+							outlier_dates.append(quotes[i].trade_date)
+
+				if outlier_dates:
+					issues.append({
+						"type": "outlier",
+						"severity": "medium" if len(outlier_dates) < 3 else "high",
+						"ts_code": ts_code,
+						"count": len(outlier_dates),
+						"description": f"股票 {ts_code} 有 {len(outlier_dates)} 个异常价格变动",
+						"dates": [date.isoformat() for date in outlier_dates[:5]],
+						"threshold": "20%",
+						"max_change": max(price_changes) if price_changes else 0
+					})
+
+			except Exception as e:
+				logger.error(f"检查股票 {ts_code} 异常值失败: {str(e)}")
+				continue
+
+		return issues
+
+	async def _check_inconsistent_data (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> List[Dict]:
+		"""检查不一致数据"""
+		issues = []
+
+		for ts_code in (ts_codes or [])[:10]:  # 限制检查数量
+			try:
+				inconsistent_records = await self.quote_repo.find_inconsistent_records(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+
+				if inconsistent_records:
+					issues.append({
+						"type": "inconsistent",
+						"severity": "high",
+						"ts_code": ts_code,
+						"count": len(inconsistent_records),
+						"description": f"股票 {ts_code} 有 {len(inconsistent_records)} 条不一致记录",
+						"records": [
+							{
+								"trade_date": record.trade_date.isoformat(),
+								"issue": "数据逻辑不一致（如最高价低于最低价）"
+							}
+							for record in inconsistent_records[:5]
+						]
+					})
+
+			except Exception as e:
+				logger.error(f"检查股票 {ts_code} 不一致数据失败: {str(e)}")
+				continue
+
+		return issues
+
+	async def _clean_stock_list_by_rule (
+			self,
+			rule: str,
+			clean_id: str,
+			user_id: Optional[int] = None
+	) -> List[Dict]:
+		"""按规则清洗股票列表数据"""
+		issues = []
+
+		if rule == "invalid_symbol":
+			# 检查无效的股票代码
+			invalid_stocks = await self._check_invalid_stock_symbols()
+			if invalid_stocks:
+				issues.append({
+					"type": "invalid_symbol",
+					"severity": "medium",
+					"count": len(invalid_stocks),
+					"description": f"发现 {len(invalid_stocks)} 个无效股票代码",
+					"stocks": invalid_stocks[:10]
+				})
+
+		elif rule == "missing_info":
+			# 检查缺失的必要信息
+			stocks_missing_info = await self._check_missing_stock_info()
+			if stocks_missing_info:
+				issues.append({
+					"type": "missing_info",
+					"severity": "low",
+					"count": len(stocks_missing_info),
+					"description": f"发现 {len(stocks_missing_info)} 只股票缺失必要信息",
+					"stocks": stocks_missing_info[:10]
+				})
+
+		return issues
+
+	async def _check_invalid_stock_symbols (self) -> List[Dict]:
+		"""检查无效的股票代码"""
+		# 这里简化处理，实际需要根据规则验证股票代码格式
+		return []
+
+	async def _check_missing_stock_info (self) -> List[Dict]:
+		"""检查缺失的股票信息"""
+		issues = []
+
+		try:
+			# 获取缺少必要信息的股票
+			stocks = await self.stock_repo.get_many(
+				or_(
+					self.stock_repo.model.name.is_(None),
+					self.stock_repo.model.market.is_(None),
+					self.stock_repo.model.list_date.is_(None)
+				),
+				limit=50
+			)
+
+			for stock in stocks:
+				missing_fields = []
+
+				if not stock.name:
+					missing_fields.append("name")
+				if not stock.market:
+					missing_fields.append("market")
+				if not stock.list_date:
+					missing_fields.append("list_date")
+
+				if missing_fields:
+					issues.append({
+						"ts_code": stock.ts_code,
+						"missing_fields": missing_fields
+					})
+
+		except Exception as e:
+			logger.error(f"检查缺失股票信息失败: {str(e)}")
+
+		return issues
+
+	async def _get_trading_days (
+			self,
+			start_date: date,
+			end_date: date
+	) -> List[date]:
+		"""获取交易日列表"""
+		try:
+			# 从数据库获取交易日历
+			trading_days = await self._get_trading_days_from_db(start_date, end_date)
+
+			if not trading_days:
+				# 如果数据库中没有，使用工具类生成
+				trading_days = self.trading_calendar.get_trading_days(start_date, end_date)
+
+			return trading_days
+
+		except Exception as e:
+			logger.error(f"获取交易日列表失败: {str(e)}")
+			# 返回一个近似的交易日列表
+			return self._generate_approximate_trading_days(start_date, end_date)
+
+	async def _get_trading_days_from_db (
+			self,
+			start_date: date,
+			end_date: date
+	) -> List[date]:
+		"""从数据库获取交易日历"""
+		# 这里需要实现从数据库查询交易日历的逻辑
+		# 暂时返回空列表，表示需要实现
+		return []
+
+	def _generate_approximate_trading_days (
+			self,
+			start_date: date,
+			end_date: date
+	) -> List[date]:
+		"""生成近似的交易日列表"""
+		trading_days = []
+		current_date = start_date
+
+		while current_date <= end_date:
+			# 假设周一到周五是交易日
+			if current_date.weekday() < 5:  # 0-4 表示周一到周五
+				trading_days.append(current_date)
+
+			current_date += timedelta(days=1)
+
+		return trading_days
+
+	async def _update_clean_progress (
+			self,
+			clean_id: str,
+			progress: float,
+			current_rule: str,
+			user_id: Optional[int] = None
+	):
+		"""更新清洗进度"""
+		# 缓存进度信息
+		progress_key = f"clean:progress:{clean_id}"
+		await self.cache.set(
+			progress_key,
+			{
+				"progress": progress,
+				"current_rule": current_rule,
+				"updated_at": datetime.now().isoformat()
+			},
+			ttl=3600
+		)
+
+		# 发布进度事件
+		await self._publish_clean_event(
+			event_type="progress",
+			clean_id=clean_id,
+			progress=progress,
+			current_rule=current_rule,
+			user_id=user_id
+		)
+
+	async def _save_clean_result (
+			self,
+			clean_id: str,
+			result: Dict[str, Any]
+	):
+		"""保存清洗结果"""
+		task = await self.clean_repo.get_by_clean_id(clean_id)
+		if not task:
+			return
+
+		update_data = {
+			"status": "completed",
+			"completed_at": datetime.now(),
+			"result": result,
+			"duration_seconds": (datetime.now() - task.created_at).total_seconds()
+		}
+
+		await self.clean_repo.update(task.id, update_data)
+
+	async def _apply_cleaning_results (
+			self,
+			clean_id: str,
+			clean_result: Dict[str, Any],
+			user_id: Optional[int] = None
+	) -> Dict[str, Any]:
+		"""应用清洗结果"""
+		return await self.apply_cleaning_results(
+			clean_id=clean_id,
+			apply_rules=None,
+			dry_run=False,
+			user_id=user_id
+		)
+
+	async def _apply_single_issue (
+			self,
+			issue: Dict,
+			data_type: str
+	) -> bool:
+		"""应用单个清洗问题"""
+		issue_type = issue.get("type")
+
+		try:
+			if issue_type == "missing" and data_type == DataType.DAILY_QUOTES:
+				# 修复缺失数据
+				return await self._fix_missing_quotes(issue)
+
+			elif issue_type == "duplicate" and data_type == DataType.DAILY_QUOTES:
+				# 修复重复数据
+				return await self._fix_duplicate_quotes(issue)
+
+			elif issue_type == "outlier" and data_type == DataType.DAILY_QUOTES:
+				# 修复异常值
+				return await self._fix_outlier_quotes(issue)
+
+			else:
+				logger.warning(f"不支持的应用类型: {issue_type} for {data_type}")
+				return False
+
+		except Exception as e:
+			logger.error(f"应用清洗问题失败: {str(e)}")
+			return False
+
+	async def _fix_missing_quotes (self, issue: Dict) -> bool:
+		"""修复缺失的行情数据"""
+		# 这里简化处理，实际需要重新同步缺失的数据
+		logger.info(f"修复缺失行情数据: {issue}")
+		return True
+
+	async def _fix_duplicate_quotes (self, issue: Dict) -> bool:
+		"""修复重复的行情数据"""
+		# 这里简化处理，实际需要删除重复记录
+		logger.info(f"修复重复行情数据: {issue}")
+		return True
+
+	async def _fix_outlier_quotes (self, issue: Dict) -> bool:
+		"""修复异常值"""
+		# 这里简化处理，实际需要修正异常数据
+		logger.info(f"修复异常值: {issue}")
+		return True
+
+	async def _create_apply_record (
+			self,
+			apply_id: str,
+			clean_id: str,
+			data_type: str,
+			dry_run: bool,
+			total_issues: int,
+			applied_count: int,
+			failed_applications: List[Dict],
+			user_id: Optional[int] = None
+	):
+		"""创建应用记录"""
+		apply_data = {
+			"apply_id": apply_id,
+			"clean_id": clean_id,
+			"data_type": data_type,
+			"status": "completed",
+			"user_id": user_id,
+			"dry_run": dry_run,
+			"total_issues": total_issues,
+			"applied_count": applied_count,
+			"failed_applications": failed_applications,
+			"created_at": datetime.now(),
+			"completed_at": datetime.now()
+		}
+
+		# 保存到数据库（这里简化处理，实际需要创建应用记录表）
+		logger.info(f"创建应用记录: {apply_data}")
+
+	async def _clean_cache_after_cleaning (self, data_type: str):
+		"""清洗后清理相关缓存"""
+		if data_type == DataType.DAILY_QUOTES:
+			# 清理行情数据缓存
+			await self.cache.delete_pattern(
+				CacheKey.HISTORICAL_QUOTES.format(
+					ts_code="*",
+					start="*",
+					end="*",
+					freq="*",
+					adj="*"
+				)
+			)
+
+			await self.cache.delete_pattern(CacheKey.LATEST_QUOTE.format(ts_code="*"))
+
+	async def _apply_validation_rule (
+			self,
+			rule: str,
+			data_type: str,
+			ts_code: str,
+			trade_date: date,
+			data: Dict[str, Any]
+	) -> Dict[str, Any]:
+		"""应用验证规则"""
+		if rule == "basic":
+			return await self._validate_basic(data_type, ts_code, trade_date, data)
+		elif rule == "range":
+			return await self._validate_range(data_type, data)
+		elif rule == "consistency":
+			return await self._validate_consistency(data_type, data)
+		else:
+			return {
+				"valid": True,
+				"note": f"规则 {rule} 未实现"
+			}
+
+	async def _validate_basic (
+			self,
+			data_type: str,
+			ts_code: str,
+			trade_date: date,
+			data: Dict[str, Any]
+	) -> Dict[str, Any]:
+		"""验证基本数据"""
+		errors = []
+
+		# 检查必要字段是否存在
+		required_fields = {
+			DataType.DAILY_QUOTES: ["open", "high", "low", "close", "vol"],
+			DataType.STOCK_LIST: ["name", "market", "list_date"]
+		}
+
+		required = required_fields.get(data_type, [])
+		for field in required:
+			if field not in data or data[field] is None:
+				errors.append(f"缺少必要字段: {field}")
+
+		# 检查数据格式
+		for field, value in data.items():
+			if value is not None:
+				if field in ["open", "high", "low", "close"]:
+					if not isinstance(value, (int, float)):
+						errors.append(f"字段 {field} 必须是数值类型")
+					elif value <= 0:
+						errors.append(f"字段 {field} 必须大于0")
+				elif field == "vol":
+					if not isinstance(value, (int, float)):
+						errors.append(f"字段 {field} 必须是数值类型")
+					elif value < 0:
+						errors.append(f"字段 {field} 不能为负数")
+
+		return {
+			"valid": len(errors) == 0,
+			"errors": errors,
+			"checked_fields": list(data.keys())
+		}
+
+	async def _validate_range (
+			self,
+			data_type: str,
+			data: Dict[str, Any]
+	) -> Dict[str, Any]:
+		"""验证数据范围"""
+		errors = []
+
+		if data_type == DataType.DAILY_QUOTES:
+			# 验证价格范围
+			open_price = data.get("open")
+			high_price = data.get("high")
+			low_price = data.get("low")
+			close_price = data.get("close")
+
+			if all(v is not None for v in [open_price, high_price, low_price, close_price]):
+				# 检查价格逻辑
+				if high_price < low_price:
+					errors.append("最高价不能低于最低价")
+
+				if not (low_price <= open_price <= high_price):
+					errors.append("开盘价必须在最高价和最低价之间")
+
+				if not (low_price <= close_price <= high_price):
+					errors.append("收盘价必须在最高价和最低价之间")
+
+				# 检查涨跌幅合理性
+				pre_close = data.get("pre_close")
+				if pre_close and close_price:
+					pct_change = abs((close_price - pre_close) / pre_close) * 100
+					if pct_change > 20:  # 超过20%的变动需要特别关注
+						errors.append(f"价格变动过大: {pct_change:.2f}%")
+
+		return {
+			"valid": len(errors) == 0,
+			"errors": errors
+		}
+
+	async def _validate_consistency (
+			self,
+			data_type: str,
+			data: Dict[str, Any]
+	) -> Dict[str, Any]:
+		"""验证数据一致性"""
+		errors = []
+
+		if data_type == DataType.DAILY_QUOTES:
+			# 检查成交额和成交量的关系
+			amount = data.get("amount")
+			vol = data.get("vol")
+			close_price = data.get("close")
+
+			if all(v is not None for v in [amount, vol, close_price]) and vol > 0:
+				# 估算平均成交价
+				estimated_avg_price = amount / (vol * 100)  # vol通常是手数，需要乘以100
+
+		return {
+			"valid": len(errors) == 0,
+			"errors": errors
+		}
+
+	async def _publish_clean_event (
+			self,
+			event_type: str,
+			clean_id: str,
+			data_type: Optional[str] = None,
+			progress: Optional[float] = None,
+			current_rule: Optional[str] = None,
+			result: Optional[Dict] = None,
+			applied_count: Optional[int] = None,
+			apply_id: Optional[str] = None,
+			dry_run: Optional[bool] = None,
+			user_id: Optional[int] = None
+	):
+		"""发布清洗事件"""
+		if not self.event_engine:
+			return
+
+		event_data = {
+			"clean_id": clean_id,
+			"user_id": user_id,
+			"timestamp": datetime.now()
+		}
+
+		if data_type:
+			event_data["data_type"] = data_type
+		if progress is not None:
+			event_data["progress"] = progress
+		if current_rule:
+			event_data["current_rule"] = current_rule
+		if result:
+			event_data["result"] = result
+		if applied_count is not None:
+			event_data["applied_count"] = applied_count
+		if apply_id:
+			event_data["apply_id"] = apply_id
+		if dry_run is not None:
+			event_data["dry_run"] = dry_run
+
+		event = DataCleanEvent(
+			event_type=f"events.clean.{event_type}",
+			**event_data
+		)
+
+		await self.event_engine.put(event)

@@ -1,4 +1,4 @@
-// quant_web/src/types/entities/data.ts
+// quant_web/src/types/entities/events.ts
 /**
  * 基础实体类型定义 - 用于数据库层和业务逻辑层
  */
