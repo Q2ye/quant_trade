@@ -1,1 +1,87 @@
-# 核心事件框架（仅框架，不含业务事件定义）
+"""
+核心事件框架
+提供事件系统的基础设施，不包含具体业务事件定义
+
+设计原则：
+1. 框架与业务分离：核心框架只提供基础设施，业务事件在各模块定义
+2. 松耦合：通过事件驱动实现模块间通信，避免直接依赖
+3. 可扩展：支持自定义事件类型和处理器
+4. 高性能：异步处理，支持优先级队列
+
+目录结构：
+├── base.py          # 事件基类定义
+├── engine.py        # 事件引擎实现
+├── framework.py     # 事件框架工具类
+├── system_events.py # 系统级事件定义
+├── types.py         # 事件类型和优先级枚举
+└── __init__.py      # 模块导出
+
+使用示例：
+    # 创建事件引擎
+    event_engine = EventEngine()
+
+    # 定义处理器
+    def my_handler(event):
+        print(f"收到事件: {event.event_type}")
+
+    # 注册事件处理器
+    event_engine.register("my.event.type", my_handler)
+
+    # 发布事件
+    event_engine.put(MyEvent(data={"message": "Hello"}))
+
+    # 启动事件引擎
+    event_engine.start()
+
+    # 停止事件引擎
+    event_engine.stop()
+"""
+
+from .base import BaseEvent, EventMetadata
+from .engine import EventEngine, AsyncEventEngine
+from .framework import EventHandler, EventFilter, EventTransformer
+from .system_events import (
+	SystemStartedEvent,
+	SystemStoppedEvent,
+	SystemHeartbeatEvent,
+	SystemAlertEvent
+)
+from .types import (
+	EventType,
+	EventPriority,
+	EventStatus,
+	EventCategory
+)
+
+# 导出公共接口
+__all__ = [
+	# 基础类
+	"BaseEvent",
+	"EventMetadata",
+
+	# 引擎
+	"EventEngine",
+	"AsyncEventEngine",
+
+	# 框架工具
+	"EventHandler",
+	"EventFilter",
+	"EventTransformer",
+
+	# 系统事件
+	"SystemStartedEvent",
+	"SystemStoppedEvent",
+	"SystemHeartbeatEvent",
+	"SystemAlertEvent",
+
+	# 类型定义
+	"EventType",
+	"EventPriority",
+	"EventStatus",
+	"EventCategory",
+]
+
+# 版本信息
+__version__ = "1.0.0"
+__author__ = "QuantServer Team"
+__description__ = "核心事件框架 - 提供事件驱动架构的基础设施"

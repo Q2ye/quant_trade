@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import field
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import DataEventType
+from quant_server.modules.data.events.types import DataEventType
 
 
 class DataSyncStartedEvent(BaseEvent):
