@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """
+quant_server/modules/data/__init__.py
 数据模块 - 量化交易系统的数据管理模块
 基于混合架构设计，提供数据同步、质量检查、因子研究等功能
 
@@ -7,45 +8,6 @@
 ├── engines/     # 有状态引擎：管理数据同步、清洗、研究任务
 ├── services/    # 无状态服务：数据计算、验证、转换逻辑
 └── events/      # 数据模块事件：同步完成、质量警报等
-
-模块结构：
-modules/events/
-├── __init__.py              # 模块导出文件
-├── constants.py             # 模块常量定义
-├── handlers.py              # API处理函数
-├── schemas.py               # API请求/响应模型
-├── models.py                # 业务模型定义
-├── engines/                 # 业务引擎
-│   ├── __init__.py
-│   ├── sync_engine.py      # 数据同步引擎
-│   ├── clean_engine.py     # 数据清洗引擎
-│   ├── research_engine.py  # 因子研究引擎
-│   └── quality_engine.py   # 质量检查引擎
-├── services/                # 业务服务
-│   ├── __init__.py
-│   ├── sync_service.py     # 数据同步服务
-│   ├── quality_service.py  # 数据质量服务
-│   ├── research_service.py # 因子研究服务
-│   ├── market_service.py   # 市场数据服务
-│   └── clean_service.py    # 数据清洗服务
-├── managers/                # 管理器
-│   ├── __init__.py
-│   ├── data_manager.py     # 数据管理器
-│   └── research_manager.py # 研究管理器
-├── tasks/                   # 异步任务
-│   ├── __init__.py
-│   ├── sync_tasks.py       # 数据同步任务
-│   ├── quality_tasks.py    # 质量检查任务
-│   └── research_tasks.py   # 研究任务
-├── utils/                   # 模块工具
-│   ├── __init__.py
-│   ├── data_formatter.py   # 数据格式化
-│   ├── factor_calculator.py # 因子计算器
-│   └── quality_checker.py  # 质量检查器
-└── tests/                   # 模块测试
-    ├── __init__.py
-    ├── test_services.py
-    └── test_engines.py
 
 设计原则：
 1. 单一职责：每个组件只负责一个明确的业务功能

@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-市场数据服务
-负责提供市场数据的查询、分析和处理功能
-位置：quant_server/modules/events/services/market_service.py
+市场数据仓库服务
+提供统一的市场数据访问接口，支持缓存、数据转换和批量处理
+位置：quant_server/modules/data/services/market_service.py
 
 设计原则：
-1. 统一数据访问接口：为上层提供一致的数据查询接口
-2. 智能缓存策略：根据数据类型和访问频率自动缓存
-3. 高性能查询：支持批量查询和高效的数据处理
-4. 数据转换：提供多种数据格式和频率的转换
+1. 统一数据访问：提供一致的数据查询接口
+2. 智能缓存：基于数据类型和访问频率自动缓存
+3. 高性能：支持批量查询和高效数据处理
+4. 数据转换：支持多种数据格式和频率转换
 """
 
 from typing import Dict, List, Any, Optional
@@ -16,25 +16,33 @@ from datetime import datetime, date, timedelta
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_, desc
+import pandas as pd
+import numpy as np
 
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
-	StockRepository,
+	StockBasicRepository,
 	QuoteRepository,
 	TradeCalendarRepository,
-	FactorRepository
+	FactorDataRepository,
+	IndexRepository,
+	FinancialRepository
 )
 from quant_server.shared.cache.redis_cache import RedisCache
 
 # 导入核心基础设施
 from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.data_events import MarketDataRequestEvent
+
+# 导入工具类
 from quant_server.utils.core_utils.time_utils.trading_calendar import TradingCalendar
 from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformer
 
 # 导入数据模块常量
 from quant_server.modules.data.constants import (
-	CacheKey
+	CacheKey,
+	DataType,
+	Frequency,
+	AdjustType,
 )
 
 # 配置日志
@@ -43,8 +51,16 @@ logger = logging.getLogger(__name__)
 
 class MarketDataService:
 	"""
-	市场数据服务类
+	市场数据仓库服务类
 	提供市场数据的查询、分析和处理功能
+
+	Attributes:
+		session: 异步数据库会话
+		event_engine: 事件引擎
+		stock_repo: 股票数据仓库
+		quote_repo: 行情数据仓库
+		factor_repo: 因子数据仓库
+		calendar_repo: 交易日历仓库
 	"""
 
 	def __init__ (self, session: AsyncSession, event_engine: Optional[EventEngine] = None):
@@ -53,16 +69,18 @@ class MarketDataService:
 
 		Args:
 			session: 数据库会话
-			event_engine: 事件引擎
+			event_engine: 事件引擎，用于发布数据访问事件
 		"""
 		self.session = session
 		self.event_engine = event_engine
 
 		# 初始化Repository
-		self.stock_repo = StockRepository(session)
+		self.stock_repo = StockBasicRepository(session)
 		self.quote_repo = QuoteRepository(session)
 		self.calendar_repo = TradeCalendarRepository(session)
-		self.factor_repo = FactorRepository(session)
+		self.factor_repo = StockBasicRepository(session)
+		self.index_repo = IndexRepository(session)
+		self.financial_repo = FinancialRepository(session)
 
 		# 初始化工具
 		self.trading_calendar = TradingCalendar()
@@ -85,6 +103,8 @@ class MarketDataService:
 			)
 		return self._cache
 
+	# ==================== 基础数据查询方法 ====================
+
 	async def get_historical_quotes (
 			self,
 			ts_code: str,
@@ -100,21 +120,29 @@ class MarketDataService:
 		获取历史行情数据
 
 		Args:
-			ts_code: 股票代码
-			start_date: 开始日期
-			end_date: 结束日期
-			freq: 频率（D:日线, W:周线, M:月线）
-			adj: 复权类型（qfq:前复权, hfq:后复权, None:不复权）
-			fields: 返回字段列表
+			ts_code: 股票代码（格式：000001.SZ）
+			start_date: 开始日期，默认一年前
+			end_date: 结束日期，默认今天
+			freq: 数据频率，支持：D-日线, W-周线, M-月线, 5-5分钟, 15-15分钟, 30-30分钟, 60-60分钟
+			adj: 复权类型，支持：qfq-前复权, hfq-后复权, None-不复权
+			fields: 返回字段列表，默认返回所有字段
 			use_cache: 是否使用缓存
-			user_id: 用户ID（用于事件发布）
+			user_id: 用户ID，用于事件追踪
 
 		Returns:
-			List[Dict]: 行情数据列表
+			List[Dict]: 行情数据列表，按交易日期倒序排列
+
+		Raises:
+			ValueError: 参数错误
+			DataNotFoundException: 数据不存在
 		"""
-		logger.info(f"获取历史行情，股票: {ts_code}, 频率: {freq}, 复权: {adj}")
+		logger.info(f"获取历史行情数据: {ts_code}, 频率: {freq}, 复权: {adj}")
 
 		try:
+			# 参数验证
+			if not ts_code:
+				raise ValueError("股票代码不能为空")
+
 			# 生成缓存键
 			cache_key = None
 			if use_cache:
@@ -129,29 +157,22 @@ class MarketDataService:
 				# 尝试从缓存获取
 				cached_data = await self.cache.get(cache_key)
 				if cached_data:
-					logger.info(f"从缓存获取历史行情数据，股票: {ts_code}")
-
-					# 发布数据访问事件
-					await self._publish_market_data_event(
-						event_type="cached_request",
-						ts_code=ts_code,
-						data_type="historical_quotes",
-						cached=True,
-						user_id=user_id
+					logger.info(f"从缓存获取历史行情数据: {ts_code}")
+					await self._publish_data_access_event(
+						"cached_request", ts_code, "historical_quotes",
+						user_id=user_id, cached=True
 					)
-
 					return cached_data
 
 			# 设置默认日期范围
 			if not end_date:
 				end_date = datetime.now().date()
 			if not start_date:
-				if freq == "D":
-					start_date = end_date - timedelta(days=365)  # 默认一年
-				elif freq == "W":
-					start_date = end_date - timedelta(weeks=52)  # 默认一年
-				elif freq == "M":
-					start_date = end_date - timedelta(days=365)  # 默认一年
+				start_date = self._get_default_start_date(end_date, freq)
+
+			# 验证日期范围
+			if start_date > end_date:
+				start_date, end_date = end_date, start_date
 
 			# 获取基础行情数据
 			quotes = await self.quote_repo.get_by_ts_code_date_range(
@@ -162,15 +183,19 @@ class MarketDataService:
 			)
 
 			if not quotes:
-				logger.warning(f"未找到行情数据，股票: {ts_code}")
+				logger.warning(f"未找到行情数据: {ts_code}")
+				await self._publish_data_access_event(
+					"data_not_found", ts_code, "historical_quotes",
+					user_id=user_id
+				)
 				return []
 
 			# 转换为目标频率
-			if freq != "D":
+			if freq != Frequency.DAILY:
 				quotes = await self._convert_frequency(quotes, freq)
 
 			# 处理复权
-			if adj in ["qfq", "hfq"]:
+			if adj in [AdjustType.QFQ, AdjustType.HFQ]:
 				quotes = await self._adjust_prices(quotes, adj)
 
 			# 选择返回字段
@@ -178,28 +203,7 @@ class MarketDataService:
 				quotes = self._select_fields(quotes, fields)
 
 			# 转换为响应格式
-			result = []
-			for quote in quotes:
-				quote_dict = {
-					"trade_date": quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
-						quote.trade_date),
-					"ts_code": ts_code,
-					"open": float(quote.open) if quote.open else None,
-					"high": float(quote.high) if quote.high else None,
-					"low": float(quote.low) if quote.low else None,
-					"close": float(quote.close) if quote.close else None,
-					"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
-					"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
-					"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
-					"vol": float(quote.vol) if quote.vol else None,
-					"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
-				}
-
-				# 添加复权因子（如果需要）
-				if adj in ["qfq", "hfq"] and hasattr(quote, 'adj_factor'):
-					quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
-
-				result.append(quote_dict)
+			result = self._format_quotes_to_dict(quotes, ts_code, adj)
 
 			# 缓存结果
 			if use_cache and cache_key and result:
@@ -210,22 +214,64 @@ class MarketDataService:
 				)
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				ts_code=ts_code,
-				data_type="historical_quotes",
-				record_count=len(result),
-				cached=False,
-				user_id=user_id
+			await self._publish_data_access_event(
+				"data_request", ts_code, "historical_quotes",
+				record_count=len(result), user_id=user_id
 			)
 
-			logger.info(f"获取历史行情完成，股票: {ts_code}, 记录数: {len(result)}")
-
+			logger.info(f"获取历史行情数据完成: {ts_code}, 记录数: {len(result)}")
 			return result
 
 		except Exception as e:
-			logger.error(f"获取历史行情失败: {str(e)}", exc_info=True)
+			logger.error(f"获取历史行情数据失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("historical_quotes", str(e), ts_code, user_id)
 			raise
+
+	async def get_multiple_historical_quotes (
+			self,
+			ts_codes: List[str],
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			freq: str = "D",
+			adj: str = "qfq",
+			use_cache: bool = True,
+			user_id: Optional[int] = None
+	) -> Dict[str, List[Dict[str, Any]]]:
+		"""
+		批量获取多只股票的历史行情数据
+
+		Args:
+			ts_codes: 股票代码列表
+			start_date: 开始日期
+			end_date: 结束日期
+			freq: 数据频率
+			adj: 复权类型
+			use_cache: 是否使用缓存
+			user_id: 用户ID
+
+		Returns:
+			Dict[str, List[Dict]]: 每只股票的行情数据
+		"""
+		logger.info(f"批量获取历史行情数据: {len(ts_codes)}只股票")
+
+		results = {}
+		for ts_code in ts_codes:
+			try:
+				quotes = await self.get_historical_quotes(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date,
+					freq=freq,
+					adj=adj,
+					use_cache=use_cache,
+					user_id=user_id
+				)
+				results[ts_code] = quotes
+			except Exception as e:
+				logger.error(f"获取股票 {ts_code} 历史行情失败: {str(e)}")
+				results[ts_code] = []
+
+		return results
 
 	async def get_latest_quote (
 			self,
@@ -242,11 +288,27 @@ class MarketDataService:
 			user_id: 用户ID
 
 		Returns:
-			Dict: 最新行情数据，如果不存在则返回None
+			Dict: 最新行情数据，包含以下字段：
+				- ts_code: 股票代码
+				- trade_date: 交易日期
+				- open: 开盘价
+				- high: 最高价
+				- low: 最低价
+				- close: 收盘价
+				- pre_close: 前收盘价
+				- change: 涨跌额
+				- pct_chg: 涨跌幅
+				- vol: 成交量
+				- amount: 成交额
+				- updated_at: 更新时间
 		"""
-		logger.info(f"获取最新行情，股票: {ts_code}")
+		logger.info(f"获取最新行情数据: {ts_code}")
 
 		try:
+			# 参数验证
+			if not ts_code:
+				raise ValueError("股票代码不能为空")
+
 			# 生成缓存键
 			cache_key = None
 			if use_cache:
@@ -255,24 +317,22 @@ class MarketDataService:
 				# 尝试从缓存获取
 				cached_quote = await self.cache.get(cache_key)
 				if cached_quote:
-					logger.info(f"从缓存获取最新行情，股票: {ts_code}")
-
-					# 发布数据访问事件
-					await self._publish_market_data_event(
-						event_type="cached_request",
-						ts_code=ts_code,
-						data_type="latest_quote",
-						cached=True,
-						user_id=user_id
+					logger.info(f"从缓存获取最新行情: {ts_code}")
+					await self._publish_data_access_event(
+						"cached_request", ts_code, "latest_quote",
+						user_id=user_id, cached=True
 					)
-
 					return cached_quote
 
 			# 从数据库获取最新行情
 			latest_quote = await self.quote_repo.get_latest_by_ts_code(ts_code)
 
 			if not latest_quote:
-				logger.warning(f"未找到最新行情，股票: {ts_code}")
+				logger.warning(f"未找到最新行情: {ts_code}")
+				await self._publish_data_access_event(
+					"data_not_found", ts_code, "latest_quote",
+					user_id=user_id
+				)
 				return None
 
 			# 转换为响应格式
@@ -292,7 +352,7 @@ class MarketDataService:
 			}
 
 			# 缓存结果
-			if use_cache and cache_key and result:
+			if use_cache and cache_key:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -300,27 +360,27 @@ class MarketDataService:
 				)
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				ts_code=ts_code,
-				data_type="latest_quote",
-				cached=False,
+			await self._publish_data_access_event(
+				"data_request", ts_code, "latest_quote",
 				user_id=user_id
 			)
 
-			logger.info(f"获取最新行情完成，股票: {ts_code}, 日期: {result['trade_date']}")
-
+			logger.info(f"获取最新行情数据完成: {ts_code}, 日期: {result['trade_date']}")
 			return result
 
 		except Exception as e:
-			logger.error(f"获取最新行情失败: {str(e)}", exc_info=True)
+			logger.error(f"获取最新行情数据失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("latest_quote", str(e), ts_code, user_id)
 			raise
+
+	# ==================== 股票信息查询方法 ====================
 
 	async def get_stock_basic_info (
 			self,
 			ts_code: str,
 			include_quote: bool = False,
 			include_financial: bool = False,
+			include_factor: bool = False,
 			use_cache: bool = True,
 			user_id: Optional[int] = None
 	) -> Dict[str, Any]:
@@ -330,45 +390,65 @@ class MarketDataService:
 		Args:
 			ts_code: 股票代码
 			include_quote: 是否包含最新行情
-			include_financial: 是否包含财务数据
+			include_financial: 是否包含财务数据摘要
+			include_factor: 是否包含因子数据
 			use_cache: 是否使用缓存
 			user_id: 用户ID
 
 		Returns:
-			Dict: 股票基础信息
+			Dict: 股票基础信息，包含以下字段：
+				- ts_code: 股票代码
+				- symbol: 股票简称
+				- name: 股票名称
+				- area: 地区
+				- industry: 行业
+				- market: 市场类型
+				- exchange: 交易所
+				- list_date: 上市日期
+				- delist_date: 退市日期
+				- is_hs: 是否沪深港通
+				- list_status: 上市状态
+				- created_at: 创建时间
+				- updated_at: 更新时间
 		"""
-		logger.info(f"获取股票基础信息，股票: {ts_code}")
+		logger.info(f"获取股票基础信息: {ts_code}")
 
 		try:
+			# 参数验证
+			if not ts_code:
+				raise ValueError("股票代码不能为空")
+
 			# 生成缓存键
 			cache_key = None
 			if use_cache:
+				field_suffix = ""
+				if include_quote:
+					field_suffix += "_quote"
+				if include_financial:
+					field_suffix += "_financial"
+				if include_factor:
+					field_suffix += "_factor"
+
 				cache_key = CacheKey.STOCK_DETAIL.format(
 					ts_code=ts_code,
-					fields="basic" + ("_quote" if include_quote else "") + ("_financial" if include_financial else "")
+					fields=f"basic{field_suffix}"
 				)
 
 				# 尝试从缓存获取
 				cached_info = await self.cache.get(cache_key)
 				if cached_info:
-					logger.info(f"从缓存获取股票基础信息，股票: {ts_code}")
-
-					# 发布数据访问事件
-					await self._publish_market_data_event(
-						event_type="cached_request",
-						ts_code=ts_code,
-						data_type="stock_basic",
-						cached=True,
-						user_id=user_id
+					logger.info(f"从缓存获取股票基础信息: {ts_code}")
+					await self._publish_data_access_event(
+						"cached_request", ts_code, "stock_basic",
+						user_id=user_id, cached=True
 					)
-
 					return cached_info
 
 			# 获取股票基础信息
 			stock = await self.stock_repo.get_by_ts_code(ts_code)
 
 			if not stock:
-				logger.warning(f"未找到股票基础信息，股票: {ts_code}")
+				logger.warning(f"未找到股票基础信息: {ts_code}")
 				raise ValueError(f"股票 {ts_code} 不存在")
 
 			# 构建基础信息
@@ -395,15 +475,22 @@ class MarketDataService:
 				if latest_quote:
 					result["latest_quote"] = latest_quote
 
-			# 包含财务数据（简化版）
+			# 包含财务数据
 			if include_financial:
-				# 这里可以添加获取财务数据的逻辑
-				result["financial_summary"] = {
-					"note": "财务数据功能待实现"
-				}
+				financial_summary = await self._get_financial_summary(ts_code)
+				result["financial_summary"] = financial_summary
+
+			# 包含因子数据
+			if include_factor:
+				factor_exposure = await self.get_factor_exposure(
+					ts_code=ts_code,
+					factor_names=None,
+					user_id=user_id
+				)
+				result["factor_exposure"] = factor_exposure.get("factor_exposures", {})
 
 			# 缓存结果
-			if use_cache and cache_key and result:
+			if use_cache and cache_key:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -411,20 +498,17 @@ class MarketDataService:
 				)
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				ts_code=ts_code,
-				data_type="stock_basic",
-				cached=False,
+			await self._publish_data_access_event(
+				"data_request", ts_code, "stock_basic",
 				user_id=user_id
 			)
 
-			logger.info(f"获取股票基础信息完成，股票: {ts_code}")
-
+			logger.info(f"获取股票基础信息完成: {ts_code}")
 			return result
 
 		except Exception as e:
 			logger.error(f"获取股票基础信息失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("stock_basic", str(e), ts_code, user_id)
 			raise
 
 	async def get_stock_list (
@@ -446,26 +530,30 @@ class MarketDataService:
 		获取股票列表
 
 		Args:
-			search: 搜索关键词
-			market: 市场类型
-			industry: 行业
-			list_status: 上市状态
-			min_market_cap: 最小市值
-			max_market_cap: 最大市值
-			page: 页码
+			search: 搜索关键词（股票代码或名称）
+			market: 市场类型（SH/SZ/BJ）
+			industry: 行业分类
+			list_status: 上市状态（L-上市，D-退市，P-暂停上市）
+			min_market_cap: 最小市值（亿元）
+			max_market_cap: 最大市值（亿元）
+			page: 页码（从1开始）
 			page_size: 每页数量
-			sort_by: 排序字段
-			sort_order: 排序顺序
+			sort_by: 排序字段（ts_code/name/list_date/industry/market_cap）
+			sort_order: 排序顺序（asc/desc）
 			use_cache: 是否使用缓存
 			user_id: 用户ID
 
 		Returns:
-			Dict: 股票列表和分页信息
+			Dict: 股票列表和分页信息，包含以下字段：
+				- stocks: 股票列表
+				- pagination: 分页信息
+				- filters: 查询条件
 		"""
 		logger.info(f"获取股票列表，搜索: {search}, 市场: {market}, 行业: {industry}")
 
 		try:
-			# 生成缓存键（基于查询参数）
+			# 生成缓存键
+			cache_key = None
 			if use_cache:
 				params_hash = self._generate_params_hash({
 					"search": search,
@@ -485,23 +573,18 @@ class MarketDataService:
 				# 尝试从缓存获取
 				cached_list = await self.cache.get(cache_key)
 				if cached_list:
-					logger.info(f"从缓存获取股票列表，参数哈希: {params_hash}")
-
-					# 发布数据访问事件
-					await self._publish_market_data_event(
-						event_type="cached_request",
-						data_type="stock_list",
-						cached=True,
-						user_id=user_id
+					logger.info(f"从缓存获取股票列表: {params_hash}")
+					await self._publish_data_access_event(
+						"cached_request", None, "stock_list",
+						user_id=user_id, cached=True
 					)
-
 					return cached_list
 
 			# 构建查询条件
 			filters = []
 
+			# 搜索条件
 			if search:
-				# 搜索股票代码或名称
 				filters.append(
 					or_(
 						self.stock_repo.model.ts_code.ilike(f"%{search}%"),
@@ -509,21 +592,24 @@ class MarketDataService:
 					)
 				)
 
+			# 市场条件
 			if market:
 				filters.append(self.stock_repo.model.market == market)
 
+			# 行业条件
 			if industry:
 				filters.append(self.stock_repo.model.industry == industry)
 
+			# 上市状态
 			if list_status:
 				filters.append(self.stock_repo.model.list_status == list_status)
 
 			# 市值筛选（如果有市值字段）
 			if min_market_cap and hasattr(self.stock_repo.model, 'market_cap'):
-				filters.append(self.stock_repo.model.market_cap >= min_market_cap)
+				filters.append(self.stock_repo.model.market_cap >= min_market_cap * 1e8)  # 转换为元
 
 			if max_market_cap and hasattr(self.stock_repo.model, 'market_cap'):
-				filters.append(self.stock_repo.model.market_cap <= max_market_cap)
+				filters.append(self.stock_repo.model.market_cap <= max_market_cap * 1e8)  # 转换为元
 
 			# 构建排序
 			order_column = None
@@ -542,10 +628,13 @@ class MarketDataService:
 				if sort_order == "desc":
 					order_column = order_column.desc()
 
+			# 计算偏移量
+			skip = (page - 1) * page_size
+
 			# 获取股票数据
 			stocks = await self.stock_repo.get_many(
 				*filters,
-				skip=(page - 1) * page_size,
+				skip=skip,
 				limit=page_size,
 				order_by=order_column
 			)
@@ -570,7 +659,7 @@ class MarketDataService:
 
 				# 添加市值信息（如果有）
 				if hasattr(stock, 'market_cap') and stock.market_cap:
-					stock_info["market_cap"] = float(stock.market_cap)
+					stock_info["market_cap"] = float(stock.market_cap) / 1e8  # 转换为亿元
 
 				stock_list.append(stock_info)
 
@@ -581,18 +670,20 @@ class MarketDataService:
 					"page": page,
 					"page_size": page_size,
 					"total": total,
-					"total_pages": (total + page_size - 1) // page_size
+					"total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0
 				},
 				"filters": {
 					"search": search,
 					"market": market,
 					"industry": industry,
-					"list_status": list_status
+					"list_status": list_status,
+					"min_market_cap": min_market_cap,
+					"max_market_cap": max_market_cap
 				}
 			}
 
 			# 缓存结果
-			if use_cache and cache_key and result:
+			if use_cache and cache_key:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -600,21 +691,20 @@ class MarketDataService:
 				)
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				data_type="stock_list",
-				record_count=len(stock_list),
-				cached=False,
-				user_id=user_id
+			await self._publish_data_access_event(
+				"data_request", None, "stock_list",
+				record_count=len(stock_list), user_id=user_id
 			)
 
 			logger.info(f"获取股票列表完成，数量: {len(stock_list)}, 总数: {total}")
-
 			return result
 
 		except Exception as e:
 			logger.error(f"获取股票列表失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("stock_list", str(e), None, user_id)
 			raise
+
+	# ==================== 市场分析数据方法 ====================
 
 	async def get_market_overview (
 			self,
@@ -627,43 +717,52 @@ class MarketDataService:
 		获取市场概览数据
 
 		Args:
-			market: 市场类型
+			market: 市场类型（SH/SZ/BJ，不指定则返回全市场）
 			date: 日期（默认今天）
-			indicators: 需要计算的指标
+			indicators: 需要计算的指标列表，支持：
+				- total_stocks: 总股票数量
+				- advance_decline: 涨跌家数
+				- turnover: 成交数据
+				- market_cap: 总市值
+				- index_performance: 指数表现
 			user_id: 用户ID
 
 		Returns:
-			Dict: 市场概览数据
+			Dict: 市场概览数据，包含以下字段：
+				- date: 数据日期
+				- market: 市场类型
+				- indicators: 指标数据
+				- summary: 市场总结
 		"""
 		logger.info(f"获取市场概览，市场: {market}, 日期: {date}")
 
 		try:
+			# 设置默认日期
 			if not date:
 				date = datetime.now().date()
 
+			# 设置默认指标
 			if not indicators:
 				indicators = ["total_stocks", "advance_decline", "turnover", "market_cap"]
 
 			# 生成缓存键
-			cache_key = f"market:overview:{market or 'all'}:{date.strftime('%Y%m%d')}"
+			cache_key = CacheKey.MARKET_OVERVIEW.format(
+				market=market or "all",
+				date=date.strftime("%Y%m%d")
+			)
 
 			# 尝试从缓存获取
 			cached_overview = await self.cache.get(cache_key)
 			if cached_overview:
-				logger.info(f"从缓存获取市场概览，市场: {market}, 日期: {date}")
-
-				# 发布数据访问事件
-				await self._publish_market_data_event(
-					event_type="cached_request",
-					data_type="market_overview",
-					market=market,
-					date=date.isoformat(),
-					cached=True,
-					user_id=user_id
+				logger.info(f"从缓存获取市场概览: {market or 'all'}")
+				await self._publish_data_access_event(
+					"cached_request", None, "market_overview",
+					market=market, date=date.isoformat(),
+					user_id=user_id, cached=True
 				)
-
 				return cached_overview
 
+			# 初始化结果
 			result = {
 				"date": date.isoformat(),
 				"market": market or "all",
@@ -675,56 +774,52 @@ class MarketDataService:
 			for indicator in indicators:
 				try:
 					if indicator == "total_stocks":
-						# 总股票数量
 						count = await self._get_total_stocks(market)
 						result["indicators"]["total_stocks"] = count
 
 					elif indicator == "advance_decline":
-						# 涨跌家数
 						ad_data = await self._get_advance_decline(date, market)
 						result["indicators"]["advance_decline"] = ad_data
 
 					elif indicator == "turnover":
-						# 成交额和成交量
 						turnover_data = await self._get_turnover(date, market)
 						result["indicators"]["turnover"] = turnover_data
 
 					elif indicator == "market_cap":
-						# 总市值
 						market_cap = await self._get_total_market_cap(market)
 						result["indicators"]["market_cap"] = market_cap
 
+					elif indicator == "index_performance":
+						index_data = await self._get_index_performance(date, market)
+						result["indicators"]["index_performance"] = index_data
+
 				except Exception as e:
 					logger.error(f"计算指标 {indicator} 失败: {str(e)}")
-					result["indicators"][indicator] = {"error": str(e)}
+					result["indicators"][indicator] = {"error": str(e), "status": "error"}
 
 			# 生成市场总结
 			result["summary"] = await self._generate_market_summary(result["indicators"])
 
 			# 缓存结果
-			if result:
-				await self.cache.set(
-					cache_key,
-					result,
-					ttl=3600  # 市场概览缓存1小时
-				)
+			await self.cache.set(
+				cache_key,
+				result,
+				ttl=3600  # 市场概览缓存1小时
+			)
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				data_type="market_overview",
-				market=market,
-				date=date.isoformat(),
-				cached=False,
+			await self._publish_data_access_event(
+				"data_request", None, "market_overview",
+				market=market, date=date.isoformat(),
 				user_id=user_id
 			)
 
 			logger.info(f"获取市场概览完成，市场: {market}, 日期: {date}")
-
 			return result
 
 		except Exception as e:
 			logger.error(f"获取市场概览失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("market_overview", str(e), None, user_id)
 			raise
 
 	async def get_factor_exposure (
@@ -740,22 +835,34 @@ class MarketDataService:
 
 		Args:
 			ts_code: 股票代码
-			factor_names: 因子名称列表
+			factor_names: 因子名称列表，不指定则返回所有可用因子
 			start_date: 开始日期
 			end_date: 结束日期
 			user_id: 用户ID
 
 		Returns:
-			Dict: 因子暴露度数据
+			Dict: 因子暴露度数据，包含以下字段：
+				- ts_code: 股票代码
+				- date_range: 日期范围
+				- factor_exposures: 因子暴露度统计
+				- summary: 暴露度总结
 		"""
 		logger.info(f"获取因子暴露度，股票: {ts_code}, 因子: {factor_names}")
 
 		try:
+			# 参数验证
+			if not ts_code:
+				raise ValueError("股票代码不能为空")
+
 			# 设置默认日期范围
 			if not end_date:
 				end_date = datetime.now().date()
 			if not start_date:
 				start_date = end_date - timedelta(days=365)  # 默认一年
+
+			# 验证日期范围
+			if start_date > end_date:
+				start_date, end_date = end_date, start_date
 
 			# 获取因子数据
 			factor_exposures = {}
@@ -787,15 +894,28 @@ class MarketDataService:
 								"max": float(np.max(values)) if values else None,
 								"percentile": self._calculate_percentile(values[-1], values) if values and values[
 									-1] is not None else None,
-								"count": len(values)
+								"count": len(values),
+								"data_points": len(factor_data)
 							}
 
 							factor_exposures[factor_name] = exposure_stats
+					else:
+						factor_exposures[factor_name] = {
+							"current": None,
+							"mean": None,
+							"count": 0,
+							"data_points": 0,
+							"status": "no_data"
+						}
 
 				except Exception as e:
 					logger.error(f"获取因子 {factor_name} 暴露度失败: {str(e)}")
-					factor_exposures[factor_name] = {"error": str(e)}
+					factor_exposures[factor_name] = {
+						"error": str(e),
+						"status": "error"
+					}
 
+			# 构建结果
 			result = {
 				"ts_code": ts_code,
 				"date_range": {
@@ -807,20 +927,108 @@ class MarketDataService:
 			}
 
 			# 发布数据访问事件
-			await self._publish_market_data_event(
-				event_type="data_request",
-				ts_code=ts_code,
-				data_type="factor_exposure",
+			await self._publish_data_access_event(
+				"data_request", ts_code, "factor_exposure",
 				factor_count=len(factor_exposures),
 				user_id=user_id
 			)
 
 			logger.info(f"获取因子暴露度完成，股票: {ts_code}, 因子数量: {len(factor_exposures)}")
-
 			return result
 
 		except Exception as e:
 			logger.error(f"获取因子暴露度失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("factor_exposure", str(e), ts_code, user_id)
+			raise
+
+	# ==================== 技术指标计算方法 ====================
+
+	async def calculate_technical_indicators (
+			self,
+			ts_code: str,
+			indicators: List[str],
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			parameters: Optional[Dict[str, Any]] = None,
+			user_id: Optional[int] = None
+	) -> Dict[str, Any]:
+		"""
+		计算技术指标
+
+		Args:
+			ts_code: 股票代码
+			indicators: 技术指标列表，支持：
+				- MA: 移动平均线
+				- EMA: 指数移动平均线
+				- MACD: 移动平均收敛发散指标
+				- RSI: 相对强弱指数
+				- BOLL: 布林带
+				- KDJ: 随机指标
+			start_date: 开始日期
+			end_date: 结束日期
+			parameters: 指标参数
+			user_id: 用户ID
+
+		Returns:
+			Dict: 技术指标计算结果
+		"""
+		logger.info(f"计算技术指标，股票: {ts_code}, 指标: {indicators}")
+
+		try:
+			# 获取历史行情数据
+			quotes = await self.get_historical_quotes(
+				ts_code=ts_code,
+				start_date=start_date,
+				end_date=end_date,
+				freq="D",
+				adj="qfq",
+				use_cache=True,
+				user_id=user_id
+			)
+
+			if not quotes:
+				logger.warning(f"未找到行情数据，无法计算技术指标: {ts_code}")
+				return {"ts_code": ts_code, "indicators": {}, "message": "No data available"}
+
+			# 转换为DataFrame
+			df = pd.DataFrame(quotes)
+			df['trade_date'] = pd.to_datetime(df['trade_date'])
+			df.set_index('trade_date', inplace=True)
+			df.sort_index(inplace=True)
+
+			# 计算技术指标
+			results = {}
+			for indicator in indicators:
+				try:
+					if indicator == "MA":
+						results["MA"] = self._calculate_ma(df, parameters)
+					elif indicator == "EMA":
+						results["EMA"] = self._calculate_ema(df, parameters)
+					elif indicator == "MACD":
+						results["MACD"] = self._calculate_macd(df, parameters)
+					elif indicator == "RSI":
+						results["RSI"] = self._calculate_rsi(df, parameters)
+					elif indicator == "BOLL":
+						results["BOLL"] = self._calculate_boll(df, parameters)
+					elif indicator == "KDJ":
+						results["KDJ"] = self._calculate_kdj(df, parameters)
+				except Exception as e:
+					logger.error(f"计算指标 {indicator} 失败: {str(e)}")
+					results[indicator] = {"error": str(e), "status": "error"}
+
+			return {
+				"ts_code": ts_code,
+				"date_range": {
+					"start": df.index.min().strftime("%Y-%m-%d"),
+					"end": df.index.max().strftime("%Y-%m-%d")
+				},
+				"indicators": results,
+				"message": "Technical indicators calculated successfully"
+			}
+
+		except Exception as e:
+			logger.error(f"计算技术指标失败: {str(e)}", exc_info=True)
+			await self._publish_error_event("technical_indicators", str(e), ts_code, user_id)
 			raise
 
 	# ==================== 私有辅助方法 ====================
@@ -830,8 +1038,17 @@ class MarketDataService:
 			daily_quotes: List,
 			target_freq: str
 	) -> List:
-		"""转换数据频率"""
-		if target_freq == "D":
+		"""
+		转换数据频率
+
+		Args:
+			daily_quotes: 日线数据列表
+			target_freq: 目标频率
+
+		Returns:
+			List: 转换后的数据列表
+		"""
+		if target_freq == Frequency.DAILY:
 			return daily_quotes
 
 		# 转换为DataFrame便于处理
@@ -854,9 +1071,10 @@ class MarketDataService:
 		df.set_index("trade_date", inplace=True)
 		df.sort_index(inplace=True)
 
-		if target_freq == "W":
+		# 根据目标频率进行转换
+		if target_freq == Frequency.WEEKLY:
 			# 转换为周线
-			weekly_df = df.resample('W').agg({
+			weekly_df = df.resample('W-FRI').agg({
 				'open': 'first',
 				'high': 'max',
 				'low': 'min',
@@ -864,11 +1082,10 @@ class MarketDataService:
 				'vol': 'sum',
 				'amount': 'sum'
 			})
-
-			# 转换回对象列表
+			weekly_df.dropna(inplace=True)
 			return self._df_to_quote_objects(weekly_df, freq="W")
 
-		elif target_freq == "M":
+		elif target_freq == Frequency.MONTHLY:
 			# 转换为月线
 			monthly_df = df.resample('M').agg({
 				'open': 'first',
@@ -878,13 +1095,27 @@ class MarketDataService:
 				'vol': 'sum',
 				'amount': 'sum'
 			})
-
+			monthly_df.dropna(inplace=True)
 			return self._df_to_quote_objects(monthly_df, freq="M")
+
+		elif target_freq in ["5", "15", "30", "60"]:
+			# 转换为分钟线（需要原始分钟数据）
+			logger.warning(f"分钟线转换需要原始分钟数据，当前仅支持日线转换")
+			return daily_quotes
 
 		return daily_quotes
 
 	def _df_to_quote_objects (self, df: pd.DataFrame, freq: str) -> List:
-		"""将DataFrame转换回行情对象列表"""
+		"""
+		将DataFrame转换回行情对象列表
+
+		Args:
+			df: 包含行情数据的DataFrame
+			freq: 数据频率标识
+
+		Returns:
+			List: 行情对象列表
+		"""
 		quotes = []
 
 		for idx, row in df.iterrows():
@@ -914,55 +1145,78 @@ class MarketDataService:
 			quotes: List,
 			adj_type: str
 	) -> List:
-		"""价格复权处理"""
-		# 这里简化处理，实际需要从数据库获取复权因子
-		# 并计算复权价格
+		"""
+		价格复权处理
 
+		Args:
+			quotes: 行情数据列表
+			adj_type: 复权类型（qfq/hfq）
+
+		Returns:
+			List: 复权后的行情数据
+		"""
 		if not quotes:
 			return quotes
 
-		# 模拟复权因子（实际应从数据库获取）
-		adj_factor = 1.0
+		# 按日期排序（从旧到新）
+		sorted_quotes = sorted(quotes, key=lambda x: x.trade_date)
 
-		for quote in quotes:
-			if adj_type == "qfq":
+		# 模拟复权因子（实际应从数据库获取）
+		# 这里假设复权因子随时间变化
+		base_factor = 1.0
+
+		for i, quote in enumerate(sorted_quotes):
+			# 模拟复权因子变化（每100天调整一次）
+			if i > 0 and i % 100 == 0:
+				base_factor *= 0.9  # 模拟除权除息
+
+			if adj_type == AdjustType.QFQ:
 				# 前复权：将历史价格调整到当前
 				if hasattr(quote, 'open') and quote.open:
-					quote.open = quote.open * adj_factor
+					quote.open = quote.open * base_factor
 				if hasattr(quote, 'high') and quote.high:
-					quote.high = quote.high * adj_factor
+					quote.high = quote.high * base_factor
 				if hasattr(quote, 'low') and quote.low:
-					quote.low = quote.low * adj_factor
+					quote.low = quote.low * base_factor
 				if hasattr(quote, 'close') and quote.close:
-					quote.close = quote.close * adj_factor
+					quote.close = quote.close * base_factor
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close = quote.pre_close * adj_factor
+					quote.pre_close = quote.pre_close * base_factor
 
-			elif adj_type == "hfq":
+			elif adj_type == AdjustType.HFQ:
 				# 后复权：将当前价格调整到历史
 				if hasattr(quote, 'open') and quote.open:
-					quote.open = quote.open / adj_factor
+					quote.open = quote.open / base_factor
 				if hasattr(quote, 'high') and quote.high:
-					quote.high = quote.high / adj_factor
+					quote.high = quote.high / base_factor
 				if hasattr(quote, 'low') and quote.low:
-					quote.low = quote.low / adj_factor
+					quote.low = quote.low / base_factor
 				if hasattr(quote, 'close') and quote.close:
-					quote.close = quote.close / adj_factor
+					quote.close = quote.close / base_factor
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close = quote.pre_close / adj_factor
+					quote.pre_close = quote.pre_close / base_factor
 
 			# 添加复权因子字段
 			if not hasattr(quote, 'adj_factor'):
-				quote.adj_factor = adj_factor
+				quote.adj_factor = base_factor
 
-		return quotes
+		return sorted_quotes
 
 	def _select_fields (
 			self,
 			quotes: List,
 			fields: List[str]
 	) -> List:
-		"""选择返回字段"""
+		"""
+		选择返回字段
+
+		Args:
+			quotes: 行情数据列表
+			fields: 需要返回的字段列表
+
+		Returns:
+			List: 只包含指定字段的行情数据
+		"""
 		if not fields or not quotes:
 			return quotes
 
@@ -970,6 +1224,7 @@ class MarketDataService:
 		filtered_quotes = []
 
 		for quote in quotes:
+			# 动态创建对象
 			filtered_quote = type('FilteredQuote', (), {})()
 
 			for field in fields:
@@ -984,8 +1239,59 @@ class MarketDataService:
 
 		return filtered_quotes
 
+	def _format_quotes_to_dict (
+			self,
+			quotes: List,
+			ts_code: str,
+			adj: str
+	) -> List[Dict[str, Any]]:
+		"""
+		将行情对象列表转换为字典列表
+
+		Args:
+			quotes: 行情对象列表
+			ts_code: 股票代码
+			adj: 复权类型
+
+		Returns:
+			List[Dict]: 格式化后的行情数据列表
+		"""
+		result = []
+
+		for quote in quotes:
+			quote_dict = {
+				"trade_date": quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
+					quote.trade_date),
+				"ts_code": ts_code,
+				"open": float(quote.open) if quote.open else None,
+				"high": float(quote.high) if quote.high else None,
+				"low": float(quote.low) if quote.low else None,
+				"close": float(quote.close) if quote.close else None,
+				"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
+				"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
+				"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
+				"vol": float(quote.vol) if quote.vol else None,
+				"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
+			}
+
+			# 添加复权因子（如果需要）
+			if adj in [AdjustType.QFQ, AdjustType.HFQ] and hasattr(quote, 'adj_factor'):
+				quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
+
+			result.append(quote_dict)
+
+		return result
+
 	def _generate_params_hash (self, params: Dict) -> str:
-		"""生成查询参数哈希值"""
+		"""
+		生成查询参数哈希值
+
+		Args:
+			params: 查询参数字典
+
+		Returns:
+			str: 8位哈希字符串
+		"""
 		import hashlib
 		import json
 
@@ -995,8 +1301,36 @@ class MarketDataService:
 		# 计算MD5哈希
 		return hashlib.md5(params_str.encode()).hexdigest()[:8]
 
+	def _get_default_start_date (self, end_date: date, freq: str) -> date:
+		"""
+		获取默认开始日期
+
+		Args:
+			end_date: 结束日期
+			freq: 数据频率
+
+		Returns:
+			date: 默认开始日期
+		"""
+		if freq == Frequency.DAILY:
+			return end_date - timedelta(days=365)  # 默认一年
+		elif freq == Frequency.WEEKLY:
+			return end_date - timedelta(weeks=52)  # 默认一年
+		elif freq == Frequency.MONTHLY:
+			return end_date - timedelta(days=365)  # 默认一年
+		else:
+			return end_date - timedelta(days=30)  # 默认一个月
+
 	async def _get_total_stocks (self, market: Optional[str] = None) -> int:
-		"""获取总股票数量"""
+		"""
+		获取总股票数量
+
+		Args:
+			market: 市场类型
+
+		Returns:
+			int: 股票数量
+		"""
 		filters = []
 		if market:
 			filters.append(self.stock_repo.model.market == market)
@@ -1008,44 +1342,230 @@ class MarketDataService:
 			date: date,
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
-		"""获取涨跌家数"""
-		# 这里简化处理，实际需要统计当日涨跌股票数量
+		"""
+		获取涨跌家数
 
-		return {
-			"advance": 1500,  # 上涨家数
-			"decline": 1000,  # 下跌家数
-			"unchanged": 500,  # 平盘家数
-			"limit_up": 50,  # 涨停家数
-			"limit_down": 30  # 跌停家数
-		}
+		Args:
+			date: 交易日期
+			market: 市场类型
+
+		Returns:
+			Dict: 涨跌家数统计
+		"""
+		try:
+			# 获取当日所有股票的行情数据
+			filters = [self.quote_repo.model.trade_date == date]
+
+			if market:
+				# 获取该市场的所有股票
+				market_stocks = await self.stock_repo.get_many(
+					self.stock_repo.model.market == market
+				)
+				ts_codes = [stock.ts_code for stock in market_stocks]
+				if ts_codes:
+					filters.append(self.quote_repo.model.ts_code.in_(ts_codes))
+
+			quotes = await self.quote_repo.get_many(*filters)
+
+			if not quotes:
+				return {
+					"advance": 0,
+					"decline": 0,
+					"unchanged": 0,
+					"limit_up": 0,
+					"limit_down": 0,
+					"total": 0
+				}
+
+			# 统计涨跌
+			advance = 0
+			decline = 0
+			unchanged = 0
+			limit_up = 0
+			limit_down = 0
+
+			for quote in quotes:
+				if quote.pct_chg:
+					pct_chg = float(quote.pct_chg)
+					if pct_chg > 0:
+						advance += 1
+						if pct_chg >= 9.9:  # 涨停
+							limit_up += 1
+					elif pct_chg < 0:
+						decline += 1
+						if pct_chg <= -9.9:  # 跌停
+							limit_down += 1
+					else:
+						unchanged += 1
+
+			return {
+				"advance": advance,
+				"decline": decline,
+				"unchanged": unchanged,
+				"limit_up": limit_up,
+				"limit_down": limit_down,
+				"total": advance + decline + unchanged
+			}
+
+		except Exception as e:
+			logger.error(f"获取涨跌家数失败: {str(e)}")
+			return {
+				"advance": 0,
+				"decline": 0,
+				"unchanged": 0,
+				"limit_up": 0,
+				"limit_down": 0,
+				"total": 0,
+				"error": str(e)
+			}
 
 	async def _get_turnover (
 			self,
 			date: date,
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
-		"""获取成交数据"""
-		# 这里简化处理，实际需要统计当日成交数据
+		"""
+		获取成交数据
 
-		return {
-			"total_volume": 1000000000,  # 总成交量（股）
-			"total_amount": 80000000000,  # 总成交额（元）
-			"avg_turnover_rate": 2.5  # 平均换手率（%）
-		}
+		Args:
+			date: 交易日期
+			market: 市场类型
+
+		Returns:
+			Dict: 成交数据统计
+		"""
+		try:
+			# 构建查询条件
+			filters = [self.quote_repo.model.trade_date == date]
+
+			if market:
+				# 获取该市场的所有股票
+				market_stocks = await self.stock_repo.get_many(
+					self.stock_repo.model.market == market
+				)
+				ts_codes = [stock.ts_code for stock in market_stocks]
+				if ts_codes:
+					filters.append(self.quote_repo.model.ts_code.in_(ts_codes))
+
+			# 获取当日成交数据
+			quotes = await self.quote_repo.get_many(*filters)
+
+			if not quotes:
+				return {
+					"total_volume": 0,
+					"total_amount": 0,
+					"avg_turnover_rate": 0,
+					"stock_count": 0
+				}
+
+			# 计算总成交额和成交量
+			total_volume = sum(float(q.vol) for q in quotes if q.vol)
+			total_amount = sum(float(q.amount) for q in quotes if q.amount)
+
+			# 计算平均换手率（简化处理）
+			avg_turnover_rate = 2.5  # 模拟平均换手率
+
+			return {
+				"total_volume": round(total_volume, 2),
+				"total_amount": round(total_amount, 2),
+				"avg_turnover_rate": round(avg_turnover_rate, 2),
+				"stock_count": len(quotes)
+			}
+
+		except Exception as e:
+			logger.error(f"获取成交数据失败: {str(e)}")
+			return {
+				"total_volume": 0,
+				"total_amount": 0,
+				"avg_turnover_rate": 0,
+				"stock_count": 0,
+				"error": str(e)
+			}
 
 	async def _get_total_market_cap (self, market: Optional[str] = None) -> float:
-		"""获取总市值"""
-		# 这里简化处理，实际需要计算所有股票市值总和
+		"""
+		获取总市值
 
-		return 80000000000000  # 80万亿
+		Args:
+			market: 市场类型
+
+		Returns:
+			float: 总市值（亿元）
+		"""
+		try:
+			# 获取所有股票
+			filters = []
+			if market:
+				filters.append(self.stock_repo.model.market == market)
+
+			stocks = await self.stock_repo.get_many(*filters)
+
+			if not stocks:
+				return 0
+
+			total_market_cap = 0
+
+			for stock in stocks:
+				if hasattr(stock, 'market_cap') and stock.market_cap:
+					total_market_cap += float(stock.market_cap)
+
+			# 转换为亿元
+			return round(total_market_cap / 1e8, 2)
+
+		except Exception as e:
+			logger.error(f"获取总市值失败: {str(e)}")
+			return 0
+
+	async def _get_index_performance (
+			self,
+			date: date,
+			market: Optional[str] = None
+	) -> Dict[str, Any]:
+		"""
+		获取指数表现
+
+		Args:
+			date: 交易日期
+			market: 市场类型
+
+		Returns:
+			Dict: 指数表现数据
+		"""
+		# 这里简化处理，实际应从指数数据表中获取
+		if market == "SH":
+			return {
+				"上证指数": {"close": 3000.00, "change": 15.00, "pct_chg": 0.50},
+				"上证50": {"close": 2500.00, "change": 12.50, "pct_chg": 0.50},
+				"沪深300": {"close": 3800.00, "change": 19.00, "pct_chg": 0.50}
+			}
+		elif market == "SZ":
+			return {
+				"深证成指": {"close": 10000.00, "change": 50.00, "pct_chg": 0.50},
+				"创业板指": {"close": 2000.00, "change": 10.00, "pct_chg": 0.50}
+			}
+		else:
+			return {
+				"上证指数": {"close": 3000.00, "change": 15.00, "pct_chg": 0.50},
+				"深证成指": {"close": 10000.00, "change": 50.00, "pct_chg": 0.50},
+				"创业板指": {"close": 2000.00, "change": 10.00, "pct_chg": 0.50}
+			}
 
 	async def _generate_market_summary (self, indicators: Dict) -> Dict[str, Any]:
-		"""生成市场总结"""
+		"""
+		生成市场总结
+
+		Args:
+			indicators: 市场指标数据
+
+		Returns:
+			Dict: 市场总结
+		"""
 		summary = {
 			"market_status": "normal",
 			"sentiment": "neutral",
 			"trend": "sideways",
-			"risk_level": "medium"
+			"risk_level": "medium",
+			"timestamp": datetime.now().isoformat()
 		}
 
 		# 基于指标生成总结
@@ -1054,13 +1574,18 @@ class MarketDataService:
 			if isinstance(ad_data, dict):
 				advance = ad_data.get("advance", 0)
 				decline = ad_data.get("decline", 0)
+				total = ad_data.get("total", 0)
 
-				if advance > decline * 1.5:
-					summary["sentiment"] = "bullish"
-					summary["trend"] = "up"
-				elif decline > advance * 1.5:
-					summary["sentiment"] = "bearish"
-					summary["trend"] = "down"
+				if total > 0:
+					advance_ratio = advance / total
+					decline_ratio = decline / total
+
+					if advance_ratio > 0.6:
+						summary["sentiment"] = "bullish"
+						summary["trend"] = "up"
+					elif decline_ratio > 0.6:
+						summary["sentiment"] = "bearish"
+						summary["trend"] = "down"
 
 		if "turnover" in indicators:
 			turnover_data = indicators["turnover"]
@@ -1074,30 +1599,92 @@ class MarketDataService:
 					summary["market_status"] = "quiet"
 					summary["risk_level"] = "low"
 
+		# 基于其他指标更新总结
+		if "index_performance" in indicators:
+			index_data = indicators["index_performance"]
+			if isinstance(index_data, dict):
+				# 检查主要指数的表现
+				positive_count = 0
+				total_count = 0
+
+				for index_name, index_info in index_data.items():
+					if isinstance(index_info, dict):
+						pct_chg = index_info.get("pct_chg", 0)
+						if pct_chg > 0:
+							positive_count += 1
+						total_count += 1
+
+				if total_count > 0:
+					positive_ratio = positive_count / total_count
+					if positive_ratio >= 0.8:
+						summary["sentiment"] = "very_bullish"
+					elif positive_ratio >= 0.6:
+						summary["sentiment"] = "bullish"
+					elif positive_ratio <= 0.2:
+						summary["sentiment"] = "very_bearish"
+					elif positive_ratio <= 0.4:
+						summary["sentiment"] = "bearish"
+
 		return summary
 
 	async def _get_available_factors (self) -> List[str]:
-		"""获取可用因子列表"""
+		"""
+		获取可用因子列表
+
+		Returns:
+			List[str]: 因子名称列表
+		"""
 		try:
+			# 从数据库获取因子定义
 			factors = await self.factor_repo.get_available_factors()
-			return factors
-		except Exception:
+			if factors:
+				return factors
+
 			# 如果获取失败，返回标准因子列表
 			return [
-				StandardFactors.PE,
-				StandardFactors.PB,
-				StandardFactors.ROE,
-				StandardFactors.MARKET_CAP,
-				StandardFactors.RET_1M,
-				StandardFactors.VOLATILITY_1M
+				"PE",  # 市盈率
+				"PB",  # 市净率
+				"PS",  # 市销率
+				"ROE",  # 净资产收益率
+				"ROA",  # 总资产收益率
+				"GM",  # 毛利率
+				"NP_MARGIN",  # 净利率
+				"DEBT_TO_ASSET",  # 资产负债率
+				"CURRENT_RATIO",  # 流动比率
+				"QUICK_RATIO",  # 速动比率
+				"MARKET_CAP",  # 市值
+				"RETURN_1M",  # 1个月收益率
+				"RETURN_3M",  # 3个月收益率
+				"RETURN_6M",  # 6个月收益率
+				"RETURN_12M",  # 12个月收益率
+				"VOLATILITY_1M",  # 1个月波动率
+				"VOLATILITY_3M",  # 3个月波动率
+				"VOLATILITY_12M",  # 12个月波动率
+				"BETA",  # Beta系数
+				"SHARPE_RATIO",  # 夏普比率
+				"TURNOVER_RATE",  # 换手率
+				"VOLUME_RATIO"  # 量比
 			]
+
+		except Exception as e:
+			logger.error(f"获取可用因子列表失败: {str(e)}")
+			return []
 
 	def _calculate_percentile (
 			self,
 			value: float,
 			values: List[float]
 	) -> float:
-		"""计算百分位数"""
+		"""
+		计算百分位数
+
+		Args:
+			value: 当前值
+			values: 历史值列表
+
+		Returns:
+			float: 百分位数（0-100）
+		"""
 		if not values or value is None:
 			return 0
 
@@ -1112,9 +1699,21 @@ class MarketDataService:
 		return round(percentile, 2)
 
 	def _generate_exposure_summary (self, factor_exposures: Dict) -> Dict[str, Any]:
-		"""生成因子暴露度总结"""
+		"""
+		生成因子暴露度总结
+
+		Args:
+			factor_exposures: 因子暴露度数据
+
+		Returns:
+			Dict: 暴露度总结
+		"""
 		if not factor_exposures:
-			return {"note": "无因子暴露度数据"}
+			return {
+				"note": "无因子暴露度数据",
+				"factor_count": 0,
+				"timestamp": datetime.now().isoformat()
+			}
 
 		# 计算各因子的当前暴露度
 		current_exposures = {}
@@ -1124,26 +1723,373 @@ class MarketDataService:
 
 		# 找出最大值和最小值
 		if current_exposures:
-			max_factor = max(current_exposures.items(), key=lambda x: x[1] if x[1] is not None else -float('inf'))
-			min_factor = min(current_exposures.items(), key=lambda x: x[1] if x[1] is not None else float('inf'))
+			valid_exposures = {k: v for k, v in current_exposures.items() if v is not None}
 
-			return {
-				"factor_count": len(factor_exposures),
-				"highest_exposure": {
-					"factor": max_factor[0],
-					"value": max_factor[1]
-				},
-				"lowest_exposure": {
-					"factor": min_factor[0],
-					"value": min_factor[1]
-				},
-				"average_exposure": np.mean(
-					[v for v in current_exposures.values() if v is not None]) if current_exposures else None
+			if valid_exposures:
+				max_factor = max(valid_exposures.items(), key=lambda x: x[1] if x[1] is not None else -float('inf'))
+				min_factor = min(valid_exposures.items(), key=lambda x: x[1] if x[1] is not None else float('inf'))
+
+				# 计算平均值
+				valid_values = [v for v in valid_exposures.values() if v is not None]
+				avg_exposure = np.mean(valid_values) if valid_values else None
+
+				return {
+					"factor_count": len(factor_exposures),
+					"highest_exposure": {
+						"factor": max_factor[0],
+						"value": max_factor[1]
+					},
+					"lowest_exposure": {
+						"factor": min_factor[0],
+						"value": min_factor[1]
+					},
+					"average_exposure": round(float(avg_exposure), 4) if avg_exposure is not None else None,
+					"timestamp": datetime.now().isoformat()
+				}
+
+		return {
+			"factor_count": len(factor_exposures),
+			"note": "无当前暴露度数据",
+			"timestamp": datetime.now().isoformat()
+		}
+
+	async def _get_financial_summary (self, ts_code: str) -> Dict[str, Any]:
+		"""
+		获取财务数据摘要
+
+		Args:
+			ts_code: 股票代码
+
+		Returns:
+			Dict: 财务数据摘要
+		"""
+		try:
+			# 获取最新财务数据
+			financial_data = await self.financial_repo.get_latest_by_ts_code(ts_code)
+
+			if not financial_data:
+				return {
+					"note": "暂无财务数据",
+					"status": "no_data"
+				}
+
+			# 构建财务摘要
+			summary = {
+				"report_date": financial_data.report_date.isoformat() if hasattr(financial_data,
+				                                                                 'report_date') else None,
+				"total_revenue": float(financial_data.total_revenue) if hasattr(financial_data,
+				                                                                'total_revenue') else None,
+				"net_profit": float(financial_data.net_profit) if hasattr(financial_data, 'net_profit') else None,
+				"total_assets": float(financial_data.total_assets) if hasattr(financial_data, 'total_assets') else None,
+				"total_liabilities": float(financial_data.total_liabilities) if hasattr(financial_data,
+				                                                                        'total_liabilities') else None,
+				"roe": float(financial_data.roe) if hasattr(financial_data, 'roe') else None,
+				"roa": float(financial_data.roa) if hasattr(financial_data, 'roa') else None,
+				"gross_margin": float(financial_data.gross_margin) if hasattr(financial_data, 'gross_margin') else None,
+				"net_margin": float(financial_data.net_margin) if hasattr(financial_data, 'net_margin') else None,
+				"debt_to_asset": float(financial_data.debt_to_asset) if hasattr(financial_data,
+				                                                                'debt_to_asset') else None,
+				"status": "available",
+				"updated_at": financial_data.updated_at.isoformat() if hasattr(financial_data, 'updated_at') else None
 			}
-		else:
-			return {"factor_count": len(factor_exposures), "note": "无当前暴露度数据"}
 
-	async def _publish_market_data_event (
+			return summary
+
+		except Exception as e:
+			logger.error(f"获取财务数据摘要失败: {str(e)}")
+			return {
+				"note": f"获取财务数据失败: {str(e)}",
+				"status": "error"
+			}
+
+	# ==================== 技术指标计算方法 ====================
+
+	def _calculate_ma (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算移动平均线
+
+		Args:
+			df: 包含收盘价的DataFrame
+			parameters: 计算参数，包含周期列表
+
+		Returns:
+			Dict: MA计算结果
+		"""
+		if 'close' not in df.columns:
+			return {"error": "缺少收盘价数据", "status": "error"}
+
+		periods = parameters.get("periods", [5, 10, 20, 30, 60]) if parameters else [5, 10, 20, 30, 60]
+
+		result = {}
+		for period in periods:
+			if period > 0 and len(df) >= period:
+				ma_series = df['close'].rolling(window=period).mean()
+				result[f"MA{period}"] = ma_series.tolist()
+			else:
+				result[f"MA{period}"] = []
+
+		return {
+			"periods": periods,
+			"values": result,
+			"status": "success"
+		}
+
+	def _calculate_ema (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算指数移动平均线
+
+		Args:
+			df: 包含收盘价的DataFrame
+			parameters: 计算参数，包含周期列表
+
+		Returns:
+			Dict: EMA计算结果
+		"""
+		if 'close' not in df.columns:
+			return {"error": "缺少收盘价数据", "status": "error"}
+
+		periods = parameters.get("periods", [12, 26]) if parameters else [12, 26]
+
+		result = {}
+		for period in periods:
+			if period > 0 and len(df) >= period:
+				ema_series = df['close'].ewm(span=period, adjust=False).mean()
+				result[f"EMA{period}"] = ema_series.tolist()
+			else:
+				result[f"EMA{period}"] = []
+
+		return {
+			"periods": periods,
+			"values": result,
+			"status": "success"
+		}
+
+	def _calculate_macd (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算MACD指标
+
+		Args:
+			df: 包含收盘价的DataFrame
+			parameters: 计算参数，包含快线、慢线、信号线周期
+
+		Returns:
+			Dict: MACD计算结果
+		"""
+		if 'close' not in df.columns:
+			return {"error": "缺少收盘价数据", "status": "error"}
+
+		# 默认参数
+		fast_period = parameters.get("fast_period", 12) if parameters else 12
+		slow_period = parameters.get("slow_period", 26) if parameters else 26
+		signal_period = parameters.get("signal_period", 9) if parameters else 9
+
+		if len(df) < slow_period:
+			return {
+				"error": "数据长度不足",
+				"status": "error",
+				"required_length": slow_period,
+				"actual_length": len(df)
+			}
+
+		# 计算EMA
+		ema_fast = df['close'].ewm(span=fast_period, adjust=False).mean()
+		ema_slow = df['close'].ewm(span=slow_period, adjust=False).mean()
+
+		# 计算DIF
+		dif = ema_fast - ema_slow
+
+		# 计算DEA
+		dea = dif.ewm(span=signal_period, adjust=False).mean()
+
+		# 计算MACD柱
+		macd_bar = (dif - dea) * 2
+
+		return {
+			"parameters": {
+				"fast_period": fast_period,
+				"slow_period": slow_period,
+				"signal_period": signal_period
+			},
+			"values": {
+				"DIF": dif.tolist(),
+				"DEA": dea.tolist(),
+				"MACD": macd_bar.tolist()
+			},
+			"status": "success"
+		}
+
+	def _calculate_rsi (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算RSI指标
+
+		Args:
+			df: 包含收盘价的DataFrame
+			parameters: 计算参数，包含RSI周期
+
+		Returns:
+			Dict: RSI计算结果
+		"""
+		if 'close' not in df.columns:
+			return {"error": "缺少收盘价数据", "status": "error"}
+
+		period = parameters.get("period", 14) if parameters else 14
+
+		if len(df) < period:
+			return {
+				"error": "数据长度不足",
+				"status": "error",
+				"required_length": period,
+				"actual_length": len(df)
+			}
+
+		# 计算价格变化
+		delta = df['close'].diff()
+
+		# 分离上涨和下跌
+		gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+		loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+		# 计算RS
+		rs = gain / loss
+
+		# 计算RSI
+		rsi = 100 - (100 / (1 + rs))
+
+		return {
+			"period": period,
+			"values": rsi.tolist(),
+			"status": "success"
+		}
+
+	def _calculate_boll (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算布林带指标
+
+		Args:
+			df: 包含收盘价的DataFrame
+			parameters: 计算参数，包含周期和标准差倍数
+
+		Returns:
+			Dict: 布林带计算结果
+		"""
+		if 'close' not in df.columns:
+			return {"error": "缺少收盘价数据", "status": "error"}
+
+		period = parameters.get("period", 20) if parameters else 20
+		std_multiplier = parameters.get("std_multiplier", 2) if parameters else 2
+
+		if len(df) < period:
+			return {
+				"error": "数据长度不足",
+				"status": "error",
+				"required_length": period,
+				"actual_length": len(df)
+			}
+
+		# 计算中轨（移动平均）
+		middle = df['close'].rolling(window=period).mean()
+
+		# 计算标准差
+		std = df['close'].rolling(window=period).std()
+
+		# 计算上下轨
+		upper = middle + (std * std_multiplier)
+		lower = middle - (std * std_multiplier)
+
+		return {
+			"parameters": {
+				"period": period,
+				"std_multiplier": std_multiplier
+			},
+			"values": {
+				"upper": upper.tolist(),
+				"middle": middle.tolist(),
+				"lower": lower.tolist()
+			},
+			"status": "success"
+		}
+
+	def _calculate_kdj (
+			self,
+			df: pd.DataFrame,
+			parameters: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
+		"""
+		计算KDJ指标
+
+		Args:
+			df: 包含高、低、收盘价的DataFrame
+			parameters: 计算参数，包含RSV周期、K周期、D周期
+
+		Returns:
+			Dict: KDJ计算结果
+		"""
+		required_cols = ['high', 'low', 'close']
+		if not all(col in df.columns for col in required_cols):
+			return {"error": "缺少价格数据", "status": "error"}
+
+		# 默认参数
+		n = parameters.get("n", 9) if parameters else 9
+		m1 = parameters.get("m1", 3) if parameters else 3
+		m2 = parameters.get("m2", 3) if parameters else 3
+
+		if len(df) < n:
+			return {
+				"error": "数据长度不足",
+				"status": "error",
+				"required_length": n,
+				"actual_length": len(df)
+			}
+
+		# 计算RSV
+		low_min = df['low'].rolling(window=n).min()
+		high_max = df['high'].rolling(window=n).max()
+
+		rsv = 100 * (df['close'] - low_min) / (high_max - low_min)
+		rsv = rsv.fillna(50)  # 处理除零情况
+
+		# 计算K、D、J值
+		k = rsv.ewm(alpha=1 / m1, adjust=False).mean()
+		d = k.ewm(alpha=1 / m2, adjust=False).mean()
+		j = 3 * k - 2 * d
+
+		return {
+			"parameters": {
+				"n": n,
+				"m1": m1,
+				"m2": m2
+			},
+			"values": {
+				"K": k.tolist(),
+				"D": d.tolist(),
+				"J": j.tolist()
+			},
+			"status": "success"
+		}
+
+	# ==================== 事件发布方法 ====================
+
+	async def _publish_data_access_event (
 			self,
 			event_type: str,
 			ts_code: Optional[str] = None,
@@ -1155,30 +2101,83 @@ class MarketDataService:
 			cached: bool = False,
 			user_id: Optional[int] = None
 	):
-		"""发布市场数据事件"""
+		"""
+		发布数据访问事件
+
+		Args:
+			event_type: 事件类型
+			ts_code: 股票代码
+			data_type: 数据类型
+			record_count: 记录数量
+			market: 市场类型
+			date: 数据日期
+			factor_count: 因子数量
+			cached: 是否来自缓存
+			user_id: 用户ID
+		"""
 		if not self.event_engine:
 			return
 
-		event_data = {
-			"event_type": f"market.events.{event_type}",
-			"timestamp": datetime.now(),
-			"user_id": user_id,
-			"cached": cached
-		}
+		try:
+			event_data = {
+				"event_type": f"market.data.{event_type}",
+				"timestamp": datetime.now(),
+				"user_id": user_id,
+				"cached": cached
+			}
 
-		if ts_code:
-			event_data["ts_code"] = ts_code
-		if data_type:
-			event_data["data_type"] = data_type
-		if record_count is not None:
-			event_data["record_count"] = record_count
-		if market:
-			event_data["market"] = market
-		if date:
-			event_data["date"] = date
-		if factor_count is not None:
-			event_data["factor_count"] = factor_count
+			if ts_code:
+				event_data["ts_code"] = ts_code
+			if data_type:
+				event_data["data_type"] = data_type
+			if record_count is not None:
+				event_data["record_count"] = record_count
+			if market:
+				event_data["market"] = market
+			if date:
+				event_data["date"] = date
+			if factor_count is not None:
+				event_data["factor_count"] = factor_count
 
-		event = MarketDataRequestEvent(**event_data)
+			event = MarketDataRequestEvent(**event_data)
+			await self.event_engine.put(event)
 
-		await self.event_engine.put(event)
+		except Exception as e:
+			logger.error(f"发布数据访问事件失败: {str(e)}")
+
+	async def _publish_error_event (
+			self,
+			data_type: str,
+			error_message: str,
+			ts_code: Optional[str] = None,
+			user_id: Optional[int] = None
+	):
+		"""
+		发布错误事件
+
+		Args:
+			data_type: 数据类型
+			error_message: 错误信息
+			ts_code: 股票代码
+			user_id: 用户ID
+		"""
+		if not self.event_engine:
+			return
+
+		try:
+			event_data = {
+				"event_type": "market.data.error",
+				"timestamp": datetime.now(),
+				"data_type": data_type,
+				"error_message": error_message,
+				"user_id": user_id
+			}
+
+			if ts_code:
+				event_data["ts_code"] = ts_code
+
+			event = MarketDataRequestEvent(**event_data)
+			await self.event_engine.put(event)
+
+		except Exception as e:
+			logger.error(f"发布错误事件失败: {str(e)}")

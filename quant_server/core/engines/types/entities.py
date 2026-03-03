@@ -292,7 +292,7 @@ class MarketData(BaseEntity):
 
 
 @dataclass(frozen=True)
-class TickData(MarketData):
+class TickData(BaseEntity):
     """Tick数据"""
     price: Decimal                       # 最新价
     volume: Decimal                      # 成交量
@@ -305,7 +305,7 @@ class TickData(MarketData):
 
 
 @dataclass(frozen=True)
-class BarData(MarketData):
+class BarData(BaseEntity):
     """K线数据"""
     open: Decimal                        # 开盘价
     high: Decimal                        # 最高价
@@ -400,7 +400,7 @@ class Event(BaseEntity):
     source: str                          # 事件来源
     data: Dict[str, Any] = field(default_factory=dict)  # 事件数据
     timestamp: datetime = field(default_factory=datetime.now)  # 时间戳
-    priority: int = 1                     # 优先级
+    priority: str = "normal"                     # 优先级
     metadata: Dict[str, Any] = field(default_factory=dict)  # 元数据
 
 

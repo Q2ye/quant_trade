@@ -218,7 +218,7 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			409: "CONFLICT",
 			422: "UNPROCESSABLE_ENTITY",
 			429: "TOO_MANY_REQUESTS",
-			500: "INTERNAL_SERVER_ERROR",
+			500: "INTERNAL_ERROR",
 			503: "SERVICE_UNAVAILABLE"
 		}
 		return mapping.get(status_code, "UNKNOWN_ERROR")

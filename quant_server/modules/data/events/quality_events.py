@@ -11,7 +11,6 @@
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from dataclasses import field
 
 from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.data.events.types import DataEventType
@@ -57,6 +56,19 @@ class DataQualityCheckStartedEvent(BaseEvent):
         }
 
 
+def _get_fix_suggestion(issue_type: str) -> str:
+    """根据问题类型提供修复建议"""
+    suggestions = {
+        "missing_value": "检查数据源或使用插值法填充",
+        "outlier": "验证数据准确性或使用Winsorize处理",
+        "duplicate": "删除重复记录或标记为重复",
+        "inconsistent_format": "统一数据格式标准",
+        "out_of_range": "检查数据采集过程",
+        "null_inconsistency": "明确NULL值处理策略"
+    }
+    return suggestions.get(issue_type, "需要人工检查")
+
+
 class DataQualityIssueFoundEvent(BaseEvent):
     """
     发现数据质量问题事件
@@ -99,20 +111,32 @@ class DataQualityIssueFoundEvent(BaseEvent):
             "issue_details": issue_details or {},
             "detection_time": datetime.now().isoformat(),
             "status": "detected",  # detected, acknowledged, fixed
-            "fix_suggestion": self._get_fix_suggestion(issue_type)
+            "fix_suggestion": _get_fix_suggestion(issue_type)
         }
 
-    def _get_fix_suggestion(self, issue_type: str) -> str:
-        """根据问题类型提供修复建议"""
-        suggestions = {
-            "missing_value": "检查数据源或使用插值法填充",
-            "outlier": "验证数据准确性或使用Winsorize处理",
-            "duplicate": "删除重复记录或标记为重复",
-            "inconsistent_format": "统一数据格式标准",
-            "out_of_range": "检查数据采集过程",
-            "null_inconsistency": "明确NULL值处理策略"
-        }
-        return suggestions.get(issue_type, "需要人工检查")
+
+def _calculate_quality_score(pass_rate: float, issue_summary: Dict[str, int]) -> float:
+    """
+    计算数据质量评分
+    基于通过率和问题严重程度
+    """
+    base_score = pass_rate
+
+    # 根据问题类型扣分
+    penalty = 0
+    for issue_type, count in issue_summary.items():
+        if issue_type == "critical":
+            penalty += count * 10
+        elif issue_type == "high":
+            penalty += count * 5
+        elif issue_type == "medium":
+            penalty += count * 2
+        else:
+            penalty += count * 0.5
+
+    # 最终得分（0-100）
+    final_score = max(0, base_score - penalty)
+    return round(final_score, 1)
 
 
 class DataQualityCheckCompletedEvent(BaseEvent):
@@ -161,28 +185,6 @@ class DataQualityCheckCompletedEvent(BaseEvent):
             "duration_seconds": round(duration_seconds, 2),
             "report_path": report_path,
             "completion_time": datetime.now().isoformat(),
-            "quality_score": self._calculate_quality_score(pass_rate, issue_summary)
+            "quality_score": _calculate_quality_score(pass_rate, issue_summary)
         }
 
-    def _calculate_quality_score(self, pass_rate: float, issue_summary: Dict[str, int]) -> float:
-        """
-        计算数据质量评分
-        基于通过率和问题严重程度
-        """
-        base_score = pass_rate
-
-        # 根据问题类型扣分
-        penalty = 0
-        for issue_type, count in issue_summary.items():
-            if issue_type == "critical":
-                penalty += count * 10
-            elif issue_type == "high":
-                penalty += count * 5
-            elif issue_type == "medium":
-                penalty += count * 2
-            else:
-                penalty += count * 0.5
-
-        # 最终得分（0-100）
-        final_score = max(0, base_score - penalty)
-        return round(final_score, 1)

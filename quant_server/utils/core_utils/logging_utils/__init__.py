@@ -62,10 +62,6 @@ from .structured_logger import (
 	# 管理器
 	LogManager,
 
-	# 预配置
-	DEFAULT_VALIDATION_CONFIG,
-	DEFAULT_TRANSFORMATION_CONFIG,
-	DEFAULT_SAMPLING_CONFIG
 )
 
 from .log_formatter import (
@@ -181,12 +177,7 @@ __all__ = [
 	'with_async_context',
 	'ContextAwareFunction',
 	'context_aware',
-	'ContextFilter',
-
-	# 配置常量
-	'DEFAULT_VALIDATION_CONFIG',
-	'DEFAULT_TRANSFORMATION_CONFIG',
-	'DEFAULT_SAMPLING_CONFIG'
+	'ContextFilter'
 ]
 
 # 版本信息

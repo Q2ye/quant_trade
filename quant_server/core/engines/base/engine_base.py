@@ -26,14 +26,11 @@
 import asyncio
 import logging
 import uuid
-import signal
-import threading
-import time
 import traceback
 from abc import ABC, abstractmethod
-from dataclasses import field, dataclass
-from typing import Optional, Dict, Any, List, Set, Callable, Awaitable, Union
-from datetime import datetime, timedelta
+from dataclasses import field, dataclass, replace
+from typing import Optional, Dict, Any, List, Set, Callable
+from datetime import datetime
 from enum import Enum
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -175,7 +172,7 @@ class EngineStatusValidator:
 				self.TransitionHook.ROLLBACK: []
 			}
 
-		self._hooks[from_state][to_state][hook_type].append(hook_func)
+		self._hooks[from_state][to_state][hook_type.value].append(hook_func)
 		logger.debug(f"注册状态转换钩子: {from_state}->{to_state} [{hook_type.value}]")
 
 	async def execute_transition_hooks (
@@ -201,7 +198,7 @@ class EngineStatusValidator:
 			context = {}
 
 		# 获取钩子列表
-		hooks = self._hooks.get(from_state, {}).get(to_state, {}).get(hook_type, [])
+		hooks = self._hooks.get(from_state, {}).get(to_state, {}).get(hook_type.value, [])
 
 		for hook in hooks:
 			try:
@@ -595,9 +592,8 @@ class EngineMetricsUpdater:
 		# 最后尝试直接创建新对象
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, uptime=uptime)
-			except ImportError:
+			except Exception:
 				# 如果都没有，创建新的字典并构建新对象
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['uptime'] = uptime
@@ -621,9 +617,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(last_stop_time=last_stop_time)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, last_stop_time=last_stop_time)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_stop_time'] = last_stop_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -646,9 +641,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(last_update_time=last_update_time)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, last_update_time=last_update_time)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_update_time'] = last_update_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -671,9 +665,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(last_success_time=last_success_time)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, last_success_time=last_success_time)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_success_time'] = last_success_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -696,9 +689,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(last_error_time=last_error_time)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, last_error_time=last_error_time)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_error_time'] = last_error_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -721,9 +713,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(processed_events=current_count + 1)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, processed_events=current_count + 1)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['processed_events'] = current_count + 1
 				return EngineMetricsEntity(**metrics_dict)
@@ -746,9 +737,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(error_count=current_count + 1)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, error_count=current_count + 1)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['error_count'] = current_count + 1
 				return EngineMetricsEntity(**metrics_dict)
@@ -771,9 +761,8 @@ class EngineMetricsUpdater:
 			return metrics.replace(**kwargs)
 		else:
 			try:
-				from dataclasses import replace
 				return replace(metrics, **kwargs)
-			except ImportError:
+			except Exception:
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict.update(kwargs)
 				return EngineMetricsEntity(**metrics_dict)
@@ -860,10 +849,10 @@ class EngineBase(ABC):
 
 		# 重试策略
 		self.retry_strategy = {
-			"max_retries": config.max_retries or 3,
-			"retry_delay": config.retry_delay or 1.0,
-			"backoff_factor": config.backoff_factor or 2.0,
-			"max_delay": config.max_delay or 30.0
+			"max_retries": getattr(config, 'max_retries', 3) or 3,
+			"retry_delay": getattr(config, 'retry_delay', 1.0) or 1.0,
+			"backoff_factor": getattr(config, 'backoff_factor', 2.0) or 2.0,
+			"max_delay": getattr(config, 'max_delay', 30.0) or 30.0
 		}
 
 		# 状态验证器
@@ -1160,7 +1149,7 @@ class EngineBase(ABC):
 					logger.info(f"引擎启动成功: {self.config.name} (尝试次数: {attempt + 1})")
 					return True
 
-				except Exception as e:
+				except (RuntimeError, ValueError, TypeError, ConnectionError) as e:
 					# 记录错误
 					self.record.record_error(
 						f"启动失败: {str(e)}",
@@ -1227,6 +1216,18 @@ class EngineBase(ABC):
 
 						logger.error(f"引擎启动失败，超过最大重试次数: {self.config.name}, 错误: {e}")
 						raise
+				except Exception as e:
+					# 捕获其他异常
+					self.record.record_error(
+						f"启动失败: {str(e)}",
+						EngineErrorLevel.CRITICAL,
+						{
+							"exception_type": type(e).__name__,
+							"attempt": attempt + 1,
+							"max_retries": max_retries
+						}
+					)
+					raise
 
 			return False
 
@@ -1294,69 +1295,62 @@ class EngineBase(ABC):
 				await self._stop_background_tasks()
 
 				# 执行引擎特定的停止逻辑
-				stop_success = False
 				if not force:
 					# 尝试优雅停止
 					try:
 						await asyncio.wait_for(self._on_stop(), timeout=timeout)
-						stop_success = True
 					except asyncio.TimeoutError:
 						logger.warning(f"优雅停止超时，尝试强制停止: {self.config.name}")
 						if force:
 							await self._on_force_stop()
-							stop_success = True
 						else:
 							raise
 				else:
 					# 强制停止
 					await self._on_force_stop()
-					stop_success = True
 
-				if stop_success:
-					# 更新状态
-					self.record.update_status(ComponentStatus.STOPPED, "引擎停止成功")
-					self.record.end_time = datetime.now()
+				# 更新状态
+				self.record.update_status(ComponentStatus.STOPPED, "引擎停止成功")
+				self.record.end_time = datetime.now()
 
-					# 计算运行时长
-					uptime = self.record.get_uptime()
+				# 计算运行时长
+				uptime = self.record.get_uptime()
 
-					# 使用 EngineMetricsUpdater 更新指标
-					self.metrics = EngineMetricsUpdater.update_uptime(self.metrics, uptime or 0)
-					self.metrics = EngineMetricsUpdater.update_last_stop_time(self.metrics, self.record.end_time)
+				# 使用 EngineMetricsUpdater 更新指标
+				self.metrics = EngineMetricsUpdater.update_uptime(self.metrics, uptime or 0)
+				self.metrics = EngineMetricsUpdater.update_last_stop_time(self.metrics, self.record.end_time)
 
-					# 执行状态转换钩子
-					await self.status_validator.execute_transition_hooks(
-						ComponentStatus.STOPPING,
-						ComponentStatus.STOPPED,
-						EngineStatusValidator.TransitionHook.AFTER,
-						{"engine": self, "uptime": uptime}
-					)
+				# 执行状态转换钩子
+				await self.status_validator.execute_transition_hooks(
+					ComponentStatus.STOPPING,
+					ComponentStatus.STOPPED,
+					EngineStatusValidator.TransitionHook.AFTER,
+					{"engine": self, "uptime": uptime}
+				)
 
-					# 记录状态转换
-					self.status_validator.record_transition(
-						previous_status,
-						ComponentStatus.STOPPED,
-						True,
-						metadata={"uptime": uptime, "force": force}
-					)
+				# 记录状态转换
+				self.status_validator.record_transition(
+					previous_status,
+					ComponentStatus.STOPPED,
+					True,
+					metadata={"uptime": uptime, "force": force}
+				)
 
-					# 发布停止事件
-					await self._publish_event("engine_stopped", {
-						"engine_id": self.engine_id,
-						"engine_name": self.config.name,
-						"previous_status": previous_status.value,
-						"uptime": uptime,
-						"end_time": self.record.end_time.isoformat(),
-						"force": force,
-						"metrics": self.metrics.to_dict()
-					})
+				# 发布停止事件
+				await self._publish_event("engine_stopped", {
+					"engine_id": self.engine_id,
+					"engine_name": self.config.name,
+					"previous_status": previous_status.value,
+					"uptime": uptime,
+					"end_time": self.record.end_time.isoformat(),
+					"force": force,
+					"metrics": self.metrics.to_dict()
+				})
 
-					logger.info(f"引擎停止成功: {self.config.name}, 运行时长: {uptime:.1f}秒")
-					return True
-				else:
-					raise RuntimeError("停止失败")
+				logger.info(f"引擎停止成功: {self.config.name}, 运行时长: {uptime:.1f}秒")
+				return True
 
-			except Exception as e:
+			except (asyncio.TimeoutError, RuntimeError) as e:
 				# 记录错误
 				self.record.record_error(
 					f"停止失败: {str(e)}",
@@ -1395,6 +1389,14 @@ class EngineBase(ABC):
 				})
 
 				logger.error(f"引擎停止失败: {self.config.name}, 错误: {e}")
+				raise
+			except Exception as e:
+				# 捕获其他异常
+				self.record.record_error(
+					f"停止失败: {str(e)}",
+					EngineErrorLevel.CRITICAL,
+					{"exception_type": type(e).__name__, "force": force}
+				)
 				raise
 
 	async def restart (self) -> bool:
@@ -1439,7 +1441,7 @@ class EngineBase(ABC):
 
 			return result
 
-		except Exception as e:
+		except (RuntimeError, ValueError) as e:
 			logger.error(f"引擎重启失败: {self.config.name}, 错误: {e}")
 
 			# 发布重启失败事件
@@ -1450,6 +1452,9 @@ class EngineBase(ABC):
 				"timestamp": datetime.now().isoformat()
 			})
 
+			raise
+		except Exception as e:
+			logger.error(f"引擎重启失败: {self.config.name}, 错误: {e}")
 			raise
 
 	async def pause (self) -> bool:
@@ -1725,10 +1730,10 @@ class EngineBase(ABC):
 			"timestamp": datetime.now().isoformat(),
 			"config_summary": {
 				"name": self.config.name,
-				"description": self.config.description,
-				"version": self.config.version,
-				"max_retries": self.config.max_retries,
-				"health_check_interval": self.config.health_check_interval
+				"description": getattr(self.config, 'description', ''),
+				"version": getattr(self.config, 'version', '1.0.0'),
+				"max_retries": getattr(self.config, 'max_retries', 3),
+				"health_check_interval": getattr(self.config, 'health_check_interval', 5.0)
 			}
 		}
 
@@ -1753,6 +1758,10 @@ class EngineBase(ABC):
 					health_info["health"] = HealthStatus.DEGRADED.value
 					all_dependencies_healthy = False
 
+			except (RuntimeError, ValueError) as e:
+				dependency_health[dep_name] = {"error": str(e), "health": HealthStatus.FAILED.value}
+				logger.warning(f"检查依赖健康状态失败: {dep_name}, 错误: {e}")
+				all_dependencies_healthy = False
 			except Exception as e:
 				dependency_health[dep_name] = {"error": str(e), "health": HealthStatus.FAILED.value}
 				logger.warning(f"检查依赖健康状态失败: {dep_name}, 错误: {e}")
@@ -1783,7 +1792,7 @@ class EngineBase(ABC):
 		"""
 		logger.info(f"启动引擎监控循环: {self.config.name}")
 
-		check_interval = self.config.health_check_interval or 5.0
+		check_interval = getattr(self.config, 'health_check_interval', 5.0) or 5.0
 
 		try:
 			while self.record.status == ComponentStatus.RUNNING:
@@ -1813,7 +1822,7 @@ class EngineBase(ABC):
 				except asyncio.CancelledError:
 					# 任务被取消，正常退出，重新抛出异常
 					raise
-				except Exception as e:
+				except (RuntimeError, ValueError) as e:
 					logger.error(f"监控循环异常: {self.config.name}, 错误: {e}")
 
 					# 记录错误但不停止监控
@@ -1823,6 +1832,9 @@ class EngineBase(ABC):
 					)
 
 					# 短暂等待后继续
+					await asyncio.sleep(min(check_interval, 1.0))
+				except Exception as e:
+					logger.error(f"监控循环异常: {self.config.name}, 错误: {e}")
 					await asyncio.sleep(min(check_interval, 1.0))
 
 		except asyncio.CancelledError:
@@ -1854,11 +1866,22 @@ class EngineBase(ABC):
 		收集CPU、内存等系统资源使用情况。
 		需要psutil库支持。
 		"""
+		# 预先定义变量，避免引用前未赋值
+		psutil_module = None
+
 		try:
 			import psutil
+			psutil_module = psutil
 			import os
+		except ImportError:
+			# psutil不可用，跳过系统指标收集
+			if not hasattr(self, "_psutil_warning_logged"):
+				logger.debug("psutil未安装，跳过系统指标收集")
+				self._psutil_warning_logged = True
+			return
 
-			process = psutil.Process(os.getpid())
+		try:
+			process = psutil_module.Process(os.getpid())
 
 			# 收集内存使用情况
 			memory_info = process.memory_info()
@@ -1872,12 +1895,12 @@ class EngineBase(ABC):
 			thread_count = process.num_threads()
 			self.record.update_resource_usage(ResourceType.THREADS, thread_count)
 
-			# 收集连接数（如果有）
-			if hasattr(process, 'num_connections'):
+			# 收集网络连接数（使用net_connections方法）
+			if hasattr(process, 'net_connections'):
 				try:
-					connections = process.num_connections()
-					self.record.update_resource_usage(ResourceType.CONNECTIONS, len(connections))
-				except:
+					connections = process.net_connections()
+					self.record.update_resource_usage(ResourceType.NETWORK_CONNECTIONS, len(connections))
+				except (psutil_module.AccessDenied, psutil_module.NoSuchProcess):
 					pass
 
 			# 更新性能指标
@@ -1889,11 +1912,8 @@ class EngineBase(ABC):
 				"create_time": process.create_time()
 			})
 
-		except ImportError:
-			# psutil不可用，跳过系统指标收集
-			if not hasattr(self, "_psutil_warning_logged"):
-				logger.debug("psutil未安装，跳过系统指标收集")
-				self._psutil_warning_logged = True
+		except (psutil_module.AccessDenied, psutil_module.NoSuchProcess) as e:
+			logger.debug(f"收集系统指标失败（权限或进程问题）: {self.config.name}, 错误: {e}")
 		except Exception as e:
 			logger.debug(f"收集系统指标失败: {self.config.name}, 错误: {e}")
 
@@ -1926,7 +1946,7 @@ class EngineBase(ABC):
 
 				logger.debug(f"发布事件: {event_type} from {self.config.name}")
 
-			except Exception as e:
+			except (RuntimeError, ValueError) as e:
 				logger.error(f"发布事件失败: {self.config.name}, 错误: {e}")
 
 				# 使用 EngineMetricsUpdater 更新错误指标
@@ -1934,6 +1954,13 @@ class EngineBase(ABC):
 				self.metrics = EngineMetricsUpdater.update_last_error_time(self.metrics, datetime.now())
 
 				# 记录错误但不抛出异常
+				self.record.record_error(
+					f"发布事件失败: {str(e)}",
+					EngineErrorLevel.WARNING,
+					{"event_type": event_type}
+				)
+			except Exception as e:
+				logger.error(f"发布事件失败: {self.config.name}, 错误: {e}")
 				self.record.record_error(
 					f"发布事件失败: {str(e)}",
 					EngineErrorLevel.WARNING,
@@ -2083,15 +2110,15 @@ class EngineBase(ABC):
 			"timestamp": datetime.now().isoformat()
 		})
 
-	async def _handle_debug_error (self, error: Exception, context: Dict[str, Any]):
+	async def _handle_debug_error (self, error: Exception, context: Dict[str, Any] = None):
 		"""处理DEBUG级别错误"""
 		logger.debug(f"引擎DEBUG错误: {self.config.name}, 错误: {error}")
 
-	async def _handle_info_error (self, error: Exception, context: Dict[str, Any]):
+	async def _handle_info_error (self, error: Exception, context: Dict[str, Any] = None):
 		"""处理INFO级别错误"""
 		logger.info(f"引擎INFO错误: {self.config.name}, 错误: {error}")
 
-	async def _handle_warning_error (self, error: Exception, context: Dict[str, Any]):
+	async def _handle_warning_error (self, error: Exception, context: Dict[str, Any] = None):
 		"""处理WARNING级别错误"""
 		logger.warning(f"引擎WARNING错误: {self.config.name}, 错误: {error}")
 
@@ -2099,7 +2126,7 @@ class EngineBase(ABC):
 		if self.record.status == ComponentStatus.RUNNING:
 			await self._try_auto_recover(error, context)
 
-	async def _handle_error_error (self, error: Exception, context: Dict[str, Any]):
+	async def _handle_error_error (self, error: Exception, context: Dict[str, Any] = None):
 		"""处理ERROR级别错误"""
 		logger.error(f"引擎ERROR错误: {self.config.name}, 错误: {error}")
 
@@ -2109,7 +2136,7 @@ class EngineBase(ABC):
 		# 尝试自动恢复
 		recovery_success = await self._try_auto_recover(error, context)
 
-		if not recovery_success and self.config.auto_restart_on_error:
+		if not recovery_success and getattr(self.config, 'auto_restart_on_error', False):
 			# 自动重启
 			logger.info(f"尝试自动重启引擎: {self.config.name}")
 			try:
@@ -2117,7 +2144,7 @@ class EngineBase(ABC):
 			except Exception as restart_error:
 				logger.error(f"自动重启失败: {self.config.name}, 错误: {restart_error}")
 
-	async def _handle_critical_error (self, error: Exception, context: Dict[str, Any]):
+	async def _handle_critical_error (self, error: Exception, context: Dict[str, Any] = None):
 		"""处理CRITICAL级别错误"""
 		logger.critical(f"引擎CRITICAL错误: {self.config.name}, 错误: {error}")
 
@@ -2131,7 +2158,7 @@ class EngineBase(ABC):
 		except Exception as stop_error:
 			logger.error(f"紧急停止失败: {self.config.name}, 错误: {stop_error}")
 
-	async def _try_auto_recover (self, error: Exception, context: Dict[str, Any]) -> bool:
+	async def _try_auto_recover (self, error: Exception, context: Dict[str, Any] = None) -> bool:
 		"""
 		尝试自动恢复
 
@@ -2273,7 +2300,7 @@ class EngineBase(ABC):
 		"""
 		pass
 
-	async def _on_auto_recover (self, error: Exception, context: Dict[str, Any]) -> bool:
+	async def _on_auto_recover (self, error: Exception, context: Dict[str, Any] = None) -> bool:
 		"""
 		引擎特定的自动恢复逻辑
 
@@ -2303,15 +2330,18 @@ class EngineBase(ABC):
 		if not self.config.name:
 			raise ValueError("引擎名称不能为空")
 
-		if self.config.max_retries is not None and self.config.max_retries < 0:
+		max_retries = getattr(self.config, 'max_retries', None)
+		if max_retries is not None and max_retries < 0:
 			raise ValueError("最大重试次数不能为负数")
 
-		if self.config.health_check_interval is not None and self.config.health_check_interval <= 0:
+		health_check_interval = getattr(self.config, 'health_check_interval', None)
+		if health_check_interval is not None and health_check_interval <= 0:
 			raise ValueError("健康检查间隔必须大于0")
 
 		logger.debug(f"引擎配置验证通过: {self.config.name}")
 
-	def _validate_config_update (self, config_data: Dict[str, Any]) -> bool:
+	@staticmethod
+	def _validate_config_update (config_data: Dict[str, Any]) -> bool:
 		"""
 		验证配置更新
 
@@ -2324,9 +2354,9 @@ class EngineBase(ABC):
 		# 检查不允许动态更新的配置项
 		immutable_fields = ["name", "engine_type", "version"]
 
-		for field in immutable_fields:
-			if field in config_data:
-				logger.warning(f"尝试更新不可变配置项: {field}")
+		for field_name in immutable_fields:
+			if field_name in config_data:
+				logger.warning(f"尝试更新不可变配置项: {field_name}")
 				return False
 
 		# 验证配置值
@@ -2353,12 +2383,13 @@ class EngineBase(ABC):
 				setattr(self.config, key, value)
 
 		# 更新重试策略
-		if any(field in config_data for field in ["max_retries", "retry_delay", "backoff_factor", "max_delay"]):
+		if any(field_name in config_data for field_name in
+		       ["max_retries", "retry_delay", "backoff_factor", "max_delay"]):
 			self.retry_strategy = {
-				"max_retries": self.config.max_retries or 3,
-				"retry_delay": self.config.retry_delay or 1.0,
-				"backoff_factor": self.config.backoff_factor or 2.0,
-				"max_delay": self.config.max_delay or 30.0
+				"max_retries": getattr(self.config, 'max_retries', 3) or 3,
+				"retry_delay": getattr(self.config, 'retry_delay', 1.0) or 1.0,
+				"backoff_factor": getattr(self.config, 'backoff_factor', 2.0) or 2.0,
+				"max_delay": getattr(self.config, 'max_delay', 30.0) or 30.0
 			}
 
 		logger.info(f"引擎配置已应用更新: {self.config.name}")
@@ -2369,7 +2400,7 @@ class EngineBase(ABC):
 			import signal
 
 			# 定义信号处理函数
-			def signal_handler (signum, frame):
+			def signal_handler (signum, _):
 				logger.info(f"接收到信号 {signum}，准备优雅关闭引擎: {self.config.name}")
 				asyncio.create_task(self._graceful_shutdown())
 
@@ -2377,7 +2408,7 @@ class EngineBase(ABC):
 			signal.signal(signal.SIGINT, signal_handler)
 			signal.signal(signal.SIGTERM, signal_handler)
 
-		except (ImportError, AttributeError):
+		except (ImportError, AttributeError, ValueError):
 			# 在某些环境中可能无法设置信号处理器
 			logger.debug("无法设置信号处理器（可能不在主线程中）")
 
@@ -2405,7 +2436,7 @@ class EngineBase(ABC):
 
 			logger.info(f"引擎优雅关闭完成: {self.config.name}")
 
-		except Exception as e:
+		except (RuntimeError, asyncio.TimeoutError) as e:
 			logger.error(f"优雅关闭失败: {self.config.name}, 错误: {e}")
 
 			# 发布关闭失败事件
@@ -2415,6 +2446,8 @@ class EngineBase(ABC):
 				"error": str(e),
 				"timestamp": datetime.now().isoformat()
 			})
+		except Exception as e:
+			logger.error(f"优雅关闭失败: {self.config.name}, 错误: {e}")
 
 	async def _start_background_tasks (self):
 		"""启动后台任务"""
@@ -2424,11 +2457,11 @@ class EngineBase(ABC):
 	async def _stop_background_tasks (self):
 		"""停止后台任务"""
 		# 停止所有后台任务
-		for task in self.background_tasks:
-			if not task.done():
-				task.cancel()
+		for bg_task in self.background_tasks:
+			if not bg_task.done():
+				bg_task.cancel()
 				try:
-					await task
+					await bg_task
 				except asyncio.CancelledError:
 					pass
 
@@ -2448,8 +2481,8 @@ class EngineBase(ABC):
 		self.background_tasks.add(task)
 
 		# 添加完成回调以从集合中移除任务
-		def remove_task (task):
-			self.background_tasks.discard(task)
+		def remove_task (t):
+			self.background_tasks.discard(t)
 
 		task.add_done_callback(remove_task)
 
@@ -2519,10 +2552,14 @@ class EngineBase(ABC):
 			else:
 				logger.warning(f"引擎上下文意外取消: {self.config.name}")
 				raise
-		except Exception as e:
+		except (RuntimeError, ValueError) as e:
 			logger.error(f"引擎上下文执行异常: {self.config.name}, 错误: {e}")
 
 			# 自动处理错误
+			await self.handle_error(e, EngineErrorLevel.ERROR)
+			raise
+		except Exception as e:
+			logger.error(f"引擎上下文执行异常: {self.config.name}, 错误: {e}")
 			await self.handle_error(e, EngineErrorLevel.ERROR)
 			raise
 
@@ -2551,7 +2588,7 @@ class EngineBase(ABC):
 			for attempt in range(max_retries + 1):
 				try:
 					return await func(*args, **kwargs)
-				except Exception as e:
+				except (RuntimeError, ValueError, ConnectionError) as e:
 					last_exception = e
 
 					if attempt < max_retries:
@@ -2596,6 +2633,11 @@ class EngineBase(ABC):
 						)
 
 						raise
+				except Exception as e:
+					# 捕获其他异常，直接抛出
+					logger.error(f"函数执行失败: {e}")
+					await self.handle_error(e, EngineErrorLevel.ERROR)
+					raise
 
 			# 理论上不会执行到这里
 			raise last_exception
@@ -2643,10 +2685,10 @@ class EngineBase(ABC):
 		# 尝试清理资源
 		try:
 			if hasattr(self, 'background_tasks'):
-				for task in self.background_tasks:
-					if not task.done():
-						task.cancel()
+				for bg_task in self.background_tasks:
+					if not bg_task.done():
+						bg_task.cancel()
 
 			logger.debug(f"引擎资源清理: {self.config.name}")
-		except:
+		except Exception:
 			pass  # 忽略析构过程中的异常

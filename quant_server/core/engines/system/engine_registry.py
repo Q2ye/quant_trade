@@ -14,7 +14,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -23,8 +23,7 @@ from ..types.enums import (
     EngineType,
     EngineCategory,
     ComponentStatus,
-    HealthStatus,
-    PriorityLevel
+    HealthStatus
 )
 
 # 导入引擎基类
@@ -155,7 +154,7 @@ class EngineRegistry:
 
     async def register_engine(self,
                              engine: EngineBase,
-                             category: EngineCategory = EngineCategory.BUSINESS,
+                             category: EngineCategory,
                              tags: Optional[List[str]] = None,
                              metadata: Optional[Dict[str, Any]] = None) -> bool:
         """注册引擎

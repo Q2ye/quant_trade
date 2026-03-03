@@ -9,11 +9,10 @@
 """
 
 from enum import Enum, IntEnum
-from typing import Dict, List
+from typing import Dict
 
 from quant_server.core.events.types import (
     EventPriority as CoreEventPriority,
-    EventCategory as CoreEventCategory,
 )
 
 
@@ -23,7 +22,7 @@ class DataEventType(str, Enum):
 
     命名规范：data.{domain}.{action}.{status}
     - data: 模块名
-    - domain: 业务领域（sync/quality/research/market/factor）
+    - domain: 业务领域（sync/quality/research/market/factor/clean）
     - action: 业务动作
     - status: 动作状态（started/progress/completed/failed等）
     """
@@ -40,6 +39,15 @@ class DataEventType(str, Enum):
     QUALITY_ISSUE_FOUND = "data.quality.issue.found"
     QUALITY_CHECK_COMPLETED = "data.quality.check.completed"
     QUALITY_CHECK_FAILED = "data.quality.check.failed"
+
+    # ==================== 数据清洗事件 ====================
+    CLEAN_STARTED = "data.clean.started"
+    CLEAN_PROGRESS = "data.clean.progress"
+    CLEAN_COMPLETED = "data.clean.completed"
+    CLEAN_FAILED = "data.clean.failed"
+    CLEAN_APPLIED = "data.clean.applied"
+    CLEAN_VALIDATION_COMPLETED = "data.clean.validation.completed"
+    CLEAN_STATISTICS_UPDATED = "data.clean.statistics.updated"
 
     # ==================== 因子研究事件 ====================
     RESEARCH_STARTED = "data.research.started"
@@ -119,9 +127,30 @@ class DataSyncType(str, Enum):
     MANUAL = "manual"  # 手动同步
 
 
+class DataCleanStatus(str, Enum):
+    """数据清洗状态枚举"""
+    PENDING = "pending"      # 等待中
+    RUNNING = "running"      # 运行中
+    COMPLETED = "completed"  # 已完成
+    FAILED = "failed"        # 失败
+    APPLIED = "applied"      # 已应用
+    CANCELLED = "cancelled"  # 已取消
+
+
+class DataCleanRule(str, Enum):
+    """数据清洗规则枚举"""
+    MISSING = "missing"          # 缺失数据检查
+    DUPLICATE = "duplicate"      # 重复数据检查
+    OUTLIER = "outlier"          # 异常值检查
+    INCONSISTENT = "inconsistent" # 不一致数据检查
+    FORMAT = "format"            # 格式检查
+    RANGE = "range"              # 范围检查
+    CONSISTENCY = "consistency"  # 一致性检查
+
+
 def get_event_type_descriptions() -> Dict[str, str]:
     """获取所有事件类型的描述"""
-    return {
+    descriptions = {
         # 同步事件
         DataEventType.SYNC_STARTED: "数据同步任务开始",
         DataEventType.SYNC_PROGRESS: "数据同步进度更新",
@@ -134,6 +163,15 @@ def get_event_type_descriptions() -> Dict[str, str]:
         DataEventType.QUALITY_ISSUE_FOUND: "发现数据质量问题",
         DataEventType.QUALITY_CHECK_COMPLETED: "数据质量检查完成",
         DataEventType.QUALITY_CHECK_FAILED: "数据质量检查失败",
+
+        # 清洗事件
+        DataEventType.CLEAN_STARTED: "数据清洗任务开始",
+        DataEventType.CLEAN_PROGRESS: "数据清洗进度更新",
+        DataEventType.CLEAN_COMPLETED: "数据清洗任务完成",
+        DataEventType.CLEAN_FAILED: "数据清洗任务失败",
+        DataEventType.CLEAN_APPLIED: "数据清洗结果已应用",
+        DataEventType.CLEAN_VALIDATION_COMPLETED: "数据验证完成",
+        DataEventType.CLEAN_STATISTICS_UPDATED: "数据清洗统计信息更新",
 
         # 研究事件
         DataEventType.RESEARCH_STARTED: "因子研究任务开始",
@@ -160,6 +198,7 @@ def get_event_type_descriptions() -> Dict[str, str]:
         DataEventType.DATA_CACHE_UPDATED: "数据缓存更新",
         DataEventType.DATA_EXPORT_COMPLETED: "数据导出完成",
     }
+    return descriptions
 
 
 def get_event_type_category(event_type: DataEventType) -> str:
@@ -170,6 +209,8 @@ def get_event_type_category(event_type: DataEventType) -> str:
         return "sync"
     elif "quality" in type_str:
         return "quality"
+    elif "clean" in type_str:
+        return "clean"  # 新增清洗分类
     elif "research" in type_str:
         return "research"
     elif "market" in type_str:
@@ -184,12 +225,21 @@ def get_event_type_category(event_type: DataEventType) -> str:
 
 # 导出所有类型
 __all__ = [
+    # 事件类型
     "DataEventType",
     "DataEventPriority",
+
+    # 状态枚举
     "DataProcessingStatus",
     "FactorCalculationStatus",
+    "DataCleanStatus",
+
+    # 业务类型枚举
     "DataQualitySeverity",
     "DataSyncType",
+    "DataCleanRule",
+
+    # 工具函数
     "get_event_type_descriptions",
     "get_event_type_category",
 ]

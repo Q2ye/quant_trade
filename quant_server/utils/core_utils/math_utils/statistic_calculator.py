@@ -34,7 +34,6 @@ class StatisticResult:
 	q3: Optional[float] = None
 	iqr: Optional[float] = None
 
-
 class StatisticalCalculator:
 	"""
 	统计计算器类

@@ -5,7 +5,7 @@ from typing import List
 from quant_server.api.dependencies import get_strategy_manager_engine
 from quant_server.shared.database.models.strategy_models import StrategyResponse, StrategyCreate
 
-from quant_server.core.strategy_engine.engines.strategy_manager_engine import StrategyManagerEngine
+from quant_server.core.engines.strategy_manager_engine import StrategyManagerEngine
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
 

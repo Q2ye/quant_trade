@@ -6,10 +6,11 @@ Pydantic V2 兼容版本
 """
 
 import os
+import json
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic import field_validator, Field, ValidationInfo
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
@@ -48,11 +49,11 @@ class DatabaseSettings(BaseSettings):
 	MIGRATIONS_DIR: str = "shared/database/migrations"
 	AUTO_MIGRATE: bool = False
 
-	model_config = {
-		"env_prefix": "DB_",
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		env_prefix="DB_",
+		case_sensitive=False,
+		extra="ignore"
+	)
 
 	@property
 	def url (self) -> str:
@@ -93,16 +94,22 @@ class APISettings(BaseSettings):
 	ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 	ALGORITHM: str = "HS256"
 
+	# JWT配置（新增）
+	JWT_ALGORITHM: str = "HS256"  # JWT算法
+	REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 刷新令牌过期天数
+	JWT_ISSUER: Optional[str] = None  # JWT发行者
+	JWT_AUDIENCE: Optional[str] = None  # JWT受众
+
 	# 速率限制
 	RATE_LIMIT_ENABLED: bool = True
 	RATE_LIMIT_REQUESTS: int = 100
 	RATE_LIMIT_PERIOD: int = 60  # 秒
 
-	model_config = {
-		"env_prefix": "APP_",
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		env_prefix="APP_",
+		case_sensitive=False,
+		extra="ignore"
+	)
 
 
 class RedisSettings(BaseSettings):
@@ -119,11 +126,11 @@ class RedisSettings(BaseSettings):
 	SOCKET_TIMEOUT: int = 5
 	SOCKET_CONNECT_TIMEOUT: int = 5
 
-	model_config = {
-		"env_prefix": "REDIS_",
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		env_prefix="REDIS_",
+		case_sensitive=False,
+		extra="ignore"
+	)
 
 	@property
 	def url (self) -> Optional[str]:
@@ -161,16 +168,15 @@ class DataSourceSettings(BaseSettings):
 	SYNC_SCHEDULE: str = "0 2 * * *"  # 每天凌晨2点
 	SYNC_BATCH_SIZE: int = 1000
 
-	model_config = {
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		case_sensitive=False,
+		extra="ignore"
+	)
 
-	@field_validator("TUSHARE_TOKEN", mode="before")
 	@classmethod
-	def validate_tushare_token (cls, v):
+	def validate_tushare_token (cls, v: Optional[str]) -> str:
 		"""验证Tushare Token"""
-		if not v:
+		if not v or v == "":
 			# 尝试从环境变量加载
 			env_value = os.getenv("TUSHARE_TOKEN", "")
 			if env_value:
@@ -201,10 +207,10 @@ class TradeSettings(BaseSettings):
 	RISK_CHECK_ENABLED: bool = True
 	STOP_LOSS_PERCENT: float = 0.1
 
-	model_config = {
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		case_sensitive=False,
+		extra="ignore"
+	)
 
 
 class NotificationSettings(BaseSettings):
@@ -214,9 +220,9 @@ class NotificationSettings(BaseSettings):
 	EMAIL_ENABLED: bool = False
 	SMTP_SERVER: str = "smtp.example.com"
 	SMTP_PORT: int = 587
-	EMAIL_USERNAME: str = "your_email@example.com"
-	EMAIL_PASSWORD: str = "your_email_password"
-	EMAIL_RECEIVERS: List[str] = ["user1@example.com", "user2@example.com"]
+	EMAIL_USERNAME: str = ""
+	EMAIL_PASSWORD: str = ""
+	EMAIL_RECEIVERS: List[str] = []
 
 	# 钉钉通知
 	DINGTALK_ENABLED: bool = False
@@ -224,24 +230,63 @@ class NotificationSettings(BaseSettings):
 
 	# 微信通知
 	WECHAT_ENABLED: bool = False
-	WECHAT_CORP_ID: str = "your_corp_id"
-	WECHAT_CORP_SECRET: str = "your_corp_secret"
+	WECHAT_CORP_ID: str = ""
+	WECHAT_CORP_SECRET: str = ""
 	WECHAT_AGENT_ID: str = "1000001"
 
-	model_config = {
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		case_sensitive=False,
+		extra="ignore",
+		env_prefix="NOTIFY_",
+	)
 
-	@field_validator("EMAIL_RECEIVERS", mode="before")
 	@classmethod
-	def parse_email_receivers (cls, v):
-		"""解析邮件接收者列表"""
+	def parse_email_receivers (cls, v: Any) -> List[str]:
+		"""解析邮件接收者列表 - 增强版本"""
+		# 如果值为 None，返回空列表
+		if v is None:
+			return []
+
+		# 如果已经是列表，直接返回
+		if isinstance(v, list):
+			return [str(item).strip() for item in v if item is not None]
+
+		# 如果是字符串
 		if isinstance(v, str):
-			if not v.strip():
+			v = v.strip()
+
+			# 空字符串返回空列表
+			if not v:
 				return []
-			return [email.strip() for email in v.split(",") if email.strip()]
-		return v or []
+
+			# 尝试解析 JSON 格式（如 ["email1", "email2"]）
+			if v.startswith('[') and v.endswith(']'):
+				try:
+					parsed = json.loads(v)
+					if isinstance(parsed, list):
+						return [str(item).strip() for item in parsed if item is not None]
+				except json.JSONDecodeError:
+					# JSON 解析失败，继续尝试逗号分隔
+					pass
+
+			# 按逗号分隔
+			emails = []
+			for email_part in v.split(','):
+				email_part = email_part.strip()
+				if email_part:
+					# 移除可能的引号
+					if (email_part.startswith('"') and email_part.endswith('"')) or \
+							(email_part.startswith("'") and email_part.endswith("'")):
+						email_part = email_part[1:-1]
+					emails.append(email_part)
+
+			return emails
+
+		# 其他类型，尝试转换为列表
+		try:
+			return [str(item).strip() for item in list(v) if item is not None]
+		except (TypeError, ValueError):
+			return []
 
 
 class LogSettings(BaseSettings):
@@ -260,11 +305,11 @@ class LogSettings(BaseSettings):
 	# 结构化日志
 	JSON_FORMAT: bool = False
 
-	model_config = {
-		"env_prefix": "LOG_",
-		"case_sensitive": False,
-		"extra": "ignore"
-	}
+	model_config = SettingsConfigDict(
+		env_prefix="LOG_",
+		case_sensitive=False,
+		extra="ignore"
+	)
 
 
 class Settings(BaseSettings):
@@ -277,13 +322,13 @@ class Settings(BaseSettings):
 	DEBUG: bool = True
 
 	# 子配置
-	DATABASE: DatabaseSettings = DatabaseSettings()
-	API: APISettings = APISettings()
-	REDIS: RedisSettings = RedisSettings()
-	DATA_SOURCE: DataSourceSettings = DataSourceSettings()
-	TRADE: TradeSettings = TradeSettings()
-	NOTIFICATION: NotificationSettings = NotificationSettings()
-	LOG: LogSettings = LogSettings()
+	DATABASE: DatabaseSettings = Field(default_factory=DatabaseSettings)
+	API: APISettings = Field(default_factory=APISettings)
+	REDIS: RedisSettings = Field(default_factory=RedisSettings)
+	DATA_SOURCE: DataSourceSettings = Field(default_factory=DataSourceSettings)
+	TRADE: TradeSettings = Field(default_factory=TradeSettings)
+	NOTIFICATION: NotificationSettings = Field(default_factory=NotificationSettings)
+	LOG: LogSettings = Field(default_factory=LogSettings)
 
 	# 特性开关
 	FEATURE_FLAGS: Dict[str, bool] = {
@@ -293,17 +338,17 @@ class Settings(BaseSettings):
 		"enable_ai_strategies": False,
 	}
 
-	model_config = {
-		"env_file": ".env",
-		"env_file_encoding": "utf-8",
-		"case_sensitive": False,
-		"extra": "ignore",
-		"env_nested_delimiter": "__",  # 支持嵌套环境变量，如 DATABASE__HOST
-	}
+	model_config = SettingsConfigDict(
+		env_file=".env",
+		env_file_encoding="utf-8",
+		case_sensitive=False,
+		extra="ignore",
+		env_nested_delimiter="__",  # 支持嵌套环境变量，如 DATABASE__HOST
+	)
 
 	@field_validator("DEBUG", mode="after")
 	@classmethod
-	def set_debug_from_environment (cls, v, info):
+	def set_debug_from_environment (cls, v: bool, info: ValidationInfo) -> bool:
 		"""根据环境设置DEBUG模式"""
 		env = info.data.get("ENVIRONMENT")
 		if env == Environment.DEVELOPMENT:
@@ -326,9 +371,9 @@ class Settings(BaseSettings):
 		"""获取特性开关状态"""
 		return self.FEATURE_FLAGS.get(feature_name, False)
 
-	def update_feature (self, feature_name: str, enabled: bool) -> None:
+	def update_feature (self, feature_name: str, enabled2: bool) -> None:
 		"""更新特性开关状态"""
-		self.FEATURE_FLAGS[feature_name] = enabled
+		self.FEATURE_FLAGS[feature_name] = enabled2
 
 	def get_all_settings (self) -> Dict[str, Any]:
 		"""获取所有配置（排除敏感信息）"""
@@ -337,7 +382,7 @@ class Settings(BaseSettings):
 		# 过滤敏感信息
 		sensitive_fields = ["PASSWORD", "SECRET", "TOKEN", "KEY"]
 
-		def filter_sensitive (obj):
+		def filter_sensitive (obj: Any) -> Any:
 			if isinstance(obj, dict):
 				filtered = {}
 				for key, value in obj.items():
@@ -390,19 +435,21 @@ def validate_config () -> bool:
 	"""
 	try:
 		# 尝试创建配置实例
-		config = get_settings()
+		config2 = get_settings()
 
 		# 验证必要配置
-		if config.DATA_SOURCE.TUSHARE_ENABLED and not config.DATA_SOURCE.TUSHARE_TOKEN:
+		if config2.DATA_SOURCE.TUSHARE_ENABLED and not config2.DATA_SOURCE.TUSHARE_TOKEN:
 			print("警告: Tushare已启用但未配置TOKEN")
 
-		if not config.DATABASE.HOST or not config.DATABASE.NAME:
+		if not config2.DATABASE.HOST or not config2.DATABASE.NAME:
 			print("错误: 数据库配置不完整")
 			return False
 
 		return True
 	except Exception as e:
 		print(f"配置验证失败: {e}")
+		import traceback
+		traceback.print_exc()
 		return False
 
 
@@ -416,13 +463,13 @@ def detect_environment () -> str:
 	"""
 	env = os.getenv("ENVIRONMENT", "").lower()
 	if env in ["prod", "production"]:
-		return Environment.PRODUCTION
+		return Environment.PRODUCTION.value
 	elif env in ["test", "testing"]:
-		return Environment.TESTING
+		return Environment.TESTING.value
 	elif env in ["stage", "staging"]:
-		return Environment.STAGING
+		return Environment.STAGING.value
 	else:
-		return Environment.DEVELOPMENT
+		return Environment.DEVELOPMENT.value
 
 
 # 配置重载函数（用于动态更新配置）
@@ -435,6 +482,54 @@ def reload_settings () -> Settings:
 	"""
 	get_settings.cache_clear()
 	return get_settings()
+
+
+# 配置异常处理装饰器
+def with_fallback_settings (fallback_settings: Optional[Dict[str, Any]] = None):
+	"""
+	装饰器：为配置加载提供回退机制
+
+	Args:
+		fallback_settings: 回退配置字典
+	"""
+
+	def decorator (func):
+		def wrapper (*args, **kwargs):
+			try:
+				return func(*args, **kwargs)
+			except Exception as e:
+				print(f"配置加载失败，使用回退配置: {e}")
+				if fallback_settings:
+					# 创建回退配置实例
+					class FallbackSettings(BaseSettings):
+						ENVIRONMENT: Environment = Environment.DEVELOPMENT
+						APP_NAME: str = "量化交易平台"
+						APP_VERSION: str = "1.0.0"
+						DEBUG: bool = True
+
+						model_config = SettingsConfigDict(
+							case_sensitive=False,
+							extra="ignore"
+						)
+
+					fallback = FallbackSettings()
+					for key, value in fallback_settings.items():
+						if hasattr(fallback, key):
+							setattr(fallback, key, value)
+					return fallback
+				raise
+
+		return wrapper
+
+	return decorator
+
+
+@with_fallback_settings({"APP_NAME": "量化交易平台（回退模式）"})
+def load_settings_with_fallback () -> Settings:
+	"""
+	加载配置，使用回退机制
+	"""
+	return Settings()
 
 
 if __name__ == "__main__":
@@ -477,6 +572,10 @@ if __name__ == "__main__":
 	print(f"  初始资金: {config.TRADE.SIM_INITIAL_CAPITAL}")
 	print(f"  最大仓位比例: {config.TRADE.MAX_POSITION_RATIO}")
 	print(f"  止损百分比: {config.TRADE.STOP_LOSS_PERCENT}")
+
+	print("\n通知配置:")
+	print(f"  邮件启用: {config.NOTIFICATION.EMAIL_ENABLED}")
+	print(f"  邮件接收者: {config.NOTIFICATION.EMAIL_RECEIVERS}")
 
 	print("\n特性开关:")
 	for feature, enabled in config.FEATURE_FLAGS.items():

@@ -25,12 +25,12 @@ from celery.schedules import crontab
 import json
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-from modules.data.utils.factor_calculator import FactorCalculator, FactorCategory
-from modules.data.services.research_service import DataResearchService
-from modules.data.engines.research_engine import FactorResearchEngine, ResearchTaskType
-from shared.database.session import SessionManager
-from shared.database.repositories.market import QuoteRepository, StockRepository
-from ....modules.data.events.research_events import (
+from quant_server.modules.data.utils.factor_calculator import FactorCalculator, FactorCategory
+from quant_server.modules.data.services.research_service import DataResearchService
+from quant_server.modules.data.engines.research_engine import FactorResearchEngine, ResearchTaskType
+from quant_server.shared.database.session import SessionManager
+from quant_server.shared.database.repositories.market import QuoteRepository, StockBasicRepository
+from quant_server.modules.data.events.research_events import (
 	FactorResearchStartedEvent,
 	FactorResearchCompletedEvent,
 	FactorResearchProgressEvent,
@@ -169,7 +169,7 @@ def calculate_factor_task (
 					)
 				))
 
-			stock_repo = StockRepository()
+			stock_repo = StockBasicRepository()
 			all_stocks = stock_repo.get_listed_stocks()
 			stock_codes = [stock['ts_code'] for stock in all_stocks]
 
@@ -660,7 +660,7 @@ def optimize_factor_parameters_task (
 			))
 
 		# 获取股票数据用于优化
-		stock_repo = StockRepository()
+		stock_repo = StockBasicRepository()
 		quote_repo = QuoteRepository()
 
 		# 使用部分股票进行优化

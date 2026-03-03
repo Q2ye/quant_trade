@@ -9,9 +9,9 @@ from typing import Dict, List, Optional, Any
 import json
 
 from quant_server.modules.system.events import ReconciliationEvent, SystemEvent
-from quant_server.shared.database.repositories.trading.account_repo import AccountRepository
-from quant_server.shared.database.repositories.trading.trade_repo import TradeRepository
-from quant_server.shared.database.repositories.trading.position_repo import PositionRepository
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
+from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
 from ....modules.account.services.account_service import AccountService
 from ....modules.account.managers.reconciliation_manager import ReconciliationManager
 

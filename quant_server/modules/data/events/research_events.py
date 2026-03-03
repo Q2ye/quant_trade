@@ -11,7 +11,6 @@
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from dataclasses import field
 
 from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.data.events.types import DataEventType
@@ -116,6 +115,55 @@ class DataResearchProgressEvent(BaseEvent):
 		return 0.0
 
 
+def _summarize_results (results: Dict[str, Any]) -> Dict[str, Any]:
+	"""汇总研究结果"""
+	summary = {}
+
+	# 提取关键指标
+	if "ic_analysis" in results:
+		ic_data = results["ic_analysis"]
+		summary["ic_mean"] = ic_data.get("mean_ic", 0)
+		summary["ic_ir"] = ic_data.get("ic_ir", 0)
+		summary["ic_pvalue"] = ic_data.get("ic_pvalue", 0)
+
+	if "return_analysis" in results:
+		return_data = results["return_analysis"]
+		summary["annual_return"] = return_data.get("annual_return", 0)
+		summary["sharpe_ratio"] = return_data.get("sharpe_ratio", 0)
+		summary["max_drawdown"] = return_data.get("max_drawdown", 0)
+
+	return summary
+
+
+def _generate_recommendations (results: Dict[str, Any], research_type: str) -> List[str]:
+	"""根据研究结果生成建议"""
+	recommendations = []
+
+	# 根据IC分析结果
+	if "ic_analysis" in results:
+		ic_mean = results["ic_analysis"].get("mean_ic", 0)
+		ic_ir = results["ic_analysis"].get("ic_ir", 0)
+
+		if ic_mean > 0.05:
+			recommendations.append("因子IC值较高，建议加入策略组合")
+		elif ic_mean < 0.02:
+			recommendations.append("因子IC值较低，建议进一步优化或放弃")
+
+		if ic_ir > 0.5:
+			recommendations.append("因子信息比率较高，预测能力稳定")
+
+	# 根据收益率分析
+	if "return_analysis" in results:
+		sharpe = results["return_analysis"].get("sharpe_ratio", 0)
+		if sharpe > 1.5:
+			recommendations.append("夏普比率优秀，风险调整后收益良好")
+
+	if not recommendations:
+		recommendations.append("建议进一步优化参数或尝试其他因子")
+
+	return recommendations
+
+
 class DataResearchCompletedEvent(BaseEvent):
 	"""
 	因子研究完成事件
@@ -155,57 +203,11 @@ class DataResearchCompletedEvent(BaseEvent):
 			"research_type": research_type,
 			"duration_seconds": round(duration_seconds, 2),
 			"success": success,
-			"results_summary": self._summarize_results(results),
+			"results_summary": _summarize_results(results),
 			"key_findings": key_findings,
 			"report_data": report_data or {},
 			"completion_time": datetime.now().isoformat(),
 			"error_info": error_info,
-			"recommendations": self._generate_recommendations(results, research_type)
+			"recommendations": _generate_recommendations(results, research_type)
 		}
 
-	def _summarize_results (self, results: Dict[str, Any]) -> Dict[str, Any]:
-		"""汇总研究结果"""
-		summary = {}
-
-		# 提取关键指标
-		if "ic_analysis" in results:
-			ic_data = results["ic_analysis"]
-			summary["ic_mean"] = ic_data.get("mean_ic", 0)
-			summary["ic_ir"] = ic_data.get("ic_ir", 0)
-			summary["ic_pvalue"] = ic_data.get("ic_pvalue", 0)
-
-		if "return_analysis" in results:
-			return_data = results["return_analysis"]
-			summary["annual_return"] = return_data.get("annual_return", 0)
-			summary["sharpe_ratio"] = return_data.get("sharpe_ratio", 0)
-			summary["max_drawdown"] = return_data.get("max_drawdown", 0)
-
-		return summary
-
-	def _generate_recommendations (self, results: Dict[str, Any], research_type: str) -> List[str]:
-		"""根据研究结果生成建议"""
-		recommendations = []
-
-		# 根据IC分析结果
-		if "ic_analysis" in results:
-			ic_mean = results["ic_analysis"].get("mean_ic", 0)
-			ic_ir = results["ic_analysis"].get("ic_ir", 0)
-
-			if ic_mean > 0.05:
-				recommendations.append("因子IC值较高，建议加入策略组合")
-			elif ic_mean < 0.02:
-				recommendations.append("因子IC值较低，建议进一步优化或放弃")
-
-			if ic_ir > 0.5:
-				recommendations.append("因子信息比率较高，预测能力稳定")
-
-		# 根据收益率分析
-		if "return_analysis" in results:
-			sharpe = results["return_analysis"].get("sharpe_ratio", 0)
-			if sharpe > 1.5:
-				recommendations.append("夏普比率优秀，风险调整后收益良好")
-
-		if not recommendations:
-			recommendations.append("建议进一步优化参数或尝试其他因子")
-
-		return recommendations

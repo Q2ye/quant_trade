@@ -214,7 +214,7 @@ class BaseEvent(ABC):
 		return f"{self.__class__.__name__}(metadata={self.metadata}, data={self.data}, status={self.status})"
 
 
-class TypedEvent(BaseEvent, Generic[EventType]):
+class TypedEvent(BaseEvent):
 	"""
 	类型化事件基类
 	提供类型提示支持的事件基类

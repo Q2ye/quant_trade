@@ -1,1 +1,1 @@
-# permission.py            # 权限验证
+# 权限验证

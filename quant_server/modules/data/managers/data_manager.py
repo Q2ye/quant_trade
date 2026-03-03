@@ -1,5 +1,5 @@
 """
-数据管理器 - 负责协调数据模块的多个引擎和服务的复杂业务流程
+数据管理器 - 负责协调数据模块的多个引擎 和服务的复杂业务流程
 
 核心职责：
 1. 数据同步流程管理
@@ -11,28 +11,27 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Set
-from enum import Enum
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 import uuid
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 
-from ....core.engines.base.engine_status import EngineStatus
-from modules.data.engines import (
+from quant_server.core.engines.types.entities import EngineStatus
+from ....modules.data.engines import (
 	DataSyncEngine,
 	DataCleanEngine,
 	DataQualityEngine,
-	DataResearchEngine
+	FactorResearchEngine
 )
-from modules.data.services import (
+from ....modules.data.services import (
 	DataSyncService,
 	DataQualityService,
 	DataResearchService
 )
-from shared.database.session import SessionManager
-from shared.cache.cache_manager import CacheManager
-from modules.data.events import (
+from ....shared.database.session import SessionManager
+from ....shared.cache.cache_manager import CacheManager
+from ....modules.data.events import (
 	DataSyncedEvent,
 	DataCleanedEvent,
 	QualityCheckedEvent,

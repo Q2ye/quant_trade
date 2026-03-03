@@ -21,12 +21,11 @@ from typing import Dict, List, Any, Optional, Union
 import pandas as pd
 from celery import Celery, Task
 from celery.schedules import crontab
-import json
 
 from modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
 from modules.data.services.quality_service import DataQualityService
 from shared.database.session import SessionManager
-from ....shared.database.repositories.market.stock_repo import  QuoteRepository
+from quant_server.shared.database.repositories.market.basic.stock_repo import  QuoteRepository
 from ....shared.database.repositories.market.quote_repo import  QuoteRepository
 from ....modules.data.events.quality_events import (
 	QualityCheckStartedEvent,

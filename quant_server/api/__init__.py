@@ -1,35 +1,9 @@
-# api/__init__.py
-from fastapi import APIRouter
+"""
+API网关包
 
-from .login import router as login_router
-from .strategy import router as strategy_router
-from .backtest import router as backtest_router
-from .basket import router as basket_router
-from .trade import router as trade_router
-from .market import router as market_router
-from quant_server.modules.data.handlers import router as data_sync_router
-from .system import router as system_router
-from .websocket import router as websocket_router
-from .performance import router as performance_router
-from .risk import router as risk_router
-from .signal import router as signal_router
-from .dashboard import router as dashboard_router
+提供FastAPI应用的创建和配置功能
+"""
 
-router = APIRouter()
+from .main import create_app
 
-quantTrade = APIRouter(prefix="/quant-events")
-quantTrade.include_router(login_router)
-quantTrade.include_router(strategy_router)
-quantTrade.include_router(backtest_router)
-quantTrade.include_router(basket_router)
-quantTrade.include_router(trade_router)
-quantTrade.include_router(market_router)
-quantTrade.include_router(data_sync_router)
-quantTrade.include_router(system_router)
-quantTrade.include_router(websocket_router)
-quantTrade.include_router(performance_router)
-quantTrade.include_router(risk_router)
-quantTrade.include_router(signal_router)
-quantTrade.include_router(dashboard_router)
-
-router.include_router(quantTrade)
+__all__ = ["create_app"]

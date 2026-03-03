@@ -25,8 +25,8 @@ from collections import defaultdict, deque
 # 导入统一类型定义
 from ..types.entities import Event as EventEntity
 from ..types.enums import (
-	ComponentStatus,
-	PriorityLevel,
+    ComponentStatus,
+    PriorityLevel,
     EngineType
 )
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 class QueuedEvent:
     """队列事件（用于优先级队列）"""
 
-    priority: int  # 优先级（数值越大优先级越高）
+    priority: str  # 优先级
     timestamp: float  # 入队时间戳（用于相同优先级排序）
     event: EventEntity = field(compare=False)  # 事件对象（不参与排序）
 
@@ -128,6 +128,7 @@ class EventStatistics:
 
 
 class EventEngine(EngineBase):
+
     """事件引擎
 
     异步事件驱动引擎，支持优先级队列、事件广播、处理器管理和性能监控。
@@ -185,6 +186,10 @@ class EventEngine(EngineBase):
         self._timers: Dict[str, asyncio.Task] = {}
 
         logger.info(f"事件引擎初始化完成，最大工作器: {self._max_workers}, 最大队列: {self._max_queue_size}")
+
+    async def _on_initialize(self):
+        """事件引擎初始化逻辑"""
+        logger.info("初始化事件引擎组件")
 
     async def _on_start(self) -> None:
         """事件引擎启动逻辑"""
@@ -276,22 +281,21 @@ class EventEngine(EngineBase):
     def _start_statistics_timer(self) -> None:
         """启动统计定时器"""
         # 每60秒更新一次统计
-        timer_id = self._create_timer(
+        self._create_timer(
             60.0,
             self._update_statistics,
             name="statistics_timer"
         )
 
-        logger.debug(f"统计定时器已启动: {timer_id}")
+        logger.debug("统计定时器已启动: statistics_timer")
 
     def _stop_statistics_timer(self) -> None:
         """停止统计定时器"""
-        if "statistics_timer" in self._timers:
-            self._cancel_timer("statistics_timer")
+        self._cancel_timer("statistics_timer")
 
     async def _worker_loop(self) -> None:
         """工作器循环"""
-        worker_name = asyncio.current_task().get_name()
+        worker_name = asyncio.current_task().get_name() if asyncio.current_task() else "UnknownWorker"
         logger.debug(f"工作器启动: {worker_name}")
 
         try:
@@ -747,7 +751,7 @@ class EventEngine(EngineBase):
                 })
         else:
             # 获取所有处理器
-            for event_type, handlers in self._event_handlers.items():
+            for event_type_key, handlers in self._event_handlers.items():
                 for handler in handlers:
                     handlers_info.append({
                         "handler_id": handler.handler_id,
@@ -798,7 +802,7 @@ class EventEngine(EngineBase):
         return base_info
 
 
-async def get_event_engine() -> EngineBase | None:
+async def get_event_engine() -> Optional[EngineBase]:
     """获取全局事件引擎实例
 
     Returns:
@@ -806,4 +810,6 @@ async def get_event_engine() -> EngineBase | None:
     """
     from ..utils.engine_factory import get_engine_factory
     factory = await get_engine_factory()
-    return await factory.get_engine("event_engine")
+    if factory:
+        return await factory.get_engine("event_engine")
+    return None

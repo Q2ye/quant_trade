@@ -2,8 +2,7 @@
 数据同步相关事件
 """
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-from dataclasses import field
+from typing import Dict, Any, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.data.events.types import DataEventType

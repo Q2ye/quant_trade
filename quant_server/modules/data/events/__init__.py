@@ -1,6 +1,6 @@
 """
 数据模块事件定义
-负责数据同步、质量检查、因子研究、市场数据处理等相关事件
+负责数据同步、质量检查、因子研究、市场数据处理、数据清洗等相关事件
 
 设计原则：
 1. 继承核心事件基类：所有事件都继承自core.events.BaseEvent
@@ -15,16 +15,10 @@
 ├── research_events.py           # 因子研究相关事件
 ├── market_events.py             # 市场数据处理相关事件
 ├── factor_calculation_events.py # 因子计算相关事件
+├── clean_events.py              # 数据清洗相关事件（新增）
 ├── handlers_example.py          # 事件处理器示例
 └── __init__.py                  # 模块导出
 """
-
-from quant_server.core.events import (
-    BaseEvent,
-    EventPriority,
-    EventCategory,
-)
-
 # 导入类型定义
 from .types import (
     DataEventType,
@@ -69,12 +63,28 @@ from .factor_calculation_events import (
     FactorCalculationCompletedEvent,
 )
 
+# 导入清洗事件类（新增）
+from .clean_events import (
+    DataCleanStatus,
+    DataCleanMetadata,
+    DataCleanIssue,
+    DataCleanResult,
+    DataCleanStartedEvent,
+    DataCleanProgressEvent,
+    DataCleanCompletedEvent,
+    DataCleanFailedEvent,
+    DataCleanAppliedEvent,
+    DataCleanValidatedEvent,
+    DataCleanEvent,  # 简化版，用于向后兼容
+)
+
 # 可选：导入处理器示例
 try:
     from .handlers_example import (
         DataSyncEventHandler,
         DataQualityEventHandler,
         MarketDataEventHandler,
+        DataCleanEventHandler,
     )
     HAS_HANDLERS = True
 except ImportError:
@@ -88,6 +98,12 @@ __all__ = [
     "DataProcessingStatus",
     "FactorCalculationStatus",
     "get_event_type_descriptions",
+
+    # 清洗相关类型（新增）
+    "DataCleanStatus",
+    "DataCleanMetadata",
+    "DataCleanIssue",
+    "DataCleanResult",
 
     # 数据模型
     "MarketDataMetadata",
@@ -119,6 +135,15 @@ __all__ = [
     "FactorCalculationStartedEvent",
     "FactorCalculationProgressEvent",
     "FactorCalculationCompletedEvent",
+
+    # 清洗事件（新增）
+    "DataCleanStartedEvent",
+    "DataCleanProgressEvent",
+    "DataCleanCompletedEvent",
+    "DataCleanFailedEvent",
+    "DataCleanAppliedEvent",
+    "DataCleanValidatedEvent",
+    "DataCleanEvent",  # 简化版
 ]
 
 # 如果导入了处理器，也导出它们
@@ -127,6 +152,7 @@ if HAS_HANDLERS:
         "DataSyncEventHandler",
         "DataQualityEventHandler",
         "MarketDataEventHandler",
+        "DataCleanEventHandler",  # 新增
     ])
 
 # 事件分类映射（用于文档和工具）
@@ -158,8 +184,17 @@ EVENT_CATEGORIES = {
         "FactorCalculationProgressEvent",
         "FactorCalculationCompletedEvent",
     ],
+    "clean": [  # 新增清洗事件分类
+        "DataCleanStartedEvent",
+        "DataCleanProgressEvent",
+        "DataCleanCompletedEvent",
+        "DataCleanFailedEvent",
+        "DataCleanAppliedEvent",
+        "DataCleanValidatedEvent",
+        "DataCleanEvent",
+    ],
 }
 
 # 版本信息
-__version__ = "1.0.0"
-__description__ = "数据模块事件定义 - 提供数据相关业务事件"
+__version__ = "1.1.0"  # 版本号更新
+__description__ = "数据模块事件定义 - 提供数据相关业务事件（包含数据清洗事件）"

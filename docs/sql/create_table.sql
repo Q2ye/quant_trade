@@ -54,6 +54,45 @@ COMMENT ON COLUMN sys_users.last_login IS '最后登录时间';
 COMMENT ON COLUMN sys_users.created_at IS '账户创建时间';
 COMMENT ON COLUMN sys_users.updated_at IS '账户信息最后更新时间';
 
+-- 角色信息表
+CREATE TABLE sys_roles (
+    id SERIAL PRIMARY KEY,
+    role_code VARCHAR(50) NOT NULL UNIQUE,
+    role_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_default BOOLEAN DEFAULT FALSE,
+    permissions JSONB DEFAULT '[]'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE sys_roles IS '系统角色表';
+COMMENT ON COLUMN sys_roles.id IS '角色ID（自增主键）';
+COMMENT ON COLUMN sys_roles.role_code IS '角色编码（唯一）';
+COMMENT ON COLUMN sys_roles.role_name IS '角色名称';
+COMMENT ON COLUMN sys_roles.description IS '角色描述';
+COMMENT ON COLUMN sys_roles.is_default IS '是否默认角色';
+COMMENT ON COLUMN sys_roles.permissions IS '权限列表（JSON格式）';
+COMMENT ON COLUMN sys_roles.created_at IS '创建时间';
+COMMENT ON COLUMN sys_roles.updated_at IS '更新时间';
+
+-- 用户角色关联表
+CREATE TABLE sys_user_roles (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
+    role_id INT NOT NULL REFERENCES sys_roles(id) ON DELETE CASCADE,
+    assigned_by INT REFERENCES sys_users(id),
+    assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, role_id)
+);
+
+COMMENT ON TABLE sys_user_roles IS '用户角色关联表（多对多关系）';
+COMMENT ON COLUMN sys_user_roles.id IS '关联ID（自增主键）';
+COMMENT ON COLUMN sys_user_roles.user_id IS '用户ID';
+COMMENT ON COLUMN sys_user_roles.role_id IS '角色ID';
+COMMENT ON COLUMN sys_user_roles.assigned_by IS '分配人ID';
+COMMENT ON COLUMN sys_user_roles.assigned_at IS '分配时间';
+
 -- 用户权限表
 CREATE TABLE sys_permissions (
     id SERIAL PRIMARY KEY,
@@ -72,6 +111,103 @@ COMMENT ON COLUMN sys_permissions.module IS '权限所属模块（如strategy, b
 COMMENT ON COLUMN sys_permissions.can_read IS '是否可读';
 COMMENT ON COLUMN sys_permissions.can_write IS '是否可写';
 COMMENT ON COLUMN sys_permissions.can_execute IS '是否可执行（如交易、回测）';
+
+-- 用户偏好设置表
+CREATE TABLE user_preferences (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE UNIQUE,
+    language VARCHAR(10) DEFAULT 'zh-CN',
+    timezone VARCHAR(50) DEFAULT 'Asia/Shanghai',
+    theme VARCHAR(20) DEFAULT 'light',
+    notification_settings JSONB DEFAULT '{"email": true, "wechat": false, "sms": false}',
+    trading_settings JSONB DEFAULT '{"default_account": null, "confirm_before_trade": true}',
+    display_settings JSONB DEFAULT '{"default_chart_type": "candle", "show_grid": true}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE user_preferences IS '用户偏好设置表';
+COMMENT ON COLUMN user_preferences.user_id IS '用户ID（唯一）';
+COMMENT ON COLUMN user_preferences.language IS '语言设置';
+COMMENT ON COLUMN user_preferences.timezone IS '时区设置';
+COMMENT ON COLUMN user_preferences.theme IS '主题：light/dark';
+COMMENT ON COLUMN user_preferences.notification_settings IS '通知设置（JSON）';
+COMMENT ON COLUMN user_preferences.trading_settings IS '交易设置（JSON）';
+COMMENT ON COLUMN user_preferences.display_settings IS '显示设置（JSON）';
+
+-- API使用日志表
+CREATE TABLE api_usage_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES sys_users(id) ON DELETE SET NULL,
+    api_endpoint VARCHAR(200) NOT NULL,
+    method VARCHAR(10) NOT NULL,
+    request_params JSONB,
+    response_status INT NOT NULL,
+    response_time_ms INT NOT NULL,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE api_usage_logs IS 'API使用日志表';
+COMMENT ON COLUMN api_usage_logs.user_id IS '用户ID';
+COMMENT ON COLUMN api_usage_logs.api_endpoint IS 'API端点';
+COMMENT ON COLUMN api_usage_logs.method IS 'HTTP方法';
+COMMENT ON COLUMN api_usage_logs.request_params IS '请求参数（JSON）';
+COMMENT ON COLUMN api_usage_logs.response_status IS '响应状态码';
+COMMENT ON COLUMN api_usage_logs.response_time_ms IS '响应时间（毫秒）';
+COMMENT ON COLUMN api_usage_logs.ip_address IS 'IP地址';
+COMMENT ON COLUMN api_usage_logs.user_agent IS '用户代理';
+
+-- 系统健康指标表
+CREATE TABLE system_health_metrics (
+    id SERIAL PRIMARY KEY,
+    metric_type VARCHAR(50) NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
+    metric_value NUMERIC(12,4) NOT NULL,
+    unit VARCHAR(20),
+    status VARCHAR(20) DEFAULT 'normal' CHECK (status IN ('normal', 'warning', 'critical')),
+    collected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE system_health_metrics IS '系统健康指标表';
+COMMENT ON COLUMN system_health_metrics.metric_type IS '指标类型：cpu, memory, disk, network, database';
+COMMENT ON COLUMN system_health_metrics.metric_name IS '指标名称';
+COMMENT ON COLUMN system_health_metrics.metric_value IS '指标值';
+COMMENT ON COLUMN system_health_metrics.unit IS '单位';
+COMMENT ON COLUMN system_health_metrics.status IS '状态：normal/warning/critical';
+COMMENT ON COLUMN system_health_metrics.collected_at IS '指标采集时间';
+
+-- 许可证密钥表
+CREATE TABLE license_keys (
+    id SERIAL PRIMARY KEY,
+    license_key VARCHAR(100) NOT NULL UNIQUE,
+    license_type VARCHAR(50) NOT NULL,
+    user_id INT REFERENCES sys_users(id) ON DELETE SET NULL,
+    max_users INT DEFAULT 1,
+    max_strategies INT DEFAULT 10,
+    valid_from DATE NOT NULL,
+    valid_to DATE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    activation_date TIMESTAMPTZ,
+    last_check_date TIMESTAMPTZ,
+    metainfo JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE license_keys IS '许可证密钥表';
+COMMENT ON COLUMN license_keys.license_key IS '许可证密钥（唯一）';
+COMMENT ON COLUMN license_keys.license_type IS '许可证类型：trial/basic/pro/enterprise';
+COMMENT ON COLUMN license_keys.user_id IS '绑定的用户ID';
+COMMENT ON COLUMN license_keys.max_users IS '最大用户数';
+COMMENT ON COLUMN license_keys.max_strategies IS '最大策略数';
+COMMENT ON COLUMN license_keys.valid_from IS '有效期开始';
+COMMENT ON COLUMN license_keys.valid_to IS '有效期结束';
+COMMENT ON COLUMN license_keys.is_active IS '是否激活';
+COMMENT ON COLUMN license_keys.activation_date IS '激活时间';
+COMMENT ON COLUMN license_keys.last_check_date IS '最后检查时间';
 
 -- ------------------------------------------------------------
 -- 1.2 股票基础数据模块
@@ -318,6 +454,123 @@ CREATE INDEX idx_accounts_account_number ON accounts(account_number);
 CREATE INDEX idx_accounts_broker_account_id ON accounts(broker_account_id);
 CREATE INDEX idx_accounts_status ON accounts(status);
 
+-- 账户流水表
+CREATE TABLE account_transactions (
+    id SERIAL PRIMARY KEY,
+    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    transaction_type VARCHAR(50) NOT NULL,
+    transaction_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    amount NUMERIC(16, 4) NOT NULL,
+    balance_before NUMERIC(16, 4) NOT NULL,
+    balance_after NUMERIC(16, 4) NOT NULL,
+    description TEXT,
+    reference_id VARCHAR(100),
+    reference_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE account_transactions IS '账户流水表';
+COMMENT ON COLUMN account_transactions.account_id IS '账户ID';
+COMMENT ON COLUMN account_transactions.transaction_type IS '交易类型：deposit/withdrawal/trade/fee/dividend';
+COMMENT ON COLUMN account_transactions.transaction_date IS '交易时间';
+COMMENT ON COLUMN account_transactions.amount IS '交易金额';
+COMMENT ON COLUMN account_transactions.balance_before IS '交易前余额';
+COMMENT ON COLUMN account_transactions.balance_after IS '交易后余额';
+COMMENT ON COLUMN account_transactions.description IS '描述';
+COMMENT ON COLUMN account_transactions.reference_id IS '关联ID（如订单ID）';
+COMMENT ON COLUMN account_transactions.reference_type IS '关联类型';
+
+CREATE INDEX idx_account_transactions_account_id ON account_transactions(account_id);
+CREATE INDEX idx_account_transactions_date ON account_transactions(transaction_date DESC);
+CREATE INDEX idx_account_transactions_type ON account_transactions(transaction_type);
+
+-- 账户对账单表
+CREATE TABLE account_statements (
+    id SERIAL PRIMARY KEY,
+    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    statement_date DATE NOT NULL,
+    statement_period VARCHAR(20) NOT NULL,
+    opening_balance NUMERIC(16, 4) NOT NULL,
+    closing_balance NUMERIC(16, 4) NOT NULL,
+    total_deposits NUMERIC(16, 4) DEFAULT 0,
+    total_withdrawals NUMERIC(16, 4) DEFAULT 0,
+    total_trades NUMERIC(16, 4) DEFAULT 0,
+    total_fees NUMERIC(16, 4) DEFAULT 0,
+    statement_data JSONB,
+    generated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE account_statements IS '账户对账单表';
+COMMENT ON COLUMN account_statements.account_id IS '账户ID';
+COMMENT ON COLUMN account_statements.statement_date IS '对账日期';
+COMMENT ON COLUMN account_statements.statement_period IS '对账周期：daily/weekly/monthly';
+COMMENT ON COLUMN account_statements.opening_balance IS '期初余额';
+COMMENT ON COLUMN account_statements.closing_balance IS '期末余额';
+COMMENT ON COLUMN account_statements.total_deposits IS '总存款额';
+COMMENT ON COLUMN account_statements.total_withdrawals IS '总取款额';
+COMMENT ON COLUMN account_statements.total_trades IS '总交易额';
+COMMENT ON COLUMN account_statements.total_fees IS '总费用';
+COMMENT ON COLUMN account_statements.statement_data IS '对账明细数据（JSON格式）';
+
+CREATE INDEX idx_account_statements_account_date ON account_statements(account_id, statement_date DESC);
+
+-- 资金流水表
+CREATE TABLE cash_flows (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES sys_users(id),
+    flow_type VARCHAR(50) NOT NULL,
+    flow_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    amount NUMERIC(16, 4) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'CNY',
+    status VARCHAR(20) DEFAULT 'completed',
+    description TEXT,
+    reference_id VARCHAR(100),
+    reference_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE cash_flows IS '资金流水表';
+COMMENT ON COLUMN cash_flows.user_id IS '用户ID';
+COMMENT ON COLUMN cash_flows.flow_type IS '流水类型：deposit/withdrawal/transfer/dividend/fee';
+COMMENT ON COLUMN cash_flows.flow_date IS '流水日期';
+COMMENT ON COLUMN cash_flows.amount IS '金额';
+COMMENT ON COLUMN cash_flows.currency IS '币种';
+COMMENT ON COLUMN cash_flows.status IS '状态：pending/completed/failed';
+COMMENT ON COLUMN cash_flows.description IS '描述';
+COMMENT ON COLUMN cash_flows.reference_id IS '关联ID';
+COMMENT ON COLUMN cash_flows.reference_type IS '关联类型';
+
+CREATE INDEX idx_cash_flows_user_id ON cash_flows(user_id);
+CREATE INDEX idx_cash_flows_date ON cash_flows(flow_date DESC);
+
+-- 账户审计日志表
+CREATE TABLE account_audit_logs (
+    id SERIAL PRIMARY KEY,
+    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    audit_type VARCHAR(50) NOT NULL,
+    audit_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    auditor_id INT REFERENCES sys_users(id),
+    audit_action VARCHAR(100) NOT NULL,
+    audit_details JSONB,
+    audit_result VARCHAR(20) DEFAULT 'passed',
+    remarks TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE account_audit_logs IS '账户审计日志表';
+COMMENT ON COLUMN account_audit_logs.account_id IS '账户ID';
+COMMENT ON COLUMN account_audit_logs.audit_type IS '审计类型：daily/monthly/yearly/special';
+COMMENT ON COLUMN account_audit_logs.audit_date IS '审计日期';
+COMMENT ON COLUMN account_audit_logs.auditor_id IS '审计人ID';
+COMMENT ON COLUMN account_audit_logs.audit_action IS '审计操作';
+COMMENT ON COLUMN account_audit_logs.audit_details IS '审计详情（JSON格式）';
+COMMENT ON COLUMN account_audit_logs.audit_result IS '审计结果：passed/failed';
+COMMENT ON COLUMN account_audit_logs.remarks IS '备注';
+
+CREATE INDEX idx_account_audit_logs_account_id ON account_audit_logs(account_id);
+CREATE INDEX idx_account_audit_logs_date ON account_audit_logs(audit_date DESC);
+
 -- ------------------------------------------------------------
 -- 1.4 策略管理模块
 -- ------------------------------------------------------------
@@ -363,6 +616,111 @@ COMMENT ON COLUMN strategy_runs.started_at IS '策略启动时间';
 COMMENT ON COLUMN strategy_runs.stopped_at IS '策略停止时间';
 COMMENT ON COLUMN strategy_runs.status IS '运行结果状态：completed, stopped, error';
 COMMENT ON COLUMN strategy_runs.log_path IS '本次运行日志文件存储路径';
+
+-- 策略版本管理表
+CREATE TABLE strategy_versions (
+    id SERIAL PRIMARY KEY,
+    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    version_number VARCHAR(20) NOT NULL,
+    version_name VARCHAR(100),
+    description TEXT,
+    code_content TEXT NOT NULL,
+    parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
+    is_current BOOLEAN DEFAULT FALSE,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (strategy_id, version_number)
+);
+
+COMMENT ON TABLE strategy_versions IS '策略版本管理表';
+COMMENT ON COLUMN strategy_versions.strategy_id IS '策略ID';
+COMMENT ON COLUMN strategy_versions.version_number IS '版本号（如1.0.0）';
+COMMENT ON COLUMN strategy_versions.version_name IS '版本名称';
+COMMENT ON COLUMN strategy_versions.description IS '版本描述';
+COMMENT ON COLUMN strategy_versions.code_content IS '策略代码内容';
+COMMENT ON COLUMN strategy_versions.parameters IS '版本参数（JSON格式）';
+COMMENT ON COLUMN strategy_versions.is_current IS '是否为当前版本';
+COMMENT ON COLUMN strategy_versions.created_by IS '创建人ID';
+
+CREATE INDEX idx_strategy_versions_strategy_id ON strategy_versions(strategy_id);
+CREATE INDEX idx_strategy_versions_current ON strategy_versions(is_current) WHERE is_current = TRUE;
+
+-- 策略模板表
+CREATE TABLE strategy_templates (
+    id SERIAL PRIMARY KEY,
+    template_name VARCHAR(100) NOT NULL,
+    template_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    code_template TEXT NOT NULL,
+    default_parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
+    category VARCHAR(50),
+    is_public BOOLEAN DEFAULT TRUE,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE strategy_templates IS '策略模板表';
+COMMENT ON COLUMN strategy_templates.template_name IS '模板名称';
+COMMENT ON COLUMN strategy_templates.template_type IS '模板类型：alpha/cta/ai/custom';
+COMMENT ON COLUMN strategy_templates.description IS '模板描述';
+COMMENT ON COLUMN strategy_templates.code_template IS '代码模板';
+COMMENT ON COLUMN strategy_templates.default_parameters IS '默认参数（JSON格式）';
+COMMENT ON COLUMN strategy_templates.category IS '分类';
+COMMENT ON COLUMN strategy_templates.is_public IS '是否公开';
+COMMENT ON COLUMN strategy_templates.created_by IS '创建人ID';
+
+CREATE INDEX idx_strategy_templates_type ON strategy_templates(template_type);
+CREATE INDEX idx_strategy_templates_category ON strategy_templates(category);
+
+-- 策略参数配置表
+CREATE TABLE strategy_parameters (
+    id SERIAL PRIMARY KEY,
+    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    param_name VARCHAR(100) NOT NULL,
+    param_type VARCHAR(50) NOT NULL,
+    param_value JSONB NOT NULL,
+    description TEXT,
+    is_required BOOLEAN DEFAULT TRUE,
+    validation_rules JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (strategy_id, param_name)
+);
+
+COMMENT ON TABLE strategy_parameters IS '策略参数配置表';
+COMMENT ON COLUMN strategy_parameters.strategy_id IS '策略ID';
+COMMENT ON COLUMN strategy_parameters.param_name IS '参数名称';
+COMMENT ON COLUMN strategy_parameters.param_type IS '参数类型：int/float/string/bool/list/dict';
+COMMENT ON COLUMN strategy_parameters.param_value IS '参数值（JSON格式）';
+COMMENT ON COLUMN strategy_parameters.description IS '参数描述';
+COMMENT ON COLUMN strategy_parameters.is_required IS '是否必填';
+COMMENT ON COLUMN strategy_parameters.validation_rules IS '验证规则（JSON格式）';
+
+CREATE INDEX IF NOT EXISTS idx_strategy_parameters_strategy_id ON strategy_parameters(strategy_id);
+
+-- 策略组合关联表
+CREATE TABLE portfolio_strategies (
+    id SERIAL PRIMARY KEY,
+    portfolio_id VARCHAR(32) NOT NULL,
+    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    weight NUMERIC(5,4) NOT NULL DEFAULT 0.0,
+    allocation NUMERIC(16,4),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (portfolio_id, strategy_id)
+);
+
+COMMENT ON TABLE portfolio_strategies IS '策略组合关联表';
+COMMENT ON COLUMN portfolio_strategies.portfolio_id IS '组合ID';
+COMMENT ON COLUMN portfolio_strategies.strategy_id IS '策略ID';
+COMMENT ON COLUMN portfolio_strategies.weight IS '权重（0-1）';
+COMMENT ON COLUMN portfolio_strategies.allocation IS '分配资金';
+COMMENT ON COLUMN portfolio_strategies.is_active IS '是否激活';
+
+CREATE INDEX idx_portfolio_strategies_portfolio_id ON portfolio_strategies(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_strategies_strategy_id ON portfolio_strategies(strategy_id);
 
 -- ------------------------------------------------------------
 -- 1.5 交易管理模块
@@ -461,6 +819,109 @@ COMMENT ON COLUMN positions.last_price IS '最新价格';
 COMMENT ON COLUMN positions.pnl IS '持仓盈亏';
 COMMENT ON COLUMN positions.pnl_rate IS '持仓盈亏率';
 COMMENT ON COLUMN positions.last_update IS '最后更新时间';
+
+-- 交易指令表
+CREATE TABLE trade_instructions (
+    id SERIAL PRIMARY KEY,
+    instruction_id VARCHAR(32) NOT NULL UNIQUE,
+    user_id INT NOT NULL REFERENCES sys_users(id),
+    strategy_id VARCHAR(32) REFERENCES strategies(id),
+    instruction_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'executing', 'completed', 'failed', 'cancelled')),
+    parameters JSONB NOT NULL,
+    execution_result JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    executed_at TIMESTAMPTZ
+);
+
+COMMENT ON TABLE trade_instructions IS '交易指令表';
+COMMENT ON COLUMN trade_instructions.instruction_id IS '指令ID（UUID）';
+COMMENT ON COLUMN trade_instructions.user_id IS '用户ID';
+COMMENT ON COLUMN trade_instructions.strategy_id IS '策略ID';
+COMMENT ON COLUMN trade_instructions.instruction_type IS '指令类型：basket_trade/portfolio_rebalance/stop_loss';
+COMMENT ON COLUMN trade_instructions.status IS '指令状态';
+COMMENT ON COLUMN trade_instructions.parameters IS '指令参数（JSON格式）';
+COMMENT ON COLUMN trade_instructions.execution_result IS '执行结果（JSON格式）';
+COMMENT ON COLUMN trade_instructions.error_message IS '错误信息';
+
+CREATE INDEX idx_trade_instructions_user_id ON trade_instructions(user_id);
+CREATE INDEX idx_trade_instructions_status ON trade_instructions(status);
+CREATE INDEX idx_trade_instructions_created_at ON trade_instructions(created_at DESC);
+
+-- 订单模板表
+CREATE TABLE order_templates (
+    id SERIAL PRIMARY KEY,
+    template_name VARCHAR(100) NOT NULL,
+    user_id INT NOT NULL REFERENCES sys_users(id),
+    template_type VARCHAR(50) NOT NULL,
+    parameters JSONB NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE order_templates IS '订单模板表';
+COMMENT ON COLUMN order_templates.template_name IS '模板名称';
+COMMENT ON COLUMN order_templates.user_id IS '用户ID';
+COMMENT ON COLUMN order_templates.template_type IS '模板类型：limit/market/stop/basket';
+COMMENT ON COLUMN order_templates.parameters IS '模板参数（JSON格式）';
+COMMENT ON COLUMN order_templates.is_default IS '是否为默认模板';
+COMMENT ON COLUMN order_templates.description IS '模板描述';
+
+CREATE INDEX idx_order_templates_user_id ON order_templates(user_id);
+CREATE INDEX idx_order_templates_type ON order_templates(template_type);
+
+-- 交易费用明细表
+CREATE TABLE trade_fees (
+    id SERIAL PRIMARY KEY,
+    trade_id VARCHAR(32) NOT NULL REFERENCES trades(trade_id) ON DELETE CASCADE,
+    fee_type VARCHAR(50) NOT NULL,
+    fee_amount NUMERIC(10, 4) NOT NULL,
+    fee_rate NUMERIC(8,6),
+    description TEXT,
+    calculated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE trade_fees IS '交易费用明细表';
+COMMENT ON COLUMN trade_fees.trade_id IS '成交ID';
+COMMENT ON COLUMN trade_fees.fee_type IS '费用类型：commission/tax/transfer/stamp';
+COMMENT ON COLUMN trade_fees.fee_amount IS '费用金额';
+COMMENT ON COLUMN trade_fees.fee_rate IS '费率';
+COMMENT ON COLUMN trade_fees.description IS '描述';
+
+CREATE INDEX idx_trade_fees_trade_id ON trade_fees(trade_id);
+CREATE INDEX idx_trade_fees_type ON trade_fees(fee_type);
+
+-- 持仓调整记录表
+CREATE TABLE position_adjustments (
+    id SERIAL PRIMARY KEY,
+    position_id INT NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+    adjustment_type VARCHAR(50) NOT NULL,
+    adjustment_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    volume_change INT NOT NULL,
+    cost_price_change NUMERIC(10, 4),
+    description TEXT,
+    reference_id VARCHAR(100),
+    reference_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE position_adjustments IS '持仓调整记录表';
+COMMENT ON COLUMN position_adjustments.position_id IS '持仓ID';
+COMMENT ON COLUMN position_adjustments.adjustment_type IS '调整类型：buy/sell/dividend/split/merge';
+COMMENT ON COLUMN position_adjustments.adjustment_date IS '调整日期';
+COMMENT ON COLUMN position_adjustments.volume_change IS '数量变化（正数为增，负数为减）';
+COMMENT ON COLUMN position_adjustments.cost_price_change IS '成本价变化';
+COMMENT ON COLUMN position_adjustments.description IS '描述';
+COMMENT ON COLUMN position_adjustments.reference_id IS '关联ID';
+COMMENT ON COLUMN position_adjustments.reference_type IS '关联类型';
+
+CREATE INDEX idx_position_adjustments_position_id ON position_adjustments(position_id);
+CREATE INDEX idx_position_adjustments_date ON position_adjustments(adjustment_date DESC);
 
 -- ------------------------------------------------------------
 -- 1.6 篮子管理模块
@@ -566,7 +1027,7 @@ COMMENT ON COLUMN etf_basic.mgt_fee IS '基金管理费率（百分比）';
 COMMENT ON COLUMN etf_basic.etf_type IS '投资通道类型（境内/QDII）';
 
 -- ------------------------------------------------------------
--- 1.8 回测相关表
+-- 1.8 回测模块
 -- ------------------------------------------------------------
 
 -- 回测任务表
@@ -647,6 +1108,100 @@ COMMENT ON COLUMN backtest_positions.ts_code IS '股票代码';
 COMMENT ON COLUMN backtest_positions.volume IS '持仓数量';
 COMMENT ON COLUMN backtest_positions.cost_price IS '平均成本价';
 COMMENT ON COLUMN backtest_positions.market_value IS '持仓市值';
+
+-- 回测参数配置表
+CREATE TABLE backtest_parameters (
+    id SERIAL PRIMARY KEY,
+    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    param_category VARCHAR(50) NOT NULL,
+    param_name VARCHAR(100) NOT NULL,
+    param_value JSONB NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE backtest_parameters IS '回测参数配置表';
+COMMENT ON COLUMN backtest_parameters.task_id IS '回测任务ID';
+COMMENT ON COLUMN backtest_parameters.param_category IS '参数分类：market/cost/risk/strategy';
+COMMENT ON COLUMN backtest_parameters.param_name IS '参数名称';
+COMMENT ON COLUMN backtest_parameters.param_value IS '参数值（JSON格式）';
+COMMENT ON COLUMN backtest_parameters.description IS '参数描述';
+
+CREATE INDEX IF NOT EXISTS idx_backtest_parameters_task_id ON backtest_parameters(task_id);
+
+-- 回测场景表
+CREATE TABLE backtest_scenarios (
+    id SERIAL PRIMARY KEY,
+    scenario_id VARCHAR(32) NOT NULL UNIQUE,
+    scenario_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    market_conditions JSONB NOT NULL,
+    economic_conditions JSONB,
+    risk_factors JSONB,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE backtest_scenarios IS '回测场景表';
+COMMENT ON COLUMN backtest_scenarios.scenario_id IS '场景ID（UUID）';
+COMMENT ON COLUMN backtest_scenarios.scenario_name IS '场景名称';
+COMMENT ON COLUMN backtest_scenarios.description IS '场景描述';
+COMMENT ON COLUMN backtest_scenarios.market_conditions IS '市场条件（JSON格式）';
+COMMENT ON COLUMN backtest_scenarios.economic_conditions IS '经济条件（JSON格式）';
+COMMENT ON COLUMN backtest_scenarios.risk_factors IS '风险因子（JSON格式）';
+COMMENT ON COLUMN backtest_scenarios.created_by IS '创建人ID';
+
+CREATE INDEX idx_backtest_scenarios_name ON backtest_scenarios(scenario_name);
+
+-- 回测对比结果表
+CREATE TABLE backtest_comparisons (
+    id SERIAL PRIMARY KEY,
+    comparison_id VARCHAR(32) NOT NULL UNIQUE,
+    comparison_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    base_task_id VARCHAR(32) REFERENCES backtest_tasks(id),
+    compared_tasks JSONB NOT NULL,
+    comparison_metrics JSONB NOT NULL,
+    comparison_results JSONB,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE backtest_comparisons IS '回测对比结果表';
+COMMENT ON COLUMN backtest_comparisons.comparison_id IS '对比ID（UUID）';
+COMMENT ON COLUMN backtest_comparisons.comparison_name IS '对比名称';
+COMMENT ON COLUMN backtest_comparisons.description IS '对比描述';
+COMMENT ON COLUMN backtest_comparisons.base_task_id IS '基准回测任务ID';
+COMMENT ON COLUMN backtest_comparisons.compared_tasks IS '对比任务列表（JSON格式）';
+COMMENT ON COLUMN backtest_comparisons.comparison_metrics IS '对比指标（JSON格式）';
+COMMENT ON COLUMN backtest_comparisons.comparison_results IS '对比结果（JSON格式）';
+COMMENT ON COLUMN backtest_comparisons.created_by IS '创建人ID';
+
+CREATE INDEX idx_backtest_comparisons_name ON backtest_comparisons(comparison_name);
+
+-- 回测资源使用表
+CREATE TABLE backtest_resource_usage (
+    id SERIAL PRIMARY KEY,
+    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    resource_type VARCHAR(50) NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
+    metric_value NUMERIC(12,4) NOT NULL,
+    unit VARCHAR(20),
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE backtest_resource_usage IS '回测资源使用表';
+COMMENT ON COLUMN backtest_resource_usage.task_id IS '回测任务ID';
+COMMENT ON COLUMN backtest_resource_usage.resource_type IS '资源类型：cpu/memory/disk/network';
+COMMENT ON COLUMN backtest_resource_usage.metric_name IS '指标名称';
+COMMENT ON COLUMN backtest_resource_usage.metric_value IS '指标值';
+COMMENT ON COLUMN backtest_resource_usage.unit IS '单位';
+COMMENT ON COLUMN backtest_resource_usage.recorded_at IS '记录时间';
+
+CREATE INDEX idx_backtest_resource_usage_task_id ON backtest_resource_usage(task_id);
+CREATE INDEX idx_backtest_resource_usage_type ON backtest_resource_usage(resource_type);
 
 -- ------------------------------------------------------------
 -- 1.9 风控管理模块
@@ -847,7 +1402,7 @@ CREATE TABLE sys_notifications (
     priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
     title VARCHAR(200) NOT NULL,
     content TEXT NOT NULL,
-    metadata JSONB,
+    metainfo JSONB,
     sender_type VARCHAR(50) DEFAULT 'system',
     sender_id VARCHAR(100),
     recipient_type VARCHAR(20) DEFAULT 'user' CHECK (recipient_type IN ('user', 'role', 'all')),
@@ -917,7 +1472,7 @@ CREATE TABLE monitor_alerts (
     source_id VARCHAR(100),
     title VARCHAR(200) NOT NULL,
     message TEXT NOT NULL,
-    metadata JSONB,
+    metainfo JSONB,
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'acknowledged', 'resolved', 'suppressed')),
     acknowledged_by INT REFERENCES sys_users(id),
     acknowledged_at TIMESTAMPTZ,
@@ -936,7 +1491,7 @@ COMMENT ON COLUMN monitor_alerts.source_module IS '报警来源模块';
 COMMENT ON COLUMN monitor_alerts.source_id IS '报警来源ID（如策略ID、任务ID等）';
 COMMENT ON COLUMN monitor_alerts.title IS '报警标题';
 COMMENT ON COLUMN monitor_alerts.message IS '报警详细信息';
-COMMENT ON COLUMN monitor_alerts.metadata IS '报警元数据（JSON格式）';
+COMMENT ON COLUMN monitor_alerts.metainfo IS '报警元数据（JSON格式）';
 COMMENT ON COLUMN monitor_alerts.status IS '报警状态';
 COMMENT ON COLUMN monitor_alerts.notification_channels IS '通知渠道（email, wechat, dingtalk, sms等）';
 
@@ -945,6 +1500,114 @@ CREATE INDEX idx_monitor_alerts_level ON monitor_alerts(alert_level);
 CREATE INDEX idx_monitor_alerts_type ON monitor_alerts(alert_type);
 CREATE INDEX idx_monitor_alerts_created_at ON monitor_alerts(created_at DESC);
 CREATE INDEX idx_monitor_alerts_source ON monitor_alerts(source_module, source_id);
+
+-- 监控任务表
+CREATE TABLE monitor_tasks (
+    id SERIAL PRIMARY KEY,
+    task_name VARCHAR(100) NOT NULL,
+    task_type VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50) NOT NULL,
+    target_id VARCHAR(100),
+    schedule_config JSONB NOT NULL,
+    check_config JSONB NOT NULL,
+    alert_config JSONB,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_run_at TIMESTAMPTZ,
+    next_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE monitor_tasks IS '监控任务表';
+COMMENT ON COLUMN monitor_tasks.task_name IS '任务名称';
+COMMENT ON COLUMN monitor_tasks.task_type IS '任务类型：system/strategy/data/trade';
+COMMENT ON COLUMN monitor_tasks.target_type IS '监控目标类型';
+COMMENT ON COLUMN monitor_tasks.target_id IS '监控目标ID';
+COMMENT ON COLUMN monitor_tasks.schedule_config IS '调度配置（JSON格式）';
+COMMENT ON COLUMN monitor_tasks.check_config IS '检查配置（JSON格式）';
+COMMENT ON COLUMN monitor_tasks.alert_config IS '报警配置（JSON格式）';
+COMMENT ON COLUMN monitor_tasks.is_active IS '是否激活';
+
+CREATE INDEX idx_monitor_tasks_type ON monitor_tasks(task_type);
+CREATE INDEX idx_monitor_tasks_active ON monitor_tasks(is_active);
+
+-- 监控阈值配置表
+CREATE TABLE monitor_thresholds (
+    id SERIAL PRIMARY KEY,
+    metric_type VARCHAR(50) NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
+    warning_threshold NUMERIC(12,4),
+    critical_threshold NUMERIC(12,4),
+    min_value NUMERIC(12,4),
+    max_value NUMERIC(12,4),
+    unit VARCHAR(20),
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE monitor_thresholds IS '监控阈值配置表';
+COMMENT ON COLUMN monitor_thresholds.metric_type IS '指标类型';
+COMMENT ON COLUMN monitor_thresholds.metric_name IS '指标名称';
+COMMENT ON COLUMN monitor_thresholds.warning_threshold IS '警告阈值';
+COMMENT ON COLUMN monitor_thresholds.critical_threshold IS '严重阈值';
+COMMENT ON COLUMN monitor_thresholds.min_value IS '最小值';
+COMMENT ON COLUMN monitor_thresholds.max_value IS '最大值';
+COMMENT ON COLUMN monitor_thresholds.unit IS '单位';
+COMMENT ON COLUMN monitor_thresholds.description IS '描述';
+
+CREATE INDEX idx_monitor_thresholds_type ON monitor_thresholds(metric_type);
+
+-- 报警模板表
+CREATE TABLE alert_templates (
+    id SERIAL PRIMARY KEY,
+    template_name VARCHAR(100) NOT NULL,
+    alert_type VARCHAR(50) NOT NULL,
+    alert_level VARCHAR(20) NOT NULL,
+    title_template TEXT NOT NULL,
+    message_template TEXT NOT NULL,
+    notification_channels JSONB DEFAULT '["email"]'::JSONB,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE alert_templates IS '报警模板表';
+COMMENT ON COLUMN alert_templates.template_name IS '模板名称';
+COMMENT ON COLUMN alert_templates.alert_type IS '报警类型';
+COMMENT ON COLUMN alert_templates.alert_level IS '报警级别';
+COMMENT ON COLUMN alert_templates.title_template IS '标题模板';
+COMMENT ON COLUMN alert_templates.message_template IS '消息模板';
+COMMENT ON COLUMN alert_templates.notification_channels IS '通知渠道';
+
+CREATE INDEX idx_alert_templates_type ON alert_templates(alert_type);
+
+-- 报警发送日志表
+CREATE TABLE alert_delivery_logs (
+    id SERIAL PRIMARY KEY,
+    alert_id INT NOT NULL REFERENCES monitor_alerts(id) ON DELETE CASCADE,
+    channel VARCHAR(50) NOT NULL,
+    recipient VARCHAR(200) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'delivered')),
+    sent_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    error_message TEXT,
+    retry_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE alert_delivery_logs IS '报警发送日志表';
+COMMENT ON COLUMN alert_delivery_logs.alert_id IS '报警ID';
+COMMENT ON COLUMN alert_delivery_logs.channel IS '发送渠道：email/wechat/dingtalk/sms';
+COMMENT ON COLUMN alert_delivery_logs.recipient IS '接收者';
+COMMENT ON COLUMN alert_delivery_logs.status IS '发送状态';
+COMMENT ON COLUMN alert_delivery_logs.sent_at IS '发送时间';
+COMMENT ON COLUMN alert_delivery_logs.delivered_at IS '送达时间';
+COMMENT ON COLUMN alert_delivery_logs.error_message IS '错误信息';
+
+CREATE INDEX idx_alert_delivery_logs_alert_id ON alert_delivery_logs(alert_id);
+CREATE INDEX idx_alert_delivery_logs_status ON alert_delivery_logs(status);
 
 -- ------------------------------------------------------------
 -- 1.11 因子相关表
@@ -983,6 +1646,88 @@ CREATE INDEX idx_factor_definitions_type ON factor_definitions(factor_type);
 CREATE INDEX idx_factor_definitions_category ON factor_definitions(category);
 CREATE INDEX idx_factor_definitions_active ON factor_definitions(is_active);
 
+-- 数据质量检查记录表
+CREATE TABLE data_quality_checks (
+    id SERIAL PRIMARY KEY,
+    check_type VARCHAR(50) NOT NULL,
+    data_type VARCHAR(50) NOT NULL,
+    check_date DATE NOT NULL,
+    total_records INT NOT NULL,
+    valid_records INT NOT NULL,
+    invalid_records INT NOT NULL,
+    missing_records INT DEFAULT 0,
+    duplicate_records INT DEFAULT 0,
+    check_results JSONB NOT NULL,
+    status VARCHAR(20) DEFAULT 'completed',
+    checked_by VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE data_quality_checks IS '数据质量检查记录表';
+COMMENT ON COLUMN data_quality_checks.check_type IS '检查类型：daily/batch/adhoc';
+COMMENT ON COLUMN data_quality_checks.data_type IS '数据类型：stock_daily/stock_minutes/financial';
+COMMENT ON COLUMN data_quality_checks.check_date IS '检查日期';
+COMMENT ON COLUMN data_quality_checks.total_records IS '总记录数';
+COMMENT ON COLUMN data_quality_checks.valid_records IS '有效记录数';
+COMMENT ON COLUMN data_quality_checks.invalid_records IS '无效记录数';
+COMMENT ON COLUMN data_quality_checks.missing_records IS '缺失记录数';
+COMMENT ON COLUMN data_quality_checks.duplicate_records IS '重复记录数';
+COMMENT ON COLUMN data_quality_checks.check_results IS '检查结果（JSON格式）';
+COMMENT ON COLUMN data_quality_checks.status IS '检查状态';
+COMMENT ON COLUMN data_quality_checks.checked_by IS '检查人/系统';
+
+CREATE INDEX IF NOT EXISTS idx_data_quality_checks_date ON data_quality_checks(check_date DESC);
+CREATE INDEX idx_data_quality_checks_type ON data_quality_checks(data_type);
+
+-- 数据修复记录表
+CREATE TABLE data_fix_records (
+    id SERIAL PRIMARY KEY,
+    quality_check_id INT REFERENCES data_quality_checks(id),
+    data_type VARCHAR(50) NOT NULL,
+    fix_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fix_type VARCHAR(50) NOT NULL,
+    records_fixed INT NOT NULL,
+    fix_details JSONB NOT NULL,
+    fix_status VARCHAR(20) DEFAULT 'completed',
+    fixed_by VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE data_fix_records IS '数据修复记录表';
+COMMENT ON COLUMN data_fix_records.quality_check_id IS '关联的质量检查ID';
+COMMENT ON COLUMN data_fix_records.data_type IS '数据类型';
+COMMENT ON COLUMN data_fix_records.fix_date IS '修复日期';
+COMMENT ON COLUMN data_fix_records.fix_type IS '修复类型：missing/duplicate/invalid';
+COMMENT ON COLUMN data_fix_records.records_fixed IS '修复记录数';
+COMMENT ON COLUMN data_fix_records.fix_details IS '修复详情（JSON格式）';
+COMMENT ON COLUMN data_fix_records.fix_status IS '修复状态';
+COMMENT ON COLUMN data_fix_records.fixed_by IS '修复人/系统';
+
+CREATE INDEX idx_data_fix_records_date ON data_fix_records(fix_date DESC);
+
+-- 数据质量指标历史表
+CREATE TABLE data_quality_metrics (
+    id SERIAL PRIMARY KEY,
+    metric_date DATE NOT NULL,
+    data_type VARCHAR(50) NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
+    metric_value NUMERIC(12,4) NOT NULL,
+    target_value NUMERIC(12,4),
+    status VARCHAR(20) DEFAULT 'normal',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE data_quality_metrics IS '数据质量指标历史表';
+COMMENT ON COLUMN data_quality_metrics.metric_date IS '指标日期';
+COMMENT ON COLUMN data_quality_metrics.data_type IS '数据类型';
+COMMENT ON COLUMN data_quality_metrics.metric_name IS '指标名称';
+COMMENT ON COLUMN data_quality_metrics.metric_value IS '指标值';
+COMMENT ON COLUMN data_quality_metrics.target_value IS '目标值';
+COMMENT ON COLUMN data_quality_metrics.status IS '状态：normal/warning/critical';
+
+CREATE INDEX idx_data_quality_metrics_date ON data_quality_metrics(metric_date DESC);
+CREATE INDEX idx_data_quality_metrics_type ON data_quality_metrics(data_type);
+
 -- ------------------------------------------------------------
 -- 1.12 分析相关表
 -- ------------------------------------------------------------
@@ -1019,6 +1764,114 @@ COMMENT ON COLUMN analysis_reports.file_size IS '报告文件大小（字节）'
 CREATE INDEX idx_analysis_reports_type ON analysis_reports(report_type);
 CREATE INDEX idx_analysis_reports_status ON analysis_reports(status);
 CREATE INDEX idx_analysis_reports_created_at ON analysis_reports(created_at DESC);
+
+-- 分析任务表
+CREATE TABLE analysis_tasks (
+    id SERIAL PRIMARY KEY,
+    task_id VARCHAR(64) NOT NULL UNIQUE,
+    task_name VARCHAR(200) NOT NULL,
+    analysis_type VARCHAR(50) NOT NULL,
+    parameters JSONB NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    progress FLOAT DEFAULT 0.0,
+    result JSONB,
+    report_id INT REFERENCES analysis_reports(id),
+    error_message TEXT,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+COMMENT ON TABLE analysis_tasks IS '分析任务表';
+COMMENT ON COLUMN analysis_tasks.task_id IS '任务ID（唯一）';
+COMMENT ON COLUMN analysis_tasks.task_name IS '任务名称';
+COMMENT ON COLUMN analysis_tasks.analysis_type IS '分析类型：performance/risk/attribution';
+COMMENT ON COLUMN analysis_tasks.parameters IS '分析参数（JSON格式）';
+COMMENT ON COLUMN analysis_tasks.status IS '任务状态';
+COMMENT ON COLUMN analysis_tasks.progress IS '进度';
+COMMENT ON COLUMN analysis_tasks.result IS '分析结果（JSON格式）';
+COMMENT ON COLUMN analysis_tasks.report_id IS '关联的报告ID';
+COMMENT ON COLUMN analysis_tasks.error_message IS '错误信息';
+
+CREATE INDEX IF NOT EXISTS idx_analysis_tasks_status ON analysis_tasks(status);
+CREATE INDEX idx_analysis_tasks_type ON analysis_tasks(analysis_type);
+
+-- 分析模板表
+CREATE TABLE analysis_templates (
+    id SERIAL PRIMARY KEY,
+    template_name VARCHAR(100) NOT NULL,
+    template_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    config_template JSONB NOT NULL,
+    output_format VARCHAR(20) DEFAULT 'json',
+    is_public BOOLEAN DEFAULT TRUE,
+    created_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE analysis_templates IS '分析模板表';
+COMMENT ON COLUMN analysis_templates.template_name IS '模板名称';
+COMMENT ON COLUMN analysis_templates.template_type IS '模板类型';
+COMMENT ON COLUMN analysis_templates.description IS '模板描述';
+COMMENT ON COLUMN analysis_templates.config_template IS '配置模板（JSON格式）';
+COMMENT ON COLUMN analysis_templates.output_format IS '输出格式';
+COMMENT ON COLUMN analysis_templates.is_public IS '是否公开';
+COMMENT ON COLUMN analysis_templates.created_by IS '创建人';
+
+CREATE INDEX idx_analysis_templates_type ON analysis_templates(template_type);
+
+-- 报告生成日志表
+CREATE TABLE report_generation_logs (
+    id SERIAL PRIMARY KEY,
+    report_id INT REFERENCES analysis_reports(id),
+    generation_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    duration_ms INT,
+    error_message TEXT,
+    generated_by INT REFERENCES sys_users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE report_generation_logs IS '报告生成日志表';
+COMMENT ON COLUMN report_generation_logs.report_id IS '报告ID';
+COMMENT ON COLUMN report_generation_logs.generation_type IS '生成类型：scheduled/manual';
+COMMENT ON COLUMN report_generation_logs.status IS '生成状态';
+COMMENT ON COLUMN report_generation_logs.started_at IS '开始时间';
+COMMENT ON COLUMN report_generation_logs.completed_at IS '完成时间';
+COMMENT ON COLUMN report_generation_logs.duration_ms IS '耗时（毫秒）';
+COMMENT ON COLUMN report_generation_logs.error_message IS '错误信息';
+COMMENT ON COLUMN report_generation_logs.generated_by IS '生成人';
+
+CREATE INDEX idx_report_generation_logs_report_id ON report_generation_logs(report_id);
+CREATE INDEX idx_report_generation_logs_date ON report_generation_logs(started_at DESC);
+
+-- 分析基准表
+CREATE TABLE analysis_benchmarks (
+    id SERIAL PRIMARY KEY,
+    benchmark_code VARCHAR(20) NOT NULL UNIQUE,
+    benchmark_name VARCHAR(100) NOT NULL,
+    benchmark_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    components JSONB,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE analysis_benchmarks IS '分析基准表';
+COMMENT ON COLUMN analysis_benchmarks.benchmark_code IS '基准代码';
+COMMENT ON COLUMN analysis_benchmarks.benchmark_name IS '基准名称';
+COMMENT ON COLUMN analysis_benchmarks.benchmark_type IS '基准类型：index/custom/portfolio';
+COMMENT ON COLUMN analysis_benchmarks.description IS '描述';
+COMMENT ON COLUMN analysis_benchmarks.components IS '成分股（JSON格式）';
+COMMENT ON COLUMN analysis_benchmarks.is_active IS '是否激活';
+
+CREATE INDEX idx_analysis_benchmarks_type ON analysis_benchmarks(benchmark_type);
 
 -- ------------------------------------------------------------
 -- 1.13 财务数据表
@@ -1144,6 +1997,269 @@ COMMENT ON COLUMN index_basic.list_date IS '发布日期';
 COMMENT ON COLUMN index_basic.weight_rule IS '加权方式';
 COMMENT ON COLUMN index_basic.desc IS '指数描述';
 COMMENT ON COLUMN index_basic.exp_date IS '终止日期';
+
+-- ------------------------------------------------------------
+-- 1.15 工作流管理表
+-- ------------------------------------------------------------
+
+-- 工作流任务表
+CREATE TABLE workflow_tasks (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(32) NOT NULL,
+    task_id VARCHAR(32) NOT NULL,
+    task_name VARCHAR(100) NOT NULL,
+    task_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    dependencies JSONB DEFAULT '[]'::JSONB,
+    parameters JSONB NOT NULL,
+    result JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    UNIQUE (workflow_id, task_id)
+);
+
+COMMENT ON TABLE workflow_tasks IS '工作流任务表';
+COMMENT ON COLUMN workflow_tasks.workflow_id IS '工作流ID';
+COMMENT ON COLUMN workflow_tasks.task_id IS '任务ID';
+COMMENT ON COLUMN workflow_tasks.task_name IS '任务名称';
+COMMENT ON COLUMN workflow_tasks.task_type IS '任务类型';
+COMMENT ON COLUMN workflow_tasks.status IS '任务状态';
+COMMENT ON COLUMN workflow_tasks.dependencies IS '依赖任务（JSON数组）';
+COMMENT ON COLUMN workflow_tasks.parameters IS '任务参数（JSON格式）';
+COMMENT ON COLUMN workflow_tasks.result IS '任务结果（JSON格式）';
+COMMENT ON COLUMN workflow_tasks.error_message IS '错误信息';
+
+CREATE INDEX IF NOT EXISTS idx_workflow_tasks_workflow_id ON workflow_tasks(workflow_id);
+CREATE INDEX idx_workflow_tasks_status ON workflow_tasks(status);
+
+-- 工作流执行日志表
+CREATE TABLE workflow_logs (
+    id SERIAL PRIMARY KEY,
+    workflow_id VARCHAR(32) NOT NULL,
+    execution_id VARCHAR(32) NOT NULL,
+    workflow_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    duration_ms INT,
+    execution_context JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE workflow_logs IS '工作流执行日志表';
+COMMENT ON COLUMN workflow_logs.workflow_id IS '工作流ID';
+COMMENT ON COLUMN workflow_logs.execution_id IS '执行ID';
+COMMENT ON COLUMN workflow_logs.workflow_name IS '工作流名称';
+COMMENT ON COLUMN workflow_logs.status IS '执行状态';
+COMMENT ON COLUMN workflow_logs.started_at IS '开始时间';
+COMMENT ON COLUMN workflow_logs.completed_at IS '完成时间';
+COMMENT ON COLUMN workflow_logs.duration_ms IS '耗时（毫秒）';
+COMMENT ON COLUMN workflow_logs.execution_context IS '执行上下文（JSON格式）';
+COMMENT ON COLUMN workflow_logs.error_message IS '错误信息';
+
+CREATE INDEX IF NOT EXISTS idx_workflow_logs_workflow_id ON workflow_logs(workflow_id);
+CREATE INDEX idx_workflow_logs_execution_id ON workflow_logs(execution_id);
+CREATE INDEX idx_workflow_logs_date ON workflow_logs(started_at DESC);
+
+-- 文件附件表
+CREATE TABLE file_attachments (
+    id SERIAL PRIMARY KEY,
+    file_id VARCHAR(32) NOT NULL UNIQUE,
+    file_name VARCHAR(200) NOT NULL,
+    file_type VARCHAR(50) NOT NULL,
+    file_size BIGINT NOT NULL,
+    storage_path TEXT NOT NULL,
+    mime_type VARCHAR(100),
+    reference_type VARCHAR(50) NOT NULL,
+    reference_id VARCHAR(100) NOT NULL,
+    uploaded_by INT REFERENCES sys_users(id),
+    upload_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    description TEXT,
+    metainfo JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE file_attachments IS '文件附件表';
+COMMENT ON COLUMN file_attachments.file_id IS '文件ID（UUID）';
+COMMENT ON COLUMN file_attachments.file_name IS '文件名';
+COMMENT ON COLUMN file_attachments.file_type IS '文件类型：report/data/strategy/log';
+COMMENT ON COLUMN file_attachments.file_size IS '文件大小（字节）';
+COMMENT ON COLUMN file_attachments.storage_path IS '存储路径';
+COMMENT ON COLUMN file_attachments.mime_type IS 'MIME类型';
+COMMENT ON COLUMN file_attachments.reference_type IS '关联类型';
+COMMENT ON COLUMN file_attachments.reference_id IS '关联ID';
+COMMENT ON COLUMN file_attachments.uploaded_by IS '上传人';
+COMMENT ON COLUMN file_attachments.upload_date IS '上传日期';
+COMMENT ON COLUMN file_attachments.description IS '描述';
+COMMENT ON COLUMN file_attachments.metainfo IS '元数据（JSON格式）';
+
+CREATE INDEX IF NOT EXISTS idx_file_attachments_reference ON file_attachments(reference_type, reference_id);
+CREATE INDEX idx_file_attachments_upload_date ON file_attachments(upload_date DESC);
+
+-- ------------------------------------------------------------
+-- 1.16 因子研究任务表（补充完整）
+-- ------------------------------------------------------------
+
+CREATE TABLE factor_research (
+    -- 基础信息
+    id SERIAL PRIMARY KEY,
+    research_id VARCHAR(64) NOT NULL UNIQUE,
+    research_name VARCHAR(200) NOT NULL,
+
+    -- 因子信息
+    factor_name VARCHAR(100) NOT NULL,
+    factor_definition JSONB,
+    factor_category VARCHAR(50),
+
+    -- 研究参数
+    universe JSONB,
+    start_date DATE,
+    end_date DATE,
+    parameters JSONB,
+    analysis_type VARCHAR(50) DEFAULT 'ic_analysis',
+
+    -- 研究状态和进度
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    progress FLOAT DEFAULT 0.0,
+    calculated_count INTEGER DEFAULT 0,
+    total_stocks INTEGER DEFAULT 0,
+
+    -- 研究结果
+    result JSONB,
+    summary JSONB,
+    report JSONB,
+
+    -- 错误信息
+    error_message TEXT,
+    error_stack TEXT,
+
+    -- 性能指标（从结果中提取的常用指标，便于查询）
+    ic_mean DECIMAL(10, 4),
+    ic_ir DECIMAL(10, 4),
+    top_minus_bottom DECIMAL(10, 4),
+    sharpe_ratio DECIMAL(10, 4),
+
+    -- 用户和上下文
+    user_id INTEGER,
+    created_by INTEGER,
+    updated_by INTEGER,
+
+    -- 时间戳
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    estimated_completion_at TIMESTAMP WITH TIME ZONE
+);
+
+COMMENT ON TABLE factor_research IS '因子研究任务表';
+COMMENT ON COLUMN factor_research.id IS '主键ID';
+COMMENT ON COLUMN factor_research.research_id IS '研究任务ID';
+COMMENT ON COLUMN factor_research.research_name IS '研究任务名称';
+COMMENT ON COLUMN factor_research.factor_name IS '因子名称';
+COMMENT ON COLUMN factor_research.factor_definition IS '因子定义（JSON格式）';
+COMMENT ON COLUMN factor_research.factor_category IS '因子类别：value, quality, momentum, volatility, size, etc.';
+COMMENT ON COLUMN factor_research.universe IS '股票池（JSON数组格式）';
+COMMENT ON COLUMN factor_research.start_date IS '开始日期';
+COMMENT ON COLUMN factor_research.end_date IS '结束日期';
+COMMENT ON COLUMN factor_research.parameters IS '研究参数（JSON格式）';
+COMMENT ON COLUMN factor_research.analysis_type IS '分析类型：ic_analysis, quantile_analysis, correlation_analysis';
+COMMENT ON COLUMN factor_research.status IS '状态：pending, running, completed, failed, cancelled';
+COMMENT ON COLUMN factor_research.progress IS '进度（0-1）';
+COMMENT ON COLUMN factor_research.calculated_count IS '已计算股票数量';
+COMMENT ON COLUMN factor_research.total_stocks IS '总股票数量';
+COMMENT ON COLUMN factor_research.result IS '研究结果（JSON格式）';
+COMMENT ON COLUMN factor_research.summary IS '研究总结（JSON格式）';
+COMMENT ON COLUMN factor_research.report IS '详细报告（JSON格式）';
+COMMENT ON COLUMN factor_research.error_message IS '错误信息';
+COMMENT ON COLUMN factor_research.error_stack IS '错误堆栈';
+COMMENT ON COLUMN factor_research.ic_mean IS 'IC均值';
+COMMENT ON COLUMN factor_research.ic_ir IS 'IC信息比率';
+COMMENT ON COLUMN factor_research.top_minus_bottom IS '多空收益差';
+COMMENT ON COLUMN factor_research.sharpe_ratio IS '夏普比率';
+COMMENT ON COLUMN factor_research.user_id IS '用户ID';
+COMMENT ON COLUMN factor_research.created_by IS '创建人ID';
+COMMENT ON COLUMN factor_research.updated_by IS '更新人ID';
+COMMENT ON COLUMN factor_research.created_at IS '创建时间';
+COMMENT ON COLUMN factor_research.updated_at IS '更新时间';
+COMMENT ON COLUMN factor_research.started_at IS '开始时间';
+COMMENT ON COLUMN factor_research.completed_at IS '完成时间';
+COMMENT ON COLUMN factor_research.estimated_completion_at IS '预计完成时间';
+
+-- 创建黑名单表
+CREATE TABLE blacklists (
+    -- 主键
+    id SERIAL PRIMARY KEY,
+
+    -- 目标信息
+    target_type VARCHAR(50) NOT NULL,
+    target_id VARCHAR(100) NOT NULL,
+    target_name VARCHAR(200),
+
+    -- 名单信息
+    list_type VARCHAR(50) NOT NULL DEFAULT 'global',
+    reason TEXT NOT NULL,
+
+    -- 管理信息
+    added_by INTEGER NOT NULL,
+    expire_date TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    metainfo JSONB,
+
+    -- 时间戳
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    -- 外键约束
+    CONSTRAINT fk_blacklists_added_by
+        FOREIGN KEY (added_by)
+        REFERENCES sys_users(id)
+        ON DELETE RESTRICT,
+
+    -- 唯一约束
+    CONSTRAINT uq_blacklist_target
+        UNIQUE (target_type, target_id, list_type)
+);
+
+-- 添加表注释
+COMMENT ON TABLE blacklists IS '黑名单表';
+
+-- 添加列注释
+COMMENT ON COLUMN blacklists.id IS '黑名单ID';
+COMMENT ON COLUMN blacklists.target_type IS '目标类型：stock/user/account';
+COMMENT ON COLUMN blacklists.target_id IS '目标标识（股票代码/用户ID/账户ID）';
+COMMENT ON COLUMN blacklists.target_name IS '目标名称';
+COMMENT ON COLUMN blacklists.list_type IS '名单类型：global/user_specific/system';
+COMMENT ON COLUMN blacklists.reason IS '加入原因';
+COMMENT ON COLUMN blacklists.added_by IS '添加人ID';
+COMMENT ON COLUMN blacklists.expire_date IS '过期时间';
+COMMENT ON COLUMN blacklists.is_active IS '是否有效';
+COMMENT ON COLUMN blacklists.metainfo IS '元数据（JSON格式）';
+COMMENT ON COLUMN blacklists.created_at IS '创建时间';
+COMMENT ON COLUMN blacklists.updated_at IS '更新时间';
+
+-- 创建索引
+CREATE INDEX idx_blacklists_target_type_id ON blacklists(target_type, target_id);
+CREATE INDEX idx_blacklists_list_type ON blacklists(list_type);
+CREATE INDEX idx_blacklists_is_active ON blacklists(is_active);
+CREATE INDEX idx_blacklists_expire_date ON blacklists(expire_date);
+CREATE INDEX idx_blacklists_created_at ON blacklists(created_at);
+CREATE INDEX idx_blacklists_updated_at ON blacklists(updated_at);
+CREATE INDEX idx_blacklists_added_by ON blacklists(added_by);
+
+-- 创建部分索引（针对特定查询优化）
+CREATE INDEX idx_blacklists_active_expired ON blacklists(is_active, expire_date)
+    WHERE is_active = TRUE AND expire_date IS NOT NULL;
+
+CREATE INDEX idx_blacklists_stock_active ON blacklists(target_type, target_id, is_active)
+    WHERE target_type = 'stock' AND is_active = TRUE;
+
+CREATE INDEX idx_blacklists_user_active ON blacklists(target_type, target_id, is_active)
+    WHERE target_type = 'user' AND is_active = TRUE;
 
 -- ============================================================
 -- 第二部分：TimescaleDB时序表
@@ -1911,45 +3027,55 @@ SELECT create_hypertable(
 -- ============================================================
 
 -- TimescaleDB超表索引
-CREATE INDEX idx_stock_daily_ts_code ON stock_daily (ts_code);
-CREATE INDEX idx_stock_daily_date ON stock_daily (trade_date DESC);
-CREATE INDEX idx_stock_minutes_ts_code ON stock_minutes (ts_code);
-CREATE INDEX idx_stock_minutes_time ON stock_minutes (trade_time DESC);
-CREATE INDEX idx_stock_minutes_freq ON stock_minutes (freq);
-CREATE INDEX idx_stock_moneyflow_ts_code ON stock_moneyflow (ts_code);
-CREATE INDEX idx_stock_moneyflow_date ON stock_moneyflow (trade_date DESC);
-CREATE INDEX idx_etf_daily_ts_code ON etf_daily (ts_code);
-CREATE INDEX idx_etf_daily_date ON etf_daily (trade_date DESC);
-CREATE INDEX idx_etf_minute_ts_code ON etf_minute (ts_code);
-CREATE INDEX idx_etf_minute_time ON etf_minute (trade_time DESC);
-CREATE INDEX idx_etf_minute_freq ON etf_minute (freq);
-CREATE INDEX idx_index_daily_ts_code ON index_daily (ts_code);
-CREATE INDEX idx_index_daily_date ON index_daily (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_ts_code ON stock_daily (ts_code);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_date ON stock_daily (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_minutes_ts_code ON stock_minutes (ts_code);
+CREATE INDEX IF NOT EXISTS idx_stock_minutes_time ON stock_minutes (trade_time DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_minutes_freq ON stock_minutes (freq);
+CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_ts_code ON stock_moneyflow (ts_code);
+CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_date ON stock_moneyflow (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_etf_daily_ts_code ON etf_daily (ts_code);
+CREATE INDEX IF NOT EXISTS idx_etf_daily_date ON etf_daily (trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_etf_minute_ts_code ON etf_minute (ts_code);
+CREATE INDEX IF NOT EXISTS idx_etf_minute_time ON etf_minute (trade_time DESC);
+CREATE INDEX IF NOT EXISTS idx_etf_minute_freq ON etf_minute (freq);
+CREATE INDEX IF NOT EXISTS idx_index_daily_ts_code ON index_daily (ts_code);
+CREATE INDEX IF NOT EXISTS idx_index_daily_date ON index_daily (trade_date DESC);
 
 -- 补充索引
-CREATE INDEX idx_account_daily_perf_user_date ON account_daily_performance(user_id, trade_date DESC);
-CREATE INDEX idx_strategy_daily_perf_strategy_date ON strategy_daily_performance(strategy_id, trade_date DESC);
-CREATE INDEX idx_signals_strategy_time ON signals(strategy_id, signal_time DESC);
-CREATE INDEX idx_signals_ts_code ON signals(ts_code);
-CREATE INDEX idx_backtest_equity_task_date ON backtest_equity_curves(task_id, trade_date DESC);
-CREATE INDEX idx_risk_events_created_at ON risk_events(created_at DESC);
-CREATE INDEX idx_risk_events_user_id ON risk_events(user_id);
-CREATE INDEX idx_factor_data_factor_code ON factor_data(factor_code);
-CREATE INDEX idx_factor_data_ts_code ON factor_data(ts_code);
-CREATE INDEX idx_factor_data_date ON factor_data(trade_date DESC);
-CREATE INDEX idx_trade_calendar_date ON trade_calendar(cal_date DESC);
-CREATE INDEX idx_trade_calendar_exchange ON trade_calendar(exchange);
+CREATE INDEX IF NOT EXISTS idx_account_daily_perf_user_date ON account_daily_performance(user_id, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_strategy_daily_perf_strategy_date ON strategy_daily_performance(strategy_id, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_strategy_time ON signals(strategy_id, signal_time DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_ts_code ON signals(ts_code);
+CREATE INDEX IF NOT EXISTS idx_backtest_equity_task_date ON backtest_equity_curves(task_id, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_risk_events_created_at ON risk_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_risk_events_user_id ON risk_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_factor_data_factor_code ON factor_data(factor_code);
+CREATE INDEX IF NOT EXISTS idx_factor_data_ts_code ON factor_data(ts_code);
+CREATE INDEX IF NOT EXISTS idx_factor_data_date ON factor_data(trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_trade_calendar_date ON trade_calendar(cal_date DESC);
+CREATE INDEX IF NOT EXISTS idx_trade_calendar_exchange ON trade_calendar(exchange);
 
 -- 外键索引（优化关联查询）
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_orders_strategy_id ON orders(strategy_id);
-CREATE INDEX idx_orders_account_id ON orders(account_id);
-CREATE INDEX idx_trades_order_id ON trades(order_id);
-CREATE INDEX idx_positions_user_id ON positions(user_id);
-CREATE INDEX idx_positions_account_id ON positions(account_id);
-CREATE INDEX idx_strategy_runs_strategy_id ON strategy_runs(strategy_id);
-CREATE INDEX idx_backtest_trades_task_id ON backtest_trades(task_id);
-CREATE INDEX idx_backtest_positions_task_id ON backtest_positions(task_id);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_strategy_id ON orders(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_orders_account_id ON orders(account_id);
+CREATE INDEX IF NOT EXISTS idx_trades_order_id ON trades(order_id);
+CREATE INDEX IF NOT EXISTS idx_positions_user_id ON positions(user_id);
+CREATE INDEX IF NOT EXISTS idx_positions_account_id ON positions(account_id);
+CREATE INDEX IF NOT EXISTS idx_strategy_runs_strategy_id ON strategy_runs(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_task_id ON backtest_trades(task_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_positions_task_id ON backtest_positions(task_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_parameters_task_id ON backtest_parameters(task_id);
+CREATE INDEX IF NOT EXISTS idx_strategy_parameters_strategy_id ON strategy_parameters(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_strategies_strategy_id ON portfolio_strategies(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_factor_research_user_id ON factor_research(user_id);
+CREATE INDEX IF NOT EXISTS idx_factor_research_status ON factor_research(status);
+CREATE INDEX IF NOT EXISTS idx_data_quality_checks_date ON data_quality_checks(check_date DESC);
+CREATE INDEX IF NOT EXISTS idx_analysis_tasks_status ON analysis_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_workflow_tasks_workflow_id ON workflow_tasks(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_logs_workflow_id ON workflow_logs(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_file_attachments_reference ON file_attachments(reference_type, reference_id);
 
 -- ============================================================
 -- 第五部分：TimescaleDB压缩和保留策略
@@ -2011,6 +3137,62 @@ CREATE TRIGGER update_strategies_modtime BEFORE UPDATE ON strategies FOR EACH RO
 CREATE TRIGGER update_orders_modtime BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_accounts_modtime BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_baskets_modtime BEFORE UPDATE ON baskets FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_system_configs_modtime BEFORE UPDATE ON system_configs FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_scheduled_tasks_modtime BEFORE UPDATE ON scheduled_tasks FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_sys_roles_modtime BEFORE UPDATE ON sys_roles FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_user_preferences_modtime BEFORE UPDATE ON user_preferences FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_license_keys_modtime BEFORE UPDATE ON license_keys FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_strategy_parameters_modtime BEFORE UPDATE ON strategy_parameters FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_portfolio_strategies_modtime BEFORE UPDATE ON portfolio_strategies FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_trade_instructions_modtime BEFORE UPDATE ON trade_instructions FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_order_templates_modtime BEFORE UPDATE ON order_templates FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_backtest_tasks_modtime BEFORE UPDATE ON backtest_tasks FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_backtest_scenarios_modtime BEFORE UPDATE ON backtest_scenarios FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_factor_definitions_modtime BEFORE UPDATE ON factor_definitions FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_analysis_reports_modtime BEFORE UPDATE ON analysis_reports FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_analysis_templates_modtime BEFORE UPDATE ON analysis_templates FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_monitor_tasks_modtime BEFORE UPDATE ON monitor_tasks FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_alert_templates_modtime BEFORE UPDATE ON alert_templates FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_workflow_tasks_modtime BEFORE UPDATE ON workflow_tasks FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_factor_research_modtime BEFORE UPDATE ON factor_research FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+-- 因子研究表触发器
+CREATE OR REPLACE FUNCTION update_factor_research_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_factor_research_updated_at
+    BEFORE UPDATE ON factor_research
+    FOR EACH ROW
+    EXECUTE FUNCTION update_factor_research_updated_at();
+
+-- 状态变更触发器（记录状态变更时间）
+CREATE OR REPLACE FUNCTION update_factor_research_status_timestamps()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 如果状态变为running，设置started_at
+    IF NEW.status = 'running' AND (OLD.status != 'running' OR OLD.status IS NULL) THEN
+        NEW.started_at = CURRENT_TIMESTAMP;
+    END IF;
+
+    -- 如果状态变为completed, failed, cancelled，设置completed_at
+    IF NEW.status IN ('completed', 'failed', 'cancelled') AND
+       OLD.status NOT IN ('completed', 'failed', 'cancelled') THEN
+        NEW.completed_at = CURRENT_TIMESTAMP;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_factor_research_status_timestamps
+    BEFORE UPDATE ON factor_research
+    FOR EACH ROW
+    EXECUTE FUNCTION update_factor_research_status_timestamps();
 
 -- ============================================================
 -- 第七部分：视图和物化视图（用于性能优化）
@@ -2073,6 +3255,38 @@ SELECT
 FROM stock_basic b
 LEFT JOIN stock_company c ON b.ts_code = c.ts_code;
 
+-- 创建策略绩效概览视图
+CREATE VIEW v_strategy_performance_overview AS
+SELECT
+    s.id as strategy_id,
+    s.name as strategy_name,
+    s.status as strategy_status,
+    COUNT(DISTINCT sr.id) as total_runs,
+    MAX(sr.started_at) as last_run_time,
+    AVG(sdp.daily_return) as avg_daily_return,
+    MAX(sdp.total_return) as total_return,
+    MIN(sdp.max_drawdown) as max_drawdown
+FROM strategies s
+LEFT JOIN strategy_runs sr ON s.id = sr.strategy_id
+LEFT JOIN strategy_daily_performance sdp ON s.id = sdp.strategy_id
+GROUP BY s.id, s.name, s.status;
+
+-- 创建账户资产概览视图
+CREATE VIEW v_account_asset_overview AS
+SELECT
+    a.id as account_id,
+    a.account_number,
+    a.account_name,
+    a.total_balance,
+    a.available_balance,
+    a.market_value,
+    COUNT(DISTINCT p.ts_code) as positions_count,
+    SUM(p.pnl) as total_pnl
+FROM accounts a
+LEFT JOIN positions p ON a.id = p.account_id
+WHERE a.is_deleted = 0
+GROUP BY a.id, a.account_number, a.account_name, a.total_balance, a.available_balance, a.market_value;
+
 -- ============================================================
 -- 第八部分：最终检查和更新
 -- ============================================================
@@ -2083,7 +3297,7 @@ ANALYZE;
 -- 验证表创建完整性
 DO $$
 DECLARE
-    expected_tables INT := 50; -- 预期的表数量
+    expected_tables INT := 70; -- 预期的表数量
     actual_tables INT;
 BEGIN
     SELECT COUNT(*) INTO actual_tables

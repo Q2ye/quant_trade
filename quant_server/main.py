@@ -1,280 +1,1087 @@
-# main.py
-import types
-from contextlib import asynccontextmanager
+"""
+quant_server/main.py
+量化交易系统主启动模块
 
-from fastapi import FastAPI, Request, Depends, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.docs import get_swagger_ui_html
+使用结构化日志工具包，提供完整的上下文感知日志记录
+"""
 
-from quant_server.api import router
-from quant_server.core.strategy_engine.main_engine import MainEngine
-from quant_server.db.session import init_db, close_db
+import asyncio
+import sys
+import signal
+import os
+import contextvars
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Any, Union
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import uvicorn
-import os
-import logging
-import signal
-import sys
-import asyncio
-from datetime import datetime
-import json
+import yaml
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+# 导入结构化日志工具包
+from quant_server.utils.core_utils.logging_utils import (
+    # 基础类型和枚举
+    LogLevel, LogFormat, ColorMode,
+
+    # 日志记录器
+    get_logger, StructuredLogger,
+
+    # 上下文管理
+    get_context_manager, with_context, LogContextManager,
+
+    # 格式化器
+    FormatterFactory, LogFormatter,
+
+    # 便捷函数
+    debug, info, warning, error, critical, exception,
+    log_performance,
+
+    # 管理函数
+    init_logging, shutdown_logging,
+    get_global_log_manager, get_global_context_manager,
+
+    # 配置
+    DEFAULT_LOGGING_CONFIG
 )
-logger = logging.getLogger(__name__)
+
+# 导入系统核心组件和配置
+from quant_server.core.engines.system import (
+    EventEngine, MainEngine, EngineRegistry
+)
+from quant_server.core.engines.base.engine_base import EngineConfigEntity
+from quant_server.shared.config.settings import (
+    Settings, get_settings, Environment,
+    reload_settings, validate_config
+)
+from quant_server.api import create_app
+
+# 全局上下文变量
+_request_context = contextvars.ContextVar('request_context', default={})
+logger = get_logger(__name__)
+
+@dataclass
+class ModuleConfig:
+    """模块配置 - 基于 settings.py 的模块化配置"""
+    name: str
+    enabled: bool = True
+    auto_start: bool = True
+    dependencies: List[str] = field(default_factory=list)
+    config: Dict[str, Any] = field(default_factory=dict)
+
+    @with_context(module="module_config", source="config_loader")
+    def validate(self) -> bool:
+        """验证模块配置"""
+        if not self.name:
+            logger.error("模块名称不能为空")
+            return False
+
+        if not isinstance(self.dependencies, list):
+            logger.error(f"模块 {self.name} 依赖项必须是列表类型")
+            return False
+
+        logger.debug(f"模块配置验证通过: {self.name}", extra={
+            "enabled": self.enabled,
+            "dependencies": self.dependencies
+        })
+        return True
 
 
-class ConnectionManager:
-    """WebSocket 连接管理器"""
+@dataclass
+class StartupConfig:
+    """启动配置 - 基于 settings.py 的完整配置"""
 
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+    def __init__(self, config_path: Optional[str] = None):
+        """初始化启动配置"""
+        # 使用 with_context 装饰器记录配置加载
+        self._load_config(config_path)
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"WebSocket 连接已建立，当前连接数: {len(self.active_connections)}")
+    @with_context(operation="load_startup_config", source="config_loader")
+    def _load_config(self, config_path: Optional[str] = None):
+        """加载配置"""
+        # 基础设置
+        self.settings = get_settings()
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-        logger.info(f"WebSocket 连接已断开，当前连接数: {len(self.active_connections)}")
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        disconnected = []
-        for connection in self.active_connections:
+        # 从YAML文件加载配置（如果存在）
+        if config_path and Path(config_path).exists():
             try:
-                await connection.send_text(message)
-            except Exception as e:
-                logger.warning(f"发送消息到 WebSocket 失败: {e}")
-                disconnected.append(connection)
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config_data = yaml.safe_load(f)
 
-        # 清理断开的连接
-        for connection in disconnected:
-            self.disconnect(connection)
+                logger.info(f"从文件加载配置: {config_path}")
+                self._apply_config_data(config_data)
+            except Exception as e:
+                logger.error(f"加载配置文件失败: {e}")
+                self._apply_default_config()
+        else:
+            logger.info("使用默认配置")
+            self._apply_default_config()
+
+    @with_context(operation="apply_config_data", source="config_loader")
+    def _apply_config_data(self, config_data: Dict[str, Any]):
+        """应用配置数据"""
+        # 系统配置
+        system_config = config_data.get('system', {})
+        server_config = config_data.get('server', {})
+        engine_config = config_data.get('engines', {})
+        modules_config = config_data.get('modules', {})
+
+        # 更新环境模式
+        if 'mode' in system_config:
+            env_map = {
+                "development": Environment.DEVELOPMENT,
+                "test": Environment.TEST,
+                "production": Environment.PRODUCTION
+            }
+            self.settings.ENVIRONMENT = env_map.get(system_config['mode'], Environment.DEVELOPMENT)
+
+        # 基础配置
+        self.system_name = system_config.get('name', self.settings.APP_NAME)
+        self.version = system_config.get('version', self.settings.APP_VERSION)
+        self.mode = system_config.get('mode', self.settings.ENVIRONMENT.value)
+
+        # 服务器配置
+        self.host = server_config.get('host', self.settings.API.HOST)
+        self.port = server_config.get('port', self.settings.API.PORT)
+        self.workers = server_config.get('workers', 1)
+
+        # 引擎配置
+        self.auto_start_main_engine = engine_config.get('auto_start_main_engine', True)
+        self.auto_start_event_engine = engine_config.get('auto_start_event_engine', True)
+        self.max_workers = engine_config.get('max_workers', 10)
+        self.queue_size = engine_config.get('queue_size', 10000)
+
+        # 功能配置
+        self.enable_web_socket = system_config.get('enable_web_socket', True)
+        self.enable_monitoring = system_config.get('enable_monitoring', True)
+        self.enable_health_check = system_config.get('enable_health_check', True)
+        self.shutdown_timeout = system_config.get('shutdown_timeout', 30.0)
+        self.log_level = system_config.get('log_level', self.settings.LOG.LEVEL)
+
+        # 模块配置
+        self.enabled_modules: List[str] = []
+        self.module_configs: Dict[str, ModuleConfig] = {}
+
+        for module_name, module_data in modules_config.items():
+            if module_data.get('enabled', True):
+                self.enabled_modules.append(module_name)
+
+                module_config = ModuleConfig(
+                    name=module_name,
+                    enabled=module_data.get('enabled', True),
+                    auto_start=module_data.get('auto_start', True),
+                    dependencies=module_data.get('dependencies', []),
+                    config=module_data.get('config', {})
+                )
+                self.module_configs[module_name] = module_config
+
+        logger.info("配置加载完成", extra={
+            "system_name": self.system_name,
+            "version": self.version,
+            "mode": self.mode,
+            "enabled_modules": self.enabled_modules
+        })
+
+    @with_context(operation="apply_default_config", source="config_loader")
+    def _apply_default_config(self):
+        """应用默认配置"""
+        # 基础配置
+        self.system_name = self.settings.APP_NAME
+        self.version = self.settings.APP_VERSION
+        self.mode = self.settings.ENVIRONMENT.value
+
+        # 服务器配置
+        self.host = self.settings.API.HOST
+        self.port = self.settings.API.PORT
+        self.workers = 1
+
+        # 引擎配置
+        self.auto_start_main_engine = True
+        self.auto_start_event_engine = True
+        self.max_workers = 10
+        self.queue_size = 10000
+
+        # 功能配置
+        self.enable_web_socket = True
+        self.enable_monitoring = True
+        self.enable_health_check = True
+        self.shutdown_timeout = 30.0
+        self.log_level = self.settings.LOG.LEVEL
+
+        # 模块配置 - 默认启用所有模块
+        default_modules = [
+            "data", "strategy", "trade", "backtest",
+            "account", "analysis", "monitor", "system"
+        ]
+        self.enabled_modules = default_modules
+        self.module_configs = {}
+
+        for module_name in default_modules:
+            self.module_configs[module_name] = ModuleConfig(
+                name=module_name,
+                enabled=True,
+                auto_start=True,
+                dependencies=[],
+                config={}
+            )
+
+        logger.info("使用默认配置")
+
+    def get_system_config(self) -> Dict[str, Any]:
+        """获取系统配置字典"""
+        return {
+            "system": {
+                "name": self.system_name,
+                "version": self.version,
+                "mode": self.mode,
+                "debug": self.settings.DEBUG,
+                "host": self.host,
+                "port": self.port,
+                "workers": self.workers
+            },
+            "engines": {
+                "auto_start_main_engine": self.auto_start_main_engine,
+                "auto_start_event_engine": self.auto_start_event_engine,
+                "max_workers": self.max_workers,
+                "queue_size": self.queue_size
+            },
+            "features": {
+                "enable_web_socket": self.enable_web_socket,
+                "enable_monitoring": self.enable_monitoring,
+                "enable_health_check": self.enable_health_check
+            },
+            "modules": {
+                "enabled": self.enabled_modules,
+                "configs": {name: module.config for name, module in self.module_configs.items()}
+            },
+            "settings": {
+                "database": {
+                    "type": self.settings.DATABASE.TYPE.value,
+                    "host": self.settings.DATABASE.HOST,
+                    "port": self.settings.DATABASE.PORT,
+                    "name": self.settings.DATABASE.NAME
+                },
+                "redis": {
+                    "enabled": self.settings.REDIS.ENABLED,
+                    "host": self.settings.REDIS.HOST,
+                    "port": self.settings.REDIS.PORT
+                },
+                "trade": {
+                    "simulated_trading": self.settings.TRADE.SIMULATED_TRADING
+                }
+            }
+        }
 
 
 class QuantServer:
-    """量化交易平台主服务器类"""
+    """量化交易系统主服务器
 
-    def __init__(self):
-        self.app = None
-        self.main_engine = None
-        self.connection_manager = ConnectionManager()
-        self._setup_signal_handlers()
+    使用结构化日志工具包，提供完整的上下文感知日志记录
+    """
 
-    def _setup_signal_handlers(self):
-        """设置信号处理"""
-        signal.signal(signal.SIGINT, self._handle_shutdown)
-        signal.signal(signal.SIGTERM, self._handle_shutdown)
+    def __init__(self, config_path: Optional[str] = None):
+        """初始化服务器
 
-    def _handle_shutdown(self, signum: int, frame: types.FrameType = None):
-        """处理关闭信号"""
-        logger.info("接收到关闭信号，正在优雅关闭服务...")
-        if self.main_engine:
-            asyncio.create_task(self.main_engine.shutdown())
-        sys.exit(0)
+        Args:
+            config_path: 配置文件路径
+        """
+        # 初始化请求上下文
+        self.request_id = f"server_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        _request_context.set({"request_id": self.request_id})
 
-    @asynccontextmanager
-    async def app_lifespan(self, app: FastAPI):
-        """应用生命周期管理"""
-        # 启动事件
-        logger.info("正在启动量化交易平台服务...")
+        # 设置启动时间
+        self.startup_time = datetime.now()
 
-        # 初始化数据库
-        if not init_db():
-            logger.error("数据库初始化失败")
-            raise RuntimeError("数据库初始化失败")
+        # 加载配置
+        with get_context_manager().context_manager(
+            request_id=self.request_id,
+            operation="server_init",
+            source="main_server"
+        ):
+            self.logger = get_logger(__name__)
+            self.logger.info("量化交易服务器初始化开始")
 
-        # 初始化主引擎
+            self.config = StartupConfig(config_path)
+
+            # 初始化日志系统
+            self._setup_logging()
+
+            # 验证配置
+            if not validate_config():
+                self.logger.warning("配置验证失败，但继续启动...")
+
+            # 系统组件
+            self.app = None
+            self.main_engine: Optional[MainEngine] = None
+            self.event_engine: Optional[EventEngine] = None
+            self.engine_registry: Optional[EngineRegistry] = None
+
+            # 模块管理
+            self.enabled_modules: Set[str] = set(self.config.enabled_modules)
+            self.loaded_modules: Dict[str, Any] = {}
+
+            # 系统状态
+            self.is_running: bool = False
+
+            # 打印配置信息
+            self._log_configuration()
+
+            self.logger.info("量化交易服务器初始化完成", extra={
+                "environment": self.config.mode,
+                "startup_time": self.startup_time.isoformat()
+            })
+
+    @with_context(operation="setup_logging", source="main_server")
+    def _setup_logging(self):
+        """设置日志系统"""
+        # 根据配置确定日志级别和格式
+        log_level_str = self.config.log_level.upper()
         try:
-            self.main_engine = MainEngine()
-            await self.main_engine.initialize()
-            app.state.main_engine = self.main_engine
-            logger.info("主引擎初始化成功")
-        except Exception as e:
-            logger.error(f"主引擎初始化失败: {str(e)}")
-            raise RuntimeError(f"主引擎初始化失败: {str(e)}")
+            log_level = LogLevel(log_level_str)
+        except ValueError:
+            log_level = LogLevel.INFO
+            logger.warning(f"无效的日志级别: {log_level_str}, 使用默认级别: INFO")
 
-        # 启动模拟信号生成任务（仅用于测试）
-        asyncio.create_task(self._simulate_signals())
+        # 根据环境确定日志格式
+        if self.config.mode == "production":
+            log_format = LogFormat.JSON
+            color_mode = ColorMode.NEVER
+        else:
+            log_format = LogFormat.TEXT
+            color_mode = ColorMode.AUTO
 
-        logger.info("服务启动完成")
+        # 构建日志配置
+        log_config = {
+            "level": log_level,
+            "format": log_format,
+            "color_mode": color_mode,
+            "async_enabled": True,  # 启用异步日志
+            "handlers": [],
+            "filters": []
+        }
 
-        yield  # 应用程序运行期间
+        # 初始化日志系统
+        init_logging(log_config)
 
-        # 关闭事件
-        logger.info("正在关闭量化交易平台服务...")
+        # 获取日志管理器并记录初始化
+        log_manager = get_global_log_manager()
+        logger.info("日志系统初始化完成", extra={
+            "level": log_level.value,
+            "format": log_format.value,
+            "async_enabled": True
+        })
 
-        # 关闭主引擎
-        if self.main_engine:
-            await self.main_engine.shutdown()
+        # 记录日志管理器统计
+        stats = log_manager.get_all_stats()
+        logger.debug("日志管理器统计", extra={"stats": stats})
 
-        # 关闭数据库
-        close_db()
-        logger.info("服务已关闭")
+    @with_context(operation="log_configuration", source="main_server")
+    def _log_configuration(self):
+        """记录配置信息"""
+        config_info = self.config.get_system_config()
 
-    async def _simulate_signals(self):
-        """模拟交易信号生成（用于测试）"""
-        import random
-        symbols = ["000001.SZ", "600000.SH", "000858.SZ", "600519.SH", "000333.SZ"]
-        signal_types = ["buy", "sell", "hold"]
+        logger.info("=" * 80)
+        logger.info("📦 系统配置信息", extra={"system_name": self.config.system_name})
+        logger.info("🔧 基本配置", extra={
+            "version": self.config.version,
+            "environment": self.config.mode,
+            "debug": self.config.settings.DEBUG
+        })
+        logger.info("🌐 服务器配置", extra={
+            "host": self.config.host,
+            "port": self.config.port,
+            "workers": self.config.workers
+        })
+        logger.info("💾 数据库配置", extra={
+            "type": self.config.settings.DATABASE.TYPE.value,
+            "host": self.config.settings.DATABASE.HOST,
+            "port": self.config.settings.DATABASE.PORT,
+            "name": self.config.settings.DATABASE.NAME
+        })
+        logger.info("📡 Redis配置", extra={
+            "enabled": self.config.settings.REDIS.ENABLED,
+            "host": self.config.settings.REDIS.HOST,
+            "port": self.config.settings.REDIS.PORT
+        })
+        logger.info("💹 交易配置", extra={
+            "mode": "模拟交易" if self.config.settings.TRADE.SIMULATED_TRADING else "实盘交易"
+        })
+        logger.info("📊 启用模块", extra={"modules": list(self.enabled_modules)})
+        logger.info("=" * 80)
 
-        while True:
+    @log_performance(operation="initialize_system", level=LogLevel.INFO)
+    async def initialize(self) -> bool:
+        """初始化系统
+
+        Returns:
+            bool: 初始化是否成功
+        """
+        with get_context_manager().context_manager(
+            operation="system_initialization",
+            stage="startup"
+        ):
             try:
-                # 每5-15秒生成一个随机信号
-                await asyncio.sleep(random.randint(5, 15))
+                logger.info("开始初始化量化交易系统...")
 
-                if not self.connection_manager.active_connections:
-                    continue
+                # 1. 初始化FastAPI应用
+                await self._initialize_api_app()
 
-                signal_data = {
-                    "signal_type": random.choice(signal_types),
-                    "ts_code": random.choice(symbols),
-                    "symbol": random.choice(symbols),
-                    "strategy_id": f"strategy_{random.randint(1, 5)}",
-                    "signal_time": datetime.now().isoformat(),
-                    "current_price": round(random.uniform(10, 100), 2),
-                    "strength": round(random.uniform(0.1, 0.99), 2),
-                    "reason": random.choice([
-                        "技术指标突破",
-                        "基本面改善",
-                        "市场情绪变化",
-                        "资金流入",
-                        "风险控制触发"
-                    ])
+                # 2. 初始化事件引擎
+                if self.config.auto_start_event_engine:
+                    await self._initialize_event_engine()
+
+                # 3. 初始化主引擎
+                if self.config.auto_start_main_engine:
+                    await self._initialize_main_engine()
+
+                # 4. 加载和初始化模块
+                await self._initialize_modules()
+
+                # 5. 注册生命周期事件
+                await self._register_lifecycle_events()
+
+                logger.info("量化交易系统初始化完成")
+                return True
+
+            except Exception as e:
+                logger.exception("系统初始化失败", exception=e)
+                return False
+
+    @log_performance(operation="initialize_api_app", level=LogLevel.DEBUG)
+    async def _initialize_api_app(self) -> None:
+        """初始化FastAPI应用"""
+        with get_context_manager().context_manager(
+            operation="api_app_initialization",
+            component="fastapi"
+        ):
+            logger.info("初始化FastAPI应用...")
+
+            # 使用配置创建FastAPI应用
+            self.app = create_app(
+                title=self.config.system_name,
+                version=self.config.version,
+                description="量化交易平台API",
+                debug=self.config.settings.DEBUG,
+                docs_url="/docs" if self.config.mode != "production" else None,
+                redoc_url="/redoc" if self.config.mode != "production" else None,
+                api_config={
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "cors_origins": self.config.settings.API.CORS_ORIGINS
                 }
+            )
 
-                await self.connection_manager.broadcast(json.dumps(signal_data))
-                logger.debug(f"广播交易信号: {signal_data}")
+            logger.info("FastAPI应用初始化完成", extra={
+                "title": self.config.system_name,
+                "version": self.config.version,
+                "docs_url": "/docs" if self.config.mode != "production" else None,
+                "cors_origins_count": len(self.config.settings.API.CORS_ORIGINS)
+            })
 
-            except Exception as e:
-                logger.error(f"模拟信号生成错误: {e}")
-                await asyncio.sleep(5)
+    @log_performance(operation="initialize_event_engine", level=LogLevel.DEBUG)
+    async def _initialize_event_engine(self) -> None:
+        """初始化事件引擎"""
+        with get_context_manager().context_manager(
+            operation="event_engine_initialization",
+            component="event_engine"
+        ):
+            logger.info("初始化事件引擎...")
 
-    def create_app(self) -> FastAPI:
-        """创建FastAPI应用实例"""
-        # 创建FastAPI应用
-        app = FastAPI(
-            title="A股量化交易平台",
-            description="基于FastAPI的量化交易平台后端API",
-            version="1.0.0",
-            lifespan=self.app_lifespan,
-            docs_url=None,  # 禁用默认的/docs路由
-            redoc_url=None,  # 禁用默认的/redoc路由
-        )
-
-        # 挂载本地静态文件目录
-        app.mount("/static", StaticFiles(directory="static"), name="static")
-
-        # 添加CORS中间件
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],  # 在生产环境中应该限制为具体域名
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
-        # 包含API路由
-        app.include_router(router)
-
-        # WebSocket 路由
-        @app.websocket("/api/ws/signals")
-        async def websocket_endpoint(websocket: WebSocket):
-            await self.connection_manager.connect(websocket)
             try:
-                while True:
-                    # 保持连接，可以接收客户端消息（如果需要）
-                    data = await websocket.receive_text()
-                    # 可以处理客户端发送的消息
-                    logger.debug(f"收到客户端消息: {data}")
-            except WebSocketDisconnect:
-                self.connection_manager.disconnect(websocket)
+                # 创建事件引擎配置
+                event_config = EngineConfigEntity(
+                    name="event_engine",
+                    engine_type="event",
+                    auto_start=True,
+                    config={
+                        "max_workers": self.config.max_workers,
+                        "queue_size": self.config.queue_size,
+                        "log_level": self.config.log_level
+                    }
+                )
+
+                # 创建事件引擎实例
+                self.event_engine = EventEngine(event_config)
+                await self.event_engine.start()
+
+                logger.info("事件引擎初始化完成", extra={
+                    "max_workers": self.config.max_workers,
+                    "queue_size": self.config.queue_size
+                })
+
             except Exception as e:
-                logger.error(f"WebSocket 错误: {e}")
-                self.connection_manager.disconnect(websocket)
+                logger.exception("事件引擎初始化失败", exception=e)
+                raise
 
-        # 主引擎依赖项
-        async def get_main_engine(request: Request) -> MainEngine:
-            return request.app.state.main_engine
+    @log_performance(operation="initialize_main_engine", level=LogLevel.DEBUG)
+    async def _initialize_main_engine(self) -> None:
+        """初始化主引擎"""
+        with get_context_manager().context_manager(
+            operation="main_engine_initialization",
+            component="main_engine"
+        ):
+            logger.info("初始化主引擎...")
 
-        # 根路由
-        @app.get("/")
-        async def root():
-            return {"message": "量化交易平台API服务运行中", "timestamp": datetime.now().isoformat()}
+            try:
+                # 创建主引擎配置
+                main_config = EngineConfigEntity(
+                    name="main_engine",
+                    engine_type="main",
+                    auto_start=True,
+                    config=self.config.get_system_config()
+                )
 
-        # 健康检查端点
-        @app.get("/health")
-        async def health_check(main_engine: MainEngine = Depends(get_main_engine)):
-            return {
-                "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
-                "websocket_connections": len(self.connection_manager.active_connections),
-                "engines": list(main_engine.engines.keys()) if main_engine else [],
-                "strategies": list(
-                    main_engine.get_engine("strategy_manager").strategies.keys()) if main_engine and hasattr(
-                    main_engine, 'get_engine') else []
+                # 创建主引擎实例
+                self.main_engine = MainEngine(main_config, self.event_engine)
+                await self.main_engine.start()
+
+                # 获取引擎注册表
+                self.engine_registry = EngineRegistry()
+
+                logger.info("主引擎初始化完成")
+
+            except Exception as e:
+                logger.exception("主引擎初始化失败", exception=e)
+                raise
+
+    @with_context(operation="initialize_modules", source="main_server")
+    async def _initialize_modules(self) -> None:
+        """初始化模块"""
+        if not self.enabled_modules:
+            logger.info("没有启用的模块，跳过模块初始化")
+            return
+
+        logger.info(f"开始初始化模块: {', '.join(self.enabled_modules)}")
+
+        # 按依赖关系排序模块
+        sorted_modules = await self._sort_modules_by_dependency()
+
+        for module_name in sorted_modules:
+            if module_name not in self.enabled_modules:
+                continue
+
+            module_config = self.config.module_configs.get(module_name)
+            if not module_config or not module_config.enabled:
+                logger.info(f"模块 {module_name} 被禁用，跳过初始化")
+                continue
+
+            with get_context_manager().context_manager(
+                operation=f"module_{module_name}_initialization",
+                module=module_name
+            ):
+                try:
+                    logger.info(f"初始化模块: {module_name}")
+
+                    # 动态导入模块
+                    module = await self._load_module(module_name)
+                    if not module:
+                        continue
+
+                    # 调用模块初始化函数
+                    if hasattr(module, 'initialize') and callable(module.initialize):
+                        # 合并模块配置
+                        module_settings = self._get_module_settings(module_name)
+
+                        init_result = await module.initialize(
+                            main_engine=self.main_engine,
+                            event_engine=self.event_engine,
+                            config={
+                                **module_config.config,
+                                **module_settings
+                            }
+                        )
+
+                        if init_result:
+                            self.loaded_modules[module_name] = module
+                            logger.info(f"模块 {module_name} 初始化成功")
+                        else:
+                            logger.error(f"模块 {module_name} 初始化失败")
+                    else:
+                        logger.warning(f"模块 {module_name} 没有initialize函数，跳过初始化")
+
+                except Exception as e:
+                    logger.exception(f"模块 {module_name} 初始化失败", exception=e)
+
+    def _get_module_settings(self, module_name: str) -> Dict[str, Any]:
+        """获取模块特定的settings配置"""
+        settings_map = {
+            "data": {
+                "tushare_token": self.config.settings.DATA_SOURCE.TUSHARE_TOKEN,
+                "sync_enabled": self.config.settings.DATA_SOURCE.SYNC_ENABLED,
+                "sync_schedule": self.config.settings.DATA_SOURCE.SYNC_SCHEDULE,
+                "sync_batch_size": self.config.settings.DATA_SOURCE.SYNC_BATCH_SIZE,
+            },
+            "strategy": {
+                "enable_ai_strategies": self.config.settings.get_feature("enable_ai_strategies"),
+            },
+            "trade": {
+                "simulated_trading": self.config.settings.TRADE.SIMULATED_TRADING,
+                "initial_capital": self.config.settings.TRADE.SIM_INITIAL_CAPITAL,
+                "broker": self.config.settings.TRADE.BROKER,
+                "risk_check_enabled": self.config.settings.TRADE.RISK_CHECK_ENABLED,
+                "stop_loss_percent": self.config.settings.TRADE.STOP_LOSS_PERCENT,
+            },
+            "account": {
+                "enable_multi_account": self.config.settings.get_feature("enable_multi_account"),
+            },
+            "monitor": {
+                "email_enabled": self.config.settings.NOTIFICATION.EMAIL_ENABLED,
+                "dingtalk_enabled": self.config.settings.NOTIFICATION.DINGTALK_ENABLED,
+                "wechat_enabled": self.config.settings.NOTIFICATION.WECHAT_ENABLED,
+            },
+            "system": {
+                "secret_key": self.config.settings.API.SECRET_KEY,
+                "access_token_expire_minutes": self.config.settings.API.ACCESS_TOKEN_EXPIRE_MINUTES,
+                "algorithm": self.config.settings.API.ALGORITHM,
             }
+        }
 
-        # WebSocket 连接信息端点
-        @app.get("/api/ws/info")
-        async def websocket_info():
-            return {
-                "active_connections": len(self.connection_manager.active_connections),
-                "websocket_url": "ws://localhost:8000/api/ws/signals"
-            }
+        return settings_map.get(module_name, {})
 
-        # 自定义Swagger UI路由
-        @app.get("/docs", include_in_schema=False)
-        async def custom_swagger_ui_html():
-            return get_swagger_ui_html(
-                openapi_url="/openapi.json",
-                title="A股量化交易平台 - API文档",
-                swagger_js_url="/static/swagger/swagger-ui-bundle.js",
-                swagger_css_url="/static/swagger/swagger-ui.css",
-            )
-
-        self.app = app
-        return app
-
-    def run(self, host: str = "0.0.0.0", port: int = 8000):  # 默认端口改为8000
-        """运行服务器"""
-        app_instance = self.create_app()
-
+    async def _load_module(self, module_name: str) -> Optional[Any]:
+        """动态加载模块"""
         try:
-            logger.info(f"启动服务器在 http://{host}:{port}")
-            logger.info(f"WebSocket 服务在 ws://{host}:{port}/api/ws/signals")
-            uvicorn.run(
-                app_instance,
-                host=host,
-                port=port,
-                log_config=None,
-                access_log=True,
-                timeout_keep_alive=60
-            )
+            module_path = f"quant_server.modules.{module_name}"
+            import importlib
+            module = importlib.import_module(module_path)
+            logger.debug(f"模块加载成功: {module_name}", extra={"module_path": module_path})
+            return module
+        except ImportError as e:
+            logger.error(f"模块加载失败: {module_name}", extra={"error": str(e)})
+            return None
         except Exception as e:
-            logger.error(f"服务器启动失败: {e}")
+            logger.exception(f"模块加载异常: {module_name}", exception=e)
+            return None
+
+    async def _sort_modules_by_dependency(self) -> List[str]:
+        """按依赖关系对模块进行排序"""
+        # 构建依赖图
+        graph: Dict[str, Set[str]] = {}
+        for module_name in self.enabled_modules:
+            module_config = self.config.module_configs.get(module_name, ModuleConfig(name=module_name))
+            graph[module_name] = set(module_config.dependencies)
+
+        # 拓扑排序
+        visited: Dict[str, int] = {}
+        result: List[str] = []
+
+        def dfs(node: str) -> bool:
+            if visited.get(node) == 1:
+                logger.error(f"检测到循环依赖: {node}")
+                return False
+            if visited.get(node) == 2:
+                return True
+
+            visited[node] = 1
+
+            # 递归处理依赖
+            for dep in graph.get(node, set()):
+                if dep in self.enabled_modules:
+                    if not dfs(dep):
+                        return False
+
+            visited[node] = 2
+            result.append(node)
+            return True
+
+        # 对每个未访问的节点执行DFS
+        for node in self.enabled_modules:
+            if visited.get(node) == 0:
+                continue
+            if not dfs(node):
+                logger.warning("检测到循环依赖，使用默认顺序")
+                return list(self.enabled_modules)
+
+        return result
+
+    @with_context(operation="register_lifecycle_events", source="main_server")
+    async def _register_lifecycle_events(self) -> None:
+        """注册生命周期事件"""
+        if not self.app:
+            return
+
+        @self.app.on_event("startup")
+        async def startup_event():
+            """应用启动事件"""
+            with get_context_manager().context_manager(
+                operation="fastapi_startup",
+                component="fastapi",
+                stage="startup"
+            ):
+                logger.info("FastAPI应用启动...")
+
+                # 更新运行状态
+                self.is_running = True
+
+                # 如果主引擎未自动启动，手动启动
+                if not self.config.auto_start_main_engine and self.main_engine:
+                    await self.main_engine.start()
+
+                # 发布系统启动事件
+                if self.event_engine:
+                    from quant_server.core.events.system_events import SystemStartedEvent
+                    await self.event_engine.put(SystemStartedEvent(
+                        system_name=self.config.system_name,
+                        version=self.config.version,
+                        environment=self.config.mode,
+                        startup_time=self.startup_time
+                    ))
+
+                logger.info("FastAPI应用启动完成", extra={
+                    "startup_time": self.startup_time.isoformat(),
+                    "modules_loaded": len(self.loaded_modules)
+                })
+
+        @self.app.on_event("shutdown")
+        async def shutdown_event():
+            """应用关闭事件"""
+            with get_context_manager().context_manager(
+                operation="fastapi_shutdown",
+                component="fastapi",
+                stage="shutdown"
+            ):
+                logger.info("FastAPI应用关闭...")
+
+                # 更新运行状态
+                self.is_running = False
+
+                # 发布系统关闭事件
+                if self.event_engine:
+                    from quant_server.core.events.system_events import SystemShutdownEvent
+                    await self.event_engine.put(SystemShutdownEvent(
+                        system_name=self.config.system_name,
+                        uptime=(datetime.now() - self.startup_time).total_seconds()
+                    ))
+
+                # 关闭所有模块
+                await self._shutdown_modules()
+
+                # 关闭主引擎
+                if self.main_engine:
+                    await self.main_engine.stop()
+
+                # 关闭事件引擎
+                if self.event_engine:
+                    await self.event_engine.stop()
+
+                # 关闭日志系统
+                shutdown_logging()
+
+                logger.info("FastAPI应用关闭完成", extra={
+                    "uptime_seconds": (datetime.now() - self.startup_time).total_seconds(),
+                    "modules_unloaded": len(self.loaded_modules)
+                })
+
+    @with_context(operation="shutdown_modules", source="main_server")
+    async def _shutdown_modules(self) -> None:
+        """关闭所有模块"""
+        if not self.loaded_modules:
+            logger.info("没有加载的模块，跳过关闭")
+            return
+
+        logger.info("开始关闭所有模块...")
+
+        # 按加载顺序的逆序关闭模块
+        for module_name in reversed(list(self.loaded_modules.keys())):
+            with get_context_manager().context_manager(
+                operation=f"module_{module_name}_shutdown",
+                module=module_name
+            ):
+                try:
+                    module = self.loaded_modules[module_name]
+
+                    # 调用模块关闭函数
+                    if hasattr(module, 'shutdown') and callable(module.shutdown):
+                        await module.shutdown()
+                        logger.info(f"模块 {module_name} 关闭成功")
+                    else:
+                        logger.warning(f"模块 {module_name} 没有shutdown函数，跳过关闭")
+
+                except Exception as e:
+                    logger.exception(f"模块 {module_name} 关闭失败", exception=e)
+
+        self.loaded_modules.clear()
+        logger.info("所有模块关闭完成")
+
+    @log_performance(operation="start_server", level=LogLevel.INFO)
+    async def  start_server(self) -> None:
+        """启动服务器"""
+        if not self.app:
+            error("FastAPI应用未初始化，无法启动服务器")
+            return
+
+        with get_context_manager().context_manager(
+            operation="server_startup",
+            component="uvicorn",
+            host=self.config.host,
+            port=self.config.port
+        ):
+            try:
+                logger.info("启动服务器...", extra={
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "workers": self.config.workers,
+                    "mode": self.config.mode
+                })
+
+                # 配置服务器参数
+                server_config = uvicorn.Config(
+                    app=self.app,
+                    host=self.config.host,
+                    port=self.config.port,
+                    workers=self.config.workers,
+                    log_level=self.config.log_level.lower(),
+                    reload=(self.config.mode == "development"),
+                    access_log=True,
+                    timeout_keep_alive=30,
+                    limit_concurrency=1000,
+                    limit_max_requests=10000,
+                    proxy_headers=True,
+                    forwarded_allow_ips="*" if self.config.mode == "development" else None
+                )
+
+                # 创建并运行服务器
+                server = uvicorn.Server(server_config)
+
+                # 设置信号处理
+                self._setup_signal_handlers(server)
+
+                # 打印启动信息
+                self._print_startup_message()
+
+                # 运行服务器
+                await server.serve()
+
+            except Exception as e:
+                logger.exception("服务器启动失败", exception=e)
+                raise
+
+    def _setup_signal_handlers(self, server: uvicorn.Server) -> None:
+        """设置信号处理器"""
+        def signal_handler(signum, frame):
+            logger.info(f"收到信号 {signum}, 正在优雅关闭...")
+            server.should_exit = True
+
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # 在开发环境中添加热重载信号
+        if self.config.mode == "development":
+            def reload_handler(signum, frame):
+                logger.info(f"收到信号 {signum}, 重新加载配置...")
+                self._reload_configuration()
+
+            # 注册USR1信号用于重新加载配置（仅开发环境）
+            signal.signal(signal.SIGUSR1, reload_handler)
+
+    @with_context(operation="reload_configuration", source="main_server")
+    def _reload_configuration(self):
+        """重新加载配置"""
+        try:
+            # 重新加载settings
+            reload_settings()
+
+            # 更新服务器配置
+            self.config.settings = get_settings()
+
+            # 重新配置日志
+            self._setup_logging()
+
+            logger.info("配置重新加载完成")
+        except Exception as e:
+            logger.exception("重新加载配置失败", exception=e)
+
+    def _print_startup_message(self):
+        """打印启动信息"""
+        logger = get_logger(__name__)
+
+        status = self.get_system_status()
+
+        # 使用结构化日志记录启动信息
+        logger.info("🚀 量化交易系统启动", extra={
+            "system": status['system']['name'],
+            "version": status['system']['version'],
+            "environment": status['system']['environment'],
+            "host": status['server']['host'],
+            "port": status['server']['port'],
+            "docs_url": f"http://{status['server']['host']}:{status['server']['port']}/docs",
+            "enabled_modules": status['modules']['total_enabled'],
+            "database": status['settings']['database_type'],
+            "trade_mode": "模拟交易" if status['settings']['trade_simulated'] else "实盘交易"
+        })
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """获取系统状态"""
+        uptime = 0.0
+        if self.startup_time:
+            uptime = (datetime.now() - self.startup_time).total_seconds()
+
+        status = {
+            "system": {
+                "name": self.config.system_name,
+                "version": self.config.version,
+                "environment": self.config.mode,
+                "debug": self.config.settings.DEBUG,
+            },
+            "server": {
+                "host": self.config.host,
+                "port": self.config.port,
+                "is_running": self.is_running,
+                "uptime_seconds": uptime,
+                "startup_time": self.startup_time.isoformat() if self.startup_time else None,
+            },
+            "modules": {
+                "enabled": list(self.enabled_modules),
+                "loaded": list(self.loaded_modules.keys()),
+                "total_enabled": len(self.enabled_modules),
+                "total_loaded": len(self.loaded_modules),
+            },
+            "settings": {
+                "database_type": self.config.settings.DATABASE.TYPE.value,
+                "redis_enabled": self.config.settings.REDIS.ENABLED,
+                "data_source_tushare_enabled": self.config.settings.DATA_SOURCE.TUSHARE_ENABLED,
+                "trade_simulated": self.config.settings.TRADE.SIMULATED_TRADING,
+            },
+            "feature_flags": self.config.settings.FEATURE_FLAGS,
+        }
+
+        logger.debug("获取系统状态", extra={"status_summary": status})
+        return status
+
+    @with_context(operation="shutdown_system", source="main_server")
+    async def shutdown(self) -> None:
+        """关闭系统"""
+
+        logger.info("开始关闭量化交易系统...")
+
+        # 如果服务器正在运行，执行关闭逻辑
+        if self.is_running:
+            # 关闭所有模块
+            await self._shutdown_modules()
+
+            # 关闭主引擎
+            if self.main_engine:
+                await self.main_engine.stop()
+
+            # 关闭事件引擎
+            if self.event_engine:
+                await self.event_engine.stop()
+
+            # 更新状态
+            self.is_running = False
+
+        logger.info("量化交易系统关闭完成")
+
+
+async def create_quant_server(
+        config_path: Optional[str] = None,
+        mode: Optional[str] = None
+) -> QuantServer:
+    """创建量化交易服务器
+
+    Args:
+        config_path: 配置文件路径
+        mode: 运行模式
+
+    Returns:
+        QuantServer: 服务器实例
+    """
+    with get_context_manager().context_manager(
+        operation="create_quant_server",
+        config_path=config_path,
+        mode=mode
+    ):
+        try:
+            logger.info("创建量化交易服务器...")
+
+            # 创建服务器实例
+            server = QuantServer(config_path)
+
+            # 如果指定了模式，覆盖配置中的模式
+            if mode:
+                server.config.mode = mode
+
+            # 初始化服务器
+            success = await server.initialize()
+            if not success:
+                error("服务器初始化失败")
+                raise RuntimeError("服务器初始化失败")
+
+            logger.info("量化交易服务器创建成功")
+            return server
+
+        except Exception as e:
+            logger.exception("创建量化交易服务器失败", exception=e)
+            raise
+
+
+async def main():
+    """主函数入口"""
+    import argparse
+
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="量化交易系统")
+    parser.add_argument("--config", "-c", type=str, default="config.yaml",
+                        help="配置文件路径 (默认: config.yaml)")
+    parser.add_argument("--mode", "-m", type=str, choices=["development", "test", "production"],
+                        default=None, help="运行模式 (development/test/production)")
+    parser.add_argument("--host", type=str, default=None, help="绑定地址")
+    parser.add_argument("--port", "-p", type=int, default=None, help="绑定端口")
+    parser.add_argument("--workers", "-w", type=int, default=None, help="工作进程数")
+    parser.add_argument("--log-level", type=str, default=None,
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="日志级别")
+
+    args = parser.parse_args()
+
+    # 创建请求上下文
+    request_id = f"cli_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    with get_context_manager().context_manager(
+        request_id=request_id,
+        operation="cli_main",
+        source="command_line"
+    ):
+        try:
+            # 创建服务器
+            server = await create_quant_server(args.config, args.mode)
+
+            # 覆盖命令行参数
+            if args.host:
+                server.config.host = args.host
+            if args.port:
+                server.config.port = args.port
+            if args.workers:
+                server.config.workers = args.workers
+            if args.log_level:
+                server.config.log_level = args.log_level
+                # 重新配置日志
+                server._setup_logging()
+
+            # 记录启动参数
+            logger.info("命令行参数解析完成", extra={
+                "config": args.config,
+                "mode": args.mode,
+                "host": args.host,
+                "port": args.port,
+                "workers": args.workers,
+                "log_level": args.log_level
+            })
+
+            # 启动服务器
+            await server.start_server()
+
+        except KeyboardInterrupt:
+            info("收到中断信号，正在关闭...")
+        except Exception as e:
+            logger.exception("系统启动失败", exception=e)
             sys.exit(1)
-
-
-def main():
-    """主函数"""
-    # 从环境变量获取配置
-    host = str(os.getenv("APP_HOST", "0.0.0.0"))
-    port = int(os.getenv("APP_PORT", 8000))  # 默认端口改为8000
-
-    # 创建并运行服务器
-    server = QuantServer()
-    server.run(host=host, port=port)
+        finally:
+            # 确保关闭服务器
+            if 'server' in locals():
+                await server.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

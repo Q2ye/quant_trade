@@ -53,6 +53,17 @@ class FactorMetadata:
 		}
 
 
+def _estimate_complexity (factors: List[FactorMetadata], symbols: List[str]) -> str:
+	"""估计计算复杂度"""
+	total_complexity = len(factors) * len(symbols)
+	if total_complexity > 10000:
+		return "high"
+	elif total_complexity > 1000:
+		return "medium"
+	else:
+		return "low"
+
+
 class FactorCalculationStartedEvent(BaseEvent):
 	"""
 	因子计算开始事件
@@ -95,21 +106,11 @@ class FactorCalculationStartedEvent(BaseEvent):
 			"calculation_config": calculation_config,
 			"start_time": datetime.now().isoformat(),
 			"status": FactorCalculationStatus.PENDING.value,
-			"estimated_complexity": self._estimate_complexity(factors, target_symbols)
+			"estimated_complexity": _estimate_complexity(factors, target_symbols)
 		}
 
 		self.calculation_id = calculation_id
 		self.factors = factors
-
-	def _estimate_complexity (self, factors: List[FactorMetadata], symbols: List[str]) -> str:
-		"""估计计算复杂度"""
-		total_complexity = len(factors) * len(symbols)
-		if total_complexity > 10000:
-			return "high"
-		elif total_complexity > 1000:
-			return "medium"
-		else:
-			return "low"
 
 
 class FactorCalculationProgressEvent(BaseEvent):

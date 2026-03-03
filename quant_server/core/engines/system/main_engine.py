@@ -14,30 +14,28 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
-from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional, cast
 from datetime import datetime
 
 # 导入统一类型定义
 from ..types.entities import (
     EngineConfig as EngineConfigEntity,
-    SystemConfig as SystemConfigEntity
+    SystemConfig as SystemConfigEntity,
+    Event as EventEntity
 )
 from ..types.enums import (
-    ComponentStatus,
     HealthStatus,
-    SystemMode,
     EngineType,
-    EngineCategory,
     PriorityLevel,
-    EventType
+    EventType,
+    SystemMode
 )
 
 # 导入引擎基类
 from ..base.engine_base import EngineBase
 from .event_engine import EventEngine
 from .engine_registry import EngineRegistry
-from ..utils.engine_factory import EngineFactory, EngineDescriptor
+from ..utils.engine_factory import EngineFactory
 from ..utils.engine_monitor import EngineMonitor
 
 logger = logging.getLogger(__name__)
@@ -96,7 +94,7 @@ class MainEngine(EngineBase):
         if config is None:
             config = EngineConfigEntity(
                 name="main_engine",
-                engine_type=EngineType.MAIN.value,
+                engine_type=EngineType.MAIN,
                 auto_start=True,
                 max_retries=3,
                 retry_delay=1.0,
@@ -136,6 +134,10 @@ class MainEngine(EngineBase):
         self._initialized = True
         logger.info("主引擎初始化完成")
 
+    async def _on_initialize(self):
+        """主引擎初始化逻辑"""
+        logger.info("初始化主引擎")
+
     async def _on_start(self) -> None:
         """主引擎启动逻辑"""
         logger.info("启动主引擎")
@@ -157,28 +159,28 @@ class MainEngine(EngineBase):
             await self._start_child_engines()
 
             # 启动监控
-            if self._system_config.enable_monitoring:
+            if self._system_config and self._system_config.enable_monitoring:
                 await self._start_monitoring()
 
             # 启动WebSocket
-            if self._system_config.enable_web_socket:
+            if self._system_config and self._system_config.enable_web_socket:
                 await self._start_web_socket()
 
             # 发布系统启动事件
             await self._publish_system_event(
-                EventType.SYSTEM_START.value,
+                EventType.SYSTEM_STARTED,
                 {
-                    "system_name": self._system_config.system_name,
-                    "version": self._system_config.version,
-                    "mode": self._system_config.mode.value,
+                    "system_name": self._system_config.system_name if self._system_config else "unknown",
+                    "version": self._system_config.version if self._system_config else "unknown",
+                    "mode": self._system_config.mode.value if self._system_config else "unknown",
                     "startup_time": self._startup_timestamp.isoformat()
                 }
             )
 
             logger.info(
-                f"主引擎启动完成，系统: {self._system_config.system_name}, "
-                f"版本: {self._system_config.version}, "
-                f"模式: {self._system_config.mode.value}"
+                f"主引擎启动完成，系统: {self._system_config.system_name if self._system_config else 'unknown'}, "
+                f"版本: {self._system_config.version if self._system_config else 'unknown'}, "
+                f"模式: {self._system_config.mode.value if self._system_config else 'unknown'}"
             )
 
         except Exception as e:
@@ -195,7 +197,7 @@ class MainEngine(EngineBase):
                 await self._stop_web_socket()
 
             # 停止监控
-            if self._engine_monitor and self._engine_monitor.is_monitoring:
+            if self._engine_monitor and getattr(self._engine_monitor, 'is_monitoring', False):
                 await self._engine_monitor.stop_monitoring()
 
             # 停止子引擎
@@ -215,7 +217,7 @@ class MainEngine(EngineBase):
 
             # 发布系统停止事件
             await self._publish_system_event(
-                EventType.SYSTEM_STOP.value,
+                EventType.SYSTEM_STOPPED,
                 {
                     "system_name": self._system_config.system_name if self._system_config else "unknown",
                     "uptime": uptime,
@@ -238,7 +240,7 @@ class MainEngine(EngineBase):
         self._system_config = SystemConfigEntity(
             system_name=system_config_data.get("system_name", "量化交易系统"),
             version=system_config_data.get("version", "1.0.0"),
-            mode=SystemMode(system_config_data.get("mode", "development")),
+            mode=SystemMode(system_config_data.get("mode", "DEVELOPMENT")),
             auto_start_engines=system_config_data.get("auto_start_engines", True),
             enable_monitoring=system_config_data.get("enable_monitoring", True),
             enable_web_socket=system_config_data.get("enable_web_socket", True),
@@ -260,29 +262,31 @@ class MainEngine(EngineBase):
     async def _initialize_core_components(self) -> None:
         """初始化核心组件"""
         # 初始化引擎工厂
-        self._engine_factory = await EngineFactory.get_instance()
+        self._engine_factory = EngineFactory()
 
         # 初始化事件引擎（如果未提供）
         if not self.event_engine:
+            # 注意：这里我们需要确保EngineFactory的create_engine返回的是EventEngine
+            # 但为了类型安全，我们进行类型转换
             event_engine = await self._engine_factory.create_engine(
                 EngineType.EVENT,
-                config=self._system_config.engine_configs.get("event_engine", {}),
+                config=self._system_config.engine_configs.get("event_engine", {}) if self._system_config else {},
                 instance_name="event_engine"
             )
-            self.event_engine = event_engine
+            # 进行类型转换
+            self.event_engine = cast(EventEngine, event_engine)
 
         # 初始化引擎注册表
         self._engine_registry = EngineRegistry()
 
         # 初始化引擎监控器
-        from ..utils.engine_monitor import EngineMonitor
         self._engine_monitor = EngineMonitor(
             engine_registry=self._engine_registry,
-            event_engine=self.event_engine
+            event_engine=cast(EventEngine, self.event_engine)
         )
 
         # 初始化WebSocket管理器（如果启用）
-        if self._system_config.enable_web_socket:
+        if self._system_config and self._system_config.enable_web_socket:
             await self._initialize_web_socket_manager()
 
         logger.info("核心组件初始化完成")
@@ -307,15 +311,17 @@ class MainEngine(EngineBase):
         """注册事件处理器"""
         if self.event_engine:
             # 注册系统事件处理器
-            system_health_handler = self.event_engine.register(
+            # 注意：这里我们直接调用event_engine的方法，而不是EngineBase的方法
+            event_engine = cast(EventEngine, self.event_engine)
+            system_health_handler = event_engine.register(
                 "system_health_check",
                 self._handle_system_health_check
             )
-            engine_status_handler = self.event_engine.register(
+            engine_status_handler = event_engine.register(
                 "engine_status_changed",
                 self._handle_engine_status_changed
             )
-            system_alert_handler = self.event_engine.register(
+            system_alert_handler = event_engine.register(
                 "system_alert",
                 self._handle_system_alert
             )
@@ -330,30 +336,31 @@ class MainEngine(EngineBase):
     async def _unregister_event_handlers(self) -> None:
         """注销事件处理器"""
         if self.event_engine:
+            event_engine = cast(EventEngine, self.event_engine)
             for event_type, handler_ids in self._event_handlers.items():
                 for handler_id in handler_ids:
-                    self.event_engine.unregister(event_type, handler_id)
+                    event_engine.unregister(event_type, handler_id)
 
             self._event_handlers.clear()
             logger.debug("主引擎事件处理器注销完成")
 
     async def _start_child_engines(self) -> None:
         """启动子引擎"""
-        if not self._system_config.auto_start_engines:
+        if not self._system_config or not self._system_config.auto_start_engines:
             logger.info("跳过自动启动子引擎（配置为手动启动）")
             return
 
-        # 核心引擎类型
+        # 核心引擎类型 - 使用现有的EngineType枚举值
         core_engine_types = [
             EngineType.EVENT,  # 事件引擎应该已经启动
-            EngineType.DATA,
-            EngineType.STRATEGY,
-            EngineType.TRADE,
-            EngineType.RISK,
-            EngineType.ACCOUNT,
-            EngineType.ANALYSIS,
-            EngineType.MONITOR,
-            EngineType.BACKTEST
+            EngineType.DATA_SYNC,  # 数据引擎
+            EngineType.STRATEGY_MANAGER,  # 策略引擎
+            EngineType.EXECUTION_ENGINE,  # 交易引擎
+            EngineType.RISK_ENGINE,  # 风险引擎
+            EngineType.ACCOUNT_ENGINE,  # 账户引擎
+            EngineType.PERFORMANCE_ENGINE,  # 分析引擎
+            EngineType.SYSTEM_MONITOR,  # 监控引擎
+            EngineType.BACKTEST_ENGINE  # 回测引擎
         ]
 
         start_tasks = []
@@ -446,7 +453,7 @@ class MainEngine(EngineBase):
 
     async def _stop_monitoring(self) -> None:
         """停止监控"""
-        if self._engine_monitor and self._engine_monitor.is_monitoring:
+        if self._engine_monitor and getattr(self._engine_monitor, 'is_monitoring', False):
             await self._engine_monitor.stop_monitoring()
             logger.info("引擎监控已停止")
 
@@ -468,7 +475,7 @@ class MainEngine(EngineBase):
             await self._web_socket_manager.stop()
             logger.info("WebSocket服务已停止")
 
-    async def _publish_system_event(self, event_type: str, data: Dict[str, Any]) -> None:
+    async def _publish_system_event(self, event_type: EventType, data: Dict[str, Any]) -> None:
         """发布系统事件
 
         Args:
@@ -477,17 +484,17 @@ class MainEngine(EngineBase):
         """
         if self.event_engine:
             try:
-                from ..types.entities import Event
-
-                event = Event(
-                    event_id=f"system_{event_type}_{datetime.now().timestamp()}",
-                    event_type=event_type,
+                event = EventEntity(
+                    event_id=f"system_{event_type.value}_{datetime.now().timestamp()}",
+                    event_type=event_type.value,
                     source="main_engine",
                     data=data,
-                    priority=PriorityLevel.HIGH.value
+                    priority=PriorityLevel.HIGH.value,
+                    timestamp=datetime.now()
                 )
 
-                await self.event_engine.put(event)
+                event_engine = cast(EventEngine, self.event_engine)
+                await event_engine.put(event)
 
                 # 通过WebSocket广播（如果启用）
                 if self._web_socket_manager:
@@ -496,7 +503,7 @@ class MainEngine(EngineBase):
             except Exception as e:
                 logger.error(f"发布系统事件失败: {e}")
 
-    async def _handle_system_health_check(self, event) -> None:
+    async def _handle_system_health_check(self, event: EventEntity) -> None:
         """处理系统健康检查事件
 
         Args:
@@ -506,16 +513,14 @@ class MainEngine(EngineBase):
         await self._update_system_status()
 
         # 发布系统状态事件
-        await self._publish_system_event("system_status", self._system_status)
+        await self._publish_system_event(EventType.SYSTEM_STARTED, self._system_status)
 
-    async def _handle_engine_status_changed(self, event) -> None:
+    async def _handle_engine_status_changed(self, event: EventEntity) -> None:
         """处理引擎状态变化事件
 
         Args:
             event: 事件对象
         """
-        engine_data = event.data
-
         # 更新系统状态中的引擎信息
         await self._update_system_status()
 
@@ -523,7 +528,7 @@ class MainEngine(EngineBase):
         if self._web_socket_manager:
             await self._web_socket_manager.broadcast_event(event)
 
-    async def _handle_system_alert(self, event) -> None:
+    async def _handle_system_alert(self, event: EventEntity) -> None:
         """处理系统警报事件
 
         Args:
@@ -660,6 +665,11 @@ class MainEngine(EngineBase):
         if self._engine_monitor:
             monitor_status = self._engine_monitor.get_monitor_status()
 
+        # 获取WebSocket状态
+        web_socket_active = False
+        if self._web_socket_manager and hasattr(self._web_socket_manager, 'is_active'):
+            web_socket_active = self._web_socket_manager.is_active()
+
         return {
             "events": {
                 "name": self._system_config.system_name if self._system_config else "unknown",
@@ -675,7 +685,7 @@ class MainEngine(EngineBase):
             "monitoring": monitor_status,
             "web_socket": {
                 "enabled": self._system_config.enable_web_socket if self._system_config else False,
-                "active": self._web_socket_manager.is_active() if self._web_socket_manager else False
+                "active": web_socket_active
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -688,7 +698,15 @@ class MainEngine(EngineBase):
             data: 消息数据
         """
         # 通过事件引擎广播
-        await self._publish_system_event(f"broadcast_{message_type}", data)
+        try:
+            event_type = EventType(f"broadcast_{message_type}")
+            await self._publish_system_event(event_type, data)
+        except ValueError:
+            # 如果EventType枚举中没有该值，使用字符串
+            await self._publish_system_event(EventType.SYSTEM_STARTED, {
+                "message_type": message_type,
+                "data": data
+            })
 
     async def execute_command(self,
                              command: str,
@@ -822,7 +840,7 @@ class MainEngine(EngineBase):
         return base_info
 
 
-async def get_main_engine() -> MainEngine:
+async def get_main_engine() -> Optional['MainEngine']:
     """获取全局主引擎实例
 
     Returns:
@@ -830,7 +848,11 @@ async def get_main_engine() -> MainEngine:
     """
     from ..utils.engine_factory import get_engine_factory
     factory = await get_engine_factory()
-    return await factory.get_engine("main_engine")
+    if factory:
+        engine = await factory.get_engine("main_engine")
+        if isinstance(engine, MainEngine):
+            return engine
+    return None
 
 
 async def initialize_system(config: Dict[str, Any] = None) -> MainEngine:
@@ -845,7 +867,7 @@ async def initialize_system(config: Dict[str, Any] = None) -> MainEngine:
     # 创建引擎配置实体
     engine_config = EngineConfigEntity(
         name="main_engine",
-        engine_type=EngineType.MAIN.value,
+        engine_type=EngineType.MAIN,
         auto_start=True,
         config=config or {}
     )

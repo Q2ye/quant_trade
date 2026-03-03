@@ -15,7 +15,7 @@
 import asyncio
 import logging
 import uuid
-from typing import Dict, Any, List, Optional, Set, Tuple, Callable
+from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -31,12 +31,9 @@ from ..types.enums import (
     PriorityLevel,
     AlertLevel,
     MetricType,
-    CheckType,
-    EngineErrorLevel
 )
 
 # 导入系统组件
-from ..base.engine_base import EngineBase
 from ..system.engine_registry import EngineRegistry
 from ..system.event_engine import EventEngine
 from ..utils.engine_factory import EngineFactory
@@ -93,7 +90,7 @@ class MonitorAlert:
         Returns:
             Dict[str, Any]: 字典表示
         """
-        return {
+        result = {
             "alert_id": self.alert_id,
             "engine_name": self.engine_name,
             "alert_level": self.alert_level.value,
@@ -103,10 +100,14 @@ class MonitorAlert:
             "threshold": self.threshold,
             "timestamp": self.timestamp.isoformat(),
             "resolved": self.resolved,
-            "resolved_time": self.resolved_time.isoformat() if self.resolved_time else None,
             "acknowledged": self.acknowledged,
             "acknowledged_by": self.acknowledged_by
         }
+
+        if self.resolved_time:
+            result["resolved_time"] = self.resolved_time.isoformat()
+
+        return result
 
 
 @dataclass
@@ -175,11 +176,22 @@ class MetricStatistic:
             self.max_value = value
             self.avg_value = value
         else:
-            self.min_value = min(self.min_value, value) if self.min_value is not None else value
-            self.max_value = max(self.max_value, value) if self.max_value is not None else value
+            # 确保 min_value 和 max_value 不为 None
+            if self.min_value is not None:
+                self.min_value = min(self.min_value, value)
+            else:
+                self.min_value = value
+
+            if self.max_value is not None:
+                self.max_value = max(self.max_value, value)
+            else:
+                self.max_value = value
 
             # 移动平均
-            self.avg_value = (self.avg_value * self.count + value) / (self.count + 1)
+            if self.avg_value is not None:
+                self.avg_value = (self.avg_value * self.count + value) / (self.count + 1)
+            else:
+                self.avg_value = value
 
         self.count += 1
         self.last_value = value
@@ -291,7 +303,7 @@ class AlertRule:
         Returns:
             Dict[str, Any]: 字典表示
         """
-        return {
+        result = {
             "rule_id": self.rule_id,
             "engine_name": self.engine_name,
             "metric_name": self.metric_name,
@@ -301,8 +313,12 @@ class AlertRule:
             "message_template": self.message_template,
             "enabled": self.enabled,
             "cooldown_seconds": self.cooldown_seconds,
-            "last_triggered": self.last_triggered.isoformat() if self.last_triggered else None
         }
+
+        if self.last_triggered:
+            result["last_triggered"] = self.last_triggered.isoformat()
+
+        return result
 
 
 class EngineMonitor:
@@ -409,57 +425,69 @@ class EngineMonitor:
         # 获取引擎工厂
         if not self._engine_factory:
             try:
-                self._engine_factory = await EngineFactory.get_instance()
+                self._engine_factory = EngineFactory()
             except Exception as e:
                 logger.warning(f"获取引擎工厂失败: {e}")
 
         # 获取引擎注册表
         if not self._engine_registry:
             if self._engine_factory:
-                self._engine_registry = self._engine_factory._engine_registry
+                # 使用公有方法或属性访问，避免访问 protected 成员
+                if hasattr(self._engine_factory, 'engine_registry'):
+                    self._engine_registry = self._engine_factory.engine_registry
+                elif hasattr(self._engine_factory, 'get_engine_registry'):
+                    self._engine_registry = self._engine_factory.get_engine_registry()
+                else:
+                    logger.warning("引擎注册表未设置且无法从工厂获取")
             else:
                 logger.warning("引擎注册表未设置")
 
         # 获取事件引擎
         if not self._event_engine:
             if self._engine_factory:
-                self._event_engine = self._engine_factory._event_engine
+                # 使用公有方法或属性访问，避免访问 protected 成员
+                if hasattr(self._engine_factory, 'event_engine'):
+                    self._event_engine = self._engine_factory.event_engine
+                elif hasattr(self._engine_factory, 'get_event_engine'):
+                    self._event_engine = self._engine_factory.get_event_engine()
+                else:
+                    logger.warning("事件引擎未设置且无法从工厂获取")
             else:
                 logger.warning("事件引擎未设置")
 
     def _init_default_alert_rules(self) -> None:
         """初始化默认警报规则"""
-        # 引擎状态错误规则
+        # 引擎状态错误规则 - 使用数值阈值
         self.add_alert_rule(AlertRule(
             rule_id="engine_status_error",
             engine_name="*",
             metric_name="status",
             condition="==",
-            threshold=ComponentStatus.ERROR.value,
+            threshold=float(ComponentStatus.ERROR.value),  # 转换为数值比较
             alert_level=AlertLevel.ERROR,
             message_template="引擎 {engine_name} 进入错误状态",
             cooldown_seconds=60
         ))
 
-        # 引擎健康状态不健康规则
+        # 引擎健康状态不健康规则 - 使用数值阈值
         self.add_alert_rule(AlertRule(
             rule_id="engine_health_unhealthy",
             engine_name="*",
             metric_name="health",
             condition="==",
-            threshold=HealthStatus.UNHEALTHY.value,
+            threshold=float(HealthStatus.UNHEALTHY.value),  # 转换为数值比较
             alert_level=AlertLevel.WARNING,
             message_template="引擎 {engine_name} 健康状态不健康",
             cooldown_seconds=300
         ))
 
-        # 引擎健康状态失败规则
+        # 引擎健康状态失败规则 - 使用数值阈值
         self.add_alert_rule(AlertRule(
             rule_id="engine_health_failed",
             engine_name="*",
             metric_name="health",
             condition="==",
-            threshold=HealthStatus.FAILED.value,
+            threshold=float(HealthStatus.FAILED.value),  # 转换为数值比较
             alert_level=AlertLevel.CRITICAL,
             message_template="引擎 {engine_name} 健康状态失败",
             cooldown_seconds=60
@@ -571,7 +599,7 @@ class EngineMonitor:
         }
 
         status_value = status_mapping.get(status_info.get("status", ""), -1)
-        self._add_metric(engine_name, "status", status_value, timestamp)
+        self._add_metric(engine_name, "status", float(status_value), timestamp)
 
         # 健康指标
         health_mapping = {
@@ -583,19 +611,19 @@ class EngineMonitor:
         }
 
         health_value = health_mapping.get(status_info.get("health", ""), -1)
-        self._add_metric(engine_name, "health", health_value, timestamp)
+        self._add_metric(engine_name, "health", float(health_value), timestamp)
 
         # 运行时长
         uptime = status_info.get("uptime", 0.0)
-        self._add_metric(engine_name, "uptime", uptime, timestamp)
+        self._add_metric(engine_name, "uptime", float(uptime), timestamp)
 
         # 错误计数
         has_error = 1 if status_info.get("error_message") else 0
-        self._add_metric(engine_name, "has_error", has_error, timestamp)
+        self._add_metric(engine_name, "has_error", float(has_error), timestamp)
 
         # 依赖数量
         dependency_count = len(status_info.get("dependencies", []))
-        self._add_metric(engine_name, "dependency_count", dependency_count, timestamp)
+        self._add_metric(engine_name, "dependency_count", float(dependency_count), timestamp)
 
     def _collect_performance_metrics(self, engine_name: str, metrics: Dict[str, Any]) -> None:
         """收集性能指标
@@ -690,9 +718,10 @@ class EngineMonitor:
         try:
             # 获取最新指标值
             metric_history = self._metrics_history.get(engine_name, {}).get(rule.metric_name)
-            if not metric_history:
+            if not metric_history or len(metric_history) == 0:
                 return
 
+            # 使用索引访问 deque 的最新值
             latest_metric = metric_history[-1]
 
             # 检查条件
@@ -1082,11 +1111,25 @@ async def get_engine_monitor() -> EngineMonitor:
     global _monitor
     if _monitor is None:
         # 获取依赖组件
-        factory = await EngineFactory.get_instance()
+        factory = EngineFactory()
+
+        # 使用公有方法或属性访问，避免访问 protected 成员
+        engine_registry = None
+        event_engine = None
+
+        if hasattr(factory, 'engine_registry'):
+            engine_registry = factory.engine_registry
+        elif hasattr(factory, 'get_engine_registry'):
+            engine_registry = factory.get_engine_registry()
+
+        if hasattr(factory, 'event_engine'):
+            event_engine = factory.event_engine
+        elif hasattr(factory, 'get_event_engine'):
+            event_engine = factory.get_event_engine()
 
         _monitor = EngineMonitor(
-            engine_registry=factory._engine_registry,
-            event_engine=factory._event_engine
+            engine_registry=engine_registry,
+            event_engine=event_engine
         )
     return _monitor
 

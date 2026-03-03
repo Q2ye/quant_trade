@@ -2,7 +2,6 @@
 数学工具模块
 提供统计计算、金融计算和优化工具等数学功能
 """
-
 from .statistic_calculator import (
 	mean, std, variance, skewness, kurtosis,
 	correlation, covariance, percentile,

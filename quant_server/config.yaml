@@ -1,0 +1,99 @@
+# config.yaml
+# 量化交易系统配置文件
+
+system:
+  name: "量化交易平台"
+  version: "1.0.0"
+  mode: "development"
+  enable_web_socket: true
+  enable_monitoring: true
+  enable_health_check: true
+  shutdown_timeout: 30.0
+  log_level: "INFO"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+
+engines:
+  auto_start_main_engine: true
+  auto_start_event_engine: true
+  max_workers: 10
+  queue_size: 10000
+
+modules:
+  # 数据模块
+  data:
+    enabled: true
+    auto_start: true
+    dependencies: []
+    config:
+      data_source: "tushare"
+      sync_interval: 3600
+      cache_ttl: 300
+
+  # 策略模块
+  strategy:
+    enabled: true
+    auto_start: true
+    dependencies: ["data"]
+    config:
+      max_strategies: 50
+      enable_ai: true
+      backtest_mode: "fast"
+
+  # 交易模块
+  trade:
+    enabled: true
+    auto_start: true
+    dependencies: ["strategy", "data"]
+    config:
+      broker: "simulation"
+      enable_risk_control: true
+      max_position: 0.8
+
+  # 回测模块
+  backtest:
+    enabled: true
+    auto_start: true
+    dependencies: ["strategy", "data"]
+    config:
+      max_workers: 4
+      enable_optimization: true
+
+  # 账户模块
+  account:
+    enabled: true
+    auto_start: true
+    dependencies: ["trade"]
+    config:
+      initial_capital: 1000000
+      enable_reconciliation: true
+
+  # 分析模块
+  analysis:
+    enabled: true
+    auto_start: true
+    dependencies: ["account", "backtest"]
+    config:
+      enable_real_time: true
+      report_format: "html"
+
+  # 监控模块
+  monitor:
+    enabled: true
+    auto_start: true
+    dependencies: []
+    config:
+      alert_channels: ["email", "webhook"]
+      check_interval: 60
+
+  # 系统模块
+  system:
+    enabled: true
+    auto_start: true
+    dependencies: []
+    config:
+      auth_enabled: true
+      enable_audit: true

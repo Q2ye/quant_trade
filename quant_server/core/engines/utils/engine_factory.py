@@ -15,17 +15,14 @@
 import asyncio
 import logging
 import inspect
-from typing import Dict, Any, List, Optional, Type, Union, Callable
+from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass, field
-from datetime import datetime
 
 # 导入统一类型定义
 from ..types.entities import EngineConfig as EngineConfigEntity
 from ..types.enums import (
     EngineType,
     EngineCategory,
-    ComponentStatus,
-    HealthStatus
 )
 
 # 导入引擎基类
@@ -59,7 +56,7 @@ class EngineDescriptor:
     name: str
     description: str = ""
     version: str = "1.0.0"
-    category: EngineCategory = EngineCategory.UTILITY
+    category: EngineCategory = EngineCategory
     dependencies: List[EngineType] = field(default_factory=list)
     config_schema: Dict[str, Any] = field(default_factory=dict)
     tags: List[str] = field(default_factory=list)
@@ -108,6 +105,26 @@ class EngineDescriptor:
             "tags": self.tags,
             "config_schema": self.config_schema
         }
+
+
+def _prepare_engine_config(descriptor: EngineDescriptor,
+                           config: Dict[str, Any]) -> Dict[str, Any]:
+    """准备引擎配置
+
+    Args:
+        descriptor: 引擎描述符
+        config: 用户提供的配置
+
+    Returns:
+        Dict[str, Any]: 合并后的配置
+    """
+    # 获取默认配置
+    default_config = descriptor.get_default_config()
+
+    # 合并配置
+    merged_config = {**default_config, **config}
+
+    return merged_config
 
 
 class EngineFactory:
@@ -161,7 +178,7 @@ class EngineFactory:
                 engine_class=MainEngine,
                 name="main_engine",
                 description="系统主引擎，协调所有子引擎",
-                category=EngineCategory.CORE,
+                category=EngineCategory.SYSTEM,
                 dependencies=[],
                 config_schema={
                     "required": [],
@@ -184,7 +201,7 @@ class EngineFactory:
                 engine_class=EventEngine,
                 name="event_engine",
                 description="事件驱动引擎，系统通信总线",
-                category=EngineCategory.CORE,
+                category=EngineCategory.SYSTEM,
                 dependencies=[],
                 config_schema={
                     "required": ["max_workers"],
@@ -283,7 +300,7 @@ class EngineFactory:
                 return self._engine_instances[instance_name]
 
             # 准备配置
-            engine_config = self._prepare_engine_config(descriptor, config or {})
+            engine_config = _prepare_engine_config(descriptor, config or {})
 
             # 验证配置
             config_errors = descriptor.validate_config(engine_config)
@@ -554,26 +571,7 @@ class EngineFactory:
         logger.info(f"所有引擎关闭完成，成功: {sum(results.values())}/{len(results)}")
         return results
 
-    def _prepare_engine_config(self, descriptor: EngineDescriptor,
-                              config: Dict[str, Any]) -> Dict[str, Any]:
-        """准备引擎配置
-
-        Args:
-            descriptor: 引擎描述符
-            config: 用户提供的配置
-
-        Returns:
-            Dict[str, Any]: 合并后的配置
-        """
-        # 获取默认配置
-        default_config = descriptor.get_default_config()
-
-        # 合并配置
-        merged_config = {**default_config, **config}
-
-        return merged_config
-
-    async def _get_shared_event_engine(self) -> Optional[EventEngine]:
+    async def _get_shared_event_engine(self) -> EventEngine | EngineBase:
         """获取共享事件引擎
 
         Returns:

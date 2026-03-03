@@ -10,11 +10,10 @@
 4. 验证逻辑：包含数据验证、默认值、字段描述等
 """
 
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from datetime import date, datetime
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
-from decimal import Decimal
 
 
 # ==================== 枚举类型定义 ====================
@@ -80,8 +79,8 @@ class PaginationParams(BaseModel):
 	page: int = Field(default=1, ge=1, description="页码，从1开始")
 	page_size: int = Field(default=20, ge=1, le=1000, description="每页记录数，最大1000")
 
-	@validator('page_size')
-	def validate_page_size (cls, v):
+	@classmethod
+	def validate_page_size(cls, v):
 		"""验证每页记录数"""
 		if v > 1000:
 			raise ValueError("每页记录数不能超过1000")
@@ -106,8 +105,8 @@ class StockListRequest(PaginationParams, SortParams):
 	min_market_cap: Optional[float] = Field(default=None, ge=0, description="最小市值（亿元）")
 	max_market_cap: Optional[float] = Field(default=None, ge=0, description="最大市值（亿元）")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"page": 1,
 				"page_size": 20,
@@ -118,6 +117,7 @@ class StockListRequest(PaginationParams, SortParams):
 				"sort_order": "desc"
 			}
 		}
+	)
 
 
 class StockBasicInfo(BaseModel):
@@ -131,8 +131,9 @@ class StockBasicInfo(BaseModel):
 	list_date: Optional[date] = Field(default=None, description="上市日期")
 	is_hs: Optional[str] = Field(default=None, description="是否沪深港通标的: N否 H沪股通 S深股通")
 
-	class Config:
-		orm_mode = True
+	model_config = ConfigDict(
+		from_attributes=True
+	)
 
 
 class StockListResponse(BaseModel):
@@ -141,21 +142,15 @@ class StockListResponse(BaseModel):
 	data: List[StockBasicInfo] = Field(..., description="股票列表数据")
 	pagination: Dict[str, Any] = Field(
 		...,
-		description="分页信息",
-		example={
-			"page": 1,
-			"page_size": 20,
-			"total": 5000,
-			"total_pages": 250
-		}
+		description="分页信息"
 	)
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
-				"events": [
+				"data": [
 					{
 						"ts_code": "000001.SZ",
 						"symbol": "000001",
@@ -176,6 +171,7 @@ class StockListResponse(BaseModel):
 				"message": "获取成功"
 			}
 		}
+	)
 
 
 class StockDetailRequest(BaseModel):
@@ -186,8 +182,8 @@ class StockDetailRequest(BaseModel):
 	quote_start_date: Optional[date] = Field(default=None, description="行情开始日期")
 	quote_end_date: Optional[date] = Field(default=None, description="行情结束日期")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"include_quote": True,
 				"include_financial": False,
@@ -196,6 +192,7 @@ class StockDetailRequest(BaseModel):
 				"quote_end_date": "2023-12-31"
 			}
 		}
+	)
 
 
 class QuoteData(BaseModel):
@@ -241,8 +238,8 @@ class StockDetailResponse(BaseModel):
 	statistics: Optional[Dict[str, Any]] = Field(default=None, description="统计信息")
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"basic_info": {
@@ -269,6 +266,7 @@ class StockDetailResponse(BaseModel):
 				"message": "获取成功"
 			}
 		}
+	)
 
 
 class HistoricalQuotesRequest(BaseModel):
@@ -283,24 +281,24 @@ class HistoricalQuotesRequest(BaseModel):
 		description="返回字段，逗号分隔，默认全部"
 	)
 
-	@validator('frequency')
-	def validate_frequency (cls, v):
+	@classmethod
+	def validate_frequency(cls, v):
 		"""验证频率参数"""
 		valid_frequencies = ['D', 'W', 'M', '5', '15', '30', '60']
 		if v not in valid_frequencies:
 			raise ValueError(f"频率必须为: {', '.join(valid_frequencies)}")
 		return v
 
-	@validator('adjust')
-	def validate_adjust (cls, v):
+	@classmethod
+	def validate_adjust(cls, v):
 		"""验证复权类型"""
 		valid_adjusts = ['qfq', 'hfq', 'None', '']
 		if v not in valid_adjusts:
 			raise ValueError(f"复权类型必须为: {', '.join(valid_adjusts[:-1])}")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"ts_code": "000001.SZ",
 				"start_date": "2023-01-01",
@@ -310,6 +308,7 @@ class HistoricalQuotesRequest(BaseModel):
 				"fields": "ts_code,trade_date,open,high,low,close,vol"
 			}
 		}
+	)
 
 
 class HistoricalQuotesResponse(BaseModel):
@@ -318,24 +317,15 @@ class HistoricalQuotesResponse(BaseModel):
 	data: Dict[str, List[QuoteData]] = Field(..., description="按股票代码分组的历史行情数据")
 	metadata: Dict[str, Any] = Field(
 		...,
-		description="元数据",
-		example={
-			"total_records": 240,
-			"date_range": {
-				"start": "2023-01-01",
-				"end": "2023-12-31"
-			},
-			"frequency": "D",
-			"adjust": "qfq"
-		}
+		description="元数据"
 	)
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
-				"events": {
+				"data": {
 					"000001.SZ": [
 						{
 							"trade_date": "2023-12-29",
@@ -360,6 +350,7 @@ class HistoricalQuotesResponse(BaseModel):
 				"message": "获取成功"
 			}
 		}
+	)
 
 
 # ==================== 数据同步模型 ====================
@@ -371,8 +362,8 @@ class SyncTaskItem(BaseModel):
 	end_date: Optional[date] = Field(default=None, description="结束日期")
 	force_update: bool = Field(default=False, description="是否强制更新")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"data_type": "daily_quotes",
 				"start_date": "2023-01-01",
@@ -380,24 +371,25 @@ class SyncTaskItem(BaseModel):
 				"force_update": False
 			}
 		}
+	)
 
 
 class BatchSyncRequest(BaseModel):
 	"""批量同步请求模型"""
-	tasks: List[SyncTaskItem] = Field(..., min_items=1, description="同步任务列表")
+	tasks: List[SyncTaskItem] = Field(..., min_length=1, description="同步任务列表")
 	priority: SyncPriority = Field(default=SyncPriority.MEDIUM, description="同步优先级")
 	notify_on_complete: bool = Field(default=True, description="完成后是否通知")
 	callback_url: Optional[str] = Field(default=None, description="回调URL")
 
-	@validator('tasks')
-	def validate_tasks (cls, v):
+	@classmethod
+	def validate_tasks(cls, v):
 		"""验证任务列表"""
 		if not v:
 			raise ValueError("任务列表不能为空")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"tasks": [
 					{
@@ -414,6 +406,7 @@ class BatchSyncRequest(BaseModel):
 				"notify_on_complete": True
 			}
 		}
+	)
 
 
 class SyncProgress(BaseModel):
@@ -428,8 +421,8 @@ class SyncProgress(BaseModel):
 		description="预计剩余时间(秒)"
 	)
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"task_id": "sync_20231229_001",
 				"total_tasks": 5,
@@ -439,6 +432,7 @@ class SyncProgress(BaseModel):
 				"estimated_time_remaining": 300
 			}
 		}
+	)
 
 
 class SyncResult(BaseModel):
@@ -452,8 +446,8 @@ class SyncResult(BaseModel):
 	end_time: datetime = Field(..., description="结束时间")
 	error_message: Optional[str] = Field(default=None, description="错误信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"data_type": "daily_quotes",
 				"success": True,
@@ -464,6 +458,7 @@ class SyncResult(BaseModel):
 				"end_time": "2023-12-29T09:30:00"
 			}
 		}
+	)
 
 
 class BatchSyncResponse(BaseModel):
@@ -478,13 +473,12 @@ class BatchSyncResponse(BaseModel):
 	start_time: datetime = Field(..., description="开始时间")
 	progress_endpoint: str = Field(
 		...,
-		description="进度查询端点",
-		example="/api/events/sync/status?task_id={task_id}"
+		description="进度查询端点"
 	)
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"task_id": "sync_20231229_001",
@@ -495,6 +489,7 @@ class BatchSyncResponse(BaseModel):
 				"message": "同步任务已开始，请通过进度端点查询状态"
 			}
 		}
+	)
 
 
 class SyncStatusResponse(BaseModel):
@@ -509,8 +504,8 @@ class SyncStatusResponse(BaseModel):
 	updated_at: datetime = Field(..., description="更新时间")
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"task_id": "sync_20231229_001",
@@ -527,6 +522,7 @@ class SyncStatusResponse(BaseModel):
 				"message": "任务执行中"
 			}
 		}
+	)
 
 
 class QuickSyncRequest(BaseModel):
@@ -535,22 +531,23 @@ class QuickSyncRequest(BaseModel):
 	include_stock_list: bool = Field(default=True, description="是否包含股票列表")
 	include_calendar: bool = Field(default=True, description="是否包含交易日历")
 
-	@validator('date_range')
-	def validate_date_range (cls, v):
+	@classmethod
+	def validate_date_range(cls, v):
 		"""验证日期范围"""
 		valid_ranges = ['1d', '7d', '30d', '90d', '1y', 'all']
 		if v not in valid_ranges:
 			raise ValueError(f"日期范围必须为: {', '.join(valid_ranges)}")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"date_range": "7d",
 				"include_stock_list": True,
 				"include_calendar": True
 			}
 		}
+	)
 
 
 # ==================== 数据质量模型 ====================
@@ -562,8 +559,8 @@ class QualityMetric(BaseModel):
 	threshold: Optional[float] = Field(default=None, description="阈值")
 	status: str = Field(..., description="状态: pass/warning/fail")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"metric_name": "数据完整率",
 				"metric_value": 98.5,
@@ -571,6 +568,7 @@ class QualityMetric(BaseModel):
 				"status": "pass"
 			}
 		}
+	)
 
 
 class DataQualityRequest(BaseModel):
@@ -580,16 +578,16 @@ class DataQualityRequest(BaseModel):
 	end_date: Optional[date] = Field(default=None, description="结束日期")
 	check_type: str = Field(default="completeness", description="检查类型: completeness/accuracy/timeliness")
 
-	@validator('check_type')
-	def validate_check_type (cls, v):
+	@classmethod
+	def validate_check_type(cls, v):
 		"""验证检查类型"""
 		valid_types = ['completeness', 'accuracy', 'timeliness', 'all']
 		if v not in valid_types:
 			raise ValueError(f"检查类型必须为: {', '.join(valid_types)}")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"data_type": "daily_quotes",
 				"start_date": "2023-01-01",
@@ -597,6 +595,7 @@ class DataQualityRequest(BaseModel):
 				"check_type": "completeness"
 			}
 		}
+	)
 
 
 class DataIssue(BaseModel):
@@ -607,8 +606,8 @@ class DataIssue(BaseModel):
 	description: str = Field(..., description="问题描述")
 	affected_records: Optional[List[str]] = Field(default=None, description="受影响的记录")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"issue_type": "missing",
 				"severity": "medium",
@@ -616,6 +615,7 @@ class DataIssue(BaseModel):
 				"description": "15个交易日缺少行情数据"
 			}
 		}
+	)
 
 
 class DataQualityResponse(BaseModel):
@@ -631,8 +631,8 @@ class DataQualityResponse(BaseModel):
 	generated_at: datetime = Field(..., description="报告生成时间")
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"data_type": "daily_quotes",
@@ -664,6 +664,7 @@ class DataQualityResponse(BaseModel):
 				"message": "数据质量检查完成"
 			}
 		}
+	)
 
 
 # ==================== 因子数据模型 ====================
@@ -677,16 +678,16 @@ class FactorRequest(PaginationParams):
 	end_date: date = Field(..., description="结束日期")
 	frequency: str = Field(default="M", description="频率: D日度 W周度 M月度 Q季度 Y年度")
 
-	@validator('frequency')
-	def validate_frequency (cls, v):
+	@classmethod
+	def validate_frequency(cls, v):
 		"""验证频率参数"""
 		valid_frequencies = ['D', 'W', 'M', 'Q', 'Y']
 		if v not in valid_frequencies:
 			raise ValueError(f"频率必须为: {', '.join(valid_frequencies)}")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"ts_code": "000001.SZ",
 				"start_date": "2020-01-01",
@@ -696,6 +697,7 @@ class FactorRequest(PaginationParams):
 				"page_size": 50
 			}
 		}
+	)
 
 
 class FactorValue(BaseModel):
@@ -707,8 +709,8 @@ class FactorValue(BaseModel):
 	rank: Optional[float] = Field(default=None, description="排名百分位")
 	category: FactorCategory = Field(..., description="因子类别")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"trade_date": "2023-12-01",
 				"factor_name": "PE",
@@ -718,6 +720,7 @@ class FactorValue(BaseModel):
 				"category": "value"
 			}
 		}
+	)
 
 
 class FactorMetadata(BaseModel):
@@ -731,8 +734,8 @@ class FactorMetadata(BaseModel):
 	update_frequency: str = Field(..., description="更新频率")
 	last_update: datetime = Field(..., description="最后更新时间")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"factor_name": "PE",
 				"display_name": "市盈率",
@@ -743,6 +746,7 @@ class FactorMetadata(BaseModel):
 				"last_update": "2023-12-29T09:00:00"
 			}
 		}
+	)
 
 
 class FactorResponse(BaseModel):
@@ -750,26 +754,26 @@ class FactorResponse(BaseModel):
 	success: bool = Field(..., description="请求是否成功")
 	ts_code: str = Field(..., description="股票代码")
 	factor_values: List[FactorValue] = Field(..., description="因子值列表")
-	metadata: FactorMetadata = Field(..., description="因子元数据")
+	metadata: Optional[FactorMetadata] = Field(
+		default=None,  # 改为可选，因为可能为空
+		description="因子元数据"
+	)
 	statistics: Dict[str, Any] = Field(
 		...,
-		description="统计信息",
-		example={
-			"mean": 15.2,
-			"std": 3.5,
-			"min": 8.1,
-			"max": 25.3,
-			"count": 48
-		}
+		description="统计信息"
 	)
 	pagination: Optional[Dict[str, Any]] = Field(
 		default=None,
 		description="分页信息"
 	)
+	available_factors: Optional[List[FactorMetadata]] = Field(  # 可选字段
+		default=None,
+		description="可用的公开因子列表"
+	)
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"ts_code": "000001.SZ",
@@ -795,12 +799,13 @@ class FactorResponse(BaseModel):
 				"message": "获取成功"
 			}
 		}
+	)
 
 
 class ResearchRequest(BaseModel):
 	"""因子研究请求模型"""
-	factor_names: List[str] = Field(..., min_items=1, description="因子名称列表")
-	universe: List[str] = Field(..., min_items=1, description="股票池")
+	factor_names: List[str] = Field(..., min_length=1, description="因子名称列表")
+	universe: List[str] = Field(..., min_length=1, description="股票池")
 	start_date: date = Field(..., description="开始日期")
 	end_date: date = Field(..., description="结束日期")
 	frequency: str = Field(default="M", description="频率: D日度 W周度 M月度")
@@ -810,16 +815,16 @@ class ResearchRequest(BaseModel):
 		description="分析类型: ic_analysis/quantile_analysis/correlation_analysis"
 	)
 
-	@validator('analysis_type')
-	def validate_analysis_type (cls, v):
+	@classmethod
+	def validate_analysis_type(cls, v):
 		"""验证分析类型"""
 		valid_types = ['ic_analysis', 'quantile_analysis', 'correlation_analysis', 'all']
 		if v not in valid_types:
 			raise ValueError(f"分析类型必须为: {', '.join(valid_types)}")
 		return v
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"factor_names": ["PE", "PB", "ROE"],
 				"universe": ["000001.SZ", "000002.SZ", "000858.SZ"],
@@ -830,6 +835,7 @@ class ResearchRequest(BaseModel):
 				"analysis_type": "ic_analysis"
 			}
 		}
+	)
 
 
 class ICAnalysisResult(BaseModel):
@@ -841,8 +847,8 @@ class ICAnalysisResult(BaseModel):
 	ic_pvalue: Optional[float] = Field(default=None, description="P值")
 	ic_series: List[float] = Field(..., description="IC序列")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"factor_name": "PE",
 				"ic_mean": 0.08,
@@ -851,6 +857,7 @@ class ICAnalysisResult(BaseModel):
 				"ic_pvalue": 0.02
 			}
 		}
+	)
 
 
 class QuantileAnalysisResult(BaseModel):
@@ -860,8 +867,8 @@ class QuantileAnalysisResult(BaseModel):
 	top_minus_bottom: float = Field(..., description="多空收益率")
 	turnover_rate: List[float] = Field(..., description="换手率")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"factor_name": "PE",
 				"quantile_returns": [0.15, 0.12, 0.10, 0.08, 0.05],
@@ -869,6 +876,7 @@ class QuantileAnalysisResult(BaseModel):
 				"turnover_rate": [0.30, 0.28, 0.25, 0.22, 0.20]
 			}
 		}
+	)
 
 
 class CorrelationAnalysisResult(BaseModel):
@@ -877,14 +885,15 @@ class CorrelationAnalysisResult(BaseModel):
 	correlation_matrix: List[List[float]] = Field(..., description="相关系数矩阵")
 	mean_correlation: float = Field(..., description="平均相关系数")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"factor_pairs": [["PE", "PB"], ["PE", "ROE"], ["PB", "ROE"]],
 				"correlation_matrix": [[1.0, 0.7, 0.3], [0.7, 1.0, 0.2], [0.3, 0.2, 1.0]],
 				"mean_correlation": 0.4
 			}
 		}
+	)
 
 
 class ResearchResponse(BaseModel):
@@ -909,8 +918,26 @@ class ResearchResponse(BaseModel):
 	generated_at: datetime = Field(..., description="生成时间")
 	message: Optional[str] = Field(default=None, description="提示信息")
 
-	class Config:
-		schema_extra = {
+	# 新增：异步任务相关字段
+	status: Optional[str] = Field(
+		default=None,
+		description="任务状态: started/running/completed/failed"
+	)
+	created_at: Optional[datetime] = Field(
+		default=None,
+		description="任务创建时间"
+	)
+	estimated_time: Optional[int] = Field(
+		default=None,
+		description="预计执行时间(秒)"
+	)
+	factor_name: Optional[str] = Field(
+		default=None,
+		description="因子名称（用于异步任务响应）"
+	)
+
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"success": True,
 				"research_id": "research_20231229_001",
@@ -920,23 +947,16 @@ class ResearchResponse(BaseModel):
 					"start_date": "2020-01-01",
 					"end_date": "2023-12-31"
 				},
-				"ic_analysis": [
-					{
-						"factor_name": "PE",
-						"ic_mean": 0.08,
-						"ic_ir": 0.67
-					}
-				],
-				"summary": {
-					"best_factor": "PE",
-					"average_ic": 0.06,
-					"significant_factors": ["PE", "ROE"]
-				},
-				"generated_at": "2023-12-29T11:00:00",
-				"message": "因子研究完成"
+				"status": "started",
+				"created_at": "2023-12-29T10:00:00",
+				"estimated_time": 300,
+				"factor_name": "PE",
+				"summary": {},
+				"generated_at": "2023-12-29T10:00:00",
+				"message": "因子研究已开始，将在后台执行"
 			}
 		}
-
+	)
 
 # ==================== WebSocket事件模型 ====================
 
@@ -954,8 +974,8 @@ class SyncProgressEvent(DataEvent):
 	progress_percentage: float = Field(..., description="进度百分比")
 	current_task: str = Field(..., description="当前任务")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"event_type": "sync_progress",
 				"event_id": "event_001",
@@ -963,12 +983,13 @@ class SyncProgressEvent(DataEvent):
 				"task_id": "sync_20231229_001",
 				"progress_percentage": 40.0,
 				"current_task": "同步日行情数据",
-				"events": {
+				"data": {
 					"total_tasks": 5,
 					"completed_tasks": 2
 				}
 			}
 		}
+	)
 
 
 class QualityAlertEvent(DataEvent):
@@ -977,8 +998,8 @@ class QualityAlertEvent(DataEvent):
 	data_type: DataSyncType = Field(..., description="数据类型")
 	issue_description: str = Field(..., description="问题描述")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"event_type": "quality_alert",
 				"event_id": "alert_001",
@@ -986,12 +1007,13 @@ class QualityAlertEvent(DataEvent):
 				"alert_level": "warning",
 				"data_type": "daily_quotes",
 				"issue_description": "数据完整率低于95%",
-				"events": {
+				"data": {
 					"quality_score": 92.5,
 					"missing_count": 25
 				}
 			}
 		}
+	)
 
 
 class FactorUpdateEvent(DataEvent):
@@ -1000,8 +1022,8 @@ class FactorUpdateEvent(DataEvent):
 	update_type: str = Field(..., description="更新类型: daily/weekly/monthly")
 	affected_stocks: int = Field(..., description="受影响股票数量")
 
-	class Config:
-		schema_extra = {
+	model_config = ConfigDict(
+		json_schema_extra={
 			"example": {
 				"event_type": "factor_update",
 				"event_id": "update_001",
@@ -1009,9 +1031,276 @@ class FactorUpdateEvent(DataEvent):
 				"factor_name": "PE",
 				"update_type": "daily",
 				"affected_stocks": 4500,
-				"events": {
+				"data": {
 					"update_date": "2023-12-29",
 					"factor_count": 50
 				}
 			}
 		}
+	)
+
+
+# ==================== 因子元数据响应模型 ====================
+
+class FactorMetadataRequest(PaginationParams, SortParams):
+	"""因子元数据请求模型"""
+	factor_name: Optional[str] = Field(default=None, description="因子名称筛选")
+	factor_category: Optional[FactorCategory] = Field(default=None, description="因子类别筛选")
+	search: Optional[str] = Field(default=None, description="搜索关键词，可匹配因子名称或描述")
+	has_formula: Optional[bool] = Field(default=None, description="是否包含计算公式")
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"page": 1,
+				"page_size": 20,
+				"factor_category": "value",
+				"search": "市盈率",
+				"sort_by": "factor_name",
+				"sort_order": "asc"
+			}
+		}
+	)
+
+
+class FactorMetadataResponse(BaseModel):
+	"""因子元数据响应模型"""
+	success: bool = Field(..., description="请求是否成功")
+	metadata_list: List[FactorMetadata] = Field(..., description="因子元数据列表")
+	pagination: Dict[str, Any] = Field(
+		...,
+		description="分页信息"
+	)
+	summary: Dict[str, Any] = Field(
+		default_factory=dict,
+		description="摘要统计"
+	)
+	message: Optional[str] = Field(default=None, description="提示信息")
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"success": True,
+				"metadata_list": [
+					{
+						"factor_name": "PE",
+						"display_name": "市盈率",
+						"description": "股价除以每股收益",
+						"category": "value",
+						"formula": "P/E = Price per Share / Earnings per Share",
+						"data_source": "Tushare",
+						"update_frequency": "daily",
+						"last_update": "2023-12-29T09:00:00"
+					},
+					{
+						"factor_name": "PB",
+						"display_name": "市净率",
+						"description": "股价除以每股净资产",
+						"category": "value",
+						"formula": "P/B = Price per Share / Book Value per Share",
+						"data_source": "Tushare",
+						"update_frequency": "daily",
+						"last_update": "2023-12-29T09:00:00"
+					}
+				],
+				"pagination": {
+					"page": 1,
+					"page_size": 20,
+					"total": 150,
+					"total_pages": 8
+				},
+				"summary": {
+					"total_factors": 150,
+					"by_category": {
+						"value": 25,
+						"growth": 30,
+						"quality": 35
+					}
+				},
+				"message": "获取成功"
+			}
+		}
+	)
+
+
+# ==================== 快速同步响应模型 ====================
+
+class QuickSyncResponse(BaseModel):
+	"""快速同步响应模型"""
+	success: bool = Field(..., description="请求是否成功")
+	task_id: str = Field(..., description="快速同步任务ID")
+	sync_type: str = Field(..., description="同步类型: quick_sync")
+	date_range: str = Field(..., description="同步的日期范围")
+	included_data_types: List[str] = Field(..., description="包含的数据类型")
+	estimated_stocks: Optional[int] = Field(default=None, description="预计同步的股票数量")
+	estimated_records: Optional[int] = Field(default=None, description="预计同步的记录数")
+	start_time: datetime = Field(..., description="开始时间")
+	progress_endpoint: str = Field(
+		...,
+		description="进度查询端点"
+	)
+	quick_status_endpoint: str = Field(
+		...,
+		description="快速状态查询端点"
+	)
+	message: Optional[str] = Field(default=None, description="提示信息")
+	warnings: Optional[List[str]] = Field(default=None, description="警告信息")
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"success": True,
+				"task_id": "quick_sync_20231229_001",
+				"sync_type": "quick_sync",
+				"date_range": "7d",
+				"included_data_types": ["stock_list", "daily_quotes", "calendar"],
+				"estimated_stocks": 5000,
+				"estimated_records": 35000,
+				"start_time": "2023-12-29T09:00:00",
+				"progress_endpoint": "/api/events/sync/status?task_id=quick_sync_20231229_001",
+				"quick_status_endpoint": "/api/events/sync/quick-status?task_id=quick_sync_20231229_001",
+				"message": "快速同步任务已开始，预计同步5000只股票共35000条记录",
+				"warnings": ["请注意，快速同步可能会对系统性能产生短暂影响"]
+			}
+		}
+	)
+
+
+class QuickSyncStatusResponse(BaseModel):
+	"""快速同步状态响应模型"""
+	success: bool = Field(..., description="请求是否成功")
+	task_id: str = Field(..., description="任务ID")
+	status: str = Field(
+		...,
+		description="任务状态: queued/collecting_data/syncing_stock_list/syncing_quotes/syncing_calendar/completing/failed/cancelled"
+	)
+	progress_percentage: float = Field(..., ge=0, le=100, description="进度百分比")
+	current_operation: str = Field(..., description="当前操作")
+	completed_steps: List[str] = Field(..., description="已完成步骤")
+	data_synced: Dict[str, Any] = Field(
+		...,
+		description="已同步数据统计"
+	)
+	estimated_time_remaining: Optional[int] = Field(
+		default=None,
+		description="预计剩余时间(秒)"
+	)
+	start_time: datetime = Field(..., description="开始时间")
+	last_update: datetime = Field(..., description="最后更新时间")
+	message: Optional[str] = Field(default=None, description="提示信息")
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"success": True,
+				"task_id": "quick_sync_20231229_001",
+				"status": "syncing_quotes",
+				"progress_percentage": 60.0,
+				"current_operation": "同步日行情数据",
+				"completed_steps": ["任务已排队", "收集同步参数", "同步股票列表"],
+				"data_synced": {
+					"stock_list": {"status": "completed", "records": 5000},
+					"daily_quotes": {"status": "in_progress", "records": 12000},
+					"calendar": {"status": "pending", "records": 0}
+				},
+				"estimated_time_remaining": 300,
+				"start_time": "2023-12-29T09:00:00",
+				"last_update": "2023-12-29T09:10:00",
+				"message": "快速同步任务执行中，已完成60%"
+			}
+		}
+	)
+
+
+# ==================== 补充：因子批量查询模型 ====================
+
+class BatchFactorRequest(PaginationParams):
+	"""批量因子查询请求模型"""
+	ts_codes: List[str] = Field(..., min_length=1, max_length=100, description="股票代码列表，最多100个")
+	factor_names: List[str] = Field(..., min_length=1, max_length=20, description="因子名称列表，最多20个")
+	trade_date: date = Field(..., description="查询日期")
+	include_history: bool = Field(default=False, description="是否包含历史数据")
+	history_days: int = Field(default=30, ge=1, le=365, description="历史天数，当include_history为True时有效")
+
+	@classmethod
+	def validate_ts_codes(cls, v):
+		"""验证股票代码数量"""
+		if len(v) > 100:
+			raise ValueError("股票代码数量不能超过100个")
+		return v
+
+	@classmethod
+	def validate_factor_names(cls, v):
+		"""验证因子名称数量"""
+		if len(v) > 20:
+			raise ValueError("因子名称数量不能超过20个")
+		return v
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"ts_codes": ["000001.SZ", "000002.SZ", "000858.SZ"],
+				"factor_names": ["PE", "PB", "ROE"],
+				"trade_date": "2023-12-29",
+				"include_history": True,
+				"history_days": 30,
+				"page": 1,
+				"page_size": 10
+			}
+		}
+	)
+
+
+class BatchFactorResponse(BaseModel):
+	"""批量因子查询响应模型"""
+	success: bool = Field(..., description="请求是否成功")
+	trade_date: date = Field(..., description="查询日期")
+	factor_data: Dict[str, Dict[str, Any]] = Field(
+		...,
+		description="因子数据，按股票代码分组"
+	)
+	metadata: Dict[str, FactorMetadata] = Field(..., description="因子元数据")
+	statistics: Dict[str, Any] = Field(
+		...,
+		description="统计信息"
+	)
+	history_data: Optional[Dict[str, List[FactorValue]]] = Field(
+		default=None,
+		description="历史因子数据"
+	)
+	message: Optional[str] = Field(default=None, description="提示信息")
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
+				"success": True,
+				"trade_date": "2023-12-29",
+				"factor_data": {
+					"000001.SZ": {
+						"PE": 12.5,
+						"PB": 1.2,
+						"ROE": 0.15
+					},
+					"000002.SZ": {
+						"PE": 18.3,
+						"PB": 1.8,
+						"ROE": 0.22
+					}
+				},
+				"metadata": {
+					"PE": {
+						"factor_name": "PE",
+						"display_name": "市盈率",
+						"description": "股价除以每股收益",
+						"category": "value"
+					}
+				},
+				"statistics": {
+					"stocks_count": 2,
+					"factors_count": 3,
+					"missing_values": 0
+				},
+				"message": "批量因子查询成功"
+			}
+		}
+	)

@@ -21,7 +21,6 @@
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
-from enum import Enum
 
 from quant_server.core.events import BaseEvent, EventPriority, EventCategory
 from .types import DataEventType, DataProcessingStatus
@@ -90,6 +89,17 @@ class MarketDataMetadata:
         )
 
 
+def _get_processing_requirements(data_type: str) -> List[str]:
+    """根据数据类型获取处理要求"""
+    requirements = {
+        "tick": ["time_alignment", "duplicate_removal", "price_validation"],
+        "1min": ["time_alignment", "missing_fill", "outlier_detection"],
+        "5min": ["time_alignment", "missing_fill", "consistency_check"],
+        "daily": ["dividend_adjustment", "missing_fill", "consistency_check"],
+    }
+    return requirements.get(data_type, ["basic_cleaning"])
+
+
 class MarketDataRawArrivedEvent(BaseEvent):
     """
     市场原始数据到达事件
@@ -140,21 +150,11 @@ class MarketDataRawArrivedEvent(BaseEvent):
             "arrival_time": datetime.now().isoformat(),
             "status": DataProcessingStatus.RAW.value,
             "next_steps": ["cleaning", "validation", "storage"],
-            "processing_requirements": self._get_processing_requirements(metadata.data_type),
+            "processing_requirements": _get_processing_requirements(metadata.data_type),
         }
 
         # 存储元数据引用（不包含在序列化中）
         self._metadata = metadata
-
-    def _get_processing_requirements(self, data_type: str) -> List[str]:
-        """根据数据类型获取处理要求"""
-        requirements = {
-            "tick": ["time_alignment", "duplicate_removal", "price_validation"],
-            "1min": ["time_alignment", "missing_fill", "outlier_detection"],
-            "5min": ["time_alignment", "missing_fill", "consistency_check"],
-            "daily": ["dividend_adjustment", "missing_fill", "consistency_check"],
-        }
-        return requirements.get(data_type, ["basic_cleaning"])
 
     @property
     def metadata(self) -> MarketDataMetadata:
@@ -165,6 +165,20 @@ class MarketDataRawArrivedEvent(BaseEvent):
     def arrival_time(self) -> datetime:
         """获取到达时间"""
         return datetime.fromisoformat(self.data["arrival_time"])
+
+
+def _get_step_metrics(processing_step: str) -> Dict[str, str]:
+    """获取步骤度量指标"""
+    metrics_map = {
+        "cleaning": ["records_cleaned", "errors_fixed", "time_taken"],
+        "validation": ["records_validated", "errors_found", "validation_score"],
+        "transformation": ["records_transformed", "features_generated", "transformation_time"],
+        "enrichment": ["records_enriched", "indicators_calculated", "enrichment_time"],
+    }
+    return {
+        "step": processing_step,
+        "metrics": metrics_map.get(processing_step, ["records_processed"]),
+    }
 
 
 class MarketDataProcessingEvent(BaseEvent):
@@ -223,7 +237,7 @@ class MarketDataProcessingEvent(BaseEvent):
             "timestamp": datetime.now().isoformat(),
             "status": DataProcessingStatus.PROCESSING.value,
             "estimated_remaining": self._estimate_remaining(progress),
-            "step_metrics": self._get_step_metrics(processing_step),
+            "step_metrics": _get_step_metrics(processing_step),
         }
 
         self._metadata = metadata
@@ -240,19 +254,6 @@ class MarketDataProcessingEvent(BaseEvent):
             return round(remaining, 1)
         return 0.0
 
-    def _get_step_metrics(self, processing_step: str) -> Dict[str, str]:
-        """获取步骤度量指标"""
-        metrics_map = {
-            "cleaning": ["records_cleaned", "errors_fixed", "time_taken"],
-            "validation": ["records_validated", "errors_found", "validation_score"],
-            "transformation": ["records_transformed", "features_generated", "transformation_time"],
-            "enrichment": ["records_enriched", "indicators_calculated", "enrichment_time"],
-        }
-        return {
-            "step": processing_step,
-            "metrics": metrics_map.get(processing_step, ["records_processed"]),
-        }
-
     @property
     def metadata(self) -> MarketDataMetadata:
         """获取元数据对象"""
@@ -262,6 +263,36 @@ class MarketDataProcessingEvent(BaseEvent):
     def progress_percentage(self) -> float:
         """获取进度百分比"""
         return self.data["progress"]
+
+
+def _get_recommended_use(data_type: str) -> List[str]:
+    """根据数据类型获取推荐用途"""
+    usage_map = {
+        "tick": ["high_frequency_trading", "market_microstructure"],
+        "1min": ["intraday_trading", "short_term_analysis"],
+        "5min": ["swing_trading", "medium_term_analysis"],
+        "daily": ["position_trading", "long_term_analysis", "backtesting"],
+    }
+    return usage_map.get(data_type, ["general_analysis"])
+
+
+def _generate_data_summary(
+		metadata: MarketDataMetadata,
+    indicators: List[str]
+) -> Dict[str, Any]:
+    """生成数据摘要"""
+    return {
+        "data_type": metadata.data_type,
+        "symbol_count": len(metadata.symbols),
+        "time_range": {
+            "start": metadata.start_time.isoformat(),
+            "end": metadata.end_time.isoformat(),
+        },
+        "record_count": metadata.record_count,
+        "indicators_available": indicators,
+        "quality_score": metadata.quality_score,
+        "recommended_use": _get_recommended_use(metadata.data_type),
+    }
 
 
 class MarketDataProcessedEvent(BaseEvent):
@@ -319,39 +350,10 @@ class MarketDataProcessedEvent(BaseEvent):
             "completion_time": datetime.now().isoformat(),
             "status": DataProcessingStatus.PROCESSED.value,
             "available_for": ["strategy", "backtest", "analysis", "research"],
-            "data_summary": self._generate_data_summary(metadata, indicators_calculated),
+            "data_summary": _generate_data_summary(metadata, indicators_calculated),
         }
 
         self._metadata = metadata
-
-    def _generate_data_summary(
-        self,
-        metadata: MarketDataMetadata,
-        indicators: List[str]
-    ) -> Dict[str, Any]:
-        """生成数据摘要"""
-        return {
-            "data_type": metadata.data_type,
-            "symbol_count": len(metadata.symbols),
-            "time_range": {
-                "start": metadata.start_time.isoformat(),
-                "end": metadata.end_time.isoformat(),
-            },
-            "record_count": metadata.record_count,
-            "indicators_available": indicators,
-            "quality_score": metadata.quality_score,
-            "recommended_use": self._get_recommended_use(metadata.data_type),
-        }
-
-    def _get_recommended_use(self, data_type: str) -> List[str]:
-        """根据数据类型获取推荐用途"""
-        usage_map = {
-            "tick": ["high_frequency_trading", "market_microstructure"],
-            "1min": ["intraday_trading", "short_term_analysis"],
-            "5min": ["swing_trading", "medium_term_analysis"],
-            "daily": ["position_trading", "long_term_analysis", "backtesting"],
-        }
-        return usage_map.get(data_type, ["general_analysis"])
 
     @property
     def metadata(self) -> MarketDataMetadata:
@@ -362,6 +364,34 @@ class MarketDataProcessedEvent(BaseEvent):
     def completion_time(self) -> datetime:
         """获取完成时间"""
         return datetime.fromisoformat(self.data["completion_time"])
+
+
+def _generate_recommendations(
+		passed: bool,
+    quality_score: float,
+    issues_found: Optional[List[Dict[str, Any]]]
+) -> List[str]:
+    """根据验证结果生成建议"""
+    recommendations = []
+
+    if not passed:
+        recommendations.append("数据验证未通过，建议检查数据源")
+
+    if quality_score < 80:
+        recommendations.append(f"数据质量评分较低 ({quality_score})，建议进行数据清洗")
+
+    if issues_found:
+        critical_issues = [i for i in issues_found if i.get("severity") == "critical"]
+        if critical_issues:
+            recommendations.append(f"发现 {len(critical_issues)} 个严重问题，建议立即处理")
+
+    if passed and quality_score >= 90:
+        recommendations.append("数据质量优秀，可以用于生产环境")
+
+    if not recommendations:
+        recommendations.append("数据验证通过，可以正常使用")
+
+    return recommendations
 
 
 class MarketDataValidatedEvent(BaseEvent):
@@ -419,38 +449,10 @@ class MarketDataValidatedEvent(BaseEvent):
             "validation_time": datetime.now().isoformat(),
             "status": DataProcessingStatus.VALIDATED.value,
             "is_ready_for_use": passed and quality_score >= 80.0,
-            "recommendations": self._generate_recommendations(passed, quality_score, issues_found),
+            "recommendations": _generate_recommendations(passed, quality_score, issues_found),
         }
 
         self._metadata = metadata
-
-    def _generate_recommendations(
-        self,
-        passed: bool,
-        quality_score: float,
-        issues_found: Optional[List[Dict[str, Any]]]
-    ) -> List[str]:
-        """根据验证结果生成建议"""
-        recommendations = []
-
-        if not passed:
-            recommendations.append("数据验证未通过，建议检查数据源")
-
-        if quality_score < 80:
-            recommendations.append(f"数据质量评分较低 ({quality_score})，建议进行数据清洗")
-
-        if issues_found:
-            critical_issues = [i for i in issues_found if i.get("severity") == "critical"]
-            if critical_issues:
-                recommendations.append(f"发现 {len(critical_issues)} 个严重问题，建议立即处理")
-
-        if passed and quality_score >= 90:
-            recommendations.append("数据质量优秀，可以用于生产环境")
-
-        if not recommendations:
-            recommendations.append("数据验证通过，可以正常使用")
-
-        return recommendations
 
     @property
     def metadata(self) -> MarketDataMetadata:

@@ -1,142 +1,294 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# quant_server/core/exceptions/__init__.py
 """
-核心异常模块
-
-提供量化交易系统的统一异常处理框架，包括：
-1. 异常基类：定义统一的异常接口
-2. 业务异常：业务逻辑相关的异常
-3. 系统异常：系统运行时的异常
-4. 认证异常：认证授权相关的异常
-5. 数据异常：数据相关的异常
-6. 交易异常：交易相关的异常
-
-所有异常都继承自BaseException，提供统一的错误处理接口。
+异常模块统一导出
+包含所有异常类的导入和导出，方便使用
 """
 
 from .base import (
 	BaseException,
 	ValidationException,
-	ConfigurationException,
-	ServiceException
 )
+
+from .types import (
+	ErrorSeverity as ExceptionSeverity,
+)
+
+from .types import (
+	ErrorSeverity,
+	ErrorLevel,
+)
+
 from .business_exceptions import (
 	BusinessException,
-	StrategyException,
-	AnalysisException,
-	BacktestException,
-	RiskException,
-	AccountException,
-	PortfolioException,
-	OrderException,
-	PositionNotFoundException,
-	InsufficientBalanceException
 )
+
 from .system_exceptions import (
 	SystemException,
-	DatabaseException,
-	CacheException,
-	ExternalServiceException,
-	NetworkException,
-	TimeoutException,
-	ResourceExhaustedException
 )
-from .auth_exceptions import (
-	AuthenticationException,
-	AuthorizationException,
-	TokenException,
-	PermissionException,
-	RateLimitException
+
+from .error_codes import (
+	ErrorCode,
 )
-from .data_exceptions import (
+
+from .security_exceptions import (
+	SecurityErrorCode,
+)
+
+from .business_exceptions import (
 	DataException,
-	DataNotFoundException,
-	DataValidationException,
-	DataSyncException,
-	DataQualityException
-)
-from .trade_exceptions import (
+	StrategyException,
 	TradeException,
-	OrderRejectedException,
-	OrderTimeoutException,
-	ExecutionException,
-	MarketClosedException,
-	InvalidPriceException,
-	InsufficientVolumeException
+	AccountException,
+	AnalysisException,
+	BacktestException
 )
-from .types import ErrorType, ErrorSeverity
-from .error_codes import ErrorCode, get_error_message
+
+from .validation_exceptions import (
+	ValidationError,
+	FieldValidationError,
+	SchemaValidationError,
+	ParameterValidationError,
+)
+
+from .security_exceptions import (
+	# 安全异常基类
+	SecurityException,
+
+	# 加密异常
+	EncryptionException,
+	EncryptionError,
+	DecryptionError,
+	InvalidKeyError,
+	SignatureError,
+
+	# JWT异常
+	JWTException,
+	TokenExpiredError,
+	InvalidTokenError,
+	TokenCreationError,
+
+	# 密码异常
+	PasswordException,
+	PasswordHashError,
+	PasswordValidationError,
+	WeakPasswordError,
+
+	# 权限异常
+	PermissionException,
+	PermissionDeniedError,
+	RoleNotFoundError,
+	PermissionNotFoundError,
+
+	# 认证异常
+	AuthenticationException,
+	AuthenticationFailedError,
+	InvalidCredentialsError,
+	AccountLockedError,
+	AccountDisabledError,
+	TooManyAttemptsError,
+
+	# 授权异常
+	AuthorizationException,
+	AccessDeniedError,
+	InsufficientPrivilegesError,
+
+	# 审计异常
+	AuditException,
+	AuditLogError,
+
+	# 安全配置异常
+	SecurityConfigException,
+	InvalidSecurityConfigError,
+	MissingSecurityConfigError,
+
+	# 异常工厂函数
+	create_security_exception
+)
+
 from .handlers import (
-	ExceptionHandler,
-	LoggingExceptionHandler,
-	NotificationExceptionHandler,
-	RetryExceptionHandler
+	ExceptionHandler
 )
+
+from .middleware import (
+	ExceptionMiddleware,
+)
+
+# 事件异常导入
+from .event_exceptions import (
+	# 事件异常基类
+	EventException,
+
+	# 事件引擎异常
+	EventEngineException,
+	EventEngineNotInitializedError,
+	EventEngineAlreadyRunningError,
+	EventEngineStoppedError,
+	EventEngineTimeoutError,
+
+	# 事件定义异常
+	EventDefinitionException,
+	InvalidEventTypeError,
+	EventClassNotFoundError,
+	EventValidationError,
+
+	# 事件发布异常
+	EventPublishException,
+	EventQueueFullError,
+	EventRateLimitExceededError,
+	EventSerializationError,
+
+	# 事件订阅异常
+	EventSubscribeException,
+	DuplicateSubscriptionError,
+	HandlerNotFoundException,
+	SubscriptionLimitExceededError,
+
+	# 事件处理异常
+	EventHandlerException,
+	HandlerExecutionError,
+	HandlerTimeoutError,
+	HandlerRetryExhaustedError,
+
+	# 事件路由异常
+	EventRoutingException,
+	EventRouteNotFoundError,
+	CircularRoutingError,
+
+	# 事件总线异常
+	EventBusException,
+	EventBusConnectionError,
+	EventBusDisconnectedError,
+
+	# 工厂函数和辅助函数
+	create_event_exception,
+	is_event_exception,
+	extract_event_exception_info,
+	should_retry_event_exception,
+	get_event_exception_retry_delay,
+)
+
+# 异常类别映射
+EXCEPTION_CATEGORIES = {
+	'system': SystemException,
+	'business': BusinessException,
+	'validation': ValidationException,
+	'security': SecurityException,
+	'event': EventException,  # 添加事件异常类别
+	'api': BusinessException,
+	'strategy': StrategyException,
+	'trade': TradeException,
+	'data': DataException,
+	'account': AccountException,
+	'analysis': AnalysisException,
+	'backtest': BacktestException,
+}
 
 __all__ = [
 	# 基础异常
 	'BaseException',
+	'BusinessException',
+	'SystemException',
 	'ValidationException',
-	'ConfigurationException',
-	'ServiceException',
+	'ErrorLevel',
+	'ErrorSeverity',
+	'ExceptionSeverity',
+
+	# 错误码
+	'ErrorCode',
+	'SecurityErrorCode',
 
 	# 业务异常
-	'BusinessException',
+	'DataException',
 	'StrategyException',
+	'TradeException',
+	'AccountException',
 	'AnalysisException',
 	'BacktestException',
-	'RiskException',
-	'AccountException',
-	'PortfolioException',
-	'OrderException',
-	'PositionNotFoundException',
-	'InsufficientBalanceException',
 
-	# 系统异常
-	'SystemException',
-	'DatabaseException',
-	'CacheException',
-	'ExternalServiceException',
-	'NetworkException',
-	'TimeoutException',
-	'ResourceExhaustedException',
+	# 验证异常
+	'ValidationError',
+	'FieldValidationError',
+	'SchemaValidationError',
+	'ParameterValidationError',
 
-	# 认证异常
-	'AuthenticationException',
-	'AuthorizationException',
-	'TokenException',
+	# 安全异常
+	'SecurityException',
+	'EncryptionException',
+	'EncryptionError',
+	'DecryptionError',
+	'InvalidKeyError',
+	'SignatureError',
+	'JWTException',
+	'TokenExpiredError',
+	'InvalidTokenError',
+	'TokenCreationError',
+	'PasswordException',
+	'PasswordHashError',
+	'PasswordValidationError',
+	'WeakPasswordError',
 	'PermissionException',
-	'RateLimitException',
+	'PermissionDeniedError',
+	'RoleNotFoundError',
+	'PermissionNotFoundError',
+	'AuthenticationException',
+	'AuthenticationFailedError',
+	'InvalidCredentialsError',
+	'AccountLockedError',
+	'AccountDisabledError',
+	'TooManyAttemptsError',
+	'AuthorizationException',
+	'AccessDeniedError',
+	'InsufficientPrivilegesError',
+	'AuditException',
+	'AuditLogError',
+	'SecurityConfigException',
+	'InvalidSecurityConfigError',
+	'MissingSecurityConfigError',
+	'create_security_exception',
 
-	# 数据异常
-	'DataException',
-	'DataNotFoundException',
-	'DataValidationException',
-	'DataSyncException',
-	'DataQualityException',
+	# 事件异常（新增）
+	'EventException',
+	'EventEngineException',
+	'EventEngineNotInitializedError',
+	'EventEngineAlreadyRunningError',
+	'EventEngineStoppedError',
+	'EventEngineTimeoutError',
+	'EventDefinitionException',
+	'InvalidEventTypeError',
+	'EventClassNotFoundError',
+	'EventValidationError',
+	'EventPublishException',
+	'EventQueueFullError',
+	'EventRateLimitExceededError',
+	'EventSerializationError',
+	'EventSubscribeException',
+	'DuplicateSubscriptionError',
+	'HandlerNotFoundException',
+	'SubscriptionLimitExceededError',
+	'EventHandlerException',
+	'HandlerExecutionError',
+	'HandlerTimeoutError',
+	'HandlerRetryExhaustedError',
+	'EventRoutingException',
+	'EventRouteNotFoundError',
+	'CircularRoutingError',
+	'EventBusException',
+	'EventBusConnectionError',
+	'EventBusDisconnectedError',
+	'create_event_exception',
+	'is_event_exception',
+	'extract_event_exception_info',
+	'should_retry_event_exception',
+	'get_event_exception_retry_delay',
 
-	# 交易异常
-	'TradeException',
-	'OrderRejectedException',
-	'OrderTimeoutException',
-	'ExecutionException',
-	'MarketClosedException',
-	'InvalidPriceException',
-	'InsufficientVolumeException',
-
-	# 异常类型和错误码
-	'ErrorType',
-	'ErrorSeverity',
-	'ErrorCode',
-	'get_error_message',
-
-	# 异常处理器
+	# 处理器和中间件
 	'ExceptionHandler',
-	'LoggingExceptionHandler',
-	'NotificationExceptionHandler',
-	'RetryExceptionHandler'
+	'ExceptionMiddleware',
+
+	# 映射表
+	'EXCEPTION_CATEGORIES',
 ]
 
 __version__ = '1.0.0'
-__author__ = '量化平台团队'
-__description__ = '量化交易系统核心异常处理模块'
+__author__ = 'Quant System Team'
+__description__ = '量化交易系统异常处理模块'

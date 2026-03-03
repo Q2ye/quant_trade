@@ -1,4 +1,5 @@
 """
+quant_server/core/engines/__init__.py
 量化交易引擎模块
 
 此模块包含量化交易系统的所有引擎组件，提供统一的引擎管理框架。
@@ -6,21 +7,188 @@
 
 模块结构：
 - base: 引擎基类和核心框架
-- events: 系统引擎（事件引擎、监控引擎等）
-- trading: 交易相关引擎
-- events: 策略相关引擎
-- utils: 引擎工具类
+- system: 系统引擎（事件引擎、主引擎、注册表等）
+- types: 统一类型定义（枚举和实体类）
+- utils: 引擎工具类（工厂、监控器等）
+
+主要功能：
+1. 统一的引擎生命周期管理
+2. 引擎状态监控和健康检查
+3. 事件驱动的引擎间通信
+4. 可扩展的引擎架构设计
+5. 完善的错误处理和恢复机制
 """
 
 from .base import EngineBase, EngineRecord, EngineStatusValidator
+from .system import (
+    EventEngine,
+    MainEngine,
+    EngineRegistry,
+    EngineRecord as SystemEngineRecord
+)
+from .types import (
+    # 枚举类型
+    SystemMode,
+    ComponentStatus,
+    HealthStatus,
+    PriorityLevel,
+    EngineType,
+    EngineCategory,
+    EngineErrorLevel,
+    EventType,
+    EventPriority,
+    MarketType,
+    OrderDirection,
+    OrderType,
+    OrderStatus,
+    TimeInForce,
+    TradeSide,
+    StrategyType,
+    StrategyStatus,
+    SignalType,
+    DataFrequency,
+    DataSource,
+    DataQuality,
+    RiskLevel,
+    RiskAction,
+    RiskType,
+    AccountType,
+    PositionDirection,
+    SettlementStatus,
+    AlertLevel,
+    MetricType,
+    CheckType,
+    EnumHelper,
+
+    # 实体类
+    BaseEntity,
+    EngineConfig,
+    EngineMetrics,
+    EngineStatus,
+    Order,
+    Trade,
+    Position,
+    Account,
+    StrategyConfig,
+    StrategyStatus,
+    Signal,
+    MarketData,
+    TickData,
+    BarData,
+    DepthData,
+    RiskRule,
+    RiskAlert,
+    Metric,
+    Alert,
+    Event,
+    SystemConfig,
+    EntityFactory
+)
+from .utils import (
+    # 引擎工厂
+    EngineDescriptor,
+    EngineFactory,
+    get_engine_factory,
+    create_engine,
+    get_engine,
+
+    # 引擎监控
+    MonitorAlert,
+    EngineMetric,
+    MetricStatistic,
+    AlertRule,
+    EngineMonitor,
+    get_engine_monitor,
+    start_monitoring,
+    stop_monitoring
+)
 
 __all__ = [
     # 基础类
     'EngineBase',
     'EngineRecord',
     'EngineStatusValidator',
+
+    # 系统引擎
+    'EventEngine',
+    'MainEngine',
+    'EngineRegistry',
+    'SystemEngineRecord',
+
+    # 类型定义 - 枚举
+    'SystemMode',
+    'ComponentStatus',
+    'HealthStatus',
+    'PriorityLevel',
+    'EngineType',
+    'EngineCategory',
+    'EngineErrorLevel',
+    'EventType',
+    'EventPriority',
+    'MarketType',
+    'OrderDirection',
+    'OrderType',
+    'OrderStatus',
+    'TimeInForce',
+    'TradeSide',
+    'StrategyType',
+    'StrategyStatus',
+    'SignalType',
+    'DataFrequency',
+    'DataSource',
+    'DataQuality',
+    'RiskLevel',
+    'RiskAction',
+    'RiskType',
+    'AccountType',
+    'PositionDirection',
+    'SettlementStatus',
+    'AlertLevel',
+    'MetricType',
+    'CheckType',
+    'EnumHelper',
+
+    # 类型定义 - 实体类
+    'BaseEntity',
+    'EngineConfig',
+    'EngineMetrics',
+    'EngineStatus',
+    'Order',
+    'Trade',
+    'Position',
+    'Account',
+    'StrategyConfig',
+    'StrategyStatus',
+    'Signal',
+    'MarketData',
+    'TickData',
+    'BarData',
+    'DepthData',
+    'RiskRule',
+    'RiskAlert',
+    'Metric',
+    'Alert',
+    'Event',
+    'SystemConfig',
+    'EntityFactory',
+
+    # 引擎工具
+    'EngineDescriptor',
+    'EngineFactory',
+    'get_engine_factory',
+    'create_engine',
+    'get_engine',
+    'MonitorAlert',
+    'EngineMetric',
+    'MetricStatistic',
+    'AlertRule',
+    'EngineMonitor',
+    'get_engine_monitor',
+    'start_monitoring',
+    'stop_monitoring'
 ]
 
+# 版本信息
 __version__ = '1.0.0'
 __author__ = '量化交易系统团队'
 __description__ = '量化交易引擎系统'
