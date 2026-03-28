@@ -15,7 +15,7 @@
 import asyncio
 import logging
 import inspect
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, List, Optional, Type, Set
 from dataclasses import dataclass, field
 
 # 导入统一类型定义
@@ -159,6 +159,7 @@ class EngineFactory:
             self._event_engine: Optional[EventEngine] = None
             self._engine_registry: Optional[EngineRegistry] = None
             self._initialized = False
+            self._creating_engines: Set[str] = set()  # 跟踪正在创建的引擎，避免死锁
 
             # 注册内置引擎类型
             self._register_builtin_engines()
@@ -218,6 +219,166 @@ class EngineFactory:
         )
 
         logger.debug(f"注册了 {len(self._engine_descriptors)} 个内置引擎类型")
+
+    def register_engine_from_module(self,
+                                     engine_type: EngineType,
+                                     module_name: str,
+                                     module_config: Dict[str, Any],
+                                     engine_class: type = None) -> bool:
+        """根据模块配置动态注册引擎
+
+        Args:
+            engine_type: 引擎类型枚举
+            module_name: 模块名称（如 data, strategy, trade 等）
+            module_config: 模块配置（从 config.yaml 读取）
+            engine_class: 可选的引擎类，如果没有提供则创建通用引擎
+
+        Returns:
+            bool: 注册是否成功
+        """
+        # 如果引擎已注册，跳过
+        if engine_type in self._engine_descriptors:
+            logger.debug(f"引擎类型已注册: {engine_type.value}")
+            return True
+
+        # 确定引擎类
+        if engine_class is None:
+            # 使用通用引擎类作为占位
+            engine_class = self._create_placeholder_engine_class(engine_type, module_name)
+
+        # 确定分类
+        category = EngineCategory.SYSTEM
+        if "data" in module_name:
+            category = EngineCategory.DATA
+        elif "strategy" in module_name or "alpha" in module_name or "cta" in module_name or "ai" in module_name:
+            category = EngineCategory.STRATEGY
+        elif "trade" in module_name or "execution" in module_name or "risk" in module_name or "signal" in module_name:
+            category = EngineCategory.TRADE
+        elif "backtest" in module_name or "simulation" in module_name:
+            category = EngineCategory.BACKTEST
+        elif "account" in module_name or "asset" in module_name or "cash" in module_name or "position" in module_name:
+            category = EngineCategory.ACCOUNT
+        elif "analysis" in module_name or "performance" in module_name or "attribution" in module_name:
+            category = EngineCategory.ANALYSIS
+        elif "monitor" in module_name or "alert" in module_name:
+            category = EngineCategory.MONITOR
+
+        # 获取依赖
+        dependencies = module_config.get("dependencies", [])
+        dep_types = []
+        for dep in dependencies:
+            dep_type = self._module_to_engine_type(dep)
+            if dep_type:
+                dep_types.append(dep_type)
+
+        # 从模块配置提取引擎配置
+        engine_config = module_config.get("config", {})
+
+        # 创建描述符
+        descriptor = EngineDescriptor(
+            engine_type=engine_type,
+            engine_class=engine_class,
+            name=f"{module_name}_engine",
+            description=f"动态注册的{module_name}模块引擎",
+            category=category,
+            dependencies=dep_types,
+            config_schema={
+                "required": [],
+                "default": {
+                    "auto_start": module_config.get("auto_start", True),
+                    "max_retries": 3,
+                    "health_check_interval": 60,
+                    **engine_config
+                }
+            },
+            tags=["dynamic", module_name]
+        )
+
+        # 注册引擎
+        try:
+            self.register_engine(descriptor)
+            logger.info(f"动态注册引擎成功: {engine_type.value} (模块: {module_name})")
+            return True
+        except Exception as e:
+            logger.error(f"动态注册引擎失败: {engine_type.value}, 错误: {e}")
+            return False
+
+    def _module_to_engine_type(self, module_name: str) -> Optional[EngineType]:
+        """将模块名称转换为引擎类型
+
+        Args:
+            module_name: 模块名称
+
+        Returns:
+            EngineType 或 None
+        """
+        mapping = {
+            "data": EngineType.DATA_SYNC,
+            "strategy": EngineType.STRATEGY_MANAGER,
+            "trade": EngineType.EXECUTION_ENGINE,
+            "backtest": EngineType.BACKTEST_ENGINE,
+            "account": EngineType.ACCOUNT_ENGINE,
+            "analysis": EngineType.PERFORMANCE_ENGINE,
+            "monitor": EngineType.SYSTEM_MONITOR,
+            "system": EngineType.SYSTEM,
+        }
+        return mapping.get(module_name)
+
+    def _create_placeholder_engine_class(self, engine_type: EngineType, module_name: str) -> type:
+        """创建通用占位引擎类
+
+        Args:
+            engine_type: 引擎类型
+            module_name: 模块名称
+
+        Returns:
+            引擎类
+        """
+        # 使用通用占位引擎类
+        from ..base.engine_base import EngineBase
+
+        class PlaceholderEngine(EngineBase):
+            """动态创建的通用引擎占位类"""
+
+            def __init__(self, config, event_engine=None, resource_pool=None):
+                super().__init__(config, event_engine, resource_pool)
+                self._module_name = module_name
+
+            @property
+            def engine_type(self) -> EngineType:
+                return engine_type
+
+            async def _on_initialize(self):
+                """引擎初始化逻辑"""
+                logger.info(f"初始化占位引擎: {self._module_name} ({engine_type.value})")
+
+            async def _on_start(self) -> None:
+                """引擎启动逻辑"""
+                logger.info(f"启动占位引擎: {self._module_name} ({engine_type.value})")
+
+            async def _on_stop(self) -> None:
+                """引擎停止逻辑"""
+                logger.info(f"停止占位引擎: {self._module_name}")
+
+            async def _do_start(self) -> bool:
+                """启动引擎"""
+                logger.info(f"执行占位引擎启动: {self._module_name} ({engine_type.value})")
+                return True
+
+            async def _do_stop(self) -> bool:
+                """停止引擎"""
+                logger.info(f"执行占位引擎停止: {self._module_name}")
+                return True
+
+            async def _do_pause(self) -> bool:
+                """暂停引擎"""
+                return True
+
+            async def _do_resume(self) -> bool:
+                """恢复引擎"""
+                return True
+
+        return PlaceholderEngine
 
     def register_engine(self, descriptor: EngineDescriptor):
         """注册引擎类型
@@ -320,6 +481,9 @@ class EngineFactory:
                 graceful_shutdown_timeout=engine_config.get("graceful_shutdown_timeout", 30.0)
             )
 
+            # 标记引擎正在创建中（避免死锁）
+            self._creating_engines.add(instance_name)
+
             # 创建引擎实例
             try:
                 logger.info(f"创建引擎实例: {instance_name} ({engine_type.value})")
@@ -343,9 +507,21 @@ class EngineFactory:
                 if not lazy_init:
                     await engine_instance.start()
 
-                # 注册到引擎注册表
+                # 注册到引擎注册表（传递正确的category参数）
                 if self._engine_registry:
-                    await self._engine_registry.register_engine(engine_instance)
+                    # 获取引擎描述符以获取category信息
+                    descriptor = self._engine_descriptors.get(engine_type)
+                    if descriptor:
+                        await self._engine_registry.register_engine(
+                            engine_instance,
+                            descriptor.category
+                        )
+                    else:
+                        logger.warning(f"无法获取引擎描述符: {engine_type}, 使用默认分类")
+                        await self._engine_registry.register_engine(
+                            engine_instance,
+                            EngineCategory.SYSTEM
+                        )
 
                 logger.info(f"引擎实例创建成功: {instance_name}")
                 return engine_instance
@@ -356,6 +532,9 @@ class EngineFactory:
                 if instance_name in self._engine_instances:
                     del self._engine_instances[instance_name]
                 raise
+            finally:
+                # 清除创建标记
+                self._creating_engines.discard(instance_name)
 
     async def get_engine(self, instance_name: str) -> Optional[EngineBase]:
         """获取引擎实例
@@ -579,6 +758,10 @@ class EngineFactory:
         """
         if self._event_engine:
             return self._event_engine
+
+        # 检查EventEngine是否正在创建中，避免死锁
+        if "event_engine" in self._creating_engines:
+            return None
 
         # 尝试获取事件引擎实例
         event_engine = await self.get_engine("event_engine")

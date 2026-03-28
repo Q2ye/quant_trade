@@ -12,7 +12,7 @@ from .base import (
 	MessagePriority, MessageSerializer
 )
 from .serializer import JSONSerializer, serialize_message
-import aioredis
+from redis.asyncio import Redis
 import aio_pika
 from kafka import KafkaProducer as SyncKafkaProducer
 from kafka.errors import KafkaError
@@ -39,18 +39,18 @@ class RedisProducer(MessageProducer):
 	async def connect (self) -> None:
 		"""连接到Redis"""
 		if not self.connected:
-			self.redis_pool = await aioredis.create_redis_pool(
+			self.redis_pool = Redis.from_url(
 				self.redis_url,
-				maxsize=self.max_connections
+				max_connections=self.max_connections
 			)
+			await self.redis_pool.ping()  # 测试连接
 			self.connected = True
 			logger.info(f"Redis producer connected to {self.redis_url}")
 
 	async def disconnect (self) -> None:
 		"""断开Redis连接"""
 		if self.connected and self.redis_pool:
-			self.redis_pool.close()
-			await self.redis_pool.wait_closed()
+			await self.redis_pool.close()
 			self.connected = False
 			logger.info("Redis producer disconnected")
 
@@ -91,10 +91,10 @@ class RedisProducer(MessageProducer):
 		# 发布到Redis
 		if kwargs.get('pattern', 'queue') == 'pubsub':
 			# 发布/订阅模式
-			await self.redis_pool.publish(queue_name, serialized)
+			await self.redis_pool.publish(queue_name, serialized.decode() if isinstance(serialized, bytes) else serialized)
 		else:
 			# 列表/队列模式
-			await self.redis_pool.lpush(queue_name, serialized)
+			await self.redis_pool.lpush(queue_name, serialized.decode() if isinstance(serialized, bytes) else serialized)
 
 		logger.debug(f"Published message to Redis queue {queue_name}: {message_headers.message_id}")
 		return message_headers.message_id

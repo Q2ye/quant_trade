@@ -190,9 +190,10 @@ class APIResponse(BaseModel, Generic[T]):
 		response_headers = self._build_headers(headers)
 
 		# 转换为JSON响应
+		# 使用 self.json() 以应用 json_encoders 配置，正确序列化 datetime 等类型
 		return JSONResponse(
 			status_code=status_code,
-			content=self.dict(),
+			content=json.loads(self.json()),
 			headers=response_headers
 		)
 

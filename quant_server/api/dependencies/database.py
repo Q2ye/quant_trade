@@ -48,7 +48,7 @@ class APIDatabaseDependencies:
 		"""
 		初始化数据库依赖
 
-		注意：API层不自己初始化数据库，而是使用共享层的初始化状态
+		注意：API层需要确保共享层的数据库连接池已初始化
 
 		Returns:
 			bool: 是否已正确连接到数据库
@@ -57,22 +57,30 @@ class APIDatabaseDependencies:
 			# 获取共享层的会话管理器
 			session_manager = get_session_manager()
 
-			# 检查数据库是否已初始化
+			# 检查数据库是否已初始化，如果没有则初始化
 			status = session_manager.get_status()
-			self._initialized = status.get("status") == "initialized"
+			if status.get("status") != "initialized":
+				logger.info("数据库连接未初始化，正在初始化共享层数据库连接...")
+				success = await session_manager.initialize()
+				if not success:
+					logger.error("共享层数据库初始化失败")
+					self._initialized = False
+					return False
 
-			if self._initialized:
-				logger.info("API数据库依赖连接成功")
-				# 获取连接池状态
-				pool_stats = status.get("pool_stats", {})
-				logger.info(f"数据库连接池状态: {pool_stats}")
-			else:
-				logger.warning("数据库连接未初始化，API层将等待共享层初始化")
+			# 设置API层初始化状态
+			self._initialized = True
+			logger.info("API数据库依赖初始化成功")
 
-			return self._initialized
+			# 获取连接池状态
+			status = session_manager.get_status()
+			pool_stats = status.get("pool_stats", {})
+			logger.info(f"数据库连接池状态: {pool_stats}")
+
+			return True
 
 		except Exception as e:
-			logger.error(f"API数据库依赖检查失败: {str(e)}", exc_info=True)
+			logger.error(f"API数据库依赖初始化失败: {str(e)}", exc_info=True)
+			self._initialized = False
 			return False
 
 	async def get_db_session (self) -> AsyncGenerator[AsyncSession, None]:

@@ -132,7 +132,12 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 				if hasattr(self.model, 'updated_at'):
 					update_data['updated_at'] = datetime.now()
 
-				return await self.update(existing.id, update_data)
+				# 使用复合主键进行更新
+				await self.update_by(
+					{"exchange": exchange, "cal_date": cal_date},
+					update_data
+				)
+				return await self.get_by_exchange_and_date(exchange, cal_date)
 			else:
 				# 创建新记录
 				create_data = data.copy()
@@ -762,7 +767,11 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 						if hasattr(self.model, 'updated_at'):
 							update_data['updated_at'] = datetime.now()
 
-						await self.update(existing.id, update_data)
+						# 使用复合主键进行更新
+						await self.update_by(
+							{"exchange": exchange, "cal_date": cal_date},
+							update_data
+						)
 					else:
 						# 添加到批量插入列表
 						if hasattr(self.model, 'created_at'):

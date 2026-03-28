@@ -842,7 +842,8 @@ class EngineBase(ABC):
 		# 异步任务和锁管理
 		self.monitoring_task: Optional[asyncio.Task] = None
 		self.background_tasks: Set[asyncio.Task] = set()
-		self.lock = asyncio.Lock()  # 引擎状态操作锁
+		self._state_lock = asyncio.Lock()  # 状态变更锁
+		self._init_lock = asyncio.Lock()  # 初始化专用锁
 		self.shutdown_event = asyncio.Event()  # 关闭事件
 		self.pause_event = asyncio.Event()  # 暂停事件
 		self.pause_event.set()  # 初始状态为运行
@@ -935,7 +936,7 @@ class EngineBase(ABC):
 		Raises:
 			RuntimeError: 当初始化失败时
 		"""
-		async with self.lock:
+		async with self._init_lock:
 			# 检查当前状态
 			if self.record.status != ComponentStatus.UNINITIALIZED:
 				raise RuntimeError(
@@ -1055,7 +1056,7 @@ class EngineBase(ABC):
 			RuntimeError: 当引擎已经运行或依赖检查失败时
 			Exception: 启动过程中发生的任何异常
 		"""
-		async with self.lock:
+		async with self._state_lock:
 			# 检查当前状态
 			if self.record.status == ComponentStatus.RUNNING:
 				logger.warning(f"引擎已在运行中: {self.config.name}")
@@ -1249,7 +1250,7 @@ class EngineBase(ABC):
 			RuntimeError: 停止过程中发生错误
 			asyncio.TimeoutError: 停止超时
 		"""
-		async with self.lock:
+		async with self._state_lock:
 			# 检查当前状态
 			if self.record.status == ComponentStatus.STOPPED:
 				logger.info(f"引擎已经停止: {self.config.name}")
@@ -1467,7 +1468,7 @@ class EngineBase(ABC):
 		Returns:
 			bool: 暂停是否成功
 		"""
-		async with self.lock:
+		async with self._state_lock:
 			# 检查当前状态
 			if self.record.status != ComponentStatus.RUNNING:
 				raise RuntimeError(f"引擎不在运行状态，无法暂停: {self.record.status.value}")
@@ -1527,7 +1528,7 @@ class EngineBase(ABC):
 		Returns:
 			bool: 恢复是否成功
 		"""
-		async with self.lock:
+		async with self._state_lock:
 			# 检查当前状态
 			if self.record.status != ComponentStatus.PAUSED:
 				raise RuntimeError(f"引擎不在暂停状态，无法恢复: {self.record.status.value}")

@@ -48,7 +48,7 @@ class TushareSource(BaseDataSource):
 
     # ==================== 股票基础数据 ====================
 
-    def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
         """获取股票基本信息
 
         Args:
@@ -58,14 +58,19 @@ class TushareSource(BaseDataSource):
         Returns:
             股票基本信息列表
         """
-        fields = ('ts_code,symbol,name,area,industry,market,exchange,'
-                  'list_date,delist_date,is_hs')
-        try:
-            df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
-            return df.to_dict('records') if df is not None else []
-        except Exception as e:
-            logger.error(f"获取股票基本信息失败: {e}")
-            return []
+        import asyncio
+
+        async def _fetch():
+            fields = ('ts_code,symbol,name,area,industry,market,exchange,'
+                      'list_date,delist_date,is_hs')
+            try:
+                df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
+                return df.to_dict('records') if df is not None else []
+            except Exception as e:
+                logger.error(f"获取股票基本信息失败: {e}")
+                return []
+
+        return await asyncio.to_thread(_fetch)
 
     def get_ashare_list(self) -> list:
         """获取A股列表（排除ST/*ST）"""
@@ -308,7 +313,7 @@ class TushareSource(BaseDataSource):
             logger.error(f"获取股票历史数据失败: {e}")
             return pd.DataFrame()
 
-    def get_trade_cal(self, exchange: str = '',
+    async def get_trade_cal(self, exchange: str = '',
                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
         """获取交易日历"""
         try:

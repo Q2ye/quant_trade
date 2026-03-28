@@ -122,22 +122,27 @@ class HyperRepositoryBase(BaseRepository[T]):
 
 			# 准备批量插入数据
 			now = datetime.now()
+			converted_records = []
 			for record in records:
+				# 转换日期时间字段
+				record = self._convert_record_datetime(record)
+
 				if hasattr(self.model, 'created_at'):
 					record['created_at'] = record.get('created_at', now)
 				if hasattr(self.model, 'updated_at'):
 					record['updated_at'] = record.get('updated_at', now)
+				converted_records.append(record)
 
 			# 批量插入
 			if conflict_strategy == "upsert":
 				# 使用upsert（需要具体数据库支持）
-				return await self._batch_upsert(records)
+				return await self._batch_upsert(converted_records)
 			elif conflict_strategy == "ignore":
 				# 忽略冲突
-				return await self._batch_insert_ignore(records)
+				return await self._batch_insert_ignore(converted_records)
 			else:
 				# 普通插入
-				instances = [self.model(**record) for record in records]
+				instances = [self.model(**record) for record in converted_records]
 				self.session.add_all(instances)
 				await self.session.flush()
 				return len(instances)

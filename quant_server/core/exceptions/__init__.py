@@ -35,12 +35,13 @@ from .security_exceptions import (
 )
 
 from .business_exceptions import (
-	DataException,
-	StrategyException,
-	TradeException,
-	AccountException,
-	AnalysisException,
-	BacktestException
+    DataException,
+    DataNotFoundException,
+    StrategyException,
+    TradeException,
+    AccountException,
+    AnalysisException,
+    BacktestException
 )
 
 from .validation_exceptions import (

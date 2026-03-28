@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import fnmatch
 import threading
 import time
 from typing import Any, Optional, List, Dict, Tuple
@@ -294,6 +295,33 @@ class MemoryCache(CacheBase):
 
 		except Exception as e:
 			raise CacheError(f"Failed to delete cache by tags: {str(e)}")
+
+	async def delete_pattern (self, pattern: str) -> int:
+		"""根据模式删除匹配的缓存键"""
+		try:
+			deleted_count = 0
+
+			# 生成完整的模式（与RedisCache保持一致）
+			full_pattern = f"{self.key_prefix}:{pattern}"
+
+			with self._lock:
+				# 查找匹配的键
+				keys_to_delete = []
+				for key in self._cache.keys():
+					# 将pattern转换为fnmatch模式
+					# 支持 * 和 ? 通配符
+					if fnmatch.fnmatch(key, full_pattern):
+						keys_to_delete.append(key)
+
+				# 删除匹配的键
+				for key in keys_to_delete:
+					self._delete_unsafe(key)
+					deleted_count += 1
+
+			return deleted_count
+
+		except Exception as e:
+			raise CacheError(f"Failed to delete cache pattern {pattern}: {str(e)}")
 
 	async def get_stats (self) -> Dict[str, Any]:
 		"""获取缓存统计信息"""

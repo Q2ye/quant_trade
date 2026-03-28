@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/health",
+	prefix="",
 	tags=["健康检查"],
 	responses={
 		200: {"description": "健康检查成功"},
@@ -188,8 +188,9 @@ async def detailed_health_check (
 		await db_session.execute(text("SELECT 1"))
 
 		# 检查关键数据表
-		inspector = inspect(db_session.bind)
-		tables = inspector.get_table_names()
+		tables = await db_session.bind.run_sync(
+			lambda sync_conn: inspect(sync_conn).get_table_names()
+		)
 
 		required_tables = ["stocks", "daily_quotes", "users", "strategies", "orders"]
 		missing_tables = [t for t in required_tables if t not in tables]

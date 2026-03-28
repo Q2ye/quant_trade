@@ -772,6 +772,48 @@ class ResourceNotFoundException(BusinessException):
         )
 
 
+class DataNotFoundException(BusinessException):
+    """数据未找到异常"""
+
+    def __init__(
+        self,
+        message: str,
+        data_type: Optional[str] = None,
+        data_id: Optional[str] = None,
+        data_source: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
+    ):
+        """
+        初始化数据未找到异常
+
+        Args:
+            message: 错误消息
+            data_type: 数据类型
+            data_id: 数据ID
+            data_source: 数据源
+            details: 额外详情
+            cause: 原始异常
+        """
+        if data_type or data_id or data_source:
+            details = details or {}
+            if data_type:
+                details["data_type"] = data_type
+            if data_id:
+                details["data_id"] = data_id
+            if data_source:
+                details["data_source"] = data_source
+
+        super().__init__(
+            message=message,
+            error_code=ErrorCode.DATA_NOT_FOUND,
+            business_domain="data",
+            business_rule="data_existence",
+            details=details,
+            cause=cause
+        )
+
+
 class PermissionDeniedException(BusinessException):
     """权限不足异常"""
 

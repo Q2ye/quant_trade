@@ -13,6 +13,35 @@ DROP VIEW IF EXISTS v_stock_info CASCADE;
 DROP VIEW IF EXISTS v_strategy_performance_overview CASCADE;
 DROP VIEW IF EXISTS v_account_asset_overview CASCADE;
 
+-- 1.1 删除所有触发器（先删除触发器，再删除表，因为表删除后触发器会自动删除，但显式删除更清晰）
+DROP TRIGGER IF EXISTS update_sys_users_modtime ON sys_users CASCADE;
+DROP TRIGGER IF EXISTS update_stock_basic_modtime ON stock_basic CASCADE;
+DROP TRIGGER IF EXISTS update_stock_company_modtime ON stock_company CASCADE;
+DROP TRIGGER IF EXISTS update_strategies_modtime ON strategies CASCADE;
+DROP TRIGGER IF EXISTS update_orders_modtime ON orders CASCADE;
+DROP TRIGGER IF EXISTS update_accounts_modtime ON accounts CASCADE;
+DROP TRIGGER IF EXISTS update_baskets_modtime ON baskets CASCADE;
+DROP TRIGGER IF EXISTS update_system_configs_modtime ON system_configs CASCADE;
+DROP TRIGGER IF EXISTS update_scheduled_tasks_modtime ON scheduled_tasks CASCADE;
+DROP TRIGGER IF EXISTS update_sys_roles_modtime ON sys_roles CASCADE;
+DROP TRIGGER IF EXISTS update_user_preferences_modtime ON user_preferences CASCADE;
+DROP TRIGGER IF EXISTS update_license_keys_modtime ON license_keys CASCADE;
+DROP TRIGGER IF EXISTS update_strategy_parameters_modtime ON strategy_parameters CASCADE;
+DROP TRIGGER IF EXISTS update_portfolio_strategies_modtime ON portfolio_strategies CASCADE;
+DROP TRIGGER IF EXISTS update_trade_instructions_modtime ON trade_instructions CASCADE;
+DROP TRIGGER IF EXISTS update_order_templates_modtime ON order_templates CASCADE;
+DROP TRIGGER IF EXISTS update_backtest_tasks_modtime ON backtest_tasks CASCADE;
+DROP TRIGGER IF EXISTS update_backtest_scenarios_modtime ON backtest_scenarios CASCADE;
+DROP TRIGGER IF EXISTS update_factor_definitions_modtime ON factor_definitions CASCADE;
+DROP TRIGGER IF EXISTS update_analysis_reports_modtime ON analysis_reports CASCADE;
+DROP TRIGGER IF EXISTS update_analysis_templates_modtime ON analysis_templates CASCADE;
+DROP TRIGGER IF EXISTS update_monitor_tasks_modtime ON monitor_tasks CASCADE;
+DROP TRIGGER IF EXISTS update_alert_templates_modtime ON alert_templates CASCADE;
+DROP TRIGGER IF EXISTS update_workflow_tasks_modtime ON workflow_tasks CASCADE;
+DROP TRIGGER IF EXISTS update_factor_research_modtime ON factor_research CASCADE;
+DROP TRIGGER IF EXISTS trigger_update_factor_research_updated_at ON factor_research CASCADE;
+DROP TRIGGER IF EXISTS trigger_update_factor_research_status_timestamps ON factor_research CASCADE;
+
 -- 2. 删除TimescaleDB压缩策略和保留策略（先删除策略，再删除表）
 -- 删除stock_daily的压缩策略
 SELECT remove_compression_policy('stock_daily') WHERE EXISTS (
@@ -161,18 +190,25 @@ DROP FUNCTION IF EXISTS update_modified_column() CASCADE;
 DROP FUNCTION IF EXISTS update_factor_research_updated_at() CASCADE;
 DROP FUNCTION IF EXISTS update_factor_research_status_timestamps() CASCADE;
 
--- 6. 重新启用外键约束检查
+-- 6. 删除序列（如果有自定义序列）
+-- 注：本项目使用SERIAL类型，删除表时会自动删除序列，无需显式删除
+
+-- 7. 删除自定义类型（如果有）
+-- 注：本项目未使用自定义DOMAIN类型
+
+-- 8. 重新启用外键约束检查
 SET session_replication_role = 'origin';
 
--- 7. 删除TimescaleDB扩展（如果需要完全清理）
+-- 9. 删除TimescaleDB扩展（如果需要完全清理）
 -- DROP EXTENSION IF EXISTS timescaledb CASCADE;
 
--- 8. 输出完成信息
+-- 10. 输出完成信息
 DO $$
 BEGIN
     RAISE NOTICE '===================================================';
     RAISE NOTICE '量化交易系统所有表已成功删除';
-    RAISE NOTICE '删除表数量: 约70张表';
+    RAISE NOTICE '删除表数量: 约90张表';
+    RAISE NOTICE '已删除视图、物化视图、触发器函数';
     RAISE NOTICE '已删除TimescaleDB压缩策略和保留策略';
     RAISE NOTICE '===================================================';
 END

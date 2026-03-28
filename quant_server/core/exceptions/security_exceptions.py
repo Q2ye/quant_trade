@@ -244,7 +244,7 @@ class PasswordHashError(PasswordException):
 			message: 异常消息
 			details: 详细信息
 		"""
-		super().__init__(message, SecurityErrorCode.PASSWORD_HASH_FAILED, details)
+		super().__init__(message, SecurityErrorCode.PASSWORD_FAILED, details)
 
 
 class PasswordValidationError(PasswordException):

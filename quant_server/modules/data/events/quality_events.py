@@ -14,6 +14,56 @@ from typing import Dict, Any, List, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.data.events.types import DataEventType
+from quant_server.modules.data.constants import QualityCheckStatus
+
+
+
+
+class DataQualityEvent(BaseEvent):
+    """
+    数据质量通用事件类
+
+    用于数据质量检查过程中通用的质量事件通知
+    适配 DataQualityCheckRepository 的接口规范
+
+    事件数据：
+    - check_id: 检查任务ID
+    - data_type: 数据类型
+    - quality_score: 质量评分
+    - status: 检查状态
+    - issue_count: 问题数量
+    - check_timestamp: 检查时间
+    - user_id: 发起检查的用户ID
+    """
+
+    def __init__(
+        self,
+        event_type: str,
+        check_id: str,
+        data_type: str,
+        quality_score: float,
+        status: QualityCheckStatus,
+        issue_count: int = 0,
+        user_id: Optional[int] = None,
+        **kwargs
+    ):
+        super().__init__(
+            event_type=event_type,
+            source="data_quality_service",
+            module="data",
+            priority=EventPriority.NORMAL,
+            **kwargs
+        )
+
+        self.data = {
+            "check_id": check_id,
+            "data_type": data_type,
+            "quality_score": round(quality_score, 2),
+            "status": status.value if isinstance(status, QualityCheckStatus) else status,
+            "issue_count": issue_count,
+            "check_timestamp": datetime.now().isoformat(),
+            "user_id": user_id
+        }
 
 
 class DataQualityCheckStartedEvent(BaseEvent):

@@ -6,7 +6,7 @@
 
 from .encryption import EncryptionManager, AESCipher, RSACipher
 from .jwt_handler import JWTManager, create_access_token, verify_token
-from .password import PasswordManager, verify_password, get_password_hash
+from .password import PasswordManager, verify_password, get_password
 # from .audit import AuditLogger, audit_log
 
 __all__ = [
@@ -23,7 +23,7 @@ __all__ = [
 	# 密码
 	'PasswordManager',
 	'verify_password',
-	'get_password_hash',
+	'get_password',
 
 	# # 审计
 	# 'AuditLogger',

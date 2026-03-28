@@ -35,7 +35,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def create_factor_data (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_code: str,
 			trade_date: datetime,
 			factor_value: float,
@@ -49,7 +49,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		创建单条因子数据
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_code: 股票代码
 			trade_date: 交易日
 			factor_value: 因子值
@@ -67,7 +67,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			factor_data = {
-				'factor_code': factor_code,
+				'factor_name': factor_name,
 				'ts_code': ts_code,
 				'trade_date': trade_date,
 				'factor_value': factor_value,
@@ -100,7 +100,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_factor_data (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_code: str,
 			trade_date: datetime
 	) -> Optional[FactorData]:
@@ -108,7 +108,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取指定因子、股票、日期的因子数据
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_code: 股票代码
 			trade_date: 交易日
 
@@ -118,7 +118,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		try:
 			stmt = select(FactorData).where(
 				and_(
-					FactorData.factor_code == factor_code,
+					FactorData.factor_name == factor_name,
 					FactorData.ts_code == ts_code,
 					FactorData.trade_date == trade_date
 				)
@@ -130,7 +130,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_stock_factor_history (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_code: str,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -141,7 +141,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取单只股票的因子历史数据（时序查询）
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_code: 股票代码
 			start_date: 开始日期（可选）
 			end_date: 结束日期（可选）
@@ -153,7 +153,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.ts_code == ts_code
 			]
 
@@ -176,10 +176,9 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			return result.scalars().all()
 		except Exception as e:
 			raise RepositoryError(f"获取股票因子历史失败: {str(e)}")
-
 	async def get_cross_sectional_data (
 			self,
-			factor_code: str,
+			factor_name: str,
 			trade_date: datetime,
 			universe: Optional[List[str]] = None,
 			min_value: Optional[float] = None,
@@ -190,7 +189,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取横截面因子数据（同一时间点，不同股票）
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			trade_date: 交易日
 			universe: 股票池（可选）
 			min_value: 最小值过滤（可选）
@@ -202,7 +201,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.trade_date == trade_date,
 				FactorData.factor_value.isnot(None)
 			]
@@ -225,7 +224,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_time_series_data (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_codes: List[str],
 			start_date: datetime,
 			end_date: datetime,
@@ -235,7 +234,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取时间序列因子数据（多只股票，时间范围）
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_codes: 股票代码列表
 			start_date: 开始日期
 			end_date: 结束日期
@@ -253,7 +252,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 				stmt = select(FactorData).where(
 					and_(
-						FactorData.factor_code == factor_code,
+						FactorData.factor_name == factor_name,
 						FactorData.ts_code.in_(batch_codes),
 						FactorData.trade_date >= start_date,
 						FactorData.trade_date <= end_date
@@ -272,10 +271,9 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			return result_dict
 		except Exception as e:
 			raise RepositoryError(f"获取时间序列数据失败: {str(e)}")
-
 	async def get_latest_factor_data (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_code: Optional[str] = None,
 			limit: int = 1
 	) -> Optional[FactorData]:
@@ -283,7 +281,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取最新的因子数据
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_code: 股票代码（可选）
 			limit: 限制记录数
 
@@ -297,7 +295,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_factor_universe (
 			self,
-			factor_code: str,
+			factor_name: str,
 			trade_date: datetime,
 			top_n: Optional[int] = None,
 			bottom_n: Optional[int] = None,
@@ -307,8 +305,8 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取因子排序的股票列表（用于构建因子投资组合）
 
 		Args:
-			factor_code: 因子代码
-			trade_date: 交易日
+			factor_name: 因子名称
+			t trade_date: 交易日
 			top_n: 获取前N名（可选）
 			bottom_n: 获取后N名（可选）
 			universe: 股票池限制（可选）
@@ -318,7 +316,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.trade_date == trade_date,
 				FactorData.factor_value.isnot(None)
 			]
@@ -348,7 +346,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def update_factor_value (
 			self,
-			factor_code: str,
+			factor_name: str,
 			ts_code: str,
 			trade_date: datetime,
 			factor_value: float,
@@ -362,7 +360,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		更新因子数据
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			ts_code: 股票代码
 			trade_date: 交易日
 			factor_value: 因子值
@@ -395,7 +393,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 			stmt = update(FactorData).where(
 				and_(
-					FactorData.factor_code == factor_code,
+					FactorData.factor_name == factor_name,
 					FactorData.ts_code == ts_code,
 					FactorData.trade_date == trade_date
 				)
@@ -410,7 +408,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def delete_factor_data_by_time_range (
 			self,
-			factor_code: str,
+			factor_name: str,
 			start_date: datetime,
 			end_date: datetime,
 			ts_code: Optional[str] = None
@@ -419,7 +417,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		删除时间范围内的因子数据（超表专用方法）
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			start_date: 开始日期
 			end_date: 结束日期
 			ts_code: 股票代码（可选）
@@ -429,7 +427,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.trade_date >= start_date,
 				FactorData.trade_date <= end_date
 			]
@@ -447,7 +445,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_factor_coverage (
 			self,
-			factor_code: str,
+			factor_name: str,
 			start_date: datetime,
 			end_date: datetime,
 			universe: Optional[List[str]] = None
@@ -456,7 +454,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取因子覆盖度统计
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			start_date: 开始日期
 			end_date: 结束日期
 			universe: 股票池（可选）
@@ -466,12 +464,11 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.trade_date >= start_date,
 				FactorData.trade_date <= end_date,
 				FactorData.factor_value.isnot(None)
 			]
-
 			if universe:
 				conditions.append(FactorData.ts_code.in_(universe))
 
@@ -513,7 +510,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			total_row = result_total.first()
 
 			return {
-				'factor_code': factor_code,
+				'factor_name': factor_name,
 				'start_date': start_date,
 				'end_date': end_date,
 				'universe_size': len(universe) if universe else 'all',
@@ -529,7 +526,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def calculate_factor_statistics (
 			self,
-			factor_code: str,
+			factor_name: str,
 			trade_date: datetime,
 			universe: Optional[List[str]] = None
 	) -> Dict[str, Any]:
@@ -537,7 +534,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		计算因子统计特征
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			trade_date: 交易日
 			universe: 股票池（可选）
 
@@ -546,7 +543,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		try:
 			conditions = [
-				FactorData.factor_code == factor_code,
+				FactorData.factor_name == factor_name,
 				FactorData.trade_date == trade_date,
 				FactorData.factor_value.isnot(None)
 			]
@@ -571,7 +568,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			if not stats_row or stats_row[0] == 0:
 				return {
 					'trade_date': trade_date,
-					'factor_code': factor_code,
+					'factor_name': factor_name,
 					'count': 0,
 					'error': 'No data available'
 				}
@@ -583,7 +580,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 			return {
 				'trade_date': trade_date,
-				'factor_code': factor_code,
+				'factor_name': factor_name,
 				'count': stats_row[0],
 				'mean': mean_val,
 				'std': std_val,
@@ -599,8 +596,8 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_factor_correlation (
 			self,
-			factor_code1: str,
-			factor_code2: str,
+			factor_name1: str,
+			factor_name2: str,
 			trade_date: datetime,
 			universe: Optional[List[str]] = None,
 			min_pair_count: int = 10
@@ -609,8 +606,8 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		计算两个因子之间的相关系数
 
 		Args:
-			factor_code1: 第一个因子代码
-			factor_code2: 第二个因子代码
+			factor_name1: 第一个因子名称
+			factor_name2: 第二个因子名称
 			trade_date: 交易日
 			universe: 股票池（可选）
 			min_pair_count: 最小配对数据要求
@@ -625,7 +622,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 				FactorData.factor_value.label('value1')
 			).where(
 				and_(
-					FactorData.factor_code == factor_code1,
+					FactorData.factor_name == factor_name1,
 					FactorData.trade_date == trade_date
 				)
 			)
@@ -640,7 +637,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 				FactorData.factor_value.label('value2')
 			).where(
 				and_(
-					FactorData.factor_code == factor_code2,
+					FactorData.factor_name == factor_name2,
 					FactorData.trade_date == trade_date
 				)
 			)
@@ -674,7 +671,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 	async def get_factor_ic_analysis (
 			self,
-			factor_code: str,
+			factor_name: str,
 			start_date: datetime,
 			end_date: datetime,
 			return_type: str = "next_day_return"
@@ -683,7 +680,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		获取因子IC分析结果（需要与收益率数据关联）
 
 		Args:
-			factor_code: 因子代码
+			factor_name: 因子名称
 			start_date: 开始日期
 			end_date: 结束日期
 			return_type: 收益率类型（next_day_return, next_week_return等）
@@ -706,7 +703,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			# FROM factor_data f
 			# JOIN stock_returns r ON f.ts_code = r.ts_code
 			#     AND f.trade_date = r.trade_date
-			# WHERE f.factor_code = :factor_code
+			# WHERE f.factor_name = :factor_name
 			#     AND f.trade_date BETWEEN :start_date AND :end_date
 			#     AND r.return_type = :return_type
 			# GROUP BY f.trade_date
@@ -734,3 +731,52 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			Dict[str, Any]: 统计信息
 		"""
 		return await self.get_statistics(start_date, end_date, symbol)
+
+	async def get_available_factors(self) -> List[str]:
+		"""
+		获取系统中可用的因子名称列表
+
+		Returns:
+			List[str]: 因子名称列表
+		"""
+		try:
+			stmt = select(
+				func.distinct(FactorData.factor_name)
+			).order_by(FactorData.factor_name)
+
+			result = await self.session.execute(stmt)
+			return [row[0] for row in result.all()]
+		except Exception as e:
+			raise RepositoryError(f"获取可用因子列表失败: {str(e)}")
+
+	async def get_by_ts_code_and_date_range(
+			self,
+			ts_code: str,
+			factor_name: str,
+			start_date: datetime,
+			end_date: datetime,
+			limit: int = 1000,
+			order_desc: bool = True
+	) -> List[FactorData]:
+		"""
+		获取指定股票在时间范围内的因子数据（get_stock_factor_history的别名方法）
+
+		Args:
+			ts_code: 股票代码
+			factor_name: 因子名称
+			start_date: 开始日期
+			end_date: 结束日期
+			limit: 限制记录数
+			order_desc: 是否按时间降序
+
+		Returns:
+			List[FactorData]: 因子数据列表
+		"""
+		return await self.get_stock_factor_history(
+			factor_name=factor_name,
+			ts_code=ts_code,
+			start_date=start_date,
+			end_date=end_date,
+			limit=limit,
+			order_desc=order_desc
+		)

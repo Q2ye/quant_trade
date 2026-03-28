@@ -7,11 +7,14 @@ Pydantic V2 兼容版本
 
 import os
 import json
+import logging
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from pydantic import field_validator, Field, ValidationInfo
+from pydantic import field_validator, Field, ValidationInfo, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 
 class Environment(str, Enum):
@@ -159,6 +162,14 @@ class DataSourceSettings(BaseSettings):
 
 	# 测试环境标志
 	TEST_ENV: bool = False
+
+	# 数据模式：simulated-模拟数据, real-真实数据
+	DATA_MODE: str = "simulated"
+
+	# 模拟数据配置
+	MOCK_DATA_ENABLED: bool = True
+	MOCK_STOCK_COUNT: int = 100
+	MOCK_DATE_RANGE_DAYS: int = 30
 
 	# 数据同步配置
 	SYNC_ENABLED: bool = True
@@ -354,6 +365,39 @@ class Settings(BaseSettings):
 		if env == Environment.DEVELOPMENT:
 			return True
 		return v
+
+	@model_validator(mode="after")
+	def resolve_database_config (self) -> "Settings":
+		"""
+		根据环境变量解析数据库配置
+		开发环境: 使用 DB_DEV_* 配置
+		生产环境: 使用 DB_PROD_* 配置
+		"""
+		env = os.getenv("ENVIRONMENT", "development").lower()
+		logger.info(f"当前环境: {env}")
+
+		if env == "development":
+			# 开发环境：从 DB_DEV_* 读取
+			self.DATABASE.HOST = os.getenv("DB_DEV_HOST", self.DATABASE.HOST)
+			self.DATABASE.PORT = int(os.getenv("DB_DEV_PORT", str(self.DATABASE.PORT)))
+			self.DATABASE.USER = os.getenv("DB_DEV_USER", self.DATABASE.USER)
+			self.DATABASE.PASSWORD = os.getenv("DB_DEV_PASSWORD", self.DATABASE.PASSWORD)
+			self.DATABASE.NAME = os.getenv("DB_DEV_NAME", "quant_signals_dev")
+			self.DATABASE.POOL_SIZE = int(os.getenv("DB_DEV_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
+			self.DATABASE.MAX_OVERFLOW = int(os.getenv("DB_DEV_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
+			logger.info(f"使用开发环境数据库配置: {self.DATABASE.NAME}")
+		else:
+			# 生产环境：从 DB_PROD_* 读取
+			self.DATABASE.HOST = os.getenv("DB_PROD_HOST", self.DATABASE.HOST)
+			self.DATABASE.PORT = int(os.getenv("DB_PROD_PORT", str(self.DATABASE.PORT)))
+			self.DATABASE.USER = os.getenv("DB_PROD_USER", self.DATABASE.USER)
+			self.DATABASE.PASSWORD = os.getenv("DB_PROD_PASSWORD", self.DATABASE.PASSWORD)
+			self.DATABASE.NAME = os.getenv("DB_PROD_NAME", "quant_signals")
+			self.DATABASE.POOL_SIZE = int(os.getenv("DB_PROD_POOL_SIZE", str(self.DATABASE.POOL_SIZE)))
+			self.DATABASE.MAX_OVERFLOW = int(os.getenv("DB_PROD_MAX_OVERFLOW", str(self.DATABASE.MAX_OVERFLOW)))
+			logger.info(f"使用生产环境数据库配置: {self.DATABASE.NAME}")
+
+		return self
 
 	def is_development (self) -> bool:
 		"""是否开发环境"""

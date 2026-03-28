@@ -22,8 +22,79 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
+from datetime import date
+from typing import Optional
 from quant_server.core.events import BaseEvent, EventPriority, EventCategory
 from .types import DataEventType, DataProcessingStatus
+from quant_server.modules.data.constants import Frequency, AdjustType
+
+
+@dataclass
+class MarketDataRequest:
+    """
+    市场数据请求参数
+    描述市场数据请求的基本参数和要求
+    """
+    # 基础信息
+    symbol: str                    # 股票代码
+    data_type: str                 # 数据类型：daily_quotes/minute_quotes等
+    frequency: str                 # 数据频率：daily/1min/5min等
+
+    # 时间范围
+    start_date: Optional[date] = None     # 开始日期
+    end_date: Optional[date] = None       # 结束日期
+    limit: Optional[int] = None           # 数据条数限制
+
+    # 处理选项
+    adjust_type: str = AdjustType.NONE    # 复权类型
+    fields: Optional[list] = None         # 请求的字段列表
+    fill_missing: bool = True             # 是否填充缺失数据
+    normalize: bool = False               # 是否标准化数据
+
+    # 来源选项
+    source_preference: Optional[list] = None  # 数据源偏好
+    use_cache: bool = True                # 是否使用缓存
+    force_refresh: bool = False           # 是否强制刷新
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "symbol": self.symbol,
+            "data_type": self.data_type,
+            "frequency": self.frequency,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "limit": self.limit,
+            "adjust_type": self.adjust_type,
+            "fields": self.fields,
+            "fill_missing": self.fill_missing,
+            "normalize": self.normalize,
+            "source_preference": self.source_preference,
+            "use_cache": self.use_cache,
+            "force_refresh": self.force_refresh
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MarketDataRequest":
+        """从字典创建"""
+        start_date = date.fromisoformat(data["start_date"]) if data.get("start_date") else None
+        end_date = date.fromisoformat(data["end_date"]) if data.get("end_date") else None
+
+        return cls(
+            symbol=data["symbol"],
+            data_type=data["data_type"],
+            frequency=data["frequency"],
+            start_date=start_date,
+            end_date=end_date,
+            limit=data.get("limit"),
+            adjust_type=data.get("adjust_type", AdjustType.NONE),
+            fields=data.get("fields"),
+            fill_missing=data.get("fill_missing", True),
+            normalize=data.get("normalize", False),
+            source_preference=data.get("source_preference"),
+            use_cache=data.get("use_cache", True),
+            force_refresh=data.get("force_refresh", False)
+        )
 
 
 @dataclass
@@ -465,11 +536,134 @@ class MarketDataValidatedEvent(BaseEvent):
         return self.data.get("is_ready_for_use", False)
 
 
+class MarketDataRequestEvent(BaseEvent):
+    """
+    市场数据请求事件
+
+    触发时机：策略、分析或其他模块需要市场数据时
+    业务场景：数据获取、缓存查询、数据源选择
+
+    典型订阅者：
+    - MarketDataService: 处理数据请求
+    - CacheModule: 检查缓存数据
+    - DataSourceRouter: 选择合适的数据源
+    - MonitoringModule: 记录数据请求
+
+    事件数据包含：
+    - request: 数据请求参数
+    - requester: 请求者信息
+    - priority: 请求优先级
+    - expected_response_time: 期望响应时间
+    """
+
+    def __init__(
+        self,
+        request: MarketDataRequest,
+        requester: str,
+        requester_type: str = "strategy",
+        request_id: Optional[str] = None,
+        priority: int = EventPriority.NORMAL,
+        expected_response_seconds: Optional[float] = None,
+        callback_url: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            event_type=DataEventType.MARKET_DATA_REQUEST.value,
+            source=requester,
+            module="data",
+            priority=priority,
+            category=EventCategory.BUSINESS,
+            **kwargs
+        )
+
+        self.data = {
+            "request": request.to_dict(),
+            "requester": requester,
+            "requester_type": requester_type,
+            "request_id": request_id or self.event_id,
+            "expected_response_seconds": expected_response_seconds,
+            "callback_url": callback_url,
+            "request_time": datetime.now().isoformat(),
+            "status": "pending",
+            "attempts": 0,
+            "timeout_seconds": expected_response_seconds or 30.0  # 默认30秒超时
+        }
+
+        # 存储请求对象引用（不包含在序列化中）
+        self._request = request
+
+    @property
+    def request(self) -> MarketDataRequest:
+        """获取请求对象"""
+        return self._request
+
+    @property
+    def request_id(self) -> str:
+        """获取请求ID"""
+        return self.data["request_id"]
+
+    @property
+    def symbol(self) -> str:
+        """获取股票代码"""
+        return self._request.symbol
+
+    @property
+    def data_type(self) -> str:
+        """获取数据类型"""
+        return self._request.data_type
+
+    def mark_processing(self, attempt: int = 1) -> None:
+        """标记请求开始处理"""
+        self.data["status"] = "processing"
+        self.data["attempts"] = attempt
+        self.data["processing_start_time"] = datetime.now().isoformat()
+
+    def mark_completed(self, result_count: int = 0, source: Optional[str] = None) -> None:
+        """标记请求完成"""
+        self.data["status"] = "completed"
+        self.data["result_count"] = result_count
+        self.data["completed_time"] = datetime.now().isoformat()
+        if source:
+            self.data["data_source"] = source
+
+    def mark_failed(self, error: str, retryable: bool = True) -> None:
+        """标记请求失败"""
+        self.data["status"] = "failed"
+        self.data["error"] = error
+        self.data["retryable"] = retryable
+        self.data["failed_time"] = datetime.now().isoformat()
+
+    def mark_timeout(self) -> None:
+        """标记请求超时"""
+        self.data["status"] = "timeout"
+        self.data["timeout_time"] = datetime.now().isoformat()
+
+    def is_completed(self) -> bool:
+        """检查请求是否完成"""
+        return self.data.get("status") == "completed"
+
+    def is_failed(self) -> bool:
+        """检查请求是否失败"""
+        return self.data.get("status") == "failed"
+
+    def is_timeout(self) -> bool:
+        """检查请求是否超时"""
+        return self.data.get("status") == "timeout"
+
+    def can_retry(self) -> bool:
+        """检查是否可以重试"""
+        return (self.data.get("status") in ["failed", "timeout"] and
+                self.data.get("retryable", True) and
+                self.data.get("attempts", 0) < 3)  # 最多重试3次
+
+
 # 导出所有事件类
 __all__ = [
+    "MarketDataRequest",
     "MarketDataMetadata",
     "MarketDataRawArrivedEvent",
     "MarketDataProcessingEvent",
     "MarketDataProcessedEvent",
     "MarketDataValidatedEvent",
+    "MarketDataRequestEvent",
 ]

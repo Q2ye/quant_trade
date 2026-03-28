@@ -30,7 +30,7 @@ COMMENT ON EXTENSION timescaledb IS '时序数据库扩展，用于处理高频�
 CREATE TABLE sys_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(100) NOT NULL,
+    password VARCHAR(100) NOT NULL,
     email VARCHAR(100),
     phone VARCHAR(20),
     real_name VARCHAR(50),
@@ -44,7 +44,7 @@ CREATE TABLE sys_users (
 COMMENT ON TABLE sys_users IS '系统用户信息表';
 COMMENT ON COLUMN sys_users.id IS '用户ID（自增主键）';
 COMMENT ON COLUMN sys_users.username IS '用户名（唯一）';
-COMMENT ON COLUMN sys_users.password_hash IS '密码哈希值（BCrypt加密）';
+COMMENT ON COLUMN sys_users.password IS '密码（BASE64加密）';
 COMMENT ON COLUMN sys_users.email IS '用户邮箱';
 COMMENT ON COLUMN sys_users.phone IS '手机号码';
 COMMENT ON COLUMN sys_users.real_name IS '用户真实姓名';
@@ -102,7 +102,8 @@ CREATE TABLE sys_permissions (
     can_write BOOLEAN DEFAULT FALSE,
     can_execute BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, module)
 );
 
 COMMENT ON TABLE sys_permissions IS '用户细粒度权限表';
@@ -1233,24 +1234,41 @@ COMMENT ON COLUMN risk_rules.is_active IS '规则是否启用';
 -- 数据同步任务记录表
 CREATE TABLE data_sync_tasks (
     id SERIAL PRIMARY KEY,
+    task_id VARCHAR(64) NOT NULL UNIQUE,
     task_type VARCHAR(50) NOT NULL,
+    user_id INT REFERENCES sys_users(id),
+    data_types JSON,
     status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
-    parameters TEXT,
+    parameters JSON,
     total_records INT DEFAULT 0,
+    processed_records INT DEFAULT 0,
+    records_processed INT DEFAULT 0,
+    records_succeeded INT DEFAULT 0,
+    records_failed INT DEFAULT 0,
     error_message TEXT,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ
 );
 
 COMMENT ON TABLE data_sync_tasks IS '数据同步任务记录表';
+COMMENT ON COLUMN data_sync_tasks.task_id IS '任务唯一标识符（如 sync_abc12345）';
 COMMENT ON COLUMN data_sync_tasks.task_type IS '任务类型：daily-日线, minute-分钟线, financial-财务数据, etc.';
+COMMENT ON COLUMN data_sync_tasks.user_id IS '用户ID';
+COMMENT ON COLUMN data_sync_tasks.data_types IS '数据类型列表（JSON格式）';
 COMMENT ON COLUMN data_sync_tasks.status IS '任务状态：pending-等待中, running-执行中, completed-成功, failed-失败';
 COMMENT ON COLUMN data_sync_tasks.start_time IS '任务开始时间';
 COMMENT ON COLUMN data_sync_tasks.end_time IS '任务结束时间';
-COMMENT ON COLUMN data_sync_tasks.parameters IS '任务参数';
-COMMENT ON COLUMN data_sync_tasks.total_records IS '同步数据记录数';
+COMMENT ON COLUMN data_sync_tasks.parameters IS '任务参数（JSON格式）';
+COMMENT ON COLUMN data_sync_tasks.total_records IS '总记录数';
+COMMENT ON COLUMN data_sync_tasks.processed_records IS '已处理记录数';
+COMMENT ON COLUMN data_sync_tasks.records_processed IS '已处理记录数（别名）';
+COMMENT ON COLUMN data_sync_tasks.records_succeeded IS '成功记录数';
+COMMENT ON COLUMN data_sync_tasks.records_failed IS '失败记录数';
 COMMENT ON COLUMN data_sync_tasks.error_message IS '错误信息（如果任务失败）';
+COMMENT ON COLUMN data_sync_tasks.completed_at IS '完成时间';
 
 -- 系统配置表
 CREATE TABLE system_configs (

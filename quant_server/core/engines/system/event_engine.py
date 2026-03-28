@@ -50,7 +50,14 @@ class QueuedEvent:
         Args:
             event: 事件对象
         """
-        self.priority = event.priority if hasattr(event, 'priority') else PriorityLevel.NORMAL.value
+        # 处理字典类型事件和Event对象类型事件
+        if isinstance(event, dict):
+            self.priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
+        elif hasattr(event, 'priority'):
+            self.priority = event.priority
+        else:
+            self.priority = PriorityLevel.NORMAL.value
+
         self.timestamp = time.time()
         self.event = event
 
@@ -96,7 +103,8 @@ class EventHandler:
                 return await loop.run_in_executor(None, self.handler, event)
 
         except Exception as e:
-            logger.error(f"事件处理器执行失败: {self.handler_id}, 事件: {event.event_type}, 错误: {e}")
+            event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+            logger.error(f"事件处理器执行失败: {self.handler_id}, 事件: {event_type}, 错误: {e}")
             raise
 
 
@@ -360,8 +368,9 @@ class EventEngine(EngineBase):
         try:
             # 更新统计
             self._event_statistics.total_events += 1
-            self._event_statistics.event_type_counts[event.event_type] = \
-                self._event_statistics.event_type_counts.get(event.event_type, 0) + 1
+            event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+            self._event_statistics.event_type_counts[event_type] = \
+                self._event_statistics.event_type_counts.get(event_type, 0) + 1
 
             # 保存到历史
             self._event_history.append(event)
@@ -370,8 +379,9 @@ class EventEngine(EngineBase):
             handlers = []
             async with self._handler_lock:
                 # 获取特定类型的处理器
-                if event.event_type in self._event_handlers:
-                    handlers.extend(self._event_handlers[event.event_type])
+                event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+                if event_type in self._event_handlers:
+                    handlers.extend(self._event_handlers[event_type])
 
                 # 获取通用处理器
                 handlers.extend(self._general_handlers)
@@ -397,7 +407,8 @@ class EventEngine(EngineBase):
                 failed_count = sum(1 for r in results if isinstance(r, Exception))
                 if failed_count > 0:
                     self._event_statistics.failed_events += 1
-                    logger.warning(f"事件处理有 {failed_count} 个处理器失败: {event.event_type}")
+                    event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+                    logger.warning(f"事件处理有 {failed_count} 个处理器失败: {event_type}")
 
             # 更新统计
             processing_time = (time.time() - start_time) * 1000  # 转换为毫秒
@@ -414,11 +425,13 @@ class EventEngine(EngineBase):
 
             # 记录处理时间（如果超过阈值）
             if processing_time > 100:  # 超过100毫秒
-                logger.debug(f"事件处理时间较长: {event.event_type}, 耗时: {processing_time:.1f}ms")
+                event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+                logger.debug(f"事件处理时间较长: {event_type}, 耗时: {processing_time:.1f}ms")
 
         except Exception as e:
             self._event_statistics.failed_events += 1
-            logger.error(f"事件处理失败: {event.event_type}, 错误: {e}")
+            event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
+            logger.error(f"事件处理失败: {event_type}, 错误: {e}")
 
     async def put(self, event: EventEntity) -> None:
         """放入事件
@@ -450,7 +463,25 @@ class EventEngine(EngineBase):
                 self._event_statistics.current_queue_size
             )
 
-        logger.debug(f"事件入队: {event.event_type}, 优先级: {event.priority}")
+        # 检查事件是否为字典类型
+        if isinstance(event, dict):
+            event_type = event.get('event_type', 'unknown')
+            priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
+            logger.debug(f"事件入队: {event_type}, 优先级: {priority}")
+        else:
+            # 安全访问event_type和priority
+            try:
+                event_type = getattr(event, 'event_type', 'unknown')
+                # 检查是否有metadata属性
+                if hasattr(event, 'metadata') and hasattr(event.metadata, 'priority'):
+                    priority = event.metadata.priority
+                else:
+                    # 尝试从event对象本身获取priority
+                    priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
+                logger.debug(f"事件入队: {event_type}, 优先级: {priority}")
+            except AttributeError as e:
+                logger.warning(f"无法获取事件属性: {e}, 使用默认值")
+                logger.debug(f"事件入队: unknown, 优先级: {PriorityLevel.NORMAL.value}")
 
     def register(self,
                  event_type: str,

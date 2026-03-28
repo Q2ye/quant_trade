@@ -11,11 +11,13 @@ Version: 1.0.0
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Callable, Coroutine
 from contextlib import asynccontextmanager
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
+from quant_server.core.engines.types.enums import ComponentStatus
 
 from fastapi import Depends
 
@@ -68,24 +70,43 @@ class EventEngineDependencies:
 		try:
 			# 获取事件引擎实例（通过引擎注册表）
 			self._engine_registry = EngineRegistry()
-			engine_record = await self._engine_registry.get_engine("event_engine")
+			engine_record = self._engine_registry.get_engine_record("event_engine")
 
-			if not engine_record or not engine_record.instance:
+			if not engine_record or not engine_record.engine:
 				logger.warning("事件引擎未在注册表中找到，尝试创建新实例")
-				self._event_engine = EventEngine()
+				# 创建默认配置
+				from quant_server.core.engines.types.entities import EngineConfig
+				config = EngineConfig(
+					name="default_event_engine",
+					engine_type="event",
+					config={
+						"max_workers": 10,
+						"queue_size": 10000
+					}
+				)
+				self._event_engine = EventEngine(config)
 			else:
-				self._event_engine = engine_record.instance
+				self._event_engine = engine_record.engine
 
-			# 初始化消息总线
-			from quant_server.shared.messaging.message_bus import MessageBus
-			self._message_bus = MessageBus()
-			await self._message_bus.initialize()
+			# 初始化消息总线（可选）
+			try:
+				from quant_server.shared.messaging.message_bus import MessageBus
+				self._message_bus = MessageBus()
+				await self._message_bus.initialize()
+				logger.info("消息总线初始化成功")
+			except Exception as e:
+				logger.warning(f"消息总线初始化失败，跳过: {str(e)}")
+				self._message_bus = None
 
-			# 注册系统事件处理器
-			await self._register_system_handlers()
-
+			# 标记为已初始化
 			self._is_initialized = True
 			logger.info("事件引擎依赖初始化成功")
+
+			# 注册系统事件处理器（必须在初始化完成后）
+			try:
+				await self._register_system_handlers()
+			except Exception as e:
+				logger.error(f"系统处理器注册失败: {str(e)}")
 
 			# 发布系统启动事件
 			await self.publish_system_event(
@@ -111,8 +132,10 @@ class EventEngineDependencies:
 		Raises:
 			EventException: 事件引擎未初始化
 		"""
-		if not self._event_engine or not self._is_initialized:
-			raise EventException("事件引擎未初始化")
+		if not self._event_engine:
+			raise EventException("事件引擎实例不存在")
+		if not self._is_initialized:
+			raise EventException("事件引擎未初始化完成")
 		return self._event_engine
 
 	async def get_event_engine (self) -> EventEngine:
@@ -153,14 +176,20 @@ class EventEngineDependencies:
 		"""
 		try:
 			event = Event(
-				data=data,
+				event_id=str(uuid.uuid4()),
+				event_type=event_type,
 				source=source,
+				data=data,
 				timestamp=datetime.utcnow(),
 				metadata=metadata or {}
 			)
 
 			# 设置优先级
 			event.metadata["priority"] = priority.value
+
+            # 确保事件引擎已启动
+			if not self._event_engine or self._event_engine.record.status != ComponentStatus.RUNNING:
+				await self._event_engine.start()
 
 			event_id = await self.event_engine.put(event)
 
@@ -306,7 +335,7 @@ class EventEngineDependencies:
 					event_type: len(handlers)
 					for event_type, handlers in self._event_handlers.items()
 				},
-				"message_bus_connected": self._message_bus.is_connected()
+				"message_bus_connected": self._message_bus.initialized
 				if self._message_bus else False
 			}
 

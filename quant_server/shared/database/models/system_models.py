@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-from quant_server.shared.database.models.base import Base
+from .base import Base
 
 
 # ==================== 系统配置 ====================
@@ -215,7 +215,7 @@ class AuditLog(Base):
                         index=True, comment='创建时间')
 
     # 关联关系
-    user = relationship("SysUser", back_populates="audit_logs")
+    user = relationship("SysUser")
 
     # 索引
     __table_args__ = (
@@ -279,7 +279,7 @@ class UserPreference(Base):
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
     # 关联关系
-    user = relationship("SysUser", back_populates="preference")
+    user = relationship("SysUser", back_populates="user_preferences")
 
     # 索引
     __table_args__ = (

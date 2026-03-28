@@ -9,7 +9,7 @@ from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Num
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
-from quant_server.shared.database.models.base import Base
+from .base import Base
 
 
 # ==================== 股票基本信息 ====================
@@ -718,6 +718,7 @@ class FactorData(Base):
 	__tablename__ = 'factor_data'
 
 	id = Column(Integer, primary_key=True, autoincrement=True, comment='因子数据ID')
+	factor_definition_id = Column(Integer, ForeignKey('factor_definitions.id'), nullable=True, index=True, comment='因子定义ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
 	factor_name = Column(String(100), nullable=False, index=True, comment='因子名称')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
@@ -727,6 +728,9 @@ class FactorData(Base):
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+
+	# 关联关系
+	definition = relationship("FactorDefinition", back_populates="factor_values")
 
 	# 索引
 	__table_args__ = (

@@ -18,15 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_, desc
 import pandas as pd
 import numpy as np
+from sympy import limit
 
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
 	StockBasicRepository,
-	QuoteRepository,
+	StockDailyRepository,
 	TradeCalendarRepository,
 	FactorDataRepository,
-	IndexRepository,
-	FinancialRepository
+	IndexBasicRepository,
+	FinancialStatementRepository
 )
 from quant_server.shared.cache.redis_cache import RedisCache
 
@@ -35,7 +36,10 @@ from quant_server.core.engines.system.event_engine import EventEngine
 
 # 导入工具类
 from quant_server.utils.core_utils.time_utils.trading_calendar import TradingCalendar
-from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformer
+from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
+
+# 导入事件相关
+from quant_server.modules.data.events.market_events import MarketDataRequestEvent
 
 # 导入数据模块常量
 from quant_server.modules.data.constants import (
@@ -49,6 +53,247 @@ from quant_server.modules.data.constants import (
 logger = logging.getLogger(__name__)
 
 
+def _get_default_start_date (end_date: date, freq: str) -> date:
+	"""
+	获取默认开始日期
+
+	Args:
+		end_date: 结束日期
+		freq: 数据频率
+
+	Returns:
+		date: 默认开始日期
+	"""
+	if freq == Frequency.DAILY:
+		return end_date - timedelta(days=365)  # 默认一年
+	elif freq == Frequency.WEEKLY:
+		return end_date - timedelta(weeks=52)  # 默认一年
+	elif freq == Frequency.MONTHLY:
+		return end_date - timedelta(days=365)  # 默认一年
+	else:
+		return end_date - timedelta(days=30)  # 默认一个月
+
+
+def _generate_params_hash (params: Dict) -> str:
+	"""
+	生成查询参数哈希值
+
+	Args:
+		params: 查询参数字典
+
+	Returns:
+		str: 8位哈希字符串
+	"""
+	import hashlib
+	import json
+
+	# 将参数转换为JSON字符串
+	params_str = json.dumps(params, sort_keys=True)
+
+	# 计算MD5哈希
+	return hashlib.md5(params_str.encode()).hexdigest()[:8]
+
+
+def _format_quotes_to_dict (
+		quotes: List,
+		ts_code: str,
+		adj: str
+) -> List[Dict[str, Any]]:
+	"""
+	将行情对象列表转换为字典列表
+
+	Args:
+		quotes: 行情对象列表
+		ts_code: 股票代码
+		adj: 复权类型
+
+	Returns:
+		List[Dict]: 格式化后的行情数据列表
+	"""
+	result = []
+
+	for quote in quotes:
+		quote_dict = {
+			"trade_date": quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
+				quote.trade_date),
+			"ts_code": ts_code,
+			"open": float(quote.open) if quote.open else None,
+			"high": float(quote.high) if quote.high else None,
+			"low": float(quote.low) if quote.low else None,
+			"close": float(quote.close) if quote.close else None,
+			"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
+			"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
+			"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
+			"vol": float(quote.vol) if quote.vol else None,
+			"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
+		}
+
+		# 添加复权因子（如果需要）
+		if adj in [AdjustType.PRE, AdjustType.POST] and hasattr(quote, 'adj_factor'):
+			quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
+
+		result.append(quote_dict)
+
+	return result
+
+
+def _calculate_rsi (
+		df: pd.DataFrame,
+		parameters: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+	"""
+	计算RSI指标
+
+	Args:
+		df: 包含收盘价的DataFrame
+		parameters: 计算参数，包含RSI周期
+
+	Returns:
+		Dict: RSI计算结果
+	"""
+	if 'close' not in df.columns:
+		return {"error": "缺少收盘价数据", "status": "error"}
+
+	period = parameters.get("period", 14) if parameters else 14
+
+	if len(df) < period:
+		return {
+			"error": "数据长度不足",
+			"status": "error",
+			"required_length": period,
+			"actual_length": len(df)
+		}
+
+	# 计算价格变化
+	delta = df['close'].diff()
+
+	# 分离上涨和下跌
+	gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+	loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+	# 计算RS
+	rs = gain / loss
+
+	# 计算RSI
+	rsi = 100 - (100 / (1 + rs))
+
+	return {
+		"period": period,
+		"values": rsi.tolist(),
+		"status": "success"
+	}
+
+
+def _calculate_boll (
+		df: pd.DataFrame,
+		parameters: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+	"""
+	计算布林带指标
+
+	Args:
+		df: 包含收盘价的DataFrame
+		parameters: 计算参数，包含周期和标准差倍数
+
+	Returns:
+		Dict: 布林带计算结果
+	"""
+	if 'close' not in df.columns:
+		return {"error": "缺少收盘价数据", "status": "error"}
+
+	period = parameters.get("period", 20) if parameters else 20
+	std_multiplier = parameters.get("std_multiplier", 2) if parameters else 2
+
+	if len(df) < period:
+		return {
+			"error": "数据长度不足",
+			"status": "error",
+			"required_length": period,
+			"actual_length": len(df)
+		}
+
+	# 计算中轨（移动平均）
+	middle = df['close'].rolling(window=period).mean()
+
+	# 计算标准差
+	std = df['close'].rolling(window=period).std()
+
+	# 计算上下轨
+	upper = middle + (std * std_multiplier)
+	lower = middle - (std * std_multiplier)
+
+	return {
+		"parameters": {
+			"period": period,
+			"std_multiplier": std_multiplier
+		},
+		"values": {
+			"upper": upper.tolist(),
+			"middle": middle.tolist(),
+			"lower": lower.tolist()
+		},
+		"status": "success"
+	}
+
+
+def _calculate_kdj (
+		df: pd.DataFrame,
+		parameters: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+	"""
+	计算KDJ指标
+
+	Args:
+		df: 包含高、低、收盘价的DataFrame
+		parameters: 计算参数，包含RSV周期、K周期、D周期
+
+	Returns:
+		Dict: KDJ计算结果
+	"""
+	required_cols = ['high', 'low', 'close']
+	if not all(col in df.columns for col in required_cols):
+		return {"error": "缺少价格数据", "status": "error"}
+
+	# 默认参数
+	n = parameters.get("n", 9) if parameters else 9
+	m1 = parameters.get("m1", 3) if parameters else 3
+	m2 = parameters.get("m2", 3) if parameters else 3
+
+	if len(df) < n:
+		return {
+			"error": "数据长度不足",
+			"status": "error",
+			"required_length": n,
+			"actual_length": len(df)
+		}
+
+	# 计算RSV
+	low_min = df['low'].rolling(window=n).min()
+	high_max = df['high'].rolling(window=n).max()
+
+	rsv = 100 * (df['close'] - low_min) / (high_max - low_min)
+	rsv = rsv.fillna(50)  # 处理除零情况
+
+	# 计算K、D、J值
+	k = rsv.ewm(alpha=1 / m1, adjust=False).mean()
+	d = k.ewm(alpha=1 / m2, adjust=False).mean()
+	j = 3 * k - 2 * d
+
+	return {
+		"parameters": {
+			"n": n,
+			"m1": m1,
+			"m2": m2
+		},
+		"values": {
+			"K": k.tolist(),
+			"D": d.tolist(),
+			"J": j.tolist()
+		},
+		"status": "success"
+	}
+
+
 class MarketDataService:
 	"""
 	市场数据仓库服务类
@@ -58,7 +303,6 @@ class MarketDataService:
 		session: 异步数据库会话
 		event_engine: 事件引擎
 		stock_repo: 股票数据仓库
-		quote_repo: 行情数据仓库
 		factor_repo: 因子数据仓库
 		calendar_repo: 交易日历仓库
 	"""
@@ -76,15 +320,15 @@ class MarketDataService:
 
 		# 初始化Repository
 		self.stock_repo = StockBasicRepository(session)
-		self.quote_repo = QuoteRepository(session)
+		self.quote_repo = StockDailyRepository(session)
 		self.calendar_repo = TradeCalendarRepository(session)
-		self.factor_repo = StockBasicRepository(session)
-		self.index_repo = IndexRepository(session)
-		self.financial_repo = FinancialRepository(session)
+		self.factor_repo = FactorDataRepository(session)
+		self.index_repo = IndexBasicRepository(session)
+		self.financial_repo = FinancialStatementRepository(session)
 
 		# 初始化工具
 		self.trading_calendar = TradingCalendar()
-		self.data_transformer = DataTransformer()
+		self.data_transformer = DataTransformerPipeline()
 
 		# 初始化缓存（懒加载）
 		self._cache = None
@@ -96,10 +340,10 @@ class MarketDataService:
 			from quant_server.shared.config.settings import get_settings
 			settings = get_settings()
 			self._cache = RedisCache(
-				host=settings.redis_host,
-				port=settings.redis_port,
-				db=settings.redis_db,
-				password=settings.redis_password
+				host=settings.REDIS.HOST,
+				port=settings.REDIS.PORT,
+				db=settings.REDIS.DB,
+				password=settings.REDIS.PASSWORD
 			)
 		return self._cache
 
@@ -168,19 +412,22 @@ class MarketDataService:
 			if not end_date:
 				end_date = datetime.now().date()
 			if not start_date:
-				start_date = self._get_default_start_date(end_date, freq)
+				start_date = _get_default_start_date(end_date, freq)
 
 			# 验证日期范围
 			if start_date > end_date:
 				start_date, end_date = end_date, start_date
 
 			# 获取基础行情数据
-			quotes = await self.quote_repo.get_by_ts_code_date_range(
+			quotes = await self.quote_repo.get_by_code_and_date_range(
 				ts_code=ts_code,
 				start_date=start_date,
-				end_date=end_date,
-				order_by=desc(self.quote_repo.model.trade_date)
+				end_date=end_date
 			)
+			# 按交易日期倒序排列
+			quotes.sort(key=lambda x: x.trade_date, reverse=True)
+			if limit > 0:
+				quotes = quotes[:limit]
 
 			if not quotes:
 				logger.warning(f"未找到行情数据: {ts_code}")
@@ -195,7 +442,7 @@ class MarketDataService:
 				quotes = await self._convert_frequency(quotes, freq)
 
 			# 处理复权
-			if adj in [AdjustType.QFQ, AdjustType.HFQ]:
+			if adj in [AdjustType.PRE, AdjustType.POST]:
 				quotes = await self._adjust_prices(quotes, adj)
 
 			# 选择返回字段
@@ -203,7 +450,7 @@ class MarketDataService:
 				quotes = self._select_fields(quotes, fields)
 
 			# 转换为响应格式
-			result = self._format_quotes_to_dict(quotes, ts_code, adj)
+			result = _format_quotes_to_dict(quotes, ts_code, adj)
 
 			# 缓存结果
 			if use_cache and cache_key and result:
@@ -325,7 +572,7 @@ class MarketDataService:
 					return cached_quote
 
 			# 从数据库获取最新行情
-			latest_quote = await self.quote_repo.get_latest_by_ts_code(ts_code)
+			latest_quote = await self.quote_repo.get_latest_by_code(ts_code)
 
 			if not latest_quote:
 				logger.warning(f"未找到最新行情: {ts_code}")
@@ -555,7 +802,7 @@ class MarketDataService:
 			# 生成缓存键
 			cache_key = None
 			if use_cache:
-				params_hash = self._generate_params_hash({
+				params_hash = _generate_params_hash({
 					"search": search,
 					"market": market,
 					"industry": industry,
@@ -1007,11 +1254,11 @@ class MarketDataService:
 					elif indicator == "MACD":
 						results["MACD"] = self._calculate_macd(df, parameters)
 					elif indicator == "RSI":
-						results["RSI"] = self._calculate_rsi(df, parameters)
+						results["RSI"] = _calculate_rsi(df, parameters)
 					elif indicator == "BOLL":
-						results["BOLL"] = self._calculate_boll(df, parameters)
+						results["BOLL"] = _calculate_boll(df, parameters)
 					elif indicator == "KDJ":
-						results["KDJ"] = self._calculate_kdj(df, parameters)
+						results["KDJ"] = _calculate_kdj(df, parameters)
 				except Exception as e:
 					logger.error(f"计算指标 {indicator} 失败: {str(e)}")
 					results[indicator] = {"error": str(e), "status": "error"}
@@ -1170,7 +1417,7 @@ class MarketDataService:
 			if i > 0 and i % 100 == 0:
 				base_factor *= 0.9  # 模拟除权除息
 
-			if adj_type == AdjustType.QFQ:
+			if adj_type == AdjustType.PRE:
 				# 前复权：将历史价格调整到当前
 				if hasattr(quote, 'open') and quote.open:
 					quote.open = quote.open * base_factor
@@ -1183,7 +1430,7 @@ class MarketDataService:
 				if hasattr(quote, 'pre_close') and quote.pre_close:
 					quote.pre_close = quote.pre_close * base_factor
 
-			elif adj_type == AdjustType.HFQ:
+			elif adj_type == AdjustType.POST:
 				# 后复权：将当前价格调整到历史
 				if hasattr(quote, 'open') and quote.open:
 					quote.open = quote.open / base_factor
@@ -1238,88 +1485,6 @@ class MarketDataService:
 			filtered_quotes.append(filtered_quote)
 
 		return filtered_quotes
-
-	def _format_quotes_to_dict (
-			self,
-			quotes: List,
-			ts_code: str,
-			adj: str
-	) -> List[Dict[str, Any]]:
-		"""
-		将行情对象列表转换为字典列表
-
-		Args:
-			quotes: 行情对象列表
-			ts_code: 股票代码
-			adj: 复权类型
-
-		Returns:
-			List[Dict]: 格式化后的行情数据列表
-		"""
-		result = []
-
-		for quote in quotes:
-			quote_dict = {
-				"trade_date": quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
-					quote.trade_date),
-				"ts_code": ts_code,
-				"open": float(quote.open) if quote.open else None,
-				"high": float(quote.high) if quote.high else None,
-				"low": float(quote.low) if quote.low else None,
-				"close": float(quote.close) if quote.close else None,
-				"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
-				"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
-				"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
-				"vol": float(quote.vol) if quote.vol else None,
-				"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
-			}
-
-			# 添加复权因子（如果需要）
-			if adj in [AdjustType.QFQ, AdjustType.HFQ] and hasattr(quote, 'adj_factor'):
-				quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
-
-			result.append(quote_dict)
-
-		return result
-
-	def _generate_params_hash (self, params: Dict) -> str:
-		"""
-		生成查询参数哈希值
-
-		Args:
-			params: 查询参数字典
-
-		Returns:
-			str: 8位哈希字符串
-		"""
-		import hashlib
-		import json
-
-		# 将参数转换为JSON字符串
-		params_str = json.dumps(params, sort_keys=True)
-
-		# 计算MD5哈希
-		return hashlib.md5(params_str.encode()).hexdigest()[:8]
-
-	def _get_default_start_date (self, end_date: date, freq: str) -> date:
-		"""
-		获取默认开始日期
-
-		Args:
-			end_date: 结束日期
-			freq: 数据频率
-
-		Returns:
-			date: 默认开始日期
-		"""
-		if freq == Frequency.DAILY:
-			return end_date - timedelta(days=365)  # 默认一年
-		elif freq == Frequency.WEEKLY:
-			return end_date - timedelta(weeks=52)  # 默认一年
-		elif freq == Frequency.MONTHLY:
-			return end_date - timedelta(days=365)  # 默认一年
-		else:
-			return end_date - timedelta(days=30)  # 默认一个月
 
 	async def _get_total_stocks (self, market: Optional[str] = None) -> int:
 		"""
@@ -1930,163 +2095,6 @@ class MarketDataService:
 			"status": "success"
 		}
 
-	def _calculate_rsi (
-			self,
-			df: pd.DataFrame,
-			parameters: Optional[Dict[str, Any]] = None
-	) -> Dict[str, Any]:
-		"""
-		计算RSI指标
-
-		Args:
-			df: 包含收盘价的DataFrame
-			parameters: 计算参数，包含RSI周期
-
-		Returns:
-			Dict: RSI计算结果
-		"""
-		if 'close' not in df.columns:
-			return {"error": "缺少收盘价数据", "status": "error"}
-
-		period = parameters.get("period", 14) if parameters else 14
-
-		if len(df) < period:
-			return {
-				"error": "数据长度不足",
-				"status": "error",
-				"required_length": period,
-				"actual_length": len(df)
-			}
-
-		# 计算价格变化
-		delta = df['close'].diff()
-
-		# 分离上涨和下跌
-		gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-		loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-
-		# 计算RS
-		rs = gain / loss
-
-		# 计算RSI
-		rsi = 100 - (100 / (1 + rs))
-
-		return {
-			"period": period,
-			"values": rsi.tolist(),
-			"status": "success"
-		}
-
-	def _calculate_boll (
-			self,
-			df: pd.DataFrame,
-			parameters: Optional[Dict[str, Any]] = None
-	) -> Dict[str, Any]:
-		"""
-		计算布林带指标
-
-		Args:
-			df: 包含收盘价的DataFrame
-			parameters: 计算参数，包含周期和标准差倍数
-
-		Returns:
-			Dict: 布林带计算结果
-		"""
-		if 'close' not in df.columns:
-			return {"error": "缺少收盘价数据", "status": "error"}
-
-		period = parameters.get("period", 20) if parameters else 20
-		std_multiplier = parameters.get("std_multiplier", 2) if parameters else 2
-
-		if len(df) < period:
-			return {
-				"error": "数据长度不足",
-				"status": "error",
-				"required_length": period,
-				"actual_length": len(df)
-			}
-
-		# 计算中轨（移动平均）
-		middle = df['close'].rolling(window=period).mean()
-
-		# 计算标准差
-		std = df['close'].rolling(window=period).std()
-
-		# 计算上下轨
-		upper = middle + (std * std_multiplier)
-		lower = middle - (std * std_multiplier)
-
-		return {
-			"parameters": {
-				"period": period,
-				"std_multiplier": std_multiplier
-			},
-			"values": {
-				"upper": upper.tolist(),
-				"middle": middle.tolist(),
-				"lower": lower.tolist()
-			},
-			"status": "success"
-		}
-
-	def _calculate_kdj (
-			self,
-			df: pd.DataFrame,
-			parameters: Optional[Dict[str, Any]] = None
-	) -> Dict[str, Any]:
-		"""
-		计算KDJ指标
-
-		Args:
-			df: 包含高、低、收盘价的DataFrame
-			parameters: 计算参数，包含RSV周期、K周期、D周期
-
-		Returns:
-			Dict: KDJ计算结果
-		"""
-		required_cols = ['high', 'low', 'close']
-		if not all(col in df.columns for col in required_cols):
-			return {"error": "缺少价格数据", "status": "error"}
-
-		# 默认参数
-		n = parameters.get("n", 9) if parameters else 9
-		m1 = parameters.get("m1", 3) if parameters else 3
-		m2 = parameters.get("m2", 3) if parameters else 3
-
-		if len(df) < n:
-			return {
-				"error": "数据长度不足",
-				"status": "error",
-				"required_length": n,
-				"actual_length": len(df)
-			}
-
-		# 计算RSV
-		low_min = df['low'].rolling(window=n).min()
-		high_max = df['high'].rolling(window=n).max()
-
-		rsv = 100 * (df['close'] - low_min) / (high_max - low_min)
-		rsv = rsv.fillna(50)  # 处理除零情况
-
-		# 计算K、D、J值
-		k = rsv.ewm(alpha=1 / m1, adjust=False).mean()
-		d = k.ewm(alpha=1 / m2, adjust=False).mean()
-		j = 3 * k - 2 * d
-
-		return {
-			"parameters": {
-				"n": n,
-				"m1": m1,
-				"m2": m2
-			},
-			"values": {
-				"K": k.tolist(),
-				"D": d.tolist(),
-				"J": j.tolist()
-			},
-			"status": "success"
-		}
-
 	# ==================== 事件发布方法 ====================
 
 	async def _publish_data_access_event (
@@ -2139,7 +2147,27 @@ class MarketDataService:
 			if factor_count is not None:
 				event_data["factor_count"] = factor_count
 
-			event = MarketDataRequestEvent(**event_data)
+			# 这里需要创建一个简单的数据请求对象，因为MarketDataRequestEvent需要MarketDataRequest参数
+			# 临时创建一个简单的事件对象
+			from quant_server.modules.data.events.types import DataEventType
+			from quant_server.core.events.types import EventPriority, EventCategory
+
+			event_data.update({
+				"event_type": DataEventType.MARKET_DATA_REQUEST.value,
+				"source": event_data.get("ts_code", "market_service"),
+				"module": "data",
+				"priority": EventPriority.NORMAL,
+				"category": EventCategory.BUSINESS
+			})
+
+			# 创建一个简单的事件对象
+			class SimpleDataEvent:
+				def __init__(self, event_data):
+					self.event_type = event_data["event_type"]
+					self.timestamp = event_data.get("timestamp", datetime.now())
+					self.data = event_data
+
+			event = SimpleDataEvent(event_data)
 			await self.event_engine.put(event)
 
 		except Exception as e:
@@ -2176,7 +2204,25 @@ class MarketDataService:
 			if ts_code:
 				event_data["ts_code"] = ts_code
 
-			event = MarketDataRequestEvent(**event_data)
+			# 使用简单的事件对象
+			from quant_server.modules.data.events.types import DataEventType
+			from quant_server.core.events.types import EventPriority, EventCategory
+
+			event_data.update({
+				"event_type": DataEventType.MARKET_DATA_REQUEST.value,
+				"source": event_data.get("ts_code", "market_service"),
+				"module": "data",
+				"priority": EventPriority.NORMAL,
+				"category": EventCategory.BUSINESS
+			})
+
+			class SimpleDataEvent:
+				def __init__(self, event_data):
+					self.event_type = event_data["event_type"]
+					self.timestamp = event_data.get("timestamp", datetime.now())
+					self.data = event_data
+
+			event = SimpleDataEvent(event_data)
 			await self.event_engine.put(event)
 
 		except Exception as e:

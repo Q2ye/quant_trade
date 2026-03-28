@@ -193,6 +193,15 @@ class JWTManager:
 			InvalidTokenError: 令牌无效
 		"""
 		try:
+			# 首先验证JWT令牌的基本格式
+			if not token or token.count('.') != 2:
+				raise InvalidTokenError("无效的JWT格式: 令牌必须包含两个点分隔符")
+
+			# 进一步验证各个部分非空
+			parts = token.split('.')
+			if not all(parts):
+				raise InvalidTokenError("无效的JWT格式: 令牌的头部、载荷和签名部分都不能为空")
+
 			# 解码令牌
 			payload = jwt.decode(
 				token,
@@ -268,12 +277,19 @@ class JWTManager:
 			解码后的令牌数据
 		"""
 		try:
+			# 首先验证JWT令牌的基本格式
+			if not token or token.count('.') != 2:
+				raise InvalidTokenError("无效的JWT格式: 令牌必须包含两个点分隔符")
+
 			return jwt.decode(
 				token,
 				self.config.secret_key,
 				algorithms=[self.config.algorithm],
 				options={"verify_signature": False}
 			)
+		except InvalidTokenError:
+			# 重新抛出我们自己的格式验证错误
+			raise
 		except Exception as e:
 			raise InvalidTokenError(f"令牌解码失败: {str(e)}") from e
 

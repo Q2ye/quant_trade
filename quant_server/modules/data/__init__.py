@@ -67,56 +67,117 @@ from quant_server.modules.data.schemas import (
 
 # 导出Handlers
 from quant_server.modules.data.handlers import (
-	get_stock_list,
-	get_stock_detail,
-	get_historical_quotes,
-	sync_market_data,
-	batch_sync_data,
-	quick_sync_data,
-	get_sync_status,
-	cancel_sync,
-	get_data_quality,
-	get_factor_data,
-	research_factor,
-	initialize_data_module,
-	check_data_module_health
+    get_stock_list,
+    get_stock_detail,
+    get_historical_quotes,
+    batch_sync_data,
+    quick_sync_data,
+    get_sync_status,
+    cancel_sync,
+    get_data_quality,
+    get_factor_data,
+    research_factor,
+    initialize_data_module,
+    check_data_module_health
 )
 
 # 导出Services
 from quant_server.modules.data.services import (
-	DataSyncService,
-	DataQualityService,
-	FactorResearchService,
-	MarketDataService,
-	DataCleanService
+    DataSyncService,
+    DataQualityService,
+    FactorResearchService,
+    MarketDataService,
+    DataCleanService
 )
+
+# 模块初始化函数 - 符合主启动文件期望的接口
+async def initialize(
+    main_engine=None,
+    event_engine=None,
+    config=None
+) -> bool:
+    """
+    数据模块初始化函数
+
+    Args:
+        main_engine: 主引擎实例
+        event_engine: 事件引擎实例
+        config: 模块配置
+
+    Returns:
+        bool: 初始化是否成功
+    """
+    import asyncio
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    try:
+        # 获取数据库会话 - 使用正确的上下文管理器方式
+        if main_engine and hasattr(main_engine, 'get_async_session'):
+            # 如果主引擎提供会话，使用主引擎的会话
+            session = main_engine.get_async_session()
+
+            # 调用原有的初始化函数
+            init_result = await initialize_data_module(
+                session=session,
+                settings=None  # 将在内部获取settings
+            )
+
+            success = init_result.get('status') != 'failed'
+        else:
+            # 使用共享层的会话管理器，通过上下文管理器正确获取
+            from quant_server.shared.database.session import get_session_manager
+
+            session_manager = get_session_manager()
+            async with session_manager.get_session() as session:
+                # 调用原有的初始化函数
+                init_result = await initialize_data_module(
+                    session=session,
+                    settings=None  # 将在内部获取settings
+                )
+
+                success = init_result.get('status') != 'failed'
+
+        # 记录初始化结果
+        if success:
+            print(f"✅ 数据模块初始化成功: {init_result.get('message', '完成')}")
+        else:
+            print(f"⚠️  数据模块初始化警告: {init_result.get('message', '存在警告')}")
+
+        return success
+
+    except Exception as e:
+        print(f"❌ 数据模块初始化失败: {str(e)}")
+        return False
 
 # 模块元数据
 __version__ = "1.0.0"
 __author__ = "量化交易系统团队"
 __description__ = "量化交易系统数据管理模块"
 __all__ = [
-	# 常量
-	"ModuleConfig", "SyncStatus", "SyncErrorCode", "DataSource", "DataType",
-	"MarketCode", "StockStatus", "QualityMetricCode", "QualityLevelThreshold",
-	"FactorCategoryCode", "StandardFactors", "ErrorCode", "DateTimeFormat",
-	"TradingTime", "TableName", "APIPath", "CacheKey", "EventType", "Permission",
+    # 常量
+    "ModuleConfig", "SyncStatus", "SyncErrorCode", "DataSource", "DataType",
+    "MarketCode", "StockStatus", "QualityMetricCode", "QualityLevelThreshold",
+    "FactorCategoryCode", "StandardFactors", "ErrorCode", "DateTimeFormat",
+    "TradingTime", "TableName", "APIPath", "CacheKey", "EventType", "Permission",
 
-	# 模型
-	"BaseSyncRequest", "BatchSyncRequest", "DataTypeInfo",
+    # 模型
+    "BaseSyncRequest", "BatchSyncRequest", "DataTypeInfo",
 
-	# Schema
-	"StockListRequest", "StockListResponse", "StockDetailRequest", "StockDetailResponse",
-	"HistoricalQuotesRequest", "HistoricalQuotesResponse", "BatchSyncRequest", "BatchSyncResponse",
-	"SyncStatusResponse", "DataQualityRequest", "DataQualityResponse", "FactorRequest",
-	"FactorResponse", "ResearchRequest", "ResearchResponse",
+    # Schema
+    "StockListRequest", "StockListResponse", "StockDetailRequest", "StockDetailResponse",
+    "HistoricalQuotesRequest", "HistoricalQuotesResponse", "BatchSyncRequest", "BatchSyncResponse",
+    "SyncStatusResponse", "DataQualityRequest", "DataQualityResponse", "FactorRequest",
+    "FactorResponse", "ResearchRequest", "ResearchResponse",
 
-	# Handlers
-	"get_stock_list", "get_stock_detail", "get_historical_quotes", "sync_market_data",
-	"batch_sync_data", "quick_sync_data", "get_sync_status", "cancel_sync",
-	"get_data_quality", "get_factor_data", "research_factor", "initialize_data_module",
-	"check_data_module_health",
+    # Handlers
+    "get_stock_list", "get_stock_detail", "get_historical_quotes",
+    "batch_sync_data", "quick_sync_data", "get_sync_status", "cancel_sync",
+    "get_data_quality", "get_factor_data", "research_factor", "initialize_data_module",
+    "check_data_module_health",
 
-	# Services
-	"DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService", "DataCleanService"
+    # Services
+    "DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService", "DataCleanService",
+
+    # 模块初始化函数
+    "initialize"
 ]

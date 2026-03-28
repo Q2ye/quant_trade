@@ -24,8 +24,15 @@ R = TypeVar('R')
 class RepositoryResult(Generic[T]):
     """Repository操作结果基类"""
 
-    def __init__(self, success: bool, data: Optional[T] = None,
-                 error: Optional[str] = None, total: Optional[int] = None):
+    def __init__(
+            self,
+            success: bool,
+            data: Optional[T] = None,
+            error: Optional[str] = None,
+            total: Optional[int] = None,
+            id: Optional[int] = None,
+            created_at: Optional[datetime] = None
+    ):
         """
         初始化操作结果
 
@@ -34,11 +41,15 @@ class RepositoryResult(Generic[T]):
             data: 返回数据
             error: 错误信息
             total: 数据总数（用于分页）
+            id: 记录ID（用于创建操作）
+            created_at: 创建时间（用于创建操作）
         """
         self.success = success
         self.data = data
         self.error = error
         self.total = total
+        self.id = id
+        self.created_at = created_at
 
     @classmethod
     def success_result(cls, data: T, total: Optional[int] = None) -> 'RepositoryResult[T]':

@@ -63,6 +63,7 @@ from .factor_calculation_events import (
     FactorCalculationCompletedEvent,
 )
 
+
 # 导入清洗事件类（新增）
 from .clean_events import (
     DataCleanStatus,
@@ -144,6 +145,7 @@ __all__ = [
     "DataCleanAppliedEvent",
     "DataCleanValidatedEvent",
     "DataCleanEvent",  # 简化版
+
 ]
 
 # 如果导入了处理器，也导出它们
@@ -192,6 +194,12 @@ EVENT_CATEGORIES = {
         "DataCleanAppliedEvent",
         "DataCleanValidatedEvent",
         "DataCleanEvent",
+    ],
+    "request": [  # 新增请求事件分类
+        "DataSyncRequestEvent",
+        "DataCleanRequestEvent",
+        "DataQualityCheckRequestEvent",
+        "DataResearchRequestEvent",
     ],
 }
 

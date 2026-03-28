@@ -15,6 +15,7 @@ from .base_source import BaseDataSource
 from .tushare_source import TushareSource
 from .baostock_source import BaostockSource
 from .xtp_source import XtpSource
+from .mock_source import MockSource
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class DataSourceFactory:
         'tushare': TushareSource,
         'baostock': BaostockSource,
         'xtp': XtpSource,
+        'mock': MockSource,
         # 可扩展其他数据源，如 'sina': SinaSource, 'eastmoney': EastMoneySource 等
     }
 
@@ -82,6 +84,14 @@ class DataSourceFactory:
             source_type = source_type.value
 
         source_key = source_type.lower()
+
+        # 检查是否启用模拟数据模式
+        data_mode = os.getenv("DATA_MODE", "simulated").lower()
+
+        # 如果请求的是 tushare 但配置为模拟模式，则使用 mock
+        if source_key == 'tushare' and data_mode == 'simulated':
+            source_key = 'mock'
+            logger.info("DATA_MODE=simulated, 使用 MockSource 替代 TushareSource")
 
         # 返回缓存的实例
         if source_key in self._instances:

@@ -10,9 +10,11 @@
 4. 验证逻辑：包含数据验证、默认值、字段描述等
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+from quant_server.utils.api_utils.pagination_config import PaginationParams
+
 from enum import Enum
 
 
@@ -75,22 +77,21 @@ class SortOrder(str, Enum):
 # ==================== 分页和排序基类 ====================
 
 class PaginationParams(BaseModel):
-	"""分页参数基类"""
-	page: int = Field(default=1, ge=1, description="页码，从1开始")
-	page_size: int = Field(default=20, ge=1, le=1000, description="每页记录数，最大1000")
+    """分页参数基类 - 配置化管理"""
+    page: Optional[int] = Field(default=None, ge=1, description="页码，从1开始，默认从配置获取")
+    page_size: Optional[int] = Field(default=None, ge=1, description="每页记录数，默认从配置获取")
 
-	@classmethod
-	def validate_page_size(cls, v):
-		"""验证每页记录数"""
-		if v > 1000:
-			raise ValueError("每页记录数不能超过1000")
-		return v
+# 导入配置化的分页和排序参数基类
+from quant_server.utils.api_utils.pagination_config import PaginationParams as ConfiguredPaginationParams
+from quant_server.utils.api_utils.pagination_config import SortParams as ConfiguredSortParams
 
+class PaginationParams(ConfiguredPaginationParams):
+	"""分页参数基类 - 配置化版本"""
+	pass
 
-class SortParams(BaseModel):
-	"""排序参数基类"""
-	sort_by: Optional[str] = Field(default=None, description="排序字段")
-	sort_order: SortOrder = Field(default=SortOrder.ASC, description="排序顺序")
+class SortParams(ConfiguredSortParams):
+	"""排序参数基类 - 配置化版本"""
+	pass
 
 
 # ==================== 基础数据查询模型 ====================
@@ -102,14 +103,61 @@ class StockListRequest(PaginationParams, SortParams):
 	market: Optional[str] = Field(default=None, description="市场类型: SSE/SZSE/BJSE")
 	industry: Optional[str] = Field(default=None, description="行业分类")
 	list_status: Optional[str] = Field(default="L", description="上市状态: L上市 D退市 P暂停")
-	min_market_cap: Optional[float] = Field(default=None, ge=0, description="最小市值（亿元）")
-	max_market_cap: Optional[float] = Field(default=None, ge=0, description="最大市值（亿元）")
+	min_market_cap: Union[str, float, None] = Field(default=None, description="最小市值（亿元）")
+	max_market_cap: Union[str, float, None] = Field(default=None, description="最大市值（亿元）")
 
 	model_config = ConfigDict(
 		json_schema_extra={
 			"example": {
-				"page": 1,
-				"page_size": 20,
+				"search": "平安",
+				"market": "SSE",
+				"industry": "银行",
+				"sort_by": "market_cap",
+				"sort_order": "desc"
+			}
+		}
+	)
+
+	@field_validator('search', 'market', 'industry', 'list_status', mode='before')
+	@classmethod
+	def validate_empty_string_to_none(cls, v):
+		"""将空字符串转换为None"""
+		if v == '':
+			return None
+		return v
+
+	@field_validator('min_market_cap', 'max_market_cap', mode='before')
+	@classmethod
+	def validate_market_cap_to_float_or_none(cls, v):
+		"""将空字符串转换为None，或转换为浮点数"""
+		if v is None or v == '':
+			return None
+		try:
+			return float(v)
+		except (ValueError, TypeError):
+			return None
+
+	@model_validator(mode='before')
+	@classmethod
+	def convert_empty_strings_to_none(cls, data):
+		"""在类型验证之前将所有空字符串查询参数转换为None"""
+		if isinstance(data, dict):
+			for key, value in data.items():
+				if value == '':
+					data[key] = None
+		return data
+
+	@field_validator('min_market_cap', 'max_market_cap', mode='after')
+	@classmethod
+	def validate_market_cap_positive(cls, v):
+		"""验证市值必须为正数"""
+		if v is not None and v < 0:
+			raise ValueError("市值必须大于等于0")
+		return v
+
+	model_config = ConfigDict(
+		json_schema_extra={
+			"example": {
 				"search": "平安",
 				"market": "SSE",
 				"industry": "银行",
@@ -692,9 +740,7 @@ class FactorRequest(PaginationParams):
 				"ts_code": "000001.SZ",
 				"start_date": "2020-01-01",
 				"end_date": "2023-12-31",
-				"frequency": "M",
-				"page": 1,
-				"page_size": 50
+				"frequency": "M"
 			}
 		}
 	)
@@ -1052,8 +1098,6 @@ class FactorMetadataRequest(PaginationParams, SortParams):
 	model_config = ConfigDict(
 		json_schema_extra={
 			"example": {
-				"page": 1,
-				"page_size": 20,
 				"factor_category": "value",
 				"search": "市盈率",
 				"sort_by": "factor_name",
@@ -1243,9 +1287,7 @@ class BatchFactorRequest(PaginationParams):
 				"factor_names": ["PE", "PB", "ROE"],
 				"trade_date": "2023-12-29",
 				"include_history": True,
-				"history_days": 30,
-				"page": 1,
-				"page_size": 10
+				"history_days": 30
 			}
 		}
 	)

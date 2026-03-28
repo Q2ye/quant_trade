@@ -11,7 +11,7 @@ from .base import (
 	MessageConsumer, Message, MessageSerializer
 )
 from .serializer import JSONSerializer, deserialize_message
-import aioredis
+from redis.asyncio import Redis
 import aio_pika
 from aiokafka import AIOKafkaConsumer
 import logging
@@ -39,10 +39,11 @@ class RedisConsumer(MessageConsumer):
 	async def connect (self) -> None:
 		"""连接到Redis"""
 		if not self.connected:
-			self.redis_pool = await aioredis.create_redis_pool(
+			self.redis_pool = Redis.from_url(
 				self.redis_url,
-				maxsize=self.max_connections
+				max_connections=self.max_connections
 			)
+			await self.redis_pool.ping()  # 测试连接
 			self.connected = True
 			logger.info(f"Redis consumer connected to {self.redis_url}")
 
@@ -50,8 +51,7 @@ class RedisConsumer(MessageConsumer):
 		"""断开Redis连接"""
 		if self.connected and self.redis_pool:
 			self.running = False
-			self.redis_pool.close()
-			await self.redis_pool.wait_closed()
+			await self.redis_pool.close()
 			self.connected = False
 			logger.info("Redis consumer disconnected")
 
@@ -81,23 +81,29 @@ class RedisConsumer(MessageConsumer):
 						async for message in pubsub.listen():
 							if message['type'] == 'message':
 								msg = await deserialize_message(
-									message['data'],
+									message['data'].decode() if isinstance(message['data'], bytes) else message['data'],
 									self.serializer
 								)
 								await callback(msg)
 					else:
 						# 阻塞弹出消息
 						if kwargs.get('blocking', True):
-							result = await self.redis_pool.brpop(queue_name, timeout=1)
-							if result:
-								_, data = result
-								msg = await deserialize_message(data, self.serializer)
+							data = await self.redis_pool.brpop(queue_name, timeout=1)
+							if data:
+								_, message_data = data
+								msg = await deserialize_message(
+									message_data.decode() if isinstance(message_data, bytes) else message_data,
+									self.serializer
+								)
 								await callback(msg)
 						else:
 							# 非阻塞弹出
 							data = await self.redis_pool.rpop(queue_name)
 							if data:
-								msg = await deserialize_message(data, self.serializer)
+								msg = await deserialize_message(
+									data.decode() if isinstance(data, bytes) else data,
+									self.serializer
+								)
 								await callback(msg)
 							else:
 								await asyncio.sleep(0.1)
@@ -139,15 +145,21 @@ class RedisConsumer(MessageConsumer):
 		try:
 			if timeout:
 				# 阻塞弹出
-				result = await self.redis_pool.brpop(queue_name, timeout=timeout)
-				if result:
-					_, data = result
-					return await deserialize_message(data, self.serializer)
+							data = await self.redis_pool.brpop(queue_name, timeout=timeout)
+							if data:
+								_, message_data = data
+								return await deserialize_message(
+									message_data.decode() if isinstance(message_data, bytes) else message_data,
+									self.serializer
+								)
 			else:
 				# 非阻塞弹出
-				data = await self.redis_pool.rpop(queue_name)
-				if data:
-					return await deserialize_message(data, self.serializer)
+							data = await self.redis_pool.rpop(queue_name)
+							if data:
+								return await deserialize_message(
+									data.decode() if isinstance(data, bytes) else data,
+									self.serializer
+								)
 		except Exception as e:
 			logger.error(f"Error consuming from Redis: {e}")
 

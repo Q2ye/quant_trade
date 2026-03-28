@@ -23,17 +23,20 @@ from scipy import stats
 
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
-	StockRepository,
-	QuoteRepository,
-	FactorRepository,
+	StockBasicRepository,
+	StockDailyRepository,
+	FactorDataRepository,
+	FactorDefinitionRepository,
 	FactorResearchRepository,
-	FinancialRepository
+	FinancialStatementRepository
 )
 from quant_server.shared.cache.redis_cache import RedisCache
 
 # 导入核心基础设施
 from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.data_events import DataResearchStartedEvent
+
+# 导入事件类
+from quant_server.modules.data.events.research_events import DataResearchStartedEvent
 
 # 导入工具类
 from quant_server.utils.core_utils.math_utils import StatisticalCalculator
@@ -78,11 +81,12 @@ class FactorResearchService:
 		self.event_engine = event_engine
 
 		# 初始化Repository
-		self.stock_repo = StockRepository(session)
-		self.quote_repo = QuoteRepository(session)
-		self.factor_repo = FactorRepository(session)
+		self.stock_repo = StockBasicRepository(session)
+		self.quote_repo = StockDailyRepository(session)
+		self.factor_repo = FactorDataRepository(session)
+		self.factor_def_repo = FactorDefinitionRepository(session)
 		self.research_repo = FactorResearchRepository(session)
-		self.financial_repo = FinancialRepository(session)
+		self.financial_repo = FinancialStatementRepository(session)
 
 		# 初始化计算工具
 		self.stat_calculator = StatisticalCalculator()
@@ -100,10 +104,10 @@ class FactorResearchService:
 			from quant_server.shared.config.settings import get_settings
 			settings = get_settings()
 			self._cache = RedisCache(
-				host=settings.redis_host,
-				port=settings.redis_port,
-				db=settings.redis_db,
-				password=settings.redis_password
+				host=settings.REDIS.HOST,
+				port=settings.REDIS.PORT,
+				db=settings.REDIS.DB,
+				password=settings.REDIS.PASSWORD,
 			)
 		return self._cache
 
@@ -264,8 +268,19 @@ class FactorResearchService:
 
 			# 获取股票列表
 			if not ts_codes:
-				# 获取所有活跃股票
-				stocks = await self.stock_repo.get_active_stocks()
+				# 获取所有活跃股票（按市场查询）
+				stocks = await self.stock_repo.get_by_market("主板", active_only=True)
+				# 也获取创业板和科创板
+				try:
+					stocks_china = await self.stock_repo.get_by_market("创业板", active_only=True)
+					stocks.extend(stocks_china)
+				except:
+					pass
+				try:
+					stocks_star = await self.stock_repo.get_by_market("科创板", active_only=True)
+					stocks.extend(stocks_star)
+				except:
+					pass
 				ts_codes = [stock.ts_code for stock in stocks]
 
 			if not ts_codes:
@@ -714,10 +729,18 @@ class FactorResearchService:
 		"""
 		try:
 			# 从数据库获取因子定义
-			factors = await self.factor_repo.get_factor_definitions(
-				factor_name=factor_name,
-				category=category
-			)
+			if factor_name:
+				factor = await self.factor_def_repo.get_by_name(factor_name)
+				factors = [factor] if factor else []
+			elif category:
+				factors = await self.factor_def_repo.get_by_category(category)
+			else:
+				# 获取所有激活的因子
+				from sqlalchemy import select
+				from quant_server.shared.database.models.data_models import FactorDefinition
+				stmt = select(FactorDefinition).where(FactorDefinition.is_active == True)
+				result = await self.session.execute(stmt)
+				factors = result.scalars().all()
 
 			metadata_list = []
 			for factor in factors:
@@ -767,9 +790,7 @@ class FactorResearchService:
 				}
 
 			# 检查是否已存在
-			existing = await self.factor_repo.get_factor_definitions(
-				factor_name=factor_definition["factor_name"]
-			)
+			existing = await self.factor_def_repo.get_by_name(factor_definition["factor_name"])
 
 			if existing:
 				return {
@@ -793,7 +814,7 @@ class FactorResearchService:
 				"updated_at": datetime.now()
 			}
 
-			await self.factor_repo.create_factor_definition(factor_data)
+			await self.factor_def_repo.create(factor_data)
 
 			# 清理缓存
 			await self._clean_factor_metadata_cache()
@@ -848,7 +869,7 @@ class FactorResearchService:
 				calculator = self._calculate_technical_factor
 
 			# 获取股票数据
-			quotes = await self.quote_repo.get_by_ts_code_date_range(
+			quotes = await self.quote_repo.get_by_code_and_date_range(
 				ts_code=ts_code,
 				start_date=start_date,
 				end_date=end_date
@@ -894,8 +915,25 @@ class FactorResearchService:
 			# 转换为标准格式
 			result = []
 			for date_val, factor_val in factor_series.items():
+				# 转换日期值为Python datetime对象
+				# 支持pandas Timestamp、datetime、date和字符串类型
+				if isinstance(date_val, pd.Timestamp):
+					trade_date = date_val.to_pydatetime()
+				elif isinstance(date_val, str):
+					# 尝试解析字符串日期
+					try:
+						trade_date = pd.to_datetime(date_val).to_pydatetime()
+					except Exception:
+						trade_date = datetime.now()
+				elif isinstance(date_val, datetime):
+					trade_date = date_val
+				elif isinstance(date_val, date):
+					trade_date = datetime.combine(date_val, datetime.min.time())
+				else:
+					trade_date = datetime.now()
+
 				result.append({
-					"trade_date": date_val,
+					"trade_date": trade_date,
 					"factor_name": factor_name,
 					"factor_value": float(factor_val) if not np.isnan(factor_val) else None,
 					"ts_code": ts_code,
@@ -926,14 +964,15 @@ class FactorResearchService:
 			return
 
 		try:
+			factor_data_list = []
 			for factor_value in factor_values:
 				if factor_value.get("factor_value") is None:
 					continue
 
 				# 检查是否已存在
-				existing = await self.factor_repo.get_by_trade_date(
-					ts_code=ts_code,
+				existing = await self.factor_repo.get_factor_data(
 					factor_name=factor_name,
+					ts_code=ts_code,
 					trade_date=factor_value["trade_date"]
 				)
 
@@ -941,8 +980,11 @@ class FactorResearchService:
 					# 更新现有记录
 					await self.factor_repo.update(existing.id, factor_value)
 				else:
-					# 创建新记录
-					await self.factor_repo.create(factor_value)
+					factor_data_list.append(factor_value)
+
+			# 批量创建新记录
+			if factor_data_list:
+				await self.factor_repo.batch_insert_factor_data(factor_data_list)
 
 			# 批量提交
 			await self.session.commit()
@@ -967,23 +1009,23 @@ class FactorResearchService:
 			StandardFactors.PS: self._calculate_ps,
 			StandardFactors.ROE: self._calculate_roe,
 			StandardFactors.ROA: self._calculate_roa,
-			StandardFactors.GM: self._calculate_gm,
-			StandardFactors.NP_MARGIN: self._calculate_np_margin,
-			StandardFactors.DEBT_TO_ASSET: self._calculate_debt_to_asset,
-			StandardFactors.CURRENT_RATIO: self._calculate_current_ratio,
-			StandardFactors.QUICK_RATIO: self._calculate_quick_ratio,
+			StandardFactors.GROSS_MARGIN: self._calculate_gm,
+			StandardFactors.OPERATING_MARGIN: self._calculate_np_margin,
+			StandardFactors.DEBT_RATIO: self._calculate_debt_to_asset,
+			"current_ratio": self._calculate_current_ratio,
+			"quick_ratio": self._calculate_quick_ratio,
 			StandardFactors.MARKET_CAP: self._calculate_market_cap,
-			StandardFactors.RETURN_1M: self._calculate_return_1m,
-			StandardFactors.RETURN_3M: self._calculate_return_3m,
-			StandardFactors.RETURN_6M: self._calculate_return_6m,
-			StandardFactors.RETURN_12M: self._calculate_return_12m,
+			StandardFactors.RET_1M: self._calculate_return_1m,
+			StandardFactors.RET_3M: self._calculate_return_3m,
+			StandardFactors.RET_6M: self._calculate_return_6m,
+			StandardFactors.RET_12M: self._calculate_return_12m,
 			StandardFactors.VOLATILITY_1M: self._calculate_volatility_1m,
 			StandardFactors.VOLATILITY_3M: self._calculate_volatility_3m,
 			StandardFactors.VOLATILITY_12M: self._calculate_volatility_12m,
 			StandardFactors.BETA: self._calculate_beta,
-			StandardFactors.SHARPE_RATIO: self._calculate_sharpe_ratio,
+			"sharpe_ratio": self._calculate_sharpe_ratio,
 			StandardFactors.TURNOVER_RATE: self._calculate_turnover_rate,
-			StandardFactors.VOLUME_RATIO: self._calculate_volume_ratio,
+			"volume_ratio": self._calculate_volume_ratio,
 			"MA": self._calculate_ma,
 			"EMA": self._calculate_ema,
 			"MACD": self._calculate_macd,
@@ -2369,205 +2411,205 @@ class FactorResearchService:
 			List[Dict]: 标准因子元数据列表
 		"""
 		standard_factors = [
-			{
-				"factor_name": StandardFactors.PE,
-				"display_name": "市盈率",
-				"description": "股价除以每股收益，衡量股票估值水平",
-				"category": FactorCategoryCode.VALUE,
-				"formula": "PE = Price / EPS",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.PB,
-				"display_name": "市净率",
-				"description": "股价除以每股净资产，衡量股票价值",
-				"category": FactorCategoryCode.VALUE,
-				"formula": "PB = Price / Book Value per Share",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.PS,
-				"display_name": "市销率",
-				"description": "股价除以每股销售收入",
-				"category": FactorCategoryCode.VALUE,
-				"formula": "PS = Price / Sales per Share",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.ROE,
-				"display_name": "净资产收益率",
-				"description": "净利润除以净资产，衡量公司盈利能力",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "ROE = Net Income / Equity",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.ROA,
-				"display_name": "总资产收益率",
-				"description": "净利润除以总资产，衡量资产使用效率",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "ROA = Net Income / Total Assets",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.GM,
-				"display_name": "毛利率",
-				"description": "毛利润除以营业收入，衡量产品盈利能力",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "GM = Gross Profit / Revenue",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.NP_MARGIN,
-				"display_name": "净利率",
-				"description": "净利润除以营业收入，衡量整体盈利能力",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "NP Margin = Net Profit / Revenue",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.DEBT_TO_ASSET,
-				"display_name": "资产负债率",
-				"description": "总负债除以总资产，衡量财务杠杆",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "Debt to Asset = Total Debt / Total Assets",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.CURRENT_RATIO,
-				"display_name": "流动比率",
-				"description": "流动资产除以流动负债，衡量短期偿债能力",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "Current Ratio = Current Assets / Current Liabilities",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.QUICK_RATIO,
-				"display_name": "速动比率",
-				"description": "速动资产除以流动负债，衡量即时偿债能力",
-				"category": FactorCategoryCode.QUALITY,
-				"formula": "Quick Ratio = (Current Assets - Inventory) / Current Liabilities",
-				"data_source": "财务报表",
-				"update_frequency": "季度"
-			},
-			{
-				"factor_name": StandardFactors.MARKET_CAP,
-				"display_name": "市值",
-				"description": "总股本乘以股价，衡量公司规模",
-				"category": FactorCategoryCode.SIZE,
-				"formula": "Market Cap = Shares Outstanding × Price",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.RETURN_1M,
-				"display_name": "1个月收益率",
-				"description": "过去1个月的收益率",
-				"category": FactorCategoryCode.MOMENTUM,
-				"formula": "Ret_1M = (Price_t / Price_{t-20}) - 1",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.RETURN_3M,
-				"display_name": "3个月收益率",
-				"description": "过去3个月的收益率",
-				"category": FactorCategoryCode.MOMENTUM,
-				"formula": "Ret_3M = (Price_t / Price_{t-60}) - 1",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.RETURN_6M,
-				"display_name": "6个月收益率",
-				"description": "过去6个月的收益率",
-				"category": FactorCategoryCode.MOMENTUM,
-				"formula": "Ret_6M = (Price_t / Price_{t-120}) - 1",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.RETURN_12M,
-				"display_name": "12个月收益率",
-				"description": "过去12个月的收益率",
-				"category": FactorCategoryCode.MOMENTUM,
-				"formula": "Ret_12M = (Price_t / Price_{t-240}) - 1",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.VOLATILITY_1M,
-				"display_name": "1个月波动率",
-				"description": "过去1个月的收益率波动率",
-				"category": FactorCategoryCode.VOLATILITY,
-				"formula": "Std(Returns, 20 days) × √252",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.VOLATILITY_3M,
-				"display_name": "3个月波动率",
-				"description": "过去3个月的收益率波动率",
-				"category": FactorCategoryCode.VOLATILITY,
-				"formula": "Std(Returns, 60 days) × √252",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.VOLATILITY_12M,
-				"display_name": "12个月波动率",
-				"description": "过去12个月的收益率波动率",
-				"category": FactorCategoryCode.VOLATILITY,
-				"formula": "Std(Returns, 240 days) × √252",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.BETA,
-				"display_name": "Beta系数",
-				"description": "股票收益与市场收益的协方差除以市场收益的方差",
-				"category": FactorCategoryCode.VOLATILITY,
-				"formula": "β = Cov(Ret_stock, Ret_market) / Var(Ret_market)",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.SHARPE_RATIO,
-				"display_name": "夏普比率",
-				"description": "(年化收益 - 无风险利率) / 年化波动率",
-				"category": FactorCategoryCode.VOLATILITY,
-				"formula": "Sharpe = (E[Ret] - Rf) / σ",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.TURNOVER_RATE,
-				"display_name": "换手率",
-				"description": "成交量除以流通股本，衡量股票流动性",
-				"category": FactorCategoryCode.LIQUIDITY,
-				"formula": "Turnover Rate = Volume / Float Shares",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			},
-			{
-				"factor_name": StandardFactors.VOLUME_RATIO,
-				"display_name": "量比",
-				"description": "当前成交量除以过去N日平均成交量",
-				"category": FactorCategoryCode.LIQUIDITY,
-				"formula": "Volume Ratio = Volume_t / Avg(Volume_{t-N:t-1})",
-				"data_source": "行情数据",
-				"update_frequency": "日度"
-			}
-		]
+		{
+			"factor_name": StandardFactors.PE,
+			"display_name": "市盈率",
+			"description": "股价除以每股收益，衡量股票估值水平",
+			"category": FactorCategoryCode.VALUE,
+			"formula": "PE = Price / EPS",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.PB,
+			"display_name": "市净率",
+			"description": "股价除以每股净资产，衡量股票价值",
+			"category": FactorCategoryCode.VALUE,
+			"formula": "PB = Price / Book Value per Share",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.PS,
+			"display_name": "市销率",
+			"description": "股价除以每股销售收入",
+			"category": FactorCategoryCode.VALUE,
+			"formula": "PS = Price / Sales per Share",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.ROE,
+			"display_name": "净资产收益率",
+			"description": "净利润除以净资产，衡量公司盈利能力",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "ROE = Net Income / Equity",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.ROA,
+			"display_name": "总资产收益率",
+			"description": "净利润除以总资产，衡量资产使用效率",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "ROA = Net Income / Total Assets",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.GROSS_MARGIN,
+			"display_name": "毛利率",
+			"description": "毛利润除以营业收入，衡量产品盈利能力",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "GM = Gross Profit / Revenue",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.OPERATING_MARGIN,
+			"display_name": "净利率",
+			"description": "净利润除以营业收入，衡量整体盈利能力",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "NP Margin = Net Profit / Revenue",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.DEBT_RATIO,
+			"display_name": "资产负债率",
+			"description": "总负债除以总资产，衡量财务杠杆",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "Debt to Asset = Total Debt / Total Assets",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": "current_ratio",
+			"display_name": "流动比率",
+			"description": "流动资产除以流动负债，衡量短期偿债能力",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "Current Ratio = Current Assets / Current Liabilities",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": "quick_ratio",
+			"display_name": "速动比率",
+			"description": "速动资产除以流动负债，衡量即时偿债能力",
+			"category": FactorCategoryCode.QUALITY,
+			"formula": "Quick Ratio = (Current Assets - Inventory) / Current Liabilities",
+			"data_source": "财务报表",
+			"update_frequency": "季度"
+		},
+		{
+			"factor_name": StandardFactors.MARKET_CAP,
+			"display_name": "市值",
+			"description": "总股本乘以股价，衡量公司规模",
+			"category": FactorCategoryCode.SIZE,
+			"formula": "Market Cap = Shares Outstanding × Price",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.RET_1M,
+			"display_name": "1个月收益率",
+			"description": "过去1个月的收益率",
+			"category": FactorCategoryCode.MOMENTUM,
+			"formula": "Ret_1M = (Price_t / Price_{t-20}) - 1",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.RET_3M,
+			"display_name": "3个月收益率",
+			"description": "过去3个月的收益率",
+			"category": FactorCategoryCode.MOMENTUM,
+			"formula": "Ret_3M = (Price_t / Price_{t-60}) - 1",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.RET_6M,
+			"display_name": "6个月收益率",
+			"description": "过去6个月的收益率",
+			"category": FactorCategoryCode.MOMENTUM,
+			"formula": "Ret_6M = (Price_t / Price_{t-120}) - 1",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.RET_12M,
+			"display_name": "12个月收益率",
+			"description": "过去12个月的收益率",
+			"category": FactorCategoryCode.MOMENTUM,
+			"formula": "Ret_12M = (Price_t / Price_{t-240}) - 1",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.VOLATILITY_1M,
+			"display_name": "1个月波动率",
+			"description": "过去1个月的收益率波动率",
+			"category": FactorCategoryCode.VOLATILITY,
+			"formula": "Std(Returns, 20 days) × √252",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.VOLATILITY_3M,
+			"display_name": "3个月波动率",
+			"description": "过去3个月的收益率波动率",
+			"category": FactorCategoryCode.VOLATILITY,
+			"formula": "Std(Returns, 60 days) × √252",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.VOLATILITY_12M,
+			"display_name": "12个月波动率",
+			"description": "过去12个月的收益率波动率",
+			"category": FactorCategoryCode.VOLATILITY,
+			"formula": "Std(Returns, 240 days) × √252",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.BETA,
+			"display_name": "Beta系数",
+			"description": "股票收益与市场收益的协方差除以市场收益的方差",
+			"category": FactorCategoryCode.VOLATILITY,
+			"formula": "β = Cov(Ret_stock, Ret_market) / Var(Ret_market)",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": "sharpe_ratio",
+			"display_name": "夏普比率",
+			"description": "(年化收益 - 无风险利率) / 年化波动率",
+			"category": FactorCategoryCode.VOLATILITY,
+			"formula": "Sharpe = (E[Ret] - Rf) / σ",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": StandardFactors.TURNOVER_RATE,
+			"display_name": "换手率",
+			"description": "成交量除以流通股本，衡量股票流动性",
+			"category": FactorCategoryCode.LIQUIDITY,
+			"formula": "Turnover Rate = Volume / Float Shares",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		},
+		{
+			"factor_name": "volume_ratio",
+			"display_name": "量比",
+			"description": "当前成交量除以过去N日平均成交量",
+			"category": FactorCategoryCode.LIQUIDITY,
+			"formula": "Volume Ratio = Volume_t / Avg(Volume_{t-N:t-1})",
+			"data_source": "行情数据",
+			"update_frequency": "日度"
+		}
+	]
 
 		# 过滤因子
 		filtered_factors = []

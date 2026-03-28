@@ -4,7 +4,7 @@
 """
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, validator, conint, condecimal
 
 from ..account.constants import (
@@ -192,8 +192,52 @@ class AccountFilter(BaseModel):
 			raise ValueError(f"账户类型必须是以下之一: {', '.join(ACCOUNT_TYPES)}")
 		return v
 
+
 	@validator('status')
 	def validate_status (cls, v):
 		if v is not None and v not in ACCOUNT_STATUSES:
 			raise ValueError(f"账户状态必须是以下之一: {', '.join(ACCOUNT_STATUSES)}")
 		return v
+
+
+class DepositRequest(BaseModel):
+	"""存款请求"""
+	amount: float = Field(..., gt=0, description="存款金额")
+
+
+class WithdrawRequest(BaseModel):
+	"""取款请求"""
+	amount: float = Field(..., gt=0, description="取款金额")
+
+
+from quant_server.utils.api_utils.pagination_config import PaginationParams
+
+class AccountListRequest(PaginationParams):
+	"""账户列表请求"""
+	user_id: Optional[int] = Field(default=None, description="用户ID筛选")
+	account_type: Optional[str] = Field(default=None, description="账户类型筛选")
+	status: Optional[str] = Field(default=None, description="账户状态筛选")
+
+
+class AccountListResponse(BaseModel):
+	"""账户列表响应"""
+	success: bool = Field(default=True)
+	data: List[Dict[str, Any]] = Field(default_factory=list)
+	pagination: Dict[str, int] = Field(default_factory=dict)
+
+
+class AccountDetailResponse(BaseModel):
+	"""账户详情响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+class PositionListRequest(PaginationParams):
+	"""持仓列表请求"""
+
+
+class PositionListResponse(BaseModel):
+	"""持仓列表响应"""
+	success: bool = Field(default=True)
+	data: List[Dict[str, Any]] = Field(default_factory=list)
+	pagination: Dict[str, int] = Field(default_factory=dict)

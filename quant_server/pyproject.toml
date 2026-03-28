@@ -91,7 +91,7 @@ include = ["*"]
 exclude = ["tests*", "docs*"]
 
 [tool.pytest.ini_options]
-addopts = "-v --cov=quant_platform --cov-report=html"
+addopts = "-v"
 testpaths = ["tests"]
 
 # 添加 black 格式化配置

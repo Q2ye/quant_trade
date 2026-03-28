@@ -134,7 +134,7 @@ class XtpSource(BaseDataSource):
 
         return symbols
 
-    def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
         """获取股票基本信息 (XTP不直接支持，返回空)"""
         logger.warning("XTP 不支持 get_stock_basic，请使用Tushare")
         return []
@@ -307,7 +307,7 @@ class XtpSource(BaseDataSource):
         logger.warning("XTP 不支持每日指标")
         return pd.DataFrame()
 
-    def get_trade_cal(self, exchange: str = '',
+    async def get_trade_cal(self, exchange: str = '',
                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
         """获取交易日历 (XTP不支持)"""
         logger.warning("XTP 不支持交易日历")

@@ -9,7 +9,7 @@ from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolea
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
-from quant_server.shared.database.models.base import Base
+from .base import Base
 
 
 # ==================== 用户与权限管理 ====================
@@ -20,7 +20,7 @@ class SysUser(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment='用户ID')
     username = Column(String(50), nullable=False, unique=True, index=True, comment='用户名')
-    password_hash = Column(String(100), nullable=False, comment='密码哈希值')
+    password = Column(String(100), nullable=False, comment='密码哈希值')
     email = Column(String(100), comment='邮箱')
     phone = Column(String(20), comment='手机号')
     real_name = Column(String(50), comment='真实姓名')
@@ -40,10 +40,10 @@ class SysUser(Base):
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     backtest_tasks = relationship("BacktestTask", back_populates="user", cascade="all, delete-orphan")
     system_logs = relationship("SystemLog", back_populates="user", cascade="all, delete-orphan")
-    user_roles = relationship("SysUserRole", back_populates="user", cascade="all, delete-orphan")
+    user_roles = relationship("SysUserRole", back_populates="user", foreign_keys="[SysUserRole.user_id]", cascade="all, delete-orphan")
     user_preferences = relationship("UserPreference", back_populates="user", cascade="all, delete-orphan", uselist=False)
     api_usage_logs = relationship("ApiUsageLog", back_populates="user", cascade="all, delete-orphan")
-    factor_research = relationship("FactorResearch", back_populates="user", cascade="all, delete-orphan")
+    factor_research = relationship("FactorResearch", back_populates="user", foreign_keys="[FactorResearch.user_id]", cascade="all, delete-orphan")
 
 
 class SysRole(Base):
@@ -510,7 +510,7 @@ class AccountAuditLog(Base):
 
     # 关联关系
     account = relationship("Account", back_populates="audit_logs")
-    auditor = relationship("SysUser")
+    auditor = relationship("SysUser", foreign_keys=[auditor_id])
 
     # 索引
     __table_args__ = (
@@ -857,7 +857,7 @@ class DataSyncTask(Base):
     __tablename__ = 'data_sync_tasks'
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment='任务ID')
-    task_id = Column(String(50), unique=True, nullable=False, comment='任务ID（唯一标识）')
+    task_id = Column(String(64), nullable=False, unique=True, comment='任务唯一标识符（如 sync_abc12345）')
     task_type = Column(String(50), nullable=False, comment='任务类型：stock_basic, daily_quotes, financial, etc.')
     user_id = Column(Integer, ForeignKey('sys_users.id'), comment='用户ID')
     data_types = Column(JSON, comment='数据类型列表（JSON格式）')
@@ -879,13 +879,19 @@ class DataSyncTask(Base):
     # 关联关系
     user = relationship("SysUser")
 
+    # 属性（保留旧的属性以兼容旧代码，新代码应直接使用 task_id 列）
+    @property
+    def task_id_str(self):
+        """返回任务ID字符串（使用数据库中的id字段）- 旧属性，保持兼容"""
+        return str(self.id) if self.id else None
+
     # 索引
     __table_args__ = (
-        Index('idx_data_sync_tasks_task_id', 'task_id'),
         Index('idx_data_sync_tasks_status', 'status'),
         Index('idx_data_sync_tasks_type_status', 'task_type', 'status'),
         Index('idx_data_sync_tasks_user_id', 'user_id'),
         Index('idx_data_sync_tasks_created_at', 'created_at'),
+        Index('idx_data_sync_tasks_task_id', 'task_id'),
     )
 
 

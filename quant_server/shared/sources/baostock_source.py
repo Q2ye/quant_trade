@@ -99,24 +99,29 @@ class BaostockSource(BaseDataSource):
         df = df[~df['code_name'].str.contains('ST', na=False)]
         return df['code'].tolist()
 
-    def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
         """获取股票基本信息"""
-        if not self._connected:
-            self._connect()
+        import asyncio
 
-        rs = bs.query_stock_basic()
-        if rs.error_code != '0':
-            return []
+        async def _fetch():
+            if not self._connected:
+                self._connect()
 
-        data_list = []
-        while rs.next():
-            data_list.append(rs.get_row_data())
+            rs = bs.query_stock_basic()
+            if rs.error_code != '0':
+                return []
 
-        if not data_list:
-            return []
+            data_list = []
+            while rs.next():
+                data_list.append(rs.get_row_data())
 
-        df = pd.DataFrame(data_list, columns=rs.fields)
-        return df.to_dict('records')
+            if not data_list:
+                return []
+
+            df = pd.DataFrame(data_list, columns=rs.fields)
+            return df.to_dict('records')
+
+        return await asyncio.to_thread(_fetch)
 
     def get_daily(self, symbol: str = '', trade_date: str = '',
                   start_date: str = '', end_date: str = '') -> pd.DataFrame:
@@ -467,7 +472,7 @@ class BaostockSource(BaseDataSource):
         # 使用日线数据代替
         return self.get_daily(symbol, trade_date, start_date, end_date)
 
-    def get_trade_cal(self, exchange: str = '',
+    async def get_trade_cal(self, exchange: str = '',
                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
         """获取交易日历"""
         if not self._connected:

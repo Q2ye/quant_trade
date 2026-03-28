@@ -68,7 +68,9 @@ class SyncTaskBase(Task):
 					task_id=task_id,
 					sync_type=kwargs.get('sync_type', 'unknown'),
 					record_count=retval.get('record_count', 0),
-					success=True
+					duration_seconds=0,
+					success=True,
+					source="data_module"
 				)
 			))
 
@@ -128,7 +130,8 @@ def sync_stock_data_task (
 					task_id=task_id,
 					sync_type=sync_type,
 					data_types=["stock_quote"],
-					start_time=datetime.now()
+					start_time=datetime.now(),
+					source="data_module"
 				)
 			))
 
@@ -148,7 +151,8 @@ def sync_stock_data_task (
 					task_id=task_id,
 					progress=10,
 					message="初始化同步服务",
-					sync_type=sync_type
+					sync_type=sync_type,
+					source="data_module"
 				)
 			))
 
@@ -176,7 +180,8 @@ def sync_stock_data_task (
 						task_id=task_id,
 						progress=20,
 						message="获取股票列表",
-						sync_type=sync_type
+						sync_type=sync_type,
+						source="data_module"
 					)
 				))
 
@@ -219,7 +224,8 @@ def sync_stock_data_task (
 						message=f"同步第 {batch_num + 1}/{total_batches} 批",
 						sync_type=sync_type,
 						current_batch=batch_num + 1,
-						total_batches=total_batches
+						total_batches=total_batches,
+						source="data_module"
 					)
 				))
 
@@ -275,7 +281,8 @@ def sync_stock_data_task (
 					progress=100,
 					message="同步完成",
 					sync_type=sync_type,
-					result=result_summary
+					result=result_summary,
+					source="data_module"
 				)
 			))
 
@@ -328,7 +335,8 @@ def sync_financial_data_task (
 					task_id=task_id,
 					sync_type="financial",
 					data_types=[f"financial_{report_type}"],
-					start_time=datetime.now()
+					start_time=datetime.now(),
+					source="data_module"
 				)
 			))
 
@@ -347,7 +355,8 @@ def sync_financial_data_task (
 					task_id=task_id,
 					progress=10,
 					message="初始化财务数据同步",
-					sync_type="financial"
+					sync_type="financial",
+					source="data_module"
 				)
 			))
 
@@ -373,7 +382,8 @@ def sync_financial_data_task (
 						task_id=task_id,
 						progress=30,
 						message="获取股票列表",
-						sync_type="financial"
+						sync_type="financial",
+						source="data_module"
 					)
 				))
 
@@ -394,7 +404,8 @@ def sync_financial_data_task (
 					task_id=task_id,
 					progress=50,
 					message="同步财务数据",
-					sync_type="financial"
+					sync_type="financial",
+					source="data_module"
 				)
 			))
 
@@ -434,7 +445,8 @@ def sync_financial_data_task (
 					progress=100,
 					message="财务数据同步完成",
 					sync_type="financial",
-					result=result_summary
+					result=result_summary,
+					source="data_module"
 				)
 			))
 
@@ -484,7 +496,8 @@ def sync_index_data_task (
 					task_id=task_id,
 					sync_type="index",
 					data_types=["index_quote"],
-					start_time=datetime.now()
+					start_time=datetime.now(),
+					source="data_module"
 				)
 			))
 
@@ -503,7 +516,8 @@ def sync_index_data_task (
 					task_id=task_id,
 					progress=10,
 					message="初始化指数数据同步",
-					sync_type="index"
+					sync_type="index",
+					source="data_module"
 				)
 			))
 
@@ -538,7 +552,8 @@ def sync_index_data_task (
 					task_id=task_id,
 					progress=30,
 					message="同步指数数据",
-					sync_type="index"
+					sync_type="index",
+					source="data_module"
 				)
 			))
 
@@ -593,7 +608,8 @@ def sync_index_data_task (
 					progress=100,
 					message="指数数据同步完成",
 					sync_type="index",
-					result=result_summary
+					result=result_summary,
+					source="data_module"
 				)
 			))
 
@@ -643,7 +659,8 @@ def sync_macro_data_task (
 					task_id=task_id,
 					sync_type="macro",
 					data_types=macro_types or ["macro_economic"],
-					start_time=datetime.now()
+					start_time=datetime.now(),
+					source="data_module"
 				)
 			))
 
@@ -662,7 +679,8 @@ def sync_macro_data_task (
 					task_id=task_id,
 					progress=10,
 					message="初始化宏观经济数据同步",
-					sync_type="macro"
+					sync_type="macro",
+					source="data_module"
 				)
 			))
 
@@ -707,7 +725,8 @@ def sync_macro_data_task (
 							task_id=task_id,
 							progress=progress,
 							message=f"同步 {macro_type} 数据",
-							sync_type="macro"
+							sync_type="macro",
+							source="data_module"
 						)
 					))
 
@@ -761,7 +780,8 @@ def sync_macro_data_task (
 					progress=100,
 					message="宏观经济数据同步完成",
 					sync_type="macro",
-					result=result_summary
+					result=result_summary,
+					source="data_module"
 				)
 			))
 

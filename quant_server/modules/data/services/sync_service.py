@@ -43,6 +43,7 @@ from quant_server.shared.database.repositories import (
 )
 from quant_server.shared.sources.source_factory import DataSourceFactory
 from quant_server.shared.cache.redis_cache import RedisCache
+from quant_server.shared.cache.memory_cache import MemoryCache
 
 # 导入核心基础设施
 from quant_server.core.engines.system.event_engine import EventEngine
@@ -66,10 +67,100 @@ from quant_server.modules.data.constants import (
 from quant_server.modules.data.models import BatchSyncRequest
 from quant_server.modules.data.schemas import (
     SyncResult,
+    SyncTaskItem,
 )
 
 # 配置日志
 logger = logging.getLogger(__name__)
+
+
+def _convert_pandas_datetime(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将记录中的pandas datetime类型转换为Python datetime对象
+
+    Args:
+        record: 原始记录字典
+
+    Returns:
+        转换后的记录字典
+    """
+    converted = {}
+    for key, value in record.items():
+        if isinstance(value, pd.Timestamp):
+            # 转换为Python datetime对象
+            converted[key] = value.to_pydatetime()
+        elif isinstance(value, (list, tuple)):
+            # 递归处理列表中的元素
+            converted[key] = [
+                item.to_pydatetime() if isinstance(item, pd.Timestamp) else item
+                for item in value
+            ]
+        else:
+            converted[key] = value
+    return converted
+
+
+def _convert_to_date(value: Any) -> date:
+    """
+    将各种类型的日期值转换为Python date对象
+
+    Args:
+        value: 日期值（可能是datetime、date或字符串）
+
+    Returns:
+        Python date对象
+    """
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    elif isinstance(value, datetime):
+        return value.date()
+    elif isinstance(value, str):
+        # 尝试解析字符串格式（如 "20260318"）
+        try:
+            return datetime.strptime(value, '%Y%m%d').date()
+        except ValueError:
+            # 如果失败，尝试ISO格式
+            return datetime.fromisoformat(value).date()
+    else:
+        raise ValueError(f"无法将类型 {type(value)} 转换为date对象: {value}")
+
+
+def _convert_to_datetime(value: Any) -> datetime:
+    """
+    将各种类型的日期值转换为Python datetime对象
+
+    Args:
+        value: 日期值（可能是datetime、date或字符串）
+
+    Returns:
+        Python datetime对象
+    """
+    if isinstance(value, datetime):
+        return value
+    elif isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    elif isinstance(value, str):
+        # 尝试解析字符串格式（如 "20260318"）
+        try:
+            return datetime.strptime(value, '%Y%m%d')
+        except ValueError:
+            # 如果失败，尝试ISO格式
+            return datetime.fromisoformat(value)
+    else:
+        raise ValueError(f"无法将类型 {type(value)} 转换为datetime对象: {value}")
+
+
+def _convert_records_datetime(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    批量转换记录中的pandas datetime类型
+
+    Args:
+        records: 原始记录列表
+
+    Returns:
+        转换后的记录列表
+    """
+    return [_convert_pandas_datetime(record) for record in records]
 
 
 class DataSyncService:
@@ -155,17 +246,21 @@ class DataSyncService:
         }
 
     @property
-    def cache(self) -> RedisCache:
+    def cache(self):
         """获取缓存实例（懒加载）"""
         if self._cache is None:
             from quant_server.shared.config.settings import get_settings
             settings = get_settings()
-            self._cache = RedisCache(
-                host=settings.REDIS.HOST,
-                port=settings.REDIS.PORT,
-                db=settings.REDIS.DB,
-                password=settings.REDIS.PASSWORD
-            )
+            if settings.REDIS.ENABLED:
+                self._cache = RedisCache(
+                    host=settings.REDIS.HOST,
+                    port=settings.REDIS.PORT,
+                    db=settings.REDIS.DB,
+                    password=settings.REDIS.PASSWORD
+                )
+            else:
+                # 开发环境使用内存缓存
+                self._cache = MemoryCache(namespace="data_sync")
         return self._cache
 
     # ==================== 公共API ====================
@@ -400,6 +495,144 @@ class DataSyncService:
                 "message": "批量同步失败"
             }
 
+    async def batch_sync_data(
+        self,
+        tasks: List[SyncTaskItem],
+        priority: Optional[Any] = None,
+        user_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        批量同步数据（基于任务列表）
+
+        Args:
+            tasks: 同步任务列表
+            priority: 同步优先级
+            user_id: 用户ID
+
+        Returns:
+            Dict: 批量同步结果
+        """
+        logger.info(f"开始批量同步数据，任务数: {len(tasks)}, 用户ID: {user_id}")
+
+        batch_task_id = f"batch_sync_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        results = []
+        total_records = 0
+        succeeded_records = 0
+        failed_records = 0
+
+        try:
+            # 发布批量同步开始事件
+            await self._publish_sync_event(
+                event_type="batch_started",
+                task_id=batch_task_id,
+                data_types=[task.data_type for task in tasks],
+                user_id=user_id
+            )
+
+            # 按顺序执行同步任务
+            for idx, task in enumerate(tasks):
+                # 计算进度
+                progress = (idx / len(tasks)) * 100
+
+                # 发布进度事件
+                await self._publish_sync_event(
+                    event_type="progress",
+                    task_id=batch_task_id,
+                    data_type=task.data_type,
+                    progress=progress,
+                    current_task=f"正在同步 {task.data_type}",
+                    user_id=user_id
+                )
+
+                # 执行单个同步任务
+                try:
+                    result = await self.sync_market_data(
+                        data_type=DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(task.data_type),
+                        start_date=task.start_date,
+                        end_date=task.end_date,
+                        user_id=user_id,
+                        force_update=task.force_update
+                    )
+
+                    # 记录结果
+                    records_added = result.get("result", {}).get("records_added", 0)
+                    records_updated = result.get("result", {}).get("records_updated", 0)
+                    records_failed = result.get("result", {}).get("records_failed", 0)
+
+                    sync_result = SyncResult(
+                        data_type=task.data_type,
+                        success=result.get("success", False),
+                        records_added=records_added,
+                        records_updated=records_updated,
+                        records_failed=records_failed,
+                        start_time=datetime.now(),
+                        end_time=datetime.now(),
+                        error_message=result.get("error")
+                    )
+                    results.append(sync_result.model_dump())
+
+                    total_records += records_added + records_updated + records_failed
+                    succeeded_records += records_added + records_updated
+                    failed_records += records_failed
+
+                except Exception as e:
+                    logger.error(f"同步数据类型 {task.data_type} 失败: {str(e)}")
+                    sync_result = SyncResult(
+                        data_type=task.data_type,
+                        success=False,
+                        records_added=0,
+                        records_updated=0,
+                        records_failed=0,
+                        start_time=datetime.now(),
+                        end_time=datetime.now(),
+                        error_message=str(e)
+                    )
+                    results.append(sync_result.model_dump())
+
+            # 发布批量同步完成事件
+            await self._publish_sync_event(
+                event_type="batch_completed",
+                task_id=batch_task_id,
+                result={"results": results},
+                user_id=user_id
+            )
+
+            logger.info(f"批量同步数据完成，任务ID: {batch_task_id}")
+
+            return {
+                "success": True,
+                "task_id": batch_task_id,
+                "results": results,
+                "records_processed": total_records,
+                "records_succeeded": succeeded_records,
+                "records_failed": failed_records,
+                "total_tasks": len(tasks),
+                "completed_tasks": len(results),
+                "message": "批量同步完成"
+            }
+
+        except Exception as e:
+            logger.error(f"批量同步数据失败: {str(e)}", exc_info=True)
+
+            await self._publish_sync_event(
+                event_type="batch_failed",
+                task_id=batch_task_id,
+                result={"results": results},
+                error=str(e),
+                user_id=user_id
+            )
+
+            return {
+                "success": False,
+                "task_id": batch_task_id,
+                "results": results,
+                "records_processed": total_records,
+                "records_succeeded": succeeded_records,
+                "records_failed": failed_records,
+                "error": str(e),
+                "message": "批量同步失败"
+            }
+
     async def get_sync_status(
         self,
         task_id: str,
@@ -466,17 +699,15 @@ class DataSyncService:
     ) -> str:
         """创建同步任务记录"""
         task_id = f"sync_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # 注意：data_sync_tasks表的id字段为自增主键，由数据库自动生成
+        # task_id是业务唯一标识，需要存储到数据库
         task_data = {
             "task_id": task_id,
-            "data_type": data_type,
+            "task_type": data_type,
             "status": "pending",
             "user_id": user_id,
-            "start_date": start_date,
-            "end_date": end_date,
-            "ts_codes": ts_codes,
             "parameters": params or {},
-            "total_items": self._estimate_total_items(data_type, ts_codes),
-            "completed_items": 0,
+            "total_records": self._estimate_total_items(data_type, ts_codes),
             "created_at": datetime.now()
         }
         await self.sync_task_repo.create(task_data)
@@ -548,9 +779,15 @@ class DataSyncService:
         records_added = 0
         records_updated = 0
         for stock_data in stock_list:
+            # 转换日期字段
+            if 'list_date' in stock_data and stock_data['list_date']:
+                stock_data['list_date'] = _convert_to_date(stock_data['list_date'])
+            if 'delist_date' in stock_data and stock_data['delist_date']:
+                stock_data['delist_date'] = _convert_to_date(stock_data['delist_date'])
+
             existing = await self.stock_basic_repo.get_by_ts_code(stock_data["ts_code"])
             if existing:
-                await self.stock_basic_repo.update(existing.id, stock_data)
+                await self.stock_basic_repo.update_by({"ts_code": existing.ts_code}, stock_data)
                 records_updated += 1
             else:
                 await self.stock_basic_repo.create(stock_data)
@@ -593,23 +830,24 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                daily_df = await source.get_daily(
-                    ts_code=ts_code,
+                daily_df = source.get_daily(
+                    symbol=ts_code,
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
 
                 if not daily_df.empty:
-                    daily_data = daily_df.to_dict('records')
+                    daily_data = _convert_records_datetime(daily_df.to_dict('records'))
                     for quote_data in daily_data:
-                        trade_date = quote_data.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()  # 转换为date对象
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(quote_data.get('trade_date'))
+                        quote_data['trade_date'] = trade_date
 
-                        existing = await self.stock_daily_repo.get_by_trade_date(
+                        existing_list = await self.stock_daily_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
                             await self.stock_daily_repo.update(existing.id, quote_data)
                             records_updated += 1
@@ -669,7 +907,7 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                minute_df = await source.get_minute_bar(
+                minute_df = source.get_minute_bar(
                     symbol=ts_code,
                     start_date=start_date_str,
                     end_date=end_date_str,
@@ -677,7 +915,7 @@ class DataSyncService:
                 )
 
                 if not minute_df.empty:
-                    minute_data = minute_df.to_dict('records')
+                    minute_data = _convert_records_datetime(minute_df.to_dict('records'))
                     # 分钟表通常使用批量插入，不进行更新
                     inserted = await self.stock_minute_repo.batch_insert(minute_data)
                     records_added += inserted
@@ -733,22 +971,23 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                moneyflow_df = await source.get_moneyflow(
+                moneyflow_df = source.get_moneyflow(
                     ts_code=ts_code,  # 修正参数名
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
                 if not moneyflow_df.empty:
-                    moneyflow_data = moneyflow_df.to_dict('records')
+                    moneyflow_data = _convert_records_datetime(moneyflow_df.to_dict('records'))
                     for item in moneyflow_data:
-                        trade_date = item.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(item.get('trade_date'))
+                        item['trade_date'] = trade_date
 
-                        existing = await self.stock_moneyflow_repo.get_by_trade_date(
+                        existing_list = await self.stock_moneyflow_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
                             await self.stock_moneyflow_repo.update(existing.id, item)
                             records_updated += 1
@@ -803,23 +1042,24 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                adj_df = await source.get_adj_factor(
+                adj_df = source.get_adj_factor(
                     ts_code=ts_code,
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
 
                 if not adj_df.empty:
-                    adj_data = adj_df.to_dict('records')
+                    adj_data = _convert_records_datetime(adj_df.to_dict('records'))
                     for item in adj_data:
-                        trade_date = item.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(item.get('trade_date'))
+                        item['trade_date'] = trade_date
 
-                        existing = await self.stock_adj_factor_repo.get_by_trade_date(
+                        existing_list = await self.stock_adj_factor_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
                             await self.stock_adj_factor_repo.update(existing.id, item)
                             records_updated += 1
@@ -874,23 +1114,24 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                daily_basic_df = await source.get_daily_basic(
+                daily_basic_df = source.get_daily_basic(
                     ts_code=ts_code,  # 修正参数名
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
 
                 if not daily_basic_df.empty:
-                    daily_basic_data = daily_basic_df.to_dict('records')
+                    daily_basic_data = _convert_records_datetime(daily_basic_df.to_dict('records'))
                     for item in daily_basic_data:
-                        trade_date = item.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(item.get('trade_date'))
+                        item['trade_date'] = trade_date
 
-                        existing = await self.stock_daily_basic_repo.get_by_trade_date(
+                        existing_list = await self.stock_daily_basic_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
                             await self.stock_daily_basic_repo.update(existing.id, item)
                             records_updated += 1
@@ -928,13 +1169,19 @@ class DataSyncService:
     ) -> Dict[str, Any]:
         """同步ETF基础信息"""
         source = self.source_factory.get_source(DataSource.TUSHARE)
-        etf_list = await source.get_etf_basic()
+        etf_list = source.get_etf_basic()
         records_added = 0
         records_updated = 0
         for etf in etf_list:
+            # 转换日期字段
+            if 'setup_date' in etf and etf['setup_date']:
+                etf['setup_date'] = _convert_to_date(etf['setup_date'])
+            if 'list_date' in etf and etf['list_date']:
+                etf['list_date'] = _convert_to_date(etf['list_date'])
+
             existing = await self.etf_basic_repo.get_by_ts_code(etf["ts_code"])
             if existing:
-                await self.etf_basic_repo.update(existing.id, etf)
+                await self.etf_basic_repo.update_by({"ts_code": existing.ts_code}, etf)
                 records_updated += 1
             else:
                 await self.etf_basic_repo.create(etf)
@@ -998,25 +1245,29 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                daily_df = await source.get_etf_daily(
+                daily_df = source.get_etf_daily(
                     ts_code=ts_code,  # 修正参数名
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
 
                 if not daily_df.empty:
-                    daily_data = daily_df.to_dict('records')
+                    daily_data = _convert_records_datetime(daily_df.to_dict('records'))
                     for item in daily_data:
-                        trade_date = item.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(item.get('trade_date'))
+                        item['trade_date'] = trade_date
 
-                        existing = await self.etf_daily_repo.get_by_trade_date(
+                        existing_list = await self.etf_daily_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
-                            await self.etf_daily_repo.update(existing.id, item)
+                            await self.etf_daily_repo.update_by(
+                                {"ts_code": existing.ts_code, "trade_date": existing.trade_date},
+                                item
+                            )
                             records_updated += 1
                         else:
                             await self.etf_daily_repo.create(item)
@@ -1069,14 +1320,14 @@ class DataSyncService:
                 start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
                 end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-                minute_df = await source.get_etf_historical_minute(
+                minute_df = source.get_etf_historical_minute(
                     ts_code=ts_code,  # 修正参数名
                     start_date=start_date_str,
                     end_date=end_date_str,
                     freq=freq
                 )
                 if not minute_df.empty:
-                    minute_data = minute_df.to_dict('records')
+                    minute_data = _convert_records_datetime(minute_df.to_dict('records'))
                     inserted = await self.etf_minute_repo.batch_insert(minute_data)
                     records_added += inserted
             except Exception as e:
@@ -1126,24 +1377,28 @@ class DataSyncService:
                 start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
                 end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-                adj_df = await source.get_etf_adj_factor(
+                adj_df = source.get_etf_adj_factor(
                     ts_code=ts_code,  # 修正参数名
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
                 if not adj_df.empty:
-                    adj_data = adj_df.to_dict('records')
+                    adj_data = _convert_records_datetime(adj_df.to_dict('records'))
                     for item in adj_data:
-                        trade_date = item.get('trade_date')
-                        if isinstance(trade_date, pd.Timestamp):
-                            trade_date = trade_date.date()
+                        # 转换trade_date为date对象
+                        trade_date = _convert_to_date(item.get('trade_date'))
+                        item['trade_date'] = trade_date
 
-                        existing = await self.fund_adj_factor_repo.get_by_trade_date(
+                        existing_list = await self.fund_adj_factor_repo.get_by_trade_date(
                             ts_code=ts_code,
                             trade_date=trade_date
                         )
+                        existing = existing_list[0] if existing_list else None
                         if existing:
-                            await self.fund_adj_factor_repo.update(existing.id, item)
+                            await self.fund_adj_factor_repo.update_by(
+                                {"ts_code": existing.ts_code, "trade_date": existing.trade_date},
+                                item
+                            )
                             records_updated += 1
                         else:
                             await self.fund_adj_factor_repo.create(item)
@@ -1255,23 +1510,27 @@ class DataSyncService:
             try:
                 # 根据report_type调用不同的数据接口
                 if report_type == "income":
-                    data_df = await source.get_income_statement(ts_code=ts_code, period='')
-                    data = data_df.to_dict('records') if data_df is not None and not data_df.empty else []
+                    data_df = source.get_income_statement(ts_code=ts_code, period='')
+                    data = _convert_records_datetime(data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
                 elif report_type == "balance":
-                    data_df = await source.get_balance_sheet(ts_code=ts_code, period='')
-                    data = data_df.to_dict('records') if data_df is not None and not data_df.empty else []
+                    data_df = source.get_balance_sheet(ts_code=ts_code, period='')
+                    data = _convert_records_datetime(data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
                 elif report_type == "cashflow":
-                    data_df = await source.get_cashflow_statement(ts_code=ts_code, period='')
-                    data = data_df.to_dict('records') if data_df is not None and not data_df.empty else []
+                    data_df = source.get_cashflow_statement(ts_code=ts_code, period='')
+                    data = _convert_records_datetime(data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
                 else:
                     raise ValueError(f"未知财务报表类型: {report_type}")
 
                 for item in data:
                     # 添加报告类型字段
                     item["report_type"] = report_type
+                    # 转换日期字段为datetime对象
+                    item['ann_date'] = _convert_to_datetime(item.get('ann_date'))
+                    item['end_date'] = _convert_to_datetime(item.get('end_date'))
+
                     existing = await self.financial_statement_repo.get_by_unique(
                         ts_code=ts_code,
-                        ann_date=item["ann_date"],
+                        ann_date=item['ann_date'],
                         report_type=report_type
                     )
                     if existing:
@@ -1309,7 +1568,7 @@ class DataSyncService:
         start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
         end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-        calendar_df = await source.get_trade_cal(
+        calendar_df = source.get_trade_cal(
             start_date=start_date_str,
             end_date=end_date_str
         )
@@ -1319,14 +1578,27 @@ class DataSyncService:
         calendar_data = []  # 初始化空列表，避免引用错误
 
         if not calendar_df.empty:
-            calendar_data = calendar_df.to_dict('records')
+            calendar_data = _convert_records_datetime(calendar_df.to_dict('records'))
             for cal in calendar_data:
-                existing = await self.trade_calendar_repo.get_by_date(
+                # 转换cal_date为date对象
+                cal_date = _convert_to_date(cal.get('cal_date'))
+                cal['cal_date'] = cal_date
+
+                # 转换pretrade_date为date对象（如果存在）
+                if 'pretrade_date' in cal and cal['pretrade_date']:
+                    pretrade_date = _convert_to_date(cal.get('pretrade_date'))
+                    cal['pretrade_date'] = pretrade_date
+
+                existing_list = await self.trade_calendar_repo.get_by_date(
                     exchange=cal["exchange"],
-                    cal_date=cal["cal_date"]
+                    cal_date=cal_date
                 )
+                existing = existing_list[0] if existing_list else None
                 if existing:
-                    await self.trade_calendar_repo.update(existing.id, cal)
+                    await self.trade_calendar_repo.update_by(
+                        {"exchange": existing.exchange, "cal_date": existing.cal_date},
+                        cal
+                    )
                     records_updated += 1
                 else:
                     await self.trade_calendar_repo.create(cal)
@@ -1371,14 +1643,14 @@ class DataSyncService:
                 current_date = start_date
                 while current_date <= end_date:
                     try:
-                        tick_df = await source.get_tick_data(
+                        tick_df = source.get_tick_data(
                             symbol=ts_code,
                             trade_date=current_date.strftime('%Y%m%d')
                         )
                         if not tick_df.empty:
                             # Tick数据通常使用批量插入到专门的分区表或超表
                             # 这里需要根据实际的Tick数据存储方式进行调整
-                            tick_data = tick_df.to_dict('records')
+                            tick_data = _convert_records_datetime(tick_df.to_dict('records'))
                             records_added += len(tick_data)
                     except Exception as e:
                         logger.warning(f"获取 {ts_code} {current_date} Tick数据失败: {e}")
@@ -1433,13 +1705,13 @@ class DataSyncService:
         end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
         try:
-            suspend_df = await source.get_suspended(
+            suspend_df = source.get_suspended(
                 start_date=start_date_str,
                 end_date=end_date_str
             )
 
             if not suspend_df.empty:
-                suspend_data = suspend_df.to_dict('records')
+                suspend_data = _convert_records_datetime(suspend_df.to_dict('records'))
                 for item in suspend_data:
                     try:
                         # 这里需要根据实际的停复牌信息存储方式进行处理
@@ -1496,13 +1768,13 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                etf_share_df = await source.get_etf_share_scale(
+                etf_share_df = source.get_etf_share_scale(
                     etf_code=ts_code,
                     trade_date=''  # 空字符串表示获取所有日期
                 )
 
                 if not etf_share_df.empty:
-                    etf_share_data = etf_share_df.to_dict('records')
+                    etf_share_data = _convert_records_datetime(etf_share_df.to_dict('records'))
                     for item in etf_share_data:
                         try:
                             # 这里需要根据实际的ETF份额规模存储方式进行处理
@@ -1559,13 +1831,13 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                forecast_df = await source.get_forecast(
+                forecast_df = source.get_forecast(
                     symbol=ts_code,
                     period=''  # 空字符串表示获取所有期间
                 )
 
                 if not forecast_df.empty:
-                    forecast_data = forecast_df.to_dict('records')
+                    forecast_data = _convert_records_datetime(forecast_df.to_dict('records'))
                     for item in forecast_data:
                         try:
                             # 这里需要根据实际的业绩预告存储方式进行处理
@@ -1622,13 +1894,13 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                express_df = await source.get_express(
+                express_df = source.get_express(
                     symbol=ts_code,
                     period=''  # 空字符串表示获取所有期间
                 )
 
                 if not express_df.empty:
-                    express_data = express_df.to_dict('records')
+                    express_data = _convert_records_datetime(express_df.to_dict('records'))
                     for item in express_data:
                         try:
                             # 这里需要根据实际的业绩快报存储方式进行处理
@@ -1685,13 +1957,13 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                dividend_df = await source.get_dividend(
+                dividend_df = source.get_dividend(
                     symbol=ts_code,
                     limit=100  # 限制获取记录数
                 )
 
                 if not dividend_df.empty:
-                    dividend_data = dividend_df.to_dict('records')
+                    dividend_data = _convert_records_datetime(dividend_df.to_dict('records'))
                     for item in dividend_data:
                         try:
                             # 这里需要根据实际的分红送股存储方式进行处理
@@ -1755,14 +2027,14 @@ class DataSyncService:
 
         for idx, ts_code in enumerate(ts_codes):
             try:
-                fina_indicator_df = await source.get_fina_indicator(
+                fina_indicator_df = source.get_fina_indicator(
                     symbol=ts_code,
                     start_date=start_date_str,
                     end_date=end_date_str
                 )
 
                 if not fina_indicator_df.empty:
-                    fina_indicator_data = fina_indicator_df.to_dict('records')
+                    fina_indicator_data = _convert_records_datetime(fina_indicator_df.to_dict('records'))
                     for item in fina_indicator_data:
                         try:
                             # 这里需要根据实际的财务指标存储方式进行处理
@@ -1914,20 +2186,22 @@ class DataSyncService:
         event_kwargs = {
             "task_id": task_id,
             "user_id": user_id,
-            "timestamp": datetime.now()
+            "timestamp": datetime.now(),
+            "source": "data_module"
         }
 
         if event_type in ("started", "batch_started"):
             sync_type = "batch" if event_type == "batch_started" else (data_type or "unknown")
+            # 从 event_kwargs 中移除 source，避免重复传递
+            event_kwargs_copy = {k: v for k, v in event_kwargs.items() if k != "source"}
             event = DataSyncStartedEvent(
                 sync_type=sync_type,
                 source="tushare",
                 params={
                     "data_types": data_types,
                     "data_type": data_type,
-                    **event_kwargs
-                },
-                **event_kwargs
+                    **event_kwargs_copy
+                }
             )
         elif event_type == "progress":
             event = DataSyncProgressEvent(

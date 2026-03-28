@@ -32,6 +32,10 @@ class UserRepository:
 		"""根据ID获取用户"""
 		return await self.user_repo.get(user_id)
 
+	async def get_by_id (self, user_id: int) -> Optional[SysUser]:
+		"""根据ID获取用户（get_user的别名，保持接口一致性）"""
+		return await self.user_repo.get(user_id)
+
 	async def update_user (self, user_id: int, data: Dict[str, Any]) -> Optional[SysUser]:
 		"""更新用户"""
 		return await self.user_repo.update(user_id, data)
@@ -80,10 +84,10 @@ class UserRepository:
 
 	# ==================== 用户认证相关 ====================
 
-	async def authenticate_user (self, username: str, password_hash: str) -> Optional[SysUser]:
+	async def authenticate_user (self, username: str, password: str) -> Optional[SysUser]:
 		"""用户认证"""
 		user = await self.get_user_by_username(username)
-		if user and user.password_hash == password_hash and user.is_active:
+		if user and user.password == password and user.is_active:
 			return user
 		return None
 
@@ -94,10 +98,10 @@ class UserRepository:
 		})
 		return result is not None
 
-	async def update_password (self, user_id: int, new_password_hash: str) -> bool:
+	async def update_password (self, user_id: int, new_password: str) -> bool:
 		"""更新密码"""
 		result = await self.update_user(user_id, {
-			'password_hash': new_password_hash
+			'password': new_password
 		})
 		return result is not None
 
@@ -393,7 +397,7 @@ class UserRepository:
 	async def get_user_permissions (self, user_id: int) -> List[SysPermission]:
 		"""获取用户权限"""
 		return await self.permission_repo.get_many(
-			SysPermission.user_id == user_id,
+			user_id=user_id,
 			order_by=SysPermission.module.asc()
 		)
 

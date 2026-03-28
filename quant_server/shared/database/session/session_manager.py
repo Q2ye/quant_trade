@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from typing import Annotated
 
-from .connection_pool import get_connection_pool, ConnectionPoolManager
-from quant_server.shared.config.settings import settings
+from .connection_pool import get_connection_pool
+from ...config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class SessionManager:
 	"""会话管理器"""
 
 	def __init__ (self):
-		self._connection_pool: Optional[ConnectionPoolManager] = None
+		self._connection_pool = None
 		self._is_initialized = False
 
 	async def initialize (self) -> bool:
@@ -99,7 +99,8 @@ def get_session_manager () -> SessionManager:
 	return _session_manager
 
 
-async def get_db_session () -> AsyncSession:
+@asynccontextmanager
+async def get_db_session () -> AsyncGenerator[AsyncSession, None]:
 	"""FastAPI依赖注入：获取数据库会话"""
 	session_manager = get_session_manager()
 

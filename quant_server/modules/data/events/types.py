@@ -9,8 +9,9 @@
 """
 
 from enum import Enum, IntEnum
-from typing import Dict
+from typing import Dict, Optional, Any
 
+from quant_server.core.events import BaseEvent
 from quant_server.core.events.types import (
     EventPriority as CoreEventPriority,
 )
@@ -61,12 +62,19 @@ class DataEventType(str, Enum):
     MARKET_DATA_PROCESSED = "data.market.processed"
     MARKET_DATA_VALIDATED = "data.market.validated"
     MARKET_DATA_ERROR = "data.market.error"
+    MARKET_DATA_REQUEST = "data.market.request"
 
     # ==================== 因子计算事件 ====================
     FACTOR_CALCULATION_STARTED = "data.factor.calculation.started"
     FACTOR_CALCULATION_PROGRESS = "data.factor.calculation.progress"
     FACTOR_CALCULATION_COMPLETED = "data.factor.calculation.completed"
     FACTOR_CALCULATION_FAILED = "data.factor.calculation.failed"
+
+    # ==================== 数据请求事件 ====================
+    SYNC_REQUESTED = "data.sync.requested"
+    CLEAN_REQUESTED = "data.clean.requested"
+    QUALITY_CHECK_REQUESTED = "data.quality.check.requested"
+    RESEARCH_REQUESTED = "data.research.requested"
 
     # ==================== 数据服务事件 ====================
     DATA_SERVICE_READY = "data.service.ready"
@@ -185,12 +193,19 @@ def get_event_type_descriptions() -> Dict[str, str]:
         DataEventType.MARKET_DATA_PROCESSED: "市场数据处理完成",
         DataEventType.MARKET_DATA_VALIDATED: "市场数据验证完成",
         DataEventType.MARKET_DATA_ERROR: "市场数据处理错误",
+        DataEventType.MARKET_DATA_REQUEST: "市场数据请求",
 
         # 因子计算事件
         DataEventType.FACTOR_CALCULATION_STARTED: "因子计算开始",
         DataEventType.FACTOR_CALCULATION_PROGRESS: "因子计算进度更新",
         DataEventType.FACTOR_CALCULATION_COMPLETED: "因子计算完成",
         DataEventType.FACTOR_CALCULATION_FAILED: "因子计算失败",
+
+        # 数据请求事件
+        DataEventType.SYNC_REQUESTED: "数据同步请求",
+        DataEventType.CLEAN_REQUESTED: "数据清洗请求",
+        DataEventType.QUALITY_CHECK_REQUESTED: "数据质量检查请求",
+        DataEventType.RESEARCH_REQUESTED: "因子研究请求",
 
         # 数据服务事件
         DataEventType.DATA_SERVICE_READY: "数据服务准备就绪",
@@ -238,8 +253,48 @@ __all__ = [
     "DataQualitySeverity",
     "DataSyncType",
     "DataCleanRule",
+    "DataQualityEvent",
 
     # 工具函数
     "get_event_type_descriptions",
     "get_event_type_category",
 ]
+
+class DataQualityEvent(BaseEvent):
+    """数据质量事件"""
+
+    def __init__(
+        self,
+        event_type: str,
+        check_id: Optional[str] = None,
+        data_type: Optional[str] = None,
+        overall_score: Optional[float] = None,
+        issue_count: Optional[int] = None,
+        **kwargs
+    ):
+        """
+        初始化数据质量事件
+
+        Args:
+            event_type: 事件类型 (quality.started, quality.completed, quality.failed)
+            check_id: 质量检查ID
+            data_type: 数据类型 (daily_quotes, factor_data, financial_data)
+            overall_score: 总体质量评分 (0-100)
+            issue_count: 问题数量
+        """
+        super().__init__(event_type, **kwargs)
+        self.check_id = check_id
+        self.data_type = data_type
+        self.overall_score = overall_score
+        self.issue_count = issue_count
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        data = super().to_dict()
+        data.update({
+            "check_id": self.check_id,
+            "data_type": self.data_type,
+            "overall_score": self.overall_score,
+            "issue_count": self.issue_count
+        })
+        return data

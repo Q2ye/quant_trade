@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.repositories.system.auth import user_repo
 from quant_server.shared.security.jwt_handler import JWTManager
+from quant_server.core.exceptions.security_exceptions import (
+    TokenExpiredError,
+    InvalidTokenError
+)
 from quant_server.api.dependencies.database import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -70,18 +74,10 @@ class AuthDependencies:
 		token = credentials.credentials
 
 		try:
-			# 解码JWT令牌
-			payload = self.jwt_manager.decode_token(token)
+			# 验证和解码JWT令牌
+			payload = self.jwt_manager.verify_token(token, token_type="access")
 
-			# 验证令牌类型
-			if payload.get("type") != "access":
-				logger.warning(f"令牌类型错误: {payload.get('type')}")
-				raise HTTPException(
-					status_code=status.HTTP_401_UNAUTHORIZED,
-					detail="无效的令牌类型",
-				)
-
-			# 检查令牌是否过期
+			# 检查令牌是否过期（verify_token已经处理了过期验证，这里做双重保险）
 			if datetime.fromtimestamp(payload["exp"]) < datetime.utcnow():
 				logger.warning("令牌已过期")
 				raise HTTPException(
@@ -97,9 +93,19 @@ class AuthDependencies:
 					detail="无效的令牌",
 				)
 
+			# 将用户ID转换为整数类型
+			try:
+				user_id_int = int(user_id)
+			except (ValueError, TypeError):
+				logger.warning(f"用户ID格式无效: {user_id}")
+				raise HTTPException(
+					status_code=status.HTTP_401_UNAUTHORIZED,
+					detail="无效的令牌",
+				)
+
 			# 从数据库获取用户信息
 			user_repository = user_repo.UserRepository(db_session)
-			user = await user_repository.get_by_id(user_id)
+			user = await user_repository.get_user(user_id_int)
 
 			if not user:
 				logger.warning(f"用户不存在: {user_id}")
@@ -116,31 +122,51 @@ class AuthDependencies:
 					detail="用户账户已被禁用",
 				)
 
-			# 更新最后活动时间
-			await user_repository.update_last_activity(user_id)
+			# 更新最后登录时间
+			await user_repository.update_last_login(user_id_int)
+
+			# 获取用户权限信息
+			user_permissions = await user_repository.get_user_permissions(user.id)
+
+			# 将权限信息转换为权限代码列表
+			permission_codes = [
+				f"{perm.module}:read" if perm.can_read else
+				f"{perm.module}:write" if perm.can_write else
+				f"{perm.module}:execute"
+				for perm in user_permissions
+			]
+
+			# 检查用户是否具有数据同步权限
+			# admin和super_admin角色拥有所有权限
+			# data模块的任何权限（data_management、data:sync、data:write等）也都允许
+			can_sync_data = (
+				user.role in ("admin", "super_admin", "superadmin") or
+				any("data" in perm.lower() for perm in permission_codes)
+			)
 
 			# 返回用户信息
 			user_info = {
 				"id": user.id,
 				"username": user.username,
 				"email": user.email,
-				"full_name": user.full_name,
+				"real_name": user.real_name,
+				"phone": user.phone,
+				"role": user.role,
 				"is_active": user.is_active,
-				"is_superuser": user.is_superuser,
 				"last_login": user.last_login,
 				"created_at": user.created_at,
-				"roles": [role.name for role in user.roles],
-				"permissions": [perm.code for role in user.roles for perm in role.permissions]
+				"permissions": permission_codes,
+				"can_sync_data": can_sync_data,
 			}
 
 			logger.debug(f"用户认证成功: {user.username} (ID: {user.id})")
 			return user_info
 
-		except JWTManager as e:
-			logger.error(f"JWT解码失败: {str(e)}")
+		except (TokenExpiredError, InvalidTokenError) as e:
+			logger.error(f"JWT验证失败: {str(e)}")
 			raise HTTPException(
 				status_code=status.HTTP_401_UNAUTHORIZED,
-				detail="无效的令牌格式",
+				detail="无效的令牌",
 			)
 		except HTTPException:
 			raise

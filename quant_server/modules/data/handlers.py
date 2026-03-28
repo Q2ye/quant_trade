@@ -252,7 +252,7 @@ async def get_factor_data (
 				"page": request.page,
 				"page_size": request.page_size,
 				"total": total_count,
-				"total_pages": (total_count + request.page_size - 1) // request.page_size
+				"total_pages": ( (total_count or 0) + (request.page_size or 10) - 1 ) // (request.page_size or 10)
 			},
 			available_factors=available_factor_objects,
 			message="获取因子数据成功"
@@ -649,10 +649,14 @@ async def get_stock_list (
 			filters.append(StockBasic.list_status == request.list_status)
 		# 注意：StockListRequest中没有is_active字段
 
+		# 使用配置化的分页参数（获取实际有效的分页值）
+		effective_page = request.get_effective_page()
+		effective_page_size = request.get_effective_page_size()
+
 		# 执行分页查询
 		stocks = await stock_repo.get_many(
-			skip=(request.page - 1) * request.page_size,
-			limit=request.page_size,
+			skip=(effective_page - 1) * effective_page_size,
+			limit=effective_page_size,
 			order_by=[StockBasic.ts_code]
 		)
 
@@ -683,7 +687,7 @@ async def get_stock_list (
 				"page": request.page,
 				"page_size": request.page_size,
 				"total": total_count,
-				"total_pages": (total_count + request.page_size - 1) // request.page_size
+				"total_pages": (total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
 			},
 			message="获取股票列表成功"
 		)
@@ -723,7 +727,7 @@ async def get_stock_detail (
 
 		# 1. 获取股票基础信息
 		stock_repo = StockBasicRepository(session)
-		stock = await stock_repo.get_by_symbol(ts_code)
+		stock = await stock_repo.get_by_ts_code(ts_code)
 
 		if not stock:
 			raise ResourceNotFoundException(f"股票 '{ts_code}' 不存在")
@@ -733,12 +737,12 @@ async def get_stock_detail (
 		if request.include_quote:  # 使用正确的属性名
 			quote_repo = StockDailyRepository(session)
 			quotes = await quote_repo.get_many(
-				StockDaily.ts_code == ts_code,
-				limit=1,
-				order_by=[StockDaily.trade_date.desc()]
+				ts_code=ts_code,
+				limit=1
 			)
 			if quotes:
-				latest_quote = quotes[0]
+				# 按日期倒序排列取最新
+				latest_quote = max(quotes, key=lambda x: x.trade_date if x.trade_date else None)
 
 		# 3. 构建基础信息
 		basic_info = {
@@ -943,7 +947,7 @@ async def batch_sync_data (
 		# 3. 创建任务记录
 		sync_task_repo = DataSyncTaskRepository(session)
 
-		# 创建同步任务记录
+		# 创建同步任务记录（注意：id字段为自增主键，由数据库自动生成）
 		sync_task_data = {
 			"task_id": task_id,
 			"task_type": "batch_sync",
@@ -964,11 +968,14 @@ async def batch_sync_data (
 
 		# 4. 发布同步开始事件
 		start_event = DataSyncStartedEvent(
-			task_id=task_id,
-			data_types=data_types,
-			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
+			sync_type="batch_sync",
+			source="data_module",
+			params={
+				"task_id": task_id,
+				"data_types": data_types,
+				"user_id": user_id,
+				"timestamp": datetime.now().isoformat()
+			}
 		)
 		await event_engine.put(start_event)  # type: ignore
 
@@ -1150,8 +1157,8 @@ async def get_sync_status (
 		sync_task_repo = DataSyncTaskRepository(session)
 
 		if task_id:
-			# 查询指定任务
-			task_result = await sync_task_repo.get(task_id)
+			# 查询指定任务（使用get_by_task_id方法，将字符串task_id转换为整数id）
+			task_result = await sync_task_repo.get_by_task_id(task_id)
 			if not task_result.success or not task_result.data:
 				raise ResourceNotFoundException(f"同步任务 '{task_id}' 不存在")
 
@@ -1191,18 +1198,15 @@ async def get_sync_status (
 			)
 
 		else:
-			# 查询用户最近任务 - 修复：使用正确的方法名
-			# 假设sync_task_repo有正确的方法
-			tasks_result = await sync_task_repo.get_many(
+			# 查询用户最近任务 - 使用get_by_user_id方法
+			tasks = await sync_task_repo.get_by_user_id(
 				user_id=user_id,
-				limit=10,
-				order_by="created_at_desc"
+				limit=10
 			)
 
 			# 构建任务概览列表
 			recent_tasks = []
-			if tasks_result.success and tasks_result.data:
-				tasks = tasks_result.data
+			if tasks:
 				for task in tasks:
 					recent_tasks.append({
 						"task_id": task.task_id,
@@ -1297,9 +1301,11 @@ async def cancel_sync (
 
 		# 5. 发布取消事件
 		cancel_event = DataSyncProgressEvent(
+			sync_type="cancel",
 			task_id=task_id,
 			data_types=task.data_types if hasattr(task, "data_types") else [],
 			progress=0,
+			current_item="任务已取消",
 			current_task="任务已取消",
 			total_tasks=1,
 			completed_tasks=0,
@@ -1793,13 +1799,17 @@ async def _execute_sync_data_sync (
 
 		# 4. 更新任务状态
 		sync_task_repo = DataSyncTaskRepository(session)
-		await sync_task_repo.update_sync_status(
-			task_id=task_id,
-			status="completed",
-			records_processed=sync_result.get("records_processed", 0),
-			records_succeeded=sync_result.get("records_succeeded", 0),
-			records_failed=sync_result.get("records_failed", 0)
-		)
+		# 先获取任务以得到整数id
+		task_result = await sync_task_repo.get_by_task_id(task_id)
+		if task_result.success and task_result.data:
+			update_data = {
+				"status": "completed",
+				"records_processed": sync_result.get("records_processed", 0),
+				"records_succeeded": sync_result.get("records_succeeded", 0),
+				"records_failed": sync_result.get("records_failed", 0),
+				"end_time": datetime.now()
+			}
+			await sync_task_repo.update(task_result.data.id, update_data)
 
 		# 5. 发布同步完成事件
 		completed_event = DataSyncCompletedEvent(
@@ -1831,11 +1841,14 @@ async def _execute_sync_data_sync (
 
 		# 记录失败状态
 		sync_task_repo = DataSyncTaskRepository(session)
-		await sync_task_repo.update_sync_status(
-			task_id=task_id,
-			status="failed",
-			error_message=str(e)
-		)
+		task_result = await sync_task_repo.get_by_task_id(task_id)
+		if task_result.success and task_result.data:
+			update_data = {
+				"status": "failed",
+				"error_message": str(e),
+				"end_time": datetime.now()
+			}
+			await sync_task_repo.update(task_result.data.id, update_data)
 
 		raise BusinessException(f"同步执行数据同步失败: {str(e)}")
 
@@ -1870,19 +1883,20 @@ async def _execute_async_data_sync (
 			task = task_result.data
 			update_data = {
 				"status": "running",
-				"progress": 0.1,
 				"processed_records": 0
 			}
 			await sync_task_repo.update(task.id, update_data)
 
 		# 3. 发布进度事件
+		# Derive sync_type from first task's data_type
+		sync_type = request.tasks[0].data_type if request.tasks else "batch"
 		progress_event = DataSyncProgressEvent(
-			task_id=task_id,
-			data_types=[task.data_type for task in request.tasks],
+			sync_type=sync_type,
 			progress=0.1,
-			current_task="初始化同步任务",
-			total_tasks=len(request.tasks),
-			completed_tasks=1,
+			current_item="初始化同步任务",
+			total_items=len(request.tasks),
+			processed_items=1,
+			task_id=task_id,
 			user_id=user_id,
 			timestamp=datetime.now(),
 			source="data_module"
@@ -1901,7 +1915,6 @@ async def _execute_async_data_sync (
 			task = task_result.data
 			update_data = {
 				"status": "completed",
-				"progress": 1.0,
 				"records_processed": sync_result.get("records_processed", 0),
 				"records_succeeded": sync_result.get("records_succeeded", 0),
 				"records_failed": sync_result.get("records_failed", 0),
@@ -1911,15 +1924,18 @@ async def _execute_async_data_sync (
 
 		# 6. 发布同步完成事件
 		completed_event = DataSyncCompletedEvent(
-			task_id=task_id,
-			data_types=[task.data_type for task in request.tasks],
+			sync_type=sync_type,
+			record_count=sync_result.get("records_processed", 0),
 			duration_seconds=sync_result.get("duration_seconds", 0),
-			records_processed=sync_result.get("records_processed", 0),
-			records_succeeded=sync_result.get("records_succeeded", 0),
-			records_failed=sync_result.get("records_failed", 0),
+			success=sync_result.get("records_failed", 0) == 0,
+			summary={
+				"records_succeeded": sync_result.get("records_succeeded", 0),
+				"records_failed": sync_result.get("records_failed", 0),
+				"data_types": [task.data_type for task in request.tasks]
+			},
+			task_id=task_id,
 			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
+			timestamp=datetime.now()
 		)
 		await event_engine.put(completed_event)  # type: ignore
 
@@ -1941,15 +1957,17 @@ async def _execute_async_data_sync (
 			await sync_task_repo.update(task.id, update_data)
 
 		# 发布失败事件
+		# Derive sync_type from first task's data_type
+		sync_type = request.tasks[0].data_type if request.tasks else "batch"
 		fail_event = DataSyncProgressEvent(
-			task_id=task_id,
-			data_types=[task.data_type for task in request.tasks],
+			sync_type=sync_type,
 			progress=0,
-			current_task="同步失败",
-			total_tasks=len(request.tasks),
-			completed_tasks=0,
-			error_message=str(e),
+			current_item="同步失败",
+			total_items=len(request.tasks),
+			processed_items=0,
+			task_id=task_id,
 			user_id=user_id,
+			error_message=str(e),
 			timestamp=datetime.now(),
 			source="data_module"
 		)
@@ -2234,8 +2252,10 @@ async def initialize_data_module (
 
 		# 1. 检查必要的数据表
 		from sqlalchemy import inspect
-		inspector = inspect(session.bind)
-		tables = inspector.get_table_names()
+		# 使用 run_sync 在异步会话上执行同步操作
+		tables = await session.run_sync(
+			lambda sync_session: inspect(sync_session.connection()).get_table_names()
+		)
 
 		required_tables = [
 			"stocks", "daily_quotes", "sync_tasks",
@@ -2309,9 +2329,10 @@ async def initialize_data_module (
 
 			# 查询旧完成/失败任务
 			old_sync_tasks_result = await sync_task_repo.get_many(
-				created_at <= sync_cutoff_date,
-				status.in_(["completed", "failed", "cancelled"]),
-				limit=100
+				skip=0,
+				limit=100,
+				created_at__lte=sync_cutoff_date,
+				status__in=["completed", "failed", "cancelled"]
 			)
 			old_sync_tasks = old_sync_tasks_result if isinstance(old_sync_tasks_result, list) else []
 

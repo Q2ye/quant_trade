@@ -234,13 +234,13 @@ class MainEngine(EngineBase):
     async def _initialize_system_config(self) -> None:
         """初始化系统配置"""
         # 从配置文件或环境变量加载系统配置
-        system_config_data = self.config.config.get("events", {})
+        system_config_data = self.config.config.get("system", {})
 
         # 创建系统配置实体
         self._system_config = SystemConfigEntity(
             system_name=system_config_data.get("system_name", "量化交易系统"),
             version=system_config_data.get("version", "1.0.0"),
-            mode=SystemMode(system_config_data.get("mode", "DEVELOPMENT")),
+            mode=SystemMode(system_config_data.get("mode", "development")),
             auto_start_engines=system_config_data.get("auto_start_engines", True),
             enable_monitoring=system_config_data.get("enable_monitoring", True),
             enable_web_socket=system_config_data.get("enable_web_socket", True),
@@ -258,6 +258,13 @@ class MainEngine(EngineBase):
             f"系统配置加载完成: {self._system_config.system_name} "
             f"v{self._system_config.version}"
         )
+
+        # 加载模块配置（用于动态注册引擎）
+        self._modules_config = self.config.config.get("modules", {})
+        if isinstance(self._modules_config, dict):
+            logger.info(f"加载模块配置: {list(self._modules_config.keys())}")
+        else:
+            logger.info(f"加载模块配置: {type(self._modules_config)} - {self._modules_config}")
 
     async def _initialize_core_components(self) -> None:
         """初始化核心组件"""
@@ -350,27 +357,78 @@ class MainEngine(EngineBase):
             logger.info("跳过自动启动子引擎（配置为手动启动）")
             return
 
-        # 核心引擎类型 - 使用现有的EngineType枚举值
-        core_engine_types = [
-            EngineType.EVENT,  # 事件引擎应该已经启动
-            EngineType.DATA_SYNC,  # 数据引擎
-            EngineType.STRATEGY_MANAGER,  # 策略引擎
-            EngineType.EXECUTION_ENGINE,  # 交易引擎
-            EngineType.RISK_ENGINE,  # 风险引擎
-            EngineType.ACCOUNT_ENGINE,  # 账户引擎
-            EngineType.PERFORMANCE_ENGINE,  # 分析引擎
-            EngineType.SYSTEM_MONITOR,  # 监控引擎
-            EngineType.BACKTEST_ENGINE  # 回测引擎
-        ]
+        # 第一步：根据 modules 配置动态注册引擎
+        await self._register_module_engines()
 
-        start_tasks = []
-        for engine_type in core_engine_types:
-            # 跳过已启动的引擎
-            if engine_type == EngineType.EVENT and self.event_engine:
+        # 第二步：启动已注册的引擎
+        await self._start_registered_engines()
+
+    async def _register_module_engines(self) -> None:
+        """根据 modules 配置动态注册引擎"""
+        if not self._modules_config:
+            logger.info("没有模块配置，跳过动态注册")
+            return
+
+        # 模块名称到引擎类型的映射
+        module_to_engine_type = {
+            "data": EngineType.DATA_SYNC,
+            "strategy": EngineType.STRATEGY_MANAGER,
+            "trade": EngineType.EXECUTION_ENGINE,
+            "backtest": EngineType.BACKTEST_ENGINE,
+            "account": EngineType.ACCOUNT_ENGINE,
+            "analysis": EngineType.PERFORMANCE_ENGINE,
+            "monitor": EngineType.SYSTEM_MONITOR,
+            "system": EngineType.SYSTEM,
+        }
+
+        for module_name, module_config in self._modules_config.items():
+            # 检查模块是否启用
+            if not module_config.get("enabled", False):
+                logger.info(f"模块 {module_name} 未启用，跳过注册")
                 continue
 
-            # 检查配置中是否启用该引擎
+            # 获取对应的引擎类型
+            engine_type = module_to_engine_type.get(module_name)
+            if not engine_type:
+                logger.warning(f"模块 {module_name} 没有对应的引擎类型，跳过")
+                continue
+
+            # 动态注册引擎
+            try:
+                success = self._engine_factory.register_engine_from_module(
+                    engine_type=engine_type,
+                    module_name=module_name,
+                    module_config=module_config
+                )
+                if success:
+                    logger.info(f"模块 {module_name} 引擎注册成功")
+            except Exception as e:
+                logger.error(f"模块 {module_name} 引擎注册失败: {e}")
+
+    async def _start_registered_engines(self) -> None:
+        """启动已注册的引擎（根据配置决定是否启动）"""
+        # 跳过事件引擎（已经启动）
+        if EngineType.EVENT in self._engine_factory._engine_descriptors:
+            logger.debug("事件引擎已注册")
+
+        # 获取所有已注册的引擎类型
+        registered_types = self._engine_factory.list_engine_types()
+        logger.info(f"已注册的引擎类型: {[t.value for t in registered_types]}")
+
+        start_tasks = []
+        for engine_type in registered_types:
+            # 跳过事件引擎（已经启动）
+            if engine_type == EngineType.EVENT:
+                continue
+
+            # 跳过主引擎（不需要自动启动）
+            if engine_type == EngineType.MAIN:
+                continue
+
+            # 获取引擎配置
             engine_config = self._system_config.engine_configs.get(engine_type.value, {})
+
+            # 检查是否启用（默认启用）
             if not engine_config.get("enabled", True):
                 logger.info(f"引擎 {engine_type.value} 在配置中被禁用，跳过启动")
                 continue
@@ -407,9 +465,18 @@ class MainEngine(EngineBase):
                 lazy_init=False  # 立即启动
             )
 
-            # 注册到引擎注册表
+            # 注册到引擎注册表（传递正确的category参数）
             if self._engine_registry:
-                await self._engine_registry.register_engine(engine)
+                # 获取引擎描述符以获取category信息
+                from quant_server.core.engines.utils.engine_factory import EngineFactory
+                factory_instance = EngineFactory()
+                descriptor = factory_instance.get_engine_descriptor(engine_type)
+                if descriptor:
+                    await self._engine_registry.register_engine(engine, descriptor.category)
+                else:
+                    logger.warning(f"无法获取引擎描述符: {engine_type}, 使用默认分类")
+                    from quant_server.core.engines.types.enums import EngineCategory
+                    await self._engine_registry.register_engine(engine, EngineCategory.SYSTEM)
 
             # 保存到模块映射
             module_name = engine_type.value.replace("_engine", "")

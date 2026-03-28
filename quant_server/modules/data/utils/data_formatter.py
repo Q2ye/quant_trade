@@ -540,16 +540,14 @@ class DataFormatter:
 		"""
 		result_df = df.copy()
 
-		# 将datetime转换为字符串
-		datetime_cols = result_df.select_dtypes(include=['datetime64']).columns
-		for col in datetime_cols:
-			result_df[col] = result_df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+		# 注意：不要将datetime/date转换为字符串
+		# asyncpg 需要真正的 datetime/date 对象，而不是字符串
+		# 让 SQLAlchemy 自动处理类型转换
 
-		# 将date转换为字符串
-		date_cols = result_df.select_dtypes(include=['object']).columns
-		for col in date_cols:
-			if col.endswith('_date') or col == 'date':
-				result_df[col] = pd.to_datetime(result_df[col]).dt.strftime('%Y-%m-%d')
+		# 仅处理数值类型的 NaN 值，转换为 None
+		for col in result_df.columns:
+			if result_df[col].dtype in ['float64', 'float32']:
+				result_df[col] = result_df[col].where(pd.notnull(result_df[col]), None)
 
 		return result_df
 

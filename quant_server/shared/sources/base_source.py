@@ -34,7 +34,7 @@ class BaseDataSource(ABC):
         """获取A股列表"""
         pass
 
-    def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+    async def get_stock_basic(self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
         """获取股票基础信息"""
         raise NotImplementedError("子类需实现 get_stock_basic")
 
@@ -184,7 +184,7 @@ class BaseDataSource(ABC):
         """检查连接状态"""
         return self._connected
 
-    def get_trade_cal(self, exchange: str = '',
+    async def get_trade_cal(self, exchange: str = '',
                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
         """获取交易日历"""
         raise NotImplementedError("子类需实现 get_trade_cal")

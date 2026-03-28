@@ -1,333 +1,491 @@
-# api/routers/backtest_router.py    # 回测模块路由
-import datetime
+# -*- coding: utf-8 -*-
+"""
+回测模块API路由
+基于混合架构设计，负责将HTTP请求路由到回测模块的业务处理层
+位置：quant_server/api/routers/backtest_router.py
+回测模块路由
+"""
+from typing import Optional, Dict
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-import time
-import uuid
-from enum import Enum
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from quant_server.api.dependencies import get_main_engine, get_db
-from quant_server.core.strategy_engine.main_engine import MainEngine
-from quant_server.shared.database.models.business_models import (
-    BacktestTask, BacktestEquityCurve, BacktestTrade, BacktestPosition
+# 导入架构依赖
+from quant_server.api.dependencies.database import get_db_session
+from quant_server.api.dependencies.auth import get_current_user
+from quant_server.api.dependencies.event_engine import get_event_engine
+
+# 导入响应格式化工具
+from quant_server.utils.api_utils.response_formatter import success_response, error_response
+
+# 导入回测模块的业务层处理函数
+from quant_server.modules.backtest.handlers import (
+    create_backtest_task,
+    get_backtest_task,
+    get_backtest_task_list,
+    cancel_backtest_task,
+    get_backtest_equity_curve,
+    get_backtest_trades,
+    get_backtest_positions,
+    get_backtest_result,
+    optimize_backtest_parameters,
+    check_backtest_module_health
 )
 
+# 导入回测模块的Pydantic模型
+from quant_server.modules.backtest.schemas import (
+    BacktestCreateRequest,
+    BacktestCreateResponse,
+    BacktestDetailResponse,
+    BacktestListRequest,
+    BacktestListResponse,
+    BacktestCancelRequest,
+    BacktestEquityCurveRequest,
+    BacktestEquityCurveResponse,
+    BacktestTradesRequest,
+    BacktestTradesResponse,
+    BacktestPositionsRequest,
+    BacktestPositionsResponse,
+    BacktestResultResponse,
+    BacktestOptimizeRequest,
+    BacktestOptimizeResponse
+)
+
+# 配置日志
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/events", tags=["events"])
-
-# 内存中的任务存储（生产环境应考虑使用Redis或数据库）
-backtest_tasks: Dict[str, BacktestTask] = {}
-
-
-class BacktestStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+# 创建路由器实例
+router = APIRouter(
+    prefix="/backtest",
+    tags=["回测工作台"],
+    responses={
+        401: {"description": "认证失败"},
+        403: {"description": "权限不足"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 
 
-class BacktestConfig(BaseModel):
-    """回测配置模型"""
-    strategy_name: str
-    symbols: List[str]
-    start_date: str  # 格式: YYYY-MM-DD
-    end_date: str  # 格式: YYYY-MM-DD
-    initial_capital: float = 1000000.0
-    commission_rate: float = 0.0003
-    slippage_rate: float = 0.0001
-    name: Optional[str] = None
-    description: Optional[str] = None
+# ==================== 回测任务管理接口 ====================
 
+@router.post("/tasks", response_model=BacktestCreateResponse, status_code=201)
+async def create_backtest_api (
+    request: BacktestCreateRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+    event_engine=Depends(get_event_engine)
+) -> BacktestCreateResponse:
+    """
+    创建回测任务
 
-@router.post("/run", response_model=Dict[str, str])
-async def run_backtest(
-        backtest_config: BacktestConfig,
-        background_tasks: BackgroundTasks,
-        main_engine: MainEngine = Depends(get_main_engine),
-        db: Session = Depends(get_db)
-):
-    """运行回测"""
+    Args:
+        request: 回测创建请求
+        background_tasks: 后台任务
+        current_user: 当前登录用户
+        db_session: 数据库会话
+        event_engine: 事件引擎
+
+    Returns:
+        BacktestCreateResponse: 创建的回测任务响应
+    """
     try:
-        # 1. 创建任务记录
-        task_id = str(uuid.uuid4())
+        logger.info(f"用户 {current_user.get('username')} 创建回测任务，参数: {request.model_dump()}")
 
-        # 获取当前用户ID（需要实现认证系统）
-        # 这里假设从请求上下文中获取用户ID
-        user_id = 1  # 临时值，实际应从认证信息中获取
-
-        # 创建数据库记录
-        db_task = BacktestTask(
-            id=task_id,
-            user_id=user_id,
-            strategy_id=backtest_config.strategy_name,  # 这里需要根据策略名称获取策略ID
-            name=backtest_config.name or f"回测任务-{backtest_config.strategy_name}",
-            description=backtest_config.description,
-            status=BacktestStatus.PENDING,
-            config=backtest_config.model_dump(),
-            created_at=datetime.datetime.now(),
+        result = await create_backtest_task(
+            session=db_session,
+            request=request,
+            event_engine=event_engine,
+            user_id=current_user.get("id"),
+            background_tasks=background_tasks
         )
 
-        db.add(db_task)
-        db.commit()
+        return result
 
-        # 2. 将任务提交到后台
-        background_tasks.add_task(
-            execute_backtest_task,
-            task_id,
-            main_engine,
-            backtest_config.model_dump(),
-            db
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建回测任务失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建回测任务失败: {str(e)}"
         )
 
-        return {"status": "started", "message": "回测任务已开始", "task_id": task_id}
 
-    except Exception as e:
-        logger.error(f"启动回测失败: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"启动回测失败: {str(e)}")
+@router.get("/tasks", response_model=BacktestListResponse)
+async def get_backtest_list_api (
+    request: BacktestListRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestListResponse:
+    """
+    获取回测任务列表
 
+    Args:
+        request: 回测列表请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
 
-@router.get("/tasks", response_model=List[Dict[str, Any]])
-async def list_backtest_tasks(
-        skip: int = 0,
-        limit: int = 20,
-        status: Optional[BacktestStatus] = None,
-        db: Session = Depends(get_db)
-):
-    """获取回测任务列表"""
+    Returns:
+        BacktestListResponse: 回测任务列表响应
+    """
     try:
-        query = db.query(BacktestTask)
+        logger.info(f"用户 {current_user.get('username')} 请求回测任务列表")
 
-        if status:
-            query = query.filter(BacktestTask.status == status)
-
-        tasks = query.order_by(BacktestTask.created_at.desc()).offset(skip).limit(limit).all()
-
-        return [{
-            "id": task.id,
-            "name": task.name,
-            "strategy_id": task.strategy_id,
-            "status": task.status,
-            "progress": task.progress,
-            "created_at": task.created_at,
-            "started_at": task.started_at,
-            "completed_at": task.completed_at
-        } for task in tasks]
-
-    except Exception as e:
-        logger.error(f"获取回测任务列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取回测任务列表失败: {str(e)}")
-
-
-@router.get("/tasks/{task_id}", response_model=Dict[str, Any])
-async def get_backtest_task(
-        task_id: str,
-        db: Session = Depends(get_db)
-):
-    """获取回测任务详情"""
-    try:
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-
-        if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        return {
-            "id": task.id,
-            "name": task.name,
-            "description": task.description,
-            "strategy_id": task.strategy_id,
-            "status": task.status,
-            "progress": task.progress,
-            "config": task.config,
-            "result": task.result,
-            "error_message": task.error_message,
-            "created_at": task.created_at,
-            "started_at": task.started_at,
-            "completed_at": task.completed_at
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取回测任务详情失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取回测任务详情失败: {str(e)}")
-
-
-@router.get("/tasks/{task_id}/equity", response_model=List[Dict[str, Any]])
-async def get_backtest_equity(
-        task_id: str,
-        db: Session = Depends(get_db)
-):
-    """获取回测净值曲线"""
-    try:
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-
-        if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        if task.status != BacktestStatus.COMPLETED:
-            raise HTTPException(status_code=425, detail="任务未完成")
-
-        equity_data = db.query(BacktestEquityCurve).filter(
-            BacktestEquityCurve.task_id == task_id
-        ).order_by(BacktestEquityCurve.trade_date).all()
-
-        return [{
-            "trade_date": curve.trade_date,
-            "equity": curve.equity,
-            "cash": curve.cash,
-            "market_value": curve.market_value
-        } for curve in equity_data]
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取回测净值曲线失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取回测净值曲线失败: {str(e)}")
-
-
-@router.get("/tasks/{task_id}/trades", response_model=List[Dict[str, Any]])
-async def get_backtest_trades(
-        task_id: str,
-        skip: int = 0,
-        limit: int = 100,
-        db: Session = Depends(get_db)
-):
-    """获取回测交易记录"""
-    try:
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-
-        if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        if task.status != BacktestStatus.COMPLETED:
-            raise HTTPException(status_code=425, detail="任务未完成")
-
-        trades = db.query(BacktestTrade).filter(
-            BacktestTrade.task_id == task_id
-        ).order_by(BacktestTrade.trade_time.desc()).offset(skip).limit(limit).all()
-
-        return [{
-            "trade_time": trade.trade_time,
-            "ts_code": trade.ts_code,
-            "direction": trade.direction,
-            "price": trade.price,
-            "volume": trade.volume,
-            "value": trade.value,
-            "commission": trade.commission,
-            "tax": trade.tax
-        } for trade in trades]
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取回测交易记录失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取回测交易记录失败: {str(e)}")
-
-
-@router.get("/tasks/{task_id}/positions", response_model=List[Dict[str, Any]])
-async def get_backtest_positions(
-        task_id: str,
-        date: Optional[str] = None,
-        db: Session = Depends(get_db)
-):
-    """获取回测持仓快照"""
-    try:
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-
-        if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        if task.status != BacktestStatus.COMPLETED:
-            raise HTTPException(status_code=425, detail="任务未完成")
-
-        query = db.query(BacktestPosition).filter(BacktestPosition.task_id == task_id)
-
-        if date:
-            query = query.filter(BacktestPosition.trade_date == date)
-
-        positions = query.order_by(BacktestPosition.trade_date.desc()).all()
-
-        return [{
-            "trade_date": pos.trade_date,
-            "ts_code": pos.ts_code,
-            "volume": pos.volume,
-            "cost_price": pos.cost_price,
-            "market_value": pos.market_value
-        } for pos in positions]
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取回测持仓快照失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取回测持仓快照失败: {str(e)}")
-
-@router.delete("/tasks/{task_id}")
-async def cancel_backtest_task(
-        task_id: str,
-        db: Session = Depends(get_db)
-):
-    """取消回测任务"""
-    try:
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-
-        if not task:
-            raise HTTPException(status_code=404, detail="任务不存在")
-
-        if task.status not in [BacktestStatus.PENDING, BacktestStatus.RUNNING]:
-            raise HTTPException(status_code=400, detail="只能取消等待中或运行中的任务")
-
-        # 更新任务状态
-        task.status = BacktestStatus.CANCELLED
-        task.completed_at = time.time()
-        db.commit()
-
-        return {"status": "success", "message": "任务已取消"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"取消回测任务失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"取消回测任务失败: {str(e)}")
-
-
-# 后台任务执行函数
-async def execute_backtest_task(
-        task_id: str,
-        main_engine: MainEngine,
-        config: Dict[str, Any],
-        db: Session
-):
-    """执行回测任务"""
-    task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-    if not task:
-        return
-
-    try:
-        # 更新任务状态为运行中
-        task.status = BacktestStatus.RUNNING
-        task.started_at = time.time()
-        db.commit()
-
-        strategy_manager = main_engine.get_engine("strategy_manager")
-        result = await strategy_manager.run_backtest(
-            config["strategy_name"],
-            config
+        result = await get_backtest_task_list(
+            session=db_session,
+            request=request,
+            user_id=current_user.get("id")
         )
 
-        # 存储结果
-        task.status = BacktestStatus.COMPLETED
-        task.result = result
-        task.completed_at = time.time()
-        db.commit()
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取回测任务列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测任务列表失败: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}", response_model=BacktestDetailResponse)
+async def get_backtest_detail_api (
+    task_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestDetailResponse:
+    """
+    获取回测任务详情
+
+    Args:
+        task_id: 回测任务ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestDetailResponse: 回测任务详情响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测任务详情，任务ID: {task_id}")
+
+        result = await get_backtest_task(
+            session=db_session,
+            task_id=task_id,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"回测任务不存在: {task_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"回测任务 {task_id} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"获取回测任务详情失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测任务详情失败: {str(e)}"
+        )
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=BacktestDetailResponse)
+async def cancel_backtest_api (
+    task_id: int,
+    request: BacktestCancelRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestDetailResponse:
+    """
+    取消回测任务
+
+    Args:
+        task_id: 回测任务ID
+        request: 取消请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestDetailResponse: 取消后的任务详情
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 取消回测任务 {task_id}")
+
+        result = await cancel_backtest_task(
+            session=db_session,
+            task_id=task_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"回测任务不存在或无法取消: {task_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"取消回测任务失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"取消回测任务失败: {str(e)}"
+        )
+
+
+# ==================== 回测结果查询接口 ====================
+
+@router.get("/tasks/{task_id}/equity", response_model=BacktestEquityCurveResponse)
+async def get_backtest_equity_api (
+    task_id: int,
+    request: BacktestEquityCurveRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestEquityCurveResponse:
+    """
+    获取回测净值曲线
+
+    Args:
+        task_id: 回测任务ID
+        request: 净值曲线请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestEquityCurveResponse: 净值曲线响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测净值曲线，任务ID: {task_id}")
+
+        result = await get_backtest_equity_curve(
+            session=db_session,
+            task_id=task_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取回测净值曲线失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测净值曲线失败: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}/trades", response_model=BacktestTradesResponse)
+async def get_backtest_trades_api (
+    task_id: int,
+    request: BacktestTradesRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestTradesResponse:
+    """
+    获取回测交易记录
+
+    Args:
+        task_id: 回测任务ID
+        request: 交易记录请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestTradesResponse: 交易记录响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测交易记录，任务ID: {task_id}")
+
+        result = await get_backtest_trades(
+            session=db_session,
+            task_id=task_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取回测交易记录失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测交易记录失败: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}/positions", response_model=BacktestPositionsResponse)
+async def get_backtest_positions_api (
+    task_id: int,
+    request: BacktestPositionsRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestPositionsResponse:
+    """
+    获取回测持仓快照
+
+    Args:
+        task_id: 回测任务ID
+        request: 持仓快照请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestPositionsResponse: 持仓快照响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测持仓快照，任务ID: {task_id}")
+
+        result = await get_backtest_positions(
+            session=db_session,
+            task_id=task_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取回测持仓快照失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测持仓快照失败: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}/result", response_model=BacktestResultResponse)
+async def get_backtest_result_api (
+    task_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestResultResponse:
+    """
+    获取回测结果
+
+    Args:
+        task_id: 回测任务ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestResultResponse: 回测结果响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测结果，任务ID: {task_id}")
+
+        result = await get_backtest_result(
+            session=db_session,
+            task_id=task_id,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取回测结果失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取回测结果失败: {str(e)}"
+        )
+
+
+# ==================== 参数优化接口 ====================
+
+@router.post("/optimize", response_model=BacktestOptimizeResponse)
+async def optimize_parameters_api (
+    request: BacktestOptimizeRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+    event_engine=Depends(get_event_engine)
+) -> BacktestOptimizeResponse:
+    """
+    参数优化
+
+    Args:
+        request: 参数优化请求
+        background_tasks: 后台任务
+        current_user: 当前登录用户
+        db_session: 数据库会话
+        event_engine: 事件引擎
+
+    Returns:
+        BacktestOptimizeResponse: 参数优化响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求参数优化，参数: {request.model_dump()}")
+
+        result = await optimize_backtest_parameters(
+            session=db_session,
+            request=request,
+            event_engine=event_engine,
+            user_id=current_user.get("id"),
+            background_tasks=background_tasks
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"参数优化失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"参数优化失败: {str(e)}"
+        )
+
+
+# ==================== 模块管理接口 ====================
+
+@router.get("/health")
+async def backtest_module_health_check (
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+):
+    """
+    回测模块健康检查
+
+    Args:
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        JSONResponse: 健康状态
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求回测模块健康检查")
+
+        health_status = await check_backtest_module_health(
+            session=db_session,
+        )
+
+        return success_response(
+            data=health_status,
+            message="回测模块健康检查完成"
+        )
 
     except Exception as e:
-        logger.error(f"回测任务 {task_id} 执行失败: {str(e)}", exc_info=True)
-        task.status = BacktestStatus.FAILED
-        task.error_message = str(e)
-        task.completed_at = time.time()
-        db.commit()
+        logger.error(f"回测模块健康检查失败: {str(e)}", exc_info=True)
+        return error_response(
+            message="回测模块健康检查失败",
+            data={
+                "status": "unhealthy",
+                "error": str(e)
+            },
+            status_code=500
+        )

@@ -212,6 +212,28 @@ class RedisCache(CacheBase):
 		except Exception as e:
 			raise CacheError(f"Failed to clear cache: {str(e)}")
 
+	async def delete_pattern (self, pattern: str) -> int:
+		"""根据模式删除匹配的缓存键"""
+		try:
+			await self._ensure_connected()
+
+			# 生成完整的模式
+			full_pattern = f"{self.key_prefix}:{pattern}"
+
+			# 查找匹配的键
+			keys = await self.client.keys(full_pattern)
+			if not keys:
+				return 0
+
+			# 批量删除匹配的键
+			count = len(keys)
+			await self.client.delete(*keys)
+
+			return count
+
+		except Exception as e:
+			raise CacheError(f"Failed to delete cache pattern {pattern}: {str(e)}")
+
 	async def get_many (self, keys: List[str]) -> Dict[str, Any]:
 		"""批量获取缓存值"""
 		try:

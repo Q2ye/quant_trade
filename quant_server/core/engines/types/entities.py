@@ -115,6 +115,8 @@ class EngineMetrics(BaseEntity):
     error_count: int = 0                    # 错误计数
     last_error_time: Optional[datetime] = None  # 最后错误时间
     last_success_time: Optional[datetime] = None  # 最后成功时间
+    last_update_time: Optional[datetime] = None  # 最后更新时间
+    last_stop_time: Optional[datetime] = None  # 最后停止时间
     custom_metrics: Dict[str, Any] = field(default_factory=dict)  # 自定义指标
 
 

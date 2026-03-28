@@ -157,6 +157,7 @@ class TestDataSyncService:
         sync_service.source_factory.get_source.return_value = mock_source
         return mock_source
 
+    @pytest.mark.asyncio
     async def test_sync_market_data_success(self, sync_service, mock_source_factory):
         """测试成功同步市场数据"""
         # 设置mock数据
@@ -187,6 +188,7 @@ class TestDataSyncService:
         assert sync_service.stock_basic_repo.create.call_count == 1
         assert sync_service.stock_basic_repo.update.call_count == 1
 
+    @pytest.mark.asyncio
     async def test_sync_market_data_failure(self, sync_service, mock_source_factory):
         """测试同步市场数据失败"""
         mock_source = mock_source_factory.return_value
@@ -199,6 +201,7 @@ class TestDataSyncService:
         assert result["success"] is False
         assert "API调用失败" in result["error"]
 
+    @pytest.mark.asyncio
     async def test_batch_sync_success(self, sync_service, mock_source_factory):
         """测试批量同步成功"""
         # 设置mock数据
@@ -217,6 +220,7 @@ class TestDataSyncService:
         assert result["total_tasks"] == 2
         assert result["completed_tasks"] == 2
 
+    @pytest.mark.asyncio
     async def test_batch_sync_partial_failure(self, sync_service, mock_source_factory):
         """测试批量同步部分失败"""
         mock_source = mock_source_factory.return_value

@@ -57,6 +57,11 @@ __all__ = [
 	"atomic",
 	"transaction_scope",
 	"NestedTransaction",
+
+	# 初始化函数
+	"initialize_database",
+	"close_database",
+	"get_database_status",
 ]
 
 

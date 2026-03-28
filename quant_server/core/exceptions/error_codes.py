@@ -47,6 +47,7 @@ class ErrorCode(str, Enum):
 	NOT_IMPLEMENTED = "1004"
 	DEPRECATED = "1005"
 	NOT_FOUND = "1006"
+	RESOURCE_NOT_FOUND = "1006"
 	CONFLICT = "1007"
 	UNPROCESSABLE_ENTITY = "1008"
 	TOO_MANY_REQUESTS = "1009"
@@ -119,7 +120,7 @@ class ErrorCode(str, Enum):
 
 	# 密码错误 (5300-5399)
 	PASSWORD_ERROR = "5300"
-	PASSWORD_HASH_FAILED = "5301"
+	PASSWORD_FAILED = "5301"
 	PASSWORD_VALIDATION_FAILED = "5302"
 	WEAK_PASSWORD = "5303"
 	PASSWORD_MISMATCH = "5304"
@@ -292,7 +293,7 @@ ERROR_MESSAGES: Dict[str, str] = {
 	ErrorCode.TOKEN_CREATION_FAILED: "令牌创建失败",
 	ErrorCode.TOKEN_REFRESH_FAILED: "令牌刷新失败",
 	ErrorCode.PASSWORD_ERROR: "密码错误",
-	ErrorCode.PASSWORD_HASH_FAILED: "密码哈希失败",
+	ErrorCode.PASSWORD_FAILED: "密码哈希失败",
 	ErrorCode.PASSWORD_VALIDATION_FAILED: "密码验证失败",
 	ErrorCode.WEAK_PASSWORD: "密码强度不足",
 	ErrorCode.PASSWORD_MISMATCH: "密码不匹配",
@@ -610,7 +611,7 @@ def get_http_status_code (error_code: str) -> int:
 		ErrorCode.TOKEN_CREATION_FAILED: 500,
 		ErrorCode.TOKEN_REFRESH_FAILED: 400,
 		ErrorCode.PASSWORD_ERROR: 400,
-		ErrorCode.PASSWORD_HASH_FAILED: 500,
+		ErrorCode.PASSWORD_FAILED: 500,
 		ErrorCode.PASSWORD_VALIDATION_FAILED: 400,
 		ErrorCode.WEAK_PASSWORD: 400,
 		ErrorCode.PASSWORD_MISMATCH: 400,

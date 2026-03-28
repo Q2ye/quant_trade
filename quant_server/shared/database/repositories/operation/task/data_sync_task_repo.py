@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, case, desc
 
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository
+from quant_server.shared.database.repositories.types import RepositoryResult
 from quant_server.shared.database.models.business_models import DataSyncTask
 
 
@@ -109,6 +110,33 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 			运行中的任务列表
 		"""
 		return await self.get_by_status('running')
+
+	async def get_by_user_id (
+			self,
+			user_id: int,
+			limit: int = 10,
+			status: Optional[str] = None
+	) -> List[DataSyncTask]:
+		"""
+		根据用户ID获取同步任务
+
+		Args:
+			user_id: 用户ID
+			limit: 返回数量限制
+			status: 任务状态筛选（可选）
+
+		Returns:
+			数据同步任务列表
+		"""
+		query = select(self.model).where(self.model.user_id == user_id)
+
+		if status:
+			query = query.where(self.model.status == status)
+
+		query = query.order_by(desc(self.model.created_at)).limit(limit)
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_recent_tasks (
 			self,
@@ -622,19 +650,37 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 
 	# ==================== 摘要方法 ====================
 
-	async def get_by_task_id(self, task_id: str) -> Optional[DataSyncTask]:
+	async def get_by_task_id(self, task_id: str) -> RepositoryResult[Optional[DataSyncTask]]:
 		"""
 		根据任务ID获取同步任务
 
 		Args:
-			task_id: 任务ID
+			task_id: 任务ID（如 sync_abc12345）
 
 		Returns:
-			数据同步任务对象或None
+			RepositoryResult: 包含数据同步任务对象的查询结果
 		"""
-		query = select(self.model).where(self.model.task_id == task_id)
-		result = await self.session.execute(query)
-		return result.scalar_one_or_none()
+		try:
+			# 直接按task_id字段查询
+			query = select(self.model).where(self.model.task_id == task_id)
+			result = await self.session.execute(query)
+			task = result.scalar_one_or_none()
+
+			if task:
+				return RepositoryResult(
+					success=True,
+					data=task,
+				)
+			else:
+				return RepositoryResult(
+					success=False,
+					error=f"数据同步任务不存在: {task_id}",
+				)
+		except Exception as e:
+			return RepositoryResult(
+				success=False,
+				error=str(e),
+			)
 
 	async def get_task_summary (self) -> Dict[str, Any]:
 		"""

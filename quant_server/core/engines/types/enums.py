@@ -19,7 +19,7 @@
 3. 向后兼容：新增枚举值不影响现有代码
 4. 扩展性：预留足够的枚举值供未来扩展
 """
-
+from builtins import int
 from enum import Enum
 from typing import Type
 
@@ -58,26 +58,45 @@ class ComponentStatus(str, Enum):
     STOPPED -> STARTING | UNINITIALIZED
     ERROR -> STOPPED | STARTING
     DEGRADED -> RUNNING | STOPPING | ERROR
-    PAUSED -> RUNNING | STOPPING | ERROR
     """
 
     # 未初始化状态
-    UNINITIALIZED = "uninitialized"
-    INITIALIZING = "initializing"
-    INITIALIZED = "initialized"
+    UNINITIALIZED = ("uninitialized", 0)
+    INITIALIZING = ("initializing", 1)
+    INITIALIZED = ("initialized", 2)
 
     # 运行状态
-    STARTING = "starting"
-    RUNNING = "running"
-    PAUSED = "paused"
-    DEGRADED = "degraded"
+    STARTING = ("starting", 3)
+    RUNNING = ("running", 4)
+    PAUSED = ("paused", 9)
+    DEGRADED = ("degraded", 8)
 
     # 停止状态
-    STOPPING = "stopping"
-    STOPPED = "stopped"
+    STOPPING = ("stopping", 5)
+    STOPPED = ("stopped", 6)
 
     # 错误状态
-    ERROR = "error"
+    ERROR = ("error", 7)
+
+    def __new__(cls, value: str, code: int):
+        """创建枚举实例，同时绑定字符串值和整数状态码"""
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._code = code
+        return obj
+
+    @property
+    def code(self) -> int:
+        """获取整数状态码"""
+        return self._code
+
+    @classmethod
+    def from_code(cls, code: int) -> 'ComponentStatus':
+        """根据状态码反向查找枚举成员"""
+        for member in cls:
+            if member._code == code:
+                return member
+        raise ValueError(f"No ComponentStatus with code {code}")
 
     @classmethod
     def is_running_state(cls, status: 'ComponentStatus') -> bool:
@@ -125,19 +144,39 @@ class HealthStatus(str, Enum):
     """
 
     # 健康状态良好
-    HEALTHY = "healthy"
+    HEALTHY = ("healthy", 0)
 
     # 亚健康状态，功能受限但仍在运行
-    DEGRADED = "degraded"
+    DEGRADED = ("degraded", 1)
 
     # 不健康状态，功能异常但未完全失效
-    UNHEALTHY = "unhealthy"
+    UNHEALTHY = ("unhealthy", 2)
 
     # 失败状态，功能完全失效
-    FAILED = "failed"
+    FAILED = ("failed", 3)
 
     # 未知状态，无法确定健康状况
-    UNKNOWN = "unknown"
+    UNKNOWN = ("unknown", 4)
+
+    def __new__(cls, value: str, code: int):
+        """创建枚举实例，同时绑定字符串值和整数状态码"""
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj._code = code
+        return obj
+
+    @property
+    def code(self) -> int:
+        """获取整数状态码"""
+        return self._code
+
+    @classmethod
+    def from_code(cls, code: int) -> 'HealthStatus':
+        """根据状态码反向查找枚举成员"""
+        for member in cls:
+            if member._code == code:
+                return member
+        raise ValueError(f"No HealthStatus with code {code}")
 
     @classmethod
     def is_healthy(cls, health: 'HealthStatus') -> bool:

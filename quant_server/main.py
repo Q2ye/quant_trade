@@ -130,7 +130,7 @@ class StartupConfig:
         if 'mode' in system_config:
             env_map = {
                 "development": Environment.DEVELOPMENT,
-                "test": Environment.TEST,
+                "test": Environment.TESTING,
                 "production": Environment.PRODUCTION
             }
             self.settings.ENVIRONMENT = env_map.get(system_config['mode'], Environment.DEVELOPMENT)
@@ -250,10 +250,12 @@ class StartupConfig:
                 "enable_monitoring": self.enable_monitoring,
                 "enable_health_check": self.enable_health_check
             },
-            "modules": {
-                "enabled": self.enabled_modules,
-                "configs": {name: module.config for name, module in self.module_configs.items()}
-            },
+            "modules": {name: {
+                "enabled": module.enabled,
+                "auto_start": module.auto_start,
+                "dependencies": module.dependencies,
+                "config": module.config
+            } for name, module in self.module_configs.items()},
             "settings": {
                 "database": {
                     "type": self.settings.DATABASE.TYPE.value,
@@ -423,21 +425,29 @@ class QuantServer:
             try:
                 logger.info("开始初始化量化交易系统...")
 
-                # 1. 初始化FastAPI应用
+                # 1. 初始化数据库
+                from quant_server.shared.database.session import initialize_database
+                if not await initialize_database():
+                    raise RuntimeError("数据库初始化失败")
+
+                # 2. 初始化FastAPI应用
                 await self._initialize_api_app()
 
-                # 2. 初始化事件引擎
+                # 2.1 初始化API层数据库依赖
+                await self._initialize_api_database()
+
+                # 3. 初始化事件引擎
                 if self.config.auto_start_event_engine:
                     await self._initialize_event_engine()
 
-                # 3. 初始化主引擎
+                # 4. 初始化主引擎
                 if self.config.auto_start_main_engine:
                     await self._initialize_main_engine()
 
-                # 4. 加载和初始化模块
+                # 5. 加载和初始化模块
                 await self._initialize_modules()
 
-                # 5. 注册生命周期事件
+                # 6. 注册生命周期事件
                 await self._register_lifecycle_events()
 
                 logger.info("量化交易系统初始化完成")
@@ -461,14 +471,7 @@ class QuantServer:
                 title=self.config.system_name,
                 version=self.config.version,
                 description="量化交易平台API",
-                debug=self.config.settings.DEBUG,
                 docs_url="/docs" if self.config.mode != "production" else None,
-                redoc_url="/redoc" if self.config.mode != "production" else None,
-                api_config={
-                    "host": self.config.host,
-                    "port": self.config.port,
-                    "cors_origins": self.config.settings.API.CORS_ORIGINS
-                }
             )
 
             logger.info("FastAPI应用初始化完成", extra={
@@ -477,6 +480,28 @@ class QuantServer:
                 "docs_url": "/docs" if self.config.mode != "production" else None,
                 "cors_origins_count": len(self.config.settings.API.CORS_ORIGINS)
             })
+
+    @log_performance(operation="initialize_api_database", level=LogLevel.DEBUG)
+    async def _initialize_api_database(self) -> None:
+        """初始化API层数据库依赖"""
+        with get_context_manager().context_manager(
+            operation="api_database_initialization",
+            component="database"
+        ):
+            logger.info("初始化API层数据库依赖...")
+
+            try:
+                from quant_server.api.dependencies.database import initialize_api_database
+                result = await initialize_api_database()
+
+                if result:
+                    logger.info("API层数据库依赖初始化成功")
+                else:
+                    logger.warning("API层数据库依赖初始化失败，但继续启动...")
+
+            except Exception as e:
+                logger.error(f"API层数据库依赖初始化异常: {str(e)}", exc_info=True)
+                # 不阻塞启动，因为共享层数据库已经初始化成功
 
     @log_performance(operation="initialize_event_engine", level=LogLevel.DEBUG)
     async def _initialize_event_engine(self) -> None:
@@ -700,9 +725,10 @@ class QuantServer:
         if not self.app:
             return
 
-        @self.app.on_event("startup")
-        async def startup_event():
-            """应用启动事件"""
+         # 使用现代的生命周期事件处理方式（替代过时的@app.on_event）
+        @self.app.router.lifespan_context
+        async def lifespan_context(app):
+            # Startup
             with get_context_manager().context_manager(
                 operation="fastapi_startup",
                 component="fastapi",
@@ -720,11 +746,15 @@ class QuantServer:
                 # 发布系统启动事件
                 if self.event_engine:
                     from quant_server.core.events.system_events import SystemStartedEvent
+                    uptime_seconds = (datetime.now() - self.startup_time).total_seconds()
+                    modules_loaded = list(self.loaded_modules.keys())
+
                     await self.event_engine.put(SystemStartedEvent(
                         system_name=self.config.system_name,
                         version=self.config.version,
-                        environment=self.config.mode,
-                        startup_time=self.startup_time
+                        startup_time_seconds=uptime_seconds,
+                        modules_loaded=modules_loaded,
+                        config_summary=self.config.get_system_config()
                     ))
 
                 logger.info("FastAPI应用启动完成", extra={
@@ -732,9 +762,9 @@ class QuantServer:
                     "modules_loaded": len(self.loaded_modules)
                 })
 
-        @self.app.on_event("shutdown")
-        async def shutdown_event():
-            """应用关闭事件"""
+            yield
+
+            # Shutdown
             with get_context_manager().context_manager(
                 operation="fastapi_shutdown",
                 component="fastapi",
@@ -747,10 +777,12 @@ class QuantServer:
 
                 # 发布系统关闭事件
                 if self.event_engine:
-                    from quant_server.core.events.system_events import SystemShutdownEvent
-                    await self.event_engine.put(SystemShutdownEvent(
+                    from quant_server.core.events.system_events import SystemStoppedEvent
+                    await self.event_engine.put(SystemStoppedEvent(
                         system_name=self.config.system_name,
-                        uptime=(datetime.now() - self.startup_time).total_seconds()
+                        shutdown_reason="正常关闭",
+                        uptime_seconds=(datetime.now() - self.startup_time).total_seconds(),
+                        graceful=True
                     ))
 
                 # 关闭所有模块
@@ -849,8 +881,30 @@ class QuantServer:
                 # 打印启动信息
                 self._print_startup_message()
 
+                # 启动前检查
+                logger.info("开始启动uvicorn服务器...", extra={
+                    "host": self.config.host,
+                    "port": self.config.port,
+                    "reload_enabled": self.config.mode == "development"
+                })
+
                 # 运行服务器
-                await server.serve()
+                try:
+                    # ========== 启动成功标识 ==========
+                    logger.info("=" * 60)
+                    logger.info("✅ 量化交易系统启动成功！")
+                    # 使用127.0.0.1而非0.0.0.0，并移除ReDoc文档行
+                    logger.info(f"🌐 API文档: http://127.0.0.1:{self.config.port}/docs")
+                    logger.info("=" * 60)
+                    # =================================
+
+                    await server.serve()
+
+                except asyncio.CancelledError:
+                    logger.info("服务器任务被取消")
+                except Exception as e:
+                    logger.exception("uvicorn服务器运行失败", exception=e)
+                    raise
 
             except Exception as e:
                 logger.exception("服务器启动失败", exception=e)
@@ -866,14 +920,17 @@ class QuantServer:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # 在开发环境中添加热重载信号
-        if self.config.mode == "development":
+        # 在开发环境中添加热重载信号（仅Unix/Linux系统）
+        if self.config.mode == "development" and hasattr(signal, 'SIGUSR1'):
             def reload_handler(signum, frame):
                 logger.info(f"收到信号 {signum}, 重新加载配置...")
                 self._reload_configuration()
 
             # 注册USR1信号用于重新加载配置（仅开发环境）
             signal.signal(signal.SIGUSR1, reload_handler)
+            logger.info("已注册SIGUSR1信号处理器用于配置热重载")
+        elif self.config.mode == "development":
+            logger.info("当前系统不支持SIGUSR1信号，配置热重载功能不可用")
 
     @with_context(operation="reload_configuration", source="main_server")
     def _reload_configuration(self):

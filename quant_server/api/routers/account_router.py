@@ -1,239 +1,634 @@
+# -*- coding: utf-8 -*-
 """
-账户模块路由文件
-负责定义账户相关的所有API端点
+账户模块API路由
+基于混合架构设计，负责将HTTP请求路由到账户模块的业务处理层
+位置：quant_server/api/routers/account_router.py
+账户模块路由
 """
-from fastapi import APIRouter, Depends, Query, Path, HTTPException
-from typing import List, Optional
+from typing import Optional, Dict
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
-from api.dependencies.database import get_db_session
-from modules.account.schemas import (
-	AccountCreateRequest,
-	AccountResponse,
-	AccountUpdateRequest,
-	AccountBalanceResponse,
-	AccountPositionResponse,
-	AccountSummaryResponse,
-	PositionResponse,
-	AccountFilter
+# 导入架构依赖
+from quant_server.api.dependencies.database import get_db_session
+from quant_server.api.dependencies.auth import get_current_user
+
+# 导入响应格式化工具
+from quant_server.utils.api_utils.response_formatter import success_response, error_response
+
+# 导入账户模块的业务层处理函数
+from quant_server.modules.account.handlers import (
+    get_account_list,
+    get_account_detail,
+    create_account,
+    update_account,
+    delete_account,
+    get_account_balance,
+    get_account_positions,
+    get_account_summary,
+    deposit_to_account,
+    withdraw_from_account,
+    get_user_accounts,
+    get_position_detail,
+    check_account_module_health
 )
-from modules.account.handlers import AccountHandler
 
-router = APIRouter(tags=["账户管理"])
+# 导入账户模块的Pydantic模型
+from quant_server.modules.account.schemas import (
+    AccountListRequest,
+    AccountListResponse,
+    AccountDetailResponse,
+    AccountCreateRequest,
+    AccountUpdateRequest,
+    AccountResponse,
+    AccountBalanceResponse,
+    PositionListRequest,
+    PositionListResponse,
+    PositionDetailResponse,
+    AccountSummaryResponse,
+    DepositRequest,
+    WithdrawRequest
+)
+
+# 配置日志
+logger = logging.getLogger(__name__)
+
+# 创建路由器实例
+router = APIRouter(
+    prefix="/accounts",
+    tags=["账户管理"],
+    responses={
+        401: {"description": "认证失败"},
+        403: {"description": "权限不足"},
+        500: {"description": "服务器内部错误"}
+    }
+)
 
 
-@router.get("/accounts", response_model=List[AccountResponse])
-async def list_accounts (
-		skip: int = Query(0, ge=0, description="跳过记录数"),
-		limit: int = Query(100, ge=1, le=1000, description="返回记录数"),
-		user_id: Optional[int] = Query(None, description="用户ID筛选"),
-		account_type: Optional[str] = Query(None, description="账户类型筛选"),
-		status: Optional[str] = Query(None, description="账户状态筛选"),
-		db: AsyncSession = Depends(get_db_session)
+# ==================== 账户管理接口 ====================
+
+from quant_server.utils.api_utils.pagination_decorator import with_pagination_config, get_pagination_dependency
+
+@router.get("", response_model=AccountListResponse)
+@with_pagination_config()
+async def get_accounts_api (
+    request: AccountListRequest = Depends(**get_pagination_dependency()),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountListResponse:
+    """
+    获取账户列表
+
+    Args:
+        request: 账户列表请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountListResponse: 账户列表响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户列表，参数: {request.model_dump()}")
+
+        result = await get_account_list(
+            session=db_session,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取账户列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取账户列表失败: {str(e)}"
+        )
+
+
+@router.get("/users/{user_id}", response_model=AccountListResponse)
+async def get_user_accounts_api (
+    user_id: int,
+    request: AccountListRequest = Depends(),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountListResponse:
+    """
+    获取用户的所有账户
+
+    Args:
+        user_id: 用户ID
+        request: 账户列表请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountListResponse: 用户账户列表响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求用户 {user_id} 的账户列表")
+
+        result = await get_user_accounts(
+            session=db_session,
+            user_id=user_id,
+            request=request,
+            current_user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户账户列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取用户账户列表失败: {str(e)}"
+        )
+
+
+@router.get("/{account_id}", response_model=AccountDetailResponse)
+async def get_account_detail_api (
+    account_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountDetailResponse:
+    """
+    获取账户详情
+
+    Args:
+        account_id: 账户ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountDetailResponse: 账户详情响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户详情，账户ID: {account_id}")
+
+        result = await get_account_detail(
+            session=db_session,
+            account_id=account_id,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"账户 {account_id} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"获取账户详情失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取账户详情失败: {str(e)}"
+        )
+
+
+@router.post("", response_model=AccountResponse, status_code=201)
+async def create_account_api (
+    request: AccountCreateRequest,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountResponse:
+    """
+    创建新账户
+
+    Args:
+        request: 账户创建请求
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountResponse: 创建的账户响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 创建账户，参数: {request.model_dump()}")
+
+        result = await create_account(
+            session=db_session,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建账户失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建账户失败: {str(e)}"
+        )
+
+
+@router.put("/{account_id}", response_model=AccountResponse)
+async def update_account_api (
+    account_id: int,
+    request: AccountUpdateRequest,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountResponse:
+    """
+    更新账户信息
+
+    Args:
+        account_id: 账户ID
+        request: 账户更新请求
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountResponse: 更新后的账户响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 更新账户 {account_id}，参数: {request.model_dump()}")
+
+        result = await update_account(
+            session=db_session,
+            account_id=account_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"账户 {account_id} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"更新账户失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新账户失败: {str(e)}"
+        )
+
+
+@router.delete("/{account_id}", status_code=204)
+async def delete_account_api (
+    account_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
 ):
-	"""
-	获取账户列表
+    """
+    删除账户
 
-	- 支持分页查询
-	- 支持按用户、账户类型、状态筛选
-	"""
-	handler = AccountHandler(db)
-	filter_params = AccountFilter(
-		user_id=user_id,
-		account_type=account_type,
-		status=status,
-		skip=skip,
-		limit=limit
-	)
-	return await handler.get_accounts(filter_params)
+    Args:
+        account_id: 账户ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 删除账户 {account_id}")
+
+        await delete_account(
+            session=db_session,
+            account_id=account_id,
+            user_id=current_user.get("id")
+        )
+
+        return success_response(
+            message="账户删除成功",
+            data={"account_id": account_id}
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"账户不存在或无法删除: {account_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"删除账户失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除账户失败: {str(e)}"
+        )
 
 
-@router.get("/accounts/{account_id}", response_model=AccountResponse)
-async def get_account (
-		account_id: int = Path(..., description="账户ID"),
-		db: AsyncSession = Depends(get_db_session)
+# ==================== 账户资金接口 ====================
+
+@router.get("/{account_id}/balance", response_model=AccountBalanceResponse)
+async def get_account_balance_api (
+    account_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountBalanceResponse:
+    """
+    获取账户资金余额
+
+    Args:
+        account_id: 账户ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountBalanceResponse: 账户资金余额响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户 {account_id} 资金余额")
+
+        result = await get_account_balance(
+            session=db_session,
+            account_id=account_id,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"账户 {account_id} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"获取账户资金余额失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取账户资金余额失败: {str(e)}"
+        )
+
+
+@router.post("/{account_id}/deposit", response_model=AccountBalanceResponse)
+async def deposit_api (
+    account_id: int,
+    request: DepositRequest,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountBalanceResponse:
+    """
+    账户资金存入
+
+    Args:
+        account_id: 账户ID
+        request: 存款请求
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountBalanceResponse: 存款后的账户资金余额
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 向账户 {account_id} 存入资金 {request.amount}")
+
+        result = await deposit_to_account(
+            session=db_session,
+            account_id=account_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"存款失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"存款失败: {str(e)}"
+        )
+
+
+@router.post("/{account_id}/withdraw", response_model=AccountBalanceResponse)
+async def withdraw_api (
+    account_id: int,
+    request: WithdrawRequest,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountBalanceResponse:
+    """
+    账户资金取出
+
+    Args:
+        account_id: 账户ID
+        request: 取款请求
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountBalanceResponse: 取款后的账户资金余额
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 从账户 {account_id} 取出资金 {request.amount}")
+
+        result = await withdraw_from_account(
+            session=db_session,
+            account_id=account_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"取款失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"取款失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"取款失败: {str(e)}"
+        )
+
+
+# ==================== 持仓管理接口 ====================
+@router.get("/{account_id}/positions", response_model=PositionListResponse)
+@with_pagination_config()
+async def get_account_positions_api (
+    account_id: int = Path(..., description="账户ID", ge=1),
+    request: PositionListRequest = Depends(**get_pagination_dependency()),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> PositionListResponse:
+    """
+    获取账户持仓列表
+
+    Args:
+        account_id: 账户ID
+        request: 持仓列表请求参数
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        PositionListResponse: 持仓列表响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户 {account_id} 持仓列表")
+
+        result = await get_account_positions(
+            session=db_session,
+            account_id=account_id,
+            request=request,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取持仓列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取持仓列表失败: {str(e)}"
+        )
+
+
+@router.get("/{account_id}/positions/{ts_code}", response_model=PositionDetailResponse)
+async def get_position_detail_api (
+    account_id: int,
+    ts_code: str,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> PositionDetailResponse:
+    """
+    获取账户指定证券的持仓详情
+
+    Args:
+        account_id: 账户ID
+        ts_code: 证券代码
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        PositionDetailResponse: 持仓详情响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户 {account_id} 持仓详情，证券代码: {ts_code}")
+
+        result = await get_position_detail(
+            session=db_session,
+            account_id=account_id,
+            ts_code=ts_code,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"持仓不存在: {ts_code}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"持仓 {ts_code} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"获取持仓详情失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取持仓详情失败: {str(e)}"
+        )
+
+
+# ==================== 账户概览接口 ====================
+
+@router.get("/{account_id}/summary", response_model=AccountSummaryResponse)
+async def get_account_summary_api (
+    account_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> AccountSummaryResponse:
+    """
+    获取账户概览信息
+
+    Args:
+        account_id: 账户ID
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        AccountSummaryResponse: 账户概览响应
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户 {account_id} 概览")
+
+        result = await get_account_summary(
+            session=db_session,
+            account_id=account_id,
+            user_id=current_user.get("id")
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"账户 {account_id} 不存在"
+        )
+    except Exception as e:
+        logger.error(f"获取账户概览失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取账户概览失败: {str(e)}"
+        )
+
+
+# ==================== 模块管理接口 ====================
+
+@router.get("/health")
+async def account_module_health_check (
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
 ):
-	"""
-	获取指定账户详情
+    """
+    账户模块健康检查
 
-	- 包括账户基本信息和当前状态
-	"""
-	handler = AccountHandler(db)
-	account = await handler.get_account_by_id(account_id)
-	if not account:
-		raise HTTPException(status_code=404, detail="账户不存在")
-	return account
+    Args:
+        current_user: 当前登录用户
+        db_session: 数据库会话
 
+    Returns:
+        JSONResponse: 健康状态
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 请求账户模块健康检查")
 
-@router.post("/accounts", response_model=AccountResponse, status_code=201)
-async def create_account (
-		request: AccountCreateRequest,
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	创建新账户
+        health_status = await check_account_module_health(
+            session=db_session,
+        )
 
-	- 支持现金账户、信用账户等类型
-	- 自动生成内部账户号
-	"""
-	handler = AccountHandler(db)
-	return await handler.create_account(request)
+        return success_response(
+            data=health_status,
+            message="账户模块健康检查完成"
+        )
 
-
-@router.put("/accounts/{account_id}", response_model=AccountResponse)
-async def update_account (
-		account_id: int = Path(..., description="账户ID"),
-		request: AccountUpdateRequest = None,
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	更新账户信息
-
-	- 只能更新部分字段（账户名称、状态等）
-	- 不能修改账户资金信息
-	"""
-	handler = AccountHandler(db)
-	account = await handler.update_account(account_id, request)
-	if not account:
-		raise HTTPException(status_code=404, detail="账户不存在")
-	return account
-
-
-@router.delete("/accounts/{account_id}", status_code=204)
-async def delete_account (
-		account_id: int = Path(..., description="账户ID"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	软删除账户
-
-	- 实际执行软删除，标记为已删除状态
-	- 需要验证账户无持仓和未完成订单
-	"""
-	handler = AccountHandler(db)
-	success = await handler.delete_account(account_id)
-	if not success:
-		raise HTTPException(status_code=400, detail="无法删除账户，请检查是否有持仓或未完成订单")
-
-
-@router.get("/accounts/{account_id}/balance", response_model=AccountBalanceResponse)
-async def get_account_balance (
-		account_id: int = Path(..., description="账户ID"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	获取账户资金余额
-
-	- 总资产、可用资金、冻结资金、持仓市值
-	"""
-	handler = AccountHandler(db)
-	balance = await handler.get_account_balance(account_id)
-	if not balance:
-		raise HTTPException(status_code=404, detail="账户不存在")
-	return balance
-
-
-@router.get("/accounts/{account_id}/positions", response_model=List[AccountPositionResponse])
-async def get_account_positions (
-		account_id: int = Path(..., description="账户ID"),
-		ts_code: Optional[str] = Query(None, description="证券代码筛选"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	获取账户持仓列表
-
-	- 包括所有持仓证券的详细信息
-	- 支持按证券代码筛选
-	"""
-	handler = AccountHandler(db)
-	return await handler.get_account_positions(account_id, ts_code)
-
-
-@router.get("/accounts/{account_id}/summary", response_model=AccountSummaryResponse)
-async def get_account_summary (
-		account_id: int = Path(..., description="账户ID"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	获取账户概览信息
-
-	- 综合账户信息和最近交易情况
-	- 用于前端仪表板展示
-	"""
-	handler = AccountHandler(db)
-	summary = await handler.get_account_summary(account_id)
-	if not summary:
-		raise HTTPException(status_code=404, detail="账户不存在")
-	return summary
-
-
-@router.post("/accounts/{account_id}/deposit", response_model=AccountBalanceResponse)
-async def deposit_to_account (
-		account_id: int = Path(..., description="账户ID"),
-		amount: float = Query(..., gt=0, description="存入金额"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	账户资金存入
-
-	- 增加账户可用资金
-	- 更新总资产
-	"""
-	handler = AccountHandler(db)
-	result = await handler.deposit(account_id, amount)
-	if not result:
-		raise HTTPException(status_code=400, detail="存款失败")
-	return result
-
-
-@router.post("/accounts/{account_id}/withdraw", response_model=AccountBalanceResponse)
-async def withdraw_from_account (
-		account_id: int = Path(..., description="账户ID"),
-		amount: float = Query(..., gt=0, description="取出金额"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	账户资金取出
-
-	- 减少账户可用资金
-	- 验证资金是否足够
-	"""
-	handler = AccountHandler(db)
-	result = await handler.withdraw(account_id, amount)
-	if not result:
-		raise HTTPException(status_code=400, detail="取款失败，资金不足")
-	return result
-
-
-@router.get("/users/{user_id}/accounts", response_model=List[AccountResponse])
-async def get_user_accounts (
-		user_id: int = Path(..., description="用户ID"),
-		include_closed: bool = Query(False, description="是否包含已关闭账户"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	获取用户的所有账户
-
-	- 按用户ID查询其所有账户
-	- 可选择是否包含已关闭账户
-	"""
-	handler = AccountHandler(db)
-	return await handler.get_user_accounts(user_id, include_closed)
-
-
-@router.get("/accounts/{account_id}/positions/{ts_code}", response_model=PositionResponse)
-async def get_account_position_detail (
-		account_id: int = Path(..., description="账户ID"),
-		ts_code: str = Path(..., description="证券代码"),
-		db: AsyncSession = Depends(get_db_session)
-):
-	"""
-	获取账户指定证券的持仓详情
-
-	- 包含成本、盈亏等详细信息
-	"""
-	handler = AccountHandler(db)
-	position = await handler.get_position_detail(account_id, ts_code)
-	if not position:
-		raise HTTPException(status_code=404, detail="持仓不存在")
-	return position
+    except Exception as e:
+        logger.error(f"账户模块健康检查失败: {str(e)}", exc_info=True)
+        return error_response(
+            message="账户模块健康检查失败",
+            data={
+                "status": "unhealthy",
+                "error": str(e)
+            },
+            status_code=500
+        )

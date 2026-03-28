@@ -52,7 +52,7 @@ class PasswordManager:
 			bcrypt__rounds=bcrypt_rounds
 		)
 
-	def get_password_hash (self, password: str) -> str:
+	def get_password (self, password: str) -> str:
 		"""
 		生成密码哈希
 
@@ -302,9 +302,9 @@ def get_password_manager (config: Optional[dict] = None) -> PasswordManager:
 
 
 # 便捷函数
-def get_password_hash (password: str) -> str:
+def get_password (password: str) -> str:
 	"""获取密码哈希的便捷函数"""
-	return get_password_manager().get_password_hash(password)
+	return get_password_manager().get_password(password)
 
 
 def verify_password (plain_password: str, hashed_password: str) -> bool:

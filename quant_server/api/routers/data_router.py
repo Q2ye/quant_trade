@@ -117,6 +117,7 @@ async def get_stocks_api (
 			request=request,
 			user_id=current_user.get("id")
 		)
+		logger.info(result);
 
 		return result
 
@@ -704,7 +705,6 @@ async def get_research_status_api (
 		)
 
 
-# ==================== 模块管理接口 ====================
 
 @router.get("/health")
 async def data_module_health_check (

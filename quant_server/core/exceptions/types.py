@@ -29,6 +29,15 @@ class ErrorType(str, Enum):
 	SETTINGS_ERROR = "settings_error"
 	ENVIRONMENT_ERROR = "environment_error"
 
+	# 事件相关错误
+	EVENT_ERROR = "event_error"
+	EVENT_ENGINE_ERROR = "event_engine_error"
+	EVENT_PUBLISH_ERROR = "event_publish_error"
+	EVENT_SUBSCRIBE_ERROR = "event_subscribe_error"
+	EVENT_HANDLER_ERROR = "event_handler_error"
+	EVENT_ROUTING_ERROR = "event_routing_error"
+	EVENT_BUS_ERROR = "event_bus_error"
+
 	# 业务错误
 	BUSINESS_ERROR = "business_error"
 	STRATEGY_ERROR = "strategy_error"
@@ -218,6 +227,15 @@ class ErrorCategory(str, Enum):
 			ErrorType.CONFIGURATION_ERROR: cls.CONFIGURATION_ERROR,
 			ErrorType.SETTINGS_ERROR: cls.CONFIGURATION_ERROR,
 			ErrorType.ENVIRONMENT_ERROR: cls.CONFIGURATION_ERROR,
+
+			# 事件相关错误
+			ErrorType.EVENT_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_ENGINE_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_PUBLISH_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_SUBSCRIBE_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_HANDLER_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_ROUTING_ERROR: cls.INFRASTRUCTURE_ERROR,
+			ErrorType.EVENT_BUS_ERROR: cls.INFRASTRUCTURE_ERROR,
 
 			# 业务错误
 			ErrorType.BUSINESS_ERROR: cls.BUSINESS_ERROR,

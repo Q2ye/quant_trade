@@ -457,37 +457,38 @@ class EngineMonitor:
 
     def _init_default_alert_rules(self) -> None:
         """初始化默认警报规则"""
-        # 引擎状态错误规则 - 使用数值阈值
+        # 引擎状态错误规则 - 使用状态码
         self.add_alert_rule(AlertRule(
             rule_id="engine_status_error",
             engine_name="*",
             metric_name="status",
             condition="==",
-            threshold=float(ComponentStatus.ERROR.value),  # 转换为数值比较
+            threshold=ComponentStatus.ERROR.code,  # 使用状态码
             alert_level=AlertLevel.ERROR,
             message_template="引擎 {engine_name} 进入错误状态",
             cooldown_seconds=60
         ))
 
-        # 引擎健康状态不健康规则 - 使用数值阈值
+        # 引擎健康状态不健康规则 - 使用状态码
         self.add_alert_rule(AlertRule(
             rule_id="engine_health_unhealthy",
             engine_name="*",
             metric_name="health",
             condition="==",
-            threshold=float(HealthStatus.UNHEALTHY.value),  # 转换为数值比较
+            threshold=HealthStatus.UNHEALTHY.code,  # 使用状态码
             alert_level=AlertLevel.WARNING,
             message_template="引擎 {engine_name} 健康状态不健康",
             cooldown_seconds=300
         ))
 
         # 引擎健康状态失败规则 - 使用数值阈值
+        # health_mapping: HEALTHY=0, DEGRADED=1, UNHEALTHY=2, FAILED=3, UNKNOWN=4
         self.add_alert_rule(AlertRule(
             rule_id="engine_health_failed",
             engine_name="*",
             metric_name="health",
             condition="==",
-            threshold=float(HealthStatus.FAILED.value),  # 转换为数值比较
+            threshold=3.0,  # HealthStatus.FAILED 对应的数值
             alert_level=AlertLevel.CRITICAL,
             message_template="引擎 {engine_name} 健康状态失败",
             cooldown_seconds=60

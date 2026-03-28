@@ -13,8 +13,9 @@ Repository基类 - 统一数据访问接口
 """
 
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
+import pandas as pd
 from sqlalchemy import select, update, delete, func, and_, desc, asc
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import Select
@@ -43,6 +44,64 @@ class BaseRepository(Generic[T]):
 		"""
 		self.session = session
 		self.model = model
+
+	# ==================== 辅助方法 ====================
+
+	def _convert_to_datetime (self, value: Any) -> Optional[datetime]:
+		"""
+		将各种日期时间格式转换为Python datetime对象
+		用于处理来自Pandas、外部API等不同来源的日期值
+
+		Args:
+			value: 需要转换的值（可以是pandas Timestamp、datetime、date、字符串等）
+
+		Returns:
+			转换后的datetime对象，如果无法转换则返回None
+		"""
+		if value is None:
+			return None
+
+		if isinstance(value, datetime):
+			return value
+
+		if isinstance(value, pd.Timestamp):
+			return value.to_pydatetime()
+
+		if isinstance(value, date):
+			return datetime.combine(value, datetime.min.time())
+
+		if isinstance(value, str):
+			try:
+				# 尝试解析ISO格式字符串
+				return pd.to_datetime(value).to_pydatetime()
+			except Exception:
+				return None
+
+		# 无法转换
+		return None
+
+	def _convert_record_datetime (self, data: Dict[str, Any]) -> Dict[str, Any]:
+		"""
+		转换记录中的日期时间字段
+		自动检测并转换常见日期时间字段
+
+		Args:
+			data: 原始记录字典
+
+		Returns:
+			转换后的记录字典
+		"""
+		# 定义需要检查的日期时间字段
+		datetime_fields = ['trade_date', 'start_date', 'end_date', 'calc_time',
+		                  'created_at', 'updated_at', 'started_at', 'completed_at',
+		                  'timestamp', 'event_time', 'start_time', 'end_time']
+
+		converted = data.copy()
+		for field in datetime_fields:
+			if field in converted and converted[field] is not None:
+				converted[field] = self._convert_to_datetime(converted[field])
+
+		return converted
 
 	# ==================== 基本CRUD操作 ====================
 
@@ -165,6 +224,9 @@ class BaseRepository(Generic[T]):
 			创建的记录对象
 		"""
 		try:
+			# 转换日期时间字段
+			data = self._convert_record_datetime(data)
+
 			# 自动添加时间戳
 			now = datetime.now()
 			if hasattr(self.model, 'created_at'):
@@ -198,6 +260,9 @@ class BaseRepository(Generic[T]):
 			now = datetime.now()
 
 			for data in data_list:
+				# 转换日期时间字段
+				data = self._convert_record_datetime(data)
+
 				# 自动添加时间戳
 				if hasattr(self.model, 'created_at'):
 					data['created_at'] = data.get('created_at', now)
@@ -227,6 +292,9 @@ class BaseRepository(Generic[T]):
 			更新后的记录对象或None
 		"""
 		try:
+			# 转换日期时间字段
+			data = self._convert_record_datetime(data)
+
 			# 自动更新时间戳
 			if hasattr(self.model, 'updated_at'):
 				data['updated_at'] = data.get('updated_at', datetime.now())

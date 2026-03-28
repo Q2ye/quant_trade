@@ -692,3 +692,40 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			"min_date": min_date,
 			"max_date": max_date
 		}
+
+	async def get_latest_by_ts_code(
+			self,
+			ts_code: str,
+			report_type: Optional[str] = None
+	) -> Optional[FinancialStatement]:
+		"""
+		获取指定股票代码的最新财务报表
+
+		Args:
+			ts_code: 股票代码
+			report_type: 报表类型（可选），如果为None则返回任何类型的最新报表
+
+		Returns:
+			Optional[FinancialStatement]: 最新财务报表记录或None
+		"""
+		try:
+			if report_type:
+				# 获取指定报表类型的最新数据
+				return await self.get_latest_financial_statement(
+					ts_code=ts_code,
+					report_type=report_type,
+					period="year"  # 默认获取年度报告，可以调整
+				)
+			else:
+				# 获取所有报表类型中的最新数据
+				query = select(FinancialStatement).where(
+					FinancialStatement.ts_code == ts_code
+				).order_by(
+					desc(FinancialStatement.end_date)
+				).limit(1)
+
+				result = await self.session.execute(query)
+				return result.scalar_one_or_none()
+
+		except Exception as e:
+			raise RepositoryError(f"获取最新财务报表失败: {str(e)}")

@@ -14,9 +14,8 @@ from sqlalchemy.ext.asyncio import (
 	async_sessionmaker,
 	create_async_engine
 )
-from sqlalchemy.pool import QueuePool
 
-from quant_server.shared.config.settings import settings
+from ...config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +35,12 @@ class ConnectionPoolManager:
 			# 构建数据库URL
 			db_url = self._build_database_url()
 
+			# 导入自定义JSON编码器和解码器
+			from ...cache.serializers import JSONEncoder, JSONDecoder
+
 			# 创建异步引擎
 			self._engine = create_async_engine(
 				db_url,
-				poolclass=QueuePool,
 				pool_size=self._pool_size,
 				max_overflow=self._max_overflow,
 				pool_recycle=3600,  # 1小时回收连接
@@ -47,6 +48,8 @@ class ConnectionPoolManager:
 				echo=settings.DATABASE.ECHO_SQL,
 				echo_pool=settings.DATABASE.ECHO_POOL,
 				future=True,
+				json_serializer=JSONEncoder().encode,
+				json_deserializer=JSONDecoder().decode,
 				# PostgreSQL特殊配置
 				connect_args={"server_settings": {"jit": "off"}}
 				if settings.DATABASE.TYPE == "postgresql"
@@ -64,7 +67,8 @@ class ConnectionPoolManager:
 
 			# 测试连接
 			async with self._engine.connect() as conn:
-				await conn.execute("SELECT 1")
+				from sqlalchemy import text
+				await conn.execute(text("SELECT 1"))
 
 			logger.info(
 				f"数据库连接池初始化成功: "
@@ -78,7 +82,8 @@ class ConnectionPoolManager:
 			logger.error(f"数据库连接池初始化失败: {str(e)}", exc_info=True)
 			return False
 
-	def _build_database_url (self) -> str:
+	@staticmethod
+	def _build_database_url () -> str:
 		"""构建数据库连接URL"""
 		db_type = settings.DATABASE.TYPE
 
