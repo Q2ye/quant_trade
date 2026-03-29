@@ -6,7 +6,7 @@ API路由包
 """
 
 from .data_router import router as data_router
-# from .strategy_router import router as strategy_router
+from .strategy_router import router as strategy_router
 # from .trade_router import router as trade_router
 # from .backtest_router import router as backtest_router
 # from .account_router import router as account_router
@@ -37,7 +37,7 @@ ROUTERS = [
     data_router,            # 数据中心
 
     # 3. 策略模块（核心业务）
-    # strategy_router,        # 策略中心
+    strategy_router,        # 策略中心、
 
     # 4. 回测模块（依赖策略）
     # backtest_router,        # 回测工作台

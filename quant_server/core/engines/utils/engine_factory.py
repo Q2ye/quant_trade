@@ -263,13 +263,15 @@ class EngineFactory:
         elif "monitor" in module_name or "alert" in module_name:
             category = EngineCategory.MONITOR
 
-        # 获取依赖
+        # 获取依赖 - 同时保存模块名称和引擎类型
         dependencies = module_config.get("dependencies", [])
         dep_types = []
+        dep_module_names = []  # 保存原始模块名，用于构建引擎实例名
         for dep in dependencies:
             dep_type = self._module_to_engine_type(dep)
             if dep_type:
                 dep_types.append(dep_type)
+                dep_module_names.append(dep)  # 保存原始模块名
 
         # 从模块配置提取引擎配置
         engine_config = module_config.get("config", {})
@@ -288,6 +290,7 @@ class EngineFactory:
                     "auto_start": module_config.get("auto_start", True),
                     "max_retries": 3,
                     "health_check_interval": 60,
+                    "_dep_module_names": dep_module_names,  # 保存原始依赖模块名
                     **engine_config
                 }
             },
@@ -469,6 +472,11 @@ class EngineFactory:
                 raise ValueError(f"引擎配置验证失败: {config_errors}")
 
             # 创建引擎配置实体
+            # 使用原始模块名构建依赖引擎名称（而非 EngineType 的 value）
+            # 例如：模块 "data" -> 引擎实例 "data_engine"
+            dep_names = descriptor.config_schema.get("default", {}).get("_dep_module_names", [])
+            engine_dependencies = [f"{dep}_engine" for dep in dep_names] if dep_names else []
+
             engine_config_entity = EngineConfigEntity(
                 name=instance_name,
                 engine_type=descriptor.engine_type.value,
@@ -476,7 +484,7 @@ class EngineFactory:
                 max_retries=engine_config.get("max_retries", 3),
                 retry_delay=engine_config.get("retry_delay", 1.0),
                 config=engine_config,
-                dependencies=[dep.value for dep in descriptor.dependencies],
+                dependencies=engine_dependencies,
                 health_check_interval=engine_config.get("health_check_interval", 60.0),
                 graceful_shutdown_timeout=engine_config.get("graceful_shutdown_timeout", 30.0)
             )

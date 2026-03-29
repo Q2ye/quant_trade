@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, desc
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 from quant_server.shared.database.models.business_models import Position
 
 
@@ -42,15 +42,21 @@ class PositionRepository(BaseRepository[Position]):
 			include_zero: bool = False
 	) -> List[Position]:
 		"""获取用户的所有持仓"""
-		filters = [Position.user_id == user_id]
+		try:
+			query = select(Position).where(Position.user_id == user_id)
 
-		if account_id:
-			filters.append(Position.account_id == account_id)
+			if account_id:
+				query = query.where(Position.account_id == account_id)
 
-		if not include_zero:
-			filters.append(Position.volume > 0)
+			if not include_zero:
+				query = query.where(Position.volume > 0)
 
-		return await self.get_many(*filters, order_by=Position.ts_code.asc())
+			query = query.order_by(Position.ts_code.asc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取用户持仓失败: {str(e)}")
 
 	async def get_account_positions (
 			self,
@@ -58,12 +64,18 @@ class PositionRepository(BaseRepository[Position]):
 			include_zero: bool = False
 	) -> List[Position]:
 		"""获取账户的所有持仓"""
-		filters = [Position.account_id == account_id]
+		try:
+			query = select(Position).where(Position.account_id == account_id)
 
-		if not include_zero:
-			filters.append(Position.volume > 0)
+			if not include_zero:
+				query = query.where(Position.volume > 0)
 
-		return await self.get_many(*filters, order_by=Position.ts_code.asc())
+			query = query.order_by(Position.ts_code.asc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取账户持仓失败: {str(e)}")
 
 	async def get_stock_holders (
 			self,
@@ -72,15 +84,21 @@ class PositionRepository(BaseRepository[Position]):
 			account_id: Optional[int] = None
 	) -> List[Position]:
 		"""获取持有特定股票的所有用户"""
-		filters = [
-			Position.ts_code == ts_code,
-			Position.volume >= min_volume
-		]
+		try:
+			query = select(Position).where(
+				Position.ts_code == ts_code,
+				Position.volume >= min_volume
+			)
 
-		if account_id:
-			filters.append(Position.account_id == account_id)
+			if account_id:
+				query = query.where(Position.account_id == account_id)
 
-		return await self.get_many(*filters, order_by=Position.volume.desc())
+			query = query.order_by(Position.volume.desc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取持股者失败: {str(e)}")
 
 	async def update_position_volume (
 			self,
@@ -275,15 +293,21 @@ class PositionRepository(BaseRepository[Position]):
 			account_id: Optional[int] = None
 	) -> List[Position]:
 		"""根据市值范围获取持仓"""
-		filters = [Position.market_value >= min_value]
+		try:
+			query = select(Position).where(Position.market_value >= min_value)
 
-		if max_value is not None:
-			filters.append(Position.market_value <= max_value)
+			if max_value is not None:
+				query = query.where(Position.market_value <= max_value)
 
-		if account_id:
-			filters.append(Position.account_id == account_id)
+			if account_id:
+				query = query.where(Position.account_id == account_id)
 
-		return await self.get_many(*filters, order_by=Position.market_value.desc())
+			query = query.order_by(Position.market_value.desc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取市值范围持仓失败: {str(e)}")
 
 	async def get_recently_updated (
 			self,
@@ -291,17 +315,20 @@ class PositionRepository(BaseRepository[Position]):
 			account_id: Optional[int] = None
 	) -> List[Position]:
 		"""获取最近更新的持仓"""
-		cutoff_time = datetime.now() - timedelta(hours=hours)
+		try:
+			cutoff_time = datetime.now() - timedelta(hours=hours)
 
-		filters = [Position.last_update >= cutoff_time]
+			query = select(Position).where(Position.last_update >= cutoff_time)
 
-		if account_id:
-			filters.append(Position.account_id == account_id)
+			if account_id:
+				query = query.where(Position.account_id == account_id)
 
-		return await self.get_many(
-			*filters,
-			order_by=Position.last_update.desc()
-		)
+			query = query.order_by(Position.last_update.desc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取最近更新持仓失败: {str(e)}")
 
 	async def get_low_available_positions (
 			self,

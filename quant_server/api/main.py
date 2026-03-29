@@ -13,6 +13,7 @@ from typing import Dict, Any
 
 from .routers import (
     data_router,
+    strategy_router,
     health_router
 )
 
@@ -111,6 +112,10 @@ def create_app (
         allowed_hosts=["*"]  # 生产环境应该限制
     )
 
+    # 添加异常处理器
+    from quant_server.api.handlers.exception_handlers import setup_exception_handlers
+    setup_exception_handlers(app)
+
     # API层数据库依赖初始化
     @app.on_event("startup")
     async def startup_db():
@@ -123,14 +128,14 @@ def create_app (
             logger.info("API层数据库依赖初始化成功")
 
     # 注册路由
-    app.include_router(data_router, prefix="/api/data", tags=["数据"])
-    # app.include_router(strategy_router, prefix="/api/strategy", tags=["策略"])
-    # app.include_router(trade_router, prefix="/api/trade", tags=["交易"])
-    # app.include_router(backtest_router, prefix="/api/backtest", tags=["回测"])
-    # app.include_router(account_router, prefix="/api/account", tags=["账户"])
-    # app.include_router(analysis_router, prefix="/api/analysis", tags=["分析"])
-    # app.include_router(monitor_router, prefix="/api/monitor", tags=["监控"])
-    # app.include_router(system_router, prefix="/api/system", tags=["系统"])
-    app.include_router(health_router, prefix="/health", tags=["健康检查"])
+    app.include_router(data_router, prefix="/api/data")
+    app.include_router(strategy_router, prefix="/api/strategy")
+    # app.include_router(trade_router, prefix="/api/trade")
+    # app.include_router(backtest_router, prefix="/api/backtest")
+    # app.include_router(account_router, prefix="/api/account")
+    # app.include_router(analysis_router, prefix="/api/analysis")
+    # app.include_router(monitor_router, prefix="/api/monitor")
+    # app.include_router(system_router, prefix="/api/system")
+    app.include_router(health_router, prefix="/health")
 
     return app

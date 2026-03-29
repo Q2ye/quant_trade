@@ -104,7 +104,7 @@ async def get_strategies_api (
 
 @router.get("/{strategy_id}", response_model=StrategyDetailResponse)
 async def get_strategy_detail_api (
-    strategy_id: int,
+    strategy_id: str,
     request: StrategyDetailRequest = Depends(),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
@@ -189,7 +189,7 @@ async def create_strategy_api (
 
 @router.put("/{strategy_id}", response_model=StrategyResponse)
 async def update_strategy_api (
-    strategy_id: int,
+    strategy_id: str,
     request: StrategyUpdateRequest,
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
@@ -236,7 +236,7 @@ async def update_strategy_api (
 
 @router.delete("/{strategy_id}", status_code=204)
 async def delete_strategy_api (
-    strategy_id: int,
+    strategy_id: str,
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
 ):
@@ -282,7 +282,8 @@ async def delete_strategy_api (
 
 @router.post("/{strategy_id}/start", response_model=StrategyStatusResponse)
 async def start_strategy_api (
-    strategy_id: int,
+    strategy_id: str,
+    capital: Optional[float] = None,
     request: StrategyStartRequest = Depends(),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
@@ -292,7 +293,8 @@ async def start_strategy_api (
 
     Args:
         strategy_id: 策略ID
-        request: 策略启动请求参数
+        capital: 初始资金（可选，支持query参数或body参数）
+        request: 策略启动请求参数（body）
         current_user: 当前登录用户
         db_session: 数据库会话
 
@@ -300,13 +302,17 @@ async def start_strategy_api (
         StrategyStatusResponse: 策略状态响应
     """
     try:
-        logger.info(f"用户 {current_user.get('username')} 启动策略 {strategy_id}，参数: {request.model_dump()}")
+        # 优先使用 query 参数，其次使用 body 参数
+        if capital is None and request.capital is not None:
+            capital = request.capital
+        logger.info(f"用户 {current_user.get('username')} 启动策略 {strategy_id}，资金: {capital}")
 
         result = await start_strategy(
             session=db_session,
             strategy_id=strategy_id,
             request=request,
-            user_id=current_user.get("id")
+            user_id=current_user.get("id"),
+            capital=capital
         )
 
         return result
@@ -329,7 +335,8 @@ async def start_strategy_api (
 
 @router.post("/{strategy_id}/stop", response_model=StrategyStatusResponse)
 async def stop_strategy_api (
-    strategy_id: int,
+    strategy_id: str,
+    force: Optional[bool] = None,
     request: StrategyStopRequest = Depends(),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
@@ -339,6 +346,7 @@ async def stop_strategy_api (
 
     Args:
         strategy_id: 策略ID
+        force: 是否强制停止（可选，支持query参数或body参数）
         request: 策略停止请求参数
         current_user: 当前登录用户
         db_session: 数据库会话
@@ -347,13 +355,18 @@ async def stop_strategy_api (
         StrategyStatusResponse: 策略状态响应
     """
     try:
-        logger.info(f"用户 {current_user.get('username')} 停止策略 {strategy_id}")
+        # 优先使用 query 参数，其次使用 body 参数
+        if force is None:
+            force = request.force if hasattr(request, 'force') else False
+
+        logger.info(f"用户 {current_user.get('username')} 停止策略 {strategy_id}，强制: {force}")
 
         result = await stop_strategy(
             session=db_session,
             strategy_id=strategy_id,
             request=request,
-            user_id=current_user.get("id")
+            user_id=current_user.get("id"),
+            force=force
         )
 
         return result
@@ -378,7 +391,7 @@ async def stop_strategy_api (
 
 @router.get("/{strategy_id}/performance", response_model=StrategyPerformanceResponse)
 async def get_strategy_performance_api (
-    strategy_id: int,
+    strategy_id: str,
     request: StrategyPerformanceRequest = Depends(),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
@@ -419,7 +432,7 @@ async def get_strategy_performance_api (
 
 @router.get("/{strategy_id}/status", response_model=StrategyStatusResponse)
 async def get_strategy_status_api (
-    strategy_id: int,
+    strategy_id: str,
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
 ) -> StrategyStatusResponse:

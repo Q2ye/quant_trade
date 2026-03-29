@@ -16,6 +16,14 @@ from datetime import date, datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
 
+# 异常类 - 在types中定义以便跨模块使用
+class RepositoryError(Exception):
+    """Repository基础异常类"""
+    def __init__(self, message: str, original_error: Optional[Exception] = None):
+        self.message = message
+        self.original_error = original_error
+        super().__init__(message)
+
 # 泛型类型变量
 T = TypeVar('T')
 R = TypeVar('R')
@@ -876,6 +884,7 @@ class TimeRange:
 __all__ = [
     # 基础类型
     "RepositoryResult",
+    "RepositoryError",
     "PaginationParams",
     "PaginationResult",
     "DateRange",

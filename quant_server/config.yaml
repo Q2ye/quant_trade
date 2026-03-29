@@ -106,8 +106,8 @@ modules:
 
   # 策略模块 - 暂时禁用
   strategy:
-    enabled: false
-    auto_start: false
+    enabled: true
+    auto_start: true
     dependencies: ["data"]
     config:
       max_strategies: 50

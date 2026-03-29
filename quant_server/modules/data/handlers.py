@@ -2258,8 +2258,8 @@ async def initialize_data_module (
 		)
 
 		required_tables = [
-			"stocks", "daily_quotes", "sync_tasks",
-			"factor_data", "factor_definitions", "factor_research"
+			"stock_basic", "stock_daily", "data_sync_tasks",
+			"factor_data", "factor_definitions"
 		]
 
 		missing_tables = [t for t in required_tables if t not in tables]
@@ -2301,8 +2301,8 @@ async def initialize_data_module (
 
 			# 查询旧任务
 			old_tasks_result = await research_repo.get_many(
-				FactorResearch.created_at <= cutoff_date,
-				FactorResearch.status.in_(["pending", "running"]),
+				created_at__lte=cutoff_date,
+				status__in=["pending", "running"],
 				limit=100
 			)
 			old_tasks = old_tasks_result if isinstance(old_tasks_result, list) else []
@@ -2378,8 +2378,8 @@ async def initialize_data_module (
 				{
 					"factor_code": "PE",
 					"factor_name": "市盈率",
-					"factor_type": "value",
-					"category": "value",
+					"factor_type": "fundamental",
+					"category": "valuation",
 					"description": "股价除以每股收益",
 					"is_public": True,
 					"is_active": True
@@ -2387,8 +2387,8 @@ async def initialize_data_module (
 				{
 					"factor_code": "PB",
 					"factor_name": "市净率",
-					"factor_type": "value",
-					"category": "value",
+					"factor_type": "fundamental",
+					"category": "valuation",
 					"description": "股价除以每股净资产",
 					"is_public": True,
 					"is_active": True
@@ -2396,8 +2396,8 @@ async def initialize_data_module (
 				{
 					"factor_code": "ROE",
 					"factor_name": "净资产收益率",
-					"factor_type": "quality",
-					"category": "quality",
+					"factor_type": "fundamental",
+					"category": "profitability",
 					"description": "净利润除以净资产",
 					"is_public": True,
 					"is_active": True

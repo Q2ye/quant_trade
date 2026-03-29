@@ -409,6 +409,26 @@ class StrategyParameterRepository(BaseRepository[StrategyParameter]):
 		except Exception as e:
 			raise RepositoryError(f"验证参数失败: {str(e)}")
 
+	async def delete_by_strategy_id (self, strategy_id: str) -> int:
+		"""
+		根据策略ID删除所有参数
+
+		Args:
+			strategy_id: 策略ID
+
+		Returns:
+			删除的记录数
+		"""
+		try:
+			from sqlalchemy import delete
+			query = delete(self.model).where(
+				self.model.strategy_id == strategy_id
+			)
+			result = await self.session.execute(query)
+			return result.rowcount
+		except Exception as e:
+			raise RepositoryError(f"删除策略参数失败: {str(e)}")
+
 	async def copy_parameters (
 			self,
 			source_strategy_id: str,

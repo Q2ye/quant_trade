@@ -22,40 +22,11 @@ class StrategyRepository(BaseRepository[Strategy]):
 		super().__init__(session, Strategy)
 
 	# ==================== 基础CRUD操作 ====================
+	# 直接使用继承自 BaseRepository 的方法（get, create, update, delete, get_by, get_many, count, batch_create, batch_upsert 等）
 
-	async def create (self, data: Dict[str, Any]) -> Strategy:
-		"""创建策略记录"""
-		return await self.base_repo.create(data)
-
-	async def get (self, id: str) -> Optional[Strategy]:
-		"""根据ID获取策略记录"""
-		return await self.base_repo.get(id)
-
-	async def update (self, id: str, data: Dict[str, Any]) -> Optional[Strategy]:
-		"""更新策略记录"""
-		return await self.base_repo.update(id, data)
-
-	async def delete (self, id: str, soft: bool = True) -> bool:
-		"""删除策略记录"""
-		return await self.base_repo.delete(id, soft)
-
-	async def get_one (self, *filters) -> Optional[Strategy]:
-		"""根据条件获取单个策略记录"""
-		return await self.base_repo.get_one(*filters)
-
-	async def get_many (
-			self,
-			*filters,
-			skip: int = 0,
-			limit: int = 100,
-			order_by: str = None
-	) -> List[Strategy]:
-		"""根据条件获取多个策略记录"""
-		return await self.base_repo.get_many(*filters, skip=skip, limit=limit, order_by=order_by)
-
-	async def count (self, *filters) -> int:
-		"""统计策略记录数"""
-		return await self.base_repo.count(*filters)
+	async def get_by_id(self, strategy_id: str) -> Optional[Strategy]:
+		"""根据策略ID获取策略（主键为字符串类型）"""
+		return await self.get_by(id=strategy_id)
 
 	# ==================== 业务查询方法 ====================
 
@@ -418,7 +389,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 			data_list: List[Dict[str, Any]]
 	) -> List[Strategy]:
 		"""批量创建策略记录"""
-		return await self.base_repo.batch_create(data_list)
+		return await self.batch_create(data_list)
 
 	async def batch_upsert (
 			self,
@@ -426,7 +397,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 			match_fields: List[str] = ['id']
 	) -> List[Strategy]:
 		"""批量插入或更新策略记录"""
-		return await self.base_repo.batch_upsert(data_list, match_fields)
+		return await self.batch_upsert(data_list, match_fields)
 
 	async def deactivate_user_strategies (self, user_id: int) -> int:
 		"""停用用户的所有策略"""

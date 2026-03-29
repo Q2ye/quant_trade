@@ -25,7 +25,7 @@ class StrategyListResponse(BaseModel):
 
 class StrategyDetailRequest(BaseModel):
     """策略详情请求"""
-    include_positions: bool = Field(default=False, description="是否包含持仓")
+    include_positions: Optional[bool] = Field(default=None, description="是否包含持仓")
 
 
 class StrategyDetailResponse(BaseModel):

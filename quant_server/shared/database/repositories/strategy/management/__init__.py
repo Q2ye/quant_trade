@@ -10,15 +10,12 @@
 3. 按需加载：避免循环导入
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .strategy_repo import StrategyRepository
-    from .strategy_version_repo import StrategyVersionRepository
-    from .strategy_template_repo import StrategyTemplateRepository
-    from .strategy_parameter_repo import StrategyParameterRepository
-    from .portfolio_strategy_repo import PortfolioStrategyRepository
-    # from .strategy_dependency_repo import StrategyDependencyRepository
+from .strategy_repo import StrategyRepository
+from .strategy_version_repo import StrategyVersionRepository
+from .strategy_template_repo import StrategyTemplateRepository
+from .strategy_parameter_repo import StrategyParameterRepository
+from .portfolio_strategy_repo import PortfolioStrategyRepository
+from .strategy_run_repo import StrategyRunRepository
 
 # 公共导出列表
 __all__ = [
@@ -27,5 +24,5 @@ __all__ = [
     'StrategyTemplateRepository',
     'StrategyParameterRepository',
     'PortfolioStrategyRepository',
-    # 'StrategyDependencyRepository',
+    'StrategyRunRepository',
 ]

@@ -584,7 +584,9 @@ CREATE TABLE strategies (
     description TEXT,
     class_name VARCHAR(100) NOT NULL,
     module_path VARCHAR(200) NOT NULL,
-    status VARCHAR(20) DEFAULT 'stopped' CHECK (status IN ('running', 'stopped', 'error')),
+    strategy_type VARCHAR(50),
+    code TEXT,
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'compiled', 'deployed', 'running', 'paused', 'stopped', 'error', 'archived')),
     parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -597,7 +599,9 @@ COMMENT ON COLUMN strategies.user_id IS '策略创建者用户ID';
 COMMENT ON COLUMN strategies.description IS '策略详细描述';
 COMMENT ON COLUMN strategies.class_name IS '策略类名（Python类名）';
 COMMENT ON COLUMN strategies.module_path IS '策略文件路径（相对路径）';
-COMMENT ON COLUMN strategies.status IS '策略运行状态：running-运行中, stopped-已停止, error-异常';
+COMMENT ON COLUMN strategies.strategy_type IS '策略类型：cta/alpha/ml/dl等';
+COMMENT ON COLUMN strategies.code IS '策略代码';
+COMMENT ON COLUMN strategies.status IS '策略状态：draft-草稿, compiled-已编译, deployed-已部署, running-运行中, paused-已暂停, stopped-已停止, error-异常, archived-已归档';
 COMMENT ON COLUMN strategies.parameters IS '策略参数（JSON格式，如{"window": 20, "threshold": 0.02}）';
 
 -- 策略运行记录表
@@ -821,6 +825,7 @@ COMMENT ON COLUMN positions.pnl IS '持仓盈亏';
 COMMENT ON COLUMN positions.pnl_rate IS '持仓盈亏率';
 COMMENT ON COLUMN positions.last_update IS '最后更新时间';
 
+
 -- 交易指令表
 CREATE TABLE trade_instructions (
     id SERIAL PRIMARY KEY,
@@ -923,6 +928,39 @@ COMMENT ON COLUMN position_adjustments.reference_type IS '关联类型';
 
 CREATE INDEX idx_position_adjustments_position_id ON position_adjustments(position_id);
 CREATE INDEX idx_position_adjustments_date ON position_adjustments(adjustment_date DESC);
+
+-- 持仓快照表
+CREATE TABLE position_snapshots (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES sys_users(id),
+    account_id INT NOT NULL REFERENCES accounts(id),
+    ts_code VARCHAR(12) NOT NULL,
+    snapshot_date DATE NOT NULL,
+    volume INT NOT NULL DEFAULT 0,
+    cost_price NUMERIC(10, 4) NOT NULL,
+    market_value NUMERIC(16, 4) NOT NULL DEFAULT 0,
+    last_price NUMERIC(10, 4),
+    pnl NUMERIC(16, 4) DEFAULT 0,
+    pnl_rate NUMERIC(10, 6) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (account_id, ts_code, snapshot_date)
+);
+
+COMMENT ON TABLE position_snapshots IS '持仓快照表';
+COMMENT ON COLUMN position_snapshots.user_id IS '用户ID';
+COMMENT ON COLUMN position_snapshots.account_id IS '账户ID';
+COMMENT ON COLUMN position_snapshots.ts_code IS '股票代码';
+COMMENT ON COLUMN position_snapshots.snapshot_date IS '快照日期';
+COMMENT ON COLUMN position_snapshots.volume IS '持仓数量';
+COMMENT ON COLUMN position_snapshots.cost_price IS '成本价';
+COMMENT ON COLUMN position_snapshots.market_value IS '持仓市值';
+COMMENT ON COLUMN position_snapshots.last_price IS '最新价格';
+COMMENT ON COLUMN position_snapshots.pnl IS '持仓盈亏';
+COMMENT ON COLUMN position_snapshots.pnl_rate IS '盈亏率';
+
+CREATE INDEX idx_position_snapshots_account_date ON position_snapshots(account_id, snapshot_date DESC);
+CREATE INDEX idx_position_snapshots_ts_code ON position_snapshots(ts_code, snapshot_date);
+CREATE INDEX idx_position_snapshots_user_date ON position_snapshots(user_id, snapshot_date DESC);
 
 -- ------------------------------------------------------------
 -- 1.6 篮子管理模块

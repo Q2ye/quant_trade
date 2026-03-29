@@ -8,6 +8,7 @@ from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolea
     UniqueConstraint, Date, Index, BigInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
+import uuid
 
 from .base import Base
 
@@ -126,12 +127,14 @@ class Strategy(Base):
     """策略实例表"""
     __tablename__ = 'strategies'
 
-    id = Column(String(32), primary_key=True, comment='策略ID（UUID）')
+    id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='策略ID（UUID）')
     name = Column(String(100), nullable=False, comment='策略名称')
     user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     description = Column(Text, comment='策略描述')
     class_name = Column(String(100), nullable=False, comment='策略类名')
     module_path = Column(String(200), nullable=False, comment='模块路径')
+    strategy_type = Column(String(50), comment='策略类型：cta/alpha/ml/dl等')
+    code = Column(Text, comment='策略代码')
     status = Column(String(20), default='stopped', comment='策略状态：stopped, running, paused')
     parameters = Column(JSON, nullable=False, default=dict, comment='策略参数（JSON格式）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -721,6 +724,31 @@ class PositionAdjustment(Base):
     __table_args__ = (
         Index('idx_position_adjustments_position_id', 'position_id'),
         Index('idx_position_adjustments_date', 'adjustment_date'),
+    )
+
+
+class PositionSnapshot(Base):
+    """持仓快照表"""
+    __tablename__ = 'position_snapshots'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='快照ID')
+    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    ts_code = Column(String(12), nullable=False, comment='股票代码')
+    snapshot_date = Column(Date, nullable=False, comment='快照日期')
+    volume = Column(Integer, nullable=False, default=0, comment='持仓数量')
+    cost_price = Column(Numeric(10, 4), nullable=False, comment='成本价')
+    market_value = Column(Numeric(16, 4), nullable=False, default=0, comment='持仓市值')
+    last_price = Column(Numeric(10, 4), comment='最新价格')
+    pnl = Column(Numeric(16, 4), default=0, comment='持仓盈亏')
+    pnl_rate = Column(Numeric(10, 6), default=0, comment='盈亏率')
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+
+    # 索引
+    __table_args__ = (
+        Index('idx_position_snapshots_account_date', 'account_id', 'snapshot_date'),
+        Index('idx_position_snapshots_ts_code', 'ts_code', 'snapshot_date'),
+        Index('idx_position_snapshots_user_date', 'user_id', 'snapshot_date'),
     )
 
 

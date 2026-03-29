@@ -9,10 +9,10 @@ import redis
 import hashlib
 import json
 
-from quant_server.shared.database.repositories.base import RepositoryBase
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
-class DistributedLockRepository(RepositoryBase):
+class DistributedLockRepository(BaseRepository):
 	"""
 	分布式锁仓库
 	用于管理分布式系统中的资源锁，防止并发冲突

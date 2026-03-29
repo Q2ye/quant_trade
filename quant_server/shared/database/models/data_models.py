@@ -5,7 +5,7 @@ data_models.py
 """
 
 from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey, Index, Boolean, \
-	UniqueConstraint
+	UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
@@ -754,8 +754,8 @@ class FactorDefinition(Base):
 	category = Column(String(50), comment='因子类别')
 	description = Column(Text, comment='因子描述')
 	formula = Column(Text, comment='因子计算公式')
-	parameters = Column(Text, comment='因子参数（JSON格式）')  # 存储为JSON字符串
-	data_requirements = Column(Text, comment='数据需求（JSON格式）')
+	parameters = Column(JSON, comment='因子参数（JSON格式）')
+	data_requirements = Column(JSON, comment='数据需求（JSON格式）')
 	output_type = Column(String(20), default='float', comment='输出类型：float, int, bool, string')
 	calculation_frequency = Column(String(20), default='daily', comment='计算频率：minute, daily, weekly, monthly')
 	is_public = Column(Boolean, default=True, comment='是否公开')
