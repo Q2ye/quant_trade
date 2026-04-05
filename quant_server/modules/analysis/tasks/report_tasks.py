@@ -5,17 +5,15 @@
 位置：quant_server/modules/events/tasks/report_tasks.py
 """
 
-import asyncio
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta, date
-from pathlib import Path
 import uuid
+from datetime import datetime, timedelta, date
+from typing import List, Dict, Any, Optional
 
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
 from quant_server.core.events import EventEngine
 from quant_server.core.events.system_events import ReportGeneratedEvent
+from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class ReportTasks:
@@ -106,7 +104,7 @@ class ReportTasks:
 				)
 
 			# 5. 发布事件
-			await self.event_engine.put(
+			self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='performance',
@@ -119,20 +117,7 @@ class ReportTasks:
 				)
 			)
 
-			# 6. 更新任务状态
-			self.active_tasks[task_id]['status'] = 'completed'
-			self.active_tasks[task_id]['end_time'] = datetime.now()
-			self.active_tasks[task_id]['result'] = report_result
-
-			self.logger.info(f"绩效报告生成完成，任务ID: {task_id}")
-
-			return {
-				'task_id': task_id,
-				'status': 'completed',
-				'report_path': report_result.get('report_path'),
-				'report_data': report_result.get('report_data'),
-				'generation_time': datetime.now().isoformat()
-			}
+			return self._complete_task(task_id, report_result, '绩效报告')
 
 		except Exception as e:
 			self.logger.error(f"生成绩效报告失败: {e}", exc_info=True)
@@ -201,7 +186,7 @@ class ReportTasks:
 				)
 
 			# 5. 发布事件
-			await self.event_engine.put(
+			self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='risk',
@@ -214,20 +199,7 @@ class ReportTasks:
 				)
 			)
 
-			# 6. 更新任务状态
-			self.active_tasks[task_id]['status'] = 'completed'
-			self.active_tasks[task_id]['end_time'] = datetime.now()
-			self.active_tasks[task_id]['result'] = report_result
-
-			self.logger.info(f"风险报告生成完成，任务ID: {task_id}")
-
-			return {
-				'task_id': task_id,
-				'status': 'completed',
-				'report_path': report_result.get('report_path'),
-				'report_data': report_result.get('report_data'),
-				'generation_time': datetime.now().isoformat()
-			}
+			return self._complete_task(task_id, report_result, '风险报告')
 
 		except Exception as e:
 			self.logger.error(f"生成风险报告失败: {e}", exc_info=True)
@@ -292,7 +264,7 @@ class ReportTasks:
 				)
 
 			# 4. 发布事件
-			await self.event_engine.put(
+			self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='comparison',
@@ -304,20 +276,7 @@ class ReportTasks:
 				)
 			)
 
-			# 5. 更新任务状态
-			self.active_tasks[task_id]['status'] = 'completed'
-			self.active_tasks[task_id]['end_time'] = datetime.now()
-			self.active_tasks[task_id]['result'] = report_result
-
-			self.logger.info(f"比较报告生成完成，任务ID: {task_id}")
-
-			return {
-				'task_id': task_id,
-				'status': 'completed',
-				'report_path': report_result.get('report_path'),
-				'report_data': report_result.get('report_data'),
-				'generation_time': datetime.now().isoformat()
-			}
+			return self._complete_task(task_id, report_result, '比较报告')
 
 		except Exception as e:
 			self.logger.error(f"生成比较报告失败: {e}", exc_info=True)
@@ -375,7 +334,7 @@ class ReportTasks:
 				)
 
 			# 4. 发布事件
-			await self.event_engine.put(
+			self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='custom',
@@ -388,20 +347,7 @@ class ReportTasks:
 				)
 			)
 
-			# 5. 更新任务状态
-			self.active_tasks[task_id]['status'] = 'completed'
-			self.active_tasks[task_id]['end_time'] = datetime.now()
-			self.active_tasks[task_id]['result'] = report_result
-
-			self.logger.info(f"自定义报告生成完成，任务ID: {task_id}")
-
-			return {
-				'task_id': task_id,
-				'status': 'completed',
-				'report_path': report_result.get('report_path'),
-				'report_data': report_result.get('report_data'),
-				'generation_time': datetime.now().isoformat()
-			}
+			return self._complete_task(task_id, report_result, '自定义报告')
 
 		except Exception as e:
 			self.logger.error(f"生成自定义报告失败: {e}", exc_info=True)
@@ -418,10 +364,11 @@ class ReportTasks:
 				'generation_time': datetime.now().isoformat()
 			}
 
-	def _determine_report_period (self,
-	                              report_type: str,
-	                              start_date: Optional[date],
-	                              end_date: Optional[date]) -> Dict[str, date]:
+	@staticmethod
+	def _determine_report_period (
+			report_type: str,
+			start_date: Optional[date],
+			end_date: Optional[date]) -> Dict[str, date]:
 		"""
 		确定报告期间
 
@@ -509,7 +456,7 @@ class ReportTasks:
 						'name': strategy.name,
 						'description': strategy.description,
 						'status': strategy.status,
-						'parameters': strategy.parameters
+						'parameters': {}
 					}
 
 			# 获取净值数据（这里需要根据实际数据结构调整）
@@ -549,15 +496,15 @@ class ReportTasks:
 					# 计算汇总指标
 					returns = [float(getattr(p, 'daily_return', 0)) for p in performance_records]
 					if returns:
-						data['metrics']['avg_daily_return'] = sum(returns) / len(returns)
-						data['metrics']['total_return'] = (1 + sum(returns)) ** len(returns) - 1
+						data['metrics']['avg_daily_return'] = str(sum(returns) / len(returns))
+						data['metrics']['total_return'] = str((1 + sum(returns)) ** len(returns) - 1)
 
 					# 获取最新记录
 					latest = max(performance_records, key=lambda x: getattr(x, 'trade_date', datetime.min))
 					data['metrics'].update({
-						'latest_equity': float(getattr(latest, 'equity', 0)),
-						'latest_cash': float(getattr(latest, 'cash', 0)),
-						'latest_market_value': float(getattr(latest, 'market_value', 0))
+						'latest_equity': str(float(getattr(latest, 'equity', 0))),
+						'latest_cash': str(float(getattr(latest, 'cash', 0))),
+						'latest_market_value': str(float(getattr(latest, 'market_value', 0)))
 					})
 
 			return data
@@ -637,7 +584,7 @@ class ReportTasks:
 						'description': strategy.description,
 						'status': strategy.status,
 						'created_at': strategy.created_at.isoformat() if strategy.created_at else '',
-						'parameters': strategy.parameters
+						'parameters': {}
 					}
 
 			# 获取回测结果
@@ -708,8 +655,7 @@ class ReportTasks:
 
 				elif source_config.get('type') == 'calculated':
 					# 计算数据
-					calculation = source_config.get('calculation')
-					# 这里需要根据具体的计算逻辑实现
+					# 这里需要根据具体计算逻辑实现
 					pass
 
 			except Exception as e:
@@ -1015,6 +961,33 @@ class ReportTasks:
 		task_info['end_time'] = datetime.now()
 
 		return {'status': 'cancelled', 'task_id': task_id}
+
+	def _complete_task (self, task_id: str, report_result: Dict[str, Any], report_type: str) -> Dict[str, Any]:
+		"""
+		完成任务并返回结果
+
+		Args:
+			task_id: 任务ID
+			report_result: 报告结果
+			report_type: 报告类型
+
+		Returns:
+			任务完成结果
+		"""
+		# 更新任务状态
+		self.active_tasks[task_id]['status'] = 'completed'
+		self.active_tasks[task_id]['end_time'] = datetime.now()
+		self.active_tasks[task_id]['result'] = report_result
+
+		self.logger.info(f"{report_type}生成完成，任务ID: {task_id}")
+
+		return {
+			'task_id': task_id,
+			'status': 'completed',
+			'report_path': report_result.get('report_path'),
+			'report_data': report_result.get('report_data'),
+			'generation_time': datetime.now().isoformat()
+		}
 
 	async def cleanup_old_tasks (self, max_age_hours: int = 24):
 		"""

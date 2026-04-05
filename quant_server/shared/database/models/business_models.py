@@ -136,7 +136,6 @@ class Strategy(Base):
     strategy_type = Column(String(50), comment='策略类型：cta/alpha/ml/dl等')
     code = Column(Text, comment='策略代码')
     status = Column(String(20), default='stopped', comment='策略状态：stopped, running, paused')
-    parameters = Column(JSON, nullable=False, default=dict, comment='策略参数（JSON格式）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')

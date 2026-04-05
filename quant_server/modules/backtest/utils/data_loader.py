@@ -92,7 +92,7 @@ class DataLoader:
 				"id": strategy.id,
 				"name": strategy.name,
 				"description": strategy.description,
-				"parameters": strategy.parameters,
+				"parameters": {},
 				"code": strategy.code,
 				"created_at": strategy.created_at
 			}

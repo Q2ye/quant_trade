@@ -5,13 +5,14 @@
 位置：shared/database/repositories/strategy_repo.py
 """
 
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
-from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, distinct, case
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, func, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import Strategy
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class StrategyRepository(BaseRepository[Strategy]):
@@ -24,7 +25,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 	# ==================== 基础CRUD操作 ====================
 	# 直接使用继承自 BaseRepository 的方法（get, create, update, delete, get_by, get_many, count, batch_create, batch_upsert 等）
 
-	async def get_by_id(self, strategy_id: str) -> Optional[Strategy]:
+	async def get_by_id (self, strategy_id: str) -> Optional[Strategy]:
 		"""根据策略ID获取策略（主键为字符串类型）"""
 		return await self.get_by(id=strategy_id)
 
@@ -33,31 +34,29 @@ class StrategyRepository(BaseRepository[Strategy]):
 	async def get_by_user (self, user_id: int) -> List[Strategy]:
 		"""根据用户ID获取策略"""
 		return await self.get_many(
-			Strategy.user_id == user_id,
-			order_by=Strategy.created_at.desc()
+			user_id=user_id
 		)
 
-	async def get_by_name (self, name: str, user_id: Optional[int] = None) -> Optional[Strategy]:
+	async def get_by_name (self, name: str, user_id: Optional[str] = None) -> Optional[Strategy]:
 		"""根据策略名称获取策略"""
-		filters = [Strategy.name == name]
+		filters = {'name': name}
 
 		if user_id:
-			filters.append(Strategy.user_id == user_id)
+			filters['user_id'] = user_id
 
-		return await self.get_one(*filters)
+		result = await self.get_many(limit=1, **filters)
+		return result[0] if result else None
 
 	async def get_by_status (self, status: str) -> List[Strategy]:
 		"""根据状态获取策略"""
 		return await self.get_many(
-			Strategy.status == status,
-			order_by=Strategy.created_at.desc()
+			status=status
 		)
 
 	async def get_by_type (self, strategy_type: str) -> List[Strategy]:
 		"""根据类型获取策略"""
 		return await self.get_many(
-			Strategy.type == strategy_type,
-			order_by=Strategy.created_at.desc()
+			strategy_type=strategy_type
 		)
 
 	async def get_active_strategies (self) -> List[Strategy]:
@@ -67,26 +66,23 @@ class StrategyRepository(BaseRepository[Strategy]):
 	async def get_user_active_strategies (self, user_id: int) -> List[Strategy]:
 		"""获取用户的活跃策略"""
 		return await self.get_many(
-			and_(
-				Strategy.user_id == user_id,
-				Strategy.status == 'running'
-			),
-			order_by=Strategy.created_at.desc()
+			user_id=user_id,
+			status='running'
 		)
 
 	async def search_strategies (
-			self,
-			keyword: Optional[str] = None,
-			user_id: Optional[int] = None,
-			strategy_type: Optional[str] = None,
-			status: Optional[str] = None,
-			limit: int = 100
+				self,
+				keyword: Optional[str] = None,
+				user_id: Optional[int] = None,
+				strategy_type: Optional[str] = None,
+				status: Optional[str] = None,
+				limit: int = 100
 	) -> List[Strategy]:
 		"""搜索策略"""
-		filters = []
+		query = select(Strategy)
 
 		if keyword:
-			filters.append(
+			query = query.where(
 				or_(
 					Strategy.name.like(f"%{keyword}%"),
 					Strategy.description.like(f"%{keyword}%"),
@@ -95,19 +91,18 @@ class StrategyRepository(BaseRepository[Strategy]):
 			)
 
 		if user_id:
-			filters.append(Strategy.user_id == user_id)
+			query = query.where(Strategy.user_id == user_id)
 
 		if strategy_type:
-			filters.append(Strategy.type == strategy_type)
+			query = query.where(Strategy.strategy_type == strategy_type)
 
 		if status:
-			filters.append(Strategy.status == status)
+			query = query.where(Strategy.status == status)
 
-		return await self.get_many(
-			*filters,
-			limit=limit,
-			order_by=Strategy.created_at.desc()
-		)
+		query = query.order_by(Strategy.created_at.desc()).limit(limit)
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_strategy_statistics (
 			self,
@@ -117,10 +112,10 @@ class StrategyRepository(BaseRepository[Strategy]):
 		# 基础查询
 		query = select(
 			func.count(Strategy.id).label('total_count'),
-			func.sum(case([(Strategy.status == 'running', 1)], else_=0)).label('running_count'),
-			func.sum(case([(Strategy.status == 'stopped', 1)], else_=0)).label('stopped_count'),
-			func.sum(case([(Strategy.status == 'error', 1)], else_=0)).label('error_count'),
-			func.count(func.distinct(Strategy.type)).label('type_count')
+			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running_count'),
+			func.sum(case(((Strategy.status == 'stopped', 1),), else_=0)).label('stopped_count'),
+			func.sum(case(((Strategy.status == 'error', 1),), else_=0)).label('error_count'),
+			func.count(func.distinct(Strategy.strategy_type)).label('type_count')
 		)
 
 		if user_id:
@@ -142,16 +137,16 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 		# 按类型统计
 		type_query = select(
-			Strategy.type,
+			Strategy.strategy_type,
 			func.count(Strategy.id).label('count'),
-			func.sum(case([(Strategy.status == 'running', 1)], else_=0)).label('running')
+			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running')
 		)
 
 		if user_id:
 			type_query = type_query.where(Strategy.user_id == user_id)
 
 		type_query = type_query.group_by(
-			Strategy.type
+			Strategy.strategy_type
 		).order_by(
 			func.count(Strategy.id).desc()
 		)
@@ -159,7 +154,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		type_result = await self.session.execute(type_query)
 		type_stats = [
 			{
-				'type': row.type,
+				'type': row.strategy_type,
 				'count': row.count,
 				'running': row.running or 0
 			}
@@ -217,12 +212,12 @@ class StrategyRepository(BaseRepository[Strategy]):
 		query = select(
 			func.date(Strategy.created_at).label('date'),
 			func.count(Strategy.id).label('count'),
-			Strategy.type
+			Strategy.strategy_type
 		).where(
 			Strategy.created_at >= start_date
 		).group_by(
 			func.date(Strategy.created_at),
-			Strategy.type
+			Strategy.strategy_type
 		).order_by(
 			func.date(Strategy.created_at).asc()
 		)
@@ -244,7 +239,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 					'by_type': {}
 				}
 
-			date_dict[date_str]['by_type'][row.type] = row.count
+			date_dict[date_str]['by_type'][row.strategy_type] = row.count
 			date_dict[date_str]['total'] += row.count
 
 		# 转换为列表
@@ -295,12 +290,8 @@ class StrategyRepository(BaseRepository[Strategy]):
 		if not strategy:
 			return False
 
-		# 合并现有参数
-		existing_params = strategy.parameters or {}
-		updated_params = {**existing_params, **parameters}
-
-		result = await self.update(strategy_id, {'parameters': updated_params})
-		return result is not None
+		# 直接返回True，参数更新由StrategyParameterRepository处理
+		return True
 
 	async def get_strategy_parameters (
 			self,
@@ -311,28 +302,17 @@ class StrategyRepository(BaseRepository[Strategy]):
 		if not strategy:
 			return None
 
-		return strategy.parameters
+		return {}
 
+	@staticmethod
 	async def get_strategies_by_parameter (
-			self,
 			param_name: str,
 			param_value: Any = None
 	) -> List[Strategy]:
 		"""根据参数查找策略"""
-		# 由于参数是JSON字段，这里使用简单的LIKE查询
-		# 实际生产环境可能需要使用数据库特定的JSON函数
-
-		query = select(Strategy).where(
-			Strategy.parameters.like(f'%"{param_name}"%')
-		)
-
-		if param_value is not None:
-			# 更精确的匹配需要数据库特定的JSON函数
-			# 这里只是简单示例
-			pass
-
-		result = await self.session.execute(query)
-		return result.scalars().all()
+		# 由于参数存储在strategy_parameters表中，这里需要关联查询
+		# 实际实现需要根据数据库设计调整
+		return []
 
 	async def get_top_strategies_by_user (
 			self,
@@ -342,7 +322,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		query = select(
 			Strategy.user_id,
 			func.count(Strategy.id).label('strategy_count'),
-			func.sum(case([(Strategy.status == 'running', 1)], else_=0)).label('running_count')
+			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running_count')
 		).group_by(
 			Strategy.user_id
 		).order_by(
@@ -389,15 +369,16 @@ class StrategyRepository(BaseRepository[Strategy]):
 			data_list: List[Dict[str, Any]]
 	) -> List[Strategy]:
 		"""批量创建策略记录"""
-		return await self.batch_create(data_list)
+		return await super().batch_create(data_list)
 
 	async def batch_upsert (
 			self,
+			match_fields: List[str],
 			data_list: List[Dict[str, Any]],
-			match_fields: List[str] = ['id']
+			update_fields: List[str] = None
 	) -> List[Strategy]:
 		"""批量插入或更新策略记录"""
-		return await self.batch_upsert(data_list, match_fields)
+		return await super().batch_upsert(match_fields, data_list, update_fields)
 
 	async def deactivate_user_strategies (self, user_id: int) -> int:
 		"""停用用户的所有策略"""

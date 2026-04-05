@@ -21,6 +21,8 @@ from quant_server.shared.database.repositories.strategy.backtest.backtest_equity
 from quant_server.shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
 from quant_server.shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
 from quant_server.shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
+from quant_server.shared.database.repositories.strategy.management import StrategyRepository, StrategyParameterRepository
+import importlib
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,8 @@ class BacktestService:
 		self.trade_repo = BacktestTradeRepository(db)
 		self.position_repo = BacktestPositionRepository(db)
 		self.equity_curve_repo = BacktestEquityCurveRepository(db)
+		self.strategy_repo = StrategyRepository(db)
+		self.param_repo = StrategyParameterRepository(db)
 
 	async def create_backtest_task (self, request, user_id: int) -> Dict[str, Any]:
 		"""
@@ -67,6 +71,15 @@ class BacktestService:
 			回测任务信息
 		"""
 		try:
+			# 获取策略参数
+			strategy_params = {}
+			try:
+				params = await self.param_repo.get_by_strategy_id(str(request.strategy_id))
+				for param in params:
+					strategy_params[param.param_name] = param.param_value
+			except Exception as e:
+				logger.error(f"获取策略参数失败: {str(e)}")
+
 			# 创建回测任务记录
 			task = await self.task_repo.create({
 				"name": request.name,
@@ -82,6 +95,49 @@ class BacktestService:
 				"user_id": user_id,
 				"created_at": datetime.now()
 			})
+
+			# 保存回测参数到backtest_parameters表
+			try:
+				from quant_server.shared.database.repositories.strategy.backtest.parameter_repo import BacktestParameterRepository
+				param_repo = BacktestParameterRepository(self.db)
+				
+				# 保存成本参数
+				await param_repo.create({
+					'task_id': task.id,
+					'param_category': 'cost',
+					'param_name': 'commission_rate',
+					'param_value': float(request.commission_rate),
+					'description': '佣金费率'
+				})
+				
+				await param_repo.create({
+					'task_id': task.id,
+					'param_category': 'cost',
+					'param_name': 'slippage_rate',
+					'param_value': float(request.slippage_rate),
+					'description': '滑点费率'
+				})
+				
+				# 保存资金参数
+				await param_repo.create({
+					'task_id': task.id,
+					'param_category': 'capital',
+					'param_name': 'initial_capital',
+					'param_value': float(request.initial_capital),
+					'description': '初始资金'
+				})
+				
+				# 保存策略参数
+				for param_name, param_value in strategy_params.items():
+					await param_repo.create({
+						'task_id': task.id,
+						'param_category': 'strategy',
+						'param_name': param_name,
+						'param_value': param_value,
+						'description': f'策略参数: {param_name}'
+					})
+			except Exception as e:
+				logger.error(f"保存回测参数失败: {str(e)}")
 
 			logger.info(f"创建回测任务成功: {task.id}, {request.name}")
 
@@ -401,10 +457,101 @@ class BacktestService:
 			task = await self.task_repo.get(task_id)
 
 			# 加载策略
-			# TODO: 从策略模块加载策略
+			# 从策略模块加载策略
+			strategy = await self.strategy_repo.get_by_id(task.strategy_id)
+			if not strategy:
+				raise ValueError(f"策略不存在: {task.strategy_id}")
+
+			# 获取历史数据配置
+			config = task.config or {}
+			
+			# 从backtest_parameters表获取配置数据
+			try:
+				from quant_server.shared.database.repositories.strategy.backtest.parameter_repo import BacktestParameterRepository
+				param_repo = BacktestParameterRepository(self.db)
+				
+				# 获取所有回测参数
+				params = await param_repo.get_task_parameters(task.id)
+				for param in params:
+					if param.param_category in ['market', 'cost', 'capital']:
+						config[param.param_name] = param.param_value
+				logger.info(f"从backtest_parameters表获取配置数据成功: {len(params)} 个参数")
+			except Exception as e:
+				logger.error(f"从backtest_parameters表获取配置数据失败: {str(e)}")
+				# 继续使用task.config
+
+			# 动态加载策略模块
+			strategy_class = None
+			try:
+				# 构建策略模块路径
+				module_path = strategy.module_path
+				class_name = strategy.class_name
+
+				# 导入策略模块
+				module = importlib.import_module(module_path)
+				# 获取策略类
+				strategy_class = getattr(module, class_name)
+			except Exception:
+				# 如果动态导入失败，尝试从策略代码直接执行
+				try:
+					# 创建临时模块
+					temp_module = {}
+					exec(strategy.code, temp_module)
+					# 查找策略类
+					for name, obj in temp_module.items():
+						if isinstance(obj, type) and name == strategy.class_name:
+							strategy_class = obj
+							break
+					if not strategy_class:
+						# 如果没有找到指定的类，尝试查找第一个类
+						for name, obj in temp_module.items():
+							if isinstance(obj, type):
+								strategy_class = obj
+								break
+					if not strategy_class:
+						raise ValueError("策略代码中未找到策略类")
+				except Exception as e:
+					logger.error(f"加载策略失败: {str(e)}")
+					raise
+
+			# 加载策略到回测引擎
+			from quant_server.modules.strategy.constants import StrategyType
+			from quant_server.modules.strategy.models import StrategyConfig
+
+			# 注册策略类
+			self.backtest_engine.register_strategy(StrategyType.CUSTOM, strategy_class)
+
+			# 创建策略配置
+			strategy_config = StrategyConfig(
+				name=strategy.name,
+				initial_capital=float(config.get('initial_capital', 1000000)),
+				commission_rate=float(config.get('commission_rate', 0.0003)),
+				slippage=float(config.get('slippage_rate', 0.0001))
+			)
+
+			# 获取策略参数
+			parameters = {}
+			try:
+				strategy_params = await self.param_repo.get_by_strategy_id(task.strategy_id)
+				for param in strategy_params:
+					parameters[param.param_name] = param.param_value
+				logger.info(f"获取策略参数成功: {len(parameters)} 个参数")
+			except Exception as e:
+				logger.error(f"获取策略参数失败: {str(e)}")
+				# 继续执行，使用空参数
+				parameters = {}
+
+			# 加载策略
+			self.backtest_engine.load_strategy(
+				strategy_id=task.strategy_id,
+				name=strategy.name,
+				strategy_type=StrategyType.CUSTOM,
+				code=strategy.code,
+				parameters=parameters,
+				config=strategy_config
+			)
 
 			# 获取历史数据
-			config = task.config or {}
 			# 将字符串日期转换为datetime对象
 			start_date = None
 			end_date = None
@@ -412,11 +559,24 @@ class BacktestService:
 				start_date = datetime.strptime(config.get('start_date'), "%Y-%m-%d")
 			if config.get('end_date'):
 				end_date = datetime.strptime(config.get('end_date'), "%Y-%m-%d")
-			data = await self.market_service.get_historical_quotes(
-				ts_code=config.get('ts_code'),
-				start_date=start_date,
-				end_date=end_date
-			)
+			
+			# 检查股票代码是否存在
+			ts_code = config.get('ts_code') or parameters.get('ts_code')
+			if not ts_code:
+				raise ValueError("股票代码不能为空，请在回测配置或策略参数中设置ts_code")
+			
+			# 获取历史数据
+			try:
+				data = await self.market_service.get_historical_quotes(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+				if not data:
+					raise ValueError(f"获取历史数据失败: 股票 {ts_code} 无数据")
+			except Exception as e:
+				logger.error(f"获取历史数据失败: {str(e)}")
+				raise
 
 			# 创建策略上下文
 			context = StrategyContext(
@@ -432,12 +592,26 @@ class BacktestService:
 			# 假设 run_backtest 方法不是异步的，移除 await
 			# 将 data 转换为 DataFrame
 			import pandas as pd
-			data_df = pd.DataFrame(data)
-			result = self.backtest_engine.run_backtest(
-				strategy_id=task.strategy_id,
-				data={"000001.SZ": data_df},  # 转换为 dict[str, DataFrame] 格式
-				context=context
-			)
+			try:
+				data_df = pd.DataFrame(data)
+				if data_df.empty:
+					raise ValueError(f"历史数据为空: 股票 {ts_code}")
+				
+				# 确保数据包含必要的列
+				required_columns = ['open', 'high', 'low', 'close', 'volume']
+				missing_columns = [col for col in required_columns if col not in data_df.columns]
+				if missing_columns:
+					raise ValueError(f"历史数据缺少必要的列: {missing_columns}")
+				
+				# 使用实际的股票代码作为键
+				result = self.backtest_engine.run_backtest(
+					strategy_id=task.strategy_id,
+					data={ts_code: data_df},  # 使用实际的股票代码作为键
+					context=context
+				)
+			except Exception as e:
+				logger.error(f"执行回测失败: {str(e)}")
+				raise
 
 			# 计算绩效指标
 			metrics = self.backtest_engine.calculate_metrics(task.strategy_id)

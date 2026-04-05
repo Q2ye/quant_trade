@@ -587,7 +587,6 @@ CREATE TABLE strategies (
     strategy_type VARCHAR(50),
     code TEXT,
     status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'compiled', 'deployed', 'running', 'paused', 'stopped', 'error', 'archived')),
-    parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -602,7 +601,6 @@ COMMENT ON COLUMN strategies.module_path IS '策略文件路径（相对路径�
 COMMENT ON COLUMN strategies.strategy_type IS '策略类型：cta/alpha/ml/dl等';
 COMMENT ON COLUMN strategies.code IS '策略代码';
 COMMENT ON COLUMN strategies.status IS '策略状态：draft-草稿, compiled-已编译, deployed-已部署, running-运行中, paused-已暂停, stopped-已停止, error-异常, archived-已归档';
-COMMENT ON COLUMN strategies.parameters IS '策略参数（JSON格式，如{"window": 20, "threshold": 0.02}）';
 
 -- 策略运行记录表
 CREATE TABLE strategy_runs (
