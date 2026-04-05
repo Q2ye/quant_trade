@@ -114,7 +114,7 @@ class EngineStatusValidator:
 	def __init__ (self):
 		"""初始化状态验证器"""
 		self._transition_history: List[Dict[str, Any]] = []
-		self._hooks: Dict[ComponentStatus, Dict[ComponentStatus, Dict[str, List[Callable]]]] = {}
+		self._hooks: Dict[ComponentStatus, Dict[ComponentStatus, Dict['TransitionHook', List[Callable]]]] = {}
 
 	@classmethod
 	def is_valid_transition (cls, current: ComponentStatus, next_status: ComponentStatus) -> bool:
@@ -131,6 +131,7 @@ class EngineStatusValidator:
 		Raises:
 			ValueError: 当状态值无效时
 		"""
+		# 运行时类型检查，确保参数类型正确（类型注解在运行时不强制执行）
 		if not isinstance(current, ComponentStatus) or not isinstance(next_status, ComponentStatus):
 			raise ValueError("状态必须是ComponentStatus枚举类型")
 
@@ -593,7 +594,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, uptime=uptime)
-			except Exception:
+			except (ValueError, TypeError):
 				# 如果都没有，创建新的字典并构建新对象
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['uptime'] = uptime
@@ -618,7 +619,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, last_stop_time=last_stop_time)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_stop_time'] = last_stop_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -642,7 +643,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, last_update_time=last_update_time)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_update_time'] = last_update_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -666,7 +667,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, last_success_time=last_success_time)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_success_time'] = last_success_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -690,7 +691,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, last_error_time=last_error_time)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['last_error_time'] = last_error_time
 				return EngineMetricsEntity(**metrics_dict)
@@ -714,7 +715,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, processed_events=current_count + 1)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['processed_events'] = current_count + 1
 				return EngineMetricsEntity(**metrics_dict)
@@ -738,7 +739,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, error_count=current_count + 1)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict['error_count'] = current_count + 1
 				return EngineMetricsEntity(**metrics_dict)
@@ -762,7 +763,7 @@ class EngineMetricsUpdater:
 		else:
 			try:
 				return replace(metrics, **kwargs)
-			except Exception:
+			except (ValueError, TypeError):
 				metrics_dict = metrics.to_dict() if hasattr(metrics, 'to_dict') else {}
 				metrics_dict.update(kwargs)
 				return EngineMetricsEntity(**metrics_dict)
@@ -2111,11 +2112,11 @@ class EngineBase(ABC):
 			"timestamp": datetime.now().isoformat()
 		})
 
-	async def _handle_debug_error (self, error: Exception, context: Dict[str, Any] = None):
+	async def _handle_debug_error (self, error: Exception):
 		"""处理DEBUG级别错误"""
 		logger.debug(f"引擎DEBUG错误: {self.config.name}, 错误: {error}")
 
-	async def _handle_info_error (self, error: Exception, context: Dict[str, Any] = None):
+	async def _handle_info_error (self, error: Exception):
 		"""处理INFO级别错误"""
 		logger.info(f"引擎INFO错误: {self.config.name}, 错误: {error}")
 
@@ -2145,7 +2146,7 @@ class EngineBase(ABC):
 			except Exception as restart_error:
 				logger.error(f"自动重启失败: {self.config.name}, 错误: {restart_error}")
 
-	async def _handle_critical_error (self, error: Exception, context: Dict[str, Any] = None):
+	async def _handle_critical_error (self, error: Exception):
 		"""处理CRITICAL级别错误"""
 		logger.critical(f"引擎CRITICAL错误: {self.config.name}, 错误: {error}")
 

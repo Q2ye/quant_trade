@@ -4,11 +4,11 @@
 """
 
 import logging
+import math
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from ....shared.utils.validation import validate_position_data
-from quant_server.utils.core_utils.math_utils.statistic_calculator import StatisticCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,9 @@ class PositionProcessor:
 
 	def __init__ (self):
 		"""初始化持仓处理器"""
-		self.stat_calculator = StatisticCalculator()
 
+	@staticmethod
 	def calculate_position_pnl (
-			self,
 			position: Dict,
 			current_price: float,
 			include_fees: bool = True
@@ -42,12 +41,11 @@ class PositionProcessor:
 		"""
 		try:
 			# 验证持仓数据
-			self._validate_position(position)
+			PositionProcessor._validate_position(position)
 
 			# 获取持仓数据
 			quantity = float(position.get('current_quantity', 0))
 			cost_price = float(position.get('cost_price', 0))
-			avg_price = float(position.get('avg_price', cost_price))
 
 			if quantity == 0 or cost_price == 0:
 				return {
@@ -68,9 +66,10 @@ class PositionProcessor:
 			# 如果包含费用，调整盈亏
 			if include_fees:
 				# 计算预计卖出费用（佣金+印花税）
-				sell_fee = self._calculate_sell_fee(market_value)
+				sell_fee = PositionProcessor._calculate_sell_fee(market_value)
 				unrealized_pnl -= sell_fee
 
+			# 返回计算结果
 			return {
 				'unrealized_pnl': float(unrealized_pnl),
 				'unrealized_pnl_rate': float(unrealized_pnl_rate),
@@ -85,8 +84,8 @@ class PositionProcessor:
 			logger.error(f"计算持仓盈亏失败: {str(e)}", exc_info=True)
 			raise
 
+	@staticmethod
 	def calculate_position_cost (
-			self,
 			trades: List[Dict],
 			current_quantity: float = 0,
 			current_cost: float = 0
@@ -173,12 +172,12 @@ class PositionProcessor:
 			logger.error(f"计算持仓成本失败: {str(e)}", exc_info=True)
 			raise
 
+	@staticmethod
 	def calculate_position_exposure (
-			self,
 			positions: List[Dict],
 			total_asset: float,
 			risk_factors: Optional[Dict] = None
-	) -> Dict[str, float]:
+	) -> Dict[str, Any]:
 		"""
 		计算持仓风险敞口
 
@@ -205,16 +204,16 @@ class PositionProcessor:
 			total_exposure = total_market_value / total_asset if total_asset > 0 else 0
 
 			# 按行业计算敞口
-			sector_exposure = self._calculate_sector_exposure(positions, total_asset)
+			sector_exposure = PositionProcessor._calculate_sector_exposure(positions, total_asset)
 
 			# 计算集中度风险（赫芬达尔指数）
-			concentration_risk = self._calculate_concentration_risk(positions, total_asset)
+			concentration_risk = PositionProcessor._calculate_concentration_risk(positions, total_asset)
 
 			# 计算在险价值（VaR）
-			var_95 = self._calculate_var_95(positions, risk_factors)
+			var_95 = PositionProcessor._calculate_var_95(positions, risk_factors)
 
 			# 计算预期缺口（Expected Shortfall）
-			expected_shortfall = self._calculate_expected_shortfall(positions, risk_factors)
+			expected_shortfall = PositionProcessor._calculate_expected_shortfall(positions, risk_factors)
 
 			return {
 				'total_exposure': float(total_exposure),
@@ -229,8 +228,8 @@ class PositionProcessor:
 			logger.error(f"计算风险敞口失败: {str(e)}", exc_info=True)
 			raise
 
+	@staticmethod
 	def analyze_position_performance (
-			self,
 			position_history: List[Dict],
 			benchmark_history: Optional[List[Dict]] = None
 	) -> Dict[str, Any]:
@@ -288,16 +287,16 @@ class PositionProcessor:
 				total_return = 0
 
 			# 计算年化收益（假设每日数据）
-			annualized_return = self.stat_calculator.calculate_annualized_return(returns, period='daily')
+			annualized_return = PositionProcessor._calculate_annualized_return(returns, period='daily')
 
 			# 计算波动率
-			volatility = self.stat_calculator.calculate_volatility(returns, annualize=True)
+			volatility = PositionProcessor._calculate_volatility(returns, annualize=True)
 
 			# 计算夏普比率（假设无风险利率为0.03）
-			sharpe_ratio = self.stat_calculator.calculate_sharpe_ratio(returns, risk_free_rate=0.03)
+			sharpe_ratio = PositionProcessor._calculate_sharpe_ratio(returns, risk_free_rate=0.03)
 
 			# 计算最大回撤
-			max_drawdown = self.stat_calculator.calculate_max_drawdown(values)
+			max_drawdown = PositionProcessor._calculate_max_drawdown(values)
 
 			# 计算Beta和Alpha（如果有基准）
 			beta = 0.0
@@ -308,8 +307,8 @@ class PositionProcessor:
 					float(r.get('return', 0)) for r in benchmark_history[-len(returns):]
 				]
 
-				beta = self.stat_calculator.calculate_beta(returns, benchmark_returns)
-				alpha = self.stat_calculator.calculate_alpha(
+				beta = PositionProcessor._calculate_beta(returns, benchmark_returns)
+				alpha = PositionProcessor._calculate_alpha(
 					returns, benchmark_returns, risk_free_rate=0.03
 				)
 
@@ -334,13 +333,13 @@ class PositionProcessor:
 			logger.error(f"分析持仓绩效失败: {str(e)}", exc_info=True)
 			raise
 
+	@staticmethod
 	def optimize_position_sizing (
-			self,
 			positions: List[Dict],
 			total_capital: float,
 			risk_constraints: Dict[str, float],
 			optimization_method: str = 'equal_risk'
-	) -> Dict[str, Dict]:
+	) -> Dict[str, Any]:
 		"""
 		优化持仓头寸规模
 
@@ -366,20 +365,20 @@ class PositionProcessor:
 
 			# 根据优化方法计算目标头寸
 			if optimization_method == 'equal_risk':
-				target_sizes = self._equal_risk_sizing(
+				target_sizes = PositionProcessor._equal_risk_sizing(
 					positions, total_capital, risk_constraints
 				)
 			elif optimization_method == 'kelly_criterion':
-				target_sizes = self._kelly_criterion_sizing(
+				target_sizes = PositionProcessor._kelly_criterion_sizing(
 					positions, total_capital, risk_constraints
 				)
 			elif optimization_method == 'mean_variance':
-				target_sizes = self._mean_variance_sizing(
+				target_sizes = PositionProcessor._mean_variance_sizing(
 					positions, total_capital, risk_constraints
 				)
 			else:
 				# 默认等权重
-				target_sizes = self._equal_weight_sizing(positions, total_capital)
+				target_sizes = PositionProcessor._equal_weight_sizing(positions, total_capital)
 
 			# 计算调整建议
 			adjustments = {}
@@ -418,7 +417,8 @@ class PositionProcessor:
 			logger.error(f"优化头寸规模失败: {str(e)}", exc_info=True)
 			raise
 
-	def _validate_position (self, position: Dict) -> bool:
+	@staticmethod
+	def _validate_position (position: Dict) -> bool:
 		"""
 		验证持仓数据
 
@@ -439,7 +439,8 @@ class PositionProcessor:
 
 		return True
 
-	def _calculate_sell_fee (self, market_value: float) -> float:
+	@staticmethod
+	def _calculate_sell_fee (market_value: float) -> float:
 		"""
 		计算卖出费用
 
@@ -460,8 +461,8 @@ class PositionProcessor:
 
 		return commission + stamp_tax + transfer_fee
 
+	@staticmethod
 	def _calculate_sector_exposure (
-			self,
 			positions: List[Dict],
 			total_asset: float
 	) -> Dict[str, float]:
@@ -483,8 +484,8 @@ class PositionProcessor:
 
 		return sector_exposure
 
+	@staticmethod
 	def _calculate_concentration_risk (
-			self,
 			positions: List[Dict],
 			total_asset: float
 	) -> float:
@@ -502,10 +503,10 @@ class PositionProcessor:
 		hhi = sum(w * w for w in weights)
 		return float(hhi)
 
+	@staticmethod
 	def _calculate_var_95 (
-			self,
 			positions: List[Dict],
-			risk_factors: Optional[Dict]
+			_risk_factors: Optional[Dict]
 	) -> float:
 		"""计算95%置信度的在险价值"""
 		# 简化的VaR计算
@@ -521,22 +522,22 @@ class PositionProcessor:
 		var_95 = total_value * volatility * z_score
 		return float(var_95)
 
+	@staticmethod
 	def _calculate_expected_shortfall (
-			self,
 			positions: List[Dict],
-			risk_factors: Optional[Dict]
+			_risk_factors: Optional[Dict]
 	) -> float:
 		"""计算预期缺口"""
 		# 简化的ES计算（CVaR）
 		# 假设损失分布为正态分布
 
-		var_95 = self._calculate_var_95(positions, risk_factors)
+		var_95 = PositionProcessor._calculate_var_95(positions, _risk_factors)
 
 		# 正态分布下，95% VaR对应的ES约为1.75倍VaR
 		return float(var_95 * 1.75)
 
+	@staticmethod
 	def _equal_weight_sizing (
-			self,
 			positions: List[Dict],
 			total_capital: float
 	) -> Dict[str, float]:
@@ -555,8 +556,8 @@ class PositionProcessor:
 
 		return target_sizes
 
+	@staticmethod
 	def _equal_risk_sizing (
-			self,
 			positions: List[Dict],
 			total_capital: float,
 			risk_constraints: Dict[str, float]
@@ -582,8 +583,8 @@ class PositionProcessor:
 
 		return target_sizes
 
+	@staticmethod
 	def _kelly_criterion_sizing (
-			self,
 			positions: List[Dict],
 			total_capital: float,
 			risk_constraints: Dict[str, float]
@@ -612,8 +613,8 @@ class PositionProcessor:
 
 		return target_sizes
 
+	@staticmethod
 	def _mean_variance_sizing (
-			self,
 			positions: List[Dict],
 			total_capital: float,
 			risk_constraints: Dict[str, float]
@@ -629,7 +630,80 @@ class PositionProcessor:
 		# 实际实现中需要估计这些参数
 
 		# 等权重作为初始解
-		return self._equal_weight_sizing(positions, total_capital)
+		return PositionProcessor._equal_weight_sizing(positions, total_capital)
+
+	@staticmethod
+	def _calculate_annualized_return (returns: List[float], period: str = 'daily') -> float:
+		"""计算年化收益"""
+		if not returns:
+			return 0.0
+		total_return = (1 + sum(returns)) - 1
+		n_periods = len(returns)
+		if period == 'daily':
+			days_in_year = 252
+			return (1 + total_return) ** (days_in_year / n_periods) - 1
+		return total_return
+
+	@staticmethod
+	def _calculate_volatility (returns: List[float], annualize: bool = True) -> float:
+		"""计算波动率"""
+		if not returns or len(returns) < 2:
+			return 0.0
+		mean_return = sum(returns) / len(returns)
+		variance = sum((r - mean_return) ** 2 for r in returns) / (len(returns) - 1)
+		volatility = math.sqrt(variance)
+		if annualize:
+			volatility *= math.sqrt(252)
+		return volatility
+
+	@staticmethod
+	def _calculate_sharpe_ratio (returns: List[float], risk_free_rate: float = 0.03) -> float:
+		"""计算夏普比率"""
+		if not returns:
+			return 0.0
+		annualized_return = PositionProcessor._calculate_annualized_return(returns)
+		volatility = PositionProcessor._calculate_volatility(returns, annualize=True)
+		if volatility == 0:
+			return 0.0
+		return (annualized_return - risk_free_rate) / volatility
+
+	@staticmethod
+	def _calculate_max_drawdown (values: List[float]) -> float:
+		"""计算最大回撤"""
+		if not values or len(values) < 2:
+			return 0.0
+		max_drawdown = 0.0
+		peak = values[0]
+		for value in values[1:]:
+			if value > peak:
+				peak = value
+			drawdown = (peak - value) / peak
+			if drawdown > max_drawdown:
+				max_drawdown = drawdown
+		return max_drawdown
+
+	@staticmethod
+	def _calculate_beta (returns: List[float], benchmark_returns: List[float]) -> float:
+		"""计算Beta"""
+		if not returns or not benchmark_returns or len(returns) != len(benchmark_returns):
+			return 0.0
+		mean_return = sum(returns) / len(returns)
+		mean_benchmark = sum(benchmark_returns) / len(benchmark_returns)
+		covariance = sum((r - mean_return) * (b - mean_benchmark) for r, b in zip(returns, benchmark_returns)) / (len(returns) - 1)
+		benchmark_variance = sum((b - mean_benchmark) ** 2 for b in benchmark_returns) / (len(benchmark_returns) - 1)
+		if benchmark_variance == 0:
+			return 0.0
+		return covariance / benchmark_variance
+
+	@staticmethod
+	def _calculate_alpha (returns: List[float], benchmark_returns: List[float], risk_free_rate: float = 0.03) -> float:
+		"""计算Alpha"""
+		if not returns or not benchmark_returns:
+			return 0.0
+		beta = PositionProcessor._calculate_beta(returns, benchmark_returns)
+		annualized_return = PositionProcessor._calculate_annualized_return(returns)
+		annualized_benchmark = PositionProcessor._calculate_annualized_return(benchmark_returns)
+		return annualized_return - (risk_free_rate + beta * (annualized_benchmark - risk_free_rate))
 
 
 # 工具函数
@@ -639,8 +713,7 @@ def calculate_position_pnl (
 		include_fees: bool = True
 ) -> Dict[str, float]:
 	"""计算持仓盈亏（快捷函数）"""
-	processor = PositionProcessor()
-	return processor.calculate_position_pnl(position, current_price, include_fees)
+	return PositionProcessor.calculate_position_pnl(position, current_price, include_fees)
 
 
 def calculate_position_cost (
@@ -649,15 +722,13 @@ def calculate_position_cost (
 		current_cost: float = 0
 ) -> Dict[str, float]:
 	"""计算持仓成本（快捷函数）"""
-	processor = PositionProcessor()
-	return processor.calculate_position_cost(trades, current_quantity, current_cost)
+	return PositionProcessor.calculate_position_cost(trades, current_quantity, current_cost)
 
 
 def calculate_position_exposure (
 		positions: List[Dict],
 		total_asset: float,
 		risk_factors: Optional[Dict] = None
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
 	"""计算持仓风险敞口（快捷函数）"""
-	processor = PositionProcessor()
-	return processor.calculate_position_exposure(positions, total_asset, risk_factors)
+	return PositionProcessor.calculate_position_exposure(positions, total_asset, risk_factors)

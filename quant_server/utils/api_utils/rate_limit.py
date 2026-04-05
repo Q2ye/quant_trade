@@ -13,20 +13,20 @@ Version: 1.0.0
 """
 
 import asyncio
-import time
 import logging
-from typing import Dict, Any, Optional, Callable, Tuple, List
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from datetime import datetime, timedelta
 from functools import wraps
+from typing import Dict, Any, Optional
 
-from fastapi import HTTPException, Request, status
-from fastapi.responses import JSONResponse
 import redis.asyncio as redis
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 
-from quant_server.shared.config.settings import Settings
-from quant_server.core.exceptions.error_codes import ErrorCode
+
+from quant_server.shared.config.config_manager import ConfigSettings as Settings
 from quant_server.utils.api_utils.response_formatter import APIResponse
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class RateLimitResult:
 	remaining: int  # 剩余请求数
 	limit: int  # 限制数量
 	reset_time: float  # 重置时间（Unix时间戳）
-	retry_after: Optional[float] = None  # 重试等待时间（秒）
+	retry_after: Optional[int] = None  # 重试等待时间（秒）
 
 
 class RateLimiter:
@@ -210,7 +210,7 @@ class RedisRateLimiter(RateLimiter):
 					remaining=remaining,
 					limit=self.config.requests,
 					reset_time=reset_time,
-					retry_after=None if allowed else max(0, reset_time - current_time)
+					retry_after=None if allowed else int(max(0, int(reset_time) - int(current_time)))
 				)
 
 			except Exception as e:
@@ -251,7 +251,7 @@ class RedisRateLimiter(RateLimiter):
 				remaining=remaining,
 				limit=self.config.requests,
 				reset_time=reset_time,
-				retry_after=None if allowed else max(0, reset_time - current_time)
+				retry_after=None if allowed else int(max(0, int(reset_time) - int(current_time)))
 			)
 
 		except Exception as e:
@@ -272,6 +272,7 @@ class RedisRateLimiter(RateLimiter):
 		try:
 			# 获取当前令牌桶状态
 			bucket_data = await self.redis.hgetall(key)
+			retry_after = None
 
 			if not bucket_data:
 				# 初始化令牌桶
@@ -299,7 +300,7 @@ class RedisRateLimiter(RateLimiter):
 				# 计算需要等待的时间
 				deficit = request_cost - new_tokens
 				refill_time = (deficit * self.config.period) / self.config.requests
-				retry_after = refill_time
+				retry_after = int(refill_time)
 
 			# 更新令牌桶
 			await self.redis.hset(key, mapping={
@@ -370,76 +371,59 @@ class MemoryRateLimiter(RateLimiter):
 			data = self._store[key]
 
 			if self.config.strategy == RateLimitStrategy.SLIDING_WINDOW:
-				return await self._sliding_window_check_memory(data, identifier, request_cost, current_time)
+				return await self._sliding_window_check_memory(data, request_cost, current_time)
 			elif self.config.strategy == RateLimitStrategy.FIXED_WINDOW:
-				return await self._fixed_window_check_memory(data, identifier, request_cost, current_time)
+				return await self._fixed_window_check_memory(data, request_cost, current_time)
 			elif self.config.strategy == RateLimitStrategy.TOKEN_BUCKET:
-				return await self._token_bucket_check_memory(data, identifier, request_cost, current_time)
+				return await self._token_bucket_check_memory(data, request_cost, current_time)
 			else:
 				raise ValueError(f"不支持的限流策略: {self.config.strategy}")
 
-	async def _sliding_window_check_memory (self, data: Dict[str, Any], identifier: str, request_cost: int,
+	async def _window_check_memory (self, data: Dict[str, Any], request_cost: int,
+	                               current_time: float) -> RateLimitResult:
+		"""内存窗口限流检查（通用）"""
+		window_start = int(current_time // self.config.period) * self.config.period
+
+		if data['window_start'] != window_start:
+			# 新窗口开始
+			data['count'] = 0
+			data['window_start'] = window_start
+
+		# 检查是否超过限制
+		allowed = data['count'] + request_cost <= self.config.requests
+
+		if allowed:
+			data['count'] += request_cost
+
+		remaining = max(0, self.config.requests - data['count'])
+		reset_time = window_start + self.config.period
+
+		return RateLimitResult(
+			allowed=allowed,
+			remaining=remaining,
+			limit=self.config.requests,
+			reset_time=reset_time,
+			retry_after=None if allowed else int(max(0, int(reset_time) - int(current_time)))
+		)
+
+	async def _sliding_window_check_memory (self, data: Dict[str, Any], request_cost: int,
 	                                        current_time: float) -> RateLimitResult:
 		"""内存滑动窗口限流检查"""
-		# 简化实现：使用固定窗口模拟滑动窗口
-		window_start = int(current_time // self.config.period) * self.config.period
+		return await self._window_check_memory(data, request_cost, current_time)
 
-		if data['window_start'] != window_start:
-			# 新窗口开始
-			data['count'] = 0
-			data['window_start'] = window_start
-
-		# 检查是否超过限制
-		allowed = data['count'] + request_cost <= self.config.requests
-
-		if allowed:
-			data['count'] += request_cost
-
-		remaining = max(0, self.config.requests - data['count'])
-		reset_time = window_start + self.config.period
-
-		return RateLimitResult(
-			allowed=allowed,
-			remaining=remaining,
-			limit=self.config.requests,
-			reset_time=reset_time,
-			retry_after=None if allowed else max(0, reset_time - current_time)
-		)
-
-	async def _fixed_window_check_memory (self, data: Dict[str, Any], identifier: str, request_cost: int,
+	async def _fixed_window_check_memory (self, data: Dict[str, Any], request_cost: int,
 	                                      current_time: float) -> RateLimitResult:
 		"""内存固定窗口限流检查"""
-		window_start = int(current_time // self.config.period) * self.config.period
+		return await self._window_check_memory(data, request_cost, current_time)
 
-		if data['window_start'] != window_start:
-			# 新窗口开始
-			data['count'] = 0
-			data['window_start'] = window_start
-
-		# 检查是否超过限制
-		allowed = data['count'] + request_cost <= self.config.requests
-
-		if allowed:
-			data['count'] += request_cost
-
-		remaining = max(0, self.config.requests - data['count'])
-		reset_time = window_start + self.config.period
-
-		return RateLimitResult(
-			allowed=allowed,
-			remaining=remaining,
-			limit=self.config.requests,
-			reset_time=reset_time,
-			retry_after=None if allowed else max(0, reset_time - current_time)
-		)
-
-	async def _token_bucket_check_memory (self, data: Dict[str, Any], identifier: str, request_cost: int,
+	async def _token_bucket_check_memory (self, data: Dict[str, Any], request_cost: int,
 	                                      current_time: float) -> RateLimitResult:
 		"""内存令牌桶限流检查"""
 		# 计算需要补充的令牌
 		time_passed = current_time - data['last_refill']
 		refill_amount = (time_passed * self.config.requests) / self.config.period
 		new_tokens = min(self.config.burst or float('inf'), data['tokens'] + refill_amount)
+		retry_after = None
 
 		# 检查是否有足够的令牌
 		if new_tokens >= request_cost:
@@ -454,7 +438,7 @@ class MemoryRateLimiter(RateLimiter):
 			# 计算需要等待的时间
 			deficit = request_cost - new_tokens
 			refill_time = (deficit * self.config.period) / self.config.requests
-			retry_after = refill_time
+			retry_after = int(refill_time)
 
 		# 更新数据
 		data['tokens'] = remaining_tokens
@@ -484,8 +468,8 @@ class RateLimitManager:
 		self.redis_client = redis_client
 		self.limiters: Dict[str, RateLimiter] = {}
 		self.default_config = RateLimitConfig(
-			requests=settings.API.RATE_LIMIT.MAX_REQUESTS,
-			period=settings.API.RATE_LIMIT.PERIOD_SECONDS,
+			requests=getattr(settings.API, 'MAX_REQUESTS', 100),
+			period=getattr(settings.API, 'PERIOD_SECONDS', 60),
 			strategy=RateLimitStrategy.SLIDING_WINDOW,
 			scope=RateLimitScope.USER
 		)
@@ -506,7 +490,7 @@ class RateLimitManager:
 		config_key = f"{config.strategy}:{config.scope}:{config.requests}:{config.period}"
 
 		if config_key not in self.limiters:
-			if self.redis_client and self.settings.API.RATE_LIMIT.USE_REDIS:
+			if self.redis_client and getattr(self.settings.API, 'USE_REDIS', False):
 				limiter = RedisRateLimiter(config, self.redis_client)
 			else:
 				limiter = MemoryRateLimiter(config)
@@ -543,8 +527,8 @@ class RateLimitManager:
 		# 检查限流
 		return await limiter.check(identifier)
 
+	@staticmethod
 	def _get_identifier (
-			self,
 			request: Request,
 			scope: RateLimitScope,
 			user_id: Optional[str] = None
@@ -575,9 +559,6 @@ class RateLimitManager:
 		elif scope == RateLimitScope.ENDPOINT:
 			endpoint = f"{request.method}:{request.url.path}"
 			return f"endpoint:{endpoint}"
-		else:
-			return "default"
-
 
 def rate_limit (
 		requests: int = 100,
@@ -624,8 +605,6 @@ def rate_limit (
 
 			if not request:
 				# 如果没有找到request，尝试从FastAPI的Depends中获取
-				from fastapi import Depends
-				from quant_server.api.dependencies.auth import CurrentUser
 
 				# 这里需要更复杂的逻辑来处理，简化处理
 				logger.warning("限流装饰器中未找到request对象")
@@ -649,7 +628,6 @@ def rate_limit (
 			)
 
 			# 从应用状态获取限流管理器
-			from fastapi import FastAPI
 			app = request.app
 
 			if not hasattr(app.state, 'rate_limit_manager'):
@@ -671,11 +649,11 @@ def rate_limit (
 				}
 
 				if result.retry_after:
-					headers["Retry-After"] = str(int(result.retry_after))
+					headers["Retry-After"] = str(result.retry_after)
 
 				# 返回限流错误响应
 				response = APIResponse.error(
-					code=ErrorCode.RATE_LIMIT_EXCEEDED,
+					code="RATE_LIMIT_EXCEEDED",
 					message=error_message,
 					detail={
 						"retry_after": result.retry_after,
@@ -683,7 +661,7 @@ def rate_limit (
 						"remaining": result.remaining,
 						"reset_time": datetime.fromtimestamp(result.reset_time).isoformat()
 					}
-				).dict()
+				).model_dump()
 
 				return JSONResponse(
 					status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -741,9 +719,8 @@ def create_rate_limit_middleware ():
 		if auth_header and auth_header.startswith("Bearer "):
 			# 这里可以解码JWT获取用户ID
 			# 简化处理：从token中提取用户ID
-			token = auth_header.split(" ")[1]
 			# 实际应用中需要解码JWT
-			# user_id = decode_jwt(token).get("sub")
+			# user_id = decode_jwt(auth_header.split(" ")[1]).get("sub")
 			pass
 
 		# 检查限流
@@ -758,11 +735,11 @@ def create_rate_limit_middleware ():
 			}
 
 			if result.retry_after:
-				headers["Retry-After"] = str(int(result.retry_after))
+				headers["Retry-After"] = str(result.retry_after)
 
 			# 返回限流错误响应
 			response = APIResponse.error(
-				code=ErrorCode.RATE_LIMIT_EXCEEDED,
+				code="RATE_LIMIT_EXCEEDED",
 				message="请求过于频繁，请稍后再试",
 				detail={
 					"retry_after": result.retry_after,
@@ -770,7 +747,7 @@ def create_rate_limit_middleware ():
 					"remaining": result.remaining,
 					"reset_time": datetime.fromtimestamp(result.reset_time).isoformat()
 				}
-			).dict()
+			).model_dump()
 
 			return JSONResponse(
 				status_code=status.HTTP_429_TOO_MANY_REQUESTS,

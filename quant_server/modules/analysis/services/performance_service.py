@@ -122,7 +122,7 @@ class PerformanceService:
 				(end_date - start_date).days / 365.25
 			)
 
-			sharpe_ratio = self.fin_calc.calculate_sharpe_ratio(
+			sharpe_ratio = calculate_sharpe_ratio(
 				returns, risk_free_rate=0.03
 			)
 

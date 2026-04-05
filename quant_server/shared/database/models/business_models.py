@@ -1002,7 +1002,7 @@ class BacktestTask(Base):
     """回测任务表"""
     __tablename__ = 'backtest_tasks'
 
-    id = Column(String(32), primary_key=True, comment='回测任务ID（UUID）')
+    id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='回测任务ID（UUID）')
     user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     name = Column(String(100), nullable=False, comment='回测任务名称')

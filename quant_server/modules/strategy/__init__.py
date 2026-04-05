@@ -18,20 +18,19 @@ import logging
 
 # 导入子模块
 from . import constants
-from . import models
-from . import events
 from . import engines
+from . import events
+from . import handlers
+from . import models
 from . import services
 from . import strategies
 from . import tasks
-from . import handlers
-
 # 导入常量
 from .constants import (
-    StrategyType,
-    StrategyStatus,
-    RunMode,
-    ErrorCode,
+	StrategyType,
+	StrategyLifecycleStatus,
+	RunMode,
+	ErrorCode,
 )
 
 # 模块元数据
@@ -43,132 +42,133 @@ logger = logging.getLogger(__name__)
 
 # 导出主要接口
 __all__ = [
-    # 子模块
-    "constants",
-    "models",
-    "events",
-    "engines",
-    "services",
-    "strategies",
-    "tasks",
-    "handlers",
-    # 常量
-    "StrategyType",
-    "StrategyStatus",
-    "RunMode",
-    "ErrorCode",
-    # 初始化函数
-    "initialize",
+	# 子模块
+	"constants",
+	"models",
+	"events",
+	"engines",
+	"services",
+	"strategies",
+	"tasks",
+	"handlers",
+	# 常量
+	"StrategyType",
+	"StrategyLifecycleStatus",
+	"RunMode",
+	"ErrorCode",
+	# 初始化函数
+	"initialize",
 ]
 
 
 # 模块初始化函数 - 符合主启动文件期望的接口
-async def initialize(
-    main_engine=None,
-    event_engine=None,
-    config=None
+async def initialize (
+		main_engine=None,
+		event_engine=None,  # 未使用参数
+		config=None
 ) -> bool:
-    """
-    策略模块初始化函数
+	"""
+	策略模块初始化函数
 
-    Args:
-        main_engine: 主引擎实例
-        event_engine: 事件引擎实例
-        config: 模块配置
+	Args:
+		main_engine: 主引擎实例
+		event_engine: 事件引擎实例
+		config: 模块配置
 
-    Returns:
-        bool: 初始化是否成功
-    """
-    import asyncio
-    from sqlalchemy.ext.asyncio import AsyncSession
+	Returns:
+		bool: 初始化是否成功
+	"""
+	# 初始化变量
+	success = False
+	init_result = {}
 
-    try:
-        logger.info("开始初始化策略模块...")
+	try:
+		logger.info("开始初始化策略模块...")
 
-        # 获取数据库会话 - 使用正确的上下文管理器方式
-        if main_engine and hasattr(main_engine, 'get_async_session'):
-            # 如果主引擎提供会话，使用主引擎的会话
-            session = main_engine.get_async_session()
+		# 获取数据库会话 - 使用正确的上下文管理器方式
+		if main_engine and hasattr(main_engine, 'get_async_session'):
+			# 如果主引擎提供会话，使用主引擎的会话
+			session = main_engine.get_async_session()
 
-            # 调用模块初始化逻辑
-            init_result = await _initialize_strategy_module(session, config or {})
-            success = init_result.get('status') != 'failed'
-        else:
-            # 使用共享层的会话管理器，通过上下文管理器正确获取
-            from quant_server.shared.database.session import get_session_manager
+			# 调用模块初始化逻辑
+			init_result = await _initialize_strategy_module(session, config or {})
+			success = init_result.get('status') != 'failed'
+		else:
+			# 使用共享层的会话管理器，通过上下文管理器正确获取
+			from quant_server.shared.database.session import get_session_manager
 
-            session_manager = get_session_manager()
-            async with session_manager.get_session() as session:
-                # 调用模块初始化逻辑
-                init_result = await _initialize_strategy_module(session, config or {})
-                success = init_result.get('status') != 'failed'
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				# 调用模块初始化逻辑
+				init_result = await _initialize_strategy_module(session, config or {})
+				success = init_result.get('status') != 'failed'
 
-        # 记录初始化结果
-        if success:
-            print(f"✅ 策略模块初始化成功: {init_result.get('message', '完成')}")
-        else:
-            print(f"⚠️  策略模块初始化警告: {init_result.get('message', '存在警告')}")
+		# 记录初始化结果
+		if success:
+			print(f"✅ 策略模块初始化成功: {init_result.get('message', '完成')}")
+		else:
+			print(f"⚠️  策略模块初始化警告: {init_result.get('message', '存在警告')}")
 
-        return success
+		return success
 
-    except Exception as e:
-        print(f"❌ 策略模块初始化失败: {str(e)}")
-        logger.exception("策略模块初始化失败", exception=e)
-        return False
+	except Exception as e:
+		print(f"❌ 策略模块初始化失败: {str(e)}")
+		logger.exception("策略模块初始化失败")
+		return False
 
 
-async def _initialize_strategy_module(session, config: dict) -> dict:
-    """
-    策略模块内部初始化逻辑
+async def _initialize_strategy_module (session, config: dict) -> dict:
+	"""
+	策略模块内部初始化逻辑
 
-    Args:
-        session: 数据库会话
-        config: 模块配置
+	Args:
+		session: 数据库会话
+		config: 模块配置
 
-    Returns:
-        dict: 初始化结果
-    """
-    from sqlalchemy import text
+	Returns:
+		dict: 初始化结果
+	"""
+	from sqlalchemy import text
 
-    try:
-        # 1. 检查必要的表
-        from sqlalchemy import inspect
-        tables = await session.run_sync(
-            lambda sync_session: inspect(sync_session.connection()).get_table_names()
-        )
+	try:
+		# 1. 检查必要的表
+		from sqlalchemy import inspect
+		tables = await session.run_sync(
+			lambda sync_session: inspect(sync_session.connection()).get_table_names()
+		)
 
-        required_tables = [
-            "strategies",
-            "strategy_runs",
-            "strategy_templates",
-            "positions"
-        ]
+		required_tables = [
+			"strategies",
+			"strategy_runs",
+			"strategy_templates",
+			"positions"
+		]
 
-        missing_tables = [t for t in required_tables if t not in tables]
+		missing_tables = [t for t in required_tables if t not in tables]
 
-        if missing_tables:
-            logger.warning(f"策略模块缺少表: {missing_tables}")
-            return {
-                "status": "degraded",
-                "missing_tables": missing_tables,
-                "message": "策略模块初始化完成，但缺少必要的表"
-            }
+		if missing_tables:
+			logger.warning(f"策略模块缺少表: {missing_tables}")
+			return {
+				"status": "degraded",
+				"missing_tables": missing_tables,
+				"message": "策略模块初始化完成，但缺少必要的表"
+			}
 
-        # 2. 检查数据库连接
-        await session.execute(text("SELECT 1"))
+		# 2. 检查数据库连接
+		await session.execute(text("SELECT 1"))
 
-        # 3. 加载可用策略类型
-        logger.info("策略模块初始化完成")
+		# 3. 加载可用策略类型
+		logger.info("策略模块初始化完成")
 
-        return {
-            "status": "success",
-            "message": "策略模块初始化完成",
-            "loaded_strategies": ["cta", "alpha", "ai", "technical"]
-        }
+		return {
+			"status": "success",
+			"message": "策略模块初始化完成",
+			"loaded_strategies": ["cta", "alpha", "ai", "technical"]
+		}
 
-    except Exception as e:
-        logger.error(f"策略模块初始化失败: {str(e)}")
-        return {
-            "status": "failed",
-            "message": f"策略模块初始化失败: {str(e)}"
-        }
+	except Exception as e:
+		logger.error(f"策略模块初始化失败: {str(e)}")
+		return {
+			"status": "failed",
+			"message": f"策略模块初始化失败: {str(e)}"
+		}

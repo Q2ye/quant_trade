@@ -251,8 +251,8 @@ class StrategyConfig(BaseEntity):
 
 
 @dataclass(frozen=True)
-class StrategyStatus(BaseEntity):
-    """策略状态"""
+class StrategyStatusEntity(BaseEntity):
+    """策略状态数据实体"""
     strategy_id: str                       # 策略ID
     status: str                           # 运行状态
     health: str                           # 健康状态
@@ -309,14 +309,17 @@ class TickData(BaseEntity):
 @dataclass(frozen=True)
 class BarData(BaseEntity):
     """K线数据"""
-    open: Decimal                        # 开盘价
-    high: Decimal                        # 最高价
-    low: Decimal                         # 最低价
-    close: Decimal                       # 收盘价
-    volume: Decimal                      # 成交量
-    amount: Decimal                      # 成交额
-    frequency: str = "1m"                # 频率（1m, 5m, 1h, 1d等）
-    trade_count: Optional[int] = None    # 成交笔数
+    ts_code: str                         # 交易标的代码
+    period: str                          # 周期（1min, 5min, daily等）
+    open: float                          # 开盘价
+    high: float                          # 最高价
+    low: float                           # 最低价
+    close: float                         # 收盘价
+    volume: float                        # 成交量
+    amount: float = 0.0                  # 成交额
+    turnover: float = 0.0                #  turnover
+    trade_date: Any = None               # 交易日期
+    trade_time: Optional[datetime] = None  # 交易时间
 
 
 @dataclass(frozen=True)

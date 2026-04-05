@@ -39,7 +39,7 @@ class Dependency:
 
     def __init__(
         self,
-        source_strategy_id: int,
+        source_strategy_id: str,
         target_strategy_id: Optional[int] = None,
         dependency_type: DependencyType = DependencyType.STRATEGY,
         resource_key: Optional[str] = None,
@@ -76,8 +76,8 @@ class DependencyManager:
 
     def add_dependency(
         self,
-        source_strategy_id: int,
-        target_strategy_id: int,
+        source_strategy_id: str,
+        target_strategy_id: str,
         dependency_type: DependencyType = DependencyType.STRATEGY,
         resource_key: Optional[str] = None,
     ) -> None:
@@ -114,8 +114,8 @@ class DependencyManager:
 
     def remove_dependency(
         self,
-        source_strategy_id: int,
-        target_strategy_id: int,
+        source_strategy_id: str,
+        target_strategy_id: str,
     ) -> None:
         """
         移除依赖关系
@@ -135,7 +135,7 @@ class DependencyManager:
 
     def get_dependencies(
         self,
-        strategy_id: int,
+        strategy_id: str,
     ) -> List[Dependency]:
         """
         获取策略的所有依赖
@@ -150,7 +150,7 @@ class DependencyManager:
 
     def get_dependents(
         self,
-        strategy_id: int,
+        strategy_id: str,
     ) -> List[int]:
         """
         获取依赖该策略的所有策略
@@ -198,7 +198,7 @@ class DependencyManager:
 
     def can_start_strategy(
         self,
-        strategy_id: int,
+        strategy_id: str,
         running_strategies: Set[int],
     ) -> tuple:
         """
@@ -223,7 +223,7 @@ class DependencyManager:
 
     def get_startup_requirements(
         self,
-        strategy_id: int,
+        strategy_id: str,
     ) -> List[int]:
         """
         获取策略启动所需的前置策略
@@ -274,7 +274,7 @@ class DependencyManager:
         visited = set()
         rec_stack = set()
 
-        def visit(strategy_id: int) -> bool:
+        def visit(strategy_id: str) -> bool:
             visited.add(strategy_id)
             rec_stack.add(strategy_id)
 
@@ -308,7 +308,7 @@ class DependencyManager:
 
     def get_dependency_chain(
         self,
-        strategy_id: int,
+        strategy_id: str,
     ) -> List[int]:
         """
         获取依赖链

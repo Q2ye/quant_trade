@@ -10,11 +10,10 @@
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union, Tuple
-from decimal import Decimal
+from typing import Dict, Any, List, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import BacktestEventType
+from quant_server.modules.backtest.events.types import BacktestEventTypes
 
 
 class BacktestOptimizationStartedEvent(BaseEvent):
@@ -44,12 +43,12 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 			**kwargs
 	):
 		super().__init__(
-			module="events",
-			event_type=BacktestEventType.OPTIMIZATION_STARTED.value,
-			priority=EventPriority.NORMAL,
-			source="optimization_engine",
-			**kwargs
-		)
+				module="events",
+				event_type=BacktestEventTypes.OPTIMIZATION_START.value,
+				priority=EventPriority.NORMAL,
+				source="optimization_engine",
+				**kwargs
+			)
 
 		if optimization_config is None:
 			optimization_config = {}
@@ -296,7 +295,7 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.OPTIMIZATION_PROGRESS.value,
+			event_type=BacktestEventTypes.OPTIMIZATION_PROGRESS.value,
 			priority=EventPriority.LOW,
 			source="optimization_engine",
 			**kwargs
@@ -336,7 +335,8 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			"completion_rate": (completed / total * 100) if total > 0 else 0,
 			"tests_per_minute": 0,
 			"estimated_remaining_tests": total - completed,
-			"efficiency_score": 0
+			"efficiency_score": 0,
+			"progress_percentage": progress * 100
 		}
 
 		# 计算测试速度（需要时间信息，这里使用估计值）
@@ -360,6 +360,9 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 		# 计算趋势
 		from scipy import stats
 
+		# 初始化变量
+		sharpe_trend = 0.0
+		return_trend = 0.0
 		try:
 			# 夏普比率趋势
 			sharpe_trend = stats.linregress(range(len(sharpe_values)), sharpe_values).slope
@@ -377,7 +380,7 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			else:
 				trend = "stable"
 				confidence = 0.5
-		except:
+		except Exception as e:
 			trend = "unknown"
 			confidence = 0
 
@@ -411,7 +414,7 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 		return {"improvement": 0, "period": "no_data"}
 
 	def _analyze_convergence (self, progress: float, results: List[Dict[str, Any]], algorithm_state: Dict[str, Any]) -> \
-	Dict[str, Any]:
+			Dict[str, Any]:
 		"""分析收敛性"""
 		convergence = {
 			"converged": False,
@@ -450,8 +453,8 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 
 			if abs(recent_improvement) < 0.001 and progress > 0.8:
 				convergence["converged"] = True
-				convergence["convergence_rate"] = round(
-					1 - (abs(recent_improvement) / max(0.001, abs(avg_improvement))), 3)
+				convergence["convergence_rate"] = int(round(
+					1 - (abs(recent_improvement) / max(0.001, abs(avg_improvement))), 3) * 1000)
 
 		# 最优性间隙
 		if "global_best" in algorithm_state and "current_best" in algorithm_state:
@@ -507,12 +510,12 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 			**kwargs
 	):
 		super().__init__(
-			module="events",
-			event_type=BacktestEventType.OPTIMIZATION_COMPLETED.value,
-			priority=EventPriority.NORMAL,
-			source="optimization_engine",
-			**kwargs
-		)
+				module="events",
+				event_type=BacktestEventTypes.OPTIMIZATION_COMPLETE.value,
+				priority=EventPriority.NORMAL,
+				source="optimization_engine",
+				**kwargs
+			)
 
 		if performance_comparison is None:
 			performance_comparison = {}

@@ -10,11 +10,10 @@
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union
-from decimal import Decimal
+from typing import Dict, Any, List, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import BacktestEventType
+from quant_server.modules.backtest.events.types import BacktestEventTypes
 
 
 class BacktestReportGeneratedEvent(BaseEvent):
@@ -47,7 +46,7 @@ class BacktestReportGeneratedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.REPORT_GENERATED.value,
+			event_type=BacktestEventTypes.REPORT_GENERATED.value,
 			priority=EventPriority.NORMAL,
 			source="report_engine",
 			**kwargs
@@ -111,11 +110,11 @@ class BacktestReportGeneratedEvent(BaseEvent):
 		# 内容复杂度评估
 		total_elements = analysis["chart_count"] + analysis["table_count"] + analysis["metric_count"]
 		if total_elements > 50:
-			analysis["complexity"] = "high"
+			analysis["complexity"] = 3
 		elif total_elements > 20:
-			analysis["complexity"] = "medium"
+			analysis["complexity"] = 2
 		else:
-			analysis["complexity"] = "low"
+			analysis["complexity"] = 1
 
 		return analysis
 
@@ -132,12 +131,12 @@ class BacktestReportGeneratedEvent(BaseEvent):
 		# 提取关键指标
 		if "performance_metrics" in content:
 			metrics = content["performance_metrics"]
-			summary["key_metrics"] = {
-				"total_return": metrics.get("total_return", 0),
-				"sharpe_ratio": metrics.get("sharpe_ratio", 0),
-				"max_drawdown": metrics.get("max_drawdown", 0),
-				"win_rate": metrics.get("win_rate", 0)
-			}
+			summary["key_metrics"] = [
+				f"total_return: {metrics.get('total_return', 0)}",
+				f"sharpe_ratio: {metrics.get('sharpe_ratio', 0)}",
+				f"max_drawdown: {metrics.get('max_drawdown', 0)}",
+				f"win_rate: {metrics.get('win_rate', 0)}"
+			]
 
 		return summary
 
@@ -152,21 +151,21 @@ class BacktestReportGeneratedEvent(BaseEvent):
 
 		return access_levels.get(report_type, {"level": "internal", "password_protected": False})
 
-	def _setup_distribution_channels (self, report_type: str, format: str) -> List[Dict[str, str]]:
+	def _setup_distribution_channels (self, report_type: str, report_format: str) -> List[Dict[str, str]]:
 		"""设置分发渠道"""
 		channels = []
 
 		# 根据报告类型和格式确定分发渠道
 		if report_type in ["detailed", "summary", "executive"]:
-			channels.append({"channel": "email", "format": format, "priority": "high"})
+			channels.append({"channel": "email", "format": report_format, "priority": "high"})
 			channels.append({"channel": "web_portal", "format": "html", "priority": "medium"})
 
 		if report_type == "public":
 			channels.append({"channel": "api", "format": "json", "priority": "high"})
-			channels.append({"channel": "file_download", "format": format, "priority": "medium"})
+			channels.append({"channel": "file_download", "format": report_format, "priority": "medium"})
 
 		# 总是添加到归档
-		channels.append({"channel": "archive", "format": format, "priority": "low"})
+		channels.append({"channel": "archive", "format": report_format, "priority": "low"})
 
 		return channels
 
@@ -198,7 +197,7 @@ class BacktestPerformanceCalculatedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type="events.performance.calculated",  # 自定义事件类型
+			event_type=BacktestEventTypes.METRICS_CALCULATED.value,
 			priority=EventPriority.NORMAL,
 			source="performance_engine",
 			**kwargs
@@ -490,7 +489,7 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type="events.risk.analysis_completed",  # 自定义事件类型
+			event_type=BacktestEventTypes.METRICS_CALCULATED.value,
 			priority=EventPriority.NORMAL,
 			source="risk_engine",
 			**kwargs
@@ -647,6 +646,7 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 		score += var_score
 
 		# 压力测试贡献（最高30分）
+		stress_score = 0
 		if stress_tests and "worst_case_loss" in stress_tests:
 			worst_loss = abs(stress_tests["worst_case_loss"])
 			stress_score = min(30, worst_loss * 60)  # 放大影响

@@ -10,16 +10,16 @@ Version: 1.0.0
 """
 
 import logging
-from typing import Any, Dict, Optional, TypeVar, Generic
-from functools import lru_cache
 from contextlib import asynccontextmanager
+from functools import lru_cache
+from typing import Any, Dict, Optional, TypeVar
 
 from fastapi import Depends
-from pydantic import BaseSettings
-from pydantic import ValidationError as PydanticValidationError
+from pydantic_settings import BaseSettings
 
-from quant_server.shared.config.settings import (
-	Settings,
+from quant_server.core.exceptions.validation_exceptions import ValidationError
+from quant_server.shared.config.config_manager import (
+	ConfigSettings as Settings,
 	DatabaseSettings,
 	RedisSettings,
 	APISettings,
@@ -27,7 +27,6 @@ from quant_server.shared.config.settings import (
 	DataSourceSettings,
 	LogSettings
 )
-from quant_server.core.exceptions.validation_exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +134,10 @@ class ConfigManager:
 		Returns:
 			bool: 重载是否成功
 		"""
+		# 备份当前配置
+		old_settings = self._settings
 		try:
 			logger.info("开始重新加载配置...")
-
-			# 备份当前配置
-			old_settings = self._settings
 
 			# 重新加载配置
 			self._settings = Settings()
@@ -157,7 +155,8 @@ class ConfigManager:
 			self._settings = old_settings
 			return False
 
-	def _log_config_changes (self, old_settings: Optional[Settings], new_settings: Settings):
+	@staticmethod
+	def _log_config_changes (old_settings: Optional[Settings], new_settings: Settings):
 		"""记录配置变更"""
 		old_dict = old_settings.model_dump() if old_settings else {}
 		new_dict = new_settings.model_dump()
@@ -197,8 +196,8 @@ class ConfigManager:
 				"port": self._settings.API.PORT,
 				"cors_origins": self._settings.API.CORS_ORIGINS[:3],  # 只显示前3个
 				"rate_limit": {
-					"enabled": self._settings.API.RATE_LIMIT.ENABLED,
-					"max_requests": self._settings.API.RATE_LIMIT.MAX_REQUESTS
+					"enabled": getattr(self._settings.API, 'RATE_LIMIT_ENABLED', True),
+					"max_requests": getattr(self._settings.API, 'RATE_LIMIT_REQUESTS', 100)
 				}
 			}
 		}
@@ -248,7 +247,7 @@ class ConfigDependencies:
 
 	async def get_config_by_path (self, path: str) -> Any:
 		"""
-		通过路径获取配置依赖
+		根据路径获取配置
 
 		Args:
 			path: 配置路径
@@ -256,7 +255,6 @@ class ConfigDependencies:
 		Returns:
 			Any: 配置值
 		"""
-		settings = await self.get_settings()
 		# 使用manager的方法获取路径配置
 		return self.manager.get_config_by_path(path)
 

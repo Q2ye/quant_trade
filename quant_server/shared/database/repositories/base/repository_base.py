@@ -105,7 +105,7 @@ class BaseRepository(Generic[T]):
 
 	# ==================== 基本CRUD操作 ====================
 
-	async def get (self, id: int, with_related: bool = False,
+	async def get (self, id: Any, with_related: bool = False,
 	               related_fields: List[str] = None) -> Optional[T]:
 		"""
 		根据ID获取单条记录
@@ -280,7 +280,7 @@ class BaseRepository(Generic[T]):
 			await self.session.rollback()
 			raise RepositoryError(f"批量创建记录失败: {str(e)}")
 
-	async def update (self, id: int, data: Dict[str, Any]) -> Optional[T]:
+	async def update (self, id: Any, data: Dict[str, Any]) -> Optional[T]:
 		"""
 		更新记录
 
@@ -346,7 +346,7 @@ class BaseRepository(Generic[T]):
 			await self.session.rollback()
 			raise RepositoryError(f"按条件更新记录失败: {str(e)}")
 
-	async def delete (self, id: int, soft: bool = True) -> bool:
+	async def delete (self, id: Any, soft: bool = True) -> bool:
 		"""
 		删除记录
 

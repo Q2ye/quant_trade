@@ -62,7 +62,7 @@ class AIEngine(EngineBase):
 
     async def load_strategy(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy: BaseStrategy,
         context: StrategyContext,
         model_path: Optional[str] = None,
@@ -91,7 +91,7 @@ class AIEngine(EngineBase):
 
         logger.info(f"AI策略加载成功: {strategy_id}")
 
-    async def unload_strategy(self, strategy_id: int) -> None:
+    async def unload_strategy(self, strategy_id: str) -> None:
         """卸载策略"""
         if strategy_id in self._strategies:
             strategy = self._strategies[strategy_id]
@@ -126,7 +126,7 @@ class AIEngine(EngineBase):
 
     async def process_bar(
         self,
-        strategy_id: int,
+        strategy_id: str,
         bar_data: Any,
     ) -> List[TradingSignal]:
         """
@@ -169,7 +169,7 @@ class AIEngine(EngineBase):
 
     async def predict(
         self,
-        strategy_id: int,
+        strategy_id: str,
         features: np.ndarray,
     ) -> np.ndarray:
         """
@@ -210,7 +210,7 @@ class AIEngine(EngineBase):
 
     async def retrain(
         self,
-        strategy_id: int,
+        strategy_id: str,
         train_data: np.ndarray,
         train_labels: np.ndarray,
     ) -> bool:
@@ -250,7 +250,7 @@ class AIEngine(EngineBase):
 
     async def _load_model(
         self,
-        strategy_id: int,
+        strategy_id: str,
         model_path: str,
     ) -> Optional[Any]:
         """
@@ -275,7 +275,7 @@ class AIEngine(EngineBase):
 
     async def _update_features(
         self,
-        strategy_id: int,
+        strategy_id: str,
         bar_data: Any,
     ) -> None:
         """
@@ -296,7 +296,7 @@ class AIEngine(EngineBase):
 
     async def _predict(
         self,
-        strategy_id: int,
+        strategy_id: str,
         bar_data: Any,
     ) -> Optional[np.ndarray]:
         """
@@ -323,7 +323,7 @@ class AIEngine(EngineBase):
 
     async def _process_signals(
         self,
-        strategy_id: int,
+        strategy_id: str,
         signals: List[TradingSignal],
     ) -> None:
         """处理信号"""
@@ -348,14 +348,14 @@ class AIEngine(EngineBase):
             except Exception as e:
                 logger.error(f"处理信号失败: {e}")
 
-    def get_model(self, strategy_id: int) -> Optional[Any]:
+    def get_model(self, strategy_id: str) -> Optional[Any]:
         """获取模型"""
         return self._models.get(strategy_id)
 
-    def get_features(self, strategy_id: int) -> Dict[str, np.ndarray]:
+    def get_features(self, strategy_id: str) -> Dict[str, np.ndarray]:
         """获取特征"""
         return self._features.get(strategy_id, {})
 
-    def get_predictions(self, strategy_id: int) -> np.ndarray:
+    def get_predictions(self, strategy_id: str) -> np.ndarray:
         """获取预测结果"""
         return self._predictions.get(strategy_id, np.array([]))

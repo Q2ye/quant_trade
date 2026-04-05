@@ -15,7 +15,7 @@ class StrategySignalEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         ts_code: str,
         signal_type: str,  # BUY/SELL/HOLD
@@ -56,7 +56,7 @@ class SignalExecutedEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         signal_id: str,
         ts_code: str,
@@ -89,7 +89,7 @@ class SignalCancelledEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         signal_id: str,
         ts_code: str,

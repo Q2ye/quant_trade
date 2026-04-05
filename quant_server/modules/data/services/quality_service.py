@@ -73,7 +73,8 @@ def _check_financial_consistency (statements) -> bool:
 			prev_statement = current
 
 		return True
-	except:
+	except Exception as e:
+		logger.error(f"检查财务一致性失败: {str(e)}")
 		return False
 
 
@@ -116,14 +117,14 @@ class DataQualityService:
 		self._cache = None
 
 		# 质量检查配置
-		self._quality_config = self._load_quality_config()
+		self._quality_config = self.__class__._load_quality_config()
 
 	@property
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.settings import get_settings
-			settings = get_settings()
+			from quant_server.shared.config.config_manager import get_config
+			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
 				port=settings.REDIS.PORT,
@@ -138,8 +139,6 @@ class DataQualityService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			ts_code: Optional[str] = None,
-			check_types: Optional[List[str]] = None,
-			quality_thresholds: Optional[Dict[str, float]] = None,
 			user_id: Optional[int] = None
 	) -> Dict[str, Any]:
 		"""
@@ -222,7 +221,7 @@ class DataQualityService:
 			"missing_records": 0,
 			"duplicate_records": 0,
 			"issues": [],
-			"overall_score": 0
+			"overall_score": 0.0
 		}
 
 		try:
@@ -247,7 +246,7 @@ class DataQualityService:
 
 		except Exception as e:
 			logger.error(f"收集质量指标失败: {str(e)}")
-			metrics["error"] = str(e)
+			metrics["error"] = [str(e)]
 
 		return metrics
 
@@ -358,10 +357,14 @@ class DataQualityService:
 			if not factors:
 				factors = ["pe_ratio"]  # 默认检查市盈率因子
 
+			# 转换日期类型为 datetime
+			start_datetime = datetime.combine(start_date, datetime.min.time()) if start_date else None
+			end_datetime = datetime.combine(end_date, datetime.max.time()) if end_date else None
+			
 			coverage_stats = await self.factor_repo.get_factor_coverage(
-				factor_code=factors[0],
-				start_date=start_date,
-				end_date=end_date,
+				factor_name=factors[0],
+				start_date=start_datetime,
+				end_date=end_datetime,
 				universe=[ts_code] if ts_code else None
 			)
 
@@ -553,8 +556,6 @@ class DataQualityService:
 	async def get_quality_report (
 			self,
 			data_type: Optional[str] = None,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
 			limit: int = 10,
 			page: int = 1
 	) -> Dict[str, Any]:
@@ -644,10 +645,12 @@ class DataQualityService:
 		try:
 			factors = await self.factor_repo.get_available_factors()
 			return factors if factors else ["pe_ratio", "pb_ratio", "roe"]
-		except Exception:
+		except Exception as e:
+			logger.error(f"获取可用因子列表失败: {str(e)}")
 			return ["pe_ratio", "pb_ratio", "roe"]
 
-	def _load_quality_config (self) -> Dict[str, Any]:
+	@staticmethod
+	def _load_quality_config () -> Dict[str, Any]:
 		"""加载质量检查配置"""
 		return {
 			"completeness_threshold": 95.0,
@@ -668,23 +671,14 @@ class DataQualityService:
 			return
 
 		try:
-			event_data = {
-				"timestamp": datetime.now(),
-				"user_id": user_id
-			}
-
-			if check_id:
-				event_data["check_id"] = check_id
-			if data_type:
-				event_data["data_type"] = data_type
-			if overall_score is not None:
-				event_data["overall_score"] = overall_score
-			if issue_count is not None:
-				event_data["issue_count"] = issue_count
-
 			event = DataQualityEvent(
 				event_type=f"quality.{event_type}",
-				**event_data
+				check_id=check_id,
+				data_type=data_type,
+				overall_score=overall_score,
+				issue_count=issue_count,
+				source="data_quality_service",
+				user_id=user_id
 			)
 
 			await self.event_engine.put(event)

@@ -1,170 +1,61 @@
-# config.yaml
-# 量化交易系统配置文件
-# 支持多环境配置：通过 ENVIRONMENT 环境变量指定 (development/production)
-
-system:
-  name: "量化交易平台"
-  version: "1.0.0"
-  mode: "development"  # 由环境变量覆盖
-  enable_web_socket: true
-  enable_monitoring: true
-  enable_health_check: true
-  shutdown_timeout: 30.0
-  log_level: "INFO"
-
-server:
-  host: "127.0.0.1"
-  port: 8080
-  workers: 1
-
-engines:
-  auto_start_main_engine: true
-  auto_start_event_engine: true
-  max_workers: 10
-  queue_size: 10000
-
-# ==================== 环境特定配置 ====================
-# 开发环境配置
-development:
-  # 数据库配置
-  database:
-    host: "localhost"
-    port: 5432
-    name: "quant_signals"
-    pool_size: 10
-    max_overflow: 5
-
-  # 数据源配置
-  data_source:
-    # 开发环境：使用模拟数据
-    mode: "simulated"
-    provider: "tushare"
-    token: "${TUSHARE_TOKEN}"  # 从环境变量读取
-    sync_enabled: true
-    # 模拟数据配置
-    simulated:
-      enable_mock_data: true
-      mock_stock_count: 100
-      mock_date_range_days: 30
-      generate_random_gap: true
-
-  # 日志配置
-  logging:
-    level: "DEBUG"
-    log_sql: true
-
-  # 交易配置
-  trading:
-    simulated_trading: true
-    initial_capital: 1000000
-
-# 生产环境配置
-production:
-  # 数据库配置
-  database:
-    host: "localhost"
-    port: 5432
-    name: "quant_signals_dev"
-    pool_size: 20
-    max_overflow: 10
-
-  # 数据源配置
-  data_source:
-    # 生产环境：使用真实数据
-    mode: "real"
-    provider: "tushare"
-    token: "${TUSHARE_TOKEN}"  # 从环境变量读取
-    sync_enabled: true
-    # 真实数据配置
-    real:
-      api_rate_limit: 500  # Tushare每分钟调用次数限制
-      retry_times: 3
-      timeout: 30
-      cache_ttl: 300
-
-  # 日志配置
-  logging:
-    level: "WARNING"
-    log_sql: false
-
-  # 交易配置
-  trading:
-    simulated_trading: false
-    initial_capital: 1000000
-
-modules:
-  # 数据模块 - 优先加载
-  data:
-    enabled: true
-    auto_start: true
-    dependencies: []
-    config:
-      data_source: "tushare"
-      sync_interval: 3600
-      cache_ttl: 300
-      load_priority: "high"  # 高优先级，确保先加载
-
-  # 策略模块 - 暂时禁用
-  strategy:
-    enabled: true
-    auto_start: true
-    dependencies: ["data"]
-    config:
-      max_strategies: 50
-      enable_ai: true
-      backtest_mode: "fast"
-
-  # 交易模块 - 暂时禁用
-  trade:
-    enabled: false
-    auto_start: false
-    dependencies: ["strategy", "data"]
-    config:
-      broker: "simulation"
-      enable_risk_control: true
-      max_position: 0.8
-
-  # 回测模块 - 暂时禁用
-  backtest:
-    enabled: false
-    auto_start: false
-    dependencies: ["strategy", "data"]
-    config:
-      max_workers: 4
-      enable_optimization: true
-
-  # 账户模块 - 暂时禁用
-  account:
-    enabled: false
-    auto_start: false
-    dependencies: ["trade"]
-    config:
-      initial_capital: 1000000
-      enable_reconciliation: true
-
-  # 分析模块 - 暂时禁用
-  analysis:
-    enabled: false
-    auto_start: false
-    dependencies: ["account", "backtest"]
-    config:
-      enable_real_time: true
-      report_format: "html"
-
-  # 监控模块 - 暂时禁用
-  monitor:
-    enabled: false
-    auto_start: false
-    dependencies: []
-    config:
-      alert_channels: ["email", "webhook"]
-      check_interval: 60
-
-  # 系统模块 - 完全禁用
+# 应用默认配置（非敏感参数）
+defaults: &defaults
   system:
-    enabled: false
-    auto_start: false
-    dependencies: []
-    config:
-      auth_enabled: true
-      enable_audit: true
+    name: "量化交易平台"
+    version: "1.0.0"
+    enable_web_socket: true
+    enable_monitoring: true
+    enable_health_check: true
+    shutdown_timeout: 30.0
+    log_level: "INFO"
+  
+  server:
+    host: "127.0.0.1"
+    port: 8080
+    workers: 1
+  
+  engines:
+    auto_start_main_engine: true
+    auto_start_event_engine: true
+    max_workers: 10
+    queue_size: 10000
+  
+  modules:
+    data:
+      enabled: true
+      auto_start: true
+      dependencies: []
+      config:
+        data_source: "tushare"
+        sync_interval: 3600
+        cache_ttl: 300
+        load_priority: "high"
+    
+    strategy:
+      enabled: true
+      auto_start: true
+      dependencies: ["data"]
+      config:
+        max_strategies: 50
+        enable_ai: true
+        backtest_mode: "fast"
+    
+    backtest:
+      enabled: true
+      auto_start: true
+      dependencies: ["strategy", "data"]
+      config:
+        max_workers: 4
+        enable_optimization: true
+
+# 环境配置框架
+environments:
+  development:
+    <<: *defaults
+    env: development
+    config_source: env
+    
+  production:
+    <<: *defaults
+    env: production
+    config_source: env

@@ -1,6 +1,6 @@
 # shared/database/repositories/strategy/backtest/task_repo.py
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, desc
 from sqlalchemy.sql import func
@@ -135,7 +135,7 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 			delete(self.model)
 			.where(
 				and_(
-					self.model.status.in_(["completed", "failed", "cancelled"]),
+					self.model.status.in_("completed", "failed", "cancelled"),
 					self.model.created_at < cutoff_date
 				)
 			)
@@ -143,3 +143,28 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 
 		result = await self.session.execute(stmt)
 		return result.rowcount or 0
+
+	async def get_list (self, filters: Dict[str, Any], page: int = 1, page_size: int = 20) -> Tuple[List[BacktestTask], int]:
+		"""获取任务列表（带分页）"""
+		# 构建查询
+		query = select(self.model)
+
+		# 应用过滤条件
+		for key, value in filters.items():
+			if hasattr(self.model, key):
+				query = query.where(getattr(self.model, key) == value)
+
+		# 计算总数
+		total_query = select(func.count()).select_from(query.subquery())
+		total_result = await self.session.execute(total_query)
+		total = total_result.scalar() or 0
+
+		# 应用分页
+		offset = (page - 1) * page_size
+		query = query.offset(offset).limit(page_size)
+
+		# 执行查询
+		result = await self.session.execute(query)
+		tasks = result.scalars().all()
+
+		return tasks, total

@@ -13,7 +13,7 @@ from fastapi import Depends
 from typing import Annotated
 
 from .connection_pool import get_connection_pool
-from ...config.settings import settings
+from ...config.config_manager import config
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +79,11 @@ class SessionManager:
 			"status": "initialized" if self._is_initialized else "error",
 			"pool_stats": pool_stats,
 			"database_config": {
-				"type": settings.DATABASE.TYPE,
-				"host": settings.DATABASE.HOST,
-				"port": settings.DATABASE.PORT,
-				"database": settings.DATABASE.NAME,
-			}
+			"type": config.settings.DATABASE.TYPE,
+			"host": config.settings.DATABASE.HOST,
+			"port": config.settings.DATABASE.PORT,
+			"database": config.settings.DATABASE.NAME,
+		}
 		}
 
 

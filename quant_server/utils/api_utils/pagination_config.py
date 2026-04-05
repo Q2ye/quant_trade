@@ -10,7 +10,7 @@ from pydantic import Field, BaseModel
 from functools import lru_cache
 
 from quant_server.shared.config.constants import PAGINATION_DEFAULTS
-from quant_server.shared.config.settings import get_settings
+from quant_server.shared.config.config_manager import get_config
 
 
 class SortOrder(str, Enum):
@@ -93,7 +93,7 @@ def get_pagination_defaults() -> dict:
     Returns:
         dict: 分页默认配置字典
     """
-    settings = get_settings()
+    settings = get_config().settings
     return PAGINATION_DEFAULTS
 
 
@@ -105,7 +105,7 @@ def get_sort_defaults() -> dict:
     Returns:
         dict: 排序默认配置字典
     """
-    settings = get_settings()
+    settings = get_config().settings
     return SORT_DEFAULTS
 
 

@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from core.events.base import BaseEvent, EventPriority
+from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.strategy.events.types import StrategyEventType
 
 
@@ -125,4 +125,33 @@ class StrategySignalEvent(BaseEvent):
 			"reason": reason,
 			"confidence": confidence,
 			"generation_time": datetime.now().isoformat()
+		}
+
+
+class StrategyErrorEvent(BaseEvent):
+	"""策略错误事件"""
+
+	def __init__ (
+			self,
+			strategy_id: str,
+			strategy_name: str,
+			user_id: int,
+			error_code: int,
+			error_message: str,
+			**kwargs
+	):
+		super().__init__(
+			module="strategy",
+			event_type=StrategyEventType.ERROR.value,
+			priority=EventPriority.HIGH,  # 错误事件优先级较高
+			**kwargs
+		)
+
+		self.data = {
+			"strategy_id": strategy_id,
+			"strategy_name": strategy_name,
+			"user_id": user_id,
+			"error_code": error_code,
+			"error_message": error_message,
+			"error_time": datetime.now().isoformat()
 		}

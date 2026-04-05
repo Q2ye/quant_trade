@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional, Union
 from decimal import Decimal
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import BacktestEventType
+from quant_server.modules.backtest.events.types import BacktestEventTypes
 
 
 class BacktestStartedEvent(BaseEvent):
@@ -46,7 +46,7 @@ class BacktestStartedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.STARTED.value,
+			event_type=BacktestEventTypes.BACKTEST_START.value,
 			priority=EventPriority.NORMAL,
 			source="backtest_engine",
 			**kwargs
@@ -167,7 +167,7 @@ class BacktestProgressEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.PROGRESS.value,
+			event_type=BacktestEventTypes.BACKTEST_PROGRESS.value,
 			priority=EventPriority.LOW,
 			source="backtest_engine",
 			**kwargs
@@ -280,7 +280,7 @@ class BacktestCompletedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.COMPLETED.value,
+			event_type=BacktestEventTypes.BACKTEST_COMPLETE.value,
 			priority=EventPriority.NORMAL,
 			source="backtest_engine",
 			**kwargs
@@ -336,7 +336,7 @@ class BacktestCompletedEvent(BaseEvent):
 
 	def _calculate_composite_score (self, metrics: Dict[str, Any]) -> float:
 		"""计算综合评分（0-100）"""
-		score = 50.0  # 基础分
+		score = 50  # 基础分
 
 		# 夏普比率贡献
 		sharpe = metrics.get("sharpe_ratio", 0)
@@ -473,7 +473,7 @@ class BacktestFailedEvent(BaseEvent):
 	):
 		super().__init__(
 			module="events",
-			event_type=BacktestEventType.FAILED.value,
+			event_type=BacktestEventTypes.BACKTEST_FAILED.value,
 			priority=EventPriority.HIGH,
 			source="backtest_engine",
 			**kwargs

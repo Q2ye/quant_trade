@@ -6,8 +6,8 @@
 """
 
 import re
-import bcrypt
 from typing import Optional, Tuple, Dict
+
 from passlib.context import CryptContext
 
 from quant_server.core.exceptions.security_exceptions import (
@@ -15,6 +15,108 @@ from quant_server.core.exceptions.security_exceptions import (
 	PasswordValidationError,
 	WeakPasswordError
 )
+
+
+def _is_common_password (password: str) -> bool:
+	"""检查是否为常见弱密码"""
+	common_passwords = {
+		'password', '123456', '12345678', '123456789',
+		'admin', 'qwerty', 'abc123', 'password1',
+		'12345', '1234567890', 'letmein', 'welcome',
+		'monkey', 'dragon', 'baseball', 'football'
+	}
+
+	return password.lower() in common_passwords
+
+
+def generate_secure_password (length: int = 16) -> str:
+	"""
+	生成安全随机密码
+
+	Args:
+		length: 密码长度
+
+	Returns:
+		生成的随机密码
+	"""
+	import secrets
+	import string
+
+	# 定义字符集
+	lowercase = string.ascii_lowercase
+	uppercase = string.ascii_uppercase
+	digits = string.digits
+	special = '!@#$%^&*()_+-=[]{}|;:,.<>?'
+
+	# 确保每种类型至少有一个字符
+	password_chars = [
+		secrets.choice(lowercase),
+		secrets.choice(uppercase),
+		secrets.choice(digits),
+		secrets.choice(special)
+	]
+
+	# 填充剩余长度
+	all_chars = lowercase + uppercase + digits + special
+	password_chars.extend(secrets.choice(all_chars) for _ in range(length - 4))
+
+	# 随机打乱
+	secrets.SystemRandom().shuffle(password_chars)
+
+	return ''.join(password_chars)
+
+
+def get_password_score (password: str) -> int:
+	"""
+	计算密码强度分数（0-100）
+
+	Args:
+		password: 要评分的密码
+
+	Returns:
+		密码强度分数
+	"""
+	score = 0
+
+	# 长度分数
+	if len(password) >= 8:
+		score += 20
+	if len(password) >= 12:
+		score += 10
+	if len(password) >= 16:
+		score += 10
+
+	# 字符种类分数
+	if re.search(r'[a-z]', password):
+		score += 10
+	if re.search(r'[A-Z]', password):
+		score += 10
+	if re.search(r'[0-9]', password):
+		score += 10
+	if re.search(r'[^a-zA-Z0-9]', password):
+		score += 10
+
+	# 熵分数（基于字符种类）
+	char_set_size = 0
+	if re.search(r'[a-z]', password):
+		char_set_size += 26
+	if re.search(r'[A-Z]', password):
+		char_set_size += 26
+	if re.search(r'[0-9]', password):
+		char_set_size += 10
+	if re.search(r'[^a-zA-Z0-9]', password):
+		char_set_size += 32
+
+	# 计算熵并转换为分数
+	if char_set_size > 0:
+		entropy = len(password) * (char_set_size.bit_length() / 2)
+		score += min(int(entropy), 20)
+
+	# 常见密码扣分
+	if _is_common_password(password):
+		score = max(0, score - 30)
+
+	return min(score, 100)
 
 
 class PasswordManager:
@@ -128,60 +230,13 @@ class PasswordManager:
 			errors.append("密码必须包含至少一个特殊字符")
 
 		# 检查常见弱密码
-		if self._is_common_password(password):
+		if _is_common_password(password):
 			errors.append("密码太常见，请使用更复杂的密码")
 
 		if errors:
 			raise WeakPasswordError(f"密码强度不足: {'; '.join(errors)}")
 
 		return True, []
-
-	def _is_common_password (self, password: str) -> bool:
-		"""检查是否为常见弱密码"""
-		common_passwords = {
-			'password', '123456', '12345678', '123456789',
-			'admin', 'qwerty', 'abc123', 'password1',
-			'12345', '1234567890', 'letmein', 'welcome',
-			'monkey', 'dragon', 'baseball', 'football'
-		}
-
-		return password.lower() in common_passwords
-
-	def generate_secure_password (self, length: int = 16) -> str:
-		"""
-		生成安全随机密码
-
-		Args:
-			length: 密码长度
-
-		Returns:
-			生成的随机密码
-		"""
-		import secrets
-		import string
-
-		# 定义字符集
-		lowercase = string.ascii_lowercase
-		uppercase = string.ascii_uppercase
-		digits = string.digits
-		special = '!@#$%^&*()_+-=[]{}|;:,.<>?'
-
-		# 确保每种类型至少有一个字符
-		password_chars = [
-			secrets.choice(lowercase),
-			secrets.choice(uppercase),
-			secrets.choice(digits),
-			secrets.choice(special)
-		]
-
-		# 填充剩余长度
-		all_chars = lowercase + uppercase + digits + special
-		password_chars.extend(secrets.choice(all_chars) for _ in range(length - 4))
-
-		# 随机打乱
-		secrets.SystemRandom().shuffle(password_chars)
-
-		return ''.join(password_chars)
 
 	def needs_rehash (self, hashed_password: str) -> bool:
 		"""
@@ -211,60 +266,8 @@ class PasswordManager:
 			"has_lowercase": bool(re.search(r'[a-z]', password)),
 			"has_number": bool(re.search(r'[0-9]', password)),
 			"has_special": bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password)),
-			"is_common": self._is_common_password(password)
+			"is_common": _is_common_password(password)
 		}
-
-	def get_password_score (self, password: str) -> int:
-		"""
-		计算密码强度分数（0-100）
-
-		Args:
-			password: 要评分的密码
-
-		Returns:
-			密码强度分数
-		"""
-		score = 0
-
-		# 长度分数
-		if len(password) >= 8:
-			score += 20
-		if len(password) >= 12:
-			score += 10
-		if len(password) >= 16:
-			score += 10
-
-		# 字符种类分数
-		if re.search(r'[a-z]', password):
-			score += 10
-		if re.search(r'[A-Z]', password):
-			score += 10
-		if re.search(r'[0-9]', password):
-			score += 10
-		if re.search(r'[^a-zA-Z0-9]', password):
-			score += 10
-
-		# 熵分数（基于字符种类）
-		char_set_size = 0
-		if re.search(r'[a-z]', password):
-			char_set_size += 26
-		if re.search(r'[A-Z]', password):
-			char_set_size += 26
-		if re.search(r'[0-9]', password):
-			char_set_size += 10
-		if re.search(r'[^a-zA-Z0-9]', password):
-			char_set_size += 32
-
-		# 计算熵并转换为分数
-		if char_set_size > 0:
-			entropy = len(password) * (char_set_size.bit_length() / 2)
-			score += min(int(entropy), 20)
-
-		# 常见密码扣分
-		if self._is_common_password(password):
-			score = max(0, score - 30)
-
-		return min(score, 100)
 
 
 # 全局密码管理器实例（延迟初始化）
@@ -285,15 +288,15 @@ def get_password_manager (config: Optional[dict] = None) -> PasswordManager:
 
 	if _password_manager is None:
 		if config is None:
-			from ..config.settings import Settings
-			settings = Settings()
+			from ..config.config_manager import get_config
+			settings = get_config().settings
 			config = {
-				'bcrypt_rounds': settings.BCRYPT_ROUNDS,
-				'min_length': settings.PASSWORD_MIN_LENGTH,
-				'require_uppercase': settings.PASSWORD_REQUIRE_UPPERCASE,
-				'require_lowercase': settings.PASSWORD_REQUIRE_LOWERCASE,
-				'require_numbers': settings.PASSWORD_REQUIRE_NUMBERS,
-				'require_special': settings.PASSWORD_REQUIRE_SPECIAL
+				'bcrypt_rounds': getattr(settings, 'BCRYPT_ROUNDS', 12),
+				'min_length': getattr(settings, 'PASSWORD_MIN_LENGTH', 8),
+				'require_uppercase': getattr(settings, 'PASSWORD_REQUIRE_UPPERCASE', True),
+				'require_lowercase': getattr(settings, 'PASSWORD_REQUIRE_LOWERCASE', True),
+				'require_numbers': getattr(settings, 'PASSWORD_REQUIRE_NUMBERS', True),
+				'require_special': getattr(settings, 'PASSWORD_REQUIRE_SPECIAL', True)
 			}
 
 		_password_manager = PasswordManager(**config)

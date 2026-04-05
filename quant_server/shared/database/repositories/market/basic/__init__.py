@@ -9,10 +9,24 @@ from .stock_repo import StockBasicRepository, RepositoryError as StockBasicError
 from .company_repo import CompanyRepository, RepositoryError as CompanyError
 from .st_list_repo import STListRepository, RepositoryError as STListError
 
-# ETF和Fund相关的Repository需要另外的模型定义
-# 暂时注释掉，待模型完善后再启用
-from .etf_repo import ETFRepository, RepositoryError as ETFBasicError
-from .index_repo import IndexBasicRepository, RepositoryError as ETFIndexError
+# ETF相关Repository
+from .etf_repo import (
+    EtfBasicRepository,
+    EtfIndexRepository,
+    EtfDailyRepository,
+    EtfMinuteRepository,
+    FundAdjFactorRepository,
+    ETFRepository,
+    RepositoryError as ETFError
+)
+
+# 指数相关Repository
+from .index_repo import (
+    IndexBasicRepository,
+    IndexDailyRepository,
+    IndexRepository,
+    RepositoryError as IndexError
+)
 
 __all__ = [
 	# 股票相关
@@ -27,23 +41,50 @@ __all__ = [
 	"STListRepository",
 	"STListError",
 
-	# 其他基础数据（待完善）
+	# ETF相关
+	"EtfBasicRepository",
+	"EtfIndexRepository",
+	"EtfDailyRepository",
+	"EtfMinuteRepository",
+	"FundAdjFactorRepository",
 	"ETFRepository",
-	"ETFBasicError",
+	"ETFError",
+
+	# 指数相关
 	"IndexBasicRepository",
-	"ETFIndexError",
+	"IndexDailyRepository",
+	"IndexRepository",
+	"IndexError",
 ]
 
 # 类型别名
 StockBasicRepo = StockBasicRepository
 CompanyRepo = CompanyRepository
 STListRepo = STListRepository
+EtfBasicRepo = EtfBasicRepository
+EtfIndexRepo = EtfIndexRepository
+EtfDailyRepo = EtfDailyRepository
+EtfMinuteRepo = EtfMinuteRepository
+FundAdjFactorRepo = FundAdjFactorRepository
+ETFRepo = ETFRepository
+IndexBasicRepo = IndexBasicRepository
+IndexDailyRepo = IndexDailyRepository
+IndexRepo = IndexRepository
 
 # 基础数据Repository映射表
 BASIC_REPOSITORIES = {
 	"stock_basic": StockBasicRepository,
 	"company": CompanyRepository,
 	"st_list": STListRepository,
+	"etf_basic": EtfBasicRepository,
+	"etf_index": EtfIndexRepository,
+	"etf_daily": EtfDailyRepository,
+	"etf_minute": EtfMinuteRepository,
+	"fund_adj_factor": FundAdjFactorRepository,
+	"etf": ETFRepository,
+	"index_basic": IndexBasicRepository,
+	"index_daily": IndexDailyRepository,
+	"index": IndexRepository,
 }
 
 

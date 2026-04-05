@@ -17,6 +17,7 @@ from quant_server.modules.strategy.constants import (
     TimeFrame,
 )
 from quant_server.modules.strategy.models import TradingSignal, Position
+from quant_server.core.engines.types.entities import BarData
 
 
 @dataclass
@@ -29,22 +30,6 @@ class MarketData:
     close: float
     volume: float
     amount: float = 0.0
-    trade_date: Any = None
-    trade_time: Optional[datetime] = None
-
-
-@dataclass
-class BarData:
-    """K线数据"""
-    ts_code: str
-    period: str  # 1min, 5min, daily, etc.
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-    amount: float = 0.0
-    turnover: float = 0.0
     trade_date: Any = None
     trade_time: Optional[datetime] = None
 

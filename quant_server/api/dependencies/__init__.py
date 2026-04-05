@@ -99,7 +99,7 @@ from .main_engine import (
 	initialize_main_engine,
 	close_main_engine,
 )
-from ...shared.config.settings import get_settings
+from ...shared.config.config_manager import get_config
 
 
 # 依赖管理器（协调所有依赖的初始化和关闭）
@@ -190,7 +190,7 @@ __all__ = [
 	"OptionalAuth",
 
 	# 配置依赖
-	"get_settings",
+	"get_config",
 
 	# 数据库依赖
 	"get_db_session",

@@ -13,7 +13,7 @@ from datetime import datetime
 class BacktestCreateRequest(BaseModel):
     """回测创建请求"""
     name: str = Field(..., description="回测名称")
-    strategy_id: int = Field(..., description="策略ID")
+    strategy_id: str = Field(..., description="策略ID")
     start_date: str = Field(..., description="开始日期")
     end_date: str = Field(..., description="结束日期")
     initial_capital: float = Field(default=1000000.0, description="初始资金")
@@ -91,7 +91,7 @@ class BacktestResultResponse(BaseModel):
 
 class BacktestOptimizeRequest(BaseModel):
     """参数优化请求"""
-    strategy_id: int = Field(..., description="策略ID")
+    strategy_id: str = Field(..., description="策略ID")
     parameters: Dict[str, Any] = Field(..., description="参数范围")
     optimization_method: str = Field(default="grid", description="优化方法: grid/bayesian/genetic")
 

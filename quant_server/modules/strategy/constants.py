@@ -50,8 +50,8 @@ class StrategyType(str, Enum):
 
 
 # ==================== 策略状态 ====================
-class StrategyStatus(str, Enum):
-    """策略状态枚举"""
+class StrategyLifecycleStatus(str, Enum):
+    """策略生命周期状态枚举"""
     # 草稿
     DRAFT = "draft"
 

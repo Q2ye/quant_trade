@@ -12,18 +12,18 @@ Version: 1.0.0
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Callable, Coroutine
 from contextlib import asynccontextmanager
-from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime
-from quant_server.core.engines.types.enums import ComponentStatus
+from datetime import datetime, UTC
+from enum import Enum
+from typing import Any, Dict, List, Optional, Callable, Coroutine
 
 from fastapi import Depends
 
-from quant_server.core.engines.system.event_engine import EventEngine
 from quant_server.core.engines.system.engine_registry import EngineRegistry
+from quant_server.core.engines.system.event_engine import EventEngine
 from quant_server.core.engines.types import Event
+from quant_server.core.engines.types.enums import ComponentStatus
 from quant_server.core.exceptions.event_exceptions import EventException
 
 logger = logging.getLogger(__name__)
@@ -90,9 +90,8 @@ class EventEngineDependencies:
 
 			# 初始化消息总线（可选）
 			try:
-				from quant_server.shared.messaging.message_bus import MessageBus
-				self._message_bus = MessageBus()
-				await self._message_bus.initialize()
+				from quant_server.shared.messaging.message_bus import get_message_bus
+				self._message_bus = await get_message_bus()
 				logger.info("消息总线初始化成功")
 			except Exception as e:
 				logger.warning(f"消息总线初始化失败，跳过: {str(e)}")
@@ -180,25 +179,25 @@ class EventEngineDependencies:
 				event_type=event_type,
 				source=source,
 				data=data,
-				timestamp=datetime.utcnow(),
+				timestamp=datetime.now(UTC),
 				metadata=metadata or {}
 			)
 
 			# 设置优先级
 			event.metadata["priority"] = priority.value
 
-            # 确保事件引擎已启动
+			# 确保事件引擎已启动
 			if not self._event_engine or self._event_engine.record.status != ComponentStatus.RUNNING:
 				await self._event_engine.start()
 
-			event_id = await self.event_engine.put(event)
+			await self.event_engine.put(event)
 
 			logger.debug(
-				f"事件发布成功: {event_type} (ID: {event_id}, "
+				f"事件发布成功: {event_type} (ID: {event.event_id}, "
 				f"优先级: {priority.name}, 源: {source})"
 			)
 
-			return event_id
+			return event.event_id
 
 		except Exception as e:
 			logger.error(f"事件发布失败: {event_type}, 错误: {str(e)}")
@@ -246,11 +245,12 @@ class EventEngineDependencies:
 		Returns:
 			str: 订阅ID
 		"""
-		subscription_id = await self.event_engine.subscribe(
+		subscription_id = self.event_engine.register(
 			event_type=event_type,
-			handler=handler,
-			filter_fn=filter_fn
+			handler=handler
 		)
+
+		# 注意：filter_fn参数暂未使用，EventEngine的register方法不支持过滤器
 
 		# 记录订阅
 		if event_type not in self._event_handlers:
@@ -271,7 +271,7 @@ class EventEngineDependencies:
 		Returns:
 			bool: 是否成功取消
 		"""
-		success = await self.event_engine.unsubscribe(subscription_id)
+		success = self.event_engine.unregister(event_type="*", handler_id=subscription_id)
 
 		if success:
 			logger.debug(f"事件取消订阅成功: {subscription_id}")
@@ -297,19 +297,35 @@ class EventEngineDependencies:
 		Returns:
 			Optional[Event]: 接收到的事件，超时返回None
 		"""
-		try:
-			event = await self.event_engine.wait_for_event(
-				event_type=event_type,
-				timeout=timeout,
-				filter_fn=filter_fn
-			)
+		async def _wait_for_event():
+			# 实现等待事件的逻辑
+			event_found = None
 
-			if event:
+			# 简单实现：检查事件历史
+			event_history = self.event_engine.get_event_history(limit=1000)
+			for event in reversed(event_history):
+				event_type_match = False
+				if hasattr(event, 'event_type'):
+					event_type_match = event.event_type == event_type
+				elif isinstance(event, dict):
+					event_type_match = event.get('event_type') == event_type
+
+				if event_type_match:
+					if not filter_fn or filter_fn(event):
+						event_found = event
+						break
+
+			return event_found
+
+		try:
+			event_found = await asyncio.wait_for(_wait_for_event(), timeout=timeout)
+
+			if event_found:
 				logger.debug(f"成功等待到事件: {event_type}")
 			else:
 				logger.debug(f"等待事件超时: {event_type}")
 
-			return event
+			return event_found
 
 		except asyncio.TimeoutError:
 			logger.warning(f"等待事件超时: {event_type}")
@@ -326,7 +342,7 @@ class EventEngineDependencies:
 			Dict[str, Any]: 统计信息
 		"""
 		try:
-			stats = await self.event_engine.get_stats()
+			stats = self.event_engine.get_statistics()
 
 			# 添加依赖层的统计
 			stats["dependencies"] = {
@@ -377,11 +393,12 @@ class EventEngineDependencies:
 				message={
 					"type": "event_engine_error",
 					"data": error_data,
-					"timestamp": datetime.utcnow().isoformat()
+					"timestamp": datetime.now(UTC).isoformat()
 				}
 			)
 
-	async def _handle_system_warning (self, event: Event):
+	@staticmethod
+	async def _handle_system_warning (event: Event):
 		"""处理系统警告"""
 		warning_data = event.data
 		logger.warning(
@@ -393,11 +410,10 @@ class EventEngineDependencies:
 		"""关闭事件引擎依赖"""
 		try:
 			# 取消所有订阅
-			for event_type, handlers in list(self._event_handlers.items()):
-				for handler in handlers:
-					# 这里需要实现根据handler找到subscription_id的逻辑
-					# 简化处理：直接清空
-					pass
+			for _, _ in list(self._event_handlers.items()):
+				# 这里需要实现根据handler找到subscription_id的逻辑
+				# 简化处理：直接清空
+				pass
 
 			self._event_handlers.clear()
 
@@ -465,11 +481,11 @@ async def event_context (
 	Yields:
 		EventContext: 事件上下文
 	"""
-	event_context = EventContext(
-		event_id=f"ctx_{datetime.utcnow().timestamp()}",
+	ctx = EventContext(
+		event_id=f"ctx_{datetime.now(UTC).timestamp()}",
 		event_type=event_type,
 		source=source,
-		timestamp=datetime.utcnow(),
+		timestamp=datetime.now(UTC),
 		priority=EventPriority.NORMAL,
 		metadata=metadata or {}
 	)
@@ -477,24 +493,24 @@ async def event_context (
 	# 发布开始事件
 	start_event_id = await publish_event(
 		event_type=f"{event_type}_STARTED",
-		data={"context": event_context.__dict__},
+		data={"context": ctx.__dict__},
 		source=source,
-		metadata={"context_id": event_context.event_id}
+		metadata={"context_id": ctx.event_id}
 	)
 
 	try:
-		yield event_context
+		yield ctx
 
 		# 发布成功事件
 		await publish_event(
 			event_type=f"{event_type}_COMPLETED",
 			data={
-				"context": event_context.__dict__,
+				"context": ctx.__dict__,
 				"status": "success"
 			},
 			source=source,
 			metadata={
-				"context_id": event_context.event_id,
+				"context_id": ctx.event_id,
 				"start_event_id": start_event_id
 			}
 		)
@@ -504,13 +520,13 @@ async def event_context (
 		await publish_event(
 			event_type=f"{event_type}_FAILED",
 			data={
-				"context": event_context.__dict__,
+				"context": ctx.__dict__,
 				"status": "error",
 				"error": str(e)
 			},
 			source=source,
 			metadata={
-				"context_id": event_context.event_id,
+				"context_id": ctx.event_id,
 				"start_event_id": start_event_id
 			}
 		)

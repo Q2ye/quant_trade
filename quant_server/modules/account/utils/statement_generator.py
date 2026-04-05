@@ -3,20 +3,18 @@
 负责生成各类账户对账单和报告
 """
 
-import os
 import json
 import logging
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Any, Union
-from decimal import Decimal
-import csv
-import pandas as pd
+from datetime import datetime, date
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from ....shared.storage.file_storage import FileStorage
+import pandas as pd
+
+from ..calculators.asset_calculator import AssetCalculator
+from ..calculators.pnl_calculator import PnLCalculator
+from ....shared.utils.file_storage import FileStorage
 from ....shared.utils.validation import validate_account_data
-from ....modules.account.calculators.asset_calculator import AssetCalculator
-from ....modules.account.calculators.pnl_calculator import PnLCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +25,18 @@ class StatementGenerator:
 	负责生成各类账户对账单和报告
 	"""
 
-	def __init__ (self, output_dir: Optional[str] = None):
+	def __init__ (self, output_dir: Optional[str] = None, session = None):
 		"""
 		初始化对账单生成器
 
 		Args:
 			output_dir: 输出目录，默认为系统配置的报表目录
+			session: 数据库会话
 		"""
 		if output_dir is None:
-			from shared.config.settings import get_settings
-			settings = get_settings()
-			self.output_dir = Path(settings.REPORT_OUTPUT_DIR) / "account_statements"
+			from quant_server.shared.config.config_manager import get_config
+			settings = get_config().settings
+			self.output_dir = Path(getattr(settings, 'REPORT_OUTPUT_DIR', 'output/reports')) / "account_statements"
 		else:
 			self.output_dir = Path(output_dir)
 
@@ -48,8 +47,8 @@ class StatementGenerator:
 		self.file_storage = FileStorage()
 
 		# 初始化计算器
-		self.asset_calculator = AssetCalculator()
-		self.pnl_calculator = PnLCalculator()
+		self.asset_calculator = AssetCalculator(session=session)
+		self.pnl_calculator = PnLCalculator(session=session)
 
 	def generate_daily_statement (
 			self,
@@ -59,7 +58,7 @@ class StatementGenerator:
 			positions: List[Dict],
 			daily_pnl: Dict,
 			assets: Dict,
-			format: str = 'pdf'  # pdf, excel, csv, json
+			output_format: str = 'pdf'  # pdf, excel, csv, json
 	) -> Dict:
 		"""
 		生成日终对账单
@@ -71,7 +70,7 @@ class StatementGenerator:
 			positions: 持仓列表
 			daily_pnl: 当日盈亏
 			assets: 资产信息
-			format: 输出格式
+			output_format: 输出格式
 
 		Returns:
 			Dict: 对账单信息
@@ -93,11 +92,11 @@ class StatementGenerator:
 			self._validate_statement_data(statement_data)
 
 			# 3. 根据格式生成文件
-			if format == 'pdf':
+			if output_format == 'pdf':
 				file_path, file_name = self._generate_pdf_statement(statement_data)
-			elif format == 'excel':
+			elif output_format == 'excel':
 				file_path, file_name = self._generate_excel_statement(statement_data)
-			elif format == 'csv':
+			elif output_format == 'csv':
 				file_path, file_name = self._generate_csv_statement(statement_data)
 			else:  # json
 				file_path, file_name = self._generate_json_statement(statement_data)
@@ -113,7 +112,7 @@ class StatementGenerator:
 			return {
 				'account_id': account_id,
 				'trading_day': trading_day,
-				'format': format,
+				'format': output_format,
 				'file_name': file_name,
 				'file_path': str(file_path),
 				'storage_url': storage_url,
@@ -131,7 +130,7 @@ class StatementGenerator:
 			start_date: date,
 			end_date: date,
 			weekly_pnl: Dict,
-			format: str = 'pdf'
+			output_format: str = 'pdf'
 	) -> Dict:
 		"""
 		生成周度报告
@@ -141,7 +140,7 @@ class StatementGenerator:
 			start_date: 周开始日期
 			end_date: 周结束日期
 			weekly_pnl: 周盈亏
-			format: 输出格式
+			output_format: 输出格式
 
 		Returns:
 			Dict: 周度报告信息
@@ -158,9 +157,9 @@ class StatementGenerator:
 			)
 
 			# 2. 根据格式生成文件
-			if format == 'pdf':
+			if output_format == 'pdf':
 				file_path, file_name = self._generate_pdf_report(report_data, 'weekly')
-			elif format == 'excel':
+			elif output_format == 'excel':
 				file_path, file_name = self._generate_excel_report(report_data, 'weekly')
 			else:  # json
 				file_path, file_name = self._generate_json_report(report_data, 'weekly')
@@ -173,7 +172,7 @@ class StatementGenerator:
 			return {
 				'account_id': account_id,
 				'period': f"{start_date} - {end_date}",
-				'format': format,
+				'format': output_format,
 				'file_name': file_name,
 				'file_path': str(file_path),
 				'storage_url': storage_url,
@@ -190,7 +189,7 @@ class StatementGenerator:
 			start_date: date,
 			end_date: date,
 			monthly_pnl: Dict,
-			format: str = 'pdf'
+			output_format: str = 'pdf'
 	) -> Dict:
 		"""
 		生成月度报告
@@ -200,7 +199,7 @@ class StatementGenerator:
 			start_date: 月开始日期
 			end_date: 月结束日期
 			monthly_pnl: 月盈亏
-			format: 输出格式
+			output_format: 输出格式
 
 		Returns:
 			Dict: 月度报告信息
@@ -217,9 +216,9 @@ class StatementGenerator:
 			)
 
 			# 2. 根据格式生成文件
-			if format == 'pdf':
+			if output_format == 'pdf':
 				file_path, file_name = self._generate_pdf_report(report_data, 'monthly')
-			elif format == 'excel':
+			elif output_format == 'excel':
 				file_path, file_name = self._generate_excel_report(report_data, 'monthly')
 			else:  # json
 				file_path, file_name = self._generate_json_report(report_data, 'monthly')
@@ -232,7 +231,7 @@ class StatementGenerator:
 			return {
 				'account_id': account_id,
 				'period': f"{start_date} - {end_date}",
-				'format': format,
+				'format': output_format,
 				'file_name': file_name,
 				'file_path': str(file_path),
 				'storage_url': storage_url,
@@ -351,8 +350,8 @@ class StatementGenerator:
 
 		return statement_data
 
+	@staticmethod
 	def _prepare_weekly_report_data (
-			self,
 			account_id: str,
 			start_date: date,
 			end_date: date,
@@ -404,8 +403,8 @@ class StatementGenerator:
 
 		return report_data
 
+	@staticmethod
 	def _prepare_monthly_report_data (
-			self,
 			account_id: str,
 			start_date: date,
 			end_date: date,
@@ -466,7 +465,8 @@ class StatementGenerator:
 
 		return report_data
 
-	def _validate_statement_data (self, statement_data: Dict) -> bool:
+	@staticmethod
+	def _validate_statement_data (statement_data: Dict) -> bool:
 		"""
 		验证对账单数据
 
@@ -532,7 +532,8 @@ class StatementGenerator:
 
 		return stats
 
-	def _calculate_concentration_ratio (self, positions: List[Dict]) -> float:
+	@staticmethod
+	def _calculate_concentration_ratio (positions: List[Dict]) -> float:
 		"""
 		计算持仓集中度
 
@@ -800,7 +801,8 @@ class StatementGenerator:
 			# 返回本地路径作为fallback
 			return f"file://{file_path}"
 
-	def _get_content_type (self, file_path: Path) -> str:
+	@staticmethod
+	def _get_content_type (file_path: Path) -> str:
 		"""获取文件内容类型"""
 		suffix = file_path.suffix.lower()
 
@@ -815,7 +817,8 @@ class StatementGenerator:
 		else:
 			return 'application/octet-stream'
 
-	def _log_statement_generation (self, statement_data: Dict, file_path: Path) -> None:
+	@staticmethod
+	def _log_statement_generation (statement_data: Dict, file_path: Path) -> None:
 		"""记录对账单生成日志"""
 		log_data = {
 			'account_id': statement_data['account_info']['account_id'],
@@ -837,12 +840,25 @@ def generate_daily_statement (
 		positions: List[Dict],
 		daily_pnl: Dict,
 		assets: Dict,
-		format: str = 'pdf'
+		output_format: str = 'pdf'
 ) -> Dict:
-	"""生成日终对账单（快捷函数）"""
+	"""生成日终对账单（快捷函数）
+
+	Args:
+		account_id: 账户ID
+		trading_day: 交易日
+		trades: 当日交易列表
+		positions: 持仓列表
+		daily_pnl: 当日盈亏
+		assets: 资产信息
+		output_format: 输出格式
+
+	Returns:
+		Dict: 对账单信息
+	"""
 	generator = StatementGenerator()
 	return generator.generate_daily_statement(
-		account_id, trading_day, trades, positions, daily_pnl, assets, format
+		account_id, trading_day, trades, positions, daily_pnl, assets, output_format
 	)
 
 
@@ -851,12 +867,23 @@ def generate_weekly_report (
 		start_date: date,
 		end_date: date,
 		weekly_pnl: Dict,
-		format: str = 'pdf'
+		output_format: str = 'pdf'
 ) -> Dict:
-	"""生成周度报告（快捷函数）"""
+	"""生成周度报告（快捷函数）
+
+	Args:
+		account_id: 账户ID
+		start_date: 周开始日期
+		end_date: 周结束日期
+		weekly_pnl: 周盈亏
+		output_format: 输出格式
+
+	Returns:
+		Dict: 周度报告信息
+	"""
 	generator = StatementGenerator()
 	return generator.generate_weekly_report(
-		account_id, start_date, end_date, weekly_pnl, format
+		account_id, start_date, end_date, weekly_pnl, output_format
 	)
 
 
@@ -865,10 +892,21 @@ def generate_monthly_report (
 		start_date: date,
 		end_date: date,
 		monthly_pnl: Dict,
-		format: str = 'pdf'
+		output_format: str = 'pdf'
 ) -> Dict:
-	"""生成月度报告（快捷函数）"""
+	"""生成月度报告（快捷函数）
+
+	Args:
+		account_id: 账户ID
+		start_date: 月开始日期
+		end_date: 月结束日期
+		monthly_pnl: 月盈亏
+		output_format: 输出格式
+
+	Returns:
+		Dict: 月度报告信息
+	"""
 	generator = StatementGenerator()
 	return generator.generate_monthly_report(
-		account_id, start_date, end_date, monthly_pnl, format
+		account_id, start_date, end_date, monthly_pnl, output_format
 	)

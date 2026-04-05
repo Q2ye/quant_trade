@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class StrategyTask:
     """策略任务基类"""
 
-    def __init__(self, task_id: str, strategy_id: int):
+    def __init__(self, task_id: str, strategy_id: str):
         self.task_id = task_id
         self.strategy_id = strategy_id
         self.status = "pending"
@@ -37,7 +37,7 @@ class DataLoadTask(StrategyTask):
     def __init__(
         self,
         task_id: str,
-        strategy_id: int,
+        strategy_id: str,
         ts_codes: list,
         start_date: str,
         end_date: str,
@@ -88,7 +88,7 @@ class StrategyRunTask(StrategyTask):
     def __init__(
         self,
         task_id: str,
-        strategy_id: int,
+        strategy_id: str,
         start_date: str,
         end_date: str,
     ):
@@ -140,7 +140,7 @@ class StrategyOptimizationTask(StrategyTask):
     def __init__(
         self,
         task_id: str,
-        strategy_id: int,
+        strategy_id: str,
         parameter_grid: Dict[str, list],
     ):
         super().__init__(task_id, strategy_id)

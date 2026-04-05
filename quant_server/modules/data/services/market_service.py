@@ -11,15 +11,24 @@
 4. 数据转换：支持多种数据格式和频率转换
 """
 
-from typing import Dict, List, Any, Optional
-from datetime import datetime, date, timedelta
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_, desc
-import pandas as pd
-import numpy as np
-from sympy import limit
+from datetime import datetime, date, timedelta
+from typing import Dict, List, Any, Optional
 
+import numpy as np
+import pandas as pd
+from sqlalchemy import or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# 导入核心基础设施
+from quant_server.core.engines.system.event_engine import EventEngine
+# 导入数据模块常量
+from quant_server.modules.data.constants import (
+	CacheKey,
+	Frequency,
+	AdjustType,
+)
+from quant_server.shared.cache.redis_cache import RedisCache
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
 	StockBasicRepository,
@@ -29,25 +38,11 @@ from quant_server.shared.database.repositories import (
 	IndexBasicRepository,
 	FinancialStatementRepository
 )
-from quant_server.shared.cache.redis_cache import RedisCache
-
-# 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
-
+from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
 # 导入工具类
 from quant_server.utils.core_utils.time_utils.trading_calendar import TradingCalendar
-from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
 
 # 导入事件相关
-from quant_server.modules.data.events.market_events import MarketDataRequestEvent
-
-# 导入数据模块常量
-from quant_server.modules.data.constants import (
-	CacheKey,
-	DataType,
-	Frequency,
-	AdjustType,
-)
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -337,8 +332,8 @@ class MarketDataService:
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.settings import get_settings
-			settings = get_settings()
+			from quant_server.shared.config.config_manager import get_config
+			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
 				port=settings.REDIS.PORT,
@@ -357,6 +352,7 @@ class MarketDataService:
 			freq: str = "D",
 			adj: str = "qfq",
 			fields: Optional[List[str]] = None,
+			limit: int = 0,
 			use_cache: bool = True,
 			user_id: Optional[int] = None
 	) -> List[Dict[str, Any]]:
@@ -370,6 +366,7 @@ class MarketDataService:
 			freq: 数据频率，支持：D-日线, W-周线, M-月线, 5-5分钟, 15-15分钟, 30-30分钟, 60-60分钟
 			adj: 复权类型，支持：qfq-前复权, hfq-后复权, None-不复权
 			fields: 返回字段列表，默认返回所有字段
+			limit: 返回数据条数限制，0表示不限制
 			use_cache: 是否使用缓存
 			user_id: 用户ID，用于事件追踪
 
@@ -389,7 +386,7 @@ class MarketDataService:
 
 			# 生成缓存键
 			cache_key = None
-			if use_cache:
+			if use_cache and self._cache is not None:
 				cache_key = CacheKey.generate_historical_quotes_key(
 					ts_code=ts_code,
 					start_date=start_date.strftime("%Y%m%d") if start_date else "all",
@@ -407,6 +404,8 @@ class MarketDataService:
 						user_id=user_id, cached=True
 					)
 					return cached_data
+			elif use_cache and self._cache is None:
+				logger.info(f"缓存未启动，跳过缓存检查: {ts_code}")
 
 			# 设置默认日期范围
 			if not end_date:
@@ -558,7 +557,7 @@ class MarketDataService:
 
 			# 生成缓存键
 			cache_key = None
-			if use_cache:
+			if use_cache and self._cache is not None:
 				cache_key = CacheKey.LATEST_QUOTE.format(ts_code=ts_code)
 
 				# 尝试从缓存获取
@@ -570,6 +569,8 @@ class MarketDataService:
 						user_id=user_id, cached=True
 					)
 					return cached_quote
+			elif use_cache and self._cache is None:
+				logger.info(f"缓存未启动，跳过缓存检查: {ts_code}")
 
 			# 从数据库获取最新行情
 			latest_quote = await self.quote_repo.get_latest_by_code(ts_code)
@@ -599,7 +600,7 @@ class MarketDataService:
 			}
 
 			# 缓存结果
-			if use_cache and cache_key:
+			if use_cache and cache_key and self._cache is not None:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -667,7 +668,7 @@ class MarketDataService:
 
 			# 生成缓存键
 			cache_key = None
-			if use_cache:
+			if use_cache and self._cache is not None:
 				field_suffix = ""
 				if include_quote:
 					field_suffix += "_quote"
@@ -690,6 +691,8 @@ class MarketDataService:
 						user_id=user_id, cached=True
 					)
 					return cached_info
+			elif use_cache and self._cache is None:
+				logger.info(f"缓存未启动，跳过缓存检查: {ts_code}")
 
 			# 获取股票基础信息
 			stock = await self.stock_repo.get_by_ts_code(ts_code)
@@ -737,7 +740,7 @@ class MarketDataService:
 				result["factor_exposure"] = factor_exposure.get("factor_exposures", {})
 
 			# 缓存结果
-			if use_cache and cache_key:
+			if use_cache and cache_key and self._cache is not None:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -801,7 +804,7 @@ class MarketDataService:
 		try:
 			# 生成缓存键
 			cache_key = None
-			if use_cache:
+			if use_cache and self._cache is not None:
 				params_hash = _generate_params_hash({
 					"search": search,
 					"market": market,
@@ -826,6 +829,8 @@ class MarketDataService:
 						user_id=user_id, cached=True
 					)
 					return cached_list
+			elif use_cache and self._cache is None:
+				logger.info(f"缓存未启动，跳过缓存检查: stock_list")
 
 			# 构建查询条件
 			filters = []
@@ -879,15 +884,22 @@ class MarketDataService:
 			skip = (page - 1) * page_size
 
 			# 获取股票数据
-			stocks = await self.stock_repo.get_many(
-				*filters,
-				skip=skip,
-				limit=page_size,
-				order_by=order_column
-			)
+			from sqlalchemy import select
+			query = select(self.stock_repo.model)
+			for condition in filters:
+				query = query.where(condition)
+			if order_column:
+				query = query.order_by(order_column)
+			query = query.offset(skip).limit(page_size)
+			result = await self.stock_repo.session.execute(query)
+			stocks = result.scalars().all()
 
 			# 获取总数
-			total = await self.stock_repo.count(*filters)
+			count_query = select(func.count()).select_from(self.stock_repo.model)
+			for condition in filters:
+				count_query = count_query.where(condition)
+			count_result = await self.stock_repo.session.execute(count_query)
+			total = count_result.scalar()
 
 			# 转换为响应格式
 			stock_list = []
@@ -930,7 +942,7 @@ class MarketDataService:
 			}
 
 			# 缓存结果
-			if use_cache and cache_key:
+			if use_cache and cache_key and self._cache is not None:
 				await self.cache.set(
 					cache_key,
 					result,
@@ -956,7 +968,7 @@ class MarketDataService:
 	async def get_market_overview (
 			self,
 			market: Optional[str] = None,
-			date: Optional[date] = None,
+			target_date: Optional[date] = None,
 			indicators: Optional[List[str]] = None,
 			user_id: Optional[int] = None
 	) -> Dict[str, Any]:
@@ -965,7 +977,7 @@ class MarketDataService:
 
 		Args:
 			market: 市场类型（SH/SZ/BJ，不指定则返回全市场）
-			date: 日期（默认今天）
+			target_date: 日期（默认今天）
 			indicators: 需要计算的指标列表，支持：
 				- total_stocks: 总股票数量
 				- advance_decline: 涨跌家数
@@ -981,12 +993,12 @@ class MarketDataService:
 				- indicators: 指标数据
 				- summary: 市场总结
 		"""
-		logger.info(f"获取市场概览，市场: {market}, 日期: {date}")
+		logger.info(f"获取市场概览，市场: {market}, 日期: {target_date}")
 
 		try:
 			# 设置默认日期
-			if not date:
-				date = datetime.now().date()
+			if not target_date:
+				target_date = datetime.now().date()
 
 			# 设置默认指标
 			if not indicators:
@@ -995,7 +1007,7 @@ class MarketDataService:
 			# 生成缓存键
 			cache_key = CacheKey.MARKET_OVERVIEW.format(
 				market=market or "all",
-				date=date.strftime("%Y%m%d")
+				date=target_date.strftime("%Y%m%d")
 			)
 
 			# 尝试从缓存获取
@@ -1004,14 +1016,14 @@ class MarketDataService:
 				logger.info(f"从缓存获取市场概览: {market or 'all'}")
 				await self._publish_data_access_event(
 					"cached_request", None, "market_overview",
-					market=market, date=date.isoformat(),
+					market=market, target_date=target_date.isoformat(),
 					user_id=user_id, cached=True
 				)
 				return cached_overview
 
 			# 初始化结果
 			result = {
-				"date": date.isoformat(),
+				"date": target_date.isoformat(),
 				"market": market or "all",
 				"indicators": {},
 				"summary": {}
@@ -1025,11 +1037,11 @@ class MarketDataService:
 						result["indicators"]["total_stocks"] = count
 
 					elif indicator == "advance_decline":
-						ad_data = await self._get_advance_decline(date, market)
+						ad_data = await self._get_advance_decline(target_date, market)
 						result["indicators"]["advance_decline"] = ad_data
 
 					elif indicator == "turnover":
-						turnover_data = await self._get_turnover(date, market)
+						turnover_data = await self._get_turnover(target_date, market)
 						result["indicators"]["turnover"] = turnover_data
 
 					elif indicator == "market_cap":
@@ -1037,7 +1049,7 @@ class MarketDataService:
 						result["indicators"]["market_cap"] = market_cap
 
 					elif indicator == "index_performance":
-						index_data = await self._get_index_performance(date, market)
+						index_data = await self._get_index_performance(market)
 						result["indicators"]["index_performance"] = index_data
 
 				except Exception as e:
@@ -1057,11 +1069,11 @@ class MarketDataService:
 			# 发布数据访问事件
 			await self._publish_data_access_event(
 				"data_request", None, "market_overview",
-				market=market, date=date.isoformat(),
+				market=market, target_date=target_date.isoformat(),
 				user_id=user_id
 			)
 
-			logger.info(f"获取市场概览完成，市场: {market}, 日期: {date}")
+			logger.info(f"获取市场概览完成，市场: {market}, 日期: {target_date}")
 			return result
 
 		except Exception as e:
@@ -1111,6 +1123,10 @@ class MarketDataService:
 			if start_date > end_date:
 				start_date, end_date = end_date, start_date
 
+			# 转换日期为datetime类型
+			start_datetime = datetime.combine(start_date, datetime.min.time())
+			end_datetime = datetime.combine(end_date, datetime.max.time())
+
 			# 获取因子数据
 			factor_exposures = {}
 
@@ -1124,8 +1140,8 @@ class MarketDataService:
 					factor_data = await self.factor_repo.get_by_ts_code_and_date_range(
 						ts_code=ts_code,
 						factor_name=factor_name,
-						start_date=start_date,
-						end_date=end_date
+						start_date=start_datetime,
+						end_date=end_datetime
 					)
 
 					if factor_data:
@@ -1330,7 +1346,7 @@ class MarketDataService:
 				'amount': 'sum'
 			})
 			weekly_df.dropna(inplace=True)
-			return self._df_to_quote_objects(weekly_df, freq="W")
+			return self._df_to_quote_objects(weekly_df)
 
 		elif target_freq == Frequency.MONTHLY:
 			# 转换为月线
@@ -1343,7 +1359,7 @@ class MarketDataService:
 				'amount': 'sum'
 			})
 			monthly_df.dropna(inplace=True)
-			return self._df_to_quote_objects(monthly_df, freq="M")
+			return self._df_to_quote_objects(monthly_df)
 
 		elif target_freq in ["5", "15", "30", "60"]:
 			# 转换为分钟线（需要原始分钟数据）
@@ -1352,13 +1368,12 @@ class MarketDataService:
 
 		return daily_quotes
 
-	def _df_to_quote_objects (self, df: pd.DataFrame, freq: str) -> List:
+	def _df_to_quote_objects (self, df: pd.DataFrame) -> List:
 		"""
 		将DataFrame转换回行情对象列表
 
 		Args:
 			df: 包含行情数据的DataFrame
-			freq: 数据频率标识
 
 		Returns:
 			List: 行情对象列表
@@ -1387,8 +1402,8 @@ class MarketDataService:
 
 		return quotes
 
+	@staticmethod
 	async def _adjust_prices (
-			self,
 			quotes: List,
 			adj_type: str
 	) -> List:
@@ -1449,8 +1464,8 @@ class MarketDataService:
 
 		return sorted_quotes
 
+	@staticmethod
 	def _select_fields (
-			self,
 			quotes: List,
 			fields: List[str]
 	) -> List:
@@ -1496,22 +1511,23 @@ class MarketDataService:
 		Returns:
 			int: 股票数量
 		"""
-		filters = []
+		from sqlalchemy import select
+		query = select(func.count()).select_from(self.stock_repo.model)
 		if market:
-			filters.append(self.stock_repo.model.market == market)
-
-		return await self.stock_repo.count(*filters)
+			query = query.where(self.stock_repo.model.market == market)
+		result = await self.stock_repo.session.execute(query)
+		return result.scalar()
 
 	async def _get_advance_decline (
 			self,
-			date: date,
+			target_date: date,
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取涨跌家数
 
 		Args:
-			date: 交易日期
+			target_date: 交易日期
 			market: 市场类型
 
 		Returns:
@@ -1519,18 +1535,9 @@ class MarketDataService:
 		"""
 		try:
 			# 获取当日所有股票的行情数据
-			filters = [self.quote_repo.model.trade_date == date]
-
-			if market:
-				# 获取该市场的所有股票
-				market_stocks = await self.stock_repo.get_many(
-					self.stock_repo.model.market == market
-				)
-				ts_codes = [stock.ts_code for stock in market_stocks]
-				if ts_codes:
-					filters.append(self.quote_repo.model.ts_code.in_(ts_codes))
-
-			quotes = await self.quote_repo.get_many(*filters)
+			query = await self._build_quote_query(target_date, market)
+			result = await self.quote_repo.session.execute(query)
+			quotes = result.scalars().all()
 
 			if not quotes:
 				return {
@@ -1586,14 +1593,14 @@ class MarketDataService:
 
 	async def _get_turnover (
 			self,
-			date: date,
+			target_date: date,
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取成交数据
 
 		Args:
-			date: 交易日期
+			target_date: 交易日期
 			market: 市场类型
 
 		Returns:
@@ -1601,19 +1608,10 @@ class MarketDataService:
 		"""
 		try:
 			# 构建查询条件
-			filters = [self.quote_repo.model.trade_date == date]
-
-			if market:
-				# 获取该市场的所有股票
-				market_stocks = await self.stock_repo.get_many(
-					self.stock_repo.model.market == market
-				)
-				ts_codes = [stock.ts_code for stock in market_stocks]
-				if ts_codes:
-					filters.append(self.quote_repo.model.ts_code.in_(ts_codes))
-
+			query = await self._build_quote_query(target_date, market)
 			# 获取当日成交数据
-			quotes = await self.quote_repo.get_many(*filters)
+			result = await self.quote_repo.session.execute(query)
+			quotes = result.scalars().all()
 
 			if not quotes:
 				return {
@@ -1681,16 +1679,14 @@ class MarketDataService:
 			logger.error(f"获取总市值失败: {str(e)}")
 			return 0
 
+	@staticmethod
 	async def _get_index_performance (
-			self,
-			date: date,
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取指数表现
 
 		Args:
-			date: 交易日期
 			market: 市场类型
 
 		Returns:
@@ -1715,7 +1711,37 @@ class MarketDataService:
 				"创业板指": {"close": 2000.00, "change": 10.00, "pct_chg": 0.50}
 			}
 
-	async def _generate_market_summary (self, indicators: Dict) -> Dict[str, Any]:
+	async def _build_quote_query (self, target_date: date, market: Optional[str] = None):
+		"""
+		构建行情数据查询
+
+		Args:
+			target_date: 交易日期
+			market: 市场类型
+
+		Returns:
+			Select: SQLAlchemy查询对象
+		"""
+		from sqlalchemy import select
+		query = select(self.quote_repo.model).where(
+			self.quote_repo.model.trade_date == target_date
+		)
+
+		if market:
+			# 获取该市场的所有股票
+			market_query = select(self.stock_repo.model).where(
+				self.stock_repo.model.market == market
+			)
+			market_result = await self.stock_repo.session.execute(market_query)
+			market_stocks = market_result.scalars().all()
+			ts_codes = [stock.ts_code for stock in market_stocks]
+			if ts_codes:
+				query = query.where(self.quote_repo.model.ts_code.in_(ts_codes))
+
+		return query
+
+	@staticmethod
+	async def _generate_market_summary (indicators: Dict) -> Dict[str, Any]:
 		"""
 		生成市场总结
 
@@ -1835,8 +1861,8 @@ class MarketDataService:
 			logger.error(f"获取可用因子列表失败: {str(e)}")
 			return []
 
+	@staticmethod
 	def _calculate_percentile (
-			self,
 			value: float,
 			values: List[float]
 	) -> float:
@@ -1863,7 +1889,8 @@ class MarketDataService:
 
 		return round(percentile, 2)
 
-	def _generate_exposure_summary (self, factor_exposures: Dict) -> Dict[str, Any]:
+	@staticmethod
+	def _generate_exposure_summary (factor_exposures: Dict) -> Dict[str, Any]:
 		"""
 		生成因子暴露度总结
 
@@ -1969,8 +1996,8 @@ class MarketDataService:
 
 	# ==================== 技术指标计算方法 ====================
 
+	@staticmethod
 	def _calculate_ma (
-			self,
 			df: pd.DataFrame,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
@@ -1991,7 +2018,7 @@ class MarketDataService:
 
 		result = {}
 		for period in periods:
-			if period > 0 and len(df) >= period:
+			if 0 < period <= len(df):
 				ma_series = df['close'].rolling(window=period).mean()
 				result[f"MA{period}"] = ma_series.tolist()
 			else:
@@ -2003,8 +2030,8 @@ class MarketDataService:
 			"status": "success"
 		}
 
+	@staticmethod
 	def _calculate_ema (
-			self,
 			df: pd.DataFrame,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
@@ -2025,7 +2052,7 @@ class MarketDataService:
 
 		result = {}
 		for period in periods:
-			if period > 0 and len(df) >= period:
+			if 0 < period <= len(df):
 				ema_series = df['close'].ewm(span=period, adjust=False).mean()
 				result[f"EMA{period}"] = ema_series.tolist()
 			else:
@@ -2037,8 +2064,8 @@ class MarketDataService:
 			"status": "success"
 		}
 
+	@staticmethod
 	def _calculate_macd (
-			self,
 			df: pd.DataFrame,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
@@ -2104,7 +2131,7 @@ class MarketDataService:
 			data_type: Optional[str] = None,
 			record_count: Optional[int] = None,
 			market: Optional[str] = None,
-			date: Optional[str] = None,
+			target_date: Optional[str] = None,
 			factor_count: Optional[int] = None,
 			cached: bool = False,
 			user_id: Optional[int] = None
@@ -2118,9 +2145,9 @@ class MarketDataService:
 			data_type: 数据类型
 			record_count: 记录数量
 			market: 市场类型
-			date: 数据日期
+			target_date: 日期
 			factor_count: 因子数量
-			cached: 是否来自缓存
+			cached: 是否从缓存获取
 			user_id: 用户ID
 		"""
 		if not self.event_engine:
@@ -2142,8 +2169,8 @@ class MarketDataService:
 				event_data["record_count"] = record_count
 			if market:
 				event_data["market"] = market
-			if date:
-				event_data["date"] = date
+			if target_date:
+				event_data["date"] = target_date
 			if factor_count is not None:
 				event_data["factor_count"] = factor_count
 
@@ -2162,10 +2189,10 @@ class MarketDataService:
 
 			# 创建一个简单的事件对象
 			class SimpleDataEvent:
-				def __init__(self, event_data):
-					self.event_type = event_data["event_type"]
-					self.timestamp = event_data.get("timestamp", datetime.now())
-					self.data = event_data
+				def __init__ (self, data):
+					self.event_type = data["event_type"]
+					self.timestamp = data.get("timestamp", datetime.now())
+					self.data = data
 
 			event = SimpleDataEvent(event_data)
 			await self.event_engine.put(event)
@@ -2217,10 +2244,10 @@ class MarketDataService:
 			})
 
 			class SimpleDataEvent:
-				def __init__(self, event_data):
-					self.event_type = event_data["event_type"]
-					self.timestamp = event_data.get("timestamp", datetime.now())
-					self.data = event_data
+				def __init__ (self, data):
+					self.event_type = data["event_type"]
+					self.timestamp = data.get("timestamp", datetime.now())
+					self.data = data
 
 			event = SimpleDataEvent(event_data)
 			await self.event_engine.put(event)

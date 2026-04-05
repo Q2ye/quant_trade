@@ -5,17 +5,18 @@ JWT处理器模块
 支持访问令牌和刷新令牌
 """
 
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any
+
 import jwt
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Union
 from pydantic import BaseModel
 
-from ..config.settings import Settings
 from quant_server.core.exceptions.security_exceptions import (
 	TokenExpiredError,
 	InvalidTokenError,
 	TokenCreationError
 )
+from ..config.config_manager import ConfigSettings as Settings
 
 
 # JWT配置模型
@@ -72,15 +73,15 @@ class JWTManager:
 
 			# 设置过期时间
 			if expires_delta:
-				expire = datetime.utcnow() + expires_delta
+				expire = datetime.now(timezone.utc) + expires_delta
 			else:
-				expire = datetime.utcnow() + timedelta(
+				expire = datetime.now(timezone.utc) + timedelta(
 					minutes=self.config.access_token_expire_minutes
 				)
 
 			to_encode.update({
 				"exp": expire,
-				"iat": datetime.utcnow(),
+				"iat": datetime.now(timezone.utc),
 				"type": "access"
 			})
 
@@ -122,15 +123,15 @@ class JWTManager:
 
 			# 设置过期时间（比访问令牌长）
 			if expires_delta:
-				expire = datetime.utcnow() + expires_delta
+				expire = datetime.now(timezone.utc) + expires_delta
 			else:
-				expire = datetime.utcnow() + timedelta(
+				expire = datetime.now(timezone.utc) + timedelta(
 					days=self.config.refresh_token_expire_days
 				)
 
 			to_encode.update({
 				"exp": expire,
-				"iat": datetime.utcnow(),
+				"iat": datetime.now(timezone.utc),
 				"type": "refresh"
 			})
 
@@ -331,7 +332,11 @@ class JWTManager:
 			return False
 		except TokenExpiredError:
 			return True
-		except Exception:
+		except Exception as e:
+			# 记录异常信息
+			import logging
+			logger = logging.getLogger(__name__)
+			logger.debug(f"令牌验证异常: {str(e)}")
 			return True
 
 

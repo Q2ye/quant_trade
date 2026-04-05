@@ -8,7 +8,7 @@ API路由包
 from .data_router import router as data_router
 from .strategy_router import router as strategy_router
 # from .trade_router import router as trade_router
-# from .backtest_router import router as backtest_router
+from .backtest_router import router as backtest_router
 # from .account_router import router as account_router
 # from .analysis_router import router as analysis_router
 # from .monitor_router import router as monitor_router
@@ -40,7 +40,7 @@ ROUTERS = [
     strategy_router,        # 策略中心、
 
     # 4. 回测模块（依赖策略）
-    # backtest_router,        # 回测工作台
+    backtest_router,        # 回测工作台
 
     # 5. 交易模块（依赖策略和数据）
     # trade_router,           # 交易中心

@@ -1080,9 +1080,9 @@ class StrategyType(str, Enum):
 
 # ==================== 策略状态枚举 ====================
 
-class StrategyStatus(str, Enum):
+class StrategyRuntimeStatus(str, Enum):
     """
-    策略状态枚举
+    策略运行状态枚举
 
     定义策略的运行状态。
     """
@@ -1514,7 +1514,7 @@ __all__ = [
 
     # 策略相关枚举
     "StrategyType",
-    "StrategyStatus",
+    "StrategyRuntimeStatus",
 
     # 信号相关枚举
     "SignalType",

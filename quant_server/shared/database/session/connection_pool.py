@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
 	create_async_engine
 )
 
-from ...config.settings import settings
+from ...config.config_manager import config
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,8 @@ class ConnectionPoolManager:
 	def __init__ (self):
 		self._engine: Optional[AsyncEngine] = None
 		self._session_factory: Optional[async_sessionmaker] = None
-		self._pool_size: int = settings.DATABASE.POOL_SIZE
-		self._max_overflow: int = settings.DATABASE.MAX_OVERFLOW
+		self._pool_size: int = config.settings.DATABASE.POOL_SIZE
+		self._max_overflow: int = config.settings.DATABASE.MAX_OVERFLOW
 
 	async def initialize (self) -> bool:
 		"""初始化连接池"""
@@ -45,14 +45,14 @@ class ConnectionPoolManager:
 				max_overflow=self._max_overflow,
 				pool_recycle=3600,  # 1小时回收连接
 				pool_pre_ping=True,  # 连接前ping检查
-				echo=settings.DATABASE.ECHO_SQL,
-				echo_pool=settings.DATABASE.ECHO_POOL,
+				echo=config.settings.DATABASE.ECHO_SQL,
+				echo_pool=config.settings.DATABASE.ECHO_POOL,
 				future=True,
 				json_serializer=JSONEncoder().encode,
 				json_deserializer=JSONDecoder().decode,
 				# PostgreSQL特殊配置
 				connect_args={"server_settings": {"jit": "off"}}
-				if settings.DATABASE.TYPE == "postgresql"
+				if config.settings.DATABASE.TYPE == "postgresql"
 				else {}
 			)
 
@@ -72,8 +72,8 @@ class ConnectionPoolManager:
 
 			logger.info(
 				f"数据库连接池初始化成功: "
-				f"{settings.DATABASE.HOST}:{settings.DATABASE.PORT}/"
-				f"{settings.DATABASE.NAME} "
+				f"{config.settings.DATABASE.HOST}:{config.settings.DATABASE.PORT}/"
+				f"{config.settings.DATABASE.NAME} "
 				f"(pool_size={self._pool_size}, max_overflow={self._max_overflow})"
 			)
 			return True
@@ -85,19 +85,20 @@ class ConnectionPoolManager:
 	@staticmethod
 	def _build_database_url () -> str:
 		"""构建数据库连接URL"""
-		db_type = settings.DATABASE.TYPE
+		from ...config.config_manager import config
+		db_type = config.settings.DATABASE.TYPE
 
 		if db_type == "postgresql":
 			return (
-				f"postgresql+asyncpg://{settings.DATABASE.USER}:"
-				f"{settings.DATABASE.PASSWORD}@{settings.DATABASE.HOST}:"
-				f"{settings.DATABASE.PORT}/{settings.DATABASE.NAME}"
+				f"postgresql+asyncpg://{config.settings.DATABASE.USER}:"
+				f"{config.settings.DATABASE.PASSWORD}@{config.settings.DATABASE.HOST}:"
+				f"{config.settings.DATABASE.PORT}/{config.settings.DATABASE.NAME}"
 			)
 		elif db_type == "mysql":
 			return (
-				f"mysql+aiomysql://{settings.DATABASE.USER}:"
-				f"{settings.DATABASE.PASSWORD}@{settings.DATABASE.HOST}:"
-				f"{settings.DATABASE.PORT}/{settings.DATABASE.NAME}"
+				f"mysql+aiomysql://{config.settings.DATABASE.USER}:"
+				f"{config.settings.DATABASE.PASSWORD}@{config.settings.DATABASE.HOST}:"
+				f"{config.settings.DATABASE.PORT}/{config.settings.DATABASE.NAME}"
 				"?charset=utf8mb4"
 			)
 		else:
@@ -125,20 +126,20 @@ class ConnectionPoolManager:
 		"""健康检查"""
 		try:
 			async with self._engine.connect() as conn:
-				start_time = asyncio.get_event_loop().time()
+				start_time = asyncio.get_running_loop().time()
 				await conn.execute("SELECT 1")
-				response_time = asyncio.get_event_loop().time() - start_time
+				response_time = asyncio.get_running_loop().time() - start_time
 
 				return {
-					"status": "healthy",
-					"database_type": settings.DATABASE.TYPE,
-					"pool_status": {
-						"checked_out": self._engine.pool.checkedout(),
-						"overflow": self._engine.pool.overflow(),
-						"size": self._engine.pool.size(),
-					},
-					"response_time_ms": round(response_time * 1000, 2),
-				}
+				"status": "healthy",
+				"database_type": config.settings.DATABASE.TYPE,
+				"pool_status": {
+					"checked_out": getattr(self._engine.pool, 'checkedout', lambda: 0)(),
+					"overflow": getattr(self._engine.pool, 'overflow', lambda: 0)(),
+					"size": getattr(self._engine.pool, 'size', lambda: 0)(),
+				},
+				"response_time_ms": round(response_time * 1000, 2),
+			}
 		except Exception as e:
 			return {
 				"status": "unhealthy",
@@ -152,13 +153,13 @@ class ConnectionPoolManager:
 
 		pool = self._engine.pool
 		return {
-			"checked_out": pool.checkedout(),
-			"overflow": pool.overflow(),
-			"size": pool.size(),
-			"connections": pool.checkedin() + pool.checkedout(),
-			"max_overflow": self._max_overflow,
-			"pool_size": self._pool_size,
-		}
+		"checked_out": getattr(pool, 'checkedout', lambda: 0)(),
+		"overflow": getattr(pool, 'overflow', lambda: 0)(),
+		"size": getattr(pool, 'size', lambda: 0)(),
+		"connections": getattr(pool, 'checkedin', lambda: 0)() + getattr(pool, 'checkedout', lambda: 0)(),
+		"max_overflow": self._max_overflow,
+		"pool_size": self._pool_size,
+	}
 
 
 # 全局连接池实例

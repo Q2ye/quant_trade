@@ -117,7 +117,7 @@ async def get_stocks_api (
 			request=request,
 			user_id=current_user.get("id")
 		)
-		logger.info(result);
+		logger.info(result)
 
 		return result
 

@@ -15,7 +15,7 @@ class StrategyStartedEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         user_id: int,
         initial_capital: float = 0.0,
@@ -44,7 +44,7 @@ class StrategyStoppedEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         user_id: int,
         reason: str = "manual",
@@ -73,7 +73,7 @@ class StrategyPausedEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         user_id: int,
         reason: str = "manual",
@@ -100,7 +100,7 @@ class StrategyResumedEvent(BaseEvent):
 
     def __init__(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy_name: str,
         user_id: int,
         **kwargs

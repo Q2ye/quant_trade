@@ -40,6 +40,7 @@ from fastapi import BackgroundTasks
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quant_server.api.dependencies.config import get_settings
 # ==================== 核心基础设施导入 ====================
 # 事件引擎
 from quant_server.core.engines.system.event_engine import EventEngine
@@ -94,8 +95,7 @@ from quant_server.modules.data.services.research_service import FactorResearchSe
 from quant_server.modules.data.services.sync_service import DataSyncService
 from quant_server.shared.cache.redis_cache import RedisCache
 # 配置与缓存
-from quant_server.shared.config.settings import Settings, get_settings
-from quant_server.shared.database.models.business_models import FactorResearch
+from quant_server.shared.config.config_manager import ConfigSettings as Settings, get_config
 # ==================== 数据模型导入 ====================
 from quant_server.shared.database.models.data_models import FactorData
 from quant_server.shared.database.models.data_models import StockBasic
@@ -121,7 +121,7 @@ async def get_factor_data (
 		session: AsyncSession,
 		request: FactorRequest,
 		user_id: int,
-		settings: Settings = get_settings()
+		settings: Settings = get_config().settings
 ) -> FactorResponse:
 	"""
 	获取因子数据 - 支持缓存、分页、过滤的高级查询
@@ -252,7 +252,7 @@ async def get_factor_data (
 				"page": request.page,
 				"page_size": request.page_size,
 				"total": total_count,
-				"total_pages": ( (total_count or 0) + (request.page_size or 10) - 1 ) // (request.page_size or 10)
+				"total_pages": ((total_count or 0) + (request.page_size or 10) - 1) // (request.page_size or 10)
 			},
 			available_factors=available_factor_objects,
 			message="获取因子数据成功"
@@ -278,7 +278,7 @@ async def research_factor (
 		event_engine: EventEngine,
 		user_id: int,
 		background_tasks: BackgroundTasks,
-		settings: Settings = get_settings()
+		settings: Settings = get_config().settings
 ) -> ResearchResponse:
 	"""
 	执行因子研究任务 - 修复版本
@@ -346,8 +346,8 @@ async def research_factor (
 		# 4. 发布研究开始事件
 		event = DataResearchStartedEvent(
 			research_id=research_id,
-			factor_name=factor_name,
 			research_type=request.analysis_type or "ic_analysis",
+			target_factors=request.factor_names,
 			user_id=user_id,
 			timestamp=datetime.now(),
 			source="data_module"
@@ -412,7 +412,7 @@ async def research_factor (
 		# 记录失败状态
 		if "research_id" in locals():
 			research_repo = FactorResearchRepository(session)
-			research_task_result = await research_repo.get_by_research_id(research_id)
+			research_task_result = await research_repo.get_by_research_id(locals()["research_id"])
 			if research_task_result.success and research_task_result.data:
 				update_data = {
 					"status": "failed",
@@ -687,7 +687,8 @@ async def get_stock_list (
 				"page": request.page,
 				"page_size": request.page_size,
 				"total": total_count,
-				"total_pages": (total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
+				"total_pages": (
+							               total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
 			},
 			message="获取股票列表成功"
 		)
@@ -765,7 +766,7 @@ async def get_stock_detail (
 
 		# 5. 添加行情信息（如果有）
 		if latest_quote and request.include_quote:
-			quotes = [{
+			quote_data = {
 				"trade_date": latest_quote.trade_date.isoformat() if latest_quote.trade_date else None,
 				"open": float(latest_quote.open) if latest_quote.open else None,
 				"high": float(latest_quote.high) if latest_quote.high else None,
@@ -776,8 +777,8 @@ async def get_stock_detail (
 				"pct_chg": float(latest_quote.pct_chg) if latest_quote.pct_chg else None,
 				"vol": float(latest_quote.vol) if latest_quote.vol else None,
 				"amount": float(latest_quote.amount) if latest_quote.amount else None
-			}]
-			response_data["quotes"] = quotes
+			}
+			response_data["quotes"] = [quote_data]
 
 		logger.info(f"成功返回股票 '{ts_code}' 的详细信息")
 		return StockDetailResponse(**response_data)
@@ -1088,12 +1089,12 @@ async def quick_sync_data (
 			})
 
 		# 3. 构建批量同步请求
-		from quant_server.modules.data.schemas import SyncTaskItem
+		from quant_server.modules.data.schemas import SyncTaskItem, SyncPriority
 		task_items = [SyncTaskItem(**task) for task in sync_tasks]
 
 		batch_request = BatchSyncRequest(
 			tasks=task_items,
-			priority="high",  # 快速同步使用高优先级
+			priority=SyncPriority.HIGH,  # 快速同步使用高优先级
 			notify_on_complete=True
 		)
 
@@ -1175,14 +1176,15 @@ async def get_sync_status (
 					progress = task.processed_records / task.total_records * 100
 
 			# 构建进度信息
-			progress_info = {
-				"task_id": task.task_id,
-				"total_tasks": 1,  # 简化处理
-				"completed_tasks": 1 if task.status == "completed" else 0,
-				"current_task": f"同步{task.task_type}",
-				"progress_percentage": progress,
-				"estimated_time_remaining": None  # 简化处理
-			}
+			from quant_server.modules.data.schemas import SyncProgress
+			progress_info = SyncProgress(
+				task_id=task.task_id,
+				total_tasks=1,  # 简化处理
+				completed_tasks=1 if task.status == "completed" else 0,
+				current_task=f"同步{task.task_type}",
+				progress_percentage=progress,
+				estimated_time_remaining=None  # 简化处理
+			)
 
 			# 构建响应
 			return SyncStatusResponse(
@@ -1218,21 +1220,21 @@ async def get_sync_status (
 						                                                         "completed_at") and task.completed_at else None
 					})
 
+			from quant_server.modules.data.schemas import SyncProgress
 			# 构建响应（返回简化版本）
 			return SyncStatusResponse(
 				success=True,
 				task_id="recent_tasks",
 				status="completed",
-				progress={
-					"task_id": "recent_tasks",
-					"total_tasks": len(recent_tasks),
-					"completed_tasks": len(recent_tasks),
-					"current_task": "查看历史任务",
-					"progress_percentage": 100,
-					"estimated_time_remaining": 0
-				},
-				recent_tasks=recent_tasks,
-				total_count=len(recent_tasks),
+				progress=SyncProgress(
+					task_id="recent_tasks",
+					total_tasks=len(recent_tasks),
+					completed_tasks=len(recent_tasks),
+					current_task="查看历史任务",
+					progress_percentage=100,
+					estimated_time_remaining=0
+				),
+				results=[],
 				created_by=str(user_id),
 				created_at=datetime.now(),
 				updated_at=datetime.now(),
@@ -1309,7 +1311,7 @@ async def cancel_sync (
 			current_task="任务已取消",
 			total_tasks=1,
 			completed_tasks=0,
-			user_id=user_id,
+			user_id=str(user_id),
 			timestamp=datetime.now(),
 			source="data_module"
 		)
@@ -1362,34 +1364,35 @@ async def get_data_quality (
 		# 使用数据质量服务 - 修复：创建服务实例
 		quality_service = DataQualityService(session)
 
-		# 获取数据质量报告 - 修复：传递正确的参数
-		quality_report = await quality_service.get_data_quality_report(
+		# 获取数据质量报告 - 修复：使用正确的方法名
+		quality_report = await quality_service.check_data_quality(
 			data_type=request.data_type,
 			start_date=request.start_date,
 			end_date=request.end_date,
-			check_type=request.check_type  # 使用正确的参数名
+			check_types=[request.check_type] if request.check_type else None
 		)
 
 		# 计算质量评分和等级
 		quality_score = quality_report.get("quality_score", 0)
 
 		# 确定质量等级
+		from quant_server.modules.data.schemas import DataQualityLevel
 		if quality_score >= 99:
-			quality_level = "excellent"
+			quality_level = DataQualityLevel.EXCELLENT
 		elif quality_score >= 95:
-			quality_level = "good"
+			quality_level = DataQualityLevel.GOOD
 		elif quality_score >= 90:
-			quality_level = "fair"
+			quality_level = DataQualityLevel.FAIR
 		else:
-			quality_level = "poor"
+			quality_level = DataQualityLevel.POOR
 
 		# 构建响应
 		response = DataQualityResponse(
 			success=True,
 			data_type=request.data_type,
 			date_range={
-				"start": request.start_date.isoformat() if request.start_date else None,
-				"end": request.end_date.isoformat() if request.end_date else None
+				"start": request.start_date if request.start_date else None,
+				"end": request.end_date if request.end_date else None
 			},
 			quality_score=quality_score,
 			quality_level=quality_level,
@@ -1492,7 +1495,7 @@ async def _get_factor_data_from_cache (cache_key: str, settings: Settings) -> Op
 		)
 
 		# 测试连接并获取数据
-		cache_connected = await cache.test_connection()
+		cache_connected = await cache.ping()
 		if cache_connected:
 			cached_data = await cache.get(cache_key)
 			return cached_data if cached_data else None
@@ -1534,7 +1537,7 @@ async def _cache_factor_data (
 		)
 
 		# 测试连接并存储数据
-		cache_connected = await cache.test_connection()
+		cache_connected = await cache.ping()
 		if cache_connected:
 			await cache.set(cache_key, data, ttl)
 			logger.debug(f"因子数据已缓存: {cache_key}, TTL={ttl}秒")
@@ -1570,45 +1573,36 @@ async def _execute_sync_factor_research (
 		research_service = FactorResearchService(session, event_engine)
 
 		# 2. 执行因子研究
+		factor_definition = {
+			"name": request.factor_names[0] if request.factor_names else "unknown",
+			"formula": "",
+			"category": "",
+			"description": ""
+		}
+		parameters = {
+			"frequency": request.frequency,
+			"group_count": request.group_count,
+			"analysis_type": request.analysis_type
+		}
 		research_result = await research_service.research_factor(
-			factor_names=request.factor_names,  # 使用正确的参数名
+			factor_definition=factor_definition,
 			universe=request.universe,
 			start_date=request.start_date,
 			end_date=request.end_date,
-			frequency=request.frequency,
-			group_count=request.group_count,
-			analysis_type=request.analysis_type,
+			parameters=parameters,
 			user_id=user_id
 		)
 
-		# 3. 保存研究结果
+		# 3. 保存研究结果和更新状态
 		research_repo = FactorResearchRepository(session)
-		await research_repo.save_research_result(
+		await _process_research_completion(
+			research_repo=research_repo,
 			research_id=research_id,
-			result=research_result.get("result", {}),
-			summary=research_result.get("summary", {}),
-			report=research_result.get("report", {})
+			request=request,
+			research_result=research_result,
+			event_engine=event_engine,
+			user_id=user_id
 		)
-
-		# 4. 更新任务状态
-		await research_repo.update_research_status(
-			research_id=research_id,
-			status="completed"
-		)
-
-		# 5. 发布研究完成事件
-		completed_event = DataResearchCompletedEvent(
-			research_id=research_id,
-			factor_name=request.factor_names[0] if request.factor_names else "unknown",
-			research_type=request.analysis_type or "ic_analysis",
-			duration_seconds=research_result.get("duration_seconds", 0),
-			results=research_result.get("result", {}),
-			summary=research_result.get("summary", {}),
-			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
-		)
-		await event_engine.put(completed_event)  # type: ignore
 
 		# 6. 构建响应
 		return ResearchResponse(
@@ -1645,6 +1639,53 @@ async def _execute_sync_factor_research (
 		raise BusinessException(f"同步执行因子研究失败: {str(e)}")
 
 
+async def _process_research_completion(
+		research_repo: FactorResearchRepository,
+		research_id: str,
+		request: ResearchRequest,
+		research_result: Dict[str, Any],
+		event_engine: EventEngine,
+		user_id: int
+) -> None:
+	"""
+	处理研究完成的通用逻辑
+
+	Args:
+		research_repo: 因子研究仓库
+		research_id: 研究任务ID
+		request: 研究请求参数
+		research_result: 研究结果
+		event_engine: 事件引擎
+		user_id: 当前用户ID
+	"""
+	# 1. 保存研究结果
+	await research_repo.save_research_result(
+		research_id=research_id,
+		result=research_result.get("result", {}),
+		summary=research_result.get("summary", {}),
+		report=research_result.get("report", {})
+	)
+
+	# 2. 更新任务状态
+	await research_repo.update_research_status(
+		research_id=research_id,
+		status="completed"
+	)
+
+	# 3. 发布研究完成事件
+	completed_event = DataResearchCompletedEvent(
+		research_id=research_id,
+		research_type=request.analysis_type or "ic_analysis",
+		duration_seconds=research_result.get("duration_seconds", 0),
+		results=research_result.get("result", {}),
+		key_findings=research_result.get("key_findings", []),
+		report_data=research_result.get("report", {}),
+		user_id=user_id,
+		timestamp=datetime.now(),
+		source="data_module"
+	)
+	await event_engine.put(completed_event)  # type: ignore
+
 async def _execute_async_factor_research (
 		session: AsyncSession,
 		research_id: str,
@@ -1680,11 +1721,8 @@ async def _execute_async_factor_research (
 		# 3. 发布进度事件
 		progress_event = DataResearchProgressEvent(
 			research_id=research_id,
-			factor_name=request.factor_names[0] if request.factor_names else "unknown",
 			progress=0.1,
-			current_task="初始化研究任务",
-			total_tasks=10,
-			completed_tasks=1,
+			current_step="初始化研究任务",
 			user_id=user_id,
 			timestamp=datetime.now(),
 			source="data_module"
@@ -1692,44 +1730,35 @@ async def _execute_async_factor_research (
 		await event_engine.put(progress_event)  # type: ignore
 
 		# 4. 执行因子研究
+		factor_definition = {
+			"name": request.factor_names[0] if request.factor_names else "unknown",
+			"formula": "",
+			"category": "",
+			"description": ""
+		}
+		parameters = {
+			"frequency": request.frequency,
+			"group_count": request.group_count,
+			"analysis_type": request.analysis_type
+		}
 		research_result = await research_service.research_factor(
-			factor_names=request.factor_names,
+			factor_definition=factor_definition,
 			universe=request.universe,
 			start_date=request.start_date,
 			end_date=request.end_date,
-			frequency=request.frequency,
-			group_count=request.group_count,
-			analysis_type=request.analysis_type,
+			parameters=parameters,
 			user_id=user_id
 		)
 
-		# 5. 保存研究结果
-		await research_repo.save_research_result(
+		# 5. 处理研究完成
+		await _process_research_completion(
+			research_repo=research_repo,
 			research_id=research_id,
-			result=research_result.get("result", {}),
-			summary=research_result.get("summary", {}),
-			report=research_result.get("report", {})
+			request=request,
+			research_result=research_result,
+			event_engine=event_engine,
+			user_id=user_id
 		)
-
-		# 6. 更新任务状态
-		await research_repo.update_research_status(
-			research_id=research_id,
-			status="completed"
-		)
-
-		# 7. 发布研究完成事件
-		completed_event = DataResearchCompletedEvent(
-			research_id=research_id,
-			factor_name=request.factor_names[0] if request.factor_names else "unknown",
-			research_type=request.analysis_type or "ic_analysis",
-			duration_seconds=research_result.get("duration_seconds", 0),
-			results=research_result.get("result", {}),
-			summary=research_result.get("summary", {}),
-			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
-		)
-		await event_engine.put(completed_event)  # type: ignore
 
 		logger.info(f"异步因子研究完成: {research_id}")
 
@@ -1747,11 +1776,8 @@ async def _execute_async_factor_research (
 		# 发布失败事件
 		fail_event = DataResearchProgressEvent(
 			research_id=research_id,
-			factor_name=request.factor_names[0] if request.factor_names else "unknown",
 			progress=0,
-			current_task="研究失败",
-			total_tasks=10,
-			completed_tasks=0,
+			current_step="研究失败",
 			error_message=str(e),
 			user_id=user_id,
 			timestamp=datetime.now(),
@@ -1813,13 +1839,11 @@ async def _execute_sync_data_sync (
 
 		# 5. 发布同步完成事件
 		completed_event = DataSyncCompletedEvent(
-			task_id=task_id,
-			data_types=data_types,
+			sync_type="batch",
+			record_count=sync_result.get("records_processed", 0),
 			duration_seconds=sync_result.get("duration_seconds", 0),
-			records_processed=sync_result.get("records_processed", 0),
-			records_succeeded=sync_result.get("records_succeeded", 0),
-			records_failed=sync_result.get("records_failed", 0),
-			user_id=user_id,
+			task_id=task_id,
+			user_id=str(user_id),
 			timestamp=datetime.now(),
 			source="data_module"
 		)
@@ -1897,7 +1921,7 @@ async def _execute_async_data_sync (
 			total_items=len(request.tasks),
 			processed_items=1,
 			task_id=task_id,
-			user_id=user_id,
+			user_id=str(user_id),
 			timestamp=datetime.now(),
 			source="data_module"
 		)
@@ -1934,7 +1958,7 @@ async def _execute_async_data_sync (
 				"data_types": [task.data_type for task in request.tasks]
 			},
 			task_id=task_id,
-			user_id=user_id,
+			user_id=str(user_id),
 			timestamp=datetime.now()
 		)
 		await event_engine.put(completed_event)  # type: ignore
@@ -1966,7 +1990,7 @@ async def _execute_async_data_sync (
 			total_items=len(request.tasks),
 			processed_items=0,
 			task_id=task_id,
-			user_id=user_id,
+			user_id=str(user_id),
 			error_message=str(e),
 			timestamp=datetime.now(),
 			source="data_module"
@@ -2051,7 +2075,7 @@ def _estimate_sync_time (request: BatchSyncRequest) -> int:
 
 async def check_data_module_health (
 		session: AsyncSession,
-		settings: Settings = get_settings()
+		settings: Settings = get_config().settings
 ) -> Dict[str, Any]:
 	"""
 	检查数据模块健康状态 - 包含数据库、缓存、数据完整性等多项检查
@@ -2088,7 +2112,7 @@ async def check_data_module_health (
 					db=settings.REDIS.DB,
 					password=settings.REDIS.PASSWORD
 				)
-				cache_connected = await cache.test_connection()
+				cache_connected = await cache.ping()
 				health_checks["cache"] = {
 					"status": "healthy" if cache_connected else "unhealthy",
 					"connected": cache_connected
@@ -2149,14 +2173,14 @@ async def check_data_module_health (
 
 			# 待处理任务
 			pending_tasks_result = await research_repo.get_many(
-				FactorResearch.status == "pending",
+				status="pending",
 				limit=10
 			)
 			pending_tasks = pending_tasks_result if isinstance(pending_tasks_result, list) else []
 
 			# 失败任务
 			failed_tasks_result = await research_repo.get_many(
-				FactorResearch.status == "failed",
+				status="failed",
 				limit=10
 			)
 			failed_tasks = failed_tasks_result if isinstance(failed_tasks_result, list) else []
@@ -2282,7 +2306,7 @@ async def initialize_data_module (
 					db=settings.REDIS.DB,
 					password=settings.REDIS.PASSWORD
 				)
-				cache_connected = await cache.test_connection()
+				cache_connected = await cache.ping()
 				cache_initialized = cache_connected
 				if cache_initialized:
 					logger.info("Redis缓存连接成功")

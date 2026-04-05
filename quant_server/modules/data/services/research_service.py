@@ -11,16 +11,28 @@
 4. 高性能计算：支持批量处理和缓存
 """
 
+import asyncio
 import logging
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional, Union, Tuple
-import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, func
-import pandas as pd
-import numpy as np
-from scipy import stats
+from typing import Dict, List, Any, Optional
+from pandas import DataFrame
 
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# 导入核心基础设施
+from quant_server.core.engines.system.event_engine import EventEngine
+# 导入数据模块常量
+from quant_server.modules.data.constants import (
+	CacheKey,
+	FactorCategoryCode,
+	StandardFactors,
+	ResearchStatus
+)
+
+from quant_server.shared.cache.redis_cache import RedisCache
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
 	StockBasicRepository,
@@ -30,25 +42,8 @@ from quant_server.shared.database.repositories import (
 	FactorResearchRepository,
 	FinancialStatementRepository
 )
-from quant_server.shared.cache.redis_cache import RedisCache
-
-# 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
-
-# 导入事件类
-from quant_server.modules.data.events.research_events import DataResearchStartedEvent
-
 # 导入工具类
 from quant_server.utils.core_utils.math_utils import StatisticalCalculator
-
-# 导入数据模块常量
-from quant_server.modules.data.constants import (
-	CacheKey,
-	DataType,
-	FactorCategoryCode,
-	StandardFactors,
-	ResearchStatus
-)
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -101,8 +96,8 @@ class FactorResearchService:
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.settings import get_settings
-			settings = get_settings()
+			from quant_server.shared.config.config_manager import get_config
+			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
 				port=settings.REDIS.PORT,
@@ -274,13 +269,13 @@ class FactorResearchService:
 				try:
 					stocks_china = await self.stock_repo.get_by_market("创业板", active_only=True)
 					stocks.extend(stocks_china)
-				except:
-					pass
+				except Exception as e:
+					logger.warning(f"获取创业板股票失败: {str(e)}")
 				try:
 					stocks_star = await self.stock_repo.get_by_market("科创板", active_only=True)
 					stocks.extend(stocks_star)
-				except:
-					pass
+				except Exception as e:
+					logger.warning(f"获取科创板股票失败: {str(e)}")
 				ts_codes = [stock.ts_code for stock in stocks]
 
 			if not ts_codes:
@@ -468,6 +463,9 @@ class FactorResearchService:
 					"error": "没有找到因子数据",
 					"message": "无法进行因子表现分析"
 				}
+
+			# 初始化收益数据
+			returns_data = None
 
 			# 检查是否需要收益数据
 			if analysis_type in ["ic_analysis", "quantile_analysis"]:
@@ -1018,10 +1016,10 @@ class FactorResearchService:
 			StandardFactors.RET_1M: self._calculate_return_1m,
 			StandardFactors.RET_3M: self._calculate_return_3m,
 			StandardFactors.RET_6M: self._calculate_return_6m,
-			StandardFactors.RET_12M: self._calculate_return_12m,
+			StandardFactors.RET_12M: self._calculate_return_1y,
 			StandardFactors.VOLATILITY_1M: self._calculate_volatility_1m,
 			StandardFactors.VOLATILITY_3M: self._calculate_volatility_3m,
-			StandardFactors.VOLATILITY_12M: self._calculate_volatility_12m,
+			StandardFactors.VOLATILITY_12M: self._calculate_volatility_1y,
 			StandardFactors.BETA: self._calculate_beta,
 			"sharpe_ratio": self._calculate_sharpe_ratio,
 			StandardFactors.TURNOVER_RATE: self._calculate_turnover_rate,
@@ -1034,11 +1032,30 @@ class FactorResearchService:
 			"KDJ": self._calculate_kdj
 		}
 
+	@staticmethod
+	def _calculate_technical_factor (
+		df: DataFrame,
+		parameters: Optional[Dict] = None,
+		financial_data: Optional[DataFrame] = None
+	) -> pd.Series:
+		"""通用技术因子计算器"""
+		factor_type = parameters.get("type", "close") if parameters else "close"
+
+		if factor_type == "close":
+			# 返回收盘价
+			return df['close'] if 'close' in df.columns else pd.Series(dtype=float)
+		elif factor_type == "volume":
+			# 返回成交量
+			return df['volume'] if 'volume' in df.columns else pd.Series(dtype=float)
+		else:
+			# 默认返回空序列
+			return pd.Series(dtype=float)
+
+	@staticmethod
 	def _calculate_pe (
-			self,
-			df: pd.DataFrame,
-			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+		df: DataFrame,
+		parameters: Optional[Dict] = None,
+		financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市盈率"""
 		if 'close' not in df.columns:
@@ -1058,9 +1075,9 @@ class FactorResearchService:
 
 	def _calculate_pb (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市净率"""
 		if 'close' not in df.columns:
@@ -1080,9 +1097,9 @@ class FactorResearchService:
 
 	def _calculate_ps (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市销率"""
 		if 'close' not in df.columns:
@@ -1097,9 +1114,9 @@ class FactorResearchService:
 
 	def _calculate_roe (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算净资产收益率"""
 		if financial_data is not None and 'roe' in financial_data.columns:
@@ -1115,9 +1132,9 @@ class FactorResearchService:
 
 	def _calculate_roa (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算总资产收益率"""
 		# 模拟ROA
@@ -1129,9 +1146,9 @@ class FactorResearchService:
 
 	def _calculate_gm (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算毛利率"""
 		# 模拟毛利率
@@ -1143,9 +1160,9 @@ class FactorResearchService:
 
 	def _calculate_np_margin (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算净利率"""
 		# 模拟净利率
@@ -1157,9 +1174,9 @@ class FactorResearchService:
 
 	def _calculate_debt_to_asset (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算资产负债率"""
 		# 模拟资产负债率
@@ -1171,9 +1188,9 @@ class FactorResearchService:
 
 	def _calculate_current_ratio (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算流动比率"""
 		# 模拟流动比率
@@ -1185,9 +1202,9 @@ class FactorResearchService:
 
 	def _calculate_quick_ratio (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算速动比率"""
 		# 模拟速动比率
@@ -1199,9 +1216,9 @@ class FactorResearchService:
 
 	def _calculate_market_cap (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市值"""
 		if 'close' not in df.columns:
@@ -1215,9 +1232,9 @@ class FactorResearchService:
 
 	def _calculate_return_1m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算1个月收益率"""
 		if 'close' not in df.columns:
@@ -1230,9 +1247,9 @@ class FactorResearchService:
 
 	def _calculate_return_3m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算3个月收益率"""
 		if 'close' not in df.columns:
@@ -1245,9 +1262,9 @@ class FactorResearchService:
 
 	def _calculate_return_6m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算6个月收益率"""
 		if 'close' not in df.columns:
@@ -1258,11 +1275,11 @@ class FactorResearchService:
 
 		return returns
 
-	def _calculate_return_12m (
+	def _calculate_return_1y (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算12个月收益率"""
 		if 'close' not in df.columns:
@@ -1275,9 +1292,9 @@ class FactorResearchService:
 
 	def _calculate_volatility_1m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算1个月波动率"""
 		if 'close' not in df.columns:
@@ -1291,9 +1308,9 @@ class FactorResearchService:
 
 	def _calculate_volatility_3m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算3个月波动率"""
 		if 'close' not in df.columns:
@@ -1305,11 +1322,11 @@ class FactorResearchService:
 
 		return volatility
 
-	def _calculate_volatility_12m (
+	def _calculate_volatility_6m (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算12个月波动率"""
 		if 'close' not in df.columns:
@@ -1323,9 +1340,9 @@ class FactorResearchService:
 
 	def _calculate_beta (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算Beta系数"""
 		if 'close' not in df.columns:
@@ -1338,11 +1355,11 @@ class FactorResearchService:
 
 		return beta
 
-	def _calculate_sharpe_ratio (
+	def _calculate_volume_ratio (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算夏普比率"""
 		if 'close' not in df.columns:
@@ -1361,11 +1378,11 @@ class FactorResearchService:
 
 		return sharpe_ratio
 
-	def _calculate_turnover_rate (
+	def _calculate_sharpe_ratio (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算换手率"""
 		if 'volume' not in df.columns:
@@ -1377,11 +1394,11 @@ class FactorResearchService:
 
 		return turnover_rate
 
-	def _calculate_volume_ratio (
+	def _calculate_volatility_1y (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算量比"""
 		if 'volume' not in df.columns:
@@ -1425,9 +1442,9 @@ class FactorResearchService:
 
 	def _calculate_macd (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算MACD指标"""
 		if 'close' not in df.columns:
@@ -1444,9 +1461,9 @@ class FactorResearchService:
 
 	def _calculate_rsi (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算RSI指标"""
 		if 'close' not in df.columns:
@@ -1464,9 +1481,9 @@ class FactorResearchService:
 
 	def _calculate_boll (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算布林带中轨"""
 		if 'close' not in df.columns:
@@ -1479,9 +1496,9 @@ class FactorResearchService:
 
 	def _calculate_kdj (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算KDJ指标的K值"""
 		required_cols = ['high', 'low', 'close']
@@ -1501,11 +1518,11 @@ class FactorResearchService:
 
 		return k
 
-	def _calculate_technical_factor (
+	def _calculate_turnover_rate (
 			self,
-			df: pd.DataFrame,
+			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""通用技术因子计算器"""
 		factor_type = parameters.get("type", "close") if parameters else "close"
@@ -1524,11 +1541,11 @@ class FactorResearchService:
 
 	async def _perform_ic_analysis (
 			self,
-			factor_data: pd.DataFrame,
+			factor_data: DataFrame,
 			factor_name: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
-			returns_data: Optional[pd.DataFrame] = None,
+			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1572,7 +1589,7 @@ class FactorResearchService:
 		t_stat, ic_pvalue = stats.ttest_1samp(ic_series, 0)
 
 		# 计算IC正率
-		ic_positive_ratio = sum(1 for x in ic_series if x > 0) / len(ic_series) if ic_series.size > 0 else 0
+		ic_positive_ratio = sum(1 for x in ic_series if x > 0) / len(ic_series) if len(ic_series) > 0 else 0
 
 		# 计算IC衰减（模拟）
 		ic_decay = []
@@ -1597,11 +1614,11 @@ class FactorResearchService:
 
 	async def _perform_quantile_analysis (
 			self,
-			factor_data: pd.DataFrame,
+			factor_data: DataFrame,
 			factor_name: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
-			returns_data: Optional[pd.DataFrame] = None,
+			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1656,11 +1673,11 @@ class FactorResearchService:
 
 	async def _perform_correlation_analysis (
 			self,
-			factor_data: pd.DataFrame,
+			factor_data: DataFrame,
 			factor_name: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
-			returns_data: Optional[pd.DataFrame] = None,
+			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1688,11 +1705,11 @@ class FactorResearchService:
 
 	async def _perform_stability_analysis (
 			self,
-			factor_data: pd.DataFrame,
+			factor_data: DataFrame,
 			factor_name: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
-			returns_data: Optional[pd.DataFrame] = None,
+			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1894,7 +1911,7 @@ class FactorResearchService:
 		)
 
 		# 生成报告
-		report = {
+		report: Dict[str, Any] = {
 			"rankings": rankings,
 			"final_ranking": [
 				{"factor_name": factor_name, "score": score, "rank": i + 1}
@@ -1931,7 +1948,7 @@ class FactorResearchService:
 			universe: Optional[List[str]] = None,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None
-	) -> pd.DataFrame:
+	) -> DataFrame:
 		"""
 		获取用于分析的因子数据
 
@@ -1945,20 +1962,27 @@ class FactorResearchService:
 			pd.DataFrame: 因子数据（行为日期，列为股票，值为因子值）
 		"""
 		try:
-			# 构建查询条件
-			filters = [self.factor_repo.model.factor_name == factor_name]
+			from sqlalchemy import select, and_
+			
+			# 构建查询
+			query = select(self.factor_repo.model).where(
+				self.factor_repo.model.factor_name == factor_name
+			)
 
-			if universe:
-				filters.append(self.factor_repo.model.ts_code.in_(universe))
+			# 添加universe条件
+			if universe and isinstance(universe, list):
+				query = query.where(self.factor_repo.model.ts_code.in_(universe))
 
+			# 添加日期范围条件
 			if start_date:
-				filters.append(self.factor_repo.model.trade_date >= start_date)
+				query = query.where(self.factor_repo.model.trade_date >= start_date)
 
 			if end_date:
-				filters.append(self.factor_repo.model.trade_date <= end_date)
+				query = query.where(self.factor_repo.model.trade_date <= end_date)
 
-			# 获取因子数据
-			factor_records = await self.factor_repo.get_many(*filters)
+			# 执行查询
+			result = await self.factor_repo.session.execute(query)
+			factor_records = result.scalars().all()
 
 			if not factor_records:
 				return pd.DataFrame()
@@ -1996,7 +2020,7 @@ class FactorResearchService:
 			universe: Optional[List[str]] = None,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None
-	) -> pd.DataFrame:
+	) -> DataFrame:
 		"""
 		获取用于分析的收益数据
 
@@ -2411,205 +2435,205 @@ class FactorResearchService:
 			List[Dict]: 标准因子元数据列表
 		"""
 		standard_factors = [
-		{
-			"factor_name": StandardFactors.PE,
-			"display_name": "市盈率",
-			"description": "股价除以每股收益，衡量股票估值水平",
-			"category": FactorCategoryCode.VALUE,
-			"formula": "PE = Price / EPS",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.PB,
-			"display_name": "市净率",
-			"description": "股价除以每股净资产，衡量股票价值",
-			"category": FactorCategoryCode.VALUE,
-			"formula": "PB = Price / Book Value per Share",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.PS,
-			"display_name": "市销率",
-			"description": "股价除以每股销售收入",
-			"category": FactorCategoryCode.VALUE,
-			"formula": "PS = Price / Sales per Share",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.ROE,
-			"display_name": "净资产收益率",
-			"description": "净利润除以净资产，衡量公司盈利能力",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "ROE = Net Income / Equity",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.ROA,
-			"display_name": "总资产收益率",
-			"description": "净利润除以总资产，衡量资产使用效率",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "ROA = Net Income / Total Assets",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.GROSS_MARGIN,
-			"display_name": "毛利率",
-			"description": "毛利润除以营业收入，衡量产品盈利能力",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "GM = Gross Profit / Revenue",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.OPERATING_MARGIN,
-			"display_name": "净利率",
-			"description": "净利润除以营业收入，衡量整体盈利能力",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "NP Margin = Net Profit / Revenue",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.DEBT_RATIO,
-			"display_name": "资产负债率",
-			"description": "总负债除以总资产，衡量财务杠杆",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "Debt to Asset = Total Debt / Total Assets",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": "current_ratio",
-			"display_name": "流动比率",
-			"description": "流动资产除以流动负债，衡量短期偿债能力",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "Current Ratio = Current Assets / Current Liabilities",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": "quick_ratio",
-			"display_name": "速动比率",
-			"description": "速动资产除以流动负债，衡量即时偿债能力",
-			"category": FactorCategoryCode.QUALITY,
-			"formula": "Quick Ratio = (Current Assets - Inventory) / Current Liabilities",
-			"data_source": "财务报表",
-			"update_frequency": "季度"
-		},
-		{
-			"factor_name": StandardFactors.MARKET_CAP,
-			"display_name": "市值",
-			"description": "总股本乘以股价，衡量公司规模",
-			"category": FactorCategoryCode.SIZE,
-			"formula": "Market Cap = Shares Outstanding × Price",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.RET_1M,
-			"display_name": "1个月收益率",
-			"description": "过去1个月的收益率",
-			"category": FactorCategoryCode.MOMENTUM,
-			"formula": "Ret_1M = (Price_t / Price_{t-20}) - 1",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.RET_3M,
-			"display_name": "3个月收益率",
-			"description": "过去3个月的收益率",
-			"category": FactorCategoryCode.MOMENTUM,
-			"formula": "Ret_3M = (Price_t / Price_{t-60}) - 1",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.RET_6M,
-			"display_name": "6个月收益率",
-			"description": "过去6个月的收益率",
-			"category": FactorCategoryCode.MOMENTUM,
-			"formula": "Ret_6M = (Price_t / Price_{t-120}) - 1",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.RET_12M,
-			"display_name": "12个月收益率",
-			"description": "过去12个月的收益率",
-			"category": FactorCategoryCode.MOMENTUM,
-			"formula": "Ret_12M = (Price_t / Price_{t-240}) - 1",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.VOLATILITY_1M,
-			"display_name": "1个月波动率",
-			"description": "过去1个月的收益率波动率",
-			"category": FactorCategoryCode.VOLATILITY,
-			"formula": "Std(Returns, 20 days) × √252",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.VOLATILITY_3M,
-			"display_name": "3个月波动率",
-			"description": "过去3个月的收益率波动率",
-			"category": FactorCategoryCode.VOLATILITY,
-			"formula": "Std(Returns, 60 days) × √252",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.VOLATILITY_12M,
-			"display_name": "12个月波动率",
-			"description": "过去12个月的收益率波动率",
-			"category": FactorCategoryCode.VOLATILITY,
-			"formula": "Std(Returns, 240 days) × √252",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.BETA,
-			"display_name": "Beta系数",
-			"description": "股票收益与市场收益的协方差除以市场收益的方差",
-			"category": FactorCategoryCode.VOLATILITY,
-			"formula": "β = Cov(Ret_stock, Ret_market) / Var(Ret_market)",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": "sharpe_ratio",
-			"display_name": "夏普比率",
-			"description": "(年化收益 - 无风险利率) / 年化波动率",
-			"category": FactorCategoryCode.VOLATILITY,
-			"formula": "Sharpe = (E[Ret] - Rf) / σ",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": StandardFactors.TURNOVER_RATE,
-			"display_name": "换手率",
-			"description": "成交量除以流通股本，衡量股票流动性",
-			"category": FactorCategoryCode.LIQUIDITY,
-			"formula": "Turnover Rate = Volume / Float Shares",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		},
-		{
-			"factor_name": "volume_ratio",
-			"display_name": "量比",
-			"description": "当前成交量除以过去N日平均成交量",
-			"category": FactorCategoryCode.LIQUIDITY,
-			"formula": "Volume Ratio = Volume_t / Avg(Volume_{t-N:t-1})",
-			"data_source": "行情数据",
-			"update_frequency": "日度"
-		}
-	]
+			{
+				"factor_name": StandardFactors.PE,
+				"display_name": "市盈率",
+				"description": "股价除以每股收益，衡量股票估值水平",
+				"category": FactorCategoryCode.VALUE,
+				"formula": "PE = Price / EPS",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.PB,
+				"display_name": "市净率",
+				"description": "股价除以每股净资产，衡量股票价值",
+				"category": FactorCategoryCode.VALUE,
+				"formula": "PB = Price / Book Value per Share",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.PS,
+				"display_name": "市销率",
+				"description": "股价除以每股销售收入",
+				"category": FactorCategoryCode.VALUE,
+				"formula": "PS = Price / Sales per Share",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.ROE,
+				"display_name": "净资产收益率",
+				"description": "净利润除以净资产，衡量公司盈利能力",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "ROE = Net Income / Equity",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.ROA,
+				"display_name": "总资产收益率",
+				"description": "净利润除以总资产，衡量资产使用效率",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "ROA = Net Income / Total Assets",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.GROSS_MARGIN,
+				"display_name": "毛利率",
+				"description": "毛利润除以营业收入，衡量产品盈利能力",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "GM = Gross Profit / Revenue",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.OPERATING_MARGIN,
+				"display_name": "净利率",
+				"description": "净利润除以营业收入，衡量整体盈利能力",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "NP Margin = Net Profit / Revenue",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.DEBT_RATIO,
+				"display_name": "资产负债率",
+				"description": "总负债除以总资产，衡量财务杠杆",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "Debt to Asset = Total Debt / Total Assets",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": "current_ratio",
+				"display_name": "流动比率",
+				"description": "流动资产除以流动负债，衡量短期偿债能力",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "Current Ratio = Current Assets / Current Liabilities",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": "quick_ratio",
+				"display_name": "速动比率",
+				"description": "速动资产除以流动负债，衡量即时偿债能力",
+				"category": FactorCategoryCode.QUALITY,
+				"formula": "Quick Ratio = (Current Assets - Inventory) / Current Liabilities",
+				"data_source": "财务报表",
+				"update_frequency": "季度"
+			},
+			{
+				"factor_name": StandardFactors.MARKET_CAP,
+				"display_name": "市值",
+				"description": "总股本乘以股价，衡量公司规模",
+				"category": FactorCategoryCode.SIZE,
+				"formula": "Market Cap = Shares Outstanding × Price",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.RET_1M,
+				"display_name": "1个月收益率",
+				"description": "过去1个月的收益率",
+				"category": FactorCategoryCode.MOMENTUM,
+				"formula": "Ret_1M = (Price_t / Price_{t-20}) - 1",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.RET_3M,
+				"display_name": "3个月收益率",
+				"description": "过去3个月的收益率",
+				"category": FactorCategoryCode.MOMENTUM,
+				"formula": "Ret_3M = (Price_t / Price_{t-60}) - 1",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.RET_6M,
+				"display_name": "6个月收益率",
+				"description": "过去6个月的收益率",
+				"category": FactorCategoryCode.MOMENTUM,
+				"formula": "Ret_6M = (Price_t / Price_{t-120}) - 1",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.RET_12M,
+				"display_name": "12个月收益率",
+				"description": "过去12个月的收益率",
+				"category": FactorCategoryCode.MOMENTUM,
+				"formula": "Ret_12M = (Price_t / Price_{t-240}) - 1",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.VOLATILITY_1M,
+				"display_name": "1个月波动率",
+				"description": "过去1个月的收益率波动率",
+				"category": FactorCategoryCode.VOLATILITY,
+				"formula": "Std(Returns, 20 days) × √252",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.VOLATILITY_3M,
+				"display_name": "3个月波动率",
+				"description": "过去3个月的收益率波动率",
+				"category": FactorCategoryCode.VOLATILITY,
+				"formula": "Std(Returns, 60 days) × √252",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.VOLATILITY_12M,
+				"display_name": "12个月波动率",
+				"description": "过去12个月的收益率波动率",
+				"category": FactorCategoryCode.VOLATILITY,
+				"formula": "Std(Returns, 240 days) × √252",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.BETA,
+				"display_name": "Beta系数",
+				"description": "股票收益与市场收益的协方差除以市场收益的方差",
+				"category": FactorCategoryCode.VOLATILITY,
+				"formula": "β = Cov(Ret_stock, Ret_market) / Var(Ret_market)",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": "sharpe_ratio",
+				"display_name": "夏普比率",
+				"description": "(年化收益 - 无风险利率) / 年化波动率",
+				"category": FactorCategoryCode.VOLATILITY,
+				"formula": "Sharpe = (E[Ret] - Rf) / σ",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": StandardFactors.TURNOVER_RATE,
+				"display_name": "换手率",
+				"description": "成交量除以流通股本，衡量股票流动性",
+				"category": FactorCategoryCode.LIQUIDITY,
+				"formula": "Turnover Rate = Volume / Float Shares",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			},
+			{
+				"factor_name": "volume_ratio",
+				"display_name": "量比",
+				"description": "当前成交量除以过去N日平均成交量",
+				"category": FactorCategoryCode.LIQUIDITY,
+				"formula": "Volume Ratio = Volume_t / Avg(Volume_{t-N:t-1})",
+				"data_source": "行情数据",
+				"update_frequency": "日度"
+			}
+		]
 
 		# 过滤因子
 		filtered_factors = []
@@ -2666,8 +2690,8 @@ class FactorResearchService:
 			return
 
 		try:
-			event_data = {
-				"timestamp": datetime.now(),
+			event_data: Dict[str, Any] = {
+				"timestamp": datetime.now().isoformat(),
 				"user_id": user_id
 			}
 
@@ -2698,9 +2722,15 @@ class FactorResearchService:
 			if failed_count is not None:
 				event_data["failed_count"] = failed_count
 
-			event = DataResearchStartedEvent(
+			# 创建一个通用的事件，使用BaseEvent而不是DataResearchStartedEvent
+			from quant_server.core.events.base import BaseEvent
+			from quant_server.core.events.types import EventType
+
+			event = BaseEvent(
 				event_type=f"factor.research.{event_type}",
-				**event_data
+				source="research_service",
+				module="data",
+				data=event_data
 			)
 
 			await self.event_engine.put(event)

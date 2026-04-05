@@ -9,11 +9,11 @@
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional, List
 from enum import Enum
+from typing import Dict, Any, Optional, List
 
-from .base import BaseEvent, EventMetadata
-from .types import EventType, EventPriority, EventCategory
+from .base import BaseEvent
+from .types import EventPriority, EventCategory
 
 
 class SystemEventType(str, Enum):
@@ -148,6 +148,34 @@ class SystemStoppedEvent(BaseEvent):
 		return self.data.get("graceful", True)
 
 
+def _generate_sequence () -> int:
+	"""生成序列号（简单实现）"""
+	return int(datetime.now().timestamp())
+
+
+def _calculate_health (component_statuses: Dict[str, Dict[str, Any]]) -> str:
+	"""计算整体健康状态"""
+	if not component_statuses:
+		return SystemHealthStatus.UNKNOWN.value
+
+	unhealthy_count = 0
+	degraded_count = 0
+
+	for status in component_statuses.values():
+		health = status.get("health", SystemHealthStatus.UNKNOWN.value)
+		if health == SystemHealthStatus.UNHEALTHY.value:
+			unhealthy_count += 1
+		elif health == SystemHealthStatus.DEGRADED.value:
+			degraded_count += 1
+
+	if unhealthy_count > 0:
+		return SystemHealthStatus.UNHEALTHY.value
+	elif degraded_count > 0:
+		return SystemHealthStatus.DEGRADED.value
+	else:
+		return SystemHealthStatus.HEALTHY.value
+
+
 class SystemHeartbeatEvent(BaseEvent):
 	"""
 	系统心跳事件
@@ -180,35 +208,9 @@ class SystemHeartbeatEvent(BaseEvent):
 			"metrics": metrics or {},
 			"interval_seconds": interval_seconds,
 			"timestamp": datetime.now().isoformat(),
-			"sequence_number": self._generate_sequence(),
-			"health_status": self._calculate_health(component_statuses),
+			"sequence_number": _generate_sequence(),
+			"health_status": _calculate_health(component_statuses),
 		}
-
-	def _generate_sequence (self) -> int:
-		"""生成序列号（简单实现）"""
-		return int(datetime.now().timestamp())
-
-	def _calculate_health (self, component_statuses: Dict[str, Dict[str, Any]]) -> str:
-		"""计算整体健康状态"""
-		if not component_statuses:
-			return SystemHealthStatus.UNKNOWN.value
-
-		unhealthy_count = 0
-		degraded_count = 0
-
-		for status in component_statuses.values():
-			health = status.get("health", SystemHealthStatus.UNKNOWN.value)
-			if health == SystemHealthStatus.UNHEALTHY.value:
-				unhealthy_count += 1
-			elif health == SystemHealthStatus.DEGRADED.value:
-				degraded_count += 1
-
-		if unhealthy_count > 0:
-			return SystemHealthStatus.UNHEALTHY.value
-		elif degraded_count > 0:
-			return SystemHealthStatus.DEGRADED.value
-		else:
-			return SystemHealthStatus.HEALTHY.value
 
 	@property
 	def health_status (self) -> str:
@@ -299,6 +301,16 @@ class SystemAlertEvent(BaseEvent):
 		return AlertLevel(self.data.get("alert_level", AlertLevel.INFO.value))
 
 
+def _determine_change_type (old_value: Any, new_value: Any) -> str:
+	"""确定变更类型"""
+	if old_value is None and new_value is not None:
+		return "add"
+	elif old_value is not None and new_value is None:
+		return "delete"
+	else:
+		return "update"
+
+
 class SystemConfigChangedEvent(BaseEvent):
 	"""
 	系统配置变更事件
@@ -332,18 +344,9 @@ class SystemConfigChangedEvent(BaseEvent):
 			"change_reason": change_reason or "配置更新",
 			"requires_restart": requires_restart,
 			"change_time": datetime.now().isoformat(),
-			"change_type": self._determine_change_type(old_value, new_value),
+			"change_type": _determine_change_type(old_value, new_value),
 			"is_rollback": False,
 		}
-
-	def _determine_change_type (self, old_value: Any, new_value: Any) -> str:
-		"""确定变更类型"""
-		if old_value is None and new_value is not None:
-			return "add"
-		elif old_value is not None and new_value is None:
-			return "delete"
-		else:
-			return "update"
 
 	def mark_as_rollback (self) -> None:
 		"""标记为回滚"""
@@ -420,6 +423,17 @@ class ModuleStoppedEvent(BaseEvent):
 		}
 
 
+def _is_improvement (old_health: SystemHealthStatus, new_health: SystemHealthStatus) -> bool:
+	"""判断是否健康状态改善"""
+	health_order = {
+		SystemHealthStatus.UNHEALTHY: 0,
+		SystemHealthStatus.DEGRADED: 1,
+		SystemHealthStatus.HEALTHY: 2,
+		SystemHealthStatus.UNKNOWN: 3,
+	}
+	return health_order.get(new_health, 3) > health_order.get(old_health, 3)
+
+
 class ServiceHealthChangedEvent(BaseEvent):
 	"""
 	服务健康状态变更事件
@@ -456,18 +470,19 @@ class ServiceHealthChangedEvent(BaseEvent):
 			"new_health": new_health.value,
 			"health_details": health_details,
 			"change_time": datetime.now().isoformat(),
-			"is_improvement": self._is_improvement(old_health, new_health),
+			"is_improvement": _is_improvement(old_health, new_health),
 		}
 
-	def _is_improvement (self, old_health: SystemHealthStatus, new_health: SystemHealthStatus) -> bool:
-		"""判断是否健康状态改善"""
-		health_order = {
-			SystemHealthStatus.UNHEALTHY: 0,
-			SystemHealthStatus.DEGRADED: 1,
-			SystemHealthStatus.HEALTHY: 2,
-			SystemHealthStatus.UNKNOWN: 3,
-		}
-		return health_order.get(new_health, 3) > health_order.get(old_health, 3)
+
+def _generate_recommendation (resource_type: str, current_usage: float) -> str:
+	"""生成资源使用建议"""
+	recommendations = {
+		"cpu": "考虑优化算法或增加计算资源",
+		"memory": "考虑增加内存或优化内存使用",
+		"disk": "清理临时文件或增加磁盘空间",
+		"network": "检查网络带宽或优化数据传输",
+	}
+	return recommendations.get(resource_type, "请检查资源使用情况")
 
 
 class ResourceLimitWarningEvent(BaseEvent):
@@ -502,18 +517,8 @@ class ResourceLimitWarningEvent(BaseEvent):
 			"usage_details": usage_details,
 			"timestamp": datetime.now().isoformat(),
 			"is_critical": current_usage >= limit_threshold,
-			"recommendation": self._generate_recommendation(resource_type, current_usage),
+			"recommendation": _generate_recommendation(resource_type, current_usage),
 		}
-
-	def _generate_recommendation (self, resource_type: str, current_usage: float) -> str:
-		"""生成资源使用建议"""
-		recommendations = {
-			"cpu": "考虑优化算法或增加计算资源",
-			"memory": "考虑增加内存或优化内存使用",
-			"disk": "清理临时文件或增加磁盘空间",
-			"network": "检查网络带宽或优化数据传输",
-		}
-		return recommendations.get(resource_type, "请检查资源使用情况")
 
 
 # 导出所有事件类

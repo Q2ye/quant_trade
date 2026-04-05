@@ -314,7 +314,7 @@ class AccountManager:
 			await self._update_position_market_value(account_id)
 
 			# 4. 计算当日盈亏
-			daily_pnl = await self.pnl_calculator.calculate_daily_pnl(account_id, trade_date)
+			daily_pnl = await calculate_daily_pnl(account_id, trade_date)
 
 			# 5. 记录结算信息
 			await self.account_service.record_daily_settlement(

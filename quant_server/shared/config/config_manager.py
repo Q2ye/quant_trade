@@ -1,18 +1,16 @@
-# shared/config/settings.py
 """
-系统配置管理
-使用 Pydantic BaseSettings 提供类型安全、环境变量加载和验证
-Pydantic V2 兼容版本
+统一配置管理模块
+整合 YAML 配置和 Pydantic 类型安全
 """
-
-import os
 import json
 import logging
-from typing import Optional, List, Dict, Any
+import os
 from enum import Enum
-from pydantic import field_validator, Field, ValidationInfo, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from typing import Any, Dict, Optional, List
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +95,7 @@ class APISettings(BaseSettings):
 	ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 	ALGORITHM: str = "HS256"
 
-	# JWT配置（新增）
+	# JWT配置
 	JWT_ALGORITHM: str = "HS256"  # JWT算法
 	REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 刷新令牌过期天数
 	JWT_ISSUER: Optional[str] = None  # JWT发行者
@@ -192,7 +190,7 @@ class DataSourceSettings(BaseSettings):
 			env_value = os.getenv("TUSHARE_TOKEN", "")
 			if env_value:
 				return env_value
-		return v
+		return v if v is not None else ""
 
 
 class TradeSettings(BaseSettings):
@@ -323,7 +321,67 @@ class LogSettings(BaseSettings):
 	)
 
 
-class Settings(BaseSettings):
+class SystemSettings(BaseSettings):
+	"""系统配置"""
+	name: str = "量化交易平台"
+	version: str = "1.0.0"
+	enable_web_socket: bool = True
+	enable_monitoring: bool = True
+	enable_health_check: bool = True
+	shutdown_timeout: float = 30.0
+	log_level: str = "INFO"
+
+
+class ServerSettings(BaseSettings):
+	"""服务器配置"""
+	host: str = "127.0.0.1"
+	port: int = 8080
+	workers: int = 1
+
+
+class EnginesSettings(BaseSettings):
+	"""引擎配置"""
+	auto_start_main_engine: bool = True
+	auto_start_event_engine: bool = True
+	max_workers: int = 10
+	queue_size: int = 10000
+
+
+class ModulesSettings(BaseSettings):
+	"""模块配置"""
+	data: Dict[str, Any] = {
+		"enabled": True,
+		"auto_start": True,
+		"dependencies": [],
+		"config": {
+			"data_source": "tushare",
+			"sync_interval": 3600,
+			"cache_ttl": 300,
+			"load_priority": "high"
+		}
+	}
+	strategy: Dict[str, Any] = {
+		"enabled": True,
+		"auto_start": True,
+		"dependencies": ["data"],
+		"config": {
+			"max_strategies": 50,
+			"enable_ai": True,
+			"backtest_mode": "fast"
+		}
+	}
+	backtest: Dict[str, Any] = {
+		"enabled": True,
+		"auto_start": True,
+		"dependencies": ["strategy", "data"],
+		"config": {
+			"max_workers": 4,
+			"enable_optimization": True
+		}
+	}
+
+
+class ConfigSettings(BaseSettings):
 	"""主配置类"""
 
 	# 环境配置
@@ -340,6 +398,10 @@ class Settings(BaseSettings):
 	TRADE: TradeSettings = Field(default_factory=TradeSettings)
 	NOTIFICATION: NotificationSettings = Field(default_factory=NotificationSettings)
 	LOG: LogSettings = Field(default_factory=LogSettings)
+	SYSTEM: SystemSettings = Field(default_factory=SystemSettings)
+	SERVER: ServerSettings = Field(default_factory=ServerSettings)
+	ENGINES: EnginesSettings = Field(default_factory=EnginesSettings)
+	MODULES: ModulesSettings = Field(default_factory=ModulesSettings)
 
 	# 特性开关
 	FEATURE_FLAGS: Dict[str, bool] = {
@@ -357,9 +419,9 @@ class Settings(BaseSettings):
 		env_nested_delimiter="__",  # 支持嵌套环境变量，如 DATABASE__HOST
 	)
 
-	@field_validator("DEBUG", mode="after")
 	@classmethod
-	def set_debug_from_environment (cls, v: bool, info: ValidationInfo) -> bool:
+	@field_validator("DEBUG", mode="after")
+	def set_debug_from_environment (cls, v: bool, info: Any) -> bool:
 		"""根据环境设置DEBUG模式"""
 		env = info.data.get("ENVIRONMENT")
 		if env == Environment.DEVELOPMENT:
@@ -367,7 +429,7 @@ class Settings(BaseSettings):
 		return v
 
 	@model_validator(mode="after")
-	def resolve_database_config (self) -> "Settings":
+	def resolve_database_config (self) -> "ConfigSettings":
 		"""
 		根据环境变量解析数据库配置
 		开发环境: 使用 DB_DEV_* 配置
@@ -415,9 +477,9 @@ class Settings(BaseSettings):
 		"""获取特性开关状态"""
 		return self.FEATURE_FLAGS.get(feature_name, False)
 
-	def update_feature (self, feature_name: str, enabled2: bool) -> None:
+	def update_feature (self, feature_name: str, is_enabled: bool) -> None:
 		"""更新特性开关状态"""
-		self.FEATURE_FLAGS[feature_name] = enabled2
+		self.FEATURE_FLAGS[feature_name] = is_enabled
 
 	def get_all_settings (self) -> Dict[str, Any]:
 		"""获取所有配置（排除敏感信息）"""
@@ -443,30 +505,198 @@ class Settings(BaseSettings):
 		return filter_sensitive(settings_dict)
 
 
-@lru_cache(maxsize=1)
-def get_settings () -> Settings:
+class ConfigManager:
 	"""
-	获取配置实例（缓存单例）
+	统一配置管理器
+	
+	负责加载和管理系统配置，支持从环境变量和配置文件获取配置。
+	配置优先级：环境变量 > 配置文件 > 默认值
+	"""
+
+	def __init__ (self):
+		"""初始化配置管理器"""
+		self._env = os.getenv("ENVIRONMENT", "development").lower()
+		self._settings = self._load_settings()
+
+	@staticmethod
+	def _load_settings () -> ConfigSettings:
+		"""
+		加载配置
+		
+		Returns:
+			ConfigSettings: 配置对象
+		"""
+		return ConfigSettings()
+
+	def get (self, key: str, default: Any = None) -> Any:
+		"""
+		安全获取配置值
+		
+		Args:
+			key: 配置键名，支持点号分隔的嵌套路径
+			default: 默认值
+			
+		Returns:
+			配置值或默认值
+		"""
+		# 优先从环境变量获取
+		env_key = key.replace(".", "_").upper()
+		if env_key in os.environ:
+			return os.environ[env_key]
+
+		# 从配置对象获取
+		keys = key.split(".")
+		value = self._settings
+
+		try:
+			for k in keys:
+				value = getattr(value, k)
+			return value
+		except (AttributeError, KeyError):
+			return default
+
+	def __getitem__ (self, key: str) -> Any:
+		"""字典式访问"""
+		return self.get(key)
+
+	@property
+	def settings (self) -> ConfigSettings:
+		"""获取配置实例"""
+		return self._settings
+
+	@property
+	def env (self) -> str:
+		"""获取当前环境"""
+		return self._env
+
+	def get_config (self, config_type: str = "all") -> Dict[str, Any]:
+		"""
+		获取指定类型的配置
+		
+		Args:
+			config_type: 配置类型，可选值：all, system, server, database, api, trade
+			
+		Returns:
+			配置字典
+		"""
+		settings_dict = self._settings.model_dump()
+
+		if config_type == "system":
+			return {
+				"system_name": settings_dict.get("APP_NAME"),
+				"version": settings_dict.get("APP_VERSION"),
+				"environment": settings_dict.get("ENVIRONMENT", {}).get("value"),
+				"host": settings_dict.get("API", {}).get("HOST"),
+				"port": settings_dict.get("API", {}).get("PORT"),
+				"debug": settings_dict.get("DEBUG")
+			}
+		elif config_type == "server":
+			return {
+				'name': self.get('APP_NAME'),
+				'version': self.get('APP_VERSION'),
+				'env': self.get('ENVIRONMENT.value'),
+				'server': {
+					'host': self.get('API.HOST'),
+					'port': self.get('API.PORT'),
+					'workers': self.get('SERVER.workers')
+				},
+				'engines': {
+					'auto_start_main_engine': self.get('ENGINES.auto_start_main_engine'),
+					'auto_start_event_engine': self.get('ENGINES.auto_start_event_engine'),
+					'max_workers': self.get('ENGINES.max_workers'),
+					'queue_size': self.get('ENGINES.queue_size')
+				},
+				'features': {
+					'enable_web_socket': self.get('SYSTEM.enable_web_socket'),
+					'enable_monitoring': self.get('SYSTEM.enable_monitoring'),
+					'enable_health_check': self.get('SYSTEM.enable_health_check'),
+					'shutdown_timeout': self.get('SYSTEM.shutdown_timeout')
+				},
+				'log': {
+					'level': self.get('LOG.LEVEL')
+				},
+				'modules': {
+					'data': self.get('MODULES.data'),
+					'strategy': self.get('MODULES.strategy'),
+					'backtest': self.get('MODULES.backtest')
+				}
+			}
+		elif config_type == "database":
+			return self.get_database_config()
+		elif config_type == "api":
+			return self.get_api_config()
+		elif config_type == "trade":
+			return self.get_trade_config()
+		else:
+			return settings_dict
+
+	def get_database_config (self) -> Dict[str, Any]:
+		"""
+		获取数据库配置
+		
+		Returns:
+			数据库配置字典
+		"""
+		return {
+			"type": self.get("DATABASE.TYPE"),
+			"host": self.get("DATABASE.HOST"),
+			"port": self.get("DATABASE.PORT"),
+			"user": self.get("DATABASE.USER"),
+			"password": self.get("DATABASE.PASSWORD"),
+			"name": self.get("DATABASE.NAME")
+		}
+
+	def get_api_config (self) -> Dict[str, Any]:
+		"""
+		获取 API 配置
+		
+		Returns:
+			API 配置字典
+		"""
+		return {
+			"host": self.get("API.HOST"),
+			"port": self.get("API.PORT"),
+			"debug": self.get("API.DEBUG")
+		}
+
+	def get_trade_config (self) -> Dict[str, Any]:
+		"""
+		获取交易配置
+		
+		Returns:
+			交易配置字典
+		"""
+		return {
+			"simulated": self.get("TRADE.SIMULATED_TRADING"),
+			"initial_capital": self.get("TRADE.SIM_INITIAL_CAPITAL"),
+			"max_position_ratio": self.get("TRADE.MAX_POSITION_RATIO")
+		}
+
+
+@lru_cache(maxsize=1)
+def get_config () -> ConfigManager:
+	"""
+	获取配置管理器实例（缓存单例）
 
 	Returns:
-		配置实例
+		配置管理器实例
 	"""
-	return Settings()
+	return ConfigManager()
 
 
 # 全局配置实例
-settings = get_settings()
+config = get_config()
 
 
 # 配置初始化函数
-def init_config () -> Settings:
+def init_config () -> ConfigManager:
 	"""
 	初始化配置并返回实例
 
 	Returns:
-		配置实例
+		配置管理器实例
 	"""
-	return get_settings()
+	return get_config()
 
 
 # 配置验证函数
@@ -479,13 +709,13 @@ def validate_config () -> bool:
 	"""
 	try:
 		# 尝试创建配置实例
-		config2 = get_settings()
+		config_instance = get_config()
 
 		# 验证必要配置
-		if config2.DATA_SOURCE.TUSHARE_ENABLED and not config2.DATA_SOURCE.TUSHARE_TOKEN:
+		if config_instance.settings.DATA_SOURCE.TUSHARE_ENABLED and not config_instance.settings.DATA_SOURCE.TUSHARE_TOKEN:
 			print("警告: Tushare已启用但未配置TOKEN")
 
-		if not config2.DATABASE.HOST or not config2.DATABASE.NAME:
+		if not config_instance.settings.DATABASE.HOST or not config_instance.settings.DATABASE.NAME:
 			print("错误: 数据库配置不完整")
 			return False
 
@@ -517,24 +747,24 @@ def detect_environment () -> str:
 
 
 # 配置重载函数（用于动态更新配置）
-def reload_settings () -> Settings:
+def reload_config () -> ConfigManager:
 	"""
 	重新加载配置（清除缓存并重新读取）
 
 	Returns:
-		重新加载的配置实例
+		重新加载的配置管理器实例
 	"""
-	get_settings.cache_clear()
-	return get_settings()
+	get_config.cache_clear()
+	return get_config()
 
 
 # 配置异常处理装饰器
-def with_fallback_settings (fallback_settings: Optional[Dict[str, Any]] = None):
+def with_fallback_config (fallback_config: Optional[Dict[str, Any]] = None):
 	"""
 	装饰器：为配置加载提供回退机制
 
 	Args:
-		fallback_settings: 回退配置字典
+		fallback_config: 回退配置字典
 	"""
 
 	def decorator (func):
@@ -543,7 +773,7 @@ def with_fallback_settings (fallback_settings: Optional[Dict[str, Any]] = None):
 				return func(*args, **kwargs)
 			except Exception as e:
 				print(f"配置加载失败，使用回退配置: {e}")
-				if fallback_settings:
+				if fallback_config:
 					# 创建回退配置实例
 					class FallbackSettings(BaseSettings):
 						ENVIRONMENT: Environment = Environment.DEVELOPMENT
@@ -557,7 +787,7 @@ def with_fallback_settings (fallback_settings: Optional[Dict[str, Any]] = None):
 						)
 
 					fallback = FallbackSettings()
-					for key, value in fallback_settings.items():
+					for key, value in fallback_config.items():
 						if hasattr(fallback, key):
 							setattr(fallback, key, value)
 					return fallback
@@ -568,12 +798,12 @@ def with_fallback_settings (fallback_settings: Optional[Dict[str, Any]] = None):
 	return decorator
 
 
-@with_fallback_settings({"APP_NAME": "量化交易平台（回退模式）"})
-def load_settings_with_fallback () -> Settings:
+@with_fallback_config({"APP_NAME": "量化交易平台（回退模式）"})
+def load_config_with_fallback () -> ConfigManager:
 	"""
 	加载配置，使用回退机制
 	"""
-	return Settings()
+	return get_config()
 
 
 if __name__ == "__main__":
@@ -583,46 +813,46 @@ if __name__ == "__main__":
 	print("=" * 80)
 
 	# 加载配置
-	config = get_settings()
+	config = get_config()
 
 	# 打印配置信息（过滤敏感信息）
-	all_settings = config.get_all_settings()
+	all_settings = config.settings.get_all_settings()
 
-	print(f"应用名称: {config.APP_NAME}")
-	print(f"环境: {config.ENVIRONMENT}")
-	print(f"版本: {config.APP_VERSION}")
-	print(f"调试模式: {config.DEBUG}")
+	print(f"应用名称: {config.settings.APP_NAME}")
+	print(f"环境: {config.settings.ENVIRONMENT}")
+	print(f"版本: {config.settings.APP_VERSION}")
+	print(f"调试模式: {config.settings.DEBUG}")
 
 	print("\n数据库配置:")
-	print(f"  类型: {config.DATABASE.TYPE}")
-	print(f"  主机: {config.DATABASE.HOST}")
-	print(f"  端口: {config.DATABASE.PORT}")
-	print(f"  数据库: {config.DATABASE.NAME}")
-	print(f"  用户: {config.DATABASE.USER}")
+	print(f"  类型: {config.settings.DATABASE.TYPE}")
+	print(f"  主机: {config.settings.DATABASE.HOST}")
+	print(f"  端口: {config.settings.DATABASE.PORT}")
+	print(f"  数据库: {config.settings.DATABASE.NAME}")
+	print(f"  用户: {config.settings.DATABASE.USER}")
 	print(f"  密码: ***REDACTED***")
 
 	print("\nAPI配置:")
-	print(f"  主机: {config.API.HOST}")
-	print(f"  端口: {config.API.PORT}")
-	print(f"  调试: {config.API.DEBUG}")
+	print(f"  主机: {config.settings.API.HOST}")
+	print(f"  端口: {config.settings.API.PORT}")
+	print(f"  调试: {config.settings.API.DEBUG}")
 
 	print("\n数据源配置:")
-	print(f"  Tushare启用: {config.DATA_SOURCE.TUSHARE_ENABLED}")
+	print(f"  Tushare启用: {config.settings.DATA_SOURCE.TUSHARE_ENABLED}")
 	print(f"  Tushare Token: ***REDACTED***")
-	print(f"  测试环境: {config.DATA_SOURCE.TEST_ENV}")
+	print(f"  测试环境: {config.settings.DATA_SOURCE.TEST_ENV}")
 
 	print("\n交易配置:")
-	print(f"  模拟交易: {config.TRADE.SIMULATED_TRADING}")
-	print(f"  初始资金: {config.TRADE.SIM_INITIAL_CAPITAL}")
-	print(f"  最大仓位比例: {config.TRADE.MAX_POSITION_RATIO}")
-	print(f"  止损百分比: {config.TRADE.STOP_LOSS_PERCENT}")
+	print(f"  模拟交易: {config.settings.TRADE.SIMULATED_TRADING}")
+	print(f"  初始资金: {config.settings.TRADE.SIM_INITIAL_CAPITAL}")
+	print(f"  最大仓位比例: {config.settings.TRADE.MAX_POSITION_RATIO}")
+	print(f"  止损百分比: {config.settings.TRADE.STOP_LOSS_PERCENT}")
 
 	print("\n通知配置:")
-	print(f"  邮件启用: {config.NOTIFICATION.EMAIL_ENABLED}")
-	print(f"  邮件接收者: {config.NOTIFICATION.EMAIL_RECEIVERS}")
+	print(f"  邮件启用: {config.settings.NOTIFICATION.EMAIL_ENABLED}")
+	print(f"  邮件接收者: {config.settings.NOTIFICATION.EMAIL_RECEIVERS}")
 
 	print("\n特性开关:")
-	for feature, enabled in config.FEATURE_FLAGS.items():
+	for feature, enabled in config.settings.FEATURE_FLAGS.items():
 		print(f"  {feature}: {enabled}")
 
 	# 验证配置

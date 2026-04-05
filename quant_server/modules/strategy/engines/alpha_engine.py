@@ -61,7 +61,7 @@ class AlphaEngine(EngineBase):
 
     async def load_strategy(
         self,
-        strategy_id: int,
+        strategy_id: str,
         strategy: BaseStrategy,
         context: StrategyContext,
         stock_pool: Optional[List[str]] = None,
@@ -86,7 +86,7 @@ class AlphaEngine(EngineBase):
 
         logger.info(f"Alpha策略加载成功: {strategy_id}, 股票池: {len(stock_pool)} 只")
 
-    async def unload_strategy(self, strategy_id: int) -> None:
+    async def unload_strategy(self, strategy_id: str) -> None:
         """卸载策略"""
         if strategy_id in self._strategies:
             strategy = self._strategies[strategy_id]
@@ -119,7 +119,7 @@ class AlphaEngine(EngineBase):
 
     async def process_bar(
         self,
-        strategy_id: int,
+        strategy_id: str,
         bar_data: Any,
     ) -> List[TradingSignal]:
         """
@@ -152,7 +152,7 @@ class AlphaEngine(EngineBase):
 
     async def run_factor_analysis(
         self,
-        strategy_id: int,
+        strategy_id: str,
         date: datetime,
     ) -> Dict[str, Any]:
         """
@@ -198,7 +198,7 @@ class AlphaEngine(EngineBase):
 
     async def rebalance(
         self,
-        strategy_id: int,
+        strategy_id: str,
         target_weights: Dict[str, float],
     ) -> List[TradingSignal]:
         """
@@ -279,7 +279,7 @@ class AlphaEngine(EngineBase):
 
     async def _calculate_factors(
         self,
-        strategy_id: int,
+        strategy_id: str,
         stock_pool: List[str],
         date: datetime,
     ) -> Dict[str, Any]:
@@ -304,7 +304,7 @@ class AlphaEngine(EngineBase):
 
     async def _generate_signals(
         self,
-        strategy_id: int,
+        strategy_id: str,
         factor_values: Dict[str, Any],
     ) -> List[TradingSignal]:
         """
@@ -322,7 +322,7 @@ class AlphaEngine(EngineBase):
 
     async def _process_signals(
         self,
-        strategy_id: int,
+        strategy_id: str,
         signals: List[TradingSignal],
     ) -> None:
         """处理信号"""
@@ -347,10 +347,10 @@ class AlphaEngine(EngineBase):
             except Exception as e:
                 logger.error(f"处理信号失败: {e}")
 
-    def get_factor_cache(self, strategy_id: int) -> Dict[str, Any]:
+    def get_factor_cache(self, strategy_id: str) -> Dict[str, Any]:
         """获取因子缓存"""
         return self._factor_cache.get(strategy_id, {})
 
-    def get_stock_pool(self, strategy_id: int) -> List[str]:
+    def get_stock_pool(self, strategy_id: str) -> List[str]:
         """获取股票池"""
         return self._stock_pools.get(strategy_id, [])
