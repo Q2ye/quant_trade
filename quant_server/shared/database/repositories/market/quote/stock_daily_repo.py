@@ -5,17 +5,15 @@
 职责：管理股票日线行情数据访问，继承HyperRepositoryBase实现时序数据优化操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between, case
-from sqlalchemy.orm import selectinload
+from datetime import date, timedelta
+from typing import List, Optional, Dict, Any
 
+from sqlalchemy import select, and_, desc, func, text, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.data_models import StockDaily, StockBasic
 from quant_server.shared.database.repositories import RepositoryError
 from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
-from quant_server.shared.database.models.data_models import StockDaily, StockBasic
-from quant_server.shared.database.repositories.types import TimeRange
 
 
 class StockDailyRepository(HyperRepositoryBase[StockDaily]):

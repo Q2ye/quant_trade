@@ -10,20 +10,20 @@ Version: 1.0.0
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quant_server.api.dependencies.database import get_db_session
+from quant_server.core.exceptions.security_exceptions import (
+	TokenExpiredError,
+	InvalidTokenError
+)
 from quant_server.shared.database.repositories.system.auth import user_repo
 from quant_server.shared.security.jwt_handler import JWTManager
-from quant_server.core.exceptions.security_exceptions import (
-    TokenExpiredError,
-    InvalidTokenError
-)
-from quant_server.api.dependencies.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,9 @@ security_scheme = HTTPBearer(
 	description="请提供有效的JWT令牌，格式: Bearer <token>",
 	auto_error=False  # 设置为False以便手动处理错误
 )
+
+
+
 
 
 class AuthDependencies:
@@ -78,7 +81,7 @@ class AuthDependencies:
 			payload = self.jwt_manager.verify_token(token, token_type="access")
 
 			# 检查令牌是否过期（verify_token已经处理了过期验证，这里做双重保险）
-			if datetime.fromtimestamp(payload["exp"]) < datetime.utcnow():
+			if datetime.fromtimestamp(payload["exp"], tz=timezone.utc) < datetime.now(timezone.utc):
 				logger.warning("令牌已过期")
 				raise HTTPException(
 					status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,19 +96,13 @@ class AuthDependencies:
 					detail="无效的令牌",
 				)
 
-			# 将用户ID转换为整数类型
-			try:
-				user_id_int = int(user_id)
-			except (ValueError, TypeError):
-				logger.warning(f"用户ID格式无效: {user_id}")
-				raise HTTPException(
-					status_code=status.HTTP_401_UNAUTHORIZED,
-					detail="无效的令牌",
-				)
+			# 确保用户ID是字符串类型
+			user_id = str(user_id)
+			logger.debug(f"获取用户ID: {user_id}, 类型: {type(user_id)}")
 
 			# 从数据库获取用户信息
 			user_repository = user_repo.UserRepository(db_session)
-			user = await user_repository.get_user(user_id_int)
+			user = await user_repository.get_user(user_id)
 
 			if not user:
 				logger.warning(f"用户不存在: {user_id}")
@@ -123,7 +120,7 @@ class AuthDependencies:
 				)
 
 			# 更新最后登录时间
-			await user_repository.update_last_login(user_id_int)
+			await user_repository.update_last_login(user_id)
 
 			# 获取用户权限信息
 			user_permissions = await user_repository.get_user_permissions(user.id)
@@ -140,8 +137,8 @@ class AuthDependencies:
 			# admin和super_admin角色拥有所有权限
 			# data模块的任何权限（data_management、data:sync、data:write等）也都允许
 			can_sync_data = (
-				user.role in ("admin", "super_admin", "superadmin") or
-				any("data" in perm.lower() for perm in permission_codes)
+					user.role in ("admin", "super_admin", "superadmin") or
+					any("data" in perm.lower() for perm in permission_codes)
 			)
 
 			# 返回用户信息
@@ -168,6 +165,7 @@ class AuthDependencies:
 				status_code=status.HTTP_401_UNAUTHORIZED,
 				detail="无效的令牌",
 			)
+
 		except HTTPException:
 			raise
 		except Exception as e:
@@ -176,6 +174,33 @@ class AuthDependencies:
 				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 				detail="服务器内部错误",
 			)
+
+	async def optional_auth (
+			self,
+			credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+			db_session: AsyncSession = Depends(get_db_session)
+	) -> Optional[Dict[str, Any]]:
+		"""
+		可选认证依赖
+
+		当令牌存在时返回用户信息，不存在时返回None
+		适用于公开和私有混合的API端点
+
+		Args:
+			credentials: HTTP授权凭证
+			db_session: 数据库会话
+
+		Returns:
+			Optional[Dict[str, Any]]: 用户信息或None
+		"""
+		if not credentials:
+			return None
+
+		try:
+			return await self.get_current_user(credentials, db_session)
+		except HTTPException:
+			# 认证失败时返回None，而不是抛出异常
+			return None
 
 	async def require_permission (
 			self,
@@ -243,35 +268,8 @@ class AuthDependencies:
 		logger.debug(f"超级用户权限检查通过: {current_user['username']}")
 		return current_user
 
-	async def optional_auth (
-			self,
-			credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
-			db_session: AsyncSession = Depends(get_db_session)
-	) -> Optional[Dict[str, Any]]:
-		"""
-		可选认证依赖
 
-		当令牌存在时返回用户信息，不存在时返回None
-		适用于公开和私有混合的API端点
-
-		Args:
-			credentials: HTTP授权凭证
-			db_session: 数据库会话
-
-		Returns:
-			Optional[Dict[str, Any]]: 用户信息或None
-		"""
-		if not credentials:
-			return None
-
-		try:
-			return await self.get_current_user(credentials, db_session)
-		except HTTPException:
-			# 认证失败时返回None，而不是抛出异常
-			return None
-
-
-# 创建全局依赖实例
+	# 创建全局依赖实例
 _auth_deps = AuthDependencies()
 
 # 导出依赖函数（FastAPI可以直接使用这些函数）
@@ -282,6 +280,12 @@ optional_auth = _auth_deps.optional_auth
 
 # 导出类型注解（供其他模块使用）
 CurrentUser = Depends(get_current_user)
-PermissionRequired = lambda *perms: Depends(require_permission(list(perms)))
+
+# 修复PermissionRequired的定义
+def PermissionRequired(*perms):
+	async def _require_permission():
+		return await _auth_deps.require_permission(list(perms))
+	return Depends(_require_permission)
+
 SuperuserRequired = Depends(require_superuser)
 OptionalAuth = Depends(optional_auth)

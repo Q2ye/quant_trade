@@ -172,7 +172,7 @@ class MainEngine(EngineBase):
                 {
                     "system_name": self._system_config.system_name if self._system_config else "unknown",
                     "version": self._system_config.version if self._system_config else "unknown",
-                    "mode": self._system_config.mode.value if self._system_config else "unknown",
+                    "mode": self._system_config.mode if self._system_config else "unknown",
                     "startup_time": self._startup_timestamp.isoformat()
                 }
             )
@@ -180,7 +180,7 @@ class MainEngine(EngineBase):
             logger.info(
                 f"主引擎启动完成，系统: {self._system_config.system_name if self._system_config else 'unknown'}, "
                 f"版本: {self._system_config.version if self._system_config else 'unknown'}, "
-                f"模式: {self._system_config.mode.value if self._system_config else 'unknown'}"
+                f"模式: {self._system_config.mode if self._system_config else 'unknown'}"
             )
 
         except Exception as e:
@@ -408,7 +408,8 @@ class MainEngine(EngineBase):
     async def _start_registered_engines(self) -> None:
         """启动已注册的引擎（根据配置决定是否启动）"""
         # 跳过事件引擎（已经启动）
-        if EngineType.EVENT in self._engine_factory._engine_descriptors:
+        registered_types = self._engine_factory.list_engine_types()
+        if EngineType.EVENT in registered_types:
             logger.debug("事件引擎已注册")
 
         # 获取所有已注册的引擎类型
@@ -645,7 +646,7 @@ class MainEngine(EngineBase):
 
             # 更新系统状态
             self._system_status.update({
-                "mode": self._system_config.mode.value if self._system_config else "unknown",
+                "mode": self._system_config.mode if self._system_config else "unknown",
                 "uptime": uptime,
                 "engine_count": total_engines,
                 "module_count": len(self._module_engines),
@@ -741,7 +742,7 @@ class MainEngine(EngineBase):
             "events": {
                 "name": self._system_config.system_name if self._system_config else "unknown",
                 "version": self._system_config.version if self._system_config else "unknown",
-                "mode": self._system_config.mode.value if self._system_config else "unknown",
+                "mode": self._system_config.mode if self._system_config else "unknown",
                 "startup_time": self._startup_timestamp.isoformat() if self._startup_timestamp else None,
                 "status": self._system_status
             },
@@ -897,7 +898,7 @@ class MainEngine(EngineBase):
         base_info.update({
             "system_name": self._system_config.system_name if self._system_config else "unknown",
             "system_version": self._system_config.version if self._system_config else "unknown",
-            "system_mode": self._system_config.mode.value if self._system_config else "unknown",
+            "system_mode": self._system_config.mode if self._system_config else "unknown",
             "module_count": len(self._module_engines),
             "startup_time": self._startup_timestamp.isoformat() if self._startup_timestamp else None,
             "web_socket_enabled": self._system_config.enable_web_socket if self._system_config else False,

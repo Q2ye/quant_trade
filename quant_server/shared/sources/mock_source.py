@@ -140,6 +140,10 @@ class MockSource(BaseDataSource):
             else:
                 end = date.today()
 
+        # 确保开始日期小于结束日期
+        if start > end:
+            start, end = end, start
+
         trading_dates = self._get_trading_dates((end - start).days + 1)
 
         # 确定要获取的股票代码

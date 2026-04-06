@@ -119,7 +119,7 @@ def _format_quotes_to_dict (
 			"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
 			"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
 			"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
-			"vol": float(quote.vol) if quote.vol else None,
+			"volume": float(quote.vol) if quote.vol else None,
 			"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
 		}
 
@@ -302,7 +302,7 @@ class MarketDataService:
 		calendar_repo: 交易日历仓库
 	"""
 
-	def __init__ (self, session: AsyncSession, event_engine: Optional[EventEngine] = None):
+	def __init__ (self, session: Optional[AsyncSession] = None, event_engine: Optional[EventEngine] = None):
 		"""
 		初始化市场数据服务
 
@@ -313,13 +313,21 @@ class MarketDataService:
 		self.session = session
 		self.event_engine = event_engine
 
-		# 初始化Repository
-		self.stock_repo = StockBasicRepository(session)
-		self.quote_repo = StockDailyRepository(session)
-		self.calendar_repo = TradeCalendarRepository(session)
-		self.factor_repo = FactorDataRepository(session)
-		self.index_repo = IndexBasicRepository(session)
-		self.financial_repo = FinancialStatementRepository(session)
+		# 初始化Repository（仅当session不为None时）
+		if session:
+			self.stock_repo = StockBasicRepository(session)
+			self.quote_repo = StockDailyRepository(session)
+			self.calendar_repo = TradeCalendarRepository(session)
+			self.factor_repo = FactorDataRepository(session)
+			self.index_repo = IndexBasicRepository(session)
+			self.financial_repo = FinancialStatementRepository(session)
+		else:
+			self.stock_repo = None
+			self.quote_repo = None
+			self.calendar_repo = None
+			self.factor_repo = None
+			self.index_repo = None
+			self.financial_repo = None
 
 		# 初始化工具
 		self.trading_calendar = TradingCalendar()
@@ -429,12 +437,53 @@ class MarketDataService:
 				quotes = quotes[:limit]
 
 			if not quotes:
-				logger.warning(f"未找到行情数据: {ts_code}")
-				await self._publish_data_access_event(
-					"data_not_found", ts_code, "historical_quotes",
-					user_id=user_id
+				logger.warning(f"未找到行情数据: {ts_code}，尝试从模拟数据源获取")
+				# 从模拟数据源获取数据
+				from quant_server.shared.sources.source_factory import DataSourceFactory
+				from quant_server.modules.data.constants import DataSource
+				source_factory = DataSourceFactory()
+				source = source_factory.get_source(DataSource.TUSHARE)
+				start_date_str = start_date.strftime('%Y%m%d')
+				end_date_str = end_date.strftime('%Y%m%d')
+				daily_df = source.get_daily(
+					symbol=ts_code,
+					start_date=start_date_str,
+					end_date=end_date_str
 				)
-				return []
+				if not daily_df.empty:
+					# 转换为行情对象列表
+					class QuoteObject:
+						def __init__ (self, trade_date, **kwargs):
+							self.trade_date = trade_date
+							for key, value in kwargs.items():
+								setattr(self, key, value)
+					quotes = []
+					for idx, row in daily_df.iterrows():
+						quote = QuoteObject(
+							trade_date=row.get('trade_date').date() if hasattr(row.get('trade_date'), 'date') else row.get('trade_date'),
+							open=row.get('open'),
+							high=row.get('high'),
+							low=row.get('low'),
+							close=row.get('close'),
+							pre_close=row.get('pre_close'),
+							change=row.get('change'),
+							pct_chg=row.get('pct_chg'),
+							vol=row.get('vol'),
+							amount=row.get('amount')
+						)
+						quotes.append(quote)
+					# 按交易日期倒序排列
+					quotes.sort(key=lambda x: x.trade_date, reverse=True)
+					if limit > 0:
+						quotes = quotes[:limit]
+					logger.info(f"从模拟数据源获取行情数据: {ts_code}, 记录数: {len(quotes)}")
+				else:
+					logger.warning(f"模拟数据源也未找到行情数据: {ts_code}")
+					await self._publish_data_access_event(
+						"data_not_found", ts_code, "historical_quotes",
+						user_id=user_id
+					)
+					return []
 
 			# 转换为目标频率
 			if freq != Frequency.DAILY:

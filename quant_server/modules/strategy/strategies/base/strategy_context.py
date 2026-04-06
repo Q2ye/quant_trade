@@ -24,7 +24,7 @@ class StrategyContext:
 	# 策略标识
 	strategy_id: str
 	strategy_name: str
-	user_id: int
+	user_id: str
 
 	# 运行参数
 	run_mode: RunMode = RunMode.SIMULATION
@@ -156,6 +156,24 @@ class StrategyContext:
 		if self.get_real_time_price_func:
 			return self.get_real_time_price_func(ts_code)
 		return None
+
+	def get_price_history (self, ts_code: str, period: int) -> List[float]:
+		"""
+		获取历史价格数据
+
+		Args:
+			ts_code: 股票代码
+			period: 周期
+
+		Returns:
+			价格列表
+		"""
+		# 从缓存中获取数据
+		cache_key = f"{ts_code}_price_history"
+		data = self.get_cached_data(cache_key)
+		if data is not None:
+			return data['close'].tail(period).tolist()
+		return []
 
 	# ==================== 订单操作方法 ====================
 

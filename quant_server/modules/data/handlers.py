@@ -758,30 +758,44 @@ async def get_stock_detail (
 		}
 
 		# 4. 构建响应数据
-		response_data = {
-			"success": True,
-			"basic_info": basic_info,
-			"message": f"成功获取股票 '{ts_code}' 的详细信息"
-		}
-
-		# 5. 添加行情信息（如果有）
+		from quant_server.modules.data.schemas import StockBasicInfo, QuoteData
+		
+		# 转换为StockBasicInfo对象
+		basic_info_obj = StockBasicInfo(
+			ts_code=basic_info["ts_code"],
+			symbol=basic_info["symbol"],
+			name=basic_info["name"],
+			area=basic_info["area"],
+			industry=basic_info["industry"],
+			market=basic_info["market"],
+			list_date=basic_info["list_date"],
+			is_hs=basic_info["is_hs"]
+		)
+		
+		quotes = None
 		if latest_quote and request.include_quote:
-			quote_data = {
-				"trade_date": latest_quote.trade_date.isoformat() if latest_quote.trade_date else None,
-				"open": float(latest_quote.open) if latest_quote.open else None,
-				"high": float(latest_quote.high) if latest_quote.high else None,
-				"low": float(latest_quote.low) if latest_quote.low else None,
-				"close": float(latest_quote.close) if latest_quote.close else None,
-				"pre_close": float(latest_quote.pre_close) if latest_quote.pre_close else None,
-				"change": float(latest_quote.change) if latest_quote.change else None,
-				"pct_chg": float(latest_quote.pct_chg) if latest_quote.pct_chg else None,
-				"vol": float(latest_quote.vol) if latest_quote.vol else None,
-				"amount": float(latest_quote.amount) if latest_quote.amount else None
-			}
-			response_data["quotes"] = [quote_data]
+			quote_data = QuoteData(
+				trade_date=latest_quote.trade_date,
+				open=float(latest_quote.open) if latest_quote.open else None,
+				high=float(latest_quote.high) if latest_quote.high else None,
+				low=float(latest_quote.low) if latest_quote.low else None,
+				close=float(latest_quote.close) if latest_quote.close else None,
+				pre_close=float(latest_quote.pre_close) if latest_quote.pre_close else None,
+				change=float(latest_quote.change) if latest_quote.change else None,
+				pct_chg=float(latest_quote.pct_chg) if latest_quote.pct_chg else None,
+				vol=float(latest_quote.vol) if latest_quote.vol else None,
+				amount=float(latest_quote.amount) if latest_quote.amount else None
+			)
+			quotes = [quote_data]
 
+		# 5. 创建并返回响应对象
 		logger.info(f"成功返回股票 '{ts_code}' 的详细信息")
-		return StockDetailResponse(**response_data)
+		return StockDetailResponse(
+			success=True,
+			basic_info=basic_info_obj,
+			quotes=quotes,
+			message=f"成功获取股票 '{ts_code}' 的详细信息"
+		)
 
 	except ResourceNotFoundException as rnf:
 		logger.warning(f"股票资源未找到: {str(rnf)}")
@@ -1364,12 +1378,11 @@ async def get_data_quality (
 		# 使用数据质量服务 - 修复：创建服务实例
 		quality_service = DataQualityService(session)
 
-		# 获取数据质量报告 - 修复：使用正确的方法名
+		# 获取数据质量报告 - 修复：使用正确的方法参数
 		quality_report = await quality_service.check_data_quality(
 			data_type=request.data_type,
 			start_date=request.start_date,
-			end_date=request.end_date,
-			check_types=[request.check_type] if request.check_type else None
+			end_date=request.end_date
 		)
 
 		# 计算质量评分和等级

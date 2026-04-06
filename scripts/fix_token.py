@@ -12,27 +12,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from quant_server.shared.security.jwt_handler import JWTManager
 
 def generate_permanent_token():
-    """生成一个永久有效的开发令牌（100年有效期）"""
+    """生成一个永久有效开发令牌（100年有效期）"""
 
     jwt_manager = JWTManager()
 
     # 超管用户数据（从docs/sql/add_super_admin_user.sql获取）
     user_data = {
-        "sub": "1",  # 用户ID
+        "sub": "user_1",  # 用户ID
         "username": "superadmin",  # 用户名
         "email": "superadmin@quant.com",  # 邮箱
-        "full_name": "超级管理员",  # 全名
+        "full_name": "系统超级管理员",  # 全名（与SQL保持一致）
         "phone": "13888888888",  # 手机号
         "is_active": True,  # 激活状态
         "is_superuser": True,  # 超级用户
         "is_admin": True,  # 管理员
         "role": "admin",  # 角色
-        "roles": ["admin", "superadmin"],  # 角色列表
+        "roles": ["admin", "super_admin"],  # 角色列表（与SQL中的角色代码保持一致）
         "permissions": {
             "strategy": {"can_read": True, "can_write": True, "can_execute": True},
             "basket": {"can_read": True, "can_write": True, "can_execute": True},
             "trading": {"can_read": True, "can_write": True, "can_execute": True},
-            "market": {"can_read": True, "can_write": True, "can_execute": True}
+            "market": {"can_read": True, "can_write": True, "can_execute": True},
+            "account": {"can_read": True, "can_write": True, "can_execute": True},
+            "analysis": {"can_read": True, "can_write": True, "can_execute": True},
+            "backtest": {"can_read": True, "can_write": True, "can_execute": True},
+            "system": {"can_read": True, "can_write": True, "can_execute": True},
+            "user_management": {"can_read": True, "can_write": True, "can_execute": True},
+            "data_management": {"can_read": True, "can_write": True, "can_execute": True},
+            "monitor": {"can_read": True, "can_write": True, "can_execute": True}
         },
         "can_sync_data": True,
         "can_access_factor": True,

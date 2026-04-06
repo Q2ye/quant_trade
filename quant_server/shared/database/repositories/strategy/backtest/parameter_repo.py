@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 
 from quant_server.shared.database.models.business_models import BacktestParameter
-from quant_server.shared.database.repositories.base import BaseRepository
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository
 
 
 class BacktestParameterRepository(BaseRepository[BacktestParameter]):
@@ -74,7 +74,7 @@ class BacktestParameterRepository(BaseRepository[BacktestParameter]):
 	                            value: Any, description: Optional[str] = None) -> bool:
 		"""更新参数配置"""
 		# 先检查是否存在
-		existing = await self.get_by_filters(
+		existing = await self.get_by(
 			task_id=task_id,
 			param_category=category,
 			param_name=name
@@ -86,17 +86,14 @@ class BacktestParameterRepository(BaseRepository[BacktestParameter]):
 			if description:
 				update_data["description"] = description
 
-			stmt = (
-				update(self.model)
-				.where(
-					and_(
-						self.model.task_id == task_id,
-						self.model.param_category == category,
-						self.model.param_name == name
-					)
+			stmt = update(self.model).where(
+				and_(
+					self.model.task_id == task_id,
+					self.model.param_category == category,
+					self.model.param_name == name
 				)
-				.values(**update_data)
-			)
+			).values(**update_data)
+			await self.session.execute(stmt)
 		else:
 			# 创建新参数
 			param_data = {
@@ -122,7 +119,7 @@ class BacktestParameterRepository(BaseRepository[BacktestParameter]):
 		for category, param_dict in parameters.items():
 			for name, value in param_dict.items():
 				# 检查是否存在
-				existing = await self.get_by_filters(
+				existing = await self.get_by(
 					task_id=task_id,
 					param_category=category,
 					param_name=name
@@ -130,17 +127,13 @@ class BacktestParameterRepository(BaseRepository[BacktestParameter]):
 
 				if existing:
 					# 更新
-					stmt = (
-						update(self.model)
-						.where(
-							and_(
-								self.model.task_id == task_id,
-								self.model.param_category == category,
-								self.model.param_name == name
-							)
+					stmt = update(self.model).where(
+						and_(
+							self.model.task_id == task_id,
+							self.model.param_category == category,
+							self.model.param_name == name
 						)
-						.values(param_value=value, updated_at=now)
-					)
+					).values(param_value=value, updated_at=now)
 					await self.session.execute(stmt)
 				else:
 					# 创建

@@ -19,7 +19,7 @@ class SysUser(Base):
     """系统用户信息表"""
     __tablename__ = 'sys_users'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='用户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='用户ID')
     username = Column(String(50), nullable=False, unique=True, index=True, comment='用户名')
     password = Column(String(100), nullable=False, comment='密码哈希值')
     email = Column(String(100), comment='邮箱')
@@ -41,17 +41,17 @@ class SysUser(Base):
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     backtest_tasks = relationship("BacktestTask", back_populates="user", cascade="all, delete-orphan")
     system_logs = relationship("SystemLog", back_populates="user", cascade="all, delete-orphan")
-    user_roles = relationship("SysUserRole", back_populates="user", foreign_keys="[SysUserRole.user_id]", cascade="all, delete-orphan")
+    user_roles = relationship("SysUserRole", back_populates="user", foreign_keys="SysUserRole.user_id", cascade="all, delete-orphan")
     user_preferences = relationship("UserPreference", back_populates="user", cascade="all, delete-orphan", uselist=False)
     api_usage_logs = relationship("ApiUsageLog", back_populates="user", cascade="all, delete-orphan")
-    factor_research = relationship("FactorResearch", back_populates="user", foreign_keys="[FactorResearch.user_id]", cascade="all, delete-orphan")
+    factor_research = relationship("FactorResearch", back_populates="user", foreign_keys="FactorResearch.user_id", cascade="all, delete-orphan")
 
 
 class SysRole(Base):
     """系统角色表"""
     __tablename__ = 'sys_roles'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='角色ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='角色ID')
     role_code = Column(String(50), nullable=False, unique=True, index=True, comment='角色编码')
     role_name = Column(String(100), nullable=False, comment='角色名称')
     description = Column(Text, comment='角色描述')
@@ -69,10 +69,10 @@ class SysUserRole(Base):
     """用户角色关联表（多对多关系）"""
     __tablename__ = 'sys_user_roles'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='关联ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    role_id = Column(Integer, ForeignKey('sys_roles.id'), nullable=False, comment='角色ID')
-    assigned_by = Column(Integer, ForeignKey('sys_users.id'), comment='分配人ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='关联ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    role_id = Column(String(36), ForeignKey('sys_roles.id'), nullable=False, comment='角色ID')
+    assigned_by = Column(String(36), ForeignKey('sys_users.id'), comment='分配人ID')
     assigned_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='分配时间')
 
     # 唯一约束
@@ -92,8 +92,8 @@ class SysPermission(Base):
     """用户细粒度权限表"""
     __tablename__ = 'sys_permissions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='权限ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='权限ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     module = Column(String(50), nullable=False, comment='模块名称')
     can_read = Column(Boolean, default=False, comment='读取权限')
     can_write = Column(Boolean, default=False, comment='写入权限')
@@ -129,7 +129,7 @@ class Strategy(Base):
 
     id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='策略ID（UUID）')
     name = Column(String(100), nullable=False, comment='策略名称')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     description = Column(Text, comment='策略描述')
     class_name = Column(String(100), nullable=False, comment='策略类名')
     module_path = Column(String(200), nullable=False, comment='模块路径')
@@ -165,7 +165,7 @@ class StrategyRun(Base):
     """策略运行历史记录表"""
     __tablename__ = 'strategy_runs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='运行记录ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='运行记录ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     started_at = Column(DateTime(timezone=True), nullable=False, comment='开始时间')
     stopped_at = Column(DateTime(timezone=True), comment='停止时间')
@@ -188,7 +188,7 @@ class StrategyDailyPerformance(Base):
     """策略每日绩效指标表"""
     __tablename__ = 'strategy_daily_performance'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='绩效记录ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='绩效记录ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
     daily_return = Column(Numeric(10, 6), nullable=False, comment='日收益率')
@@ -210,7 +210,7 @@ class Signal(Base):
     """策略交易信号记录表"""
     __tablename__ = 'signals'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='信号ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='信号ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     signal_type = Column(String(10), nullable=False, comment='信号类型：buy, sell, hold')
@@ -235,7 +235,7 @@ class StrategyVersion(Base):
     """策略版本管理表"""
     __tablename__ = 'strategy_versions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='版本ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='版本ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     version_number = Column(String(20), nullable=False, comment='版本号')
     version_name = Column(String(100), comment='版本名称')
@@ -243,7 +243,7 @@ class StrategyVersion(Base):
     code_content = Column(Text, nullable=False, comment='代码内容')
     parameters = Column(JSON, nullable=False, default=dict, comment='版本参数（JSON格式）')
     is_current = Column(Boolean, default=False, comment='是否为当前版本')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
@@ -262,7 +262,7 @@ class StrategyTemplate(Base):
     """策略模板表"""
     __tablename__ = 'strategy_templates'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='模板ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='模板ID')
     template_name = Column(String(100), nullable=False, comment='模板名称')
     template_type = Column(String(50), nullable=False, comment='模板类型：alpha/cta/ai/custom')
     description = Column(Text, comment='模板描述')
@@ -270,7 +270,7 @@ class StrategyTemplate(Base):
     default_parameters = Column(JSON, nullable=False, default=dict, comment='默认参数（JSON格式）')
     category = Column(String(50), comment='分类')
     is_public = Column(Boolean, default=True, comment='是否公开')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -290,7 +290,7 @@ class StrategyParameter(Base):
     """策略参数配置表"""
     __tablename__ = 'strategy_parameters'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='参数ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='参数ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     param_name = Column(String(100), nullable=False, comment='参数名称')
     param_type = Column(String(50), nullable=False, comment='参数类型：int/float/string/bool/list/dict')
@@ -316,7 +316,7 @@ class PortfolioStrategy(Base):
     """策略组合关联表"""
     __tablename__ = 'portfolio_strategies'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='组合关联ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='组合关联ID')
     portfolio_id = Column(String(32), nullable=False, comment='组合ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     weight = Column(Numeric(5, 4), nullable=False, default=0.0, comment='权重（0-1）')
@@ -343,10 +343,10 @@ class Account(Base):
     """账户信息表"""
     __tablename__ = 'accounts'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='账户ID')
     account_number = Column(String(50), nullable=False, unique=True, index=True, comment='内部账户号')
     account_name = Column(String(100), nullable=False, comment='账户名称')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='所属用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='所属用户ID')
     account_type = Column(String(20), nullable=False, default='cash', comment='账户类型：cash, margin, simulation')
     broker = Column(String(50), comment='券商名称')
     broker_account_id = Column(String(50), unique=True, index=True, comment='券商账户ID')
@@ -392,8 +392,8 @@ class AccountDailyPerformance(Base):
     """账户每日绩效快照表"""
     __tablename__ = 'account_daily_performance'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='绩效记录ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='绩效记录ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
     total_asset = Column(Numeric(16, 4), nullable=False, comment='总资产')
     cash = Column(Numeric(16, 4), nullable=False, comment='现金')
@@ -415,8 +415,8 @@ class AccountTransaction(Base):
     """账户流水表"""
     __tablename__ = 'account_transactions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='流水ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='流水ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     transaction_type = Column(String(50), nullable=False, comment='交易类型：deposit/withdrawal/trade/fee/dividend')
     transaction_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                               comment='交易时间')
@@ -443,8 +443,8 @@ class AccountStatement(Base):
     """账户对账单表"""
     __tablename__ = 'account_statements'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='对账单ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='对账单ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     statement_date = Column(Date, nullable=False, comment='对账日期')
     statement_period = Column(String(20), nullable=False, comment='对账周期：daily/weekly/monthly')
     opening_balance = Column(Numeric(16, 4), nullable=False, comment='期初余额')
@@ -470,8 +470,8 @@ class CashFlow(Base):
     """资金流水表"""
     __tablename__ = 'cash_flows'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='资金流水ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='资金流水ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     flow_type = Column(String(50), nullable=False, comment='流水类型：deposit/withdrawal/transfer/dividend/fee')
     flow_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                        comment='流水日期')
@@ -498,12 +498,12 @@ class AccountAuditLog(Base):
     """账户审计日志表"""
     __tablename__ = 'account_audit_logs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='审计日志ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='审计日志ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     audit_type = Column(String(50), nullable=False, comment='审计类型：daily/monthly/yearly/special')
     audit_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                         comment='审计日期')
-    auditor_id = Column(Integer, ForeignKey('sys_users.id'), comment='审计人ID')
+    auditor_id = Column(String(36), ForeignKey('sys_users.id'), comment='审计人ID')
     audit_action = Column(String(100), nullable=False, comment='审计操作')
     audit_details = Column(JSON, comment='审计详情（JSON格式）')
     audit_result = Column(String(20), default='passed', comment='审计结果：passed/failed')
@@ -528,8 +528,8 @@ class Order(Base):
     __tablename__ = 'orders'
 
     order_id = Column(String(32), primary_key=True, comment='订单ID（UUID）')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     order_type = Column(String(10), nullable=False, comment='订单类型：limit, market')
@@ -592,9 +592,9 @@ class Position(Base):
     """用户持仓表"""
     __tablename__ = 'positions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='持仓ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='持仓ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     volume = Column(Integer, nullable=False, default=0, comment='总持仓量')
     available_volume = Column(Integer, nullable=False, default=0, comment='可用持仓量')
@@ -624,9 +624,9 @@ class TradeInstruction(Base):
     """交易指令表"""
     __tablename__ = 'trade_instructions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='指令ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指令ID')
     instruction_id = Column(String(32), nullable=False, unique=True, comment='指令ID（UUID）')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
     instruction_type = Column(String(50), nullable=False, comment='指令类型：basket_trade/portfolio_rebalance/stop_loss')
     status = Column(String(20), default='pending',
@@ -656,9 +656,9 @@ class OrderTemplate(Base):
     """订单模板表"""
     __tablename__ = 'order_templates'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='模板ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='模板ID')
     template_name = Column(String(100), nullable=False, comment='模板名称')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     template_type = Column(String(50), nullable=False, comment='模板类型：limit/market/stop/basket')
     parameters = Column(JSON, nullable=False, comment='模板参数（JSON格式）')
     is_default = Column(Boolean, default=False, comment='是否为默认模板')
@@ -681,7 +681,7 @@ class TradeFee(Base):
     """交易费用明细表"""
     __tablename__ = 'trade_fees'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='费用ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='费用ID')
     trade_id = Column(String(32), ForeignKey('trades.trade_id'), nullable=False, comment='成交ID')
     fee_type = Column(String(50), nullable=False, comment='费用类型：commission/tax/transfer/stamp')
     fee_amount = Column(Numeric(10, 4), nullable=False, comment='费用金额')
@@ -704,8 +704,8 @@ class PositionAdjustment(Base):
     """持仓调整记录表"""
     __tablename__ = 'position_adjustments'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='调整ID')
-    position_id = Column(Integer, ForeignKey('positions.id'), nullable=False, comment='持仓ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='调整ID')
+    position_id = Column(String(36), ForeignKey('positions.id'), nullable=False, comment='持仓ID')
     adjustment_type = Column(String(50), nullable=False, comment='调整类型：buy/sell/dividend/split/merge')
     adjustment_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                              comment='调整日期')
@@ -730,9 +730,9 @@ class PositionSnapshot(Base):
     """持仓快照表"""
     __tablename__ = 'position_snapshots'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='快照ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    account_id = Column(Integer, ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='快照ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     snapshot_date = Column(Date, nullable=False, comment='快照日期')
     volume = Column(Integer, nullable=False, default=0, comment='持仓数量')
@@ -757,7 +757,7 @@ class RiskRule(Base):
     """风控规则配置表"""
     __tablename__ = 'risk_rules'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='规则ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='规则ID')
     rule_name = Column(String(100), nullable=False, unique=True, comment='规则名称')
     rule_type = Column(String(50), nullable=False, comment='规则类型：position, account, market, blacklist')
     condition = Column(JSON, nullable=False, comment='规则条件（JSON格式）')
@@ -778,13 +778,13 @@ class Blacklist(Base):
     """黑名单表"""
     __tablename__ = 'blacklists'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='黑名单ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='黑名单ID')
     target_type = Column(String(50), nullable=False, comment='目标类型：stock/user/account')
     target_id = Column(String(100), nullable=False, comment='目标标识（股票代码/用户ID/账户ID）')
     target_name = Column(String(200), comment='目标名称')
     list_type = Column(String(50), nullable=False, default='global', comment='名单类型：global/user_specific/system')
     reason = Column(Text, nullable=False, comment='加入原因')
-    added_by = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='添加人ID')
+    added_by = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='添加人ID')
     expire_date = Column(DateTime(timezone=True), comment='过期时间')
     is_active = Column(Boolean, default=True, comment='是否有效')
     metainfo = Column(JSON, comment='元数据（JSON格式）')
@@ -810,9 +810,9 @@ class RiskEvent(Base):
     __tablename__ = 'risk_events'
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment='事件ID')
-    rule_id = Column(Integer, ForeignKey('risk_rules.id'), nullable=False, comment='规则ID')
+    rule_id = Column(String(36), ForeignKey('risk_rules.id'), nullable=False, comment='规则ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     event_type = Column(String(50), nullable=False, comment='事件类型')
     event_message = Column(Text, nullable=False, comment='事件描述')
     trigger_value = Column(JSON, nullable=False, comment='触发值（JSON格式）')
@@ -860,7 +860,7 @@ class BasketItem(Base):
     """篮子成分表"""
     __tablename__ = 'basket_items'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='成分ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='成分ID')
     basket_id = Column(String(32), ForeignKey('baskets.id'), nullable=False, comment='篮子ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     weight = Column(Float, default=0.0, comment='权重（0-1）')
@@ -883,10 +883,10 @@ class DataSyncTask(Base):
     """数据同步任务记录表"""
     __tablename__ = 'data_sync_tasks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='任务ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='任务ID')
     task_id = Column(String(64), nullable=False, unique=True, comment='任务唯一标识符（如 sync_abc12345）')
     task_type = Column(String(50), nullable=False, comment='任务类型：stock_basic, daily_quotes, financial, etc.')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), comment='用户ID')
     data_types = Column(JSON, comment='数据类型列表（JSON格式）')
     status = Column(String(20), nullable=False, comment='任务状态：pending, running, completed, failed')
     start_time = Column(DateTime(timezone=True), comment='开始时间')
@@ -926,7 +926,7 @@ class DataQualityCheck(Base):
     """数据质量检查记录表"""
     __tablename__ = 'data_quality_checks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='检查ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='检查ID')
     check_type = Column(String(50), nullable=False, comment='检查类型：daily/batch/adhoc')
     data_type = Column(String(50), nullable=False, comment='数据类型：stock_daily/stock_minutes/financial')
     check_date = Column(Date, nullable=False, comment='检查日期')
@@ -952,8 +952,8 @@ class DataFixRecord(Base):
     """数据修复记录表"""
     __tablename__ = 'data_fix_records'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='修复记录ID')
-    quality_check_id = Column(Integer, ForeignKey('data_quality_checks.id'), comment='质量检查ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='修复记录ID')
+    quality_check_id = Column(String(36), ForeignKey('data_quality_checks.id'), comment='质量检查ID')
     data_type = Column(String(50), nullable=False, comment='数据类型')
     fix_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
                       comment='修复日期')
@@ -978,7 +978,7 @@ class DataQualityMetric(Base):
     """数据质量指标历史表"""
     __tablename__ = 'data_quality_metrics'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='指标ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指标ID')
     metric_date = Column(Date, nullable=False, comment='指标日期')
     data_type = Column(String(50), nullable=False, comment='数据类型')
     metric_name = Column(String(100), nullable=False, comment='指标名称')
@@ -1002,7 +1002,7 @@ class BacktestTask(Base):
     __tablename__ = 'backtest_tasks'
 
     id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='回测任务ID（UUID）')
-    user_id = Column(Integer, ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     name = Column(String(100), nullable=False, comment='回测任务名称')
     description = Column(Text, comment='任务描述')
@@ -1040,7 +1040,7 @@ class BacktestEquityCurve(Base):
     """回测净值曲线表"""
     __tablename__ = 'backtest_equity_curves'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='净值记录ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='净值记录ID')
     task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_date = Column(DateTime, nullable=False, comment='交易日期')
     equity = Column(Numeric(16, 4), nullable=False, comment='总资产')
@@ -1062,7 +1062,7 @@ class BacktestTrade(Base):
     """回测交易记录表"""
     __tablename__ = 'backtest_trades'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='交易记录ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='交易记录ID')
     task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_time = Column(DateTime(timezone=True), nullable=False, comment='交易时间')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
@@ -1089,7 +1089,7 @@ class BacktestPosition(Base):
     """回测持仓快照表"""
     __tablename__ = 'backtest_positions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='持仓快照ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='持仓快照ID')
     task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_date = Column(DateTime, nullable=False, comment='交易日期')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
@@ -1112,7 +1112,7 @@ class BacktestParameter(Base):
     """回测参数配置表"""
     __tablename__ = 'backtest_parameters'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='参数ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='参数ID')
     task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     param_category = Column(String(50), nullable=False, comment='参数分类：market/cost/risk/strategy')
     param_name = Column(String(100), nullable=False, comment='参数名称')
@@ -1134,14 +1134,14 @@ class BacktestScenario(Base):
     """回测场景表"""
     __tablename__ = 'backtest_scenarios'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='场景ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='场景ID')
     scenario_id = Column(String(32), nullable=False, unique=True, comment='场景ID（UUID）')
     scenario_name = Column(String(100), nullable=False, comment='场景名称')
     description = Column(Text, comment='场景描述')
     market_conditions = Column(JSON, nullable=False, comment='市场条件（JSON格式）')
     economic_conditions = Column(JSON, comment='经济条件（JSON格式）')
     risk_factors = Column(JSON, comment='风险因子（JSON格式）')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -1160,7 +1160,7 @@ class BacktestComparison(Base):
     """回测对比结果表"""
     __tablename__ = 'backtest_comparisons'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='对比ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='对比ID')
     comparison_id = Column(String(32), nullable=False, unique=True, comment='对比ID（UUID）')
     comparison_name = Column(String(100), nullable=False, comment='对比名称')
     description = Column(Text, comment='对比描述')
@@ -1168,7 +1168,7 @@ class BacktestComparison(Base):
     compared_tasks = Column(JSON, nullable=False, comment='对比任务列表（JSON格式）')
     comparison_metrics = Column(JSON, nullable=False, comment='对比指标（JSON格式）')
     comparison_results = Column(JSON, comment='对比结果（JSON格式）')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系

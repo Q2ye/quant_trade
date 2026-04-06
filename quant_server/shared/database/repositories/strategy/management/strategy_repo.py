@@ -31,7 +31,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 	# ==================== 业务查询方法 ====================
 
-	async def get_by_user (self, user_id: int) -> List[Strategy]:
+	async def get_by_user (self, user_id: str) -> List[Strategy]:
 		"""根据用户ID获取策略"""
 		return await self.get_many(
 			user_id=user_id
@@ -63,7 +63,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		"""获取活跃策略（状态为running）"""
 		return await self.get_by_status('running')
 
-	async def get_user_active_strategies (self, user_id: int) -> List[Strategy]:
+	async def get_user_active_strategies (self, user_id: str) -> List[Strategy]:
 		"""获取用户的活跃策略"""
 		return await self.get_many(
 			user_id=user_id,
@@ -73,7 +73,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 	async def search_strategies (
 				self,
 				keyword: Optional[str] = None,
-				user_id: Optional[int] = None,
+				user_id: Optional[str] = None,
 				strategy_type: Optional[str] = None,
 				status: Optional[str] = None,
 				limit: int = 100
@@ -106,7 +106,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 	async def get_strategy_statistics (
 			self,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""获取策略统计信息"""
 		# 基础查询
@@ -202,7 +202,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 	async def get_strategy_trend (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			days: int = 30
 	) -> List[Dict[str, Any]]:
 		"""获取策略创建趋势"""
@@ -380,7 +380,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		"""批量插入或更新策略记录"""
 		return await super().batch_upsert(match_fields, data_list, update_fields)
 
-	async def deactivate_user_strategies (self, user_id: int) -> int:
+	async def deactivate_user_strategies (self, user_id: str) -> int:
 		"""停用用户的所有策略"""
 		strategies = await self.get_by_user(user_id)
 
@@ -443,7 +443,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 				'id': s.id,
 				'name': s.name,
 				'user_id': s.user_id,
-				'type': s.type,
+				'type': s.strategy_type,
 				'updated_at': s.updated_at
 			}
 			for s in recent_active.scalars().all()

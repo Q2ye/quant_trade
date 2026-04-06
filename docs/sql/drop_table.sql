@@ -118,14 +118,17 @@ DROP TABLE IF EXISTS monitor_alerts CASCADE;
 -- 4.5 因子相关表
 DROP TABLE IF EXISTS factor_research CASCADE;
 DROP TABLE IF EXISTS data_quality_metrics CASCADE;
+DROP TABLE IF EXISTS data_quality_issues CASCADE;
 DROP TABLE IF EXISTS data_research_tasks CASCADE;
 DROP TABLE IF EXISTS data_fix_records CASCADE;
 DROP TABLE IF EXISTS data_quality_checks CASCADE;
 DROP TABLE IF EXISTS factor_definitions CASCADE;
+DROP TABLE IF EXISTS blacklists CASCADE;
 
 -- 4.6 交易相关表
 DROP TABLE IF EXISTS trade_fees CASCADE;
 DROP TABLE IF EXISTS position_adjustments CASCADE;
+DROP TABLE IF EXISTS position_snapshots CASCADE;
 DROP TABLE IF EXISTS order_templates CASCADE;
 DROP TABLE IF EXISTS trade_instructions CASCADE;
 DROP TABLE IF EXISTS trades CASCADE;

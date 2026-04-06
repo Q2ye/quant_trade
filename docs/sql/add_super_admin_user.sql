@@ -3,6 +3,7 @@
 
 -- 1. 插入超级管理员用户
 INSERT INTO sys_users (
+    id,
     username,
     password,
     email,
@@ -14,6 +15,7 @@ INSERT INTO sys_users (
     created_at,
     updated_at
 ) VALUES (
+    'user_1',
     'superadmin',
     'MTExMTExLmE=', --对应密码：111111.a
     'superadmin@quant.com',
@@ -29,12 +31,14 @@ ON CONFLICT (username) DO NOTHING;
 
 -- 2. 创建超级管理员角色（如果不存在）
 INSERT INTO sys_roles (
+    id,
     role_code,
     role_name,
     description,
     is_default,
     permissions
 ) VALUES (
+    'role_1',
     'super_admin',
     '超级管理员',
     '系统最高权限管理员，拥有所有模块的完全控制权限',
@@ -45,15 +49,17 @@ ON CONFLICT (role_code) DO NOTHING;
 
 -- 3. 将超级管理员用户关联到超级管理员角色
 INSERT INTO sys_user_roles (
+    id,
     user_id,
     role_id,
     assigned_by,
     assigned_at
 )
 SELECT
-    u.id,
-    r.id,
-    u.id,  -- 分配人为自己
+    'user_role_1',
+    u.id::VARCHAR,
+    r.id::VARCHAR,
+    u.id::VARCHAR,  -- 分配人为自己
     CURRENT_TIMESTAMP
 FROM sys_users u
 CROSS JOIN sys_roles r
@@ -63,6 +69,7 @@ ON CONFLICT (user_id, role_id) DO NOTHING;
 
 -- 4. 为用户添加所有模块的完整权限
 INSERT INTO sys_permissions (
+    id,
     user_id,
     module,
     can_read,
@@ -70,7 +77,8 @@ INSERT INTO sys_permissions (
     can_execute
 )
 SELECT
-    u.id,
+    'perm_' || row_number() OVER (ORDER BY module_name),
+    u.id::VARCHAR,
     module_name,
     TRUE,
     TRUE,
@@ -92,6 +100,7 @@ SET
 
 -- 5. 设置用户偏好
 INSERT INTO user_preferences (
+    id,
     user_id,
     language,
     timezone,
@@ -101,7 +110,8 @@ INSERT INTO user_preferences (
     display_settings
 )
 SELECT
-    u.id,
+    'pref_' || u.id::VARCHAR,
+    u.id::VARCHAR,
     'zh-CN',
     'Asia/Shanghai',
     'dark',
@@ -125,7 +135,7 @@ SELECT '超级管理员用户创建完成' as status;
 
 -- 查看新创建的用户信息
 SELECT
-    u.id,
+    u.id::VARCHAR as id,
     u.username,
     u.email,
     u.role,
@@ -133,6 +143,6 @@ SELECT
     r.role_name,
     r.permissions
 FROM sys_users u
-LEFT JOIN sys_user_roles ur ON u.id = ur.user_id
-LEFT JOIN sys_roles r ON ur.role_id = r.id
+LEFT JOIN sys_user_roles ur ON u.id::VARCHAR = ur.user_id
+LEFT JOIN sys_roles r ON r.id::VARCHAR = ur.role_id
 WHERE u.username = 'superadmin';

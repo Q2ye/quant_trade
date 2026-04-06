@@ -4,10 +4,12 @@ data_models.py
 位置：shared/database/models/data_models.py
 """
 
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey, Index, Boolean, \
 	UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime, timezone
 
 from .base import Base
 
@@ -86,7 +88,7 @@ class StkManager(Base):
 	"""上市公司管理层信息表"""
 	__tablename__ = 'stk_managers'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='管理层ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='管理层ID')
 	ts_code = Column(String(20), ForeignKey('stock_company.ts_code'), index=True, comment='TS代码')
 	ann_date = Column(DateTime, nullable=False, comment='公告日期')
 	name = Column(String(50), nullable=False, comment='姓名')
@@ -112,8 +114,8 @@ class StkReward(Base):
 	"""管理层薪酬与持股明细表"""
 	__tablename__ = 'stk_rewards'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='薪酬ID')
-	manager_id = Column(Integer, ForeignKey('stk_managers.id'), index=True, comment='管理层ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='薪酬ID')
+	manager_id = Column(String(36), ForeignKey('stk_managers.id'), index=True, comment='管理层ID')
 	ann_date = Column(DateTime, nullable=False, comment='公告日期')
 	end_date = Column(DateTime, nullable=False, comment='截止日期')
 	reward = Column(Numeric(18, 2), nullable=False, comment='报酬')
@@ -132,7 +134,7 @@ class StockDaily(Base):
 	"""A股日线行情表"""
 	__tablename__ = 'stock_daily'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='日线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='日线数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	open = Column(Numeric(9, 3), nullable=False, comment='开盘价')
@@ -165,7 +167,7 @@ class StockMinutes(Base):
 	"""A股分钟级行情数据"""
 	__tablename__ = 'stock_minutes'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='分钟数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='分钟数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	freq = Column(String(5), nullable=False, comment='频率：1min/5min/15min/30min/60min')
 	trade_time = Column(DateTime, nullable=False, index=True, comment='交易时间')
@@ -191,7 +193,7 @@ class StockWeekly(Base):
 	"""A股周线行情数据表"""
 	__tablename__ = 'stock_weekly'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='周线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='周线数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	open = Column(Numeric(9, 4), nullable=False, comment='开盘价')
@@ -222,7 +224,7 @@ class StockMonthly(Base):
 	"""A股月线行情数据表"""
 	__tablename__ = 'stock_monthly'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='月线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='月线数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	open = Column(Numeric(9, 4), nullable=False, comment='开盘价')
@@ -253,7 +255,7 @@ class StockAdjustedPrices(Base):
 	"""A股复权行情数据表"""
 	__tablename__ = 'stock_adjusted_prices'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='复权数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='复权数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	asset_type = Column(String(1), default='E', comment='资产类型：E-股票，F-基金，I-指数')
@@ -287,7 +289,7 @@ class StockAdjFactor(Base):
 	"""股票复权因子数据表"""
 	__tablename__ = 'stock_adj_factor'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='复权因子ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='复权因子ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	adj_factor = Column(Numeric(18, 10), nullable=False, comment='复权因子')
@@ -310,8 +312,8 @@ class StockDailyBasic(Base):
 	"""股票每日基本面指标数据表"""
 	__tablename__ = 'stock_daily_basic'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='基本面数据ID')
-	daily_id = Column(Integer, ForeignKey('stock_daily.id'), comment='日线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='基本面数据ID')
+	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	close = Column(Numeric(9, 4), nullable=False, comment='收盘价')
@@ -347,8 +349,8 @@ class StockDailyLimit(Base):
 	"""股票每日涨跌停价格表"""
 	__tablename__ = 'stock_daily_limit'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='涨跌停数据ID')
-	daily_id = Column(Integer, ForeignKey('stock_daily.id'), comment='日线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='涨跌停数据ID')
+	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	pre_close = Column(Numeric(9, 4), nullable=False, comment='前收盘价')
@@ -374,8 +376,8 @@ class StockMoneyflow(Base):
 	"""个股资金流向数据表"""
 	__tablename__ = 'stock_moneyflow'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='资金流向ID')
-	daily_id = Column(Integer, ForeignKey('stock_daily.id'), comment='日线数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='资金流向ID')
+	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	buy_sm_vol = Column(Integer, nullable=False, comment='小单买入量（手）')
@@ -419,7 +421,7 @@ class FinancialStatement(Base):
 	"""上市公司财务报表数据"""
 	__tablename__ = 'financial_statements'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='财务报表ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='财务报表ID')
 	ts_code = Column(String(20), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	ann_date = Column(DateTime, nullable=False, index=True, comment='公告日期')
 	end_date = Column(DateTime, nullable=False, comment='报告期')
@@ -525,7 +527,7 @@ class StockSTList(Base):
 	"""ST股票列表历史记录表"""
 	__tablename__ = 'stock_st_list'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='ST记录ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='ST记录ID')
 	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
 	name = Column(String(50), nullable=False, comment='股票名称')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
@@ -622,7 +624,7 @@ class EtfMinute(Base):
 	"""ETF历史分钟行情数据"""
 	__tablename__ = 'etf_minute'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='分钟数据ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='分钟数据ID')
 	ts_code = Column(String(20), ForeignKey('etf_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	freq = Column(String(10), nullable=False, comment='频率：1min/5min/15min/30min/60min')
 	trade_time = Column(DateTime, nullable=False, index=True, comment='交易时间')
@@ -688,7 +690,7 @@ class IndexDaily(Base):
 	"""指数日线行情数据"""
 	__tablename__ = 'index_daily'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='指数日线ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指数日线ID')
 	ts_code = Column(String(20), nullable=False, index=True, comment='指数代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	close = Column(Numeric(12, 4), nullable=False, comment='收盘价')
@@ -717,8 +719,9 @@ class FactorData(Base):
 	"""因子数据表"""
 	__tablename__ = 'factor_data'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='因子数据ID')
-	factor_definition_id = Column(Integer, ForeignKey('factor_definitions.id'), nullable=True, index=True, comment='因子定义ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='因子数据ID')
+	factor_definition_id = Column(String(36), ForeignKey('factor_definitions.id'), nullable=True, index=True,
+	                              comment='因子定义ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
 	factor_name = Column(String(100), nullable=False, index=True, comment='因子名称')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
@@ -746,7 +749,7 @@ class FactorDefinition(Base):
 	"""量化因子定义表"""
 	__tablename__ = 'factor_definitions'
 
-	id = Column(Integer, primary_key=True, autoincrement=True, comment='因子定义ID')
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='因子定义ID')
 	factor_code = Column(String(50), unique=True, nullable=False, index=True, comment='因子代码')
 	factor_name = Column(String(100), nullable=False, comment='因子名称')
 	factor_type = Column(String(30), nullable=False,
@@ -760,7 +763,7 @@ class FactorDefinition(Base):
 	calculation_frequency = Column(String(20), default='daily', comment='计算频率：minute, daily, weekly, monthly')
 	is_public = Column(Boolean, default=True, comment='是否公开')
 	is_active = Column(Boolean, default=True, comment='是否激活')
-	created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建者')
+	created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建者')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')

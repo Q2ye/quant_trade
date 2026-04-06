@@ -2,11 +2,10 @@
 Redis缓存实现
 """
 
-import asyncio
 import json
-import pickle
-from typing import Any, Optional, List, Dict, Union
 from datetime import datetime, timedelta
+from typing import Any, Optional, List, Dict
+
 import redis.asyncio as redis
 
 from .base import CacheBase, CacheEntry, CacheError
@@ -56,10 +55,13 @@ class RedisCache(CacheBase):
 			self._connect()
 
 		# 测试连接
-		try:
-			await self._client.ping()
-		except redis.ConnectionError:
-			self._connect()
+		if self._client is not None:
+			try:
+				await self._client.ping()
+			except redis.ConnectionError:
+				self._connect()
+				if self._client is not None:
+					await self._client.ping()
 
 	async def _serialize_value (self, value: Any) -> bytes:
 		"""序列化值"""
@@ -173,7 +175,7 @@ class RedisCache(CacheBase):
 					entry = await self._deserialize_entry(data)
 					if entry.tags:
 						await self._remove_key_from_tags(cache_key, entry.tags)
-				except Exception:
+				except (json.JSONDecodeError, redis.RedisError):
 					pass
 
 			# 删除缓存键
@@ -256,7 +258,7 @@ class RedisCache(CacheBase):
 						result[key] = None
 					else:
 						result[key] = entry.value
-				except Exception:
+				except (json.JSONDecodeError, redis.RedisError):
 					result[key] = None
 
 			return result
@@ -311,7 +313,7 @@ class RedisCache(CacheBase):
 			for tag in tags:
 				tag_key = f"_tags:{self.key_prefix}:{tag}"
 				await self.client.sadd(tag_key, cache_key)
-		except Exception:
+		except redis.RedisError:
 			pass
 
 	async def _remove_key_from_tags (self, cache_key: str, tags: List[str]):
@@ -320,7 +322,7 @@ class RedisCache(CacheBase):
 			for tag in tags:
 				tag_key = f"_tags:{self.key_prefix}:{tag}"
 				await self.client.srem(tag_key, cache_key)
-		except Exception:
+		except redis.RedisError:
 			pass
 
 	async def delete_by_tags (self, tags: List[str]) -> int:
@@ -382,10 +384,15 @@ class RedisCache(CacheBase):
 
 	async def close (self):
 		"""关闭连接"""
-		if self._client:
-			await self._client.close()
-		if self._connection_pool:
-			await self._connection_pool.disconnect()
+		try:
+			if self._client is not None:
+				await self._client.close()
+				self._client = None
+			if self._connection_pool is not None:
+				await self._connection_pool.disconnect()
+				self._connection_pool = None
+		except (redis.RedisError, Exception):
+			pass
 
 	async def flush_all (self):
 		"""清空整个Redis数据库"""
@@ -393,5 +400,5 @@ class RedisCache(CacheBase):
 			await self._ensure_connected()
 			await self.client.flushall()
 			return True
-		except Exception as e:
+		except redis.RedisError as e:
 			raise CacheError(f"Failed to flush Redis: {str(e)}")

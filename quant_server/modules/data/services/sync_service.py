@@ -754,6 +754,8 @@ class DataSyncService:
 		except ValueError:
 			raise ValueError(f"不支持的数据类型: {data_type}")
 
+
+		# 根据数据类型选择对应的同步方法
 		method = self._sync_method_map.get(data_type_enum)
 		if not method:
 			raise ValueError(f"不支持的数据类型: {data_type}")

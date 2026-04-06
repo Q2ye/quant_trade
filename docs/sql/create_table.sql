@@ -28,7 +28,7 @@ COMMENT ON EXTENSION timescaledb IS '时序数据库扩展，用于处理高频�
 
 -- 用户信息表
 CREATE TABLE sys_users (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(100) NOT NULL,
     email VARCHAR(100),
@@ -42,7 +42,7 @@ CREATE TABLE sys_users (
 );
 
 COMMENT ON TABLE sys_users IS '系统用户信息表';
-COMMENT ON COLUMN sys_users.id IS '用户ID（自增主键）';
+COMMENT ON COLUMN sys_users.id IS '用户ID（UUID）';
 COMMENT ON COLUMN sys_users.username IS '用户名（唯一）';
 COMMENT ON COLUMN sys_users.password IS '密码（BASE64加密）';
 COMMENT ON COLUMN sys_users.email IS '用户邮箱';
@@ -56,7 +56,7 @@ COMMENT ON COLUMN sys_users.updated_at IS '账户信息最后更新时间';
 
 -- 角色信息表
 CREATE TABLE sys_roles (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     role_code VARCHAR(50) NOT NULL UNIQUE,
     role_name VARCHAR(100) NOT NULL,
     description TEXT,
@@ -67,7 +67,7 @@ CREATE TABLE sys_roles (
 );
 
 COMMENT ON TABLE sys_roles IS '系统角色表';
-COMMENT ON COLUMN sys_roles.id IS '角色ID（自增主键）';
+COMMENT ON COLUMN sys_roles.id IS '角色ID（UUID）';
 COMMENT ON COLUMN sys_roles.role_code IS '角色编码（唯一）';
 COMMENT ON COLUMN sys_roles.role_name IS '角色名称';
 COMMENT ON COLUMN sys_roles.description IS '角色描述';
@@ -78,16 +78,16 @@ COMMENT ON COLUMN sys_roles.updated_at IS '更新时间';
 
 -- 用户角色关联表
 CREATE TABLE sys_user_roles (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
-    role_id INT NOT NULL REFERENCES sys_roles(id) ON DELETE CASCADE,
-    assigned_by INT REFERENCES sys_users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
+    role_id VARCHAR(36) NOT NULL REFERENCES sys_roles(id) ON DELETE CASCADE,
+    assigned_by VARCHAR(36) REFERENCES sys_users(id),
     assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, role_id)
 );
 
 COMMENT ON TABLE sys_user_roles IS '用户角色关联表（多对多关系）';
-COMMENT ON COLUMN sys_user_roles.id IS '关联ID（自增主键）';
+COMMENT ON COLUMN sys_user_roles.id IS '关联ID（UUID）';
 COMMENT ON COLUMN sys_user_roles.user_id IS '用户ID';
 COMMENT ON COLUMN sys_user_roles.role_id IS '角色ID';
 COMMENT ON COLUMN sys_user_roles.assigned_by IS '分配人ID';
@@ -95,8 +95,8 @@ COMMENT ON COLUMN sys_user_roles.assigned_at IS '分配时间';
 
 -- 用户权限表
 CREATE TABLE sys_permissions (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
     module VARCHAR(50) NOT NULL,
     can_read BOOLEAN DEFAULT FALSE,
     can_write BOOLEAN DEFAULT FALSE,
@@ -115,8 +115,8 @@ COMMENT ON COLUMN sys_permissions.can_execute IS '是否可执行（如交易、
 
 -- 用户偏好设置表
 CREATE TABLE user_preferences (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE UNIQUE,
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE UNIQUE,
     language VARCHAR(10) DEFAULT 'zh-CN',
     timezone VARCHAR(50) DEFAULT 'Asia/Shanghai',
     theme VARCHAR(20) DEFAULT 'light',
@@ -138,8 +138,8 @@ COMMENT ON COLUMN user_preferences.display_settings IS '显示设置（JSON）';
 
 -- API使用日志表
 CREATE TABLE api_usage_logs (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES sys_users(id) ON DELETE SET NULL,
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) REFERENCES sys_users(id) ON DELETE SET NULL,
     api_endpoint VARCHAR(200) NOT NULL,
     method VARCHAR(10) NOT NULL,
     request_params JSONB,
@@ -162,7 +162,7 @@ COMMENT ON COLUMN api_usage_logs.user_agent IS '用户代理';
 
 -- 系统健康指标表
 CREATE TABLE system_health_metrics (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     metric_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     metric_value NUMERIC(12,4) NOT NULL,
@@ -182,10 +182,10 @@ COMMENT ON COLUMN system_health_metrics.collected_at IS '指标采集时间';
 
 -- 许可证密钥表
 CREATE TABLE license_keys (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     license_key VARCHAR(100) NOT NULL UNIQUE,
     license_type VARCHAR(50) NOT NULL,
-    user_id INT REFERENCES sys_users(id) ON DELETE SET NULL,
+    user_id VARCHAR(36) REFERENCES sys_users(id) ON DELETE SET NULL,
     max_users INT DEFAULT 1,
     max_strategies INT DEFAULT 10,
     valid_from DATE NOT NULL,
@@ -266,7 +266,7 @@ CREATE INDEX idx_stock_basic_is_hs ON stock_basic(is_hs);
 
 -- ST股票列表表
 CREATE TABLE stock_st_list (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL,
     name VARCHAR(50) NOT NULL,
     trade_date DATE NOT NULL,
@@ -340,7 +340,7 @@ CREATE INDEX idx_stock_company_setup_date ON stock_company(setup_date);
 
 -- 上市公司管理层表
 CREATE TABLE stk_managers (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL REFERENCES stock_company(ts_code),
     ann_date DATE NOT NULL,
     name VARCHAR(50) NOT NULL,
@@ -381,7 +381,7 @@ CREATE INDEX idx_stk_managers_end_date ON stk_managers(end_date);
 
 -- 上市公司管理层薪酬和持股信息
 CREATE TABLE stk_rewards (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL REFERENCES stock_company(ts_code),
     ann_date DATE NOT NULL,
     end_date DATE NOT NULL,
@@ -410,10 +410,10 @@ COMMENT ON COLUMN stk_rewards.updated_at IS '数据最后更新时间（自动�
 
 -- 账户信息表
 CREATE TABLE accounts (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     account_number VARCHAR(50) NOT NULL UNIQUE,
     account_name VARCHAR(100) NOT NULL,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     account_type VARCHAR(20) NOT NULL DEFAULT 'cash',
     broker VARCHAR(50),
     broker_account_id VARCHAR(50) UNIQUE,
@@ -457,8 +457,8 @@ CREATE INDEX idx_accounts_status ON accounts(status);
 
 -- 账户流水表
 CREATE TABLE account_transactions (
-    id SERIAL PRIMARY KEY,
-    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     transaction_type VARCHAR(50) NOT NULL,
     transaction_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     amount NUMERIC(16, 4) NOT NULL,
@@ -487,8 +487,8 @@ CREATE INDEX idx_account_transactions_type ON account_transactions(transaction_t
 
 -- 账户对账单表
 CREATE TABLE account_statements (
-    id SERIAL PRIMARY KEY,
-    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     statement_date DATE NOT NULL,
     statement_period VARCHAR(20) NOT NULL,
     opening_balance NUMERIC(16, 4) NOT NULL,
@@ -518,8 +518,8 @@ CREATE INDEX idx_account_statements_account_date ON account_statements(account_i
 
 -- 资金流水表
 CREATE TABLE cash_flows (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     flow_type VARCHAR(50) NOT NULL,
     flow_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     amount NUMERIC(16, 4) NOT NULL,
@@ -547,11 +547,11 @@ CREATE INDEX idx_cash_flows_date ON cash_flows(flow_date DESC);
 
 -- 账户审计日志表
 CREATE TABLE account_audit_logs (
-    id SERIAL PRIMARY KEY,
-    account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     audit_type VARCHAR(50) NOT NULL,
     audit_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    auditor_id INT REFERENCES sys_users(id),
+    auditor_id VARCHAR(36) REFERENCES sys_users(id),
     audit_action VARCHAR(100) NOT NULL,
     audit_details JSONB,
     audit_result VARCHAR(20) DEFAULT 'passed',
@@ -578,9 +578,9 @@ CREATE INDEX idx_account_audit_logs_date ON account_audit_logs(audit_date DESC);
 
 -- 策略实例表
 CREATE TABLE strategies (
-    id VARCHAR(32) PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     description TEXT,
     class_name VARCHAR(100) NOT NULL,
     module_path VARCHAR(200) NOT NULL,
@@ -604,8 +604,8 @@ COMMENT ON COLUMN strategies.status IS '策略状态：draft-草稿, compiled-�
 
 -- 策略运行记录表
 CREATE TABLE strategy_runs (
-    id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
     started_at TIMESTAMPTZ NOT NULL,
     stopped_at TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL,
@@ -622,15 +622,15 @@ COMMENT ON COLUMN strategy_runs.log_path IS '本次运行日志文件存储路�
 
 -- 策略版本管理表
 CREATE TABLE strategy_versions (
-    id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
     version_number VARCHAR(20) NOT NULL,
     version_name VARCHAR(100),
     description TEXT,
     code_content TEXT NOT NULL,
     parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
     is_current BOOLEAN DEFAULT FALSE,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (strategy_id, version_number)
 );
@@ -650,7 +650,7 @@ CREATE INDEX idx_strategy_versions_current ON strategy_versions(is_current) WHER
 
 -- 策略模板表
 CREATE TABLE strategy_templates (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     template_name VARCHAR(100) NOT NULL,
     template_type VARCHAR(50) NOT NULL,
     description TEXT,
@@ -658,7 +658,7 @@ CREATE TABLE strategy_templates (
     default_parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
     category VARCHAR(50),
     is_public BOOLEAN DEFAULT TRUE,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -678,8 +678,8 @@ CREATE INDEX idx_strategy_templates_category ON strategy_templates(category);
 
 -- 策略参数配置表
 CREATE TABLE strategy_parameters (
-    id SERIAL PRIMARY KEY,
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
     param_name VARCHAR(100) NOT NULL,
     param_type VARCHAR(50) NOT NULL,
     param_value JSONB NOT NULL,
@@ -704,9 +704,9 @@ CREATE INDEX IF NOT EXISTS idx_strategy_parameters_strategy_id ON strategy_param
 
 -- 策略组合关联表
 CREATE TABLE portfolio_strategies (
-    id SERIAL PRIMARY KEY,
-    portfolio_id VARCHAR(32) NOT NULL,
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    portfolio_id VARCHAR(36) NOT NULL,
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id) ON DELETE CASCADE,
     weight NUMERIC(5,4) NOT NULL DEFAULT 0.0,
     allocation NUMERIC(16,4),
     is_active BOOLEAN DEFAULT TRUE,
@@ -731,10 +731,10 @@ CREATE INDEX IF NOT EXISTS idx_portfolio_strategies_strategy_id ON portfolio_str
 
 -- 订单表
 CREATE TABLE orders (
-    order_id VARCHAR(32) PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
-    account_id INT NOT NULL REFERENCES accounts(id),
-    strategy_id VARCHAR(32) REFERENCES strategies(id),
+    order_id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),
     ts_code VARCHAR(12) NOT NULL,
     order_type VARCHAR(10) NOT NULL CHECK (order_type IN ('limit', 'market', 'stop')),
     direction VARCHAR(4) NOT NULL CHECK (direction IN ('buy', 'sell')),
@@ -770,8 +770,8 @@ COMMENT ON COLUMN orders.cancelled_at IS '订单撤销时间（如果被撤销�
 
 -- 成交记录表
 CREATE TABLE trades (
-    trade_id VARCHAR(32) PRIMARY KEY,
-    order_id VARCHAR(32) NOT NULL REFERENCES orders(order_id),
+    trade_id VARCHAR(36) PRIMARY KEY,
+    order_id VARCHAR(36) NOT NULL REFERENCES orders(order_id),
     ts_code VARCHAR(12) NOT NULL,
     price NUMERIC(10, 4) NOT NULL,
     volume INT NOT NULL,
@@ -793,9 +793,9 @@ COMMENT ON COLUMN trades.tax IS '印花税';
 
 -- 持仓表
 CREATE TABLE positions (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
-    account_id INT NOT NULL REFERENCES accounts(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
     ts_code VARCHAR(12) NOT NULL,
     volume INT NOT NULL DEFAULT 0,
     available_volume INT NOT NULL DEFAULT 0,
@@ -826,10 +826,10 @@ COMMENT ON COLUMN positions.last_update IS '最后更新时间';
 
 -- 交易指令表
 CREATE TABLE trade_instructions (
-    id SERIAL PRIMARY KEY,
-    instruction_id VARCHAR(32) NOT NULL UNIQUE,
-    user_id INT NOT NULL REFERENCES sys_users(id),
-    strategy_id VARCHAR(32) REFERENCES strategies(id),
+    id VARCHAR(36) PRIMARY KEY,
+    instruction_id VARCHAR(36) NOT NULL UNIQUE,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),
     instruction_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'executing', 'completed', 'failed', 'cancelled')),
     parameters JSONB NOT NULL,
@@ -856,9 +856,9 @@ CREATE INDEX idx_trade_instructions_created_at ON trade_instructions(created_at 
 
 -- 订单模板表
 CREATE TABLE order_templates (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     template_name VARCHAR(100) NOT NULL,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     template_type VARCHAR(50) NOT NULL,
     parameters JSONB NOT NULL,
     is_default BOOLEAN DEFAULT FALSE,
@@ -880,8 +880,8 @@ CREATE INDEX idx_order_templates_type ON order_templates(template_type);
 
 -- 交易费用明细表
 CREATE TABLE trade_fees (
-    id SERIAL PRIMARY KEY,
-    trade_id VARCHAR(32) NOT NULL REFERENCES trades(trade_id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    trade_id VARCHAR(36) NOT NULL REFERENCES trades(trade_id) ON DELETE CASCADE,
     fee_type VARCHAR(50) NOT NULL,
     fee_amount NUMERIC(10, 4) NOT NULL,
     fee_rate NUMERIC(8,6),
@@ -902,8 +902,8 @@ CREATE INDEX idx_trade_fees_type ON trade_fees(fee_type);
 
 -- 持仓调整记录表
 CREATE TABLE position_adjustments (
-    id SERIAL PRIMARY KEY,
-    position_id INT NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    position_id VARCHAR(36) NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
     adjustment_type VARCHAR(50) NOT NULL,
     adjustment_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     volume_change INT NOT NULL,
@@ -929,9 +929,9 @@ CREATE INDEX idx_position_adjustments_date ON position_adjustments(adjustment_da
 
 -- 持仓快照表
 CREATE TABLE position_snapshots (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
-    account_id INT NOT NULL REFERENCES accounts(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
     ts_code VARCHAR(12) NOT NULL,
     snapshot_date DATE NOT NULL,
     volume INT NOT NULL DEFAULT 0,
@@ -982,7 +982,7 @@ COMMENT ON COLUMN baskets.updated_at IS '记录最后更新时间';
 
 -- 篮子成分表
 CREATE TABLE basket_items (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     basket_id VARCHAR(50) NOT NULL REFERENCES baskets(id) ON DELETE CASCADE,
     ts_code VARCHAR(12) NOT NULL REFERENCES stock_basic(ts_code) ON DELETE CASCADE,
     weight FLOAT DEFAULT 0.0,
@@ -1069,9 +1069,9 @@ COMMENT ON COLUMN etf_basic.etf_type IS '投资通道类型（境内/QDII）';
 
 -- 回测任务表
 CREATE TABLE backtest_tasks (
-    id VARCHAR(32) PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
     name VARCHAR(100) NOT NULL,
     description TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
@@ -1101,8 +1101,8 @@ COMMENT ON COLUMN backtest_tasks.completed_at IS '任务完成时间';
 
 -- 回测交易记录表
 CREATE TABLE backtest_trades (
-    id SERIAL PRIMARY KEY,
-    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     trade_time TIMESTAMPTZ NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     direction VARCHAR(4) NOT NULL CHECK (direction IN ('buy', 'sell')),
@@ -1127,8 +1127,8 @@ COMMENT ON COLUMN backtest_trades.tax IS '交易税费';
 
 -- 回测持仓快照表
 CREATE TABLE backtest_positions (
-    id SERIAL PRIMARY KEY,
-    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     trade_date DATE NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     volume INT NOT NULL DEFAULT 0,
@@ -1148,8 +1148,8 @@ COMMENT ON COLUMN backtest_positions.market_value IS '持仓市值';
 
 -- 回测参数配置表
 CREATE TABLE backtest_parameters (
-    id SERIAL PRIMARY KEY,
-    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     param_category VARCHAR(50) NOT NULL,
     param_name VARCHAR(100) NOT NULL,
     param_value JSONB NOT NULL,
@@ -1168,14 +1168,14 @@ CREATE INDEX IF NOT EXISTS idx_backtest_parameters_task_id ON backtest_parameter
 
 -- 回测场景表
 CREATE TABLE backtest_scenarios (
-    id SERIAL PRIMARY KEY,
-    scenario_id VARCHAR(32) NOT NULL UNIQUE,
+    id VARCHAR(36) PRIMARY KEY,
+    scenario_id VARCHAR(36) NOT NULL UNIQUE,
     scenario_name VARCHAR(100) NOT NULL,
     description TEXT,
     market_conditions JSONB NOT NULL,
     economic_conditions JSONB,
     risk_factors JSONB,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1193,15 +1193,15 @@ CREATE INDEX idx_backtest_scenarios_name ON backtest_scenarios(scenario_name);
 
 -- 回测对比结果表
 CREATE TABLE backtest_comparisons (
-    id SERIAL PRIMARY KEY,
-    comparison_id VARCHAR(32) NOT NULL UNIQUE,
+    id VARCHAR(36) PRIMARY KEY,
+    comparison_id VARCHAR(36) NOT NULL UNIQUE,
     comparison_name VARCHAR(100) NOT NULL,
     description TEXT,
-    base_task_id VARCHAR(32) REFERENCES backtest_tasks(id),
+    base_task_id VARCHAR(36) REFERENCES backtest_tasks(id),
     compared_tasks JSONB NOT NULL,
     comparison_metrics JSONB NOT NULL,
     comparison_results JSONB,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -1219,8 +1219,8 @@ CREATE INDEX idx_backtest_comparisons_name ON backtest_comparisons(comparison_na
 
 -- 回测资源使用表
 CREATE TABLE backtest_resource_usage (
-    id SERIAL PRIMARY KEY,
-    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     resource_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     metric_value NUMERIC(12,4) NOT NULL,
@@ -1246,7 +1246,7 @@ CREATE INDEX idx_backtest_resource_usage_type ON backtest_resource_usage(resourc
 
 -- 风控规则表
 CREATE TABLE risk_rules (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     rule_name VARCHAR(100) NOT NULL,
     rule_type VARCHAR(50) NOT NULL,
     condition JSONB NOT NULL,
@@ -1269,10 +1269,10 @@ COMMENT ON COLUMN risk_rules.is_active IS '规则是否启用';
 
 -- 数据同步任务记录表
 CREATE TABLE data_sync_tasks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     task_id VARCHAR(64) NOT NULL UNIQUE,
     task_type VARCHAR(50) NOT NULL,
-    user_id INT REFERENCES sys_users(id),
+    user_id VARCHAR(36) REFERENCES sys_users(id),
     data_types JSON,
     status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
     start_time TIMESTAMPTZ,
@@ -1308,14 +1308,14 @@ COMMENT ON COLUMN data_sync_tasks.completed_at IS '完成时间';
 
 -- 系统配置表
 CREATE TABLE system_configs (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     config_key VARCHAR(100) NOT NULL UNIQUE,
     config_value TEXT NOT NULL,
     config_type VARCHAR(50) DEFAULT 'string',
     description TEXT,
     is_public BOOLEAN DEFAULT FALSE,
-    created_by INT REFERENCES sys_users(id),
-    updated_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
+    updated_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1331,7 +1331,7 @@ COMMENT ON COLUMN system_configs.updated_by IS '更新人';
 
 -- 定时任务调度表
 CREATE TABLE scheduled_tasks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     task_name VARCHAR(100) NOT NULL,
     task_type VARCHAR(50) NOT NULL,
     task_config JSONB NOT NULL,
@@ -1360,10 +1360,10 @@ COMMENT ON COLUMN scheduled_tasks.last_error IS '最后错误信息';
 
 -- 系统操作日志表
 CREATE TABLE system_logs (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     log_level VARCHAR(20) NOT NULL,
     module VARCHAR(50) NOT NULL,
-    user_id INT REFERENCES sys_users(id),
+    user_id VARCHAR(36) REFERENCES sys_users(id),
     action VARCHAR(100) NOT NULL,
     details TEXT,
     ip_address VARCHAR(50),
@@ -1389,8 +1389,8 @@ CREATE INDEX idx_system_logs_log_level ON system_logs(log_level);
 
 -- 操作日志表
 CREATE TABLE sys_operation_logs (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     module VARCHAR(50) NOT NULL,
     operation VARCHAR(50) NOT NULL,
     action VARCHAR(100) NOT NULL,
@@ -1418,9 +1418,9 @@ CREATE INDEX idx_sys_operation_logs_created_at ON sys_operation_logs(created_at 
 
 -- 审计日志表
 CREATE TABLE sys_audit_logs (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     audit_type VARCHAR(50) NOT NULL CHECK (audit_type IN ('login', 'logout', 'access', 'data_change', 'config_change', 'security_event')),
-    user_id INT REFERENCES sys_users(id),
+    user_id VARCHAR(36) REFERENCES sys_users(id),
     username VARCHAR(50),
     ip_address VARCHAR(50),
     resource_type VARCHAR(50),
@@ -1451,7 +1451,7 @@ CREATE INDEX idx_sys_audit_logs_created_at ON sys_audit_logs(created_at DESC);
 
 -- 消息通知表
 CREATE TABLE sys_notifications (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     notification_type VARCHAR(50) NOT NULL CHECK (notification_type IN ('system', 'alert', 'trade', 'strategy', 'data', 'report')),
     priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
     title VARCHAR(200) NOT NULL,
@@ -1460,7 +1460,7 @@ CREATE TABLE sys_notifications (
     sender_type VARCHAR(50) DEFAULT 'system',
     sender_id VARCHAR(100),
     recipient_type VARCHAR(20) DEFAULT 'user' CHECK (recipient_type IN ('user', 'role', 'all')),
-    recipient_id INT,
+    recipient_id VARCHAR(36),
     is_read BOOLEAN DEFAULT FALSE,
     read_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ,
@@ -1519,7 +1519,7 @@ CREATE INDEX idx_sys_scheduled_tasks_module ON sys_scheduled_tasks(task_module);
 
 -- 报警记录表
 CREATE TABLE monitor_alerts (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     alert_type VARCHAR(50) NOT NULL,
     alert_level VARCHAR(20) NOT NULL CHECK (alert_level IN ('critical', 'warning', 'info')),
     source_module VARCHAR(50) NOT NULL,
@@ -1528,9 +1528,9 @@ CREATE TABLE monitor_alerts (
     message TEXT NOT NULL,
     metainfo JSONB,
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'acknowledged', 'resolved', 'suppressed')),
-    acknowledged_by INT REFERENCES sys_users(id),
+    acknowledged_by VARCHAR(36) REFERENCES sys_users(id),
     acknowledged_at TIMESTAMPTZ,
-    resolved_by INT REFERENCES sys_users(id),
+    resolved_by VARCHAR(36) REFERENCES sys_users(id),
     resolved_at TIMESTAMPTZ,
     notification_sent BOOLEAN DEFAULT FALSE,
     notification_channels JSONB DEFAULT '["email", "wechat"]'::JSONB,
@@ -1557,7 +1557,7 @@ CREATE INDEX idx_monitor_alerts_source ON monitor_alerts(source_module, source_i
 
 -- 监控任务表
 CREATE TABLE monitor_tasks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     task_name VARCHAR(100) NOT NULL,
     task_type VARCHAR(50) NOT NULL,
     target_type VARCHAR(50) NOT NULL,
@@ -1587,7 +1587,7 @@ CREATE INDEX idx_monitor_tasks_active ON monitor_tasks(is_active);
 
 -- 监控阈值配置表
 CREATE TABLE monitor_thresholds (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     metric_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     warning_threshold NUMERIC(12,4),
@@ -1615,7 +1615,7 @@ CREATE INDEX idx_monitor_thresholds_type ON monitor_thresholds(metric_type);
 
 -- 报警模板表
 CREATE TABLE alert_templates (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     template_name VARCHAR(100) NOT NULL,
     alert_type VARCHAR(50) NOT NULL,
     alert_level VARCHAR(20) NOT NULL,
@@ -1639,8 +1639,8 @@ CREATE INDEX idx_alert_templates_type ON alert_templates(alert_type);
 
 -- 报警发送日志表
 CREATE TABLE alert_delivery_logs (
-    id SERIAL PRIMARY KEY,
-    alert_id INT NOT NULL REFERENCES monitor_alerts(id) ON DELETE CASCADE,
+    id VARCHAR(36) PRIMARY KEY,
+    alert_id VARCHAR(36) NOT NULL REFERENCES monitor_alerts(id) ON DELETE CASCADE,
     channel VARCHAR(50) NOT NULL,
     recipient VARCHAR(200) NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'delivered')),
@@ -1669,7 +1669,7 @@ CREATE INDEX idx_alert_delivery_logs_status ON alert_delivery_logs(status);
 
 -- 因子定义表
 CREATE TABLE factor_definitions (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     factor_code VARCHAR(50) UNIQUE NOT NULL,
     factor_name VARCHAR(100) NOT NULL,
     factor_type VARCHAR(30) NOT NULL CHECK (factor_type IN ('technical', 'fundamental', 'macro', 'alternative', 'custom')),
@@ -1682,7 +1682,7 @@ CREATE TABLE factor_definitions (
     calculation_frequency VARCHAR(20) DEFAULT 'daily' CHECK (calculation_frequency IN ('minute', 'daily', 'weekly', 'monthly')),
     is_public BOOLEAN DEFAULT TRUE,
     is_active BOOLEAN DEFAULT TRUE,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1702,7 +1702,7 @@ CREATE INDEX idx_factor_definitions_active ON factor_definitions(is_active);
 
 -- 数据质量检查记录表
 CREATE TABLE data_quality_checks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     check_type VARCHAR(50) NOT NULL,
     data_type VARCHAR(50) NOT NULL,
     check_date DATE NOT NULL,
@@ -1735,8 +1735,8 @@ CREATE INDEX idx_data_quality_checks_type ON data_quality_checks(data_type);
 
 -- 数据修复记录表
 CREATE TABLE data_fix_records (
-    id SERIAL PRIMARY KEY,
-    quality_check_id INT REFERENCES data_quality_checks(id),
+    id VARCHAR(36) PRIMARY KEY,
+    quality_check_id VARCHAR(36) REFERENCES data_quality_checks(id),
     data_type VARCHAR(50) NOT NULL,
     fix_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fix_type VARCHAR(50) NOT NULL,
@@ -1760,8 +1760,8 @@ COMMENT ON COLUMN data_fix_records.fixed_by IS '修复人/系统';
 CREATE INDEX idx_data_fix_records_date ON data_fix_records(fix_date DESC);
 
 -- 数据质量指标历史表
-CREATE TABLE data_quality_metrics (
-    id SERIAL PRIMARY KEY,
+CREATE TABLE data_quality_issues (
+    id VARCHAR(36) PRIMARY KEY,
     metric_date DATE NOT NULL,
     data_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
@@ -1788,14 +1788,14 @@ CREATE INDEX idx_data_quality_metrics_type ON data_quality_metrics(data_type);
 
 -- 分析报告表
 CREATE TABLE analysis_reports (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     report_type VARCHAR(50) NOT NULL CHECK (report_type IN ('daily', 'weekly', 'monthly', 'performance', 'risk', 'custom')),
     report_name VARCHAR(200) NOT NULL,
     report_config JSONB NOT NULL DEFAULT '{}'::JSONB,
     report_data JSONB,
     format VARCHAR(20) DEFAULT 'json' CHECK (format IN ('json', 'html', 'pdf', 'excel')),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'generating', 'completed', 'failed')),
-    generated_by INT REFERENCES sys_users(id),
+    generated_by VARCHAR(36) REFERENCES sys_users(id),
     generated_at TIMESTAMPTZ,
     file_path TEXT,
     file_size BIGINT,
@@ -1821,7 +1821,7 @@ CREATE INDEX idx_analysis_reports_created_at ON analysis_reports(created_at DESC
 
 -- 分析任务表
 CREATE TABLE analysis_tasks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     task_id VARCHAR(64) NOT NULL UNIQUE,
     task_name VARCHAR(200) NOT NULL,
     analysis_type VARCHAR(50) NOT NULL,
@@ -1829,9 +1829,9 @@ CREATE TABLE analysis_tasks (
     status VARCHAR(20) DEFAULT 'pending',
     progress FLOAT DEFAULT 0.0,
     result JSONB,
-    report_id INT REFERENCES analysis_reports(id),
+    report_id VARCHAR(36) REFERENCES analysis_reports(id),
     error_message TEXT,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMPTZ,
@@ -1854,14 +1854,14 @@ CREATE INDEX idx_analysis_tasks_type ON analysis_tasks(analysis_type);
 
 -- 分析模板表
 CREATE TABLE analysis_templates (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     template_name VARCHAR(100) NOT NULL,
     template_type VARCHAR(50) NOT NULL,
     description TEXT,
     config_template JSONB NOT NULL,
     output_format VARCHAR(20) DEFAULT 'json',
     is_public BOOLEAN DEFAULT TRUE,
-    created_by INT REFERENCES sys_users(id),
+    created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1879,15 +1879,15 @@ CREATE INDEX idx_analysis_templates_type ON analysis_templates(template_type);
 
 -- 报告生成日志表
 CREATE TABLE report_generation_logs (
-    id SERIAL PRIMARY KEY,
-    report_id INT REFERENCES analysis_reports(id),
+    id VARCHAR(36) PRIMARY KEY,
+    report_id VARCHAR(36) REFERENCES analysis_reports(id),
     generation_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) NOT NULL,
     started_at TIMESTAMPTZ NOT NULL,
     completed_at TIMESTAMPTZ,
     duration_ms INT,
     error_message TEXT,
-    generated_by INT REFERENCES sys_users(id),
+    generated_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -1906,7 +1906,7 @@ CREATE INDEX idx_report_generation_logs_date ON report_generation_logs(started_a
 
 -- 分析基准表
 CREATE TABLE analysis_benchmarks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     benchmark_code VARCHAR(20) NOT NULL UNIQUE,
     benchmark_name VARCHAR(100) NOT NULL,
     benchmark_type VARCHAR(50) NOT NULL,
@@ -1933,7 +1933,7 @@ CREATE INDEX idx_analysis_benchmarks_type ON analysis_benchmarks(benchmark_type)
 
 -- 财务报表主表
 CREATE TABLE financial_statements (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL REFERENCES stock_basic(ts_code),
     ann_date DATE NOT NULL,
     end_date DATE NOT NULL,
@@ -2058,7 +2058,7 @@ COMMENT ON COLUMN index_basic.exp_date IS '终止日期';
 
 -- 工作流任务表
 CREATE TABLE workflow_tasks (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     workflow_id VARCHAR(32) NOT NULL,
     task_id VARCHAR(32) NOT NULL,
     task_name VARCHAR(100) NOT NULL,
@@ -2091,7 +2091,7 @@ CREATE INDEX idx_workflow_tasks_status ON workflow_tasks(status);
 
 -- 工作流执行日志表
 CREATE TABLE workflow_logs (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     workflow_id VARCHAR(32) NOT NULL,
     execution_id VARCHAR(32) NOT NULL,
     workflow_name VARCHAR(100) NOT NULL,
@@ -2121,7 +2121,7 @@ CREATE INDEX idx_workflow_logs_date ON workflow_logs(started_at DESC);
 
 -- 文件附件表
 CREATE TABLE file_attachments (
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     file_id VARCHAR(32) NOT NULL UNIQUE,
     file_name VARCHAR(200) NOT NULL,
     file_type VARCHAR(50) NOT NULL,
@@ -2130,7 +2130,7 @@ CREATE TABLE file_attachments (
     mime_type VARCHAR(100),
     reference_type VARCHAR(50) NOT NULL,
     reference_id VARCHAR(100) NOT NULL,
-    uploaded_by INT REFERENCES sys_users(id),
+    uploaded_by VARCHAR(36) REFERENCES sys_users(id),
     upload_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
     metainfo JSONB,
@@ -2160,7 +2160,7 @@ CREATE INDEX idx_file_attachments_upload_date ON file_attachments(upload_date DE
 
 CREATE TABLE factor_research (
     -- 基础信息
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
     research_id VARCHAR(64) NOT NULL UNIQUE,
     research_name VARCHAR(200) NOT NULL,
 
@@ -2247,7 +2247,7 @@ COMMENT ON COLUMN factor_research.estimated_completion_at IS '预计完成时间
 -- 创建黑名单表
 CREATE TABLE blacklists (
     -- 主键
-    id SERIAL PRIMARY KEY,
+    id VARCHAR(36) PRIMARY KEY,
 
     -- 目标信息
     target_type VARCHAR(50) NOT NULL,
@@ -2259,7 +2259,7 @@ CREATE TABLE blacklists (
     reason TEXT NOT NULL,
 
     -- 管理信息
-    added_by INTEGER NOT NULL,
+    added_by VARCHAR(36) NOT NULL,
     expire_date TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     metainfo JSONB,
@@ -2326,7 +2326,7 @@ CREATE INDEX idx_blacklists_user_active ON blacklists(target_type, target_id, is
 
 -- A股日线行情表（TimescaleDB超表）
 CREATE TABLE stock_daily (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     open NUMERIC(9,3) NOT NULL,
@@ -2359,7 +2359,7 @@ COMMENT ON COLUMN stock_daily.updated_at IS '数据最后更新时间';
 
 -- 股票分钟行情表（TimescaleDB超表）
 CREATE TABLE stock_minutes (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     freq VARCHAR(5) NOT NULL CHECK (freq IN ('1min','5min','15min','30min','60min')),
     trade_time TIMESTAMPTZ NOT NULL,
@@ -2386,7 +2386,7 @@ COMMENT ON COLUMN stock_minutes.created_at IS '数据入库时间（自动记录
 
 -- 周线行情表（TimescaleDB超表）
 CREATE TABLE stock_weekly (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     open NUMERIC(9,4) NOT NULL,
@@ -2421,7 +2421,7 @@ COMMENT ON COLUMN stock_weekly.week_end IS '周结束日期（自动计算）';
 
 -- 月线行情表（TimescaleDB超表）
 CREATE TABLE stock_monthly (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     open NUMERIC(9,4) NOT NULL,
@@ -2456,7 +2456,7 @@ COMMENT ON COLUMN stock_monthly.month_end IS '月结束日期（自动计算）'
 
 -- 复权因子表（TimescaleDB超表）
 CREATE TABLE stock_adj_factor (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     adj_factor NUMERIC(18,10) NOT NULL,
@@ -2471,7 +2471,7 @@ COMMENT ON COLUMN stock_adj_factor.adj_factor IS '复权因子（高精度数值
 
 -- A股复权行情表（TimescaleDB超表）
 CREATE TABLE stock_adjusted_prices (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     asset_type CHAR(1) NOT NULL DEFAULT 'E' CHECK (asset_type IN ('E','I','C','FT','FD','O')),
@@ -2503,7 +2503,7 @@ COMMENT ON COLUMN stock_adjusted_prices.adj_factor IS '复权因子';
 
 -- 每日指标表（TimescaleDB超表）
 CREATE TABLE stock_daily_basic (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     close NUMERIC(9,4) NOT NULL,
@@ -2548,7 +2548,7 @@ COMMENT ON COLUMN stock_daily_basic.circ_mv IS '流通市值（万元）';
 
 -- 每日涨跌停价格表（TimescaleDB超表）
 CREATE TABLE stock_daily_limit (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     pre_close NUMERIC(9,4) NOT NULL,
@@ -2573,7 +2573,7 @@ COMMENT ON COLUMN stock_daily_limit.price_range IS '价格区间（涨停价-跌
 
 -- 个股资金流向表（TimescaleDB超表）
 CREATE TABLE stock_moneyflow (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     buy_sm_vol INT NOT NULL,
@@ -2657,7 +2657,7 @@ COMMENT ON COLUMN etf_daily.amount IS '成交额（万元）';
 
 -- ETF历史分钟行情数据（TimescaleDB超表）
 CREATE TABLE etf_minute (
-    id SERIAL,
+    id VARCHAR(36),
     ts_code VARCHAR(20) NOT NULL REFERENCES etf_basic(ts_code),
     freq VARCHAR(10) NOT NULL,
     trade_time TIMESTAMPTZ NOT NULL,
@@ -2737,8 +2737,8 @@ COMMENT ON COLUMN index_daily.amount IS '成交额（万元）';
 
 -- 账户每日绩效表（TimescaleDB超表）
 CREATE TABLE account_daily_performance (
-    id SERIAL,
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    id VARCHAR(36),
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     trade_date DATE NOT NULL,
     total_asset NUMERIC(16,4) NOT NULL,
     cash NUMERIC(16,4) NOT NULL,
@@ -2759,7 +2759,7 @@ COMMENT ON COLUMN account_daily_performance.daily_return IS '当日收益率（%
 
 -- 策略每日绩效表（TimescaleDB超表）
 CREATE TABLE strategy_daily_performance (
-    id SERIAL,
+    id VARCHAR(36),
     strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id),
     trade_date DATE NOT NULL,
     daily_return NUMERIC(10,6) NOT NULL,
@@ -2779,7 +2779,7 @@ COMMENT ON COLUMN strategy_daily_performance.sharpe_ratio IS '夏普比率';
 
 -- 信号记录表（TimescaleDB超表）
 CREATE TABLE signals (
-    id SERIAL,
+    id VARCHAR(36),
     strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id),
     ts_code VARCHAR(12) NOT NULL,
     signal_type VARCHAR(10) NOT NULL CHECK (signal_type IN ('buy', 'sell', 'hold')),
@@ -2801,7 +2801,7 @@ COMMENT ON COLUMN signals.reason IS '信号产生原因';
 
 -- 回测净值曲线表（TimescaleDB超表）
 CREATE TABLE backtest_equity_curves (
-    id SERIAL,
+    id VARCHAR(36),
     task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id),
     trade_date DATE NOT NULL,
     equity NUMERIC(16,4) NOT NULL,
@@ -2819,10 +2819,10 @@ COMMENT ON COLUMN backtest_equity_curves.market_value IS '持仓市值';
 
 -- 风控事件日志表（TimescaleDB超表）
 CREATE TABLE risk_events (
-    id SERIAL,
-    rule_id INT NOT NULL REFERENCES risk_rules(id),
+    id VARCHAR(36),
+    rule_id VARCHAR(36) NOT NULL REFERENCES risk_rules(id),
     strategy_id VARCHAR(32) REFERENCES strategies(id),
-    user_id INT NOT NULL REFERENCES sys_users(id),
+    user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     event_type VARCHAR(50) NOT NULL,
     event_message TEXT NOT NULL,
     trigger_value JSONB NOT NULL,
@@ -2845,7 +2845,7 @@ COMMENT ON COLUMN risk_events.action_taken IS '采取的行动';
 
 -- 因子数据表（TimescaleDB超表）
 CREATE TABLE factor_data (
-    id SERIAL,
+    id VARCHAR(36),
     factor_code VARCHAR(50) NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,

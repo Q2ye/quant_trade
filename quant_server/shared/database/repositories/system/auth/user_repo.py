@@ -5,13 +5,14 @@
 位置：shared/database/repositories/user_repo.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, distinct, case
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, func, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import SysUser, SysPermission
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class UserRepository:
@@ -28,33 +29,33 @@ class UserRepository:
 		"""创建用户"""
 		return await self.user_repo.create(data)
 
-	async def get_user (self, user_id: int) -> Optional[SysUser]:
+	async def get_user (self, user_id: str) -> Optional[SysUser]:
 		"""根据ID获取用户"""
 		return await self.user_repo.get(user_id)
 
-	async def get_by_id (self, user_id: int) -> Optional[SysUser]:
+	async def get_by_id (self, user_id: str) -> Optional[SysUser]:
 		"""根据ID获取用户（get_user的别名，保持接口一致性）"""
 		return await self.user_repo.get(user_id)
 
-	async def update_user (self, user_id: int, data: Dict[str, Any]) -> Optional[SysUser]:
+	async def update_user (self, user_id: str, data: Dict[str, Any]) -> Optional[SysUser]:
 		"""更新用户"""
 		return await self.user_repo.update(user_id, data)
 
-	async def delete_user (self, user_id: int, soft: bool = True) -> bool:
+	async def delete_user (self, user_id: str, soft: bool = True) -> bool:
 		"""删除用户"""
 		return await self.user_repo.delete(user_id, soft)
 
 	async def get_user_by_username (self, username: str) -> Optional[SysUser]:
 		"""根据用户名获取用户"""
-		return await self.user_repo.get_one(SysUser.username == username)
+		return await self.user_repo.get_by(username=username)
 
 	async def get_user_by_email (self, email: str) -> Optional[SysUser]:
 		"""根据邮箱获取用户"""
-		return await self.user_repo.get_one(SysUser.email == email)
+		return await self.user_repo.get_by(email=email)
 
 	async def get_user_by_phone (self, phone: str) -> Optional[SysUser]:
 		"""根据手机号获取用户"""
-		return await self.user_repo.get_one(SysUser.phone == phone)
+		return await self.user_repo.get_by(phone=phone)
 
 	async def get_users (
 			self,
@@ -63,24 +64,23 @@ class UserRepository:
 			active_only: bool = True
 	) -> List[SysUser]:
 		"""获取用户列表"""
-		filters = []
+		filters = {}
 		if active_only:
-			filters.append(SysUser.is_active == True)
+			filters['is_active'] = True
 
 		return await self.user_repo.get_many(
-			*filters,
 			skip=skip,
 			limit=limit,
-			order_by=SysUser.created_at.desc()
+			**filters
 		)
 
 	async def count_users (self, active_only: bool = True) -> int:
 		"""统计用户数量"""
-		filters = []
+		filters = {}
 		if active_only:
-			filters.append(SysUser.is_active == True)
+			filters['is_active'] = True
 
-		return await self.user_repo.count(*filters)
+		return await self.user_repo.count(**filters)
 
 	# ==================== 用户认证相关 ====================
 
@@ -91,31 +91,31 @@ class UserRepository:
 			return user
 		return None
 
-	async def update_last_login (self, user_id: int) -> bool:
+	async def update_last_login (self, user_id: str) -> bool:
 		"""更新最后登录时间"""
 		result = await self.update_user(user_id, {
 			'last_login': datetime.now()
 		})
 		return result is not None
 
-	async def update_password (self, user_id: int, new_password: str) -> bool:
+	async def update_password (self, user_id: str, new_password: str) -> bool:
 		"""更新密码"""
 		result = await self.update_user(user_id, {
 			'password': new_password
 		})
 		return result is not None
 
-	async def activate_user (self, user_id: int) -> bool:
+	async def activate_user (self, user_id: str) -> bool:
 		"""激活用户"""
 		result = await self.update_user(user_id, {'is_active': True})
 		return result is not None
 
-	async def deactivate_user (self, user_id: int) -> bool:
+	async def deactivate_user (self, user_id: str) -> bool:
 		"""停用用户"""
 		result = await self.update_user(user_id, {'is_active': False})
 		return result is not None
 
-	async def change_user_role (self, user_id: int, new_role: str) -> bool:
+	async def change_user_role (self, user_id: str, new_role: str) -> bool:
 		"""更改用户角色"""
 		result = await self.update_user(user_id, {'role': new_role})
 		return result is not None
@@ -131,10 +131,11 @@ class UserRepository:
 			limit: int = 100
 	) -> List[SysUser]:
 		"""搜索用户"""
-		filters = []
+		# 构建查询
+		query = select(SysUser)
 
 		if keyword:
-			filters.append(
+			query = query.where(
 				or_(
 					SysUser.username.like(f"%{keyword}%"),
 					SysUser.real_name.like(f"%{keyword}%"),
@@ -144,17 +145,18 @@ class UserRepository:
 			)
 
 		if role:
-			filters.append(SysUser.role == role)
+			query = query.where(SysUser.role == role)
 
 		if is_active is not None:
-			filters.append(SysUser.is_active == is_active)
+			query = query.where(SysUser.is_active == is_active)
 
-		return await self.user_repo.get_many(
-			*filters,
-			skip=skip,
-			limit=limit,
-			order_by=SysUser.created_at.desc()
-		)
+		# 排序和分页
+		query = query.order_by(SysUser.created_at.desc())
+		query = query.offset(skip).limit(limit)
+
+		# 执行查询
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def search_users_count (
 			self,
@@ -163,10 +165,11 @@ class UserRepository:
 			is_active: Optional[bool] = None
 	) -> int:
 		"""统计搜索结果数量"""
-		filters = []
+		# 构建查询
+		query = select(func.count()).select_from(SysUser)
 
 		if keyword:
-			filters.append(
+			query = query.where(
 				or_(
 					SysUser.username.like(f"%{keyword}%"),
 					SysUser.real_name.like(f"%{keyword}%"),
@@ -176,12 +179,14 @@ class UserRepository:
 			)
 
 		if role:
-			filters.append(SysUser.role == role)
+			query = query.where(SysUser.role == role)
 
 		if is_active is not None:
-			filters.append(SysUser.is_active == is_active)
+			query = query.where(SysUser.is_active == is_active)
 
-		return await self.user_repo.count(*filters)
+		# 执行查询
+		result = await self.session.execute(query)
+		return result.scalar() or 0
 
 	# ==================== 用户统计 ====================
 
@@ -216,21 +221,25 @@ class UserRepository:
 
 		# 最近注册用户数（最近30天）
 		thirty_days_ago = datetime.now() - timedelta(days=30)
-		recent_count = await self.user_repo.count(
+		recent_query = select(func.count()).select_from(SysUser).where(
 			and_(
 				SysUser.created_at >= thirty_days_ago,
 				SysUser.is_active == True
 			)
 		)
+		recent_result = await self.session.execute(recent_query)
+		recent_count = recent_result.scalar() or 0
 
 		# 最近登录用户数（最近7天）
 		seven_days_ago = datetime.now() - timedelta(days=7)
-		recent_login_count = await self.user_repo.count(
+		recent_login_query = select(func.count()).select_from(SysUser).where(
 			and_(
 				SysUser.last_login >= seven_days_ago,
 				SysUser.is_active == True
 			)
 		)
+		recent_login_result = await self.session.execute(recent_login_query)
+		recent_login_count = recent_login_result.scalar() or 0
 
 		return {
 			'total_users': total_count,
@@ -394,14 +403,15 @@ class UserRepository:
 
 	# ==================== 用户权限相关 ====================
 
-	async def get_user_permissions (self, user_id: int) -> List[SysPermission]:
+	async def get_user_permissions (self, user_id: str) -> List[SysPermission]:
 		"""获取用户权限"""
-		return await self.permission_repo.get_many(
-			user_id=user_id,
-			order_by=SysPermission.module.asc()
-		)
+		query = select(SysPermission).where(
+			SysPermission.user_id == user_id
+		).order_by(SysPermission.module.asc())
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
-	async def get_user_with_permissions (self, user_id: int) -> Optional[Dict[str, Any]]:
+	async def get_user_with_permissions (self, user_id: str) -> Optional[Dict[str, Any]]:
 		"""获取用户及其权限"""
 		user = await self.get_user(user_id)
 		if not user:
@@ -416,17 +426,19 @@ class UserRepository:
 
 	async def has_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			permission_type: str
 	) -> bool:
 		"""检查用户是否有特定权限"""
-		permission = await self.permission_repo.get_one(
+		query = select(SysPermission).where(
 			and_(
 				SysPermission.user_id == user_id,
 				SysPermission.module == module
 			)
 		)
+		result = await self.session.execute(query)
+		permission = result.scalar_one_or_none()
 
 		if not permission:
 			return False
@@ -442,7 +454,7 @@ class UserRepository:
 
 	async def grant_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			can_read: bool = False,
 			can_write: bool = False,
@@ -450,12 +462,14 @@ class UserRepository:
 	) -> bool:
 		"""授予用户权限"""
 		# 检查权限是否已存在
-		existing = await self.permission_repo.get_one(
+		query = select(SysPermission).where(
 			and_(
 				SysPermission.user_id == user_id,
 				SysPermission.module == module
 			)
 		)
+		result = await self.session.execute(query)
+		existing = result.scalar_one_or_none()
 
 		if existing:
 			# 更新现有权限
@@ -483,17 +497,19 @@ class UserRepository:
 
 	async def revoke_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			permission_type: Optional[str] = None
 	) -> bool:
 		"""撤销用户权限"""
-		permission = await self.permission_repo.get_one(
+		query = select(SysPermission).where(
 			and_(
 				SysPermission.user_id == user_id,
 				SysPermission.module == module
 			)
 		)
+		result = await self.session.execute(query)
+		permission = result.scalar_one_or_none()
 
 		if not permission:
 			return False
@@ -514,7 +530,7 @@ class UserRepository:
 			result = await self.permission_repo.update(permission.id, update_data)
 			return result is not None
 
-	async def revoke_all_permissions (self, user_id: int) -> int:
+	async def revoke_all_permissions (self, user_id: str) -> int:
 		"""撤销用户所有权限"""
 		permissions = await self.get_user_permissions(user_id)
 
@@ -545,7 +561,7 @@ class UserRepository:
 
 	async def batch_update_user_status (
 			self,
-			user_ids: List[int],
+			user_ids: List[str],
 			is_active: bool
 	) -> int:
 		"""批量更新用户状态"""
@@ -600,7 +616,7 @@ class UserRepository:
 
 	async def export_users (
 			self,
-			user_ids: Optional[List[int]] = None,
+			user_ids: Optional[List[str]] = None,
 			include_permissions: bool = False
 	) -> List[Dict[str, Any]]:
 		"""导出用户数据"""

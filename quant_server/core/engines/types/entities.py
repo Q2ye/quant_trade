@@ -55,7 +55,12 @@ class BaseEntity:
         Returns:
             BaseEntity: 实体实例
         """
-        return cls(**data)
+        if hasattr(cls, '__annotations__'):
+            valid_keys = cls.__annotations__.keys()
+            filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+            return cls(**filtered_data)
+        else:
+            return cls(**data)
 
     @classmethod
     def from_json(cls, json_str: str):

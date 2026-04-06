@@ -6,11 +6,12 @@
 """
 
 from typing import List, Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import SysPermission
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class PermissionRepository:
@@ -26,39 +27,63 @@ class PermissionRepository:
 		"""创建权限记录"""
 		return await self.base_repo.create(data)
 
-	async def get (self, id: int) -> Optional[SysPermission]:
+	async def get (self, id: Any) -> Optional[SysPermission]:
 		"""根据ID获取权限记录"""
 		return await self.base_repo.get(id)
 
-	async def update (self, id: int, data: Dict[str, Any]) -> Optional[SysPermission]:
+	async def update (self, id: Any, data: Dict[str, Any]) -> Optional[SysPermission]:
 		"""更新权限记录"""
 		return await self.base_repo.update(id, data)
 
-	async def delete (self, id: int, soft: bool = True) -> bool:
+	async def delete (self, id: Any, soft: bool = True) -> bool:
 		"""删除权限记录"""
 		return await self.base_repo.delete(id, soft)
 
 	async def get_one (self, *filters) -> Optional[SysPermission]:
 		"""根据条件获取单个权限记录"""
-		return await self.base_repo.get_one(*filters)
+		try:
+			query = select(SysPermission)
+			for filter_condition in filters:
+				query = query.where(filter_condition)
+			result = await self.session.execute(query)
+			return result.scalar_one_or_none()
+		except Exception as e:
+			raise RepositoryError(f"获取单个权限记录失败: {str(e)}")
 
 	async def get_many (
 			self,
 			*filters,
 			skip: int = 0,
 			limit: int = 100,
-			order_by: str = None
+			order_by = None
 	) -> List[SysPermission]:
 		"""根据条件获取多个权限记录"""
-		return await self.base_repo.get_many(*filters, skip=skip, limit=limit, order_by=order_by)
+		try:
+			query = select(SysPermission)
+			for filter_condition in filters:
+				query = query.where(filter_condition)
+			if order_by:
+				query = query.order_by(order_by)
+			query = query.offset(skip).limit(limit)
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取多个权限记录失败: {str(e)}")
 
 	async def count (self, *filters) -> int:
 		"""统计权限记录数"""
-		return await self.base_repo.count(*filters)
+		try:
+			query = select(func.count()).select_from(SysPermission)
+			for filter_condition in filters:
+				query = query.where(filter_condition)
+			result = await self.session.execute(query)
+			return result.scalar() or 0
+		except Exception as e:
+			raise RepositoryError(f"统计权限记录数失败: {str(e)}")
 
 	# ==================== 业务查询方法 ====================
 
-	async def get_user_permissions (self, user_id: int) -> List[SysPermission]:
+	async def get_user_permissions (self, user_id: str) -> List[SysPermission]:
 		"""获取用户的所有权限"""
 		return await self.get_many(
 			SysPermission.user_id == user_id,
@@ -67,7 +92,7 @@ class PermissionRepository:
 
 	async def get_user_module_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str
 	) -> Optional[SysPermission]:
 		"""获取用户在特定模块的权限"""
@@ -80,7 +105,7 @@ class PermissionRepository:
 
 	async def has_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			permission_type: str
 	) -> bool:
@@ -155,7 +180,7 @@ class PermissionRepository:
 
 	async def set_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			can_read: bool = None,
 			can_write: bool = None,
@@ -191,7 +216,7 @@ class PermissionRepository:
 
 	async def grant_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			permission_type: str
 	) -> bool:
@@ -226,7 +251,7 @@ class PermissionRepository:
 
 	async def revoke_permission (
 			self,
-			user_id: int,
+			user_id: str,
 			module: str,
 			permission_type: str
 	) -> bool:
@@ -250,7 +275,7 @@ class PermissionRepository:
 
 		return False
 
-	async def revoke_all_permissions (self, user_id: int) -> int:
+	async def revoke_all_permissions (self, user_id: str) -> int:
 		"""撤销用户的所有权限"""
 		# 获取用户的所有权限
 		permissions = await self.get_user_permissions(user_id)
@@ -266,8 +291,8 @@ class PermissionRepository:
 
 	async def copy_permissions (
 			self,
-			from_user_id: int,
-			to_user_id: int
+			from_user_id: str,
+			to_user_id: str
 	) -> Dict[str, int]:
 		"""复制权限（从一个用户复制到另一个用户）"""
 		# 获取源用户的所有权限
@@ -393,7 +418,8 @@ class PermissionRepository:
 					success_count += 1
 				else:
 					failed_count += 1
-			except Exception:
+			except Exception as e:
+				print(f"设置权限失败: {str(e)}")
 				failed_count += 1
 
 		return {
@@ -402,7 +428,7 @@ class PermissionRepository:
 			'total': len(permissions_data)
 		}
 
-	async def export_permissions (self, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+	async def export_permissions (self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
 		"""导出权限数据"""
 		if user_id:
 			permissions = await self.get_user_permissions(user_id)

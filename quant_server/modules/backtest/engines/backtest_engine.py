@@ -44,19 +44,19 @@ class BacktestEngine(EngineBase):
 		super().__init__(config=config, event_engine=event_engine, resource_pool=resource_pool)
 
 		# 策略实例 {strategy_id: StrategyInstance}
-		self.strategies: Dict[int, StrategyInstance] = {}
+		self.strategies: Dict[str, StrategyInstance] = {}
 
 		# 策略类注册表 {strategy_type: StrategyClass}
 		self._strategy_registry: Dict[StrategyType, Type[BaseStrategy]] = {}
 
 		# 回测结果 {strategy_id: Dict[str, Any]}
-		self.results: Dict[int, Dict[str, Any]] = {}
+		self.results: Dict[str, Dict[str, Any]] = {}
 
 		# 历史数据缓存
 		self._data_cache: Dict[str, pd.DataFrame] = {}
 
 		# 策略实例缓存 {strategy_id: BaseStrategy}
-		self._strategy_instances: Dict[int, BaseStrategy] = {}
+		self._strategy_instances: Dict[str, BaseStrategy] = {}
 
 	async def _on_initialize (self):
 		"""
@@ -337,7 +337,7 @@ class BacktestEngine(EngineBase):
 		avg_win = sum(s.profit_pct for s in win_signals) / len(win_signals) if win_signals else 0
 		avg_loss = sum(s.profit_pct for s in loss_signals) / len(loss_signals) if loss_signals else 0
 		profit_factor = (sum(s.profit_pct for s in win_signals) /
-		                 abs(sum(s.profit_pct for s in loss_signals))) if loss_signals else float('inf')
+		                 abs(sum(s.profit_pct for s in loss_signals))) if loss_signals else 0.0
 
 		# 年化收益率
 		annualized_return = (1 + total_return) ** (365 / duration_days) - 1 if duration_days > 0 else 0

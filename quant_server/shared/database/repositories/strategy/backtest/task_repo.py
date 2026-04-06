@@ -21,7 +21,7 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 		result = await self.session.execute(query)
 		return result.scalar_one_or_none()
 
-	async def get_user_tasks (self, user_id: int, skip: int = 0, limit: int = 50,
+	async def get_user_tasks (self, user_id: str, skip: int = 0, limit: int = 50,
 	                          status: Optional[str] = None) -> List[BacktestTask]:
 		"""获取用户的所有回测任务"""
 		query = select(self.model).where(self.model.user_id == user_id)

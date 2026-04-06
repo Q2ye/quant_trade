@@ -23,11 +23,11 @@ from .constants import (
 class StrategyInstance:
 	"""策略实例 - 运行中的策略对象"""
 	# 基本信息
-	id: int
+	id: str
 	name: str
 	strategy_type: StrategyType
 	status: StrategyLifecycleStatus
-	user_id: int
+	user_id: str
 
 	# 代码和参数
 	code: str
