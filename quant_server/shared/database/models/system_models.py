@@ -4,13 +4,13 @@ system_models.py
 位置：shared/database/models/system_models.py
 """
 
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import Column, String, DateTime, Integer, Numeric, Boolean, Text, ForeignKey, JSON, Index, \
 	CheckConstraint, Float
-from sqlalchemy.orm import relationship
-from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSONB
-import uuid
-
+from sqlalchemy.orm import relationship
 
 from .base import Base
 
@@ -31,11 +31,11 @@ class SystemConfig(Base):
 	updated_by = Column(String(36), ForeignKey('sys_users.id'), comment='更新人ID')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
-	creator = relationship("SysUser", foreign_keys=[created_by])
-	updater = relationship("SysUser", foreign_keys=[updated_by])
+	creator = relationship("SysUser", foreign_keys=created_by)
+	updater = relationship("SysUser", foreign_keys=updated_by)
 
 
 # ==================== 任务调度 ====================
@@ -73,10 +73,10 @@ class ScheduledTask(Base):
 
 	# 审计字段
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						server_default='CURRENT_TIMESTAMP', comment='创建时间')
+	                    server_default='CURRENT_TIMESTAMP', comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc),
-						server_default='CURRENT_TIMESTAMP', comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc),
+	                    server_default='CURRENT_TIMESTAMP', comment='更新时间')
 
 	# 添加软删除字段
 	is_deleted = Column(Boolean, default=False, server_default='false', comment='是否删除')
@@ -98,18 +98,18 @@ class ScheduledTask(Base):
 		Index('idx_sys_scheduled_tasks_updated_at', 'updated_at'),
 	)
 
-	def __repr__(self):
+	def __repr__ (self):
 		return f"<ScheduledTask(id={self.id}, name={self.task_name}, module={self.task_module}, active={self.is_active})>"
 
 	@property
-	def success_rate(self) -> float:
+	def success_rate (self) -> float:
 		"""计算任务成功率"""
 		if self.total_runs == 0:
 			return 0.0
 		return (self.success_runs / self.total_runs) * 100
 
 	@property
-	def is_due(self) -> bool:
+	def is_due (self) -> bool:
 		"""检查任务是否到期需要执行"""
 		if not self.is_active or not self.next_run_at:
 			return False
@@ -117,25 +117,25 @@ class ScheduledTask(Base):
 		return self.next_run_at <= datetime.now(timezone.utc)
 
 	@property
-	def average_duration(self) -> float:
+	def average_duration (self) -> float:
 		"""计算平均运行时长"""
 		if self.total_runs == 0 or not self.last_run_duration:
 			return 0.0
 		return self.last_run_duration
 
-	def get_schedule_config(self, key: str, default=None):
+	def get_schedule_config (self, key: str, default=None):
 		"""获取调度配置中的值"""
 		if self.schedule_config and isinstance(self.schedule_config, dict):
 			return self.schedule_config.get(key, default)
 		return default
 
-	def get_task_config(self, key: str, default=None):
+	def get_task_config (self, key: str, default=None):
 		"""获取任务配置中的值"""
 		if self.task_config and isinstance(self.task_config, dict):
 			return self.task_config.get(key, default)
 		return default
 
-	def to_dict(self) -> dict:
+	def to_dict (self) -> dict:
 		"""转换为字典格式"""
 		return {
 			'id': self.id,
@@ -180,7 +180,7 @@ class SystemLog(Base):
 	user_agent = Column(Text, comment='用户代理')
 	execution_time = Column(Integer, comment='执行时间（毫秒）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True,
-						comment='创建时间')
+	                    comment='创建时间')
 
 	# 关联关系
 	user = relationship("SysUser", back_populates="system_logs")
@@ -213,7 +213,7 @@ class AuditLog(Base):
 	status = Column(String(20), default='success', comment='操作状态：success, failed')
 	error_message = Column(Text, comment='错误信息')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						index=True, comment='创建时间')
+	                    index=True, comment='创建时间')
 
 	# 关联关系
 	user = relationship("SysUser")
@@ -245,10 +245,10 @@ class SystemNotification(Base):
 	action_url = Column(String(500), comment='操作链接')
 	metainfo = Column(JSONB, comment='元数据（JSON格式）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						index=True, comment='创建时间')
+	                    index=True, comment='创建时间')
 
 	# 关联关系
-	recipient = relationship("SysUser", foreign_keys=[recipient_id])
+	recipient = relationship("SysUser", foreign_keys=recipient_id)
 
 	# 索引
 	__table_args__ = (
@@ -277,7 +277,7 @@ class UserPreference(Base):
 	push_notifications = Column(Boolean, default=True, comment='是否启用推送通知')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	user = relationship("SysUser", back_populates="user_preferences")
@@ -311,7 +311,7 @@ class ApiUsageLog(Base):
 	referer = Column(String(500), comment='来源URL')
 	error_message = Column(Text, comment='错误信息')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						index=True, comment='创建时间')
+	                    index=True, comment='创建时间')
 
 	# 关联关系
 	user = relationship("SysUser", back_populates="api_usage_logs")
@@ -342,7 +342,7 @@ class SystemHealthMetric(Base):
 	is_healthy = Column(Boolean, default=True, comment='是否健康')
 	details = Column(JSONB, comment='详细信息（JSON格式）')
 	collected_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						  index=True, comment='采集时间')
+	                      index=True, comment='采集时间')
 
 	# 索引
 	__table_args__ = (
@@ -378,7 +378,7 @@ class LicenseKey(Base):
 	metainfo = Column(JSONB, comment='元数据（JSON格式）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 索引
 	__table_args__ = (
@@ -389,9 +389,6 @@ class LicenseKey(Base):
 	)
 
 
-
-
-
 class HyperTableMetadata(Base):
 	"""超表元数据表"""
 	__tablename__ = 'hyper_table_metadata'
@@ -399,17 +396,17 @@ class HyperTableMetadata(Base):
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='元数据ID')
 	table_name = Column(String(100), nullable=False, unique=True, index=True, comment='表名')
 	time_column = Column(String(50), nullable=False, default='timestamp', comment='时间列名')
-	tags = Column(JSON, default=list, comment='标签列列表')
+	tags = Column(JSON, default=lambda: [], comment='标签列列表')
 	chunk_time_interval = Column(String(20), default='1 day', comment='数据块时间间隔')
 	compression_enabled = Column(Boolean, default=True, comment='是否启用压缩')
-	compression_settings = Column(JSON, default=dict, comment='压缩设置')
+	compression_settings = Column(JSON, default=lambda: {}, comment='压缩设置')
 	status = Column(String(20), default='active', comment='状态：active, disabled, error')
 	disabled_reason = Column(Text, comment='禁用原因')
 	disabled_at = Column(DateTime(timezone=True), comment='禁用时间')
 	enabled_at = Column(DateTime(timezone=True), comment='启用时间')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	time_buckets = relationship("TimeBucketConfig", back_populates="hyper_table", cascade="all, delete-orphan")
@@ -424,14 +421,14 @@ class TimeBucketConfig(Base):
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='配置ID')
 	table_name = Column(String(100), ForeignKey('hyper_table_metadata.table_name'), nullable=False, comment='表名')
 	bucket_interval = Column(String(10), nullable=False, comment='分桶间隔：1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M')
-	aggregate_functions = Column(JSON, default=list, comment='聚合函数列表')
+	aggregate_functions = Column(JSON, default=lambda: [], comment='聚合函数列表')
 	retention_days = Column(Integer, default=365, comment='数据保留天数')
 	is_active = Column(Boolean, default=True, comment='是否激活')
 	materialized_view = Column(String(100), comment='物化视图名')
 	last_bucket_time = Column(DateTime(timezone=True), comment='最后分桶时间')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	hyper_table = relationship("HyperTableMetadata", back_populates="time_buckets")
@@ -453,12 +450,12 @@ class RetentionPolicy(Base):
 	cleanup_strategy = Column(String(50), nullable=False, default='drop', comment='清理策略：drop, archive, compress')
 	schedule_interval = Column(String(20), default='1 day', comment='调度间隔')
 	is_active = Column(Boolean, default=True, comment='是否激活')
-	conditions = Column(JSON, default=dict, comment='额外条件')
+	conditions = Column(JSON, default=lambda: {}, comment='额外条件')
 	last_executed = Column(DateTime(timezone=True), comment='最后执行时间')
 	next_execution = Column(DateTime(timezone=True), comment='下次执行时间')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	hyper_table = relationship("HyperTableMetadata", back_populates="retention_policies")
@@ -484,7 +481,7 @@ class RetentionPolicyLog(Base):
 	space_reclaimed = Column(String(50), comment='回收空间')
 	execution_status = Column(String(20), nullable=False, comment='执行状态：success, failed')
 	error_message = Column(Text, comment='错误信息')
-	execution_details = Column(JSON, comment='执行详情')
+	execution_details = Column(JSON, default=lambda: {}, comment='执行详情')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
 	# 关联关系
@@ -519,7 +516,7 @@ class ChunkMetadata(Base):
 	last_storage_move = Column(DateTime(timezone=True), comment='最后存储移动时间')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-						onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	hyper_table = relationship("HyperTableMetadata", back_populates="chunks")

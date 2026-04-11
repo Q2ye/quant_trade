@@ -83,9 +83,9 @@ class SysUserRole(Base):
     )
 
     # 关联关系
-    user = relationship("SysUser", back_populates="user_roles", foreign_keys=[user_id])
+    user = relationship("SysUser", back_populates="user_roles", foreign_keys=user_id)
     role = relationship("SysRole", back_populates="user_roles")
-    assigner = relationship("SysUser", foreign_keys=[assigned_by])
+    assigner = relationship("SysUser", foreign_keys=assigned_by)
 
 
 class SysPermission(Base):
@@ -512,7 +512,7 @@ class AccountAuditLog(Base):
 
     # 关联关系
     account = relationship("Account", back_populates="audit_logs")
-    auditor = relationship("SysUser", foreign_keys=[auditor_id])
+    auditor = relationship("SysUser", foreign_keys=auditor_id)
 
     # 索引
     __table_args__ = (
@@ -793,7 +793,7 @@ class Blacklist(Base):
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
     # 关联关系
-    added_by_user = relationship("SysUser", foreign_keys=[added_by])
+    added_by_user = relationship("SysUser", foreign_keys=added_by)
 
     # 索引和约束
     __table_args__ = (
@@ -1253,9 +1253,9 @@ class FactorResearch(Base):
     sharpe_ratio = Column(Numeric(10, 4), comment='夏普比率')
 
     # 用户和上下文
-    user_id = Column(Integer, ForeignKey('sys_users.id'), index=True, comment='用户ID')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
-    updated_by = Column(Integer, ForeignKey('sys_users.id'), comment='更新人ID')
+    user_id = Column(String(36), ForeignKey('sys_users.id'), index=True, comment='用户ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
+    updated_by = Column(String(36), ForeignKey('sys_users.id'), comment='更新人ID')
 
     # 时间戳
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -1266,9 +1266,9 @@ class FactorResearch(Base):
     estimated_completion_at = Column(DateTime(timezone=True), comment='预计完成时间')
 
     # 关联关系
-    user = relationship("SysUser", back_populates="factor_research", foreign_keys=[user_id])
-    creator = relationship("SysUser", foreign_keys=[created_by])
-    updater = relationship("SysUser", foreign_keys=[updated_by])
+    user = relationship("SysUser", back_populates="factor_research", foreign_keys=user_id)
+    creator = relationship("SysUser", foreign_keys=created_by)
+    updater = relationship("SysUser", foreign_keys=updated_by)
 
     # 复合索引
     __table_args__ = (
@@ -1529,9 +1529,9 @@ class MonitorAlert(Base):
     message = Column(Text, nullable=False, comment='报警详细信息')
     metainfo = Column(JSON, comment='报警元数据（JSON格式）')
     status = Column(String(20), default='active', comment='报警状态：active, acknowledged, resolved, suppressed')
-    acknowledged_by = Column(Integer, ForeignKey('sys_users.id'), comment='确认人ID')
+    acknowledged_by = Column(String(36), ForeignKey('sys_users.id'), comment='确认人ID')
     acknowledged_at = Column(DateTime(timezone=True), comment='确认时间')
-    resolved_by = Column(Integer, ForeignKey('sys_users.id'), comment='解决人ID')
+    resolved_by = Column(String(36), ForeignKey('sys_users.id'), comment='解决人ID')
     resolved_at = Column(DateTime(timezone=True), comment='解决时间')
     notification_sent = Column(Boolean, default=False, comment='是否已发送通知')
     notification_channels = Column(JSON, default=lambda: ["email", "wechat"], comment='通知渠道（JSON数组）')
@@ -1540,8 +1540,8 @@ class MonitorAlert(Base):
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
     # 关联关系
-    acknowledger = relationship("SysUser", foreign_keys=[acknowledged_by])
-    resolver = relationship("SysUser", foreign_keys=[resolved_by])
+    acknowledger = relationship("SysUser", foreign_keys=acknowledged_by)
+    resolver = relationship("SysUser", foreign_keys=resolved_by)
     delivery_logs = relationship("AlertDeliveryLog", back_populates="alert", cascade="all, delete-orphan")
 
     # 索引

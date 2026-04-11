@@ -202,8 +202,8 @@ class AuthDependencies:
 			# 认证失败时返回None，而不是抛出异常
 			return None
 
+	@staticmethod
 	async def require_permission (
-			self,
 			permission_codes: List[str],
 			current_user: Dict[str, Any] = Depends(get_current_user)
 	) -> Dict[str, Any]:
@@ -242,8 +242,8 @@ class AuthDependencies:
 		)
 		return current_user
 
+	@staticmethod
 	async def require_superuser (
-			self,
 			current_user: Dict[str, Any] = Depends(get_current_user)
 	) -> Dict[str, Any]:
 		"""
@@ -258,8 +258,10 @@ class AuthDependencies:
 		Raises:
 			HTTPException: 403 - 需要超级用户权限
 		"""
-		if not current_user.get("is_superuser", False):
-			logger.warning(f"用户 {current_user['username']} 不是超级用户")
+		# 检查用户角色是否为超级用户
+		user_role = current_user.get("role", "")
+		if user_role not in ("super_admin", "superadmin"):
+			logger.warning(f"用户 {current_user['username']} 不是超级用户，角色: {user_role}")
 			raise HTTPException(
 				status_code=status.HTTP_403_FORBIDDEN,
 				detail="需要超级用户权限",

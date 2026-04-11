@@ -6,21 +6,20 @@
 提供时间分片、数据保留策略、批量写入等优化功能
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Type
+
+from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, desc, delete
-from sqlalchemy.sql import Select
 
 from .repository_base import BaseRepository, T, RepositoryError
-from .pagination import PaginationParams, PaginationResult
 from ..types import TimeRange
 
 
 class HyperRepositoryBase(BaseRepository[T]):
 	"""超表Repository基类 - 针对时序数据优化"""
 
-	def __init__ (self, session: AsyncSession, model: T):
+	def __init__ (self, session: AsyncSession, model: Type[T]):
 		"""
 		初始化超表Repository
 
@@ -180,15 +179,23 @@ class HyperRepositoryBase(BaseRepository[T]):
 			删除的记录数
 		"""
 		try:
-			query = delete(self.model).where(
-				and_(
-					getattr(self.model, self.time_column) >= start_time,
-					getattr(self.model, self.time_column) <= end_time
-				)
-			)
+			# 构建删除查询
+			from sqlalchemy import delete as sql_delete
+			query = sql_delete(self.model)
 
+			# 构建条件列表
+			conditions = [
+				getattr(self.model, self.time_column) >= start_time,
+				getattr(self.model, self.time_column) <= end_time
+			]
+
+			# 添加标的代码条件
 			if symbol and hasattr(self.model, 'symbol'):
-				query = query.where(self.model.symbol == symbol)
+				conditions.append(self.model.symbol == symbol)
+
+			# 应用所有条件
+			if conditions:
+				query.where(and_(*conditions))
 
 			result = await self.session.execute(query)
 			return result.rowcount or 0
@@ -219,9 +226,85 @@ class HyperRepositoryBase(BaseRepository[T]):
 			聚合结果列表
 		"""
 		try:
-			# 这里实现具体的聚合逻辑
-			# 根据interval生成时间桶，执行聚合查询
-			pass
+			from sqlalchemy import func
+
+			# 构建基础查询
+			query = select()
+
+			# 生成时间桶表达式
+			time_column = getattr(self.model, self.time_column)
+
+			# 根据interval生成时间桶
+			if interval == "1m":
+				time_bucket = func.date_trunc('minute', time_column)
+			elif interval == "1h":
+				time_bucket = func.date_trunc('hour', time_column)
+			elif interval == "1d":
+				time_bucket = func.date_trunc('day', time_column)
+			elif interval == "1w":
+				time_bucket = func.date_trunc('week', time_column)
+			elif interval == "1M":
+				time_bucket = func.date_trunc('month', time_column)
+			else:
+				time_bucket = func.date_trunc('day', time_column)  # 默认按天
+
+			# 添加时间桶到查询
+			query = query.add_columns(time_bucket.label('time_bucket'))
+
+			# 处理聚合函数
+			if aggregation:
+				for field, agg_func in aggregation.items():
+					if hasattr(self.model, field):
+						column = getattr(self.model, field)
+						if agg_func == "sum":
+							query = query.add_columns(func.sum(column).label(f"sum_{field}"))
+						elif agg_func == "avg":
+							query = query.add_columns(func.avg(column).label(f"avg_{field}"))
+						elif agg_func == "max":
+							query = query.add_columns(func.max(column).label(f"max_{field}"))
+						elif agg_func == "min":
+							query = query.add_columns(func.min(column).label(f"min_{field}"))
+						elif agg_func == "count":
+							query = query.add_columns(func.count(column).label(f"count_{field}"))
+			else:
+				# 默认聚合：计数
+				query = query.add_columns(func.count().label('count'))
+
+			# 添加分组
+			group_by_columns = ['time_bucket']
+			if group_by:
+				for field in group_by:
+					if hasattr(self.model, field):
+						column = getattr(self.model, field)
+						query = query.add_columns(column.label(field))
+						group_by_columns.append(field)
+
+			# 设置FROM子句和WHERE条件
+			query = query.select_from(self.model)
+			query = query.where(
+				and_(
+					time_column >= start_time,
+					time_column <= end_time
+				)
+			)
+
+			# 执行分组
+			query = query.group_by(*group_by_columns)
+			query = query.order_by('time_bucket')
+
+			# 执行查询
+			result = await self.session.execute(query)
+			rows = result.all()
+
+			# 转换结果为字典列表
+			aggregated_data = []
+			for row in rows:
+				row_dict = {}
+				for i, column in enumerate(result.keys()):
+					row_dict[column] = row[i]
+				aggregated_data.append(row_dict)
+
+			return aggregated_data
 
 		except Exception as e:
 			raise RepositoryError(f"按时间间隔聚合失败: {str(e)}")

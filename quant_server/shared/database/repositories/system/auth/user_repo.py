@@ -4,7 +4,7 @@
 提供系统用户数据的统一访问接口
 位置：shared/database/repositories/user_repo.py
 """
-
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quant_server.shared.database.models.business_models import SysUser, SysPermission
 from quant_server.shared.database.repositories.base import BaseRepository
 
+logger = logging.getLogger(__name__)
 
 class UserRepository:
 	"""用户数据Repository - 纯数据访问"""
@@ -203,7 +204,10 @@ class UserRepository:
 			select(
 				SysUser.role,
 				func.count(SysUser.id).label('count'),
-				func.sum(case([(SysUser.is_active == True, 1)], else_=0)).label('active')
+				func.sum(case(
+					(SysUser.is_active == True, 1),
+					else_=0
+				)).label('active')
 			).group_by(
 				SysUser.role
 			).order_by(
@@ -261,7 +265,10 @@ class UserRepository:
 		query = select(
 			func.date(SysUser.created_at).label('date'),
 			func.count(SysUser.id).label('new_users'),
-			func.sum(case([(SysUser.is_active == True, 1)], else_=0)).label('active_new_users')
+			func.sum(case(
+				(SysUser.is_active == True, 1),
+				else_=0
+			)).label('active_new_users')
 		).where(
 			SysUser.created_at >= start_date
 		).group_by(
@@ -372,7 +379,6 @@ class UserRepository:
 		high_active = 0
 		medium_active = 0
 		low_active = 0
-		inactive = 0
 
 		for row in recent_login_stats.all():
 			login_days = row.login_days or 0
@@ -553,8 +559,8 @@ class UserRepository:
 
 	async def batch_upsert_users (
 			self,
-			users_data: List[Dict[str, Any]],
-			match_fields: List[str] = ['username']
+			users_data: List[str],
+			match_fields: List[Dict[str, Any]] = ['username']
 	) -> List[SysUser]:
 		"""批量插入或更新用户"""
 		return await self.user_repo.batch_upsert(users_data, match_fields)
@@ -603,7 +609,8 @@ class UserRepository:
 					success_count += 1
 				else:
 					failed_count += 1
-			except Exception:
+			except Exception as e:
+				logger.error(f"授予权限失败: {str(e)}")
 				failed_count += 1
 
 		return {

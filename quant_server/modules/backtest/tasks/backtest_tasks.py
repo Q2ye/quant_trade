@@ -78,7 +78,7 @@ class BacktestTask:
 			context = StrategyContext(
 				strategy_id=self.strategy_id,
 				strategy_name=f"Strategy_{self.strategy_id}",
-				user_id=1,
+				user_id="1",
 				initial_capital=self.initial_capital
 			)
 

@@ -12,11 +12,12 @@ Repository基类 - 统一数据访问接口
 4. 类型安全：使用泛型确保类型一致性
 """
 
-from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
+
 import pandas as pd
-from sqlalchemy import select, update, delete, func, and_, desc, asc
+from sqlalchemy import select, delete, func, and_, desc, asc
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import Select
 
@@ -47,7 +48,8 @@ class BaseRepository(Generic[T]):
 
 	# ==================== 辅助方法 ====================
 
-	def _convert_to_datetime (self, value: Any) -> Optional[datetime]:
+	@staticmethod
+	def _convert_to_datetime (value: Any) -> Optional[datetime]:
 		"""
 		将各种日期时间格式转换为Python datetime对象
 		用于处理来自Pandas、外部API等不同来源的日期值
@@ -74,7 +76,7 @@ class BaseRepository(Generic[T]):
 			try:
 				# 尝试解析ISO格式字符串
 				return pd.to_datetime(value).to_pydatetime()
-			except Exception:
+			except (ValueError, TypeError):
 				return None
 
 		# 无法转换
@@ -93,8 +95,8 @@ class BaseRepository(Generic[T]):
 		"""
 		# 定义需要检查的日期时间字段
 		datetime_fields = ['trade_date', 'start_date', 'end_date', 'calc_time',
-		                  'created_at', 'updated_at', 'started_at', 'completed_at',
-		                  'timestamp', 'event_time', 'start_time', 'end_time']
+		                   'created_at', 'updated_at', 'started_at', 'completed_at',
+		                   'timestamp', 'event_time', 'start_time', 'end_time']
 
 		converted = data.copy()
 		for field in datetime_fields:
@@ -212,7 +214,6 @@ class BaseRepository(Generic[T]):
 		except Exception as e:
 			raise RepositoryError(f"获取所有记录失败: {str(e)}")
 
-
 	async def create (self, data: Dict[str, Any]) -> T:
 		"""
 		创建新记录
@@ -300,11 +301,10 @@ class BaseRepository(Generic[T]):
 				data['updated_at'] = data.get('updated_at', datetime.now())
 
 			# 执行更新
-			stmt = (
-				update(self.model)
-				.where(self.model.id == id)
-				.values(**data)
-			)
+			from sqlalchemy import update as sql_update
+			stmt = sql_update(self.model)
+			stmt = stmt.where(self.model.id == id)
+			stmt = stmt.values(**data)
 
 			await self.session.execute(stmt)
 
@@ -332,14 +332,16 @@ class BaseRepository(Generic[T]):
 				data['updated_at'] = data.get('updated_at', datetime.now())
 
 			# 构建查询
-			query = update(self.model)
+			from sqlalchemy import update as sql_update
+			query = sql_update(self.model)
 
 			for attr, value in filters.items():
 				if hasattr(self.model, attr):
 					query = query.where(getattr(self.model, attr) == value)
 
 			# 执行更新
-			result = await self.session.execute(query.values(**data))
+			query = query.values(**data)
+			result = await self.session.execute(query)
 			return result.rowcount or 0
 
 		except Exception as e:
@@ -360,15 +362,16 @@ class BaseRepository(Generic[T]):
 		try:
 			if soft and hasattr(self.model, 'is_deleted'):
 				# 软删除
-				stmt = (
-					update(self.model)
-					.where(self.model.id == id)
-					.values(is_deleted=True, updated_at=datetime.now())
-				)
+				from sqlalchemy import update as sql_update
+				stmt = sql_update(self.model)
+				stmt = stmt.where(self.model.id == id)
+				stmt = stmt.values(is_deleted=True, updated_at=datetime.now())
 				await self.session.execute(stmt)
 			else:
 				# 硬删除
-				stmt = delete(self.model).where(self.model.id == id)
+				from sqlalchemy import delete as sql_delete
+				stmt = sql_delete(self.model)
+				stmt = stmt.where(self.model.id == id)
 				await self.session.execute(stmt)
 
 			await self.session.flush()
@@ -426,6 +429,37 @@ class BaseRepository(Generic[T]):
 
 		except Exception as e:
 			raise RepositoryError(f"统计记录数失败: {str(e)}")
+
+	async def count_by (self, **filters) -> int:
+		"""
+		根据条件统计记录数（支持高级过滤）
+
+		Args:
+			**filters: 过滤条件，支持特殊语法：
+			- field__between: 范围查询，值为(start, end)元组
+			- 其他: 等值查询
+
+		Returns:
+			记录数
+		"""
+		try:
+			query = select(func.count()).select_from(self.model)
+
+			for attr, value in filters.items():
+				# 处理特殊语法
+				if '__between' in attr:
+					field_name = attr.split('__between')[0]
+					if hasattr(self.model, field_name) and isinstance(value, (list, tuple)) and len(value) == 2:
+						start, end = value
+						query = query.where(getattr(self.model, field_name).between(start, end))
+				elif hasattr(self.model, attr):
+					query = query.where(getattr(self.model, attr) == value)
+
+			result = await self.session.execute(query)
+			return result.scalar() or 0
+
+		except Exception as e:
+			raise RepositoryError(f"按条件统计记录数失败: {str(e)}")
 
 	async def exists (self, **filters) -> bool:
 		"""

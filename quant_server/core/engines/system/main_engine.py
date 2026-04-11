@@ -427,11 +427,11 @@ class MainEngine(EngineBase):
                 continue
 
             # 获取引擎配置
-            engine_config = self._system_config.engine_configs.get(engine_type.value, {})
+            engine_config = self._system_config.engine_configs.get(engine_type, {})
 
             # 检查是否启用（默认启用）
             if not engine_config.get("enabled", True):
-                logger.info(f"引擎 {engine_type.value} 在配置中被禁用，跳过启动")
+                logger.info(f"引擎 {engine_type} 在配置中被禁用，跳过启动")
                 continue
 
             start_tasks.append(self._start_child_engine(engine_type, engine_config))

@@ -112,9 +112,9 @@ class StrategyRepository(BaseRepository[Strategy]):
 		# 基础查询
 		query = select(
 			func.count(Strategy.id).label('total_count'),
-			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running_count'),
-			func.sum(case(((Strategy.status == 'stopped', 1),), else_=0)).label('stopped_count'),
-			func.sum(case(((Strategy.status == 'error', 1),), else_=0)).label('error_count'),
+			func.sum(case((Strategy.status == 'running', 1), else_=0)).label('running_count'),
+			func.sum(case((Strategy.status == 'stopped', 1), else_=0)).label('stopped_count'),
+			func.sum(case((Strategy.status == 'error', 1), else_=0)).label('error_count'),
 			func.count(func.distinct(Strategy.strategy_type)).label('type_count')
 		)
 
@@ -139,7 +139,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		type_query = select(
 			Strategy.strategy_type,
 			func.count(Strategy.id).label('count'),
-			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running')
+			func.sum(case((Strategy.status == 'running', 1), else_=0)).label('running')
 		)
 
 		if user_id:
@@ -322,7 +322,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 		query = select(
 			Strategy.user_id,
 			func.count(Strategy.id).label('strategy_count'),
-			func.sum(case(((Strategy.status == 'running', 1),), else_=0)).label('running_count')
+			func.sum(case((Strategy.status == 'running', 1), else_=0)).label('running_count')
 		).group_by(
 			Strategy.user_id
 		).order_by(

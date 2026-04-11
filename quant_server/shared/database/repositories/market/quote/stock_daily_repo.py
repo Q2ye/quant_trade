@@ -5,7 +5,7 @@
 职责：管理股票日线行情数据访问，继承HyperRepositoryBase实现时序数据优化操作
 """
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import select, and_, desc, func, text, case
@@ -90,8 +90,8 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[StockDaily]:
 		"""
@@ -151,8 +151,8 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 
 	async def delete_by_date_range (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None
 	) -> int:
 		"""
@@ -177,8 +177,8 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 	async def get_daily_statistics (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		获取日线数据统计信息
@@ -228,7 +228,7 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 	async def calculate_technical_indicators (
 			self,
 			ts_code: str,
-			end_date: date,
+			end_date: datetime,
 			period: int = 20
 	) -> Dict[str, Any]:
 		"""
@@ -290,8 +290,8 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 	async def get_price_volatility (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			window: int = 20
 	) -> List[Dict[str, Any]]:
 		"""
