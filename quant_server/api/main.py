@@ -15,7 +15,8 @@ from .routers import (
 	data_router,
 	strategy_router,
 	health_router,
-	backtest_router
+	backtest_router,
+	trade_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ def create_app (
 	# 注册路由
 	app.include_router(data_router, prefix="/api/data")
 	app.include_router(strategy_router, prefix="/api/strategy")
-	# app.include_router(trade_router, prefix="/api/trade")
+	app.include_router(trade_router, prefix="/api/trade")
 	app.include_router(backtest_router, prefix="/api/backtest")
 	# app.include_router(account_router, prefix="/api/account")
 	# app.include_router(analysis_router, prefix="/api/analysis")

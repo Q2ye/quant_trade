@@ -2,10 +2,25 @@
 订单相关事件
 """
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Optional
 
-from core.events.base import BaseEvent, EventPriority
-from core.events.types import TradeEventType
+from quant_server.core.events import BaseEvent
+
+
+class OrderEvent(BaseEvent):
+	"""订单事件基类"""
+	def __init__(self, order_id: str, symbol: str, **kwargs):
+		super().__init__(**kwargs)
+		self.order_id = order_id
+		self.symbol = symbol
+
+
+class OrderUpdateEvent(BaseEvent):
+	"""订单更新事件"""
+	def __init__(self, order_id: str, status: str, **kwargs):
+		super().__init__(**kwargs)
+		self.order_id = order_id
+		self.status = status
 
 
 class OrderCreatedEvent(BaseEvent):
@@ -21,13 +36,11 @@ class OrderCreatedEvent(BaseEvent):
 			volume: int,
 			strategy_id: Optional[str] = None,
 			account_id: str = "",
-			**kwargs
 	):
 		super().__init__(
-			module="events",
-			event_type=TradeEventType.ORDER_CREATED.value,
-			priority=EventPriority.NORMAL,
-			**kwargs
+			event_type="order_created",
+			module="trade",
+			source="order_events"
 		)
 
 		self.data = {
@@ -55,13 +68,11 @@ class OrderFilledEvent(BaseEvent):
 			filled_volume: int,
 			commission: float = 0.0,
 			tax: float = 0.0,
-			**kwargs
 	):
 		super().__init__(
-			module="events",
-			event_type=TradeEventType.ORDER_FILLED.value,
-			priority=EventPriority.NORMAL,
-			**kwargs
+			event_type="order_filled",
+			module="trade",
+			source="order_events"
 		)
 
 		self.data = {
@@ -85,13 +96,11 @@ class OrderCancelledEvent(BaseEvent):
 			symbol: str,
 			cancelled_volume: int,
 			reason: str = "user",
-			**kwargs
 	):
 		super().__init__(
-			module="events",
-			event_type=TradeEventType.ORDER_CANCELLED.value,
-			priority=EventPriority.NORMAL,
-			**kwargs
+			event_type="order_cancelled",
+			module="trade",
+			source="order_events"
 		)
 
 		self.data = {

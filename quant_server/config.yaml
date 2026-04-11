@@ -47,6 +47,52 @@ defaults: &defaults
       config:
         max_workers: 4
         enable_optimization: true
+    
+    trade:
+      enabled: true
+      auto_start: true
+      dependencies: ["strategy", "data"]
+      config:
+        simulated_trading: true
+        initial_capital: 1000000
+        broker: "sim"
+        risk_check_enabled: true
+        stop_loss_percent: 0.05
+    
+    account:
+      enabled: false
+      auto_start: false
+      dependencies: ["trade"]
+      config:
+        enable_multi_account: false
+        account_update_interval: 60
+    
+    analysis:
+      enabled: false
+      auto_start: false
+      dependencies: ["account", "strategy"]
+      config:
+        performance_calc_interval: 3600
+        enable_attribution: true
+    
+    monitor:
+      enabled: false
+      auto_start: false
+      dependencies: ["data", "strategy", "trade", "account", "analysis"]
+      config:
+        email_enabled: false
+        dingtalk_enabled: false
+        wechat_enabled: false
+        alert_interval: 300
+    
+    system:
+      enabled: false
+      auto_start: false
+      dependencies: []
+      config:
+        secret_key: "your-secret-key-here"
+        access_token_expire_minutes: 30
+        algorithm: "HS256"
 
 # 环境配置框架
 environments:
