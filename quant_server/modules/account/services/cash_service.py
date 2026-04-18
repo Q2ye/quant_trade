@@ -3,19 +3,18 @@
 处理账户资金存入、取出、冻结、解冻等操作
 """
 import logging
-from typing import Optional, Dict, Any, List, Tuple
-from decimal import Decimal
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from decimal import Decimal
+from typing import Optional, Dict, Any, List
 
-from shared.database.repositories.account_repo import AccountRepository
-from shared.database.repositories.cash_flow_repo import CashFlowRepository
-from shared.database.models.business_models import Account, CashFlow
-from modules.account.models import AccountDomain
-from shared.cache.base import CacheBase
-from shared.security.audit import AuditLogger
-from shared.utils.validation import validate_amount
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.cache.base import CacheBase
+from quant_server.shared.database.models.business_models import Account
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.account.settlement.cash_flow_repo import CashFlowRepository
+from quant_server.shared.security.audit import AuditLogger
+from quant_server.shared.utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +27,47 @@ class CashService:
 		self.cache = cache
 		self.account_repo = AccountRepository(db)
 		self.cash_flow_repo = CashFlowRepository(db)
-		self.audit_logger = AuditLogger(db)
+		self.audit_logger = AuditLogger()
+
+	async def _clear_cache (self, account_id: str, include_cash_flows: bool = False):
+		"""
+		清理账户相关缓存
+
+		Args:
+			account_id: 账户ID
+			include_cash_flows: 是否清理资金流水缓存
+		"""
+		if self.cache:
+			await self.cache.delete(f"events:{account_id}")
+			if include_cash_flows:
+				await self.cache.delete(f"events:cash_flows:{account_id}")
+
+	async def _get_account (self, account_id: str, require_active: bool = True) -> Account:
+		"""
+		获取账户并检查状态
+
+		Args:
+			account_id: 账户ID
+			require_active: 是否要求账户状态为活跃
+
+		Returns:
+			Account: 账户对象
+
+		Raises:
+			ValueError: 账户不存在或状态不符合要求
+		"""
+		account = await self.account_repo.get(account_id)
+		if not account:
+			raise ValueError(f"账户不存在: {account_id}")
+
+		if require_active and account.status != "active":
+			raise ValueError(f"账户状态为{account.status}，无法操作")
+
+		return account
 
 	async def deposit (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			description: str = "存款",
 			reference_id: Optional[str] = None
@@ -54,12 +89,7 @@ class CashService:
 			validate_amount(amount, min_value=Decimal("0.01"))
 
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
-
-			if account.status != "active":
-				raise ValueError(f"账户状态为{account.status}，无法存款")
+			account = await self._get_account(account_id)
 
 			# 计算新余额
 			new_total = Decimal(str(account.total_balance)) + amount
@@ -76,11 +106,9 @@ class CashService:
 			if success:
 				# 记录资金流水
 				cash_flow_data = {
-					"account_id": account_id,
+					"user_id": account.user_id,
 					"flow_type": "deposit",
 					"amount": amount,
-					"balance_before": account.available_balance,
-					"balance_after": new_available,
 					"description": description,
 					"reference_id": reference_id,
 					"status": "completed"
@@ -89,24 +117,22 @@ class CashService:
 				await self.cash_flow_repo.create(cash_flow_data)
 
 				# 记录审计日志
-				await self.audit_logger.log(
+				await self.audit_logger.log_simple(
 					action="cash_deposit",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
+					description=description,
 					details={
 						"amount": float(amount),
 						"old_balance": float(account.available_balance),
 						"new_balance": float(new_available),
-						"description": description,
 						"reference_id": reference_id
 					}
 				)
 
 				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
-					await self.cache.delete(f"events:cash_flows:{account_id}")
+				await self._clear_cache(account_id, include_cash_flows=True)
 
 				logger.info(f"存款成功: 账户ID={account_id}, 金额={amount}, 描述={description}")
 
@@ -128,7 +154,7 @@ class CashService:
 
 	async def withdraw (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			description: str = "取款",
 			reference_id: Optional[str] = None
@@ -150,12 +176,7 @@ class CashService:
 			validate_amount(amount, min_value=Decimal("0.01"))
 
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
-
-			if account.status != "active":
-				raise ValueError(f"账户状态为{account.status}，无法取款")
+			account = await self._get_account(account_id)
 
 			# 检查资金是否足够
 			if Decimal(str(account.available_balance)) < amount:
@@ -176,11 +197,9 @@ class CashService:
 			if success:
 				# 记录资金流水
 				cash_flow_data = {
-					"account_id": account_id,
+					"user_id": account.user_id,
 					"flow_type": "withdrawal",
 					"amount": amount,
-					"balance_before": account.available_balance,
-					"balance_after": new_available,
 					"description": description,
 					"reference_id": reference_id,
 					"status": "completed"
@@ -189,24 +208,22 @@ class CashService:
 				await self.cash_flow_repo.create(cash_flow_data)
 
 				# 记录审计日志
-				await self.audit_logger.log(
+				await self.audit_logger.log_simple(
 					action="cash_withdrawal",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
+					description=description,
 					details={
 						"amount": float(amount),
 						"old_balance": float(account.available_balance),
 						"new_balance": float(new_available),
-						"description": description,
 						"reference_id": reference_id
 					}
 				)
 
 				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
-					await self.cache.delete(f"events:cash_flows:{account_id}")
+				await self._clear_cache(account_id, include_cash_flows=True)
 
 				logger.info(f"取款成功: 账户ID={account_id}, 金额={amount}, 描述={description}")
 
@@ -228,7 +245,7 @@ class CashService:
 
 	async def freeze_funds (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			reason: str,
 			reference_id: Optional[str] = None
@@ -250,12 +267,7 @@ class CashService:
 			validate_amount(amount, min_value=Decimal("0.01"))
 
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
-
-			if account.status != "active":
-				raise ValueError(f"账户状态为{account.status}，无法冻结资金")
+			account = await self._get_account(account_id)
 
 			# 检查可用资金是否足够
 			if Decimal(str(account.available_balance)) < amount:
@@ -276,11 +288,9 @@ class CashService:
 			if success:
 				# 记录资金冻结流水
 				cash_flow_data = {
-					"account_id": account_id,
+					"user_id": account.user_id,
 					"flow_type": "freeze",
 					"amount": amount,
-					"balance_before": account.available_balance,
-					"balance_after": new_available,
 					"description": f"资金冻结 - {reason}",
 					"reference_id": reference_id,
 					"status": "completed"
@@ -289,11 +299,12 @@ class CashService:
 				await self.cash_flow_repo.create(cash_flow_data)
 
 				# 记录审计日志
-				await self.audit_logger.log(
+				await self.audit_logger.log_simple(
 					action="cash_freeze",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
+					description=f"资金冻结 - {reason}",
 					details={
 						"amount": float(amount),
 						"old_available": float(account.available_balance),
@@ -306,8 +317,7 @@ class CashService:
 				)
 
 				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+				await self._clear_cache(account_id)
 
 				logger.info(f"资金冻结成功: 账户ID={account_id}, 金额={amount}, 原因={reason}")
 
@@ -331,7 +341,7 @@ class CashService:
 
 	async def unfreeze_funds (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			reason: str,
 			reference_id: Optional[str] = None
@@ -353,9 +363,7 @@ class CashService:
 			validate_amount(amount, min_value=Decimal("0.01"))
 
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
+			account = await self._get_account(account_id, require_active=False)
 
 			# 检查冻结资金是否足够
 			if Decimal(str(account.frozen_balance)) < amount:
@@ -376,11 +384,9 @@ class CashService:
 			if success:
 				# 记录资金解冻流水
 				cash_flow_data = {
-					"account_id": account_id,
+					"user_id": account.user_id,
 					"flow_type": "unfreeze",
 					"amount": amount,
-					"balance_before": account.available_balance,
-					"balance_after": new_available,
 					"description": f"资金解冻 - {reason}",
 					"reference_id": reference_id,
 					"status": "completed"
@@ -389,11 +395,12 @@ class CashService:
 				await self.cash_flow_repo.create(cash_flow_data)
 
 				# 记录审计日志
-				await self.audit_logger.log(
+				await self.audit_logger.log_simple(
 					action="cash_unfreeze",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
+					description=f"资金解冻 - {reason}",
 					details={
 						"amount": float(amount),
 						"old_available": float(account.available_balance),
@@ -406,8 +413,7 @@ class CashService:
 				)
 
 				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+				await self._clear_cache(account_id)
 
 				logger.info(f"资金解冻成功: 账户ID={account_id}, 金额={amount}, 原因={reason}")
 
@@ -431,8 +437,8 @@ class CashService:
 
 	async def transfer_funds (
 			self,
-			from_account_id: int,
-			to_account_id: int,
+			from_account_id: str,
+			to_account_id: str,
 			amount: Decimal,
 			description: str,
 			reference_id: Optional[str] = None
@@ -459,20 +465,10 @@ class CashService:
 				raise ValueError("不能向同一账户转账")
 
 			# 获取转出账户
-			from_account = await self.account_repo.get_by_id(from_account_id)
-			if not from_account:
-				raise ValueError(f"转出账户不存在: {from_account_id}")
-
-			if from_account.status != "active":
-				raise ValueError(f"转出账户状态为{from_account.status}，无法转账")
+			from_account = await self._get_account(from_account_id)
 
 			# 获取转入账户
-			to_account = await self.account_repo.get_by_id(to_account_id)
-			if not to_account:
-				raise ValueError(f"转入账户不存在: {to_account_id}")
-
-			if to_account.status != "active":
-				raise ValueError(f"转入账户状态为{to_account.status}，无法接收转账")
+			to_account = await self._get_account(to_account_id)
 
 			# 检查转出账户资金是否足够
 			if Decimal(str(from_account.available_balance)) < amount:
@@ -501,14 +497,11 @@ class CashService:
 
 				# 记录转出流水
 				from_cash_flow_data = {
-					"account_id": from_account_id,
+					"user_id": from_account.user_id,
 					"flow_type": "transfer_out",
 					"amount": amount,
-					"balance_before": from_account.available_balance,
-					"balance_after": from_new_available,
 					"description": f"转账给账户{to_account.account_number} - {description}",
 					"reference_id": reference_id,
-					"related_account_id": to_account_id,
 					"status": "completed"
 				}
 
@@ -516,40 +509,34 @@ class CashService:
 
 				# 记录转入流水
 				to_cash_flow_data = {
-					"account_id": to_account_id,
+					"user_id": to_account.user_id,
 					"flow_type": "transfer_in",
 					"amount": amount,
-					"balance_before": to_account.available_balance,
-					"balance_after": to_new_available,
 					"description": f"收到账户{from_account.account_number}转账 - {description}",
 					"reference_id": reference_id,
-					"related_account_id": from_account_id,
 					"status": "completed"
 				}
 
 				await self.cash_flow_repo.create(to_cash_flow_data)
 
 			# 记录审计日志
-			await self.audit_logger.log(
+			await self.audit_logger.log_simple(
 				action="cash_transfer",
 				user_id=from_account.user_id,
 				resource_type="events",
 				resource_id=from_account_id,
+				description=description,
 				details={
 					"from_account": from_account.account_number,
 					"to_account": to_account.account_number,
 					"amount": float(amount),
-					"description": description,
 					"reference_id": reference_id
 				}
 			)
 
 			# 清理缓存
-			if self.cache:
-				await self.cache.delete(f"events:{from_account_id}")
-				await self.cache.delete(f"events:{to_account_id}")
-				await self.cache.delete(f"events:cash_flows:{from_account_id}")
-				await self.cache.delete(f"events:cash_flows:{to_account_id}")
+			await self._clear_cache(from_account_id, include_cash_flows=True)
+			await self._clear_cache(to_account_id, include_cash_flows=True)
 
 			logger.info(
 				f"资金转账成功: 从{from_account.account_number}到{to_account.account_number}, "
@@ -576,7 +563,7 @@ class CashService:
 
 	async def get_cash_flows (
 			self,
-			account_id: int,
+			account_id: str,
 			flow_type: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -605,25 +592,25 @@ class CashService:
 				if cached_flows:
 					return cached_flows
 
-			# 构建查询条件
-			conditions = [CashFlow.account_id == account_id]
+			# 构建查询
+			query = self.cash_flow_repo.build_query()
+			query = query.where(self.cash_flow_repo.model.user_id == account_id)
 
 			if flow_type:
-				conditions.append(CashFlow.flow_type == flow_type)
+				query = query.where(self.cash_flow_repo.model.flow_type == flow_type)
 
 			if start_date:
-				conditions.append(CashFlow.created_at >= start_date)
+				query = query.where(self.cash_flow_repo.model.created_at >= start_date)
 
 			if end_date:
-				conditions.append(CashFlow.created_at <= end_date)
+				query = query.where(self.cash_flow_repo.model.created_at <= end_date)
+
+			# 排序和分页
+			query = query.order_by(self.cash_flow_repo.model.created_at.desc())
+			query = query.offset(skip).limit(limit)
 
 			# 查询资金流水
-			cash_flows = await self.cash_flow_repo.get_by_conditions(
-				conditions=conditions,
-				order_by=[CashFlow.created_at.desc()],
-				skip=skip,
-				limit=limit
-			)
+			cash_flows = await self.cash_flow_repo.execute_query(query)
 
 			# 转换为字典格式
 			result = []
@@ -632,18 +619,15 @@ class CashService:
 					"id": flow.id,
 					"flow_type": flow.flow_type,
 					"amount": float(flow.amount),
-					"balance_before": float(flow.balance_before),
-					"balance_after": float(flow.balance_after),
 					"description": flow.description,
 					"reference_id": flow.reference_id,
-					"related_account_id": flow.related_account_id,
 					"status": flow.status,
 					"created_at": flow.created_at.isoformat()
 				})
 
 			# 更新缓存
 			if self.cache:
-				await self.cache.set(cache_key, result, expire=300)  # 缓存5分钟
+				await self.cache.set(cache_key, result, ttl=300)  # 缓存5分钟
 
 			return result
 
@@ -651,7 +635,7 @@ class CashService:
 			logger.error(f"获取资金流水失败: {str(e)}")
 			raise
 
-	async def get_balance_summary (self, account_id: int) -> Dict[str, Any]:
+	async def get_balance_summary (self, account_id: str) -> Dict[str, Any]:
 		"""
 		获取资金余额汇总
 
@@ -663,9 +647,7 @@ class CashService:
 		"""
 		try:
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
-			if not account:
-				raise ValueError(f"账户不存在: {account_id}")
+			account = await self._get_account(account_id, require_active=False)
 
 			# 获取今日资金流水
 			today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)

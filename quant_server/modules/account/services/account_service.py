@@ -3,18 +3,18 @@
 处理账户相关的核心业务逻辑
 """
 import logging
-from typing import Optional, List, Dict, Any
 from decimal import Decimal
-from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_
+from typing import Optional, List
+from datetime import date
 
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.user_repo import UserRepository
-from quant_server.shared.database.repositories.position_repo import PositionRepository
-from quant_server.shared.database.models.business_models import Account, AccountDailyPerformance
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.modules.account.models import AccountDomain
 from quant_server.shared.cache.base import CacheBase
+from quant_server.shared.database.models.business_models import Account, AccountDailyPerformance
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
+from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
 from quant_server.shared.security.audit import AuditLogger
 from quant_server.shared.utils.validation import validate_account_data
 
@@ -32,7 +32,7 @@ class AccountService:
 		self.position_repo = PositionRepository(db)
 		self.audit_logger = AuditLogger(db)
 
-	async def get_account (self, account_id: int) -> Optional[AccountDomain]:
+	async def get_account (self, account_id: str) -> Optional[AccountDomain]:
 		"""
 		获取账户详情
 
@@ -51,35 +51,16 @@ class AccountService:
 					return AccountDomain(**cached_account)
 
 			# 从数据库获取
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				return None
 
 			# 转换为领域对象
-			account_domain = AccountDomain(
-				id=account.id,
-				account_number=account.account_number,
-				account_name=account.account_name,
-				user_id=account.user_id,
-				account_type=account.account_type,
-				broker=account.broker,
-				broker_account_id=account.broker_account_id,
-				status=account.status,
-				status_reason=account.status_reason,
-				total_balance=Decimal(str(account.total_balance)),
-				available_balance=Decimal(str(account.available_balance)),
-				frozen_balance=Decimal(str(account.frozen_balance)),
-				market_value=Decimal(str(account.market_value)),
-				initial_balance=Decimal(str(account.initial_balance)),
-				credit_line=Decimal(str(account.credit_line)) if account.credit_line else None,
-				last_trade_date=account.last_trade_date,
-				created_at=account.created_at,
-				updated_at=account.updated_at
-			)
+			account_domain = await self._to_account_domain(account)
 
 			# 更新缓存
 			if self.cache:
-				await self.cache.set(cache_key, account_domain.dict(), expire=3600)
+				await self.cache.set(cache_key, account_domain.model_dump(), ttl=3600)
 
 			return account_domain
 
@@ -98,7 +79,7 @@ class AccountService:
 			账户领域对象，如果不存在则返回None
 		"""
 		try:
-			account = await self.account_repo.get_by_account_number(account_number)
+			account = await self.account_repo.get_by(account_number=account_number)
 			if not account:
 				return None
 
@@ -110,7 +91,7 @@ class AccountService:
 
 	async def get_user_accounts (
 			self,
-			user_id: int,
+			user_id: str,
 			include_closed: bool = False
 	) -> List[AccountDomain]:
 		"""
@@ -130,31 +111,12 @@ class AccountService:
 				conditions.append(Account.status != "closed")
 
 			# 查询账户
-			accounts = await self.account_repo.get_by_conditions(conditions)
+			accounts = await self.account_repo.get_many(skip=0, limit=100, **{c.left.name: c.right.value for c in conditions})
 
 			# 转换为领域对象
 			account_domains = []
 			for account in accounts:
-				account_domain = AccountDomain(
-					id=account.id,
-					account_number=account.account_number,
-					account_name=account.account_name,
-					user_id=account.user_id,
-					account_type=account.account_type,
-					broker=account.broker,
-					broker_account_id=account.broker_account_id,
-					status=account.status,
-					status_reason=account.status_reason,
-					total_balance=Decimal(str(account.total_balance)),
-					available_balance=Decimal(str(account.available_balance)),
-					frozen_balance=Decimal(str(account.frozen_balance)),
-					market_value=Decimal(str(account.market_value)),
-					initial_balance=Decimal(str(account.initial_balance)),
-					credit_line=Decimal(str(account.credit_line)) if account.credit_line else None,
-					last_trade_date=account.last_trade_date,
-					created_at=account.created_at,
-					updated_at=account.updated_at
-				)
+				account_domain = await self._to_account_domain(account)
 				account_domains.append(account_domain)
 
 			return account_domains
@@ -165,7 +127,7 @@ class AccountService:
 
 	async def create_account (
 			self,
-			user_id: int,
+			user_id: str,
 			account_name: str,
 			account_type: str = "cash",
 			initial_balance: Decimal = Decimal("1000000.00"),
@@ -188,7 +150,7 @@ class AccountService:
 		"""
 		try:
 			# 1. 验证用户存在
-			user = await self.user_repo.get_by_id(user_id)
+			user = await self.user_repo.get_user(user_id)
 			if not user:
 				raise ValueError(f"用户不存在: {user_id}")
 
@@ -223,42 +185,24 @@ class AccountService:
 			account = await self.account_repo.create(account_data)
 
 			# 5. 记录审计日志
-			await self.audit_logger.log(
-				action="account_create",
-				user_id=user_id,
-				resource_type="events",
-				resource_id=account.id,
-				details={
-					"account_number": account_number,
-					"account_name": account_name,
-					"account_type": account_type,
-					"initial_balance": float(initial_balance)
-				}
-			)
+			if self.audit_logger:
+				await self.audit_logger.log_simple(
+					action="account_create",
+					user_id=user_id,
+					resource_type="account",
+					resource_id=str(account.id),
+					details={
+						"account_number": account_number,
+						"account_name": account_name,
+						"account_type": account_type,
+						"initial_balance": float(initial_balance)
+					}
+				)
 
 			logger.info(f"账户创建成功: {account_number} (用户ID: {user_id})")
 
 			# 6. 转换为领域对象返回
-			return AccountDomain(
-				id=account.id,
-				account_number=account.account_number,
-				account_name=account.account_name,
-				user_id=account.user_id,
-				account_type=account.account_type,
-				broker=account.broker,
-				broker_account_id=account.broker_account_id,
-				status=account.status,
-				status_reason=account.status_reason,
-				total_balance=Decimal(str(account.total_balance)),
-				available_balance=Decimal(str(account.available_balance)),
-				frozen_balance=Decimal(str(account.frozen_balance)),
-				market_value=Decimal(str(account.market_value)),
-				initial_balance=Decimal(str(account.initial_balance)),
-				credit_line=Decimal(str(account.credit_line)) if account.credit_line else None,
-				last_trade_date=account.last_trade_date,
-				created_at=account.created_at,
-				updated_at=account.updated_at
-			)
+			return await self._to_account_domain(account)
 
 		except Exception as e:
 			logger.error(f"创建账户失败: {str(e)}")
@@ -266,7 +210,7 @@ class AccountService:
 
 	async def update_account (
 			self,
-			account_id: int,
+			account_id: str,
 			**update_data
 	) -> Optional[AccountDomain]:
 		"""
@@ -281,7 +225,7 @@ class AccountService:
 		"""
 		try:
 			# 1. 检查账户是否存在
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				return None
 
@@ -307,12 +251,12 @@ class AccountService:
 							"new": new_value
 						}
 
-				if changed_fields:
-					await self.audit_logger.log(
+				if changed_fields and self.audit_logger:
+					await self.audit_logger.log_simple(
 						action="account_update",
 						user_id=account.user_id,
-						resource_type="events",
-						resource_id=account_id,
+						resource_type="account",
+						resource_id=str(account_id),
 						details={
 							"changed_fields": changed_fields,
 							"update_reason": update_data.get("update_reason")
@@ -333,7 +277,7 @@ class AccountService:
 			logger.error(f"更新账户失败: {str(e)}")
 			raise
 
-	async def delete_account (self, account_id: int) -> bool:
+	async def delete_account (self, account_id: str) -> bool:
 		"""
 		软删除账户
 
@@ -345,13 +289,13 @@ class AccountService:
 		"""
 		try:
 			# 1. 检查账户是否存在
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				return False
 
 			# 2. 检查账户是否可以删除
 			# 检查是否有持仓
-			positions = await self.position_repo.get_by_account_id(account_id)
+			positions = await self.position_repo.get_account_positions(account_id, include_zero=True)
 			if any(p.volume > 0 for p in positions):
 				raise ValueError("账户存在持仓，无法删除")
 
@@ -365,24 +309,25 @@ class AccountService:
 				"is_deleted": 1
 			}
 
-			success = await self.account_repo.update(account_id, update_data)
+			updated_account = await self.account_repo.update(account_id, update_data)
+			success = updated_account is not None
 
 			# 4. 记录审计日志
-			if success:
-				await self.audit_logger.log(
+			if success and self.audit_logger:
+				await self.audit_logger.log_simple(
 					action="account_delete",
 					user_id=account.user_id,
-					resource_type="events",
-					resource_id=account_id,
+					resource_type="account",
+					resource_id=str(account_id),
 					details={
 						"account_number": account.account_number,
 						"reason": "用户删除"
 					}
 				)
 
-				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+			# 清理缓存
+			if self.cache:
+				await self.cache.delete(f"events:{account_id}")
 
 			return success
 
@@ -392,7 +337,7 @@ class AccountService:
 
 	async def get_accounts (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			account_type: Optional[str] = None,
 			status: Optional[str] = None,
 			skip: int = 0,
@@ -413,47 +358,28 @@ class AccountService:
 		"""
 		try:
 			# 构建查询条件
-			conditions = []
+			conditions = {}
 
 			if user_id:
-				conditions.append(Account.user_id == user_id)
+				conditions['user_id'] = user_id
 
 			if account_type:
-				conditions.append(Account.account_type == account_type)
+				conditions['account_type'] = account_type
 
 			if status:
-				conditions.append(Account.status == status)
+				conditions['status'] = status
 
 			# 查询账户
-			accounts = await self.account_repo.get_by_conditions(
-				conditions=conditions,
+			accounts = await self.account_repo.get_many(
 				skip=skip,
-				limit=limit
+				limit=limit,
+				**conditions
 			)
 
 			# 转换为领域对象
 			account_domains = []
 			for account in accounts:
-				account_domain = AccountDomain(
-					id=account.id,
-					account_number=account.account_number,
-					account_name=account.account_name,
-					user_id=account.user_id,
-					account_type=account.account_type,
-					broker=account.broker,
-					broker_account_id=account.broker_account_id,
-					status=account.status,
-					status_reason=account.status_reason,
-					total_balance=Decimal(str(account.total_balance)),
-					available_balance=Decimal(str(account.available_balance)),
-					frozen_balance=Decimal(str(account.frozen_balance)),
-					market_value=Decimal(str(account.market_value)),
-					initial_balance=Decimal(str(account.initial_balance)),
-					credit_line=Decimal(str(account.credit_line)) if account.credit_line else None,
-					last_trade_date=account.last_trade_date,
-					created_at=account.created_at,
-					updated_at=account.updated_at
-				)
+				account_domain = await self._to_account_domain(account)
 				account_domains.append(account_domain)
 
 			return account_domains
@@ -464,7 +390,7 @@ class AccountService:
 
 	async def adjust_total_balance (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			reason: str
 	) -> bool:
@@ -481,7 +407,7 @@ class AccountService:
 		"""
 		try:
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
@@ -508,15 +434,16 @@ class AccountService:
 				update_data["available_balance"] = new_available
 				update_data["frozen_balance"] = new_frozen
 
-			success = await self.account_repo.update(account_id, update_data)
+			updated_account = await self.account_repo.update(account_id, update_data)
+			success = updated_account is not None
 
 			# 记录审计日志
-			if success:
-				await self.audit_logger.log(
+			if success and self.audit_logger:
+				await self.audit_logger.log_simple(
 					action="account_balance_adjust",
 					user_id=account.user_id,
-					resource_type="events",
-					resource_id=account_id,
+					resource_type="account",
+					resource_id=str(account_id),
 					details={
 						"adjustment_type": "total_balance",
 						"amount": float(amount),
@@ -526,9 +453,9 @@ class AccountService:
 					}
 				)
 
-				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+			# 清理缓存
+			if self.cache:
+				await self.cache.delete(f"events:{account_id}")
 
 			return success
 
@@ -538,7 +465,7 @@ class AccountService:
 
 	async def adjust_available_balance (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			reason: str
 	) -> bool:
@@ -555,11 +482,11 @@ class AccountService:
 		"""
 		try:
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
-			# 计算新的可用资金
+			# 计算新可用资金
 			new_available = Decimal(str(account.available_balance)) + amount
 
 			if new_available < 0:
@@ -571,15 +498,16 @@ class AccountService:
 				"total_balance": Decimal(str(account.total_balance)) + amount
 			}
 
-			success = await self.account_repo.update(account_id, update_data)
+			updated_account = await self.account_repo.update(account_id, update_data)
+			success = updated_account is not None
 
 			# 记录审计日志
-			if success:
-				await self.audit_logger.log(
+			if success and self.audit_logger:
+				await self.audit_logger.log_simple(
 					action="account_balance_adjust",
 					user_id=account.user_id,
-					resource_type="events",
-					resource_id=account_id,
+					resource_type="account",
+					resource_id=str(account_id),
 					details={
 						"adjustment_type": "available_balance",
 						"amount": float(amount),
@@ -589,9 +517,9 @@ class AccountService:
 					}
 				)
 
-				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+			# 清理缓存
+			if self.cache:
+				await self.cache.delete(f"events:{account_id}")
 
 			return success
 
@@ -601,7 +529,7 @@ class AccountService:
 
 	async def adjust_frozen_balance (
 			self,
-			account_id: int,
+			account_id: str,
 			amount: Decimal,
 			reason: str
 	) -> bool:
@@ -618,11 +546,11 @@ class AccountService:
 		"""
 		try:
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
-			# 计算新的冻结资金
+			# 计算新冻结资金
 			new_frozen = Decimal(str(account.frozen_balance)) + amount
 
 			if new_frozen < 0:
@@ -634,15 +562,16 @@ class AccountService:
 				"total_balance": Decimal(str(account.total_balance)) + amount
 			}
 
-			success = await self.account_repo.update(account_id, update_data)
+			updated_account = await self.account_repo.update(account_id, update_data)
+			success = updated_account is not None
 
 			# 记录审计日志
-			if success:
-				await self.audit_logger.log(
+			if success and self.audit_logger:
+				await self.audit_logger.log_simple(
 					action="account_balance_adjust",
 					user_id=account.user_id,
-					resource_type="events",
-					resource_id=account_id,
+					resource_type="account",
+					resource_id=str(account_id),
 					details={
 						"adjustment_type": "frozen_balance",
 						"amount": float(amount),
@@ -652,9 +581,9 @@ class AccountService:
 					}
 				)
 
-				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"events:{account_id}")
+			# 清理缓存
+			if self.cache:
+				await self.cache.delete(f"events:{account_id}")
 
 			return success
 
@@ -664,7 +593,7 @@ class AccountService:
 
 	async def record_daily_settlement (
 			self,
-			account_id: int,
+			account_id: str,
 			trade_date: date,
 			total_asset: Decimal,
 			cash: Decimal,
@@ -689,7 +618,7 @@ class AccountService:
 		"""
 		try:
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
@@ -707,11 +636,14 @@ class AccountService:
 			# 这里需要调用AccountDailyPerformance的Repository
 			# 实际实现中需要具体的Repository方法
 			# 这里简化处理
-			from sqlalchemy.ext.asyncio import AsyncSession
 			from sqlalchemy import insert
 
-			stmt = insert(AccountDailyPerformance).values(**performance_data)
-			await self.db.execute(stmt)
+			# 确保trade_date是DateTime类型
+			from datetime import datetime
+			performance_data['trade_date'] = datetime.combine(trade_date, datetime.min.time())
+
+			stmt = insert(AccountDailyPerformance)
+			await self.db.execute(stmt, performance_data)
 
 			# 更新账户最后交易日
 			await self.account_repo.update(account_id, {"last_trade_date": trade_date})
@@ -724,7 +656,91 @@ class AccountService:
 			logger.error(f"记录每日结算失败: {str(e)}")
 			raise
 
-	async def _generate_account_number (self, user_id: int) -> str:
+	async def deposit (self, account_id: str, amount: float) -> bool:
+		"""
+		账户存款
+
+		Args:
+			account_id: 账户ID
+			amount: 存款金额
+
+		Returns:
+			存款是否成功
+		"""
+		try:
+			# 转换为Decimal
+			deposit_amount = Decimal(str(amount))
+
+			# 调用调整可用资金方法
+			return await self.adjust_available_balance(
+				account_id=account_id,
+				amount=deposit_amount,
+				reason="用户存款"
+			)
+
+		except Exception as e:
+			logger.error(f"存款失败: {str(e)}")
+			raise
+
+	async def withdraw (self, account_id: str, amount: float) -> bool:
+		"""
+		账户取款
+
+		Args:
+			account_id: 账户ID
+			amount: 取款金额
+
+		Returns:
+			取款是否成功
+		"""
+		try:
+			# 转换为Decimal
+			withdraw_amount = Decimal(str(amount))
+
+			# 调用调整可用资金方法（负数表示减少）
+			return await self.adjust_available_balance(
+				account_id=account_id,
+				amount=-withdraw_amount,
+				reason="用户取款"
+			)
+
+		except Exception as e:
+			logger.error(f"取款失败: {str(e)}")
+			raise
+
+	@staticmethod
+	async def _to_account_domain (account) -> AccountDomain:
+		"""
+		将数据库账户模型转换为领域对象
+
+		Args:
+			account: 数据库账户模型
+
+		Returns:
+			账户领域对象
+		"""
+		return AccountDomain(
+			id=account.id,
+			account_number=account.account_number,
+			account_name=account.account_name,
+			user_id=account.user_id,
+			account_type=account.account_type,
+			broker=account.broker,
+			broker_account_id=account.broker_account_id,
+			status=account.status,
+			status_reason=account.status_reason,
+			total_balance=Decimal(str(account.total_balance)),
+			available_balance=Decimal(str(account.available_balance)),
+			frozen_balance=Decimal(str(account.frozen_balance)),
+			market_value=Decimal(str(account.market_value)),
+			initial_balance=Decimal(str(account.initial_balance)),
+			credit_line=Decimal(str(account.credit_line)) if account.credit_line else None,
+			last_trade_date=account.last_trade_date,
+			created_at=account.created_at,
+			updated_at=account.updated_at
+		)
+
+	async def _generate_account_number (self, user_id: str) -> str:
 		"""
 		生成账户号
 
@@ -739,15 +755,16 @@ class AccountService:
 			user_accounts = await self.get_user_accounts(user_id, include_closed=True)
 			account_count = len(user_accounts) + 1
 
-			# 生成账户号格式: ACC + 用户ID(6位) + 序号(3位)
-			account_number = f"ACC{str(user_id).zfill(6)}{str(account_count).zfill(3)}"
+			# 生成账户号格式: ACC + 用户ID后6位 + 序号(3位)
+			user_id_suffix = str(user_id)[-6:].zfill(6)
+			account_number = f"ACC{user_id_suffix}{str(account_count).zfill(3)}"
 
 			# 检查是否已存在（理论上不会，但为了安全）
-			existing = await self.account_repo.get_by_account_number(account_number)
+			existing = await self.account_repo.get_by(account_number=account_number)
 			if existing:
 				# 如果已存在，增加序号重新生成
 				account_count += 1
-				account_number = f"ACC{str(user_id).zfill(6)}{str(account_count).zfill(3)}"
+				account_number = f"ACC{user_id_suffix}{str(account_count).zfill(3)}"
 
 			return account_number
 

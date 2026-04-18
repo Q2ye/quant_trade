@@ -23,7 +23,8 @@ from .balance_events import (
 	AccountBalanceUpdatedEvent,
 	AccountDepositCompletedEvent,
 	AccountWithdrawCompletedEvent,
-	AccountAssetUpdatedEvent
+	AccountAssetUpdatedEvent,
+	AccountStatusChangedEvent
 )
 
 from .position_events import (
@@ -47,6 +48,7 @@ __all__ = [
 	"AccountDepositCompletedEvent",
 	"AccountWithdrawCompletedEvent",
 	"AccountAssetUpdatedEvent",
+	"AccountStatusChangedEvent",
 
 	# 账户持仓事件
 	"AccountPositionUpdatedEvent",

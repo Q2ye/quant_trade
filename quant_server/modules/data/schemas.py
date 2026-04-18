@@ -10,12 +10,11 @@
 4. 验证逻辑：包含数据验证、默认值、字段描述等
 """
 
-from typing import List, Optional, Dict, Any, Union
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
-from quant_server.utils.api_utils.pagination_config import PaginationParams
-
 from enum import Enum
+from typing import List, Optional, Dict, Any, Union
+
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 # ==================== 枚举类型定义 ====================
@@ -76,18 +75,15 @@ class SortOrder(str, Enum):
 
 # ==================== 分页和排序基类 ====================
 
-class PaginationParams(BaseModel):
-    """分页参数基类 - 配置化管理"""
-    page: Optional[int] = Field(default=None, ge=1, description="页码，从1开始，默认从配置获取")
-    page_size: Optional[int] = Field(default=None, ge=1, description="每页记录数，默认从配置获取")
-
 # 导入配置化的分页和排序参数基类
 from quant_server.utils.api_utils.pagination_config import PaginationParams as ConfiguredPaginationParams
 from quant_server.utils.api_utils.pagination_config import SortParams as ConfiguredSortParams
 
+
 class PaginationParams(ConfiguredPaginationParams):
 	"""分页参数基类 - 配置化版本"""
 	pass
+
 
 class SortParams(ConfiguredSortParams):
 	"""排序参数基类 - 配置化版本"""
@@ -118,17 +114,16 @@ class StockListRequest(PaginationParams, SortParams):
 		}
 	)
 
-	@field_validator('search', 'market', 'industry', 'list_status', mode='before')
 	@classmethod
-	def validate_empty_string_to_none(cls, v):
+	def validate_empty_string_to_none (cls, v):
 		"""将空字符串转换为None"""
 		if v == '':
 			return None
 		return v
 
-	@field_validator('min_market_cap', 'max_market_cap', mode='before')
+	@field_validator('min_market_cap', 'max_market_cap')
 	@classmethod
-	def validate_market_cap_to_float_or_none(cls, v):
+	def validate_market_cap_to_float_or_none (cls, v):
 		"""将空字符串转换为None，或转换为浮点数"""
 		if v is None or v == '':
 			return None
@@ -139,33 +134,13 @@ class StockListRequest(PaginationParams, SortParams):
 
 	@model_validator(mode='before')
 	@classmethod
-	def convert_empty_strings_to_none(cls, data):
+	def convert_empty_strings_to_none (cls, data):
 		"""在类型验证之前将所有空字符串查询参数转换为None"""
 		if isinstance(data, dict):
 			for key, value in data.items():
 				if value == '':
 					data[key] = None
 		return data
-
-	@field_validator('min_market_cap', 'max_market_cap', mode='after')
-	@classmethod
-	def validate_market_cap_positive(cls, v):
-		"""验证市值必须为正数"""
-		if v is not None and v < 0:
-			raise ValueError("市值必须大于等于0")
-		return v
-
-	model_config = ConfigDict(
-		json_schema_extra={
-			"example": {
-				"search": "平安",
-				"market": "SSE",
-				"industry": "银行",
-				"sort_by": "market_cap",
-				"sort_order": "desc"
-			}
-		}
-	)
 
 
 class StockBasicInfo(BaseModel):
@@ -329,16 +304,18 @@ class HistoricalQuotesRequest(BaseModel):
 		description="返回字段，逗号分隔，默认全部"
 	)
 
+	@field_validator('frequency')
 	@classmethod
-	def validate_frequency(cls, v):
+	def validate_frequency (cls, v):
 		"""验证频率参数"""
 		valid_frequencies = ['D', 'W', 'M', '5', '15', '30', '60']
 		if v not in valid_frequencies:
 			raise ValueError(f"频率必须为: {', '.join(valid_frequencies)}")
 		return v
 
+	@field_validator('adjust')
 	@classmethod
-	def validate_adjust(cls, v):
+	def validate_adjust (cls, v):
 		"""验证复权类型"""
 		valid_adjusts = ['qfq', 'hfq', 'None', '']
 		if v not in valid_adjusts:
@@ -429,8 +406,9 @@ class BatchSyncRequest(BaseModel):
 	notify_on_complete: bool = Field(default=True, description="完成后是否通知")
 	callback_url: Optional[str] = Field(default=None, description="回调URL")
 
+	@field_validator('tasks')
 	@classmethod
-	def validate_tasks(cls, v):
+	def validate_tasks (cls, v):
 		"""验证任务列表"""
 		if not v:
 			raise ValueError("任务列表不能为空")
@@ -579,8 +557,9 @@ class QuickSyncRequest(BaseModel):
 	include_stock_list: bool = Field(default=True, description="是否包含股票列表")
 	include_calendar: bool = Field(default=True, description="是否包含交易日历")
 
+	@field_validator('date_range')
 	@classmethod
-	def validate_date_range(cls, v):
+	def validate_date_range (cls, v):
 		"""验证日期范围"""
 		valid_ranges = ['1d', '7d', '30d', '90d', '1y', 'all']
 		if v not in valid_ranges:
@@ -626,8 +605,9 @@ class DataQualityRequest(BaseModel):
 	end_date: Optional[date] = Field(default=None, description="结束日期")
 	check_type: str = Field(default="completeness", description="检查类型: completeness/accuracy/timeliness")
 
+	@field_validator('check_type')
 	@classmethod
-	def validate_check_type(cls, v):
+	def validate_check_type (cls, v):
 		"""验证检查类型"""
 		valid_types = ['completeness', 'accuracy', 'timeliness', 'all']
 		if v not in valid_types:
@@ -726,8 +706,9 @@ class FactorRequest(PaginationParams):
 	end_date: date = Field(..., description="结束日期")
 	frequency: str = Field(default="M", description="频率: D日度 W周度 M月度 Q季度 Y年度")
 
+	@field_validator('frequency')
 	@classmethod
-	def validate_frequency(cls, v):
+	def validate_frequency (cls, v):
 		"""验证频率参数"""
 		valid_frequencies = ['D', 'W', 'M', 'Q', 'Y']
 		if v not in valid_frequencies:
@@ -861,8 +842,9 @@ class ResearchRequest(BaseModel):
 		description="分析类型: ic_analysis/quantile_analysis/correlation_analysis"
 	)
 
+	@field_validator('analysis_type')
 	@classmethod
-	def validate_analysis_type(cls, v):
+	def validate_analysis_type (cls, v):
 		"""验证分析类型"""
 		valid_types = ['ic_analysis', 'quantile_analysis', 'correlation_analysis', 'all']
 		if v not in valid_types:
@@ -1003,6 +985,7 @@ class ResearchResponse(BaseModel):
 			}
 		}
 	)
+
 
 # ==================== WebSocket事件模型 ====================
 
@@ -1266,15 +1249,17 @@ class BatchFactorRequest(PaginationParams):
 	include_history: bool = Field(default=False, description="是否包含历史数据")
 	history_days: int = Field(default=30, ge=1, le=365, description="历史天数，当include_history为True时有效")
 
+	@field_validator('ts_codes')
 	@classmethod
-	def validate_ts_codes(cls, v):
+	def validate_ts_codes (cls, v):
 		"""验证股票代码数量"""
 		if len(v) > 100:
 			raise ValueError("股票代码数量不能超过100个")
 		return v
 
+	@field_validator('factor_names')
 	@classmethod
-	def validate_factor_names(cls, v):
+	def validate_factor_names (cls, v):
 		"""验证因子名称数量"""
 		if len(v) > 20:
 			raise ValueError("因子名称数量不能超过20个")

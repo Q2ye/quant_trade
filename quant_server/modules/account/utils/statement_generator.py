@@ -25,7 +25,7 @@ class StatementGenerator:
 	负责生成各类账户对账单和报告
 	"""
 
-	def __init__ (self, output_dir: Optional[str] = None, session = None):
+	def __init__ (self, output_dir: Optional[str] = None, session=None):
 		"""
 		初始化对账单生成器
 

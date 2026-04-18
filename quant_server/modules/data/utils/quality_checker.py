@@ -14,14 +14,13 @@
 - 自动化：支持批量自动检查
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional, Union, Tuple, Callable
-import re
 import logging
+from datetime import datetime
 from enum import Enum
-import statistics
+from typing import Dict, List, Any, Optional, Tuple, Callable
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -340,8 +339,8 @@ class DataQualityChecker:
 			"statistics": statistics
 		}
 
+	@staticmethod
 	def check_empty_dataset (
-			self,
 			data: pd.DataFrame,
 			data_type: str,
 			**kwargs
@@ -707,8 +706,8 @@ class DataQualityChecker:
 			"statistics": statistics
 		}
 
+	@staticmethod
 	def check_cross_reference (
-			self,
 			data: pd.DataFrame,
 			data_type: str,
 			reference_data: Optional[pd.DataFrame] = None,
@@ -1008,8 +1007,8 @@ class DataQualityChecker:
 			"statistics": statistics
 		}
 
+	@staticmethod
 	def check_referential_integrity (
-			self,
 			data: pd.DataFrame,
 			data_type: str,
 			reference_data: Optional[Dict[str, List]] = None,
@@ -1067,7 +1066,8 @@ class DataQualityChecker:
 
 	# ==================== 辅助函数 ====================
 
-	def _determine_missing_value_issue_level (self, missing_pct: float) -> QualityIssueLevel:
+	@staticmethod
+	def _determine_missing_value_issue_level ( missing_pct: float) -> QualityIssueLevel:
 		"""根据缺失值比例确定问题等级"""
 		if missing_pct >= 50:
 			return QualityIssueLevel.CRITICAL
@@ -1094,7 +1094,8 @@ class DataQualityChecker:
 		else:
 			return []
 
-	def _get_expected_data_types (self, data_type: str) -> Dict[str, str]:
+	@staticmethod
+	def _get_expected_data_types (data_type: str) -> Dict[str, str]:
 		"""获取期望的数据类型"""
 		type_mapping = {
 			"stock_quote": {
@@ -1110,7 +1111,8 @@ class DataQualityChecker:
 		}
 		return type_mapping.get(data_type, {})
 
-	def _check_type_match (self, actual_type: str, expected_type: str) -> bool:
+	@staticmethod
+	def _check_type_match ( actual_type: str, expected_type: str) -> bool:
 		"""检查类型匹配"""
 		type_groups = {
 			"numeric": ["float64", "int64", "float32", "int32"],
@@ -1125,7 +1127,8 @@ class DataQualityChecker:
 
 		return actual_type == expected_type
 
-	def _get_value_range_rules (self, data_type: str) -> Dict[str, Dict]:
+	@staticmethod
+	def _get_value_range_rules ( data_type: str) -> Dict[str, Dict]:
 		"""获取数值范围规则"""
 		if data_type == "stock_quote":
 			return {
@@ -1138,7 +1141,8 @@ class DataQualityChecker:
 			}
 		return {}
 
-	def _get_unique_keys (self, data_type: str) -> List[str]:
+	@staticmethod
+	def _get_unique_keys ( data_type: str) -> List[str]:
 		"""获取唯一键"""
 		if data_type == "stock_quote":
 			return ["symbol", "date"]
@@ -1147,7 +1151,8 @@ class DataQualityChecker:
 		else:
 			return []
 
-	def _detect_outliers (self, values: pd.Series, method: str, threshold: float) -> Optional[pd.Series]:
+	@staticmethod
+	def _detect_outliers ( values: pd.Series, method: str, threshold: float) -> Optional[pd.Series]:
 		"""检测异常值"""
 		if method == "iqr":
 			# IQR方法
@@ -1174,7 +1179,8 @@ class DataQualityChecker:
 
 		return None
 
-	def _get_business_rules (self, data_type: str) -> Dict[str, Callable]:
+	@staticmethod
+	def _get_business_rules ( data_type: str) -> Dict[str, Callable]:
 		"""获取业务规则"""
 		rules = {}
 
@@ -1192,7 +1198,8 @@ class DataQualityChecker:
 
 		return rules
 
-	def _get_expected_interval_hours (self, frequency: str) -> float:
+	@staticmethod
+	def _get_expected_interval_hours ( frequency: str) -> float:
 		"""获取预期时间间隔（小时）"""
 		intervals = {
 			"hourly": 1,
@@ -1204,7 +1211,8 @@ class DataQualityChecker:
 		}
 		return intervals.get(frequency.lower(), 0)
 
-	def _get_format_rules (self, data_type: str) -> Dict[str, str]:
+	@staticmethod
+	def _get_format_rules ( data_type: str) -> Dict[str, str]:
 		"""获取格式规则"""
 		if data_type == "stock_quote":
 			return {
@@ -1213,7 +1221,8 @@ class DataQualityChecker:
 			}
 		return {}
 
-	def _calculate_quality_score (self, issues: List[Dict], data: pd.DataFrame) -> float:
+	@staticmethod
+	def _calculate_quality_score ( issues: List[Dict], data: pd.DataFrame) -> float:
 		"""计算质量分数"""
 		if data.empty:
 			return 0.0
@@ -1292,7 +1301,8 @@ class DataQualityChecker:
 
 		return report
 
-	def _assess_quality_level (self, quality_score: float) -> str:
+	@staticmethod
+	def _assess_quality_level ( quality_score: float) -> str:
 		"""评估质量等级"""
 		if quality_score >= 90:
 			return "EXCELLENT"
@@ -1305,8 +1315,8 @@ class DataQualityChecker:
 		else:
 			return "UNACCEPTABLE"
 
+	@staticmethod
 	def _generate_recommendations (
-			self,
 			issues: List[Dict],
 			quality_score: float
 	) -> List[str]:
@@ -1332,7 +1342,8 @@ class DataQualityChecker:
 
 		return recommendations
 
-	def _generate_error_report (self, error_message: str) -> Dict[str, Any]:
+	@staticmethod
+	def _generate_error_report ( error_message: str) -> Dict[str, Any]:
 		"""生成错误报告"""
 		return {
 			"metadata": {

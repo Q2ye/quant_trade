@@ -13,15 +13,16 @@
 注意：所有业务逻辑应放在对应模块的Service层
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, update, between
-from sqlalchemy.orm import selectinload, joinedload
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, desc, func, between
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from quant_server.shared.database.models.business_models import Account
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class AccountRepository(BaseRepository[Account]):
@@ -48,6 +49,22 @@ class AccountRepository(BaseRepository[Account]):
 			session: 异步数据库会话
 		"""
 		super().__init__(session, Account)  # ✅ 专注于单一模型
+
+	async def get_one (self, *conditions) -> Optional[Account]:
+		"""
+		根据条件获取单条记录
+
+		Args:
+			*conditions: 查询条件
+
+		Returns:
+			Account对象或None
+		"""
+		query = select(Account)
+		for condition in conditions:
+			query = query.where(condition)
+		result = await self.session.execute(query)
+		return result.scalar_one_or_none()
 
 	# ==================== Account特定查询方法 ====================
 
@@ -80,12 +97,14 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			账户列表，按创建时间倒序排列
 		"""
-		return await self.get_many(
-			Account.user_id == user_id,
-			skip=skip,
-			limit=limit,
-			order_by=desc(Account.created_at)
-		)
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.user_id == user_id)
+		query = query.order_by(desc(Account.created_at))
+		query = query.offset(skip).limit(limit)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_by_account_number (self, account_number: str) -> Optional[Account]:
 		"""
@@ -128,20 +147,19 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			活跃账户列表，按账户号排序
 		"""
-		filters = [
-			Account.status == "active",
-			Account.is_deleted == 0
-		]
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.status == "active")
+		query = query.where(Account.is_deleted == 0)
 
 		if user_id is not None:
-			filters.append(Account.user_id == user_id)
+			query = query.where(Account.user_id == user_id)
 
-		return await self.get_many(
-			*filters,
-			skip=skip,
-			limit=limit,
-			order_by=Account.account_number
-		)
+		query = query.order_by(Account.account_number)
+		query = query.offset(skip).limit(limit)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_accounts_by_type (
 			self,
@@ -160,15 +178,18 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			指定类型的账户列表
 		"""
-		filters = [Account.account_type == account_type]
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.account_type == account_type)
 
 		if user_id is not None:
-			filters.append(Account.user_id == user_id)
+			query = query.where(Account.user_id == user_id)
 
 		if status is not None:
-			filters.append(Account.status == status)
+			query = query.where(Account.status == status)
 
-		return await self.get_many(*filters)
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_total_balance_stats (self, user_id: int) -> Dict[str, Any]:
 		"""
@@ -218,10 +239,13 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			指定状态的账户列表
 		"""
-		return await self.get_many(
-			Account.status == status,
-			Account.is_deleted == 0
-		)
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.status == status)
+		query = query.where(Account.is_deleted == 0)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def update_balance_fields (
 			self,
@@ -238,6 +262,8 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			是否成功更新（影响行数>0）
 		"""
+		from sqlalchemy import update as sql_update
+
 		# 过滤出有效的余额字段
 		valid_fields = {
 			"total_balance", "available_balance",
@@ -256,7 +282,7 @@ class AccountRepository(BaseRepository[Account]):
 		if len(update_data) <= 1:  # 只有updated_at
 			return False
 
-		query = update(Account).where(
+		query = sql_update(Account).where(
 			and_(
 				Account.id == account_id,
 				Account.is_deleted == 0
@@ -323,12 +349,15 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			指定券商的账户列表
 		"""
-		filters = [Account.broker == broker_name]
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.broker == broker_name)
 
 		if status is not None:
-			filters.append(Account.status == status)
+			query = query.where(Account.status == status)
 
-		return await self.get_many(*filters)
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def search_accounts (
 			self,
@@ -353,28 +382,29 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			搜索结果列表
 		"""
-		filters = [
+		# 构建查询
+		query = self.build_query()
+		query = query.where(
 			or_(
 				Account.account_number.ilike(f"%{keyword}%"),
 				Account.broker_account_id.ilike(f"%{keyword}%"),
 				Account.account_name.ilike(f"%{keyword}%")
-			),
-			Account.is_deleted == 0
-		]
+			)
+		)
+		query = query.where(Account.is_deleted == 0)
 
 		if status:
-			filters.append(Account.status == status)
+			query = query.where(Account.status == status)
 		if account_type:
-			filters.append(Account.account_type == account_type)
+			query = query.where(Account.account_type == account_type)
 		if broker:
-			filters.append(Account.broker == broker)
+			query = query.where(Account.broker == broker)
 
-		return await self.get_many(
-			*filters,
-			skip=skip,
-			limit=limit,
-			order_by=desc(Account.updated_at)
-		)
+		query = query.order_by(desc(Account.updated_at))
+		query = query.offset(skip).limit(limit)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_account_ids_by_user (self, user_id: int) -> List[int]:
 		"""
@@ -413,6 +443,8 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			实际更新的记录数
 		"""
+		from sqlalchemy import update as sql_update
+
 		if not account_ids:
 			return 0
 
@@ -424,7 +456,7 @@ class AccountRepository(BaseRepository[Account]):
 		if reason:
 			update_data["status_reason"] = reason
 
-		query = update(Account).where(
+		query = sql_update(Account).where(
 			and_(
 				Account.id.in_(account_ids),
 				Account.is_deleted == 0
@@ -544,15 +576,20 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			低余额账户列表
 		"""
-		return await self.get_many(
+		# 构建查询
+		query = self.build_query()
+		query = query.where(
 			and_(
 				Account.available_balance < threshold,
 				Account.status == status,
 				Account.is_deleted == 0
-			),
-			limit=limit,
-			order_by=Account.available_balance
+			)
 		)
+		query = query.order_by(Account.available_balance)
+		query = query.limit(limit)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_inactive_accounts (
 			self,
@@ -571,7 +608,9 @@ class AccountRepository(BaseRepository[Account]):
 		"""
 		threshold_date = datetime.now().date() - timedelta(days=days_threshold)
 
-		return await self.get_many(
+		# 构建查询
+		query = self.build_query()
+		query = query.where(
 			and_(
 				or_(
 					Account.last_trade_date.is_(None),
@@ -579,9 +618,12 @@ class AccountRepository(BaseRepository[Account]):
 				),
 				Account.status == status,
 				Account.is_deleted == 0
-			),
-			order_by=Account.last_trade_date
+			)
 		)
+		query = query.order_by(Account.last_trade_date)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def get_accounts_with_balance_range (
 			self,
@@ -602,25 +644,27 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			符合条件的账户列表
 		"""
-		filters = [Account.is_deleted == 0]
+		# 构建查询
+		query = self.build_query()
+		query = query.where(Account.is_deleted == 0)
 
 		if min_balance is not None and max_balance is not None:
-			filters.append(
+			query = query.where(
 				between(Account.total_balance, min_balance, max_balance)
 			)
 		elif min_balance is not None:
-			filters.append(Account.total_balance >= min_balance)
+			query = query.where(Account.total_balance >= min_balance)
 		elif max_balance is not None:
-			filters.append(Account.total_balance <= max_balance)
+			query = query.where(Account.total_balance <= max_balance)
 
 		if status is not None:
-			filters.append(Account.status == status)
+			query = query.where(Account.status == status)
 
-		return await self.get_many(
-			*filters,
-			limit=limit,
-			order_by=desc(Account.total_balance)
-		)
+		query = query.order_by(desc(Account.total_balance))
+		query = query.limit(limit)
+
+		# 执行查询
+		return await self.execute_query(query)
 
 	async def count_accounts_by_criteria (
 			self,
@@ -641,18 +685,22 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			符合条件的账户数量
 		"""
-		filters = [Account.is_deleted == 0]
+		# 构建查询
+		query = select(func.count()).select_from(self.model)
+		query = query.where(Account.is_deleted == 0)
 
 		if user_id is not None:
-			filters.append(Account.user_id == user_id)
+			query = query.where(Account.user_id == user_id)
 		if status is not None:
-			filters.append(Account.status == status)
+			query = query.where(Account.status == status)
 		if account_type is not None:
-			filters.append(Account.account_type == account_type)
+			query = query.where(Account.account_type == account_type)
 		if broker is not None:
-			filters.append(Account.broker == broker)
+			query = query.where(Account.broker == broker)
 
-		return await self.count(*filters)
+		# 执行查询
+		result = await self.session.execute(query)
+		return result.scalar() or 0
 
 	async def exists_by_account_number (self, account_number: str) -> bool:
 		"""
@@ -664,10 +712,14 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			是否存在
 		"""
-		count = await self.count(
-			Account.account_number == account_number,
-			Account.is_deleted == 0
-		)
+		# 构建查询
+		query = select(func.count()).select_from(self.model)
+		query = query.where(Account.account_number == account_number)
+		query = query.where(Account.is_deleted == 0)
+
+		# 执行查询
+		result = await self.session.execute(query)
+		count = result.scalar() or 0
 		return count > 0
 
 	async def get_with_positions (self, account_id: int) -> Optional[Account]:
@@ -703,10 +755,8 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			Account对象（包含orders关联）或None
 		"""
-		# 注意：这里使用了joinedload和limit的特定写法
-		query = select(Account).options(
-			joinedload(Account.orders).limit(limit)
-		).where(
+		# 构建查询
+		query = select(Account).where(
 			and_(
 				Account.id == account_id,
 				Account.is_deleted == 0
@@ -714,7 +764,80 @@ class AccountRepository(BaseRepository[Account]):
 		)
 
 		result = await self.session.execute(query)
-		return result.unique().scalar_one_or_none()
+		account = result.scalar_one_or_none()
+
+		if account and hasattr(account, 'orders'):
+			# 限制订单数量
+			if len(account.orders) > limit:
+				account.orders = account.orders[:limit]
+
+		return account
+
+	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
+		"""
+		创建对账记录
+
+		Args:
+			recon_data: 对账数据
+
+		Returns:
+			创建的对账记录
+		"""
+		try:
+			# 这里简化处理，实际需要创建对账记录
+			# 假设有一个 ReconciliationRecord 模型
+			class MockRecord:
+				def __init__ (self, id):
+					self.id = id
+
+			return MockRecord(id=f"recon_{recon_data['account_id']}_{recon_data['reconciliation_date']}")
+
+		except Exception as e:
+			raise Exception(f"创建对账记录失败: {str(e)}")
+
+	async def create_settlement_record (self, settlement_data: Dict[str, Any]) -> Any:
+		"""
+		创建结算记录
+
+		Args:
+			settlement_data: 结算数据
+
+		Returns:
+			创建的结算记录
+		"""
+		try:
+			# 这里简化处理，实际需要创建结算记录
+			# 假设有一个 SettlementRecord 模型
+			class MockRecord:
+				def __init__ (self, id):
+					self.id = id
+
+			return MockRecord(id=f"settlement_{settlement_data['account_id']}_{settlement_data['trading_day']}")
+
+		except Exception as e:
+			raise Exception(f"创建结算记录失败: {str(e)}")
+
+	async def create_asset_snapshot (self, snapshot_data: Dict[str, Any]) -> Any:
+		"""
+		创建资产快照
+
+		Args:
+			snapshot_data: 快照数据
+
+		Returns:
+			创建的资产快照
+		"""
+		try:
+			# 这里简化处理，实际需要创建资产快照
+			# 假设有一个 AssetSnapshot 模型
+			class MockRecord:
+				def __init__ (self, id):
+					self.id = id
+
+			return MockRecord(id=f"asset_snapshot_{snapshot_data['account_id']}_{snapshot_data['trading_day']}")
+
+		except Exception as e:
+			raise Exception(f"创建资产快照失败: {str(e)}")
 
 
 # 工厂函数

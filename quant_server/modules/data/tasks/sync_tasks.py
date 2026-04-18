@@ -16,26 +16,23 @@
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, date
-from typing import Dict, List, Any, Optional, Union
-import uuid
-import json
+from typing import Dict, List, Any, Optional
+
 from celery import Celery, Task
 from celery.schedules import crontab
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
-
 from modules.data.engines.sync_engine import DataSyncEngine
-from modules.data.services.sync_service import DataSyncService
-from shared.database.session import SessionManager
-from shared.cache.cache_manager import CacheManager
-from shared.sources.tushare_source import TushareSource
 from modules.data.events.sync_events import (
 	DataSyncStartedEvent,
 	DataSyncCompletedEvent,
 	DataSyncErrorEvent,
 	DataSyncProgressEvent
 )
+from modules.data.services.sync_service import DataSyncService
+from shared.cache.cache_manager import CacheManager
+from shared.database.session import SessionManager
+from shared.sources.tushare_source import TushareSource
 
 logger = logging.getLogger(__name__)
 

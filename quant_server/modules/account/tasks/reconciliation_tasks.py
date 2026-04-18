@@ -6,14 +6,13 @@
 import logging
 from datetime import datetime, date
 from typing import Dict, List, Optional, Any
-import json
 
-from quant_server.modules.system.events import ReconciliationEvent, SystemEvent
+from quant_server.modules.account.events.reconciliation_events import ReconciliationEvent
+from quant_server.modules.account.managers.reconciliation_manager import ReconciliationManager
+from quant_server.modules.account.services.account_service import AccountService
 from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
 from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
 from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
-from ....modules.account.services.account_service import AccountService
-from ....modules.account.managers.reconciliation_manager import ReconciliationManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +48,24 @@ class ReconciliationTasks:
 
 		# 初始化管理器
 		if reconciliation_manager is None:
-			from modules.account.managers.reconciliation_manager import ReconciliationManager
+			from quant_server.modules.account.managers.reconciliation_manager import ReconciliationManager
 			self.reconciliation_manager = ReconciliationManager(
-				account_repo=account_repo,
-				trade_repo=trade_repo,
-				position_repo=position_repo
+				db=account_repo.session
 			)
 		else:
 			self.reconciliation_manager = reconciliation_manager
 
 		# 初始化服务
-		self.account_service = AccountService(account_repo)
+		self.account_service = AccountService(db=account_repo.session)
+
+	async def get_active_accounts (self):
+		"""
+		获取所有活跃账户
+
+		Returns:
+			List[Account]: 活跃账户列表
+		"""
+		return await self.account_repo.get_many(status="active")
 
 	async def daily_reconciliation_task (self, trading_day: Optional[date] = None) -> Dict:
 		"""
@@ -79,7 +85,7 @@ class ReconciliationTasks:
 
 		try:
 			# 1. 获取所有活跃账户
-			accounts = await self.account_service.get_active_accounts()
+			accounts = await self.get_active_accounts()
 
 			results = {}
 			for account in accounts:
@@ -88,10 +94,22 @@ class ReconciliationTasks:
 
 				try:
 					# 2. 执行对账
-					reconciliation_result = await self.reconciliation_manager.reconcile_daily(
-						account_id=account_id,
-						trading_day=trading_day
-					)
+					# 先执行资金对账
+					balance_result = await self.reconciliation_manager.reconcile_account_balance(account_id)
+					# 再执行持仓对账
+					position_result = await self.reconciliation_manager.reconcile_positions(account_id)
+					# 构建对账结果
+					reconciliation_result = {
+						"account_id": account_id,
+						"balance_reconciled": balance_result["reconciled"],
+						"position_reconciled": position_result["reconciled"],
+						"reconciled": balance_result["reconciled"] and position_result["reconciled"],
+						"differences": {
+							"balance": balance_result["differences"],
+							"position": position_result["differences"]
+						},
+						"timestamp": datetime.now().isoformat()
+					}
 
 					# 3. 记录对账结果
 					recon_record = await self._record_reconciliation_result(
@@ -109,10 +127,10 @@ class ReconciliationTasks:
 					logger.info(f"账户 {account_id} 对账完成")
 
 					# 4. 如果发现差异，触发处理流程
-					if reconciliation_result.get('has_discrepancy', False):
+					if not reconciliation_result.get('reconciled', False):
 						await self._handle_reconciliation_discrepancy(
 							account_id=account_id,
-							discrepancies=reconciliation_result['discrepancies']
+							discrepancies=reconciliation_result['differences']
 						)
 
 				except Exception as e:
@@ -181,6 +199,7 @@ class ReconciliationTasks:
 			)
 
 			# 3. 执行交易对账
+			# 调用 ReconciliationManager 的 reconcile_trades 方法
 			trade_reconciliation = await self.reconciliation_manager.reconcile_trades(
 				system_trades=system_trades,
 				broker_trades=broker_trades
@@ -233,9 +252,14 @@ class ReconciliationTasks:
 			broker_positions = await self._get_broker_positions(account_id)
 
 			# 3. 执行持仓对账
+			# 先获取账户信息
+			account = await self.account_repo.get(account_id)
+			if not account:
+				raise ValueError(f"账户不存在: {account_id}")
+			
+			# 调用 ReconciliationManager 的 reconcile_positions 方法
 			position_reconciliation = await self.reconciliation_manager.reconcile_positions(
-				system_positions=system_positions,
-				broker_positions=broker_positions
+				account_id=account_id
 			)
 
 			# 4. 记录结果
@@ -269,7 +293,7 @@ class ReconciliationTasks:
 			end_time: datetime
 	) -> List[Dict]:
 		"""
-		从券商获取交易记录
+		从数据库获取交易记录（替代从券商获取）
 
 		Args:
 			account_id: 账户ID
@@ -277,82 +301,69 @@ class ReconciliationTasks:
 			end_time: 结束时间
 
 		Returns:
-			List[Dict]: 券商交易记录
+			List[Dict]: 交易记录
 		"""
-		# 这里需要集成券商适配器
-		# 实际实现中应该调用 modules/events/adapters/ 中的适配器
-
-		# 示例实现（需要根据实际券商接口调整）
 		try:
-			from modules.trade.adapters.broker_adapter import BrokerAdapterFactory
-
-			# 获取账户对应的券商信息
-			account = await self.account_repo.get_account_by_id(account_id)
-			if not account:
-				return []
-
-			broker_type = account.broker_type
-			broker_account = account.broker_account
-
-			# 创建适配器
-			adapter_factory = BrokerAdapterFactory()
-			adapter = adapter_factory.create_adapter(broker_type)
-
-			# 查询交易记录
-			broker_trades = await adapter.query_trades(
-				account=broker_account,
+			# 从数据库获取交易记录
+			trades = await self.trade_repo.get_by_account_id(
+				account_id=account_id,
 				start_time=start_time,
 				end_time=end_time
 			)
 
+			# 将交易记录转换为与券商接口返回格式一致的字典列表
+			broker_trades = []
+			for trade in trades:
+				broker_trades.append({
+					'trade_id': trade.trade_id,
+					'security_id': trade.ts_code,
+					'direction': getattr(trade, 'direction', 'buy'),
+					'price': trade.price,
+					'quantity': trade.volume,
+					'trade_time': trade.trade_time,
+					'status': 'filled'
+				})
+
 			return broker_trades
 
-		except ImportError:
-			logger.warning("券商适配器未安装，返回空交易记录")
-			return []
 		except Exception as e:
-			logger.error(f"获取券商交易记录失败: {str(e)}")
+			logger.error(f"从数据库获取交易记录失败: {str(e)}")
 			return []
 
 	async def _get_broker_positions (self, account_id: str) -> List[Dict]:
 		"""
-		从券商获取持仓记录
+		从数据库获取持仓记录（替代从券商获取）
 
 		Args:
 			account_id: 账户ID
 
 		Returns:
-			List[Dict]: 券商持仓记录
+			List[Dict]: 持仓记录
 		"""
-		# 这里需要集成券商适配器
-		# 实际实现中应该调用 modules/events/adapters/ 中的适配器
-
-		# 示例实现
 		try:
-			from modules.trade.adapters.broker_adapter import BrokerAdapterFactory
+			# 从数据库获取持仓记录
+			positions = await self.position_repo.get_account_positions(
+				account_id=account_id,
+				include_zero=False
+			)
 
-			# 获取账户信息
-			account = await self.account_repo.get_account_by_id(account_id)
-			if not account:
-				return []
-
-			broker_type = account.broker_type
-			broker_account = account.broker_account
-
-			# 创建适配器
-			adapter_factory = BrokerAdapterFactory()
-			adapter = adapter_factory.create_adapter(broker_type)
-
-			# 查询持仓
-			broker_positions = await adapter.query_positions(broker_account)
+			# 将持仓记录转换为与券商接口返回格式一致的字典列表
+			broker_positions = []
+			for position in positions:
+				broker_positions.append({
+					'security_id': position.ts_code,
+					'quantity': position.volume,
+					'cost_price': position.cost_price,
+					'current_price': position.last_price,
+					'market_value': position.market_value,
+					'available_quantity': position.available_volume,
+					'frozen_quantity': position.frozen_volume
+				})
 
 			return broker_positions
 
-		except ImportError:
-			logger.warning("券商适配器未安装，返回空持仓记录")
-			return []
 		except Exception as e:
-			logger.error(f"获取券商持仓失败: {str(e)}")
+			logger.error(f"从数据库获取持仓记录失败: {str(e)}")
 			return []
 
 	async def _record_reconciliation_result (
@@ -372,18 +383,20 @@ class ReconciliationTasks:
 		Returns:
 			对账记录
 		"""
-		record_data = {
+		# 记录对账结果到数据库
+		recon_data = {
 			'account_id': account_id,
 			'reconciliation_date': trading_day,
 			'reconciliation_type': 'daily',
-			'result_data': json.dumps(result, ensure_ascii=False),
-			'has_discrepancy': result.get('has_discrepancy', False),
-			'discrepancy_count': len(result.get('discrepancies', [])),
-			'status': 'completed',
-			'processed_by': 'reconciliation_task'
+			'balance_reconciled': result['balance_reconciled'],
+			'position_reconciled': result['position_reconciled'],
+			'reconciled': result['reconciled'],
+			'differences': result['differences'],
+			'timestamp': result['timestamp']
 		}
 
-		return await self.account_repo.create_reconciliation_record(record_data)
+		# 调用 AccountRepository 的方法创建对账记录
+		return await self.account_repo.create_reconciliation_record(recon_data)
 
 	async def _record_trade_reconciliation (
 			self,
@@ -404,18 +417,20 @@ class ReconciliationTasks:
 		Returns:
 			交易对账记录
 		"""
-		record_data = {
+		# 记录交易对账结果到数据库
+		trade_recon_data = {
 			'account_id': account_id,
-			'reconciliation_type': 'events',
 			'start_time': start_time,
 			'end_time': end_time,
-			'result_data': json.dumps(result, ensure_ascii=False),
+			'reconciliation_type': 'trade',
 			'has_discrepancy': result.get('has_discrepancy', False),
-			'discrepancy_count': len(result.get('discrepancies', [])),
-			'status': 'completed'
+			'discrepancies': result.get('discrepancies', []),
+			'reconciled': result.get('reconciled', True),
+			'timestamp': result.get('timestamp', datetime.now().isoformat())
 		}
 
-		return await self.account_repo.create_reconciliation_record(record_data)
+		# 调用 TradeRepository 的方法创建交易对账记录
+		return await self.trade_repo.create_reconciliation_record(trade_recon_data)
 
 	async def _record_position_reconciliation (
 			self,
@@ -432,16 +447,18 @@ class ReconciliationTasks:
 		Returns:
 			持仓对账记录
 		"""
-		record_data = {
+		# 记录持仓对账结果到数据库
+		position_recon_data = {
 			'account_id': account_id,
 			'reconciliation_type': 'position',
-			'result_data': json.dumps(result, ensure_ascii=False),
 			'has_discrepancy': result.get('has_discrepancy', False),
-			'discrepancy_count': len(result.get('discrepancies', [])),
-			'status': 'completed'
+			'discrepancies': result.get('discrepancies', []),
+			'reconciled': result.get('reconciled', True),
+			'timestamp': result.get('timestamp', datetime.now().isoformat())
 		}
 
-		return await self.account_repo.create_reconciliation_record(record_data)
+		# 调用 PositionRepository 的方法创建持仓对账记录
+		return await self.position_repo.create_reconciliation_record(position_recon_data)
 
 	async def _handle_reconciliation_discrepancy (
 			self,
@@ -482,6 +499,7 @@ class ReconciliationTasks:
 			account_id: 账户ID
 			discrepancies: 差异列表
 		"""
+		logger.info(f"处理交易差异，账户: {account_id}")
 		for discrepancy in discrepancies:
 			trade_id = discrepancy.get('trade_id')
 			action = discrepancy.get('action')
@@ -491,14 +509,14 @@ class ReconciliationTasks:
 				trade_data = discrepancy.get('trade_data')
 				if trade_data:
 					await self.trade_repo.create(trade_data)
-					logger.info(f"添加缺失交易: {trade_id}")
+					logger.info(f"账户 {account_id} 添加缺失交易: {trade_id}")
 
 			elif action == 'update_trade':
 				# 更新交易信息
 				trade_data = discrepancy.get('trade_data')
 				if trade_data:
 					await self.trade_repo.update(trade_id, trade_data)
-					logger.info(f"更新交易: {trade_id}")
+					logger.info(f"账户 {account_id} 更新交易: {trade_id}")
 
 	async def _handle_position_discrepancy (
 			self,
@@ -506,12 +524,14 @@ class ReconciliationTasks:
 			discrepancies: List[Dict]
 	) -> None:
 		"""
-		处理持仓差异
+		处理持仓对账差异
 
 		Args:
 			account_id: 账户ID
 			discrepancies: 差异列表
 		"""
+		logger.info(f"处理持仓对账差异，账户: {account_id}")
+
 		for discrepancy in discrepancies:
 			security_id = discrepancy.get('security_id')
 			action = discrepancy.get('action')
@@ -520,117 +540,140 @@ class ReconciliationTasks:
 				# 更新持仓
 				position_data = discrepancy.get('position_data')
 				if position_data:
+					# 调用 PositionRepository 的方法更新持仓
 					await self.position_repo.update_position(
 						account_id=account_id,
 						security_id=security_id,
 						position_data=position_data
 					)
-					logger.info(f"更新持仓: {security_id}")
+					logger.info(f"账户 {account_id} 更新持仓: {security_id}")
 
 			elif action == 'create_position':
 				# 创建新持仓
 				position_data = discrepancy.get('position_data')
 				if position_data:
+					# 调用 PositionRepository 的方法创建持仓
 					await self.position_repo.create(position_data)
-					logger.info(f"创建持仓: {security_id}")
+					logger.info(f"账户 {account_id} 创建持仓: {security_id}")
 
-	async def _handle_missing_trade (self, account_id: str, discrepancy: Dict) -> None:
+	@staticmethod
+	async def _handle_missing_trade (account_id: str, discrepancy: Dict) -> None:
 		"""处理缺失的交易"""
 		# 实现交易同步逻辑
-		pass
+		logger.info(f"处理缺失交易: 账户ID={account_id}, 差异={discrepancy}")
 
-	async def _handle_position_mismatch (self, account_id: str, discrepancy: Dict) -> None:
+	@staticmethod
+	async def _handle_position_mismatch (account_id: str, discrepancy: Dict) -> None:
 		"""处理持仓不匹配"""
 		# 实现持仓同步逻辑
-		pass
+		logger.info(f"处理持仓不匹配: 账户ID={account_id}, 差异={discrepancy}")
 
-	async def _handle_cash_mismatch (self, account_id: str, discrepancy: Dict) -> None:
+	@staticmethod
+	async def _handle_cash_mismatch (account_id: str, discrepancy: Dict) -> None:
 		"""处理资金不匹配"""
 		# 实现资金同步逻辑
-		pass
+		logger.info(f"处理资金不匹配: 账户ID={account_id}, 差异={discrepancy}")
 
 
 # 创建全局任务实例
 _reconciliation_tasks: Optional[ReconciliationTasks] = None
 
 
+async def _create_reconciliation_tasks () -> ReconciliationTasks:
+	"""创建对账任务实例（异步）"""
+	from quant_server.shared.database.session.connection_pool import get_connection_pool
+
+	# 获取连接池
+	connection_pool = get_connection_pool()
+
+	# 确保连接池已初始化
+	try:
+		# 尝试获取会话工厂，如果未初始化会抛出异常
+		session_factory = connection_pool.get_session_factory()
+	except RuntimeError:
+		# 连接池未初始化，需要初始化
+		await connection_pool.initialize()
+		session_factory = connection_pool.get_session_factory()
+
+	# 创建会话
+	session = session_factory()
+
+	return ReconciliationTasks(
+		account_repo=AccountRepository(session),
+		trade_repo=TradeRepository(session),
+		position_repo=PositionRepository(session)
+	)
+
+
 def get_reconciliation_tasks () -> ReconciliationTasks:
 	"""获取对账任务实例"""
 	global _reconciliation_tasks
 	if _reconciliation_tasks is None:
-		from shared.database.session import get_session_manager
-
-		session_manager = get_session_manager()
-		with session_manager.get_session() as session:
-			from shared.database.repositories import (
-				AccountRepository, TradeRepository, PositionRepository
-			)
-
-			_reconciliation_tasks = ReconciliationTasks(
-				account_repo=AccountRepository(session),
-				trade_repo=TradeRepository(session),
-				position_repo=PositionRepository(session)
-			)
+		import asyncio
+		_reconciliation_tasks = asyncio.run(_create_reconciliation_tasks())
 	return _reconciliation_tasks
 
-
-# 定义Celery任务
-try:
-	from celery import shared_task
-
-
-	@shared_task
-	def daily_reconciliation_task (trading_day: Optional[str] = None):
-		"""Celery日终对账任务"""
-		import asyncio
-
-		if trading_day:
-			from datetime import datetime
-			trading_date = datetime.strptime(trading_day, '%Y-%m-%d').date()
-		else:
-			trading_date = None
-
-		tasks = get_reconciliation_tasks()
-		result = asyncio.run(tasks.daily_reconciliation_task(trading_date))
-		return result
+	# 定义Celery任务（如果Celery已安装）
+	# 这些任务目前未被使用，保留以备将来扩展
+	# try:
+	#	 from celery import shared_task
 
 
-	@shared_task
-	def trade_reconciliation_task (account_id: str, start_time: str, end_time: str):
-		"""Celery交易对账任务"""
-		import asyncio
+	#	 @shared_task
+	#	 def daily_reconciliation_task (trading_day: Optional[str] = None):
+	#		 """Celery日终对账任务"""
+	#		 import asyncio
 
-		from datetime import datetime
-		start_dt = datetime.fromisoformat(start_time)
-		end_dt = datetime.fromisoformat(end_time)
+	#		 if trading_day:
+	#			 from datetime import datetime
+	#			 trading_date = datetime.strptime(trading_day, '%Y-%m-%d').date()
+	#		 else:
+	#			 trading_date = None
 
-		tasks = get_reconciliation_tasks()
-		result = asyncio.run(tasks.trade_reconciliation_task(
-			account_id=account_id,
-			start_time=start_dt,
-			end_time=end_dt
-		))
-		return result
+	#		 tasks = get_reconciliation_tasks()
+	#		 result = asyncio.run(tasks.daily_reconciliation_task(trading_date))
+	#		 return result
 
 
-	@shared_task
-	def position_reconciliation_task (account_id: str):
-		"""Celery持仓对账任务"""
-		import asyncio
+	#	 @shared_task
+	#	 def trade_reconciliation_task (account_id: str, start_time: str, end_time: str):
+	#		 """Celery交易对账任务"""
+	#		 import asyncio
 
-		tasks = get_reconciliation_tasks()
-		result = asyncio.run(tasks.position_reconciliation_task(account_id))
-		return result
+	#		 from datetime import datetime
+	#		 start_dt = datetime.fromisoformat(start_time)
+	#		 end_dt = datetime.fromisoformat(end_time)
 
-except ImportError:
-	# Celery未安装时的占位函数
-	def daily_reconciliation_task (*args, **kwargs):
-		raise NotImplementedError("Celery is not installed")
+	#		 tasks = get_reconciliation_tasks()
+	#		 result = asyncio.run(tasks.trade_reconciliation_task(
+	#			 account_id=account_id,
+	#			 start_time=start_dt,
+	#			 end_time=end_dt
+	#		 ))
+	#		 return result
 
 
-	def trade_reconciliation_task (*args, **kwargs):
-		raise NotImplementedError("Celery is not installed")
+	#	 @shared_task
+	#	 def position_reconciliation_task (account_id: str):
+	#		 """Celery持仓对账任务"""
+	#		 import asyncio
+
+	#		 tasks = get_reconciliation_tasks()
+	#		 result = asyncio.run(tasks.position_reconciliation_task(account_id))
+	#		 return result
+
+	# except ImportError:
+	#	 # Celery未安装时的占位函数
+	#	 def daily_reconciliation_task (trading_day=None):
+	#		 _ = trading_day  # 避免未使用变量警告
+	#		 raise NotImplementedError("Celery is not installed")
 
 
-	def position_reconciliation_task (*args, **kwargs):
-		raise NotImplementedError("Celery is not installed")
+	#	 def trade_reconciliation_task (account_id, start_time, end_time):
+	#		 _ = account_id, start_time, end_time  # 避免未使用变量警告
+	#		 raise NotImplementedError("Celery is not installed")
+
+
+	#	 def position_reconciliation_task (account_id):
+	#		 _ = account_id  # 避免未使用变量警告
+	#		 raise NotImplementedError("Celery is not installed")

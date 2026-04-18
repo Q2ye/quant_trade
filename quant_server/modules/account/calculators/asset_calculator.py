@@ -9,28 +9,28 @@
 4. 计算资产变化率
 """
 
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, date
+from datetime import date
 from decimal import Decimal
-from sqlalchemy.orm import Session
+from typing import Dict, List, Optional
 
-from quant_server.shared.database.repositories import (
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ....modules.account.models import (
+	AssetBreakdown,
+	AssetHistory,
+)
+from ....shared.database.repositories import (
 	AccountRepository,
 	PositionRepository,
 	TradeRepository,
 	OrderRepository,
-)
-from quant_server.modules.account.models import (
-	AccountSnapshot,
-	AssetBreakdown,
-	AssetHistory,
 )
 
 
 class AssetCalculator:
 	"""资产计算器"""
 
-	def __init__ (self, session: Session):
+	def __init__ (self, session: AsyncSession):
 		"""
 		初始化资产计算器
 
@@ -43,7 +43,7 @@ class AssetCalculator:
 		self.trade_repo = TradeRepository(session)
 		self.order_repo = OrderRepository(session)
 
-	async def calculate_total_asset (self, account_id: int, as_of_date: Optional[date] = None) -> Decimal:
+	async def calculate_total_asset (self, account_id: str, as_of_date: Optional[date] = None) -> Decimal:
 		"""
 		计算账户总资产
 
@@ -55,16 +55,14 @@ class AssetCalculator:
 			Decimal: 总资产金额
 		"""
 		# 获取账户信息
-		account = await self.account_repo.get_by_id(account_id)
+		account = await self.account_repo.get(account_id)
 		if not account:
 			raise ValueError(f"账户不存在: {account_id}")
 
 		if as_of_date:
 			# 历史计算：需要获取指定日期的持仓和现金
 			# 这里简化处理，实际需要根据历史快照计算
-			positions = await self.position_repo.get_account_positions_by_date(
-				account_id, as_of_date
-			)
+			positions = await self.position_repo.get_account_positions(account_id)
 			market_value = sum(
 				pos.volume * pos.last_price
 				for pos in positions
@@ -83,7 +81,7 @@ class AssetCalculator:
 
 		return Decimal(str(total_asset))
 
-	async def calculate_market_value (self, account_id: int) -> Decimal:
+	async def calculate_market_value (self, account_id: str) -> Decimal:
 		"""
 		计算持仓市值
 
@@ -93,7 +91,7 @@ class AssetCalculator:
 		Returns:
 			Decimal: 持仓市值
 		"""
-		positions = await self.position_repo.get_by_account_id(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
 
 		total_market_value = Decimal('0')
 		for position in positions:
@@ -103,7 +101,7 @@ class AssetCalculator:
 
 		return total_market_value
 
-	async def calculate_cash_breakdown (self, account_id: int) -> Dict[str, Decimal]:
+	async def calculate_cash_breakdown (self, account_id: str) -> Dict[str, Decimal]:
 		"""
 		计算现金构成
 
@@ -113,7 +111,7 @@ class AssetCalculator:
 		Returns:
 			Dict: 现金构成详情
 		"""
-		account = await self.account_repo.get_by_id(account_id)
+		account = await self.account_repo.get(account_id)
 		if not account:
 			raise ValueError(f"账户不存在: {account_id}")
 
@@ -124,7 +122,7 @@ class AssetCalculator:
 			"margin_balance": Decimal(str(account.total_balance - account.available_balance - account.frozen_balance))
 		}
 
-	async def calculate_asset_allocation (self, account_id: int) -> List[AssetBreakdown]:
+	async def calculate_asset_allocation (self, account_id: str) -> List[AssetBreakdown]:
 		"""
 		计算资产配置详情
 
@@ -134,8 +132,8 @@ class AssetCalculator:
 		Returns:
 			List[AssetBreakdown]: 资产配置列表
 		"""
-		account = await self.account_repo.get_by_id(account_id)
-		positions = await self.position_repo.get_by_account_id(account_id)
+		account = await self.account_repo.get(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
 
 		# 计算持仓市值
 		position_values = []
@@ -154,17 +152,16 @@ class AssetCalculator:
 		cash_weight = cash_value / Decimal(str(account.total_balance)) if account.total_balance > 0 else Decimal('0')
 
 		# 构建资产配置
-		allocation = []
-
-		# 现金部分
-		allocation.append(AssetBreakdown(
-			asset_type="cash",
-			asset_name="现金",
-			market_value=cash_value,
-			weight=cash_weight,
-			cost_basis=cash_value,
-			pnl=Decimal('0')
-		))
+		allocation = [
+			AssetBreakdown(
+				asset_type="cash",
+				asset_name="现金",
+				market_value=cash_value,
+				weight=cash_weight,
+				cost_basis=cash_value,
+				pnl=Decimal('0')
+			)
+		]
 
 		# 持仓部分
 		for pos_value in position_values:
@@ -181,19 +178,19 @@ class AssetCalculator:
 
 		return allocation
 
+	@staticmethod
 	async def calculate_asset_history (
-			self,
-			account_id: int,
-			start_date: date,
-			end_date: date
+			_account_id: int,
+			_start_date: date,
+			_end_date: date
 	) -> List[AssetHistory]:
 		"""
 		计算资产历史
 
 		Args:
-			account_id: 账户ID
-			start_date: 开始日期
-			end_date: 结束日期
+			_account_id: 账户ID
+			_start_date: 开始日期
+			_end_date: 结束日期
 
 		Returns:
 			List[AssetHistory]: 资产历史记录
@@ -208,32 +205,21 @@ class AssetCalculator:
 		# )
 
 		# 转换为AssetHistory对象
-		history = []
-		# for record in performance_records:
-		#     history.append(AssetHistory(
-		#         trade_date=record.trade_date,
-		#         total_asset=record.total_asset,
-		#         cash=record.cash,
-		#         market_value=record.market_value,
-		#         daily_pnl=record.daily_pnl,
-		#         daily_return=record.daily_return
-		#     ))
+		return []
 
-		return history
-
+	@staticmethod
 	async def calculate_asset_growth_rate (
-			self,
-			account_id: int,
-			start_date: date,
-			end_date: date
+			_account_id: int,
+			_start_date: date,
+			_end_date: date
 	) -> Dict[str, Decimal]:
 		"""
 		计算资产增长率
 
 		Args:
-			account_id: 账户ID
-			start_date: 开始日期
-			end_date: 结束日期
+			_account_id: 账户ID
+			_start_date: 开始日期
+			_end_date: 结束日期
 
 		Returns:
 			Dict: 增长率指标
@@ -256,7 +242,8 @@ class AssetCalculator:
 			"cagr": Decimal('0'),  # 复合年增长率
 		}
 
-	def _annualize_return (self, total_return: Decimal, start_date: date, end_date: date) -> Decimal:
+	@staticmethod
+	def _annualize_return (total_return: Decimal, start_date: date, end_date: date) -> Decimal:
 		"""
 		年化收益率计算
 
@@ -277,7 +264,7 @@ class AssetCalculator:
 		# 年化公式: (1 + total_return)^(1/years) - 1
 		try:
 			annualized = (Decimal('1') + total_return) ** (Decimal('1') / years) - Decimal('1')
-		except Exception:
+		except (ValueError, ZeroDivisionError):
 			annualized = Decimal('0')
 
 		return annualized

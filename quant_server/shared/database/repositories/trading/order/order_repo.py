@@ -68,7 +68,7 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			status: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -120,7 +120,7 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_by_account_id (
 			self,
-			account_id: int,
+			account_id: str,
 			status: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -215,7 +215,7 @@ class OrderRepository(BaseRepository[Order]):
 	async def get_by_ts_code (
 			self,
 			ts_code: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			status: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -265,8 +265,8 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_active_orders (
 			self,
-			user_id: Optional[int] = None,
-			account_id: Optional[int] = None,
+			user_id: Optional[str] = None,
+			account_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			ts_code: Optional[str] = None
 	) -> List[Order]:
@@ -311,8 +311,8 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_today_orders (
 			self,
-			user_id: Optional[int] = None,
-			account_id: Optional[int] = None,
+			user_id: Optional[str] = None,
+			account_id: Optional[str] = None,
 			strategy_id: Optional[str] = None
 	) -> List[Order]:
 		"""
@@ -359,8 +359,8 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_order_statistics (
 			self,
-			user_id: Optional[int] = None,
-			account_id: Optional[int] = None,
+			user_id: Optional[str] = None,
+			account_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
@@ -429,7 +429,7 @@ class OrderRepository(BaseRepository[Order]):
 
 	async def get_order_status_summary (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
 	) -> Dict[str, int]:
@@ -479,8 +479,8 @@ class OrderRepository(BaseRepository[Order]):
 			self,
 			start_date: date,
 			end_date: date,
-			user_id: Optional[int] = None,
-			account_id: Optional[int] = None
+			user_id: Optional[str] = None,
+			account_id: Optional[str] = None
 	) -> List[Dict[str, Any]]:
 		"""
 		按日期汇总订单统计
@@ -545,7 +545,7 @@ class OrderRepository(BaseRepository[Order]):
 			self,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			top_n: int = 20
 	) -> List[Dict[str, Any]]:
 		"""

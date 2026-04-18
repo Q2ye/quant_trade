@@ -3,20 +3,44 @@
 处理交易费用计算、记录和统计
 """
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from datetime import datetime, date, timedelta
 from decimal import Decimal
-from datetime import datetime, date
+from typing import Optional, Dict, Any, List
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.repositories.trade_repo import TradeRepository
-from shared.database.repositories.fee_repo import FeeRepository
-from shared.database.repositories.account_repo import AccountRepository
-from shared.database.models.business_models import Trade, FeeRecord
-from modules.account.models import AccountDomain
-from shared.cache.base import CacheBase
-from shared.utils.validation import validate_amount
+from quant_server.shared.cache.base import CacheBase
+from quant_server.shared.database.models.business_models import TradeFee
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
+from quant_server.shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
+from quant_server.shared.utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
+
+
+def _calculate_fee_amounts(fee_records: List[TradeFee]) -> Dict[str, Decimal]:
+	"""计算费用金额"""
+	fees = {
+		"commission": Decimal("0.00"),
+		"stamp_tax": Decimal("0.00"),
+		"transfer_fee": Decimal("0.00"),
+		"regulation_fee": Decimal("0.00"),
+		"total_fee": Decimal("0.00")
+	}
+
+	for fee_record in fee_records:
+		if fee_record.fee_type == "commission":
+			fees["commission"] += Decimal(str(fee_record.fee_amount))
+		elif fee_record.fee_type == "tax":
+			fees["stamp_tax"] += Decimal(str(fee_record.fee_amount))
+		elif fee_record.fee_type == "transfer":
+			fees["transfer_fee"] += Decimal(str(fee_record.fee_amount))
+		elif fee_record.fee_type == "regulation":
+			fees["regulation_fee"] += Decimal(str(fee_record.fee_amount))
+		fees["total_fee"] += Decimal(str(fee_record.fee_amount))
+
+	return fees
 
 
 class FeeService:
@@ -26,12 +50,12 @@ class FeeService:
 		self.db = db
 		self.cache = cache
 		self.trade_repo = TradeRepository(db)
-		self.fee_repo = FeeRepository(db)
+		self.fee_repo = TradeFeeRepository(db)
 		self.account_repo = AccountRepository(db)
 
+	@staticmethod
 	async def calculate_trading_fees (
-			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str,
 			price: Decimal,
 			volume: int,
@@ -76,12 +100,14 @@ class FeeService:
 
 			# 计算印花税（仅卖出时收取）
 			stamp_tax = Decimal("0.00")
+			stamp_tax_rate = Decimal("0.00")
 			if direction == "sell":
 				stamp_tax_rate = Decimal("0.001")  # 0.1%
 				stamp_tax = trade_amount * stamp_tax_rate
 
 			# 计算过户费（仅沪市，双向收取）
 			transfer_fee = Decimal("0.00")
+			transfer_fee_rate = Decimal("0.00")
 			if market == "SH":
 				transfer_fee_rate = Decimal("0.00002")  # 0.002%
 				transfer_fee = trade_amount * transfer_fee_rate
@@ -123,28 +149,20 @@ class FeeService:
 	async def record_trade_fees (
 			self,
 			trade_id: str,
-			account_id: int,
-			ts_code: str,
 			commission: Decimal,
 			stamp_tax: Decimal,
 			transfer_fee: Decimal,
-			regulation_fee: Decimal,
-			total_fee: Decimal,
-			fee_details: Optional[Dict[str, Any]] = None
+			regulation_fee: Decimal
 	) -> bool:
 		"""
 		记录交易费用
 
 		Args:
 			trade_id: 交易ID
-			account_id: 账户ID
-			ts_code: 证券代码
 			commission: 佣金
 			stamp_tax: 印花税
 			transfer_fee: 过户费
 			regulation_fee: 监管费
-			total_fee: 总费用
-			fee_details: 费用详情
 
 		Returns:
 			记录是否成功
@@ -155,44 +173,58 @@ class FeeService:
 				("commission", commission),
 				("stamp_tax", stamp_tax),
 				("transfer_fee", transfer_fee),
-				("regulation_fee", regulation_fee),
-				("total_fee", total_fee)
+				("regulation_fee", regulation_fee)
 			]:
 				if fee_amount < 0:
 					raise ValueError(f"{fee_name}不能为负数")
 
 			# 检查交易是否存在
-			trade = await self.trade_repo.get_by_id(trade_id)
+			trade = await self.trade_repo.get_by_trade_id(trade_id)
 			if not trade:
 				raise ValueError(f"交易不存在: {trade_id}")
 
-			# 创建费用记录
-			fee_data = {
-				"trade_id": trade_id,
-				"account_id": account_id,
-				"ts_code": ts_code,
-				"commission": commission,
-				"stamp_tax": stamp_tax,
-				"transfer_fee": transfer_fee,
-				"regulation_fee": regulation_fee,
-				"total_fee": total_fee,
-				"fee_details": fee_details or {},
-				"status": "recorded"
-			}
+			# 批量创建费用记录
+			fees_data = []
 
-			success = await self.fee_repo.create(fee_data)
+			if commission > 0:
+				fees_data.append({
+					"trade_id": trade_id,
+					"fee_type": "commission",
+					"fee_amount": commission,
+					"description": "佣金"
+				})
 
-			if success:
-				logger.info(f"记录交易费用成功: 交易ID={trade_id}, 总费用={total_fee}")
+			if stamp_tax > 0:
+				fees_data.append({
+					"trade_id": trade_id,
+					"fee_type": "tax",
+					"fee_amount": stamp_tax,
+					"description": "印花税"
+				})
 
-				# 清理缓存
-				if self.cache:
-					await self.cache.delete(f"account:fees:{account_id}")
-					await self.cache.delete(f"trade:fees:{trade_id}")
+			if transfer_fee > 0:
+				fees_data.append({
+					"trade_id": trade_id,
+					"fee_type": "transfer",
+					"fee_amount": transfer_fee,
+					"description": "过户费"
+				})
 
-				return True
+			if regulation_fee > 0:
+				fees_data.append({
+					"trade_id": trade_id,
+					"fee_type": "regulation",
+					"fee_amount": regulation_fee,
+					"description": "监管费"
+				})
+
+			if fees_data:
+				await self.fee_repo.batch_create_fees(fees_data)
+				logger.info(f"记录交易费用成功: 交易ID={trade_id}")
 			else:
-				raise ValueError("创建费用记录失败")
+				logger.info(f"无费用需要记录: 交易ID={trade_id}")
+
+			return True
 
 		except Exception as e:
 			logger.error(f"记录交易费用失败: {str(e)}")
@@ -217,35 +249,45 @@ class FeeService:
 					return cached_fees
 
 			# 查询费用记录
-			fee_record = await self.fee_repo.get_by_trade_id(trade_id)
-			if not fee_record:
+			fee_records = await self.fee_repo.get_fees_by_trade_id(trade_id)
+			if not fee_records:
 				return None
 
 			# 获取交易信息
-			trade = await self.trade_repo.get_by_id(trade_id)
+			trade = await self.trade_repo.get_by_trade_id(trade_id)
+
+			# 计算各项费用
+			fees = {
+				"commission": 0.0,
+				"stamp_tax": 0.0,
+				"transfer_fee": 0.0,
+				"regulation_fee": 0.0,
+				"total_fee": 0.0
+			}
+
+			for fee_record in fee_records:
+				if fee_record.fee_type == "commission":
+					fees["commission"] = float(fee_record.fee_amount)
+				elif fee_record.fee_type == "tax":
+					fees["stamp_tax"] = float(fee_record.fee_amount)
+				elif fee_record.fee_type == "transfer":
+					fees["transfer_fee"] = float(fee_record.fee_amount)
+				elif fee_record.fee_type == "regulation":
+					fees["regulation_fee"] = float(fee_record.fee_amount)
+				fees["total_fee"] += float(fee_record.fee_amount)
 
 			fee_details = {
 				"trade_id": trade_id,
-				"account_id": fee_record.account_id,
-				"ts_code": fee_record.ts_code,
 				"trade_time": trade.trade_time.isoformat() if trade else None,
 				"price": float(trade.price) if trade else None,
 				"volume": trade.volume if trade else None,
-				"fees": {
-					"commission": float(fee_record.commission),
-					"stamp_tax": float(fee_record.stamp_tax),
-					"transfer_fee": float(fee_record.transfer_fee),
-					"regulation_fee": float(fee_record.regulation_fee),
-					"total_fee": float(fee_record.total_fee)
-				},
-				"fee_details": fee_record.fee_details or {},
-				"status": fee_record.status,
-				"recorded_at": fee_record.created_at.isoformat()
+				"fees": fees,
+				"recorded_at": fee_records[0].created_at.isoformat() if fee_records else None
 			}
 
 			# 更新缓存
 			if self.cache:
-				await self.cache.set(cache_key, fee_details, expire=3600)  # 缓存1小时
+				await self.cache.set(cache_key, fee_details, ttl=3600)  # 缓存1小时
 
 			return fee_details
 
@@ -255,7 +297,7 @@ class FeeService:
 
 	async def get_account_fees (
 			self,
-			account_id: int,
+			account_id: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			fee_type: Optional[str] = None,
@@ -284,24 +326,8 @@ class FeeService:
 				if cached_stats:
 					return cached_stats
 
-			# 构建查询条件
-			conditions = [FeeRecord.account_id == account_id]
-
-			if start_date:
-				start_datetime = datetime.combine(start_date, datetime.min.time())
-				conditions.append(FeeRecord.created_at >= start_datetime)
-
-			if end_date:
-				end_datetime = datetime.combine(end_date, datetime.max.time())
-				conditions.append(FeeRecord.created_at <= end_datetime)
-
-			# 查询费用记录
-			fee_records = await self.fee_repo.get_by_conditions(
-				conditions=conditions,
-				order_by=[FeeRecord.created_at.desc()],
-				skip=skip,
-				limit=limit
-			)
+			# 获取账户的所有交易
+			trades = await self.trade_repo.get_by_account_id(account_id, start_time=start_date, end_time=end_date)
 
 			# 计算费用统计
 			total_commission = Decimal("0.00")
@@ -312,32 +338,47 @@ class FeeService:
 
 			fee_details = []
 
-			for record in fee_records:
-				total_commission += Decimal(str(record.commission))
-				total_stamp_tax += Decimal(str(record.stamp_tax))
-				total_transfer_fee += Decimal(str(record.transfer_fee))
-				total_regulation_fee += Decimal(str(record.regulation_fee))
-				total_fees += Decimal(str(record.total_fee))
+			for trade in trades:
+				# 获取交易的费用记录
+				fee_records = await self.fee_repo.get_fees_by_trade_id(trade.trade_id)
 
-				# 获取交易信息
-				trade = await self.trade_repo.get_by_id(record.trade_id)
+				# 计算该交易的费用
+				trade_fees = {
+					"commission": 0.0,
+					"stamp_tax": 0.0,
+					"transfer_fee": 0.0,
+					"regulation_fee": 0.0,
+					"total_fee": 0.0
+				}
 
-				fee_details.append({
-					"trade_id": record.trade_id,
-					"ts_code": record.ts_code,
-					"trade_time": trade.trade_time.isoformat() if trade else None,
-					"price": float(trade.price) if trade else None,
-					"volume": trade.volume if trade else None,
-					"direction": "buy" if trade and trade.volume > 0 else "sell",
-					"fees": {
-						"commission": float(record.commission),
-						"stamp_tax": float(record.stamp_tax),
-						"transfer_fee": float(record.transfer_fee),
-						"regulation_fee": float(record.regulation_fee),
-						"total_fee": float(record.total_fee)
-					},
-					"recorded_at": record.created_at.isoformat()
-				})
+				for fee_record in fee_records:
+					if fee_record.fee_type == "commission":
+						trade_fees["commission"] = float(fee_record.fee_amount)
+						total_commission += Decimal(str(fee_record.fee_amount))
+					elif fee_record.fee_type == "tax":
+						trade_fees["stamp_tax"] = float(fee_record.fee_amount)
+						total_stamp_tax += Decimal(str(fee_record.fee_amount))
+					elif fee_record.fee_type == "transfer":
+						trade_fees["transfer_fee"] = float(fee_record.fee_amount)
+						total_transfer_fee += Decimal(str(fee_record.fee_amount))
+					elif fee_record.fee_type == "regulation":
+						trade_fees["regulation_fee"] = float(fee_record.fee_amount)
+						total_regulation_fee += Decimal(str(fee_record.fee_amount))
+					trade_fees["total_fee"] += float(fee_record.fee_amount)
+					total_fees += Decimal(str(fee_record.fee_amount))
+
+				# 添加到费用详情
+				if trade_fees["total_fee"] > 0:
+					fee_details.append({
+						"trade_id": trade.trade_id,
+						"ts_code": trade.ts_code,
+						"trade_time": trade.trade_time.isoformat(),
+						"price": float(trade.price),
+						"volume": trade.volume,
+						"direction": "buy" if trade.volume > 0 else "sell",
+						"fees": trade_fees,
+						"recorded_at": fee_records[0].created_at.isoformat() if fee_records else None
+					})
 
 			# 按费用类型筛选
 			if fee_type:
@@ -372,7 +413,7 @@ class FeeService:
 					"total_transfer_fee": float(total_transfer_fee),
 					"total_regulation_fee": float(total_regulation_fee),
 					"total_fees": float(total_fees),
-					"record_count": len(fee_records)
+					"record_count": len(fee_details)
 				},
 				"daily_stats": daily_stats,
 				"security_stats": security_stats,
@@ -382,7 +423,7 @@ class FeeService:
 
 			# 更新缓存
 			if self.cache:
-				await self.cache.set(cache_key, result, expire=300)  # 缓存5分钟
+				await self.cache.set(cache_key, result, ttl=300)  # 缓存5分钟
 
 			return result
 
@@ -392,31 +433,25 @@ class FeeService:
 
 	async def _calculate_daily_fee_stats (
 			self,
-			account_id: int,
+			account_id: str,
 			start_date: Optional[date],
 			end_date: Optional[date]
 	) -> List[Dict[str, Any]]:
 		"""计算每日费用统计"""
 		try:
-			# 这里简化处理，实际实现需要按日期分组查询
-			# 获取日期范围内的所有费用记录
-			conditions = [FeeRecord.account_id == account_id]
-
-			if start_date:
-				start_datetime = datetime.combine(start_date, datetime.min.time())
-				conditions.append(FeeRecord.created_at >= start_datetime)
-
-			if end_date:
-				end_datetime = datetime.combine(end_date, datetime.max.time())
-				conditions.append(FeeRecord.created_at <= end_datetime)
-
-			fee_records = await self.fee_repo.get_by_conditions(conditions)
+			# 获取账户的所有交易
+			trades = await self.trade_repo.get_by_account_id(account_id, start_time=start_date, end_time=end_date)
 
 			# 按日期分组
 			daily_stats_map = {}
 
-			for record in fee_records:
-				record_date = record.created_at.date()
+			for trade in trades:
+				# 获取交易的费用记录
+				fee_records = await self.fee_repo.get_fees_by_trade_id(trade.trade_id)
+				if not fee_records:
+					continue
+
+				record_date = trade.trade_time.date()
 				date_key = record_date.isoformat()
 
 				if date_key not in daily_stats_map:
@@ -431,12 +466,15 @@ class FeeService:
 					}
 
 				stats = daily_stats_map[date_key]
-				stats["commission"] += Decimal(str(record.commission))
-				stats["stamp_tax"] += Decimal(str(record.stamp_tax))
-				stats["transfer_fee"] += Decimal(str(record.transfer_fee))
-				stats["regulation_fee"] += Decimal(str(record.regulation_fee))
-				stats["total_fee"] += Decimal(str(record.total_fee))
 				stats["trade_count"] += 1
+
+				# 计算费用金额
+				fee_amounts = _calculate_fee_amounts(fee_records)
+				stats["commission"] += fee_amounts["commission"]
+				stats["stamp_tax"] += fee_amounts["stamp_tax"]
+				stats["transfer_fee"] += fee_amounts["transfer_fee"]
+				stats["regulation_fee"] += fee_amounts["regulation_fee"]
+				stats["total_fee"] += fee_amounts["total_fee"]
 
 			# 转换为列表并排序
 			daily_stats = list(daily_stats_map.values())
@@ -450,30 +488,20 @@ class FeeService:
 
 	async def _calculate_security_fee_stats (
 			self,
-			account_id: int,
+			account_id: str,
 			start_date: Optional[date],
 			end_date: Optional[date]
 	) -> List[Dict[str, Any]]:
 		"""按证券代码计算费用统计"""
 		try:
-			# 构建查询条件
-			conditions = [FeeRecord.account_id == account_id]
-
-			if start_date:
-				start_datetime = datetime.combine(start_date, datetime.min.time())
-				conditions.append(FeeRecord.created_at >= start_datetime)
-
-			if end_date:
-				end_datetime = datetime.combine(end_date, datetime.max.time())
-				conditions.append(FeeRecord.created_at <= end_datetime)
-
-			fee_records = await self.fee_repo.get_by_conditions(conditions)
+			# 获取账户的所有交易
+			trades = await self.trade_repo.get_by_account_id(account_id, start_time=start_date, end_time=end_date)
 
 			# 按证券代码分组
 			security_stats_map = {}
 
-			for record in fee_records:
-				ts_code = record.ts_code
+			for trade in trades:
+				ts_code = trade.ts_code
 
 				if ts_code not in security_stats_map:
 					security_stats_map[ts_code] = {
@@ -489,18 +517,23 @@ class FeeService:
 					}
 
 				stats = security_stats_map[ts_code]
-				stats["commission"] += Decimal(str(record.commission))
-				stats["stamp_tax"] += Decimal(str(record.stamp_tax))
-				stats["transfer_fee"] += Decimal(str(record.transfer_fee))
-				stats["regulation_fee"] += Decimal(str(record.regulation_fee))
-				stats["total_fee"] += Decimal(str(record.total_fee))
 				stats["trade_count"] += 1
 
-				# 判断买卖方向（通过印花税判断）
-				if Decimal(str(record.stamp_tax)) > 0:
-					stats["sell_count"] += 1
-				else:
+				# 判断买卖方向
+				if trade.volume > 0:
 					stats["buy_count"] += 1
+				else:
+					stats["sell_count"] += 1
+
+				# 获取交易的费用记录
+				fee_records = await self.fee_repo.get_fees_by_trade_id(trade.trade_id)
+				# 计算费用金额
+				fee_amounts = _calculate_fee_amounts(fee_records)
+				stats["commission"] += fee_amounts["commission"]
+				stats["stamp_tax"] += fee_amounts["stamp_tax"]
+				stats["transfer_fee"] += fee_amounts["transfer_fee"]
+				stats["regulation_fee"] += fee_amounts["regulation_fee"]
+				stats["total_fee"] += fee_amounts["total_fee"]
 
 			# 转换为列表并排序
 			security_stats = list(security_stats_map.values())
@@ -520,7 +553,7 @@ class FeeService:
 			logger.error(f"按证券计算费用统计失败: {str(e)}")
 			return []
 
-	async def get_fee_summary (self, account_id: int, period: str = "month") -> Dict[str, Any]:
+	async def get_fee_summary (self, account_id: str, period: str = "month") -> Dict[str, Any]:
 		"""
 		获取费用汇总
 
@@ -538,15 +571,15 @@ class FeeService:
 			if period == "day":
 				start_date = end_date
 			elif period == "week":
-				start_date = end_date - datetime.timedelta(days=7)
+				start_date = end_date - timedelta(days=7)
 			elif period == "month":
-				start_date = end_date - datetime.timedelta(days=30)
+				start_date = end_date - timedelta(days=30)
 			elif period == "quarter":
-				start_date = end_date - datetime.timedelta(days=90)
+				start_date = end_date - timedelta(days=90)
 			elif period == "year":
-				start_date = end_date - datetime.timedelta(days=365)
+				start_date = end_date - timedelta(days=365)
 			else:
-				start_date = end_date - datetime.timedelta(days=30)
+				start_date = end_date - timedelta(days=30)
 
 			# 获取费用统计
 			fee_stats = await self.get_account_fees(
@@ -611,7 +644,7 @@ class FeeService:
 
 	async def adjust_fee_record (
 			self,
-			fee_record_id: int,
+			fee_record_id: str,
 			adjustment_amount: Decimal,
 			reason: str,
 			adjusted_by: str
@@ -630,25 +663,20 @@ class FeeService:
 		"""
 		try:
 			# 获取费用记录
-			fee_record = await self.fee_repo.get_by_id(fee_record_id)
+			fee_record = await self.fee_repo.get(fee_record_id)
 			if not fee_record:
 				raise ValueError(f"费用记录不存在: {fee_record_id}")
 
-			# 计算新的总费用
-			new_total_fee = Decimal(str(fee_record.total_fee)) + adjustment_amount
+			# 计算新的费用金额
+			new_fee_amount = Decimal(str(fee_record.fee_amount)) + adjustment_amount
 
-			if new_total_fee < 0:
+			if new_fee_amount < 0:
 				raise ValueError("调整后费用不能为负数")
 
 			# 更新费用记录
 			update_data = {
-				"total_fee": new_total_fee,
-				"adjustment_history": {
-					"adjustment_amount": float(adjustment_amount),
-					"reason": reason,
-					"adjusted_by": adjusted_by,
-					"adjusted_at": datetime.now().isoformat()
-				}
+				"fee_amount": new_fee_amount,
+				"description": f"{fee_record.description} - 调整: {reason} (调整人: {adjusted_by})"
 			}
 
 			success = await self.fee_repo.update(fee_record_id, update_data)
@@ -659,7 +687,6 @@ class FeeService:
 				# 清理缓存
 				if self.cache:
 					await self.cache.delete(f"trade:fees:{fee_record.trade_id}")
-					await self.cache.delete(f"account:fees:{fee_record.account_id}")
 
 				return True
 			else:

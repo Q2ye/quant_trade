@@ -4,6 +4,28 @@
 """
 
 from typing import Dict, Any
+from decimal import Decimal
+
+
+def validate_amount(amount: Decimal, min_value: Decimal = Decimal("0.01")) -> bool:
+    """
+    验证金额
+
+    Args:
+        amount: 金额
+        min_value: 最小金额
+
+    Returns:
+        bool: 是否验证通过
+
+    Raises:
+        ValueError: 金额不符合要求
+    """
+    if not isinstance(amount, Decimal):
+        raise ValueError("金额必须是 Decimal 类型")
+    if amount < min_value:
+        raise ValueError(f"金额必须大于等于 {min_value}")
+    return True
 
 
 def validate_account_data(data: Dict[str, Any]) -> bool:

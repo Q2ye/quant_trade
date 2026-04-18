@@ -5,12 +5,13 @@
 from .settlement_tasks import (
 	daily_settlement_task,
 	weekly_settlement_task,
-	monthly_settlement_task
+	monthly_settlement_task,
+	SettlementTasks,
+	get_settlement_tasks
 )
 from .reconciliation_tasks import (
-	daily_reconciliation_task,
-	trade_reconciliation_task,
-	position_reconciliation_task
+	ReconciliationTasks,
+	get_reconciliation_tasks
 )
 
 __all__ = [
@@ -18,9 +19,10 @@ __all__ = [
 	'daily_settlement_task',
 	'weekly_settlement_task',
 	'monthly_settlement_task',
+	'SettlementTasks',
+	'get_settlement_tasks',
 
 	# 对账任务
-	'daily_reconciliation_task',
-	'trade_reconciliation_task',
-	'position_reconciliation_task'
+	'ReconciliationTasks',
+	'get_reconciliation_tasks'
 ]

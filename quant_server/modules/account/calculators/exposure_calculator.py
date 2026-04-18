@@ -8,30 +8,32 @@
 3. 计算风险价值（VaR）
 4. 计算风险指标
 """
-
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, date
-from decimal import Decimal
+import logging
 from collections import defaultdict
-from sqlalchemy.orm import Session
+from datetime import datetime
+from decimal import Decimal
+from typing import Dict, List, Optional
 
-from quant_server.shared.database.repositories import (
-	PositionRepository,
-	AccountRepository,
-)
-from quant_server.shared.sources import StockDataSource
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.modules.account.models import (
 	IndustryExposure,
 	ConcentrationRisk,
 	RiskMetrics,
 	VaRResult,
 )
+from quant_server.shared.database.repositories import (
+	PositionRepository,
+	AccountRepository,
+)
+from quant_server.shared.sources.base_source import BaseDataSource
 
+logger = logging.getLogger(__name__)
 
 class ExposureCalculator:
 	"""风险敞口计算器"""
 
-	def __init__ (self, session: Session, data_source: Optional[StockDataSource] = None):
+	def __init__ (self, session: AsyncSession, data_source: Optional[BaseDataSource] = None):
 		"""
 		初始化风险敞口计算器
 
@@ -44,7 +46,7 @@ class ExposureCalculator:
 		self.account_repo = AccountRepository(session)
 		self.data_source = data_source
 
-	async def calculate_industry_exposure (self, account_id: int) -> List[IndustryExposure]:
+	async def calculate_industry_exposure (self, account_id: str) -> List[IndustryExposure]:
 		"""
 		计算行业敞口
 
@@ -54,8 +56,8 @@ class ExposureCalculator:
 		Returns:
 			List[IndustryExposure]: 行业敞口列表
 		"""
-		positions = await self.position_repo.get_by_account_id(account_id)
-		account = await self.account_repo.get_by_id(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
+		account = await self.account_repo.get(account_id)
 
 		if not account or account.total_balance <= 0:
 			return []
@@ -112,15 +114,19 @@ class ExposureCalculator:
 		"""
 		if self.data_source:
 			try:
-				stock_info = await self.data_source.get_stock_info(ts_code)
-				return stock_info.get('industry', '未知行业')
-			except Exception:
+				# 使用get_stock_basic方法获取股票基础信息
+				stock_basic = await self.data_source.get_stock_basic()
+				for stock in stock_basic:
+					if stock.get('ts_code') == ts_code:
+						return stock.get('industry', '未知行业')
+			except Exception as e:
+				logger.debug(f"获取股票行业信息失败: {str(e)}")
 				pass
 
 		# 默认返回未知行业
 		return "未知行业"
 
-	async def calculate_concentration_risk (self, account_id: int) -> ConcentrationRisk:
+	async def calculate_concentration_risk (self, account_id: str) -> ConcentrationRisk:
 		"""
 		计算集中度风险
 
@@ -130,8 +136,8 @@ class ExposureCalculator:
 		Returns:
 			ConcentrationRisk: 集中度风险指标
 		"""
-		positions = await self.position_repo.get_by_account_id(account_id)
-		account = await self.account_repo.get_by_id(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
+		account = await self.account_repo.get(account_id)
 
 		if not account or account.total_balance <= 0:
 			return ConcentrationRisk(
@@ -180,7 +186,7 @@ class ExposureCalculator:
 
 	async def calculate_var (
 			self,
-			account_id: int,
+			account_id: str,
 			confidence_level: float = 0.95,
 			time_horizon: int = 1,
 			method: str = "historical"
@@ -198,8 +204,8 @@ class ExposureCalculator:
 			VaRResult: VaR计算结果
 		"""
 		# 获取账户持仓
-		positions = await self.position_repo.get_by_account_id(account_id)
-		account = await self.account_repo.get_by_id(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
+		account = await self.account_repo.get(account_id)
 
 		if not account or not positions:
 			return VaRResult(
@@ -257,7 +263,8 @@ class ExposureCalculator:
 				str(account.total_balance)) if account.total_balance > 0 else Decimal('0')
 		)
 
-	def _get_z_score (self, confidence_level: float) -> float:
+	@staticmethod
+	def _get_z_score (confidence_level: float) -> float:
 		"""
 		获取正态分布Z值
 
@@ -278,7 +285,7 @@ class ExposureCalculator:
 
 		return z_scores.get(confidence_level, 1.645)
 
-	async def calculate_risk_metrics (self, account_id: int) -> RiskMetrics:
+	async def calculate_risk_metrics (self, account_id: str) -> RiskMetrics:
 		"""
 		计算综合风险指标
 
@@ -288,15 +295,16 @@ class ExposureCalculator:
 		Returns:
 			RiskMetrics: 风险指标
 		"""
-		account = await self.account_repo.get_by_id(account_id)
-		positions = await self.position_repo.get_by_account_id(account_id)
+		account = await self.account_repo.get(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
 
 		# 计算基础指标
-		total_market_value = sum(
+		market_values = [
 			Decimal(str(p.volume)) * Decimal(str(p.last_price))
 			for p in positions
 			if p.volume > 0 and p.last_price
-		)
+		]
+		total_market_value = sum(market_values) if market_values else Decimal('0')
 
 		total_cash = Decimal(str(account.available_balance)) if account else Decimal('0')
 		total_asset = Decimal(str(account.total_balance)) if account else Decimal('0')
@@ -307,9 +315,13 @@ class ExposureCalculator:
 		# 计算流动性指标
 		liquid_positions = [p for p in positions if p.volume > 0 and p.available_volume > 0]
 		illiquid_ratio = 1 - len(liquid_positions) / len(positions) if positions else Decimal('0')
+		liquidity_ratio = Decimal('1') - illiquid_ratio
 
 		# 计算相关性风险（简化）
 		# 实际需要计算组合内股票的相关性
+
+		# 获取行业敞口
+		industry_exposure = await self.calculate_industry_exposure(account_id)
 
 		# 获取VaR
 		var_result = await self.calculate_var(account_id)
@@ -318,27 +330,36 @@ class ExposureCalculator:
 		concentration = await self.calculate_concentration_risk(account_id)
 
 		return RiskMetrics(
+			account_id=account_id,
+			calculation_time=datetime.now(),
+			industry_exposure=industry_exposure,
+			concentration_risk=concentration,
+			var=var_result.var,
+			sharpe_ratio=None,
+			max_drawdown=None,
+			beta=None,
+			alpha=None,
 			total_asset=total_asset,
-			total_market_value=total_market_value,
-			total_cash=total_cash,
 			leverage=leverage,
-			liquidity_ratio=Decimal('1') - illiquid_ratio,
+			max_concentration=concentration.max_concentration,
+			liquidity_ratio=liquidity_ratio,
 			var_95=var_result.var,
 			var_percentage=var_result.var_percentage,
 			herfindahl_index=concentration.herfindahl_index,
-			max_concentration=concentration.max_concentration,
 			is_concentration_violated=concentration.is_violated,
 			position_count=len([p for p in positions if p.volume > 0]),
 			industry_count=len(set(
 				await self._get_stock_industry(p.ts_code)
 				for p in positions
 				if p.volume > 0
-			))
+			)),
+			total_market_value=total_market_value,
+			total_cash=total_cash
 		)
 
 	async def calculate_stress_test (
 			self,
-			account_id: int,
+			account_id: str,
 			scenario: str = "market_crash"
 	) -> Dict[str, Decimal]:
 		"""
@@ -351,8 +372,8 @@ class ExposureCalculator:
 		Returns:
 			Dict: 压力测试结果
 		"""
-		positions = await self.position_repo.get_by_account_id(account_id)
-		account = await self.account_repo.get_by_id(account_id)
+		positions = await self.position_repo.get_account_positions(account_id)
+		account = await self.account_repo.get(account_id)
 
 		if not account:
 			return {}
@@ -405,7 +426,7 @@ class ExposureCalculator:
 			"margin_call_risk": stress_loss_pct < Decimal('-0.3')  # 损失超过30%可能触发追加保证金
 		}
 
-	async def generate_risk_report (self, account_id: int) -> Dict:
+	async def generate_risk_report (self, account_id: str) -> Dict:
 		"""
 		生成风险报告
 
@@ -435,17 +456,18 @@ class ExposureCalculator:
 				"risk_level": self._determine_risk_level(risk_metrics),
 				"overall_risk_score": self._calculate_risk_score(risk_metrics, concentration, var_result)
 			},
-			"risk_metrics": risk_metrics.dict(),
-			"concentration_risk": concentration.dict(),
-			"industry_exposure": [exp.dict() for exp in industry_exposure],
-			"var_analysis": var_result.dict(),
+			"risk_metrics": risk_metrics.model_dump(),
+			"concentration_risk": concentration.model_dump(),
+			"industry_exposure": [exp.model_dump() for exp in industry_exposure],
+			"var_analysis": var_result.model_dump(),
 			"stress_tests": stress_tests,
 			"recommendations": self._generate_recommendations(risk_metrics, concentration, industry_exposure)
 		}
 
 		return report
 
-	def _determine_risk_level (self, risk_metrics: RiskMetrics) -> str:
+	@staticmethod
+	def _determine_risk_level (risk_metrics: RiskMetrics) -> str:
 		"""
 		确定风险等级
 
@@ -463,8 +485,8 @@ class ExposureCalculator:
 		else:
 			return "低"
 
+	@staticmethod
 	def _calculate_risk_score (
-			self,
 			risk_metrics: RiskMetrics,
 			concentration: ConcentrationRisk,
 			var_result: VaRResult
@@ -501,8 +523,8 @@ class ExposureCalculator:
 
 		return min(score, 100)
 
+	@staticmethod
 	def _generate_recommendations (
-			self,
 			risk_metrics: RiskMetrics,
 			concentration: ConcentrationRisk,
 			industry_exposure: List[IndustryExposure]

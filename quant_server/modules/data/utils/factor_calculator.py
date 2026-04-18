@@ -14,14 +14,14 @@
 - 可扩展：易于添加新因子
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Any, Optional, Union, Tuple, Callable
-from datetime import datetime, timedelta
-import talib
-import warnings
 import logging
+import warnings
 from enum import Enum
+from typing import Dict, List, Optional, Union, Tuple, Callable
+
+import numpy as np
+import pandas as pd
+import talib
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +270,8 @@ class FactorCalculator:
 
 		return self.calculate_factors(data, factor_names, **kwargs)
 
-	def _validate_data_for_factor (self, data: pd.DataFrame, factor_name: str) -> None:
+	@staticmethod
+	def _validate_data_for_factor (data: pd.DataFrame, factor_name: str) -> None:
 		"""
 		验证因子计算所需的数据
 
@@ -650,10 +651,7 @@ class FactorCalculator:
 			try:
 				factor_result = self.calculate_factor(data, factor_name, **kwargs)
 				# 取第一个因子序列（有些因子会返回多个序列）
-				if isinstance(factor_result, pd.DataFrame):
-					factor_series = factor_result.iloc[:, 0]
-				else:
-					factor_series = factor_result
+				factor_series = factor_result.iloc[:, 0]
 
 				factor_values[factor_name] = factor_series
 			except Exception as e:
@@ -681,7 +679,8 @@ class FactorCalculator:
 
 		return composite
 
-	def _normalize_factors (self, factor_df: pd.DataFrame) -> pd.DataFrame:
+	@staticmethod
+	def _normalize_factors (factor_df: pd.DataFrame) -> pd.DataFrame:
 		"""
 		标准化因子值
 
@@ -735,10 +734,8 @@ class FactorCalculator:
 		# 计算因子值
 		factor_values = self.calculate_factor(data, factor_name, **kwargs)
 
-		if isinstance(factor_values, pd.DataFrame):
-			factor_series = factor_values.iloc[:, 0]
-		else:
-			factor_series = factor_values
+		# 取第一个因子序列（有些因子会返回多个序列）
+		factor_series = factor_values.iloc[:, 0]
 
 		# 计算百分位排名
 		rank_pct = factor_series.rank(pct=True, ascending=ascending)
@@ -768,10 +765,8 @@ class FactorCalculator:
 		for factor_name in factor_names:
 			try:
 				factor_result = self.calculate_factor(data, factor_name, **kwargs)
-				if isinstance(factor_result, pd.DataFrame):
-					factor_series = factor_result.iloc[:, 0]
-				else:
-					factor_series = factor_result
+				# 取第一个因子序列（有些因子会返回多个序列）
+				factor_series = factor_result.iloc[:, 0]
 
 				factor_values[factor_name] = factor_series
 			except Exception as e:

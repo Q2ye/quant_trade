@@ -2,19 +2,20 @@
 账户业务模型定义
 包含账户相关的领域对象，非数据库模型
 """
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator
+
+from pydantic import BaseModel, Field
 
 
 class AccountDomain(BaseModel):
 	"""账户领域模型"""
 
-	id: int
+	id: str
 	account_number: str
 	account_name: str
-	user_id: int
+	user_id: str
 	account_type: str
 	broker: Optional[str] = None
 	broker_account_id: Optional[str] = None
@@ -64,8 +65,8 @@ class AccountDomain(BaseModel):
 class PositionDomain(BaseModel):
 	"""持仓领域模型"""
 
-	id: int
-	account_id: int
+	id: str
+	account_id: str
 	ts_code: str
 	volume: int
 	available_volume: int
@@ -113,7 +114,7 @@ class PositionDomain(BaseModel):
 class AccountSnapshot(BaseModel):
 	"""账户快照模型"""
 
-	account_id: int
+	account_id: str
 	snapshot_time: datetime
 	total_balance: Decimal
 	available_balance: Decimal
@@ -156,7 +157,7 @@ class AccountSnapshot(BaseModel):
 class AccountOperation(BaseModel):
 	"""账户操作记录模型"""
 
-	account_id: int
+	account_id: str
 	operation_type: str
 	amount: Decimal
 	reference_id: Optional[str] = None
@@ -168,3 +169,144 @@ class AccountOperation(BaseModel):
 			datetime: lambda dt: dt.isoformat(),
 			Decimal: lambda d: float(d)
 		}
+
+
+class AssetBreakdown(BaseModel):
+	"""资产构成模型"""
+
+	asset_type: str
+	asset_name: str
+	market_value: Decimal
+	weight: Decimal
+	cost_basis: Decimal
+	pnl: Decimal
+
+
+class AssetHistory(BaseModel):
+	"""资产历史模型"""
+
+	trade_date: date
+	total_asset: Decimal
+	cash: Decimal
+	market_value: Decimal
+	daily_pnl: Decimal
+	daily_return: Decimal
+
+
+class PositionPnL(BaseModel):
+	"""持仓盈亏模型"""
+
+	ts_code: str
+	position_id: str
+	volume: int
+	cost_price: Decimal
+	last_price: Optional[Decimal] = None
+	market_value: Decimal
+	cost_basis: Decimal
+	unrealized_pnl: Decimal
+	unrealized_pnl_rate: Decimal
+	realized_pnl: Decimal
+	total_pnl: Decimal
+	last_update: datetime
+
+
+class TradePnL(BaseModel):
+	"""交易盈亏模型"""
+
+	trade_id: str
+	ts_code: str
+	direction: str
+	volume: int
+	price: Decimal
+	cost_price: Decimal
+	pnl: Decimal
+	commission: Decimal
+	tax: Decimal
+	trade_time: datetime
+
+
+class DailyPnLSummary(BaseModel):
+	"""日度盈亏摘要模型"""
+
+	trade_date: date
+	trade_pnl: Decimal
+	position_pnl_change: Decimal
+	total_pnl: Decimal
+	trade_volume: int
+	trade_amount: Decimal
+	commission: Decimal
+	tax: Decimal
+
+
+class PnLAnalysis(BaseModel):
+	"""盈亏分析模型"""
+
+	start_date: date
+	end_date: date
+	total_trades: int
+	win_rate: Decimal
+	total_pnl: Decimal
+	avg_pnl_per_trade: Decimal
+	profit_ratio: Decimal
+	max_winning_trade: Decimal
+	max_losing_trade: Decimal
+	sharpe_ratio: Decimal
+	sortino_ratio: Decimal
+
+
+class IndustryExposure(BaseModel):
+	"""行业敞口模型"""
+
+	industry: str
+	market_value: Decimal
+	weight: Decimal
+	stock_count: int
+	stocks: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class ConcentrationRisk(BaseModel):
+	"""集中度风险模型"""
+
+	herfindahl_index: Decimal
+	top_n_concentration: Dict[str, Decimal]
+	single_stock_limit: Decimal
+	is_violated: bool
+	max_concentration: Optional[Decimal] = None
+	max_concentration_stock: Optional[str] = None
+
+
+class RiskMetrics(BaseModel):
+	"""风险指标模型"""
+
+	account_id: str
+	calculation_time: datetime
+	industry_exposure: List[IndustryExposure]
+	concentration_risk: ConcentrationRisk
+	var: Optional[Decimal] = None
+	sharpe_ratio: Optional[Decimal] = None
+	max_drawdown: Optional[Decimal] = None
+	beta: Optional[Decimal] = None
+	alpha: Optional[Decimal] = None
+	total_asset: Optional[Decimal] = None
+	leverage: Optional[Decimal] = None
+	max_concentration: Optional[Decimal] = None
+	liquidity_ratio: Optional[Decimal] = None
+	var_95: Optional[Decimal] = None
+	var_percentage: Optional[Decimal] = None
+	herfindahl_index: Optional[Decimal] = None
+	is_concentration_violated: Optional[bool] = None
+	position_count: Optional[int] = None
+	industry_count: Optional[int] = None
+	total_market_value: Optional[Decimal] = None
+	total_cash: Optional[Decimal] = None
+
+
+class VaRResult(BaseModel):
+	"""风险价值计算结果模型"""
+
+	var: Decimal
+	confidence_level: float
+	time_horizon: int
+	method: str
+	components: List[Dict[str, Any]] = Field(default_factory=list)
+	var_percentage: Optional[Decimal] = None

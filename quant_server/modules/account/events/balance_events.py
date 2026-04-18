@@ -10,11 +10,11 @@
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 from decimal import Decimal
+from typing import Dict, Any, List, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import AccountEventType
+from .types import AccountEventType
 
 
 class AccountBalanceUpdatedEvent(BaseEvent):
@@ -74,10 +74,11 @@ class AccountBalanceUpdatedEvent(BaseEvent):
 			"currency": currency,
 			"transaction_id": transaction_id,
 			"update_time": datetime.now().isoformat(),
-			"balance_snapshot": self._create_balance_snapshot(balance_type, new_balance)
+			"balance_snapshot": AccountBalanceUpdatedEvent._create_balance_snapshot(balance_type, new_balance)
 		}
 
-	def _create_balance_snapshot (self, balance_type: str, balance: Decimal) -> Dict[str, Any]:
+	@staticmethod
+	def _create_balance_snapshot (balance_type: str, balance: Decimal) -> Dict[str, Any]:
 		"""创建余额快照信息"""
 		return {
 			"type": balance_type,
@@ -137,20 +138,22 @@ class AccountDepositCompletedEvent(BaseEvent):
 			"reference_no": reference_no,
 			"completion_time": datetime.now().isoformat(),
 			"verification_status": "pending",
-			"deposit_details": self._get_deposit_details(deposit_method)
+			"deposit_details": AccountDepositCompletedEvent._get_deposit_details(deposit_method)
 		}
 
-	def _get_deposit_details (self, deposit_method: str) -> Dict[str, Any]:
+	@staticmethod
+	def _get_deposit_details (deposit_method: str) -> Dict[str, Any]:
 		"""根据入金方式获取详细信息"""
 		details = {
 			"method": deposit_method,
 			"processing_time": "即时" if deposit_method in ["内部转账", "第三方支付"] else "1-3个工作日",
 			"fee_rate": "0%" if deposit_method == "内部转账" else "0.1%",
-			"limit": self._get_deposit_limit(deposit_method)
+			"limit": AccountDepositCompletedEvent._get_deposit_limit(deposit_method)
 		}
 		return details
 
-	def _get_deposit_limit (self, deposit_method: str) -> Dict[str, str]:
+	@staticmethod
+	def _get_deposit_limit (deposit_method: str) -> Dict[str, str]:
 		"""获取入金限额"""
 		limits = {
 			"网银转账": {"min": "100", "max": "1000000"},
@@ -212,21 +215,23 @@ class AccountWithdrawCompletedEvent(BaseEvent):
 			"actual_amount": str(actual_amount),
 			"approval_time": approval_time.isoformat(),
 			"completion_time": datetime.now().isoformat(),
-			"withdraw_details": self._get_withdraw_details(withdraw_method),
-			"risk_level": self._assess_risk_level(withdraw_amount, withdraw_method)
+			"withdraw_details": AccountWithdrawCompletedEvent._get_withdraw_details(withdraw_method),
+			"risk_level": AccountWithdrawCompletedEvent._assess_risk_level(withdraw_amount, withdraw_method)
 		}
 
-	def _get_withdraw_details (self, withdraw_method: str) -> Dict[str, Any]:
+	@staticmethod
+	def _get_withdraw_details (withdraw_method: str) -> Dict[str, Any]:
 		"""根据出金方式获取详细信息"""
 		details = {
 			"method": withdraw_method,
 			"processing_time": "1-3个工作日",
 			"fee_rate": "0.1%",
-			"limit": self._get_withdraw_limit(withdraw_method)
+			"limit": AccountWithdrawCompletedEvent._get_withdraw_limit(withdraw_method)
 		}
 		return details
 
-	def _get_withdraw_limit (self, withdraw_method: str) -> Dict[str, str]:
+	@staticmethod
+	def _get_withdraw_limit (withdraw_method: str) -> Dict[str, str]:
 		"""获取出金限额"""
 		limits = {
 			"银行卡": {"min": "100", "max": "500000", "daily_limit": "1000000"},
@@ -235,7 +240,8 @@ class AccountWithdrawCompletedEvent(BaseEvent):
 		}
 		return limits.get(withdraw_method, {"min": "100", "max": "500000", "daily_limit": "1000000"})
 
-	def _assess_risk_level (self, amount: Decimal, method: str) -> str:
+	@staticmethod
+	def _assess_risk_level (amount: Decimal, method: str) -> str:
 		"""评估出金风险等级"""
 		amount_float = float(amount)
 
@@ -313,11 +319,12 @@ class AccountAssetUpdatedEvent(BaseEvent):
 			"asset_percentages": asset_percentages,
 			"update_reason": update_reason,
 			"valuation_time": datetime.now().isoformat(),
-			"asset_health": self._assess_asset_health(total_assets, total_liabilities, asset_breakdown),
-			"risk_exposure": self._calculate_risk_exposure(asset_breakdown)
+			"asset_health": AccountAssetUpdatedEvent._assess_asset_health(total_assets, total_liabilities, asset_breakdown),
+			"risk_exposure": AccountAssetUpdatedEvent._calculate_risk_exposure(asset_breakdown)
 		}
 
-	def _assess_asset_health (self, assets: Decimal, liabilities: Decimal, breakdown: Dict[str, Decimal]) -> Dict[
+	@staticmethod
+	def _assess_asset_health (assets: Decimal, liabilities: Decimal, breakdown: Dict[str, Decimal]) -> Dict[
 		str, Any]:
 		"""评估资产健康状况"""
 		# 计算负债率
@@ -348,10 +355,11 @@ class AccountAssetUpdatedEvent(BaseEvent):
 			"liquidity_ratio": round(liquidity_ratio, 2),
 			"diversification_score": round(diversification_score, 2),
 			"status": health_status,
-			"recommendations": self._generate_health_recommendations(debt_ratio, liquidity_ratio, diversification_score)
+			"recommendations": AccountAssetUpdatedEvent._generate_health_recommendations(debt_ratio, liquidity_ratio, diversification_score)
 		}
 
-	def _calculate_risk_exposure (self, breakdown: Dict[str, Decimal]) -> Dict[str, float]:
+	@staticmethod
+	def _calculate_risk_exposure (breakdown: Dict[str, Decimal]) -> Dict[str, float]:
 		"""计算风险敞口"""
 		total = sum(breakdown.values())
 		if total == 0:
@@ -380,7 +388,8 @@ class AccountAssetUpdatedEvent(BaseEvent):
 
 		return risk_exposure
 
-	def _generate_health_recommendations (self, debt_ratio: float, liquidity_ratio: float,
+	@staticmethod
+	def _generate_health_recommendations (debt_ratio: float, liquidity_ratio: float,
 	                                      diversification_score: float) -> List[str]:
 		"""生成资产健康建议"""
 		recommendations = []
@@ -398,3 +407,112 @@ class AccountAssetUpdatedEvent(BaseEvent):
 			recommendations.append("资产健康状况良好，建议保持当前配置")
 
 		return recommendations
+
+
+class AccountStatusChangedEvent(BaseEvent):
+	"""
+	账户状态变更事件
+
+	触发时机：
+	- 账户状态变更（正常/冻结/关闭）
+	- 账户权限变更
+	- 账户风险等级变更
+
+	事件数据：
+	- account_id: 账户ID
+	- old_status: 变更前状态
+	- new_status: 变更后状态
+	- reason: 变更原因
+	- timestamp: 变更时间
+	"""
+
+	def __init__ (
+			self,
+			account_id: str,
+			old_status: str,
+			new_status: str,
+			reason: str,
+			timestamp: datetime,
+			operator: Optional[str] = None,
+			ip_address: Optional[str] = None,
+			**kwargs
+	):
+		super().__init__(
+			module="events",
+			event_type=AccountEventType.STATUS_CHANGED.value,
+			priority=EventPriority.NORMAL,
+			source="account_service",
+			**kwargs
+		)
+
+		self.data = {
+			"account_id": account_id,
+			"old_status": old_status,
+			"new_status": new_status,
+			"reason": reason,
+			"timestamp": timestamp.isoformat(),
+			"operator": operator,
+			"ip_address": ip_address,
+			"status_change_details": AccountStatusChangedEvent._get_status_change_details(old_status, new_status, reason),
+			"action_required": AccountStatusChangedEvent._determine_action_required(new_status)
+		}
+
+	@staticmethod
+	def _get_status_change_details (old_status: str, new_status: str, reason: str) -> Dict[str, Any]:
+		"""获取状态变更详情"""
+		status_map = {
+			"正常": "账户状态正常",
+			"冻结": "账户已被冻结",
+			"关闭": "账户已关闭",
+			"审核中": "账户审核中"
+		}
+
+		return {
+			"old_status_desc": status_map.get(old_status, old_status),
+			"new_status_desc": status_map.get(new_status, new_status),
+			"change_type": "升级" if AccountStatusChangedEvent._is_status_upgrade(old_status,
+			                                                 new_status) else "降级" if AccountStatusChangedEvent._is_status_downgrade(
+				old_status, new_status) else "变更",
+			"reason_detail": AccountStatusChangedEvent._get_reason_detail(reason)
+		}
+
+	@staticmethod
+	def _is_status_upgrade (old_status: str, new_status: str) -> bool:
+		"""判断是否为状态升级"""
+		status_priority = {"关闭": 0, "冻结": 1, "审核中": 2, "正常": 3}
+		return status_priority.get(new_status, 0) > status_priority.get(old_status, 0)
+
+	@staticmethod
+	def _is_status_downgrade (old_status: str, new_status: str) -> bool:
+		"""判断是否为状态降级"""
+		status_priority = {"关闭": 0, "冻结": 1, "审核中": 2, "正常": 3}
+		return status_priority.get(new_status, 0) < status_priority.get(old_status, 0)
+
+	@staticmethod
+	def _get_reason_detail (reason: str) -> str:
+		"""获取原因详情"""
+		reason_map = {
+			"user_request": "用户主动请求",
+			"risk_control": "风控触发",
+			"admin_operation": "管理员操作",
+			"system_maintenance": "系统维护",
+			"compliance_issue": "合规问题"
+		}
+		return reason_map.get(reason, reason)
+
+	@staticmethod
+	def _determine_action_required (new_status: str) -> List[str]:
+		"""确定需要的后续操作"""
+		actions = []
+
+		if new_status == "冻结":
+			actions.append("联系客服了解冻结原因")
+			actions.append("提交相关证明材料")
+		elif new_status == "关闭":
+			actions.append("账户已关闭，无法恢复")
+			actions.append("如需继续交易，请重新开户")
+		elif new_status == "审核中":
+			actions.append("等待审核完成")
+			actions.append("保持联系方式畅通")
+
+		return actions

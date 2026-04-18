@@ -2,22 +2,24 @@
 对账管理器
 负责账户资金、持仓的对账和差错处理
 """
-import logging
-from typing import Dict, Any, List, Optional, Tuple
-from decimal import Decimal
-from datetime import datetime, date, timedelta
 import asyncio
+import logging
+from datetime import datetime, date
+from decimal import Decimal
+from typing import Dict, Any, List, Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.repositories.account_repo import AccountRepository
-from shared.database.repositories.position_repo import PositionRepository
-from shared.database.repositories.trade_repo import TradeRepository
-from shared.database.repositories.order_repo import OrderRepository
-from modules.account.services.account_service import AccountService
-from modules.account.services.position_service import PositionService
-from modules.account.calculators.asset_calculator import AssetCalculator
-from shared.cache.base import CacheBase
-from shared.messaging.producer import MessageProducer
+from quant_server.modules.account.calculators.asset_calculator import AssetCalculator
+from quant_server.modules.account.services.account_service import AccountService
+from quant_server.modules.account.services.position_service import PositionService
+from quant_server.shared.cache.base import CacheBase
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
+from quant_server.shared.database.repositories.trading.order.order_repo import OrderRepository
+from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
+from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
+from quant_server.shared.messaging.producer import MessageProducer
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +48,14 @@ class ReconciliationManager:
 		self.position_service = PositionService(db)
 
 		# 初始化计算器
-		self.asset_calculator = AssetCalculator()
+		self.asset_calculator = AssetCalculator(db)
+
+		# 初始化报告仓库
+		self.analysis_report_repo = AnalysisReportRepository(db)
 
 	async def reconcile_account_balance (
 			self,
-			account_id: int,
+			account_id: str,
 			reference_date: Optional[date] = None
 	) -> Dict[str, Any]:
 		"""
@@ -85,7 +90,7 @@ class ReconciliationManager:
 			}
 
 			# 4. 比较并分析差异
-			differences = self._analyze_balance_differences(expected_balance, actual_balance)
+			differences = ReconciliationManager._analyze_balance_differences(expected_balance, actual_balance)
 
 			# 5. 记录对账结果
 			reconciliation_result = {
@@ -126,7 +131,7 @@ class ReconciliationManager:
 
 	async def reconcile_positions (
 			self,
-			account_id: int,
+			account_id: str,
 			reference_date: Optional[date] = None
 	) -> Dict[str, Any]:
 		"""
@@ -152,10 +157,10 @@ class ReconciliationManager:
 			expected_positions = await self._calculate_expected_positions(account_id, reference_date)
 
 			# 3. 比较持仓
-			position_comparison = self._compare_positions(current_positions, expected_positions)
+			position_comparison = ReconciliationManager._compare_positions(current_positions, expected_positions)
 
 			# 4. 分析差异
-			differences = self._analyze_position_differences(position_comparison)
+			differences = ReconciliationManager._analyze_position_differences(position_comparison)
 
 			# 5. 记录对账结果
 			reconciliation_result = {
@@ -288,7 +293,7 @@ class ReconciliationManager:
 
 	async def fix_balance_discrepancy (
 			self,
-			account_id: int,
+			account_id: str,
 			discrepancy_type: str,
 			expected_amount: Decimal,
 			actual_amount: Decimal,
@@ -360,7 +365,7 @@ class ReconciliationManager:
 
 	async def _calculate_expected_balance (
 			self,
-			account_id: int,
+			account_id: str,
 			reference_date: date
 	) -> Dict[str, Decimal]:
 		"""计算预期余额"""
@@ -373,7 +378,10 @@ class ReconciliationManager:
 		end_date = reference_date
 
 		# 计算期间所有交易对资金的影响
-		trades = await self.trade_repo.get_trades_in_period(account_id, start_date, end_date)
+		from datetime import datetime
+		start_datetime = datetime.combine(start_date, datetime.min.time())
+		end_datetime = datetime.combine(end_date, datetime.max.time())
+		trades = await self.trade_repo.get_by_account_id(account_id, start_datetime, end_datetime, limit=1000)
 
 		total_deposit = Decimal("0.00")
 		total_withdrawal = Decimal("0.00")
@@ -407,9 +415,103 @@ class ReconciliationManager:
 			"frozen_balance": Decimal("0.00")
 		}
 
+	async def reconcile_trades (
+			self,
+			system_trades: List,
+			broker_trades: List[Dict]
+	) -> Dict[str, Any]:
+		"""
+		对账交易记录
+
+		Args:
+			system_trades: 系统交易记录
+			broker_trades: 券商交易记录
+
+		Returns:
+			交易对账结果
+		"""
+		try:
+			# 转换系统交易记录为字典格式
+			system_trades_dict = {}
+			for trade in system_trades:
+				system_trades_dict[trade.trade_id] = {
+					'trade_id': trade.trade_id,
+					'security_id': trade.ts_code,
+					'direction': getattr(trade, 'direction', 'buy'),
+					'price': trade.price,
+					'quantity': trade.volume,
+					'trade_time': trade.trade_time,
+					'status': 'filled'
+				}
+
+			# 转换券商交易记录为字典格式
+			broker_trades_dict = {}
+			for trade in broker_trades:
+				broker_trades_dict[trade['trade_id']] = trade
+
+			# 比较交易记录
+			system_trade_ids = set(system_trades_dict.keys())
+			broker_trade_ids = set(broker_trades_dict.keys())
+
+			# 找出差异
+			missing_in_system = broker_trade_ids - system_trade_ids
+			missing_in_broker = system_trade_ids - broker_trade_ids
+			discrepancies = []
+
+			# 处理缺失的交易
+			for trade_id in missing_in_system:
+				discrepancies.append({
+					'trade_id': trade_id,
+					'action': 'add_missing_trade',
+					'trade_data': broker_trades_dict[trade_id],
+					'type': 'trade_missing'
+				})
+
+			for trade_id in missing_in_broker:
+				discrepancies.append({
+					'trade_id': trade_id,
+					'action': 'remove_extra_trade',
+					'trade_data': system_trades_dict[trade_id],
+					'type': 'trade_extra'
+				})
+
+			# 比较相同ID的交易记录
+			common_trade_ids = system_trade_ids & broker_trade_ids
+			for trade_id in common_trade_ids:
+				system_trade = system_trades_dict[trade_id]
+				broker_trade = broker_trades_dict[trade_id]
+
+				# 比较关键字段
+				if (system_trade['security_id'] != broker_trade['security_id'] or
+					system_trade['price'] != broker_trade['price'] or
+					system_trade['quantity'] != broker_trade['quantity'] or
+					system_trade['direction'] != broker_trade['direction']):
+					discrepancies.append({
+						'trade_id': trade_id,
+						'action': 'update_trade',
+						'trade_data': broker_trade,
+						'type': 'trade_mismatch'
+					})
+
+			# 构建对账结果
+			result = {
+				'reconciled': len(discrepancies) == 0,
+				'has_discrepancy': len(discrepancies) > 0,
+				'discrepancies': discrepancies,
+				'system_trades_count': len(system_trades),
+				'broker_trades_count': len(broker_trades),
+				'timestamp': datetime.now().isoformat()
+			}
+
+			return result
+
+		except Exception as e:
+			logger.error(f"交易对账失败: {str(e)}")
+			raise
+
 	async def _calculate_expected_positions (
 			self,
-			account_id: int,
+			account_id: str,
 			reference_date: date
 	) -> List[Dict[str, Any]]:
 		"""计算预期持仓"""
@@ -417,7 +519,10 @@ class ReconciliationManager:
 		account = await self.account_service.get_account(account_id)
 		start_date = account.created_at.date()
 
-		trades = await self.trade_repo.get_trades_in_period(account_id, start_date, reference_date)
+		from datetime import datetime
+		start_datetime = datetime.combine(start_date, datetime.min.time())
+		end_datetime = datetime.combine(reference_date, datetime.max.time())
+		trades = await self.trade_repo.get_by_account_id(account_id, start_datetime, end_datetime, limit=1000)
 
 		# 按证券代码分组计算净持仓
 		position_map = {}
@@ -439,7 +544,7 @@ class ReconciliationManager:
 			# 实际实现中需要根据具体业务逻辑调整
 			position["trades"].append({
 				"trade_id": trade.trade_id,
-				"direction": "buy",  # 需要从订单获取实际方向
+				"direction": getattr(trade, 'direction', 'buy'),  # 尝试获取direction属性
 				"price": trade.price,
 				"volume": trade.volume,
 				"time": trade.trade_time
@@ -468,8 +573,8 @@ class ReconciliationManager:
 
 		return expected_positions
 
+	@staticmethod
 	def _analyze_balance_differences (
-			self,
 			expected: Dict[str, Decimal],
 			actual: Dict[str, Decimal]
 	) -> Dict[str, Any]:
@@ -498,8 +603,8 @@ class ReconciliationManager:
 
 		return differences
 
+	@staticmethod
 	def _compare_positions (
-			self,
 			current_positions: List,
 			expected_positions: List[Dict[str, Any]]
 	) -> Dict[str, Any]:
@@ -554,7 +659,8 @@ class ReconciliationManager:
 
 		return comparison
 
-	def _analyze_position_differences (self, comparison: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _analyze_position_differences (comparison: Dict[str, Any]) -> Dict[str, Any]:
 		"""分析持仓差异"""
 		total_differences = (
 				len(comparison["missing_in_current"]) +
@@ -579,7 +685,7 @@ class ReconciliationManager:
 			}
 		}
 
-	async def _reconcile_single_account (self, account_id: int) -> Dict[str, Any]:
+	async def _reconcile_single_account (self, account_id: str) -> Dict[str, Any]:
 		"""对账单个账户"""
 		try:
 			# 执行资金对账
@@ -606,49 +712,107 @@ class ReconciliationManager:
 
 	async def _generate_discrepancy_report (
 			self,
-			account_id: int,
+			account_id: str,
 			reconciliation_result: Dict[str, Any]
 	) -> None:
 		"""生成资金差异报告"""
-		report = {
-			"report_type": "balance_discrepancy",
-			"account_id": account_id,
-			"generated_at": datetime.now().isoformat(),
-			"reconciliation_result": reconciliation_result,
-			"suggested_actions": self._suggest_balance_fix_actions(reconciliation_result["differences"]),
-			"priority": self._calculate_discrepancy_priority(reconciliation_result["differences"])
-		}
+		try:
+			# 生成资金差异报告
+			report = {
+				"report_type": "balance_discrepancy",
+				"account_id": account_id,
+				"generated_at": datetime.now().isoformat(),
+				"reconciliation_result": reconciliation_result,
+				"suggested_actions": ReconciliationManager._suggest_balance_fix_actions(reconciliation_result["differences"]),
+				"priority": ReconciliationManager._calculate_discrepancy_priority(reconciliation_result["differences"])
+			}
 
-		# 保存报告到数据库或文件系统
-		# 这里简化处理，实际实现需要具体存储逻辑
+			# 保存报告到数据库
+			report_name = f"资金差异报告_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+			report_type = "balance_discrepancy"
+			report_config = {
+				"account_id": account_id,
+				"difference_count": len(reconciliation_result['differences']['items']),
+				"priority": report["priority"]
+			}
 
-		logger.warning(
-			f"生成资金差异报告: 账户ID={account_id}, 差异数={len(reconciliation_result['differences']['items'])}")
+			# 创建分析报告
+			analysis_report = await self.analysis_report_repo.create_report(
+				report_type=report_type,
+				report_name=report_name,
+				report_config=report_config,
+				report_data=report,
+				is_public=False,
+				tags=["reconciliation", "balance", "discrepancy"]
+			)
+
+			# 标记报告为已完成
+			await self.analysis_report_repo.mark_as_completed(
+				report_id=analysis_report.id,
+				file_path=f"discrepancy/balance_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+				file_size=len(str(report))
+			)
+
+			logger.warning(
+				f"生成资金差异报告: 账户ID={account_id}, 差异数={len(reconciliation_result['differences']['items'])}, 报告ID={analysis_report.id}")
+
+		except Exception as e:
+			logger.error(f"保存资金差异报告失败: {str(e)}")
+			raise
 
 	async def _generate_position_discrepancy_report (
 			self,
-			account_id: int,
+			account_id: str,
 			reconciliation_result: Dict[str, Any]
 	) -> None:
 		"""生成持仓差异报告"""
-		report = {
-			"report_type": "position_discrepancy",
-			"account_id": account_id,
-			"generated_at": datetime.now().isoformat(),
-			"reconciliation_result": reconciliation_result,
-			"suggested_actions": self._suggest_position_fix_actions(reconciliation_result["differences"]),
-			"priority": self._calculate_position_discrepancy_priority(reconciliation_result["differences"])
-		}
+		try:
+			# 生成持仓差异报告
+			report = {
+				"report_type": "position_discrepancy",
+				"account_id": account_id,
+				"generated_at": datetime.now().isoformat(),
+				"reconciliation_result": reconciliation_result,
+				"suggested_actions": ReconciliationManager._suggest_position_fix_actions(reconciliation_result["differences"]),
+				"priority": ReconciliationManager._calculate_position_discrepancy_priority(reconciliation_result["differences"])
+			}
 
-		# 保存报告到数据库或文件系统
-		# 这里简化处理，实际实现需要具体存储逻辑
+			# 保存报告到数据库
+			report_name = f"持仓差异报告_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+			report_type = "position_discrepancy"
+			report_config = {
+				"account_id": account_id,
+				"difference_count": reconciliation_result['differences']['total_differences'],
+				"priority": report["priority"]
+			}
 
-		logger.warning(
-			f"生成持仓差异报告: 账户ID={account_id}, 差异数={reconciliation_result['differences']['total_differences']}")
+			# 创建分析报告
+			analysis_report = await self.analysis_report_repo.create_report(
+				report_type=report_type,
+				report_name=report_name,
+				report_config=report_config,
+				report_data=report,
+				is_public=False,
+				tags=["reconciliation", "position", "discrepancy"]
+			)
+
+			# 标记报告为已完成
+			await self.analysis_report_repo.mark_as_completed(
+				report_id=analysis_report.id,
+				file_path=f"discrepancy/position_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+				file_size=len(str(report))
+			)
+
+			logger.warning(
+				f"生成持仓差异报告: 账户ID={account_id}, 差异数={reconciliation_result['differences']['total_differences']}, 报告ID={analysis_report.id}")
+
+		except Exception as e:
+			logger.error(f"保存持仓差异报告失败: {str(e)}")
+			raise
 
 	async def _record_discrepancy_fix (
 			self,
-			account_id: int,
+			account_id: str,
 			discrepancy_type: str,
 			expected_amount: Decimal,
 			actual_amount: Decimal,
@@ -657,30 +821,90 @@ class ReconciliationManager:
 			fixed_by: str
 	) -> None:
 		"""记录差异修复操作"""
-		fix_record = {
-			"account_id": account_id,
-			"discrepancy_type": discrepancy_type,
-			"expected_amount": float(expected_amount),
-			"actual_amount": float(actual_amount),
-			"difference": float(difference),
-			"reason": reason,
-			"fixed_by": fixed_by,
-			"fixed_at": datetime.now().isoformat()
-		}
+		try:
+			# 生成差异修复记录
+			fix_record = {
+				"account_id": account_id,
+				"discrepancy_type": discrepancy_type,
+				"expected_amount": float(expected_amount),
+				"actual_amount": float(actual_amount),
+				"difference": float(difference),
+				"reason": reason,
+				"fixed_by": fixed_by,
+				"fixed_at": datetime.now().isoformat()
+			}
 
-		# 保存修复记录到数据库
-		# 这里简化处理，实际实现需要具体存储逻辑
+			# 保存修复记录到数据库
+			report_name = f"差异修复记录_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+			report_type = "discrepancy_fix"
+			report_config = {
+				"account_id": account_id,
+				"discrepancy_type": discrepancy_type,
+				"difference": float(difference)
+			}
 
-		logger.info(f"记录差异修复: 账户ID={account_id}, 类型={discrepancy_type}, 差异={difference}")
+			# 创建分析报告
+			analysis_report = await self.analysis_report_repo.create_report(
+				report_type=report_type,
+				report_name=report_name,
+				report_config=report_config,
+				report_data=fix_record,
+				is_public=False,
+				tags=["reconciliation", "fix", "discrepancy"]
+			)
+
+			# 标记报告为已完成
+			await self.analysis_report_repo.mark_as_completed(
+				report_id=analysis_report.id,
+				file_path=f"fix/discrepancy_{account_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+				file_size=len(str(fix_record))
+			)
+
+			logger.info(f"记录差异修复: 账户ID={account_id}, 类型={discrepancy_type}, 差异={difference}, 报告ID={analysis_report.id}")
+
+		except Exception as e:
+			logger.error(f"保存差异修复记录失败: {str(e)}")
+			raise
 
 	async def _save_reconciliation_report (self, report: Dict[str, Any]) -> None:
 		"""保存对账报告"""
-		# 这里简化处理，实际实现需要保存到数据库或文件系统
-		report_id = report["batch_id"]
+		try:
+			# 保存对账报告到数据库
+			report_name = f"对账报告_{report['batch_id']}"
+			report_type = "reconciliation"
+			report_config = {
+				"batch_id": report['batch_id'],
+				"total_accounts": report['total_accounts'],
+				"success_count": report['success_count'],
+				"failed_count": report['failed_count']
+			}
 
-		logger.info(f"保存对账报告: {report_id}, 账户数={report['total_accounts']}")
+			# 创建分析报告
+			analysis_report = await self.analysis_report_repo.create_report(
+				report_type=report_type,
+				report_name=report_name,
+				report_config=report_config,
+				report_data=report,
+				is_public=False,
+				tags=["reconciliation", "daily"]
+			)
 
-	def _suggest_balance_fix_actions (self, differences: Dict[str, Any]) -> List[Dict[str, Any]]:
+			# 标记报告为已完成
+			await self.analysis_report_repo.mark_as_completed(
+				report_id=analysis_report.id,
+				file_path=f"reconciliation/{report['batch_id']}.json",
+				file_size=len(str(report))
+			)
+
+			report_id = report["batch_id"]
+			logger.info(f"保存对账报告: {report_id}, 账户数={report['total_accounts']}, 报告ID={analysis_report.id}")
+
+		except Exception as e:
+			logger.error(f"保存对账报告失败: {str(e)}")
+			raise
+
+	@staticmethod
+	def _suggest_balance_fix_actions (differences: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""建议资金修复措施"""
 		suggestions = []
 
@@ -701,7 +925,8 @@ class ReconciliationManager:
 
 		return suggestions
 
-	def _suggest_position_fix_actions (self, differences: Dict[str, Any]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _suggest_position_fix_actions (differences: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""建议持仓修复措施"""
 		suggestions = []
 
@@ -742,7 +967,8 @@ class ReconciliationManager:
 
 		return suggestions
 
-	def _calculate_discrepancy_priority (self, differences: Dict[str, Any]) -> str:
+	@staticmethod
+	def _calculate_discrepancy_priority (differences: Dict[str, Any]) -> str:
 		"""计算差异优先级"""
 		total_difference = differences.get("total_difference", Decimal("0.00"))
 
@@ -753,7 +979,8 @@ class ReconciliationManager:
 		else:
 			return "low"
 
-	def _calculate_position_discrepancy_priority (self, differences: Dict[str, Any]) -> str:
+	@staticmethod
+	def _calculate_position_discrepancy_priority (differences: Dict[str, Any]) -> str:
 		"""计算持仓差异优先级"""
 		total_differences = differences.get("total_differences", 0)
 

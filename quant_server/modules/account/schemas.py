@@ -5,7 +5,8 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator, conint, condecimal
+
+from pydantic import BaseModel, Field, field_validator
 
 from ..account.constants import (
 	ACCOUNT_TYPES,
@@ -19,7 +20,7 @@ from ..account.constants import (
 class AccountCreateRequest(BaseModel):
 	"""账户创建请求模型"""
 
-	user_id: int = Field(..., ge=1, description="用户ID")
+	user_id: str = Field(..., description="用户ID")
 	account_name: str = Field(..., max_length=MAX_ACCOUNT_NAME_LENGTH, description="账户名称")
 	account_type: str = Field(..., description="账户类型")
 	initial_balance: Decimal = Field(
@@ -38,7 +39,7 @@ class AccountCreateRequest(BaseModel):
 		description="券商账户ID"
 	)
 
-	@validator('account_type')
+	@field_validator('account_type')
 	def validate_account_type (cls, v):
 		"""验证账户类型"""
 		if v not in ACCOUNT_TYPES:
@@ -63,7 +64,7 @@ class AccountUpdateRequest(BaseModel):
 		description="券商账户ID"
 	)
 
-	@validator('status')
+	@field_validator('status')
 	def validate_status (cls, v):
 		"""验证账户状态"""
 		if v is not None and v not in ACCOUNT_STATUSES:
@@ -74,10 +75,10 @@ class AccountUpdateRequest(BaseModel):
 class AccountResponse(BaseModel):
 	"""账户响应模型"""
 
-	id: int = Field(..., description="账户ID")
+	id: str = Field(..., description="账户ID")
 	account_number: str = Field(..., description="账户号")
 	account_name: str = Field(..., description="账户名称")
-	user_id: int = Field(..., description="用户ID")
+	user_id: str = Field(..., description="用户ID")
 	account_type: str = Field(..., description="账户类型")
 	broker: Optional[str] = Field(None, description="券商名称")
 	broker_account_id: Optional[str] = Field(None, description="券商账户ID")
@@ -104,7 +105,7 @@ class AccountResponse(BaseModel):
 class AccountBalanceResponse(BaseModel):
 	"""账户资金余额响应模型"""
 
-	account_id: int = Field(..., description="账户ID")
+	account_id: str = Field(..., description="账户ID")
 	account_number: str = Field(..., description="账户号")
 	total_balance: Decimal = Field(..., description="总资产")
 	available_balance: Decimal = Field(..., description="可用资金")
@@ -120,7 +121,7 @@ class AccountBalanceResponse(BaseModel):
 class AccountPositionResponse(BaseModel):
 	"""账户持仓响应模型"""
 
-	id: int = Field(..., description="持仓ID")
+	id: str = Field(..., description="持仓ID")
 	ts_code: str = Field(..., description="证券代码")
 	volume: int = Field(..., ge=0, description="总持仓量")
 	available_volume: int = Field(..., ge=0, description="可用持仓量")
@@ -142,8 +143,8 @@ class AccountPositionResponse(BaseModel):
 class PositionResponse(BaseModel):
 	"""单个持仓详情响应模型"""
 
-	id: int = Field(..., description="持仓ID")
-	account_id: int = Field(..., description="账户ID")
+	id: str = Field(..., description="持仓ID")
+	account_id: str = Field(..., description="账户ID")
 	ts_code: str = Field(..., description="证券代码")
 	volume: int = Field(..., ge=0, description="总持仓量")
 	available_volume: int = Field(..., ge=0, description="可用持仓量")
@@ -180,20 +181,19 @@ class AccountSummaryResponse(BaseModel):
 class AccountFilter(BaseModel):
 	"""账户筛选参数模型"""
 
-	user_id: Optional[int] = Field(None, description="用户ID")
+	user_id: Optional[str] = Field(None, description="用户ID")
 	account_type: Optional[str] = Field(None, description="账户类型")
 	status: Optional[str] = Field(None, description="账户状态")
 	skip: int = Field(0, ge=0, description="跳过记录数")
 	limit: int = Field(100, ge=1, le=1000, description="返回记录数")
 
-	@validator('account_type')
+	@field_validator('account_type')
 	def validate_account_type (cls, v):
 		if v is not None and v not in ACCOUNT_TYPES:
 			raise ValueError(f"账户类型必须是以下之一: {', '.join(ACCOUNT_TYPES)}")
 		return v
 
-
-	@validator('status')
+	@field_validator('status')
 	def validate_status (cls, v):
 		if v is not None and v not in ACCOUNT_STATUSES:
 			raise ValueError(f"账户状态必须是以下之一: {', '.join(ACCOUNT_STATUSES)}")
@@ -212,9 +212,10 @@ class WithdrawRequest(BaseModel):
 
 from quant_server.utils.api_utils.pagination_config import PaginationParams
 
+
 class AccountListRequest(PaginationParams):
 	"""账户列表请求"""
-	user_id: Optional[int] = Field(default=None, description="用户ID筛选")
+	user_id: Optional[str] = Field(default=None, description="用户ID筛选")
 	account_type: Optional[str] = Field(default=None, description="账户类型筛选")
 	status: Optional[str] = Field(default=None, description="账户状态筛选")
 
@@ -234,6 +235,11 @@ class AccountDetailResponse(BaseModel):
 
 class PositionListRequest(PaginationParams):
 	"""持仓列表请求"""
+
+
+class PositionDetailResponse(PositionResponse):
+	"""单个持仓详情响应模型"""
+	pass
 
 
 class PositionListResponse(BaseModel):

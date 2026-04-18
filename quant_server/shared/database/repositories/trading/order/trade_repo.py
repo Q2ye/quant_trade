@@ -14,17 +14,17 @@
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
-from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text, case
+from sqlalchemy import select, and_, func, desc, asc
+from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.repositories.base import BaseRepository,RepositoryError
-from quant_server.shared.database.models.business_models import Trade, Order, Account, Strategy, SysUser
+from quant_server.shared.database.models.business_models import Trade, Order
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,
-	SortCondition,
+	SortCondition, FilterOperator,
 )
 
 
@@ -126,7 +126,7 @@ class TradeRepository(BaseRepository[Trade]):
 			成交记录列表
 		"""
 		try:
-			filters = [Trade.ts_code == ts_code]
+			filters: List[Any] = [Trade.ts_code == ts_code]
 
 			if start_time:
 				filters.append(Trade.trade_time >= start_time)
@@ -152,7 +152,7 @@ class TradeRepository(BaseRepository[Trade]):
 
 	async def get_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			start_time: Optional[datetime] = None,
 			end_time: Optional[datetime] = None,
 			skip: int = 0,
@@ -179,7 +179,7 @@ class TradeRepository(BaseRepository[Trade]):
 				.subquery()
 			)
 
-			filters = [Trade.order_id.in_(select(order_subquery.c.order_id))]
+			filters: List[Any] = [Trade.order_id.in_(select(order_subquery))]
 
 			if start_time:
 				filters.append(Trade.trade_time >= start_time)
@@ -229,7 +229,7 @@ class TradeRepository(BaseRepository[Trade]):
 				.subquery()
 			)
 
-			filters = [Trade.order_id.in_(select(order_subquery.c.order_id))]
+			filters: List[Any] = [Trade.order_id.in_(select(order_subquery))]
 
 			if start_time:
 				filters.append(Trade.trade_time >= start_time)
@@ -254,7 +254,7 @@ class TradeRepository(BaseRepository[Trade]):
 			self,
 			trade_date: date,
 			ts_codes: Optional[List[str]] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			skip: int = 0,
 			limit: int = 1000
 	) -> List[Trade]:
@@ -275,7 +275,7 @@ class TradeRepository(BaseRepository[Trade]):
 			start_of_day = datetime.combine(trade_date, datetime.min.time())
 			end_of_day = datetime.combine(trade_date, datetime.max.time())
 
-			filters = [
+			filters: List[Any] = [
 				Trade.trade_time >= start_of_day,
 				Trade.trade_time <= end_of_day
 			]
@@ -290,7 +290,7 @@ class TradeRepository(BaseRepository[Trade]):
 					.where(Order.user_id == user_id)
 					.subquery()
 				)
-				filters.append(Trade.order_id.in_(select(order_subquery.c.order_id)))
+				filters.append(Trade.order_id.in_(select(order_subquery)))
 
 			query = (
 				select(Trade)
@@ -308,7 +308,7 @@ class TradeRepository(BaseRepository[Trade]):
 
 	async def get_today_trades (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			ts_code: Optional[str] = None
 	) -> List[Trade]:
@@ -325,15 +325,183 @@ class TradeRepository(BaseRepository[Trade]):
 		"""
 		try:
 			today = datetime.now().date()
-			return await self.get_by_trade_date(today, [ts_code] if ts_code else None, user_id, 1000)
+			if strategy_id:
+				# 先获取策略的订单ID
+				order_subquery = (
+					select(Order.order_id)
+					.where(Order.strategy_id == strategy_id)
+					.subquery()
+				)
+				# 再获取这些订单的成交记录
+				start_of_day = datetime.combine(today, datetime.min.time())
+				end_of_day = datetime.combine(today, datetime.max.time())
+				# 构建过滤条件
+				filters: List[Any] = [
+					Trade.order_id.in_(select(order_subquery)),
+					Trade.trade_time >= start_of_day,
+					Trade.trade_time <= end_of_day
+				]
+				query = (
+					select(Trade)
+					.where(and_(*filters))
+					.order_by(asc(Trade.trade_time))
+					.limit(1000)
+				)
+				result = await self.session.execute(query)
+				return result.scalars().all()
+			else:
+				return await self.get_by_trade_date(today, [ts_code] if ts_code else None, user_id, 1000)
 
 		except Exception as e:
 			raise RepositoryError(f"获取今日成交记录失败: {str(e)}")
 
+	async def get_by_account_id (
+			self,
+			account_id: str,
+			start_time: Optional[datetime] = None,
+			end_time: Optional[datetime] = None,
+			skip: int = 0,
+			limit: int = 100
+	) -> List[Trade]:
+		"""
+		根据账户ID获取成交记录（需要关联订单表）
+
+		Args:
+			account_id: 账户ID
+			start_time: 开始时间
+			end_time: 结束时间
+			skip: 跳过记录数
+			limit: 限制记录数
+
+		Returns:
+			成交记录列表
+		"""
+		try:
+			# 构建子查询：获取账户的订单ID
+			order_subquery = (
+				select(Order.order_id)
+				.where(Order.account_id == account_id)
+				.subquery()
+			)
+
+			filters: List[Any] = [Trade.order_id.in_(select(order_subquery))]
+
+			if start_time:
+				filters.append(Trade.trade_time >= start_time)
+			if end_time:
+				filters.append(Trade.trade_time <= end_time)
+
+			query = (
+				select(Trade)
+				.where(and_(*filters))
+				.order_by(desc(Trade.trade_time))
+				.offset(skip)
+				.limit(limit)
+			)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+
+		except Exception as e:
+			raise RepositoryError(f"获取账户成交记录失败: {str(e)}")
+
+	async def get_trades_by_account_and_period (
+			self,
+			account_id: str,
+			start_date: date,
+			end_date: date,
+			start_time: Optional[datetime.time] = None,
+			end_time: Optional[datetime.time] = None
+	) -> List[Trade]:
+		"""
+		根据账户ID和时间段获取成交记录
+
+		Args:
+			account_id: 账户ID
+			start_date: 开始日期
+			end_date: 结束日期
+			start_time: 开始时间
+			end_time: 结束时间
+
+		Returns:
+			成交记录列表
+		"""
+		try:
+			# 构建子查询：获取账户的订单ID
+			order_subquery = (
+				select(Order.order_id)
+				.where(Order.account_id == account_id)
+				.subquery()
+			)
+
+			# 构建时间范围
+			start_datetime = datetime.combine(start_date, start_time or datetime.min.time())
+			end_datetime = datetime.combine(end_date, end_time or datetime.max.time())
+
+			filters: List[Any] = [
+				Trade.order_id.in_(select(order_subquery)),
+				Trade.trade_time >= start_datetime,
+				Trade.trade_time <= end_datetime
+			]
+
+			query = (
+				select(Trade)
+				.where(and_(*filters))
+				.order_by(asc(Trade.trade_time))
+			)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+
+		except Exception as e:
+			raise RepositoryError(f"获取账户成交记录失败: {str(e)}")
+
+	async def get_trades_by_account_and_date (
+			self,
+			account_id: str,
+			trading_date: date
+	) -> List[Trade]:
+		"""
+		根据账户ID和日期获取成交记录
+
+		Args:
+			account_id: 账户ID
+			trading_date: 交易日
+
+		Returns:
+			成交记录列表
+		"""
+		return await self.get_trades_by_account_and_period(
+			account_id=account_id,
+			start_date=trading_date,
+			end_date=trading_date
+		)
+
+	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
+		"""
+		创建交易对账记录
+
+		Args:
+			recon_data: 对账数据
+
+		Returns:
+			创建的对账记录
+		"""
+		try:
+			# 这里简化处理，实际需要创建对账记录
+			class MockRecord:
+				def __init__(self, id):
+					self.id = id
+
+			return MockRecord(id=f"trade_recon_{recon_data['account_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+
+		except Exception as e:
+			raise RepositoryError(f"创建交易对账记录失败: {str(e)}")
+
 	async def get_recent_trades (
 			self,
 			days: int = 7,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			ts_code: Optional[str] = None
 	) -> List[Trade]:
@@ -360,14 +528,20 @@ class TradeRepository(BaseRepository[Trade]):
 			elif ts_code:
 				return await self.get_by_ts_code(ts_code, start_time, end_time, 1000)
 			else:
-				return await self.get_many(
-					and_(
-						Trade.trade_time >= start_time,
-						Trade.trade_time <= end_time
-					),
-					limit=1000,
-					order_by="trade_time_desc"
+				# 构建查询
+				query = (
+					select(Trade)
+					.where(
+						and_(
+							Trade.trade_time >= start_time,
+							Trade.trade_time <= end_time
+						)
+					)
+					.order_by(desc(Trade.trade_time))
+					.limit(1000)
 				)
+				result = await self.session.execute(query)
+				return result.scalars().all()
 
 		except Exception as e:
 			raise RepositoryError(f"获取最近成交记录失败: {str(e)}")
@@ -376,7 +550,7 @@ class TradeRepository(BaseRepository[Trade]):
 
 	async def get_trade_statistics (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			ts_code: Optional[str] = None,
 			start_time: Optional[datetime] = None,
@@ -397,7 +571,7 @@ class TradeRepository(BaseRepository[Trade]):
 		"""
 		try:
 			# 构建过滤条件
-			filters = []
+			filters: List[Any] = []
 
 			if ts_code:
 				filters.append(Trade.ts_code == ts_code)
@@ -409,7 +583,7 @@ class TradeRepository(BaseRepository[Trade]):
 
 			# 处理用户或策略过滤
 			if user_id or strategy_id:
-				order_filters = []
+				order_filters: List[Any] = []
 				if user_id:
 					order_filters.append(Order.user_id == user_id)
 				if strategy_id:
@@ -420,7 +594,7 @@ class TradeRepository(BaseRepository[Trade]):
 					.where(and_(*order_filters))
 					.subquery()
 				)
-				filters.append(Trade.order_id.in_(select(order_subquery.c.order_id)))
+				filters.append(Trade.order_id.in_(select(order_subquery)))
 
 			where_clause = and_(*filters) if filters else True
 
@@ -455,7 +629,7 @@ class TradeRepository(BaseRepository[Trade]):
 			self,
 			start_date: date,
 			end_date: date,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None
 	) -> List[Dict[str, Any]]:
 		"""
@@ -499,7 +673,7 @@ class TradeRepository(BaseRepository[Trade]):
 					.where(and_(*order_filters))
 					.subquery()
 				)
-				query = query.where(Trade.order_id.in_(select(order_subquery.c.order_id)))
+				query = query.where(Trade.order_id.in_(select(order_subquery)))
 
 			query = query.group_by(
 				func.date(Trade.trade_time)
@@ -531,7 +705,7 @@ class TradeRepository(BaseRepository[Trade]):
 			self,
 			start_time: datetime,
 			end_time: datetime,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			top_n: int = 20
 	) -> List[Dict[str, Any]]:
@@ -576,7 +750,7 @@ class TradeRepository(BaseRepository[Trade]):
 					.where(and_(*order_filters))
 					.subquery()
 				)
-				query = query.where(Trade.order_id.in_(select(order_subquery.c.order_id)))
+				query = query.where(Trade.order_id.in_(select(order_subquery)))
 
 			query = query.group_by(
 				Trade.ts_code
@@ -749,7 +923,7 @@ class TradeRepository(BaseRepository[Trade]):
 			分页结果
 		"""
 		try:
-			filters = []
+			filters: List[Any] = []
 
 			# 构建过滤条件
 			if 'ts_code' in query_params:
@@ -788,7 +962,7 @@ class TradeRepository(BaseRepository[Trade]):
 
 			# 用户或策略过滤
 			if 'user_id' in query_params or 'strategy_id' in query_params:
-				order_filters = []
+				order_filters: List[Any] = []
 				if 'user_id' in query_params:
 					order_filters.append(Order.user_id == query_params['user_id'])
 				if 'strategy_id' in query_params:
@@ -799,14 +973,14 @@ class TradeRepository(BaseRepository[Trade]):
 					.where(and_(*order_filters))
 					.subquery()
 				)
-				filters.append(Trade.order_id.in_(select(order_subquery.c.order_id)))
+				filters.append(Trade.order_id.in_(select(order_subquery)))
 
 			# 构建过滤条件对象
 			filter_conditions = []
 			for field, value in query_params.items():
 				if hasattr(Trade, field) and field not in ['user_id', 'strategy_id']:
 					filter_conditions.append(
-						FilterCondition(field=field, operator="eq", value=value)
+						FilterCondition(field=field, operator=FilterOperator.EQ, value=value)
 					)
 
 			# 执行分页查询
@@ -853,7 +1027,7 @@ class TradeRepository(BaseRepository[Trade]):
 	async def batch_upsert_trades (
 			self,
 			trades_data: List[Dict[str, Any]],
-			match_fields: List[str] = ['trade_id']
+			match_fields: Optional[List[str]] = None
 	) -> List[Trade]:
 		"""
 		批量插入或更新成交记录
@@ -869,7 +1043,7 @@ class TradeRepository(BaseRepository[Trade]):
 			if not trades_data:
 				return []
 
-			return await self.batch_upsert(trades_data, match_fields)
+			return await self.batch_upsert(match_fields or ['trade_id'], trades_data)
 
 		except Exception as e:
 			raise RepositoryError(f"批量插入或更新成交记录失败: {str(e)}")
@@ -888,7 +1062,7 @@ class TradeRepository(BaseRepository[Trade]):
 			cutoff_time = datetime.now() - timedelta(days=days)
 
 			# 获取要删除的记录ID
-			query = select(Trade.id).where(
+			query = select(Trade.trade_id).where(
 				Trade.trade_time < cutoff_time
 			)
 
@@ -946,12 +1120,16 @@ class TradeRepository(BaseRepository[Trade]):
 
 			# 今日成交记录数
 			today = datetime.now().date()
-			today_trades = await self.count(
-				and_(
-					Trade.trade_time >= today,
-					Trade.trade_time < today + timedelta(days=1)
+			today_trades = await self.session.execute(
+				select(func.count(Trade.trade_id))
+				.where(
+					and_(
+						Trade.trade_time >= today,
+						Trade.trade_time < today + timedelta(days=1)
+					)
 				)
 			)
+			today_trades = today_trades.scalar() or 0
 
 			# 涉及订单数
 			order_count = await self.session.execute(

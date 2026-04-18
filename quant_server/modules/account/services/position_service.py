@@ -3,20 +3,20 @@
 处理持仓管理、查询、更新和计算
 """
 import logging
-from typing import Optional, List, Dict, Any, Tuple
-from decimal import Decimal
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_
+from decimal import Decimal
+from typing import Optional, List, Dict, Any
 
-from shared.database.repositories.position_repo import PositionRepository
-from shared.database.repositories.account_repo import AccountRepository
-from shared.database.repositories.trade_repo import TradeRepository
-from shared.database.repositories.quote_repo import QuoteRepository
-from shared.database.models.business_models import Position, Account, Trade
-from modules.account.models import PositionDomain
-from shared.cache.base import CacheBase
-from shared.security.audit import AuditLogger
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.modules.account.models import PositionDomain
+from quant_server.shared.cache.base import CacheBase
+from quant_server.shared.database.models.business_models import Position, Trade, Order
+from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from quant_server.shared.database.repositories.market.quote import StockDailyRepository
+from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
+from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
+from quant_server.shared.security.audit import AuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,12 @@ class PositionService:
 		self.position_repo = PositionRepository(db)
 		self.account_repo = AccountRepository(db)
 		self.trade_repo = TradeRepository(db)
-		self.quote_repo = QuoteRepository(db)
+		self.stock_daily_repo = StockDailyRepository(db)
 		self.audit_logger = AuditLogger(db)
 
 	async def get_account_positions (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: Optional[str] = None,
 			with_volume_only: bool = False
 	) -> List[PositionDomain]:
@@ -68,8 +68,8 @@ class PositionService:
 				conditions.append(Position.volume > 0)
 
 			# 查询持仓
-			positions = await self.position_repo.get_by_conditions(
-				conditions=conditions,
+			positions = await self.position_repo.get_many(
+				*conditions,
 				order_by=[Position.last_update.desc()]
 			)
 
@@ -96,8 +96,8 @@ class PositionService:
 			if self.cache:
 				await self.cache.set(
 					cache_key,
-					[p.dict() for p in position_domains],
-					expire=60  # 缓存1分钟，因为持仓可能频繁变动
+					[p.model_dump() for p in position_domains],
+					ttl=60  # 缓存1分钟，因为持仓可能频繁变动
 				)
 
 			return position_domains
@@ -106,7 +106,7 @@ class PositionService:
 			logger.error(f"获取账户持仓列表失败: {str(e)}")
 			raise
 
-	async def get_position_by_id (self, position_id: int) -> Optional[PositionDomain]:
+	async def get_position_by_id (self, position_id: str) -> Optional[PositionDomain]:
 		"""
 		根据ID获取持仓
 
@@ -117,7 +117,7 @@ class PositionService:
 			持仓领域对象，如果不存在则返回None
 		"""
 		try:
-			position = await self.position_repo.get_by_id(position_id)
+			position = await self.position_repo.get(position_id)
 			if not position:
 				return None
 
@@ -142,7 +142,7 @@ class PositionService:
 
 	async def get_position_by_security (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str
 	) -> Optional[PositionDomain]:
 		"""
@@ -156,7 +156,10 @@ class PositionService:
 			持仓领域对象，如果不存在则返回None
 		"""
 		try:
-			position = await self.position_repo.get_by_account_and_security(account_id, ts_code)
+			position = await self.position_repo.get_by(
+				account_id=account_id,
+				ts_code=ts_code
+			)
 			if not position:
 				return None
 
@@ -181,7 +184,7 @@ class PositionService:
 
 	async def update_position (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str,
 			volume_change: int,
 			price: Decimal,
@@ -214,7 +217,7 @@ class PositionService:
 				raise ValueError("方向必须是buy或sell")
 
 			# 获取账户
-			account = await self.account_repo.get_by_id(account_id)
+			account = await self.account_repo.get(account_id)
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
@@ -222,7 +225,10 @@ class PositionService:
 				raise ValueError(f"账户状态为{account.status}，无法交易")
 
 			# 获取现有持仓
-			position = await self.position_repo.get_by_account_and_security(account_id, ts_code)
+			position = await self.position_repo.get_by(
+				account_id=account_id,
+				ts_code=ts_code
+			)
 
 			if direction == "sell":
 				# 卖出检查
@@ -233,7 +239,7 @@ class PositionService:
 				if position.available_volume < volume_change:
 					raise ValueError(f"可用持仓不足，当前可用: {position.available_volume}, 需要卖出: {volume_change}")
 
-			# 计算新的持仓信息
+			# 计算新持仓信息
 			if position:
 				old_volume = position.volume
 				old_cost_price = Decimal(str(position.cost_price)) if position.cost_price else Decimal("0.00")
@@ -242,8 +248,8 @@ class PositionService:
 					# 买入：计算新的平均成本
 					if old_volume + volume_change > 0:
 						new_cost_price = (
-								                 (old_cost_price * old_volume) + (price * volume_change)
-						                 ) / (old_volume + volume_change)
+											 (old_cost_price * old_volume) + (price * volume_change)
+										 ) / (old_volume + volume_change)
 					else:
 						new_cost_price = Decimal("0.00")
 
@@ -304,22 +310,23 @@ class PositionService:
 
 			if success:
 				# 记录审计日志
-				await self.audit_logger.log(
-					action="position_update",
-					user_id=account.user_id,
-					resource_type="position",
-					resource_id=position_id,
-					details={
-						"account_id": account_id,
-						"ts_code": ts_code,
-						"direction": direction,
-						"volume_change": volume_change,
-						"price": float(price),
-						"trade_id": trade_id,
-						"old_volume": position.volume if position else 0,
-						"new_volume": position.volume + volume_change if position else volume_change,
-						"old_cost_price": float(position.cost_price) if position and position.cost_price else 0,
-						"new_cost_price": float(update_data["cost_price"]) if position else float(price)
+				if self.audit_logger:
+					self.audit_logger.log_simple(
+						action="position_update",
+						user_id=account.user_id,
+						resource_type="position",
+						resource_id=str(position_id),
+						details={
+							"account_id": account_id,
+							"ts_code": ts_code,
+							"direction": direction,
+							"volume_change": volume_change,
+							"price": float(price),
+							"trade_id": trade_id,
+							"old_volume": position.volume if position else 0,
+							"new_volume": position.volume + volume_change if position else volume_change,
+							"old_cost_price": float(position.cost_price) if position and position.cost_price else 0,
+							"new_cost_price": float(position.cost_price) if position and position.cost_price else float(price)
 					}
 				)
 
@@ -342,7 +349,7 @@ class PositionService:
 					"volume_change": volume_change,
 					"price": float(price),
 					"new_volume": position.volume + volume_change if position else volume_change,
-					"new_cost_price": float(update_data["cost_price"]) if position else float(price),
+					"new_cost_price": float(position.cost_price) if position and position.cost_price else float(price),
 					"timestamp": datetime.now().isoformat()
 				}
 			else:
@@ -354,7 +361,7 @@ class PositionService:
 
 	async def freeze_position (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str,
 			volume: int,
 			reason: str,
@@ -379,7 +386,10 @@ class PositionService:
 				raise ValueError("冻结数量必须大于0")
 
 			# 获取持仓
-			position = await self.position_repo.get_by_account_and_security(account_id, ts_code)
+			position = await self.position_repo.get_by(
+				account_id=account_id,
+				ts_code=ts_code
+			)
 			if not position:
 				raise ValueError(f"持仓不存在: 账户={account_id}, 证券={ts_code}")
 
@@ -401,13 +411,13 @@ class PositionService:
 
 			if success:
 				# 记录审计日志
-				account = await self.account_repo.get_by_id(account_id)
-				if account:
-					await self.audit_logger.log(
+				account = await self.account_repo.get(account_id)
+				if account and self.audit_logger:
+					self.audit_logger.log_simple(
 						action="position_freeze",
 						user_id=account.user_id,
 						resource_type="position",
-						resource_id=position.id,
+						resource_id=str(position.id),
 						details={
 							"account_id": account_id,
 							"ts_code": ts_code,
@@ -449,7 +459,7 @@ class PositionService:
 
 	async def unfreeze_position (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str,
 			volume: int,
 			reason: str,
@@ -474,7 +484,10 @@ class PositionService:
 				raise ValueError("解冻数量必须大于0")
 
 			# 获取持仓
-			position = await self.position_repo.get_by_account_and_security(account_id, ts_code)
+			position = await self.position_repo.get_by(
+				account_id=account_id,
+				ts_code=ts_code
+			)
 			if not position:
 				raise ValueError(f"持仓不存在: 账户={account_id}, 证券={ts_code}")
 
@@ -496,13 +509,13 @@ class PositionService:
 
 			if success:
 				# 记录审计日志
-				account = await self.account_repo.get_by_id(account_id)
-				if account:
-					await self.audit_logger.log(
+				account = await self.account_repo.get(account_id)
+				if account and self.audit_logger:
+					self.audit_logger.log_simple(
 						action="position_unfreeze",
 						user_id=account.user_id,
 						resource_type="position",
-						resource_id=position.id,
+						resource_id=str(position.id),
 						details={
 							"account_id": account_id,
 							"ts_code": ts_code,
@@ -544,7 +557,7 @@ class PositionService:
 
 	async def update_position_market_value (
 			self,
-			position_id: int,
+			position_id: str,
 			market_value: Decimal,
 			last_price: Optional[Decimal] = None
 	) -> bool:
@@ -561,7 +574,7 @@ class PositionService:
 		"""
 		try:
 			# 获取持仓
-			position = await self.position_repo.get_by_id(position_id)
+			position = await self.position_repo.get(position_id)
 			if not position:
 				raise ValueError(f"持仓不存在: {position_id}")
 
@@ -606,7 +619,7 @@ class PositionService:
 
 	async def calculate_position_performance (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
@@ -699,7 +712,7 @@ class PositionService:
 
 	async def get_position_history (
 			self,
-			account_id: int,
+			account_id: str,
 			ts_code: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
@@ -723,7 +736,6 @@ class PositionService:
 		try:
 			# 构建查询条件
 			conditions = [
-				Trade.account_id == account_id,
 				Trade.ts_code == ts_code
 			]
 
@@ -736,12 +748,26 @@ class PositionService:
 				conditions.append(Trade.trade_time <= end_datetime)
 
 			# 查询交易记录
-			trades = await self.trade_repo.get_by_conditions(
-				conditions=conditions,
-				order_by=[Trade.trade_time.asc()],
-				skip=skip,
-				limit=limit
-			)
+			if account_id:
+				# 通过Order关联查询账户ID
+				from sqlalchemy import select, join
+				query = select(Trade).join(Order).where(
+					Trade.ts_code == ts_code,
+					Order.account_id == account_id
+				)
+				if start_date:
+					start_datetime = datetime.combine(start_date, datetime.min.time())
+					query = query.where(Trade.trade_time >= start_datetime)
+				if end_date:
+					end_datetime = datetime.combine(end_date, datetime.max.time())
+					query = query.where(Trade.trade_time <= end_datetime)
+				trades = await self.trade_repo.execute_query(query)
+			else:
+				trades = await self.trade_repo.get_many(
+					skip=skip,
+					limit=limit,
+					**{c.left.name: c.right.value for c in conditions}
+				)
 
 			# 计算持仓历史
 			position_history = []
@@ -760,8 +786,8 @@ class PositionService:
 				if direction == "buy":
 					if current_volume + trade_volume > 0:
 						current_cost = (
-								               (current_cost * current_volume) + trade_amount
-						               ) / (current_volume + trade_volume)
+										 (current_cost * current_volume) + trade_amount
+									 ) / (current_volume + trade_volume)
 
 					current_volume += trade_volume
 				else:  # sell

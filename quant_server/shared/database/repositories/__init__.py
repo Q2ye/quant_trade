@@ -165,6 +165,13 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import account repositories: {e}")
     ACCOUNT_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    AccountRepository = None
+    AccountDailyPerformanceRepository = None
+    StrategyDailyPerformanceRepository = None
+    AccountTransactionRepository = None
+    AccountStatementRepository = None
+    CashFlowRepository = None
 
 # ============================================
 # 分析领域 (analysis/)
@@ -222,6 +229,20 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import analysis repositories: {e}")
     ANALYSIS_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    DataFixRecordRepository = None
+    DataQualityCheckRepository = None
+    DataQualityMetricRepository = None
+    FactorDataRepository = None
+    FactorDefinitionRepository = None
+    MonitorAlertRepository = None
+    MonitorThresholdRepository = None
+    AlertTemplateRepository = None
+    AlertDeliveryLogRepository = None
+    AnalysisReportRepository = None
+    AnalysisTaskRepository = None
+    AnalysisTemplateRepository = None
+    AnalysisBenchmarkRepository = None
 
 # ============================================
 # 市场数据领域 (market/)
@@ -319,6 +340,29 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import market repositories: {e}")
     MARKET_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    StockBasicRepository = None
+    CompanyRepository = None
+    STListRepository = None
+    ETFRepository = None
+    IndexBasicRepository = None
+    StockDailyRepository = None
+    StockMinuteRepository = None
+    StockWeeklyRepository = None
+    StockMonthlyRepository = None
+    StockAdjFactorRepository = None
+    StockAdjustedPriceRepository = None
+    StockDailyLimitRepository = None
+    EtfDailyRepository = None
+    EtfMinuteRepository = None
+    FundAdjFactorRepository = None
+    StockDailyBasicRepository = None
+    StockMoneyflowRepository = None
+    FinancialStatementRepository = None
+    ManagerRepository = None
+    RewardRepository = None
+    TradeCalendarRepository = None
+    BasketRepository = None
 
 # ============================================
 # 运营管理领域 (operation/)
@@ -361,6 +405,15 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import operation repositories: {e}")
     OPERATION_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    FileAttachmentRepository = None
+    DataSyncTaskRepository = None
+    FactorResearchRepository = None
+    MonitorTaskRepository = None
+    WorkflowTaskRepository = None
+    WorkflowLogRepository = None
+    OperationBasketRepository = None
+    BasketItemRepository = None
 
 # ============================================
 # 策略领域 (strategy/)
@@ -421,6 +474,21 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import strategy repositories: {e}")
     STRATEGY_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    BacktestParameterRepository = None
+    BacktestEquityCurveRepository = None
+    BacktestComparisonRepository = None
+    BacktestPositionRepository = None
+    BacktestResourceUsageRepository = None
+    BacktestScenarioRepository = None
+    BacktestTaskRepository = None
+    BacktestTradeRepository = None
+    PortfolioStrategyRepository = None
+    StrategyParameterRepository = None
+    StrategyRepository = None
+    StrategyTemplateRepository = None
+    StrategyVersionRepository = None
+    SignalRepository = None
 
 # ============================================
 # 系统管理领域 (system/)
@@ -475,6 +543,19 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import system repositories: {e}")
     SYSTEM_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    UserRepository = None
+    RoleRepository = None
+    PermissionRepository = None
+    ConfigRepository = None
+    LogRepository = None
+    AuditRepository = None
+    NotificationRepository = None
+    UserPreferenceRepository = None
+    ApiUsageLogRepository = None
+    SystemHealthMetricRepository = None
+    LicenseKeyRepository = None
+    ScheduledTaskRepository = None
 
 # ============================================
 # 交易领域 (trading/)
@@ -529,6 +610,19 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import trading repositories: {e}")
     TRADING_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    OrderRepository = None
+    TradeRepository = None
+    PositionRepository = None
+    AccountRepository = None
+    TradeInstructionRepository = None
+    OrderTemplateRepository = None
+    TradeFeeRepository = None
+    PositionAdjustmentRepository = None
+    PositionSnapshotRepository = None
+    RiskRuleRepository = None
+    RiskEventRepository = None
+    BlacklistRepository = None
 
 # ============================================
 # 缓存数据领域 (cache/)
@@ -553,6 +647,9 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import cache repositories: {e}")
     CACHE_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    CacheRepository = None
+    DistributedLockRepository = None
 
 # ============================================
 # 超表管理领域 (hyper_tables/)
@@ -583,10 +680,40 @@ try:
 except ImportError as e:
     print(f"Warning: Failed to import hyper table repositories: {e}")
     HYPER_TABLE_REPOSITORIES = {}
+    # 定义默认值，避免导入错误时出现未定义变量
+    HyperTableManager = None
+    TimeBucketManager = None
+    RetentionPolicyManager = None
+    ChunkManager = None
 
 # ============================================
 # Repository工厂函数
 # ============================================
+
+def get_repository_by_domain(domain: str) -> dict:
+    """
+    获取指定领域的Repository
+
+    Args:
+        domain: 领域名称（account/analysis/market/operation/strategy/system/trading/cache/hyper_tables）
+
+    Returns:
+        dict: 领域内所有Repository名称到类的映射
+    """
+    domain_mapping = {
+        'account': ACCOUNT_REPOSITORIES,
+        'analysis': ANALYSIS_REPOSITORIES,
+        'market': MARKET_REPOSITORIES,
+        'operation': OPERATION_REPOSITORIES,
+        'strategy': STRATEGY_REPOSITORIES,
+        'system': SYSTEM_REPOSITORIES,
+        'trading': TRADING_REPOSITORIES,
+        'cache': CACHE_REPOSITORIES,
+        'hyper_tables': HYPER_TABLE_REPOSITORIES
+    }
+
+    return domain_mapping.get(domain, {})
+
 
 class RepositoryFactory:
     """
@@ -641,29 +768,6 @@ class RepositoryFactory:
         """
         return self._repositories.copy()
 
-    def get_repository_by_domain(self, domain: str) -> dict:
-        """
-        获取指定领域的Repository
-
-        Args:
-            domain: 领域名称（account/analysis/market/operation/strategy/system/trading/cache/hyper_tables）
-
-        Returns:
-            dict: 领域内所有Repository名称到类的映射
-        """
-        domain_mapping = {
-            'account': ACCOUNT_REPOSITORIES,
-            'analysis': ANALYSIS_REPOSITORIES,
-            'market': MARKET_REPOSITORIES,
-            'operation': OPERATION_REPOSITORIES,
-            'strategy': STRATEGY_REPOSITORIES,
-            'system': SYSTEM_REPOSITORIES,
-            'trading': TRADING_REPOSITORIES,
-            'cache': CACHE_REPOSITORIES,
-            'hyper_tables': HYPER_TABLE_REPOSITORIES
-        }
-
-        return domain_mapping.get(domain, {})
 
 # 创建全局Repository工厂实例
 repository_factory = RepositoryFactory()

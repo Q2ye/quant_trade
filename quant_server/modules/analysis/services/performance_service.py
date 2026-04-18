@@ -21,7 +21,7 @@ from shared.database.repositories.strategy_repo import StrategyRepository
 from shared.database.repositories.account_repo import AccountRepository
 from shared.database.repositories.backtest_repo import BacktestRepository
 from shared.database.repositories.trade_repo import TradeRepository
-from shared.database.repositories.quote_repo import QuoteRepository
+from quant_server.shared.database.repositories.market.quote import StockDailyRepository
 from core.utils.math_utils.statistic_calculator import StatisticCalculator
 from core.utils.math_utils.financial_calculator import FinancialCalculator
 
@@ -36,7 +36,7 @@ class PerformanceService:
 			account_repo: AccountRepository = None,
 			backtest_repo: BacktestRepository = None,
 			trade_repo: TradeRepository = None,
-			quote_repo: QuoteRepository = None
+		quote_repo: StockDailyRepository = None
 	):
 		"""
 		初始化绩效服务
@@ -54,7 +54,7 @@ class PerformanceService:
 		self.account_repo = account_repo or AccountRepository(session)
 		self.backtest_repo = backtest_repo or BacktestRepository(session)
 		self.trade_repo = trade_repo or TradeRepository(session)
-		self.quote_repo = quote_repo or QuoteRepository(session)
+		self.quote_repo = quote_repo or StockDailyRepository(session)
 		self.stat_calc = StatisticCalculator()
 		self.fin_calc = FinancialCalculator()
 

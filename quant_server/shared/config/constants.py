@@ -4,7 +4,7 @@
 """
 
 from enum import Enum, IntEnum
-from typing import Dict, Any
+from typing import Dict
 
 
 class ErrorCode(IntEnum):

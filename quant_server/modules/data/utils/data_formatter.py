@@ -10,17 +10,18 @@
 设计原则：
 - 纯函数：无状态，输入相同输出相同
 - 可配置：支持不同格式的转换规则
-- 可扩展：易于添加新的格式化规则
+- 可扩展：易于添加新格式化规则
 - 高性能：支持批量数据处理
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional, Union, Tuple
-import re
 import logging
+import re
+from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Any, Optional, Union, Tuple
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +81,12 @@ class DataFormatter:
 
 	# 数据类型转换规则
 	TYPE_CONVERSIONS = {
-		"date": lambda x: pd.to_datetime(x).date() if pd.notna(x) else None,
+		"date": lambda x: (pd.to_datetime(x).date() if not isinstance(x, np.ndarray) else pd.to_datetime(
+			x.tolist()).date) if x is not None and not (isinstance(x, (np.ndarray, list)) and len(x) == 0) else None,
 		"datetime": lambda x: pd.to_datetime(x) if pd.notna(x) else None,
 		"float": lambda x: float(x) if pd.notna(x) else None,
 		"int": lambda x: int(x) if pd.notna(x) else None,
-		"string": lambda x: str(x) if pd.notna(x) else None
+		"string": lambda x: str(x) if pd.notna(x) and not isinstance(x, np.ndarray) else (str(x.tolist()) if pd.notna(x) else None)
 	}
 
 	def __init__ (self, config: Optional[Dict] = None):
@@ -137,11 +139,11 @@ class DataFormatter:
 
 			# 根据目标格式选择格式化方法
 			if target_format == DataFormat.STANDARD:
-				result = self._format_to_standard(df, data_type, **kwargs)
+				result = self._format_to_standard(df, data_type)
 			elif target_format == DataFormat.ANALYSIS:
-				result = self._format_to_analysis(df, data_type, **kwargs)
+				result = self._format_to_analysis(df, data_type)
 			elif target_format == DataFormat.STORAGE:
-				result = self._format_to_storage(df, data_type, **kwargs)
+				result = self._format_to_storage(df, data_type)
 			elif target_format == DataFormat.API_RESPONSE:
 				result = self._format_to_api_response(df, data_type, **kwargs)
 			else:
@@ -162,8 +164,7 @@ class DataFormatter:
 	def _format_to_standard (
 			self,
 			df: pd.DataFrame,
-			data_type: DataType,
-			**kwargs
+			data_type: DataType
 	) -> pd.DataFrame:
 		"""
 		格式化为标准格式
@@ -171,7 +172,6 @@ class DataFormatter:
 		Args:
 			df: 原始DataFrame
 			data_type: 数据类型
-			**kwargs: 额外参数
 
 		Returns:
 			标准格式的DataFrame
@@ -186,7 +186,7 @@ class DataFormatter:
 		result_df = self._apply_type_conversions(result_df, data_type)
 
 		# 标准化日期时间字段
-		result_df = self._standardize_datetime_fields(result_df, data_type)
+		result_df = self._standardize_datetime_fields(result_df)
 
 		# 处理缺失值
 		result_df = self._handle_missing_values(result_df, data_type)
@@ -203,8 +203,7 @@ class DataFormatter:
 	def _format_to_analysis (
 			self,
 			df: pd.DataFrame,
-			data_type: DataType,
-			**kwargs
+			data_type: DataType
 	) -> pd.DataFrame:
 		"""
 		格式化为分析格式
@@ -212,13 +211,12 @@ class DataFormatter:
 		Args:
 			df: 原始DataFrame
 			data_type: 数据类型
-			**kwargs: 额外参数
 
 		Returns:
 			分析格式的DataFrame
 		"""
 		# 先转换为标准格式
-		standard_df = self._format_to_standard(df, data_type, **kwargs)
+		standard_df = self._format_to_standard(df, data_type)
 
 		# 根据数据类型添加分析字段
 		if data_type == DataType.STOCK_QUOTE:
@@ -237,8 +235,7 @@ class DataFormatter:
 	def _format_to_storage (
 			self,
 			df: pd.DataFrame,
-			data_type: DataType,
-			**kwargs
+			data_type: DataType
 	) -> pd.DataFrame:
 		"""
 		格式化为存储格式
@@ -246,13 +243,12 @@ class DataFormatter:
 		Args:
 			df: 原始DataFrame
 			data_type: 数据类型
-			**kwargs: 额外参数
 
 		Returns:
 			存储格式的DataFrame
 		"""
 		# 使用标准格式作为基础
-		standard_df = self._format_to_standard(df, data_type, **kwargs)
+		standard_df = self._format_to_standard(df, data_type)
 
 		# 添加元数据
 		storage_df = standard_df.copy()
@@ -286,10 +282,10 @@ class DataFormatter:
 			API响应格式的DataFrame
 		"""
 		# 使用标准格式作为基础
-		standard_df = self._format_to_standard(df, data_type, **kwargs)
+		standard_df = self._format_to_standard(df, data_type)
 
 		# 转换为嵌套结构（如果需要）
-		api_df = self._convert_to_nested_structure(standard_df, data_type)
+		api_df = self._convert_to_nested_structure(standard_df)
 
 		# 添加分页信息等元数据
 		if "pagination" in kwargs:
@@ -326,7 +322,8 @@ class DataFormatter:
 
 		return result_df
 
-	def _get_type_rules (self, data_type: DataType) -> Dict[str, str]:
+	@staticmethod
+	def _get_type_rules (data_type: DataType) -> Dict[str, str]:
 		"""
 		获取数据类型转换规则
 
@@ -363,15 +360,13 @@ class DataFormatter:
 
 	def _standardize_datetime_fields (
 			self,
-			df: pd.DataFrame,
-			data_type: DataType
+			df: pd.DataFrame
 	) -> pd.DataFrame:
 		"""
 		标准化日期时间字段
 
 		Args:
 			df: 原始DataFrame
-			data_type: 数据类型
 
 		Returns:
 			标准化后的DataFrame
@@ -395,8 +390,8 @@ class DataFormatter:
 
 		return result_df
 
+	@staticmethod
 	def _handle_missing_values (
-			self,
 			df: pd.DataFrame,
 			data_type: DataType
 	) -> pd.DataFrame:
@@ -459,7 +454,8 @@ class DataFormatter:
 
 		return result_df
 
-	def _add_financial_ratios (self, df: pd.DataFrame) -> pd.DataFrame:
+	@staticmethod
+	def _add_financial_ratios (df: pd.DataFrame) -> pd.DataFrame:
 		"""
 		添加财务比率
 
@@ -486,7 +482,8 @@ class DataFormatter:
 
 		return result_df
 
-	def _convert_to_time_series (self, df: pd.DataFrame) -> pd.DataFrame:
+	@staticmethod
+	def _convert_to_time_series (df: pd.DataFrame) -> pd.DataFrame:
 		"""
 		转换为时间序列格式
 
@@ -504,7 +501,8 @@ class DataFormatter:
 
 		return result_df
 
-	def _normalize_column_name (self, column_name: str) -> str:
+	@staticmethod
+	def _normalize_column_name (column_name: str) -> str:
 		"""
 		规范化列名
 
@@ -528,7 +526,8 @@ class DataFormatter:
 
 		return normalized
 
-	def _convert_to_storage_types (self, df: pd.DataFrame) -> pd.DataFrame:
+	@staticmethod
+	def _convert_to_storage_types (df: pd.DataFrame) -> pd.DataFrame:
 		"""
 		转换为存储类型
 
@@ -551,17 +550,15 @@ class DataFormatter:
 
 		return result_df
 
+	@staticmethod
 	def _convert_to_nested_structure (
-			self,
-			df: pd.DataFrame,
-			data_type: DataType
+			df: pd.DataFrame
 	) -> pd.DataFrame:
 		"""
 		转换为嵌套结构
 
 		Args:
 			df: 原始DataFrame
-			data_type: 数据类型
 
 		Returns:
 			嵌套结构的DataFrame
@@ -583,8 +580,8 @@ class DataFormatter:
 
 		return df
 
+	@staticmethod
 	def _add_pagination_info (
-			self,
 			df: pd.DataFrame,
 			pagination: Dict
 	) -> pd.DataFrame:
@@ -744,9 +741,9 @@ class DataFormatter:
 		elif expected_format == DataFormat.ANALYSIS:
 			return self._validate_analysis_format(data, data_type)
 		elif expected_format == DataFormat.STORAGE:
-			return self._validate_storage_format(data, data_type)
+			return self._validate_storage_format(data)
 		elif expected_format == DataFormat.API_RESPONSE:
-			return self._validate_api_response_format(data, data_type)
+			return self._validate_api_response_format(data)
 		else:
 			errors.append(f"不支持的格式: {expected_format}")
 			return False, errors
@@ -847,15 +844,13 @@ class DataFormatter:
 
 	def _validate_storage_format (
 			self,
-			data: Any,
-			data_type: DataType
+			data: Any
 	) -> Tuple[bool, List[str]]:
 		"""
 		验证存储格式
 
 		Args:
 			data: 待验证的数据
-			data_type: 数据类型
 
 		Returns:
 			(是否有效, 错误消息列表)
@@ -887,17 +882,15 @@ class DataFormatter:
 
 		return len(errors) == 0, errors
 
+	@staticmethod
 	def _validate_api_response_format (
-			self,
-			data: Any,
-			data_type: DataType
+			data: Any
 	) -> Tuple[bool, List[str]]:
 		"""
 		验证API响应格式
 
 		Args:
 			data: 待验证的数据
-			data_type: 数据类型
 
 		Returns:
 			(是否有效, 错误消息列表)
@@ -928,7 +921,8 @@ class DataFormatter:
 
 		return len(errors) == 0, errors
 
-	def _get_required_fields (self, data_type: DataType) -> List[str]:
+	@staticmethod
+	def _get_required_fields (data_type: DataType) -> List[str]:
 		"""
 		获取必需字段
 

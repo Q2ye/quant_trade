@@ -10,11 +10,11 @@
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional
 from decimal import Decimal
+from typing import Dict, Any, Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import AccountEventType
+from .types import AccountEventType
 
 
 class AccountPositionUpdatedEvent(BaseEvent):
@@ -87,11 +87,12 @@ class AccountPositionUpdatedEvent(BaseEvent):
 			"unrealized_pnl_percentage": round(unrealized_pnl_percentage, 4),
 			"update_reason": update_reason,
 			"update_time": datetime.now().isoformat(),
-			"position_status": self._determine_position_status(position_type, quantity, unrealized_pnl_percentage),
-			"risk_metrics": self._calculate_risk_metrics(quantity, avg_cost, market_value)
+			"position_status": AccountPositionUpdatedEvent._determine_position_status(position_type, quantity, unrealized_pnl_percentage),
+			"risk_metrics": AccountPositionUpdatedEvent._calculate_risk_metrics(quantity, avg_cost, market_value)
 		}
 
-	def _determine_position_status (self, position_type: str, quantity: Decimal, pnl_percentage: float) -> str:
+	@staticmethod
+	def _determine_position_status (position_type: str, quantity: Decimal, pnl_percentage: float) -> str:
 		"""确定持仓状态"""
 		if quantity == 0:
 			return "closed"
@@ -110,16 +111,17 @@ class AccountPositionUpdatedEvent(BaseEvent):
 
 		return status
 
-	def _calculate_risk_metrics (self, quantity: Decimal, avg_cost: Decimal, market_value: Decimal) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_risk_metrics (quantity: Decimal, avg_cost: Decimal, market_value: Decimal) -> Dict[str, Any]:
 		"""计算持仓风险指标"""
 		cost_basis = avg_cost * quantity
 
 		# 计算波动率风险
 		volatility_risk = "low"
-		value_change = float(abs(market_value - cost_basis))
-		if value_change > cost_basis * 0.2:
+		value_change = abs(market_value - cost_basis)
+		if value_change > cost_basis * Decimal("0.2"):
 			volatility_risk = "high"
-		elif value_change > cost_basis * 0.1:
+		elif value_change > cost_basis * Decimal("0.1"):
 			volatility_risk = "medium"
 
 		# 计算集中度风险
@@ -133,10 +135,11 @@ class AccountPositionUpdatedEvent(BaseEvent):
 			"volatility_risk": volatility_risk,
 			"concentration_risk": concentration_risk,
 			"liquidity_risk": liquidity_risk,
-			"overall_risk": self._calculate_overall_risk(volatility_risk, concentration_risk, liquidity_risk)
+			"overall_risk": AccountPositionUpdatedEvent._calculate_overall_risk(volatility_risk, concentration_risk, liquidity_risk)
 		}
 
-	def _calculate_overall_risk (self, volatility: str, concentration: str, liquidity: str) -> str:
+	@staticmethod
+	def _calculate_overall_risk (volatility: str, concentration: str, liquidity: str) -> str:
 		"""计算整体风险等级"""
 		risk_scores = {
 			"low": 1,
@@ -209,11 +212,12 @@ class AccountPositionOpenedEvent(BaseEvent):
 			"stop_loss": str(stop_loss) if stop_loss else None,
 			"take_profit": str(take_profit) if take_profit else None,
 			"open_time": datetime.now().isoformat(),
-			"position_strategy": self._determine_strategy(open_reason),
-			"risk_parameters": self._get_risk_parameters(position_type, quantity, open_price)
+			"position_strategy": AccountPositionOpenedEvent._determine_strategy(open_reason),
+			"risk_parameters": AccountPositionOpenedEvent._get_risk_parameters(position_type, quantity, open_price)
 		}
 
-	def _determine_strategy (self, open_reason: str) -> str:
+	@staticmethod
+	def _determine_strategy (open_reason: str) -> str:
 		"""根据开仓原因确定策略类型"""
 		if "signal" in open_reason:
 			return "signal_driven"
@@ -226,7 +230,8 @@ class AccountPositionOpenedEvent(BaseEvent):
 		else:
 			return "other"
 
-	def _get_risk_parameters (self, position_type: str, quantity: Decimal, price: Decimal) -> Dict[str, Any]:
+	@staticmethod
+	def _get_risk_parameters (position_type: str, quantity: Decimal, price: Decimal) -> Dict[str, Any]:
 		"""获取风险参数"""
 		position_value = quantity * price
 
@@ -289,8 +294,8 @@ class AccountPositionClosedEvent(BaseEvent):
 		realized_pnl = close_value - cost_basis - fee_amount
 
 		# 计算收益率
-		pnl_percentage = 0
-		if cost_basis != 0:
+		pnl_percentage = 0.0
+		if cost_basis != 0.0:
 			pnl_percentage = float((realized_pnl / cost_basis) * 100)
 
 		self.data = {
@@ -307,11 +312,12 @@ class AccountPositionClosedEvent(BaseEvent):
 			"fee_amount": str(fee_amount),
 			"transaction_id": transaction_id,
 			"close_time": datetime.now().isoformat(),
-			"trade_summary": self._create_trade_summary(close_reason, realized_pnl, pnl_percentage),
-			"performance_metrics": self._calculate_performance_metrics(cost_basis, realized_pnl, close_reason)
+			"trade_summary": AccountPositionClosedEvent._create_trade_summary(close_reason, realized_pnl, pnl_percentage),
+			"performance_metrics": AccountPositionClosedEvent._calculate_performance_metrics(cost_basis, realized_pnl, close_reason)
 		}
 
-	def _create_trade_summary (self, reason: str, pnl: Decimal, pnl_percentage: float) -> Dict[str, Any]:
+	@staticmethod
+	def _create_trade_summary (reason: str, pnl: Decimal, pnl_percentage: float) -> Dict[str, Any]:
 		"""创建交易摘要"""
 		trade_result = "盈利" if pnl > 0 else "亏损"
 
@@ -320,12 +326,13 @@ class AccountPositionClosedEvent(BaseEvent):
 			"reason": reason,
 			"pnl_amount": str(pnl),
 			"pnl_percentage": round(pnl_percentage, 2),
-			"trade_quality": self._assess_trade_quality(pnl_percentage, reason)
+			"trade_quality": AccountPositionClosedEvent._assess_trade_quality(pnl_percentage, reason)
 		}
 
 		return summary
 
-	def _assess_trade_quality (self, pnl_percentage: float, reason: str) -> str:
+	@staticmethod
+	def _assess_trade_quality (pnl_percentage: float, reason: str) -> str:
 		"""评估交易质量"""
 		if abs(pnl_percentage) > 20:
 			return "exceptional" if pnl_percentage > 0 else "poor"
@@ -338,21 +345,23 @@ class AccountPositionClosedEvent(BaseEvent):
 		else:
 			return "average"
 
-	def _calculate_performance_metrics (self, cost_basis: Decimal, realized_pnl: Decimal, reason: str) -> Dict[
+	@staticmethod
+	def _calculate_performance_metrics (cost_basis: Decimal, realized_pnl: Decimal, reason: str) -> Dict[
 		str, Any]:
 		"""计算绩效指标"""
 		# 这里需要更多上下文信息，暂时提供基础指标
 		metrics = {
-			"return_on_capital": str((realized_pnl / cost_basis) * 100 if cost_basis != 0 else "0"),
-			"risk_adjusted_return": "N/A",  # 需要更多数据
-			"win_loss_ratio": "1:0",  # 需要历史数据
-			"expectancy": "N/A",  # 需要历史数据
-			"consistency_score": self._calculate_consistency_score(reason, realized_pnl)
+			"return_on_capital": str((realized_pnl / cost_basis) * 100 if cost_basis != 0 else Decimal("0")),
+			"risk_adjusted_return": "N/A",
+			"win_loss_ratio": "1:0",
+			"expectancy": "N/A",
+			"consistency_score": AccountPositionClosedEvent._calculate_consistency_score(reason, realized_pnl)
 		}
 
 		return metrics
 
-	def _calculate_consistency_score (self, reason: str, pnl: Decimal) -> float:
+	@staticmethod
+	def _calculate_consistency_score (reason: str, pnl: Decimal) -> float:
 		"""计算一致性得分"""
 		score = 50.0  # 基础分
 
@@ -370,7 +379,7 @@ class AccountPositionClosedEvent(BaseEvent):
 		else:
 			score -= 10
 
-		return max(0, min(100, score))
+		return max(0.0, min(100.0, score))
 
 
 class AccountPositionAdjustedEvent(BaseEvent):
@@ -421,11 +430,12 @@ class AccountPositionAdjustedEvent(BaseEvent):
 				((new_value - previous_value) / previous_value * 100) if previous_value != 0 else "0"),
 			"adjustment_details": adjustment_details or {},
 			"adjustment_time": datetime.now().isoformat(),
-			"approval_required": self._requires_approval(adjustment_type, adjustment_amount),
+			"approval_required": AccountPositionAdjustedEvent._requires_approval(adjustment_type, adjustment_amount),
 			"audit_trail": self._create_audit_trail(adjustment_type, adjustment_reason)
 		}
 
-	def _requires_approval (self, adjustment_type: str, amount: Decimal) -> bool:
+	@staticmethod
+	def _requires_approval (adjustment_type: str, amount: Decimal) -> bool:
 		"""判断是否需要审批"""
 		amount_float = float(amount)
 

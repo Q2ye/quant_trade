@@ -69,8 +69,8 @@ __all__ = [
 async def initialize_database () -> bool:
 	"""初始化数据库连接池（应用启动时调用）"""
 	try:
-		session_manager = get_session_manager()
-		return await session_manager.initialize()
+		manager = get_session_manager()
+		return await manager.initialize()
 	except Exception as e:
 		import logging
 		logging.getLogger(__name__).error(f"数据库初始化失败: {str(e)}", exc_info=True)
@@ -80,8 +80,8 @@ async def initialize_database () -> bool:
 async def close_database ():
 	"""关闭数据库连接池（应用关闭时调用）"""
 	try:
-		session_manager = get_session_manager()
-		await session_manager.close()
+		manager = get_session_manager()
+		await manager.close()
 	except Exception as e:
 		import logging
 		logging.getLogger(__name__).error(f"数据库关闭失败: {str(e)}", exc_info=True)
@@ -90,7 +90,9 @@ async def close_database ():
 def get_database_status () -> dict:
 	"""获取数据库状态"""
 	try:
-		session_manager = get_session_manager()
-		return session_manager.get_status()
-	except Exception:
+		manager = get_session_manager()
+		return manager.get_status()
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取数据库状态失败: {str(e)}", exc_info=True)
 		return {"status": "uninitialized"}

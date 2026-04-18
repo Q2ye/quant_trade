@@ -32,6 +32,8 @@ from .quote import (
     FundAdjFactorRepository,    # 基金复权因子 [超表]
 )
 
+
+
 # 3. 基本面数据子域
 from .fundamental import (
     StockDailyBasicRepository,  # 股票每日基础指标 [超表]

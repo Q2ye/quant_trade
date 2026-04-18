@@ -17,7 +17,7 @@ from modules.analysis.models import AttributionAnalysis
 from shared.database.repositories.strategy_repo import StrategyRepository
 from shared.database.repositories.account_repo import AccountRepository
 from shared.database.repositories.position_repo import PositionRepository
-from shared.database.repositories.quote_repo import QuoteRepository
+from quant_server.shared.database.repositories.market.quote import StockDailyRepository
 from shared.database.repositories.stock_repo import StockRepository
 from core.utils.math_utils.statistic_calculator import StatisticCalculator
 
@@ -31,7 +31,7 @@ class AttributionService:
 			strategy_repo: StrategyRepository = None,
 			account_repo: AccountRepository = None,
 			position_repo: PositionRepository = None,
-			quote_repo: QuoteRepository = None,
+		quote_repo: StockDailyRepository = None,
 			stock_repo: StockRepository = None
 	):
 		"""
@@ -49,7 +49,7 @@ class AttributionService:
 		self.strategy_repo = strategy_repo or StrategyRepository(session)
 		self.account_repo = account_repo or AccountRepository(session)
 		self.position_repo = position_repo or PositionRepository(session)
-		self.quote_repo = quote_repo or QuoteRepository(session)
+		self.quote_repo = quote_repo or StockDailyRepository(session)
 		self.stock_repo = stock_repo or StockRepository(session)
 		self.stat_calc = StatisticCalculator()
 

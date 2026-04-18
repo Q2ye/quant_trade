@@ -9,14 +9,14 @@
 4. 轻量级：避免在事件中存储大量数据
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
-from typing import Any, Dict, Optional, List, TypeVar, Generic
-from uuid import uuid4
 import json
+from abc import ABC
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Dict, Optional, TypeVar
+from uuid import uuid4
 
-from .types import EventType, EventPriority, EventStatus, EventCategory
+from .types import EventPriority, EventStatus, EventCategory
 
 
 @dataclass
@@ -86,7 +86,7 @@ class BaseEvent(ABC):
 
 	def __init__ (
 			self,
-			event_type: str,
+			event_type: Any,
 			source: str,
 			module: str = "",
 			priority: int = EventPriority.NORMAL,

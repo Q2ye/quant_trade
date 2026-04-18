@@ -29,7 +29,8 @@ from quant_server.modules.data.utils.factor_calculator import FactorCalculator, 
 from quant_server.modules.data.services.research_service import DataResearchService
 from quant_server.modules.data.engines.research_engine import FactorResearchEngine, ResearchTaskType
 from quant_server.shared.database.session import SessionManager
-from quant_server.shared.database.repositories.market import QuoteRepository, StockBasicRepository
+from quant_server.shared.database.repositories.market.quote import StockDailyRepository
+from quant_server.shared.database.repositories.market.basic import StockBasicRepository
 from quant_server.modules.data.events.research_events import (
 	FactorResearchStartedEvent,
 	FactorResearchCompletedEvent,
@@ -220,7 +221,8 @@ def calculate_factor_task (
 				logger.info(f"计算第 {batch_num + 1} 批，共 {len(batch_codes)} 只股票")
 
 				# 获取数据
-				quote_repo = QuoteRepository()
+				session = SessionManager.get_async_session()
+				quote_repo = StockDailyRepository(session)
 
 				# 为每只股票计算因子
 				for i, stock_code in enumerate(batch_codes):
@@ -661,7 +663,8 @@ def optimize_factor_parameters_task (
 
 		# 获取股票数据用于优化
 		stock_repo = StockBasicRepository()
-		quote_repo = QuoteRepository()
+		session = SessionManager.get_async_session()
+		quote_repo = StockDailyRepository(session)
 
 		# 使用部分股票进行优化
 		all_stocks = stock_repo.get_listed_stocks()

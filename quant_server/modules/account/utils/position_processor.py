@@ -689,7 +689,8 @@ class PositionProcessor:
 			return 0.0
 		mean_return = sum(returns) / len(returns)
 		mean_benchmark = sum(benchmark_returns) / len(benchmark_returns)
-		covariance = sum((r - mean_return) * (b - mean_benchmark) for r, b in zip(returns, benchmark_returns)) / (len(returns) - 1)
+		covariance = sum((r - mean_return) * (b - mean_benchmark) for r, b in zip(returns, benchmark_returns)) / (
+					len(returns) - 1)
 		benchmark_variance = sum((b - mean_benchmark) ** 2 for b in benchmark_returns) / (len(benchmark_returns) - 1)
 		if benchmark_variance == 0:
 			return 0.0

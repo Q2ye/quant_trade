@@ -11,10 +11,9 @@
 
 from datetime import datetime, date
 from typing import Dict, Any, List, Optional
-from decimal import Decimal
 
 from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.core.events.types import AccountEventType
+from .types import AccountEventType
 
 
 class AccountSettlementStartedEvent(BaseEvent):
@@ -58,12 +57,13 @@ class AccountSettlementStartedEvent(BaseEvent):
 			"account_count": len(account_ids),
 			"account_ids": account_ids,
 			"start_time": datetime.now().isoformat(),
-			"estimated_duration": self._estimate_duration(settlement_type, len(account_ids)),
-			"settlement_steps": self._get_settlement_steps(settlement_type),
-			"checkpoints": self._define_checkpoints(settlement_type)
+			"estimated_duration": AccountSettlementStartedEvent._estimate_duration(settlement_type, len(account_ids)),
+			"settlement_steps": AccountSettlementStartedEvent._get_settlement_steps(settlement_type),
+			"checkpoints": AccountSettlementStartedEvent._define_checkpoints(settlement_type)
 		}
 
-	def _estimate_duration (self, settlement_type: str, account_count: int) -> int:
+	@staticmethod
+	def _estimate_duration (settlement_type: str, account_count: int) -> int:
 		"""估计结算持续时间（分钟）"""
 		base_times = {
 			"daily": 5,
@@ -81,7 +81,8 @@ class AccountSettlementStartedEvent(BaseEvent):
 
 		return base_time
 
-	def _get_settlement_steps (self, settlement_type: str) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _get_settlement_steps (settlement_type: str) -> List[Dict[str, Any]]:
 		"""获取结算步骤"""
 		common_steps = [
 			{"step": "数据准备", "description": "准备结算所需数据"},
@@ -108,7 +109,8 @@ class AccountSettlementStartedEvent(BaseEvent):
 		steps = common_steps + additional_steps.get(settlement_type, [])
 		return steps
 
-	def _define_checkpoints (self, settlement_type: str) -> Dict[str, Dict[str, Any]]:
+	@staticmethod
+	def _define_checkpoints (settlement_type: str) -> Dict[str, Dict[str, Any]]:
 		"""定义结算检查点"""
 		checkpoints = {
 			"data_preparation": {
@@ -145,6 +147,40 @@ class AccountSettlementStartedEvent(BaseEvent):
 				checkpoints[key]["weight"] *= 0.9
 
 		return checkpoints
+
+
+def _assess_settlement_quality (success_rate: float, issues: List[Dict[str, Any]], duration: float) -> Dict[
+	str, Any]:
+	"""评估结算质量"""
+	quality_score = success_rate
+
+	# 根据问题数量扣分
+	if issues:
+		issue_penalty = len(issues) * 5
+		quality_score = max(0.0, quality_score - issue_penalty)
+
+	# 根据持续时间调整
+	expected_duration = 600  # 预期10分钟
+	if duration > expected_duration * 2:
+		quality_score = max(0.0, quality_score - 10)
+	elif duration > expected_duration * 1.5:
+		quality_score = max(0.0, quality_score - 5)
+
+	# 确定质量等级
+	if quality_score >= 95:
+		quality_level = "excellent"
+	elif quality_score >= 85:
+		quality_level = "good"
+	elif quality_score >= 70:
+		quality_level = "fair"
+	else:
+		quality_level = "poor"
+
+	return {
+		"score": round(quality_score, 1),
+		"level": quality_level,
+		"assessment": AccountSettlementCompletedEvent.get_quality_assessment(quality_level)
+	}
 
 
 class AccountSettlementCompletedEvent(BaseEvent):
@@ -198,44 +234,12 @@ class AccountSettlementCompletedEvent(BaseEvent):
 			"report_path": report_path,
 			"issues": issues or [],
 			"completion_time": datetime.now().isoformat(),
-			"settlement_quality": self._assess_settlement_quality(success_rate, issues, duration_seconds),
-			"recommendations": self._generate_recommendations(success_rate, issues)
+			"settlement_quality": _assess_settlement_quality(success_rate, issues, duration_seconds),
+			"recommendations": AccountSettlementCompletedEvent._generate_recommendations(success_rate, issues)
 		}
 
-	def _assess_settlement_quality (self, success_rate: float, issues: List[Dict[str, Any]], duration: float) -> Dict[
-		str, Any]:
-		"""评估结算质量"""
-		quality_score = success_rate
-
-		# 根据问题数量扣分
-		if issues:
-			issue_penalty = len(issues) * 5
-			quality_score = max(0, quality_score - issue_penalty)
-
-		# 根据持续时间调整
-		expected_duration = 600  # 预期10分钟
-		if duration > expected_duration * 2:
-			quality_score = max(0, quality_score - 10)
-		elif duration > expected_duration * 1.5:
-			quality_score = max(0, quality_score - 5)
-
-		# 确定质量等级
-		if quality_score >= 95:
-			quality_level = "excellent"
-		elif quality_score >= 85:
-			quality_level = "good"
-		elif quality_score >= 70:
-			quality_level = "fair"
-		else:
-			quality_level = "poor"
-
-		return {
-			"score": round(quality_score, 1),
-			"level": quality_level,
-			"assessment": self._get_quality_assessment(quality_level)
-		}
-
-	def _get_quality_assessment (self, quality_level: str) -> str:
+	@staticmethod
+	def get_quality_assessment (quality_level: str) -> str:
 		"""获取质量评估描述"""
 		assessments = {
 			"excellent": "结算过程完美，所有账户成功结算",
@@ -245,7 +249,8 @@ class AccountSettlementCompletedEvent(BaseEvent):
 		}
 		return assessments.get(quality_level, "未知质量等级")
 
-	def _generate_recommendations (self, success_rate: float, issues: List[Dict[str, Any]]) -> List[str]:
+	@staticmethod
+	def _generate_recommendations (success_rate: float, issues: List[Dict[str, Any]]) -> List[str]:
 		"""生成改进建议"""
 		recommendations = []
 
@@ -310,8 +315,8 @@ class AccountReconciliationStartedEvent(BaseEvent):
 			"data_sources": data_sources,
 			"start_time": datetime.now().isoformat(),
 			"expected_records": self._estimate_record_count(reconciliation_type, reconciliation_scope),
-			"matching_rules": self._get_matching_rules(reconciliation_type),
-			"tolerance_settings": self._get_tolerance_settings(reconciliation_type)
+			"matching_rules": AccountReconciliationStartedEvent._get_matching_rules(reconciliation_type),
+			"tolerance_settings": AccountReconciliationStartedEvent._get_tolerance_settings(reconciliation_type)
 		}
 
 	def _estimate_record_count (self, recon_type: str, scope: str) -> Dict[str, int]:
@@ -338,7 +343,8 @@ class AccountReconciliationStartedEvent(BaseEvent):
 			"estimated_per_source": base_count * multiplier // len(self.data["data_sources"])
 		}
 
-	def _get_matching_rules (self, recon_type: str) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _get_matching_rules (recon_type: str) -> List[Dict[str, Any]]:
 		"""获取对账匹配规则"""
 		common_rules = [
 			{"field": "account_id", "rule": "exact_match", "required": True},
@@ -365,7 +371,8 @@ class AccountReconciliationStartedEvent(BaseEvent):
 		rules = common_rules + type_specific_rules.get(recon_type, [])
 		return rules
 
-	def _get_tolerance_settings (self, recon_type: str) -> Dict[str, Any]:
+	@staticmethod
+	def _get_tolerance_settings (recon_type: str) -> Dict[str, Any]:
 		"""获取对账容差设置"""
 		tolerances = {
 			"fund": {
@@ -431,7 +438,7 @@ class AccountReconciliationCompletedEvent(BaseEvent):
 		match_rate = (matched_records / total_records * 100) if total_records > 0 else 0
 
 		# 分析差异
-		discrepancy_analysis = self._analyze_discrepancies(discrepancies)
+		discrepancy_analysis = AccountReconciliationCompletedEvent._analyze_discrepancies(discrepancies)
 
 		self.data = {
 			"reconciliation_id": reconciliation_id,
@@ -445,11 +452,12 @@ class AccountReconciliationCompletedEvent(BaseEvent):
 			"duration_seconds": round(duration_seconds, 2),
 			"resolution_status": resolution_status,
 			"completion_time": datetime.now().isoformat(),
-			"reconciliation_status": self._determine_reconciliation_status(match_rate, discrepancies),
-			"next_steps": self._determine_next_steps(match_rate, discrepancies, resolution_status)
+			"reconciliation_status": AccountReconciliationCompletedEvent._determine_reconciliation_status(match_rate, discrepancies),
+			"next_steps": AccountReconciliationCompletedEvent._determine_next_steps(match_rate, discrepancies, resolution_status)
 		}
 
-	def _analyze_discrepancies (self, discrepancies: List[Dict[str, Any]]) -> Dict[str, Any]:
+	@staticmethod
+	def _analyze_discrepancies (discrepancies: List[Dict[str, Any]]) -> Dict[str, Any]:
 		"""分析差异记录"""
 		total_discrepancies = len(discrepancies)
 
@@ -484,7 +492,8 @@ class AccountReconciliationCompletedEvent(BaseEvent):
 			"total_amount": round(total_amount, 2)
 		}
 
-	def _determine_reconciliation_status (self, match_rate: float, discrepancies: List[Dict[str, Any]]) -> str:
+	@staticmethod
+	def _determine_reconciliation_status (match_rate: float, discrepancies: List[Dict[str, Any]]) -> str:
 		"""确定对账状态"""
 		if match_rate == 100:
 			return "perfect"
@@ -502,8 +511,9 @@ class AccountReconciliationCompletedEvent(BaseEvent):
 		else:
 			return "failed"
 
-	def _determine_next_steps (self, match_rate: float, discrepancies: List[Dict[str, Any]], resolution_status: str) -> \
-	List[str]:
+	@staticmethod
+	def _determine_next_steps (match_rate: float, discrepancies: List[Dict[str, Any]], resolution_status: str) -> \
+			List[str]:
 		"""确定下一步行动"""
 		steps = []
 
