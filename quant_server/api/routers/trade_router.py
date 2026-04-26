@@ -8,13 +8,12 @@
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.api.dependencies.auth import get_current_user
 # 导入架构依赖
 from quant_server.api.dependencies.database import get_db_session
-from quant_server.api.dependencies.event_engine import get_event_engine
 # 导入交易模块的业务层处理函数
 from quant_server.modules.trade.handlers import (
 	get_order_list,
@@ -35,7 +34,6 @@ from quant_server.modules.trade.schemas import (
 	OrderDetailResponse,
 	OrderCreateRequest,
 	OrderResponse,
-	OrderCancelRequest,
 	PositionListRequest,
 	PositionListResponse,
 	PositionDetailResponse,
@@ -105,7 +103,7 @@ async def get_orders_api (
 
 @router.get("/orders/{order_id}", response_model=OrderDetailResponse)
 async def get_order_detail_api (
-		order_id: int,
+		order_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> OrderDetailResponse:
@@ -194,7 +192,7 @@ async def create_order_api (
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderDetailResponse)
 async def cancel_order_api (
-		order_id: int,
+		order_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> OrderDetailResponse:

@@ -2,16 +2,16 @@
 """
 查询构建器 - 构建复杂的数据库查询
 
-提供灵活的查询条件构建、排序、过滤等功能
+提供灵活查询条件构建、排序、过滤等功能
 支持链式调用，使查询构建更加直观
 """
 
-from typing import List, Dict, Any, Optional, Union, Callable
 from enum import Enum
-from datetime import datetime
+from typing import List, Any, Optional
+
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_, or_, not_, desc, asc, func
-from sqlalchemy.sql import Select, ColumnElement
+from sqlalchemy import select, and_, or_, not_, desc, asc
+from sqlalchemy.sql import Select
 
 
 class Operator(str, Enum):

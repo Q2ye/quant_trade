@@ -5,13 +5,14 @@
 """
 
 import asyncio
+import logging
 from typing import Any, Dict, Optional, Callable, Awaitable
 from uuid import uuid4
-from .base import MessageBus, Message, MessageHeaders, MessageMetadata, MessagePriority
-from .producer import get_producer, RedisProducer, RabbitMQProducer, KafkaProducer
-from .consumer import get_consumer, RedisConsumer, RabbitMQConsumer, KafkaConsumer
-from .serializer import JSONSerializer, serialize_message, deserialize_message
-import logging
+
+from .base import MessageBus, Message, MessageHeaders, MessagePriority
+from .consumer import get_consumer
+from .producer import get_producer
+from .serializer import JSONSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +310,7 @@ class DefaultMessageBus(MessageBus):
 
 
 # 全局消息总线实例
-_message_bus = None
+_message_bus: Optional['DefaultMessageBus'] = None
 
 
 async def get_message_bus (
@@ -339,6 +340,10 @@ async def shutdown_message_bus () -> None:
 	"""关闭全局消息总线"""
 	global _message_bus
 
-	if _message_bus is not None:
-		await _message_bus.shutdown()
-		_message_bus = None
+	try:
+		if _message_bus is not None:
+			await _message_bus.shutdown()
+			_message_bus = None
+	except NameError:
+		# 变量未定义，说明消息总线从未初始化
+		pass

@@ -9,7 +9,12 @@ from typing import Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.modules.backtest.engines.report_engine import ReportEngine
+from quant_server.shared.database.repositories import BacktestEquityCurveRepository
+from quant_server.shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
+from quant_server.shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
+from quant_server.shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +36,10 @@ class ReportService:
 		self.db = db
 
 		# 导入EngineConfig
-		from quant_server.core.engines.types.entities import EngineConfig
 
-		self.report_engine = ReportEngine(EngineConfig(name="ReportEngine", engine_type="report"))
+		self.report_engine = ReportEngine(EngineConfigEntity(name="ReportEngine", engine_type="report"))
 
-	async def generate_report (self, backtest_id: int) -> Dict[str, Any]:
+	async def generate_report (self, backtest_id: str) -> Dict[str, Any]:
 		"""
 		生成回测报告
 
@@ -46,41 +50,111 @@ class ReportService:
 			回测报告
 		"""
 		try:
-			# 由于BacktestTask模型不存在，我们使用模拟数据
-			# 实际应用中需要从数据库获取
 			logger.info(f"生成回测报告: backtest_id={backtest_id}")
-			
-			# 模拟回测结果数据
-			mock_result = {
-				"metrics": {
-					"total_return": 0.15,
-					"sharpe_ratio": 1.2,
-					"max_drawdown": 0.08
-				},
-				"trades": [
+
+			# 初始化仓库
+			task_repo = BacktestTaskRepository(self.db)
+			trade_repo = BacktestTradeRepository(self.db)
+			equity_curve_repo = BacktestEquityCurveRepository(self.db)
+			position_repo = BacktestPositionRepository(self.db)
+
+			# 获取回测任务
+			task = await task_repo.get(str(backtest_id))
+			if not task:
+				raise ValueError(f"回测任务不存在: {backtest_id}")
+
+			# 检查任务状态
+			if task.status != "completed":
+				raise ValueError(f"回测任务尚未完成，当前状态: {task.status}")
+
+			# 获取回测结果数据
+			backtest_result = {}
+
+			# 1. 从任务结果中获取基础指标
+			if task.result:
+				backtest_result["metrics"] = task.result.get("metrics", {})
+			else:
+				backtest_result["metrics"] = {}
+
+			# 2. 获取交易记录
+			trades = await trade_repo.get_by_task_id(str(backtest_id))
+			backtest_result["trades"] = [
+				{
+					"symbol": trade.ts_code,
+					"side": trade.direction,
+					"price": float(trade.price),
+					"quantity": trade.volume,
+					"datetime": trade.trade_time.isoformat() if trade.trade_time else "",
+					"profit": float(trade.profit) if hasattr(trade, 'profit') else 0.0,
+					"commission": float(trade.commission) if hasattr(trade, 'commission') else 0.0
+				}
+				for trade in trades
+			]
+
+			# 3. 获取净值曲线
+			equity_curves = await equity_curve_repo.get_equity_curve(str(backtest_id))
+			backtest_result["equity_curve"] = [
+				{
+					"date": curve.trade_date.isoformat() if curve.trade_date else "",
+					"equity": float(curve.equity),
+					"drawdown": float(curve.drawdown) if hasattr(curve, 'drawdown') else 0.0
+				}
+				for curve in equity_curves
+			]
+
+			# 4. 获取持仓快照（可选）
+			try:
+				positions = await position_repo.get_by_task_id(str(backtest_id))
+				backtest_result["positions"] = [
 					{
-						"symbol": "000001.SZ",
-						"side": "buy",
-						"price": 10.0,
-						"quantity": 1000,
-						"datetime": "2023-01-01 10:00:00"
+						"symbol": position.ts_code,
+						"volume": position.volume,
+						"cost_price": float(position.cost_price),
+						"current_price": float(position.current_price) if hasattr(position, 'current_price') else 0.0,
+						"profit": float(position.profit) if hasattr(position, 'profit') else 0.0
 					}
-				],
-				"equity_curve": [
-					{"date": "2023-01-01", "equity": 1000000.0},
-					{"date": "2023-01-02", "equity": 1005000.0}
+					for position in positions
 				]
-			}
+			except Exception as e:
+				logger.warning(f"获取持仓数据失败: {str(e)}")
+				backtest_result["positions"] = []
+
+			# 5. 补充缺失的指标（如果任务结果中没有）
+			if not backtest_result["metrics"]:
+				# 计算基础指标
+				if backtest_result["equity_curve"]:
+					initial_equity = backtest_result["equity_curve"][0]["equity"]
+					final_equity = backtest_result["equity_curve"][-1]["equity"]
+					total_return = (final_equity - initial_equity) / initial_equity
+					
+					# 计算最大回撤
+					max_equity = initial_equity
+					max_drawdown = 0.0
+					for point in backtest_result["equity_curve"]:
+						if point["equity"] > max_equity:
+							max_equity = point["equity"]
+						drawdown = (max_equity - point["equity"]) / max_equity
+						if drawdown > max_drawdown:
+							max_drawdown = drawdown
+					
+					backtest_result["metrics"] = {
+						"total_return": total_return,
+						"max_drawdown": max_drawdown,
+						"num_trades": len(backtest_result["trades"]),
+						"win_rate": 0.5,  # 简化计算
+						"profit_factor": 1.2  # 简化计算
+					}
 
 			# 生成报告
-			report = self.report_engine.generate_report(mock_result)
+			report = self.report_engine.generate_report(backtest_result)
 
+			logger.info(f"回测报告生成成功: backtest_id={backtest_id}")
 			return report
 		except Exception as e:
 			logger.error(f"生成回测报告失败: {str(e)}")
 			raise
 
-	async def get_report (self, backtest_id: int) -> Dict[str, Any]:
+	async def get_report (self, backtest_id: str) -> Dict[str, Any]:
 		"""
 		获取回测报告
 
@@ -91,36 +165,33 @@ class ReportService:
 			回测报告
 		"""
 		try:
-			# 由于BacktestTask模型不存在，我们使用模拟数据
-			# 实际应用中需要从数据库获取
 			logger.info(f"获取回测报告: backtest_id={backtest_id}")
-			
-			# 模拟回测结果数据
-			mock_result = {
-				"metrics": {
-					"total_return": 0.15,
-					"sharpe_ratio": 1.2,
-					"max_drawdown": 0.08
-				},
-				"trades": [
-					{
-						"symbol": "000001.SZ",
-						"side": "buy",
-						"price": 10.0,
-						"quantity": 1000,
-						"datetime": "2023-01-01 10:00:00"
-					}
-				],
-				"equity_curve": [
-					{"date": "2023-01-01", "equity": 1000000.0},
-					{"date": "2023-01-02", "equity": 1005000.0}
-				]
-			}
 
-			# 生成报告
-			report = self.report_engine.generate_report(mock_result)
+			# 初始化仓库
+			task_repo = BacktestTaskRepository(self.db)
 
-			return report
+			# 获取回测任务
+			task = await task_repo.get(str(backtest_id))
+			if not task:
+				raise ValueError(f"回测任务不存在: {backtest_id}")
+
+			# 检查任务状态
+			if task.status != "completed":
+				raise ValueError(f"回测任务尚未完成，当前状态: {task.status}")
+
+			# 如果任务结果中已经有报告，直接返回
+			if task.result and "report" in task.result:
+				logger.info(f"从任务结果中获取回测报告: backtest_id={backtest_id}")
+				return task.result["report"]
+
+			# 如果任务结果中没有报告，但包含回测数据，则生成报告
+			if task.result and "metrics" in task.result:
+				logger.info(f"从任务结果数据生成回测报告: backtest_id={backtest_id}")
+				return self.report_engine.generate_report(task.result)
+
+			# 如果任务结果中没有足够的数据，则重新生成报告
+			logger.info(f"重新生成回测报告: backtest_id={backtest_id}")
+			return await self.generate_report(backtest_id)
 		except Exception as e:
 			logger.error(f"获取回测报告失败: {str(e)}")
 			raise

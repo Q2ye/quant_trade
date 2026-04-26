@@ -116,7 +116,8 @@ class RiskAnalyzer:
                 "cvar_95": 0
             }
     
-    def _calculate_max_drawdown(self, equity: List[float]) -> float:
+    @staticmethod
+    def _calculate_max_drawdown(equity: List[float]) -> float:
         """
         计算最大回撤
         
@@ -141,7 +142,8 @@ class RiskAnalyzer:
         
         return max_drawdown
     
-    def _calculate_drawdown_duration(self, equity_curve: List[Dict[str, Any]]) -> int:
+    @staticmethod
+    def _calculate_drawdown_duration(equity_curve: List[Dict[str, Any]]) -> int:
         """
         计算最大回撤持续时间
         
@@ -173,8 +175,9 @@ class RiskAnalyzer:
                     max_duration = current_duration
         
         return max_duration
-    
-    def _calculate_other_risk_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+
+    @staticmethod
+    def _calculate_other_risk_metrics( metrics: Dict[str, Any]) -> Dict[str, Any]:
         """
         计算其他风险指标
         

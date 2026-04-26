@@ -1,8 +1,9 @@
 # shared/database/repositories/strategy/backtest/position_repo.py
-from typing import List, Dict, Any, Optional
 from datetime import date, datetime
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Dict, Any
+
 from sqlalchemy import select, func, and_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import literal_column
 
 from quant_server.shared.database.models.business_models import BacktestPosition
@@ -14,6 +15,19 @@ class BacktestPositionRepository(BaseRepository[BacktestPosition]):
 
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, BacktestPosition)
+
+	async def get_by_task_id (self, task_id: str, skip: int = 0, limit: int = 1000) -> List[BacktestPosition]:
+		"""根据任务ID获取持仓记录"""
+		query = (
+			select(self.model)
+			.where(self.model.task_id == task_id)
+			.order_by(desc(self.model.trade_date))
+			.offset(skip)
+			.limit(limit)
+		)
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_daily_positions (self, task_id: str, trade_date: date) -> List[BacktestPosition]:
 		"""获取指定日期的持仓快照"""
@@ -167,7 +181,8 @@ class BacktestPositionRepository(BaseRepository[BacktestPosition]):
 		await self.session.flush()
 		return len(instances)
 
-	def _position_to_dict (self, position: BacktestPosition) -> Dict[str, Any]:
+	@staticmethod
+	def _position_to_dict (position: BacktestPosition) -> Dict[str, Any]:
 		"""将持仓对象转换为字典"""
 		return {
 			"ts_code": position.ts_code,

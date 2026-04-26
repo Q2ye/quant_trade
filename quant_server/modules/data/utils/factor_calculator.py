@@ -354,7 +354,7 @@ class FactorCalculator:
 				result[f"rsi{p}"] = rsi
 			return pd.DataFrame(result)
 		else:
-			return talib.RSI(close.values, timeperiod=period)
+			return pd.Series(talib.RSI(close.values, timeperiod=period), index=close.index, name=f"rsi{period}")
 
 	@staticmethod
 	def calculate_macd (
@@ -470,7 +470,7 @@ class FactorCalculator:
 				result[f"roc{p}"] = roc
 			return pd.DataFrame(result)
 		else:
-			return talib.ROC(close.values, timeperiod=period)
+			return pd.Series(talib.ROC(close.values, timeperiod=period), index=close.index, name=f"roc{period}")
 
 	# ==================== 波动率因子计算函数 ====================
 

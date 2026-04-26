@@ -208,10 +208,8 @@ class ReportEngine(EngineBase):
 				return json.dumps(report, ensure_ascii=False, indent=2)
 			elif export_format == "csv":
 				# 转换为CSV格式
-				csv_data = []
+				csv_data = [["摘要", "", ""], ["指标", "值", "单位"]]
 				# 导出摘要
-				csv_data.append(["摘要", "", ""])
-				csv_data.append(["指标", "值", "单位"])
 				for key, value in report["summary"].items():
 					csv_data.append([key, value, ""])
 

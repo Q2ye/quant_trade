@@ -9,7 +9,7 @@
 """
 
 from enum import IntEnum, Enum
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any
 
 
 class EventPriority(IntEnum):

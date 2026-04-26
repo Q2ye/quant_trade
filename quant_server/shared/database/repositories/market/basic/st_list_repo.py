@@ -9,19 +9,14 @@ ST股票列表Repository
 3. 跟踪ST状态变化历史
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between, distinct
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
-	PaginationParams,
-	PaginationResult,
-	FilterCondition,
-	SortCondition
-)
+from sqlalchemy import select, func, desc, distinct
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockSTList, StockBasic
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class STListRepository(BaseRepository[StockSTList]):
@@ -38,42 +33,30 @@ class STListRepository(BaseRepository[StockSTList]):
 
 	# ==================== ST股票查询方法 ====================
 
-	async def get_current_st_stocks (self, date: date = None) -> List[StockSTList]:
+	async def get_current_st_stocks (self, query_date: date = None) -> List[StockSTList]:
 		"""
 		获取指定日期的ST股票列表（默认当前日期）
 
 		Args:
-			date: 查询日期，默认当前日期
+			query_date: 查询日期，默认当前日期
 
 		Returns:
 			ST股票列表
 		"""
 		try:
-			if date is None:
-				date = datetime.now().date()
+			if query_date is None:
+				query_date = datetime.now().date()
 
-			# 获取指定日期最新的ST记录
-			subquery = (
-				select(
-					StockSTList.ts_code,
-					func.max(StockSTList.trade_date).label('max_date')
-				)
-				.where(StockSTList.trade_date <= date)
-				.group_by(StockSTList.ts_code)
-				.subquery()
-			)
+			# 使用窗口函数优化查询，避免子查询类型推断问题
+			from sqlalchemy import over
 
+			# 方法1：使用窗口函数直接获取最新记录
 			query = (
 				select(StockSTList)
-				.join(
-					subquery,
-					and_(
-						StockSTList.ts_code == subquery.c.ts_code,
-						StockSTList.trade_date == subquery.c.max_date
-					)
-				)
-				.where(StockSTList.st_type.in_(['ST', '*ST']))  # 只获取ST和*ST
-				.order_by(StockSTList.ts_code)
+				.where(StockSTList.trade_date <= query_date)
+				.where(StockSTList.st_type.in_(['ST', '*ST']))
+				.order_by(StockSTList.ts_code, StockSTList.trade_date.desc())
+				.distinct(StockSTList.ts_code)
 			)
 
 			result = await self.session.execute(query)
@@ -105,7 +88,7 @@ class STListRepository(BaseRepository[StockSTList]):
 	async def get_stocks_by_st_type (
 			self,
 			st_type: str,
-			date: date = None,
+			query_date: date = None,
 			include_history: bool = False
 	) -> List[StockSTList]:
 		"""
@@ -113,47 +96,32 @@ class STListRepository(BaseRepository[StockSTList]):
 
 		Args:
 			st_type: ST类型（'ST', '*ST', 'SST'等）
-			date: 查询日期，默认当前日期
+			query_date: 查询日期，默认当前日期
 			include_history: 是否包含历史记录
 
 		Returns:
 			ST股票列表
 		"""
 		try:
-			if date is None:
-				date = datetime.now().date()
+			if query_date is None:
+				query_date = datetime.now().date()
 
 			if include_history:
 				# 包含历史记录
 				query = (
 					select(self.model)
 					.where(self.model.st_type == st_type)
-					.where(self.model.trade_date <= date)
+					.where(self.model.trade_date <= query_date)
 					.order_by(desc(self.model.trade_date), self.model.ts_code)
 				)
 			else:
-				# 只获取指定日期的最新记录
-				subquery = (
-					select(
-						self.model.ts_code,
-						func.max(self.model.trade_date).label('max_date')
-					)
-					.where(self.model.trade_date <= date)
-					.group_by(self.model.ts_code)
-					.subquery()
-				)
-
+				# 使用更简洁的查询方式获取指定日期的最新记录
 				query = (
 					select(self.model)
-					.join(
-						subquery,
-						and_(
-							self.model.ts_code == subquery.c.ts_code,
-							self.model.trade_date == subquery.c.max_date
-						)
-					)
+					.where(self.model.trade_date <= query_date)
 					.where(self.model.st_type == st_type)
-					.order_by(self.model.ts_code)
+					.order_by(self.model.ts_code, self.model.trade_date.desc())
+					.distinct(self.model.ts_code)
 				)
 
 			result = await self.session.execute(query)
@@ -161,26 +129,26 @@ class STListRepository(BaseRepository[StockSTList]):
 		except Exception as e:
 			raise RepositoryError(f"根据ST类型查询失败: {str(e)}")
 
-	async def get_st_stock_with_info (self, ts_code: str, date: date = None) -> Optional[Dict[str, Any]]:
+	async def get_st_stock_with_info (self, ts_code: str, query_date: date = None) -> Optional[Dict[str, Any]]:
 		"""
 		获取ST股票及其基础信息
 
 		Args:
 			ts_code: 股票TS代码
-			date: 查询日期
+			query_date: 查询日期
 
 		Returns:
 			ST股票及基础信息字典
 		"""
 		try:
-			if date is None:
-				date = datetime.now().date()
+			if query_date is None:
+				query_date = datetime.now().date()
 
 			# 获取该股票指定日期的最新ST记录
 			st_query = (
 				select(self.model)
 				.where(self.model.ts_code == ts_code)
-				.where(self.model.trade_date <= date)
+				.where(self.model.trade_date <= query_date)
 				.order_by(desc(self.model.trade_date))
 				.limit(1)
 			)
@@ -276,25 +244,25 @@ class STListRepository(BaseRepository[StockSTList]):
 		except Exception as e:
 			raise RepositoryError(f"获取ST状态变化失败: {str(e)}")
 
-	async def is_stock_st (self, ts_code: str, date: date = None) -> bool:
+	async def is_stock_st (self, ts_code: str, query_date: date = None) -> bool:
 		"""
 		判断股票在指定日期是否为ST
 
 		Args:
 			ts_code: 股票TS代码
-			date: 查询日期
+			query_date: 查询日期
 
 		Returns:
 			是否为ST
 		"""
 		try:
-			if date is None:
-				date = datetime.now().date()
+			if query_date is None:
+				query_date = datetime.now().date()
 
 			query = (
 				select(self.model)
 				.where(self.model.ts_code == ts_code)
-				.where(self.model.trade_date <= date)
+				.where(self.model.trade_date <= query_date)
 				.where(self.model.st_type.in_(['ST', '*ST']))
 				.order_by(desc(self.model.trade_date))
 				.limit(1)
@@ -309,18 +277,18 @@ class STListRepository(BaseRepository[StockSTList]):
 
 	# ==================== 统计分析方法 ====================
 
-	async def get_st_type_distribution (self, date: date = None) -> Dict[str, int]:
+	async def get_st_type_distribution (self, query_date: date = None) -> Dict[str, int]:
 		"""
 		获取ST类型分布统计
 
 		Args:
-			date: 查询日期
+			query_date: 查询日期
 
 		Returns:
 			ST类型分布字典（类型:数量）
 		"""
 		try:
-			current_st = await self.get_current_st_stocks(date)
+			current_st = await self.get_current_st_stocks(query_date)
 
 			distribution = {}
 			for record in current_st:

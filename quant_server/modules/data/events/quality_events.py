@@ -59,7 +59,7 @@ class DataQualityEvent(BaseEvent):
             "check_id": check_id,
             "data_type": data_type,
             "quality_score": round(quality_score, 2),
-            "status": status.value if isinstance(status, QualityCheckStatus) else status,
+            "status": status.value,
             "issue_count": issue_count,
             "check_timestamp": datetime.now().isoformat(),
             "user_id": user_id

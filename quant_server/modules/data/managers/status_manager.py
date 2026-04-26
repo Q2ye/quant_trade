@@ -59,7 +59,7 @@ class SyncStatusManager:
 			return self._current_task.status in [SyncStatus.RUNNING, SyncStatus.PROCESSING]
 
 	def create_task (self, task_id: str, data_types: list, priority: int = 2) -> SyncTask:
-		"""创建新的同步任务"""
+		"""创建新同步任务"""
 		with self._lock:
 			# 如果有任务正在运行，检查是否可以创建新任务
 			if self.is_running and priority > 1:  # 非高优先级任务需等待
@@ -194,7 +194,8 @@ class SyncStatusManager:
 				"end_time": self._current_task.end_time
 			}
 
-	def _get_idle_status (self) -> Dict[str, Any]:
+	@staticmethod
+	def _get_idle_status () -> Dict[str, Any]:
 		"""获取空闲状态"""
 		return {
 			"is_running": False,

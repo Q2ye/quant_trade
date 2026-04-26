@@ -9,12 +9,10 @@
 """
 
 import logging
-import traceback
-from typing import Any, Dict, Optional, Callable, List, Type
 from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
 
-from .base import BaseException, BaseAPIException
-from .system_exceptions import TimeoutException, NetworkException
+from .base import QuantBaseException
 from .security_exceptions import (
 	SecurityException,
 	EncryptionException,
@@ -26,6 +24,7 @@ from .security_exceptions import (
 	AuditException,
 	SecurityConfigException
 )
+from .system_exceptions import TimeoutException, NetworkException
 from .types import ErrorSeverity
 
 
@@ -86,7 +85,7 @@ class LoggingExceptionHandler(ExceptionHandler):
 		try:
 			log_message = self._format_log_message(exception, context)
 
-			if isinstance(exception, BaseException):
+			if isinstance(exception, QuantBaseException):
 				# 根据严重程度记录不同级别的日志
 				if exception.severity == ErrorSeverity.DEBUG:
 					self.logger.debug(log_message)
@@ -99,7 +98,7 @@ class LoggingExceptionHandler(ExceptionHandler):
 				elif exception.severity == ErrorSeverity.CRITICAL:
 					self.logger.critical(log_message)
 			else:
-				# 非BaseException，按错误级别记录
+				# 非QuantBaseException，按错误级别记录
 				self.logger.error(log_message)
 
 			return True
@@ -125,18 +124,19 @@ class LoggingExceptionHandler(ExceptionHandler):
 		"""格式化日志消息"""
 		context_str = f" | Context: {context}" if context else ""
 
-		if isinstance(exception, BaseException):
+		if isinstance(exception, QuantBaseException):
 			# 对于安全异常，进行特殊处理
 			if isinstance(exception, SecurityException):
 				# 安全异常可能需要脱敏处理
-				safe_message = self._sanitize_security_message(exception.message)
+				safe_message = self._sanitize_security_message(str(exception))
 				return f"🔐 {exception.__class__.__name__}: {safe_message} (Code: {exception.error_code}){context_str}"
 			else:
-				return f"{exception.__class__.__name__}: {exception.message} (Code: {exception.error_code}){context_str}"
+				return f"{exception.__class__.__name__}: {str(exception)} (Code: {exception.error_code}){context_str}"
 		else:
 			return f"{exception.__class__.__name__}: {str(exception)}{context_str}"
 
-	def _sanitize_security_message (self, message: str) -> str:
+	@staticmethod
+	def _sanitize_security_message (message: str) -> str:
 		"""对安全异常消息进行脱敏处理"""
 		# 这里可以添加脱敏逻辑，例如移除敏感信息
 		# 简单示例：移除可能的密码、密钥等敏感信息
@@ -206,13 +206,13 @@ class NotificationExceptionHandler(ExceptionHandler):
 			exception: 异常对象
 
 		Returns:
-			如果是BaseException且严重程度足够，则返回True
+			如果是QuantBaseException且严重程度足够，则返回True
 		"""
-		return isinstance(exception, BaseException) and self._should_notify(exception)
+		return isinstance(exception, QuantBaseException) and self._should_notify(exception)
 
 	def _should_notify (self, exception: Exception) -> bool:
 		"""检查是否应该发送通知"""
-		if not isinstance(exception, BaseException):
+		if not isinstance(exception, QuantBaseException):
 			return False
 
 		# 对于安全异常，即使级别较低也可能需要通知
@@ -237,7 +237,8 @@ class NotificationExceptionHandler(ExceptionHandler):
 		# 默认比较严重程度级别
 		return self._compare_severity(exception.severity, self.min_severity)
 
-	def _compare_severity (self, exception_severity: ErrorSeverity, min_severity: ErrorSeverity) -> bool:
+	@staticmethod
+	def _compare_severity (exception_severity: ErrorSeverity, min_severity: ErrorSeverity) -> bool:
 		"""比较严重程度级别"""
 		severity_levels = {
 			ErrorSeverity.DEBUG: 0,
@@ -254,7 +255,7 @@ class NotificationExceptionHandler(ExceptionHandler):
 
 	def _format_notification_message (self, exception: Exception, context: Optional[Dict[str, Any]] = None) -> str:
 		"""格式化通知消息"""
-		if isinstance(exception, BaseException):
+		if isinstance(exception, QuantBaseException):
 			# 对于安全异常，使用特殊格式
 			if isinstance(exception, SecurityException):
 				message = self._format_security_notification(exception, context)
@@ -282,7 +283,8 @@ class NotificationExceptionHandler(ExceptionHandler):
 
 		return message
 
-	def _format_security_notification (self, exception: SecurityException,
+	@staticmethod
+	def _format_security_notification (exception: SecurityException,
 	                                   context: Optional[Dict[str, Any]] = None) -> str:
 		"""格式化安全异常通知"""
 		# 安全异常分类
@@ -307,7 +309,7 @@ class NotificationExceptionHandler(ExceptionHandler):
 		message = f"🔐 {security_type}报警\n\n"
 		message += f"异常类型: {exception.__class__.__name__}\n"
 		message += f"错误代码: {exception.error_code}\n"
-		message += f"错误消息: {exception.message}\n"
+		message += f"错误消息: {str(exception)}\n"
 		message += f"严重程度: {exception.severity.value}\n"
 		message += f"发生时间: {exception.timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n"
 
@@ -478,7 +480,7 @@ class SecurityExceptionHandler(ExceptionHandler):
 		"""
 		return isinstance(exception, SecurityException)
 
-	def _update_security_counters (self, exception: Exception, context: Optional[Dict[str, Any]] = None):
+	def _update_security_counters (self, exception: Exception, _context: Optional[Dict[str, Any]] = None):
 		"""更新安全异常计数器"""
 		if not isinstance(exception, SecurityException):
 			return
@@ -525,7 +527,7 @@ class SecurityExceptionHandler(ExceptionHandler):
 
 				user_counter['last_occurrence'] = now
 
-	def _should_rate_limit (self, exception: Exception, context: Optional[Dict[str, Any]] = None) -> bool:
+	def _should_rate_limit (self, exception: Exception, _context: Optional[Dict[str, Any]] = None) -> bool:
 		"""检查是否需要触发速率限制"""
 		if not isinstance(exception, SecurityException):
 			return False
@@ -564,7 +566,8 @@ class SecurityExceptionHandler(ExceptionHandler):
 
 		return False
 
-	def _trigger_rate_limit (self, exception: Exception, context: Optional[Dict[str, Any]] = None):
+	@staticmethod
+	def _trigger_rate_limit (exception: Exception, context: Optional[Dict[str, Any]] = None):
 		"""触发速率限制"""
 		# 记录速率限制触发
 		logging.warning(f"安全异常速率限制触发: {exception.__class__.__name__}")
@@ -578,7 +581,7 @@ class SecurityExceptionHandler(ExceptionHandler):
 		from datetime import datetime
 		audit_context = {
 			'exception_type': exception.__class__.__name__,
-			'exception_message': exception.message,
+			'exception_message': str(exception),
 			'timestamp': datetime.now().isoformat(),
 			'action': 'rate_limit_triggered'
 		}
@@ -601,8 +604,9 @@ class SecurityExceptionHandler(ExceptionHandler):
 			# 审计异常特殊处理
 			self._handle_audit_exception(exception, context)
 
-	def _handle_authentication_exception (self, exception: AuthenticationException,
-	                                      context: Optional[Dict[str, Any]] = None):
+	@staticmethod
+	def _handle_authentication_exception (exception: AuthenticationException,
+	                                      _context: Optional[Dict[str, Any]] = None):
 		"""处理认证异常"""
 		# 这里可以添加认证异常的特殊处理逻辑
 		# 例如：记录失败尝试、触发账户锁定等
@@ -610,9 +614,10 @@ class SecurityExceptionHandler(ExceptionHandler):
 		username = exception.details.get('username') if hasattr(exception, 'details') else None
 		if username:
 			# 记录认证失败尝试
-			logging.info(f"认证失败尝试 - 用户名: {username}, 异常: {exception.message}")
+			logging.info(f"认证失败尝试 - 用户名: {username}, 异常: {str(exception)}")
 
-	def _handle_permission_exception (self, exception: PermissionException, context: Optional[Dict[str, Any]] = None):
+	@staticmethod
+	def _handle_permission_exception (exception: PermissionException, _context: Optional[Dict[str, Any]] = None):
 		"""处理权限异常"""
 		# 这里可以添加权限异常的特殊处理逻辑
 		# 例如：记录权限拒绝事件、发送安全警报等
@@ -622,16 +627,18 @@ class SecurityExceptionHandler(ExceptionHandler):
 
 		if user_id and resource:
 			# 记录权限拒绝事件
-			logging.warning(f"权限拒绝 - 用户ID: {user_id}, 资源: {resource}, 异常: {exception.message}")
+			logging.warning(f"权限拒绝 - 用户ID: {user_id}, 资源: {resource}, 异常: {str(exception)}")
 
-	def _handle_audit_exception (self, exception: AuditException, context: Optional[Dict[str, Any]] = None):
+	@staticmethod
+	def _handle_audit_exception (exception: AuditException, _context: Optional[Dict[str, Any]] = None):
 		"""处理审计异常"""
 		# 审计异常需要特别关注，因为可能意味着审计系统本身有问题
 
 		# 记录审计系统错误
-		logging.critical(f"审计系统异常: {exception.message}")
+		logging.critical(f"审计系统异常: {str(exception)}")
 
-	# 这里可以触发紧急通知机制
+
+# 这里可以触发紧急通知机制
 
 
 class CompositeExceptionHandler(ExceptionHandler):
@@ -808,7 +815,7 @@ def handle_exception (
 		# 根据异常类型选择处理器
 		if isinstance(exception, SecurityException):
 			handler = ExceptionHandlerFactory.create_security_handler()
-		elif hasattr(exception, 'error_code') and isinstance(exception, BaseException):
+		elif hasattr(exception, 'error_code') and isinstance(exception, QuantBaseException):
 			# 根据错误码选择处理器
 			error_code = getattr(exception, 'error_code', '')
 			if error_code.startswith('5'):  # 安全错误码
@@ -874,46 +881,46 @@ def rate_limit_exception_handler (max_attempts: int = 5, window_minutes: int = 1
 			func_key = f"{func.__module__}.{func.__name__}"
 
 			# 这里应该使用更健壮的存储（如Redis）
-			if not hasattr(wrapper, '_call_times'):
-				wrapper._call_times = {}
+			if not hasattr(wrapper, 'call_times'):
+				wrapper.call_times = {}
 
-			if func_key not in wrapper._call_times:
-				wrapper._call_times[func_key] = []
+			if func_key not in wrapper.call_times:
+				wrapper.call_times[func_key] = []
 
 			# 清理过期的调用记录
-			wrapper._call_times[func_key] = [
-				t for t in wrapper._call_times[func_key]
+			wrapper.call_times[func_key] = [
+				t for t in wrapper.call_times[func_key]
 				if current_time - t < window_minutes * 60
 			]
 
 			# 检查是否超过限制
-			if len(wrapper._call_times[func_key]) >= max_attempts:
+			if len(wrapper.call_times[func_key]) >= max_attempts:
 				from .security_exceptions import TooManyAttemptsError
 				raise TooManyAttemptsError(
 					f"函数 {func.__name__} 调用过于频繁，请稍后再试",
 					details={
 						'max_attempts': max_attempts,
 						'window_minutes': window_minutes,
-						'current_attempts': len(wrapper._call_times[func_key])
+						'current_attempts': len(wrapper.call_times[func_key])
 					}
 				)
 
 			# 记录本次调用
-			wrapper._call_times[func_key].append(current_time)
+			wrapper.call_times[func_key].append(current_time)
 
 			try:
 				return func(*args, **kwargs)
 			except Exception as e:
 				# 处理异常
 				handle_exception(e, {
-					'function': func.__name__,
-					'module': func.__module__,
-					'rate_limit_info': {
-						'max_attempts': max_attempts,
-						'window_minutes': window_minutes,
-						'current_attempts': len(wrapper._call_times[func_key])
-					}
-				})
+				'function': func.__name__,
+				'module': func.__module__,
+				'rate_limit_info': {
+					'max_attempts': max_attempts,
+					'window_minutes': window_minutes,
+					'current_attempts': len(wrapper.call_times[func_key])
+				}
+			})
 				raise
 
 		return wrapper

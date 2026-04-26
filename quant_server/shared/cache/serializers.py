@@ -11,13 +11,22 @@ import zlib
 import base64
 from typing import Any, Optional
 from datetime import datetime, date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 
 class SerializerError(Exception):
 	"""序列化异常"""
-	pass
+	
+	def __init__(self, message: str, cause: Optional[Exception] = None):
+		super().__init__(message)
+		self.cause = cause
+		self.message = message
+	
+	def __str__(self) -> str:
+		if self.cause:
+			return f"{self.message}: {self.cause}"
+		return self.message
 
 
 class SerializerBase(abc.ABC):
@@ -66,8 +75,43 @@ class JSONDecoder(json.JSONDecoder):
 	def __init__ (self, *args, **kwargs):
 		super().__init__(object_hook=self.object_hook, *args, **kwargs)
 
-	def object_hook (self, obj):
-		# 这里可以添加自定义的反序列化逻辑
+	@staticmethod
+	def object_hook (obj):
+		"""自定义对象钩子，用于反序列化特殊类型"""
+		if isinstance(obj, dict):
+			# 检查是否为特殊类型标记
+			if '__type__' in obj:
+				type_name = obj['__type__']
+				if type_name == 'datetime':
+					try:
+						return datetime.fromisoformat(obj['value'])
+					except (ValueError, KeyError):
+						pass
+				elif type_name == 'date':
+					try:
+						return date.fromisoformat(obj['value'])
+					except (ValueError, KeyError):
+						pass
+				elif type_name == 'timedelta':
+					try:
+						return timedelta(seconds=obj['value'])
+					except (KeyError, TypeError):
+						pass
+				elif type_name == 'decimal':
+					try:
+						return Decimal(obj['value'])
+					except (KeyError, InvalidOperation):
+						pass
+			
+			# 检查是否为枚举类型
+			if '__enum__' in obj:
+				try:
+					# 这里可以添加枚举类型的反序列化逻辑
+					# 需要外部提供枚举类的映射
+					pass
+				except (KeyError, AttributeError):
+					pass
+		
 		return obj
 
 
@@ -212,9 +256,17 @@ def get_serializer (name: str, **kwargs) -> SerializerBase:
 		"pickle": PickleSerializer,
 		"json": JSONSerializer,
 		"msgpack": MsgPackSerializer,
+		"compressed": lambda **kws: CompressedSerializer(
+			get_serializer(kws.get('inner', 'pickle'), **kws),
+			compression_level=kws.get('compression_level', 6)
+			),
+		"base64": lambda **kws: Base64Serializer(
+			get_serializer(kws.get('inner', 'pickle'), **kws)
+			),
 	}
 
 	if name not in serializers:
 		raise SerializerError(f"Serializer '{name}' is not supported")
 
-	return serializers[name](**kwargs)
+	serializer_factory = serializers[name]
+	return serializer_factory(**kwargs)

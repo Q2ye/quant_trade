@@ -3,10 +3,11 @@
 支持多级缓存和统一的缓存管理
 """
 
-from typing import Any, Optional, List, Dict, Union, Type
+from typing import Any, Optional, List, Dict, Callable
+
 from .base import CacheBase, CacheError
-from .redis_cache import RedisCache
 from .memory_cache import MemoryCache
+from .redis_cache import RedisCache
 
 
 class CacheManager:
@@ -16,7 +17,7 @@ class CacheManager:
 		self.config = config or {}
 		self._caches: Dict[str, CacheBase] = {}
 		self._default_cache: Optional[str] = None
-		self._multi_level_caches: Dict[str, List[str]] = {}
+		self._multi_level_caches: Dict[str, Dict[str, Any]] = {}
 
 	def register_cache (
 			self,
@@ -116,16 +117,16 @@ class CacheManager:
 			self,
 			key: str,
 			cache_name: str,
-			loader: Optional[callable] = None,
+			loader: Optional[Callable] = None,
 			ttl: Optional[int] = None
-	) -> Any:
+		) -> Any:
 		"""从多级缓存获取值"""
 		if cache_name not in self._multi_level_caches:
 			raise CacheError(f"Multi-level cache '{cache_name}' is not configured")
 
-		config = self._multi_level_caches[cache_name]
-		levels = config["levels"]
-		read_through = config["read_through"]
+		config: Dict[str, Any] = self._multi_level_caches[cache_name]
+		levels: List[str] = config["levels"]
+		read_through: bool = config["read_through"]
 
 		# 逐级查找
 		for level_name in levels:
@@ -160,12 +161,12 @@ class CacheManager:
 			cache_name: str,
 			ttl: Optional[int] = None,
 			tags: Optional[List[str]] = None
-	):
+		):
 		"""设置多级缓存值"""
 		if cache_name not in self._multi_level_caches:
 			raise CacheError(f"Multi-level cache '{cache_name}' is not configured")
 
-		levels = self._multi_level_caches[cache_name]["levels"]
+		levels: List[str] = self._multi_level_caches[cache_name]["levels"]
 
 		# 设置所有级别的缓存
 		for level_name in levels:
@@ -185,12 +186,12 @@ class CacheManager:
 			self,
 			key: str,
 			cache_name: str
-	) -> bool:
+		) -> bool:
 		"""删除多级缓存值"""
 		if cache_name not in self._multi_level_caches:
 			raise CacheError(f"Multi-level cache '{cache_name}' is not configured")
 
-		levels = self._multi_level_caches[cache_name]["levels"]
+		levels: List[str] = self._multi_level_caches[cache_name]["levels"]
 		results = []
 
 		for level_name in levels:
@@ -226,7 +227,7 @@ class CacheManager:
 			try:
 				is_alive = await cache.ping()
 				results[name] = is_alive
-			except Exception:
+			except (CacheError, Exception):
 				results[name] = False
 
 		return results

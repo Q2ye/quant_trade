@@ -54,14 +54,6 @@ class RedisCache(CacheBase):
 		if self._client is None:
 			self._connect()
 
-		# 测试连接
-		if self._client is not None:
-			try:
-				await self._client.ping()
-			except redis.ConnectionError:
-				self._connect()
-				if self._client is not None:
-					await self._client.ping()
 
 	async def _serialize_value (self, value: Any) -> bytes:
 		"""序列化值"""
@@ -385,13 +377,12 @@ class RedisCache(CacheBase):
 	async def close (self):
 		"""关闭连接"""
 		try:
-			if self._client is not None:
-				await self._client.close()
-				self._client = None
-			if self._connection_pool is not None:
-				await self._connection_pool.disconnect()
-				self._connection_pool = None
-		except (redis.RedisError, Exception):
+			await self._client.close()
+			self._client = None
+			# 注意：redis.asyncio.ConnectionPool 没有 disconnect 方法
+			# 连接池会在客户端关闭时自动释放
+			self._connection_pool = None
+		except Exception:
 			pass
 
 	async def flush_all (self):

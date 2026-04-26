@@ -135,7 +135,7 @@ class StrategyErrorEvent(BaseEvent):
 			self,
 			strategy_id: str,
 			strategy_name: str,
-			user_id: int,
+			user_id: str,
 			error_code: int,
 			error_message: str,
 			**kwargs

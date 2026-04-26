@@ -33,7 +33,7 @@ class StrategyHandler:
 	async def get_strategy_list (
 			self,
 			request,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取策略列表
@@ -89,7 +89,7 @@ class StrategyHandler:
 			self,
 			strategy_id: str,
 			request,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取策略详情
@@ -120,7 +120,7 @@ class StrategyHandler:
 	async def create_strategy (
 			self,
 			request,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		创建策略
@@ -164,7 +164,7 @@ class StrategyHandler:
 			self,
 			strategy_id: str,
 			request,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		更新策略
@@ -208,7 +208,7 @@ class StrategyHandler:
 	async def delete_strategy (
 			self,
 			strategy_id: str,
-			user_id: int
+			user_id: str
 	) -> None:
 		"""
 		删除策略
@@ -239,7 +239,7 @@ class StrategyHandler:
 			self,
 			strategy_id: str,
 			request,
-			user_id: int,
+			user_id: str,
 			capital: float = None
 	) -> Dict[str, Any]:
 		"""
@@ -285,7 +285,7 @@ class StrategyHandler:
 			self,
 			strategy_id: str,
 			request,
-			user_id: int,
+			user_id: str,
 			force: bool = None
 	) -> Dict[str, Any]:
 		"""
@@ -326,7 +326,7 @@ class StrategyHandler:
 			self,
 			strategy_id: str,
 			request,  # 未使用参数
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取策略绩效
@@ -386,7 +386,7 @@ class StrategyHandler:
 	async def get_strategy_status (
 			self,
 			strategy_id: str,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取策略状态
@@ -413,47 +413,47 @@ class StrategyHandler:
 
 # ==================== 导出函数供router使用 ====================
 
-async def get_strategy_list (session: AsyncSession, request, user_id: int):
+async def get_strategy_list (session: AsyncSession, request, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.get_strategy_list(request, user_id)
 
 
-async def get_strategy_detail (session: AsyncSession, strategy_id: str, request, user_id: int):
+async def get_strategy_detail (session: AsyncSession, strategy_id: str, request, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.get_strategy_detail(strategy_id, request, user_id)
 
 
-async def create_strategy (session: AsyncSession, request, user_id: int):
+async def create_strategy (session: AsyncSession, request, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.create_strategy(request, user_id)
 
 
-async def update_strategy (session: AsyncSession, strategy_id: str, request, user_id: int):
+async def update_strategy (session: AsyncSession, strategy_id: str, request, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.update_strategy(strategy_id, request, user_id)
 
 
-async def delete_strategy (session: AsyncSession, strategy_id: str, user_id: int):
+async def delete_strategy (session: AsyncSession, strategy_id: str, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.delete_strategy(strategy_id, user_id)
 
 
-async def start_strategy (session: AsyncSession, strategy_id: str, request, user_id: int, capital: float = None):
+async def start_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, capital: float = None):
 	handler = StrategyHandler(session)
 	return await handler.start_strategy(strategy_id, request, user_id, capital)
 
 
-async def stop_strategy (session: AsyncSession, strategy_id: str, request, user_id: int, force: bool = None):
+async def stop_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, force: bool = None):
 	handler = StrategyHandler(session)
 	return await handler.stop_strategy(strategy_id, request, user_id, force)
 
 
-async def get_strategy_performance (session: AsyncSession, strategy_id: str, request, user_id: int):
+async def get_strategy_performance (session: AsyncSession, strategy_id: str, request, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.get_strategy_performance(strategy_id, request, user_id)
 
 
-async def get_strategy_status (session: AsyncSession, strategy_id: str, user_id: int):
+async def get_strategy_status (session: AsyncSession, strategy_id: str, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.get_strategy_status(strategy_id, user_id)
 

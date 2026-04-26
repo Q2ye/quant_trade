@@ -1,10 +1,10 @@
 # shared/database/repositories/account/transaction_repo.py
-from typing import List, Dict, Any, Optional
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, between
-from sqlalchemy.sql import literal_column
 
 from quant_server.shared.database.models.business_models import AccountTransaction
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -16,7 +16,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, AccountTransaction)
 
-	async def get_account_transactions (self, account_id: int, skip: int = 0,
+	async def get_account_transactions (self, account_id: str, skip: int = 0,
 	                                    limit: int = 100) -> List[AccountTransaction]:
 		"""获取账户的交易流水"""
 		query = (
@@ -30,7 +30,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_transactions_by_date_range (self, account_id: int, start_date: date,
+	async def get_transactions_by_date_range (self, account_id: str, start_date: date,
 	                                          end_date: date) -> List[AccountTransaction]:
 		"""获取指定日期范围内的交易流水"""
 		query = (
@@ -48,7 +48,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_transactions_by_type (self, account_id: int, transaction_type: str,
+	async def get_transactions_by_type (self, account_id: str, transaction_type: str,
 	                                    skip: int = 0, limit: int = 100) -> List[AccountTransaction]:
 		"""按交易类型获取流水"""
 		query = (
@@ -67,7 +67,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_transaction_summary (self, account_id: int, start_date: Optional[date] = None,
+	async def get_transaction_summary (self, account_id: str, start_date: Optional[date] = None,
 	                                   end_date: Optional[date] = None) -> Dict[str, Any]:
 		"""获取交易流水汇总统计"""
 		query = select(self.model).where(self.model.account_id == account_id)
@@ -141,7 +141,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 			"daily_summary": daily_summary[:30]  # 最近30天
 		}
 
-	async def create_transaction (self, account_id: int, transaction_type: str, amount: Decimal,
+	async def create_transaction (self, account_id: str, transaction_type: str, amount: Decimal,
 	                              description: str = "", reference_id: Optional[str] = None,
 	                              reference_type: Optional[str] = None) -> AccountTransaction:
 		"""创建账户流水记录"""
@@ -190,7 +190,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		await self.session.flush()
 		return instance
 
-	async def search_transactions (self, account_id: int, keyword: Optional[str] = None,
+	async def search_transactions (self, account_id: str, keyword: Optional[str] = None,
 	                               min_amount: Optional[Decimal] = None,
 	                               max_amount: Optional[Decimal] = None,
 	                               skip: int = 0, limit: int = 50) -> List[AccountTransaction]:
@@ -216,7 +216,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_recent_transactions (self, account_id: int, days: int = 7) -> List[Dict[str, Any]]:
+	async def get_recent_transactions (self, account_id: str, days: int = 7) -> List[Dict[str, Any]]:
 		"""获取最近交易记录"""
 		cutoff_date = datetime.now() - timedelta(days=days)
 

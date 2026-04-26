@@ -298,7 +298,7 @@ class PortfolioStrategyRepository(BaseRepository[PortfolioStrategy]):
 			query = select(
 				func.count().label("total_strategies"),
 				func.count(
-					case([(self.model.is_active == True, 1)], else_=None)
+					case((self.model.is_active == True, 1), else_=None)
 				).label("active_strategies"),
 				func.sum(self.model.weight).label("total_weight"),
 				func.sum(self.model.allocation).label("total_allocation"),

@@ -19,9 +19,9 @@ from datetime import datetime
 
 # 导入统一类型定义
 from ..types.entities import (
-    EngineConfig as EngineConfigEntity,
-    SystemConfig as SystemConfigEntity,
-    Event as EventEntity
+    EngineConfigEntity,
+    SystemConfig,
+    EventEntity
 )
 from ..types.enums import (
     HealthStatus,
@@ -107,7 +107,7 @@ class MainEngine(EngineBase):
         self.record.engine_type = EngineType.MAIN
 
         # 系统配置
-        self._system_config: Optional[SystemConfigEntity] = None
+        self._system_config: Optional[SystemConfig] = None
 
         # 系统组件
         self._engine_factory: Optional[EngineFactory] = None
@@ -237,7 +237,7 @@ class MainEngine(EngineBase):
         system_config_data = self.config.config.get("system", {})
 
         # 创建系统配置实体
-        self._system_config = SystemConfigEntity(
+        self._system_config = SystemConfig(
             system_name=system_config_data.get("system_name", "量化交易系统"),
             version=system_config_data.get("version", "1.0.0"),
             mode=SystemMode(system_config_data.get("mode", "development")),
@@ -571,11 +571,10 @@ class MainEngine(EngineBase):
             except Exception as e:
                 logger.error(f"发布系统事件失败: {e}")
 
-    async def _handle_system_health_check(self, event: EventEntity) -> None:
+    async def _handle_system_health_check(self) -> None:
         """处理系统健康检查事件
 
         Args:
-            event: 事件对象
         """
         # 更新系统状态
         await self._update_system_status()

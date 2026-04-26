@@ -5,8 +5,9 @@
 """
 
 from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_
 from sqlalchemy.sql import func
 
 from quant_server.shared.database.models.data_models import FactorDefinition
@@ -97,7 +98,7 @@ class FactorDefinitionRepository(BaseRepository[FactorDefinition]):
 		result = await self.session.execute(stmt)
 		return result.scalars().all()
 
-	async def get_user_factors (self, user_id: int, include_public: bool = True) -> List[FactorDefinition]:
+	async def get_user_factors (self, user_id: str, include_public: bool = True) -> List[FactorDefinition]:
 		"""获取用户创建的因子列表（可选包含公开因子）"""
 		conditions = [FactorDefinition.is_active == True]
 		if include_public:
@@ -155,7 +156,7 @@ class FactorDefinitionRepository(BaseRepository[FactorDefinition]):
 
 	async def update_factor (
 			self,
-			factor_id: int,
+			factor_id: str,
 			**kwargs
 	) -> Optional[FactorDefinition]:
 		"""更新因子定义"""
@@ -168,7 +169,7 @@ class FactorDefinitionRepository(BaseRepository[FactorDefinition]):
 
 		return await self.update(factor_id, **kwargs)
 
-	async def deactivate_factor (self, factor_id: int) -> bool:
+	async def deactivate_factor (self, factor_id: str) -> bool:
 		"""停用因子"""
 		stmt = update(FactorDefinition).where(
 			FactorDefinition.id == factor_id
@@ -178,7 +179,7 @@ class FactorDefinitionRepository(BaseRepository[FactorDefinition]):
 		await self.session.commit()
 		return result.rowcount > 0
 
-	async def activate_factor (self, factor_id: int) -> bool:
+	async def activate_factor (self, factor_id: str) -> bool:
 		"""激活因子"""
 		stmt = update(FactorDefinition).where(
 			FactorDefinition.id == factor_id

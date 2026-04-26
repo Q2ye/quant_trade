@@ -10,15 +10,16 @@
 继承自：HyperRepositoryBase（因为是时序数据管理）
 """
 
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text, and_, or_
-from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+from typing import List, Dict, Any
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.system_models import HyperTableMetadata
 from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 from quant_server.shared.database.repositories.base.repository_base import RepositoryError
-from quant_server.shared.database.models.system_models import HyperTableMetadata, TimeBucketConfig
 from quant_server.shared.database.repositories.hyper_tables import ChunkManager, TimeBucketManager
 
 

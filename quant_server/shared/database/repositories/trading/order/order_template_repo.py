@@ -12,20 +12,16 @@
 4. 用户隔离：确保用户只能访问自己的模板
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from decimal import Decimal
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any
+
+from sqlalchemy import select, update, and_, or_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text, case, String
 from sqlalchemy.orm import joinedload
 
+from quant_server.shared.database.models.business_models import OrderTemplate
 from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.models.business_models import OrderTemplate, SysUser
 from quant_server.shared.database.repositories.types import (
-	PaginationParams,
-	PaginationResult,
-	FilterCondition,
-	SortCondition,
 	RepositoryError
 )
 
@@ -44,7 +40,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	# ==================== 业务查询方法 ====================
 
-	async def get_by_template_id (self, template_id: int, with_user: bool = False) -> Optional[OrderTemplate]:
+	async def get_by_template_id (self, template_id: str, with_user: bool = False) -> Optional[OrderTemplate]:
 		"""
 		根据模板ID获取订单模板
 
@@ -69,7 +65,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			template_type: Optional[str] = None,
 			is_default: Optional[bool] = None,
 			skip: int = 0,
@@ -117,7 +113,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_by_template_name (
 			self,
-			user_id: int,
+			user_id: str,
 			template_name: str
 	) -> Optional[OrderTemplate]:
 		"""
@@ -146,7 +142,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_default_template (
 			self,
-			user_id: int,
+			user_id: str,
 			template_type: Optional[str] = None
 	) -> Optional[OrderTemplate]:
 		"""
@@ -178,7 +174,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_templates_by_type (
 			self,
-			user_id: int,
+			user_id: str,
 			template_type: str,
 			skip: int = 0,
 			limit: int = 100
@@ -220,7 +216,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def search_templates (
 			self,
-			user_id: int,
+			user_id: str,
 			search_term: str,
 			template_type: Optional[str] = None,
 			skip: int = 0,
@@ -273,7 +269,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_recent_templates (
 			self,
-			user_id: int,
+			user_id: str,
 			days: int = 30,
 			template_type: Optional[str] = None,
 			limit: int = 50
@@ -316,7 +312,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_template_categories (
 			self,
-			user_id: int
+			user_id: str
 	) -> List[str]:
 		"""
 		获取用户的模板分类
@@ -344,7 +340,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_template_statistics (
 			self,
-			user_id: int
+			user_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取模板统计信息
@@ -357,7 +353,11 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 		"""
 		try:
 			# 总模板数
-			total_templates = await self.count(OrderTemplate.user_id == user_id)
+			total_query = select(func.count()).select_from(OrderTemplate).where(
+				OrderTemplate.user_id == user_id
+			)
+			total_result = await self.session.execute(total_query)
+			total_templates = total_result.scalar() or 0
 
 			# 按类型统计
 			type_stats_query = (
@@ -381,12 +381,14 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 				}
 
 			# 默认模板数
-			default_templates = await self.count(
+			default_query = select(func.count()).select_from(OrderTemplate).where(
 				and_(
 					OrderTemplate.user_id == user_id,
 					OrderTemplate.is_default == True
 				)
 			)
+			default_result = await self.session.execute(default_query)
+			default_templates = default_result.scalar() or 0
 
 			# 最近更新
 			recent_update = await self.session.execute(
@@ -408,7 +410,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def get_template_usage_summary (
 			self,
-			user_id: int,
+			user_id: str,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
 	) -> Dict[str, Any]:
@@ -436,12 +438,14 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 			# 活跃模板数（最近30天更新过）
 			thirty_days_ago = datetime.now() - timedelta(days=30)
-			active_templates = await self.count(
+			active_query = select(func.count()).select_from(OrderTemplate).where(
 				and_(
 					OrderTemplate.user_id == user_id,
 					OrderTemplate.updated_at >= thirty_days_ago
 				)
 			)
+			active_result = await self.session.execute(active_query)
+			active_templates = active_result.scalar() or 0
 
 			# 模板创建时间分布
 			creation_stats = await self.session.execute(
@@ -469,8 +473,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def set_default_template (
 			self,
-			user_id: int,
-			template_id: int,
+			user_id: str,
+			template_id: str,
 			template_type: Optional[str] = None
 	) -> bool:
 		"""
@@ -506,15 +510,15 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 					reset_filters.append(OrderTemplate.template_type == template.template_type)
 
 				reset_query = (
-					OrderTemplate.__table__.update()
+					update(OrderTemplate)
 					.where(and_(*reset_filters))
 					.values(is_default=False, updated_at=datetime.now())
 				)
 				await self.session.execute(reset_query)
 
-				# 设置新的默认模板
+				# 设置新默认模板
 				set_query = (
-					OrderTemplate.__table__.update()
+					update(OrderTemplate)
 					.where(OrderTemplate.id == template_id)
 					.values(is_default=True, updated_at=datetime.now())
 				)
@@ -523,7 +527,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 				await self.session.commit()
 				return True
 
-			except Exception as e:
+			except Exception:
 				await self.session.rollback()
 				raise
 
@@ -532,8 +536,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def duplicate_template (
 			self,
-			user_id: int,
-			template_id: int,
+			user_id: str,
+			template_id: str,
 			new_template_name: str,
 			new_description: Optional[str] = None
 	) -> Optional[OrderTemplate]:
@@ -581,8 +585,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def update_template_parameters (
 			self,
-			user_id: int,
-			template_id: int,
+			user_id: str,
+			template_id: str,
 			parameters: Dict[str, Any],
 			description: Optional[str] = None
 	) -> Optional[OrderTemplate]:
@@ -604,7 +608,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 			if not template or template.user_id != user_id:
 				return None
 
-			update_data = {
+			update_data: Dict[str, Any] = {
 				'parameters': parameters,
 				'updated_at': datetime.now()
 			}
@@ -620,8 +624,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def batch_delete_templates (
 			self,
-			user_id: int,
-			template_ids: List[int]
+			user_id: str,
+			template_ids: List[str]
 	) -> int:
 		"""
 		批量删除模板
@@ -669,8 +673,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def export_template (
 			self,
-			user_id: int,
-			template_id: int
+			user_id: str,
+			template_id: str
 	) -> Optional[Dict[str, Any]]:
 		"""
 		导出模板
@@ -710,7 +714,7 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	async def import_template (
 			self,
-			user_id: int,
+			user_id: str,
 			import_data: Dict[str, Any],
 			template_name: Optional[str] = None,
 			is_default: bool = False
@@ -776,7 +780,8 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 	# ==================== 辅助方法 ====================
 
-	def _build_order_by (self, order_by: str) -> List:
+	@staticmethod
+	def _build_order_by (order_by: str) -> List:
 		"""
 		构建排序子句
 
@@ -787,12 +792,12 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 			排序子句列表
 		"""
 		order_mappings = {
+			'template_name_asc': [asc(OrderTemplate.template_name)],
+			'template_name_desc': [desc(OrderTemplate.template_name)],
 			'created_at_asc': [asc(OrderTemplate.created_at)],
 			'created_at_desc': [desc(OrderTemplate.created_at)],
 			'updated_at_asc': [asc(OrderTemplate.updated_at)],
 			'updated_at_desc': [desc(OrderTemplate.updated_at)],
-			'template_name_asc': [asc(OrderTemplate.template_name)],
-			'template_name_desc': [desc(OrderTemplate.template_name)],
 			'template_type_asc': [asc(OrderTemplate.template_type)],
 			'template_type_desc': [desc(OrderTemplate.template_type)],
 		}
@@ -812,15 +817,21 @@ class OrderTemplateRepository(BaseRepository[OrderTemplate]):
 
 			# 今日新增模板数
 			today = datetime.now().date()
-			today_templates = await self.count(
+			today_query = select(func.count()).select_from(OrderTemplate).where(
 				and_(
 					OrderTemplate.created_at >= today,
 					OrderTemplate.created_at < today + timedelta(days=1)
 				)
 			)
+			today_result = await self.session.execute(today_query)
+			today_templates = today_result.scalar() or 0
 
 			# 默认模板数
-			default_templates = await self.count(OrderTemplate.is_default == True)
+			default_query = select(func.count()).select_from(OrderTemplate).where(
+				OrderTemplate.is_default == True
+			)
+			default_result = await self.session.execute(default_query)
+			default_templates = default_result.scalar() or 0
 
 			# 涉及用户数
 			user_count = await self.session.execute(

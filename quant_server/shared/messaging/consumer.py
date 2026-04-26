@@ -5,16 +5,17 @@
 """
 
 import asyncio
-import json
-from typing import Any, Dict, Optional, Callable, Awaitable
+import logging
+from typing import Dict, Optional, Callable, Awaitable
+
+import aio_pika
+from aiokafka import AIOKafkaConsumer
+from redis.asyncio import Redis
+
 from .base import (
 	MessageConsumer, Message, MessageSerializer
 )
 from .serializer import JSONSerializer, deserialize_message
-from redis.asyncio import Redis
-import aio_pika
-from aiokafka import AIOKafkaConsumer
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -145,21 +146,21 @@ class RedisConsumer(MessageConsumer):
 		try:
 			if timeout:
 				# 阻塞弹出
-							data = await self.redis_pool.brpop(queue_name, timeout=timeout)
-							if data:
-								_, message_data = data
-								return await deserialize_message(
-									message_data.decode() if isinstance(message_data, bytes) else message_data,
-									self.serializer
-								)
+				data = await self.redis_pool.brpop(queue_name, timeout=timeout)
+				if data:
+					_, message_data = data
+					return await deserialize_message(
+						message_data.decode() if isinstance(message_data, bytes) else message_data,
+						self.serializer
+					)
 			else:
 				# 非阻塞弹出
-							data = await self.redis_pool.rpop(queue_name)
-							if data:
-								return await deserialize_message(
-									data.decode() if isinstance(data, bytes) else data,
-									self.serializer
-								)
+				data = await self.redis_pool.rpop(queue_name)
+				if data:
+					return await deserialize_message(
+						data.decode() if isinstance(data, bytes) else data,
+						self.serializer
+					)
 		except Exception as e:
 			logger.error(f"Error consuming from Redis: {e}")
 
@@ -394,6 +395,7 @@ class KafkaConsumer(MessageConsumer):
 		if not self.connected:
 			await self.connect()
 
+		consumer = None
 		try:
 			# 创建一次性消费者
 			consumer = AIOKafkaConsumer(
@@ -407,18 +409,17 @@ class KafkaConsumer(MessageConsumer):
 			await consumer.start()
 
 			# 获取消息
-			msg = await consumer.getone(timeout=timeout)
-			if msg:
+			async for msg in consumer:
 				message = await deserialize_message(msg.value, self.serializer)
 				await consumer.commit()
 				return message
 		except Exception as e:
 			logger.error(f"Error consuming from Kafka: {e}")
 		finally:
-			if 'consumer' in locals():
+			if consumer is not None:
 				await consumer.stop()
 
-		return None
+			return None
 
 
 # 工厂函数

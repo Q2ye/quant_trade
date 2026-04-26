@@ -7,11 +7,12 @@
 包括模板创建、查询、验证、渲染等业务方法
 """
 
-from typing import Optional, List, Dict, Any, Tuple
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
+from typing import Optional, List, Dict, Any
 
-from quant_server.shared.database.models.business_models import AnalysisTemplate
+from sqlalchemy import select, and_, or_, func, desc, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.business_models import AnalysisTemplate, AnalysisTask
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
@@ -109,7 +110,7 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 			List[AnalysisTemplate]: 公开模板列表
 		"""
 		try:
-			filters = {'is_public': True}
+			filters = {'is_public': "True"}
 
 			if template_type:
 				filters['template_type'] = template_type
@@ -120,7 +121,7 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 
 	async def get_user_templates (
 			self,
-			user_id: int,
+			user_id: str,
 			include_public: bool = True,
 			template_type: Optional[str] = None,
 			limit: int = 100
@@ -165,7 +166,7 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 
 	async def render_template (
 			self,
-			template_id: int,
+			template_id: str,
 			context: Dict[str, Any]
 	) -> Dict[str, Any]:
 		"""
@@ -222,17 +223,19 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 
 	async def validate_template_config (
 			self,
-			config_template: Dict[str, Any],
+			config_template: Any,
 			required_fields: Optional[List[str]] = None,
-			context: Optional[Dict[str, Any]] = None
+			context: Optional[Dict[str, Any]] = None,
+			template_type: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
-		验证模板配置
+		验证模板配置的完整性和有效性
 
 		Args:
 			config_template: 配置模板
 			required_fields: 必填字段列表（可选）
 			context: 测试上下文数据（可选）
+			template_type: 模板类型（用于类型特定的验证）
 
 		Returns:
 			Dict[str, Any]: 验证结果
@@ -243,58 +246,223 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 				'errors': [],
 				'warnings': [],
 				'required_fields_missing': [],
-				'rendered_config': None
+				'placeholder_warnings': [],
+				'type_errors': [],
+				'rendered_config': None,
+				'validation_summary': {}
 			}
 
-			# 检查必填字段
+			# 1. 基础结构验证
+			if not isinstance(config_template, dict):
+				validation_result['errors'].append("配置模板必须是字典格式")
+				validation_result['valid'] = False
+				return validation_result
+
+			# 2. 必填字段检查
 			if required_fields:
 				for field in required_fields:
 					if field not in config_template:
 						validation_result['required_fields_missing'].append(field)
 						validation_result['valid'] = False
 
-			# 尝试渲染模板（如果有上下文）
+			# 3. 模板类型特定的验证规则
+			if template_type:
+				type_validation = self._validate_by_template_type(config_template, template_type)
+				validation_result['errors'].extend(type_validation.get('errors', []))
+				validation_result['warnings'].extend(type_validation.get('warnings', []))
+				validation_result['type_errors'].extend(type_validation.get('type_errors', []))
+				validation_result['valid'] = validation_result['valid'] and type_validation.get('valid', True)
+
+			# 4. 占位符验证和渲染测试
 			if context:
-				try:
-					# 使用简化渲染逻辑
-					def render_config (config: Any) -> Any:
-						if isinstance(config, dict):
-							return {k: render_config(v) for k, v in config.items()}
-						elif isinstance(config, list):
-							return [render_config(item) for item in config]
-						elif isinstance(config, str):
-							import re
-							pattern = r'\{(\w+)\}'
-							matches = re.findall(pattern, config)
+				rendered_result = self._render_and_validate_placeholders(config_template, context)
+				validation_result['rendered_config'] = rendered_result.get('rendered_config')
+				validation_result['placeholder_warnings'].extend(rendered_result.get('warnings', []))
+				validation_result['errors'].extend(rendered_result.get('errors', []))
+				validation_result['valid'] = validation_result['valid'] and rendered_result.get('valid', True)
+			else:
+				# 即使没有上下文，也检查占位符语法
+				placeholder_check = self._validate_placeholder_syntax(config_template)
+				validation_result['warnings'].extend(placeholder_check.get('warnings', []))
 
-							# 检查所有占位符是否都有对应的上下文值
-							for placeholder in matches:
-								if placeholder not in context:
-									validation_result['warnings'].append(
-										f"占位符 '{placeholder}' 在上下文中未定义"
-									)
+			# 5. 数据格式验证
+			format_validation = self._validate_data_formats(config_template)
+			validation_result['errors'].extend(format_validation.get('errors', []))
+			validation_result['valid'] = validation_result['valid'] and format_validation.get('valid', True)
 
-							return config
-						else:
-							return config
-
-					validation_result['rendered_config'] = render_config(config_template)
-				except Exception as e:
-					validation_result['errors'].append(f"渲染失败: {str(e)}")
-					validation_result['valid'] = False
-
-			# 检查配置结构
-			if not isinstance(config_template, dict):
-				validation_result['errors'].append("配置模板必须是字典格式")
-				validation_result['valid'] = False
+			# 6. 生成验证摘要
+			validation_result['validation_summary'] = {
+				'total_errors': len(validation_result['errors']),
+				'total_warnings': len(validation_result['warnings']),
+				'has_placeholder_issues': len(validation_result['placeholder_warnings']) > 0,
+				'has_type_issues': len(validation_result['type_errors']) > 0,
+				'config_size': len(str(config_template))
+			}
 
 			return validation_result
 		except Exception as e:
 			raise RepositoryError(f"验证模板配置失败: {str(e)}")
 
+	@staticmethod
+	def _validate_by_template_type (config: Dict[str, Any], template_type: str) -> Dict[str, Any]:
+		"""根据模板类型进行特定验证"""
+		result = {'valid': True, 'errors': [], 'warnings': [], 'type_errors': []}
+
+		# 性能分析模板验证
+		if template_type == 'performance':
+			required_performance_fields = ['time_range', 'benchmarks', 'metrics']
+			for field in required_performance_fields:
+				if field not in config:
+					result['errors'].append(f"性能分析模板必须包含 '{field}' 字段")
+					result['valid'] = False
+
+			# 验证时间范围格式
+			if 'time_range' in config:
+				time_range = config['time_range']
+				if not isinstance(time_range, dict):
+					result['errors'].append("时间范围必须是字典格式")
+					result['valid'] = False
+				elif 'start_date' not in time_range or 'end_date' not in time_range:
+					result['errors'].append("时间范围必须包含 start_date 和 end_date")
+					result['valid'] = False
+
+		# 风险分析模板验证
+		elif template_type == 'risk':
+			required_risk_fields = ['risk_metrics', 'thresholds']
+			for field in required_risk_fields:
+				if field not in config:
+					result['warnings'].append(f"风险分析模板建议包含 '{field}' 字段")
+
+			# 验证阈值设置
+			if 'thresholds' in config:
+				thresholds = config['thresholds']
+				if not isinstance(thresholds, dict):
+					result['errors'].append("阈值设置必须是字典格式")
+					result['valid'] = False
+
+		# 归因分析模板验证
+		elif template_type == 'attribution':
+			required_attribution_fields = ['factors', 'method']
+			for field in required_attribution_fields:
+				if field not in config:
+					result['errors'].append(f"归因分析模板必须包含 '{field}' 字段")
+					result['valid'] = False
+
+		return result
+
+	@staticmethod
+	def _render_and_validate_placeholders (config: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+		"""渲染配置并验证占位符"""
+		result = {'valid': True, 'errors': [], 'warnings': [], 'rendered_config': None}
+
+		def render_config (config_item: Any) -> Any:
+			if isinstance(config_item, dict):
+				return {k: render_config(v) for k, v in config_item.items()}
+			elif isinstance(config_item, list):
+				return [render_config(item) for item in config_item]
+			elif isinstance(config_item, str):
+				import re
+
+				# 查找所有占位符
+				pattern = r'\{(\w+)\}'
+				matches = re.findall(pattern, config_item)
+
+				# 验证占位符
+				for placeholder in matches:
+					if placeholder not in context:
+						result['warnings'].append(f"占位符 '{placeholder}' 在上下文中未定义")
+						result['valid'] = False
+
+				# 渲染占位符
+				def replace_placeholder (match):
+					placeholder_str: str = match.group(1)
+					if placeholder_str in context:
+						return str(context[placeholder_str])
+					else:
+						return match.group(0)  # 保持原样
+
+				try:
+					return re.sub(pattern, replace_placeholder, config_item)
+				except Exception as exw:
+					result['errors'].append(f"渲染占位符失败: {str(exw)}")
+					result['valid'] = False
+					return config_item
+			else:
+				return config_item
+
+		try:
+			result['rendered_config'] = render_config(config)
+		except Exception as ex:
+			result['errors'].append(f"渲染配置失败: {str(ex)}")
+			result['valid'] = False
+
+		return result
+
+	@staticmethod
+	def _validate_placeholder_syntax (config: Any) -> Dict[str, Any]:
+		"""验证占位符语法"""
+		result = {'warnings': []}
+
+		def check_syntax (config_item: Any):
+			if isinstance(config_item, dict):
+				for v in config_item.values():
+					check_syntax(v)
+			elif isinstance(config_item, list):
+				for item in config_item:
+					check_syntax(item)
+			elif isinstance(config_item, str):
+				import re
+				# 检查无效的占位符语法
+				invalid_patterns = [
+					(r'\{\{.*\}\}', "双重花括号"),
+					(r'\{.*\{.*\}.*\}', "嵌套花括号"),
+					(r'\{.*\s+.*\}', "占位符包含空格")
+				]
+
+				for pattern, description in invalid_patterns:
+					if re.search(pattern, config_item):
+						result['warnings'].append(f"检测到可能的占位符语法问题: {description}")
+
+		check_syntax(config)
+		return result
+
+	@staticmethod
+	def _validate_data_formats (config: Any) -> Dict[str, Any]:
+		"""验证数据格式"""
+		result = {'valid': True, 'errors': []}
+
+		def validate_format (config_item: Any, path: str = ""):
+			if isinstance(config_item, dict):
+				for k, v in config_item.items():
+					validate_format(v, f"{path}.{k}" if path else k)
+			elif isinstance(config_item, list):
+				for i, item in enumerate(config_item):
+					validate_format(item, f"{path}[{i}]")
+			elif isinstance(config_item, str):
+				# 验证日期格式
+				if 'date' in path.lower():
+					import re
+					date_patterns = [
+						r'^\d{4}-\d{2}-\d{2}$',  # YYYY-MM-DD
+						r'^\d{8}$'  # YYYYMMDD
+					]
+
+					if not any(re.match(pattern, config_item) for pattern in date_patterns):
+						result['warnings'].append(f"字段 '{path}' 的值可能不是标准日期格式")
+
+				# 验证数值格式
+				elif any(keyword in path.lower() for keyword in ['value', 'amount', 'price', 'rate']):
+					try:
+						float(config_item)
+					except ValueError:
+						result['warnings'].append(f"字段 '{path}' 的值可能不是有效数值")
+
+		validate_format(config)
+		return result
+
 	async def update_template (
 			self,
-			template_id: int,
+			template_id: str,
 			template_name: Optional[str] = None,
 			config_template: Optional[Dict[str, Any]] = None,
 			output_format: Optional[str] = None,
@@ -442,7 +610,7 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 
 	async def duplicate_template (
 			self,
-			template_id: int,
+			template_id: str,
 			new_template_name: str,
 			created_by: int,
 			is_public: Optional[bool] = None
@@ -482,36 +650,87 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 
 	async def get_template_usage_count (
 			self,
-			template_id: int,
+			template_id: str,
 			days: int = 30
-	) -> int:
+	) -> Dict[str, Any]:
 		"""
-		获取模板使用次数（通过关联的任务统计）
+		获取模板使用统计（通过关联的任务统计）
 
 		Args:
 			template_id: 模板ID
 			days: 时间范围（天数）
 
 		Returns:
-			int: 使用次数
+			Dict[str, Any]: 使用统计信息
 		"""
 		try:
-			# 这里需要关联AnalysisTask表进行统计
-			# 由于模板和任务之间没有直接关联，需要通过其他方式统计
-			# 这里简化实现，返回0
+			from datetime import datetime, timedelta
+			from sqlalchemy import func, select
 
-			# 实际实现可能需要添加模板ID到任务表的关联字段
-			# 或者通过其他方式追踪模板使用情况
+			# 计算时间范围
+			start_date = datetime.now() - timedelta(days=days)
 
-			return 0
+			# 查询使用该模板的任务数量
+
+			query = select(
+				func.count(AnalysisTask.id).label('total_count'),
+				func.count(func.distinct(AnalysisTask.created_by)).label('unique_users'),
+				func.avg(AnalysisTask.progress).label('avg_progress'),
+				func.sum(case((AnalysisTask.status == 'completed', 1), else_=0)).label('completed_count'),
+				func.sum(case((AnalysisTask.status == 'failed', 1), else_=0)).label('failed_count')
+			).where(
+				and_(
+					AnalysisTask.created_at >= start_date,
+					# 通过参数中的template_id字段进行关联（需要先添加该字段）
+					AnalysisTask.parameters['template_id'].astext == template_id
+				)
+			)
+
+			result = await self.session.execute(query)
+			row = result.fetchone()
+
+			# 如果没有找到关联字段，尝试通过模板名称匹配
+			if row.total_count == 0:
+				# 获取模板名称
+				template = await self.get(template_id)
+				if template:
+					# 通过任务参数中的模板名称进行模糊匹配
+					query2 = select(
+						func.count(AnalysisTask.id).label('total_count')
+					).where(
+						and_(
+							AnalysisTask.created_at >= start_date,
+							AnalysisTask.parameters['template_name'].astext.ilike(f"%{template.template_name}%")
+						)
+					)
+
+					result2 = await self.session.execute(query2)
+					row2 = result2.fetchone()
+
+					return {
+						'total_count': row2.total_count or 0,
+						'unique_users': 0,  # 无法通过名称匹配统计用户数
+						'avg_progress': 0.0,
+						'completed_count': 0,
+						'failed_count': 0,
+						'statistics_method': 'template_name_match'
+					}
+
+			return {
+				'total_count': row.total_count or 0,
+				'unique_users': row.unique_users or 0,
+				'avg_progress': round(float(row.avg_progress or 0), 2),
+				'completed_count': row.completed_count or 0,
+				'failed_count': row.failed_count or 0,
+				'statistics_method': 'template_id_direct'
+			}
 		except Exception as e:
-			raise RepositoryError(f"获取模板使用次数失败: {str(e)}")
+			raise RepositoryError(f"获取模板使用统计失败: {str(e)}")
 
 	async def set_template_visibility (
 			self,
-			template_id: int,
-			is_public: bool,
-			updated_by: Optional[int] = None
+			template_id: str,
+			is_public: bool
 	) -> bool:
 		"""
 		设置模板可见性
@@ -519,7 +738,6 @@ class AnalysisTemplateRepository(BaseRepository[AnalysisTemplate]):
 		Args:
 			template_id: 模板ID
 			is_public: 是否公开
-			updated_by: 更新人ID（可选）
 
 		Returns:
 			bool: 设置是否成功

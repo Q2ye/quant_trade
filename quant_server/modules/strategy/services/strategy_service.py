@@ -50,7 +50,7 @@ class StrategyService:
 
 	async def get_strategy_list (
 			self,
-			user_id: int,
+			user_id: str,
 			status: Optional[StrategyLifecycleStatus] = None,
 			strategy_type: Optional[StrategyType] = None,
 			page: int = 1,
@@ -114,7 +114,7 @@ class StrategyService:
 	async def get_strategy_detail (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 			include_positions: Optional[bool] = None,
 	) -> Dict[str, Any]:
 		"""
@@ -210,7 +210,7 @@ class StrategyService:
 			code: str,
 			description: str = "",
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: int = 0,
+			user_id: str = "0",
 	) -> Dict[str, Any]:
 		"""
 		创建策略
@@ -316,7 +316,7 @@ class StrategyService:
 	async def update_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 			name: Optional[str] = None,
 			description: Optional[str] = None,
 			code: Optional[str] = None,
@@ -434,7 +434,7 @@ class StrategyService:
 	async def delete_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 	) -> Dict[str, Any]:
 		"""
 		删除策略
@@ -497,7 +497,7 @@ class StrategyService:
 	async def compile_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 	) -> Dict[str, Any]:
 		"""
 		编译策略

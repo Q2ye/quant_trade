@@ -48,6 +48,7 @@ class StockBasic(Base):
 	adj_factors = relationship("StockAdjFactor", back_populates="stock", cascade="all, delete-orphan")
 	financial_statements = relationship("FinancialStatement", back_populates="stock", cascade="all, delete-orphan")
 	minutes_data = relationship("StockMinutes", back_populates="stock", cascade="all, delete-orphan")
+	announcements = relationship("CompanyAnnouncement", back_populates="stock", cascade="all, delete-orphan")
 	weekly_data = relationship("StockWeekly", back_populates="stock", cascade="all, delete-orphan")
 	monthly_data = relationship("StockMonthly", back_populates="stock", cascade="all, delete-orphan")
 	adjusted_prices = relationship("StockAdjustedPrices", back_populates="stock", cascade="all, delete-orphan")
@@ -769,7 +770,7 @@ class FactorDefinition(Base):
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
-	creator = relationship("SysUser", foreign_keys=[created_by])
+	creator = relationship("SysUser", foreign_keys=created_by)
 	factor_values = relationship("FactorData", back_populates="definition", cascade="all, delete-orphan")
 
 	# 索引
@@ -778,4 +779,37 @@ class FactorDefinition(Base):
 		Index('idx_factor_definitions_category', 'category'),
 		Index('idx_factor_definitions_is_active', 'is_active'),
 		Index('idx_factor_definitions_created_by', 'created_by'),
+	)
+
+
+# ==================== 公司公告信息 ====================
+
+class CompanyAnnouncement(Base):
+	"""公司公告信息表"""
+	__tablename__ = 'company_announcements'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='公告ID')
+	ts_code = Column(String(20), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='股票代码')
+	announcement_date = Column(DateTime, nullable=False, index=True, comment='公告日期')
+	title = Column(String(500), nullable=False, comment='公告标题')
+	announcement_type = Column(String(50), nullable=False, index=True, comment='公告类型')
+	content = Column(Text, comment='公告内容')
+	pdf_url = Column(String(500), comment='PDF文件URL')
+	source = Column(String(100), comment='数据来源')
+	importance_level = Column(Integer, default=1, comment='重要程度：1-一般，2-重要，3-重大')
+	is_processed = Column(Boolean, default=False, comment='是否已处理')
+	processed_at = Column(DateTime(timezone=True), comment='处理时间')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+
+	# 关联关系
+	stock = relationship("StockBasic", back_populates="announcements")
+
+	# 索引
+	__table_args__ = (
+		Index('idx_company_anns_ts_date', 'ts_code', 'announcement_date'),
+		Index('idx_company_anns_date_type', 'announcement_date', 'announcement_type'),
+		Index('idx_company_anns_importance', 'importance_level'),
+		UniqueConstraint('ts_code', 'announcement_date', 'title', name='uq_announcement_unique'),
 	)

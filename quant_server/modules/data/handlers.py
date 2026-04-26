@@ -120,7 +120,7 @@ logger = logging.getLogger(__name__)
 async def get_factor_data (
 		session: AsyncSession,
 		request: FactorRequest,
-		user_id: int,
+		user_id: str,
 		settings: Settings = get_config().settings
 ) -> FactorResponse:
 	"""
@@ -276,7 +276,7 @@ async def research_factor (
 		session: AsyncSession,
 		request: ResearchRequest,
 		event_engine: EventEngine,
-		user_id: int,
+		user_id: str,
 		background_tasks: BackgroundTasks,
 		settings: Settings = get_config().settings
 ) -> ResearchResponse:
@@ -428,7 +428,7 @@ async def get_factor_metadata (
 		factor_code: Optional[str] = None,
 		category: Optional[str] = None,
 		is_public: Optional[bool] = True,
-		user_id: int = None
+		user_id: str = None
 ) -> List[Dict[str, Any]]:
 	"""
 	获取因子元数据信息 - 支持按代码、类别、公开性过滤
@@ -508,7 +508,7 @@ async def get_factor_metadata (
 async def get_research_status (
 		session: AsyncSession,
 		research_id: Optional[str] = None,
-		user_id: int = None
+		user_id: str = None
 ) -> Dict[str, Any]:
 	"""
 	获取因子研究任务状态 - 支持指定任务或用户最近任务查询
@@ -608,7 +608,7 @@ async def get_research_status (
 async def get_stock_list (
 		session: AsyncSession,
 		request: StockListRequest,
-		user_id: int
+		user_id: str
 ) -> StockListResponse:
 	"""
 	获取股票列表 - 支持搜索、过滤、分页
@@ -705,7 +705,7 @@ async def get_stock_detail (
 		session: AsyncSession,
 		ts_code: str,
 		request: StockDetailRequest,
-		user_id: int
+		user_id: str
 ) -> StockDetailResponse:
 	"""
 	获取股票详细信息 - 包含基础信息和最新行情
@@ -808,7 +808,7 @@ async def get_stock_detail (
 async def get_historical_quotes (
 		session: AsyncSession,
 		request: HistoricalQuotesRequest,
-		user_id: int
+		user_id: str
 ) -> HistoricalQuotesResponse:
 	"""
 	获取历史行情数据 - 支持分页、日期范围、复权类型过滤
@@ -924,7 +924,7 @@ async def batch_sync_data (
 		session: AsyncSession,
 		request: BatchSyncRequest,
 		event_engine: EventEngine,
-		user_id: int,
+		user_id: str,
 		background_tasks: BackgroundTasks
 ) -> BatchSyncResponse:
 	"""
@@ -1034,7 +1034,7 @@ async def quick_sync_data (
 		session: AsyncSession,
 		request: QuickSyncRequest,
 		event_engine: EventEngine,
-		user_id: int,
+		user_id: str,
 		background_tasks: BackgroundTasks
 ) -> QuickSyncResponse:
 	"""
@@ -1145,7 +1145,7 @@ async def quick_sync_data (
 async def get_sync_status (
 		session: AsyncSession,
 		task_id: Optional[str],
-		user_id: int
+		user_id: str
 ) -> SyncStatusResponse:
 	"""
 	获取数据同步任务状态
@@ -1267,7 +1267,7 @@ async def cancel_sync (
 		session: AsyncSession,
 		task_id: str,
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> Dict[str, Any]:
 	"""
 	取消数据同步任务
@@ -1352,7 +1352,7 @@ async def cancel_sync (
 async def get_data_quality (
 		session: AsyncSession,
 		request: DataQualityRequest,
-		user_id: int
+		user_id: str
 ) -> DataQualityResponse:
 	"""
 	获取数据质量报告 - 分析数据完整性、准确性、一致性
@@ -1566,7 +1566,7 @@ async def _execute_sync_factor_research (
 		research_id: str,
 		request: ResearchRequest,
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> ResearchResponse:
 	"""
 	同步执行因子研究（内部辅助方法）
@@ -1658,7 +1658,7 @@ async def _process_research_completion(
 		request: ResearchRequest,
 		research_result: Dict[str, Any],
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> None:
 	"""
 	处理研究完成的通用逻辑
@@ -1704,7 +1704,7 @@ async def _execute_async_factor_research (
 		research_id: str,
 		request: ResearchRequest,
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> None:
 	"""
 	异步执行因子研究（后台任务）
@@ -1804,7 +1804,7 @@ async def _execute_sync_data_sync (
 		task_id: str,
 		request: BatchSyncRequest,
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> BatchSyncResponse:
 	"""
 	同步执行数据同步（内部辅助方法）
@@ -1895,7 +1895,7 @@ async def _execute_async_data_sync (
 		task_id: str,
 		request: BatchSyncRequest,
 		event_engine: EventEngine,
-		user_id: int
+		user_id: str
 ) -> None:
 	"""
 	异步执行数据同步（后台任务）

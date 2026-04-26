@@ -5,13 +5,14 @@
 职责：管理股票月线行情数据访问，继承HyperRepositoryBase实现月线数据操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockMonthly
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
@@ -60,8 +61,8 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[StockMonthly]:
 		"""
@@ -142,7 +143,7 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 	async def analyze_long_term_trend (
 			self,
 			ts_code: str,
-			end_date: date,
+			end_date: datetime,
 			years: int = 5
 	) -> Dict[str, Any]:
 		"""
@@ -181,6 +182,7 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 				cagr = 0
 		else:
 			cagr = 0
+			years_elapsed = 0
 
 		# 计算月度收益率
 		monthly_returns = []
@@ -201,6 +203,7 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 			annual_volatility = monthly_volatility * (12 ** 0.5)
 		else:
 			monthly_volatility = annual_volatility = 0
+			mean_return = 0
 
 		# 计算最大回撤
 		max_drawdown = 0
@@ -259,8 +262,8 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 			}
 		}
 
+	@staticmethod
 	def _calculate_trend_strength (
-			self,
 			dates: List[date],
 			prices: List[float]
 	) -> float:
@@ -319,10 +322,15 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		Returns:
 			季节性分析结果
 		"""
+		from datetime import datetime
 		start_date = end_date - timedelta(days=years * 365)
 
+		# 转换为datetime类型
+		start_datetime = datetime.combine(start_date, datetime.min.time())
+		end_datetime = datetime.combine(end_date, datetime.max.time())
+
 		monthly_data = await self.get_by_code_and_date_range(
-			ts_code, start_date, end_date
+			ts_code, start_datetime, end_datetime
 		)
 
 		if len(monthly_data) < 12:  # 至少需要一年数据
@@ -425,7 +433,8 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 			"recommendations": self._generate_seasonal_recommendations(month_statistics)
 		}
 
-	def _get_month_name (self, month_num: int) -> str:
+	@staticmethod
+	def _get_month_name (month_num: int) -> str:
 		"""获取月份名称"""
 		month_names = [
 			"January", "February", "March", "April", "May", "June",
@@ -433,8 +442,8 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		]
 		return month_names[month_num - 1] if 1 <= month_num <= 12 else "Unknown"
 
+	@staticmethod
 	def _calculate_seasonal_strength (
-			self,
 			month_statistics: Dict[int, Dict[str, Any]]
 	) -> float:
 		"""
@@ -452,12 +461,7 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		if len(valid_months) < 2:
 			return 0
 
-		# 计算总平均值
-		all_returns = []
-		for stats in valid_months:
-			# 这里需要原始收益率数据，但我们现在只有平均值
-			# 简化计算：使用样本大小和平均值估算
-			pass
+
 
 		# 简化实现：返回月份间差异的度量
 		returns = [stats["avg_return"] for stats in valid_months]
@@ -473,8 +477,8 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 
 		return 0
 
+	@staticmethod
 	def _generate_seasonal_recommendations (
-			self,
 			month_statistics: Dict[int, Dict[str, Any]]
 	) -> List[Dict[str, Any]]:
 		"""

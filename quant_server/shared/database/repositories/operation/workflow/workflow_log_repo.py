@@ -14,13 +14,14 @@ WorkflowLogRepository - 工作流执行日志数据访问仓库
 4. 查询优化：提供时间范围查询和统计方法
 """
 
-from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, desc, asc, and_, or_
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, func, desc, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.models.business_models import WorkflowLog
-from quant_server.shared.database.repositories.base import BaseRepository, PaginationParams, PaginationResult
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class WorkflowLogRepository(BaseRepository[WorkflowLog]):
@@ -368,7 +369,7 @@ class WorkflowLogRepository(BaseRepository[WorkflowLog]):
 			cutoff_date = datetime.now() - timedelta(days=days_to_keep)
 
 			stmt = delete(self.model).where(self.model.started_at < cutoff_date)
-			result = await self.session.execute(stmt)
+			result = await self.session.execute(stmt)  # type: ignore
 
 			return result.rowcount or 0
 		except Exception as e:

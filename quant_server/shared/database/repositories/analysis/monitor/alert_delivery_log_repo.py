@@ -7,10 +7,11 @@
 包括发送状态跟踪、失败重试、渠道统计等
 """
 
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, delete, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
 
 from quant_server.shared.database.models.business_models import AlertDeliveryLog
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
@@ -33,7 +34,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def create_delivery_log (
 			self,
-			alert_id: int,
+			alert_id: str,
 			channel: str,
 			recipient: str,
 			status: str = "pending",
@@ -68,7 +69,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def create_batch_delivery_logs (
 			self,
-			alert_id: int,
+			alert_id: str,
 			channels: List[str],
 			recipients: List[str],
 			status: str = "pending"
@@ -104,7 +105,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def update_delivery_status (
 			self,
-			log_id: int,
+			log_id: str,
 			status: str,
 			error_message: Optional[str] = None,
 			increment_retry: bool = False
@@ -125,9 +126,9 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 			update_data = {'status': status}
 
 			if status == 'sent':
-				update_data['sent_at'] = datetime.now()
+				update_data['sent_at'] = datetime.now().isoformat()
 			elif status == 'delivered':
-				update_data['delivered_at'] = datetime.now()
+				update_data['delivered_at'] = datetime.now().isoformat()
 
 			if error_message:
 				update_data['error_message'] = error_message
@@ -145,7 +146,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def mark_as_sent (
 			self,
-			log_id: int,
+			log_id: str,
 			error_message: Optional[str] = None
 	) -> bool:
 		"""
@@ -162,7 +163,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def mark_as_failed (
 			self,
-			log_id: int,
+			log_id: str,
 			error_message: str,
 			increment_retry: bool = True
 	) -> bool:
@@ -183,7 +184,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def mark_as_delivered (
 			self,
-			log_id: int,
+			log_id: str,
 			error_message: Optional[str] = None
 	) -> bool:
 		"""
@@ -200,7 +201,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def get_pending_logs (
 			self,
-			alert_id: Optional[int] = None,
+			alert_id: Optional[str] = None,
 			channel: Optional[str] = None,
 			limit: int = 100
 	) -> List[AlertDeliveryLog]:
@@ -262,7 +263,7 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 	async def get_logs_by_alert (
 			self,
-			alert_id: int,
+			alert_id: str,
 			include_resolved: bool = True
 	) -> List[AlertDeliveryLog]:
 		"""
@@ -276,18 +277,24 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 			List[AlertDeliveryLog]: 发送日志列表
 		"""
 		try:
-			filters = {'alert_id': alert_id}
-
 			if not include_resolved:
-				filters['status'] = ['pending', 'sent', 'failed']
-
-			return await self.get_all(**filters)
+				# 使用自定义查询获取非已解决状态的日志
+				query = select(self.model).where(
+					and_(
+						self.model.alert_id == alert_id,
+						self.model.status.in_(['pending', 'sent', 'failed'])
+					)
+				)
+				result = await self.session.execute(query)
+				return result.scalars().all()
+			else:
+				return await self.get_all(alert_id=alert_id)
 		except Exception as e:
 			raise RepositoryError(f"获取报警日志失败: {str(e)}")
 
 	async def get_delivery_summary_by_alert (
 			self,
-			alert_id: int
+			alert_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取报警的发送摘要
@@ -312,13 +319,16 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 			result = await self.session.execute(query)
 
-			summary = {
+			summary: Dict[str, Any] = {
 				'total': 0,
 				'by_channel': {},
 				'by_status': {'pending': 0, 'sent': 0, 'failed': 0, 'delivered': 0}
 			}
 
-			for channel, status, count in result.all():
+			for row in result.all():
+				channel = row.channel
+				status = row.status
+				count = row.count
 				if channel not in summary['by_channel']:
 					summary['by_channel'][channel] = {
 						'pending': 0, 'sent': 0, 'failed': 0, 'delivered': 0, 'total': 0
@@ -456,14 +466,15 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 					'error_message': error_message[:200] if error_message else 'Unknown error',
 					'failure_count': count,
 					'last_failure': last_failure,
-					'error_category': self._categorize_error(error_message)
+					'error_category': AlertDeliveryLogRepository._categorize_error(error_message)
 				})
 
 			return analysis
 		except Exception as e:
 			raise RepositoryError(f"获取失败分析失败: {str(e)}")
 
-	def _categorize_error (self, error_message: Optional[str]) -> str:
+	@staticmethod
+	def _categorize_error (error_message: Optional[str]) -> str:
 		"""
 		对错误信息进行分类
 
@@ -517,10 +528,10 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 
 			query = delete(self.model).where(and_(*conditions))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type: ignore[arg-type]
 			await self.session.commit()
 
-			return result.rowcount or 0
+			return result.rowcount if result.rowcount is not None else 0
 		except Exception as e:
 			await self.session.rollback()
 			raise RepositoryError(f"清理旧日志失败: {str(e)}")

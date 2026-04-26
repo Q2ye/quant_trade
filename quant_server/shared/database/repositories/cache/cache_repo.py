@@ -7,13 +7,11 @@
      内存缓存应使用Redis等外部缓存系统
 """
 
-from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text
-from sqlalchemy.orm import selectinload, joinedload
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class CacheEntry:
@@ -31,7 +29,7 @@ class CacheEntry:
 		"""
 		self.key = key
 		self.value = value
-		self.created_at = datetime.utcnow()
+		self.created_at = datetime.now()
 		self.expires_at = self.created_at + timedelta(seconds=ttl)
 		self.tags = tags or []
 		self.hit_count = 0
@@ -39,11 +37,11 @@ class CacheEntry:
 
 	def is_expired (self) -> bool:
 		"""检查是否过期"""
-		return datetime.utcnow() > self.expires_at
+		return datetime.now() > self.expires_at
 
 	def touch (self):
 		"""更新访问时间"""
-		self.last_accessed = datetime.utcnow()
+		self.last_accessed = datetime.now()
 		self.hit_count += 1
 
 
@@ -290,7 +288,7 @@ class CacheRepository:
 		import json
 		from datetime import datetime, timedelta
 
-		expires_at = datetime.utcnow() + timedelta(seconds=ttl) if ttl > 0 else None
+		expires_at = datetime.now() + timedelta(seconds=ttl) if ttl > 0 else None
 		tags_json = json.dumps(tags) if tags else None
 
 		# 使用upsert模式

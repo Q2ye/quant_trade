@@ -5,14 +5,15 @@ ETF日行情数据仓库
 职责：管理ETF日线行情数据访问，继承HyperRepositoryBase实现ETF专用操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
+from sqlalchemy import select, desc, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.data_models import EtfDaily, EtfBasic
 from quant_server.shared.database.repositories import RepositoryError
 from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
-from quant_server.shared.database.models.data_models import EtfDaily, EtfBasic
 
 
 class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
@@ -89,8 +90,8 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[EtfDaily]:
 		"""
@@ -200,8 +201,8 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 	async def analyze_tracking_error (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		分析ETF跟踪误差
@@ -354,7 +355,7 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 	async def analyze_etf_liquidity (
 			self,
 			ts_code: str,
-			trade_date: date,
+			trade_date: datetime,
 			lookback_days: int = 20
 	) -> Dict[str, Any]:
 		"""

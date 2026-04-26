@@ -3,20 +3,16 @@
 策略版本管理表Repository
 位置：shared/database/repositories/strategy/strategy_version_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between, case
-from sqlalchemy.orm import joinedload, load_only
 
 from quant_server.core.exceptions import ValidationError
-from quant_server.shared.database.models.business_models import StrategyVersion, Strategy, SysUser
+from quant_server.shared.database.models.business_models import StrategyVersion
 from quant_server.shared.database.repositories import NotFoundError
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class StrategyVersionRepository(BaseRepository[StrategyVersion]):
@@ -123,8 +119,10 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 				versions = []
 				for row in rows:
 					version = StrategyVersion()
-					for i, column in enumerate(row._fields):
-						setattr(version, column, row[i])
+					# 使用 dict(row) 替代访问受保护的 _fields 成员
+					row_dict = dict(row)
+					for column, value in row_dict.items():
+						setattr(version, column, value)
 					versions.append(version)
 				return versions
 		except Exception as e:
@@ -187,7 +185,7 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 	async def set_current_version (
 			self,
 			strategy_id: str,
-			version_id: int
+			version_id: str
 	) -> Optional[StrategyVersion]:
 		"""
 		设置当前版本
@@ -306,10 +304,10 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 			version2 = await self.get(version_id_2)
 
 			if not version1 or not version2:
-				raise NotFoundError("版本不存在")
+				raise NotFoundError("StrategyVersion", f"{version_id_1} 或 {version_id_2}")
 
 			if version1.strategy_id != version2.strategy_id:
-				raise ValidationError("不能比较不同策略的版本")
+				raise ValidationError(f"不能比较不同策略的版本 {version1.strategy_id} 和 {version2.strategy_id}")
 
 			# 比较代码内容（简单比较）
 			code_same = version1.code_content == version2.code_content
@@ -359,7 +357,7 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 	async def rollback_to_version (
 			self,
 			strategy_id: str,
-			version_id: int
+			version_id: str
 	) -> Optional[StrategyVersion]:
 		"""
 		回滚到指定版本
@@ -374,7 +372,7 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 		try:
 			version = await self.get(version_id)
 			if not version or version.strategy_id != strategy_id:
-				raise NotFoundError(f"版本不存在或不属于指定策略")
+				raise NotFoundError("StrategyVersion", version_id)
 
 			# 设置该版本为当前版本
 			return await self.set_current_version(strategy_id, version_id)
@@ -402,7 +400,7 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 			query = select(
 				func.count().label("total_versions"),
 				func.count(
-					case([(self.model.is_current == True, 1)], else_=None)
+					case((self.model.is_current, 1), else_=None)
 				).label("current_versions"),
 				self.model.strategy_id
 			).group_by(

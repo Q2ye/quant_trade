@@ -1,10 +1,11 @@
 # shared/database/repositories/account/cash_flow_repo.py
-from typing import List, Dict, Any, Optional
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, case
-from sqlalchemy.sql import literal_column, literal
+from sqlalchemy.sql import literal
 
 from quant_server.shared.database.models.business_models import CashFlow
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -16,7 +17,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, CashFlow)
 
-	async def get_user_cash_flows (self, user_id: int, skip: int = 0,
+	async def get_user_cash_flows (self, user_id: str, skip: int = 0,
 	                               limit: int = 100) -> List[CashFlow]:
 		"""获取用户的资金流水"""
 		query = (
@@ -30,7 +31,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_cash_flows_by_type (self, user_id: int, flow_type: str,
+	async def get_cash_flows_by_type (self, user_id: str, flow_type: str,
 	                                  start_date: Optional[date] = None,
 	                                  end_date: Optional[date] = None) -> List[CashFlow]:
 		"""按类型获取资金流水"""
@@ -50,7 +51,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_cash_flow_summary (self, user_id: int, start_date: Optional[date] = None,
+	async def get_cash_flow_summary (self, user_id: str, start_date: Optional[date] = None,
 	                                 end_date: Optional[date] = None) -> Dict[str, Any]:
 		"""获取资金流水汇总统计"""
 		query = select(self.model).where(self.model.user_id == user_id)
@@ -148,7 +149,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 			"recent_flows": recent_flows
 		}
 
-	async def create_cash_flow (self, user_id: int, flow_type: str, amount: Decimal,
+	async def create_cash_flow (self, user_id: str, flow_type: str, amount: Decimal,
 	                            currency: str = "CNY", description: str = "",
 	                            reference_id: Optional[str] = None,
 	                            reference_type: Optional[str] = None) -> CashFlow:
@@ -172,7 +173,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 
 		return instance
 
-	async def update_cash_flow_status (self, cash_flow_id: int, status: str,
+	async def update_cash_flow_status (self, cash_flow_id: str, status: str,
 	                                   notes: Optional[str] = None) -> bool:
 		"""更新资金流水状态"""
 		from sqlalchemy import update as sql_update
@@ -194,7 +195,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 		result = await self.session.execute(stmt)
 		return result.rowcount > 0
 
-	async def get_monthly_cash_flow (self, user_id: int, months: int = 12) -> List[Dict[str, Any]]:
+	async def get_monthly_cash_flow (self, user_id: str, months: int = 12) -> List[Dict[str, Any]]:
 		"""获取月度现金流分析"""
 		cutoff_date = datetime.now() - timedelta(days=months * 30)
 
@@ -204,23 +205,19 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 				func.count().label('total_flows'),
 				func.sum(
 					case(
-						[
-							(self.model.flow_type.in_(['deposit', 'dividend']), self.model.amount),
-							(self.model.flow_type == 'transfer',
-							 case([(self.model.amount > 0, self.model.amount)], else_=literal(0)))
-						],
-						else_=literal(0)
-					)
+					(self.model.flow_type.in_(['deposit', 'dividend']), self.model.amount),
+					(self.model.flow_type == 'transfer',
+						case((self.model.amount > 0, self.model.amount), else_=literal(0))),
+					else_=literal(0)
+				)
 				).label('total_inflows'),
 				func.sum(
 					case(
-						[
-							(self.model.flow_type.in_(['withdrawal', 'fee']), self.model.amount),
-							(self.model.flow_type == 'transfer',
-							 case([(self.model.amount < 0, -self.model.amount)], else_=literal(0)))
-						],
-						else_=literal(0)
-					)
+					(self.model.flow_type.in_(['withdrawal', 'fee']), self.model.amount),
+					(self.model.flow_type == 'transfer',
+						case((self.model.amount < 0, -self.model.amount), else_=literal(0))),
+					else_=literal(0)
+				)
 				).label('total_outflows')
 			)
 			.where(

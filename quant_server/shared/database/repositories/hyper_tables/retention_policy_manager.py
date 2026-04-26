@@ -10,14 +10,15 @@
 继承自：BaseRepository（因为是策略配置管理）
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text
-from sqlalchemy.exc import SQLAlchemyError
+from typing import List, Dict, Any, Optional
 
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.system_models import RetentionPolicy, RetentionPolicyLog
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
@@ -101,7 +102,8 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		except SQLAlchemyError as e:
 			raise RepositoryError(f"创建保留策略失败: {str(e)}", "RETENTION_POLICY_CREATE_ERROR")
 
-	def _validate_retention_period (self, period: str) -> bool:
+	@staticmethod
+	def _validate_retention_period (period: str) -> bool:
 		"""
 		验证保留周期格式（私有方法）
 
@@ -117,7 +119,8 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		pattern = r'^(\d+)\s*(days?|months?|years?|rows?|KB|MB|GB|TB)$'
 		return bool(re.match(pattern, period, re.IGNORECASE))
 
-	def _calculate_next_execution (self, schedule_interval: str) -> datetime:
+	@staticmethod
+	def _calculate_next_execution (schedule_interval: str) -> datetime:
 		"""
 		计算下次执行时间（私有方法）
 
@@ -153,7 +156,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		except Exception as e:
 			raise RepositoryError(f"获取活跃策略失败: {str(e)}")
 
-	async def execute_policy (self, policy_id: int, dry_run: bool = False) -> Dict[str, Any]:
+	async def execute_policy (self, policy_id: str, dry_run: bool = False) -> Dict[str, Any]:
 		"""
 		执行保留策略
 
@@ -256,7 +259,8 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		except Exception as e:
 			raise Exception(f"执行清理失败: {str(e)}")
 
-	def _parse_retention_cutoff (self, retention_period: str) -> datetime:
+	@staticmethod
+	def _parse_retention_cutoff (retention_period: str) -> datetime:
 		"""
 		解析保留周期，计算截止时间（私有方法）
 
@@ -519,10 +523,10 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 				}
 			return {}
 
-		except Exception:
+		except (SQLAlchemyError, ValueError):
 			return {}
 
-	async def _create_execution_log (self, log_data: Dict[str, Any]) -> RetentionPolicyLog:
+	async def _create_execution_log (self, log_data: Dict[str, Any]) -> Optional[RetentionPolicyLog]:
 		"""
 		创建执行日志（私有方法）
 
@@ -530,7 +534,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 			log_data: 日志数据
 
 		Returns:
-			日志记录对象
+			日志记录对象或None
 		"""
 		try:
 			from quant_server.shared.database.repositories.system.ops import RetentionPolicyLogRepository
@@ -597,7 +601,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		except Exception as e:
 			raise RepositoryError(f"调度保留策略失败: {str(e)}")
 
-	async def get_policy_statistics (self, policy_id: int) -> Dict[str, Any]:
+	async def get_policy_statistics (self, policy_id: str) -> Dict[str, Any]:
 		"""
 		获取策略执行统计
 
@@ -649,7 +653,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 		except Exception as e:
 			raise RepositoryError(f"获取策略统计失败: {str(e)}")
 
-	async def validate_policy (self, policy_id: int) -> Dict[str, Any]:
+	async def validate_policy (self, policy_id: str) -> Dict[str, Any]:
 		"""
 		验证保留策略的有效性
 
@@ -740,7 +744,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 
 			result = await self.session.execute(check_query, {"table_name": table_name})
 			return result.scalar()
-		except Exception:
+		except (SQLAlchemyError, ValueError):
 			return False
 
 	async def _check_time_column (self, table_name: str) -> bool:
@@ -756,5 +760,5 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 
 			result = await self.session.execute(check_query, {"table_name": table_name})
 			return result.scalar()
-		except Exception:
+		except (SQLAlchemyError, ValueError):
 			return False

@@ -9,19 +9,20 @@
 3. 处理股票行业、地域等维度的聚合查询
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func, desc
+from typing import List, Optional, Dict, Any
 
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.data_models import StockBasic, StockCompany
 from quant_server.shared.database.repositories.base import BaseRepository
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,
-	SortCondition
+	SortCondition, FilterOperator
 )
-from quant_server.shared.database.models.data_models import StockBasic, StockCompany
 
 
 class StockBasicRepository(BaseRepository[StockBasic]):
@@ -171,6 +172,36 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 
 	# ==================== 统计分析方法 ====================
 
+	async def _get_distribution (self, field, field_name: str, error_msg: str) -> Dict[str, int]:
+		"""
+		通用的分布统计方法
+
+		Args:
+			field: 要统计的字段
+			field_name: 字段名（用于返回字典的键）
+			error_msg: 错误信息
+
+		Returns:
+			分布统计字典
+		"""
+		try:
+			query = (
+				select(field, func.count(self.model.ts_code).label('count'))
+				.group_by(field)
+				.order_by(desc('count'))
+			)
+
+			# 添加非空条件（如果字段可能为空）
+			if field_name in ['industry', 'area']:
+				query = query.where(field.isnot(None))
+
+			result = await self.session.execute(query)
+			rows = result.all()
+
+			return {getattr(row, field_name): row.count for row in rows}
+		except Exception as e:
+			raise RepositoryError(f"{error_msg}: {str(e)}")
+
 	async def get_industry_distribution (self) -> Dict[str, int]:
 		"""
 		获取行业分布统计
@@ -178,20 +209,11 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		Returns:
 			行业分布字典（行业:股票数量）
 		"""
-		try:
-			query = (
-				select(self.model.industry, func.count(self.model.ts_code).label('count'))
-				.where(self.model.industry.isnot(None))
-				.group_by(self.model.industry)
-				.order_by(desc('count'))
-			)
-
-			result = await self.session.execute(query)
-			rows = result.all()
-
-			return {row.industry: row.count for row in rows}
-		except Exception as e:
-			raise RepositoryError(f"获取行业分布失败: {str(e)}")
+		return await self._get_distribution(
+			field=self.model.industry,
+			field_name='industry',
+			error_msg="获取行业分布失败"
+		)
 
 	async def get_market_distribution (self) -> Dict[str, int]:
 		"""
@@ -200,19 +222,11 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		Returns:
 			市场分布字典（市场:股票数量）
 		"""
-		try:
-			query = (
-				select(self.model.market, func.count(self.model.ts_code).label('count'))
-				.group_by(self.model.market)
-				.order_by(desc('count'))
-			)
-
-			result = await self.session.execute(query)
-			rows = result.all()
-
-			return {row.market: row.count for row in rows}
-		except Exception as e:
-			raise RepositoryError(f"获取市场分布失败: {str(e)}")
+		return await self._get_distribution(
+			field=self.model.market,
+			field_name='market',
+			error_msg="获取市场分布失败"
+		)
 
 	async def get_area_distribution (self) -> Dict[str, int]:
 		"""
@@ -221,20 +235,11 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		Returns:
 			地域分布字典（地域:股票数量）
 		"""
-		try:
-			query = (
-				select(self.model.area, func.count(self.model.ts_code).label('count'))
-				.where(self.model.area.isnot(None))
-				.group_by(self.model.area)
-				.order_by(desc('count'))
-			)
-
-			result = await self.session.execute(query)
-			rows = result.all()
-
-			return {row.area: row.count for row in rows}
-		except Exception as e:
-			raise RepositoryError(f"获取地域分布失败: {str(e)}")
+		return await self._get_distribution(
+			field=self.model.area,
+			field_name='area',
+			error_msg="获取地域分布失败"
+		)
 
 	async def get_list_status_summary (self) -> Dict[str, int]:
 		"""
@@ -260,7 +265,6 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 
 	async def search_stocks (
 			self,
-			keyword: str,
 			pagination: PaginationParams = None,
 			filters: List[FilterCondition] = None,
 			sorts: List[SortCondition] = None
@@ -269,7 +273,6 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		搜索股票（支持分页、过滤、排序）
 
 		Args:
-			keyword: 搜索关键词（可匹配代码、名称、拼音缩写）
 			pagination: 分页参数
 			filters: 过滤条件列表
 			sorts: 排序条件列表
@@ -278,16 +281,6 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 			分页搜索结果
 		"""
 		try:
-			# 构建基础查询
-			query = select(self.model).where(
-				or_(
-					self.model.ts_code.like(f"%{keyword}%"),
-					self.model.symbol.like(f"%{keyword}%"),
-					self.model.name.like(f"%{keyword}%"),
-					self.model.cnspell.like(f"%{keyword}%")
-				)
-			)
-
 			# 合并过滤器
 			all_filters = filters or []
 
@@ -321,8 +314,8 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		"""
 		try:
 			filters = [
-				FilterCondition(field="list_date", operator="gte", value=start_date),
-				FilterCondition(field="list_date", operator="lte", value=end_date)
+				FilterCondition(field="list_date", operator=FilterOperator.GE, value=start_date),
+				FilterCondition(field="list_date", operator=FilterOperator.LE, value=end_date)
 			]
 
 			sorts = [SortCondition(field="list_date", descending=False)]
@@ -375,10 +368,14 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 			if list_status == 'D':  # 退市
 				update_data["delist_date"] = datetime.now()
 
-			return await self.update_by(
+			# 执行更新
+			await self.update_by(
 				filters={"ts_code": ts_code},
 				data=update_data
 			)
+
+			# 查询并返回更新后的股票对象
+			return await self.get_by_ts_code(ts_code)
 		except Exception as e:
 			raise RepositoryError(f"更新股票状态失败: {str(e)}")
 
@@ -398,7 +395,7 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 		except Exception as e:
 			raise RepositoryError(f"验证股票存在性失败: {str(e)}")
 
-	async def get_active_stocks(self, limit: int = 0) -> List[StockBasic]:
+	async def get_active_stocks (self, limit: int = 0) -> List[StockBasic]:
 		"""
 		获取活跃（上市）股票列表
 
@@ -432,6 +429,20 @@ class StockBasicRepository(BaseRepository[StockBasic]):
 			return await self.count(list_status='L')
 		except Exception as e:
 			raise RepositoryError(f"获取活跃股票数量失败: {str(e)}")
+
+	async def get_all_stocks (self) -> List[StockBasic]:
+		"""
+		获取所有股票列表
+
+		Returns:
+			所有股票列表
+		"""
+		try:
+			query = select(self.model).order_by(self.model.ts_code)
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取所有股票列表失败: {str(e)}")
 
 
 class RepositoryError(Exception):

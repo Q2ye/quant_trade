@@ -43,7 +43,7 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 			research_id: str,
 			research_name: str,
 			factor_name: str,
-			user_id: int,
+			user_id: str,
 			factor_definition: Optional[Dict] = None,
 			factor_category: Optional[str] = None,
 			universe: Optional[List[str]] = None,
@@ -339,7 +339,7 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 
 	async def get_user_research_tasks (
 			self,
-			user_id: int,
+			user_id: str,
 			status: Optional[str] = None,
 			factor_name: Optional[str] = None,
 			start_date: Optional[date] = None,

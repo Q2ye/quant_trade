@@ -65,7 +65,8 @@ class PerformanceAnalyzer:
 			logger.error(f"绩效分析失败: {str(e)}")
 			return {}
 
-	def _analyze_trades (self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+	@staticmethod
+	def _analyze_trades (trades: List[Dict[str, Any]]) -> Dict[str, Any]:
 		"""
 		分析交易记录
 
@@ -104,7 +105,8 @@ class PerformanceAnalyzer:
 			"max_loss": max_loss
 		}
 
-	def _calculate_risk_adjusted_returns (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_risk_adjusted_returns (metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""
 		计算风险调整收益指标
 

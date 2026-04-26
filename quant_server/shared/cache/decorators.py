@@ -5,13 +5,12 @@
 
 import asyncio
 import functools
-import inspect
 import hashlib
+import inspect
 import json
-from typing import Any, Callable, Optional, Dict, List, Union
-from datetime import timedelta
+from typing import Callable, Optional, List
 
-from .base import CacheBase, CacheError
+from .base import CacheError
 from .cache_manager import get_cache_manager
 
 
@@ -28,7 +27,7 @@ def _make_cache_key (
 
 	# 获取函数信息
 	func_name = func.__name__
-	module_name = func.__module__
+	module_name = getattr(func, '__module__', 'unknown')
 
 	# 序列化参数
 	try:

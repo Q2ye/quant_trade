@@ -6,9 +6,12 @@
 
 import json
 import pickle
+from datetime import datetime
 from typing import Any
-from .base import Message, MessageSerializer, MessageHeaders, MessageMetadata
+
 import msgpack
+
+from .base import Message, MessageSerializer, MessageHeaders, MessageMetadata, MessagePriority
 
 
 class JSONSerializer(MessageSerializer):
@@ -21,7 +24,8 @@ class JSONSerializer(MessageSerializer):
 			ensure_ascii=False
 		)
 
-	def _default_encoder (self, obj: Any) -> Any:
+	@staticmethod
+	def _default_encoder ( obj: Any) -> Any:
 		"""自定义编码器"""
 		if hasattr(obj, 'to_dict'):
 			return obj.to_dict()

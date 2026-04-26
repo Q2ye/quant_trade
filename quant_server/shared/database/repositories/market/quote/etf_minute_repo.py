@@ -5,13 +5,14 @@ ETF分钟行情数据仓库
 职责：管理ETF分钟级行情数据访问，继承HyperRepositoryBase实现ETF高频数据操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between, delete
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, and_, desc, text, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import EtfMinute, EtfBasic
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 from quant_server.shared.database.repositories.types import TimeRange
 
 
@@ -203,7 +204,7 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 
 		query = delete(self.model).where(and_(*conditions))
 
-		result = await self.session.execute(query)
+		result = await self.session.execute(query) # type: ignore
 		await self.session.commit()
 		return result.rowcount or 0
 
@@ -281,8 +282,8 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 
 		return resampled_data
 
+	@staticmethod
 	def _aggregate_etf_minute_group (
-			self,
 			group: List[EtfMinute],
 			target_freq: str
 	) -> Dict[str, Any]:
@@ -476,7 +477,8 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 			"time_distribution": self._analyze_time_distribution(intraday_data, volumes)
 		}
 
-	def _get_liquidity_level (self, score: float) -> str:
+	@staticmethod
+	def _get_liquidity_level (score: float) -> str:
 		"""获取流动性等级"""
 		if score >= 80:
 			return "excellent"
@@ -487,8 +489,8 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 		else:
 			return "poor"
 
+	@staticmethod
 	def _analyze_time_distribution (
-			self,
 			data: List[EtfMinute],
 			volumes: List[int]
 	) -> Dict[str, Any]:
@@ -577,7 +579,6 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 				# 检测大幅折溢价机会
 				# 这里简化处理，实际需要指数数据
 				# 假设正常情况下ETF与指数的偏差在±0.3%以内
-				normal_deviation = 0.3
 
 				# 随机生成模拟的指数价格（实际应用中需要真实数据）
 				import random
@@ -763,7 +764,7 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 
 			query = delete(self.model).where(and_(*conditions))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type: ignore
 			deleted_count = result.rowcount
 
 			# 清理碎片

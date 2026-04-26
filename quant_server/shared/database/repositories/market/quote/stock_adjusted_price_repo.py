@@ -5,13 +5,14 @@
 职责：管理股票复权价格数据访问，继承HyperRepositoryBase实现复权价格专用操作
 """
 
+from datetime import date, timedelta
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import  date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_,  desc,  text,  delete
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, and_, desc, text, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockAdjustedPrices, StockAdjFactor
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
@@ -201,7 +202,7 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 
 		query = delete(self.model).where(and_(*conditions))
 
-		result = await self.session.execute(query)
+		result = await self.session.execute(query) # type: ignore
 		await self.session.commit()
 		return result.rowcount or 0
 
@@ -259,8 +260,8 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 
 		return return_series
 
+	@staticmethod
 	def _calculate_log_return (
-			self,
 			prev_price: float,
 			curr_price: float
 	) -> float:
@@ -342,6 +343,7 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 				annual_volatility = volatility
 		else:
 			volatility = annual_volatility = 0
+		mean_return = 0
 
 		# 计算夏普比率（假设无风险利率3%）
 		risk_free_rate = 0.03
@@ -400,11 +402,11 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 			}
 		}
 
+	@staticmethod
 	def _calculate_max_drawdown (
-			self,
 			prices: List[float],
 			dates: List[date]
-	) -> Tuple[float, Dict[str, Any]]:
+	) -> Tuple[float, Dict[str, date]]:
 		"""计算最大回撤"""
 		if not prices or len(prices) < 2:
 			return 0.0, {}
@@ -435,8 +437,8 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 			"trough_price": prices[dates.index(drawdown_end)] if drawdown_end in dates else 0
 		}
 
+	@staticmethod
 	def _calculate_trend_strength (
-			self,
 			dates: List[date],
 			prices: List[float]
 	) -> float:
@@ -467,8 +469,8 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 
 		return r_squared
 
+	@staticmethod
 	def _calculate_consistency (
-			self,
 			prices: List[float]
 	) -> float:
 		"""计算价格一致性"""
@@ -489,7 +491,7 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 			self,
 			ts_code: str,
 			trade_date: date,
-			periods: List[int] = [5, 10, 20, 60],
+			periods: Optional[List[int]] = None,
 			adj_type: str = "qfq",
 			freq: str = "D"
 	) -> Dict[str, Any]:
@@ -506,8 +508,12 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 		Returns:
 			移动平均线计算结果
 		"""
+		# 初始化默认周期
+		if periods is None:
+			periods = [5, 10, 20, 60]
+
 		# 获取足够的复权价格数据
-		max_period = max(periods) if periods else 60
+		max_period = max(periods)
 		start_date = trade_date - timedelta(days=max_period * 3)  # 获取3倍周期的数据
 
 		price_data = await self.get_by_code_and_date_range(
@@ -616,8 +622,8 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 			"resistance_count": len(resistance_levels)
 		}
 
+	@staticmethod
 	def _calculate_support_strength (
-			self,
 			ma_name: str,
 			deviation: float
 	) -> str:

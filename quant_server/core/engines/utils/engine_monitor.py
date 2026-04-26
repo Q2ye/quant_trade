@@ -22,8 +22,8 @@ from collections import defaultdict, deque
 
 # 导入统一类型定义
 from ..types.entities import (
-    Metric as MetricEntity,
-    Alert as AlertEntity
+	Metric as MetricEntity,
+	Alert as AlertEntity, EventEntity
 )
 from ..types.enums import (
     ComponentStatus,
@@ -676,10 +676,9 @@ class EngineMonitor:
             # 发布指标事件
             if self._event_engine:
                 try:
-                    from ..types.entities import Event
 
                     metric_entity = metric.to_metric_entity()
-                    event = Event(
+                    event = EventEntity(
                         event_id=str(uuid.uuid4()),
                         event_type="engine_metric",
                         data=metric_entity.to_dict(),
@@ -739,10 +738,9 @@ class EngineMonitor:
                 # 发布警报事件
                 if self._event_engine:
                     try:
-                        from ..types.entities import Event
 
                         alert_entity = alert.to_alert_entity()
-                        event = Event(
+                        event = EventEntity(
                             event_id=str(uuid.uuid4()),
                             event_type="engine_alert",
                             data=alert_entity.to_dict(),
@@ -1079,22 +1077,25 @@ class EngineMonitor:
                 if start_time <= alert.timestamp <= end_time
             ]
 
+            # 初始化按引擎统计的字典
+            alerts_by_engine = {}
+            
+            # 按引擎统计
+            for alert in filtered_alerts:
+                engine_name = alert.engine_name
+                if engine_name not in alerts_by_engine:
+                    alerts_by_engine[engine_name] = 0
+                alerts_by_engine[engine_name] += 1
+            
             report["events"] = {
                 "total_alerts": len(filtered_alerts),
                 "alerts_by_level": {
                     level.value: sum(1 for a in filtered_alerts if a.alert_level == level)
                     for level in AlertLevel
                 },
-                "alerts_by_engine": {},
+                "alerts_by_engine": alerts_by_engine,
                 "alert_list": [alert.to_dict() for alert in filtered_alerts]
             }
-
-            # 按引擎统计
-            for alert in filtered_alerts:
-                engine_name = alert.engine_name
-                if engine_name not in report["events"]["alerts_by_engine"]:
-                    report["events"]["alerts_by_engine"][engine_name] = 0
-                report["events"]["alerts_by_engine"][engine_name] += 1
 
         return report
 

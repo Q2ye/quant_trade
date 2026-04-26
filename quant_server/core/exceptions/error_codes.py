@@ -657,7 +657,6 @@ def get_http_status_code (error_code: str) -> int:
 		ErrorCode.EVENT_ROUTING_ERROR: 500,
 		ErrorCode.EVENT_BUS_ERROR: 503,  # 服务不可用
 
-		# 默认500错误
 	}
 
 	return status_map.get(error_code, 500)
@@ -833,4 +832,11 @@ def get_legacy_error_code (error_code: str) -> Optional[str]:
 	Returns:
 		对应的旧错误码，如果没有则返回None
 	"""
-	return SECURITY_ERROR_ALIASES.get(error_code)
+	try:
+		# 将字符串转换为 ErrorCode 枚举
+		error_code_enum = ErrorCode(error_code)
+		legacy_code = SECURITY_ERROR_ALIASES.get(error_code_enum)
+		return legacy_code.value if legacy_code else None
+	except ValueError:
+		# 如果错误码不存在，返回None
+		return None

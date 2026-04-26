@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional, Type, Set
 from dataclasses import dataclass, field
 
 # 导入统一类型定义
-from ..types.entities import EngineConfig as EngineConfigEntity
+from ..types.entities import EngineConfigEntity
 from ..types.enums import (
     EngineType,
     EngineCategory,
@@ -125,6 +125,16 @@ def _prepare_engine_config(descriptor: EngineDescriptor,
     merged_config = {**default_config, **config}
 
     return merged_config
+
+
+async def _do_pause() -> bool:
+    """暂停引擎"""
+    return True
+
+
+async def _do_resume() -> bool:
+    """恢复引擎"""
+    return True
 
 
 class EngineFactory:
@@ -306,7 +316,8 @@ class EngineFactory:
             logger.error(f"动态注册引擎失败: {engine_type.value}, 错误: {e}")
             return False
 
-    def _module_to_engine_type(self, module_name: str) -> Optional[EngineType]:
+    @staticmethod
+    def _module_to_engine_type(module_name: str) -> Optional[EngineType]:
         """将模块名称转换为引擎类型
 
         Args:
@@ -327,7 +338,7 @@ class EngineFactory:
         }
         return mapping.get(module_name)
 
-    def _create_placeholder_engine_class(self, engine_type: EngineType, module_name: str) -> type:
+    def _create_placeholder_engine_class(self, engine_type: EngineType, module_name: str) -> Type[EngineBase]:
         """创建通用占位引擎类
 
         Args:
@@ -373,14 +384,6 @@ class EngineFactory:
                 logger.info(f"执行占位引擎停止: {self._module_name}")
                 return True
 
-            async def _do_pause(self) -> bool:
-                """暂停引擎"""
-                return True
-
-            async def _do_resume(self) -> bool:
-                """恢复引擎"""
-                return True
-
         return PlaceholderEngine
 
     def register_engine(self, descriptor: EngineDescriptor):
@@ -398,10 +401,7 @@ class EngineFactory:
         # 验证引擎类
         if not inspect.isclass(descriptor.engine_class):
             raise ValueError(f"引擎类必须是类对象: {descriptor.engine_class}")
-
-        if not issubclass(descriptor.engine_class, EngineBase):
-            raise ValueError(f"引擎类必须继承自 EngineBase: {descriptor.engine_class}")
-
+        
         self._engine_descriptors[descriptor.engine_type] = descriptor
         logger.info(f"注册引擎类型: {descriptor.engine_type.value} ({descriptor.name})")
 
@@ -758,7 +758,7 @@ class EngineFactory:
         logger.info(f"所有引擎关闭完成，成功: {sum(results.values())}/{len(results)}")
         return results
 
-    async def _get_shared_event_engine(self) -> EventEngine | EngineBase:
+    async def _get_shared_event_engine(self) -> EventEngine | EngineBase | None:
         """获取共享事件引擎
 
         Returns:

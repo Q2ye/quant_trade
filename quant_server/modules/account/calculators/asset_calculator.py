@@ -180,7 +180,7 @@ class AssetCalculator:
 
 	@staticmethod
 	async def calculate_asset_history (
-			_account_id: int,
+			_account_id: str,
 			_start_date: date,
 			_end_date: date
 	) -> List[AssetHistory]:
@@ -209,7 +209,7 @@ class AssetCalculator:
 
 	@staticmethod
 	async def calculate_asset_growth_rate (
-			_account_id: int,
+			_account_id: str,
 			_start_date: date,
 			_end_date: date
 	) -> Dict[str, Decimal]:

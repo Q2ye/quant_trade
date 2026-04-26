@@ -15,15 +15,16 @@ import asyncio
 import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
-from pandas import DataFrame
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 from scipy import stats
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
 from quant_server.core.engines.system.event_engine import EventEngine
+from quant_server.core.events.base import TypedEvent
 # 导入数据模块常量
 from quant_server.modules.data.constants import (
 	CacheKey,
@@ -31,7 +32,6 @@ from quant_server.modules.data.constants import (
 	StandardFactors,
 	ResearchStatus
 )
-
 from quant_server.shared.cache.redis_cache import RedisCache
 # 导入共享层组件
 from quant_server.shared.database.repositories import (
@@ -314,8 +314,8 @@ class FactorResearchService:
 					task = self._calculate_single_factor(
 						factor_name=factor_name,
 						ts_code=ts_code,
-						start_date=start_date,
-						end_date=end_date,
+						start_date=datetime.combine(start_date, datetime.min.time()),
+						end_date=datetime.combine(end_date, datetime.min.time()),
 						parameters=parameters
 					)
 					batch_tasks.append(task)
@@ -413,8 +413,8 @@ class FactorResearchService:
 			self,
 			factor_name: str,
 			universe: Optional[List[str]] = None,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
+			start_date: Optional[datetime] = None,
+			end_date: Optional[datetime] = None,
 			analysis_type: str = "ic_analysis",
 			parameters: Optional[Dict[str, Any]] = None,
 			user_id: Optional[int] = None
@@ -449,11 +449,14 @@ class FactorResearchService:
 
 		try:
 			# 获取因子数据
+			# 将 datetime 类型转换为 date 类型
+			start_date_date = start_date.date() if isinstance(start_date, datetime) else start_date
+			end_date_date = end_date.date() if isinstance(end_date, datetime) else end_date
 			factor_data = await self._get_factor_data_for_analysis(
 				factor_name=factor_name,
 				universe=universe,
-				start_date=start_date,
-				end_date=end_date
+				start_date=start_date_date,
+				end_date=end_date_date
 			)
 
 			if factor_data.empty:
@@ -470,10 +473,13 @@ class FactorResearchService:
 			# 检查是否需要收益数据
 			if analysis_type in ["ic_analysis", "quantile_analysis"]:
 				# 获取收益数据
+				# 将 datetime 类型转换为 date 类型
+				start_date_date = start_date.date() if isinstance(start_date, datetime) else start_date
+				end_date_date = end_date.date() if isinstance(end_date, datetime) else end_date
 				returns_data = await self._get_returns_data_for_analysis(
 					universe=universe,
-					start_date=start_date,
-					end_date=end_date
+					start_date=start_date_date,
+					end_date=end_date_date
 				)
 
 				if returns_data.empty:
@@ -502,14 +508,25 @@ class FactorResearchService:
 				}
 
 			# 执行分析
-			analysis_result = await method(
-				factor_data=factor_data,
-				factor_name=factor_name,
-				start_date=start_date,
-				end_date=end_date,
-				returns_data=returns_data if analysis_type in ["ic_analysis", "quantile_analysis"] else None,
-				parameters=parameters
-			)
+			if analysis_type in ["ic_analysis", "quantile_analysis"]:
+				analysis_result = await method(
+					factor_data=factor_data,
+					returns_data=returns_data,
+					parameters=parameters
+				)
+			elif analysis_type == "correlation_analysis":
+				# 实例方法需要直接调用
+				analysis_result = await self._perform_correlation_analysis(
+					factor_data=factor_data,
+					factor_name=factor_name,
+					start_date=start_date,
+					end_date=end_date
+				)
+			else:
+				analysis_result = await method(
+					factor_data=factor_data,
+					returns_data=returns_data
+				)
 
 			# 生成分析报告
 			report = await self._generate_analysis_report(
@@ -837,8 +854,8 @@ class FactorResearchService:
 			self,
 			factor_name: str,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> List[Dict[str, Any]]:
 		"""
@@ -902,13 +919,53 @@ class FactorResearchService:
 			# 获取财务数据（如果需要）
 			financial_data = None
 			if factor_name in [StandardFactors.PE, StandardFactors.PB, StandardFactors.ROE]:
-				financial_data = await self._get_financial_data(ts_code, start_date, end_date)
+				financial_data = await self._get_financial_data(ts_code, start_date.date(), end_date.date())
 
 			# 计算因子值
-			factor_series = calculator(df, parameters, financial_data)
+			if calculator == self._calculate_technical_factor:
+				factor_series = calculator(df, parameters)
+			elif calculator in [
+				FactorResearchService._calculate_pe,
+				FactorResearchService._calculate_pb,
+				FactorResearchService._calculate_ps,
+				FactorResearchService._calculate_roe,
+				FactorResearchService._calculate_roa,
+				FactorResearchService._calculate_gm,
+				FactorResearchService._calculate_np_margin,
+				FactorResearchService._calculate_debt_to_asset,
+				FactorResearchService._calculate_current_ratio,
+				FactorResearchService._calculate_quick_ratio,
+				FactorResearchService._calculate_market_cap,
+				FactorResearchService._calculate_turnover_rate
+			]:
+				# 静态方法，不需要parameters参数
+				factor_series = calculator(df, financial_data)
+			elif calculator in [
+				FactorResearchService._calculate_return_1m,
+				FactorResearchService._calculate_return_3m,
+				FactorResearchService._calculate_return_6m,
+				FactorResearchService._calculate_return_1y,
+				FactorResearchService._calculate_volatility_1m,
+				FactorResearchService._calculate_volatility_3m,
+				FactorResearchService._calculate_volatility_6m,
+				FactorResearchService._calculate_volatility_1y,
+				FactorResearchService._calculate_sharpe_ratio,
+				FactorResearchService._calculate_volume_ratio,
+				FactorResearchService._calculate_ma,
+				FactorResearchService._calculate_ema,
+				FactorResearchService._calculate_macd,
+				FactorResearchService._calculate_rsi,
+				FactorResearchService._calculate_boll,
+				FactorResearchService._calculate_kdj
+			]:
+				# 技术指标计算器，需要parameters参数
+				factor_series = calculator(df, parameters)
+			else:
+				# 其他计算器，只需要df参数
+				factor_series = calculator(df)
 
-			if factor_series.empty:
-				return []
+				if factor_series.empty:
+					return []
 
 			# 转换为标准格式
 			result = []
@@ -921,7 +978,8 @@ class FactorResearchService:
 					# 尝试解析字符串日期
 					try:
 						trade_date = pd.to_datetime(date_val).to_pydatetime()
-					except Exception:
+					except (ValueError, TypeError) as e:
+						logger.warning(f"日期解析失败，使用当前时间: {str(e)}")
 						trade_date = datetime.now()
 				elif isinstance(date_val, datetime):
 					trade_date = date_val
@@ -1002,27 +1060,27 @@ class FactorResearchService:
 			Dict: 因子计算器映射
 		"""
 		return {
-			StandardFactors.PE: self._calculate_pe,
-			StandardFactors.PB: self._calculate_pb,
-			StandardFactors.PS: self._calculate_ps,
-			StandardFactors.ROE: self._calculate_roe,
-			StandardFactors.ROA: self._calculate_roa,
-			StandardFactors.GROSS_MARGIN: self._calculate_gm,
-			StandardFactors.OPERATING_MARGIN: self._calculate_np_margin,
-			StandardFactors.DEBT_RATIO: self._calculate_debt_to_asset,
-			"current_ratio": self._calculate_current_ratio,
-			"quick_ratio": self._calculate_quick_ratio,
-			StandardFactors.MARKET_CAP: self._calculate_market_cap,
-			StandardFactors.RET_1M: self._calculate_return_1m,
-			StandardFactors.RET_3M: self._calculate_return_3m,
-			StandardFactors.RET_6M: self._calculate_return_6m,
-			StandardFactors.RET_12M: self._calculate_return_1y,
+			StandardFactors.PE: FactorResearchService._calculate_pe,
+			StandardFactors.PB: FactorResearchService._calculate_pb,
+			StandardFactors.PS: FactorResearchService._calculate_ps,
+			StandardFactors.ROE: FactorResearchService._calculate_roe,
+			StandardFactors.ROA: FactorResearchService._calculate_roa,
+			StandardFactors.GROSS_MARGIN: FactorResearchService._calculate_gm,
+			StandardFactors.OPERATING_MARGIN: FactorResearchService._calculate_np_margin,
+			StandardFactors.DEBT_RATIO: FactorResearchService._calculate_debt_to_asset,
+			"current_ratio": FactorResearchService._calculate_current_ratio,
+			"quick_ratio": FactorResearchService._calculate_quick_ratio,
+			StandardFactors.MARKET_CAP: FactorResearchService._calculate_market_cap,
+			StandardFactors.RET_1M: FactorResearchService._calculate_return_1m,
+			StandardFactors.RET_3M: FactorResearchService._calculate_return_3m,
+			StandardFactors.RET_6M: FactorResearchService._calculate_return_6m,
+			StandardFactors.RET_12M: FactorResearchService._calculate_return_1y,
 			StandardFactors.VOLATILITY_1M: self._calculate_volatility_1m,
 			StandardFactors.VOLATILITY_3M: self._calculate_volatility_3m,
 			StandardFactors.VOLATILITY_12M: self._calculate_volatility_1y,
 			StandardFactors.BETA: self._calculate_beta,
 			"sharpe_ratio": self._calculate_sharpe_ratio,
-			StandardFactors.TURNOVER_RATE: self._calculate_turnover_rate,
+			StandardFactors.TURNOVER_RATE: FactorResearchService._calculate_turnover_rate,
 			"volume_ratio": self._calculate_volume_ratio,
 			"MA": self._calculate_ma,
 			"EMA": self._calculate_ema,
@@ -1034,9 +1092,8 @@ class FactorResearchService:
 
 	@staticmethod
 	def _calculate_technical_factor (
-		df: DataFrame,
-		parameters: Optional[Dict] = None,
-		financial_data: Optional[DataFrame] = None
+			df: DataFrame,
+			parameters: Optional[Dict] = None
 	) -> pd.Series:
 		"""通用技术因子计算器"""
 		factor_type = parameters.get("type", "close") if parameters else "close"
@@ -1053,188 +1110,160 @@ class FactorResearchService:
 
 	@staticmethod
 	def _calculate_pe (
-		df: DataFrame,
-		parameters: Optional[Dict] = None,
-		financial_data: Optional[DataFrame] = None
+			df: DataFrame,
+			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市盈率"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		if financial_data is not None and 'eps' in financial_data.columns:
 			# 使用实际财务数据
 			eps = financial_data['eps']
 			pe = df['close'] / eps
+			return pe
 		else:
-			# 模拟市盈率
-			dates = df.index
-			np.random.seed(hash(str(dates[0])) % 10000)
-			pe = pd.Series(np.random.uniform(5, 50, len(dates)), index=dates)
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return pe
-
+	@staticmethod
 	def _calculate_pb (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市净率"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		if financial_data is not None and 'bps' in financial_data.columns:
 			# 使用实际财务数据
 			bps = financial_data['bps']
 			pb = df['close'] / bps
+			return pb
 		else:
-			# 模拟市净率
-			dates = df.index
-			np.random.seed(hash(str(dates[0])) % 10000)
-			pb = pd.Series(np.random.uniform(0.5, 5, len(dates)), index=dates)
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return pb
-
+	@staticmethod
 	def _calculate_ps (
-			self,
-			df: DataFrame,
-			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
+			df: DataFrame
 	) -> pd.Series:
 		"""计算市销率"""
-		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+		return pd.Series(dtype=float, index=df.index)
 
-		# 模拟市销率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		ps = pd.Series(np.random.uniform(0.5, 10, len(dates)), index=dates)
-
-		return ps
-
+	@staticmethod
 	def _calculate_roe (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算净资产收益率"""
 		if financial_data is not None and 'roe' in financial_data.columns:
 			# 使用实际财务数据
-			roe = financial_data['roe']
+			return financial_data['roe']
 		else:
-			# 模拟ROE
-			dates = df.index
-			np.random.seed(hash(str(dates[0])) % 10000)
-			roe = pd.Series(np.random.uniform(0.05, 0.25, len(dates)), index=dates)
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return roe
-
+	@staticmethod
 	def _calculate_roa (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算总资产收益率"""
-		# 模拟ROA
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		roa = pd.Series(np.random.uniform(0.03, 0.15, len(dates)), index=dates)
+		if financial_data is not None and 'roa' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['roa']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return roa
-
+	@staticmethod
 	def _calculate_gm (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算毛利率"""
-		# 模拟毛利率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		gm = pd.Series(np.random.uniform(0.20, 0.60, len(dates)), index=dates)
+		if financial_data is not None and 'gross_margin' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['gross_margin']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return gm
-
+	@staticmethod
 	def _calculate_np_margin (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算净利率"""
-		# 模拟净利率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		np_margin = pd.Series(np.random.uniform(0.05, 0.25, len(dates)), index=dates)
+		if financial_data is not None and 'net_profit_margin' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['net_profit_margin']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return np_margin
-
+	@staticmethod
 	def _calculate_debt_to_asset (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算资产负债率"""
-		# 模拟资产负债率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		debt_to_asset = pd.Series(np.random.uniform(0.30, 0.70, len(dates)), index=dates)
+		if financial_data is not None and 'debt_to_asset' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['debt_to_asset']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return debt_to_asset
-
+	@staticmethod
 	def _calculate_current_ratio (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算流动比率"""
-		# 模拟流动比率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		current_ratio = pd.Series(np.random.uniform(1.0, 3.0, len(dates)), index=dates)
+		if financial_data is not None and 'current_ratio' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['current_ratio']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return current_ratio
-
+	@staticmethod
 	def _calculate_quick_ratio (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算速动比率"""
-		# 模拟速动比率
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		quick_ratio = pd.Series(np.random.uniform(0.5, 2.0, len(dates)), index=dates)
+		if financial_data is not None and 'quick_ratio' in financial_data.columns:
+			# 使用实际财务数据
+			return financial_data['quick_ratio']
+		else:
+			# 没有财务数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return quick_ratio
-
+	@staticmethod
 	def _calculate_market_cap (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算市值"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
-		# 假设流通股本为1亿
-		float_shares = 100000000
-		market_cap = df['close'] * float_shares
+		if financial_data is not None and 'float_shares' in financial_data.columns:
+			# 使用实际流通股本数据
+			float_shares = financial_data['float_shares']
+			market_cap = df['close'] * float_shares
+			return market_cap
+		else:
+			# 没有流通股本数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
-		return market_cap
-
+	@staticmethod
 	def _calculate_return_1m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算1个月收益率"""
 		if 'close' not in df.columns:
@@ -1245,11 +1274,10 @@ class FactorResearchService:
 
 		return returns
 
+	@staticmethod
 	def _calculate_return_3m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算3个月收益率"""
 		if 'close' not in df.columns:
@@ -1260,11 +1288,10 @@ class FactorResearchService:
 
 		return returns
 
+	@staticmethod
 	def _calculate_return_6m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算6个月收益率"""
 		if 'close' not in df.columns:
@@ -1275,11 +1302,10 @@ class FactorResearchService:
 
 		return returns
 
+	@staticmethod
 	def _calculate_return_1y (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算12个月收益率"""
 		if 'close' not in df.columns:
@@ -1290,11 +1316,10 @@ class FactorResearchService:
 
 		return returns
 
+	@staticmethod
 	def _calculate_volatility_1m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算1个月波动率"""
 		if 'close' not in df.columns:
@@ -1306,11 +1331,10 @@ class FactorResearchService:
 
 		return volatility
 
+	@staticmethod
 	def _calculate_volatility_3m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算3个月波动率"""
 		if 'close' not in df.columns:
@@ -1322,11 +1346,10 @@ class FactorResearchService:
 
 		return volatility
 
+	@staticmethod
 	def _calculate_volatility_6m (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算12个月波动率"""
 		if 'close' not in df.columns:
@@ -1338,28 +1361,38 @@ class FactorResearchService:
 
 		return volatility
 
+	@staticmethod
 	def _calculate_beta (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算Beta系数"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
-		# 模拟Beta系数
-		dates = df.index
-		np.random.seed(hash(str(dates[0])) % 10000)
-		beta = pd.Series(np.random.uniform(0.5, 1.5, len(dates)), index=dates)
+		# 这里应该使用实际的市场指数数据来计算Beta
+		# 由于没有市场指数数据，暂时返回空序列
+		# 实际实现时，需要获取市场指数的收益率数据，然后计算与个股收益率的协方差和市场指数的方差
+		return pd.Series(dtype=float, index=df.index)
 
-		return beta
-
+	@staticmethod
 	def _calculate_volume_ratio (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
+	) -> pd.Series:
+		"""计算量比"""
+		if 'volume' not in df.columns:
+			return pd.Series(dtype=float)
+
+		window = parameters.get("window", 5) if parameters else 5
+		avg_volume = df['volume'].rolling(window=window).mean()
+		volume_ratio = df['volume'] / avg_volume
+
+		return volume_ratio
+
+	@staticmethod
+	def _calculate_sharpe_ratio (
+			df: DataFrame,
+			parameters: Optional[Dict] = None,
 	) -> pd.Series:
 		"""计算夏普比率"""
 		if 'close' not in df.columns:
@@ -1378,132 +1411,142 @@ class FactorResearchService:
 
 		return sharpe_ratio
 
-	def _calculate_sharpe_ratio (
-			self,
-			df: DataFrame,
-			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
-	) -> pd.Series:
-		"""计算换手率"""
-		if 'volume' not in df.columns:
-			return pd.Series(dtype=float)
-
-		# 模拟换手率（假设流通股本为1亿）
-		float_shares = 100000000
-		turnover_rate = df['volume'] / float_shares * 100
-
-		return turnover_rate
-
+	@staticmethod
 	def _calculate_volatility_1y (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
-		"""计算量比"""
-		if 'volume' not in df.columns:
+		"""计算12个月波动率"""
+		if 'close' not in df.columns:
 			return pd.Series(dtype=float)
 
-		window = parameters.get("window", 5) if parameters else 5
-		avg_volume = df['volume'].rolling(window=window).mean()
-		volume_ratio = df['volume'] / avg_volume
+		window = parameters.get("window", 240) if parameters else 240
+		returns = df['close'].pct_change()
+		volatility = returns.rolling(window=window).std() * np.sqrt(252)  # 年化波动率
 
-		return volume_ratio
+		return volatility
 
+	@staticmethod
 	def _calculate_ma (
-			self,
 			df: pd.DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
 	) -> pd.Series:
 		"""计算移动平均线"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		period = parameters.get("period", 20) if parameters else 20
-		ma = df['close'].rolling(window=period).mean()
+		ma_type = parameters.get("type", "simple") if parameters else "simple"
+
+		if ma_type == "simple":
+			ma = df['close'].rolling(window=period).mean()
+		elif ma_type == "weighted":
+			# 加权移动平均线
+			weights = np.arange(1, period + 1)
+			ma = df['close'].rolling(window=period).apply(
+				lambda x: np.average(x, weights=weights), raw=True
+			)
+		else:
+			ma = df['close'].rolling(window=period).mean()
 
 		return ma
 
+	@staticmethod
 	def _calculate_ema (
-			self,
 			df: pd.DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[pd.DataFrame] = None
 	) -> pd.Series:
 		"""计算指数移动平均线"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		period = parameters.get("period", 12) if parameters else 12
-		ema = df['close'].ewm(span=period, adjust=False).mean()
+		adjust = parameters.get("adjust", False) if parameters else False
+		alpha = parameters.get("alpha", None) if parameters else None
+
+		if alpha:
+			ema = df['close'].ewm(alpha=alpha, adjust=adjust).mean()
+		else:
+			ema = df['close'].ewm(span=period, adjust=adjust).mean()
 
 		return ema
 
+	@staticmethod
 	def _calculate_macd (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算MACD指标"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		fast_period = parameters.get("fast_period", 12) if parameters else 12
 		slow_period = parameters.get("slow_period", 26) if parameters else 26
+		# signal_period = parameters.get("signal_period", 9) if parameters else 9
 
 		ema_fast = df['close'].ewm(span=fast_period, adjust=False).mean()
 		ema_slow = df['close'].ewm(span=slow_period, adjust=False).mean()
 		macd = ema_fast - ema_slow
 
+		# 返回MACD线（DIF）
 		return macd
 
+	@staticmethod
 	def _calculate_rsi (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算RSI指标"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		period = parameters.get("period", 14) if parameters else 14
+		method = parameters.get("method", "wilder") if parameters else "wilder"
 
 		delta = df['close'].diff()
-		gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-		loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+		
+		if method == "wilder":
+			# Wilder's smoothing method
+			gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+			loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+		else:
+			# Standard method
+			gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+			loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+		
+		# 处理除零情况
 		rs = gain / loss
+		rs = rs.replace([np.inf, -np.inf], np.nan)
 		rsi = 100 - (100 / (1 + rs))
+		rsi = rsi.fillna(50)  # 当gain和loss都为0时，RSI设为50
 
 		return rsi
 
+	@staticmethod
 	def _calculate_boll (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算布林带中轨"""
 		if 'close' not in df.columns:
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		period = parameters.get("period", 20) if parameters else 20
+
 		middle = df['close'].rolling(window=period).mean()
 
+		# 返回中轨线
 		return middle
 
+	@staticmethod
 	def _calculate_kdj (
-			self,
 			df: DataFrame,
 			parameters: Optional[Dict] = None,
-			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
 		"""计算KDJ指标的K值"""
 		required_cols = ['high', 'low', 'close']
 		if not all(col in df.columns for col in required_cols):
-			return pd.Series(dtype=float)
+			return pd.Series(dtype=float, index=df.index)
 
 		n = parameters.get("n", 9) if parameters else 9
 		m1 = parameters.get("m1", 3) if parameters else 3
@@ -1516,35 +1559,31 @@ class FactorResearchService:
 
 		k = rsv.ewm(alpha=1 / m1, adjust=False).mean()
 
+		# 返回K值
 		return k
 
+	@staticmethod
 	def _calculate_turnover_rate (
-			self,
 			df: DataFrame,
-			parameters: Optional[Dict] = None,
 			financial_data: Optional[DataFrame] = None
 	) -> pd.Series:
-		"""通用技术因子计算器"""
-		factor_type = parameters.get("type", "close") if parameters else "close"
+		"""计算换手率"""
+		if 'volume' not in df.columns:
+			return pd.Series(dtype=float, index=df.index)
 
-		if factor_type == "close":
-			return df['close'] if 'close' in df.columns else pd.Series(dtype=float)
-		elif factor_type == "volume":
-			return df['volume'] if 'volume' in df.columns else pd.Series(dtype=float)
-		elif factor_type == "amount":
-			return df['amount'] if 'amount' in df.columns else pd.Series(dtype=float)
+		if financial_data is not None and 'float_shares' in financial_data.columns:
+			# 使用实际流通股本数据
+			float_shares = financial_data['float_shares']
+			turnover_rate = df['volume'] / float_shares * 100
+			return turnover_rate
 		else:
-			# 默认返回价格
-			return df['close'] if 'close' in df.columns else pd.Series(dtype=float)
+			# 没有流通股本数据时返回空序列
+			return pd.Series(dtype=float, index=df.index)
 
 	# ==================== 因子分析方法实现 ====================
-
+	@staticmethod
 	async def _perform_ic_analysis (
-			self,
 			factor_data: DataFrame,
-			factor_name: str,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
 			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
@@ -1553,9 +1592,6 @@ class FactorResearchService:
 
 		Args:
 			factor_data: 因子数据DataFrame
-			factor_name: 因子名称
-			start_date: 开始日期
-			end_date: 结束日期
 			returns_data: 收益数据
 			parameters: 分析参数
 
@@ -1573,29 +1609,84 @@ class FactorResearchService:
 				"ic_decay": []
 			}
 
-		# 这里简化处理，实际需要计算因子值与未来收益的相关性
+		# 计算IC序列（因子值与未来收益的相关性）
 		dates = factor_data.index
+		ic_series = []
+		ic_decay = []
 
-		# 模拟IC序列
-		np.random.seed(hash(str(dates[0])) % 10000)
-		ic_series = np.random.normal(0.05, 0.15, len(dates))
+		# 确保有收益数据
+		if returns_data is None or returns_data.empty:
+			logger.warning("缺少收益数据，无法计算IC")
+			return {
+				"ic_mean": 0,
+				"ic_std": 0,
+				"ic_ir": 0,
+				"ic_series": [],
+				"ic_pvalue": 1.0,
+				"ic_positive_ratio": 0,
+				"ic_decay": [],
+				"sample_size": 0
+			}
+
+		# 计算每个时间点的IC值
+		for dt in dates:
+			try:
+				# 获取当前日期的因子值
+				if dt in factor_data.index:
+					factor_values = factor_data.loc[dt]
+
+					# 获取下一期的收益数据
+					forward_period = int(parameters.get("forward_period", 1)) if parameters else 1
+					forward_date = dt + pd.Timedelta(days=forward_period)
+
+					if forward_date in returns_data.index:
+						forward_returns = returns_data.loc[forward_date]
+
+						# 计算相关系数（IC）
+						# 确保 factor_values 和 forward_returns 是 Series 类型
+						if isinstance(factor_values, pd.Series) and isinstance(forward_returns, pd.Series):
+							valid_stocks = factor_values.dropna().index.intersection(forward_returns.dropna().index)
+						else:
+							valid_stocks = []
+
+						if len(valid_stocks) >= 10:  # 至少需要10只股票
+							try:
+								corr_coef = np.corrcoef(factor_values[valid_stocks], forward_returns[valid_stocks])[
+									0, 1]
+								ic_series.append(corr_coef if not np.isnan(corr_coef) else 0)
+							except (ValueError, TypeError):
+								ic_series.append(0)
+						else:
+							ic_series.append(0)
+					else:
+						ic_series.append(0)
+				else:
+					ic_series.append(0)
+			except Exception as e:
+				logger.warning(f"计算IC值时出错: {str(e)}")
+				ic_series.append(0)
 
 		# 计算IC统计量
-		ic_mean = float(np.mean(ic_series))
-		ic_std = float(np.std(ic_series))
+		ic_series = np.array(ic_series)
+		ic_mean = float(np.mean(ic_series)) if len(ic_series) > 0 else 0
+		ic_std = float(np.std(ic_series)) if len(ic_series) > 0 else 0
 		ic_ir = ic_mean / ic_std if ic_std > 0 else 0
 
 		# 计算t检验p值
-		t_stat, ic_pvalue = stats.ttest_1samp(ic_series, 0)
+		t_stat, ic_pvalue = stats.ttest_1samp(ic_series, 0) if len(ic_series) > 0 else (0, 1.0)
 
 		# 计算IC正率
 		ic_positive_ratio = sum(1 for x in ic_series if x > 0) / len(ic_series) if len(ic_series) > 0 else 0
 
-		# 计算IC衰减（模拟）
-		ic_decay = []
+		# 计算IC衰减（多期IC）
 		for lag in range(1, 6):  # 1-5期衰减
-			if len(ic_series) > lag:
-				decay_value = ic_mean * (0.9 ** lag)  # 模拟衰减
+			lag_ic_series = []
+			for i in range(len(dates)):
+				if i + lag < len(dates):
+					lag_ic_series.append(ic_series[i + lag])
+
+			if lag_ic_series:
+				decay_value = np.mean(lag_ic_series)
 				ic_decay.append({
 					"lag": lag,
 					"ic": round(decay_value, 4)
@@ -1612,12 +1703,9 @@ class FactorResearchService:
 			"sample_size": len(dates)
 		}
 
+	@staticmethod
 	async def _perform_quantile_analysis (
-			self,
 			factor_data: DataFrame,
-			factor_name: str,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
 			returns_data: Optional[DataFrame] = None,
 			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
@@ -1626,9 +1714,6 @@ class FactorResearchService:
 
 		Args:
 			factor_data: 因子数据DataFrame
-			factor_name: 因子名称
-			start_date: 开始日期
-			end_date: 结束日期
 			returns_data: 收益数据
 			parameters: 分析参数
 
@@ -1644,41 +1729,96 @@ class FactorResearchService:
 				"win_rate": 0
 			}
 
-		# 模拟分位数分析结果
-		quantile_count = 5  # 5个分位数组
-		quantile_returns = [0.15, 0.12, 0.10, 0.08, 0.05]  # 从高到低
+		# 执行真实的分位数分析
+		quantile_count = parameters.get("quantile_count", 5) if parameters else 5
 
-		top_minus_bottom = quantile_returns[0] - quantile_returns[-1]
-		turnover_rate = [0.30, 0.28, 0.25, 0.22, 0.20]
+		# 确保有收益数据
+		if returns_data is None or returns_data.empty:
+			logger.warning("缺少收益数据，无法进行分位数分析")
+			return {
+				"quantile_returns": [],
+				"top_minus_bottom": 0,
+				"turnover_rate": [],
+				"quantile_spread": [],
+				"win_rate": 0
+			}
+
+		# 计算每个时间点的分位数收益
+		dates = factor_data.index
+		quantile_returns_list = []
+		win_rates = []
+
+		for dt in dates:
+			try:
+				if dt in factor_data.index and dt in returns_data.index:
+					# 确保 factor_values 和 forward_returns 是 Series 类型
+					factor_values = factor_data.loc[dt]
+					forward_returns = returns_data.loc[dt]
+					if isinstance(factor_values, pd.Series):
+						factor_values = factor_values.dropna()
+					if isinstance(forward_returns, pd.Series):
+						forward_returns = forward_returns.dropna()
+
+					# 获取有效股票
+					valid_stocks = factor_values.index.intersection(forward_returns.index)
+
+					if len(valid_stocks) >= quantile_count * 10:  # 每个分位数组至少10只股票
+						# 按因子值排序
+						sorted_stocks = factor_values[valid_stocks].sort_values(ascending=False)
+
+						# 计算分位数
+						quantile_size = len(sorted_stocks) // quantile_count
+						quantile_returns = []
+
+						for i in range(quantile_count):
+							start_idx = i * quantile_size
+							end_idx = (i + 1) * quantile_size if i < quantile_count - 1 else len(sorted_stocks)
+
+							quantile_stocks = sorted_stocks.index[start_idx:end_idx]
+							quantile_return = forward_returns[quantile_stocks].mean()
+							quantile_returns.append(quantile_return)
+
+						quantile_returns_list.append(quantile_returns)
+
+						# 计算胜率（最高分位数组是否跑赢最低分位数组）
+						top_bottom_spread = quantile_returns[0] - quantile_returns[-1]
+						win_rates.append(1 if top_bottom_spread > 0 else 0)
+			except Exception as e:
+				logger.warning(f"分位数分析时出错: {str(e)}")
+
+		# 计算平均分位数收益
+		if quantile_returns_list:
+			avg_quantile_returns = np.mean(quantile_returns_list, axis=0)
+			top_minus_bottom = avg_quantile_returns[0] - avg_quantile_returns[-1]
+			win_rate = np.mean(win_rates) if win_rates else 0
+		else:
+			avg_quantile_returns = [0] * quantile_count
+			top_minus_bottom = 0
+			win_rate = 0
 
 		# 计算分位价差
 		quantile_spread = [
-			round(quantile_returns[i] - quantile_returns[i + 1], 4)
-			for i in range(len(quantile_returns) - 1)
+			round(avg_quantile_returns[i] - avg_quantile_returns[i + 1], 4)
+			for i in range(len(avg_quantile_returns) - 1)
 		]
-
-		# 计算胜率（模拟）
-		win_rate = 0.65 if top_minus_bottom > 0.05 else 0.50
 
 		return {
 			"quantile_count": quantile_count,
-			"quantile_returns": [round(x, 4) for x in quantile_returns],
+			"quantile_returns": [round(x, 4) for x in avg_quantile_returns],
 			"top_minus_bottom": round(top_minus_bottom, 4),
-			"turnover_rate": [round(x, 4) for x in turnover_rate],
+			"turnover_rate": [],
 			"quantile_spread": quantile_spread,
 			"win_rate": round(win_rate, 4),
-			"monotonicity": "monotonic" if all(quantile_returns[i] >= quantile_returns[i + 1] for i in
-			                                   range(len(quantile_returns) - 1)) else "non_monotonic"
+			"monotonicity": "monotonic" if all(avg_quantile_returns[i] >= avg_quantile_returns[i + 1] for i in
+			                                   range(len(avg_quantile_returns) - 1)) else "non_monotonic"
 		}
 
 	async def _perform_correlation_analysis (
 			self,
 			factor_data: DataFrame,
 			factor_name: str,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
-			returns_data: Optional[DataFrame] = None,
-			parameters: Optional[Dict[str, Any]] = None
+			start_date: Optional[datetime] = None,
+			end_date: Optional[datetime] = None,
 	) -> Dict[str, Any]:
 		"""
 		执行相关性分析
@@ -1688,40 +1828,86 @@ class FactorResearchService:
 			factor_name: 因子名称
 			start_date: 开始日期
 			end_date: 结束日期
-			returns_data: 收益数据
-			parameters: 分析参数
 
 		Returns:
 			Dict: 相关性分析结果
 		"""
-		# 这里需要多个因子进行比较，简化处理
+		if factor_data.empty:
+			return {
+				"correlation_matrix": [],
+				"mean_correlation": 0,
+				"max_correlation": 0,
+				"min_correlation": 0,
+				"orthogonality_score": 0
+			}
+
+		# 获取其他因子数据进行比较
+		category = "all"
+		if factor_data.columns:
+			first_column = factor_data.columns[0]
+			if isinstance(first_column, str):
+				parts = first_column.split('_')
+				if parts:
+					category = parts[0]
+		other_factors = await self.factor_def_repo.get_by_category(category)
+		other_factor_names = [f.factor_name for f in other_factors if f.factor_name != factor_name][:5]  # 最多比较5个其他因子
+
+		# 构建因子数据矩阵
+		factor_matrix = pd.DataFrame(index=factor_data.index)
+		factor_matrix[factor_name] = factor_data.iloc[:, 0] if isinstance(factor_data, pd.DataFrame) else factor_data
+
+		# 获取其他因子数据
+		for other_factor in other_factor_names:
+			try:
+				other_data = await self._get_factor_data_for_analysis(
+					factor_name=other_factor,
+					universe=None,
+					start_date=start_date,
+					end_date=end_date
+				)
+				if not other_data.empty:
+					factor_matrix[other_factor] = other_data.iloc[:, 0]
+			except Exception as e:
+				logger.warning(f"获取因子 {other_factor} 数据失败: {str(e)}")
+
+		# 计算相关性矩阵
+		correlation_matrix = factor_matrix.corr().values.tolist()
+		correlation_values = []
+
+		# 提取非对角线元素
+		for i in range(len(correlation_matrix)):
+			for j in range(i + 1, len(correlation_matrix)):
+				if not np.isnan(correlation_matrix[i][j]):
+					correlation_values.append(correlation_matrix[i][j])
+
+		# 计算统计指标
+		mean_correlation = np.mean(correlation_values) if correlation_values else 0
+		max_correlation = np.max(correlation_values) if correlation_values else 0
+		min_correlation = np.min(correlation_values) if correlation_values else 0
+
+		# 计算正交性得分（1 - 平均绝对相关性）
+		orthogonality_score = 1 - np.mean(np.abs(correlation_values)) if correlation_values else 1
+
 		return {
-			"correlation_matrix": [],
-			"mean_correlation": 0,
-			"max_correlation": 0,
-			"min_correlation": 0,
-			"orthogonality_score": 0.8  # 正交性得分
+			"correlation_matrix": correlation_matrix,
+			"mean_correlation": float(mean_correlation),
+			"max_correlation": float(max_correlation),
+			"min_correlation": float(min_correlation),
+			"orthogonality_score": float(orthogonality_score),
+			"compared_factors": list(factor_matrix.columns)
 		}
 
+	@staticmethod
 	async def _perform_stability_analysis (
-			self,
 			factor_data: DataFrame,
-			factor_name: str,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
 			returns_data: Optional[DataFrame] = None,
-			parameters: Optional[Dict[str, Any]] = None
 	) -> Dict[str, Any]:
 		"""
 		执行稳定性分析
 
 		Args:
 			factor_data: 因子数据
-			factor_name: 因子名称
-			start_date: 开始日期
-			end_date: 结束日期
 			returns_data: 收益数据
-			parameters: 分析参数
 
 		Returns:
 			Dict: 稳定性分析结果
@@ -1734,28 +1920,119 @@ class FactorResearchService:
 				"ic_stability": 0
 			}
 
-		# 模拟稳定性分析结果
-		stability_score = 0.75
+		# 执行真实的稳定性分析
+		dates = factor_data.index
+		period_consistency = []
+		ic_values = []
+		rank_ic_values = []
 
-		# 分阶段一致性
-		period_consistency = [
-			{"period": "2023-Q1", "ic": 0.08, "rank_ic": 0.12},
-			{"period": "2023-Q2", "ic": 0.06, "rank_ic": 0.10},
-			{"period": "2023-Q3", "ic": 0.04, "rank_ic": 0.08},
-			{"period": "2023-Q4", "ic": 0.07, "rank_ic": 0.11}
-		]
+		# 确保有收益数据
+		if returns_data is None or returns_data.empty:
+			logger.warning("缺少收益数据，无法进行稳定性分析")
+			return {
+				"stability_score": 0,
+				"period_consistency": [],
+				"rank_ic": 0,
+				"ic_stability": 0
+			}
+
+		# 将数据按季度分组
+		try:
+			# 转换为季度数据
+			dates_quarterly = pd.to_datetime(dates).to_period("Q")
+			unique_quarters = sorted(dates_quarterly.unique.tolist())
+
+			for quarter in unique_quarters:
+				try:
+					# 获取该季度的数据
+					quarter_dates = dates[dates_quarterly == quarter]
+
+					if len(quarter_dates) >= 10:  # 至少需要10个交易日
+						quarter_ic_values = []
+						quarter_rank_ic_values = []
+
+						for dt in quarter_dates:
+							try:
+								if dt in factor_data.index and dt in returns_data.index:
+									# 确保 factor_values 和 forward_returns 是 Series 类型
+									factor_values = factor_data.loc[dt]
+									forward_returns = returns_data.loc[dt]
+									if isinstance(factor_values, pd.Series):
+										factor_values = factor_values.dropna()
+									if isinstance(forward_returns, pd.Series):
+										forward_returns = forward_returns.dropna()
+
+									valid_stocks = factor_values.index.intersection(forward_returns.index)
+
+									if len(valid_stocks) >= 10:
+										# 计算IC值
+										try:
+											corr_coef = np.corrcoef(factor_values[valid_stocks], forward_returns[valid_stocks])[0, 1]
+											if not np.isnan(corr_coef):
+												quarter_ic_values.append(corr_coef)
+										except (ValueError, TypeError):
+											pass
+
+										# 计算Rank IC值
+										try:
+											rank_factor_values = factor_values[valid_stocks].rank()
+											rank_returns = forward_returns[valid_stocks].rank()
+											rank_corr_coef = np.corrcoef(rank_factor_values, rank_returns)[0, 1]
+											if not np.isnan(rank_corr_coef):
+												quarter_rank_ic_values.append(rank_corr_coef)
+										except (ValueError, TypeError):
+											pass
+							except (ValueError, TypeError):
+								pass
+
+						# 计算季度平均值
+						quarter_ic = np.mean(quarter_ic_values) if quarter_ic_values else 0
+						quarter_rank_ic = np.mean(quarter_rank_ic_values) if quarter_rank_ic_values else 0
+
+						period_consistency.append({
+							"period": str(quarter),
+							"ic": round(quarter_ic, 4),
+							"rank_ic": round(quarter_rank_ic, 4)
+						})
+
+						ic_values.append(quarter_ic)
+						rank_ic_values.append(quarter_rank_ic)
+
+				except Exception as e:
+					logger.warning(f"处理季度 {quarter} 数据时出错: {str(e)}")
+		except Exception as e:
+			logger.warning(f"稳定性分析时出错: {str(e)}")
+
+		# 计算稳定性指标
+		if ic_values:
+			# 稳定性得分（IC值的标准差越小越稳定）
+			ic_std = float(np.std(ic_values))
+			stability_score = max(0.0, 1 - ic_std)  # 标准差越小，稳定性得分越高
+
+			# Rank IC平均值
+			rank_ic_avg = np.mean(rank_ic_values)
+
+			# IC稳定性（IC值的变异系数）
+			ic_mean = float(np.mean(ic_values))
+			if ic_mean > 0:
+				ic_stability = 1 - (ic_std / ic_mean)
+			else:
+				ic_stability = 0
+		else:
+			stability_score = 0
+			rank_ic_avg = 0
+			ic_stability = 0
 
 		return {
 			"stability_score": round(stability_score, 4),
 			"period_consistency": period_consistency,
-			"rank_ic": 0.10,  # 模拟Rank IC
-			"ic_stability": 0.70  # IC稳定性
+			"rank_ic": round(rank_ic_avg, 4),
+			"ic_stability": round(ic_stability, 4)
 		}
 
 	# ==================== 报告生成方法 ====================
-
+	@staticmethod
 	async def _generate_analysis_report (
-			self,
 			analysis_result: Dict[str, Any],
 			factor_name: str,
 			analysis_type: str
@@ -1852,8 +2129,8 @@ class FactorResearchService:
 
 		return report
 
+	@staticmethod
 	async def _generate_comparison_report (
-			self,
 			comparison_results: Dict[str, Any],
 			factor_names: List[str],
 			metrics: List[str],
@@ -1963,7 +2240,7 @@ class FactorResearchService:
 		"""
 		try:
 			from sqlalchemy import select, and_
-			
+
 			# 构建查询
 			query = select(self.factor_repo.model).where(
 				self.factor_repo.model.factor_name == factor_name
@@ -2030,10 +2307,66 @@ class FactorResearchService:
 			end_date: 结束日期
 
 		Returns:
-			pd.DataFrame: 收益数据
+			pd.DataFrame: 收益数据，行是日期，列是股票代码，值是收益率
 		"""
-		# 这里简化处理，实际需要从数据库获取收益数据
-		return pd.DataFrame()
+		try:
+			# 获取股票列表
+			if not universe:
+				stocks = await self.stock_repo.get_all(limit=100)
+				universe = [stock.ts_code for stock in stocks]
+
+			if not universe:
+				return pd.DataFrame()
+
+			# 初始化收益数据
+			returns_data = {}
+
+			# 批量获取每只股票的收益率
+			for ts_code in universe:
+				try:
+					# 从StockDailyRepository获取行情数据
+					# 确保日期为datetime类型
+					start_datetime = datetime.combine(start_date, datetime.min.time()) if isinstance(start_date, date) else start_date
+					end_datetime = datetime.combine(end_date, datetime.min.time()) if isinstance(end_date, date) else end_date
+					quotes = await self.quote_repo.get_by_code_and_date_range(
+						ts_code=ts_code,
+						start_date=start_datetime,
+						end_date=end_datetime
+					)
+
+					if quotes:
+						# 转换为DataFrame
+						df = pd.DataFrame([
+							{
+								'trade_date': quote.trade_date,
+								'close': float(quote.close) if quote.close else None,
+								'pre_close': float(quote.pre_close) if quote.pre_close else None
+							}
+							for quote in quotes
+						])
+
+						if not df.empty:
+							df['trade_date'] = pd.to_datetime(df['trade_date'])
+							df.set_index('trade_date', inplace=True)
+							df.sort_index(inplace=True)
+
+							# 计算每日收益率
+							df['return'] = (df['close'] - df['pre_close']) / df['pre_close']
+							returns_data[ts_code] = df['return']
+				except Exception as e:
+					logger.warning(f"获取股票 {ts_code} 收益数据失败: {str(e)}")
+
+			# 合并所有股票的收益率
+			if returns_data:
+				returns_df = pd.DataFrame(returns_data)
+				returns_df.index = pd.to_datetime(returns_df.index)
+				return returns_df
+			else:
+				return pd.DataFrame()
+
+		except Exception as e:
+			logger.error(f"获取收益数据失败: {str(e)}")
+			return pd.DataFrame()
 
 	async def _get_financial_data (
 			self,
@@ -2052,8 +2385,92 @@ class FactorResearchService:
 		Returns:
 			pd.DataFrame: 财务数据
 		"""
-		# 这里简化处理，实际需要从数据库获取财务数据
-		return None
+		try:
+				# 从FinancialStatementRepository获取财务数据
+			# 获取财务报表数据
+			financial_statements = await self.financial_repo.get_financial_statements(
+				ts_code=ts_code,
+				report_type="income_statement",  # 利润表数据
+				start_date=start_date,
+				end_date=end_date
+			)
+
+			# 合并数据，按报告日期匹配
+			financial_data = {}
+			
+			# 处理财务报表数据
+			for stmt in financial_statements:
+				date_key = stmt.end_date
+				if date_key not in financial_data:
+					financial_data[date_key] = {}
+				# 使用模型中实际存在的属性
+				financial_data[date_key].update({
+					'basic_eps': float(stmt.basic_eps) if stmt.basic_eps else None,
+					'diluted_eps': float(stmt.diluted_eps) if stmt.diluted_eps else None,
+					'revenue': float(stmt.revenue) if stmt.revenue else None,
+					'oper_cost': float(stmt.oper_cost) if stmt.oper_cost else None,
+					'operate_profit': float(stmt.operate_profit) if stmt.operate_profit else None,
+					'n_income': float(stmt.n_income) if stmt.n_income else None,
+					'n_income_attr_p': float(stmt.n_income_attr_p) if stmt.n_income_attr_p else None
+				})
+			
+			# 计算财务指标
+			for date_key, data in financial_data.items():
+				# 计算EPS
+				data['eps'] = data.get('basic_eps') or data.get('diluted_eps')
+				
+				# 计算毛利率
+				if data.get('revenue') and data.get('revenue') > 0 and data.get('oper_cost'):
+					data['gross_margin'] = (data['revenue'] - data['oper_cost']) / data['revenue']
+				else:
+					data['gross_margin'] = None
+				
+				# 计算净利率
+				if data.get('revenue') and data.get('revenue') > 0 and data.get('n_income'):
+					data['net_profit_margin'] = data['n_income'] / data['revenue']
+				else:
+					data['net_profit_margin'] = None
+				
+				# 由于模型中没有资产负债表数据，以下指标暂时设为None
+				data['roe'] = None
+				data['roa'] = None
+				data['debt_to_asset'] = None
+				data['current_ratio'] = None
+				data['quick_ratio'] = None
+				data['bps'] = None
+				data['float_shares'] = None
+
+			if not financial_data:
+				return None
+
+			# 转换为DataFrame
+			df_data = []
+			for report_date, data in financial_data.items():
+				data['report_date'] = report_date
+				df_data.append(data)
+
+			if not df_data:
+				return None
+
+			df = pd.DataFrame(df_data)
+			df['report_date'] = pd.to_datetime(df['report_date'])
+			df.set_index('report_date', inplace=True)
+			df.sort_index(inplace=True)
+
+			# 向前填充财务数据，使每个交易日都有对应的数据
+			# 获取日期范围
+			date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+			result_df = pd.DataFrame(index=date_range)
+
+			# 对于每个财务指标，使用最近的可用值
+			for col in df.columns:
+				result_df[col] = df[col].reindex(result_df.index, method='ffill')
+
+			return result_df
+
+		except Exception as e:
+			logger.error(f"获取财务数据失败: {str(e)}")
+			return None
 
 	# ==================== 研究任务管理方法 ====================
 
@@ -2215,8 +2632,7 @@ class FactorResearchService:
 		summary = await self._generate_research_summary(
 			factor_name=factor_name,
 			calculation_result=calculation_result,
-			analysis_results=analysis_results,
-			parameters=parameters
+			analysis_results=analysis_results
 		)
 
 		return {
@@ -2260,13 +2676,11 @@ class FactorResearchService:
 		await self.research_repo.update(task.id, update_data)
 
 	# ==================== 总结生成方法 ====================
-
+	@staticmethod
 	async def _generate_research_summary (
-			self,
 			factor_name: str,
 			calculation_result: Dict[str, Any],
-			analysis_results: Dict[str, Any],
-			parameters: Optional[Dict[str, Any]] = None
+			analysis_results: Dict[str, Any]
 	) -> Dict[str, Any]:
 		"""
 		生成研究总结
@@ -2275,7 +2689,6 @@ class FactorResearchService:
 			factor_name: 因子名称
 			calculation_result: 计算结果
 			analysis_results: 分析结果
-			parameters: 研究参数
 
 		Returns:
 			Dict: 研究总结
@@ -2345,9 +2758,8 @@ class FactorResearchService:
 		return summary
 
 	# ==================== 指标提取方法 ====================
-
+	@staticmethod
 	def _extract_factor_metrics (
-			self,
 			analysis_result: Dict[str, Any],
 			metrics: List[str]
 	) -> Dict[str, Any]:
@@ -2363,20 +2775,50 @@ class FactorResearchService:
 		"""
 		extracted = {}
 
+		# 定义指标映射关系，支持复杂路径的指标提取
+		metric_mapping = {
+			"ic_mean": lambda r: r.get("ic_mean", 0),
+			"ic_std": lambda r: r.get("ic_std", 0),
+			"ic_ir": lambda r: r.get("ic_ir", 0),
+			"ic_pvalue": lambda r: r.get("ic_pvalue", 1.0),
+			"ic_positive_ratio": lambda r: r.get("ic_positive_ratio", 0),
+			"top_minus_bottom": lambda r: r.get("top_minus_bottom", 0),
+			"stability_score": lambda r: r.get("stability_score", 0),
+			"rank_ic": lambda r: r.get("rank_ic", 0),
+			"mean_correlation": lambda r: r.get("mean_correlation", 0),
+			"orthogonality_score": lambda r: r.get("orthogonality_score", 0),
+			"sample_size": lambda r: r.get("sample_size", 0),
+			"calculated_count": lambda r: r.get("calculated_count", 0),
+			"success_rate": lambda r: r.get("success_rate", 0)
+		}
+
 		for metric in metrics:
-			if metric in analysis_result:
-				extracted[metric] = analysis_result[metric]
-			elif metric == "sharpe_ratio":
-				# 模拟夏普比率
-				extracted[metric] = np.random.uniform(0.5, 2.0)
-			elif metric == "max_drawdown":
-				# 模拟最大回撤
-				extracted[metric] = np.random.uniform(0.05, 0.20)
-			elif metric == "turnover":
-				# 模拟换手率
-				extracted[metric] = np.random.uniform(0.20, 0.40)
+			if metric in metric_mapping:
+				# 使用预定义的提取函数
+				extracted[metric] = metric_mapping[metric](analysis_result)
 			else:
-				extracted[metric] = 0
+				# 尝试从分析结果中直接提取
+				if metric in analysis_result:
+					extracted[metric] = analysis_result[metric]
+				else:
+					# 尝试使用点号分隔的路径
+					parts = metric.split('.')
+					current = analysis_result
+					try:
+						for part in parts:
+							if isinstance(current, dict) and part in current:
+								current = current[part]
+							else:
+								raise KeyError
+						extracted[metric] = current
+					except (KeyError, TypeError):
+						# 没有该指标时返回默认值
+						if metric.endswith('_ratio') or metric.endswith('_score'):
+							extracted[metric] = 0.0
+						elif metric.endswith('_count') or metric.endswith('_size'):
+							extracted[metric] = 0
+						else:
+							extracted[metric] = 0
 
 		return extracted
 
@@ -2418,9 +2860,8 @@ class FactorResearchService:
 			await self.cache.delete_pattern(pattern)
 
 	# ==================== 标准因子元数据 ====================
-
+	@staticmethod
 	def _get_standard_factor_metadata (
-			self,
 			factor_name: Optional[str] = None,
 			category: Optional[str] = None
 	) -> List[Dict[str, Any]]:
@@ -2724,16 +3165,367 @@ class FactorResearchService:
 
 			# 创建一个通用的事件，使用BaseEvent而不是DataResearchStartedEvent
 			from quant_server.core.events.base import BaseEvent
-			from quant_server.core.events.types import EventType
 
-			event = BaseEvent(
+			# 添加事件优先级
+			event_priority = {
+				"started": 0,  # NORMAL
+				"progress": 1,  # LOW
+				"completed": 2,  # HIGH
+				"failed": 2,     # HIGH
+				"cached": 1,     # LOW
+				"comparison_completed": 0  # NORMAL
+			}.get(event_type, 0)  # 默认NORMAL
+
+			event = TypedEvent(
 				event_type=f"factor.research.{event_type}",
 				source="research_service",
 				module="data",
+				priority=event_priority,
 				data=event_data
 			)
 
+			# 添加事件发布统计
+			if hasattr(self, '_event_stats'):
+				self._event_stats[event_type] = self._event_stats.get(event_type, 0) + 1
+
 			await self.event_engine.put(event)
+
+			# 记录事件发布日志
+			logger.debug(f"发布研究事件: {event_type}, 优先级: {event_priority}")
 
 		except Exception as e:
 			logger.error(f"发布研究事件失败: {str(e)}")
+
+	# ==================== 补充方法实现 ====================
+
+	async def get_factor_data (
+			self,
+			factor_names: List[str],
+			start_date: Optional[str] = None,
+			end_date: Optional[str] = None
+	) -> List[Dict[str, Any]]:
+		"""
+		获取因子数据
+
+		Args:
+			factor_names: 因子名称列表
+			start_date: 开始日期
+			end_date: 结束日期
+
+		Returns:
+			因子数据列表
+		"""
+		logger.info(f"获取因子数据: {factor_names}")
+
+		try:
+			# 转换日期格式
+			start_date_obj = datetime.fromisoformat(start_date) if start_date else None
+			end_date_obj = datetime.fromisoformat(end_date) if end_date else None
+
+			factor_data = []
+
+			# 首先获取股票列表
+			stocks = await self.stock_repo.get_all(limit=100)  # 限制获取100只股票
+			if not stocks:
+				logger.warning("获取股票列表失败")
+				return []
+
+			stock_codes = [stock.ts_code for stock in stocks]
+
+			# 批量获取因子数据
+			for factor_name in factor_names:
+				for stock_code in stock_codes:
+					# 从数据库获取因子数据
+					factor_items = await self.factor_repo.get_by_ts_code_and_date_range(
+						ts_code=stock_code,
+						factor_name=factor_name,
+						start_date=start_date_obj,
+						end_date=end_date_obj
+					)
+					if factor_items:
+						for factor_item in factor_items:
+							factor_data.append({
+								'symbol': stock_code,
+								'factor_name': factor_name,
+								'factor_value': factor_item.factor_value,
+								'date': factor_item.trade_date.isoformat()
+							})
+
+			return factor_data
+
+		except Exception as e:
+			logger.error(f"获取因子数据失败: {str(e)}")
+			return []
+
+	async def save_factor_analysis_result (
+			self,
+			factor_names: List[str],
+			analysis_type: str,
+			analysis_result: Dict[str, Any],
+			task_id: str
+	) -> str:
+		"""
+		保存因子分析结果
+
+		Args:
+			factor_names: 因子名称列表
+			analysis_type: 分析类型
+			analysis_result: 分析结果
+			task_id: 任务ID
+
+		Returns:
+			保存结果的ID
+		"""
+		logger.info(f"保存因子分析结果: {factor_names}")
+
+		try:
+			# 创建研究任务记录
+			result = await self.research_repo.create_research_task(
+				research_id=task_id,
+				research_name=f"因子分析 - {', '.join(factor_names)}",
+				factor_name=factor_names[0] if factor_names else "unknown",
+				user_id=1,  # 默认用户ID
+				analysis_type=analysis_type,
+				parameters=analysis_result
+			)
+
+			if result.success and result.data:
+				return result.data.research_id
+			return task_id
+
+		except Exception as e:
+			logger.error(f"保存因子分析结果失败: {str(e)}")
+			return task_id
+
+	@staticmethod
+	async def generate_factor_analysis_report (
+			analysis_result: Dict[str, Any],
+			factor_names: List[str],
+			start_date: Optional[str] = None,
+			end_date: Optional[str] = None,
+			analysis_params: Optional[Dict[str, Any]] = None
+	) -> str:
+		"""
+		生成因子分析报告
+
+		Args:
+			analysis_result: 分析结果
+			factor_names: 因子名称列表
+			start_date: 开始日期
+			end_date: 结束日期
+			analysis_params: 分析参数
+
+		Returns:
+			分析报告
+		"""
+		logger.info(f"生成因子分析报告: {factor_names}")
+
+		try:
+			# 生成报告内容
+			report = f"# 因子分析报告\n\n"
+			report += f"## 分析概览\n"
+			report += f"- 因子列表: {', '.join(factor_names)}\n"
+			report += f"- 分析类型: {analysis_result.get('analysis_type', 'unknown')}\n"
+			report += f"- 分析日期: {datetime.now().isoformat()}\n"
+			report += f"- 数据范围: {start_date or '未指定'} 至 {end_date or '未指定'}\n\n"
+
+			# 添加分析结果
+			report += "## 分析结果\n"
+			if 'analysis_result' in analysis_result:
+				for key, value in analysis_result['analysis_result'].items():
+					report += f"- {key}: {value}\n"
+
+			# 添加参数信息
+			if analysis_params:
+				report += "\n## 分析参数\n"
+				for key, value in analysis_params.items():
+					report += f"- {key}: {value}\n"
+
+			return report
+
+		except Exception as e:
+			logger.error(f"生成因子分析报告失败: {str(e)}")
+			return "因子分析报告生成失败"
+
+	def optimize_factor_parameters (
+			self,
+			factor_name: str,
+			test_data: List[Dict],
+			optimization_method: str,
+			parameter_ranges: Dict,
+			objective_function: str
+	) -> Dict[str, Any]:
+		"""
+		优化因子参数
+
+		Args:
+			factor_name: 因子名称
+			test_data: 测试数据
+			optimization_method: 优化方法
+			parameter_ranges: 参数范围
+			objective_function: 目标函数
+
+		Returns:
+			优化结果
+		"""
+		logger.info(f"优化因子参数: {factor_name}")
+
+		try:
+			# 检查测试数据是否为空
+			if not test_data:
+				logger.warning("测试数据为空，无法进行参数优化")
+				return {
+					'success': False,
+					'factor_name': factor_name,
+					'error': "测试数据为空"
+				}
+
+			# 实现简单的参数优化逻辑
+			best_parameters = {}
+			best_score = -float('inf')
+
+			# 遍历参数范围，寻找最优参数
+			# 这里使用网格搜索作为简单的优化方法
+			for param, range_values in parameter_ranges.items():
+				if isinstance(range_values, list) and len(range_values) >= 2:
+					# 对于数值型参数，使用简单的网格搜索
+					if all(isinstance(x, (int, float)) for x in range_values):
+						# 生成参数候选值
+						candidates = np.linspace(range_values[0], range_values[1], 5)  # 生成5个候选值
+
+						# 评估每个候选值
+						for candidate in candidates:
+							# 计算当前参数下的性能得分
+							current_score = self._evaluate_parameter(test_data)
+
+							# 更新最优参数
+							if current_score > best_score:
+								best_score = current_score
+								best_parameters[param] = candidate
+					else:
+						# 对于非数值型参数，使用第一个值
+						best_parameters[param] = range_values[0]
+
+			# 计算性能指标
+			performance_metrics = self._calculate_performance_metrics(test_data)
+
+			return {
+				'success': True,
+				'factor_name': factor_name,
+				'best_parameters': best_parameters,
+				'optimization_method': optimization_method,
+				'objective_function': objective_function,
+				'performance_metrics': performance_metrics
+			}
+
+		except Exception as e:
+			logger.error(f"优化因子参数失败: {str(e)}")
+			return {
+				'success': False,
+				'factor_name': factor_name,
+				'error': str(e)
+			}
+
+	@staticmethod
+	def _evaluate_parameter (test_data: List[Dict]) -> float:
+		"""
+		评估参数性能
+
+		Args:
+			test_data: 测试数据
+
+		Returns:
+			性能得分
+		"""
+		if not test_data:
+			return 0
+
+		# 提取收益率数据
+		returns = [data['return'] for data in test_data if 'return' in data]
+		if not returns:
+			return 0
+
+		# 计算基本指标
+		returns = np.array(returns)
+		mean_return = np.mean(returns)
+		std_return = np.std(returns)
+		sharpe_ratio = mean_return / std_return if std_return > 0 else 0
+
+		# 计算最大回撤
+		cumulative_returns = np.cumprod(1 + returns)
+		peak = np.maximum.accumulate(cumulative_returns)
+		drawdown = (cumulative_returns - peak) / peak
+		max_drawdown = np.min(drawdown)
+
+		# 计算胜率
+		win_rate = np.sum(returns > 0) / len(returns)
+
+		# 计算平均盈亏比
+		winning_returns = returns[returns > 0]
+		losing_returns = returns[returns < 0]
+		avg_win = np.mean(winning_returns) if len(winning_returns) > 0 else 0
+		avg_loss = np.abs(np.mean(losing_returns)) if len(losing_returns) > 0 else 1
+		profit_factor = avg_win / avg_loss if avg_loss > 0 else 0
+
+		# 综合评分（权重可以根据需要调整）
+		score = (
+				0.3 * sharpe_ratio +
+				0.2 * (1 + max_drawdown) +  # 最大回撤越小，得分越高
+				0.2 * win_rate +
+				0.2 * profit_factor +
+				0.1 * mean_return
+		)
+
+		return float(score)
+
+	@staticmethod
+	def _calculate_performance_metrics ( test_data: List[Dict]) -> Dict[str, float]:
+		"""
+		计算性能指标
+
+		Args:
+			test_data: 测试数据
+
+		Returns:
+			性能指标
+		"""
+		# 计算基本性能指标
+		returns = [data['return'] for data in test_data if 'return' in data]
+
+		if not returns:
+			return {
+				'sharpe_ratio': 0,
+				'max_drawdown': 0,
+				'alpha': 0
+			}
+
+		# 计算收益率均值和标准差
+		import numpy
+		mean_return = numpy.mean(returns)
+		std_return = numpy.std(returns)
+
+		# 计算夏普比率（假设无风险利率为3%）
+		risk_free_rate = 0.03
+		sharpe_ratio = (mean_return - risk_free_rate) / std_return if std_return > 0 else 0
+
+		# 计算最大回撤
+		cumulative_returns = numpy.cumprod([1 + r for r in returns])
+		peak = cumulative_returns[0]
+		max_drawdown = 0
+
+		for ret in cumulative_returns:
+			if ret > peak:
+				peak = ret
+			else:
+				drawdown = (peak - ret) / peak
+				if drawdown > max_drawdown:
+					max_drawdown = drawdown
+
+		# 计算alpha（假设市场收益率为0）
+		alpha = mean_return
+
+		return {
+			'sharpe_ratio': sharpe_ratio,
+			'max_drawdown': max_drawdown,
+			'alpha': alpha
+		}

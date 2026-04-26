@@ -4,15 +4,14 @@
 位置：shared/database/repositories/system/user_preference_repo.py
 """
 from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.system_models import UserPreference
 from quant_server.shared.database.repositories.base import BaseRepository
 from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
+	RepositoryError
 )
 
 
@@ -23,7 +22,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		"""初始化Repository"""
 		super().__init__(session, UserPreference)
 
-	async def get_by_user_id (self, user_id: int) -> Optional[UserPreference]:
+	async def get_by_user_id (self, user_id: str) -> Optional[UserPreference]:
 		"""
 		根据用户ID获取偏好设置
 
@@ -42,7 +41,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"获取用户偏好失败: {str(e)}")
 
-	async def get_by_user_ids (self, user_ids: List[int]) -> List[UserPreference]:
+	async def get_by_user_ids (self, user_ids: List[str]) -> List[UserPreference]:
 		"""
 		批量获取用户偏好设置
 
@@ -61,7 +60,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"批量获取用户偏好失败: {str(e)}")
 
-	async def update_language (self, user_id: int, language: str) -> Optional[UserPreference]:
+	async def update_language (self, user_id: str, language: str) -> Optional[UserPreference]:
 		"""
 		更新用户语言设置
 
@@ -80,7 +79,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"更新语言设置失败: {str(e)}")
 
-	async def update_theme (self, user_id: int, theme: str) -> Optional[UserPreference]:
+	async def update_theme (self, user_id: str, theme: str) -> Optional[UserPreference]:
 		"""
 		更新用户主题设置
 
@@ -99,7 +98,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"更新主题设置失败: {str(e)}")
 
-	async def update_timezone (self, user_id: int, timezone: str) -> Optional[UserPreference]:
+	async def update_timezone (self, user_id: str, timezone: str) -> Optional[UserPreference]:
 		"""
 		更新用户时区设置
 
@@ -118,7 +117,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"更新时区设置失败: {str(e)}")
 
-	async def update_notification_settings (self, user_id: int, settings: Dict[str, Any]) -> Optional[UserPreference]:
+	async def update_notification_settings (self, user_id: str, settings: Dict[str, Any]) -> Optional[UserPreference]:
 		"""
 		更新用户通知设置
 
@@ -137,7 +136,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"更新通知设置失败: {str(e)}")
 
-	async def update_trading_settings (self, user_id: int, settings: Dict[str, Any]) -> Optional[UserPreference]:
+	async def update_trading_settings (self, user_id: str, settings: Dict[str, Any]) -> Optional[UserPreference]:
 		"""
 		更新用户交易设置
 
@@ -156,7 +155,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"更新交易设置失败: {str(e)}")
 
-	async def update_display_settings (self, user_id: int, settings: Dict[str, Any]) -> Optional[UserPreference]:
+	async def update_display_settings (self, user_id: str, settings: Dict[str, Any]) -> Optional[UserPreference]:
 		"""
 		更新用户显示设置
 
@@ -232,7 +231,7 @@ class UserPreferenceRepository(BaseRepository[UserPreference]):
 		except Exception as e:
 			raise RepositoryError(f"获取时区用户失败: {str(e)}")
 
-	async def initialize_user_preference (self, user_id: int) -> UserPreference:
+	async def initialize_user_preference (self, user_id: str) -> UserPreference:
 		"""
 		初始化用户偏好设置（创建默认设置）
 

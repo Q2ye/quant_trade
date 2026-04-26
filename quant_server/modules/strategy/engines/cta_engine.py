@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfig as EngineConfigEntity
+from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.core.engines.types.enums import EngineType
 from quant_server.modules.strategy.models import TradingSignal
 from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
@@ -49,13 +49,13 @@ class CTAEngine(EngineBase):
 		self.event_engine = event_engine
 
 		# 策略实例 {strategy_id: strategy_instance}
-		self._strategies: Dict[int, BaseStrategy] = {}
+		self._strategies: Dict[str, BaseStrategy] = {}
 
 		# 策略上下文 {strategy_id: context}
-		self._contexts: Dict[int, StrategyContext] = {}
+		self._contexts: Dict[str, StrategyContext] = {}
 
 		# 订阅的股票池
-		self._watching_symbols: Dict[int, List[str]] = {}
+		self._watching_symbols: Dict[str, List[str]] = {}
 
 		# 当前处理的K线数据
 		self._bar_cache: Dict[str, Any] = {}
@@ -305,7 +305,7 @@ class CTAEngine(EngineBase):
 		"""
 		return self._watching_symbols.get(strategy_id, [])
 
-	def get_all_strategies (self) -> Dict[int, BaseStrategy]:
+	def get_all_strategies (self) -> Dict[str, BaseStrategy]:
 		"""获取所有策略"""
 		return self._strategies.copy()
 

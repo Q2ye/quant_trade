@@ -1084,7 +1084,8 @@ class TradeRepository(BaseRepository[Trade]):
 
 	# ==================== 辅助方法 ====================
 
-	def _build_order_by (self, order_by: str) -> List:
+	@classmethod
+	def _build_order_by (cls,order_by: str) -> List:
 		"""
 		构建排序子句
 

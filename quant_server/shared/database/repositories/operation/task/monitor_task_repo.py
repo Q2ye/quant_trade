@@ -172,7 +172,7 @@ class MonitorTaskRepository(BaseRepository[MonitorTask]):
 
 	async def update_last_run (
 			self,
-			task_id: int,
+			task_id: str,
 			success: bool = True,
 			next_run_at: Optional[datetime] = None
 	) -> bool:
@@ -205,7 +205,7 @@ class MonitorTaskRepository(BaseRepository[MonitorTask]):
 
 	async def calculate_next_run_time (
 			self,
-			task_id: int,
+			task_id: str,
 			current_time: Optional[datetime] = None
 	) -> Optional[datetime]:
 		"""
@@ -247,7 +247,7 @@ class MonitorTaskRepository(BaseRepository[MonitorTask]):
 
 	async def update_task_schedule (
 			self,
-			task_id: int,
+			task_id: str,
 			schedule_config: Optional[Dict[str, Any]] = None,
 			is_active: Optional[bool] = None
 	) -> Optional[MonitorTask]:
@@ -417,7 +417,7 @@ class MonitorTaskRepository(BaseRepository[MonitorTask]):
 		except Exception as e:
 			raise ValueError(f"获取有问题任务失败: {str(e)}")
 
-	async def deactivate_task (self, task_id: int) -> bool:
+	async def deactivate_task (self, task_id: str) -> bool:
 		"""
 		停用监控任务
 

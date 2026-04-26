@@ -74,7 +74,6 @@ class DataCleanEvent(BaseEvent):
 			clean_id: str,
 			data_type: str,
 			user_id: Optional[int] = None,
-			timestamp: Optional[datetime] = None,
 			**kwargs
 	):
 		"""
@@ -87,7 +86,12 @@ class DataCleanEvent(BaseEvent):
 			timestamp: 事件时间戳
 			**kwargs: 其他参数
 		"""
-		super().__init__(timestamp=timestamp)
+		super().__init__(
+			event_type="data.clean.base",
+			source="data_module",
+			module="data",
+			data=kwargs
+		)
 		self.clean_id = clean_id
 		self.data_type = data_type
 		self.user_id = user_id
@@ -280,11 +284,10 @@ class DataCleanEvent(BaseEvent):
 
 	def __init__ (
 			self,
-			event_type: str,
 			clean_id: str,
+			event_type: str,
 			data_type: Optional[str] = None,
 			user_id: Optional[int] = None,
-			timestamp: Optional[datetime] = None,
 			**kwargs
 	):
 		"""
@@ -292,7 +295,12 @@ class DataCleanEvent(BaseEvent):
 
 		注意：这个类是向后兼容的简化版本，推荐使用具体的事件类
 		"""
-		super().__init__(event_type=event_type, timestamp=timestamp)
+		super().__init__(
+			event_type=event_type,
+			source="data_module",
+			module="data",
+			data=kwargs
+		)
 		self.clean_id = clean_id
 		self.data_type = data_type
 		self.user_id = user_id

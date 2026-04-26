@@ -11,11 +11,9 @@
 4. 连接状态机（连接中、已连接、断开中、已断开）
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Callable, Set
-from enum import Enum
-from dataclasses import dataclass, field
 import asyncio
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional, Callable
 
 
 class State:

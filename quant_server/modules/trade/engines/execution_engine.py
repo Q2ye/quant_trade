@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
+from quant_server.core.engines import EngineConfigEntity
 from quant_server.core.engines.types.enums import EngineType
 from quant_server.core.engines.base.engine_base import EngineBase
 from quant_server.core.engines.system import EventEngine
@@ -23,11 +24,7 @@ class ExecutionEngine(EngineBase):
 			risk_engine: RiskEngine,
 			event_engine: Optional[EventEngine] = None
 	):
-		# 导入 EngineConfig 类
-		from quant_server.core.engines.types.entities import EngineConfig
-		
-		# 创建 EngineConfig 实例
-		config_obj = EngineConfig(
+		config_obj = EngineConfigEntity(
 			name=config.get("name", "execution_engine"),
 			engine_type="execution_engine",
 			dependencies=config.get("dependencies", []),

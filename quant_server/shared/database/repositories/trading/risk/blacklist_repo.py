@@ -5,13 +5,14 @@
 位置：shared/database/repositories/trading/risk/blacklist_repo.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import Blacklist
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class BlacklistRepository(BaseRepository):
@@ -49,7 +50,10 @@ class BlacklistRepository(BaseRepository):
 			)
 		]
 
-		global_exists = await self.count(*global_conditions) > 0
+		# 构建全局黑名单查询
+		global_query = select(func.count()).select_from(Blacklist).where(and_(*global_conditions))
+		global_result = await self.session.execute(global_query)
+		global_exists = global_result.scalar() > 0
 
 		if global_exists:
 			return True
@@ -68,7 +72,10 @@ class BlacklistRepository(BaseRepository):
 				)
 			]
 
-			user_exists = await self.count(*user_conditions) > 0
+			# 构建用户特定黑名单查询
+			user_query = select(func.count()).select_from(Blacklist).where(and_(*user_conditions))
+			user_result = await self.session.execute(user_query)
+			user_exists = user_result.scalar() > 0
 
 			if user_exists:
 				return True
@@ -94,7 +101,7 @@ class BlacklistRepository(BaseRepository):
 
 	async def is_user_blacklisted (
 			self,
-			user_id: int
+			user_id: str
 	) -> bool:
 		"""
 		检查用户是否在黑名单中
@@ -109,8 +116,8 @@ class BlacklistRepository(BaseRepository):
 
 	async def is_account_blacklisted (
 			self,
-			account_id: int,
-			user_id: Optional[int] = None
+			account_id: str,
+			user_id: Optional[str] = None
 	) -> bool:
 		"""
 		检查账户是否在黑名单中
@@ -152,18 +159,20 @@ class BlacklistRepository(BaseRepository):
 			Blacklist: 创建的黑名单记录，如果已存在则返回None
 		"""
 		# 检查是否已存在
-		existing = await self.get_one(
+		query = select(Blacklist).where(
 			and_(
 				Blacklist.target_type == target_type,
 				Blacklist.target_id == target_id,
 				Blacklist.list_type == list_type,
 				Blacklist.is_active == True
 			)
-		)
+		).limit(1)
+		result = await self.session.execute(query)
+		existing = result.scalar_one_or_none()
 
 		if existing:
 			# 如果已存在，更新过期时间和原因
-			update_data = {
+			update_data: Dict[str, Any] = {
 				'reason': reason,
 				'expire_date': expire_date,
 				'is_active': True,
@@ -226,7 +235,7 @@ class BlacklistRepository(BaseRepository):
 
 	async def add_user_to_blacklist (
 			self,
-			user_id: int,
+			user_id: str,
 			username: str,
 			reason: str,
 			added_by: int,
@@ -273,14 +282,16 @@ class BlacklistRepository(BaseRepository):
 		Returns:
 			bool: 是否成功移除
 		"""
-		blacklist = await self.get_one(
+		query = select(Blacklist).where(
 			and_(
 				Blacklist.target_type == target_type,
 				Blacklist.target_id == target_id,
 				Blacklist.list_type == list_type,
 				Blacklist.is_active == True
 			)
-		)
+		).limit(1)
+		result = await self.session.execute(query)
+		blacklist = result.scalar_one_or_none()
 
 		if not blacklist:
 			return False
@@ -307,7 +318,7 @@ class BlacklistRepository(BaseRepository):
 
 	async def remove_user_from_blacklist (
 			self,
-			user_id: int
+			user_id: str
 	) -> bool:
 		"""
 		从黑名单中移除用户
@@ -351,10 +362,10 @@ class BlacklistRepository(BaseRepository):
 				)
 			)
 
-		return await self.get_many(
-			*conditions,
-			order_by=Blacklist.created_at.desc()
-		)
+		# 构建查询
+		query = select(Blacklist).where(and_(*conditions)).order_by(Blacklist.created_at.desc())
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_blacklisted_users (
 			self,
@@ -382,14 +393,14 @@ class BlacklistRepository(BaseRepository):
 				)
 			)
 
-		return await self.get_many(
-			*conditions,
-			order_by=Blacklist.created_at.desc()
-		)
+		# 构建查询
+		query = select(Blacklist).where(and_(*conditions)).order_by(Blacklist.created_at.desc())
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_user_specific_blacklist (
 			self,
-			user_id: int,
+			user_id: str,
 			target_type: Optional[str] = None
 	) -> List[Blacklist]:
 		"""
@@ -415,10 +426,10 @@ class BlacklistRepository(BaseRepository):
 		if target_type:
 			conditions.append(Blacklist.target_type == target_type)
 
-		return await self.get_many(
-			*conditions,
-			order_by=Blacklist.created_at.desc()
-		)
+		# 构建查询
+		query = select(Blacklist).where(and_(*conditions)).order_by(Blacklist.created_at.desc())
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def cleanup_expired_entries (self) -> int:
 		"""
@@ -428,13 +439,15 @@ class BlacklistRepository(BaseRepository):
 			int: 清理的记录数
 		"""
 		# 查找过期的记录
-		expired_entries = await self.get_many(
+		query = select(Blacklist).where(
 			and_(
 				Blacklist.expire_date.is_not(None),
 				Blacklist.expire_date <= datetime.now(),
 				Blacklist.is_active == True
 			)
 		)
+		result = await self.session.execute(query)
+		expired_entries = result.scalars().all()
 
 		# 批量禁用过期的记录
 		cleaned = 0

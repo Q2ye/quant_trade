@@ -3,11 +3,11 @@
 许可证密钥表Repository
 位置：shared/database/repositories/system/license_key_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.system_models import LicenseKey
 from quant_server.shared.database.repositories import NotFoundError
@@ -40,28 +40,6 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		except Exception as e:
 			raise RepositoryError(f"获取许可证记录失败: {str(e)}")
 
-	async def get_by_user_id (self, user_id: int) -> Optional[LicenseKey]:
-		"""
-		根据用户ID获取许可证
-
-		Args:
-			user_id: 用户ID
-
-		Returns:
-			许可证记录或None
-		"""
-		try:
-			query = select(self.model).where(
-				self.model.user_id == user_id
-			).order_by(
-				desc(self.model.created_at)
-			).limit(1)
-
-			result = await self.session.execute(query)
-			return result.scalar_one_or_none()
-		except Exception as e:
-			raise RepositoryError(f"获取用户许可证失败: {str(e)}")
-
 	async def get_active_licenses (
 			self,
 			license_type: Optional[str] = None,
@@ -86,7 +64,7 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 				query = query.where(self.model.license_type == license_type)
 
 			if not include_expired:
-				today = date.today()
+				today = datetime.now(timezone.utc)
 				query = query.where(
 					and_(
 						self.model.valid_from <= today,
@@ -115,7 +93,7 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 			即将过期的许可证列表
 		"""
 		try:
-			today = date.today()
+			today = datetime.now(timezone.utc)
 			threshold_date = today + timedelta(days=days_threshold)
 
 			query = select(self.model).where(
@@ -141,7 +119,7 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 			已过期的许可证列表
 		"""
 		try:
-			today = date.today()
+			today = datetime.now(timezone.utc)
 
 			query = select(self.model).where(
 				and_(
@@ -161,13 +139,15 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 			self,
 			license_key: str,
 			license_type: str,
-			user_id: Optional[int] = None,
+			owner: Optional[str] = None,
+			email: Optional[str] = None,
 			max_users: int = 1,
 			max_strategies: int = 10,
-			valid_from: Optional[date] = None,
-			valid_to: Optional[date] = None,
+			max_api_calls: int = 10000,
+			valid_from: Optional[datetime] = None,
+			valid_to: Optional[datetime] = None,
 			is_active: bool = True,
-			metadata: Optional[Dict[str, Any]] = None
+			metainfo: Optional[Dict[str, Any]] = None
 	) -> LicenseKey:
 		"""
 		创建许可证
@@ -175,44 +155,47 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		Args:
 			license_key: 许可证密钥
 			license_type: 许可证类型
-			user_id: 用户ID
+			owner: 所有者
+			email: 邮箱
 			max_users: 最大用户数
 			max_strategies: 最大策略数
+			max_api_calls: 最大API调用数
 			valid_from: 有效期开始
 			valid_to: 有效期结束
 			is_active: 是否激活
-			metadata: 元数据
+			metainfo: 元数据
 
 		Returns:
 			创建的许可证记录
 		"""
 		try:
-			today = date.today()
+			today = datetime.now(timezone.utc)
 
 			data = {
 				"license_key": license_key,
 				"license_type": license_type,
-				"user_id": user_id,
+				"owner": owner,
+				"email": email,
 				"max_users": max_users,
 				"max_strategies": max_strategies,
+				"max_api_calls": max_api_calls,
 				"valid_from": valid_from or today,
 				"valid_to": valid_to or (today + timedelta(days=365)),
 				"is_active": is_active,
-				"activation_date": datetime.now() if is_active else None,
-				"metadata": metadata or {}
+				"activation_date": today if is_active else None,
+				"metainfo": metainfo or {}
 			}
 
 			return await self.create(data)
 		except Exception as e:
 			raise RepositoryError(f"创建许可证失败: {str(e)}")
 
-	async def activate_license (self, license_key: str, user_id: Optional[int] = None) -> Optional[LicenseKey]:
+	async def activate_license (self, license_key: str) -> Optional[LicenseKey]:
 		"""
 		激活许可证
 
 		Args:
 			license_key: 许可证密钥
-			user_id: 用户ID
 
 		Returns:
 			更新后的许可证记录
@@ -220,17 +203,15 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		try:
 			license_record = await self.get_by_license_key(license_key)
 			if not license_record:
-				raise NotFoundError(f"许可证不存在: {license_key}")
+				raise NotFoundError("LicenseKey", license_key)
 
 			if not license_record.is_active:
 				update_data = {
 					"is_active": True,
-					"activation_date": datetime.now(),
-					"last_check_date": datetime.now()
+					"activation_date": datetime.now(timezone.utc),
+					"last_validation": datetime.now(timezone.utc),
+					"validation_result": "valid"
 				}
-
-				if user_id:
-					update_data["user_id"] = user_id
 
 				return await self.update(license_record.id, update_data)
 
@@ -253,12 +234,13 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		try:
 			license_record = await self.get_by_license_key(license_key)
 			if not license_record:
-				raise NotFoundError(f"许可证不存在: {license_key}")
+				raise NotFoundError("LicenseKey", license_key)
 
 			if license_record.is_active:
 				return await self.update(license_record.id, {
 					"is_active": False,
-					"updated_at": datetime.now()
+					"deactivation_date": datetime.now(timezone.utc),
+					"updated_at": datetime.now(timezone.utc)
 				})
 
 			return license_record
@@ -267,9 +249,9 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 				raise e
 			raise RepositoryError(f"停用许可证失败: {str(e)}")
 
-	async def update_last_check (self, license_key: str) -> Optional[LicenseKey]:
+	async def update_last_validation (self, license_key: str) -> Optional[LicenseKey]:
 		"""
-		更新许可证最后检查时间
+		更新许可证最后验证时间
 
 		Args:
 			license_key: 许可证密钥
@@ -280,27 +262,25 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		try:
 			license_record = await self.get_by_license_key(license_key)
 			if not license_record:
-				raise NotFoundError(f"许可证不存在: {license_key}")
+				raise NotFoundError("LicenseKey", license_key)
 
 			return await self.update(license_record.id, {
-				"last_check_date": datetime.now()
+				"last_validation": datetime.now(timezone.utc)
 			})
 		except Exception as e:
 			if isinstance(e, NotFoundError):
 				raise e
-			raise RepositoryError(f"更新许可证检查时间失败: {str(e)}")
+			raise RepositoryError(f"更新许可证验证时间失败: {str(e)}")
 
 	async def validate_license (
 			self,
-			license_key: str,
-			user_id: Optional[int] = None
+			license_key: str
 	) -> Dict[str, Any]:
 		"""
 		验证许可证
 
 		Args:
 			license_key: 许可证密钥
-			user_id: 用户ID（可选，用于验证用户绑定）
 
 		Returns:
 			验证结果
@@ -315,17 +295,18 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 					"code": "LICENSE_NOT_FOUND"
 				}
 
-			today = date.today()
+			today = datetime.now(timezone.utc)
 			validation_result = {
 				"valid": True,
 				"license_key": license_record.license_key,
 				"license_type": license_record.license_type,
 				"max_users": license_record.max_users,
 				"max_strategies": license_record.max_strategies,
+				"max_api_calls": license_record.max_api_calls,
 				"valid_from": license_record.valid_from,
 				"valid_to": license_record.valid_to,
 				"is_active": license_record.is_active,
-				"metadata": license_record.metadata or {}
+				"metainfo": license_record.metainfo or {}
 			}
 
 			# 检查是否激活
@@ -354,14 +335,11 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 				})
 				return validation_result
 
-			# 检查用户绑定
-			if user_id and license_record.user_id and license_record.user_id != user_id:
-				validation_result.update({
-					"valid": False,
-					"error": "许可证已绑定到其他用户",
-					"code": "LICENSE_BOUND_TO_OTHER_USER"
-				})
-				return validation_result
+			# 更新验证状态
+			await self.update(license_record.id, {
+				"last_validation": today,
+				"validation_result": "valid"
+			})
 
 			return validation_result
 		except Exception as e:
@@ -379,7 +357,7 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 			许可证统计
 		"""
 		try:
-			today = date.today()
+			today = datetime.now(timezone.utc)
 
 			# 总数统计
 			total_query = select(func.count()).select_from(self.model)
@@ -442,7 +420,7 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 			self,
 			license_key: str,
 			extension_days: int,
-			new_valid_to: Optional[date] = None
+			new_valid_to: Optional[datetime] = None
 	) -> Optional[LicenseKey]:
 		"""
 		延长许可证有效期
@@ -458,35 +436,35 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		try:
 			license_record = await self.get_by_license_key(license_key)
 			if not license_record:
-				raise NotFoundError(f"许可证不存在: {license_key}")
+				raise NotFoundError("LicenseKey", license_key)
 
 			if new_valid_to:
 				valid_to = new_valid_to
 			else:
 				# 使用当前有效期或今天
-				base_date = license_record.valid_to or date.today()
+				base_date = license_record.valid_to or datetime.now(timezone.utc)
 				valid_to = base_date + timedelta(days=extension_days)
 
 			return await self.update(license_record.id, {
 				"valid_to": valid_to,
-				"updated_at": datetime.now()
+				"updated_at": datetime.now(timezone.utc)
 			})
 		except Exception as e:
 			if isinstance(e, NotFoundError):
 				raise e
 			raise RepositoryError(f"延长许可证有效期失败: {str(e)}")
 
-	async def transfer_license (
+	async def update_license_features (
 			self,
 			license_key: str,
-			new_user_id: int
+			features: Dict[str, Any]
 	) -> Optional[LicenseKey]:
 		"""
-		转移许可证到新用户
+		更新许可证功能列表
 
 		Args:
 			license_key: 许可证密钥
-			new_user_id: 新用户ID
+			features: 功能列表
 
 		Returns:
 			更新后的许可证记录
@@ -494,13 +472,13 @@ class LicenseKeyRepository(BaseRepository[LicenseKey]):
 		try:
 			license_record = await self.get_by_license_key(license_key)
 			if not license_record:
-				raise NotFoundError(f"许可证不存在: {license_key}")
+				raise NotFoundError("LicenseKey", license_key)
 
 			return await self.update(license_record.id, {
-				"user_id": new_user_id,
-				"updated_at": datetime.now()
+				"features": features,
+				"updated_at": datetime.now(timezone.utc)
 			})
 		except Exception as e:
 			if isinstance(e, NotFoundError):
 				raise e
-			raise RepositoryError(f"转移许可证失败: {str(e)}")
+			raise RepositoryError(f"更新许可证功能失败: {str(e)}")

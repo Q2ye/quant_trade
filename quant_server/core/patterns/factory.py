@@ -13,7 +13,6 @@
 
 from abc import ABC, abstractmethod
 from typing import Type, Dict, Any, Optional, TypeVar, Generic
-from enum import Enum
 
 T = TypeVar('T')  # 产品类型
 C = TypeVar('C')  # 创建器类型

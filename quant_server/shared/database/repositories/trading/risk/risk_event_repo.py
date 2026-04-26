@@ -5,13 +5,14 @@
 位置：shared/database/repositories/trading/risk/risk_event_repo.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import RiskEvent, RiskRule, Strategy, SysUser
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class RiskEventRepository(HyperRepositoryBase):
@@ -68,7 +69,7 @@ class RiskEventRepository(HyperRepositoryBase):
 
 	async def get_events_by_user (
 			self,
-			user_id: int,
+			user_id: str,
 			limit: int = 50
 	) -> List[RiskEvent]:
 		"""
@@ -81,11 +82,9 @@ class RiskEventRepository(HyperRepositoryBase):
 		Returns:
 			List[RiskEvent]: 用户的风险事件列表
 		"""
-		return await self.get_many(
-			RiskEvent.user_id == user_id,
-			order_by=RiskEvent.created_at.desc(),
-			limit=limit
-		)
+		# 先获取数据，然后手动排序
+		events = await self.get_many(skip="0", limit=limit, user_id=user_id)
+		return sorted(events, key=lambda x: x.created_at, reverse=True)
 
 	async def get_events_by_strategy (
 			self,
@@ -102,11 +101,13 @@ class RiskEventRepository(HyperRepositoryBase):
 		Returns:
 			List[RiskEvent]: 策略的风险事件列表
 		"""
-		return await self.get_many(
-			RiskEvent.strategy_id == strategy_id,
-			order_by=RiskEvent.created_at.desc(),
-			limit=limit
-		)
+		query = select(RiskEvent).where(
+			RiskEvent.strategy_id == strategy_id
+		).order_by(
+			RiskEvent.created_at.desc()
+		).limit(limit)
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_events_by_rule (
 			self,
@@ -123,11 +124,13 @@ class RiskEventRepository(HyperRepositoryBase):
 		Returns:
 			List[RiskEvent]: 规则的风险事件列表
 		"""
-		return await self.get_many(
-			RiskEvent.rule_id == rule_id,
-			order_by=RiskEvent.created_at.desc(),
-			limit=limit
-		)
+		query = select(RiskEvent).where(
+			RiskEvent.rule_id == rule_id
+		).order_by(
+			RiskEvent.created_at.desc()
+		).limit(limit)
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def search_events (
 			self,
@@ -183,15 +186,19 @@ class RiskEventRepository(HyperRepositoryBase):
 			conditions.append(RiskEvent.action_taken == action_taken)
 
 		# 获取总数
-		total = await self.count(*conditions)
+		count_query = select(func.count()).select_from(RiskEvent)
+		if conditions:
+			count_query = count_query.where(and_(*conditions))
+		total_result = await self.session.execute(count_query)
+		total = total_result.scalar() or 0
 
 		# 获取分页数据
-		events = await self.get_many(
-			*conditions,
-			order_by=RiskEvent.created_at.desc(),
-			skip=offset,
-			limit=limit
-		)
+		query = select(RiskEvent)
+		if conditions:
+			query = query.where(and_(*conditions))
+		query = query.order_by(RiskEvent.created_at.desc()).offset(offset).limit(limit)
+		result = await self.session.execute(query)
+		events = result.scalars().all()
 
 		return {
 			"events": events,
@@ -217,9 +224,11 @@ class RiskEventRepository(HyperRepositoryBase):
 			Dict[str, Any]: 统计信息
 		"""
 		# 查询事件总数
-		total_events = await self.count(
+		total_query = select(func.count()).select_from(RiskEvent).where(
 			RiskEvent.created_at.between(start_date, end_date)
 		)
+		total_result = await self.session.execute(total_query)
+		total_events = total_result.scalar() or 0
 
 		# 按事件类型分组统计
 		type_stats_query = select(
@@ -399,9 +408,8 @@ class RiskEventRepository(HyperRepositoryBase):
 		"""
 		cutoff_date = datetime.now() - timedelta(days=days)
 
-		# 使用超表的分区删除功能（假设基类已实现）
+		# 使用超表的分区删除功能
 		return await self.delete_by_time_range(
-			start_time=None,
-			end_time=cutoff_date,
-			soft=False
+			start_time=cutoff_date,
+			end_time=datetime.now()
 		)

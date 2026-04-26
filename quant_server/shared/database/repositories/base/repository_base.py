@@ -96,7 +96,7 @@ class BaseRepository(Generic[T]):
 		# 定义需要检查的日期时间字段
 		datetime_fields = ['trade_date', 'start_date', 'end_date', 'calc_time',
 		                   'created_at', 'updated_at', 'started_at', 'completed_at',
-		                   'timestamp', 'event_time', 'start_time', 'end_time']
+		                   'stopped_at', 'timestamp', 'event_time', 'start_time', 'end_time']
 
 		converted = data.copy()
 		for field in datetime_fields:
@@ -158,7 +158,7 @@ class BaseRepository(Generic[T]):
 		except Exception as e:
 			raise RepositoryError(f"按条件获取记录失败: {str(e)}")
 
-	async def get_many (self, skip: int = 0, limit: int = 100,
+	async def get_many (self, skip: str, limit: int = 100,
 	                    **filters) -> List[T]:
 		"""
 		获取多条记录（带分页）
@@ -341,7 +341,7 @@ class BaseRepository(Generic[T]):
 
 			# 执行更新
 			query = query.values(**data)
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type:ignore
 			return result.rowcount or 0
 
 		except Exception as e:
@@ -372,7 +372,7 @@ class BaseRepository(Generic[T]):
 				from sqlalchemy import delete as sql_delete
 				stmt = sql_delete(self.model)
 				stmt = stmt.where(self.model.id == id)
-				await self.session.execute(stmt)
+				await self.session.execute(stmt) # type:ignore
 
 			await self.session.flush()
 			return True

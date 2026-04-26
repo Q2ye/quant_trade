@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, desc
+from sqlalchemy import select, update, and_, desc, func
 
 from quant_server.shared.database.models.business_models import BacktestScenario
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -20,7 +20,7 @@ class BacktestScenarioRepository(BaseRepository[BacktestScenario]):
 		result = await self.session.execute(query)
 		return result.scalars().first()
 
-	async def get_user_scenarios (self, user_id: int, skip: int = 0,
+	async def get_user_scenarios (self, user_id: str, skip: int = 0,
 	                              limit: int = 50) -> List[BacktestScenario]:
 		"""获取用户创建的回测场景"""
 		query = (

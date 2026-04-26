@@ -56,13 +56,13 @@ class LifecycleManager:
 		self.event_engine = event_engine
 
 		# 策略生命周期状态 {strategy_id: state}
-		self._states: Dict[int, LifecycleState] = {}
+		self._states: Dict[str, LifecycleState] = {}
 
 		# 策略回调 {strategy_id: {event: callback}}
-		self._callbacks: Dict[int, Dict[str, List[Callable]]] = {}
+		self._callbacks: Dict[str, Dict[str, List[Callable]]] = {}
 
 		# 策略状态 {strategy_id: StrategyState}
-		self._strategy_states: Dict[int, StrategyState] = {}
+		self._strategy_states: Dict[str, StrategyState] = {}
 
 	async def register_strategy (
 			self,

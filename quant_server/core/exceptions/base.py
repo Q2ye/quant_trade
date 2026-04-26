@@ -7,10 +7,9 @@
 按照混合架构设计，位于核心基础设施层。
 """
 
-from typing import Any, Dict, Optional, Union
-from enum import Enum
 import traceback
 from datetime import datetime
+from typing import Any, Dict, Optional, Union
 
 from .error_codes import ErrorCode
 from .types import ErrorType, ErrorSeverity
@@ -44,7 +43,7 @@ class BaseAPIException(Exception):
 		self.status_code = status_code
 		self.code = code
 		self.message = message
-		self.detail = detail or {}
+		self.detail: Dict[str, Any] = detail or {}
 		self.headers = headers or {}
 
 		super().__init__(self.message)
@@ -56,7 +55,7 @@ class BaseAPIException(Exception):
 		Returns:
 			响应字典
 		"""
-		response = {
+		response: Dict[str, Any] = {
 			"success": False,
 			"code": self.code,
 			"message": self.message,
@@ -69,7 +68,7 @@ class BaseAPIException(Exception):
 		return response
 
 
-class BaseException(Exception):
+class QuantBaseException(Exception):
 	"""
 	异常基类
 
@@ -107,7 +106,7 @@ class BaseException(Exception):
 		# 生成堆栈跟踪
 		try:
 			self.stack_trace = traceback.format_exc()
-		except:
+		except Exception:
 			self.stack_trace = ""
 
 		# 构建完整错误消息
@@ -157,12 +156,13 @@ class BaseException(Exception):
 		"""
 		# 根据错误码映射HTTP状态码
 		status_map = {
-			ErrorCode.VALIDATION_ERROR: 400,
-			ErrorCode.AUTHENTICATION_ERROR: 401,
-			ErrorCode.AUTHORIZATION_ERROR: 403,
-			ErrorCode.RATE_LIMIT_ERROR: 429,
-			ErrorCode.NOT_FOUND: 404,
-			ErrorCode.CONFLICT: 409,
+			"4000": 400,  # BAD_REQUEST
+			"1001": 400,  # VALIDATION_ERROR
+			"5000": 401,  # AUTHENTICATION_ERROR
+			"5100": 403,  # AUTHORIZATION_ERROR
+			"1009": 429,  # RATE_LIMIT_ERROR
+			"1006": 404,  # NOT_FOUND
+			"1007": 409,  # CONFLICT
 		}
 
 		status_code = status_map.get(self.error_code, 500)
@@ -183,7 +183,7 @@ class BaseException(Exception):
 		return f"{self.__class__.__name__}(message={self.message!r}, code={self.error_code!r})"
 
 
-class ValidationException(BaseException):
+class ValidationException(QuantBaseException):
 	"""验证异常"""
 
 	def __init__ (
@@ -224,7 +224,7 @@ class ValidationException(BaseException):
 		)
 
 
-class ConfigurationException(BaseException):
+class ConfigurationException(QuantBaseException):
 	"""配置异常"""
 
 	def __init__ (
@@ -265,7 +265,7 @@ class ConfigurationException(BaseException):
 		)
 
 
-class ServiceException(BaseException):
+class ServiceException(QuantBaseException):
 	"""服务异常"""
 
 	def __init__ (
@@ -299,7 +299,7 @@ class ServiceException(BaseException):
 		super().__init__(
 			message=message,
 			error_code=ErrorCode.SERVICE_ERROR,
-			error_type=ErrorType.SERVICE_ERROR,
+			error_type=ErrorType.EXTERNAL_SERVICE_ERROR,
 			severity=ErrorSeverity.ERROR,
 			details=details,
 			cause=cause

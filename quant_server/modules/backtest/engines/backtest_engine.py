@@ -253,11 +253,7 @@ class BacktestEngine(EngineBase):
 			raise ValueError(f"策略 {strategy_id} 未加载")
 
 		# 验证数据格式
-		if not isinstance(data, dict):
-			raise ValueError("数据格式必须是字典")
 		for symbol, df in data.items():
-			if not isinstance(df, pd.DataFrame):
-				raise ValueError(f"符号 {symbol} 的数据必须是 DataFrame")
 			# 验证 DataFrame 包含必要的列
 			required_columns = ['open', 'high', 'low', 'close', 'volume']
 			if not all(col in df.columns for col in required_columns):
@@ -440,7 +436,7 @@ class BacktestEngine(EngineBase):
 
 	async def run_parallel_backtests (
 			self,
-			strategy_ids: List[int],
+			strategy_ids: List[str],
 			data: Dict[str, pd.DataFrame],
 			contexts: Dict[int, StrategyContext]
 	) -> Dict[int, Dict[str, Any]]:

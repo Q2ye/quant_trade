@@ -44,7 +44,7 @@ class PortfolioService:
 			name: str,
 			description: str,
 			strategy_weights: Dict[int, float],
-			user_id: int = 0,
+			user_id: str = 0,
 	) -> Dict[str, Any]:
 		"""
 		创建策略组合
@@ -106,8 +106,8 @@ class PortfolioService:
 
 	@staticmethod
 	async def get_portfolio_detail (
-			portfolio_id: int,
-			user_id: int,  # 未使用参数
+			portfolio_id: str,
+			user_id: str,  # 未使用参数
 	) -> Dict[str, Any]:
 		"""
 		获取组合详情
@@ -144,8 +144,8 @@ class PortfolioService:
 
 	@staticmethod
 	async def update_portfolio_weights (
-			portfolio_id: int,
-			user_id: int,  # 未使用参数
+			portfolio_id: str,
+			user_id: str,  # 未使用参数
 			strategy_weights: Dict[int, float],
 	) -> Dict[str, Any]:
 		"""
@@ -186,8 +186,8 @@ class PortfolioService:
 
 	@staticmethod
 	async def rebalance_portfolio (
-			portfolio_id: int,
-			user_id: int,  # 未使用参数
+			portfolio_id: str,
+			user_id: str,  # 未使用参数
 	) -> Dict[str, Any]:
 		"""
 		组合再平衡
@@ -230,8 +230,8 @@ class PortfolioService:
 
 	@staticmethod
 	async def get_portfolio_performance (
-			portfolio_id: int,
-			user_id: int,  # 未使用参数
+			portfolio_id: str,
+			user_id: str,  # 未使用参数
 			start_date: Optional[str] = None,  # 未使用参数
 			end_date: Optional[str] = None,  # 未使用参数
 	) -> Dict[str, Any]:
@@ -278,10 +278,10 @@ class PortfolioService:
 
 	async def add_strategy_to_portfolio (
 			self,
-			portfolio_id: int,
+			portfolio_id: str,
 			strategy_id: str,
 			weight: float,  # 未使用参数
-			user_id: int,  # 未使用参数
+			user_id: str,  # 未使用参数
 	) -> Dict[str, Any]:
 		"""
 		添加策略到组合
@@ -328,9 +328,9 @@ class PortfolioService:
 
 	@staticmethod
 	async def remove_strategy_from_portfolio (
-			portfolio_id: int,
+			portfolio_id: str,
 			strategy_id: str,
-			user_id: int,  # 未使用参数
+			user_id: str,  # 未使用参数
 	) -> Dict[str, Any]:
 		"""
 		从组合移除策略

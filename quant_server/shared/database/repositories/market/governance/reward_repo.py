@@ -8,13 +8,14 @@
 保持与设计文档命名一致：reward_repository.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import date, datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, distinct
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StkReward
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class RewardRepository(BaseRepository[StkReward]):
@@ -53,22 +54,27 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		filters = [self.model.ts_code == ts_code]
+		from quant_server.shared.database.models.data_models import StkManager
+
+		query = select(StkReward).join(
+			StkManager, StkReward.manager_id == StkManager.id
+		).where(
+			StkManager.ts_code == ts_code
+		)
 
 		if start_date:
-			filters.append(self.model.ann_date >= start_date)
+			query = query.where(StkReward.ann_date >= start_date)
 		if end_date:
-			filters.append(self.model.ann_date <= end_date)
+			query = query.where(StkReward.ann_date <= end_date)
 
-		return await self.get_many(
-			*filters,
-			limit=limit,
-			order_by=self.model.ann_date.desc()
-		)
+		query = query.order_by(StkReward.ann_date.desc()).limit(limit)
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_by_manager_id (
 			self,
-			manager_id: int,
+			manager_id: str,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None
 	) -> List[StkReward]:
@@ -112,18 +118,22 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		filters = [
-			self.model.ann_date >= start_date,
-			self.model.ann_date <= end_date
-		]
+		from quant_server.shared.database.models.data_models import StkManager
+
+		query = select(StkReward).join(
+			StkManager, StkReward.manager_id == StkManager.id
+		).where(
+			StkReward.ann_date >= start_date,
+			StkReward.ann_date <= end_date
+		)
 
 		if ts_codes:
-			filters.append(self.model.ts_code.in_(ts_codes))
+			query = query.where(StkManager.ts_code.in_(ts_codes))
 
-		return await self.get_many(
-			*filters,
-			order_by=self.model.ann_date.desc()
-		)
+		query = query.order_by(StkReward.ann_date.desc())
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_latest_rewards (
 			self,
@@ -140,11 +150,18 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			最近的分红送股记录列表
 		"""
-		return await self.get_many(
-			self.model.ts_code == ts_code,
-			limit=n,
-			order_by=self.model.ann_date.desc()
-		)
+		from quant_server.shared.database.models.data_models import StkManager
+
+		query = select(StkReward).join(
+			StkManager, StkReward.manager_id == StkManager.id
+		).where(
+			StkManager.ts_code == ts_code
+		).order_by(
+			StkReward.ann_date.desc()
+		).limit(n)
+
+		result = await self.session.execute(query)
+		return result.scalars().all()
 
 	async def get_total_rewards_by_year (
 			self,
@@ -161,24 +178,28 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			年度分红统计信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		query = select(
-			func.extract('year', self.model.ann_date).label('year'),
-			func.sum(self.model.reward).label('total_reward'),
-			func.sum(self.model.hold_vol).label('total_hold_vol'),
-			func.count(self.model.id).label('count')
+			func.extract('year', StkReward.ann_date).label('year'),
+			func.sum(StkReward.reward).label('total_reward'),
+			func.sum(StkReward.hold_vol).label('total_hold_vol'),
+			func.count(StkReward.id).label('count')
+		).join(
+			StkManager, StkReward.manager_id == StkManager.id
 		).where(
-			self.model.ts_code == ts_code
+			StkManager.ts_code == ts_code
 		)
 
 		if year:
 			query = query.where(
-				func.extract('year', self.model.ann_date) == year
+				func.extract('year', StkReward.ann_date) == year
 			)
 
 		query = query.group_by(
-			func.extract('year', self.model.ann_date)
+			func.extract('year', StkReward.ann_date)
 		).order_by(
-			func.extract('year', self.model.ann_date).desc()
+			func.extract('year', StkReward.ann_date).desc()
 		)
 
 		result = await self.session.execute(query)
@@ -220,23 +241,28 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红统计信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		# 基础查询
 		query = select(
-			func.count(self.model.id).label('total_count'),
-			func.sum(self.model.reward).label('total_reward'),
-			func.avg(self.model.reward).label('avg_reward'),
-			func.min(self.model.reward).label('min_reward'),
-			func.max(self.model.reward).label('max_reward')
+			func.count(StkReward.id).label('total_count'),
+			func.sum(StkReward.reward).label('total_reward'),
+			func.avg(StkReward.reward).label('avg_reward'),
+			func.min(StkReward.reward).label('min_reward'),
+			func.max(StkReward.reward).label('max_reward')
 		)
 
-		filters = []
+		# 处理股票代码过滤
 		if ts_code:
-			filters.append(self.model.ts_code == ts_code)
-		if year:
-			filters.append(func.extract('year', self.model.ann_date) == year)
+			query = query.join(
+				StkManager, StkReward.manager_id == StkManager.id
+			).where(
+				StkManager.ts_code == ts_code
+			)
 
-		if filters:
-			query = query.where(and_(*filters))
+		# 处理年份过滤
+		if year:
+			query = query.where(func.extract('year', StkReward.ann_date) == year)
 
 		result = await self.session.execute(query)
 		row = result.first()
@@ -269,21 +295,25 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红总额最高的股票列表
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		query = select(
-			self.model.ts_code,
-			func.sum(self.model.reward).label('total_reward'),
-			func.count(self.model.id).label('count')
+			StkManager.ts_code,
+			func.sum(StkReward.reward).label('total_reward'),
+			func.count(StkReward.id).label('count')
+		).join(
+			StkManager, StkReward.manager_id == StkManager.id
 		)
 
 		if year:
 			query = query.where(
-				func.extract('year', self.model.ann_date) == year
+				func.extract('year', StkReward.ann_date) == year
 			)
 
 		query = query.group_by(
-			self.model.ts_code
+			StkManager.ts_code
 		).order_by(
-			func.sum(self.model.reward).desc()
+			func.sum(StkReward.reward).desc()
 		).limit(top_n)
 
 		result = await self.session.execute(query)
@@ -311,14 +341,18 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			持股数量统计信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		result = await self.session.execute(
 			select(
-				func.sum(self.model.hold_vol).label('total_hold_vol'),
-				func.avg(self.model.hold_vol).label('avg_hold_vol'),
-				func.min(self.model.hold_vol).label('min_hold_vol'),
-				func.max(self.model.hold_vol).label('max_hold_vol')
+				func.sum(StkReward.hold_vol).label('total_hold_vol'),
+				func.avg(StkReward.hold_vol).label('avg_hold_vol'),
+				func.min(StkReward.hold_vol).label('min_hold_vol'),
+				func.max(StkReward.hold_vol).label('max_hold_vol')
+			).join(
+				StkManager, StkReward.manager_id == StkManager.id
 			).where(
-				self.model.ts_code == ts_code
+				StkManager.ts_code == ts_code
 			)
 		)
 
@@ -349,24 +383,28 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红趋势数据
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		current_year = datetime.now().year
 		start_year = current_year - years + 1
 
 		query = select(
-			func.extract('year', self.model.ann_date).label('year'),
-			func.sum(self.model.reward).label('total_reward'),
-			func.avg(self.model.reward).label('avg_reward'),
-			func.count(self.model.id).label('count')
+			func.extract('year', StkReward.ann_date).label('year'),
+			func.sum(StkReward.reward).label('total_reward'),
+			func.avg(StkReward.reward).label('avg_reward'),
+			func.count(StkReward.id).label('count')
+		).join(
+			StkManager, StkReward.manager_id == StkManager.id
 		).where(
 			and_(
-				self.model.ts_code == ts_code,
-				func.extract('year', self.model.ann_date) >= start_year,
-				func.extract('year', self.model.ann_date) <= current_year
+				StkManager.ts_code == ts_code,
+				func.extract('year', StkReward.ann_date) >= start_year,
+				func.extract('year', StkReward.ann_date) <= current_year
 			)
 		).group_by(
-			func.extract('year', self.model.ann_date)
+			func.extract('year', StkReward.ann_date)
 		).order_by(
-			func.extract('year', self.model.ann_date).asc()
+			func.extract('year', StkReward.ann_date).asc()
 		)
 
 		result = await self.session.execute(query)
@@ -384,7 +422,7 @@ class RewardRepository(BaseRepository[StkReward]):
 
 	async def get_manager_rewards_summary (
 			self,
-			manager_id: int
+			manager_id: str
 	) -> Dict[str, Any]:
 		"""
 		获取管理层的分红送股汇总
@@ -395,15 +433,19 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			管理层的分红汇总信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		result = await self.session.execute(
 			select(
-				func.sum(self.model.reward).label('total_reward'),
-				func.avg(self.model.reward).label('avg_reward'),
-				func.sum(self.model.hold_vol).label('total_hold_vol'),
-				func.count(self.model.id).label('count'),
-				func.count(func.distinct(self.model.ts_code)).label('stock_count')
+				func.sum(StkReward.reward).label('total_reward'),
+				func.avg(StkReward.reward).label('avg_reward'),
+				func.sum(StkReward.hold_vol).label('total_hold_vol'),
+				func.count(StkReward.id).label('count'),
+				func.count(func.distinct(StkManager.ts_code)).label('stock_count')
+			).join(
+				StkManager, StkReward.manager_id == StkManager.id
 			).where(
-				self.model.manager_id == manager_id
+				StkReward.manager_id == manager_id
 			)
 		)
 
@@ -439,28 +481,32 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			符合条件股票的分红信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		query = select(
-			self.model.ts_code,
-			func.sum(self.model.reward).label('total_reward'),
-			func.avg(self.model.reward).label('avg_reward'),
-			func.count(self.model.id).label('count')
+			StkManager.ts_code,
+			func.sum(StkReward.reward).label('total_reward'),
+			func.avg(StkReward.reward).label('avg_reward'),
+			func.count(StkReward.id).label('count')
+		).join(
+			StkManager, StkReward.manager_id == StkManager.id
 		)
 
 		filters = []
 		if min_reward is not None:
-			filters.append(self.model.reward >= min_reward)
+			filters.append(StkReward.reward >= min_reward)
 		if max_reward is not None:
-			filters.append(self.model.reward <= max_reward)
+			filters.append(StkReward.reward <= max_reward)
 		if year:
-			filters.append(func.extract('year', self.model.ann_date) == year)
+			filters.append(func.extract('year', StkReward.ann_date) == year)
 
 		if filters:
 			query = query.where(and_(*filters))
 
 		query = query.group_by(
-			self.model.ts_code
+			StkManager.ts_code
 		).order_by(
-			func.sum(self.model.reward).desc()
+			func.sum(StkReward.reward).desc()
 		).limit(limit)
 
 		result = await self.session.execute(query)
@@ -493,21 +539,22 @@ class RewardRepository(BaseRepository[StkReward]):
 
 	async def batch_upsert (
 			self,
+			match_fields: List[str],
 			data_list: List[Dict[str, Any]],
-			match_fields: List[str] = ['ts_code', 'ann_date', 'end_date', 'manager_id']
+			update_fields: List[str] = None
 	) -> List[StkReward]:
 		"""
 		批量插入或更新分红送股记录
 
 		Args:
-			data_list: 分红送股记录数据列表
 			match_fields: 匹配字段，用于判断记录是否存在
+			data_list: 分红送股记录数据列表
+			update_fields: 更新字段列表
 
 		Returns:
 			StkReward对象列表
 		"""
-		# 注意：继承的batch_upsert参数顺序不同，需要调整
-		return await super().batch_upsert(match_fields, data_list)
+		return await super().batch_upsert(match_fields, data_list, update_fields)
 
 	async def get_reward_summary (self) -> Dict[str, Any]:
 		"""
@@ -516,43 +563,46 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股数据摘要信息
 		"""
+		from quant_server.shared.database.models.data_models import StkManager
+
 		# 总记录数
 		total_count = await self.count()
 
 		# 涉及股票数量
 		stock_count = await self.session.execute(
-			select(func.count(func.distinct(self.model.ts_code)))
+			select(func.count(func.distinct(StkManager.ts_code)))
+			.join(StkManager, StkReward.manager_id == StkManager.id)
 		)
 		stock_count_value = stock_count.scalar() or 0
 
 		# 涉及管理层数量
 		manager_count = await self.session.execute(
-			select(func.count(func.distinct(self.model.manager_id)))
+			select(func.count(func.distinct(StkReward.manager_id)))
 		)
 		manager_count_value = manager_count.scalar() or 0
 
 		# 分红总额
 		total_reward = await self.session.execute(
-			select(func.sum(self.model.reward))
+			select(func.sum(StkReward.reward))
 		)
 		total_reward_value = total_reward.scalar() or 0
 
 		# 持股总额
 		total_hold_vol = await self.session.execute(
-			select(func.sum(self.model.hold_vol))
+			select(func.sum(StkReward.hold_vol))
 		)
 		total_hold_vol_value = total_hold_vol.scalar() or 0
 
 		# 年份分布
 		year_dist = await self.session.execute(
 			select(
-				func.extract('year', self.model.ann_date).label('year'),
-				func.count(self.model.id).label('count'),
-				func.sum(self.model.reward).label('total_reward')
+				func.extract('year', StkReward.ann_date).label('year'),
+				func.count(StkReward.id).label('count'),
+				func.sum(StkReward.reward).label('total_reward')
 			).group_by(
-				func.extract('year', self.model.ann_date)
+				func.extract('year', StkReward.ann_date)
 			).order_by(
-				func.extract('year', self.model.ann_date).desc()
+				func.extract('year', StkReward.ann_date).desc()
 			).limit(10)
 		)
 

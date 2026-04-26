@@ -2,6 +2,8 @@
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+
+from quant_server.core.engines import EngineConfigEntity
 from quant_server.core.engines.base.engine_base import EngineBase
 from quant_server.core.engines.system import EventEngine
 from quant_server.core.engines.types.enums import EngineType
@@ -18,10 +20,9 @@ class PositionEngine(EngineBase):
         event_engine: Optional[EventEngine] = None
     ):
         # 导入 EngineConfig 类
-        from quant_server.core.engines.types.entities import EngineConfig
-        
+
         # 创建 EngineConfig 实例
-        config_obj = EngineConfig(
+        config_obj = EngineConfigEntity(
             name=config.get("name", "position_engine"),
             engine_type="position_engine",
             dependencies=config.get("dependencies", []),

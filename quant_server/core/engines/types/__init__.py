@@ -40,8 +40,7 @@ from .enums import (
 
 from .entities import (
 	BaseEntity,
-	EngineConfig,
-	EngineMetrics,
+	EngineMetricsEntity,
 	EngineStatus,
 	Order,
 	Trade,
@@ -58,9 +57,9 @@ from .entities import (
 	RiskAlert,
 	Metric,
 	Alert,
-	Event,
+	EventEntity,
 	SystemConfig,
-	EntityFactory
+	EntityFactory, EngineConfigEntity
 )
 
 __all__ = [
@@ -99,8 +98,7 @@ __all__ = [
 
 	# 实体类
 	'BaseEntity',
-	'EngineConfig',
-	'EngineMetrics',
+	'EngineMetricsEntity',
 	'EngineStatus',
 	'Order',
 	'Trade',
@@ -117,7 +115,9 @@ __all__ = [
 	'RiskAlert',
 	'Metric',
 	'Alert',
-	'Event',
+	'EventEntity',
+	'EngineConfigEntity',
+	'EngineMetricsEntity',
 	'SystemConfig',
 	'EntityFactory'
 ]
@@ -126,3 +126,4 @@ __all__ = [
 __version__ = "1.0.0"
 __description__ = "量化交易系统统一类型定义层"
 __author__ = "Quant Trading System Team"
+

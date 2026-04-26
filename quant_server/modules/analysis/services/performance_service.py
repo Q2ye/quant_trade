@@ -204,7 +204,7 @@ class PerformanceService:
 
 	async def calculate_account_performance (
 			self,
-			account_id: int,
+			account_id: str,
 			start_date: date,
 			end_date: date
 	) -> PerformanceMetrics:

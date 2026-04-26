@@ -1,9 +1,9 @@
 # shared/database/repositories/timeseries/backtest_equity_curve_repo.py
+from datetime import date, datetime
 from typing import List, Dict, Any, Optional
-from datetime import date, datetime, timedelta
+
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc, text
-from sqlalchemy.sql import literal_column
 
 from quant_server.shared.database.models.business_models import BacktestEquityCurve
 from quant_server.shared.database.repositories.base import BaseRepository

@@ -501,45 +501,46 @@ class DataQualityService:
 			}
 
 			report_types = ["balance_sheet", "income_statement", "cash_flow_statement"]
-			periods = ["year", "quarter"]
 
 			for report_type in report_types:
-				for period in periods:
-					# 获取日期范围统计
-					date_range = await self.financial_repo.get_date_range(
-						ts_code=ts_code,
-						report_type=report_type,
-						period=period
-					)
+				# 获取所有报表数据
+				statements = await self.financial_repo.get_financial_statements(
+					ts_code=ts_code,
+					report_type=report_type,
+					start_date=start_date,
+					end_date=end_date
+				)
 
-					if date_range and date_range["min_date"]:
-						expected_years = (end_date.year - start_date.year) + 1
-						if period == "quarter":
-							expected_statements = expected_years * 4
-						else:
-							expected_statements = expected_years
+				# 按年度和季度分类
+				annual_statements = []
+				quarterly_statements = []
+				for stmt in statements:
+					if hasattr(stmt, 'end_date') and stmt.end_date:
+						if stmt.end_date.month == 12 and stmt.end_date.day == 31:
+							annual_statements.append(stmt)
+						if stmt.end_date.day == 31 and stmt.end_date.month in [3, 6, 9, 12]:
+							quarterly_statements.append(stmt)
 
-						result["total_statements"] += expected_statements
+				# 计算年度报告预期数量
+				expected_annual = (end_date.year - start_date.year) + 1
+				result["total_statements"] += expected_annual
+				result["complete_statements"] += len(annual_statements)
+				result["missing_statements"] += max(0, expected_annual - len(annual_statements))
 
-						# 检查缺失的财务报表
-						statements = await self.financial_repo.get_financial_statements(
-							ts_code=ts_code,
-							report_type=report_type,
-							start_date=start_date,
-							end_date=end_date
-						)
+				# 计算季度报告预期数量
+				expected_quarterly = expected_annual * 4
+				result["total_statements"] += expected_quarterly
+				result["complete_statements"] += len(quarterly_statements)
+				result["missing_statements"] += max(0, expected_quarterly - len(quarterly_statements))
 
-						result["complete_statements"] += len(statements)
-						result["missing_statements"] += max(0, expected_statements - len(statements))
+				# 检查无效报表（包含负值或不合理的财务数据）
+				for stmt in statements:
+					if _is_invalid_financial_statement(stmt):
+						result["invalid_statements"] += 1
 
-						# 检查无效报表（包含负值或不合理的财务数据）
-						for stmt in statements:
-							if _is_invalid_financial_statement(stmt):
-								result["invalid_statements"] += 1
-
-						# 检查数据一致性
-						if len(statements) > 1 and not _check_financial_consistency(statements):
-							result["inconsistent_statements"] += 1
+				# 检查数据一致性
+				if len(statements) > 1 and not _check_financial_consistency(statements):
+					result["inconsistent_statements"] += 1
 
 			return result
 
@@ -656,6 +657,381 @@ class DataQualityService:
 			"completeness_threshold": 95.0,
 			"quality_score_threshold": 90.0
 		}
+
+	@staticmethod
+	async def clean_invalid_data (
+			data: List[Dict],
+			data_type: str,
+			cleaning_rules: Dict
+	) -> Dict[str, Any]:
+		"""清理无效数据"""
+		logger.info(f"开始清理无效数据，类型: {data_type}")
+
+		try:
+			original_count = len(data)
+			removed_count = 0
+			fixed_count = 0
+
+			# 执行清理操作
+			if cleaning_rules.get('remove_duplicates', False):
+				# 移除重复数据
+				seen = set()
+				unique_data = []
+				for item in data:
+					# 根据数据类型生成唯一标识
+					if data_type == "stock_quote":
+						key = (item.get('ts_code'), item.get('trade_date'))
+					else:
+						key = tuple(item.values())
+					if key not in seen:
+						seen.add(key)
+						unique_data.append(item)
+				removed_count += len(data) - len(unique_data)
+				data = unique_data
+
+			if cleaning_rules.get('fix_missing_values', False):
+				# 修复缺失值
+				for item in data:
+					if data_type == "stock_quote":
+						# 修复股票行情数据的缺失值
+						if item.get('close') is None:
+							item['close'] = item.get('open', 0)
+							fixed_count += 1
+						if item.get('volume') is None:
+							item['volume'] = 0
+							fixed_count += 1
+					elif data_type == "stock_basic":
+						# 修复股票基础数据的缺失值
+						if item.get('industry') is None:
+							item['industry'] = '未知'
+							fixed_count += 1
+
+			if cleaning_rules.get('remove_outliers', False):
+				# 移除异常值
+				valid_data = []
+				for item in data:
+					if data_type == "stock_quote":
+						# 检查价格异常值（涨跌幅超过20%）
+						if item.get('open') and item.get('close'):
+							change_rate = abs(item['close'] - item['open']) / item['open']
+							if change_rate <= 0.2:
+								valid_data.append(item)
+						else:
+								removed_count += 1
+					else:
+						valid_data.append(item)
+				data = valid_data
+
+			if cleaning_rules.get('validate_ranges', False):
+				# 验证数据范围
+				valid_data = []
+				for item in data:
+					if data_type == "stock_quote":
+						# 验证价格和成交量范围
+						if (item.get('close', 0) >= 0 and 
+							item.get('volume', 0) >= 0 and 
+							item.get('amount', 0) >= 0):
+							valid_data.append(item)
+						else:
+							removed_count += 1
+					else:
+						valid_data.append(item)
+				data = valid_data
+
+			cleaned_count = len(data)
+
+			return {
+				'original_count': original_count,
+				'cleaned_count': cleaned_count,
+				'removed_count': removed_count,
+				'fixed_count': fixed_count,
+				'success': True,
+				'message': '数据清理完成'
+			}
+
+		except Exception as e:
+			logger.error(f"清理无效数据失败: {str(e)}")
+			return {
+				'original_count': len(data) if data else 0,
+				'cleaned_count': 0,
+				'removed_count': 0,
+				'fixed_count': 0,
+				'success': False,
+				'message': str(e)
+			}
+
+	async def validate_data_consistency (
+			self,
+			validation_type: str,
+			reference_date: str
+	) -> Dict[str, Any]:
+		"""验证数据一致性"""
+		logger.info(f"开始验证数据一致性，类型: {validation_type}")
+
+		try:
+			total_checks = 0
+			passed_checks = 0
+			failed_checks = 0
+			inconsistencies = []
+
+			# 执行一致性验证
+			if validation_type == "cross_reference":
+				# 跨表引用验证：股票行情数据与基础数据的一致性
+				try:
+					# 获取股票基础数据
+					stocks = await self.stock_repo.get_all_stocks()
+					stock_codes = {stock.ts_code for stock in stocks}
+					total_checks += 1
+
+					# 获取指定日期的行情数据
+					quote_date = datetime.strptime(reference_date, '%Y-%m-%d').date()
+					quotes = await self.quote_repo.get_quotes_by_date(quote_date)
+					quote_codes = {quote.ts_code for quote in quotes}
+
+					# 检查行情数据中的股票代码是否都在基础数据中
+					invalid_codes = quote_codes - stock_codes
+					if invalid_codes:
+						failed_checks += 1
+						inconsistencies.append({
+							'type': 'invalid_stock_codes',
+							'message': f'行情数据中存在无效的股票代码: {invalid_codes}',
+							'count': len(invalid_codes)
+						})
+					else:
+						passed_checks += 1
+
+					# 检查基础数据中的股票是否都有行情数据
+					missing_quotes = stock_codes - quote_codes
+					if missing_quotes:
+						# 允许一定比例的缺失（例如5%）
+						missing_ratio = len(missing_quotes) / len(stock_codes)
+						if missing_ratio > 0.05:
+							failed_checks += 1
+							inconsistencies.append({
+								'type': 'missing_quotes',
+								'message': f'基础数据中的股票缺少行情数据: {len(missing_quotes)} 个',
+								'count': len(missing_quotes)
+							})
+					else:
+						passed_checks += 1
+					total_checks += 1
+
+				except Exception as e:
+					logger.error(f"跨表引用验证失败: {str(e)}")
+					failed_checks += 1
+					total_checks += 1
+
+			elif validation_type == "intraday_consistency":
+				# 日内数据一致性验证：开盘价、收盘价、最高价、最低价的关系
+				try:
+					quote_date = datetime.strptime(reference_date, '%Y-%m-%d').date()
+					quotes = await self.quote_repo.get_quotes_by_date(quote_date)
+					total_checks += len(quotes)
+
+					for quote in quotes:
+						# 验证价格关系
+						is_valid = True
+						if hasattr(quote, 'open') and hasattr(quote, 'high') and hasattr(quote, 'low') and hasattr(quote, 'close'):
+							if quote.high < quote.low:
+								is_valid = False
+							if quote.open < quote.low or quote.open > quote.high:
+								is_valid = False
+							if quote.close < quote.low or quote.close > quote.high:
+								is_valid = False
+
+						if is_valid:
+							passed_checks += 1
+						else:
+							failed_checks += 1
+							inconsistencies.append({
+								'type': 'price_inconsistency',
+								'message': f'股票 {quote.ts_code} 价格数据不一致',
+								'data': {
+									'open': quote.open,
+									'high': quote.high,
+									'low': quote.low,
+									'close': quote.close
+								}
+							})
+				except Exception as e:
+					logger.error(f"日内数据一致性验证失败: {str(e)}")
+					failed_checks += 1
+					total_checks += 1
+
+			consistency_score = (passed_checks / total_checks * 100) if total_checks > 0 else 0
+
+			return {
+				'total_checks': total_checks,
+				'passed_checks': passed_checks,
+				'failed_checks': failed_checks,
+				'inconsistencies': inconsistencies,
+				'consistency_score': consistency_score,
+				'success': True
+			}
+
+		except Exception as e:
+			logger.error(f"验证数据一致性失败: {str(e)}")
+			return {
+				'total_checks': 0,
+				'passed_checks': 0,
+				'failed_checks': 0,
+				'inconsistencies': [],
+				'consistency_score': 0,
+				'success': False
+			}
+
+	async def generate_quality_report (
+			self,
+			start_date: str,
+			end_date: str,
+			data_types: Optional[List[str]] = None
+	) -> Dict[str, Any]:
+		"""生成质量报告"""
+		logger.info(f"生成质量报告，时间范围: {start_date} 到 {end_date}")
+
+		try:
+			reports = []
+			total_score = 0
+			total_records = 0
+
+			# 转换日期格式
+			start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+			end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+			# 获取质量检查记录
+			filters = {}
+			if data_types:
+				filters['data_type'] = data_types
+
+			quality_checks = await self.quality_repo.get_many(
+				skip=0,
+				limit=1000,
+				order_by="-created_at",
+				**filters
+			)
+
+			# 按数据类型分组统计
+			data_type_stats = {}
+			for check in quality_checks:
+				if check.check_date and start_dt <= check.check_date <= end_dt:
+					data_type = check.data_type
+					if data_type not in data_type_stats:
+						data_type_stats[data_type] = {
+							'total_checks': 0,
+							'total_records': 0,
+							'valid_records': 0,
+							'invalid_records': 0,
+							'total_score': 0
+						}
+					
+					data_type_stats[data_type]['total_checks'] += 1
+					data_type_stats[data_type]['total_records'] += check.total_records
+					data_type_stats[data_type]['valid_records'] += check.valid_records
+					data_type_stats[data_type]['invalid_records'] += check.invalid_records
+					
+					# 计算每次检查的质量分数
+					if check.total_records > 0:
+						score = (check.valid_records / check.total_records) * 100
+						data_type_stats[data_type]['total_score'] += score
+
+			# 生成报告
+			for data_type, stats in data_type_stats.items():
+				if stats['total_checks'] > 0:
+					current_avg_score = stats['total_score'] / stats['total_checks']
+					reports.append({
+						'data_type': data_type,
+						'quality_score': round(current_avg_score, 2),
+						'total_records': stats['total_records'],
+						'valid_records': stats['valid_records'],
+						'invalid_records': stats['invalid_records'],
+						'check_count': stats['total_checks']
+					})
+					total_score += current_avg_score
+				total_records += stats['total_records']
+
+			# 计算平均分数
+			avg_score = total_score / len(reports) if reports else 0
+
+			# 生成默认报告（如果没有数据）
+			if not reports:
+				if data_types:
+					for data_type in data_types:
+						reports.append({
+							'data_type': data_type,
+							'quality_score': 0,
+							'total_records': 0,
+							'valid_records': 0,
+							'invalid_records': 0,
+							'check_count': 0
+						})
+				else:
+					reports.append({
+						'data_type': 'all',
+						'quality_score': 0,
+						'total_records': 0,
+						'valid_records': 0,
+						'invalid_records': 0,
+						'check_count': 0
+					})
+
+			# 返回报告
+			return {
+				'start_date': start_date,
+				'end_date': end_date,
+				'reports': reports,
+				'average_quality_score': round(avg_score, 2),
+				'total_records': total_records,
+				'generated_at': datetime.now().isoformat()
+			}
+
+		except Exception as e:
+			logger.error(f"生成质量报告失败: {str(e)}")
+			return {
+				'start_date': start_date,
+				'end_date': end_date,
+				'reports': [],
+				'average_quality_score': 0,
+				'total_records': 0,
+				'generated_at': datetime.now().isoformat(),
+				'error': str(e)
+			}
+
+	async def save_quality_result (
+			self,
+			data_type: str,
+			check_date: str,
+			check_result: Dict,
+			task_id: str
+	) -> str:
+		"""保存质量检查结果"""
+		logger.info(f"保存质量检查结果，类型: {data_type}")
+
+		try:
+			# 解析检查结果
+			total_records = check_result.get('summary', {}).get('total_records', 0)
+			valid_records = total_records - check_result.get('summary', {}).get('total_issues', 0)
+			invalid_records = check_result.get('summary', {}).get('total_issues', 0)
+
+			# 转换日期格式
+			check_date_obj = datetime.strptime(check_date, '%Y-%m-%d').date()
+
+			# 保存到数据库
+			check_record = await self.quality_repo.create_quality_check(
+				check_type="task",
+				data_type=data_type,
+				check_date=check_date_obj,
+				total_records=total_records,
+				valid_records=valid_records,
+				invalid_records=invalid_records,
+				check_results=check_result,
+				checked_by=f"task_{task_id}"
+			)
+
+			return str(check_record.id)
+
+		except Exception as e:
+			logger.error(f"保存质量检查结果失败: {str(e)}")
+			return f"error_{task_id[:8]}"
 
 	async def _publish_quality_event (
 			self,

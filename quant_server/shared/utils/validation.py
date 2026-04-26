@@ -21,8 +21,6 @@ def validate_amount(amount: Decimal, min_value: Decimal = Decimal("0.01")) -> bo
     Raises:
         ValueError: 金额不符合要求
     """
-    if not isinstance(amount, Decimal):
-        raise ValueError("金额必须是 Decimal 类型")
     if amount < min_value:
         raise ValueError(f"金额必须大于等于 {min_value}")
     return True

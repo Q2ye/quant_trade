@@ -49,7 +49,7 @@ class ExecutionService:
 	async def start_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 			capital: Optional[float] = None,
 			parameters: Optional[Dict[str, Any]] = None,
 			run_mode: RunMode = RunMode.SIMULATION,
@@ -167,7 +167,7 @@ class ExecutionService:
 	async def stop_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 			force: bool = False,  # 未使用参数
 	) -> Dict[str, Any]:
 		"""
@@ -258,7 +258,7 @@ class ExecutionService:
 	async def pause_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 	) -> Dict[str, Any]:
 		"""
 		暂停策略
@@ -320,7 +320,7 @@ class ExecutionService:
 	async def resume_strategy (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 	) -> Dict[str, Any]:
 		"""
 		恢复策略
@@ -382,7 +382,7 @@ class ExecutionService:
 	async def get_strategy_status (
 			self,
 			strategy_id: str,
-			user_id: int,
+			user_id: str,
 	) -> Dict[str, Any]:
 		"""
 		获取策略状态

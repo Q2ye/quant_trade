@@ -2,27 +2,27 @@
 """
 安全相关异常定义
 包含加密、认证、授权、密码、令牌等安全相关异常
-继承自BaseException和BusinessException
+继承自QuantBaseException和BusinessException
 """
 
-from .base import BaseException, ValidationException
+from .base import QuantBaseException
 from .error_codes import (
-    ErrorCode,
+	ErrorCode,
 )
 
 # 使用ErrorCode枚举中的安全相关错误码
 SecurityErrorCode = ErrorCode
-from .types import ErrorType, ErrorSeverity, ErrorLevel
+from .types import ErrorType, ErrorSeverity
 
 
-class SecurityException(BaseException):
+class SecurityException(QuantBaseException):
 	"""安全异常基类"""
 
 	def __init__ (self,
 	              message: str = "安全异常",
 	              code: ErrorCode = SecurityErrorCode.SECURITY_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化安全异常
 
@@ -30,9 +30,9 @@ class SecurityException(BaseException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, ErrorType.AUTHENTICATION_ERROR, severity, details)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -48,7 +48,7 @@ class EncryptionException(SecurityException):
 	              message: str = "加密异常",
 	              code: ErrorCode = SecurityErrorCode.ENCRYPTION_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化加密异常
 
@@ -56,9 +56,9 @@ class EncryptionException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -138,7 +138,7 @@ class JWTException(SecurityException):
 	              message: str = "JWT异常",
 	              code: ErrorCode = SecurityErrorCode.JWT_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化JWT异常
 
@@ -146,9 +146,9 @@ class JWTException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -212,7 +212,7 @@ class PasswordException(SecurityException):
 	              message: str = "密码异常",
 	              code: ErrorCode = SecurityErrorCode.PASSWORD_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化密码异常
 
@@ -220,9 +220,9 @@ class PasswordException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -276,7 +276,7 @@ class WeakPasswordError(PasswordException):
 			message: 异常消息
 			details: 详细信息
 		"""
-		super().__init__(message, SecurityErrorCode.WEAK_PASSWORD, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.WEAK_PASSWORD, details, ErrorSeverity.WARNING)
 
 
 class PermissionException(SecurityException):
@@ -286,7 +286,7 @@ class PermissionException(SecurityException):
 	              message: str = "权限异常",
 	              code: ErrorCode = SecurityErrorCode.PERMISSION_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化权限异常
 
@@ -294,9 +294,9 @@ class PermissionException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -311,10 +311,10 @@ class PermissionDeniedError(PermissionException):
 	def __init__ (self,
 	              message: str = "权限不足",
 	              details: dict = None,
-	              user_id: int = None,
+	              user_id: str = None,
 	              resource_type: str = None,
 	              action: str = None,
-	              resource_id: int = None):
+	              resource_id: str = None):
 		"""
 		初始化权限拒绝错误
 
@@ -338,7 +338,7 @@ class PermissionDeniedError(PermissionException):
 		if resource_id is not None:
 			details['resource_id'] = resource_id
 
-		super().__init__(message, SecurityErrorCode.PERMISSION_DENIED, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.PERMISSION_DENIED, details, ErrorSeverity.WARNING)
 
 
 class RoleNotFoundError(PermissionException):
@@ -347,7 +347,7 @@ class RoleNotFoundError(PermissionException):
 	def __init__ (self,
 	              message: str = "角色不存在",
 	              details: dict = None,
-	              role_id: int = None,
+	              role_id: str = None,
 	              role_name: str = None):
 		"""
 		初始化角色未找到错误
@@ -375,7 +375,7 @@ class PermissionNotFoundError(PermissionException):
 	def __init__ (self,
 	              message: str = "权限不存在",
 	              details: dict = None,
-	              permission_id: int = None,
+	              permission_id: str = None,
 	              resource_type: str = None,
 	              action: str = None):
 		"""
@@ -408,7 +408,7 @@ class AuthenticationException(SecurityException):
 	              message: str = "认证异常",
 	              code: ErrorCode = SecurityErrorCode.AUTHENTICATION_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化认证异常
 
@@ -416,9 +416,9 @@ class AuthenticationException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -452,7 +452,7 @@ class AuthenticationFailedError(AuthenticationException):
 		if reason is not None:
 			details['reason'] = reason
 
-		super().__init__(message, SecurityErrorCode.AUTHENTICATION_FAILED, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.AUTHENTICATION_FAILED, details, ErrorSeverity.WARNING)
 
 
 class InvalidCredentialsError(AuthenticationException):
@@ -476,7 +476,7 @@ class InvalidCredentialsError(AuthenticationException):
 		if username is not None:
 			details['username'] = username
 
-		super().__init__(message, SecurityErrorCode.INVALID_CREDENTIALS, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.INVALID_CREDENTIALS, details, ErrorSeverity.WARNING)
 
 
 class AccountLockedError(AuthenticationException):
@@ -508,7 +508,7 @@ class AccountLockedError(AuthenticationException):
 		if lock_until is not None:
 			details['lock_until'] = lock_until
 
-		super().__init__(message, SecurityErrorCode.ACCOUNT_LOCKED, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.ACCOUNT_LOCKED, details, ErrorSeverity.WARNING)
 
 
 class AccountDisabledError(AuthenticationException):
@@ -536,7 +536,7 @@ class AccountDisabledError(AuthenticationException):
 		if disable_reason is not None:
 			details['disable_reason'] = disable_reason
 
-		super().__init__(message, SecurityErrorCode.ACCOUNT_DISABLED, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.ACCOUNT_DISABLED, details, ErrorSeverity.WARNING)
 
 
 class TooManyAttemptsError(AuthenticationException):
@@ -568,7 +568,7 @@ class TooManyAttemptsError(AuthenticationException):
 		if max_attempts is not None:
 			details['max_attempts'] = max_attempts
 
-		super().__init__(message, SecurityErrorCode.TOO_MANY_ATTEMPTS, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.TOO_MANY_ATTEMPTS, details, ErrorSeverity.WARNING)
 
 
 class AuthorizationException(SecurityException):
@@ -578,7 +578,7 @@ class AuthorizationException(SecurityException):
 	              message: str = "授权异常",
 	              code: ErrorCode = SecurityErrorCode.AUTHORIZATION_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化授权异常
 
@@ -586,9 +586,9 @@ class AuthorizationException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -603,7 +603,7 @@ class AccessDeniedError(AuthorizationException):
 	def __init__ (self,
 	              message: str = "访问被拒绝",
 	              details: dict = None,
-	              user_id: int = None,
+	              user_id: str = None,
 	              resource: str = None,
 	              action: str = None):
 		"""
@@ -626,7 +626,7 @@ class AccessDeniedError(AuthorizationException):
 		if action is not None:
 			details['action'] = action
 
-		super().__init__(message, SecurityErrorCode.ACCESS_DENIED, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.ACCESS_DENIED, details, ErrorSeverity.WARNING)
 
 
 class InsufficientPrivilegesError(AuthorizationException):
@@ -635,7 +635,7 @@ class InsufficientPrivilegesError(AuthorizationException):
 	def __init__ (self,
 	              message: str = "权限不足",
 	              details: dict = None,
-	              user_id: int = None,
+	              user_id: str = None,
 	              required_role: str = None,
 	              required_permission: str = None):
 		"""
@@ -658,7 +658,7 @@ class InsufficientPrivilegesError(AuthorizationException):
 		if required_permission is not None:
 			details['required_permission'] = required_permission
 
-		super().__init__(message, SecurityErrorCode.INSUFFICIENT_PRIVILEGES, details, ErrorLevel.WARNING)
+		super().__init__(message, SecurityErrorCode.INSUFFICIENT_PRIVILEGES, details, ErrorSeverity.WARNING)
 
 
 class AuditException(SecurityException):
@@ -668,7 +668,7 @@ class AuditException(SecurityException):
 	              message: str = "审计异常",
 	              code: ErrorCode = SecurityErrorCode.AUDIT_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化审计异常
 
@@ -676,9 +676,9 @@ class AuditException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""
@@ -722,7 +722,7 @@ class SecurityConfigException(SecurityException):
 	              message: str = "安全配置异常",
 	              code: ErrorCode = SecurityErrorCode.SECURITY_CONFIG_ERROR,
 	              details: dict = None,
-	              level: ErrorLevel = ErrorLevel.ERROR):
+	              severity: ErrorSeverity = ErrorSeverity.ERROR):
 		"""
 		初始化安全配置异常
 
@@ -730,9 +730,9 @@ class SecurityConfigException(SecurityException):
 			message: 异常消息
 			code: 错误码
 			details: 详细信息
-			level: 错误级别
+			severity: 错误严重程度
 		"""
-		super().__init__(message, code, details, level)
+		super().__init__(message, code, details, severity)
 
 	def to_dict (self) -> dict:
 		"""转换为字典格式"""

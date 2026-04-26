@@ -113,7 +113,7 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 
 	async def get_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			limit: int = 10,
 			status: Optional[str] = None
 	) -> List[DataSyncTask]:
@@ -444,7 +444,7 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 
 	async def complete_task (
 			self,
-			task_id: int,
+			task_id: str,
 			total_records: int = 0,
 			error_message: Optional[str] = None
 	) -> bool:
@@ -473,7 +473,7 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 
 	async def update_task_progress (
 			self,
-			task_id: int,
+			task_id: str,
 			total_records: int,
 			status: Optional[int] = None
 	) -> bool:
@@ -498,7 +498,7 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 
 	async def fail_task (
 			self,
-			task_id: int,
+			task_id: str,
 			error_message: str
 	) -> bool:
 		"""

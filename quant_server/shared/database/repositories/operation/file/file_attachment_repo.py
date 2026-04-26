@@ -12,19 +12,18 @@ FileAttachmentRepository - 文件附件数据访问层
 """
 
 import os
-from typing import List, Dict, Any, Optional, Union, Tuple
 from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Any, Optional, Callable
+
+from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, asc, update
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.business_models import FileAttachment, SysUser
+from quant_server.shared.database.models.business_models import FileAttachment
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
-	PaginationResult,
-	FilterCondition,
-	SortCondition
+	PaginationResult
 )
 
 
@@ -98,7 +97,7 @@ class FileAttachmentRepository(BaseRepository[FileAttachment]):
 
 	async def get_user_attachments (
 			self,
-			user_id: int,
+			user_id: str,
 			file_type: str = None,
 			pagination: PaginationParams = None
 	) -> PaginationResult[FileAttachment]:
@@ -405,7 +404,7 @@ class FileAttachmentRepository(BaseRepository[FileAttachment]):
 	async def create_file_attachment (
 			self,
 			file_data: Dict[str, Any],
-			user_id: int
+			user_id: str
 	) -> FileAttachment:
 		"""
 		创建文件附件记录
@@ -450,7 +449,8 @@ class FileAttachmentRepository(BaseRepository[FileAttachment]):
 		except Exception as e:
 			raise RepositoryError(f"创建文件附件失败: {str(e)}")
 
-	def _guess_mime_type (self, filename: str) -> str:
+	@staticmethod
+	def _guess_mime_type (filename: str) -> str:
 		"""
 		根据文件名猜测MIME类型
 
@@ -589,39 +589,70 @@ class FileAttachmentRepository(BaseRepository[FileAttachment]):
 
 	async def delete_orphaned_attachments (
 			self,
-			reference_check_query: callable = None
-	) -> Dict[str, int]:
+			reference_check_query: Optional[Callable] = None
+	) -> Dict[str, Any]:
 		"""
 		删除孤儿文件附件（引用已删除但文件还在）
 
 		Args:
-			reference_check_query: 自定义的引用检查函数
+			reference_check_query: 自定义的引用检查函数，用于验证引用是否存在
+			函数签名：async def check_reference_exists(reference_type: str, reference_id: str) -> bool
 
 		Returns:
 			删除统计信息
 		"""
 		try:
-			# 这里可以实现孤儿文件检测逻辑
-			# 由于具体的引用检查逻辑依赖于业务上下文，这里只提供框架
-			# 实际实现中可能需要查询其他表来验证引用是否存在
+			# 1. 获取所有文件附件记录
+			all_files_query = select(self.model).where(
+				and_(
+					self.model.reference_type != 'temp',  # 排除临时文件
+					self.model.reference_type.isnot(None),  # 排除无引用类型的文件
+					self.model.reference_id.isnot(None)  # 排除无引用ID的文件
+				)
+			)
+			
+			result = await self.session.execute(all_files_query)
+			all_files = result.scalars().all()
 
-			# 示例逻辑：删除30天前的临时文件
+			# 2. 检测孤儿文件
+			orphaned_files = []
+			
+			for file_attachment in all_files:
+				if reference_check_query:
+					# 使用自定义的引用检查函数
+					reference_exists = await reference_check_query(
+						file_attachment.reference_type,
+						file_attachment.reference_id
+					)
+					if not reference_exists:
+						orphaned_files.append(file_attachment)
+				else:
+					# 默认逻辑：基于时间判断孤儿文件
+					# 超过90天且无引用的文件视为孤儿文件
+					ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+					if file_attachment.upload_date < ninety_days_ago:
+						orphaned_files.append(file_attachment)
+
+			# 3. 处理临时文件（超过30天的临时文件）
 			thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-
 			temp_files_query = select(self.model).where(
 				and_(
 					self.model.reference_type == 'temp',
 					self.model.upload_date < thirty_days_ago
 				)
 			)
+			
+			temp_result = await self.session.execute(temp_files_query)
+			temp_files = temp_result.scalars().all()
+			
+			# 合并孤儿文件和临时文件
+			files_to_delete = orphaned_files + temp_files
 
-			result = await self.session.execute(temp_files_query)
-			temp_files = result.scalars().all()
-
+			# 4. 删除孤儿文件和临时文件
 			deleted_count = 0
 			failed_count = 0
-
-			for file_attachment in temp_files:
+			
+			for file_attachment in files_to_delete:
 				try:
 					# 删除物理文件
 					if file_attachment.storage_path and os.path.exists(file_attachment.storage_path):
@@ -631,13 +662,20 @@ class FileAttachmentRepository(BaseRepository[FileAttachment]):
 					await self.delete(file_attachment.id, soft=False)
 					deleted_count += 1
 
-				except Exception:
+				except Exception as e:
+					# 记录异常信息
+					print(f"删除文件附件失败 {file_attachment.id}: {str(e)}")
 					failed_count += 1
 
+			# 5. 返回统计信息
 			return {
 				"deleted_count": deleted_count,
 				"failed_count": failed_count,
-				"total_processed": len(temp_files)
+				"total_orphaned_files": len(orphaned_files),
+				"total_temp_files": len(temp_files),
+				"total_processed": len(files_to_delete),
+				"orphaned_files": [f.id for f in orphaned_files],
+				"temp_files": [f.id for f in temp_files]
 			}
 
 		except Exception as e:

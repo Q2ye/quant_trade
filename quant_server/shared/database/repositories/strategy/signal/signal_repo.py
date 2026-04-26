@@ -12,14 +12,14 @@
 位置：shared/database/repositories/strategy/signal/signal_repository.py
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text, distinct
-from sqlalchemy.orm import joinedload
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from sqlalchemy import select, and_, func, desc, asc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import Signal
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class SignalRepository(BaseRepository[Signal]):
@@ -250,7 +250,7 @@ class SignalRepository(BaseRepository[Signal]):
 		try:
 			cutoff_time = datetime.now() - timedelta(hours=hours)
 
-			filters = {"signal_time": (">=", cutoff_time)}
+			filters: Dict[str, Any] = {"signal_time": (">=", cutoff_time)}
 			if strategy_id:
 				filters["strategy_id"] = strategy_id
 			if ts_code:
@@ -287,9 +287,8 @@ class SignalRepository(BaseRepository[Signal]):
 			today = datetime.now().date()
 			tomorrow = today + timedelta(days=1)
 
-			filters = {
-				"signal_time": (">=", today),
-				"signal_time": ("<", tomorrow)
+			filters: Dict[str, Any] = {
+				"signal_time": [(">=", today), ("<", tomorrow)]
 			}
 			if strategy_id:
 				filters["strategy_id"] = strategy_id
@@ -438,7 +437,7 @@ class SignalRepository(BaseRepository[Signal]):
 			强信号列表
 		"""
 		try:
-			filters = {"strength": (">=", min_strength)}
+			filters: Dict[str, Any] = {"strength": (">=", min_strength)}
 			if start_time:
 				filters["signal_time"] = (">=", start_time)
 			if end_time:
@@ -615,11 +614,15 @@ class SignalRepository(BaseRepository[Signal]):
 			end_date = datetime.now().date()
 			start_date = end_date - timedelta(days=days - 1)
 
+			# 转换为 datetime 类型
+			start_time = datetime.combine(start_date, datetime.min.time())
+			end_time = datetime.combine(end_date, datetime.max.time())
+
 			# 获取该策略在指定时间范围内的信号
 			signals = await self.get_by_strategy(
 				strategy_id=strategy_id,
-				start_time=start_date,
-				end_time=end_date + timedelta(days=1)
+				start_time=start_time,
+				end_time=end_time
 			)
 
 			total_signals = len(signals)
@@ -674,7 +677,6 @@ class SignalRepository(BaseRepository[Signal]):
 
 			# 今日信号数
 			today = datetime.now().date()
-			tomorrow = today + timedelta(days=1)
 			today_count = await self.count(
 				signal_time=(">=", today)
 			)
@@ -792,7 +794,7 @@ class SignalRepository(BaseRepository[Signal]):
 	async def batch_upsert_signals (
 			self,
 			signal_data_list: List[Dict[str, Any]],
-			match_fields: List[str] = ['strategy_id', 'ts_code', 'signal_time']
+			match_fields: Optional[List[str]] = None
 	) -> List[Signal]:
 		"""
 		批量插入或更新交易信号记录
@@ -805,6 +807,9 @@ class SignalRepository(BaseRepository[Signal]):
 			插入或更新的信号记录列表
 		"""
 		try:
+			# 初始化默认匹配字段
+			if match_fields is None:
+				match_fields = ['strategy_id', 'ts_code', 'signal_time']
 			return await self.batch_upsert(match_fields, signal_data_list)
 
 		except Exception as e:

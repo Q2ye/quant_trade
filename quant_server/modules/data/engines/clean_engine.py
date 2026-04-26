@@ -29,16 +29,12 @@ UNINITIALIZED → INITIALIZING → INITIALIZED → STARTING → RUNNING
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Set, Callable
+from typing import Dict, List, Optional, Any, Set
 from enum import Enum
 from dataclasses import dataclass, field
 
-from ....core.engines import EngineDescriptor
-# 导入统一类型定义
-from ....core.engines.types.entities import (
-    EngineConfig as EngineConfigEntity,
-    Event as EventEntity
-)
+# 导入引擎配置实体
+from ....core.engines.types.entities import EventEntity, EngineConfigEntity
 from  ....core.engines.types.enums import (
     EngineType,
     ComponentStatus,
@@ -48,6 +44,7 @@ from  ....core.engines.types.enums import (
 
 # 导入引擎基类
 from ....core.engines.base.engine_base import EngineBase
+from ....core.engines.utils.engine_factory import EngineDescriptor
 
 # 导入业务模块
 from quant_server.modules.data.events import (
@@ -446,12 +443,11 @@ class DataCleanEngine(EngineBase):
         elif event.event_type == DataEventType.QUALITY_ISSUE_FOUND.value:
             await self._handle_quality_issue_found(event)
 
-    async def _on_auto_recover(self, func: Callable, error: Exception, context: Dict[str, Any]) -> bool:
+    async def _on_auto_recover(self, error: Exception, context: Dict[str, Any] = None) -> bool:
         """
         引擎自动恢复逻辑
 
         Args:
-            func: 发生错误的函数
             error: 发生的异常
             context: 错误上下文
 
@@ -839,11 +835,10 @@ class DataCleanEngine(EngineBase):
         logger.info(f"任务 {task_id} 已加入执行队列")
         return True
 
-    @EngineBase.with_retry
+    # @EngineBase.with_retry
     async def _execute_clean_task(self, task_info: Dict[str, Any]):
         """
         执行清洗任务（带重试机制）
-
         Args:
             task_info: 任务信息
         """
@@ -856,7 +851,7 @@ class DataCleanEngine(EngineBase):
             await self._publish_processing_event(task_id, config, metadata)
 
             # 执行清洗流程
-            result = await self._perform_cleaning(task_id, config, metadata)
+            result = await self._perform_cleaning(task_id, config)
 
             # 更新任务结果
             task_info["result"] = result
@@ -878,7 +873,7 @@ class DataCleanEngine(EngineBase):
             else:
                 self.stats["failed_tasks"] += 1
 
-            self.stats["last_clean_time"] = datetime.now()
+            self.stats["last_clean_time"] = datetime.now().timestamp()
 
         except asyncio.CancelledError:
             # 任务被取消
@@ -913,7 +908,6 @@ class DataCleanEngine(EngineBase):
         Args:
             task_id: 任务ID
             config: 任务配置
-            metadata: 任务元数据
 
         Returns:
             清洗任务结果
@@ -973,7 +967,7 @@ class DataCleanEngine(EngineBase):
             result.failed_records = save_result.get("failed_records", 0)
             result.quality_score_before = quality_before
             result.quality_score_after = quality_after
-            result.improvement = max(0, quality_after - quality_before)
+            result.improvement = max(0.0, quality_after - quality_before)
             result.step_results = step_results
 
             # 检查质量阈值
@@ -1286,7 +1280,7 @@ class DataCleanEngine(EngineBase):
         Returns:
             引擎状态信息
         """
-        base_status = await super().get_engine_status()
+        base_status = self.record.to_dict()
 
         # 计算平均处理时间
         avg_time = 0.0
@@ -1503,20 +1497,28 @@ class DataCleanEngine(EngineBase):
 
     # ==================== 具体的清洗步骤实现 ====================
 
-    async def _measure_quality_before(self, task_id: str, config: CleanTaskConfig) -> float:
+    async def _measure_quality_before(self, _task_id: str, config: CleanTaskConfig) -> float:
         """测量清洗前质量"""
         try:
             if not self.quality_service:
                 return 0.0
 
-            # 这里需要根据实际情况实现
-            return 75.0  # 模拟值
+            # 根据数据类型调用质量检查服务
+            data_type = config.data_type
+            result = await self.quality_service.check_data_quality(data_type)
+            
+            # 解析质量分数
+            if result.get("success", False):
+                quality_metrics = result.get("result", {})
+                return quality_metrics.get("overall_score", 0.0)
+            
+            return 0.0
         except Exception as e:
             logger.error(f"测量清洗前质量失败: {e}")
             return 0.0
 
     @staticmethod
-    async def _validate_input_data(task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+    async def _validate_input_data(_task_id: str, _config: CleanTaskConfig) -> Dict[str, Any]:
         """验证输入数据"""
         return {
             "status": "valid",
@@ -1525,7 +1527,7 @@ class DataCleanEngine(EngineBase):
         }
 
     @staticmethod
-    async def _apply_clean_rule(task_id: str, config: CleanTaskConfig, rule: CleanRule) -> Dict[str, Any]:
+    async def _apply_clean_rule(_task_id: str, _config: CleanTaskConfig, rule: CleanRule) -> Dict[str, Any]:
         """应用清洗规则"""
         return {
             "rule": rule.name,
@@ -1536,7 +1538,7 @@ class DataCleanEngine(EngineBase):
         }
 
     @staticmethod
-    async def _validate_output_data(task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+    async def _validate_output_data(_task_id: str, _config: CleanTaskConfig) -> Dict[str, Any]:
         """验证输出数据"""
         return {
             "status": "valid",
@@ -1545,7 +1547,7 @@ class DataCleanEngine(EngineBase):
         }
 
     @staticmethod
-    async def _save_cleaned_data(task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+    async def _save_cleaned_data(_task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
         """保存清洗后的数据"""
         return {
             "status": "saved",
@@ -1555,14 +1557,22 @@ class DataCleanEngine(EngineBase):
             "storage_location": f"cleaned/{config.data_type}",
         }
 
-    async def _measure_quality_after(self, task_id: str, config: CleanTaskConfig) -> float:
+    async def _measure_quality_after(self, _task_id: str, config: CleanTaskConfig) -> float:
         """测量清洗后质量"""
         try:
             if not self.quality_service:
                 return 0.0
 
-            # 这里需要根据实际情况实现
-            return 95.0  # 模拟值
+            # 根据数据类型调用质量检查服务
+            data_type = config.data_type
+            result = await self.quality_service.check_data_quality(data_type)
+            
+            # 解析质量分数
+            if result.get("success", False):
+                quality_metrics = result.get("result", {})
+                return quality_metrics.get("overall_score", 0.0)
+            
+            return 0.0
         except Exception as e:
             logger.error(f"测量清洗后质量失败: {e}")
             return 0.0
@@ -1584,7 +1594,7 @@ def register_data_clean_engine(factory):
         name="data_clean_engine",
         description="数据清洗引擎，负责管理数据清洗和质量提升的完整流程",
         version="1.0.0",
-        category=EngineCategory.DATA_PROCESSING,
+        category=EngineCategory.DATA,
         dependencies=[
             EngineType.EVENT,  # 依赖事件引擎
         ],
@@ -1646,7 +1656,7 @@ async def create_data_clean_engine(
     if quality_service:
         engine.quality_service = quality_service
 
-    return engine
+    return engine  # type: ignore[return-value]
 
 
 async def get_data_clean_engine(instance_name: str = "data_clean_engine") -> Optional[DataCleanEngine]:

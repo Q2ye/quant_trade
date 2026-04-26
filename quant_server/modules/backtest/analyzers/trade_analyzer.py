@@ -100,7 +100,8 @@ class TradeAnalyzer:
             logger.error(f"交易分析失败: {str(e)}")
             return {}
     
-    def _analyze_trade_frequency(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+    @staticmethod
+    def _analyze_trade_frequency(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         分析交易频率
         
@@ -127,7 +128,9 @@ class TradeAnalyzer:
             "trading_days": len(date_counts)
         }
     
-    def _analyze_holding_period(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+    @staticmethod
+    def _analyze_holding_period(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         分析持仓时间
         
@@ -165,7 +168,8 @@ class TradeAnalyzer:
             "min_holding_period": min_holding
         }
     
-    def _analyze_profit_distribution(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+    @staticmethod
+    def _analyze_profit_distribution(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         分析收益分布
         

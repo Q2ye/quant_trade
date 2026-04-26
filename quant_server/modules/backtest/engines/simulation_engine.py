@@ -178,8 +178,6 @@ class SimulationEngine(EngineBase):
 				return {"success": False, "error": "交易信号: datetime 必须是 datetime 或字符串"}
 
 			# 验证市场数据格式
-			if not isinstance(market_data, pd.DataFrame):
-				return {"success": False, "error": "市场数据必须是 DataFrame"}
 			if not all(col in market_data.columns for col in ["open", "high", "low", "close", "volume"]):
 				return {"success": False, "error": "市场数据缺少必要的列"}
 

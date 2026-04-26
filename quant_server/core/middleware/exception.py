@@ -11,23 +11,23 @@
 
 import logging
 import traceback
-from typing import Dict, Any, Optional
-from fastapi import Request, HTTPException
+from typing import Dict, Any
+
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
 
 from ..exceptions import (
-	BaseException,
+	QuantBaseException,
 	BusinessException,
 	AuthenticationException,
 	AuthorizationException,
 	ValidationException,
 	DataNotFoundException,
 	PermissionException,
-	ServiceException
 )
+from ..exceptions.base import ServiceException
 from ..exceptions.error_codes import ErrorCode
 from ..exceptions.types import ErrorSeverity
 
@@ -55,7 +55,7 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			return self._handle_http_exception(request, exc)
 
 		# 处理自定义业务异常
-		elif isinstance(exc, BaseException):
+		elif isinstance(exc, QuantBaseException):
 			return await self._handle_base_exception(request, exc)
 
 		# 处理其他异常
@@ -91,7 +91,7 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			content=error_response
 		)
 
-	async def _handle_base_exception (self, request: Request, exc: BaseException) -> JSONResponse:
+	async def _handle_base_exception (self, request: Request, exc: QuantBaseException) -> JSONResponse:
 		"""处理自定义业务异常"""
 		# 记录异常日志
 		self._log_exception(exc, request)
@@ -155,7 +155,7 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			content=error_response
 		)
 
-	def _log_exception (self, exc: BaseException, request: Request):
+	def _log_exception (self, exc: QuantBaseException, request: Request):
 		"""记录异常日志"""
 		log_level = self._get_log_level_for_severity(exc.severity)
 
@@ -177,7 +177,8 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			extra=log_data
 		)
 
-	def _get_status_code_for_exception (self, exc: BaseException) -> int:
+	@staticmethod
+	def _get_status_code_for_exception (exc: QuantBaseException) -> int:
 		"""根据异常类型获取HTTP状态码"""
 		status_mapping = {
 			AuthenticationException: 401,
@@ -187,7 +188,7 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 			DataNotFoundException: 404,
 			BusinessException: 422,
 			ServiceException: 503,
-			BaseException: 500
+			QuantBaseException: 500
 		}
 
 		for exc_type, status_code in status_mapping.items():
@@ -196,7 +197,8 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 
 		return 500
 
-	def _get_log_level_for_severity (self, severity: ErrorSeverity) -> int:
+	@staticmethod
+	def _get_log_level_for_severity (severity: ErrorSeverity) -> int:
 		"""根据严重程度获取日志级别"""
 		mapping = {
 			ErrorSeverity.DEBUG: logging.DEBUG,
@@ -207,7 +209,8 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 		}
 		return mapping.get(severity, logging.ERROR)
 
-	def _get_http_error_code (self, status_code: int) -> str:
+	@staticmethod
+	def _get_http_error_code (status_code: int) -> str:
 		"""根据HTTP状态码获取错误代码"""
 		mapping = {
 			400: "BAD_REQUEST",
@@ -241,7 +244,8 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 
 		return sanitized
 
-	def _is_sensitive_field (self, field_name: str) -> bool:
+	@staticmethod
+	def _is_sensitive_field (field_name: str) -> bool:
 		"""检查字段是否敏感"""
 		sensitive_fields = {
 			"password", "token", "secret", "key", "credential",
@@ -249,7 +253,21 @@ class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
 		}
 		return any(sensitive in field_name.lower() for sensitive in sensitive_fields)
 
-	def _get_timestamp (self) -> str:
+	@staticmethod
+	def _get_timestamp () -> str:
 		"""获取当前时间戳"""
 		from datetime import datetime
 		return datetime.now().isoformat()
+
+
+__all__ = [
+	'ExceptionHandlingMiddleware',
+	'QuantBaseException',
+	'BusinessException',
+	'AuthenticationException',
+	'AuthorizationException',
+	'ValidationException',
+	'DataNotFoundException',
+	'PermissionException',
+	'ServiceException'
+]

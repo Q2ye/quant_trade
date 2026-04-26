@@ -246,7 +246,7 @@ class DailyAnalysisTasks:
 			self.logger.error(f"计算每日绩效失败: {e}", exc_info=True)
 			raise
 
-	async def _get_account_assets (self, account_id: int, asset_date: date) -> Optional[Dict[str, float]]:
+	async def _get_account_assets (self, account_id: str, asset_date: date) -> Optional[Dict[str, float]]:
 		"""
 		获取账户资产数据
 
@@ -431,7 +431,7 @@ class DailyAnalysisTasks:
 		# 由于数据结构未知，返回空字典
 		return {}
 
-	async def _get_historical_returns (self, account_id: int, end_date: date,
+	async def _get_historical_returns (self, account_id: str, end_date: date,
 	                                   days: int = 252) -> Optional[List[float]]:
 		"""
 		获取历史收益率数据

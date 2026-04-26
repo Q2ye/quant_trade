@@ -116,7 +116,7 @@ class BayesianOptimization:
 			def __init__ (self, scores):
 				self.scores = scores
 
-			def predict (self, x):
+			def predict (self):
 				# 简单的均值预测
 				return np.mean(self.scores), np.std(self.scores)
 

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 # 导入核心框架
 from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfig as EngineConfigEntity
+from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.core.engines.types.enums import (
     EngineType,
     ComponentStatus,
@@ -31,7 +31,7 @@ from quant_server.core.engines.types.enums import (
 )
 
 # 导入事件系统
-from quant_server.core.engines.types.entities import Event as EventEntity
+from quant_server.core.engines.types.entities import EventEntity
 from quant_server.core.engines.system.event_engine import EventEngine
 
 # 导入数据同步相关
@@ -311,8 +311,8 @@ class DataSyncEngine(EngineBase):
         self.record.update_performance_metrics(metrics)
 
         # 更新资源使用情况
-        self.record.update_resource_usage(ResourceType.TASKS, len(self.active_tasks))
-        self.record.update_resource_usage(ResourceType.QUEUE_SIZE, self.task_queue.qsize())
+        self.record.update_resource_usage(ResourceType.TASK_QUEUE, len(self.active_tasks))
+        self.record.update_resource_usage(ResourceType.QUEUE_LENGTH, self.task_queue.qsize())
 
     async def _on_handle_event(self, event: EventEntity):
         """
@@ -329,7 +329,7 @@ class DataSyncEngine(EngineBase):
         elif event.event_type == "engine_command":
             await self._handle_engine_command(event.data)
 
-    async def _on_auto_recover(self, error: Exception, context: Dict[str, Any]) -> bool:
+    async def _on_auto_recover(self, error: Exception, context: Dict[str, Any] = None) -> bool:
         """
         自动恢复逻辑
 
@@ -415,6 +415,7 @@ class DataSyncEngine(EngineBase):
         except Exception as e:
             logger.error(f"处理外部同步事件失败: {e}", exc_info=True)
 
+    # noinspection PyUnusedLocal
     async def _on_heartbeat(self, event):
         """处理心跳事件，执行监控和清理"""
         try:
@@ -504,7 +505,7 @@ class DataSyncEngine(EngineBase):
             # 更新统计
             self.stats["total_records"] += result.total_records
             self.stats["total_duration"] += result.duration_seconds
-            self.stats["last_sync_time"] = datetime.now()
+            self.stats["last_sync_time"] = datetime.now().timestamp()
 
         except asyncio.CancelledError:
             # 任务被取消
@@ -531,7 +532,7 @@ class DataSyncEngine(EngineBase):
         task_id: str,
         config: SyncTaskConfig
     ) -> SyncTaskResult:
-        """执行具体的同步逻辑"""
+        """执行具体地同步逻辑"""
         start_time = datetime.now()
         result = SyncTaskResult()
 
@@ -543,21 +544,29 @@ class DataSyncEngine(EngineBase):
             await self._update_task_status(task_id, SyncTaskStatus.DOWNLOADING)
 
             # 执行同步
-            sync_result = await self.sync_service.sync_data(
-                sync_type=config.sync_type.value,
-                data_sources=config.data_sources,
-                symbols=config.symbols,
-                date_range=config.date_range,
+            # 从date_range中提取start_date和end_date
+            start_date = config.date_range.get('start') if config.date_range else None
+            end_date = config.date_range.get('end') if config.date_range else None
+            
+            # 导入DataType枚举
+            from quant_server.modules.data.constants import DataType
+            
+            sync_result = await self.sync_service.sync_market_data(
+                data_type=DataType(config.sync_type.value),
+                start_date=start_date,
+                end_date=end_date,
+                ts_codes=config.symbols,
                 batch_size=config.batch_size
             )
 
             # 构建结果
-            result.success = True
-            result.total_records = sync_result.get("total_records", 0)
-            result.inserted_records = sync_result.get("inserted_records", 0)
-            result.updated_records = sync_result.get("updated_records", 0)
-            result.failed_records = sync_result.get("failed_records", 0)
-            result.summary = sync_result.get("summary", {})
+            result.success = sync_result.get("success", True)
+            sync_result_data = sync_result.get("result", {})
+            result.total_records = sync_result_data.get("total_items", 0)
+            result.inserted_records = sync_result_data.get("records_added", 0)
+            result.updated_records = sync_result_data.get("records_updated", 0)
+            result.failed_records = sync_result_data.get("records_failed", 0)
+            result.summary = sync_result_data
 
             # 发布处理完成事件
             await self._update_task_status(task_id, SyncTaskStatus.PROCESSING)
@@ -1006,7 +1015,8 @@ class DataSyncEngine(EngineBase):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"sync_{sync_type.value}_{timestamp}_{self.task_counter:06d}"
 
-    def _config_to_dict(self, config: SyncTaskConfig) -> Dict[str, Any]:
+    @staticmethod
+    def _config_to_dict(config: SyncTaskConfig) -> Dict[str, Any]:
         """将配置转换为字典"""
         return {
             "sync_type": config.sync_type.value,
@@ -1206,12 +1216,13 @@ async def create_data_sync_engine(
     if event_engine:
         engine.event_engine = event_engine
 
-    return engine
+    # 类型断言，确保返回类型为DataSyncEngine
+    return engine  # type: ignore[return-value]
 
 
 async def start_sync_task(
     engine_name: str = "data_sync_engine",
-    sync_type: Union[str, DataSyncType] = DataSyncType.DAILY,
+    sync_type: Union[str, DataSyncType] = DataSyncType.FULL,
     **kwargs
 ) -> Optional[str]:
     """

@@ -4,12 +4,12 @@
 定义消息生产者和消费者的统一接口，支持多种消息后端的实现
 """
 
+import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Callable, Awaitable, List
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
-import uuid
+from typing import Any, Dict, Optional, Callable, Awaitable
 
 
 class MessagePriority(Enum):

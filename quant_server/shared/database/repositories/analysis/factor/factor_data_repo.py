@@ -7,10 +7,11 @@
 提供因子数据的CRUD操作、统计分析、相关性计算等功能
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, update, delete, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, func, text, desc, asc
 
 from quant_server.shared.database.models.data_models import FactorData
 from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
@@ -176,6 +177,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			return result.scalars().all()
 		except Exception as e:
 			raise RepositoryError(f"获取股票因子历史失败: {str(e)}")
+
 	async def get_cross_sectional_data (
 			self,
 			factor_name: str,
@@ -271,6 +273,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			return result_dict
 		except Exception as e:
 			raise RepositoryError(f"获取时间序列数据失败: {str(e)}")
+
 	async def get_latest_factor_data (
 			self,
 			factor_name: str,
@@ -289,7 +292,15 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			Optional[FactorData]: 最新因子数据
 		"""
 		try:
-			return await self.get_latest_record(symbol=ts_code, limit=limit)
+			# 使用factor_name参数构建条件
+			conditions = [FactorData.factor_name == factor_name]
+			if ts_code:
+				conditions.append(FactorData.ts_code == ts_code)
+
+			stmt = select(FactorData).where(and_(*conditions))
+			stmt = stmt.order_by(desc(FactorData.trade_date)).limit(limit)
+			result = await self.session.execute(stmt)
+			return result.scalar_one_or_none() if limit == 1 else result.scalars().all()
 		except Exception as e:
 			raise RepositoryError(f"获取最新因子数据失败: {str(e)}")
 
@@ -306,7 +317,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 		Args:
 			factor_name: 因子名称
-			t trade_date: 交易日
+			trade_date: 交易日
 			top_n: 获取前N名（可选）
 			bottom_n: 获取后N名（可选）
 			universe: 股票池限制（可选）
@@ -350,11 +361,6 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			ts_code: str,
 			trade_date: datetime,
 			factor_value: float,
-			z_score: Optional[float] = None,
-			percentile: Optional[float] = None,
-			rank: Optional[int] = None,
-			universe_rank: Optional[int] = None,
-			metadata: Optional[Dict[str, Any]] = None
 	) -> bool:
 		"""
 		更新因子数据
@@ -364,11 +370,6 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			ts_code: 股票代码
 			trade_date: 交易日
 			factor_value: 因子值
-			z_score: Z分数（可选）
-			percentile: 百分位（可选）
-			rank: 排名（可选）
-			universe_rank: 全市场排名（可选）
-			metadata: 元数据（可选）
 
 		Returns:
 			bool: 更新是否成功
@@ -376,20 +377,8 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		try:
 			update_data = {'factor_value': factor_value}
 
-			if z_score is not None:
-				update_data['z_score'] = z_score
-
-			if percentile is not None:
-				update_data['percentile'] = percentile
-
-			if rank is not None:
-				update_data['rank'] = rank
-
-			if universe_rank is not None:
-				update_data['universe_rank'] = universe_rank
-
-			if metadata is not None:
-				update_data['metadata'] = metadata
+			# 注意：FactorData模型中没有z_score、percentile、rank、universe_rank、metadata字段
+			# 这些字段可能是在其他地方定义的扩展字段
 
 			stmt = update(FactorData).where(
 				and_(
@@ -436,9 +425,9 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 				conditions.append(FactorData.ts_code == ts_code)
 
 			stmt = delete(FactorData).where(and_(*conditions))
-			result = await self.session.execute(stmt)
+			result = await self.session.execute(stmt) #type: ignore
 			await self.session.commit()
-			return result.rowcount or 0
+			return result.rowcount if result.rowcount is not None else 0
 		except Exception as e:
 			await self.session.rollback()
 			raise RepositoryError(f"删除因子数据失败: {str(e)}")
@@ -460,7 +449,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 			universe: 股票池（可选）
 
 		Returns:
-			Dict[str, Any]: 覆盖度统计信息
+			Dict: 覆盖度统计结果
 		"""
 		try:
 			conditions = [
@@ -647,20 +636,20 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 
 			subq2 = subq2.subquery()
 
-			# 使用SQL计算相关系数
-			sql = text("""
-                SELECT 
-                    CORR(a.value1, b.value2) as correlation,
-                    COUNT(*) as pair_count
-                FROM :subq1 a
-                JOIN :subq2 b ON a.ts_code = b.ts_code
-                WHERE a.value1 IS NOT NULL AND b.value2 IS NOT NULL
-            """).bindparams(
-				subq1=subq1,
-				subq2=subq2
+			# 构建主查询
+			stmt = select(
+				func.corr(subq1.c.value1, subq2.c.value2).label('correlation'),
+				func.count().label('pair_count')
+			).select_from(
+				subq1.join(subq2, subq1.c.ts_code == subq2.c.ts_code)
+			).where(
+				and_(
+					subq1.c.value1.isnot(None),
+					subq2.c.value2.isnot(None)
+				)
 			)
 
-			result = await self.session.execute(sql)
+			result = await self.session.execute(stmt)
 			row = result.first()
 
 			if row and row[1] >= min_pair_count:
@@ -669,21 +658,10 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		except Exception as e:
 			raise RepositoryError(f"计算因子相关性失败: {str(e)}")
 
-	async def get_factor_ic_analysis (
-			self,
-			factor_name: str,
-			start_date: datetime,
-			end_date: datetime,
-			return_type: str = "next_day_return"
-	) -> List[Dict[str, Any]]:
+	@staticmethod
+	async def get_factor_ic_analysis () -> List[Dict[str, Any]]:
 		"""
 		获取因子IC分析结果（需要与收益率数据关联）
-
-		Args:
-			factor_name: 因子名称
-			start_date: 开始日期
-			end_date: 结束日期
-			return_type: 收益率类型（next_day_return, next_week_return等）
 
 		Returns:
 			List[Dict[str, Any]]: IC分析结果列表
@@ -732,7 +710,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		"""
 		return await self.get_statistics(start_date, end_date, symbol)
 
-	async def get_available_factors(self) -> List[str]:
+	async def get_available_factors (self) -> List[str]:
 		"""
 		获取系统中可用的因子名称列表
 
@@ -749,7 +727,7 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 		except Exception as e:
 			raise RepositoryError(f"获取可用因子列表失败: {str(e)}")
 
-	async def get_by_ts_code_and_date_range(
+	async def get_by_ts_code_and_date_range (
 			self,
 			ts_code: str,
 			factor_name: str,

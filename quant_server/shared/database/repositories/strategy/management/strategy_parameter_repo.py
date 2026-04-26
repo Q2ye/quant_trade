@@ -3,18 +3,14 @@
 策略参数配置表Repository
 位置：shared/database/repositories/strategy/strategy_parameter_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between, case
-from sqlalchemy.orm import joinedload, load_only
+from datetime import datetime
+from typing import Optional, List, Dict, Any
 
-from quant_server.shared.database.models.business_models import StrategyParameter, Strategy
+from sqlalchemy import select, and_, func, asc, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.business_models import StrategyParameter
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class StrategyParameterRepository(BaseRepository[StrategyParameter]):
@@ -287,7 +283,7 @@ class StrategyParameterRepository(BaseRepository[StrategyParameter]):
 				self.model.param_type,
 				func.count().label("count"),
 				func.count(
-					case([(self.model.is_required == True, 1)], else_=None)
+					case((self.model.is_required == True, 1), else_=None)
 				).label("required_count")
 			).where(
 				self.model.strategy_id == strategy_id
@@ -424,7 +420,7 @@ class StrategyParameterRepository(BaseRepository[StrategyParameter]):
 			query = delete(self.model).where(
 				self.model.strategy_id == strategy_id
 			)
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type:ignore
 			return result.rowcount
 		except Exception as e:
 			raise RepositoryError(f"删除策略参数失败: {str(e)}")

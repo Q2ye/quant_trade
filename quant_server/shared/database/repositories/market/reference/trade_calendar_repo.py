@@ -10,15 +10,15 @@
 4. 为交易系统提供核心的日期服务支持
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, between, distinct, case, delete
-from sqlalchemy.sql import text
+from typing import List, Dict, Any, Optional
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from sqlalchemy import select, and_, or_, func, case, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import TradeCalendar
-from quant_server.shared.database.repositories.types import TimeRange, PaginationParams, PaginationResult
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from quant_server.shared.database.repositories.types import TimeRange, PaginationParams, PaginationResult, FilterCondition, SortCondition, FilterOperator
 
 
 class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
@@ -28,6 +28,28 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 	专为时序数据优化，提供高效的交易日历数据访问服务
 	支持时间范围查询、批量操作、时序聚合等特性
 	"""
+
+	async def _count_with_expression (self, *expressions) -> int:
+		"""
+		使用表达式统计记录数
+
+		Args:
+			*expressions: SQLAlchemy 表达式
+
+		Returns:
+			记录数
+		"""
+		try:
+			query = select(func.count()).select_from(self.model)
+
+			for expr in expressions:
+				query = query.where(expr)
+
+			result = await self.session.execute(query)
+			return result.scalar() or 0
+
+		except Exception as e:
+			raise RepositoryError(f"使用表达式统计记录数失败: {str(e)}")
 
 	def __init__ (self, session: AsyncSession):
 		"""
@@ -152,7 +174,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 				return await self.create(create_data)
 
 		except Exception as e:
-			raise self.RepositoryError(f"插入或更新交易日历记录失败: {str(e)}")
+			raise RepositoryError(f"插入或更新交易日历记录失败: {str(e)}")
 
 	# ==================== 业务查询方法 ====================
 
@@ -176,7 +198,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return calendar is not None and calendar.is_open
 
 		except Exception as e:
-			raise self.RepositoryError(f"检查交易日失败: {str(e)}")
+			raise RepositoryError(f"检查交易日失败: {str(e)}")
 
 	async def get_trade_date (
 			self,
@@ -219,7 +241,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return result.scalar_one_or_none()
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易日失败: {str(e)}")
+			raise RepositoryError(f"获取交易日失败: {str(e)}")
 
 	async def get_trade_dates (
 			self,
@@ -258,7 +280,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return [row[0] for row in result.all()]
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易日列表失败: {str(e)}")
+			raise RepositoryError(f"获取交易日列表失败: {str(e)}")
 
 	async def get_trade_date_range (
 			self,
@@ -296,7 +318,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易日历范围失败: {str(e)}")
+			raise RepositoryError(f"获取交易日历范围失败: {str(e)}")
 
 	async def get_trade_days_count (
 			self,
@@ -316,7 +338,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			交易日数量
 		"""
 		try:
-			return await self.count(
+			return await self._count_with_expression(
 				and_(
 					self.model.exchange == exchange,
 					self.model.cal_date >= start_date,
@@ -326,7 +348,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			)
 
 		except Exception as e:
-			raise self.RepositoryError(f"统计交易日数量失败: {str(e)}")
+			raise RepositoryError(f"统计交易日数量失败: {str(e)}")
 
 	async def get_holidays (
 			self,
@@ -359,7 +381,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return [row[0] for row in result.all()]
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取假期列表失败: {str(e)}")
+			raise RepositoryError(f"获取假期列表失败: {str(e)}")
 
 	async def get_weekend_dates (
 			self,
@@ -398,7 +420,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return [row[0] for row in result.all()]
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取周末日期失败: {str(e)}")
+			raise RepositoryError(f"获取周末日期失败: {str(e)}")
 
 	async def get_continuous_trade_days (
 			self,
@@ -443,7 +465,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return []
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取连续交易日失败: {str(e)}")
+			raise RepositoryError(f"获取连续交易日失败: {str(e)}")
 
 	# ==================== 时间周期分析 ====================
 
@@ -493,7 +515,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易周信息失败: {str(e)}")
+			raise RepositoryError(f"获取交易周信息失败: {str(e)}")
 
 	async def get_trading_month (
 			self,
@@ -534,7 +556,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易月信息失败: {str(e)}")
+			raise RepositoryError(f"获取交易月信息失败: {str(e)}")
 
 	async def get_trading_year (
 			self,
@@ -575,7 +597,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易年信息失败: {str(e)}")
+			raise RepositoryError(f"获取交易年信息失败: {str(e)}")
 
 	async def get_trading_season (
 			self,
@@ -623,7 +645,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易季度信息失败: {str(e)}")
+			raise RepositoryError(f"获取交易季度信息失败: {str(e)}")
 
 	# ==================== 统计分析 ====================
 
@@ -647,8 +669,8 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 				select(
 					self.model.exchange,
 					func.count(self.model.cal_date).label('total_days'),
-					func.sum(case([(self.model.is_open == True, 1)], else_=0)).label('trade_days'),
-					func.sum(case([(self.model.is_open == False, 1)], else_=0)).label('non_trade_days')
+					func.sum(case((self.model.is_open == True, 1), else_=0)).label('trade_days'),
+					func.sum(case((self.model.is_open == False, 1), else_=0)).label('non_trade_days')
 				).where(
 					and_(
 						self.model.cal_date >= start_date,
@@ -678,7 +700,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return statistics
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取交易所统计信息失败: {str(e)}")
+			raise RepositoryError(f"获取交易所统计信息失败: {str(e)}")
 
 	async def get_date_statistics (
 			self,
@@ -713,7 +735,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return statistics
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取年度日期统计失败: {str(e)}")
+			raise RepositoryError(f"获取年度日期统计失败: {str(e)}")
 
 	# ==================== 批量操作 ====================
 
@@ -782,7 +804,9 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 						records.append(record_data)
 
 					success_count += 1
-				except Exception:
+				except Exception as e:
+					# 记录异常信息
+					print(f"处理日历数据失败 {cal_date}: {str(e)}")
 					failed_count += 1
 
 			# 批量插入新记录
@@ -797,7 +821,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"导入交易日历数据失败: {str(e)}")
+			raise RepositoryError(f"导入交易日历数据失败: {str(e)}")
 
 	async def clear_exchange_data (
 			self,
@@ -826,11 +850,11 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 
 			query = delete(self.model).where(and_(*filters))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) #type:ignore
 			return result.rowcount or 0
 
 		except Exception as e:
-			raise self.RepositoryError(f"清空交易所数据失败: {str(e)}")
+			raise RepositoryError(f"清空交易所数据失败: {str(e)}")
 
 	# ==================== 数据摘要 ====================
 
@@ -853,7 +877,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			total_count = await self.count()
 
 			# 获取交易日的总体统计
-			trade_days_count = await self.count(self.model.is_open == True)
+			trade_days_count = await self._count_with_expression(self.model.is_open == True)
 
 			# 获取日期范围
 			date_range = await self.session.execute(
@@ -871,7 +895,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 				exchange_dates = await self.session.execute(
 					select(
 						func.count(self.model.cal_date).label('total'),
-						func.sum(case([(self.model.is_open == True, 1)], else_=0)).label('trade_days')
+						func.sum(case((self.model.is_open == True, 1), else_=0)).label('trade_days')
 					).where(
 						self.model.exchange == exchange
 					)
@@ -903,7 +927,7 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			}
 
 		except Exception as e:
-			raise self.RepositoryError(f"获取日历数据摘要失败: {str(e)}")
+			raise RepositoryError(f"获取日历数据摘要失败: {str(e)}")
 
 	# ==================== 高级查询 ====================
 
@@ -938,17 +962,22 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			if only_open is not None:
 				filters.append(self.model.is_open == only_open)
 
+			filter_conditions = [
+				FilterCondition(field="cal_date", operator=FilterOperator.GE, value=start_date),
+				FilterCondition(field="cal_date", operator=FilterOperator.LE, value=end_date),
+				FilterCondition(field="exchange", operator=FilterOperator.EQ, value=exchange)
+			]
+			if only_open is not None:
+				filter_conditions.append(FilterCondition(field="is_open", operator=FilterOperator.EQ, value=only_open))
+
 			return await self.paginate(
 				pagination=pagination,
-				filters=[{"field": "cal_date", "operator": "gte", "value": start_date},
-				         {"field": "cal_date", "operator": "lte", "value": end_date},
-				         {"field": "exchange", "operator": "eq", "value": exchange},
-				         {"field": "is_open", "operator": "eq", "value": only_open} if only_open is not None else None],
-				sorts=[{"field": "cal_date", "descending": False}]
+				filters=filter_conditions,
+				sorts=[SortCondition(field="cal_date", descending=False)]
 			)
 
 		except Exception as e:
-			raise self.RepositoryError(f"分页查询失败: {str(e)}")
+			raise RepositoryError(f"分页查询失败: {str(e)}")
 
 	async def find_trade_date_gaps (
 			self,
@@ -992,4 +1021,4 @@ class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):
 			return gaps
 
 		except Exception as e:
-			raise self.RepositoryError(f"查找交易日间隔失败: {str(e)}")
+			raise RepositoryError(f"查找交易日间隔失败: {str(e)}")

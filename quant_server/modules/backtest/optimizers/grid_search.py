@@ -48,9 +48,9 @@ class GridSearch:
             # 并行执行目标函数评估
             async def evaluate_param(params):
                 """评估单个参数组合"""
-                eval_param_dict = dict(zip(param_names, params))
-                eval_score = await objective(**eval_param_dict)
-                return eval_param_dict, eval_score
+                param_dict = dict(zip(param_names, params))
+                score = await objective(**param_dict)
+                return param_dict, score
             
             # 创建任务列表
             tasks = [evaluate_param(params) for params in param_combinations]

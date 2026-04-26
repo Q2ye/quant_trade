@@ -1,6 +1,8 @@
 # risk_engine.py        # 风险控制引擎
 
 from typing import Dict, Any, Optional, List, Tuple
+
+from quant_server.core.engines import EngineConfigEntity
 from quant_server.core.engines.base.engine_base import EngineBase
 from quant_server.core.engines.system import EventEngine
 from quant_server.core.engines.types.enums import EngineType
@@ -26,11 +28,9 @@ class RiskEngine(EngineBase):
         position_engine: PositionEngine,
         event_engine: Optional[EventEngine] = None
     ):
-        # 导入 EngineConfig 类
-        from quant_server.core.engines.types.entities import EngineConfig
-        
+
         # 创建 EngineConfig 实例
-        config_obj = EngineConfig(
+        config_obj = EngineConfigEntity(
             name=config.get("name", "risk_engine"),
             engine_type="risk_engine",
             dependencies=config.get("dependencies", []),

@@ -4,10 +4,9 @@
 
 import abc
 import hashlib
-import json
-from typing import Any, Optional, Union, Callable, Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
+from typing import Any, Optional, Callable, Dict, List
 
 
 class CacheError(Exception):
@@ -69,7 +68,7 @@ class CacheEntry:
 		if self.expires_at is None:
 			return None
 		remaining = (self.expires_at - datetime.now()).total_seconds()
-		return max(0, remaining)
+		return max(0.0, remaining)
 
 	def to_dict (self) -> Dict[str, Any]:
 		"""转换为字典"""
@@ -90,7 +89,7 @@ class CacheBase(abc.ABC):
 			namespace: str = "default",
 			default_ttl: Optional[int] = None,
 			key_prefix: str = "",
-			serializer: Optional['SerializerBase'] = None
+			serializer: Optional[Any] = None
 	):
 		self.namespace = namespace
 		self.default_ttl = default_ttl
@@ -202,5 +201,5 @@ class CacheBase(abc.ABC):
 			value = await self.get("__ping__")
 			await self.delete("__ping__")
 			return value == 1
-		except Exception:
+		except (CacheError, ConnectionError, TimeoutError):
 			return False

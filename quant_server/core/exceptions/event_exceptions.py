@@ -8,12 +8,12 @@
 """
 
 from typing import Any, Dict, Optional, List, Set
-from .base import BaseException, ValidationException
+from .base import QuantBaseException, ValidationException
 from .error_codes import ErrorCode
 from .types import ErrorType, ErrorSeverity
 
 
-class EventException(BaseException):
+class EventException(QuantBaseException):
 	"""事件异常基类"""
 
 	def __init__ (

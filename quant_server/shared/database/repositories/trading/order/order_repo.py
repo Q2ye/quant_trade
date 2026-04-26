@@ -15,9 +15,10 @@
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, and_, func, desc, asc, case
+from sqlalchemy import select, update, and_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+from sqlalchemy.testing.schema import Column
 
 from quant_server.shared.database.models.business_models import Order, Trade, Account, Strategy, SysUser
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -25,7 +26,7 @@ from quant_server.shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,
-	SortCondition
+	SortCondition, FilterOperator
 )
 
 
@@ -286,7 +287,7 @@ class OrderRepository(BaseRepository[Order]):
 			# 活动状态：submitted, partial_filled
 			active_statuses = ['submitted', 'partial_filled']
 
-			filters = [Order.status.in_(active_statuses)]
+			filters: List[Column] = [Order.status.in_(active_statuses)]
 
 			if user_id:
 				filters.append(Order.user_id == user_id)
@@ -757,13 +758,10 @@ class OrderRepository(BaseRepository[Order]):
 			if 'max_volume' in query_params:
 				filters.append(Order.volume <= query_params['max_volume'])
 
-			# 构建查询
-			query_filters = and_(*filters) if filters else True
-
 			# 执行分页查询
 			return await self.paginate(
 				pagination=pagination,
-				filters=[FilterCondition(field=field, operator="eq", value=value)
+				filters=[FilterCondition(field=field, operator=FilterOperator.EQ, value=value)
 				         for field, value in query_params.items()
 				         if hasattr(Order, field)],
 				sorts=[SortCondition(field="submitted_at", descending=True)]
@@ -795,7 +793,7 @@ class OrderRepository(BaseRepository[Order]):
 			if not order_ids:
 				return 0
 
-			update_data = {'status': status}
+			update_data: Dict[str, Any] = {'status': status}
 			if update_time:
 				update_data['updated_at'] = update_time
 			else:
@@ -809,7 +807,7 @@ class OrderRepository(BaseRepository[Order]):
 				update_data['cancelled_at'] = update_data['updated_at']
 
 			query = (
-				self.model.__table__.update()
+				update(self.model)
 				.where(self.model.order_id.in_(order_ids))
 				.values(**update_data)
 			)
@@ -864,7 +862,7 @@ class OrderRepository(BaseRepository[Order]):
 
 				# 执行更新
 				query = (
-					self.model.__table__.update()
+					update(self.model)
 					.where(self.model.order_id == order_id)
 					.values(**update_values)
 				)
@@ -880,7 +878,8 @@ class OrderRepository(BaseRepository[Order]):
 
 	# ==================== 辅助方法 ====================
 
-	def _build_order_by (self, order_by: str) -> List:
+	@staticmethod
+	def _build_order_by (order_by: str) -> List:
 		"""
 		构建排序子句
 
@@ -916,17 +915,21 @@ class OrderRepository(BaseRepository[Order]):
 
 			# 今日订单数
 			today = datetime.now().date()
-			today_orders = await self.count(
+			today_query = select(func.count()).select_from(Order).where(
 				and_(
 					Order.submitted_at >= today,
 					Order.submitted_at < today + timedelta(days=1)
 				)
 			)
+			today_result = await self.session.execute(today_query)
+			today_orders = today_result.scalar() or 0
 
 			# 活动订单数
-			active_orders = await self.count(
+			active_query = select(func.count()).select_from(Order).where(
 				Order.status.in_(['submitted', 'partial_filled'])
 			)
+			active_result = await self.session.execute(active_query)
+			active_orders = active_result.scalar() or 0
 
 			# 涉及用户数
 			user_count = await self.session.execute(

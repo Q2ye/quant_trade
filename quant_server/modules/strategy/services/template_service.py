@@ -5,7 +5,7 @@
 """
 import logging
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,17 +58,16 @@ class TemplateService:
             模板列表
         """
         try:
-            filters = {}
-            if strategy_type:
-                filters["strategy_type"] = strategy_type.value
+            template_type = strategy_type.value if strategy_type else None
 
-            templates, total = await self.template_repo.get_paginated(
-                filters=filters,
+            result = await self.template_repo.get_paginated(
                 page=page,
                 page_size=page_size,
-                order_by="created_at",
-                order_desc=True,
+                template_type=template_type
             )
+
+            templates = result["items"]
+            total = result["total"]
 
             return {
                 "success": True,
@@ -89,7 +88,7 @@ class TemplateService:
 
     async def get_template_detail(
         self,
-        template_id: int,
+        template_id: str,
     ) -> Dict[str, Any]:
         """
         获取模板详情
@@ -112,13 +111,13 @@ class TemplateService:
                 "success": True,
                 "data": {
                     "id": template.id,
-                    "name": template.name,
+                    "name": template.template_name,
                     "description": template.description,
-                    "strategy_type": template.strategy_type,
+                    "strategy_type": template.template_type,
                     "code_template": template.code_template,
                     "default_parameters": self._parse_parameters(template.default_parameters),
                     "category": template.category,
-                    "tags": template.tags,
+                    "tags": [],
                     "created_at": template.created_at.isoformat() if template.created_at else None,
                 }
             }
@@ -131,9 +130,9 @@ class TemplateService:
 
     async def create_from_template(
         self,
-        template_id: int,
+        template_id: str,
         name: str,
-        user_id: int,
+        user_id: str,
         custom_parameters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -166,7 +165,7 @@ class TemplateService:
             strategy_data = {
                 "name": name,
                 "description": template.description,
-                "strategy_type": template.strategy_type,
+                "strategy_type": template.template_type,
                 "code": template.code_template,
                 "status": "draft",
                 "user_id": user_id,
@@ -201,7 +200,6 @@ class TemplateService:
         description: str = "",
         default_parameters: Optional[Dict[str, Any]] = None,
         category: str = "custom",
-        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         创建模板
@@ -213,20 +211,18 @@ class TemplateService:
             description: 描述
             default_parameters: 默认参数
             category: 分类
-            tags: 标签
 
         Returns:
             创建结果
         """
         try:
             template_data = {
-                "name": name,
+                "template_name": name,
                 "description": description,
-                "strategy_type": strategy_type.value,
+                "template_type": strategy_type.value,
                 "code_template": code_template,
-                "default_parameters": str(default_parameters or {}),
+                "default_parameters": default_parameters or {},
                 "category": category,
-                "tags": ",".join(tags) if tags else "",
                 "created_at": datetime.now(),
             }
 
@@ -238,7 +234,7 @@ class TemplateService:
                 "success": True,
                 "data": {
                     "id": template.id,
-                    "name": template.name,
+                    "name": template.template_name,
                 }
             }
         except Exception as e:
@@ -250,7 +246,7 @@ class TemplateService:
 
     async def update_template(
         self,
-        template_id: int,
+        template_id: str,
         name: Optional[str] = None,
         description: Optional[str] = None,
         code_template: Optional[str] = None,
@@ -279,13 +275,13 @@ class TemplateService:
 
             update_data = {}
             if name:
-                update_data["name"] = name
+                update_data["template_name"] = name
             if description:
                 update_data["description"] = description
             if code_template:
                 update_data["code_template"] = code_template
             if default_parameters:
-                update_data["default_parameters"] = str(default_parameters)
+                update_data["default_parameters"] = default_parameters
 
             await self.template_repo.update(template_id, update_data)
 
@@ -304,7 +300,7 @@ class TemplateService:
 
     async def delete_template(
         self,
-        template_id: int,
+        template_id: str,
     ) -> Dict[str, Any]:
         """
         删除模板
@@ -338,22 +334,28 @@ class TemplateService:
                 "error": str(e)
             }
 
-    def _parse_parameters(self, parameters_str: str) -> Dict[str, Any]:
-        """解析参数字符串"""
+    @staticmethod
+    def _parse_parameters(parameters: Any) -> Dict[str, Any]:
+        """解析参数"""
         try:
-            import ast
-            return ast.literal_eval(parameters_str) if parameters_str else {}
-        except Exception:
+            if isinstance(parameters, dict):
+                return parameters
+            elif isinstance(parameters, str):
+                import ast
+                return ast.literal_eval(parameters) if parameters else {}
+            return {}
+        except (ValueError, SyntaxError):
             return {}
 
-    def _to_dict(self, template) -> Dict[str, Any]:
+    @staticmethod
+    def _to_dict(template) -> Dict[str, Any]:
         """转换为字典"""
         return {
             "id": template.id,
-            "name": template.name,
+            "name": template.template_name,
             "description": template.description,
-            "strategy_type": template.strategy_type,
+            "strategy_type": template.template_type,
             "category": template.category,
-            "tags": template.tags.split(",") if template.tags else [],
+            "tags": [],
             "created_at": template.created_at.isoformat() if template.created_at else None,
         }

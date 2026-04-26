@@ -10,13 +10,14 @@
 3. 按业务领域组织：专门处理管理层相关数据查询
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, distinct, between
+from datetime import date
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, or_, func, distinct
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StkManager
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class ManagerRepository(BaseRepository[StkManager]):
@@ -61,7 +62,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		return await self.get_many(
 			*filters,
 			limit=limit,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def get_by_manager_name (
@@ -82,14 +83,14 @@ class ManagerRepository(BaseRepository[StkManager]):
 			管理层记录列表
 		"""
 		if fuzzy:
-			filters = [self.model.manager_name.like(f"%{name}%")]
+			filters = [self.model.name.like(f"%{name}%")]
 		else:
-			filters = [self.model.manager_name == name]
+			filters = [self.model.name == name]
 
 		return await self.get_many(
 			*filters,
 			limit=limit,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def get_by_position (
@@ -109,7 +110,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		Returns:
 			管理层记录列表
 		"""
-		filters = [self.model.lev == lev]
+		filters: List[any] = [self.model.lev == lev]
 
 		if ts_codes:
 			filters.append(self.model.ts_code.in_(ts_codes))
@@ -117,7 +118,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		return await self.get_many(
 			*filters,
 			limit=limit,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def get_current_managers (
@@ -141,10 +142,10 @@ class ManagerRepository(BaseRepository[StkManager]):
 		# 查询条件：任命日期早于等于指定日期，且离任日期为空或晚于指定日期
 		filters = [
 			self.model.ts_code == ts_code,
-			self.model.appoint_date <= date_point,
+			self.model.begin_date <= date_point,
 			or_(
-				self.model.leave_date.is_(None),
-				self.model.leave_date > date_point
+				self.model.end_date.is_(None),
+				self.model.end_date > date_point
 			)
 		]
 
@@ -175,17 +176,17 @@ class ManagerRepository(BaseRepository[StkManager]):
 		if start_date:
 			filters.append(
 				or_(
-					self.model.leave_date.is_(None),
-					self.model.leave_date >= start_date
+					self.model.end_date.is_(None),
+					self.model.end_date >= start_date
 				)
 			)
 
 		if end_date:
-			filters.append(self.model.appoint_date <= end_date)
+			filters.append(self.model.begin_date <= end_date)
 
 		return await self.get_many(
 			*filters,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def get_managers_by_date_range (
@@ -208,10 +209,10 @@ class ManagerRepository(BaseRepository[StkManager]):
 			管理层记录列表
 		"""
 		filters = [
-			self.model.appoint_date <= end_date,
+			self.model.begin_date <= end_date,
 			or_(
-				self.model.leave_date.is_(None),
-				self.model.leave_date >= start_date
+				self.model.end_date.is_(None),
+				self.model.end_date >= start_date
 			)
 		]
 
@@ -223,7 +224,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 
 		return await self.get_many(
 			*filters,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def get_top_companies_by_manager_count (
@@ -244,7 +245,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		query = select(
 			self.model.ts_code,
 			func.count(self.model.id).label('manager_count'),
-			func.count(distinct(self.model.manager_name)).label('unique_manager_count')
+			func.count(distinct(self.model.name)).label('unique_manager_count')
 		)
 
 		if lev:
@@ -286,10 +287,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		query = select(
 			func.count(self.model.id).label('total_count'),
 			func.count(distinct(self.model.ts_code)).label('company_count'),
-			func.count(distinct(self.model.manager_name)).label('unique_manager_count'),
-			func.avg(self.model.age).label('avg_age'),
-			func.min(self.model.age).label('min_age'),
-			func.max(self.model.age).label('max_age')
+			func.count(distinct(self.model.name)).label('unique_manager_count')
 		)
 
 		filters = []
@@ -312,10 +310,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 			'lev': lev,
 			'total_count': row.total_count or 0,
 			'company_count': row.company_count or 0,
-			'unique_manager_count': row.unique_manager_count or 0,
-			'avg_age': float(row.avg_age) if row.avg_age else None,
-			'min_age': row.min_age or None,
-			'max_age': row.max_age or None
+			'unique_manager_count': row.unique_manager_count or 0
 		}
 
 	async def get_education_statistics (
@@ -332,16 +327,15 @@ class ManagerRepository(BaseRepository[StkManager]):
 			教育背景统计信息
 		"""
 		query = select(
-			self.model.education,
-			func.count(self.model.id).label('count'),
-			func.avg(self.model.age).label('avg_age')
+			self.model.edu,
+			func.count(self.model.id).label('count')
 		)
 
 		if ts_code:
 			query = query.where(self.model.ts_code == ts_code)
 
 		query = query.group_by(
-			self.model.education
+			self.model.edu
 		).order_by(
 			func.count(self.model.id).desc()
 		)
@@ -353,9 +347,8 @@ class ManagerRepository(BaseRepository[StkManager]):
 			'ts_code': ts_code,
 			'education_stats': [
 				{
-					'education': row.education or '未知',
-					'count': row.count or 0,
-					'avg_age': float(row.avg_age) if row.avg_age else None
+					'education': row.edu or '未知',
+					'count': row.count or 0
 				}
 				for row in rows
 			]
@@ -376,8 +369,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		"""
 		query = select(
 			self.model.gender,
-			func.count(self.model.id).label('count'),
-			func.avg(self.model.age).label('avg_age')
+			func.count(self.model.id).label('count')
 		)
 
 		if ts_code:
@@ -397,8 +389,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 			'gender_stats': [
 				{
 					'gender': row.gender or '未知',
-					'count': row.count or 0,
-					'avg_age': float(row.avg_age) if row.avg_age else None
+					'count': row.count or 0
 				}
 				for row in rows
 			]
@@ -420,9 +411,8 @@ class ManagerRepository(BaseRepository[StkManager]):
 		query = select(
 			self.model.lev,
 			func.count(self.model.id).label('count'),
-			func.avg(self.model.age).label('avg_age'),
 			func.avg(
-				func.extract('year', func.age(self.model.leave_date, self.model.appoint_date))
+				func.extract('year', func.age(self.model.end_date, self.model.begin_date))
 			).label('avg_tenure_years')
 		).where(
 			self.model.ts_code == ts_code
@@ -439,7 +429,6 @@ class ManagerRepository(BaseRepository[StkManager]):
 			{
 				'lev': row.lev,
 				'count': row.count or 0,
-				'avg_age': float(row.avg_age) if row.avg_age else None,
 				'avg_tenure_years': float(row.avg_tenure_years) if row.avg_tenure_years else None
 			}
 			for row in rows
@@ -461,17 +450,17 @@ class ManagerRepository(BaseRepository[StkManager]):
 		# 只统计已离任的管理层（有离任日期）
 		query = select(
 			func.avg(
-				func.extract('year', func.age(self.model.leave_date, self.model.appoint_date))
+				func.extract('year', func.age(self.model.end_date, self.model.begin_date))
 			).label('avg_tenure_years'),
 			func.min(
-				func.extract('year', func.age(self.model.leave_date, self.model.appoint_date))
+				func.extract('year', func.age(self.model.end_date, self.model.begin_date))
 			).label('min_tenure_years'),
 			func.max(
-				func.extract('year', func.age(self.model.leave_date, self.model.appoint_date))
+				func.extract('year', func.age(self.model.end_date, self.model.begin_date))
 			).label('max_tenure_years'),
 			func.count(self.model.id).label('count')
 		).where(
-			self.model.leave_date.isnot(None)
+			self.model.end_date.isnot(None)
 		)
 
 		if ts_code:
@@ -522,7 +511,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 		return await self.get_many(
 			or_(*filters),
 			limit=limit,
-			order_by=self.model.appoint_date.desc()
+			order_by=self.model.begin_date.desc()
 		)
 
 	async def batch_create (
@@ -542,20 +531,22 @@ class ManagerRepository(BaseRepository[StkManager]):
 
 	async def batch_upsert (
 			self,
+			match_fields: List[str],
 			data_list: List[Dict[str, Any]],
-			match_fields: List[str] = ['ts_code', 'manager_name', 'lev', 'appoint_date']
+			update_fields: List[str] = None
 	) -> List[StkManager]:
 		"""
 		批量插入或更新管理层记录
 
 		Args:
-			data_list: 管理层记录数据列表
 			match_fields: 匹配字段，用于判断记录是否存在
+			data_list: 管理层记录数据列表
+			update_fields: 更新字段列表
 
 		Returns:
 			StkManager对象列表
 		"""
-		return await super().batch_upsert(match_fields, data_list)
+		return await super().batch_upsert(match_fields, data_list, update_fields)
 
 	async def get_manager_summary (self) -> Dict[str, Any]:
 		"""
@@ -575,7 +566,7 @@ class ManagerRepository(BaseRepository[StkManager]):
 
 		# 涉及管理层人数
 		unique_manager_count = await self.session.execute(
-			select(func.count(func.distinct(self.model.manager_name)))
+			select(func.count(func.distinct(self.model.name)))
 		)
 		unique_manager_count_value = unique_manager_count.scalar() or 0
 
@@ -585,20 +576,15 @@ class ManagerRepository(BaseRepository[StkManager]):
 		)
 		lev_count_value = lev_count.scalar() or 0
 
-		# 平均年龄
-		avg_age = await self.session.execute(
-			select(func.avg(self.model.age))
-		)
-		avg_age_value = float(avg_age.scalar()) if avg_age.scalar() else None
+
 
 		# 教育背景分布（前10）
 		education_dist = await self.session.execute(
 			select(
-				self.model.education,
-				func.count(self.model.id).label('count'),
-				func.avg(self.model.age).label('avg_age')
+				self.model.edu,
+				func.count(self.model.id).label('count')
 			).group_by(
-				self.model.education
+				self.model.edu
 			).order_by(
 				func.count(self.model.id).desc()
 			).limit(10)
@@ -606,9 +592,8 @@ class ManagerRepository(BaseRepository[StkManager]):
 
 		education_stats = [
 			{
-				'education': row.education or '未知',
-				'count': row.count or 0,
-				'avg_age': float(row.avg_age) if row.avg_age else None
+				'education': row.edu or '未知',
+				'count': row.count or 0
 			}
 			for row in education_dist.all()
 		]
@@ -638,7 +623,6 @@ class ManagerRepository(BaseRepository[StkManager]):
 			'company_count': company_count_value,
 			'unique_manager_count': unique_manager_count_value,
 			'lev_count': lev_count_value,
-			'avg_age': avg_age_value,
 			'education_stats': education_stats,
 			'gender_stats': gender_stats
 		}

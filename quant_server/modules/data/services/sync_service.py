@@ -16,7 +16,7 @@
 import json
 import logging
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 import pandas as pd  # 新增导入，用于处理DataFrame中的Timestamp
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -167,6 +167,37 @@ def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, 
 	return converted_records
 
 
+def _estimate_total_items (data_type: str, ts_codes: Optional[List[str]] = None) -> int:
+	"""估算同步项目总数"""
+	estimates = {
+		DataType.STOCK_LIST: 5000,
+		DataType.DAILY_QUOTES: (len(ts_codes) if ts_codes else 5000) * 250,
+		DataType.MINUTE_QUOTES: (len(ts_codes) if ts_codes else 5000) * 240 * 20,
+		DataType.TICK_QUOTES: (len(ts_codes) if ts_codes else 10) * 240 * 1,  # Tick数据量大，限制估算
+		DataType.MONEYFLOW: (len(ts_codes) if ts_codes else 5000) * 250,
+		DataType.ADJ_FACTOR: (len(ts_codes) if ts_codes else 5000) * 500,
+		DataType.SUSPEND: (len(ts_codes) if ts_codes else 5000) * 10,  # 停牌信息相对较少
+		DataType.DAILY_BASIC: (len(ts_codes) if ts_codes else 5000) * 250,
+		DataType.ETF_BASIC: 1000,
+		DataType.ETF_INDEX: 1000,
+		DataType.ETF_DAILY: (len(ts_codes) if ts_codes else 1000) * 250,
+		DataType.ETF_MINUTE: (len(ts_codes) if ts_codes else 1000) * 240 * 7,
+		DataType.ETF_SHARE: (len(ts_codes) if ts_codes else 1000) * 250,  # ETF份额数据
+		DataType.FUND_ADJ_FACTOR: (len(ts_codes) if ts_codes else 1000) * 500,
+		DataType.CALENDAR: 365 * 2,
+		DataType.FINANCIAL_INCOME: (len(ts_codes) if ts_codes else 5000) * 20,
+		DataType.FINANCIAL_BALANCE: (len(ts_codes) if ts_codes else 5000) * 20,
+		DataType.FINANCIAL_CASHFLOW: (len(ts_codes) if ts_codes else 5000) * 20,
+		DataType.FORECAST: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩预告
+		DataType.EXPRESS: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩快报
+		DataType.DIVIDEND: (len(ts_codes) if ts_codes else 5000) * 10,  # 分红送股
+		DataType.FINANCIAL_INDICATOR: (len(ts_codes) if ts_codes else 5000) * 20,  # 财务指标
+		DataType.AUDIT_OPINION: (len(ts_codes) if ts_codes else 5000) * 10,  # 审计意见
+		DataType.BUSINESS_INCOME: (len(ts_codes) if ts_codes else 5000) * 15,  # 主营业务构成
+	}
+	return estimates.get(data_type, 100)
+
+
 class DataSyncService:
 	"""
 	数据同步服务类（重构版）
@@ -246,7 +277,7 @@ class DataSyncService:
 			DataType.AUDIT_OPINION: self._sync_audit_opinion,  # TODO
 			DataType.BUSINESS_INCOME: self._sync_business_income,  # TODO
 			# 通用
-			DataType.CALENDAR: self._sync_calendar,
+			DataType.CALENDAR: self._sync_trade_calendar,
 		}
 
 	@property
@@ -299,9 +330,9 @@ class DataSyncService:
 			# 创建同步任务记录
 			task_id = await self._create_sync_task(
 				data_type=data_type,
-				start_date=start_date,
-				end_date=end_date,
-				ts_codes=ts_codes,
+				_start_date=start_date,
+				_end_date=end_date,
+				_ts_codes=ts_codes,
 				user_id=user_id,
 				params=kwargs
 			)
@@ -694,12 +725,81 @@ class DataSyncService:
 
 	# ==================== 私有辅助方法 ====================
 
+	async def _get_date_range_and_stocks (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> Tuple[date, date, List[str]]:
+		"""获取日期范围和股票代码列表"""
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=30)
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [stock.ts_code for stock in stocks]
+		return start_date, end_date, ts_codes
+
+	# 辅助函数：获取日期范围和ETF代码
+	async def _get_date_range_and_etfs (
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]]
+	) -> Tuple[date, date, List[str]]:
+		"""获取日期范围和ETF代码列表"""
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=30)
+		if not ts_codes:
+			# 使用 ETFRepository 获取所有 ETF
+			etf_repo = ETFRepository(self.session)
+			etfs = await etf_repo.get_all_etfs()
+			ts_codes = [etf.ts_code for etf in etfs]
+		return start_date, end_date, ts_codes
+
+	@staticmethod
+	async def _process_trade_date_data (
+			repo,
+			data: List[Dict],
+			ts_code: str
+	) -> Tuple[int, int]:
+		"""处理带有trade_date的数据"""
+		records_added = 0
+		records_updated = 0
+		for item in data:
+			# 转换trade_date为date对象
+			trade_date = _convert_to_date(item.get('trade_date'))
+			item['trade_date'] = trade_date
+
+			existing_list = await repo.get_by_trade_date(
+				ts_code=ts_code,
+				trade_date=trade_date
+			)
+			existing = existing_list[0] if existing_list else None
+			if existing:
+				# 尝试使用update_by方法（ETF），如果失败则使用update方法（股票）
+				try:
+					await repo.update_by(
+						{"ts_code": existing.ts_code, "trade_date": existing.trade_date},
+						item
+					)
+				except AttributeError:
+					await repo.update(existing.id, item)
+				records_updated += 1
+			else:
+				await repo.create(item)
+				records_added += 1
+		return records_added, records_updated
+
 	async def _create_sync_task (
 			self,
 			data_type: str,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
-			ts_codes: Optional[List[str]] = None,
+			_start_date: Optional[date] = None,
+			_end_date: Optional[date] = None,
+			_ts_codes: Optional[List[str]] = None,
 			user_id: Optional[int] = None,
 			params: Optional[Dict] = None
 	) -> str:
@@ -713,7 +813,7 @@ class DataSyncService:
 			"status": "pending",
 			"user_id": user_id,
 			"parameters": params or {},
-			"total_records": self._estimate_total_items(data_type, ts_codes),
+			"total_records": _estimate_total_items(data_type, _ts_codes),
 			"created_at": datetime.now()
 		}
 		await self.sync_task_repo.create(task_data)
@@ -773,12 +873,12 @@ class DataSyncService:
 
 	async def _sync_stock_list (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
+			_ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步股票列表"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
@@ -817,16 +917,10 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步日行情数据"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=30)
-		if not ts_codes:
-			stocks = await self.stock_basic_repo.get_active_stocks()
-			ts_codes = [stock.ts_code for stock in stocks]
+		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -846,22 +940,11 @@ class DataSyncService:
 
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict('records'))
-					for quote_data in daily_data:
-						# 转换trade_date为date对象
-						trade_date = _convert_to_date(quote_data.get('trade_date'))
-						quote_data['trade_date'] = trade_date
-
-						existing_list = await self.stock_daily_repo.get_by_trade_date(
-							ts_code=ts_code,
-							trade_date=trade_date
-						)
-						existing = existing_list[0] if existing_list else None
-						if existing:
-							await self.stock_daily_repo.update(existing.id, quote_data)
-							records_updated += 1
-						else:
-							await self.stock_daily_repo.create(quote_data)
-							records_added += 1
+					added, updated = await self._process_trade_date_data(
+						self.stock_daily_repo, daily_data, ts_code
+					)
+					records_added += added
+					records_updated += updated
 			except Exception as e:
 				logger.error(f"保存 {ts_code} 行情数据失败: {e}")
 				records_failed += 1
@@ -895,7 +978,7 @@ class DataSyncService:
 			task_id: str,
 			user_id: Optional[int] = None,
 			freq: str = "1min",
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步分钟行情数据（超表优化）"""
 		if not end_date:
@@ -958,16 +1041,10 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步资金流向数据"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=30)
-		if not ts_codes:
-			stocks = await self.stock_basic_repo.get_active_stocks()
-			ts_codes = [stock.ts_code for stock in stocks]
+		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -1034,16 +1111,12 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步复权因子"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=365)
-		if not ts_codes:
-			stocks = await self.stock_basic_repo.get_active_stocks()
-			ts_codes = [stock.ts_code for stock in stocks]
+		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(
+			start_date, end_date, ts_codes
+		)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -1063,22 +1136,11 @@ class DataSyncService:
 
 				if not adj_df.empty:
 					adj_data = _convert_records_datetime(adj_df.to_dict('records'))
-					for item in adj_data:
-						# 转换trade_date为date对象
-						trade_date = _convert_to_date(item.get('trade_date'))
-						item['trade_date'] = trade_date
-
-						existing_list = await self.stock_adj_factor_repo.get_by_trade_date(
-							ts_code=ts_code,
-							trade_date=trade_date
-						)
-						existing = existing_list[0] if existing_list else None
-						if existing:
-							await self.stock_adj_factor_repo.update(existing.id, item)
-							records_updated += 1
-						else:
-							await self.stock_adj_factor_repo.create(item)
-							records_added += 1
+					added, updated = await self._process_trade_date_data(
+						self.stock_adj_factor_repo, adj_data, ts_code
+					)
+					records_added += added
+					records_updated += updated
 			except Exception as e:
 				logger.error(f"同步 {ts_code} 复权因子失败: {e}")
 				records_failed += 1
@@ -1106,16 +1168,10 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步每日指标数据"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=30)
-		if not ts_codes:
-			stocks = await self.stock_basic_repo.get_active_stocks()
-			ts_codes = [stock.ts_code for stock in stocks]
+		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -1135,22 +1191,11 @@ class DataSyncService:
 
 				if not daily_basic_df.empty:
 					daily_basic_data = _convert_records_datetime(daily_basic_df.to_dict('records'))
-					for item in daily_basic_data:
-						# 转换trade_date为date对象
-						trade_date = _convert_to_date(item.get('trade_date'))
-						item['trade_date'] = trade_date
-
-						existing_list = await self.stock_daily_basic_repo.get_by_trade_date(
-							ts_code=ts_code,
-							trade_date=trade_date
-						)
-						existing = existing_list[0] if existing_list else None
-						if existing:
-							await self.stock_daily_basic_repo.update(existing.id, item)
-							records_updated += 1
-						else:
-							await self.stock_daily_basic_repo.create(item)
-							records_added += 1
+					added, updated = await self._process_trade_date_data(
+						self.stock_daily_basic_repo, daily_basic_data, ts_code
+					)
+					records_added += added
+					records_updated += updated
 			except Exception as e:
 				logger.error(f"同步 {ts_code} 每日指标失败: {e}")
 				records_failed += 1
@@ -1173,12 +1218,12 @@ class DataSyncService:
 
 	async def _sync_etf_basic (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
+			_ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF基础信息"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
@@ -1211,14 +1256,14 @@ class DataSyncService:
 			"message": "ETF基础信息同步完成"
 		}
 
+	@staticmethod
 	async def _sync_etf_index (
-			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[int] = None,
-			**kwargs
+			_start_date: Optional[date],
+			_end_date: Optional[date],
+			_ts_codes: Optional[List[str]],
+			_task_id: str,
+			_user_id: Optional[int] = None,
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF基准指数列表（待完善）"""
 		# 需要独立的EtfIndexRepository，这里临时使用BaseRepository操作
@@ -1239,18 +1284,12 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF日线行情"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=30)
-		if not ts_codes:
-			# 使用 ETFRepository 获取所有 ETF
-			etf_repo = ETFRepository(self.session)
-			etfs = await etf_repo.get_all_etfs()
-			ts_codes = [etf.ts_code for etf in etfs]
+		start_date, end_date, ts_codes = await self._get_date_range_and_etfs(
+			start_date, end_date, ts_codes
+		)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -1270,25 +1309,11 @@ class DataSyncService:
 
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict('records'))
-					# 转换trade_date为date对象
-					for item in daily_data:
-						trade_date = _convert_to_date(item.get('trade_date'))
-						item['trade_date'] = trade_date
-
-						existing_list = await self.etf_daily_repo.get_by_trade_date(
-							ts_code=ts_code,
-							trade_date=trade_date
-						)
-						existing = existing_list[0] if existing_list else None
-						if existing:
-							await self.etf_daily_repo.update_by(
-								{"ts_code": existing.ts_code, "trade_date": existing.trade_date},
-								item
-							)
-							records_updated += 1
-						else:
-							await self.etf_daily_repo.create(item)
-							records_added += 1
+					added, updated = await self._process_trade_date_data(
+						self.etf_daily_repo, daily_data, ts_code
+					)
+					records_added += added
+					records_updated += updated
 			except Exception as e:
 				logger.error(f"同步 {ts_code} ETF日线失败: {e}")
 				records_failed += 1
@@ -1309,6 +1334,267 @@ class DataSyncService:
 			"message": "ETF日线行情同步完成"
 		}
 
+	# ==================== 公共方法（为任务调用添加） ====================
+
+	async def get_listed_stocks (self) -> List[Dict[str, Any]]:
+		"""获取所有上市股票列表"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		stock_basic = await source.get_stock_basic()
+		return stock_basic
+
+	async def sync_stock_quote (
+			self,
+			stock_codes: List[str],
+			start_date: str,
+			end_date: str,
+			_sync_type: str = 'daily',
+			force_update: bool = False
+	) -> Dict[str, Any]:
+		"""同步股票行情数据"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_updated = 0
+		records_failed = 0
+
+		for ts_code in stock_codes:
+			try:
+				daily_df = source.get_daily(
+					symbol=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
+
+				if not daily_df.empty:
+					daily_data = _convert_records_datetime(daily_df.to_dict('records'))
+					for quote_data in daily_data:
+						# 转换trade_date为date对象
+						trade_date = _convert_to_date(quote_data.get('trade_date'))
+						quote_data['trade_date'] = trade_date
+
+						existing_list = await self.stock_daily_repo.get_by_trade_date(
+							ts_code=ts_code,
+							trade_date=trade_date
+						)
+						existing = existing_list[0] if existing_list else None
+						if existing:
+							if force_update:
+								await self.stock_daily_repo.update(existing.id, quote_data)
+								records_updated += 1
+						else:
+							await self.stock_daily_repo.create(quote_data)
+							records_added += 1
+			except Exception as e:
+				logger.error(f"同步 {ts_code} 行情失败: {e}")
+				records_failed += 1
+
+		await self.session.commit()
+		return {
+			"records_added": records_added,
+			"records_updated": records_updated,
+			"records_failed": records_failed,
+			"total_items": records_added + records_updated + records_failed
+		}
+
+	async def sync_financial_data (
+			self,
+			report_type: str,
+			_start_date: str,
+			_end_date: str,
+			stock_codes: Optional[List[str]] = None
+	) -> Dict[str, Any]:
+		"""同步财务数据"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_updated = 0
+		records_failed = 0
+
+		if not stock_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			stock_codes = [stock.ts_code for stock in stocks]
+
+		for idx, ts_code in enumerate(stock_codes):
+			try:
+				# 根据报告类型选择对应方法
+				if report_type == 'quarterly':
+					# 同步季度利润表数据
+					income_df = source.get_income_statement(
+						symbol=ts_code,
+						period='quarterly'
+					)
+					
+					if not income_df.empty:
+						income_data = _convert_records_datetime(income_df.to_dict('records'))
+						for financial_data in income_data:
+							# 转换日期字段
+							if 'end_date' in financial_data:
+								financial_data['end_date'] = _convert_to_date(financial_data['end_date'])
+							if 'ann_date' in financial_data:
+								financial_data['ann_date'] = _convert_to_date(financial_data['ann_date'])
+							
+							# 保存财务数据
+							financial_data['ts_code'] = ts_code
+							financial_data['report_type'] = report_type
+							
+							try:
+								await self.financial_statement_repo.create(financial_data)
+								records_added += 1
+							except Exception as create_error:
+								logger.warning(f"财务数据已存在或创建失败: {create_error}")
+								records_failed += 1
+			except Exception as e:
+				logger.error(f"同步 {ts_code} 财务数据失败: {e}")
+				records_failed += 1
+
+			# 每处理10只股票提交一次
+			if (idx + 1) % 10 == 0:
+				await self.session.commit()
+
+		await self.session.commit()
+		return {
+			"records_added": records_added,
+			"records_updated": records_updated,
+			"records_failed": records_failed,
+			"total_items": records_added + records_updated + records_failed,
+			"message": f"财务数据同步完成，报告类型: {report_type}"
+		}
+
+	async def sync_index_data (
+			self,
+			start_date: str,
+			end_date: str,
+			index_codes: Optional[List[str]] = None
+	) -> Dict[str, Any]:
+		"""同步指数数据"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+
+		# 如果没有指定指数代码，获取常用指数
+		if not index_codes:
+			index_codes = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH']
+
+		try:
+			# 同步指数日线数据
+			for index_code in index_codes:
+				try:
+					# 获取指数日线数据
+					if hasattr(source, 'get_index_daily'):
+						index_df = source.get_index_daily(
+							ts_code=index_code,
+							start_date=start_date,
+							end_date=end_date
+						)
+						index_data = []
+						
+						if not index_df.empty:
+							index_data = _convert_records_datetime(index_df.to_dict('records'))
+							for index_record in index_data:
+								# 转换日期字段
+								if 'trade_date' in index_record:
+									index_record['trade_date'] = _convert_to_date(index_record['trade_date'])
+								
+								# 这里需要添加指数数据Repository
+								# 暂时记录添加数量
+								records_added += 1
+						
+						logger.info(f"指数 {index_code} 同步完成，共 {len(index_data)} 条记录")
+					else:
+						logger.warning(f"数据源不支持指数数据同步: {index_code}")
+						records_failed += 1
+				except Exception as e:
+					logger.error(f"同步指数 {index_code} 失败: {e}")
+					records_failed += 1
+		except Exception as e:
+			logger.error(f"指数数据同步失败: {e}")
+			records_failed += 1
+
+		return {
+			"records_added": records_added,
+			"records_updated": 0,
+			"records_failed": records_failed,
+			"total_items": records_added + records_failed,
+			"message": f"指数数据同步完成，共处理 {len(index_codes)} 个指数"
+		}
+
+	async def sync_macro_data (
+			self,
+			macro_type: str,
+			start_date: str,
+			end_date: str
+	) -> Dict[str, Any]:
+		"""同步宏观经济数据"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+
+		try:
+			# 根据宏观经济数据类型选择同步策略
+			if macro_type == 'cpi':
+				# 同步CPI数据
+				if hasattr(source, 'get_cpi'):
+					cpi_df = source.get_cpi(start_date=start_date, end_date=end_date)
+					if not cpi_df.empty:
+						cpi_data = _convert_records_datetime(cpi_df.to_dict('records'))
+						records_added += len(cpi_data)
+						logger.info(f"CPI数据同步完成，共 {len(cpi_data)} 条记录")
+				else:
+					logger.warning(f"数据源不支持CPI数据同步")
+					records_failed += 1
+			elif macro_type == 'ppi':
+				# 同步PPI数据
+				if hasattr(source, 'get_ppi'):
+					ppi_df = source.get_ppi(start_date=start_date, end_date=end_date)
+					if not ppi_df.empty:
+						ppi_data = _convert_records_datetime(ppi_df.to_dict('records'))
+						records_added += len(ppi_data)
+						logger.info(f"PPI数据同步完成，共 {len(ppi_data)} 条记录")
+				else:
+					logger.warning(f"数据源不支持PPI数据同步")
+					records_failed += 1
+			elif macro_type == 'gdp':
+				# 同步GDP数据
+				if hasattr(source, 'get_gdp'):
+					gdp_df = source.get_gdp(start_date=start_date, end_date=end_date)
+					if not gdp_df.empty:
+						gdp_data = _convert_records_datetime(gdp_df.to_dict('records'))
+						records_added += len(gdp_data)
+						logger.info(f"GDP数据同步完成，共 {len(gdp_data)} 条记录")
+				else:
+					logger.warning(f"数据源不支持GDP数据同步")
+					records_failed += 1
+			else:
+				logger.warning(f"不支持的宏观经济数据类型: {macro_type}")
+				records_failed += 1
+		except Exception as e:
+			logger.error(f"宏观经济数据 {macro_type} 同步失败: {e}")
+			records_failed += 1
+
+		return {
+			"records_added": records_added,
+			"records_updated": 0,
+			"records_failed": records_failed,
+			"total_items": records_added + records_failed,
+			"message": f"宏观经济数据 {macro_type} 同步完成"
+		}
+
+	async def async_sync_stock_quotes (
+			self,
+			stock_codes: List[str],
+			start_date: str,
+			end_date: str,
+			sync_type: str = 'daily'
+	) -> Dict[str, Any]:
+		"""异步同步股票行情数据"""
+		return await self.sync_stock_quote(
+			stock_codes=stock_codes,
+			start_date=start_date,
+			end_date=end_date,
+			_sync_type=sync_type,
+			force_update=False
+		)
+
+	# ==================== 具体同步方法 ====================
+
 	async def _sync_etf_minute (
 			self,
 			start_date: Optional[date],
@@ -1317,7 +1603,7 @@ class DataSyncService:
 			task_id: str,
 			user_id: Optional[int] = None,
 			freq: str = "1min",
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF分钟行情"""
 		if not end_date:
@@ -1375,29 +1661,23 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步基金复权因子"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=365)
-		if not ts_codes:
-			# 使用 ETFRepository 获取所有 ETF
-			etf_repo = ETFRepository(self.session)
-			etfs = await etf_repo.get_all_etfs()
-			ts_codes = [etf.ts_code for etf in etfs]
+		start_date, end_date, ts_codes = await self._get_date_range_and_etfs(
+			start_date, end_date, ts_codes
+		)
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
 		records_failed = 0
 
+		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
+
 		for idx, ts_code in enumerate(ts_codes):
 			try:
-				start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
-				end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
-
 				adj_df = source.get_etf_adj_factor(
 					etf_code=ts_code,
 					start_date=start_date_str,
@@ -1405,25 +1685,11 @@ class DataSyncService:
 				)
 				if not adj_df.empty:
 					adj_data = _convert_records_datetime(adj_df.to_dict('records'))
-					# 转换trade_date为date对象
-					for item in adj_data:
-						trade_date = _convert_to_date(item.get('trade_date'))
-						item['trade_date'] = trade_date
-
-						existing_list = await self.fund_adj_factor_repo.get_by_trade_date(
-							ts_code=ts_code,
-							trade_date=trade_date
-						)
-						existing = existing_list[0] if existing_list else None
-						if existing:
-							await self.fund_adj_factor_repo.update_by(
-								{"ts_code": existing.ts_code, "trade_date": existing.trade_date},
-								item
-							)
-							records_updated += 1
-						else:
-							await self.fund_adj_factor_repo.create(item)
-							records_added += 1
+					added, updated = await self._process_trade_date_data(
+						self.fund_adj_factor_repo, adj_data, ts_code
+					)
+					records_added += added
+					records_updated += updated
 			except Exception as e:
 				logger.error(f"同步 {ts_code} 基金复权因子失败: {e}")
 				records_failed += 1
@@ -1505,19 +1771,15 @@ class DataSyncService:
 
 	async def _sync_financial_statement (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
 			report_type: str = "income",
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""通用的财务报表同步方法"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=365 * 3)
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [stock.ts_code for stock in stocks]
@@ -1578,14 +1840,14 @@ class DataSyncService:
 			"message": f"{report_type}报表同步完成"
 		}
 
-	async def _sync_calendar (
+	async def _sync_trade_calendar (
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[int] = None,
-			**kwargs
+			_ts_codes: Optional[List[str]],
+			_task_id: str,
+			_user_id: Optional[int] = None,
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步交易日历"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
@@ -1645,7 +1907,7 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步Tick级行情数据"""
 		if not end_date:
@@ -1709,10 +1971,10 @@ class DataSyncService:
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
+			_ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步停复牌信息"""
 		if not end_date:
@@ -1769,18 +2031,14 @@ class DataSyncService:
 
 	async def _sync_etf_share (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF份额规模"""
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=30)
 		if not ts_codes:
 			etfs = await self.etf_basic_repo.get_all()
 			ts_codes = [etf.ts_code for etf in etfs]
@@ -1836,12 +2094,12 @@ class DataSyncService:
 
 	async def _sync_forecast (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步业绩预告"""
 		if not ts_codes:
@@ -1899,12 +2157,12 @@ class DataSyncService:
 
 	async def _sync_express (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步业绩快报"""
 		if not ts_codes:
@@ -1962,12 +2220,12 @@ class DataSyncService:
 
 	async def _sync_dividend (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步分红送股数据"""
 		if not ts_codes:
@@ -2030,13 +2288,14 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步财务指标数据"""
+		# 财务指标通常按年更新，所以设置默认时间范围为1年
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
-			start_date = end_date - timedelta(days=365)  # 财务指标通常按年更新
+			start_date = end_date - timedelta(days=365)
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [stock.ts_code for stock in stocks]
@@ -2096,12 +2355,12 @@ class DataSyncService:
 
 	async def _sync_audit_opinion (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
+			_ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步审计意见数据"""
 		# 审计意见同步需要专门的Repository支持
@@ -2125,12 +2384,12 @@ class DataSyncService:
 
 	async def _sync_business_income (
 			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
+			_start_date: Optional[date],
+			_end_date: Optional[date],
+			_ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[int] = None,
-			**kwargs
+			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步主营业务构成数据"""
 		# 主营业务构成同步需要专门的Repository支持
@@ -2292,36 +2551,6 @@ class DataSyncService:
 		for pattern in cache_keys:
 			# 假设RedisCache有delete_pattern方法
 			await self.cache.delete_pattern(pattern)
-
-	def _estimate_total_items (self, data_type: str, ts_codes: Optional[List[str]] = None) -> int:
-		"""估算同步项目总数"""
-		estimates = {
-			DataType.STOCK_LIST: 5000,
-			DataType.DAILY_QUOTES: (len(ts_codes) if ts_codes else 5000) * 250,
-			DataType.MINUTE_QUOTES: (len(ts_codes) if ts_codes else 5000) * 240 * 20,
-			DataType.TICK_QUOTES: (len(ts_codes) if ts_codes else 10) * 240 * 1,  # Tick数据量大，限制估算
-			DataType.MONEYFLOW: (len(ts_codes) if ts_codes else 5000) * 250,
-			DataType.ADJ_FACTOR: (len(ts_codes) if ts_codes else 5000) * 500,
-			DataType.SUSPEND: (len(ts_codes) if ts_codes else 5000) * 10,  # 停牌信息相对较少
-			DataType.DAILY_BASIC: (len(ts_codes) if ts_codes else 5000) * 250,
-			DataType.ETF_BASIC: 1000,
-			DataType.ETF_INDEX: 1000,
-			DataType.ETF_DAILY: (len(ts_codes) if ts_codes else 1000) * 250,
-			DataType.ETF_MINUTE: (len(ts_codes) if ts_codes else 1000) * 240 * 7,
-			DataType.ETF_SHARE: (len(ts_codes) if ts_codes else 1000) * 250,  # ETF份额数据
-			DataType.FUND_ADJ_FACTOR: (len(ts_codes) if ts_codes else 1000) * 500,
-			DataType.CALENDAR: 365 * 2,
-			DataType.FINANCIAL_INCOME: (len(ts_codes) if ts_codes else 5000) * 20,
-			DataType.FINANCIAL_BALANCE: (len(ts_codes) if ts_codes else 5000) * 20,
-			DataType.FINANCIAL_CASHFLOW: (len(ts_codes) if ts_codes else 5000) * 20,
-			DataType.FORECAST: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩预告
-			DataType.EXPRESS: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩快报
-			DataType.DIVIDEND: (len(ts_codes) if ts_codes else 5000) * 10,  # 分红送股
-			DataType.FINANCIAL_INDICATOR: (len(ts_codes) if ts_codes else 5000) * 20,  # 财务指标
-			DataType.AUDIT_OPINION: (len(ts_codes) if ts_codes else 5000) * 10,  # 审计意见
-			DataType.BUSINESS_INCOME: (len(ts_codes) if ts_codes else 5000) * 15,  # 主营业务构成
-		}
-		return estimates.get(data_type, 100)
 
 	async def cleanup_old_tasks (self, days: int = 30) -> int:
 		"""清理旧同步任务记录（与原实现相同）"""

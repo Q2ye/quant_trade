@@ -7,11 +7,11 @@
 包括报告生成、查询、归档等业务方法
 """
 
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any, Tuple
+
+from sqlalchemy import select, delete, and_, or_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.business_models import AnalysisReport
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
@@ -39,7 +39,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			report_config: Dict[str, Any],
 			generated_by: Optional[int] = None,
 			report_data: Optional[Dict[str, Any]] = None,
-			format: str = "json",
+			report_format: str = "json",
 			is_public: bool = False,
 			tags: Optional[List[str]] = None
 	) -> AnalysisReport:
@@ -52,7 +52,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			report_config: 报告生成配置
 			generated_by: 生成人ID（可选）
 			report_data: 报告数据（可选）
-			format: 报告格式（json, html, pdf, excel）
+			report_format: 报告格式（json, html, pdf, excel）
 			is_public: 是否公开
 			tags: 标签列表（可选）
 
@@ -64,7 +64,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 				'report_type': report_type,
 				'report_name': report_name,
 				'report_config': report_config,
-				'format': format,
+				'format': report_format,
 				'status': 'pending',
 				'generated_by': generated_by,
 				'report_data': report_data or {},
@@ -78,7 +78,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def update_report_status (
 			self,
-			report_id: int,
+			report_id: str,
 			status: str,
 			file_path: Optional[str] = None,
 			file_size: Optional[int] = None,
@@ -98,7 +98,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			bool: 更新是否成功
 		"""
 		try:
-			update_data = {'status': status}
+			update_data : Dict[str, Any]= {'status': status}
 
 			if status == 'completed':
 				update_data['generated_at'] = datetime.now()
@@ -116,7 +116,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 		except Exception as e:
 			raise RepositoryError(f"更新报告状态失败: {str(e)}")
 
-	async def mark_as_generating (self, report_id: int) -> bool:
+	async def mark_as_generating (self, report_id: str) -> bool:
 		"""
 		标记报告为生成中
 
@@ -130,7 +130,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def mark_as_completed (
 			self,
-			report_id: int,
+			report_id: str,
 			file_path: str,
 			file_size: int
 	) -> bool:
@@ -151,7 +151,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def mark_as_failed (
 			self,
-			report_id: int,
+			report_id: str,
 			error_message: str
 	) -> bool:
 		"""
@@ -311,7 +311,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def get_user_reports (
 			self,
-			user_id: int,
+			user_id: str,
 			report_type: Optional[str] = None,
 			limit: int = 100,
 			offset: int = 0
@@ -394,7 +394,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 			result = await self.session.execute(query)
 
-			stats = {
+			stats: Dict[str, Any] = {
 				'total': 0,
 				'by_type': {},
 				'by_status': {
@@ -485,7 +485,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 				})
 
 			return trend_data
-		except Exception as e:
+		except Exception:
 			# 如果数据库不支持date_trunc，使用简化方法
 			# 获取所有数据并在Python中处理
 			reports = await self.get_recent_reports(days=days, report_type=report_type, limit=1000)
@@ -518,7 +518,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def add_report_tag (
 			self,
-			report_id: int,
+			report_id: str,
 			tag: str
 	) -> bool:
 		"""
@@ -550,7 +550,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 	async def remove_report_tag (
 			self,
-			report_id: int,
+			report_id: str,
 			tag: str
 	) -> bool:
 		"""
@@ -653,7 +653,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 
 			query = delete(self.model).where(and_(*conditions))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query)  # type: ignore
 			await self.session.commit()
 
 			return result.rowcount or 0

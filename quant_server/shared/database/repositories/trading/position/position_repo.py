@@ -23,8 +23,8 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def get_user_position (
 			self,
-			user_id: int,
-			account_id: int,
+			user_id: str,
+			account_id: str,
 			ts_code: str
 	) -> Optional[Position]:
 		"""获取用户特定股票的持仓"""
@@ -42,8 +42,8 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def get_user_positions (
 			self,
-			user_id: int,
-			account_id: Optional[int] = None,
+			user_id: str,
+			account_id: Optional[str] = None,
 			include_zero: bool = False
 	) -> List[Position]:
 		"""获取用户的所有持仓"""
@@ -99,6 +99,8 @@ class PositionRepository(BaseRepository[Position]):
 		"""
 		# 这里简化处理，实际需要根据日期获取持仓
 		# 暂时返回当前持仓
+		# 预留参数，后续实现时会使用
+		_ = trading_date
 		return await self.get_account_positions(account_id, include_zero=False)
 
 	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
@@ -114,15 +116,17 @@ class PositionRepository(BaseRepository[Position]):
 		try:
 			# 这里简化处理，实际需要创建对账记录
 			class MockRecord:
-				def __init__(self, id):
+				def __init__ (self, id):
 					self.id = id
 
-			return MockRecord(id=f"position_recon_{recon_data['account_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+			return MockRecord(
+				id=f"position_recon_{recon_data['account_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
 		except Exception as e:
 			raise RepositoryError(f"创建持仓对账记录失败: {str(e)}")
 
-	async def update_position (self, account_id: str, security_id: str, position_data: Dict[str, Any]) -> Optional[Position]:
+	async def update_position (self, account_id: str, security_id: str, position_data: Dict[str, Any]) -> Optional[
+		Position]:
 		"""
 		更新持仓
 
@@ -136,7 +140,6 @@ class PositionRepository(BaseRepository[Position]):
 		"""
 		try:
 			# 查找持仓
-			from sqlalchemy import and_
 			query = self.build_query()
 			query = query.where(
 				and_(
@@ -166,7 +169,7 @@ class PositionRepository(BaseRepository[Position]):
 			self,
 			ts_code: str,
 			min_volume: int = 0,
-			account_id: Optional[int] = None
+			account_id: Optional[str] = None
 	) -> List[Position]:
 		"""获取持有特定股票的所有用户"""
 		try:
@@ -187,7 +190,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def update_position_volume (
 			self,
-			position_id: int,
+			position_id: str,
 			volume_change: int,
 			available_change: int = 0,
 			frozen_change: int = 0
@@ -224,7 +227,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def update_position_cost (
 			self,
-			position_id: int,
+			position_id: str,
 			new_cost_price: float
 	) -> Optional[Position]:
 		"""
@@ -246,7 +249,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def update_position_market_value (
 			self,
-			position_id: int,
+			position_id: str,
 			last_price: float
 	) -> Optional[Position]:
 		"""
@@ -280,7 +283,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def freeze_position (
 			self,
-			position_id: int,
+			position_id: str,
 			freeze_volume: int
 	) -> Optional[Position]:
 		"""
@@ -307,7 +310,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def unfreeze_position (
 			self,
-			position_id: int,
+			position_id: str,
 			unfreeze_volume: int
 	) -> Optional[Position]:
 		"""
@@ -375,7 +378,7 @@ class PositionRepository(BaseRepository[Position]):
 			self,
 			min_value: float = 0,
 			max_value: float = None,
-			account_id: Optional[int] = None
+			account_id: Optional[str] = None
 	) -> List[Position]:
 		"""根据市值范围获取持仓"""
 		try:
@@ -397,7 +400,7 @@ class PositionRepository(BaseRepository[Position]):
 	async def get_recently_updated (
 			self,
 			hours: int = 24,
-			account_id: Optional[int] = None
+			account_id: Optional[str] = None
 	) -> List[Position]:
 		"""获取最近更新的持仓"""
 		try:
@@ -418,7 +421,7 @@ class PositionRepository(BaseRepository[Position]):
 	async def get_low_available_positions (
 			self,
 			threshold: float = 0.1,
-			account_id: Optional[int] = None
+			account_id: Optional[str] = None
 	) -> List[Position]:
 		"""
 		获取可用比例较低的持仓（可能被冻结）
@@ -449,7 +452,7 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def get_position_statistics (
 			self,
-			account_id: Optional[int] = None
+			account_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""获取持仓数据统计"""
 		filters = []
@@ -560,3 +563,260 @@ class PositionRepository(BaseRepository[Position]):
 				cleared += 1
 
 		return cleared
+
+	async def get_positions_by_ts_code (
+			self,
+			ts_code: str,
+			min_volume: int = 0
+	) -> List[Position]:
+		"""
+		根据股票代码获取持仓记录
+
+		Args:
+			ts_code: 股票代码
+			min_volume: 最小持仓量
+
+		Returns:
+			持仓记录列表
+		"""
+		try:
+			query = select(Position).where(
+				and_(
+					Position.ts_code == ts_code,
+					Position.volume >= min_volume
+				)
+			).order_by(Position.volume.desc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取股票持仓失败: {str(e)}")
+
+	@staticmethod
+	async def get_positions_by_industry (
+			industry_code: str,
+			account_id: Optional[str] = None
+	) -> List[Position]:
+		"""
+		根据行业代码获取持仓记录
+
+		Args:
+			industry_code: 行业代码
+			account_id: 账户ID筛选
+
+		Returns:
+			持仓记录列表
+		"""
+		try:
+			# 这里需要关联股票基本信息表获取行业信息
+			# 暂时返回空列表，实际实现需要关联查询
+			# 预留参数，后续实现时会使用
+			_ = industry_code
+			_ = account_id
+			return []
+		except Exception as e:
+			raise RepositoryError(f"获取行业持仓失败: {str(e)}")
+
+	async def get_high_risk_positions (
+			self,
+			pnl_threshold: float = -0.1,
+			account_id: Optional[str] = None
+	) -> List[Position]:
+		"""
+		获取高风险持仓（高亏损）
+
+		Args:
+			pnl_threshold: 亏损率阈值
+			account_id: 账户ID筛选
+
+		Returns:
+			高风险持仓列表
+		"""
+		try:
+			filters = [Position.pnl_rate <= pnl_threshold, Position.volume > 0]
+
+			if account_id:
+				filters.append(Position.account_id == account_id)
+
+			query = select(Position).where(
+				and_(*filters)
+			).order_by(Position.pnl_rate.asc())
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取高风险持仓失败: {str(e)}")
+
+	async def get_concentrated_positions (
+			self,
+			concentration_threshold: float = 0.1,
+			account_id: Optional[str] = None
+	) -> List[Position]:
+		"""
+		获取集中度较高的持仓
+
+		Args:
+			concentration_threshold: 集中度阈值
+			account_id: 账户ID筛选
+
+		Returns:
+			集中度较高持仓列表
+		"""
+		try:
+			# 计算每个账户的总市值
+			total_value_subquery = select(
+				Position.account_id,
+				func.sum(Position.market_value).label('total_account_value')
+			).where(Position.volume > 0)
+
+			if account_id:
+				total_value_subquery = total_value_subquery.where(Position.account_id == account_id)
+
+			total_value_subquery = total_value_subquery.group_by(Position.account_id).subquery()
+
+			# 查询集中度较高地持仓
+			query = select(Position).join(
+				total_value_subquery,  # type: ignore
+				Position.account_id == total_value_subquery.c.account_id
+			).where(
+				and_(
+					Position.volume > 0,
+					Position.market_value / total_value_subquery.c.total_account_value >= concentration_threshold
+				)
+			).order_by(
+				(Position.market_value / total_value_subquery.c.total_account_value).desc()
+			)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取集中度持仓失败: {str(e)}")
+
+	async def batch_update_positions (
+			self,
+			updates: List[Dict[str, Any]]
+	) -> Dict[str, int]:
+		"""
+		批量更新持仓记录
+
+		Args:
+			updates: 更新数据列表，每个元素包含position_id和更新字段
+
+		Returns:
+			更新结果统计
+		"""
+		success_count = 0
+		failed_count = 0
+
+		for update_data in updates:
+			position_id = update_data.get('id')
+			if not position_id:
+				failed_count += 1
+				continue
+
+			try:
+				update_data['last_update'] = datetime.now()
+				result = await self.update(position_id, update_data)
+				if result:
+					success_count += 1
+				else:
+					failed_count += 1
+			except Exception as e:
+				# 记录异常但继续处理其他更新
+				# 这里可以添加日志记录
+				failed_count += 1
+
+		return {
+			'success': success_count,
+			'failed': failed_count,
+			'total': len(updates)
+		}
+
+	@staticmethod
+	async def get_position_trend (
+			account_id: str,
+			ts_code: str,
+			days: int = 30
+	) -> List[Dict[str, Any]]:
+		"""
+		获取持仓趋势数据
+
+		Args:
+			account_id: 账户ID
+			ts_code: 股票代码
+			days: 天数
+
+		Returns:
+			持仓趋势数据列表
+		"""
+		try:
+			# 这里需要关联持仓快照表获取历史数据
+			# 暂时返回模拟数据
+			# 预留参数，后续实现时会使用
+			_ = account_id
+			_ = ts_code
+			return [
+				{
+					'date': (datetime.now() - timedelta(days=i)).date(),
+					'volume': 1000 + i * 100,
+					'market_value': 10000 + i * 1000
+				}
+				for i in range(days, 0, -1)
+			]
+		except Exception as e:
+			raise RepositoryError(f"获取持仓趋势失败: {str(e)}")
+
+	async def export_positions (
+			self,
+			account_id: Optional[str] = None,
+			format_type: str = 'csv'
+	) -> str:
+		"""
+		导出持仓数据
+
+		Args:
+			account_id: 账户ID筛选
+			format_type: 导出格式（csv/json）
+
+		Returns:
+			导出文件路径或内容
+		"""
+		try:
+			# 获取持仓数据，后续实现时会使用
+			_ = await self.get_account_positions(account_id) if account_id else await self.get_all()
+
+			# 这里简化处理，实际需要生成输出文件
+			return f"positions_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type}"
+		except Exception as e:
+			raise RepositoryError(f"导出持仓数据失败: {str(e)}")
+
+	@staticmethod
+	async def validate_position_data (position_data: Dict[str, Any]) -> Dict[str, Any]:
+		"""
+		验证持仓数据有效性
+
+		Args:
+			position_data: 持仓数据
+
+		Returns:
+			验证结果
+		"""
+		try:
+			# 基本数据验证
+			if 'volume' in position_data and position_data['volume'] < 0:
+				return {'valid': False, 'error': '持仓量不能为负数'}
+
+			if 'available_volume' in position_data and position_data['available_volume'] < 0:
+				return {'valid': False, 'error': '可用持仓量不能为负数'}
+
+			if 'frozen_volume' in position_data and position_data['frozen_volume'] < 0:
+				return {'valid': False, 'error': '冻结持仓量不能为负数'}
+
+			# 验证数量一致性
+			if all(key in position_data for key in ['volume', 'available_volume', 'frozen_volume']):
+				if position_data['volume'] != position_data['available_volume'] + position_data['frozen_volume']:
+					return {'valid': False, 'error': '总持仓量不等于可用量加冻结量'}
+
+			return {'valid': True, 'error': None}
+		except Exception as e:
+			return {'valid': False, 'error': f"数据验证失败: {str(e)}"}

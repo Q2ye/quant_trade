@@ -4,19 +4,19 @@
 支持Redis、RabbitMQ、Kafka等消息中间件
 """
 
-import asyncio
-import json
-from typing import Any, Dict, Optional, Type
+import logging
+from typing import Any, Dict, Optional
+
+import aio_pika
+from kafka import KafkaProducer as SyncKafkaProducer
+from kafka.errors import KafkaError
+from redis.asyncio import Redis
+
 from .base import (
 	MessageProducer, Message, MessageHeaders, MessageMetadata,
 	MessagePriority, MessageSerializer
 )
 from .serializer import JSONSerializer, serialize_message
-from redis.asyncio import Redis
-import aio_pika
-from kafka import KafkaProducer as SyncKafkaProducer
-from kafka.errors import KafkaError
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +91,10 @@ class RedisProducer(MessageProducer):
 		# 发布到Redis
 		if kwargs.get('pattern', 'queue') == 'pubsub':
 			# 发布/订阅模式
-			await self.redis_pool.publish(queue_name, serialized.decode() if isinstance(serialized, bytes) else serialized)
+			await self.redis_pool.publish(queue_name, serialized)
 		else:
 			# 列表/队列模式
-			await self.redis_pool.lpush(queue_name, serialized.decode() if isinstance(serialized, bytes) else serialized)
+			await self.redis_pool.lpush(queue_name, serialized)
 
 		logger.debug(f"Published message to Redis queue {queue_name}: {message_headers.message_id}")
 		return message_headers.message_id
@@ -253,9 +253,12 @@ class RabbitMQProducer(MessageProducer):
 		serialized = await serialize_message(msg, self.serializer)
 
 		# 声明交换机和队列
+		exchange_type = kwargs.get('exchange_type', 'direct').upper()
+		# 使用 getattr 来获取枚举值
+		exchange_type_enum = getattr(aio_pika.ExchangeType, exchange_type, aio_pika.ExchangeType.DIRECT)
 		exchange_obj = await self.channel.declare_exchange(
 			exchange,
-			aio_pika.ExchangeType[kwargs.get('exchange_type', 'DIRECT').upper()],
+			exchange_type_enum,
 			durable=True
 		)
 
@@ -352,7 +355,7 @@ class KafkaProducer(MessageProducer):
 
 		try:
 			# 等待发送结果
-			result = future.get(timeout=kwargs.get('timeout', 10))
+			future.get(timeout=kwargs.get('timeout', 10))
 			logger.debug(f"Published message to Kafka topic {queue_name}: {message_headers.message_id}")
 			return message_headers.message_id
 		except KafkaError as e:

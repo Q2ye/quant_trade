@@ -9,15 +9,15 @@
 4. 类型安全：提供类型提示
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union, TypeVar, Generic
-from functools import wraps
 import inspect
 import logging
+from abc import ABC, abstractmethod
+from datetime import datetime
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
-from .base import BaseEvent, EventMetadata
-from .types import EventPriority, EventStatus
+from .base import BaseEvent
+from .types import EventPriority
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseEvent)
@@ -209,6 +209,14 @@ class EventHandler(ABC):
 		return f"EventHandler(name={self.name}, id={self.handler_id}, priority={self.priority})"
 
 
+class ConcreteEventHandler(EventHandler):
+	"""
+	具体的事件处理器实现
+	用于直接实例化的事件处理器
+	"""
+	pass
+
+
 class DecoratedEventHandler(EventHandler):
 	"""
 	装饰器创建的事件处理器
@@ -233,13 +241,13 @@ class DecoratedEventHandler(EventHandler):
 			# 创建处理器
 			handler = cls(func, priority=priority, **kwargs)
 			# 存储处理器信息，用于后续注册
-			if not hasattr(func, '_event_handlers'):
-				func._event_handlers = []
-			func._event_handlers.append((event_type, handler))
+			if not hasattr(func, 'event_handlers'):
+				func.event_handlers = []
+			func.event_handlers.append((event_type, handler))
 
 			@wraps(func)
-			def wrapper (*args, **kwargs):
-				return func(*args, **kwargs)
+			def wrapper (*args, **wrapper_kwargs):
+				return func(*args, **wrapper_kwargs)
 
 			return wrapper
 
@@ -487,22 +495,22 @@ def event_handler (
 	"""
 
 	def decorator (func):
-		handler = EventHandler(
-			func=func,
-			name=name,
-			priority=priority,
-			enabled=enabled,
-			timeout=timeout,
-		)
+		handler = ConcreteEventHandler(
+		func=func,
+		name=name,
+		priority=priority,
+		enabled=enabled,
+		timeout=timeout,
+	)
 
 		# 存储处理器信息
-		if not hasattr(func, '_event_handlers'):
-			func._event_handlers = []
-		func._event_handlers.append((event_type, handler))
+		if not hasattr(func, 'event_handlers'):
+			func.event_handlers = []
+		func.event_handlers.append((event_type, handler))
 
 		@wraps(func)
-		def wrapper (*args, **kwargs):
-			return func(*args, **kwargs)
+		def wrapper (*args, **wrapper_kwargs):
+			return func(*args, **wrapper_kwargs)
 
 		return wrapper
 
@@ -534,22 +542,22 @@ def async_event_handler (
 		if not inspect.iscoroutinefunction(func):
 			raise TypeError(f"函数 {func.__name__} 必须是异步函数")
 
-		handler = EventHandler(
-			func=func,
-			name=name,
-			priority=priority,
-			enabled=enabled,
-			timeout=timeout,
-		)
+		handler = ConcreteEventHandler(
+		func=func,
+		name=name,
+		priority=priority,
+		enabled=enabled,
+		timeout=timeout,
+	)
 
 		# 存储处理器信息
-		if not hasattr(func, '_event_handlers'):
-			func._event_handlers = []
-		func._event_handlers.append((event_type, handler))
+		if not hasattr(func, 'event_handlers'):
+			func.event_handlers = []
+		func.event_handlers.append((event_type, handler))
 
 		@wraps(func)
-		async def wrapper (*args, **kwargs):
-			return await func(*args, **kwargs)
+		async def wrapper (*args, **wrapper_kwargs):
+			return await func(*args, **wrapper_kwargs)
 
 		return wrapper
 

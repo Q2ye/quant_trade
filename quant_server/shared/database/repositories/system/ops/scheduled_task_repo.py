@@ -5,18 +5,17 @@
 处理系统定时任务的数据访问，支持任务调度、执行记录管理等功能
 """
 
-from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Dict, Any, List, Optional
+
+from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, text, Integer
-from sqlalchemy.dialects.postgresql import JSONB
 
 from quant_server.shared.database.models import ScheduledTask
 from quant_server.shared.database.repositories.base import BaseRepository, PaginationParams, PaginationResult
 from quant_server.shared.database.repositories.types import (
-	FilterCondition, SortCondition, QueryParams, TimeRange,
-	FilterOperator, CacheConfig, CacheStrategy
+	CacheConfig, CacheStrategy
 )
 
 
@@ -183,7 +182,12 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 			是否成功
 		"""
 		try:
-			update_data = {
+			# 获取任务对象以检查任务类型
+			task = await self.get(task_id)
+			if not task:
+				return False
+
+			update_data: Dict[str, Any] = {
 				"last_run_at": datetime.now(),
 				"last_run_result": status.value,
 				"updated_at": datetime.now()
@@ -191,6 +195,15 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 
 			if run_duration is not None:
 				update_data["last_run_duration"] = run_duration
+
+			# 存储错误信息到task_config
+			if error_message and status in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+				# 获取当前task_config
+				task_config = task.task_config or {}
+				# 更新错误信息
+				task_config["last_error_message"] = error_message
+				task_config["last_error_time"] = datetime.now().isoformat()
+				update_data["task_config"] = task_config
 
 			# 更新统计信息
 			if status == TaskStatus.SUCCESS:
@@ -201,7 +214,7 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 			update_data["total_runs"] = ScheduledTask.total_runs + 1
 
 			# 如果是手动任务，重置激活状态
-			if status == TaskStatus.SUCCESS and self.task_type == TaskType.MANUAL:
+			if status == TaskStatus.SUCCESS and task.task_type == TaskType.MANUAL.value:
 				update_data["is_active"] = False
 
 			await self.update(task_id, update_data)
@@ -275,7 +288,6 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 		try:
 			update_data = {
 				"is_active": False,
-				"next_run_at": None,
 				"updated_at": datetime.now()
 			}
 
@@ -286,80 +298,98 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 			await self.session.rollback()
 			raise self._create_repository_error(f"停用任务失败: {str(e)}")
 
-	async def get_task_statistics (self, time_range: Optional[TimeRange] = None) -> Dict[str, Any]:
+	async def get_task_statistics (self) -> Dict[str, Any]:
 		"""
 		获取任务统计信息
 
-		Args:
-			time_range: 时间范围（可选）
-
 		Returns:
-			统计信息字典
+			任务统计信息
 		"""
 		try:
-			# 基础查询
-			query = select(
-				func.count().label("total_tasks"),
-				func.sum(func.cast(ScheduledTask.is_active, Integer)).label("active_tasks"),
-				func.sum(ScheduledTask.total_runs).label("total_runs"),
-				func.sum(ScheduledTask.success_runs).label("total_success"),
-				func.sum(ScheduledTask.failed_runs).label("total_failed"),
-				func.avg(ScheduledTask.last_run_duration).label("avg_duration")
-			).where(ScheduledTask.is_deleted == False)
+			# 总任务数
+			total_query = select(func.count()).select_from(ScheduledTask).where(
+				ScheduledTask.is_deleted == False
+			)
+			total_result = await self.session.execute(total_query)
+			total = total_result.scalar() or 0
 
-			# 应用时间范围过滤
-			if time_range:
-				query = query.where(
-					and_(
-						ScheduledTask.last_run_at >= time_range.start,
-						ScheduledTask.last_run_at <= time_range.end
-					)
+			# 激活任务数
+			active_query = select(func.count()).select_from(ScheduledTask).where(
+				and_(
+					ScheduledTask.is_active == True,
+					ScheduledTask.is_deleted == False
 				)
-
-			result = await self.session.execute(query)
-			stats = result.first()
+			)
+			active_result = await self.session.execute(active_query)
+			active = active_result.scalar() or 0
 
 			# 按模块统计
 			module_query = select(
 				ScheduledTask.task_module,
-				func.count().label("count"),
-				func.sum(func.cast(ScheduledTask.is_active, Integer)).label("active_count")
-			).where(ScheduledTask.is_deleted == False).group_by(ScheduledTask.task_module)
-
+				func.count().label("count")
+			).where(
+				ScheduledTask.is_deleted == False
+			).group_by(
+				ScheduledTask.task_module
+			)
 			module_result = await self.session.execute(module_query)
-			module_stats = {row.task_module: {"total": row.count, "active": row.active_count}
-			                for row in module_result}
+			by_module = {}
+			for row in module_result:
+				by_module[row.task_module] = row.count
 
-			# 按任务类型统计
+			# 按类型统计
 			type_query = select(
 				ScheduledTask.task_type,
 				func.count().label("count")
-			).where(ScheduledTask.is_deleted == False).group_by(ScheduledTask.task_type)
-
+			).where(
+				ScheduledTask.is_deleted == False
+			).group_by(
+				ScheduledTask.task_type
+			)
 			type_result = await self.session.execute(type_query)
-			type_stats = {row.task_type: row.count for row in type_result}
-
-			# 成功率计算
-			total_runs = stats.total_runs or 0
-			total_success = stats.total_success or 0
-			success_rate = (total_success / total_runs * 100) if total_runs > 0 else 0
+			by_type = {}
+			for row in type_result:
+				by_type[row.task_type] = row.count
 
 			return {
-				"total_tasks": stats.total_tasks or 0,
-				"active_tasks": stats.active_tasks or 0,
-				"inactive_tasks": (stats.total_tasks or 0) - (stats.active_tasks or 0),
-				"total_runs": total_runs,
-				"total_success": total_success,
-				"total_failed": stats.total_failed or 0,
-				"success_rate": round(success_rate, 2),
-				"avg_duration": round(stats.avg_duration or 0, 2),
-				"by_module": module_stats,
-				"by_type": type_stats,
-				"time_range": time_range.to_dict() if time_range else None
+				"total": total,
+				"active": active,
+				"inactive": total - active,
+				"by_module": by_module,
+				"by_type": by_type
 			}
-
 		except Exception as e:
 			raise self._create_repository_error(f"获取任务统计失败: {str(e)}")
+
+	async def get_recent_task_results (
+			self,
+			days: int = 7,
+			limit: int = 100
+	) -> List[ScheduledTask]:
+		"""
+		获取最近的任务执行结果
+
+		Args:
+			days: 天数
+			limit: 限制数量
+
+		Returns:
+			任务列表
+		"""
+		try:
+			cutoff_date = datetime.now() - timedelta(days=days)
+
+			query = select(ScheduledTask).where(
+				and_(
+					ScheduledTask.is_deleted == False,
+					ScheduledTask.last_run_at >= cutoff_date
+				)
+			).order_by(ScheduledTask.last_run_at.desc()).limit(limit)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise self._create_repository_error(f"获取任务执行结果失败: {str(e)}")
 
 	async def get_failed_tasks (
 			self,
@@ -367,10 +397,10 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 			limit: int = 50
 	) -> List[ScheduledTask]:
 		"""
-		获取最近失败的任务
+		获取失败的任务
 
 		Args:
-			days: 最近天数
+			days: 天数
 			limit: 限制数量
 
 		Returns:
@@ -493,6 +523,7 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 			)
 
 			result = await self.session.execute(query)
+			await self.session.commit()
 			return result.rowcount or 0
 
 		except Exception as e:
@@ -519,14 +550,16 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 				)
 			)
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type: ignore
+			await self.session.commit()
 			return result.rowcount or 0
 
 		except Exception as e:
 			await self.session.rollback()
 			raise self._create_repository_error(f"清理旧任务失败: {str(e)}")
 
-	def _create_repository_error (self, message: str) -> Exception:
+	@staticmethod
+	def _create_repository_error (message: str) -> Exception:
 		"""创建Repository异常"""
 		from quant_server.shared.database.repositories.base import RepositoryError
 		return RepositoryError(f"[ScheduledTaskRepository] {message}")

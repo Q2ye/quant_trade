@@ -273,7 +273,7 @@ class AccountHandler:
 
 
 # 导出函数供router使用
-async def get_account_list (session: AsyncSession, request, user_id: int):
+async def get_account_list (session: AsyncSession, request, user_id: str):
 	handler = AccountHandler(session)
 	from .schemas import AccountFilter
 
@@ -296,7 +296,7 @@ async def get_account_list (session: AsyncSession, request, user_id: int):
 	}
 
 
-async def get_account_detail (session: AsyncSession, account_id: str, _user_id: int):
+async def get_account_detail (session: AsyncSession, account_id: str, _user_id: str):
 	handler = AccountHandler(session)
 	account = await handler.get_account_by_id(account_id)
 	if not account:
@@ -304,13 +304,13 @@ async def get_account_detail (session: AsyncSession, account_id: str, _user_id: 
 	return {"success": True, "data": account.model_dump()}
 
 
-async def create_account (session: AsyncSession, request, _user_id: int):
+async def create_account (session: AsyncSession, request, _user_id: str):
 	handler = AccountHandler(session)
 	account = await handler.create_account(request)
 	return {"success": True, "data": account.model_dump()}
 
 
-async def update_account (session: AsyncSession, account_id: str, request, _user_id: int):
+async def update_account (session: AsyncSession, account_id: str, request, _user_id: str):
 	handler = AccountHandler(session)
 	account = await handler.update_account(account_id, request)
 	if not account:
@@ -318,13 +318,13 @@ async def update_account (session: AsyncSession, account_id: str, request, _user
 	return {"success": True, "data": account.model_dump()}
 
 
-async def delete_account (session: AsyncSession, account_id: str, _user_id: int):
+async def delete_account (session: AsyncSession, account_id: str, _user_id: str):
 	handler = AccountHandler(session)
 	success = await handler.delete_account(account_id)
 	return success
 
 
-async def get_account_balance (session: AsyncSession, account_id: str, _user_id: int):
+async def get_account_balance (session: AsyncSession, account_id: str, _user_id: str):
 	handler = AccountHandler(session)
 	balance = await handler.get_account_balance(account_id)
 	if not balance:
@@ -332,7 +332,7 @@ async def get_account_balance (session: AsyncSession, account_id: str, _user_id:
 	return {"success": True, "data": balance.model_dump()}
 
 
-async def get_account_positions (session: AsyncSession, account_id: str, request, _user_id: int):
+async def get_account_positions (session: AsyncSession, account_id: str, request, _user_id: str):
 	handler = AccountHandler(session)
 
 	# 使用配置化的分页参数
@@ -354,7 +354,7 @@ async def get_account_positions (session: AsyncSession, account_id: str, request
 	}
 
 
-async def get_account_summary (session: AsyncSession, account_id: str, _user_id: int):
+async def get_account_summary (session: AsyncSession, account_id: str, _user_id: str):
 	handler = AccountHandler(session)
 	summary = await handler.get_account_summary(account_id)
 	if not summary:
@@ -362,7 +362,7 @@ async def get_account_summary (session: AsyncSession, account_id: str, _user_id:
 	return {"success": True, "data": summary.model_dump()}
 
 
-async def deposit_to_account (session: AsyncSession, account_id: str, request, _user_id: int):
+async def deposit_to_account (session: AsyncSession, account_id: str, request, _user_id: str):
 	handler = AccountHandler(session)
 	result = await handler.deposit(account_id, request.amount)
 	if not result:
@@ -370,7 +370,7 @@ async def deposit_to_account (session: AsyncSession, account_id: str, request, _
 	return {"success": True, "data": result.model_dump()}
 
 
-async def withdraw_from_account (session: AsyncSession, account_id: str, request, _user_id: int):
+async def withdraw_from_account (session: AsyncSession, account_id: str, request, _user_id: str):
 	handler = AccountHandler(session)
 	result = await handler.withdraw(account_id, request.amount)
 	if not result:
@@ -378,7 +378,7 @@ async def withdraw_from_account (session: AsyncSession, account_id: str, request
 	return {"success": True, "data": result.model_dump()}
 
 
-async def get_user_accounts (session: AsyncSession, user_id: str, _request, _current_user_id: int):
+async def get_user_accounts (session: AsyncSession, user_id: str, _request, _current_user_id: str):
 	handler = AccountHandler(session)
 	accounts = await handler.get_user_accounts(user_id)
 	return {
@@ -388,7 +388,7 @@ async def get_user_accounts (session: AsyncSession, user_id: str, _request, _cur
 	}
 
 
-async def get_position_detail (session: AsyncSession, account_id: str, ts_code: str, _user_id: int):
+async def get_position_detail (session: AsyncSession, account_id: str, ts_code: str, _user_id: str):
 	handler = AccountHandler(session)
 	position = await handler.get_position_detail(account_id, ts_code)
 	if not position:

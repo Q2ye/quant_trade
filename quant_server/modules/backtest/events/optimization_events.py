@@ -43,21 +43,22 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 			**kwargs
 	):
 		super().__init__(
-				module="events",
-				event_type=BacktestEventTypes.OPTIMIZATION_START.value,
-				priority=EventPriority.NORMAL,
-				source="optimization_engine",
-				**kwargs
-			)
+			module="events",
+			event_type=BacktestEventTypes.OPTIMIZATION_START.value,
+			priority=EventPriority.NORMAL,
+			source="optimization_engine",
+			**kwargs
+		)
 
 		if optimization_config is None:
 			optimization_config = {}
 
 		# 计算参数组合总数
-		total_combinations = self._calculate_total_combinations(parameter_space)
+		total_combinations = BacktestOptimizationStartedEvent._calculate_total_combinations(parameter_space)
 
 		# 估计优化时间
-		estimated_time = self._estimate_optimization_time(total_combinations, algorithm, optimization_config)
+		estimated_time = BacktestOptimizationStartedEvent._estimate_optimization_time(total_combinations, algorithm,
+		                                                                              optimization_config)
 
 		self.data = {
 			"optimization_id": optimization_id,
@@ -69,19 +70,23 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 			"optimization_config": optimization_config,
 			"start_time": datetime.now().isoformat(),
 			"estimated_duration": estimated_time,
-			"optimization_goals": self._define_optimization_goals(optimization_type, optimization_config),
-			"resource_requirements": self._calculate_resource_requirements(total_combinations, algorithm),
-			"constraints": self._define_constraints(parameter_space, optimization_config)
+			"optimization_goals": BacktestOptimizationStartedEvent._define_optimization_goals(optimization_type,
+			                                                                                  optimization_config),
+			"resource_requirements": BacktestOptimizationStartedEvent._calculate_resource_requirements(
+				total_combinations, algorithm),
+			"constraints": BacktestOptimizationStartedEvent._define_constraints(parameter_space, optimization_config)
 		}
 
-	def _calculate_total_combinations (self, parameter_space: Dict[str, List[Any]]) -> int:
+	@staticmethod
+	def _calculate_total_combinations (parameter_space: Dict[str, List[Any]]) -> int:
 		"""计算参数组合总数"""
 		total = 1
 		for param_name, values in parameter_space.items():
 			total *= len(values)
 		return total
 
-	def _estimate_optimization_time (self, total_combinations: int, algorithm: str, config: Dict[str, Any]) -> Dict[
+	@staticmethod
+	def _estimate_optimization_time (total_combinations: int, algorithm: str, config: Dict[str, Any]) -> Dict[
 		str, Any]:
 		"""估计优化时间"""
 		# 基础回测时间（分钟）
@@ -126,7 +131,8 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 			"algorithm_efficiency": algorithm_efficiency
 		}
 
-	def _define_optimization_goals (self, optimization_type: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _define_optimization_goals (optimization_type: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""定义优化目标"""
 		default_goals = [
 			{
@@ -190,7 +196,8 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 
 		return default_goals
 
-	def _calculate_resource_requirements (self, total_combinations: int, algorithm: str) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_resource_requirements (total_combinations: int, algorithm: str) -> Dict[str, Any]:
 		"""计算资源需求"""
 		# 基础资源需求
 		base_resources = {
@@ -214,7 +221,8 @@ class BacktestOptimizationStartedEvent(BaseEvent):
 
 		return resources
 
-	def _define_constraints (self, parameter_space: Dict[str, List[Any]], config: Dict[str, Any]) -> List[
+	@staticmethod
+	def _define_constraints (parameter_space: Dict[str, List[Any]], config: Dict[str, Any]) -> List[
 		Dict[str, Any]]:
 		"""定义约束条件"""
 		constraints = []
@@ -309,10 +317,12 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			intermediate_results = []
 
 		# 计算进度统计
-		progress_stats = self._calculate_progress_stats(completed_tests, total_tests, progress)
+		progress_stats = BacktestOptimizationProgressEvent._calculate_progress_stats(completed_tests, total_tests,
+		                                                                             progress)
 
 		# 分析优化趋势
-		optimization_trend = self._analyze_optimization_trend(intermediate_results, current_best)
+		optimization_trend = BacktestOptimizationProgressEvent._analyze_optimization_trend(intermediate_results,
+		                                                                                   current_best)
 
 		self.data = {
 			"optimization_id": optimization_id,
@@ -325,26 +335,110 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			"timestamp": datetime.now().isoformat(),
 			"progress_stats": progress_stats,
 			"optimization_trend": optimization_trend,
-			"convergence_analysis": self._analyze_convergence(progress, intermediate_results, algorithm_state),
-			"resource_usage": self._monitor_resource_usage(completed_tests, total_tests)
+			"convergence_analysis": BacktestOptimizationProgressEvent._analyze_convergence(progress,
+			                                                                               intermediate_results,
+			                                                                               algorithm_state),
+			"resource_usage": BacktestOptimizationProgressEvent._monitor_resource_usage(completed_tests, total_tests)
 		}
 
-	def _calculate_progress_stats (self, completed: int, total: int, progress: float) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_progress_stats (completed: int, total: int, progress: float) -> Dict[str, Any]:
 		"""计算进度统计"""
-		stats = {
-			"completion_rate": (completed / total * 100) if total > 0 else 0,
-			"tests_per_minute": 0,
-			"estimated_remaining_tests": total - completed,
-			"efficiency_score": 0,
-			"progress_percentage": progress * 100
-		}
+		from datetime import datetime, timedelta
 
-		# 计算测试速度（需要时间信息，这里使用估计值）
-		# 在实际实现中，应该记录开始时间和已用时间
+		# 获取当前时间作为基准
+		current_time = datetime.now()
+
+		# 计算完成率
+		completion_rate = (completed / total * 100) if total > 0 else 0
+
+		# 估计剩余时间（基于平均测试时间）
+		# 在实际实现中，应该从优化引擎获取实际测试时间
+		average_test_time_seconds = 60  # 假设每个测试平均60秒
+		estimated_remaining_seconds = (total - completed) * average_test_time_seconds
+
+		# 计算测试速度
+		tests_per_minute = completed / (progress * 100 * 60) if progress > 0 else 0
+
+		# 计算效率评分（基于完成率和进度的一致性）
+		efficiency_score = 0.0
+		if total > 0:
+			# 理想情况下，完成率应该等于进度百分比
+			consistency = 1 - abs(completion_rate - progress * 100) / 100
+			efficiency_score = max(0.0, min(100.0, consistency * 100))
+
+		stats = {
+			"completion_rate": round(completion_rate, 2),
+			"tests_per_minute": round(tests_per_minute, 2),
+			"estimated_remaining_tests": total - completed,
+			"estimated_remaining_time_seconds": round(estimated_remaining_seconds),
+			"estimated_completion_time": (current_time + timedelta(seconds=estimated_remaining_seconds)).isoformat(),
+			"efficiency_score": round(efficiency_score, 1),
+			"progress_percentage": round(progress * 100, 2),
+			"current_phase": BacktestOptimizationProgressEvent._determine_optimization_phase(progress),
+			"bottleneck_analysis": BacktestOptimizationProgressEvent._analyze_bottlenecks(completed, total, progress)
+		}
 
 		return stats
 
-	def _analyze_optimization_trend (self, results: List[Dict[str, Any]], current_best: Dict[str, Any]) -> Dict[
+	@staticmethod
+	def _determine_optimization_phase (progress: float) -> str:
+		"""确定优化阶段"""
+		if progress < 0.1:
+			return "initialization"
+		elif progress < 0.3:
+			return "exploration"
+		elif progress < 0.7:
+			return "exploitation"
+		elif progress < 0.9:
+			return "refinement"
+		else:
+			return "finalization"
+
+	@staticmethod
+	def _analyze_bottlenecks (completed: int, total: int, progress: float) -> Dict[str, Any]:
+		"""分析瓶颈"""
+		bottlenecks = {
+			"has_bottleneck": False,
+			"bottleneck_type": "none",
+			"suggestions": []
+		}
+
+		# 检测进度停滞
+		if progress > 0.3 and completed < total * 0.1:
+			bottlenecks["has_bottleneck"] = True
+			bottlenecks["bottleneck_type"] = "slow_progress"
+			bottlenecks["suggestions"].append("考虑增加并行度或优化算法参数")
+
+		# 检测资源瓶颈（基于测试数量）
+		if total > 1000 and completed < 100:
+			bottlenecks["has_bottleneck"] = True
+			bottlenecks["bottleneck_type"] = "resource_limited"
+			bottlenecks["suggestions"].append("可能需要更多计算资源或优化算法选择")
+
+		return bottlenecks
+
+	@staticmethod
+	def _calculate_resource_health_score (memory_usage: float, disk_usage: float, cpu_usage: float) -> float:
+		"""计算资源健康评分"""
+		# 健康评分基于资源使用率的加权平均
+		# 使用率越低，评分越高
+
+		# 权重分配：内存40%，磁盘30%，CPU30%
+		memory_score = max(0.0, 100.0 - memory_usage)
+		disk_score = max(0.0, 100.0 - disk_usage)
+		cpu_score = max(0.0, 100.0 - cpu_usage)
+
+		health_score = (memory_score * 0.4 + disk_score * 0.3 + cpu_score * 0.3)
+
+		# 如果任何资源使用率超过90%，健康评分大幅降低
+		if memory_usage > 90 or disk_usage > 90 or cpu_usage > 90:
+			health_score *= 0.5
+
+		return round(health_score, 1)
+
+	@staticmethod
+	def _analyze_optimization_trend (results: List[Dict[str, Any]], current_best: Dict[str, Any]) -> Dict[
 		str, Any]:
 		"""分析优化趋势"""
 		if len(results) < 3:
@@ -380,7 +474,7 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			else:
 				trend = "stable"
 				confidence = 0.5
-		except Exception as e:
+		except (ValueError, TypeError, AttributeError, ImportError) as e:
 			trend = "unknown"
 			confidence = 0
 
@@ -389,10 +483,11 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 			"confidence": round(confidence, 3),
 			"sharpe_trend": sharpe_trend if 'sharpe_trend' in locals() else 0,
 			"return_trend": return_trend if 'return_trend' in locals() else 0,
-			"recent_improvement": self._calculate_recent_improvement(results)
+			"recent_improvement": BacktestOptimizationProgressEvent._calculate_recent_improvement(results)
 		}
 
-	def _calculate_recent_improvement (self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_recent_improvement (results: List[Dict[str, Any]]) -> Dict[str, Any]:
 		"""计算近期改进"""
 		if len(results) < 5:
 			return {"improvement": 0, "period": "insufficient_data"}
@@ -413,7 +508,8 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 
 		return {"improvement": 0, "period": "no_data"}
 
-	def _analyze_convergence (self, progress: float, results: List[Dict[str, Any]], algorithm_state: Dict[str, Any]) -> \
+	@staticmethod
+	def _analyze_convergence (progress: float, results: List[Dict[str, Any]], algorithm_state: Dict[str, Any]) -> \
 			Dict[str, Any]:
 		"""分析收敛性"""
 		convergence = {
@@ -465,20 +561,74 @@ class BacktestOptimizationProgressEvent(BaseEvent):
 
 		return convergence
 
-	def _monitor_resource_usage (self, completed: int, total: int) -> Dict[str, Any]:
+	@staticmethod
+	def _monitor_resource_usage (completed: int, total: int) -> Dict[str, Any]:
 		"""监控资源使用"""
-		# 在实际实现中，应该从系统监控获取实时数据
-		# 这里返回估计值
+		import psutil
+		import os
 
+		# 获取系统资源使用情况
+		memory_info = psutil.virtual_memory()
+		disk_info = psutil.disk_usage('/')
+		cpu_percent = psutil.cpu_percent(interval=1)
+
+		# 获取当前进程的资源使用
+		process = psutil.Process(os.getpid())
+		process_memory_mb = process.memory_info().rss / 1024 / 1024
+		process_cpu_percent = process.cpu_percent()
+
+		# 计算资源使用趋势
+		memory_usage_percent = memory_info.percent
+		disk_usage_percent = (disk_info.used / disk_info.total) * 100
+
+		# 估计优化任务的内存使用
 		estimated_memory_mb = 1024 + (completed * 0.1)  # 基础1GB + 每个测试0.1MB
 		estimated_disk_gb = 1 + (completed * 0.001)  # 基础1GB + 每个测试1MB
 
+		# 分析资源瓶颈
+		resource_bottlenecks = []
+		if memory_usage_percent > 80:
+			resource_bottlenecks.append("内存使用率过高")
+		if disk_usage_percent > 85:
+			resource_bottlenecks.append("磁盘空间不足")
+		if cpu_percent > 90:
+			resource_bottlenecks.append("CPU负载过高")
+
+		# 生成优化建议
+		suggestions = []
+		if memory_usage_percent > 70:
+			suggestions.append("考虑增加内存或优化内存使用")
+		if disk_usage_percent > 80:
+			suggestions.append("建议清理临时文件或增加磁盘空间")
+		if completed > total * 0.5:
+			suggestions.append("完成一半后建议清理中间结果以释放资源")
+
 		return {
-			"estimated_memory_mb": round(estimated_memory_mb, 1),
-			"estimated_disk_gb": round(estimated_disk_gb, 3),
-			"memory_warning": estimated_memory_mb > 8192,  # 超过8GB警告
-			"disk_warning": estimated_disk_gb > 10,  # 超过10GB警告
-			"suggested_cleanup": completed > total * 0.5  # 完成一半后建议清理
+			"system_resources": {
+				"memory_usage_percent": round(memory_usage_percent, 1),
+				"memory_available_gb": round(memory_info.available / 1024 / 1024 / 1024, 1),
+				"disk_usage_percent": round(disk_usage_percent, 1),
+				"disk_available_gb": round(disk_info.free / 1024 / 1024 / 1024, 1),
+				"cpu_usage_percent": round(cpu_percent, 1)
+			},
+			"process_resources": {
+				"memory_usage_mb": round(process_memory_mb, 1),
+				"cpu_usage_percent": round(process_cpu_percent, 1)
+			},
+			"estimated_requirements": {
+				"memory_mb": round(estimated_memory_mb, 1),
+				"disk_gb": round(estimated_disk_gb, 3)
+			},
+			"warnings": {
+				"memory_warning": memory_usage_percent > 80,
+				"disk_warning": disk_usage_percent > 85,
+				"cpu_warning": cpu_percent > 90
+			},
+			"resource_bottlenecks": resource_bottlenecks,
+			"suggestions": suggestions,
+			"health_score": BacktestOptimizationProgressEvent._calculate_resource_health_score(
+				memory_usage_percent, disk_usage_percent, cpu_percent
+			)
 		}
 
 
@@ -510,12 +660,12 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 			**kwargs
 	):
 		super().__init__(
-				module="events",
-				event_type=BacktestEventTypes.OPTIMIZATION_COMPLETE.value,
-				priority=EventPriority.NORMAL,
-				source="optimization_engine",
-				**kwargs
-			)
+			module="events",
+			event_type=BacktestEventTypes.OPTIMIZATION_COMPLETE.value,
+			priority=EventPriority.NORMAL,
+			source="optimization_engine",
+			**kwargs
+		)
 
 		if performance_comparison is None:
 			performance_comparison = {}
@@ -523,13 +673,13 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 			validation_results = {}
 
 		# 分析优化效果
-		optimization_effectiveness = self._analyze_optimization_effectiveness(
+		optimization_effectiveness = BacktestOptimizationCompletedEvent._analyze_optimization_effectiveness(
 			optimization_results,
 			optimal_parameters
 		)
 
 		# 生成参数建议
-		parameter_recommendations = self._generate_parameter_recommendations(
+		parameter_recommendations = BacktestOptimizationCompletedEvent._generate_parameter_recommendations(
 			optimal_parameters,
 			optimization_results
 		)
@@ -545,11 +695,14 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 			"validation_results": validation_results,
 			"optimization_effectiveness": optimization_effectiveness,
 			"parameter_recommendations": parameter_recommendations,
-			"robustness_analysis": self._analyze_robustness(optimal_parameters, validation_results),
-			"implementation_guidelines": self._generate_implementation_guidelines(optimal_parameters)
+			"robustness_analysis": BacktestOptimizationCompletedEvent._analyze_robustness(optimal_parameters,
+			                                                                              validation_results),
+			"implementation_guidelines": BacktestOptimizationCompletedEvent._generate_implementation_guidelines(
+				optimal_parameters)
 		}
 
-	def _analyze_optimization_effectiveness (self, results: Dict[str, Any], optimal_params: Dict[str, Any]) -> Dict[
+	@staticmethod
+	def _analyze_optimization_effectiveness (results: Dict[str, Any], optimal_params: Dict[str, Any]) -> Dict[
 		str, Any]:
 		"""分析优化效果"""
 		effectiveness = {
@@ -622,7 +775,8 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 
 		return effectiveness
 
-	def _generate_parameter_recommendations (self, optimal_params: Dict[str, Any], results: Dict[str, Any]) -> List[
+	@staticmethod
+	def _generate_parameter_recommendations (optimal_params: Dict[str, Any], results: Dict[str, Any]) -> List[
 		Dict[str, Any]]:
 		"""生成参数建议"""
 		recommendations = []
@@ -690,7 +844,8 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 
 		return recommendations
 
-	def _analyze_robustness (self, optimal_params: Dict[str, Any], validation_results: Dict[str, Any]) -> Dict[
+	@staticmethod
+	def _analyze_robustness (optimal_params: Dict[str, Any], validation_results: Dict[str, Any]) -> Dict[
 		str, Any]:
 		"""分析稳健性"""
 		robustness = {
@@ -742,7 +897,8 @@ class BacktestOptimizationCompletedEvent(BaseEvent):
 
 		return robustness
 
-	def _generate_implementation_guidelines (self, optimal_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _generate_implementation_guidelines (optimal_params: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""生成实施指南"""
 		guidelines = []
 

@@ -5,14 +5,14 @@
 职责：管理股票复权因子数据访问，继承HyperRepositoryBase实现复权因子计算和查询
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockAdjFactor
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
 
 
 class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
@@ -89,8 +89,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[StockAdjFactor]:
 		"""
@@ -169,11 +169,11 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	async def calculate_adjusted_prices_batch (
 			self,
 			ts_code: str,
-			base_date: date,
+			base_date: datetime,
 			base_price: float,
-			target_dates: List[date],
+			target_dates: List[datetime],
 			adjust_type: str = "qfq"
-	) -> Dict[date, float]:
+	) -> Dict[datetime, float]:
 		"""
 		批量计算复权价格
 
@@ -220,10 +220,10 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	async def generate_adjusted_price_series (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			base_price: float,
-			base_date: date,
+			base_date: datetime,
 			adjust_type: str = "qfq"
 	) -> List[Dict[str, Any]]:
 		"""
@@ -284,8 +284,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	async def analyze_dividend_impact (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		分析除权除息对价格的影响
@@ -367,7 +367,7 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 					"avg_adjustment_rate": avg_adjustment,
 					"avg_interval_days": avg_interval,
 					"events_per_year": total_events / ((end_date - start_date).days / 365) if (
-								                                                                          end_date - start_date).days > 0 else 0
+							                                                                          end_date - start_date).days > 0 else 0
 				},
 				"event_details": dividend_events,
 				"factor_statistics": {
@@ -401,7 +401,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 
 		return analysis
 
-	def _classify_dividend_event (self, factor_change: float) -> str:
+	@staticmethod
+	def _classify_dividend_event (factor_change: float) -> str:
 		"""
 		分类除权除息事件类型
 
@@ -420,8 +421,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 		else:
 			return "minor_adjustment"
 
+	@staticmethod
 	def _calculate_average_daily_change (
-			self,
 			factors: List[StockAdjFactor]
 	) -> float:
 		"""
@@ -459,8 +460,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	async def check_factor_consistency (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		检查复权因子的连续性和一致性
@@ -586,8 +587,8 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			}
 		}
 
+	@staticmethod
 	def _calculate_consistency_score (
-			self,
 			missing_count: int,
 			non_decreasing_count: int,
 			outlier_count: int,
@@ -616,7 +617,7 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 		# 总分100分
 		score = 100 - missing_penalty - consistency_penalty - outlier_penalty
 
-		return max(0, min(100, score))
+		return max(0.0, min(100.0, score))
 
 	# ==================== 批量操作方法 ====================
 

@@ -8,21 +8,15 @@
 注意：这是超表Repository，继承自HyperRepositoryBase，专门处理时序数据。
 """
 
-from typing import List, Optional, Dict, Any, Union, Tuple
 from datetime import datetime, date, timedelta
-from sqlalchemy import select, func, and_, or_, desc, asc, between
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import Select
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, func, and_, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import StrategyDailyPerformance
 from quant_server.shared.database.repositories.base import RepositoryError
-from quant_server.shared.database.repositories.types import (
-	PaginationParams,
-	PaginationResult,
-	FilterCondition,
-	SortCondition
-)
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StrategyDailyPerformanceRepository(HyperRepositoryBase[StrategyDailyPerformance]):
@@ -318,11 +312,12 @@ class StrategyDailyPerformanceRepository(HyperRepositoryBase[StrategyDailyPerfor
 			删除的记录数
 		"""
 		try:
-			query = self.model.__table__.delete().where(
+			# noinspection PyNoneFunctionAssignment
+			query = delete(self.model).where(
 				self.model.trade_date < cutoff_date
 			)
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query)  # type: ignore
 			return result.rowcount or 0
 		except Exception as e:
 			raise RepositoryError(f"删除旧记录失败: {str(e)}")

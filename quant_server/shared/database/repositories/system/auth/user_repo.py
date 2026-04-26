@@ -16,6 +16,7 @@ from quant_server.shared.database.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+
 class UserRepository:
 	"""用户数据Repository - 纯数据访问"""
 
@@ -559,11 +560,13 @@ class UserRepository:
 
 	async def batch_upsert_users (
 			self,
-			users_data: List[str],
-			match_fields: List[Dict[str, Any]] = ['username']
+			users_data: List[Dict[str, Any]],
+			match_fields: Optional[List[str]] = None
 	) -> List[SysUser]:
 		"""批量插入或更新用户"""
-		return await self.user_repo.batch_upsert(users_data, match_fields)
+		if match_fields is None:
+			match_fields = ['username']
+		return await self.user_repo.batch_upsert(match_fields, users_data)
 
 	async def batch_update_user_status (
 			self,

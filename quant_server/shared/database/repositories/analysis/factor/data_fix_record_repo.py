@@ -3,18 +3,14 @@
 数据修复记录表Repository
 位置：shared/database/repositories/market/data_fix_record_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.business_models import DataFixRecord
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class DataFixRecordRepository(BaseRepository[DataFixRecord]):
@@ -66,7 +62,7 @@ class DataFixRecordRepository(BaseRepository[DataFixRecord]):
 
 	async def get_by_quality_check_id (
 			self,
-			quality_check_id: int
+			quality_check_id: str
 	) -> List[DataFixRecord]:
 		"""
 		根据质量检查ID获取修复记录

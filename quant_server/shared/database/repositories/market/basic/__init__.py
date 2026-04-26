@@ -5,28 +5,26 @@
 职责：统一导出market/basic目录下的所有Repository类
 """
 
-from .stock_repo import StockBasicRepository, RepositoryError as StockBasicError
 from .company_repo import CompanyRepository, RepositoryError as CompanyError
-from .st_list_repo import STListRepository, RepositoryError as STListError
-
 # ETF相关Repository
 from .etf_repo import (
-    EtfBasicRepository,
-    EtfIndexRepository,
-    EtfDailyRepository,
-    EtfMinuteRepository,
-    FundAdjFactorRepository,
-    ETFRepository,
-    RepositoryError as ETFError
+	EtfBasicRepository,
+	EtfIndexRepository,
+	EtfDailyRepository,
+	EtfMinuteRepository,
+	FundAdjFactorRepository,
+	ETFRepository,
+	RepositoryError as ETFError
 )
-
 # 指数相关Repository
 from .index_repo import (
-    IndexBasicRepository,
-    IndexDailyRepository,
-    IndexRepository,
-    RepositoryError as IndexError
+	IndexBasicRepository,
+	IndexDailyRepository,
+	IndexRepository,
+	RepositoryError
 )
+from .st_list_repo import STListRepository, RepositoryError as STListError
+from .stock_repo import StockBasicRepository, RepositoryError as StockBasicError
 
 __all__ = [
 	# 股票相关
@@ -54,7 +52,7 @@ __all__ = [
 	"IndexBasicRepository",
 	"IndexDailyRepository",
 	"IndexRepository",
-	"IndexError",
+	"RepositoryError",
 ]
 
 # 类型别名

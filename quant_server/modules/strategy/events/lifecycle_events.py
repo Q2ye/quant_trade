@@ -17,7 +17,7 @@ class StrategyStartedEvent(BaseEvent):
         self,
         strategy_id: str,
         strategy_name: str,
-        user_id: int,
+        user_id: str,
         initial_capital: float = 0.0,
         parameters: Optional[Dict[str, Any]] = None,
         **kwargs
@@ -46,7 +46,7 @@ class StrategyStoppedEvent(BaseEvent):
         self,
         strategy_id: str,
         strategy_name: str,
-        user_id: int,
+        user_id: str,
         reason: str = "manual",
         performance_summary: Optional[Dict[str, Any]] = None,
         **kwargs
@@ -75,7 +75,7 @@ class StrategyPausedEvent(BaseEvent):
         self,
         strategy_id: str,
         strategy_name: str,
-        user_id: int,
+        user_id: str,
         reason: str = "manual",
         **kwargs
     ):
@@ -102,7 +102,7 @@ class StrategyResumedEvent(BaseEvent):
         self,
         strategy_id: str,
         strategy_name: str,
-        user_id: int,
+        user_id: str,
         **kwargs
     ):
         super().__init__(

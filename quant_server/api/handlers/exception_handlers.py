@@ -6,14 +6,12 @@ API层异常处理器
 负责将业务异常转换为HTTP响应，处理Web-specific异常逻辑。
 """
 
-from typing import Dict, Any
 from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from fastapi.responses import JSONResponse
 
 from quant_server.core.exceptions import (
-	BaseException,
+	QuantBaseException,
 	AuthenticationException,
 	AuthorizationException,
 	ValidationException,
@@ -64,7 +62,7 @@ async def handle_http_exception (request: Request, exc: HTTPException) -> JSONRe
 	)
 
 
-async def handle_base_exception (request: Request, exc: BaseException) -> JSONResponse:
+async def handle_base_exception (request: Request, exc: QuantBaseException) -> JSONResponse:
 	"""处理基础异常"""
 	# 将业务异常转换为HTTP响应
 	return JSONResponse(
@@ -83,7 +81,7 @@ def setup_exception_handlers (app):
 	app.add_exception_handler(HTTPException, handle_http_exception)
 
 	# 处理自定义异常
-	app.add_exception_handler(BaseException, handle_base_exception)
+	app.add_exception_handler(QuantBaseException, handle_base_exception)
 
 	# 处理认证异常
 	app.add_exception_handler(AuthenticationException, lambda request, exc: JSONResponse(
@@ -123,7 +121,7 @@ def _get_error_code_for_status (status_code: int) -> str:
 	return mapping.get(status_code, "UNKNOWN_ERROR")
 
 
-def _get_http_status_for_exception (exc: BaseException) -> int:
+def _get_http_status_for_exception (exc: QuantBaseException) -> int:
 	"""根据异常类型获取HTTP状态码"""
 	if isinstance(exc, AuthenticationException):
 		return 401

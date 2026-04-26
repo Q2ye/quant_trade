@@ -121,12 +121,12 @@ class GeneticAlgorithm:
 			选择后的种群
 		"""
 		# 使用轮盘赌选择
-		total_fitness = float(sum(max(0, score) for score in fitness_scores))
+		total_fitness = float(sum(max(0.0, score) for score in fitness_scores))
 		if total_fitness == 0:
 			# 如果所有得分都是负数，随机选择
 			return random.choices(population, k=len(population))
 
-		probabilities = [float(max(0, score) / total_fitness) for score in fitness_scores]
+		probabilities = [float(max(0.0, score) / total_fitness) for score in fitness_scores]
 		selected = random.choices(population, weights=probabilities, k=len(population))
 
 		return selected

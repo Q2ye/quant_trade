@@ -60,3 +60,4 @@ quant_web/node_modules/.modules.yaml
 quant_web/stats.html
 quant_web/pnpm-lock.yaml
 .gitignore
+.vscode/private-folder-alias.json

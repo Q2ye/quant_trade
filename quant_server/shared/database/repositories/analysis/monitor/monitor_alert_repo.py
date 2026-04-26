@@ -7,10 +7,11 @@
 以及报警状态管理、时间范围查询等业务方法
 """
 
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, delete, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
 from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.business_models import MonitorAlert
@@ -150,9 +151,9 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 	async def update_alert_status (
 			self,
-			alert_id: int,
+			alert_id: str,
 			status: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			remarks: Optional[str] = None
 	) -> bool:
 		"""
@@ -171,11 +172,11 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 			update_data = {'status': status}
 
 			if status == 'acknowledged' and user_id:
-				update_data['acknowledged_by'] = user_id
-				update_data['acknowledged_at'] = datetime.now()
+				update_data['acknowledged_by'] = str(user_id)
+				update_data['acknowledged_at'] = datetime.now().isoformat()
 			elif status == 'resolved' and user_id:
-				update_data['resolved_by'] = user_id
-				update_data['resolved_at'] = datetime.now()
+				update_data['resolved_by'] = str(user_id)
+				update_data['resolved_at'] = datetime.now().isoformat()
 
 			if remarks:
 				update_data['remarks'] = remarks
@@ -186,8 +187,8 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 	async def acknowledge_alert (
 			self,
-			alert_id: int,
-			user_id: int,
+			alert_id: str,
+			user_id: str,
 			remarks: Optional[str] = None
 	) -> bool:
 		"""
@@ -205,8 +206,8 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 	async def resolve_alert (
 			self,
-			alert_id: int,
-			user_id: int,
+			alert_id: str,
+			user_id: str,
 			remarks: Optional[str] = None
 	) -> bool:
 		"""
@@ -224,7 +225,7 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 	async def mark_notification_sent (
 			self,
-			alert_id: int,
+			alert_id: str,
 			channels: Optional[List[str]] = None
 	) -> bool:
 		"""
@@ -238,7 +239,7 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 			bool: 标记是否成功
 		"""
 		try:
-			update_data = {'notification_sent': True}
+			update_data : Dict[str, Any] = {'notification_sent': True}
 
 			if channels:
 				# 更新已发送的渠道
@@ -319,8 +320,11 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 			result = await self.session.execute(query)
 
 			stats = {'critical': 0, 'warning': 0, 'info': 0}
-			for level, count in result.all():
-				stats[level] = count
+			for row in result.all():
+				level = row.alert_level
+				count = row.count
+				if level in stats:
+					stats[level] = count
 
 			return stats
 		except Exception as e:
@@ -351,13 +355,17 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 			result = await self.session.execute(query)
 
-			summary = {
+			summary : Dict[str, Any] = {
 				'total': 0,
 				'by_module': {},
 				'by_level': {'critical': 0, 'warning': 0, 'info': 0}
 			}
 
-			for module, level, count in result.all():
+			for row in result.all():
+				module = row.source_module
+				level = row.alert_level
+				count = row.count
+
 				if module not in summary['by_module']:
 					summary['by_module'][module] = {'critical': 0, 'warning': 0, 'info': 0}
 
@@ -371,7 +379,7 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 	async def get_alerts_with_delivery_logs (
 			self,
-			alert_ids: Optional[List[int]] = None,
+			alert_ids: Optional[List[str]] = None,
 			limit: int = 100
 	) -> List[MonitorAlert]:
 		"""
@@ -425,10 +433,10 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 
 			query = delete(self.model).where(and_(*conditions))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query) # type: ignore
 			await self.session.commit()
 
-			return result.rowcount or 0
+			return result.rowcount if result.rowcount is not None else 0
 		except Exception as e:
 			await self.session.rollback()
 			raise RepositoryError(f"清理旧报警失败: {str(e)}")

@@ -4,7 +4,7 @@
 策略生成的交易信号相关事件
 """
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Optional
 
 from quant_server.core.events.base import BaseEvent, EventPriority
 from quant_server.modules.strategy.events.types import SignalEventType

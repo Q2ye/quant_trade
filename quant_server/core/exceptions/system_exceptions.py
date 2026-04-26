@@ -8,12 +8,12 @@
 """
 
 from typing import Any, Dict, Optional
-from .base import BaseException
+from .base import QuantBaseException
 from .error_codes import ErrorCode
 from .types import ErrorType, ErrorSeverity
 
 
-class SystemException(BaseException):
+class SystemException(QuantBaseException):
     """系统异常基类"""
 
     def __init__(
@@ -53,7 +53,7 @@ class SystemException(BaseException):
         )
 
 
-class DatabaseException(SystemException):
+class DataBaseException(SystemException):
     """数据库异常"""
 
     def __init__(

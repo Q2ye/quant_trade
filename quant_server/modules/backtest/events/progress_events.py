@@ -74,11 +74,12 @@ class BacktestStartedEvent(BaseEvent):
 			"status": "initializing",
 			"progress": 0.0,
 			"current_step": "data_loading",
-			"resource_allocation": self._allocate_resources(total_days, backtest_config),
-			"estimated_completion": self._estimate_completion_time(total_days, backtest_config)
+			"resource_allocation": BacktestStartedEvent._allocate_resources(total_days, backtest_config),
+			"estimated_completion": BacktestStartedEvent._estimate_completion_time(total_days, backtest_config)
 		}
 
-	def _allocate_resources (self, total_days: int, config: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _allocate_resources (total_days: int, config: Dict[str, Any]) -> Dict[str, Any]:
 		"""分配回测资源"""
 		# 根据回测规模和复杂度分配资源
 		complexity = config.get("complexity", "medium")
@@ -99,7 +100,8 @@ class BacktestStartedEvent(BaseEvent):
 
 		return resources
 
-	def _estimate_completion_time (self, total_days: int, config: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _estimate_completion_time (total_days: int, config: Dict[str, Any]) -> Dict[str, Any]:
 		"""估计完成时间"""
 		# 基础时间估计（分钟）
 		base_time_per_day = 0.1  # 每天0.1分钟基础处理时间
@@ -189,11 +191,12 @@ class BacktestProgressEvent(BaseEvent):
 			"remaining_seconds": round(remaining_time, 2) if remaining_time else None,
 			"timestamp": datetime.now().isoformat(),
 			"warnings": warnings or [],
-			"checkpoint": self._create_checkpoint(current_step, progress),
-			"performance_metrics": self._calculate_performance_metrics(metrics, elapsed_seconds)
+			"checkpoint": BacktestProgressEvent._create_checkpoint(current_step, progress),
+			"performance_metrics": BacktestProgressEvent._calculate_performance_metrics(metrics, elapsed_seconds)
 		}
 
-	def _create_checkpoint (self, step: str, progress: float) -> Dict[str, Any]:
+	@staticmethod
+	def _create_checkpoint (step: str, progress: float) -> Dict[str, Any]:
 		"""创建检查点信息"""
 		checkpoints = {
 			"data_loading": {"weight": 0.1, "critical": True},
@@ -214,7 +217,8 @@ class BacktestProgressEvent(BaseEvent):
 			"completed": progress >= (checkpoint["weight"] * 100)
 		}
 
-	def _calculate_performance_metrics (self, metrics: Dict[str, Any], elapsed_seconds: float) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_performance_metrics (metrics: Dict[str, Any], elapsed_seconds: float) -> Dict[str, Any]:
 		"""计算性能指标"""
 		if not metrics:
 			return {}
@@ -293,7 +297,7 @@ class BacktestCompletedEvent(BaseEvent):
 		key_metrics = self._extract_key_metrics(performance_metrics)
 
 		# 评估回测质量
-		quality_assessment = self._assess_backtest_quality(performance_metrics, execution_summary)
+		quality_assessment = BacktestCompletedEvent._assess_backtest_quality(performance_metrics, execution_summary)
 
 		self.data = {
 			"backtest_id": backtest_id,
@@ -307,7 +311,7 @@ class BacktestCompletedEvent(BaseEvent):
 			"report_path": report_path,
 			"quality_assessment": quality_assessment,
 			"success": True,
-			"recommendations": self._generate_recommendations(key_metrics, quality_assessment)
+			"recommendations": BacktestCompletedEvent._generate_recommendations(key_metrics, quality_assessment)
 		}
 
 	def _extract_key_metrics (self, performance_metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -330,11 +334,12 @@ class BacktestCompletedEvent(BaseEvent):
 				key_metrics[metric] = performance_metrics[metric]
 
 		# 计算综合评分
-		key_metrics["composite_score"] = self._calculate_composite_score(key_metrics)
+		key_metrics["composite_score"] = BacktestCompletedEvent._calculate_composite_score(key_metrics)
 
 		return key_metrics
 
-	def _calculate_composite_score (self, metrics: Dict[str, Any]) -> float:
+	@staticmethod
+	def _calculate_composite_score (metrics: Dict[str, Any]) -> float:
 		"""计算综合评分（0-100）"""
 		score = 50  # 基础分
 
@@ -370,7 +375,8 @@ class BacktestCompletedEvent(BaseEvent):
 
 		return min(100, max(0, score))
 
-	def _assess_backtest_quality (self, metrics: Dict[str, Any], summary: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _assess_backtest_quality (metrics: Dict[str, Any], summary: Dict[str, Any]) -> Dict[str, Any]:
 		"""评估回测质量"""
 		quality = {
 			"data_quality": "good",
@@ -413,7 +419,8 @@ class BacktestCompletedEvent(BaseEvent):
 
 		return quality
 
-	def _generate_recommendations (self, key_metrics: Dict[str, Any], quality: Dict[str, Any]) -> List[str]:
+	@staticmethod
+	def _generate_recommendations (key_metrics: Dict[str, Any], quality: Dict[str, Any]) -> List[str]:
 		"""生成建议"""
 		recommendations = []
 
@@ -480,7 +487,7 @@ class BacktestFailedEvent(BaseEvent):
 		)
 
 		# 分类错误严重程度
-		severity = self._classify_error_severity(error_type, failure_stage)
+		severity = BacktestFailedEvent._classify_error_severity(error_type, failure_stage)
 
 		self.data = {
 			"backtest_id": backtest_id,
@@ -492,12 +499,13 @@ class BacktestFailedEvent(BaseEvent):
 			"retry_count": retry_count,
 			"max_retries": max_retries,
 			"failure_time": datetime.now().isoformat(),
-			"can_retry": retry_count < max_retries and self._is_retryable_error(error_type),
-			"diagnosis": self._diagnose_failure(error_type, failure_stage, error_details),
-			"recovery_steps": self._suggest_recovery_steps(error_type, failure_stage, retry_count)
+			"can_retry": retry_count < max_retries and BacktestFailedEvent._is_retryable_error(error_type),
+			"diagnosis": BacktestFailedEvent._diagnose_failure(error_type, failure_stage, error_details),
+			"recovery_steps": BacktestFailedEvent._suggest_recovery_steps(error_type, failure_stage, retry_count)
 		}
 
-	def _classify_error_severity (self, error_type: str, failure_stage: str) -> str:
+	@staticmethod
+	def _classify_error_severity (error_type: str, _failure_stage: str) -> str:
 		"""分类错误严重程度"""
 		# 定义严重错误类型
 		critical_errors = [
@@ -531,7 +539,8 @@ class BacktestFailedEvent(BaseEvent):
 		else:
 			return "unknown"
 
-	def _is_retryable_error (self, error_type: str) -> bool:
+	@staticmethod
+	def _is_retryable_error (error_type: str) -> bool:
 		"""判断错误是否可重试"""
 		non_retryable_errors = [
 			"data_corruption",
@@ -541,7 +550,8 @@ class BacktestFailedEvent(BaseEvent):
 
 		return error_type not in non_retryable_errors
 
-	def _diagnose_failure (self, error_type: str, failure_stage: str, details: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _diagnose_failure (error_type: str, failure_stage: str, details: Dict[str, Any]) -> Dict[str, Any]:
 		"""诊断失败原因"""
 		diagnosis = {
 			"probable_cause": "unknown",
@@ -576,7 +586,8 @@ class BacktestFailedEvent(BaseEvent):
 
 		return diagnosis
 
-	def _suggest_recovery_steps (self, error_type: str, failure_stage: str, retry_count: int) -> List[str]:
+	@staticmethod
+	def _suggest_recovery_steps (error_type: str, _failure_stage: str, retry_count: int) -> List[str]:
 		"""建议恢复步骤"""
 		steps = []
 

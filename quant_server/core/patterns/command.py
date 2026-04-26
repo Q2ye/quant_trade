@@ -10,12 +10,12 @@
 3. 批量任务命令
 4. 可撤销的操作（如订单修改）
 """
-
+import asyncio
+import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime
 from enum import Enum
-import uuid
+from typing import Any, Dict, List, Optional, Callable
 
 
 class CommandStatus(Enum):
@@ -269,8 +269,8 @@ class MacroCommand(Command):
 			except Exception as e:
 				# 某个子命令失败，可以决定是否继续执行
 				results.append(e)
-			# 可以选择中断或继续
-			# break
+		# 可以选择中断或继续
+		# break
 
 		return results
 

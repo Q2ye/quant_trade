@@ -1,8 +1,9 @@
 # shared/database/repositories/strategy/backtest/comparison_repo.py
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, update, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, desc
 
 from quant_server.shared.database.models.business_models import BacktestComparison
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -20,7 +21,7 @@ class BacktestComparisonRepository(BaseRepository[BacktestComparison]):
 		result = await self.session.execute(query)
 		return result.scalars().first()
 
-	async def get_user_comparisons (self, user_id: int, skip: int = 0,
+	async def get_user_comparisons (self, user_id: str, skip: int = 0,
 	                                limit: int = 50) -> List[BacktestComparison]:
 		"""获取用户创建的对比结果"""
 		query = (
@@ -106,7 +107,8 @@ class BacktestComparisonRepository(BaseRepository[BacktestComparison]):
 
 		return summary
 
-	def _extract_key_metrics (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _extract_key_metrics ( metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""提取关键绩效指标"""
 		key_metrics = {}
 
@@ -122,7 +124,9 @@ class BacktestComparisonRepository(BaseRepository[BacktestComparison]):
 
 		return key_metrics
 
-	def _identify_top_performers (self, results: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+	@staticmethod
+	def _identify_top_performers ( results: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""识别表现最好的任务"""
 		if not results or "task_results" not in results:
 			return []
@@ -161,5 +165,5 @@ class BacktestComparisonRepository(BaseRepository[BacktestComparison]):
 			.where(self.model.created_at < cutoff_date)
 		)
 
-		result = await self.session.execute(stmt)
+		result = await self.session.execute(stmt) # type: ignore
 		return result.rowcount or 0

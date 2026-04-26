@@ -11,19 +11,17 @@ BasketItemRepository - 篮子成分数据访问层
 3. 支持批量操作和权重计算
 """
 from datetime import timezone, datetime
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional, Union
+
+from sqlalchemy import select, func, and_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, asc
-from sqlalchemy.sql import Select
 
 from quant_server.shared.database.models.business_models import BasketItem
-from quant_server.shared.database.models.data_models import  StockBasic
+from quant_server.shared.database.models.data_models import StockBasic
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
-	PaginationResult,
-	FilterCondition,
-	SortCondition
+	PaginationResult
 )
 
 
@@ -40,7 +38,7 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 			self,
 			basket_id: str,
 			pagination: PaginationParams = None
-	) -> PaginationResult[Tuple[BasketItem, Optional[StockBasic]]]:
+	) -> PaginationResult[Dict[str, Any]]:
 		"""
 		获取篮子成分股及股票基本信息（连接查询）
 
@@ -371,13 +369,13 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 			await self.rollback()
 			raise RepositoryError(f"移除重复股票失败: {str(e)}")
 
-	async def export_basket_items (self, basket_id: str, format: str = 'json') -> Union[Dict, List, str]:
+	async def export_basket_items (self, basket_id: str, export_format: str = 'json') -> Union[Dict, List, str]:
 		"""
 		导出篮子成分数据
 
 		Args:
 			basket_id: 篮子ID
-			format: 导出格式（json/csv/list）
+			export_format: 导出格式（json/csv/list）
 
 		Returns:
 			格式化后的篮子数据
@@ -387,7 +385,7 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 			items_result = await self.get_items_with_stock_info(basket_id)
 			items = items_result.items
 
-			if format == 'json':
+			if export_format == 'json':
 				# JSON格式
 				export_data = []
 				for item_info in items:
@@ -417,7 +415,7 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 					"exported_at": datetime.now(timezone.utc).isoformat()
 				}
 
-			elif format == 'csv':
+			elif export_format == 'csv':
 				# CSV格式（简化版，实际使用可能需要pandas）
 				csv_lines = ["ts_code,weight,stock_name,industry"]
 				for item_info in items:
@@ -433,7 +431,7 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 
 				return "\n".join(csv_lines)
 
-			elif format == 'list':
+			elif export_format == 'list':
 				# 简单列表格式
 				simple_list = []
 				for item_info in items:

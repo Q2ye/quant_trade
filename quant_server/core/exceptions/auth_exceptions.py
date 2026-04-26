@@ -8,12 +8,12 @@
 """
 
 from typing import Any, Dict, Optional
-from .base import BaseException
+from .base import QuantBaseException
 from .error_codes import ErrorCode
 from .types import ErrorType, ErrorSeverity
 
 
-class AuthenticationException(BaseException):
+class AuthenticationException(QuantBaseException):
     """认证异常"""
 
     def __init__(
@@ -55,7 +55,7 @@ class AuthenticationException(BaseException):
         )
 
 
-class AuthorizationException(BaseException):
+class AuthorizationException(QuantBaseException):
     """授权异常"""
 
     def __init__(
@@ -101,7 +101,7 @@ class AuthorizationException(BaseException):
         )
 
 
-class TokenException(BaseException):
+class TokenException(QuantBaseException):
     """令牌异常"""
 
     def __init__(
@@ -139,7 +139,7 @@ class TokenException(BaseException):
 
         super().__init__(
             message=message,
-            error_code=ErrorCode.TOKEN_ERROR,
+            error_code=ErrorCode.TOKEN_INVALID,
             error_type=ErrorType.AUTHENTICATION_ERROR,
             severity=ErrorSeverity.WARNING,
             details=details,
@@ -147,7 +147,7 @@ class TokenException(BaseException):
         )
 
 
-class PermissionException(BaseException):
+class PermissionException(QuantBaseException):
     """权限异常"""
 
     def __init__(
@@ -193,7 +193,7 @@ class PermissionException(BaseException):
         )
 
 
-class RateLimitException(BaseException):
+class RateLimitException(QuantBaseException):
     """速率限制异常"""
 
     def __init__(
@@ -239,7 +239,7 @@ class RateLimitException(BaseException):
         )
 
 
-class SessionException(BaseException):
+class SessionException(QuantBaseException):
     """会话异常"""
 
     def __init__(

@@ -5,13 +5,14 @@
 职责：管理股票分钟级行情数据访问，继承HyperRepositoryBase实现高频数据优化操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, and_, desc, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockMinutes
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockMinuteRepository(HyperRepositoryBase[StockMinutes]):
@@ -244,8 +245,8 @@ class StockMinuteRepository(HyperRepositoryBase[StockMinutes]):
 
 		return resampled_data
 
+	@staticmethod
 	def _aggregate_minute_group (
-			self,
 			group: List[StockMinutes],
 			target_freq: str
 	) -> Dict[str, Any]:
@@ -389,6 +390,7 @@ class StockMinuteRepository(HyperRepositoryBase[StockMinutes]):
 			avg_loss = sum(losses) / period if losses else 0
 
 			# 计算RSI
+			rs = 0
 			if avg_loss == 0:
 				rsi = 100
 			else:
@@ -484,55 +486,99 @@ class StockMinuteRepository(HyperRepositoryBase[StockMinutes]):
 			"summary": summary
 		}
 
+	# ==================== 辅助函数 ====================
+
+	@staticmethod
+	def _is_bullish_candle (open_price: float, close_price: float) -> bool:
+		"""判断是否为阳线（看涨K线）"""
+		return close_price > open_price
+
+	@staticmethod
+	def _is_bearish_candle (open_price: float, close_price: float) -> bool:
+		"""判断是否为阴线（看跌K线）"""
+		return close_price < open_price
+
+	@staticmethod
+	def _is_doji_candle (open_price: float, close_price: float, body_size: float) -> bool:
+		"""判断是否为十字星（实体很小）"""
+		avg_price = (open_price + close_price) / 2
+		return body_size / avg_price < 0.01 if avg_price > 0 else False
+
+	@staticmethod
+	def _is_bullish_triple (o1: float, c1: float, o2: float, c2: float, o3: float, c3: float) -> bool:
+		"""判断是否为连续三根阳线"""
+		return all(c > o for c, o in [(c1, o1), (c2, o2), (c3, o3)])
+
+	@staticmethod
+	def _is_bearish_triple (o1: float, c1: float, o2: float, c2: float, o3: float, c3: float) -> bool:
+		"""判断是否为连续三根阴线"""
+		return all(c < o for c, o in [(c1, o1), (c2, o2), (c3, o3)])
+
+	@staticmethod
+	def _is_higher_opening (c1: float, o2: float, c2: float, o3: float) -> bool:
+		"""判断是否为连续跳空高开"""
+		return c1 < o2 and c2 < o3
+
+	@staticmethod
+	def _is_lower_opening (c1: float, o2: float, c2: float, o3: float) -> bool:
+		"""判断是否为连续跳空低开"""
+		return c1 > o2 and c2 > o3
+
+	@staticmethod
 	def _detect_candle_pattern (
-			self,
 			first,
 			second,
 			third
 	) -> Optional[str]:
 		"""
-		检测K线模式
+		检测K线模式（技术分析）
 
 		Args:
-			first: 第一根K线
-			second: 第二根K线
-			third: 第三根K线
+			first: 第一根K线（前日）
+			second: 第二根K线（当日）
+			third: 第三根K线（后日）
 
 		Returns:
-			模式名称或None
+			技术形态名称或None
 		"""
-		# 简单的模式检测逻辑
-		# 这里可以实现更复杂的模式识别
-
+		# 提取OHLC价格数据
 		o1, h1, l1, c1 = float(first.open), float(first.high), float(first.low), float(first.close)
 		o2, h2, l2, c2 = float(second.open), float(second.high), float(second.low), float(second.close)
 		o3, h3, l3, c3 = float(third.open), float(third.high), float(third.low), float(third.close)
 
-		# 早晨之星
-		if (c1 < o1 and  # 第一根阴线
-				abs(c2 - o2) / ((o2 + c2) / 2) < 0.01 and  # 第二根十字星
-				c3 > o3 and  # 第三根阳线
-				c3 > (o1 + c1) / 2):  # 收盘价超过前日中点
+		# 计算技术指标
+		body_size_2 = abs(c2 - o2)
+		
+		# 计算价格中点
+		midpoint_1 = (o1 + c1) / 2
+
+		# 1. 早晨之星 (Morning Star) - 反转形态
+		if (StockMinuteRepository._is_bearish_candle(o1, c1) and  # 第一根阴线
+				StockMinuteRepository._is_doji_candle(o2, c2, body_size_2) and  # 第二根十字星
+				StockMinuteRepository._is_bullish_candle(o3, c3) and  # 第三根阳线
+				c3 > midpoint_1):  # 收盘价突破前日中点
 			return "morning_star"
 
-		# 黄昏之星
-		if (c1 > o1 and  # 第一根阳线
-				abs(c2 - o2) / ((o2 + c2) / 2) < 0.01 and  # 第二根十字星
-				c3 < o3 and  # 第三根阴线
-				c3 < (o1 + c1) / 2):  # 收盘价低于前日中点
+		# 2. 黄昏之星 (Evening Star) - 反转形态
+		if (StockMinuteRepository._is_bullish_candle(o1, c1) and  # 第一根阳线
+				StockMinuteRepository._is_doji_candle(o2, c2, body_size_2) and  # 第二根十字星
+				StockMinuteRepository._is_bearish_candle(o3, c3) and  # 第三根阴线
+				c3 < midpoint_1):  # 收盘价跌破前日中点
 			return "evening_star"
 
-		# 三只乌鸦
-		if (c1 < o1 and c2 < o2 and c3 < o3 and  # 连续三根阴线
-				o1 > c2 and o2 > c3):  # 连续低开
+		# 3. 三只乌鸦 (Three Black Crows) - 看跌形态
+		if (StockMinuteRepository._is_bearish_triple(o1, c1, o2, c2, o3, c3) and  # 连续三根阴线
+				StockMinuteRepository._is_lower_opening(c1, o2, c2, o3)):  # 连续跳空低开
 			return "three_black_crows"
 
-		# 三个白兵
-		if (c1 > o1 and c2 > o2 and c3 > o3 and  # 连续三根阳线
-				c1 < o2 and c2 < o3):  # 连续高开
+		# 4. 三个白兵 (Three White Soldiers) - 看涨形态
+		if (StockMinuteRepository._is_bullish_triple(o1, c1, o2, c2, o3, c3) and  # 连续三根阳线
+				StockMinuteRepository._is_higher_opening(c1, o2, c2, o3)):  # 连续跳空高开
 			return "three_white_soldiers"
 
 		return None
+
+
 
 	# ==================== 成交量分析 ====================
 
@@ -621,8 +667,8 @@ class StockMinuteRepository(HyperRepositoryBase[StockMinutes]):
 		# 解析价格区间
 		def parse_bin (bin_str):
 			if '-' in bin_str:
-				low, high = bin_str.split('-')
-				return float(low), float(high)
+				parsed_low, parsed_high = bin_str.split('-')
+				return float(parsed_low), float(parsed_high)
 			return 0, 0
 
 		value_area_prices = []

@@ -68,7 +68,8 @@ class CostCalculator:
 			"total_cost": total_cost
 		}
 
-	def calculate_position_cost (self, current_price: float, quantity: int, average_cost: float) -> Dict[str, float]:
+	@staticmethod
+	def calculate_position_cost(current_price: float, quantity: int, average_cost: float) -> Dict[str, float]:
 		"""
 		计算持仓成本
 

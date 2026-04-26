@@ -5,15 +5,14 @@
 职责：管理股票每日涨跌停价格、涨跌停状态等数据访问，继承HyperRepositoryBase
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between, delete
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockDailyLimit
-from quant_server.shared.database.repositories.types import TimeRange
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
@@ -62,8 +61,8 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[StockDailyLimit]:
 		"""
@@ -162,8 +161,8 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 
 	async def delete_by_date_range (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None
 	) -> int:
 		"""
@@ -265,7 +264,7 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 	async def get_limit_streak (
 			self,
 			ts_code: str,
-			end_date: date,
+			end_date: datetime,
 			max_days: int = 10
 	) -> Dict[str, Any]:
 		"""
@@ -458,8 +457,8 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 			"market_sentiment": self._assess_market_sentiment(up_count, down_count, total_stocks)
 		}
 
+	@staticmethod
 	def _assess_market_sentiment (
-			self,
 			up_count: int,
 			down_count: int,
 			total_stocks: int
@@ -579,7 +578,7 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 	async def analyze_limit_breakout (
 			self,
 			ts_code: str,
-			analysis_date: date,
+			analysis_date: datetime,
 			lookback_days: int = 20
 	) -> Optional[Dict[str, Any]]:
 		"""
@@ -715,8 +714,8 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 			)
 		}
 
+	@staticmethod
 	def _generate_breakout_conclusion (
-			self,
 			total_limits: int,
 			breakout_rate: float,
 			up_breakout_rate: float,
@@ -766,8 +765,8 @@ class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):
 
 	# ==================== 辅助方法 ====================
 
+	@staticmethod
 	async def calculate_limit_prices (
-			self,
 			pre_close: float,
 			limit_percent: float = 10.0
 	) -> Dict[str, float]:

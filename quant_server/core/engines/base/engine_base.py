@@ -37,9 +37,8 @@ from functools import wraps
 
 # 导入系统核心类型定义
 from ..types.entities import (
-	EngineConfig as EngineConfigEntity,
-	EngineMetrics as EngineMetricsEntity,
-	Event as EventEntity
+	EngineMetricsEntity,
+	EventEntity, EngineConfigEntity
 )
 from ..types.enums import (
 	ComponentStatus,
@@ -114,7 +113,7 @@ class EngineStatusValidator:
 	def __init__ (self):
 		"""初始化状态验证器"""
 		self._transition_history: List[Dict[str, Any]] = []
-		self._hooks: Dict[ComponentStatus, Dict[ComponentStatus, Dict['TransitionHook', List[Callable]]]] = {}
+		self._hooks: Dict[ComponentStatus, Dict[ComponentStatus, Dict[str, List[Callable]]]] = {}
 
 	@classmethod
 	def is_valid_transition (cls, current: ComponentStatus, next_status: ComponentStatus) -> bool:
@@ -131,9 +130,6 @@ class EngineStatusValidator:
 		Raises:
 			ValueError: 当状态值无效时
 		"""
-		# 运行时类型检查，确保参数类型正确（类型注解在运行时不强制执行）
-		if not isinstance(current, ComponentStatus) or not isinstance(next_status, ComponentStatus):
-			raise ValueError("状态必须是ComponentStatus枚举类型")
 
 		valid_transitions = cls._VALID_TRANSITIONS.get(current, [])
 		return next_status in valid_transitions
@@ -168,9 +164,9 @@ class EngineStatusValidator:
 			self._hooks[from_state] = {}
 		if to_state not in self._hooks[from_state]:
 			self._hooks[from_state][to_state] = {
-				self.TransitionHook.BEFORE: [],
-				self.TransitionHook.AFTER: [],
-				self.TransitionHook.ROLLBACK: []
+				self.TransitionHook.BEFORE.value: [],
+				self.TransitionHook.AFTER.value: [],
+				self.TransitionHook.ROLLBACK.value: []
 			}
 
 		self._hooks[from_state][to_state][hook_type.value].append(hook_func)
@@ -1869,7 +1865,6 @@ class EngineBase(ABC):
 		需要psutil库支持。
 		"""
 		# 预先定义变量，避免引用前未赋值
-		psutil_module = None
 
 		try:
 			import psutil
@@ -2693,4 +2688,5 @@ class EngineBase(ABC):
 
 			logger.debug(f"引擎资源清理: {self.config.name}")
 		except Exception:
-			pass  # 忽略析构过程中的异常
+			# 析构函数中使用宽泛异常捕获，确保不会因异常而影响程序退出
+			pass

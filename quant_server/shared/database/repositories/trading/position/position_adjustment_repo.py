@@ -3,19 +3,15 @@
 持仓调整记录表Repository
 位置：shared/database/repositories/trading/position_adjustment_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between, case
-from sqlalchemy.orm import joinedload, load_only
+from typing import Optional, List, Dict, Any
 
-from quant_server.shared.database.models.business_models import PositionAdjustment, Position
+from sqlalchemy import select, and_, func, desc, asc, case
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.business_models import PositionAdjustment
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
@@ -27,7 +23,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def create_adjustment (
 			self,
-			position_id: int,
+			position_id: str,
 			adjustment_type: str,
 			volume_change: int,
 			description: Optional[str] = None,
@@ -67,7 +63,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def create_buy_adjustment (
 			self,
-			position_id: int,
+			position_id: str,
 			volume_change: int,
 			cost_price_change: Optional[Decimal] = None,
 			reference_id: Optional[str] = None,
@@ -103,7 +99,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def create_sell_adjustment (
 			self,
-			position_id: int,
+			position_id: str,
 			volume_change: int,
 			reference_id: Optional[str] = None,
 			reference_type: Optional[str] = None,
@@ -140,7 +136,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def create_dividend_adjustment (
 			self,
-			position_id: int,
+			position_id: str,
 			dividend_per_share: Decimal,
 			reference_id: Optional[str] = None,
 			description: Optional[str] = None
@@ -175,7 +171,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def get_by_position_id (
 			self,
-			position_id: int,
+			position_id: str,
 			adjustment_type: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
@@ -247,7 +243,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def get_position_history (
 			self,
-			position_id: int,
+			position_id: str,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
 	) -> List[Dict[str, Any]]:
@@ -322,10 +318,10 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 				func.count().label("total_adjustments"),
 				func.sum(self.model.volume_change).label("total_volume_change"),
 				func.sum(
-					case([(self.model.volume_change > 0, self.model.volume_change)], else_=0)
+					case((self.model.volume_change > 0, self.model.volume_change), else_=0)
 				).label("total_buy_volume"),
 				func.sum(
-					case([(self.model.volume_change < 0, self.model.volume_change)], else_=0)
+					case((self.model.volume_change < 0, self.model.volume_change), else_=0)
 				).label("total_sell_volume"),
 				self.model.adjustment_type
 			)
@@ -382,7 +378,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def get_adjustment_trend (
 			self,
-			position_id: int,
+			position_id: str,
 			days: int = 30
 	) -> List[Dict[str, Any]]:
 		"""
@@ -407,10 +403,10 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 				func.count().label("adjustment_count"),
 				func.sum(self.model.volume_change).label("total_volume_change"),
 				func.sum(
-					case([(self.model.volume_change > 0, self.model.volume_change)], else_=0)
+					case((self.model.volume_change > 0, self.model.volume_change), else_=0)
 				).label("buy_volume"),
 				func.sum(
-					case([(self.model.volume_change < 0, self.model.volume_change)], else_=0)
+					case((self.model.volume_change < 0, self.model.volume_change), else_=0)
 				).label("sell_volume"),
 				self.model.adjustment_type
 			).where(

@@ -5,14 +5,14 @@
 位置：quant_server/shared/database/repositories/market/fundamental/stock_daily_basic_repo.py
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text
-from sqlalchemy.orm import selectinload, joinedload
+from typing import List, Optional, Dict, Any, Tuple
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from sqlalchemy import select, and_, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockDailyBasic
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
 
 
 class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
@@ -27,8 +27,8 @@ class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
 
 	async def get_by_time_range (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None,
 			limit: int = 1000
 	) -> List[StockDailyBasic]:
@@ -98,8 +98,8 @@ class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
 
 	async def delete_by_time_range (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None
 	) -> int:
 		"""
@@ -138,8 +138,8 @@ class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
 
 	async def get_statistics (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
@@ -177,8 +177,8 @@ class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
 	async def get_daily_basics_in_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> List[StockDailyBasic]:
 		"""
 		获取指定时间范围内的基本面数据
@@ -707,7 +707,7 @@ class StockDailyBasicRepository(HyperRepositoryBase[StockDailyBasic]):
 			data_list=basics_data
 		)
 
-	async def delete_old_data (self, before_date: date) -> int:
+	async def delete_old_data (self, before_date: datetime) -> int:
 		"""
 		删除指定日期之前的数据
 

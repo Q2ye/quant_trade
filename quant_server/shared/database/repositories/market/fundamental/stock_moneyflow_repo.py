@@ -5,14 +5,14 @@
 位置：quant_server/shared/database/repositories/market/fundamental/stock_moneyflow_repo.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, between
-from sqlalchemy.sql import case
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, and_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockMoneyflow
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
@@ -27,8 +27,8 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 
 	async def get_by_time_range (
 			self,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			ts_code: Optional[str] = None,
 			limit: int = 1000
 	) -> List[StockMoneyflow]:
@@ -88,10 +88,10 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 	# ==================== 业务查询方法 ====================
 
 	async def get_by_ts_code_and_date (
-			self,
-			ts_code: str,
-			trade_date: date
-	) -> Optional[StockMoneyflow]:
+				self,
+				ts_code: str,
+				trade_date: date
+			) -> Optional[StockMoneyflow]:
 		"""
 		根据股票代码和交易日期获取资金流数据
 
@@ -102,12 +102,12 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		Returns:
 			资金流数据或None
 		"""
-		return await self.get_by(
-			and_(
-				StockMoneyflow.ts_code == ts_code,
-				StockMoneyflow.trade_date == trade_date
-			)
+		results = await self.get_many(
+			ts_code=ts_code,
+			trade_date=trade_date,
+			limit=1
 		)
+		return results[0] if results else None
 
 	async def get_by_ts_code (
 			self,
@@ -134,7 +134,10 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 			# 使用时间范围查询
 			end_date = end_date or datetime.now().date()
 			start_date = start_date or (end_date - timedelta(days=365))
-			return await self.get_by_time_range(start_date, end_date, ts_code, limit)
+			# 转换为datetime类型
+			start_datetime = datetime.combine(start_date, datetime.min.time())
+			end_datetime = datetime.combine(end_date, datetime.max.time())
+			return await self.get_by_time_range(start_datetime, end_datetime, ts_code, limit)
 
 		return await self.get_many(limit=limit, **filters)
 
@@ -158,7 +161,8 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		filters = {"trade_date": trade_date}
 
 		if ts_codes:
-			filters["ts_code__in"] = ts_codes
+			# 直接传递ts_codes列表，get_many方法会自动处理
+			return await self.get_many(limit=limit, trade_date=trade_date, ts_code=ts_codes)
 
 		return await self.get_many(limit=limit, **filters)
 
@@ -330,10 +334,10 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		}
 
 	async def get_moneyflow_trend (
-			self,
-			ts_code: str,
-			days: int = 20
-	) -> List[Dict[str, Any]]:
+				self,
+				ts_code: str,
+				days: int = 20
+			) -> List[StockMoneyflow]:
 		"""
 		获取资金流趋势
 
@@ -346,14 +350,17 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		"""
 		end_date = datetime.now().date()
 		start_date = end_date - timedelta(days=days - 1)
+		# 转换为datetime类型
+		start_datetime = datetime.combine(start_date, datetime.min.time())
+		end_datetime = datetime.combine(end_date, datetime.max.time())
 
-		return await self.get_by_time_range(start_date, end_date, ts_code, days)
+		return await self.get_by_time_range(start_datetime, end_datetime, ts_code, days)
 
 	async def get_institutional_flow (
-			self,
-			trade_date: date,
-			flow_type: str = 'all'  # 'all', 'buy', 'sell'
-	) -> Dict[str, float]:
+				self,
+				trade_date: datetime,
+				flow_type: str = 'all'  # 'all', 'buy', 'sell'
+			) -> Dict[str, Any]:
 		"""
 		获取机构资金流向统计
 
@@ -401,23 +408,26 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		}
 
 	async def batch_upsert (
-			self,
-			data_list: List[Dict[str, Any]],
-			match_fields: List[str] = ['ts_code', 'trade_date']
-	) -> List[StockMoneyflow]:
+				self,
+				match_fields: List[str],
+				data_list: List[Dict[str, Any]],
+				update_fields: List[str] = None
+			) -> List[StockMoneyflow]:
 		"""
 		批量插入或更新资金流记录
 
 		Args:
-			data_list: 数据列表
 			match_fields: 匹配字段
+			data_list: 数据列表
+			update_fields: 更新字段
 
 		Returns:
 			更新后的记录列表
 		"""
 		return await super().batch_upsert(
 			match_fields=match_fields,
-			data_list=data_list
+			data_list=data_list,
+			update_fields=update_fields
 		)
 
 	async def get_date_range (

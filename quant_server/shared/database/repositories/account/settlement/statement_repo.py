@@ -1,10 +1,10 @@
 # shared/database/repositories/account/statement_repo.py
-from typing import List, Dict, Any, Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc
-from sqlalchemy.sql import literal_column
 
 from quant_server.shared.database.models.business_models import AccountStatement
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -16,7 +16,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, AccountStatement)
 
-	async def get_account_statements (self, account_id: int, skip: int = 0,
+	async def get_account_statements (self, account_id: str, skip: int = 0,
 	                                  limit: int = 50) -> List[AccountStatement]:
 		"""获取账户的对账单列表"""
 		query = (
@@ -30,7 +30,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_statement_by_date (self, account_id: int, statement_date: date,
+	async def get_statement_by_date (self, account_id: str, statement_date: date,
 	                                 statement_period: str = 'daily') -> Optional[AccountStatement]:
 		"""获取指定日期的对账单"""
 		query = (
@@ -47,7 +47,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 		result = await self.session.execute(query)
 		return result.scalar_one_or_none()
 
-	async def get_statements_by_period (self, account_id: int, statement_period: str,
+	async def get_statements_by_period (self, account_id: str, statement_period: str,
 	                                    start_date: Optional[date] = None,
 	                                    end_date: Optional[date] = None) -> List[AccountStatement]:
 		"""按对账周期获取对账单"""
@@ -67,7 +67,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def generate_daily_statement (self, account_id: int, statement_date: date) -> AccountStatement:
+	async def generate_daily_statement (self, account_id: str, statement_date: date) -> AccountStatement:
 		"""生成日度对账单"""
 		# 获取账户信息
 		from quant_server.shared.database.models.business_models import Account
@@ -80,7 +80,8 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 			raise ValueError(f"Account {account_id} not found")
 
 		# 获取当天的交易流水
-		from quant_server.shared.database.repositories.account.settlement.transaction_repo import AccountTransactionRepository
+		from quant_server.shared.database.repositories.account.settlement.transaction_repo import \
+			AccountTransactionRepository
 		transaction_repo = AccountTransactionRepository(self.session)
 
 		start_datetime = datetime.combine(statement_date, datetime.min.time())
@@ -140,7 +141,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 		await self.session.flush()
 		return statement
 
-	async def get_statement_summary (self, account_id: int) -> Dict[str, Any]:
+	async def get_statement_summary (self, account_id: str) -> Dict[str, Any]:
 		"""获取对账单汇总信息"""
 		# 获取最新的对账单
 		latest_query = (
@@ -210,7 +211,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 			"total_statements": sum(period_counts.values())
 		}
 
-	async def verify_statement (self, statement_id: int, verified_by: int,
+	async def verify_statement (self, statement_id: str, verified_by: int,
 	                            verification_notes: Optional[str] = None) -> bool:
 		"""核验对账单"""
 		from sqlalchemy import update as sql_update

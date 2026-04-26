@@ -2,13 +2,12 @@
 内存缓存实现
 """
 
-import asyncio
 import fnmatch
 import threading
 import time
-from typing import Any, Optional, List, Dict, Tuple
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from typing import Any, Optional, List, Dict
 
 from .base import CacheBase, CacheEntry, CacheError
 from .serializers import SerializerBase

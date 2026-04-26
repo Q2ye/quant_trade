@@ -3,19 +3,15 @@
 API使用日志表Repository
 位置：shared/database/repositories/system/api_usage_log_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_,  func, desc, asc
 
 from quant_server.shared.database.models.system_models import ApiUsageLog
-from quant_server.shared.database.models.business_models import SysUser
 from quant_server.shared.database.repositories import RepositoryError
 from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
@@ -27,12 +23,14 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 
 	async def log_api_usage (
 			self,
-			user_id: Optional[int],
+			user_id: Optional[str],
 			api_endpoint: str,
-			method: str,
-			request_params: Optional[Dict[str, Any]],
+			http_method: str,
+			request_headers: Optional[Dict[str, Any]],
+			request_body: Optional[str],
+			query_params: Optional[Dict[str, Any]],
 			response_status: int,
-			response_time_ms: int,
+			response_time: int,
 			ip_address: Optional[str] = None,
 			user_agent: Optional[str] = None
 	) -> ApiUsageLog:
@@ -42,10 +40,12 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 		Args:
 			user_id: 用户ID
 			api_endpoint: API端点
-			method: HTTP方法
-			request_params: 请求参数
+			http_method: HTTP方法
+			request_headers: 请求头
+			request_body: 请求体
+			query_params: 查询参数
 			response_status: 响应状态码
-			response_time_ms: 响应时间（毫秒）
+			response_time: 响应时间（毫秒）
 			ip_address: IP地址
 			user_agent: 用户代理
 
@@ -56,10 +56,12 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 			data = {
 				"user_id": user_id,
 				"api_endpoint": api_endpoint,
-				"method": method,
-				"request_params": request_params,
+				"http_method": http_method,
+				"request_headers": request_headers,
+				"request_body": request_body,
+				"query_params": query_params,
 				"response_status": response_status,
-				"response_time_ms": response_time_ms,
+				"response_time": response_time,
 				"ip_address": ip_address,
 				"user_agent": user_agent
 			}
@@ -70,7 +72,7 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 
 	async def get_user_api_usage (
 			self,
-			user_id: int,
+			user_id: str,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
 			limit: int = 100
@@ -171,9 +173,9 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 			query = select(
 				time_format.label("time_period"),
 				func.count().label("request_count"),
-				func.avg(self.model.response_time_ms).label("avg_response_time"),
-				func.max(self.model.response_time_ms).label("max_response_time"),
-				func.min(self.model.response_time_ms).label("min_response_time")
+				func.avg(self.model.response_time).label("avg_response_time"),
+					func.max(self.model.response_time).label("max_response_time"),
+					func.min(self.model.response_time).label("min_response_time")
 			).where(
 				and_(
 					self.model.created_at >= start_date,
@@ -203,7 +205,7 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 
 	async def get_user_usage_statistics (
 			self,
-			user_id: int,
+			user_id: str,
 			start_date: datetime,
 			end_date: datetime
 	) -> Dict[str, Any]:
@@ -244,13 +246,13 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 			success_requests = success_result.scalar() or 0
 
 			# 平均响应时间
-			avg_time_query = select(func.avg(self.model.response_time_ms)).where(
-				and_(
-					self.model.user_id == user_id,
-					self.model.created_at >= start_date,
-					self.model.created_at <= end_date
-				)
+			avg_time_query = select(func.avg(self.model.response_time)).where(
+			and_(
+				self.model.user_id == user_id,
+				self.model.created_at >= start_date,
+				self.model.created_at <= end_date
 			)
+		)
 			avg_time_result = await self.session.execute(avg_time_query)
 			avg_response_time = avg_time_result.scalar() or 0
 
@@ -307,15 +309,15 @@ class ApiUsageLogRepository(BaseRepository[ApiUsageLog]):
 		"""
 		try:
 			query = select(self.model).where(
-				self.model.response_time_ms >= threshold_ms
-			)
+			self.model.response_time >= threshold_ms
+		)
 
 			if start_date:
 				query = query.where(self.model.created_at >= start_date)
 			if end_date:
 				query = query.where(self.model.created_at <= end_date)
 
-			query = query.order_by(desc(self.model.response_time_ms)).limit(limit)
+			query = query.order_by(desc(self.model.response_time)).limit(limit)
 
 			result = await self.session.execute(query)
 			return result.scalars().all()

@@ -311,7 +311,7 @@ class AuditLogger:
 
 	async def get_user_logs (
 			self,
-			user_id: int,
+			user_id: str,
 			action: Optional[Union[str, AuditAction]] = None,
 			start_time: Optional[datetime] = None,
 			end_time: Optional[datetime] = None,
@@ -387,6 +387,7 @@ class AuditLogger:
 				action=action,
 				resource_type=resource_type,
 				resource_id=resource_id,
+				level=level,
 				limit=limit,
 				offset=offset
 			)
@@ -591,7 +592,7 @@ def audit_log (
 						if 'password' not in param_name.lower() and 'token' not in param_name.lower():
 							try:
 								captured_args[param_name] = str(arg_value)[:500]  # 限制长度
-							except Exception:
+							except (TypeError, ValueError):
 								captured_args[param_name] = '<unserializable>'
 
 				# 添加kwargs参数
@@ -599,8 +600,8 @@ def audit_log (
 					if 'password' not in key.lower() and 'token' not in key.lower():
 						try:
 							captured_args[key] = str(value)[:500]
-						except Exception:
-							captured_args[key] = '<unserializable>'
+						except (TypeError, ValueError):
+								captured_args[key] = '<unserializable>'
 
 			try:
 				# 执行原函数
@@ -621,7 +622,7 @@ def audit_log (
 				if capture_result and result is not None:
 					try:
 						details['result'] = str(result)[:1000]  # 限制长度
-					except Exception:
+					except (TypeError, ValueError):
 						details['result'] = '<unserializable>'
 
 				await audit_logger.log_simple(
@@ -730,4 +731,3 @@ async def log_audit (
 		description=description,
 		**kwargs
 	)
-

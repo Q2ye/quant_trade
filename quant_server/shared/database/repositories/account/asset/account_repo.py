@@ -17,7 +17,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, and_, or_, desc, func, between
+from sqlalchemy import select, and_, or_, desc, func, between, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -68,7 +68,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	# ==================== Account特定查询方法 ====================
 
-	async def get_by_user_id (self, user_id: int) -> Optional[Account]:
+	async def get_by_user_id (self, user_id: str) -> Optional[Account]:
 		"""
 		根据用户ID获取第一个关联的账户
 
@@ -82,7 +82,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def get_many_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			skip: int = 0,
 			limit: int = 100
 	) -> List[Account]:
@@ -191,7 +191,7 @@ class AccountRepository(BaseRepository[Account]):
 		# 执行查询
 		return await self.execute_query(query)
 
-	async def get_total_balance_stats (self, user_id: int) -> Dict[str, Any]:
+	async def get_total_balance_stats (self, user_id: str) -> Dict[str, Any]:
 		"""
 		获取用户所有账户的总余额统计（纯数据聚合）
 
@@ -249,7 +249,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def update_balance_fields (
 			self,
-			account_id: int,
+			account_id: str,
 			**balance_updates: Decimal
 	) -> bool:
 		"""
@@ -262,7 +262,6 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			是否成功更新（影响行数>0）
 		"""
-		from sqlalchemy import update as sql_update
 
 		# 过滤出有效的余额字段
 		valid_fields = {
@@ -282,7 +281,7 @@ class AccountRepository(BaseRepository[Account]):
 		if len(update_data) <= 1:  # 只有updated_at
 			return False
 
-		query = sql_update(Account).where(
+		query = update(Account).where(
 			and_(
 				Account.id == account_id,
 				Account.is_deleted == 0
@@ -294,7 +293,7 @@ class AccountRepository(BaseRepository[Account]):
 
 		return result.rowcount > 0
 
-	async def update_account_status (self, account_id: int, status: str, reason: Optional[str] = None) -> bool:
+	async def update_account_status (self, account_id: str, status: str, reason: Optional[str] = None) -> bool:
 		"""
 		更新账户状态
 
@@ -316,7 +315,7 @@ class AccountRepository(BaseRepository[Account]):
 
 		return await self.update(account_id, update_data) is not None
 
-	async def update_last_trade_date (self, account_id: int, trade_date: date) -> bool:
+	async def update_last_trade_date (self, account_id: str, trade_date: date) -> bool:
 		"""
 		更新账户最后交易日
 
@@ -406,7 +405,7 @@ class AccountRepository(BaseRepository[Account]):
 		# 执行查询
 		return await self.execute_query(query)
 
-	async def get_account_ids_by_user (self, user_id: int) -> List[int]:
+	async def get_account_ids_by_user (self, user_id: str) -> List[str]:
 		"""
 		获取用户的所有账户ID列表
 
@@ -428,7 +427,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def batch_update_status (
 			self,
-			account_ids: List[int],
+			account_ids: List[str],
 			status: str,
 			reason: Optional[str] = None
 	) -> int:
@@ -443,7 +442,6 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			实际更新的记录数
 		"""
-		from sqlalchemy import update as sql_update
 
 		if not account_ids:
 			return 0
@@ -456,7 +454,7 @@ class AccountRepository(BaseRepository[Account]):
 		if reason:
 			update_data["status_reason"] = reason
 
-		query = sql_update(Account).where(
+		query = update(Account).where(
 			and_(
 				Account.id.in_(account_ids),
 				Account.is_deleted == 0
@@ -722,7 +720,7 @@ class AccountRepository(BaseRepository[Account]):
 		count = result.scalar() or 0
 		return count > 0
 
-	async def get_with_positions (self, account_id: int) -> Optional[Account]:
+	async def get_with_positions (self, account_id: str) -> Optional[Account]:
 		"""
 		获取账户信息及其持仓（预加载）
 
@@ -744,7 +742,7 @@ class AccountRepository(BaseRepository[Account]):
 		result = await self.session.execute(query)
 		return result.scalar_one_or_none()
 
-	async def get_with_orders (self, account_id: int, limit: int = 50) -> Optional[Account]:
+	async def get_with_orders (self, account_id: str, limit: int = 50) -> Optional[Account]:
 		"""
 		获取账户信息及其最近订单（预加载）
 

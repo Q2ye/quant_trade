@@ -10,14 +10,15 @@
 继承自：BaseRepository（因为是分片元数据管理）
 """
 
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, literal_column
-from sqlalchemy.exc import SQLAlchemyError
 
+from sqlalchemy import select, and_, or_, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.system_models import ChunkMetadata
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
-from quant_server.shared.database.models.system_models import ChunkMetadata, HyperTableMetadata
 
 
 class ChunkManager(BaseRepository[ChunkMetadata]):
@@ -172,7 +173,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 		except Exception as e:
 			raise RepositoryError(f"获取分片列表失败: {str(e)}")
 
-	async def update_chunk_statistics (self, chunk_id: int) -> ChunkMetadata:
+	async def update_chunk_statistics (self, chunk_id: str) -> ChunkMetadata:
 		"""
 		更新分片统计信息
 
@@ -188,7 +189,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 				raise RepositoryError(f"分片不存在", "CHUNK_NOT_FOUND")
 
 			# 查询分片实际统计信息
-			stats = await self._get_chunk_real_stats(chunk.table_name, chunk.chunk_name)
+			stats = await self._get_chunk_real_stats(chunk.chunk_name)
 
 			# 更新统计信息
 			chunk.current_size_mb = stats.get("size_mb", 0)
@@ -203,15 +204,13 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 			raise RepositoryError(f"更新分片统计失败: {str(e)}")
 
 	async def _get_chunk_real_stats (
-			self,
-			table_name: str,
-			chunk_name: str
-	) -> Dict[str, Any]:
+				self,
+				chunk_name: str
+			) -> Dict[str, Any]:
 		"""
 		获取分片实际统计信息（私有方法）
 
 		Args:
-			table_name: 表名
 			chunk_name: 分片名
 
 		Returns:
@@ -442,7 +441,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 
 	async def split_large_chunk (
 			self,
-			chunk_id: int,
+			chunk_id: str,
 			split_time: datetime = None,
 			target_size_mb: int = 512
 	) -> Tuple[ChunkMetadata, ChunkMetadata]:
@@ -471,7 +470,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 			# 确定分裂时间点
 			if not split_time:
 				split_time = await self._find_split_time(
-					chunk.table_name, chunk.chunk_name, target_size_mb
+					chunk.chunk_name, target_size_mb
 				)
 
 			# 验证分裂时间有效性
@@ -531,16 +530,14 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 			raise RepositoryError(f"分裂分片失败: {str(e)}")
 
 	async def _find_split_time (
-			self,
-			table_name: str,
-			chunk_name: str,
-			target_size_mb: int
-	) -> datetime:
+				self,
+				chunk_name: str,
+				target_size_mb: int
+			) -> datetime:
 		"""
 		查找合适的分裂时间点（私有方法）
 
 		Args:
-			table_name: 表名
 			chunk_name: 分片名
 			target_size_mb: 目标大小
 
@@ -624,7 +621,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 
 	async def move_chunk_to_storage (
 			self,
-			chunk_id: int,
+			chunk_id: str,
 			target_storage: str,
 			archive_path: str = None
 	) -> Dict[str, Any]:
@@ -788,7 +785,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 
 	async def get_chunk_performance_metrics (
 			self,
-			chunk_id: int,
+			chunk_id: str,
 			days: int = 7
 	) -> Dict[str, Any]:
 		"""
@@ -801,8 +798,8 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 		Returns:
 			性能指标
 		"""
+		chunk = await self.get(chunk_id)
 		try:
-			chunk = await self.get(chunk_id)
 			if not chunk:
 				raise RepositoryError(f"分片不存在", "CHUNK_NOT_FOUND")
 
@@ -853,7 +850,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 			# 如果查询失败，返回基本统计
 			return {
 				"chunk_id": chunk_id,
-				"chunk_name": chunk.chunk_name,
+				"chunk_name": getattr(chunk, 'chunk_name', 'unknown') if 'chunk' in locals() else 'unknown',
 				"error": str(e),
 				"collected_at": datetime.now()
 			}
@@ -910,7 +907,7 @@ class ChunkManager(BaseRepository[ChunkMetadata]):
 			# 3. 重新平衡存储层
 			hot_chunks = [c for c in chunks if c.storage_type == "hot"]
 			if len(hot_chunks) > 10:  # 热分片太多
-				# 将旧的分片移到温存储
+				# 将旧 分片移到温存储
 				old_hot_chunks = sorted(hot_chunks, key=lambda x: x.start_time)[:5]
 
 				for chunk in old_hot_chunks:

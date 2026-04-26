@@ -101,14 +101,13 @@ class ErrorType(str, Enum):
 	RESOURCE_LIMIT_ERROR = "resource_limit_error"
 
 
-
 class ErrorLevel(Enum):
-    """错误级别（兼容性）"""
-    DEBUG = "debug"
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
+	"""错误级别（兼容性）"""
+	DEBUG = "debug"
+	INFO = "info"
+	WARNING = "warning"
+	ERROR = "error"
+	CRITICAL = "critical"
 
 
 class ErrorSeverity(str, Enum):

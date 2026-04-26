@@ -30,7 +30,7 @@ class TradeHandler:
 		self.trade_repo = TradeRepository(db)
 		self.position_repo = PositionRepository(db)
 
-	async def get_order_list (self, request: OrderListRequest, user_id: int) -> OrderListResponse:
+	async def get_order_list (self, request: OrderListRequest, user_id: str) -> OrderListResponse:
 		"""获取订单列表"""
 		try:
 			# 计算分页参数
@@ -82,7 +82,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取订单列表失败: {str(e)}")
 
-	async def get_order_detail (self, order_id: str, user_id: int) -> OrderDetailResponse:
+	async def get_order_detail (self, order_id: str, user_id: str) -> OrderDetailResponse:
 		"""获取订单详情"""
 		try:
 			# 查询订单详情
@@ -115,7 +115,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取订单详情失败: {str(e)}")
 
-	async def create_order (self, request: OrderCreateRequest, user_id: int) -> OrderResponse:
+	async def create_order (self, request: OrderCreateRequest, user_id: str) -> OrderResponse:
 		"""创建订单"""
 		try:
 			# 获取用户的默认账户
@@ -165,7 +165,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"创建订单失败: {str(e)}")
 
-	async def cancel_order (self, order_id: str, user_id: int) -> OrderDetailResponse:
+	async def cancel_order (self, order_id: str, user_id: str) -> OrderDetailResponse:
 		"""取消订单"""
 		try:
 			# 查询订单
@@ -205,7 +205,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"取消订单失败: {str(e)}")
 
-	async def get_position_list (self, request: PositionListRequest, user_id: int) -> PositionListResponse:
+	async def get_position_list (self, request: PositionListRequest, user_id: str) -> PositionListResponse:
 		"""获取持仓列表"""
 		try:
 			# 获取用户持仓
@@ -250,7 +250,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取持仓列表失败: {str(e)}")
 
-	async def get_position_detail (self, ts_code: str, user_id: int) -> PositionDetailResponse:
+	async def get_position_detail (self, ts_code: str, user_id: str) -> PositionDetailResponse:
 		"""获取持仓详情"""
 		try:
 			# 获取用户的所有账户
@@ -287,7 +287,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取持仓详情失败: {str(e)}")
 
-	async def execute_signal (self, request: SignalExecuteRequest, user_id: int) -> SignalExecuteResponse:
+	async def execute_signal (self, request: SignalExecuteRequest, user_id: str) -> SignalExecuteResponse:
 		"""执行交易信号"""
 		try:
 			# 获取用户的默认账户
@@ -349,7 +349,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"执行交易信号失败: {str(e)}")
 
-	async def get_trade_history (self, request: TradeHistoryRequest, user_id: int) -> TradeHistoryResponse:
+	async def get_trade_history (self, request: TradeHistoryRequest, user_id: str) -> TradeHistoryResponse:
 		"""获取交易历史"""
 		try:
 			# 直接使用 TradeRepository 的 get_by_user_id 方法获取交易记录
@@ -392,7 +392,7 @@ class TradeHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取交易历史失败: {str(e)}")
 
-	async def get_account_summary (self, user_id: int) -> AccountSummaryResponse:
+	async def get_account_summary (self, user_id: str) -> AccountSummaryResponse:
 		"""获取账户概览"""
 		try:
 			# 获取用户的所有账户
@@ -463,47 +463,47 @@ class TradeHandler:
 
 
 # 导出函数供router使用
-async def get_order_list (session: AsyncSession, request: OrderListRequest, user_id: int) -> OrderListResponse:
+async def get_order_list (session: AsyncSession, request: OrderListRequest, user_id: str) -> OrderListResponse:
 	handler = TradeHandler(session)
 	return await handler.get_order_list(request, user_id)
 
 
-async def get_order_detail (session: AsyncSession, order_id: str, user_id: int) -> OrderDetailResponse:
+async def get_order_detail (session: AsyncSession, order_id: str, user_id: str) -> OrderDetailResponse:
 	handler = TradeHandler(session)
 	return await handler.get_order_detail(order_id, user_id)
 
 
-async def create_order (session: AsyncSession, request: OrderCreateRequest, user_id: int) -> OrderResponse:
+async def create_order (session: AsyncSession, request: OrderCreateRequest, user_id: str) -> OrderResponse:
 	handler = TradeHandler(session)
 	return await handler.create_order(request, user_id)
 
 
-async def cancel_order (session: AsyncSession, order_id: str, user_id: int) -> OrderDetailResponse:
+async def cancel_order (session: AsyncSession, order_id: str, user_id: str) -> OrderDetailResponse:
 	handler = TradeHandler(session)
 	return await handler.cancel_order(order_id, user_id)
 
 
-async def get_position_list (session: AsyncSession, request: PositionListRequest, user_id: int) -> PositionListResponse:
+async def get_position_list (session: AsyncSession, request: PositionListRequest, user_id: str) -> PositionListResponse:
 	handler = TradeHandler(session)
 	return await handler.get_position_list(request, user_id)
 
 
-async def get_position_detail (session: AsyncSession, ts_code: str, user_id: int) -> PositionDetailResponse:
+async def get_position_detail (session: AsyncSession, ts_code: str, user_id: str) -> PositionDetailResponse:
 	handler = TradeHandler(session)
 	return await handler.get_position_detail(ts_code, user_id)
 
 
-async def execute_signal (session: AsyncSession, request: SignalExecuteRequest, user_id: int) -> SignalExecuteResponse:
+async def execute_signal (session: AsyncSession, request: SignalExecuteRequest, user_id: str) -> SignalExecuteResponse:
 	handler = TradeHandler(session)
 	return await handler.execute_signal(request, user_id)
 
 
-async def get_trade_history (session: AsyncSession, request: TradeHistoryRequest, user_id: int) -> TradeHistoryResponse:
+async def get_trade_history (session: AsyncSession, request: TradeHistoryRequest, user_id: str) -> TradeHistoryResponse:
 	handler = TradeHandler(session)
 	return await handler.get_trade_history(request, user_id)
 
 
-async def get_account_summary (session: AsyncSession, user_id: int) -> AccountSummaryResponse:
+async def get_account_summary (session: AsyncSession, user_id: str) -> AccountSummaryResponse:
 	handler = TradeHandler(session)
 	return await handler.get_account_summary(user_id)
 

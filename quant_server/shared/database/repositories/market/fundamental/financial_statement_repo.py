@@ -5,16 +5,15 @@
 位置：quant_server/shared/database/repositories/market/fundamental/financial_statement_repo.py
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, datetime
+from datetime import date
 from enum import Enum
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text, Column, Numeric
-from sqlalchemy.sql import Select
-from decimal import Decimal
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from sqlalchemy import select, and_, func, desc, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import FinancialStatement
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class ReportType(Enum):
@@ -131,7 +130,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			self,
 			ts_code: str,
 			report_type: str,
-			period: str = "year"
+			_period: str = "year"
 	) -> Optional[FinancialStatement]:
 		"""
 		获取最新财务报表
@@ -139,7 +138,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		Args:
 			ts_code: 股票代码
 			report_type: 报表类型
-			period: 报告期间
+			_period: 报告期间
 
 		Returns:
 			最新财务报表
@@ -147,8 +146,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		query = select(FinancialStatement).where(
 			and_(
 				FinancialStatement.ts_code == ts_code,
-				FinancialStatement.report_type == report_type,
-				FinancialStatement.period == period
+				FinancialStatement.report_type == report_type
 			)
 		).order_by(
 			desc(FinancialStatement.end_date)
@@ -251,7 +249,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		filtered = []
 		for stmt in statements:
 			if stmt.end_date.year == year:
-				if quarter is None or stmt.quarter == quarter:
+				if quarter is None:
 					filtered.append(stmt)
 
 		return sorted(filtered, key=lambda x: x.end_date)
@@ -275,8 +273,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		"""
 		filters = {
 			"ts_code": ts_code,
-			"report_type": report_type,
-			"period": "year"
+			"report_type": report_type
 		}
 
 		statements = await self.get_many(**filters)
@@ -293,13 +290,13 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 
 	# ==================== 财务指标计算 ====================
 
-	async def calculate_financial_ratios (
+	async def get_financial_ratios (
 			self,
 			ts_code: str,
 			end_date: date
 	) -> Dict[str, Any]:
 		"""
-		计算财务比率
+		获取财务比率
 
 		Args:
 			ts_code: 股票代码
@@ -310,10 +307,9 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		"""
 		ratios = {}
 
-		# 获取三张报表
+		# 获取两张报表
 		balance_sheet = await self.get_balance_sheet(ts_code, end_date)
 		income_stmt = await self.get_income_statement(ts_code, end_date)
-		cash_flow_stmt = await self.get_cash_flow_statement(ts_code, end_date)
 
 		if not balance_sheet or not income_stmt:
 			return ratios
@@ -321,27 +317,15 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		# 盈利能力比率
 		if income_stmt.revenue and income_stmt.revenue > 0:
 			# 毛利率
-			if income_stmt.gross_profit:
-				ratios["gross_margin"] = float(income_stmt.gross_profit / income_stmt.revenue)
+			if income_stmt.revenue and income_stmt.oper_cost:
+				gross_profit = income_stmt.revenue - income_stmt.oper_cost
+				ratios["gross_margin"] = float(gross_profit / income_stmt.revenue)
 
 			# 净利率
-			if income_stmt.net_profit:
-				ratios["net_margin"] = float(income_stmt.net_profit / income_stmt.revenue)
+			if income_stmt.n_income:
+				ratios["net_margin"] = float(income_stmt.n_income / income_stmt.revenue)
 
-		# 偿债能力比率
-		if balance_sheet.total_assets and balance_sheet.total_assets > 0:
-			# 资产负债率
-			if balance_sheet.total_liabilities:
-				ratios["debt_to_assets"] = float(balance_sheet.total_liabilities / balance_sheet.total_assets)
 
-			# 权益乘数
-			if balance_sheet.total_equity and balance_sheet.total_equity > 0:
-				ratios["equity_multiplier"] = float(balance_sheet.total_assets / balance_sheet.total_equity)
-
-		# 营运能力比率
-		if balance_sheet.total_assets and income_stmt.revenue:
-			# 总资产周转率
-			ratios["asset_turnover"] = float(income_stmt.revenue / balance_sheet.total_assets)
 
 		return ratios
 
@@ -373,20 +357,25 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		)
 
 		for stmt in income_statements:
+			# 计算毛利润
+			gross_profit = None
+			if stmt.revenue and stmt.oper_cost:
+				gross_profit = stmt.revenue - stmt.oper_cost
+			
 			metric = {
 				"end_date": stmt.end_date,
 				"revenue": float(stmt.revenue) if stmt.revenue else None,
-				"gross_profit": float(stmt.gross_profit) if stmt.gross_profit else None,
-				"operating_profit": float(stmt.operating_profit) if stmt.operating_profit else None,
-				"net_profit": float(stmt.net_profit) if stmt.net_profit else None
+				"gross_profit": float(gross_profit) if gross_profit else None,
+				"operating_profit": float(stmt.operate_profit) if stmt.operate_profit else None,
+				"net_profit": float(stmt.n_income) if stmt.n_income else None
 			}
 
 			# 计算比率
 			if stmt.revenue and stmt.revenue > 0:
-				if stmt.gross_profit:
-					metric["gross_margin"] = float(stmt.gross_profit / stmt.revenue)
-				if stmt.net_profit:
-					metric["net_margin"] = float(stmt.net_profit / stmt.revenue)
+				if gross_profit:
+					metric["gross_margin"] = float(gross_profit / stmt.revenue)
+				if stmt.n_income:
+					metric["net_margin"] = float(stmt.n_income / stmt.revenue)
 
 			metrics.append(metric)
 
@@ -421,19 +410,8 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 
 		for sheet in balance_sheets:
 			metric = {
-				"end_date": sheet.end_date,
-				"current_assets": float(sheet.current_assets) if sheet.current_assets else None,
-				"current_liabilities": float(sheet.current_liabilities) if sheet.current_liabilities else None,
-				"cash_and_equivalents": float(sheet.cash_and_equivalents) if sheet.cash_and_equivalents else None
+				"end_date": sheet.end_date
 			}
-
-			# 计算流动比率
-			if sheet.current_assets and sheet.current_liabilities and sheet.current_liabilities > 0:
-				metric["current_ratio"] = float(sheet.current_assets / sheet.current_liabilities)
-
-			# 计算速动比率（假设存货为0，简化计算）
-			if sheet.cash_and_equivalents and sheet.current_liabilities and sheet.current_liabilities > 0:
-				metric["quick_ratio"] = float(sheet.cash_and_equivalents / sheet.current_liabilities)
 
 			metrics.append(metric)
 
@@ -468,11 +446,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 
 		for stmt in cash_flow_statements:
 			metric = {
-				"end_date": stmt.end_date,
-				"operating_cash_flow": float(stmt.operating_cash_flow) if stmt.operating_cash_flow else None,
-				"investing_cash_flow": float(stmt.investing_cash_flow) if stmt.investing_cash_flow else None,
-				"financing_cash_flow": float(stmt.financing_cash_flow) if stmt.financing_cash_flow else None,
-				"net_cash_flow": float(stmt.net_cash_flow) if stmt.net_cash_flow else None
+				"end_date": stmt.end_date
 			}
 
 			metrics.append(metric)
@@ -502,7 +476,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
             SELECT 
                 AVG(bs.total_assets) as avg_total_assets,
                 AVG(is.revenue) as avg_revenue,
-                AVG(is.net_profit) as avg_net_profit,
+                AVG(is.n_income) as avg_net_profit,
                 COUNT(*) as company_count
             FROM financial_statements bs
             JOIN financial_statements is ON bs.ts_code = is.ts_code 
@@ -512,8 +486,6 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
             JOIN stock_basic sb ON bs.ts_code = sb.ts_code
             WHERE bs.end_date = :end_date
                 AND sb.industry = :industry
-                AND bs.period = 'year'
-                AND is.period = 'year'
         """)
 
 		result = await self.session.execute(
@@ -526,7 +498,6 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			return {}
 
 		# 获取当前公司的数据
-		company_balance = await self.get_balance_sheet(ts_code, end_date)
 		company_income = await self.get_income_statement(ts_code, end_date)
 
 		return {
@@ -537,10 +508,8 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			},
 			"company_count": row.company_count,
 			"company_data": {
-				"total_assets": float(
-					company_balance.total_assets) if company_balance and company_balance.total_assets else None,
 				"revenue": float(company_income.revenue) if company_income and company_income.revenue else None,
-				"net_profit": float(company_income.net_profit) if company_income and company_income.net_profit else None
+				"net_profit": float(company_income.n_income) if company_income and company_income.n_income else None
 			}
 		}
 
@@ -568,50 +537,30 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 
 		if balance_sheet:
 			summary["balance_sheet"] = {
-				"total_assets": float(balance_sheet.total_assets) if balance_sheet.total_assets else None,
-				"total_liabilities": float(
-					balance_sheet.total_liabilities) if balance_sheet.total_liabilities else None,
-				"total_equity": float(balance_sheet.total_equity) if balance_sheet.total_equity else None,
 				"current_ratio": None
 			}
-
-			# 计算流动比率
-			if balance_sheet.current_assets and balance_sheet.current_liabilities:
-				if balance_sheet.current_liabilities > 0:
-					summary["balance_sheet"]["current_ratio"] = float(
-						balance_sheet.current_assets / balance_sheet.current_liabilities
-					)
 
 		if income_stmt:
 			summary["income_statement"] = {
 				"revenue": float(income_stmt.revenue) if income_stmt.revenue else None,
-				"gross_profit": float(income_stmt.gross_profit) if income_stmt.gross_profit else None,
-				"operating_profit": float(income_stmt.operating_profit) if income_stmt.operating_profit else None,
-				"net_profit": float(income_stmt.net_profit) if income_stmt.net_profit else None,
-				"eps": float(income_stmt.eps) if income_stmt.eps else None
+				"net_profit": float(income_stmt.n_income) if income_stmt.n_income else None,
+				"eps": float(income_stmt.basic_eps) if income_stmt.basic_eps else None
 			}
 
 			# 计算毛利率和净利率
 			if income_stmt.revenue and income_stmt.revenue > 0:
-				if income_stmt.gross_profit:
-					summary["income_statement"]["gross_margin"] = float(
-						income_stmt.gross_profit / income_stmt.revenue
-					)
-				if income_stmt.net_profit:
-					summary["income_statement"]["net_margin"] = float(
-						income_stmt.net_profit / income_stmt.revenue
-					)
+				# 计算毛利率
+				if income_stmt.revenue and income_stmt.oper_cost:
+					gross_profit = income_stmt.revenue - income_stmt.oper_cost
+					summary["income_statement"]["gross_margin"] = float(gross_profit / income_stmt.revenue)
+				# 计算净利率
+				if income_stmt.n_income:
+					summary["income_statement"]["net_margin"] = float(income_stmt.n_income / income_stmt.revenue)
 
 		if cash_flow_stmt:
 			summary["cash_flow_statement"] = {
-				"operating_cash_flow": float(
-					cash_flow_stmt.operating_cash_flow) if cash_flow_stmt.operating_cash_flow else None,
-				"investing_cash_flow": float(
-					cash_flow_stmt.investing_cash_flow) if cash_flow_stmt.investing_cash_flow else None,
-				"financing_cash_flow": float(
-					cash_flow_stmt.financing_cash_flow) if cash_flow_stmt.financing_cash_flow else None,
-				"net_cash_flow": float(cash_flow_stmt.net_cash_flow) if cash_flow_stmt.net_cash_flow else None
 			}
+
 
 		return summary
 
@@ -635,7 +584,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			data_list=data_list
 		)
 
-	async def delete_old_statements (
+	async def delete_before (
 			self,
 			before_date: date,
 			ts_code: Optional[str] = None
@@ -650,18 +599,29 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		Returns:
 			删除的记录数
 		"""
-		filters = {"end_date__lt": before_date}
+		from sqlalchemy import delete, Delete
 
+		# 1. 构建删除语句（SQLAlchemy 2.0+ 语法）
+		from sqlalchemy import and_
+		conditions = [self.model.end_date < before_date]
+		
+		# 2. 条件追加（如果有股票代码过滤）
 		if ts_code:
-			filters["ts_code"] = ts_code
+			conditions.append(self.model.ts_code == ts_code)
+		
+		# 3. 构建最终删除语句
+		stmt: Delete = delete(self.model).where(and_(*conditions))   # type: ignore
 
-		return await self.delete_by(**filters)
+		# 3. 执行删除操作
+		result = await self.session.execute(stmt)
+
+		# 4. 返回删除的记录数
+		return result.rowcount or 0
 
 	async def get_date_range (
 			self,
 			ts_code: str,
 			report_type: str,
-			period: str = "year"
 	) -> Dict[str, Optional[date]]:
 		"""
 		获取财务报表日期范围
@@ -669,7 +629,6 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		Args:
 			ts_code: 股票代码
 			report_type: 报表类型
-			period: 报告期间
 
 		Returns:
 			日期范围字典
@@ -677,11 +636,11 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 		query = select(
 			func.min(FinancialStatement.end_date),
 			func.max(FinancialStatement.end_date)
-		).where(
+		)
+		query = query.where(
 			and_(
 				FinancialStatement.ts_code == ts_code,
-				FinancialStatement.report_type == report_type,
-				FinancialStatement.period == period
+				FinancialStatement.report_type == report_type
 			)
 		)
 
@@ -693,7 +652,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 			"max_date": max_date
 		}
 
-	async def get_latest_by_ts_code(
+	async def get_latest_by_ts_code (
 			self,
 			ts_code: str,
 			report_type: Optional[str] = None
@@ -714,7 +673,7 @@ class FinancialStatementRepository(BaseRepository[FinancialStatement]):
 				return await self.get_latest_financial_statement(
 					ts_code=ts_code,
 					report_type=report_type,
-					period="year"  # 默认获取年度报告，可以调整
+					_period="year"  # 默认获取年度报告，可以调整
 				)
 			else:
 				# 获取所有报表类型中的最新数据

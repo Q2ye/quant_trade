@@ -5,13 +5,14 @@
 职责：管理股票周线行情数据访问，继承HyperRepositoryBase实现周线数据操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import StockWeekly
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
@@ -60,8 +61,8 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[StockWeekly]:
 		"""
@@ -142,8 +143,8 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 	async def calculate_weekly_moving_averages (
 			self,
 			ts_code: str,
-			end_date: date,
-			periods: List[int] = [5, 10, 20, 50]
+			end_date: datetime,
+			periods: Optional[List[int]] = None
 	) -> Dict[str, Any]:
 		"""
 		计算周线移动平均线
@@ -156,8 +157,12 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 		Returns:
 			移动平均线计算结果
 		"""
+		# 初始化默认周期
+		if periods is None:
+			periods = [5, 10, 20, 50]
+
 		# 获取足够的周线数据
-		max_period = max(periods) if periods else 50
+		max_period = max(periods)
 		start_date = end_date - timedelta(weeks=max_period * 2)
 
 		weekly_data = await self.get_by_code_and_date_range(
@@ -209,7 +214,7 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 	async def analyze_weekly_momentum (
 			self,
 			ts_code: str,
-			end_date: date,
+			end_date: datetime,
 			lookback_weeks: int = 12
 	) -> Dict[str, Any]:
 		"""
@@ -313,7 +318,8 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 			}
 		}
 
-	def _calculate_max_drawdown (self, prices: List[float]) -> float:
+	@staticmethod
+	def _calculate_max_drawdown (prices: List[float]) -> float:
 		"""
 		计算最大回撤
 
@@ -344,7 +350,7 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 	async def detect_weekly_patterns (
 			self,
 			ts_code: str,
-			end_date: date,
+			end_date: datetime,
 			lookback_weeks: int = 52
 	) -> Dict[str, Any]:
 		"""
@@ -405,8 +411,8 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 			"recent_patterns": patterns[-5:] if len(patterns) >= 5 else patterns
 		}
 
+	@staticmethod
 	def _detect_weekly_pattern (
-			self,
 			weeks: List[StockWeekly]
 	) -> Optional[str]:
 		"""
@@ -431,16 +437,16 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 		weekly_bodies = [closes[i] - opens[i] for i in range(len(weeks))]
 		weekly_ranges = [highs[i] - lows[i] for i in range(len(weeks))]
 
-		# 1. 上升三法/下降三法
+		# 1. 上升三法 /下降三法
 		if len(weeks) >= 5:
-			# 上升三法：第一周大阳线，中间三周小实体整理，第五周大阳线突破
+			# 上升三 法：第一周大阳线，中间三周小实体整理，第五周大阳线突破
 			if (weekly_bodies[0] > 0 and weekly_bodies[0] > weekly_ranges[0] * 0.6 and  # 第一周大阳线
 					all(abs(b) < weekly_ranges[i] * 0.3 for i, b in enumerate(weekly_bodies[1:4])) and  # 中间三周小实体
 					weekly_bodies[4] > 0 and weekly_bodies[4] > weekly_ranges[4] * 0.6 and  # 第五周大阳线
 					closes[4] > closes[0]):  # 突破前高
 				return "rising_three_methods"
 
-			# 下降三法：第一周大阴线，中间三周小实体整理，第五周大阴线突破
+			# 下降三 法：第一周大阴线，中间三周小实体整理，第五周大阴线突破
 			if (weekly_bodies[0] < 0 and abs(weekly_bodies[0]) > weekly_ranges[0] * 0.6 and  # 第一周大阴线
 					all(abs(b) < weekly_ranges[i] * 0.3 for i, b in enumerate(weekly_bodies[1:4])) and  # 中间三周小实体
 					weekly_bodies[4] < 0 and abs(weekly_bodies[4]) > weekly_ranges[4] * 0.6 and  # 第五周大阴线
@@ -507,15 +513,138 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 		Returns:
 			生成的周线数据列表
 		"""
-		# 这里需要实现从日线数据聚合生成周线数据的逻辑
-		# 由于涉及跨Repository操作，这里提供框架
-
+		# 导入必要的Repository
+		from quant_server.shared.database.repositories import repository_factory
+		
+		# 创建StockDailyRepository实例
+		daily_repo = repository_factory.create_repository("stock_daily_repo", self.session)
+		
+		# 获取指定时间范围内的日线数据
+		daily_data = await daily_repo.get_by_code_and_date_range(
+			ts_code=ts_code,
+			start_date=start_date,
+			end_date=end_date,
+			limit=1000  # 限制最大返回记录数
+		)
+		
+		if not daily_data:
+			return []
+		
+		# 按日期排序
+		daily_data.sort(key=lambda x: x.trade_date)
+		
+		# 按周分组（以每周一为周开始）
+		weekly_groups = {}
+		for daily_record in daily_data:
+			# 计算该日期所属的周开始日期（周一）
+			week_start = self._get_week_start_date(daily_record.trade_date)
+			
+			if week_start not in weekly_groups:
+				weekly_groups[week_start] = []
+			
+			weekly_groups[week_start].append(daily_record)
+		
+		# 生成周线数据
 		weekly_data = []
-
-		# 实现思路：
-		# 1. 从stock_daily_repo获取日线数据
-		# 2. 按周分组聚合
-		# 3. 计算周线OHLCV等指标
-		# 4. 返回周线数据格式
-
+		for week_start, week_daily_data in weekly_groups.items():
+			if len(week_daily_data) < 1:  # 至少需要一天数据
+				continue
+			
+			# 计算周线OHLCV指标
+			weekly_record = self._aggregate_weekly_data(week_daily_data, week_start, ts_code)
+			if weekly_record:
+				weekly_data.append(weekly_record)
+		
+		# 按交易日期排序
+		weekly_data.sort(key=lambda x: x["trade_date"])
+		
 		return weekly_data
+
+	@staticmethod
+	def _get_week_start_date (trade_date: date) -> date:
+		"""
+		计算指定日期所属周的周一日期
+
+		Args:
+			trade_date: 交易日期
+
+		Returns:
+			周一开始日期
+		"""
+		# 计算距离周一的偏移天数（周一为0，周日为6）
+		weekday = trade_date.weekday()  # 周一=0, 周日=6
+		
+		# 如果是周一，直接返回；否则计算前一个周一
+		if weekday == 0:
+			return trade_date
+		else:
+			return trade_date - timedelta(days=weekday)
+
+	@staticmethod
+	def _aggregate_weekly_data (
+			week_daily_data: List,
+			week_start: date,
+			ts_code: str
+	) -> Dict[str, Any]:
+		"""
+		聚合周线数据
+
+		Args:
+			week_daily_data: 一周内的日线数据列表
+			week_start: 周开始日期（周一）
+			ts_code: 股票代码
+
+		Returns:
+			周线数据记录
+		"""
+		if not week_daily_data:
+			return {}
+
+		# 按日期排序
+		week_daily_data.sort(key=lambda x: x.trade_date)
+		
+		# 提取价格数据
+		opens = [float(d.open) for d in week_daily_data]
+		highs = [float(d.high) for d in week_daily_data]
+		lows = [float(d.low) for d in week_daily_data]
+		closes = [float(d.close) for d in week_daily_data]
+		volumes = [float(d.vol) for d in week_daily_data]
+		amounts = [float(d.amount) for d in week_daily_data]
+		
+		# 计算周线OHLCV
+		week_open = opens[0] if opens else 0
+		week_high = max(highs) if highs else 0
+		week_low = min(lows) if lows else 0
+		week_close = closes[-1] if closes else 0
+		week_volume = sum(volumes) if volumes else 0
+		week_amount = sum(amounts) if amounts else 0
+		
+		# 计算周涨跌幅
+		if week_open > 0:
+			week_change = (week_close - week_open) / week_open * 100
+		else:
+			week_change = 0
+		
+		# 计算周均价
+		week_avg_price = sum(closes) / len(closes) if closes else 0
+		
+		# 构建周线数据记录
+		weekly_record = {
+			"ts_code": ts_code,
+			"trade_date": week_start,  # 使用周一作为周线交易日期
+			"open": week_open,
+			"high": week_high,
+			"low": week_low,
+			"close": week_close,
+			"pre_close": week_open,  # 上周收盘价（即本周开盘价）
+			"change": week_change,
+			"pct_chg": week_change,  # 百分比变化
+			"vol": week_volume,
+			"amount": week_amount,
+			"avg_price": week_avg_price,
+			"trade_days": len(week_daily_data),  # 本周交易天数
+			"week_start": week_start,
+			"week_end": week_daily_data[-1].trade_date if week_daily_data else week_start
+		}
+		
+		return weekly_record

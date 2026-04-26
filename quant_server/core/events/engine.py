@@ -11,22 +11,21 @@
 """
 
 import asyncio
-import threading
-import queue
-import time
 import logging
-from abc import ABC, abstractmethod
-from collections import defaultdict, deque
+import queue
+import threading
+import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from typing import (
 	Any, Callable, Dict, List, Optional, Set, Union,
-	Coroutine, Type, TypeVar
+	TypeVar
 )
-from concurrent.futures import ThreadPoolExecutor, Future
 
 from .base import BaseEvent
-from .types import EventPriority, EventStatus
-from .framework import EventHandler, EventFilter, EventTransformer
+from .framework import EventFilter, EventTransformer, EventHandler, ConcreteEventHandler
+from .types import EventPriority
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseEvent)
@@ -42,6 +41,14 @@ class EventHandlerRegistry:
 		self._handlers: Dict[str, List[EventHandler]] = defaultdict(list)
 		self._wildcard_handlers: List[EventHandler] = []
 		self._handler_count = 0
+
+	def get_handler_count (self) -> int:
+		"""获取注册的处理器数量
+
+		Returns:
+			int: 处理器数量
+		"""
+		return self._handler_count
 
 	def register (
 			self,
@@ -64,7 +71,7 @@ class EventHandlerRegistry:
 		self._handler_count += 1
 
 		if isinstance(handler, Callable) and not isinstance(handler, EventHandler):
-			handler = EventHandler(handler, priority=priority, handler_id=handler_id)
+			handler = ConcreteEventHandler(handler, priority=priority, handler_id=handler_id)
 		elif isinstance(handler, EventHandler):
 			handler.handler_id = handler_id
 			handler.priority = priority
@@ -225,7 +232,7 @@ class EventEngine:
 		self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f"{name}_Worker")
 
 		# 统计信息
-		self._stats = {
+		self._stats: Dict[str, Union[int, Optional[datetime]]] = {
 			"events_processed": 0,
 			"events_failed": 0,
 			"events_dropped": 0,
@@ -332,7 +339,7 @@ class EventEngine:
 
 					# 可以添加回调处理结果
 					future.add_done_callback(
-						lambda f: self._handle_handler_result(f, handler, event)
+						lambda f: self._handle_handler_result(f, handler)
 					)
 
 					self._stats["handlers_executed"] += 1
@@ -349,7 +356,8 @@ class EventEngine:
 			event.mark_processed(success=False, error=str(e))
 			self._stats["events_failed"] += 1
 
-	def _handle_handler_result (self, future: Future, handler: EventHandler, event: BaseEvent) -> None:
+	@staticmethod
+	def _handle_handler_result (future: Future, handler: EventHandler) -> None:
 		"""处理处理器执行结果"""
 		try:
 			result = future.result()
@@ -412,7 +420,7 @@ class EventEngine:
 			"is_running": self._running,
 			"uptime": (datetime.now() - (self._stats["start_time"] or datetime.now())).total_seconds() if self._stats[
 				"start_time"] else 0,
-			"handler_count": self._registry._handler_count,
+			"handler_count": self._registry.get_handler_count(),
 		})
 		return stats
 
@@ -454,7 +462,17 @@ class AsyncEventEngine(EventEngine):
 			self.start()
 
 	async def put_async (self, event: BaseEvent, priority: Optional[int] = None) -> bool:
-		"""异步发布事件"""
+		"""异步发布事件
+
+		Args:
+			event: 事件对象
+			priority: 优先级（被忽略，异步队列不支持优先级）
+		
+		Returns:
+			bool: 是否成功发布
+		"""
+		# 异步队列不支持优先级，使用事件自身的优先级
+		_ = priority  # 避免未使用参数警告
 		if not self._running:
 			logger.warning(f"异步事件引擎 {self.name} 未运行，事件 {event.event_id} 被丢弃")
 			return False
@@ -544,7 +562,7 @@ class AsyncEventEngine(EventEngine):
 						# 同步处理器，在线程池中执行
 						future = self._executor.submit(handler.execute, event)
 						future.add_done_callback(
-							lambda f: self._handle_handler_result(f, handler, event)
+							lambda f: self._handle_handler_result(f, handler)
 						)
 
 					self._stats["handlers_executed"] += 1

@@ -715,11 +715,11 @@ class TimeRange:
         Returns:
             是否在范围内
         """
-        if isinstance(time_point, date):
+        if isinstance(time_point, datetime):
+            return self.start <= time_point <= self.end
+        elif isinstance(time_point, date):
             # 如果是 date 类型，转换为 datetime 进行比较
             return self.start.date() <= time_point <= self.end.date()
-        elif isinstance(time_point, datetime):
-            return self.start <= time_point <= self.end
         else:
             raise TypeError("time_point 必须是 datetime 或 date 类型")
 

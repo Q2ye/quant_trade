@@ -1,8 +1,9 @@
 # shared/database/repositories/strategy/backtest/trade_repo.py
-from typing import List, Dict, Any, Optional
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Dict, Any
+
 from sqlalchemy import select, func, and_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import literal
 
 from quant_server.shared.database.models.business_models import BacktestTrade
@@ -58,7 +59,7 @@ class BacktestTradeRepository(BaseRepository[BacktestTrade]):
 		)
 
 		direction_result = await self.session.execute(direction_query)
-		direction_stats = {row.direction: row._asdict() for row in direction_result.all()}
+		direction_stats = {row.direction: dict(row) for row in direction_result.all()}
 
 		# 按股票代码统计
 		stock_query = (
@@ -86,7 +87,7 @@ class BacktestTradeRepository(BaseRepository[BacktestTrade]):
 		)
 
 		stock_result = await self.session.execute(stock_query)
-		top_stocks = [row._asdict() for row in stock_result.all()]
+		top_stocks = [dict(row) for row in stock_result.all()]
 
 		return {
 			"total_trades": total_stats.total_trades or 0,

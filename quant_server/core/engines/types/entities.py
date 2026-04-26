@@ -54,13 +54,54 @@ class BaseEntity:
 
         Returns:
             BaseEntity: 实体实例
+
+        Raises:
+            TypeError: 当传入的字典包含无效字段或缺少必需字段时
         """
-        if hasattr(cls, '__annotations__'):
-            valid_keys = cls.__annotations__.keys()
-            filtered_data = {k: v for k, v in data.items() if k in valid_keys}
-            return cls(**filtered_data)
-        else:
-            return cls(**data)
+        try:
+            if hasattr(cls, '__annotations__'):
+                valid_keys = cls.__annotations__.keys()
+                filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+                
+                # 检查必需字段
+                import inspect
+                sig = inspect.signature(cls.__init__)
+                required_params = [p.name for p in sig.parameters.values() 
+                                 if p.default == inspect.Parameter.empty and p.name != 'self']
+                
+                missing_fields = [f for f in required_params if f not in filtered_data]
+                if missing_fields:
+                    raise TypeError(f"缺少必需字段: {missing_fields}")
+                
+                try:
+                    return cls(**filtered_data)
+                except TypeError as e:
+                    if "unexpected keyword argument" in str(e):
+                        # 处理意外实参错误
+                        valid_fields = list(getattr(cls, '__annotations__', {}).keys())
+                        invalid_fields = [k for k in filtered_data.keys() if k not in valid_fields]
+                        raise TypeError(f"无效字段: {invalid_fields}. 有效字段: {valid_fields}")
+                    raise
+            else:
+                try:
+                    return cls(**data)
+                except TypeError as e:
+                    if "unexpected keyword argument" in str(e):
+                        # 处理意外实参错误
+                        valid_fields = list(getattr(cls, '__annotations__', {}).keys())
+                        invalid_fields = [k for k in data.keys() if k not in valid_fields]
+                        raise TypeError(f"无效字段: {invalid_fields}. 有效字段: {valid_fields}")
+                    raise
+        except TypeError as e:
+            # 提供更详细的错误信息
+            if "unexpected keyword argument" in str(e):
+                invalid_fields = [k for k in data.keys() if k not in getattr(cls, '__annotations__', {})]
+                raise TypeError(f"无效字段: {invalid_fields}. 有效字段: {list(getattr(cls, '__annotations__', {}).keys())}")
+            elif "missing required" in str(e):
+                raise
+            else:
+                # 重新抛出其他TypeError
+                raise
 
     @classmethod
     def from_json(cls, json_str: str):
@@ -79,7 +120,7 @@ class BaseEntity:
 # ==================== 引擎相关实体 ====================
 
 @dataclass(frozen=True)
-class EngineConfig(BaseEntity):
+class EngineConfigEntity(BaseEntity):
     """引擎配置
 
     定义引擎的初始化参数和运行配置
@@ -109,7 +150,7 @@ class EngineConfig(BaseEntity):
 
 
 @dataclass(frozen=True)
-class EngineMetrics(BaseEntity):
+class EngineMetricsEntity(BaseEntity):
     """引擎性能指标"""
     uptime: float = 0.0                     # 运行时长（秒）
     processed_events: int = 0               # 处理的事件数量
@@ -135,7 +176,7 @@ class EngineStatus(BaseEntity):
     last_update: datetime                  # 最后更新时间
     error: Optional[str] = None            # 错误信息
     warning: Optional[str] = None          # 警告信息
-    metrics: EngineMetrics = field(default_factory=EngineMetrics)  # 性能指标
+    metrics: EngineMetricsEntity = field(default_factory=EngineMetricsEntity)  # 性能指标
     dependencies: List[str] = field(default_factory=list)  # 依赖状态
 
 
@@ -403,7 +444,7 @@ class Alert(BaseEntity):
 # ==================== 事件相关实体 ====================
 
 @dataclass(frozen=True)
-class Event(BaseEntity):
+class EventEntity(BaseEntity):
     """事件实体"""
     event_id: str                         # 事件ID（唯一）
     event_type: str                       # 事件类型
@@ -577,7 +618,7 @@ class EntityFactory:
         return StrategyConfig(**kwargs)
 
     @staticmethod
-    def create_event(**kwargs) -> Event:
+    def create_event(**kwargs) -> EventEntity:
         """创建事件
 
         Args:
@@ -586,7 +627,7 @@ class EntityFactory:
         Returns:
             Event: 事件实例
         """
-        return Event(**kwargs)
+        return EventEntity(**kwargs)
 
     @staticmethod
     def create_metric(**kwargs) -> Metric:

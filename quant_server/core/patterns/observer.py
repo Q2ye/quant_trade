@@ -11,10 +11,10 @@
 4. 状态监控：系统状态变化通知监控模块
 """
 
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Callable, Optional
-from weakref import WeakKeyDictionary, WeakSet
 import asyncio
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional
+from weakref import WeakSet
 
 
 class Observer(ABC):

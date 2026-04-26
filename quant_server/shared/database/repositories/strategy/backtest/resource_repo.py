@@ -2,9 +2,8 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from numpy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, delete
 
 from quant_server.shared.database.models.business_models import BacktestResourceUsage
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -224,5 +223,5 @@ class BacktestResourceUsageRepository(BaseRepository[BacktestResourceUsage]):
 			.where(self.model.recorded_at < cutoff_date)
 		)
 
-		result = await self.session.execute(stmt)
+		result = await self.session.execute(stmt) #type:ignore
 		return result.rowcount or 0

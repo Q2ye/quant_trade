@@ -127,7 +127,7 @@ class Strategy(Base):
     """策略实例表"""
     __tablename__ = 'strategies'
 
-    id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='策略ID（UUID）')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='策略ID（UUID）')
     name = Column(String(100), nullable=False, comment='策略名称')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     description = Column(Text, comment='策略描述')
@@ -166,7 +166,7 @@ class StrategyRun(Base):
     __tablename__ = 'strategy_runs'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='运行记录ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     started_at = Column(DateTime(timezone=True), nullable=False, comment='开始时间')
     stopped_at = Column(DateTime(timezone=True), comment='停止时间')
     status = Column(String(20), nullable=False, comment='运行状态：running, stopped, error')
@@ -189,7 +189,7 @@ class StrategyDailyPerformance(Base):
     __tablename__ = 'strategy_daily_performance'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='绩效记录ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
     daily_return = Column(Numeric(10, 6), nullable=False, comment='日收益率')
     total_return = Column(Numeric(10, 6), nullable=False, comment='累计收益率')
@@ -211,7 +211,7 @@ class Signal(Base):
     __tablename__ = 'signals'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='信号ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     signal_type = Column(String(10), nullable=False, comment='信号类型：buy, sell, hold')
     signal_time = Column(DateTime(timezone=True), nullable=False, index=True, comment='信号时间')
@@ -236,7 +236,7 @@ class StrategyVersion(Base):
     __tablename__ = 'strategy_versions'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='版本ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     version_number = Column(String(20), nullable=False, comment='版本号')
     version_name = Column(String(100), comment='版本名称')
     description = Column(Text, comment='版本描述')
@@ -291,7 +291,7 @@ class StrategyParameter(Base):
     __tablename__ = 'strategy_parameters'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='参数ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     param_name = Column(String(100), nullable=False, comment='参数名称')
     param_type = Column(String(50), nullable=False, comment='参数类型：int/float/string/bool/list/dict')
     param_value = Column(JSON, nullable=False, comment='参数值（JSON格式）')
@@ -317,8 +317,8 @@ class PortfolioStrategy(Base):
     __tablename__ = 'portfolio_strategies'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='组合关联ID')
-    portfolio_id = Column(String(32), nullable=False, comment='组合ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    portfolio_id = Column(String(36), nullable=False, comment='组合ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     weight = Column(Numeric(5, 4), nullable=False, default=0.0, comment='权重（0-1）')
     allocation = Column(Numeric(16, 4), comment='分配资金')
     is_active = Column(Boolean, default=True, comment='是否激活')
@@ -527,10 +527,10 @@ class Order(Base):
     """委托订单表"""
     __tablename__ = 'orders'
 
-    order_id = Column(String(32), primary_key=True, comment='订单ID（UUID）')
+    order_id = Column(String(36), primary_key=True, comment='订单ID（UUID）')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), comment='策略ID')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     order_type = Column(String(10), nullable=False, comment='订单类型：limit, market')
     direction = Column(String(4), nullable=False, comment='买卖方向：buy, sell')
@@ -566,8 +566,8 @@ class Trade(Base):
     """成交记录表"""
     __tablename__ = 'trades'
 
-    trade_id = Column(String(32), primary_key=True, comment='成交ID（UUID）')
-    order_id = Column(String(32), ForeignKey('orders.order_id'), nullable=False, comment='订单ID')
+    trade_id = Column(String(36), primary_key=True, comment='成交ID（UUID）')
+    order_id = Column(String(36), ForeignKey('orders.order_id'), nullable=False, comment='订单ID')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     price = Column(Numeric(10, 4), nullable=False, comment='成交价格')
     volume = Column(Integer, nullable=False, comment='成交数量')
@@ -625,9 +625,9 @@ class TradeInstruction(Base):
     __tablename__ = 'trade_instructions'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指令ID')
-    instruction_id = Column(String(32), nullable=False, unique=True, comment='指令ID（UUID）')
+    instruction_id = Column(String(36), nullable=False, unique=True, comment='指令ID（UUID）')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), comment='策略ID')
     instruction_type = Column(String(50), nullable=False, comment='指令类型：basket_trade/portfolio_rebalance/stop_loss')
     status = Column(String(20), default='pending',
                     comment='指令状态：pending, executing, completed, failed, cancelled')
@@ -682,7 +682,7 @@ class TradeFee(Base):
     __tablename__ = 'trade_fees'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='费用ID')
-    trade_id = Column(String(32), ForeignKey('trades.trade_id'), nullable=False, comment='成交ID')
+    trade_id = Column(String(36), ForeignKey('trades.trade_id'), nullable=False, comment='成交ID')
     fee_type = Column(String(50), nullable=False, comment='费用类型：commission/tax/transfer/stamp')
     fee_amount = Column(Numeric(10, 4), nullable=False, comment='费用金额')
     fee_rate = Column(Numeric(8, 6), comment='费率')
@@ -809,9 +809,9 @@ class RiskEvent(Base):
     """风控事件触发日志表"""
     __tablename__ = 'risk_events'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='事件ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='事件ID')
     rule_id = Column(String(36), ForeignKey('risk_rules.id'), nullable=False, comment='规则ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), comment='策略ID')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     event_type = Column(String(50), nullable=False, comment='事件类型')
     event_message = Column(Text, nullable=False, comment='事件描述')
@@ -839,7 +839,7 @@ class Basket(Base):
     """交易篮子表"""
     __tablename__ = 'baskets'
 
-    id = Column(String(32), primary_key=True, comment='篮子ID（UUID）')
+    id = Column(String(36), primary_key=True, comment='篮子ID（UUID）')
     name = Column(String(100), nullable=False, comment='篮子名称')
     description = Column(Text, comment='篮子描述')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -861,7 +861,7 @@ class BasketItem(Base):
     __tablename__ = 'basket_items'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='成分ID')
-    basket_id = Column(String(32), ForeignKey('baskets.id'), nullable=False, comment='篮子ID')
+    basket_id = Column(String(36), ForeignKey('baskets.id'), nullable=False, comment='篮子ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     weight = Column(Float, default=0.0, comment='权重（0-1）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -1001,9 +1001,9 @@ class BacktestTask(Base):
     """回测任务表"""
     __tablename__ = 'backtest_tasks'
 
-    id = Column(String(32), primary_key=True, default=lambda: str(uuid.uuid4().hex[:16]), comment='回测任务ID（UUID）')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='回测任务ID（UUID）')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
-    strategy_id = Column(String(32), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     name = Column(String(100), nullable=False, comment='回测任务名称')
     description = Column(Text, comment='任务描述')
     status = Column(String(20), nullable=False, default='pending',
@@ -1041,7 +1041,7 @@ class BacktestEquityCurve(Base):
     __tablename__ = 'backtest_equity_curves'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='净值记录ID')
-    task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
+    task_id = Column(String(36), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_date = Column(DateTime, nullable=False, comment='交易日期')
     equity = Column(Numeric(16, 4), nullable=False, comment='总资产')
     cash = Column(Numeric(16, 4), nullable=False, comment='现金')
@@ -1063,7 +1063,7 @@ class BacktestTrade(Base):
     __tablename__ = 'backtest_trades'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='交易记录ID')
-    task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
+    task_id = Column(String(36), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_time = Column(DateTime(timezone=True), nullable=False, comment='交易时间')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     direction = Column(String(4), nullable=False, comment='买卖方向：buy, sell')
@@ -1090,7 +1090,7 @@ class BacktestPosition(Base):
     __tablename__ = 'backtest_positions'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='持仓快照ID')
-    task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
+    task_id = Column(String(36), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     trade_date = Column(DateTime, nullable=False, comment='交易日期')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     volume = Column(Integer, nullable=False, default=0, comment='持仓量')
@@ -1113,7 +1113,7 @@ class BacktestParameter(Base):
     __tablename__ = 'backtest_parameters'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='参数ID')
-    task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
+    task_id = Column(String(36), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     param_category = Column(String(50), nullable=False, comment='参数分类：market/cost/risk/strategy')
     param_name = Column(String(100), nullable=False, comment='参数名称')
     param_value = Column(JSON, nullable=False, comment='参数值（JSON格式）')
@@ -1135,7 +1135,7 @@ class BacktestScenario(Base):
     __tablename__ = 'backtest_scenarios'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='场景ID')
-    scenario_id = Column(String(32), nullable=False, unique=True, comment='场景ID（UUID）')
+    scenario_id = Column(String(36), nullable=False, unique=True, comment='场景ID（UUID）')
     scenario_name = Column(String(100), nullable=False, comment='场景名称')
     description = Column(Text, comment='场景描述')
     market_conditions = Column(JSON, nullable=False, comment='市场条件（JSON格式）')
@@ -1161,10 +1161,10 @@ class BacktestComparison(Base):
     __tablename__ = 'backtest_comparisons'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='对比ID')
-    comparison_id = Column(String(32), nullable=False, unique=True, comment='对比ID（UUID）')
+    comparison_id = Column(String(36), nullable=False, unique=True, comment='对比ID（UUID）')
     comparison_name = Column(String(100), nullable=False, comment='对比名称')
     description = Column(Text, comment='对比描述')
-    base_task_id = Column(String(32), ForeignKey('backtest_tasks.id'), comment='基准回测任务ID')
+    base_task_id = Column(String(36), ForeignKey('backtest_tasks.id'), comment='基准回测任务ID')
     compared_tasks = Column(JSON, nullable=False, comment='对比任务列表（JSON格式）')
     comparison_metrics = Column(JSON, nullable=False, comment='对比指标（JSON格式）')
     comparison_results = Column(JSON, comment='对比结果（JSON格式）')
@@ -1186,8 +1186,8 @@ class BacktestResourceUsage(Base):
     """回测资源使用表"""
     __tablename__ = 'backtest_resource_usage'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='资源使用ID')
-    task_id = Column(String(32), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='资源使用ID')
+    task_id = Column(String(36), ForeignKey('backtest_tasks.id'), nullable=False, comment='回测任务ID')
     resource_type = Column(String(50), nullable=False, comment='资源类型：cpu/memory/disk/network')
     metric_name = Column(String(100), nullable=False, comment='指标名称')
     metric_value = Column(Numeric(12, 4), nullable=False, comment='指标值')
@@ -1214,7 +1214,7 @@ class FactorResearch(Base):
     __tablename__ = 'factor_research'
 
     # 基础信息
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='主键ID')
     research_id = Column(String(64), nullable=False, unique=True, index=True, comment='研究任务ID')
     research_name = Column(String(200), nullable=False, comment='研究任务名称')
 
@@ -1290,14 +1290,14 @@ class AnalysisReport(Base):
     """分析报告表"""
     __tablename__ = 'analysis_reports'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='报告ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='报告ID')
     report_type = Column(String(50), nullable=False, comment='报告类型：daily, weekly, monthly, performance, risk, custom')
     report_name = Column(String(200), nullable=False, comment='报告名称')
     report_config = Column(JSON, nullable=False, default=dict, comment='报告生成配置（JSON格式）')
     report_data = Column(JSON, comment='报告数据（JSON格式）')
     format = Column(String(20), default='json', comment='报告格式：json, html, pdf, excel')
     status = Column(String(20), default='pending', comment='报告生成状态：pending, generating, completed, failed')
-    generated_by = Column(Integer, ForeignKey('sys_users.id'), comment='生成人ID')
+    generated_by = Column(String(36), ForeignKey('sys_users.id'), comment='生成人ID')
     generated_at = Column(DateTime(timezone=True), comment='生成时间')
     file_path = Column(Text, comment='报告文件存储路径')
     file_size = Column(BigInteger, comment='报告文件大小（字节）')
@@ -1323,7 +1323,7 @@ class AnalysisTask(Base):
     """分析任务表"""
     __tablename__ = 'analysis_tasks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='任务ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='任务ID')
     task_id = Column(String(64), nullable=False, unique=True, comment='任务ID（唯一）')
     task_name = Column(String(200), nullable=False, comment='任务名称')
     analysis_type = Column(String(50), nullable=False, comment='分析类型：performance/risk/attribution')
@@ -1331,9 +1331,9 @@ class AnalysisTask(Base):
     status = Column(String(20), default='pending', comment='任务状态')
     progress = Column(Float, default=0.0, comment='进度')
     result = Column(JSON, comment='分析结果（JSON格式）')
-    report_id = Column(Integer, ForeignKey('analysis_reports.id'), comment='关联的报告ID')
+    report_id = Column(String(36), ForeignKey('analysis_reports.id'), comment='关联的报告ID')
     error_message = Column(Text, comment='错误信息')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -1356,14 +1356,14 @@ class AnalysisTemplate(Base):
     """分析模板表"""
     __tablename__ = 'analysis_templates'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='模板ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='模板ID')
     template_name = Column(String(100), nullable=False, comment='模板名称')
     template_type = Column(String(50), nullable=False, comment='模板类型')
     description = Column(Text, comment='模板描述')
     config_template = Column(JSON, nullable=False, comment='配置模板（JSON格式）')
     output_format = Column(String(20), default='json', comment='输出格式')
     is_public = Column(Boolean, default=True, comment='是否公开')
-    created_by = Column(Integer, ForeignKey('sys_users.id'), comment='创建人ID')
+    created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -1382,15 +1382,15 @@ class ReportGenerationLog(Base):
     """报告生成日志表"""
     __tablename__ = 'report_generation_logs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='日志ID')
-    report_id = Column(Integer, ForeignKey('analysis_reports.id'), comment='报告ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='日志ID')
+    report_id = Column(String(36), ForeignKey('analysis_reports.id'), comment='报告ID')
     generation_type = Column(String(50), nullable=False, comment='生成类型：scheduled/manual')
     status = Column(String(20), nullable=False, comment='生成状态')
     started_at = Column(DateTime(timezone=True), nullable=False, comment='开始时间')
     completed_at = Column(DateTime(timezone=True), comment='完成时间')
     duration_ms = Column(Integer, comment='耗时（毫秒）')
     error_message = Column(Text, comment='错误信息')
-    generated_by = Column(Integer, ForeignKey('sys_users.id'), comment='生成人ID')
+    generated_by = Column(String(36), ForeignKey('sys_users.id'), comment='生成人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
@@ -1409,7 +1409,7 @@ class AnalysisBenchmark(Base):
     """分析基准表"""
     __tablename__ = 'analysis_benchmarks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='基准ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='基准ID')
     benchmark_code = Column(String(20), nullable=False, unique=True, comment='基准代码')
     benchmark_name = Column(String(100), nullable=False, comment='基准名称')
     benchmark_type = Column(String(50), nullable=False, comment='基准类型：index/custom/portfolio')
@@ -1433,9 +1433,9 @@ class WorkflowTask(Base):
     """工作流任务表"""
     __tablename__ = 'workflow_tasks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='任务ID')
-    workflow_id = Column(String(32), nullable=False, comment='工作流ID')
-    task_id = Column(String(32), nullable=False, comment='任务ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='任务ID')
+    workflow_id = Column(String(36), nullable=False, comment='工作流ID')
+    task_id = Column(String(36), nullable=False, comment='任务ID')
     task_name = Column(String(100), nullable=False, comment='任务名称')
     task_type = Column(String(50), nullable=False, comment='任务类型')
     status = Column(String(20), default='pending',
@@ -1463,9 +1463,9 @@ class WorkflowLog(Base):
     """工作流执行日志表"""
     __tablename__ = 'workflow_logs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='日志ID')
-    workflow_id = Column(String(32), nullable=False, comment='工作流ID')
-    execution_id = Column(String(32), nullable=False, comment='执行ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='日志ID')
+    workflow_id = Column(String(36), nullable=False, comment='工作流ID')
+    execution_id = Column(String(36), nullable=False, comment='执行ID')
     workflow_name = Column(String(100), nullable=False, comment='工作流名称')
     status = Column(String(20), nullable=False, comment='执行状态')
     started_at = Column(DateTime(timezone=True), nullable=False, comment='开始时间')
@@ -1488,8 +1488,8 @@ class FileAttachment(Base):
     """文件附件表"""
     __tablename__ = 'file_attachments'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='文件ID')
-    file_id = Column(String(32), nullable=False, unique=True, comment='文件ID（UUID）')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='文件ID')
+    file_id = Column(String(36), nullable=False, unique=True, comment='文件ID（UUID）')
     file_name = Column(String(200), nullable=False, comment='文件名')
     file_type = Column(String(50), nullable=False, comment='文件类型：report/data/strategy/log')
     file_size = Column(BigInteger, nullable=False, comment='文件大小（字节）')
@@ -1497,7 +1497,7 @@ class FileAttachment(Base):
     mime_type = Column(String(100), comment='MIME类型')
     reference_type = Column(String(50), nullable=False, comment='关联类型')
     reference_id = Column(String(100), nullable=False, comment='关联ID')
-    uploaded_by = Column(Integer, ForeignKey('sys_users.id'), comment='上传人ID')
+    uploaded_by = Column(String(36), ForeignKey('sys_users.id'), comment='上传人ID')
     upload_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='上传日期')
     description = Column(Text, comment='描述')
     metainfo = Column(JSON, comment='元数据（JSON格式）')
@@ -1520,7 +1520,7 @@ class MonitorAlert(Base):
     """监控报警记录表"""
     __tablename__ = 'monitor_alerts'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='报警ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='报警ID')
     alert_type = Column(String(50), nullable=False, comment='报警类型：system_error, risk_trigger, data_quality, performance')
     alert_level = Column(String(20), nullable=False, comment='报警级别：critical, warning, info')
     source_module = Column(String(50), nullable=False, comment='报警来源模块')
@@ -1558,7 +1558,7 @@ class MonitorTask(Base):
     """监控任务表"""
     __tablename__ = 'monitor_tasks'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='任务ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='任务ID')
     task_name = Column(String(100), nullable=False, comment='任务名称')
     task_type = Column(String(50), nullable=False, comment='任务类型：system/strategy/data/trade')
     target_type = Column(String(50), nullable=False, comment='监控目标类型')
@@ -1585,7 +1585,7 @@ class MonitorThreshold(Base):
     """监控阈值配置表"""
     __tablename__ = 'monitor_thresholds'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='阈值ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='阈值ID')
     metric_type = Column(String(50), nullable=False, comment='指标类型')
     metric_name = Column(String(100), nullable=False, comment='指标名称')
     warning_threshold = Column(Numeric(12, 4), comment='警告阈值')
@@ -1610,7 +1610,7 @@ class AlertTemplate(Base):
     """报警模板表"""
     __tablename__ = 'alert_templates'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='模板ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='模板ID')
     template_name = Column(String(100), nullable=False, comment='模板名称')
     alert_type = Column(String(50), nullable=False, comment='报警类型')
     alert_level = Column(String(20), nullable=False, comment='报警级别')
@@ -1633,8 +1633,8 @@ class AlertDeliveryLog(Base):
     """报警发送日志表"""
     __tablename__ = 'alert_delivery_logs'
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='发送日志ID')
-    alert_id = Column(Integer, ForeignKey('monitor_alerts.id'), nullable=False, comment='报警ID')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='发送日志ID')
+    alert_id = Column(String(36), ForeignKey('monitor_alerts.id'), nullable=False, comment='报警ID')
     channel = Column(String(50), nullable=False, comment='发送渠道：email/wechat/dingtalk/sms')
     recipient = Column(String(200), nullable=False, comment='接收者')
     status = Column(String(20), default='pending', comment='发送状态：pending, sent, failed, delivered')

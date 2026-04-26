@@ -2059,8 +2059,8 @@ COMMENT ON COLUMN index_basic.exp_date IS '终止日期';
 -- 工作流任务表
 CREATE TABLE workflow_tasks (
     id VARCHAR(36) PRIMARY KEY,
-    workflow_id VARCHAR(32) NOT NULL,
-    task_id VARCHAR(32) NOT NULL,
+    workflow_id VARCHAR(36) NOT NULL,
+    task_id VARCHAR(36) NOT NULL,
     task_name VARCHAR(100) NOT NULL,
     task_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
@@ -2092,8 +2092,8 @@ CREATE INDEX idx_workflow_tasks_status ON workflow_tasks(status);
 -- 工作流执行日志表
 CREATE TABLE workflow_logs (
     id VARCHAR(36) PRIMARY KEY,
-    workflow_id VARCHAR(32) NOT NULL,
-    execution_id VARCHAR(32) NOT NULL,
+    workflow_id VARCHAR(36) NOT NULL,
+    execution_id VARCHAR(36) NOT NULL,
     workflow_name VARCHAR(100) NOT NULL,
     status VARCHAR(20) NOT NULL,
     started_at TIMESTAMPTZ NOT NULL,
@@ -2122,7 +2122,7 @@ CREATE INDEX idx_workflow_logs_date ON workflow_logs(started_at DESC);
 -- 文件附件表
 CREATE TABLE file_attachments (
     id VARCHAR(36) PRIMARY KEY,
-    file_id VARCHAR(32) NOT NULL UNIQUE,
+    file_id VARCHAR(36) NOT NULL UNIQUE,
     file_name VARCHAR(200) NOT NULL,
     file_type VARCHAR(50) NOT NULL,
     file_size BIGINT NOT NULL,
@@ -2760,7 +2760,7 @@ COMMENT ON COLUMN account_daily_performance.daily_return IS '当日收益率（%
 -- 策略每日绩效表（TimescaleDB超表）
 CREATE TABLE strategy_daily_performance (
     id VARCHAR(36),
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id),
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
     trade_date DATE NOT NULL,
     daily_return NUMERIC(10,6) NOT NULL,
     total_return NUMERIC(10,6) NOT NULL,
@@ -2780,7 +2780,7 @@ COMMENT ON COLUMN strategy_daily_performance.sharpe_ratio IS '夏普比率';
 -- 信号记录表（TimescaleDB超表）
 CREATE TABLE signals (
     id VARCHAR(36),
-    strategy_id VARCHAR(32) NOT NULL REFERENCES strategies(id),
+    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
     ts_code VARCHAR(12) NOT NULL,
     signal_type VARCHAR(10) NOT NULL CHECK (signal_type IN ('buy', 'sell', 'hold')),
     signal_time TIMESTAMPTZ NOT NULL,
@@ -2802,7 +2802,7 @@ COMMENT ON COLUMN signals.reason IS '信号产生原因';
 -- 回测净值曲线表（TimescaleDB超表）
 CREATE TABLE backtest_equity_curves (
     id VARCHAR(36),
-    task_id VARCHAR(32) NOT NULL REFERENCES backtest_tasks(id),
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id),
     trade_date DATE NOT NULL,
     equity NUMERIC(16,4) NOT NULL,
     cash NUMERIC(16,4) NOT NULL,
@@ -2821,7 +2821,7 @@ COMMENT ON COLUMN backtest_equity_curves.market_value IS '持仓市值';
 CREATE TABLE risk_events (
     id VARCHAR(36),
     rule_id VARCHAR(36) NOT NULL REFERENCES risk_rules(id),
-    strategy_id VARCHAR(32) REFERENCES strategies(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),
     user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     event_type VARCHAR(50) NOT NULL,
     event_message TEXT NOT NULL,

@@ -6,19 +6,19 @@
 设计原则：继承BaseRepository，使用统一数据访问接口
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text
-from sqlalchemy.orm import selectinload, joinedload
+from datetime import date
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from sqlalchemy import select, and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import (
 	IndexBasic,
 	IndexDaily,
 	# 假设有指数成分股模型
 	# IndexComponent
 )
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class IndexBasicRepository(BaseRepository[IndexBasic]):

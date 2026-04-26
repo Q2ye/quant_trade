@@ -6,13 +6,12 @@ ETF数据仓库
 设计原则：继承BaseRepository，使用统一数据访问接口
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc
-from sqlalchemy.orm import selectinload, joinedload
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from sqlalchemy import select, and_, or_, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import (
 	EtfBasic,
 	EtfIndex,
@@ -20,6 +19,7 @@ from quant_server.shared.database.models.data_models import (
 	EtfMinute,
 	FundAdjFactor
 )
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class EtfBasicRepository(BaseRepository[EtfBasic]):
@@ -538,7 +538,7 @@ class ETFRepository:
 			if not existing:
 				return None
 
-			return await self.etf_basic_repo.update(existing.id, update_data)
+			return await self.etf_basic_repo.update(existing.ts_code, update_data)
 		except Exception as e:
 			raise RepositoryError(f"更新ETF记录失败: {str(e)}")
 
@@ -558,7 +558,7 @@ class ETFRepository:
 			if not existing:
 				return False
 
-			await self.etf_basic_repo.delete(existing.id)
+			await self.etf_basic_repo.delete(existing.ts_code)
 			return True
 		except Exception as e:
 			raise RepositoryError(f"删除ETF记录失败: {str(e)}")

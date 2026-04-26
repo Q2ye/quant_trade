@@ -5,13 +5,14 @@
 位置：shared/database/repositories/trading/position/position_snapshot_repo.py
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, and_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.business_models import PositionSnapshot
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
@@ -22,8 +23,8 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_daily_snapshots (
 			self,
-			user_id: int,
-			account_id: int,
+			user_id: str,
+			account_id: str,
 			start_date: date,
 			end_date: date
 	) -> List[PositionSnapshot]:
@@ -51,7 +52,7 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_account_snapshot_by_date (
 			self,
-			account_id: int,
+			account_id: str,
 			snapshot_date: date
 	) -> List[PositionSnapshot]:
 		"""
@@ -74,8 +75,8 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_latest_snapshot (
 			self,
-			user_id: int,
-			account_id: int,
+			user_id: str,
+			account_id: str,
 			ts_code: str
 	) -> Optional[PositionSnapshot]:
 		"""
@@ -89,19 +90,20 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 		Returns:
 			最新的持仓快照，如果没有则返回None
 		"""
-		return await self.get_one(
+		query = select(PositionSnapshot).where(
 			and_(
 				PositionSnapshot.user_id == user_id,
 				PositionSnapshot.account_id == account_id,
 				PositionSnapshot.ts_code == ts_code
-			),
-			order_by=PositionSnapshot.snapshot_date.desc()
-		)
+			)
+		).order_by(PositionSnapshot.snapshot_date.desc()).limit(1)
+		result = await self.session.execute(query)
+		return result.scalar_one_or_none()
 
 	async def create_daily_snapshot (
 			self,
-			user_id: int,
-			account_id: int,
+			user_id: str,
+			account_id: str,
 			ts_code: str,
 			snapshot_date: date,
 			volume: int,
@@ -167,8 +169,8 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_position_history (
 			self,
-			user_id: int,
-			account_id: int,
+			user_id: str,
+			account_id: str,
 			ts_code: str,
 			days: int = 30
 	) -> List[PositionSnapshot]:
@@ -200,7 +202,7 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_account_total_value_history (
 			self,
-			account_id: int,
+			account_id: str,
 			days: int = 30
 	) -> List[Dict[str, Any]]:
 		"""
@@ -279,7 +281,7 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 
 	async def get_snapshot_statistics (
 			self,
-			account_id: int,
+			account_id: str,
 			start_date: date,
 			end_date: date
 	) -> Dict[str, Any]:
@@ -295,13 +297,15 @@ class PositionSnapshotRepository(BaseRepository[PositionSnapshot]):
 			快照统计信息
 		"""
 		# 统计总记录数
-		total_count = await self.count(
+		total_query = select(func.count()).select_from(PositionSnapshot).where(
 			and_(
 				PositionSnapshot.account_id == account_id,
 				PositionSnapshot.snapshot_date >= start_date,
 				PositionSnapshot.snapshot_date <= end_date
 			)
 		)
+		total_result = await self.session.execute(total_query)
+		total_count = total_result.scalar() or 0
 
 		# 统计股票种类数
 		stock_count_query = select(

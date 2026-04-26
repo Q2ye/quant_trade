@@ -12,19 +12,20 @@
 4. 批量操作：支持批量指令处理
 """
 
-from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
-from decimal import Decimal
+from typing import List, Optional, Dict, Any
+
+from sqlalchemy import select, update, and_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, text, case, String
 from sqlalchemy.orm import joinedload
 
-from quant_server.shared.database.repositories.base import BaseRepository,RepositoryError
 from quant_server.shared.database.models.business_models import TradeInstruction, SysUser, Strategy
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,
+	FilterOperator,
 	SortCondition
 )
 
@@ -72,7 +73,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_by_user_id (
 			self,
-			user_id: int,
+			user_id: str,
 			instruction_type: Optional[str] = None,
 			status: Optional[str] = None,
 			start_date: Optional[datetime] = None,
@@ -692,7 +693,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			if instruction.execution_result:
 				try:
 					execution_result = instruction.execution_result
-				except:
+				except Exception:
 					execution_result = {}
 
 			return {
@@ -749,7 +750,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			for field, value in query_params.items():
 				if hasattr(TradeInstruction, field):
 					filter_conditions.append(
-						FilterCondition(field=field, operator="eq", value=value)
+						FilterCondition(field=field, operator=FilterOperator.EQ, value=value)
 					)
 
 			# 执行分页查询
@@ -789,7 +790,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			if not instruction_ids:
 				return 0
 
-			update_data = {'status': status}
+			update_data: Dict[str, Any] = {'status': status}
 			if update_time:
 				update_data['updated_at'] = update_time
 			else:
@@ -806,7 +807,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 				update_data['error_message'] = error_message
 
 			query = (
-				self.model.__table__.update()
+				update(self.model)
 				.where(self.model.instruction_id.in_(instruction_ids))
 				.values(**update_data)
 			)
@@ -883,7 +884,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			}
 
 			query = (
-				self.model.__table__.update()
+				update(self.model)
 				.where(and_(*filters))
 				.values(**update_data)
 			)
@@ -897,7 +898,8 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	# ==================== 辅助方法 ====================
 
-	def _build_order_by (self, order_by: str) -> List:
+	@staticmethod
+	def _build_order_by (order_by: str) -> List:
 		"""
 		构建排序子句
 
@@ -912,10 +914,10 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			'created_at_desc': [desc(TradeInstruction.created_at)],
 			'updated_at_asc': [asc(TradeInstruction.updated_at)],
 			'updated_at_desc': [desc(TradeInstruction.updated_at)],
-			'executed_at_asc': [asc(TradeInstruction.executed_at)],
-			'executed_at_desc': [desc(TradeInstruction.executed_at)],
 			'status_asc': [asc(TradeInstruction.status)],
 			'status_desc': [desc(TradeInstruction.status)],
+			'instruction_type_asc': [asc(TradeInstruction.instruction_type)],
+			'instruction_type_desc': [desc(TradeInstruction.instruction_type)],
 		}
 
 		return order_mappings.get(order_by, [desc(TradeInstruction.created_at)])
@@ -933,18 +935,28 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 			# 今日指令数
 			today = datetime.now().date()
-			today_instructions = await self.count(
+			today_query = select(func.count()).select_from(TradeInstruction).where(
 				and_(
 					TradeInstruction.created_at >= today,
 					TradeInstruction.created_at < today + timedelta(days=1)
 				)
 			)
+			today_result = await self.session.execute(today_query)
+			today_instructions = today_result.scalar() or 0
 
 			# 待处理指令数
-			pending_instructions = await self.count(TradeInstruction.status == 'pending')
+			pending_query = select(func.count()).select_from(TradeInstruction).where(
+				TradeInstruction.status == 'pending'
+			)
+			pending_result = await self.session.execute(pending_query)
+			pending_instructions = pending_result.scalar() or 0
 
 			# 执行中指令数
-			executing_instructions = await self.count(TradeInstruction.status == 'executing')
+			executing_query = select(func.count()).select_from(TradeInstruction).where(
+				TradeInstruction.status == 'executing'
+			)
+			executing_result = await self.session.execute(executing_query)
+			executing_instructions = executing_result.scalar() or 0
 
 			# 涉及用户数
 			user_count = await self.session.execute(

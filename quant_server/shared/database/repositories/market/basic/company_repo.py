@@ -9,14 +9,15 @@
 3. 管理公司与股票、管理层的关系
 """
 
+from datetime import datetime
 from typing import List, Optional, Dict, Any
-from datetime import datetime, date
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc
-from sqlalchemy.orm import selectinload, joinedload
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from sqlalchemy import select, or_, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from quant_server.shared.database.models.data_models import StockCompany, StockBasic, StkManager
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class CompanyRepository(BaseRepository[StockCompany]):
@@ -342,10 +343,13 @@ class CompanyRepository(BaseRepository[StockCompany]):
 			更新后的公司对象
 		"""
 		try:
-			return await self.update_by(
+			# 执行更新
+			await self.update_by(
 				filters={"ts_code": ts_code},
 				data={"employees": employees, "updated_at": datetime.now()}
 			)
+			# 返回更新后的记录
+			return await self.get_by(ts_code=ts_code)
 		except Exception as e:
 			raise RepositoryError(f"更新公司员工人数失败: {str(e)}")
 

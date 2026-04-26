@@ -9,12 +9,13 @@
 import logging
 import traceback
 from typing import Callable, Dict, Any, Optional
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .base import BaseAPIException, BaseException
-from .error_codes import ErrorCode, get_http_status_code
+from .base import BaseAPIException, QuantBaseException
+from .error_codes import ErrorCode
 from .handlers import handle_exception, ExceptionHandlerFactory
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
 			# 自定义API异常
 			return self._handle_api_exception(api_exc, request)
 
-		except BaseException as base_exc:
+		except QuantBaseException as base_exc:
 			# 自定义基础异常
 			return self._handle_base_exception(base_exc, request)
 
@@ -141,7 +142,7 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
 			headers=exc.headers
 		)
 
-	def _handle_base_exception (self, exc: BaseException, request: Request) -> JSONResponse:
+	def _handle_base_exception (self, exc: QuantBaseException, request: Request) -> JSONResponse:
 		"""处理基础异常"""
 		# 转换为API异常
 		api_exc = exc.to_api_exception()
@@ -208,12 +209,14 @@ class ExceptionMiddleware(BaseHTTPMiddleware):
 
 		return status_to_code.get(status_code, self.default_error_code)
 
-	def _get_timestamp (self) -> str:
+	@staticmethod
+	def _get_timestamp () -> str:
 		"""获取当前时间戳"""
 		from datetime import datetime
 		return datetime.now().isoformat()
 
-	def _send_notification (self, exc: Exception, request: Request):
+	@staticmethod
+	def _send_notification (exc: Exception, request: Request):
 		"""发送异常通知"""
 		try:
 			from .handlers import NotificationExceptionHandler
@@ -258,7 +261,7 @@ def setup_exception_middleware (
 
 
 def create_error_response (
-		status_code: int,
+		_status_code: int,
 		code: str,
 		message: str,
 		detail: Optional[Dict[str, Any]] = None,
@@ -268,7 +271,7 @@ def create_error_response (
 	创建错误响应字典
 
 	Args:
-		status_code: HTTP状态码
+		_status_code: HTTP状态码
 		code: 错误码
 		message: 错误消息
 		detail: 错误详情
@@ -279,7 +282,7 @@ def create_error_response (
 	"""
 	from datetime import datetime
 
-	response = {
+	response: Dict[str, Any] = {
 		"success": False,
 		"code": code,
 		"message": message,

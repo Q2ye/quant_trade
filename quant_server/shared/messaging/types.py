@@ -4,11 +4,10 @@
 为消息中间件提供详细的类型注解和类型检查
 """
 
-from typing import Any, Dict, Optional, Union, List, Tuple, TypeAlias, TypeVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-import uuid
+from typing import Any, Dict, Optional, Union, List, TypeVar
 
 # 类型变量
 T = TypeVar('T')

@@ -5,16 +5,16 @@
 支持数据加密、解密、签名和验证
 """
 
-import os
 import base64
 import hashlib
+import secrets
 from typing import Optional, Union, Tuple
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, padding
 from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidKey, InvalidSignature
-import secrets
 
 from quant_server.core.exceptions.security_exceptions import (
 	EncryptionError,
@@ -492,7 +492,8 @@ class EncryptionManager:
 
 		return self.rsa_ciphers[key_pair_name]
 
-	def hash_data (self, data: Union[str, bytes], algorithm: str = 'sha256') -> str:
+	@staticmethod
+	def hash_data ( data: Union[str, bytes], algorithm: str = 'sha256') -> str:
 		"""
 		计算数据的哈希值
 
@@ -517,7 +518,8 @@ class EncryptionManager:
 		else:
 			raise ValueError(f"不支持的哈希算法: {algorithm}")
 
-	def hmac_sign (self, data: Union[str, bytes], key: Union[str, bytes],
+	@staticmethod
+	def hmac_sign ( data: Union[str, bytes], key: Union[str, bytes],
 	               algorithm: str = 'sha256') -> str:
 		"""
 		使用HMAC进行消息认证

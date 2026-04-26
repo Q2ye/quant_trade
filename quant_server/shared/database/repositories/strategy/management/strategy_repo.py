@@ -12,6 +12,7 @@ from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.models.business_models import Strategy
+from quant_server.shared.database.repositories import StrategyParameterRepository
 from quant_server.shared.database.repositories.base import BaseRepository
 
 
@@ -71,12 +72,12 @@ class StrategyRepository(BaseRepository[Strategy]):
 		)
 
 	async def search_strategies (
-				self,
-				keyword: Optional[str] = None,
-				user_id: Optional[str] = None,
-				strategy_type: Optional[str] = None,
-				status: Optional[str] = None,
-				limit: int = 100
+			self,
+			keyword: Optional[str] = None,
+			user_id: Optional[str] = None,
+			strategy_type: Optional[str] = None,
+			status: Optional[str] = None,
+			limit: int = 100
 	) -> List[Strategy]:
 		"""搜索策略"""
 		query = select(Strategy)
@@ -285,13 +286,78 @@ class StrategyRepository(BaseRepository[Strategy]):
 			strategy_id: str,
 			parameters: Dict[str, Any]
 	) -> bool:
-		"""更新策略参数"""
-		strategy = await self.get(strategy_id)
-		if not strategy:
-			return False
+		"""
+		更新策略参数
 
-		# 直接返回True，参数更新由StrategyParameterRepository处理
-		return True
+		Args:
+			strategy_id: 策略ID
+			parameters: 参数字典
+
+		Returns:
+			是否成功更新
+		"""
+		try:
+				strategy = await self.get(strategy_id)
+				if not strategy:
+					return False
+
+				# 检查策略参数表是否存在
+				parameter_repo = None
+				try:
+					# 使用策略参数仓库更新参数
+					parameter_repo = StrategyParameterRepository(self.session)
+
+					# 批量更新参数
+					for param_name, param_value in parameters.items():
+						# 检查 upsert_parameter 方法是否存在
+						if hasattr(parameter_repo, 'upsert_parameter'):
+							await parameter_repo.upsert_parameter(
+								strategy_id=strategy_id,
+								param_name=param_name,
+								param_value=param_value
+							)
+						else:
+							# 如果方法不存在，使用 create 或 update 方法
+							# 首先尝试查找现有参数
+							existing_param = await parameter_repo.get_by(
+								strategy_id=strategy_id,
+								param_name=param_name
+							)
+							
+							if existing_param:
+								# 更新现有参数
+								await parameter_repo.update(
+									existing_param.id,
+									{'param_value': str(param_value)}
+								)
+							else:
+								# 创建新参数
+								await parameter_repo.create({
+									'strategy_id': strategy_id,
+									'param_name': param_name,
+									'param_value': str(param_value)
+								})
+
+					return True
+				except ImportError:
+					# 如果策略参数模型未定义，使用策略的parameters字段
+					if hasattr(strategy, 'parameters'):
+						# 合并现有参数
+						if hasattr(strategy.parameters, 'update'):
+							strategy.parameters.update(parameters)
+						else:
+							strategy.parameters = parameters
+
+						await self.session.commit()
+						return True
+					else:
+						# 如果连parameters字段都没有，记录日志并返回False
+						return False
+
+		except Exception:
+			await self.session.rollback()
+			# 记录错误日志
+			return False
 
 	async def get_strategy_parameters (
 			self,
@@ -304,15 +370,95 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 		return {}
 
-	@staticmethod
 	async def get_strategies_by_parameter (
+			self,
 			param_name: str,
-			param_value: Any = None
+			param_value: Any = None,
+			operator: str = "="
 	) -> List[Strategy]:
-		"""根据参数查找策略"""
-		# 由于参数存储在strategy_parameters表中，这里需要关联查询
-		# 实际实现需要根据数据库设计调整
-		return []
+		"""
+		根据参数查找策略
+
+		Args:
+			param_name: 参数名称
+			param_value: 参数值（可选，不提供时返回具有该参数的所有策略）
+			operator: 比较操作符（=, >, <, >=, <=, like, in等）
+
+		Returns:
+			符合条件的策略列表
+		"""
+		try:
+			# 检查策略参数表是否存在
+			from quant_server.shared.database.models.business_models import StrategyParameter
+			from quant_server.shared.database.models.business_models import Strategy
+
+			# 构建关联查询
+			query = select(Strategy).join(
+				StrategyParameter,
+				StrategyParameter.strategy_id == Strategy.id
+			).where(StrategyParameter.param_name == param_name)
+
+			# 如果提供了参数值，应用过滤条件
+			if param_value is not None:
+				if operator == "=":
+					query = query.where(StrategyParameter.param_value == str(param_value))
+				elif operator == ">":
+					query = query.where(StrategyParameter.param_value > str(param_value))
+				elif operator == "<":
+					query = query.where(StrategyParameter.param_value < str(param_value))
+				elif operator == ">=":
+					query = query.where(StrategyParameter.param_value >= str(param_value))
+				elif operator == "<=":
+					query = query.where(StrategyParameter.param_value <= str(param_value))
+				elif operator == "like":
+					query = query.where(StrategyParameter.param_value.like(f"%{param_value}%"))
+				elif operator == "in":
+					if isinstance(param_value, (list, tuple)):
+						query = query.where(StrategyParameter.param_value.in_([str(v) for v in param_value]))
+					else:
+						query = query.where(StrategyParameter.param_value == str(param_value))
+
+			# 执行查询
+			result = await self.session.execute(query)
+			strategies = result.scalars().all()
+
+			return strategies
+
+		except ImportError:
+			# 如果策略参数模型未定义，使用策略的parameters字段进行过滤
+			all_strategies = await self.get_all()
+			matching_strategies = []
+
+			for strategy in all_strategies:
+				if hasattr(strategy, 'parameters') and strategy.parameters:
+					if param_name in strategy.parameters:
+						if param_value is None:
+							# 只要参数存在就匹配
+							matching_strategies.append(strategy)
+						else:
+							# 比较参数值
+							strategy_param_value = strategy.parameters[param_name]
+
+							if operator == "=" and strategy_param_value == param_value:
+								matching_strategies.append(strategy)
+							elif operator == ">" and strategy_param_value > param_value:
+								matching_strategies.append(strategy)
+							elif operator == "<" and strategy_param_value < param_value:
+								matching_strategies.append(strategy)
+							elif operator == ">=" and strategy_param_value >= param_value:
+								matching_strategies.append(strategy)
+							elif operator == "<=" and strategy_param_value <= param_value:
+								matching_strategies.append(strategy)
+							elif operator == "like" and str(param_value) in str(strategy_param_value):
+								matching_strategies.append(strategy)
+							elif operator == "in" and strategy_param_value in param_value:
+								matching_strategies.append(strategy)
+
+			return matching_strategies
+
+		except Exception:
+			# 记录错误日志
+			return []
 
 	async def get_top_strategies_by_user (
 			self,

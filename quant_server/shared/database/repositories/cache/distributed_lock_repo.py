@@ -2,17 +2,15 @@
 """
 分布式锁Repository
 """
-from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
-import redis
 import hashlib
-import json
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base import BaseRepository
+import redis
+from sqlalchemy.orm import Session
 
 
-class DistributedLockRepository(BaseRepository):
+class DistributedLockRepository:
 	"""
 	分布式锁仓库
 	用于管理分布式系统中的资源锁，防止并发冲突
@@ -26,7 +24,7 @@ class DistributedLockRepository(BaseRepository):
 			session: SQLAlchemy会话
 			redis_client: Redis客户端（用于分布式锁实现）
 		"""
-		super().__init__(session)
+		self.session = session
 		self.redis_client = redis_client
 
 	def acquire_lock (

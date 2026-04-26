@@ -11,12 +11,13 @@ BasketRepository - 篮子管理数据访问层
 3. 支持篮子与篮子成分的关联操作
 """
 
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, func, and_, desc, asc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc, asc
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.business_models import Basket, BasketItem
+from quant_server.shared.database.models.business_models import Basket
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 from quant_server.shared.database.repositories.types import (
 	PaginationParams,
@@ -63,17 +64,14 @@ class BasketRepository(BaseRepository[Basket]):
 
 	async def get_user_baskets (
 			self,
-			user_id: int,
 			pagination: PaginationParams = None,
 			filters: List[FilterCondition] = None,
 			sorts: List[SortCondition] = None
 	) -> PaginationResult[Basket]:
 		"""
-		分页查询用户的篮子列表
-		注意：通过关联的basket_items间接查询用户相关的篮子
+		分页查询篮子列表
 
 		Args:
-			user_id: 用户ID
 			pagination: 分页参数
 			filters: 过滤条件
 			sorts: 排序条件
@@ -165,28 +163,25 @@ class BasketRepository(BaseRepository[Basket]):
 		"""
 		try:
 			# 构建搜索查询
-			query = select(self.model).where(
-				and_(
-					self.model.name.like(f"%{keyword}%"),
-				)
-			)
-
-			# 或者描述中包含关键词
 			if hasattr(self.model, 'description'):
-				query = query.or_(
-					self.model.description.like(f"%{keyword}%")
+				query = select(self.model).where(
+					or_(
+						self.model.name.like(f"%{keyword}%"),
+						self.model.description.like(f"%{keyword}%")
+					)
+				)
+			else:
+				query = select(self.model).where(
+					self.model.name.like(f"%{keyword}%")
 				)
 
 			# 获取总数
 			count_query = select(func.count()).select_from(self.model).where(
-				and_(
+				or_(
 					self.model.name.like(f"%{keyword}%"),
+					self.model.description.like(f"%{keyword}%") if hasattr(self.model, 'description') else False
 				)
 			)
-			if hasattr(self.model, 'description'):
-				count_query = count_query.or_(
-					self.model.description.like(f"%{keyword}%")
-				)
 
 			total_result = await self.session.execute(count_query)
 			total = total_result.scalar() or 0

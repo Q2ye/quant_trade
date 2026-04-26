@@ -14,13 +14,14 @@ WorkflowTaskRepository - 工作流任务数据访问仓库
 4. 查询优化：提供工作流特定的查询方法
 """
 
-from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
-from sqlalchemy import select, update, delete, and_, or_
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, update, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.models.business_models import WorkflowTask
-from quant_server.shared.database.repositories.base import BaseRepository, PaginationParams, PaginationResult
+from quant_server.shared.database.repositories.base import BaseRepository
 
 
 class WorkflowTaskRepository(BaseRepository[WorkflowTask]):
@@ -256,7 +257,7 @@ class WorkflowTaskRepository(BaseRepository[WorkflowTask]):
 			更新后的任务对象
 		"""
 		try:
-			update_data = {
+			update_data: Dict[str, Any] = {
 				'status': status,
 				'updated_at': datetime.now()
 			}
@@ -337,7 +338,7 @@ class WorkflowTaskRepository(BaseRepository[WorkflowTask]):
 		"""
 		try:
 			stmt = delete(self.model).where(self.model.workflow_id == workflow_id)
-			result = await self.session.execute(stmt)
+			result = await self.session.execute(stmt) # type: ignore
 			return result.rowcount or 0
 		except Exception as e:
 			await self.session.rollback()

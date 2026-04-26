@@ -22,23 +22,92 @@ from typing import Dict, List, Any, Optional
 
 from celery import Celery, Task
 from celery.schedules import crontab
-from modules.data.engines.sync_engine import DataSyncEngine
-from modules.data.events.sync_events import (
+
+from quant_server.api.dependencies import get_event_engine
+from quant_server.modules.data.events.sync_events import (
 	DataSyncStartedEvent,
 	DataSyncCompletedEvent,
-	DataSyncErrorEvent,
+	DataSyncFailedEvent,
 	DataSyncProgressEvent
 )
-from modules.data.services.sync_service import DataSyncService
-from shared.cache.cache_manager import CacheManager
-from shared.database.session import SessionManager
-from shared.sources.tushare_source import TushareSource
+from quant_server.modules.data.services.sync_service import DataSyncService, DataType
+from quant_server.shared.database import get_session_manager
+from quant_server.utils.core_utils.time_utils import TradingCalendar
 
 logger = logging.getLogger(__name__)
 
 # 创建Celery应用
 celery_app = Celery('data_sync_tasks')
 celery_app.config_from_object('shared.config.celery_config')
+
+
+# ========== 公共辅助函数 ==========
+
+async def _get_sync_service () -> DataSyncService:
+	"""异步获取数据同步服务实例"""
+	session_manager = get_session_manager()
+	async with session_manager.get_session() as session:
+		return DataSyncService(session=session)
+
+
+def _publish_sync_started_event (task_id: str, sync_type: str, data_types: List[str]) -> None:
+	"""发布同步开始事件"""
+	event_engine = get_event_engine()
+	if event_engine:
+		asyncio.create_task(event_engine.put(
+			DataSyncStartedEvent(
+				task_id=task_id,
+				sync_type=sync_type,
+				data_types=data_types,
+				start_time=datetime.now(),
+				source="data_module"
+			)
+		))
+
+
+def _publish_progress_event (task_id: str, progress: int, message: str, sync_type: str, **kwargs) -> None:
+	"""发布进度事件"""
+	event_engine = get_event_engine()
+	if event_engine:
+		asyncio.create_task(event_engine.put(
+			DataSyncProgressEvent(
+				task_id=task_id,
+				progress=progress,
+				message=message,
+				sync_type=sync_type,
+				source="data_module",
+				**kwargs
+			)
+		))
+
+
+def _publish_sync_completed_event (task_id: str, sync_type: str, result: Dict) -> None:
+	"""发布同步完成事件"""
+	event_engine = get_event_engine()
+	if event_engine:
+		asyncio.create_task(event_engine.put(
+			DataSyncCompletedEvent(
+				task_id=task_id,
+				sync_type=sync_type,
+				record_count=result.get('record_count', 0),
+				duration_seconds=0,
+				success=result.get('success', False),
+				source="data_module"
+			)
+		))
+
+
+def _update_task_progress (task_instance, progress: int, message: str, **kwargs) -> None:
+	"""更新任务进度状态"""
+	task_instance.update_state(
+		state='PROGRESS',
+		meta={
+			'current': progress,
+			'total': 100,
+			'status': message,
+			**kwargs
+		}
+	)
 
 
 class SyncTaskBase(Task):
@@ -56,7 +125,6 @@ class SyncTaskBase(Task):
 		logger.info(f"同步任务成功: {task_id}")
 
 		# 发布任务完成事件
-		from core.events.event_engine import get_event_engine
 		event_engine = get_event_engine()
 
 		if event_engine:
@@ -71,26 +139,36 @@ class SyncTaskBase(Task):
 				)
 			))
 
-	def on_failure (self, exc, task_id, args, kwargs):
+	def on_failure (self, exc, task_id, args, kwargs, einfo=None):
 		"""任务失败回调"""
 		logger.error(f"同步任务失败: {task_id}, 错误: {exc}")
 
 		# 发布任务失败事件
-		from core.events.event_engine import get_event_engine
 		event_engine = get_event_engine()
 
 		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncErrorEvent(
+			# 同步处理事件发布
+			try:
+				event = DataSyncFailedEvent(
 					task_id=task_id,
 					sync_type=kwargs.get('sync_type', 'unknown'),
 					error_message=str(exc)
 				)
-			))
+				# 检查 event_engine.put 是否是异步方法
+				if hasattr(event_engine, 'put'):
+					put_method = event_engine.put
+					if asyncio.iscoroutinefunction(put_method):
+						# 如果是异步方法，使用 asyncio.run
+						asyncio.run(put_method(event))
+					else:
+						# 如果是同步方法，直接调用
+						put_method(event)
+			except Exception as put_error:
+				logger.error(f"执行事件发布失败: {put_error}")
 
 
 @celery_app.task(base=SyncTaskBase, bind=True, max_retries=3, default_retry_delay=60)
-def sync_stock_data_task (
+async def sync_stock_data_task (
 		self,
 		sync_type: str = "daily",
 		start_date: Optional[str] = None,
@@ -103,6 +181,7 @@ def sync_stock_data_task (
 	同步股票数据任务
 
 	Args:
+		self: 任务实例
 		sync_type: 同步类型 (daily, weekly, monthly, all)
 		start_date: 开始日期 (YYYY-MM-DD)
 		end_date: 结束日期 (YYYY-MM-DD)
@@ -118,40 +197,14 @@ def sync_stock_data_task (
 
 	try:
 		# 发布任务开始事件
-		from core.events.event_engine import get_event_engine
-		event_engine = get_event_engine()
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncStartedEvent(
-					task_id=task_id,
-					sync_type=sync_type,
-					data_types=["stock_quote"],
-					start_time=datetime.now(),
-					source="data_module"
-				)
-			))
+		_publish_sync_started_event(task_id, sync_type, ["stock_quote"])
 
 		# 初始化服务
-		sync_service = DataSyncService()
+		sync_service = await  _get_sync_service()
 
-		# 更新进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 10, 'total': 100, 'status': '初始化同步服务'}
-		)
-
-		# 发布进度事件
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=10,
-					message="初始化同步服务",
-					sync_type=sync_type,
-					source="data_module"
-				)
-			))
+		# 更新进度和发布事件
+		_update_task_progress(self, 10, '初始化同步服务')
+		_publish_progress_event(task_id, 10, "初始化同步服务", sync_type)
 
 		# 设置日期范围
 		if not start_date:
@@ -166,24 +219,11 @@ def sync_stock_data_task (
 		# 获取股票列表
 		if not stock_codes:
 			logger.info("获取所有股票代码")
-			self.update_state(
-				state='PROGRESS',
-				meta={'current': 20, 'total': 100, 'status': '获取股票列表'}
-			)
-
-			if event_engine:
-				asyncio.create_task(event_engine.put(
-					DataSyncProgressEvent(
-						task_id=task_id,
-						progress=20,
-						message="获取股票列表",
-						sync_type=sync_type,
-						source="data_module"
-					)
-				))
+			_update_task_progress(self, 20, '获取股票列表')
+			_publish_progress_event(task_id, 20, "获取股票列表", sync_type)
 
 			# 获取所有上市股票
-			all_stocks = sync_service.get_listed_stocks()
+			all_stocks = await sync_service.get_listed_stocks()
 			stock_codes = [stock['ts_code'] for stock in all_stocks]
 
 			logger.info(f"共获取 {len(stock_codes)} 只股票")
@@ -204,37 +244,21 @@ def sync_stock_data_task (
 
 			# 更新进度
 			progress = 30 + int((batch_num / total_batches) * 60)
-			self.update_state(
-				state='PROGRESS',
-				meta={
-					'current': progress,
-					'total': 100,
-					'status': f'同步第 {batch_num + 1}/{total_batches} 批'
-				}
+			_update_task_progress(self, progress, f'同步第 {batch_num + 1}/{total_batches} 批')
+			_publish_progress_event(
+				task_id, progress, f"同步第 {batch_num + 1}/{total_batches} 批", sync_type,
+				current_batch=batch_num + 1, total_batches=total_batches
 			)
-
-			if event_engine:
-				asyncio.create_task(event_engine.put(
-					DataSyncProgressEvent(
-						task_id=task_id,
-						progress=progress,
-						message=f"同步第 {batch_num + 1}/{total_batches} 批",
-						sync_type=sync_type,
-						current_batch=batch_num + 1,
-						total_batches=total_batches,
-						source="data_module"
-					)
-				))
 
 			logger.info(f"同步第 {batch_num + 1} 批，共 {len(batch_codes)} 只股票")
 
 			try:
 				# 执行同步
-				batch_result = sync_service.sync_stock_quotes(
-					stock_codes=batch_codes,
-					start_date=start_date,
-					end_date=end_date,
-					sync_type=sync_type,
+				batch_result = await sync_service.sync_market_data(
+					data_type=DataType.DAILY_QUOTES,
+					ts_codes=batch_codes,
+					start_date=datetime.strptime(start_date, '%Y%m%d').date(),
+					end_date=datetime.strptime(end_date, '%Y%m%d').date(),
 					force_update=force_update
 				)
 
@@ -266,22 +290,8 @@ def sync_stock_data_task (
 		logger.info(f"股票数据同步任务完成: {result_summary}")
 
 		# 更新最终进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 100, 'total': 100, 'status': '同步完成'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=100,
-					message="同步完成",
-					sync_type=sync_type,
-					result=result_summary,
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 100, '同步完成')
+		_publish_progress_event(task_id, 100, "同步完成", sync_type, result=result_summary)
 
 		return result_summary
 
@@ -297,23 +307,22 @@ def sync_stock_data_task (
 
 
 @celery_app.task(base=SyncTaskBase, bind=True, max_retries=2, default_retry_delay=300)
-def sync_financial_data_task (
+async def sync_financial_data_task (
 		self,
 		report_type: str = "quarterly",
 		year: Optional[int] = None,
 		quarter: Optional[int] = None,
 		stock_codes: Optional[List[str]] = None,
-		**kwargs
 ) -> Dict[str, Any]:
 	"""
 	同步财务数据任务
 
 	Args:
+		self: 任务实例
 		report_type: 报告类型 (quarterly, annual)
 		year: 年份
 		quarter: 季度 (1-4)
 		stock_codes: 股票代码列表
-		**kwargs: 额外参数
 
 	Returns:
 		同步结果
@@ -323,39 +332,14 @@ def sync_financial_data_task (
 
 	try:
 		# 发布任务开始事件
-		from core.events.event_engine import get_event_engine
-		event_engine = get_event_engine()
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncStartedEvent(
-					task_id=task_id,
-					sync_type="financial",
-					data_types=[f"financial_{report_type}"],
-					start_time=datetime.now(),
-					source="data_module"
-				)
-			))
+		_publish_sync_started_event(task_id, "financial", [f"financial_{report_type}"])
 
 		# 初始化服务
-		sync_service = DataSyncService()
+		sync_service = await _get_sync_service()
 
 		# 更新进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 10, 'total': 100, 'status': '初始化财务数据同步'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=10,
-					message="初始化财务数据同步",
-					sync_type="financial",
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 10, '初始化财务数据同步')
+		_publish_progress_event(task_id, 10, "初始化财务数据同步", "financial")
 
 		# 设置年份和季度
 		if not year:
@@ -368,50 +352,23 @@ def sync_financial_data_task (
 		# 获取股票列表
 		if not stock_codes:
 			logger.info("获取所有股票代码")
-			self.update_state(
-				state='PROGRESS',
-				meta={'current': 30, 'total': 100, 'status': '获取股票列表'}
-			)
+			_update_task_progress(self, 30, '获取股票列表')
+			_publish_progress_event(task_id, 30, "获取股票列表", "financial")
 
-			if event_engine:
-				asyncio.create_task(event_engine.put(
-					DataSyncProgressEvent(
-						task_id=task_id,
-						progress=30,
-						message="获取股票列表",
-						sync_type="financial",
-						source="data_module"
-					)
-				))
-
-			all_stocks = sync_service.get_listed_stocks()
+			all_stocks = await sync_service.get_listed_stocks()
 			stock_codes = [stock['ts_code'] for stock in all_stocks]
 
 		# 执行同步
 		logger.info(f"开始同步 {report_type} 财务数据，共 {len(stock_codes)} 只股票")
 
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 50, 'total': 100, 'status': '同步财务数据'}
-		)
+		_update_task_progress(self, 50, '同步财务数据')
+		_publish_progress_event(task_id, 50, "同步财务数据", "financial")
 
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=50,
-					message="同步财务数据",
-					sync_type="financial",
-					source="data_module"
-				)
-			))
-
-		sync_result = sync_service.sync_financial_data(
-			stock_codes=stock_codes,
-			report_type=report_type,
-			year=year,
-			quarter=quarter,
-			**kwargs
+		sync_result = await sync_service.sync_market_data(
+			data_type=DataType.FINANCIAL_INCOME,
+			start_date=date(year, 1, 1),
+			end_date=date(year, 12, 31),
+			ts_codes=stock_codes
 		)
 
 		# 汇总结果
@@ -430,22 +387,8 @@ def sync_financial_data_task (
 		logger.info(f"财务数据同步任务完成: {result_summary}")
 
 		# 更新最终进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 100, 'total': 100, 'status': '同步完成'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=100,
-					message="财务数据同步完成",
-					sync_type="financial",
-					result=result_summary,
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 100, '同步完成')
+		_publish_progress_event(task_id, 100, "财务数据同步完成", "financial", result=result_summary)
 
 		return result_summary
 
@@ -460,21 +403,20 @@ def sync_financial_data_task (
 
 
 @celery_app.task(base=SyncTaskBase, bind=True, max_retries=2)
-def sync_index_data_task (
+async def sync_index_data_task (
 		self,
 		index_codes: Optional[List[str]] = None,
 		start_date: Optional[str] = None,
 		end_date: Optional[str] = None,
-		**kwargs
 ) -> Dict[str, Any]:
 	"""
 	同步指数数据任务
 
 	Args:
+		self: 任务实例
 		index_codes: 指数代码列表
 		start_date: 开始日期
 		end_date: 结束日期
-		**kwargs: 额外参数
 
 	Returns:
 		同步结果
@@ -484,39 +426,14 @@ def sync_index_data_task (
 
 	try:
 		# 发布任务开始事件
-		from core.events.event_engine import get_event_engine
-		event_engine = get_event_engine()
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncStartedEvent(
-					task_id=task_id,
-					sync_type="index",
-					data_types=["index_quote"],
-					start_time=datetime.now(),
-					source="data_module"
-				)
-			))
+		_publish_sync_started_event(task_id, "index", ["index_quote"])
 
 		# 初始化服务
-		sync_service = DataSyncService()
+		sync_service = await _get_sync_service()
 
 		# 更新进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 10, 'total': 100, 'status': '初始化指数数据同步'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=10,
-					message="初始化指数数据同步",
-					sync_type="index",
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 10, '初始化指数数据同步')
+		_publish_progress_event(task_id, 10, "初始化指数数据同步", "index")
 
 		# 设置默认指数
 		if not index_codes:
@@ -538,30 +455,16 @@ def sync_index_data_task (
 		# 执行同步
 		logger.info(f"开始同步指数数据，共 {len(index_codes)} 个指数")
 
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 30, 'total': 100, 'status': '同步指数数据'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=30,
-					message="同步指数数据",
-					sync_type="index",
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 30, '同步指数数据')
+		_publish_progress_event(task_id, 30, "同步指数数据", "index")
 
 		results = []
 		for index_code in index_codes:
 			try:
-				result = sync_service.sync_index_data(
-					index_code=index_code,
+				result = await sync_service.sync_index_data(
 					start_date=start_date,
 					end_date=end_date,
-					**kwargs
+					index_codes=[index_code]
 				)
 				results.append(result)
 				logger.info(f"指数 {index_code} 同步完成")
@@ -593,22 +496,8 @@ def sync_index_data_task (
 		logger.info(f"指数数据同步任务完成: {result_summary}")
 
 		# 更新最终进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 100, 'total': 100, 'status': '同步完成'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=100,
-					message="指数数据同步完成",
-					sync_type="index",
-					result=result_summary,
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 100, '同步完成')
+		_publish_progress_event(task_id, 100, "指数数据同步完成", "index", result=result_summary)
 
 		return result_summary
 
@@ -623,21 +512,20 @@ def sync_index_data_task (
 
 
 @celery_app.task(base=SyncTaskBase, bind=True, max_retries=2)
-def sync_macro_data_task (
+async def sync_macro_data_task (
 		self,
 		macro_types: Optional[List[str]] = None,
 		start_date: Optional[str] = None,
 		end_date: Optional[str] = None,
-		**kwargs
 ) -> Dict[str, Any]:
 	"""
 	同步宏观经济数据任务
 
 	Args:
+		self: 任务实例
 		macro_types: 宏观数据类型列表
 		start_date: 开始日期
 		end_date: 结束日期
-		**kwargs: 额外参数
 
 	Returns:
 		同步结果
@@ -647,39 +535,14 @@ def sync_macro_data_task (
 
 	try:
 		# 发布任务开始事件
-		from core.events.event_engine import get_event_engine
-		event_engine = get_event_engine()
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncStartedEvent(
-					task_id=task_id,
-					sync_type="macro",
-					data_types=macro_types or ["macro_economic"],
-					start_time=datetime.now(),
-					source="data_module"
-				)
-			))
+		_publish_sync_started_event(task_id, "macro", macro_types or ["macro_economic"])
 
 		# 初始化服务
-		sync_service = DataSyncService()
+		sync_service = await _get_sync_service()
 
 		# 更新进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 10, 'total': 100, 'status': '初始化宏观经济数据同步'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=10,
-					message="初始化宏观经济数据同步",
-					sync_type="macro",
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 10, '初始化宏观经济数据同步')
+		_publish_progress_event(task_id, 10, "初始化宏观经济数据同步", "macro")
 
 		# 设置默认宏观数据类型
 		if not macro_types:
@@ -707,33 +570,14 @@ def sync_macro_data_task (
 			try:
 				# 更新进度
 				progress = 30 + int((i / len(macro_types)) * 60)
-				self.update_state(
-					state='PROGRESS',
-					meta={
-						'current': progress,
-						'total': 100,
-						'status': f'同步 {macro_type} 数据'
-					}
-				)
+				_update_task_progress(self, progress, f'同步 {macro_type} 数据')
+				_publish_progress_event(task_id, progress, f"同步 {macro_type} 数据", "macro", macro_type=macro_type)
 
-				if event_engine:
-					asyncio.create_task(event_engine.put(
-						DataSyncProgressEvent(
-							task_id=task_id,
-							progress=progress,
-							message=f"同步 {macro_type} 数据",
-							sync_type="macro",
-							source="data_module"
-						)
-					))
-
-				result = sync_service.sync_macro_data(
+				result = await sync_service.sync_macro_data(
 					macro_type=macro_type,
 					start_date=start_date,
-					end_date=end_date,
-					**kwargs
+					end_date=end_date
 				)
-
 				results.append(result)
 				logger.info(f"宏观经济数据 {macro_type} 同步完成")
 
@@ -765,22 +609,8 @@ def sync_macro_data_task (
 		logger.info(f"宏观经济数据同步任务完成: {result_summary}")
 
 		# 更新最终进度
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 100, 'total': 100, 'status': '同步完成'}
-		)
-
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				DataSyncProgressEvent(
-					task_id=task_id,
-					progress=100,
-					message="宏观经济数据同步完成",
-					sync_type="macro",
-					result=result_summary,
-					source="data_module"
-				)
-			))
+		_update_task_progress(self, 100, '同步完成')
+		_publish_progress_event(task_id, 100, "宏观经济数据同步完成", "macro", result=result_summary)
 
 		return result_summary
 
@@ -804,40 +634,48 @@ def schedule_daily_sync ():
 	3. 检查数据质量
 	"""
 	from celery import current_app
+	from datetime import datetime, time
 
 	logger.info("安排每日同步任务")
 
-	# 计算下一个交易日
-	from core_utils.time_utils.trading_calendar import TradingCalendar
+	# 获取交易日历
 	calendar = TradingCalendar()
-	next_trading_day = calendar.get_next_trading_day(date.today())
+	today = date.today()
 
-	if next_trading_day:
-		# 安排每日收盘后的同步任务（下午4点）
-		schedule_time = next_trading_day.replace(hour=16, minute=0, second=0)
+	# 检查今日是否为交易日
+	if calendar.is_trading_day(today):
+		# 安排在今日收盘后（下午3:30）
+		schedule_time = datetime.combine(today, time(15, 30))
 
-		# 安排股票数据同步
+		# 如果当前时间已经过了15:30，安排在明天同一时间
+		if schedule_time < datetime.now():
+			tomorrow = today + timedelta(days=1)
+			schedule_time = datetime.combine(tomorrow, time(15, 30))
+
+		# 安排股票数据同步（同步今日数据）
 		current_app.send_task(
 			'modules.data.tasks.sync_tasks.sync_stock_data_task',
 			kwargs={
 				'sync_type': 'daily',
-				'start_date': next_trading_day.strftime('%Y%m%d'),
-				'end_date': next_trading_day.strftime('%Y%m%d')
+				'start_date': today.strftime('%Y%m%d'),
+				'end_date': today.strftime('%Y%m%d')
 			},
 			eta=schedule_time
 		)
 
-		# 安排指数数据同步
+		# 安排指数数据同步（比股票数据晚5分钟）
 		current_app.send_task(
 			'modules.data.tasks.sync_tasks.sync_index_data_task',
 			kwargs={
-				'start_date': next_trading_day.strftime('%Y%m%d'),
-				'end_date': next_trading_day.strftime('%Y%m%d')
+				'start_date': today.strftime('%Y%m%d'),
+				'end_date': today.strftime('%Y%m%d')
 			},
 			eta=schedule_time + timedelta(minutes=5)
 		)
 
-		logger.info(f"每日同步任务已安排: {schedule_time}")
+		logger.info(f"每日同步任务已安排: {schedule_time} (同步今日数据: {today})")
+	else:
+		logger.info(f"今日({today})非交易日，跳过同步任务安排")
 
 	return True
 
@@ -894,8 +732,7 @@ async def async_sync_stock_data (
 	try:
 		logger.info(f"异步同步股票数据: {len(stock_codes)} 只股票")
 
-		sync_service = DataSyncService()
-
+		sync_service = await _get_sync_service()
 		# 分批异步处理
 		batch_size = 50
 		tasks = []

@@ -23,11 +23,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 
-# 导入统一类型定义
-from quant_server.core.engines.types import (
-    EngineConfig as EngineConfigEntity,
-    Event as EventEntity
-)
+from quant_server.core.engines.types.entities import EngineConfigEntity, EventEntity
 from quant_server.core.engines.types.enums import (
     EngineType,
     EngineCategory,
@@ -40,6 +36,8 @@ from quant_server.core.engines.types.enums import (
 from quant_server.core.engines.base.engine_base import EngineBase
 from quant_server.core.engines.system.event_engine import EventEngine
 from quant_server.core.engines.utils.engine_factory import EngineFactory, EngineDescriptor
+from quant_server.modules.data import FactorResearchService
+from quant_server.shared.cache import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +70,7 @@ class FactorResearchEngine(EngineBase):
     """
 
     # 引擎类型定义
-    ENGINE_TYPE = EngineType.RESEARCH
+    ENGINE_TYPE = EngineType.DATA_RESEARCH
 
     def __init__(
         self,
@@ -139,8 +137,11 @@ class FactorResearchEngine(EngineBase):
         if self._research_service is None:
             # 动态导入以避免循环依赖
             try:
-                from quant_server.modules.data.services.research_service import FactorResearchService
-                self._research_service = FactorResearchService()
+                # 获取数据库会话
+                session = None
+                if hasattr(self, 'resource_pool') and hasattr(self.resource_pool, 'get_db_session'):
+                    session = self.resource_pool.get_db_session()
+                self._research_service = FactorResearchService(session=session, event_engine=self.event_engine)
             except ImportError:
                 logger.warning("研究服务不可用，部分功能可能受限")
                 self._research_service = None
@@ -151,24 +152,11 @@ class FactorResearchEngine(EngineBase):
         """获取缓存管理器（懒加载）"""
         if self._cache_manager is None:
             try:
-                from ....shared.cache.cache_manager import CacheManager
                 self._cache_manager = CacheManager()
             except ImportError:
                 logger.warning("缓存管理器不可用，部分功能可能受限")
                 self._cache_manager = None
         return self._cache_manager
-
-    @property
-    def data_service(self):
-        """获取数据服务（懒加载）"""
-        if self._data_service is None:
-            try:
-                from ...services.data_service import DataService
-                self._data_service = DataService()
-            except ImportError:
-                logger.warning("数据服务不可用，部分功能可能受限")
-                self._data_service = None
-        return self._data_service
 
     # ==================== 引擎生命周期方法 ====================
 
@@ -326,7 +314,6 @@ class FactorResearchEngine(EngineBase):
             "service_status": {
                 "research_service": self.research_service is not None,
                 "cache_manager": self.cache_manager is not None,
-                "data_service": self.data_service is not None
             }
         }
 
@@ -392,7 +379,7 @@ class FactorResearchEngine(EngineBase):
                 "event_data": event.data
             })
 
-    async def _on_auto_recover(self, error: Exception, context: Dict[str, Any]) -> bool:
+    async def _on_auto_recover(self, error: Exception, context: Dict[str, Any] = None) -> bool:
         """
         引擎特定的自动恢复逻辑
 
@@ -606,18 +593,14 @@ class FactorResearchEngine(EngineBase):
         self._performance_stats["cache_misses"] += 1
 
         # 执行因子计算
+        result = None
         if self.research_service:
             result = await self.research_service.calculate_factor(
                 factor_name=factor_name,
-                stock_codes=stock_codes,
+                ts_codes=stock_codes,
                 start_date=start_date,
                 end_date=end_date,
-                params=calculation_params
-            )
-        else:
-            # 模拟计算（实际应用中应使用真正的服务）
-            result = self._simulate_factor_calculation(
-                factor_name, stock_codes, start_date, end_date, calculation_params
+                parameters=calculation_params
             )
 
         # 缓存结果
@@ -656,15 +639,13 @@ class FactorResearchEngine(EngineBase):
         analysis_params = params.get("params", {})
 
         # 执行因子分析
+        result = None
         if self.research_service:
             result = await self.research_service.analyze_factors(
                 factor_names=factor_names,
                 analysis_type=analysis_type,
                 params=analysis_params
             )
-        else:
-            # 模拟分析
-            result = self._simulate_factor_analysis(factor_names, analysis_type, analysis_params)
 
         return result
 
@@ -685,17 +666,13 @@ class FactorResearchEngine(EngineBase):
         constraints = params.get("constraints", {})
 
         # 执行因子优化
+        result = None
         if self.research_service:
             result = await self.research_service.optimize_factors(
                 factor_names=factor_names,
                 method=optimization_method,
                 objective=objective_function,
                 constraints=constraints
-            )
-        else:
-            # 模拟优化
-            result = self._simulate_factor_optimization(
-                factor_names, optimization_method, objective_function, constraints
             )
 
         return result
@@ -715,14 +692,12 @@ class FactorResearchEngine(EngineBase):
         backtest_params = params.get("params", {})
 
         # 执行因子回测
+        result = None
         if self.research_service:
             result = await self.research_service.backtest_factor(
                 factor_name=factor_name,
                 params=backtest_params
             )
-        else:
-            # 模拟回测
-            result = self._simulate_factor_backtest(factor_name, backtest_params)
 
         return result
 
@@ -742,16 +717,12 @@ class FactorResearchEngine(EngineBase):
         selection_criteria = params.get("criteria", {})
 
         # 执行因子选择
+        result = None
         if self.research_service:
             result = await self.research_service.select_factors(
                 candidate_factors=candidate_factors,
                 method=selection_method,
                 criteria=selection_criteria
-            )
-        else:
-            # 模拟选择
-            result = self._simulate_factor_selection(
-                candidate_factors, selection_method, selection_criteria
             )
 
         return result
@@ -772,15 +743,13 @@ class FactorResearchEngine(EngineBase):
         validation_params = params.get("params", {})
 
         # 执行因子验证
+        result = None
         if self.research_service:
             result = await self.research_service.validate_factor(
                 factor_name=factor_name,
                 method=validation_method,
                 params=validation_params
             )
-        else:
-            # 模拟验证
-            result = self._simulate_factor_validation(factor_name, validation_method, validation_params)
 
         return result
 
@@ -1146,7 +1115,7 @@ class FactorResearchEngine(EngineBase):
         self._task_workers.clear()
         logger.info("任务工作线程已停止")
 
-    async def _task_worker_loop(self, worker_id: int):
+    async def _task_worker_loop(self, worker_id: str):
         """
         任务工作线程循环
 
@@ -1221,8 +1190,8 @@ class FactorResearchEngine(EngineBase):
         # 此方法可根据需要实现缓存数据的恢复
         pass
 
+    @staticmethod
     def _generate_cache_key(
-        self,
         factor_name: str,
         stock_codes: List[str],
         start_date: str,
@@ -1245,7 +1214,8 @@ class FactorResearchEngine(EngineBase):
 
         return f"factor:{factor_name}:{start_date}:{end_date}:{codes_hash}"
 
-    def _validate_factor_definition(self, definition: Dict[str, Any]) -> bool:
+    @staticmethod
+    def _validate_factor_definition(definition: Dict[str, Any]) -> bool:
         """
         验证因子定义
 
@@ -1441,263 +1411,6 @@ class FactorResearchEngine(EngineBase):
         except Exception as e:
             logger.error(f"处理状态请求失败: {e}")
 
-    # ==================== 模拟方法（用于演示和测试） ====================
-
-    def _simulate_factor_calculation(
-        self,
-        factor_name: str,
-        stock_codes: List[str],
-        start_date: str,
-        end_date: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子计算"""
-        # 模拟计算逻辑
-        import random
-
-        factor_data = []
-        for code in stock_codes:
-            for i in range(10):  # 模拟10天的数据
-                date = f"2024-01-{i+1:02d}"
-                value = random.uniform(-2.0, 2.0)
-
-                factor_data.append({
-                    "date": date,
-                    "stock_code": code,
-                    "factor_name": factor_name,
-                    "value": value
-                })
-
-        return {
-            "factor_data": factor_data,
-            "metadata": {
-                "factor_name": factor_name,
-                "stock_count": len(stock_codes),
-                "data_points": len(factor_data),
-                "date_range": f"{start_date} - {end_date}",
-                "calculation_method": "simulated"
-            }
-        }
-
-    def _simulate_factor_analysis(
-        self,
-        factor_names: List[str],
-        analysis_type: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子分析"""
-        import random
-
-        analysis_results = {}
-        for factor_name in factor_names:
-            analysis_results[factor_name] = {
-                "ic_mean": random.uniform(-0.1, 0.3),
-                "ic_std": random.uniform(0.05, 0.15),
-                "ic_ir": random.uniform(0.5, 2.0),
-                "turnover": random.uniform(0.1, 0.5),
-                "win_rate": random.uniform(0.4, 0.7),
-                "sharpe_ratio": random.uniform(0.5, 1.5)
-            }
-
-        return {
-            "analysis_type": analysis_type,
-            "factor_count": len(factor_names),
-            "analysis_results": analysis_results,
-            "summary": {
-                "best_factor": max(analysis_results.items(), key=lambda x: x[1]["ic_ir"])[0],
-                "worst_factor": min(analysis_results.items(), key=lambda x: x[1]["ic_ir"])[0],
-                "avg_ic_ir": sum(r["ic_ir"] for r in analysis_results.values()) / len(analysis_results)
-            }
-        }
-
-    def _simulate_factor_optimization(
-        self,
-        factor_names: List[str],
-        method: str,
-        objective: str,
-        constraints: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子优化"""
-        import random
-
-        weights = {}
-        total_weight = 0.0
-
-        for factor_name in factor_names:
-            weight = random.uniform(0.0, 1.0)
-            weights[factor_name] = weight
-            total_weight += weight
-
-        # 归一化权重
-        for factor_name in weights:
-            weights[factor_name] /= total_weight
-
-        return {
-            "optimized_factors": factor_names,
-            "weights": weights,
-            "objective_value": random.uniform(0.5, 2.0),
-            "iterations": random.randint(10, 100),
-            "method": method,
-            "objective": objective,
-            "constraints": constraints
-        }
-
-    def _simulate_factor_backtest(
-        self,
-        factor_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子回测"""
-        import random
-
-        return {
-            "factor_name": factor_name,
-            "period": params.get("period", "2024-01-01 to 2024-01-31"),
-            "performance": {
-                "total_return": random.uniform(-0.1, 0.3),
-                "annual_return": random.uniform(-0.2, 0.6),
-                "sharpe_ratio": random.uniform(0.5, 2.0),
-                "max_drawdown": random.uniform(-0.15, -0.05),
-                "win_rate": random.uniform(0.4, 0.7)
-            },
-            "transaction_count": random.randint(10, 100),
-            "turnover": random.uniform(0.1, 0.5)
-        }
-
-    def _simulate_factor_selection(
-        self,
-        candidate_factors: List[str],
-        method: str,
-        criteria: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子选择"""
-        import random
-
-        # 模拟选择结果
-        selected_count = min(len(candidate_factors), random.randint(1, 5))
-        selected_factors = random.sample(candidate_factors, selected_count)
-
-        return {
-            "candidate_count": len(candidate_factors),
-            "selected_count": selected_count,
-            "selected_factors": selected_factors,
-            "selection_method": method,
-            "criteria": criteria,
-            "selection_scores": {
-                factor: random.uniform(0.5, 1.0) for factor in selected_factors
-            }
-        }
-
-    def _simulate_factor_validation(
-        self,
-        factor_name: str,
-        method: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """模拟因子验证"""
-        import random
-
-        return {
-            "factor_name": factor_name,
-            "validation_method": method,
-            "scores": {
-                "statistical_significance": random.uniform(0.6, 0.95),
-                "economic_significance": random.uniform(0.5, 0.9),
-                "robustness": random.uniform(0.7, 0.95),
-                "stability": random.uniform(0.6, 0.9)
-            },
-            "overall_score": random.uniform(0.6, 0.9),
-            "recommendation": random.choice(["strong_buy", "buy", "hold", "sell", "strong_sell"]),
-            "confidence_level": random.uniform(0.7, 0.95)
-        }
-
-    # ==================== 公共接口方法 ====================
-
-    def get_engine_stats(self) -> Dict[str, Any]:
-        """
-        获取引擎统计信息
-
-        Returns:
-            Dict[str, Any]: 引擎统计信息
-        """
-        return {
-            "engine_id": self.engine_id,
-            "engine_name": self.config.name,
-            "engine_type": self.ENGINE_TYPE.value,
-            "status": self.record.status.value,
-            "health": self.record.health.value,
-            "uptime": self.record.get_uptime(),
-            "active_tasks": len(self._active_tasks),
-            "task_history_size": len(self._task_history),
-            "factor_cache_size": len(self._factor_cache),
-            "default_factors": len(self._default_factors),
-            "task_queue_size": self._task_queue.qsize(),
-            "active_workers": len([w for w in self._task_workers if not w.done()]),
-            "performance_stats": self._performance_stats,
-            "config": self.config.to_dict()
-        }
-
-    async def clear_cache(self, cache_type: str = "all") -> Dict[str, Any]:
-        """
-        清理缓存
-
-        Args:
-            cache_type: 缓存类型（all, factor, task, definition）
-
-        Returns:
-            Dict[str, Any]: 清理结果
-        """
-        cleared_counts = {}
-
-        try:
-            if cache_type in ["all", "factor"]:
-                # 清理因子缓存
-                factor_count = len(self._factor_cache)
-                self._factor_cache.clear()
-                cleared_counts["factor_cache"] = factor_count
-
-            if cache_type in ["all", "task"]:
-                # 清理任务历史（保留最近100条）
-                if len(self._task_history) > 100:
-                    removed_count = len(self._task_history) - 100
-                    self._task_history = self._task_history[-100:]
-                    cleared_counts["task_history"] = removed_count
-
-            if cache_type in ["all", "definition"]:
-                # 清理默认因子定义（保留系统默认）
-                user_defined = {
-                    k: v for k, v in self._default_factors.items()
-                    if k not in ["price_momentum", "volume_ratio", "volatility"]
-                }
-                cleared_counts["factor_definitions"] = len(user_defined)
-                for key in user_defined:
-                    del self._default_factors[key]
-
-            # 发布缓存清理事件
-            await self._publish_event("research_cache_cleared", {
-                "engine_id": self.engine_id,
-                "engine_name": self.config.name,
-                "cache_type": cache_type,
-                "cleared_counts": cleared_counts,
-                "timestamp": datetime.now().isoformat()
-            })
-
-            logger.info(f"研究缓存已清理: {cache_type}, 清理结果: {cleared_counts}")
-
-            return {
-                "success": True,
-                "cleared_counts": cleared_counts,
-                "cache_type": cache_type
-            }
-
-        except Exception as e:
-            logger.error(f"清理缓存失败: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "cache_type": cache_type
-            }
-
 
 # ==================== 引擎工厂注册 ====================
 
@@ -1710,15 +1423,15 @@ def register_research_engine(factory: EngineFactory):
     """
     # 创建引擎描述符
     descriptor = EngineDescriptor(
-        engine_type=EngineType.RESEARCH,
+        engine_type=EngineType.DATA_RESEARCH,
         engine_class=FactorResearchEngine,
         name="factor_research_engine",
         description="因子研究引擎，负责因子计算、分析和优化",
         version="1.0.0",
-        category=EngineCategory.RESEARCH,
+        category=EngineCategory.DATA,
         dependencies=[
             EngineType.EVENT,  # 依赖事件引擎
-            EngineType.DATA    # 依赖数据引擎
+            EngineType.DATA_SYNC    # 依赖数据同步引擎
         ],
         config_schema={
             "required": ["name"],
@@ -1753,8 +1466,7 @@ def register_research_engine(factory: EngineFactory):
 
 async def create_research_engine(
     config: Optional[Dict[str, Any]] = None,
-    instance_name: Optional[str] = None,
-    lazy_init: bool = False
+    instance_name: Optional[str] = None
 ) -> FactorResearchEngine:
     """
     创建因子研究引擎（便捷函数）
@@ -1762,7 +1474,6 @@ async def create_research_engine(
     Args:
         config: 引擎配置
         instance_name: 实例名称
-        lazy_init: 是否延迟初始化
 
     Returns:
         FactorResearchEngine: 创建的因子研究引擎实例
@@ -1771,13 +1482,15 @@ async def create_research_engine(
     from quant_server.core.engines.types.enums import EngineType
 
     engine = await create_engine(
-        engine_type=EngineType.RESEARCH,
+        engine_type=EngineType.DATA_RESEARCH,
         config=config,
-        instance_name=instance_name,
-        lazy_init=lazy_init
+        instance_name=instance_name
     )
 
-    return engine
+    if isinstance(engine, FactorResearchEngine):
+        return engine
+    else:
+        raise TypeError(f"创建的引擎类型不正确，期望 FactorResearchEngine，实际是 {type(engine).__name__}")
 
 
 async def get_research_engine(
@@ -1793,7 +1506,6 @@ async def get_research_engine(
         Optional[FactorResearchEngine]: 因子研究引擎实例
     """
     from quant_server.core.engines.utils.engine_factory import get_engine
-    from quant_server.core.engines.types.enums import EngineType
 
     engine = await get_engine(instance_name)
 

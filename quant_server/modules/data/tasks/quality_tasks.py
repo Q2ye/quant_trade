@@ -11,28 +11,28 @@
 - 自动化：定时自动执行质量检查
 - 可配置：支持不同的检查规则和阈值
 - 可追溯：保存检查结果和历史记录
-- 可操作：提供具体的改进建议
+- 可操作：提供具体地改进建议
 """
 
 import asyncio
 import logging
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Any, Optional, Union
+
 import pandas as pd
 from celery import Celery, Task
 from celery.schedules import crontab
 
-from modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
-from modules.data.services.quality_service import DataQualityService
-from shared.database.session import SessionManager
-from quant_server.shared.database.repositories.market.basic.stock_repo import  QuoteRepository
-from ....shared.database.repositories.market.quote_repo import  QuoteRepository
+from ....api.dependencies import get_event_engine
+from ....modules.data.events.clean_events import DataCleanCompletedEvent, DataCleanResult
 from ....modules.data.events.quality_events import (
-	QualityCheckStartedEvent,
-	QualityCheckCompletedEvent,
-	QualityIssueDetectedEvent,
-	DataCleanedEvent
+	DataQualityCheckStartedEvent,
+	DataQualityCheckCompletedEvent, DataQualityIssueFoundEvent,
 )
+from ....modules.data.services.quality_service import DataQualityService
+from ....modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
+from ....shared.database.repositories import StockBasicRepository
+from ....shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -54,43 +54,66 @@ class QualityTaskBase(Task):
 		logger.info(f"质量检查任务成功: {task_id}")
 
 		# 发布任务完成事件
-		from core.events.event_engine import get_event_engine
 		event_engine = get_event_engine()
 
 		if event_engine:
-			asyncio.create_task(event_engine.put(
-				QualityCheckCompletedEvent(
-					task_id=task_id,
-					check_type=kwargs.get('check_type', 'unknown'),
-					quality_score=retval.get('quality_score', 0),
-					issue_count=retval.get('total_issues', 0),
-					success=True
+			# 同步处理事件发布
+			try:
+				event = DataQualityCheckCompletedEvent(
+					check_id=task_id,
+					total_checks=1,
+					passed_checks=1 if retval.get('passed', False) else 0,
+					failed_checks=0 if retval.get('passed', False) else 1,
+					issue_summary={'medium': retval.get('total_issues', 0)},
+					duration_seconds=0
 				)
-			))
+				# 检查 event_engine.put 是否是异步方法
+				if hasattr(event_engine, 'put'):
+					put_method = event_engine.put
+					if asyncio.iscoroutinefunction(put_method):
+						# 如果是异步方法，使用 asyncio.run
+						asyncio.run(put_method(event))
+					else:
+						# 如果是同步方法，直接调用
+						put_method(event)
 
-	def on_failure (self, exc, task_id, args, kwargs):
-		"""任务失败回调"""
-		logger.error(f"质量检查任务失败: {task_id}, 错误: {exc}")
+			except Exception as put_error:
+				logger.error(f"执行事件发布失败: {put_error}")
 
-		# 发布任务失败事件
-		from core.events.event_engine import get_event_engine
-		event_engine = get_event_engine()
 
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				QualityCheckCompletedEvent(
-					task_id=task_id,
-					check_type=kwargs.get('check_type', 'unknown'),
-					quality_score=0,
-					issue_count=0,
-					success=False,
-					error_message=str(exc)
-				)
-			))
+def on_failure (exc, task_id):
+	"""任务失败回调"""
+	logger.error(f"质量检查任务失败: {task_id}, 错误: {exc}")
+
+	# 发布任务失败事件
+	event_engine = get_event_engine()
+
+	if event_engine:
+		# 同步处理事件发布
+		try:
+			event = DataQualityCheckCompletedEvent(
+				check_id=task_id,
+				total_checks=1,
+				passed_checks=0,
+				failed_checks=1,
+				issue_summary={'critical': 1},
+				duration_seconds=0
+			)
+			# 检查 event_engine.put 是否是异步方法
+			if hasattr(event_engine, 'put'):
+				put_method = event_engine.put
+				if asyncio.iscoroutinefunction(put_method):
+					# 如果是异步方法，使用 asyncio.run
+					asyncio.run(put_method(event))
+				else:
+					# 如果是同步方法，直接调用
+					put_method(event)
+		except Exception as put_error:
+			logger.error(f"执行事件发布失败: {put_error}")
 
 
 @celery_app.task(base=QualityTaskBase, bind=True, max_retries=2, default_retry_delay=60)
-def check_data_quality_task (
+async def check_data_quality_task (
 		self,
 		data_type: str = "stock_quote",
 		check_date: Optional[str] = None,
@@ -102,6 +125,7 @@ def check_data_quality_task (
 	检查数据质量任务
 
 	Args:
+		self: 任务实例
 		data_type: 数据类型
 		check_date: 检查日期
 		check_types: 检查类型列表
@@ -117,22 +141,16 @@ def check_data_quality_task (
 		logger.info(f"开始数据质量检查任务: {task_id}, 数据类型: {data_type}")
 
 		# 发布任务开始事件
-		from core.events.event_engine import get_event_engine
 		event_engine = get_event_engine()
 
 		if event_engine:
 			asyncio.create_task(event_engine.put(
-				QualityCheckStartedEvent(
-					task_id=task_id,
-					data_type=data_type,
-					check_types=check_types or ["all"],
-					start_time=datetime.now()
+				DataQualityCheckStartedEvent(
+					check_type="full" if check_types and "all" in check_types else "partial",
+					target_tables=[data_type],
+					check_rules=check_types or ["basic", "completeness", "consistency"]
 				)
 			))
-
-		# 初始化质量检查器
-		quality_checker = DataQualityChecker()
-		quality_service = DataQualityService()
 
 		# 设置检查日期
 		if not check_date:
@@ -143,12 +161,12 @@ def check_data_quality_task (
 		if check_types:
 			for ct in check_types:
 				try:
-					quality_check_types.append(QualityCheckType(ct))
+					quality_check_types.append(ct)
 				except ValueError:
 					logger.warning(f"无效的检查类型: {ct}")
 		else:
 			# 默认检查所有类型
-			quality_check_types = list(QualityCheckType)
+			quality_check_types = ['completeness', 'consistency', 'accuracy']
 
 		# 获取数据
 		logger.info(f"获取 {data_type} 数据进行检查")
@@ -159,29 +177,38 @@ def check_data_quality_task (
 		)
 
 		data = None
-		if data_type == "stock_quote":
-			# 获取股票行情数据
-			quote_repo = QuoteRepository()
+		from ....shared.database.session import get_session_manager
 
-			# 获取最近30天的数据进行检查
-			start_date = (datetime.strptime(check_date, '%Y-%m-%d') - timedelta(days=30)).strftime('%Y-%m-%d')
+		session_manager = get_session_manager()
+		event_engine = get_event_engine()
+		async with session_manager.get_session() as session:
+			# 初始化服务
+			quality_checker = DataQualityChecker()
+			quality_service = DataQualityService(session, event_engine)
 
-			data = quote_repo.get_quotes_by_date_range(
-				start_date=start_date,
-				end_date=check_date,
-				limit=10000
-			)
+			if data_type == "stock_quote":
+				# 获取股票行情数据
+				quote_repo = StockDailyRepository(session)
 
-			if isinstance(data, list):
-				data = pd.DataFrame(data)
+				# 获取最近30天的数据进行检查
+				start_date = (datetime.strptime(check_date, '%Y-%m-%d') - timedelta(days=30)).strftime('%Y-%m-%d')
 
-		elif data_type == "stock_basic":
-			# 获取股票基础信息
-			stock_repo = StockRepository()
-			data = stock_repo.get_all_stocks()
+				data = await quote_repo.get_quotes_by_date_range(
+					start_date=start_date,
+					end_date=check_date,
+					limit=10000
+				)
 
-			if isinstance(data, list):
-				data = pd.DataFrame(data)
+				if isinstance(data, list):
+					data = pd.DataFrame(data)
+
+			elif data_type == "stock_basic":
+				# 获取股票基础信息
+				stock_repo = StockBasicRepository(session)
+				data = await stock_repo.get_all_stocks()
+
+				if isinstance(data, list):
+					data = pd.DataFrame(data)
 
 		# 检查数据
 		if data is not None and not data.empty:
@@ -206,7 +233,7 @@ def check_data_quality_task (
 				meta={'current': 70, 'total': 100, 'status': '保存检查结果'}
 			)
 
-			result_id = quality_service.save_quality_result(
+			result_id = await quality_service.save_quality_result(
 				data_type=data_type,
 				check_date=check_date,
 				check_result=check_result,
@@ -222,13 +249,12 @@ def check_data_quality_task (
 				# 发布质量问题事件
 				if event_engine:
 					asyncio.create_task(event_engine.put(
-						QualityIssueDetectedEvent(
-							task_id=task_id,
-							data_type=data_type,
-							quality_score=quality_score,
-							threshold=threshold,
-							issue_count=check_result.get('summary', {}).get('total_issues', 0),
-							check_date=check_date
+						DataQualityIssueFoundEvent(
+							issue_type="quality_score_below_threshold",
+							table_name=data_type,
+							column_name="quality_score",
+							severity="medium",
+							affected_count=check_result.get('summary', {}).get('total_issues', 0)
 						)
 					))
 
@@ -240,7 +266,7 @@ def check_data_quality_task (
 				'quality_score': quality_score,
 				'total_issues': check_result.get('summary', {}).get('total_issues', 0),
 				'result_id': result_id,
-				'check_types': [ct.value for ct in quality_check_types],
+				'check_types': [ct for ct in quality_check_types],
 				'threshold': threshold,
 				'passed': quality_score >= threshold,
 				'completed_at': datetime.now().isoformat()
@@ -290,6 +316,7 @@ def run_daily_quality_check (
 	运行每日质量检查
 
 	Args:
+		self: 任务实例
 		data_types: 数据类型列表
 		**kwargs: 额外参数
 
@@ -391,23 +418,22 @@ def run_daily_quality_check (
 
 
 @celery_app.task(base=QualityTaskBase, bind=True, max_retries=3, default_retry_delay=120)
-def clean_invalid_data_task (
+async def clean_invalid_data_task (
 		self,
 		data_type: str = "stock_quote",
 		start_date: Optional[str] = None,
 		end_date: Optional[str] = None,
 		cleaning_rules: Optional[Dict] = None,
-		**kwargs
 ) -> Dict[str, Any]:
 	"""
 	清理无效数据任务
 
 	Args:
+		self: 任务实例
 		data_type: 数据类型
 		start_date: 开始日期
 		end_date: 结束日期
 		cleaning_rules: 清理规则
-		**kwargs: 额外参数
 
 	Returns:
 		清理结果
@@ -416,9 +442,6 @@ def clean_invalid_data_task (
 
 	try:
 		logger.info(f"开始清理无效数据任务: {task_id}, 数据类型: {data_type}")
-
-		# 初始化服务
-		quality_service = DataQualityService()
 
 		# 设置日期范围
 		if not start_date:
@@ -446,14 +469,22 @@ def clean_invalid_data_task (
 
 		# 根据数据类型获取数据
 		data_to_clean = None
+		from ....shared.database.session import get_session_manager
 
-		if data_type == "stock_quote":
-			quote_repo = QuoteRepository()
-			data_to_clean = quote_repo.get_quotes_by_date_range(
-				start_date=start_date,
-				end_date=end_date,
-				limit=50000
-			)
+		session_manager = get_session_manager()
+		event_engine = get_event_engine()
+		async with session_manager.get_session() as session:
+			# 初始化服务
+			quality_service = DataQualityService(session, event_engine)
+
+			if data_type == "stock_quote":
+				# 获取股票行情数据
+				quote_repo = StockDailyRepository(session)
+				data_to_clean = await quote_repo.get_quotes_by_date_range(
+					start_date=start_date,
+					end_date=end_date,
+					limit=50000
+				)
 
 		if data_to_clean is None or len(data_to_clean) == 0:
 			return {
@@ -467,16 +498,33 @@ def clean_invalid_data_task (
 		# 执行数据清理
 		logger.info(f"开始清理数据，共 {len(data_to_clean)} 条记录")
 
+		# 将 StockDaily 对象转换为字典
+		data_to_clean_dict = []
+		for item in data_to_clean:
+			item_dict = {
+				'ts_code': item.ts_code,
+				'trade_date': item.trade_date,
+				'open': float(item.open) if item.open else None,
+				'high': float(item.high) if item.high else None,
+				'low': float(item.low) if item.low else None,
+				'close': float(item.close) if item.close else None,
+				'pre_close': float(item.pre_close) if item.pre_close else None,
+				'change': float(item.change) if item.change else None,
+				'pct_chg': float(item.pct_chg) if item.pct_chg else None,
+				'vol': item.vol,
+				'amount': float(item.amount) if item.amount else None
+			}
+			data_to_clean_dict.append(item_dict)
+
 		self.update_state(
 			state='PROGRESS',
 			meta={'current': 30, 'total': 100, 'status': '执行数据清理'}
 		)
 
-		cleaning_result = quality_service.clean_invalid_data(
-			data=data_to_clean,
+		cleaning_result = await quality_service.clean_invalid_data(
+			data=data_to_clean_dict,
 			data_type=data_type,
 			cleaning_rules=cleaning_rules,
-			**kwargs
 		)
 
 		# 保存清理后的数据
@@ -486,20 +534,21 @@ def clean_invalid_data_task (
 		)
 
 		# 发布数据清理事件
-		from core.events.event_engine import get_event_engine
 		event_engine = get_event_engine()
 
 		if event_engine:
+			# 创建DataCleanResult对象
+			clean_result = DataCleanResult(
+				total_issues=cleaning_result.get('removed_count', 0) + cleaning_result.get('fixed_count', 0),
+				cleaned_at=datetime.now()
+			)
+
 			asyncio.create_task(event_engine.put(
-				DataCleanedEvent(
-					task_id=task_id,
+				DataCleanCompletedEvent(
+					clean_id=task_id,
 					data_type=data_type,
-					original_count=cleaning_result.get('original_count', 0),
-					cleaned_count=cleaning_result.get('cleaned_count', 0),
-					removed_count=cleaning_result.get('removed_count', 0),
-					cleaning_rules=cleaning_rules,
-					start_date=start_date,
-					end_date=end_date
+					result=clean_result,
+					duration_seconds=0  # 简化处理，实际应计算执行时间
 				)
 			))
 
@@ -539,19 +588,18 @@ def clean_invalid_data_task (
 
 
 @celery_app.task(base=QualityTaskBase, bind=True, max_retries=2)
-def validate_data_consistency_task (
+async def validate_data_consistency_task (
 		self,
 		validation_type: str = "cross_reference",
 		reference_date: Optional[str] = None,
-		**kwargs
 ) -> Dict[str, Any]:
 	"""
 	验证数据一致性任务
 
 	Args:
+		self: 任务实例
 		validation_type: 验证类型
 		reference_date: 参考日期
-		**kwargs: 额外参数
 
 	Returns:
 		验证结果
@@ -560,9 +608,6 @@ def validate_data_consistency_task (
 
 	try:
 		logger.info(f"开始数据一致性验证任务: {task_id}, 类型: {validation_type}")
-
-		# 初始化服务
-		quality_service = DataQualityService()
 
 		# 设置参考日期
 		if not reference_date:
@@ -576,11 +621,17 @@ def validate_data_consistency_task (
 			meta={'current': 20, 'total': 100, 'status': '执行数据验证'}
 		)
 
-		validation_result = quality_service.validate_data_consistency(
-			validation_type=validation_type,
-			reference_date=reference_date,
-			**kwargs
-		)
+		# 初始化服务
+		from ....shared.database.session import get_session_manager
+		session_manager = get_session_manager()
+		event_engine = get_event_engine()
+		with session_manager.get_session() as session:
+			quality_service = DataQualityService(session, event_engine)
+
+			validation_result = await quality_service.validate_data_consistency(
+				validation_type=validation_type,
+				reference_date=reference_date
+			)
 
 		# 处理验证结果
 		self.update_state(
@@ -721,20 +772,25 @@ async def async_clean_data (
 	try:
 		logger.info(f"异步清理数据: {data_type}")
 
-		quality_service = DataQualityService()
+		# 初始化服务
+		from ....shared.database.session import get_session_manager
+		session_manager = get_session_manager()
+		event_engine = get_event_engine()
+		async with session_manager.get_session() as session:
+			quality_service = DataQualityService(session, event_engine)
 
-		# 执行清理
-		if isinstance(data, pd.DataFrame):
-			data_list = data.to_dict('records')
-		else:
-			data_list = data
+			# 执行清理
+			if isinstance(data, pd.DataFrame):
+				data_list = data.to_dict('records')
+			else:
+				data_list = data
 
-		cleaning_result = await asyncio.to_thread(
-			quality_service.clean_invalid_data,
-			data=data_list,
-			data_type=data_type,
-			cleaning_rules=cleaning_rules
-		)
+			cleaning_result = await asyncio.to_thread(
+				quality_service.clean_invalid_data,
+				data=data_list,
+				data_type=data_type,
+				cleaning_rules=cleaning_rules
+			)
 
 		return cleaning_result
 
@@ -762,15 +818,19 @@ async def generate_quality_report (
 	try:
 		logger.info(f"生成质量报告: {start_date} 到 {end_date}")
 
-		quality_service = DataQualityService()
+		# 初始化服务
+		from ....shared.database.session import get_session_manager
+		session_manager = get_session_manager()
+		event_engine = get_event_engine()
+		async with session_manager.get_session() as session:
+			quality_service = DataQualityService(session, event_engine)
 
-		# 生成报告
-		report = await asyncio.to_thread(
-			quality_service.generate_quality_report,
-			start_date=start_date,
-			end_date=end_date,
-			data_types=data_types
-		)
+			# 生成报告
+			report = await quality_service.generate_quality_report(
+				start_date=start_date,
+				end_date=end_date,
+				data_types=data_types
+			)
 
 		return report
 

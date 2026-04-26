@@ -10,14 +10,15 @@
 继承自：BaseRepository（因为不是直接的时序数据，而是配置管理）
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text
-from sqlalchemy.exc import SQLAlchemyError
+from typing import List, Dict, Any
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.shared.database.models.system_models import TimeBucketConfig
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
-from quant_server.shared.database.models.system_models import TimeBucketConfig, HyperTableMetadata
 
 
 class TimeBucketManager(BaseRepository[TimeBucketConfig]):
@@ -106,7 +107,7 @@ class TimeBucketManager(BaseRepository[TimeBucketConfig]):
 
 	async def update_bucket_config (
 			self,
-			config_id: int,
+			config_id: str,
 			updates: Dict[str, Any]
 	) -> TimeBucketConfig:
 		"""
@@ -180,7 +181,8 @@ class TimeBucketManager(BaseRepository[TimeBucketConfig]):
 		except Exception as e:
 			raise RepositoryError(f"生成时间分桶失败: {str(e)}")
 
-	def _add_interval (self, dt: datetime, interval: str) -> datetime:
+	@staticmethod
+	def _add_interval (dt: datetime, interval: str) -> datetime:
 		"""
 		根据间隔字符串增加时间（私有方法）
 

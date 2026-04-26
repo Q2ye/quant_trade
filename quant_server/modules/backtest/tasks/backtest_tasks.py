@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, Any
 
-from quant_server.core.engines.types.entities import EngineConfig
+from quant_server.core.engines import EngineConfigEntity
 from quant_server.modules.backtest.engines.backtest_engine import BacktestEngine
 from quant_server.modules.backtest.engines.report_engine import ReportEngine
 from quant_server.modules.backtest.engines.simulation_engine import SimulationEngine
@@ -42,15 +42,15 @@ class BacktestTask:
 		self.result = None
 
 		# 初始化引擎 (使用正确的 EngineConfig 类型)
-		backtest_config = EngineConfig(
+		backtest_config = EngineConfigEntity(
 			name="backtest_engine",
 			engine_type="backtest"
 		)
-		simulation_config = EngineConfig(
+		simulation_config = EngineConfigEntity(
 			name="simulation_engine",
 			engine_type="simulation"
 		)
-		report_config = EngineConfig(
+		report_config = EngineConfigEntity(
 			name="report_engine",
 			engine_type="report"
 		)

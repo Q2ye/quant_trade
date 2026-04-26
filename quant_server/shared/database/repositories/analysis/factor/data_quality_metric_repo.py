@@ -3,19 +3,14 @@
 数据质量指标历史表Repository
 位置：shared/database/repositories/market/data_quality_metric_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between, case
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.business_models import DataQualityMetric
-from quant_server.shared.database.repositories import RepositoryError
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
+from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
@@ -286,7 +281,7 @@ class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
 			result = await self.session.execute(query)
 			rows = result.fetchall()
 
-			summary = {
+			summary: Dict[str, Any] = {
 				"time_range": {
 					"start_date": start_date,
 					"end_date": end_date
@@ -312,11 +307,13 @@ class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
 						"data_types": set()
 					}
 
-				summary["metrics_by_name"][metric_name]["total"] += row.total_metrics or 0
-				summary["metrics_by_name"][metric_name]["avg_value"] = round(float(row.avg_metric_value or 0), 2)
-				summary["metrics_by_name"][metric_name]["min_value"] = round(float(row.min_metric_value or 0), 2)
-				summary["metrics_by_name"][metric_name]["max_value"] = round(float(row.max_metric_value or 0), 2)
-				summary["metrics_by_name"][metric_name]["data_types"].add(data_type_val)
+				# 使用中间变量避免类型检查错误
+				metric_dict = summary["metrics_by_name"][metric_name]
+				metric_dict["total"] += row.total_metrics or 0
+				metric_dict["avg_value"] = round(float(row.avg_metric_value or 0), 2)
+				metric_dict["min_value"] = round(float(row.min_metric_value or 0), 2)
+				metric_dict["max_value"] = round(float(row.max_metric_value or 0), 2)
+				metric_dict["data_types"].add(data_type_val)
 
 				# 按数据类型统计
 				if data_type_val not in summary["metrics_by_type"]:
@@ -333,7 +330,7 @@ class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
 				}
 
 			# 转换集合为列表
-			for metric_name, data in summary["metrics_by_name"].items():
+			for metric_name_key, data in summary["metrics_by_name"].items():
 				data["data_types"] = list(data["data_types"])
 
 			return summary
@@ -498,14 +495,15 @@ class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
 				query = query.where(self.model.data_type == data_type)
 
 			query = query.order_by(
-				desc(self.model.metric_date),
-				desc(
-					case([
-						(self.model.status == "critical", 2),
-						(self.model.status == "warning", 1)
-					], else_=0)
+					desc(self.model.metric_date),
+					desc(
+						case(
+							(self.model.status == "critical", 2),
+							(self.model.status == "warning", 1),
+							else_=0
+						)
+					)
 				)
-			)
 
 			result = await self.session.execute(query)
 			return result.scalars().all()
@@ -536,8 +534,8 @@ class DataQualityMetricRepository(BaseRepository[DataQualityMetric]):
 				func.avg(self.model.metric_value).label("avg_actual"),
 				func.avg(self.model.target_value).label("avg_target"),
 				func.count(
-					case([(self.model.metric_value >= self.model.target_value, 1)], else_=None)
-				).label("met_target_count"),
+						case((self.model.metric_value >= self.model.target_value, 1), else_=None)
+					).label("met_target_count"),
 				func.count().label("total_count"),
 				self.model.data_type,
 				self.model.metric_name

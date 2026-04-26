@@ -10,15 +10,16 @@
 5. 为交易系统和策略系统提供篮子数据服务
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, or_, desc, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, delete
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 from quant_server.shared.database.models.business_models import Basket, BasketItem
-from quant_server.shared.database.repositories.types import PaginationParams, PaginationResult
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from quant_server.shared.database.repositories.types import PaginationParams, PaginationResult, SortCondition, FilterCondition, FilterOperator
 
 
 class BasketRepository(BaseRepository[Basket]):
@@ -153,9 +154,9 @@ class BasketRepository(BaseRepository[Basket]):
 
 			return await self.paginate(
 				pagination=pagination,
-				filters=[{"field": "id", "operator": "like", "value": f"%{keyword}%"},
-				         {"field": "name", "operator": "like", "value": f"%{keyword}%"}] if keyword else None,
-				sorts=[{"field": "name", "descending": False}]
+				filters=[FilterCondition(field="id", operator=FilterOperator.LIKE, value=f"%{keyword}%"),
+				         FilterCondition(field="name", operator=FilterOperator.LIKE, value=f"%{keyword}%")] if keyword else None,
+				sorts=[SortCondition(field="name", descending=False)]
 			)
 
 		except Exception as e:
@@ -773,7 +774,7 @@ class BasketRepository(BaseRepository[Basket]):
 					"name": latest_basket_record.name if latest_basket_record else None,
 					"created_at": latest_basket_record.created_at if latest_basket_record else None
 				},
-				"created_today": await self.count(
+				"created_today": await self._count_with_expression(
 					func.date(self.model.created_at) == datetime.now().date()
 				)
 			}
@@ -782,6 +783,28 @@ class BasketRepository(BaseRepository[Basket]):
 			raise RepositoryError(f"获取篮子使用统计失败: {str(e)}")
 
 	# ==================== 验证和工具方法 ====================
+
+	async def _count_with_expression (self, *expressions) -> int:
+		"""
+		使用表达式统计记录数
+
+		Args:
+			*expressions: SQLAlchemy 表达式
+
+		Returns:
+			记录数
+		"""
+		try:
+			query = select(func.count()).select_from(self.model)
+
+			for expr in expressions:
+				query = query.where(expr)
+
+			result = await self.session.execute(query)
+			return result.scalar() or 0
+
+		except Exception as e:
+			raise RepositoryError(f"使用表达式统计记录数失败: {str(e)}")
 
 	async def validate_basket_items (self, basket_id: str) -> Dict[str, Any]:
 		"""

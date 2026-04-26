@@ -15,6 +15,7 @@ from quant_server.modules.backtest.engines.backtest_engine import BacktestEngine
 from quant_server.modules.backtest.engines.optimization_engine import OptimizationEngine
 from quant_server.modules.backtest.engines.report_engine import ReportEngine
 from quant_server.modules.backtest.engines.simulation_engine import SimulationEngine
+from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.modules.data.services.market_service import MarketDataService
 from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
 from quant_server.shared.database.repositories.strategy.backtest.backtest_equity_curve_repo import \
@@ -45,12 +46,11 @@ class BacktestService:
 		self.db = db
 
 		# 初始化引擎
-		from quant_server.core.engines.types.entities import EngineConfig
-		self.backtest_engine = BacktestEngine(EngineConfig(name="BacktestEngine", engine_type="backtest"))
-		self.simulation_engine = SimulationEngine(EngineConfig(name="SimulationEngine", engine_type="simulation"))
+		self.backtest_engine = BacktestEngine(EngineConfigEntity(name="BacktestEngine", engine_type="backtest"))
+		self.simulation_engine = SimulationEngine(EngineConfigEntity(name="SimulationEngine", engine_type="simulation"))
 		self.optimization_engine = OptimizationEngine(
-			EngineConfig(name="OptimizationEngine", engine_type="optimization"))
-		self.report_engine = ReportEngine(EngineConfig(name="ReportEngine", engine_type="report"))
+			EngineConfigEntity(name="OptimizationEngine", engine_type="optimization"))
+		self.report_engine = ReportEngine(EngineConfigEntity(name="ReportEngine", engine_type="report"))
 		self.market_service = MarketDataService(db)
 
 		# 初始化仓库
@@ -175,7 +175,7 @@ class BacktestService:
 			logger.error(f"创建回测任务失败: {str(e)}")
 			raise
 
-	async def get_backtest_task (self, task_id: str, user_id: int) -> Dict[str, Any]:
+	async def get_backtest_task (self, task_id: str, user_id: str) -> Dict[str, Any]:
 		"""
 		获取回测任务详情
 
@@ -214,7 +214,7 @@ class BacktestService:
 			logger.error(f"获取回测任务详情失败: {str(e)}")
 			raise
 
-	async def get_backtest_task_list (self, request, user_id: int) -> Dict[str, Any]:
+	async def get_backtest_task_list (self, request, user_id: str) -> Dict[str, Any]:
 		"""
 		获取回测任务列表
 
@@ -262,7 +262,7 @@ class BacktestService:
 			logger.error(f"获取回测任务列表失败: {str(e)}")
 			raise
 
-	async def cancel_backtest_task (self, task_id: str, user_id: int) -> Dict[str, Any]:
+	async def cancel_backtest_task (self, task_id: str, user_id: str) -> Dict[str, Any]:
 		"""
 		取消回测任务
 
@@ -302,7 +302,7 @@ class BacktestService:
 			logger.error(f"取消回测任务失败: {str(e)}")
 			raise
 
-	async def get_backtest_equity_curve (self, task_id: str, user_id: int) -> List[Dict[str, Any]]:
+	async def get_backtest_equity_curve (self, task_id: str, user_id: str) -> List[Dict[str, Any]]:
 		"""
 		获取回测净值曲线
 
@@ -338,7 +338,7 @@ class BacktestService:
 			logger.error(f"获取回测净值曲线失败: {str(e)}")
 			raise
 
-	async def get_backtest_trades (self, task_id: str, user_id: int) -> Dict[str, Any]:
+	async def get_backtest_trades (self, task_id: str, user_id: str) -> Dict[str, Any]:
 		"""
 		获取回测交易记录
 
@@ -387,7 +387,7 @@ class BacktestService:
 			logger.error(f"获取回测交易记录失败: {str(e)}")
 			raise
 
-	async def get_backtest_positions (self, task_id: str, trade_date: str, user_id: int) -> List[Dict[str, Any]]:
+	async def get_backtest_positions (self, task_id: str, trade_date: str, user_id: str) -> List[Dict[str, Any]]:
 		"""
 		获取回测持仓快照
 
@@ -434,7 +434,7 @@ class BacktestService:
 			logger.error(f"获取回测持仓快照失败: {str(e)}")
 			raise
 
-	async def get_backtest_result (self, task_id: str, user_id: int) -> Dict[str, Any]:
+	async def get_backtest_result (self, task_id: str, user_id: str) -> Dict[str, Any]:
 		"""
 		获取回测结果
 
@@ -520,7 +520,7 @@ class BacktestService:
 				module = importlib.import_module(module_path)
 				# 获取策略类
 				strategy_class = getattr(module, class_name)
-			except Exception:
+			except (ImportError, AttributeError, ValueError):
 				# 如果动态导入失败，尝试从策略代码直接执行
 				try:
 					# 创建临时模块，并添加必要的依赖

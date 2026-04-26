@@ -5,7 +5,7 @@
 """
 
 from .base import (
-	BaseException,
+	QuantBaseException,
 	ValidationException,
 )
 
@@ -186,7 +186,7 @@ EXCEPTION_CATEGORIES = {
 
 __all__ = [
 	# 基础异常
-	'BaseException',
+	'QuantBaseException',
 	'BusinessException',
 	'SystemException',
 	'ValidationException',
@@ -205,6 +205,7 @@ __all__ = [
 	'AccountException',
 	'AnalysisException',
 	'BacktestException',
+	'DataNotFoundException',
 
 	# 验证异常
 	'ValidationError',

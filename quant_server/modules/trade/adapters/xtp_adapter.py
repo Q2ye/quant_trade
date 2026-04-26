@@ -298,7 +298,6 @@ class XTPBrokerAdapter(BrokerAdapter):
 			print(f"XTP适配器获取订单列表失败: {str(e)}")
 			return []
 
-
 	async def get_order (self, order_id: str) -> Optional[Dict[str, Any]]:
 		"""获取订单详情
 

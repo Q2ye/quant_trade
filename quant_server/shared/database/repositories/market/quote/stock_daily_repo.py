@@ -113,6 +113,50 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 			limit=limit
 		)
 
+	async def get_quotes_by_date (self, trade_date: date) -> List[StockDaily]:
+		"""
+		根据交易日期获取所有股票的行情数据
+
+		Args:
+			trade_date: 交易日期
+
+		Returns:
+			指定交易日的所有股票行情数据
+		"""
+		return await self.get_by_trade_date(trade_date)
+
+	async def get_quotes_by_date_range (
+			self,
+			start_date: str,
+			end_date: str,
+			limit: int = 10000
+	) -> List[StockDaily]:
+		"""
+		根据日期范围获取行情数据
+
+		Args:
+			start_date: 开始日期（字符串格式）
+			end_date: 结束日期（字符串格式）
+			limit: 最大返回记录数
+
+		Returns:
+			行情数据列表
+		"""
+		try:
+			# 转换日期格式
+			start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+			end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+			# 查询指定日期范围内的数据
+			query = select(self.model).where(
+				self.model.trade_date.between(start_dt, end_dt)
+			).limit(limit)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"根据日期范围查询行情数据失败: {str(e)}")
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,

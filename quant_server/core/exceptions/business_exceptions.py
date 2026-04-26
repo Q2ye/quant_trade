@@ -7,12 +7,12 @@
 """
 
 from typing import Any, Dict, Optional
-from .base import BaseException
+from .base import QuantBaseException
 from .error_codes import ErrorCode
 from .types import ErrorType, ErrorSeverity
 
 
-class BusinessException(BaseException):
+class BusinessException(QuantBaseException):
     """业务异常基类"""
 
     def __init__(

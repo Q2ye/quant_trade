@@ -7,11 +7,11 @@
 包括任务创建、状态跟踪、进度更新等业务方法
 """
 
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any, Tuple
+
+from sqlalchemy import select, delete, and_, or_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.business_models import AnalysisTask
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
@@ -119,7 +119,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 			if not task:
 				return False
 
-			update_data = {'status': status}
+			update_data: Dict[str, Any] = {'status': status}
 
 			if status == 'running' and not task.started_at:
 				update_data['started_at'] = datetime.now()
@@ -181,7 +181,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 			if not task:
 				return False
 
-			update_data = {'progress': progress}
+			update_data :Dict[str, Any] = {'progress': progress}
 
 			if intermediate_result is not None:
 				# 合并中间结果
@@ -271,7 +271,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 
 	async def get_user_tasks (
 			self,
-			user_id: int,
+			user_id: str,
 			analysis_type: Optional[str] = None,
 			status: Optional[str] = None,
 			limit: int = 100,
@@ -438,7 +438,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 
 			result = await self.session.execute(query)
 
-			stats = {
+			stats: Dict[str, Any] = {
 				'total': 0,
 				'by_type': {},
 				'by_status': {
@@ -586,7 +586,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 
 	async def get_tasks_with_report (
 			self,
-			report_id: int,
+			report_id: str,
 			include_cancelled: bool = False
 	) -> List[AnalysisTask]:
 		"""
@@ -642,7 +642,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 
 			query = delete(self.model).where(and_(*conditions))
 
-			result = await self.session.execute(query)
+			result = await self.session.execute(query)  # type: ignore
 			await self.session.commit()
 
 			return result.rowcount or 0

@@ -57,7 +57,7 @@ class StrategyManager(EngineBase):
 		self.event_engine = event_engine
 
 		# 策略实例 {strategy_id: StrategyInstance}
-		self.strategies: Dict[int, StrategyInstance] = {}
+		self.strategies: Dict[str, StrategyInstance] = {}
 
 		# 运行状态 {strategy_id: StrategyState}
 		self.running_states: Dict[str, StrategyState] = {}
@@ -66,7 +66,7 @@ class StrategyManager(EngineBase):
 		self._strategy_registry: Dict[StrategyType, Type[BaseStrategy]] = {}
 
 		# 策略对象 {strategy_id: BaseStrategy}
-		self._strategy_objects: Dict[int, BaseStrategy] = {}
+		self._strategy_objects: Dict[str, BaseStrategy] = {}
 
 		# 注册默认策略
 		self._register_default_strategies()
@@ -414,7 +414,7 @@ class StrategyManager(EngineBase):
 		# 停止所有运行中的策略
 		for strategy_id_str in list(self.running_states.keys()):
 			try:
-				await self.stop_strategy(int(strategy_id_str))
+				await self.stop_strategy(strategy_id_str)
 			except Exception as e:
 				logger.error(f"停止策略 {strategy_id_str} 失败: {e}")
 		logger.info("策略管理器停止完成")

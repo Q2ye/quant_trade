@@ -113,7 +113,8 @@ class OrderValidator:
 
 		return all_valid, errors
 
-	def validate_signal (self, signal_data: Dict[str, Any]) -> Tuple[bool, str]:
+	@staticmethod
+	def validate_signal(signal_data: Dict[str, Any]) -> Tuple[bool, str]:
 		"""
 		验证信号数据
 

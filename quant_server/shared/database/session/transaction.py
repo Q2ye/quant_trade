@@ -5,13 +5,13 @@
 """
 
 import logging
-from typing import Optional, Callable, Any, TypeVar, Generic
-from functools import wraps
 from contextlib import asynccontextmanager
 from enum import Enum
+from functools import wraps
+from typing import Optional, Callable, TypeVar
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,7 @@ def atomic (
 
 				return result
 
-			except Exception as e:
+			except Exception:
 				# 自动回滚
 				if transaction.is_active:
 					await transaction.rollback()

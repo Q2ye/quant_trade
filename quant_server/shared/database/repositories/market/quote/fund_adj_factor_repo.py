@@ -5,13 +5,14 @@
 职责：管理基金（含ETF）复权因子数据访问，继承HyperRepositoryBase实现基金专用操作
 """
 
-from typing import List, Optional, Dict, Any, Tuple
-from datetime import datetime, date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, text, between
+from datetime import date, timedelta, datetime
+from typing import List, Optional, Dict, Any
 
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quant_server.shared.database.models.data_models import FundAdjFactor
+from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
 
 
 class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
@@ -88,8 +89,8 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 	async def get_by_code_and_date_range (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			limit: int = 1000
 	) -> List[FundAdjFactor]:
 		"""
@@ -133,8 +134,8 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 	async def analyze_dividend_distribution (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		分析基金分红分布
@@ -210,7 +211,7 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 					"min_dividend_yield": min_dividend_yield,
 					"avg_interval_days": avg_interval,
 					"dividends_per_year": total_events / ((end_date - start_date).days / 365) if (
-								                                                                             end_date - start_date).days > 0 else 0
+							                                                                             end_date - start_date).days > 0 else 0
 				},
 				"dividend_details": dividend_events,
 				"factor_statistics": {
@@ -246,8 +247,8 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 	async def calculate_total_return (
 			self,
 			ts_code: str,
-			start_date: date,
-			end_date: date,
+			start_date: datetime,
+			end_date: datetime,
 			initial_investment: float = 10000.0
 	) -> Dict[str, Any]:
 		"""
@@ -303,15 +304,14 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 		# 模拟投资
 		initial_shares = initial_investment / price_dict[common_dates[0]]
 		current_shares = initial_shares
-		current_factor = factor_dict[common_dates[0]]
 
 		# 记录每日价值
 		daily_values = []
 
 		for i in range(len(common_dates)):
-			date = common_dates[i]
-			price = price_dict[date]
-			factor = factor_dict[date]
+			current_date = common_dates[i]
+			price = price_dict[current_date]
+			factor = factor_dict[current_date]
 
 			# 计算当日价值
 			if i == 0:
@@ -330,7 +330,7 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 				daily_value = current_shares * price
 
 			daily_values.append({
-				"date": date,
+				"date": current_date,
 				"price": price,
 				"shares": current_shares,
 				"value": daily_value,
@@ -342,7 +342,8 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 		price_only_final = initial_shares * price_dict[common_dates[-1]]
 
 		total_return = (final_value - initial_investment) / initial_investment * 100
-		price_return = (price_dict[common_dates[-1]] - price_dict[common_dates[0]]) / price_dict[common_dates[0]] * 100
+		price_return = (price_dict[common_dates[-1]] - price_dict[common_dates[0]]) / price_dict[
+			common_dates[0]] * 100
 
 		# 计算年化回报
 		days_elapsed = (common_dates[-1] - common_dates[0]).days
@@ -350,7 +351,7 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 			years_elapsed = days_elapsed / 365
 			total_annual_return = ((final_value / initial_investment) ** (1 / years_elapsed) - 1) * 100
 			price_annual_return = ((price_dict[common_dates[-1]] / price_dict[common_dates[0]]) ** (
-						1 / years_elapsed) - 1) * 100
+				1 / years_elapsed) - 1) * 100
 		else:
 			total_annual_return = price_annual_return = 0
 
@@ -407,7 +408,7 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 	async def validate_factor_consistency (
 			self,
 			ts_code: str,
-			reference_date: date
+			reference_date: datetime
 	) -> Dict[str, Any]:
 		"""
 		验证复权因子一致性

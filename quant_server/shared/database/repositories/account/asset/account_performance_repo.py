@@ -1,10 +1,9 @@
 # shared/database/repositories/timeseries/account_performance_repo.py
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import date, datetime, timedelta
-from decimal import Decimal
+from datetime import date, datetime
+from typing import List, Dict, Any, Optional
+
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, desc, text
-from sqlalchemy.sql import literal_column
 
 from quant_server.shared.database.models.business_models import AccountDailyPerformance
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -16,7 +15,7 @@ class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance])
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, AccountDailyPerformance)
 
-	async def get_user_performance (self, user_id: int, start_date: Optional[date] = None,
+	async def get_user_performance (self, user_id: str, start_date: Optional[date] = None,
 	                                end_date: Optional[date] = None) -> List[AccountDailyPerformance]:
 		"""获取用户账户绩效时间序列"""
 		query = select(self.model).where(self.model.user_id == user_id)
@@ -30,7 +29,7 @@ class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance])
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def get_performance_summary (self, user_id: int, start_date: Optional[date] = None,
+	async def get_performance_summary (self, user_id: str, start_date: Optional[date] = None,
 	                                   end_date: Optional[date] = None) -> Dict[str, Any]:
 		"""获取账户绩效汇总统计"""
 		query = select(self.model).where(self.model.user_id == user_id)
@@ -92,7 +91,7 @@ class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance])
 			"end_asset": float(records[-1].total_asset)
 		}
 
-	async def get_performance_by_period (self, user_id: int, period: str = 'daily') -> List[Dict[str, Any]]:
+	async def get_performance_by_period (self, user_id: str, period: str = 'daily') -> List[Dict[str, Any]]:
 		"""获取不同时间周期的绩效数据"""
 		if period == 'daily':
 			# 直接返回日数据
@@ -207,7 +206,7 @@ class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance])
 		else:
 			raise ValueError(f"Unsupported period: {period}")
 
-	async def get_rolling_statistics (self, user_id: int, window_days: int = 20) -> List[Dict[str, Any]]:
+	async def get_rolling_statistics (self, user_id: str, window_days: int = 20) -> List[Dict[str, Any]]:
 		"""获取滚动统计数据"""
 		rolling_query = text("""
             SELECT 
@@ -268,7 +267,8 @@ class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance])
 		await self.session.flush()
 		return len(instances)
 
-	def _calculate_max_drawdown (self, assets: List[float]) -> float:
+	@staticmethod
+	def _calculate_max_drawdown (assets: List[float]) -> float:
 		"""计算最大回撤"""
 		if not assets:
 			return 0

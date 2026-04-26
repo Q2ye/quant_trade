@@ -35,8 +35,7 @@ from quant_server.core.engines.system.event_engine import EventEngine
 
 # 导入类型定义
 from quant_server.core.engines.types.entities import (
-	EngineConfig as EngineConfigEntity,
-	Event as EventEntity
+	EventEntity, EngineConfigEntity
 )
 from quant_server.core.engines.types.enums import (
 	EngineType,
@@ -300,42 +299,35 @@ class DataQualityEngine(EngineBase):
 		try:
 			# 尝试从依赖中获取质量检查服务
 			if not self.quality_service:
-				# 这里可以尝试从工厂或其他地方获取服务实例
-				logger.warning("质量检查服务未配置，部分功能可能受限")
+				# 尝试从依赖中获取数据库会话
+				session = None
+				if hasattr(self, 'main_engine') and hasattr(self.main_engine, 'db_session'):
+					session = self.main_engine.db_session
+				elif hasattr(self, 'dependencies') and 'db_session' in self.dependencies:
+					session = self.dependencies['db_session']
+				elif hasattr(self, 'resource_pool') and hasattr(self.resource_pool, 'get_db_session'):
+					# 尝试从资源池获取数据库会话
+					session = self.resource_pool.get_db_session()
 
-				# 创建模拟服务用于测试
-				class MockQualityService:
-					@staticmethod
-					async def check_completeness (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查完整性: {table_name}")
-						return {"passed": True, "issues_count": 0}
+				if session:
+					# 导入实际的DataQualityService
+					from quant_server.modules.data.services.quality_service import DataQualityService
+					# 创建实际的质量检查服务
+					self.quality_service = DataQualityService(
+						session=session,
+						event_engine=self.event_engine
+					)
+					logger.info("质量检查服务初始化完成")
+				else:
+					# 创建模拟服务用于测试
+					logger.warning("数据库会话未配置，使用模拟质量检查服务")
+					class MockQualityService:
+						@staticmethod
+						async def check_data_quality (data_type: str) -> Dict[str, Any]:
+							logger.debug(f"模拟检查数据质量: {data_type}")
+							return {"success": True, "result": {"overall_score": 95.0, "issues": [], "total_records": 100, "valid_records": 95, "invalid_records": 5}}
 
-					@staticmethod
-					async def check_accuracy (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查准确性: {table_name}")
-						return {"passed": True, "issues_count": 0}
-
-					@staticmethod
-					async def check_consistency (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查一致性: {table_name}")
-						return {"passed": True, "issues_count": 0}
-
-					@staticmethod
-					async def check_timeliness (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查及时性: {table_name}")
-						return {"passed": True, "issues_count": 0}
-
-					@staticmethod
-					async def check_validity (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查有效性: {table_name}")
-						return {"passed": True, "issues_count": 0}
-
-					@staticmethod
-					async def check_uniqueness (table_name: str) -> Dict[str, Any]:
-						logger.debug(f"模拟检查唯一性: {table_name}")
-						return {"passed": True, "issues_count": 0}
-
-				self.quality_service = MockQualityService()
+					self.quality_service = MockQualityService()
 
 		except Exception as e:
 			logger.error(f"初始化质量检查服务失败: {e}")
@@ -570,7 +562,7 @@ class DataQualityEngine(EngineBase):
 		"""
 		# 更新性能指标
 		last_check_time = self.stats["last_check_time"]
-		last_check_str = last_check_time.isoformat() if last_check_time else None
+		last_check_str = last_check_time.isoformat() if isinstance(last_check_time, datetime) else None
 
 		self.record.update_performance_metrics({
 			"task_queue_size": self.task_queue.qsize(),
@@ -624,11 +616,10 @@ class DataQualityEngine(EngineBase):
 			logger.error(f"处理事件失败: {event.event_type}, 错误: {e}")
 			await self.handle_error(e, EngineErrorLevel.WARNING, {"event": event.to_dict()})
 
-	async def _on_auto_recover (self, func: Callable, error: Exception, context: Dict[str, Any]) -> bool:
+	async def _on_auto_recover (self, error: Exception, context: Dict[str, Any] = None) -> bool:
 		"""引擎自动恢复逻辑
 
 		Args:
-			func: 发生错误的函数
 			error: 发生的异常
 			context: 错误上下文
 
@@ -929,31 +920,55 @@ class DataQualityEngine(EngineBase):
 		Args:
 			current_time: 当前时间
 		"""
-		for rule_id, rule in self.quality_rules.items():
-			if not rule.enabled or not rule.schedule:
-				continue
+		scheduled_count = 0
+		executed_count = 0
 
-			# 简化实现：检查是否应该执行
-			last_execution = self._get_last_execution_time(rule_id)
-			should_execute = await self._should_execute_rule(rule, last_execution, current_time)
+		try:
+			for rule_id, rule in self.quality_rules.items():
+				if not rule.enabled or not rule.schedule:
+					continue
 
-			if should_execute:
-				# 创建并执行任务
-				task_id = await self.create_quality_task(
-					check_type=QualityCheckType.CUSTOM_CHECK,
-					target_tables=self._get_tables_for_rule(rule),
-					rules=[rule],
-					config={
-						"rule_id": rule_id,
-						"scheduled": True,
-						"schedule_time": current_time.isoformat()
-					}
-				)
+				scheduled_count += 1
 
-				# 记录执行时间
-				self._update_last_execution_time(rule_id, current_time)
+				# 检查是否应该执行
+				last_execution = self._get_last_execution_time(rule_id)
+				should_execute = await self._should_execute_rule(rule, last_execution, current_time)
 
-				logger.info(f"执行定时质量规则: {rule.name}, 任务ID: {task_id}")
+				if should_execute:
+					try:
+						# 获取规则适用的表
+						target_tables = self._get_tables_for_rule(rule)
+						if not target_tables:
+							logger.debug(f"规则 {rule.name} 没有适用的表，跳过执行")
+							continue
+
+						# 创建并执行任务
+						task_id = await self.create_quality_task(
+							check_type=QualityCheckType.CUSTOM_CHECK,
+							target_tables=target_tables,
+							rules=[rule],
+							config={
+								"rule_id": rule_id,
+								"scheduled": True,
+								"schedule_time": current_time.isoformat(),
+								"schedule": rule.schedule
+							}
+						)
+
+						# 记录执行时间
+						self._update_last_execution_time(rule_id, current_time)
+
+						executed_count += 1
+						logger.info(f"执行定时质量规则: {rule.name}, 任务ID: {task_id}")
+
+					except Exception as e:
+						logger.error(f"执行定时规则 {rule.name} 失败: {e}")
+						continue
+
+			logger.info(f"定时任务检查完成: 共 {scheduled_count} 个规则, 执行 {executed_count} 个任务")
+
+		except Exception as e:
+			logger.error(f"检查定时任务失败: {e}")
 
 	async def _schedule_hourly_check (self):
 		"""调度每小时质量检查"""
@@ -993,7 +1008,7 @@ class DataQualityEngine(EngineBase):
 					"scheduled": True,
 					"schedule_type": "daily",
 					"deep_check": True,
-					"priority": PriorityLevel.MEDIUM.value
+					"priority": PriorityLevel.NORMAL.value
 				}
 			)
 
@@ -1198,7 +1213,7 @@ class DataQualityEngine(EngineBase):
 			else:
 				self.stats["failed_tasks"] += 1
 
-			self.stats["last_check_time"] = datetime.now()
+			self.stats["last_check_time"] = datetime.now().timestamp()
 
 			logger.info(f"质量检查任务完成: {task_id}, 分数: {result.quality_score:.2f}")
 
@@ -1235,14 +1250,14 @@ class DataQualityEngine(EngineBase):
 			self,
 			task_id: str,
 			config: QualityTaskConfig,
-			metadata: Dict[str, Any]
+			_metadata: Dict[str, Any]
 	) -> QualityTaskResult:
 		"""执行具体的质量检查逻辑
 
 		Args:
 			task_id: 任务ID
 			config: 任务配置
-			metadata: 任务元数据
+			_metadata: 任务元数据
 
 		Returns:
 			QualityTaskResult: 检查结果
@@ -1337,34 +1352,61 @@ class DataQualityEngine(EngineBase):
 			if not self.quality_service:
 				return {"passed": True, "issues_count": 0}
 
-			# 根据规则类型调用相应的检查方法
-			rule_type = rule.rule_type
+			# 根据表名映射到数据类型
+			data_type_map = {
+				"stock_daily": "daily_quotes",
+				"stock_minute": "daily_quotes",
+				"index_daily": "daily_quotes",
+				"financial_data": "financial_data",
+				"company_info": "stock_list",
+				"factor_data": "factor_data",
+				"trade_calendar": "daily_quotes",
+				"dividend_data": "financial_data",
+				"split_data": "financial_data",
+				"capital_change": "financial_data"
+			}
 
-			if rule_type == QualityRuleType.COMPLETENESS:
-				check_result = await self.quality_service.check_completeness(table_name)
-			elif rule_type == QualityRuleType.ACCURACY:
-				check_result = await self.quality_service.check_accuracy(table_name)
-			elif rule_type == QualityRuleType.CONSISTENCY:
-				check_result = await self.quality_service.check_consistency(table_name)
-			elif rule_type == QualityRuleType.TIMELINESS:
-				check_result = await self.quality_service.check_timeliness(table_name)
-			elif rule_type == QualityRuleType.VALIDITY:
-				check_result = await self.quality_service.check_validity(table_name)
-			elif rule_type == QualityRuleType.UNIQUENESS:
-				check_result = await self.quality_service.check_uniqueness(table_name)
-			else:
-				check_result = {"passed": True, "issues_count": 0}
+			data_type = data_type_map.get(table_name, table_name)
+
+			# 调用实际的质量检查服务
+			result = await self.quality_service.check_data_quality(data_type)
+
+			# 解析结果
+			success = result.get("success", False)
+			quality_metrics = result.get("result", {})
+			overall_score = quality_metrics.get("overall_score", 0)
+			issues = quality_metrics.get("issues", [])
+			issues_count = len(issues)
+
+			# 根据规则类型调整阈值
+			threshold = rule.threshold if rule.threshold else 90.0
+			if rule.rule_type == QualityRuleType.COMPLETENESS:
+				threshold = 95.0  # 完整性检查要求更高
+			elif rule.rule_type == QualityRuleType.ACCURACY:
+				threshold = 92.0  # 准确性检查要求较高
+
+			# 判断是否通过
+			passed = success and overall_score >= threshold
 
 			# 确保返回标准格式
 			return {
-				"passed": check_result.get("passed", True),
+				"passed": passed,
 				"rule_id": rule.rule_id,
 				"rule_name": rule.name,
 				"rule_type": rule.rule_type.value,
 				"table_name": table_name,
-				"issues_count": check_result.get("issues_count", 0),
+				"issues_count": issues_count,
 				"severity": rule.severity,
-				"details": check_result.get("details", {}),
+				"details": {
+					"overall_score": overall_score,
+					"threshold": threshold,
+					"issues": issues,
+					"total_records": quality_metrics.get("total_records", 0),
+					"valid_records": quality_metrics.get("valid_records", 0),
+					"invalid_records": quality_metrics.get("invalid_records", 0),
+					"missing_records": quality_metrics.get("missing_records", 0),
+					"duplicate_records": quality_metrics.get("duplicate_records", 0)
+				},
 			}
 
 		except Exception as e:
@@ -1470,14 +1512,14 @@ class DataQualityEngine(EngineBase):
 			})
 
 		# 发送通知
-		await self._send_notification(task_id, config, result, metadata)
+		await self._send_quality_notification(task_id, config, result, metadata)
 
-	async def _send_notification (
+	async def _send_quality_notification (
 			self,
 			task_id: str,
 			config: QualityTaskConfig,
 			result: QualityTaskResult,
-			metadata: Dict[str, Any]
+			_metadata: Dict[str, Any]
 	):
 		"""发送质量通知
 
@@ -1485,7 +1527,7 @@ class DataQualityEngine(EngineBase):
 			task_id: 任务ID
 			config: 任务配置
 			result: 检查结果
-			metadata: 任务元数据
+			_metadata: 任务元数据
 		"""
 		if not config.notification_channels:
 			return
@@ -1519,7 +1561,8 @@ class DataQualityEngine(EngineBase):
 			except Exception as e:
 				logger.error(f"发送通知失败, 渠道: {channel}, 错误: {e}")
 
-	async def _send_email_notification (self, data: Dict[str, Any]):
+	@staticmethod
+	async def _send_email_notification (data: Dict[str, Any]):
 		"""发送邮件通知
 
 		Args:
@@ -1529,7 +1572,8 @@ class DataQualityEngine(EngineBase):
 		# 这里可以集成邮件服务或使用SMTP
 		logger.debug(f"发送邮件通知: {data['task_id']}")
 
-	async def _send_webhook_notification (self, data: Dict[str, Any]):
+	@staticmethod
+	async def _send_webhook_notification (data: Dict[str, Any]):
 		"""发送Webhook通知
 
 		Args:
@@ -1538,7 +1582,8 @@ class DataQualityEngine(EngineBase):
 		# 实现Webhook发送逻辑
 		logger.debug(f"发送Webhook通知: {data['task_id']}")
 
-	async def _send_slack_notification (self, data: Dict[str, Any]):
+	@staticmethod
+	async def _send_slack_notification (data: Dict[str, Any]):
 		"""发送Slack通知
 
 		Args:
@@ -1547,7 +1592,8 @@ class DataQualityEngine(EngineBase):
 		# 实现Slack发送逻辑
 		logger.debug(f"发送Slack通知: {data['task_id']}")
 
-	async def _send_teams_notification (self, data: Dict[str, Any]):
+	@staticmethod
+	async def _send_teams_notification (data: Dict[str, Any]):
 		"""发送Teams通知
 
 		Args:
@@ -1758,7 +1804,7 @@ class DataQualityEngine(EngineBase):
 			Dict[str, Any]: 性能指标
 		"""
 		last_check_time = self.stats["last_check_time"]
-		last_check_str = last_check_time.isoformat() if last_check_time else None
+		last_check_str = last_check_time.isoformat() if isinstance(last_check_time, datetime) else None
 
 		return {
 			"engine_id": self.engine_id,
@@ -1791,86 +1837,74 @@ class DataQualityEngine(EngineBase):
 
 	# ==================== 辅助方法 ====================
 
-	def _create_default_rules (self) -> Dict[str, QualityRule]:
+	@staticmethod
+	def _create_default_rules () -> Dict[str, QualityRule]:
 		"""创建默认质量规则
 
 		Returns:
 			Dict[str, QualityRule]: 默认规则字典
 		"""
-		rules = {}
-
-		# 完整性规则
-		rules["completeness_stock_daily"] = QualityRule(
-			rule_id="completeness_stock_daily",
-			rule_type=QualityRuleType.COMPLETENESS,
-			name="股票日线数据完整性检查",
-			description="检查股票日线数据是否存在缺失",
-			threshold=0.95,
-			severity="high",
-			enabled=True,
-			schedule="0 0 * * *",
-			tags=["stock", "daily", "completeness"]
-		)
-
-		# 准确性规则
-		rules["accuracy_price_range"] = QualityRule(
-			rule_id="accuracy_price_range",
-			rule_type=QualityRuleType.ACCURACY,
-			name="价格范围准确性检查",
-			description="检查价格是否在合理范围内",
-			threshold=0.99,
-			severity="high",
-			enabled=True,
-			tags=["price", "accuracy"]
-		)
-
-		# 一致性规则
-		rules["consistency_market_cap"] = QualityRule(
-			rule_id="consistency_market_cap",
-			rule_type=QualityRuleType.CONSISTENCY,
-			name="市值数据一致性检查",
-			description="检查市值数据是否一致",
-			severity="medium",
-			enabled=True,
-			tags=["market_cap", "consistency"]
-		)
-
-		# 及时性规则
-		rules["timeliness_data_freshness"] = QualityRule(
-			rule_id="timeliness_data_freshness",
-			rule_type=QualityRuleType.TIMELINESS,
-			name="数据新鲜度检查",
-			description="检查数据是否及时更新",
-			threshold=24,
-			severity="medium",
-			enabled=True,
-			schedule="0 */1 * * *",
-			tags=["freshness", "timeliness"]
-		)
-
-		# 有效性规则
-		rules["validity_trade_volume"] = QualityRule(
-			rule_id="validity_trade_volume",
-			rule_type=QualityRuleType.VALIDITY,
-			name="交易量有效性检查",
-			description="检查交易量是否为有效正数",
-			severity="low",
-			enabled=True,
-			tags=["volume", "validity"]
-		)
-
-		# 唯一性规则
-		rules["uniqueness_daily_record"] = QualityRule(
-			rule_id="uniqueness_daily_record",
-			rule_type=QualityRuleType.UNIQUENESS,
-			name="日记录唯一性检查",
-			description="检查每日记录是否唯一",
-			severity="medium",
-			enabled=True,
-			tags=["uniqueness", "daily"]
-		)
-
-		return rules
+		return {
+			"completeness_stock_daily": QualityRule(
+				rule_id="completeness_stock_daily",
+				rule_type=QualityRuleType.COMPLETENESS,
+				name="股票日线数据完整性检查",
+				description="检查股票日线数据是否存在缺失",
+				threshold=0.95,
+				severity="high",
+				enabled=True,
+				schedule="0 0 * * *",
+				tags=["stock", "daily", "completeness"]
+			),
+			"accuracy_price_range": QualityRule(
+				rule_id="accuracy_price_range",
+				rule_type=QualityRuleType.ACCURACY,
+				name="价格范围准确性检查",
+				description="检查价格是否在合理范围内",
+				threshold=0.99,
+				severity="high",
+				enabled=True,
+				tags=["price", "accuracy"]
+			),
+			"consistency_market_cap": QualityRule(
+				rule_id="consistency_market_cap",
+				rule_type=QualityRuleType.CONSISTENCY,
+				name="市值数据一致性检查",
+				description="检查市值数据是否一致",
+				severity="medium",
+				enabled=True,
+				tags=["market_cap", "consistency"]
+			),
+			"timeliness_data_freshness": QualityRule(
+				rule_id="timeliness_data_freshness",
+				rule_type=QualityRuleType.TIMELINESS,
+				name="数据新鲜度检查",
+				description="检查数据是否及时更新",
+				threshold=24,
+				severity="medium",
+				enabled=True,
+				schedule="0 */1 * * *",
+				tags=["freshness", "timeliness"]
+			),
+			"validity_trade_volume": QualityRule(
+				rule_id="validity_trade_volume",
+				rule_type=QualityRuleType.VALIDITY,
+				name="交易量有效性检查",
+				description="检查交易量是否为有效正数",
+				severity="low",
+				enabled=True,
+				tags=["volume", "validity"]
+			),
+			"uniqueness_daily_record": QualityRule(
+				rule_id="uniqueness_daily_record",
+				rule_type=QualityRuleType.UNIQUENESS,
+				name="日记录唯一性检查",
+				description="检查每日记录是否唯一",
+				severity="medium",
+				enabled=True,
+				tags=["uniqueness", "daily"]
+			)
+		}
 
 	def _get_default_rules_for_tables (self, tables: List[str]) -> List[QualityRule]:
 		"""根据表名获取默认规则
@@ -1897,7 +1931,8 @@ class DataQualityEngine(EngineBase):
 
 		return applicable_rules
 
-	def _get_tags_for_table (self, table_name: str) -> Set[str]:
+	@staticmethod
+	def _get_tags_for_table (table_name: str) -> List[str]:
 		"""根据表名获取标签
 
 		Args:
@@ -1914,9 +1949,10 @@ class DataQualityEngine(EngineBase):
 			"company_info": {"company"},
 			"trade_calendar": {"calendar"},
 		}
-		return tag_map.get(table_name, set())
+		return list(tag_map.get(table_name, set()))
 
-	def _get_tables_for_sync_type (self, sync_type: str) -> List[str]:
+	@staticmethod
+	def _get_tables_for_sync_type (sync_type: str) -> List[str]:
 		"""根据同步类型获取需要检查的表
 
 		Args:
@@ -1934,7 +1970,8 @@ class DataQualityEngine(EngineBase):
 		}
 		return table_map.get(sync_type, [])
 
-	def _get_tables_for_rule (self, rule: QualityRule) -> List[str]:
+	@staticmethod
+	def _get_tables_for_rule (rule: QualityRule) -> List[str]:
 		"""根据规则获取需要检查的表
 
 		Args:
@@ -1970,7 +2007,11 @@ class DataQualityEngine(EngineBase):
 		Returns:
 			Optional[datetime]: 上次执行时间
 		"""
-		# 简化实现：可以存储在数据库或内存中
+		# 从内存缓存中获取上次执行时间
+		if hasattr(self, '_last_execution_times'):
+			return self._last_execution_times.get(rule_id)
+		# 初始化执行时间缓存
+		self._last_execution_times = {}
 		return None
 
 	def _update_last_execution_time (self, rule_id: str, execution_time: datetime):
@@ -1980,11 +2021,14 @@ class DataQualityEngine(EngineBase):
 			rule_id: 规则ID
 			execution_time: 执行时间
 		"""
-		# 简化实现
-		pass
+		# 确保执行时间缓存存在
+		if not hasattr(self, '_last_execution_times'):
+			self._last_execution_times = {}
+		# 更新执行时间
+		self._last_execution_times[rule_id] = execution_time
 
+	@staticmethod
 	async def _should_execute_rule (
-			self,
 			rule: QualityRule,
 			last_execution: Optional[datetime],
 			current_time: datetime
@@ -2002,7 +2046,35 @@ class DataQualityEngine(EngineBase):
 		if not rule.schedule:
 			return False
 
-		# 简化实现：如果上次执行时间超过24小时，则执行
+		# 解析schedule字段（支持cron表达式或简单的时间间隔）
+		schedule = rule.schedule
+		
+		# 处理简单的时间间隔格式（如 "1h", "2d"）
+		if isinstance(schedule, str):
+			# 检查是否是时间间隔格式
+			if schedule.endswith('h'):
+				# 小时间隔
+				try:
+					hours = int(schedule[:-1])
+					if last_execution:
+						time_since_last = current_time - last_execution
+						return time_since_last.total_seconds() >= hours * 3600
+					return True
+				except ValueError:
+					pass
+			elif schedule.endswith('d'):
+				# 天间隔
+				try:
+					days = int(schedule[:-1])
+					if last_execution:
+						time_since_last = current_time - last_execution
+						return time_since_last.total_seconds() >= days * 24 * 3600
+					return True
+				except ValueError:
+					pass
+			# TODO: 支持cron表达式解析
+
+		# 默认逻辑：如果上次执行时间超过24小时，则执行
 		if last_execution:
 			time_since_last = current_time - last_execution
 			return time_since_last.total_seconds() >= 24 * 3600
@@ -2138,7 +2210,8 @@ class DataQualityEngine(EngineBase):
 
 		return json.dumps(report, ensure_ascii=False, indent=2)
 
-	def _generate_recommendations (self, result: QualityTaskResult) -> List[str]:
+	@staticmethod
+	def _generate_recommendations (result: QualityTaskResult) -> List[str]:
 		"""根据检查结果生成建议
 
 		Args:
@@ -2166,7 +2239,65 @@ class DataQualityEngine(EngineBase):
 
 		return recommendations
 
-	def _aggregate_by_hour (self, trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _aggregate_trend_data (trend_data: List[Dict[str, Any]], key_func, timestamp_func) -> List[Dict[str, Any]]:
+		"""通用趋势数据聚合函数
+
+		Args:
+			trend_data: 原始趋势数据
+			key_func: 生成聚合键的函数
+			timestamp_func: 生成时间戳的函数
+
+		Returns:
+			List[Dict[str, Any]]: 聚合后的数据
+		"""
+		if not trend_data:
+			return []
+
+		aggregated = {}
+
+		for entry in trend_data:
+			timestamp = datetime.fromisoformat(entry["timestamp"])
+			key = key_func(timestamp)
+
+			if key not in aggregated:
+				aggregated[key] = {
+					"timestamp": timestamp_func(timestamp),
+					"quality_score": 0,
+					"total_checks": 0,
+					"passed_checks": 0,
+					"failed_checks": 0,
+					"issues_found": 0,
+					"count": 0
+				}
+
+			agg = aggregated[key]
+			agg["quality_score"] += entry["quality_score"]
+			agg["total_checks"] += entry["total_checks"]
+			agg["passed_checks"] += entry["passed_checks"]
+			agg["failed_checks"] += entry["failed_checks"]
+			agg["issues_found"] += entry["issues_found"]
+			agg["count"] += 1
+
+		# 计算平均值
+		result = []
+		for key, agg in aggregated.items():
+			if agg["count"] > 0:
+				agg["quality_score"] /= agg["count"]
+				result.append({
+					"timestamp": agg["timestamp"],
+					"quality_score": round(agg["quality_score"], 2),
+					"total_checks": agg["total_checks"],
+					"passed_checks": agg["passed_checks"],
+					"failed_checks": agg["failed_checks"],
+					"issues_found": agg["issues_found"]
+				})
+
+		result.sort(key=lambda x: x["timestamp"])
+		return result
+
+	@staticmethod
+	def _aggregate_by_hour (trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 		"""按小时聚合趋势数据
 
 		Args:
@@ -2175,52 +2306,16 @@ class DataQualityEngine(EngineBase):
 		Returns:
 			List[Dict[str, Any]]: 聚合后的数据
 		"""
-		if not trend_data:
-			return []
+		def hour_key_func(timestamp):
+			return timestamp.strftime("%Y-%m-%d %H:00")
 
-		aggregated = {}
+		def hour_timestamp_func(timestamp):
+			return timestamp.strftime("%Y-%m-%d %H:00:00")
 
-		for entry in trend_data:
-			timestamp = datetime.fromisoformat(entry["timestamp"])
-			hour_key = timestamp.strftime("%Y-%m-%d %H:00")
+		return DataQualityEngine._aggregate_trend_data(trend_data, hour_key_func, hour_timestamp_func)
 
-			if hour_key not in aggregated:
-				aggregated[hour_key] = {
-					"timestamp": hour_key + ":00",
-					"quality_score": 0,
-					"total_checks": 0,
-					"passed_checks": 0,
-					"failed_checks": 0,
-					"issues_found": 0,
-					"count": 0
-				}
-
-			agg = aggregated[hour_key]
-			agg["quality_score"] += entry["quality_score"]
-			agg["total_checks"] += entry["total_checks"]
-			agg["passed_checks"] += entry["passed_checks"]
-			agg["failed_checks"] += entry["failed_checks"]
-			agg["issues_found"] += entry["issues_found"]
-			agg["count"] += 1
-
-		# 计算平均值
-		result = []
-		for hour_key, agg in aggregated.items():
-			if agg["count"] > 0:
-				agg["quality_score"] /= agg["count"]
-				result.append({
-					"timestamp": agg["timestamp"],
-					"quality_score": round(agg["quality_score"], 2),
-					"total_checks": agg["total_checks"],
-					"passed_checks": agg["passed_checks"],
-					"failed_checks": agg["failed_checks"],
-					"issues_found": agg["issues_found"]
-				})
-
-		result.sort(key=lambda x: x["timestamp"])
-		return result
-
-	def _aggregate_by_day (self, trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _aggregate_by_day (trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 		"""按天聚合趋势数据
 
 		Args:
@@ -2229,52 +2324,16 @@ class DataQualityEngine(EngineBase):
 		Returns:
 			List[Dict[str, Any]]: 聚合后的数据
 		"""
-		if not trend_data:
-			return []
+		def day_key_func(timestamp):
+			return timestamp.strftime("%Y-%m-%d")
 
-		aggregated = {}
+		def day_timestamp_func(timestamp):
+			return timestamp.strftime("%Y-%m-%d")
 
-		for entry in trend_data:
-			timestamp = datetime.fromisoformat(entry["timestamp"])
-			day_key = timestamp.strftime("%Y-%m-%d")
+		return DataQualityEngine._aggregate_trend_data(trend_data, day_key_func, day_timestamp_func)
 
-			if day_key not in aggregated:
-				aggregated[day_key] = {
-					"timestamp": day_key,
-					"quality_score": 0,
-					"total_checks": 0,
-					"passed_checks": 0,
-					"failed_checks": 0,
-					"issues_found": 0,
-					"count": 0
-				}
-
-			agg = aggregated[day_key]
-			agg["quality_score"] += entry["quality_score"]
-			agg["total_checks"] += entry["total_checks"]
-			agg["passed_checks"] += entry["passed_checks"]
-			agg["failed_checks"] += entry["failed_checks"]
-			agg["issues_found"] += entry["issues_found"]
-			agg["count"] += 1
-
-		# 计算平均值
-		result = []
-		for day_key, agg in aggregated.items():
-			if agg["count"] > 0:
-				agg["quality_score"] /= agg["count"]
-				result.append({
-					"timestamp": agg["timestamp"],
-					"quality_score": round(agg["quality_score"], 2),
-					"total_checks": agg["total_checks"],
-					"passed_checks": agg["passed_checks"],
-					"failed_checks": agg["failed_checks"],
-					"issues_found": agg["issues_found"]
-				})
-
-		result.sort(key=lambda x: x["timestamp"])
-		return result
-
-	def _aggregate_by_week (self, trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _aggregate_by_week (trend_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 		"""按周聚合趋势数据
 
 		Args:
@@ -2283,51 +2342,15 @@ class DataQualityEngine(EngineBase):
 		Returns:
 			List[Dict[str, Any]]: 聚合后的数据
 		"""
-		if not trend_data:
-			return []
-
-		aggregated = {}
-
-		for entry in trend_data:
-			timestamp = datetime.fromisoformat(entry["timestamp"])
+		def week_key_func(timestamp):
 			year, week, _ = timestamp.isocalendar()
-			week_key = f"{year}-W{week:02d}"
+			return f"{year}-W{week:02d}"
 
-			if week_key not in aggregated:
-				aggregated[week_key] = {
-					"timestamp": week_key,
-					"quality_score": 0,
-					"total_checks": 0,
-					"passed_checks": 0,
-					"failed_checks": 0,
-					"issues_found": 0,
-					"count": 0
-				}
+		def week_timestamp_func(timestamp):
+			year, week, _ = timestamp.isocalendar()
+			return f"{year}-W{week:02d}"
 
-			agg = aggregated[week_key]
-			agg["quality_score"] += entry["quality_score"]
-			agg["total_checks"] += entry["total_checks"]
-			agg["passed_checks"] += entry["passed_checks"]
-			agg["failed_checks"] += entry["failed_checks"]
-			agg["issues_found"] += entry["issues_found"]
-			agg["count"] += 1
-
-		# 计算平均值
-		result = []
-		for week_key, agg in aggregated.items():
-			if agg["count"] > 0:
-				agg["quality_score"] /= agg["count"]
-				result.append({
-					"timestamp": agg["timestamp"],
-					"quality_score": round(agg["quality_score"], 2),
-					"total_checks": agg["total_checks"],
-					"passed_checks": agg["passed_checks"],
-					"failed_checks": agg["failed_checks"],
-					"issues_found": agg["issues_found"]
-				})
-
-		result.sort(key=lambda x: x["timestamp"])
-		return result
+		return DataQualityEngine._aggregate_trend_data(trend_data, week_key_func, week_timestamp_func)
 
 	def __str__ (self) -> str:
 		"""字符串表示
@@ -2388,4 +2411,58 @@ def register_quality_engine ():
 
 # 导出引擎类和注册函数
 __all__ = ["DataQualityEngine", "QualityCheckType", "QualityRuleType",
-           "QualityRule", "QualityTaskConfig", "register_quality_engine"]
+           "QualityRule", "QualityTaskConfig", "QualityTaskProgress", "QualityTaskResult",
+           "register_quality_engine"]
+
+
+# ==================== 便捷函数 ====================
+
+async def create_data_quality_engine(
+    config: Optional[Dict[str, Any]] = None,
+    instance_name: Optional[str] = None
+) -> DataQualityEngine:
+    """
+    创建数据质量检查引擎（便捷函数）
+
+    Args:
+        config: 引擎配置
+        instance_name: 实例名称
+
+    Returns:
+        DataQualityEngine: 创建的引擎实例
+    """
+    from quant_server.core.engines.utils.engine_factory import create_engine
+    from quant_server.core.engines.types.enums import EngineType
+
+    engine = await create_engine(
+        engine_type=EngineType.DATA_QUALITY,
+        config=config,
+        instance_name=instance_name
+    )
+
+    if isinstance(engine, DataQualityEngine):
+        return engine
+    else:
+        raise TypeError(f"创建的引擎类型不正确，期望 DataQualityEngine，实际是 {type(engine).__name__}")
+
+
+async def get_data_quality_engine(
+    instance_name: str = "data_quality_engine"
+) -> Optional[DataQualityEngine]:
+    """
+    获取数据质量检查引擎（便捷函数）
+
+    Args:
+        instance_name: 引擎实例名称
+
+    Returns:
+        Optional[DataQualityEngine]: 数据质量检查引擎实例
+    """
+    from quant_server.core.engines.utils.engine_factory import get_engine
+
+    engine = await get_engine(instance_name)
+
+    if engine and isinstance(engine, DataQualityEngine):
+        return engine
+
+    return None

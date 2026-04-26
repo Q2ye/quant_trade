@@ -46,7 +46,7 @@ class OptimizationEngine(EngineBase):
 		self.backtest_engine = BacktestEngine(config, event_engine, resource_pool)
 		
 		# 优化结果
-		self.results: Dict[int, Any] = {}
+		self.results: Dict[str, Any] = {}
 		
 		# 活跃任务
 		self.active_tasks: List[asyncio.Task] = []
@@ -157,7 +157,7 @@ class OptimizationEngine(EngineBase):
 					context = StrategyContext(
 						strategy_id=strategy_id,
 						strategy_name="Optimization Strategy",
-						user_id=0,
+						user_id="0",
 						initial_capital=1000000.0,
 						commission_rate=0.0003,
 						slippage=0.0001

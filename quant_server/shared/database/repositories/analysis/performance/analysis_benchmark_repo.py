@@ -7,9 +7,10 @@
 包括基准创建、查询、验证、组件管理等业务方法
 """
 
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, or_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func, desc, asc
 
 from quant_server.shared.database.models.business_models import AnalysisBenchmark
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
@@ -108,7 +109,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 			List[AnalysisBenchmark]: 活跃基准列表
 		"""
 		try:
-			filters = {'is_active': True}
+			filters: Dict[str, Any] = {'is_active': True}
 
 			if benchmark_type:
 				filters['benchmark_type'] = benchmark_type
@@ -135,7 +136,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 			List[AnalysisBenchmark]: 基准列表
 		"""
 		try:
-			filters = {'benchmark_type': benchmark_type}
+			filters: Dict[str, Any] = {'benchmark_type': benchmark_type}
 
 			if not include_inactive:
 				filters['is_active'] = True
@@ -146,7 +147,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def update_benchmark_components (
 			self,
-			benchmark_id: int,
+			benchmark_id: str,
 			components: List[Dict[str, Any]],
 			update_description: Optional[str] = None
 	) -> bool:
@@ -162,7 +163,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 			bool: 更新是否成功
 		"""
 		try:
-			update_data = {'components': components}
+			update_data: Dict[str, Any] = {'components': components}
 
 			if update_description:
 				# 更新描述
@@ -177,7 +178,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def add_component_to_benchmark (
 			self,
-			benchmark_id: int,
+			benchmark_id: str,
 			component: Dict[str, Any],
 			update_if_exists: bool = True
 	) -> bool:
@@ -231,7 +232,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def remove_component_from_benchmark (
 			self,
-			benchmark_id: int,
+			benchmark_id: str,
 			component_code: str
 	) -> bool:
 		"""
@@ -272,7 +273,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def get_benchmark_components (
 			self,
-			benchmark_id: int
+			benchmark_id: str
 	) -> List[Dict[str, Any]]:
 		"""
 		获取基准成分股
@@ -293,8 +294,8 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 		except Exception as e:
 			raise RepositoryError(f"获取基准成分失败: {str(e)}")
 
+	@staticmethod
 	async def validate_benchmark_components (
-			self,
 			components: List[Dict[str, Any]]
 	) -> Dict[str, Any]:
 		"""
@@ -362,7 +363,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def calculate_benchmark_statistics (
 			self,
-			benchmark_id: int
+			benchmark_id: str
 	) -> Dict[str, Any]:
 		"""
 		计算基准统计信息
@@ -527,7 +528,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def deactivate_benchmark (
 			self,
-			benchmark_id: int
+			benchmark_id: str
 	) -> bool:
 		"""
 		停用基准
@@ -545,7 +546,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def activate_benchmark (
 			self,
-			benchmark_id: int
+			benchmark_id: str
 	) -> bool:
 		"""
 		激活基准
@@ -563,7 +564,7 @@ class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):
 
 	async def duplicate_benchmark (
 			self,
-			benchmark_id: int,
+			benchmark_id: str,
 			new_benchmark_code: str,
 			new_benchmark_name: str,
 			description_suffix: str = " (复制)"

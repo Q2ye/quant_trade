@@ -27,7 +27,9 @@ class ChartGenerator:
 		"""
 		pass
 
-	def generate_equity_curve (self, equity_curve: List[Dict[str, Any]]) -> str:
+	@staticmethod
+	def generate_equity_curve (equity_curve: List[Dict[str, Any]]) -> str:
+
 		"""
 		生成净值曲线图表
 
@@ -63,7 +65,9 @@ class ChartGenerator:
 			logger.error(f"生成净值曲线图表失败: {str(e)}")
 			return ""
 
-	def generate_drawdown (self, equity_curve: List[Dict[str, Any]]) -> str:
+	@staticmethod
+	def generate_drawdown (equity_curve: List[Dict[str, Any]]) -> str:
+
 		"""
 		生成回撤图表
 
@@ -107,7 +111,9 @@ class ChartGenerator:
 			logger.error(f"生成回撤图表失败: {str(e)}")
 			return ""
 
-	def generate_returns_distribution (self, returns: List[float]) -> str:
+	@staticmethod
+	def generate_returns_distribution (returns: List[float]) -> str:
+
 		"""
 		生成收益率分布图表
 
@@ -139,7 +145,9 @@ class ChartGenerator:
 			logger.error(f"生成收益率分布图表失败: {str(e)}")
 			return ""
 
-	def generate_trade_pnl (self, trades: List[Dict[str, Any]]) -> str:
+	@staticmethod
+	def generate_trade_pnl (trades: List[Dict[str, Any]]) -> str:
+
 		"""
 		生成交易盈亏图表
 

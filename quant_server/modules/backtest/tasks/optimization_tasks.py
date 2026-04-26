@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, Any
 
-from quant_server.core.engines.types.entities import EngineConfig
+from quant_server.core.engines import EngineConfigEntity
 from quant_server.modules.backtest.engines.optimization_engine import OptimizationEngine
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class OptimizationTask:
 		self.result = None
 
 		# 初始化引擎 (使用正确的 EngineConfig 类型)
-		optimization_config = EngineConfig(
+		optimization_config = EngineConfigEntity(
 			name="optimization_engine",
 			engine_type="optimization"
 		)

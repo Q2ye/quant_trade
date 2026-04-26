@@ -3,19 +3,15 @@
 系统健康指标表Repository
 位置：shared/database/repositories/system/system_health_metric_repo.py
 """
-from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, asc, between
-from sqlalchemy.orm import joinedload
 
 from quant_server.shared.database.models.system_models import SystemHealthMetric
 from quant_server.shared.database.repositories import RepositoryError
 from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
-	RepositoryResult, PaginationParams, PaginationResult,
-	FilterCondition, SortCondition, QueryParams
-)
 
 
 class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
@@ -27,32 +23,32 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 
 	async def record_metric (
 			self,
-			metric_type: str,
+			component: str,
 			metric_name: str,
 			metric_value: float,
-			unit: Optional[str] = None,
-			status: str = "normal"
+			metric_unit: Optional[str] = None,
+			severity: str = "info"
 	) -> SystemHealthMetric:
 		"""
 		记录系统健康指标
 
 		Args:
-			metric_type: 指标类型（cpu, memory, disk, network, database）
+			component: 组件名称（cpu, memory, disk, network, database）
 			metric_name: 指标名称
 			metric_value: 指标值
-			unit: 单位
-			status: 状态（normal, warning, critical）
+			metric_unit: 单位
+			severity: 严重程度（info, warning, error, critical）
 
 		Returns:
 			系统健康指标记录
 		"""
 		try:
 			data = {
-				"metric_type": metric_type,
+				"component": component,
 				"metric_name": metric_name,
 				"metric_value": metric_value,
-				"unit": unit,
-				"status": status
+				"metric_unit": metric_unit,
+				"severity": severity
 			}
 
 			return await self.create(data)
@@ -62,77 +58,77 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 	async def record_cpu_metric (
 			self,
 			cpu_percent: float,
-			status: str = "normal"
+			severity: str = "info"
 	) -> SystemHealthMetric:
 		"""
 		记录CPU指标
 
 		Args:
 			cpu_percent: CPU使用率
-			status: 状态
+			severity: 严重程度
 
 		Returns:
 			CPU指标记录
 		"""
 		return await self.record_metric(
-			metric_type="cpu",
+			component="cpu",
 			metric_name="cpu_usage",
 			metric_value=cpu_percent,
-			unit="%",
-			status=status
+			metric_unit="%",
+			severity=severity
 		)
 
 	async def record_memory_metric (
 			self,
 			memory_percent: float,
-			status: str = "normal"
+			severity: str = "info"
 	) -> SystemHealthMetric:
 		"""
 		记录内存指标
 
 		Args:
 			memory_percent: 内存使用率
-			status: 状态
+			severity: 严重程度
 
 		Returns:
 			内存指标记录
 		"""
 		return await self.record_metric(
-			metric_type="memory",
+			component="memory",
 			metric_name="memory_usage",
 			metric_value=memory_percent,
-			unit="%",
-			status=status
+			metric_unit="%",
+			severity=severity
 		)
 
 	async def record_disk_metric (
 			self,
 			disk_percent: float,
-			status: str = "normal"
+			severity: str = "info"
 	) -> SystemHealthMetric:
 		"""
 		记录磁盘指标
 
 		Args:
 			disk_percent: 磁盘使用率
-			status: 状态
+			severity: 严重程度
 
 		Returns:
 			磁盘指标记录
 		"""
 		return await self.record_metric(
-			metric_type="disk",
+			component="disk",
 			metric_name="disk_usage",
 			metric_value=disk_percent,
-			unit="%",
-			status=status
+			metric_unit="%",
+			severity=severity
 		)
 
 	async def record_database_metric (
 			self,
 			query_time_ms: float,
 			connection_count: int,
-			status: str = "normal"
+			severity: str = "info"
 	) -> List[SystemHealthMetric]:
 		"""
 		记录数据库指标
@@ -140,7 +136,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		Args:
 			query_time_ms: 查询时间（毫秒）
 			connection_count: 连接数
-			status: 状态
+			severity: 严重程度
 
 		Returns:
 			数据库指标记录列表
@@ -150,21 +146,21 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 
 			# 记录查询时间
 			query_metric = await self.record_metric(
-				metric_type="database",
+				component="database",
 				metric_name="query_time",
 				metric_value=query_time_ms,
-				unit="ms",
-				status=status
+				metric_unit="ms",
+				severity=severity
 			)
 			metrics.append(query_metric)
 
 			# 记录连接数
 			connection_metric = await self.record_metric(
-				metric_type="database",
+				component="database",
 				metric_name="connection_count",
 				metric_value=float(connection_count),
-				unit="count",
-				status=status
+				metric_unit="count",
+				severity=severity
 			)
 			metrics.append(connection_metric)
 
@@ -174,7 +170,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 
 	async def get_latest_metrics (
 			self,
-			metric_type: Optional[str] = None,
+			component: Optional[str] = None,
 			metric_name: Optional[str] = None,
 			limit: int = 100
 	) -> List[SystemHealthMetric]:
@@ -182,7 +178,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		获取最新指标记录
 
 		Args:
-			metric_type: 指标类型
+			component: 组件名称
 			metric_name: 指标名称
 			limit: 限制记录数
 
@@ -192,8 +188,8 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		try:
 			query = select(self.model)
 
-			if metric_type:
-				query = query.where(self.model.metric_type == metric_type)
+			if component:
+				query = query.where(self.model.component == component)
 			if metric_name:
 				query = query.where(self.model.metric_name == metric_name)
 
@@ -208,7 +204,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 			self,
 			start_date: datetime,
 			end_date: datetime,
-			metric_type: Optional[str] = None,
+			component: Optional[str] = None,
 			metric_name: Optional[str] = None
 	) -> List[SystemHealthMetric]:
 		"""
@@ -217,7 +213,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		Args:
 			start_date: 开始时间
 			end_date: 结束时间
-			metric_type: 指标类型
+			component: 组件名称
 			metric_name: 指标名称
 
 		Returns:
@@ -231,8 +227,8 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 				)
 			)
 
-			if metric_type:
-				query = query.where(self.model.metric_type == metric_type)
+			if component:
+				query = query.where(self.model.component == component)
 			if metric_name:
 				query = query.where(self.model.metric_name == metric_name)
 
@@ -245,7 +241,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 
 	async def get_metric_statistics (
 			self,
-			metric_type: str,
+			component: str,
 			metric_name: str,
 			start_date: datetime,
 			end_date: datetime,
@@ -255,7 +251,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		获取指标统计信息（按时间间隔聚合）
 
 		Args:
-			metric_type: 指标类型
+			component: 组件名称
 			metric_name: 指标名称
 			start_date: 开始时间
 			end_date: 结束时间
@@ -279,7 +275,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 				func.count().label("sample_count")
 			).where(
 				and_(
-					self.model.metric_type == metric_type,
+					self.model.component == component,
 					self.model.metric_name == metric_name,
 					self.model.collected_at >= start_date,
 					self.model.collected_at <= end_date
@@ -322,27 +318,28 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		try:
 			start_date = datetime.now() - timedelta(hours=hours)
 
-			summary = {
+			summary: Dict[str, Any] = {
 				"time_range": {
 					"start": start_date,
 					"end": datetime.now()
 				},
 				"metrics": {},
-				"status_summary": {
-					"normal": 0,
+				"severity_summary": {
+					"info": 0,
 					"warning": 0,
+					"error": 0,
 					"critical": 0
 				}
 			}
 
 			# 获取各种指标的最新值
-			metric_types = ["cpu", "memory", "disk", "network", "database"]
+			components = ["cpu", "memory", "disk", "network", "database"]
 
-			for metric_type in metric_types:
+			for component in components:
 				# 获取该类型的最新指标
 				latest_query = select(self.model).where(
 					and_(
-						self.model.metric_type == metric_type,
+						self.model.component == component,
 						self.model.collected_at >= start_date
 					)
 				).order_by(
@@ -353,27 +350,27 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 				latest_metric = result.scalar_one_or_none()
 
 				if latest_metric:
-					summary["metrics"][metric_type] = {
+					summary["metrics"][component] = {
 						"latest_value": float(latest_metric.metric_value),
-						"unit": latest_metric.unit,
-						"status": latest_metric.status,
+						"metric_unit": latest_metric.metric_unit,
+						"severity": latest_metric.severity,
 						"collected_at": latest_metric.collected_at
 					}
 
 			# 获取状态统计
-			status_query = select(
-				self.model.status,
+			severity_query = select(
+				self.model.severity,
 				func.count().label("count")
 			).where(
 				self.model.collected_at >= start_date
 			).group_by(
-				self.model.status
+				self.model.severity
 			)
 
-			status_result = await self.session.execute(status_query)
-			for row in status_result.fetchall():
-				if row.status in summary["status_summary"]:
-					summary["status_summary"][row.status] = row.count
+			severity_result = await self.session.execute(severity_query)
+			for row in severity_result.fetchall():
+				if row.severity in summary["severity_summary"]:
+					summary["severity_summary"][row.severity] = row.count
 
 			return summary
 		except Exception as e:
@@ -398,7 +395,7 @@ class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):
 		"""
 		try:
 			query = select(self.model).where(
-				self.model.status.in_(["warning", "critical"])
+				self.model.severity.in_(["warning", "error", "critical"])
 			)
 
 			if start_date:

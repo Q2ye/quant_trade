@@ -2,10 +2,11 @@
 """
 数据质量检查记录表Repository
 """
-from typing import Optional, List, Dict, Any
 from datetime import date, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, List, Dict, Any
+
 from sqlalchemy import select, and_, func, desc, asc
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.models.business_models import DataQualityCheck
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
@@ -66,7 +67,8 @@ class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
 				"duplicate_records": duplicate_records,
 				"check_results": check_results or {},
 				"status": status,
-				"checked_by": checked_by
+				"checked_by": checked_by,
+				"quality_score": quality_score
 			}
 
 			return await self.create(data)
@@ -411,27 +413,25 @@ class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
 		try:
 			start_date = date.today() - timedelta(days=days)
 
-			# 使用子查询计算质量分数
-			subquery = select(
-				self.model.id,
-				(self.model.valid_records / self.model.total_records * 100).label("quality_score")
-			).where(
-				self.model.check_date >= start_date
-			).subquery()
-
-			query = select(self.model).join(
-				subquery,
-				self.model.id == subquery.c.id
-			).where(
-				subquery.c.quality_score < quality_threshold
+			# 直接在主查询中计算质量分数，避免复杂的子查询
+			query = select(self.model).where(
+				and_(
+					self.model.check_date >= start_date,
+					# 计算质量分数并比较阈值
+					func.cast(self.model.valid_records, func.FLOAT) /
+					func.cast(self.model.total_records, func.FLOAT) * 100 < quality_threshold
+				)
 			).order_by(
-				asc(subquery.c.quality_score)
+				# 按质量分数升序排列（质量越差排前面）
+				asc(func.cast(self.model.valid_records, func.FLOAT) /
+				    func.cast(self.model.total_records, func.FLOAT) * 100)
 			)
 
 			result = await self.session.execute(query)
 			return result.scalars().all()
 		except Exception as e:
 			raise RepositoryError(f"获取低质量检查记录失败: {str(e)}")
+
 
 	async def cleanup_old_records (self, days_to_keep: int = 365) -> int:
 		"""

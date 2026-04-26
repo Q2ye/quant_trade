@@ -43,7 +43,7 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 	async def update_status (self, task_id: str, status: str, progress: Optional[float] = None,
 	                         error_message: Optional[str] = None) -> bool:
 		"""更新回测任务状态"""
-		update_data = {
+		update_data: Dict[str, Any] = {
 			"status": status,
 			"updated_at": datetime.now()
 		}
@@ -105,7 +105,7 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 		result = await self.session.execute(query)
 		return result.scalars().all()
 
-	async def count_by_user (self, user_id: int) -> Dict[str, int]:
+	async def count_by_user (self, user_id: str) -> Dict[str, int]:
 		"""统计用户回测任务数量"""
 		# 按状态统计
 		query = (
@@ -135,13 +135,13 @@ class BacktestTaskRepository(BaseRepository[BacktestTask]):
 			delete(self.model)
 			.where(
 				and_(
-					self.model.status.in_("completed", "failed", "cancelled"),
+					self.model.status.in_(["completed", "failed", "cancelled"]),
 					self.model.created_at < cutoff_date
 				)
 			)
 		)
 
-		result = await self.session.execute(stmt)
+		result = await self.session.execute(stmt) # type: ignore
 		return result.rowcount or 0
 
 	async def get_list (self, filters: Dict[str, Any], page: int = 1, page_size: int = 20) -> Tuple[List[BacktestTask], int]:

@@ -8,8 +8,9 @@
 """
 
 from typing import Optional, List, Dict, Any
+
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_, func
 
 from quant_server.shared.database.models.business_models import AlertTemplate
 from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
@@ -110,7 +111,7 @@ class AlertTemplateRepository(BaseRepository[AlertTemplate]):
 			List[AlertTemplate]: 活跃模板列表
 		"""
 		try:
-			filters = {'is_active': True}
+			filters = {'is_active': "True"}
 
 			if alert_type:
 				filters['alert_type'] = alert_type
@@ -123,7 +124,7 @@ class AlertTemplateRepository(BaseRepository[AlertTemplate]):
 
 	async def render_template (
 			self,
-			template_id: int,
+			template_id: str,
 			context: Dict[str, Any]
 	) -> Dict[str, str]:
 		"""
@@ -195,8 +196,8 @@ class AlertTemplateRepository(BaseRepository[AlertTemplate]):
 		except Exception as e:
 			raise RepositoryError(f"按类型级别渲染模板失败: {str(e)}")
 
+	@staticmethod
 	async def validate_template (
-			self,
 			title_template: str,
 			message_template: str,
 			context: Dict[str, Any]
@@ -230,19 +231,7 @@ class AlertTemplateRepository(BaseRepository[AlertTemplate]):
 				if placeholder not in context:
 					missing_placeholders.append(placeholder)
 
-			# 渲染测试
-			test_template = AlertTemplate(
-				template_name="test",
-				alert_type="test",
-				alert_level="test",
-				title_template=title_template,
-				message_template=message_template
-			)
-
-			# 临时保存模板并渲染
-			temp_id = 999999  # 虚拟ID
-
-			result = {
+			validation_result: Dict[str, Any] = {
 				'valid': len(missing_placeholders) == 0,
 				'missing_placeholders': missing_placeholders,
 				'total_placeholders': len(all_placeholders),
@@ -252,26 +241,26 @@ class AlertTemplateRepository(BaseRepository[AlertTemplate]):
 				'rendered_message': None
 			}
 
-			if result['valid']:
+			if validation_result['valid']:
 				# 简单渲染
 				def render_text (text: str) -> str:
-					result = text
+					rendered_text = text
 					for key, value in context.items():
-						placeholder = f"{{{key}}}"
-						if placeholder in result:
-							result = result.replace(placeholder, str(value))
-					return result
+						key_placeholder = f"{{{key}}}"
+						if key_placeholder in rendered_text:
+							rendered_text = rendered_text.replace(key_placeholder, str(value))
+					return rendered_text
 
-				result['rendered_title'] = render_text(title_template)
-				result['rendered_message'] = render_text(message_template)
+				validation_result['rendered_title'] = render_text(title_template)
+				validation_result['rendered_message'] = render_text(message_template)
 
-			return result
+			return validation_result
 		except Exception as e:
 			raise RepositoryError(f"验证模板失败: {str(e)}")
 
 	async def update_template (
 			self,
-			template_id: int,
+			template_id: str,
 			template_name: Optional[str] = None,
 			title_template: Optional[str] = None,
 			message_template: Optional[str] = None,
