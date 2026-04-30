@@ -243,6 +243,11 @@ class AvailableMetricsResponse(BaseResponse):
     data: Dict[str, Any] = Field(..., description="可用指标数据")
 
 
+class EquityCurveResponse(BaseResponse):
+    """资产曲线响应模型"""
+    data: Dict[str, Any] = Field(..., description="资产曲线数据")
+
+
 class ExportReportRequest(BaseRequest):
     """导出报告请求模型"""
     report_id: str = Field(..., description="报告ID")

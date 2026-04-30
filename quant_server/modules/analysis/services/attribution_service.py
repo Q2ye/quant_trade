@@ -14,6 +14,7 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.analysis.models import AttributionAnalysis
+from modules.analysis.analyzers.attribution.factor_attribution import FactorAttribution
 from shared.database.repositories.strategy_repo import StrategyRepository
 from shared.database.repositories.account_repo import AccountRepository
 from shared.database.repositories.position_repo import PositionRepository
@@ -52,6 +53,7 @@ class AttributionService:
 		self.quote_repo = quote_repo or StockDailyRepository(session)
 		self.stock_repo = stock_repo or StockRepository(session)
 		self.stat_calc = StatisticCalculator()
+		self.factor_attributor = FactorAttribution()
 
 	async def perform_brinson_attribution (
 			self,
@@ -204,22 +206,15 @@ class AttributionService:
 			if factor_returns.empty:
 				raise ValueError(f"无法获取因子收益率: {factor_model}")
 
-			# 对齐数据
-			common_dates = portfolio_returns.index.intersection(factor_returns.index)
-			if len(common_dates) < 10:
-				raise ValueError("数据日期对齐失败")
-
-			portfolio_aligned = portfolio_returns.loc[common_dates]
-			factor_aligned = factor_returns.loc[common_dates]
-
-			# 执行因子回归
-			factor_exposures, factor_attributions = await self._perform_factor_regression(
-				portfolio_aligned.values, factor_aligned.values,
-				factor_aligned.columns.tolist()
+			# 使用FactorAttribution执行因子归因分析
+			attribution_result = self.factor_attributor.perform_factor_attribution(
+				portfolio_returns=portfolio_returns,
+				factor_returns=factor_returns,
+				factor_model=factor_model
 			)
 
 			# 计算总收益
-			total_return = np.prod(1 + portfolio_aligned.values) - 1
+			total_return = np.prod(1 + portfolio_returns.values) - 1
 
 			# 构建归因分析对象
 			attribution = AttributionAnalysis(
@@ -231,11 +226,11 @@ class AttributionService:
 				total_return=Decimal(str(total_return)),
 				factor_attributions={
 					factor: Decimal(str(attr))
-					for factor, attr in factor_attributions.items()
+					for factor, attr in attribution_result['factor_contributions'].items()
 				},
 				factor_exposures={
 					factor: Decimal(str(exposure))
-					for factor, exposure in factor_exposures.items()
+					for factor, exposure in attribution_result['factor_exposures'].items()
 				}
 			)
 

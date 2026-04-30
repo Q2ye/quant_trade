@@ -11,7 +11,7 @@ from .strategy_router import router as strategy_router
 from .backtest_router import router as backtest_router
 # from .account_router import router as account_router
 # from .analysis_router import router as analysis_router
-# from .monitor_router import router as monitor_router
+from .monitor_router import router as monitor_router
 # from .system_router import router as system_router
 from .health_router import router as health_router
 

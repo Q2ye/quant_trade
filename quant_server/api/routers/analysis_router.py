@@ -48,6 +48,7 @@ from quant_server.modules.analysis.schemas import (
     CorrelationAnalysisResponse as CorrelationResponse,
     AttributionAnalysisResponse as AttributionResponse,
     AvailableMetricsResponse as MetricsAvailableResponse,
+    EquityCurveResponse,
     ExportReportRequest,
     ExportReportResponse
 )
@@ -516,12 +517,12 @@ async def available_metrics_api (
         )
 
 
-@router.get("/equity-curve", response_model=CorrelationResponse)  # 使用CorrelationResponse替代
+@router.get("/equity-curve", response_model=EquityCurveResponse)
 async def equity_curve_api (
-    request: PerformanceRequest = Depends(),  # 使用PerformanceRequest替代
+    request: PerformanceRequest = Depends(),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session)
-) -> CorrelationResponse:
+) -> EquityCurveResponse:
     """
     获取资产曲线数据
 
@@ -533,6 +534,7 @@ async def equity_curve_api (
     Returns:
         EquityCurveResponse: 资产曲线响应
     """
+
     try:
         logger.info(f"用户 {current_user.get('username')} 请求资产曲线数据")
 

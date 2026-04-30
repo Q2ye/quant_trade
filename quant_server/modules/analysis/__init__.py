@@ -26,6 +26,8 @@ from .handlers import (
 from .schemas import *
 from .models import *
 from .constants import *
+from .engines import AnalysisEngine
+from .events import *
 
 __all__ = [
 	# Handlers
@@ -34,6 +36,9 @@ __all__ = [
 	'ComparisonAnalysisHandler',
 	'AttributionAnalysisHandler',
 	'TradeAnalysisHandler',
+
+	# Engines
+	'AnalysisEngine',
 
 	# Schemas
 	'PerformanceReportResponse',
