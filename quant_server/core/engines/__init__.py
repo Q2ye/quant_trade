@@ -81,7 +81,7 @@ from .types import (
 	Metric,
 	Alert,
 	SystemConfig,
-	EntityFactory, EventEntity
+	EntityFactory
 )
 from .utils import (
     # 引擎工厂
@@ -165,7 +165,6 @@ __all__ = [
     'RiskAlert',
     'Metric',
     'Alert',
-    'EventEntity',
     'EngineConfigEntity',
     'EngineMetricsEntity',
     'SystemConfig',

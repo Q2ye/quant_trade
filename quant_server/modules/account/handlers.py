@@ -396,11 +396,26 @@ async def get_position_detail (session: AsyncSession, account_id: str, ts_code: 
 	return {"success": True, "data": position.model_dump()}
 
 
-async def check_account_module_health (_session: AsyncSession):
+async def check_account_module_health(_session: AsyncSession = None):
+	"""检查账户模块健康状态"""
+	from datetime import datetime, timezone
+
+	if _session is not None:
+		try:
+			from sqlalchemy import text
+			await _session.execute(text("SELECT 1"))
+		except Exception as e:
+			return {
+				"status": "unhealthy",
+				"module": "account",
+				"error": str(e),
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			}
+
 	return {
 		"status": "healthy",
 		"module": "account",
-		"timestamp": "2025-01-01T00:00:00"
+		"timestamp": datetime.now(timezone.utc).isoformat(),
 	}
 
 

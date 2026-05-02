@@ -21,9 +21,11 @@ from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
 # 导入统一类型定义
+from quant_server.core.events.engine_events import EngineLifecycleEvent
+
 from ..types.entities import (
 	Metric as MetricEntity,
-	Alert as AlertEntity, EventEntity
+	Alert as AlertEntity,
 )
 from ..types.enums import (
     ComponentStatus,
@@ -678,12 +680,13 @@ class EngineMonitor:
                 try:
 
                     metric_entity = metric.to_metric_entity()
-                    event = EventEntity(
-                        event_id=str(uuid.uuid4()),
-                        event_type="engine_metric",
-                        data=metric_entity.to_dict(),
+                    event = EngineLifecycleEvent(
+                        engine_name=engine_name,
+                        lifecycle_stage="metric",
+                        engine_status="running",
+                        details=metric_entity.to_dict(),
+                        priority=PriorityLevel.NORMAL.value,
                         source=f"monitor:{engine_name}",
-                        priority=PriorityLevel.NORMAL.value
                     )
 
                     asyncio.create_task(self._event_engine.put(event))
@@ -740,12 +743,13 @@ class EngineMonitor:
                     try:
 
                         alert_entity = alert.to_alert_entity()
-                        event = EventEntity(
-                            event_id=str(uuid.uuid4()),
-                            event_type="engine_alert",
-                            data=alert_entity.to_dict(),
+                        event = EngineLifecycleEvent(
+                            engine_name="engine_monitor",
+                            lifecycle_stage="alert",
+                            engine_status="running",
+                            details=alert_entity.to_dict(),
+                            priority=PriorityLevel.HIGH.value,
                             source="engine_monitor",
-                            priority=PriorityLevel.HIGH.value
                         )
 
                         asyncio.create_task(self._event_engine.put(event))

@@ -8,7 +8,7 @@ Repository基类模块 - 统一数据访问接口
 
 from .repository_base import BaseRepository, RepositoryError
 from .hyper_repository_base import HyperRepositoryBase
-from .pagination import PaginationParams, PaginationResult
+from ..types import PaginationParams, PaginationResult
 from .query_builder import QueryBuilder, FilterCondition, SortCondition, QueryParams
 
 __all__ = [

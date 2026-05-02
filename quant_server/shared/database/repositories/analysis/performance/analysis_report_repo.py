@@ -37,7 +37,7 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			report_type: str,
 			report_name: str,
 			report_config: Dict[str, Any],
-			generated_by: Optional[int] = None,
+			generated_by: Optional[str] = None,
 			report_data: Optional[Dict[str, Any]] = None,
 			report_format: str = "json",
 			is_public: bool = False,

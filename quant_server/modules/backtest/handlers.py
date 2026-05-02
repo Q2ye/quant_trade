@@ -168,10 +168,24 @@ async def optimize_backtest_parameters (session: AsyncSession, request):
 	return await handler.optimize_parameters(request)
 
 
-async def check_backtest_module_health () -> Dict[str, Any]:
+async def check_backtest_module_health(_session = None) -> Dict[str, Any]:
 	"""检查回测模块健康状态"""
+	from datetime import datetime, timezone
+
+	if _session is not None:
+		try:
+			from sqlalchemy import text
+			await _session.execute(text("SELECT 1"))
+		except Exception as e:
+			return {
+				"status": "unhealthy",
+				"module": "backtest",
+				"error": str(e),
+				"timestamp": datetime.now(timezone.utc).isoformat(),
+			}
+
 	return {
 		"status": "healthy",
 		"module": "backtest",
-		"timestamp": "2025-01-01T00:00:00"
+		"timestamp": datetime.now(timezone.utc).isoformat(),
 	}

@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/events",
+	prefix="",
 	tags=["数据中心"],
 	responses={
 		401: {"description": "认证失败"},
@@ -766,7 +766,7 @@ async def initialize_data_module_api (
 		logger.info(f"用户 {current_user.get('username')} 初始化数据模块")
 
 		# 检查用户权限（通常需要管理员权限）
-		if not current_user.get("is_admin", False):
+		if current_user.get("role") not in ("admin", "super_admin", "superadmin"):
 			raise HTTPException(
 				status_code=status.HTTP_403_FORBIDDEN,
 				detail="只有管理员可以初始化数据模块"

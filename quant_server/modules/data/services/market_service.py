@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
 from quant_server.core.engines.system.event_engine import EventEngine
+from quant_server.core.events.base import BaseEvent
+from quant_server.core.events.types import EventPriority, EventCategory
 # 导入数据模块常量
 from quant_server.modules.data.constants import (
 	CacheKey,
@@ -289,6 +291,21 @@ def _calculate_kdj (
 	}
 
 
+
+
+class _MarketDataNotificationEvent(BaseEvent):
+	"""市场数据服务内部通知事件 — 用于记录数据访问和异常的轻量事件"""
+	def __init__(self, event_data: dict):
+		super().__init__(
+			event_type=event_data.get("event_type", ""),
+			source=event_data.get("source", "market_service"),
+			module=event_data.get("module", "data"),
+			priority=event_data.get("priority", EventPriority.NORMAL),
+			category=event_data.get("category", EventCategory.BUSINESS),
+			data=event_data,
+		)
+
+
 class MarketDataService:
 	"""
 	市场数据仓库服务类
@@ -491,7 +508,7 @@ class MarketDataService:
 
 			# 处理复权
 			if adj in [AdjustType.PRE, AdjustType.POST]:
-				quotes = await self._adjust_prices(quotes, adj)
+				quotes = self._adjust_prices(quotes, adj)
 
 			# 选择返回字段
 			if fields:
@@ -761,7 +778,7 @@ class MarketDataService:
 				"exchange": stock.exchange if hasattr(stock, 'exchange') else None,
 				"list_date": stock.list_date.isoformat() if stock.list_date else None,
 				"delist_date": stock.delist_date.isoformat() if hasattr(stock,
-				                                                        'delist_date') and stock.delist_date else None,
+																		'delist_date') and stock.delist_date else None,
 				"is_hs": stock.is_hs,
 				"list_status": stock.list_status if hasattr(stock, 'list_status') else "L",
 				"created_at": stock.created_at.isoformat() if stock.created_at else None,
@@ -1098,7 +1115,7 @@ class MarketDataService:
 						result["indicators"]["market_cap"] = market_cap
 
 					elif indicator == "index_performance":
-						index_data = await self._get_index_performance(market)
+						index_data = self._get_index_performance(market)
 						result["indicators"]["index_performance"] = index_data
 
 				except Exception as e:
@@ -1106,7 +1123,7 @@ class MarketDataService:
 					result["indicators"][indicator] = {"error": str(e), "status": "error"}
 
 			# 生成市场总结
-			result["summary"] = await self._generate_market_summary(result["indicators"])
+			result["summary"] = self._generate_market_summary(result["indicators"])
 
 			# 缓存结果
 			await self.cache.set(
@@ -1452,7 +1469,7 @@ class MarketDataService:
 		return quotes
 
 	@staticmethod
-	async def _adjust_prices (
+	def _adjust_prices (
 			quotes: List,
 			adj_type: str
 	) -> List:
@@ -1706,11 +1723,11 @@ class MarketDataService:
 		"""
 		try:
 			# 获取所有股票
-			filters = []
+			kwargs = {}
 			if market:
-				filters.append(self.stock_repo.model.market == market)
+				kwargs["market"] = market
 
-			stocks = await self.stock_repo.get_many(*filters)
+			stocks = await self.stock_repo.get_many(**kwargs)
 
 			if not stocks:
 				return 0
@@ -1729,7 +1746,7 @@ class MarketDataService:
 			return 0
 
 	@staticmethod
-	async def _get_index_performance (
+	def _get_index_performance (
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1790,7 +1807,7 @@ class MarketDataService:
 		return query
 
 	@staticmethod
-	async def _generate_market_summary (indicators: Dict) -> Dict[str, Any]:
+	def _generate_market_summary (indicators: Dict) -> Dict[str, Any]:
 		"""
 		生成市场总结
 
@@ -2017,19 +2034,19 @@ class MarketDataService:
 			# 构建财务摘要
 			summary = {
 				"report_date": financial_data.report_date.isoformat() if hasattr(financial_data,
-				                                                                 'report_date') else None,
+																				 'report_date') else None,
 				"total_revenue": float(financial_data.total_revenue) if hasattr(financial_data,
-				                                                                'total_revenue') else None,
+																				'total_revenue') else None,
 				"net_profit": float(financial_data.net_profit) if hasattr(financial_data, 'net_profit') else None,
 				"total_assets": float(financial_data.total_assets) if hasattr(financial_data, 'total_assets') else None,
 				"total_liabilities": float(financial_data.total_liabilities) if hasattr(financial_data,
-				                                                                        'total_liabilities') else None,
+																						'total_liabilities') else None,
 				"roe": float(financial_data.roe) if hasattr(financial_data, 'roe') else None,
 				"roa": float(financial_data.roa) if hasattr(financial_data, 'roa') else None,
 				"gross_margin": float(financial_data.gross_margin) if hasattr(financial_data, 'gross_margin') else None,
 				"net_margin": float(financial_data.net_margin) if hasattr(financial_data, 'net_margin') else None,
 				"debt_to_asset": float(financial_data.debt_to_asset) if hasattr(financial_data,
-				                                                                'debt_to_asset') else None,
+																				'debt_to_asset') else None,
 				"status": "available",
 				"updated_at": financial_data.updated_at.isoformat() if hasattr(financial_data, 'updated_at') else None
 			}
@@ -2236,14 +2253,7 @@ class MarketDataService:
 				"category": EventCategory.BUSINESS
 			})
 
-			# 创建一个简单的事件对象
-			class SimpleDataEvent:
-				def __init__ (self, data):
-					self.event_type = data["event_type"]
-					self.timestamp = data.get("timestamp", datetime.now())
-					self.data = data
-
-			event = SimpleDataEvent(event_data)
+			event = _MarketDataNotificationEvent(event_data)
 			await self.event_engine.put(event)
 
 		except Exception as e:
@@ -2291,14 +2301,7 @@ class MarketDataService:
 				"priority": EventPriority.NORMAL,
 				"category": EventCategory.BUSINESS
 			})
-
-			class SimpleDataEvent:
-				def __init__ (self, data):
-					self.event_type = data["event_type"]
-					self.timestamp = data.get("timestamp", datetime.now())
-					self.data = data
-
-			event = SimpleDataEvent(event_data)
+			event = _MarketDataNotificationEvent(event_data)
 			await self.event_engine.put(event)
 
 		except Exception as e:

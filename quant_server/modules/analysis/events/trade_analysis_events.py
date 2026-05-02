@@ -3,8 +3,8 @@
 from typing import Dict, Any, Optional
 from datetime import date
 
-from core.events.base import BaseEvent
-from .types import AnalysisEventType, TradeAnalysisEventData
+from quant_server.core.events.base import BaseEvent
+from .types import AnalysisEventType
 
 
 class TradeAnalysisStartedEvent(BaseEvent):

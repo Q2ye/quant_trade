@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quant_server.core.exceptions import BusinessException
 # 假设存在SysRole模型
 from quant_server.shared.database.models.business_models import SysRole, SysUser
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -31,22 +32,22 @@ class RoleRepository:
 		"""创建角色记录"""
 		return await self.base_repo.create(data)
 
-	async def get (self, id: int) -> Optional[SysRole]:
+	async def get (self, id: str) -> Optional[SysRole]:
 		"""根据ID获取角色记录"""
 		return await self.base_repo.get(id)
 
-	async def update (self, id: int, data: Dict[str, Any]) -> Optional[SysRole]:
+	async def update (self, id: str, data: Dict[str, Any]) -> Optional[SysRole]:
 		"""更新角色记录"""
 		return await self.base_repo.update(id, data)
 
-	async def delete (self, id: int, soft: bool = True) -> bool:
+	async def delete (self, id: str, soft: bool = True) -> bool:
 		"""删除角色记录"""
 		return await self.base_repo.delete(id, soft)
 
 	async def get_one (self, **filters) -> Optional[SysRole]:
 		"""根据条件获取单个角色记录"""
 		# 由于 BaseRepository 没有 get_one 方法，使用 get_many 并限制为 1
-		roles = await self.base_repo.get_many(skip=0, limit=1, **filters)
+		roles = await self.base_repo.get_many(limit=1, **filters)
 		return roles[0] if roles else None
 
 	async def get_many (
@@ -226,7 +227,7 @@ class RoleRepository:
 				# 如果角色没有permissions字段，返回False
 				return False
 
-		except Exception:
+		except BusinessException:
 			await self.session.rollback()
 			return False
 
@@ -268,7 +269,7 @@ class RoleRepository:
 				# 如果角色没有permissions字段，返回False
 				return False
 
-		except Exception:
+		except BusinessException:
 			await self.session.rollback()
 			return False
 
@@ -300,7 +301,7 @@ class RoleRepository:
 				# 如果角色没有permissions字段，返回空列表
 				return []
 
-		except Exception:
+		except BusinessException:
 			# 记录错误日志
 			return []
 
@@ -371,7 +372,7 @@ class RoleRepository:
 				# 如果SysUser模型不存在，返回空列表
 				return []
 
-		except Exception:
+		except BusinessException:
 			# 记录错误日志
 			return []
 
@@ -463,7 +464,7 @@ class RoleRepository:
 					'role_type_stats': {}
 				}
 
-		except Exception:
+		except BusinessException:
 			# 记录错误日志
 			return {
 				'statistics': [],

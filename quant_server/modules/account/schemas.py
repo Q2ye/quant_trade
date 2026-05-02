@@ -6,9 +6,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..account.constants import (
+from .constants import (
 	ACCOUNT_TYPES,
 	ACCOUNT_STATUSES,
 	MAX_ACCOUNT_NAME_LENGTH,
@@ -94,12 +94,7 @@ class AccountResponse(BaseModel):
 	created_at: datetime = Field(..., description="创建时间")
 	updated_at: datetime = Field(..., description="更新时间")
 
-	class Config:
-		orm_mode = True
-		json_encoders = {
-			datetime: lambda dt: dt.isoformat(),
-			Decimal: lambda d: float(d)
-		}
+	model_config = ConfigDict(from_attributes=True)
 
 
 class AccountBalanceResponse(BaseModel):
@@ -156,12 +151,7 @@ class PositionResponse(BaseModel):
 	pnl_rate: Decimal = Field(..., description="盈亏率")
 	last_update: datetime = Field(..., description="最后更新时间")
 
-	class Config:
-		orm_mode = True
-		json_encoders = {
-			datetime: lambda dt: dt.isoformat(),
-			Decimal: lambda d: float(d)
-		}
+	model_config = ConfigDict(from_attributes=True)
 
 
 class AccountSummaryResponse(BaseModel):

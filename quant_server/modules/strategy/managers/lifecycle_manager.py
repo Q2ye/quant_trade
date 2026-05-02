@@ -399,7 +399,7 @@ class LifecycleManager:
 			event = StrategyErrorEvent(
 				strategy_id=strategy_id,
 				strategy_name="",
-				user_id=0,
+				user_id="0",
 				error_code=500,
 				error_message=str(error),
 			)

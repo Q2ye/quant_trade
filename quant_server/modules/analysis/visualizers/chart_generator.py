@@ -2,16 +2,16 @@
 """
 图表生成器模块
 负责生成各种量化分析图表，包括收益曲线、风险图表、分布图等
-位置：quant_server/modules/events/visualizers/chart_generator.py
+位置：quant_server/modules/analysis/visualizers/chart_generator.py
 """
 
-import pandas as pd
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
 import numpy as np
-from typing import List, Dict, Any, Optional, Tuple, Union
-from datetime import datetime, timedelta
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import warnings
 
 from quant_server.modules.analysis.utils.chart_utils import ChartStyle, ChartUtils
 from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
@@ -212,7 +212,7 @@ class ChartGenerator:
 		categories = list(risk_metrics.keys())
 		values = list(risk_metrics.values())
 
-		# 标准化值到0-1范围
+		# 标准化值到0-1 范围
 		max_value = max(values)
 		normalized_values = [v / max_value for v in values] if max_value > 0 else values
 
@@ -336,7 +336,7 @@ class ChartGenerator:
 			go.Histogram(
 				x=profits,
 				name='盈亏分布',
-				marker_color=self.colors['secondary'],
+				marker=dict(color=self.colors['secondary']),
 				nbinsx=50
 			),
 			row=1, col=2
@@ -385,7 +385,7 @@ class ChartGenerator:
 				x=stats_data['指标'],
 				y=stats_data['值'],
 				name='交易统计',
-				marker_color=self.colors['info']
+				marker=dict(color=self.colors['info'])
 			),
 			row=2, col=2
 		)
@@ -518,7 +518,7 @@ class ChartGenerator:
 				x=strategy_names,
 				y=annual_returns,
 				name='年化收益率',
-				marker_color=colors,
+				marker=dict(color=colors),
 				text=[f'{r:.2%}' for r in annual_returns],
 				textposition='auto'
 			),
@@ -532,7 +532,7 @@ class ChartGenerator:
 				x=strategy_names,
 				y=max_drawdowns,
 				name='最大回撤',
-				marker_color=colors,
+				marker=dict(color=colors),
 				text=[f'{d:.2%}' for d in max_drawdowns],
 				textposition='auto'
 			),
@@ -546,7 +546,7 @@ class ChartGenerator:
 				x=strategy_names,
 				y=sharpe_ratios,
 				name='夏普比率',
-				marker_color=colors,
+				marker=dict(color=colors),
 				text=[f'{s:.2f}' for s in sharpe_ratios],
 				textposition='auto'
 			),
@@ -621,4 +621,222 @@ class ChartGenerator:
 		# 这里可以根据具体的metrics数据填充各个子图
 		# 由于metrics结构未知，这里留空由调用者具体实现
 
+		return fig
+
+	def generate_equity_curve_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成净值曲线图（适配器）"""
+		dates = chart_data.get("dates", [])
+		equity = chart_data.get("equity", [])
+		return self.generate_equity_curve(dates, equity, show_drawdown=True)
+
+	def generate_drawdown_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成回撤曲线图"""
+		import plotly.graph_objects as go
+		dates = chart_data.get("dates", [])
+		drawdown = chart_data.get("drawdown", [])
+		fig = go.Figure()
+		fig.add_trace(go.Scatter(
+			x=dates, y=drawdown,
+			fill="tozeroy",
+			name="回撤",
+			line={"color": self.colors["danger"], "width": 1},
+			fillcolor=f'{self.colors["danger"]}30'
+		))
+		fig.add_hline(y=0, line_dash="dash", line_color=self.colors["grid"])
+		fig.update_layout(
+			title={"text": "回撤曲线", "x": 0.5, "xanchor": "center"},
+			xaxis_title="日期",
+			yaxis_title="回撤率",
+			template=self.template,
+			hovermode="x unified"
+		)
+		return fig
+
+	def generate_performance_radar_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成绩效指标雷达图"""
+		import plotly.graph_objects as go
+		metrics = {
+			"总收益率": chart_data.get("total_return", 0),
+			"夏普比率": chart_data.get("sharpe_ratio", 0),
+			"最大回撤": abs(chart_data.get("max_drawdown", 0)),
+			"胜率": chart_data.get("win_rate", 0),
+			"盈利因子": min(chart_data.get("profit_factor", 0), 5),
+		}
+		categories = list(metrics.keys())
+		values = list(metrics.values())
+		max_val = max(values) if values and max(values) > 0 else 1
+		normalized = [v / max_val for v in values] if max_val > 0 else values
+		fig = go.Figure()
+		fig.add_trace(go.Scatterpolar(
+			r=normalized,
+			theta=categories,
+			fill="toself",
+			name="绩效指标",
+			line_color=self.colors["primary"],
+			fillcolor=f'{self.colors["primary"]}50'
+		))
+		fig.update_layout(
+			title={"text": "绩效指标雷达图", "x": 0.5, "xanchor": "center"},
+			polar={"radialaxis": {"visible": True, "range": [0, 1]}},
+			template=self.template,
+			width=600, height=500,
+			showlegend=False
+		)
+		return fig
+
+	def generate_attribution_stacked_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成归因贡献堆叠柱状图（Brinson模型）"""
+		import plotly.graph_objects as go
+		categories = ["配置效应", "选择效应", "交互效应"]
+		values = [
+			chart_data.get("allocation_effect", 0),
+			chart_data.get("selection_effect", 0),
+			chart_data.get("interaction_effect", 0),
+		]
+		bar_colors = [self.colors["primary"], self.colors["secondary"], self.colors["info"]]
+		fig = go.Figure()
+		for cat, val, color in zip(categories, values, bar_colors):
+			fig.add_trace(go.Bar(
+				x=["归因分析"],
+				y=[val],
+				name=cat,
+				marker=dict(color=color)
+			))
+		fig.update_layout(
+			title={"text": "Brinson归因分析", "x": 0.5, "xanchor": "center"},
+			barmode="stack",
+			xaxis_title="",
+			yaxis_title="收益贡献",
+			template=self.template,
+			width=600, height=500
+		)
+		return fig
+
+	def generate_sector_attribution_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成行业归因水平条形图"""
+		import plotly.graph_objects as go
+		sectors = chart_data.get("sectors", [])
+		contributions = chart_data.get("contributions", [])
+		if sectors and contributions:
+			pairs = sorted(zip(contributions, sectors), key=lambda x: x[0])
+			sorted_vals, sorted_sectors = zip(*pairs)
+		else:
+			sorted_vals, sorted_sectors = [], []
+		bar_colors = [
+			self.colors["success"] if v >= 0 else self.colors["danger"]
+			for v in sorted_vals
+		]
+		fig = go.Figure()
+		fig.add_trace(go.Bar(
+			y=list(sorted_sectors),
+			x=list(sorted_vals),
+			orientation="h",
+			marker=dict(color=bar_colors)
+		))
+		fig.update_layout(
+			title={"text": "行业归因分析", "x": 0.5, "xanchor": "center"},
+			xaxis_title="收益贡献",
+			yaxis_title="行业",
+			template=self.template,
+			height=max(400, len(sectors) * 30 + 100)
+		)
+		return fig
+
+	def generate_comparison_bar_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成策略收益对比柱状图"""
+		import plotly.graph_objects as go
+		strategies = chart_data.get("strategies", [])
+		returns = chart_data.get("returns", [])
+		bar_colors = [
+			self.colors["success"] if r >= 0 else self.colors["danger"]
+			for r in returns
+		]
+		fig = go.Figure()
+		fig.add_trace(go.Bar(
+			x=strategies,
+			y=returns,
+			marker=dict(color=bar_colors),
+			text=[f"{r:.2%}" for r in returns],
+			textposition="auto"
+		))
+		fig.update_layout(
+			title={"text": "策略收益对比", "x": 0.5, "xanchor": "center"},
+			xaxis_title="策略",
+			yaxis_title="收益率",
+			template=self.template,
+			width=800, height=500
+		)
+		return fig
+
+	def generate_correlation_heatmap (self, chart_data: dict) -> "go.Figure":
+		"""生成相关性热力图"""
+		import plotly.graph_objects as go
+		corr_matrix = chart_data.get("correlation_matrix", {})
+		if isinstance(corr_matrix, dict):
+			labels = list(corr_matrix.keys())
+			if labels and isinstance(corr_matrix[labels[0]], dict):
+				values = [[corr_matrix[i].get(j, 0) for j in labels] for i in labels]
+			else:
+				values = [list(corr_matrix.values())]
+				labels = [labels, [""]]
+		else:
+			values = corr_matrix
+			labels = [f"S{i + 1}" for i in range(len(values))] if values else []
+		fig = go.Figure(data=go.Heatmap(
+			z=values,
+			x=labels,
+			y=labels,
+			colorscale="RdBu",
+			zmin=-1, zmax=1,
+			colorbar={"title": "相关系数"}
+		))
+		fig.update_layout(
+			title={"text": "相关性热力图", "x": 0.5, "xanchor": "center"},
+			template=self.template,
+			width=700, height=600
+		)
+		return fig
+
+	def generate_trade_distribution_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成交易盈亏分布图（环形图）"""
+		import plotly.graph_objects as go
+		labels = ["盈利交易", "亏损交易", "持平交易"]
+		values = [
+			chart_data.get("winning_trades", 0),
+			chart_data.get("losing_trades", 0),
+			chart_data.get("breakeven_trades", 0),
+		]
+		pie_colors = [self.colors["success"], self.colors["danger"], self.colors["warning"]]
+		fig = go.Figure(data=go.Pie(
+			labels=labels,
+			values=values,
+			hole=0.5,
+			marker=dict(colors=pie_colors),
+			textinfo="label+percent"
+		))
+		fig.update_layout(
+			title={"text": "交易盈亏分布", "x": 0.5, "xanchor": "center"},
+			template=self.template,
+			width=600, height=500
+		)
+		return fig
+
+	def generate_trading_day_distribution_chart (self, chart_data: dict) -> "go.Figure":
+		"""生成交易日分布图"""
+		import plotly.graph_objects as go
+		days = chart_data.get("days", [])
+		counts = chart_data.get("counts", [])
+		fig = go.Figure(data=go.Bar(
+			x=days, y=counts,
+			marker=dict(color=self.colors["primary"]),
+			text=counts,
+			textposition="auto"
+		))
+		fig.update_layout(
+			title={"text": "交易日分布", "x": 0.5, "xanchor": "center"},
+			xaxis_title="星期",
+			yaxis_title="交易次数",
+			template=self.template,
+			width=700, height=500
+		)
 		return fig

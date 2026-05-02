@@ -65,13 +65,13 @@ router = APIRouter(
 
 # ==================== 账户管理接口 ====================
 
-from quant_server.utils.api_utils.pagination_decorator import with_pagination_config, get_pagination_dependency
+from quant_server.utils.api_utils.pagination_decorator import with_pagination_config
 
 
 @router.get("", response_model=AccountListResponse)
 @with_pagination_config()
 async def get_accounts_api (
-		request: AccountListRequest = Depends(**get_pagination_dependency()),
+		request: AccountListRequest = Depends(AccountListRequest),
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> AccountListResponse:
@@ -460,7 +460,7 @@ async def withdraw_api (
 @with_pagination_config()
 async def get_account_positions_api (
 		account_id: str = Path(..., description="账户ID"),
-		request: PositionListRequest = Depends(**get_pagination_dependency()),
+		request: PositionListRequest = Depends(PositionListRequest),
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> PositionListResponse:

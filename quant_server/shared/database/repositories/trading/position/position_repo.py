@@ -5,6 +5,7 @@
 位置：shared/database/repositories/trading/position/position_repo.py
 """
 
+import logging
 from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any
 
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.shared.database.models.business_models import Position
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+
+logger = logging.getLogger(__name__)
 
 
 class PositionRepository(BaseRepository[Position]):
@@ -721,9 +724,8 @@ class PositionRepository(BaseRepository[Position]):
 					success_count += 1
 				else:
 					failed_count += 1
-			except Exception as e:
-				# 记录异常但继续处理其他更新
-				# 这里可以添加日志记录
+			except RepositoryError as e:
+				logger.warning("批量更新持仓失败 position_id=%s: %s", position_id, e)
 				failed_count += 1
 
 		return {

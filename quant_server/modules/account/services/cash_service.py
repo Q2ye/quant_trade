@@ -14,7 +14,7 @@ from quant_server.shared.database.models.business_models import Account
 from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
 from quant_server.shared.database.repositories.account.settlement.cash_flow_repo import CashFlowRepository
 from quant_server.shared.security.audit import AuditLogger
-from quant_server.shared.utils.validation import validate_amount
+from quant_server.utils.core_utils.data_utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
 

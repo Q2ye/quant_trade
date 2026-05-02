@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from quant_server.api.dependencies.config import ConfigManager
+from quant_server.shared.config.config_manager import ConfigManager
 from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.core.exceptions.validation_exceptions import ValidationError
 from quant_server.modules.data.engines.research_engine import (
@@ -214,7 +214,7 @@ class ResearchManager:
 			# 从配置加载因子定义
 			if self.config_manager:
 				try:
-					factor_definitions = self.config_manager.get_config_by_path("FACTOR.DEFINITIONS")
+					factor_definitions = self.config_manager.get("FACTOR.DEFINITIONS")
 				except (KeyError, ValidationError):
 					factor_definitions = {}
 			else:
@@ -275,7 +275,7 @@ class ResearchManager:
 		"""加载研究配置"""
 		try:
 			if self.config_manager:
-				research_config = await self.config_manager.get_config_by_path("research_config")
+				research_config = await self.config_manager.get("research_config")
 			else:
 				research_config = {}
 

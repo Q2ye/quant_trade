@@ -16,7 +16,7 @@ from quant_server.modules.strategy.constants import (
 	SignalDirection,
 )
 from quant_server.modules.strategy.models import TradingSignal, Position
-from quant_server.modules.strategy.strategies import StrategyContext
+from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
 
 
 @dataclass

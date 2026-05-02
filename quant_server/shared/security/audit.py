@@ -179,7 +179,7 @@ class AuditLogger:
 	async def log_security_event (
 			self,
 			event_type: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			username: Optional[str] = None,
 			description: str = "",
 			details: Optional[Dict[str, Any]] = None,
@@ -218,7 +218,7 @@ class AuditLogger:
 	async def log_user_action (
 			self,
 			action: Union[str, AuditAction],
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			username: Optional[str] = None,
 			resource_type: str = "user",
 			resource_id: Optional[str] = None,

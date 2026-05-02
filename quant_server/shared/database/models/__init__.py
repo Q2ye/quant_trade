@@ -12,7 +12,7 @@ from .data_models import (
 	FinancialStatement,
 	TradeCalendar, StockSTList,
 	EtfIndex, EtfBasic, EtfDaily, EtfMinute, FundAdjFactor,
-	IndexBasic, IndexDaily,
+	IndexBasic, IndexDaily, IndexWeight,
 	FactorData,
 )
 
@@ -46,7 +46,7 @@ __all__ = [
 	'FinancialStatement',
 	'TradeCalendar', 'StockSTList',
 	'EtfIndex', 'EtfBasic', 'EtfDaily', 'EtfMinute', 'FundAdjFactor',
-	'IndexBasic', 'IndexDaily',
+	'IndexBasic', 'IndexDaily', 'IndexWeight',
 	'FactorData',
 
 	# 业务模型
@@ -72,7 +72,7 @@ DATA_MODELS = [
 	FinancialStatement,
 	TradeCalendar, StockSTList,
 	EtfIndex, EtfBasic, EtfDaily, EtfMinute, FundAdjFactor,
-	IndexBasic, IndexDaily,
+	IndexBasic, IndexDaily, IndexWeight,
 	FactorData,
 ]
 
@@ -119,7 +119,7 @@ MARKET_DATA_MODELS = [
 	FinancialStatement,
 	TradeCalendar, StockSTList,
 	EtfIndex, EtfBasic, EtfDaily, EtfMinute, FundAdjFactor,
-	IndexBasic, IndexDaily,
+	IndexBasic, IndexDaily, IndexWeight,
 	FactorData,
 ]
 

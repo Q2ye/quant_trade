@@ -62,7 +62,7 @@ from quant_server.shared.database.repositories import (
 	# 运营领域（任务记录）
 	DataSyncTaskRepository, ETFRepository,
 )
-from quant_server.shared.database.repositories.market.basic import EtfBasicRepository
+from quant_server.shared.database.repositories.market.basic import EtfBasicRepository, IndexWeightRepository
 from quant_server.shared.sources.source_factory import DataSourceFactory
 
 # 配置日志
@@ -533,7 +533,7 @@ class DataSyncService:
 			self,
 			tasks: List[SyncTaskItem],
 			priority: Optional[Any] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		批量同步数据（基于任务列表）
@@ -1514,6 +1514,131 @@ class DataSyncService:
 			"records_failed": records_failed,
 			"total_items": records_added + records_failed,
 			"message": f"指数数据同步完成，共处理 {len(index_codes)} 个指数"
+		}
+
+	async def _sync_index_data_with_weight(
+			self,
+			start_date: str,
+			end_date: str,
+			index_codes = None
+	) -> Dict[str, Any]:
+		result = await self.sync_index_data(start_date, end_date, index_codes)
+		try:
+			await self.sync_index_weight()
+		except Exception as e:
+			logger.warning(f"指数成分股权重同步失败（行情数据已同步）: {e}")
+		return result
+
+	async def sync_index_weight(
+			self,
+			index_code: str = None,
+			trade_date: str = None
+	) -> Dict[str, Any]:
+		"""同步指数成分股权重数据
+
+		从 Tushare / Baostock 等数据源拉取指数成分股及权重，
+		批量写入 index_weight 表（已存在记录会更新）。
+
+		数据源选择策略：
+		- 优先使用 Tushare pro.index_weight() 接口（支持沪深300、中证500）
+		- 回退到 Baostock query_hs300_stocks() / query_zz500_stocks()
+
+		调用时机：
+		- 在 sync_index_data() 末尾自动调用
+		- 也可独立调用，按月同步权重（指数成分股通常每月调整）
+
+		Args:
+			index_code: 指定指数代码，为 None 时同步沪深300 + 中证500
+			trade_date: 指定权重日期，为 None 时使用当前日期
+
+		Returns:
+			Dict 含 records_added, records_updated, records_failed, message
+		"""
+		from datetime import date as date_type
+
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_updated = 0
+		records_failed = 0
+
+		# 默认同步沪深300 和 中证500
+		if index_code is None:
+			target_indices = ['000300.SH', '000905.SH']
+		else:
+			target_indices = [index_code]
+
+		# 默认使用当前日期
+		if trade_date is None:
+			trade_date_obj = date_type.today()
+		else:
+			trade_date_obj = _convert_to_date(trade_date)
+
+		weight_repo = IndexWeightRepository(self.session)
+
+		for idx_code in target_indices:
+			try:
+				constituent_data = []
+
+				if hasattr(source, 'get_index_weight'):
+					# Tushare 路径：使用 index_weight 接口获取真实权重
+					weight_df = source.get_index_weight(
+						index_code=idx_code,
+						trade_date=trade_date_obj.strftime('%Y%m%d')
+					)
+					if not weight_df.empty:
+						for _, row in weight_df.iterrows():
+							constituent_data.append({
+								'index_code': idx_code,
+								'ts_code': row.get('con_code', ''),
+								'weight': float(row.get('weight', 0)) / 100.0 if row.get('weight', 0) > 1 else float(row.get('weight', 0)),
+								'trade_date': trade_date_obj,
+							})
+				elif hasattr(source, 'get_index_constituents'):
+					# Baostock 路径：获取成分股列表（等权）
+					stocks = source.get_index_constituents(index_code=idx_code)
+					if stocks:
+						n = len(stocks)
+						w = 1.0 / n
+						for ts_code in stocks:
+							constituent_data.append({
+								'index_code': idx_code,
+								'ts_code': ts_code,
+								'weight': w,
+								'trade_date': trade_date_obj,
+							})
+				else:
+					logger.warning(f"数据源不支持指数成分股权重获取: {idx_code}")
+					records_failed += 1
+					continue
+
+				if constituent_data:
+					await weight_repo.batch_upsert(
+						match_fields=["index_code", "ts_code", "trade_date"],
+						data_list=constituent_data
+					)
+					records_added += len(constituent_data)
+					logger.info(
+						f"指数 {idx_code} 成分股权重同步完成，"
+						f"共 {len(constituent_data)} 条记录"
+					)
+				else:
+					logger.warning(f"指数 {idx_code} 未获取到成分股数据")
+					records_failed += 1
+
+			except Exception as e:
+				logger.error(f"同步指数 {idx_code} 成分股权重失败: {e}")
+				records_failed += 1
+
+		return {
+			"records_added": records_added,
+			"records_updated": records_updated,
+			"records_failed": records_failed,
+			"total_items": records_added + records_failed,
+			"message": (
+				f"指数成分股权重同步完成，"
+				f"共处理 {len(target_indices)} 个指数，"
+				f"新增 {records_added} 条记录"
+			)
 		}
 
 	async def sync_macro_data (

@@ -59,7 +59,6 @@ class MemoryCache(CacheBase):
 		"""清理过期缓存"""
 		with self._lock:
 			expired_keys = []
-			now = datetime.now()
 
 			for key, entry in self._cache.items():
 				if entry.is_expired:
@@ -330,7 +329,6 @@ class MemoryCache(CacheBase):
 
 				# 计算过期缓存数量
 				expired_count = 0
-				now = datetime.now()
 				for entry in self._cache.values():
 					if entry.is_expired:
 						expired_count += 1

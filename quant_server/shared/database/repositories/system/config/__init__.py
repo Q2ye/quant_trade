@@ -5,7 +5,7 @@
 """
 
 from quant_server.shared.database.repositories.system.config.config_repo import ConfigRepository
-from quant_server.shared.database.repositories.system.config.operation_log_repo import LogRepository
+from quant_server.shared.database.repositories.system.config.operation_log_repo import OperationLogRepository as LogRepository
 from quant_server.shared.database.repositories.system.config.audit_repo import AuditRepository
 from quant_server.shared.database.repositories.system.config.notification_repo import NotificationRepository
 from quant_server.shared.database.repositories.system.config.user_preference_repo import UserPreferenceRepository

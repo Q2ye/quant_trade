@@ -3,8 +3,8 @@
 from typing import Dict, Any, Optional
 from datetime import date
 
-from core.events.base import BaseEvent
-from .types import AnalysisEventType, AttributionAnalysisEventData
+from quant_server.core.events.base import BaseEvent
+from .types import AnalysisEventType
 
 
 class AttributionAnalysisStartedEvent(BaseEvent):
@@ -18,13 +18,6 @@ class AttributionAnalysisStartedEvent(BaseEvent):
         source: str = "attribution_service",
         correlation_id: Optional[str] = None
     ):
-        event_data = AttributionAnalysisEventData(
-            portfolio_id=portfolio_id,
-            start_date=start_date,
-            end_date=end_date,
-            attribution_model=attribution_model
-        )
-        
         super().__init__(
             event_type=AnalysisEventType.ATTRIBUTION_ANALYSIS_STARTED.value,
             source=source,
@@ -51,14 +44,6 @@ class AttributionAnalysisCompletedEvent(BaseEvent):
         source: str = "attribution_service",
         correlation_id: Optional[str] = None
     ):
-        event_data = AttributionAnalysisEventData(
-            portfolio_id=portfolio_id,
-            start_date=start_date,
-            end_date=end_date,
-            attribution_model=attribution_model,
-            result=result
-        )
-        
         super().__init__(
             event_type=AnalysisEventType.ATTRIBUTION_ANALYSIS_COMPLETED.value,
             source=source,

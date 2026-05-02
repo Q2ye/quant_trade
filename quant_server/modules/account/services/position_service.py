@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quant_server.modules.account.models import PositionDomain
 from quant_server.shared.cache.base import CacheBase
-from quant_server.shared.database.models.business_models import Position, Trade, Order
+from quant_server.shared.database.models.business_models import Trade, Order
 from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
 from quant_server.shared.database.repositories.market.quote import StockDailyRepository
 from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
@@ -59,18 +59,20 @@ class PositionService:
 					return [PositionDomain(**p) for p in cached_positions]
 
 			# 构建查询条件
-			conditions = [Position.account_id == account_id]
-
+			kwargs = {"account_id": account_id}
 			if ts_code:
-				conditions.append(Position.ts_code == ts_code)
-
-			if with_volume_only:
-				conditions.append(Position.volume > 0)
+				kwargs["ts_code"] = ts_code
 
 			# 查询持仓
-			positions = await self.position_repo.get_many(
-				*conditions,
-				order_by=[Position.last_update.desc()]
+			positions = await self.position_repo.get_many(**kwargs)
+			# Post-filter for comparison operators (TODO: add comparison filter support to BaseRepository)
+			if with_volume_only:
+				positions = [p for p in positions if hasattr(p, "volume") and p.volume > 0]
+			# Sort by last_update descending
+			positions = sorted(
+				positions,
+				key=lambda x: getattr(x, "last_update", datetime.min),
+				reverse=True,
 			)
 
 			# 转换为领域对象
@@ -248,8 +250,8 @@ class PositionService:
 					# 买入：计算新的平均成本
 					if old_volume + volume_change > 0:
 						new_cost_price = (
-											 (old_cost_price * old_volume) + (price * volume_change)
-										 ) / (old_volume + volume_change)
+								                 (old_cost_price * old_volume) + (price * volume_change)
+						                 ) / (old_volume + volume_change)
 					else:
 						new_cost_price = Decimal("0.00")
 
@@ -311,7 +313,7 @@ class PositionService:
 			if success:
 				# 记录审计日志
 				if self.audit_logger:
-					self.audit_logger.log_simple(
+					await self.audit_logger.log_simple(
 						action="position_update",
 						user_id=account.user_id,
 						resource_type="position",
@@ -326,9 +328,10 @@ class PositionService:
 							"old_volume": position.volume if position else 0,
 							"new_volume": position.volume + volume_change if position else volume_change,
 							"old_cost_price": float(position.cost_price) if position and position.cost_price else 0,
-							"new_cost_price": float(position.cost_price) if position and position.cost_price else float(price)
-					}
-				)
+							"new_cost_price": float(position.cost_price) if position and position.cost_price else float(
+								price)
+						}
+					)
 
 				# 清理缓存
 				if self.cache:
@@ -413,7 +416,7 @@ class PositionService:
 				# 记录审计日志
 				account = await self.account_repo.get(account_id)
 				if account and self.audit_logger:
-					self.audit_logger.log_simple(
+					await self.audit_logger.log_simple(
 						action="position_freeze",
 						user_id=account.user_id,
 						resource_type="position",
@@ -511,7 +514,7 @@ class PositionService:
 				# 记录审计日志
 				account = await self.account_repo.get(account_id)
 				if account and self.audit_logger:
-					self.audit_logger.log_simple(
+					await self.audit_logger.log_simple(
 						action="position_unfreeze",
 						user_id=account.user_id,
 						resource_type="position",
@@ -786,8 +789,8 @@ class PositionService:
 				if direction == "buy":
 					if current_volume + trade_volume > 0:
 						current_cost = (
-										 (current_cost * current_volume) + trade_amount
-									 ) / (current_volume + trade_volume)
+								               (current_cost * current_volume) + trade_amount
+						               ) / (current_volume + trade_volume)
 
 					current_volume += trade_volume
 				else:  # sell

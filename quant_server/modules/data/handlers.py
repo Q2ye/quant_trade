@@ -97,9 +97,7 @@ from quant_server.shared.cache.redis_cache import RedisCache
 # 配置与缓存
 from quant_server.shared.config.config_manager import ConfigSettings as Settings, get_config
 # ==================== 数据模型导入 ====================
-from quant_server.shared.database.models.data_models import FactorData
 from quant_server.shared.database.models.data_models import StockBasic
-from quant_server.shared.database.models.data_models import StockDaily
 # 分析领域Repository - 因子数据
 from quant_server.shared.database.repositories.analysis.factor.factor_data_repo import FactorDataRepository
 from quant_server.shared.database.repositories.analysis.factor.factor_definition_repo import FactorDefinitionRepository
@@ -167,23 +165,27 @@ async def get_factor_data (
 		factor_data_repo = FactorDataRepository(session)
 		factor_def_repo = FactorDefinitionRepository(session)
 
-		# 构建查询过滤器
-		filters = []
+		# 构建查询条件
+		kwargs = {}
 		if request.ts_code:
-			filters.append(FactorData.ts_code == request.ts_code)
-		if request.start_date:
-			filters.append(FactorData.trade_date >= request.start_date)
-		if request.end_date:
-			filters.append(FactorData.trade_date <= request.end_date)
+			kwargs["ts_code"] = request.ts_code
 
 		# 执行分页查询
 		factors = await factor_data_repo.get_many(
 			skip=(request.page - 1) * request.page_size,
 			limit=request.page_size,
-			order_by=[
-				FactorData.trade_date.desc(),
-				FactorData.ts_code
-			]
+			**kwargs,
+		)
+		# Post-filter by date range (TODO: add comparison filter support to BaseRepository)
+		if request.start_date:
+			factors = [f for f in factors if hasattr(f, "trade_date") and f.trade_date >= request.start_date]
+		if request.end_date:
+			factors = [f for f in factors if hasattr(f, "trade_date") and f.trade_date <= request.end_date]
+		# Sort by trade_date desc, ts_code
+		factors = sorted(
+			factors,
+			key=lambda x: (getattr(x, "trade_date", datetime.min), getattr(x, "ts_code", "")),
+			reverse=True,
 		)
 
 		# 获取总记录数（用于分页）
@@ -657,8 +659,9 @@ async def get_stock_list (
 		stocks = await stock_repo.get_many(
 			skip=(effective_page - 1) * effective_page_size,
 			limit=effective_page_size,
-			order_by=[StockBasic.ts_code]
 		)
+		# Sort by ts_code (TODO: add order_by support to BaseRepository)
+		stocks = sorted(stocks, key=lambda x: getattr(x, "ts_code", ""))
 
 		# 获取总记录数
 		total_count = await stock_repo.count()
@@ -688,7 +691,7 @@ async def get_stock_list (
 				"page_size": request.page_size,
 				"total": total_count,
 				"total_pages": (
-							               total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
+						               total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
 			},
 			message="获取股票列表成功"
 		)
@@ -759,7 +762,7 @@ async def get_stock_detail (
 
 		# 4. 构建响应数据
 		from quant_server.modules.data.schemas import StockBasicInfo, QuoteData
-		
+
 		# 转换为StockBasicInfo对象
 		basic_info_obj = StockBasicInfo(
 			ts_code=basic_info["ts_code"],
@@ -771,7 +774,7 @@ async def get_stock_detail (
 			list_date=basic_info["list_date"],
 			is_hs=basic_info["is_hs"]
 		)
-		
+
 		quotes = None
 		if latest_quote and request.include_quote:
 			quote_data = QuoteData(
@@ -840,23 +843,23 @@ async def get_historical_quotes (
 		# 2. 使用行情数据Repository
 		quote_repo = StockDailyRepository(session)
 
-		# 3. 构建查询过滤器 - HistoricalQuotesRequest中没有page和page_size字段
-		filters = []
+		# 3. 构建查询条件
+		kwargs = {}
 		if request.ts_code:
-			filters.append(StockDaily.ts_code == request.ts_code)
-		if request.start_date:
-			filters.append(StockDaily.trade_date >= request.start_date)
-		if request.end_date:
-			filters.append(StockDaily.trade_date <= request.end_date)
-		# HistoricalQuotesRequest中没有adj字段，而是adjust字段
-		if hasattr(request, "adjust") and request.adjust:
-			# 这里需要根据adjust字段处理复权逻辑
-			pass
+			kwargs["ts_code"] = request.ts_code
 
 		# 4. 执行查询（历史行情通常不分页，返回全部数据）
-		quotes = await quote_repo.get_many(
-			*filters,
-			order_by=[StockDaily.trade_date.desc()]
+		quotes = await quote_repo.get_many(**kwargs)
+		# Post-filter by date range (TODO: add comparison filter support to BaseRepository)
+		if request.start_date:
+			quotes = [q for q in quotes if hasattr(q, "trade_date") and q.trade_date >= request.start_date]
+		if request.end_date:
+			quotes = [q for q in quotes if hasattr(q, "trade_date") and q.trade_date <= request.end_date]
+		# Sort by trade_date descending
+		quotes = sorted(
+			quotes,
+			key=lambda x: getattr(x, "trade_date", datetime.min),
+			reverse=True,
 		)
 
 		# 5. 数据转换：ORM对象 -> 字典
@@ -1652,7 +1655,7 @@ async def _execute_sync_factor_research (
 		raise BusinessException(f"同步执行因子研究失败: {str(e)}")
 
 
-async def _process_research_completion(
+async def _process_research_completion (
 		research_repo: FactorResearchRepository,
 		research_id: str,
 		request: ResearchRequest,
@@ -1698,6 +1701,7 @@ async def _process_research_completion(
 		source="data_module"
 	)
 	await event_engine.put(completed_event)  # type: ignore
+
 
 async def _execute_async_factor_research (
 		session: AsyncSession,

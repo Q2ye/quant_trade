@@ -6,27 +6,34 @@
 负责协调多个分析服务，管理分析任务的调度和执行。
 """
 
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime, date, timedelta
 import asyncio
+from datetime import datetime, date, timedelta
+from typing import Dict, List, Optional, Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.analysis.services.performance_service import PerformanceService
-from modules.analysis.services.attribution_service import AttributionService
-from modules.analysis.services.comparison_service import ComparisonService
-from modules.analysis.services.trade_analysis_service import TradeAnalysisService
-from modules.analysis.models import (
-	PerformanceMetrics, AttributionAnalysis,
-	StrategyComparison, TradeAnalysis, AnalysisReport
+from quant_server.core.engines.system.event_engine import EventEngine
+from quant_server.modules.analysis.events.task_events import (
+	AnalysisCompletedEvent,
+	AnalysisFailedEvent,
+	AnalysisProgressEvent,
+	AnalysisStartedEvent,
 )
-from shared.database.repositories.strategy_repo import StrategyRepository
-from shared.database.repositories.account_repo import AccountRepository
-from shared.database.repositories.backtest_repo import BacktestRepository
-from shared.database.repositories.trade_repo import TradeRepository
-from core.engines.system.event_engine import EventEngine
-from core.events.analysis_events import (
-	AnalysisStartedEvent, AnalysisCompletedEvent,
-	AnalysisFailedEvent, AnalysisProgressEvent
+from quant_server.modules.analysis.models import (
+	AnalysisReport,
+	AttributionAnalysis,
+	PerformanceMetrics,
+	TradeAnalysis,
+)
+from quant_server.modules.analysis.services.attribution_service import AttributionService
+from quant_server.modules.analysis.services.comparison_service import ComparisonService
+from quant_server.modules.analysis.services.performance_service import PerformanceService
+from quant_server.modules.analysis.services.trade_analysis_service import TradeAnalysisService
+from quant_server.shared.database.repositories import (
+	AccountRepository,
+	BacktestTaskRepository,
+	StrategyRepository,
+	TradeRepository,
 )
 
 
@@ -36,7 +43,7 @@ class AnalysisManager:
 	def __init__ (
 			self,
 			session: AsyncSession,
-			event_engine: EventEngine = None
+			event_engine: Optional[EventEngine] = None
 	):
 		"""
 		初始化分析管理器
@@ -51,7 +58,7 @@ class AnalysisManager:
 		# 初始化Repository
 		self.strategy_repo = StrategyRepository(session)
 		self.account_repo = AccountRepository(session)
-		self.backtest_repo = BacktestRepository(session)
+		self.backtest_repo = BacktestTaskRepository(session)
 		self.trade_repo = TradeRepository(session)
 
 		# 初始化服务
@@ -95,7 +102,7 @@ class AnalysisManager:
 		启动分析任务
 
 		Args:
-			analysis_type: 分析类型 ('performance', 'attribution', 'comparison', 'events', 'comprehensive')
+			analysis_type: 分析类型 ('performance', 'attribution', 'comparison', 'trade_analysis', 'comprehensive')
 			parameters: 分析参数
 			user_id: 用户ID
 
@@ -127,7 +134,7 @@ class AnalysisManager:
 
 			# 设置任务完成回调
 			task.add_done_callback(
-				lambda t: self._on_analysis_complete(task_id, t)
+				lambda t: self._on_analysis_complete(task_id)
 			)
 
 			return task_id
@@ -155,8 +162,6 @@ class AnalysisManager:
 			分析结果
 		"""
 		try:
-			result = None
-
 			# 更新进度
 			await self._update_progress(task_id, 10, "开始分析...")
 
@@ -175,7 +180,7 @@ class AnalysisManager:
 					task_id, parameters, user_id
 				)
 
-			elif analysis_type == 'events':
+			elif analysis_type == 'trade_analysis':
 				result = await self._execute_trade_analysis(
 					task_id, parameters, user_id
 				)
@@ -236,7 +241,7 @@ class AnalysisManager:
 			绩效分析结果
 		"""
 		# 提取参数
-		entity_type = parameters.get('entity_type', 'events')
+		entity_type = parameters.get('entity_type', 'strategy')
 		entity_id = parameters.get('entity_id')
 		start_date = parameters.get('start_date')
 		end_date = parameters.get('end_date', date.today())
@@ -253,16 +258,16 @@ class AnalysisManager:
 		await self._update_progress(task_id, 30, "计算绩效指标...")
 
 		# 执行分析
-		if entity_type == 'events':
+		if entity_type == 'strategy':
 			metrics = await self.performance_service.calculate_strategy_performance(
 				strategy_id=entity_id,
 				start_date=start_date,
 				end_date=end_date,
 				benchmark=benchmark
 			)
-		elif entity_type == 'events':
+		elif entity_type == 'account':
 			metrics = await self.performance_service.calculate_account_performance(
-				account_id=int(entity_id),
+				account_id=entity_id,
 				start_date=start_date,
 				end_date=end_date
 			)
@@ -520,7 +525,7 @@ class AnalysisManager:
 		"""
 		# 提取参数
 		entity_id = parameters.get('entity_id')
-		entity_type = parameters.get('entity_type', 'events')
+		entity_type = parameters.get('entity_type', 'strategy')
 		start_date = parameters.get('start_date')
 		end_date = parameters.get('end_date', date.today())
 		benchmark = parameters.get('benchmark')
@@ -536,7 +541,7 @@ class AnalysisManager:
 		tasks = []
 
 		# 绩效分析
-		if entity_type == 'events':
+		if entity_type == 'strategy':
 			tasks.append(
 				self.performance_service.calculate_strategy_performance(
 					strategy_id=entity_id,
@@ -548,7 +553,7 @@ class AnalysisManager:
 		else:
 			tasks.append(
 				self.performance_service.calculate_account_performance(
-					account_id=int(entity_id),
+					account_id=entity_id,
 					start_date=start_date,
 					end_date=end_date
 				)
@@ -566,7 +571,7 @@ class AnalysisManager:
 			)
 
 		# 交易分析
-		if entity_type == 'events':
+		if entity_type == 'strategy':
 			tasks.append(
 				self.trade_analysis_service.analyze_trades(
 					strategy_id=entity_id,
@@ -642,13 +647,12 @@ class AnalysisManager:
 				)
 			)
 
-	def _on_analysis_complete (self, task_id: str, task: asyncio.Task):
+	def _on_analysis_complete (self, task_id: str):
 		"""
 		分析任务完成回调
 
 		Args:
 			task_id: 任务ID
-			task: 任务对象
 		"""
 		# 从运行任务中移除
 		if task_id in self.running_tasks:
@@ -707,7 +711,8 @@ class AnalysisManager:
 
 		return False
 
-	async def get_available_analysis_types (self) -> List[Dict[str, Any]]:
+	@staticmethod
+	async def get_available_analysis_types () -> List[Dict[str, Any]]:
 		"""
 		获取可用的分析类型
 
@@ -720,7 +725,7 @@ class AnalysisManager:
 				'name': '绩效分析',
 				'description': '分析策略或账户的绩效指标',
 				'parameters': [
-					{'name': 'entity_type', 'type': 'str', 'required': True, 'options': ['events', 'events']},
+					{'name': 'entity_type', 'type': 'str', 'required': True, 'options': ['strategy', 'account']},
 					{'name': 'entity_id', 'type': 'str', 'required': True},
 					{'name': 'start_date', 'type': 'date', 'required': False},
 					{'name': 'end_date', 'type': 'date', 'required': False},
@@ -754,7 +759,7 @@ class AnalysisManager:
 				]
 			},
 			{
-				'type': 'events',
+				'type': 'trade_analysis',
 				'name': '交易分析',
 				'description': '分析交易行为和质量',
 				'parameters': [
@@ -770,7 +775,7 @@ class AnalysisManager:
 				'description': '执行全面的分析，包含多种分析类型',
 				'parameters': [
 					{'name': 'entity_id', 'type': 'str', 'required': True},
-					{'name': 'entity_type', 'type': 'str', 'required': False, 'options': ['events', 'events']},
+					{'name': 'entity_type', 'type': 'str', 'required': False, 'options': ['strategy', 'account']},
 					{'name': 'start_date', 'type': 'date', 'required': False},
 					{'name': 'end_date', 'type': 'date', 'required': False},
 					{'name': 'benchmark', 'type': 'str', 'required': False}

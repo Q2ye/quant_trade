@@ -147,6 +147,12 @@ async def initialize (
 		return False
 
 
+async def shutdown(main_engine=None) -> None:
+	"""数据模块关闭函数"""
+	import logging
+	logging.getLogger(__name__).info("数据模块已关闭")
+
+
 # 模块元数据
 __version__ = "1.0.0"
 __author__ = "量化交易系统团队"
@@ -177,5 +183,6 @@ __all__ = [
 	"DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService", "DataCleanService",
 
 	# 模块初始化函数
-	"initialize"
+	"initialize",
+	"shutdown"
 ]

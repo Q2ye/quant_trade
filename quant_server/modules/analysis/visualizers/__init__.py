@@ -7,7 +7,7 @@
 1. chart_generator - 图表生成器
 2. report_generator - 报告生成器
 
-位置：quant_server/modules/events/visualizers/__init__.py
+位置：quant_server/modules/analysis/visualizers/__init__.py
 """
 
 from .chart_generator import ChartGenerator

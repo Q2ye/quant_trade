@@ -6,17 +6,16 @@
 负责计算和分析各种风险指标，包括波动率、最大回撤、在险价值等。
 """
 
+import warnings
+from datetime import date
 from decimal import Decimal
-from typing import Dict, List, Tuple, Optional, Any, Union
-from datetime import datetime, date, timedelta
+from typing import Dict, List, Tuple, Optional, Any
+
 import numpy as np
 import pandas as pd
 from scipy import stats
-import warnings
 
-from modules.analysis.models import RiskMetrics
-from core.utils.math_utils.statistic_calculator import StatisticCalculator
-from core.utils.math_utils.financial_calculator import FinancialCalculator
+from quant_server.modules.analysis.models import RiskMetrics
 
 
 class RiskAnalyzer:
@@ -30,8 +29,6 @@ class RiskAnalyzer:
 			confidence_level: 置信水平（默认95%）
 		"""
 		self.confidence_level = confidence_level
-		self.stat_calc = StatisticCalculator()
-		self.fin_calc = FinancialCalculator()
 
 	def analyze_risk_metrics (
 			self,
@@ -74,16 +71,10 @@ class RiskAnalyzer:
 			# 计算条件在险价值（CVaR/ES）
 			cvar_metrics = self._calculate_cvar_metrics(returns)
 
-			# 计算最大回撤
-			max_drawdown_metrics = self._calculate_max_drawdown_metrics(df['equity'].values)
-
-			# 计算其他风险指标
-			other_risk_metrics = self._calculate_other_risk_metrics(returns)
-
 			# 如果有持仓数据，计算集中度风险
 			concentration_metrics = {}
 			if portfolio_positions:
-				concentration_metrics = self._calculate_concentration_metrics(portfolio_positions)
+				concentration_metrics = self.analyze_concentration_risk(portfolio_positions)
 
 			# 如果有基准数据，计算相对风险指标
 			relative_risk_metrics = {}
@@ -432,7 +423,8 @@ class RiskAnalyzer:
 		# GARCH波动率预测（简化实现）
 		try:
 			garch_vol = self._estimate_garch_volatility(returns)
-		except:
+		except Exception as e:
+			warnings.warn(f"GARCH波动率估计失败: {str(e)}")
 			garch_vol = historical_vol
 
 		return {
@@ -447,24 +439,25 @@ class RiskAnalyzer:
 			returns: pd.Series
 	) -> Dict[str, float]:
 		"""计算VaR指标"""
-		var_results = {}
+		var_results = {'historical': self._calculate_historical_var(returns, self.confidence_level),
+		               'parametric': self._calculate_parametric_var(returns, self.confidence_level)}
 
 		# 历史VaR
-		var_results['historical'] = self._calculate_historical_var(returns, self.confidence_level)
 
 		# 参数VaR（正态分布假设）
-		var_results['parametric'] = self._calculate_parametric_var(returns, self.confidence_level)
 
 		# Monte Carlo VaR
 		try:
 			var_results['monte_carlo'] = self._calculate_monte_carlo_var(returns, self.confidence_level)
-		except:
+		except ValueError as e:
+			warnings.warn(f"Monte Carlo VaR计算失败: {str(e)}")
 			var_results['monte_carlo'] = var_results['historical']
 
 		# 修正VaR（考虑偏度和峰度）
 		try:
 			var_results['modified'] = self._calculate_modified_var(returns, self.confidence_level)
-		except:
+		except ValueError as e:
+			warnings.warn(f"Modified VaR计算失败: {str(e)}")
 			var_results['modified'] = var_results['parametric']
 
 		return var_results
@@ -474,15 +467,15 @@ class RiskAnalyzer:
 			returns: pd.Series
 	) -> Dict[str, float]:
 		"""计算CVaR/ES指标"""
-		cvar_results = {}
+		cvar_results = {'cvar': self._calculate_historical_es(returns, self.confidence_level)}
 
 		# 历史ES
-		cvar_results['cvar'] = self._calculate_historical_es(returns, self.confidence_level)
 
 		# 参数ES
 		try:
 			cvar_results['parametric_es'] = self._calculate_parametric_es(returns, self.confidence_level)
-		except:
+		except ValueError as e:
+			warnings.warn(f"Parametric ES计算失败: {str(e)}")
 			cvar_results['parametric_es'] = cvar_results['cvar']
 
 		return cvar_results
@@ -582,11 +575,11 @@ class RiskAnalyzer:
 			'information_ratio': float(self._calculate_information_ratio(excess_returns))
 		}
 
+	@staticmethod
 	def _calculate_historical_var (
-			self,
 			returns: pd.Series,
 			confidence_level: float
-	) -> float:
+		) -> float:
 		"""计算历史VaR"""
 		if len(returns) == 0:
 			return 0.0
@@ -595,11 +588,11 @@ class RiskAnalyzer:
 		var = np.percentile(returns, 100 * (1 - confidence_level))
 		return float(var)
 
+	@staticmethod
 	def _calculate_parametric_var (
-			self,
 			returns: pd.Series,
 			confidence_level: float
-	) -> float:
+		) -> float:
 		"""计算参数VaR（正态分布假设）"""
 		if len(returns) < 2:
 			return 0.0
@@ -613,12 +606,12 @@ class RiskAnalyzer:
 
 		return float(var)
 
+	@staticmethod
 	def _calculate_monte_carlo_var (
-			self,
 			returns: pd.Series,
 			confidence_level: float,
 			n_simulations: int = 10000
-	) -> float:
+		) -> float:
 		"""计算Monte Carlo VaR"""
 		if len(returns) < 10:
 			return 0.0
@@ -637,11 +630,11 @@ class RiskAnalyzer:
 		var = np.percentile(simulated_returns, 100 * (1 - confidence_level))
 		return float(var)
 
+	@staticmethod
 	def _calculate_modified_var (
-			self,
 			returns: pd.Series,
 			confidence_level: float
-	) -> float:
+		) -> float:
 		"""计算修正VaR（Cornish-Fisher展开）"""
 		if len(returns) < 10:
 			return 0.0
@@ -681,11 +674,12 @@ class RiskAnalyzer:
 		es = tail_returns.mean()
 		return float(es)
 
+
+	@staticmethod
 	def _calculate_parametric_es (
-			self,
 			returns: pd.Series,
 			confidence_level: float
-	) -> float:
+		) -> float:
 		"""计算参数ES（正态分布假设）"""
 		if len(returns) < 2:
 			return 0.0
@@ -699,12 +693,12 @@ class RiskAnalyzer:
 
 		return float(es)
 
+	@staticmethod
 	def _calculate_monte_carlo_es (
-			self,
 			returns: pd.Series,
 			confidence_level: float,
 			n_simulations: int = 10000
-	) -> float:
+		) -> float:
 		"""计算Monte Carlo ES"""
 		if len(returns) < 10:
 			return 0.0
@@ -731,10 +725,10 @@ class RiskAnalyzer:
 		es = tail_returns.mean()
 		return float(es)
 
+	@staticmethod
 	def _calculate_max_drawdown_details (
-			self,
 			equity_values: np.ndarray
-	) -> Tuple[float, int, int]:
+		) -> Tuple[float, int, int]:
 		"""计算最大回撤详情"""
 		if len(equity_values) < 2:
 			return 0.0, 0, 0
@@ -792,10 +786,10 @@ class RiskAnalyzer:
 			'frequency': float(frequency)
 		}
 
+	@staticmethod
 	def _calculate_all_drawdowns (
-			self,
 			equity_values: np.ndarray
-	) -> np.ndarray:
+		) -> np.ndarray:
 		"""计算所有回撤"""
 		if len(equity_values) < 2:
 			return np.array([])
@@ -827,11 +821,11 @@ class RiskAnalyzer:
 
 		return np.array(drawdown_periods)
 
+	@staticmethod
 	def _calculate_rolling_drawdowns (
-			self,
 			equity_values: np.ndarray,
 			window: int = 252
-	) -> np.ndarray:
+		) -> np.ndarray:
 		"""计算滚动最大回撤"""
 		if len(equity_values) < window:
 			return np.array([])
@@ -841,18 +835,18 @@ class RiskAnalyzer:
 		for i in range(window, len(equity_values) + 1):
 			window_data = equity_values[i - window:i]
 			if len(window_data) > 0:
-				max_val = np.max(window_data)
-				min_val = np.min(window_data)
-				drawdown = (min_val - max_val) / max_val if max_val > 0 else 0
+				max_val = float(np.max(window_data))
+				min_val = float(np.min(window_data))
+				drawdown = float((min_val - max_val) / max_val) if max_val > 0.0 else 0.0
 				rolling_drawdowns.append(drawdown)
 
 		return np.array(rolling_drawdowns)
 
+	@staticmethod
 	def _identify_major_drawdowns (
-			self,
 			equity_values: np.ndarray,
 			threshold: float = -0.10  # 超过10%的回撤
-	) -> List[Dict[str, Any]]:
+		) -> List[Dict[str, Any]]:
 		"""识别主要回撤期"""
 		if len(equity_values) < 2:
 			return []
@@ -892,7 +886,7 @@ class RiskAnalyzer:
 	def _perform_stress_tests (
 			self,
 			returns: pd.Series
-	) -> Dict[str, float]:
+	) -> Dict[str, Decimal]:
 		"""执行压力测试"""
 		stress_results = {}
 
@@ -911,29 +905,30 @@ class RiskAnalyzer:
 			# 计算压力下的VaR
 			stressed_var = self._calculate_historical_var(stressed_returns, self.confidence_level)
 
-			stress_results[scenario] = float(stressed_var)
+			stress_results[scenario] = Decimal(str(stressed_var))
 
 		return stress_results
 
+
+	@staticmethod
 	def _estimate_liquidity_metrics (
-			self,
 			positions: Optional[List[Dict[str, Any]]]
-	) -> Dict[str, float]:
+		) -> Dict[str, Decimal]:
 		"""估计流动性指标"""
 		if not positions:
 			return {}
 
 		# 简化实现
 		return {
-			'estimated_bid_ask_spread': 0.001,  # 估计买卖价差
-			'estimated_market_impact': 0.0005,  # 估计市场冲击成本
-			'liquidity_score': 0.8  # 流动性得分（0-1）
+			'estimated_bid_ask_spread': Decimal('0.001'),  # 估计买卖价差
+			'estimated_market_impact': Decimal('0.0005'),  # 估计市场冲击成本
+			'liquidity_score': Decimal('0.8')  # 流动性得分（0-1）
 		}
 
+	@staticmethod
 	def _calculate_correlation_matrix (
-			self,
 			positions: Optional[List[Dict[str, Any]]]
-	) -> Dict[str, Dict[str, float]]:
+		) -> Dict[str, Dict[str, Decimal]]:
 		"""计算相关性矩阵"""
 		if not positions or len(positions) < 2:
 			return {}
@@ -948,16 +943,16 @@ class RiskAnalyzer:
 			for j, pos2 in enumerate(positions):
 				code2 = pos2.get('ts_code', f'asset_{j}')
 				if i == j:
-					correlation_matrix[code1][code2] = 1.0
+					correlation_matrix[code1][code2] = Decimal('1.0')
 				else:
-					correlation_matrix[code1][code2] = 0.3  # 简化假设
+					correlation_matrix[code1][code2] = Decimal('0.3')  # 简化假设
 
 		return correlation_matrix
 
+	@staticmethod
 	def _calculate_risk_contributions (
-			self,
 			positions: Optional[List[Dict[str, Any]]]
-	) -> Dict[str, float]:
+		) -> Dict[str, Decimal]:
 		"""计算风险贡献度"""
 		if not positions:
 			return {}
@@ -973,25 +968,25 @@ class RiskAnalyzer:
 		for position in positions:
 			code = position.get('ts_code', 'unknown')
 			weight = position.get('market_value', 0) / total_value
-			risk_contributions[code] = float(weight)
+			risk_contributions[code] = Decimal(str(weight))
 
 		return risk_contributions
 
+	@staticmethod
 	def _estimate_garch_volatility (
-			self,
 			returns: pd.Series,
 			p: int = 1,
 			q: int = 1
-	) -> float:
+		) -> float:
 		"""估计GARCH波动率"""
 		if len(returns) < 50:
 			return returns.std() * np.sqrt(252)
 
 		try:
-			from arch import arch_model
+			import arch
 
 			# 拟合GARCH(1,1)模型
-			model = arch_model(returns * 100, vol='Garch', p=p, q=q)
+			model = arch.arch_model(returns * 100, vol='GARCH', p=p, q=q)
 			result = model.fit(disp='off')
 
 			# 预测下一期波动率
@@ -1004,11 +999,11 @@ class RiskAnalyzer:
 			warnings.warn(f"GARCH模型拟合失败: {str(e)}，使用历史波动率")
 			return returns.std() * np.sqrt(252)
 
+	@staticmethod
 	def _calculate_omega_ratio (
-			self,
 			returns: pd.Series,
 			threshold: float = 0.0
-	) -> float:
+		) -> float:
 		"""计算Omega比率"""
 		if len(returns) == 0:
 			return 0.0
@@ -1022,6 +1017,23 @@ class RiskAnalyzer:
 
 		omega = gains.sum() / losses.sum() if losses.sum() > 0 else float('inf')
 		return float(omega)
+
+	@staticmethod
+	def _calculate_downside_risk (
+			returns: pd.Series,
+			mar: float = 0.0
+		) -> float:
+		"""计算下行风险"""
+		if len(returns) == 0:
+			return 0.0
+
+		# 计算低于门槛收益率的偏差
+		downside_deviations = returns[returns < mar] - mar
+		if len(downside_deviations) == 0:
+			return 0.0
+
+		downside_risk = np.sqrt(np.mean(downside_deviations ** 2))
+		return float(downside_risk)
 
 	def _calculate_sortino_ratio (
 			self,
@@ -1041,10 +1053,10 @@ class RiskAnalyzer:
 		sortino = (mean_return - mar) / downside_risk * np.sqrt(252)
 		return float(sortino)
 
+	@staticmethod
 	def _calculate_information_ratio (
-			self,
 			excess_returns: pd.Series
-	) -> float:
+		) -> float:
 		"""计算信息比率"""
 		if len(excess_returns) == 0:
 			return 0.0
@@ -1058,10 +1070,10 @@ class RiskAnalyzer:
 		info_ratio = mean_excess / std_excess * np.sqrt(252)
 		return float(info_ratio)
 
+	@staticmethod
 	def _calculate_gini_coefficient (
-			self,
 			weights: np.ndarray
-	) -> float:
+		) -> float:
 		"""计算基尼系数"""
 		if len(weights) == 0:
 			return 0.0
@@ -1078,10 +1090,10 @@ class RiskAnalyzer:
 
 		return float(gini)
 
+	@staticmethod
 	def _calculate_entropy_index (
-			self,
 			weights: np.ndarray
-	) -> float:
+		) -> float:
 		"""计算熵指数"""
 		if len(weights) == 0:
 			return 0.0
@@ -1093,21 +1105,21 @@ class RiskAnalyzer:
 			return 0.0
 
 		# 计算香农熵
-		entropy = -np.sum(non_zero_weights * np.log(non_zero_weights))
+		entropy = float(np.sum(non_zero_weights * np.log(non_zero_weights)))
 
 		# 归一化到[0, 1]
-		max_entropy = np.log(len(non_zero_weights))
-		if max_entropy > 0:
-			entropy_index = entropy / max_entropy
+		max_entropy = float(np.log(len(non_zero_weights)))
+		if max_entropy > 0.0:
+			entropy_index = float(entropy / max_entropy)
 		else:
 			entropy_index = 0.0
 
 		return float(entropy_index)
 
+	@staticmethod
 	def _calculate_sector_concentration (
-			self,
 			positions: List[Dict[str, Any]]
-	) -> Dict[str, float]:
+		) -> Dict[str, float]:
 		"""计算行业集中度"""
 		if not positions:
 			return {}
@@ -1145,63 +1157,61 @@ class RiskAnalyzer:
 			'sector_weights': sector_weights
 		}
 
+	@staticmethod
 	def _estimate_position_liquidity (
-			self,
 			position: Dict[str, Any],
-			market_data: Optional[Dict[str, Any]]
-	) -> float:
+			market_data: Optional[Dict[str, Any]] = None
+		) -> float:
 		"""估计头寸流动性"""
-		# 简化实现：基于市值估计流动性
+		_ = market_data
 		market_value = position.get('market_value', 0)
 
 		if market_value <= 0:
 			return 0.0
 
-		# 流动性得分（0-1），市值越大流动性可能越好（但也要考虑市场深度）
-		if market_value < 1e6:  # 小于100万
+		if market_value < 1e6:
 			return 0.9
-		elif market_value < 1e7:  # 小于1000万
+		elif market_value < 1e7:
 			return 0.7
-		elif market_value < 1e8:  # 小于1亿
+		elif market_value < 1e8:
 			return 0.5
-		else:  # 大于1亿
+		else:
 			return 0.3
 
+	@staticmethod
 	def _estimate_liquidation_time (
-			self,
 			positions: List[Dict[str, Any]],
-			market_data: Optional[Dict[str, Any]]
-	) -> float:
+			market_data: Optional[Dict[str, Any]] = None
+		) -> float:
 		"""估计变现时间（天数）"""
+		_ = market_data
 		if not positions:
 			return 0.0
 
-		# 简化实现：基于总市值估计
 		total_value = sum(pos.get('market_value', 0) for pos in positions)
 
 		if total_value <= 0:
 			return 0.0
 
-		# 估计变现时间（天）
-		if total_value < 1e6:  # 小于100万
+		if total_value < 1e6:
 			return 1.0
-		elif total_value < 1e7:  # 小于1000万
+		elif total_value < 1e7:
 			return 3.0
-		elif total_value < 1e8:  # 小于1亿
+		elif total_value < 1e8:
 			return 7.0
-		else:  # 大于1亿
+		else:
 			return 15.0
 
+	@staticmethod
 	def _estimate_liquidity_var (
-			self,
 			positions: List[Dict[str, Any]],
-			market_data: Optional[Dict[str, Any]]
-	) -> float:
+			market_data: Optional[Dict[str, Any]] = None
+		) -> float:
 		"""估计流动性风险价值"""
+		_ = market_data
 		if not positions:
 			return 0.0
 
-		# 简化实现：流动性VaR为总市值的1%
 		total_value = sum(pos.get('market_value', 0) for pos in positions)
 		lvar = total_value * 0.01
 

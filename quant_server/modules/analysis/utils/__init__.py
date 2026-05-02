@@ -7,7 +7,7 @@
 1. statistic_utils - 统计分析工具
 2. chart_utils - 图表生成工具
 
-位置：quant_server/modules/events/utils/__init__.py
+位置：quant_server/modules/analysis/utils/__init__.py
 """
 
 from .statistic_utils import StatisticUtils

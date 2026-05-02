@@ -34,8 +34,9 @@ from quant_server.core.engines.base.engine_base import EngineBase
 from quant_server.core.engines.system.event_engine import EventEngine
 
 # 导入类型定义
+from quant_server.core.events import BaseEvent
 from quant_server.core.engines.types.entities import (
-	EventEntity, EngineConfigEntity
+	EngineConfigEntity,
 )
 from quant_server.core.engines.types.enums import (
 	EngineType,
@@ -501,7 +502,7 @@ class DataQualityEngine(EngineBase):
 
 		# 检查调度器
 		scheduler_healthy = (not self.enable_scheduler or
-		                     (self._scheduler_task and not self._scheduler_task.done()))
+							 (self._scheduler_task and not self._scheduler_task.done()))
 		health_info["checks"].append({
 			"name": "scheduler",
 			"status": "healthy" if scheduler_healthy else "unhealthy",
@@ -591,7 +592,7 @@ class DataQualityEngine(EngineBase):
 		except ImportError:
 			logger.debug("psutil未安装，跳过系统指标收集")
 
-	async def _on_handle_event (self, event: EventEntity):
+	async def _on_handle_event (self, event: BaseEvent):
 		"""处理引擎特定事件
 
 		Args:
@@ -1117,7 +1118,7 @@ class DataQualityEngine(EngineBase):
 		config_dict = config or {}
 		priority_str = config_dict.get("priority", PriorityLevel.NORMAL.value)
 		priority = int(priority_str) if isinstance(priority_str,
-		                                           str) and priority_str.isdigit() else PriorityLevel.NORMAL.value
+												   str) and priority_str.isdigit() else PriorityLevel.NORMAL.value
 
 		# 创建任务配置
 		task_config = QualityTaskConfig(
@@ -2359,9 +2360,9 @@ class DataQualityEngine(EngineBase):
 			str: 引擎字符串表示
 		"""
 		return (f"DataQualityEngine(name='{self.config.name}', "
-		        f"status={self.record.status.value}, "
-		        f"tasks={len(self.tasks)}, "
-		        f"active={len(self.active_tasks)})")
+				f"status={self.record.status.value}, "
+				f"tasks={len(self.tasks)}, "
+				f"active={len(self.active_tasks)})")
 
 
 # ==================== 引擎工厂注册 ====================
@@ -2411,58 +2412,58 @@ def register_quality_engine ():
 
 # 导出引擎类和注册函数
 __all__ = ["DataQualityEngine", "QualityCheckType", "QualityRuleType",
-           "QualityRule", "QualityTaskConfig", "QualityTaskProgress", "QualityTaskResult",
-           "register_quality_engine"]
+		   "QualityRule", "QualityTaskConfig", "QualityTaskProgress", "QualityTaskResult",
+		   "register_quality_engine"]
 
 
 # ==================== 便捷函数 ====================
 
 async def create_data_quality_engine(
-    config: Optional[Dict[str, Any]] = None,
-    instance_name: Optional[str] = None
+	config: Optional[Dict[str, Any]] = None,
+	instance_name: Optional[str] = None
 ) -> DataQualityEngine:
-    """
-    创建数据质量检查引擎（便捷函数）
+	"""
+	创建数据质量检查引擎（便捷函数）
 
-    Args:
-        config: 引擎配置
-        instance_name: 实例名称
+	Args:
+		config: 引擎配置
+		instance_name: 实例名称
 
-    Returns:
-        DataQualityEngine: 创建的引擎实例
-    """
-    from quant_server.core.engines.utils.engine_factory import create_engine
-    from quant_server.core.engines.types.enums import EngineType
+	Returns:
+		DataQualityEngine: 创建的引擎实例
+	"""
+	from quant_server.core.engines.utils.engine_factory import create_engine
+	from quant_server.core.engines.types.enums import EngineType
 
-    engine = await create_engine(
-        engine_type=EngineType.DATA_QUALITY,
-        config=config,
-        instance_name=instance_name
-    )
+	engine = await create_engine(
+		engine_type=EngineType.DATA_QUALITY,
+		config=config,
+		instance_name=instance_name
+	)
 
-    if isinstance(engine, DataQualityEngine):
-        return engine
-    else:
-        raise TypeError(f"创建的引擎类型不正确，期望 DataQualityEngine，实际是 {type(engine).__name__}")
+	if isinstance(engine, DataQualityEngine):
+		return engine
+	else:
+		raise TypeError(f"创建的引擎类型不正确，期望 DataQualityEngine，实际是 {type(engine).__name__}")
 
 
 async def get_data_quality_engine(
-    instance_name: str = "data_quality_engine"
+	instance_name: str = "data_quality_engine"
 ) -> Optional[DataQualityEngine]:
-    """
-    获取数据质量检查引擎（便捷函数）
+	"""
+	获取数据质量检查引擎（便捷函数）
 
-    Args:
-        instance_name: 引擎实例名称
+	Args:
+		instance_name: 引擎实例名称
 
-    Returns:
-        Optional[DataQualityEngine]: 数据质量检查引擎实例
-    """
-    from quant_server.core.engines.utils.engine_factory import get_engine
+	Returns:
+		Optional[DataQualityEngine]: 数据质量检查引擎实例
+	"""
+	from quant_server.core.engines.utils.engine_factory import get_engine
 
-    engine = await get_engine(instance_name)
+	engine = await get_engine(instance_name)
 
-    if engine and isinstance(engine, DataQualityEngine):
-        return engine
+	if engine and isinstance(engine, DataQualityEngine):
+		return engine
 
-    return None
+	return None

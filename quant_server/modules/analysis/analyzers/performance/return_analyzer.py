@@ -6,16 +6,12 @@
 负责计算和分析各种收益指标，包括总收益、年化收益、复合收益等。
 """
 
-from decimal import Decimal
-from typing import Dict, List, Tuple, Optional, Any, Union
-from datetime import datetime, date, timedelta
+from datetime import date
+from typing import Dict, List, Any
+
 import numpy as np
 import pandas as pd
 from scipy import stats
-
-from modules.analysis.models import PerformanceMetrics
-from core.utils.math_utils.statistic_calculator import StatisticCalculator
-from core.utils.math_utils.financial_calculator import FinancialCalculator
 
 
 class ReturnAnalyzer:
@@ -23,8 +19,6 @@ class ReturnAnalyzer:
 
 	def __init__ (self):
 		"""初始化收益分析器"""
-		self.stat_calc = StatisticCalculator()
-		self.fin_calc = FinancialCalculator()
 
 	def analyze_returns (
 			self,
@@ -57,17 +51,17 @@ class ReturnAnalyzer:
 			# 确保数据按日期排序
 			df = df.sort_index()
 
-			# 计算总收益
-			total_return = self._calculate_total_return(df['equity'].iloc[0], df['equity'].iloc[-1])
+			# 计算总收益（考虑初始资金）
+			total_return = ReturnAnalyzer._calculate_total_return(df['equity'].iloc[0], df['equity'].iloc[-1]) * initial_capital
 
 			# 计算日收益率序列
 			daily_returns = df['equity'].pct_change().dropna()
 
 			# 计算年化收益率
-			annual_return = self._calculate_annual_return(daily_returns)
+			annual_return = ReturnAnalyzer._calculate_annual_return(daily_returns)
 
 			# 计算年复合增长率（CAGR）
-			cagr = self._calculate_cagr(
+			cagr = ReturnAnalyzer._calculate_cagr(
 				df['equity'].iloc[0],
 				df['equity'].iloc[-1],
 				start_date,
@@ -75,16 +69,16 @@ class ReturnAnalyzer:
 			)
 
 			# 计算月度收益
-			monthly_returns = self._calculate_monthly_returns(df)
+			monthly_returns = ReturnAnalyzer._calculate_monthly_returns(df)
 
 			# 计算年度收益
-			annual_returns = self._calculate_annual_returns(df)
+			annual_returns = ReturnAnalyzer._calculate_annual_returns(df)
 
 			# 计算滚动收益
-			rolling_returns = self._calculate_rolling_returns(daily_returns)
+			rolling_returns = ReturnAnalyzer._calculate_rolling_returns(daily_returns)
 
 			# 计算收益的统计特征
-			return_statistics = self._calculate_return_statistics(daily_returns)
+			return_statistics = ReturnAnalyzer._calculate_return_statistics(daily_returns)
 
 			# 计算收益的分布特征
 			return_distribution = self._analyze_return_distribution(daily_returns)
@@ -111,8 +105,8 @@ class ReturnAnalyzer:
 		except Exception as e:
 			raise ValueError(f"收益分析失败: {str(e)}")
 
+	@staticmethod
 	def compare_returns_with_benchmark (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> Dict[str, Any]:
@@ -139,30 +133,30 @@ class ReturnAnalyzer:
 			excess_returns = strategy_aligned - benchmark_aligned
 
 			# 计算信息比率
-			information_ratio = self._calculate_information_ratio(excess_returns)
+			information_ratio = ReturnAnalyzer._calculate_information_ratio(excess_returns)
 
 			# 计算跟踪误差
-			tracking_error = self._calculate_tracking_error(excess_returns)
+			tracking_error = ReturnAnalyzer._calculate_tracking_error(excess_returns)
 
 			# 计算相对收益
-			relative_performance = self._calculate_relative_performance(
+			relative_performance = ReturnAnalyzer._calculate_relative_performance(
 				strategy_aligned, benchmark_aligned
 			)
 
 			# 计算收益相关性
-			correlation = self._calculate_correlation(strategy_aligned, benchmark_aligned)
+			correlation = ReturnAnalyzer._calculate_correlation(strategy_aligned, benchmark_aligned)
 
 			# 计算Beta系数
-			beta = self._calculate_beta(strategy_aligned, benchmark_aligned)
+			beta = ReturnAnalyzer._calculate_beta(strategy_aligned, benchmark_aligned)
 
 			# 计算Alpha系数
-			alpha = self._calculate_alpha(strategy_aligned, benchmark_aligned, beta)
+			alpha = ReturnAnalyzer._calculate_alpha(strategy_aligned, benchmark_aligned, beta)
 
 			# 计算R-squared
-			r_squared = self._calculate_r_squared(strategy_aligned, benchmark_aligned)
+			r_squared = ReturnAnalyzer._calculate_r_squared(strategy_aligned, benchmark_aligned)
 
 			# 计算收益差值的统计检验
-			statistical_test = self._perform_statistical_test(
+			statistical_test = ReturnAnalyzer._perform_statistical_test(
 				strategy_aligned, benchmark_aligned
 			)
 
@@ -189,8 +183,8 @@ class ReturnAnalyzer:
 		except Exception as e:
 			raise ValueError(f"收益比较失败: {str(e)}")
 
+	@staticmethod
 	def analyze_return_consistency (
-			self,
 			returns: pd.Series,
 			window_sizes: List[int] = None
 	) -> Dict[str, Any]:
@@ -225,17 +219,17 @@ class ReturnAnalyzer:
 							'min': float(rolling_returns.min()),
 							'max': float(rolling_returns.max()),
 							'positive_ratio': float((rolling_returns > 0).mean()),
-							'consistency_score': self._calculate_consistency_score(rolling_returns)
+							'consistency_score': ReturnAnalyzer._calculate_consistency_score(rolling_returns)
 						}
 
 						consistency_metrics[f'{window}d'] = window_metrics
 
 			# 整体一致性分析
 			overall_consistency = {
-				'positive_months': self._count_positive_months(returns),
-				'winning_streak': self._calculate_winning_streak(returns),
-				'losing_streak': self._calculate_losing_streak(returns),
-				'consistency_index': self._calculate_consistency_index(returns)
+				'positive_months': ReturnAnalyzer._count_positive_months(returns),
+				'winning_streak': ReturnAnalyzer._calculate_winning_streak(returns),
+				'losing_streak': ReturnAnalyzer._calculate_losing_streak(returns),
+				'consistency_index': ReturnAnalyzer._calculate_consistency_index(returns)
 			}
 
 			return {
@@ -246,8 +240,8 @@ class ReturnAnalyzer:
 		except Exception as e:
 			raise ValueError(f"收益一致性分析失败: {str(e)}")
 
+	@staticmethod
 	def _calculate_total_return (
-			self,
 			start_value: float,
 			end_value: float
 	) -> float:
@@ -256,8 +250,8 @@ class ReturnAnalyzer:
 			return 0.0
 		return (end_value - start_value) / start_value
 
+	@staticmethod
 	def _calculate_annual_return (
-			self,
 			daily_returns: pd.Series
 	) -> float:
 		"""计算年化收益率"""
@@ -282,8 +276,8 @@ class ReturnAnalyzer:
 
 		return annual_return
 
+	@staticmethod
 	def _calculate_cagr (
-			self,
 			start_value: float,
 			end_value: float,
 			start_date: date,
@@ -304,8 +298,8 @@ class ReturnAnalyzer:
 
 		return cagr
 
+	@staticmethod
 	def _calculate_monthly_returns (
-			self,
 			df: pd.DataFrame
 	) -> Dict[str, float]:
 		"""计算月度收益率"""
@@ -323,14 +317,14 @@ class ReturnAnalyzer:
 
 		# 转换为字典
 		result = {}
-		for date, ret in monthly_returns.items():
-			month_key = date.strftime('%Y-%m')
+		for idx, ret in monthly_returns.items():
+			month_key = pd.Timestamp(idx).strftime('%Y-%m')
 			result[month_key] = float(ret)
 
 		return result
 
+	@staticmethod
 	def _calculate_annual_returns (
-			self,
 			df: pd.DataFrame
 	) -> Dict[int, float]:
 		"""计算年度收益率"""
@@ -348,14 +342,14 @@ class ReturnAnalyzer:
 
 		# 转换为字典
 		result = {}
-		for date, ret in annual_returns.items():
-			year = date.year
+		for idx, ret in annual_returns.items():
+			year = pd.Timestamp(idx).year
 			result[year] = float(ret)
 
 		return result
 
+	@staticmethod
 	def _calculate_rolling_returns (
-			self,
 			returns: pd.Series,
 			windows: List[int] = None
 	) -> Dict[str, List[float]]:
@@ -375,8 +369,8 @@ class ReturnAnalyzer:
 
 		return rolling_results
 
+	@staticmethod
 	def _calculate_return_statistics (
-			self,
 			returns: pd.Series
 	) -> Dict[str, float]:
 		"""计算收益统计特征"""
@@ -398,8 +392,8 @@ class ReturnAnalyzer:
 			'zero_ratio': float((returns == 0).mean())
 		}
 
+	@staticmethod
 	def _analyze_return_distribution (
-			self,
 			returns: pd.Series
 	) -> Dict[str, Any]:
 		"""分析收益分布"""
@@ -432,11 +426,11 @@ class ReturnAnalyzer:
 			'kurtosis': kurtosis,
 			'skewness': skewness,
 			'quantiles': quantiles,
-			'distribution_type': self._identify_distribution_type(returns)
+			'distribution_type': ReturnAnalyzer._identify_distribution_type(returns)
 		}
 
+	@staticmethod
 	def _calculate_stability_metrics (
-			self,
 			returns: pd.Series
 	) -> Dict[str, float]:
 		"""计算收益稳定性指标"""
@@ -454,10 +448,10 @@ class ReturnAnalyzer:
 			coefficient_of_variation = 0
 
 		# 计算收益稳定性指数
-		stability_index = self._calculate_stability_index(returns)
+		stability_index = ReturnAnalyzer._calculate_stability_index(returns)
 
 		# 计算下行风险
-		downside_risk = self._calculate_downside_risk(returns)
+		downside_risk = ReturnAnalyzer._calculate_downside_risk(returns)
 
 		return {
 			'annual_volatility': float(volatility),
@@ -466,8 +460,8 @@ class ReturnAnalyzer:
 			'downside_risk': float(downside_risk)
 		}
 
+	@staticmethod
 	def _analyze_periodicity (
-			self,
 			returns: pd.Series
 	) -> Dict[str, Any]:
 		"""分析收益周期性"""
@@ -496,7 +490,7 @@ class ReturnAnalyzer:
 						periods.append(period)
 
 			# 计算自相关
-			autocorr = self._calculate_autocorrelation(returns, max_lag=50)
+			autocorr = ReturnAnalyzer._calculate_autocorrelation(returns, max_lag=50)
 
 			return {
 				'dominant_frequencies': dominant_freqs.tolist(),
@@ -506,14 +500,14 @@ class ReturnAnalyzer:
 				'has_seasonality': len(periods) > 0
 			}
 
-		except Exception as e:
+		except ValueError as e:
 			return {
 				'error': str(e),
-				'autocorrelation': self._calculate_autocorrelation(returns, max_lag=20)
+				'autocorrelation': ReturnAnalyzer._calculate_autocorrelation(returns, max_lag=20)
 			}
 
+	@staticmethod
 	def _calculate_information_ratio (
-			self,
 			excess_returns: pd.Series
 	) -> float:
 		"""计算信息比率"""
@@ -530,8 +524,8 @@ class ReturnAnalyzer:
 		info_ratio = mean_excess / std_excess * np.sqrt(252)
 		return float(info_ratio)
 
+	@staticmethod
 	def _calculate_tracking_error (
-			self,
 			excess_returns: pd.Series
 	) -> float:
 		"""计算跟踪误差"""
@@ -542,8 +536,8 @@ class ReturnAnalyzer:
 		tracking_error = excess_returns.std() * np.sqrt(252)
 		return float(tracking_error)
 
+	@staticmethod
 	def _calculate_relative_performance (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> Dict[str, float]:
@@ -558,8 +552,8 @@ class ReturnAnalyzer:
 			'cumulative_relative_return': float(np.prod(1 + relative_returns) - 1)
 		}
 
+	@staticmethod
 	def _calculate_correlation (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> float:
@@ -570,8 +564,8 @@ class ReturnAnalyzer:
 		correlation = strategy_returns.corr(benchmark_returns)
 		return float(correlation)
 
+	@staticmethod
 	def _calculate_beta (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> float:
@@ -588,8 +582,8 @@ class ReturnAnalyzer:
 		beta = covariance / benchmark_variance
 		return float(beta)
 
+	@staticmethod
 	def _calculate_alpha (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series,
 			beta: float
@@ -605,18 +599,18 @@ class ReturnAnalyzer:
 		alpha = strategy_annual - beta * benchmark_annual
 		return float(alpha)
 
+	@staticmethod
 	def _calculate_r_squared (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> float:
 		"""计算R-squared"""
-		correlation = self._calculate_correlation(strategy_returns, benchmark_returns)
+		correlation = ReturnAnalyzer._calculate_correlation(strategy_returns, benchmark_returns)
 		r_squared = correlation ** 2
 		return float(r_squared)
 
+	@staticmethod
 	def _perform_statistical_test (
-			self,
 			strategy_returns: pd.Series,
 			benchmark_returns: pd.Series
 	) -> Dict[str, Any]:
@@ -642,7 +636,7 @@ class ReturnAnalyzer:
 		if len(diff) >= 10:
 			try:
 				_, wilcoxon_pvalue = scipy_stats.wilcoxon(diff)
-			except:
+			except ValueError:
 				wilcoxon_pvalue = 1
 		else:
 			wilcoxon_pvalue = 1
@@ -663,8 +657,8 @@ class ReturnAnalyzer:
 			}
 		}
 
+	@staticmethod
 	def _calculate_consistency_score (
-			self,
 			rolling_returns: pd.Series
 	) -> float:
 		"""计算一致性分数"""
@@ -687,8 +681,8 @@ class ReturnAnalyzer:
 		consistency_score = 0.6 * positive_ratio + 0.4 * stability / (1 + stability)
 		return float(consistency_score)
 
+	@staticmethod
 	def _count_positive_months (
-			self,
 			returns: pd.Series
 	) -> int:
 		"""计算正收益月数"""
@@ -704,8 +698,8 @@ class ReturnAnalyzer:
 
 		return int(positive_months)
 
+	@staticmethod
 	def _calculate_winning_streak (
-			self,
 			returns: pd.Series
 	) -> int:
 		"""计算最长连续盈利天数"""
@@ -724,8 +718,8 @@ class ReturnAnalyzer:
 
 		return winning_streak
 
+	@staticmethod
 	def _calculate_losing_streak (
-			self,
 			returns: pd.Series
 	) -> int:
 		"""计算最长连续亏损天数"""
@@ -744,8 +738,8 @@ class ReturnAnalyzer:
 
 		return losing_streak
 
+	@staticmethod
 	def _calculate_consistency_index (
-			self,
 			returns: pd.Series
 	) -> float:
 		"""计算一致性指数"""
@@ -774,8 +768,8 @@ class ReturnAnalyzer:
 		consistency_index = 0.4 * (1 + autocorr) + 0.4 * positive_ratio + 0.2 * stability / (1 + stability)
 		return float(consistency_index)
 
+	@staticmethod
 	def _identify_distribution_type (
-			self,
 			returns: pd.Series
 	) -> str:
 		"""识别收益分布类型"""
@@ -791,7 +785,7 @@ class ReturnAnalyzer:
 		try:
 			df, loc, scale = scipy_stats.t.fit(returns.dropna())
 			t_likelihood = scipy_stats.t.logpdf(returns.dropna(), df, loc, scale).sum()
-		except:
+		except ValueError:
 			t_likelihood = -np.inf
 
 		# 正态分布似然
@@ -814,8 +808,8 @@ class ReturnAnalyzer:
 			else:
 				return "unknown"
 
+	@staticmethod
 	def _calculate_stability_index (
-			self,
 			returns: pd.Series
 	) -> float:
 		"""计算稳定性指数"""
@@ -844,8 +838,8 @@ class ReturnAnalyzer:
 
 		return float(stability)
 
+	@staticmethod
 	def _calculate_downside_risk (
-			self,
 			returns: pd.Series,
 			mar: float = 0.0  # 最小可接受收益
 	) -> float:
@@ -863,8 +857,8 @@ class ReturnAnalyzer:
 		downside_risk = np.sqrt(np.mean((downside_returns - mar) ** 2)) * np.sqrt(252)
 		return float(downside_risk)
 
+	@staticmethod
 	def _calculate_autocorrelation (
-			self,
 			returns: pd.Series,
 			max_lag: int = 20
 	) -> Dict[int, float]:
@@ -876,7 +870,7 @@ class ReturnAnalyzer:
 				corr = returns.autocorr(lag=lag)
 				if not pd.isna(corr):
 					autocorr[lag] = float(corr)
-			except:
+			except ValueError:
 				pass
 
 		return autocorr

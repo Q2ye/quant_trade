@@ -75,6 +75,12 @@ from .data_transformer import (
 	TransformationFactory
 )
 
+from .validation import (
+		validate_amount,
+		validate_account_data,
+		validate_position_data,
+)
+
 from .data_sampler import (
 	# 枚举和数据结构
 	SamplingMethod,
@@ -114,6 +120,16 @@ __all__ = [
 	'DataValidator',
 	'ValidationRuleFactory',
 	'DataQualityScorer',
+
+		# 业务验证
+		'validate_amount',
+		'validate_account_data',
+		'validate_position_data',
+
+		# 业务验证
+		'validate_amount',
+		'validate_account_data',
+		'validate_position_data',
 
 	# 数据转换
 	'TransformationType',
@@ -178,7 +194,7 @@ def get_data_utils_info () -> dict:
 		"version": __version__,
 		"author": __author__,
 		"description": __description__,
-		"modules": ["data_validator", "data_transformer", "data_sampler"],
+		"modules": ["data_validator", "data_transformer", "data_sampler", "validation"],
 		"default_configs": {
 			"validation": DEFAULT_VALIDATION_CONFIG,
 			"transformation": DEFAULT_TRANSFORMATION_CONFIG,

@@ -2,17 +2,16 @@
 """
 图表工具模块
 提供图表生成相关的工具函数和样式配置
-位置：quant_server/modules/events/utils/chart_utils.py
+位置：quant_server/modules/analysis/utils/chart_utils.py
 """
 
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
-import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple, Union
 import colorsys
-from datetime import datetime, timedelta
+from typing import List, Dict, Any, Union
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 class ChartStyle:
@@ -285,8 +284,8 @@ class ChartUtils:
 			low=low_prices,
 			close=close_prices,
 			name=name,
-			increasing_line_color=colors['success'],
-			decreasing_line_color=colors['danger']
+			increasing=dict(line=dict(color=colors['success'])),
+			decreasing=dict(line=dict(color=colors['danger']))
 		)
 
 		fig.add_trace(trace, row=row, col=col)
@@ -334,7 +333,7 @@ class ChartUtils:
 			x=x_data,
 			y=y_data,
 			name=name,
-			marker_color=color,
+			marker=dict(color=color),
 			orientation=orientation
 		)
 
@@ -373,7 +372,7 @@ class ChartUtils:
 		trace = go.Histogram(
 			x=data,
 			name=name,
-			marker_color=color,
+			marker=dict(color=color),
 			nbinsx=nbins,
 			opacity=0.7
 		)
@@ -603,51 +602,436 @@ class ChartUtils:
 		return filepath
 
 	@staticmethod
-	def create_performance_dashboard (metrics: Dict[str, Any],
-	                                  theme: str = 'quant') -> go.Figure:
+	def create_equity_curve(
+			equity_curve: Union[List[float], pd.Series],
+			dates: Union[List, pd.DatetimeIndex] = None,
+			benchmark_equity: Union[List[float], pd.Series] = None,
+			title: str = '净值曲线',
+			theme: str = 'quant'
+	) -> go.Figure:
 		"""
-		创建绩效仪表盘
+		创建净值曲线图
 
 		Args:
-			metrics: 绩效指标字典
+			equity_curve: 策略累计净值序列
+			dates: 日期序列
+			benchmark_equity: 基准累计净值序列
+			title: 图表标题
 			theme: 颜色主题
 
 		Returns:
-			go.Figure: 仪表盘图表
+			go.Figure: 净值曲线图表
 		"""
 		colors = ChartStyle.get_theme(theme)
+		eq = list(equity_curve)
+		x_vals = list(dates) if dates is not None else list(range(len(eq)))
 
-		# 创建子图
-		fig = make_subplots(
-			rows=2, cols=3,
-			subplot_titles=[
-				'累计收益率', '年化收益率分布',
-				'最大回撤', '月度收益率热图',
-				'风险指标', '交易统计'
-			],
-			specs=[
-				[{'type': 'xy'}, {'type': 'xy'}, {'type': 'xy'}],
-				[{'type': 'xy'}, {'type': 'heatmap'}, {'type': 'bar'}]
-			],
-			vertical_spacing=0.12,
-			horizontal_spacing=0.1
-		)
+		fig = go.Figure()
 
-		# 更新整体布局
+		fig.add_trace(go.Scatter(
+			x=x_vals, y=eq, mode='lines',
+			name='策略净值',
+			line={'color': colors['primary'], 'width': 2.5},
+			hovertemplate='日期: %{x}<br>净值: %{y:.4f}<extra></extra>'
+		))
+
+		if benchmark_equity is not None and len(benchmark_equity) == len(eq):
+			bm = list(benchmark_equity)
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=bm, mode='lines',
+				name='基准净值',
+				line={'color': colors['secondary'], 'width': 1.5, 'dash': 'dash'},
+				hovertemplate='日期: %{x}<br>基准: %{y:.4f}<extra></extra>'
+			))
+
+		# 基准线 y=1
+		fig.add_hline(y=1.0, line_dash='dot', line_color=colors['grid'],
+		              annotation_text='初始净值', annotation_position='bottom right')
+
 		fig.update_layout(
-			title={
-				'text': '策略绩效仪表盘',
-				'x': 0.5,
-				'xanchor': 'center',
-				'font': {'size': 24}
-			},
+			title={'text': title, 'x': 0.5, 'xanchor': 'center', 'font': {'size': 20}},
 			template=ChartStyle.get_template(),
-			width=1600,
-			height=1000,
+			width=1200, height=600,
 			plot_bgcolor=colors['background'],
 			paper_bgcolor=colors['background'],
 			font={'color': colors['text']},
-			showlegend=True
+			xaxis={'title': '日期', 'gridcolor': colors['grid']},
+			yaxis={'title': '净值', 'gridcolor': colors['grid']},
+			legend={'x': 0.02, 'y': 0.98, 'xanchor': 'left', 'yanchor': 'top'},
+			hovermode='x unified',
+			margin={'l': 60, 'r': 40, 't': 80, 'b': 60}
+		)
+
+		return fig
+
+	@staticmethod
+	def create_drawdown_chart(
+			drawdowns: Union[List[float], pd.Series],
+			dates: Union[List, pd.DatetimeIndex] = None,
+			title: str = '回撤曲线',
+			theme: str = 'quant'
+	) -> go.Figure:
+		"""
+		创建回撤曲线图
+
+		Args:
+			drawdowns: 回撤序列（正值表示回撤深度）
+			dates: 日期序列
+			title: 图表标题
+			theme: 颜色主题
+
+		Returns:
+			go.Figure: 回撤图表
+		"""
+		colors = ChartStyle.get_theme(theme)
+		dd = list(drawdowns)
+		dd_negative = [-abs(v) for v in dd]
+		x_vals = list(dates) if dates is not None else list(range(len(dd)))
+
+		fig = go.Figure()
+
+		fig.add_trace(go.Scatter(
+			x=x_vals, y=dd_negative, mode='lines',
+			fill='tozeroy',
+			fillcolor=f'rgba({",".join(str(int(colors["danger"].lstrip("#")[i:i+2], 16)) for i in (0, 2, 4))}, 0.25)',
+			line={'color': colors['danger'], 'width': 1.5},
+			name='回撤',
+			hovertemplate='日期: %{x}<br>回撤: %{y:.2%}<extra></extra>'
+		))
+
+		fig.add_hline(y=0, line_dash='solid', line_color=colors['grid'])
+
+		fig.update_layout(
+			title={'text': title, 'x': 0.5, 'xanchor': 'center', 'font': {'size': 20}},
+			template=ChartStyle.get_template(),
+			width=1200, height=400,
+			plot_bgcolor=colors['background'],
+			paper_bgcolor=colors['background'],
+			font={'color': colors['text']},
+			xaxis={'title': '日期', 'gridcolor': colors['grid']},
+			yaxis={'title': '回撤', 'gridcolor': colors['grid'], 'tickformat': '.0%'},
+			showlegend=False,
+			hovermode='x unified',
+			margin={'l': 60, 'r': 40, 't': 80, 'b': 60}
+		)
+
+		return fig
+
+	@staticmethod
+	def create_returns_distribution(
+			returns: Union[List[float], pd.Series],
+			benchmark_returns: Union[List[float], pd.Series] = None,
+			title: str = '收益率分布',
+			theme: str = 'quant'
+	) -> go.Figure:
+		"""
+		创建收益率分布图（直方图 + KDE + 正态分布叠加）
+
+		Args:
+			returns: 日收益率序列
+			benchmark_returns: 基准日收益率序列（可选）
+			title: 图表标题
+			theme: 颜色主题
+
+		Returns:
+			go.Figure: 收益率分布图表
+		"""
+		colors = ChartStyle.get_theme(theme)
+		r = np.array(returns)
+
+		fig = go.Figure()
+
+		# 策略收益直方图
+		fig.add_trace(go.Histogram(
+			x=r, name='策略收益',
+			marker=dict(color=colors['primary']),
+			opacity=0.6, nbinsx=60,
+			histnorm='probability density',
+			hovertemplate='收益: %{x:.2%}<br>密度: %{y:.4f}<extra></extra>'
+		))
+
+		# 基准收益直方图
+		if benchmark_returns is not None and len(benchmark_returns) > 0:
+			bm = np.array(benchmark_returns)
+			fig.add_trace(go.Histogram(
+				x=bm, name='基准收益',
+				marker=dict(color=colors['secondary']),
+				opacity=0.4, nbinsx=60,
+				histnorm='probability density',
+				hovertemplate='收益: %{x:.2%}<br>密度: %{y:.4f}<extra></extra>'
+			))
+
+		# 叠加正态分布曲线
+		if len(r) > 2:
+			x_range = np.linspace(r.min(), r.max(), 200)
+			mu, sigma = float(np.mean(r)), float(np.std(r))
+			normal_pdf = (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_range - mu) / sigma) ** 2)
+
+			fig.add_trace(go.Scatter(
+				x=x_range, y=normal_pdf, mode='lines',
+				name=f'正态分布 (μ={mu:.4f})',
+				line={'color': colors['success'], 'width': 2, 'dash': 'dash'},
+				hovertemplate='收益: %{x:.2%}<br>正态PDF: %{y:.4f}<extra></extra>'
+			))
+
+		# 标注均值线和0线
+		mean_ret = float(np.mean(r))
+		fig.add_vline(x=mean_ret, line_dash='dot', line_color=colors['text'],
+		              annotation_text=f'均值: {mean_ret:.2%}')
+		fig.add_vline(x=0, line_dash='solid', line_color=colors['grid'],
+		              annotation_text='零线')
+
+		fig.update_layout(
+			title={'text': title, 'x': 0.5, 'xanchor': 'center', 'font': {'size': 20}},
+			template=ChartStyle.get_template(),
+			width=1000, height=500,
+			plot_bgcolor=colors['background'],
+			paper_bgcolor=colors['background'],
+			font={'color': colors['text']},
+			xaxis={'title': '收益率', 'gridcolor': colors['grid'], 'tickformat': '.1%'},
+			yaxis={'title': '概率密度', 'gridcolor': colors['grid']},
+			bargap=0.05,
+			legend={'x': 0.02, 'y': 0.98, 'xanchor': 'left', 'yanchor': 'top'},
+			margin={'l': 60, 'r': 40, 't': 80, 'b': 60}
+		)
+
+		return fig
+
+	@staticmethod
+	def create_performance_dashboard(
+			equity_curve: Union[List[float], pd.Series],
+			dates: Union[List, pd.DatetimeIndex] = None,
+			returns: Union[List[float], pd.Series] = None,
+			benchmark_returns: Union[List[float], pd.Series] = None,
+			drawdowns: Union[List[float], pd.Series] = None,
+			monthly_returns: pd.DataFrame = None,
+			trade_stats: Dict[str, Any] = None,
+			theme: str = 'quant'
+	) -> go.Figure:
+		"""
+		创建策略绩效仪表盘（Bento Grid 布局）
+
+		Args:
+			equity_curve: 累计净值序列
+			dates: 日期序列（与净值对应）
+			returns: 日收益率序列
+			benchmark_returns: 基准日收益率序列
+			drawdowns: 回撤序列
+			monthly_returns: 月度收益率矩阵 (index=年, columns=月)
+			trade_stats: 交易统计字典
+			theme: 颜色主题
+
+		Returns:
+			go.Figure: 绩效仪表盘图表
+		"""
+		colors = ChartStyle.get_theme(theme)
+
+		fig = make_subplots(
+			rows=3, cols=4,
+			subplot_titles=[
+				'累计净值', '年化收益率', '最大回撤',
+				'收益分布', '月度收益热力图', '滚动夏普比率',
+				'风险指标仪表盘', '交易统计', '周收益分布',
+				'水下曲线', 'Beta 滚动', '回撤恢复分析'
+			],
+			specs=[
+				[{'type': 'xy'}, {'type': 'indicator'}, {'type': 'xy'}, {'type': 'xy'}],
+				[{'type': 'heatmap'}, {'type': 'xy'}, {'type': 'indicator'}, {'type': 'bar'}],
+				[{'type': 'xy'}, {'type': 'xy'}, {'type': 'xy'}, {'type': 'xy'}],
+			],
+			vertical_spacing=0.10,
+			horizontal_spacing=0.08
+		)
+
+		# --- Row 1 Col 1: 累计净值曲线 ---
+		if equity_curve is not None and len(equity_curve) > 0:
+			eq = list(equity_curve)
+			x_vals = list(dates) if dates is not None else list(range(len(eq)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=eq, mode='lines',
+				name='策略净值',
+				line={'color': colors['primary'], 'width': 2},
+				showlegend=False
+			), row=1, col=1)
+
+			if benchmark_returns is not None and len(benchmark_returns) == len(equity_curve):
+				bm_eq = (1 + np.array(benchmark_returns)).cumprod()
+				fig.add_trace(go.Scatter(
+					x=x_vals, y=bm_eq, mode='lines',
+					name='基准净值',
+					line={'color': colors['secondary'], 'width': 1.5, 'dash': 'dash'},
+					showlegend=False
+				), row=1, col=1)
+
+		# --- Row 1 Col 2: 年化收益率指标 ---
+		if returns is not None and len(returns) > 0:
+			r = np.array(returns)
+			ann_return = float(np.mean(r) * 252 * 100)
+			fig.add_trace(go.Indicator(
+				mode='number+gauge',
+				value=ann_return,
+				number={'suffix': '%', 'font': {'size': 28}},
+				gauge={'axis': {'range': [-50, 100]},
+				       'bar': {'color': colors['success'] if ann_return > 0 else colors['danger']}},
+				title={'text': '年化收益率'},
+				domain={'row': 0, 'column': 1}
+			), row=1, col=2)
+
+		# --- Row 1 Col 3: 最大回撤曲线 ---
+		if drawdowns is not None and len(drawdowns) > 0:
+			dd = list(drawdowns)
+			x_vals = list(dates) if dates is not None else list(range(len(dd)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=[-v for v in dd], mode='lines',
+				fill='tozeroy',
+				fillcolor=f'rgba({",".join(str(int(colors["danger"].lstrip("#")[i:i+2], 16)) for i in (0, 2, 4))}, 0.3)',
+				line={'color': colors['danger'], 'width': 1},
+				name='回撤',
+				showlegend=False
+			), row=1, col=3)
+
+		# --- Row 1 Col 4: 日收益分布直方图 ---
+		if returns is not None and len(returns) > 0:
+			fig.add_trace(go.Histogram(
+				x=list(returns),
+				marker=dict(color=colors['primary']),
+				opacity=0.7,
+				nbinsx=50,
+				name='日收益分布',
+				showlegend=False
+			), row=1, col=4)
+
+		# --- Row 2 Col 1: 月度收益热力图 ---
+		if monthly_returns is not None and not monthly_returns.empty:
+			fig.add_trace(go.Heatmap(
+				z=monthly_returns.values,
+				x=monthly_returns.columns.tolist(),
+				y=monthly_returns.index.tolist(),
+				colorscale='RdYlGn',
+				zsmooth=False,
+				colorbar={'title': '收益率'},
+				showscale=True
+			), row=2, col=1)
+
+		# --- Row 2 Col 2: 滚动夏普比率 ---
+		if returns is not None and len(returns) > 60:
+			r = np.array(returns)
+			roll_sharpe = (pd.Series(r).rolling(60).mean() / pd.Series(r).rolling(60).std() * np.sqrt(252)).values
+			x_vals = list(dates)[60:] if dates is not None else list(range(len(roll_sharpe)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=roll_sharpe, mode='lines',
+				line={'color': colors['info'], 'width': 1.5},
+				name='滚动夏普(60日)',
+				showlegend=False
+			), row=2, col=2)
+			fig.add_hline(y=1.0, line_dash='dash', line_color=colors['warning'],
+			              annotation_text='Sharpe=1', row=2, col=2)
+
+		# --- Row 2 Col 3: 风险指标 ---
+		if returns is not None and len(returns) > 0:
+			r = np.array(returns)
+			vol = float(np.std(r) * np.sqrt(252) * 100)
+			fig.add_trace(go.Indicator(
+				mode='number+gauge',
+				value=vol,
+				number={'suffix': '%', 'font': {'size': 28}},
+				gauge={'axis': {'range': [0, 80]},
+				       'bar': {'color': colors['warning'] if vol > 25 else colors['info']}},
+				title={'text': '年化波动率'},
+				domain={'row': 1, 'column': 2}
+			), row=2, col=3)
+
+		# --- Row 2 Col 4: 交易统计 ---
+		if trade_stats:
+			labels = list(trade_stats.keys())
+			values = list(trade_stats.values())
+			fig.add_trace(go.Bar(
+				x=labels, y=values,
+				marker=dict(color=colors['primary']),
+				showlegend=False
+			), row=2, col=4)
+
+		# --- Row 3 Col 1: 水下曲线 (累计回撤深度) ---
+		if drawdowns is not None and len(drawdowns) > 0:
+			dd = np.array(drawdowns)
+			underwater = np.where(dd > 0, -dd, 0)
+			x_vals = list(dates) if dates is not None else list(range(len(underwater)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=underwater, mode='lines',
+				fill='tozeroy',
+				fillcolor=f'rgba({",".join(str(int(colors["danger"].lstrip("#")[i:i+2], 16)) for i in (0, 2, 4))}, 0.15)',
+				line={'color': colors['danger'], 'width': 1},
+				name='水下曲线',
+				showlegend=False
+			), row=3, col=1)
+
+		# --- Row 3 Col 2: Beta 滚动 ---
+		if returns is not None and benchmark_returns is not None and len(returns) > 60:
+			r = np.array(returns)
+			bm = np.array(benchmark_returns)
+			window = 60
+			roll_betas = []
+			for i in range(window, len(r) + 1):
+				r_win = r[i - window:i]
+				bm_win = bm[i - window:i]
+				cov = np.cov(r_win, bm_win)[0, 1]
+				var = np.var(bm_win)
+				roll_betas.append(cov / var if var > 0 else 0)
+			x_vals = list(dates)[window:] if dates is not None else list(range(len(roll_betas)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=roll_betas, mode='lines',
+				line={'color': colors['info'], 'width': 1.5},
+				name='滚动Beta(60日)',
+				showlegend=False
+			), row=3, col=2)
+			fig.add_hline(y=1.0, line_dash='dash', line_color=colors['secondary'],
+			              annotation_text='Beta=1', row=3, col=2)
+
+		# --- Row 3 Col 3 & 4: 回撤恢复分析 ---
+		if drawdowns is not None and len(drawdowns) > 0:
+			dd = np.array(drawdowns)
+			x_vals = list(dates) if dates is not None else list(range(len(dd)))
+			fig.add_trace(go.Scatter(
+				x=x_vals, y=dd, mode='lines',
+				line={'color': colors['danger'], 'width': 1},
+				name='回撤深度',
+				showlegend=False
+			), row=3, col=3)
+
+			# 恢复天数直方图
+			recovery_periods = []
+			in_drawdown = False
+			start_dd = 0
+			for i, d in enumerate(dd.tolist()):
+				if d > 0 and not in_drawdown:
+					in_drawdown = True
+					start_dd = i
+				elif d == 0 and in_drawdown:
+					in_drawdown = False
+					recovery_periods.append(i - start_dd)
+			if recovery_periods:
+				fig.add_trace(go.Histogram(
+					x=recovery_periods,
+					marker=dict(color=colors['warning']),
+					opacity=0.7,
+					name='恢复天数',
+					showlegend=False
+				), row=3, col=4)
+
+		fig.update_layout(
+			title={
+				'text': '策略绩效仪表盘',
+				'x': 0.5, 'xanchor': 'center',
+				'font': {'size': 22}
+			},
+			template=ChartStyle.get_template(),
+			width=1800,
+			height=1200,
+			plot_bgcolor=colors['background'],
+			paper_bgcolor=colors['background'],
+			font={'color': colors['text']},
+			margin={'l': 60, 'r': 60, 't': 100, 'b': 60},
+			showlegend=False
 		)
 
 		return fig

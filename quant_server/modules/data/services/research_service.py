@@ -115,7 +115,7 @@ class FactorResearchService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		执行因子研究

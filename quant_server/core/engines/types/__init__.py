@@ -57,7 +57,6 @@ from .entities import (
 	RiskAlert,
 	Metric,
 	Alert,
-	EventEntity,
 	SystemConfig,
 	EntityFactory, EngineConfigEntity
 )
@@ -115,7 +114,6 @@ __all__ = [
 	'RiskAlert',
 	'Metric',
 	'Alert',
-	'EventEntity',
 	'EngineConfigEntity',
 	'EngineMetricsEntity',
 	'SystemConfig',

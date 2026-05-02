@@ -351,22 +351,25 @@ class DataCleanService:
 		"""
 		try:
 			# 构建查询条件
-			filters = []
+			kwargs = {"check_type": "clean"}
 			if data_type:
-				filters.append(self.quality_repo.model.data_type == data_type)
-			if start_date:
-				filters.append(self.quality_repo.model.check_date >= start_date)
-			if end_date:
-				filters.append(self.quality_repo.model.check_date <= end_date)
-
-			# 只获取清洗任务（假设check_type为'clean'）
-			filters.append(self.quality_repo.model.check_type == "clean")
+				kwargs["data_type"] = data_type
 
 			# 获取清洗记录
 			clean_tasks = await self.quality_repo.get_many(
-				*filters,
+				**kwargs,
 				limit=limit,
-				order_by=self.quality_repo.model.created_at.desc()
+			)
+			# Post-filter by date range (TODO: add comparison filter support to BaseRepository)
+			if start_date:
+				clean_tasks = [t for t in clean_tasks if hasattr(t, "check_date") and t.check_date >= start_date]
+			if end_date:
+				clean_tasks = [t for t in clean_tasks if hasattr(t, "check_date") and t.check_date <= end_date]
+			# Sort by created_at descending
+			clean_tasks = sorted(
+				clean_tasks,
+				key=lambda x: getattr(x, "created_at", datetime.min),
+				reverse=True,
 			)
 
 			# 转换为响应格式
@@ -410,18 +413,16 @@ class DataCleanService:
 			end_date = datetime.now().date()
 			start_date = end_date - timedelta(days=days)
 
-			# 构建查询条件
-			filters = [
-				self.quality_repo.model.check_date >= start_date,
-				self.quality_repo.model.check_date <= end_date,
-				self.quality_repo.model.check_type == "clean"
-			]
-
+			# 构建查询条件并获取清洗记录
+			kwargs = {"check_type": "clean"}
 			if data_type:
-				filters.append(self.quality_repo.model.data_type == data_type)
-
-			# 获取清洗记录
-			clean_tasks = await self.quality_repo.get_many(*filters)
+				kwargs["data_type"] = data_type
+			clean_tasks = await self.quality_repo.get_many(**kwargs)
+			# Post-filter by date range (TODO: add comparison filter support to BaseRepository)
+			clean_tasks = [
+				t for t in clean_tasks
+				if hasattr(t, "check_date") and start_date <= t.check_date <= end_date
+			]
 
 			if not clean_tasks:
 				return {

@@ -579,8 +579,13 @@ class DataQualityService:
 			quality_checks = await self.quality_repo.get_many(
 				skip=skip,
 				limit=limit,
-				order_by="-created_at",
 				**filters
+			)
+			# Sort by created_at descending (TODO: add order_by support to BaseRepository)
+			quality_checks = sorted(
+				quality_checks,
+				key=lambda x: getattr(x, "created_at", datetime.min),
+				reverse=True,
 			)
 
 			# 转换为响应格式
@@ -906,8 +911,13 @@ class DataQualityService:
 			quality_checks = await self.quality_repo.get_many(
 				skip=0,
 				limit=1000,
-				order_by="-created_at",
 				**filters
+			)
+			# Sort by created_at descending (TODO: add order_by support to BaseRepository)
+			quality_checks = sorted(
+				quality_checks,
+				key=lambda x: getattr(x, "created_at", datetime.min),
+				reverse=True,
 			)
 
 			# 按数据类型分组统计

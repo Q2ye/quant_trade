@@ -14,7 +14,7 @@ from quant_server.shared.database.models.business_models import TradeFee
 from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
 from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
 from quant_server.shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
-from quant_server.shared.utils.validation import validate_amount
+from quant_server.utils.core_utils.data_utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
 

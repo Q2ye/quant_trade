@@ -23,7 +23,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 
-from quant_server.core.engines.types.entities import EngineConfigEntity, EventEntity
+from quant_server.core.events import BaseEvent
+from quant_server.core.engines.types.entities import EngineConfigEntity
 from quant_server.core.engines.types.enums import (
     EngineType,
     EngineCategory,
@@ -353,7 +354,7 @@ class FactorResearchEngine(EngineBase):
             "active_workers": len([w for w in self._task_workers if not w.done()])
         })
 
-    async def _on_handle_event(self, event: EventEntity):
+    async def _on_handle_event(self, event: BaseEvent):
         """
         引擎特定的事件处理逻辑
 
@@ -1089,7 +1090,7 @@ class FactorResearchEngine(EngineBase):
         self._task_workers = []
         for i in range(self._max_workers):
             worker = asyncio.create_task(
-                self._task_worker_loop(i),
+                self._task_worker_loop(str(i)),
                 name=f"research_task_worker_{i}"
             )
             self._task_workers.append(worker)

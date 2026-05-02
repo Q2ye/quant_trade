@@ -2,8 +2,7 @@
 """
 监控模块事件数据类型
 
-所有监控事件继承自 core.engines.types.entities.EventEntity，
-通过 EventEngine 异步发布/订阅。
+所有监控事件通过 EventEngine 异步发布/订阅。
 """
 
 from dataclasses import dataclass, field

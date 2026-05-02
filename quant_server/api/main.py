@@ -11,7 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from .routers import data_router, strategy_router, health_router, backtest_router, trade_router, monitor_router
+from .routers import (
+    data_router, strategy_router, trade_router, backtest_router,
+    account_router, analysis_router, monitor_router, system_router, health_router,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -142,10 +145,10 @@ def create_app (
 	app.include_router(strategy_router, prefix="/api/strategy")
 	app.include_router(trade_router, prefix="/api/trade")
 	app.include_router(backtest_router, prefix="/api/backtest")
-	# app.include_router(account_router, prefix="/api/account")
-	# app.include_router(analysis_router, prefix="/api/analysis")
+	app.include_router(account_router, prefix="/api/account")
+	app.include_router(analysis_router, prefix="/api/analysis")
 	app.include_router(monitor_router, prefix="/api/monitor")
-	# app.include_router(system_router, prefix="/api/system")
+	app.include_router(system_router, prefix="/api/system")
 	app.include_router(health_router, prefix="/health")
 
 	return app

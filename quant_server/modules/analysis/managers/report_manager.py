@@ -6,21 +6,18 @@
 负责分析报告的生成、存储、查询和导出。
 """
 
-from typing import Dict, List, Optional, Any, BinaryIO
-from datetime import datetime, date, timedelta
 import json
-import csv
-import pandas as pd
-from sqlalchemy.ext.asyncio import AsyncSession
-import aiofiles
+from datetime import datetime, date, timedelta
 from pathlib import Path
+from typing import Dict, List, Optional, Any
 
-from modules.analysis.models import AnalysisReport
-from shared.database.repositories.base import BaseRepository
-from shared.database.repositories.strategy_repo import StrategyRepository
-from shared.database.repositories.account_repo import AccountRepository
-from modules.analysis.visualizers.chart_generator import ChartGenerator
-from modules.analysis.visualizers.report_generator import ReportGenerator
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quant_server.modules.analysis.models import AnalysisReport
+from quant_server.modules.analysis.visualizers.chart_generator import ChartGenerator
+from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
+from quant_server.shared.database.repositories import AccountRepository, StrategyRepository
+from quant_server.shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
 
 
 class ReportManager:
@@ -30,8 +27,9 @@ class ReportManager:
 			self,
 			session: AsyncSession,
 			report_storage_path: str = "./reports",
-			strategy_repo: StrategyRepository = None,
-			account_repo: AccountRepository = None
+			strategy_repo: Optional[StrategyRepository] = None,
+			account_repo: Optional[AccountRepository] = None,
+			report_repo: Optional[AnalysisReportRepository] = None
 	):
 		"""
 		初始化报告管理器
@@ -41,6 +39,7 @@ class ReportManager:
 			report_storage_path: 报告存储路径
 			strategy_repo: 策略Repository
 			account_repo: 账户Repository
+			report_repo: 分析报告Repository（DB持久化）
 		"""
 		self.session = session
 		self.report_storage_path = Path(report_storage_path)
@@ -51,6 +50,7 @@ class ReportManager:
 		# 初始化Repository
 		self.strategy_repo = strategy_repo or StrategyRepository(session)
 		self.account_repo = account_repo or AccountRepository(session)
+		self.report_repo = report_repo or AnalysisReportRepository(session)
 
 		# 初始化生成器
 		self.chart_generator = ChartGenerator()
@@ -188,8 +188,8 @@ class ReportManager:
 			for file_path in report_files[offset:offset + limit]:
 				try:
 					# 从文件加载报告
-					async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-						content = await f.read()
+					with open(file_path, 'r', encoding='utf-8') as f:
+						content = f.read()
 						report_data = json.loads(content)
 
 					# 创建报告对象
@@ -331,6 +331,722 @@ class ReportManager:
 		except Exception as e:
 			raise ValueError(f"清理旧报告失败: {str(e)}")
 
+	async def update_report (
+			self,
+			report_id: str,
+			title: Optional[str] = None,
+			description: Optional[str] = None,
+			is_public: Optional[bool] = None,
+			tags: Optional[List[str]] = None
+	) -> bool:
+		"""更新报告元数据"""
+		try:
+			# 更新缓存
+			if report_id in self.report_cache:
+				report = self.report_cache[report_id]
+				if title is not None:
+					report.title = title
+				if description is not None:
+					report.description = description
+
+			# 更新文件
+			report_file = self.report_storage_path / f"{report_id}.json"
+			if report_file.exists():
+				with open(report_file, 'r', encoding='utf-8') as f:
+					file_data = json.loads(f.read())
+
+				if title is not None:
+					file_data['title'] = title
+				if description is not None:
+					file_data['description'] = description
+				if is_public is not None:
+					file_data['is_public'] = is_public
+				if tags is not None:
+					file_data['tags'] = tags
+
+				with open(report_file, 'w', encoding='utf-8') as f:
+					f.write(json.dumps(file_data, ensure_ascii=False, indent=2))
+
+			# 更新数据库
+			update_data: Dict[str, Any] = {}
+			if title is not None:
+				update_data['report_name'] = title
+			if is_public is not None:
+				update_data['is_public'] = is_public
+			if tags is not None:
+				update_data['tags'] = tags
+
+			if update_data:
+				await self.report_repo.update(report_id, update_data)
+
+			return True
+
+		except Exception as e:
+			raise ValueError(f"更新报告失败: {str(e)}")
+
+	async def update_report_status (
+			self,
+			report_id: str,
+			status: str,
+			progress: Optional[float] = None,
+			error_message: Optional[str] = None,
+			file_path: Optional[str] = None,
+			file_size: Optional[int] = None
+	) -> bool:
+		"""更新报告状态"""
+		try:
+			# 更新缓存
+			if report_id in self.report_cache:
+				report = self.report_cache[report_id]
+				report.status = status
+				if progress is not None:
+					report.progress = progress
+				if error_message is not None:
+					report.error_message = error_message
+				if status == 'completed':
+					report.completed_at = datetime.now()
+
+			# 更新数据库
+			return await self.report_repo.update_report_status(
+				report_id=report_id,
+				status=status,
+				file_path=file_path,
+				file_size=file_size,
+				error_message=error_message
+			)
+
+		except Exception as e:
+			raise ValueError(f"更新报告状态失败: {str(e)}")
+
+	async def get_report_statistics (
+			self,
+			days: Optional[int] = None
+	) -> Dict[str, Any]:
+		"""获取报告统计信息"""
+		try:
+			return await self.report_repo.get_report_statistics(days=days)
+		except Exception as e:
+			raise ValueError(f"获取报告统计失败: {str(e)}")
+
+	async def search_reports (
+			self,
+			keyword: str,
+			report_type: Optional[str] = None,
+			status: Optional[str] = None,
+			is_public: Optional[bool] = None,
+			limit: int = 50
+	) -> List[Dict[str, Any]]:
+		"""搜索报告"""
+		try:
+			reports = await self.report_repo.search_reports(
+				keyword=keyword,
+				report_type=report_type,
+				status=status,
+				is_public=is_public,
+				limit=limit
+			)
+			return [self._report_to_summary(r) for r in reports]
+		except Exception as e:
+			raise ValueError(f"搜索报告失败: {str(e)}")
+
+	async def get_reports_by_type (
+			self,
+			report_type: str,
+			only_public: bool = False,
+			limit: int = 100,
+			offset: int = 0
+	) -> Dict[str, Any]:
+		"""按类型获取报告"""
+		try:
+			reports, total = await self.report_repo.get_reports_by_type(
+				report_type=report_type,
+				only_public=only_public,
+				limit=limit,
+				offset=offset
+			)
+			return {
+				'reports': [self._report_to_summary(r) for r in reports],
+				'total': total,
+				'limit': limit,
+				'offset': offset
+			}
+		except Exception as e:
+			raise ValueError(f"获取类型报告失败: {str(e)}")
+
+	async def get_recent_reports (
+			self,
+			days: int = 7,
+			report_type: Optional[str] = None,
+			status: Optional[str] = None,
+			limit: int = 50
+	) -> List[Dict[str, Any]]:
+		"""获取最近报告"""
+		try:
+			reports = await self.report_repo.get_recent_reports(
+				days=days,
+				report_type=report_type,
+				status=status,
+				limit=limit
+			)
+			return [self._report_to_summary(r) for r in reports]
+		except Exception as e:
+			raise ValueError(f"获取最近报告失败: {str(e)}")
+
+	async def add_report_tag (
+			self,
+			report_id: str,
+			tag: str
+	) -> bool:
+		"""为报告添加标签"""
+		try:
+			# 更新文件中的标签
+			report_file = self.report_storage_path / f"{report_id}.json"
+			if report_file.exists():
+				with open(report_file, 'r', encoding='utf-8') as f:
+					file_data = json.loads(f.read())
+				current_tags = file_data.get('tags', [])
+				if tag not in current_tags:
+					current_tags.append(tag)
+					file_data['tags'] = current_tags
+					with open(report_file, 'w', encoding='utf-8') as f:
+						f.write(json.dumps(file_data, ensure_ascii=False, indent=2))
+
+			return await self.report_repo.add_report_tag(report_id, tag)
+		except Exception as e:
+			raise ValueError(f"添加报告标签失败: {str(e)}")
+
+	async def remove_report_tag (
+			self,
+			report_id: str,
+			tag: str
+	) -> bool:
+		"""移除报告标签"""
+		try:
+			# 更新文件中的标签
+			report_file = self.report_storage_path / f"{report_id}.json"
+			if report_file.exists():
+				with open(report_file, 'r', encoding='utf-8') as f:
+					file_data = json.loads(f.read())
+				current_tags = file_data.get('tags', [])
+				if tag in current_tags:
+					current_tags.remove(tag)
+					file_data['tags'] = current_tags
+					with open(report_file, 'w', encoding='utf-8') as f:
+						f.write(json.dumps(file_data, ensure_ascii=False, indent=2))
+
+			return await self.report_repo.remove_report_tag(report_id, tag)
+		except Exception as e:
+			raise ValueError(f"移除报告标签失败: {str(e)}")
+
+	async def get_report_summary (
+			self,
+			report_id: str
+	) -> Optional[Dict[str, Any]]:
+		"""获取报告摘要（不含图表大数据）"""
+		try:
+			# 先检查缓存
+			if report_id in self.report_cache:
+				report = self.report_cache[report_id]
+				return {
+					'report_id': report.report_id,
+					'user_id': report.user_id,
+					'report_type': report.report_type,
+					'title': report.title,
+					'description': report.description,
+					'status': report.status,
+					'progress': report.progress,
+					'created_at': report.created_at.isoformat(),
+					'completed_at': report.completed_at.isoformat() if report.completed_at else None,
+					'chart_count': len(report.charts) if report.charts else 0
+				}
+
+			# 从文件加载摘要
+			report_file = self.report_storage_path / f"{report_id}.json"
+			if not report_file.exists():
+				return None
+
+			with open(report_file, 'r', encoding='utf-8') as f:
+				file_data = json.loads(f.read())
+
+			return {
+				'report_id': file_data.get('report_id'),
+				'user_id': file_data.get('user_id'),
+				'report_type': file_data.get('report_type'),
+				'title': file_data.get('title'),
+				'description': file_data.get('description'),
+				'status': file_data.get('status'),
+				'progress': file_data.get('progress'),
+				'created_at': file_data.get('created_at'),
+				'completed_at': file_data.get('completed_at'),
+				'chart_count': len(file_data.get('charts', []))
+			}
+
+		except Exception as e:
+			raise ValueError(f"获取报告摘要失败: {str(e)}")
+
+	async def regenerate_report (
+			self,
+			report_id: str
+	) -> AnalysisReport:
+		"""使用已有参数重新生成报告"""
+		try:
+			existing = await self.get_report(report_id)
+			if not existing:
+				raise ValueError(f"报告不存在: {report_id}")
+
+			# 还原参数
+			report_data = {
+				'parameters': existing.parameters,
+				'performance_metrics': existing.performance_metrics.to_dict() if existing.performance_metrics else {},
+			}
+
+			return await self.generate_report(
+				report_data=report_data,
+				report_type=existing.report_type,
+				user_id=existing.user_id,
+				title=existing.title,
+				description=existing.description
+			)
+
+		except Exception as e:
+			raise ValueError(f"重新生成报告失败: {str(e)}")
+
+	async def duplicate_report (
+			self,
+			report_id: str,
+			new_title: Optional[str] = None
+	) -> AnalysisReport:
+		"""克隆报告"""
+		try:
+			existing = await self.get_report(report_id)
+			if not existing:
+				raise ValueError(f"报告不存在: {report_id}")
+
+			report_data = existing.to_dict()
+			report_data['parameters'] = existing.parameters
+
+			new_title = new_title or f"{existing.title} (副本)"
+
+			return await self.generate_report(
+				report_data=report_data,
+				report_type=existing.report_type,
+				user_id=existing.user_id,
+				title=new_title,
+				description=existing.description
+			)
+
+		except Exception as e:
+			raise ValueError(f"克隆报告失败: {str(e)}")
+
+	async def batch_delete_reports (
+			self,
+			report_ids: List[str]
+	) -> Dict[str, Any]:
+		"""批量删除报告"""
+		try:
+			success_count = 0
+			failed_ids: List[str] = []
+
+			for report_id in report_ids:
+				try:
+					await self.delete_report(report_id)
+					success_count += 1
+				except (ValueError, IOError):
+					failed_ids.append(report_id)
+
+			return {
+				'total': len(report_ids),
+				'success': success_count,
+				'failed': len(failed_ids),
+				'failed_ids': failed_ids
+			}
+
+		except Exception as e:
+			raise ValueError(f"批量删除报告失败: {str(e)}")
+
+	@staticmethod
+	async def get_available_report_types () -> List[Dict[str, Any]]:
+		"""获取可用的报告类型"""
+		return [
+			{
+				'type': 'performance',
+				'name': '绩效报告',
+				'description': '分析策略或账户的绩效指标，含净值曲线、回撤、夏普比率等',
+				'formats': ['json', 'csv', 'pdf', 'html'],
+				'icon': 'chart-line'
+			},
+			{
+				'type': 'attribution',
+				'name': '归因报告',
+				'description': '收益归因分析，含Brinson归因和因子归因',
+				'formats': ['json', 'pdf', 'html'],
+				'icon': 'pie-chart'
+			},
+			{
+				'type': 'comparison',
+				'name': '对比报告',
+				'description': '多策略/基准对比分析，含相关性热力图',
+				'formats': ['json', 'pdf', 'html'],
+				'icon': 'bar-chart'
+			},
+			{
+				'type': 'trade_analysis',
+				'name': '交易分析报告',
+				'description': '交易行为分析，含盈亏分布和时间分布',
+				'formats': ['json', 'csv', 'pdf', 'html'],
+				'icon': 'activity'
+			},
+			{
+				'type': 'comprehensive',
+				'name': '综合分析报告',
+				'description': '全面的多维度分析，整合绩效、归因、交易',
+				'formats': ['json', 'pdf', 'html'],
+				'icon': 'file-text'
+			}
+		]
+
+	@staticmethod
+	async def get_available_export_formats () -> List[Dict[str, Any]]:
+		"""获取可用的导出格式"""
+		return [
+			{
+				'format': 'json',
+				'name': 'JSON',
+				'description': '结构化数据格式，适合程序处理',
+				'extension': '.json',
+				'mime_type': 'application/json'
+			},
+			{
+				'format': 'csv',
+				'name': 'CSV',
+				'description': '表格数据格式，适合Excel打开',
+				'extension': '.csv',
+				'mime_type': 'text/csv'
+			},
+			{
+				'format': 'pdf',
+				'name': 'PDF',
+				'description': '便携式文档，适合打印和分享',
+				'extension': '.pdf',
+				'mime_type': 'application/pdf'
+			},
+			{
+				'format': 'html',
+				'name': 'HTML',
+				'description': '网页格式，适合浏览器查看',
+				'extension': '.html',
+				'mime_type': 'text/html'
+			}
+		]
+
+	@staticmethod
+	def _report_to_summary (db_report) -> Dict[str, Any]:
+		"""将ORM报告对象转换为摘要字典"""
+		return {
+			'id': db_report.id,
+			'report_type': db_report.report_type,
+			'report_name': db_report.report_name,
+			'status': db_report.status,
+			'format': db_report.format,
+			'generated_by': db_report.generated_by,
+			'is_public': db_report.is_public,
+			'tags': db_report.tags or [],
+			'file_size': db_report.file_size,
+			'created_at': db_report.created_at.isoformat() if db_report.created_at else None,
+			'generated_at': db_report.generated_at.isoformat() if hasattr(db_report,
+			                                                              'generated_at') and db_report.generated_at else None
+		}
+
+	async def save_report_to_db (self, report: AnalysisReport) -> Optional[str]:
+		"""将报告持久化到数据库"""
+		try:
+			report_config = {
+				'report_type': report.report_type,
+				'title': report.title,
+				'parameters': report.parameters,
+			}
+			report_data = report.to_dict()
+
+			db_report = await self.report_repo.create_report(
+				report_type=report.report_type,
+				report_name=report.title,
+				report_config=report_config,
+				report_data=report_data,
+				generated_by=report.user_id,
+				report_format='json',
+				is_public=False
+			)
+			return db_report.id
+		except Exception as e:
+			raise ValueError(f"保存报告到数据库失败: {str(e)}")
+
+	async def load_report_from_db (self, report_id: str) -> Optional[Dict[str, Any]]:
+		"""从数据库加载报告"""
+		try:
+			db_report = await self.report_repo.get(report_id)
+			if not db_report:
+				return None
+			return {
+				'id': db_report.id,
+				'report_type': db_report.report_type,
+				'report_name': db_report.report_name,
+				'status': db_report.status,
+				'format': db_report.format,
+				'report_data': db_report.report_data,
+				'report_config': db_report.report_config,
+				'generated_by': db_report.generated_by,
+				'is_public': db_report.is_public,
+				'tags': db_report.tags or [],
+				'file_path': db_report.file_path,
+				'file_size': db_report.file_size,
+				'created_at': db_report.created_at.isoformat() if db_report.created_at else None,
+				'generated_at': db_report.generated_at.isoformat() if hasattr(db_report,
+				                                                              'generated_at') and db_report.generated_at else None
+			}
+		except Exception as e:
+			raise ValueError(f"从数据库加载报告失败: {str(e)}")
+
+	async def get_user_reports (
+			self,
+			user_id: str,
+			report_type: Optional[str] = None,
+			limit: int = 100,
+			offset: int = 0
+	) -> Dict[str, Any]:
+		"""获取用户相关报告（含公开报告）"""
+		try:
+			reports, total = await self.report_repo.get_user_reports(
+				user_id=user_id,
+				report_type=report_type,
+				limit=limit,
+				offset=offset
+			)
+			return {
+				'reports': [self._report_to_summary(r) for r in reports],
+				'total': total,
+				'limit': limit,
+				'offset': offset
+			}
+		except Exception as e:
+			raise ValueError(f"获取用户报告失败: {str(e)}")
+
+	async def get_reports_by_tags (
+			self,
+			tags: List[str],
+			match_all: bool = False,
+			limit: int = 50
+	) -> List[Dict[str, Any]]:
+		"""根据标签获取报告"""
+		try:
+			reports = await self.report_repo.get_reports_by_tags(
+				tags=tags,
+				match_all=match_all,
+				limit=limit
+			)
+			return [self._report_to_summary(r) for r in reports]
+		except Exception as e:
+			raise ValueError(f"根据标签获取报告失败: {str(e)}")
+
+	async def get_report_trend (
+			self,
+			days: int = 30,
+			report_type: Optional[str] = None
+	) -> List[Dict[str, Any]]:
+		"""获取报告生成趋势"""
+		try:
+			return await self.report_repo.get_report_trend(
+				days=days,
+				report_type=report_type
+			)
+		except Exception as e:
+			raise ValueError(f"获取报告趋势失败: {str(e)}")
+
+	@staticmethod
+	def validate_report_parameters (
+			report_type: str,
+			parameters: Dict[str, Any]
+	) -> Dict[str, Any]:
+		"""验证报告参数，返回验证结果"""
+		errors = []
+		warnings = []
+
+		valid_types = ['performance', 'attribution', 'comparison', 'trade_analysis', 'comprehensive']
+		if report_type not in valid_types:
+			errors.append(f"不支持的报告类型: {report_type}，有效类型: {', '.join(valid_types)}")
+
+		if report_type in ('performance', 'comprehensive'):
+			entity_type = parameters.get('entity_type')
+			if entity_type and entity_type not in ('strategy', 'account', 'portfolio'):
+				errors.append(f"不支持的实体类型: {entity_type}")
+			if not parameters.get('entity_id') and not parameters.get('strategy_id'):
+				errors.append("缺少实体ID（entity_id 或 strategy_id）")
+
+		if report_type == 'attribution':
+			if not parameters.get('portfolio_id'):
+				errors.append("归因分析缺少 portfolio_id")
+			model = parameters.get('model', 'brinson')
+			if model == 'brinson' and not parameters.get('benchmark'):
+				warnings.append("Brinson归因建议提供基准")
+
+		if report_type == 'comparison':
+			if not parameters.get('strategy_ids') and not parameters.get('category'):
+				errors.append("对比分析需要 strategy_ids 或 category")
+
+		if report_type == 'trade_analysis':
+			if not parameters.get('strategy_id') and not parameters.get('account_id'):
+				errors.append("交易分析需要 strategy_id 或 account_id")
+
+		start_date = parameters.get('start_date')
+		end_date = parameters.get('end_date')
+		if start_date and end_date:
+			from datetime import date
+			if isinstance(start_date, str):
+				start_date = date.fromisoformat(start_date)
+			if isinstance(end_date, str):
+				end_date = date.fromisoformat(end_date)
+			if start_date > end_date:
+				errors.append("开始日期不能晚于结束日期")
+
+		return {
+			'valid': len(errors) == 0,
+			'errors': errors,
+			'warnings': warnings
+		}
+
+	async def archive_reports (
+			self,
+			report_ids: Optional[List[str]] = None,
+			days_older_than: Optional[int] = 90,
+			archive_path: Optional[str] = None
+	) -> Dict[str, Any]:
+		"""归档报告到压缩文件"""
+		import zipfile
+
+		try:
+			archive_path = Path(archive_path or str(self.report_storage_path / 'archives'))
+			archive_path.mkdir(parents=True, exist_ok=True)
+
+			# 确定要归档的报告
+			if report_ids:
+				files_to_archive = [
+					self.report_storage_path / f"{rid}.json"
+					for rid in report_ids
+				]
+			else:
+				cutoff = datetime.now() - timedelta(days=days_older_than)
+				files_to_archive = []
+				for f in self.report_storage_path.glob("*.json"):
+					if f.name.startswith('archive_') or f.name.startswith('archives'):
+						continue
+					stat = f.stat()
+					if datetime.fromtimestamp(stat.st_mtime) < cutoff:
+						files_to_archive.append(f)
+
+			if not files_to_archive:
+				return {'archived': 0, 'archive_file': None, 'message': '没有需要归档的报告'}
+
+			# 创建压缩文件
+			archive_name = f"archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+			archive_file = archive_path / archive_name
+
+			archived_count = 0
+			with zipfile.ZipFile(str(archive_file), 'w', zipfile.ZIP_DEFLATED) as zf:
+				for file_path in files_to_archive:
+					if file_path.exists():
+						zf.write(str(file_path), file_path.name)
+						archived_count += 1
+
+			return {
+				'archived': archived_count,
+				'archive_file': str(archive_file),
+				'archive_size': archive_file.stat().st_size if archive_file.exists() else 0
+			}
+
+		except Exception as e:
+			raise ValueError(f"归档报告失败: {str(e)}")
+
+	async def compare_reports (
+			self,
+			report_id_1: str,
+			report_id_2: str
+	) -> Dict[str, Any]:
+		"""对比两个报告的摘要"""
+		try:
+			summary_1 = await self.get_report_summary(report_id_1)
+			summary_2 = await self.get_report_summary(report_id_2)
+
+			if not summary_1 or not summary_2:
+				raise ValueError("一个或多个报告不存在")
+
+			return {
+				'report_1': summary_1,
+				'report_2': summary_2,
+				'comparison': {
+					'same_type': summary_1.get('report_type') == summary_2.get('report_type'),
+					'same_status': summary_1.get('status') == summary_2.get('status'),
+					'chart_count_diff': (
+							summary_1.get('chart_count', 0) - summary_2.get('chart_count', 0)
+					)
+				}
+			}
+
+		except Exception as e:
+			raise ValueError(f"对比报告失败: {str(e)}")
+
+	async def preview_report (
+			self,
+			report_id: str,
+			output_format: str = 'html'
+	) -> Optional[str]:
+		"""预览报告内容（返回字符串）"""
+		try:
+			report = await self.get_report(report_id)
+			if not report:
+				return None
+
+			if output_format == 'html':
+				content = await self.report_generator.generate_html_report(report)
+				return content
+			elif output_format == 'json':
+				return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+			else:
+				raise ValueError(f"不支持的预览格式: {output_format}")
+
+		except Exception as e:
+			raise ValueError(f"预览报告失败: {str(e)}")
+
+	async def get_report_data_section (
+			self,
+			report_id: str,
+			section: str
+	) -> Optional[Dict[str, Any]]:
+		"""提取报告的特定数据部分"""
+		try:
+			report = await self.get_report(report_id)
+			if not report:
+				return None
+
+			section_map = {
+				'performance_metrics': report.performance_metrics,
+				'risk_metrics': report.risk_metrics,
+				'attribution_analysis': report.attribution_analysis,
+				'comparison_analysis': report.comparison_analysis,
+				'trade_analysis': report.trade_analysis,
+				'charts': report.charts,
+				'parameters': report.parameters,
+			}
+
+			value = section_map.get(section)
+			if value is None:
+				return None
+
+			if hasattr(value, 'to_dict'):
+				return value.to_dict()
+			return value if isinstance(value, dict) else {'data': value}
+
+		except Exception as e:
+			raise ValueError(f"获取报告数据部分失败: {str(e)}")
+
 	async def _add_performance_charts (
 			self,
 			report: AnalysisReport,
@@ -388,12 +1104,9 @@ class ReportManager:
 					monthly_returns = metrics['monthly_returns']
 
 					if monthly_returns:
-						# 生成月度收益热力图
-						chart_data = {
-							'monthly_returns': monthly_returns
-						}
-
-						chart = self.chart_generator.generate_monthly_returns_heatmap(chart_data)
+						import pandas as pd
+						returns_df = pd.DataFrame(monthly_returns)
+						chart = self.chart_generator.generate_monthly_returns_heatmap(returns_df)
 						charts.append(chart)
 
 			# 绩效指标雷达图
@@ -634,8 +1347,8 @@ class ReportManager:
 			report_dict = report.to_dict()
 
 			# 保存到文件
-			async with aiofiles.open(report_file, 'w', encoding='utf-8') as f:
-				await f.write(json.dumps(report_dict, ensure_ascii=False, indent=2))
+			with open(report_file, 'w', encoding='utf-8') as f:
+				f.write(json.dumps(report_dict, ensure_ascii=False, indent=2))
 
 			# 添加到导出文件列表
 			report.export_files['json'] = str(report_file)
@@ -661,8 +1374,8 @@ class ReportManager:
 				return None
 
 			# 从文件加载
-			async with aiofiles.open(report_file, 'r', encoding='utf-8') as f:
-				content = await f.read()
+			with open(report_file, 'r', encoding='utf-8') as f:
+				content = f.read()
 				report_data = json.loads(content)
 
 			# 重新创建报告对象
@@ -694,7 +1407,8 @@ class ReportManager:
 			print(f"从文件加载报告失败 {report_id}: {str(e)}")
 			return None
 
-	async def _export_json (self, report: AnalysisReport) -> bytes:
+	@staticmethod
+	async def _export_json (report: AnalysisReport) -> bytes:
 		"""
 		导出为JSON格式
 
@@ -711,7 +1425,8 @@ class ReportManager:
 		except Exception as e:
 			raise ValueError(f"导出JSON失败: {str(e)}")
 
-	async def _export_csv (self, report: AnalysisReport) -> bytes:
+	@staticmethod
+	async def _export_csv (report: AnalysisReport) -> bytes:
 		"""
 		导出为CSV格式
 
@@ -722,25 +1437,23 @@ class ReportManager:
 			CSV字节数据
 		"""
 		try:
-			# 将报告数据转换为扁平结构
-			csv_data = []
+			csv_data = [
+				["报告ID", report.report_id],
+				["报告类型", report.report_type],
+				["标题", report.title],
+				["创建时间", report.created_at.isoformat()]
+			]
 
-			# 添加基本报告信息
-			csv_data.append(["报告ID", report.report_id])
-			csv_data.append(["报告类型", report.report_type])
-			csv_data.append(["标题", report.title])
-			csv_data.append(["创建时间", report.created_at.isoformat()])
-
-			# 根据报告类型添加具体数据
 			if report.report_type == 'performance' and report.performance_metrics:
 				metrics = report.performance_metrics
-
-				csv_data.append([])
-				csv_data.append(["绩效指标"])
-				csv_data.append(["总收益", f"{float(metrics.total_return):.2%}"])
-				csv_data.append(["年化收益", f"{float(metrics.annual_return):.2%}"])
-				csv_data.append(["夏普比率", f"{float(metrics.sharpe_ratio):.2f}"])
-				csv_data.append(["最大回撤", f"{float(metrics.max_drawdown):.2%}"])
+				csv_data.extend([
+					[],
+					["绩效指标"],
+					["总收益", f"{float(metrics.total_return):.2%}"],
+					["年化收益", f"{float(metrics.annual_return):.2%}"],
+					["夏普比率", f"{float(metrics.sharpe_ratio):.2f}"],
+					["最大回撤", f"{float(metrics.max_drawdown):.2%}"]
+				])
 
 			# 转换为CSV字符串
 			output = ""

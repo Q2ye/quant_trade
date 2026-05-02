@@ -2,7 +2,7 @@
 """
 报告生成任务模块
 负责异步生成各种分析报告，包括绩效报告、风险报告、比较报告等
-位置：quant_server/modules/events/tasks/report_tasks.py
+位置：quant_server/modules/analysis/tasks/report_tasks.py
 """
 
 import logging
@@ -10,16 +10,16 @@ import uuid
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 
-from quant_server.core.events import EventEngine
+from quant_server.core.engines.system.event_engine import EventEngine
 from quant_server.core.events.system_events import ReportGeneratedEvent
 from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
-from quant_server.shared.database.repositories.base import BaseRepository
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository
 
 
 class ReportTasks:
 	"""报告生成任务类"""
 
-	def __init__ (self,
+	def __init__(self,
 	              event_engine: EventEngine,
 	              repositories: Dict[str, BaseRepository],
 	              config: Dict[str, Any] = None):
@@ -104,7 +104,7 @@ class ReportTasks:
 				)
 
 			# 5. 发布事件
-			self.event_engine.put(
+			await self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='performance',
@@ -186,7 +186,7 @@ class ReportTasks:
 				)
 
 			# 5. 发布事件
-			self.event_engine.put(
+			await self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='risk',
@@ -264,7 +264,7 @@ class ReportTasks:
 				)
 
 			# 4. 发布事件
-			self.event_engine.put(
+			await self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='comparison',
@@ -334,7 +334,7 @@ class ReportTasks:
 				)
 
 			# 4. 发布事件
-			self.event_engine.put(
+			await self.event_engine.put(
 				ReportGeneratedEvent(
 					task_id=task_id,
 					report_type='custom',
@@ -365,7 +365,7 @@ class ReportTasks:
 			}
 
 	@staticmethod
-	def _determine_report_period (
+	def _determine_report_period(
 			report_type: str,
 			start_date: Optional[date],
 			end_date: Optional[date]) -> Dict[str, date]:
@@ -466,10 +466,11 @@ class ReportTasks:
 			if self.trade_repo:
 				trades = await self.trade_repo.get_many(
 					strategy_id=strategy_id,
-					trade_date__gte=start_date,
-					trade_date__lte=end_date,
+					skip=0,
 					limit=1000
 				)
+				trades = [t for t in trades if hasattr(t, "trade_date")
+				          and start_date <= getattr(t, "trade_date") <= end_date]
 				data['trade_data'] = [
 					{
 						'trade_id': getattr(t, 'trade_id', getattr(t, 'id', '')),
@@ -488,9 +489,11 @@ class ReportTasks:
 			if self.performance_repo and strategy_id:
 				performance_records = await self.performance_repo.get_many(
 					strategy_id=strategy_id,
-					trade_date__gte=start_date,
-					trade_date__lte=end_date
+					skip=0,
+					limit=1000
 				)
+				performance_records = [p for p in performance_records if hasattr(p, "trade_date")
+				                       and start_date <= getattr(p, "trade_date") <= end_date]
 
 				if performance_records:
 					# 计算汇总指标
@@ -591,8 +594,13 @@ class ReportTasks:
 			if self.backtest_repo:
 				backtests = await self.backtest_repo.get_many(
 					strategy_id=strategy_id,
-					limit=5,
-					order_by='completed_at'
+					skip=0,
+					limit=5
+				)
+				backtests = sorted(
+					backtests,
+					key=lambda x: getattr(x, "completed_at", datetime.min),
+					reverse=True,
 				)
 
 				if backtests:
@@ -603,8 +611,13 @@ class ReportTasks:
 			if self.trade_repo:
 				recent_trades = await self.trade_repo.get_many(
 					strategy_id=strategy_id,
-					limit=50,
-					order_by='trade_time'
+					skip=0,
+					limit=50
+				)
+				recent_trades = sorted(
+					recent_trades,
+					key=lambda x: getattr(x, "trade_time", datetime.min),
+					reverse=True,
 				)
 
 				data['recent_trades'] = [

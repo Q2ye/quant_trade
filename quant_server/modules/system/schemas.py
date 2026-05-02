@@ -3,69 +3,172 @@
 系统模块Pydantic模型
 API请求/响应模型定义
 """
-from pydantic import BaseModel, Field
-from quant_server.utils.api_utils.pagination_config import PaginationParams
-
 from typing import Optional, List, Any, Dict
-from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 
 class SystemStatusResponse(BaseModel):
-    """系统状态响应"""
-    success: bool = Field(default=True)
-    data: Dict[str, Any] = Field(default_factory=dict)
+	"""系统状态响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SystemLogsRequest(BaseModel):
-    """系统日志请求"""
-    log_level: Optional[str] = Field(default=None, description="日志级别")
-    start_date: Optional[str] = Field(default=None, description="开始日期")
-    end_date: Optional[str] = Field(default=None, description="结束日期")
+	"""系统日志请求"""
+	log_level: Optional[str] = Field(default=None, description="日志级别")
+	start_date: Optional[str] = Field(default=None, description="开始日期")
+	end_date: Optional[str] = Field(default=None, description="结束日期")
 
 
 class SystemLogsResponse(BaseModel):
-    """系统日志响应"""
-    success: bool = Field(default=True)
-    data: List[Dict[str, Any]] = Field(default_factory=list)
-    pagination: Dict[str, int] = Field(default_factory=dict)
+	"""系统日志响应"""
+	success: bool = Field(default=True)
+	data: List[Dict[str, Any]] = Field(default_factory=list)
+	pagination: Dict[str, int] = Field(default_factory=dict)
 
 
 class DataSyncRequest(BaseModel):
-    """数据同步请求"""
-    sync_type: str = Field(..., description="同步类型")
-    data_source: Optional[str] = Field(default=None, description="数据源")
+	"""数据同步请求"""
+	sync_type: str = Field(..., description="同步类型")
+	data_source: Optional[str] = Field(default=None, description="数据源")
 
 
 class DataSyncResponse(BaseModel):
-    """数据同步响应"""
-    success: bool = Field(default=True)
-    data: Optional[Dict[str, Any]] = Field(default=None)
+	"""数据同步响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class SystemSettingsResponse(BaseModel):
-    """系统设置响应"""
-    success: bool = Field(default=True)
-    data: Dict[str, Any] = Field(default_factory=dict)
+	"""系统设置响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SystemSettingsUpdateRequest(BaseModel):
-    """系统设置更新请求"""
-    settings: Dict[str, Any] = Field(..., description="设置内容")
+	"""系统设置更新请求"""
+	settings: Dict[str, Any] = Field(..., description="设置内容")
 
 
 class ConnectionStatusResponse(BaseModel):
-    """连接状态响应"""
-    success: bool = Field(default=True)
-    data: Dict[str, Any] = Field(default_factory=dict)
+	"""连接状态响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SystemResourcesResponse(BaseModel):
-    """系统资源响应"""
-    success: bool = Field(default=True)
-    data: Dict[str, Any] = Field(default_factory=dict)
+	"""系统资源响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DatabaseStatusResponse(BaseModel):
-    """数据库状态响应"""
-    success: bool = Field(default=True)
-    data: Dict[str, Any] = Field(default_factory=dict)
+	"""数据库状态响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ==================== 认证请求/响应 ====================
+
+
+class LoginRequest(BaseModel):
+	"""登录请求"""
+	username: str = Field(..., min_length=1, max_length=50)
+	password: str = Field(..., min_length=1)
+
+
+class RegisterRequest(BaseModel):
+	"""注册请求"""
+	username: str = Field(..., min_length=1, max_length=50)
+	password: str = Field(..., min_length=1)
+	email: str = Field(default="")
+	phone: str = Field(default="")
+	real_name: str = Field(default="")
+
+
+class RefreshTokenRequest(BaseModel):
+	"""刷新 Token 请求"""
+	refresh_token: str = Field(..., min_length=1)
+
+
+class ChangePasswordRequest(BaseModel):
+	"""修改密码请求"""
+	old_password: str = Field(..., min_length=1)
+	new_password: str = Field(..., min_length=1)
+
+
+class AuthResponse(BaseModel):
+	"""认证响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+# ==================== 用户管理请求/响应 ====================
+
+
+class UserCreateRequest(BaseModel):
+	"""创建用户请求"""
+	username: str = Field(..., min_length=1, max_length=50)
+	password: str = Field(..., min_length=1)
+	role: str = Field(default="user")
+	email: str = Field(default="")
+	phone: str = Field(default="")
+	real_name: str = Field(default="")
+
+
+class UserUpdateRequest(BaseModel):
+	"""更新用户请求"""
+	username: Optional[str] = Field(default=None)
+	email: Optional[str] = Field(default=None)
+	phone: Optional[str] = Field(default=None)
+	real_name: Optional[str] = Field(default=None)
+	role: Optional[str] = Field(default=None)
+	is_active: Optional[bool] = Field(default=None)
+
+
+class UserListResponse(BaseModel):
+	"""用户列表响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
+
+
+class UserDetailResponse(BaseModel):
+	"""用户详情响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+class UserStatisticsResponse(BaseModel):
+	"""用户统计响应"""
+	success: bool = Field(default=True)
+	data: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ==================== 角色管理请求/响应 ====================
+
+
+class RoleCreateRequest(BaseModel):
+	"""创建角色请求"""
+	role_code: str = Field(..., min_length=1, max_length=50)
+	role_name: str = Field(..., min_length=1, max_length=100)
+	description: str = Field(default="")
+
+
+class RoleUpdateRequest(BaseModel):
+	"""更新角色请求"""
+	role_name: Optional[str] = Field(default=None)
+	description: Optional[str] = Field(default=None)
+	permissions: Optional[list] = Field(default=None)
+
+
+class RoleListResponse(BaseModel):
+	"""角色列表响应"""
+	success: bool = Field(default=True)
+	data: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RoleDetailResponse(BaseModel):
+	"""角色详情响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)

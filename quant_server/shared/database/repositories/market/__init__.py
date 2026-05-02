@@ -16,6 +16,8 @@ from .basic import (
 
     # 指数相关
     IndexBasicRepository,
+    IndexWeightRepository,
+    IndexRepository,
 )
 
 # 2. 行情数据子域（时序超表）
@@ -60,6 +62,8 @@ __all__ = [
     "STListRepository",
     "ETFRepository",
     "IndexBasicRepository",
+    "IndexWeightRepository",
+    "IndexRepository",
 
     # === 行情数据 ===
     "StockDailyRepository",

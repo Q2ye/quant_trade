@@ -2731,6 +2731,29 @@ COMMENT ON COLUMN index_daily.pct_chg IS '涨跌幅（%）';
 COMMENT ON COLUMN index_daily.vol IS '成交量（手）';
 COMMENT ON COLUMN index_daily.amount IS '成交额（万元）';
 
+-- 指数成分股权重表
+-- 存储各指数在特定日期的成分股及其权重，支持历史时点查询
+-- 数据来源：Tushare index_weight 接口 / Baostock hs300/zz500 成分股接口
+CREATE TABLE index_weight (
+    id VARCHAR(36),
+    index_code VARCHAR(20) NOT NULL REFERENCES index_basic(ts_code) ON DELETE CASCADE,
+    ts_code VARCHAR(20) NOT NULL REFERENCES stock_basic(ts_code) ON DELETE CASCADE,
+    weight NUMERIC(12, 8),
+    trade_date DATE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- 同一指数同一股票在同一天只有一条记录
+    PRIMARY KEY (index_code, ts_code, trade_date)
+);
+
+COMMENT ON TABLE index_weight IS '指数成分股权重表';
+COMMENT ON COLUMN index_weight.index_code IS '指数代码，关联 index_basic.ts_code';
+COMMENT ON COLUMN index_weight.ts_code IS '股票代码，关联 stock_basic.ts_code';
+COMMENT ON COLUMN index_weight.weight IS '成分股权重（小数形式，如 0.0352 表示 3.52%）';
+COMMENT ON COLUMN index_weight.trade_date IS '权重生效日期';
+
+CREATE INDEX idx_index_weight_code ON index_weight(index_code, trade_date);
+CREATE INDEX idx_index_weight_stock ON index_weight(ts_code);
+
 -- ------------------------------------------------------------
 -- 2.4 绩效和信号时序表
 -- ------------------------------------------------------------

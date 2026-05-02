@@ -106,17 +106,17 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 			# 构建时间范围条件
 			time_filters = []
 			if start_time:
-				time_filters.append(SignalLog.created_at >= start_time)
+				time_filters.append(self.model.created_at >= start_time)
 			if end_time:
-				time_filters.append(SignalLog.created_at <= end_time)
+				time_filters.append(self.model.created_at <= end_time)
 
 			# 执行查询
 			query = self.build_query()
 
 			# 应用基本过滤条件
 			for attr, value in filters.items():
-				if hasattr(SignalLog, attr):
-					query = query.where(getattr(SignalLog, attr) == value)
+				if hasattr(self.model, attr):
+					query = query.where(getattr(self.model, attr) == value)
 
 			# 应用时间过滤条件
 			if time_filters:
@@ -124,9 +124,9 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 			# 应用排序
 			if order_by_desc:
-				query = query.order_by(desc(SignalLog.created_at))
+				query = query.order_by(desc(str(self.model.created_at)))
 			else:
-				query = query.order_by(asc(SignalLog.created_at))
+				query = query.order_by(asc(str(self.model.created_at)))
 
 			# 应用分页
 			query = query.offset(skip).limit(limit)
@@ -165,24 +165,24 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 			# 构建时间范围条件
 			time_filters = []
 			if start_time:
-				time_filters.append(SignalLog.created_at >= start_time)
+				time_filters.append(self.model.created_at >= start_time)
 			if end_time:
-				time_filters.append(SignalLog.created_at <= end_time)
+				time_filters.append(self.model.created_at <= end_time)
 
 			# 执行查询
 			query = self.build_query()
 
 			# 应用基本过滤条件
 			for attr, value in filters.items():
-				if hasattr(SignalLog, attr):
-					query = query.where(getattr(SignalLog, attr) == value)
+				if hasattr(self.model, attr):
+					query = query.where(getattr(self.model, attr) == value)
 
 			# 应用时间过滤条件
 			if time_filters:
 				query = query.where(and_(*time_filters))
 
 			# 应用排序和分页
-			query = query.order_by(desc(SignalLog.created_at)).limit(limit)
+			query = query.order_by(desc(str(self.model.created_at))).limit(limit)
 
 			return await self.execute_query(query)
 
@@ -285,24 +285,24 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 			# 构建查询条件
 			conditions = []
 			if signal_id:
-				conditions.append(SignalLog.signal_id == signal_id)
+				conditions.append(self.model.signal_id == signal_id)
 			if start_time:
-				conditions.append(SignalLog.created_at >= start_time)
+				conditions.append(self.model.created_at >= start_time)
 			if end_time:
-				conditions.append(SignalLog.created_at <= end_time)
+				conditions.append(self.model.created_at <= end_time)
 
 			where_clause = and_(*conditions) if conditions else True
 
 			# 统计总日志数
-			total_query = select(func.count()).select_from(SignalLog).where(where_clause)
+			total_query = select(func.count()).select_from(self.model).where(where_clause)
 			total_result = await self.session.execute(total_query)
 			total_count = total_result.scalar() or 0
 
 			# 按日志级别统计
 			level_query = (
-				select(SignalLog.log_level, func.count().label("count"))
+				select(self.model.log_level, func.count().label("count"))
 				.where(where_clause)
-				.group_by(SignalLog.log_level)
+				.group_by(self.model.log_level)
 				.order_by(func.count().desc())
 			)
 			level_result = await self.session.execute(level_query)
@@ -310,9 +310,9 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 			# 按日志类型统计
 			type_query = (
-				select(SignalLog.log_type, func.count().label("count"))
+				select(self.model.log_type, func.count().label("count"))
 				.where(where_clause)
-				.group_by(SignalLog.log_type)
+				.group_by(self.model.log_type)
 				.order_by(func.count().desc())
 			)
 			type_result = await self.session.execute(type_query)
@@ -359,23 +359,23 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 			# 构建基础查询
 			query = (
 				select(
-					func.date(SignalLog.created_at).label("date"),
-					SignalLog.log_level,
+					func.date(self.model.created_at).label("date"),
+					self.model.log_level,
 					func.count().label("count")
 				)
 				.where(
 					and_(
-						SignalLog.created_at >= start_date,
-						SignalLog.created_at < end_date + timedelta(days=1)
+						self.model.created_at >= start_date,
+						self.model.created_at < end_date + timedelta(days=1)
 					)
 				)
-				.group_by(func.date(SignalLog.created_at), SignalLog.log_level)
-				.order_by(func.date(SignalLog.created_at).asc())
+				.group_by(func.date(self.model.created_at), self.model.log_level)
+				.order_by(func.date(self.model.created_at).asc())
 			)
 
 			# 添加信号过滤条件
 			if signal_id:
-				query = query.where(SignalLog.signal_id == signal_id)
+				query = query.where(self.model.signal_id == signal_id)
 
 			# 执行查询
 			result = await self.session.execute(query)
@@ -524,8 +524,8 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 			# 按类型统计
 			type_stats_query = (
-				select(SignalLog.log_type, func.count().label('count'))
-				.group_by(SignalLog.log_type)
+				select(self.model.log_type, func.count().label('count'))
+				.group_by(self.model.log_type)
 				.order_by(func.count().desc())
 				.limit(10)
 			)
@@ -538,13 +538,13 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 			recent_signals_query = (
 				select(
-					SignalLog.signal_id,
-					func.max(SignalLog.created_at).label('last_log_time'),
+					self.model.signal_id,
+					func.max(self.model.created_at).label('last_log_time'),
 					func.count().label('log_count')
 				)
-				.where(SignalLog.created_at >= cutoff_time)
-				.group_by(SignalLog.signal_id)
-				.order_by(func.max(SignalLog.created_at).desc())
+				.where(self.model.created_at >= cutoff_time)
+				.group_by(self.model.signal_id)
+				.order_by(func.max(self.model.created_at).desc())
 				.limit(10)
 			)
 			recent_signals_result = await self.session.execute(recent_signals_query)

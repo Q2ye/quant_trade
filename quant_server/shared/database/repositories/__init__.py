@@ -258,6 +258,8 @@ try:
         ETFRepository,
         # 指数数据
         IndexBasicRepository,
+        IndexWeightRepository,
+        IndexRepository,
 
         # 行情数据
         StockDailyRepository,
@@ -292,6 +294,8 @@ try:
         'st_list_repo': STListRepository,
         'etf_repo': ETFRepository,
         'index_repo': IndexBasicRepository,
+        'index_weight_repo': IndexWeightRepository,
+        'index_aggregate_repo': IndexRepository,
         'stock_daily_repo': StockDailyRepository,
         'stock_minute_repo': StockMinuteRepository,
         'stock_weekly_repo': StockWeeklyRepository,
@@ -318,6 +322,8 @@ try:
         'STListRepository',
         'ETFRepository',
         'IndexBasicRepository',
+        'IndexWeightRepository',
+        'IndexRepository',
         'StockDailyRepository',
         'StockMinuteRepository',
         'StockWeeklyRepository',
@@ -346,6 +352,8 @@ except ImportError as e:
     STListRepository = None
     ETFRepository = None
     IndexBasicRepository = None
+    IndexWeightRepository = None
+    IndexRepository = None
     StockDailyRepository = None
     StockMinuteRepository = None
     StockWeeklyRepository = None
@@ -801,5 +809,6 @@ __all__.extend([
     'SystemRepositories',
     'TradingRepositories',
     'CacheRepositories',
-    'HyperTableRepositories'
+    'HyperTableRepositories',
+    "get_repository_by_domain"
 ])

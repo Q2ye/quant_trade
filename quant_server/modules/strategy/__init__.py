@@ -40,7 +40,13 @@ __description__ = "量化交易系统策略管理模块"
 
 logger = logging.getLogger(__name__)
 
+
 # 导出主要接口
+async def shutdown () -> None:
+	"""策略模块关闭函数"""
+	logger.info("策略模块已关闭")
+
+
 __all__ = [
 	# 子模块
 	"constants",
@@ -58,13 +64,13 @@ __all__ = [
 	"ErrorCode",
 	# 初始化函数
 	"initialize",
+	"shutdown",
 ]
 
 
 # 模块初始化函数 - 符合主启动文件期望的接口
 async def initialize (
 		main_engine=None,
-		event_engine=None,  # 未使用参数
 		config=None
 ) -> bool:
 	"""
@@ -72,7 +78,6 @@ async def initialize (
 
 	Args:
 		main_engine: 主引擎实例
-		event_engine: 事件引擎实例
 		config: 模块配置
 
 	Returns:

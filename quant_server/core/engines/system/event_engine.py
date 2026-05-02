@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, Deque
 
+from quant_server.core.events.base import BaseEvent
 # 导入引擎基类
 from ..base.engine_base import EngineBase, EngineConfigEntity
 # 导入统一类型定义
@@ -48,8 +49,11 @@ class QueuedEvent:
 		Args:
 			event: 事件对象
 		"""
-		# 处理字典类型事件和Event对象类型事件
-		if isinstance(event, dict):
+		# 统一从 BaseEvent.metadata.priority 获取优先级
+		if isinstance(event, BaseEvent):
+			prio = event.metadata.priority
+			self.priority = prio.name.lower() if hasattr(prio, 'name') else str(prio)
+		elif isinstance(event, dict):
 			self.priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
 		elif hasattr(event, 'priority'):
 			self.priority = event.priority
@@ -430,7 +434,7 @@ class EventEngine(EngineBase):
 			event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
 			logger.error(f"事件处理失败: {event_type}, 错误: {e}")
 
-	async def put (self, event: Any) -> None:
+	async def put (self, event: BaseEvent) -> None:
 		"""放入事件
 
 		Args:
@@ -653,7 +657,7 @@ class EventEngine(EngineBase):
 							await callback()
 						else:
 							# 在事件循环中执行同步函数
-							await asyncio.get_event_loop().run_in_executor(None, callback)
+							await asyncio.get_event_loop().run_in_executor(None, callback, ())
 					except Exception as e:
 						logger.error(f"定时器回调失败: {name}, 错误: {e}")
 			except asyncio.CancelledError:

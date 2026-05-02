@@ -6,14 +6,9 @@ Brinson归因分析器
 负责执行Brinson模型归因分析，将超额收益分解为配置效应和选择效应。
 """
 
-from decimal import Decimal
-from typing import Dict, List, Tuple, Optional, Any, Union
-import numpy as np
-import pandas as pd
 from datetime import date
+from typing import Dict, List, Optional, Any
 
-from ....modules.analysis.models import AttributionAnalysis
-from core.utils.math_utils.statistic_calculator import StatisticCalculator
 
 
 class BrinsonAttribution:
@@ -21,7 +16,6 @@ class BrinsonAttribution:
 
 	def __init__ (self):
 		"""初始化Brinson归因分析器"""
-		self.stat_calc = StatisticCalculator()
 
 	def perform_brinson_attribution (
 			self,
@@ -257,8 +251,8 @@ class BrinsonAttribution:
 		except Exception as e:
 			raise ValueError(f"Brinson归因计算失败: {str(e)}")
 
+	@staticmethod
 	def _validate_inputs (
-			self,
 			portfolio_weights: Dict[str, float],
 			portfolio_returns: Dict[str, float],
 			benchmark_weights: Dict[str, float],
@@ -285,8 +279,8 @@ class BrinsonAttribution:
 		if len(benchmark_assets) == 0:
 			raise ValueError("基准数据为空")
 
+	@staticmethod
 	def _calculate_total_return (
-			self,
 			weights: Dict[str, float],
 			returns: Dict[str, float]
 	) -> float:
@@ -385,8 +379,8 @@ class BrinsonAttribution:
 			}
 		}
 
+	@staticmethod
 	def _perform_asset_brinson (
-			self,
 			portfolio_weights: Dict[str, float],
 			portfolio_returns: Dict[str, float],
 			benchmark_weights: Dict[str, float],
@@ -437,8 +431,8 @@ class BrinsonAttribution:
 			'asset_interaction_effects': asset_interaction_effects
 		}
 
+	@staticmethod
 	def _calculate_multiperiod_return (
-			self,
 			start_data: Dict[str, Any],
 			end_data: Dict[str, Any]
 	) -> float:
@@ -582,8 +576,8 @@ class BrinsonAttribution:
 
 		return cumulative_return - 1.0
 
+	@staticmethod
 	def create_attribution_report (
-			self,
 			attribution_results: Dict[str, Any],
 			portfolio_name: str = "组合",
 			benchmark_name: str = "基准"

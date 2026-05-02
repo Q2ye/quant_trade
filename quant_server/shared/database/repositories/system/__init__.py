@@ -11,6 +11,9 @@ from quant_server.shared.database.repositories.system.config.audit_repo import A
 from quant_server.shared.database.repositories.system.config.config_repo import ConfigRepository
 from quant_server.shared.database.repositories.system.config.notification_repo import NotificationRepository
 from quant_server.shared.database.repositories.system.config.operation_log_repo import OperationLogRepository
+
+# backward-compatible alias
+LogRepository = OperationLogRepository
 from quant_server.shared.database.repositories.system.config.user_preference_repo import UserPreferenceRepository
 from quant_server.shared.database.repositories.system.ops.license_key_repo import LicenseKeyRepository
 from quant_server.shared.database.repositories.system.ops.retention_policy_log_repo import RetentionPolicyLogRepository
@@ -33,6 +36,7 @@ __all__ = [
 	"AuditRepository",
 	"NotificationRepository",
 	"OperationLogRepository",
+	"LogRepository",
 	"UserPreferenceRepository",
 	"ApiUsageLogRepository",
 

@@ -75,7 +75,8 @@ class BacktestReportGeneratedEvent(BaseEvent):
 			"distribution_channels": self._setup_distribution_channels(report_type, report_format)
 		}
 
-	def _analyze_report_content (self, content: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _analyze_report_content ( content: Dict[str, Any]) -> Dict[str, Any]:
 		"""分析报告内容"""
 		analysis = {
 			"section_count": 0,
@@ -118,7 +119,8 @@ class BacktestReportGeneratedEvent(BaseEvent):
 
 		return analysis
 
-	def _create_content_summary (self, content: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _create_content_summary (content: Dict[str, Any]) -> Dict[str, Any]:
 		"""创建内容摘要"""
 		summary = {
 			"title": content.get("title", "回测报告"),
@@ -140,7 +142,8 @@ class BacktestReportGeneratedEvent(BaseEvent):
 
 		return summary
 
-	def _setup_access_control (self, report_type: str) -> Dict[str, Any]:
+	@staticmethod
+	def _setup_access_control ( report_type: str) -> Dict[str, Any]:
 		"""设置访问控制"""
 		access_levels = {
 			"detailed": {"level": "confidential", "password_protected": True},
@@ -151,7 +154,8 @@ class BacktestReportGeneratedEvent(BaseEvent):
 
 		return access_levels.get(report_type, {"level": "internal", "password_protected": False})
 
-	def _setup_distribution_channels (self, report_type: str, report_format: str) -> List[Dict[str, str]]:
+	@staticmethod
+	def _setup_distribution_channels ( report_type: str, report_format: str) -> List[Dict[str, str]]:
 		"""设置分发渠道"""
 		channels = []
 
@@ -227,7 +231,8 @@ class BacktestPerformanceCalculatedEvent(BaseEvent):
 			"strategy_classification": self._classify_strategy(performance_metrics)
 		}
 
-	def _calculate_performance_grade (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_performance_grade ( metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""计算绩效评级（A-F）"""
 		grade_scores = {
 			"A": 90,
@@ -289,7 +294,8 @@ class BacktestPerformanceCalculatedEvent(BaseEvent):
 			}
 		}
 
-	def _generate_performance_insights (self, metrics: Dict[str, Any], benchmark: Dict[str, Any]) -> List[
+	@staticmethod
+	def _generate_performance_insights ( metrics: Dict[str, Any], benchmark: Dict[str, Any]) -> List[
 		Dict[str, Any]]:
 		"""生成绩效洞察"""
 		insights = []
@@ -365,7 +371,8 @@ class BacktestPerformanceCalculatedEvent(BaseEvent):
 
 		return insights
 
-	def _calculate_risk_adjusted_metrics (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_risk_adjusted_metrics ( metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""计算风险调整后指标"""
 		risk_metrics = {}
 
@@ -401,7 +408,8 @@ class BacktestPerformanceCalculatedEvent(BaseEvent):
 
 		return risk_metrics
 
-	def _classify_strategy (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _classify_strategy ( metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""分类策略类型"""
 		classification = {
 			"return_profile": "unknown",
@@ -521,7 +529,8 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 			"compliance_check": self._check_compliance(risk_metrics)
 		}
 
-	def _assess_risk (self, metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _assess_risk ( metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> Dict[str, Any]:
 		"""进行风险评估"""
 		assessment = {
 			"market_risk": "medium",
@@ -574,7 +583,8 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 
 		return assessment
 
-	def _generate_risk_insights (self, metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _generate_risk_insights ( metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> List[Dict[str, Any]]:
 		"""生成风险洞察"""
 		insights = []
 
@@ -626,7 +636,8 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 
 		return insights
 
-	def _calculate_risk_score (self, metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_risk_score ( metrics: Dict[str, Any], stress_tests: Dict[str, Any]) -> Dict[str, Any]:
 		"""计算风险评分（0-100，越高风险越大）"""
 		score = 50  # 基础分
 
@@ -678,7 +689,8 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 			}
 		}
 
-	def _suggest_risk_mitigation (self, metrics: Dict[str, Any], assessment: Dict[str, Any]) -> List[str]:
+	@staticmethod
+	def _suggest_risk_mitigation ( metrics: Dict[str, Any], assessment: Dict[str, Any]) -> List[str]:
 		"""建议风险缓解措施"""
 		mitigations = []
 
@@ -707,7 +719,9 @@ class BacktestRiskAnalysisCompletedEvent(BaseEvent):
 
 		return mitigations
 
-	def _check_compliance (self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+
+	@staticmethod
+	def _check_compliance ( metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""检查合规性"""
 		compliance = {
 			"regulatory_requirements": [],

@@ -18,10 +18,11 @@ from typing import Dict, Any, List, Optional, cast
 from datetime import datetime
 
 # 导入统一类型定义
+from quant_server.core.events.engine_events import EngineLifecycleEvent
+
 from ..types.entities import (
     EngineConfigEntity,
     SystemConfig,
-    EventEntity
 )
 from ..types.enums import (
     HealthStatus,
@@ -552,13 +553,13 @@ class MainEngine(EngineBase):
         """
         if self.event_engine:
             try:
-                event = EventEntity(
-                    event_id=f"system_{event_type.value}_{datetime.now().timestamp()}",
-                    event_type=event_type.value,
-                    source="main_engine",
-                    data=data,
+                event = EngineLifecycleEvent(
+                    engine_name="main_engine",
+                    lifecycle_stage=event_type.value,
+                    engine_status=self.get_status().value if hasattr(self, 'get_status') else "running",
+                    details=data,
                     priority=PriorityLevel.HIGH.value,
-                    timestamp=datetime.now()
+                    source="main_engine",
                 )
 
                 event_engine = cast(EventEngine, self.event_engine)
@@ -582,7 +583,7 @@ class MainEngine(EngineBase):
         # 发布系统状态事件
         await self._publish_system_event(EventType.SYSTEM_STARTED, self._system_status)
 
-    async def _handle_engine_status_changed(self, event: EventEntity) -> None:
+    async def _handle_engine_status_changed(self, event: EngineLifecycleEvent) -> None:
         """处理引擎状态变化事件
 
         Args:
@@ -595,7 +596,7 @@ class MainEngine(EngineBase):
         if self._web_socket_manager:
             await self._web_socket_manager.broadcast_event(event)
 
-    async def _handle_system_alert(self, event: EventEntity) -> None:
+    async def _handle_system_alert(self, event: EngineLifecycleEvent) -> None:
         """处理系统警报事件
 
         Args:

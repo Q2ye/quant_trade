@@ -1,101 +1,155 @@
 """
 回测模块
 
-负责策略回测、参数优化、绩效分析等功能
+负责策略回测、参数优化、绩效分析等功能。
 
-主要组件：
-1. 引擎（engines）：回测引擎、模拟引擎、优化引擎、报告引擎
-2. 分析器（analyzers）：绩效分析、风险分析、交易分析
-3. 优化器（optimizers）：网格搜索、遗传算法、贝叶斯优化
-4. 模拟器（simulators）：市场模拟、成本模拟、滑点模拟
-5. 服务（services）：回测服务、优化服务、报告服务
-6. 事件（events）：回测事件、优化事件、进度事件
-7. 管理器（managers）：任务管理、资源管理
-8. 任务（tasks）：回测任务、优化任务
-9. 工具（utils）：数据加载、图表生成
+引擎（均为按需计算引擎，不在 initialize 时自动启动）：
+- BacktestEngine: 策略回测执行
+- SimulationEngine: 交易模拟（市场/成本/滑点）
+- OptimizationEngine: 策略参数优化（网格/遗传/贝叶斯）
+- ReportEngine: 回测报告生成与导出
+
+模块结构：
+- engines/ analyzers/ optimizers/ simulators/ services/ events/ managers/ tasks/ utils/
 """
+
+import logging
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+__version__ = "1.0.0"
+__author__ = "Quant System Team"
 
 from .engines import (
     BacktestEngine,
     SimulationEngine,
     OptimizationEngine,
-    ReportEngine
+    ReportEngine,
 )
-
 from .services import (
     BacktestService,
     OptimizationService,
-    ReportService
+    ReportService,
 )
-
 from .analyzers import (
     PerformanceAnalyzer,
     RiskAnalyzer,
-    TradeAnalyzer
+    TradeAnalyzer,
 )
-
 from .optimizers import (
     GridSearch,
     GeneticAlgorithm,
-    BayesianOptimization
+    BayesianOptimization,
 )
-
 from .simulators import (
     MarketSimulator,
     CostSimulator,
-    SlippageSimulator
+    SlippageSimulator,
 )
-
 from .managers import (
     TaskManager,
-    ResourceManager
+    ResourceManager,
 )
-
 from .tasks import (
     BacktestTask,
-    OptimizationTask
+    OptimizationTask,
 )
-
 from .events import *
-
 from . import schemas
 
-# 模块初始化函数 - 符合主启动文件期望的接口
-async def initialize (
-		main_engine=None,
-		event_engine=None,  # 未使用参数
-		config=None
+
+async def initialize(
+    main_engine=None,
+    event_engine=None,
+    config: Optional[Dict[str, Any]] = None,
 ) -> bool:
-	"""
-	回测模块初始化函数
+    """回测模块初始化
 
-	Args:
-		main_engine: 主引擎实例
-		event_engine: 事件引擎实例
-		config: 模块配置
+    执行启动前验证：检查必要数据库表是否存在，验证模块组件可用性。
+    回测引擎为按需计算引擎，不在此处自动启动（与监控模块不同）。
 
-	Returns:
-		bool: 初始化是否成功
-	"""
-	import logging
-	logger = logging.getLogger(__name__)
+    Args:
+        main_engine: 主引擎实例
+        event_engine: 事件引擎实例
+        config: 模块配置
 
-	try:
-		logger.info("开始初始化回测模块...")
+    Returns:
+        bool: 初始化是否成功
+    """
+    try:
+        logger.info("开始初始化回测模块...")
 
-		# 回测模块初始化逻辑
-		# 1. 检查必要的依赖
-		# 2. 初始化回测引擎
-		# 3. 加载回测配置
+        if main_engine and hasattr(main_engine, "get_async_session"):
+            session_factory = main_engine.get_async_session()
+            session = session_factory() if callable(session_factory) else session_factory
+            result = await _do_initialize(session)
+        else:
+            from quant_server.shared.database.session import get_session_manager
 
-		logger.info("回测模块初始化完成")
-		print("✅ 回测模块初始化成功")
-		return True
+            session_manager = get_session_manager()
+            async with session_manager.get_session() as session:
+                result = await _do_initialize(session)
 
-	except Exception as e:
-		print(f"❌ 回测模块初始化失败: {str(e)}")
-		logger.exception("回测模块初始化失败")
-		return False
+        if result["success"]:
+            print(f"✅ 回测模块初始化成功（{len(result.get('present_tables', []))}/{len(result.get('required_tables', []))} 张表）")
+        else:
+            print(f"⚠️  回测模块初始化警告: {result.get('message', '存在警告')}")
+
+        return result["success"]
+
+    except Exception as e:
+        print(f"❌ 回测模块初始化失败: {str(e)}")
+        logger.exception("回测模块初始化失败")
+        return False
+
+
+async def _do_initialize(session) -> Dict[str, Any]:
+    """内部初始化逻辑：检查数据库表是否存在"""
+
+    from sqlalchemy import inspect
+
+    tables = await session.run_sync(
+        lambda sync_session: inspect(sync_session.connection()).get_table_names()
+    )
+
+    required_tables = [
+        "backtest_tasks",
+        "backtest_equity_curves",
+        "backtest_trades",
+        "backtest_positions",
+        "backtest_parameters",
+        "backtest_scenarios",
+        "backtest_comparisons",
+        "backtest_resource_usage",
+    ]
+
+    present = [t for t in required_tables if t in tables]
+    missing = [t for t in required_tables if t not in tables]
+
+    if missing:
+        logger.warning(f"回测模块缺少表: {missing}")
+        return {
+            "success": True,  # 允许降级运行，不阻塞其他模块启动
+            "status": "degraded",
+            "required_tables": required_tables,
+            "present_tables": present,
+            "missing_tables": missing,
+            "message": f"缺少 {len(missing)} 张表，部分功能不可用: {missing}",
+        }
+
+    return {
+        "success": True,
+        "status": "ready",
+        "required_tables": required_tables,
+        "present_tables": present,
+        "message": "回测模块就绪",
+    }
+
+async def shutdown(main_engine=None) -> None:
+    """回测模块关闭函数"""
+    logger.info("回测模块已关闭")
+
 
 __all__ = [
     # 引擎
@@ -136,4 +190,5 @@ __all__ = [
     "schemas",
     # 初始化函数
     "initialize",
+    "shutdown",
 ]

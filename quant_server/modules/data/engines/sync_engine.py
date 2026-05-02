@@ -31,7 +31,7 @@ from quant_server.core.engines.types.enums import (
 )
 
 # 导入事件系统
-from quant_server.core.engines.types.entities import EventEntity
+from quant_server.core.events import BaseEvent
 from quant_server.core.engines.system.event_engine import EventEngine
 
 # 导入数据同步相关
@@ -314,7 +314,7 @@ class DataSyncEngine(EngineBase):
         self.record.update_resource_usage(ResourceType.TASK_QUEUE, len(self.active_tasks))
         self.record.update_resource_usage(ResourceType.QUEUE_LENGTH, self.task_queue.qsize())
 
-    async def _on_handle_event(self, event: EventEntity):
+    async def _on_handle_event(self, event: BaseEvent):
         """
         处理引擎特定事件
 

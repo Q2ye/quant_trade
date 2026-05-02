@@ -83,7 +83,7 @@ class RiskEventRepository(HyperRepositoryBase):
 			List[RiskEvent]: 用户的风险事件列表
 		"""
 		# 先获取数据，然后手动排序
-		events = await self.get_many(skip="0", limit=limit, user_id=user_id)
+		events = await self.get_many(limit=limit, user_id=user_id)
 		return sorted(events, key=lambda x: x.created_at, reverse=True)
 
 	async def get_events_by_strategy (

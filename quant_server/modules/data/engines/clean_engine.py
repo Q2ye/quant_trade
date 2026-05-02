@@ -34,7 +34,8 @@ from enum import Enum
 from dataclasses import dataclass, field
 
 # 导入引擎配置实体
-from ....core.engines.types.entities import EventEntity, EngineConfigEntity
+from quant_server.core.events import BaseEvent
+from ....core.engines.types.entities import EngineConfigEntity
 from  ....core.engines.types.enums import (
     EngineType,
     ComponentStatus,
@@ -425,7 +426,7 @@ class DataCleanEngine(EngineBase):
             len(self.tasks) * 0.1  # 估算每个任务占用0.1KB内存
         )
 
-    async def _on_handle_event(self, event: EventEntity):
+    async def _on_handle_event(self, event: BaseEvent):
         """
         引擎事件处理逻辑
 
@@ -508,7 +509,7 @@ class DataCleanEngine(EngineBase):
         except Exception as e:
             logger.error(f"注册事件处理器失败: {e}")
 
-    async def _handle_market_data_arrived(self, event: EventEntity):
+    async def _handle_market_data_arrived(self, event: BaseEvent):
         """
         处理市场数据到达事件
 
@@ -542,7 +543,7 @@ class DataCleanEngine(EngineBase):
             logger.error(f"处理市场数据到达事件失败: {e}")
             await self.handle_error(e, context={"event_type": "market_data_arrived"})
 
-    async def _handle_quality_issue_found(self, event: EventEntity):
+    async def _handle_quality_issue_found(self, event: BaseEvent):
         """
         处理质量问题事件
 

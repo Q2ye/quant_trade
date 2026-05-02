@@ -264,7 +264,7 @@ class TradeHandler:
 			for account in accounts:
 				position = await self.position_repo.get_user_position(
 					user_id=user_id,
-					account_id=int(account.id),
+					account_id=account.id,
 					ts_code=ts_code
 				)
 				if position:

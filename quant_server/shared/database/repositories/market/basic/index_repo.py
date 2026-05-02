@@ -15,8 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quant_server.shared.database.models.data_models import (
 	IndexBasic,
 	IndexDaily,
-	# 假设有指数成分股模型
-	# IndexComponent
+	IndexWeight,
 )
 from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
 
@@ -141,6 +140,101 @@ class IndexDailyRepository(BaseRepository[IndexDaily]):
 			raise RepositoryError(f"获取最新指数日线行情失败: {str(e)}")
 
 
+class IndexWeightRepository(BaseRepository[IndexWeight]):
+	"""指数成分股权重仓库 — 继承 BaseRepository
+
+	管理 index_weight 表的 CRUD 操作，支持按指数代码和日期查询成分股，
+	以及批量 upsert 用于数据同步场景。
+	"""
+
+	def __init__(self, session: AsyncSession):
+		"""初始化指数成分股权重仓库"""
+		super().__init__(session, IndexWeight)
+
+	async def get_constituents(
+			self,
+			index_code: str,
+			trade_date: date
+	) -> List[IndexWeight]:
+		"""
+		获取指定指数在指定日期的成分股及权重
+
+		Args:
+			index_code: 指数代码（如 '000300.SH'）
+			trade_date: 目标日期，查询该日期生效的权重
+
+		Returns:
+			IndexWeight 对象列表，包含 ts_code、weight 等字段
+		"""
+		try:
+			query = select(self.model).where(
+				and_(
+					self.model.index_code == index_code,
+					self.model.trade_date == trade_date
+				)
+			).order_by(self.model.weight.desc())
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"查询指数 {index_code} 成分股失败: {str(e)}")
+
+	async def get_latest_constituents(
+			self,
+			index_code: str
+	) -> List[IndexWeight]:
+		"""
+		获取指定指数最新日期的成分股及权重
+
+		自动查询 index_weight 表中该指数的最新 trade_date，
+		然后返回该日期的所有成分股。
+
+		Args:
+			index_code: 指数代码（如 '000300.SH'、'000905.SH'）
+
+		Returns:
+			IndexWeight 对象列表（按权重降序）
+		"""
+		try:
+			# 先查最新日期
+			latest_date_query = select(self.model.trade_date).where(
+				self.model.index_code == index_code
+			).order_by(desc(self.model.trade_date)).limit(1)
+			date_result = await self.session.execute(latest_date_query)
+			latest_date = date_result.scalar_one_or_none()
+
+			if not latest_date:
+				return []
+
+			# 查该日期的全部成分股
+			return await self.get_constituents(index_code, latest_date)
+		except Exception as e:
+			raise RepositoryError(f"查询指数 {index_code} 最新成分股失败: {str(e)}")
+
+	async def batch_upsert(
+			self,
+			match_fields: List[str],
+			data_list: List[Dict[str, Any]],
+			update_fields: List[str] = None
+		) -> List[IndexWeight]:
+		"""
+		批量插入或更新成分股权重数据
+
+		用于数据同步场景：同步服务从 Tushare/Baostock 拉取数据后
+		批量写入，已存在的记录（基于 match_fields）会被更新。
+
+		Args:
+			data_list: 待 upsert 的数据列表，每项包含 index_code, ts_code, weight, trade_date
+			match_fields: 用于匹配已有记录的字段列表，默认 ['index_code', 'ts_code', 'trade_date']
+			update_fields: 需要更新的字段列表，默认 None 表示更新全部
+
+		Returns:
+			创建的 IndexWeight 对象列表
+		"""
+		if match_fields is None:
+			match_fields = ['index_code', 'ts_code', 'trade_date']
+		return await super().batch_upsert(match_fields, data_list)
+
+
 # ==================== 指数聚合仓库 ====================
 
 class IndexRepository:
@@ -151,9 +245,7 @@ class IndexRepository:
 		self.session = session
 		self.index_basic_repo = IndexBasicRepository(session)
 		self.index_daily_repo = IndexDailyRepository(session)
-
-	# 假设有指数成分股仓库
-	# self.index_component_repo = IndexComponentRepository(session)
+		self.index_weight_repo = IndexWeightRepository(session)
 
 	# ==================== 基础信息操作 ====================
 
@@ -194,6 +286,33 @@ class IndexRepository:
 	async def get_latest_index_daily (self, index_code: str) -> Optional[IndexDaily]:
 		"""获取最新指数日线行情"""
 		return await self.index_daily_repo.get_latest_by_ts_code(index_code)
+
+	# ==================== 成分股权重操作 ====================
+
+	async def get_index_constituents(
+			self,
+			index_code: str,
+			trade_date: date
+	) -> List[IndexWeight]:
+		"""获取指定指数在指定日期的成分股及权重"""
+		return await self.index_weight_repo.get_constituents(index_code, trade_date)
+
+	async def get_latest_index_constituents(
+			self,
+			index_code: str
+	) -> List[IndexWeight]:
+		"""获取指定指数最新日期的成分股及权重"""
+		return await self.index_weight_repo.get_latest_constituents(index_code)
+
+	async def batch_upsert_index_weights(
+			self,
+			data_list: List[Dict[str, Any]]
+	) -> List[IndexWeight]:
+		"""批量插入或更新指数成分股权重"""
+		return await self.index_weight_repo.batch_upsert(
+			match_fields=["index_code", "ts_code", "trade_date"],
+			data_list=data_list
+		)
 
 	# ==================== 统计分析操作 ====================
 

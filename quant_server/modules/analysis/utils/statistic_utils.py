@@ -2,16 +2,14 @@
 """
 统计分析工具模块
 提供统计分析相关工具函数，包括统计指标计算、假设检验、回归分析等
-位置：quant_server/modules/events/utils/statistic_utils.py
+位置：quant_server/modules/analysis/utils/statistic_utils.py
 """
+
+from typing import List, Dict, Any, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from typing import List, Dict, Any, Optional, Tuple, Union
 from scipy import stats
-import warnings
-from datetime import datetime, timedelta
-from decimal import Decimal
 
 
 class StatisticUtils:
@@ -21,14 +19,14 @@ class StatisticUtils:
 	def calculate_returns (prices: Union[List[float], pd.Series],
 	                       period: str = 'daily') -> np.ndarray:
 		"""
-		计算收益率序列
+		计算收益率序列（原始收益率，不做年化缩放）
 
 		Args:
 			prices: 价格序列
-			period: 收益率周期 ('daily', 'weekly', 'monthly')
+			period: 收益率周期标签 ('daily', 'weekly', 'monthly')，仅作为元数据标记
 
 		Returns:
-			np.ndarray: 收益率序列
+			np.ndarray: 原始收益率序列
 		"""
 		if isinstance(prices, pd.Series):
 			prices = prices.values
@@ -38,12 +36,6 @@ class StatisticUtils:
 			return np.array([])
 
 		returns = np.diff(prices) / prices[:-1]
-
-		# 根据周期调整年化因子
-		period_factors = {'daily': 252, 'weekly': 52, 'monthly': 12}
-		if period in period_factors:
-			returns = returns * np.sqrt(period_factors[period])
-
 		return returns
 
 	@staticmethod
@@ -492,3 +484,136 @@ class StatisticUtils:
 		avg_loss = np.mean([abs(t['profit']) for t in losing_trades]) if losing_trades else 0.0
 
 		return float(avg_win), float(avg_loss)
+
+	@staticmethod
+	def calculate_tracking_error(
+			portfolio_returns: Union[List[float], pd.Series],
+			benchmark_returns: Union[List[float], pd.Series],
+			annualize: bool = True
+	) -> float:
+		"""
+		计算跟踪误差（主动收益率的标准差）
+
+		Args:
+			portfolio_returns: 组合收益率序列
+			benchmark_returns: 基准收益率序列
+			annualize: 是否年化
+
+		Returns:
+			float: 跟踪误差
+		"""
+		if len(portfolio_returns) != len(benchmark_returns) or len(portfolio_returns) < 2:
+			return 0.0
+
+		portfolio_returns = np.array(portfolio_returns)
+		benchmark_returns = np.array(benchmark_returns)
+		active_returns = portfolio_returns - benchmark_returns
+		te = np.std(active_returns)
+
+		if annualize:
+			te *= np.sqrt(252)
+
+		return float(te)
+
+	@staticmethod
+	def calculate_downside_deviation(
+			returns: Union[List[float], pd.Series],
+			mar: float = 0.0,
+			annualize: bool = True
+	) -> float:
+		"""
+		计算下行标准差（只计入低于最低可接受收益率的部分）
+
+		Args:
+			returns: 收益率序列
+			mar: 最低可接受收益率 (Minimum Acceptable Return)，默认 0
+			annualize: 是否年化
+
+		Returns:
+			float: 下行标准差
+		"""
+		returns_arr = np.array(returns)
+		if len(returns_arr) < 2:
+			return 0.0
+
+		downside = returns_arr[returns_arr < mar]
+		if len(downside) == 0:
+			return 0.0
+
+		squared_deviations = (downside - mar) ** 2
+		dd = np.sqrt(np.mean(squared_deviations))
+
+		if annualize:
+			dd *= np.sqrt(252)
+
+		return float(dd)
+
+	@staticmethod
+	def calculate_omega_ratio(
+			returns: Union[List[float], pd.Series],
+			threshold: float = 0.0
+	) -> float:
+		"""
+		计算 Omega 比率（收益-损失比，以阈值为界）
+
+		Omega = E[max(R - threshold, 0)] / E[max(threshold - R, 0)]
+
+		Args:
+			returns: 收益率序列
+			threshold: 收益阈值，默认 0
+
+		Returns:
+			float: Omega 比率，>1 表示收益率分布右偏
+		"""
+		returns_arr = np.array(returns)
+		if len(returns_arr) < 2:
+			return 1.0
+
+		excess = returns_arr - threshold
+		gains = np.sum(excess[excess > 0])
+		losses = abs(np.sum(excess[excess < 0]))
+
+		if losses == 0:
+			return float('inf') if gains > 0 else 1.0
+
+		return float(gains / losses)
+
+	@staticmethod
+	def calculate_treynor_ratio(
+			portfolio_returns: Union[List[float], pd.Series],
+			benchmark_returns: Union[List[float], pd.Series],
+			risk_free_rate: float = 0.03
+	) -> float:
+		"""
+		计算特雷诺比率（单位系统性风险的超额收益）
+
+		Treynor = (Rp - Rf) / Beta
+
+		Args:
+			portfolio_returns: 组合收益率序列
+			benchmark_returns: 基准收益率序列
+			risk_free_rate: 无风险利率（年化）
+
+		Returns:
+			float: 特雷诺比率
+		"""
+		if len(portfolio_returns) != len(benchmark_returns) or len(portfolio_returns) < 2:
+			return 0.0
+
+		portfolio_returns = np.array(portfolio_returns)
+		benchmark_returns = np.array(benchmark_returns)
+
+		# 计算 Beta
+		covariance = np.cov(portfolio_returns, benchmark_returns)[0, 1]
+		variance = np.var(benchmark_returns)
+		if variance == 0:
+			return 0.0
+		beta = covariance / variance
+
+		if beta == 0:
+			return 0.0
+
+		portfolio_mean = np.mean(portfolio_returns) * 252
+		excess_return = portfolio_mean - risk_free_rate
+
+		return float(excess_return / beta)

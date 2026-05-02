@@ -488,6 +488,10 @@ class QuantServer:
 				self.event_engine = EventEngine(event_config)
 				await self.event_engine.start()
 
+				# 注入到 API 依赖层
+				from quant_server.api.dependencies.event_engine import set_event_engine
+				set_event_engine(self.event_engine)
+
 				logger.info("事件引擎初始化完成", extra={
 					"max_workers": self.config.max_workers,
 					"queue_size": self.config.queue_size
@@ -518,6 +522,10 @@ class QuantServer:
 				# 创建主引擎实例
 				self.main_engine = MainEngine(main_config, self.event_engine)
 				await self.main_engine.start()
+
+				# 注入到 API 依赖层
+				from quant_server.api.dependencies.main_engine import set_main_engine
+				set_main_engine(self.main_engine)
 
 				# 获取引擎注册表
 				self.engine_registry = EngineRegistry()

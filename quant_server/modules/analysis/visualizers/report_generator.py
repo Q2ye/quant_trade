@@ -2,20 +2,18 @@
 """
 报告生成器模块
 负责生成PDF/HTML格式的分析报告，包括绩效报告、风险报告等
-位置：quant_server/modules/events/visualizers/report_generator.py
+位置：quant_server/modules/analysis/visualizers/report_generator.py
 """
 
-import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple, Union
-from datetime import datetime, timedelta
-from pathlib import Path
-import jinja2
-import pdfkit
-import markdown
-from io import BytesIO
 import base64
 import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+
+import jinja2
+import numpy as np
+import pdfkit
 
 from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
 from quant_server.modules.analysis.visualizers.chart_generator import ChartGenerator
@@ -218,6 +216,46 @@ class ReportGenerator:
 		else:
 			raise ValueError(f"不支持的输出格式: {output_format}")
 
+	async def generate_html_report (self, report) -> str:
+		"""根据 AnalysisReport 业务模型生成 HTML 报告内容"""
+		report_data = report.to_dict()
+		report_data["generation_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		try:
+			template = self.template_env.get_template("report_template.html")
+			html_content = template.render(**report_data)
+		except jinja2.TemplateNotFound:
+			html_content = self._build_fallback_html(report_data)
+		return html_content
+
+	async def generate_pdf_report (self, report) -> bytes:
+		"""根据 AnalysisReport 业务模型生成 PDF 报告内容"""
+		html_content = await self.generate_html_report(report)
+		try:
+			pdf_bytes = pdfkit.from_string(html_content, False)
+			return pdf_bytes
+		except Exception as e:
+			warnings.warn(f"PDF生成失败，降级为HTML: {e}")
+			return html_content.encode("utf-8")
+
+	def _build_fallback_html (self, report_data: dict) -> str:
+		"""模板缺失时构建备用HTML报告"""
+		rows = []
+		for key, value in report_data.items():
+			if isinstance(value, (dict, list)):
+				value = str(value)[:500]
+			rows.append("<tr><td>" + str(key) + "</td><td>" + str(value) + "</td></tr>")
+		title = report_data.get("title", "分析报告")
+		gen_time = report_data.get("generation_date", "")
+		html = "<!DOCTYPE html>\n"
+		html += "<html><head><meta charset=\"utf-8\"/><title>" + str(title) + "</title></head>\n"
+		html += "<body>\n"
+		html += "<h1>" + str(title) + "</h1>\n"
+		html += "<p>生成时间: " + str(gen_time) + "</p>\n"
+		html += "<table border=\"1\"><tr><th>字段</th><th>值</th></tr>"
+		html += "".join(rows)
+		html += "</table></body></html>"
+		return html
+
 	def _calculate_performance_metrics (self,
 	                                    equity_data: Dict[str, Any],
 	                                    trade_data: List[Dict[str, Any]],
@@ -395,7 +433,7 @@ class ReportGenerator:
 			return ""
 
 	def _get_period_string (self, equity_data: Dict[str, Any]) -> str:
-		"""获取期间字符串"""
+		"""获取期间 字符串"""
 		dates = equity_data.get('dates', [])
 		if len(dates) >= 2:
 			start_date = dates[0].strftime('%Y-%m-%d') if isinstance(dates[0], datetime) else dates[0]

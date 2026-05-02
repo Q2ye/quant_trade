@@ -428,7 +428,8 @@ async def optimize_parameters_api (
 
 @router.get("/health")
 async def backtest_module_health_check (
-		current_user: Dict = Depends(get_current_user)
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
 ):
 	"""
 	回测模块健康检查
@@ -442,7 +443,9 @@ async def backtest_module_health_check (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 请求回测模块健康检查")
 
-		health_status = await check_backtest_module_health()
+		health_status = await check_backtest_module_health(
+			_session=db_session
+		)
 
 		return success_response(
 			data=health_status,

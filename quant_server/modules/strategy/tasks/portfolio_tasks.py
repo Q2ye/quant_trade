@@ -38,7 +38,7 @@ class PortfolioBacktestTask(PortfolioTask):
 			task_id: str,
 			portfolio_id: str,
 			strategy_ids: List[str],
-			weights: Dict[int, float],
+			weights: Dict[str, float],
 			start_date: str,
 			end_date: str,
 	):
@@ -102,7 +102,7 @@ class PortfolioRebalanceTask(PortfolioTask):
 			self,
 			task_id: str,
 			portfolio_id: str,
-			target_weights: Dict[int, float],
+			target_weights: Dict[str, float],
 	):
 		super().__init__(task_id, portfolio_id)
 		self.target_weights = target_weights

@@ -158,7 +158,7 @@ class BaseRepository(Generic[T]):
 		except Exception as e:
 			raise RepositoryError(f"按条件获取记录失败: {str(e)}")
 
-	async def get_many (self, skip: str, limit: int = 100,
+	async def get_many(self, skip: int = 0, limit: int = 100,
 	                    **filters) -> List[T]:
 		"""
 		获取多条记录（带分页）

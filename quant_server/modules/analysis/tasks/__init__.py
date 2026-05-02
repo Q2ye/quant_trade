@@ -7,7 +7,7 @@
 1. daily_analysis_tasks - 每日分析任务
 2. report_tasks - 报告生成任务
 
-位置：quant_server/modules/events/tasks/__init__.py
+位置：quant_server/modules/analysis/tasks/__init__.py
 """
 
 from .daily_analysis_tasks import DailyAnalysisTasks

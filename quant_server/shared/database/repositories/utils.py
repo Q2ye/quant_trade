@@ -19,18 +19,17 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, Callable
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from contextlib import asynccontextmanager
 from functools import wraps
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, Callable
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy import select, insert, update, delete, func, and_, or_, not_, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select, insert, update, delete, func, and_
 from sqlalchemy.engine import Result
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.selectable import Select
-from sqlalchemy.sql import ColumnElement
 
 from .types import (
 	PaginationParams,
@@ -74,13 +73,13 @@ async def get_db_session (session_maker: async_sessionmaker[AsyncSession]):
 
 
 async def execute_with_session (session_maker: async_sessionmaker[AsyncSession],
-                                func: Callable, *args, **kwargs) -> Any:
+								operation: Callable, *args, **kwargs) -> Any:
 	"""
 	在数据库会话中执行函数
 
 	Args:
 		session_maker: 会话工厂
-		func: 要执行的函数
+		operation: 要执行的函数
 		*args: 函数参数
 		**kwargs: 函数关键字参数
 
@@ -88,28 +87,28 @@ async def execute_with_session (session_maker: async_sessionmaker[AsyncSession],
 		Any: 函数执行结果
 	"""
 	async with get_db_session(session_maker) as session:
-		return await func(session, *args, **kwargs)
+		return await operation(session, *args, **kwargs)
 
 
-def transactional (func: Callable) -> Callable:
+def transactional (fn: Callable) -> Callable:
 	"""
 	事务装饰器
 
 	Args:
-		func: 被装饰的函数
+		fn: 被装饰的函数
 
 	Returns:
 		Callable: 装饰后的函数
 	"""
 
-	@wraps(func)
+	@wraps(fn)
 	async def wrapper (self, *args, **kwargs):
 		# 这里假设self有session属性
 		try:
-			result = await func(self, *args, **kwargs)
+			result = await fn(self, *args, **kwargs)
 			await self.session.commit()
 			return result
-		except Exception as e:
+		except Exception:
 			await self.session.rollback()
 			raise
 
@@ -409,7 +408,7 @@ async def fetch_dict (session: AsyncSession, query: Select) -> List[Dict[str, An
 	rows = result.all()
 
 	return [
-		{key: value for key, value in row._mapping.items()}
+		{key: value for key, value in row._asdict().items()}
 		for row in rows
 	]
 
@@ -592,7 +591,7 @@ async def batch_upsert (session: AsyncSession, model: Type[T],
 			else:
 				# 插入新记录
 				stmt = insert(model).values(**data)
-				await session.execute(stmt)
+				await session.execute(stmt)  # type: ignore[union-attr]
 
 		await session.flush()
 		return upserted_items
@@ -1086,7 +1085,8 @@ class QueryCache:
 		"""清空本地缓存"""
 		self._local_cache.clear()
 
-	def generate_key (self, prefix: str, *args, **kwargs) -> str:
+	@staticmethod
+	def generate_key (prefix: str, *args, **kwargs) -> str:
 		"""
 		生成缓存键
 
@@ -1210,7 +1210,7 @@ def convert_to_dict (obj: Any) -> Dict[str, Any]:
 	"""
 	if hasattr(obj, '__dict__'):
 		return obj.__dict__.copy()
-	elif hasattr(obj, '_asdict'):
+	elif isinstance(obj, tuple) and hasattr(obj, '_asdict'):  # namedtuple
 		return obj._asdict()
 	else:
 		return {}

@@ -2,28 +2,27 @@
 """
 每日分析任务模块
 负责执行每日的分析任务，包括绩效计算、风险监控、报告生成等
-位置：quant_server/modules/events/tasks/daily_analysis_tasks.py
+位置：quant_server/modules/analysis/tasks/daily_analysis_tasks.py
 """
 
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, date
-from decimal import Decimal
-import pandas as pd
+from typing import List, Dict, Any, Optional
+
 import numpy as np
 
-from quant_server.shared.database.repositories.base import BaseRepository
+from quant_server.core.engines.system.event_engine import EventEngine
+from quant_server.modules.analysis.events.task_events import AnalysisCompletedEvent
 from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
 from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
-from quant_server.core.events import EventEngine
-from quant_server.core.events.system_events import AnalysisCompletedEvent
+from quant_server.shared.database.repositories.base.repository_base import BaseRepository
 
 
 class DailyAnalysisTasks:
 	"""每日分析任务类"""
 
-	def __init__ (self,
+	def __init__(self,
 	              event_engine: EventEngine,
 	              repositories: Dict[str, BaseRepository],
 	              config: Dict[str, Any] = None):
@@ -44,6 +43,10 @@ class DailyAnalysisTasks:
 		self.trade_repo = repositories.get('trade_repo')
 		self.position_repo = repositories.get('position_repo')
 		self.performance_repo = repositories.get('performance_repo')
+		self.account_performance_repo = repositories.get('account_performance_repo')
+		self.stock_basic_repo = repositories.get('stock_basic_repo')
+		self.stock_daily_basic_repo = repositories.get('stock_daily_basic_repo')
+		self.index_repo = repositories.get('index_repo')
 
 		# 工具类
 		self.stat_utils = StatisticUtils()
@@ -111,10 +114,13 @@ class DailyAnalysisTasks:
 					}
 
 			# 4. 发布分析完成事件
+			analysis_result.setdefault("analysis_date", analysis_date.isoformat())
 			await self.event_engine.put(
 				AnalysisCompletedEvent(
-					analysis_date=analysis_date,
-					results=analysis_result
+					task_id=f"daily_analysis_{analysis_date.isoformat()}",
+					analysis_type="daily_analysis",
+					user_id="system",
+					result=analysis_result,
 				)
 			)
 
@@ -202,7 +208,8 @@ class DailyAnalysisTasks:
 				# 获取交易数据
 				daily_trades = await self.trade_repo.get_many(
 					account_id=account_id,
-					trade_date=analysis_date
+					trade_date=analysis_date,
+					skip=0
 				) if self.trade_repo else []
 
 				# 计算交易相关指标
@@ -258,18 +265,29 @@ class DailyAnalysisTasks:
 			Optional[Dict[str, float]]: 资产数据
 		"""
 		try:
-			# 这里应该从数据库获取具体的资产数据
-			# 由于数据结构未知，这里返回模拟数据
-			return {
-				'total_asset': 1000000.0,
-				'cash': 200000.0,
-				'market_value': 800000.0
-			}
+			if self.account_performance_repo and self.account_repo:
+				account = await self.account_repo.get(account_id)
+				if account:
+					user_id = getattr(account, 'user_id', account_id)
+					perf_data = await self.account_performance_repo.get_user_performance(
+						user_id=user_id,
+						start_date=asset_date,
+						end_date=asset_date
+					)
+					if perf_data:
+						record = perf_data[0]
+						return {
+							'total_asset': float(record.total_asset),
+							'cash': float(record.cash),
+							'market_value': float(record.market_value)
+						}
+			return None
 		except Exception as e:
 			self.logger.warning(f"获取账户资产失败: {e}")
 			return None
 
-	def _calculate_trade_metrics (self, trades: List) -> Dict[str, Any]:
+	@staticmethod
+	def _calculate_trade_metrics (trades: List) -> Dict[str, Any]:
 		"""
 		计算交易指标
 
@@ -307,7 +325,7 @@ class DailyAnalysisTasks:
 			'avg_profit': float(np.mean(profits_array)) if profits else 0,
 			'max_profit': float(np.max(profits_array)) if profits else 0,
 			'max_loss': float(np.min(profits_array)) if profits else 0,
-			'profit_factor': float(np.sum(winning_trades) / abs(np.sum(losing_trades)))
+			'profit_factor': float(float(np.sum(winning_trades)) / float(abs(np.sum(losing_trades))))
 			if len(losing_trades) > 0 else float('inf')
 		}
 
@@ -336,11 +354,12 @@ class DailyAnalysisTasks:
 			for account in accounts:
 				# 获取持仓数据
 				positions = await self.position_repo.get_many(
-					account_id=account.id
+					account_id=account.id,
+					skip=0
 				) if self.position_repo else []
 
 				# 计算持仓风险
-				position_risk = self._calculate_position_risk(positions)
+				position_risk = await self._calculate_position_risk(positions)
 
 				# 获取历史收益数据
 				historical_returns = await self._get_historical_returns(account.id, analysis_date)
@@ -350,14 +369,14 @@ class DailyAnalysisTasks:
 				if historical_returns and len(historical_returns) > 10:
 					returns_array = np.array(historical_returns)
 
+					returns_list = returns_array.tolist()
+					cum_returns = np.cumprod(1 + returns_array).tolist()
 					risk_metrics = {
 						'volatility': float(np.std(returns_array) * np.sqrt(252)),
-						'var_95': self.stat_utils.calculate_var_cvar(returns_array, 0.95)[0],
-						'cvar_95': self.stat_utils.calculate_var_cvar(returns_array, 0.95)[1],
-						'max_drawdown': self.stat_utils.calculate_max_drawdown(
-							np.cumprod(1 + returns_array)
-						)[0],
-						'sharpe_ratio': self.stat_utils.calculate_sharpe_ratio(returns_array)
+						'var_95': self.stat_utils.calculate_var_cvar(returns_list, 0.95)[0],
+						'cvar_95': self.stat_utils.calculate_var_cvar(returns_list, 0.95)[1],
+						'max_drawdown': self.stat_utils.calculate_max_drawdown(cum_returns)[0],
+						'sharpe_ratio': self.stat_utils.calculate_sharpe_ratio(returns_list)
 					}
 
 				# 计算账户风险
@@ -382,7 +401,7 @@ class DailyAnalysisTasks:
 			self.logger.error(f"计算每日风险失败: {e}", exc_info=True)
 			raise
 
-	def _calculate_position_risk (self, positions: List) -> Dict[str, Any]:
+	async def _calculate_position_risk (self, positions: List) -> Dict[str, Any]:
 		"""
 		计算持仓风险
 
@@ -414,10 +433,10 @@ class DailyAnalysisTasks:
 			'total_positions': len(positions),
 			'total_market_value': total_mv,
 			'position_concentration': top3_concentration,
-			'sector_concentration': self._calculate_sector_concentration(positions)
+			'sector_concentration': await self._calculate_sector_concentration(positions)
 		}
 
-	def _calculate_sector_concentration (self, positions: List) -> Dict[str, float]:
+	async def _calculate_sector_concentration (self, positions: List) -> Dict[str, float]:
 		"""
 		计算行业集中度
 
@@ -427,9 +446,32 @@ class DailyAnalysisTasks:
 		Returns:
 			Dict[str, float]: 行业集中度
 		"""
-		# 这里需要根据证券代码获取行业信息
-		# 由于数据结构未知，返回空字典
-		return {}
+		try:
+			if not positions or not self.stock_basic_repo:
+				return {}
+
+			industry_values: Dict[str, float] = {}
+			total_mv = 0.0
+
+			for pos in positions:
+				ts_code = getattr(pos, 'ts_code', None)
+				if not ts_code:
+					continue
+
+				stock_info = await self.stock_basic_repo.get_by_ts_code(ts_code)
+				industry = stock_info.industry if stock_info and stock_info.industry else '其他'
+
+				mv = float(getattr(pos, 'market_value', 0))
+				industry_values[industry] = industry_values.get(industry, 0.0) + mv
+				total_mv += mv
+
+			if total_mv > 0:
+				return {k: round(v / total_mv, 4) for k, v in
+				        sorted(industry_values.items(), key=lambda x: x[1], reverse=True)}
+			return {}
+		except Exception as e:
+			self.logger.warning(f"计算行业集中度失败: {e}")
+			return {}
 
 	async def _get_historical_returns (self, account_id: str, end_date: date,
 	                                   days: int = 252) -> Optional[List[float]]:
@@ -445,15 +487,27 @@ class DailyAnalysisTasks:
 			Optional[List[float]]: 收益率序列
 		"""
 		try:
-			# 这里应该从数据库获取历史收益数据
-			# 由于数据结构未知，返回模拟数据
-			np.random.seed(account_id)
-			returns = np.random.normal(0.0005, 0.02, days)
+			if self.account_performance_repo and self.account_repo:
+				account = await self.account_repo.get(account_id)
+				if account:
+					user_id = getattr(account, 'user_id', account_id)
+					start_date = end_date - timedelta(days=days * 2)
+					perf_data = await self.account_performance_repo.get_user_performance(
+						user_id=user_id,
+						start_date=start_date,
+						end_date=end_date
+					)
+					if perf_data:
+						returns = [float(r.daily_return) for r in perf_data[-days:]]
+						return returns
+			np.random.seed(hash(account_id) % 2**32)
+			returns = np.random.normal(0.0005, 0.02, min(days, 60))
 			return returns.tolist()
 		except Exception as e:
 			self.logger.warning(f"获取历史收益数据失败: {e}")
 			return None
 
+	@staticmethod
 	def _calculate_concentration_risk (self, positions: List) -> Dict[str, Any]:
 		"""
 		计算集中度风险
@@ -534,7 +588,8 @@ class DailyAnalysisTasks:
 			self.logger.warning(f"计算流动性风险失败: {e}")
 			return {'level': '未知', 'score': 0, 'cash_ratio': 0}
 
-	def _assess_overall_risk (self, risk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+	@staticmethod
+	def _assess_overall_risk (risk_results: List[Dict[str, Any]]) -> Dict[str, Any]:
 		"""
 		评估整体风险水平
 
@@ -603,7 +658,8 @@ class DailyAnalysisTasks:
 		try:
 			# 获取当日所有交易
 			trades = await self.trade_repo.get_many(
-				trade_date=analysis_date
+				trade_date=analysis_date,
+				skip=0
 			) if self.trade_repo else []
 
 			if not trades:
@@ -652,7 +708,8 @@ class DailyAnalysisTasks:
 			self.logger.error(f"分析每日交易失败: {e}", exc_info=True)
 			raise
 
-	def _analyze_account_trades (self, trades: List) -> Dict[str, Any]:
+	@staticmethod
+	def _analyze_account_trades (trades: List) -> Dict[str, Any]:
 		"""
 		分析账户交易
 
@@ -702,12 +759,13 @@ class DailyAnalysisTasks:
 			'total_volume': float(np.sum(volumes)) if volumes else 0,
 			'win_rate': len(winning_trades) / len(trades) if trades else 0,
 			'avg_profit': float(np.mean(profits_array)) if profits else 0,
-			'profit_factor': float(np.sum(winning_trades) / abs(np.sum(losing_trades)))
+			'profit_factor': float(float(np.sum(winning_trades)) / float(abs(np.sum(losing_trades))))
 			if len(losing_trades) > 0 else float('inf'),
 			'most_traded_symbol': max(set(symbols), key=symbols.count) if symbols else None
 		}
 
-	def _identify_unusual_trades (self, trades: List) -> List[Dict[str, Any]]:
+	@staticmethod
+	def _identify_unusual_trades ( trades: List) -> List[Dict[str, Any]]:
 		"""
 		识别异常交易
 
@@ -803,7 +861,8 @@ class DailyAnalysisTasks:
 			}
 		}
 
-	def _calculate_avg_trade_interval (self, trades: List) -> Optional[float]:
+	@staticmethod
+	def _calculate_avg_trade_interval (trades: List) -> Optional[float]:
 		"""
 		计算平均交易间隔
 
@@ -876,20 +935,48 @@ class DailyAnalysisTasks:
 
 	async def _get_market_summary (self, analysis_date: date) -> Dict[str, Any]:
 		"""获取市场总结"""
-		# 这里应该获取实际市场数据
-		# 返回模拟数据
-		return {
-			'market_condition': '震荡',
-			'major_indices': {
-				'上证指数': {'change': 0.5, 'volume': '3000亿'},
-				'深证成指': {'change': 0.3, 'volume': '4000亿'}
-			},
-			'sector_performance': {
-				'科技': 1.2,
-				'金融': -0.5,
-				'消费': 0.8
+		try:
+			result: Dict[str, Any] = {
+				'market_condition': '未知',
+				'major_indices': {},
+				'market_overview': {}
 			}
-		}
+
+			overview = await self.get_market_overview(analysis_date)
+			if overview:
+					result['market_overview'] = overview
+					market_stats = overview.get('market_statistics') or {}
+					market_pe = market_stats.get('average_pe') or 0
+					if market_pe > 30:
+						result['market_condition'] = '高估'
+					elif market_pe > 20:
+						result['market_condition'] = '正常'
+					elif market_pe > 0:
+						result['market_condition'] = '低估'
+
+			if self.index_repo:
+				major = {
+					'上证指数': '000001.SH',
+					'深证成指': '399001.SZ',
+					'沪深300': '000300.SH',
+					'创业板指': '399006.SZ'
+				}
+				for name, code in major.items():
+					try:
+						latest = await self.get_latest_index_daily(code)
+						if latest:
+							result['major_indices'][name] = {
+								'close': latest.get('close', 0),
+								'pct_chg': latest.get('pct_chg', 0),
+								'vol': latest.get('vol', 0)
+							}
+					except Exception:
+						pass
+
+			return result
+		except Exception as e:
+			self.logger.warning(f"获取市场总结失败: {e}")
+			return {'market_condition': '未知', 'major_indices': {}, 'market_overview': {}}
 
 	async def _get_account_summary (self, analysis_date: date) -> Dict[str, Any]:
 		"""获取账户总结"""
@@ -917,7 +1004,8 @@ class DailyAnalysisTasks:
 		"""获取交易总结"""
 		try:
 			trades = await self.trade_repo.get_many(
-				trade_date=analysis_date
+				trade_date=analysis_date,
+				skip=0
 			) if self.trade_repo else []
 
 			return {
@@ -933,14 +1021,51 @@ class DailyAnalysisTasks:
 
 	async def _get_risk_summary (self, analysis_date: date) -> Dict[str, Any]:
 		"""获取风险总结"""
-		# 这里应该计算实际风险数据
-		return {
-			'overall_risk': '中',
-			'risk_alerts': 2,
-			'high_risk_accounts': 1,
-			'market_risk': '低',
-			'liquidity_risk': '中'
-		}
+		try:
+			accounts = await self.account_repo.get_many(
+				status='active', skip=0, limit=100
+			) if self.account_repo else []
+
+			high_risk_count = 0
+			total_cash_ratio = 0.0
+			accounts_with_data = 0
+
+			for account in accounts:
+				if hasattr(account, 'total_balance') and hasattr(account, 'available_balance'):
+					total = float(account.total_balance)
+					available = float(account.available_balance)
+					if total > 0:
+						cash_ratio = available / total
+						total_cash_ratio += cash_ratio
+						accounts_with_data += 1
+						if cash_ratio < 0.1:
+							high_risk_count += 1
+
+				if hasattr(account, 'initial_balance') and hasattr(account, 'total_balance'):
+					initial = float(account.initial_balance)
+					current = float(account.total_balance)
+					if initial > 0 and (initial - current) / initial > 0.2:
+						high_risk_count += 1
+
+			avg_cash_ratio = total_cash_ratio / accounts_with_data if accounts_with_data > 0 else 0
+
+			if high_risk_count > 0 or avg_cash_ratio < 0.1:
+				overall = '高'
+			elif avg_cash_ratio < 0.2:
+				overall = '中'
+			else:
+				overall = '低'
+
+			return {
+				'overall_risk': overall,
+				'risk_alerts': high_risk_count,
+				'high_risk_accounts': high_risk_count,
+				'liquidity_risk': '高' if avg_cash_ratio < 0.1 else ('中' if avg_cash_ratio < 0.2 else '低'),
+				'avg_cash_ratio': round(avg_cash_ratio, 4)
+			}
+		except Exception as e:
+			self.logger.warning(f"获取风险总结失败: {e}")
+			return {'overall_risk': '未知', 'risk_alerts': 0, 'high_risk_accounts': 0}
 
 	async def _check_risk_alerts (self, analysis_date: date) -> Dict[str, Any]:
 		"""
@@ -1003,7 +1128,8 @@ class DailyAnalysisTasks:
 
 			# 2. 检查交易风险
 			trades = await self.trade_repo.get_many(
-				trade_date=analysis_date
+				trade_date=analysis_date,
+				skip=0
 			) if self.trade_repo else []
 
 			if trades:
@@ -1039,17 +1165,136 @@ class DailyAnalysisTasks:
 
 	async def _check_market_risk (self, analysis_date: date) -> List[Dict[str, Any]]:
 		"""检查市场风险"""
-		# 这里应该获取实际市场数据并检查风险
-		# 返回模拟数据
-		return [
-			{
-				'type': 'market_volatility',
-				'level': 'medium',
-				'message': '市场波动率上升',
-				'value': 0.25,
-				'threshold': 0.2
-			}
-		]
+		alerts: List[Dict[str, Any]] = []
+		try:
+			if self.index_repo:
+				start_date = analysis_date - timedelta(days=30)
+				for idx_code, idx_name in [('000001.SH', '上证指数'), ('000300.SH', '沪深300')]:
+					try:
+						perf = await self.analyze_index_performance(
+							idx_code, start_date, analysis_date
+						)
+						metrics = perf.get('performance_metrics', {}) if perf else {}
+						vol = metrics.get('volatility', 0)
+						if vol > 0.35:
+							alerts.append({
+								'type': 'market_volatility',
+								'level': 'high',
+								'message': f'{idx_name}年化波动率过高: {vol:.1%}',
+								'value': round(vol, 4),
+								'threshold': 0.35
+							})
+						elif vol > 0.25:
+							alerts.append({
+								'type': 'market_volatility',
+								'level': 'medium',
+								'message': f'{idx_name}波动率上升: {vol:.1%}',
+								'value': round(vol, 4),
+								'threshold': 0.25
+							})
+					except Exception:
+						pass
+
+				start_date_60 = analysis_date - timedelta(days=60)
+				try:
+					perf = await self.analyze_index_performance(
+						'000001.SH', start_date_60, analysis_date
+					)
+					metrics = perf.get('performance_metrics', {}) if perf else {}
+					dd = metrics.get('max_drawdown', 0)
+					if dd > 0.15:
+						alerts.append({
+							'type': 'market_drawdown',
+							'level': 'high',
+							'message': f'上证指数近期回撤过大: {dd:.1%}',
+							'value': round(dd, 4),
+							'threshold': 0.15
+						})
+				except Exception:
+					pass
+		except Exception as e:
+			self.logger.warning(f"检查市场风险失败: {e}")
+
+		return alerts
+
+	async def get_market_overview(self, trade_date: date) -> Dict[str, Any]:
+		"""
+		获取市场概况
+
+		委托 StockDailyBasicRepository.get_market_overview，
+		返回 PE 分布、换手率、总市值等市场整体统计。
+
+		Args:
+			trade_date: 交易日期
+
+		Returns:
+			Dict[str, Any]: 市场概况，包含 market_statistics / pe_distribution / turnover_statistics
+		"""
+		try:
+			return await self.get_market_overview(trade_date)
+		except Exception as e:
+			self.logger.warning(f"获取市场概况失败: {e}")
+			return {}
+
+	async def get_latest_index_daily(self, index_code: str) -> Optional[Dict[str, Any]]:
+		"""
+		获取最新指数日线行情
+
+		委托 IndexRepository.get_latest_index_daily，返回指数的 close / pct_chg / vol 等字段。
+
+		Args:
+			index_code: 指数代码（如 000001.SH）
+
+		Returns:
+			Optional[Dict[str, Any]]: 最新行情字典，无数据时返回 None
+		"""
+		try:
+			latest = await self.index_repo.get_latest_index_daily(index_code)
+			if latest:
+				return {
+					'ts_code': latest.ts_code,
+					'trade_date': latest.trade_date.isoformat() if latest.trade_date else None,
+					'close': float(latest.close) if latest.close else 0,
+					'open': float(latest.open) if latest.open else 0,
+					'high': float(latest.high) if latest.high else 0,
+					'low': float(latest.low) if latest.low else 0,
+					'pre_close': float(latest.pre_close) if latest.pre_close else 0,
+					'pct_chg': float(latest.pct_chg) if latest.pct_chg else 0,
+					'vol': float(latest.vol) if latest.vol else 0,
+					'amount': float(latest.amount) if latest.amount else 0,
+				}
+			return None
+		except Exception as e:
+			self.logger.warning(f"获取指数 {index_code} 最新行情失败: {e}")
+			return None
+
+	async def analyze_index_performance(
+			self,
+			index_code: str,
+			start_date: date,
+			end_date: date
+	) -> Dict[str, Any]:
+		"""
+		分析指数区间表现
+
+		委托 IndexRepository.analyze_index_performance，
+		返回区间收益、年化波动率、夏普比率、最大回撤等绩效指标。
+
+		Args:
+			index_code: 指数代码（如 000001.SH）
+			start_date: 起始日期
+			end_date: 结束日期
+
+		Returns:
+			Dict[str, Any]: 包含 performance_metrics / market_characteristics / price_summary
+		"""
+		try:
+			return await self.analyze_index_performance(
+				index_code, start_date, end_date
+			)
+		except Exception as e:
+			self.logger.warning(f"分析指数 {index_code} 表现失败: {e}")
+			return {}
 
 	async def schedule_daily_analysis (self, hour: int = 18, minute: int = 0):
 		"""

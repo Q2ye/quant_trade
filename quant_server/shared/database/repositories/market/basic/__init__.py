@@ -20,6 +20,7 @@ from .etf_repo import (
 from .index_repo import (
 	IndexBasicRepository,
 	IndexDailyRepository,
+	IndexWeightRepository,
 	IndexRepository,
 	RepositoryError
 )
@@ -51,6 +52,7 @@ __all__ = [
 	# 指数相关
 	"IndexBasicRepository",
 	"IndexDailyRepository",
+	"IndexWeightRepository",
 	"IndexRepository",
 	"RepositoryError",
 ]
@@ -67,6 +69,7 @@ FundAdjFactorRepo = FundAdjFactorRepository
 ETFRepo = ETFRepository
 IndexBasicRepo = IndexBasicRepository
 IndexDailyRepo = IndexDailyRepository
+IndexWeightRepo = IndexWeightRepository
 IndexRepo = IndexRepository
 
 # 基础数据Repository映射表
@@ -82,6 +85,7 @@ BASIC_REPOSITORIES = {
 	"etf": ETFRepository,
 	"index_basic": IndexBasicRepository,
 	"index_daily": IndexDailyRepository,
+	"index_weight": IndexWeightRepository,
 	"index": IndexRepository,
 }
 

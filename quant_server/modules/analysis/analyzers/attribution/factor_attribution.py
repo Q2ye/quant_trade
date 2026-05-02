@@ -6,15 +6,11 @@
 负责执行因子模型归因分析，将超额收益分解为因子暴露贡献。
 """
 
-from decimal import Decimal
-from typing import Dict, List, Tuple, Optional, Any, Union
+from datetime import date
+from typing import Dict, List, Tuple, Optional, Any
+
 import numpy as np
 import pandas as pd
-from scipy import stats
-from datetime import date
-
-from modules.analysis.models import AttributionAnalysis
-from core.utils.math_utils.statistic_calculator import StatisticCalculator
 
 
 class FactorAttribution:
@@ -22,7 +18,6 @@ class FactorAttribution:
 
 	def __init__ (self):
 		"""初始化因子归因分析器"""
-		self.stat_calc = StatisticCalculator()
 
 	def perform_factor_attribution (
 			self,
@@ -137,7 +132,7 @@ class FactorAttribution:
 					print(f"模型 {model_name} 归因失败: {str(e)}")
 					continue
 
-			# 比较不同模型的结果
+			# 比较 不同模型的结果
 			if len(attribution_results) > 1:
 				comparison = self._compare_factor_models(attribution_results)
 				attribution_results['comparison'] = comparison
@@ -188,15 +183,13 @@ class FactorAttribution:
 				# 提取窗口数据
 				portfolio_window = portfolio_aligned.loc[window_dates]
 				factor_window = factor_aligned.loc[window_dates]
-
+				# 存储结果
+				date_key = pd.Timestamp(window_dates[-1]).strftime('%Y-%m-%d')
 				# 执行因子归因
 				try:
 					result = self.perform_factor_attribution(
 						portfolio_window, factor_window, 'Rolling'
 					)
-
-					# 存储结果
-					date_key = window_dates[-1].strftime('%Y-%m-%d')
 					rolling_exposures[date_key] = result['factor_exposures']
 					rolling_contributions[date_key] = result['factor_contributions']
 					rolling_stats[date_key] = {
@@ -258,7 +251,7 @@ class FactorAttribution:
 				returns_to_analyze = portfolio_aligned
 				analysis_type = 'total'
 
-			# 估计因子暴露（使用加权最小二乘法）
+			# 估计因子暴露（使用加权最小二 乘法）
 			factor_exposures, regression_stats = self._estimate_factor_exposures_wls(
 				returns_to_analyze, factor_aligned, specific_risk
 			)
@@ -309,7 +302,7 @@ class FactorAttribution:
 			factor_names = ['Alpha'] + factor_returns.columns.tolist()
 
 			if method == 'ols':
-				# 普通最小二乘法
+				# 普通最小二 乘法
 				beta = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
 
 			elif method == 'ridge':
@@ -320,7 +313,7 @@ class FactorAttribution:
 				beta = np.concatenate([[model.intercept_], model.coef_])
 
 			elif method == 'wls':
-				# 加权最小二乘法
+				# 加权最小二 乘法
 				weights = 1.0 / np.var(y)  # 简化权重
 				W = np.diag(weights)
 				beta = np.linalg.inv(X_with_intercept.T @ W @ X_with_intercept) @ X_with_intercept.T @ W @ y
@@ -333,9 +326,9 @@ class FactorAttribution:
 			residuals = y - y_pred
 
 			# R-squared
-			ss_total = np.sum((y - np.mean(y)) ** 2)
-			ss_residual = np.sum(residuals ** 2)
-			r_squared = 1 - ss_residual / ss_total if ss_total > 0 else 0
+			ss_total = float(np.sum((y - np.mean(y)) ** 2))
+			ss_residual = float(np.sum(residuals ** 2))
+			r_squared = 1.0 - ss_residual / ss_total if ss_total > 0.0 else 0.0
 
 			# 调整R-squared
 			n = len(y)
@@ -359,13 +352,13 @@ class FactorAttribution:
 		except Exception as e:
 			raise ValueError(f"因子暴露估计失败: {str(e)}")
 
+	@staticmethod
 	def _estimate_factor_exposures_wls (
-			self,
 			portfolio_returns: pd.Series,
 			factor_returns: pd.DataFrame,
 			specific_risk: Optional[pd.Series] = None
 	) -> Tuple[Dict[str, float], Dict[str, float]]:
-		"""使用加权最小二乘法估计因子暴露"""
+		"""使用加权最小 二 乘法估计因子暴露"""
 		try:
 			X = factor_returns.values
 			y = portfolio_returns.values
@@ -392,9 +385,9 @@ class FactorAttribution:
 			residuals = y - y_pred
 
 			# R-squared
-			ss_total = np.sum(weights * (y - np.mean(y)) ** 2)
-			ss_residual = np.sum(weights * residuals ** 2)
-			r_squared = 1 - ss_residual / ss_total if ss_total > 0 else 0
+			ss_total = float(np.sum(weights * (y - np.mean(y)) ** 2))
+			ss_residual = float(np.sum(weights * residuals ** 2))
+			r_squared = 1.0 - ss_residual / ss_total if ss_total > 0.0 else 0.0
 
 			# 因子暴露字典
 			exposures = {factor_names[i]: float(beta[i]) for i in range(len(factor_names))}
@@ -411,8 +404,9 @@ class FactorAttribution:
 		except Exception as e:
 			raise ValueError(f"加权最小二乘估计失败: {str(e)}")
 
+
+	@staticmethod
 	def _calculate_factor_contributions (
-			self,
 			factor_exposures: Dict[str, float],
 			factor_returns: pd.DataFrame
 	) -> Dict[str, float]:
@@ -430,8 +424,8 @@ class FactorAttribution:
 
 		return contributions
 
+	@staticmethod
 	def _calculate_specific_return (
-			self,
 			portfolio_returns: pd.Series,
 			factor_returns: pd.DataFrame,
 			factor_exposures: Dict[str, float]
@@ -483,8 +477,8 @@ class FactorAttribution:
 
 		return quality
 
+	@staticmethod
 	def _calculate_risk_contributions (
-			self,
 			factor_exposures: Dict[str, float],
 			factor_returns: pd.DataFrame,
 			specific_risk: Optional[pd.Series] = None
@@ -500,11 +494,13 @@ class FactorAttribution:
 
 		# 因子风险贡献
 		for i, factor1 in enumerate(factor_returns.columns):
-			exposure1 = factor_exposures.get(factor1, 0.0)
+			factor1_name = str(factor1)
+			exposure1 = float(factor_exposures.get(factor1_name, 0.0))
 
 			for j, factor2 in enumerate(factor_returns.columns):
-				exposure2 = factor_exposures.get(factor2, 0.0)
-				covariance = factor_cov.iloc[i, j]
+				factor2_name = str(factor2)
+				exposure2 = float(factor_exposures.get(factor2_name, 0.0))
+				covariance = float(factor_cov.iloc[i, j])
 
 				total_variance += exposure1 * exposure2 * covariance
 
@@ -549,19 +545,28 @@ class FactorAttribution:
 		# 计算残差
 		residuals = portfolio_returns - predicted_returns
 
+		# 计算特异性风险一致性指标（使用输入的specific_risk参数）
+		specific_risk_consistency = 0.0
+		if specific_risk is not None:
+			residual_std = float(residuals.std())
+			input_specific_std = float(specific_risk.std())
+			if input_specific_std > 0.0:
+				specific_risk_consistency = float(min(residual_std / input_specific_std, input_specific_std / residual_std))
+
 		# Barra质量指标
 		quality = {
 			't_stat_alpha': self._calculate_t_statistic(factor_exposures.get('Alpha', 0.0), residuals.std()),
 			't_stat_factors': self._calculate_factor_t_statistics(factor_exposures, factor_returns),
 			'specific_risk_ratio': self._calculate_specific_risk_ratio(residuals, portfolio_returns),
+			'specific_risk_consistency': specific_risk_consistency,
 			'factor_stability': self._calculate_factor_stability(factor_exposures),
 			'model_reliability': self._calculate_model_reliability(portfolio_returns, predicted_returns)
 		}
 
 		return quality
 
+	@staticmethod
 	def _validate_attribution (
-			self,
 			attribution_result: Dict[str, Any],
 			portfolio_returns: pd.Series
 	):
@@ -586,8 +591,8 @@ class FactorAttribution:
 		attribution_result['attribution_accuracy'] = float(
 			1 - abs(attribution_error) / (abs(actual_mean_return) + 1e-6))
 
+	@staticmethod
 	def _calculate_f_statistic (
-			self,
 			r_squared: float,
 			n: int,
 			p: int
@@ -599,8 +604,8 @@ class FactorAttribution:
 		f_stat = (r_squared / p) / ((1 - r_squared) / (n - p - 1))
 		return float(f_stat)
 
+	@staticmethod
 	def _calculate_durbin_watson (
-			self,
 			residuals: np.ndarray
 	) -> float:
 		"""计算Durbin-Watson统计量"""
@@ -608,11 +613,11 @@ class FactorAttribution:
 			return 2.0  # 无自相关的默认值
 
 		diff = np.diff(residuals)
-		dw = np.sum(diff ** 2) / np.sum(residuals ** 2)
+		dw = float(np.sum(diff ** 2)) / float(np.sum(residuals ** 2))
 		return float(dw)
 
+	@staticmethod
 	def _calculate_information_coefficient (
-			self,
 			actual: pd.Series,
 			predicted: pd.Series
 	) -> float:
@@ -623,8 +628,8 @@ class FactorAttribution:
 		ic = actual.corr(predicted)
 		return float(ic)
 
+	@staticmethod
 	def _calculate_tracking_error_explained (
-			self,
 			actual: pd.Series,
 			predicted: pd.Series
 	) -> float:
@@ -641,8 +646,8 @@ class FactorAttribution:
 		explained = 1 - (residual_error / tracking_error) ** 2
 		return float(max(0.0, explained))
 
+	@staticmethod
 	def _calculate_t_statistic (
-			self,
 			coefficient: float,
 			std_error: float
 	) -> float:
@@ -673,8 +678,8 @@ class FactorAttribution:
 
 		return t_stats
 
+	@staticmethod
 	def _calculate_specific_risk_ratio (
-			self,
 			residuals: pd.Series,
 			portfolio_returns: pd.Series
 	) -> float:
@@ -691,8 +696,8 @@ class FactorAttribution:
 		ratio = specific_risk / total_risk
 		return float(ratio)
 
+	@staticmethod
 	def _calculate_factor_stability (
-			self,
 			factor_exposures: Dict[str, float]
 	) -> float:
 		"""计算因子稳定性"""
@@ -711,11 +716,11 @@ class FactorAttribution:
 		if mean_exp == 0:
 			return 0.0
 
-		stability = 1 - (std_exp / mean_exp)
+		stability = 1.0 - (std_exp / mean_exp)
 		return float(max(0.0, stability))
 
+	@staticmethod
 	def _calculate_model_reliability (
-			self,
 			actual: pd.Series,
 			predicted: pd.Series
 	) -> float:
@@ -736,11 +741,11 @@ class FactorAttribution:
 		reliability = r_squared * (1 - abs(residual_autocorr))
 		return float(reliability)
 
+	@staticmethod
 	def _compare_factor_models (
-			self,
 			attribution_results: Dict[str, Dict[str, Any]]
 	) -> Dict[str, Any]:
-		"""比较不同因子模型的结果"""
+		"""比较 不同因子模型的结果"""
 		comparison = {
 			'models': list(attribution_results.keys()),
 			'comparison_metrics': {},
@@ -769,8 +774,8 @@ class FactorAttribution:
 
 		return comparison
 
+	@staticmethod
 	def create_factor_attribution_report (
-			self,
 			attribution_result: Dict[str, Any],
 			portfolio_name: str = "组合"
 	) -> Dict[str, Any]:

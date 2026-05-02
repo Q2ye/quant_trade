@@ -441,20 +441,6 @@ class Alert(BaseEntity):
     resolved_time: Optional[datetime] = None  # 解决时间
 
 
-# ==================== 事件相关实体 ====================
-
-@dataclass(frozen=True)
-class EventEntity(BaseEntity):
-    """事件实体"""
-    event_id: str                         # 事件ID（唯一）
-    event_type: str                       # 事件类型
-    source: str                          # 事件来源
-    data: Dict[str, Any] = field(default_factory=dict)  # 事件数据
-    timestamp: datetime = field(default_factory=datetime.now)  # 时间戳
-    priority: str = "normal"                     # 优先级
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 元数据
-
-
 # ==================== 系统配置实体 ====================
 
 @dataclass(frozen=True)
@@ -616,18 +602,6 @@ class EntityFactory:
             StrategyConfig: 策略配置实例
         """
         return StrategyConfig(**kwargs)
-
-    @staticmethod
-    def create_event(**kwargs) -> EventEntity:
-        """创建事件
-
-        Args:
-            **kwargs: 事件参数
-
-        Returns:
-            Event: 事件实例
-        """
-        return EventEntity(**kwargs)
 
     @staticmethod
     def create_metric(**kwargs) -> Metric:

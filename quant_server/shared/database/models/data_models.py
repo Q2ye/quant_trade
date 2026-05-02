@@ -7,8 +7,8 @@ data_models.py
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey, Index, Boolean, \
-	UniqueConstraint, JSON
+from sqlalchemy import Column, String, Date, DateTime, Float, Integer, BigInteger, Numeric, Text, ForeignKey, Index, Boolean, \
+	UniqueConstraint, PrimaryKeyConstraint, JSON
 from sqlalchemy.orm import relationship
 
 from .base import Base
@@ -711,6 +711,36 @@ class IndexDaily(Base):
 	__table_args__ = (
 		UniqueConstraint('ts_code', 'trade_date', name='uq_index_daily_code_date'),
 		Index('idx_index_daily_trade_date', 'trade_date'),
+	)
+
+
+# ==================== 指数成分股权重 ====================
+
+class IndexWeight(Base):
+	"""指数成分股权重表
+
+	存储各指数（沪深300、中证500等）的成分股及对应权重。
+	权重数据来源：Tushare index_weight 接口 / Baostock query_hs300_stocks / query_zz500_stocks。
+	同步策略：每月初同步一次（指数成分股通常每月调整一次）。
+	"""
+	__tablename__ = 'index_weight'
+
+	id = Column(String(36), default=lambda: str(uuid.uuid4()), comment='UUID')
+	index_code = Column(String(20), ForeignKey('index_basic.ts_code', ondelete='CASCADE'), nullable=False, comment='指数代码，关联 index_basic.ts_code')
+	ts_code = Column(String(20), ForeignKey('stock_basic.ts_code', ondelete='CASCADE'), nullable=False, comment='股票代码，关联 stock_basic.ts_code')
+	weight = Column(Numeric(12, 8), comment='成分股权重（小数形式，如 0.0352 表示 3.52%）')
+	trade_date = Column(Date, nullable=False, comment='权重生效日期')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+
+	# 关联关系 — 使用 backref 避免修改 IndexBasic / StockBasic
+	index = relationship("IndexBasic", backref="index_weights")
+	stock = relationship("StockBasic", backref="index_weights")
+
+	# 索引
+	__table_args__ = (
+		PrimaryKeyConstraint('index_code', 'ts_code', 'trade_date', name='pk_index_weight'),
+		Index('idx_index_weight_code_date', 'index_code', 'trade_date'),
+		Index('idx_index_weight_ts_code', 'ts_code'),
 	)
 
 

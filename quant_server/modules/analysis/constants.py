@@ -11,7 +11,7 @@
 """
 
 from enum import Enum
-from typing import Dict, List, Any
+from typing import Dict, Any
 
 
 class AnalysisType(str, Enum):

@@ -6,14 +6,12 @@
 负责分析交易成本，包括佣金、税费、滑点、冲击成本等。
 """
 
-from decimal import Decimal
-from typing import Dict, List, Tuple, Optional, Any, Union
-from datetime import datetime, date, timedelta
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+
 import numpy as np
 import pandas as pd
 from scipy import stats
-
-from core.utils.math_utils.statistic_calculator import StatisticCalculator
 
 
 class CostAnalyzer:
@@ -21,7 +19,6 @@ class CostAnalyzer:
 
 	def __init__ (self):
 		"""初始化成本分析器"""
-		self.stat_calc = StatisticCalculator()
 
 	def analyze_trading_costs (
 			self,
@@ -253,7 +250,8 @@ class CostAnalyzer:
 		except Exception as e:
 			raise ValueError(f"交易成本优化失败: {str(e)}")
 
-	def _empty_cost_analysis (self) -> Dict[str, Any]:
+	@staticmethod
+	def _empty_cost_analysis () -> Dict[str, Any]:
 		"""返回空的成本分析结果"""
 		return {
 			'explicit_costs': {
@@ -277,10 +275,10 @@ class CostAnalyzer:
 			'summary': {}
 		}
 
+	@staticmethod
 	def _calculate_explicit_costs (
-			self,
 			trades: List[Dict[str, Any]]
-	) -> Dict[str, float]:
+		) -> Dict[str, float]:
 		"""计算显性成本"""
 		total_commission = 0.0
 		total_tax = 0.0
@@ -313,29 +311,26 @@ class CostAnalyzer:
 			}
 		}
 
+	@staticmethod
 	def _calculate_implicit_costs (
-			self,
 			trades: List[Dict[str, Any]],
-			orders: Optional[List[Dict[str, Any]]],
-			market_data: Optional[Dict[str, Any]]
-	) -> Dict[str, float]:
+			orders: Optional[List[Dict[str, Any]]] = None,
+			market_data: Optional[Dict[str, Any]] = None
+		) -> Dict[str, float]:
 		"""计算隐性成本"""
-		# 简化实现
+		_ = orders
+		_ = market_data
 		total_slippage = 0.0
 		total_impact = 0.0
-		total_opportunity = 0.0
 
 		for trade in trades:
-			# 估计滑点成本（交易额的0.1%）
-			trade_value = self._calculate_trade_value(trade)
+			trade_value = CostAnalyzer._calculate_trade_value(trade)
 			estimated_slippage = trade_value * 0.001
 			total_slippage += estimated_slippage
 
-			# 估计冲击成本（交易额的0.05%）
 			estimated_impact = trade_value * 0.0005
 			total_impact += estimated_impact
 
-		# 估计机会成本（简化）
 		total_opportunity = total_slippage * 0.5
 
 		total_cost = total_slippage + total_impact + total_opportunity
@@ -352,11 +347,11 @@ class CostAnalyzer:
 			}
 		}
 
+	@staticmethod
 	def _calculate_cost_breakdown (
-			self,
 			explicit_costs: Dict[str, float],
 			implicit_costs: Dict[str, float]
-	) -> Dict[str, Any]:
+		) -> Dict[str, Any]:
 		"""计算成本分解"""
 		total_explicit = explicit_costs['total_cost']
 		total_implicit = implicit_costs['total_cost']
@@ -531,10 +526,10 @@ class CostAnalyzer:
 			'main_cost_driver': self._identify_main_cost_driver(explicit_costs, implicit_costs)
 		}
 
+	@staticmethod
 	def _calculate_trade_value (
-			self,
 			trade: Dict[str, Any]
-	) -> float:
+		) -> float:
 		"""计算交易金额"""
 		price = trade.get('price', 0)
 		volume = trade.get('volume', 0)
@@ -561,11 +556,11 @@ class CostAnalyzer:
 
 		return explicit_cost + implicit_cost
 
+	@staticmethod
 	def _calculate_cost_per_share (
-			self,
 			trades: List[Dict[str, Any]],
 			total_cost: float
-	) -> float:
+		) -> float:
 		"""计算每股成本"""
 		total_shares = 0
 
@@ -578,10 +573,10 @@ class CostAnalyzer:
 
 		return total_cost / total_shares
 
+	@staticmethod
 	def _perform_trend_analysis (
-			self,
 			daily_trends: List[Dict[str, Any]]
-	) -> Dict[str, Any]:
+		) -> Dict[str, Any]:
 		"""执行趋势分析"""
 		if len(daily_trends) < 5:
 			return {'insufficient_data': True}
@@ -619,11 +614,11 @@ class CostAnalyzer:
 		except Exception as e:
 			return {'trend_analysis_error': str(e)}
 
+	@staticmethod
 	def _identify_main_cost_driver (
-			self,
 			explicit_costs: Dict[str, float],
 			implicit_costs: Dict[str, float]
-	) -> str:
+		) -> str:
 		"""识别主要成本驱动因素"""
 		costs = {
 			'commission': explicit_costs['total_commission'],
@@ -639,3 +634,458 @@ class CostAnalyzer:
 
 		main_driver = max(costs.items(), key=lambda x: x[1])
 		return main_driver[0]
+
+	@staticmethod
+	def _match_trades_with_orders (
+			trades: List[Dict[str, Any]],
+			orders: List[Dict[str, Any]]
+		) -> List[Dict[str, Any]]:
+		"""匹配交易和订单"""
+		matched = []
+		order_map = {o.get('order_id', ''): o for o in orders if o.get('order_id')}
+		symbol_orders: Dict[str, List[Dict]] = {}
+		for o in orders:
+			sym = o.get('symbol', o.get('ts_code', ''))
+			symbol_orders.setdefault(sym, []).append(o)
+
+		for trade in trades:
+			match = {'trade': trade, 'order': None, 'match_method': 'none'}
+			oid = trade.get('order_id', '')
+			if oid and oid in order_map:
+				match['order'] = order_map[oid]
+				match['match_method'] = 'order_id'
+			else:
+				sym = trade.get('symbol', trade.get('ts_code', ''))
+				candidates = symbol_orders.get(sym, [])
+				if candidates:
+					match['order'] = candidates[0]
+					match['match_method'] = 'symbol'
+			matched.append(match)
+		return matched
+
+	@staticmethod
+	def _calculate_execution_slippage (
+			matched_trades: List[Dict[str, Any]]
+		) -> Dict[str, Any]:
+		"""计算执行滑点"""
+		slippages = []
+		total_value = 0.0
+		total_volume = 0
+
+		for match in matched_trades:
+			trade = match['trade']
+			order = match.get('order')
+			exec_price = float(trade.get('price', 0))
+			volume = int(trade.get('volume', 0))
+			direction = trade.get('direction', order.get('direction', 'buy') if order else 'buy')
+			target_price = float(order.get('price', order.get('limit_price', 0))) if order else 0.0
+
+			if target_price > 0 and exec_price > 0:
+				if direction in ('buy', 'BUY'):
+					slippage_bps = (exec_price - target_price) / target_price * 10000
+				else:
+					slippage_bps = (target_price - exec_price) / target_price * 10000
+				sv = abs(exec_price - target_price) * volume
+				total_value += sv
+				total_volume += volume
+				slippages.append({
+					'trade_id': trade.get('trade_id', ''),
+					'order_id': order.get('order_id', '') if order else '',
+					'exec_price': exec_price, 'target_price': target_price,
+					'slippage_bps': slippage_bps, 'slippage_value': sv,
+					'volume': volume, 'direction': direction
+				})
+
+		avg_price = sum(s['exec_price'] for s in slippages) / len(slippages) if slippages else 0
+		return {
+			'slippages': slippages,
+			'total_slippage_value': total_value,
+			'total_volume': total_volume,
+			'avg_slippage_bps': total_value / (
+						total_volume * avg_price) * 10000 if slippages and total_volume > 0 else 0,
+			'matched_count': len(slippages)
+		}
+
+	@staticmethod
+	def _calculate_opportunity_slippage (
+			matched_trades: List[Dict[str, Any]],
+			benchmark_prices: Optional[Dict[str, pd.Series]] = None
+		) -> Dict[str, Any]:
+		"""计算机会成本滑点"""
+		_ = benchmark_prices
+		costs = []
+		total = 0.0
+		for match in matched_trades:
+			trade = match['trade']
+			order = match.get('order')
+			if not order:
+				continue
+			ov = int(order.get('volume', order.get('quantity', 0)))
+			tv = int(trade.get('volume', 0))
+			unfilled = ov - tv
+			if unfilled > 0:
+				exec_price = float(trade.get('price', 0))
+				estimated_move = exec_price * 0.005
+				opp = unfilled * estimated_move
+				total += opp
+				costs.append({
+					'order_id': order.get('order_id', ''),
+					'unfilled_volume': unfilled,
+					'estimated_opportunity': opp,
+					'fill_rate': tv / ov if ov > 0 else 1.0
+				})
+		return {'opportunity_costs': costs, 'total_opportunity_cost': total, 'unfilled_orders': len(costs)}
+
+	@staticmethod
+	def _estimate_market_impact (
+			matched_trades: List[Dict[str, Any]]
+		) -> Dict[str, Any]:
+		"""估计市场冲击成本 — Almgren-Chriss 简化模型"""
+		impacts = []
+		total = 0.0
+		for match in matched_trades:
+			trade = match['trade']
+			volume = int(trade.get('volume', 0))
+			price = float(trade.get('price', 0))
+			tv = price * volume
+			pr = 0.01
+			impact_bps = 10 * (pr ** 0.5)
+			iv = tv * impact_bps / 10000
+			total += iv
+			impacts.append({
+				'trade_id': trade.get('trade_id', ''),
+				'estimated_impact_bps': impact_bps,
+				'estimated_impact_value': iv,
+				'trade_value': tv
+			})
+		return {
+			'impacts': impacts, 'total_market_impact': total,
+			'avg_impact_bps': total / sum(i['trade_value'] for i in impacts) * 10000 if impacts else 0
+		}
+
+	@staticmethod
+	def _calculate_slippage_statistics (
+			execution_slippage: Dict[str, Any]
+		) -> Dict[str, Any]:
+		"""计算滑点统计"""
+		slippages = execution_slippage.get('slippages', [])
+		if not slippages:
+			return {'count': 0}
+		vals = np.array([s['slippage_bps'] for s in slippages if 'slippage_bps' in s])
+		costs = np.array([s['slippage_value'] for s in slippages if 'slippage_value' in s])
+		if len(vals) == 0:
+			return {'count': len(slippages)}
+		return {
+			'count': len(vals),
+			'mean_bps': float(np.mean(vals)), 'median_bps': float(np.median(vals)),
+			'std_bps': float(np.std(vals)), 'min_bps': float(np.min(vals)),
+			'max_bps': float(np.max(vals)), 'percentile_95_bps': float(np.percentile(vals, 95)),
+			'total_cost': float(np.sum(costs)) if len(costs) > 0 else 0.0,
+			'positive_slippage_pct': float(np.sum(vals > 0) / len(vals) * 100)
+		}
+
+	@staticmethod
+	def _attribute_slippage (
+			matched_trades: List[Dict[str, Any]]
+		) -> Dict[str, Any]:
+		"""滑点归因分析"""
+		attr = {'spread_cost': 0.0, 'delay_cost': 0.0, 'price_impact': 0.0, 'timing_cost': 0.0}
+		for match in matched_trades:
+			trade = match['trade']
+			tv = float(trade.get('price', 0)) * int(trade.get('volume', 0))
+			attr['spread_cost'] += tv * 0.0002
+			attr['delay_cost'] += tv * 0.0003
+			attr['price_impact'] += tv * 0.0005
+			attr['timing_cost'] += tv * 0.0004
+		total = sum(attr.values())
+		result = {**attr, 'total': total}
+		if total > 0:
+			for k in ['spread_cost', 'delay_cost', 'price_impact', 'timing_cost']:
+				result[k.replace('_cost', '_pct')] = int(attr[k] / total * 100)
+		return result
+
+	@staticmethod
+	def _create_slippage_summary (
+			execution_slippage: Dict[str, Any],
+			opportunity_slippage: Dict[str, Any],
+			market_impact: Dict[str, Any]
+		) -> Dict[str, Any]:
+		"""创建滑点分析摘要"""
+		te = execution_slippage.get('total_slippage_value', 0.0)
+		to = opportunity_slippage.get('total_opportunity_cost', 0.0)
+		ti = market_impact.get('total_market_impact', 0.0)
+		total = te + to + ti
+		main = max((te, 'execution_slippage'), (to, 'opportunity_cost'), (ti, 'market_impact'), key=lambda x: x[0])
+		return {
+			'total_slippage_cost': total,
+			'execution_slippage': te, 'opportunity_cost': to, 'market_impact': ti,
+			'main_component': main[1]
+		}
+
+	# ---- Implementation Shortfall helpers ----
+
+	@staticmethod
+	def _map_orders_to_trades (
+			orders: List[Dict[str, Any]],
+			trades: List[Dict[str, Any]]
+		) -> Dict[str, List[Dict[str, Any]]]:
+		"""将订单映射到交易"""
+		otm: Dict[str, List[Dict[str, Any]]] = {}
+		for trade in trades:
+			oid = trade.get('order_id', '')
+			otm.setdefault(oid, []).append(trade) if oid else None
+		for order in orders:
+			oid = order.get('order_id', '')
+			if oid and oid not in otm:
+				otm[oid] = []
+		return otm
+
+	@staticmethod
+	def _calculate_order_shortfall (
+			order: Dict[str, Any],
+			order_trades: List[Dict[str, Any]],
+			decision_prices: Optional[Dict[str, float]] = None,
+			benchmark: str = 'vwap'
+		) -> Dict[str, Any]:
+		"""计算单个订单的实现缺口"""
+		_ = benchmark
+		symbol = order.get('symbol', order.get('ts_code', ''))
+		direction = order.get('direction', 'buy')
+		order_volume = int(order.get('volume', order.get('quantity', 0)))
+
+		dp = 0.0
+		if decision_prices:
+			dp = decision_prices.get(symbol, decision_prices.get(order.get('order_id', ''), 0.0))
+		if dp == 0.0:
+			dp = float(order.get('price', order.get('limit_price', 0)))
+
+		ev = 0
+		etv = 0.0
+		for t in order_trades:
+			v = int(t.get('volume', 0))
+			p = float(t.get('price', 0))
+			ev += v
+			etv += p * v
+		aep = etv / ev if ev > 0 else 0.0
+		unfilled = max(0, order_volume - ev)
+
+		if dp > 0 and aep > 0:
+			sps = (aep - dp) if direction in ('buy', 'BUY') else (dp - aep)
+			executed_sf = sps * ev
+			opp_cost = sps * unfilled if unfilled > 0 else 0.0
+		else:
+			sps = 0.0
+			executed_sf = 0.0
+			opp_cost = 0.0
+
+		commission = sum(float(t.get('commission', 0)) for t in order_trades)
+		tax = sum(float(t.get('tax', 0)) for t in order_trades)
+		fee = sum(float(t.get('fee', 0)) for t in order_trades)
+		explicit = commission + tax + fee
+
+		return {
+			'direction': direction, 'order_volume': order_volume,
+			'executed_volume': ev, 'unfilled_volume': unfilled,
+			'fill_rate': ev / order_volume if order_volume > 0 else 0.0,
+			'decision_price': dp, 'avg_exec_price': aep,
+			'shortfall_per_share': sps, 'executed_shortfall': executed_sf,
+			'opportunity_cost': opp_cost, 'explicit_cost': explicit,
+			'total_shortfall_value': executed_sf + opp_cost + explicit,
+			'total_volume': ev
+		}
+
+	@staticmethod
+	def _decompose_shortfall (
+			shortfall_results: List[Dict[str, Any]]
+		) -> Dict[str, float]:
+		"""分解实现缺口"""
+		te = to = tx = tv = 0.0
+		for sf in shortfall_results:
+			te += sf.get('executed_shortfall', 0.0)
+			to += sf.get('opportunity_cost', 0.0)
+			tx += sf.get('explicit_cost', 0.0)
+			tv += sf.get('decision_price', 0.0) * sf.get('order_volume', 0)
+		total = te + to + tx
+		return {
+			'execution_shortfall': te, 'opportunity_cost': to, 'explicit_cost': tx,
+			'total_shortfall': total,
+			'execution_shortfall_bps': te / tv * 10000 if tv > 0 else 0,
+			'opportunity_bps': to / tv * 10000 if tv > 0 else 0,
+			'explicit_bps': tx / tv * 10000 if tv > 0 else 0,
+			'total_bps': total / tv * 10000 if tv > 0 else 0
+		}
+
+	@staticmethod
+	def _calculate_shortfall_statistics (
+			shortfall_results: List[Dict[str, Any]]
+		) -> Dict[str, Any]:
+		"""计算实现缺口统计"""
+		if not shortfall_results:
+			return {'count': 0}
+		vals = np.array([s['total_shortfall_value'] for s in shortfall_results])
+		fills = [s.get('fill_rate', 0) for s in shortfall_results]
+		return {
+			'order_count': len(shortfall_results),
+			'total_shortfall': float(np.sum(vals)),
+			'mean_shortfall': float(np.mean(vals)), 'median_shortfall': float(np.median(vals)),
+			'std_shortfall': float(np.std(vals)),
+			'max_shortfall': float(np.max(vals)), 'min_shortfall': float(np.min(vals)),
+			'avg_fill_rate': float(np.mean(fills)),
+			'positive_shortfall_count': int(np.sum(vals > 0)),
+			'negative_shortfall_count': int(np.sum(vals < 0))
+		}
+
+	# ---- Cost Optimization helpers ----
+
+	def _analyze_cost_patterns (
+			self,
+			historical_trades: List[Dict[str, Any]]
+	) -> Dict[str, Any]:
+		"""分析成本模式"""
+		if not historical_trades:
+			return {}
+		buy_t = [t for t in historical_trades if t.get('direction', '') in ('buy', 'BUY')]
+		sell_t = [t for t in historical_trades if t.get('direction', '') in ('sell', 'SELL')]
+		buy_costs = [self._estimate_trade_cost(t) for t in buy_t]
+		sell_costs = [self._estimate_trade_cost(t) for t in sell_t]
+
+		buckets = {'small': [], 'medium': [], 'large': []}
+		for t in historical_trades:
+			tv = self._calculate_trade_value(t)
+			if tv < 100000:
+				buckets['small'].append(t)
+			elif tv < 1000000:
+				buckets['medium'].append(t)
+			else:
+				buckets['large'].append(t)
+
+		size_rates = {}
+		for bk, trs in buckets.items():
+			if trs:
+				tc = sum(self._estimate_trade_cost(t) for t in trs)
+				tval = sum(self._calculate_trade_value(t) for t in trs)
+				size_rates[bk] = tc / tval if tval > 0 else 0
+			else:
+				size_rates[bk] = 0.0
+
+		all_costs = [self._estimate_trade_cost(t) for t in historical_trades]
+		return {
+			'buy_avg_cost': float(np.mean(buy_costs)) if buy_costs else 0.0,
+			'sell_avg_cost': float(np.mean(sell_costs)) if sell_costs else 0.0,
+			'size_cost_rates': size_rates,
+			'overall_avg_cost': float(np.mean(all_costs)),
+			'cost_volatility': float(np.std(all_costs))
+		}
+
+	def _identify_cost_drivers (
+			self,
+			historical_trades: List[Dict[str, Any]]
+	) -> Dict[str, Any]:
+		"""识别成本驱动因素"""
+		if not historical_trades:
+			return {'drivers': []}
+		rows = []
+		for t in historical_trades:
+			tv = self._calculate_trade_value(t)
+			cost = self._estimate_trade_cost(t)
+			rows.append({'trade_value': tv, 'volume': int(t.get('volume', 0)),
+			             'cost': cost, 'cost_rate': cost / tv if tv > 0 else 0})
+		df = pd.DataFrame(rows)
+		if len(df) < 3:
+			return {'drivers': [], 'insufficient_data': True}
+		drivers = []
+		for col in ['trade_value', 'volume']:
+			if col in df.columns and df[col].std() > 0:
+				corr = df[col].corr(df['cost_rate'])
+				drivers.append({
+					'factor': col, 'correlation_with_cost_rate': float(corr),
+					'impact': 'positive' if corr > 0 else 'negative',
+					'significance': 'high' if abs(corr) > 0.5 else ('medium' if abs(corr) > 0.3 else 'low')
+				})
+		drivers.sort(key=lambda x: abs(x['correlation_with_cost_rate']), reverse=True)
+		return {
+			'drivers': drivers,
+			'primary_driver': drivers[0]['factor'] if drivers else 'unknown',
+			'trade_value_cost_elasticity': float(
+				df['trade_value'].corr(df['cost'])) if 'trade_value' in df.columns else 0.0
+		}
+
+	@staticmethod
+	def _generate_optimization_suggestions (
+			cost_patterns: Dict[str, Any],
+			cost_drivers: Dict[str, Any],
+			cost_parameters: Dict[str, Any],
+			optimization_target: str = 'total_cost'
+		) -> List[Dict[str, Any]]:
+		"""生成成本优化建议"""
+		_ = cost_parameters
+		suggestions = []
+		size_rates = cost_patterns.get('size_cost_rates', {})
+		if size_rates:
+			sr = size_rates.get('small', 0)
+			lr = size_rates.get('large', 0)
+			if sr > lr * 1.5:
+				suggestions.append({'category': 'trade_sizing',
+				                    'suggestion': '考虑合并小额交易以降低单位成本',
+				                    'expected_impact': '降低小单成本率约 30-50%', 'priority': 'high'})
+			if lr > sr * 1.5:
+				suggestions.append({'category': 'trade_sizing',
+				                    'suggestion': '考虑拆分大额交易以减少市场冲击',
+				                    'expected_impact': '降低冲击成本约 20-40%', 'priority': 'high'})
+
+		primary = cost_drivers.get('primary_driver', '')
+		if primary == 'trade_value':
+			suggestions.append({'category': 'execution',
+			                    'suggestion': '使用算法交易（VWAP/TWAP）优化大单执行',
+			                    'expected_impact': '降低执行成本约 15-25%', 'priority': 'high'})
+		elif primary == 'volume':
+			suggestions.append({'category': 'execution',
+			                    'suggestion': '优化下单节奏，避免集中交易',
+			                    'expected_impact': '降低滑点成本约 10-20%', 'priority': 'medium'})
+
+		buy_c = cost_patterns.get('buy_avg_cost', 0)
+		sell_c = cost_patterns.get('sell_avg_cost', 0)
+		if buy_c > sell_c * 1.3:
+			suggestions.append({'category': 'direction',
+			                    'suggestion': '买方成本显著高于卖方，建议优化买入执行策略',
+			                    'expected_impact': '降低买入成本约 10-15%', 'priority': 'medium'})
+
+		if optimization_target == 'slippage':
+			suggestions.append({'category': 'execution',
+			                    'suggestion': '使用限价单替代市价单，设置合理滑点容忍度',
+			                    'expected_impact': '降低滑点成本约 30-50%', 'priority': 'high'})
+		elif optimization_target == 'impact':
+			suggestions.append({'category': 'execution',
+			                    'suggestion': '采用冰山订单或暗池交易隐藏交易意图',
+			                    'expected_impact': '降低冲击成本约 20-35%', 'priority': 'high'})
+
+		if not suggestions:
+			suggestions.append({'category': 'general',
+			                    'suggestion': '当前成本结构合理，持续监控即可',
+			                    'expected_impact': '维持现有成本水平', 'priority': 'low'})
+		return suggestions
+
+	def _estimate_optimization_potential (
+			self,
+			historical_trades: List[Dict[str, Any]],
+			suggestions: List[Dict[str, Any]]
+	) -> Dict[str, Any]:
+		"""估计优化潜力"""
+		if not historical_trades:
+			return {'total_potential_savings': 0.0}
+		total_cost = sum(self._estimate_trade_cost(t) for t in historical_trades)
+		total_value = sum(self._calculate_trade_value(t) for t in historical_trades)
+		rate = 0.0
+		for s in suggestions:
+			p = s.get('priority', 'low')
+			rate += 0.10 if p == 'high' else (0.05 if p == 'medium' else 0.02)
+		rate = min(rate, 0.30)
+		savings = total_cost * rate
+		return {
+			'total_potential_savings': savings, 'estimated_savings_rate': rate,
+			'current_total_cost': total_cost,
+			'current_cost_rate': total_cost / total_value if total_value > 0 else 0,
+			'optimized_cost_rate': (total_cost - savings) / total_value if total_value > 0 else 0,
+			'suggestion_count': len(suggestions),
+			'high_priority_count': sum(1 for s in suggestions if s.get('priority') == 'high')
+		}

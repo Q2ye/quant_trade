@@ -36,9 +36,11 @@ from contextlib import asynccontextmanager
 from functools import wraps
 
 # 导入系统核心类型定义
+from quant_server.core.events.engine_events import EngineLifecycleEvent
+
 from ..types.entities import (
 	EngineMetricsEntity,
-	EventEntity, EngineConfigEntity
+	EngineConfigEntity,
 )
 from ..types.enums import (
 	ComponentStatus,
@@ -1926,13 +1928,12 @@ class EngineBase(ABC):
 		"""
 		if self.event_engine:
 			try:
-				event = EventEntity(
-					event_id=str(uuid.uuid4()),
-					event_type=event_type,
-					source=f"engine:{self.config.name}",
-					data=data,
+				event = EngineLifecycleEvent(
+					engine_name=self.config.name,
+					lifecycle_stage=event_type.replace("engine_", ""),
+					engine_status=self.get_status().value if hasattr(self, 'get_status') else "unknown",
+					details=data,
 					priority=PriorityLevel.NORMAL.value,
-					timestamp=datetime.now()
 				)
 
 				await self.event_engine.put(event)
@@ -1964,7 +1965,7 @@ class EngineBase(ABC):
 					{"event_type": event_type}
 				)
 
-	async def _handle_event (self, event: EventEntity):
+	async def _handle_event (self, event: EngineLifecycleEvent):
 		"""
 		处理事件
 
@@ -2286,7 +2287,7 @@ class EngineBase(ABC):
 		"""
 		pass
 
-	async def _on_handle_event (self, event: EventEntity):
+	async def _on_handle_event (self, event: EngineLifecycleEvent):
 		"""
 		引擎特定的事件处理逻辑
 
@@ -2464,17 +2465,17 @@ class EngineBase(ABC):
 
 		self.background_tasks.clear()
 
-	def create_background_task (self, coro) -> asyncio.Task:
+	def create_background_task (self, core) -> asyncio.Task:
 		"""
 		创建后台任务
 
 		Args:
-			coro: 协程对象
+			core: 协程对象
 
 		Returns:
 			asyncio.Task: 后台任务
 		"""
-		task = asyncio.create_task(coro, name=f"{self.config.name}_background_task")
+		task = asyncio.create_task(core, name=f"{self.config.name}_background_task")
 		self.background_tasks.add(task)
 
 		# 添加完成回调以从集合中移除任务

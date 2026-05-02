@@ -74,7 +74,7 @@ class SettlementTasks:
 
 		try:
 			# 1. 获取当日所有账户
-			accounts = await self.account_repo.get_many(status="active")
+			accounts = await self.account_repo.get_all(status="active")
 
 			results = {}
 			for account in accounts:
@@ -183,7 +183,7 @@ class SettlementTasks:
 			week_start_date = week_end_date - timedelta(days=4)
 
 			# 获取所有账户
-			accounts = await self.account_repo.get_many(status="active")
+			accounts = await self.account_repo.get_all(status="active")
 
 			results = {}
 			for account in accounts:
@@ -261,7 +261,7 @@ class SettlementTasks:
 			# 计算月初日期
 			month_start_date = date(month_end_date.year, month_end_date.month, 1)
 
-			accounts = await self.account_repo.get_many(status="active")
+			accounts = await self.account_repo.get_all(status="active")
 
 			results = {}
 			for account in accounts:

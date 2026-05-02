@@ -2,7 +2,6 @@
 """
 策略数据仓库
 提供策略数据的统一访问接口
-位置：shared/database/repositories/strategy_repo.py
 """
 
 from datetime import datetime, timedelta
@@ -11,6 +10,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quant_server.core.exceptions import BusinessException
 from quant_server.shared.database.models.business_models import Strategy
 from quant_server.shared.database.repositories import StrategyParameterRepository
 from quant_server.shared.database.repositories.base import BaseRepository
@@ -301,8 +301,6 @@ class StrategyRepository(BaseRepository[Strategy]):
 				if not strategy:
 					return False
 
-				# 检查策略参数表是否存在
-				parameter_repo = None
 				try:
 					# 使用策略参数仓库更新参数
 					parameter_repo = StrategyParameterRepository(self.session)
@@ -354,7 +352,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 						# 如果连parameters字段都没有，记录日志并返回False
 						return False
 
-		except Exception:
+		except BusinessException:
 			await self.session.rollback()
 			# 记录错误日志
 			return False
@@ -456,7 +454,7 @@ class StrategyRepository(BaseRepository[Strategy]):
 
 			return matching_strategies
 
-		except Exception:
+		except BusinessException :
 			# 记录错误日志
 			return []
 

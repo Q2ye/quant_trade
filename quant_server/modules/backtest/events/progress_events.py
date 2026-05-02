@@ -314,7 +314,8 @@ class BacktestCompletedEvent(BaseEvent):
 			"recommendations": BacktestCompletedEvent._generate_recommendations(key_metrics, quality_assessment)
 		}
 
-	def _extract_key_metrics (self, performance_metrics: Dict[str, Any]) -> Dict[str, Any]:
+	@staticmethod
+	def _extract_key_metrics (performance_metrics: Dict[str, Any]) -> Dict[str, Any]:
 		"""提取关键绩效指标"""
 		key_metrics = {}
 

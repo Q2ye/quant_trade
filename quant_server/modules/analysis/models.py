@@ -9,11 +9,10 @@
 业务模型包含业务逻辑和计算方法，与Repository层配合使用。
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
-from enum import Enum
+from typing import Dict, List, Any, Optional
 
 
 @dataclass
@@ -65,6 +64,7 @@ class PerformanceMetrics:
 	total_days: int = 0
 
 	# 附加数据
+	daily_returns: List[float] = field(default_factory=list)
 	equity_curve: List[Dict[str, Any]] = field(default_factory=list)
 	drawdown_curve: List[Dict[str, Any]] = field(default_factory=list)
 	monthly_returns: Dict[str, Decimal] = field(default_factory=dict)

@@ -65,7 +65,7 @@ class ReconciliationTasks:
 		Returns:
 			List[Account]: 活跃账户列表
 		"""
-		return await self.account_repo.get_many(status="active")
+		return await self.account_repo.get_all(status="active")
 
 	async def daily_reconciliation_task (self, trading_day: Optional[date] = None) -> Dict:
 		"""

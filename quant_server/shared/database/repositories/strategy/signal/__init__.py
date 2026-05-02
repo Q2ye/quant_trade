@@ -5,9 +5,9 @@
 """
 
 from .signal_repo import SignalRepository
-# from .signal_log_repository import SignalLogRepository
+from .signal_log_repo import SignalLogRepository
 
 __all__ = [
     "SignalRepository",
-    # "SignalLogRepository",
+    "SignalLogRepository",
 ]

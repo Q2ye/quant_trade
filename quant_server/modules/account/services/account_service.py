@@ -16,7 +16,7 @@ from quant_server.shared.database.repositories.account.asset.account_repo import
 from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
 from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
 from quant_server.shared.security.audit import AuditLogger
-from quant_server.shared.utils.validation import validate_account_data
+from quant_server.utils.core_utils.data_utils.validation import validate_account_data
 
 logger = logging.getLogger(__name__)
 

@@ -58,8 +58,8 @@ class APIDatabaseDependencies:
 			session_manager = get_session_manager()
 
 			# 检查数据库是否已初始化，如果没有则初始化
-			status = session_manager.get_status()
-			if status.get("status") != "initialized":
+			db_status = session_manager.get_status()
+			if db_status.get("status") != "initialized":
 				logger.info("数据库连接未初始化，正在初始化共享层数据库连接...")
 				success = await session_manager.initialize()
 				if not success:
@@ -72,8 +72,8 @@ class APIDatabaseDependencies:
 			logger.info("API数据库依赖初始化成功")
 
 			# 获取连接池状态
-			status = session_manager.get_status()
-			pool_stats = status.get("pool_stats", {})
+			db_status = session_manager.get_status()
+			pool_stats = db_status.get("pool_stats", {})
 			logger.info(f"数据库连接池状态: {pool_stats}")
 
 			return True
@@ -180,7 +180,8 @@ class APIDatabaseDependencies:
 					detail=f"事务操作失败: {str(e)}"
 				)
 
-	async def get_database_health (self) -> Dict[str, Any]:
+	@staticmethod
+	async def get_database_health () -> Dict[str, Any]:
 		"""
 		获取数据库健康状态
 
@@ -197,7 +198,7 @@ class APIDatabaseDependencies:
 			health_info = {
 				"healthy": status_info.get("status") == "initialized",
 				"status": status_info.get("status", "unknown"),
-				"timestamp": datetime.utcnow().isoformat(),
+				"timestamp": datetime.now().isoformat(),
 				"api_layer": "quant_server.api.dependencies.database",
 				"shared_layer_status": status_info,
 			}
@@ -211,11 +212,12 @@ class APIDatabaseDependencies:
 				"healthy": False,
 				"status": "error",
 				"error": str(e),
-				"timestamp": datetime.utcnow().isoformat(),
+				"timestamp": datetime.now().isoformat(),
 				"api_layer": "quant_server.api.dependencies.database",
 			}
 
-	def get_transaction_decorator (self, isolation_level: Optional[IsolationLevel] = None):
+	@staticmethod
+	def get_transaction_decorator (isolation_level: Optional[IsolationLevel] = None):
 		"""
 		获取事务装饰器（API层业务逻辑使用）
 
