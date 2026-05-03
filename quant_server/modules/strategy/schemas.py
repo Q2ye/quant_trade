@@ -7,7 +7,7 @@ from typing import Optional, List, Any, Dict
 
 from pydantic import BaseModel, Field
 
-from quant_server.utils.api_utils.pagination_config import PaginationParams
+from utils.api_utils.pagination_config import PaginationParams
 
 
 class StrategyListRequest(PaginationParams):

@@ -6,8 +6,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AccountStatement
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import AccountStatement
+from shared.database.repositories.base import BaseRepository
 
 
 class AccountStatementRepository(BaseRepository[AccountStatement]):
@@ -70,7 +70,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 	async def generate_daily_statement (self, account_id: str, statement_date: date) -> AccountStatement:
 		"""生成日度对账单"""
 		# 获取账户信息
-		from quant_server.shared.database.models.business_models import Account
+		from shared.database.models.business_models import Account
 
 		account_query = select(Account).where(Account.id == account_id)
 		account_result = await self.session.execute(account_query)
@@ -80,7 +80,7 @@ class AccountStatementRepository(BaseRepository[AccountStatement]):
 			raise ValueError(f"Account {account_id} not found")
 
 		# 获取当天的交易流水
-		from quant_server.shared.database.repositories.account.settlement.transaction_repo import \
+		from shared.database.repositories.account.settlement.transaction_repo import \
 			AccountTransactionRepository
 		transaction_repo = AccountTransactionRepository(self.session)
 

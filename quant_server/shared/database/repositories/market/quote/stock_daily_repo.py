@@ -11,9 +11,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, desc, func, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockDaily, StockBasic
-from quant_server.shared.database.repositories import RepositoryError
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import StockDaily, StockBasic
+from shared.database.repositories import RepositoryError
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockDailyRepository(HyperRepositoryBase[StockDaily]):

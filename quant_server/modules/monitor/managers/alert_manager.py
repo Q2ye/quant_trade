@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.monitor.utils.alert_utils import AlertUtils
+from modules.monitor.utils.alert_utils import AlertUtils
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class AlertManager:
 		valid_channels = AlertUtils.validate_channels(channels)
 		results: Dict[str, Any] = {}
 
-		from quant_server.shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
+		from shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
 			AlertDeliveryLogRepository
 		delivery_repo = AlertDeliveryLogRepository(session)
 
@@ -121,7 +121,7 @@ class AlertManager:
 		3. 分发到各类通知渠道
 		4. 返回完整结果
 		"""
-		from quant_server.modules.monitor.services.alert_service import AlertService
+		from modules.monitor.services.alert_service import AlertService
 
 		# 去重
 		if dedup:
@@ -160,7 +160,7 @@ class AlertManager:
 			dispatch_result = {"error": str(e)}
 
 		# 标记通知已发送
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 		alert_repo = MonitorAlertRepository(session)
 		sent_channels = [
 			ch for ch, status in dispatch_result.get("results", {}).items()

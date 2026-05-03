@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any
 
-from quant_server.core.events import BaseEvent
+from core.events import BaseEvent
 
 
 @dataclass

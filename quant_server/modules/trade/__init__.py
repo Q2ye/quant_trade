@@ -1,8 +1,8 @@
 # 交易模块
 
 from typing import Optional, Dict, Any
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system import MainEngine, EventEngine
+from core.engines.base.engine_base import EngineBase
+from core.engines.system import MainEngine, EventEngine
 
 # 导入子模块
 from .adapters import *
@@ -39,13 +39,13 @@ async def initialize(
         bool: 初始化是否成功
     """
     try:
-        from quant_server.modules.trade.engines.signal_engine import SignalEngine
-        from quant_server.modules.trade.engines.risk_engine import RiskEngine
-        from quant_server.modules.trade.engines.execution_engine import ExecutionEngine
-        from quant_server.modules.trade.engines.position_engine import PositionEngine
-        from quant_server.modules.trade.managers.trade_manager import TradeManager
-        from quant_server.modules.trade.managers.risk_manager import RiskManager
-        from quant_server.modules.trade.adapters.sim_adapter import SimBrokerAdapter
+        from modules.trade.engines.signal_engine import SignalEngine
+        from modules.trade.engines.risk_engine import RiskEngine
+        from modules.trade.engines.execution_engine import ExecutionEngine
+        from modules.trade.engines.position_engine import PositionEngine
+        from modules.trade.managers.trade_manager import TradeManager
+        from modules.trade.managers.risk_manager import RiskManager
+        from modules.trade.adapters.sim_adapter import SimBrokerAdapter
         
         # 从配置中获取交易设置
         trade_config = config or {}

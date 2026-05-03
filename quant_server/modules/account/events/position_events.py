@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Any, Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
+from core.events.base import BaseEvent, EventPriority
 from .types import AccountEventType
 
 

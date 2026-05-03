@@ -9,8 +9,8 @@ from typing import Dict, List, Optional, Callable
 
 import pandas as pd
 
-from quant_server.modules.strategy.constants import RunMode, TimeFrame
-from quant_server.modules.strategy.models import Position
+from modules.strategy.constants import RunMode, TimeFrame
+from modules.strategy.models import Position
 
 
 @dataclass

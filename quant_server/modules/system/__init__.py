@@ -54,6 +54,7 @@ __all__ = [
 
 async def initialize (
 		main_engine=None,
+		event_engine=None,
 		config=None
 ) -> bool:
 	"""
@@ -61,6 +62,7 @@ async def initialize (
 
 	Args:
 		main_engine: 主引擎实例
+		event_engine: 事件引擎实例
 		config: 模块配置
 
 	Returns:
@@ -77,7 +79,7 @@ async def initialize (
 			init_result = await _initialize_system_module(session, config or {})
 			success = init_result.get('status') != 'failed'
 		else:
-			from quant_server.shared.database.session import get_session_manager
+			from shared.database.session import get_session_manager
 
 			session_manager = get_session_manager()
 			async with session_manager.get_session() as session:

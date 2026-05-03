@@ -5,17 +5,19 @@
 位置：shared/database/repositories/trading/risk/risk_rule_repo.py
 """
 
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import select, and_, func, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.exceptions import AuthenticationException
-from quant_server.shared.database.models.business_models import RiskRule
-from quant_server.shared.database.repositories import RepositoryError
-from quant_server.shared.database.repositories.base import BaseRepository
+from core.exceptions import AuthenticationException
+from shared.database.models.business_models import RiskRule, RiskEvent
+from shared.database.repositories import RepositoryError
+from shared.database.repositories.base import BaseRepository
 
+logger = logging.getLogger(__name__)
 
 class RiskRuleRepository(BaseRepository):
 	"""风控规则数据Repository - 纯数据访问"""
@@ -255,15 +257,15 @@ class RiskRuleRepository(BaseRepository):
 			limit=10
 		)
 
-		# 最常用的规则类型（需要关联RiskEvent表，这里暂时简化）
-		from quant_server.shared.database.models.business_models import RiskEvent
-
+		# 最常用规则类型 — 最近30天触发次数排名
 		try:
 			popular_types_query = select(
 				RiskRule.rule_type,
 				func.count(RiskEvent.id).label('trigger_count')
 			).join(
 				RiskEvent, RiskRule.id == RiskEvent.rule_id
+			).where(
+				RiskEvent.created_at >= datetime.now() - timedelta(days=30)
 			).group_by(
 				RiskRule.rule_type
 			).order_by(
@@ -275,8 +277,8 @@ class RiskRuleRepository(BaseRepository):
 				{'rule_type': row[0], 'trigger_count': row[1]}
 				for row in popular_types_result.all()
 			]
-		except AuthenticationException:
-			# 如果RiskEvent表不存在或查询失败，返回空列表
+		except Exception as e:
+			logger.warning(f"查询最常用规则类型失败: {e}")
 			popular_types = []
 
 		return {
@@ -453,11 +455,36 @@ class RiskRuleRepository(BaseRepository):
 			str: 导出文件路径或数据
 		"""
 		try:
-			# 获取规则数据
-			_ = await self.get_rules_by_type(rule_type) if rule_type else await self.get_all()
+			rules = await self.get_rules_by_type(rule_type) if rule_type else await self.get_all()
 
-			# 简化处理，实际需要生成导出文件
-			return f"risk_rules_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type}"
+			if not rules:
+				return "" if format_type == 'csv' else "[]"
+
+			records = []
+			for r in rules:
+				records.append({
+					"id": r.id,
+					"rule_name": r.rule_name,
+					"rule_type": r.rule_type,
+					"condition": r.condition,
+					"action": r.action,
+					"is_active": r.is_active,
+					"created_at": r.created_at.isoformat() if r.created_at else "",
+					"updated_at": r.updated_at.isoformat() if r.updated_at else ""
+				})
+
+			if format_type == 'json':
+				import json
+				return json.dumps(records, ensure_ascii=False, indent=2, default=str)
+			else:
+				import csv
+				import io
+				output = io.StringIO()
+				fieldnames = list(records[0].keys())
+				writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+				writer.writeheader()
+				writer.writerows(records)
+				return output.getvalue()
 		except Exception as e:
 			raise RepositoryError(f"导出风控规则失败: {str(e)}")
 
@@ -528,7 +555,7 @@ class RiskRuleRepository(BaseRepository):
 				return {'error': '规则不存在'}
 
 			# 统计触发次数（需要关联RiskEvent表）
-			from quant_server.shared.database.models.business_models import RiskEvent
+			from shared.database.models.business_models import RiskEvent
 
 			try:
 				trigger_count_query = select(

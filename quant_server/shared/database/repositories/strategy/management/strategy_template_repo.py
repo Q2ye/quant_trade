@@ -8,10 +8,10 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, or_, func, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.exceptions import ValidationError
-from quant_server.shared.database.models.business_models import StrategyTemplate
-from quant_server.shared.database.repositories import NotFoundError
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from core.exceptions import ValidationError
+from shared.database.models.business_models import StrategyTemplate
+from shared.database.repositories import NotFoundError
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class StrategyTemplateRepository(BaseRepository[StrategyTemplate]):

@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.system.config.config_repo import ConfigRepository
+from shared.database.repositories.system.config.config_repo import ConfigRepository
 
 logger = logging.getLogger(__name__)
 

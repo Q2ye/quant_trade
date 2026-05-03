@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from quant_server.modules.analysis.models import RiskMetrics
+from modules.analysis.models import RiskMetrics
 
 
 class RiskAnalyzer:

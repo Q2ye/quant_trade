@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import Optional
 
-from quant_server.core.events import BaseEvent
+from core.events import BaseEvent
 
 
 class OrderEvent(BaseEvent):

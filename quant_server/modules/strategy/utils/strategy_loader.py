@@ -12,8 +12,8 @@ import sys
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Type
 
-from quant_server.modules.strategy.constants import StrategyType
-from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
+from modules.strategy.constants import StrategyType
+from modules.strategy.strategies.base.base_strategy import BaseStrategy
 
 logger = logging.getLogger(__name__)
 

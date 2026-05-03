@@ -36,7 +36,7 @@ from contextlib import asynccontextmanager
 from functools import wraps
 
 # 导入系统核心类型定义
-from quant_server.core.events.engine_events import EngineLifecycleEvent
+from core.events.engine_events import EngineLifecycleEvent
 
 from ..types.entities import (
 	EngineMetricsEntity,
@@ -50,6 +50,7 @@ from ..types.enums import (
 	EngineErrorLevel,
 	ResourceType
 )
+from ...exceptions import BusinessException
 
 logger = logging.getLogger(__name__)
 
@@ -2688,6 +2689,6 @@ class EngineBase(ABC):
 						bg_task.cancel()
 
 			logger.debug(f"引擎资源清理: {self.config.name}")
-		except Exception:
+		except BusinessException:
 			# 析构函数中使用宽泛异常捕获，确保不会因异常而影响程序退出
 			pass

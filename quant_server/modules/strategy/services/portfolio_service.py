@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.strategy.management import (
+from shared.database.repositories.strategy.management import (
 	PortfolioStrategyRepository,
 	StrategyRepository,
 )

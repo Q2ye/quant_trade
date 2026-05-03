@@ -8,12 +8,12 @@ from typing import Dict, List, Any, Optional
 
 import numpy as np
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.strategy.models import TradingSignal
-from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import EngineType
+from modules.strategy.models import TradingSignal
+from modules.strategy.strategies.base.base_strategy import BaseStrategy
+from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +342,7 @@ class AIEngine(EngineBase):
 		for signal in signals:
 			try:
 				if self.event_engine:
-					from quant_server.modules.strategy.events.signal_events import (
+					from modules.strategy.events.signal_events import (
 						StrategySignalEvent,
 					)
 					event = StrategySignalEvent(

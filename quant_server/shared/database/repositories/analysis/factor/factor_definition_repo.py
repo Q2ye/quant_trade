@@ -10,8 +10,8 @@ from sqlalchemy import select, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
-from quant_server.shared.database.models.data_models import FactorDefinition
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.data_models import FactorDefinition
+from shared.database.repositories.base import BaseRepository
 
 
 class FactorDefinitionRepository(BaseRepository[FactorDefinition]):

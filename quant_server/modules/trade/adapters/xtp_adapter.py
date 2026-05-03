@@ -2,8 +2,8 @@
 
 from typing import Dict, Any, Optional, List
 
-from quant_server.modules.trade.adapters.broker_adapter import BrokerAdapter
-from quant_server.modules.trade.events.types import (
+from modules.trade.adapters.broker_adapter import BrokerAdapter
+from modules.trade.events.types import (
 	ORDER_STATUS_PENDING, ORDER_STATUS_FILLED, TRADE_DIRECTION_BUY
 )
 

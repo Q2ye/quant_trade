@@ -45,7 +45,7 @@
 
 import asyncio
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
@@ -53,12 +53,12 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.models import PerformanceMetrics
-from quant_server.shared.database.repositories import AccountRepository
-from quant_server.shared.database.repositories import StrategyRepository
-from quant_server.shared.database.repositories import TradeRepository
-from quant_server.shared.database.repositories.market.quote import StockDailyRepository
-from quant_server.utils.core_utils.math_utils.financial_calculator import FinancialCalculator
+from modules.analysis.models import PerformanceMetrics
+from shared.database.repositories import AccountRepository
+from shared.database.repositories import StrategyRepository
+from shared.database.repositories import TradeRepository
+from shared.database.repositories.market.quote import StockDailyRepository
+from utils.core_utils.math_utils.financial_calculator import FinancialCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -499,64 +499,147 @@ class PerformanceService:
         Returns:
             List[Dict]: 每日净值记录 [{trade_date, equity, cash, market_value}, ...]
         """
-        trades = await self.trade_repo.get_by_strategy(
-            strategy_id, start_date, end_date
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date, datetime.max.time())
+        trades = await self.trade_repo.get_by_strategy_id(
+            strategy_id, start_dt, end_dt, limit=100000
         )
 
         if not trades:
             return []
 
-        return await self._reconstruct_equity_curve(trades, start_date, end_date)
+        # 尝试从关联账户获取实际初始资金
+        initial_capital = 1000000.0
+        try:
+            from sqlalchemy import select as _select
+            from shared.database.models.business_models import Order
+            result = await self.session.execute(
+                _select(Order.account_id).where(
+                    Order.strategy_id == strategy_id
+                ).limit(1)
+            )
+            row = result.first()
+            if row:
+                account = await self.account_repo.get(row.account_id)
+                if account and account.initial_balance:
+                    initial_capital = float(account.initial_balance)
+        except Exception:
+            pass
 
-    @staticmethod
+        return await self._reconstruct_equity_curve(
+            trades, start_date, end_date, initial_capital
+        )
+
     async def _reconstruct_equity_curve(
+            self,
             trades,
             start_date: date,
-            end_date: date
+            end_date: date,
+            initial_capital: float = 1000000.0
     ) -> list:
-        """从交易记录重建每日净值曲线
+        """从交易记录重建每日净值曲线（平均成本法）
 
-        初始资金设为 100 万，按交易日顺序累加每笔交易的 PnL。
-        每日净值拆分为现金（20%）和市值（80%）的简化近似。
+        按时间顺序处理每笔成交：BUY 增加成本基础，SELL 按平均成本比例减少。
+        无实时行情时，未平仓持仓按成本计价。equity = cash + cost_basis。
 
         Args:
-            trades: 交易记录列表
+            trades: Trade ORM 对象列表
             start_date: 起始日期
             end_date: 结束日期
+            initial_capital: 初始资金
 
         Returns:
             list: [{trade_date, equity, cash, market_value}, ...] 按日期排序
         """
         if not trades:
-            return []
+            return [{
+                'trade_date': start_date,
+                'equity': round(initial_capital, 2),
+                'cash': round(initial_capital, 2),
+                'market_value': 0.0,
+            }]
 
         # 按交易时间排序
-        sorted_trades = sorted(trades, key=lambda trade: getattr(trade, 'trade_time', start_date))
+        sorted_trades = sorted(trades, key=lambda t: t.trade_time)
 
-        equity = 1000000.0  # 初始资金 100 万
+        # 批量查询 direction（Trade 表无 direction，需从 Order 表获取）
+        from shared.database.models.business_models import Order
+        from sqlalchemy import select as _select
+        order_ids = list({t.order_id for t in sorted_trades})
+        direction_map = {}
+        if order_ids:
+            result = await self.session.execute(
+                _select(Order).where(Order.order_id.in_(order_ids))
+            )
+            for order in result.scalars().all():
+                direction_map[order.order_id] = order.direction
+
+        # 按日期分组交易
+        from collections import defaultdict
+        day_trades = defaultdict(list)
+        for t in sorted_trades:
+            td = t.trade_time.date()
+            day_trades[td].append(t)
+
+        # 平均成本法持仓跟踪: {ts_code: {'volume': int, 'cost': float}}
+        positions = {}
+        cash = initial_capital
         curve = []
-        ti = 0
-        cur = start_date
+        all_dates = sorted(day_trades.keys())
 
-        while cur <= end_date:
-            # 处理当日的所有交易
-            while ti < len(sorted_trades):
-                t = sorted_trades[ti]
-                td = getattr(t, 'trade_time', None)
-                td_date = td.date() if hasattr(td, 'date') else td
-                if td_date == cur:
-                    equity += float(getattr(t, 'pnl', 0) or 0)
-                    ti += 1
+        # 起始日净值点（首个交易日 > start_date 时补一条初始点）
+        if all_dates[0] > start_date:
+            curve.append({
+                'trade_date': start_date,
+                'equity': round(initial_capital, 2),
+                'cash': round(initial_capital, 2),
+                'market_value': 0.0,
+            })
+
+        for trade_date in all_dates:
+            for t in day_trades[trade_date]:
+                direction = direction_map.get(t.order_id, 'buy')
+                price = float(t.price)
+                volume = int(t.volume)
+                commission = float(t.commission or 0)
+                tax = float(t.tax or 0)
+
+                if direction == 'buy':
+                    trade_cost = price * volume + commission + tax
+                    cash -= trade_cost
+                    pos = positions.setdefault(t.ts_code, {'volume': 0, 'cost': 0.0})
+                    pos['volume'] += volume
+                    pos['cost'] += trade_cost
                 else:
-                    break
+                    trade_proceeds = price * volume - commission - tax
+                    cash += trade_proceeds
+                    pos = positions.get(t.ts_code)
+                    if pos and pos['volume'] > 0:
+                        sell_ratio = min(volume / pos['volume'], 1.0)
+                        pos['cost'] -= pos['cost'] * sell_ratio
+                        pos['volume'] -= volume
+                        if pos['volume'] <= 0:
+                            del positions[t.ts_code]
+
+            market_value = sum(p['cost'] for p in positions.values())
+            equity = cash + market_value
 
             curve.append({
-                'trade_date': cur,
-                'equity': equity,
-                'cash': equity * 0.2,          # 简化：20% 现金
-                'market_value': equity * 0.8,  # 简化：80% 市值
+                'trade_date': trade_date,
+                'equity': round(equity, 2),
+                'cash': round(cash, 2),
+                'market_value': round(market_value, 2),
             })
-            cur += timedelta(days=1)
+
+        # 结束日净值点（前向填充）
+        if curve and curve[-1]['trade_date'] < end_date:
+            last = curve[-1]
+            curve.append({
+                'trade_date': end_date,
+                'equity': last['equity'],
+                'cash': last['cash'],
+                'market_value': last['market_value'],
+            })
 
         return curve
 

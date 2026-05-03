@@ -276,17 +276,46 @@ class AssetService:
 					"message": "数据不足，无法计算风险指标"
 				}
 
-			# 计算风险指标
-			risk_metrics = {
-				"volatility": 0,
-				"var_95": 0,
-				"var_99": 0,
-				"max_drawdown": 0,
-				"beta": 0,
-				"sharpe_ratio": 0
-			}
+			import numpy as np
 
-			return risk_metrics
+			daily_returns = np.array(
+				[float(r.get("daily_return", 0) or 0) for r in historical_returns],
+				dtype=np.float64,
+			)
+			assets_series = np.array(
+				[float(r.get("total_asset", 0) or 0) for r in historical_returns],
+				dtype=np.float64,
+			)
+
+			# 年化波动率
+			volatility = float(np.std(daily_returns, ddof=1) * np.sqrt(252))
+
+			# VaR (历史模拟法)
+			var_95 = float(np.percentile(daily_returns, 5))
+			var_99 = float(np.percentile(daily_returns, 1))
+
+			# 最大回撤
+			cum_peak = np.maximum.accumulate(assets_series)
+			drawdowns = (assets_series - cum_peak) / cum_peak
+			max_drawdown = float(np.min(drawdowns))
+
+			# 夏普比率（无风险利率 2%）
+			risk_free_daily = 0.02 / 252
+			excess = daily_returns - risk_free_daily
+			std = float(np.std(excess, ddof=1))
+			sharpe_ratio = float(np.mean(excess) / std * np.sqrt(252)) if std > 0 else 0.0
+
+			# Beta（相对于自身，简化为 1.0；实际需基准指数数据）
+			beta = 1.0
+
+			return {
+				"volatility": round(volatility, 6),
+				"var_95": round(var_95, 6),
+				"var_99": round(var_99, 6),
+				"max_drawdown": round(max_drawdown, 6),
+				"beta": beta,
+				"sharpe_ratio": round(sharpe_ratio, 6),
+			}
 
 		except Exception as e:
 			logger.error(f"计算风险指标失败: {str(e)}")
@@ -307,14 +336,15 @@ class AssetService:
 			历史收益数据
 		"""
 		try:
-			# 这里简化处理，实际实现需要查询AccountDailyPerformance表
-			# 获取最近N天的每日绩效数据
 			from sqlalchemy import select, desc
-			from ....shared.database.models.business_models import AccountDailyPerformance
+			from shared.database.models.business_models import AccountDailyPerformance
+
+			account = await self.account_repo.get(account_id)
+			user_id = account.user_id if account else account_id
 
 			stmt = (
 				select(AccountDailyPerformance)
-				.where(AccountDailyPerformance.user_id == account_id)  # 注意：这里应该是account_id，但表结构是user_id
+				.where(AccountDailyPerformance.user_id == user_id)
 				.order_by(desc(AccountDailyPerformance.trade_date))
 				.limit(days)
 			)
@@ -472,29 +502,42 @@ class AssetService:
 					"message": "数据不足，无法计算资产增长"
 				}
 
-			# 提取总资产序列
-			assets_series = [a["total_asset"] for a in historical_assets]
+			import numpy as np
 
-			# 计算增长指标
-			growth_metrics = {
-				"total_growth": 0,
-				"annualized_growth": 0,
-				"volatility": 0,
-				"growth_rate_per_day": 0,
-				"sharpe_ratio": 0
-			}
+			assets_series = np.array(
+				[float(a["total_asset"]) for a in historical_assets], dtype=np.float64
+			)
+			returns_series = np.array(
+				[float(a.get("daily_return", 0) or 0) for a in historical_assets], dtype=np.float64
+			)
+
+			start_asset = float(assets_series[0])
+			end_asset = float(assets_series[-1])
+			total_growth = (end_asset - start_asset) / start_asset if start_asset > 0 else 0.0
+
+			n_days = len(assets_series)
+			annualized_growth = float((1 + total_growth) ** (252 / n_days) - 1) if total_growth > -1 and n_days > 0 else total_growth
+
+			volatility = float(np.std(returns_series, ddof=1) * np.sqrt(252))
+
+			growth_rate_per_day = float(np.mean(returns_series)) if len(returns_series) > 0 else 0.0
+
+			risk_free_daily = 0.02 / 252
+			excess = returns_series - risk_free_daily
+			std = float(np.std(excess, ddof=1))
+			sharpe_ratio = float(np.mean(excess) / std * np.sqrt(252)) if std > 0 else 0.0
 
 			return {
 				"period": period,
 				"start_date": historical_assets[0]["trade_date"],
 				"end_date": historical_assets[-1]["trade_date"],
-				"start_asset": assets_series[0],
-				"end_asset": assets_series[-1],
-				"total_growth": growth_metrics["total_growth"],
-				"annualized_growth": growth_metrics["annualized_growth"],
-				"volatility": growth_metrics["volatility"],
-				"growth_rate_per_day": growth_metrics.get("growth_rate_per_day", 0),
-				"sharpe_ratio": growth_metrics.get("sharpe_ratio", 0)
+				"start_asset": start_asset,
+				"end_asset": end_asset,
+				"total_growth": round(total_growth, 6),
+				"annualized_growth": round(annualized_growth, 6),
+				"volatility": round(volatility, 6),
+				"growth_rate_per_day": round(growth_rate_per_day, 6),
+				"sharpe_ratio": round(sharpe_ratio, 6),
 			}
 
 		except Exception as e:

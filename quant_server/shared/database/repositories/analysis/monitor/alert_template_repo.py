@@ -12,8 +12,8 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AlertTemplate
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.business_models import AlertTemplate
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class AlertTemplateRepository(BaseRepository[AlertTemplate]):

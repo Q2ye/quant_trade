@@ -3,19 +3,20 @@
 提供投资组合优化和参数优化功能
 """
 
-import numpy as np
-import pandas as pd
-from typing import Union, List, Tuple, Optional, Dict, Any, Callable
+import warnings
 from dataclasses import dataclass
 from enum import Enum
-import warnings
+from typing import Union, List, Optional, Dict, Any
+
+import numpy as np
+import pandas as pd
 from scipy.optimize import minimize, Bounds, LinearConstraint, NonlinearConstraint
 from scipy.stats import norm
 
 
 class OptimizationMethod(Enum):
 	"""优化方法枚举"""
-	SLSP = "slsqp"  # 序列最小二乘法
+	SLSP = "slsqp"  # 序列最小二 乘法
 	COBYLA = "cobyla"  # 约束优化
 	TRUST_CONSTR = "trust-constr"  # 信赖域约束优化
 
@@ -58,8 +59,8 @@ class PortfolioOptimizer:
 	提供多种投资组合优化方法
 	"""
 
-	def __init__ (self, risk_free_rate: float = 0.03,
-	              method: OptimizationMethod = OptimizationMethod.SLSP):
+	def __init__(self, risk_free_rate: float = 0.03,
+	             method: OptimizationMethod = OptimizationMethod.SLSP):
 		"""
 		初始化投资组合优化器
 
@@ -70,10 +71,10 @@ class PortfolioOptimizer:
 		self.risk_free_rate = risk_free_rate
 		self.method = method.value
 
-	def portfolio_optimization (self,
-	                            returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                            objective: ObjectiveType = ObjectiveType.MAXIMIZE_SHARPE,
-	                            constraints: Optional[Dict[str, Any]] = None) -> OptimizationResult:
+	def portfolio_optimization(self,
+	                           returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                           objective: ObjectiveType = ObjectiveType.MAXIMIZE_SHARPE,
+	                           constraints: Optional[Dict[str, Any]] = None) -> OptimizationResult:
 		"""
 		通用投资组合优化
 
@@ -195,9 +196,9 @@ class PortfolioOptimizer:
 				function_calls=0
 			)
 
-	def markowitz_optimization (self,
-	                            returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                            target_return: Optional[float] = None) -> OptimizationResult:
+	def markowitz_optimization(self,
+	                           returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                           target_return: Optional[float] = None) -> OptimizationResult:
 		"""
 		马科维茨均值-方差优化
 
@@ -217,10 +218,10 @@ class PortfolioOptimizer:
 		return self.portfolio_optimization(
 			returns, ObjectiveType.MINIMIZE_VARIANCE, constraints)
 
-	def black_litterman_optimization (self,
-	                                  returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                                  prior_weights: np.ndarray,
-	                                  views: Dict[str, Any]) -> OptimizationResult:
+	def black_litterman_optimization(self,
+	                                 returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                                 prior_weights: np.ndarray,
+	                                 views: Dict[str, Any]) -> OptimizationResult:
 		"""
 		Black-Litterman模型优化
 
@@ -248,16 +249,38 @@ class PortfolioOptimizer:
 		# 风险厌恶系数（通常设为2-4）
 		risk_aversion = 3.0
 
-		# 计算市场隐含收益率
+		# 市场隐含均衡收益率 Π = λ Σ w_mkt (reverse optimization)
 		implied_returns = risk_aversion * covariance_matrix @ market_weights
 
-		# 整合观点
-		# 这里简化处理，实际Black-Litterman模型更复杂
-		# 返回马科维茨优化结果作为近似
-		return self.markowitz_optimization(returns)
+		# Black-Litterman 贝叶斯整合投资者观点
+		if views and 'P' in views and 'Q' in views:
+			P = np.atleast_2d(np.array(views['P'], dtype=float))
+			Q = np.atleast_1d(np.array(views['Q'], dtype=float))
+			tau = float(views.get('tau', 1.0 / max(returns.shape[0], 1)))
+			# 观点误差协方差 Ω: 默认 Ω = diag(P(τΣ)Pᵀ)
+			if 'Omega' in views:
+				Omega = np.atleast_2d(np.array(views['Omega'], dtype=float))
+			else:
+				Omega = np.diag(np.diag(P @ (tau * covariance_matrix) @ P.T))
+			# 后验收益率 E[R] = [(τΣ)⁻¹ + PᵀΩ⁻¹P]⁻¹ · [(τΣ)⁻¹Π + PᵀΩ⁻¹Q]
+			tau_Sigma_inv = np.linalg.inv(tau * covariance_matrix)
+			Omega_inv = np.linalg.inv(Omega)
+			M = tau_Sigma_inv + P.T @ Omega_inv @ P
+			b = tau_Sigma_inv @ implied_returns + P.T @ Omega_inv @ Q
+			posterior_returns = np.linalg.solve(M, b)
+			# 后验协方差 Σ_post = Σ + M⁻¹
+			posterior_cov = covariance_matrix + np.linalg.inv(M)
+		else:
+			posterior_returns = implied_returns
+			posterior_cov = covariance_matrix
 
-	def risk_parity_optimization (self,
-	                              returns: Union[List[float], np.ndarray, pd.DataFrame]) -> OptimizationResult:
+		# 用后验估计进行均值-方差优化
+		return self._optimize_given_estimates(
+			posterior_returns, posterior_cov, n_assets=n_assets
+		)
+
+	def risk_parity_optimization(self,
+	                             returns: Union[List[float], np.ndarray, pd.DataFrame]) -> OptimizationResult:
 		"""
 		风险平价优化
 
@@ -275,10 +298,10 @@ class PortfolioOptimizer:
 		return self.portfolio_optimization(
 			returns, ObjectiveType.RISK_PARITY, constraints)
 
-	def mean_var_optimization (self,
-	                           returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                           target_return: Optional[float] = None,
-	                           target_risk: Optional[float] = None) -> OptimizationResult:
+	def mean_var_optimization(self,
+	                          returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                          target_return: Optional[float] = None,
+	                          target_risk: Optional[float] = None) -> OptimizationResult:
 		"""
 		均值-方差优化
 
@@ -307,9 +330,9 @@ class PortfolioOptimizer:
 			return self.portfolio_optimization(
 				returns, ObjectiveType.MAXIMIZE_SHARPE, constraints)
 
-	def minimize_risk_given_return (self,
-	                                returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                                target_return: float) -> OptimizationResult:
+	def minimize_risk_given_return(self,
+	                               returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                               target_return: float) -> OptimizationResult:
 		"""
 		给定收益率下的最小风险优化
 
@@ -329,9 +352,9 @@ class PortfolioOptimizer:
 		return self.portfolio_optimization(
 			returns, ObjectiveType.MINIMIZE_VARIANCE, constraints)
 
-	def maximize_return_given_risk (self,
-	                                returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                                max_risk: float) -> OptimizationResult:
+	def maximize_return_given_risk(self,
+	                               returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                               max_risk: float) -> OptimizationResult:
 		"""
 		给定风险下的最大收益优化
 
@@ -351,9 +374,9 @@ class PortfolioOptimizer:
 		return self.portfolio_optimization(
 			returns, ObjectiveType.MAXIMIZE_RETURN, constraints)
 
-	def efficient_frontier (self,
-	                        returns: Union[List[float], np.ndarray, pd.DataFrame],
-	                        n_points: int = 20) -> EfficientFrontier:
+	def efficient_frontier(self,
+	                       returns: Union[List[float], np.ndarray, pd.DataFrame],
+	                       n_points: int = 20) -> EfficientFrontier:
 		"""
 		计算有效前沿
 
@@ -413,7 +436,7 @@ class PortfolioOptimizer:
 			weights_matrix=np.array(frontier_weights)
 		)
 
-	def _create_bounds (self, n_assets: int, constraints: Dict[str, Any]) -> Bounds:
+	def _create_bounds(self, n_assets: int, constraints: Dict[str, Any]) -> Bounds:
 		"""创建边界条件"""
 		min_weight = constraints.get('min_weight', 0.0)
 		max_weight = constraints.get('max_weight', 1.0)
@@ -427,10 +450,10 @@ class PortfolioOptimizer:
 
 		return Bounds(lb=np.full(n_assets, lb), ub=np.full(n_assets, ub))
 
-	def _create_constraints (self, n_assets: int,
-	                         expected_returns: np.ndarray,
-	                         covariance_matrix: np.ndarray,
-	                         constraints: Dict[str, Any]) -> List:
+	def _create_constraints(self, n_assets: int,
+	                        expected_returns: np.ndarray,
+	                        covariance_matrix: np.ndarray,
+	                        constraints: Dict[str, Any]) -> List:
 		"""创建约束条件列表"""
 		constraints_list = []
 
@@ -450,7 +473,7 @@ class PortfolioOptimizer:
 		# 最大风险约束
 		max_risk = constraints.get('max_risk')
 		if max_risk is not None:
-			def risk_constraint (weights):
+			def risk_constraint(weights):
 				return self._calculate_portfolio_volatility(weights, covariance_matrix)
 
 			constraints_list.append(
@@ -459,24 +482,24 @@ class PortfolioOptimizer:
 
 		return constraints_list
 
-	def _portfolio_variance (self, weights: np.ndarray,
-	                         expected_returns: np.ndarray,
-	                         covariance_matrix: np.ndarray,
-	                         constraints: Dict[str, Any]) -> float:
+	def _portfolio_variance(self, weights: np.ndarray,
+	                        expected_returns: np.ndarray,
+	                        covariance_matrix: np.ndarray,
+	                        constraints: Dict[str, Any]) -> float:
 		"""投资组合方差目标函数"""
 		return self._calculate_portfolio_volatility(weights, covariance_matrix) ** 2
 
-	def _negative_portfolio_return (self, weights: np.ndarray,
-	                                expected_returns: np.ndarray,
-	                                covariance_matrix: np.ndarray,
-	                                constraints: Dict[str, Any]) -> float:
+	def _negative_portfolio_return(self, weights: np.ndarray,
+	                               expected_returns: np.ndarray,
+	                               covariance_matrix: np.ndarray,
+	                               constraints: Dict[str, Any]) -> float:
 		"""投资组合收益目标函数（负值，用于最小化）"""
 		return -self._calculate_portfolio_return(weights, expected_returns)
 
-	def _negative_sharpe_ratio (self, weights: np.ndarray,
-	                            expected_returns: np.ndarray,
-	                            covariance_matrix: np.ndarray,
-	                            constraints: Dict[str, Any]) -> float:
+	def _negative_sharpe_ratio(self, weights: np.ndarray,
+	                           expected_returns: np.ndarray,
+	                           covariance_matrix: np.ndarray,
+	                           constraints: Dict[str, Any]) -> float:
 		"""夏普比率目标函数（负值，用于最小化）"""
 		portfolio_return = self._calculate_portfolio_return(weights, expected_returns)
 		portfolio_vol = self._calculate_portfolio_volatility(weights, covariance_matrix)
@@ -487,26 +510,31 @@ class PortfolioOptimizer:
 		else:
 			return 1e6  # 惩罚零波动率
 
-	def _portfolio_cvar (self, weights: np.ndarray,
-	                     expected_returns: np.ndarray,
-	                     covariance_matrix: np.ndarray,
-	                     constraints: Dict[str, Any]) -> float:
-		"""投资组合CVaR目标函数"""
-		# 简化实现，假设正态分布
+	def _portfolio_cvar(self, weights: np.ndarray,
+	                    expected_returns: np.ndarray,
+	                    covariance_matrix: np.ndarray,
+	                    constraints: Dict[str, Any]) -> float:
+		"""投资组合CVaR目标函数 — 正态假设下的解析解"""
+		# 从约束中获取置信水平，默认95%
+		alpha = float(constraints.get('cvar_alpha', 0.05))
+		if not 0 < alpha < 0.5:
+			alpha = 0.05
 		portfolio_return = self._calculate_portfolio_return(weights, expected_returns)
 		portfolio_vol = self._calculate_portfolio_volatility(weights, covariance_matrix)
 
-		# 95%置信水平的CVaR
-		alpha = 0.05
-		z_alpha = norm.ppf(alpha)
-		cvar = portfolio_return - portfolio_vol * norm.pdf(z_alpha) / alpha
+		if portfolio_vol > 0:
+			z_alpha = norm.ppf(alpha)
+			# CVaR_α = μ − σ · φ(z_α) / α  (正态分布下的条件期望)
+			cvar = portfolio_return - portfolio_vol * norm.pdf(z_alpha) / alpha
+		else:
+			cvar = portfolio_return
 
-		return -cvar  # 最小化风险，所以取负值
+		return -cvar  # 最小化风险，取负值
 
-	def _risk_parity_objective (self, weights: np.ndarray,
-	                            expected_returns: np.ndarray,
-	                            covariance_matrix: np.ndarray,
-	                            constraints: Dict[str, Any]) -> float:
+	def _risk_parity_objective(self, weights: np.ndarray,
+	                           expected_returns: np.ndarray,
+	                           covariance_matrix: np.ndarray,
+	                           constraints: Dict[str, Any]) -> float:
 		"""风险平价目标函数"""
 		n_assets = len(weights)
 
@@ -531,63 +559,128 @@ class PortfolioOptimizer:
 
 		return objective
 
-	def _calculate_portfolio_return (self, weights: np.ndarray,
-	                                 expected_returns: np.ndarray) -> float:
+	def _optimize_given_estimates(self,
+	                                expected_returns: np.ndarray,
+	                                covariance_matrix: np.ndarray,
+	                                n_assets: int,
+	                                constraints: Optional[Dict[str, Any]] = None) -> OptimizationResult:
+		"""用给定的预期收益和协方差进行均值-方差优化"""
+		if constraints is None:
+			constraints = {
+				'sum_to_one': True,
+				'no_short': True,
+				'max_weight': 1.0,
+				'min_weight': 0.0,
+			}
+		x0 = np.ones(n_assets) / n_assets
+		bounds = self._create_bounds(n_assets, constraints)
+		cons_list = self._create_constraints(
+			n_assets, expected_returns, covariance_matrix, constraints)
+		args = (expected_returns, covariance_matrix, constraints)
+
+		try:
+			result = minimize(
+				fun=self._negative_sharpe_ratio,
+				x0=x0,
+				args=args,
+				method=self.method,
+				bounds=bounds,
+				constraints=cons_list,
+				options={'maxiter': 1000, 'ftol': 1e-8}
+			)
+			if not result.success:
+				warnings.warn(f"BL优化未成功: {result.message}")
+
+			optimal_weights = result.x
+			if constraints.get("sum_to_one", True):
+				optimal_weights = optimal_weights / np.sum(optimal_weights)
+
+			portfolio_return = self._calculate_portfolio_return(
+				optimal_weights, expected_returns)
+			portfolio_vol = self._calculate_portfolio_volatility(
+				optimal_weights, covariance_matrix)
+			sharpe = ((portfolio_return - self.risk_free_rate) / portfolio_vol
+			          if portfolio_vol > 0 else 0.0)
+
+			return OptimizationResult(
+				success=result.success,
+				message=result.message,
+				weights=optimal_weights,
+				expected_return=portfolio_return,
+				volatility=portfolio_vol,
+				sharpe_ratio=sharpe,
+				objective_value=result.fun,
+				iterations=result.nit,
+				function_calls=result.nfev
+			)
+		except Exception as e:
+			return OptimizationResult(
+				success=False, message=str(e),
+				weights=np.ones(n_assets) / n_assets,
+				expected_return=0.0, volatility=0.0,
+				sharpe_ratio=0.0, objective_value=0.0,
+				iterations=0, function_calls=0
+			)
+
+	@staticmethod
+	def _calculate_portfolio_return( weights: np.ndarray,
+	                                expected_returns: np.ndarray) -> float:
 		"""计算投资组合预期收益"""
 		return np.dot(weights, expected_returns)
 
-	def _calculate_portfolio_volatility (self, weights: np.ndarray,
-	                                     covariance_matrix: np.ndarray) -> float:
+	@staticmethod
+	def _calculate_portfolio_volatility( weights: np.ndarray,
+	                                    covariance_matrix: np.ndarray) -> float:
 		"""计算投资组合波动率"""
 		return np.sqrt(np.dot(weights.T, np.dot(covariance_matrix, weights)))
 
 
 # 便捷函数
-def portfolio_optimization (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                            objective: ObjectiveType = ObjectiveType.MAXIMIZE_SHARPE,
-                            constraints: Optional[Dict[str, Any]] = None) -> OptimizationResult:
+def portfolio_optimization(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                           objective: ObjectiveType = ObjectiveType.MAXIMIZE_SHARPE,
+                           constraints: Optional[Dict[str, Any]] = None) -> OptimizationResult:
 	"""通用投资组合优化"""
 	return PortfolioOptimizer().portfolio_optimization(returns, objective, constraints)
 
 
-def markowitz_optimization (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                            target_return: Optional[float] = None) -> OptimizationResult:
+def markowitz_optimization(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                           target_return: Optional[float] = None) -> OptimizationResult:
 	"""马科维茨均值-方差优化"""
 	return PortfolioOptimizer().markowitz_optimization(returns, target_return)
 
 
-def black_litterman_optimization (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                                  prior_weights: np.ndarray,
-                                  views: Dict[str, Any]) -> OptimizationResult:
+def black_litterman_optimization(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                                 prior_weights: np.ndarray,
+                                 views: Dict[str, Any]) -> OptimizationResult:
 	"""Black-Litterman模型优化"""
 	return PortfolioOptimizer().black_litterman_optimization(returns, prior_weights, views)
 
 
-def risk_parity_optimization (returns: Union[List[float], np.ndarray, pd.DataFrame]) -> OptimizationResult:
+def risk_parity_optimization(returns: Union[List[float], np.ndarray, pd.DataFrame]) -> OptimizationResult:
 	"""风险平价优化"""
 	return PortfolioOptimizer().risk_parity_optimization(returns)
 
 
-def mean_var_optimization (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                           target_return: Optional[float] = None,
-                           target_risk: Optional[float] = None) -> OptimizationResult:
+def mean_var_optimization(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                          target_return: Optional[float] = None,
+                          target_risk: Optional[float] = None) -> OptimizationResult:
 	"""均值-方差优化"""
 	return PortfolioOptimizer().mean_var_optimization(returns, target_return, target_risk)
 
 
-def minimize_risk_given_return (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                                target_return: float) -> OptimizationResult:
+def minimize_risk_given_return(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                               target_return: float) -> OptimizationResult:
 	"""给定收益率下的最小风险优化"""
 	return PortfolioOptimizer().minimize_risk_given_return(returns, target_return)
 
 
-def maximize_return_given_risk (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                                max_risk: float) -> OptimizationResult:
+def maximize_return_given_risk(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                               max_risk: float) -> OptimizationResult:
 	"""给定风险下的最大收益优化"""
 	return PortfolioOptimizer().maximize_return_given_risk(returns, max_risk)
 
 
-def efficient_frontier (returns: Union[List[float], np.ndarray, pd.DataFrame],
-                        n_points: int = 20) -> EfficientFrontier:
+def efficient_frontier(returns: Union[List[float], np.ndarray, pd.DataFrame],
+                       n_points: int = 20) -> EfficientFrontier:
 	"""计算有效前沿"""
 	return PortfolioOptimizer().efficient_frontier(returns, n_points)

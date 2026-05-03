@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional, cast
 from datetime import datetime
 
 # 导入统一类型定义
-from quant_server.core.events.engine_events import EngineLifecycleEvent
+from core.events.engine_events import EngineLifecycleEvent
 
 from ..types.entities import (
     EngineConfigEntity,
@@ -470,14 +470,14 @@ class MainEngine(EngineBase):
             # 注册到引擎注册表（传递正确的category参数）
             if self._engine_registry:
                 # 获取引擎描述符以获取category信息
-                from quant_server.core.engines.utils.engine_factory import EngineFactory
+                from core.engines.utils.engine_factory import EngineFactory
                 factory_instance = EngineFactory()
                 descriptor = factory_instance.get_engine_descriptor(engine_type)
                 if descriptor:
                     await self._engine_registry.register_engine(engine, descriptor.category)
                 else:
                     logger.warning(f"无法获取引擎描述符: {engine_type}, 使用默认分类")
-                    from quant_server.core.engines.types.enums import EngineCategory
+                    from core.engines.types.enums import EngineCategory
                     await self._engine_registry.register_engine(engine, EngineCategory.SYSTEM)
 
             # 保存到模块映射
@@ -681,6 +681,15 @@ class MainEngine(EngineBase):
             return self._engine_registry.get_engine(engine_name)
 
         return None
+
+    def register_engine(self, name: str, engine: EngineBase) -> None:
+        """注册模块引擎到主引擎（模块 initialize 阶段调用的便利方法）
+
+        Args:
+            name: 引擎名称（如 signal_engine, strategy_manager）
+            engine: 引擎实例
+        """
+        self._module_engines[name] = engine
 
     async def get_module_engine(self, module_name: str) -> Optional[EngineBase]:
         """获取模块引擎

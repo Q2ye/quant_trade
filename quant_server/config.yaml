@@ -60,24 +60,24 @@ defaults: &defaults
         stop_loss_percent: 0.05
     
     account:
-      enabled: false
-      auto_start: false
+      enabled: true
+      auto_start: true
       dependencies: ["trade"]
       config:
         enable_multi_account: false
         account_update_interval: 60
     
     analysis:
-      enabled: false
-      auto_start: false
+      enabled: true
+      auto_start: true
       dependencies: ["account", "strategy"]
       config:
         performance_calc_interval: 3600
         enable_attribution: true
     
     monitor:
-      enabled: false
-      auto_start: false
+      enabled: true
+      auto_start: true
       dependencies: ["data", "strategy", "trade", "account", "analysis"]
       config:
         email_enabled: false
@@ -86,8 +86,8 @@ defaults: &defaults
         alert_interval: 300
     
     system:
-      enabled: false
-      auto_start: false
+      enabled: true
+      auto_start: true
       dependencies: []
       config:
         secret_key: "your-secret-key-here"

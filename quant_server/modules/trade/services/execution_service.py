@@ -1,7 +1,7 @@
 # execution_service.py  # 执行服务
 
 from typing import Dict, Any
-from quant_server.modules.trade.engines.execution_engine import ExecutionEngine
+from modules.trade.engines.execution_engine import ExecutionEngine
 
 
 class ExecutionService:

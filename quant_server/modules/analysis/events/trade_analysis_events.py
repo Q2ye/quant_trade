@@ -3,7 +3,7 @@
 from typing import Dict, Any, Optional
 from datetime import date
 
-from quant_server.core.events.base import BaseEvent
+from core.events.base import BaseEvent
 from .types import AnalysisEventType
 
 

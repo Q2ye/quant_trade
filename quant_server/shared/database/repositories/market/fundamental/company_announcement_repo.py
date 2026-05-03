@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import CompanyAnnouncement
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
+from shared.database.models.data_models import CompanyAnnouncement
+from shared.database.repositories.base.repository_base import BaseRepository
 
 
 class CompanyAnnouncementRepository(BaseRepository[CompanyAnnouncement]):

@@ -6,8 +6,8 @@
 导出所有绩效分析器，便于统一导入。
 """
 
-from quant_server.modules.analysis.analyzers.performance.return_analyzer import ReturnAnalyzer
-from quant_server.modules.analysis.analyzers.performance.risk_analyzer import RiskAnalyzer
+from modules.analysis.analyzers.performance.return_analyzer import ReturnAnalyzer
+from modules.analysis.analyzers.performance.risk_analyzer import RiskAnalyzer
 
 __all__ = [
     'ReturnAnalyzer',

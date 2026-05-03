@@ -34,7 +34,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 
 # 导入引擎配置实体
-from quant_server.core.events import BaseEvent
+from core.events import BaseEvent
 from ....core.engines.types.entities import EngineConfigEntity
 from  ....core.engines.types.enums import (
     EngineType,
@@ -48,7 +48,7 @@ from ....core.engines.base.engine_base import EngineBase
 from ....core.engines.utils.engine_factory import EngineDescriptor
 
 # 导入业务模块
-from quant_server.modules.data.events import (
+from modules.data.events import (
     DataProcessingStatus,
     MarketDataProcessingEvent,
     MarketDataProcessedEvent,
@@ -1518,46 +1518,130 @@ class DataCleanEngine(EngineBase):
             logger.error(f"测量清洗前质量失败: {e}")
             return 0.0
 
-    @staticmethod
-    async def _validate_input_data(_task_id: str, _config: CleanTaskConfig) -> Dict[str, Any]:
-        """验证输入数据"""
-        return {
-            "status": "valid",
-            "records_checked": 0,
-            "issues_found": [],
-        }
+    async def _validate_input_data(self, task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+        """验证输入数据 — 通过质量服务进行前置检查"""
+        try:
+            if not self.clean_service:
+                return {"status": "valid", "records_checked": 0, "issues_found": []}
 
-    @staticmethod
-    async def _apply_clean_rule(_task_id: str, _config: CleanTaskConfig, rule: CleanRule) -> Dict[str, Any]:
-        """应用清洗规则"""
-        return {
-            "rule": rule.name,
-            "status": "applied",
-            "records_processed": 0,
-            "changes_made": 0,
-            "errors": [],
-        }
+            if self.quality_service:
+                quality_result = await self.quality_service.check_data_quality(
+                    data_type=config.data_type,
+                    start_date=getattr(config, "start_date", None),
+                    end_date=getattr(config, "end_date", None),
+                    ts_code=getattr(config, "ts_code", None),
+                )
+                return {
+                    "status": "valid" if quality_result.get("success") else "issues_found",
+                    "records_checked": quality_result.get("result", {}).get("total_records", 0),
+                    "issues_found": quality_result.get("result", {}).get("issues", []),
+                    "quality_score": quality_result.get("result", {}).get("overall_score", 0),
+                }
 
-    @staticmethod
-    async def _validate_output_data(_task_id: str, _config: CleanTaskConfig) -> Dict[str, Any]:
-        """验证输出数据"""
-        return {
-            "status": "valid",
-            "records_checked": 0,
-            "issues_found": [],
-        }
+            return {"status": "valid", "records_checked": 0, "issues_found": []}
+        except Exception as e:
+            logger.error(f"输入数据验证失败: {e}")
+            return {"status": "error", "records_checked": 0, "issues_found": [], "error": str(e)}
+    async def _apply_clean_rule(self, task_id: str, config: CleanTaskConfig, rule: CleanRule) -> Dict[str, Any]:
+        """应用清洗规则 — 通过清洗服务执行具体规则"""
+        try:
+            if not self.clean_service:
+                return {"rule": rule.name, "status": "skipped", "records_processed": 0, "changes_made": 0, "errors": ["清洗服务未配置"]}
 
-    @staticmethod
-    async def _save_cleaned_data(_task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
-        """保存清洗后的数据"""
-        return {
-            "status": "saved",
-            "total_records": 0,
-            "cleaned_records": 0,
-            "failed_records": 0,
-            "storage_location": f"cleaned/{config.data_type}",
-        }
+            # 根据规则类型映射到清洗服务的检查方法
+            check_methods = {
+                "missing_data": "_check_missing_data",
+                "duplicate_data": "_check_duplicate_data",
+                "outlier_detection": "_check_outliers",
+                "invalid_symbols": "_check_invalid_stock_symbols",
+                "missing_info": "_check_missing_stock_info",
+            }
+            method_name = check_methods.get(rule.rule_type) if hasattr(rule, "rule_type") else None
 
+            if method_name and hasattr(self.clean_service, method_name):
+                check_fn = getattr(self.clean_service, method_name)
+                issues = await check_fn()
+                return {
+                    "rule": rule.name,
+                    "status": "applied",
+                    "records_processed": len(issues) if issues else 0,
+                    "changes_made": 0,
+                    "issues_found": len(issues) if issues else 0,
+                    "errors": [],
+                }
+
+            return {
+                "rule": rule.name,
+                "status": "applied",
+                "records_processed": 0,
+                "changes_made": 0,
+                "errors": [f"规则类型 {getattr(rule, 'rule_type', 'unknown')} 无对应检查方法"],
+            }
+        except Exception as e:
+            logger.error(f"应用清洗规则失败: {e}")
+            return {"rule": rule.name, "status": "error", "records_processed": 0, "changes_made": 0, "errors": [str(e)]}
+    async def _validate_output_data(self, task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+        """验证输出数据 — 通过质量服务进行后置检查"""
+        try:
+            if not self.quality_service:
+                return {"status": "valid", "records_checked": 0, "issues_found": []}
+
+            quality_result = await self.quality_service.check_data_quality(
+                data_type=config.data_type,
+                start_date=getattr(config, "start_date", None),
+                end_date=getattr(config, "end_date", None),
+                ts_code=getattr(config, "ts_code", None),
+            )
+            return {
+                "status": "valid" if quality_result.get("success") else "issues_found",
+                "records_checked": quality_result.get("result", {}).get("total_records", 0),
+                "issues_found": quality_result.get("result", {}).get("issues", []),
+                "quality_score": quality_result.get("result", {}).get("overall_score", 0),
+            }
+        except Exception as e:
+            logger.error(f"输出数据验证失败: {e}")
+            return {"status": "error", "records_checked": 0, "issues_found": [], "error": str(e)}
+    async def _save_cleaned_data(self, task_id: str, config: CleanTaskConfig) -> Dict[str, Any]:
+        """保存清洗后的数据 — 通过清洗服务应用清洗结果"""
+        try:
+            if not self.clean_service:
+                return {
+                    "status": "skipped",
+                    "total_records": 0,
+                    "cleaned_records": 0,
+                    "failed_records": 0,
+                    "storage_location": f"cleaned/{config.data_type}",
+                }
+
+            apply_result = await self.clean_service.apply_cleaning_results(
+                clean_id=task_id,
+                apply_rules=[r.name for r in config.rules] if config.rules else None,
+                dry_run=False,
+            )
+            total = apply_result.get("total_issues", 0)
+            applied = apply_result.get("applied_count", 0)
+            failed = apply_result.get("failed_count", 0)
+
+            await self.clean_service._clean_cache_after_cleaning(config.data_type)
+
+            return {
+                "status": "saved",
+                "total_records": total,
+                "cleaned_records": applied,
+                "failed_records": failed,
+                "storage_location": f"cleaned/{config.data_type}",
+                "apply_id": apply_result.get("apply_id"),
+            }
+        except Exception as e:
+            logger.error(f"保存清洗数据失败: {e}")
+            return {
+                "status": "error",
+                "total_records": 0,
+                "cleaned_records": 0,
+                "failed_records": 0,
+                "storage_location": f"cleaned/{config.data_type}",
+                "error": str(e),
+            }
     async def _measure_quality_after(self, _task_id: str, config: CleanTaskConfig) -> float:
         """测量清洗后质量"""
         try:

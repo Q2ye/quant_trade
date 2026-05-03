@@ -190,6 +190,7 @@ class AssetHistory(BaseModel):
 	cash: Decimal
 	market_value: Decimal
 	daily_pnl: Decimal
+	cumulative_pnl: Optional[Decimal] = None
 	daily_return: Decimal
 
 

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from quant_server.modules.trade.adapters.broker_adapter import BrokerAdapter
+from modules.trade.adapters.broker_adapter import BrokerAdapter
 
 
 class SimBrokerAdapter(BrokerAdapter):

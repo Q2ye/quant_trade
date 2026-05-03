@@ -9,11 +9,11 @@
 3. 按功能分组导出，避免循环导入
 """
 
-from quant_server.modules.data.services.sync_service import DataSyncService
-from quant_server.modules.data.services.quality_service import DataQualityService
-from quant_server.modules.data.services.research_service import FactorResearchService
-from quant_server.modules.data.services.market_service import MarketDataService
-from quant_server.modules.data.services.clean_service import DataCleanService
+from modules.data.services.sync_service import DataSyncService
+from modules.data.services.quality_service import DataQualityService
+from modules.data.services.research_service import FactorResearchService
+from modules.data.services.market_service import MarketDataService
+from modules.data.services.clean_service import DataCleanService
 
 __all__ = [
     "DataSyncService",      # 数据同步服务

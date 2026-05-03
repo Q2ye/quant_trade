@@ -1,7 +1,7 @@
 # order_service.py      # 订单服务
 
 from typing import Dict, Any, Optional, List
-from quant_server.modules.trade.engines.execution_engine import ExecutionEngine
+from modules.trade.engines.execution_engine import ExecutionEngine
 
 
 class OrderService:

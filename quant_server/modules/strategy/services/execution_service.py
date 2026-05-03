@@ -9,13 +9,13 @@ from typing import Dict, List, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.strategy.constants import (
+from modules.strategy.constants import (
 	StrategyLifecycleStatus,
 	RunMode,
 	ErrorCode,
 )
-from quant_server.modules.strategy.models import StrategyState
-from quant_server.shared.database.repositories.strategy.management import (
+from modules.strategy.models import StrategyState
+from shared.database.repositories.strategy.management import (
 	StrategyRepository,
 	StrategyRunRepository,
 )

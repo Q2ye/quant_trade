@@ -7,23 +7,23 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, Dict, Any
 
-from quant_server.modules.account.events import AccountBalanceUpdatedEvent, AccountStatusChangedEvent
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.trading.order.order_repo import OrderRepository
-from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
-from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
+from modules.account.events import AccountBalanceUpdatedEvent, AccountStatusChangedEvent
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.trading.order.order_repo import OrderRepository
+from shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.account.calculators.asset_calculator import AssetCalculator
-from quant_server.modules.account.calculators.pnl_calculator import PnLCalculator
-from quant_server.modules.account.models import AccountDomain
-from quant_server.modules.account.services.account_service import AccountService
-from quant_server.modules.account.services.asset_service import AssetService
-from quant_server.modules.account.services.cash_service import CashService
-from quant_server.modules.account.services.fee_service import FeeService
-from quant_server.modules.account.services.position_service import PositionService
-from quant_server.shared.cache.base import CacheBase
-from quant_server.shared.messaging.producer import MessageProducer
+from modules.account.calculators.asset_calculator import AssetCalculator
+from modules.account.calculators.pnl_calculator import PnLCalculator
+from modules.account.models import AccountDomain
+from modules.account.services.account_service import AccountService
+from modules.account.services.asset_service import AssetService
+from modules.account.services.cash_service import CashService
+from modules.account.services.fee_service import FeeService
+from modules.account.services.position_service import PositionService
+from shared.cache.base import CacheBase
+from shared.messaging.producer import MessageProducer
 
 logger = logging.getLogger(__name__)
 

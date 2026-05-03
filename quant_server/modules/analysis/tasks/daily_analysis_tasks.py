@@ -12,11 +12,11 @@ from typing import List, Dict, Any, Optional
 
 import numpy as np
 
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.modules.analysis.events.task_events import AnalysisCompletedEvent
-from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
-from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
+from core.engines.system.event_engine import EventEngine
+from modules.analysis.events.task_events import AnalysisCompletedEvent
+from modules.analysis.utils.statistic_utils import StatisticUtils
+from modules.analysis.visualizers.report_generator import ReportGenerator
+from shared.database.repositories.base.repository_base import BaseRepository
 
 
 class DailyAnalysisTasks:

@@ -12,8 +12,8 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends
 
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.engine_events import SystemEvent
+from core.engines.system.event_engine import EventEngine
+from core.events.engine_events import SystemEvent
 
 logger = logging.getLogger(__name__)
 

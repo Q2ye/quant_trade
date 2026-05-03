@@ -6,8 +6,8 @@
 import logging
 from typing import Dict, Type, Optional
 
-from quant_server.modules.strategy.constants import StrategyType
-from quant_server.modules.strategy.engines.strategy_manager import StrategyManager
+from modules.strategy.constants import StrategyType
+from modules.strategy.engines.strategy_manager import StrategyManager
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ class EngineFactory:
     def _register_default_engines(self) -> None:
         """注册默认引擎"""
         try:
-            from quant_server.modules.strategy.engines.cta_engine import CTAEngine
-            from quant_server.modules.strategy.engines.alpha_engine import AlphaEngine
-            from quant_server.modules.strategy.engines.ai_engine import AIEngine
+            from modules.strategy.engines.cta_engine import CTAEngine
+            from modules.strategy.engines.alpha_engine import AlphaEngine
+            from modules.strategy.engines.ai_engine import AIEngine
 
             self.register_engine(StrategyType.CTA, CTAEngine)
             self.register_engine(StrategyType.TREND_FOLLOWING, CTAEngine)

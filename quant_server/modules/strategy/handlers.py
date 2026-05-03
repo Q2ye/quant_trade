@@ -11,13 +11,13 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.strategy.constants import (
+from modules.strategy.constants import (
 	StrategyType,
 	StrategyLifecycleStatus,
 	RunMode,
 )
-from quant_server.modules.strategy.services.execution_service import ExecutionService
-from quant_server.modules.strategy.services.strategy_service import StrategyService
+from modules.strategy.services.execution_service import ExecutionService
+from modules.strategy.services.strategy_service import StrategyService
 
 logger = logging.getLogger(__name__)
 

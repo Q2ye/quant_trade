@@ -36,14 +36,14 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.analyzers.attribution.factor_attribution import FactorAttribution
-from quant_server.modules.analysis.models import AttributionAnalysis
-from quant_server.shared.database.repositories import AccountRepository
-from quant_server.shared.database.repositories import PositionRepository
-from quant_server.shared.database.repositories import StockBasicRepository
-from quant_server.shared.database.repositories import StrategyRepository
-from quant_server.shared.database.repositories.market.quote import StockDailyRepository
-from quant_server.shared.database.repositories.market.basic import IndexWeightRepository
+from modules.analysis.analyzers.attribution.factor_attribution import FactorAttribution
+from modules.analysis.models import AttributionAnalysis
+from shared.database.repositories import AccountRepository
+from shared.database.repositories import PositionRepository
+from shared.database.repositories import StockBasicRepository
+from shared.database.repositories import StrategyRepository
+from shared.database.repositories.market.quote import StockDailyRepository
+from shared.database.repositories.market.basic import IndexWeightRepository
 
 logger = logging.getLogger(__name__)
 

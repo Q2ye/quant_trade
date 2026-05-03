@@ -19,9 +19,9 @@ from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.business_models import FileAttachment
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.business_models import FileAttachment
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult
 )

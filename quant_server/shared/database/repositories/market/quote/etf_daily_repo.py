@@ -11,9 +11,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import EtfDaily, EtfBasic
-from quant_server.shared.database.repositories import RepositoryError
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import EtfDaily, EtfBasic, IndexDaily
+from shared.database.repositories import RepositoryError
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
@@ -162,23 +162,18 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 		if not etf_basic or not etf_basic.index_code:
 			return None
 
-		# 获取指数日线数据（需要从指数表中查询）
-		# 这里假设有index_daily表，实际可能需要根据具体数据库结构调整
-		index_query = text("""
-            SELECT close FROM index_daily 
-            WHERE ts_code = :index_code AND trade_date = :trade_date
-        """)
-
-		index_result = await self.session.execute(
-			index_query,
-			{"index_code": etf_basic.index_code, "trade_date": trade_date}
+		# 获取指数日线数据（通过ORM查询IndexDaily）
+		index_query = select(IndexDaily.close).where(
+			IndexDaily.ts_code == etf_basic.index_code,
+			IndexDaily.trade_date == trade_date
 		)
-		index_row = index_result.fetchone()
+		index_result = await self.session.execute(index_query)
+		index_close = index_result.scalar_one_or_none()
 
-		if not index_row:
+		if index_close is None:
 			return None
 
-		index_price = float(index_row.close)
+		index_price = float(index_close)
 		etf_price = float(etf_data.close)
 
 		# 计算折溢价率
@@ -403,8 +398,36 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 		else:
 			volatility = annual_volatility = 0
 
-		# 计算换手率（需要总份额数据，这里简化处理）
-		# 在实际应用中，需要从其他表获取总份额数据
+		# 计算换手率 — 基于回溯期95%分位成交量估算流通份额
+		# EtfBasic表无total_share字段，以高分位成交量作为流通份额代理变量
+		if volumes and len(volumes) >= 5:
+			sorted_volumes = sorted(volumes)
+			float_idx = min(int(len(sorted_volumes) * 0.95), len(sorted_volumes) - 1)
+			estimated_float = sorted_volumes[float_idx]
+			if estimated_float > 0:
+				turnover_rates = [v / estimated_float * 100 for v in volumes]
+				avg_turnover_rate = sum(turnover_rates) / len(turnover_rates)
+				recent_turnover_rate = turnover_rates[-1]
+				max_turnover_rate = max(turnover_rates)
+				min_turnover_rate = min(turnover_rates)
+			else:
+				avg_turnover_rate = recent_turnover_rate = max_turnover_rate = min_turnover_rate = 0.0
+				estimated_float = 0
+		else:
+			avg_turnover_rate = recent_turnover_rate = max_turnover_rate = min_turnover_rate = 0.0
+			estimated_float = 0
+
+		# Amihud非流动性指标 ILLIQ = avg(|return| / dollar_volume) × 10^6
+		if len(closes) >= 2 and amounts:
+			amihud_vals = []
+			for i in range(1, len(closes)):
+				if closes[i-1] > 0 and amounts[i] > 0:
+					daily_ret = abs((closes[i] - closes[i-1]) / closes[i-1])
+					dollar_vol = amounts[i] * 1000  # amount单位为千元，转为元
+					amihud_vals.append(daily_ret / dollar_vol)
+			amihud_illiquidity = (sum(amihud_vals) / len(amihud_vals)) * 1e6 if amihud_vals else 0.0
+		else:
+			amihud_illiquidity = 0.0
 
 		return {
 			"ts_code": ts_code,
@@ -422,6 +445,13 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 				"min_volume": min(volumes) if volumes else 0,
 				"volume_volatility": (max(volumes) - min(volumes)) / avg_volume * 100 if avg_volume > 0 else 0
 			},
+			"turnover_metrics": {
+				"estimated_float": estimated_float,
+				"avg_turnover_rate": round(avg_turnover_rate, 4),
+				"recent_turnover_rate": round(recent_turnover_rate, 4),
+				"max_turnover_rate": round(max_turnover_rate, 4),
+				"min_turnover_rate": round(min_turnover_rate, 4)
+			},
 			"price_metrics": {
 				"avg_price": avg_price,
 				"current_price": closes[-1] if closes else 0,
@@ -434,7 +464,10 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 				"amount_liquidity": "high" if avg_amount > 10000000 else
 				"medium" if avg_amount > 1000000 else "low",
 				"stability": "stable" if volatility < 0.02 else
-				"moderate" if volatility < 0.05 else "volatile"
+				"moderate" if volatility < 0.05 else "volatile",
+				"amihud_illiquidity": round(amihud_illiquidity, 8),
+				"amihud_assessment": "high" if amihud_illiquidity < 0.1 else
+				"moderate" if amihud_illiquidity < 1.0 else "low"
 			}
 		}
 

@@ -15,8 +15,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, desc, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockSTList, StockBasic
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.data_models import StockSTList, StockBasic
+from shared.database.repositories.base import BaseRepository
 
 
 class STListRepository(BaseRepository[StockSTList]):

@@ -4,12 +4,12 @@ import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from quant_server.core.engines import EngineConfigEntity
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system import EventEngine
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.trade.engines.execution_engine import ExecutionEngine
-from quant_server.modules.trade.engines.risk_engine import RiskEngine
+from core.engines import EngineConfigEntity
+from core.engines.base.engine_base import EngineBase
+from core.engines.system import EventEngine
+from core.engines.types.enums import EngineType
+from modules.trade.engines.execution_engine import ExecutionEngine
+from modules.trade.engines.risk_engine import RiskEngine
 
 
 class SignalEngine(EngineBase):
@@ -50,11 +50,14 @@ class SignalEngine(EngineBase):
     
     async def _on_start(self) -> None:
         """引擎特定的启动逻辑"""
-        # 注册事件监听器
         if self.event_engine:
-            # 这里可以注册事件监听器，监听策略生成的信号
-            pass
+            from modules.strategy.events.signal_events import StrategySignalEvent
+            self.event_engine.subscribe(StrategySignalEvent, self._on_strategy_signal)
         print("信号引擎启动成功")
+
+    async def _on_strategy_signal(self, event) -> None:
+        """处理策略信号事件，将信号送入风控→执行链路"""
+        await self.process_signal(event.data)
     
     async def _on_stop(self) -> None:
         """引擎特定的停止逻辑"""

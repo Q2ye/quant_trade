@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockMonthly
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import StockMonthly
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
@@ -455,27 +455,32 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		Returns:
 			季节性强度（0-1之间）
 		"""
-		# 使用ANOVA方法计算季节性强度
-		valid_months = [stats for stats in month_statistics.values() if stats["sample_size"] > 0]
+		# ANOVA η² (eta-squared) 季节性强度
+		# η² = SSB / SST，衡量月份因素对收益波动的解释比例，0=无季节性，1=完全由月份决定
+		valid_items = [(month, stats) for month, stats in month_statistics.items()
+		               if stats["sample_size"] > 0]
+		if len(valid_items) < 2:
+			return 0.0
 
-		if len(valid_months) < 2:
-			return 0
+		# 加权总均值 (avg_return 已是百分比形式，统一在%空间计算)
+		total_n = sum(stats["sample_size"] for _, stats in valid_items)
+		grand_mean = sum(stats["sample_size"] * stats["avg_return"]
+		                 for _, stats in valid_items) / total_n
 
+		# 组间平方和 SSB = Σ n_i · (mean_i − grand_mean)²
+		ssb = sum(stats["sample_size"] * (stats["avg_return"] - grand_mean) ** 2
+		          for _, stats in valid_items)
 
+		# 组内平方和 SSW = Σ n_i · σ²_i（σ² 使用总体方差 volatility²）
+		ssw = sum(stats["sample_size"] * stats["volatility"] ** 2
+		          for _, stats in valid_items)
 
-		# 简化实现：返回月份间差异的度量
-		returns = [stats["avg_return"] for stats in valid_months]
-		if returns:
-			mean_return = sum(returns) / len(returns)
-			variance = sum((r - mean_return) ** 2 for r in returns) / len(returns)
-			max_variance = max(abs(r - mean_return) for r in returns) ** 2
-
-			if max_variance > 0:
-				return variance / max_variance
-			else:
-				return 0
-
-		return 0
+		# η² = SSB / SST，钳制在 [0, 1]
+		sst = ssb + ssw
+		if sst > 0:
+			eta_squared = ssb / sst
+			return min(max(eta_squared, 0.0), 1.0)
+		return 0.0
 
 	@staticmethod
 	def _generate_seasonal_recommendations (

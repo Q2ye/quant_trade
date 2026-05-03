@@ -17,10 +17,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import HyperTableMetadata
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
-from quant_server.shared.database.repositories.base.repository_base import RepositoryError
-from quant_server.shared.database.repositories.hyper_tables import ChunkManager, TimeBucketManager
+from shared.database.models.system_models import HyperTableMetadata
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.repositories.base.repository_base import RepositoryError
+from shared.database.repositories.hyper_tables import ChunkManager, TimeBucketManager
 
 
 class HyperTableManager(HyperRepositoryBase[HyperTableMetadata]):

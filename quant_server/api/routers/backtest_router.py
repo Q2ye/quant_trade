@@ -11,11 +11,11 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入回测模块的业务层处理函数
-from quant_server.modules.backtest.handlers import (
+from modules.backtest.handlers import (
 	create_backtest_task,
 	get_backtest_task,
 	get_backtest_task_list,
@@ -28,7 +28,7 @@ from quant_server.modules.backtest.handlers import (
 	check_backtest_module_health
 )
 # 导入回测模块的Pydantic模型
-from quant_server.modules.backtest.schemas import (
+from modules.backtest.schemas import (
 	BacktestCreateRequest,
 	BacktestCreateResponse,
 	BacktestDetailResponse,
@@ -42,7 +42,7 @@ from quant_server.modules.backtest.schemas import (
 	BacktestOptimizeResponse
 )
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -429,7 +429,6 @@ async def optimize_parameters_api (
 @router.get("/health")
 async def backtest_module_health_check (
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
 ):
 	"""
 	回测模块健康检查
@@ -443,9 +442,7 @@ async def backtest_module_health_check (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 请求回测模块健康检查")
 
-		health_status = await check_backtest_module_health(
-			_session=db_session
-		)
+		health_status = await check_backtest_module_health()
 
 		return success_response(
 			data=health_status,

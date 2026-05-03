@@ -13,14 +13,14 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.monitor.collectors.metric_collector import MetricCollector
-from quant_server.modules.monitor.collectors.system_collector import SystemCollector
-from quant_server.modules.monitor.constants import ModuleConfig
-from quant_server.modules.monitor.events.system_events import SystemMonitorEvent
-from quant_server.modules.monitor.services.system_service import SystemMonitorService
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import EngineType
+from modules.monitor.collectors.metric_collector import MetricCollector
+from modules.monitor.collectors.system_collector import SystemCollector
+from modules.monitor.constants import ModuleConfig
+from modules.monitor.events.system_events import SystemMonitorEvent
+from modules.monitor.services.system_service import SystemMonitorService
 
 logger = logging.getLogger(__name__)
 

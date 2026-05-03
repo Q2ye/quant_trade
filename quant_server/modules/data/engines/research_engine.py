@@ -23,9 +23,9 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 
-from quant_server.core.events import BaseEvent
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import (
+from core.events import BaseEvent
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import (
     EngineType,
     EngineCategory,
     ComponentStatus,
@@ -34,11 +34,11 @@ from quant_server.core.engines.types.enums import (
 )
 
 # 导入引擎基类和系统组件
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.engines.utils.engine_factory import EngineFactory, EngineDescriptor
-from quant_server.modules.data import FactorResearchService
-from quant_server.shared.cache import CacheManager
+from core.engines.base.engine_base import EngineBase
+from core.engines.system.event_engine import EventEngine
+from core.engines.utils.engine_factory import EngineFactory, EngineDescriptor
+from modules.data import FactorResearchService
+from shared.cache import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -1479,8 +1479,8 @@ async def create_research_engine(
     Returns:
         FactorResearchEngine: 创建的因子研究引擎实例
     """
-    from quant_server.core.engines.utils.engine_factory import create_engine
-    from quant_server.core.engines.types.enums import EngineType
+    from core.engines.utils.engine_factory import create_engine
+    from core.engines.types.enums import EngineType
 
     engine = await create_engine(
         engine_type=EngineType.DATA_RESEARCH,
@@ -1506,7 +1506,7 @@ async def get_research_engine(
     Returns:
         Optional[FactorResearchEngine]: 因子研究引擎实例
     """
-    from quant_server.core.engines.utils.engine_factory import get_engine
+    from core.engines.utils.engine_factory import get_engine
 
     engine = await get_engine(instance_name)
 

@@ -7,10 +7,10 @@
 import logging
 from typing import Dict, Any
 
-from quant_server.core.engines import EngineConfigEntity
-from quant_server.modules.backtest.engines.backtest_engine import BacktestEngine
-from quant_server.modules.backtest.engines.report_engine import ReportEngine
-from quant_server.modules.backtest.engines.simulation_engine import SimulationEngine
+from core.engines import EngineConfigEntity
+from modules.backtest.engines.backtest_engine import BacktestEngine
+from modules.backtest.engines.report_engine import ReportEngine
+from modules.backtest.engines.simulation_engine import SimulationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class BacktestTask:
 			data = {}
 			
 			# 模拟策略上下文
-			from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+			from modules.strategy.strategies.base.strategy_context import StrategyContext
 			context = StrategyContext(
 				strategy_id=self.strategy_id,
 				strategy_name=f"Strategy_{self.strategy_id}",

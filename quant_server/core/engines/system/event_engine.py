@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, Deque
 
-from quant_server.core.events.base import BaseEvent
+from core.events.base import BaseEvent
 # 导入引擎基类
 from ..base.engine_base import EngineBase, EngineConfigEntity
 # 导入统一类型定义

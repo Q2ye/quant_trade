@@ -4,8 +4,8 @@
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.modules.strategy.events.types import StrategyEventType
+from core.events.base import BaseEvent, EventPriority
+from modules.strategy.events.types import StrategyEventType
 
 
 class StrategyCreatedEvent(BaseEvent):

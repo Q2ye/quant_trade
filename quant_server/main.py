@@ -15,19 +15,19 @@ from typing import Dict, List, Optional, Set, Any
 
 import uvicorn
 
-from quant_server.api import create_app
-from quant_server.core.engines.base.engine_base import EngineConfigEntity
+from api import create_app
+from core.engines.base.engine_base import EngineConfigEntity
 # 导入系统核心组件和配置
-from quant_server.core.engines.system import (
+from core.engines.system import (
 	EventEngine, MainEngine, EngineRegistry
 )
-from quant_server.core.events.system_events import SystemStartedEvent
-from quant_server.shared.config.config_manager import (
+from core.events.system_events import SystemStartedEvent
+from shared.config.config_manager import (
 	get_config, Environment,
 	reload_config, validate_config
 )
 # 导入结构化日志工具包
-from quant_server.utils.core_utils.logging_utils import (
+from utils.core_utils.logging_utils import (
 	# 基础类型和枚举
 	LogLevel, LogFormat, ColorMode,
 
@@ -385,7 +385,7 @@ class QuantServer:
 				logger.info("开始初始化量化交易系统...")
 
 				# 1. 初始化数据库
-				from quant_server.shared.database.session import initialize_database
+				from shared.database.session import initialize_database
 				if not await initialize_database():
 					raise RuntimeError("数据库初始化失败")
 
@@ -431,7 +431,10 @@ class QuantServer:
 				version=self.config.version,
 				description="量化交易平台API",
 				docs_url="/docs" if self.config.mode != "production" else None,
-			)
+			,
+					enabled_modules=self.config.enabled_modules,,
+					cors_origins=self.config.settings.API.CORS_ORIGINS,
+				)
 
 			logger.info("FastAPI应用初始化完成", extra={
 				"title": self.config.system_name,
@@ -450,7 +453,7 @@ class QuantServer:
 			logger.info("初始化API层数据库依赖...")
 
 			try:
-				from quant_server.api.dependencies.database import initialize_api_database
+				from api.dependencies.database import initialize_api_database
 				result = await initialize_api_database()
 
 				if result:
@@ -489,7 +492,7 @@ class QuantServer:
 				await self.event_engine.start()
 
 				# 注入到 API 依赖层
-				from quant_server.api.dependencies.event_engine import set_event_engine
+				from api.dependencies.event_engine import set_event_engine
 				set_event_engine(self.event_engine)
 
 				logger.info("事件引擎初始化完成", extra={
@@ -524,7 +527,7 @@ class QuantServer:
 				await self.main_engine.start()
 
 				# 注入到 API 依赖层
-				from quant_server.api.dependencies.main_engine import set_main_engine
+				from api.dependencies.main_engine import set_main_engine
 				set_main_engine(self.main_engine)
 
 				# 获取引擎注册表
@@ -758,7 +761,7 @@ class QuantServer:
 
 				# 发布系统关闭事件
 				if self.event_engine:
-					from quant_server.core.events.system_events import SystemStoppedEvent
+					from core.events.system_events import SystemStoppedEvent
 					system_event: SystemStoppedEvent = SystemStoppedEvent(
 						system_name=self.config.system_name,
 						shutdown_reason="正常关闭",

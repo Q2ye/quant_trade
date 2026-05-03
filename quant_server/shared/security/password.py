@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Dict
 
 from passlib.context import CryptContext
 
-from quant_server.core.exceptions.security_exceptions import (
+from core.exceptions.security_exceptions import (
 	PasswordHashError,
 	PasswordValidationError,
 	WeakPasswordError

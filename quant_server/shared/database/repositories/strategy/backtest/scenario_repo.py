@@ -4,8 +4,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_, desc, func
 
-from quant_server.shared.database.models.business_models import BacktestScenario
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import BacktestScenario
+from shared.database.repositories.base import BaseRepository
 
 
 class BacktestScenarioRepository(BaseRepository[BacktestScenario]):

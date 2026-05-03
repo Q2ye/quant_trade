@@ -12,24 +12,24 @@ from typing import Dict, List, Optional, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.modules.analysis.events.task_events import (
+from core.engines.system.event_engine import EventEngine
+from modules.analysis.events.task_events import (
 	AnalysisCompletedEvent,
 	AnalysisFailedEvent,
 	AnalysisProgressEvent,
 	AnalysisStartedEvent,
 )
-from quant_server.modules.analysis.models import (
+from modules.analysis.models import (
 	AnalysisReport,
 	AttributionAnalysis,
 	PerformanceMetrics,
 	TradeAnalysis,
 )
-from quant_server.modules.analysis.services.attribution_service import AttributionService
-from quant_server.modules.analysis.services.comparison_service import ComparisonService
-from quant_server.modules.analysis.services.performance_service import PerformanceService
-from quant_server.modules.analysis.services.trade_analysis_service import TradeAnalysisService
-from quant_server.shared.database.repositories import (
+from modules.analysis.services.attribution_service import AttributionService
+from modules.analysis.services.comparison_service import ComparisonService
+from modules.analysis.services.performance_service import PerformanceService
+from modules.analysis.services.trade_analysis_service import TradeAnalysisService
+from shared.database.repositories import (
 	AccountRepository,
 	BacktestTaskRepository,
 	StrategyRepository,

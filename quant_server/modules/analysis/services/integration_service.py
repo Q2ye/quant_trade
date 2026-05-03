@@ -39,13 +39,13 @@ from typing import Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.events import (
+from modules.analysis.events import (
     PerformanceAnalysisCompletedEvent,
     RiskAnalysisCompletedEvent,
     AttributionAnalysisCompletedEvent
 )
-from quant_server.modules.analysis.handlers.event_handler import AnalysisEventHandler
-from quant_server.modules.analysis.services.attribution_service import AttributionService
+from modules.analysis.handlers.event_handler import AnalysisEventHandler
+from modules.analysis.services.attribution_service import AttributionService
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class AnalysisIntegrationService:
         Raises:
             Exception: 绩效分析失败时向上抛出（调用方需处理）
         """
-        from quant_server.modules.analysis.services.performance_service import PerformanceService
+        from modules.analysis.services.performance_service import PerformanceService
 
         try:
             logger.info(f"开始分析策略 {strategy_id} 绩效 [{start_date} ~ {end_date}]")
@@ -170,7 +170,7 @@ class AnalysisIntegrationService:
             Exception: 风险分析失败时向上抛出
         """
         import numpy as np
-        from quant_server.modules.analysis.services.performance_service import PerformanceService
+        from modules.analysis.services.performance_service import PerformanceService
 
         try:
             logger.info(f"开始分析策略 {strategy_id} 风险 [{start_date} ~ {end_date}]")

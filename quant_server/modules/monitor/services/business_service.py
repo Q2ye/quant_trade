@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories import OrderRepository, PositionRepository
+from shared.database.repositories import OrderRepository, PositionRepository
 
 logger = logging.getLogger(__name__)
 

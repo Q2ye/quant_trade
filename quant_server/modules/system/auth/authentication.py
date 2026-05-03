@@ -7,9 +7,9 @@
 import logging
 from typing import Any, Dict, Optional
 
-from quant_server.shared.security.jwt_handler import get_jwt_manager
-from quant_server.shared.security.password import get_password_manager
-from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
+from shared.security.jwt_handler import get_jwt_manager
+from shared.security.password import get_password_manager
+from shared.database.repositories.system.auth.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
 

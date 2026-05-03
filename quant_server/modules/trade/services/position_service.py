@@ -1,7 +1,7 @@
 # position_service.py    # 持仓服务
 
 from typing import Dict, Any, Optional, List
-from quant_server.modules.trade.engines.position_engine import PositionEngine
+from modules.trade.engines.position_engine import PositionEngine
 
 
 class PositionService:

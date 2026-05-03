@@ -29,11 +29,11 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.models import PerformanceMetrics
-from quant_server.modules.analysis.models import StrategyComparison
-from quant_server.shared.database.repositories import AccountRepository
-from quant_server.shared.database.repositories import StrategyRepository
-from quant_server.shared.database.repositories.market.quote import StockDailyRepository
+from modules.analysis.models import PerformanceMetrics
+from modules.analysis.models import StrategyComparison
+from shared.database.repositories import AccountRepository
+from shared.database.repositories import StrategyRepository
+from shared.database.repositories.market.quote import StockDailyRepository
 
 logger = logging.getLogger(__name__)
 

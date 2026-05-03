@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """系统模块认证事件"""
 
-from quant_server.core.events.base import BaseEvent
-from quant_server.core.events.types import EventCategory, EventPriority
+from core.events.base import BaseEvent
+from core.events.types import EventCategory, EventPriority
 from .types import SystemEventType
 
 

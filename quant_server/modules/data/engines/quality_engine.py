@@ -30,15 +30,15 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 
 # 导入核心框架组件
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system.event_engine import EventEngine
+from core.engines.base.engine_base import EngineBase
+from core.engines.system.event_engine import EventEngine
 
 # 导入类型定义
-from quant_server.core.events import BaseEvent
-from quant_server.core.engines.types.entities import (
+from core.events import BaseEvent
+from core.engines.types.entities import (
 	EngineConfigEntity,
 )
-from quant_server.core.engines.types.enums import (
+from core.engines.types.enums import (
 	EngineType,
 	ComponentStatus,
 	PriorityLevel,
@@ -47,7 +47,7 @@ from quant_server.core.engines.types.enums import (
 )
 
 # 导入数据模块组件
-from quant_server.modules.data.services.quality_service import DataQualityService
+from modules.data.services.quality_service import DataQualityService
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ class DataQualityEngine(EngineBase):
 
 				if session:
 					# 导入实际的DataQualityService
-					from quant_server.modules.data.services.quality_service import DataQualityService
+					from modules.data.services.quality_service import DataQualityService
 					# 创建实际的质量检查服务
 					self.quality_service = DataQualityService(
 						session=session,
@@ -2370,8 +2370,8 @@ class DataQualityEngine(EngineBase):
 def register_quality_engine ():
 	"""注册数据质量检查引擎到工厂"""
 	try:
-		from quant_server.core.engines.utils.engine_factory import EngineFactory, EngineDescriptor
-		from quant_server.core.engines.types.enums import EngineType, EngineCategory
+		from core.engines.utils.engine_factory import EngineFactory, EngineDescriptor
+		from core.engines.types.enums import EngineType, EngineCategory
 
 		factory = EngineFactory()
 
@@ -2432,8 +2432,8 @@ async def create_data_quality_engine(
 	Returns:
 		DataQualityEngine: 创建的引擎实例
 	"""
-	from quant_server.core.engines.utils.engine_factory import create_engine
-	from quant_server.core.engines.types.enums import EngineType
+	from core.engines.utils.engine_factory import create_engine
+	from core.engines.types.enums import EngineType
 
 	engine = await create_engine(
 		engine_type=EngineType.DATA_QUALITY,
@@ -2459,7 +2459,7 @@ async def get_data_quality_engine(
 	Returns:
 		Optional[DataQualityEngine]: 数据质量检查引擎实例
 	"""
-	from quant_server.core.engines.utils.engine_factory import get_engine
+	from core.engines.utils.engine_factory import get_engine
 
 	engine = await get_engine(instance_name)
 

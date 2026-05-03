@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc, case
 from sqlalchemy.orm import joinedload
 
-from quant_server.core.exceptions import ValidationError
-from quant_server.shared.database.models.business_models import PortfolioStrategy
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from core.exceptions import ValidationError
+from shared.database.models.business_models import PortfolioStrategy
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class PortfolioStrategyRepository(BaseRepository[PortfolioStrategy]):

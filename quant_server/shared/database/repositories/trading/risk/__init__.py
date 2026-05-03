@@ -5,9 +5,9 @@
 位置：shared/database/repositories/trading/risk/__init__.py
 """
 
-from quant_server.shared.database.repositories.trading.risk.risk_rule_repo import RiskRuleRepository
-from quant_server.shared.database.repositories.trading.risk.risk_event_repo import RiskEventRepository
-from quant_server.shared.database.repositories.trading.risk.blacklist_repo import BlacklistRepository
+from shared.database.repositories.trading.risk.risk_rule_repo import RiskRuleRepository
+from shared.database.repositories.trading.risk.risk_event_repo import RiskEventRepository
+from shared.database.repositories.trading.risk.blacklist_repo import BlacklistRepository
 
 __all__ = [
     'RiskRuleRepository',

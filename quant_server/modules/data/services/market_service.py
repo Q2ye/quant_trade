@@ -20,19 +20,20 @@ import pandas as pd
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core import BusinessException
 # 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.base import BaseEvent
-from quant_server.core.events.types import EventPriority, EventCategory
+from core.engines.system.event_engine import EventEngine
+from core.events.base import BaseEvent
+from core.events.types import EventPriority, EventCategory
 # 导入数据模块常量
-from quant_server.modules.data.constants import (
+from modules.data.constants import (
 	CacheKey,
 	Frequency,
 	AdjustType,
 )
-from quant_server.shared.cache.redis_cache import RedisCache
+from shared.cache.redis_cache import RedisCache
 # 导入共享层组件
-from quant_server.shared.database.repositories import (
+from shared.database.repositories import (
 	StockBasicRepository,
 	StockDailyRepository,
 	TradeCalendarRepository,
@@ -40,9 +41,9 @@ from quant_server.shared.database.repositories import (
 	IndexBasicRepository,
 	FinancialStatementRepository
 )
-from quant_server.utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
+from utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
 # 导入工具类
-from quant_server.utils.core_utils.time_utils.trading_calendar import TradingCalendar
+from utils.core_utils.time_utils.trading_calendar import TradingCalendar
 
 # 导入事件相关
 
@@ -94,40 +95,56 @@ def _generate_params_hash (params: Dict) -> str:
 def _format_quotes_to_dict (
 		quotes: List,
 		ts_code: str,
-		adj: str
+		adj: str,
+		fields: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
 	"""
-	将行情对象列表转换为字典列表
+	将行情对象列表转换为字典列表，支持按需选择字段
 
 	Args:
 		quotes: 行情对象列表
 		ts_code: 股票代码
 		adj: 复权类型
+		fields: 需要返回的字段列表，为 None 时返回全部字段
 
 	Returns:
 		List[Dict]: 格式化后的行情数据列表
 	"""
 	result = []
+	include_all = not fields
 
 	for quote in quotes:
+		trade_date_val = quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
+			quote.trade_date)
+
 		quote_dict = {
-			"trade_date": quote.trade_date.isoformat() if hasattr(quote.trade_date, 'isoformat') else str(
-				quote.trade_date),
+			"trade_date": trade_date_val,
 			"ts_code": ts_code,
-			"open": float(quote.open) if quote.open else None,
-			"high": float(quote.high) if quote.high else None,
-			"low": float(quote.low) if quote.low else None,
-			"close": float(quote.close) if quote.close else None,
-			"pre_close": float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None,
-			"change": float(quote.change) if hasattr(quote, 'change') and quote.change else None,
-			"pct_chg": float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None,
-			"volume": float(quote.vol) if quote.vol else None,
-			"amount": float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
 		}
+
+		if include_all or "open" in fields:
+			quote_dict["open"] = float(quote.open) if quote.open else None
+		if include_all or "high" in fields:
+			quote_dict["high"] = float(quote.high) if quote.high else None
+		if include_all or "low" in fields:
+			quote_dict["low"] = float(quote.low) if quote.low else None
+		if include_all or "close" in fields:
+			quote_dict["close"] = float(quote.close) if quote.close else None
+		if include_all or "pre_close" in fields:
+			quote_dict["pre_close"] = float(quote.pre_close) if hasattr(quote, 'pre_close') and quote.pre_close else None
+		if include_all or "change" in fields:
+			quote_dict["change"] = float(quote.change) if hasattr(quote, 'change') and quote.change else None
+		if include_all or "pct_chg" in fields:
+			quote_dict["pct_chg"] = float(quote.pct_chg) if hasattr(quote, 'pct_chg') and quote.pct_chg else None
+		if include_all or "vol" in fields or "volume" in fields:
+			quote_dict["volume"] = float(quote.vol) if quote.vol else None
+		if include_all or "amount" in fields:
+			quote_dict["amount"] = float(quote.amount) if hasattr(quote, 'amount') and quote.amount else None
 
 		# 添加复权因子（如果需要）
 		if adj in [AdjustType.PRE, AdjustType.POST] and hasattr(quote, 'adj_factor'):
-			quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
+			if include_all or "adj_factor" in fields:
+				quote_dict["adj_factor"] = float(quote.adj_factor) if quote.adj_factor else None
 
 		result.append(quote_dict)
 
@@ -357,7 +374,7 @@ class MarketDataService:
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
@@ -456,8 +473,8 @@ class MarketDataService:
 			if not quotes:
 				logger.warning(f"未找到行情数据: {ts_code}，尝试从模拟数据源获取")
 				# 从模拟数据源获取数据
-				from quant_server.shared.sources.source_factory import DataSourceFactory
-				from quant_server.modules.data.constants import DataSource
+				from shared.sources.source_factory import DataSourceFactory
+				from modules.data.constants import DataSource
 				source_factory = DataSourceFactory()
 				source = source_factory.get_source(DataSource.TUSHARE)
 				start_date_str = start_date.strftime('%Y%m%d')
@@ -508,14 +525,10 @@ class MarketDataService:
 
 			# 处理复权
 			if adj in [AdjustType.PRE, AdjustType.POST]:
-				quotes = self._adjust_prices(quotes, adj)
+				quotes = await self._adjust_prices(quotes, adj)
 
-			# 选择返回字段
-			if fields:
-				quotes = self._select_fields(quotes, fields)
-
-			# 转换为响应格式
-			result = _format_quotes_to_dict(quotes, ts_code, adj)
+			# 转换为响应格式（fields 直接传入，由 _format_quotes_to_dict 按需选择字段）
+			result = _format_quotes_to_dict(quotes, ts_code, adj, fields)
 
 			# 缓存结果
 			if use_cache and cache_key and result:
@@ -1468,8 +1481,8 @@ class MarketDataService:
 
 		return quotes
 
-	@staticmethod
-	def _adjust_prices (
+	async def _adjust_prices (
+			self,
 			quotes: List,
 			adj_type: str
 	) -> List:
@@ -1489,83 +1502,60 @@ class MarketDataService:
 		# 按日期排序（从旧到新）
 		sorted_quotes = sorted(quotes, key=lambda x: x.trade_date)
 
-		# 模拟复权因子（实际应从数据库获取）
-		# 这里假设复权因子随时间变化
-		base_factor = 1.0
+		# 从数据库获取真实复权因子
+		adj_factors = {}
+		try:
+			from sqlalchemy import text
 
-		for i, quote in enumerate(sorted_quotes):
-			# 模拟复权因子变化（每100天调整一次）
-			if i > 0 and i % 100 == 0:
-				base_factor *= 0.9  # 模拟除权除息
+			# 获取区间内所有涉及股票的复权因子
+			codes = list(set(getattr(q, 'ts_code', '') for q in sorted_quotes if hasattr(q, 'ts_code')))
+			if codes and hasattr(self, 'session'):
+				# 使用 IN 子句批量查询
+				placeholders = ','.join(f"'{c}'" for c in codes[:500])  # 限制500个
+				result = self.session.execute(
+					text(
+						f"SELECT ts_code, trade_date, adj_factor FROM stock_adj_factor "
+						f"WHERE ts_code IN ({placeholders}) ORDER BY trade_date"
+					)
+				)
+				for row in result.fetchall():
+					key = (row.ts_code, row.trade_date)
+					adj_factors[key] = float(row.adj_factor)
+		except Exception as e:
+			logger.warning(f"获取复权因子失败，使用不复权数据: {e}")
 
-			if adj_type == AdjustType.PRE:
-				# 前复权：将历史价格调整到当前
+		for quote in sorted_quotes:
+			ts_code = getattr(quote, 'ts_code', '')
+			trade_date = getattr(quote, 'trade_date', None)
+			factor = adj_factors.get((ts_code, trade_date), 1.0)
+
+			if adj_type == AdjustType.PRE and factor != 1.0:
 				if hasattr(quote, 'open') and quote.open:
-					quote.open = quote.open * base_factor
+					quote.open *= factor
 				if hasattr(quote, 'high') and quote.high:
-					quote.high = quote.high * base_factor
+					quote.high *= factor
 				if hasattr(quote, 'low') and quote.low:
-					quote.low = quote.low * base_factor
+					quote.low *= factor
 				if hasattr(quote, 'close') and quote.close:
-					quote.close = quote.close * base_factor
+					quote.close *= factor
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close = quote.pre_close * base_factor
-
-			elif adj_type == AdjustType.POST:
-				# 后复权：将当前价格调整到历史
+					quote.pre_close *= factor
+			elif adj_type == AdjustType.POST and factor != 1.0:
 				if hasattr(quote, 'open') and quote.open:
-					quote.open = quote.open / base_factor
+					quote.open /= factor
 				if hasattr(quote, 'high') and quote.high:
-					quote.high = quote.high / base_factor
+					quote.high /= factor
 				if hasattr(quote, 'low') and quote.low:
-					quote.low = quote.low / base_factor
+					quote.low /= factor
 				if hasattr(quote, 'close') and quote.close:
-					quote.close = quote.close / base_factor
+					quote.close /= factor
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close = quote.pre_close / base_factor
+					quote.pre_close /= factor
 
-			# 添加复权因子字段
 			if not hasattr(quote, 'adj_factor'):
-				quote.adj_factor = base_factor
+				quote.adj_factor = factor
 
 		return sorted_quotes
-
-	@staticmethod
-	def _select_fields (
-			quotes: List,
-			fields: List[str]
-	) -> List:
-		"""
-		选择返回字段
-
-		Args:
-			quotes: 行情数据列表
-			fields: 需要返回的字段列表
-
-		Returns:
-			List: 只包含指定字段的行情数据
-		"""
-		if not fields or not quotes:
-			return quotes
-
-		# 创建一个简化的对象，只包含指定字段
-		filtered_quotes = []
-
-		for quote in quotes:
-			# 动态创建对象
-			filtered_quote = type('FilteredQuote', (), {})()
-
-			for field in fields:
-				if hasattr(quote, field):
-					setattr(filtered_quote, field, getattr(quote, field))
-
-			# 确保trade_date总是包含
-			if hasattr(quote, 'trade_date'):
-				filtered_quote.trade_date = quote.trade_date
-
-			filtered_quotes.append(filtered_quote)
-
-		return filtered_quotes
 
 	async def _get_total_stocks (self, market: Optional[str] = None) -> int:
 		"""
@@ -1579,7 +1569,7 @@ class MarketDataService:
 		"""
 		from sqlalchemy import select
 		query = select(func.count()).select_from(self.stock_repo.model)
-		if market:
+		if market is not None:
 			query = query.where(self.stock_repo.model.market == market)
 		result = await self.stock_repo.session.execute(query)
 		return result.scalar()
@@ -1691,13 +1681,17 @@ class MarketDataService:
 			total_volume = sum(float(q.vol) for q in quotes if q.vol)
 			total_amount = sum(float(q.amount) for q in quotes if q.amount)
 
-			# 计算平均换手率（简化处理）
-			avg_turnover_rate = 2.5  # 模拟平均换手率
+			# 计算平均换手率：优先使用行情数据中的 turnover_rate 字段
+			turnover_rates = []
+			for q in quotes:
+				if hasattr(q, 'turnover_rate') and q.turnover_rate:
+					turnover_rates.append(float(q.turnover_rate))
+			avg_turnover_rate = sum(turnover_rates) / len(turnover_rates) if turnover_rates else 0
 
 			return {
 				"total_volume": round(total_volume, 2),
 				"total_amount": round(total_amount, 2),
-				"avg_turnover_rate": round(avg_turnover_rate, 2),
+				"avg_turnover_rate": round(avg_turnover_rate, 4),
 				"stock_count": len(quotes)
 			}
 
@@ -1746,7 +1740,7 @@ class MarketDataService:
 			return 0
 
 	@staticmethod
-	def _get_index_performance (
+	async def _get_index_performance (
 			market: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
@@ -1758,24 +1752,49 @@ class MarketDataService:
 		Returns:
 			Dict: 指数表现数据
 		"""
-		# 这里简化处理，实际应从指数数据表中获取
-		if market == "SH":
-			return {
-				"上证指数": {"close": 3000.00, "change": 15.00, "pct_chg": 0.50},
-				"上证50": {"close": 2500.00, "change": 12.50, "pct_chg": 0.50},
-				"沪深300": {"close": 3800.00, "change": 19.00, "pct_chg": 0.50}
-			}
-		elif market == "SZ":
-			return {
-				"深证成指": {"close": 10000.00, "change": 50.00, "pct_chg": 0.50},
-				"创业板指": {"close": 2000.00, "change": 10.00, "pct_chg": 0.50}
-			}
+		# 从 index_daily 表查询主要指数最新数据
+		market_index_map = {
+			"SH": ["000001.SH", "000016.SH", "000300.SH"],  # 上证指数、上证50、沪深300
+			"SZ": ["399001.SZ", "399006.SZ"],                # 深证成指、创业板指
+		}
+		name_map = {
+			"000001.SH": "上证指数", "000016.SH": "上证50", "000300.SH": "沪深300",
+			"399001.SZ": "深证成指", "399006.SZ": "创业板指",
+		}
+		if market and market in market_index_map:
+			index_codes = market_index_map[market]
 		else:
-			return {
-				"上证指数": {"close": 3000.00, "change": 15.00, "pct_chg": 0.50},
-				"深证成指": {"close": 10000.00, "change": 50.00, "pct_chg": 0.50},
-				"创业板指": {"close": 2000.00, "change": 10.00, "pct_chg": 0.50}
-			}
+			index_codes = ["000001.SH", "000016.SH", "000300.SH", "399001.SZ", "399006.SZ"]
+
+		try:
+			from shared.database.session import get_session_manager
+			from sqlalchemy import text
+
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				placeholders = ','.join(f"'{c}'" for c in index_codes)
+				result = await session.execute(
+					text(
+						f"SELECT ts_code, close, change, pct_chg FROM index_daily "
+						f"WHERE ts_code IN ({placeholders}) "
+						f"ORDER BY trade_date DESC LIMIT :limit"
+					),
+					{"limit": len(index_codes)}
+				)
+				rows = result.fetchall()
+
+				performance = {}
+				for row in rows:
+					name = name_map.get(row.ts_code, row.ts_code)
+					performance[name] = {
+						"close": round(float(row.close), 2) if row.close else None,
+						"change": round(float(row.change), 2) if row.change else 0,
+						"pct_chg": round(float(row.pct_chg), 2) if row.pct_chg else 0,
+					}
+				return performance if performance else {}
+		except BusinessException as e:
+			logger.error(f"获取指数表现失败: {str(e)}")
+			return {}
 
 	async def _build_quote_query (self, target_date: date, market: Optional[str] = None):
 		"""
@@ -1790,10 +1809,10 @@ class MarketDataService:
 		"""
 		from sqlalchemy import select
 		query = select(self.quote_repo.model).where(
-			self.quote_repo.model.trade_date == target_date
+			self.quote_repo.model.trade_date == target_date  # type: ignore[arg-type]
 		)
 
-		if market:
+		if market is not None:
 			# 获取该市场的所有股票
 			market_query = select(self.stock_repo.model).where(
 				self.stock_repo.model.market == market
@@ -2242,8 +2261,8 @@ class MarketDataService:
 
 			# 这里需要创建一个简单的数据请求对象，因为MarketDataRequestEvent需要MarketDataRequest参数
 			# 临时创建一个简单的事件对象
-			from quant_server.modules.data.events.types import DataEventType
-			from quant_server.core.events.types import EventPriority, EventCategory
+			from modules.data.events.types import DataEventType
+			from core.events.types import EventPriority, EventCategory
 
 			event_data.update({
 				"event_type": DataEventType.MARKET_DATA_REQUEST.value,
@@ -2291,8 +2310,8 @@ class MarketDataService:
 				event_data["ts_code"] = ts_code
 
 			# 使用简单的事件对象
-			from quant_server.modules.data.events.types import DataEventType
-			from quant_server.core.events.types import EventPriority, EventCategory
+			from modules.data.events.types import DataEventType
+			from core.events.types import EventPriority, EventCategory
 
 			event_data.update({
 				"event_type": DataEventType.MARKET_DATA_REQUEST.value,

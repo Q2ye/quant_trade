@@ -10,8 +10,8 @@ from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy import select, and_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import MonitorThreshold
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.models.business_models import MonitorThreshold
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class MonitorThresholdRepository(BaseRepository[MonitorThreshold]):

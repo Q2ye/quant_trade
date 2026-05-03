@@ -8,8 +8,8 @@ import logging
 from typing import Dict, Any
 
 import pandas as pd
-from quant_server.modules.data.services.market_service import MarketDataService
-from quant_server.shared.database.models.business_models import Strategy
+from modules.data.services.market_service import MarketDataService
+from shared.database.models.business_models import Strategy
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)

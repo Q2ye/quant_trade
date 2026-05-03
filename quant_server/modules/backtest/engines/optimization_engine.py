@@ -12,12 +12,12 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.modules.backtest.engines.backtest_engine import BacktestEngine
-from quant_server.modules.backtest.optimizers.bayesian_optimization import BayesianOptimization
-from quant_server.modules.backtest.optimizers.genetic_algorithm import GeneticAlgorithm
-from quant_server.modules.backtest.optimizers.grid_search import GridSearch
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+from core.engines.base.engine_base import EngineBase
+from modules.backtest.engines.backtest_engine import BacktestEngine
+from modules.backtest.optimizers.bayesian_optimization import BayesianOptimization
+from modules.backtest.optimizers.genetic_algorithm import GeneticAlgorithm
+from modules.backtest.optimizers.grid_search import GridSearch
+from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 logger = logging.getLogger(__name__)
 

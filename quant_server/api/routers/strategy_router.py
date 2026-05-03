@@ -11,11 +11,11 @@ from typing import Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入策略模块的业务层处理函数
-from quant_server.modules.strategy.handlers import (
+from modules.strategy.handlers import (
 	get_strategy_list,
 	get_strategy_detail,
 	create_strategy,
@@ -28,7 +28,7 @@ from quant_server.modules.strategy.handlers import (
 	check_strategy_module_health
 )
 # 导入策略模块的Pydantic模型
-from quant_server.modules.strategy.schemas import (
+from modules.strategy.schemas import (
 	StrategyListRequest,
 	StrategyListResponse,
 	StrategyDetailRequest,
@@ -43,7 +43,7 @@ from quant_server.modules.strategy.schemas import (
 	StrategyStatusResponse
 )
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)

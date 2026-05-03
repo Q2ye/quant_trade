@@ -9,8 +9,8 @@ from enum import Enum
 from pydantic import Field, BaseModel
 from functools import lru_cache
 
-from quant_server.shared.config.constants import PAGINATION_DEFAULTS
-from quant_server.shared.config.config_manager import get_config
+from shared.config.constants import PAGINATION_DEFAULTS
+from shared.config.config_manager import get_config
 
 
 class SortOrder(str, Enum):

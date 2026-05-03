@@ -17,8 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import TimeBucketConfig
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.system_models import TimeBucketConfig
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class TimeBucketManager(BaseRepository[TimeBucketConfig]):

@@ -11,19 +11,19 @@ from typing import Dict, List, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.backtest.engines.backtest_engine import BacktestEngine
-from quant_server.modules.backtest.engines.optimization_engine import OptimizationEngine
-from quant_server.modules.backtest.engines.report_engine import ReportEngine
-from quant_server.modules.backtest.engines.simulation_engine import SimulationEngine
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.modules.data.services.market_service import MarketDataService
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
-from quant_server.shared.database.repositories.strategy.backtest.backtest_equity_curve_repo import \
+from modules.backtest.engines.backtest_engine import BacktestEngine
+from modules.backtest.engines.optimization_engine import OptimizationEngine
+from modules.backtest.engines.report_engine import ReportEngine
+from modules.backtest.engines.simulation_engine import SimulationEngine
+from core.engines.types.entities import EngineConfigEntity
+from modules.data.services.market_service import MarketDataService
+from modules.strategy.strategies.base.strategy_context import StrategyContext
+from shared.database.repositories.strategy.backtest.backtest_equity_curve_repo import \
 	BacktestEquityCurveRepository
-from quant_server.shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
-from quant_server.shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
-from quant_server.shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
-from quant_server.shared.database.repositories.strategy.management import StrategyRepository, \
+from shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
+from shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
+from shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
+from shared.database.repositories.strategy.management import StrategyRepository, \
 	StrategyParameterRepository
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ class BacktestService:
 
 			# 保存回测参数到backtest_parameters表
 			try:
-				from quant_server.shared.database.repositories.strategy.backtest.parameter_repo import \
+				from shared.database.repositories.strategy.backtest.parameter_repo import \
 					BacktestParameterRepository
 				param_repo = BacktestParameterRepository(self.db)
 
@@ -495,7 +495,7 @@ class BacktestService:
 
 			# 从backtest_parameters表获取配置数据
 			try:
-				from quant_server.shared.database.repositories.strategy.backtest.parameter_repo import \
+				from shared.database.repositories.strategy.backtest.parameter_repo import \
 					BacktestParameterRepository
 				param_repo = BacktestParameterRepository(self.db)
 
@@ -526,10 +526,10 @@ class BacktestService:
 					# 创建临时模块，并添加必要的依赖
 					temp_module = {}
 					# 导入BaseStrategy和其他必要的依赖
-					from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
-					from quant_server.modules.strategy.constants import StrategyType, SignalDirection, TimeFrame
-					from quant_server.modules.strategy.models import TradingSignal, Position
-					from quant_server.core.engines.types.entities import BarData
+					from modules.strategy.strategies.base.base_strategy import BaseStrategy
+					from modules.strategy.constants import StrategyType, SignalDirection, TimeFrame
+					from modules.strategy.models import TradingSignal, Position
+					from core.engines.types.entities import BarData
 					import pandas as pd
 					import numpy as np
 					
@@ -564,8 +564,8 @@ class BacktestService:
 					raise
 
 			# 加载策略到回测引擎
-			from quant_server.modules.strategy.constants import StrategyType
-			from quant_server.modules.strategy.models import StrategyConfig
+			from modules.strategy.constants import StrategyType
+			from modules.strategy.models import StrategyConfig
 
 			# 注册策略类
 			self.backtest_engine.register_strategy(StrategyType.CUSTOM, strategy_class)

@@ -6,8 +6,8 @@ from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import literal_column
 
-from quant_server.shared.database.models.business_models import BacktestPosition
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import BacktestPosition
+from shared.database.repositories.base import BaseRepository
 
 
 class BacktestPositionRepository(BaseRepository[BacktestPosition]):

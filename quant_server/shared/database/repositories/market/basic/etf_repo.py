@@ -12,14 +12,14 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import (
+from shared.database.models.data_models import (
 	EtfBasic,
 	EtfIndex,
 	EtfDaily,
 	EtfMinute,
 	FundAdjFactor
 )
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class EtfBasicRepository(BaseRepository[EtfBasic]):

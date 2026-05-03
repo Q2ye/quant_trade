@@ -17,13 +17,13 @@ from typing import List, Optional
 
 import pandas as pd
 
-from quant_server.modules.strategy.constants import (
+from modules.strategy.constants import (
 	StrategyType,
 	SignalDirection,
 	SignalType,
 )
-from quant_server.modules.strategy.models import TradingSignal
-from quant_server.modules.strategy.strategies.base.base_strategy import (
+from modules.strategy.models import TradingSignal
+from modules.strategy.strategies.base.base_strategy import (
 	TechnicalStrategy,
 	BarData,
 )

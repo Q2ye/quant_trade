@@ -12,7 +12,7 @@
 from datetime import datetime, date
 from typing import Dict, Any, List, Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
+from core.events.base import BaseEvent, EventPriority
 from .types import AccountEventType
 
 

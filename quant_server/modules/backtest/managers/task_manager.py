@@ -10,11 +10,11 @@ from typing import Dict, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.backtest.managers.resource_manager import ResourceManager
-from quant_server.modules.backtest.tasks.backtest_tasks import BacktestTask
-from quant_server.modules.backtest.tasks.optimization_tasks import OptimizationTask
-from quant_server.modules.backtest.services.backtest_service import BacktestService
-from quant_server.modules.backtest.services.optimization_service import OptimizationService
+from modules.backtest.managers.resource_manager import ResourceManager
+from modules.backtest.tasks.backtest_tasks import BacktestTask
+from modules.backtest.tasks.optimization_tasks import OptimizationTask
+from modules.backtest.services.backtest_service import BacktestService
+from modules.backtest.services.optimization_service import OptimizationService
 
 logger = logging.getLogger(__name__)
 

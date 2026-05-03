@@ -14,7 +14,7 @@
 5. 可重现：支持随机种子设置，确保结果可重现
 
 使用示例：
-    from quant_server.core.utils.data_utils import (
+    from core.utils.data_utils import (
         DataValidator, DataTransformer, DataSampler,
         ValidationRuleFactory, TransformationFactory, SamplerFactory
     )

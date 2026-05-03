@@ -12,8 +12,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import Position
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.models.business_models import Position
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 logger = logging.getLogger(__name__)
 
@@ -91,42 +91,69 @@ class PositionRepository(BaseRepository[Position]):
 
 	async def get_positions_by_date (self, account_id: str, trading_date: date) -> List[Position]:
 		"""
-		根据日期获取持仓记录
+		根据日期获取持仓记录 → 查询 position_snapshots 表
 
 		Args:
 			account_id: 账户ID
 			trading_date: 交易日
 
 		Returns:
-			持仓记录列表
+			持仓快照列表（降级到当前持仓若无快照）
 		"""
-		# 这里简化处理，实际需要根据日期获取持仓
-		# 暂时返回当前持仓
-		# 预留参数，后续实现时会使用
-		_ = trading_date
+		from shared.database.models.business_models import PositionSnapshot
+
+		query = (
+			select(PositionSnapshot)
+			.where(PositionSnapshot.account_id == account_id)
+			.where(PositionSnapshot.snapshot_date == trading_date)
+		)
+		result = await self.session.execute(query)
+		snapshots = result.scalars().all()
+
+		if snapshots:
+			return [
+				Position(
+					user_id=s.user_id,
+					account_id=s.account_id,
+					ts_code=s.ts_code,
+					volume=s.volume,
+					cost_price=s.cost_price,
+					last_price=s.last_price,
+					market_value=s.market_value,
+					pnl=s.pnl,
+					pnl_rate=s.pnl_rate,
+				)
+				for s in snapshots
+			]
+
 		return await self.get_account_positions(account_id, include_zero=False)
 
 	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
 		"""
-		创建持仓对账记录
+		创建持仓对账记录 → 写入 account_transactions 表
 
 		Args:
 			recon_data: 对账数据
 
 		Returns:
-			创建的对账记录
+			AccountTransaction: 创建的对账流水记录
 		"""
-		try:
-			# 这里简化处理，实际需要创建对账记录
-			class MockRecord:
-				def __init__ (self, id):
-					self.id = id
+		from shared.database.models.business_models import AccountTransaction
 
-			return MockRecord(
-				id=f"position_recon_{recon_data['account_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-
-		except Exception as e:
-			raise RepositoryError(f"创建持仓对账记录失败: {str(e)}")
+		txn = AccountTransaction(
+			account_id=recon_data["account_id"],
+			transaction_type="reconciliation",
+			transaction_date=datetime.now(),
+			amount=0,
+			balance_before=0,
+			balance_after=0,
+			description=f"持仓对账 - 日期:{recon_data.get('reconciliation_date', '')}",
+			reference_id=recon_data.get("reconciliation_id", ""),
+			reference_type="position_reconciliation",
+		)
+		self.session.add(txn)
+		await self.session.flush()
+		return txn
 
 	async def update_position (self, account_id: str, security_id: str, position_data: Dict[str, Any]) -> Optional[
 		Position]:
@@ -595,13 +622,13 @@ class PositionRepository(BaseRepository[Position]):
 		except Exception as e:
 			raise RepositoryError(f"获取股票持仓失败: {str(e)}")
 
-	@staticmethod
 	async def get_positions_by_industry (
+			self,
 			industry_code: str,
 			account_id: Optional[str] = None
 	) -> List[Position]:
 		"""
-		根据行业代码获取持仓记录
+		根据行业代码获取持仓记录 → JOIN stock_basic
 
 		Args:
 			industry_code: 行业代码
@@ -610,15 +637,18 @@ class PositionRepository(BaseRepository[Position]):
 		Returns:
 			持仓记录列表
 		"""
-		try:
-			# 这里需要关联股票基本信息表获取行业信息
-			# 暂时返回空列表，实际实现需要关联查询
-			# 预留参数，后续实现时会使用
-			_ = industry_code
-			_ = account_id
-			return []
-		except Exception as e:
-			raise RepositoryError(f"获取行业持仓失败: {str(e)}")
+		from shared.database.models.data_models import StockBasic
+
+		query = (
+			select(Position)
+			.join(StockBasic, Position.ts_code == StockBasic.ts_code)
+			.where(StockBasic.industry == industry_code)
+		)
+		if account_id:
+			query = query.where(Position.account_id == account_id)
+
+		result = await self.session.execute(query)
+		return list(result.scalars().all())
 
 	async def get_high_risk_positions (
 			self,
@@ -734,14 +764,14 @@ class PositionRepository(BaseRepository[Position]):
 			'total': len(updates)
 		}
 
-	@staticmethod
 	async def get_position_trend (
+			self,
 			account_id: str,
 			ts_code: str,
 			days: int = 30
 	) -> List[Dict[str, Any]]:
 		"""
-		获取持仓趋势数据
+		获取持仓趋势数据 → 查询 position_snapshots 历史
 
 		Args:
 			account_id: 账户ID
@@ -749,24 +779,35 @@ class PositionRepository(BaseRepository[Position]):
 			days: 天数
 
 		Returns:
-			持仓趋势数据列表
+			持仓趋势数据列表 [{date, volume, market_value, cost_price, pnl}, ...]
 		"""
-		try:
-			# 这里需要关联持仓快照表获取历史数据
-			# 暂时返回模拟数据
-			# 预留参数，后续实现时会使用
-			_ = account_id
-			_ = ts_code
+		from shared.database.models.business_models import PositionSnapshot
+
+		cutoff = datetime.now().date() - timedelta(days=days)
+		query = (
+			select(PositionSnapshot)
+			.where(PositionSnapshot.account_id == account_id)
+			.where(PositionSnapshot.ts_code == ts_code)
+			.where(PositionSnapshot.snapshot_date >= cutoff)
+			.order_by(PositionSnapshot.snapshot_date)
+		)
+		result = await self.session.execute(query)
+		snapshots = result.scalars().all()
+
+		if snapshots:
 			return [
 				{
-					'date': (datetime.now() - timedelta(days=i)).date(),
-					'volume': 1000 + i * 100,
-					'market_value': 10000 + i * 1000
+					"date": s.snapshot_date,
+					"volume": s.volume,
+					"market_value": float(s.market_value or 0),
+					"cost_price": float(s.cost_price or 0),
+					"pnl": float(s.pnl or 0),
 				}
-				for i in range(days, 0, -1)
+				for s in snapshots
 			]
-		except Exception as e:
-			raise RepositoryError(f"获取持仓趋势失败: {str(e)}")
+
+		# 无快照时返回空列表
+		return []
 
 	async def export_positions (
 			self,
@@ -784,11 +825,42 @@ class PositionRepository(BaseRepository[Position]):
 			导出文件路径或内容
 		"""
 		try:
-			# 获取持仓数据，后续实现时会使用
-			_ = await self.get_account_positions(account_id) if account_id else await self.get_all()
+			positions = await self.get_account_positions(account_id) if account_id else await self.get_all()
 
-			# 这里简化处理，实际需要生成输出文件
-			return f"positions_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type}"
+			if not positions:
+				return "" if format_type == 'csv' else "[]"
+
+			# 转换为字典列表
+			records = []
+			for p in positions:
+				records.append({
+					"id": p.id,
+					"user_id": p.user_id,
+					"account_id": p.account_id,
+					"ts_code": p.ts_code,
+					"volume": p.volume,
+					"available_volume": p.available_volume,
+					"frozen_volume": p.frozen_volume,
+					"cost_price": float(p.cost_price) if p.cost_price else 0.0,
+					"market_value": float(p.market_value) if p.market_value else 0.0,
+					"last_price": float(p.last_price) if p.last_price else 0.0,
+					"pnl": float(p.pnl) if p.pnl else 0.0,
+					"pnl_rate": float(p.pnl_rate) if p.pnl_rate else 0.0,
+					"last_update": p.last_update.isoformat() if p.last_update else ""
+				})
+
+			if format_type == 'json':
+				import json
+				return json.dumps(records, ensure_ascii=False, indent=2, default=str)
+			else:
+				import csv
+				import io
+				output = io.StringIO()
+				fieldnames = list(records[0].keys())
+				writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+				writer.writeheader()
+				writer.writerows(records)
+				return output.getvalue()
 		except Exception as e:
 			raise RepositoryError(f"导出持仓数据失败: {str(e)}")
 

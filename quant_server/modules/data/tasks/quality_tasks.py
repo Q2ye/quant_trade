@@ -23,22 +23,22 @@ import pandas as pd
 from celery import Celery, Task
 from celery.schedules import crontab
 
-from ....api.dependencies import get_event_engine
-from ....modules.data.events.clean_events import DataCleanCompletedEvent, DataCleanResult
-from ....modules.data.events.quality_events import (
+from api.dependencies import get_event_engine
+from modules.data.events.clean_events import DataCleanCompletedEvent, DataCleanResult
+from modules.data.events.quality_events import (
 	DataQualityCheckStartedEvent,
 	DataQualityCheckCompletedEvent, DataQualityIssueFoundEvent,
 )
-from ....modules.data.services.quality_service import DataQualityService
-from ....modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
-from ....shared.database.repositories import StockBasicRepository
-from ....shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+from modules.data.services.quality_service import DataQualityService
+from modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
+from shared.database.repositories import StockBasicRepository
+from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
 
 logger = logging.getLogger(__name__)
 
 # 创建Celery应用
 celery_app = Celery('data_quality_tasks')
-celery_app.config_from_object('shared.config.celery_config')
+celery_app.config_from_object('quant_server.shared.config.celery_config')
 
 
 class QualityTaskBase(Task):
@@ -54,7 +54,10 @@ class QualityTaskBase(Task):
 		logger.info(f"质量检查任务成功: {task_id}")
 
 		# 发布任务完成事件
-		event_engine = get_event_engine()
+		try:
+			event_engine = asyncio.run(get_event_engine())
+		except RuntimeError:
+			event_engine = None
 
 		if event_engine:
 			# 同步处理事件发布
@@ -86,7 +89,10 @@ def on_failure (exc, task_id):
 	logger.error(f"质量检查任务失败: {task_id}, 错误: {exc}")
 
 	# 发布任务失败事件
-	event_engine = get_event_engine()
+	try:
+		event_engine = asyncio.run(get_event_engine())
+	except RuntimeError:
+		event_engine = None
 
 	if event_engine:
 		# 同步处理事件发布
@@ -141,7 +147,7 @@ async def check_data_quality_task (
 		logger.info(f"开始数据质量检查任务: {task_id}, 数据类型: {data_type}")
 
 		# 发布任务开始事件
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 
 		if event_engine:
 			asyncio.create_task(event_engine.put(
@@ -177,10 +183,10 @@ async def check_data_quality_task (
 		)
 
 		data = None
-		from ....shared.database.session import get_session_manager
+		from shared.database.session import get_session_manager
 
 		session_manager = get_session_manager()
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 		async with session_manager.get_session() as session:
 			# 初始化服务
 			quality_checker = DataQualityChecker()
@@ -442,6 +448,7 @@ async def clean_invalid_data_task (
 
 	try:
 		logger.info(f"开始清理无效数据任务: {task_id}, 数据类型: {data_type}")
+		task_start_time = datetime.now()
 
 		# 设置日期范围
 		if not start_date:
@@ -469,10 +476,10 @@ async def clean_invalid_data_task (
 
 		# 根据数据类型获取数据
 		data_to_clean = None
-		from ....shared.database.session import get_session_manager
+		from shared.database.session import get_session_manager
 
 		session_manager = get_session_manager()
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 		async with session_manager.get_session() as session:
 			# 初始化服务
 			quality_service = DataQualityService(session, event_engine)
@@ -534,7 +541,7 @@ async def clean_invalid_data_task (
 		)
 
 		# 发布数据清理事件
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 
 		if event_engine:
 			# 创建DataCleanResult对象
@@ -548,7 +555,7 @@ async def clean_invalid_data_task (
 					clean_id=task_id,
 					data_type=data_type,
 					result=clean_result,
-					duration_seconds=0  # 简化处理，实际应计算执行时间
+					duration_seconds=(datetime.now() - task_start_time).total_seconds()
 				)
 			))
 
@@ -622,10 +629,10 @@ async def validate_data_consistency_task (
 		)
 
 		# 初始化服务
-		from ....shared.database.session import get_session_manager
+		from shared.database.session import get_session_manager
 		session_manager = get_session_manager()
-		event_engine = get_event_engine()
-		with session_manager.get_session() as session:
+		event_engine = await get_event_engine()
+		async with session_manager.get_session() as session:
 			quality_service = DataQualityService(session, event_engine)
 
 			validation_result = await quality_service.validate_data_consistency(
@@ -773,9 +780,9 @@ async def async_clean_data (
 		logger.info(f"异步清理数据: {data_type}")
 
 		# 初始化服务
-		from ....shared.database.session import get_session_manager
+		from shared.database.session import get_session_manager
 		session_manager = get_session_manager()
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 		async with session_manager.get_session() as session:
 			quality_service = DataQualityService(session, event_engine)
 
@@ -819,9 +826,9 @@ async def generate_quality_report (
 		logger.info(f"生成质量报告: {start_date} 到 {end_date}")
 
 		# 初始化服务
-		from ....shared.database.session import get_session_manager
+		from shared.database.session import get_session_manager
 		session_manager = get_session_manager()
-		event_engine = get_event_engine()
+		event_engine = await get_event_engine()
 		async with session_manager.get_session() as session:
 			quality_service = DataQualityService(session, event_engine)
 

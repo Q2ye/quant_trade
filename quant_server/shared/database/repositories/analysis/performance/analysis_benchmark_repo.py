@@ -12,8 +12,8 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, and_, or_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AnalysisBenchmark
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.business_models import AnalysisBenchmark
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class AnalysisBenchmarkRepository(BaseRepository[AnalysisBenchmark]):

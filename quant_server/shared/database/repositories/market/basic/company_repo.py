@@ -16,8 +16,8 @@ from sqlalchemy import select, or_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.data_models import StockCompany, StockBasic, StkManager
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.data_models import StockCompany, StockBasic, StkManager
+from shared.database.repositories.base import BaseRepository
 
 
 class CompanyRepository(BaseRepository[StockCompany]):

@@ -19,10 +19,10 @@ from sqlalchemy import select, update, and_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from quant_server.core.exceptions.business_exceptions import OrderException
-from quant_server.shared.database.models.business_models import TradeInstruction, SysUser, Strategy
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
+from core.exceptions.business_exceptions import OrderException
+from shared.database.models.business_models import TradeInstruction, SysUser, Strategy
+from shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,

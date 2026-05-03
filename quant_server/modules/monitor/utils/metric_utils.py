@@ -7,7 +7,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from quant_server.modules.monitor.constants import (
+from modules.monitor.constants import (
 	DEFAULT_THRESHOLDS,
 	AlertLevel,
 )

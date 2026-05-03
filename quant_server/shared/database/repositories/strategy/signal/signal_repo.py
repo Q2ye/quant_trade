@@ -18,8 +18,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import Signal
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.models.business_models import Signal
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class SignalRepository(BaseRepository[Signal]):

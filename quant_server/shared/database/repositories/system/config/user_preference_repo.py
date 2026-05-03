@@ -8,9 +8,9 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import UserPreference
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.system_models import UserPreference
+from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.types import (
 	RepositoryError
 )
 

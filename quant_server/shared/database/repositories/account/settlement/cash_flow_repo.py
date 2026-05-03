@@ -7,8 +7,8 @@ from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import literal
 
-from quant_server.shared.database.models.business_models import CashFlow
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import CashFlow
+from shared.database.repositories.base import BaseRepository
 
 
 class CashFlowRepository(BaseRepository[CashFlow]):

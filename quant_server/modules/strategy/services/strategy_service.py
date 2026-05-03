@@ -9,17 +9,17 @@ from typing import Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.strategy.constants import (
+from modules.strategy.constants import (
 	StrategyType,
 	StrategyLifecycleStatus,
 	ErrorCode,
 )
-from quant_server.shared.database.repositories.strategy.management import (
+from shared.database.repositories.strategy.management import (
 	StrategyRepository,
 	StrategyVersionRepository,
 	StrategyParameterRepository,
 )
-from quant_server.shared.database.repositories.trading.position import PositionRepository
+from shared.database.repositories.trading.position import PositionRepository
 
 logger = logging.getLogger(__name__)
 

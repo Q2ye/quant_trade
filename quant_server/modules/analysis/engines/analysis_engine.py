@@ -4,12 +4,12 @@ from typing import Dict, Any, Optional
 from datetime import date
 import logging
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.modules.analysis.services.attribution_service import AttributionService
-from quant_server.modules.analysis.services.integration_service import AnalysisIntegrationService
-from quant_server.modules.analysis.handlers.event_handler import AnalysisEventHandler
+from core.engines.base.engine_base import EngineBase
+from core.engines.system.event_engine import EventEngine
+from core.engines.types.entities import EngineConfigEntity
+from modules.analysis.services.attribution_service import AttributionService
+from modules.analysis.services.integration_service import AnalysisIntegrationService
+from modules.analysis.handlers.event_handler import AnalysisEventHandler
 
 logger = logging.getLogger(__name__)
 

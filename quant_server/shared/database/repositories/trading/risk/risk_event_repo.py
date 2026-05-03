@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import RiskEvent, RiskRule, Strategy, SysUser
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.business_models import RiskEvent, RiskRule, Strategy, SysUser
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class RiskEventRepository(HyperRepositoryBase):

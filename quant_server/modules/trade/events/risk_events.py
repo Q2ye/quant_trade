@@ -1,7 +1,7 @@
 # 风险控制事件
 
-from quant_server.core.events.base import BaseEvent
-from quant_server.core.events.types import EventPriority, EventCategory
+from core.events.base import BaseEvent
+from core.events.types import EventPriority, EventCategory
 
 
 class RiskEvent(BaseEvent):

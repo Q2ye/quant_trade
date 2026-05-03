@@ -7,20 +7,20 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Type
 
-from quant_server.core.engines.base.engine_base import EngineBase, EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.strategy.constants import (
+from core.engines.base.engine_base import EngineBase, EngineConfigEntity
+from core.engines.types.enums import EngineType
+from modules.strategy.constants import (
 	StrategyType,
 	StrategyLifecycleStatus,
 )
-from quant_server.modules.strategy.models import (
+from modules.strategy.models import (
 	StrategyInstance,
 	StrategyState,
 	StrategyConfig,
 	TradingSignal,
 )
-from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+from modules.strategy.strategies.base.base_strategy import BaseStrategy
+from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,10 @@ class StrategyManager(EngineBase):
 		"""注册默认策略"""
 		# 延迟导入，避免循环依赖
 		try:
-			from quant_server.modules.strategy.strategies.technical.ma_cross_strategy import (
+			from modules.strategy.strategies.technical.ma_cross_strategy import (
 				MACrossStrategy,
 			)
-			from quant_server.modules.strategy.strategies.technical.macd_strategy import (
+			from modules.strategy.strategies.technical.macd_strategy import (
 				MACDStrategy,
 			)
 
@@ -403,10 +403,34 @@ class StrategyManager(EngineBase):
 		logger.info("策略管理器初始化完成")
 
 	async def _on_start (self):
-		"""引擎启动时的具体逻辑"""
+		"""引擎启动时的具体逻辑 — 订阅数据事件，驱动策略执行"""
 		logger.info("策略管理器启动")
-		# 启动时可以进行一些准备工作
+		if self.event_engine:
+			from modules.data.events.sync_events import DataSyncCompletedEvent
+			from modules.trade.events.order_events import OrderFilledEvent
+
+			self.event_engine.subscribe(DataSyncCompletedEvent, self._on_data_sync_completed)
+			self.event_engine.subscribe(OrderFilledEvent, self._on_order_filled)
+			logger.info("策略管理器已订阅 DataSyncCompletedEvent / OrderFilledEvent")
 		logger.info("策略管理器启动完成")
+
+	async def _on_data_sync_completed(self, event) -> None:
+		"""数据同步完成 → 遍历运行中策略，调用 on_bar 驱动信号生成"""
+		sync_type = event.data.get("sync_type", "")
+		logger.info(f"数据同步完成: {sync_type}，驱动运行中策略...")
+		for strategy_id, state in self.running_states.items():
+			if state.is_running:
+				# 将数据事件路由到策略的 on_bar 方法
+				await self.process_bar(strategy_id, event.data)
+
+	async def _on_order_filled(self, event) -> None:
+		"""订单成交 → 更新策略持仓状态"""
+		logger.info(f"订单成交: {event.data.get('order_id')}，更新策略持仓")
+		for strategy_id, state in self.running_states.items():
+			if state.is_running:
+				symbol = event.data.get("symbol")
+				if symbol and symbol in state.positions:
+					state.positions[symbol] += event.data.get("filled_volume", 0)
 
 	async def _on_stop (self):
 		"""引擎停止时的具体逻辑"""

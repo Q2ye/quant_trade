@@ -19,15 +19,15 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 # 假设的SignalLog模型，实际需要根据数据库模型调整
-# from quant_server.shared.database.models.business_models import SignalLog
+# from shared.database.models.business_models import SignalLog
 
 # 由于模型不存在，这里使用一个占位符
 # 实际使用时需要导入正确的模型
 try:
-	from quant_server.shared.database.models.business_models import SignalLog
+	from shared.database.models.business_models import SignalLog
 
 	MODEL_EXISTS = True
 except ImportError:

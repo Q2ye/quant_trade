@@ -4,7 +4,7 @@
 API请求/响应模型定义
 """
 from pydantic import BaseModel, Field
-from quant_server.utils.api_utils.pagination_config import PaginationParams
+from utils.api_utils.pagination_config import PaginationParams
 
 from typing import Optional, List, Any, Dict
 from datetime import datetime

@@ -13,8 +13,8 @@ import pandas as pd
 
 from ..calculators.asset_calculator import AssetCalculator
 from ..calculators.pnl_calculator import PnLCalculator
-from ....shared.utils.file_storage import FileStorage
-from ....shared.utils.validation import validate_account_data
+from shared.storage.file_storage import FileStorage
+from utils.core_utils.data_utils.validation import validate_account_data
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class StatementGenerator:
 			session: 数据库会话
 		"""
 		if output_dir is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			self.output_dir = Path(getattr(settings, 'REPORT_OUTPUT_DIR', 'output/reports')) / "account_statements"
 		else:
@@ -374,6 +374,8 @@ class StatementGenerator:
 				'account_id': account_id,
 				'report_type': 'weekly',
 				'period': f"{start_date.isoformat()} - {end_date.isoformat()}",
+				'start_date': start_date.isoformat(),
+				'end_date': end_date.isoformat(),
 				'generated_at': datetime.now().isoformat()
 			},
 			'performance_summary': {
@@ -428,6 +430,8 @@ class StatementGenerator:
 				'report_type': 'monthly',
 				'month': start_date.strftime('%Y-%m'),
 				'period': f"{start_date.isoformat()} - {end_date.isoformat()}",
+				'start_date': start_date.isoformat(),
+				'end_date': end_date.isoformat(),
 				'generated_at': datetime.now().isoformat()
 			},
 			'performance_summary': {
@@ -558,7 +562,7 @@ class StatementGenerator:
 
 	def _generate_pdf_statement (self, statement_data: Dict) -> tuple:
 		"""
-		生成PDF格式对账单
+		生成PDF格式对账单 — 使用 reportlab，不可用时降级为 JSON
 
 		Args:
 			statement_data: 对账单数据
@@ -566,22 +570,57 @@ class StatementGenerator:
 		Returns:
 			tuple: (文件路径, 文件名)
 		"""
-		# 这里可以使用reportlab、weasyprint等库生成PDF
-		# 这里简化为生成JSON文件
-
-		account_id = statement_data['account_info']['account_id']
-		trading_day = statement_data['account_info']['trading_day'].replace('-', '')
+		account_id = statement_data["account_info"]["account_id"]
+		trading_day = statement_data["account_info"]["trading_day"].replace("-", "")
 
 		file_name = f"statement_{account_id}_{trading_day}.pdf"
 		file_path = self.output_dir / file_name
 
-		# 实际实现中应该生成PDF
-		# 这里生成一个标记文件
-		with open(file_path, 'w') as f:
-			f.write(f"PDF Statement for account {account_id} on {trading_day}\n")
-			f.write("This is a placeholder. Implement PDF generation using reportlab.\n")
+		try:
+			from reportlab.lib.pagesizes import A4
+			from reportlab.lib.units import mm
+			from reportlab.pdfgen import canvas
 
-		logger.info(f"生成PDF对账单: {file_path}")
+			c = canvas.Canvas(str(file_path), pagesize=A4)
+			width, height = A4
+			y = height - 40
+
+			c.setFont("Helvetica-Bold", 18)
+			c.drawString(40, y, f"Daily Statement - {account_id}")
+			y -= 30
+
+			c.setFont("Helvetica", 11)
+			c.drawString(40, y, f"Trading Day: {trading_day}")
+			y -= 20
+
+			assets = statement_data.get("assets_summary", {})
+			c.drawString(40, y, f"Total Asset: {assets.get('total_asset', 0)}")
+			y -= 16
+			c.drawString(40, y, f"Cash Balance: {assets.get('cash_balance', 0)}")
+			y -= 16
+			c.drawString(40, y, f"Market Value: {assets.get('market_value', 0)}")
+
+			pnl = statement_data.get("daily_pnl_summary", {})
+			if pnl:
+				y -= 30
+				c.setFont("Helvetica-Bold", 14)
+				c.drawString(40, y, "P&L Summary")
+				y -= 20
+				c.setFont("Helvetica", 11)
+				for key, val in pnl.items():
+					c.drawString(50, y, f"{key}: {val}")
+					y -= 15
+
+			c.save()
+			logger.info(f"生成PDF对账单: {file_path}")
+		except ImportError:
+			logger.info("reportlab 未安装，降级为 JSON 格式")
+			import json
+			json_path = self.output_dir / f"statement_{account_id}_{trading_day}.json"
+			with open(json_path, "w", encoding="utf-8") as f:
+				json.dump(statement_data, f, indent=2, default=str)
+			return json_path, json_path.name
+
 		return file_path, file_name
 
 	def _generate_excel_statement (self, statement_data: Dict) -> tuple:
@@ -661,31 +700,69 @@ class StatementGenerator:
 		file_path = self.output_dir / file_name
 
 		try:
-			# 将数据转换为CSV格式
 			import csv
 
-			# 这里简化为只写入基本信息
 			with open(file_path, 'w', newline='', encoding='utf-8') as f:
 				writer = csv.writer(f)
 
-				# 写入标题
+				# 标题
 				writer.writerow(['账户对账单'])
 				writer.writerow([f"账户ID: {account_id}"])
 				writer.writerow([f"交易日: {trading_day}"])
 				writer.writerow([f"生成时间: {datetime.now().isoformat()}"])
 				writer.writerow([])
 
-				# 写入资产汇总
+				# 资产汇总
 				writer.writerow(['资产汇总'])
 				for key, value in statement_data['assets_summary'].items():
 					writer.writerow([key, value])
 				writer.writerow([])
 
-				# 写入交易统计
-				writer.writerow(['交易统计'])
-				writer.writerow(['总交易笔数', statement_data['statistics']['total_trades']])
-				writer.writerow(['买入笔数', statement_data['statistics']['buy_trades']])
-				writer.writerow(['卖出笔数', statement_data['statistics']['sell_trades']])
+				# 盈亏汇总
+				pnl = statement_data.get('daily_pnl_summary', {})
+				if pnl:
+					writer.writerow(['盈亏汇总'])
+					for key, value in pnl.items():
+						writer.writerow([key, value])
+					writer.writerow([])
+
+				# 交易明细
+				trades = statement_data.get('trades', [])
+				if trades:
+					writer.writerow(['交易明细'])
+					headers = ['trade_id', 'security_id', 'security_name', 'direction',
+							   'price', 'volume', 'amount', 'trade_time', 'commission', 'tax']
+					writer.writerow(headers)
+					for t in trades:
+						writer.writerow([t.get(h, '') for h in headers])
+					writer.writerow([])
+
+				# 持仓明细
+				positions = statement_data.get('positions', [])
+				if positions:
+					writer.writerow(['持仓明细'])
+					pos_headers = ['security_id', 'security_name', 'current_quantity',
+								   'cost_price', 'market_price', 'cost_value', 'market_value',
+								   'pnl', 'pnl_rate', 'weight']
+					writer.writerow(pos_headers)
+					for p in positions:
+						writer.writerow([p.get(h, '') for h in pos_headers])
+					writer.writerow([])
+
+				# 费用汇总
+				fees = statement_data.get('fee_summary', {})
+				if fees:
+					writer.writerow(['费用汇总'])
+					for key, value in fees.items():
+						writer.writerow([key, value])
+					writer.writerow([])
+
+				# 交易统计
+				stats = statement_data.get('statistics', {})
+				if stats:
+					writer.writerow(['交易统计'])
+					for key, value in stats.items():
+						writer.writerow([key, value])
 
 			logger.info(f"生成CSV对账单: {file_path}")
 			return file_path, file_name
@@ -722,16 +799,56 @@ class StatementGenerator:
 			raise
 
 	def _generate_pdf_report (self, report_data: Dict, report_type: str) -> tuple:
-		"""生成PDF报告"""
-		account_id = report_data['account_info']['account_id']
-		period = report_data['account_info']['period'].replace('-', '_')
+		"""生成PDF报告 — 使用 reportlab，不可用时降级为 JSON"""
+		account_id = report_data["account_info"]["account_id"]
+		period = report_data["account_info"]["period"].replace("-", "_")
 
 		file_name = f"{report_type}_report_{account_id}_{period}.pdf"
 		file_path = self.output_dir / file_name
 
-		# 生成标记文件
-		with open(file_path, 'w') as f:
-			f.write(f"{report_type.capitalize()} Report for {account_id}\n")
+		try:
+			from reportlab.lib.pagesizes import A4
+			from reportlab.pdfgen import canvas
+
+			c = canvas.Canvas(str(file_path), pagesize=A4)
+			width, height = A4
+			y = height - 40
+
+			c.setFont("Helvetica-Bold", 18)
+			c.drawString(40, y, f"{report_type.capitalize()} Report - {account_id}")
+			y -= 30
+
+			c.setFont("Helvetica", 11)
+			info = report_data.get("account_info", {})
+			for key in ["account_id", "period", "start_date", "end_date"]:
+				val = info.get(key, "")
+				if val:
+					c.drawString(40, y, f"{key}: {val}")
+					y -= 16
+
+			pnl = report_data.get("pnl_summary", report_data.get("weekly_pnl", report_data.get("monthly_pnl", {})))
+			if pnl:
+				y -= 20
+				c.setFont("Helvetica-Bold", 14)
+				c.drawString(40, y, "P&L Summary")
+				y -= 20
+				c.setFont("Helvetica", 11)
+				if isinstance(pnl, dict):
+					for key, val in pnl.items():
+						c.drawString(50, y, f"{key}: {val}")
+						y -= 15
+				else:
+					c.drawString(50, y, f"total_pnl: {pnl}")
+
+			c.save()
+			logger.info(f"生成PDF报告: {file_path}")
+		except ImportError:
+			logger.info("reportlab 未安装，降级为 JSON 格式")
+			import json
+			json_path = self.output_dir / f"{report_type}_report_{account_id}_{period}.json"
+			with open(json_path, "w", encoding="utf-8") as f:
+				json.dump(report_data, f, indent=2, default=str)
+			return json_path, json_path.name
 
 		return file_path, file_name
 

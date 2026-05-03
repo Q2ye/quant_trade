@@ -9,12 +9,12 @@ from typing import Optional, Dict, Any, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.cache.base import CacheBase
-from quant_server.shared.database.models.business_models import TradeFee
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
-from quant_server.shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
-from quant_server.utils.core_utils.data_utils.validation import validate_amount
+from shared.cache.base import CacheBase
+from shared.database.models.business_models import TradeFee
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.trading.order.trade_repo import TradeRepository
+from shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
+from utils.core_utils.data_utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,8 @@ class FeeService:
 			trade_amount = price * volume
 
 			# 计算佣金（这里使用简化规则）
-			# 实际实现中需要根据券商费率计算
-			commission_rate = Decimal("0.00025")  # 0.025%
+			# todo 实际实现中需要根据券商费率计算
+			commission_rate = Decimal("0.0001")  # 万一免五
 			commission = trade_amount * commission_rate
 
 			# 最低佣金5元

@@ -35,6 +35,7 @@ from .schemas import (
     AccountFilter,
 )
 from .handlers import router as account_router
+from .engines.settlement_engine import SettlementEngine
 
 async def shutdown(main_engine=None) -> None:
     """账户模块关闭函数"""
@@ -52,6 +53,7 @@ __all__ = [
     "PositionResponse",
     "AccountFilter",
     "account_router",
+    "SettlementEngine",
     "initialize",
     "shutdown",
 ]
@@ -85,11 +87,27 @@ async def initialize(
             session = session_factory() if callable(session_factory) else session_factory
             result = await _do_initialize(session)
         else:
-            from quant_server.shared.database.session import get_session_manager
+            from shared.database.session import get_session_manager
 
             session_manager = get_session_manager()
             async with session_manager.get_session() as session:
                 result = await _do_initialize(session)
+
+        # 注册 SettlementEngine
+        if main_engine and event_engine:
+            try:
+                db_factory = main_engine.get_async_session() if hasattr(main_engine, "get_async_session") else None
+                settlement_engine = SettlementEngine(
+                    config={"name": "settlement_engine"},
+                    event_engine=event_engine,
+                    db_session_factory=db_factory,
+                )
+                if hasattr(main_engine, "register_engine"):
+                    main_engine.register_engine(settlement_engine)
+                await settlement_engine.start()
+                logger.info("SettlementEngine 已注册并启动")
+            except Exception as e:
+                logger.warning(f"SettlementEngine 注册失败（非致命）: {e}")
 
         if result["success"]:
             print(f"✅ 账户模块初始化成功")

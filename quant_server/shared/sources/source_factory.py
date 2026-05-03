@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Dict, Optional, Type, Union
 
-from quant_server.shared.config.config_manager import get_config, ConfigSettings as Settings
+from shared.config.config_manager import get_config, ConfigSettings as Settings
 from .baostock_source import BaostockSource
 from .base_source import BaseDataSource
 from .mock_source import MockSource

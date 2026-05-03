@@ -74,7 +74,7 @@ __description__ = "量化交易系统核心数学工具库"
 
 '''
 # 完整使用示例
-from quant_server.core.utils.data_utils import (
+from core.utils.data_utils import (
     ValidationRuleFactory,
     TransformationFactory,
     SamplerFactory,
@@ -95,12 +95,12 @@ sampler = SamplerFactory.create_sampler('stratified', strata_column='industry')
 sample_result = sampler.sample(transformed_data, sample_size=100)
 
 # 4. 时间序列重采样
-from quant_server.core.utils.data_utils import DataResampler
+from core.utils.data_utils import DataResampler
 resampler = DataResampler(date_column='trade_date')
 ohlc_data = resampler.resample_ohlc(stock_data, freq='5T')
 
 # 5. 滚动窗口采样
-from quant_server.core.utils.data_utils import RollingWindowSampler
+from core.utils.data_utils import RollingWindowSampler
 window_sampler = RollingWindowSampler(window_size=20, forecast_horizon=5)
 windows = window_sampler.create_windows(time_series_data)
 '''

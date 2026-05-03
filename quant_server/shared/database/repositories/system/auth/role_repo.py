@@ -13,10 +13,10 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.exceptions import BusinessException
+from core.exceptions import BusinessException
 # 假设存在SysRole模型
-from quant_server.shared.database.models.business_models import SysRole, SysUser
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import SysRole, SysUser
+from shared.database.repositories.base import BaseRepository
 
 
 class RoleRepository:
@@ -386,7 +386,7 @@ class RoleRepository:
 		try:
 			# 尝试使用用户表的role字段统计
 			try:
-				from quant_server.shared.database.models.business_models import SysUser
+				from shared.database.models.business_models import SysUser
 
 				# 获取所有角色
 				roles = await self.get_all_roles(include_inactive=False)

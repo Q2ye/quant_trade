@@ -10,10 +10,10 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.exceptions import BusinessException
-from quant_server.shared.database.models.business_models import Strategy
-from quant_server.shared.database.repositories import StrategyParameterRepository
-from quant_server.shared.database.repositories.base import BaseRepository
+from core.exceptions import BusinessException
+from shared.database.models.business_models import Strategy
+from shared.database.repositories import StrategyParameterRepository
+from shared.database.repositories.base import BaseRepository
 
 
 class StrategyRepository(BaseRepository[Strategy]):
@@ -387,8 +387,8 @@ class StrategyRepository(BaseRepository[Strategy]):
 		"""
 		try:
 			# 检查策略参数表是否存在
-			from quant_server.shared.database.models.business_models import StrategyParameter
-			from quant_server.shared.database.models.business_models import Strategy
+			from shared.database.models.business_models import StrategyParameter
+			from shared.database.models.business_models import Strategy
 
 			# 构建关联查询
 			query = select(Strategy).join(

@@ -16,9 +16,9 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import select, and_, or_, func, case, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import TradeCalendar
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
-from quant_server.shared.database.repositories.types import TimeRange, PaginationParams, PaginationResult, FilterCondition, SortCondition, FilterOperator
+from shared.database.models.data_models import TradeCalendar
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
+from shared.database.repositories.types import TimeRange, PaginationParams, PaginationResult, FilterCondition, SortCondition, FilterOperator
 
 
 class TradeCalendarRepository(HyperRepositoryBase[TradeCalendar]):

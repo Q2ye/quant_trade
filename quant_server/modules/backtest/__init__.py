@@ -85,7 +85,7 @@ async def initialize(
             session = session_factory() if callable(session_factory) else session_factory
             result = await _do_initialize(session)
         else:
-            from quant_server.shared.database.session import get_session_manager
+            from shared.database.session import get_session_manager
 
             session_manager = get_session_manager()
             async with session_manager.get_session() as session:

@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.system.auth.role_repo import RoleRepository
-from quant_server.shared.security.audit import AuditLogger, AuditAction, AuditResult
+from shared.database.repositories.system.auth.role_repo import RoleRepository
+from shared.security.audit import AuditLogger, AuditAction, AuditResult
 
 logger = logging.getLogger(__name__)
 

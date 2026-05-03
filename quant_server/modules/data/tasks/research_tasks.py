@@ -22,27 +22,30 @@ from datetime import datetime, timedelta, date
 from typing import Dict, List, Any, Optional
 
 import random
+
+import numpy as np
 import pandas as pd
 from celery import Celery, Task
 from celery.schedules import crontab
 
-from quant_server.core.engines import EventEngine
-from quant_server.core.engines.system.event_engine import get_event_engine
-from quant_server.modules.data.events.factor_calculation_events import (
+from core.engines import EventEngine
+from core.engines.system.event_engine import get_event_engine
+from modules.data.events.factor_calculation_events import (
 	FactorCalculationStartedEvent,
 	FactorCalculationCompletedEvent,
 	FactorCalculationProgressEvent,
 	FactorMetadata
 )
-from quant_server.modules.data.services.research_service import FactorResearchService
-from quant_server.modules.data.utils.factor_calculator import FactorCalculator
-from quant_server.shared.database.session import get_session_manager
+from modules.data.services.research_service import FactorResearchService
+from modules.data.utils.factor_calculator import FactorCalculator
+from shared.database import session
+from shared.database.session import get_session_manager
 
 logger = logging.getLogger(__name__)
 
 # 创建Celery应用
 celery_app = Celery('data_research_tasks')
-celery_app.config_from_object('shared.config.celery_config')
+celery_app.config_from_object('quant_server.shared.config.celery_config')
 
 
 # ========== 公共辅助函数 ==========
@@ -76,6 +79,92 @@ async def _get_all_active_stocks () -> List:
 	except Exception as e:
 		logger.warning(f"获取科创板股票失败: {str(e)}")
 	return stocks
+
+
+async def _evaluate_factor_params (
+		session, factor_name: str, params: Dict, factor_data: Any
+) -> float:
+	"""评估参数组合的IC值（Information Coefficient）
+
+	计算该参数组合下因子值与未来收益的Rank IC，返回绝对值。
+	IC绝对值越高表示因子预测能力越强。
+
+	Args:
+		session: 数据库会话
+		factor_name: 因子名称
+		params: 参数字典
+		factor_data: 预加载的因子历史数据
+
+	Returns:
+		float: Rank IC绝对值 [-1, 1]，值越大越好
+	"""
+	try:
+		import numpy as np
+		import pandas as pd
+		from scipy.stats import spearmanr
+
+		# factor_data 应为 test_data 列表：每项含 symbol/data（OHLCV 记录列表）
+		if not factor_data or not isinstance(factor_data, list):
+			return 0.0
+
+		calculator = FactorCalculator()
+		scores = []
+
+		for item in factor_data:
+			try:
+				# 将 quote 记录转换为 DataFrame
+				records = item.get('data', [])
+				if not records or len(records) < 30:
+					continue
+
+				if isinstance(records[0], dict):
+					df = pd.DataFrame(records)
+				else:
+					# ORM 对象 → 转为 dict
+					df = pd.DataFrame([{
+						c.name: getattr(r, c.name)
+						for c in type(r).__table__.columns
+					} for r in records])
+
+				if df.empty or 'close' not in df.columns:
+					continue
+
+				# 计算因子值（sync 方法，不需要 await）
+				factor_df = calculator.calculate_factor(
+					data=df,
+					factor_name=factor_name,
+					**params
+				)
+				if factor_df is None or factor_df.empty:
+					continue
+
+				factor_arr = factor_df.iloc[:, 0].values
+
+				# 计算前向5日收益率作为预测目标
+				forward_returns = df['close'].pct_change(periods=5).shift(-5)
+				return_arr = forward_returns.values
+
+				# 对齐数组长度并去除 NaN
+				min_len = min(len(factor_arr), len(return_arr))
+				factor_arr = factor_arr[:min_len]
+				return_arr = return_arr[:min_len]
+
+				mask = ~(np.isnan(factor_arr) | np.isnan(return_arr))
+				if mask.sum() < 30:
+					continue
+
+				# Rank IC: Spearman 秩相关系数
+				ic, _ = spearmanr(factor_arr[mask], return_arr[mask])
+				if not np.isnan(ic):
+					scores.append(float(abs(ic)))
+			except Exception:
+				continue
+
+		# 返回各股票的平均 IC
+		return float(np.mean(scores)) if scores else 0.0
+	except Exception as e:
+		logger.warning(f"评估因子参数失败: {e}")
+		return 0.0
 
 
 class ResearchTaskBase(Task):
@@ -851,52 +940,90 @@ async def optimize_factor_parameters_task (
 				)
 			))
 
-		# 模拟参数优化过程
-		import time
-		import random
+		# 执行真实的网格搜索优化
+		import numpy as np
 
-		# 模拟优化进度
-		for i in range(101):
-			if i % 10 == 0:
-				self._update_optimization_progress(progress=i, message=f'优化进度: {i}%', task_id_param=task_id,
-				                                   event_engine_param=event_engine)
-				time.sleep(0.1)
+		optimization_result = {'optimal_parameters': parameter_ranges, 'objective_value': 0, 'iterations': 0, 'converged': False}
+		validation_result = {'validation_score': 0, 'passed': False, 'validation_details': {}}
 
-		# 模拟优化结果
-		optimization_result = {
-			'optimal_parameters': parameter_ranges,
-			'objective_value': random.uniform(0.5, 0.9),
-			'iterations': 100,
-			'converged': True
-		}
+		try:
+			# 为每个参数构建搜索网格
+			param_grid = {}
+			for param_name, param_range in parameter_ranges.items():
+				if isinstance(param_range, dict):
+					start = param_range.get('min', 0)
+					end = param_range.get('max', 100)
+					step = param_range.get('step', max(1, (end - start) // 10))
+					param_grid[param_name] = np.arange(start, end + step, step).tolist()
+				elif isinstance(param_range, list):
+					param_grid[param_name] = param_range
+				else:
+					param_grid[param_name] = [param_range]
 
-		# 验证优化结果
-		self.update_state(
-			state='PROGRESS',
-			meta={'current': 90, 'total': 100, 'status': '验证优化结果'}
-		)
+			# 生成所有参数组合（限制最多1000组避免组合爆炸）
+			from itertools import product as cartesian_product
+			param_names = list(param_grid.keys())
+			param_values = [param_grid[n] for n in param_names]
+			total_combinations = min(1000, int(np.prod([len(v) for v in param_values])))
 
-		if event_engine:
-			asyncio.create_task(event_engine.put(
-				FactorCalculationProgressEvent(
-					calculation_id=task_id,
-					progress=90,
-					current_factor=factor_name,
-					current_symbol=None,
-					processed_count=0,
-					failed_count=0
+			# 对参数组合采样（若超过1000组则随机采样）
+			if int(np.prod([len(v) for v in param_values])) > 1000:
+				import random
+				sampled_combos = []
+				for _ in range(1000):
+					combo = tuple(random.choice(v) for v in param_values)
+					sampled_combos.append(combo)
+			else:
+				sampled_combos = list(cartesian_product(*param_values))
+
+			# 网格搜索：评估每组合的IC/RankIC
+			best_score = -float('inf')
+			best_params = parameter_ranges.copy()
+			evaluated = 0
+
+			for combo in sampled_combos[:1000]:
+				evaluated += 1
+				params = dict(zip(param_names, combo))
+
+				# 计算此参数组合的因子值并评估IC
+				score = await _evaluate_factor_params(
+					session, factor_name=factor_name, params=params,
+					factor_data=test_data
 				)
-			))
+				if score > best_score:
+					best_score = score
+					best_params = params
+					if evaluated % 100 == 0:
+						self._update_optimization_progress(
+							progress=int(evaluated / total_combinations * 80),
+							message=f'网格搜索: {evaluated}/{total_combinations}',
+							task_id_param=task_id, event_engine_param=event_engine
+						)
 
-		# 模拟验证结果
-		validation_result = {
-			'validation_score': random.uniform(0.6, 0.8),
-			'passed': True,
-			'validation_details': {
-				'backtest_result': '模拟回测成功',
-				'risk_metrics': {'sharpe_ratio': 1.5, 'max_drawdown': 0.15}
+			optimization_result = {
+				'optimal_parameters': best_params,
+				'objective_value': best_score,
+				'iterations': evaluated,
+				'converged': True
 			}
-		}
+			validation_result = {
+				'validation_score': best_score,
+				'passed': best_score > 0.02,  # IC > 0.02 视为有效因子
+				'validation_details': {'ic': best_score}
+			}
+		except Exception as e:
+			logger.warning(f"网格搜索优化失败: {e}，使用默认参数")
+			optimization_result = {
+				'optimal_parameters': parameter_ranges,
+				'objective_value': 0,
+				'iterations': 0,
+				'converged': False
+			}
+			validation_result = {
+				'validation_score': 0,
+				'passed': False,
+				'validation_details': {'error': str(e)}
+			}
 
 		# 模拟保存优化结果
 		result_id = f"opt_{factor_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -1251,8 +1378,19 @@ async def async_optimize_parameters (
 									# 信息比率
 									eval_score = corr
 								elif objective_function == 'max_drawdown':
-									# 最小化最大回撤（这里简化处理）
-									eval_score = -abs(corr)
+									# 根据因子信号计算策略收益曲线，取最大回撤
+									factor_vals = factor_values.iloc[:, 0].values
+									signals = np.sign(factor_vals)
+									strat_returns = signals * returns.values
+									strat_returns = strat_returns[~np.isnan(strat_returns)]
+									if len(strat_returns) > 20:
+										cum_returns = (1 + strat_returns).cumprod()
+										running_max = np.maximum.accumulate(cum_returns)
+										drawdowns = (cum_returns - running_max) / running_max
+										max_dd = float(np.min(drawdowns))
+										eval_score = -abs(max_dd)  # 负值，越大（越接近0）越好
+									else:
+										eval_score = -1.0
 								else:
 									eval_score = corr
 
@@ -1294,8 +1432,7 @@ async def async_optimize_parameters (
 						best_params = params_dict
 
 		elif optimization_method == 'genetic':
-			# 遗传算法（简化实现）
-
+			# 遗传算法
 
 			# 初始化种群
 			population_size = 50
@@ -1318,19 +1455,25 @@ async def async_optimize_parameters (
 				# 评估适应度
 				fitness = [evaluate_parameters(ind) for ind in population]
 
+				# 精英保留：保留最优个体到下一代
+				best_idx = fitness.index(max(fitness))
+				elite = population[best_idx].copy()
+
 				# 选择父母
 				selected = []
+				# 适应度偏移确保非负（轮盘赌要求所有值 > 0）
+				min_f = min(fitness)
+				shifted_fitness = [f - min_f + 1e-6 for f in fitness]
+				total_fitness = sum(shifted_fitness)
 				for _ in range(population_size):
 					# 轮盘赌选择
-					total_fitness = sum(fitness)
-					if total_fitness > 0:
-						r = random.uniform(0, total_fitness)
-						cumulative = 0
-						for i, f in enumerate(fitness):
-							cumulative += f
-							if cumulative >= r:
-								selected.append(population[i])
-								break
+					r = random.uniform(0, total_fitness)
+					cumulative = 0
+					for i, f in enumerate(shifted_fitness):
+						cumulative += f
+						if cumulative >= r:
+							selected.append(population[i])
+							break
 
 				# 交叉
 				new_population = []
@@ -1364,6 +1507,11 @@ async def async_optimize_parameters (
 								range_info['max']
 							)
 
+				# 精英保留：用最优个体替换最差个体
+				new_fitness = [evaluate_parameters(ind) for ind in new_population]
+				worst_idx = new_fitness.index(min(new_fitness))
+				new_population[worst_idx] = elite
+
 				population = new_population
 
 			# 选择最佳个体
@@ -1394,8 +1542,7 @@ async def async_optimize_parameters (
 		# 计算性能指标
 		performance_metrics = {
 			'sharpe_ratio': best_score,
-			'max_drawdown': 0.2,  # 简化处理
-			'alpha': best_score * 0.1  # 简化处理
+
 		}
 
 		return {

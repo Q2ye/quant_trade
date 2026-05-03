@@ -9,7 +9,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from quant_server.modules.monitor.events.types import SystemMetricsData
+from modules.monitor.events.types import SystemMetricsData
 
 logger = logging.getLogger(__name__)
 

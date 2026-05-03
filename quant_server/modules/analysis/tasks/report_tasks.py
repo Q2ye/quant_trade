@@ -10,10 +10,10 @@ import uuid
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Optional
 
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.system_events import ReportGeneratedEvent
-from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
+from core.engines.system.event_engine import EventEngine
+from core.events.system_events import ReportGeneratedEvent
+from modules.analysis.visualizers.report_generator import ReportGenerator
+from shared.database.repositories.base.repository_base import BaseRepository
 
 
 class ReportTasks:

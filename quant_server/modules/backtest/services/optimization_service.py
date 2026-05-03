@@ -9,11 +9,11 @@ from typing import Dict, Any, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.modules.backtest.engines.optimization_engine import OptimizationEngine
-from quant_server.modules.backtest.schemas import BacktestOptimizeRequest
-from quant_server.shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
-from quant_server.shared.database.repositories.strategy.management import StrategyRepository, \
+from core.engines.types.entities import EngineConfigEntity
+from modules.backtest.engines.optimization_engine import OptimizationEngine
+from modules.backtest.schemas import BacktestOptimizeRequest
+from shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
+from shared.database.repositories.strategy.management import StrategyRepository, \
 	StrategyParameterRepository
 
 logger = logging.getLogger(__name__)

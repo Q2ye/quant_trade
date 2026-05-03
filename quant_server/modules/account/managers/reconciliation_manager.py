@@ -10,16 +10,16 @@ from typing import Dict, Any, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.account.calculators.asset_calculator import AssetCalculator
-from quant_server.modules.account.services.account_service import AccountService
-from quant_server.modules.account.services.position_service import PositionService
-from quant_server.shared.cache.base import CacheBase
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
-from quant_server.shared.database.repositories.trading.order.order_repo import OrderRepository
-from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
-from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
-from quant_server.shared.messaging.producer import MessageProducer
+from modules.account.calculators.asset_calculator import AssetCalculator
+from modules.account.services.account_service import AccountService
+from modules.account.services.position_service import PositionService
+from shared.cache.base import CacheBase
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
+from shared.database.repositories.trading.order.order_repo import OrderRepository
+from shared.database.repositories.trading.order.trade_repo import TradeRepository
+from shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.messaging.producer import MessageProducer
 
 logger = logging.getLogger(__name__)
 
@@ -385,38 +385,45 @@ class ReconciliationManager:
 
 		total_deposit = Decimal("0.00")
 		total_withdrawal = Decimal("0.00")
-		total_trade_amount = Decimal("0.00")
+		total_buy_cost = Decimal("0.00")     # 买入总支出
+		total_sell_proceed = Decimal("0.00") # 卖出总收入
 		total_fee = Decimal("0.00")
 
 		for trade in trades:
-			# 计算买入/卖出的资金影响
-			trade_value = Decimal(str(trade.price)) * trade.volume
-			trade_fee = Decimal(str(trade.commission)) + Decimal(str(trade.tax))
-
-			# 这里需要根据交易方向计算资金影响
-			# 实际实现中需要根据具体业务逻辑调整
-			total_trade_amount += trade_value
+			trade_value = Decimal(str(trade.price)) * Decimal(str(trade.volume))
+			trade_fee = Decimal(str(trade.commission or 0)) + Decimal(str(trade.tax or 0))
 			total_fee += trade_fee
 
-		# 计算预期余额
-		# 初始余额 + 存款 - 取款 + 卖出收入 - 买入支出 - 费用
+			# 根据交易方向分别累计
+			direction = getattr(trade, 'direction', 'buy')
+			if direction == 'buy':
+				total_buy_cost += trade_value
+			elif direction == 'sell':
+				total_sell_proceed += trade_value
+
+		# 预期余额 = 初始余额 + 存款 - 取款 + 卖出收入 - 买入支出 - 费用
 		expected_total = (
-				initial_balance +
-				total_deposit -
-				total_withdrawal +
-				total_trade_amount -
-				total_fee
+			initial_balance +
+			total_deposit -
+			total_withdrawal +
+			total_sell_proceed -
+			total_buy_cost -
+			total_fee
 		)
 
-		# 这里简化处理，实际实现需要更复杂的计算
+		# 可用余额 = 总余额 - 冻结资金（当前未平仓买单占用的保证金估算为买入成本的20%）
+		estimated_margin = total_buy_cost * Decimal("0.2") if total_buy_cost > 0 else Decimal("0.00")
+		available_expected = expected_total - estimated_margin
+
 		return {
 			"total_balance": expected_total,
-			"available_balance": expected_total,  # 简化，实际需要考虑冻结资金
-			"frozen_balance": Decimal("0.00")
+			"available_balance": max(available_expected, Decimal("0.00")),
+			"frozen_balance": estimated_margin
 		}
 
+
+	@staticmethod
 	async def reconcile_trades (
-			self,
 			system_trades: List,
 			broker_trades: List[Dict]
 	) -> Dict[str, Any]:
@@ -541,19 +548,28 @@ class ReconciliationManager:
 			position = position_map[ts_code]
 
 			# 根据交易方向更新持仓
-			# 实际实现中需要根据具体业务逻辑调整
+			direction = getattr(trade, 'direction', 'buy')
 			position["trades"].append({
 				"trade_id": trade.trade_id,
-				"direction": getattr(trade, 'direction', 'buy'),  # 尝试获取direction属性
+				"direction": direction,
 				"price": trade.price,
 				"volume": trade.volume,
 				"time": trade.trade_time
 			})
 
-			# 简化计算，实际需要更复杂的成本计算
+			# 根据买卖方向计算持仓量和成本
 			if trade.price and trade.volume:
-				position["total_volume"] += trade.volume
-				position["total_cost"] += Decimal(str(trade.price)) * trade.volume
+				trade_qty = Decimal(str(trade.volume))
+				if direction == 'buy':
+					position["total_volume"] += trade_qty
+					position["total_cost"] += Decimal(str(trade.price)) * trade_qty
+				elif direction == 'sell':
+					position["total_volume"] -= trade_qty
+					# 卖出时按移动加权平均成本减少持仓成本
+					if position["total_volume"] > 0:
+						position["total_cost"] -= Decimal(str(trade.price)) * trade_qty
+					else:
+						position["total_cost"] = Decimal("0.00")
 
 		# 转换为预期持仓列表
 		expected_positions = []

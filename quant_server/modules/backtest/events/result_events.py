@@ -12,8 +12,8 @@
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.modules.backtest.events.types import BacktestEventTypes
+from core.events.base import BaseEvent, EventPriority
+from modules.backtest.events.types import BacktestEventTypes
 
 
 class BacktestReportGeneratedEvent(BaseEvent):

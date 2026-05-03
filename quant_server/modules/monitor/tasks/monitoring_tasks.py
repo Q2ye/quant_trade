@@ -71,7 +71,7 @@ async def scheduled_business_aggregation (main_engine=None) -> Dict[str, Any]:
 async def scheduled_health_check (main_engine=None, event_engine=None) -> Dict[str, Any]:
 	"""定时综合健康检查 — 由任务调度器周期性调用"""
 	try:
-		from quant_server.modules.monitor.services.system_service import SystemMonitorService
+		from modules.monitor.services.system_service import SystemMonitorService
 
 		result = await SystemMonitorService.get_health_status(
 			main_engine=main_engine,

@@ -76,8 +76,8 @@ class SortOrder(str, Enum):
 # ==================== 分页和排序基类 ====================
 
 # 导入配置化的分页和排序参数基类
-from quant_server.utils.api_utils.pagination_config import PaginationParams as ConfiguredPaginationParams
-from quant_server.utils.api_utils.pagination_config import SortParams as ConfiguredSortParams
+from utils.api_utils.pagination_config import PaginationParams as ConfiguredPaginationParams
+from utils.api_utils.pagination_config import SortParams as ConfiguredSortParams
 
 
 class PaginationParams(ConfiguredPaginationParams):

@@ -9,9 +9,9 @@
 import logging
 from typing import Any, Dict
 
-from quant_server.modules.monitor.collectors.system_collector import SystemCollector
-from quant_server.modules.monitor.events.types import SystemMetricsData
-from quant_server.modules.monitor.utils.metric_utils import MetricUtils
+from modules.monitor.collectors.system_collector import SystemCollector
+from modules.monitor.events.types import SystemMetricsData
+from modules.monitor.utils.metric_utils import MetricUtils
 
 logger = logging.getLogger(__name__)
 

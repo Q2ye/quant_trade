@@ -17,13 +17,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.database import get_db_session
-from quant_server.core.exceptions.security_exceptions import (
+from api.dependencies.database import get_db_session
+from core.exceptions.security_exceptions import (
 	TokenExpiredError,
 	InvalidTokenError
 )
-from quant_server.shared.database.repositories.system.auth import user_repo
-from quant_server.shared.security.jwt_handler import JWTManager
+from shared.database.repositories.system.auth import user_repo
+from shared.security.jwt_handler import JWTManager
 
 logger = logging.getLogger(__name__)
 

@@ -19,9 +19,9 @@ from sqlalchemy import select, update, and_, or_, func, desc, asc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from quant_server.shared.database.models.business_models import OrderTemplate
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.business_models import OrderTemplate
+from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.types import (
 	RepositoryError
 )
 

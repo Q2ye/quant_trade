@@ -40,12 +40,12 @@ from fastapi import BackgroundTasks
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.config import get_settings
+from api.dependencies.config import get_settings
 # ==================== 核心基础设施导入 ====================
 # 事件引擎
-from quant_server.core.engines.system.event_engine import EventEngine
+from core.engines.system.event_engine import EventEngine
 # 异常处理
-from quant_server.core.exceptions.business_exceptions import (
+from core.exceptions.business_exceptions import (
 	ValidationException,
 	ResourceNotFoundException,
 	PermissionDeniedException,
@@ -53,7 +53,7 @@ from quant_server.core.exceptions.business_exceptions import (
 )
 # ==================== 数据模块内部组件导入 ====================
 # 事件定义
-from quant_server.modules.data.events import (
+from modules.data.events import (
 	DataSyncStartedEvent,
 	DataSyncProgressEvent,
 	DataSyncCompletedEvent,
@@ -62,7 +62,7 @@ from quant_server.modules.data.events import (
 	DataResearchCompletedEvent
 )
 # Schema定义（API请求/响应模型）
-from quant_server.modules.data.schemas import (
+from modules.data.schemas import (
 	# 基础数据查询
 	StockListRequest,
 	StockListResponse,
@@ -89,26 +89,26 @@ from quant_server.modules.data.schemas import (
 	ResearchResponse,
 	FactorMetadata, FactorCategory,
 )
-from quant_server.modules.data.services.quality_service import DataQualityService
+from modules.data.services.quality_service import DataQualityService
 # 服务层组件
-from quant_server.modules.data.services.research_service import FactorResearchService
-from quant_server.modules.data.services.sync_service import DataSyncService
-from quant_server.shared.cache.redis_cache import RedisCache
+from modules.data.services.research_service import FactorResearchService
+from modules.data.services.sync_service import DataSyncService
+from shared.cache.redis_cache import RedisCache
 # 配置与缓存
-from quant_server.shared.config.config_manager import ConfigSettings as Settings, get_config
+from shared.config.config_manager import ConfigSettings as Settings, get_config
 # ==================== 数据模型导入 ====================
-from quant_server.shared.database.models.data_models import StockBasic
+from shared.database.models.data_models import StockBasic
 # 分析领域Repository - 因子数据
-from quant_server.shared.database.repositories.analysis.factor.factor_data_repo import FactorDataRepository
-from quant_server.shared.database.repositories.analysis.factor.factor_definition_repo import FactorDefinitionRepository
+from shared.database.repositories.analysis.factor.factor_data_repo import FactorDataRepository
+from shared.database.repositories.analysis.factor.factor_definition_repo import FactorDefinitionRepository
 # ==================== 共享层组件导入 ====================
 # 市场数据Repository - 基础信息
-from quant_server.shared.database.repositories.market.basic.stock_repo import StockBasicRepository
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
 # 市场数据Repository - 行情数据
-from quant_server.shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
 # 运营领域Repository - 任务管理
-from quant_server.shared.database.repositories.operation.task.data_sync_task_repo import DataSyncTaskRepository
-from quant_server.shared.database.repositories.operation.task.factor_research_repo import FactorResearchRepository
+from shared.database.repositories.operation.task.data_sync_task_repo import DataSyncTaskRepository
+from shared.database.repositories.operation.task.factor_research_repo import FactorResearchRepository
 
 # ==================== 日志配置 ====================
 logger = logging.getLogger(__name__)
@@ -761,7 +761,7 @@ async def get_stock_detail (
 		}
 
 		# 4. 构建响应数据
-		from quant_server.modules.data.schemas import StockBasicInfo, QuoteData
+		from modules.data.schemas import StockBasicInfo, QuoteData
 
 		# 转换为StockBasicInfo对象
 		basic_info_obj = StockBasicInfo(
@@ -1106,7 +1106,7 @@ async def quick_sync_data (
 			})
 
 		# 3. 构建批量同步请求
-		from quant_server.modules.data.schemas import SyncTaskItem, SyncPriority
+		from modules.data.schemas import SyncTaskItem, SyncPriority
 		task_items = [SyncTaskItem(**task) for task in sync_tasks]
 
 		batch_request = BatchSyncRequest(
@@ -1193,7 +1193,7 @@ async def get_sync_status (
 					progress = task.processed_records / task.total_records * 100
 
 			# 构建进度信息
-			from quant_server.modules.data.schemas import SyncProgress
+			from modules.data.schemas import SyncProgress
 			progress_info = SyncProgress(
 				task_id=task.task_id,
 				total_tasks=1,  # 简化处理
@@ -1237,7 +1237,7 @@ async def get_sync_status (
 						                                                         "completed_at") and task.completed_at else None
 					})
 
-			from quant_server.modules.data.schemas import SyncProgress
+			from modules.data.schemas import SyncProgress
 			# 构建响应（返回简化版本）
 			return SyncStatusResponse(
 				success=True,
@@ -1392,7 +1392,7 @@ async def get_data_quality (
 		quality_score = quality_report.get("quality_score", 0)
 
 		# 确定质量等级
-		from quant_server.modules.data.schemas import DataQualityLevel
+		from modules.data.schemas import DataQualityLevel
 		if quality_score >= 99:
 			quality_level = DataQualityLevel.EXCELLENT
 		elif quality_score >= 95:

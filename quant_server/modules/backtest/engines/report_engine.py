@@ -15,11 +15,11 @@ from typing import Dict, List, Any
 
 import pandas as pd
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.modules.backtest.analyzers.performance_analyzer import PerformanceAnalyzer
-from quant_server.modules.backtest.analyzers.risk_analyzer import RiskAnalyzer
-from quant_server.modules.backtest.analyzers.trade_analyzer import TradeAnalyzer
-from quant_server.modules.backtest.utils.chart_generator import ChartGenerator
+from core.engines.base.engine_base import EngineBase
+from modules.backtest.analyzers.performance_analyzer import PerformanceAnalyzer
+from modules.backtest.analyzers.risk_analyzer import RiskAnalyzer
+from modules.backtest.analyzers.trade_analyzer import TradeAnalyzer
+from modules.backtest.utils.chart_generator import ChartGenerator
 
 logger = logging.getLogger(__name__)
 

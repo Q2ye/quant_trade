@@ -9,10 +9,10 @@ from typing import Dict, List, Optional, Any
 import pandas as pd
 import numpy as np
 
-from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
-from quant_server.modules.strategy.constants import StrategyType, SignalDirection, SignalType
-from quant_server.modules.strategy.models import TradingSignal
-from quant_server.core.engines.types.entities import BarData
+from modules.strategy.strategies.base.base_strategy import BaseStrategy
+from modules.strategy.constants import StrategyType, SignalDirection, SignalType
+from modules.strategy.models import TradingSignal
+from core.engines.types.entities import BarData
 
 logger = logging.getLogger(__name__)
 

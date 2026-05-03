@@ -22,30 +22,30 @@ import pandas as pd  # 新增导入，用于处理DataFrame中的Timestamp
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
+from core.engines.system.event_engine import EventEngine
 # 导入数据模块常量
-from quant_server.modules.data.constants import (
+from modules.data.constants import (
 	DataSource,
 	DataType,
 	CacheKey,
 )
 # 导入数据模块事件
-from quant_server.modules.data.events import (
+from modules.data.events import (
 	DataSyncStartedEvent,
 	DataSyncProgressEvent,
 	DataSyncCompletedEvent,
 	DataSyncFailedEvent,
 )
 # 导入数据模块业务模型和schemas
-from quant_server.modules.data.schemas import (
+from modules.data.schemas import (
 	BatchSyncRequest,
 	SyncResult,
 	SyncTaskItem,
 )
-from quant_server.shared.cache.memory_cache import MemoryCache
-from quant_server.shared.cache.redis_cache import RedisCache
+from shared.cache.memory_cache import MemoryCache
+from shared.cache.redis_cache import RedisCache
 # 从统一导出入口导入共享Repository（按领域分组）
-from quant_server.shared.database.repositories import (
+from shared.database.repositories import (
 	# 市场数据领域
 	StockBasicRepository,
 	StockDailyRepository,
@@ -62,8 +62,8 @@ from quant_server.shared.database.repositories import (
 	# 运营领域（任务记录）
 	DataSyncTaskRepository, ETFRepository,
 )
-from quant_server.shared.database.repositories.market.basic import EtfBasicRepository, IndexWeightRepository
-from quant_server.shared.sources.source_factory import DataSourceFactory
+from shared.database.repositories.market.basic import EtfBasicRepository, IndexWeightRepository
+from shared.sources.source_factory import DataSourceFactory
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -284,7 +284,7 @@ class DataSyncService:
 	def cache (self):
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			if settings.REDIS.ENABLED:
 				self._cache = RedisCache(

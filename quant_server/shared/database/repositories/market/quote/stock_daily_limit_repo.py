@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockDailyLimit
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import StockDailyLimit
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockDailyLimitRepository(HyperRepositoryBase[StockDailyLimit]):

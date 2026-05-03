@@ -14,10 +14,10 @@ from typing import Dict, List, Any
 
 import pandas as pd
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.modules.backtest.simulators.cost_simulator import CostSimulator
-from quant_server.modules.backtest.simulators.market_simulator import MarketSimulator
-from quant_server.modules.backtest.simulators.slippage_simulator import SlippageSimulator
+from core.engines.base.engine_base import EngineBase
+from modules.backtest.simulators.cost_simulator import CostSimulator
+from modules.backtest.simulators.market_simulator import MarketSimulator
+from modules.backtest.simulators.slippage_simulator import SlippageSimulator
 
 logger = logging.getLogger(__name__)
 

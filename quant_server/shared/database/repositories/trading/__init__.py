@@ -23,7 +23,7 @@ from .support.trade_fee_repo import TradeFeeRepository
 # from .support.broker_connection_repo import BrokerConnectionRepository
 
 # 账户模块（兼容旧代码）
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.account.asset.account_repo import AccountRepository
 
 __all__ = [
     # 订单模块

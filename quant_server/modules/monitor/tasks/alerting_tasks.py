@@ -21,7 +21,7 @@ async def scheduled_alert_cleanup (
 		if session is None:
 			return {"status": "skipped", "reason": "no db session"}
 
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import (
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import (
 			MonitorAlertRepository,
 		)
 
@@ -54,7 +54,7 @@ async def scheduled_alert_retry (
 		if session is None:
 			return {"status": "skipped", "reason": "no db session"}
 
-		from quant_server.shared.database.repositories.analysis.monitor.alert_delivery_log_repo import (
+		from shared.database.repositories.analysis.monitor.alert_delivery_log_repo import (
 			AlertDeliveryLogRepository,
 		)
 
@@ -85,10 +85,10 @@ async def scheduled_alert_summary (session=None) -> Dict[str, Any]:
 		if session is None:
 			return {"status": "skipped", "reason": "no db session"}
 
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import (
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import (
 			MonitorAlertRepository,
 		)
-		from quant_server.modules.monitor.constants import AlertLevel
+		from modules.monitor.constants import AlertLevel
 
 		repo = MonitorAlertRepository(session)
 

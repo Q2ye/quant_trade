@@ -1,8 +1,8 @@
 # risk_service.py       # 风控服务
 
 from typing import Dict, Any, Optional, List
-from quant_server.modules.trade.engines.risk_engine import RiskEngine
-from quant_server.modules.trade.managers.risk_manager import RiskManager
+from modules.trade.engines.risk_engine import RiskEngine
+from modules.trade.managers.risk_manager import RiskManager
 
 
 class RiskService:

@@ -11,9 +11,9 @@ from typing import Any, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.monitor.collectors.system_collector import SystemCollector
-from quant_server.modules.monitor.services.alert_service import AlertService
-from quant_server.modules.monitor.services.system_service import SystemMonitorService
+from modules.monitor.collectors.system_collector import SystemCollector
+from modules.monitor.services.alert_service import AlertService
+from modules.monitor.services.system_service import SystemMonitorService
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def get_business_metrics (
 ) -> Dict[str, Any]:
 	"""获取业务指标"""
 	try:
-		from quant_server.modules.monitor.services.business_service import BusinessMonitorService
+		from modules.monitor.services.business_service import BusinessMonitorService
 
 		metrics = await BusinessMonitorService.aggregate_metrics(session=session)
 		return {"success": True, "data": metrics}
@@ -119,7 +119,7 @@ async def create_alert_rule (
 ) -> Dict[str, Any]:
 	"""创建告警规则（阈值）"""
 	try:
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
+		from shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
 			MonitorThresholdRepository,
 		)
 
@@ -154,7 +154,7 @@ async def update_alert_rule (
 ) -> Dict[str, Any]:
 	"""更新告警规则"""
 	try:
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
+		from shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
 			MonitorThresholdRepository,
 		)
 
@@ -188,7 +188,7 @@ async def delete_alert_rule (
 ) -> Dict[str, Any]:
 	"""删除告警规则"""
 	try:
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
+		from shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
 			MonitorThresholdRepository,
 		)
 
@@ -226,7 +226,7 @@ async def trigger_manual_alert (
 
 		alert_id = result.get("alert_id")
 		if alert_id and event_engine:
-			from quant_server.core.events.engine_events import EngineLifecycleEvent
+			from core.events.engine_events import EngineLifecycleEvent
 
 			event = EngineLifecycleEvent(
 				engine_name="monitor",

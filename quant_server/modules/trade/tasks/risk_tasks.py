@@ -4,10 +4,10 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any
 
-from quant_server.core.engines.system import EventEngine
-from quant_server.modules.trade.engines.position_engine import PositionEngine
-from quant_server.modules.trade.engines.risk_engine import RiskEngine
-from quant_server.modules.trade.events.risk_events import RiskAlertEvent
+from core.engines.system import EventEngine
+from modules.trade.engines.position_engine import PositionEngine
+from modules.trade.engines.risk_engine import RiskEngine
+from modules.trade.events.risk_events import RiskAlertEvent
 
 
 class RiskTasks:

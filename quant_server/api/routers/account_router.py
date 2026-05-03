@@ -11,11 +11,11 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入账户模块的业务层处理函数
-from quant_server.modules.account.handlers import (
+from modules.account.handlers import (
 	get_account_list,
 	get_account_detail,
 	create_account,
@@ -31,7 +31,7 @@ from quant_server.modules.account.handlers import (
 	check_account_module_health
 )
 # 导入账户模块的Pydantic模型
-from quant_server.modules.account.schemas import (
+from modules.account.schemas import (
 	AccountListRequest,
 	AccountListResponse,
 	AccountDetailResponse,
@@ -47,7 +47,7 @@ from quant_server.modules.account.schemas import (
 	WithdrawRequest
 )
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ router = APIRouter(
 
 # ==================== 账户管理接口 ====================
 
-from quant_server.utils.api_utils.pagination_decorator import with_pagination_config
+from utils.api_utils.pagination_decorator import with_pagination_config
 
 
 @router.get("", response_model=AccountListResponse)

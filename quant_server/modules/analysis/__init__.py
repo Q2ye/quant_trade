@@ -59,7 +59,7 @@ async def initialize(
 
     # 预导入 — 将 import 提升到 try 外部，满足 linter 对 except 块可见性要求
     try:
-        from quant_server.shared.database.session import get_db_session
+        from shared.database.session import get_db_session
     except ImportError:
         get_db_session = None  # type: ignore
 
@@ -89,7 +89,7 @@ async def initialize(
 
         if event_engine:
             from .engines import AnalysisEngine
-            from quant_server.shared.database.session import get_connection_pool
+            from shared.database.session import get_connection_pool
 
             pool = get_connection_pool()
             session_factory = pool.get_session_factory() if pool else None

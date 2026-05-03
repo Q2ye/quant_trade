@@ -15,9 +15,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockBasic, StockCompany
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.data_models import StockBasic, StockCompany
+from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,

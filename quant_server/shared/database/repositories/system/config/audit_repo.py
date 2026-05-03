@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import AuditLog
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.system_models import AuditLog
+from shared.database.repositories.base import BaseRepository
 
 
 class AuditRepository(BaseRepository):

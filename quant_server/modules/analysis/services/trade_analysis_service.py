@@ -42,11 +42,11 @@ from typing import Dict, List, Any
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.models import TradeAnalysis
-from quant_server.shared.database.repositories import AccountRepository
-from quant_server.shared.database.repositories import OrderRepository
-from quant_server.shared.database.repositories import PositionRepository
-from quant_server.shared.database.repositories import TradeRepository
+from modules.analysis.models import TradeAnalysis
+from shared.database.repositories import AccountRepository
+from shared.database.repositories import OrderRepository
+from shared.database.repositories import PositionRepository
+from shared.database.repositories import TradeRepository
 
 logger = logging.getLogger(__name__)
 

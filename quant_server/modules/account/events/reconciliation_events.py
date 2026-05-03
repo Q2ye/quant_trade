@@ -6,7 +6,7 @@
 from datetime import datetime, date
 from typing import Dict, Any
 
-from quant_server.core.events.base import BaseEvent, EventPriority
+from core.events.base import BaseEvent, EventPriority
 
 
 class ReconciliationEvent(BaseEvent):

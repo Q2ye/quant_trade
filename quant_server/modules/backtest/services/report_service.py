@@ -9,12 +9,12 @@ from typing import Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.modules.backtest.engines.report_engine import ReportEngine
-from quant_server.shared.database.repositories import BacktestEquityCurveRepository
-from quant_server.shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
-from quant_server.shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
-from quant_server.shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
+from core.engines.types.entities import EngineConfigEntity
+from modules.backtest.engines.report_engine import ReportEngine
+from shared.database.repositories import BacktestEquityCurveRepository
+from shared.database.repositories.strategy.backtest.task_repo import BacktestTaskRepository
+from shared.database.repositories.strategy.backtest.trade_repo import BacktestTradeRepository
+from shared.database.repositories.strategy.backtest.position_repo import BacktestPositionRepository
 
 logger = logging.getLogger(__name__)
 

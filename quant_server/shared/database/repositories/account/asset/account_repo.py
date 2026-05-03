@@ -21,8 +21,8 @@ from sqlalchemy import select, and_, or_, desc, func, between, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.business_models import Account
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import Account
+from shared.database.repositories.base import BaseRepository
 
 
 class AccountRepository(BaseRepository[Account]):
@@ -773,69 +773,95 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
 		"""
-		创建对账记录
+		创建对账记录 → 写入 account_transactions 表
 
 		Args:
-			recon_data: 对账数据
+			recon_data: 对账数据 {account_id, reconciliation_date, reconciliation_type,
+			           total_records, matched_records, unmatched_records, match_rate, ...}
 
 		Returns:
-			创建的对账记录
+			AccountTransaction: 创建的对账流水记录
 		"""
-		try:
-			# 这里简化处理，实际需要创建对账记录
-			# 假设有一个 ReconciliationRecord 模型
-			class MockRecord:
-				def __init__ (self, id):
-					self.id = id
+		from shared.database.models.business_models import AccountTransaction
 
-			return MockRecord(id=f"recon_{recon_data['account_id']}_{recon_data['reconciliation_date']}")
-
-		except Exception as e:
-			raise Exception(f"创建对账记录失败: {str(e)}")
+		txn = AccountTransaction(
+			account_id=recon_data["account_id"],
+			transaction_type="reconciliation",
+			transaction_date=recon_data.get("reconciliation_date", datetime.now()),
+			amount=0,
+			balance_before=0,
+			balance_after=0,
+			description=f"对账类型:{recon_data.get('reconciliation_type', 'unknown')} "
+			            f"匹配率:{recon_data.get('match_rate', 0)}",
+			reference_id=recon_data.get("reconciliation_id", ""),
+			reference_type="reconciliation",
+		)
+		self.session.add(txn)
+		await self.session.flush()
+		return txn
 
 	async def create_settlement_record (self, settlement_data: Dict[str, Any]) -> Any:
 		"""
-		创建结算记录
+		创建结算记录 → 写入 account_statements 表
 
 		Args:
-			settlement_data: 结算数据
+			settlement_data: 结算数据 {account_id, trading_day, settlement_type,
+			                pnl, assets_snapshot, statement_path, status}
 
 		Returns:
-			创建的结算记录
+			AccountStatement: 创建的对账单记录
 		"""
-		try:
-			# 这里简化处理，实际需要创建结算记录
-			# 假设有一个 SettlementRecord 模型
-			class MockRecord:
-				def __init__ (self, id):
-					self.id = id
+		from shared.database.models.business_models import AccountStatement
+		from decimal import Decimal
 
-			return MockRecord(id=f"settlement_{settlement_data['account_id']}_{settlement_data['trading_day']}")
-
-		except Exception as e:
-			raise Exception(f"创建结算记录失败: {str(e)}")
+		assets = settlement_data.get("assets_snapshot", {}) or {}
+		stmt = AccountStatement(
+			account_id=settlement_data["account_id"],
+			statement_date=settlement_data["trading_day"],
+			statement_period=settlement_data.get("settlement_type", "daily"),
+			opening_balance=Decimal(str(assets.get("total_asset", 0))),
+			closing_balance=Decimal(str(assets.get("total_asset", 0))),
+			total_trades=Decimal(str(settlement_data.get("pnl", 0))),
+			statement_data={
+				"pnl": settlement_data.get("pnl", 0),
+				"assets": assets,
+				"statement_path": settlement_data.get("statement_path", ""),
+				"status": settlement_data.get("status", "completed"),
+			},
+		)
+		self.session.add(stmt)
+		await self.session.flush()
+		return stmt
 
 	async def create_asset_snapshot (self, snapshot_data: Dict[str, Any]) -> Any:
 		"""
-		创建资产快照
+		创建资产快照 → 写入 account_daily_performance 表
 
 		Args:
-			snapshot_data: 快照数据
+			snapshot_data: 快照数据 {account_id, trading_day, total_asset,
+		                cash_balance, market_value, available_cash, frozen_cash, pnl, pnl_rate}
 
 		Returns:
-			创建的资产快照
+			AccountDailyPerformance: 创建的每日绩效记录
 		"""
-		try:
-			# 这里简化处理，实际需要创建资产快照
-			# 假设有一个 AssetSnapshot 模型
-			class MockRecord:
-				def __init__ (self, id):
-					self.id = id
+		from shared.database.models.business_models import AccountDailyPerformance
+		from decimal import Decimal
 
-			return MockRecord(id=f"asset_snapshot_{snapshot_data['account_id']}_{snapshot_data['trading_day']}")
+		account = await self.get(snapshot_data["account_id"])
+		user_id = account.user_id if account else ""
 
-		except Exception as e:
-			raise Exception(f"创建资产快照失败: {str(e)}")
+		perf = AccountDailyPerformance(
+			user_id=user_id,
+			trade_date=snapshot_data["trading_day"],
+			total_asset=Decimal(str(snapshot_data.get("total_asset", 0))),
+			cash=Decimal(str(snapshot_data.get("cash_balance", 0))),
+			market_value=Decimal(str(snapshot_data.get("market_value", 0))),
+			daily_pnl=Decimal(str(snapshot_data.get("pnl", 0))),
+			daily_return=Decimal(str(snapshot_data.get("pnl_rate", 0))),
+		)
+		self.session.add(perf)
+		await self.session.flush()
+		return perf
 
 
 # 工厂函数

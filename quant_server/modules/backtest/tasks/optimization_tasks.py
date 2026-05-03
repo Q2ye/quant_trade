@@ -7,8 +7,8 @@
 import logging
 from typing import Dict, Any
 
-from quant_server.core.engines import EngineConfigEntity
-from quant_server.modules.backtest.engines.optimization_engine import OptimizationEngine
+from core.engines import EngineConfigEntity
+from modules.backtest.engines.optimization_engine import OptimizationEngine
 
 logger = logging.getLogger(__name__)
 

@@ -15,8 +15,8 @@ import jinja2
 import numpy as np
 import pdfkit
 
-from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
-from quant_server.modules.analysis.visualizers.chart_generator import ChartGenerator
+from modules.analysis.utils.statistic_utils import StatisticUtils
+from modules.analysis.visualizers.chart_generator import ChartGenerator
 
 
 class ReportGenerator:

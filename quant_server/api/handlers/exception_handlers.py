@@ -10,14 +10,14 @@ from fastapi import Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from quant_server.core.exceptions import (
+from core.exceptions import (
 	QuantBaseException,
 	AuthenticationException,
 	AuthorizationException,
 	ValidationException,
 	DataNotFoundException
 )
-from quant_server.core.exceptions.error_codes import ErrorCode
+from core.exceptions.error_codes import ErrorCode
 
 
 async def handle_validation_error (request: Request, exc: RequestValidationError) -> JSONResponse:

@@ -20,8 +20,8 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, func, desc, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import WorkflowLog
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import WorkflowLog
+from shared.database.repositories.base import BaseRepository
 
 
 class WorkflowLogRepository(BaseRepository[WorkflowLog]):

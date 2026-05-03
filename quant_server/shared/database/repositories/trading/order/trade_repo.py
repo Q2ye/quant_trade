@@ -18,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.orm import joinedload
 
-from quant_server.shared.database.repositories.base import BaseRepository,RepositoryError
-from quant_server.shared.database.models.business_models import Trade, Order
-from quant_server.shared.database.repositories.types import (
+from shared.database.repositories.base import BaseRepository,RepositoryError
+from shared.database.models.business_models import Trade, Order
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,
@@ -479,24 +479,30 @@ class TradeRepository(BaseRepository[Trade]):
 
 	async def create_reconciliation_record (self, recon_data: Dict[str, Any]) -> Any:
 		"""
-		创建交易对账记录
+		创建交易对账记录 → 写入 account_transactions 表
 
 		Args:
-			recon_data: 对账数据
+			recon_data: 对账数据 {account_id, reconciliation_date, reconciliation_type, ...}
 
 		Returns:
-			创建的对账记录
+			AccountTransaction: 创建的对账流水记录
 		"""
-		try:
-			# 这里简化处理，实际需要创建对账记录
-			class MockRecord:
-				def __init__(self, id):
-					self.id = id
+		from shared.database.models.business_models import AccountTransaction
 
-			return MockRecord(id=f"trade_recon_{recon_data['account_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-
-		except Exception as e:
-			raise RepositoryError(f"创建交易对账记录失败: {str(e)}")
+		txn = AccountTransaction(
+			account_id=recon_data["account_id"],
+			transaction_type="reconciliation",
+			transaction_date=datetime.now(),
+			amount=0,
+			balance_before=0,
+			balance_after=0,
+			description=f"交易对账 - 日期:{recon_data.get('reconciliation_date', '')}",
+			reference_id=recon_data.get("reconciliation_id", ""),
+			reference_type="trade_reconciliation",
+		)
+		self.session.add(txn)
+		await self.session.flush()
+		return txn
 
 	async def get_recent_trades (
 			self,

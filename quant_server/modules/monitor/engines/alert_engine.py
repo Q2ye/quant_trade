@@ -13,12 +13,12 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.monitor.constants import ModuleConfig, AlertLevel, AlertType
-from quant_server.modules.monitor.events.alert_events import AlertMonitorEvent
-from quant_server.modules.monitor.managers.alert_manager import AlertManager
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import EngineType
+from modules.monitor.constants import ModuleConfig, AlertLevel, AlertType
+from modules.monitor.events.alert_events import AlertMonitorEvent
+from modules.monitor.managers.alert_manager import AlertManager
 
 logger = logging.getLogger(__name__)
 

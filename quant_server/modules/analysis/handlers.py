@@ -14,9 +14,9 @@ from datetime import datetime
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.services.performance_service import PerformanceService
-from quant_server.modules.analysis.services.comparison_service import ComparisonService
-from quant_server.modules.analysis.services.attribution_service import AttributionService
+from modules.analysis.services.performance_service import PerformanceService
+from modules.analysis.services.comparison_service import ComparisonService
+from modules.analysis.services.attribution_service import AttributionService
 
 logger = logging.getLogger(__name__)
 

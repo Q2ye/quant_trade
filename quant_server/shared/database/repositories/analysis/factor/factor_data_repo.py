@@ -13,9 +13,9 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, update, delete, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import FactorData
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
-from quant_server.shared.database.repositories.base.repository_base import RepositoryError
+from shared.database.models.data_models import FactorData
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.repositories.base.repository_base import RepositoryError
 
 
 class FactorDataRepository(HyperRepositoryBase[FactorData]):

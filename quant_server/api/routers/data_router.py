@@ -8,20 +8,22 @@
 from typing import Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from starlette.responses import JSONResponse
 
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 import logging
+import uuid
 
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
-from quant_server.api.dependencies.auth import get_current_user
-from quant_server.api.dependencies.event_engine import get_event_engine
+from api.dependencies.database import get_db_session
+from api.dependencies.auth import get_current_user
+from api.dependencies.event_engine import get_event_engine
 
 # 导入数据模块的业务层处理函数
-from quant_server.modules.data.handlers import (
+from modules.data.handlers import (
 	# 基础数据查询
 	get_stock_list,
 	get_stock_detail,
@@ -48,7 +50,7 @@ from quant_server.modules.data.handlers import (
 )
 
 # 导入数据模块的Pydantic模型
-from quant_server.modules.data.schemas import (
+from modules.data.schemas import (
 	StockListRequest,
 	StockListResponse,
 	StockDetailRequest,
@@ -70,6 +72,8 @@ from quant_server.modules.data.schemas import (
 	FactorMetadataResponse,
 	FactorMetadata  # 新增：导入 FactorMetadata 模型
 )
+
+from core import BusinessException
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -812,19 +816,35 @@ async def get_data_statistics (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 请求数据统计信息")
 
-		from sqlalchemy import text
-
-		# 查询股票数量
+	# 查询股票总数
 		stock_count_result = await db_session.execute(
 			text("SELECT COUNT(*) FROM stocks WHERE is_deleted = 0")
 		)
 		stock_count = stock_count_result.scalar() or 0
+		
+		# 查询活跃股票数量（近30个交易日有行情数据）
+		active_stock_result = await db_session.execute(
+			text("SELECT COUNT(DISTINCT ts_code) FROM daily_quotes "
+				"WHERE trade_date >= :cutoff AND is_deleted = 0")
+			, {"cutoff": (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")}
+		)
+		active_stock_count = active_stock_result.scalar() or 0
 
 		# 查询行情数据数量
 		quote_count_result = await db_session.execute(
 			text("SELECT COUNT(*) FROM daily_quotes WHERE is_deleted = 0")
 		)
 		quote_count = quote_count_result.scalar() or 0
+		
+		# 查询实际表占用空间（PostgreSQL），降级使用行估算
+		try:
+			size_result = await db_session.execute(
+				text("SELECT pg_total_relation_size('daily_quotes') / (1024.0 * 1024 * 1024) AS size_gb")
+			)
+			estimated_size_gb = round(float(size_result.scalar() or 0), 2)
+		except BusinessException:
+			# 降级：按每行约250 字节估算
+			estimated_size_gb = round(quote_count * 250.0 / (1024**3), 2)
 
 		# 查询最近同步时间
 		latest_sync_result = await db_session.execute(
@@ -836,6 +856,14 @@ async def get_data_statistics (
             """)
 		)
 		latest_sync = latest_sync_result.scalar()
+		
+		# 查询最近24小时完成的同步任务数
+		sync_24h_result = await db_session.execute(
+			text("SELECT COUNT(*) FROM sync_tasks "
+				"WHERE status = 'completed' AND updated_at >= :since AND is_deleted = 0")
+			, {"since": datetime.now() - timedelta(hours=24)}
+		)
+		sync_last_24h = sync_24h_result.scalar() or 0
 
 		# 查询数据覆盖范围
 		date_range_result = await db_session.execute(
@@ -859,15 +887,15 @@ async def get_data_statistics (
 			data={
 				"stocks": {
 					"total": stock_count,
-					"active": stock_count  # 简化处理，实际应查询活跃股票
+					"active": active_stock_count
 				},
 				"quotes": {
 					"daily": quote_count,
-					"estimated_size_gb": round(quote_count * 0.0001, 2)  # 估算大小
+					"estimated_size_gb": estimated_size_gb
 				},
 				"sync": {
 					"latest": latest_sync.isoformat() if latest_sync else None,
-					"last_24h": 0  # 简化处理，实际应统计
+					"last_24h": sync_last_24h
 				},
 				"coverage": {
 					"start_date": min_date.isoformat() if min_date else None,
@@ -913,7 +941,6 @@ async def subscribe_data_events (
 			)
 
 		# 生成订阅ID
-		import uuid
 		subscription_id = str(uuid.uuid4())
 
 		return success_response(

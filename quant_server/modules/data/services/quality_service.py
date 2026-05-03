@@ -13,18 +13,18 @@ from typing import Dict, List, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.modules.data.events.types import DataQualityEvent
-from quant_server.shared.cache.redis_cache import RedisCache
+from core.engines.system.event_engine import EventEngine
+from modules.data.events.types import DataQualityEvent
+from shared.cache.redis_cache import RedisCache
 # 导入共享层组件
-from quant_server.shared.database.repositories import (
+from shared.database.repositories import (
 	StockBasicRepository,
 	FactorDataRepository,
 	FinancialStatementRepository,
 	TradeCalendarRepository
 )
-from quant_server.shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
-from quant_server.shared.database.repositories.market.quote import StockDailyRepository
+from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
+from shared.database.repositories.market.quote import StockDailyRepository
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -123,7 +123,7 @@ class DataQualityService:
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,

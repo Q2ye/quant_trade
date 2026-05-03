@@ -10,13 +10,13 @@ from typing import Dict, List, Optional, Any
 
 import pandas as pd
 
-from quant_server.core.engines.types.entities import BarData
-from quant_server.modules.strategy.constants import (
+from core.engines.types.entities import BarData
+from modules.strategy.constants import (
 	StrategyType,
 	SignalDirection,
 )
-from quant_server.modules.strategy.models import TradingSignal, Position
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+from modules.strategy.models import TradingSignal, Position
+from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 
 @dataclass

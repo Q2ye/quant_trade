@@ -2,12 +2,12 @@
 
 from typing import Dict, Any, Optional, List, Tuple
 
-from quant_server.core.engines import EngineConfigEntity
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system import EventEngine
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.trade.engines.position_engine import PositionEngine
-from quant_server.modules.trade.managers.risk_manager import RiskManager
+from core.engines import EngineConfigEntity
+from core.engines.base.engine_base import EngineBase
+from core.engines.system import EventEngine
+from core.engines.types.enums import EngineType
+from modules.trade.engines.position_engine import PositionEngine
+from modules.trade.managers.risk_manager import RiskManager
 
 
 async def _check_liquidity(signal_data: Dict[str, Any]) -> Tuple[bool, str]:

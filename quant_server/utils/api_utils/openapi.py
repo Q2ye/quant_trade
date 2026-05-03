@@ -27,9 +27,9 @@
 # from fastapi.middleware.cors import CORSMiddleware
 # from pydantic import BaseModel, Field
 #
-# from quant_server.shared.config.settings import Settings
-# from quant_server.core.exceptions.error_codes import ErrorCode
-# from quant_server.core.exceptions.base import BaseAPIException
+# from shared.config.settings import Settings
+# from core.exceptions.error_codes import ErrorCode
+# from core.exceptions.base import BaseAPIException
 #
 # logger = logging.getLogger(__name__)
 #

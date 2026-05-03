@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import select, and_, desc, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockAdjustedPrices, StockAdjFactor
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import StockAdjustedPrices, StockAdjFactor
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):

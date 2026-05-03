@@ -3,9 +3,9 @@
 import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
-from quant_server.core.engines.system import EventEngine
-from quant_server.modules.trade.engines.execution_engine import ExecutionEngine
-from quant_server.modules.trade.events.execution_events import OrderUpdateEvent
+from core.engines.system import EventEngine
+from modules.trade.engines.execution_engine import ExecutionEngine
+from modules.trade.events.execution_events import OrderUpdateEvent
 
 
 class ExecutionTasks:

@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
-from quant_server.core.events.base import BaseEvent
+from core.events.base import BaseEvent
 
 @dataclass
 class OrderCreateEvent(BaseEvent):

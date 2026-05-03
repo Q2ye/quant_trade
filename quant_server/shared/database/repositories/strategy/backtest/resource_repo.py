@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, desc, delete
 
-from quant_server.shared.database.models.business_models import BacktestResourceUsage
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import BacktestResourceUsage
+from shared.database.repositories.base import BaseRepository
 
 
 class BacktestResourceUsageRepository(BaseRepository[BacktestResourceUsage]):

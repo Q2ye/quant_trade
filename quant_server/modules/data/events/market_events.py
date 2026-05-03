@@ -24,8 +24,8 @@ from datetime import datetime
 from typing import Dict, Any, List
 from typing import Optional
 
-from quant_server.core.events import BaseEvent, EventPriority, EventCategory
-from quant_server.modules.data.constants import AdjustType
+from core.events import BaseEvent, EventPriority, EventCategory
+from modules.data.constants import AdjustType
 from .types import DataEventType, DataProcessingStatus
 
 

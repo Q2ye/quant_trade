@@ -18,20 +18,21 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
 
+import pandas as pd
 from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
+from core.engines.system.event_engine import EventEngine
 # 导入数据模块常量
-from quant_server.modules.data.constants import DataType, CacheKey
-from quant_server.modules.data.events.clean_events import DataCleanEvent
-from quant_server.shared.cache.redis_cache import RedisCache
-from quant_server.shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
+from modules.data.constants import DataType
+from modules.data.events.clean_events import DataCleanEvent
+from shared.cache.redis_cache import RedisCache
+from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
 # 导入共享层组件 - 根据架构设计调整导入路径
-from quant_server.shared.database.repositories.market.quote import StockDailyRepository, StockMinuteRepository
-from quant_server.shared.database.repositories.operation.task import DataSyncTaskRepository
-from quant_server.utils.core_utils.data_utils.data_validator import DataValidator
+from shared.database.repositories.market.quote import StockDailyRepository, StockMinuteRepository
+from shared.database.repositories.operation.task import DataSyncTaskRepository
+from utils.core_utils.data_utils.data_validator import DataValidator
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class DataCleanService:
 	负责数据的清洗、标准化和预处理
 	"""
 
-	def __init__ (self, session: AsyncSession, event_engine: Optional[EventEngine] = None):
+	def __init__(self, session: AsyncSession, event_engine: Optional[EventEngine] = None):
 		"""
 		初始化数据清洗服务
 
@@ -71,10 +72,10 @@ class DataCleanService:
 		self.trading_calendar = None
 
 	@property
-	def cache (self) -> RedisCache:
+	def cache(self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
@@ -84,7 +85,7 @@ class DataCleanService:
 			)
 		return self._cache
 
-	async def clean_data (
+	async def clean_data(
 			self,
 			data_type: str,
 			start_date: Optional[date] = None,
@@ -192,7 +193,7 @@ class DataCleanService:
 				"message": "数据清洗失败"
 			}
 
-	async def apply_cleaning_results (
+	async def apply_cleaning_results(
 			self,
 			clean_id: str,
 			apply_rules: Optional[List[str]] = None,
@@ -214,15 +215,8 @@ class DataCleanService:
 		logger.info(f"应用清洗结果，清洗ID: {clean_id}, 试运行: {dry_run}")
 
 		try:
-			# 获取清洗任务 - 根据clean_id查询，这里假设clean_id是check_type的一部分或存储在check_results中
-			# 由于DataQualityCheck没有clean_id字段，我们需要通过其他方式查找
-			# 这里简化处理，假设clean_id是check_type的一部分
-			clean_tasks = await self.quality_repo.get_by_check_date(date.today())
-			clean_task = None
-			for task in clean_tasks:
-				if task.check_results and task.check_results.get("clean_id") == clean_id:
-					clean_task = task
-					break
+			# 通过 clean_id（存储在 check_results JSON 中）直接查询匹配的任务
+			clean_task = await self.quality_repo.get_by_clean_id(clean_id)
 
 			if not clean_task:
 				raise ValueError(f"清洗任务 {clean_id} 不存在")
@@ -330,7 +324,7 @@ class DataCleanService:
 			logger.error(f"应用清洗结果失败: {str(e)}", exc_info=True)
 			raise
 
-	async def get_cleaning_history (
+	async def get_cleaning_history(
 			self,
 			data_type: Optional[str] = None,
 			start_date: Optional[date] = None,
@@ -394,7 +388,7 @@ class DataCleanService:
 			logger.error(f"获取清洗历史失败: {str(e)}", exc_info=True)
 			raise
 
-	async def get_cleaning_statistics (
+	async def get_cleaning_statistics(
 			self,
 			data_type: Optional[str] = None,
 			days: int = 30
@@ -492,7 +486,7 @@ class DataCleanService:
 			logger.error(f"获取清洗统计信息失败: {str(e)}", exc_info=True)
 			raise
 
-	async def validate_data (
+	async def validate_data(
 			self,
 			data_type: str,
 			ts_code: str,
@@ -571,7 +565,7 @@ class DataCleanService:
 
 	# ==================== 私有辅助方法 ====================
 
-	async def _create_clean_task (
+	async def _create_clean_task(
 			self,
 			data_type: str,
 			start_date: Optional[date] = None,
@@ -612,7 +606,7 @@ class DataCleanService:
 		await self.quality_repo.create_quality_check(**task_data)
 		return clean_id
 
-	async def _update_clean_task (
+	async def _update_clean_task(
 			self,
 			clean_id: str,
 			status: str,
@@ -620,27 +614,25 @@ class DataCleanService:
 	):
 		"""更新清洗任务状态"""
 		# 查找对应的清洗任务
-		clean_tasks = await self.quality_repo.get_by_check_date(date.today())
-		for task in clean_tasks:
-			if task.check_results and task.check_results.get("clean_id") == clean_id:
-				update_data = {
-					"status": status,
-					"updated_at": datetime.now()
-				}
+		clean_task = await self.quality_repo.get_by_clean_id(clean_id)
+		if clean_task:
+			update_data = {
+				"status": status,
+				"updated_at": datetime.now()
+			}
 
-				if status == "completed":
-					if task.check_results:
-						task.check_results["completed_at"] = datetime.now().isoformat()
-					update_data["check_results"] = task.check_results
-				elif status == "failed" and error:
-					if task.check_results:
-						task.check_results["error"] = error
-					update_data["check_results"] = task.check_results
+			if status == "completed":
+				if clean_task.check_results:
+					clean_task.check_results["completed_at"] = datetime.now().isoformat()
+				update_data["check_results"] = clean_task.check_results
+			elif status == "failed" and error:
+				if clean_task.check_results:
+					clean_task.check_results["error"] = error
+				update_data["check_results"] = clean_task.check_results
 
-				await self.quality_repo.update(task.id, update_data)
-				break
+			await self.quality_repo.update(clean_task.id, update_data)
 
-	async def _execute_cleaning (
+	async def _execute_cleaning(
 			self,
 			data_type: str,
 			start_date: Optional[date],
@@ -724,7 +716,7 @@ class DataCleanService:
 			"cleaned_at": datetime.now().isoformat()
 		}
 
-	async def _clean_daily_quotes_by_rule (
+	async def _clean_daily_quotes_by_rule(
 			self,
 			rule: str,
 			start_date: Optional[date],
@@ -772,7 +764,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _check_missing_data (
+	async def _check_missing_data(
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
@@ -790,7 +782,7 @@ class DataCleanService:
 		# 获取要检查的股票列表
 		if not ts_codes:
 			# 获取股票基础信息Repository
-			from quant_server.shared.database.repositories.market.basic import StockBasicRepository
+			from shared.database.repositories.market.basic import StockBasicRepository
 			stock_repo = StockBasicRepository(self.session)
 			stocks = await stock_repo.get_active_stocks()
 			ts_codes = [stock.ts_code for stock in stocks]
@@ -833,7 +825,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _check_duplicate_data (
+	async def _check_duplicate_data(
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
@@ -869,7 +861,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _check_outliers (
+	async def _check_outliers(
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
@@ -924,7 +916,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _check_inconsistent_data (
+	async def _check_inconsistent_data(
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
@@ -963,7 +955,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _clean_stock_list_by_rule (
+	async def _clean_stock_list_by_rule(
 			self,
 			rule: str
 	) -> List[Dict]:
@@ -997,18 +989,77 @@ class DataCleanService:
 		return issues
 
 	@staticmethod
-	async def _check_invalid_stock_symbols () -> List[Dict]:
-		"""检查无效的股票代码"""
-		# 这里简化处理，实际需要根据规则验证股票代码格式
-		return []
+	async def _check_invalid_stock_symbols(
+		df: "pd.DataFrame", df_columns: Optional[List[str]] = None
+	) -> List[Dict]:
+		"""检查无效的股票代码 — 基于正则格式校验 + 数据库二次验证
 
-	async def _check_missing_stock_info (self) -> List[Dict]:
+		Args:
+			df: 待检查的 DataFrame
+			df_columns: DataFrame 的列名列表，为 None 时自动从 df.columns 获取
+		"""
+		import re
+		from shared.database.session import get_session_manager
+		from sqlalchemy import text
+
+		if df_columns is None:
+			columns_list = list(df.columns)
+		else:
+			columns_list = list(df_columns)
+
+		if not columns_list:
+			return []
+
+		# 识别证券代码列
+		ts_code_col = None
+		for col in columns_list:
+			if "ts_code" in col.lower() or "code" in col.lower() or "symbol" in col.lower():
+				ts_code_col = col
+				break
+
+		if not ts_code_col:
+			return []  # 非数据同步流程，跳过；若为行情数据则需调整 col 名检测逻辑
+
+		# 格式校验：{数字6位}.{SZ|SH|BJ}
+		symbol_pattern = re.compile(r"^\d{6}\.(SZ|SH|BJ)$")
+		# 整表去重后集中验证，上限 5000 避免查询过大
+		codes_to_check = df[ts_code_col].dropna().drop_duplicates().head(5000).tolist()
+		if not codes_to_check:
+			return []
+
+		invalid_format = [
+			{"ts_code": c, "reason": "格式不符合 {6位数字}.{SZ|SH|BJ}"}
+			for c in codes_to_check if not symbol_pattern.match(str(c))
+		]
+
+		# 数据库二次验证：检查是否存在于 stocks 表
+		valid_format_codes = [c for c in codes_to_check if symbol_pattern.match(str(c))]
+		db_invalid = []
+		if valid_format_codes:
+			try:
+				session_manager = get_session_manager()
+				async with session_manager.get_session() as session:
+					result = await session.execute(
+						text("SELECT ts_code FROM stocks WHERE ts_code = ANY(:codes)"),
+						{"codes": valid_format_codes}
+					)
+					existing = {row.ts_code for row in result.fetchall()}
+					db_invalid = [
+						{"ts_code": c, "reason": "数据库中不存在该证券代码"}
+						for c in valid_format_codes if c not in existing
+					]
+			except Exception as e:
+				logger.warning(f"数据库股票代码验证失败，仅保留格式检查结果: {e}")
+
+		return invalid_format + db_invalid
+
+	async def _check_missing_stock_info(self) -> List[Dict]:
 		"""检查缺失的股票信息"""
 		issues = []
 
 		try:
 			# 获取股票基础信息Repository
-			from quant_server.shared.database.repositories.market.basic import StockBasicRepository
+			from shared.database.repositories.market.basic import StockBasicRepository
 			stock_repo = StockBasicRepository(self.session)
 
 			# 获取缺少必要信息的股票
@@ -1042,7 +1093,7 @@ class DataCleanService:
 
 		return issues
 
-	async def _get_trading_days (
+	async def _get_trading_days(
 			self,
 			start_date: date,
 			end_date: date
@@ -1055,7 +1106,7 @@ class DataCleanService:
 			if not trading_days:
 				# 如果数据库中没有，使用工具类生成
 				if self.trading_calendar is None:
-					from quant_server.utils.core_utils.time_utils.trading_calendar import TradingCalendar
+					from utils.core_utils.time_utils.trading_calendar import TradingCalendar
 					self.trading_calendar = TradingCalendar()
 
 				trading_days = self.trading_calendar.get_trading_days(start_date, end_date)
@@ -1068,7 +1119,7 @@ class DataCleanService:
 			return self._generate_approximate_trading_days(start_date, end_date)
 
 	@staticmethod
-	async def _get_trading_days_from_db () -> List[date]:
+	async def _get_trading_days_from_db() -> List[date]:
 		"""从数据库获取交易日历"""
 		# 这里需要实现从数据库查询交易日历的逻辑
 		# 根据架构设计，交易日历表在shared.database.repositories.market.reference
@@ -1076,21 +1127,41 @@ class DataCleanService:
 		return []
 
 	@staticmethod
-	def _generate_approximate_trading_days (start_date: date, end_date: date) -> List[date]:
-		"""生成近似的交易日列表"""
+	def _generate_approximate_trading_days(start_date: date, end_date: date) -> List[date]:
+		"""生成近似的交易日列表（含节假日过滤）"""
 		trading_days = []
 		current_date = start_date
 
+		# 中国主要节假日（月 → 日集合），覆盖元旦/春节/清明/劳动/端午/中秋/国庆
+		holidays_by_month = {
+			1: {1, 2, 3},  # 元旦 + 春节近似
+			4: {4, 5},  # 清明节
+			5: {1, 2, 3},  # 劳动节
+			6: {(5, 10), (15, 20)},  # 端午节(农历,用中旬近似)
+			9: {(10, 15), (20, 25)},  # 中秋节(农历,用中下旬近似)
+			10: {1, 2, 3, 4, 5, 6, 7},  # 国庆节
+		}
+
+		def _is_holiday(d: date) -> bool:
+			m, day = d.month, d.day
+			candidates = holidays_by_month.get(m, set())
+			for c in candidates:
+				if isinstance(c, int) and day == c:
+					return True
+				if isinstance(c, tuple) and c[0] <= day <= c[1]:
+					return True
+			return False
+
 		while current_date <= end_date:
-			# 假设周一到周五是交易日
-			if current_date.weekday() < 5:  # 0-4 表示周一到周五
+			# 周一到周五 且 非法定节假日
+			if current_date.weekday() < 5 and not _is_holiday(current_date):
 				trading_days.append(current_date)
 
 			current_date += timedelta(days=1)
 
 		return trading_days
 
-	async def _update_clean_progress (
+	async def _update_clean_progress(
 			self,
 			clean_id: str,
 			progress: float,
@@ -1122,37 +1193,35 @@ class DataCleanService:
 			user_id=user_id
 		)
 
-	async def _save_clean_result (
+	async def _save_clean_result(
 			self,
 			clean_id: str,
 			result: Dict[str, Any]
 	):
 		"""保存清洗结果"""
 		# 查找对应的清洗任务
-		clean_tasks = await self.quality_repo.get_by_check_date(date.today())
-		for task in clean_tasks:
-			if task.check_results and task.check_results.get("clean_id") == clean_id:
-				# 更新check_results
-				if task.check_results:
-					task.check_results.update({
-						"result": result,
-						"duration_seconds": (
-								datetime.now() - task.created_at).total_seconds() if task.created_at else 0,
-						"completed_at": datetime.now().isoformat()
-					})
+		clean_task = await self.quality_repo.get_by_clean_id(clean_id)
+		if clean_task:
+			# 更新check_results
+			if clean_task.check_results:
+				clean_task.check_results.update({
+					"result": result,
+					"duration_seconds": (
+							datetime.now() - clean_task.created_at).total_seconds() if clean_task.created_at else 0,
+					"completed_at": datetime.now().isoformat()
+				})
 
-				update_data = {
-					"status": "completed",
-					"check_results": task.check_results,
-					"total_records": result.get("total_issues", 0),
-					"valid_records": result.get("total_issues", 0) - len(result.get("issues", [])),
-					"invalid_records": len(result.get("issues", []))
-				}
+			update_data = {
+				"status": "completed",
+				"check_results": clean_task.check_results,
+				"total_records": result.get("total_issues", 0),
+				"valid_records": result.get("total_issues", 0) - len(result.get("issues", [])),
+				"invalid_records": len(result.get("issues", []))
+			}
 
-				await self.quality_repo.update(task.id, update_data)
-				break
+			await self.quality_repo.update(clean_task.id, update_data)
 
-	async def _apply_cleaning_results (
+	async def _apply_cleaning_results(
 			self,
 			clean_id: str,
 			user_id: Optional[int] = None
@@ -1165,7 +1234,7 @@ class DataCleanService:
 			user_id=user_id
 		)
 
-	async def _apply_single_issue (
+	async def _apply_single_issue(
 			self,
 			issue: Dict,
 			data_type: str
@@ -1195,28 +1264,163 @@ class DataCleanService:
 			return False
 
 	@staticmethod
-	async def _fix_missing_quotes (issue: Dict) -> bool:
-		"""修复缺失的行情数据"""
-		# 这里简化处理，实际需要重新同步缺失的数据
-		logger.info(f"修复缺失行情数据: {issue}")
-		return True
+	async def _fix_missing_quotes(issue: Dict) -> bool:
+		"""修复缺失的行情数据 — 前向填充缺失记录"""
+		try:
+			from shared.database.session import get_session_manager
+			from sqlalchemy import text
+
+			ts_code = issue.get("ts_code")
+			missing_dates = issue.get("dates", [])
+			if not ts_code or not missing_dates:
+				return False
+
+			fixed = 0
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				for trade_date in missing_dates:
+					# 获取前一个交易日的数据进行前向填充
+					result = await session.execute(
+						text(
+							"SELECT open, high, low, close, pre_close, vol, amount "
+							"FROM daily_quotes WHERE ts_code = :code AND trade_date < :td "
+							"ORDER BY trade_date DESC LIMIT 1"
+						),
+						{"code": ts_code, "td": trade_date}
+					)
+					prev_row = result.fetchone()
+					if not prev_row:
+						continue
+
+					# 插入填充记录
+					await session.execute(
+						text(
+							"INSERT INTO daily_quotes (ts_code, trade_date, open, high, low, close, "
+							"pre_close, vol, amount, is_restored) "
+							"VALUES (:code, :td, :o, :h, :l, :c, :pc, :v, :a, 1) "
+							"ON CONFLICT (ts_code, trade_date) DO NOTHING"
+						),
+						{
+							"code": ts_code, "td": trade_date,
+							"o": prev_row.open, "h": prev_row.high, "l": prev_row.low,
+							"c": prev_row.close, "pc": prev_row.pre_close,
+							"v": 0, "a": 0
+						}
+					)
+					fixed += 1
+				await session.commit()
+			logger.info(f"前向填充 {ts_code} 缺失数据 {fixed} 条")
+			return fixed > 0
+		except Exception as e:
+			logger.error(f"修复缺失行情数据失败: {e}")
+			return False
 
 	@staticmethod
-	async def _fix_duplicate_quotes (issue: Dict) -> bool:
-		"""修复重复的行情数据"""
-		# 这里简化处理，实际需要删除重复记录
-		logger.info(f"修复重复行情数据: {issue}")
-		return True
+	async def _fix_duplicate_quotes(issue: Dict) -> bool:
+		"""修复重复的行情数据 — 保留成交量最大的一条，删除其余"""
+		try:
+			from shared.database.session import get_session_manager
+			from sqlalchemy import text
+
+			ts_code = issue.get("ts_code")
+			records = issue.get("records", [])
+			if not ts_code or not records:
+				return False
+
+			dup_dates = [r.get("trade_date") for r in records if r.get("trade_date")]
+			if not dup_dates:
+				return False
+
+			fixed = 0
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				for trade_date in dup_dates:
+					# 保留成交量最大的记录，删除其余
+					await session.execute(
+						text(
+							"DELETE FROM daily_quotes WHERE ts_code = :code AND trade_date = :td "
+							"AND id NOT IN ("
+							"  SELECT id FROM daily_quotes WHERE ts_code = :code2 AND trade_date = :td2 "
+							"  ORDER BY vol DESC NULLS LAST LIMIT 1"
+							")"
+						),
+						{"code": ts_code, "td": trade_date, "code2": ts_code, "td2": trade_date}
+					)
+					fixed += 1
+				await session.commit()
+			logger.info(f"去重 {ts_code} {len(dup_dates)} 个日期")
+			return fixed > 0
+		except Exception as e:
+			logger.error(f"修复重复行情数据失败: {e}")
+			return False
 
 	@staticmethod
-	async def _fix_outlier_quotes (issue: Dict) -> bool:
-		"""修复异常值"""
-		# 这里简化处理，实际需要修正异常数据
-		logger.info(f"修复异常值: {issue}")
-		return True
+	async def _fix_outlier_quotes(issue: Dict) -> bool:
+		"""修复异常值 — 基于Z-Score检测并用前值替换离群收盘价"""
+		try:
+			from shared.database.session import get_session_manager
+			from sqlalchemy import text
+			import numpy as np
+
+			ts_code = issue.get("ts_code")
+			outlier_dates = issue.get("dates", [])
+			if not ts_code or not outlier_dates:
+				return False
+
+			fixed = 0
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				# 获取该股票最近60天的收盘价序列
+				result = await session.execute(
+					text(
+						"SELECT trade_date, close FROM daily_quotes "
+						"WHERE ts_code = :code ORDER BY trade_date DESC LIMIT 60"
+					),
+					{"code": ts_code}
+				)
+				rows = result.fetchall()
+				closes = [float(row.close) for row in rows if row.close and row.close > 0]
+				if len(closes) < 10:
+					return False
+
+				# 计算Z-Score
+				mean_c = np.mean(closes)
+				std_c = np.std(closes, ddof=1)
+				if std_c == 0:
+					return False
+
+				for trade_date in outlier_dates:
+					# 获取当日收盘价
+					current = next((float(row.close) for row in rows if str(row.trade_date) == str(trade_date)), None)
+					if current is None:
+						continue
+
+					z_score = abs(current - mean_c) / std_c
+					if z_score < 3.0:
+						continue
+
+					# 用前一日收盘价替换
+					prev_close = closes[0] if closes[0] != current else (closes[1] if len(closes) > 1 else None)
+					if prev_close is None:
+						continue
+
+					await session.execute(
+						text(
+							"UPDATE daily_quotes SET close = :pc, is_restored = 1 "
+							"WHERE ts_code = :code AND trade_date = :td"
+						),
+						{"pc": prev_close, "code": ts_code, "td": trade_date}
+					)
+					fixed += 1
+				await session.commit()
+			logger.warning(f"修正 {ts_code} 异常收盘价 {fixed} 条")
+			return fixed > 0
+		except Exception as e:
+			logger.error(f"修复异常值失败: {e}")
+			return False
 
 	@staticmethod
-	async def _create_apply_record (
+	async def _create_apply_record(
 			apply_id: str,
 			clean_id: str,
 			data_type: str,
@@ -1226,7 +1430,7 @@ class DataCleanService:
 			failed_applications: List[Dict],
 			user_id: Optional[int] = None
 	):
-		"""创建应用记录"""
+		"""创建应用记录 — 持久化到 data_quality_checks 表"""
 		apply_data = {
 			"apply_id": apply_id,
 			"clean_id": clean_id,
@@ -1241,29 +1445,53 @@ class DataCleanService:
 			"completed_at": datetime.now().isoformat()
 		}
 
-		# 保存到数据库（这里简化处理，实际需要创建应用记录表）
-		logger.info(f"创建应用记录: {apply_data}")
+		try:
+			from shared.database.session import get_session_manager
+			from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				quality_repo = DataQualityCheckRepository(session)
+				await quality_repo.create_quality_check(
+					check_type="apply",
+					data_type=data_type,
+					check_date=datetime.now().date(),
+					status="completed",
+					total_records=total_issues,
+					valid_records=applied_count,
+					invalid_records=len(failed_applications),
+					check_results=apply_data,
+					checked_by=f"user_{user_id}" if user_id else "system"
+				)
+			logger.info(f"已持久化应用记录: {apply_id}, 应用 {applied_count}/{total_issues}")
+		except Exception as e:
+			logger.warning(f"持久化应用记录失败: {e}, 降级为日志")
+			logger.info(f"应用记录(降级): {apply_data}")
 
 	@staticmethod
-	async def _clean_cache_after_cleaning (data_type: str):
+	async def _clean_cache_after_cleaning(data_type: str):
 		"""清洗后清理相关缓存"""
-		if data_type == DataType.DAILY_QUOTES:
-			# 清理行情数据缓存
-			try:
-				pattern = CacheKey.HISTORICAL_QUOTES.format(
-					ts_code="*",
-					start="*",
-					end="*",
-					freq="*",
-					adj="*"
-				)
-				# 清理缓存（使用更安全的方式，避免直接访问 protected 成员）
-				# 这里简化处理，实际应该在 RedisCache 类中添加清理方法
-				logger.info(f"清理缓存模式: {pattern}")
-			except Exception as e:
-				logger.warning(f"清理缓存失败: {str(e)}")
+		cache_key_prefix = {
+			"daily_quotes": "daily_quotes",
+			"stock_list": "stock_list",
+		}.get(data_type, data_type)
 
-	async def _apply_validation_rule (
+		if not cache_key_prefix:
+			logger.debug("未提供缓存前缀，跳过缓存清理")
+			return
+
+		try:
+			from shared.cache.redis_cache import RedisCache
+			cache = RedisCache()
+			pattern = f"{cache_key_prefix}:*"
+			deleted = await cache.delete_pattern(pattern)
+			if deleted > 0:
+				logger.info(f"清洗后缓存已清理: pattern={pattern}, 删除 {deleted} 个键")
+			else:
+				logger.debug(f"无匹配缓存需要清理: pattern={pattern}")
+		except Exception as e:
+			logger.warning(f"缓存清理失败: {e}")
+
+	async def _apply_validation_rule(
 			self,
 			rule: str,
 			data_type: str,
@@ -1283,7 +1511,7 @@ class DataCleanService:
 			}
 
 	@staticmethod
-	async def _validate_basic (
+	async def _validate_basic(
 			data_type: str,
 			data: Dict[str, Any]
 	) -> Dict[str, Any]:
@@ -1322,7 +1550,7 @@ class DataCleanService:
 		}
 
 	@staticmethod
-	async def _validate_range (
+	async def _validate_range(
 			data_type: str,
 			data: Dict[str, Any]
 	) -> Dict[str, Any]:
@@ -1360,7 +1588,7 @@ class DataCleanService:
 		}
 
 	@staticmethod
-	async def _validate_consistency (
+	async def _validate_consistency(
 			data_type: str,
 			data: Dict[str, Any]
 	) -> Dict[str, Any]:
@@ -1385,7 +1613,7 @@ class DataCleanService:
 			"errors": errors
 		}
 
-	async def _publish_clean_event (
+	async def _publish_clean_event(
 			self,
 			event_type: str,
 			clean_id: str,
@@ -1432,7 +1660,7 @@ class DataCleanService:
 
 	# ==================== 添加缺失的Repository方法 ====================
 
-	async def _get_trade_dates (
+	async def _get_trade_dates(
 			self,
 			ts_code: str,
 			start_date: Optional[date] = None,
@@ -1446,9 +1674,9 @@ class DataCleanService:
 			)
 
 			if start_date:
-				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)
+				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)  # type: ignore[arg-type]
 			if end_date:
-				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)
+				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)  # type: ignore[arg-type]
 
 			query = query.order_by(self.daily_quote_repo.model.trade_date)
 			result = await self.session.execute(query)
@@ -1458,7 +1686,7 @@ class DataCleanService:
 			logger.error(f"获取交易日期失败: {str(e)}")
 			return []
 
-	async def _find_duplicate_records (
+	async def _find_duplicate_records(
 			self,
 			ts_code: str,
 			start_date: Optional[date] = None,
@@ -1469,7 +1697,7 @@ class DataCleanService:
 			# 查找同一日期有多个记录的
 			# 构建子查询
 			from sqlalchemy import and_
-			
+
 			# 首先构建基础查询
 			base_query = select(
 				self.daily_quote_repo.model.trade_date,
@@ -1479,17 +1707,17 @@ class DataCleanService:
 			).group_by(
 				self.daily_quote_repo.model.trade_date
 			).having(
-				func.count() > 1
+				func.count() > 1  # type: ignore[arg-type]
 			)
-			
+
 			# 执行子查询
 			duplicate_dates_result = await self.session.execute(base_query)
 			duplicate_dates = [row[0] for row in duplicate_dates_result.all()]
-			
+
 			# 如果没有重复日期，返回空列表
 			if not duplicate_dates:
 				return []
-			
+
 			# 构建主查询
 			query = select(self.daily_quote_repo.model).where(
 				self.daily_quote_repo.model.ts_code == ts_code,
@@ -1497,17 +1725,17 @@ class DataCleanService:
 			)
 
 			if start_date:
-				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)
+				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)  # type: ignore[arg-type]
 			if end_date:
-				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)
+				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)  # type: ignore[arg-type]
 
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			return list(result.scalars().all())
 		except Exception as e:
 			logger.error(f"查找重复记录失败: {str(e)}")
 			return []
 
-	async def _get_by_ts_code_date_range (
+	async def _get_by_ts_code_date_range(
 			self,
 			ts_code: str,
 			start_date: Optional[date] = None,
@@ -1520,18 +1748,18 @@ class DataCleanService:
 			)
 
 			if start_date:
-				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)
+				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)  # type: ignore[arg-type]
 			if end_date:
-				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)
+				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)  # type: ignore[arg-type]
 
 			query = query.order_by(self.daily_quote_repo.model.trade_date)
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			return list(result.scalars().all())
 		except Exception as e:
 			logger.error(f"按日期范围获取数据失败: {str(e)}")
 			return []
 
-	async def _find_inconsistent_records (
+	async def _find_inconsistent_records(
 			self,
 			ts_code: str,
 			start_date: Optional[date] = None,
@@ -1544,9 +1772,9 @@ class DataCleanService:
 			)
 
 			if start_date:
-				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)
+				query = query.where(self.daily_quote_repo.model.trade_date >= start_date)  # type: ignore[arg-type]
 			if end_date:
-				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)
+				query = query.where(self.daily_quote_repo.model.trade_date <= end_date)  # type: ignore[arg-type]
 
 			# 查找逻辑不一致的 记录（如最高价低于最低价）
 			query = query.where(
@@ -1560,7 +1788,7 @@ class DataCleanService:
 			)
 
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			return list(result.scalars().all())
 		except Exception as e:
 			logger.error(f"查找不一致记录失败: {str(e)}")
 			return []

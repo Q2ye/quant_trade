@@ -23,18 +23,18 @@ from scipy import stats
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 导入核心基础设施
-from quant_server.core.engines.system.event_engine import EventEngine
-from quant_server.core.events.base import TypedEvent
+from core.engines.system.event_engine import EventEngine
+from core.events.base import TypedEvent
 # 导入数据模块常量
-from quant_server.modules.data.constants import (
+from modules.data.constants import (
 	CacheKey,
 	FactorCategoryCode,
 	StandardFactors,
 	ResearchStatus
 )
-from quant_server.shared.cache.redis_cache import RedisCache
+from shared.cache.redis_cache import RedisCache
 # 导入共享层组件
-from quant_server.shared.database.repositories import (
+from shared.database.repositories import (
 	StockBasicRepository,
 	StockDailyRepository,
 	FactorDataRepository,
@@ -43,7 +43,7 @@ from quant_server.shared.database.repositories import (
 	FinancialStatementRepository
 )
 # 导入工具类
-from quant_server.utils.core_utils.math_utils import StatisticalCalculator
+from utils.core_utils.math_utils import StatisticalCalculator
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class FactorResearchService:
 	def cache (self) -> RedisCache:
 		"""获取缓存实例（懒加载）"""
 		if self._cache is None:
-			from quant_server.shared.config.config_manager import get_config
+			from shared.config.config_manager import get_config
 			settings = get_config().settings
 			self._cache = RedisCache(
 				host=settings.REDIS.HOST,
@@ -529,7 +529,7 @@ class FactorResearchService:
 				)
 
 			# 生成分析报告
-			report = await self._generate_analysis_report(
+			report = await self.generate_analysis_report(
 				analysis_result=analysis_result,
 				factor_name=factor_name,
 				analysis_type=analysis_type
@@ -752,7 +752,7 @@ class FactorResearchService:
 			else:
 				# 获取所有激活的因子
 				from sqlalchemy import select
-				from quant_server.shared.database.models.data_models import FactorDefinition
+				from shared.database.models.data_models import FactorDefinition
 				stmt = select(FactorDefinition).where(FactorDefinition.is_active == True)
 				result = await self.session.execute(stmt)
 				factors = result.scalars().all()
@@ -2032,7 +2032,7 @@ class FactorResearchService:
 
 	# ==================== 报告生成方法 ====================
 	@staticmethod
-	async def _generate_analysis_report (
+	async def generate_analysis_report (
 			analysis_result: Dict[str, Any],
 			factor_name: str,
 			analysis_type: str
@@ -3164,7 +3164,7 @@ class FactorResearchService:
 				event_data["failed_count"] = failed_count
 
 			# 创建一个通用的事件，使用BaseEvent而不是DataResearchStartedEvent
-			from quant_server.core.events.base import BaseEvent
+			from core.events.base import BaseEvent
 
 			# 添加事件优先级
 			event_priority = {

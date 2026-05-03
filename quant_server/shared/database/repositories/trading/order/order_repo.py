@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy.testing.schema import Column
 
-from quant_server.shared.database.models.business_models import Order, Trade, Account, Strategy, SysUser
-from quant_server.shared.database.repositories.base import BaseRepository
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.business_models import Order, Trade, Account, Strategy, SysUser
+from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,
 	FilterCondition,

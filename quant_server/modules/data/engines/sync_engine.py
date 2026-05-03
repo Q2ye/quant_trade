@@ -20,9 +20,9 @@ from enum import Enum
 from dataclasses import dataclass, field
 
 # 导入核心框架
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import (
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import (
     EngineType,
     ComponentStatus,
     PriorityLevel,
@@ -31,15 +31,15 @@ from quant_server.core.engines.types.enums import (
 )
 
 # 导入事件系统
-from quant_server.core.events import BaseEvent
-from quant_server.core.engines.system.event_engine import EventEngine
+from core.events import BaseEvent
+from core.engines.system.event_engine import EventEngine
 
 # 导入数据同步相关
-from quant_server.modules.data.events import (
+from modules.data.events import (
     DataEventType,
 )
-from quant_server.modules.data.events.types import DataSyncType
-from quant_server.modules.data.services.sync_service import DataSyncService
+from modules.data.events.types import DataSyncType
+from modules.data.services.sync_service import DataSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -549,7 +549,7 @@ class DataSyncEngine(EngineBase):
             end_date = config.date_range.get('end') if config.date_range else None
             
             # 导入DataType枚举
-            from quant_server.modules.data.constants import DataType
+            from modules.data.constants import DataType
             
             sync_result = await self.sync_service.sync_market_data(
                 data_type=DataType(config.sync_type.value),
@@ -1112,8 +1112,8 @@ def register_data_sync_engine(factory):
     Args:
         factory: 引擎工厂实例
     """
-    from quant_server.core.engines.utils.engine_factory import EngineDescriptor
-    from quant_server.core.engines.types.enums import EngineType, EngineCategory
+    from core.engines.utils.engine_factory import EngineDescriptor
+    from core.engines.types.enums import EngineType, EngineCategory
 
     descriptor = EngineDescriptor(
         engine_type=EngineType.DATA_SYNC,
@@ -1195,8 +1195,8 @@ async def create_data_sync_engine(
     Returns:
         数据同步引擎实例
     """
-    from quant_server.core.engines.utils.engine_factory import create_engine
-    from quant_server.core.engines.types.enums import EngineType
+    from core.engines.utils.engine_factory import create_engine
+    from core.engines.types.enums import EngineType
 
     # 准备配置
     engine_config = config or {}
@@ -1236,7 +1236,7 @@ async def start_sync_task(
     Returns:
         任务ID，失败时返回None
     """
-    from quant_server.core.engines.utils.engine_factory import get_engine
+    from core.engines.utils.engine_factory import get_engine
 
     try:
         engine = await get_engine(engine_name)

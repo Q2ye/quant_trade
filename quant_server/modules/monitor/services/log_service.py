@@ -27,7 +27,7 @@ class LogService:
 		# 从数据库监控告警表获取最近的错误
 		if session:
 			try:
-				from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import \
+				from shared.database.repositories.analysis.monitor.monitor_alert_repo import \
 					MonitorAlertRepository
 				repo = MonitorAlertRepository(session)
 				alerts = await repo.get_recent_alerts(
@@ -59,7 +59,7 @@ class LogService:
 	) -> Dict[str, Any]:
 		"""分析错误模式"""
 		try:
-			from quant_server.shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
+			from shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
 				AlertDeliveryLogRepository
 
 			repo = AlertDeliveryLogRepository(session)
@@ -82,7 +82,7 @@ class LogService:
 	) -> Dict[str, Any]:
 		"""获取各渠道的发送统计"""
 		try:
-			from quant_server.shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
+			from shared.database.repositories.analysis.monitor.alert_delivery_log_repo import \
 				AlertDeliveryLogRepository
 
 			repo = AlertDeliveryLogRepository(session)

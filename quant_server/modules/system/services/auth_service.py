@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
-from quant_server.shared.security.audit import AuditLogger, AuditAction, AuditResult, AuditLevel
+from shared.database.repositories.system.auth.user_repo import UserRepository
+from shared.security.audit import AuditLogger, AuditAction, AuditResult, AuditLevel
 
 from ..auth.authentication import AuthenticationManager
 

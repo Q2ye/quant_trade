@@ -399,7 +399,7 @@ class VolatilityIndicators:
 	                       bb_std: float = 2.0,
 	                       kc_period: int = 20,
 	                       kc_atr_multiplier: float = 1.5,
-	                       squeeze_threshold: float = 0.5) -> np.ndarray:
+	                       squeeze_threshold: float = 0.5, high=None, low=None) -> np.ndarray:
 		"""
 		判断布林带挤压 (Bollinger Band Squeeze)
 
@@ -429,22 +429,39 @@ class VolatilityIndicators:
 		bb_result = self.bollinger_bands(prices, bb_period, bb_std)
 		bb_bandwidth = bb_result.bandwidth
 
-		# 计算凯尔特纳通道（简化处理）
-		# 实际中需要高、低、收价格，这里用价格近似
-		fake_high = prices * 1.01
-		fake_low = prices * 0.99
+		# 基于价格序列估算最高价/最低价（无OHLC数据时的降级方案）
+		# 用前日收盘价 ± ATR估算当日高低价
+		if high is None or low is None:
+			logger.warning("bollinger_squeeze: 未提供high/low数据，使用价格序列估算，精度可能下降")
+			# 先用简易方法估算初始高低价
+			est_high = prices * 1.01
+			est_low = prices * 0.99
+			# 二次迭代：基于初步ATR refine估算
+			prelim_atr = np.full(n, np.nan)
+			for i in range(1, n):
+				tr_val = max(est_high[i] - est_low[i],
+				             abs(est_high[i] - prices[i - 1]),
+				             abs(est_low[i] - prices[i - 1]))
+				prelim_atr[i] = tr_val if i == 1 else (prelim_atr[i - 1] * (kc_period - 1) + tr_val) / kc_period
+			# 用ATR估算更合理的高低范围
+			atr_est = np.nanmean(prelim_atr)
+			est_high = prices + atr_est * 0.5 if not np.isnan(atr_est) else prices * 1.01
+			est_low = prices - atr_est * 0.5 if not np.isnan(atr_est) else prices * 0.99
+		else:
+			est_high = high
+			est_low = low
 
 		from .trend_indicators import exponential_moving_average
 
 		# 中线（EMA）
 		kc_middle = exponential_moving_average(prices, kc_period)
 
-		# 计算ATR（简化）
+		# 计算ATR
 		atr = np.full(n, np.nan)
 		for i in range(1, n):
-			tr = max(fake_high[i] - fake_low[i],
-			         abs(fake_high[i] - prices[i - 1]),
-			         abs(fake_low[i] - prices[i - 1]))
+			tr = max(est_high[i] - est_low[i],
+			         abs(est_high[i] - prices[i - 1]),
+			         abs(est_low[i] - prices[i - 1]))
 			if i == 1:
 				atr[i] = tr
 			else:

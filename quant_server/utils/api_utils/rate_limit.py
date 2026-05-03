@@ -26,8 +26,8 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 
-from quant_server.shared.config.config_manager import ConfigSettings as Settings
-from quant_server.utils.api_utils.response_formatter import APIResponse
+from shared.config.config_manager import ConfigSettings as Settings
+from utils.api_utils.response_formatter import APIResponse
 
 logger = logging.getLogger(__name__)
 

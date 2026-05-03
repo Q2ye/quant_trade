@@ -9,9 +9,9 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import SystemHealthMetric
-from quant_server.shared.database.repositories import RepositoryError
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.system_models import SystemHealthMetric
+from shared.database.repositories import RepositoryError
+from shared.database.repositories.base import BaseRepository
 
 
 class SystemHealthMetricRepository(BaseRepository[SystemHealthMetric]):

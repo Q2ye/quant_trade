@@ -14,8 +14,8 @@ from sqlalchemy import select, delete, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from quant_server.shared.database.models.business_models import MonitorAlert
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.business_models import MonitorAlert
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class MonitorAlertRepository(BaseRepository[MonitorAlert]):

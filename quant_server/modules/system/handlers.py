@@ -13,10 +13,10 @@ from typing import Dict, Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.cache.cache_manager import get_cache_manager
-from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
-from quant_server.modules.system.services.config_service import ConfigService
-from quant_server.modules.system.services.log_service import LogService
+from shared.cache.cache_manager import get_cache_manager
+from shared.database.repositories.system.auth.user_repo import UserRepository
+from modules.system.services.config_service import ConfigService
+from modules.system.services.log_service import LogService
 
 
 class SystemHandler:
@@ -128,7 +128,7 @@ class SystemHandler:
 
         # Redis
         try:
-            from quant_server.shared.cache.cache_manager import get_cache_manager
+            from shared.cache.cache_manager import get_cache_manager
             cache_mgr = get_cache_manager()
             health = await cache_mgr.health_check()
             connections["redis"] = {"connected": health.get("redis", False)}
@@ -298,7 +298,7 @@ class AuthHandler:
     """认证处理器 — 登录/注册/Token 刷新/密码修改"""
 
     def __init__(self, db: AsyncSession):
-        from quant_server.modules.system.services.auth_service import AuthService
+        from modules.system.services.auth_service import AuthService
         self._service = AuthService(db)
 
     async def login(
@@ -365,7 +365,7 @@ class UserHandler:
     """用户管理处理器"""
 
     def __init__(self, db: AsyncSession):
-        from quant_server.modules.system.services.user_service import UserService
+        from modules.system.services.user_service import UserService
         self._service = UserService(db)
 
     async def list_users(
@@ -445,7 +445,7 @@ class RoleHandler:
     """角色管理处理器"""
 
     def __init__(self, db: AsyncSession):
-        from quant_server.modules.system.services.role_service import RoleService
+        from modules.system.services.role_service import RoleService
         self._service = RoleService(db)
 
     async def list_roles(self) -> Dict[str, Any]:

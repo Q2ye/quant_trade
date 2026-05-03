@@ -11,8 +11,8 @@
 from enum import Enum, IntEnum
 from typing import Dict, Optional, Any
 
-from quant_server.core.events import BaseEvent
-from quant_server.core.events.types import (
+from core.events import BaseEvent
+from core.events.types import (
     EventPriority as CoreEventPriority,
 )
 

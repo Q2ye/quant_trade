@@ -16,10 +16,10 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import select, func, and_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import BasketItem
-from quant_server.shared.database.models.data_models import StockBasic
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import (
+from shared.database.models.business_models import BasketItem
+from shared.database.models.data_models import StockBasic
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult
 )
@@ -416,21 +416,23 @@ class BasketItemRepository(BaseRepository[BasketItem]):
 				}
 
 			elif export_format == 'csv':
-				# CSV格式（简化版，实际使用可能需要pandas）
-				csv_lines = ["ts_code,weight,stock_name,industry"]
+				import csv
+				import io
+				output = io.StringIO()
+				writer = csv.writer(output)
+				writer.writerow(["ts_code", "weight", "stock_name", "industry"])
 				for item_info in items:
 					basket_item = item_info['basket_item']
 					stock_info = item_info['stock_info']
-
 					stock_name = stock_info.name if stock_info else ""
 					industry = stock_info.industry if stock_info else ""
-
-					csv_lines.append(
-						f"{basket_item.ts_code},{basket_item.weight},{stock_name},{industry}"
-					)
-
-				return "\n".join(csv_lines)
-
+					writer.writerow([
+						basket_item.ts_code,
+						float(basket_item.weight),
+						stock_name,
+						industry
+					])
+				return output.getvalue().rstrip('\r\n')
 			elif export_format == 'list':
 				# 简单列表格式
 				simple_list = []

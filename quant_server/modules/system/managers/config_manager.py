@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from quant_server.shared.database.repositories.system.config.config_repo import ConfigRepository
+from shared.database.repositories.system.config.config_repo import ConfigRepository
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@
 导出所有交易分析器，便于统一导入。
 """
 
-from quant_server.modules.analysis.analyzers.trade.cost_analyzer import CostAnalyzer
-from quant_server.modules.analysis.analyzers.trade.execution_analyzer import ExecutionAnalyzer
+from modules.analysis.analyzers.trade.cost_analyzer import CostAnalyzer
+from modules.analysis.analyzers.trade.execution_analyzer import ExecutionAnalyzer
 
 __all__ = [
     'CostAnalyzer',

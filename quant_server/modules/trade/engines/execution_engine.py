@@ -4,13 +4,13 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from quant_server.core.engines import EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.system import EventEngine
-from quant_server.modules.trade.adapters.broker_adapter import BrokerAdapter
-from quant_server.modules.trade.engines.position_engine import PositionEngine
-from quant_server.modules.trade.engines.risk_engine import RiskEngine
+from core.engines import EngineConfigEntity
+from core.engines.types.enums import EngineType
+from core.engines.base.engine_base import EngineBase
+from core.engines.system import EventEngine
+from modules.trade.adapters.broker_adapter import BrokerAdapter
+from modules.trade.engines.position_engine import PositionEngine
+from modules.trade.engines.risk_engine import RiskEngine
 
 
 class ExecutionEngine(EngineBase):

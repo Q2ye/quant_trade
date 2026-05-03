@@ -137,7 +137,7 @@ __description__ = "量化交易系统技术指标库"
 '''
 todo 使用示例
 # 导入技术指标
-from quant_server.core.utils.technical_indicators import (
+from core.utils.technical_indicators import (
     # 趋势指标
     simple_moving_average, exponential_moving_average,
     moving_average_convergence_divergence,

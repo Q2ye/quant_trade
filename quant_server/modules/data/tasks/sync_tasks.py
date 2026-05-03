@@ -23,16 +23,16 @@ from typing import Dict, List, Any, Optional
 from celery import Celery, Task
 from celery.schedules import crontab
 
-from quant_server.api.dependencies import get_event_engine
-from quant_server.modules.data.events.sync_events import (
+from api.dependencies import get_event_engine
+from modules.data.events.sync_events import (
 	DataSyncStartedEvent,
 	DataSyncCompletedEvent,
 	DataSyncFailedEvent,
 	DataSyncProgressEvent
 )
-from quant_server.modules.data.services.sync_service import DataSyncService, DataType
-from quant_server.shared.database import get_session_manager
-from quant_server.utils.core_utils.time_utils import TradingCalendar
+from modules.data.services.sync_service import DataSyncService, DataType
+from shared.database import get_session_manager
+from utils.core_utils.time_utils import TradingCalendar
 
 logger = logging.getLogger(__name__)
 

@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.monitor.constants import AlertType
-from quant_server.modules.monitor.utils.alert_utils import AlertUtils
+from modules.monitor.constants import AlertType
+from modules.monitor.utils.alert_utils import AlertUtils
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AlertService:
 		Returns:
 			{"alert_id": str, "alert": MonitorAlert}
 		"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 
@@ -68,7 +68,7 @@ class AlertService:
 			remarks: Optional[str] = None,
 	) -> bool:
 		"""确认告警"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		return await repo.acknowledge_alert(alert_id, user_id, remarks)
@@ -81,7 +81,7 @@ class AlertService:
 			remarks: Optional[str] = None,
 	) -> bool:
 		"""解决告警"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		return await repo.resolve_alert(alert_id, user_id, remarks)
@@ -95,7 +95,7 @@ class AlertService:
 			within_hours: int = 1,
 	) -> bool:
 		"""检查是否存在重复告警（相同类型+标题+来源，N小时内）"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		recent = await repo.get_recent_alerts(
@@ -118,7 +118,7 @@ class AlertService:
 			limit: int = 100,
 	) -> List[Dict[str, Any]]:
 		"""获取活跃告警列表"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		alerts = await repo.get_active_alerts(
@@ -149,7 +149,7 @@ class AlertService:
 			limit: int = 100,
 	) -> List[Dict[str, Any]]:
 		"""获取告警历史"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		alerts = await repo.get_recent_alerts(
@@ -177,7 +177,7 @@ class AlertService:
 	@staticmethod
 	async def get_alert_summary (session: AsyncSession) -> Dict[str, Any]:
 		"""获取告警摘要统计"""
-		from quant_server.shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
+		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository
 
 		repo = MonitorAlertRepository(session)
 		return await repo.get_unresolved_alerts_summary()
@@ -190,7 +190,7 @@ class AlertService:
 			context: Dict[str, Any],
 	) -> Optional[Dict[str, str]]:
 		"""使用模板渲染告警消息"""
-		from quant_server.shared.database.repositories.analysis.monitor.alert_template_repo import \
+		from shared.database.repositories.analysis.monitor.alert_template_repo import \
 			AlertTemplateRepository
 
 		repo = AlertTemplateRepository(session)

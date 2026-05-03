@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from quant_server.shared.security.jwt_handler import get_jwt_manager
+from shared.security.jwt_handler import get_jwt_manager
 
 logger = logging.getLogger(__name__)
 

@@ -15,6 +15,7 @@ from .routers import (
     data_router, strategy_router, trade_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, health_router,
 )
+from .websocket import websocket_router
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +25,9 @@ def create_app (
 		description: str = "基于混合架构的量化交易平台API",
 		docs_url: str = "/docs",
 		redoc_url: str = "/redoc",
-		openapi_url: str = "/openapi.json"
+		openapi_url: str = "/openapi.json",
+		enabled_modules: list = None,
+	cors_origins: list = None,
 ) -> FastAPI:
 	"""创建FastAPI应用
 
@@ -35,10 +38,17 @@ def create_app (
 		docs_url: Swagger文档URL
 		redoc_url: ReDoc文档URL
 		openapi_url: OpenAPI规范URL
+		enabled_modules: 启用的模块列表，None表示全部启用
+		cors_origins: CORS允许源列表，None使用默认值
 
 	Returns:
 		FastAPI: 应用实例
 	"""
+	# 如果未指定，默认全部启用
+	if enabled_modules is None:
+		enabled_modules = ["data", "strategy", "trade", "backtest", "account", "analysis", "monitor", "system"]
+	if cors_origins is None:
+		cors_origins = ["http://localhost:3000", "http://localhost:5173"]
 	# 创建FastAPI应用
 	app = FastAPI(
 		title=title,
@@ -102,7 +112,7 @@ def create_app (
 	# 添加中间件
 	app.add_middleware(
 		CORSMiddleware,
-		allow_origins=["*"],  # 生产环境应该限制
+		allow_origins=cors_origins,
 		allow_credentials=True,
 		allow_methods=["*"],
 		allow_headers=["*"],
@@ -114,12 +124,12 @@ def create_app (
 	)
 
 	# 添加异常处理器
-	from quant_server.api.handlers.exception_handlers import setup_exception_handlers
+	from api.handlers.exception_handlers import setup_exception_handlers
 	setup_exception_handlers(app)
 
 	# API层数据库依赖初始化
 	async def startup_db():
-		from quant_server.api.dependencies.database import initialize_api_database
+		from api.dependencies.database import initialize_api_database
 
 		# 初始化API层数据库依赖（包含共享层数据库的初始化）
 		if not await initialize_api_database():
@@ -140,15 +150,23 @@ def create_app (
 
 	app.lifespan = lifespan
 
-	# 注册路由
-	app.include_router(data_router, prefix="/api/data")
-	app.include_router(strategy_router, prefix="/api/strategy")
-	app.include_router(trade_router, prefix="/api/trade")
-	app.include_router(backtest_router, prefix="/api/backtest")
-	app.include_router(account_router, prefix="/api/account")
-	app.include_router(analysis_router, prefix="/api/analysis")
-	app.include_router(monitor_router, prefix="/api/monitor")
-	app.include_router(system_router, prefix="/api/system")
+	# 注册路由（仅注册已启用的模块路由）
+	_module_routers = {
+		"data": (data_router, "/api/data"),
+		"strategy": (strategy_router, "/api/strategy"),
+		"trade": (trade_router, "/api/trade"),
+		"backtest": (backtest_router, "/api/backtest"),
+		"account": (account_router, "/api/account"),
+		"analysis": (analysis_router, "/api/analysis"),
+		"monitor": (monitor_router, "/api/monitor"),
+		"system": (system_router, "/api/system"),
+	}
+	for module_name, (router, prefix) in _module_routers.items():
+		if module_name in enabled_modules:
+			app.include_router(router, prefix=prefix)
+	# health 路由始终注册
 	app.include_router(health_router, prefix="/health")
+	# WebSocket 路由始终注册
+	app.include_router(websocket_router, prefix="/api")
 
 	return app

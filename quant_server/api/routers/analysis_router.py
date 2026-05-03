@@ -12,16 +12,16 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入分析模块的业务层处理
-from quant_server.modules.analysis.handlers import (
+from modules.analysis.handlers import (
 	AnalysisHandler,
 	check_analysis_module_health,
 )
 # 导入分析模块的Pydantic模型
-from quant_server.modules.analysis.schemas import (
+from modules.analysis.schemas import (
 	GenerateReportRequest as PerformanceRequest,
 	PerformanceReportResponse as PerformanceResponse,
 	RiskMetricsResponse,
@@ -37,10 +37,10 @@ from quant_server.modules.analysis.schemas import (
 	ExportReportRequest,
 	ExportReportResponse
 )
-from quant_server.modules.analysis.constants import AnalysisType
+from modules.analysis.constants import AnalysisType
 
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)

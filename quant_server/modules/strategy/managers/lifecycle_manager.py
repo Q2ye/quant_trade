@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Any, Optional, Callable
 
-from quant_server.modules.strategy.models import StrategyState
+from modules.strategy.models import StrategyState
 
 logger = logging.getLogger(__name__)
 
@@ -395,7 +395,7 @@ class LifecycleManager:
 
 		# 发布错误事件到事件引擎
 		if self.event_engine:
-			from quant_server.modules.strategy.events.management_events import StrategyErrorEvent
+			from modules.strategy.events.management_events import StrategyErrorEvent
 			event = StrategyErrorEvent(
 				strategy_id=strategy_id,
 				strategy_name="",

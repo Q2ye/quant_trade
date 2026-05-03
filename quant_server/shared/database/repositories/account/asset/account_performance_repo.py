@@ -5,8 +5,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AccountDailyPerformance
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import AccountDailyPerformance
+from shared.database.repositories.base import BaseRepository
 
 
 class AccountDailyPerformanceRepository(BaseRepository[AccountDailyPerformance]):

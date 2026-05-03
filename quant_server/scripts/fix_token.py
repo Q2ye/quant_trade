@@ -9,7 +9,7 @@ from datetime import timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from quant_server.shared.security.jwt_handler import JWTManager
+from shared.security.jwt_handler import JWTManager
 
 def generate_permanent_token():
     """生成一个永久有效开发令牌（100年有效期）"""

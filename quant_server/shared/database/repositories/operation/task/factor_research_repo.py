@@ -16,11 +16,11 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import desc, and_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
-from quant_server.shared.database.repositories.types import (
+from shared.database.repositories.base.repository_base import BaseRepository
+from shared.database.repositories.types import (
 	RepositoryResult, PaginationParams, PaginationResult
 )
-from quant_server.shared.database.models.business_models import FactorResearch
+from shared.database.models.business_models import FactorResearch
 
 
 class FactorResearchRepository(BaseRepository[FactorResearch]):

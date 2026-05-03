@@ -9,8 +9,8 @@
 import logging
 from typing import Any, Dict
 
-from quant_server.modules.monitor.constants import AlertLevel
-from quant_server.modules.monitor.utils.metric_utils import MetricUtils
+from modules.monitor.constants import AlertLevel
+from modules.monitor.utils.metric_utils import MetricUtils
 
 logger = logging.getLogger(__name__)
 

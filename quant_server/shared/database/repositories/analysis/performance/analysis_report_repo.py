@@ -10,12 +10,15 @@
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 
-from sqlalchemy import select, delete, and_, or_, func, desc
+from sqlalchemy import select, delete, and_, or_, func, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AnalysisReport
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.business_models import AnalysisReport
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 	"""
@@ -447,19 +450,16 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			List[Dict[str, Any]]: 趋势数据
 		"""
 		try:
-			# 使用日期分组统计
-			# 具体实现依赖于数据库的日期函数
-
-			# 这里简化实现，按天统计
 			time_threshold = datetime.now() - timedelta(days=days)
 
-			# 根据数据库类型选择适当的日期截断函数
-			# 这里假设使用PostgreSQL的date_trunc
-
+			# 按天分组统计报告生成趋势（PostgreSQL date_trunc）
 			query = select(
 				func.date_trunc('day', self.model.created_at).label('date'),
 				func.count(self.model.id).label('count'),
-				func.sum(func.cast(self.model.status == 'completed', func.Integer)).label('completed_count')
+				func.sum(case(
+					(self.model.status == 'completed', 1),
+					else_=0
+				)).label('completed_count')
 			).where(
 				self.model.created_at >= time_threshold
 			)
@@ -476,37 +476,33 @@ class AnalysisReportRepository(BaseRepository[AnalysisReport]):
 			result = await self.session.execute(query)
 
 			trend_data = []
-			for date, count, completed_count in result.all():
+			for date_val, count, completed_count in result.all():
 				trend_data.append({
-					'date': date,
+					'date': date_val,
 					'total_count': count,
 					'completed_count': completed_count or 0,
 					'success_rate': (completed_count / count * 100) if count > 0 else 0
 				})
 
 			return trend_data
-		except Exception:
-			# 如果数据库不支持date_trunc，使用简化方法
-			# 获取所有数据并在Python中处理
+		except Exception as e:
+			logger.warning(f"数据库日期分组失败，降级为内存聚合: {e}")
+			# 降级：获取数据后在 Python 中按天分组
 			reports = await self.get_recent_reports(days=days, report_type=report_type, limit=1000)
 
-			# 按日期分组
-			daily_stats = {}
+			daily_stats: dict = {}
 			for report in reports:
-				date_key = report.created_at.date()
+				date_key = report.created_at.date() if hasattr(report.created_at, 'date') else report.created_at
 				if date_key not in daily_stats:
-					daily_stats[date_key] = {
-						'total': 0,
-						'completed': 0
-					}
+					daily_stats[date_key] = {'total': 0, 'completed': 0}
 
 				daily_stats[date_key]['total'] += 1
 				if report.status == 'completed':
 					daily_stats[date_key]['completed'] += 1
 
-			# 转换为列表
 			trend_data = []
-			for date_key, stats in sorted(daily_stats.items()):
+			for date_key in sorted(daily_stats.keys()):
+				stats = daily_stats[date_key]
 				trend_data.append({
 					'date': date_key,
 					'total_count': stats['total'],

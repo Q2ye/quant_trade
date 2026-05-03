@@ -8,16 +8,16 @@ from typing import Dict
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.trade.schemas import (
+from modules.trade.schemas import (
 	OrderListRequest, OrderListResponse, OrderDetailResponse,
 	OrderCreateRequest, OrderResponse, PositionListRequest, PositionListResponse, PositionDetailResponse,
 	SignalExecuteRequest, SignalExecuteResponse,
 	TradeHistoryRequest, TradeHistoryResponse, AccountSummaryResponse
 )
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.trading.order.order_repo import OrderRepository
-from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
-from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.trading.order.order_repo import OrderRepository
+from shared.database.repositories.trading.order.trade_repo import TradeRepository
+from shared.database.repositories.trading.position.position_repo import PositionRepository
 
 
 class TradeHandler:

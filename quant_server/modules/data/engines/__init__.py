@@ -17,8 +17,8 @@
 
 使用示例：
     # 方式1：通过引擎工厂创建
-    from quant_server.core.engines.utils.engine_factory import create_engine
-    from quant_server.core.engines.types.enums import EngineType
+    from core.engines.utils.engine_factory import create_engine
+    from core.engines.types.enums import EngineType
 
     clean_engine = await create_engine(
         engine_type=EngineType.DATA_CLEAN,
@@ -107,7 +107,7 @@ from .research_engine import (
 # ==================== 重新导出核心引擎类型 ====================
 
 try:
-    from quant_server.core.engines.types.enums import (
+    from core.engines.types.enums import (
         EngineType,
         EngineCategory,
         ComponentStatus,
@@ -117,12 +117,12 @@ try:
         ResourceType
     )
 
-    from quant_server.core.engines.types.entities import (
+    from core.engines.types.entities import (
         EngineConfig,
         Event
     )
 
-    from quant_server.core.engines.utils.engine_factory import (
+    from core.engines.utils.engine_factory import (
         EngineFactory
     )
 
@@ -222,7 +222,7 @@ async def register_all_data_engines(factory: 'EngineFactory' = None) -> Dict[str
     try:
         # 如果未提供工厂，尝试获取全局工厂
         if factory is None:
-            from quant_server.core.engines.utils.engine_factory import get_engine_factory
+            from core.engines.utils.engine_factory import get_engine_factory
             factory = await get_engine_factory()
 
         if factory is None:

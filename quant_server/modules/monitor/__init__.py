@@ -47,7 +47,7 @@ async def initialize(
     try:
         logger.info("开始初始化监控模块...")
 
-        from quant_server.modules.monitor.engines import (
+        from modules.monitor.engines import (
             SystemMonitorEngine,
             RiskMonitorEngine,
             BusinessMonitorEngine,
@@ -79,7 +79,7 @@ async def initialize(
 
         # 2. 风险监控引擎
         try:
-            from quant_server.shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
+            from shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
                 MonitorThresholdRepository,
             )
 

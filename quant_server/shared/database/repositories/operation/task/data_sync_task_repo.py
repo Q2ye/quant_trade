@@ -16,9 +16,9 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, case, desc
 
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
-from quant_server.shared.database.repositories.types import RepositoryResult
-from quant_server.shared.database.models.business_models import DataSyncTask
+from shared.database.repositories.base.repository_base import BaseRepository
+from shared.database.repositories.types import RepositoryResult
+from shared.database.models.business_models import DataSyncTask
 
 
 class DataSyncTaskRepository(BaseRepository[DataSyncTask]):

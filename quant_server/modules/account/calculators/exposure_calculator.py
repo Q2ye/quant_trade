@@ -14,19 +14,20 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
 
+import numpy as np
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.account.models import (
+from core import BusinessException
+from modules.account.models import (
 	IndustryExposure,
 	ConcentrationRisk,
 	RiskMetrics,
 	VaRResult,
 )
-from quant_server.shared.database.repositories import (
-	PositionRepository,
-	AccountRepository,
-)
-from quant_server.shared.sources.base_source import BaseDataSource
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.sources.base_source import BaseDataSource
 
 logger = logging.getLogger(__name__)
 
@@ -106,24 +107,48 @@ class ExposureCalculator:
 		"""
 		获取股票行业
 
+		优先使用内存缓存，缓存未命中时查询 data_source 或数据库。
+
 		Args:
 			ts_code: 证券代码
 
 		Returns:
 			str: 行业名称
 		"""
+		# 使用类级别缓存避免每次全量加载
+		if not hasattr(self, '_industry_cache'):
+			self._industry_cache = {}
+
+		if ts_code in self._industry_cache:
+			return self._industry_cache[ts_code]
+
+		# 尝试从数据库查询
+		try:
+			result = await self.session.execute(
+				text("SELECT industry FROM stocks WHERE ts_code = :code LIMIT 1"),
+				{"code": ts_code}
+			)
+			row = result.fetchone()
+			if row and row.industry:
+				self._industry_cache[ts_code] = row.industry
+				return row.industry
+		except BusinessException:
+			pass
+
+		# 降级：从外部数据源获取
 		if self.data_source:
 			try:
-				# 使用get_stock_basic方法获取股票基础信息
 				stock_basic = await self.data_source.get_stock_basic()
 				for stock in stock_basic:
-					if stock.get('ts_code') == ts_code:
-						return stock.get('industry', '未知行业')
+					industry = stock.get('industry', '未知行业')
+					code = stock.get('ts_code', '')
+					self._industry_cache[code] = industry
+				if ts_code in self._industry_cache:
+					return self._industry_cache[ts_code]
 			except Exception as e:
 				logger.debug(f"获取股票行业信息失败: {str(e)}")
-				pass
 
-		# 默认返回未知行业
+		self._industry_cache[ts_code] = "未知行业"
 		return "未知行业"
 
 	async def calculate_concentration_risk (self, account_id: str) -> ConcentrationRisk:
@@ -216,41 +241,92 @@ class ExposureCalculator:
 				components=[]
 			)
 
-		# 这里简化实现，实际需要：
-		# 1. 获取历史收益率数据
-		# 2. 计算组合收益率
-		# 3. 根据方法计算VaR
-
-		# 简化：使用参数法计算
+		# 获取持仓的历史价格数据并计算各股波动率
 		var_components = []
-		total_var = Decimal('0')
 
+		# 批量获取所有持仓的日收益率
+		position_volatilities = {}
+		position_prices = {}  # ts_code -> close_prices list
+		for position in positions:
+			if position.volume <= 0 or not position.last_price:
+				continue
+			try:
+				result = await self.session.execute(
+					text(
+						"SELECT close FROM daily_quotes "
+						"WHERE ts_code = :code ORDER BY trade_date DESC LIMIT 252"
+					),
+					{"code": position.ts_code}
+				)
+				closes = [float(row.close) for row in result.fetchall() if row.close]
+				if len(closes) >= 21:  # 至少1个月数据
+					log_returns = np.diff(np.log(closes))
+					daily_vol = float(np.std(log_returns))
+					position_volatilities[position.ts_code] = daily_vol
+					position_prices[position.ts_code] = closes
+			except BusinessException:
+				pass
+
+		# 获取组合中所有股票的协方差矩阵（用于组合VaR）
+		valid_codes = [p.ts_code for p in positions if p.volume > 0 and p.last_price and p.ts_code in position_volatilities]
+		n_valid = len(valid_codes)
+
+		# 默认波动率：使用组合平均波动率，若无数据则用20%年化
+		if position_volatilities:
+			default_annual_vol = float(np.mean(list(position_volatilities.values()))) * np.sqrt(252)
+		else:
+			default_annual_vol = 0.20
+
+		total_var = Decimal('0')
 		for position in positions:
 			if position.volume <= 0 or not position.last_price:
 				continue
 
 			market_value = Decimal(str(position.volume)) * Decimal(str(position.last_price))
 
-			# 简化：假设每只股票年化波动率20%
-			annual_volatility = Decimal('0.2')
-			daily_volatility = annual_volatility / Decimal('16')  # sqrt(252) ≈ 16
+			# 使用实际波动率或默认波动率
+			daily_vol = position_volatilities.get(position.ts_code, default_annual_vol / np.sqrt(252))
 
 			# 正态分布Z值
 			z_score = self._get_z_score(confidence_level)
 
-			# 个股VaR
-			position_var = market_value * daily_volatility * Decimal(str(z_score)) * Decimal(str(time_horizon ** 0.5))
+			# 个股VaR: MV × σ_daily × Z × √T
+			position_var = market_value * Decimal(str(daily_vol)) * Decimal(str(z_score)) * Decimal(str(time_horizon ** 0.5))
+
+			# 若有多只持仓，使用简单协方差调整（等权重假设）
+			if n_valid > 1 and position.ts_code in position_volatilities:
+				# 使用各股日波动率数据估算平均两两相关系数
+				avg_corr = Decimal("0.3")  # 默认保守假设
+				if n_valid > 1 and len(position_prices) >= 2:
+					try:
+						# 从已获取的价格数据计算样本相关系数矩阵
+						return_series = []
+						min_len = min(len(prices) for prices in position_prices.values() if len(prices) >= 21)
+						if min_len >= 21:
+							for code in position_prices:
+								prices_arr = np.array(position_prices[code][:min_len])
+								returns = np.diff(np.log(prices_arr))
+								return_series.append(returns)
+							if len(return_series) >= 2:
+								corr_matrix = np.corrcoef(return_series)
+								# 取上三角非对角线元素均值作为平均相关系数
+								n_assets = corr_matrix.shape[0]
+								upper_tri = corr_matrix[np.triu_indices(n_assets, k=1)]
+								avg_corr = Decimal(str(round(float(np.mean(upper_tri)), 4)))
+					except BusinessException:
+						pass  # 回退到默认保守假设 0.3
+				position_var = position_var * (Decimal("1") + avg_corr * Decimal(str(n_valid - 1))) / Decimal(str(n_valid))
 
 			var_components.append({
 				'ts_code': position.ts_code,
 				'market_value': market_value,
 				'var': position_var,
-				'contribution': position_var  # 简化：不考虑相关性
+				'contribution': position_var,
+				'annual_volatility': float(daily_vol) * np.sqrt(252)
 			})
 
 			total_var += position_var
 
-		# 考虑现金部分（无风险）
 		cash_var = Decimal('0')
 
 		return VaRResult(
@@ -329,16 +405,77 @@ class ExposureCalculator:
 		# 获取集中度风险
 		concentration = await self.calculate_concentration_risk(account_id)
 
+		# 计算 Sharpe Ratio、Max Drawdown、Beta、Alpha
+
+		sharpe_ratio = None
+		max_drawdown_val = None
+		beta_val = None
+		alpha_val = None
+
+		try:
+			# 解析 account_id -> user_id（account_daily_performance 表以 user_id 为维度）
+			account_obj = await self.account_repo.get(account_id)
+			user_id = account_obj.user_id if account_obj else account_id
+			
+			# 从每日绩效表获取账户收益率序列
+			result = await self.session.execute(
+				text(
+					"SELECT daily_return FROM account_daily_performance "
+					"WHERE user_id = :uid ORDER BY trade_date"
+				),
+				{"uid": user_id}
+			)
+			daily_returns = [float(row.daily_return) for row in result.fetchall() if row.daily_return is not None]
+
+			if len(daily_returns) >= 20:
+				returns_arr = np.array(daily_returns)
+
+				# Sharpe Ratio: 日均收益 / 日收益标准差 × √252（假设无风险利率为0）
+				mean_return = float(np.mean(returns_arr))
+				std_return = float(np.std(returns_arr, ddof=1))
+				if std_return > 0:
+					sharpe_ratio = Decimal(str(round(mean_return / std_return * np.sqrt(252), 4)))
+
+				# Max Drawdown: 从累计收益曲线计算最大回撤
+				cumulative = np.cumprod(1 + returns_arr)
+				running_max = np.maximum.accumulate(cumulative)
+				drawdowns = (cumulative - running_max) / running_max
+				max_drawdown_val = Decimal(str(round(float(np.min(drawdowns)), 4)))
+
+				# Beta 和 Alpha（相对沪深300）
+				try:
+					benchmark_result = await self.session.execute(
+						text(
+							"SELECT close FROM daily_quotes "
+							"WHERE ts_code = '000300.SH' ORDER BY trade_date"
+						)
+					)
+					benchmark_closes = [float(row.close) for row in benchmark_result.fetchall() if row.close]
+					if len(benchmark_closes) >= len(returns_arr):
+						benchmark_closes = benchmark_closes[-len(returns_arr):]
+						bench_returns = np.diff(np.log(benchmark_closes))
+						if len(bench_returns) == len(returns_arr):
+							cov_matrix = np.cov(returns_arr, bench_returns)
+							beta_val = Decimal(str(round(float(cov_matrix[0, 1] / cov_matrix[1, 1]), 4)))
+							# Alpha: 年化超额收益（Jensen's Alpha）
+							alpha_val = Decimal(str(round(
+								float(mean_return - beta_val * np.mean(bench_returns)) * 252, 4
+							)))
+				except BusinessException:
+					pass
+		except BusinessException:
+			pass
+
 		return RiskMetrics(
 			account_id=account_id,
 			calculation_time=datetime.now(),
 			industry_exposure=industry_exposure,
 			concentration_risk=concentration,
 			var=var_result.var,
-			sharpe_ratio=None,
-			max_drawdown=None,
-			beta=None,
-			alpha=None,
+			sharpe_ratio=sharpe_ratio,
+			max_drawdown=max_drawdown_val,
+			beta=beta_val,
+			alpha=alpha_val,
 			total_asset=total_asset,
 			leverage=leverage,
 			max_concentration=concentration.max_concentration,
@@ -409,7 +546,11 @@ class ExposureCalculator:
 
 			# 考虑波动率增加（对VaR的影响）
 			if "volatility_increase" in params:
-				loss += market_value * params["volatility_increase"] * Decimal('0.1')  # 简化
+				# 波动率冲击：基于正态VaR框架，额外损失 = 市值 x 日波动率 x Z值 x 波动率增幅
+				# 默认年化波动率20% -> 日波动率 ≈ 1.26%
+				default_daily_vol = Decimal("0.0126")
+				vol_impact = default_daily_vol * Decimal(str(self._get_z_score(0.95))) * params["volatility_increase"]
+				loss += market_value * vol_impact
 
 			total_loss += loss
 

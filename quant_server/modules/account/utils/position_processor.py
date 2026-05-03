@@ -8,7 +8,8 @@ import math
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from ....shared.utils.validation import validate_position_data
+from core import BusinessException
+from utils.core_utils.data_utils import validate_position_data
 
 logger = logging.getLogger(__name__)
 
@@ -506,34 +507,71 @@ class PositionProcessor:
 	@staticmethod
 	def _calculate_var_95 (
 			positions: List[Dict],
-			_risk_factors: Optional[Dict]
+			risk_factors: Optional[Dict]
 	) -> float:
-		"""计算95%置信度的在险价值"""
-		# 简化的VaR计算
-		# 实际实现中应该使用历史模拟法或蒙特卡洛模拟
-
+		"""计算95%置信度的在险价值（参数驱动 + 历史数据 + 兜底默认值）"""
 		total_value = sum(p.get('market_value', 0) for p in positions)
+		if total_value <= 0:
+			return 0.0
 
-		# 假设波动率为20%
-		volatility = 0.20
-		# 95%置信度对应的Z值为1.645
-		z_score = 1.645
+		volatility = None
 
+		# 1) 优先从 risk_factors 获取波动率
+		if risk_factors:
+			volatility = risk_factors.get('portfolio_volatility')
+			if volatility is None:
+				pos_vols = risk_factors.get('position_volatilities', {})
+				if pos_vols:
+					weighted_vol = 0.0
+					for p in positions:
+						sid = p.get('security_id', '')
+						vol = pos_vols.get(sid, 0.20)
+						weight = p.get('market_value', 0) / total_value
+						weighted_vol += weight * vol
+					volatility = max(weighted_vol, 0.01)
+
+		# 2) 从持仓历史收益率推算
+		if volatility is None:
+			volatilities = []
+			for p in positions:
+				returns = p.get('historical_returns', [])
+				if returns and len(returns) >= 2:
+					import numpy as np
+					volatilities.append(float(np.std(returns, ddof=1)))
+			if volatilities:
+				volatility = sum(volatilities) / len(volatilities)
+
+		# 3) 兜底默认值
+		if volatility is None:
+			volatility = 0.20
+
+		z_score = 1.645  # 95% 置信度
 		var_95 = total_value * volatility * z_score
 		return float(var_95)
 
 	@staticmethod
 	def _calculate_expected_shortfall (
 			positions: List[Dict],
-			_risk_factors: Optional[Dict]
+			risk_factors: Optional[Dict]
 	) -> float:
-		"""计算预期缺口"""
-		# 简化的ES计算（CVaR）
-		# 假设损失分布为正态分布
+		"""计算预期缺口（CVaR），优先使用历史尾部均值，兜底使用正态分布近似"""
+		# 收集历史收益率
+		all_returns = []
+		for p in positions:
+			returns = p.get('historical_returns', [])
+			if returns:
+				all_returns.extend(returns)
 
-		var_95 = PositionProcessor._calculate_var_95(positions, _risk_factors)
+		if all_returns and len(all_returns) >= 10:
+			import numpy as np
+			returns_arr = np.array(all_returns, dtype=np.float64)
+			var_threshold = np.percentile(returns_arr, 5)
+			tail_returns = returns_arr[returns_arr <= var_threshold]
+			if len(tail_returns) > 0:
+				return float(-np.mean(tail_returns))
 
-		# 正态分布下，95% VaR对应的ES约为1.75倍VaR
+		# 兜底：正态分布假设下 ES ≈ 1.75 × VaR
+		var_95 = PositionProcessor._calculate_var_95(positions, risk_factors)
 		return float(var_95 * 1.75)
 
 	@staticmethod
@@ -562,24 +600,35 @@ class PositionProcessor:
 			total_capital: float,
 			risk_constraints: Dict[str, float]
 	) -> Dict[str, float]:
-		"""等风险贡献头寸分配"""
-		# 简化的风险平价模型
-		# 实际实现中需要更复杂的风险模型
-
+		"""等风险贡献头寸分配（风险平价），使用 per-position 波动率"""
 		n_positions = len(positions)
 		if n_positions == 0:
 			return {}
 
-		# 假设每个持仓有相同的风险贡献
-		target_sizes = {}
+		# 获取 per-position 波动率
+		pos_vols = risk_constraints.get('position_volatilities', {}) if risk_constraints else {}
+		volatilities = {}
+		for p in positions:
+			sid = p.get('security_id', '')
+			if sid in pos_vols:
+				volatilities[sid] = pos_vols[sid]
+			else:
+				returns = p.get('historical_returns', [])
+				if returns and len(returns) >= 2:
+					import numpy as np
+					volatilities[sid] = float(np.std(returns, ddof=1))
+				else:
+					volatilities[sid] = 0.20  # 兜底
 
-		for pos in positions:
-			security_id = pos.get('security_id')
-			# 简化：假设波动率为20%
-			volatility = 0.20
-			# 等风险贡献：头寸与波动率成反比
-			target_weight = 1 / volatility
-			target_sizes[security_id] = total_capital * target_weight / sum(1 / 0.20 for _ in positions)
+		# 逆波动率权重（等风险贡献：头寸 ∝ 1/波动率）
+		inv_vols = {sid: 1.0 / max(vol, 0.01) for sid, vol in volatilities.items()}
+		total_inv_vol = sum(inv_vols.values())
+
+		target_sizes = {}
+		for p in positions:
+			sid = p.get('security_id', '')
+			weight = inv_vols.get(sid, 0) / total_inv_vol if total_inv_vol > 0 else 1.0 / n_positions
+			target_sizes[sid] = total_capital * weight
 
 		return target_sizes
 
@@ -589,25 +638,21 @@ class PositionProcessor:
 			total_capital: float,
 			risk_constraints: Dict[str, float]
 	) -> Dict[str, float]:
-		"""凯利公式头寸分配"""
-		# 凯利公式：f = (bp - q) / b
-		# 其中：b = 赔率，p = 胜率，q = 败率
+		"""凯利公式头寸分配，参数从 risk_constraints 驱动，兜底使用默认值"""
+		# 凯利公式：f = (odds × win_rate - loss_rate) / odds
+		max_position = risk_constraints.get('max_position_pct', 0.1) if risk_constraints else 0.1
+		pos_params = risk_constraints.get('position_params', {}) if risk_constraints else {}
 
 		target_sizes = {}
-
 		for pos in positions:
-			security_id = pos.get('security_id')
+			security_id = pos.get('security_id', '')
 
-			# 简化：假设胜率55%，赔率2:1
-			win_rate = 0.55
-			odds = 2.0  # 赔率
+			params = pos_params.get(security_id, {}) if isinstance(pos_params, dict) else {}
+			win_rate = float(params.get('win_rate', 0.55))
+			odds = float(params.get('odds', 2.0))
 
-			# 凯利比例
 			kelly_fraction = (odds * win_rate - (1 - win_rate)) / odds
-
-			# 应用约束（如最大仓位限制）
-			max_position = risk_constraints.get('max_position_pct', 0.1)
-			kelly_fraction = min(kelly_fraction, max_position)
+			kelly_fraction = max(0.0, min(kelly_fraction, max_position))
 
 			target_sizes[security_id] = total_capital * kelly_fraction
 
@@ -619,17 +664,48 @@ class PositionProcessor:
 			total_capital: float,
 			risk_constraints: Dict[str, float]
 	) -> Dict[str, float]:
-		"""均值-方差优化头寸分配"""
-		# 简化的马科维茨投资组合优化
-
+		"""均值-方差优化头寸分配（最小方差组合），兜底等权重"""
 		n_positions = len(positions)
 		if n_positions == 0:
 			return {}
 
-		# 假设期望收益和协方差矩阵
-		# 实际实现中需要估计这些参数
+		try:
+			import numpy as np
 
-		# 等权重作为初始解
+			# 收集各持仓的历史收益率
+			returns_dict = {}
+			for p in positions:
+				sid = p.get('security_id', '')
+				returns = p.get('historical_returns', [])
+				if returns and len(returns) >= 10:
+					returns_dict[sid] = np.array(returns, dtype=np.float64)
+
+			if len(returns_dict) >= 2:
+				# 对齐序列长度（取最短）
+				min_len = min(len(r) for r in returns_dict.values())
+				sids = list(returns_dict.keys())
+				returns_matrix = np.column_stack([returns_dict[sid][-min_len:] for sid in sids])
+
+				# 协方差矩阵 + 伪逆求最小方差组合权重
+				cov_matrix = np.cov(returns_matrix, rowvar=False)
+				n = len(sids)
+				ones = np.ones(n)
+				inv_cov = np.linalg.pinv(cov_matrix)
+				raw_weights = inv_cov @ ones
+				weights = raw_weights / raw_weights.sum()
+
+				# 应用仓位上限约束
+				max_pct = float(risk_constraints.get('max_position_pct', 0.2)) if risk_constraints else 0.2
+				weights = np.clip(weights, 0.0, max_pct)
+				weights = weights / weights.sum()
+
+				target_sizes = {}
+				for i, sid in enumerate(sids):
+					target_sizes[sid] = total_capital * float(weights[i])
+				return target_sizes
+		except BusinessException:
+			logger.warning("均值-方差优化失败，回退到等权重", exc_info=True)
+
 		return PositionProcessor._equal_weight_sizing(positions, total_capital)
 
 	@staticmethod

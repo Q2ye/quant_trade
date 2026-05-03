@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 import jwt
 from pydantic import BaseModel
 
-from quant_server.core.exceptions.security_exceptions import (
+from core.exceptions.security_exceptions import (
 	TokenExpiredError,
 	InvalidTokenError,
 	TokenCreationError

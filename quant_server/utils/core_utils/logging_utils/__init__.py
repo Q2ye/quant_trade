@@ -14,7 +14,7 @@
 5. 可扩展：支持自定义处理器、过滤器、格式化器
 
 使用示例：
-    from quant_server.core.utils.logging_utils import (
+    from core.utils.logging_utils import (
         get_logger, get_context_manager, FormatterFactory,
         LogLevel, LogFormat, with_context
     )
@@ -374,7 +374,7 @@ print(f"默认配置: {DEFAULT_LOGGING_CONFIG}")
 
 
 '''# 完整使用示例
-from quant_server.core.utils.logging_utils import (
+from core.utils.logging_utils import (
     get_logger, get_context_manager, init_logging,
     LogLevel, LogFormat, with_context, log_performance
 )
@@ -437,6 +437,6 @@ stats = logger.get_stats()
 print(f"日志统计: {stats}")
 
 # 9. 关闭日志系统
-from quant_server.core.utils.logging_utils import shutdown_logging
+from core.utils.logging_utils import shutdown_logging
 shutdown_logging()
 '''

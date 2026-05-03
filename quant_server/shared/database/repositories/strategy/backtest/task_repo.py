@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, desc
 from sqlalchemy.sql import func
 
-from quant_server.shared.database.models.business_models import BacktestTask
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import BacktestTask
+from shared.database.repositories.base import BaseRepository
 
 
 class BacktestTaskRepository(BaseRepository[BacktestTask]):

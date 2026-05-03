@@ -28,9 +28,9 @@ from pydantic.fields import FieldInfo
 from fastapi import Request, HTTPException, Query, Path, Body, Depends
 from fastapi.params import Param
 
-from quant_server.core.exceptions.validation_exceptions import ValidationError as CustomValidationError
-from quant_server.core.exceptions.error_codes import ErrorCode
-from quant_server.utils.api_utils.response_formatter import APIResponse
+from core.exceptions.validation_exceptions import ValidationError as CustomValidationError
+from core.exceptions.error_codes import ErrorCode
+from utils.api_utils.response_formatter import APIResponse
 
 logger = logging.getLogger(__name__)
 

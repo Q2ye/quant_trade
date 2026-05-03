@@ -26,8 +26,8 @@ from fastapi import Response
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 
-from quant_server.core.exceptions.error_codes import ErrorCode
-from quant_server.core.exceptions.base import BaseAPIException
+from core.exceptions.error_codes import ErrorCode
+from core.exceptions.base import BaseAPIException
 
 logger = logging.getLogger(__name__)
 

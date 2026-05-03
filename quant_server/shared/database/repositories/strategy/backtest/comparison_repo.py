@@ -5,8 +5,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import select, update, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import BacktestComparison
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import BacktestComparison
+from shared.database.repositories.base import BaseRepository
 
 
 class BacktestComparisonRepository(BaseRepository[BacktestComparison]):

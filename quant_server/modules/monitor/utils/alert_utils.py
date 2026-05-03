@@ -8,7 +8,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from quant_server.modules.monitor.constants import (
+from modules.monitor.constants import (
 	ALERT_TEMPLATES,
 	AlertType,
 	NotificationChannel,

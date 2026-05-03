@@ -12,12 +12,12 @@ import logging
 from starlette.responses import JSONResponse
 
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
-from quant_server.api.dependencies.main_engine import get_main_engine
-from quant_server.api.dependencies.event_engine import get_event_engine
+from api.dependencies.database import get_db_session
+from api.dependencies.main_engine import get_main_engine
+from api.dependencies.event_engine import get_event_engine
 
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)

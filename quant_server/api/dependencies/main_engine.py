@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import Depends
 
-from quant_server.core.engines.system.main_engine import MainEngine
+from core.engines.system.main_engine import MainEngine
 
 logger = logging.getLogger(__name__)
 

@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Boolean, Text
 from sqlalchemy.orm import relationship
 
-from quant_server.core.engines.types.enums import (
+from core.engines.types.enums import (
 	OrderStatus, OrderType, OrderDirection as Direction,
 	TimeInForce, RiskLevel
 )
-from quant_server.shared.database.models import Base
+from shared.database.models import Base
 
 
 class SignalStatus(str, enum.Enum):

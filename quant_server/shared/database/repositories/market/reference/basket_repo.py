@@ -17,9 +17,9 @@ from sqlalchemy import select, or_, desc, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from quant_server.shared.database.models.business_models import Basket, BasketItem
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
-from quant_server.shared.database.repositories.types import PaginationParams, PaginationResult, SortCondition, FilterCondition, FilterOperator
+from shared.database.models.business_models import Basket, BasketItem
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.repositories.types import PaginationParams, PaginationResult, SortCondition, FilterCondition, FilterOperator
 
 
 class BasketRepository(BaseRepository[Basket]):

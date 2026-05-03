@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Union, Tuple, Callable
 
 import numpy as np
 import pandas as pd
-import talib
+import pandas_ta_classic
 
 logger = logging.getLogger(__name__)
 
@@ -354,7 +354,7 @@ class FactorCalculator:
 				result[f"rsi{p}"] = rsi
 			return pd.DataFrame(result)
 		else:
-			return pd.Series(talib.RSI(close.values, timeperiod=period), index=close.index, name=f"rsi{period}")
+			return pandas_ta_classic.rsi(close, length=period)
 
 	@staticmethod
 	def calculate_macd (
@@ -377,16 +377,14 @@ class FactorCalculator:
 		"""
 		close = data["close"]
 
-		macd_line, signal_line, histogram = talib.MACD(
-			close.values,
-			fastperiod=fast_period,
-			slowperiod=slow_period,
-			signalperiod=signal_period
+		macd_df = pandas_ta_classic.macd(
+			close,
+			fast=fast_period,
+			slow=slow_period,
+			signal=signal_period
 		)
-
-		return pd.Series(macd_line, index=data.index), \
-			pd.Series(signal_line, index=data.index), \
-			pd.Series(histogram, index=data.index)
+		# pandas_ta_classic 列序: MACD(快线), MACDh(柱), MACDs(信号)
+		return macd_df.iloc[:, 0], macd_df.iloc[:, 2], macd_df.iloc[:, 1]
 
 	@staticmethod
 	def calculate_bollinger_bands (
@@ -407,16 +405,9 @@ class FactorCalculator:
 		"""
 		close = data["close"]
 
-		upper, middle, lower = talib.BBANDS(
-			close.values,
-			timeperiod=period,
-			nbdevup=std_dev,
-			nbdevdn=std_dev
-		)
-
-		return pd.Series(upper, index=data.index), \
-			pd.Series(middle, index=data.index), \
-			pd.Series(lower, index=data.index)
+		bb_df = pandas_ta_classic.bbands(close, length=period, std=std_dev)
+		# pandas_ta_classic 列序: BBU(上轨), BBM(中轨), BBL(下轨)
+		return bb_df.iloc[:, 0], bb_df.iloc[:, 1], bb_df.iloc[:, 2]
 
 	# ==================== 动量因子计算函数 ====================
 
@@ -466,11 +457,10 @@ class FactorCalculator:
 		if isinstance(period, list):
 			result = {}
 			for p in period:
-				roc = talib.ROC(close.values, timeperiod=p)
-				result[f"roc{p}"] = roc
+				result[f"roc{p}"] = pandas_ta_classic.roc(close, length=p)
 			return pd.DataFrame(result)
 		else:
-			return pd.Series(talib.ROC(close.values, timeperiod=period), index=close.index, name=f"roc{period}")
+			return pandas_ta_classic.roc(close, length=period)
 
 	# ==================== 波动率因子计算函数 ====================
 
@@ -517,8 +507,7 @@ class FactorCalculator:
 		low = data["low"]
 		close = data["close"]
 
-		atr = talib.ATR(high.values, low.values, close.values, timeperiod=period)
-		return pd.Series(atr, index=data.index)
+		return pandas_ta_classic.atr(high, low, close, length=period)
 
 	# ==================== 成交量因子计算函数 ====================
 
@@ -561,8 +550,7 @@ class FactorCalculator:
 		close = data["close"]
 		volume = data["volume"]
 
-		obv = talib.OBV(close.values, volume.values)
-		return pd.Series(obv, index=data.index)
+		return pandas_ta_classic.obv(close, volume)
 
 	# ==================== 基本面因子计算函数 ====================
 

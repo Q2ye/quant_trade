@@ -13,8 +13,8 @@ from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy import select, delete, and_, or_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AnalysisTask
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.business_models import AnalysisTask
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class AnalysisTaskRepository(BaseRepository[AnalysisTask]):

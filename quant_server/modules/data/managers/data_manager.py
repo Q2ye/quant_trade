@@ -17,20 +17,20 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from quant_server.core.engines.types.enums import ComponentStatus
-from quant_server.modules.data.engines import (
+from core.engines.types.enums import ComponentStatus
+from modules.data.engines import (
 	DataCleanEngine,
 	DataQualityEngine,
 	DataSyncEngine,
 	FactorResearchEngine,
 )
-from quant_server.modules.data.events.clean_events import DataCleanEvent
-from quant_server.modules.data.events.quality_events import (
+from modules.data.events.clean_events import DataCleanEvent
+from modules.data.events.quality_events import (
 	DataQualityCheckStartedEvent,
 	DataQualityEvent,
 )
-from quant_server.modules.data.events.types import DataEventType
-from quant_server.shared.cache.cache_manager import CacheManager
+from modules.data.events.types import DataEventType
+from shared.cache.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +136,8 @@ class DataManager:
 
 			# 初始化引擎（如果未提供，则创建新实例）
 			if not self.sync_engine:
-				from quant_server.core.engines.types.entities import EngineConfigEntity
-				from quant_server.core.engines.types.enums import EngineType
+				from core.engines.types.entities import EngineConfigEntity
+				from core.engines.types.enums import EngineType
 				sync_config = EngineConfigEntity(
 					name="data_sync_engine",
 					engine_type=EngineType.DATA_SYNC,
@@ -148,8 +148,8 @@ class DataManager:
 				)
 
 			if not self.clean_engine:
-				from quant_server.core.engines.types.entities import EngineConfigEntity
-				from quant_server.core.engines.types.enums import EngineType
+				from core.engines.types.entities import EngineConfigEntity
+				from core.engines.types.enums import EngineType
 				clean_config = EngineConfigEntity(
 					name="data_clean_engine",
 					engine_type=EngineType.DATA_CLEAN,
@@ -160,8 +160,8 @@ class DataManager:
 				)
 
 			if not self.quality_engine:
-				from quant_server.core.engines.types.entities import EngineConfigEntity
-				from quant_server.core.engines.types.enums import EngineType
+				from core.engines.types.entities import EngineConfigEntity
+				from core.engines.types.enums import EngineType
 				quality_config = EngineConfigEntity(
 					name="data_quality_engine",
 					engine_type=EngineType.DATA_QUALITY,
@@ -172,8 +172,8 @@ class DataManager:
 				)
 
 			if not self.research_engine:
-				from quant_server.core.engines.types.entities import EngineConfigEntity
-				from quant_server.core.engines.types.enums import EngineType
+				from core.engines.types.entities import EngineConfigEntity
+				from core.engines.types.enums import EngineType
 				research_config = EngineConfigEntity(
 					name="factor_research_engine",
 					engine_type=EngineType.DATA_RESEARCH,
@@ -386,9 +386,10 @@ class DataManager:
 			# 更新进度
 			self.update_task_progress(task.task_id, 50, "数据同步中")
 
-			# 这里可以添加等待同步完成的逻辑（如监听事件）
-			# 当前简化：假设同步完成
-			await asyncio.sleep(1)
+			# 等待同步引擎完成（通过事件回调更新状态）
+			# 如果同步引擎提供了 awaitable 接口则直接等待，否则使用轮询
+			if hasattr(self.sync_engine, 'await_completion'):
+				result = await self.sync_engine.await_completion(task.task_id, timeout=300)
 
 			# 更新任务状态
 			task.completed_at = datetime.now()
@@ -509,7 +510,7 @@ class DataManager:
 
 			# 发布质量检查完成事件
 			if self.event_engine:
-				from quant_server.modules.data.events.quality_events import QualityCheckStatus
+				from modules.data.events.quality_events import QualityCheckStatus
 				quality_event = DataQualityEvent(
 					event_type=DataEventType.QUALITY_CHECK_COMPLETED.value,
 					check_id=str(uuid.uuid4()),
@@ -546,7 +547,7 @@ class DataManager:
 
 			# 执行研究
 			if self.research_engine:
-				from quant_server.modules.data.engines.research_engine import ResearchTaskType
+				from modules.data.engines.research_engine import ResearchTaskType
 				# 提交研究任务
 				task_id = await self.research_engine.submit_research_task(
 					task_type=ResearchTaskType.FACTOR_ANALYSIS,
@@ -1035,7 +1036,7 @@ class DataManager:
 			分析结果
 		"""
 		try:
-			from quant_server.modules.data.engines.research_engine import ResearchTaskType
+			from modules.data.engines.research_engine import ResearchTaskType
 			# 提交因子分析任务
 			task_id = await self.research_engine.submit_research_task(
 				task_type=ResearchTaskType.FACTOR_ANALYSIS,
@@ -1060,10 +1061,27 @@ class DataManager:
 			bool: 数据是否存在
 		"""
 		try:
-			# 查询数据库或缓存
-			# 这里简化为总是返回 True
-			logger.debug(f"检查数据类型 {data_type} 是否存在")
-			return True
+			from shared.database.session import get_session_manager
+			from sqlalchemy import text
+
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as session:
+				if data_type == "stock_quote":
+					result = await session.execute(text("SELECT COUNT(*) FROM daily_quotes LIMIT 1"))
+				elif data_type == "stock_basic":
+					result = await session.execute(text("SELECT COUNT(*) FROM stocks LIMIT 1"))
+				elif data_type == "index_quote":
+					result = await session.execute(text("SELECT COUNT(*) FROM index_daily LIMIT 1"))
+				else:
+					# 仅允许已知的安全表名
+					allowed_tables = {"stock_minute", "index_minute", "etf_daily", "etf_minute", "fund_daily", "trading_calendar"}
+					if data_type not in allowed_tables:
+						logger.warning(f"未知数据类型: {data_type}，无法检查存在性")
+						return False
+					result = await session.execute(
+						text(f"SELECT COUNT(*) FROM {data_type} LIMIT 1")
+					)
+				return result.scalar() > 0
 		except Exception as e:
 			logger.error(f"检查数据存在性失败: {e}")
 			return False

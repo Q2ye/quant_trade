@@ -13,11 +13,11 @@ from typing import Dict, List, Optional, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.analysis.models import AnalysisReport
-from quant_server.modules.analysis.visualizers.chart_generator import ChartGenerator
-from quant_server.modules.analysis.visualizers.report_generator import ReportGenerator
-from quant_server.shared.database.repositories import AccountRepository, StrategyRepository
-from quant_server.shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
+from modules.analysis.models import AnalysisReport
+from modules.analysis.visualizers.chart_generator import ChartGenerator
+from modules.analysis.visualizers.report_generator import ReportGenerator
+from shared.database.repositories import AccountRepository, StrategyRepository
+from shared.database.repositories.analysis.performance.analysis_report_repo import AnalysisReportRepository
 
 
 class ReportManager:

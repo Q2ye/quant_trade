@@ -2,8 +2,8 @@
 
 from typing import Any, Dict
 
-from quant_server.core.events.base import BaseEvent
-from quant_server.core.events.types import EventPriority, EventCategory
+from core.events.base import BaseEvent
+from core.events.types import EventPriority, EventCategory
 from .types import AnalysisEventType
 
 

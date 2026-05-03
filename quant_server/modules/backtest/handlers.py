@@ -8,7 +8,7 @@ from typing import Dict, Any
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.modules.backtest.services.backtest_service import BacktestService
+from modules.backtest.services.backtest_service import BacktestService
 
 
 class BacktestHandler:

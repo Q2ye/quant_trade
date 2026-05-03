@@ -4,8 +4,8 @@ import logging
 from datetime import date
 from typing import Dict, Any
 
-from quant_server.core.events.base import BaseEvent
-from quant_server.modules.analysis.events import (
+from core.events.base import BaseEvent
+from modules.analysis.events import (
 	PerformanceAnalysisStartedEvent,
 	PerformanceAnalysisCompletedEvent,
 	RiskAnalysisStartedEvent,
@@ -49,7 +49,7 @@ class AnalysisEventHandler:
 
 		# 订阅回测完成事件
 		try:
-			from quant_server.modules.backtest.events import BacktestCompletedEvent
+			from modules.backtest.events import BacktestCompletedEvent
 			self.event_engine.register('backtest.task.completed', self.handle_backtest_completed)
 		except ImportError:
 			logger.warning("回测模块事件未找到，跳过订阅")

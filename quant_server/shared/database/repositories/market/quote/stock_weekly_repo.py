@@ -11,8 +11,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StockWeekly
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.data_models import StockWeekly
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
@@ -514,7 +514,7 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 			生成的周线数据列表
 		"""
 		# 导入必要的Repository
-		from quant_server.shared.database.repositories import repository_factory
+		from shared.database.repositories import repository_factory
 		
 		# 创建StockDailyRepository实例
 		daily_repo = repository_factory.create_repository("stock_daily_repo", self.session)

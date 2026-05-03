@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from quant_server.core.events.base import BaseEvent
+from core.events.base import BaseEvent
 from .types import DataEventType, DataEventPriority
 
 

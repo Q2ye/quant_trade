@@ -6,8 +6,8 @@
 from datetime import datetime
 from typing import Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.modules.strategy.events.types import SignalEventType
+from core.events.base import BaseEvent, EventPriority
+from modules.strategy.events.types import SignalEventType
 
 
 class StrategySignalEvent(BaseEvent):

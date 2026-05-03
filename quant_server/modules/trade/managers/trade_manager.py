@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, Optional
 
-from quant_server.core.engines.system import EventEngine
+from core.engines.system import EventEngine
 
 
 class TradeManager:

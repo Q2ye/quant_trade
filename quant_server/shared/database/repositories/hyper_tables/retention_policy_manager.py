@@ -17,8 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import RetentionPolicy, RetentionPolicyLog
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.system_models import RetentionPolicy, RetentionPolicyLog
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
@@ -537,7 +537,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 			日志记录对象或None
 		"""
 		try:
-			from quant_server.shared.database.repositories.system.ops import RetentionPolicyLogRepository
+			from shared.database.repositories.system.ops import RetentionPolicyLogRepository
 
 			log_repo = RetentionPolicyLogRepository(self.session)
 			return await log_repo.create(log_data)
@@ -617,7 +617,7 @@ class RetentionPolicyManager(BaseRepository[RetentionPolicy]):
 				raise RepositoryError(f"保留策略不存在", "RETENTION_POLICY_NOT_FOUND")
 
 			# 获取执行日志
-			from quant_server.shared.database.repositories.system.ops import RetentionPolicyLogRepository
+			from shared.database.repositories.system.ops import RetentionPolicyLogRepository
 
 			log_repo = RetentionPolicyLogRepository(self.session)
 			execution_logs = await log_repo.get_many(policy_id=policy_id, limit=100)

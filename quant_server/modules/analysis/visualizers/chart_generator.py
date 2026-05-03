@@ -13,8 +13,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from quant_server.modules.analysis.utils.chart_utils import ChartStyle, ChartUtils
-from quant_server.modules.analysis.utils.statistic_utils import StatisticUtils
+from modules.analysis.utils.chart_utils import ChartStyle, ChartUtils
+from modules.analysis.utils.statistic_utils import StatisticUtils
 
 
 class ChartGenerator:

@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import hashes, padding
 from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from quant_server.core.exceptions.security_exceptions import (
+from core.exceptions.security_exceptions import (
 	EncryptionError,
 	DecryptionError,
 	InvalidKeyError,

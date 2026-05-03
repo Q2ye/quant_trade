@@ -17,7 +17,7 @@ quant_server/modules/data/__init__.py
 """
 
 # 导出常量
-from quant_server.modules.data.constants import (
+from modules.data.constants import (
 	ModuleConfig,
 	SyncStatus,
 	SyncErrorCode,
@@ -39,7 +39,7 @@ from quant_server.modules.data.constants import (
 	Permission
 )
 # 导出Handlers
-from quant_server.modules.data.handlers import (
+from modules.data.handlers import (
 	get_stock_list,
 	get_stock_detail,
 	get_historical_quotes,
@@ -54,13 +54,13 @@ from quant_server.modules.data.handlers import (
 	check_data_module_health
 )
 # 导出模型
-from quant_server.modules.data.models import (
+from modules.data.models import (
 	BaseSyncRequest,
 	BatchSyncRequest,
 	DataTypeInfo
 )
 # 导出Schema
-from quant_server.modules.data.schemas import (
+from modules.data.schemas import (
 	StockListRequest,
 	StockListResponse,
 	StockDetailRequest,
@@ -78,7 +78,7 @@ from quant_server.modules.data.schemas import (
 	ResearchResponse
 )
 # 导出Services
-from quant_server.modules.data.services import (
+from modules.data.services import (
 	DataSyncService,
 	DataQualityService,
 	FactorResearchService,
@@ -123,7 +123,7 @@ async def initialize (
 			success = init_result.get('status') != 'failed'
 		else:
 			# 使用共享层的会话管理器，通过上下文管理器正确获取
-			from quant_server.shared.database.session import get_session_manager
+			from shared.database.session import get_session_manager
 
 			session_manager = get_session_manager()
 			async with session_manager.get_session() as session:

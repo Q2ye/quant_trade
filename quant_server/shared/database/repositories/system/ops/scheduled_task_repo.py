@@ -12,9 +12,9 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy import select, update, delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models import ScheduledTask
-from quant_server.shared.database.repositories.base import BaseRepository, PaginationParams, PaginationResult
-from quant_server.shared.database.repositories.types import (
+from shared.database.models import ScheduledTask
+from shared.database.repositories.base import BaseRepository, PaginationParams, PaginationResult
+from shared.database.repositories.types import (
 	CacheConfig, CacheStrategy
 )
 
@@ -561,5 +561,5 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
 	@staticmethod
 	def _create_repository_error (message: str) -> Exception:
 		"""创建Repository异常"""
-		from quant_server.shared.database.repositories.base import RepositoryError
+		from shared.database.repositories.base import RepositoryError
 		return RepositoryError(f"[ScheduledTaskRepository] {message}")

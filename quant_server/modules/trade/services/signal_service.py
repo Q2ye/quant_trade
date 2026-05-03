@@ -1,7 +1,7 @@
 # signal_service.py      # 信号服务
 
 from typing import Dict, Any, Optional, List
-from quant_server.modules.trade.engines.signal_engine import SignalEngine
+from modules.trade.engines.signal_engine import SignalEngine
 
 
 class SignalService:

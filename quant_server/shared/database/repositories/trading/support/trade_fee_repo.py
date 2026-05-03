@@ -13,8 +13,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import TradeFee
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import TradeFee
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class TradeFeeRepository(BaseRepository[TradeFee]):
@@ -50,7 +50,8 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 			).order_by(self.model.created_at)
 
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			fees: List[TradeFee] = result.scalars().all()
+			return fees
 		except Exception as e:
 			raise RepositoryError(f"获取成交费用失败: {str(e)}")
 
@@ -74,7 +75,8 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 
 			query = query.offset(skip).limit(limit)
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			fees: List[TradeFee] = result.scalars().all()
+			return fees
 		except Exception as e:
 			raise RepositoryError(f"获取费用类型记录失败: {str(e)}")
 
@@ -161,7 +163,7 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 		"""
 		try:
 			# 需要关联查询Trade表获取用户信息
-			from quant_server.shared.database.models.business_models import Trade
+			from shared.database.models.business_models import Trade
 
 			query = select(
 				func.sum(TradeFee.fee_amount).label('total_fees'),
@@ -199,7 +201,7 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 	async def create_fee (self, trade_id: str, fee_type: str, fee_amount: float,
 	                      fee_rate: Optional[float] = None, description: Optional[str] = None) -> TradeFee:
 		"""
-		创建交易费用记录（简化接口）
+		创建交易费用记录
 
 		Args:
 			trade_id: 成交ID
@@ -211,12 +213,27 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 		Returns:
 			创建的TradeFee记录
 		"""
+		# 输入验证
+		if not trade_id:
+			raise RepositoryError('创建交易费用失败: trade_id 不能为空')
+		valid_fee_types = {'commission', 'tax', 'transfer', 'stamp'}
+		if fee_type not in valid_fee_types:
+			raise RepositoryError(
+				f'创建交易费用失败: 无效的费用类型 "{fee_type}"，'
+				f'有效值: {valid_fee_types}'
+			)
+		if fee_amount < 0:
+			raise RepositoryError(
+				f'创建交易费用失败: 费用金额不能为负数，当前值 {fee_amount}'
+			)
+
 		fee_data = {
 			'trade_id': trade_id,
 			'fee_type': fee_type,
 			'fee_amount': fee_amount,
 			'fee_rate': fee_rate,
-			'description': description
+			'description': description,
+			'calculated_at': datetime.now()
 		}
 
 		return await self.create(fee_data)
@@ -268,7 +285,8 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 
 			query = query.limit(limit)
 			result = await self.session.execute(query)
-			return result.scalars().all()
+			fees: List[TradeFee] = result.scalars().all()
+			return fees
 		except Exception as e:
 			raise RepositoryError(f"获取时间段费用记录失败: {str(e)}")
 
@@ -434,11 +452,3 @@ class TradeFeeRepository(BaseRepository[TradeFee]):
 			raise RepositoryError(f"删除交易费用失败: {str(e)}")
 
 
-# 异常定义
-class RepositoryError(Exception):
-	"""Repository异常基类"""
-
-	def __init__ (self, message: str, code: str = "TRADE_FEE_REPOSITORY_ERROR"):
-		self.message = message
-		self.code = code
-		super().__init__(self.message)

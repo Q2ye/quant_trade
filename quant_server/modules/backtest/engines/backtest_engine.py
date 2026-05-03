@@ -15,15 +15,15 @@ from typing import Dict, List, Any, Type
 import pandas as pd
 
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import BarData
-from quant_server.modules.strategy.constants import StrategyType, StrategyLifecycleStatus
-from quant_server.modules.strategy.models import (
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import BarData
+from modules.strategy.constants import StrategyType, StrategyLifecycleStatus
+from modules.strategy.models import (
 	StrategyInstance,
 	StrategyConfig
 )
-from quant_server.modules.strategy.strategies.base.base_strategy import BaseStrategy
-from quant_server.modules.strategy.strategies.base.strategy_context import StrategyContext
+from modules.strategy.strategies.base.base_strategy import BaseStrategy
+from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 logger = logging.getLogger(__name__)
 

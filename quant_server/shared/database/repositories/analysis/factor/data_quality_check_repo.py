@@ -5,11 +5,11 @@
 from datetime import date, timedelta
 from typing import Optional, List, Dict, Any
 
-from sqlalchemy import select, and_, func, desc, asc
+from sqlalchemy import select, and_, func, desc, asc, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import DataQualityCheck
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.models.business_models import DataQualityCheck
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
@@ -108,6 +108,26 @@ class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
 			return result.scalars().all()
 		except Exception as e:
 			raise RepositoryError(f"获取检查日期记录失败: {str(e)}")
+
+	async def get_by_clean_id (self, clean_id: str) -> Optional[DataQualityCheck]:
+		"""
+		根据 clean_id（存储在 check_results JSON 中）查找记录
+
+		Args:
+			clean_id: 清洗任务ID
+
+		Returns:
+			匹配的 DataQualityCheck 记录，未找到返回 None
+		"""
+		try:
+			query = select(self.model).where(
+				cast(self.model.check_results['clean_id'], String) == clean_id
+			).order_by(desc(self.model.created_at)).limit(1)
+
+			result = await self.session.execute(query)
+			return result.scalars().first()
+		except Exception as e:
+			raise RepositoryError(f"根据 clean_id 获取记录失败: {str(e)}")
 
 	async def get_by_data_type (
 			self,

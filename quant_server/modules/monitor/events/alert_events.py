@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from quant_server.modules.monitor.constants import AlertLevel, AlertType
+from modules.monitor.constants import AlertLevel, AlertType
 
 
 @dataclass

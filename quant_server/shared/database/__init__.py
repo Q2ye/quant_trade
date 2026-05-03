@@ -6,10 +6,10 @@
 职责：数据库基础设施，所有模块共享使用
 
 导入指南：
-  会话管理    → from quant_server.shared.database import get_db_session, DBSessionDep
-  事务管理    → from quant_server.shared.database import atomic, transaction_scope
-  数据模型    → from quant_server.shared.database.models import StockBasic, Order, ...
-  数据仓库    → from quant_server.shared.database.repositories import OrderRepository, ...
+  会话管理    → from shared.database import get_db_session, DBSessionDep
+  事务管理    → from shared.database import atomic, transaction_scope
+  数据模型    → from shared.database.models import StockBasic, Order, ...
+  数据仓库    → from shared.database.repositories import OrderRepository, ...
 """
 
 # ============================================

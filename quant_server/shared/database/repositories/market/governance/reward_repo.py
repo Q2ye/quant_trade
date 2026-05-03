@@ -14,8 +14,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StkReward
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.data_models import StkReward
+from shared.database.repositories.base import BaseRepository
 
 
 class RewardRepository(BaseRepository[StkReward]):
@@ -54,7 +54,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(StkReward).join(
 			StkManager, StkReward.manager_id == StkManager.id
@@ -118,7 +118,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(StkReward).join(
 			StkManager, StkReward.manager_id == StkManager.id
@@ -150,7 +150,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			最近的分红送股记录列表
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(StkReward).join(
 			StkManager, StkReward.manager_id == StkManager.id
@@ -178,7 +178,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			年度分红统计信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(
 			func.extract('year', StkReward.ann_date).label('year'),
@@ -241,7 +241,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红统计信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		# 基础查询
 		query = select(
@@ -295,7 +295,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红总额最高的股票列表
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(
 			StkManager.ts_code,
@@ -341,7 +341,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			持股数量统计信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		result = await self.session.execute(
 			select(
@@ -383,7 +383,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红趋势数据
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		current_year = datetime.now().year
 		start_year = current_year - years + 1
@@ -433,7 +433,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			管理层的分红汇总信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		result = await self.session.execute(
 			select(
@@ -481,7 +481,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			符合条件股票的分红信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		query = select(
 			StkManager.ts_code,
@@ -563,7 +563,7 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股数据摘要信息
 		"""
-		from quant_server.shared.database.models.data_models import StkManager
+		from shared.database.models.data_models import StkManager
 
 		# 总记录数
 		total_count = await self.count()

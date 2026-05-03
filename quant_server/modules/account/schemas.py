@@ -200,7 +200,7 @@ class WithdrawRequest(BaseModel):
 	amount: float = Field(..., gt=0, description="取款金额")
 
 
-from quant_server.utils.api_utils.pagination_config import PaginationParams
+from utils.api_utils.pagination_config import PaginationParams
 
 
 class AccountListRequest(PaginationParams):

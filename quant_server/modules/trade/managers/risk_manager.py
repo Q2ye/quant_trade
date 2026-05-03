@@ -1,7 +1,7 @@
 # risk_manager.py       # 风险管理器
 
 from typing import Dict, Any, Optional, List
-from quant_server.core.engines.system import EventEngine
+from core.engines.system import EventEngine
 
 
 class RiskManager:

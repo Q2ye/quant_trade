@@ -11,11 +11,11 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入系统模块的业务层处理函数
-from quant_server.modules.system.handlers import (
+from modules.system.handlers import (
 	get_system_status,
 	get_system_logs,
 	get_system_settings,
@@ -44,7 +44,7 @@ from quant_server.modules.system.handlers import (
 	delete_role,
 )
 # 导入系统模块的Pydantic模型
-from quant_server.modules.system.schemas import (
+from modules.system.schemas import (
 	SystemStatusResponse,
 	SystemLogsRequest,
 	SystemLogsResponse,
@@ -72,7 +72,7 @@ from quant_server.modules.system.schemas import (
 	RoleDetailResponse,
 )
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -408,6 +408,7 @@ async def login_api (
 	"""
 	try:
 		ip = getattr(request, "_ip", "")
+		logger.info(f"用户 {request.username} 从 {ip} 登录")
 		result = await login(
 			session=db_session,
 			username=request.username,
@@ -453,7 +454,7 @@ async def refresh_token_api (
 	try:
 		result = await refresh_token(
 			session=db_session,
-			refresh_token=request.refresh_token,
+			token=request.refresh_token,
 		)
 		return result
 	except ValueError as e:

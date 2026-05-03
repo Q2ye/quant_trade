@@ -7,7 +7,7 @@
 import logging
 from typing import Dict, List
 
-from quant_server.shared.database.repositories.system.auth.user_repo import UserRepository
+from shared.database.repositories.system.auth.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
 

@@ -14,9 +14,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, func, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import StrategyDailyPerformance
-from quant_server.shared.database.repositories.base import RepositoryError
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.models.business_models import StrategyDailyPerformance
+from shared.database.repositories.base import RepositoryError
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
 
 class StrategyDailyPerformanceRepository(HyperRepositoryBase[StrategyDailyPerformance]):
@@ -401,9 +401,14 @@ class StrategyDailyPerformanceRepository(HyperRepositoryBase[StrategyDailyPerfor
 			result = await self.session.execute(query)
 			row = result.one()
 
-			# 计算月度波动率和夏普比率（简化计算）
-			monthly_volatility = float(row.std_daily_return) * (22 ** 0.5) if row.std_daily_return else 0.0
-			sharpe_ratio = (float(row.monthly_return) / monthly_volatility) if monthly_volatility != 0 else 0.0
+			# 计算年化波动率与夏普比率
+			daily_vol = float(row.std_daily_return) if row.std_daily_return else 0.0
+			trading_days = row.trading_days if row.trading_days else 21
+			# 月波动率 = 日波动率 × √当月交易日数
+			monthly_volatility = daily_vol * (trading_days ** 0.5)
+			# 年化夏普比率 = (日均收益 / 日波动率) × √252（假设无风险利率为 0）
+			avg_daily = float(row.avg_daily_return) if row.avg_daily_return else 0.0
+			sharpe_ratio = (avg_daily / daily_vol) * (252 ** 0.5) if daily_vol > 0 else 0.0
 
 			return {
 				'strategy_id': strategy_id,

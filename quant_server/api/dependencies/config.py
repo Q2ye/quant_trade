@@ -9,7 +9,7 @@
 import logging
 from typing import Any
 
-from quant_server.shared.config.config_manager import get_config, ConfigSettings
+from shared.config.config_manager import get_config, ConfigSettings
 
 logger = logging.getLogger(__name__)
 

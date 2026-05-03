@@ -6,8 +6,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import AccountTransaction
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.business_models import AccountTransaction
+from shared.database.repositories.base import BaseRepository
 
 
 class AccountTransactionRepository(BaseRepository[AccountTransaction]):
@@ -146,7 +146,7 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 	                              reference_type: Optional[str] = None) -> AccountTransaction:
 		"""创建账户流水记录"""
 		# 获取账户当前余额（需要从账户表中查询）
-		from quant_server.shared.database.models.business_models import Account
+		from shared.database.models.business_models import Account
 
 		account_query = select(Account).where(Account.id == account_id)
 		account_result = await self.session.execute(account_query)

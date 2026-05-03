@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from quant_server.modules.monitor.events.types import RiskMetricsData
+from modules.monitor.events.types import RiskMetricsData
 
 
 @dataclass

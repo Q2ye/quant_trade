@@ -17,8 +17,8 @@ from sqlalchemy import select, and_, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.system_models import ChunkMetadata
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.system_models import ChunkMetadata
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class ChunkManager(BaseRepository[ChunkMetadata]):

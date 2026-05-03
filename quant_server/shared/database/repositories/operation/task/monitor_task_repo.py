@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, asc, cast, Integer
 
-from quant_server.shared.database.models.business_models import MonitorTask
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository
+from shared.database.models.business_models import MonitorTask
+from shared.database.repositories.base.repository_base import BaseRepository
 
 
 async def _is_task_due (task: MonitorTask, current_time: datetime) -> bool:

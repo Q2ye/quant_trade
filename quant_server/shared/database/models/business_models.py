@@ -4,11 +4,12 @@ business_models.py
 位置：shared/database/models/business_models.py
 """
 
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolean, Text, ForeignKey, JSON, \
     UniqueConstraint, Date, Index, BigInteger
 from sqlalchemy.orm import relationship
-from datetime import datetime, timezone
-import uuid
 
 from .base import Base
 
@@ -41,10 +42,13 @@ class SysUser(Base):
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     backtest_tasks = relationship("BacktestTask", back_populates="user", cascade="all, delete-orphan")
     system_logs = relationship("SystemLog", back_populates="user", cascade="all, delete-orphan")
-    user_roles = relationship("SysUserRole", back_populates="user", foreign_keys="SysUserRole.user_id", cascade="all, delete-orphan")
-    user_preferences = relationship("UserPreference", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    user_roles = relationship("SysUserRole", back_populates="user", foreign_keys="SysUserRole.user_id",
+                              cascade="all, delete-orphan")
+    user_preferences = relationship("UserPreference", back_populates="user", cascade="all, delete-orphan",
+                                    uselist=False)
     api_usage_logs = relationship("ApiUsageLog", back_populates="user", cascade="all, delete-orphan")
-    factor_research = relationship("FactorResearch", back_populates="user", foreign_keys="FactorResearch.user_id", cascade="all, delete-orphan")
+    factor_research = relationship("FactorResearch", back_populates="user", foreign_keys="FactorResearch.user_id",
+                                   cascade="all, delete-orphan")
 
 
 class SysRole(Base):
@@ -1282,8 +1286,6 @@ class FactorResearch(Base):
         return f"<FactorResearch(id={self.id}, research_id={self.research_id}, factor={self.factor_name}, status={self.status})>"
 
 
-
-
 # ==================== 分析相关 ====================
 
 class AnalysisReport(Base):
@@ -1291,7 +1293,8 @@ class AnalysisReport(Base):
     __tablename__ = 'analysis_reports'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='报告ID')
-    report_type = Column(String(50), nullable=False, comment='报告类型：daily, weekly, monthly, performance, risk, custom')
+    report_type = Column(String(50), nullable=False,
+                         comment='报告类型：daily, weekly, monthly, performance, risk, custom')
     report_name = Column(String(200), nullable=False, comment='报告名称')
     report_config = Column(JSON, nullable=False, default=dict, comment='报告生成配置（JSON格式）')
     report_data = Column(JSON, comment='报告数据（JSON格式）')
@@ -1521,7 +1524,8 @@ class MonitorAlert(Base):
     __tablename__ = 'monitor_alerts'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='报警ID')
-    alert_type = Column(String(50), nullable=False, comment='报警类型：system_error, risk_trigger, data_quality, performance')
+    alert_type = Column(String(50), nullable=False,
+                        comment='报警类型：system_error, risk_trigger, data_quality, performance')
     alert_level = Column(String(20), nullable=False, comment='报警级别：critical, warning, info')
     source_module = Column(String(50), nullable=False, comment='报警来源模块')
     source_id = Column(String(100), comment='报警来源ID')

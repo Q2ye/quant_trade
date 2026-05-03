@@ -10,8 +10,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.business_models import SysPermission
-from quant_server.shared.database.repositories.base import BaseRepository, RepositoryError
+from shared.database.models.business_models import SysPermission
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class PermissionRepository:

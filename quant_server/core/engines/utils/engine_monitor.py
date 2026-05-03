@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
 # 导入统一类型定义
-from quant_server.core.events.engine_events import EngineLifecycleEvent
+from core.events.engine_events import EngineLifecycleEvent
 
 from ..types.entities import (
 	Metric as MetricEntity,

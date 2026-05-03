@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 # 导入核心事件基类
-from quant_server.core.events import BaseEvent
-from quant_server.modules.data.events.types import DataEventType, DataEventPriority
+from core.events import BaseEvent
+from modules.data.events.types import DataEventType, DataEventPriority
 
 
 class DataCleanStatus(str, Enum):
@@ -67,12 +67,13 @@ class DataCleanResult:
 
 
 class DataCleanEvent(BaseEvent):
-	"""数据清洗事件基类"""
+	"""数据清洗事件 — 同时作为所有清洗事件的基类和通用清洗事件"""
 
 	def __init__ (
 			self,
 			clean_id: str,
-			data_type: str,
+			event_type: str,
+			data_type: Optional[str] = None,
 			user_id: Optional[int] = None,
 			**kwargs
 	):
@@ -81,13 +82,13 @@ class DataCleanEvent(BaseEvent):
 
 		Args:
 			clean_id: 清洗任务ID
+			event_type: 事件类型（如 data.clean.started）
 			data_type: 数据类型
 			user_id: 用户ID
-			timestamp: 事件时间戳
-			**kwargs: 其他参数
+			**kwargs: 其他参数（event_priority、timestamp 等存入 data 字典）
 		"""
 		super().__init__(
-			event_type="data.clean.base",
+			event_type=event_type,
 			source="data_module",
 			module="data",
 			data=kwargs
@@ -278,38 +279,6 @@ class DataCleanValidatedEvent(DataCleanEvent):
 		self.message = f"数据验证完成: {ts_code} - {trade_date.date()} ({validity}, 错误数: {error_count})"
 
 
-# 简化的DataCleanEvent（用于向后兼容）
-class DataCleanEvent(BaseEvent):
-	"""数据清洗事件（简化版，用于clean_service.py的直接使用）"""
-
-	def __init__ (
-			self,
-			clean_id: str,
-			event_type: str,
-			data_type: Optional[str] = None,
-			user_id: Optional[int] = None,
-			**kwargs
-	):
-		"""
-		初始化数据清洗事件（简化版）
-
-		注意：这个类是向后兼容的简化版本，推荐使用具体的事件类
-		"""
-		super().__init__(
-			event_type=event_type,
-			source="data_module",
-			module="data",
-			data=kwargs
-		)
-		self.clean_id = clean_id
-		self.data_type = data_type
-		self.user_id = user_id
-
-		# 将其他参数添加到事件数据中
-		for key, value in kwargs.items():
-			setattr(self, key, value)
-
-
 # 导出所有清洗事件类
 __all__ = [
 	# 元数据和辅助类
@@ -326,6 +295,6 @@ __all__ = [
 	"DataCleanAppliedEvent",
 	"DataCleanValidatedEvent",
 
-	# 简化事件类（向后兼容）
+	# 清洗事件基类
 	"DataCleanEvent",
 ]

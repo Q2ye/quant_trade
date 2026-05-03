@@ -12,9 +12,9 @@
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-from quant_server.core.events.base import BaseEvent, EventPriority
-from quant_server.modules.data.events.types import DataEventType
-from quant_server.modules.data.constants import QualityCheckStatus
+from core.events.base import BaseEvent, EventPriority
+from modules.data.events.types import DataEventType
+from modules.data.constants import QualityCheckStatus
 
 
 

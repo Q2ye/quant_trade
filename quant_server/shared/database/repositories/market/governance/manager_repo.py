@@ -16,8 +16,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, or_, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import StkManager
-from quant_server.shared.database.repositories.base import BaseRepository
+from shared.database.models.data_models import StkManager
+from shared.database.repositories.base import BaseRepository
 
 
 class ManagerRepository(BaseRepository[StkManager]):

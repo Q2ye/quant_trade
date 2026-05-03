@@ -7,12 +7,12 @@ import logging
 from datetime import datetime, date
 from typing import Dict, List, Optional, Any
 
-from quant_server.modules.account.events.reconciliation_events import ReconciliationEvent
-from quant_server.modules.account.managers.reconciliation_manager import ReconciliationManager
-from quant_server.modules.account.services.account_service import AccountService
-from quant_server.shared.database.repositories.account.asset.account_repo import AccountRepository
-from quant_server.shared.database.repositories.trading.order.trade_repo import TradeRepository
-from quant_server.shared.database.repositories.trading.position.position_repo import PositionRepository
+from modules.account.events.reconciliation_events import ReconciliationEvent
+from modules.account.managers.reconciliation_manager import ReconciliationManager
+from modules.account.services.account_service import AccountService
+from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.trading.order.trade_repo import TradeRepository
+from shared.database.repositories.trading.position.position_repo import PositionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class ReconciliationTasks:
 
 		# 初始化管理器
 		if reconciliation_manager is None:
-			from quant_server.modules.account.managers.reconciliation_manager import ReconciliationManager
+			from modules.account.managers.reconciliation_manager import ReconciliationManager
 			self.reconciliation_manager = ReconciliationManager(
 				db=account_repo.session
 			)
@@ -581,7 +581,7 @@ _reconciliation_tasks: Optional[ReconciliationTasks] = None
 
 async def _create_reconciliation_tasks () -> ReconciliationTasks:
 	"""创建对账任务实例（异步）"""
-	from quant_server.shared.database.session.connection_pool import get_connection_pool
+	from shared.database.session.connection_pool import get_connection_pool
 
 	# 获取连接池
 	connection_pool = get_connection_pool()

@@ -11,11 +11,11 @@ from typing import Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.api.dependencies.auth import get_current_user
+from api.dependencies.auth import get_current_user
 # 导入架构依赖
-from quant_server.api.dependencies.database import get_db_session
+from api.dependencies.database import get_db_session
 # 导入交易模块的业务层处理函数
-from quant_server.modules.trade.handlers import (
+from modules.trade.handlers import (
 	get_order_list,
 	get_order_detail,
 	create_order,
@@ -28,7 +28,7 @@ from quant_server.modules.trade.handlers import (
 	check_trade_module_health
 )
 # 导入交易模块的Pydantic模型
-from quant_server.modules.trade.schemas import (
+from modules.trade.schemas import (
 	OrderListRequest,
 	OrderListResponse,
 	OrderDetailResponse,
@@ -44,7 +44,7 @@ from quant_server.modules.trade.schemas import (
 	AccountSummaryResponse
 )
 # 导入响应格式化工具
-from quant_server.utils.api_utils.response_formatter import success_response, error_response
+from utils.api_utils.response_formatter import success_response, error_response
 
 # 配置日志
 logger = logging.getLogger(__name__)

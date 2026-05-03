@@ -13,11 +13,11 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from quant_server.core.engines.base.engine_base import EngineBase
-from quant_server.core.engines.types.entities import EngineConfigEntity
-from quant_server.core.engines.types.enums import EngineType
-from quant_server.modules.monitor.constants import ModuleConfig
-from quant_server.modules.monitor.services.business_service import BusinessMonitorService
+from core.engines.base.engine_base import EngineBase
+from core.engines.types.entities import EngineConfigEntity
+from core.engines.types.enums import EngineType
+from modules.monitor.constants import ModuleConfig
+from modules.monitor.services.business_service import BusinessMonitorService
 
 logger = logging.getLogger(__name__)
 

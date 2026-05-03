@@ -11,9 +11,10 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, desc, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import EtfMinute, EtfBasic
-from quant_server.shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
-from quant_server.shared.database.repositories.types import TimeRange
+from core import BusinessException
+from shared.database.models.data_models import EtfMinute, EtfBasic
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.repositories.types import TimeRange
 
 
 class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
@@ -363,19 +364,29 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 		# 由于实际表结构未知，这里提供框架逻辑
 		premium_data = []
 
+		# 批量查询对应时点的指数分钟数据（若index_minute表存在）
+		index_prices = {}
+		try:
+			from sqlalchemy import text
+			index_data = await self.session.execute(
+				text("SELECT trade_time, close FROM index_minute "
+				     "WHERE ts_code = :idx_code AND trade_date = :td AND freq = :f"),
+				{"idx_code": etf_basic.index_code, "td": trade_date, "f": freq}
+			)
+			for row in index_data.fetchall():
+				index_prices[row.trade_time] = float(row.close)
+		except BusinessException:
+			pass  # index_minute 表可能不存在，降级处理
+
 		for etf_record in etf_data:
-			# 这里应该查询对应时间的指数数据
-			# index_price = await get_index_minute_price(etf_basic.index_code, etf_record.trade_time, freq)
-			# 由于没有具体实现，暂时用ETF价格代替
-
 			etf_price = float(etf_record.close)
-			# 假设指数价格（实际应用中需要从指数数据源获取）
-			index_price = etf_price * 0.995  # 示例：假设折价0.5%
+			# 查询对应时间的指数价格，若无数据则标注为不可用
+			index_price = index_prices.get(etf_record.trade_time)
 
-			if index_price > 0:
+			if index_price and index_price > 0:
 				premium_rate = (etf_price - index_price) / index_price * 100
 			else:
-				premium_rate = 0
+				premium_rate = None  # 指数数据不可用时折溢价率标记为空
 
 			premium_data.append({
 				"time": etf_record.trade_time,
@@ -443,13 +454,31 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 			else:
 				liquidity_score = 20
 
-		# 计算价格冲击成本（简化版）
+		# 计算价格冲击成本 — Amihud日内非流动性指标
+		# λ_i = |r_i| / dollar_vol_i，price_impact = avg(λ_i) × 10^7 (% per 10万元)
 		if price_changes and avg_amount > 0:
-			avg_price_change = sum(price_changes) / len(price_changes)
-			# 价格冲击 = 平均价格变化 / 平均成交金额的对数
-			price_impact = avg_price_change / (avg_amount ** 0.5) * 10000
+			amihud_vals = []
+			for i, pc in enumerate(price_changes):
+				idx = i + 1  # price_changes[i] 对应 intraday_data[i+1]
+				minute_amount = amounts[idx]
+				if minute_amount > 0:
+					dollar_vol = minute_amount * 1000  # amount单位为千元，转为元
+					amihud_vals.append(pc / dollar_vol)
+			if amihud_vals:
+				amihud_avg = sum(amihud_vals) / len(amihud_vals)
+				# 标准化：每10万元成交额的预期价格冲击百分比
+				price_impact = amihud_avg * 1e7
+				amihud_intraday = amihud_avg * 1e6  # 常规Amihud量级(×10^6)
+				valid_intervals = len(amihud_vals)
+			else:
+				amihud_avg = 0
+				price_impact = 0
+				amihud_intraday = 0
+				valid_intervals = 0
 		else:
+			amihud_intraday = 0
 			price_impact = 0
+			valid_intervals = 0
 
 		return {
 			"ts_code": ts_code,
@@ -470,9 +499,12 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 				"volume_volatility": (max(volumes) - min(volumes)) / avg_volume * 100 if avg_volume > 0 else 0
 			},
 			"price_analysis": {
-				"price_impact": price_impact,
+				"price_impact": round(price_impact, 6),
 				"impact_level": "low" if price_impact < 0.1 else "medium" if price_impact < 0.5 else "high",
-				"avg_price_change": sum(price_changes) / len(price_changes) * 100 if price_changes else 0
+				"amihud_intraday": round(amihud_intraday, 6),
+				"valid_intervals": valid_intervals,
+				"total_intervals": len(price_changes),
+				"avg_price_change_bps": round(sum(price_changes) / len(price_changes) * 10000, 2) if price_changes else 0
 			},
 			"time_distribution": self._analyze_time_distribution(intraday_data, volumes)
 		}
@@ -562,6 +594,35 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 		if not etf_basic or not etf_basic.index_code:
 			return []
 
+		# 获取对应时点的指数价格用于精确套利分析
+		index_prices = {}
+		try:
+			from sqlalchemy import text
+			index_data = await self.session.execute(
+				text("SELECT trade_time, close FROM index_minute "
+				     "WHERE ts_code = :idx_code AND trade_date = :td AND freq = '1min'"),
+				{"idx_code": etf_basic.index_code, "td": trade_date}
+			)
+			for row in index_data.fetchall():
+				index_prices[row.trade_time] = float(row.close)
+		except BusinessException:
+			pass
+
+		# 若分钟级指数数据不可用，尝试用日线指数价格作为基准
+		index_daily_price = None
+		if not index_prices:
+			try:
+				from sqlalchemy import text
+				idx_result = await self.session.execute(
+					text("SELECT close FROM index_daily WHERE ts_code = :idx_code AND trade_date = :td"),
+					{"idx_code": etf_basic.index_code, "td": trade_date}
+				)
+				idx_row = idx_result.fetchone()
+				if idx_row:
+					index_daily_price = float(idx_row.close)
+			except BusinessException:
+				pass
+
 		# 分析套利机会
 		opportunities = []
 
@@ -572,34 +633,28 @@ class EtfMinuteRepository(HyperRepositoryBase[EtfMinute]):
 			current_price = float(current_record.close)
 			prev_price = float(prev_record.close)
 
-			# 计算价格变化
 			if prev_price > 0:
 				price_change = (current_price - prev_price) / prev_price * 100
 
-				# 检测大幅折溢价机会
-				# 这里简化处理，实际需要指数数据
-				# 假设正常情况下ETF与指数的偏差在±0.3%以内
+				# 获取对应时点指数价格：优先分钟数据 → 日线数据 → 跳过
+				index_price = index_prices.get(current_record.trade_time, index_daily_price)
+				if index_price is None:
+					continue  # 无指数基准数据，跳过该时点
 
-				# 随机生成模拟的指数价格（实际应用中需要真实数据）
-				import random
-				index_price = current_price * (1 + random.uniform(-0.002, 0.002))
+				deviation = (current_price - index_price) / index_price * 100
 
-				if index_price > 0:
-					deviation = (current_price - index_price) / index_price * 100
-
-					# 如果偏差超过阈值，可能存在套利机会
-					if abs(deviation) > threshold:
-						opportunities.append({
-							"time": current_record.trade_time,
-							"etf_price": current_price,
-							"index_price": index_price,
-							"deviation": deviation,
-							"volume": current_record.vol,
-							"opportunity_type": "premium" if deviation > 0 else "discount",
-							"magnitude": abs(deviation),
-							"price_change_since_prev": price_change,
-							"volume_change": current_record.vol - prev_record.vol
-						})
+				if abs(deviation) > threshold:
+					opportunities.append({
+						"time": current_record.trade_time,
+						"etf_price": current_price,
+						"index_price": index_price,
+						"deviation": deviation,
+						"volume": current_record.vol,
+						"opportunity_type": "premium" if deviation > 0 else "discount",
+						"magnitude": abs(deviation),
+						"price_change_since_prev": price_change,
+						"volume_change": current_record.vol - prev_record.vol
+					})
 
 		# 按套利幅度排序
 		opportunities.sort(key=lambda x: x["magnitude"], reverse=True)

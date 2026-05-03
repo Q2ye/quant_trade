@@ -12,8 +12,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import select, and_, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quant_server.shared.database.models.data_models import FinancialStatement
-from quant_server.shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
+from shared.database.models.data_models import FinancialStatement
+from shared.database.repositories.base.repository_base import BaseRepository, RepositoryError
 
 
 class ReportType(Enum):
