@@ -19,6 +19,7 @@ from shared.database.repositories.strategy.management import (
 	StrategyRepository,
 	StrategyRunRepository,
 )
+from shared.database.repositories import TradeRepository
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class ExecutionService:
 		self.session = session
 		self.strategy_repo = StrategyRepository(session)
 		self.strategy_run_repo = StrategyRunRepository(session)
+		self.trade_repo = TradeRepository(session)
 		self._running_strategies: Dict[str, StrategyState] = {}
 
 	async def start_strategy (
@@ -464,10 +466,27 @@ class ExecutionService:
 		if not runs:
 			return {}
 
-		# 简化实现，实际需要根据成交记录计算
+		# 从成交记录计算实际绩效
+		trades = await self.trade_repo.get_by_strategy_id(
+			strategy_id, limit=100000
+		)
+
+		total_trades = len(trades)
+		winning_trades = 0
+		losing_trades = 0
+		total_pnl = 0.0
+
+		for trade in trades:
+			pnl = float(trade.pnl) if hasattr(trade, 'pnl') else 0.0
+			total_pnl += pnl
+			if pnl > 0:
+				winning_trades += 1
+			elif pnl < 0:
+				losing_trades += 1
+
 		return {
-			"total_trades": 0,
-			"winning_trades": 0,
-			"losing_trades": 0,
-			"total_pnl": 0.0,
+			"total_trades": total_trades,
+			"winning_trades": winning_trades,
+			"losing_trades": losing_trades,
+			"total_pnl": round(total_pnl, 4),
 		}

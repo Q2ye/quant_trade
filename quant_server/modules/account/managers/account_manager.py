@@ -317,6 +317,10 @@ class AccountManager:
 			# 4. 计算当日盈亏
 			daily_pnl = await self.pnl_calculator.calculate_daily_pnl(account_id, trade_date)
 
+			# 计算日收益率 = 日盈亏 / 期初总资产
+			beginning_asset = account.total_balance - daily_pnl.total_pnl
+			daily_return = (daily_pnl.total_pnl / beginning_asset) if beginning_asset > 0 else Decimal('0')
+
 			# 5. 记录结算信息
 			await self.account_service.record_daily_settlement(
 				account_id=account_id,
@@ -325,7 +329,7 @@ class AccountManager:
 				cash=account.available_balance,
 				market_value=account.market_value,
 				daily_pnl=daily_pnl.total_pnl,
-				daily_return=Decimal('0')  # 简化处理，实际需要计算
+				daily_return=daily_return
 			)
 
 			# 6. 清理临时数据
@@ -352,7 +356,7 @@ class AccountManager:
 				"trade_date": trade_date.isoformat(),
 				"total_asset": float(account.total_balance),
 				"daily_pnl": float(daily_pnl.total_pnl),
-				"daily_return": 0.0,  # 简化处理，实际需要计算
+				"daily_return": float(daily_return),
 				"message": "日终结算完成"
 			}
 

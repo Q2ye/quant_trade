@@ -57,7 +57,7 @@ class ModuleConfig:
 	config: Dict[str, Any] = field(default_factory=dict)
 
 	@with_context(module="module_config", source="config_loader")
-	def validate (self) -> bool:
+	def validate(self) -> bool:
 		"""验证模块配置"""
 		if not self.name:
 			logger.error("模块名称不能为空")
@@ -74,7 +74,7 @@ class ModuleConfig:
 class StartupConfig:
 	"""启动配置 - 基于 settings.py 的完整配置"""
 
-	def __init__ (self, config_path: Optional[str] = None):
+	def __init__(self, config_path: Optional[str] = None):
 		"""初始化启动配置"""
 		# 使用新的配置管理器加载配置
 		self.config_manager = get_config()
@@ -82,7 +82,7 @@ class StartupConfig:
 		self._load_config(config_path)
 
 	@with_context(operation="load_startup_config", source="config_manager")
-	def _load_config (self, _config_path: Optional[str] = None):
+	def _load_config(self, _config_path: Optional[str] = None):
 		"""加载配置"""
 		# 基础设置
 		self.settings = self.config_manager.settings
@@ -97,7 +97,7 @@ class StartupConfig:
 		logger.info("配置加载完成，使用统一配置管理器")
 
 	@with_context(operation="apply_config_data", source="config_manager")
-	def _apply_config_data (self, config_data: Dict[str, Any]):
+	def _apply_config_data(self, config_data: Dict[str, Any]):
 		"""应用配置数据"""
 		# 基础配置
 		self.system_name = config_data.get('name', self.settings.APP_NAME)
@@ -157,7 +157,7 @@ class StartupConfig:
 		})
 
 	@with_context(operation="apply_default_config", source="config_loader")
-	def _apply_default_config (self):
+	def _apply_default_config(self):
 		"""应用默认配置"""
 		# 基础配置
 		self.system_name = self.settings.APP_NAME
@@ -201,7 +201,7 @@ class StartupConfig:
 
 		logger.info("使用默认配置")
 
-	def get_system_config (self) -> Dict[str, Any]:
+	def get_system_config(self) -> Dict[str, Any]:
 		"""获取系统配置字典"""
 		return {
 			"system": {
@@ -255,7 +255,7 @@ class QuantServer:
 	使用结构化日志工具包，提供完整的上下文感知日志记录
 	"""
 
-	def __init__ (self, config_path: Optional[str] = None):
+	def __init__(self, config_path: Optional[str] = None):
 		"""初始化服务器
 
 		Args:
@@ -308,7 +308,7 @@ class QuantServer:
 			})
 
 	@with_context(operation="setup_logging", source="main_server")
-	def setup_logging (self):
+	def setup_logging(self):
 		"""设置日志系统"""
 		# 从 ConfigLoader 获取日志配置
 		log_config = {
@@ -336,7 +336,7 @@ class QuantServer:
 		logger.debug("日志管理器统计", extra={"stats": stats})
 
 	@with_context(operation="log_configuration", source="main_server")
-	def _log_configuration (self):
+	def _log_configuration(self):
 		"""记录配置信息"""
 		# 获取系统配置（用于日志记录）
 		self.config.get_system_config()
@@ -371,7 +371,7 @@ class QuantServer:
 		logger.info("=" * 80)
 
 	@log_performance(operation="initialize_system", level=LogLevel.INFO)
-	async def initialize (self) -> bool:
+	async def initialize(self) -> bool:
 		"""初始化系统
 
 		Returns:
@@ -417,7 +417,7 @@ class QuantServer:
 				return False
 
 	@log_performance(operation="initialize_api_app", level=LogLevel.DEBUG)
-	async def _initialize_api_app (self) -> None:
+	async def _initialize_api_app(self) -> None:
 		"""初始化FastAPI应用"""
 		with get_context_manager().context_manager(
 				operation="api_app_initialization",
@@ -431,10 +431,9 @@ class QuantServer:
 				version=self.config.version,
 				description="量化交易平台API",
 				docs_url="/docs" if self.config.mode != "production" else None,
-			,
-					enabled_modules=self.config.enabled_modules,,
-					cors_origins=self.config.settings.API.CORS_ORIGINS,
-				)
+				enabled_modules=self.config.enabled_modules,
+				cors_origins=self.config.settings.API.CORS_ORIGINS,
+			)
 
 			logger.info("FastAPI应用初始化完成", extra={
 				"title": self.config.system_name,
@@ -444,7 +443,7 @@ class QuantServer:
 			})
 
 	@log_performance(operation="initialize_api_database", level=LogLevel.DEBUG)
-	async def _initialize_api_database (self) -> None:
+	async def _initialize_api_database(self) -> None:
 		"""初始化API层数据库依赖"""
 		with get_context_manager().context_manager(
 				operation="api_database_initialization",
@@ -463,10 +462,10 @@ class QuantServer:
 
 			except Exception as e:
 				logger.error(f"API层数据库依赖初始化异常: {str(e)}", exc_info=True)
-			# 不阻塞启动，因为共享层数据库已经初始化成功
+		# 不阻塞启动，因为共享层数据库已经初始化成功
 
 	@log_performance(operation="initialize_event_engine", level=LogLevel.DEBUG)
-	async def _initialize_event_engine (self) -> None:
+	async def _initialize_event_engine(self) -> None:
 		"""初始化事件引擎"""
 		with get_context_manager().context_manager(
 				operation="event_engine_initialization",
@@ -505,7 +504,7 @@ class QuantServer:
 				raise
 
 	@log_performance(operation="initialize_main_engine", level=LogLevel.DEBUG)
-	async def _initialize_main_engine (self) -> None:
+	async def _initialize_main_engine(self) -> None:
 		"""初始化主引擎"""
 		with get_context_manager().context_manager(
 				operation="main_engine_initialization",
@@ -540,7 +539,7 @@ class QuantServer:
 				raise
 
 	@with_context(operation="initialize_modules", source="main_server")
-	async def _initialize_modules (self) -> None:
+	async def _initialize_modules(self) -> None:
 		"""初始化模块"""
 		if not self.enabled_modules:
 			logger.info("没有启用的模块，跳过模块初始化")
@@ -580,7 +579,7 @@ class QuantServer:
 						# 检查函数是否是异步的
 						import inspect
 						if inspect.iscoroutinefunction(module.initialize):
-							init_result = await module.initialize(
+							init_result = module.initialize(
 								main_engine=self.main_engine,
 								event_engine=self.event_engine,
 								config={
@@ -609,7 +608,7 @@ class QuantServer:
 				except Exception as e:
 					logger.exception(f"模块 {module_name} 初始化失败", exception=e)
 
-	def _get_module_settings (self, module_name: str) -> Dict[str, Any]:
+	def _get_module_settings(self, module_name: str) -> Dict[str, Any]:
 		"""获取模块特定的settings配置"""
 		settings_map = {
 			"data": {
@@ -646,7 +645,7 @@ class QuantServer:
 		return settings_map.get(module_name, {})
 
 	@staticmethod
-	async def _load_module (module_name: str) -> Optional[Any]:
+	async def _load_module(module_name: str) -> Optional[Any]:
 		"""动态加载模块"""
 		try:
 			module_path = f"quant_server.modules.{module_name}"
@@ -661,7 +660,7 @@ class QuantServer:
 			logger.exception(f"模块加载异常: {module_name}", exception=e)
 			return None
 
-	async def _sort_modules_by_dependency (self) -> List[str]:
+	async def _sort_modules_by_dependency(self) -> List[str]:
 		"""按依赖关系对模块进行排序"""
 		# 构建依赖图
 		graph: Dict[str, Set[str]] = {}
@@ -673,7 +672,7 @@ class QuantServer:
 		visited: Dict[str, int] = {}
 		result: List[str] = []
 
-		def dfs (node: str) -> bool:
+		def dfs(node: str) -> bool:
 			if visited.get(node) == 1:
 				logger.error(f"检测到循环依赖: {node}")
 				return False
@@ -694,7 +693,7 @@ class QuantServer:
 
 		# 对每个未访问的节点执行DFS
 		for module_node in self.enabled_modules:
-			if visited.get(module_node) == 0:
+			if visited.get(module_node, 0) != 0:
 				continue
 			if not dfs(module_node):
 				logger.warning("检测到循环依赖，使用默认顺序")
@@ -703,14 +702,14 @@ class QuantServer:
 		return result
 
 	@with_context(operation="register_lifecycle_events", source="main_server")
-	async def _register_lifecycle_events (self) -> None:
+	async def _register_lifecycle_events(self) -> None:
 		"""注册生命周期事件"""
 		if not self.app:
 			return
 
 		# 使用现代的生命周期事件处理方式（替代过时的@app.on_event）
 		@self.app.router.lifespan_context
-		async def lifespan_context (_app):
+		async def lifespan_context(_app):
 			# Startup
 			with get_context_manager().context_manager(
 					operation="fastapi_startup",
@@ -790,7 +789,7 @@ class QuantServer:
 				})
 
 	@with_context(operation="shutdown_modules", source="main_server")
-	async def _shutdown_modules (self) -> None:
+	async def _shutdown_modules(self) -> None:
 		"""关闭所有模块"""
 		if not self.loaded_modules:
 			logger.info("没有加载的模块，跳过关闭")
@@ -812,7 +811,7 @@ class QuantServer:
 						# 检查函数是否是异步的
 						import inspect
 						if inspect.iscoroutinefunction(module.shutdown):
-							await module.shutdown()
+							module.shutdown()
 						else:
 							module.shutdown()
 						logger.info(f"模块 {module_name} 关闭成功")
@@ -826,7 +825,7 @@ class QuantServer:
 		logger.info("所有模块关闭完成")
 
 	@log_performance(operation="start_server", level=LogLevel.INFO)
-	async def start_server (self) -> None:
+	async def start_server(self) -> None:
 		"""启动服务器"""
 		if not self.app:
 			error("FastAPI应用未初始化，无法启动服务器")
@@ -852,7 +851,7 @@ class QuantServer:
 					host=self.config.host,
 					port=self.config.port,
 					workers=self.config.workers,
-					log_level=self.config.config_manager.get("settings.LOG.LEVEL", "info").lower(),
+					log_level=self.config.log_level.lower(),
 					reload=(self.config.mode == "development"),
 					access_log=True,
 					timeout_keep_alive=30,
@@ -905,10 +904,10 @@ class QuantServer:
 				logger.exception("服务器启动失败", exception=e)
 				raise
 
-	def _setup_signal_handlers (self, server: uvicorn.Server) -> None:
+	def _setup_signal_handlers(self, server: uvicorn.Server) -> None:
 		"""设置信号处理器"""
 
-		def signal_handler (signum, _frame):
+		def signal_handler(signum, _frame):
 			logger.info(f"收到信号 {signum}, 正在优雅关闭...")
 			server.should_exit = True
 
@@ -918,7 +917,7 @@ class QuantServer:
 
 		# 在开发环境中添加热重载信号（仅Unix/Linux系统）
 		if self.config.mode == "development" and hasattr(signal, 'SIGUSR1'):
-			def reload_handler (signum, _frame):
+			def reload_handler(signum, _frame):
 				logger.info(f"收到信号 {signum}, 重新加载配置...")
 				self._reload_configuration()
 
@@ -929,7 +928,7 @@ class QuantServer:
 			logger.info("当前系统不支持SIGUSR1信号，配置热重载功能不可用")
 
 	@with_context(operation="reload_configuration", source="main_server")
-	def _reload_configuration (self):
+	def _reload_configuration(self):
 		"""重新加载配置"""
 		try:
 			# 重新加载配置
@@ -945,7 +944,7 @@ class QuantServer:
 		except Exception as e:
 			logger.exception("重新加载配置失败", exception=e)
 
-	def _print_startup_message (self):
+	def _print_startup_message(self):
 		"""打印启动信息"""
 		status = self.get_system_status()
 
@@ -956,13 +955,13 @@ class QuantServer:
 			"environment": status['system']['environment'],
 			"host": status['server']['host'],
 			"port": status['server']['port'],
-			"docs_url": f"https://{status['server']['host']}:{status['server']['port']}/docs",
+			"docs_url": f"http://{status['server']['host']}:{status['server']['port']}/docs",
 			"enabled_modules": status['modules']['total_enabled'],
 			"database": status['settings']['database_type'],
 			"trade_mode": "模拟交易" if status['settings']['trade_simulated'] else "实盘交易"
 		})
 
-	def get_system_status (self) -> Dict[str, Any]:
+	def get_system_status(self) -> Dict[str, Any]:
 		"""获取系统状态"""
 		uptime = 0.0
 		if self.startup_time:
@@ -1001,7 +1000,7 @@ class QuantServer:
 		return status
 
 	@with_context(operation="shutdown_system", source="main_server")
-	async def shutdown (self) -> None:
+	async def shutdown(self) -> None:
 		"""关闭系统"""
 
 		logger.info("开始关闭量化交易系统...")
@@ -1025,7 +1024,7 @@ class QuantServer:
 		logger.info("量化交易系统关闭完成")
 
 
-async def create_quant_server (
+async def create_quant_server(
 		config_path: Optional[str] = None,
 		mode: Optional[str] = None
 ) -> QuantServer:
@@ -1067,7 +1066,7 @@ async def create_quant_server (
 			raise
 
 
-async def main ():
+async def main():
 	"""主函数入口"""
 	import argparse
 
@@ -1094,6 +1093,7 @@ async def main ():
 			operation="cli_main",
 			source="command_line"
 	):
+		server = None
 		try:
 			# 创建服务器
 			server = await create_quant_server(args.config, args.mode)

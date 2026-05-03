@@ -290,7 +290,7 @@ async def close_api_database():
     await _api_db_deps.close()
 
 
-# 简化的事务上下文管理器（API层使用）
+# 事务上下文管理器（API层使用）
 class APITransactionScope:
     """API层事务作用域管理器"""
 

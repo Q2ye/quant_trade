@@ -5,15 +5,17 @@
 import logging
 from decimal import Decimal
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.account.models import AccountDomain
 from shared.cache.base import CacheBase
-from shared.database.models.business_models import Account, AccountDailyPerformance
+from shared.database.models.business_models import Account
+from shared.database.repositories.account.asset.account_performance_repo import AccountDailyPerformanceRepository
 from shared.database.repositories.account.asset.account_repo import AccountRepository
 from shared.database.repositories.system.auth.user_repo import UserRepository
+from shared.database.repositories.trading.order.order_repo import OrderRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
 from shared.security.audit import AuditLogger
 from utils.core_utils.data_utils.validation import validate_account_data
@@ -30,6 +32,8 @@ class AccountService:
 		self.account_repo = AccountRepository(db)
 		self.user_repo = UserRepository(db)
 		self.position_repo = PositionRepository(db)
+		self.order_repo = OrderRepository(db)
+		self.performance_repo = AccountDailyPerformanceRepository(db)
 		self.audit_logger = AuditLogger(db)
 
 	async def get_account (self, account_id: str) -> Optional[AccountDomain]:
@@ -299,8 +303,10 @@ class AccountService:
 			if any(p.volume > 0 for p in positions):
 				raise ValueError("账户存在持仓，无法删除")
 
-			# 检查是否有未完成订单（这里简化处理）
-			# 实际实现中需要检查订单表
+			# 检查是否有未完成订单
+			pending_orders = await self.order_repo.get_active_orders(account_id=account_id)
+			if pending_orders:
+				raise ValueError("存在未完成订单，无法删除")
 
 			# 3. 执行软删除
 			update_data = {
@@ -623,27 +629,12 @@ class AccountService:
 				raise ValueError(f"账户不存在: {account_id}")
 
 			# 创建每日绩效记录
-			performance_data = {
-				"user_id": account.user_id,
-				"trade_date": trade_date,
-				"total_asset": total_asset,
-				"cash": cash,
-				"market_value": market_value,
-				"daily_pnl": daily_pnl,
-				"daily_return": daily_return
-			}
+			performance_data = {"user_id": account.user_id, "trade_date": trade_date, "total_asset": total_asset,
+			                    "cash": cash, "market_value": market_value, "daily_pnl": daily_pnl,
+			                    "daily_return": daily_return,
+			                    'created_at': datetime.combine(trade_date, datetime.min.time())}
 
-			# 这里需要调用AccountDailyPerformance的Repository
-			# 实际实现中需要具体的Repository方法
-			# 这里简化处理
-			from sqlalchemy import insert
-
-			# 确保trade_date是DateTime类型
-			from datetime import datetime
-			performance_data['trade_date'] = datetime.combine(trade_date, datetime.min.time())
-
-			stmt = insert(AccountDailyPerformance)
-			await self.db.execute(stmt, performance_data)
+			await self.performance_repo.create(performance_data)
 
 			# 更新账户最后交易日
 			await self.account_repo.update(account_id, {"last_trade_date": trade_date})

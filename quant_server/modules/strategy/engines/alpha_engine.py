@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+from core import BusinessException
 from core.engines.base.engine_base import EngineBase
 from core.engines.types.entities import EngineConfigEntity
 from core.engines.types.enums import EngineType
@@ -192,13 +193,13 @@ class AlphaEngine(EngineBase):
 			stock_pool = self._stock_pools.get(strategy_id, [])
 
 			# 计算因子值
-			factor_values = await self._calculate_factors()
+			factor_values = await self._calculate_factors(strategy_id, date)
 
 			# 更新缓存
 			self._factor_cache[strategy_id] = factor_values
 
 			# 生成信号
-			signals = await self._generate_signals()
+			signals = await self._generate_signals(factor_values, stock_pool, strategy_id)
 
 			# 处理信号
 			if signals:
@@ -296,32 +297,165 @@ class AlphaEngine(EngineBase):
 			logger.error(f"调仓失败: {e}")
 			return []
 
-	@staticmethod
-	async def _calculate_factors () -> Dict[str, Any]:
+	async def _calculate_factors (self, strategy_id: str, date: datetime) -> Dict[str, Any]:
 		"""
 		计算因子值
 
+		对股票池中每只股票计算动量因子和量比因子（基于历史价格数据），
+		PE/PB 因子需接入基本面数据源方可启用。
+
+		Args:
+			strategy_id: 策略ID
+			date: 计算日期
+
 		Returns:
-			因子值
+			因子值 {pe: {ts_code: value}, pb: {...}, momentum: {...}, volume_ratio: {...}}
 		"""
-		# 简化实现，实际需要接入因子计算服务
-		return {
-			"pe": {},  # 市盈率因子
-			"pb": {},  # 市净率因子
-			"momentum": {},  # 动量因子
-			"volume_ratio": {},  # 量比因子
+		stock_pool = self._stock_pools.get(strategy_id, [])
+		context = self._contexts.get(strategy_id)
+
+		# 优先使用外部因子计算器
+		if self._factor_calculator:
+			try:
+				result = await self._factor_calculator.calculate(strategy_id, stock_pool, date)
+				if result:
+					return result
+			except Exception as e:
+				logger.warning(f"外部因子计算器失败，回退到内置因子: {e}")
+
+		factors = {
+			"pe": {},
+			"pb": {},
+			"momentum": {},
+			"volume_ratio": {},
 		}
 
-	@staticmethod
-	async def _generate_signals () -> List[TradingSignal]:
+		for ts_code in stock_pool:
+			# 动量因子：基于 20 日价格变化率
+			if context:
+				prices = context.get_price_history(ts_code, 20)
+				if len(prices) >= 5:
+					avg_price = sum(prices) / len(prices)
+					latest = prices[-1]
+					factors["momentum"][ts_code] = (
+						round((latest - avg_price) / avg_price, 4) if avg_price > 0 else 0.0
+					)
+				else:
+					factors["momentum"][ts_code] = 0.0
+
+				# 量比因子：近 5 日均量 / 总均量
+				try:
+					cached = context.get_cached_data(f"{ts_code}_market_data")
+					if cached is not None and hasattr(cached, 'columns') and 'volume' in cached.columns:
+						recent_vol = cached['volume'].tail(5).mean()
+						all_vol = cached['volume'].mean()
+						factors["volume_ratio"][ts_code] = (
+							round(float(recent_vol / all_vol), 4) if all_vol > 0 else 1.0
+						)
+					else:
+						factors["volume_ratio"][ts_code] = 1.0
+				except BusinessException:
+					factors["volume_ratio"][ts_code] = 1.0
+			else:
+				factors["momentum"][ts_code] = 0.0
+				factors["volume_ratio"][ts_code] = 1.0
+
+			# PE/PB 因子：需接入基本面数据源
+			factors["pe"][ts_code] = None
+			factors["pb"][ts_code] = None
+
+		return factors
+
+	async def _generate_signals (
+			self,
+			factor_values: Dict[str, Any],
+			stock_pool: List[str],
+			strategy_id: str,
+	) -> List[TradingSignal]:
 		"""
-		根据因子值生成信号
+		根据因子值生成交易信号
+
+		多因子综合打分模型：
+		- 动量因子权重 0.4（正向动量 = 做多）
+		- 量比因子权重 0.2（高换手 = 流动性好）
+		- PE/PB 因子各权重 0.2（低估值 = 做多，需基本面数据）
+		综合得分绝对值 ≥ 0.2 时触发信号。
+
+		Args:
+			factor_values: 因子值字典
+			stock_pool: 股票池
+			strategy_id: 策略ID
 
 		Returns:
-			信号列表
+			交易信号列表
 		"""
-		# 简化实现
-		return []
+		if not stock_pool or not factor_values:
+			return []
+
+		context = self._contexts.get(strategy_id)
+		strategy = self._strategies.get(strategy_id)
+		strategy_name = strategy.name if strategy else "Unknown"
+
+		# 多因子综合打分
+		scores: Dict[str, float] = {}
+		for ts_code in stock_pool:
+			score = 0.0
+			weight_sum = 0.0
+
+			# 动量因子 (权重 0.4)：正向动量加分，负向减分
+			mom = factor_values.get("momentum", {}).get(ts_code, 0.0) or 0.0
+			score += 0.4 * (1.0 if mom > 0 else (-1.0 if mom < 0 else 0.0))
+			weight_sum += 0.4
+
+			# 量比因子 (权重 0.2)：量比偏离 1.0 表示活跃度异常
+			vol = factor_values.get("volume_ratio", {}).get(ts_code, 1.0) or 1.0
+			vol_signal = (vol - 1.0) * 2  # 归一化到 [-1, ~2]
+			score += 0.2 * max(min(vol_signal, 1.0), -1.0)
+			weight_sum += 0.2
+
+			# PE 因子 (权重 0.2)：低 PE 加分
+			pe = factor_values.get("pe", {}).get(ts_code)
+			if pe is not None and pe > 0:
+				score += 0.2 * 0.5  # 有 PE 数据时给予中性偏正评分
+				weight_sum += 0.2
+
+			# PB 因子 (权重 0.2)：低 PB 加分
+			pb = factor_values.get("pb", {}).get(ts_code)
+			if pb is not None and pb > 0:
+				score += 0.2 * 0.5
+				weight_sum += 0.2
+
+			scores[ts_code] = score / weight_sum if weight_sum > 0 else 0.0
+
+		# 按得分排序，生成信号
+		signals = []
+		timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
+
+		for ts_code, score in sorted(scores.items(), key=lambda x: x[1], reverse=True):
+			if abs(score) < 0.2:
+				continue
+
+			price = context.get_realtime_price(ts_code) if context else 0.0
+			if not price or price <= 0:
+				continue
+
+			quantity = max(int(100000 / price / 100) * 100, 100)
+
+			signals.append(TradingSignal(
+				id=f"alpha_{timestamp}_{ts_code}",
+				strategy_id=strategy_id,
+				strategy_name=strategy_name,
+				ts_code=ts_code,
+				signal_type=SignalType.ENTRY if score > 0 else SignalType.EXIT,
+				direction=SignalDirection.LONG if score > 0 else SignalDirection.CLOSE_LONG,
+				price=price,
+				quantity=quantity,
+				amount=price * quantity,
+				confidence=round(min(abs(score), 1.0), 4),
+				reason=f"Alpha多因子综合得分: {score:.3f}",
+			))
+
+		return signals
 
 	async def _process_signals (
 			self,

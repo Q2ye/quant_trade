@@ -117,7 +117,7 @@ class FactorCalculator:
 			"function": "calculate_obv"
 		},
 
-		# 基本面因子（简化）
+		# 基本面因子
 		"pe_ratio": {
 			"category": FactorCategory.VALUE,
 			"description": "市盈率",

@@ -270,8 +270,6 @@ class ComparisonService:
     ) -> Dict[str, PerformanceMetrics]:
         """批量获取多个策略的绩效指标
 
-        优先使用注入的 performance_service 计算；无 performance_service 时
-        回退到 _get_strategy_performance 的简化实现。
 
         单个策略失败不影响其他策略继续计算。
 

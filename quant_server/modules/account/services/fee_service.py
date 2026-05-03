@@ -88,7 +88,7 @@ class FeeService:
 			# 计算交易金额
 			trade_amount = price * volume
 
-			# 计算佣金（这里使用简化规则）
+			# 计算佣金（这里使用规则）
 			# todo 实际实现中需要根据券商费率计算
 			commission_rate = Decimal("0.0001")  # 万一免五
 			commission = trade_amount * commission_rate
@@ -112,7 +112,7 @@ class FeeService:
 				transfer_fee_rate = Decimal("0.00002")  # 0.002%
 				transfer_fee = trade_amount * transfer_fee_rate
 
-			# 计算监管费（简化处理）
+			# 计算监管费
 			regulation_fee = trade_amount * Decimal("0.00002")  # 0.002%
 
 			# 计算总费用

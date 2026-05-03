@@ -137,12 +137,24 @@ class ReportService:
 						if drawdown > max_drawdown:
 							max_drawdown = drawdown
 					
+					# 计算胜率和盈亏比
+					trades_list = backtest_result["trades"]
+					if trades_list:
+						winning_trades = [t for t in trades_list if t.get("profit", 0) > 0]
+						win_rate = len(winning_trades) / len(trades_list)
+						gross_profit = sum(t.get("profit", 0) for t in trades_list if t.get("profit", 0) > 0)
+						gross_loss = abs(sum(t.get("profit", 0) for t in trades_list if t.get("profit", 0) < 0))
+						profit_factor = gross_profit / gross_loss if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
+					else:
+						win_rate = 0.0
+						profit_factor = 0.0
+
 					backtest_result["metrics"] = {
 						"total_return": total_return,
 						"max_drawdown": max_drawdown,
 						"num_trades": len(backtest_result["trades"]),
-						"win_rate": 0.5,  # 简化计算
-						"profit_factor": 1.2  # 简化计算
+						"win_rate": win_rate,
+						"profit_factor": profit_factor
 					}
 
 			# 生成报告

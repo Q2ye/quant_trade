@@ -7,7 +7,9 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from modules.account.models import PositionDomain
 from shared.cache.base import CacheBase
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 class PositionService:
 	"""持仓服务 - 处理持仓相关业务逻辑"""
 
-	def __init__ (self, db: AsyncSession, cache: Optional[CacheBase] = None):
+	def __init__(self, db: AsyncSession, cache: Optional[CacheBase] = None):
 		self.db = db
 		self.cache = cache
 		self.position_repo = PositionRepository(db)
@@ -33,7 +35,7 @@ class PositionService:
 		self.stock_daily_repo = StockDailyRepository(db)
 		self.audit_logger = AuditLogger(db)
 
-	async def get_account_positions (
+	async def get_account_positions(
 			self,
 			account_id: str,
 			ts_code: Optional[str] = None,
@@ -108,7 +110,7 @@ class PositionService:
 			logger.error(f"获取账户持仓列表失败: {str(e)}")
 			raise
 
-	async def get_position_by_id (self, position_id: str) -> Optional[PositionDomain]:
+	async def get_position_by_id(self, position_id: str) -> Optional[PositionDomain]:
 		"""
 		根据ID获取持仓
 
@@ -142,7 +144,7 @@ class PositionService:
 			logger.error(f"根据ID获取持仓失败: {str(e)}")
 			raise
 
-	async def get_position_by_security (
+	async def get_position_by_security(
 			self,
 			account_id: str,
 			ts_code: str
@@ -184,7 +186,7 @@ class PositionService:
 			logger.error(f"根据证券代码获取持仓失败: {str(e)}")
 			raise
 
-	async def update_position (
+	async def update_position(
 			self,
 			account_id: str,
 			ts_code: str,
@@ -362,7 +364,7 @@ class PositionService:
 			logger.error(f"更新持仓失败: {str(e)}")
 			raise
 
-	async def freeze_position (
+	async def freeze_position(
 			self,
 			account_id: str,
 			ts_code: str,
@@ -460,7 +462,7 @@ class PositionService:
 			logger.error(f"冻结持仓失败: {str(e)}")
 			raise
 
-	async def unfreeze_position (
+	async def unfreeze_position(
 			self,
 			account_id: str,
 			ts_code: str,
@@ -558,7 +560,7 @@ class PositionService:
 			logger.error(f"解冻持仓失败: {str(e)}")
 			raise
 
-	async def update_position_market_value (
+	async def update_position_market_value(
 			self,
 			position_id: str,
 			market_value: Decimal,
@@ -620,7 +622,7 @@ class PositionService:
 			logger.error(f"更新持仓市值失败: {str(e)}")
 			raise
 
-	async def calculate_position_performance (
+	async def calculate_position_performance(
 			self,
 			account_id: str,
 			ts_code: Optional[str] = None
@@ -713,7 +715,7 @@ class PositionService:
 			logger.error(f"计算持仓绩效失败: {str(e)}")
 			raise
 
-	async def get_position_history (
+	async def get_position_history(
 			self,
 			account_id: str,
 			ts_code: str,
@@ -737,40 +739,25 @@ class PositionService:
 			持仓历史记录
 		"""
 		try:
-			# 构建查询条件
-			conditions = [
-				Trade.ts_code == ts_code
-			]
+			# 构建统一查询（eager-load Order 以获取买卖方向）
+			query = select(Trade).options(joinedload(Trade.order))
+
+			if account_id:
+				query = query.join(Order).where(Order.account_id == account_id)
+
+			query = query.where(Trade.ts_code == ts_code)
 
 			if start_date:
 				start_datetime = datetime.combine(start_date, datetime.min.time())
-				conditions.append(Trade.trade_time >= start_datetime)
+				query = query.where(Trade.trade_time >= start_datetime)
 
 			if end_date:
 				end_datetime = datetime.combine(end_date, datetime.max.time())
-				conditions.append(Trade.trade_time <= end_datetime)
+				query = query.where(Trade.trade_time <= end_datetime)
 
-			# 查询交易记录
-			if account_id:
-				# 通过Order关联查询账户ID
-				from sqlalchemy import select, join
-				query = select(Trade).join(Order).where(
-					Trade.ts_code == ts_code,
-					Order.account_id == account_id
-				)
-				if start_date:
-					start_datetime = datetime.combine(start_date, datetime.min.time())
-					query = query.where(Trade.trade_time >= start_datetime)
-				if end_date:
-					end_datetime = datetime.combine(end_date, datetime.max.time())
-					query = query.where(Trade.trade_time <= end_datetime)
-				trades = await self.trade_repo.execute_query(query)
-			else:
-				trades = await self.trade_repo.get_many(
-					skip=skip,
-					limit=limit,
-					**{c.left.name: c.right.value for c in conditions}
-				)
+			query = query.order_by(Trade.trade_time.asc()).offset(skip).limit(limit)
+			result = await self.db.execute(query)
+			trades = list(result.scalars().all())
 
 			# 计算持仓历史
 			position_history = []
@@ -782,14 +769,12 @@ class PositionService:
 				trade_price = Decimal(str(trade.price))
 				trade_amount = trade_price * trade_volume
 
-				# 判断买卖方向（这里简化，实际需要根据订单信息）
-				# 假设所有交易都是买入，实际实现中需要根据具体业务逻辑调整
-				direction = "buy"
+				# 从关联订单获取买卖方向
+				direction = trade.order.direction if trade.order else "buy"
 
 				if direction == "buy":
 					if current_volume + trade_volume > 0:
-						current_cost = (
-								               (current_cost * current_volume) + trade_amount
+						current_cost = ((current_cost * current_volume) + trade_amount
 						               ) / (current_volume + trade_volume)
 
 					current_volume += trade_volume

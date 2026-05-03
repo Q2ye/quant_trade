@@ -8,6 +8,7 @@
 如果需要有独立的角色表，需要先创建Role模型
 这里假设存在一个SysRole模型
 """
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import select, func
@@ -176,11 +177,23 @@ class RoleRepository:
 		# 活跃角色数
 		active_count = await self.count(is_active=True)
 
-		# 按类型统计 - 简化处理
+		# 按 is_default 分组统计（默认角色 vs 自定义角色）
+		type_query = select(
+			SysRole.is_default, func.count(SysRole.id)
+		).group_by(SysRole.is_default)
+		type_result = await self.session.execute(type_query)
 		type_stats_dict = {}
+		for is_default_val, count in type_result.all():
+			label = 'default' if is_default_val else 'custom'
+			type_stats_dict[label] = count
 
-		# 按创建时间统计（最近30天）- 简化处理
-		recent_count = 0
+		# 按创建时间统计（最近30天）
+		cutoff_date = datetime.now() - timedelta(days=30)
+		recent_query = select(func.count(SysRole.id)).where(
+			SysRole.created_at >= cutoff_date
+		)
+		recent_result = await self.session.execute(recent_query)
+		recent_count = recent_result.scalar() or 0
 
 		return {
 			'total_count': total_count,

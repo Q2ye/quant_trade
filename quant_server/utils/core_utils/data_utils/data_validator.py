@@ -14,17 +14,18 @@
 4. 可配置：验证规则可动态配置
 """
 
+import asyncio
 import re
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Any, Optional, Tuple, Union, Callable
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Any, Tuple, Union, Callable
+
+import numpy as np
+import pandas as pd
 
 
 class ValidationResultStatus(Enum):
@@ -47,7 +48,7 @@ class ValidationResult:
 	severity: str = "error"  # 严重程度：error/warning/info
 	timestamp: datetime = field(default_factory=datetime.now)  # 验证时间
 
-	def to_dict (self) -> Dict[str, Any]:
+	def to_dict(self) -> Dict[str, Any]:
 		"""转换为字典格式"""
 		return {
 			"field_name": self.field_name,
@@ -72,7 +73,7 @@ class ValidationReport:
 	summary: Dict[str, Any] = field(default_factory=dict)  # 汇总信息
 	execution_time: float = 0.0  # 执行时间(秒)
 
-	def add_result (self, result: ValidationResult):
+	def add_result(self, result: ValidationResult):
 		"""添加验证结果"""
 		self.validation_results.append(result)
 
@@ -84,7 +85,7 @@ class ValidationReport:
 		elif result.status == ValidationResultStatus.WARNING:
 			self.warning_records += 1
 
-	def calculate_summary (self):
+	def calculate_summary(self):
 		"""计算汇总信息"""
 		self.summary = {
 			"total_records": self.total_records,
@@ -99,7 +100,7 @@ class ValidationReport:
 			"by_severity": self._group_by_severity()
 		}
 
-	def _group_by_field (self) -> Dict[str, Dict]:
+	def _group_by_field(self) -> Dict[str, Dict]:
 		"""按字段分组统计"""
 		field_stats = {}
 		for result in self.validation_results:
@@ -119,14 +120,14 @@ class ValidationReport:
 
 		return field_stats
 
-	def _group_by_severity (self) -> Dict[str, int]:
+	def _group_by_severity(self) -> Dict[str, int]:
 		"""按严重程度分组统计"""
 		severity_stats = {"error": 0, "warning": 0, "info": 0}
 		for result in self.validation_results:
 			severity_stats[result.severity] = severity_stats.get(result.severity, 0) + 1
 		return severity_stats
 
-	def to_dict (self) -> Dict[str, Any]:
+	def to_dict(self) -> Dict[str, Any]:
 		"""转换为字典格式"""
 		self.calculate_summary()
 		return {
@@ -139,7 +140,7 @@ class ValidationReport:
 class ValidationRule(ABC):
 	"""验证规则基类"""
 
-	def __init__ (self, field_name: str, rule_name: str = None, severity: str = "error"):
+	def __init__(self, field_name: str, rule_name: str = None, severity: str = "error"):
 		"""
 		初始化验证规则
 
@@ -153,7 +154,7 @@ class ValidationRule(ABC):
 		self.severity = severity
 
 	@abstractmethod
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		"""
 		验证单个值
 
@@ -166,7 +167,7 @@ class ValidationRule(ABC):
 		"""
 		pass
 
-	async def async_validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	async def async_validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		"""异步验证方法"""
 		return self.validate(value, context)
 
@@ -174,7 +175,7 @@ class ValidationRule(ABC):
 class RequiredRule(ValidationRule):
 	"""必填字段验证规则"""
 
-	def __init__ (self, field_name: str, allow_empty_string: bool = False, **kwargs):
+	def __init__(self, field_name: str, allow_empty_string: bool = False, **kwargs):
 		"""
 		初始化必填规则
 
@@ -186,7 +187,7 @@ class RequiredRule(ValidationRule):
 		super().__init__(field_name, **kwargs)
 		self.allow_empty_string = allow_empty_string
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		# 检查是否为None
 		if value is None:
 			return ValidationResult(
@@ -233,7 +234,7 @@ class RequiredRule(ValidationRule):
 class TypeRule(ValidationRule):
 	"""数据类型验证规则"""
 
-	def __init__ (self, field_name: str, expected_type: Union[type, Tuple[type, ...]], **kwargs):
+	def __init__(self, field_name: str, expected_type: Union[type, Tuple[type, ...]], **kwargs):
 		"""
 		初始化类型规则
 
@@ -245,7 +246,7 @@ class TypeRule(ValidationRule):
 		super().__init__(field_name, **kwargs)
 		self.expected_type = expected_type
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		if value is None:
 			return ValidationResult(
 				field_name=self.field_name,
@@ -279,7 +280,8 @@ class TypeRule(ValidationRule):
 			severity=self.severity
 		)
 
-	def _get_type_name (self, type_obj) -> str:
+	@staticmethod
+	def _get_type_name(type_obj) -> str:
 		"""获取类型名称"""
 		if isinstance(type_obj, tuple):
 			return " 或 ".join([t.__name__ for t in type_obj])
@@ -289,8 +291,8 @@ class TypeRule(ValidationRule):
 class RangeRule(ValidationRule):
 	"""数值范围验证规则"""
 
-	def __init__ (self, field_name: str, min_value: float = None, max_value: float = None,
-	              include_min: bool = True, include_max: bool = True, **kwargs):
+	def __init__(self, field_name: str, min_value: float = None, max_value: float = None,
+	             include_min: bool = True, include_max: bool = True, **kwargs):
 		"""
 		初始化范围规则
 
@@ -308,7 +310,7 @@ class RangeRule(ValidationRule):
 		self.include_min = include_min
 		self.include_max = include_max
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		if value is None:
 			return ValidationResult(
 				field_name=self.field_name,
@@ -400,7 +402,7 @@ class RangeRule(ValidationRule):
 class PatternRule(ValidationRule):
 	"""正则表达式验证规则"""
 
-	def __init__ (self, field_name: str, pattern: str, **kwargs):
+	def __init__(self, field_name: str, pattern: str, **kwargs):
 		"""
 		初始化模式规则
 
@@ -412,7 +414,7 @@ class PatternRule(ValidationRule):
 		super().__init__(field_name, **kwargs)
 		self.pattern = re.compile(pattern)
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		if value is None:
 			return ValidationResult(
 				field_name=self.field_name,
@@ -448,7 +450,7 @@ class PatternRule(ValidationRule):
 class LengthRule(ValidationRule):
 	"""长度验证规则"""
 
-	def __init__ (self, field_name: str, min_length: int = None, max_length: int = None, **kwargs):
+	def __init__(self, field_name: str, min_length: int = None, max_length: int = None, **kwargs):
 		"""
 		初始化长度规则
 
@@ -462,7 +464,7 @@ class LengthRule(ValidationRule):
 		self.min_length = min_length
 		self.max_length = max_length
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		if value is None:
 			return ValidationResult(
 				field_name=self.field_name,
@@ -518,8 +520,8 @@ class LengthRule(ValidationRule):
 class CustomRule(ValidationRule):
 	"""自定义验证规则"""
 
-	def __init__ (self, field_name: str, validation_func: Callable[[Any, Dict], bool],
-	              error_message: str = None, **kwargs):
+	def __init__(self, field_name: str, validation_func: Callable[[Any, Dict], bool],
+	             error_message: str = None, **kwargs):
 		"""
 		初始化自定义规则
 
@@ -533,7 +535,7 @@ class CustomRule(ValidationRule):
 		self.validation_func = validation_func
 		self.error_message = error_message or f"字段 '{field_name}' 自定义验证失败"
 
-	def validate (self, value: Any, context: Dict = None) -> ValidationResult:
+	def validate(self, value: Any, context: Dict = None) -> ValidationResult:
 		try:
 			is_valid = self.validation_func(value, context or {})
 			if is_valid:
@@ -572,7 +574,7 @@ class DataValidator:
 	提供批量数据验证功能，支持同步和异步验证
 	"""
 
-	def __init__ (self, rules: Dict[str, List[ValidationRule]] = None):
+	def __init__(self, rules: Dict[str, List[ValidationRule]] = None):
 		"""
 		初始化数据验证器
 
@@ -582,20 +584,21 @@ class DataValidator:
 		self.rules = rules or {}
 		self.executor = ThreadPoolExecutor(max_workers=4)
 
-	def add_rule (self, field_name: str, rule: ValidationRule):
+	def add_rule(self, field_name: str, rule: ValidationRule):
 		"""为字段添加验证规则"""
 		if field_name not in self.rules:
 			self.rules[field_name] = []
 		self.rules[field_name].append(rule)
 
-	def add_rules (self, field_name: str, rules: List[ValidationRule]):
+	def add_rules(self, field_name: str, rules: List[ValidationRule]):
 		"""为字段添加多个验证规则"""
 		if field_name not in self.rules:
 			self.rules[field_name] = []
 		self.rules[field_name].extend(rules)
 
-	def validate_record (self, record: Dict[str, Any],
-	                     context: Dict = None) -> ValidationReport:
+
+	def validate_record(self, record: Dict[str, Any],
+	                    context: Dict = None) -> ValidationReport:
 		"""
 		验证单条记录
 
@@ -624,8 +627,8 @@ class DataValidator:
 		report.execution_time = (datetime.now() - start_time).total_seconds()
 		return report
 
-	def validate_batch (self, records: List[Dict[str, Any]],
-	                    context: Dict = None) -> ValidationReport:
+	def validate_batch(self, records: List[Dict[str, Any]],
+	                   context: Dict = None) -> ValidationReport:
 		"""
 		批量验证多条记录
 
@@ -665,8 +668,8 @@ class DataValidator:
 		report.execution_time = (datetime.now() - start_time).total_seconds()
 		return report
 
-	async def async_validate_batch (self, records: List[Dict[str, Any]],
-	                                context: Dict = None) -> ValidationReport:
+	async def async_validate_batch(self, records: List[Dict[str, Any]],
+	                               context: Dict = None) -> ValidationReport:
 		"""
 		异步批量验证多条记录
 
@@ -680,13 +683,13 @@ class DataValidator:
 		loop = asyncio.get_event_loop()
 
 		# 使用线程池执行批量验证
-		def run_validation ():
+		def run_validation():
 			return self.validate_batch(records, context)
 
 		return await loop.run_in_executor(self.executor, run_validation)
 
-	def validate_dataframe (self, df: pd.DataFrame,
-	                        context: Dict = None) -> ValidationReport:
+	def validate_dataframe(self, df: pd.DataFrame,
+	                       context: Dict = None) -> ValidationReport:
 		"""
 		验证Pandas DataFrame
 
@@ -700,7 +703,9 @@ class DataValidator:
 		records = df.to_dict('records')
 		return self.validate_batch(records, context)
 
-	def create_validation_suite (self, config: Dict) -> 'DataValidator':
+
+	@staticmethod
+	def create_validation_suite(config: Dict) -> 'DataValidator':
 		"""
 		根据配置创建验证套件
 
@@ -768,7 +773,7 @@ class DataValidator:
 
 		return validator
 
-	def cleanup (self):
+	def cleanup(self):
 		"""清理资源"""
 		self.executor.shutdown(wait=True)
 
@@ -778,7 +783,7 @@ class ValidationRuleFactory:
 	"""验证规则工厂类"""
 
 	@staticmethod
-	def create_stock_validation_rules () -> DataValidator:
+	def create_stock_validation_rules() -> DataValidator:
 		"""创建股票数据验证规则"""
 		validator = DataValidator()
 
@@ -832,7 +837,7 @@ class ValidationRuleFactory:
 		return validator
 
 	@staticmethod
-	def create_financial_validation_rules () -> DataValidator:
+	def create_financial_validation_rules() -> DataValidator:
 		"""创建财务数据验证规则"""
 		validator = DataValidator()
 
@@ -877,7 +882,7 @@ class ValidationRuleFactory:
 class DataQualityScorer:
 	"""数据质量评分器"""
 
-	def __init__ (self, weights: Dict[str, float] = None):
+	def __init__(self, weights: Dict[str, float] = None):
 		"""
 		初始化数据质量评分器
 
@@ -892,7 +897,7 @@ class DataQualityScorer:
 			"uniqueness": 0.1  # 唯一性
 		}
 
-	def calculate_score (self, report: ValidationReport) -> Dict[str, Any]:
+	def calculate_score(self, report: ValidationReport) -> Dict[str, Any]:
 		"""
 		计算数据质量得分
 
@@ -919,7 +924,7 @@ class DataQualityScorer:
 				rule_results[rule_name] = []
 			rule_results[rule_name].append(result)
 
-		# 计算各维度得分（简化版本，实际应根据规则映射到维度）
+		# 计算各维度得分
 		dimension_scores = {}
 
 		# 完整性得分（基于必填字段验证）
@@ -936,13 +941,45 @@ class DataQualityScorer:
 		]
 		accuracy_score = self._calculate_dimension_score(accuracy_results)
 
-		# 计算总分
+		# 一致性得分: 跨字段验证、逻辑规则、字段间关系
+		consistency_results = [
+			r for r in report.validation_results
+			if any(kw in (r.rule_name or '') for kw in
+			       ['Consistency', 'Consistent', 'CrossField', 'Relation',
+			        'Logical', 'Compare', 'Match', 'Reconcile'])
+		]
+		consistency_score = self._calculate_dimension_score(consistency_results)
+
+		# 及时性得分: 时间/日期/新鲜度检查
+		timeliness_results = [
+			r for r in report.validation_results
+			if any(kw in (r.rule_name or '') for kw in
+			       ['Date', 'Time', 'Timestamp', 'Fresh', 'Stale',
+			        'Delay', 'Latency', 'Update', 'Recent'])
+		]
+		timeliness_score = self._calculate_dimension_score(timeliness_results)
+
+		# 唯一性得分: 重复/唯一性检查
+		uniqueness_results = [
+			r for r in report.validation_results
+			if any(kw in (r.rule_name or '') for kw in
+			       ['Unique', 'Duplicate', 'Distinct', 'Dedup'])
+		]
+		uniqueness_score = self._calculate_dimension_score(uniqueness_results)
+
+		# 汇总各维度得分，无直接检查的维度以已有维度均值作为估计
+		scored_dims = [s for s in [completeness_score, accuracy_score,
+		                           consistency_score, timeliness_score, uniqueness_score]
+		               if s != 100.0 or (s == 100.0 and
+		                                 any(r.rule_name for r in report.validation_results))]
+		fallback = sum(scored_dims) / len(scored_dims) if scored_dims else 100.0
+
 		dimension_scores = {
 			"completeness": completeness_score,
 			"accuracy": accuracy_score,
-			"consistency": 85.0,  # 简化，实际应基于一致性检查
-			"timeliness": 90.0,  # 简化，实际应基于时间戳检查
-			"uniqueness": 95.0  # 简化，实际应基于重复性检查
+			"consistency": consistency_score if consistency_results else round(fallback, 2),
+			"timeliness": timeliness_score if timeliness_results else round(fallback, 2),
+			"uniqueness": uniqueness_score if uniqueness_results else round(fallback, 2)
 		}
 
 		# 加权总分
@@ -964,7 +1001,8 @@ class DataQualityScorer:
 			                        and r.severity == "error"])
 		}
 
-	def _calculate_dimension_score (self, results: List[ValidationResult]) -> float:
+	@staticmethod
+	def _calculate_dimension_score(results: List[ValidationResult]) -> float:
 		"""计算维度得分"""
 		if not results:
 			return 100.0
@@ -974,7 +1012,8 @@ class DataQualityScorer:
 
 		return (valid_count / total_count) * 100 if total_count > 0 else 100.0
 
-	def _get_quality_grade (self, score: float) -> str:
+	@staticmethod
+	def _get_quality_grade(score: float) -> str:
 		"""获取质量等级"""
 		if score >= 90:
 			return "A"
@@ -987,7 +1026,8 @@ class DataQualityScorer:
 		else:
 			return "F"
 
-	def _generate_recommendations (self, report: ValidationReport) -> List[str]:
+	@staticmethod
+	def _generate_recommendations(report: ValidationReport) -> List[str]:
 		"""生成改进建议"""
 		recommendations = []
 

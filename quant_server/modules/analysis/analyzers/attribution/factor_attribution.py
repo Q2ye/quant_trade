@@ -306,17 +306,34 @@ class FactorAttribution:
 				beta = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
 
 			elif method == 'ridge':
-				# 岭回归
-				from sklearn.linear_model import Ridge
-				model = Ridge(alpha=0.1)
-				model.fit(X, y)
-				beta = np.concatenate([[model.intercept_], model.coef_])
+				# 岭回归闭式解（不含截距正则化）
+				alpha = 0.1
+				p_features = X.shape[1]
+				# 中心化数据，分离截距估计
+				X_mean = X.mean(axis=0)
+				y_mean = y.mean()
+				X_centered = X - X_mean
+				y_centered = y - y_mean
+				# β_ridge = (X^T X + α I)^(-1) X^T y
+				XtX = X_centered.T @ X_centered
+				ridge_matrix = XtX + alpha * np.eye(p_features)
+				beta_no_intercept = np.linalg.solve(ridge_matrix, X_centered.T @ y_centered)
+				intercept = y_mean - X_mean @ beta_no_intercept
+				beta = np.concatenate([[intercept], beta_no_intercept])
 
 			elif method == 'wls':
-				# 加权最小二 乘法
-				weights = 1.0 / np.var(y)  # 简化权重
+				# 两步可行广义最小二乘 (Feasible GLS)
+				# Step 1: OLS 初步估计
+				beta_ols = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
+				residuals_ols = y - X_with_intercept @ beta_ols
+				# Step 2: 使用残差绝对值估计权重 (Huber型稳健权重)
+				abs_resid = np.abs(residuals_ols)
+				epsilon = np.std(abs_resid) * 0.01 + 1e-8
+				weights = 1.0 / (abs_resid + epsilon)
 				W = np.diag(weights)
-				beta = np.linalg.inv(X_with_intercept.T @ W @ X_with_intercept) @ X_with_intercept.T @ W @ y
+				XtWX = X_with_intercept.T @ W @ X_with_intercept
+				XtWy = X_with_intercept.T @ W @ y
+				beta = np.linalg.solve(XtWX, XtWy)
 
 			else:
 				raise ValueError(f"不支持的估计方法: {method}")
@@ -338,13 +355,19 @@ class FactorAttribution:
 			# 因子暴露字典
 			exposures = {factor_names[i]: float(beta[i]) for i in range(len(factor_names))}
 
+			# 计算系数标准误
+			sigma_sq = ss_residual / (n - p - 1) if n > p + 1 else ss_residual / n
+			XtX_inv = np.linalg.inv(X_with_intercept.T @ X_with_intercept)
+			std_errors = np.sqrt(np.maximum(sigma_sq * np.diag(XtX_inv), 0.0))
+
 			# 回归统计
 			stats = {
 				'r_squared': float(r_squared),
 				'adj_r_squared': float(adj_r_squared),
 				'residual_std': float(np.std(residuals)),
 				'f_statistic': self._calculate_f_statistic(r_squared, n, p),
-				'durbin_watson': self._calculate_durbin_watson(residuals)
+				'durbin_watson': self._calculate_durbin_watson(residuals),
+				'std_errors': {factor_names[i]: float(std_errors[i]) for i in range(len(factor_names))}
 			}
 
 			return exposures, stats
@@ -556,7 +579,7 @@ class FactorAttribution:
 		# Barra质量指标
 		quality = {
 			't_stat_alpha': self._calculate_t_statistic(factor_exposures.get('Alpha', 0.0), residuals.std()),
-			't_stat_factors': self._calculate_factor_t_statistics(factor_exposures, factor_returns),
+			't_stat_factors': self._calculate_factor_t_statistics(factor_exposures, factor_returns, portfolio_returns),
 			'specific_risk_ratio': self._calculate_specific_risk_ratio(residuals, portfolio_returns),
 			'specific_risk_consistency': specific_risk_consistency,
 			'factor_stability': self._calculate_factor_stability(factor_exposures),
@@ -661,19 +684,33 @@ class FactorAttribution:
 	def _calculate_factor_t_statistics (
 			self,
 			factor_exposures: Dict[str, float],
-			factor_returns: pd.DataFrame
+			factor_returns: pd.DataFrame,
+			portfolio_returns: pd.Series
 	) -> Dict[str, float]:
-		"""计算因子t统计量"""
+		"""计算因子t统计量（基于OLS标准误）"""
 		t_stats = {}
+		X = factor_returns.values
+		y = portfolio_returns.values
+		X_with_intercept = np.column_stack([np.ones(len(X)), X])
+
+		# OLS回归获取系数标准误
+		beta = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
+		y_pred = X_with_intercept @ beta
+		residuals = y - y_pred
+		n, p = len(y), X.shape[1]
+		ss_residual = float(np.sum(residuals ** 2))
+		sigma_sq = ss_residual / (n - p - 1) if n > p + 1 else ss_residual / n
+		XtX_inv = np.linalg.inv(X_with_intercept.T @ X_with_intercept)
+		std_errors = np.sqrt(np.maximum(sigma_sq * np.diag(XtX_inv), 0.0))
+		factor_names = ['Alpha'] + factor_returns.columns.tolist()
 
 		for factor, exposure in factor_exposures.items():
 			if factor == 'Alpha':
 				continue
-
 			if factor in factor_returns.columns:
-				# 简化估计标准误
-				std_error = factor_returns[factor].std() / np.sqrt(len(factor_returns))
-				t_stat = self._calculate_t_statistic(exposure, std_error)
+				idx = factor_names.index(factor)
+				se = float(std_errors[idx])
+				t_stat = self._calculate_t_statistic(exposure, se)
 				t_stats[factor] = t_stat
 
 		return t_stats
@@ -700,24 +737,26 @@ class FactorAttribution:
 	def _calculate_factor_stability (
 			factor_exposures: Dict[str, float]
 	) -> float:
-		"""计算因子稳定性"""
-		# 简化实现：检查因子暴露的符号一致性
-		# 实际应用中可能需要滚动窗口分析
+		"""计算因子稳定性
 
-		exposures = [exp for factor, exp in factor_exposures.items() if factor != 'Alpha']
+		基于因子暴露绝对值的一致性衡量：
+		暴露值的变异系数越小，说明各因子暴露越均衡，模型越稳定。
+		"""
+		exposures = np.array(
+			[abs(exp) for factor, exp in factor_exposures.items() if factor != 'Alpha'],
+			dtype=np.float64
+		)
 
 		if len(exposures) == 0:
 			return 0.0
 
-		# 计算暴露的变异系数
-		mean_exp = np.mean(np.abs(exposures))
-		std_exp = np.std(exposures)
-
-		if mean_exp == 0:
+		mean_exp = float(np.mean(exposures))
+		if mean_exp == 0.0:
 			return 0.0
 
+		std_exp = float(np.std(exposures, ddof=1)) if len(exposures) > 1 else 0.0
 		stability = 1.0 - (std_exp / mean_exp)
-		return float(max(0.0, stability))
+		return float(max(0.0, min(1.0, stability)))
 
 	@staticmethod
 	def _calculate_model_reliability (

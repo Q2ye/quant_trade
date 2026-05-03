@@ -56,6 +56,8 @@ class FactorStrategy(BaseStrategy):
 		self.factor_data: Dict[str, Dict[str, float]] = {}
 		self.stock_scores: Dict[str, float] = {}
 		self.portfolio_weights: Dict[str, float] = {}
+		# 基本面因子缓存（由数据管道通过 update_fundamental_factor 注入）
+		self._fundamental_cache: Dict[str, Dict[str, float]] = {}
 
 		# 状态变量
 		self.bar_count = 0
@@ -110,28 +112,41 @@ class FactorStrategy(BaseStrategy):
 
 	def _update_factor_data (self, bar: BarData) -> None:
 		"""
-		更新因子数据
+		Update factor data from real bar data and injected fundamentals.
+
+		Price-derived factors (momentum, volatility) are calculated from
+		cached price history. Fundamental factors (PE, PB, ROE) must be
+		injected via update_fundamental_factor() by the data pipeline.
 
 		Args:
 			bar: K线数据
 		"""
-		# 这里应该从数据服务获取因子数据
-		# 目前使用模拟数据
-		if bar.ts_code not in self.factor_data:
-			self.factor_data[bar.ts_code] = {}
+		ts_code = bar.ts_code
 
-		# 模拟因子数据
-		self.factor_data[bar.ts_code]['close'] = bar.close
+		# Initialize factor entry for this stock
+		if ts_code not in self.factor_data:
+			self.factor_data[ts_code] = {}
 
-		# 价值因子（模拟）
-		self.factor_data[bar.ts_code]['pe'] = np.random.normal(15, 5)
-		self.factor_data[bar.ts_code]['pb'] = np.random.normal(2, 0.5)
+		# Real data: latest close price
+		self.factor_data[ts_code]['close'] = bar.close
 
-		# 质量因子（模拟）
-		self.factor_data[bar.ts_code]['roe'] = np.random.normal(0.1, 0.05)
+		# Append to price history cache for derived factor calculations
+		if ts_code not in self._data_cache:
+			import pandas as pd
+			self._data_cache[ts_code] = pd.DataFrame(columns=['close'])
+		price_df = self._data_cache[ts_code]
+		new_row = pd.DataFrame([{'close': bar.close}])
+		self._data_cache[ts_code] = pd.concat([price_df, new_row], ignore_index=True)
 
-		# 动量因子（模拟）
-		self.factor_data[bar.ts_code]['momentum'] = np.random.normal(0.02, 0.01)
+		# Calculate price-derived factors from real data
+		self._calculate_price_factors(ts_code)
+
+		# Fundamental factors: use injected data when available
+		for factor_name in ['pe', 'pb', 'roe']:
+			if factor_name not in self.factor_data[ts_code]:
+				val = self._fundamental_cache.get(ts_code, {}).get(factor_name)
+				if val is not None:
+					self.factor_data[ts_code][factor_name] = val
 
 	def _calculate_stock_scores (self) -> Dict[str, float]:
 		"""
@@ -202,9 +217,16 @@ class FactorStrategy(BaseStrategy):
 			new_weights = self._optimize_portfolio_weights(self.stock_scores)
 
 			# 生成调仓信号
+			# 计算当前组合总市值
+			total_mv = sum(p.market_value for p in self.positions.values() if p.market_value)
+
 			for ts_code, target_weight in new_weights.items():
-				# 获取当前持仓权重（简化处理）
-				current_weight = self.portfolio_weights.get(ts_code, 0)
+				# 获取当前持仓权重（从实际持仓计算）
+				pos = self.get_position(ts_code)
+				if pos and pos.market_value and total_mv > 0:
+					current_weight = pos.market_value / total_mv
+				else:
+					current_weight = 0.0
 
 				# 如果权重变化超过阈值，生成信号
 				if abs(target_weight - current_weight) > 0.01:
@@ -238,6 +260,55 @@ class FactorStrategy(BaseStrategy):
 			logger.error(f"多因子策略重平衡失败: {e}")
 
 		return signals
+
+	def update_fundamental_factor(self, ts_code: str, factor_name: str, value: float) -> None:
+		"""Inject a fundamental factor value from the external data pipeline.
+
+		Called by the strategy engine or data service to provide fundamental
+		data (PE, PB, ROE, etc.) that cannot be derived from price alone.
+
+		Args:
+			ts_code: Stock code
+			factor_name: Factor name (e.g. pe, pb, roe)
+			value: Factor value
+		"""
+		if ts_code not in self._fundamental_cache:
+			self._fundamental_cache[ts_code] = {}
+		self._fundamental_cache[ts_code][factor_name] = value
+		if ts_code not in self.factor_data:
+			self.factor_data[ts_code] = {}
+		self.factor_data[ts_code][factor_name] = value
+
+	def _calculate_price_factors(self, ts_code: str) -> None:
+		"""Calculate price-derived factors from cached bar history.
+
+		Computes momentum and volatility from actual price data stored
+		in self._data_cache. Requires at least 2 bars of history.
+
+		Args:
+			ts_code: Stock code
+		"""
+		price_df = self._data_cache.get(ts_code)
+		if price_df is None or len(price_df) < 2:
+			return
+
+		closes = price_df["close"].values
+
+		# Momentum: latest return over available history (up to 20 periods)
+		lookback = min(20, len(closes) - 1)
+		if lookback > 0 and closes[-1 - lookback] != 0:
+			momentum = float(closes[-1] / closes[-1 - lookback] - 1)
+		else:
+			momentum = 0.0
+		self.factor_data[ts_code]["momentum"] = momentum
+
+		# Volatility: std of daily returns over available history
+		if len(closes) >= 3:
+			returns = np.diff(closes) / closes[:-1]
+			vol = float(np.std(returns))
+		else:
+			vol = 0.0
+		self.factor_data[ts_code]["volatility"] = vol
 
 	def get_factor_exposure (self) -> Dict[str, float]:
 		"""

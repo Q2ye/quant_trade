@@ -28,7 +28,7 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List, Tuple, Any
 
@@ -95,8 +95,8 @@ class AttributionService:
     async def perform_brinson_attribution(
             self,
             portfolio_id: str,
-            start_date: date,
-            end_date: date,
+            start_date: datetime,
+            end_date: datetime,
             benchmark: str,
             sectors: List[str] = None
     ) -> AttributionAnalysis:
@@ -216,8 +216,8 @@ class AttributionService:
     async def perform_factor_attribution(
             self,
             portfolio_id: str,
-            start_date: date,
-            end_date: date,
+            start_date: datetime,
+            end_date: datetime,
             factor_model: str = "Fama-French"
     ) -> AttributionAnalysis:
         """执行因子归因分析
@@ -296,8 +296,8 @@ class AttributionService:
     async def compare_attribution_models(
             self,
             portfolio_id: str,
-            start_date: date,
-            end_date: date,
+            start_date: datetime,
+            end_date: datetime,
             benchmark: str = None
     ) -> Dict[str, AttributionAnalysis]:
         """比较不同归因模型的结果
@@ -344,36 +344,41 @@ class AttributionService:
     # =========================================================================
 
     async def _get_portfolio_positions(
-            self,
-            portfolio_id: str,
-            start_date: date,
-            end_date: date
+        self,
+        portfolio_id: str,
+        start_date: datetime,
+        end_date: datetime
     ) -> List[Dict[str, Any]]:
-        """获取组合在指定区间的持仓数据
-
-        根据 portfolio_id 前缀自动判断是策略还是账户：
-        - "strategy_" 开头 → 通过 strategy_repo 查询
-        - 其他 → 通过 account_repo 查询（转换为 int）
-
-        Args:
-            portfolio_id: 组合 ID
-            start_date: 起始日期
-            end_date: 结束日期
-
-        Returns:
-            持仓数据列表，每项包含 ts_code, weight 等字段
-        """
+        """Get portfolio positions, resolving account_id from portfolio_id."""
+        account_id = None
         if portfolio_id.startswith('strategy_'):
-            positions = await self.strategy_repo.get_positions(
-                portfolio_id, start_date, end_date
-            )
+            strategy = await self.strategy_repo.get_by_id(portfolio_id)
+            if strategy and hasattr(strategy, "account_id") and strategy.account_id:
+                account_id = str(strategy.account_id)
+            if not account_id:
+                logger.warning(f'Strategy {portfolio_id} has no account, using id as account_id')
+                account_id = portfolio_id
         else:
-            positions = await self.account_repo.get_positions(
-                int(portfolio_id), start_date, end_date
-            )
+            account_id = portfolio_id
+
+        raw = await self.position_repo.get_account_positions(str(account_id), include_zero=False)
+        if not raw:
+            return []
+
+        total_value = sum(float(getattr(p, "market_value", 0) or 0) for p in raw)
+        if total_value <= 0:
+            return []
+
+        positions = []
+        for p in raw:
+            mv = float(getattr(p, "market_value", 0) or 0)
+            positions.append({
+                "ts_code": getattr(p, 'ts_code', ''),
+                "weight": mv / total_value if total_value > 0 else 0.0,
+                "sector": getattr(p, 'sector', getattr(p, 'industry', '')),
+            })
 
         return positions
-
     async def _get_benchmark_positions(
             self,
             benchmark: str,
@@ -487,8 +492,8 @@ class AttributionService:
     async def _calculate_portfolio_return(
             self,
             positions: List[Dict[str, Any]],
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> float:
         """计算组合的加权区间 收益率
 
@@ -528,8 +533,8 @@ class AttributionService:
     async def _calculate_benchmark_return(
             self,
             positions,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> float:
         """计算基准的加权区间收益率
 
@@ -559,8 +564,8 @@ class AttributionService:
     async def _get_stock_return(
             self,
             ts_code: str,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> float:
         """计算单只股票在指定区间的收益率
 
@@ -576,7 +581,7 @@ class AttributionService:
             float: 区间收益率（小数形式），数据不足或异常时返回 0.0
         """
         try:
-            quotes = await self.quote_repo.get_daily_quotes(ts_code, start_date, end_date)
+            quotes = await self.quote_repo.get_by_code_and_date_range(ts_code, start_date, end_date)
             if quotes and len(quotes) >= 2:
                 first = float(quotes[0].close)
                 last = float(quotes[-1].close)
@@ -589,8 +594,8 @@ class AttributionService:
     async def _get_portfolio_returns(
             self,
             portfolio_id: str,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> 'pd.Series':
         """获取组合的日收益率序列
 
@@ -621,7 +626,7 @@ class AttributionService:
             w = float(p.get('weight', 0) if isinstance(p, dict) else getattr(p, 'weight', 0))
             if not code or w <= 0:
                 continue
-            quotes = await self.quote_repo.get_daily_quotes(code, start_date, end_date)
+            quotes = await self.quote_repo.get_by_code_and_date_range(code, start_date, end_date)
             if quotes and len(quotes) >= 2:
                 df = pd.DataFrame([{'d': q.trade_date, 'c': float(q.close)} for q in quotes])
                 df['d'] = pd.to_datetime(df['d'])
@@ -643,8 +648,8 @@ class AttributionService:
             portfolio_positions,
             benchmark_positions,
             sectors,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> dict:
         """按行业执行 Brinson 归因计算
 
@@ -700,8 +705,16 @@ class AttributionService:
                         s_returns.append(sr)
             pf_s[s]['r'] = sum(s_returns) / len(s_returns) if s_returns else 0.0
 
-            # TODO: 基准行业收益率应从基准成分股实际计算，当前简化为组合行业收益 × 0.9
-            bm_s[s]['r'] = pf_s[s]['r'] * 0.9
+            # Compute benchmark sector returns from actual benchmark constituents
+            bm_s_returns = []
+            for p in benchmark_positions:
+                sec = p.get("sector", "") if isinstance(p, dict) else getattr(p, "sector", "")
+                if sec == s:
+                    code = p.get("ts_code", "") if isinstance(p, dict) else getattr(p, "ts_code", "")
+                    if code:
+                        br = await self._get_stock_return(code, start_date, end_date)
+                        bm_s_returns.append(br)
+            bm_s[s]['r'] = sum(bm_s_returns) / len(bm_s_returns) if bm_s_returns else 0.0
 
         # Brinson 分解
         alloc = sum((pf_s[s]['w'] - bm_s[s]['w']) * bm_s[s]['r'] for s in sectors)
@@ -720,8 +733,8 @@ class AttributionService:
             self,
             portfolio_positions,
             benchmark_positions,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> dict:
         """按个股执行 Brinson 归因计算
 
@@ -739,7 +752,7 @@ class AttributionService:
         - 配置效应 = Σ (w_pi - w_bi) × (r_bi - R_b)
         - 选择效应 = Σ w_bi × (r_pi - r_bi)
 
-        当前使用简化 Brinson（非 Fachler），不减去基准总收益。
+        当前使用 Brinson（非 Fachler），不减去基准总收益。
 
         Args:
             portfolio_positions: 组合持仓列表
@@ -834,8 +847,8 @@ class AttributionService:
     async def _get_factor_returns(
             self,
             factor_model: str,
-            start_date: date,
-            end_date: date
+            start_date: datetime,
+            end_date: datetime
     ) -> 'pd.DataFrame':
         """获取因子日收益率序列
 
@@ -866,7 +879,7 @@ class AttributionService:
 
         # 尝试从基准行情数据计算 MKT 因子
         try:
-            bm = await self.quote_repo.get_daily_quotes('000300.SH', start_date, end_date)
+            bm = await self.quote_repo.get_by_code_and_date_range('000300.SH', start_date, end_date)
             if bm and len(bm) > 0:
                 df = pd.DataFrame([{'d': x.trade_date, 'c': float(x.close)} for x in bm])
                 df['d'] = pd.to_datetime(df['d'])
@@ -896,50 +909,29 @@ class AttributionService:
 
     @staticmethod
     async def _perform_factor_regression(
-            portfolio_returns: np.ndarray,
-            factor_returns: np.ndarray,
-            factor_names: List[str]
+        portfolio_returns: np.ndarray,
+        factor_returns: np.ndarray,
+        factor_names: List[str]
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """执行因子回归，估计因子暴露度和归因贡献
-
-        使用 OLS 线性回归：portfolio_return = α + Σ β_i × factor_return_i + ε
-        - 因子暴露度（β）：回归系数，表示组合对各因子的敏感度
-        - 因子贡献：β_i × mean(factor_return_i)，即因子平均收益 × 暴露度
-
-        Args:
-            portfolio_returns: 组合日收益率数组 (n_days,)
-            factor_returns: 因子日收益率矩阵 (n_days, n_factors)
-            factor_names: 因子名称列表
-
-        Returns:
-            Tuple[Dict, Dict]: (因子暴露度 {factor: beta}, 因子归因贡献 {factor: contribution})
-
-        Raises:
-            ValueError: 收益率序列长度不匹配时抛出
-        """
-        from sklearn.linear_model import LinearRegression
-
+        """Estimate factor exposures and attribution via OLS (np.linalg.lstsq)."""
         if len(portfolio_returns) != len(factor_returns):
             raise ValueError(
-                f"收益率序列长度不匹配: 组合 {len(portfolio_returns)}, 因子 {len(factor_returns)}"
+                f"return series length mismatch: portfolio {len(portfolio_returns)}, factors {len(factor_returns)}"
             )
 
-        # 添加截距项（α）
+        # OLS: X = [1 | factor_returns], solve via lstsq
         X = np.column_stack([np.ones(len(factor_returns)), factor_returns])
+        coef, residuals, rank, sv = np.linalg.lstsq(X, portfolio_returns, rcond=None)
 
-        # OLS 拟合
-        model = LinearRegression()
-        model.fit(X, portfolio_returns)
-
-        # 提取因子暴露度（跳过截距项，即 index 0）
+        # Factor exposures (skip intercept at index 0)
         exposures = {}
         for i, factor in enumerate(factor_names):
-            exposures[factor] = model.coef_[i + 1]
+            exposures[factor] = float(coef[i + 1])
 
-        # 计算因子归因贡献 = β_i × mean(factor_return_i)
+        # Factor contribution = beta_i * mean(factor_return_i)
         attributions = {}
         for i, factor in enumerate(factor_names):
-            factor_contribution = model.coef_[i + 1] * np.mean(factor_returns[:, i])
-            attributions[factor] = factor_contribution
+            contrib = float(coef[i + 1]) * float(np.mean(factor_returns[:, i]))
+            attributions[factor] = contrib
 
         return exposures, attributions

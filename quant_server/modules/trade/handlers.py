@@ -360,10 +360,7 @@ class TradeHandler:
 			)
 
 			# 获取总记录数
-			# 这里简化处理，实际应该使用专门的计数方法
-			total = len(trades) + (request.page - 1) * request.page_size
-			if len(trades) < request.page_size:
-				total = (request.page - 1) * request.page_size + len(trades)
+			total = await self.trade_repo.count_by_user_id(user_id=user_id)
 
 			# 转换为响应格式
 			trade_data = []

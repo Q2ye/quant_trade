@@ -9,9 +9,11 @@ from typing import List, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core import BusinessException
 from ....modules.account.calculators.asset_calculator import AssetCalculator
 from ....shared.cache.base import CacheBase
 from ....shared.database.repositories.account.asset.account_repo import AccountRepository
+from ....shared.database.repositories.market.basic.stock_repo import StockBasicRepository
 from ....shared.database.repositories.market.quote import StockDailyRepository
 from ....shared.database.repositories.trading.position.position_repo import PositionRepository
 
@@ -27,6 +29,7 @@ class AssetService:
 		self.account_repo = AccountRepository(db)
 		self.position_repo = PositionRepository(db)
 		self.stock_daily_repo = StockDailyRepository(db)
+		self.stock_basic_repo = StockBasicRepository(db)
 		self.asset_calculator = AssetCalculator(db)
 
 	async def get_account_assets (self, account_id: str) -> Dict[str, Any]:
@@ -139,7 +142,7 @@ class AssetService:
 				}
 			}
 
-			# 计算行业配置（这里简化，实际需要根据股票获取行业信息）
+			# 计算行业配置（查询stock_basic获取行业信息）
 			sector_allocation = await self.calculate_sector_allocation(positions)
 
 			return {
@@ -154,8 +157,7 @@ class AssetService:
 			logger.error(f"计算资产配置失败: {str(e)}")
 			raise
 
-	@staticmethod
-	async def calculate_sector_allocation (positions: List) -> Dict[str, Any]:
+	async def calculate_sector_allocation (self, positions: List) -> Dict[str, Any]:
 		"""
 		计算行业配置
 
@@ -165,27 +167,37 @@ class AssetService:
 		Returns:
 			行业配置信息
 		"""
-		# 这里简化处理，实际实现需要查询股票行业信息
 		sector_map = {}
 
-		for position in positions:
-			if position.market_value and position.market_value > 0:
-				# 这里假设所有股票都属于同一个行业
-				# 实际实现中需要根据ts_code查询行业信息
-				sector = "unknown"
+		# 收集所有有效持仓的ts_code，批量查询行业信息
+		active_positions = [p for p in positions if p.market_value and p.market_value > 0]
+		if not active_positions:
+			return {}
 
-				if sector not in sector_map:
-					sector_map[sector] = {
-						"sector_name": sector,
-						"total_value": Decimal("0.00"),
-						"positions": []
-					}
+		# 逐个查询行业信息
+		industry_cache = {}
+		for position in active_positions:
+			ts_code = position.ts_code
+			if ts_code not in industry_cache:
+				try:
+					stock_basic = await self.stock_basic_repo.get_by_ts_code(ts_code)
+					industry_cache[ts_code] = stock_basic.industry if stock_basic and stock_basic.industry else "其他"
+				except BusinessException:
+					industry_cache[ts_code] = "其他"
+			sector = industry_cache[ts_code]
 
-				sector_map[sector]["total_value"] += Decimal(str(position.market_value))
-				sector_map[sector]["positions"].append({
-					"ts_code": position.ts_code,
-					"market_value": position.market_value
-				})
+			if sector not in sector_map:
+				sector_map[sector] = {
+					"sector_name": sector,
+					"total_value": Decimal("0.00"),
+					"positions": []
+				}
+
+			sector_map[sector]["total_value"] += Decimal(str(position.market_value))
+			sector_map[sector]["positions"].append({
+				"ts_code": position.ts_code,
+				"market_value": position.market_value
+			})
 
 		# 计算百分比
 		total_sector_value = sum(sector["total_value"] for sector in sector_map.values())
@@ -305,8 +317,34 @@ class AssetService:
 			std = float(np.std(excess, ddof=1))
 			sharpe_ratio = float(np.mean(excess) / std * np.sqrt(252)) if std > 0 else 0.0
 
-			# Beta（相对于自身，简化为 1.0；实际需基准指数数据）
-			beta = 1.0
+			# Beta：相对沪深300 指数的系统性风险
+			beta = 0.0
+			try:
+				from sqlalchemy import select as _select
+				from shared.database.models.data_models import StockDaily as _StockDaily
+				import numpy as _np
+
+				bench_stmt = (
+					_select(_StockDaily)
+					.where(_StockDaily.ts_code == "000300.SH")
+					.order_by(_StockDaily.trade_date.asc())
+					.limit(252)
+				)
+				bench_result = await self.db.execute(bench_stmt)
+				bench_rows = bench_result.scalars().all()
+
+				if len(bench_rows) >= 2 and len(daily_returns) >= 2:
+					bench_returns = _np.array(
+						[float(r.pct_chg) / 100.0 for r in bench_rows[-len(daily_returns):]],
+						dtype=_np.float64,
+					)
+					if len(bench_returns) == len(daily_returns):
+						cov_matrix = _np.cov(daily_returns, bench_returns)
+						bench_variance = cov_matrix[1, 1]
+						if bench_variance > 0:
+							beta = float(cov_matrix[0, 1] / bench_variance)
+			except BusinessException:
+				pass  # 基准数据不可用时 beta=0
 
 			return {
 				"volatility": round(volatility, 6),
@@ -441,8 +479,6 @@ class AssetService:
 			最新价格，如果获取失败则返回None
 		"""
 		try:
-			# 这里简化处理，实际实现需要查询行情数据
-			# 可以从缓存或数据库获取最新价格
 			cache_key = f"price:{ts_code}"
 
 			if self.cache:

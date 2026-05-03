@@ -299,6 +299,7 @@ class RiskMetrics(BaseModel):
 	position_count: Optional[int] = None
 	industry_count: Optional[int] = None
 	total_market_value: Optional[Decimal] = None
+	correlation_risk: Optional[Decimal] = None
 	total_cash: Optional[Decimal] = None
 
 

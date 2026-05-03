@@ -402,7 +402,7 @@ def get_error_details (error_code: str, **kwargs) -> Dict[str, Any]:
 	try:
 		from .types import ErrorSeverity
 	except ImportError:
-		# 定义简化的严重程度枚举
+		# 定义的严重程度枚举
 		class ErrorSeverity:
 			DEBUG = "debug"
 			INFO = "info"

@@ -194,11 +194,107 @@ class TradeRepository(BaseRepository[Trade]):
 				.limit(limit)
 			)
 
+			if with_order:
+				query = query.options(joinedload(Trade.order))
+
 			result = await self.session.execute(query)
 			return result.scalars().all()
 
 		except Exception as e:
 			raise RepositoryError(f"获取用户成交记录失败: {str(e)}")
+
+
+	async def count_by_user_id (
+			self,
+			user_id: str,
+			start_time: Optional[datetime] = None,
+			end_time: Optional[datetime] = None,
+		) -> int:
+		"""
+		统计用户成交记录数
+
+		Args:
+			user_id: 用户ID
+			start_time: 开始时间
+			end_time: 结束时间
+
+		Returns:
+			成交记录数
+		"""
+		try:
+			order_subquery = (
+				select(Order.order_id)
+				.where(Order.user_id == user_id)
+				.subquery()
+			)
+
+			filters: List[Any] = [Trade.order_id.in_(select(order_subquery))]
+
+			if start_time:
+				filters.append(Trade.trade_time >= start_time)
+			if end_time:
+				filters.append(Trade.trade_time <= end_time)
+
+			query = select(func.count()).select_from(Trade).where(and_(*filters))
+			result = await self.session.execute(query)
+			return result.scalar() or 0
+
+		except Exception as e:
+			raise RepositoryError(f"统计用户成交记录数失败: {str(e)}")
+
+	async def get_by_strategy_and_account (
+			self,
+			strategy_id: str,
+			account_id: str,
+			start_time: Optional[datetime] = None,
+			end_time: Optional[datetime] = None,
+			skip: int = 0,
+			limit: int = 100
+		) -> List[Trade]:
+		"""
+		根据策略ID和账户ID获取成交记录
+
+		Args:
+			strategy_id: 策略ID
+			account_id: 账户ID
+			start_time: 开始时间
+			end_time: 结束时间
+			skip: 跳过记录数
+			limit: 限制记录数
+
+		Returns:
+			成交记录列表
+		"""
+		try:
+			order_subquery = (
+				select(Order.order_id)
+				.where(and_(Order.strategy_id == strategy_id, Order.account_id == account_id))
+				.subquery()
+			)
+
+			filters: List[Any] = [Trade.order_id.in_(select(order_subquery))]
+
+			if start_time:
+				filters.append(Trade.trade_time >= start_time)
+			if end_time:
+				filters.append(Trade.trade_time <= end_time)
+
+			query = (
+				select(Trade)
+				.where(and_(*filters))
+				.order_by(desc(Trade.trade_time))
+				.offset(skip)
+				.limit(limit)
+			)
+
+			if with_order:
+				query = query.options(joinedload(Trade.order))
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+
+		except Exception as e:
+			raise RepositoryError(f"获取策略账户成交记录失败: {str(e)}")
 
 	async def get_by_strategy_id (
 			self,
@@ -243,6 +339,9 @@ class TradeRepository(BaseRepository[Trade]):
 				.offset(skip)
 				.limit(limit)
 			)
+
+			if with_order:
+				query = query.options(joinedload(Trade.order))
 
 			result = await self.session.execute(query)
 			return result.scalars().all()
@@ -361,7 +460,8 @@ class TradeRepository(BaseRepository[Trade]):
 			start_time: Optional[datetime] = None,
 			end_time: Optional[datetime] = None,
 			skip: int = 0,
-			limit: int = 100
+			limit: int = 100,
+			with_order: bool = False
 	) -> List[Trade]:
 		"""
 		根据账户ID获取成交记录（需要关联订单表）
@@ -372,6 +472,7 @@ class TradeRepository(BaseRepository[Trade]):
 			end_time: 结束时间
 			skip: 跳过记录数
 			limit: 限制记录数
+			with_order: 是否急切加载订单关联数据
 
 		Returns:
 			成交记录列表
@@ -398,6 +499,9 @@ class TradeRepository(BaseRepository[Trade]):
 				.offset(skip)
 				.limit(limit)
 			)
+
+			if with_order:
+				query = query.options(joinedload(Trade.order))
 
 			result = await self.session.execute(query)
 			return result.scalars().all()

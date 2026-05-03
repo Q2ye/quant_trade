@@ -393,8 +393,39 @@ class ExposureCalculator:
 		illiquid_ratio = 1 - len(liquid_positions) / len(positions) if positions else Decimal('0')
 		liquidity_ratio = Decimal('1') - illiquid_ratio
 
-		# 计算相关性风险（简化）
-		# 实际需要计算组合内股票的相关性
+		# 计算组合内股票的平均相关性风险
+		correlation_risk = Decimal('0')
+		active_position_codes = [p.ts_code for p in positions if p.volume > 0 and p.last_price]
+		if len(active_position_codes) >= 2:
+			from shared.database.models.data_models import StockDaily
+			from sqlalchemy import select
+			# 获取最近60个交易日的涨跌幅数据
+			returns_query = (
+				select(StockDaily.ts_code, StockDaily.trade_date, StockDaily.pct_chg)
+				.where(
+					StockDaily.ts_code.in_(active_position_codes),
+					StockDaily.trade_date >= text("CURRENT_DATE - INTERVAL '90 days'")
+				)
+				.order_by(StockDaily.trade_date)
+			)
+			result = await self.session.execute(returns_query)
+			rows = result.all()
+			if rows:
+				# 构建 pivot: {ts_code: [return, ...]} 对齐日期
+				import pandas as pd
+				df = pd.DataFrame(rows, columns=['ts_code', 'trade_date', 'pct_chg'])
+				df['return'] = df['pct_chg'].astype(float) / 100.0
+				pivot = df.pivot(index='trade_date', columns='ts_code', values='return')
+				pivot = pivot.dropna(axis=0, thresh=len(active_position_codes) // 2)
+				if pivot.shape[1] >= 2 and pivot.shape[0] >= 20:
+					corr_matrix = pivot.corr()
+					# 取上三角（不含对角线）的平均值
+					mask = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+					upper_vals = corr_matrix.where(mask).stack()
+					avg_corr = float(upper_vals.mean())
+					if not np.isnan(avg_corr):
+						correlation_risk = Decimal(str(round(avg_corr, 4)))
+
 
 		# 获取行业敞口
 		industry_exposure = await self.calculate_industry_exposure(account_id)
@@ -491,7 +522,8 @@ class ExposureCalculator:
 				if p.volume > 0
 			)),
 			total_market_value=total_market_value,
-			total_cash=total_cash
+			total_cash=total_cash,
+			correlation_risk=correlation_risk
 		)
 
 	async def calculate_stress_test (

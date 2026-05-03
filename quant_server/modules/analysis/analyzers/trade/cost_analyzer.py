@@ -740,27 +740,82 @@ class CostAnalyzer:
 	def _estimate_market_impact (
 			matched_trades: List[Dict[str, Any]]
 		) -> Dict[str, Any]:
-		"""估计市场冲击成本 — Almgren-Chriss 简化模型"""
+		"""估计市场冲击成本 — Almgren-Chriss 模型 (square-root law: eta * sigma * Q^beta)"""
+		if not matched_trades:
+			return {'impacts': [], 'total_market_impact': 0, 'avg_impact_bps': 0}
+
+		# Group trades by symbol and compute per-symbol statistics
+		symbol_groups: Dict[str, List[dict]] = {}
+		symbol_volumes: Dict[str, List[float]] = {}
+		symbol_prices: Dict[str, List[float]] = {}
+
+		for match in matched_trades:
+			trade = match['trade']
+			sym = trade.get('ts_code', trade.get('symbol', ''))
+			vol = int(trade.get('volume', 0))
+			px = float(trade.get('price', 0))
+			if sym and vol > 0 and px > 0:
+				symbol_groups.setdefault(sym, []).append(match)
+				symbol_volumes.setdefault(sym, []).append(float(vol))
+				symbol_prices.setdefault(sym, []).append(px)
+
+		# Pre-compute per-symbol median volume and price volatility
+		symbol_stats = {}
+		for sym in symbol_groups:
+			vols = np.array(symbol_volumes[sym])
+			prices = np.array(symbol_prices[sym])
+			median_vol = float(np.median(vols))
+			if len(prices) >= 2:
+				est_vol = float(np.std(prices, ddof=1) / np.mean(prices))
+			else:
+				est_vol = 0.02  # Default daily vol 2%
+			symbol_stats[sym] = {'median_vol': median_vol, 'est_volatility': max(est_vol, 0.001)}
+
 		impacts = []
 		total = 0.0
+
 		for match in matched_trades:
 			trade = match['trade']
 			volume = int(trade.get('volume', 0))
 			price = float(trade.get('price', 0))
 			tv = price * volume
-			pr = 0.01
-			impact_bps = 10 * (pr ** 0.5)
-			iv = tv * impact_bps / 10000
+
+			if volume == 0 or price == 0:
+				impacts.append({'trade_id': trade.get('trade_id', ''),
+					'estimated_impact_bps': 0, 'estimated_impact_value': 0,
+					'trade_value': 0})
+				continue
+
+			sym = trade.get('ts_code', trade.get('symbol', ''))
+			aStats = symbol_stats.get(sym, {'median_vol': float(volume), 'est_volatility': 0.02})
+
+			# Participation rate: trade volume relative to median for this symbol
+			relative_size = volume / aStats['median_vol'] if aStats['median_vol'] > 0 else 1.0
+			est_participation = min(relative_size * 0.05, 0.20)
+
+			# Almgren-Chriss square-root impact: eta * sigma * (participation)^beta
+			eta = 0.1
+			beta = 0.5
+			impact_frac = eta * stats['est_volatility'] * (est_participation ** beta)
+			impact_bps = impact_frac * 10000
+
+			iv = tv * impact_frac
 			total += iv
 			impacts.append({
 				'trade_id': trade.get('trade_id', ''),
-				'estimated_impact_bps': impact_bps,
-				'estimated_impact_value': iv,
-				'trade_value': tv
+				'ts_code': sym,
+				'estimated_impact_bps': round(impact_bps, 4),
+				'estimated_impact_value': round(iv, 4),
+				'trade_value': tv,
+				'est_participation': round(est_participation, 4),
+				'est_volatility': round(aStats['est_volatility'], 6)
 			})
+
+		total_tv = sum(i['trade_value'] for i in impacts)
 		return {
-			'impacts': impacts, 'total_market_impact': total,
-			'avg_impact_bps': total / sum(i['trade_value'] for i in impacts) * 10000 if impacts else 0
+			'impacts': impacts,
+			'total_market_impact': round(total, 4),
+			'avg_impact_bps': round(total / total_tv * 10000, 4) if total_tv > 0 else 0
 		}
 
 	@staticmethod

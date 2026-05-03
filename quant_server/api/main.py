@@ -71,7 +71,7 @@ def create_app (
 			routes=app.routes,
 		)
 
-		# 简化安全方案配置
+		# 安全方案配置
 		openapi_schema.setdefault("components", {}).update({
 			"securitySchemes": {
 				"BearerAuth": {

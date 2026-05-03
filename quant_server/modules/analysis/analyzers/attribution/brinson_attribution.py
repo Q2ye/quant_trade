@@ -143,17 +143,12 @@ class BrinsonAttribution:
 				cumulative_attribution['selection_effect'] += period_result['selection_effect']
 				cumulative_attribution['interaction_effect'] += period_result['interaction_effect']
 
-			# 计算总收益
-			first_portfolio = portfolio_data[0]
-			last_portfolio = portfolio_data[-1]
-			first_benchmark = benchmark_data[0]
-			last_benchmark = benchmark_data[-1]
-
+			# 计算多期总收益（复利）
 			portfolio_total_return = self._calculate_multiperiod_return(
-				first_portfolio, last_portfolio
+				portfolio_data
 			)
 			benchmark_total_return = self._calculate_multiperiod_return(
-				first_benchmark, last_benchmark
+				benchmark_data
 			)
 			active_return = portfolio_total_return - benchmark_total_return
 
@@ -431,20 +426,26 @@ class BrinsonAttribution:
 			'asset_interaction_effects': asset_interaction_effects
 		}
 
-	@staticmethod
 	def _calculate_multiperiod_return (
-			start_data: Dict[str, Any],
-			end_data: Dict[str, Any]
+			self,
+			period_data: List[Dict[str, Any]]
 	) -> float:
-		"""计算多期总收益"""
-		# 简化实现：假设数据已经包含累计收益
-		start_value = start_data.get('total_value', 1.0)
-		end_value = end_data.get('total_value', 1.0)
+		"""计算多期总收益（复利）
 
-		if start_value == 0:
+		对每期数据，使用 _calculate_total_return 计算加权收益，
+		再将各期收益复利累乘得到总收益。
+		"""
+		if not period_data:
 			return 0.0
 
-		return (end_value - start_value) / start_value
+		cumulative = 1.0
+		for period in period_data:
+			weights = period.get('weights', {})
+			returns = period.get('returns', {})
+			period_return = self._calculate_total_return(weights, returns)
+			cumulative *= (1.0 + period_return)
+
+		return cumulative - 1.0
 
 	def calculate_brinson_fach_attribution (
 			self,

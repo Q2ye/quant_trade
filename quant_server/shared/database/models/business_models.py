@@ -578,6 +578,7 @@ class Trade(Base):
     trade_time = Column(DateTime(timezone=True), nullable=False, index=True, comment='成交时间')
     commission = Column(Numeric(10, 4), nullable=False, comment='佣金')
     tax = Column(Numeric(10, 4), nullable=False, comment='印花税')
+    pnl = Column(Numeric(16, 4), default=0, comment='交易盈亏')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系

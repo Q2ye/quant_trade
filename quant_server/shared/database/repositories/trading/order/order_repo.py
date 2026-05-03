@@ -212,6 +212,54 @@ class OrderRepository(BaseRepository[Order]):
 
 		except Exception as e:
 			raise RepositoryError(f"获取策略订单失败: {str(e)}")
+
+	async def get_by_strategy_and_account (
+			self,
+			strategy_id: str,
+			account_id: str,
+			start_date: Optional[datetime] = None,
+			end_date: Optional[datetime] = None,
+			skip: int = 0,
+			limit: int = 100
+		) -> List[Order]:
+		"""
+		根据策略ID和账户ID获取订单
+
+		Args:
+			strategy_id: 策略ID
+			account_id: 账户ID
+			start_date: 开始时间
+			end_date: 结束时间
+			skip: 跳过记录数
+			limit: 限制记录数
+
+		Returns:
+			订单列表
+		"""
+		try:
+			filters = [
+				Order.strategy_id == strategy_id,
+				Order.account_id == account_id
+			]
+
+			if start_date:
+				filters.append(Order.submitted_at >= start_date)
+			if end_date:
+				filters.append(Order.submitted_at <= end_date)
+
+			query = (
+				select(Order)
+				.where(and_(*filters))
+				.order_by(desc(Order.submitted_at))
+				.offset(skip)
+				.limit(limit)
+			)
+
+			result = await self.session.execute(query)
+			return result.scalars().all()
+
+		except Exception as e:
+			raise RepositoryError(f"获取策略账户订单失败: {str(e)}")
 
 	async def get_by_ts_code (
 			self,

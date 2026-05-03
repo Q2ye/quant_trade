@@ -1193,14 +1193,36 @@ async def get_sync_status (
 					progress = task.processed_records / task.total_records * 100
 
 			# 构建进度信息
-			from modules.data.schemas import SyncProgress
+			from modules.data.schemas import SyncProgress, SyncResult
+
+			# 计算预计剩余时间
+			estimated_time_remaining = None
+			if task.status == "running" and hasattr(task, "start_time") and task.start_time and progress > 0:
+				elapsed = (datetime.now() - task.start_time).total_seconds()
+				estimated_total = elapsed / (progress / 100)
+				estimated_time_remaining = int(max(0.0, estimated_total - elapsed))
+
+			# 构建同步结果
+			sync_results = []
+			if hasattr(task, "data_types") and task.data_types:
+				for data_type in task.data_types:
+					sync_results.append(SyncResult(
+						data_type=data_type,
+						success=task.status == "completed",
+						records_added=task.records_succeeded or 0,
+						records_updated=0,
+						records_failed=task.records_failed or 0,
+						start_time=task.start_time or datetime.now(),
+						end_time=task.end_time or (datetime.now() if task.status == "completed" else datetime.now()),
+					))
+
 			progress_info = SyncProgress(
 				task_id=task.task_id,
-				total_tasks=1,  # 简化处理
+				total_tasks=len(task.data_types) if task.data_types else 1,
 				completed_tasks=1 if task.status == "completed" else 0,
 				current_task=f"同步{task.task_type}",
 				progress_percentage=progress,
-				estimated_time_remaining=None  # 简化处理
+				estimated_time_remaining=estimated_time_remaining
 			)
 
 			# 构建响应
@@ -1209,7 +1231,7 @@ async def get_sync_status (
 				task_id=task.task_id,
 				status=task.status,
 				progress=progress_info,
-				results=[],  # 简化处理
+				results=sync_results,
 				created_by=str(task.user_id),
 				created_at=task.created_at,
 				updated_at=task.updated_at,
@@ -1237,24 +1259,57 @@ async def get_sync_status (
 						                                                         "completed_at") and task.completed_at else None
 					})
 
-			from modules.data.schemas import SyncProgress
-			# 构建响应（返回简化版本）
+			from modules.data.schemas import SyncProgress, SyncResult
+
+			# 构建同步结果列表
+			sync_results = []
+			if tasks:
+				for task in tasks:
+					# 为每个任务构建 SyncResult
+					data_types = task.data_types if hasattr(task, "data_types") and task.data_types else [task.task_type]
+					for data_type in data_types:
+						sync_results.append(SyncResult(
+							data_type=data_type,
+							success=task.status == "completed",
+							records_added=task.records_succeeded or 0,
+							records_updated=0,
+							records_failed=task.records_failed or 0,
+							start_time=task.start_time if hasattr(task, "start_time") and task.start_time else task.created_at,
+							end_time=task.end_time if hasattr(task, "end_time") and task.end_time else task.updated_at if hasattr(task, "updated_at") and task.updated_at else task.created_at,
+						))
+
+			# 计算汇总状态
+			running_count = sum(1 for t in tasks if t.status == "running")
+			failed_count = sum(1 for t in tasks if t.status == "failed")
+			completed_count = sum(1 for t in tasks if t.status == "completed")
+			if running_count > 0:
+				aggregate_status = "running"
+			elif failed_count == len(tasks):
+				aggregate_status = "failed"
+			else:
+				aggregate_status = "completed"
+
+			# 使用最早和最晚的任务时间
+			earliest_time = min((t.created_at for t in tasks if t.created_at), default=datetime.now())
+			latest_time = max((t.updated_at if hasattr(t, "updated_at") and t.updated_at else t.created_at for t in tasks if t.created_at), default=datetime.now())
+
+			# 构建响应
 			return SyncStatusResponse(
 				success=True,
 				task_id="recent_tasks",
-				status="completed",
+				status=aggregate_status,
 				progress=SyncProgress(
 					task_id="recent_tasks",
 					total_tasks=len(recent_tasks),
-					completed_tasks=len(recent_tasks),
+					completed_tasks=completed_count,
 					current_task="查看历史任务",
 					progress_percentage=100,
 					estimated_time_remaining=0
 				),
-				results=[],
+				results=sync_results,
 				created_by=str(user_id),
-				created_at=datetime.now(),
-				updated_at=datetime.now(),
+				created_at=earliest_time,
+				updated_at=latest_time,
 				message=f"获取到{len(recent_tasks)}个历史任务"
 			)
 

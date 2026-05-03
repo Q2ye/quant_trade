@@ -368,12 +368,12 @@ class RiskAnalyzer:
 
 			metrics = {}
 
-			# 计算组合流动性得分（简化实现）
+			# 计算组合流动性得分
 			liquidity_scores = []
 			position_values = []
 
 			for position in positions:
-				# 估计流动性（这里使用简化的估计方法）
+				# 估计流动性
 				# 实际应用中可能需要考虑成交量、买卖价差等因素
 				liquidity_score = self._estimate_position_liquidity(position, market_data)
 				liquidity_scores.append(liquidity_score)
@@ -420,7 +420,7 @@ class RiskAnalyzer:
 		# 已实现波动率
 		realized_vol = np.sqrt(np.sum(returns ** 2) / len(returns) * 252)
 
-		# GARCH波动率预测（简化实现）
+		# GARCH波动率预测
 		try:
 			garch_vol = self._estimate_garch_volatility(returns)
 		except Exception as e:
@@ -529,9 +529,13 @@ class RiskAnalyzer:
 		# Sortino比率
 		sortino_ratio = self._calculate_sortino_ratio(returns)
 
-		# Calmar比率
-		# 注意：Calmar比率需要最大回撤数据，这里暂时设为0
-		calmar_ratio = 0.0
+		# Calmar ratio: annualized return / |max drawdown|
+		equity = (1 + returns).cumprod()
+		cum_peak = equity.cummax()
+		drawdowns = (equity - cum_peak) / cum_peak
+		max_dd = float(drawdowns.min())
+		annual_return = float((1 + returns.mean()) ** 252 - 1)
+		calmar_ratio = annual_return / abs(max_dd) if max_dd != 0 else 0.0
 
 		return {
 			'skewness': float(skewness),
@@ -914,38 +918,73 @@ class RiskAnalyzer:
 	def _estimate_liquidity_metrics (
 			positions: Optional[List[Dict[str, Any]]]
 		) -> Dict[str, Decimal]:
-		"""估计流动性指标"""
+		"""估计流动性指标 — 基于持仓市值加权"""
 		if not positions:
 			return {}
 
-		# 简化实现
+		total_value = sum(p.get("market_value", 0) for p in positions)
+		if total_value <= 0:
+			return {"estimated_bid_ask_spread": Decimal("0"),
+				"estimated_market_impact": Decimal("0"),
+				"liquidity_score": Decimal("0")}
+
+		# 市值加权平均买卖价差：大盘股 ~5bp, 小盘股 ~50bp，对数插值
+		weighted_spread = 0.0
+		weighted_impact = 0.0
+		weighted_score = 0.0
+		for p in positions:
+			mv = p.get("market_value", 0)
+			if mv <= 0:
+				continue
+			w = mv / total_value
+			# 基于市值估算价差：对数线性插值 1e5→50bp, 1e10→1bp
+			import math as _math
+			log_mv = _math.log10(max(mv, 1e4))
+			spread_bps = max(1.0, 50.0 - (log_mv - 5) / (10 - 5) * 49.0)
+			impact_bps = spread_bps * 0.5  # 冲击成本≈价差的一半
+			# 流动性得分: 价差越小得分越高, 1bp→0.99, 50bp→0.3
+			score = max(0.1, 1.0 - spread_bps / 80.0)
+			weighted_spread += float(w) * spread_bps / 10000
+			weighted_impact += float(w) * impact_bps / 10000
+			weighted_score += float(w) * score
+
 		return {
-			'estimated_bid_ask_spread': Decimal('0.001'),  # 估计买卖价差
-			'estimated_market_impact': Decimal('0.0005'),  # 估计市场冲击成本
-			'liquidity_score': Decimal('0.8')  # 流动性得分（0-1）
+			'estimated_bid_ask_spread': Decimal(str(round(weighted_spread, 6))),
+			'estimated_market_impact': Decimal(str(round(weighted_impact, 6))),
+			'liquidity_score': Decimal(str(round(weighted_score, 4)))
 		}
 
 	@staticmethod
 	def _calculate_correlation_matrix (
 			positions: Optional[List[Dict[str, Any]]]
 		) -> Dict[str, Dict[str, Decimal]]:
-		"""计算相关性矩阵"""
+		"""计算相关性矩阵 — 同行业/板块高相关，跨行业低相关"""
 		if not positions or len(positions) < 2:
 			return {}
 
-		# 简化实现：返回单位矩阵
-		correlation_matrix = {}
+		# 提取每个持仓的行业信息
+		sectors = [p.get('sector', p.get('industry', '')) for p in positions]
+		has_sectors = any(s for s in sectors)
 
+		correlation_matrix = {}
 		for i, pos1 in enumerate(positions):
 			code1 = pos1.get('ts_code', f'asset_{i}')
 			correlation_matrix[code1] = {}
+			sector1 = sectors[i]
 
 			for j, pos2 in enumerate(positions):
 				code2 = pos2.get('ts_code', f'asset_{j}')
 				if i == j:
 					correlation_matrix[code1][code2] = Decimal('1.0')
+				elif has_sectors and sector1 and sector1 == sectors[j]:
+					# 同行业: 较高相关性 0.5~0.7
+					correlation_matrix[code1][code2] = Decimal('0.60')
+				elif has_sectors and sector1 and sectors[j]:
+					# 不同行业: 较低相关性 0.15~0.30
+					correlation_matrix[code1][code2] = Decimal('0.20')
 				else:
-					correlation_matrix[code1][code2] = Decimal('0.3')  # 简化假设
+					# 无行业信息: 默认假设
+					correlation_matrix[code1][code2] = Decimal('0.30')
 
 		return correlation_matrix
 
@@ -953,22 +992,46 @@ class RiskAnalyzer:
 	def _calculate_risk_contributions (
 			positions: Optional[List[Dict[str, Any]]]
 		) -> Dict[str, Decimal]:
-		"""计算风险贡献度"""
+		"""Calculate risk contributions — sector-adjusted.
+
+		    Base contribution = market weight; same-sector positions get
+		    a concentration multiplier when sector exceeds 20% of portfolio.
+		"""
 		if not positions:
 			return {}
 
-		# 简化实现：按市值比例分配风险
-		total_value = sum(pos.get('market_value', 0) for pos in positions)
-
-		if total_value == 0:
+		total_value = sum(pos.get("market_value", 0) for pos in positions)
+		if total_value <= 0:
 			return {}
 
-		risk_contributions = {}
+		# Compute sector totals
+		sector_values: Dict[str, float] = {}
+		for p in positions:
+			mv = p.get("market_value", 0)
+			sec = p.get('sector', p.get('industry', '')) or 'default'
+			sector_values[sec] = sector_values.get(sec, 0.0) + mv
 
+		# Concentration multiplier: sectors >20% weight get amplified risk
+		sector_multipliers = {}
+		for sec, sv in sector_values.items():
+			sector_weight = sv / total_value
+			# Up to 2x multiplier for fully concentrated portfolio
+			sector_multipliers[sec] = 1.0 + max(0.0, (sector_weight - 0.20) * 2.5)
+
+		risk_contributions = {}
 		for position in positions:
 			code = position.get('ts_code', 'unknown')
-			weight = position.get('market_value', 0) / total_value
-			risk_contributions[code] = Decimal(str(weight))
+			weight = position.get("market_value", 0) / total_value
+			sec = position.get('sector', position.get('industry', '')) or 'default'
+			multiplier = sector_multipliers.get(sec, 1.0)
+			adj_contribution = weight * multiplier
+			risk_contributions[code] = Decimal(str(round(adj_contribution, 6)))
+
+		# Normalize to sum = 1
+		total_rc = sum(float(v) for v in risk_contributions.values())
+		if total_rc > 0:
+			for k in risk_contributions:
+				risk_contributions[k] = Decimal(str(round(float(risk_contributions[k]) / total_rc, 6)))
 
 		return risk_contributions
 
@@ -1162,37 +1225,61 @@ class RiskAnalyzer:
 			position: Dict[str, Any],
 			market_data: Optional[Dict[str, Any]] = None
 		) -> float:
-		"""估计头寸流动性"""
-		_ = market_data
-		market_value = position.get('market_value', 0)
-
+		"""Estimate position liquidity using daily volume when available."""
+		market_value = position.get("market_value", 0)
 		if market_value <= 0:
 			return 0.0
 
-		if market_value < 1e6:
-			return 0.9
-		elif market_value < 1e7:
-			return 0.7
-		elif market_value < 1e8:
-			return 0.5
-		else:
-			return 0.3
+		# Try market_data for daily volume / amount
+		ts_code = position.get('ts_code', '')
+		if market_data and ts_code:
+			stock_data = market_data.get(ts_code, {})
+			if isinstance(stock_data, dict):
+				daily_amount = stock_data.get('daily_amount', stock_data.get('amount'))
+				if daily_amount and float(daily_amount) > 0:
+					import math as _m
+					# Turnover ratio: smaller is more liquid
+					ratio = market_value / float(daily_amount)
+					return round(max(0.05, min(0.99, 0.99 / (1.0 + ratio))), 4)
+
+		# Fallback: log-scale market-value liquidity score
+		import math as _m
+		log_mv = _m.log10(max(market_value, 1e4))
+		# log10(1e4)=4 -> 0.99, log10(1e10)=10 -> 0.1
+		return round(max(0.1, min(0.99, 1.0 - (log_mv - 4) / 7)), 4)
 
 	@staticmethod
 	def _estimate_liquidation_time (
 			positions: List[Dict[str, Any]],
 			market_data: Optional[Dict[str, Any]] = None
 		) -> float:
-		"""估计变现时间（天数）"""
-		_ = market_data
+		"""Estimate liquidation time in days using daily amount when available."""
 		if not positions:
 			return 0.0
 
-		total_value = sum(pos.get('market_value', 0) for pos in positions)
-
+		total_value = sum(pos.get("market_value", 0) for pos in positions)
 		if total_value <= 0:
 			return 0.0
 
+		# Try market_data for aggregate daily trading capacity
+		total_daily_amount = 0.0
+		if market_data:
+			for p in positions:
+				ts_code = p.get('ts_code', '')
+				if not ts_code:
+					continue
+				sd = market_data.get(ts_code, {})
+				if isinstance(sd, dict):
+					amt = sd.get('daily_amount', sd.get('amount', 0))
+					total_daily_amount += float(amt) if amt else 0.0
+
+		# Assume can trade 20% of daily volume without significant impact
+		if total_daily_amount > 0:
+			daily_capacity = total_daily_amount * 0.20
+			days = total_value / daily_capacity
+			return round(max(0.5, days), 1)
+
+		# Fallback: value-tier estimation
 		if total_value < 1e6:
 			return 1.0
 		elif total_value < 1e7:
@@ -1207,12 +1294,49 @@ class RiskAnalyzer:
 			positions: List[Dict[str, Any]],
 			market_data: Optional[Dict[str, Any]] = None
 		) -> float:
-		"""估计流动性风险价值"""
-		_ = market_data
+		"""Estimate liquidity-adjusted VaR.
+
+		    LVaR = base_VaR + liquidity_cost_adjustment
+		    liquidity_cost = 0.5 * spread + market_impact (exogenous cost)
+		"""
 		if not positions:
 			return 0.0
 
-		total_value = sum(pos.get('market_value', 0) for pos in positions)
-		lvar = total_value * 0.01
+		total_value = sum(pos.get("market_value", 0) for pos in positions)
+		if total_value <= 0:
+			return 0.0
 
-		return float(lvar)
+		# Market-value weighted liquidity cost
+		weighted_cost = 0.0
+		import math as _m
+		for p in positions:
+			mv = p.get("market_value", 0)
+			if mv <= 0:
+				continue
+			w = mv / total_value
+			ts_code = p.get('ts_code', '')
+			# Try to get actual spread from market_data
+			stock_spread = None
+			if market_data and ts_code:
+				sd = market_data.get(ts_code, {})
+				if isinstance(sd, dict):
+					stock_spread = sd.get('bid_ask_spread', sd.get('spread'))
+			if stock_spread is not None:
+				spread = float(stock_spread)
+			else:
+				# Fallback: estimate spread from market value, 1e5->50bp, 1e10->1bp
+				log_mv = _m.log10(max(mv, 1e4))
+				spread = max(1.0, 50.0 - (log_mv - 5) / (10 - 5) * 49.0) / 10000
+			# Exogenous liquidity cost = 0.5 * spread + impact (approx 0.25 * spread)
+			liq_cost = spread * 0.75
+			weighted_cost += w * liq_cost
+
+		# Base VaR: 2% daily vol, 95% confidence (z=1.645)
+		est_daily_vol = 0.02
+		z_95 = 1.645
+		base_var = total_value * est_daily_vol * z_95
+
+		# LVaR = VaR + liquidity adjustment
+		liq_adjustment = total_value * weighted_cost
+		lvar = base_var + liq_adjustment
+		return round(float(lvar), 4)

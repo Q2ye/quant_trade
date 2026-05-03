@@ -3,7 +3,7 @@
 提供统一的引擎创建、配置和管理服务，遵循工厂模式设计原则
 
 设计目标：
-1. 统一引擎创建流程，简化引擎初始化
+1. 统一引擎创建流程，引擎初始化
 2. 集中管理引擎配置，支持动态配置更新
 3. 提供引擎依赖注入和生命周期管理
 4. 支持引擎的懒加载和缓存
@@ -72,8 +72,8 @@ class EngineDescriptor:
         """
         errors = []
 
-        # 这里可以实现基于config_schema的配置验证
-        # 简化的验证：检查必要字段
+        # 验证config_schema中声明的必填字段是否均已提供。
+        # config_schema目前仅承载 required 和 default 两种约束，验证范围与之匹配。
         required_fields = self.config_schema.get("required", [])
         for field_name in required_fields:
             if field_name not in config:

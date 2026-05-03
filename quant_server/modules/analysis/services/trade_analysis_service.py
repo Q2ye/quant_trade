@@ -35,7 +35,7 @@
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, List, Any
 
@@ -91,8 +91,8 @@ class TradeAnalysisService:
 			self,
 			strategy_id: str,
 			account_id: str,
-			start_date: date,
-			end_date: date
+			start_date: datetime,
+			end_date: datetime
 	) -> TradeAnalysis:
 		"""分析指定策略和账户在区间内的全部交易
 
@@ -122,8 +122,10 @@ class TradeAnalysisService:
 			)
 
 			if not trades:
-				trades = await self.trade_repo.get_by_account(
-					account_id, start_date, end_date
+				trades = await self.trade_repo.get_by_account_id(
+					account_id,
+					start_time=datetime.combine(start_date, datetime.min.time()) if start_date else None,
+					end_time=datetime.combine(end_date, datetime.max.time()) if end_date else None
 				)
 
 			if not trades:
@@ -142,7 +144,7 @@ class TradeAnalysisService:
 
 			execution_quality = await self._calc_execution_quality(orders)
 
-			trading_behavior = self._analyze_trading_behavior(trades, start_date, end_date)
+			trading_behavior = self._analyze_trading_behavior(trades, account_id, start_date, end_date)
 
 			time_distribution = self._analyze_time_distribution(trades)
 
@@ -301,8 +303,11 @@ class TradeAnalysisService:
 			ValueError: 成本计算失败时抛出
 		"""
 		try:
-			trades = await self.trade_repo.get_by_account(
-				account_id, start_date, end_date
+			trades = await self.trade_repo.get_by_account_id(
+				account_id,
+				start_time=datetime.combine(start_date, datetime.min.time()) if start_date else None,
+				end_time=datetime.combine(end_date, datetime.max.time()) if end_date else None,
+				with_order=True
 			)
 
 			if not trades:
@@ -319,8 +324,8 @@ class TradeAnalysisService:
 			result = self._calc_cost_breakdown(trades)
 
 			# 按买卖方向分解成本率
-			buy_trades = [t for t in trades if hasattr(t, 'direction') and t.direction == 'buy']
-			sell_trades = [t for t in trades if hasattr(t, 'direction') and t.direction == 'sell']
+			buy_trades = [t for t in trades if hasattr(t, 'order') and t.order and t.order.direction == 'buy']
+			sell_trades = [t for t in trades if hasattr(t, 'order') and t.order and t.order.direction == 'sell']
 
 			efficiency = result['efficiency']
 
@@ -382,8 +387,10 @@ class TradeAnalysisService:
 			ValueError: 模式识别失败时抛出
 		"""
 		try:
-			trades = await self.trade_repo.get_by_strategy(
-				strategy_id, start_date, end_date
+			trades = await self.trade_repo.get_by_strategy_id(
+				strategy_id,
+				start_time=datetime.combine(start_date, datetime.min.time()) if start_date else None,
+				end_time=datetime.combine(end_date, datetime.max.time()) if end_date else None
 			)
 
 			if not trades:
@@ -597,6 +604,7 @@ class TradeAnalysisService:
 	@staticmethod
 	def _analyze_trading_behavior (
 			trades: List,
+			account_id: str = None,
 			start_date: date = None,
 			end_date: date = None
 	) -> Dict[str, float]:
@@ -632,8 +640,27 @@ class TradeAnalysisService:
 
 		average_trade_size = np.mean(trade_sizes) if trade_sizes else 0
 
-		# TODO: 平均持仓周期应从持仓表（position_repo）计算每笔交易的实际进出时间差
-		average_holding_period = 5.0
+		# Compute average holding period from trade timestamps per stock
+		holding_periods = []
+		if trades:
+			trades_by_code: Dict[str, List] = {}
+			for trade in trades:
+				if hasattr(trade, "ts_code") and hasattr(trade, "trade_time") and trade.trade_time:
+					code = trade.ts_code
+					if code not in trades_by_code:
+						trades_by_code[code] = []
+					trades_by_code[code].append(trade.trade_time)
+			for code, times in trades_by_code.items():
+				if len(times) >= 2:
+					holding_days = (max(times) - min(times)).total_seconds() / 86400
+					holding_periods.append(holding_days)
+				else:
+					# Single trade per stock: estimate from analysis period
+					if start_date and end_date:
+						holding_periods.append((end_date - start_date).days / 2)
+					else:
+						holding_periods.append(3.0)
+		average_holding_period = np.mean(holding_periods) if holding_periods else 0.0
 
 		# 换手率 = 交易次数 / 交易天数
 		if start_date and end_date:
@@ -755,48 +782,180 @@ class TradeAnalysisService:
 	def _identify_reversal_patterns (trades: List) -> List[Dict[str, Any]]:
 		"""识别反转交易模式
 
-		基于交易序列长度简化判断：≥ 5 笔交易时标记为潜在反转模式。
-		TODO: 应基于实际买卖方向序列（连续买入后卖出或反之）做精确判断。
+		按股票分组后分析价格序列，检测"连续同向价格变动后出现反向变动"的反转特征。
+		反转判定规则：
+		- 同一股票连续 ≥ 2 笔交易价格朝同一方向变动后，出现反向变动
+		- 反转幅度越大、前期趋势越长，置信度越高
 
 		Args:
 			trades: 交易记录列表
 
 		Returns:
-			反转交易模式列表
+			反转交易模式列表，每项含 pattern_type, code, direction, prior_streak,
+			reversal_magnitude, description, confidence
 		"""
 		patterns = []
+		if not trades:
+			return patterns
 
-		if len(trades) >= 5:
-			patterns.append({
-				'pattern_type': 'reversal',
-				'description': '检测到可能的反转交易模式（基于交易频次）',
-				'confidence': 0.7
-			})
+		# 按股票代码分组
+		trades_by_code: Dict[str, List] = {}
+		for trade in trades:
+			if hasattr(trade, 'ts_code') and hasattr(trade, 'trade_time'):
+				code = trade.ts_code
+				if code not in trades_by_code:
+					trades_by_code[code] = []
+				trades_by_code[code].append(trade)
 
+		for code, code_trades in trades_by_code.items():
+			# 按时间排序，提取价格序列
+			sorted_trades = sorted(
+				[t for t in code_trades if hasattr(t, 'price')],
+				key=lambda t: t.trade_time
+			)
+			if len(sorted_trades) < 3:
+				continue
+
+			# 计算相邻交易的价格变动方向
+			price_changes = []
+			for i in range(1, len(sorted_trades)):
+				p0 = float(sorted_trades[i - 1].price)
+				p1 = float(sorted_trades[i].price)
+				price_changes.append({
+					'direction': 'up' if p1 > p0 else ('down' if p1 < p0 else 'flat'),
+					'magnitude': abs(p1 - p0),
+					'pct': abs(p1 - p0) / p0 if p0 > 0 else 0
+				})
+
+			# 检测反转：连续同向变动后出现反向
+			i = 0
+			while i < len(price_changes) - 1:
+				current_dir = price_changes[i]['direction']
+				if current_dir == 'flat':
+					i += 1
+					continue
+
+				# 统计同向连续长度
+				streak_len = 1
+				streak_magnitude = price_changes[i]['magnitude']
+				j = i + 1
+				while j < len(price_changes) and price_changes[j]['direction'] == current_dir:
+					streak_len += 1
+					streak_magnitude += price_changes[j]['magnitude']
+					j += 1
+
+				# 检查是否跟随反向变动
+				if streak_len >= 2 and j < len(price_changes):
+					opposite = 'down' if current_dir == 'up' else 'up'
+					if price_changes[j]['direction'] == opposite:
+						reversal_pct = price_changes[j]['pct']
+						# 置信度：基于前期趋势长度 + 反转幅度
+						confidence = min(0.5 + 0.08 * streak_len + 0.25 * min(reversal_pct * 100, 1.0), 0.95)
+						patterns.append({
+							'pattern_type': 'reversal',
+							'code': code,
+							'direction': f'{current_dir}->{opposite}',
+							'prior_streak': streak_len,
+							'reversal_magnitude': round(reversal_pct * 100, 4),
+							'description': (
+								f'证券 {code} 检测到反转：连续 {streak_len} 次'
+								f'{"上涨" if current_dir == "up" else "下跌"}后出现'
+								f'{"下跌" if opposite == "down" else "上涨"}，'
+								f'反转幅度 {reversal_pct * 100:.2f}%'
+							),
+							'confidence': round(confidence, 2)
+						})
+				i = j  # 跳过已检测的同向段
+
+		# 按置信度降序排列
+		patterns.sort(key=lambda p: p['confidence'], reverse=True)
 		return patterns
 
 	@staticmethod
 	def _identify_momentum_patterns (trades: List) -> List[Dict[str, Any]]:
 		"""识别动量交易模式
 
-		基于交易序列长度简化判断：≥ 8 笔交易时标记为潜在动量模式。
-		TODO: 应结合价格序列判断是否顺势（追涨/杀跌）或逆势。
+		按股票分组后分析价格序列，检测持续同向价格变动（追涨/杀跌）的动量特征。
+		动量判定规则：
+		- 同一股票连续 ≥ 3 笔交易价格朝同一方向变动 = 动量
+		- 成交量递增确认动量强度
+		- 上涨动量 = 追涨，下跌动量 = 杀跌
 
 		Args:
 			trades: 交易记录列表
 
 		Returns:
-			动量交易模式列表
+			动量交易模式列表，每项含 pattern_type, code, direction, streak_length,
+			volume_confirmation, description, confidence
 		"""
 		patterns = []
+		if not trades:
+			return patterns
 
-		if len(trades) >= 8:
-			patterns.append({
-				'pattern_type': 'momentum',
-				'description': '检测到可能的动量交易模式（基于交易频次）',
-				'confidence': 0.6
-			})
+		# 按股票代码分组
+		trades_by_code: Dict[str, List] = {}
+		for trade in trades:
+			if hasattr(trade, 'ts_code') and hasattr(trade, 'trade_time'):
+				code = trade.ts_code
+				if code not in trades_by_code:
+					trades_by_code[code] = []
+				trades_by_code[code].append(trade)
 
+		for code, code_trades in trades_by_code.items():
+			# 按时间排序
+			sorted_trades = sorted(
+				[t for t in code_trades if hasattr(t, 'price') and hasattr(t, 'volume')],
+				key=lambda t: t.trade_time
+			)
+			if len(sorted_trades) < 3:
+				continue
+
+			# 扫描连续同向价格变动段
+			i = 0
+			while i < len(sorted_trades) - 1:
+				p0 = float(sorted_trades[i].price)
+				p1 = float(sorted_trades[i + 1].price)
+				if p1 == p0:
+					i += 1
+					continue
+
+				current_dir = 'up' if p1 > p0 else 'down'
+				streak_len = 1
+				vol_increasing_count = 1 if sorted_trades[i + 1].volume > sorted_trades[i].volume else 0
+				j = i + 1
+				while j < len(sorted_trades) - 1:
+					q0 = float(sorted_trades[j].price)
+					q1 = float(sorted_trades[j + 1].price)
+					next_dir = 'up' if q1 > q0 else ('down' if q1 < q0 else 'flat')
+					if next_dir != current_dir:
+						break
+					streak_len += 1
+					if sorted_trades[j + 1].volume > sorted_trades[j].volume:
+						vol_increasing_count += 1
+					j += 1
+
+				# 动量判定：连续 ≥ 3 笔同向
+				if streak_len >= 3:
+					vol_ratio = vol_increasing_count / streak_len
+					# 置信度：基础 0.5 + 趋势长度 + 量能确认（上限 0.95）
+					confidence = min(0.5 + 0.08 * (streak_len - 2) + 0.15 * vol_ratio, 0.95)
+					patterns.append({
+						'pattern_type': 'momentum',
+						'code': code,
+						'direction': current_dir,
+						'streak_length': streak_len,
+						'volume_confirmation': f'{vol_increasing_count}/{streak_len}',
+						'description': (
+							f'证券 {code} 检测到{"上涨" if current_dir == "up" else "下跌"}动量，'
+							f'连续 {streak_len} 笔交易价格{"上涨" if current_dir == "up" else "下跌"}，'
+							f'成交量确认 {vol_increasing_count}/{streak_len}'
+						),
+						'confidence': round(confidence, 2)
+					})
+				i = j
+
+		# 按置信度降序排列
+		patterns.sort(key=lambda p: p['confidence'], reverse=True)
 		return patterns
 
 	@staticmethod
@@ -842,7 +1001,6 @@ class TradeAnalysisService:
 	# =========================================================================
 	# 静态私有方法 — 辅助计算
 	# =========================================================================
-
 	@staticmethod
 	def _estimate_slippage_cost (trades: List) -> float:
 		"""估算滑点成本
