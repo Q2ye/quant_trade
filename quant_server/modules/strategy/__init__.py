@@ -193,7 +193,7 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
             "status": "success",
             "message": "策略模块初始化完成（Manager常驻 + Engine按需）",
             "loaded_strategies": ["cta", "alpha", "ai", "technical"],
-            "manager_status": strategy_manager.get_status()
+            "manager_status": strategy_manager.get_status_info()
         }
 
     except Exception as e:

@@ -13,6 +13,8 @@ from modules.strategy.events.types import SignalEventType
 class StrategySignalEvent(BaseEvent):
     """策略信号事件 - 策略产生交易信号时触发"""
 
+    event_type: str = SignalEventType.ENTRY.value
+
     def __init__(
         self,
         strategy_id: str,

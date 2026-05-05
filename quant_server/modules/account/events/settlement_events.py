@@ -31,6 +31,8 @@ class AccountSettlementStartedEvent(BaseEvent):
 	- scope: 结算范围（全部/指定账户）
 	"""
 
+	event_type: str = AccountEventType.SETTLEMENT_STARTED.value
+
 	def __init__ (
 			self,
 			settlement_date: date,

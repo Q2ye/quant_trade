@@ -76,8 +76,8 @@ class StartupConfig:
 
 	def __init__(self, config_path: Optional[str] = None):
 		"""初始化启动配置"""
-		# 使用新的配置管理器加载配置
-		self.config_manager = get_config()
+		# 使用指定路径加载配置，路径为空时自动发现 config.yaml
+		self.config_manager = reload_config(config_path)
 		# 使用 with_context 装饰器记录配置加载
 		self._load_config(config_path)
 
@@ -579,7 +579,7 @@ class QuantServer:
 						# 检查函数是否是异步的
 						import inspect
 						if inspect.iscoroutinefunction(module.initialize):
-							init_result = module.initialize(
+							init_result = await module.initialize(
 								main_engine=self.main_engine,
 								event_engine=self.event_engine,
 								config={
@@ -648,7 +648,7 @@ class QuantServer:
 	async def _load_module(module_name: str) -> Optional[Any]:
 		"""动态加载模块"""
 		try:
-			module_path = f"quant_server.modules.{module_name}"
+			module_path = f"modules.{module_name}"
 			import importlib
 			module = importlib.import_module(module_path)
 			logger.debug(f"模块加载成功: {module_name}", extra={"module_path": module_path})
@@ -1072,10 +1072,8 @@ async def main():
 
 	# 解析命令行参数
 	parser = argparse.ArgumentParser(description="量化交易系统")
-	parser.add_argument("--config", "-c", type=str, default="config.yaml",
-	                    help="配置文件路径 (默认: config.yaml)")
-	parser.add_argument("--mode", "-m", type=str, choices=["development", "test", "production"],
-	                    default=None, help="运行模式 (development/test/production)")
+	parser.add_argument("--config", "-c", type=str, default="config.yaml",help="配置文件路径 (默认: quant_server/config.yaml)")
+	parser.add_argument("--mode", "-m", type=str, choices=["development", "test", "production"],default=None, help="运行模式 (development/test/production)")
 	parser.add_argument("--host", type=str, default=None, help="绑定地址")
 	parser.add_argument("--port", "-p", type=int, default=None, help="绑定端口")
 	parser.add_argument("--workers", "-w", type=int, default=None, help="工作进程数")

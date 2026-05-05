@@ -51,7 +51,7 @@ __description__ = "量化交易平台分析模块"
 
 
 async def initialize(
-    main_engine=None, event_engine=None, _config=None,
+    main_engine=None, event_engine=None, config=None,
 ) -> bool:
     """初始化分析模块"""
     import logging
@@ -75,7 +75,7 @@ async def initialize(
                     )
                     required_tables = [
                         "strategies", "accounts", "positions",
-                        "trades", "orders", "backtest_results",
+                        "trades", "orders", "backtest_tasks",
                     ]
                     missing = [t for t in required_tables if t not in tables]
                     if missing:

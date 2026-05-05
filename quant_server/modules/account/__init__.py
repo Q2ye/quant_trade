@@ -103,7 +103,7 @@ async def initialize(
                     db_session_factory=db_factory,
                 )
                 if hasattr(main_engine, "register_engine"):
-                    main_engine.register_engine(settlement_engine)
+                    main_engine.register_engine("settlement_engine", settlement_engine)
                 await settlement_engine.start()
                 logger.info("SettlementEngine 已注册并启动")
             except Exception as e:

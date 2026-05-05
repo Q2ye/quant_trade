@@ -120,7 +120,7 @@ async def _initialize_system_module (session, config: dict) -> dict:
 		)
 
 		required_tables = [
-			"users",
+			"sys_users",
 			"sys_roles",
 			"sys_user_roles",
 			"system_configs",

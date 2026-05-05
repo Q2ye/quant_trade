@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import BusinessException
 from shared.database.models.business_models import Strategy
-from shared.database.repositories import StrategyParameterRepository
+from shared.database.repositories.strategy.management.strategy_parameter_repo import StrategyParameterRepository
 from shared.database.repositories.base import BaseRepository
 
 

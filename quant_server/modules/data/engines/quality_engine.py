@@ -367,7 +367,7 @@ class DataQualityEngine(EngineBase):
 		"""
 		if self.event_engine:
 			# 这里需要根据实际的事件引擎API进行调整
-			await self.event_engine.subscribe(event_type, handler)
+			self.event_engine.subscribe(event_type, handler)
 
 	async def _on_start (self):
 		"""引擎启动逻辑

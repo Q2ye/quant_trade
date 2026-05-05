@@ -89,6 +89,8 @@ class DataSyncProgressEvent(BaseEvent):
 class DataSyncCompletedEvent(BaseEvent):
     """数据同步完成事件"""
 
+    event_type: str = DataEventType.SYNC_COMPLETED.value
+
     def __init__(
         self,
         sync_type: str,

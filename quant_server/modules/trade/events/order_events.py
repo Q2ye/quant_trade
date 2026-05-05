@@ -60,6 +60,8 @@ class OrderCreatedEvent(BaseEvent):
 class OrderFilledEvent(BaseEvent):
 	"""订单成交事件"""
 
+	event_type: str = "order_filled"
+
 	def __init__ (
 			self,
 			order_id: str,

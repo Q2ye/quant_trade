@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import ValidationError
 from shared.database.models.business_models import StrategyTemplate
-from shared.database.repositories import NotFoundError
+from shared.database.repositories.utils import NotFoundError
 from shared.database.repositories.base import BaseRepository, RepositoryError
 
 

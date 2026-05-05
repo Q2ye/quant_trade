@@ -29,7 +29,7 @@ class BaseRequest(BaseModel):
 	"""基础请求模型"""
 
 	class Config:
-		anystr_strip_whitespace = True
+		str_strip_whitespace = True
 		use_enum_values = True
 		json_encoders = {
 			datetime: lambda v: v.isoformat(),
