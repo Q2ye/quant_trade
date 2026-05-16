@@ -1,261 +1,323 @@
 <template>
-  <div class="strategy-list">
+  <div :class="['bg-gradient-mesh', 'bg-noise', 'strategy-list']">
     <div class="header">
       <h2>策略管理</h2>
-      <el-button type="primary" icon="el-icon-plus" @click="createStrategy">
-        新建策略
-      </el-button>
+      <n-button type="primary" class="hover-lift" @click="createStrategy">新建策略</n-button>
     </div>
 
-    <el-table :data="strategies" style="width: 100%">
-      <el-table-column prop="id" label="ID" width="80"></el-table-column>
-      <el-table-column prop="name" label="策略名称" width="150"></el-table-column>
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="statusType[row.status]">
-            {{ statusText[row.status] }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="className" label="策略类" width="150"></el-table-column>
-      <el-table-column label="基础绩效" width="120">
-        <template #default="{ row }">
-          {{ (row.performance?.annualReturn * 100 || 0).toFixed(2) }}%
-        </template>
-      </el-table-column>
-      <el-table-column prop="updatedAt" label="更新时间" width="180">
-        <template #default="{ row }">
-          {{ formatDate(row.updatedAt) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="250" fixed="right">
-        <template #default="{ row }">
-          <el-button size="mini" @click="editStrategy(row)">编辑</el-button>
-          <el-button
-            size="mini"
-            :type="row.status === 'running' ? 'danger' : 'success'"
-            @click="toggleStrategy(row)"
-          >
-            {{ row.status === 'running' ? '停止' : '启动' }}
-          </el-button>
-          <el-button size="mini" @click="viewReport(row)">报告</el-button>
-          <el-dropdown trigger="click">
-            <el-button size="mini">
-              更多<i class="el-icon-arrow-down el-icon--right"></i>
-            </el-button>
-            <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item @click.native="cloneStrategy(row)">克隆</el-dropdown-item>
-              <el-dropdown-item @click.native="exportStrategy(row)">导出</el-dropdown-item>
-              <el-dropdown-item
-                class="danger-item"
-                @click.native="deleteStrategy(row)"
-              >
-                删除
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </el-dropdown>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 新建/编辑策略对话框 -->
-    <el-dialog
-      :title="dialogTitle"
-      :visible.sync="showDialog"
-      width="600px"
+    <n-result
+      v-if="error"
+      status="500"
+      title="加载失败"
+      description="获取策略列表失败，请稍后重试"
     >
-      <el-form :model="currentStrategy" label-width="100px">
-        <el-form-item label="策略名称" required>
-          <el-input v-model="currentStrategy.name"></el-input>
-        </el-form-item>
-        <el-form-item label="策略描述">
-          <el-input
+      <template #footer
+        ><n-button
+          @click="
+            () => {
+              loading = true;
+              error = false;
+              store
+                .dispatch('strategy/loadStrategies')
+                .finally(() => (loading = false));
+            }
+          "
+          class="hover-lift">重试</n-button
+        ></template
+      >
+    </n-result>
+    <n-spin v-else :show="loading">
+      <n-empty v-if="strategies.length === 0" description="暂无策略" />
+      <n-data-table
+        v-else
+        :columns="columns"
+        :data="strategies"
+        :bordered="false"
+        size="small"
+      />
+    </n-spin>
+
+    <n-modal
+      v-model:show="showDialog"
+      preset="dialog"
+      :title="dialogTitle"
+      positive-text="保存"
+      negative-text="取消"
+      @positive-click="saveStrategy"
+    >
+      <n-form :model="currentStrategy" label-width="100px">
+        <n-form-item label="策略名称" required>
+          <n-input v-model:value="currentStrategy.name" />
+        </n-form-item>
+        <n-form-item label="策略描述">
+          <n-input
+            v-model:value="currentStrategy.description"
             type="textarea"
-            v-model="currentStrategy.description"
             :rows="3"
-          ></el-input>
-        </el-form-item>
-        <el-form-item label="策略类型">
-          <el-select v-model="currentStrategy.type">
-            <el-option label="趋势跟踪" value="trend"></el-option>
-            <el-option label="均值回归" value="mean_reversion"></el-option>
-            <el-option label="套利策略" value="arbitrage"></el-option>
-            <el-option label="市场中性" value="market_neutral"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="基础参数">
+          />
+        </n-form-item>
+        <n-form-item label="策略类型">
+          <n-select
+            v-model:value="currentStrategy.type"
+            :options="typeOptions"
+          />
+        </n-form-item>
+        <n-form-item label="基础参数">
           <div class="param-grid">
-            <div v-for="(param, key) in currentStrategy.parameters" :key="key" class="param-item">
+            <div
+              v-for="(_val, key) in currentStrategy.parameters"
+              :key="key"
+              class="param-item"
+            >
               <div class="param-label">{{ paramLabels[key] }}</div>
-              <el-input-number
-                v-model="currentStrategy.parameters[key]"
+              <n-input-number
+                v-model:value="currentStrategy.parameters[key]"
                 :min="paramMins[key]"
                 :max="paramMaxs[key]"
                 :step="paramSteps[key]"
                 size="small"
-              ></el-input-number>
+              />
             </div>
           </div>
-        </el-form-item>
-      </el-form>
-      <span slot="footer" class="dialog-footer">
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveStrategy">保存</el-button>
-      </span>
-    </el-dialog>
+        </n-form-item>
+      </n-form>
+    </n-modal>
   </div>
 </template>
 
-<script>
-import { mapState, mapActions } from 'vuex'
+<script setup lang="ts">
+import { ref, computed, onMounted, h } from "vue";
+import { useRouter } from "vue-router";
+import { useStore } from "vuex";
+import { useMessage, NTag, NButton, NDropdown, NResult } from "naive-ui";
 
-export default {
-  name: 'StrategyList',
-  data() {
-    return {
-      showDialog: false,
-      isEditing: false,
-      currentStrategy: this.getDefaultStrategy(),
-      statusType: {
-        running: 'success',
-        stopped: 'info',
-        error: 'danger'
-      },
-      statusText: {
-        running: '运行中',
-        stopped: '已停止',
-        error: '异常'
-      },
-      paramLabels: {
-        fastPeriod: '快线周期',
-        slowPeriod: '慢线周期',
-        tradeSize: '仓位比例'
-      },
-      paramMins: {
-        fastPeriod: 1,
-        slowPeriod: 5,
-        tradeSize: 0.1
-      },
-      paramMaxs: {
-        fastPeriod: 50,
-        slowPeriod: 100,
-        tradeSize: 1.0
-      },
-      paramSteps: {
-        fastPeriod: 1,
-        slowPeriod: 5,
-        tradeSize: 0.05
-      }
-    }
+const message = useMessage();
+const router = useRouter();
+const store = useStore<any>();
+
+const loading = ref(false);
+const error = ref(false);
+const showDialog = ref(false);
+const isEditing = ref(false);
+const currentStrategy = ref(getDefaultStrategy());
+
+const statusType: Record<string, string> = {
+  running: "success",
+  stopped: "default",
+  error: "error",
+};
+const statusText: Record<string, string> = {
+  running: "运行中",
+  stopped: "已停止",
+  error: "异常",
+};
+
+const paramLabels: Record<string, string> = {
+  fastPeriod: "快线周期",
+  slowPeriod: "慢线周期",
+  tradeSize: "仓位比例",
+};
+const paramMins: Record<string, number> = {
+  fastPeriod: 1,
+  slowPeriod: 5,
+  tradeSize: 0.1,
+};
+const paramMaxs: Record<string, number> = {
+  fastPeriod: 50,
+  slowPeriod: 100,
+  tradeSize: 1.0,
+};
+const paramSteps: Record<string, number> = {
+  fastPeriod: 1,
+  slowPeriod: 5,
+  tradeSize: 0.05,
+};
+
+const typeOptions = [
+  { label: "趋势跟踪", value: "trend" },
+  { label: "均值回归", value: "mean_reversion" },
+  { label: "套利策略", value: "arbitrage" },
+  { label: "市场中性", value: "market_neutral" },
+];
+
+const strategies = computed(() => store.state.strategy?.strategies || []);
+const dialogTitle = computed(() => (isEditing.value ? "编辑策略" : "新建策略"));
+
+const columns = [
+  { title: "ID", key: "id", width: 80 },
+  { title: "策略名称", key: "name", width: 150 },
+  {
+    title: "状态",
+    key: "status",
+    width: 100,
+    render: (row: any) =>
+      h(
+        NTag,
+        { type: statusType[row.status] as any },
+        { default: () => statusText[row.status] },
+      ),
   },
-  computed: {
-    ...mapState('strategy', ['strategies']),
-    dialogTitle() {
-      return this.isEditing ? '编辑策略' : '新建策略'
-    }
+  { title: "策略类", key: "className", width: 150 },
+  {
+    title: "基础绩效",
+    key: "performance",
+    width: 120,
+    render: (row: any) =>
+      `${(row.performance?.annualReturn * 100 || 0).toFixed(2)}%`,
   },
-  methods: {
-    ...mapActions('strategy', [
-      'loadStrategies',
-      'createStrategy',
-      'updateStrategy',
-      'deleteStrategy',
-      'startStrategy',
-      'stopStrategy'
-    ]),
-
-    getDefaultStrategy() {
-      return {
-        id: null,
-        name: '',
-        description: '',
-        type: 'trend',
-        className: 'DualMovingAverage',
-        parameters: {
-          fastPeriod: 5,
-          slowPeriod: 20,
-          tradeSize: 0.95
-        },
-        status: 'stopped'
-      }
-    },
-
-    createStrategy() {
-      this.currentStrategy = this.getDefaultStrategy()
-      this.isEditing = false
-      this.showDialog = true
-    },
-
-    editStrategy(strategy) {
-      this.currentStrategy = { ...strategy }
-      this.isEditing = true
-      this.showDialog = true
-    },
-
-    async saveStrategy() {
-      try {
-        if (this.isEditing) {
-          await this.updateStrategy(this.currentStrategy)
-        } else {
-          await this.createStrategy(this.currentStrategy)
-        }
-        this.showDialog = false
-        this.$message.success('保存成功')
-      } catch (error) {
-        this.$message.error('保存失败: ' + error.message)
-      }
-    },
-
-    async toggleStrategy(strategy) {
-      try {
-        if (strategy.status === 'running') {
-          await this.stopStrategy(strategy.id)
-        } else {
-          await this.startStrategy(strategy.id)
-        }
-      } catch (error) {
-        this.$message.error('操作失败: ' + error.message)
-      }
-    },
-
-    viewReport(strategy) {
-      this.$router.push({
-        name: 'BacktestReport',
-        params: { id: strategy.id }
-      })
-    },
-
-    cloneStrategy(strategy) {
-      this.currentStrategy = {
-        ...strategy,
-        id: null,
-        name: strategy.name + '_副本'
-      }
-      this.isEditing = false
-      this.showDialog = true
-    },
-
-    exportStrategy(strategy) {
-      // 实现导出逻辑
-      const dataStr = JSON.stringify(strategy, null, 2)
-      const dataUri = 'events:application/json;charset=utf-8,'+ encodeURIComponent(dataStr)
-
-      const exportFileDefaultName = `${strategy.name}.json`
-
-      const linkElement = document.createElement('a')
-      linkElement.setAttribute('href', dataUri)
-      linkElement.setAttribute('download', exportFileDefaultName)
-      linkElement.click()
-    },
-
-    formatDate(date) {
-      return new Date(date).toLocaleString()
-    }
+  {
+    title: "更新时间",
+    key: "updatedAt",
+    width: 180,
+    render: (row: any) => formatDate(row.updatedAt),
   },
-  mounted() {
-    this.loadStrategies()
-  }
+  {
+    title: "操作",
+    key: "op",
+    width: 280,
+    render: (row: any) =>
+      h(
+        "div",
+        { style: { display: "flex", gap: "4px", alignItems: "center" } },
+        [
+          h(
+            NButton,
+            { size: "tiny", onClick: () => editStrategy(row) },
+            { default: () => "编辑" },
+          ),
+          h(
+            NButton,
+            {
+              size: "tiny",
+              type: row.status === "running" ? "error" : "success",
+              onClick: () => toggleStrategy(row),
+            },
+            { default: () => (row.status === "running" ? "停止" : "启动") },
+          ),
+          h(
+            NButton,
+            { size: "tiny", onClick: () => viewReport(row) },
+            { default: () => "报告" },
+          ),
+          h(
+            NDropdown,
+            {
+              trigger: "click",
+              options: [
+                { label: "克隆", key: "clone" },
+                { label: "导出", key: "export" },
+                { label: "删除", key: "delete" },
+              ],
+              onSelect: (key: string) => {
+                if (key === "clone") cloneStrategy(row);
+                else if (key === "export") exportStrategy(row);
+                else if (key === "delete") deleteStrategy(row);
+              },
+            },
+            {
+              default: () =>
+                h(NButton, { size: "tiny" }, { default: () => "更多" }),
+            },
+          ),
+        ],
+      ),
+  },
+];
+
+function getDefaultStrategy() {
+  return {
+    id: null as number | null,
+    name: "",
+    description: "",
+    type: "trend",
+    className: "DualMovingAverage",
+    parameters: { fastPeriod: 5, slowPeriod: 20, tradeSize: 0.95 } as Record<
+      string,
+      number
+    >,
+    status: "stopped",
+  };
 }
+
+const formatDate = (date: any) => new Date(date).toLocaleString();
+
+const createStrategy = () => {
+  currentStrategy.value = getDefaultStrategy();
+  isEditing.value = false;
+  showDialog.value = true;
+};
+const editStrategy = (strategy: any) => {
+  currentStrategy.value = { ...strategy };
+  isEditing.value = true;
+  showDialog.value = true;
+};
+
+const saveStrategy = async () => {
+  try {
+    if (isEditing.value)
+      await store.dispatch("strategy/updateStrategy", currentStrategy.value);
+    else await store.dispatch("strategy/createStrategy", currentStrategy.value);
+    showDialog.value = false;
+    message.success("保存成功");
+  } catch (e: any) {
+    message.error("保存失败: " + e.message);
+  }
+};
+
+const toggleStrategy = async (strategy: any) => {
+  try {
+    if (strategy.status === "running")
+      await store.dispatch("strategy/stopStrategy", strategy.id);
+    else await store.dispatch("strategy/startStrategy", strategy.id);
+  } catch (e: any) {
+    message.error("操作失败: " + e.message);
+  }
+};
+
+const viewReport = (strategy: any) =>
+  router.push({ name: "BacktestReport", params: { id: strategy.id } });
+
+const cloneStrategy = (strategy: any) => {
+  currentStrategy.value = {
+    ...strategy,
+    id: null,
+    name: strategy.name + "_副本",
+  };
+  isEditing.value = false;
+  showDialog.value = true;
+};
+
+const exportStrategy = (strategy: any) => {
+  const dataStr = JSON.stringify(strategy, null, 2);
+  const blob = new Blob([dataStr], { type: "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${strategy.name}.json`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+};
+
+const deleteStrategy = async (strategy: any) => {
+  try {
+    await store.dispatch("strategy/deleteStrategy", strategy.id);
+    message.success("删除成功");
+  } catch (e: any) {
+    message.error("删除失败: " + e.message);
+  }
+};
+
+onMounted(async () => {
+  loading.value = true;
+  try {
+    await store.dispatch("strategy/loadStrategies");
+    error.value = false;
+  } catch {
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
+});
 </script>
 
 <style scoped>
@@ -284,10 +346,6 @@ export default {
 
 .param-label {
   font-size: 12px;
-  color: #606266;
-}
-
-.danger-item {
-  color: #f56c6c;
+  color: var(--n-text-color-3);
 }
 </style>

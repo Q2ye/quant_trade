@@ -396,7 +396,7 @@ class MarketDataService:
 			fields: Optional[List[str]] = None,
 			limit: int = 0,
 			use_cache: bool = True,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> List[Dict[str, Any]]:
 		"""
 		获取历史行情数据
@@ -560,7 +560,7 @@ class MarketDataService:
 			freq: str = "D",
 			adj: str = "qfq",
 			use_cache: bool = True,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, List[Dict[str, Any]]]:
 		"""
 		批量获取多只股票的历史行情数据
@@ -602,7 +602,7 @@ class MarketDataService:
 			self,
 			ts_code: str,
 			use_cache: bool = True,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Optional[Dict[str, Any]]:
 		"""
 		获取最新行情数据
@@ -709,7 +709,7 @@ class MarketDataService:
 			include_financial: bool = False,
 			include_factor: bool = False,
 			use_cache: bool = True,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取股票基础信息
@@ -853,7 +853,7 @@ class MarketDataService:
 			sort_by: str = "ts_code",
 			sort_order: str = "asc",
 			use_cache: bool = True,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取股票列表
@@ -1049,7 +1049,7 @@ class MarketDataService:
 			market: Optional[str] = None,
 			target_date: Optional[date] = None,
 			indicators: Optional[List[str]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取市场概览数据
@@ -1166,7 +1166,7 @@ class MarketDataService:
 			factor_names: Optional[List[str]] = None,
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取股票因子暴露度
@@ -1292,7 +1292,7 @@ class MarketDataService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		计算技术指标
@@ -2219,7 +2219,7 @@ class MarketDataService:
 			target_date: Optional[str] = None,
 			factor_count: Optional[int] = None,
 			cached: bool = False,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""
 		发布数据访问事件
@@ -2283,7 +2283,7 @@ class MarketDataService:
 			data_type: str,
 			error_message: str,
 			ts_code: Optional[str] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""
 		发布错误事件

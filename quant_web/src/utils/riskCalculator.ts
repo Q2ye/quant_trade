@@ -23,16 +23,18 @@ export function calculateMaxDrawdown(equityCurve: EquityPoint[]): number {
 
 export function calculateVolatility(returns: number[]): number {
   const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-  const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length;
+  const variance =
+    returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) /
+    returns.length;
   return Math.sqrt(variance);
 }
 
 export function calculateBeta(
   portfolioReturns: number[],
-  benchmarkReturns: number[]
+  benchmarkReturns: number[],
 ): number {
   if (portfolioReturns.length !== benchmarkReturns.length) {
-    throw new Error('Returns arrays must have the same length');
+    throw new Error("Returns arrays must have the same length");
   }
 
   const n = portfolioReturns.length;
@@ -49,7 +51,8 @@ export function calculateBeta(
   }
 
   const cov = (sumPortfolioBenchmark - (sumPortfolio * sumBenchmark) / n) / n;
-  const varBenchmark = (sumBenchmarkSquared - Math.pow(sumBenchmark, 2) / n) / n;
+  const varBenchmark =
+    (sumBenchmarkSquared - Math.pow(sumBenchmark, 2) / n) / n;
 
   return cov / varBenchmark;
 }

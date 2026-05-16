@@ -12,7 +12,7 @@ from utils.api_utils.pagination_config import PaginationParams
 
 class StrategyListRequest(PaginationParams):
 	"""策略列表请求"""
-	user_id: Optional[int] = Field(default=None, description="用户ID筛选")
+	user_id: Optional[str] = Field(default=None, description="用户ID筛选")
 	status: Optional[str] = Field(default=None, description="状态筛选")
 
 

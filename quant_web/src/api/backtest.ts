@@ -1,13 +1,13 @@
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   BacktestTask,
   CreateBacktestTaskRequest,
   BacktestQueryParams,
   BacktestTaskResponse,
   BacktestListResponse,
-} from '@/types/api/backtest'
-import {BacktestPosition, BacktestTrade, EquityPoint} from "@/types/api";
+} from "@/types/api/backtest";
+import { BacktestPosition, BacktestTrade, EquityPoint } from "@/types/api";
 
 /**
  * 回测管理API服务
@@ -19,10 +19,13 @@ export default {
    * @param config 回测配置参数
    * @returns 回测任务ID
    */
-  async runBacktest(config: CreateBacktestTaskRequest): Promise<{ task_id: string }> {
-    return request.post('/backtest/run', config)
+  async runBacktest(
+    config: CreateBacktestTaskRequest,
+  ): Promise<{ task_id: string }> {
+    return request
+      .post("/quantTrade/backtest/run", config)
       .then(handleResponse)
-      .then((data: { task_id: string }) => data)
+      .then((data: { task_id: string }) => data);
   },
 
   /**
@@ -30,10 +33,13 @@ export default {
    * @param params 查询参数（分页、状态筛选等）
    * @returns 回测任务列表
    */
-  async getBacktestTasks(params?: BacktestQueryParams): Promise<BacktestTask[]> {
-    return request.get('/backtest/tasks', { params })
+  async getBacktestTasks(
+    params?: BacktestQueryParams,
+  ): Promise<BacktestTask[]> {
+    return request
+      .get("/quantTrade/backtest/tasks", { params })
       .then(handleResponse)
-      .then((data: BacktestListResponse) => data.data.items)
+      .then((data: BacktestListResponse) => data.data.items);
   },
 
   /**
@@ -42,9 +48,10 @@ export default {
    * @returns 回测任务详情
    */
   async getBacktestTask(taskId: string): Promise<BacktestTask> {
-    return request.get(`/backtest/tasks/${taskId}`)
+    return request
+      .get(`/backtest/tasks/${taskId}`)
       .then(handleResponse)
-      .then((data: BacktestTaskResponse) => data.data)
+      .then((data: BacktestTaskResponse) => data.data);
   },
 
   /**
@@ -53,8 +60,7 @@ export default {
    * @returns 无返回值
    */
   async cancelBacktestTask(taskId: string): Promise<void> {
-    return request.delete(`/backtest/tasks/${taskId}`)
-      .then(handleResponse)
+    return request.delete(`/backtest/tasks/${taskId}`).then(handleResponse);
   },
 
   /**
@@ -63,9 +69,10 @@ export default {
    * @returns 净值曲线数据点数组
    */
   async getBacktestEquity(taskId: string): Promise<EquityPoint[]> {
-    return request.get(`/backtest/tasks/${taskId}/equity`)
+    return request
+      .get(`/backtest/tasks/${taskId}/equity`)
       .then(handleResponse)
-      .then((data: { equity: EquityPoint[] }) => data.equity)
+      .then((data: { equity: EquityPoint[] }) => data.equity);
   },
 
   /**
@@ -74,13 +81,17 @@ export default {
    * @param params 分页参数
    * @returns 交易记录数组
    */
-  async getBacktestTrades(taskId: string, params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<BacktestTrade[]> {
-    return request.get(`/backtest/tasks/${taskId}/trades`, { params })
+  async getBacktestTrades(
+    taskId: string,
+    params?: {
+      skip?: number;
+      limit?: number;
+    },
+  ): Promise<BacktestTrade[]> {
+    return request
+      .get(`/backtest/tasks/${taskId}/trades`, { params })
       .then(handleResponse)
-      .then((data: { trades: BacktestTrade[] }) => data.trades)
+      .then((data: { trades: BacktestTrade[] }) => data.trades);
   },
 
   /**
@@ -89,11 +100,16 @@ export default {
    * @param date 指定日期（可选，不指定则返回最新持仓）
    * @returns 持仓快照数组
    */
-  async getBacktestPositions(taskId: string, date?: string): Promise<BacktestPosition[]> {
-    return request.get(`/backtest/tasks/${taskId}/positions`, {
-      params: { date }
-    }).then(handleResponse)
-      .then((data: { positions: BacktestPosition[] }) => data.positions)
+  async getBacktestPositions(
+    taskId: string,
+    date?: string,
+  ): Promise<BacktestPosition[]> {
+    return request
+      .get(`/backtest/tasks/${taskId}/positions`, {
+        params: { date },
+      })
+      .then(handleResponse)
+      .then((data: { positions: BacktestPosition[] }) => data.positions);
   },
 
   /**
@@ -102,9 +118,10 @@ export default {
    * @returns 详细的绩效报告
    */
   async getBacktestReport(taskId: string): Promise<any> {
-    return request.get(`/backtest/tasks/${taskId}/report`)
+    return request
+      .get(`/backtest/tasks/${taskId}/report`)
       .then(handleResponse)
-      .then((data: { report: any }) => data.report)
+      .then((data: { report: any }) => data.report);
   },
 
   /**
@@ -113,9 +130,11 @@ export default {
    * @returns 删除结果
    */
   async deleteBacktestTasks(taskIds: string[]): Promise<{ deleted: number }> {
-    return request.delete('/backtest/tasks/batch', {
-      data: { task_ids: taskIds }
-    }).then(handleResponse)
+    return request
+      .delete("/quantTrade/backtest/tasks/batch", {
+        data: { task_ids: taskIds },
+      })
+      .then(handleResponse);
   },
 
   /**
@@ -124,9 +143,14 @@ export default {
    * @param newName 新任务名称
    * @returns 新回测任务ID
    */
-  async duplicateBacktestTask(taskId: string, newName: string): Promise<{ task_id: string }> {
-    return request.post(`/backtest/tasks/${taskId}/duplicate`, {
-      new_name: newName
-    }).then(handleResponse)
-  }
-}
+  async duplicateBacktestTask(
+    taskId: string,
+    newName: string,
+  ): Promise<{ task_id: string }> {
+    return request
+      .post(`/backtest/tasks/${taskId}/duplicate`, {
+        new_name: newName,
+      })
+      .then(handleResponse);
+  },
+};

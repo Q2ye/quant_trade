@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/analysis",
 	tags=["分析中心"],
 	responses={
 		401: {"description": "认证失败"},

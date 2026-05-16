@@ -1,85 +1,138 @@
-// quant_web/src/types/api/events.ts
-// 策略管理API类型定义
+// quant_web/src/api/strategy.ts
+// 策略管理API服务
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   Strategy,
-  BacktestResult,
   StrategyPerformance,
-  StrategyTemplate,
-  TradeSignal,
-  BacktestConfig
-} from '@/types/entities/strategy';
-import {ApiResponse, PaginatedResponse, PaginationParams, StrategyStatusInfo} from "@/types/api";
+} from "@/types/entities/strategy";
+import {
+  ApiResponse,
+  PaginatedResponse,
+  PaginationParams,
+  StrategyStatusInfo,
+} from "@/types/api";
 
-/**
- * 创建策略请求参数
- */
+// ============================================================
+// 请求/响应类型定义
+// ============================================================
+
 export interface CreateStrategyRequest {
-  name: string;                      // 策略名称
-  description: string;               // 策略描述
-  code: string;                      // 策略代码
-  parameters: Record<string, any>;   // 策略参数
-  category?: string;                 // 策略分类
-  tags?: string[];                   // 策略标签
+  name: string;
+  description: string;
+  code: string;
+  parameters: Record<string, any>;
+  category?: string;
+  tags?: string[];
 }
 
-/**
- * 更新策略请求参数
- */
 export interface UpdateStrategyRequest {
-  name?: string;                     // 策略名称
-  description?: string;              // 策略描述
-  code?: string;                     // 策略代码
-  parameters?: Record<string, any>;  // 策略参数
-  category?: string;                 // 策略分类
-  tags?: string[];                   // 策略标签
+  name?: string;
+  description?: string;
+  code?: string;
+  parameters?: Record<string, any>;
+  category?: string;
+  tags?: string[];
 }
 
-/**
- * 回测请求参数
- */
 export interface BacktestRequest {
-  strategyId: string;                // 策略ID
-  startDate: string;                 // 开始日期
-  endDate: string;                   // 结束日期
-  initialCapital: number;            // 初始资金
-  commission: number;                // 手续费率
-  slippage: number;                  // 滑点
-  universe?: string[];               // 股票池
-  parameters?: Record<string, any>;  // 回测参数覆盖
+  strategyId: string;
+  startDate: string;
+  endDate: string;
+  initialCapital: number;
+  commission: number;
+  slippage: number;
+  universe?: string[];
+  parameters?: Record<string, any>;
 }
 
-/**
- * 策略查询参数
- */
 export interface StrategyQueryParams extends PaginationParams {
-  name?: string;                     // 策略名称模糊查询
-  category?: string;                 // 策略分类筛选
-  status?: string;                   // 策略状态筛选
-  tags?: string[];                   // 标签筛选
+  name?: string;
+  category?: string;
+  status?: string;
+  tags?: string[];
 }
 
-/**
- * 策略运行参数
- */
 export interface RunStrategyRequest {
-  strategyId: string;                // 策略ID
-  initialCapital?: number;           // 初始资金
-  parameters?: Record<string, any>;  // 运行参数
+  strategyId: string;
+  initialCapital?: number;
+  parameters?: Record<string, any>;
 }
 
-/**
- * 策略停止参数
- */
 export interface StopStrategyRequest {
-  strategyId: string;                // 策略ID
-  reason?: string;                   // 停止原因
+  strategyId: string;
+  reason?: string;
 }
 
-// 响应类型定义
 export interface StrategyListResponse extends PaginatedResponse<Strategy> {}
 export interface StrategyDetailResponse extends ApiResponse<Strategy> {}
-export interface BacktestResponse extends ApiResponse<BacktestResult> {}
 export interface StrategyStatusResponse extends ApiResponse<StrategyStatusInfo> {}
-export interface StrategySignalResponse extends ApiResponse<TradeSignal[]> {}
 export interface StrategyPerformanceResponse extends ApiResponse<StrategyPerformance> {}
-export interface StrategyTemplateResponse extends ApiResponse<StrategyTemplate[]> {}
+
+// ============================================================
+// API 方法
+// ============================================================
+
+export default {
+  async getStrategies(params?: StrategyQueryParams): Promise<Strategy[]> {
+    return request
+      .get("/quantTrade/strategy/strategies", { params })
+      .then(handleResponse)
+      .then((data: StrategyListResponse) => data.data.items);
+  },
+
+  async getStrategy(id: string): Promise<Strategy> {
+    return request
+      .get(`/strategy/strategies/${id}`)
+      .then(handleResponse)
+      .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  async createStrategy(data: CreateStrategyRequest): Promise<Strategy> {
+    return request
+      .post("/quantTrade/strategy/strategies", data)
+      .then(handleResponse)
+      .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  async updateStrategy(id: string, data: UpdateStrategyRequest): Promise<Strategy> {
+    return request
+      .put(`/strategy/strategies/${id}`, data)
+      .then(handleResponse)
+      .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  async deleteStrategy(id: string): Promise<void> {
+    return request
+      .delete(`/strategy/strategies/${id}`)
+      .then(handleResponse);
+  },
+
+  async startStrategy(id: string, params?: Record<string, any>): Promise<StrategyStatusInfo> {
+    return request
+      .post(`/strategy/strategies/${id}/start`, params || {})
+      .then(handleResponse)
+      .then((data: StrategyStatusResponse) => data.data);
+  },
+
+  async stopStrategy(id: string): Promise<StrategyStatusInfo> {
+    return request
+      .post(`/strategy/strategies/${id}/stop`)
+      .then(handleResponse)
+      .then((data: StrategyStatusResponse) => data.data);
+  },
+
+  async getStrategyPerformance(id: string): Promise<StrategyPerformance> {
+    return request
+      .get(`/strategy/strategies/${id}/performance`)
+      .then(handleResponse)
+      .then((data: StrategyPerformanceResponse) => data.data);
+  },
+
+  async getStrategyStatus(id: string): Promise<StrategyStatusInfo> {
+    return request
+      .get(`/strategy/strategies/${id}/status`)
+      .then(handleResponse)
+      .then((data: StrategyStatusResponse) => data.data);
+  },
+};

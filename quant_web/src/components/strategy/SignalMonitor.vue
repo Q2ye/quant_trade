@@ -1,61 +1,62 @@
 <!--信号监控组件-->
 <script>
-import DataTable from '../data/DataTable.vue'
+import DataTable from "../data/DataTable.vue";
 
 export default {
   name: "SignalMonitor",
-  components: {DataTable},
+  components: { DataTable },
   props: {
     signals: {
       type: Array,
-      default: () => []
-    }
+      default: () => [],
+    },
   },
   data() {
     return {
       columns: [
-        {prop: 'symbol', label: '代码', width: '100px'},
-        {prop: 'name', label: '名称', width: '150px'},
+        { prop: "symbol", label: "代码", width: "100px" },
+        { prop: "name", label: "名称", width: "150px" },
         {
-          prop: 'signal',
-          label: '信号',
-          width: '100px',
-          color: row => row.signal === 'BUY' ? '#f56c6c' : '#67c23a'
+          prop: "signal",
+          label: "信号",
+          width: "100px",
+          color: (row) => (row.signal === "BUY" ? "#f56c6c" : "#67c23a"),
         },
         {
-          prop: 'price',
-          label: '当前价',
-          width: '120px',
-          formatter: (row, column, value) => value.toFixed(2)
+          prop: "price",
+          label: "当前价",
+          width: "120px",
+          formatter: (row, column, value) => value.toFixed(2),
         },
         {
-          prop: 'change_percent',
-          label: '涨跌幅',
-          width: '120px',
-          color: row => {
+          prop: "change_percent",
+          label: "涨跌幅",
+          width: "120px",
+          color: (row) => {
             const colorMap = {
-              up: '#f56c6c',
-              down: '#67c23a',
-              flat: ''
+              up: "#f56c6c",
+              down: "#67c23a",
+              flat: "",
             };
-            const {change_percent} = row;
+            const { change_percent } = row;
             if (change_percent > 0) return colorMap.up;
             if (change_percent < 0) return colorMap.down;
             return colorMap.flat;
           },
-          formatter: (row, column, value) => (value > 0 ? '+' : '') + value.toFixed(2) + '%'
+          formatter: (row, column, value) =>
+            (value > 0 ? "+" : "") + value.toFixed(2) + "%",
         },
-        {prop: 'reason', label: '信号原因', minWidth: '200px'},
+        { prop: "reason", label: "信号原因", minWidth: "200px" },
         {
-          prop: 'timestamp',
-          label: '时间',
-          width: '180px',
-          formatter: (row, column, value) => new Date(value).toLocaleString()
-        }
-      ]
-    }
-  }
-}
+          prop: "timestamp",
+          label: "时间",
+          width: "180px",
+          formatter: (row, column, value) => new Date(value).toLocaleString(),
+        },
+      ],
+    };
+  },
+};
 </script>
 
 <template>
@@ -69,11 +70,12 @@ export default {
     </div>
 
     <data-table
-        :columns="columns"
-        :data="signals"
-        :row-height="40"
-        min-height="400px"
-        max-height="500px"/>
+      :columns="columns"
+      :data="signals"
+      :row-height="40"
+      min-height="400px"
+      max-height="500px"
+    />
   </div>
 </template>
 

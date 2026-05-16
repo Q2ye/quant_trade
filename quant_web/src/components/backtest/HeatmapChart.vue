@@ -5,102 +5,118 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import * as echarts from "echarts";
 
 export default {
-  name: 'HeatmapChart',
+  name: "HeatmapChart",
   props: {
     data: {
       type: Object,
-      default: () => ({})
-    }
+      default: () => ({}),
+    },
   },
   setup(props) {
-    const chart = ref(null)
-    let chartInstance = null
+    const chart = ref(null);
+    let chartInstance = null;
 
     const initChart = () => {
-      if (!chart.value || !props.data.heatmapData) return
+      if (!chart.value || !props.data.heatmapData) return;
+      if (chartInstance) {
+        chartInstance.dispose();
+        chartInstance = null;
+      }
+      chartInstance = echarts.init(chart.value);
 
-      chartInstance = echarts.init(chart.value)
-
-      const { heatmapData, xAxis, yAxis } = props.data
+      const { heatmapData, xAxis, yAxis } = props.data;
 
       const option = {
         tooltip: {
-          position: 'top',
+          position: "top",
           formatter: function (params) {
-            return `${params.data[0]}: ${params.data[1]}<br/>值: ${params.data[2]}`
-          }
+            return `${params.data[0]}: ${params.data[1]}<br/>值: ${params.data[2]}`;
+          },
         },
         grid: {
-          height: '50%',
-          top: '10%'
+          height: "50%",
+          top: "10%",
         },
         xAxis: {
-          type: 'category',
+          type: "category",
           data: xAxis,
           splitArea: {
-            show: true
-          }
+            show: true,
+          },
         },
         yAxis: {
-          type: 'category',
+          type: "category",
           data: yAxis,
           splitArea: {
-            show: true
-          }
+            show: true,
+          },
         },
         visualMap: {
           min: 0,
           max: 1,
           calculable: true,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: '0%'
+          orient: "horizontal",
+          left: "center",
+          bottom: "0%",
         },
-        series: [{
-          name: '参数优化',
-          type: 'heatmap',
-          data: heatmapData,
-          label: {
-            show: true
+        series: [
+          {
+            name: "参数优化",
+            type: "heatmap",
+            data: heatmapData,
+            label: {
+              show: true,
+            },
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowColor: "rgba(0, 0, 0, 0.5)",
+              },
+            },
           },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.5)'
-            }
-          }
-        }]
-      }
+        ],
+      };
 
-      chartInstance.setOption(option)
-    }
+      chartInstance.setOption(option);
+    };
 
     const resizeChart = () => {
       if (chartInstance) {
-        chartInstance.resize()
+        chartInstance.resize();
       }
-    }
+    };
 
     onMounted(() => {
-      initChart()
-      window.addEventListener('resize', resizeChart)
-    })
+      initChart();
+      window.addEventListener("resize", resizeChart);
+    });
 
-    watch(() => props.data, () => {
+    onUnmounted(() => {
+      window.removeEventListener("resize", resizeChart);
       if (chartInstance) {
-        initChart()
+        chartInstance.dispose();
+        chartInstance = null;
       }
-    })
+    });
+
+    watch(
+      () => props.data,
+      () => {
+        if (chartInstance) {
+          initChart();
+        }
+      },
+    );
 
     return {
-      chart
-    }
-  }
-}
+      chart,
+    };
+  },
+};
 </script>
 
 <style scoped>

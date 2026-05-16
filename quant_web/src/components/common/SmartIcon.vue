@@ -4,28 +4,28 @@
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
-import { NIcon } from 'naive-ui'
-import { icons } from '@/utils/icons'
+import { defineComponent, computed } from "vue";
+import { NIcon } from "naive-ui";
+import { icons } from "@/utils/icons";
 
 export default defineComponent({
-  name: 'SmartIcon',
+  name: "SmartIcon",
   components: { NIcon },
   props: {
     name: {
       type: String,
       required: true,
-      validator: (value) => Object.keys(icons).includes(value)
-    }
+      validator: (value) => Object.keys(icons).includes(value),
+    },
   },
   setup(props) {
     const getIconComponent = computed(() => {
-      return icons[props.name]
-    })
+      return icons[props.name];
+    });
 
     return {
-      getIconComponent
-    }
-  }
-})
+      getIconComponent,
+    };
+  },
+});
 </script>

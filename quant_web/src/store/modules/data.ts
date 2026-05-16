@@ -1,12 +1,12 @@
-// quant_web/src/store/modules/events.ts
-import { Module } from 'vuex';
-import api, { defaultRealtimeService } from '@/api/data';
+// quant_web/src/store/modules/data.ts
+import { Module } from "vuex";
+import api, { defaultRealtimeService } from "@/api/data";
 import {
   HistoricalDataPoint,
   FinancialData,
-  StockBasic
-} from '@/types/entities/data';
-import { RootState } from '@/types';
+  StockBasic,
+} from "@/types/entities/data";
+import { RootState } from "@/types";
 
 /**
  * 市场数据结构定义
@@ -40,7 +40,7 @@ const dataModule: Module<DataState, RootState> = {
       indices: {},
       sectorPerformance: [],
       topGainers: [],
-      topLosers: []
+      topLosers: [],
     },
     realtimeQuotes: {},
     historicalData: {},
@@ -48,7 +48,7 @@ const dataModule: Module<DataState, RootState> = {
     etfData: {},
     selectedStock: null,
     dataLoading: false,
-    stockList: [] // 初始化股票列表
+    stockList: [], // 初始化股票列表
   },
 
   mutations: {
@@ -66,7 +66,10 @@ const dataModule: Module<DataState, RootState> = {
      * @param state - 模块状态
      * @param payload - 包含股票代码和行情数据的对象
      */
-    UPDATE_REALTIME_QUOTE(state: DataState, payload: { symbol: string; quote: any }) {
+    UPDATE_REALTIME_QUOTE(
+      state: DataState,
+      payload: { symbol: string; quote: any },
+    ) {
       state.realtimeQuotes[payload.symbol] = payload.quote;
     },
 
@@ -75,7 +78,10 @@ const dataModule: Module<DataState, RootState> = {
      * @param state - 模块状态
      * @param payload - 包含股票代码和历史数据的对象
      */
-    SET_HISTORICAL_DATA(state: DataState, payload: { symbol: string; data: HistoricalDataPoint[] }) {
+    SET_HISTORICAL_DATA(
+      state: DataState,
+      payload: { symbol: string; data: HistoricalDataPoint[] },
+    ) {
       state.historicalData[payload.symbol] = payload.data;
     },
 
@@ -84,7 +90,10 @@ const dataModule: Module<DataState, RootState> = {
      * @param state - 模块状态
      * @param payload - 包含股票代码和财务数据数组的对象
      */
-    SET_FINANCIAL_DATA(state: DataState, payload: { symbol: string; data: FinancialData[] }) {
+    SET_FINANCIAL_DATA(
+      state: DataState,
+      payload: { symbol: string; data: FinancialData[] },
+    ) {
       state.financialData[payload.symbol] = payload.data;
     },
 
@@ -122,7 +131,7 @@ const dataModule: Module<DataState, RootState> = {
      */
     SET_STOCK_LIST(state: DataState, stocks: StockBasic[]) {
       state.stockList = stocks;
-    }
+    },
   },
 
   actions: {
@@ -132,15 +141,15 @@ const dataModule: Module<DataState, RootState> = {
      */
     async fetchMarketData({ commit }) {
       try {
-        commit('SET_DATA_LOADING', true);
+        commit("SET_DATA_LOADING", true);
         const data = await api.getMarketData();
-        commit('SET_MARKET_DATA', data);
+        commit("SET_MARKET_DATA", data);
         return data;
       } catch (error) {
-        console.error('获取市场数据失败:', error);
+        console.error("获取市场数据失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -152,17 +161,24 @@ const dataModule: Module<DataState, RootState> = {
      * @param payload.period - 时间周期
      * @param payload.frequency - 数据频率
      */
-    async fetchHistoricalData({ commit }, payload: { symbol: string; period?: string; frequency?: string }) {
+    async fetchHistoricalData(
+      { commit },
+      payload: { symbol: string; period?: string; frequency?: string },
+    ) {
       try {
-        commit('SET_DATA_LOADING', true);
-        const data = await api.getHistoricalData(payload.symbol, payload.period, payload.frequency);
-        commit('SET_HISTORICAL_DATA', { symbol: payload.symbol, data });
+        commit("SET_DATA_LOADING", true);
+        const data = await api.getHistoricalData(
+          payload.symbol,
+          payload.period,
+          payload.frequency,
+        );
+        commit("SET_HISTORICAL_DATA", { symbol: payload.symbol, data });
         return data;
       } catch (error) {
-        console.error('获取历史数据失败:', error);
+        console.error("获取历史数据失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -173,15 +189,15 @@ const dataModule: Module<DataState, RootState> = {
      */
     async fetchFinancialData({ commit }, symbol: string) {
       try {
-        commit('SET_DATA_LOADING', true);
+        commit("SET_DATA_LOADING", true);
         const data = await api.getFinancialData(symbol);
-        commit('SET_FINANCIAL_DATA', { symbol, data });
+        commit("SET_FINANCIAL_DATA", { symbol, data });
         return data;
       } catch (error) {
-        console.error('获取财务数据失败:', error);
+        console.error("获取财务数据失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -192,18 +208,18 @@ const dataModule: Module<DataState, RootState> = {
      */
     async fetchLatestFinancialData({ commit }, symbol: string) {
       try {
-        commit('SET_DATA_LOADING', true);
+        commit("SET_DATA_LOADING", true);
         const data = await api.getLatestFinancialData(symbol);
         if (data) {
           // 将单个财务数据包装为数组存储
-          commit('SET_FINANCIAL_DATA', { symbol, data: [data] });
+          commit("SET_FINANCIAL_DATA", { symbol, data: [data] });
         }
         return data;
       } catch (error) {
-        console.error('获取最新财务数据失败:', error);
+        console.error("获取最新财务数据失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -213,15 +229,15 @@ const dataModule: Module<DataState, RootState> = {
      */
     async fetchETFData({ commit }) {
       try {
-        commit('SET_DATA_LOADING', true);
+        commit("SET_DATA_LOADING", true);
         const data = await api.getETFData();
-        commit('SET_ETF_DATA', data);
+        commit("SET_ETF_DATA", data);
         return data;
       } catch (error) {
-        console.error('获取ETF数据失败:', error);
+        console.error("获取ETF数据失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -230,22 +246,30 @@ const dataModule: Module<DataState, RootState> = {
      * @param commit - Vuex commit 函数
      * @param payload - 查询参数
      */
-    async fetchStockList({ commit }, payload: { exchange?: string; industry?: string; page?: number; pageSize?: number } = {}) {
+    async fetchStockList(
+      { commit },
+      payload: {
+        exchange?: string;
+        industry?: string;
+        page?: number;
+        pageSize?: number;
+      } = {},
+    ) {
       try {
-        commit('SET_DATA_LOADING', true);
+        commit("SET_DATA_LOADING", true);
         const data = await api.getStockList(
           payload.exchange,
           payload.industry,
           payload.page,
-          payload.pageSize
+          payload.pageSize,
         );
-        commit('SET_STOCK_LIST', data);
+        commit("SET_STOCK_LIST", data);
         return data;
       } catch (error) {
-        console.error('获取股票列表失败:', error);
+        console.error("获取股票列表失败:", error);
         throw error;
       } finally {
-        commit('SET_DATA_LOADING', false);
+        commit("SET_DATA_LOADING", false);
       }
     },
 
@@ -257,10 +281,10 @@ const dataModule: Module<DataState, RootState> = {
     async subscribeRealtimeData({ commit }, symbols: string[]) {
       try {
         api.subscribeRealtime(symbols, (symbol: string, quote: any) => {
-          commit('UPDATE_REALTIME_QUOTE', { symbol, quote });
+          commit("UPDATE_REALTIME_QUOTE", { symbol, quote });
         });
       } catch (error) {
-        console.error('订阅实时数据失败:', error);
+        console.error("订阅实时数据失败:", error);
       }
     },
 
@@ -273,7 +297,7 @@ const dataModule: Module<DataState, RootState> = {
       try {
         api.unsubscribeRealtime(symbols);
       } catch (error) {
-        console.error('取消订阅实时数据失败:', error);
+        console.error("取消订阅实时数据失败:", error);
       }
     },
 
@@ -283,7 +307,7 @@ const dataModule: Module<DataState, RootState> = {
      * @param stock - 股票信息
      */
     selectStock({ commit }, stock: any) {
-      commit('SET_SELECTED_STOCK', stock);
+      commit("SET_SELECTED_STOCK", stock);
     },
 
     /**
@@ -291,7 +315,7 @@ const dataModule: Module<DataState, RootState> = {
      */
     destroyRealtimeService() {
       defaultRealtimeService.destroy();
-    }
+    },
   },
 
   getters: {
@@ -345,9 +369,9 @@ const dataModule: Module<DataState, RootState> = {
      * @param state - 模块状态
      */
     isMarketOpen: (state: DataState) => {
-      return state.marketData.indices['SH000001']?.is_open || false;
-    }
-  }
+      return state.marketData.indices["SH000001"]?.is_open || false;
+    },
+  },
 };
 
 export default dataModule;

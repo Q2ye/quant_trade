@@ -1,17 +1,17 @@
 // 绩效分析
 // quant_web/src/store/modules/performance.ts
 
-import { Module } from 'vuex';
-import { PerformanceState } from '@/types/state/module-states/performance-state';
+import { Module } from "vuex";
+import { PerformanceState } from "@/types/state/module-states/performance-state";
 import {
   StrategyListItem,
-  PerformanceComparison
+  PerformanceComparison,
 } from "@/types/api/performance";
 
 // 导入绩效分析API服务
-import performanceApi from '@/api/performance';
-import {RootState} from "@/types";
-import {AccountPerformance, StrategyPerformance} from "@/types/entities";
+import performanceApi from "@/api/performance";
+import { RootState } from "@/types";
+import { AccountPerformance, StrategyPerformance } from "@/types/entities/performance";
 
 /**
  * 绩效分析Vuex模块
@@ -45,9 +45,9 @@ const performanceModule: Module<PerformanceState, RootState> = {
 
     // 加载状态管理，分别控制不同模块的loading状态
     loading: {
-      account: false,      // 账户绩效加载状态
-      strategy: false,     // 策略绩效加载状态
-      comparison: false    // 对比分析加载状态
+      account: false, // 账户绩效加载状态
+      strategy: false, // 策略绩效加载状态
+      comparison: false, // 对比分析加载状态
     },
 
     // 策略列表数据
@@ -55,10 +55,10 @@ const performanceModule: Module<PerformanceState, RootState> = {
 
     // 当前选中的策略详情
     currentStrategy: {
-      id: null,           // 策略ID
-      detail: {},         // 策略详细信息
-      tradeRecords: []    // 策略交易记录
-    }
+      id: null, // 策略ID
+      detail: {}, // 策略详细信息
+      tradeRecords: [], // 策略交易记录
+    },
   },
 
   /**
@@ -73,7 +73,10 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * @param payload.accountId - 账户ID
      * @param payload.performance - 账户绩效数据
      */
-    SET_ACCOUNT_PERFORMANCE(state, payload: { accountId: string; performance: AccountPerformance }) {
+    SET_ACCOUNT_PERFORMANCE(
+      state,
+      payload: { accountId: string; performance: AccountPerformance },
+    ) {
       state.accountPerformance[payload.accountId] = payload.performance;
     },
 
@@ -84,7 +87,10 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * @param payload.strategyId - 策略ID
      * @param payload.performance - 策略绩效数据
      */
-    SET_STRATEGY_PERFORMANCE(state, payload: { strategyId: string; performance: StrategyPerformance }) {
+    SET_STRATEGY_PERFORMANCE(
+      state,
+      payload: { strategyId: string; performance: StrategyPerformance },
+    ) {
       state.strategyPerformance[payload.strategyId] = payload.performance;
     },
 
@@ -115,7 +121,10 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * @param payload.type - 加载类型（events/events/comparison）
      * @param payload.value - 加载状态值（true/false）
      */
-    SET_LOADING(state, payload: { type: keyof PerformanceState['loading']; value: boolean }) {
+    SET_LOADING(
+      state,
+      payload: { type: keyof PerformanceState["loading"]; value: boolean },
+    ) {
       state.loading[payload.type] = payload.value;
     },
 
@@ -147,7 +156,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     SET_CURRENT_STRATEGY_TRADES(state, trades: any[]) {
       state.currentStrategy.tradeRecords = trades;
-    }
+    },
   },
 
   /**
@@ -164,19 +173,19 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     async fetchAccountPerformance({ commit }, accountId: string) {
       // 设置账户加载状态为true
-      commit('SET_LOADING', { type: 'events', value: true });
+      commit("SET_LOADING", { type: "events", value: true });
       try {
         // 调用API获取账户绩效数据
         const performance = await performanceApi.getAccountPerformance();
         // 提交mutation更新状态
-        commit('SET_ACCOUNT_PERFORMANCE', { accountId, performance });
+        commit("SET_ACCOUNT_PERFORMANCE", { accountId, performance });
         return performance;
       } catch (error) {
-        console.error('获取账户绩效失败:', error);
+        console.error("获取账户绩效失败:", error);
         throw error;
       } finally {
         // 无论成功失败，最终都要关闭加载状态
-        commit('SET_LOADING', { type: 'events', value: false });
+        commit("SET_LOADING", { type: "events", value: false });
       }
     },
 
@@ -189,19 +198,20 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     async fetchStrategyPerformance({ commit }, strategyId: string) {
       // 设置策略加载状态为true
-      commit('SET_LOADING', { type: 'events', value: true });
+      commit("SET_LOADING", { type: "events", value: true });
       try {
         // 调用API获取策略绩效数据
-        const performance = await performanceApi.getStrategyPerformance(strategyId);
+        const performance =
+          await performanceApi.getStrategyPerformance(strategyId);
         // 提交mutation更新状态
-        commit('SET_STRATEGY_PERFORMANCE', { strategyId, performance });
+        commit("SET_STRATEGY_PERFORMANCE", { strategyId, performance });
         return performance;
       } catch (error) {
-        console.error('获取策略绩效失败:', error);
+        console.error("获取策略绩效失败:", error);
         throw error;
       } finally {
         // 关闭策略加载状态
-        commit('SET_LOADING', { type: 'events', value: false });
+        commit("SET_LOADING", { type: "events", value: false });
       }
     },
 
@@ -216,9 +226,17 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * @param payload.endDate - 结束日期（可选）
      * @returns 对比分析结果Promise
      */
-    async compareStrategies({ commit }, payload: { strategyIds: string[]; benchmark?: string; startDate?: string; endDate?: string }) {
+    async compareStrategies(
+      { commit },
+      payload: {
+        strategyIds: string[];
+        benchmark?: string;
+        startDate?: string;
+        endDate?: string;
+      },
+    ) {
       // 设置对比分析加载状态为true
-      commit('SET_LOADING', { type: 'comparison', value: true });
+      commit("SET_LOADING", { type: "comparison", value: true });
       try {
         // 调用API进行策略对比分析
         const comparisonData = await performanceApi.comparePerformance(
@@ -226,18 +244,18 @@ const performanceModule: Module<PerformanceState, RootState> = {
           {
             benchmark: payload.benchmark,
             start_date: payload.startDate,
-            end_date: payload.endDate
-          }
+            end_date: payload.endDate,
+          },
         );
         // 提交mutation更新对比分析结果
-        commit('SET_COMPARISON_DATA', comparisonData);
+        commit("SET_COMPARISON_DATA", comparisonData);
         return comparisonData;
       } catch (error) {
-        console.error('策略对比失败:', error);
+        console.error("策略对比失败:", error);
         throw error;
       } finally {
         // 关闭对比分析加载状态
-        commit('SET_LOADING', { type: 'comparison', value: false });
+        commit("SET_LOADING", { type: "comparison", value: false });
       }
     },
 
@@ -249,35 +267,22 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     async fetchStrategyList({ commit }) {
       try {
-        // 这里需要根据实际情况调用API获取策略列表
-        // const response = await api.getStrategyList();
-
-        // 模拟数据 - 实际项目中应替换为真实API调用
-        const mockList: StrategyListItem[] = [
-          {
-            strategyId: '1',
-            strategyName: '动量策略',
-            totalReturn: 0.456,
-            annualReturn: 0.152,
-            sharpeRatio: 1.234,
-            maxDrawdown: -0.156,
-            status: 'running'
-          },
-          {
-            strategyId: '2',
-            strategyName: '均值回归策略',
-            totalReturn: 0.234,
-            annualReturn: 0.089,
-            sharpeRatio: 0.987,
-            maxDrawdown: -0.089,
-            status: 'stopped'
-          }
-        ];
-        // 提交mutation更新策略列表
-        commit('SET_STRATEGY_LIST', mockList);
-        return mockList;
+        // 策略列表由 strategy store 管理，此处调用 strategyAPI 获取
+        const { default: strategyAPI } = await import("@/api/strategy");
+        const strategies = await strategyAPI.getStrategies();
+        const list: StrategyListItem[] = (strategies as any[]).map((s: any) => ({
+          strategyId: s.id,
+          strategyName: s.name,
+          totalReturn: s.performance?.total_return ?? 0,
+          annualReturn: s.performance?.annual_return ?? 0,
+          sharpeRatio: s.performance?.sharpe_ratio ?? 0,
+          maxDrawdown: s.performance?.max_drawdown ?? 0,
+          status: s.status ?? "stopped",
+        }));
+        commit("SET_STRATEGY_LIST", list);
+        return list;
       } catch (error) {
-        console.error('获取策略列表失败:', error);
+        console.error("获取策略列表失败:", error);
         throw error;
       }
     },
@@ -294,13 +299,13 @@ const performanceModule: Module<PerformanceState, RootState> = {
         // 获取策略详情
         const detail = await performanceApi.getStrategyPerformance(strategyId);
         // 提交mutation更新当前策略
-        commit('SET_CURRENT_STRATEGY', { id: strategyId, detail });
+        commit("SET_CURRENT_STRATEGY", { id: strategyId, detail });
         return detail;
       } catch (error) {
-        console.error('获取策略详情失败:', error);
+        console.error("获取策略详情失败:", error);
         throw error;
       }
-    }
+    },
   },
 
   /**
@@ -319,7 +324,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
       return {
         total_return: performance.metrics.total_return,
         sharpe_ratio: performance.metrics.sharpe_ratio,
-        max_drawdown: performance.metrics.max_drawdown
+        max_drawdown: performance.metrics.max_drawdown,
       };
     },
 
@@ -337,7 +342,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
      * @param state - 模块状态
      * @returns 函数，接收type参数，返回对应加载状态
      */
-    isLoading: (state) => (type: keyof PerformanceState['loading']) => {
+    isLoading: (state) => (type: keyof PerformanceState["loading"]) => {
       return state.loading[type];
     },
 
@@ -366,8 +371,8 @@ const performanceModule: Module<PerformanceState, RootState> = {
      */
     getComparisonData: (state) => {
       return state.comparisonData;
-    }
-  }
+    },
+  },
 };
 
 export default performanceModule;

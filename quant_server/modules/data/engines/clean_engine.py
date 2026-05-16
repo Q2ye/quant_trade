@@ -35,8 +35,8 @@ from dataclasses import dataclass, field
 
 # 导入引擎配置实体
 from core.events import BaseEvent
-from ....core.engines.types.entities import EngineConfigEntity
-from  ....core.engines.types.enums import (
+from core.engines.types.entities import EngineConfigEntity
+from  core.engines.types.enums import (
     EngineType,
     ComponentStatus,
     PriorityLevel,
@@ -44,8 +44,8 @@ from  ....core.engines.types.enums import (
 )
 
 # 导入引擎基类
-from ....core.engines.base.engine_base import EngineBase
-from ....core.engines.utils.engine_factory import EngineDescriptor
+from core.engines.base.engine_base import EngineBase
+from core.engines.utils.engine_factory import EngineDescriptor
 
 # 导入业务模块
 from modules.data.events import (
@@ -56,8 +56,8 @@ from modules.data.events import (
     MarketDataMetadata,
     DataEventType
 )
-from ....modules.data.services.clean_service import DataCleanService
-from ....modules.data.services.quality_service import DataQualityService
+from modules.data.services.clean_service import DataCleanService
+from modules.data.services.quality_service import DataQualityService
 
 logger = logging.getLogger(__name__)
 
@@ -1725,7 +1725,7 @@ async def create_data_clean_engine(
     Returns:
         数据清洗引擎实例
     """
-    from ....core.engines.utils.engine_factory import create_engine
+    from core.engines.utils.engine_factory import create_engine
 
     # 创建引擎
     engine = await create_engine(
@@ -1754,7 +1754,7 @@ async def get_data_clean_engine(instance_name: str = "data_clean_engine") -> Opt
     Returns:
         数据清洗引擎实例，如果不存在则返回None
     """
-    from ....core.engines.utils.engine_factory import get_engine
+    from core.engines.utils.engine_factory import get_engine
 
     engine = await get_engine(instance_name)
     if engine and isinstance(engine, DataCleanEngine):

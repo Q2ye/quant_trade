@@ -1,45 +1,38 @@
 <!--回测配置面板-->
 <template>
   <div class="backtest-config">
-    <h3 class="section-title">
-      回测配置
-    </h3>
+    <h3 class="section-title">回测配置</h3>
 
     <div class="config-section">
       <h4>资金设置</h4>
       <div class="config-row">
         <div class="config-item">
           <label>初始资金 (元)</label>
-          <el-input-number
-            v-model="config.capital"
+          <NInputNumber
+            v-model:value="config.capital"
             :min="10000"
             :step="10000"
-            :precision="0"
-            controls-position="right"
+            :decimal-places="0"
           />
         </div>
-
         <div class="config-item">
           <label>手续费 (%)</label>
-          <el-input-number
-            v-model="config.commission"
+          <NInputNumber
+            v-model:value="config.commission"
             :min="0"
             :max="0.05"
             :step="0.0001"
-            :precision="4"
-            controls-position="right"
+            :decimal-places="4"
           />
         </div>
-
         <div class="config-item">
           <label>滑点 (%)</label>
-          <el-input-number
-            v-model="config.slippage"
+          <NInputNumber
+            v-model:value="config.slippage"
             :min="0"
             :max="0.05"
             :step="0.0001"
-            :precision="4"
-            controls-position="right"
+            :decimal-places="4"
           />
         </div>
       </div>
@@ -47,7 +40,7 @@
 
     <div class="config-section">
       <h4>时间范围</h4>
-      <time-range-slider
+      <TimeRangeSlider
         v-model="config.timeRange"
         @change="handleTimeRangeChange"
       />
@@ -58,132 +51,111 @@
       <div class="config-row">
         <div class="config-item">
           <label>数据频率</label>
-          <el-select v-model="config.frequency">
-            <el-option
-              v-for="item in frequencyOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+          <NSelect
+            v-model:value="config.frequency"
+            :options="frequencyOptions"
+          />
         </div>
-
         <div class="config-item">
           <label>基准指数</label>
-          <el-select v-model="config.benchmark">
-            <el-option
-              v-for="item in benchmarkOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
+          <NSelect
+            v-model:value="config.benchmark"
+            :options="benchmarkOptions"
+          />
         </div>
       </div>
     </div>
 
-    <div
-      v-if="strategy.params"
-      class="config-section"
-    >
+    <div v-if="strategy.params" class="config-section">
       <h4>策略参数</h4>
       <div class="params-grid">
-        <param-slider
+        <ParamSlider
           v-for="(param, name) in strategy.params"
           :key="name"
           :param-name="name"
           :config="param"
-          :value="config.params[name]"
+          v-model="config.params[name]"
           @change="handleParamChange"
         />
       </div>
     </div>
 
     <div class="action-bar">
-      <el-button
-        type="primary"
-        icon="el-icon-video-play"
-        @click="startBacktest"
-      >
-        开始回测
-      </el-button>
+      <NButton type="primary" @click="startBacktest">开始回测</NButton>
     </div>
   </div>
 </template>
 
-<script>
-import TimeRangeSlider from '../data/TimeRangeSlider.vue'
-import ParamSlider from '../strategy/ParamSlider.vue'
+<script setup lang="ts">
+import { reactive, watch } from "vue";
+import { NInputNumber, NSelect, NButton } from "naive-ui";
+import TimeRangeSlider from "../data/TimeRangeSlider.vue";
+import ParamSlider from "../strategy/ParamSlider.vue";
 
-export default {
-  name: "BacktestConfig",
-  components: {
-    TimeRangeSlider,
-    ParamSlider
-  },
-  props: {
-    strategy: {
-      type: Object,
-      required: true
-    }
-  },
-  data() {
-    return {
-      config: {
-        capital: 1000000,
-        commission: 0.0003,
-        slippage: 0.001,
-        timeRange: [
-          new Date(new Date().setFullYear(new Date().getFullYear() - 1)),
-          new Date()
-        ],
-        frequency: 'daily',
-        benchmark: '000300.SH',
-        params: {}
-      },
-      frequencyOptions: [
-        { value: 'daily', label: '日线' },
-        { value: 'weekly', label: '周线' },
-        { value: 'monthly', label: '月线' },
-        { value: '60min', label: '60分钟' },
-        { value: '30min', label: '30分钟' }
-      ],
-      benchmarkOptions: [
-        { value: '000001.SH', label: '上证指数' },
-        { value: '399001.SZ', label: '深证成指' },
-        { value: '000300.SH', label: '沪深300' },
-        { value: '000905.SH', label: '中证500' },
-        { value: '399006.SZ', label: '创业板指' }
-      ]
-    }
-  },
-  watch: {
-    strategy: {
-      immediate: true,
-      handler(newVal) {
-        if (newVal && newVal.params) {
-          // 初始化参数
-          for (const [key, param] of Object.entries(newVal.params)) {
-            this.$set(this.config.params, key, param.default)
-          }
+const props = defineProps<{
+  strategy: {
+    params?: Record<string, { default: number; min: number; max: number; step: number }>;
+  };
+}>();
+
+const emit = defineEmits<{
+  start: [config: any];
+}>();
+
+const config = reactive({
+  capital: 1000000,
+  commission: 0.0003,
+  slippage: 0.001,
+  timeRange: [
+    new Date(new Date().setFullYear(new Date().getFullYear() - 1)),
+    new Date(),
+  ],
+  frequency: "daily",
+  benchmark: "000300.SH",
+  params: {} as Record<string, number>,
+});
+
+const frequencyOptions = [
+  { value: "daily", label: "日线" },
+  { value: "weekly", label: "周线" },
+  { value: "monthly", label: "月线" },
+  { value: "60min", label: "60分钟" },
+  { value: "30min", label: "30分钟" },
+];
+
+const benchmarkOptions = [
+  { value: "000001.SH", label: "上证指数" },
+  { value: "399001.SZ", label: "深证成指" },
+  { value: "000300.SH", label: "沪深300" },
+  { value: "000905.SH", label: "中证500" },
+  { value: "399006.SZ", label: "创业板指" },
+];
+
+watch(
+  () => props.strategy,
+  (newVal) => {
+    if (newVal && newVal.params) {
+      for (const [key, param] of Object.entries(newVal.params)) {
+        if (!(key in config.params)) {
+          config.params[key] = param.default;
         }
       }
     }
   },
-  methods: {
-    handleTimeRangeChange(range) {
-      this.config.timeRange = range
-    },
+  { immediate: true },
+);
 
-    handleParamChange(paramName, value) {
-      this.$set(this.config.params, paramName, value)
-    },
+const handleTimeRangeChange = (range: Date[]) => {
+  config.timeRange = range as [Date, Date];
+};
 
-    startBacktest() {
-      this.$emit('start', {...this.config})
-    }
-  }
-}
+const handleParamChange = (paramName: string, value: number) => {
+  config.params[paramName] = value;
+};
+
+const startBacktest = () => {
+  emit("start", { ...config });
+};
 </script>
 
 <style scoped>

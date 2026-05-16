@@ -6,11 +6,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import { resolve } from "path";
 
 export default defineConfig({
-  plugins: [
-    vue(),
-    vueJsx(),
-    visualizer(),
-  ],
+  plugins: [vue(), vueJsx(), visualizer()],
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
@@ -20,11 +16,10 @@ export default defineConfig({
   server: {
     port: 8081,
     proxy: {
-      "/api": {
+      "/quantTrade": {
         target: "http://localhost:8080",
         changeOrigin: true,
         rewrite: (path) => path,
-        // rewrite: (p) => p.replace(/^\/api/, ""),
       },
     },
     open: false,
@@ -32,20 +27,53 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
+        api: "modern-compiler",
         additionalData: `
          @use "sass:color";
-         @use "@/assets/scss/_variables.scss" as *;
-         @use "@/assets/scss/_mixins" as mix;`,
+         @use "@/styles/_variables.scss" as *;
+         @use "@/styles/_mixins" as mix;`,
       },
     },
   },
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          monaco: ["monaco-editor"],
-          echarts: ["echarts"],
-          element: ["element-plus"],
+        manualChunks(id) {
+          // vendor — Vue ecosystem
+          if (
+            id.includes("node_modules/vue") ||
+            id.includes("node_modules/vuex") ||
+            id.includes("node_modules/vue-router")
+          ) {
+            return "vendor-vue";
+          }
+          // UI framework
+          if (id.includes("node_modules/naive-ui")) {
+            return "vendor-naive";
+          }
+          // icons
+          if (id.includes("node_modules/@iconify")) {
+            return "vendor-icons";
+          }
+          // charts
+          if (
+            id.includes("node_modules/echarts") ||
+            id.includes("node_modules/zrender")
+          ) {
+            return "vendor-echarts";
+          }
+          // monaco editor
+          if (id.includes("node_modules/monaco-editor")) {
+            return "vendor-monaco";
+          }
+          // @antv
+          if (id.includes("node_modules/@antv")) {
+            return "vendor-antv";
+          }
+          // three.js — already lazy-loaded per page, but keep separate for shared refs
+          if (id.includes("node_modules/three")) {
+            return "vendor-three";
+          }
         },
       },
     },

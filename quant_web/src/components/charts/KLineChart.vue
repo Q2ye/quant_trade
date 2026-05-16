@@ -10,39 +10,39 @@
 </template>
 
 <script>
-import * as echarts from 'echarts';
-import 'echarts/extension/bmap/bmap';
+import * as echarts from "echarts";
+import "echarts/extension/bmap/bmap";
 
 export default {
   name: "KLineChart",
   props: {
     symbol: {
       type: String,
-      default: ''
+      default: "",
     },
     period: {
       type: String,
-      default: '5min'
+      default: "5min",
     },
     data: {
       type: Array,
-      default: () => []  // 提供默认空数组
+      default: () => [], // 提供默认空数组
     },
     indicators: {
       type: Array,
-      default: () => ['MA5', 'MA10', 'VOL']
-    }
+      default: () => ["MA5", "MA10", "VOL"],
+    },
   },
   data() {
     return {
       chart: null,
-      hasData: false
-    }
+      hasData: false,
+    };
   },
   computed: {
     safeData() {
       return Array.isArray(this.data) ? this.data : [];
-    }
+    },
   },
   watch: {
     symbol: {
@@ -53,7 +53,7 @@ export default {
           this.clearChart();
         }
       },
-      immediate: true
+      immediate: true,
     },
     period() {
       if (this.symbol) {
@@ -71,28 +71,28 @@ export default {
         } else {
           this.clearChart();
         }
-      }
+      },
     },
     indicators() {
       if (this.hasData) {
         this.updateChart();
       }
-    }
+    },
   },
   mounted() {
     this.initChart();
-    window.addEventListener('resize', this.resizeHandler);
+    window.addEventListener("resize", this.resizeHandler);
   },
   beforeUnmount() {
     // 移除事件监听器
-    window.removeEventListener('resize', this.resizeHandler);
+    window.removeEventListener("resize", this.resizeHandler);
 
     // 安全销毁图表实例
     if (this.chart) {
       try {
         this.chart.dispose();
       } catch (error) {
-        console.warn('销毁图表时出错:', error);
+        console.warn("销毁图表时出错:", error);
       }
       this.chart = null;
     }
@@ -100,7 +100,7 @@ export default {
   methods: {
     initChart() {
       if (!this.$refs.chart) {
-        console.warn('图表容器未找到');
+        console.warn("图表容器未找到");
         return;
       }
 
@@ -108,7 +108,7 @@ export default {
 
       // 检查容器尺寸
       if (chartElement.clientWidth === 0 || chartElement.clientHeight === 0) {
-        console.warn('图表容器尺寸为0，延迟初始化');
+        console.warn("图表容器尺寸为0，延迟初始化");
         // 使用更安全的延迟初始化
         setTimeout(() => {
           // 检查是否已经卸载
@@ -126,20 +126,24 @@ export default {
         }
 
         this.chart = echarts.init(chartElement);
-        console.log('图表初始化成功');
+        console.log("图表初始化成功");
 
         // 设置默认的空配置
         const emptyOption = this.getEmptyOption();
         this.chart.setOption(emptyOption);
       } catch (error) {
-        console.error('图表初始化失败:', error);
+        console.error("图表初始化失败:", error);
         this.chart = null;
       }
     },
     resizeHandler() {
       if (this.chart) {
         const chartElement = this.$refs.chart;
-        if (chartElement && chartElement.clientWidth > 0 && chartElement.clientHeight > 0) {
+        if (
+          chartElement &&
+          chartElement.clientWidth > 0 &&
+          chartElement.clientHeight > 0
+        ) {
           this.chart.resize();
         }
       }
@@ -156,7 +160,7 @@ export default {
 
         // 模拟加载K线数据
         const mockData = this.generateMockKLineData();
-        console.log('生成的K线数据长度:', mockData.length);
+        console.log("生成的K线数据长度:", mockData.length);
 
         // 更新内部数据状态
         this.hasData = mockData && mockData.length > 0;
@@ -177,9 +181,9 @@ export default {
           this.clearChart();
         }
 
-        this.$emit('events-loaded', mockData);
+        this.$emit("events-loaded", mockData);
       } catch (error) {
-        console.error('加载K线数据失败:', error);
+        console.error("加载K线数据失败:", error);
         this.clearChart();
       }
     },
@@ -197,11 +201,11 @@ export default {
         const date = new Date(now);
 
         // 根据周期调整时间
-        if (this.period === '1min') {
+        if (this.period === "1min") {
           date.setMinutes(date.getMinutes() - i);
-        } else if (this.period === '5min') {
+        } else if (this.period === "5min") {
           date.setMinutes(date.getMinutes() - i * 5);
-        } else if (this.period === 'daily') {
+        } else if (this.period === "daily") {
           date.setDate(date.getDate() - i);
         }
 
@@ -220,13 +224,13 @@ export default {
         const volume = Math.floor(Math.random() * 10000) + 1000;
 
         data.push({
-          date: date.toISOString().split('T')[0],
-          time: date.toLocaleTimeString('zh-CN', {hour12: false}),
+          date: date.toISOString().split("T")[0],
+          time: date.toLocaleTimeString("zh-CN", { hour12: false }),
           open: +open.toFixed(2),
           close: +close.toFixed(2),
           high: +high.toFixed(2),
           low: +low.toFixed(2),
-          volume: volume
+          volume: volume,
         });
       }
 
@@ -235,20 +239,20 @@ export default {
 
     getBasePrice(symbol) {
       const priceMap = {
-        '600519.SH': 1685.50,
-        '601318.SH': 48.25,
-        '600036.SH': 32.60,
-        '000333.SZ': 55.80,
-        '601888.SH': 102.40
+        "600519.SH": 1685.5,
+        "601318.SH": 48.25,
+        "600036.SH": 32.6,
+        "000333.SZ": 55.8,
+        "601888.SH": 102.4,
       };
       return priceMap[symbol] || 10 + Math.random() * 100;
     },
 
     getDataPointsByPeriod() {
       const pointsMap = {
-        '1min': 240,   // 4小时交易时间
-        '5min': 48,    // 4小时交易时间
-        'daily': 30    // 30个交易日
+        "1min": 240, // 4小时交易时间
+        "5min": 48, // 4小时交易时间
+        daily: 30, // 30个交易日
       };
       return pointsMap[this.period] || 100;
     },
@@ -269,7 +273,7 @@ export default {
         const option = this.generateOption(displayData);
         this.chart.setOption(option, true);
       } catch (error) {
-        console.error('更新图表失败:', error);
+        console.error("更新图表失败:", error);
       }
     },
 
@@ -278,15 +282,15 @@ export default {
       if (this.chart) {
         const emptyOption = {
           title: {
-            text: '暂无数据',
-            left: 'center',
-            top: 'center',
+            text: "暂无数据",
+            left: "center",
+            top: "center",
             textStyle: {
-              color: '#a8c7ff',
+              color: "#a8c7ff",
               fontSize: 16,
-              fontWeight: 'normal'
-            }
-          }
+              fontWeight: "normal",
+            },
+          },
         };
         this.chart.setOption(emptyOption, true);
       }
@@ -301,27 +305,27 @@ export default {
         return this.getEmptyOption();
       }
 
-      const dates = dataToUse.map(d =>
-          this.period === 'daily' ? d.date : d.time
+      const dates = dataToUse.map((d) =>
+        this.period === "daily" ? d.date : d.time,
       );
 
       return {
-        backgroundColor: 'transparent',
+        backgroundColor: "transparent",
         animation: false, // 禁用动画避免性能问题
         tooltip: {
-          trigger: 'axis',
+          trigger: "axis",
           axisPointer: {
-            type: 'cross'
+            type: "cross",
           },
-          backgroundColor: 'rgba(16, 33, 59, 0.95)',
-          borderColor: 'rgba(64, 158, 255, 0.3)',
+          backgroundColor: "rgba(16, 33, 59, 0.95)",
+          borderColor: "rgba(64, 158, 255, 0.3)",
           borderWidth: 1,
           textStyle: {
-            color: '#e0e7ff'
+            color: "#e0e7ff",
           },
-          formatter: params => {
+          formatter: (params) => {
             const data = params[0].data;
-            if (!Array.isArray(data)) return '';
+            if (!Array.isArray(data)) return "";
 
             const dataIndex = params[0].dataIndex;
             const item = dataToUse[dataIndex];
@@ -335,62 +339,62 @@ export default {
           <div>最高: ${item.high}</div>
           <div>成交量: ${item.volume?.toLocaleString() || 0}</div>
         `;
-          }
+          },
         },
         legend: {
-          data: ['K线', ...this.getIndicatorNames()],
+          data: ["K线", ...this.getIndicatorNames()],
           textStyle: {
-            color: '#a8c7ff'
+            color: "#a8c7ff",
           },
-          top: 10
+          top: 10,
         },
         grid: [
           {
-            left: '10%',
-            right: '10%',
-            top: '15%',
-            height: '55%'
+            left: "10%",
+            right: "10%",
+            top: "15%",
+            height: "55%",
           },
           {
-            left: '10%',
-            right: '10%',
-            top: '75%',
-            height: '15%'
-          }
+            left: "10%",
+            right: "10%",
+            top: "75%",
+            height: "15%",
+          },
         ],
         xAxis: [
           {
-            type: 'category',
+            type: "category",
             data: dates,
             scale: true,
             boundaryGap: false,
             axisLine: {
-              lineStyle: {color: '#a8c7ff'}
+              lineStyle: { color: "#a8c7ff" },
             },
             axisLabel: {
-              color: '#a8c7ff',
-              formatter: value => {
-                if (this.period === 'daily') {
+              color: "#a8c7ff",
+              formatter: (value) => {
+                if (this.period === "daily") {
                   return value.slice(5); // 显示 MM-DD
                 }
                 return value;
-              }
+              },
             },
             splitLine: {
               show: true,
               lineStyle: {
-                color: 'rgba(168, 199, 255, 0.1)'
-              }
-            }
+                color: "rgba(168, 199, 255, 0.1)",
+              },
+            },
           },
           {
-            type: 'category',
+            type: "category",
             gridIndex: 1,
             data: dates,
-            axisLabel: {show: false},
-            axisLine: {show: false},
-            splitLine: {show: false}
-          }
+            axisLabel: { show: false },
+            axisLine: { show: false },
+            splitLine: { show: false },
+          },
         ],
         yAxis: [
           {
@@ -398,81 +402,81 @@ export default {
             splitArea: {
               show: true,
               areaStyle: {
-                color: ['rgba(16, 33, 59, 0.3)', 'rgba(16, 33, 59, 0.1)']
-              }
+                color: ["rgba(16, 33, 59, 0.3)", "rgba(16, 33, 59, 0.1)"],
+              },
             },
             axisLine: {
-              lineStyle: {color: '#a8c7ff'}
+              lineStyle: { color: "#a8c7ff" },
             },
             axisLabel: {
-              color: '#a8c7ff',
-              formatter: value => value.toFixed(2)
+              color: "#a8c7ff",
+              formatter: (value) => value.toFixed(2),
             },
             splitLine: {
               show: true,
               lineStyle: {
-                color: 'rgba(168, 199, 255, 0.1)'
-              }
-            }
+                color: "rgba(168, 199, 255, 0.1)",
+              },
+            },
           },
           {
             scale: true,
             gridIndex: 1,
             splitNumber: 2,
-            axisLabel: {show: false},
-            axisLine: {show: false},
-            splitLine: {show: false}
-          }
+            axisLabel: { show: false },
+            axisLine: { show: false },
+            splitLine: { show: false },
+          },
         ],
         dataZoom: [
           {
-            type: 'inside',
+            type: "inside",
             xAxisIndex: [0, 1],
             start: 70,
             end: 100,
-            filterMode: 'filter'
+            filterMode: "filter",
           },
           {
             show: true,
             xAxisIndex: [0, 1],
-            type: 'slider',
+            type: "slider",
             bottom: 10,
             start: 70,
             end: 100,
-            backgroundColor: 'rgba(16, 33, 59, 0.8)',
-            borderColor: 'rgba(64, 158, 255, 0.3)',
+            backgroundColor: "rgba(16, 33, 59, 0.8)",
+            borderColor: "rgba(64, 158, 255, 0.3)",
             textStyle: {
-              color: '#a8c7ff'
-            }
-          }
+              color: "#a8c7ff",
+            },
+          },
         ],
         series: [
           {
-            name: 'K线',
-            type: 'candlestick',
-            data: dataToUse.map(d => [d.open, d.close, d.low, d.high]),
+            name: "K线",
+            type: "candlestick",
+            data: dataToUse.map((d) => [d.open, d.close, d.low, d.high]),
             itemStyle: {
-              color: '#5cdd8b',
-              color0: '#ff6b6b',
-              borderColor: '#5cdd8b',
-              borderColor0: '#ff6b6b',
-              borderWidth: 1
+              color: "#5cdd8b",
+              color0: "#ff6b6b",
+              borderColor: "#5cdd8b",
+              borderColor0: "#ff6b6b",
+              borderWidth: 1,
             },
             emphasis: {
               itemStyle: {
-                borderWidth: 2
-              }
-            }
+                borderWidth: 2,
+              },
+            },
           },
-          ...this.generateIndicatorSeries(dataToUse)
-        ]
+          ...this.generateIndicatorSeries(dataToUse),
+        ],
       };
     },
 
     getIndicatorNames() {
       const names = [];
-      if (this.indicators.includes('MA5')) names.push('MA5');
-      if (this.indicators.includes('MA10')) names.push('MA10');
+      if (this.indicators.includes("MA5")) names.push("MA5");
+      if (this.indicators.includes("MA10")) names.push("MA10");
       return names;
     },
 
@@ -480,50 +484,50 @@ export default {
       const dataToUse = displayData || this.safeData;
       const series = [];
 
-      if (this.indicators.includes('MA5')) {
+      if (this.indicators.includes("MA5")) {
         const ma5Data = this.calculateMA(5, dataToUse);
         series.push({
-          name: 'MA5',
-          type: 'line',
+          name: "MA5",
+          type: "line",
           data: ma5Data,
           smooth: true,
           lineStyle: {
             width: 2,
-            color: '#ffb86c'
+            color: "#ffb86c",
           },
-          symbol: 'none'
+          symbol: "none",
         });
       }
 
-      if (this.indicators.includes('MA10')) {
+      if (this.indicators.includes("MA10")) {
         const ma10Data = this.calculateMA(10, dataToUse);
         series.push({
-          name: 'MA10',
-          type: 'line',
+          name: "MA10",
+          type: "line",
           data: ma10Data,
           smooth: true,
           lineStyle: {
             width: 2,
-            color: '#64b5f6'
+            color: "#64b5f6",
           },
-          symbol: 'none'
+          symbol: "none",
         });
       }
 
-      if (this.indicators.includes('VOL')) {
+      if (this.indicators.includes("VOL")) {
         series.push({
-          name: '成交量',
-          type: 'bar',
+          name: "成交量",
+          type: "bar",
           xAxisIndex: 1,
           yAxisIndex: 1,
-          data: dataToUse.map(d => d.volume),
+          data: dataToUse.map((d) => d.volume),
           itemStyle: {
-            color: params => {
+            color: (params) => {
               const data = dataToUse[params.dataIndex];
-              return data.close >= data.open ? '#5cdd8b' : '#ff6b6b';
+              return data.close >= data.open ? "#5cdd8b" : "#ff6b6b";
             },
-            opacity: 0.7
-          }
+            opacity: 0.7,
+          },
         });
       }
 
@@ -533,15 +537,15 @@ export default {
     getEmptyOption() {
       return {
         title: {
-          text: '暂无数据',
-          left: 'center',
-          top: 'center',
+          text: "暂无数据",
+          left: "center",
+          top: "center",
           textStyle: {
-            color: '#a8c7ff',
+            color: "#a8c7ff",
             fontSize: 16,
-            fontWeight: 'normal'
-          }
-        }
+            fontWeight: "normal",
+          },
+        },
       };
     },
 
@@ -551,7 +555,7 @@ export default {
       const result = [];
       for (let i = 0; i < this.safeData.length; i++) {
         if (i < dayCount - 1) {
-          result.push('-');
+          result.push("-");
           continue;
         }
         let sum = 0;
@@ -561,9 +565,9 @@ export default {
         result.push(+(sum / dayCount).toFixed(2));
       }
       return result;
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>

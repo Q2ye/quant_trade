@@ -1,15 +1,124 @@
 <!--篮子编辑器-->
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import { NInput, NInputNumber, NButton } from "naive-ui";
+import { Icon } from "@iconify/vue";
+import { useMessage } from "naive-ui";
+
+interface Stock {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+}
+
+interface BasketStock extends Stock {
+  weight: number;
+}
+
+const emit = defineEmits<{
+  "applyBasket": [payload: { name: string; stocks: BasketStock[] }];
+}>();
+
+const message = useMessage();
+
+const basketName = ref("优质蓝筹股组合");
+const basketDescription = ref("由各行业龙头组成的低波动蓝筹股投资组合");
+const searchQuery = ref("");
+const searchResults = ref<Stock[]>([]);
+
+const basketStocks = ref<BasketStock[]>([
+  { symbol: "600519.SH", name: "贵州茅台", price: 1685.5, change: 1.25, weight: 20 },
+  { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52, weight: 15 },
+  { symbol: "600036.SH", name: "招商银行", price: 32.6, change: 0.92, weight: 15 },
+  { symbol: "000333.SZ", name: "美的集团", price: 55.8, change: 2.1, weight: 10 },
+  { symbol: "601888.SH", name: "中国中免", price: 102.4, change: -1.3, weight: 10 },
+]);
+
+const allStocks: Stock[] = [
+  { symbol: "600519.SH", name: "贵州茅台", price: 1685.5, change: 1.25 },
+  { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52 },
+  { symbol: "600036.SH", name: "招商银行", price: 32.6, change: 0.92 },
+  { symbol: "000333.SZ", name: "美的集团", price: 55.8, change: 2.1 },
+  { symbol: "601888.SH", name: "中国中免", price: 102.4, change: -1.3 },
+  { symbol: "000858.SZ", name: "五粮液", price: 145.2, change: 0.75 },
+  { symbol: "600900.SH", name: "长江电力", price: 23.45, change: 0.43 },
+  { symbol: "600276.SH", name: "恒瑞医药", price: 38.7, change: -0.77 },
+  { symbol: "601012.SH", name: "隆基绿能", price: 25.6, change: 1.85 },
+  { symbol: "000651.SZ", name: "格力电器", price: 36.25, change: 0.83 },
+];
+
+const totalWeight = computed(() =>
+  basketStocks.value.reduce((sum, s) => sum + (s.weight || 0), 0),
+);
+
+const basketValue = computed(() =>
+  basketStocks.value.reduce(
+    (sum, s) => sum + s.price * 1000 * (s.weight / 100),
+    0,
+  ),
+);
+
+const searchStocks = () => {
+  if (!searchQuery.value) {
+    searchResults.value = [];
+    return;
+  }
+  const query = searchQuery.value.toLowerCase();
+  searchResults.value = allStocks
+    .filter(
+      (s) =>
+        s.symbol.toLowerCase().includes(query) ||
+        s.name.toLowerCase().includes(query),
+    )
+    .slice(0, 5);
+};
+
+const addStockToBasket = (stock: Stock) => {
+  if (basketStocks.value.some((s) => s.symbol === stock.symbol)) {
+    message.warning("该股票已在篮子中");
+    return;
+  }
+  basketStocks.value.push({ ...stock, weight: 0 });
+  searchQuery.value = "";
+  searchResults.value = [];
+};
+
+const removeStock = (index: number) => {
+  basketStocks.value.splice(index, 1);
+};
+
+const validateWeight = (index: number) => {
+  const item = basketStocks.value[index];
+  if (item.weight > 100) item.weight = 100;
+  else if (item.weight < 0) item.weight = 0;
+};
+
+const saveBasket = () => {
+  message.success(`篮子 "${basketName.value}" 保存成功`);
+};
+
+const applyBasket = () => {
+  emit("applyBasket", {
+    name: basketName.value,
+    stocks: basketStocks.value,
+  });
+};
+</script>
+
 <template>
   <div class="basket-editor">
     <div class="header">
-      <h2><i class="fas fa-shopping-basket"></i> 股票篮子编辑器</h2>
+      <h2><Icon icon="ant-design:shopping-outlined" /> 股票篮子编辑器</h2>
       <div class="controls">
-        <button class="btn" @click="saveBasket">
-          <i class="fas fa-save"></i> 保存篮子
-        </button>
-        <button class="btn" @click="applyBasket">
-          <i class="fas fa-play"></i> 应用至交易
-        </button>
+        <n-button @click="saveBasket">
+          <template #icon><Icon icon="ant-design:save-outlined" /></template>
+          保存篮子
+        </n-button>
+        <n-button type="primary" @click="applyBasket">
+          <template #icon><Icon icon="ant-design:play-circle-outlined" /></template>
+          应用至交易
+        </n-button>
       </div>
     </div>
 
@@ -17,25 +126,35 @@
       <div class="left-panel">
         <div class="basket-info">
           <div class="input-group">
-            <label for="basketName">篮子名称：</label>
-            <input type="text" v-model="basketName" placeholder="输入篮子名称">
+            <label>篮子名称：</label>
+            <n-input
+              v-model:value="basketName"
+              placeholder="输入篮子名称"
+            />
           </div>
           <div class="input-group">
-            <label for="basketDescription">描述：</label>
-            <textarea v-model="basketDescription" placeholder="输入篮子描述"></textarea>
+            <label>描述：</label>
+            <n-input
+              v-model:value="basketDescription"
+              type="textarea"
+              placeholder="输入篮子描述"
+              :autosize="{ minRows: 3, maxRows: 5 }"
+            />
           </div>
         </div>
 
         <div class="stock-search">
-          <h3><i class="fas fa-search"></i> 股票搜索</h3>
+          <h3><Icon icon="ant-design:search-outlined" /> 股票搜索</h3>
           <div class="search-bar">
-            <input
-              type="text"
-              v-model="searchQuery"
+            <n-input
+              v-model:value="searchQuery"
               placeholder="输入股票代码或名称"
               @input="searchStocks"
             >
-            <i class="fas fa-search"></i>
+              <template #prefix>
+                <Icon icon="ant-design:search-outlined" />
+              </template>
+            </n-input>
           </div>
 
           <div class="search-results">
@@ -48,8 +167,11 @@
               <div class="symbol">{{ stock.symbol }}</div>
               <div class="name">{{ stock.name }}</div>
               <div class="price">{{ stock.price }}</div>
-              <div class="change" :class="stock.change >= 0 ? 'positive' : 'negative'">
-                {{ stock.change >= 0 ? '+' : '' }}{{ stock.change }}%
+              <div
+                class="change"
+                :class="stock.change >= 0 ? 'positive' : 'negative'"
+              >
+                {{ stock.change >= 0 ? "+" : "" }}{{ stock.change }}%
               </div>
             </div>
           </div>
@@ -57,7 +179,9 @@
       </div>
 
       <div class="right-panel">
-        <h3><i class="fas fa-list"></i> 篮子成分股 ({{ basketStocks.length }})</h3>
+        <h3>
+          <Icon icon="ant-design:unordered-list-outlined" /> 篮子成分股 ({{ basketStocks.length }})
+        </h3>
 
         <div class="basket-stocks">
           <div
@@ -72,26 +196,35 @@
 
             <div class="stock-data">
               <div class="price">{{ stock.price }}</div>
-              <div class="change" :class="stock.change >= 0 ? 'positive' : 'negative'">
-                {{ stock.change >= 0 ? '+' : '' }}{{ stock.change }}%
+              <div
+                class="change"
+                :class="stock.change >= 0 ? 'positive' : 'negative'"
+              >
+                {{ stock.change >= 0 ? "+" : "" }}{{ stock.change }}%
               </div>
             </div>
 
             <div class="weight-control">
-              <label for="stock.weight">权重：</label>
-              <input
-                type="number"
-                v-model="stock.weight"
-                min="0"
-                max="100"
-                step="1"
-                @input="validateWeight(index)"
-              > %
+              <label>权重：</label>
+              <n-input-number
+                v-model:value="stock.weight"
+                :min="0"
+                :max="100"
+                :step="1"
+                size="small"
+                @update:value="validateWeight(index)"
+              />
+              <span>%</span>
             </div>
 
-            <button class="remove-btn" @click="removeStock(index)">
-              <i class="fas fa-times"></i>
-            </button>
+            <n-button
+              text
+              type="error"
+              class="remove-btn"
+              @click="removeStock(index)"
+            >
+              <template #icon><Icon icon="ant-design:close-outlined" /></template>
+            </n-button>
           </div>
         </div>
 
@@ -113,100 +246,6 @@
     </div>
   </div>
 </template>
-
-<script>
-export default {
-  name: "BasketEditor",
-  data() {
-    return {
-      basketName: "优质蓝筹股组合",
-      basketDescription: "由各行业龙头组成的低波动蓝筹股投资组合",
-      searchQuery: "",
-      searchResults: [],
-      basketStocks: [
-        { symbol: "600519.SH", name: "贵州茅台", price: 1685.50, change: 1.25, weight: 20 },
-        { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52, weight: 15 },
-        { symbol: "600036.SH", name: "招商银行", price: 32.60, change: 0.92, weight: 15 },
-        { symbol: "000333.SZ", name: "美的集团", price: 55.80, change: 2.10, weight: 10 },
-        { symbol: "601888.SH", name: "中国中免", price: 102.40, change: -1.30, weight: 10 },
-      ],
-      allStocks: [
-        { symbol: "600519.SH", name: "贵州茅台", price: 1685.50, change: 1.25 },
-        { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52 },
-        { symbol: "600036.SH", name: "招商银行", price: 32.60, change: 0.92 },
-        { symbol: "000333.SZ", name: "美的集团", price: 55.80, change: 2.10 },
-        { symbol: "601888.SH", name: "中国中免", price: 102.40, change: -1.30 },
-        { symbol: "000858.SZ", name: "五粮液", price: 145.20, change: 0.75 },
-        { symbol: "600900.SH", name: "长江电力", price: 23.45, change: 0.43 },
-        { symbol: "600276.SH", name: "恒瑞医药", price: 38.70, change: -0.77 },
-        { symbol: "601012.SH", name: "隆基绿能", price: 25.60, change: 1.85 },
-        { symbol: "000651.SZ", name: "格力电器", price: 36.25, change: 0.83 },
-      ]
-    };
-  },
-  computed: {
-    totalWeight() {
-      return this.basketStocks.reduce((sum, stock) => sum + parseFloat(stock.weight || 0), 0);
-    },
-    basketValue() {
-      // 模拟篮子价值计算
-      return this.basketStocks.reduce((sum, stock) => {
-        return sum + (stock.price * 1000 * (stock.weight / 100));
-      }, 0);
-    }
-  },
-  methods: {
-    searchStocks() {
-      if (!this.searchQuery) {
-        this.searchResults = [];
-        return;
-      }
-
-      const query = this.searchQuery.toLowerCase();
-      this.searchResults = this.allStocks.filter(stock => {
-        return stock.symbol.toLowerCase().includes(query) ||
-               stock.name.toLowerCase().includes(query);
-      }).slice(0, 5);
-    },
-    addStockToBasket(stock) {
-      // 检查是否已在篮子中
-      if (this.basketStocks.some(s => s.symbol === stock.symbol)) {
-        this.$message.warning('该股票已在篮子中');
-        return;
-      }
-
-      // 添加到篮子
-      this.basketStocks.push({
-        ...stock,
-        weight: 0
-      });
-
-      this.searchQuery = "";
-      this.searchResults = [];
-    },
-    removeStock(index) {
-      this.basketStocks.splice(index, 1);
-    },
-    validateWeight(index) {
-      if (this.basketStocks[index].weight > 100) {
-        this.basketStocks[index].weight = 100;
-      } else if (this.basketStocks[index].weight < 0) {
-        this.basketStocks[index].weight = 0;
-      }
-    },
-    saveBasket() {
-      this.$message.success(`篮子 "${this.basketName}" 保存成功`);
-      // 实际应用中这里会调用API保存篮子
-    },
-    applyBasket() {
-      this.$emit('apply-basket', {
-        name: this.basketName,
-        stocks: this.basketStocks
-      });
-    }
-  }
-};
-</script>
 
 <style scoped>
 .basket-editor {
@@ -236,33 +275,9 @@ export default {
   gap: 10px;
 }
 
-.header h2 i {
-  font-size: 1.5rem;
-  color: #409eff;
-}
-
 .controls {
   display: flex;
   gap: 15px;
-}
-
-.btn {
-  padding: 10px 20px;
-  background: rgba(24, 50, 90, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 6px;
-  color: #a8c7ff;
-  cursor: pointer;
-  transition: all 0.3s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn:hover {
-  background: rgba(64, 158, 255, 0.2);
-  border-color: #409eff;
-  color: #e0e7ff;
 }
 
 .editor-container {
@@ -273,7 +288,8 @@ export default {
   overflow: hidden;
 }
 
-.left-panel, .right-panel {
+.left-panel,
+.right-panel {
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -298,22 +314,6 @@ export default {
   font-size: 0.95rem;
 }
 
-.input-group input, .input-group textarea {
-  width: 100%;
-  padding: 10px 12px;
-  background: rgba(16, 33, 59, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 6px;
-  color: #e0e7ff;
-  font-size: 1rem;
-  outline: none;
-}
-
-.input-group textarea {
-  height: 80px;
-  resize: none;
-}
-
 .stock-search {
   flex: 1;
   background: rgba(24, 50, 90, 0.5);
@@ -330,29 +330,6 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.search-bar {
-  position: relative;
-}
-
-.search-bar input {
-  width: 100%;
-  padding: 10px 15px 10px 40px;
-  background: rgba(16, 33, 59, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 6px;
-  color: #e0e7ff;
-  font-size: 1rem;
-  outline: none;
-}
-
-.search-bar i {
-  position: absolute;
-  left: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #a8c7ff;
 }
 
 .search-results {
@@ -395,13 +372,8 @@ export default {
   font-weight: 500;
 }
 
-.stock-item .positive {
-  color: #5cdd8b;
-}
-
-.stock-item .negative {
-  color: #ff6b6b;
-}
+.stock-item .positive { color: #5cdd8b; }
+.stock-item .negative { color: #ff6b6b; }
 
 .right-panel {
   background: rgba(24, 50, 90, 0.5);
@@ -458,6 +430,7 @@ export default {
 
 .basket-item .price {
   font-weight: 500;
+  color: #e0e7ff;
 }
 
 .basket-item .change {
@@ -465,13 +438,8 @@ export default {
   font-size: 0.9rem;
 }
 
-.basket-item .positive {
-  color: #5cdd8b;
-}
-
-.basket-item .negative {
-  color: #ff6b6b;
-}
+.basket-item .positive { color: #5cdd8b; }
+.basket-item .negative { color: #ff6b6b; }
 
 .weight-control {
   display: flex;
@@ -482,29 +450,11 @@ export default {
 .weight-control label {
   color: #a8c7ff;
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
-.weight-control input {
-  width: 60px;
-  padding: 5px;
-  background: rgba(16, 33, 59, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 4px;
-  color: #e0e7ff;
-  text-align: center;
-}
-
-.remove-btn {
-  background: none;
-  border: none;
-  color: #ff6b6b;
-  cursor: pointer;
-  font-size: 1.1rem;
-  transition: color 0.3s;
-}
-
-.remove-btn:hover {
-  color: #ff3b3b;
+.weight-control .n-input-number {
+  width: 80px;
 }
 
 .basket-stats {

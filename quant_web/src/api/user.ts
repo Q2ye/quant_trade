@@ -1,13 +1,13 @@
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   UserInfo,
   UpdateUserRequest,
   ChangePasswordRequest,
   UserPermission,
   ApiResponse,
-  PaginatedResponse
-} from '@/types/api'
+  PaginatedResponse,
+} from "@/types/api";
 
 /**
  * 用户管理API服务
@@ -45,7 +45,7 @@ export interface UserPreferences {
   timezone: string;
   dateFormat: string;
   numberFormat: string;
-  theme: 'light' | 'dark' | 'auto';
+  theme: "light" | "dark" | "auto";
   notifications: {
     email: boolean;
     push: boolean;
@@ -54,7 +54,7 @@ export interface UserPreferences {
     systemAlerts: boolean;
   };
   trading: {
-    defaultOrderType: 'limit' | 'market';
+    defaultOrderType: "limit" | "market";
     confirmOrders: boolean;
     showAdvancedOptions: boolean;
   };
@@ -87,9 +87,10 @@ export default {
    * @returns 用户详细信息
    */
   async getCurrentUser(): Promise<UserInfo> {
-    return request.get('/user/me')
+    return request
+      .get("/quantTrade/system/me")
       .then(handleResponse)
-      .then((data: ApiResponse<UserInfo>) => data.data)
+      .then((data: ApiResponse<UserInfo>) => data.data);
   },
 
   /**
@@ -98,9 +99,10 @@ export default {
    * @returns 更新后的用户信息
    */
   async updateUser(userInfo: UpdateUserRequest): Promise<UserInfo> {
-    return request.put('/user/me', userInfo)
+    return request
+      .put("/quantTrade/system/me", userInfo)
       .then(handleResponse)
-      .then((data: ApiResponse<UserInfo>) => data.data)
+      .then((data: ApiResponse<UserInfo>) => data.data);
   },
 
   /**
@@ -108,10 +110,15 @@ export default {
    * @param passwordData 密码修改参数
    * @returns 修改结果
    */
-  async changePassword(passwordData: ChangePasswordRequest): Promise<{ success: boolean; message: string }> {
-    return request.put('/user/password', passwordData)
+  async changePassword(
+    passwordData: ChangePasswordRequest,
+  ): Promise<{ success: boolean; message: string }> {
+    return request
+      .put("/quantTrade/system/password", passwordData)
       .then(handleResponse)
-      .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
+      .then(
+        (data: ApiResponse<{ success: boolean; message: string }>) => data.data,
+      );
   },
 
   /**
@@ -119,9 +126,10 @@ export default {
    * @returns 用户偏好设置
    */
   async getPreferences(): Promise<UserPreferences> {
-    return request.get('/user/preferences')
+    return request
+      .get("/quantTrade/system/preferences")
       .then(handleResponse)
-      .then((data: ApiResponse<UserPreferences>) => data.data)
+      .then((data: ApiResponse<UserPreferences>) => data.data);
   },
 
   /**
@@ -129,10 +137,13 @@ export default {
    * @param preferences 偏好设置
    * @returns 更新后的偏好设置
    */
-  async updatePreferences(preferences: Partial<UserPreferences>): Promise<UserPreferences> {
-    return request.put('/user/preferences', preferences)
+  async updatePreferences(
+    preferences: Partial<UserPreferences>,
+  ): Promise<UserPreferences> {
+    return request
+      .put("/quantTrade/system/preferences", preferences)
       .then(handleResponse)
-      .then((data: ApiResponse<UserPreferences>) => data.data)
+      .then((data: ApiResponse<UserPreferences>) => data.data);
   },
 
   /**
@@ -140,9 +151,10 @@ export default {
    * @returns 通知设置信息
    */
   async getNotificationSettings(): Promise<NotificationSettings> {
-    return request.get('/user/notifications')
+    return request
+      .get("/quantTrade/system/notifications")
       .then(handleResponse)
-      .then((data: ApiResponse<NotificationSettings>) => data.data)
+      .then((data: ApiResponse<NotificationSettings>) => data.data);
   },
 
   /**
@@ -150,10 +162,13 @@ export default {
    * @param settings 通知设置
    * @returns 更新后的通知设置
    */
-  async updateNotificationSettings(settings: Partial<NotificationSettings>): Promise<NotificationSettings> {
-    return request.put('/user/notifications', settings)
+  async updateNotificationSettings(
+    settings: Partial<NotificationSettings>,
+  ): Promise<NotificationSettings> {
+    return request
+      .put("/quantTrade/system/notifications", settings)
       .then(handleResponse)
-      .then((data: ApiResponse<NotificationSettings>) => data.data)
+      .then((data: ApiResponse<NotificationSettings>) => data.data);
   },
 
   /**
@@ -161,9 +176,10 @@ export default {
    * @returns API密钥数组
    */
   async getApiKeys(): Promise<ApiKeyInfo[]> {
-    return request.get('/user/api-keys')
+    return request
+      .get("/quantTrade/system/api-keys")
       .then(handleResponse)
-      .then((data: ApiResponse<ApiKeyInfo[]>) => data.data)
+      .then((data: ApiResponse<ApiKeyInfo[]>) => data.data);
   },
 
   /**
@@ -173,10 +189,15 @@ export default {
    * @param expiresIn 过期时间（天）
    * @returns 新创建的API密钥（包含完整密钥，仅此时可见）
    */
-  async createApiKey(name: string, permissions: string[] = [], expiresIn?: number): Promise<ApiKeyInfo & { key: string }> {
-    return request.post('/user/api-keys', { name, permissions, expiresIn })
+  async createApiKey(
+    name: string,
+    permissions: string[] = [],
+    expiresIn?: number,
+  ): Promise<ApiKeyInfo & { key: string }> {
+    return request
+      .post("/quantTrade/system/api-keys", { name, permissions, expiresIn })
       .then(handleResponse)
-      .then((data: ApiResponse<ApiKeyInfo & { key: string }>) => data.data)
+      .then((data: ApiResponse<ApiKeyInfo & { key: string }>) => data.data);
   },
 
   /**
@@ -185,10 +206,14 @@ export default {
    * @param updates 更新内容
    * @returns 更新后的API密钥信息
    */
-  async updateApiKey(keyId: string, updates: { name?: string; permissions?: string[] }): Promise<ApiKeyInfo> {
-    return request.put(`/user/api-keys/${keyId}`, updates)
+  async updateApiKey(
+    keyId: string,
+    updates: { name?: string; permissions?: string[] },
+  ): Promise<ApiKeyInfo> {
+    return request
+      .put(`/user/api-keys/${keyId}`, updates)
       .then(handleResponse)
-      .then((data: ApiResponse<ApiKeyInfo>) => data.data)
+      .then((data: ApiResponse<ApiKeyInfo>) => data.data);
   },
 
   /**
@@ -197,8 +222,7 @@ export default {
    * @returns 删除操作结果
    */
   async deleteApiKey(keyId: string): Promise<void> {
-    return request.delete(`/user/api-keys/${keyId}`)
-      .then(handleResponse)
+    return request.delete(`/user/api-keys/${keyId}`).then(handleResponse);
   },
 
   /**
@@ -207,9 +231,10 @@ export default {
    * @returns 新的密钥值
    */
   async rotateApiKey(keyId: string): Promise<{ key: string }> {
-    return request.post(`/user/api-keys/${keyId}/rotate`)
+    return request
+      .post(`/user/api-keys/${keyId}/rotate`)
       .then(handleResponse)
-      .then((data: ApiResponse<{ key: string }>) => data.data)
+      .then((data: ApiResponse<{ key: string }>) => data.data);
   },
 
   /**
@@ -224,9 +249,10 @@ export default {
     startDate?: string;
     endDate?: string;
   }): Promise<PaginatedResponse<ActivityLog>> {
-    return request.get('/user/activity', { params })
+    return request
+      .get("/quantTrade/system/activity", { params })
       .then(handleResponse)
-      .then((data: PaginatedResponse<ActivityLog>) => data)
+      .then((data: PaginatedResponse<ActivityLog>) => data);
   },
 
   /**
@@ -234,9 +260,10 @@ export default {
    * @returns 双因素认证设置信息
    */
   async enableTwoFactorAuth(): Promise<TwoFactorSetup> {
-    return request.post('/user/two-factor/enable')
+    return request
+      .post("/quantTrade/system/two-factor/enable")
       .then(handleResponse)
-      .then((data: ApiResponse<TwoFactorSetup>) => data.data)
+      .then((data: ApiResponse<TwoFactorSetup>) => data.data);
   },
 
   /**
@@ -244,10 +271,16 @@ export default {
    * @param token 验证令牌
    * @returns 验证结果
    */
-  async verifyTwoFactorAuth(token: string): Promise<{ success: boolean; recoveryCodes: string[] }> {
-    return request.post('/user/two-factor/verify', { token })
+  async verifyTwoFactorAuth(
+    token: string,
+  ): Promise<{ success: boolean; recoveryCodes: string[] }> {
+    return request
+      .post("/quantTrade/system/two-factor/verify", { token })
       .then(handleResponse)
-      .then((data: ApiResponse<{ success: boolean; recoveryCodes: string[] }>) => data.data)
+      .then(
+        (data: ApiResponse<{ success: boolean; recoveryCodes: string[] }>) =>
+          data.data,
+      );
   },
 
   /**
@@ -255,8 +288,7 @@ export default {
    * @returns 禁用操作结果
    */
   async disableTwoFactorAuth(): Promise<void> {
-    return request.post('/user/two-factor/disable')
-      .then(handleResponse)
+    return request.post("/quantTrade/system/two-factor/disable").then(handleResponse);
   },
 
   /**
@@ -264,9 +296,13 @@ export default {
    * @returns 双因素认证状态
    */
   async getTwoFactorStatus(): Promise<{ enabled: boolean; lastUsed?: string }> {
-    return request.get('/user/two-factor/status')
+    return request
+      .get("/quantTrade/system/two-factor/status")
       .then(handleResponse)
-      .then((data: ApiResponse<{ enabled: boolean; lastUsed?: string }>) => data.data)
+      .then(
+        (data: ApiResponse<{ enabled: boolean; lastUsed?: string }>) =>
+          data.data,
+      );
   },
 
   /**
@@ -274,9 +310,10 @@ export default {
    * @returns 新的恢复代码数组
    */
   async generateRecoveryCodes(): Promise<{ recoveryCodes: string[] }> {
-    return request.post('/user/two-factor/recovery-codes')
+    return request
+      .post("/quantTrade/system/two-factor/recovery-codes")
       .then(handleResponse)
-      .then((data: ApiResponse<{ recoveryCodes: string[] }>) => data.data)
+      .then((data: ApiResponse<{ recoveryCodes: string[] }>) => data.data);
   },
 
   /**
@@ -284,9 +321,10 @@ export default {
    * @returns 用户权限数组
    */
   async getPermissions(): Promise<UserPermission[]> {
-    return request.get('/user/permissions')
+    return request
+      .get("/quantTrade/system/permissions")
       .then(handleResponse)
-      .then((data: ApiResponse<UserPermission[]>) => data.data)
+      .then((data: ApiResponse<UserPermission[]>) => data.data);
   },
 
   /**
@@ -294,9 +332,13 @@ export default {
    * @returns 用户数据导出结果
    */
   async exportData(): Promise<{ exportId: string; estimatedTime: number }> {
-    return request.post('/user/data/export')
+    return request
+      .post("/quantTrade/system/data/export")
       .then(handleResponse)
-      .then((data: ApiResponse<{ exportId: string; estimatedTime: number }>) => data.data)
+      .then(
+        (data: ApiResponse<{ exportId: string; estimatedTime: number }>) =>
+          data.data,
+      );
   },
 
   /**
@@ -305,13 +347,14 @@ export default {
    * @returns 导出状态信息
    */
   async getExportStatus(exportId: string): Promise<{
-    status: 'processing' | 'completed' | 'failed';
+    status: "processing" | "completed" | "failed";
     downloadUrl?: string;
     error?: string;
   }> {
-    return request.get(`/user/data/export/${exportId}`)
+    return request
+      .get(`/user/data/export/${exportId}`)
       .then(handleResponse)
-      .then((data: ApiResponse<any>) => data.data)
+      .then((data: ApiResponse<any>) => data.data);
   },
 
   /**
@@ -319,9 +362,15 @@ export default {
    * @param confirmation 确认信息
    * @returns 删除操作结果
    */
-  async deleteAccount(confirmation: { password: string; reason?: string }): Promise<{ success: boolean; message: string }> {
-    return request.delete('/user/account', { data: confirmation })
+  async deleteAccount(confirmation: {
+    password: string;
+    reason?: string;
+  }): Promise<{ success: boolean; message: string }> {
+    return request
+      .delete("/quantTrade/system/account", { data: confirmation })
       .then(handleResponse)
-      .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
-  }
-}
+      .then(
+        (data: ApiResponse<{ success: boolean; message: string }>) => data.data,
+      );
+  },
+};

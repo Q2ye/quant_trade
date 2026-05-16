@@ -1,6 +1,6 @@
 // utils/converters/userConverter.ts
-import { UserInfo } from '@/types/api/user';
-import {User} from "@/types";
+import { UserInfo } from "@/types/api/user";
+import { User } from "@/types";
 
 export class UserConverter {
   static fromApiResponse(apiUser: UserInfo): User {
@@ -15,36 +15,39 @@ export class UserConverter {
       last_login: apiUser.lastLogin || undefined,
       preferences: this.buildDefaultPreferences(), // 构建默认偏好设置
       created_at: apiUser.createdAt,
-      updated_at: apiUser.updatedAt
+      updated_at: apiUser.updatedAt,
     };
   }
 
-  private static convertRole(apiRole: string): 'admin' | 'user' | 'guest' {
+  private static convertRole(apiRole: string): "admin" | "user" | "guest" {
     switch (apiRole) {
-      case 'admin': return 'admin';
-      case 'user': return 'user';
-      default: return 'guest';
+      case "admin":
+        return "admin";
+      case "user":
+        return "user";
+      default:
+        return "guest";
     }
   }
 
-  private static buildDefaultPreferences(): User['preferences'] {
+  private static buildDefaultPreferences(): User["preferences"] {
     return {
-      theme: 'auto',
-      language: 'zh-CN',
+      theme: "auto",
+      language: "zh-CN",
       notifications: {
         email: true,
         push: true,
-        sms: false
+        sms: false,
       },
       trading: {
-        default_order_type: 'limit',
+        default_order_type: "limit",
         default_volume: 100,
-        confirm_before_trade: true
+        confirm_before_trade: true,
       },
       dashboard: {
-        default_view: 'overview',
-        refresh_interval: 30
-      }
+        default_view: "overview",
+        refresh_interval: 30,
+      },
     };
   }
 }

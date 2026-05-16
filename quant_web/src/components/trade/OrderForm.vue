@@ -1,24 +1,170 @@
 <!--订单表单-->
-<!-- src/components/events/OrderForm.vue -->
+<script setup lang="ts">
+import { ref, computed, watch } from "vue";
+import { NInput, NInputNumber, NSelect, NButton } from "naive-ui";
+import { Icon } from "@iconify/vue";
+import { useMessage } from "naive-ui";
+
+interface Stock {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+}
+
+const emit = defineEmits<{
+  "previewOrder": [order: any];
+}>();
+
+const message = useMessage();
+
+const symbol = ref("");
+const currentStock = ref<Stock | null>(null);
+const direction = ref<"buy" | "sell">("buy");
+const orderType = ref<"limit" | "market" | "stop" | "stop_limit">("limit");
+const price = ref(0);
+const quantity = ref(100);
+const triggerPrice = ref(0);
+
+const allStocks: Stock[] = [
+  { symbol: "600519.SH", name: "贵州茅台", price: 1685.5, change: 1.25 },
+  { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52 },
+  { symbol: "600036.SH", name: "招商银行", price: 32.6, change: 0.92 },
+  { symbol: "000333.SZ", name: "美的集团", price: 55.8, change: 2.1 },
+  { symbol: "601888.SH", name: "中国中免", price: 102.4, change: -1.3 },
+];
+
+const orderTypeOptions = [
+  { value: "limit", label: "限价单" },
+  { value: "market", label: "市价单" },
+  { value: "stop", label: "止损单" },
+  { value: "stop_limit", label: "止损限价单" },
+];
+
+const orderAmount = computed(() => {
+  if (!price.value || !quantity.value) return 0;
+  return price.value * quantity.value;
+});
+
+const getOrderTypeName = (type: string) => {
+  const names: Record<string, string> = {
+    limit: "限价单",
+    market: "市价单",
+    stop: "止损单",
+    stop_limit: "止损限价单",
+  };
+  return names[type] || type;
+};
+
+watch(orderType, (newVal) => {
+  if (newVal === "market") {
+    price.value = 0;
+  } else if (!price.value && currentStock.value) {
+    price.value = currentStock.value.price;
+  }
+});
+
+watch(symbol, (newVal) => {
+  if (!newVal) currentStock.value = null;
+});
+
+const searchStock = () => {
+  if (!symbol.value) {
+    currentStock.value = null;
+    return;
+  }
+  const stock = allStocks.find(
+    (s) => s.symbol.toLowerCase() === symbol.value.toLowerCase(),
+  );
+  if (stock) {
+    currentStock.value = stock;
+    if (orderType.value !== "market" && !price.value) {
+      price.value = stock.price;
+    }
+  } else {
+    currentStock.value = null;
+  }
+};
+
+const resetForm = () => {
+  symbol.value = "";
+  currentStock.value = null;
+  direction.value = "buy";
+  orderType.value = "limit";
+  price.value = 0;
+  quantity.value = 100;
+  triggerPrice.value = 0;
+};
+
+const validateForm = (): boolean => {
+  if (!symbol.value || !currentStock.value) {
+    message.error("请选择有效的股票");
+    return false;
+  }
+  if (orderType.value !== "market" && !price.value) {
+    message.error("请输入价格");
+    return false;
+  }
+  if (!quantity.value || quantity.value <= 0) {
+    message.error("请输入有效的数量");
+    return false;
+  }
+  if (
+    (orderType.value === "stop" || orderType.value === "stop_limit") &&
+    !triggerPrice.value
+  ) {
+    message.error("请输入触发价格");
+    return false;
+  }
+  return true;
+};
+
+const previewOrder = () => {
+  if (!validateForm()) return;
+  const orderDetails: any = {
+    symbol: symbol.value,
+    name: currentStock.value!.name,
+    direction: direction.value === "buy" ? "买入" : "卖出",
+    type: getOrderTypeName(orderType.value),
+    price: orderType.value === "market" ? "市价" : price.value,
+    quantity: quantity.value,
+    amount: orderAmount.value,
+  };
+  if (orderType.value === "stop" || orderType.value === "stop_limit") {
+    orderDetails.triggerPrice = triggerPrice.value;
+  }
+  emit("previewOrder", orderDetails);
+};
+
+const submitOrder = () => {
+  if (!validateForm()) return;
+  message.success("订单提交成功");
+  resetForm();
+};
+</script>
+
 <template>
   <div class="order-form">
-    <h2><i class="fas fa-file-invoice-dollar"></i> 交易订单</h2>
+    <h2><Icon icon="ant-design:file-text-outlined" /> 交易订单</h2>
 
     <div class="form-container">
       <div class="form-group">
-        <label for="symbol">证券代码</label>
+        <label>证券代码</label>
         <div class="symbol-input">
-          <input
-            type="text"
-            v-model="symbol"
+          <n-input
+            v-model:value="symbol"
             placeholder="输入股票代码"
             @input="searchStock"
-          >
+          />
           <div v-if="currentStock" class="stock-info">
             <span class="name">{{ currentStock.name }}</span>
             <span class="price">{{ currentStock.price }}</span>
-            <span class="change" :class="currentStock.change >= 0 ? 'positive' : 'negative'">
-              {{ currentStock.change >= 0 ? '+' : '' }}{{ currentStock.change }}%
+            <span
+              class="change"
+              :class="currentStock.change >= 0 ? 'positive' : 'negative'"
+            >
+              {{ currentStock.change >= 0 ? "+" : ""
+              }}{{ currentStock.change }}%
             </span>
           </div>
         </div>
@@ -26,217 +172,89 @@
 
       <div class="form-row">
         <div class="form-group">
-          <label for="direction-buttons">交易方向</label>
+          <label>交易方向</label>
           <div class="direction-buttons">
-            <button
-              :class="{'active': direction === 'buy'}"
+            <n-button
+              :type="direction === 'buy' ? 'success' : 'default'"
               @click="direction = 'buy'"
             >
-              <i class="fas fa-arrow-up"></i> 买入
-            </button>
-            <button
-              :class="{'active': direction === 'sell'}"
+              <template #icon><Icon icon="ant-design:arrow-up-outlined" /></template>
+              买入
+            </n-button>
+            <n-button
+              :type="direction === 'sell' ? 'error' : 'default'"
               @click="direction = 'sell'"
             >
-              <i class="fas fa-arrow-down"></i> 卖出
-            </button>
+              <template #icon><Icon icon="ant-design:arrow-down-outlined" /></template>
+              卖出
+            </n-button>
           </div>
         </div>
 
         <div class="form-group">
-          <label for="orderType">订单类型</label>
-          <select v-model="orderType">
-            <option value="limit">限价单</option>
-            <option value="market">市价单</option>
-            <option value="stop">止损单</option>
-            <option value="stop_limit">止损限价单</option>
-          </select>
+          <label>订单类型</label>
+          <n-select
+            v-model:value="orderType"
+            :options="orderTypeOptions"
+          />
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label for="price">价格</label>
-          <input
-            type="number"
-            v-model="price"
+          <label>价格</label>
+          <n-input-number
+            v-model:value="price"
             :disabled="orderType === 'market'"
-            step="0.01"
-            min="0"
-          >
+            :step="0.01"
+            :min="0"
+          />
         </div>
 
         <div class="form-group">
-          <label for="quantity">数量</label>
-          <input
-            type="number"
-            v-model="quantity"
-            min="100"
-            step="100"
-          >
+          <label>数量</label>
+          <n-input-number
+            v-model:value="quantity"
+            :min="100"
+            :step="100"
+          />
         </div>
       </div>
 
-      <div v-if="orderType === 'stop' || orderType === 'stop_limit'" class="form-group">
-        <label for="triggerPrice">触发价格</label>
-        <input type="number" v-model="triggerPrice" step="0.01" min="0">
+      <div
+        v-if="orderType === 'stop' || orderType === 'stop_limit'"
+        class="form-group"
+      >
+        <label>触发价格</label>
+        <n-input-number
+          v-model:value="triggerPrice"
+          :step="0.01"
+          :min="0"
+        />
       </div>
 
       <div class="form-group">
-        <label for="amount-display">交易金额</label>
-        <div class="amount-display">
-          ¥{{ orderAmount.toLocaleString() }}
-        </div>
+        <label>交易金额</label>
+        <div class="amount-display">¥{{ orderAmount.toLocaleString() }}</div>
       </div>
 
       <div class="form-actions">
-        <button class="btn reset" @click="resetForm">
-          <i class="fas fa-redo"></i> 重置
-        </button>
-        <button class="btn preview" @click="previewOrder">
-          <i class="fas fa-eye"></i> 预览订单
-        </button>
-        <button class="btn submit" @click="submitOrder">
-          <i class="fas fa-paper-plane"></i> 提交订单
-        </button>
+        <n-button type="error" @click="resetForm">
+          <template #icon><Icon icon="ant-design:redo-outlined" /></template>
+          重置
+        </n-button>
+        <n-button type="warning" @click="previewOrder">
+          <template #icon><Icon icon="ant-design:eye-outlined" /></template>
+          预览订单
+        </n-button>
+        <n-button type="success" @click="submitOrder">
+          <template #icon><Icon icon="ant-design:send-outlined" /></template>
+          提交订单
+        </n-button>
       </div>
     </div>
   </div>
 </template>
-
-<script>
-export default {
-  name: "OrderForm",
-  data() {
-    return {
-      symbol: "",
-      currentStock: null,
-      direction: "buy",
-      orderType: "limit",
-      price: 0,
-      quantity: 100,
-      triggerPrice: 0,
-      allStocks: [
-        { symbol: "600519.SH", name: "贵州茅台", price: 1685.50, change: 1.25 },
-        { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52 },
-        { symbol: "600036.SH", name: "招商银行", price: 32.60, change: 0.92 },
-        { symbol: "000333.SZ", name: "美的集团", price: 55.80, change: 2.10 },
-        { symbol: "601888.SH", name: "中国中免", price: 102.40, change: -1.30 },
-      ]
-    };
-  },
-  computed: {
-    orderAmount() {
-      if (!this.price || !this.quantity) return 0;
-      return this.price * this.quantity;
-    }
-  },
-  watch: {
-    orderType(newVal) {
-      if (newVal === 'market') {
-        this.price = 0;
-      } else if (!this.price && this.currentStock) {
-        this.price = this.currentStock.price;
-      }
-    },
-    symbol(newVal) {
-      if (!newVal) {
-        this.currentStock = null;
-      }
-    }
-  },
-  methods: {
-    searchStock() {
-      if (!this.symbol) {
-        this.currentStock = null;
-        return;
-      }
-
-      const stock = this.allStocks.find(s =>
-        s.symbol.toLowerCase() === this.symbol.toLowerCase()
-      );
-
-      if (stock) {
-        this.currentStock = stock;
-        if (this.orderType !== 'market' && !this.price) {
-          this.price = stock.price;
-        }
-      } else {
-        this.currentStock = null;
-      }
-    },
-    resetForm() {
-      this.symbol = "";
-      this.currentStock = null;
-      this.direction = "buy";
-      this.orderType = "limit";
-      this.price = 0;
-      this.quantity = 100;
-      this.triggerPrice = 0;
-    },
-    previewOrder() {
-      if (!this.validateForm()) return;
-
-      const orderDetails = {
-        symbol: this.symbol,
-        name: this.currentStock.name,
-        direction: this.direction === "buy" ? "买入" : "卖出",
-        type: this.getOrderTypeName(),
-        price: this.orderType === "market" ? "市价" : this.price,
-        quantity: this.quantity,
-        amount: this.orderAmount
-      };
-
-      if (this.orderType === "stop" || this.orderType === "stop_limit") {
-        orderDetails.triggerPrice = this.triggerPrice;
-      }
-
-      this.$emit('preview-order', orderDetails);
-    },
-    submitOrder() {
-      if (!this.validateForm()) return;
-
-      // 模拟订单提交
-      this.$message.success('订单提交成功');
-
-      // 重置表单
-      this.resetForm();
-    },
-    validateForm() {
-      if (!this.symbol || !this.currentStock) {
-        this.$message.error('请选择有效的股票');
-        return false;
-      }
-
-      if (this.orderType !== "market" && !this.price) {
-        this.$message.error('请输入价格');
-        return false;
-      }
-
-      if (!this.quantity || this.quantity <= 0) {
-        this.$message.error('请输入有效的数量');
-        return false;
-      }
-
-      if ((this.orderType === "stop" || this.orderType === "stop_limit") && !this.triggerPrice) {
-        this.$message.error('请输入触发价格');
-        return false;
-      }
-
-      return true;
-    },
-    getOrderTypeName() {
-      const types = {
-        'limit': '限价单',
-        'market': '市价单',
-        'stop': '止损单',
-        'stop_limit': '止损限价单'
-      };
-      return types[this.orderType];
-    }
-  }
-};
-</script>
 
 <style scoped>
 .order-form {
@@ -279,22 +297,6 @@ label {
   font-size: 0.95rem;
 }
 
-input, select {
-  padding: 10px 12px;
-  background: rgba(16, 33, 59, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 6px;
-  color: #e0e7ff;
-  font-size: 1rem;
-  outline: none;
-  width: 100%;
-}
-
-input:focus, select:focus {
-  border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
-}
-
 .symbol-input {
   position: relative;
 }
@@ -308,6 +310,7 @@ input:focus, select:focus {
   align-items: center;
   gap: 10px;
   font-size: 0.9rem;
+  pointer-events: none;
 }
 
 .stock-info .name {
@@ -316,6 +319,7 @@ input:focus, select:focus {
 
 .stock-info .price {
   font-weight: 500;
+  color: #e0e7ff;
 }
 
 .stock-info .change {
@@ -335,37 +339,8 @@ input:focus, select:focus {
   gap: 10px;
 }
 
-.direction-buttons button {
+.direction-buttons .n-button {
   flex: 1;
-  padding: 10px;
-  background: rgba(16, 33, 59, 0.7);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 6px;
-  color: #a8c7ff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  transition: all 0.3s;
-}
-
-.direction-buttons button.active {
-  background: rgba(64, 158, 255, 0.2);
-  border-color: #409eff;
-  color: #e0e7ff;
-}
-
-.direction-buttons button:nth-child(1).active {
-  background: rgba(92, 221, 139, 0.2);
-  border-color: #5cdd8b;
-  color: #5cdd8b;
-}
-
-.direction-buttons button:nth-child(2).active {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: #ff6b6b;
-  color: #ff6b6b;
 }
 
 .amount-display {
@@ -384,49 +359,7 @@ input:focus, select:focus {
   margin-top: 10px;
 }
 
-.form-actions .btn {
+.form-actions .n-button {
   flex: 1;
-  padding: 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.btn.reset {
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  color: #ff6b6b;
-}
-
-.btn.reset:hover {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: #ff6b6b;
-}
-
-.btn.preview {
-  background: rgba(255, 184, 108, 0.1);
-  border: 1px solid rgba(255, 184, 108, 0.3);
-  color: #ffb86c;
-}
-
-.btn.preview:hover {
-  background: rgba(255, 184, 108, 0.2);
-  border-color: #ffb86c;
-}
-
-.btn.submit {
-  background: rgba(92, 221, 139, 0.1);
-  border: 1px solid rgba(92, 221, 139, 0.3);
-  color: #5cdd8b;
-}
-
-.btn.submit:hover {
-  background: rgba(92, 221, 139, 0.2);
-  border-color: #5cdd8b;
 }
 </style>

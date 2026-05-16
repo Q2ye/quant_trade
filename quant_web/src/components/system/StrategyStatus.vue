@@ -1,105 +1,82 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ElTag, ElButton, ElTooltip } from 'element-plus'
-import type { TagProps } from 'element-plus'
+import { computed } from "vue";
+import { NTag, NButton, NTooltip } from "naive-ui";
 
 interface Strategy {
-  id: string
-  name: string
-  status: 'running' | 'stopped' | 'error' | 'paused'
-  type: string
-  symbols: string[]
-  startedAt: string
+  id: string;
+  name: string;
+  status: "running" | "stopped" | "error" | "paused";
+  type: string;
+  symbols: string[];
+  startedAt: string;
   performance?: {
-    dailyReturn: number
-    totalReturn: number
-    sharpeRatio: number
-  }
+    dailyReturn: number;
+    totalReturn: number;
+    sharpeRatio: number;
+  };
 }
 
-// 定义 props 接口，设置默认值
 interface Props {
-  strategies?: Strategy[]
+  strategies?: Strategy[];
 }
 
-// 使用 withDefaults 提供默认值
 const props = withDefaults(defineProps<Props>(), {
-  strategies: () => []
-})
+  strategies: () => [],
+});
 
 const emit = defineEmits<{
-  stopStrategy: [id: string]
-  startStrategy: [id: string]
-  viewDetails: [id: string]
-}>()
+  stopStrategy: [id: string];
+  startStrategy: [id: string];
+  viewDetails: [id: string];
+}>();
 
-// 使用计算属性确保 strategies 总是有效的数组
 const safeStrategies = computed(() => {
   if (!props.strategies || !Array.isArray(props.strategies)) {
-    return []
+    return [];
   }
-  return props.strategies.filter(strategy =>
-    strategy && typeof strategy === 'object' && strategy.id
-  )
-})
+  return props.strategies.filter((s) => s && typeof s === "object" && s.id);
+});
 
-// 使用 Element Plus 合法的 Tag 类型
-type TagType = TagProps['type']
+const statusMap: Record<
+  string,
+  { type: "success" | "info" | "error" | "warning" | "default"; text: string }
+> = {
+  running: { type: "success", text: "运行中" },
+  stopped: { type: "default", text: "已停止" },
+  error: { type: "error", text: "错误" },
+  paused: { type: "warning", text: "暂停" },
+};
 
-const statusMap: Record<string, { type: TagType; text: string }> = {
-  running: { type: 'success', text: '运行中' },
-  stopped: { type: 'info', text: '已停止' },
-  error: { type: 'danger', text: '错误' },
-  paused: { type: 'warning', text: '暂停' }
-}
-
-// 安全的格式化时间函数
 const formatTime = (time: string) => {
   try {
-    return new Date(time).toLocaleString()
-  } catch (error) {
-    console.warn('时间格式化错误:', error)
-    return '无效时间'
+    return new Date(time).toLocaleString();
+  } catch {
+    return "无效时间";
   }
-}
+};
 
-// 安全的格式化收益率函数
 const formatReturn = (value: number | undefined) => {
-  if (value === undefined || value === null) return '0.00%'
-  return `${(value * 100).toFixed(2)}%`
-}
+  if (value === undefined || value === null) return "0.00%";
+  return `${(value * 100).toFixed(2)}%`;
+};
 
-// 安全的处理函数
 const handleStop = (strategy: Strategy) => {
-  if (strategy && strategy.status === 'running') {
-    emit('stopStrategy', strategy.id)
-  }
-}
+  if (strategy?.status === "running") emit("stopStrategy", strategy.id);
+};
 
 const handleStart = (strategy: Strategy) => {
-  if (strategy && strategy.status === 'stopped') {
-    emit('startStrategy', strategy.id)
-  }
-}
+  if (strategy?.status === "stopped") emit("startStrategy", strategy.id);
+};
 
 const handleViewDetails = (strategy: Strategy) => {
-  if (strategy) {
-    emit('viewDetails', strategy.id)
-  }
-}
+  if (strategy) emit("viewDetails", strategy.id);
+};
 
-// 安全的获取策略类型
-const getStrategyType = (type: string | undefined) => {
-  return type || '未知类型'
-}
-
-// 安全的获取标的符号
 const getStrategySymbols = (symbols: string[] | undefined) => {
-  if (!symbols || !Array.isArray(symbols)) {
-    return '无标的'
-  }
-  return symbols.length > 0 ? symbols.join(', ') : '无标的'
-}
+  if (!symbols || !Array.isArray(symbols) || symbols.length === 0)
+    return "无标的";
+  return symbols.join(", ");
+};
 </script>
 
 <template>
@@ -111,53 +88,54 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
     >
       <div class="strategy-header">
         <div class="strategy-info">
-          <span class="strategy-name">{{ strategy.name || '未知策略' }}</span>
-          <ElTag
-            :type="statusMap[strategy.status]?.type || 'info'"
+          <span class="strategy-name">{{ strategy.name || "未知策略" }}</span>
+          <NTag
+            :type="statusMap[strategy.status]?.type || 'default'"
             size="small"
           >
-            {{ statusMap[strategy.status]?.text || '未知状态' }}
-          </ElTag>
+            {{ statusMap[strategy.status]?.text || "未知状态" }}
+          </NTag>
         </div>
         <div class="strategy-actions">
-          <ElTooltip content="查看详情">
-            <ElButton
-              size="mini"
-              type="text"
-              @click="handleViewDetails(strategy)"
-            >
-              详情
-            </ElButton>
-          </ElTooltip>
-          <ElButton
+          <NTooltip>
+            <template #trigger>
+              <NButton size="tiny" text @click="handleViewDetails(strategy)"
+                >详情</NButton
+              >
+            </template>
+            查看详情
+          </NTooltip>
+          <NButton
             v-if="strategy.status === 'running'"
-            size="mini"
-            type="danger"
+            size="tiny"
+            type="error"
             text
             @click="handleStop(strategy)"
           >
             停止
-          </ElButton>
-          <ElButton
+          </NButton>
+          <NButton
             v-else-if="strategy.status === 'stopped'"
-            size="mini"
+            size="tiny"
             type="primary"
             text
             @click="handleStart(strategy)"
           >
             启动
-          </ElButton>
+          </NButton>
         </div>
       </div>
 
       <div class="strategy-details">
         <div class="detail-item">
           <span class="detail-label">类型:</span>
-          <span class="detail-value">{{ getStrategyType(strategy.type) }}</span>
+          <span class="detail-value">{{ strategy.type || "未知类型" }}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">标的:</span>
-          <span class="detail-value">{{ getStrategySymbols(strategy.symbols) }}</span>
+          <span class="detail-value">{{
+            getStrategySymbols(strategy.symbols)
+          }}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">启动时间:</span>
@@ -171,7 +149,7 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
               class="metric-value"
               :class="{
                 positive: strategy.performance.dailyReturn > 0,
-                negative: strategy.performance.dailyReturn < 0
+                negative: strategy.performance.dailyReturn < 0,
               }"
             >
               {{ formatReturn(strategy.performance.dailyReturn) }}
@@ -183,7 +161,7 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
               class="metric-value"
               :class="{
                 positive: strategy.performance.totalReturn > 0,
-                negative: strategy.performance.totalReturn < 0
+                negative: strategy.performance.totalReturn < 0,
               }"
             >
               {{ formatReturn(strategy.performance.totalReturn) }}
@@ -191,9 +169,9 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
           </div>
           <div class="metric-item">
             <span class="metric-label">夏普比率:</span>
-            <span class="metric-value">
-              {{ strategy.performance.sharpeRatio?.toFixed(2) || '0.00' }}
-            </span>
+            <span class="metric-value">{{
+              strategy.performance.sharpeRatio?.toFixed(2) || "0.00"
+            }}</span>
           </div>
         </div>
       </div>
@@ -213,10 +191,10 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
 
 .strategy-item {
   padding: 12px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--n-border-color);
   border-radius: 4px;
   margin-bottom: 8px;
-  background: #fafafa;
+  background: var(--n-card-color);
 }
 
 .strategy-item:last-child {
@@ -238,7 +216,7 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
 
 .strategy-name {
   font-weight: 500;
-  color: #333;
+  color: var(--n-text-color-1);
 }
 
 .strategy-actions {
@@ -256,12 +234,12 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
 }
 
 .detail-label {
-  color: #666;
+  color: var(--n-text-color-3);
   min-width: 60px;
 }
 
 .detail-value {
-  color: #333;
+  color: var(--n-text-color-1);
   flex: 1;
 }
 
@@ -270,7 +248,7 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
   gap: 16px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid var(--n-border-color);
 }
 
 .metric-item {
@@ -281,14 +259,14 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
 
 .metric-label {
   font-size: 11px;
-  color: #666;
+  color: var(--n-text-color-3);
   margin-bottom: 2px;
 }
 
 .metric-value {
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
 }
 
 .positive {
@@ -301,7 +279,7 @@ const getStrategySymbols = (symbols: string[] | undefined) => {
 
 .empty-state {
   text-align: center;
-  color: #999;
+  color: var(--n-text-color-3);
   padding: 20px;
 }
 </style>

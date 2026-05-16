@@ -1,8 +1,8 @@
 // _layout.scss - 优化后的布局系统（整合智能滚动）
-@use '../variables' as *;
-@use '../mixins' as mix;
-@use 'sass:map';
-@use 'sass:color';
+@use "../variables" as *;
+@use "../mixins" as mix;
+@use "sass:map";
+@use "sass:color";
 
 // ============================================================================
 // 布局组件类（统一使用智能滚动混入）
@@ -44,7 +44,7 @@
     display: flex;
     flex-direction: column;
 
-     // 滚动内容容器
+    // 滚动内容容器
     .scroll-content {
       flex: 1;
       min-height: 0;
@@ -52,7 +52,6 @@
       // 智能滚动行为
       @include mix.smart-scroll-container;
     }
-
   }
 
   // 响应式适配

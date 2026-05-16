@@ -1,6 +1,6 @@
 <!-- quant_web/src/components/common/DataTable.vue -->
 <script setup lang="ts">
-import {computed} from 'vue'
+import { computed } from "vue";
 
 /**
  * 通用表格组件 - 优化版本
@@ -8,63 +8,63 @@ import {computed} from 'vue'
  */
 
 interface TableColumn {
-  prop: string
-  label: string
-  width?: string
-  align?: 'left' | 'center' | 'right'
-  formatter?: (row: any, column: TableColumn, value: any) => any
-  color?: (row: any) => string
-  slot?: string
+  prop: string;
+  label: string;
+  width?: string;
+  align?: "left" | "center" | "right";
+  formatter?: (row: any, column: TableColumn, value: any) => any;
+  color?: (row: any) => string;
+  slot?: string;
 }
 
 interface Props {
-  columns: TableColumn[]
-  data: any[]
-  rowHeight?: number
-  minHeight?: string
-  maxHeight?: string
-  loading?: boolean
-  emptyText?: string
-  clickable?: boolean  // 添加点击属性控制
+  columns: TableColumn[];
+  data: any[];
+  rowHeight?: number;
+  minHeight?: string;
+  maxHeight?: string;
+  loading?: boolean;
+  emptyText?: string;
+  clickable?: boolean; // 添加点击属性控制
 }
 
 const props = withDefaults(defineProps<Props>(), {
   rowHeight: 48,
-  minHeight: '300px',
-  maxHeight: '600px',
+  minHeight: "300px",
+  maxHeight: "600px",
   loading: false,
-  emptyText: '暂无数据',
-  clickable: false  // 默认不可点击
-})
+  emptyText: "暂无数据",
+  clickable: false, // 默认不可点击
+});
 
 const emit = defineEmits<{
-  rowClick: [row: any, index: number]
-}>()
+  rowClick: [row: any, index: number];
+}>();
 
 /**
  * 格式化单元格值
  */
 const formatValue = (row: any, column: TableColumn) => {
-  const value = row[column.prop]
+  const value = row[column.prop];
   if (column.formatter) {
-    return column.formatter(row, column, value)
+    return column.formatter(row, column, value);
   }
-  return value
-}
+  return value;
+};
 
 /**
  * 处理行点击事件
  */
 const handleRowClick = (row: any, index: number) => {
-  emit('rowClick', row, index)
-}
+  emit("rowClick", row, index);
+};
 
 /**
  * 计算表格高度
  */
 const tableHeight = computed(() => {
-  return `min(${props.minHeight}, ${props.maxHeight})`
-})
+  return `min(${props.minHeight}, ${props.maxHeight})`;
+});
 </script>
 
 <template>
@@ -72,12 +72,12 @@ const tableHeight = computed(() => {
     <!-- 表格头部 -->
     <div class="table-header">
       <div
-          v-for="col in columns"
-          :key="col.prop"
-          class="header-cell"
-          :style="{
+        v-for="col in columns"
+        :key="col.prop"
+        class="header-cell"
+        :style="{
           width: col.width || 'auto',
-          textAlign: col.align || 'left'
+          textAlign: col.align || 'left',
         }"
       >
         {{ col.label }}
@@ -87,65 +87,65 @@ const tableHeight = computed(() => {
     <!-- 加载状态 -->
     <div v-if="loading" class="table-loading">
       <div class="loading-content">
-        <a-spin size="large"/>
+        <a-spin size="large" />
         <span class="loading-text">加载中...</span>
       </div>
     </div>
 
     <!-- 表格内容 - 使用虚拟滚动 -->
     <div
-        v-else-if="data.length > 0"
-        class="table-body"
-        :style="{ height: tableHeight }"
+      v-else-if="data.length > 0"
+      class="table-body"
+      :style="{ height: tableHeight }"
     >
       <div
-          v-for="(row, index) in data"
-          :key="index"
-          class="table-row"
-          :class="{
+        v-for="(row, index) in data"
+        :key="index"
+        class="table-row"
+        :class="{
           'striped-row': index % 2 === 0,
-          'clickable': clickable  // 使用 prop 控制点击样式
+          clickable: clickable, // 使用 prop 控制点击样式
         }"
-          :style="{ height: `${rowHeight}px` }"
-          @click="clickable ? handleRowClick(row, index) : null"
+        :style="{ height: `${rowHeight}px` }"
+        @click="clickable ? handleRowClick(row, index) : null"
       >
-      <div
+        <div
           v-for="col in columns"
           :key="col.prop"
           class="body-cell"
           :style="{
             width: col.width || 'auto',
             textAlign: col.align || 'left',
-            color: col.color ? col.color(row) : 'inherit'
+            color: col.color ? col.color(row) : 'inherit',
           }"
-      >
-        <!-- 插槽支持 -->
-        <slot
+        >
+          <!-- 插槽支持 -->
+          <slot
             v-if="col.slot"
             :name="col.slot"
             :row="row"
             :index="index"
             :column="col"
-        />
-        <template v-else>
-          {{ formatValue(row, col) }}
-        </template>
+          />
+          <template v-else>
+            {{ formatValue(row, col) }}
+          </template>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- 空状态 -->
-  <div v-else class="table-empty">
-    <div class="empty-content">
-      <a-empty :description="emptyText"/>
+    <!-- 空状态 -->
+    <div v-else class="table-empty">
+      <div class="empty-content">
+        <a-empty :description="emptyText" />
+      </div>
     </div>
-  </div>
   </div>
 </template>
 
 <style scoped lang="less">
 .data-table-container {
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   border: 1px solid #d9d9d9;
   border-radius: 6px;
   overflow: hidden;

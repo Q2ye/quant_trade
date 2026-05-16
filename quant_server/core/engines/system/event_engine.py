@@ -484,6 +484,29 @@ class EventEngine(EngineBase):
 				logger.warning(f"无法获取事件属性: {e}, 使用默认值")
 				logger.debug(f"事件入队: unknown, 优先级: {PriorityLevel.NORMAL.value}")
 
+	def subscribe (self,
+	               event_type: Any,
+	               handler: Callable,
+	               priority: int = PriorityLevel.NORMAL.value,
+	               handler_id: Optional[str] = None) -> str:
+		"""订阅事件（register 的别名，兼容 Event 类 + string 入参）"""
+		if not isinstance(event_type, str):
+			if hasattr(event_type, 'event_type'):
+				event_type = getattr(event_type, 'event_type', '')
+			elif hasattr(event_type, '__name__'):
+				event_type = event_type.__name__
+		if not isinstance(event_type, str) or not event_type:
+			event_type = str(event_type)
+		return self.register(event_type, handler, priority, handler_id)
+
+	def register_handler (self,
+	                      event_type: Any,
+	                      handler: Callable,
+	                      priority: int = PriorityLevel.NORMAL.value,
+	                      handler_id: Optional[str] = None) -> str:
+		"""注册事件处理器（subscribe 的别名，兼容旧 API 名称）"""
+		return self.subscribe(event_type, handler, priority, handler_id)
+
 	def register (self,
 	              event_type: str,
 	              handler: Callable,

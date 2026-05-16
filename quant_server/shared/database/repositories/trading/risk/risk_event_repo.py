@@ -23,9 +23,9 @@ class RiskEventRepository(HyperRepositoryBase):
 
 	async def get_recent_events (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
-			rule_id: Optional[int] = None,
+			rule_id: Optional[str] = None,
 			event_type: Optional[str] = None,
 			days: int = 7,
 			limit: int = 100
@@ -136,9 +136,9 @@ class RiskEventRepository(HyperRepositoryBase):
 			self,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
-			rule_id: Optional[int] = None,
+			rule_id: Optional[str] = None,
 			event_type: Optional[str] = None,
 			action_taken: Optional[str] = None,
 			limit: int = 100,

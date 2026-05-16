@@ -92,6 +92,11 @@ class UserService:
 		if existing:
 			raise ValueError(f"用户名 '{username}' 已被使用")
 
+		if "password" in data:
+			from shared.security.password import get_password_crypto
+			data = dict(data)
+			data["password"] = get_password_crypto().encrypt(data["password"])
+
 		user = await self._user_repo.create_user(data)
 
 		await self._audit.log_user_action(
@@ -110,6 +115,10 @@ class UserService:
 			self, user_id: str, data: Dict[str, Any], operator_id: str = "",
 	) -> Optional[Dict[str, Any]]:
 		"""更新用户信息"""
+		if "password" in data:
+			from shared.security.password import get_password_crypto
+			data = dict(data)
+			data["password"] = get_password_crypto().encrypt(data["password"])
 		user = await self._user_repo.update_user(user_id, data)
 		if user is None:
 			return None

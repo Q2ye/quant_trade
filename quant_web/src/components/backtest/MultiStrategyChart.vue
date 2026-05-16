@@ -5,89 +5,103 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import * as echarts from "echarts";
 
 export default {
-  name: 'MultiStrategyChart',
+  name: "MultiStrategyChart",
   props: {
     data: {
       type: Array,
-      default: () => []
-    }
+      default: () => [],
+    },
   },
   setup(props) {
-    const chart = ref(null)
-    let chartInstance = null
+    const chart = ref(null);
+    let chartInstance = null;
 
     const initChart = () => {
-      if (!chart.value) return
-
-      chartInstance = echarts.init(chart.value)
+      if (!chart.value) return;
+      if (chartInstance) {
+        chartInstance.dispose();
+        chartInstance = null;
+      }
+      chartInstance = echarts.init(chart.value);
 
       const option = {
         tooltip: {
-          trigger: 'axis',
+          trigger: "axis",
           axisPointer: {
-            type: 'cross'
-          }
+            type: "cross",
+          },
         },
         legend: {
-          data: props.data.map(item => item.strategyName)
+          data: props.data.map((item) => item.strategyName),
         },
         grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
+          left: "3%",
+          right: "4%",
+          bottom: "3%",
+          containLabel: true,
         },
         xAxis: {
-          type: 'category',
+          type: "category",
           boundaryGap: false,
-          data: props.data.length > 0 ? props.data[0].dates : []
+          data: props.data.length > 0 ? props.data[0].dates : [],
         },
         yAxis: {
-          type: 'value',
+          type: "value",
           axisLabel: {
-            formatter: '{value}'
-          }
+            formatter: "{value}",
+          },
         },
-        series: props.data.map(item => ({
+        series: props.data.map((item) => ({
           name: item.strategyName,
-          type: 'line',
+          type: "line",
           data: item.equityCurve,
           smooth: true,
           lineStyle: {
-            width: 2
-          }
-        }))
-      }
+            width: 2,
+          },
+        })),
+      };
 
-      chartInstance.setOption(option)
-    }
+      chartInstance.setOption(option);
+    };
 
     const resizeChart = () => {
       if (chartInstance) {
-        chartInstance.resize()
+        chartInstance.resize();
       }
-    }
+    };
 
     onMounted(() => {
-      initChart()
-      window.addEventListener('resize', resizeChart)
-    })
+      initChart();
+      window.addEventListener("resize", resizeChart);
+    });
 
-    watch(() => props.data, () => {
+    onUnmounted(() => {
+      window.removeEventListener("resize", resizeChart);
       if (chartInstance) {
-        initChart()
+        chartInstance.dispose();
+        chartInstance = null;
       }
-    })
+    });
+
+    watch(
+      () => props.data,
+      () => {
+        if (chartInstance) {
+          initChart();
+        }
+      },
+    );
 
     return {
-      chart
-    }
-  }
-}
+      chart,
+    };
+  },
+};
 </script>
 
 <style scoped>

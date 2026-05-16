@@ -1,13 +1,9 @@
 // quant_web/src/api/risk.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
-import {
-  ApiResponse,
-  PaginatedResponse,
-  RiskAlertMessage,
-} from '@/types/api'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
+import { ApiResponse, PaginatedResponse, RiskAlertMessage } from "@/types/api";
 
-import {RiskRule} from "@/types/entities";
+import { RiskRule } from "@/types/entities";
 
 /**
  * 风险管理API服务
@@ -35,7 +31,7 @@ export interface RiskRuleCreate {
 }
 
 export interface RiskQueryParams {
-  level?: 'low' | 'medium' | 'high' | 'critical';
+  level?: "low" | "medium" | "high" | "critical";
   type?: string;
   start_time?: string;
   end_time?: string;
@@ -50,9 +46,10 @@ export default {
    * @returns 风险规则数组
    */
   async getRiskRules(token: string): Promise<RiskRule[]> {
-    return request.get('/risk/rules', { params: { token } })
+    return request
+      .get("/quantTrade/risk/rules", { params: { token } })
       .then(handleResponse)
-      .then((data: ApiResponse<RiskRule[]>) => data.data)
+      .then((data: ApiResponse<RiskRule[]>) => data.data);
   },
 
   /**
@@ -61,10 +58,14 @@ export default {
    * @param token 认证令牌
    * @returns 新创建的风险规则
    */
-  async createRiskRule(ruleData: RiskRuleCreate, token: string): Promise<RiskRule> {
-    return request.post('/risk/rules', ruleData, { params: { token } })
+  async createRiskRule(
+    ruleData: RiskRuleCreate,
+    token: string,
+  ): Promise<RiskRule> {
+    return request
+      .post("/quantTrade/risk/rules", ruleData, { params: { token } })
       .then(handleResponse)
-      .then((data: ApiResponse<RiskRule>) => data.data)
+      .then((data: ApiResponse<RiskRule>) => data.data);
   },
 
   /**
@@ -74,10 +75,15 @@ export default {
    * @param token 认证令牌
    * @returns 更新后的风险规则
    */
-  async updateRiskRule(ruleId: number, ruleData: Partial<RiskRuleCreate>, token: string): Promise<RiskRule> {
-    return request.put(`/risk/rules/${ruleId}`, ruleData, { params: { token } })
+  async updateRiskRule(
+    ruleId: number,
+    ruleData: Partial<RiskRuleCreate>,
+    token: string,
+  ): Promise<RiskRule> {
+    return request
+      .put(`/risk/rules/${ruleId}`, ruleData, { params: { token } })
       .then(handleResponse)
-      .then((data: ApiResponse<RiskRule>) => data.data)
+      .then((data: ApiResponse<RiskRule>) => data.data);
   },
 
   /**
@@ -87,8 +93,9 @@ export default {
    * @returns 删除操作结果
    */
   async deleteRiskRule(ruleId: number, token: string): Promise<void> {
-    return request.delete(`/risk/rules/${ruleId}`, { params: { token } })
-      .then(handleResponse)
+    return request
+      .delete(`/risk/rules/${ruleId}`, { params: { token } })
+      .then(handleResponse);
   },
 
   /**
@@ -96,10 +103,13 @@ export default {
    * @param params 查询参数
    * @returns 风险事件数组
    */
-  async getRiskEvents(params?: RiskQueryParams): Promise<PaginatedResponse<RiskEvent>> {
-    return request.get('/risk/events', { params })
+  async getRiskEvents(
+    params?: RiskQueryParams,
+  ): Promise<PaginatedResponse<RiskEvent>> {
+    return request
+      .get("/quantTrade/risk/events", { params })
       .then(handleResponse)
-      .then((data: PaginatedResponse<RiskEvent>) => data)
+      .then((data: PaginatedResponse<RiskEvent>) => data);
   },
 
   /**
@@ -107,9 +117,10 @@ export default {
    * @returns 风险预警消息数组
    */
   async getRiskAlerts(): Promise<RiskAlertMessage[]> {
-    return request.get('/risk/alerts')
+    return request
+      .get("/quantTrade/risk/alerts")
       .then(handleResponse)
-      .then((data: ApiResponse<RiskAlertMessage[]>) => data.data)
+      .then((data: ApiResponse<RiskAlertMessage[]>) => data.data);
   },
 
   /**
@@ -118,8 +129,9 @@ export default {
    * @returns 确认操作结果
    */
   async acknowledgeRiskAlert(alertId: string): Promise<void> {
-    return request.post(`/risk/alerts/${alertId}/acknowledge`)
-      .then(handleResponse)
+    return request
+      .post(`/risk/alerts/${alertId}/acknowledge`)
+      .then(handleResponse);
   },
 
   /**
@@ -132,8 +144,9 @@ export default {
     today_events: number;
     active_rules: number;
   }> {
-    return request.get('/risk/metrics')
+    return request
+      .get("/quantTrade/risk/metrics")
       .then(handleResponse)
-      .then((data: ApiResponse<any>) => data.data)
-  }
-}
+      .then((data: ApiResponse<any>) => data.data);
+  },
+};

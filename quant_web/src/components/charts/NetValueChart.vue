@@ -4,52 +4,52 @@
 </template>
 
 <script>
-import * as echarts from 'echarts';
+import * as echarts from "echarts";
 
 export default {
   name: "NetValueChart",
   props: {
     netValueData: {
       type: Array,
-      default: () => []
+      default: () => [],
     },
     benchmarkData: {
       type: Array,
-      default: () => []
+      default: () => [],
     },
     period: {
       type: String,
-      default: '1y'
-    }
+      default: "1y",
+    },
   },
   data() {
     return {
-      chart: null
-    }
+      chart: null,
+    };
   },
   watch: {
     netValueData: {
       deep: true,
       handler() {
         this.updateChart();
-      }
+      },
     },
     benchmarkData: {
       deep: true,
       handler() {
         this.updateChart();
-      }
-    }
+      },
+    },
   },
   mounted() {
     this.initChart();
-    window.addEventListener('resize', this.resizeHandler);
+    window.addEventListener("resize", this.resizeHandler);
   },
   beforeUnmount() {
     if (this.chart) {
       this.chart.dispose();
     }
-    window.removeEventListener('resize', this.resizeHandler);
+    window.removeEventListener("resize", this.resizeHandler);
   },
   methods: {
     initChart() {
@@ -64,99 +64,99 @@ export default {
 
       const option = {
         tooltip: {
-          trigger: 'axis',
-          formatter: params => {
+          trigger: "axis",
+          formatter: (params) => {
             const strategy = params[0];
             const benchmark = params[1] || { value: 0 };
             return `
               <div>日期: ${strategy.name}</div>
               <div>策略净值: ${strategy.value.toFixed(4)}</div>
-              <div>基准收益: ${benchmark.value ? (benchmark.value * 100).toFixed(2) + '%' : 'N/A'}</div>
-              <div>超额收益: ${benchmark.value ? (strategy.value - benchmark.value * 100).toFixed(2) + '%' : 'N/A'}</div>
+              <div>基准收益: ${benchmark.value ? (benchmark.value * 100).toFixed(2) + "%" : "N/A"}</div>
+              <div>超额收益: ${benchmark.value ? (strategy.value - benchmark.value * 100).toFixed(2) + "%" : "N/A"}</div>
             `;
-          }
+          },
         },
         legend: {
-          data: ['策略净值', '基准收益'],
-          bottom: 10
+          data: ["策略净值", "基准收益"],
+          bottom: 10,
         },
         grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '15%',
-          top: '10%',
-          containLabel: true
+          left: "3%",
+          right: "4%",
+          bottom: "15%",
+          top: "10%",
+          containLabel: true,
         },
         xAxis: {
-          type: 'category',
+          type: "category",
           boundaryGap: false,
-          data: this.netValueData.map(d => d.date)
+          data: this.netValueData.map((d) => d.date),
         },
         yAxis: [
           {
-            type: 'value',
-            name: '净值',
-            min: value => Math.min(value.min, 0.9),
+            type: "value",
+            name: "净值",
+            min: (value) => Math.min(value.min, 0.9),
             axisLabel: {
-              formatter: '{value}'
-            }
+              formatter: "{value}",
+            },
           },
           {
-            type: 'value',
-            name: '收益率',
+            type: "value",
+            name: "收益率",
             min: -0.3,
             max: 0.3,
             axisLabel: {
-              formatter: value => (value * 100).toFixed(0) + '%'
-            }
-          }
+              formatter: (value) => (value * 100).toFixed(0) + "%",
+            },
+          },
         ],
         dataZoom: [
           {
-            type: 'inside',
+            type: "inside",
             start: 70,
-            end: 100
+            end: 100,
           },
           {
             show: true,
-            type: 'slider',
+            type: "slider",
             bottom: 25,
             start: 70,
-            end: 100
-          }
+            end: 100,
+          },
         ],
         series: [
           {
-            name: '策略净值',
-            type: 'line',
+            name: "策略净值",
+            type: "line",
             smooth: true,
-            symbol: 'none',
-            data: this.netValueData.map(d => d.value),
+            symbol: "none",
+            data: this.netValueData.map((d) => d.value),
             lineStyle: {
               width: 3,
-              color: '#5470C6'
-            }
+              color: "#5470C6",
+            },
           },
           {
-            name: '基准收益',
-            type: 'line',
+            name: "基准收益",
+            type: "line",
             yAxisIndex: 1,
             smooth: true,
-            symbol: 'none',
+            symbol: "none",
             data: this.benchmarkData,
             lineStyle: {
               width: 2,
-              type: 'dashed',
-              color: '#91CC75'
-            }
-          }
-        ]
+              type: "dashed",
+              color: "#91CC75",
+            },
+          },
+        ],
       };
 
       this.chart.setOption(option);
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>

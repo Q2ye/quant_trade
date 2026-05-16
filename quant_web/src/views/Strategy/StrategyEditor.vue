@@ -1,31 +1,30 @@
-<!-- 在现有StrategyEditor.vue基础上添加以下功能 -->
 <template>
   <StrategyLayout>
     <template #header>
       <div class="editor-header">
         <div class="strategy-info">
           <h2>{{ strategy.name }}</h2>
-          <el-tag :type="statusType[strategy.status]">
+          <n-tag :type="statusType[strategy.status] as any">
             {{ statusText[strategy.status] }}
-          </el-tag>
+          </n-tag>
         </div>
-        <div class="header-actions">
-          <el-button-group>
-            <el-button
-              :type="strategy.status === 'running' ? 'danger' : 'success'"
-              @click="toggleStrategy"
-            >
-              {{ strategy.status === 'running' ? '停止策略' : '启动策略' }}
-            </el-button>
-            <el-button type="primary" @click="saveStrategy">保存</el-button>
-            <el-button @click="runBacktest">回测</el-button>
-          </el-button-group>
-        </div>
+        <n-space :size="8">
+          <n-button
+            :type="strategy.status === 'running' ? 'error' : 'success'"
+            :loading="toggling"
+            @click="toggleStrategy"
+          >
+            {{ strategy.status === "running" ? "停止策略" : "启动策略" }}
+          </n-button>
+          <n-button type="primary" :loading="saving" @click="saveStrategy"
+            >保存</n-button
+          >
+          <n-button @click="runBacktest">回测</n-button>
+        </n-space>
       </div>
     </template>
 
     <template #editor>
-      <!-- 原有代码编辑器 -->
       <CodeEditor
         v-model="strategy.code"
         language="python"
@@ -35,129 +34,150 @@
     </template>
 
     <template #config>
-      <!-- 增强参数配置 -->
       <div class="config-section">
         <h3>策略参数配置</h3>
-        <el-form label-width="100px">
-          <el-form-item
-            v-for="(param, key) in strategy.parameters"
+        <n-form label-width="100px">
+          <n-form-item
+            v-for="(_val, key) in strategy.parameters"
             :key="key"
             :label="paramLabels[key]"
           >
-            <el-input-number
-              v-model="strategy.parameters[key]"
+            <n-input-number
+              v-model:value="strategy.parameters[key]"
               :min="paramMins[key]"
               :max="paramMaxs[key]"
               :step="paramSteps[key]"
               size="small"
             />
             <span class="param-desc">{{ paramDescs[key] }}</span>
-          </el-form-item>
-        </el-form>
+          </n-form-item>
+        </n-form>
       </div>
 
       <div class="config-section">
         <h3>股票池配置</h3>
-        <StockPoolSelector
-          v-model="strategy.stockPool"
-          :multiple="true"
-        />
+        <StockPoolSelector v-model="strategy.stockPool" :multiple="true" />
       </div>
 
       <div class="config-section">
         <h3>回测设置</h3>
-        <!-- 原有回测设置 -->
       </div>
     </template>
 
     <template #monitor>
-      <!-- 实时监控增强 -->
       <div class="monitor-tabs">
-        <el-tabs v-model="activeMonitorTab">
-          <el-tab-pane label="实时日志" name="logs">
+        <n-tabs v-model:value="activeMonitorTab">
+          <n-tab-pane name="logs" tab="实时日志">
             <BacktestLogs :logs="logs" />
-          </el-tab-pane>
-          <el-tab-pane label="变量监控" name="variables">
+          </n-tab-pane>
+          <n-tab-pane name="variables" tab="变量监控">
             <VariableMonitor :variables="variables" />
-          </el-tab-pane>
-          <el-tab-pane label="信号跟踪" name="signals">
+          </n-tab-pane>
+          <n-tab-pane name="signals" tab="信号跟踪">
             <SignalTimeline :signals="signals" />
-          </el-tab-pane>
-          <el-tab-pane label="性能分析" name="performance">
+          </n-tab-pane>
+          <n-tab-pane name="performance" tab="性能分析">
             <RealTimePerformance :metrics="performanceMetrics" />
-          </el-tab-pane>
-        </el-tabs>
+          </n-tab-pane>
+        </n-tabs>
       </div>
     </template>
   </StrategyLayout>
 </template>
 
-<script>
-// 添加新的导入
-import StockPoolSelector from '@/components/strategy/StockPoolSelector.vue'
-import RealTimePerformance from '@/components/strategy/RealTimePerformance.vue'
+<script setup lang="ts">
+import { ref, inject } from "vue";
+import { useStore } from "vuex";
+import { useMessage } from "naive-ui";
+import StockPoolSelector from "@/components/strategy/StockPoolSelector.vue";
+import RealTimePerformance from "@/components/strategy/RealTimePerformance.vue";
 import StrategyLayout from "@/layouts/StrategyLayout.vue";
 import BacktestLogs from "@/components/strategy/BacktestLogs.vue";
 import VariableMonitor from "@/components/strategy/VariableMonitor.vue";
 import SignalTimeline from "@/views/Signal/SignalTimeline.vue";
 
-export default {
-  components: {
-    SignalTimeline,
-    VariableMonitor,
-    BacktestLogs,
-    StrategyLayout,
-    // ...原有组件
-    StockPoolSelector,
-    RealTimePerformance
-  },
-  data() {
-    return {
-      activeMonitorTab: 'logs',
-      performanceMetrics: {},
-      // 参数描述信息
-      paramLabels: {
-        fastPeriod: '快线周期',
-        slowPeriod: '慢线周期',
-        tradeSize: '仓位比例'
-      },
-      paramDescs: {
-        fastPeriod: '短期均线周期，通常5-20',
-        slowPeriod: '长期均线周期，通常20-60',
-        tradeSize: '每次交易仓位比例，0-1之间'
-      },
-      paramMins: {
-        fastPeriod: 1,
-        slowPeriod: 5,
-        tradeSize: 0.1
-      },
-      paramMaxs: {
-        fastPeriod: 50,
-        slowPeriod: 100,
-        tradeSize: 1.0
-      },
-      paramSteps: {
-        fastPeriod: 1,
-        slowPeriod: 5,
-        tradeSize: 0.05
-      }
-    }
-  },
-  methods: {
-    async toggleStrategy() {
-      try {
-        if (this.strategy.status === 'running') {
-          await this.stopStrategy(this.strategy.id)
-        } else {
-          await this.startStrategy(this.strategy.id)
-        }
-        this.$message.success('操作成功')
-      } catch (error) {
-        this.$message.error('操作失败: ' + error.message)
-      }
-    }
+const message = useMessage();
+const store = useStore<any>();
+
+const strategy = inject<any>(
+  "strategy",
+  ref({ name: "", status: "stopped", code: "", parameters: {}, stockPool: [] }),
+);
+const logs = inject<any[]>("logs", []);
+const variables = inject<any[]>("variables", []);
+const signals = inject<any[]>("signals", []);
+const isReadOnly = inject<boolean>("isReadOnly", false);
+
+const saving = ref(false);
+const toggling = ref(false);
+const activeMonitorTab = ref("logs");
+const performanceMetrics = ref({});
+
+const statusType: Record<string, string> = {
+  running: "success",
+  stopped: "default",
+  error: "error",
+};
+const statusText: Record<string, string> = {
+  running: "运行中",
+  stopped: "已停止",
+  error: "异常",
+};
+
+const paramLabels: Record<string, string> = {
+  fastPeriod: "快线周期",
+  slowPeriod: "慢线周期",
+  tradeSize: "仓位比例",
+};
+const paramDescs: Record<string, string> = {
+  fastPeriod: "短期均线周期，通常5-20",
+  slowPeriod: "长期均线周期，通常20-60",
+  tradeSize: "每次交易仓位比例，0-1之间",
+};
+const paramMins: Record<string, number> = {
+  fastPeriod: 1,
+  slowPeriod: 5,
+  tradeSize: 0.1,
+};
+const paramMaxs: Record<string, number> = {
+  fastPeriod: 50,
+  slowPeriod: 100,
+  tradeSize: 1.0,
+};
+const paramSteps: Record<string, number> = {
+  fastPeriod: 1,
+  slowPeriod: 5,
+  tradeSize: 0.05,
+};
+
+const toggleStrategy = async () => {
+  toggling.value = true;
+  try {
+    if (strategy.value.status === "running")
+      await store.dispatch("strategy/stopStrategy", strategy.value.id);
+    else await store.dispatch("strategy/startStrategy", strategy.value.id);
+    message.success("操作成功");
+  } catch (e: any) {
+    message.error("操作失败: " + e.message);
+  } finally {
+    toggling.value = false;
   }
-}
+};
+
+const saveStrategy = async () => {
+  saving.value = true;
+  try {
+    await store.dispatch("strategy/updateStrategy", strategy.value);
+    message.success("保存成功");
+  } catch (e: any) {
+    message.error("保存失败: " + e.message);
+  } finally {
+    saving.value = false;
+  }
+};
+
+const runBacktest = () =>
+  store.dispatch("backtest/runBacktest", strategy.value);
 </script>
 
 <style scoped>
@@ -166,8 +186,8 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e6e6e6;
+  background: var(--n-card-color);
+  border-bottom: 1px solid var(--n-border-color);
 }
 
 .strategy-info {
@@ -175,14 +195,26 @@ export default {
   align-items: center;
   gap: 15px;
 }
+.strategy-info h2 {
+  margin: 0;
+  color: var(--n-text-color-1);
+}
 
 .param-desc {
   margin-left: 10px;
   font-size: 12px;
-  color: #909399;
+  color: var(--n-text-color-3);
 }
-
 .monitor-tabs {
   height: 100%;
+}
+
+.config-section {
+  margin-bottom: 20px;
+}
+.config-section h3 {
+  margin: 0 0 12px;
+  color: var(--n-text-color-1);
+  font-size: 14px;
 }
 </style>

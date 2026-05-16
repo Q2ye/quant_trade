@@ -1,188 +1,188 @@
 <!-- quant_web/src/views/DataSync/SyncHistory.vue -->
 <script setup lang="ts">
-import { onMounted, reactive, ref, h } from 'vue'
-import { Alert, Button, Card, DatePicker, Descriptions, Divider, Drawer, Select, Space,  Tag } from 'ant-design-vue'
-import { ArrowLeftOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
-import { useRouter } from 'vue-router'
-import type { Dayjs } from 'dayjs'
+import { onMounted, reactive, ref, h } from "vue";
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NDatePicker,
+  NDescriptions,
+  NDescriptionsItem,
+  NDivider,
+  NDrawer,
+  NSelect,
+  NSpace,
+  NTag,
+  NDataTable,
+} from "naive-ui";
+import { useRouter } from "vue-router";
+import SmartIcon from "@/components/common/SmartIcon.vue";
+import type { Dayjs } from "dayjs";
+import type { DataTableColumns } from "naive-ui";
 
-const SelectOption = Select.Option
-const DescriptionsItem = Descriptions.Item
-const RangePicker = DatePicker.RangePicker
-
-const router = useRouter()
+const router = useRouter();
 
 const handleBack = () => {
-  router.go(-1)
-}
+  router.go(-1);
+};
 
 interface SyncRecord {
-  id: string
-  task_id: string
-  data_types: string[]
-  status: 'completed' | 'running' | 'failed' | 'cancelled'
-  start_time: string
-  end_time?: string
-  duration?: number
-  total_tasks: number
-  completed_tasks: number
-  results: Record<string, any>
-  error?: string
+  id: string;
+  task_id: string;
+  data_types: string[];
+  status: "completed" | "running" | "failed" | "cancelled";
+  start_time: string;
+  end_time?: string;
+  duration?: number;
+  total_tasks: number;
+  completed_tasks: number;
+  results: Record<string, any>;
+  error?: string;
 }
 
-const loading = ref(false)
-const records = ref<SyncRecord[]>([])
-const selectedRecord = ref<SyncRecord | null>(null)
-const drawerVisible = ref(false)
+const loading = ref(false);
+const records = ref<SyncRecord[]>([]);
+const selectedRecord = ref<SyncRecord | null>(null);
+const drawerVisible = ref(false);
 
 const pagination = reactive({
   current: 1,
   pageSize: 20,
-  total: 0
-})
+  total: 0,
+});
 
 const filters = reactive({
-  status: '',
-  dateRange: [] as [Dayjs, Dayjs] | []
-})
+  status: "",
+  dateRange: null as [string, string] | null,
+});
 
-const columns = [
-  {
-    title: '任务ID',
-    dataIndex: 'task_id',
-    key: 'task_id',
-    width: 120
-  },
-  {
-    title: '数据类型',
-    dataIndex: 'data_types',
-    key: 'data_types',
-    render: (types: string[]) => types.join(', ')
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-    render: (status: string) => {
-      const statusConfig = {
-        completed: { color: 'var(--success-color)', text: '完成' },
-        running: { color: 'var(--accent-color)', text: '运行中' },
-        failed: { color: 'var(--danger-color)', text: '失败' },
-        cancelled: { color: 'var(--warning-color)', text: '已取消' }
-      }
-      const config = statusConfig[status as keyof typeof statusConfig] || { color: 'default', text: status }
-      return h(Tag, { color: config.color }, () => config.text)
-    }
-  },
-  {
-    title: '开始时间',
-    dataIndex: 'start_time',
-    key: 'start_time'
-  },
-  {
-    title: '完成进度',
-    key: 'progress',
-    render: (record: SyncRecord) => `${record.completed_tasks}/${record.total_tasks}`
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    render: (record: SyncRecord) => h(Button, {
-      type: 'link',
-      onClick: () => showDetails(record)
-    }, () => '详情')
-  }
-]
+const statusOptions = [
+  { label: "完成", value: "completed" },
+  { label: "运行中", value: "running" },
+  { label: "失败", value: "failed" },
+  { label: "已取消", value: "cancelled" },
+];
 
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    completed: 'var(--success-color)',
-    running: 'var(--accent-color)',
-    failed: 'var(--danger-color)',
-    cancelled: 'var(--warning-color)'
-  }
-  return colors[status] || 'default'
-}
+const getStatusType = (
+  status: string,
+): "default" | "success" | "info" | "warning" | "error" => {
+  const types: Record<
+    string,
+    "default" | "success" | "info" | "warning" | "error"
+  > = {
+    completed: "success",
+    running: "info",
+    failed: "error",
+    cancelled: "warning",
+  };
+  return types[status] || "default";
+};
 
 const getStatusText = (status: string) => {
   const texts: Record<string, string> = {
-    completed: '完成',
-    running: '运行中',
-    failed: '失败',
-    cancelled: '已取消'
-  }
-  return texts[status] || status
-}
+    completed: "完成",
+    running: "运行中",
+    failed: "失败",
+    cancelled: "已取消",
+  };
+  return texts[status] || status;
+};
 
-const formatTime = (time: string) => {
-  if (!time) return '-'
-  return time
-}
-
-const formatDuration = (startTime: string, endTime?: string) => {
-  if (!endTime) return '-'
-  return '计算中...'
-}
+const columns: DataTableColumns<SyncRecord> = [
+  {
+    title: "任务ID",
+    key: "task_id",
+    width: 120,
+  },
+  {
+    title: "数据类型",
+    key: "data_types",
+    render: (row) => row.data_types.join(", "),
+  },
+  {
+    title: "状态",
+    key: "status",
+    render: (row) =>
+      h(
+        NTag,
+        { type: getStatusType(row.status), bordered: false, size: "small" },
+        { default: () => getStatusText(row.status) },
+      ),
+  },
+  {
+    title: "开始时间",
+    key: "start_time",
+  },
+  {
+    title: "完成进度",
+    key: "progress",
+    render: (row) => `${row.completed_tasks}/${row.total_tasks}`,
+  },
+  {
+    title: "操作",
+    key: "actions",
+    render: (row) =>
+      h(
+        NButton,
+        { text: true, onClick: () => showDetails(row) },
+        { default: () => "详情" },
+      ),
+  },
+];
 
 const showDetails = (record: SyncRecord) => {
-  selectedRecord.value = record
-  drawerVisible.value = true
-}
+  selectedRecord.value = record;
+  drawerVisible.value = true;
+};
 
 const closeDrawer = () => {
-  drawerVisible.value = false
-  selectedRecord.value = null
-}
+  drawerVisible.value = false;
+  selectedRecord.value = null;
+};
 
 const handleSearch = () => {
-  pagination.current = 1
-  loadHistory()
-}
+  pagination.current = 1;
+  loadHistory();
+};
 
 const handleReset = () => {
-  filters.status = ''
-  filters.dateRange = []
-  pagination.current = 1
-  loadHistory()
-}
-
-const handleTableChange = (pag: any) => {
-  pagination.current = pag.current
-  pagination.pageSize = pag.pageSize
-  loadHistory()
-}
+  filters.status = "";
+  filters.dateRange = null;
+  pagination.current = 1;
+  loadHistory();
+};
 
 const loadHistory = async () => {
-  loading.value = true
+  loading.value = true;
   try {
     records.value = [
       {
-        id: '1',
-        task_id: 'TASK_001',
-        data_types: ['市场数据', 'K线数据'],
-        status: 'completed',
-        start_time: '2024-01-15 10:00:00',
-        end_time: '2024-01-15 10:15:00',
+        id: "1",
+        task_id: "TASK_001",
+        data_types: ["市场数据", "K线数据"],
+        status: "completed",
+        start_time: "2024-01-15 10:00:00",
+        end_time: "2024-01-15 10:15:00",
         duration: 900,
         total_tasks: 100,
         completed_tasks: 100,
         results: {
-          '市场数据': { error: null },
-          'K线数据': { error: null }
-        }
-      }
-    ]
-    pagination.total = records.value.length
+          市场数据: { error: null },
+          K线数据: { error: null },
+        },
+      },
+    ];
+    pagination.total = records.value.length;
   } catch (error) {
-    console.error('加载同步历史失败:', error)
+    console.error("加载同步历史失败:", error);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 onMounted(() => {
-  loadHistory()
-})
+  loadHistory();
+});
 </script>
 
 <template>
@@ -194,139 +194,177 @@ onMounted(() => {
           <p class="page-description">查看和管理历史数据同步任务记录</p>
         </div>
         <div class="header-actions-right">
-          <a-button class="back-btn" @click="handleBack">
+          <n-button class="back-btn" @click="handleBack">
             <template #icon>
-              <ArrowLeftOutlined />
+              <SmartIcon name="ArrowLeft" />
             </template>
             返回
-          </a-button>
+          </n-button>
         </div>
       </div>
     </div>
 
-    <Card class="history-card">
+    <n-card class="history-card">
       <div class="filter-bar">
-        <Space :size="16" wrap>
-          <Select
+        <n-space :size="16" wrap>
+          <n-select
             v-model:value="filters.status"
             placeholder="状态筛选"
             style="width: 120px"
-            allow-clear
-            class="status-select"
-          >
-            <SelectOption value="completed">完成</SelectOption>
-            <SelectOption value="running">运行中</SelectOption>
-            <SelectOption value="failed">失败</SelectOption>
-            <SelectOption value="cancelled">已取消</SelectOption>
-          </Select>
-
-          <RangePicker
-            v-model:value="filters.dateRange"
-            style="width: 240px"
-            :placeholder="['开始日期', '结束日期']"
-            class="date-picker"
+            clearable
+            :options="statusOptions"
           />
 
-          <Button type="primary" @click="handleSearch" class="search-btn">
-            <SearchOutlined />
+          <n-date-picker
+            v-model:formatted-value="filters.dateRange"
+            type="daterange"
+            style="width: 240px"
+            clearable
+          />
+
+          <n-button type="primary" @click="handleSearch">
+            <template #icon>
+              <SmartIcon name="Search" />
+            </template>
             搜索
-          </Button>
+          </n-button>
 
-          <Button @click="handleReset" class="reset-btn">重置</Button>
+          <n-button @click="handleReset">重置</n-button>
 
-          <Button @click="loadHistory" :loading="loading" class="refresh-btn">
-            <ReloadOutlined />
+          <n-button @click="loadHistory" :loading="loading">
+            <template #icon>
+              <SmartIcon name="Reload" />
+            </template>
             刷新
-          </Button>
-        </Space>
+          </n-button>
+        </n-space>
       </div>
 
-      <a-table
+      <n-data-table
         :columns="columns"
-        :data-source="records"
-        :pagination="pagination"
+        :data="records"
+        :pagination="{
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+          itemCount: pagination.total,
+          onChange: (page: number) => {
+            pagination.current = page;
+            loadHistory();
+          },
+          onUpdatePageSize: (pageSize: number) => {
+            pagination.pageSize = pageSize;
+            loadHistory();
+          },
+        }"
         :loading="loading"
-        :row-key="(record: SyncRecord) => record.id"
-        @change="handleTableChange"
-        :scroll="{ x: 1000 }"
-        class="history-table"
+        :row-key="(row: SyncRecord) => row.id"
+        :scroll-x="1000"
+        remote
       />
 
-      <Drawer
-        :open="drawerVisible"
+      <n-drawer
+        :show="drawerVisible"
         title="同步任务详情"
         placement="right"
-        width="600"
-        :closable="true"
-        @close="closeDrawer"
-        class="detail-drawer"
+        :width="600"
+        @update:show="
+          (val: boolean) => {
+            if (!val) closeDrawer();
+          }
+        "
       >
         <template v-if="selectedRecord">
-          <Descriptions title="任务信息" bordered size="small" :column="1">
-            <DescriptionsItem label="任务ID">
+          <n-descriptions
+            label-placement="left"
+            bordered
+            :column="1"
+            size="small"
+          >
+            <n-descriptions-item label="任务ID">
               {{ selectedRecord.task_id }}
-            </DescriptionsItem>
-            <DescriptionsItem label="数据类型">
-              {{ selectedRecord.data_types.join(', ') }}
-            </DescriptionsItem>
-            <DescriptionsItem label="状态">
-              <Tag :color="getStatusColor(selectedRecord.status)">
+            </n-descriptions-item>
+            <n-descriptions-item label="数据类型">
+              {{ selectedRecord.data_types.join(", ") }}
+            </n-descriptions-item>
+            <n-descriptions-item label="状态">
+              <n-tag
+                :type="getStatusType(selectedRecord.status)"
+                :bordered="false"
+                size="small"
+              >
                 {{ getStatusText(selectedRecord.status) }}
-              </Tag>
-            </DescriptionsItem>
-            <DescriptionsItem label="开始时间">
-              {{ formatTime(selectedRecord.start_time) }}
-            </DescriptionsItem>
-            <DescriptionsItem label="结束时间">
-              {{ formatTime(selectedRecord.end_time || '') }}
-            </DescriptionsItem>
-            <DescriptionsItem label="持续时间">
-              {{ formatDuration(selectedRecord.start_time, selectedRecord.end_time) }}
-            </DescriptionsItem>
-            <DescriptionsItem label="完成进度">
-              {{ selectedRecord.completed_tasks }}/{{ selectedRecord.total_tasks }}
-            </DescriptionsItem>
-          </Descriptions>
+              </n-tag>
+            </n-descriptions-item>
+            <n-descriptions-item label="开始时间">
+              {{ selectedRecord.start_time }}
+            </n-descriptions-item>
+            <n-descriptions-item label="结束时间">
+              {{ selectedRecord.end_time || "-" }}
+            </n-descriptions-item>
+            <n-descriptions-item label="持续时间">
+              {{
+                selectedRecord.duration
+                  ? `${Math.round(selectedRecord.duration / 60)}分钟`
+                  : "-"
+              }}
+            </n-descriptions-item>
+            <n-descriptions-item label="完成进度">
+              {{ selectedRecord.completed_tasks }}/{{
+                selectedRecord.total_tasks
+              }}
+            </n-descriptions-item>
+          </n-descriptions>
 
-          <Divider />
+          <n-divider />
 
-          <Descriptions title="同步结果" bordered size="small" :column="1">
-            <template v-for="(result, dataType) in selectedRecord.results" :key="dataType">
-              <DescriptionsItem :label="dataType">
-                <Tag :color="result.error ? 'var(--danger-color)' : 'var(--success-color)'">
-                  {{ result.error ? '失败' : '成功' }}
-                </Tag>
+          <n-descriptions
+            label-placement="left"
+            bordered
+            :column="1"
+            size="small"
+          >
+            <template
+              v-for="(result, dataType) in selectedRecord.results"
+              :key="dataType"
+            >
+              <n-descriptions-item :label="dataType">
+                <n-tag
+                  :type="result.error ? 'error' : 'success'"
+                  :bordered="false"
+                  size="small"
+                >
+                  {{ result.error ? "失败" : "成功" }}
+                </n-tag>
                 <span v-if="result.error" class="error-text">
                   {{ result.error }}
                 </span>
-              </DescriptionsItem>
+              </n-descriptions-item>
             </template>
-          </Descriptions>
+          </n-descriptions>
 
-          <Alert
+          <n-alert
             v-if="selectedRecord.error"
-            :message="selectedRecord.error"
+            :title="selectedRecord.error"
             type="error"
-            show-icon
+            :show-icon="true"
             class="error-alert"
           />
         </template>
-      </Drawer>
-    </Card>
+      </n-drawer>
+    </n-card>
   </div>
 </template>
 
 <style scoped lang="scss">
-
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as mixin;
-@use 'sass:map';
+@use "@/styles/variables" as *;
+@use "@/styles/mixins" as mixin;
+@use "sass:map";
 
 .sync-history-page {
   padding: 0;
   max-width: 1400px;
   margin: 0 auto;
-  background: $primary-bg;
+  background: $body-color;
   min-height: 100vh;
 }
 
@@ -372,28 +410,13 @@ onMounted(() => {
 }
 
 .back-btn {
-  @include mixin.button-base(rgba(255, 255, 255, 0.15), white);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(10px);
-  box-shadow: $card-shadow;
+  color: white;
   height: $button-height;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
-    color: white;
-  }
 }
 
 .history-card {
-  @include mixin.card-base;
   margin: 0 map.get($spacers, 4);
-
-  :deep(.ant-card-body) {
-    padding: map.get($spacers, 3);
-  }
 }
 
 .filter-bar {
@@ -404,55 +427,8 @@ onMounted(() => {
   border: 1px solid $border-color;
 }
 
-.history-table {
-  :deep(.ant-table-thead > tr > th) {
-    background-color: $toolbar-bg;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
-    border-bottom: 1px solid $border-color;
-  }
-
-  :deep(.ant-table-tbody > tr > td) {
-    border-bottom: 1px solid $border-color;
-    color: $text-primary;
-  }
-
-  :deep(.ant-table-tbody > tr:hover > td) {
-    background-color: $hover-bg;
-  }
-
-  :deep(.ant-table-pagination) {
-    margin: map.get($spacers, 3) 0 0 0;
-    padding: map.get($spacers, 2) 0;
-    border-top: 1px solid $border-color;
-  }
-}
-
-.detail-drawer {
-  :deep(.ant-drawer-header) {
-    background: $toolbar-bg;
-    border-bottom: 1px solid $border-color;
-
-    .ant-drawer-title {
-      color: $text-primary;
-      font-weight: $font-weight-semibold;
-    }
-  }
-
-  :deep(.ant-drawer-body) {
-    background: $primary-bg;
-    padding: map.get($spacers, 3);
-  }
-}
-
-.refresh-btn,
-.search-btn,
-.reset-btn {
-  @include mixin.button-base;
-}
-
 .error-text {
-  color: $danger-color;
+  color: $error-color;
   margin-left: map.get($spacers, 2);
 }
 
@@ -487,20 +463,6 @@ onMounted(() => {
 @include mixin.media-breakpoint-down(sm) {
   .history-card {
     margin: 0 map.get($spacers, 2);
-  }
-
-  .filter-bar {
-    .ant-space {
-      width: 100%;
-
-      .ant-space-item {
-        width: 100%;
-
-        .ant-select, .ant-picker, .ant-btn {
-          width: 100%;
-        }
-      }
-    }
   }
 }
 </style>

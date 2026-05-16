@@ -1,36 +1,39 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
-import { HomeOutlined, ArrowLeftOutlined } from '@ant-design/icons-vue'
+import { useRouter } from "vue-router";
+import { NResult, NButton, NSpace } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
-const router = useRouter()
+const router = useRouter();
 
 const goHome = () => {
-  router.push('/')
-}
+  router.push("/");
+};
 
 const goBack = () => {
-  router.back()
-}
+  router.back();
+};
 </script>
 
 <template>
   <div class="not-found-page">
-    <a-result
-      status="404"
-      title="404"
-      sub-title="抱歉，您访问的页面不存在。"
-    >
-      <template #extra>
-        <a-space>
-          <a-button type="primary" @click="goHome" :icon="HomeOutlined">
+    <n-result status="404" title="404" description="抱歉，您访问的页面不存在。">
+      <template #footer>
+        <n-space justify="center">
+          <n-button type="primary" @click="goHome">
+            <template #icon>
+              <SmartIcon name="Home" />
+            </template>
             返回首页
-          </a-button>
-          <a-button @click="goBack" :icon="ArrowLeftOutlined">
+          </n-button>
+          <n-button @click="goBack">
+            <template #icon>
+              <SmartIcon name="ArrowLeft" />
+            </template>
             返回上页
-          </a-button>
-        </a-space>
+          </n-button>
+        </n-space>
       </template>
-    </a-result>
+    </n-result>
   </div>
 </template>
 
@@ -40,6 +43,6 @@ const goBack = () => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--n-card-color);
 }
 </style>

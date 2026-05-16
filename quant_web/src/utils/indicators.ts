@@ -4,7 +4,10 @@
  * @param period 计算周期
  * @returns SMA数组
  */
-export function calculateSMA(data: number[], period: number): (number | null)[] {
+export function calculateSMA(
+  data: number[],
+  period: number,
+): (number | null)[] {
   if (!data || data.length < period) {
     return Array(data.length).fill(null);
   }
@@ -18,7 +21,9 @@ export function calculateSMA(data: number[], period: number): (number | null)[] 
     sma.push(sum / period);
   }
 
-  return Array(data.length - sma.length).fill(null).concat(sma);
+  return Array(data.length - sma.length)
+    .fill(null)
+    .concat(sma);
 }
 
 /**
@@ -27,7 +32,10 @@ export function calculateSMA(data: number[], period: number): (number | null)[] 
  * @param period 计算周期
  * @returns EMA数组
  */
-export function calculateEMA(data: number[], period: number): (number | null)[] {
+export function calculateEMA(
+  data: number[],
+  period: number,
+): (number | null)[] {
   if (!data || data.length < period) {
     return Array(data.length).fill(null);
   }
@@ -68,7 +76,7 @@ export function calculateMACD(
   data: number[],
   fastPeriod = 12,
   slowPeriod = 26,
-  signalPeriod = 9
+  signalPeriod = 9,
 ): MACDResult {
   const fastEMA = calculateEMA(data, fastPeriod);
   const slowEMA = calculateEMA(data, slowPeriod);
@@ -80,7 +88,10 @@ export function calculateMACD(
   });
 
   // 计算DEA (DIF的EMA)
-  const dea = calculateEMA(dif.filter(d => d !== null) as number[], signalPeriod);
+  const dea = calculateEMA(
+    dif.filter((d) => d !== null) as number[],
+    signalPeriod,
+  );
 
   // 计算MACD柱
   const macd = dif.map((d, i) => {
@@ -107,13 +118,13 @@ interface BollingerBandsResult {
 export function calculateBollingerBands(
   data: number[],
   period = 20,
-  multiplier = 2
+  multiplier = 2,
 ): BollingerBandsResult {
   if (!data || data.length < period) {
     return {
       middle: Array(data.length).fill(null),
       upper: Array(data.length).fill(null),
-      lower: Array(data.length).fill(null)
+      lower: Array(data.length).fill(null),
     };
   }
 
@@ -144,12 +155,12 @@ export function calculateBollingerBands(
 
   // 填充前期数据为null
   const padLength = data.length - middle.length;
-  const padArray: null[] = Array(padLength).fill(null);
+  const padArray: (number | null)[] = Array(padLength).fill(null);
 
   return {
-    middle: padArray.concat(middle),
-    upper: padArray.concat(upper),
-    lower: padArray.concat(lower)
+    middle: [...padArray, ...middle],
+    upper: [...padArray, ...upper],
+    lower: [...padArray, ...lower],
   };
 }
 
@@ -181,7 +192,7 @@ export function calculateRSI(data: number[], period = 14): (number | null)[] {
 
   // 计算初始RS
   const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-  rsi.push(100 - (100 / (1 + rs)));
+  rsi.push(100 - 100 / (1 + rs));
 
   // 计算后续RSI值
   for (let i = period + 1; i < data.length; i++) {
@@ -195,10 +206,12 @@ export function calculateRSI(data: number[], period = 14): (number | null)[] {
 
     // 计算RS和RSI
     const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    rsi.push(100 - (100 / (1 + rs)));
+    rsi.push(100 - 100 / (1 + rs));
   }
 
-  return Array(data.length - rsi.length).fill(null).concat(rsi);
+  return Array(data.length - rsi.length)
+    .fill(null)
+    .concat(rsi);
 }
 
 interface KDJResult {
@@ -219,13 +232,20 @@ export function calculateKDJ(
   high: number[],
   low: number[],
   close: number[],
-  period = 9
+  period = 9,
 ): KDJResult {
-  if (!high || !low || !close || high.length < period || low.length < period || close.length < period) {
+  if (
+    !high ||
+    !low ||
+    !close ||
+    high.length < period ||
+    low.length < period ||
+    close.length < period
+  ) {
     return {
       k: Array(close.length).fill(null),
       d: Array(close.length).fill(null),
-      j: Array(close.length).fill(null)
+      j: Array(close.length).fill(null),
     };
   }
 
@@ -252,8 +272,8 @@ export function calculateKDJ(
   let d = 50;
 
   for (let i = 0; i < rsvValues.length; i++) {
-    k = (2/3) * k + (1/3) * rsvValues[i];
-    d = (2/3) * d + (1/3) * k;
+    k = (2 / 3) * k + (1 / 3) * rsvValues[i];
+    d = (2 / 3) * d + (1 / 3) * k;
     const j = 3 * k - 2 * d;
 
     kValues.push(k);
@@ -263,11 +283,11 @@ export function calculateKDJ(
 
   // 填充前期数据为null
   const padLength = close.length - kValues.length;
-  const padArray: null[] = Array(padLength).fill(null);
+  const padArray: (number | null)[] = Array(padLength).fill(null);
 
   return {
-    k: padArray.concat(kValues),
-    d: padArray.concat(dValues),
-    j: padArray.concat(jValues)
+    k: [...padArray, ...kValues],
+    d: [...padArray, ...dValues],
+    j: [...padArray, ...jValues],
   };
 }

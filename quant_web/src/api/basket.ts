@@ -1,6 +1,6 @@
 // quant_web/src/api/basket.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   Basket,
   BasketPerformance,
@@ -8,8 +8,12 @@ import {
   CreateBasketRequest,
   UpdateBasketRequest,
   BasketQueryParams,
-} from '@/types/entities/basket'
-import {BasketListResponse, BasketPerformanceResponse, BasketResponse} from "@/types/api";
+} from "@/types/entities/basket";
+import {
+  BasketListResponse,
+  BasketPerformanceResponse,
+  BasketResponse,
+} from "@/types/api";
 
 // 创建API对象
 const basketApi = {
@@ -18,14 +22,17 @@ const basketApi = {
    * @param params 分页和查询参数
    * @returns 篮子列表和总数
    */
-  async getBaskets(params?: BasketQueryParams): Promise<{ baskets: Basket[], total: number }> {
+  async getBaskets(
+    params?: BasketQueryParams,
+  ): Promise<{ baskets: Basket[]; total: number }> {
     // 修复：去掉重复的 /api，使用正确的路径
-    return request.get('/basket', { params })
+    return request
+      .get("/quantTrade/basket", { params })
       .then(handleResponse)
       .then((data: BasketListResponse) => ({
         baskets: data.data.items,
-        total: data.data.total
-      }))
+        total: data.data.total,
+      }));
   },
 
   /**
@@ -34,9 +41,10 @@ const basketApi = {
    * @returns 创建的篮子信息
    */
   async createBasket(basketData: CreateBasketRequest): Promise<Basket> {
-    return request.post('/basket', basketData)
+    return request
+      .post("/quantTrade/basket", basketData)
       .then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -45,9 +53,10 @@ const basketApi = {
    * @returns 篮子详细信息
    */
   async getBasket(id: string): Promise<Basket> {
-    return request.get(`/basket/${id}`)
+    return request
+      .get(`/basket/${id}`)
       .then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -56,10 +65,14 @@ const basketApi = {
    * @param updateData 更新数据
    * @returns 更新后的篮子信息
    */
-  async updateBasket(id: string, updateData: UpdateBasketRequest): Promise<Basket> {
-    return request.put(`/basket/${id}`, updateData)
+  async updateBasket(
+    id: string,
+    updateData: UpdateBasketRequest,
+  ): Promise<Basket> {
+    return request
+      .put(`/basket/${id}`, updateData)
       .then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -68,8 +81,7 @@ const basketApi = {
    * @returns 无返回值
    */
   async deleteBasket(id: string): Promise<void> {
-    return request.delete(`/basket/${id}`)
-      .then(handleResponse)
+    return request.delete(`/basket/${id}`).then(handleResponse);
   },
 
   /**
@@ -78,14 +90,18 @@ const basketApi = {
    * @param params 时间范围参数
    * @returns 篮子绩效数据
    */
-  async getBasketPerformance(id: string, params: {
-    start_date: string;
-    end_date: string;
-    benchmark?: string;
-  }): Promise<BasketPerformance> {
-    return request.get(`/basket/${id}/performance`, { params })
+  async getBasketPerformance(
+    id: string,
+    params: {
+      start_date: string;
+      end_date: string;
+      benchmark?: string;
+    },
+  ): Promise<BasketPerformance> {
+    return request
+      .get(`/basket/${id}/performance`, { params })
       .then(handleResponse)
-      .then((data: BasketPerformanceResponse) => data.data)
+      .then((data: BasketPerformanceResponse) => data.data);
   },
 
   /**
@@ -94,9 +110,10 @@ const basketApi = {
    * @returns 篮子实时行情数据
    */
   async getBasketRealtimeData(id: string): Promise<RealtimeBasketData> {
-    return request.get(`/basket/${id}/realtime`)
+    return request
+      .get(`/basket/${id}/realtime`)
       .then(handleResponse)
-      .then((data: { data: RealtimeBasketData }) => data.data)
+      .then((data: { data: RealtimeBasketData }) => data.data);
   },
 
   /**
@@ -105,10 +122,14 @@ const basketApi = {
    * @param item 股票数据
    * @returns 更新后的篮子信息
    */
-  async addStockToBasket(basketId: string, item: { symbol: string; weight: number }): Promise<Basket> {
-    return request.post(`/basket/${basketId}/items`, item)
+  async addStockToBasket(
+    basketId: string,
+    item: { symbol: string; weight: number },
+  ): Promise<Basket> {
+    return request
+      .post(`/basket/${basketId}/items`, item)
       .then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -118,10 +139,15 @@ const basketApi = {
    * @param weight 新权重
    * @returns 更新后的篮子信息
    */
-  async adjustStockWeight(basketId: string, symbol: string, weight: number): Promise<Basket> {
-    return request.put(`/basket/${basketId}/items/${symbol}`, { weight })
+  async adjustStockWeight(
+    basketId: string,
+    symbol: string,
+    weight: number,
+  ): Promise<Basket> {
+    return request
+      .put(`/basket/${basketId}/items/${symbol}`, { weight })
       .then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -131,8 +157,9 @@ const basketApi = {
    * @returns 无返回值
    */
   async removeStockFromBasket(basketId: string, symbol: string): Promise<void> {
-    return request.delete(`/basket/${basketId}/items/${symbol}`)
-      .then(handleResponse)
+    return request
+      .delete(`/basket/${basketId}/items/${symbol}`)
+      .then(handleResponse);
   },
 
   /**
@@ -141,9 +168,11 @@ const basketApi = {
    * @returns 删除结果
    */
   async deleteBaskets(ids: string[]): Promise<{ deleted: number }> {
-    return request.delete('/basket/batch', {
-      data: { ids }
-    }).then(handleResponse)
+    return request
+      .delete("/quantTrade/basket/batch", {
+        data: { ids },
+      })
+      .then(handleResponse);
   },
 
   /**
@@ -153,10 +182,12 @@ const basketApi = {
    * @returns 新篮子信息
    */
   async duplicateBasket(id: string, newName: string): Promise<Basket> {
-    return request.post(`/basket/${id}/duplicate`, {
-      new_name: newName
-    }).then(handleResponse)
-      .then((data: BasketResponse) => data.data)
+    return request
+      .post(`/basket/${id}/duplicate`, {
+        new_name: newName,
+      })
+      .then(handleResponse)
+      .then((data: BasketResponse) => data.data);
   },
 
   /**
@@ -165,10 +196,15 @@ const basketApi = {
    * @param format 导出格式（csv/json）
    * @returns 导出文件URL
    */
-  async exportBasket(id: string, format: 'csv' | 'json' = 'csv'): Promise<{ url: string }> {
-    return request.get(`/basket/${id}/export`, {
-      params: { format }
-    }).then(handleResponse)
+  async exportBasket(
+    id: string,
+    format: "csv" | "json" = "csv",
+  ): Promise<{ url: string }> {
+    return request
+      .get(`/basket/${id}/export`, {
+        params: { format },
+      })
+      .then(handleResponse);
   },
 
   /**
@@ -176,17 +212,18 @@ const basketApi = {
    * @param params 查询参数
    * @returns 篮子列表响应
    */
-  async fetchBasketList(params?: BasketQueryParams): Promise<{ data: { items: Basket[], total: number } }> {
-    const result = await this.getBaskets(params)
+  async fetchBasketList(
+    params?: BasketQueryParams,
+  ): Promise<{ data: { items: Basket[]; total: number } }> {
+    const result = await this.getBaskets(params);
     return {
       data: {
         items: result.baskets,
-        total: result.total
-      }
-    }
+        total: result.total,
+      },
+    };
   },
-
-}
+};
 
 // 具名导出所有方法
 export const {
@@ -203,9 +240,8 @@ export const {
   deleteBaskets,
   duplicateBasket,
   exportBasket,
-  fetchBasketList
-} = basketApi
+  fetchBasketList,
+} = basketApi;
 
 // 默认导出
-export default basketApi
-
+export default basketApi;

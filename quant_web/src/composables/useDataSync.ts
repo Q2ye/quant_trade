@@ -1,134 +1,147 @@
 // 数据同步逻辑
-import { ref, computed } from 'vue'
-import { useStore } from '@/store'
-import { useApi } from '@/api/data'
+import { ref, computed } from "vue";
+import { useStore } from "vuex";
+import dataSyncService from "@/api/data-sync";
 
 export function useDataSync() {
-  const store = useStore()
-  const api = useApi()
+  const store = useStore();
 
-  const syncStatus = ref<'idle' | 'syncing' | 'error'>('idle')
-  const syncProgress = ref(0)
-  const lastSyncTime = ref<Date | null>(null)
-  const errorMessage = ref<string>('')
+  const syncStatus = ref<"idle" | "syncing" | "error">("idle");
+  const syncProgress = ref(0);
+  const lastSyncTime = ref<Date | null>(null);
+  const errorMessage = ref<string>("");
 
-  // 同步市场数据
-  const syncMarketData = async (dataType: 'daily' | 'minute' | 'financial', options?: any) => {
-    syncStatus.value = 'syncing'
-    syncProgress.value = 0
-    errorMessage.value = ''
+  // 同步指定类型数据
+  const syncMarketData = async (
+    dataType: "daily" | "minute" | "financial" | "stock_basic" | "moneyflow",
+    options?: any,
+  ) => {
+    syncStatus.value = "syncing";
+    syncProgress.value = 0;
+    errorMessage.value = "";
 
     try {
-      const response = await api.syncMarketData(dataType, {
+      let result;
+      const params = {
         ...options,
-        onProgress: (progress: number) => {
-          syncProgress.value = progress
-        }
-      })
+        stock_codes: options?.stock_codes,
+        start_date: options?.start_date,
+        end_date: options?.end_date,
+        batch_size: options?.batch_size,
+      };
 
-      syncStatus.value = 'idle'
-      syncProgress.value = 100
-      lastSyncTime.value = new Date()
+      switch (dataType) {
+        case "daily":
+          result = await dataSyncService.syncDailyData(params);
+          break;
+        case "stock_basic":
+          result = await dataSyncService.syncStockBasic(params);
+          break;
+        case "moneyflow":
+          result = await dataSyncService.syncMoneyflowData(params);
+          break;
+        default:
+          result = await dataSyncService.batchSyncData({
+            data_types: [dataType],
+            ...params,
+          });
+      }
 
-      // 更新本地数据状态
-      store.commit('data/UPDATE_SYNC_STATUS', {
+      syncStatus.value = "idle";
+      syncProgress.value = 100;
+      lastSyncTime.value = new Date();
+
+      store.commit("data/UPDATE_SYNC_STATUS", {
         dataType,
         lastSync: lastSyncTime.value,
-        recordCount: response.data.recordCount
-      })
+        recordCount: 0,
+      });
 
-      return response.data
+      return result;
     } catch (error: any) {
-      syncStatus.value = 'error'
-      errorMessage.value = error.message || '数据同步失败'
-      throw error
+      syncStatus.value = "error";
+      errorMessage.value = error.message || "数据同步失败";
+      throw error;
     }
-  }
+  };
 
   // 批量同步数据
-  const batchSync = async (syncTasks: Array<{dataType: string, options?: any}>) => {
-    const results = []
+  const batchSync = async (
+    syncTasks: Array<{ dataType: string; options?: any }>,
+  ) => {
+    const results = [];
 
     for (const task of syncTasks) {
       try {
-        const result = await syncMarketData(task.dataType as any, task.options)
+        const result = await syncMarketData(task.dataType as any, task.options);
         results.push({
           dataType: task.dataType,
-          status: 'success',
-          result
-        })
+          status: "success",
+          result,
+        });
       } catch (error: any) {
         results.push({
           dataType: task.dataType,
-          status: 'error',
-          error: error.message
-        })
+          status: "error",
+          error: error.message,
+        });
       }
     }
 
-    return results
-  }
+    return results;
+  };
 
-  // 检查数据完整性
-  const checkDataIntegrity = async (dataType: string, startDate: string, endDate: string) => {
+  // 查询同步状态
+  const checkSyncStatus = async () => {
     try {
-      const response = await api.checkDataIntegrity(dataType, startDate, endDate)
-      return response.data
+      const status = await dataSyncService.getSyncStatus();
+      return status;
     } catch (error) {
-      console.error('数据完整性检查失败:', error)
-      throw error
+      console.error("获取同步状态失败:", error);
+      throw error;
     }
-  }
+  };
 
-  // 清理过期数据
-  const cleanupOldData = async (dataType: string, beforeDate: string) => {
+  // 获取支持的数据类型
+  const getSupportedTypes = async () => {
     try {
-      const response = await api.cleanupOldData(dataType, beforeDate)
-
-      store.commit('data/UPDATE_DATA_STATS', {
-        dataType,
-        action: 'cleanup',
-        count: response.data.deletedCount
-      })
-
-      return response.data
+      return await dataSyncService.getSupportedDataTypes();
     } catch (error) {
-      console.error('数据清理失败:', error)
-      throw error
+      console.error("获取支持的数据类型失败:", error);
+      throw error;
     }
-  }
+  };
 
-  // 获取数据统计信息
-  const getDataStats = async () => {
+  // 取消当前同步
+  const cancelSync = async () => {
     try {
-      const response = await api.getDataStats()
-      store.commit('data/SET_DATA_STATS', response.data)
-      return response.data
+      await dataSyncService.cancelSync();
+      syncStatus.value = "idle";
     } catch (error) {
-      console.error('获取数据统计失败:', error)
-      throw error
+      console.error("取消同步失败:", error);
+      throw error;
     }
-  }
+  };
 
   // 自动同步调度
-  const startAutoSync = (interval: number = 300000) => { // 默认5分钟
+  const startAutoSync = (interval: number = 300000) => {
     const autoSync = setInterval(async () => {
-      if (syncStatus.value !== 'syncing') {
+      if (syncStatus.value !== "syncing") {
         try {
-          await syncMarketData('daily', { incremental: true })
+          await syncMarketData("daily");
         } catch (error) {
-          console.error('自动同步失败:', error)
+          console.error("自动同步失败:", error);
         }
       }
-    }, interval)
+    }, interval);
 
-    return () => clearInterval(autoSync)
-  }
+    return () => clearInterval(autoSync);
+  };
 
   // 计算属性
-  const isSyncing = computed(() => syncStatus.value === 'syncing')
-  const hasError = computed(() => syncStatus.value === 'error')
-  const progressPercentage = computed(() => syncProgress.value)
+  const isSyncing = computed(() => syncStatus.value === "syncing");
+  const hasError = computed(() => syncStatus.value === "error");
+  const progressPercentage = computed(() => syncProgress.value);
 
   return {
     syncStatus,
@@ -141,9 +154,9 @@ export function useDataSync() {
 
     syncMarketData,
     batchSync,
-    checkDataIntegrity,
-    cleanupOldData,
-    getDataStats,
-    startAutoSync
-  }
+    checkSyncStatus,
+    getSupportedTypes,
+    cancelSync,
+    startAutoSync,
+  };
 }

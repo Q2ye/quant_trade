@@ -1,4 +1,3 @@
-<!-- components/Research/FactorSelector.vue -->
 <!--因子选择器，支持多选和分类显示-->
 <template>
   <div class="factor-selector">
@@ -10,16 +9,19 @@
         :class="{ selected: isSelected(factor) }"
         @click="toggleFactor(factor)"
       >
-        <div class="factor-checkbox">
-          <el-checkbox :model-value="isSelected(factor)" @change="(val) => toggleFactor(factor, val)" />
+        <div class="factor-checkbox" @click.stop>
+          <NCheckbox
+            :checked="isSelected(factor)"
+            @update:checked="(val: boolean) => toggleFactor(factor, val)"
+          />
         </div>
         <div class="factor-info">
           <div class="factor-name">{{ factor.name }}</div>
           <div class="factor-desc">{{ factor.description }}</div>
           <div class="factor-category">
-            <el-tag size="small" :type="getCategoryTag(factor.category)">
+            <NTag size="small" :type="getCategoryTag(factor.category)">
               {{ getCategoryText(factor.category) }}
-            </el-tag>
+            </NTag>
           </div>
         </div>
       </div>
@@ -27,68 +29,71 @@
   </div>
 </template>
 
-<script setup>
-import { computed } from 'vue'
+<script setup lang="ts">
+import { computed } from "vue";
+import { NCheckbox, NTag } from "naive-ui";
 
-const props = defineProps({
-  factors: {
-    type: Array,
-    required: true
-  },
-  modelValue: {
-    type: Array,
-    default: () => []
-  },
-  category: {
-    type: String,
-    default: ''
-  }
-})
+interface Factor {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
 
-const emit = defineEmits(['update:modelValue'])
+const props = defineProps<{
+  factors: Factor[];
+  modelValue: Factor[];
+  category?: string;
+}>();
+
+const emit = defineEmits<{
+  "update:modelValue": [value: Factor[]];
+}>();
 
 const selectedFactors = computed({
   get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
-})
+  set: (value) => emit("update:modelValue", value),
+});
 
-const isSelected = (factor) => {
-  return selectedFactors.value.some(f => f.id === factor.id)
-}
+const isSelected = (factor: Factor) => {
+  return selectedFactors.value.some((f: Factor) => f.id === factor.id);
+};
 
-const toggleFactor = (factor, checked) => {
+const toggleFactor = (factor: Factor, checked?: boolean) => {
   if (checked === undefined) {
-    checked = !isSelected(factor)
+    checked = !isSelected(factor);
   }
 
   if (checked) {
-    selectedFactors.value = [...selectedFactors.value, factor]
+    selectedFactors.value = [...selectedFactors.value, factor];
   } else {
-    selectedFactors.value = selectedFactors.value.filter(f => f.id !== factor.id)
+    selectedFactors.value = selectedFactors.value.filter(
+      (f: Factor) => f.id !== factor.id,
+    );
   }
-}
+};
 
-const getCategoryTag = (category) => {
-  const map = {
-    value: 'success',
-    growth: 'warning',
-    quality: 'primary',
-    momentum: 'danger',
-    technical: 'info'
-  }
-  return map[category] || 'info'
-}
+const getCategoryTag = (category: string) => {
+  const map: Record<string, "success" | "warning" | "info" | "error"> = {
+    value: "success",
+    growth: "warning",
+    quality: "info",
+    momentum: "error",
+    technical: "info",
+  };
+  return map[category] || "default";
+};
 
-const getCategoryText = (category) => {
-  const map = {
-    value: '价值',
-    growth: '成长',
-    quality: '质量',
-    momentum: '动量',
-    technical: '技术'
-  }
-  return map[category] || '其他'
-}
+const getCategoryText = (category: string) => {
+  const map: Record<string, string> = {
+    value: "价值",
+    growth: "成长",
+    quality: "质量",
+    momentum: "动量",
+    technical: "技术",
+  };
+  return map[category] || "其他";
+};
 </script>
 
 <style lang="scss" scoped>
@@ -103,19 +108,19 @@ const getCategoryText = (category) => {
     align-items: flex-start;
     padding: 8px;
     margin-bottom: 4px;
-    border: 1px solid #e4e7ed;
+    border: 1px solid var(--n-border-color);
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s;
 
     &:hover {
-      background-color: #f5f7fa;
-      border-color: #c0c4cc;
+      background-color: var(--n-color-embedded);
+      border-color: var(--n-border-color-hover);
     }
 
     &.selected {
-      background-color: #ecf5ff;
-      border-color: #409eff;
+      background-color: var(--n-color-target-1);
+      border-color: var(--n-color-target);
     }
 
     .factor-checkbox {
@@ -129,11 +134,12 @@ const getCategoryText = (category) => {
       .factor-name {
         font-weight: 500;
         margin-bottom: 2px;
+        color: var(--n-text-color-1);
       }
 
       .factor-desc {
         font-size: 12px;
-        color: #909399;
+        color: var(--n-text-color-3);
         margin-bottom: 4px;
         line-height: 1.2;
       }

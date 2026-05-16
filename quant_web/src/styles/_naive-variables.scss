@@ -1,0 +1,15 @@
+// Naive UI CSS variable shorthands
+// Re-exports core variables and adds Naive-specific mappings
+
+@forward "variables";
+@forward "mixins";
+
+// Naive UI CSS variable aliases
+$n-text-color-1: var(--n-text-color);
+$n-text-color-2: var(--n-text-color-2);
+$n-text-color-3: var(--n-text-color-3);
+$n-border-color: var(--n-border-color);
+$n-card-color: var(--n-color);
+$n-color-embedded: var(--n-color-embedded);
+$n-primary-color: var(--n-color-target);
+$n-body-color: var(--n-body-color);

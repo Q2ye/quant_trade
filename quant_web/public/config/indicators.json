@@ -16,9 +16,9 @@
         "label": "类型",
         "type": "select",
         "options": [
-          {"value": "SMA", "label": "简单移动平均"},
-          {"value": "EMA", "label": "指数移动平均"},
-          {"value": "WMA", "label": "加权移动平均"}
+          { "value": "SMA", "label": "简单移动平均" },
+          { "value": "EMA", "label": "指数移动平均" },
+          { "value": "WMA", "label": "加权移动平均" }
         ],
         "default": "SMA"
       },

@@ -51,7 +51,7 @@ class AuditResult(str, Enum):
 
 class AuditLogEntry(BaseModel):
 	"""审计日志条目模型"""
-	user_id: Optional[int] = None
+	user_id: Optional[str] = None
 	username: Optional[str] = None
 	action: AuditAction
 	resource_type: str
@@ -262,7 +262,7 @@ class AuditLogger:
 	async def log_data_change (
 			self,
 			action: Union[str, AuditAction],
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			username: Optional[str] = None,
 			resource_type: str = "data",
 			resource_id: Optional[str] = None,
@@ -463,16 +463,15 @@ class AuditLogger:
 			audit_data = {
 				'user_id': entry.user_id,
 				'username': entry.username,
-				'action': entry.action,
+				'action_type': entry.action,
 				'resource_type': entry.resource_type,
 				'resource_id': entry.resource_id,
-				'description': entry.description,
-				'details': json.dumps(entry.details) if entry.details else None,
+				'resource_name': entry.description,
+				'new_values': json.dumps(entry.details) if entry.details else None,
 				'ip_address': entry.ip_address,
 				'user_agent': entry.user_agent,
-				'level': entry.level,
-				'result': entry.result,
-				'timestamp': entry.timestamp
+				'status': entry.result,
+				'created_at': entry.timestamp
 			}
 
 			return await self.repo.create(audit_data)

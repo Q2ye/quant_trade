@@ -26,13 +26,13 @@
       <div v-if="errorMessage" class="error-message">
         {{ errorMessage }}
       </div>
-      <button
-          class="login-btn"
-          :disabled="isLoading"
-          @click="handleLogin"
-      >
-        {{ isLoading ? '登录中...' : '登录' }}
+      <button class="login-btn" :disabled="isLoading" @click="handleLogin">
+        {{ isLoading ? "登录中..." : "登录" }}
       </button>
+      <div class="register-link">
+        <span>没有账号？</span>
+        <a @click="goToRegister">立即注册</a>
+      </div>
       <div v-if="isTestMode" class="test-mode-notice">
         <p>测试模式已启用</p>
         <button @click="fillCredentials('superAdmin', '123456')">
@@ -47,38 +47,44 @@
 </template>
 
 <script>
-import {onMounted, ref} from 'vue';
-import {useRouter} from 'vue-router';
-import {useStore} from 'vuex';
-import request from '@/utils/request';
+import {onMounted, ref} from "vue";
+import {useRouter} from "vue-router";
+import {useStore} from "vuex";
+import request from "@/utils/request";
 
 export default {
-  name: 'Login',
+  name: "Login",
   setup() {
-    const username = ref('');
-    const password = ref('');
+    const username = ref("");
+    const password = ref("");
     const isLoading = ref(false);
-    const errorMessage = ref('');
+    const errorMessage = ref("");
     const isTestMode = ref(false);
     const router = useRouter();
     const store = useStore();
 
     // 检查是否测试模式
     onMounted(() => {
-      isTestMode.value = import.meta.env.MODE === 'development' ||
-          import.meta.env.VITE_APP_TEST_MODE === 'true';
+      isTestMode.value =
+          import.meta.env.MODE === "development" ||
+          import.meta.env.VITE_APP_TEST_MODE === "true";
 
       if (isTestMode.value) {
-        fillCredentials('superAdmin', '123456');
+        fillCredentials("superAdmin", "111111.a");
       }
 
       // 检查是否已登录 - 使用与user模块一致的key
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem("token");
       if (token) {
         // 直接跳转到首页，由路由守卫处理认证验证
-        router.push('/dashboard');
+        router.push("/dashboard");
       }
     });
+
+    // 跳转注册页
+    const goToRegister = () => {
+      router.push("/register");
+    };
 
     // 填充凭据函数
     const fillCredentials = (user, pass) => {
@@ -89,49 +95,48 @@ export default {
     // 处理登录
     const handleLogin = async () => {
       if (!username.value || !password.value) {
-        errorMessage.value = '请输入用户名和密码';
+        errorMessage.value = "请输入用户名和密码";
         return;
       }
 
       isLoading.value = true;
-      errorMessage.value = '';
-
+      errorMessage.value = "";
 
       try {
         // 使用Vuex action处理登录
-        const response = await request.post('/auth/login', {
+        const response = await request.post("/quantTrade/system/auth/login", {
           username: username.value,
-          password: password.value
+          password: password.value,
         });
 
-        console.log('登录响应:', response);
-        if (!response || !response.token) {
-          throw new Error('无效的响应格式');
+        console.log("登录响应:", response);
+        if (!response || !response.data.access_token) {
+          throw new Error("无效的响应格式");
         }
 
         // 登录成功，保存令牌和用户信息
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(response.user));
+        localStorage.setItem("token", response.data.access_token);
+        localStorage.setItem("user", JSON.stringify(response.data.user));
 
         // 更新Vuex状态
-        store.commit('user/SET_TOKEN', response.token);
-        store.commit('user/SET_USER_INFO', response.user);
+        store.commit("user/SET_TOKEN", response.data.access_token);
+        store.commit("user/SET_USER_INFO", response.data.user);
 
         // 显示成功消息
-        console.log('登录成功');
+        console.log("登录成功");
 
         // 立即跳转到首页
-        await router.push('/dashboard');
+        await router.push("/dashboard");
       } catch (error) {
-        console.error('登录错误详情:', error);
+        console.error("登录错误详情:", error);
 
         // 根据后端错误消息提供更具体的错误信息
         if (error.response && error.response.status === 401) {
-          errorMessage.value = '用户名或密码错误';
+          errorMessage.value = "用户名或密码错误";
         } else if (error.response && error.response.status === 422) {
-          errorMessage.value = '请求参数格式错误';
+          errorMessage.value = "请求参数格式错误";
         } else {
-          errorMessage.value = error.message || '登录失败，请稍后重试';
+          errorMessage.value = error.message || "登录失败，请稍后重试";
         }
       } finally {
         isLoading.value = false;
@@ -145,9 +150,10 @@ export default {
       errorMessage,
       isTestMode,
       handleLogin,
-      fillCredentials
+      goToRegister,
+      fillCredentials,
     };
-  }
+  },
 };
 </script>
 
@@ -224,6 +230,24 @@ input:focus {
 .login-btn:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+.register-link {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #888;
+}
+
+.register-link a {
+  color: #667eea;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.register-link a:hover {
+  text-decoration: underline;
 }
 
 .test-mode-notice {

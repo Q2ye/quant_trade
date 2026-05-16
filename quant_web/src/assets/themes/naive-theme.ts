@@ -2,7 +2,7 @@
 // 职责：唯一主题源 - 包含所有颜色常量、CSS变量生成、Naive UI主题配置
 // ============================================================================
 
-import type { GlobalThemeOverrides } from 'naive-ui'
+import type { GlobalThemeOverrides } from "naive-ui";
 
 // ============================================================================
 // 主题常量定义 - 唯一颜色源（深色/浅色主题）
@@ -16,108 +16,108 @@ const THEME_CONSTANTS = {
   // 深色主题变量 - 量化交易专用深色主题
   DARK: {
     // 基础色彩
-    PRIMARY_BG: '#0D1117',         // 主背景色（最深背景）
-    SECONDARY_BG: '#161B22',       // 次背景色（稍浅背景）
-    ACCENT_COLOR: '#2196F3',       // 强调色/主色调（品牌色）
-    TEXT_PRIMARY: '#E6EDF3',       // 主要文字颜色
-    TEXT_SECONDARY: '#8B949E',     // 次要文字颜色
-    BORDER_COLOR: '#30363D',       // 边框颜色
-    DISABLED_BG: '#8B949E',        // 禁用状态背景色
+    PRIMARY_BG: "#0D1117", // 主背景色（最深背景）
+    SECONDARY_BG: "#161B22", // 次背景色（稍浅背景）
+    ACCENT_COLOR: "#2196F3", // 强调色/主色调（品牌色）
+    TEXT_PRIMARY: "#E6EDF3", // 主要文字颜色
+    TEXT_SECONDARY: "#8B949E", // 次要文字颜色
+    BORDER_COLOR: "#30363D", // 边框颜色
+    DISABLED_BG: "#8B949E", // 禁用状态背景色
 
     // 语义化颜色 - 用于状态提示
-    SUCCESS_COLOR: '#67c23a',      // 成功状态颜色
-    WARNING_COLOR: '#D29922',      // 警告状态颜色
-    DANGER_COLOR: '#f56c6c',       // 危险/错误状态颜色
-    INFO_COLOR: '#17a2b8',         // 信息状态颜色
-    PURPLE_COLOR: '#9c27b0',       // 紫色辅助色（特殊标记）
+    SUCCESS_COLOR: "#67c23a", // 成功状态颜色
+    WARNING_COLOR: "#D29922", // 警告状态颜色
+    DANGER_COLOR: "#f56c6c", // 危险/错误状态颜色
+    INFO_COLOR: "#17a2b8", // 信息状态颜色
+    PURPLE_COLOR: "#9c27b0", // 紫色辅助色（特殊标记）
 
     // 组件颜色 - 特定组件的背景色
-    CARD_BG: '#161B22',            // 卡片背景色
-    CARD_HEADER_BG: '#1A2230',     // 卡片头部背景色
-    TOOLBAR_BG: '#161B22',         // 工具栏背景色
-    SIDEBAR_BG: '#0D1117',         // 侧边栏背景色
-    INPUT_BG: '#0D1117',           // 输入框背景色
-    HOVER_BG: '#21262D',           // 悬停状态背景色
-    ACTIVE_BG: '#1C6FEC',          // 激活状态背景色
+    CARD_BG: "#161B22", // 卡片背景色
+    CARD_HEADER_BG: "#1A2230", // 卡片头部背景色
+    TOOLBAR_BG: "#161B22", // 工具栏背景色
+    SIDEBAR_BG: "#0D1117", // 侧边栏背景色
+    INPUT_BG: "#0D1117", // 输入框背景色
+    HOVER_BG: "#21262D", // 悬停状态背景色
+    ACTIVE_BG: "#1C6FEC", // 激活状态背景色
 
     // 股票状态颜色 - 量化交易专用
-    STOCK_UP_COLOR: '#f56c6c',     // 股票上涨颜色（红色）
-    STOCK_DOWN_COLOR: '#67c23a',   // 股票下跌颜色（绿色）
-    STOCK_FLAT_COLOR: '#8B949E',   // 股票持平颜色（灰色）
+    STOCK_UP_COLOR: "#f56c6c", // 股票上涨颜色（红色）
+    STOCK_DOWN_COLOR: "#67c23a", // 股票下跌颜色（绿色）
+    STOCK_FLAT_COLOR: "#8B949E", // 股票持平颜色（灰色）
 
     // 状态指示颜色 - 用于进度、时间等状态
-    STATUS_RUNNING: '#2196F3',     // 运行中状态颜色
-    STATUS_PROGRESS: '#3FB950',    // 进行中状态颜色
-    STATUS_TIME: '#D29922',        // 时间相关状态颜色
-    STATUS_REMAINING: '#F85149',   // 剩余/紧张状态颜色
+    STATUS_RUNNING: "#2196F3", // 运行中状态颜色
+    STATUS_PROGRESS: "#3FB950", // 进行中状态颜色
+    STATUS_TIME: "#D29922", // 时间相关状态颜色
+    STATUS_REMAINING: "#F85149", // 剩余/紧张状态颜色
 
     // 阴影系统 - 三层阴影级别
-    CARD_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.25)',      // 卡片阴影（一级阴影）
-    CARD_HOVER_SHADOW: '0 8px 24px rgba(0, 0, 0, 0.35)', // 卡片悬停阴影（二级阴影）
-    HOVER_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.15)',     // 通用悬停阴影
+    CARD_SHADOW: "0 4px 12px rgba(0, 0, 0, 0.25)", // 卡片阴影（一级阴影）
+    CARD_HOVER_SHADOW: "0 8px 24px rgba(0, 0, 0, 0.35)", // 卡片悬停阴影（二级阴影）
+    HOVER_SHADOW: "0 4px 12px rgba(0, 0, 0, 0.15)", // 通用悬停阴影
 
     // 字体系统
     FONT_FAMILY: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 主要字体族
-    FONT_SIZE_BASE: '14px',        // 基础字体大小
+    FONT_SIZE_BASE: "14px", // 基础字体大小
 
     // 圆角系统 - 三种圆角尺寸
-    BORDER_RADIUS: '6px',          // 标准圆角
-    BORDER_RADIUS_SM: '4px',       // 小圆角
-    BORDER_RADIUS_LG: '8px',       // 大圆角
+    BORDER_RADIUS: "6px", // 标准圆角
+    BORDER_RADIUS_SM: "4px", // 小圆角
+    BORDER_RADIUS_LG: "8px", // 大圆角
   },
 
   // 浅色主题变量 - 量化交易专用浅色主题
   LIGHT: {
     // 基础色彩
-    PRIMARY_BG: '#FFFFFF',         // 主背景色（白色）
-    SECONDARY_BG: '#F8F9FA',       // 次背景色（浅灰色）
-    ACCENT_COLOR: '#2196F3',       // 强调色/主色调（品牌色，保持不变）
-    TEXT_PRIMARY: '#212529',       // 主要文字颜色（深灰色）
-    TEXT_SECONDARY: '#6C757D',     // 次要文字颜色（中灰色）
-    BORDER_COLOR: '#DEE2E6',       // 边框颜色（浅灰色）
-    DISABLED_BG: '#8B949E',        // 禁用状态背景色（保持一致）
+    PRIMARY_BG: "#FFFFFF", // 主背景色（白色）
+    SECONDARY_BG: "#F8F9FA", // 次背景色（浅灰色）
+    ACCENT_COLOR: "#2196F3", // 强调色/主色调（品牌色，保持不变）
+    TEXT_PRIMARY: "#212529", // 主要文字颜色（深灰色）
+    TEXT_SECONDARY: "#6C757D", // 次要文字颜色（中灰色）
+    BORDER_COLOR: "#DEE2E6", // 边框颜色（浅灰色）
+    DISABLED_BG: "#8B949E", // 禁用状态背景色（保持一致）
 
     // 语义化颜色
-    SUCCESS_COLOR: '#28A745',      // 成功状态颜色（绿色）
-    WARNING_COLOR: '#FFC107',      // 警告状态颜色（黄色）
-    DANGER_COLOR: '#DC3545',       // 危险/错误状态颜色（红色）
-    INFO_COLOR: '#17a2b8',         // 信息状态颜色（保持一致）
-    PURPLE_COLOR: '#9c27b0',       // 紫色辅助色（保持一致）
+    SUCCESS_COLOR: "#28A745", // 成功状态颜色（绿色）
+    WARNING_COLOR: "#FFC107", // 警告状态颜色（黄色）
+    DANGER_COLOR: "#DC3545", // 危险/错误状态颜色（红色）
+    INFO_COLOR: "#17a2b8", // 信息状态颜色（保持一致）
+    PURPLE_COLOR: "#9c27b0", // 紫色辅助色（保持一致）
 
     // 组件颜色
-    CARD_BG: '#FFFFFF',            // 卡片背景色（白色）
-    CARD_HEADER_BG: '#F8FAFC',     // 卡片头部背景色（极浅灰）
-    TOOLBAR_BG: '#F8F9FA',         // 工具栏背景色（浅灰色）
-    SIDEBAR_BG: '#FFFFFF',         // 侧边栏背景色（白色）
-    INPUT_BG: '#FFFFFF',           // 输入框背景色（白色）
-    HOVER_BG: '#E9ECEF',           // 悬停状态背景色（浅灰色）
-    ACTIVE_BG: '#e3fdf8',          // 激活状态背景色（浅绿色）
+    CARD_BG: "#FFFFFF", // 卡片背景色（白色）
+    CARD_HEADER_BG: "#F8FAFC", // 卡片头部背景色（极浅灰）
+    TOOLBAR_BG: "#F8F9FA", // 工具栏背景色（浅灰色）
+    SIDEBAR_BG: "#FFFFFF", // 侧边栏背景色（白色）
+    INPUT_BG: "#FFFFFF", // 输入框背景色（白色）
+    HOVER_BG: "#E9ECEF", // 悬停状态背景色（浅灰色）
+    ACTIVE_BG: "#e3fdf8", // 激活状态背景色（浅绿色）
 
     // 股票状态颜色
-    STOCK_UP_COLOR: '#DC3545',     // 股票上涨颜色（红色）
-    STOCK_DOWN_COLOR: '#28A745',   // 股票下跌颜色（绿色）
-    STOCK_FLAT_COLOR: '#6C757D',   // 股票持平颜色（灰色）
+    STOCK_UP_COLOR: "#DC3545", // 股票上涨颜色（红色）
+    STOCK_DOWN_COLOR: "#28A745", // 股票下跌颜色（绿色）
+    STOCK_FLAT_COLOR: "#6C757D", // 股票持平颜色（灰色）
 
     // 状态指示颜色
-    STATUS_RUNNING: '#2196F3',     // 运行中状态颜色（保持一致）
-    STATUS_PROGRESS: '#28A745',    // 进行中状态颜色（绿色）
-    STATUS_TIME: '#FFC107',        // 时间相关状态颜色（黄色）
-    STATUS_REMAINING: '#DC3545',   // 剩余/紧张状态颜色（红色）
+    STATUS_RUNNING: "#2196F3", // 运行中状态颜色（保持一致）
+    STATUS_PROGRESS: "#28A745", // 进行中状态颜色（绿色）
+    STATUS_TIME: "#FFC107", // 时间相关状态颜色（黄色）
+    STATUS_REMAINING: "#DC3545", // 剩余/紧张状态颜色（红色）
 
     // 阴影系统
-    CARD_SHADOW: '0 4px 12px rgba(0, 0, 0, 0.08)',      // 浅色轻度阴影
-    CARD_HOVER_SHADOW: '0 8px 24px rgba(0, 0, 0, 0.12)', // 浅色中度阴影
-    HOVER_SHADOW: '0 4px 16px rgba(0, 0, 0, 0.12)',     // 浅色悬停阴影
+    CARD_SHADOW: "0 4px 12px rgba(0, 0, 0, 0.08)", // 浅色轻度阴影
+    CARD_HOVER_SHADOW: "0 8px 24px rgba(0, 0, 0, 0.12)", // 浅色中度阴影
+    HOVER_SHADOW: "0 4px 16px rgba(0, 0, 0, 0.12)", // 浅色悬停阴影
 
     // 字体系统
-    FONT_FAMILY: "'Inter', 'Segoe UI', sans-serif",     // 浅色主题字体
-    FONT_SIZE_BASE: '14px',        // 基础字体大小（保持一致）
+    FONT_FAMILY: "'Inter', 'Segoe UI', sans-serif", // 浅色主题字体
+    FONT_SIZE_BASE: "14px", // 基础字体大小（保持一致）
 
     // 圆角系统
-    BORDER_RADIUS: '4px',          // 标准圆角（稍小）
-    BORDER_RADIUS_SM: '2px',       // 小圆角（更小）
-    BORDER_RADIUS_LG: '6px',       // 大圆角（稍大）
-  }
+    BORDER_RADIUS: "4px", // 标准圆角（稍小）
+    BORDER_RADIUS_SM: "2px", // 小圆角（更小）
+    BORDER_RADIUS_LG: "6px", // 大圆角（稍大）
+  },
 } as const;
 
 // ============================================================================
@@ -133,9 +133,9 @@ const THEME_CONSTANTS = {
 function hexToRgb(hex: string): string {
   // 移除#号并解析RGB分量
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ?
-    `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
-    : '0, 0, 0'; // 解析失败返回黑色
+  return result
+    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : "0, 0, 0"; // 解析失败返回黑色
 }
 
 /**
@@ -147,12 +147,12 @@ function hexToRgb(hex: string): string {
  */
 const colorWithOpacity = (color: string, opacity: number): string => {
   // 如果是十六进制颜色，转换为RGB
-  if (color.startsWith('#')) {
+  if (color.startsWith("#")) {
     return `rgba(${hexToRgb(color)}, ${opacity})`;
   }
   // 如果是rgb颜色，转换为rgba
-  if (color.startsWith('rgb(')) {
-    return color.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
+  if (color.startsWith("rgb(")) {
+    return color.replace("rgb", "rgba").replace(")", `, ${opacity})`);
   }
   // 默认返回原色
   return color;
@@ -175,7 +175,7 @@ export function generateThemeCSSVariables(isDark: boolean): string {
   return `
     /* ============================================================================
      * 动态生成的主题CSS变量
-     * 主题: ${isDark ? '深色主题 (Dark)' : '浅色主题 (Light)'}
+     * 主题: ${isDark ? "深色主题 (Dark)" : "浅色主题 (Light)"}
      * 生成时间: ${new Date().toISOString()}
      * ============================================================================ */
     
@@ -227,7 +227,7 @@ export function generateThemeCSSVariables(isDark: boolean): string {
       /* -------------------- 阴影变量 -------------------- */
       --box-shadow-1: ${theme.CARD_SHADOW};                      /* 一级阴影（轻度阴影） */
       --box-shadow-2: ${theme.CARD_HOVER_SHADOW};                /* 二级阴影（中度阴影） */
-      --box-shadow-3: ${isDark ? '0 16px 48px rgba(0, 0, 0, 0.45)' : '0 16px 48px rgba(0, 0, 0, 0.16)'}; /* 三级阴影（重度阴影） */
+      --box-shadow-3: ${isDark ? "0 16px 48px rgba(0, 0, 0, 0.45)" : "0 16px 48px rgba(0, 0, 0, 0.16)"}; /* 三级阴影（重度阴影） */
       
       /* -------------------- 字体变量 -------------------- */
       --font-family: ${theme.FONT_FAMILY};                       /* 主要字体族 */
@@ -289,12 +289,14 @@ export function generateThemeCSSVariables(isDark: boolean): string {
  */
 export function injectThemeCSSVariables(isDark: boolean): void {
   // 创建或获取现有的style标签
-  let styleElement = document.getElementById('theme-variables') as HTMLStyleElement;
+  let styleElement = document.getElementById(
+    "theme-variables",
+  ) as HTMLStyleElement;
 
   if (!styleElement) {
     // 如果不存在，创建新的style标签
-    styleElement = document.createElement('style');
-    styleElement.id = 'theme-variables';
+    styleElement = document.createElement("style");
+    styleElement.id = "theme-variables";
     document.head.appendChild(styleElement);
   }
 
@@ -303,11 +305,11 @@ export function injectThemeCSSVariables(isDark: boolean): void {
 
   // 设置body类名用于向后兼容
   if (isDark) {
-    document.body.classList.remove('theme-light');
-    document.body.classList.add('theme-dark');
+    document.body.classList.remove("theme-light");
+    document.body.classList.add("theme-dark");
   } else {
-    document.body.classList.remove('theme-dark');
-    document.body.classList.add('theme-light');
+    document.body.classList.remove("theme-dark");
+    document.body.classList.add("theme-light");
   }
 }
 
@@ -322,60 +324,69 @@ export function injectThemeCSSVariables(isDark: boolean): void {
 export const TEXT_STATUS_STYLES = {
   // 上涨状态文本样式
   UP: {
-    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_UP_COLOR : THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
-    fontWeight: '500' as const,
-    fontSize: '14px',
+    color: (isDark: boolean) =>
+      isDark
+        ? THEME_CONSTANTS.DARK.STOCK_UP_COLOR
+        : THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
+    fontWeight: "500" as const,
+    fontSize: "14px",
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_UP_COLOR,
-      fontWeight: '500' as const,
-      fontSize: '14px',
+      fontWeight: "500" as const,
+      fontSize: "14px",
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
-      fontWeight: '500' as const,
-      fontSize: '14px',
-    }
+      fontWeight: "500" as const,
+      fontSize: "14px",
+    },
   },
 
   // 下跌状态文本样式
   DOWN: {
-    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR : THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
-    fontWeight: '500' as const,
-    fontSize: '14px',
+    color: (isDark: boolean) =>
+      isDark
+        ? THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR
+        : THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
+    fontWeight: "500" as const,
+    fontSize: "14px",
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR,
-      fontWeight: '500' as const,
-      fontSize: '14px',
+      fontWeight: "500" as const,
+      fontSize: "14px",
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
-      fontWeight: '500' as const,
-      fontSize: '14px',
-    }
+      fontWeight: "500" as const,
+      fontSize: "14px",
+    },
   },
 
   // 中性/持平状态文本样式
   NEUTRAL: {
-    color: (isDark: boolean) => isDark ? THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR : THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
-    fontWeight: '400' as const,
-    fontSize: '14px',
+    color: (isDark: boolean) =>
+      isDark
+        ? THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR
+        : THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
+    fontWeight: "400" as const,
+    fontSize: "14px",
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR,
-      fontWeight: '400' as const,
-      fontSize: '14px',
+      fontWeight: "400" as const,
+      fontSize: "14px",
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
-      fontWeight: '400' as const,
-      fontSize: '14px',
-    }
-  }
+      fontWeight: "400" as const,
+      fontSize: "14px",
+    },
+  },
 } as const;
 
 // ============================================================================
@@ -389,55 +400,55 @@ export const TEXT_STATUS_STYLES = {
 export const FLEX_STYLES = {
   // 居中布局 - 水平和垂直都居中
   CENTER: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center'
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // 两端对齐布局 - 水平两端对齐，垂直居中
   LAYOUT_BETWEEN: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   // 左对齐布局 - 水平左对齐，垂直居中
   LAYOUT_START: {
-    display: 'flex',
-    justifyContent: 'flex-start',
-    alignItems: 'center'
+    display: "flex",
+    justifyContent: "flex-start",
+    alignItems: "center",
   },
 
   // 右对齐布局 - 水平右对齐，垂直居中
   LAYOUT_END: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center'
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
   },
 
   // 垂直居中布局 - 水平居中，垂直居中
   COLUMN_CENTER: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    justifyContent: 'center',
-    alignItems: 'center'
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // 垂直两端对齐布局 - 垂直两端对齐，水平居中
   COLUMN_BETWEEN: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    justifyContent: 'space-between',
-    alignItems: 'center'
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   // 垂直填充布局 - 垂直填满，水平居中
   COLUMN_FULL: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    justifyContent: 'space-between',
-    alignItems: 'stretch'
-  }
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "space-between",
+    alignItems: "stretch",
+  },
 } as const;
 
 // ============================================================================
@@ -454,7 +465,10 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     // ==================== 基础颜色系统 ====================
     primaryColor: THEME_CONSTANTS.DARK.ACCENT_COLOR,
     primaryColorHover: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8),
-    primaryColorPressed: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6),
+    primaryColorPressed: colorWithOpacity(
+      THEME_CONSTANTS.DARK.ACCENT_COLOR,
+      0.6,
+    ),
     primaryColorSuppl: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.4),
 
     // 基础背景色
@@ -478,7 +492,7 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     // 悬停和激活状态背景色
     hoverColor: THEME_CONSTANTS.DARK.HOVER_BG,
     pressedColor: THEME_CONSTANTS.DARK.HOVER_BG,
-    clearColor: 'rgba(255, 255, 255, 0)',
+    clearColor: "rgba(255, 255, 255, 0)",
 
     // ==================== 圆角和阴影系统 ====================
     borderRadius: THEME_CONSTANTS.DARK.BORDER_RADIUS,
@@ -487,31 +501,37 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     // 阴影系统
     boxShadow1: THEME_CONSTANTS.DARK.CARD_SHADOW,
     boxShadow2: THEME_CONSTANTS.DARK.CARD_HOVER_SHADOW,
-    boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.45)',
+    boxShadow3: "0 16px 48px rgba(0, 0, 0, 0.45)",
 
     // ==================== 字体系统 ====================
     fontFamily: THEME_CONSTANTS.DARK.FONT_FAMILY,
-    fontFamilyMono: 'Monaco, "Courier New", monospace'
+    fontFamilyMono: 'Monaco, "Courier New", monospace',
   },
 
   // 各组件主题配置（保持原有配置，使用统一常量）
   Button: {
-    heightMedium: '32px',
-    heightSmall: '28px',
-    heightTiny: '24px',
-    heightLarge: '36px',
+    heightMedium: "32px",
+    heightSmall: "28px",
+    heightTiny: "24px",
+    heightLarge: "36px",
     borderRadiusMedium: THEME_CONSTANTS.DARK.BORDER_RADIUS,
     borderRadiusSmall: THEME_CONSTANTS.DARK.BORDER_RADIUS_SM,
     colorPrimary: THEME_CONSTANTS.DARK.ACCENT_COLOR,
     colorHoverPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8),
-    colorPressedPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6),
+    colorPressedPrimary: colorWithOpacity(
+      THEME_CONSTANTS.DARK.ACCENT_COLOR,
+      0.6,
+    ),
     colorFocusPrimary: THEME_CONSTANTS.DARK.ACCENT_COLOR,
-    colorDisabledPrimary: colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.3),
-    textColorPrimary: '#FFFFFF',
-    textColorHoverPrimary: '#FFFFFF',
-    textColorPressedPrimary: '#FFFFFF',
-    textColorFocusPrimary: '#FFFFFF',
-    textColorDisabledPrimary: 'rgba(255, 255, 255, 0.5)',
+    colorDisabledPrimary: colorWithOpacity(
+      THEME_CONSTANTS.DARK.ACCENT_COLOR,
+      0.3,
+    ),
+    textColorPrimary: "#FFFFFF",
+    textColorHoverPrimary: "#FFFFFF",
+    textColorPressedPrimary: "#FFFFFF",
+    textColorFocusPrimary: "#FFFFFF",
+    textColorDisabledPrimary: "rgba(255, 255, 255, 0.5)",
     borderPrimary: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`,
     borderHoverPrimary: `1px solid ${colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.8)}`,
     borderPressedPrimary: `1px solid ${colorWithOpacity(THEME_CONSTANTS.DARK.ACCENT_COLOR, 0.6)}`,
@@ -520,7 +540,7 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     colorHoverInfo: THEME_CONSTANTS.DARK.HOVER_BG,
     colorPressedInfo: THEME_CONSTANTS.DARK.CARD_HEADER_BG,
     borderInfo: `1px solid ${THEME_CONSTANTS.DARK.BORDER_COLOR}`,
-    borderHoverInfo: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`
+    borderHoverInfo: `1px solid ${THEME_CONSTANTS.DARK.ACCENT_COLOR}`,
   },
 
   // 其他组件配置保持不变，但使用统一常量...
@@ -531,7 +551,7 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     titleTextColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     borderColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
-    boxShadow: THEME_CONSTANTS.DARK.CARD_SHADOW
+    boxShadow: THEME_CONSTANTS.DARK.CARD_SHADOW,
   },
 
   // ... 其他组件配置（DataTable, Input, Select等）保持原样，但确保使用THEME_CONSTANTS
@@ -546,9 +566,18 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
   common: {
     // ==================== 基础颜色系统 ====================
     primaryColor: THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
-    primaryColorHover: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.8),
-    primaryColorPressed: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.6),
-    primaryColorSuppl: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.4),
+    primaryColorHover: colorWithOpacity(
+      THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+      0.8,
+    ),
+    primaryColorPressed: colorWithOpacity(
+      THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+      0.6,
+    ),
+    primaryColorSuppl: colorWithOpacity(
+      THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+      0.4,
+    ),
 
     // 基础背景色
     bodyColor: THEME_CONSTANTS.LIGHT.SECONDARY_BG,
@@ -571,7 +600,7 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
     // 悬停和激活状态背景色
     hoverColor: THEME_CONSTANTS.LIGHT.HOVER_BG,
     pressedColor: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
-    clearColor: 'rgba(255, 255, 255, 0)',
+    clearColor: "rgba(255, 255, 255, 0)",
 
     // ==================== 圆角和阴影系统 ====================
     borderRadius: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
@@ -580,7 +609,7 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
     // 阴影系统
     boxShadow1: THEME_CONSTANTS.LIGHT.CARD_SHADOW,
     boxShadow2: THEME_CONSTANTS.LIGHT.CARD_HOVER_SHADOW,
-    boxShadow3: '0 16px 48px rgba(0, 0, 0, 0.16)',
+    boxShadow3: "0 16px 48px rgba(0, 0, 0, 0.16)",
 
     // ==================== 字体系统 ====================
     fontFamily: THEME_CONSTANTS.LIGHT.FONT_FAMILY,
@@ -589,20 +618,26 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
 
   // 各组件主题配置（保持原有配置，使用统一常量）
   Button: {
-    heightMedium: '32px',
-    heightSmall: '28px',
-    heightTiny: '24px',
-    heightLarge: '36px',
+    heightMedium: "32px",
+    heightSmall: "28px",
+    heightTiny: "24px",
+    heightLarge: "36px",
     borderRadiusMedium: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
     borderRadiusSmall: THEME_CONSTANTS.LIGHT.BORDER_RADIUS_SM,
     colorPrimary: THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
-    colorHoverPrimary: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.8),
-    colorPressedPrimary: colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.6),
+    colorHoverPrimary: colorWithOpacity(
+      THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+      0.8,
+    ),
+    colorPressedPrimary: colorWithOpacity(
+      THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
+      0.6,
+    ),
     colorInfo: THEME_CONSTANTS.LIGHT.TOOLBAR_BG,
     colorHoverInfo: THEME_CONSTANTS.LIGHT.HOVER_BG,
     colorPressedInfo: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
     borderInfo: `1px solid ${THEME_CONSTANTS.LIGHT.BORDER_COLOR}`,
-    borderHoverInfo: `1px solid ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR}`
+    borderHoverInfo: `1px solid ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR}`,
   },
 
   // ... 其他组件配置（Card, DataTable, Input, Message等）保持原样，但确保使用THEME_CONSTANTS
@@ -627,7 +662,10 @@ export function getThemeOverrides(isDark: boolean): GlobalThemeOverrides {
  * @param isDark 是否为深色主题
  * @returns 对应的文本样式对象
  */
-export function getTextStatusStyle(status: 'UP' | 'DOWN' | 'NEUTRAL', isDark: boolean) {
+export function getTextStatusStyle(
+  status: "UP" | "DOWN" | "NEUTRAL",
+  isDark: boolean,
+) {
   const style = TEXT_STATUS_STYLES[status];
   return isDark ? style.dark : style.light;
 }

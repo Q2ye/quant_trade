@@ -33,9 +33,9 @@
           >
             <div class="notification-icon">
               <!-- 使用 SmartIcon 组件 -->
-              <smart-icon 
-                :name="getNotificationIcon(notification.type)" 
-                size="20" 
+              <smart-icon
+                :name="getNotificationIcon(notification.type)"
+                size="20"
               />
             </div>
             <div class="notification-content">
@@ -66,10 +66,10 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed } from 'vue'
-import { NPopover, NBadge, NButton } from 'naive-ui'
+import { defineComponent, ref, computed } from "vue";
+import { NPopover, NBadge, NButton } from "naive-ui";
 // 导入 SmartIcon 组件
-import SmartIcon from '../common/SmartIcon.vue'
+import SmartIcon from "../common/SmartIcon.vue";
 
 export default defineComponent({
   name: "GlobalNotification",
@@ -77,11 +77,11 @@ export default defineComponent({
     NPopover,
     NBadge,
     NButton,
-    SmartIcon // 注册 SmartIcon 组件
+    SmartIcon, // 注册 SmartIcon 组件
   },
   emits: ["notification-action"],
   setup(_, { emit }) {
-    const showNotifications = ref(false)
+    const showNotifications = ref(false);
     const notifications = ref([
       {
         id: 1,
@@ -107,51 +107,51 @@ export default defineComponent({
         time: new Date(Date.now() - 86400000),
         read: true,
       },
-    ])
+    ]);
 
     const unreadCount = computed(() => {
-      return notifications.value.filter((n) => !n.read).length
-    })
+      return notifications.value.filter((n) => !n.read).length;
+    });
 
     const handlePopoverUpdate = (value) => {
-      showNotifications.value = value
+      showNotifications.value = value;
       if (value) {
-        markAllAsRead()
+        markAllAsRead();
       }
-    }
+    };
 
     const markAllAsRead = () => {
-      notifications.value.forEach((n) => (n.read = true))
-    }
+      notifications.value.forEach((n) => (n.read = true));
+    };
 
     const formatTime = (date) => {
-      const now = new Date()
-      const diffMs = now - date
-      const diffMins = Math.round(diffMs / 60000)
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.round(diffMs / 60000);
 
-      if (diffMins < 1) return "刚刚"
-      if (diffMins < 60) return `${diffMins}分钟前`
+      if (diffMins < 1) return "刚刚";
+      if (diffMins < 60) return `${diffMins}分钟前`;
 
-      const diffHours = Math.round(diffMins / 60)
-      if (diffHours < 24) return `${diffHours}小时前`
+      const diffHours = Math.round(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}小时前`;
 
-      return date.toLocaleDateString()
-    }
+      return date.toLocaleDateString();
+    };
 
     // 获取通知图标 - 使用统一的图标名称
     const getNotificationIcon = (type) => {
       const iconMap = {
         alert: "Warning", // 警告图标
         trade: "SwapHorizontal", // 交易图标
-        system: "InformationCircle" // 信息图标
-      }
-      return iconMap[type] || "InformationCircle"
-    }
+        system: "InformationCircle", // 信息图标
+      };
+      return iconMap[type] || "InformationCircle";
+    };
 
     const handleAction = (notification) => {
-      emit("notification-action", notification)
-      showNotifications.value = false
-    }
+      emit("notification-action", notification);
+      showNotifications.value = false;
+    };
 
     return {
       showNotifications,
@@ -162,9 +162,9 @@ export default defineComponent({
       formatTime,
       getNotificationIcon,
       handleAction,
-    }
+    };
   },
-})
+});
 </script>
 
 <style lang="scss" scoped>

@@ -22,10 +22,10 @@
       <div class="card-footer">
         <div v-if="trend !== 0" class="trend" :class="trendClass">
           <!-- 使用 SmartIcon 组件 -->
-          <smart-icon 
-            :name="trend > 0 ? 'TrendingUp' : 'TrendingDown'" 
-            size="16" 
-            :class="trendIconClass" 
+          <smart-icon
+            :name="trend > 0 ? 'TrendingUp' : 'TrendingDown'"
+            size="16"
+            :class="trendIconClass"
           />
           <span>{{ Math.abs(trend) }}%</span>
         </div>
@@ -38,18 +38,18 @@
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
-import { NSpin } from 'naive-ui'
+import { defineComponent, computed } from "vue";
+import { NSpin } from "naive-ui";
 // 导入 SmartIcon 组件
-import SmartIcon from '../common/SmartIcon.vue'
-import StatusBadge from "../ui/StatusBadge.vue"
+import SmartIcon from "../common/SmartIcon.vue";
+import StatusBadge from "../ui/StatusBadge.vue";
 
 export default defineComponent({
   name: "DashboardCard",
   components: {
     NSpin,
     SmartIcon, // 注册 SmartIcon 组件
-    StatusBadge
+    StatusBadge,
   },
   props: {
     title: {
@@ -91,26 +91,26 @@ export default defineComponent({
       const iconMap = {
         chart: "StatsChart", // 统计图表图标
         user: "PeopleCircle", // 用户图标
-        money: "CashOutline" // 金钱图标
-      }
-      return iconMap[iconName] || "StatsChart"
-    }
+        money: "CashOutline", // 金钱图标
+      };
+      return iconMap[iconName] || "StatsChart";
+    };
 
     const trendClass = computed(() => {
-      return props.trend > 0 ? "trend-up" : "trend-down"
-    })
+      return props.trend > 0 ? "trend-up" : "trend-down";
+    });
 
     const trendIconClass = computed(() => {
-      return props.trend > 0 ? "trend-icon trend-up" : "trend-icon trend-down"
-    })
+      return props.trend > 0 ? "trend-icon trend-up" : "trend-icon trend-down";
+    });
 
     return {
       getIconName,
       trendClass,
-      trendIconClass
-    }
+      trendIconClass,
+    };
   },
-})
+});
 </script>
 
 <style lang="scss" scoped>

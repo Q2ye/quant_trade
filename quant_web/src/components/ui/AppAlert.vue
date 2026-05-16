@@ -30,17 +30,17 @@
 </template>
 
 <script>
-import { defineComponent, computed } from 'vue'
-import { NAlert, NButton } from 'naive-ui'
+import { defineComponent, computed } from "vue";
+import { NAlert, NButton } from "naive-ui";
 // 导入 SmartIcon 组件
-import SmartIcon from '../common/SmartIcon.vue'
+import SmartIcon from "../common/SmartIcon.vue";
 
 export default defineComponent({
   name: "AppAlert",
   components: {
     NAlert,
     NButton,
-    SmartIcon // 注册 SmartIcon 组件
+    SmartIcon, // 注册 SmartIcon 组件
   },
   props: {
     alert: {
@@ -58,33 +58,33 @@ export default defineComponent({
   emits: ["action", "dismiss"],
   setup(props) {
     const alertType = computed(() => {
-      const level = props.alert?.level || "info"
+      const level = props.alert?.level || "info";
       switch (level) {
         case "critical":
-          return "error"
+          return "error";
         case "warning":
-          return "warning"
+          return "warning";
         default:
-          return "info"
+          return "info";
       }
-    })
+    });
 
     // 获取警告图标 - 使用统一的图标名称
     const getAlertIcon = (level) => {
       const iconMap = {
         critical: "Warning", // 严重警告图标
         warning: "AlertCircle", // 警告图标
-        info: "InformationCircle" // 信息图标
-      }
-      return iconMap[level] || "InformationCircle"
-    }
+        info: "InformationCircle", // 信息图标
+      };
+      return iconMap[level] || "InformationCircle";
+    };
 
     return {
       alertType,
-      getAlertIcon
-    }
+      getAlertIcon,
+    };
   },
-})
+});
 </script>
 
 <style lang="scss" scoped>

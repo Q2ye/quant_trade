@@ -26,7 +26,7 @@ class DataFixRecordRepository(BaseRepository[DataFixRecord]):
 			fix_type: str,
 			records_fixed: int,
 			fix_details: Dict[str, Any],
-			quality_check_id: Optional[int] = None,
+			quality_check_id: Optional[str] = None,
 			fix_status: str = "completed",
 			fixed_by: Optional[str] = None
 	) -> DataFixRecord:

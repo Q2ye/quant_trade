@@ -1,5 +1,5 @@
 // shared.ts - 共享类型定义
-import {BacktestPosition, BacktestTrade, EquityPoint} from "@/types";
+import { BacktestPosition, BacktestTrade, EquityPoint } from "@/types";
 
 export interface StrategyPerformance {
   totalReturn: number;

@@ -1,7 +1,7 @@
 // quant_web/src/store/modules/strategyStudio.ts
 // 策略工作室Vuex模块
 // 负责策略开发、回测、参数优化等高级功能的状态管理
-import { Module } from 'vuex'
+import { Module } from "vuex";
 import { RootState } from "@/types";
 
 /**
@@ -26,7 +26,7 @@ interface BacktestConfig {
   initialCapital: number;
   universe: string[];
   benchmark: string;
-  frequency: 'daily' | 'minute';
+  frequency: "daily" | "minute";
 }
 
 /**
@@ -34,7 +34,7 @@ interface BacktestConfig {
  */
 interface LogEntry {
   timestamp: number;
-  level: 'info' | 'warning' | 'error';
+  level: "info" | "warning" | "error";
   message: string;
 }
 
@@ -44,7 +44,7 @@ interface LogEntry {
 interface FileEntry {
   name: string;
   content: string;
-  type: 'strategy' | 'module' | 'config';
+  type: "strategy" | "module" | "config";
 }
 
 /**
@@ -98,28 +98,30 @@ export interface StrategyStudioState {
 
   // 工作区状态
   workspace: {
-    layout: 'single' | 'dual' | 'triple';
-    activePanel: 'editor' | 'backtest' | 'optimization' | 'logs';
+    layout: "single" | "dual" | "triple";
+    activePanel: "editor" | "backtest" | "optimization" | "logs";
   };
 }
 
 const state: StrategyStudioState = {
-  currentCode: '',
-  originalCode: '',
+  currentCode: "",
+  originalCode: "",
   editor: {
-    language: 'python',
-    theme: 'vs-dark',
+    language: "python",
+    theme: "vs-dark",
     fontSize: 14,
-    wordWrap: false
+    wordWrap: false,
   },
   parameters: [],
   backtestConfig: {
-    startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 一年前
-    endDate: new Date().toISOString().split('T')[0], // 今天
+    startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0], // 一年前
+    endDate: new Date().toISOString().split("T")[0], // 今天
     initialCapital: 1000000,
-    universe: ['000001.SZ', '000002.SZ'],
-    benchmark: '000300.SH',
-    frequency: 'daily'
+    universe: ["000001.SZ", "000002.SZ"],
+    benchmark: "000300.SH",
+    frequency: "daily",
   },
   backtestResult: null,
   backtestProgress: 0,
@@ -128,15 +130,15 @@ const state: StrategyStudioState = {
     isRunning: false,
     progress: 0,
     results: [],
-    bestParameters: null
+    bestParameters: null,
   },
   logs: [],
   files: [],
   workspace: {
-    layout: 'dual',
-    activePanel: 'editor'
-  }
-}
+    layout: "dual",
+    activePanel: "editor",
+  },
+};
 
 const mutations = {
   /**
@@ -159,7 +161,10 @@ const mutations = {
   /**
    * 更新编辑器设置
    */
-  UPDATE_EDITOR_SETTINGS(state: StrategyStudioState, settings: Partial<StrategyStudioState['editor']>) {
+  UPDATE_EDITOR_SETTINGS(
+    state: StrategyStudioState,
+    settings: Partial<StrategyStudioState["editor"]>,
+  ) {
     state.editor = { ...state.editor, ...settings };
   },
 
@@ -173,8 +178,11 @@ const mutations = {
   /**
    * 更新参数值
    */
-  UPDATE_PARAMETER(state: StrategyStudioState, { name, value }: { name: string; value: any }) {
-    const param = state.parameters.find(p => p.name === name);
+  UPDATE_PARAMETER(
+    state: StrategyStudioState,
+    { name, value }: { name: string; value: any },
+  ) {
+    const param = state.parameters.find((p) => p.name === name);
     if (param) {
       param.value = value;
     }
@@ -183,7 +191,10 @@ const mutations = {
   /**
    * 更新回测配置
    */
-  UPDATE_BACKTEST_CONFIG(state: StrategyStudioState, config: Partial<BacktestConfig>) {
+  UPDATE_BACKTEST_CONFIG(
+    state: StrategyStudioState,
+    config: Partial<BacktestConfig>,
+  ) {
     state.backtestConfig = { ...state.backtestConfig, ...config };
   },
 
@@ -232,7 +243,10 @@ const mutations = {
   /**
    * 添加优化结果
    */
-  ADD_OPTIMIZATION_RESULT(state: StrategyStudioState, result: OptimizationResult) {
+  ADD_OPTIMIZATION_RESULT(
+    state: StrategyStudioState,
+    result: OptimizationResult,
+  ) {
     state.optimization.results.push(result);
   },
 
@@ -281,17 +295,23 @@ const mutations = {
   /**
    * 更新工作区布局
    */
-  UPDATE_WORKSPACE_LAYOUT(state: StrategyStudioState, layout: StrategyStudioState['workspace']['layout']) {
+  UPDATE_WORKSPACE_LAYOUT(
+    state: StrategyStudioState,
+    layout: StrategyStudioState["workspace"]["layout"],
+  ) {
     state.workspace.layout = layout;
   },
 
   /**
    * 设置活动面板
    */
-  SET_ACTIVE_PANEL(state: StrategyStudioState, panel: StrategyStudioState['workspace']['activePanel']) {
+  SET_ACTIVE_PANEL(
+    state: StrategyStudioState,
+    panel: StrategyStudioState["workspace"]["activePanel"],
+  ) {
     state.workspace.activePanel = panel;
-  }
-}
+  },
+};
 
 const actions = {
   /**
@@ -301,11 +321,11 @@ const actions = {
     try {
       const response = await fetch(`/api/strategy-templates/${templateName}`);
       const template = await response.json();
-      commit('SET_CURRENT_CODE', template.code);
-      commit('SET_PARAMETERS', template.parameters);
+      commit("SET_CURRENT_CODE", template.code);
+      commit("SET_PARAMETERS", template.parameters);
       return template;
     } catch (error) {
-      console.error('加载策略模板失败:', error);
+      console.error("加载策略模板失败:", error);
       throw error;
     }
   },
@@ -315,16 +335,16 @@ const actions = {
    */
   async validateCode({ state }: any) {
     try {
-      const response = await fetch('/api/strategies/validate', {
-        method: 'POST',
+      const response = await fetch("/quantTrade/strategies/validate", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ code: state.currentCode })
+        body: JSON.stringify({ code: state.currentCode }),
       });
       return await response.json();
     } catch (error) {
-      console.error('代码验证失败:', error);
+      console.error("代码验证失败:", error);
       throw error;
     }
   },
@@ -334,75 +354,80 @@ const actions = {
    */
   async runBacktest({ commit, state, rootState }: any) {
     if (!rootState.user.isAuthenticated) {
-      throw new Error('请先登录');
+      throw new Error("请先登录");
     }
 
-    commit('SET_BACKTESTING_STATUS', true);
-    commit('CLEAR_LOGS');
+    commit("SET_BACKTESTING_STATUS", true);
+    commit("CLEAR_LOGS");
 
     try {
       // 使用环境变量或默认值构造 WebSocket URL
-      const wsUrl = import.meta.env.VITE_WS_URL || `ws://${window.location.host}/backtest`;
+      const wsUrl =
+        import.meta.env.VITE_WS_URL || `ws://${window.location.host}/backtest`;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         // 修复参数类型问题
-        const parametersObj = state.parameters.reduce((acc: Record<string, any>, param: StrategyParameter) => {
-          acc[param.name] = param.value;
-          return acc;
-        }, {} as Record<string, any>);
+        const parametersObj = state.parameters.reduce(
+          (acc: Record<string, any>, param: StrategyParameter) => {
+            acc[param.name] = param.value;
+            return acc;
+          },
+          {} as Record<string, any>,
+        );
 
-        ws.send(JSON.stringify({
-          type: 'start_backtest',
-          code: state.currentCode,
-          parameters: parametersObj,
-          config: state.backtestConfig
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "start_backtest",
+            code: state.currentCode,
+            parameters: parametersObj,
+            config: state.backtestConfig,
+          }),
+        );
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
         switch (data.type) {
-          case 'progress':
-            commit('UPDATE_BACKTEST_PROGRESS', data.progress);
+          case "progress":
+            commit("UPDATE_BACKTEST_PROGRESS", data.progress);
             break;
-          case 'log':
-            commit('ADD_LOG', {
+          case "log":
+            commit("ADD_LOG", {
               timestamp: Date.now(),
               level: data.level,
-              message: data.message
+              message: data.message,
             });
             break;
-          case 'result':
-            commit('SET_BACKTEST_RESULT', data.result);
+          case "result":
+            commit("SET_BACKTEST_RESULT", data.result);
             ws.close();
             break;
-          case 'error':
-            commit('ADD_LOG', {
+          case "error":
+            commit("ADD_LOG", {
               timestamp: Date.now(),
-              level: 'error',
-              message: data.error
+              level: "error",
+              message: data.error,
             });
-            commit('SET_BACKTESTING_STATUS', false);
+            commit("SET_BACKTESTING_STATUS", false);
             ws.close();
             break;
         }
       };
 
       ws.onerror = (error) => {
-        console.error('回测WebSocket错误:', error);
-        commit('SET_BACKTESTING_STATUS', false);
-        commit('ADD_LOG', {
+        console.error("回测WebSocket错误:", error);
+        commit("SET_BACKTESTING_STATUS", false);
+        commit("ADD_LOG", {
           timestamp: Date.now(),
-          level: 'error',
-          message: '回测连接错误'
+          level: "error",
+          message: "回测连接错误",
         });
       };
-
     } catch (error) {
-      console.error('运行回测失败:', error);
-      commit('SET_BACKTESTING_STATUS', false);
+      console.error("运行回测失败:", error);
+      commit("SET_BACKTESTING_STATUS", false);
       throw error;
     }
   },
@@ -411,59 +436,59 @@ const actions = {
    * 停止回测
    */
   async stopBacktest({ commit }: any) {
-    commit('SET_BACKTESTING_STATUS', false);
-    commit('UPDATE_BACKTEST_PROGRESS', 0);
+    commit("SET_BACKTESTING_STATUS", false);
+    commit("UPDATE_BACKTEST_PROGRESS", 0);
   },
 
   /**
    * 运行参数优化
    */
   async runOptimization({ commit, state }: any, optimizationConfig: any) {
-    commit('START_OPTIMIZATION');
-    commit('CLEAR_LOGS');
+    commit("START_OPTIMIZATION");
+    commit("CLEAR_LOGS");
 
     try {
-      const response = await fetch('/api/strategies/optimize', {
-        method: 'POST',
+      const response = await fetch("/quantTrade/strategies/optimize", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           code: state.currentCode,
           parameterRanges: optimizationConfig.parameterRanges,
           method: optimizationConfig.method,
           metric: optimizationConfig.metric,
-          config: state.backtestConfig
-        })
+          config: state.backtestConfig,
+        }),
       });
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('无法读取优化结果');
+      if (!reader) throw new Error("无法读取优化结果");
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const text = new TextDecoder().decode(value);
-        const lines = text.split('\n');
+        const lines = text.split("\n");
 
         for (const line of lines) {
           if (line.trim()) {
             const data = JSON.parse(line);
 
-            if (data.type === 'progress') {
-              commit('UPDATE_OPTIMIZATION_PROGRESS', data.progress);
-            } else if (data.type === 'result') {
-              commit('ADD_OPTIMIZATION_RESULT', data.result);
-            } else if (data.type === 'best') {
-              commit('SET_BEST_PARAMETERS', data.parameters);
+            if (data.type === "progress") {
+              commit("UPDATE_OPTIMIZATION_PROGRESS", data.progress);
+            } else if (data.type === "result") {
+              commit("ADD_OPTIMIZATION_RESULT", data.result);
+            } else if (data.type === "best") {
+              commit("SET_BEST_PARAMETERS", data.parameters);
             }
           }
         }
       }
     } catch (error) {
-      console.error('参数优化失败:', error);
-      commit('STOP_OPTIMIZATION');
+      console.error("参数优化失败:", error);
+      commit("STOP_OPTIMIZATION");
       throw error;
     }
   },
@@ -472,7 +497,7 @@ const actions = {
    * 停止优化
    */
   async stopOptimization({ commit }: any) {
-    commit('STOP_OPTIMIZATION');
+    commit("STOP_OPTIMIZATION");
   },
 
   /**
@@ -480,25 +505,25 @@ const actions = {
    */
   async saveStrategy({ state, rootState }: any, strategyName: string) {
     if (!rootState.user.isAuthenticated) {
-      throw new Error('请先登录');
+      throw new Error("请先登录");
     }
 
     try {
-      const response = await fetch('/api/strategies', {
-        method: 'POST',
+      const response = await fetch("/quantTrade/strategies", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${rootState.user.token}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${rootState.user.token}`,
         },
         body: JSON.stringify({
           name: strategyName,
           code: state.currentCode,
-          parameters: state.parameters
-        })
+          parameters: state.parameters,
+        }),
       });
       return await response.json();
     } catch (error) {
-      console.error('保存策略失败:', error);
+      console.error("保存策略失败:", error);
       throw error;
     }
   },
@@ -511,15 +536,15 @@ const actions = {
       code: state.currentCode,
       parameters: state.parameters,
       backtestConfig: state.backtestConfig,
-      exportTime: new Date().toISOString()
+      exportTime: new Date().toISOString(),
     };
 
     const blob = new Blob([JSON.stringify(strategyData, null, 2)], {
-      type: 'application/json'
+      type: "application/json",
     });
 
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `strategy_${Date.now()}.json`;
     a.click();
@@ -536,24 +561,24 @@ const actions = {
       reader.onload = (e) => {
         try {
           const strategyData = JSON.parse(e.target?.result as string);
-          commit('SET_CURRENT_CODE', strategyData.code);
-          commit('SET_PARAMETERS', strategyData.parameters || []);
+          commit("SET_CURRENT_CODE", strategyData.code);
+          commit("SET_PARAMETERS", strategyData.parameters || []);
 
           if (strategyData.backtestConfig) {
-            commit('UPDATE_BACKTEST_CONFIG', strategyData.backtestConfig);
+            commit("UPDATE_BACKTEST_CONFIG", strategyData.backtestConfig);
           }
 
           resolve(strategyData);
         } catch (error) {
-          reject(new Error('文件格式错误'));
+          reject(new Error("文件格式错误"));
         }
       };
 
-      reader.onerror = () => reject(new Error('文件读取失败'));
+      reader.onerror = () => reject(new Error("文件读取失败"));
       reader.readAsText(file);
     });
-  }
-}
+  },
+};
 
 const getters = {
   /**
@@ -574,40 +599,44 @@ const getters = {
       annualReturn: state.backtestResult.annual_return,
       sharpeRatio: state.backtestResult.sharpe_ratio,
       maxDrawdown: state.backtestResult.max_drawdown,
-      winRate: state.backtestResult.win_rate
+      winRate: state.backtestResult.win_rate,
     };
   },
 
   /**
    * 获取优化结果排序
    */
-  getSortedOptimizationResults: (state: StrategyStudioState) => (metric: string = 'sharpe') => {
-    return [...state.optimization.results].sort((a, b) => {
-      return b.metrics[metric] - a.metrics[metric];
-    });
-  },
+  getSortedOptimizationResults:
+    (state: StrategyStudioState) =>
+    (metric: string = "sharpe") => {
+      return [...state.optimization.results].sort((a, b) => {
+        return b.metrics[metric] - a.metrics[metric];
+      });
+    },
 
   /**
    * 获取错误日志
    */
   getErrorLogs: (state: StrategyStudioState) => {
-    return state.logs.filter(log => log.level === 'error');
+    return state.logs.filter((log) => log.level === "error");
   },
 
   /**
    * 获取最近日志
    */
-  getRecentLogs: (state: StrategyStudioState) => (limit: number = 50) => {
-    return state.logs.slice(0, limit);
-  }
-}
+  getRecentLogs:
+    (state: StrategyStudioState) =>
+    (limit: number = 50) => {
+      return state.logs.slice(0, limit);
+    },
+};
 
 const strategyStudioModule: Module<StrategyStudioState, RootState> = {
   namespaced: true,
   state,
   mutations,
   actions,
-  getters
-}
+  getters,
+};
 
 export default strategyStudioModule;

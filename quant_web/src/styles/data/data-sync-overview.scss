@@ -1,9 +1,9 @@
 // events-sync-overview.scss - 基于全局主题系统的数据同步概览页面样式
-@use '../variables' as *;
+@use "../variables" as *;
 // 导入全局变量文件
-@use '../mixins' as mix;
+@use "../mixins" as mix;
 // 导入混入工具库
-@use 'sass:map'; // 导入Sass映射函数模块
+@use "sass:map"; // 导入Sass映射函数模块
 
 .data-sync-overview {
   @include mix.content-with-base;
@@ -11,7 +11,6 @@
     @include mix.content-with-sidebar; // 应用带侧边栏的内容布局混入
     margin: 0 auto; // 水平居中
   }
-
 }
 
 // ============================================================================
@@ -32,26 +31,45 @@
   max-width: 1600px; // 最大宽度限制
 }
 
-
 // ==========================================================================
 // 状态概览网格区域样式
 // ==========================================================================
 
 .sync-index-grid {
   // 应用灵活网格布局：默认4列，响应式断点配置，间隙大小
-  @include mix.flexible-grid(4, (
-          'xl': 4, // 超大屏幕：4列
-          'lg': 3, // 大屏幕：3列
-          'md': 2, // 中等屏幕：2列
-          'sm': 1 // 小屏幕：1列
-  ), map.get($spacers, 5)); // 主要间隙：使用spacers映射中的第5个值
+  @include mix.flexible-grid(
+    4,
+    (
+      "xl": 4,
+      // 超大屏幕：4列
+      "lg": 3,
+      // 大屏幕：3列
+      "md": 2,
+      // 中等屏幕：2列
+      "sm": 1, // 小屏幕：1列
+    ),
+    map.get($spacers, 5)
+  ); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
-  @include mix.responsive-card-gap((
-          'lg': ('gap': map.get($spacers, 4), 'card-gap': map.get($spacers, 3)), // 大屏幕间隙配置
-          'md': ('gap': map.get($spacers, 3), 'card-gap': map.get($spacers, 2)), // 中等屏幕间隙配置
-          'sm': ('gap': map.get($spacers, 2), 'card-gap': map.get($spacers, 2)) // 小屏幕间隙配置
-  ));
+  @include mix.responsive-card-gap(
+    (
+      "lg": (
+        "gap": map.get($spacers, 4),
+        "card-gap": map.get($spacers, 3),
+      ),
+      // 大屏幕间隙配置
+      "md": (
+          "gap": map.get($spacers, 3),
+          "card-gap": map.get($spacers, 2),
+        ),
+      // 中等屏幕间隙配置
+      "sm": (
+          "gap": map.get($spacers, 2),
+          "card-gap": map.get($spacers, 2),
+        ), // 小屏幕间隙配置
+    )
+  );
 
   margin-bottom: map.get($spacers, 6); // 底部外边距：使用spacers映射中的第6个值
 
@@ -131,7 +149,6 @@
   }
 }
 
-
 // 指数概览区块
 .index-overview,
   // 功能导航区块
@@ -142,7 +159,10 @@
 
   // 中等屏幕及以下响应式调整
   @include mix.media-breakpoint-down(md) {
-    margin-bottom: map.get($spacers, 4); // 减少底部外边距：使用spacers映射中的第4个值
+    margin-bottom: map.get(
+      $spacers,
+      4
+    ); // 减少底部外边距：使用spacers映射中的第4个值
   }
 }
 
@@ -156,10 +176,13 @@
 
   .function-grid {
     // 应用灵活网格布局 - 默认4列，超大屏2列，中屏1列
-    @include mix.flexible-grid(4, (
-            'xl': 2,
-            'md': 1
-    ));
+    @include mix.flexible-grid(
+      4,
+      (
+        "xl": 2,
+        "md": 1,
+      )
+    );
 
     .function-nav-card {
       // 应用功能卡片基础样式混入 - 控制卡片外观和交互效果
@@ -440,7 +463,6 @@
           position: relative; // 相对定位
           min-height: 48px; // 最小高度
 
-
           // 最后一个历史项去除底部边框 - 避免多余分隔线
           &:last-child {
             border-bottom: none;
@@ -510,7 +532,6 @@
     }
   }
 }
-
 
 // ============================================================================
 // 响应式调整

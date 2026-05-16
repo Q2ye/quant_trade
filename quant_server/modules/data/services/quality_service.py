@@ -139,7 +139,7 @@ class DataQualityService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			ts_code: Optional[str] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		检查数据质量 - 适配 DataQualityCheckRepository
@@ -1050,7 +1050,7 @@ class DataQualityService:
 			data_type: Optional[str] = None,
 			overall_score: Optional[float] = None,
 			issue_count: Optional[int] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""发布质量事件"""
 		if not self.event_engine:

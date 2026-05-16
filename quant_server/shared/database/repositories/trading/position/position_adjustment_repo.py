@@ -298,7 +298,7 @@ class PositionAdjustmentRepository(BaseRepository[PositionAdjustment]):
 
 	async def get_adjustment_statistics (
 			self,
-			position_id: Optional[int] = None,
+			position_id: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
 	) -> Dict[str, Any]:

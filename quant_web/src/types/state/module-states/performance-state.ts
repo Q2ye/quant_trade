@@ -3,9 +3,9 @@
 
 import {
   AccountPerformance,
-  StrategyPerformance
-} from '@/types/entities/performance';
-import { StrategyListItem } from '@/types/api/performance';
+  StrategyPerformance,
+} from "@/types/entities/performance";
+import { StrategyListItem } from "@/types/api/performance";
 
 export interface PerformanceState {
   // 账户绩效数据，按accountId索引

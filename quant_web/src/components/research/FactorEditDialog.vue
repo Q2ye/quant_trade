@@ -1,259 +1,260 @@
-<!-- components/Research/FactorEditDialog.vue -->
-<!-- 因子创建和编辑的完整表单-->
 <template>
-  <el-dialog
-    v-model="dialogVisible"
+  <NModal
+    v-model:show="dialogVisible"
+    preset="card"
     :title="dialogTitle"
-    width="600px"
-    :before-close="handleClose"
+    style="width: 600px"
+    @close="handleClose"
   >
-    <el-form
+    <NForm
       ref="formRef"
       :model="formData"
       :rules="formRules"
+      label-placement="left"
       label-width="100px"
-      label-position="left"
     >
-      <el-form-item label="因子名称" prop="name">
-        <el-input
-          v-model="formData.name"
+      <NFormItem label="因子名称" path="name">
+        <NInput
+          v-model:value="formData.name"
           placeholder="请输入因子名称"
           maxlength="50"
-          show-word-limit
+          show-count
         />
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="因子代码" prop="code">
-        <el-input
-          v-model="formData.code"
+      <NFormItem label="因子代码" path="code">
+        <NInput
+          v-model:value="formData.code"
           placeholder="请输入因子代码"
           maxlength="20"
-          show-word-limit
+          show-count
         />
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="因子类别" prop="category">
-        <el-select v-model="formData.category" placeholder="请选择因子类别" style="width: 100%">
-          <el-option label="价值因子" value="value" />
-          <el-option label="成长因子" value="growth" />
-          <el-option label="质量因子" value="quality" />
-          <el-option label="动量因子" value="momentum" />
-          <el-option label="技术因子" value="technical" />
-        </el-select>
-      </el-form-item>
+      <NFormItem label="因子类别" path="category">
+        <NSelect
+          v-model:value="formData.category"
+          :options="categoryOptions"
+          placeholder="请选择因子类别"
+          style="width: 100%"
+        />
+      </NFormItem>
 
-      <el-form-item label="因子描述" prop="description">
-        <el-input
-          v-model="formData.description"
+      <NFormItem label="因子描述" path="description">
+        <NInput
+          v-model:value="formData.description"
           type="textarea"
           :rows="3"
           placeholder="请输入因子描述"
           maxlength="200"
-          show-word-limit
+          show-count
         />
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="数据字段" prop="dataFields">
-        <el-select
-          v-model="formData.dataFields"
+      <NFormItem label="数据字段" path="dataFields">
+        <NSelect
+          v-model:value="formData.dataFields"
+          :options="dataFieldOptions"
           multiple
           placeholder="请选择所需数据字段"
           style="width: 100%"
-        >
-          <el-option label="收盘价" value="close" />
-          <el-option label="开盘价" value="open" />
-          <el-option label="最高价" value="high" />
-          <el-option label="最低价" value="low" />
-          <el-option label="成交量" value="volume" />
-          <el-option label="市盈率" value="pe" />
-          <el-option label="市净率" value="pb" />
-          <el-option label="股息率" value="dividend_yield" />
-          <el-option label="ROE" value="roe" />
-          <el-option label="营收" value="revenue" />
-          <el-option label="净利润" value="net_profit" />
-        </el-select>
-      </el-form-item>
+        />
+      </NFormItem>
 
-      <el-form-item label="因子公式" prop="formula">
-        <el-input
-          v-model="formData.formula"
+      <NFormItem label="因子公式" path="formula">
+        <NInput
+          v-model:value="formData.formula"
           type="textarea"
           :rows="4"
           placeholder="请输入因子计算公式（Python语法）"
           maxlength="500"
-          show-word-limit
+          show-count
         />
         <div class="formula-tips">
-          <el-icon><Icon icon="mdi:information" /></el-icon>
+          <Icon icon="mdi:information" />
           <span>支持Python语法，可使用选中的数据字段进行计算</span>
         </div>
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="状态" prop="status">
-        <el-switch
-          v-model="formData.status"
-          :active-value="'active'"
-          :inactive-value="'inactive'"
-          active-text="启用"
-          inactive-text="停用"
+      <NFormItem label="状态" path="status">
+        <NSwitch
+          v-model:value="formData.status"
+          :checked-value="'active'"
+          :unchecked-value="'inactive'"
         />
-      </el-form-item>
-    </el-form>
+        <span class="switch-label">{{
+          formData.status === "active" ? "启用" : "停用"
+        }}</span>
+      </NFormItem>
+    </NForm>
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" @click="handleSave" :loading="saving">
-          <el-icon><Icon icon="mdi:check" /></el-icon>
+        <NButton @click="handleClose">取消</NButton>
+        <NButton type="primary" :loading="saving" @click="handleSave">
+          <Icon icon="mdi:check" />
           保存
-        </el-button>
+        </NButton>
       </div>
     </template>
-  </el-dialog>
+  </NModal>
 </template>
 
-<script setup>
-import { ref, reactive, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Icon } from '@iconify/vue'
+<script setup lang="ts">
+import { ref, reactive, computed, watch } from "vue";
+import {
+  NModal,
+  NForm,
+  NFormItem,
+  NInput,
+  NSelect,
+  NSwitch,
+  NButton,
+} from "naive-ui";
+import type { FormRules, FormInst } from "naive-ui";
+import { Icon } from "@iconify/vue";
+import { useMessage } from "naive-ui";
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    required: true
-  },
-  factor: {
-    type: Object,
-    default: null
-  },
-  mode: {
-    type: String,
-    default: 'create',
-    validator: (value) => ['create', 'edit'].includes(value)
-  }
-})
+const message = useMessage();
 
-const emit = defineEmits(['update:modelValue', 'save'])
+const props = defineProps<{
+  modelValue: boolean;
+  factor?: Record<string, any> | null;
+  mode?: string;
+}>();
 
-// 响应式数据
-const formRef = ref(null)
-const saving = ref(false)
+const emit = defineEmits<{
+  "update:modelValue": [value: boolean];
+  save: [data: any];
+}>();
 
-// 表单数据
+const formRef = ref<FormInst | null>(null);
+const saving = ref(false);
+
 const formData = reactive({
-  name: '',
-  code: '',
-  category: '',
-  description: '',
-  dataFields: [],
-  formula: '',
-  status: 'active'
-})
+  name: "",
+  code: "",
+  category: "",
+  description: "",
+  dataFields: [] as string[],
+  formula: "",
+  status: "active",
+});
 
-// 表单验证规则
-const formRules = {
+const categoryOptions = [
+  { label: "价值因子", value: "value" },
+  { label: "成长因子", value: "growth" },
+  { label: "质量因子", value: "quality" },
+  { label: "动量因子", value: "momentum" },
+  { label: "技术因子", value: "technical" },
+];
+
+const dataFieldOptions = [
+  { label: "收盘价", value: "close" },
+  { label: "开盘价", value: "open" },
+  { label: "最高价", value: "high" },
+  { label: "最低价", value: "low" },
+  { label: "成交量", value: "volume" },
+  { label: "市盈率", value: "pe" },
+  { label: "市净率", value: "pb" },
+  { label: "股息率", value: "dividend_yield" },
+  { label: "ROE", value: "roe" },
+  { label: "营收", value: "revenue" },
+  { label: "净利润", value: "net_profit" },
+];
+
+const formRules: FormRules = {
   name: [
-    { required: true, message: '请输入因子名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' }
+    { required: true, message: "请输入因子名称", trigger: "blur" },
+    { min: 2, max: 50, message: "长度在 2 到 50 个字符", trigger: "blur" },
   ],
   code: [
-    { required: true, message: '请输入因子代码', trigger: 'blur' },
-    { pattern: /^[A-Z0-9_]+$/, message: '只能包含大写字母、数字和下划线', trigger: 'blur' }
+    { required: true, message: "请输入因子代码", trigger: "blur" },
+    {
+      pattern: /^[A-Z0-9_]+$/,
+      message: "只能包含大写字母、数字和下划线",
+      trigger: "blur",
+    },
   ],
-  category: [
-    { required: true, message: '请选择因子类别', trigger: 'change' }
-  ],
-  description: [
-    { required: true, message: '请输入因子描述', trigger: 'blur' }
-  ],
+  category: [{ required: true, message: "请选择因子类别", trigger: "change" }],
+  description: [{ required: true, message: "请输入因子描述", trigger: "blur" }],
   dataFields: [
-    { required: true, message: '请选择至少一个数据字段', trigger: 'change' }
+    {
+      required: true,
+      message: "请选择至少一个数据字段",
+      trigger: "change",
+      type: "array",
+      validator: (_rule, value: string[]) => value.length > 0,
+    },
   ],
-  formula: [
-    { required: true, message: '请输入因子计算公式', trigger: 'blur' }
-  ]
-}
+  formula: [{ required: true, message: "请输入因子计算公式", trigger: "blur" }],
+};
 
-// 计算属性
 const dialogVisible = computed({
   get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
-})
+  set: (value) => emit("update:modelValue", value),
+});
 
 const dialogTitle = computed(() => {
-  return props.mode === 'create' ? '新建因子' : '编辑因子'
-})
+  return (props.mode || "create") === "create" ? "新建因子" : "编辑因子";
+});
 
-// 方法
 const handleClose = () => {
-  dialogVisible.value = false
-  resetForm()
-}
+  dialogVisible.value = false;
+  resetForm();
+};
 
 const resetForm = () => {
-  if (formRef.value) {
-    formRef.value.resetFields()
-  }
+  formRef.value?.restoreValidation();
   Object.assign(formData, {
-    name: '',
-    code: '',
-    category: '',
-    description: '',
+    name: "",
+    code: "",
+    category: "",
+    description: "",
     dataFields: [],
-    formula: '',
-    status: 'active'
-  })
-}
+    formula: "",
+    status: "active",
+  });
+};
 
-const handleSave = async () => {
-  if (!formRef.value) return
+const handleSave = () => {
+  formRef.value?.validate((errors) => {
+    if (errors) return;
+    saving.value = true;
+    setTimeout(() => {
+      emit("save", { ...formData });
+      handleClose();
+      saving.value = false;
+    }, 1000);
+  });
+};
 
-  try {
-    const valid = await formRef.value.validate()
-    if (!valid) return
-
-    saving.value = true
-
-    // 模拟保存操作
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    emit('save', { ...formData })
-    handleClose()
-  } catch (error) {
-    console.error('表单验证失败:', error)
-  } finally {
-    saving.value = false
-  }
-}
-
-// 监听因子数据变化
 watch(
   () => props.factor,
   (newFactor) => {
     if (newFactor) {
       Object.assign(formData, {
-        name: newFactor.name || '',
-        code: newFactor.code || '',
-        category: newFactor.category || '',
-        description: newFactor.description || '',
+        name: newFactor.name || "",
+        code: newFactor.code || "",
+        category: newFactor.category || "",
+        description: newFactor.description || "",
         dataFields: newFactor.dataFields || [],
-        formula: newFactor.formula || '',
-        status: newFactor.status || 'active'
-      })
+        formula: newFactor.formula || "",
+        status: newFactor.status || "active",
+      });
     }
   },
-  { immediate: true }
-)
+  { immediate: true },
+);
 
-// 监听对话框显示状态
 watch(
   () => props.modelValue,
   (newVal) => {
-    if (newVal && props.mode === 'create') {
-      resetForm()
+    if (newVal && (props.mode || "create") === "create") {
+      resetForm();
     }
-  }
-)
+  },
+);
 </script>
 
 <style lang="scss" scoped>
@@ -267,10 +268,12 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
+}
 
-  .el-icon {
-    font-size: 14px;
-  }
+.switch-label {
+  margin-left: 8px;
+  color: var(--n-text-color-3);
+  font-size: 13px;
 }
 
 .dialog-footer {

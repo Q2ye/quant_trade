@@ -38,7 +38,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 			analysis_type: str,
 			parameters: Dict[str, Any],
 			created_by: int,
-			report_id: Optional[int] = None
+			report_id: Optional[str] = None
 	) -> AnalysisTask:
 		"""
 		创建分析任务
@@ -198,7 +198,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 			self,
 			task_id: str,
 			result: Dict[str, Any],
-			report_id: Optional[int] = None
+			report_id: Optional[str] = None
 	) -> bool:
 		"""
 		完成任务
@@ -398,7 +398,7 @@ class AnalysisTaskRepository(BaseRepository[AnalysisTask]):
 	async def get_task_statistics (
 			self,
 			days: Optional[int] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		获取任务统计信息

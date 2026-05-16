@@ -1,7 +1,7 @@
 // Vuex工具类型定义
 
-import { Module } from 'vuex';
-import { RootState } from '@/types/state';
+import { Module } from "vuex";
+import { RootState } from "@/types/state";
 
 /**
  * Vuex模块类型定义
@@ -15,12 +15,12 @@ export type VuexModule<T> = Module<T, RootState>;
  * @template R 根状态类型
  */
 export interface ActionContext<S, R> {
-  dispatch: any;                          // dispatch方法
-  commit: any;                            // commit方法
-  state: S;                               // 当前模块状态
-  getters: any;                           // 当前模块getters
-  rootState: R;                           // 根状态
-  rootGetters: any;                       // 根getters
+  dispatch: any; // dispatch方法
+  commit: any; // commit方法
+  state: S; // 当前模块状态
+  getters: any; // 当前模块getters
+  rootState: R; // 根状态
+  rootGetters: any; // 根getters
 }
 
 /**
@@ -39,7 +39,7 @@ export type Getter<T, R> = (state: T, getters: any, rootState: RootState) => R;
  */
 export type Action<S, R, P = any, Result = any> = (
   context: ActionContext<S, R>,
-  payload: P
+  payload: P,
 ) => Promise<Result> | Result;
 
 /**
@@ -57,8 +57,8 @@ export type Mutation<S, P = any> = (state: S, payload: P) => void;
  * @template A Actions类型
  */
 export interface VuexModuleConfig<S, G = any, M = any, A = any> {
-  namespaced?: boolean;                   // 是否启用命名空间
-  state: S | (() => S);                   // 状态
+  namespaced?: boolean; // 是否启用命名空间
+  state: S | (() => S); // 状态
   getters?: { [K in keyof G]: Getter<S, G[K]> }; // Getters
   mutations?: { [K in keyof M]: Mutation<S, M[K]> }; // Mutations
   actions?: { [K in keyof A]: Action<S, RootState, A[K]> }; // Actions
@@ -90,7 +90,7 @@ export type MappedActions<T> = {
  * Vuex Store创建选项接口
  */
 export interface StoreOptions {
-  strict?: boolean;                       // 是否启用严格模式
-  devtools?: boolean;                     // 是否启用devtools
-  plugins?: any[];                        // 插件数组
+  strict?: boolean; // 是否启用严格模式
+  devtools?: boolean; // 是否启用devtools
+  plugins?: any[]; // 插件数组
 }

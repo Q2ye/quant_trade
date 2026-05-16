@@ -306,7 +306,7 @@ class DataSyncService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			ts_codes: Optional[List[str]] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
@@ -413,7 +413,7 @@ class DataSyncService:
 	async def batch_sync (
 			self,
 			request: BatchSyncRequest,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		批量同步数据
@@ -671,7 +671,7 @@ class DataSyncService:
 	async def get_sync_status (
 			self,
 			task_id: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""获取同步任务状态"""
 		try:
@@ -714,12 +714,12 @@ class DataSyncService:
 			logger.error(f"获取同步状态失败: {str(e)}", exc_info=True)
 			raise
 
-	async def cancel_sync (self, task_id: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+	async def cancel_sync (self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
 		"""取消同步任务（与原实现相同，此处省略具体代码）"""
 		# 省略重复代码，保持与原实现一致
 		pass
 
-	async def retry_failed_sync (self, task_id: str, user_id: Optional[int] = None) -> Dict[str, Any]:
+	async def retry_failed_sync (self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
 		"""重试失败的同步任务（与原实现相同）"""
 		pass
 
@@ -800,7 +800,7 @@ class DataSyncService:
 			_start_date: Optional[date] = None,
 			_end_date: Optional[date] = None,
 			_ts_codes: Optional[List[str]] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			params: Optional[Dict] = None
 	) -> str:
 		"""创建同步任务记录"""
@@ -842,7 +842,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
@@ -877,7 +877,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步股票列表"""
@@ -916,7 +916,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步日行情数据"""
@@ -976,7 +976,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			freq: str = "1min",
 			**_kwargs
 	) -> Dict[str, Any]:
@@ -1040,7 +1040,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步资金流向数据"""
@@ -1110,7 +1110,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步复权因子"""
@@ -1167,7 +1167,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步每日指标数据"""
@@ -1222,7 +1222,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF基础信息"""
@@ -1262,7 +1262,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			_task_id: str,
-			_user_id: Optional[int] = None,
+			_user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF基准指数列表（待完善）"""
@@ -1283,7 +1283,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF日线行情"""
@@ -1726,7 +1726,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			freq: str = "1min",
 			**_kwargs
 	) -> Dict[str, Any]:
@@ -1785,7 +1785,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步基金复权因子"""
@@ -1840,7 +1840,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""同步利润表数据"""
@@ -1860,7 +1860,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""同步资产负债表"""
@@ -1880,7 +1880,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""同步现金流量表"""
@@ -1900,7 +1900,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			report_type: str = "income",
 			**_kwargs
 	) -> Dict[str, Any]:
@@ -1971,7 +1971,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			_task_id: str,
-			_user_id: Optional[int] = None,
+			_user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步交易日历"""
@@ -2031,7 +2031,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步Tick级行情数据"""
@@ -2098,7 +2098,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步停复牌信息"""
@@ -2160,7 +2160,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF份额规模"""
@@ -2223,7 +2223,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步业绩预告"""
@@ -2286,7 +2286,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步业绩快报"""
@@ -2349,7 +2349,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步分红送股数据"""
@@ -2412,7 +2412,7 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步财务指标数据"""
@@ -2484,7 +2484,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步审计意见数据"""
@@ -2513,7 +2513,7 @@ class DataSyncService:
 			_end_date: Optional[date],
 			_ts_codes: Optional[List[str]],
 			task_id: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步主营业务构成数据"""
@@ -2543,7 +2543,7 @@ class DataSyncService:
 			task_id: str,
 			progress: Optional[float] = None,
 			current_item: Optional[str] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""更新同步进度"""
 		progress_key = CacheKey.SYNC_PROGRESS.format(task_id=task_id)
@@ -2585,7 +2585,7 @@ class DataSyncService:
 			current_task: Optional[str] = None,
 			result: Optional[Dict] = None,
 			error: Optional[str] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""发布同步事件"""
 		if not self.event_engine:
@@ -2684,7 +2684,7 @@ class DataSyncService:
 
 	async def get_recent_sync_tasks (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			limit: int = 20
 	) -> List[Dict[str, Any]]:
 		"""获取最近的同步任务（与原实现相同）"""

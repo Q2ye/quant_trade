@@ -6,8 +6,12 @@
       <div v-for="(item, key) in jsonData" :key="key" class="json-line">
         <span class="key">"{{ key }}":</span>
         <span v-if="typeof item === 'string'" class="string">"{{ item }}"</span>
-        <span v-else-if="typeof item === 'number'" class="number">{{ item }}</span>
-        <span v-else-if="typeof item === 'boolean'" class="boolean">{{ item }}</span>
+        <span v-else-if="typeof item === 'number'" class="number">{{
+          item
+        }}</span>
+        <span v-else-if="typeof item === 'boolean'" class="boolean">{{
+          item
+        }}</span>
         <span v-else-if="item === null" class="null">null</span>
         <span v-else class="string">{{ item }}</span>
       </div>
@@ -16,23 +20,34 @@
         <div class="json-line">
           <span class="key">"performance_metrics":</span> {
         </div>
-        <div v-for="(value, metric) in performanceMetrics" :key="metric" class="json-line indent">
+        <div
+          v-for="(value, metric) in performanceMetrics"
+          :key="metric"
+          class="json-line indent"
+        >
           <span class="key">"{{ metric }}":</span>
-          <span class="number">{{ value }}</span>,
+          <span class="number">{{ value }}</span
+          >,
         </div>
         <div class="json-line">}</div>
       </template>
 
       <template v-if="positions && positions.length">
-        <div class="json-line">
-          <span class="key">"positions":</span> [
-        </div>
-        <div v-for="(position, idx) in positions" :key="idx" class="json-line indent">
+        <div class="json-line"><span class="key">"positions":</span> [</div>
+        <div
+          v-for="(position, idx) in positions"
+          :key="idx"
+          class="json-line indent"
+        >
           {
-          <span class="key">"symbol"</span>: <span class="string">"{{ position.symbol }}"</span>,
-          <span class="key">"shares"</span>: <span class="number">{{ position.shares }}</span>,
-          <span class="key">"avg_price"</span>: <span class="number">{{ position.avg_price }}</span>
-          }{{ idx < positions.length - 1 ? ',' : '' }}
+          <span class="key">"symbol"</span>:
+          <span class="string">"{{ position.symbol }}"</span>,
+          <span class="key">"shares"</span>:
+          <span class="number">{{ position.shares }}</span
+          >, <span class="key">"avg_price"</span>:
+          <span class="number">{{ position.avg_price }}</span> }{{
+            idx < positions.length - 1 ? "," : ""
+          }}
         </div>
         <div class="json-line">]</div>
       </template>
@@ -46,17 +61,17 @@ export default {
   props: {
     jsonData: {
       type: Object,
-      default: () => ({})
+      default: () => ({}),
     },
     performanceMetrics: {
       type: Object,
-      default: null
+      default: null,
     },
     positions: {
       type: Array,
-      default: null
-    }
-  }
+      default: null,
+    },
+  },
 };
 </script>
 
@@ -74,7 +89,7 @@ export default {
   border-radius: 8px;
   padding: 15px;
   overflow-y: auto;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 14px;
   line-height: 1.6;
   border: 1px solid rgba(64, 158, 255, 0.2);

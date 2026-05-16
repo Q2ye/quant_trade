@@ -1,7 +1,7 @@
 <!-- IndexDetail.vue - 使用 Naive UI 重构 -->
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, computed } from "vue";
+import { useRoute } from "vue-router";
 import {
   NCard,
   NTabs,
@@ -10,90 +10,94 @@ import {
   NDescriptionsItem,
   NTag,
   NGrid,
-  NGi,
+  NGridItem,
   NStatistic,
   NSpace,
   NIcon,
-  useLoadingBar
-} from 'naive-ui'
-import { SmartIcon } from '@/components/SmartIcon'
+  NButton,
+  NResult,
+  useLoadingBar,
+} from "naive-ui";
+import SmartIcon from "@/components/SmartIcon.vue";
 
-const route = useRoute()
-const indexCode = ref(route.params.code as string)
-const loadingBar = useLoadingBar()
+const route = useRoute();
+const indexCode = ref(route.params.code as string);
+const loadingBar = useLoadingBar();
 
 // 指数详情接口
 interface IndexDetail {
-  ts_code: string
-  name: string
-  fullname: string
-  market: string
-  publisher: string
-  category: string
-  base_date: string
-  base_point: number
-  list_date: string
-  current_point: number
-  change: number
-  change_percent: number
-  open: number
-  high: number
-  low: number
-  pre_close: number
-  volume: number
-  amount: number
-  pe: number
-  pb: number
-  components_count: number
+  ts_code: string;
+  name: string;
+  fullname: string;
+  market: string;
+  publisher: string;
+  category: string;
+  base_date: string;
+  base_point: number;
+  list_date: string;
+  current_point: number;
+  change: number;
+  change_percent: number;
+  open: number;
+  high: number;
+  low: number;
+  pre_close: number;
+  volume: number;
+  amount: number;
+  pe: number;
+  pb: number;
+  components_count: number;
 }
 
-const loading = ref(false)
-const indexDetail = ref<IndexDetail | null>(null)
-const activeTab = ref('overview')
+const loading = ref(false);
+const error = ref(false);
+const indexDetail = ref<IndexDetail | null>(null);
+const activeTab = ref("overview");
 
 // 加载指数详情
 const loadIndexDetail = async () => {
-  loading.value = true
-  loadingBar.start()
+  loading.value = true;
+  error.value = false;
+  loadingBar.start();
   try {
-    const response = await fetch(`/api/market/indexes/${indexCode.value}`)
-    indexDetail.value = await response.json()
-  } catch (error) {
-    console.error('加载指数详情失败:', error)
+    const response = await fetch(`/api/market/indexes/${indexCode.value}`);
+    indexDetail.value = await response.json();
+  } catch {
+    error.value = true;
   } finally {
-    loading.value = false
-    loadingBar.finish()
+    loading.value = false;
+    loadingBar.finish();
   }
-}
+};
 
 // 计算涨跌颜色样式
 const getChangeColor = (change?: number) => {
-  if (!change && change !== 0) return ''
-  return change >= 0 ? 'text-green-600' : 'text-red-600'
-}
+  if (!change && change !== 0) return "";
+  return change >= 0 ? "text-green-600" : "text-red-600";
+};
 
 // 计算统计值样式
 const getStatisticStyle = (value?: number) => {
-  if (!value && value !== 0) return {}
+  if (!value && value !== 0) return {};
   return {
-    color: value >= 0 ? 'var(--n-success-color)' : 'var(--n-error-color)'
-  }
-}
+    color: value >= 0 ? "var(--n-success-color)" : "var(--n-error-color)",
+  };
+};
 
 onMounted(() => {
-  loadIndexDetail()
-})
+  loadIndexDetail();
+});
 </script>
 
 <template>
-  <div class="index-detail-page">
+  <div class="index-detail-page bg-gradient-mesh bg-noise">
     <NCard :loading="loading" class="detail-card">
       <!-- 标题区域 -->
       <template #header>
         <div class="page-header">
           <div class="header-left">
             <h2 class="page-title">
-              {{ indexDetail?.name || '指数详情' }}
+              {{ indexDetail?.name || "指数详情" }}
               <span class="index-code">
                 {{ indexDetail?.ts_code }}
               </span>
@@ -101,15 +105,19 @@ onMounted(() => {
           </div>
           <div v-if="indexDetail" class="header-right">
             <div class="price-display">
-              <span class="current-price">{{ indexDetail.current_point?.toFixed(2) }}</span>
+              <span class="current-price">{{
+                indexDetail.current_point?.toFixed(2)
+              }}</span>
               <span
                 :class="[
                   'price-change',
-                  getChangeColor(indexDetail.change_percent)
+                  getChangeColor(indexDetail.change_percent),
                 ]"
               >
-                {{ indexDetail.change >= 0 ? '+' : '' }}{{ indexDetail.change?.toFixed(2) }}
-                ({{ indexDetail.change_percent >= 0 ? '+' : '' }}{{ indexDetail.change_percent?.toFixed(2) }}%)
+                {{ indexDetail.change >= 0 ? "+" : ""
+                }}{{ indexDetail.change?.toFixed(2) }} ({{
+                  indexDetail.change_percent >= 0 ? "+" : ""
+                }}{{ indexDetail.change_percent?.toFixed(2) }}%)
               </span>
             </div>
           </div>
@@ -117,10 +125,26 @@ onMounted(() => {
       </template>
 
       <!-- 标签页 -->
-      <NTabs v-model:value="activeTab" class="detail-tabs">
+      <n-result
+        v-if="error"
+        status="500"
+        title="数据加载失败"
+        description="请检查网络连接后重试"
+      >
+        <template #footer>
+          <n-button type="primary" @click="loadIndexDetail">重试</n-button>
+        </template>
+      </n-result>
+
+      <NTabs v-else v-model:value="activeTab" class="detail-tabs">
         <NTabPane name="overview" tab="概览">
           <!-- 基本信息 -->
-          <NDescriptions label-placement="left" :column="2" bordered class="basic-info">
+          <NDescriptions
+            label-placement="left"
+            :column="2"
+            bordered
+            class="basic-info"
+          >
             <NDescriptionsItem label="指数全称">
               {{ indexDetail?.fullname }}
             </NDescriptionsItem>
@@ -148,69 +172,73 @@ onMounted(() => {
 
           <!-- 行情数据 -->
           <NGrid :cols="4" :x-gap="16" class="market-data">
-            <NGi>
+            <NGridItem>
               <NStatistic
                 label="开盘"
                 :value="indexDetail?.open"
                 :precision="2"
                 :value-style="getStatisticStyle(indexDetail?.open)"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="最高"
                 :value="indexDetail?.high"
                 :precision="2"
                 :value-style="getStatisticStyle(indexDetail?.change)"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="最低"
                 :value="indexDetail?.low"
                 :precision="2"
                 :value-style="getStatisticStyle(indexDetail?.change)"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="昨收"
                 :value="indexDetail?.pre_close"
                 :precision="2"
               />
-            </NGi>
+            </NGridItem>
           </NGrid>
 
           <!-- 其他数据 -->
           <NGrid :cols="4" :x-gap="16" class="additional-data">
-            <NGi>
+            <NGridItem>
               <NStatistic
                 label="成交量(亿)"
-                :value="indexDetail?.volume ? indexDetail.volume / 100000000 : 0"
+                :value="
+                  indexDetail?.volume ? indexDetail.volume / 100000000 : 0
+                "
                 :precision="2"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="成交额(亿)"
-                :value="indexDetail?.amount ? indexDetail.amount / 100000000 : 0"
+                :value="
+                  indexDetail?.amount ? indexDetail.amount / 100000000 : 0
+                "
                 :precision="2"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="市盈率(PE)"
                 :value="indexDetail?.pe"
                 :precision="2"
               />
-            </NGi>
-            <NGi>
+            </NGridItem>
+            <NGridItem>
               <NStatistic
                 label="市净率(PB)"
                 :value="indexDetail?.pb"
                 :precision="2"
               />
-            </NGi>
+            </NGridItem>
           </NGrid>
         </NTabPane>
 
@@ -222,7 +250,7 @@ onMounted(() => {
                 <NIcon size="48" color="#ccc">
                   <SmartIcon name="BarChart" />
                 </NIcon>
-                <div style="color: #999;">指数图表展示区域</div>
+                <div style="color: #999">指数图表展示区域</div>
               </NSpace>
             </div>
           </div>
@@ -232,7 +260,7 @@ onMounted(() => {
           <div class="components-container">
             <!-- 成分股列表 -->
             <div class="components-placeholder">
-              <div style="color: #999;">成分股列表展示区域</div>
+              <div style="color: #999">成分股列表展示区域</div>
             </div>
           </div>
         </NTabPane>
@@ -242,8 +270,9 @@ onMounted(() => {
 </template>
 
 <style scoped lang="scss">
-@use '@/assets/scss/variables' as *;
-@use '@/assets/scss/mixins' as mixin;
+@use "sass:map";
+@use "@/styles/variables" as *;
+@use "@/styles/mixins" as mixin;
 
 .index-detail-page {
   @include mixin.content-with-base;

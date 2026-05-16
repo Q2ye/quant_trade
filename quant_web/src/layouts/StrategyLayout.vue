@@ -81,7 +81,7 @@
         <n-tab-pane name="results" tab="回测结果">
           <div class="tab-content">
             回测结果图表和指标将显示在这里
-            <div style="margin-top: 15px;">
+            <div style="margin-top: 15px">
               <div>年化收益率: <span class="positive-value">+28.7%</span></div>
               <div>夏普比率: 0.92</div>
               <div>最大回撤: <span class="negative-value">-15.3%</span></div>
@@ -90,14 +90,10 @@
           </div>
         </n-tab-pane>
         <n-tab-pane name="trades" tab="交易明细">
-          <div class="tab-content">
-            交易明细将显示在这里
-          </div>
+          <div class="tab-content">交易明细将显示在这里</div>
         </n-tab-pane>
         <n-tab-pane name="logs" tab="日志输出">
-          <div class="tab-content">
-            日志输出将显示在这里
-          </div>
+          <div class="tab-content">日志输出将显示在这里</div>
         </n-tab-pane>
       </n-tabs>
     </div>
@@ -105,9 +101,9 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
-import { NInput, NSelect, NButton, NTabs, NTabPane } from 'naive-ui'
-import SmartIcon from '@/components/common/SmartIcon.vue'
+import { defineComponent } from "vue";
+import { NInput, NSelect, NButton, NTabs, NTabPane } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
 export default defineComponent({
   name: "StrategyLayout",
@@ -117,7 +113,7 @@ export default defineComponent({
     NButton,
     NTabs,
     NTabPane,
-    SmartIcon
+    SmartIcon,
   },
   data() {
     return {
@@ -140,50 +136,59 @@ def handle_data(context, data):
         order_target_percent(context.security, 0.1)
 
     record(short_mavg=short_avg, long_mavg=long_avg)`,
-      selectedTimeRange: '2020-01-01 至 2023-08-20',
-      initialCapital: '1000000',
-      commission: '0.0003',
-      slippage: '0.0001',
-      selectedBenchmark: '000001.SH (上证指数)',
+      selectedTimeRange: "2020-01-01 至 2023-08-20",
+      initialCapital: "1000000",
+      commission: "0.0003",
+      slippage: "0.0001",
+      selectedBenchmark: "000001.SH (上证指数)",
       timeRangeOptions: [
-        { label: '2020-01-01 至 2023-08-20', value: '2020-01-01 至 2023-08-20' },
-        { label: '2019-01-01 至 2023-08-20', value: '2019-01-01 至 2023-08-20' },
-        { label: '2018-01-01 至 2023-08-20', value: '2018-01-01 至 2023-08-20' }
+        {
+          label: "2020-01-01 至 2023-08-20",
+          value: "2020-01-01 至 2023-08-20",
+        },
+        {
+          label: "2019-01-01 至 2023-08-20",
+          value: "2019-01-01 至 2023-08-20",
+        },
+        {
+          label: "2018-01-01 至 2023-08-20",
+          value: "2018-01-01 至 2023-08-20",
+        },
       ],
       benchmarkOptions: [
-        { label: '000001.SH (上证指数)', value: '000001.SH (上证指数)' },
-        { label: '399001.SZ (深证成指)', value: '399001.SZ (深证成指)' },
-        { label: '399006.SZ (创业板指)', value: '399006.SZ (创业板指)' }
-      ]
-    }
+        { label: "000001.SH (上证指数)", value: "000001.SH (上证指数)" },
+        { label: "399001.SZ (深证成指)", value: "399001.SZ (深证成指)" },
+        { label: "399006.SZ (创业板指)", value: "399006.SZ (创业板指)" },
+      ],
+    };
   },
   methods: {
     handleCodeChange(value) {
-      this.code = value
+      this.code = value;
     },
     handleTimeRangeChange(value) {
-      this.selectedTimeRange = value
+      this.selectedTimeRange = value;
     },
     handleCapitalChange(value) {
-      this.initialCapital = value
+      this.initialCapital = value;
     },
     handleCommissionChange(value) {
-      this.commission = value
+      this.commission = value;
     },
     handleSlippageChange(value) {
-      this.slippage = value
+      this.slippage = value;
     },
     handleBenchmarkChange(value) {
-      this.selectedBenchmark = value
+      this.selectedBenchmark = value;
     },
     runBacktest() {
-      console.log('执行回测')
+      console.log("执行回测");
     },
     saveStrategy() {
-      console.log('保存策略')
-    }
-  }
-})
+      console.log("保存策略");
+    },
+  },
+});
 </script>
 
 <style lang="scss" scoped>
@@ -208,7 +213,7 @@ def handle_data(context, data):
     flex: 1;
     border: none;
     padding: 15px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
     font-size: 14px;
     line-height: 1.5;
     resize: none;

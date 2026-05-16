@@ -1,33 +1,48 @@
 <template>
-  <div class="main-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div
+    class="main-layout bg-gradient-mesh"
+    :class="[{ 'sidebar-collapsed': sidebarCollapsed }]"
+  >
+    <!-- 全局3D粒子背景（position:absolute 填充整个 main-layout） -->
+    <ParticleBackground />
+
     <!-- 顶部状态栏 -->
-    <AppHeader class="app-header page-header-anti-bleed"/>
+    <AppHeader
+      class="app-header"
+    />
 
     <!-- 侧边栏和工作区容器 -->
     <div class="layout-container">
       <!-- 左侧导航栏 -->
       <AppSidebar
-          class="app-sidebar sidebar-anti-bleed"
-          :class="{ collapsed: sidebarCollapsed }"
-          @collapse="handleSidebarCollapse"
+        class="app-sidebar"
+        :class="{ collapsed: sidebarCollapsed }"
+        @collapse="handleSidebarCollapse"
       />
 
       <!-- 中间工作区 -->
       <main class="workspace sidebar-content-adapter">
         <div class="workspace-content">
-          <router-view/>
+          <router-view v-slot="{ Component, route }">
+            <Transition name="page-fade" mode="out-in">
+              <component :is="Component" :key="route.path" />
+            </Transition>
+          </router-view>
         </div>
       </main>
     </div>
 
     <!-- 底部状态栏 -->
-    <footer class="app-footer no-bleed-through">
+    <footer class="app-footer">
       <div class="footer-content">
         <div class="footer-section">
           <n-icon size="14" class="footer-icon">
             <smart-icon name="Desktop" />
           </n-icon>
-          <span>CPU: {{ systemStats.cpuUsage }}% | 内存: {{ systemStats.memoryUsage }}%</span>
+          <span
+            >CPU: {{ systemStats.cpuUsage }}% | 内存:
+            {{ systemStats.memoryUsage }}%</span
+          >
         </div>
         <div class="footer-section">
           <n-icon size="14" class="footer-icon">
@@ -53,55 +68,62 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NIcon } from 'naive-ui'
-import SmartIcon from '@/components/common/SmartIcon.vue'
+import { defineComponent, defineAsyncComponent, onMounted, onUnmounted, reactive, ref } from "vue";
+import { NIcon } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
+import { tokens } from "@/styles/design-tokens";
 
-import AppHeader from '../components/ui/AppHeader.vue'
-import AppSidebar from '../components/ui/AppSidebar.vue'
+import AppHeader from "../components/ui/AppHeader.vue";
+import AppSidebar from "../components/ui/AppSidebar.vue";
+
+const ParticleBackground = defineAsyncComponent(
+  () => import("@/components/three/ParticleBackground.vue"),
+);
 
 export default defineComponent({
   name: "MainLayout",
   components: {
     AppHeader,
     AppSidebar,
+    ParticleBackground,
     NIcon,
-    SmartIcon
+    SmartIcon,
   },
   setup() {
-    const sidebarCollapsed = ref(false)
+    const sidebarCollapsed = ref(false);
     const systemStats = reactive({
       cpuUsage: 0,
       memoryUsage: 0,
-      dataStatus: '正常',
-      tradeStatus: '已连接',
-      lastLog: '[2023-08-20 09:30:05] 策略引擎启动成功'
-    })
+      dataStatus: "正常",
+      tradeStatus: "已连接",
+      lastLog: "[2023-08-20 09:30:05] 策略引擎启动成功",
+    });
 
     const handleSidebarCollapse = (collapsed: boolean) => {
-      sidebarCollapsed.value = collapsed
-    }
+      sidebarCollapsed.value = collapsed;
+    };
 
     // 模拟系统状态更新
-    let statsInterval: number
+    let statsInterval: number;
     onMounted(() => {
       statsInterval = setInterval(() => {
-        systemStats.cpuUsage = Math.floor(Math.random() * 30) + 30
-        systemStats.memoryUsage = Math.floor(Math.random() * 20) + 50
-      }, 5000) as unknown as number
-    })
+        systemStats.cpuUsage = Math.floor(Math.random() * 30) + 30;
+        systemStats.memoryUsage = Math.floor(Math.random() * 20) + 50;
+      }, 5000) as unknown as number;
+    });
 
     onUnmounted(() => {
-      clearInterval(statsInterval)
-    })
+      clearInterval(statsInterval);
+    });
 
     return {
+      tokens,
       sidebarCollapsed,
       systemStats,
-      handleSidebarCollapse
-    }
-  }
-})
+      handleSidebarCollapse,
+    };
+  },
+});
 </script>
 
 <style lang="scss" scoped>
@@ -110,9 +132,7 @@ export default defineComponent({
   flex-direction: column;
   height: 100vh;
   max-height: 100vh;
-  background: var(--n-body-color);
   position: relative;
-  transition: background-color 0.3s ease;
   overflow: hidden;
 
   --header-height: 60px;
@@ -131,7 +151,6 @@ export default defineComponent({
 .workspace {
   width: calc(100% - 240px);
   transition: all 0.3s ease;
-  background: var(--n-body-color);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -147,7 +166,7 @@ export default defineComponent({
 
     > * {
       flex: 1;
-      overflow: hidden;
+      overflow-y: auto;
     }
   }
 
@@ -242,5 +261,15 @@ export default defineComponent({
 :deep(.n-layout-scroll-container) {
   height: 100%;
   overflow: auto;
+}
+
+/* Page transition */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
 }
 </style>

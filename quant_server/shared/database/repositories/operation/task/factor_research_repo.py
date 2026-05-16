@@ -568,7 +568,7 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 
 	async def cancel_pending_tasks (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			older_than_hours: int = 24
 	) -> RepositoryResult[int]:
 		"""

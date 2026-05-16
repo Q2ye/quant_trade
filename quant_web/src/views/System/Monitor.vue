@@ -1,73 +1,80 @@
 <!--系统监控-->
 <template>
-  <div class="system-monitor">
+  <div class="system-monitor bg-gradient-mesh bg-noise">
     <h2>系统监控</h2>
 
-    <el-row :gutter="20" class="monitor-row">
-      <el-col :span="8">
-        <el-card class="monitor-card">
-          <div slot="header" class="clearfix">
-            <span>连接状态</span>
-          </div>
-          <ConnectionStatus :connections="connections" />
-        </el-card>
-      </el-col>
+    <n-result
+      v-if="error"
+      status="500"
+      title="加载失败"
+      description="获取监控数据失败"
+      class="monitor-error"
+    >
+      <template #footer
+        ><n-button @click="refreshData">重试</n-button></template
+      >
+    </n-result>
 
-      <el-col :span="8">
-        <el-card class="monitor-card">
-          <div slot="header" class="clearfix">
-            <span>资源使用</span>
-          </div>
-          <ResourceUsage :resources="resources" />
-        </el-card>
-      </el-col>
+    <n-spin v-else :show="loading">
+      <n-grid
+        :x-gap="20"
+        :y-gap="20"
+        :cols="3"
+        responsive="screen"
+        class="monitor-grid"
+      >
+        <n-grid-item>
+          <n-card title="连接状态" class="monitor-card">
+            <ConnectionStatus :connections="connections" />
+          </n-card>
+        </n-grid-item>
 
-      <el-col :span="8">
-        <el-card class="monitor-card">
-          <div slot="header" class="clearfix">
-            <span>策略状态</span>
-          </div>
-          <StrategyStatus :strategies="runningStrategies" />
-        </el-card>
-      </el-col>
-    </el-row>
+        <n-grid-item>
+          <n-card title="资源使用" class="monitor-card">
+            <ResourceUsage :resources="resources" />
+          </n-card>
+        </n-grid-item>
 
-    <el-row :gutter="20" class="monitor-row">
-      <el-col :span="12">
-        <el-card class="monitor-card">
-          <div slot="header" class="clearfix">
-            <span>实时日志</span>
-            <el-button
-              style="float: right; padding: 3px 0"
-              type="text"
-              @click="clearLogs"
-            >
-              清空
-            </el-button>
-          </div>
-          <SystemLogs :logs="logs" />
-        </el-card>
-      </el-col>
+        <n-grid-item>
+          <n-card title="策略状态" class="monitor-card">
+            <StrategyStatus :strategies="runningStrategies" />
+          </n-card>
+        </n-grid-item>
+      </n-grid>
 
-      <el-col :span="12">
-        <el-card class="monitor-card">
-          <div slot="header" class="clearfix">
-            <span>性能指标</span>
-          </div>
-          <PerformanceMetrics :metrics="performanceMetrics" />
-        </el-card>
-      </el-col>
-    </el-row>
+      <n-grid
+        :x-gap="20"
+        :y-gap="20"
+        :cols="2"
+        responsive="screen"
+        class="monitor-grid"
+      >
+        <n-grid-item>
+          <n-card title="实时日志" class="monitor-card">
+            <template #header-extra>
+              <n-button text size="small" @click="clearLogs">清空</n-button>
+            </template>
+            <SystemLogs :logs="logs" />
+          </n-card>
+        </n-grid-item>
+
+        <n-grid-item>
+          <n-card title="性能指标" class="monitor-card">
+            <PerformanceMetrics :metrics="performanceMetrics" />
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+    </n-spin>
   </div>
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex'
-import ConnectionStatus from '@/components/system/ConnectionStatus.vue'
-import ResourceUsage from '@/components/system/ResourceUsage.vue'
-import StrategyStatus from '@/components/system/StrategyStatus.vue'
-import SystemLogs from '@/components/system/SystemLogs.vue'
-import PerformanceMetrics from '@/components/system/PerformanceMetrics.vue'
+import { mapState, mapActions } from "vuex";
+import ConnectionStatus from "@/components/system/ConnectionStatus.vue";
+import ResourceUsage from "@/components/system/ResourceUsage.vue";
+import StrategyStatus from "@/components/system/StrategyStatus.vue";
+import SystemLogs from "@/components/system/SystemLogs.vue";
+import PerformanceMetrics from "@/components/system/PerformanceMetrics.vue";
 
 export default {
   components: {
@@ -75,41 +82,55 @@ export default {
     ResourceUsage,
     StrategyStatus,
     SystemLogs,
-    PerformanceMetrics
+    PerformanceMetrics,
+  },
+
+  data() {
+    return {
+      loading: false,
+      error: false,
+    };
   },
 
   computed: {
-    ...mapState('system', [
-      'connections',
-      'resources',
-      'logs',
-      'performanceMetrics'
+    ...mapState("system", [
+      "connections",
+      "resources",
+      "logs",
+      "performanceMetrics",
     ]),
-    ...mapState('strategy', ['runningStrategies'])
+    ...mapState("strategy", ["runningStrategies"]),
   },
 
   methods: {
-    ...mapActions('system', ['clearLogs', 'startMonitoring']),
+    ...mapActions("system", ["clearLogs", "startMonitoring"]),
 
-    refreshData() {
-      this.startMonitoring()
-    }
+    async refreshData() {
+      this.loading = true;
+      this.error = false;
+      try {
+        await this.startMonitoring();
+        await this.$store.dispatch("strategy/fetchRunningStrategies");
+      } catch {
+        this.error = true;
+      } finally {
+        this.loading = false;
+      }
+    },
   },
 
-  mounted() {
-    this.startMonitoring()
-    this.$store.dispatch('strategy/fetchRunningStrategies')
+  async mounted() {
+    await this.refreshData();
 
-    // 每30秒刷新一次
     this.refreshInterval = setInterval(() => {
-      this.refreshData()
-    }, 30000)
+      this.refreshData();
+    }, 30000);
   },
 
   beforeDestroy() {
-    clearInterval(this.refreshInterval)
-  }
-}
+    clearInterval(this.refreshInterval);
+  },
+};
 </script>
 
 <style scoped>
@@ -117,7 +138,7 @@ export default {
   padding: 20px;
 }
 
-.monitor-row {
+.monitor-grid {
   margin-bottom: 20px;
 }
 

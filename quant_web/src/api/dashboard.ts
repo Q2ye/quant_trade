@@ -1,36 +1,28 @@
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   DashboardOverview,
   MarketStatus,
   DashboardOverviewResponse,
-  MarketStatusResponse
-} from '@/types'
-import {dashboardAPI} from "@/api/index";
+  MarketStatusResponse,
+} from "@/types";
 
 /**
  * 仪表盘API服务
- * 提供系统概览、市场状态、实时数据等仪表盘相关功能
+ * 聚合已有后端API：trade/account + trade/positions + trade/orders + analysis/equity-curve
  */
-export default {
-  /**
-   * 获取仪表盘概览数据
-   * @param token 用户token
-   * @returns 仪表盘概览信息
-   */
+const api = {
   async getDashboardOverview(token: string): Promise<DashboardOverview> {
-    return request.get('/dashboard/overview', {
-      params: { token }
-    }).then(handleResponse)
-      .then((data: DashboardOverviewResponse) => data.data)
+    return request
+      .get("/quantTrade/trade/account")
+      .then(handleResponse)
+      .then((data: DashboardOverviewResponse) => data.data);
   },
 
   /**
-   * 获取仪表盘完整数据（包含账户信息、持仓、信号等）
-   * @param token 用户token
-   * @returns 完整仪表盘数据
+   * 获取仪表盘完整数据 — 聚合 trade/account + positions + orders
    */
-  async getDashboardData(token?: string): Promise<{
+  async getDashboardData(): Promise<{
     accountInfo: {
       totalAsset: number;
       cash: number;
@@ -42,7 +34,7 @@ export default {
     recentSignals: Array<{
       name: string;
       symbol: string;
-      direction: 'buy' | 'sell';
+      direction: "buy" | "sell";
       price: number;
     }>;
     positions: Array<{
@@ -57,107 +49,157 @@ export default {
     todayTrades: Array<{
       time: string;
       symbol: string;
-      direction: 'buy' | 'sell';
+      direction: "buy" | "sell";
       price: number;
       volume: number;
       amount: number;
     }>;
   }> {
-    const params = token ? { token } : {};
-    return request.get('/dashboard/data', { params })
-      .then(handleResponse)
-      .then((data: any) => data.data)
+    const [accountRes, positionsRes, ordersRes] = await Promise.all([
+      request.get("/quantTrade/trade/account").then(handleResponse).catch(() => null),
+      request.get("/quantTrade/trade/positions").then(handleResponse).catch(() => null),
+      request.get("/quantTrade/trade/orders", { params: { limit: 20 } }).then(handleResponse).catch(() => null),
+    ]);
+
+    // Map account data
+    const acct = accountRes?.data ?? accountRes ?? {};
+    const accountInfo = {
+      totalAsset: acct.total_asset ?? acct.totalAsset ?? 0,
+      cash: acct.cash ?? acct.available_cash ?? 0,
+      dailyPnl: acct.daily_pnl ?? acct.dailyPnl ?? 0,
+      dailyReturn: acct.daily_return ?? acct.dailyReturn ?? 0,
+      positionsCount: acct.position_count ?? acct.positionsCount ?? 0,
+      activeStrategies: acct.active_strategies ?? acct.activeStrategies ?? 0,
+    };
+
+    // Map positions
+    const posList = positionsRes?.data?.items ?? positionsRes?.data ?? positionsRes?.items ?? [];
+    const positions = (Array.isArray(posList) ? posList : []).map((p: any) => ({
+      symbol: p.ts_code ?? p.symbol ?? "",
+      name: p.name ?? p.stock_name ?? "",
+      quantity: p.quantity ?? p.volume ?? 0,
+      price: p.current_price ?? p.price ?? 0,
+      cost: p.cost_price ?? p.avg_cost ?? 0,
+      pnl: p.unrealized_pnl ?? p.pnl ?? 0,
+      weight: p.weight ?? p.allocation ?? 0,
+    }));
+
+    // Map orders to todayTrades
+    const orderList = ordersRes?.data?.items ?? ordersRes?.data ?? ordersRes?.items ?? [];
+    const todayTrades = (Array.isArray(orderList) ? orderList : []).slice(0, 20).map((o: any) => ({
+      time: o.created_at ?? o.order_time ?? o.time ?? "",
+      symbol: o.ts_code ?? o.symbol ?? "",
+      direction: o.order_type ?? o.direction ?? "",
+      price: o.price ?? o.order_price ?? 0,
+      volume: o.quantity ?? o.volume ?? 0,
+      amount: o.amount ?? o.trade_amount ?? (o.price ?? 0) * (o.quantity ?? 0),
+    }));
+
+    return {
+      accountInfo,
+      recentSignals: [],
+      positions,
+      todayTrades,
+    };
   },
 
   /**
-   * 获取策略绩效图表数据
-   * @param range 时间范围 '1D' | '1W' | '1M' | '1Y'
-   * @param token 用户token
-   * @returns 图表数据
+   * 获取策略绩效图表数据 — 走 analysis/equity-curve
    */
-  async getPerformanceChart(range: string, token?: string): Promise<{
+  async getPerformanceChart(
+    range: string,
+  ): Promise<{
     dates: string[];
     strategyReturns: number[];
     benchmarkReturns: number[];
   }> {
-    const params: any = { range };
-    if (token) {
-      params.token = token;
-    }
-
-    return request.get('/dashboard/performance', { params })
+    return request
+      .get("/quantTrade/analysis/equity-curve", { params: { range } })
       .then(handleResponse)
-      .then((data: any) => data.data)
+      .then((data: any) => {
+        const d = data.data ?? data;
+        return {
+          dates: d.dates ?? [],
+          strategyReturns: d.strategy_returns ?? d.strategyReturns ?? [],
+          benchmarkReturns: d.benchmark_returns ?? d.benchmarkReturns ?? [],
+        };
+      });
   },
 
-  /**
-   * 获取市场状态信息
-   * @returns 各市场交易状态
-   */
   async getMarketStatus(): Promise<MarketStatus> {
-    return request.get('/dashboard/market-status')
+    return request
+      .get("/quantTrade/data/statistics")
       .then(handleResponse)
       .then((data: MarketStatusResponse) => data.data)
+      .catch(() => ({ status: "unknown", updateTime: "" } as MarketStatus));
   },
 
-  /**
-   * 获取实时资产变动
-   * @param token 用户token
-   * @returns 实时资产数据
-   */
-  async getRealtimeAssets(token: string): Promise<{
+  // 以下函数保留用于后续扩展
+  async getRealtimeAssets(): Promise<{
     total_asset: number;
     cash: number;
     market_value: number;
     daily_pnl: number;
     timestamp: string;
   }> {
-    return request.get('/dashboard/realtime-assets', {
-      params: { token }
-    }).then(handleResponse)
+    return request
+      .get("/quantTrade/trade/account")
+      .then(handleResponse)
+      .then((data: any) => {
+        const d = data.data ?? data;
+        return {
+          total_asset: d.total_asset ?? 0,
+          cash: d.cash ?? 0,
+          market_value: d.market_value ?? 0,
+          daily_pnl: d.daily_pnl ?? 0,
+          timestamp: d.updated_at ?? new Date().toISOString(),
+        };
+      });
   },
 
-  /**
-   * 获取策略运行状态
-   * @param token 用户token
-   * @returns 策略状态列表
-   */
-  async getStrategyStatus(token: string): Promise<Array<{
-    strategy_id: string;
-    strategy_name: string;
-    status: 'running' | 'stopped' | 'error';
-    pnl_today: number;
-    positions_count: number;
-  }>> {
-    return request.get('/dashboard/strategy-status', {
-      params: { token }
-    }).then(handleResponse)
-      .then((data: { strategies: any[] }) => data.strategies)
+  async getStrategyStatus(): Promise<
+    Array<{
+      strategy_id: string;
+      strategy_name: string;
+      status: "running" | "stopped" | "error";
+      pnl_today: number;
+      positions_count: number;
+    }>
+  > {
+    return request
+      .get("/quantTrade/strategy/status")
+      .then(handleResponse)
+      .then((data: any) => (data.strategies ?? data.data ?? []))
+      .catch(() => []);
   },
 
-  /**
-   * 获取最新交易信号
-   * @param token 用户token
-   * @param limit 数量限制
-   * @returns 最新信号列表
-   */
-  async getRecentSignals(token: string, limit: number = 10): Promise<Array<{
-    strategy_id: string;
-    symbol: string;
-    signal_type: string;
-    price: number;
-    timestamp: string;
-  }>> {
-    return request.get('/dashboard/recent-signals', {
-      params: { token, limit }
-    }).then(handleResponse)
-      .then((data: { signals: any[] }) => data.signals)
+  async getRecentSignals(
+    limit: number = 10,
+  ): Promise<
+    Array<{
+      strategy_id: string;
+      symbol: string;
+      signal_type: string;
+      price: number;
+      timestamp: string;
+    }>
+  > {
+    return request
+      .get("/quantTrade/trade/orders", { params: { limit } })
+      .then(handleResponse)
+      .then((data: any) => {
+        const items = data.data?.items ?? data.data ?? data.items ?? [];
+        return items.slice(0, limit).map((o: any) => ({
+          strategy_id: o.strategy_id ?? "",
+          symbol: o.ts_code ?? o.symbol ?? "",
+          signal_type: o.order_type ?? o.signal_type ?? "",
+          price: o.price ?? 0,
+          timestamp: o.created_at ?? o.timestamp ?? "",
+        }));
+      })
+      .catch(() => []);
   },
 
-  /**
-   * 获取系统监控数据
-   * @returns 系统监控指标
-   */
   async getSystemMetrics(): Promise<{
     cpu_usage: number;
     memory_usage: number;
@@ -165,15 +207,33 @@ export default {
     database_connections: number;
     active_users: number;
   }> {
-    return request.get('/dashboard/system-metrics')
+    return request
+      .get("/quantTrade/monitor/system/metrics")
       .then(handleResponse)
-      .then((data: { metrics: any }) => data.metrics)
-  }
-}
+      .then((data: any) => {
+        const m = data.metrics ?? data.data ?? data;
+        return {
+          cpu_usage: m.cpu_usage ?? 0,
+          memory_usage: m.memory_usage ?? 0,
+          disk_usage: m.disk_usage ?? 0,
+          database_connections: m.database_connections ?? 0,
+          active_users: m.active_users ?? 0,
+        };
+      })
+      .catch(() => ({
+        cpu_usage: 0,
+        memory_usage: 0,
+        disk_usage: 0,
+        database_connections: 0,
+        active_users: 0,
+      }));
+  },
+};
 
-// 命名导出，方便按需导入
+export default api;
+
 export const getDashboardData = (token?: string) =>
-  dashboardAPI.getDashboardData(token);
+  api.getDashboardData();
 
 export const getPerformanceChart = (range: string, token?: string) =>
-  dashboardAPI.getPerformanceChart(range, token);
+  api.getPerformanceChart(range);

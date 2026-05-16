@@ -77,280 +77,322 @@
     <!-- 缩放按钮 -->
     <div class="sidebar-toggle" @click="toggleCollapse">
       <!-- 使用 SmartIcon 组件 -->
-      <smart-icon 
-        :name="collapsed ? 'ChevronRight' : 'ChevronLeft'" 
-        size="16" 
-        class="toggle-icon" 
+      <smart-icon
+        :name="collapsed ? 'ChevronRight' : 'ChevronLeft'"
+        size="16"
+        class="toggle-icon"
       />
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, onMounted, h } from 'vue'
-import { useRoute, useRouter } from "vue-router"
-import { NMenu, NIcon } from 'naive-ui'
+import { defineComponent, ref, onMounted, h } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { NMenu, NIcon } from "naive-ui";
 // 导入 SmartIcon 组件
-import SmartIcon from '../common/SmartIcon.vue'
+import SmartIcon from "../common/SmartIcon.vue";
 
 export default defineComponent({
   name: "AppSidebar",
   components: {
     NMenu,
     NIcon,
-    SmartIcon // 注册 SmartIcon 组件
+    SmartIcon, // 注册 SmartIcon 组件
   },
   emits: ["collapse"],
   setup(_, { emit }) {
-    const route = useRoute()
-    const router = useRouter()
-    const activeMenu = ref("market")
-    const collapsed = ref(false)
+    const route = useRoute();
+    const router = useRouter();
+    const activeMenu = ref("market");
+    const collapsed = ref(false);
 
     // 菜单配置 - 使用 SmartIcon 组件
     const dataCenterOptions = [
       {
-        label: '市场概览',
-        key: 'market',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Grid' }) })
+        label: "市场概览",
+        key: "market",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Grid" }) }),
       },
       {
-        label: '同步概览',
-        key: 'data-sync-overview',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Sync' }) })
-      }
-    ]
+        label: "同步概览",
+        key: "data-sync-overview",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Sync" }) }),
+      },
+    ];
 
     const strategyCenterOptions = [
       {
-        label: '策略管理',
-        key: 'strategies',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Cube' }) })
+        label: "策略管理",
+        key: "strategies",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Cube" }) }),
       },
       {
-        label: '策略模板',
-        key: 'strategy-templates',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Copy' }) })
+        label: "策略模板",
+        key: "strategy-templates",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Copy" }) }),
       },
       {
-        label: '回测工作室',
-        key: 'backtest',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'TrendingUpOutline' }) })
+        label: "回测工作室",
+        key: "backtest",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "TrendingUpOutline" }),
+          }),
       },
       {
-        label: '因子研究',
-        key: 'research',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Flask' }) })
+        label: "因子研究",
+        key: "research",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Flask" }) }),
       },
       {
-        label: '因子库管理',
-        key: 'factor-library',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Options' }) })
+        label: "因子库管理",
+        key: "factor-library",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Options" }) }),
       },
       {
-        label: '回溯周期',
-        key: 'backtest-period',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Calendar' }) })
-      }
-    ]
+        label: "回溯周期",
+        key: "backtest-period",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Calendar" }) }),
+      },
+    ];
 
     const portfolioOptions = [
       {
-        label: '篮子管理',
-        key: 'baskets',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Basket' }) })
+        label: "篮子管理",
+        key: "baskets",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Basket" }) }),
       },
       {
-        label: '持仓管理',
-        key: 'positions',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'PieChart' }) })
+        label: "持仓管理",
+        key: "positions",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "PieChart" }) }),
       },
       {
-        label: '账户管理',
-        key: 'account',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'WalletOutline' }) })
+        label: "账户管理",
+        key: "account",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "WalletOutline" }),
+          }),
       },
       {
-        label: '组合分析',
-        key: 'portfolio-analysis',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'BarChart' }) })
-      }
-    ]
+        label: "组合分析",
+        key: "portfolio-analysis",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "BarChart" }) }),
+      },
+    ];
 
     const tradingOptions = [
       {
-        label: '交易驾驶舱',
-        key: 'trading',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Terminal' }) })
+        label: "交易驾驶舱",
+        key: "trading",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Terminal" }) }),
       },
       {
-        label: '订单管理',
-        key: 'orders',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'List' }) })
+        label: "订单管理",
+        key: "orders",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "List" }) }),
       },
       {
-        label: '信号监控',
-        key: 'signals',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Bell' }) })
+        label: "信号监控",
+        key: "signals",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Bell" }) }),
       },
       {
-        label: '执行分析',
-        key: 'execution-analysis',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Speedometer' }) })
-      }
-    ]
+        label: "执行分析",
+        key: "execution-analysis",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "Speedometer" }),
+          }),
+      },
+    ];
 
     const riskOptions = [
       {
-        label: '风控规则',
-        key: 'risk-rules',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'ShieldCheckmark' }) })
+        label: "风控规则",
+        key: "risk-rules",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "ShieldCheckmark" }),
+          }),
       },
       {
-        label: '实时监控',
-        key: 'risk-monitor',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Eye' }) })
+        label: "实时监控",
+        key: "risk-monitor",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Eye" }) }),
       },
       {
-        label: '事件查看',
-        key: 'risk-events',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'AlertCircle' }) })
+        label: "事件查看",
+        key: "risk-events",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "AlertCircle" }),
+          }),
       },
       {
-        label: '黑名单',
-        key: 'blacklist',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Ban' }) })
-      }
-    ]
+        label: "黑名单",
+        key: "blacklist",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Ban" }) }),
+      },
+    ];
 
     const performanceOptions = [
       {
-        label: '策略绩效',
-        key: 'strategy-performance',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Trophy' }) })
+        label: "策略绩效",
+        key: "strategy-performance",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Trophy" }) }),
       },
       {
-        label: '账户绩效',
-        key: 'account-performance',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'AnalyticsOutline' }) })
+        label: "账户绩效",
+        key: "account-performance",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "AnalyticsOutline" }),
+          }),
       },
       {
-        label: '绩效对比',
-        key: 'performance-comparison',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Scale' }) })
+        label: "绩效对比",
+        key: "performance-comparison",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Scale" }) }),
       },
       {
-        label: '归因分析',
-        key: 'attribution',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Puzzle' }) })
-      }
-    ]
+        label: "归因分析",
+        key: "attribution",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Puzzle" }) }),
+      },
+    ];
 
     const systemOptions = [
       {
-        label: '系统监控',
-        key: 'system-monitor',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Desktop' }) })
+        label: "系统监控",
+        key: "system-monitor",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Desktop" }) }),
       },
       {
-        label: '日志查看',
-        key: 'logs',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'DocumentText' }) })
+        label: "日志查看",
+        key: "logs",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "DocumentText" }),
+          }),
       },
       {
-        label: '用户管理',
-        key: 'users',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'People' }) })
+        label: "用户管理",
+        key: "users",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "People" }) }),
       },
       {
-        label: '系统设置',
-        key: 'settings',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Settings' }) })
-      }
-    ]
+        label: "系统设置",
+        key: "settings",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Settings" }) }),
+      },
+    ];
 
     const handleMenuSelect = (key) => {
-      activeMenu.value = key
+      activeMenu.value = key;
       const routeMap = {
-        'market': '/market/overview',
-        'data-sync-overview': '/events-sync-overview',
-        'strategies': '/strategies',
-        'strategy-templates': '/strategies/templates',
-        'backtest': '/strategies/events',
-        'research': '/strategies/factor-research',
-        'factor-library': '/strategies/factor-library',
-        'backtest-period': '/strategies/events-period',
-        'baskets': '/baskets',
-        'positions': '/trading/positions',
-        'account': '/trading/events',
-        'portfolio-analysis': '/portfolio/events',
-        'trading': '/trading',
-        'orders': '/trading/orders',
-        'signals': '/signals',
-        'execution-analysis': '/trading/execution-events',
-        'risk-rules': '/risk/rules',
-        'risk-monitor': '/risk/events',
-        'risk-events': '/risk/events',
-        'blacklist': '/risk/blacklist',
-        'strategy-performance': '/performance/events',
-        'account-performance': '/performance/events',
-        'performance-comparison': '/performance/comparison',
-        'attribution': '/performance/attribution',
-        'system-monitor': '/events/events',
-        'logs': '/events/logs',
-        'users': '/events/users',
-        'settings': '/events/settings'
-      }
+        market: "/market/overview",
+        "data-sync-overview": "/data/sync/overview",
+        strategies: "/strategies",
+        "strategy-templates": "/strategies/templates",
+        backtest: "/backtest/studio",
+        research: "/research/factor-research",
+        "factor-library": "/research/factor-library",
+        "backtest-period": "/research/backtest-period",
+        baskets: "/baskets",
+        positions: "/trade/positions",
+        account: "/account",
+        "portfolio-analysis": "/portfolio/analysis",
+        trading: "/trade",
+        orders: "/trade/orders",
+        signals: "/signals",
+        "execution-analysis": "/trade/execution",
+        "risk-rules": "/risk/rules",
+        "risk-monitor": "/risk/monitor",
+        "risk-events": "/risk/events",
+        blacklist: "/risk/blacklist",
+        "strategy-performance": "/performance/strategy",
+        "account-performance": "/performance/account",
+        "performance-comparison": "/performance/comparison",
+        attribution: "/performance/attribution",
+        "system-monitor": "/system/monitor",
+        logs: "/system/logs",
+        users: "/system/users",
+        settings: "/system/settings",
+      };
 
       if (routeMap[key]) {
-        router.push(routeMap[key])
+        router.push(routeMap[key]);
       }
-    }
+    };
 
     const toggleCollapse = () => {
-      collapsed.value = !collapsed.value
-      emit("collapse", collapsed.value)
-    }
+      collapsed.value = !collapsed.value;
+      emit("collapse", collapsed.value);
+    };
 
     onMounted(() => {
       // 根据当前路由设置活动菜单
-      const path = route.path
+      const path = route.path;
       for (const [key, value] of Object.entries({
-        'market': '/market/overview',
-        'data-sync-overview': '/events-sync-overview',
-        'strategies': '/strategies',
-        'strategy-templates': '/strategies/templates',
-        'backtest': '/strategies/events',
-        'research': '/strategies/factor-research',
-        'factor-library': '/strategies/factor-library',
-        'backtest-period': '/strategies/events-period',
-        'baskets': '/baskets',
-        'positions': '/trading/positions',
-        'account': '/trading/events',
-        'portfolio-analysis': '/portfolio/events',
-        'trading': '/trading',
-        'orders': '/trading/orders',
-        'signals': '/signals',
-        'execution-analysis': '/trading/execution-events',
-        'risk-rules': '/risk/rules',
-        'risk-monitor': '/risk/events',
-        'risk-events': '/risk/events',
-        'blacklist': '/risk/blacklist',
-        'strategy-performance': '/performance/events',
-        'account-performance': '/performance/events',
-        'performance-comparison': '/performance/comparison',
-        'attribution': '/performance/attribution',
-        'system-monitor': '/events/events',
-        'logs': '/events/logs',
-        'users': '/events/users',
-        'settings': '/events/settings'
+        market: "/market/overview",
+        "data-sync-overview": "/data/sync/overview",
+        strategies: "/strategies",
+        "strategy-templates": "/strategies/templates",
+        backtest: "/backtest/studio",
+        research: "/research/factor-research",
+        "factor-library": "/research/factor-library",
+        "backtest-period": "/research/backtest-period",
+        baskets: "/baskets",
+        positions: "/trade/positions",
+        account: "/account",
+        "portfolio-analysis": "/portfolio/analysis",
+        trading: "/trade",
+        orders: "/trade/orders",
+        signals: "/signals",
+        "execution-analysis": "/trade/execution",
+        "risk-rules": "/risk/rules",
+        "risk-monitor": "/risk/monitor",
+        "risk-events": "/risk/events",
+        blacklist: "/risk/blacklist",
+        "strategy-performance": "/performance/strategy",
+        "account-performance": "/performance/account",
+        "performance-comparison": "/performance/comparison",
+        attribution: "/performance/attribution",
+        "system-monitor": "/system/monitor",
+        logs: "/system/logs",
+        users: "/system/users",
+        settings: "/system/settings",
       })) {
         if (path.startsWith(value)) {
-          activeMenu.value = key
-          break
+          activeMenu.value = key;
+          break;
         }
       }
-    })
+    });
 
     return {
       activeMenu,
@@ -363,10 +405,10 @@ export default defineComponent({
       performanceOptions,
       systemOptions,
       handleMenuSelect,
-      toggleCollapse
-    }
+      toggleCollapse,
+    };
   },
-})
+});
 </script>
 
 <style lang="scss" scoped>

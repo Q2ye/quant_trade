@@ -152,14 +152,14 @@ def create_app (
 
 	# 注册路由（仅注册已启用的模块路由）
 	_module_routers = {
-		"data": (data_router, "/api/data"),
-		"strategy": (strategy_router, "/api/strategy"),
-		"trade": (trade_router, "/api/trade"),
-		"backtest": (backtest_router, "/api/backtest"),
-		"account": (account_router, "/api/account"),
-		"analysis": (analysis_router, "/api/analysis"),
-		"monitor": (monitor_router, "/api/monitor"),
-		"system": (system_router, "/api/system"),
+		"data": (data_router, "/quantTrade/data"),
+		"strategy": (strategy_router, "/quantTrade/strategy"),
+		"trade": (trade_router, "/quantTrade/trade"),
+		"backtest": (backtest_router, "/quantTrade/backtest"),
+		"account": (account_router, "/quantTrade/account"),
+		"analysis": (analysis_router, "/quantTrade/analysis"),
+		"monitor": (monitor_router, "/quantTrade/monitor"),
+		"system": (system_router, "/quantTrade/system"),
 	}
 	for module_name, (router, prefix) in _module_routers.items():
 		if module_name in enabled_modules:

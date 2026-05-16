@@ -1,17 +1,17 @@
 // 根状态类型定义
 // 整合所有模块状态，构成完整的应用状态树
 
-import { UserState } from '@/types';
-import { StrategyState } from '@/types';
-import { BasketState } from '@/types';
-import { TradeState } from '@/types';
-import { DataState } from '@/types';
-import { SystemState } from '@/types';
-import { LayoutState } from '@/types';
-import { DashboardState } from '@/types';
-import { PerformanceState } from '@/types';
-import { RiskState } from '@/types';
-import { StrategyStudioState } from '@/types';
+import { UserState } from "@/types";
+import { StrategyState } from "@/types";
+import { BasketState } from "@/types";
+import { TradeState } from "@/types";
+import { DataState } from "@/types";
+import { SystemState } from "@/types";
+import { LayoutState } from "@/types";
+import { DashboardState } from "@/types";
+import { PerformanceState } from "@/types";
+import { RiskState } from "@/types";
+import { StrategyStudioState } from "@/types";
 
 /**
  * 应用根状态接口
@@ -107,18 +107,18 @@ export function createInitialState(): RootState {
       loading: {
         login: false,
         logout: false,
-        profile: false
+        profile: false,
       },
       error: {
         login: null,
         register: null,
-        profile: null
+        profile: null,
       },
       session: {
         rememberMe: false,
         autoLogin: false,
-        sessionTimeout: 120 // 默认2小时
-      }
+        sessionTimeout: 120, // 默认2小时
+      },
     },
     strategy: {
       strategyList: [],
@@ -128,13 +128,13 @@ export function createInitialState(): RootState {
       parameterEditing: {
         currentParameters: {},
         originalParameters: {},
-        hasChanges: false
+        hasChanges: false,
       },
       codeEditing: {
-        currentCode: '',
-        originalCode: '',
+        currentCode: "",
+        originalCode: "",
         hasChanges: false,
-        syntaxErrors: []
+        syntaxErrors: [],
       },
       loading: {
         list: false,
@@ -144,7 +144,7 @@ export function createInitialState(): RootState {
         update: false,
         delete: false,
         start: false,
-        stop: false
+        stop: false,
       },
       error: {
         list: null,
@@ -152,8 +152,8 @@ export function createInitialState(): RootState {
         create: null,
         update: null,
         delete: null,
-        operation: null
-      }
+        operation: null,
+      },
     },
     basket: {
       currentBasketId: null,
@@ -166,46 +166,46 @@ export function createInitialState(): RootState {
         items: false,
         create: false,
         update: false,
-        delete: false
+        delete: false,
       },
       error: {
         list: null,
         detail: null,
         create: null,
         update: null,
-        delete: null
+        delete: null,
       },
       pagination: {
         page: 1,
         pageSize: 20,
-        total: 0
+        total: 0,
       },
       filters: {
-        keyword: '',
-        sortField: 'createdAt',
-        sortOrder: 'desc'
-      }
+        keyword: "",
+        sortField: "createdAt",
+        sortOrder: "desc",
+      },
     },
     trade: {
       account: {
         info: {
-          accountId: '',
-          broker: '',
-          type: '',
-          status: ''
+          accountId: "",
+          broker: "",
+          type: "",
+          status: "",
         },
         capital: {
           totalAssets: 0,
           netAssets: 0,
           availableCash: 0,
           frozenCash: 0,
-          marketValue: 0
+          marketValue: 0,
         },
         today: {
           pnl: 0,
           commission: 0,
-          tradeCount: 0
-        }
+          tradeCount: 0,
+        },
       },
       positions: {
         list: [],
@@ -213,8 +213,8 @@ export function createInitialState(): RootState {
           totalValue: 0,
           totalPnl: 0,
           positionCount: 0,
-          concentration: 0
-        }
+          concentration: 0,
+        },
       },
       orders: {
         current: [],
@@ -222,34 +222,34 @@ export function createInitialState(): RootState {
         statistics: {
           todayOrders: 0,
           todayTrades: 0,
-          successRate: 0
-        }
+          successRate: 0,
+        },
       },
       trades: {
-        list: []
+        list: [],
       },
       tradingCockpit: {
         quickTrade: {
-          symbol: '',
-          direction: 'buy',
-          priceType: 'limit',
+          symbol: "",
+          direction: "buy",
+          priceType: "limit",
           price: 0,
           volume: 0,
-          amount: 0
+          amount: 0,
         },
         chartTrading: {
-          selectedSymbol: '',
-          chartType: 'kline',
-          indicators: []
-        }
+          selectedSymbol: "",
+          chartType: "kline",
+          indicators: [],
+        },
       },
       loading: {
         account: false,
         positions: false,
         orders: false,
         trades: false,
-        trading: false
-      }
+        trading: false,
+      },
     },
     data: {
       syncTasks: {
@@ -257,33 +257,33 @@ export function createInitialState(): RootState {
         statistics: {
           lastSyncTime: null,
           totalSynced: 0,
-          successRate: 0
-        }
+          successRate: 0,
+        },
       },
       marketData: {
         subscriptions: [],
-        cache: new Map()
+        cache: new Map(),
       },
       financialData: {
         loadedData: new Map(),
-        updateTime: null
+        updateTime: null,
       },
       dataQuality: {
         completeness: {
           daily: 0,
           minute: 0,
-          financial: 0
+          financial: 0,
         },
         latency: {
           marketData: 0,
-          financialData: 0
-        }
+          financialData: 0,
+        },
       },
       loading: {
         syncTasks: false,
         marketData: false,
-        financialData: false
-      }
+        financialData: false,
+      },
     },
     system: {
       systemConfig: {
@@ -291,41 +291,41 @@ export function createInitialState(): RootState {
           defaultCommission: 0.0003,
           defaultSlippage: 0.001,
           tradeConfirm: true,
-          autoCancelTimeout: 300
+          autoCancelTimeout: 300,
         },
         risk: {
           maxPositionRatio: 0.2,
           maxDailyLoss: 0.05,
-          enableBlacklist: true
+          enableBlacklist: true,
         },
         data: {
           autoSync: true,
           syncInterval: 300,
-          keepHistoryDays: 365
+          keepHistoryDays: 365,
         },
         notification: {
           enableEmail: false,
           enableWechat: true,
-          criticalAlerts: true
-        }
+          criticalAlerts: true,
+        },
       },
       userManagement: {
         users: [],
-        editingUser: null
+        editingUser: null,
       },
       systemMonitor: {
         resources: {
           cpuUsage: 0,
           memoryUsage: 0,
           diskUsage: 0,
-          networkUsage: 0
+          networkUsage: 0,
         },
         services: [],
         database: {
           connections: 0,
           queryPerformance: 0,
-          size: 0
-        }
+          size: 0,
+        },
       },
       systemLogs: {
         logs: [],
@@ -333,88 +333,88 @@ export function createInitialState(): RootState {
           level: [],
           module: [],
           dateRange: {
-            start: '',
-            end: ''
+            start: "",
+            end: "",
           },
-          keyword: ''
+          keyword: "",
         },
         pagination: {
           page: 1,
           pageSize: 50,
-          total: 0
-        }
+          total: 0,
+        },
       },
       loading: {
         config: false,
         users: false,
         monitor: false,
-        logs: false
-      }
+        logs: false,
+      },
     },
     layout: {
       topNavigation: {
-        logo: '',
-        platformName: '量化交易系统',
+        logo: "",
+        platformName: "量化交易系统",
         marketIndicators: [],
         search: {
-          placeholder: '搜索股票、策略...',
+          placeholder: "搜索股票、策略...",
           recentSearches: [],
-          hotSearches: []
+          hotSearches: [],
         },
         notifications: [],
         user: null,
         systemStatus: {
           connected: false,
-          status: 'unknown',
-          message: ''
-        }
+          status: "unknown",
+          message: "",
+        },
       },
       siderNavigation: {
         collapsed: false,
-        activeKey: '',
+        activeKey: "",
         openKeys: [],
-        menuItems: []
+        menuItems: [],
       },
       mainWorkspace: {
         tabs: [],
-        activeTab: '',
-        tabHistory: []
+        activeTab: "",
+        tabHistory: [],
       },
       rightPanel: {
         collapsed: false,
         alerts: [],
         watchlist: [],
-        quickActions: []
+        quickActions: [],
       },
-      theme: 'light',
-      language: 'zh-CN',
+      theme: "light",
+      language: "zh-CN",
       sidebar: {
         collapsed: false,
         width: 200,
-        collapsedWidth: 64
+        collapsedWidth: 64,
       },
       header: {
         height: 60,
         fixed: true,
-        showBreadcrumb: true
+        showBreadcrumb: true,
       },
       tabs: {
         enabled: true,
         list: [],
-        activeTab: ''
+        activeTab: "",
       },
-      layoutMode: 'sidemenu',
+      layoutMode: "sidemenu",
       content: {
         padding: 20,
-        backgroundColor: '#ffffff'
+        backgroundColor: "#ffffff",
       },
       settings: {
         showSettings: false,
         fixedHeader: true,
         showTagsView: true,
         showSidebarLogo: true,
-        showFooter: true
-      }
+        showFooter: true,
+      },
     },
     dashboard: {
       dashboardData: {
@@ -427,7 +427,7 @@ export function createInitialState(): RootState {
         riskMatrix: {
           positionDistribution: [],
           industryExposure: [],
-          var: 0
+          var: 0,
         },
         realTimeSignals: [],
         marketSentiment: {
@@ -436,14 +436,14 @@ export function createInitialState(): RootState {
           unchanged: 0,
           volume: 0,
           northbound: 0,
-          marketHeat: 0
+          marketHeat: 0,
         },
         positions: [],
-        todayTrades: []
+        todayTrades: [],
       },
       realTimeUpdates: [],
       loading: false,
-      lastUpdate: ''
+      lastUpdate: "",
     },
     performance: {
       // 修复：使用正确的PerformanceState结构
@@ -454,84 +454,84 @@ export function createInitialState(): RootState {
       loading: {
         account: false,
         strategy: false,
-        comparison: false
+        comparison: false,
       },
       // 修复：使用正确的属性名
       tlist: [],
       currentStrategy: {
         id: null,
         detail: {},
-        tradeRecords: []
-      }
+        tradeRecords: [],
+      },
     },
     risk: {
       riskRules: {
         rules: [],
-        editingRule: null
+        editingRule: null,
       },
       realTimeMonitoring: {
         accountRisk: {
           totalRisk: 0,
           positionRisk: 0,
           concentrationRisk: 0,
-          liquidityRisk: 0
+          liquidityRisk: 0,
         },
         strategyRisks: new Map(),
         marketRisk: {
           volatility: 0,
           correlation: 0,
-          sentiment: 0
-        }
+          sentiment: 0,
+        },
       },
       riskEvents: {
         events: [],
         statistics: {
           today: 0,
           critical: 0,
-          unresolved: 0
-        }
+          unresolved: 0,
+        },
       },
       blacklist: {
-        stocks: []
+        stocks: [],
       },
       riskReports: {
         daily: null,
         weekly: null,
-        monthly: null
+        monthly: null,
       },
       loading: {
         rules: false,
         monitoring: false,
         events: false,
-        blacklist: false
-      }
+        blacklist: false,
+      },
     },
     strategyStudio: {
       backtestConfig: {
         basic: {
-          strategyId: '',
-          name: '',
-          description: ''
+          strategyId: "",
+          name: "",
+          description: "",
         },
         timeRange: {
-          startDate: '',
-          endDate: '',
-          frequency: 'daily'
+          startDate: "",
+          endDate: "",
+          frequency: "daily",
         },
         capital: {
           initial: 1000000,
           commission: 0.0003,
-          slippage: 0.001
+          slippage: 0.001,
         },
         universe: {
-          type: 'single',
+          type: "single",
           symbols: [],
-          basketId: null
-        }
+          basketId: null,
+        },
       },
       backtestTasks: {
         tasks: [],
-        currentTaskId: null
+        currentTaskId: null,
       },
       backtestResults: {
         performance: null,
@@ -541,34 +541,34 @@ export function createInitialState(): RootState {
         viewConfig: {
           selectedCharts: [],
           timeRange: {},
-          comparisonBenchmark: null
-        }
+          comparisonBenchmark: null,
+        },
       },
       parameterOptimization: {
         config: {
           parameters: new Map(),
-          objective: 'sharpe',
-          method: 'grid'
+          objective: "sharpe",
+          method: "grid",
         },
         results: {
           bestParameters: null,
           parameterSpace: [],
-          convergence: []
-        }
+          convergence: [],
+        },
       },
       factorResearch: {
         factors: [],
         researchResults: {
           icAnalysis: null,
           factorReturns: null,
-          correlation: null
-        }
+          correlation: null,
+        },
       },
       loading: {
         backtest: false,
         optimization: false,
-        research: false
-      }
-    }
+        research: false,
+      },
+    },
   };
 }

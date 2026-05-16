@@ -1,217 +1,238 @@
 <template>
-  <el-dialog
-      :title="`交易确认 - ${currentSignal.symbol} ${currentSignal.name}`"
-      :visible.sync="visible"
-      width="500px"
-      @close="resetForm"
+  <NModal
+    v-model:show="visible"
+    preset="card"
+    :title="`交易确认 - ${currentSignal.symbol} ${currentSignal.name}`"
+    style="width: 500px"
+    @close="resetForm"
   >
-    <el-form :model="form" label-width="80px" :rules="rules" ref="tradeForm">
-      <el-form-item label="交易方向">
-        <el-radio-group v-model="form.direction">
-          <el-radio-button label="BUY">买入</el-radio-button>
-          <el-radio-button label="SELL">卖出</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
+    <NForm
+      ref="tradeFormRef"
+      :model="form"
+      :rules="rules"
+      label-placement="left"
+      label-width="80px"
+    >
+      <NFormItem label="交易方向">
+        <NRadioGroup v-model:value="form.direction">
+          <NRadioButton value="BUY">买入</NRadioButton>
+          <NRadioButton value="SELL">卖出</NRadioButton>
+        </NRadioGroup>
+      </NFormItem>
 
-      <el-form-item label="价格类型">
-        <el-radio-group v-model="form.priceType">
-          <el-radio-button label="LIMIT">限价</el-radio-button>
-          <el-radio-button label="MARKET">市价</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
+      <NFormItem label="价格类型">
+        <NRadioGroup v-model:value="form.priceType">
+          <NRadioButton value="LIMIT">限价</NRadioButton>
+          <NRadioButton value="MARKET">市价</NRadioButton>
+        </NRadioGroup>
+      </NFormItem>
 
-      <el-form-item label="委托价格" prop="price" v-if="form.priceType === 'LIMIT'">
-        <el-input-number
-            v-model="form.price"
-            :precision="2"
-            :step="0.01"
-            :min="0.01"
-            controls-position="right"
-        ></el-input-number>
+      <NFormItem
+        v-if="form.priceType === 'LIMIT'"
+        label="委托价格"
+        path="price"
+      >
+        <NInputNumber
+          v-model:value="form.price"
+          :decimal-places="2"
+          :step="0.01"
+          :min="0.01"
+        />
         <span class="price-tips">
           最新价: {{ currentSignal.lastPrice }}
           <span :class="currentSignal.change >= 0 ? 'up' : 'down'">
-            ({{ currentSignal.change >= 0 ? '+' : '' }}{{ currentSignal.change }}%)
+            ({{ currentSignal.change >= 0 ? "+" : ""
+            }}{{ currentSignal.change }}%)
           </span>
         </span>
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="委托数量" prop="quantity">
-        <el-input-number
-            v-model="form.quantity"
-            :min="100"
-            :step="100"
-            controls-position="right"
-        ></el-input-number>
+      <NFormItem label="委托数量" path="quantity">
+        <NInputNumber v-model:value="form.quantity" :min="100" :step="100" />
         <span class="quantity-tips">
-          可{{ form.direction === 'BUY' ? '买' : '卖' }}:
-          {{ form.direction === 'BUY' ? availableCash : currentSignal.availableShares }}股
+          可{{ form.direction === "BUY" ? "买" : "卖" }}:
+          {{
+            form.direction === "BUY"
+              ? availableCash
+              : currentSignal.availableShares
+          }}股
         </span>
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="总金额">
+      <NFormItem label="总金额">
         <span class="total-amount">
           {{
-            (form.price * form.quantity).toLocaleString('zh-CN', {
-              style: 'currency',
-              currency: 'CNY',
-              minimumFractionDigits: 2
+            (form.price * form.quantity).toLocaleString("zh-CN", {
+              style: "currency",
+              currency: "CNY",
+              minimumFractionDigits: 2,
             })
           }}
         </span>
-      </el-form-item>
+      </NFormItem>
 
-      <el-form-item label="交易账户">
-        <el-select v-model="form.account" placeholder="选择交易账户">
-          <el-option
-              v-for="acc in accounts"
-              :key="acc.id"
-              :label="`${acc.name} (${acc.broker})`"
-              :value="acc.id"
-          ></el-option>
-        </el-select>
-      </el-form-item>
-    </el-form>
+      <NFormItem label="交易账户" path="account">
+        <NSelect
+          v-model:value="form.account"
+          :options="accountOptions"
+          placeholder="选择交易账户"
+        />
+      </NFormItem>
+    </NForm>
 
-    <div slot="footer" class="dialog-footer">
-      <el-button @click="visible = false">取 消</el-button>
-      <el-button type="primary" @click="submitForm" :loading="submitting">确 定</el-button>
-    </div>
-  </el-dialog>
+    <template #footer>
+      <div class="dialog-footer">
+        <NButton @click="visible = false">取消</NButton>
+        <NButton type="primary" :loading="submitting" @click="submitForm"
+          >确定</NButton
+        >
+      </div>
+    </template>
+  </NModal>
 </template>
 
-<script>
-import {ref, reactive, watch} from 'vue';
+<script setup lang="ts">
+import { ref, reactive, watch, computed } from "vue";
+import {
+  NModal,
+  NForm,
+  NFormItem,
+  NRadioGroup,
+  NRadioButton,
+  NInputNumber,
+  NSelect,
+  NButton,
+} from "naive-ui";
+import type { FormRules, FormInst } from "naive-ui";
 
-export default {
-  name: "TradeForm",
-  props: {
-    signal: {
-      type: Object,
-      default: () => ({
-        symbol: '',
-        name: '',
-        lastPrice: 0,
-        change: 0,
-        availableShares: 0,
-        recommendation: 'BUY' // 确保默认值包含recommendation
-      })
-    },
-    accounts: {
-      type: Array,
-      default: () => []
+interface Signal {
+  symbol: string;
+  name: string;
+  lastPrice: number;
+  change: number;
+  availableShares: number;
+  recommendation: string;
+}
+
+interface Account {
+  id: string;
+  name: string;
+  broker: string;
+}
+
+const props = withDefaults(
+  defineProps<{
+    signal?: Signal | null;
+    accounts?: Account[];
+  }>(),
+  {
+    signal: null,
+    accounts: () => [],
+  },
+);
+
+const emit = defineEmits<{
+  submit: [data: any];
+}>();
+
+const visible = ref(false);
+const tradeFormRef = ref<FormInst | null>(null);
+const submitting = ref(false);
+const availableCash = ref(100000);
+
+const currentSignal = ref<Signal>({
+  symbol: "",
+  name: "",
+  lastPrice: 0,
+  change: 0,
+  availableShares: 0,
+  recommendation: "BUY",
+});
+
+const form = reactive({
+  direction: "BUY",
+  priceType: "LIMIT",
+  price: 0,
+  quantity: 100,
+  account: "",
+});
+
+const accountOptions = computed(() =>
+  props.accounts.map((acc) => ({
+    label: `${acc.name} (${acc.broker})`,
+    value: acc.id,
+  })),
+);
+
+const rules: FormRules = {
+  price: [
+    { required: true, message: "请输入委托价格", trigger: "blur" },
+    { type: "number", min: 0.01, message: "价格必须大于0", trigger: "blur" },
+  ],
+  quantity: [
+    { required: true, message: "请输入委托数量", trigger: "blur" },
+    { type: "number", min: 100, message: "最小交易100股", trigger: "blur" },
+  ],
+  account: [{ required: true, message: "请选择交易账户", trigger: "change" }],
+};
+
+watch(
+  () => props.signal,
+  (newVal) => {
+    if (newVal && newVal.symbol) {
+      currentSignal.value = {
+        symbol: newVal.symbol || "",
+        name: newVal.name || "",
+        lastPrice: newVal.lastPrice || 0,
+        change: newVal.change || 0,
+        availableShares: newVal.availableShares || 0,
+        recommendation: newVal.recommendation || "BUY",
+      };
+      form.price = newVal.lastPrice;
+      form.direction = newVal.recommendation === "BUY" ? "BUY" : "SELL";
+      visible.value = true;
     }
   },
+);
 
-  setup(props, {emit}) {
-    const visible = ref(false);
-    const tradeForm = ref(null);
-    const submitting = ref(false);
+const resetForm = () => {
+  tradeFormRef.value?.restoreValidation();
+  form.price = 0;
+  form.quantity = 100;
+  currentSignal.value = {
+    symbol: "",
+    name: "",
+    lastPrice: 0,
+    change: 0,
+    availableShares: 0,
+    recommendation: "BUY",
+  };
+};
 
-    const currentSignal = ref({
-      symbol: '',
-      name: '',
-      lastPrice: 0,
-      change: 0,
-      availableShares: 0,
-      recommendation: 'BUY' // 修复：添加缺失的属性
-    });
-
-    const availableCash = ref(100000);
-
-    const form = reactive({
-      direction: 'BUY',
-      priceType: 'LIMIT',
-      price: 0,
-      quantity: 100,
-      account: ''
-    });
-
-    const rules = {
-      price: [
-        {required: true, message: '请输入委托价格', trigger: 'blur'},
-        {type: 'number', min: 0.01, message: '价格必须大于0', trigger: 'blur'}
-      ],
-      quantity: [
-        {required: true, message: '请输入委托数量', trigger: 'blur'},
-        {type: 'number', min: 100, message: '最小交易100股', trigger: 'blur'}
-      ],
-      account: [
-        {required: true, message: '请选择交易账户', trigger: 'change'}
-      ]
-    };
-
-    watch(() => props.signal, (newVal) => {
-      if (newVal && newVal.symbol) {
-        currentSignal.value = {
-          symbol: newVal.symbol || '',
-          name: newVal.name || '',
-          lastPrice: newVal.lastPrice || 0,
-          change: newVal.change || 0,
-          availableShares: newVal.availableShares || 0,
-          recommendation: newVal.recommendation || 'BUY' // 确保赋值
-        };
-        form.price = newVal.lastPrice;
-        form.direction = newVal.recommendation === 'BUY' ? 'BUY' : 'SELL';
-        visible.value = true;
-      }
-    });
-
-    const resetForm = () => {
-      if (tradeForm.value) {
-        tradeForm.value.resetFields();
-      }
-      form.price = 0;
-      form.quantity = 100;
-      currentSignal.value = {
-        symbol: '',
-        name: '',
-        lastPrice: 0,
-        change: 0,
-        availableShares: 0,
-        recommendation: 'BUY' // 重置时也包含属性
-      };
-    };
-
-    const submitForm = () => {
-      tradeForm.value.validate((valid) => {
-        if (valid) {
-          submitting.value = true;
-
-          // 模拟API请求
-          setTimeout(() => {
-            emit('submit', {
-              ...form,
-              symbol: currentSignal.value.symbol,
-              name: currentSignal.value.name
-            });
-            submitting.value = false;
-            visible.value = false;
-          }, 800);
-        }
-      });
-    };
-
-    return {
-      visible,
-      currentSignal,
-      availableCash,
-      form,
-      rules,
-      tradeForm,
-      submitting,
-      resetForm,
-      submitForm
-    };
-  }
-}
+const submitForm = () => {
+  tradeFormRef.value?.validate((errors) => {
+    if (!errors) {
+      submitting.value = true;
+      setTimeout(() => {
+        emit("submit", {
+          ...form,
+          symbol: currentSignal.value.symbol,
+          name: currentSignal.value.name,
+        });
+        submitting.value = false;
+        visible.value = false;
+      }, 800);
+    }
+  });
+};
 </script>
 
 <style scoped>
-.price-tips, .quantity-tips {
+.price-tips,
+.quantity-tips {
   margin-left: 10px;
   font-size: 12px;
-  color: #909399;
+  color: var(--n-text-color-3);
 }
 
 .total-amount {
@@ -223,7 +244,6 @@ export default {
 .up {
   color: #f56c6c;
 }
-
 .down {
   color: #5cb87a;
 }

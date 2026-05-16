@@ -1,10 +1,6 @@
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
-import {
-  StrategySignal,
-  ApiResponse,
-  PaginatedResponse
-} from '@/types/api'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
+import { StrategySignal, ApiResponse, PaginatedResponse } from "@/types/api";
 
 /**
  * 信号管理API服务
@@ -14,7 +10,7 @@ import {
 export interface SignalQueryParams {
   strategy_id?: string;
   symbol?: string;
-  signal_type?: 'buy' | 'sell' | 'hold';
+  signal_type?: "buy" | "sell" | "hold";
   start_time?: string;
   end_time?: string;
   page?: number;
@@ -29,7 +25,7 @@ export interface SignalStrength {
   hold_signals: number;
   total_signals: number;
   strength_score: number;
-  trend_direction: 'bullish' | 'bearish' | 'neutral';
+  trend_direction: "bullish" | "bearish" | "neutral";
 }
 
 export interface SignalAnalysis {
@@ -47,10 +43,13 @@ export default {
    * @param params 查询参数
    * @returns 信号分页结果
    */
-  async getSignals(params?: SignalQueryParams): Promise<PaginatedResponse<StrategySignal>> {
-    return request.get('/signals/', { params })
+  async getSignals(
+    params?: SignalQueryParams,
+  ): Promise<PaginatedResponse<StrategySignal>> {
+    return request
+      .get("/quantTrade/signals/", { params })
       .then(handleResponse)
-      .then((data: PaginatedResponse<StrategySignal>) => data)
+      .then((data: PaginatedResponse<StrategySignal>) => data);
   },
 
   /**
@@ -59,12 +58,16 @@ export default {
    * @param params 分析参数
    * @returns 信号强度分析结果
    */
-  async getSignalStrength(symbol: string, params?: {
-    period?: number;
-  }): Promise<SignalStrength> {
-    return request.get(`/signals/strength/${symbol}`, { params })
+  async getSignalStrength(
+    symbol: string,
+    params?: {
+      period?: number;
+    },
+  ): Promise<SignalStrength> {
+    return request
+      .get(`/signals/strength/${symbol}`, { params })
       .then(handleResponse)
-      .then((data: ApiResponse<SignalStrength>) => data.data)
+      .then((data: ApiResponse<SignalStrength>) => data.data);
   },
 
   /**
@@ -77,9 +80,10 @@ export default {
     start_date?: string;
     end_date?: string;
   }): Promise<SignalAnalysis> {
-    return request.get('/signals/analysis', { params })
+    return request
+      .get("/quantTrade/signals/analysis", { params })
       .then(handleResponse)
-      .then((data: ApiResponse<SignalAnalysis>) => data.data)
+      .then((data: ApiResponse<SignalAnalysis>) => data.data);
   },
 
   /**
@@ -89,9 +93,10 @@ export default {
    */
   async getRealtimeSignals(strategyId?: string): Promise<StrategySignal[]> {
     const params = strategyId ? { strategy_id: strategyId } : undefined;
-    return request.get('/signals/realtime', { params })
+    return request
+      .get("/quantTrade/signals/realtime", { params })
       .then(handleResponse)
-      .then((data: ApiResponse<StrategySignal[]>) => data.data)
+      .then((data: ApiResponse<StrategySignal[]>) => data.data);
   },
 
   /**
@@ -100,10 +105,14 @@ export default {
    * @param strategyId 策略ID
    * @returns 生成的信号
    */
-  async triggerSignal(symbol: string, strategyId: string): Promise<StrategySignal> {
-    return request.post('/signals/trigger', { symbol, strategy_id: strategyId })
+  async triggerSignal(
+    symbol: string,
+    strategyId: string,
+  ): Promise<StrategySignal> {
+    return request
+      .post("/quantTrade/signals/trigger", { symbol, strategy_id: strategyId })
       .then(handleResponse)
-      .then((data: ApiResponse<StrategySignal>) => data.data)
+      .then((data: ApiResponse<StrategySignal>) => data.data);
   },
 
   /**
@@ -117,11 +126,12 @@ export default {
     recommendations: Array<{
       signal: StrategySignal;
       confidence: number;
-      recommendation: 'execute' | 'review' | 'ignore';
+      recommendation: "execute" | "review" | "ignore";
     }>;
   }> {
-    return request.post('/signals/analyze-batch', { signals })
+    return request
+      .post("/quantTrade/signals/analyze-batch", { signals })
       .then(handleResponse)
-      .then((data: ApiResponse<any>) => data.data)
-  }
-}
+      .then((data: ApiResponse<any>) => data.data);
+  },
+};

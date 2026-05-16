@@ -25,7 +25,7 @@ class BlacklistRepository(BaseRepository):
 			self,
 			target_type: str,
 			target_id: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> bool:
 		"""
 		检查目标是否在黑名单中
@@ -85,7 +85,7 @@ class BlacklistRepository(BaseRepository):
 	async def is_stock_blacklisted (
 			self,
 			ts_code: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> bool:
 		"""
 		检查股票是否在黑名单中

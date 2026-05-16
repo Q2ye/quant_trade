@@ -132,7 +132,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def get_active_accounts (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			skip: int = 0,
 			limit: int = 100
 	) -> List[Account]:
@@ -164,7 +164,7 @@ class AccountRepository(BaseRepository[Account]):
 	async def get_accounts_by_type (
 			self,
 			account_type: str,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			status: Optional[str] = None
 	) -> List[Account]:
 		"""
@@ -666,7 +666,7 @@ class AccountRepository(BaseRepository[Account]):
 
 	async def count_accounts_by_criteria (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			status: Optional[str] = None,
 			account_type: Optional[str] = None,
 			broker: Optional[str] = None

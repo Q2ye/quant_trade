@@ -8,7 +8,13 @@ defaults: &defaults
     enable_health_check: true
     shutdown_timeout: 30.0
     log_level: "INFO"
-  
+
+  # API 安全配置（JWT 令牌等）
+  api:
+    ACCESS_TOKEN_EXPIRE_MINUTES: 600
+    SECRET_KEY: "your-secret-key-here-change-in-production"
+    AUTH_ENABLED: false  # 是否启用令牌校验，设为 false 可跳过 JWT 验证（仅开发/测试）
+
   server:
     host: "127.0.0.1"
     port: 8080
@@ -91,7 +97,7 @@ defaults: &defaults
       dependencies: []
       config:
         secret_key: "your-secret-key-here"
-        access_token_expire_minutes: 30
+        access_token_expire_minutes: 600
         algorithm: "HS256"
 
 # 环境配置框架

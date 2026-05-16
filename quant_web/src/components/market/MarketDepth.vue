@@ -2,16 +2,21 @@
 <template>
   <div class="market-depth">
     <div class="depth-header">
-      <h3>{{ symbol || '选择标的' }}</h3>
+      <h3>{{ symbol || "选择标的" }}</h3>
       <div class="price-info" v-if="currentPrice">
         <span class="price">{{ currentPrice.toFixed(2) }}</span>
         <span class="change" :class="changeClass">
-          {{ change >= 0 ? '+' : '' }}{{ change.toFixed(2) }} ({{ changePercent >= 0 ? '+' : '' }}{{ changePercent.toFixed(2) }}%)
+          {{ change >= 0 ? "+" : "" }}{{ change.toFixed(2) }} ({{
+            changePercent >= 0 ? "+" : ""
+          }}{{ changePercent.toFixed(2) }}%)
         </span>
       </div>
     </div>
 
-    <div class="depth-container" v-if="depthData.bids.length > 0 || depthData.asks.length > 0">
+    <div
+      class="depth-container"
+      v-if="depthData.bids.length > 0 || depthData.asks.length > 0"
+    >
       <!-- 卖盘 (Ask) -->
       <div class="depth-side ask-side">
         <div class="depth-header-row">
@@ -66,7 +71,10 @@
     </div>
 
     <!-- 统计信息 -->
-    <div class="depth-stats" v-if="depthData.bids.length > 0 && depthData.asks.length > 0">
+    <div
+      class="depth-stats"
+      v-if="depthData.bids.length > 0 && depthData.asks.length > 0"
+    >
       <div class="stat-item">
         <span class="label">买卖价差:</span>
         <span class="value">{{ spread.toFixed(2) }}</span>
@@ -91,8 +99,8 @@ export default {
   props: {
     symbol: {
       type: String,
-      default: ''
-    }
+      default: "",
+    },
   },
   data() {
     return {
@@ -101,17 +109,20 @@ export default {
       changePercent: 0,
       depthData: {
         bids: [],
-        asks: []
+        asks: [],
       },
-      updateInterval: null
+      updateInterval: null,
     };
   },
   computed: {
     changeClass() {
-      return this.change >= 0 ? 'positive' : 'negative';
+      return this.change >= 0 ? "positive" : "negative";
     },
     spread() {
-      if (this.depthData.asks.length === 0 || this.depthData.bids.length === 0) {
+      if (
+        this.depthData.asks.length === 0 ||
+        this.depthData.bids.length === 0
+      ) {
         return 0;
       }
       const bestAsk = this.depthData.asks[this.depthData.asks.length - 1].price;
@@ -119,21 +130,28 @@ export default {
       return bestAsk - bestBid;
     },
     bidAskRatio() {
-      const totalBidVolume = this.depthData.bids.reduce((sum, bid) => sum + bid.volume, 0);
-      const totalAskVolume = this.depthData.asks.reduce((sum, ask) => sum + ask.volume, 0);
+      const totalBidVolume = this.depthData.bids.reduce(
+        (sum, bid) => sum + bid.volume,
+        0,
+      );
+      const totalAskVolume = this.depthData.asks.reduce(
+        (sum, ask) => sum + ask.volume,
+        0,
+      );
       return totalBidVolume / (totalAskVolume || 1);
     },
     depthStrength() {
-      const totalVolume = this.depthData.bids.reduce((sum, bid) => sum + bid.volume, 0) +
-                         this.depthData.asks.reduce((sum, ask) => sum + ask.volume, 0);
+      const totalVolume =
+        this.depthData.bids.reduce((sum, bid) => sum + bid.volume, 0) +
+        this.depthData.asks.reduce((sum, ask) => sum + ask.volume, 0);
       const maxPossible = 50000; // 假设最大深度为50000手
       return Math.min((totalVolume / maxPossible) * 100, 100);
     },
     depthStrengthClass() {
-      if (this.depthStrength > 70) return 'strength-high';
-      if (this.depthStrength > 30) return 'strength-medium';
-      return 'strength-low';
-    }
+      if (this.depthStrength > 70) return "strength-high";
+      if (this.depthStrength > 30) return "strength-medium";
+      return "strength-low";
+    },
   },
   watch: {
     symbol(newSymbol) {
@@ -144,7 +162,7 @@ export default {
         this.stopRealTimeUpdates();
         this.resetData();
       }
-    }
+    },
   },
   mounted() {
     if (this.symbol) {
@@ -166,18 +184,18 @@ export default {
       // 生成买卖五档数据
       this.depthData = {
         bids: this.generateBids(basePrice),
-        asks: this.generateAsks(basePrice)
+        asks: this.generateAsks(basePrice),
       };
     },
 
     getMockPrice(symbol) {
       // 根据股票代码返回模拟基准价格
       const priceMap = {
-        '600519.SH': 1685.50,
-        '601318.SH': 48.25,
-        '600036.SH': 32.60,
-        '000333.SZ': 55.80,
-        '601888.SH': 102.40
+        "600519.SH": 1685.5,
+        "601318.SH": 48.25,
+        "600036.SH": 32.6,
+        "000333.SZ": 55.8,
+        "601888.SH": 102.4,
       };
       return priceMap[symbol] || 10 + Math.random() * 100;
     },
@@ -188,7 +206,7 @@ export default {
       for (let i = 0; i < 5; i++) {
         bids.push({
           price: price - i * 0.01,
-          volume: Math.floor(Math.random() * 500) + 100
+          volume: Math.floor(Math.random() * 500) + 100,
         });
       }
       return bids.sort((a, b) => b.price - a.price); // 价格从高到低排序
@@ -200,7 +218,7 @@ export default {
       for (let i = 0; i < 5; i++) {
         asks.push({
           price: price + i * 0.01,
-          volume: Math.floor(Math.random() * 500) + 100
+          volume: Math.floor(Math.random() * 500) + 100,
         });
       }
       return asks.sort((a, b) => a.price - b.price); // 价格从低到高排序
@@ -213,18 +231,23 @@ export default {
         const bidIndex = Math.floor(Math.random() * this.depthData.bids.length);
         const askIndex = Math.floor(Math.random() * this.depthData.asks.length);
 
-        this.depthData.bids[bidIndex].volume = Math.max(10,
-          this.depthData.bids[bidIndex].volume + Math.floor(Math.random() * 100 - 50)
+        this.depthData.bids[bidIndex].volume = Math.max(
+          10,
+          this.depthData.bids[bidIndex].volume +
+            Math.floor(Math.random() * 100 - 50),
         );
-        this.depthData.asks[askIndex].volume = Math.max(10,
-          this.depthData.asks[askIndex].volume + Math.floor(Math.random() * 100 - 50)
+        this.depthData.asks[askIndex].volume = Math.max(
+          10,
+          this.depthData.asks[askIndex].volume +
+            Math.floor(Math.random() * 100 - 50),
         );
 
         // 小幅更新当前价格
         const priceChange = (Math.random() - 0.5) * 0.1;
         this.currentPrice += priceChange;
         this.change += priceChange;
-        this.changePercent = (this.change / (this.currentPrice - this.change)) * 100;
+        this.changePercent =
+          (this.change / (this.currentPrice - this.change)) * 100;
 
         // 触发响应式更新
         this.depthData = { ...this.depthData };
@@ -232,18 +255,18 @@ export default {
     },
 
     getAskRowStyle(ask) {
-      const maxVolume = Math.max(...this.depthData.asks.map(a => a.volume));
+      const maxVolume = Math.max(...this.depthData.asks.map((a) => a.volume));
       const widthPercent = (ask.volume / maxVolume) * 80;
       return {
-        '--volume-width': `${widthPercent}%`
+        "--volume-width": `${widthPercent}%`,
       };
     },
 
     getBidRowStyle(bid) {
-      const maxVolume = Math.max(...this.depthData.bids.map(b => b.volume));
+      const maxVolume = Math.max(...this.depthData.bids.map((b) => b.volume));
       const widthPercent = (bid.volume / maxVolume) * 80;
       return {
-        '--volume-width': `${widthPercent}%`
+        "--volume-width": `${widthPercent}%`,
       };
     },
 
@@ -267,10 +290,10 @@ export default {
       this.changePercent = 0;
       this.depthData = {
         bids: [],
-        asks: []
+        asks: [],
       };
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -367,13 +390,17 @@ export default {
 }
 
 .ask-row::before {
-  content: '';
+  content: "";
   position: absolute;
   right: 0;
   top: 0;
   height: 100%;
   width: var(--volume-width);
-  background: linear-gradient(90deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.3) 100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 107, 107, 0.1) 0%,
+    rgba(255, 107, 107, 0.3) 100%
+  );
   border-radius: 0 4px 4px 0;
 }
 
@@ -382,13 +409,17 @@ export default {
 }
 
 .bid-row::before {
-  content: '';
+  content: "";
   position: absolute;
   right: 0;
   top: 0;
   height: 100%;
   width: var(--volume-width);
-  background: linear-gradient(90deg, rgba(92, 221, 139, 0.1) 0%, rgba(92, 221, 139, 0.3) 100%);
+  background: linear-gradient(
+    90deg,
+    rgba(92, 221, 139, 0.1) 0%,
+    rgba(92, 221, 139, 0.3) 100%
+  );
   border-radius: 0 4px 4px 0;
 }
 

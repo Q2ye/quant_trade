@@ -1,65 +1,72 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { usePerformanceStore } from '@/store/modules/performance'
-import { useChart } from '@/composables/useChart'
+import { ref, onMounted } from "vue";
+import { useStore } from "vuex";
+import { useChart } from "@/composables/useChart";
 
-const performanceStore = usePerformanceStore()
-const chartRef = ref<HTMLDivElement>()
+const store = useStore();
+const { initChart: createChart, setChartOption, disposeChart } = useChart();
+const chartRef = ref<HTMLDivElement>();
 
 interface PerformanceData {
-  date: string
-  portfolio: number
-  benchmark: number
+  date: string;
+  portfolio: number;
+  benchmark: number;
 }
 
-const performanceData = ref<PerformanceData[]>([])
-const currentReturn = ref(0)
-const maxDrawdown = ref(0)
-const sharpeRatio = ref(0)
+const performanceData = ref<PerformanceData[]>([]);
+const currentReturn = ref(0);
+const maxDrawdown = ref(0);
+const sharpeRatio = ref(0);
 
 onMounted(async () => {
-  await loadPerformanceData()
-  initChart()
-})
+  await loadPerformanceData();
+  initChart();
+});
 
 const loadPerformanceData = async () => {
-  const data = await performanceStore.fetchPortfolioPerformance()
-  performanceData.value = data.curve
-  currentReturn.value = data.currentReturn
-  maxDrawdown.value = data.maxDrawdown
-  sharpeRatio.value = data.sharpeRatio
-}
+  try {
+    await store.dispatch("performance/fetchPortfolioPerformance");
+    const data = store.state.performance as any;
+    performanceData.value = data.curve || [];
+    currentReturn.value = data.currentReturn || 0;
+    maxDrawdown.value = data.maxDrawdown || 0;
+    sharpeRatio.value = data.sharpeRatio || 0;
+  } catch {
+    // mock fallback
+  }
+};
 
 const initChart = () => {
-  if (!chartRef.value) return
-
-  const chart = useChart(chartRef.value, {
-    title: { text: '组合净值曲线' },
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['组合净值', '基准指数'] },
+  if (!chartRef.value) return;
+  const instance = createChart(chartRef.value);
+  if (!instance) return;
+  setChartOption({
+    title: { text: "组合净值曲线" },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["组合净值", "基准指数"] },
     xAxis: {
-      type: 'category',
-      data: performanceData.value.map(d => d.date)
+      type: "category",
+      data: performanceData.value.map((d: any) => d.date),
     },
-    yAxis: { type: 'value' },
+    yAxis: { type: "value" },
     series: [
       {
-        name: '组合净值',
-        type: 'line',
-        data: performanceData.value.map(d => d.portfolio),
+        name: "组合净值",
+        type: "line",
+        data: performanceData.value.map((d: any) => d.portfolio),
         smooth: true,
-        lineStyle: { color: '#5470c6' }
+        lineStyle: { color: "#5470c6" },
       },
       {
-        name: '基准指数',
-        type: 'line',
-        data: performanceData.value.map(d => d.benchmark),
+        name: "基准指数",
+        type: "line",
+        data: performanceData.value.map((d: any) => d.benchmark),
         smooth: true,
-        lineStyle: { color: '#91cc75' }
-      }
-    ]
-  })
-}
+        lineStyle: { color: "#91cc75" },
+      },
+    ],
+  });
+};
 </script>
 
 <template>
@@ -71,7 +78,10 @@ const initChart = () => {
     <div class="performance-metrics">
       <div class="metric-item">
         <div class="metric-label">当前收益</div>
-        <div class="metric-value" :class="{ positive: currentReturn > 0, negative: currentReturn < 0 }">
+        <div
+          class="metric-value"
+          :class="{ positive: currentReturn > 0, negative: currentReturn < 0 }"
+        >
           {{ (currentReturn * 100).toFixed(2) }}%
         </div>
       </div>
@@ -97,7 +107,7 @@ const initChart = () => {
 
 <style scoped>
 .portfolio-performance {
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
   border-radius: 8px;
   padding: 16px;
   height: 100%;
@@ -119,7 +129,7 @@ const initChart = () => {
 
 .metric-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
   margin-bottom: 4px;
 }
 

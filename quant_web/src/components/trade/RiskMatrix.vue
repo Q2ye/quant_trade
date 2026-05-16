@@ -24,7 +24,10 @@
           <div class="value">{{ metric.value }}</div>
           <div class="trend" :class="metric.trend">
             <i v-if="metric.trend === 'up'" class="fas fa-arrow-up"></i>
-            <i v-else-if="metric.trend === 'down'" class="fas fa-arrow-down"></i>
+            <i
+              v-else-if="metric.trend === 'down'"
+              class="fas fa-arrow-down"
+            ></i>
             <span v-if="metric.trendChange">{{ metric.trendChange }}</span>
           </div>
         </div>
@@ -66,89 +69,90 @@ export default {
       lastUpdate: this.getCurrentTime(),
       metrics: [
         {
-          name: '总回撤',
-          value: '-5.2%',
-          threshold: '-10%',
+          name: "总回撤",
+          value: "-5.2%",
+          threshold: "-10%",
           percentage: 52,
-          status: 'warning',
-          icon: 'fas fa-chart-line',
-          trend: 'down',
-          trendChange: '0.3%'
+          status: "warning",
+          icon: "fas fa-chart-line",
+          trend: "down",
+          trendChange: "0.3%",
         },
         {
-          name: '当日亏损',
-          value: '-2.1%',
-          threshold: '-5%',
+          name: "当日亏损",
+          value: "-2.1%",
+          threshold: "-5%",
           percentage: 42,
-          status: 'normal',
-          icon: 'fas fa-calendar-day',
-          trend: 'down',
-          trendChange: '0.1%'
+          status: "normal",
+          icon: "fas fa-calendar-day",
+          trend: "down",
+          trendChange: "0.1%",
         },
         {
-          name: '单股仓位',
-          value: '18.3%',
-          threshold: '20%',
+          name: "单股仓位",
+          value: "18.3%",
+          threshold: "20%",
           percentage: 91.5,
-          status: 'normal',
-          icon: 'fas fa-chart-pie',
-          trend: 'up',
-          trendChange: '0.5%'
+          status: "normal",
+          icon: "fas fa-chart-pie",
+          trend: "up",
+          trendChange: "0.5%",
         },
         {
-          name: 'ST股比例',
-          value: '0%',
-          threshold: '0%',
+          name: "ST股比例",
+          value: "0%",
+          threshold: "0%",
           percentage: 0,
-          status: 'normal',
-          icon: 'fas fa-exclamation-triangle',
+          status: "normal",
+          icon: "fas fa-exclamation-triangle",
           trend: null,
-          trendChange: null
+          trendChange: null,
         },
         {
-          name: '策略相关性',
-          value: '0.42',
-          threshold: '<0.6',
+          name: "策略相关性",
+          value: "0.42",
+          threshold: "<0.6",
           percentage: 70,
-          status: 'normal',
-          icon: 'fas fa-link',
-          trend: 'down',
-          trendChange: '0.02'
+          status: "normal",
+          icon: "fas fa-link",
+          trend: "down",
+          trendChange: "0.02",
         },
         {
-          name: '组合波动率',
-          value: '12.8%',
-          threshold: '15%',
+          name: "组合波动率",
+          value: "12.8%",
+          threshold: "15%",
           percentage: 85.3,
-          status: 'warning',
-          icon: 'fas fa-bullseye',
-          trend: 'up',
-          trendChange: '0.7%'
-        }
-      ]
+          status: "warning",
+          icon: "fas fa-bullseye",
+          trend: "up",
+          trendChange: "0.7%",
+        },
+      ],
     };
   },
   methods: {
     getCurrentTime() {
       const now = new Date();
-      return now.toLocaleTimeString('zh-CN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+      return now.toLocaleTimeString("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
       });
     },
     updateMetrics() {
       // 模拟数据更新
-      this.metrics.forEach(metric => {
+      this.metrics.forEach((metric) => {
         if (metric.trend) {
           const change = Math.random() * 0.5;
-          metric.trendChange = change.toFixed(metric.name === '策略相关性' ? 2 : 1) +
-                              (metric.name === '策略相关性' ? '' : '%');
+          metric.trendChange =
+            change.toFixed(metric.name === "策略相关性" ? 2 : 1) +
+            (metric.name === "策略相关性" ? "" : "%");
         }
       });
 
       this.lastUpdate = this.getCurrentTime();
-    }
+    },
   },
   mounted() {
     // 每10秒更新一次风险指标
@@ -156,7 +160,7 @@ export default {
   },
   beforeDestroy() {
     clearInterval(this.interval);
-  }
+  },
 };
 </script>
 
@@ -368,9 +372,15 @@ export default {
 }
 
 @keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1200px) {

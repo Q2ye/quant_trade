@@ -6,11 +6,10 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "jsx": "preserve",
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
-    "types": ["vite/client", "monaco-editor", "node", "vue", "vuex"],
+    "types": ["node"],
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -29,11 +28,7 @@
     "src/**/*.tsx",
     "src/**/*.vue",
     "vite.config.ts",
-    "src/shims-vuex.d.ts"  // 添加自定义类型声明文件
+    "src/shims-vuex.d.ts" // 添加自定义类型声明文件
   ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts"
-  ]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

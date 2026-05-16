@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="",
 	tags=["健康检查"],
 	responses={
 		200: {"description": "健康检查成功"},

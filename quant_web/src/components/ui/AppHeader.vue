@@ -2,7 +2,7 @@
 <template>
   <header class="app-header">
     <div class="logo-section">
-      <div class="logo">
+      <div class="logo" @click="$router.push('/dashboard')">
         <!-- 使用 SmartIcon 组件 -->
         <smart-icon name="Robot" size="24" class="logo-icon" />
         <span class="logo-text">量化交易平台</span>
@@ -53,12 +53,15 @@
             <div class="widget-content">
               <!-- 使用 SmartIcon 组件 -->
               <smart-icon name="Settings" size="16" class="widget-icon" />
-              <span class="widget-count">{{ strategyStatus.running }}/{{ strategyStatus.total }}</span>
+              <span class="widget-count"
+                >{{ strategyStatus.running }}/{{ strategyStatus.total }}</span
+              >
               <div class="status-dot" :class="strategyStatus.health"></div>
             </div>
           </div>
         </template>
-        运行中策略: {{ strategyStatus.running }}/{{ strategyStatus.total }}<br>
+        运行中策略: {{ strategyStatus.running }}/{{ strategyStatus.total
+        }}<br />
         健康状态: {{ getHealthText(strategyStatus.health) }}
       </n-tooltip>
 
@@ -68,12 +71,18 @@
           <div class="header-widget signal-status">
             <div class="widget-content">
               <!-- 使用 SmartIcon 组件 -->
-              <smart-icon name="NotificationsOutline" size="16" class="widget-icon" />
-              <span class="widget-count">{{ signalStats.triggered }}/{{ signalStats.today }}</span>
+              <smart-icon
+                name="NotificationsOutline"
+                size="16"
+                class="widget-icon"
+              />
+              <span class="widget-count"
+                >{{ signalStats.triggered }}/{{ signalStats.today }}</span
+              >
             </div>
           </div>
         </template>
-        今日信号: {{ signalStats.today }}个<br>
+        今日信号: {{ signalStats.today }}个<br />
         已触发: {{ signalStats.triggered }}个
       </n-tooltip>
 
@@ -84,11 +93,13 @@
             <div class="widget-content">
               <!-- 使用 SmartIcon 组件 -->
               <smart-icon name="SwapVertical" size="16" class="widget-icon" />
-              <span class="widget-count">{{ orderStats.executed }}/{{ orderStats.pending }}</span>
+              <span class="widget-count"
+                >{{ orderStats.executed }}/{{ orderStats.pending }}</span
+              >
             </div>
           </div>
         </template>
-        待处理订单: {{ orderStats.pending }}个<br>
+        待处理订单: {{ orderStats.pending }}个<br />
         已执行: {{ orderStats.executed }}个
       </n-tooltip>
 
@@ -98,12 +109,16 @@
           <div class="header-widget risk-level" :class="riskLevel.class">
             <div class="widget-content">
               <!-- 使用 SmartIcon 组件 -->
-              <smart-icon name="ShieldCheckmark" size="16" class="widget-icon" />
+              <smart-icon
+                name="ShieldCheckmark"
+                size="16"
+                class="widget-icon"
+              />
               <span class="widget-count">{{ riskLevel.text }}</span>
             </div>
           </div>
         </template>
-        当前风险等级: {{ riskLevel.text }}<br>
+        当前风险等级: {{ riskLevel.text }}<br />
         {{ getRiskDescription(riskLevel.text) }}
       </n-tooltip>
     </div>
@@ -138,17 +153,11 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from "vue-router"
-import {
-  NIcon,
-  NTooltip,
-  NTag,
-  NDropdown,
-  NAvatar
-} from 'naive-ui'
+import { defineComponent, ref, computed, onMounted, onUnmounted, h } from "vue";
+import { useRouter } from "vue-router";
+import { NIcon, NTooltip, NTag, NDropdown, NAvatar } from "naive-ui";
 // 导入 SmartIcon 组件
-import SmartIcon from '../common/SmartIcon.vue'
+import SmartIcon from "../common/SmartIcon.vue";
 
 export default defineComponent({
   name: "AppHeader",
@@ -158,96 +167,96 @@ export default defineComponent({
     NTag,
     NDropdown,
     NAvatar,
-    SmartIcon // 注册 SmartIcon 组件
+    SmartIcon, // 注册 SmartIcon 组件
   },
   props: {
     userName: {
       type: String,
-      default: "用户"
-    }
+      default: "用户",
+    },
   },
   setup(props) {
-    const router = useRouter()
-    const currentTime = ref(new Date())
-    const formattedTime = ref("")
-    const formattedDate = ref("")
+    const router = useRouter();
+    const currentTime = ref(new Date());
+    const formattedTime = ref("");
+    const formattedDate = ref("");
 
     // 策略状态
     const strategyStatus = ref({
       running: 3,
       total: 5,
-      health: 'healthy'
-    })
+      health: "healthy",
+    });
 
     // 信号统计
     const signalStats = ref({
       today: 12,
-      triggered: 8
-    })
+      triggered: 8,
+    });
 
     // 订单统计
     const orderStats = ref({
       pending: 2,
-      executed: 15
-    })
+      executed: 15,
+    });
 
     // 风险等级
     const riskLevel = computed(() => {
       const levels = {
-        low: { class: 'risk-low', text: '低' },
-        medium: { class: 'risk-medium', text: '中' },
-        high: { class: 'risk-high', text: '高' }
-      }
-      return levels.medium
-    })
+        low: { class: "risk-low", text: "低" },
+        medium: { class: "risk-medium", text: "中" },
+        high: { class: "risk-high", text: "高" },
+      };
+      return levels.medium;
+    });
 
-    // 用户菜单选项 - 使用 SmartIcon
+    // 用户菜单选项
     const userMenuOptions = [
       {
-        label: '个人中心',
-        key: 'profile',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Person' }) })
+        label: "个人中心",
+        key: "profile",
+        icon: () => h(SmartIcon, { name: "Person" }),
       },
       {
-        label: '系统设置',
-        key: 'settings',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'Settings' }) })
+        label: "系统设置",
+        key: "settings",
+        icon: () => h(SmartIcon, { name: "Settings" }),
       },
       {
-        type: 'divider',
-        key: 'd1'
+        type: "divider",
+        key: "d1",
       },
       {
-        label: '退出登录',
-        key: 'logout',
-        icon: () => h(NIcon, null, { default: () => h(SmartIcon, { name: 'LogOut' }) })
-      }
-    ]
+        label: "退出登录",
+        key: "logout",
+        icon: () => h(SmartIcon, { name: "LogOut" }),
+      },
+    ];
 
     // 获取健康状态文本
     const getHealthText = (health) => {
       const healthMap = {
-        healthy: '正常',
-        warning: '警告',
-        danger: '危险'
-      }
-      return healthMap[health] || '未知'
-    }
+        healthy: "正常",
+        warning: "警告",
+        danger: "危险",
+      };
+      return healthMap[health] || "未知";
+    };
 
     // 获取风险等级描述
     const getRiskDescription = (riskLevel) => {
       const descriptions = {
-        '低': '保守策略，风险可控',
-        '中': '平衡策略，适度风险',
-        '高': '激进策略，高风险'
-      }
-      return descriptions[riskLevel] || '风险等级未知'
-    }
+        低: "保守策略，风险可控",
+        中: "平衡策略，适度风险",
+        高: "激进策略，高风险",
+      };
+      return descriptions[riskLevel] || "风险等级未知";
+    };
 
     // 获取市场变化类型
     const getMarketChangeType = (change) => {
-      return change === 'positive' ? 'success' : 'error'
-    }
+      return change === "positive" ? "success" : "error";
+    };
 
     // 时间格式化
     const formatTime = (date) => {
@@ -256,15 +265,15 @@ export default defineComponent({
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
-          hour12: false
-        })
+          hour12: false,
+        });
       } catch (error) {
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        const seconds = String(date.getSeconds()).padStart(2, '0')
-        return `${hours}:${minutes}:${seconds}`
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
+        return `${hours}:${minutes}:${seconds}`;
       }
-    }
+    };
 
     const formatDate = (date) => {
       try {
@@ -272,56 +281,62 @@ export default defineComponent({
           year: "numeric",
           month: "2-digit",
           day: "2-digit",
-          weekday: "short"
-        })
+          weekday: "short",
+        });
       } catch (error) {
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-        const weekday = weekdays[date.getDay()]
-        return `${year}/${month}/${day} 周${weekday}`
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+        const weekday = weekdays[date.getDay()];
+        return `${year}/${month}/${day} 周${weekday}`;
       }
-    }
+    };
 
     // 更新时间显示
     const updateTime = () => {
-      currentTime.value = new Date()
-      formattedTime.value = formatTime(currentTime.value)
-      formattedDate.value = formatDate(currentTime.value)
-    }
+      currentTime.value = new Date();
+      formattedTime.value = formatTime(currentTime.value);
+      formattedDate.value = formatDate(currentTime.value);
+    };
 
     // 模拟交易状态更新
     const updateTradingStatus = () => {
-      const healthStates = ['healthy', 'warning', 'danger']
-      strategyStatus.value.health = healthStates[Math.floor(Math.random() * 3)]
-      signalStats.value.today = Math.max(5, Math.min(20, signalStats.value.today + (Math.random() > 0.5 ? 1 : -1)))
-      orderStats.value.pending = Math.max(0, Math.min(5, orderStats.value.pending + (Math.random() > 0.7 ? 1 : -1)))
-    }
+      const healthStates = ["healthy", "warning", "danger"];
+      strategyStatus.value.health = healthStates[Math.floor(Math.random() * 3)];
+      signalStats.value.today = Math.max(
+        5,
+        Math.min(20, signalStats.value.today + (Math.random() > 0.5 ? 1 : -1)),
+      );
+      orderStats.value.pending = Math.max(
+        0,
+        Math.min(5, orderStats.value.pending + (Math.random() > 0.7 ? 1 : -1)),
+      );
+    };
 
-    let timeInterval
-    let tradingInterval
+    let timeInterval;
+    let tradingInterval;
 
     onMounted(() => {
-      updateTime()
-      timeInterval = setInterval(updateTime, 1000)
-      tradingInterval = setInterval(updateTradingStatus, 10000)
-    })
+      updateTime();
+      timeInterval = setInterval(updateTime, 1000);
+      tradingInterval = setInterval(updateTradingStatus, 10000);
+    });
 
     onUnmounted(() => {
-      if (timeInterval) clearInterval(timeInterval)
-      if (tradingInterval) clearInterval(tradingInterval)
-    })
+      if (timeInterval) clearInterval(timeInterval);
+      if (tradingInterval) clearInterval(tradingInterval);
+    });
 
     const handleCommand = (key) => {
       if (key === "logout") {
-        router.push("/login")
+        router.push("/login");
       } else if (key === "settings") {
-        router.push("/events/settings")
+        router.push("/system/settings");
       } else if (key === "profile") {
-        router.push("/user/profile")
+        router.push("/dashboard");
       }
-    }
+    };
 
     return {
       formattedTime,
@@ -335,10 +350,10 @@ export default defineComponent({
       getHealthText,
       getRiskDescription,
       getMarketChangeType,
-      userName: props.userName
-    }
+      userName: props.userName,
+    };
   },
-})
+});
 </script>
 
 <style lang="scss" scoped>
@@ -347,8 +362,8 @@ export default defineComponent({
   align-items: center;
   height: 60px;
   padding: 0 16px;
-  background-color: var(--n-card-color);
-  border-bottom: 1px solid var(--n-border-color);
+  background-color: var(--n-card-color, #161B22);
+  border-bottom: 1px solid var(--n-border-color, #30363D);
   box-shadow: var(--n-box-shadow-1);
   position: sticky;
   top: 0;
@@ -367,6 +382,7 @@ export default defineComponent({
   font-weight: 600;
   font-size: 18px;
   color: var(--n-text-color-1);
+  cursor: pointer;
 }
 
 .logo-icon {

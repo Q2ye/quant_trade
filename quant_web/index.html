@@ -1,150 +1,163 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>专业级A股量化交易平台</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>专业级A股量化交易平台</title>
 
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    }
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
 
-    body {
-      background: #0f1a26;
-      color: #e0e6ed;
-      overflow: hidden;
-      height: 100vh;
-    }
+      body {
+        background: #0f1a26;
+        color: #e0e6ed;
+        overflow: hidden;
+        height: 100vh;
+      }
 
-    /* 初始加载动画 */
-    #app-loading {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      background: linear-gradient(135deg, #0f1a26 0%, #1d2b3a 100%);
-      z-index: 1000;
-      transition: opacity 0.5s ease;
-    }
+      /* 初始加载动画 */
+      #app-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #0f1a26 0%, #1d2b3a 100%);
+        z-index: 1000;
+        transition: opacity 0.5s ease;
+      }
 
-    .loading-logo {
-      margin-bottom: 30px;
-      animation: pulse 2s infinite;
-    }
+      .loading-logo {
+        margin-bottom: 30px;
+        animation: pulse 2s infinite;
+      }
 
-    .loading-logo svg {
-      width: 100px;
-      height: 100px;
-    }
+      .loading-logo svg {
+        width: 100px;
+        height: 100px;
+      }
 
-    .loading-text {
-      font-size: 18px;
-      font-weight: 500;
-      margin-bottom: 20px;
-      color: #64b5f6;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-    }
+      .loading-text {
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 20px;
+        color: #64b5f6;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
 
-    .loading-progress {
-      width: 300px;
-      height: 6px;
-      background: rgba(100, 181, 246, 0.2);
-      border-radius: 3px;
-      overflow: hidden;
-    }
+      .loading-progress {
+        width: 300px;
+        height: 6px;
+        background: rgba(100, 181, 246, 0.2);
+        border-radius: 3px;
+        overflow: hidden;
+      }
 
-    .progress-bar {
-      height: 100%;
-      width: 30%;
-      background: #64b5f6;
-      border-radius: 3px;
-      animation: loading 1.5s ease-in-out infinite;
-    }
+      .progress-bar {
+        height: 100%;
+        width: 30%;
+        background: #64b5f6;
+        border-radius: 3px;
+        animation: loading 1.5s ease-in-out infinite;
+      }
 
-    @keyframes pulse {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.05); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.8; }
-    }
+      @keyframes pulse {
+        0% {
+          transform: scale(0.95);
+          opacity: 0.8;
+        }
+        50% {
+          transform: scale(1.05);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.95);
+          opacity: 0.8;
+        }
+      }
 
-    @keyframes loading {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(350px); }
-    }
+      @keyframes loading {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(350px);
+        }
+      }
 
-    /* Vue应用加载完成后隐藏加载动画 */
-    #app-loading.fade-out {
-      opacity: 0;
-      pointer-events: none;
-    }
+      /* Vue应用加载完成后隐藏加载动画 */
+      #app-loading.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
 
-    /* Vue应用容器 */
-    #app {
-      opacity: 0;
-      transition: opacity 0.5s ease;
-      height: 100vh;
-    }
+      /* Vue应用容器 */
+      #app {
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        height: 100vh;
+      }
 
-    #app.visible {
-      opacity: 1;
-    }
-  </style>
-</head>
-<body>
-  <!-- 初始加载动画 -->
-  <div id="app-loading">
-    <div class="loading-logo">
-      <svg width="80" height="80" viewBox="0 0 100 100">
-        <path fill="#2196F3" d="M50,5A45,45 0 1,0 95,50A45,45 0 0,0 50,5Z"/>
-        <path fill="#FFC107" d="M50,20L65,45L50,70L35,45Z"/>
-      </svg>
+      #app.visible {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 初始加载动画 -->
+    <div id="app-loading">
+      <div class="loading-logo">
+        <svg width="80" height="80" viewBox="0 0 100 100">
+          <path fill="#2196F3" d="M50,5A45,45 0 1,0 95,50A45,45 0 0,0 50,5Z" />
+          <path fill="#FFC107" d="M50,20L65,45L50,70L35,45Z" />
+        </svg>
+      </div>
+      <div class="loading-text">量化引擎启动</div>
+      <div class="loading-progress">
+        <div class="progress-bar"></div>
+      </div>
     </div>
-    <div class="loading-text">量化引擎启动</div>
-    <div class="loading-progress">
-      <div class="progress-bar"></div>
-    </div>
-  </div>
 
-  <!-- Vue应用挂载点 -->
-  <div id="app"></div>
+    <!-- Vue应用挂载点 -->
+    <div id="app"></div>
 
-  <!-- 配置数据 -->
-  <script type="application/json" id="app-config">
-    {
-      "apiBase": "https://api.quant-platform.com/v1",
-      "dataSource": "Tushare",
-      "defaultTheme": "dark",
-      "enableAnalytics": true
-    }
-  </script>
+    <!-- 配置数据 -->
+    <script type="application/json" id="app-config">
+      {
+        "apiBase": "https://api.quant-platform.com/v1",
+        "dataSource": "Tushare",
+        "defaultTheme": "dark",
+        "enableAnalytics": true
+      }
+    </script>
 
-  <!-- 主应用脚本 -->
-  <script src="./src/main.ts" type="module"></script>
+    <!-- 主应用脚本 -->
+    <script src="./src/main.ts" type="module"></script>
 
-  <script>
-    // 监听Vue应用加载完成事件
-    document.addEventListener('vue-app-ready', function() {
-      const loadingElement = document.getElementById('app-loading');
-      const appElement = document.getElementById('app');
+    <script>
+      // 监听Vue应用加载完成事件
+      document.addEventListener("vue-app-ready", function () {
+        const loadingElement = document.getElementById("app-loading");
+        const appElement = document.getElementById("app");
 
-      // 添加淡出效果
-      loadingElement.classList.add('fade-out');
+        // 添加淡出效果
+        loadingElement.classList.add("fade-out");
 
-      // 显示Vue应用
-      setTimeout(() => {
-        appElement.classList.add('visible');
-      }, 500);
-    });
-  </script>
-</body>
+        // 显示Vue应用
+        setTimeout(() => {
+          appElement.classList.add("visible");
+        }, 500);
+      });
+    </script>
+  </body>
 </html>

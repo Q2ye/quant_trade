@@ -1,11 +1,49 @@
 <!--持仓卡片-->
-<!-- src/components/events/PositionCard.vue -->
+<script setup lang="ts">
+import { NCard, NButton, NButtonGroup } from "naive-ui";
+import { Icon } from "@iconify/vue";
+
+const props = defineProps<{
+  position: {
+    symbol: string;
+    name: string;
+    quantity: number;
+    available: number;
+    costPrice: number;
+    currentPrice: number;
+    change: number;
+    marketValue: number;
+    profit: number;
+    profitRatio: number;
+  };
+}>();
+
+const emit = defineEmits<{
+  "trade-position": [payload: { symbol: string; direction: string }];
+  "close-position": [symbol: string];
+}>();
+
+const tradePosition = (direction: string) => {
+  emit("trade-position", {
+    symbol: props.position.symbol,
+    direction,
+  });
+};
+
+const closePosition = () => {
+  emit("close-position", props.position.symbol);
+};
+</script>
+
 <template>
-  <div class="position-card" :class="{'high-value': position.marketValue > 100000}">
-    <div class="card-header">
+  <n-card
+    :class="{ 'high-value': position.marketValue > 100000 }"
+    class="position-card"
+  >
+    <template #header>
       <div class="symbol">{{ position.symbol }}</div>
       <div class="name">{{ position.name }}</div>
-    </div>
+    </template>
 
     <div class="card-content">
       <div class="position-data">
@@ -34,7 +72,8 @@
         <div class="data-item">
           <div class="label">涨跌幅</div>
           <div class="value" :class="position.change >= 0 ? 'positive' : 'negative'">
-            {{ position.change >= 0 ? '+' : '' }}{{ position.change.toFixed(2) }}%
+            {{ position.change >= 0 ? "+" : ""
+            }}{{ position.change.toFixed(2) }}%
           </div>
         </div>
         <div class="data-item">
@@ -47,68 +86,48 @@
         <div class="data-item">
           <div class="label">浮动盈亏</div>
           <div class="value" :class="position.profit >= 0 ? 'positive' : 'negative'">
-            {{ position.profit >= 0 ? '+' : '' }}¥{{ position.profit.toLocaleString() }}
+            {{ position.profit >= 0 ? "+" : "" }}¥{{
+              position.profit.toLocaleString()
+            }}
           </div>
         </div>
         <div class="data-item">
           <div class="label">盈亏比例</div>
           <div class="value" :class="position.profitRatio >= 0 ? 'positive' : 'negative'">
-            {{ position.profitRatio >= 0 ? '+' : '' }}{{ position.profitRatio.toFixed(2) }}%
+            {{ position.profitRatio >= 0 ? "+" : ""
+            }}{{ position.profitRatio.toFixed(2) }}%
           </div>
         </div>
       </div>
     </div>
 
-    <div class="card-actions">
-      <button class="btn buy" @click="tradePosition('buy')">
-        <i class="fas fa-plus"></i> 加仓
-      </button>
-      <button class="btn sell" @click="tradePosition('sell')">
-        <i class="fas fa-minus"></i> 减仓
-      </button>
-      <button class="btn close" @click="closePosition">
-        <i class="fas fa-times"></i> 平仓
-      </button>
-    </div>
-  </div>
+    <template #footer>
+      <n-button-group>
+        <n-button type="success" size="small" @click="tradePosition('buy')">
+          <template #icon><Icon icon="ant-design:plus-outlined" /></template>
+          加仓
+        </n-button>
+        <n-button type="error" size="small" @click="tradePosition('sell')">
+          <template #icon><Icon icon="ant-design:minus-outlined" /></template>
+          减仓
+        </n-button>
+        <n-button type="warning" size="small" @click="closePosition">
+          <template #icon><Icon icon="ant-design:close-outlined" /></template>
+          平仓
+        </n-button>
+      </n-button-group>
+    </template>
+  </n-card>
 </template>
-
-<script>
-export default {
-  name: "PositionCard",
-  props: {
-    position: {
-      type: Object,
-      required: true
-    }
-  },
-  methods: {
-    tradePosition(direction) {
-      this.$emit('events-position', {
-        symbol: this.position.symbol,
-        direction: direction
-      });
-    },
-    closePosition() {
-      this.$emit('close-position', this.position.symbol);
-    }
-  }
-};
-</script>
 
 <style scoped>
 .position-card {
-  background: rgba(24, 50, 90, 0.5);
-  border-radius: 10px;
-  border: 1px solid rgba(64, 158, 255, 0.2);
-  padding: 15px;
   transition: all 0.3s;
   position: relative;
-  overflow: hidden;
 }
 
 .position-card.high-value::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   right: 0;
@@ -118,7 +137,7 @@ export default {
 }
 
 .position-card.high-value::after {
-  content: 'VIP';
+  content: "VIP";
   position: absolute;
   top: 2px;
   right: 2px;
@@ -133,13 +152,6 @@ export default {
 .position-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-  border-color: rgba(64, 158, 255, 0.5);
-}
-
-.card-header {
-  border-bottom: 1px solid rgba(64, 158, 255, 0.2);
-  padding-bottom: 10px;
-  margin-bottom: 10px;
 }
 
 .symbol {
@@ -177,63 +189,6 @@ export default {
   font-weight: 500;
 }
 
-.positive {
-  color: #5cdd8b;
-}
-
-.negative {
-  color: #ff6b6b;
-}
-
-.card-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.btn {
-  padding: 6px;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.btn.buy {
-  background: rgba(92, 221, 139, 0.1);
-  border: 1px solid rgba(92, 221, 139, 0.3);
-  color: #5cdd8b;
-}
-
-.btn.buy:hover {
-  background: rgba(92, 221, 139, 0.2);
-  border-color: #5cdd8b;
-}
-
-.btn.sell {
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  color: #ff6b6b;
-}
-
-.btn.sell:hover {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: #ff6b6b;
-}
-
-.btn.close {
-  background: rgba(255, 184, 108, 0.1);
-  border: 1px solid rgba(255, 184, 108, 0.3);
-  color: #ffb86c;
-}
-
-.btn.close:hover {
-  background: rgba(255, 184, 108, 0.2);
-  border-color: #ffb86c;
-}
+.positive { color: #5cdd8b; }
+.negative { color: #ff6b6b; }
 </style>

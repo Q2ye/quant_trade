@@ -9,7 +9,7 @@ class OrderCreateEvent(BaseEvent):
     """订单创建事件"""
     event_type: str = "order_create"
     order_data: Dict[str, Any] = None
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
 
 
 @dataclass

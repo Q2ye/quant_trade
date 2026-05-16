@@ -51,7 +51,6 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/trade",
 	tags=["交易中心"],
 	responses={
 		401: {"description": "认证失败"},

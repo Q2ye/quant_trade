@@ -1,12 +1,12 @@
 // quant_web/src/api/events.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   ApiResponse,
   PaginatedResponse,
-  HealthCheckResponse
-} from '@/types/api'
-import {SystemLog} from "@/types/entities";
+  HealthCheckResponse,
+} from "@/types/api";
+import { SystemLog } from "@/types/entities";
 
 /**
  * 系统管理API服务
@@ -16,7 +16,7 @@ import {SystemLog} from "@/types/entities";
 export interface SystemStatus {
   version: string;
   uptime: number;
-  status: 'running' | 'stopped' | 'error';
+  status: "running" | "stopped" | "error";
   last_startup: string;
   engine_status: {
     main_engine: string;
@@ -78,7 +78,7 @@ export interface DatabaseStatus {
 }
 
 export interface SystemLogQueryParams {
-  level?: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG';
+  level?: "INFO" | "WARNING" | "ERROR" | "DEBUG";
   module?: string;
   page?: number;
   limit?: number;
@@ -92,9 +92,10 @@ export default {
    * @returns 系统状态信息
    */
   async getSystemStatus(): Promise<SystemStatus> {
-    return request.get('/system/status')
+    return request
+      .get("/quantTrade/system/status")
       .then(handleResponse)
-      .then((data: ApiResponse<SystemStatus>) => data.data)
+      .then((data: ApiResponse<SystemStatus>) => data.data);
   },
 
   /**
@@ -102,10 +103,13 @@ export default {
    * @param params 查询参数
    * @returns 系统日志分页结果
    */
-  async getSystemLogs(params?: SystemLogQueryParams): Promise<PaginatedResponse<SystemLog>> {
-    return request.get('/system/logs', { params })
+  async getSystemLogs(
+    params?: SystemLogQueryParams,
+  ): Promise<PaginatedResponse<SystemLog>> {
+    return request
+      .get("/quantTrade/system/logs", { params })
       .then(handleResponse)
-      .then((data: PaginatedResponse<SystemLog>) => data)
+      .then((data: PaginatedResponse<SystemLog>) => data);
   },
 
   /**
@@ -119,9 +123,10 @@ export default {
     end_date?: string;
     symbols?: string[];
   }): Promise<{ task_id: string }> {
-    return request.post('/system/data/sync', params)
+    return request
+      .post("/quantTrade/system/data/sync", params)
       .then(handleResponse)
-      .then((data: ApiResponse<{ task_id: string }>) => data.data)
+      .then((data: ApiResponse<{ task_id: string }>) => data.data);
   },
 
   /**
@@ -129,9 +134,10 @@ export default {
    * @returns 数据同步状态信息
    */
   async getDataSyncStatus(): Promise<any> {
-    return request.get('/system/data/status')
+    return request
+      .get("/quantTrade/system/data/status")
       .then(handleResponse)
-      .then((data: ApiResponse<any>) => data.data)
+      .then((data: ApiResponse<any>) => data.data);
   },
 
   /**
@@ -139,9 +145,10 @@ export default {
    * @returns 系统配置信息
    */
   async getSystemSettings(): Promise<SystemSettings> {
-    return request.get('/system/settings')
+    return request
+      .get("/quantTrade/system/settings")
       .then(handleResponse)
-      .then((data: ApiResponse<SystemSettings>) => data.data)
+      .then((data: ApiResponse<SystemSettings>) => data.data);
   },
 
   /**
@@ -149,10 +156,13 @@ export default {
    * @param settings 配置更新参数
    * @returns 更新后的系统配置
    */
-  async updateSystemSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
-    return request.put('/system/settings', settings)
+  async updateSystemSettings(
+    settings: Partial<SystemSettings>,
+  ): Promise<SystemSettings> {
+    return request
+      .put("/quantTrade/system/settings", settings)
       .then(handleResponse)
-      .then((data: ApiResponse<SystemSettings>) => data.data)
+      .then((data: ApiResponse<SystemSettings>) => data.data);
   },
 
   /**
@@ -160,9 +170,10 @@ export default {
    * @returns 各服务连接状态
    */
   async getConnections(): Promise<ConnectionStatus> {
-    return request.get('/system/connections')
+    return request
+      .get("/quantTrade/system/connections")
       .then(handleResponse)
-      .then((data: ApiResponse<ConnectionStatus>) => data.data)
+      .then((data: ApiResponse<ConnectionStatus>) => data.data);
   },
 
   /**
@@ -170,9 +181,10 @@ export default {
    * @returns 系统资源使用信息
    */
   async getResources(): Promise<ResourceUsage> {
-    return request.get('/system/resources')
+    return request
+      .get("/quantTrade/system/resources")
       .then(handleResponse)
-      .then((data: ApiResponse<ResourceUsage>) => data.data)
+      .then((data: ApiResponse<ResourceUsage>) => data.data);
   },
 
   /**
@@ -180,9 +192,10 @@ export default {
    * @returns 数据库状态信息
    */
   async getDatabaseStatus(): Promise<DatabaseStatus> {
-    return request.get('/system/database')
+    return request
+      .get("/quantTrade/system/database")
       .then(handleResponse)
-      .then((data: ApiResponse<DatabaseStatus>) => data.data)
+      .then((data: ApiResponse<DatabaseStatus>) => data.data);
   },
 
   /**
@@ -190,9 +203,10 @@ export default {
    * @returns 健康检查结果
    */
   async healthCheck(): Promise<HealthCheckResponse> {
-    return request.get('/system/health')
+    return request
+      .get("/quantTrade/system/health")
       .then(handleResponse)
-      .then((data: HealthCheckResponse) => data)
+      .then((data: HealthCheckResponse) => data);
   },
 
   /**
@@ -200,9 +214,12 @@ export default {
    * @returns 清理操作结果
    */
   async clearCache(): Promise<{ cleared: boolean; message: string }> {
-    return request.post('/system/cache/clear')
+    return request
+      .post("/quantTrade/system/cache/clear")
       .then(handleResponse)
-      .then((data: ApiResponse<{ cleared: boolean; message: string }>) => data.data)
+      .then(
+        (data: ApiResponse<{ cleared: boolean; message: string }>) => data.data,
+      );
   },
 
   /**
@@ -210,9 +227,14 @@ export default {
    * @param service 服务名称
    * @returns 重启操作结果
    */
-  async restartService(service: string): Promise<{ success: boolean; message: string }> {
-    return request.post(`/system/services/${service}/restart`)
+  async restartService(
+    service: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return request
+      .post(`/system/services/${service}/restart`)
       .then(handleResponse)
-      .then((data: ApiResponse<{ success: boolean; message: string }>) => data.data)
-  }
-}
+      .then(
+        (data: ApiResponse<{ success: boolean; message: string }>) => data.data,
+      );
+  },
+};

@@ -136,7 +136,7 @@ class ReportTasks:
 
 	async def generate_risk_report (self,
 	                                report_type: str,
-	                                account_id: Optional[int] = None,
+	                                account_id: Optional[str] = None,
 	                                start_date: Optional[date] = None,
 	                                end_date: Optional[date] = None,
 	                                parameters: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -517,7 +517,7 @@ class ReportTasks:
 			return {}
 
 	async def _collect_risk_data (self,
-	                              account_id: Optional[int],
+	                              account_id: Optional[str],
 	                              start_date: date,
 	                              end_date: date) -> Dict[str, Any]:
 		"""

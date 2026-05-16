@@ -1,94 +1,97 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { NSelect, NSwitch, NButton } from "naive-ui";
+import { useWebSocket } from "@/composables/useWebSocket";
 
 interface LogEntry {
-  id: string
-  timestamp: string
-  level: 'info' | 'warning' | 'error' | 'debug'
-  message: string
-  source: string
+  id: string;
+  timestamp: string;
+  level: "info" | "warning" | "error" | "debug";
+  message: string;
+  source: string;
 }
 
-const logs = ref<LogEntry[]>([])
-const autoScroll = ref(true)
-const { subscribe, unsubscribe } = useWebSocket()
+const logs = ref<LogEntry[]>([]);
+const autoScroll = ref(true);
+const { subscribe, unsubscribe } = useWebSocket();
 
-const logContainer = ref<HTMLDivElement>()
+const logContainer = ref<HTMLDivElement>();
 
-// 添加日志条目
 const addLog = (entry: LogEntry) => {
-  logs.value.push(entry)
-
-  // 限制日志数量
+  logs.value.push(entry);
   if (logs.value.length > 1000) {
-    logs.value = logs.value.slice(-500)
+    logs.value = logs.value.slice(-500);
   }
-
-  // 自动滚动到底部
   if (autoScroll.value) {
     nextTick(() => {
       if (logContainer.value) {
-        logContainer.value.scrollTop = logContainer.value.scrollHeight
+        logContainer.value.scrollTop = logContainer.value.scrollHeight;
       }
-    })
+    });
   }
-}
+};
 
-// 清空日志
 const clearLogs = () => {
-  logs.value = []
-}
+  logs.value = [];
+};
 
-// 导出日志
 const exportLogs = () => {
-  const content = logs.value.map(log =>
-    `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.source}] ${log.message}`
-  ).join('\n')
+  const content = logs.value
+    .map(
+      (log) =>
+        `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.source}] ${log.message}`,
+    )
+    .join("\n");
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `strategy-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `strategy-logs-${new Date().toISOString().slice(0, 10)}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const filterLevel = ref<"all" | "info" | "warning" | "error">("all");
+const levelOptions = [
+  { label: "全部", value: "all" },
+  { label: "信息", value: "info" },
+  { label: "警告", value: "warning" },
+  { label: "错误", value: "error" },
+];
 
-// 过滤日志级别
-const filterLevel = ref<'all' | 'info' | 'warning' | 'error'>('all')
 const filteredLogs = computed(() => {
-  if (filterLevel.value === 'all') return logs.value
-  return logs.value.filter(log => log.level === filterLevel.value)
-})
+  if (filterLevel.value === "all") return logs.value;
+  return logs.value.filter((log) => log.level === filterLevel.value);
+});
 
-// 获取日志级别样式
 const getLevelStyle = (level: string) => {
   switch (level) {
-    case 'error': return { color: '#f56c6c', background: '#fef0f0' }
-    case 'warning': return { color: '#e6a23c', background: '#fdf6ec' }
-    case 'info': return { color: '#409eff', background: '#f0f9ff' }
-    case 'debug': return { color: '#909399', background: '#f4f4f5' }
-    default: return { color: '#606266', background: '#f4f4f5' }
+    case "error":
+      return { color: "#f56c6c", background: "#fef0f0" };
+    case "warning":
+      return { color: "#e6a23c", background: "#fdf6ec" };
+    case "info":
+      return { color: "#409eff", background: "#f0f9ff" };
+    case "debug":
+      return { color: "#909399", background: "#f4f4f5" };
+    default:
+      return { color: "#606266", background: "#f4f4f5" };
   }
-}
+};
 
 onMounted(() => {
-  // 订阅策略日志
-  subscribe('strategy_logs', (data: LogEntry) => {
-    addLog(data)
-  })
-
-  // 订阅回测日志
-  subscribe('backtest_logs', (data: LogEntry) => {
-    addLog(data)
-  })
-})
+  subscribe("strategy_logs", (data: LogEntry) => {
+    addLog(data);
+  });
+  subscribe("backtest_logs", (data: LogEntry) => {
+    addLog(data);
+  });
+});
 
 onUnmounted(() => {
-  unsubscribe('strategy_logs')
-  unsubscribe('backtest_logs')
-})
+  unsubscribe("strategy_logs");
+  unsubscribe("backtest_logs");
+});
 </script>
 
 <template>
@@ -96,21 +99,18 @@ onUnmounted(() => {
     <div class="panel-header">
       <h3>实时日志</h3>
       <div class="header-controls">
-        <el-select v-model="filterLevel" size="small" style="width: 100px;">
-          <el-option label="全部" value="all" />
-          <el-option label="信息" value="info" />
-          <el-option label="警告" value="warning" />
-          <el-option label="错误" value="error" />
-        </el-select>
-
-        <el-switch
-          v-model="autoScroll"
-          active-text="自动滚动"
+        <NSelect
+          v-model:value="filterLevel"
+          :options="levelOptions"
           size="small"
+          style="width: 100px"
         />
 
-        <el-button size="small" @click="clearLogs">清空</el-button>
-        <el-button size="small" @click="exportLogs">导出</el-button>
+        <NSwitch v-model:value="autoScroll" size="small" />
+        <span class="switch-label">自动滚动</span>
+
+        <NButton size="small" @click="clearLogs">清空</NButton>
+        <NButton size="small" @click="exportLogs">导出</NButton>
       </div>
     </div>
 
@@ -121,8 +121,12 @@ onUnmounted(() => {
         class="log-entry"
         :style="getLevelStyle(log.level)"
       >
-        <span class="timestamp">{{ new Date(log.timestamp).toLocaleTimeString() }}</span>
-        <span class="level-badge" :class="log.level">{{ log.level.toUpperCase() }}</span>
+        <span class="timestamp">{{
+          new Date(log.timestamp).toLocaleTimeString()
+        }}</span>
+        <span class="level-badge" :class="log.level">{{
+          log.level.toUpperCase()
+        }}</span>
         <span class="source">[{{ log.source }}]</span>
         <span class="message">{{ log.message }}</span>
       </div>
@@ -134,7 +138,7 @@ onUnmounted(() => {
 
     <div class="panel-footer">
       <span class="log-count">共 {{ logs.length }} 条日志</span>
-      <span class="filter-count" v-if="filterLevel !== 'all'">
+      <span v-if="filterLevel !== 'all'" class="filter-count">
         (过滤后: {{ filteredLogs.length }} 条)
       </span>
     </div>
@@ -146,7 +150,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
 }
 
 .panel-header {
@@ -154,7 +158,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  border-bottom: 1px solid var(--n-border-color);
 }
 
 .header-controls {
@@ -163,11 +167,16 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.switch-label {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+
 .log-container {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -182,7 +191,7 @@ onUnmounted(() => {
 }
 
 .timestamp {
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
   margin-right: 8px;
   min-width: 80px;
 }
@@ -195,15 +204,24 @@ onUnmounted(() => {
   margin-right: 8px;
   min-width: 40px;
   text-align: center;
+  color: white;
 }
 
-.level-badge.error { background: #f56c6c; color: white; }
-.level-badge.warning { background: #e6a23c; color: white; }
-.level-badge.info { background: #409eff; color: white; }
-.level-badge.debug { background: #909399; color: white; }
+.level-badge.error {
+  background: #f56c6c;
+}
+.level-badge.warning {
+  background: #e6a23c;
+}
+.level-badge.info {
+  background: #409eff;
+}
+.level-badge.debug {
+  background: #909399;
+}
 
 .source {
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
   margin-right: 8px;
   min-width: 80px;
 }
@@ -215,15 +233,15 @@ onUnmounted(() => {
 
 .empty-logs {
   text-align: center;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
   padding: 40px;
 }
 
 .panel-footer {
   padding: 8px 16px;
-  border-top: 1px solid var(--el-border-color);
+  border-top: 1px solid var(--n-border-color);
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .log-count {

@@ -78,13 +78,16 @@ class AuthService:
             if existing_email:
                 raise ValueError(f"邮箱 '{email}' 已被注册")
 
-        is_valid, errors = await self._auth.validate_password_strength(password)
-        if not is_valid:
-            raise ValueError(f"密码强度不足: {'; '.join(errors)}")
+        # is_valid, errors = await self._auth.validate_password_strength(password)
+        # if not is_valid:
+        #     raise ValueError(f"密码强度不足: {'; '.join(errors)}")
+
+        from shared.security.password import get_password_crypto
+        encrypted = get_password_crypto().encrypt(password)
 
         user = await self._user_repo.create_user({
             "username": username,
-            "password": password,
+            "password": encrypted,
             "email": email,
             "phone": phone,
             "real_name": real_name,

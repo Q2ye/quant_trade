@@ -15,17 +15,23 @@
 
     <div class="diff-container">
       <div class="code-panel old-code">
-        <div v-for="(line, index) in leftCode" :key="'left'+index"
-             class="line"
-             :class="{'removed': line.status === 'removed'}">
+        <div
+          v-for="(line, index) in leftCode"
+          :key="'left' + index"
+          class="line"
+          :class="{ removed: line.status === 'removed' }"
+        >
           <span class="line-number">{{ index + 1 }}</span>
           <span>{{ line.text }}</span>
         </div>
       </div>
       <div class="code-panel new-code">
-        <div v-for="(line, index) in rightCode" :key="'right'+index"
-             class="line"
-             :class="{'added': line.status === 'added'}">
+        <div
+          v-for="(line, index) in rightCode"
+          :key="'right' + index"
+          class="line"
+          :class="{ added: line.status === 'added' }"
+        >
           <span class="line-number">{{ index + 1 }}</span>
           <span>{{ line.text }}</span>
         </div>
@@ -41,22 +47,22 @@ export default {
     leftCode: {
       type: Array,
       required: true,
-      default: () => []
+      default: () => [],
     },
     rightCode: {
       type: Array,
       required: true,
-      default: () => []
+      default: () => [],
     },
     leftTitle: {
       type: String,
-      default: "旧版本"
+      default: "旧版本",
     },
     rightTitle: {
       type: String,
-      default: "新版本"
-    }
-  }
+      default: "新版本",
+    },
+  },
 };
 </script>
 
@@ -103,7 +109,7 @@ export default {
   flex: 1;
   padding: 15px;
   overflow-y: auto;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 14px;
   line-height: 1.5;
   position: relative;

@@ -4,7 +4,7 @@
  * 对应 store/modules/dashboard.ts 中的状态结构
  */
 
-import { DashboardData, RealTimeDataEvent } from '@/types/entities/dashboard';
+import { DashboardData, RealTimeDataEvent } from "@/types/entities/dashboard";
 
 /**
  * 仪表盘状态接口
@@ -52,7 +52,7 @@ export const defaultDashboardState: DashboardState = {
     riskMatrix: {
       positionDistribution: [],
       industryExposure: [],
-      var: 0
+      var: 0,
     },
     realTimeSignals: [],
     marketSentiment: {
@@ -61,14 +61,14 @@ export const defaultDashboardState: DashboardState = {
       unchanged: 0,
       volume: 0,
       northbound: 0,
-      marketHeat: 0
+      marketHeat: 0,
     },
     positions: [],
-    todayTrades: []
+    todayTrades: [],
   },
   realTimeUpdates: [],
   loading: false,
-  lastUpdate: ''
+  lastUpdate: "",
 };
 
 /**
@@ -81,7 +81,10 @@ export const DashboardStateUtils = {
    * @param threshold 刷新阈值（毫秒），默认5分钟
    * @returns 是否需要刷新
    */
-  shouldRefresh(state: DashboardState, threshold: number = 5 * 60 * 1000): boolean {
+  shouldRefresh(
+    state: DashboardState,
+    threshold: number = 5 * 60 * 1000,
+  ): boolean {
     if (!state.lastUpdate) return true;
     const lastUpdateTime = new Date(state.lastUpdate).getTime();
     const currentTime = Date.now();
@@ -94,7 +97,10 @@ export const DashboardStateUtils = {
    * @param count 获取数量，默认10条
    * @returns 最新的实时更新记录
    */
-  getLatestUpdates(state: DashboardState, count: number = 10): RealTimeDataEvent[] {
+  getLatestUpdates(
+    state: DashboardState,
+    count: number = 10,
+  ): RealTimeDataEvent[] {
     return state.realTimeUpdates.slice(0, count);
   },
 
@@ -104,8 +110,11 @@ export const DashboardStateUtils = {
    * @param type 更新类型
    * @returns 过滤后的更新记录
    */
-  filterUpdatesByType(state: DashboardState, type: string): RealTimeDataEvent[] {
-    return state.realTimeUpdates.filter(update => update.type === type);
+  filterUpdatesByType(
+    state: DashboardState,
+    type: string,
+  ): RealTimeDataEvent[] {
+    return state.realTimeUpdates.filter((update) => update.type === type);
   },
 
   /**
@@ -122,9 +131,9 @@ export const DashboardStateUtils = {
       availableCash: data.availableCash,
       returnRate: data.returnRate,
       positionCount: data.positions.length,
-      signalCount: data.realTimeSignals.length
+      signalCount: data.realTimeSignals.length,
     };
-  }
+  },
 };
 
 /**
@@ -133,43 +142,46 @@ export const DashboardStateUtils = {
 export function isDashboardState(state: any): state is DashboardState {
   return (
     state &&
-    typeof state === 'object' &&
-    'dashboardData' in state &&
-    'realTimeUpdates' in state &&
-    'loading' in state &&
-    'lastUpdate' in state
+    typeof state === "object" &&
+    "dashboardData" in state &&
+    "realTimeUpdates" in state &&
+    "loading" in state &&
+    "lastUpdate" in state
   );
 }
 
 /**
  * 仪表盘状态验证函数
  */
-export function validateDashboardState(state: any): { isValid: boolean; errors: string[] } {
+export function validateDashboardState(state: any): {
+  isValid: boolean;
+  errors: string[];
+} {
   const errors: string[] = [];
 
   if (!state) {
-    errors.push('状态对象不能为空');
+    errors.push("状态对象不能为空");
     return { isValid: false, errors };
   }
 
-  if (typeof state.loading !== 'boolean') {
-    errors.push('loading 必须是布尔类型');
+  if (typeof state.loading !== "boolean") {
+    errors.push("loading 必须是布尔类型");
   }
 
-  if (typeof state.lastUpdate !== 'string') {
-    errors.push('lastUpdate 必须是字符串类型');
+  if (typeof state.lastUpdate !== "string") {
+    errors.push("lastUpdate 必须是字符串类型");
   }
 
   if (!Array.isArray(state.realTimeUpdates)) {
-    errors.push('realTimeUpdates 必须是数组类型');
+    errors.push("realTimeUpdates 必须是数组类型");
   }
 
   if (!state.dashboardData) {
-    errors.push('dashboardData 不能为空');
+    errors.push("dashboardData 不能为空");
   }
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
   };
 }

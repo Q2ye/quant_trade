@@ -5,89 +5,103 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import * as echarts from "echarts";
 
 export default {
-  name: 'DrawdownComparison',
+  name: "DrawdownComparison",
   props: {
     data: {
       type: Array,
-      default: () => []
-    }
+      default: () => [],
+    },
   },
   setup(props) {
-    const chart = ref(null)
-    let chartInstance = null
+    const chart = ref(null);
+    let chartInstance = null;
 
     const initChart = () => {
-      if (!chart.value) return
-
-      chartInstance = echarts.init(chart.value)
+      if (!chart.value) return;
+      if (chartInstance) {
+        chartInstance.dispose();
+        chartInstance = null;
+      }
+      chartInstance = echarts.init(chart.value);
 
       const option = {
         tooltip: {
-          trigger: 'axis',
+          trigger: "axis",
           axisPointer: {
-            type: 'shadow'
-          }
+            type: "shadow",
+          },
         },
         legend: {
-          data: props.data.map(item => item.strategyName)
+          data: props.data.map((item) => item.strategyName),
         },
         grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
+          left: "3%",
+          right: "4%",
+          bottom: "3%",
+          containLabel: true,
         },
         xAxis: {
-          type: 'category',
-          data: props.data.map(item => item.strategyName)
+          type: "category",
+          data: props.data.map((item) => item.strategyName),
         },
         yAxis: {
-          type: 'value',
+          type: "value",
           axisLabel: {
-            formatter: '{value}%'
-          }
+            formatter: "{value}%",
+          },
         },
         series: [
           {
-            name: '最大回撤',
-            type: 'bar',
-            data: props.data.map(item => (item.maxDrawdown || 0) * 100),
+            name: "最大回撤",
+            type: "bar",
+            data: props.data.map((item) => (item.maxDrawdown || 0) * 100),
             itemStyle: {
-              color: '#ff4d4f'
-            }
-          }
-        ]
-      }
+              color: "#ff4d4f",
+            },
+          },
+        ],
+      };
 
-      chartInstance.setOption(option)
-    }
+      chartInstance.setOption(option);
+    };
 
     const resizeChart = () => {
       if (chartInstance) {
-        chartInstance.resize()
+        chartInstance.resize();
       }
-    }
+    };
 
     onMounted(() => {
-      initChart()
-      window.addEventListener('resize', resizeChart)
-    })
+      initChart();
+      window.addEventListener("resize", resizeChart);
+    });
 
-    watch(() => props.data, () => {
+    onUnmounted(() => {
+      window.removeEventListener("resize", resizeChart);
       if (chartInstance) {
-        initChart()
+        chartInstance.dispose();
+        chartInstance = null;
       }
-    })
+    });
+
+    watch(
+      () => props.data,
+      () => {
+        if (chartInstance) {
+          initChart();
+        }
+      },
+    );
 
     return {
-      chart
-    }
-  }
-}
+      chart,
+    };
+  },
+};
 </script>
 
 <style scoped>

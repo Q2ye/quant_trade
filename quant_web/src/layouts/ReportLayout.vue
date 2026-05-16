@@ -12,18 +12,13 @@
       </div>
 
       <div class="header-actions">
-        <n-button
-          type="primary"
-          @click="exportReport"
-        >
+        <n-button type="primary" @click="exportReport">
           <template #icon>
             <smart-icon name="CloudDownload" />
           </template>
           导出报告
         </n-button>
-        <n-button
-          @click="goBack"
-        >
+        <n-button @click="goBack">
           <template #icon>
             <smart-icon name="ArrowBack" />
           </template>
@@ -46,41 +41,41 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
-import SmartIcon from '@/components/common/SmartIcon.vue'
+import { defineComponent } from "vue";
+import { NButton, useMessage } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
 export default defineComponent({
   name: "ReportLayout",
   components: {
     NButton,
-    SmartIcon
+    SmartIcon,
   },
   props: {
     reportData: {
       type: Object,
       default: () => ({
-        title: '回测报告',
-        strategy: '双均线策略',
-        startDate: '2023-01-01',
-        endDate: '2023-08-01',
-        capital: 1000000
-      })
-    }
+        title: "回测报告",
+        strategy: "双均线策略",
+        startDate: "2023-01-01",
+        endDate: "2023-08-01",
+        capital: 1000000,
+      }),
+    },
   },
   setup() {
-    const message = useMessage()
+    const message = useMessage();
 
     return {
-      message
-    }
+      message,
+    };
   },
   computed: {
     reportTitle() {
-      return this.reportData.title || '策略回测报告';
+      return this.reportData.title || "策略回测报告";
     },
     strategyName() {
-      return this.reportData.strategy || '未命名策略';
+      return this.reportData.strategy || "未命名策略";
     },
     timeRange() {
       return `${this.reportData.startDate} 至 ${this.reportData.endDate}`;
@@ -90,18 +85,18 @@ export default defineComponent({
     },
     generateTime() {
       return new Date().toLocaleString();
-    }
+    },
   },
   methods: {
     exportReport() {
-      this.message.success('报告导出成功');
+      this.message.success("报告导出成功");
       // 实际项目中实现导出PDF功能
     },
     goBack() {
-      this.$emit('go-back');
-    }
-  }
-})
+      this.$emit("go-back");
+    },
+  },
+});
 </script>
 
 <style scoped>
@@ -111,7 +106,7 @@ export default defineComponent({
   height: 100vh;
   background-color: #fff;
   color: #333;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-family: "Helvetica Neue", Arial, sans-serif;
 }
 
 .report-header {

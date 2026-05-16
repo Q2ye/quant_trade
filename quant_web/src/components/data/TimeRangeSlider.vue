@@ -1,4 +1,72 @@
 <!--时间范围滑块-->
+<script setup lang="ts">
+import { ref, computed, watch } from "vue";
+import dayjs from "dayjs";
+
+const props = withDefaults(defineProps<{
+  minDate?: string | Date;
+  maxDate?: string | Date;
+  value?: Date[];
+}>(), {
+  minDate: () => dayjs().subtract(5, "year").toDate(),
+  maxDate: () => new Date(),
+  value: () => [dayjs().subtract(1, "year").toDate(), new Date()],
+});
+
+const emit = defineEmits<{
+  input: [value: Date[]];
+  change: [value: Date[]];
+}>();
+
+const localValue = ref<Date[]>([...props.value]);
+const dateFormat = "YYYY-MM-DD";
+
+const minTimestamp = computed(() => new Date(props.minDate).getTime());
+const maxTimestamp = computed(() => new Date(props.maxDate).getTime());
+
+const range = computed(() => maxTimestamp.value - minTimestamp.value);
+
+const startPercent = computed(() =>
+  ((localValue.value[0].getTime() - minTimestamp.value) / range.value) * 100,
+);
+
+const endPercent = computed(() =>
+  100 - ((maxTimestamp.value - localValue.value[1].getTime()) / range.value) * 100,
+);
+
+watch(
+  () => props.value,
+  (newVal) => {
+    localValue.value = [...newVal];
+  },
+);
+
+const formatDate = (date: Date) => dayjs(date).format(dateFormat);
+
+const emitChange = () => {
+  emit("input", [...localValue.value]);
+  emit("change", [...localValue.value]);
+};
+
+const handleStartChange = (e: Event) => {
+  const timestamp = parseInt((e.target as HTMLInputElement).value);
+  const newDate = new Date(timestamp);
+  if (newDate < localValue.value[1]) {
+    localValue.value[0] = newDate;
+    emitChange();
+  }
+};
+
+const handleEndChange = (e: Event) => {
+  const timestamp = parseInt((e.target as HTMLInputElement).value);
+  const newDate = new Date(timestamp);
+  if (newDate > localValue.value[0]) {
+    localValue.value[1] = newDate;
+    emitChange();
+  }
+};
+</script>
+
 <template>
   <div class="time-range-slider">
     <div class="date-display">
@@ -13,7 +81,7 @@
           class="slider-range"
           :style="{
             left: `${startPercent}%`,
-            right: `${100 - endPercent}%`
+            right: `${100 - endPercent}%`,
           }"
         />
       </div>
@@ -25,7 +93,7 @@
         :max="maxTimestamp"
         :value="localValue[0].getTime()"
         @input="handleStartChange"
-      >
+      />
 
       <input
         type="range"
@@ -34,90 +102,10 @@
         :max="maxTimestamp"
         :value="localValue[1].getTime()"
         @input="handleEndChange"
-      >
+      />
     </div>
   </div>
 </template>
-
-<script>
-import dayjs from 'dayjs'
-
-export default {
-  name: "TimeRangeSlider",
-  props: {
-    minDate: {
-      type: [String, Date],
-      default: () => dayjs().subtract(5, 'year').toDate()
-    },
-    maxDate: {
-      type: [String, Date],
-      default: () => new Date()
-    },
-    value: {
-      type: Array,
-      default: () => [
-        dayjs().subtract(1, 'year').toDate(),
-        new Date()
-      ]
-    }
-  },
-  data() {
-    return {
-      localValue: [...this.value],
-      dateFormat: 'YYYY-MM-DD'
-    }
-  },
-  computed: {
-    minTimestamp() {
-      return new Date(this.minDate).getTime()
-    },
-    maxTimestamp() {
-      return new Date(this.maxDate).getTime()
-    },
-    startPercent() {
-      const range = this.maxTimestamp - this.minTimestamp
-      return ((this.localValue[0].getTime() - this.minTimestamp) / range) * 100
-    },
-    endPercent() {
-      const range = this.maxTimestamp - this.minTimestamp
-      return 100 - ((this.maxTimestamp - this.localValue[1].getTime()) / range) * 100
-    }
-  },
-  watch: {
-    value(newVal) {
-      this.localValue = [...newVal]
-    }
-  },
-  methods: {
-    formatDate(date) {
-      return dayjs(date).format(this.dateFormat)
-    },
-
-    handleStartChange(e) {
-      const timestamp = parseInt(e.target.value)
-      const newDate = new Date(timestamp)
-      if (newDate < this.localValue[1]) {
-        this.localValue[0] = newDate
-        this.emitChange()
-      }
-    },
-
-    handleEndChange(e) {
-      const timestamp = parseInt(e.target.value)
-      const newDate = new Date(timestamp)
-      if (newDate > this.localValue[0]) {
-        this.localValue[1] = newDate
-        this.emitChange()
-      }
-    },
-
-    emitChange() {
-      this.$emit('input', [...this.localValue])
-      this.$emit('change', [...this.localValue])
-    }
-  }
-}
-</script>
 
 <style scoped>
 .time-range-slider {
@@ -163,9 +151,9 @@ export default {
   margin: 0;
   transform: translateY(-50%);
   background: transparent;
-  -webkit-appearance: none; /* Safari、Chrome 等webkit内核 */
-  -moz-appearance: none;    /* Firefox 等Gecko内核 */
-  appearance: none;         /* 标准属性，必须添加 */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
   pointer-events: none;
   z-index: 2;
 }

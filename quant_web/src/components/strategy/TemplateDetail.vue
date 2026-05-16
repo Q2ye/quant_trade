@@ -1,4 +1,4 @@
-<!-- components/events/TemplateDetail.vue -->
+<!--策略模板详情-->
 <template>
   <div class="template-detail">
     <div class="detail-section">
@@ -6,34 +6,34 @@
       <p>{{ template.description }}</p>
     </div>
 
-    <el-row :gutter="24" class="detail-section">
-      <el-col :span="8">
+    <NGrid :cols="24" :x-gap="24" class="detail-section">
+      <NGridItem :span="8">
         <div class="info-item">
           <div class="info-label">
             <Icon icon="mdi:chart-bell-curve" />
             <span>策略类别</span>
           </div>
           <div class="info-value">
-            <el-tag :type="getCategoryTag(template.category)" size="small">
+            <NTag :type="getCategoryTag(template.category)" size="small">
               {{ getCategoryLabel(template.category) }}
-            </el-tag>
+            </NTag>
           </div>
         </div>
-      </el-col>
-      <el-col :span="8">
+      </NGridItem>
+      <NGridItem :span="8">
         <div class="info-item">
           <div class="info-label">
             <Icon icon="mdi:puzzle" />
             <span>复杂度</span>
           </div>
           <div class="info-value">
-            <el-tag :type="getComplexityTag(template.complexity)" size="small">
+            <NTag :type="getComplexityTag(template.complexity)" size="small">
               {{ getComplexityLabel(template.complexity) }}
-            </el-tag>
+            </NTag>
           </div>
         </div>
-      </el-col>
-      <el-col :span="8">
+      </NGridItem>
+      <NGridItem :span="8">
         <div class="info-item">
           <div class="info-label">
             <Icon icon="mdi:identifier" />
@@ -41,46 +41,52 @@
           </div>
           <div class="info-value">{{ template.id }}</div>
         </div>
-      </el-col>
-    </el-row>
+      </NGridItem>
+    </NGrid>
 
     <div class="detail-section">
       <h3>性能指标</h3>
-      <el-row :gutter="24">
-        <el-col :span="6">
+      <NGrid :cols="24" :x-gap="24">
+        <NGridItem :span="6">
           <div class="metric-card">
             <div class="metric-icon positive">
               <Icon icon="mdi:chart-line" />
             </div>
             <div class="metric-content">
-              <div class="metric-value">{{ template.performance.annualReturn }}%</div>
+              <div class="metric-value">
+                {{ template.performance.annualReturn }}%
+              </div>
               <div class="metric-label">年化收益</div>
             </div>
           </div>
-        </el-col>
-        <el-col :span="6">
+        </NGridItem>
+        <NGridItem :span="6">
           <div class="metric-card">
             <div class="metric-icon negative">
               <Icon icon="mdi:trending-down" />
             </div>
             <div class="metric-content">
-              <div class="metric-value">{{ template.performance.maxDrawdown }}%</div>
+              <div class="metric-value">
+                {{ template.performance.maxDrawdown }}%
+              </div>
               <div class="metric-label">最大回撤</div>
             </div>
           </div>
-        </el-col>
-        <el-col :span="6">
+        </NGridItem>
+        <NGridItem :span="6">
           <div class="metric-card">
             <div class="metric-icon positive">
               <Icon icon="mdi:shield" />
             </div>
             <div class="metric-content">
-              <div class="metric-value">{{ template.performance.sharpeRatio }}</div>
+              <div class="metric-value">
+                {{ template.performance.sharpeRatio }}
+              </div>
               <div class="metric-label">夏普比率</div>
             </div>
           </div>
-        </el-col>
-        <el-col :span="6">
+        </NGridItem>
+        <NGridItem :span="6">
           <div class="metric-card">
             <div class="metric-icon neutral">
               <Icon icon="mdi:calendar" />
@@ -90,22 +96,21 @@
               <div class="metric-label">回测周期</div>
             </div>
           </div>
-        </el-col>
-      </el-row>
+        </NGridItem>
+      </NGrid>
     </div>
 
     <div class="detail-section">
       <h3>标签</h3>
       <div class="tags-container">
-        <el-tag
+        <NTag
           v-for="tag in template.tags"
           :key="tag"
-          type="info"
           size="medium"
           class="detail-tag"
         >
           {{ tag }}
-        </el-tag>
+        </NTag>
       </div>
     </div>
 
@@ -140,124 +145,118 @@
 </template>
 
 <script setup lang="ts">
-import { Icon } from '@iconify/vue'
+import { NGrid, NGridItem, NTag } from "naive-ui";
+import { Icon } from "@iconify/vue";
 
 interface StrategyTemplate {
-  id: string
-  name: string
-  description: string
-  category: string
-  complexity: string
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  complexity: string;
   performance: {
-    annualReturn: number
-    maxDrawdown: number
-    sharpeRatio: number
-  }
-  tags: string[]
+    annualReturn: number;
+    maxDrawdown: number;
+    sharpeRatio: number;
+  };
+  tags: string[];
 }
 
-interface Props {
-  template: StrategyTemplate
-}
-
-defineProps<Props>()
+defineProps<{
+  template: StrategyTemplate;
+}>();
 
 const getCategoryTag = (category: string) => {
-  const map: Record<string, string> = {
-    trend: 'success',
-    mean_reversion: 'warning',
-    factor: 'primary',
-    ml: 'danger'
-  }
-  return map[category] || 'info'
-}
+  const map: Record<string, "success" | "warning" | "info" | "error"> = {
+    trend: "success",
+    mean_reversion: "warning",
+    factor: "info",
+    ml: "error",
+  };
+  return map[category] || "default";
+};
 
 const getCategoryLabel = (category: string) => {
   const map: Record<string, string> = {
-    trend: '趋势跟踪',
-    mean_reversion: '均值回归',
-    factor: '因子策略',
-    ml: '机器学习'
-  }
-  return map[category] || category
-}
+    trend: "趋势跟踪",
+    mean_reversion: "均值回归",
+    factor: "因子策略",
+    ml: "机器学习",
+  };
+  return map[category] || category;
+};
 
 const getComplexityTag = (complexity: string) => {
-  const map: Record<string, string> = {
-    simple: 'success',
-    medium: 'warning',
-    complex: 'danger'
-  }
-  return map[complexity] || 'info'
-}
+  const map: Record<string, "success" | "warning" | "error"> = {
+    simple: "success",
+    medium: "warning",
+    complex: "error",
+  };
+  return map[complexity] || "default";
+};
 
 const getComplexityLabel = (complexity: string) => {
   const map: Record<string, string> = {
-    simple: '简单',
-    medium: '中等',
-    complex: '复杂'
-  }
-  return map[complexity] || complexity
-}
+    simple: "简单",
+    medium: "中等",
+    complex: "复杂",
+  };
+  return map[complexity] || complexity;
+};
 
 const getTemplateFeatures = (template: StrategyTemplate) => {
   const featureMap: Record<string, string[]> = {
     trend: [
-      '捕捉市场趋势方向',
-      '适合趋势明显的市场环境',
-      '止损机制完善',
-      '信号明确易于执行'
+      "捕捉市场趋势方向",
+      "适合趋势明显的市场环境",
+      "止损机制完善",
+      "信号明确易于执行",
     ],
     mean_reversion: [
-      '利用价格回归特性',
-      '适合震荡市场环境',
-      '高胜率策略',
-      '需要严格风控'
+      "利用价格回归特性",
+      "适合震荡市场环境",
+      "高胜率策略",
+      "需要严格风控",
     ],
-    factor: [
-      '多因子组合',
-      '系统化投资',
-      '风险分散',
-      '适合机构投资者'
-    ],
+    factor: ["多因子组合", "系统化投资", "风险分散", "适合机构投资者"],
     ml: [
-      '机器学习模型驱动',
-      '自适应市场变化',
-      '需要大量数据训练',
-      '模型解释性要求高'
-    ]
-  }
-  return featureMap[template.category] || ['策略逻辑清晰', '回测表现稳定']
-}
+      "机器学习模型驱动",
+      "自适应市场变化",
+      "需要大量数据训练",
+      "模型解释性要求高",
+    ],
+  };
+  return featureMap[template.category] || ["策略逻辑清晰", "回测表现稳定"];
+};
 
 const getScenarioDescription = (category: string) => {
   const map: Record<string, string> = {
-    trend: '适用于有明显趋势的牛市或熊市行情',
-    mean_reversion: '适用于震荡市或区间波动的市场环境',
-    factor: '适用于多因子选股和系统化投资',
-    ml: '适用于大数据分析和复杂模式识别场景'
-  }
-  return map[category] || '适用于多种市场环境'
-}
+    trend: "适用于有明显趋势的牛市或熊市行情",
+    mean_reversion: "适用于震荡市或区间波动的市场环境",
+    factor: "适用于多因子选股和系统化投资",
+    ml: "适用于大数据分析和复杂模式识别场景",
+  };
+  return map[category] || "适用于多种市场环境";
+};
 
 const getHoldingPeriod = (category: string) => {
   const map: Record<string, string> = {
-    trend: '中长线',
-    mean_reversion: '短线',
-    factor: '中长线',
-    ml: '灵活调整'
-  }
-  return map[category] || '中线'
-}
+    trend: "中长线",
+    mean_reversion: "短线",
+    factor: "中长线",
+    ml: "灵活调整",
+  };
+  return map[category] || "中线";
+};
 
 const getRiskLevel = (complexity: string) => {
   const map: Record<string, string> = {
-    simple: '低风险',
-    medium: '中风险',
-    complex: '高风险'
-  }
-  return map[complexity] || '中风险'
-}
+    simple: "低风险",
+    medium: "中风险",
+    complex: "高风险",
+  };
+  return map[complexity] || "中风险";
+};
 </script>
 
 <style scoped>
@@ -271,7 +270,7 @@ const getRiskLevel = (complexity: string) => {
 
 .detail-section h3 {
   margin-bottom: 16px;
-  color: #303133;
+  color: var(--n-text-color-1);
   font-size: 16px;
   font-weight: 600;
 }
@@ -286,20 +285,20 @@ const getRiskLevel = (complexity: string) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #606266;
+  color: var(--n-text-color-2);
   font-size: 14px;
 }
 
 .info-value {
   font-weight: 500;
-  color: #303133;
+  color: var(--n-text-color-1);
 }
 
 .metric-card {
   display: flex;
   align-items: center;
   padding: 16px;
-  background: #f8f9fa;
+  background: var(--n-color-embedded);
   border-radius: 8px;
   gap: 12px;
 }
@@ -318,12 +317,10 @@ const getRiskLevel = (complexity: string) => {
   background: #e8f5e8;
   color: #67c23a;
 }
-
 .metric-icon.negative {
   background: #fef0f0;
   color: #f56c6c;
 }
-
 .metric-icon.neutral {
   background: #f4f4f5;
   color: #909399;
@@ -336,13 +333,13 @@ const getRiskLevel = (complexity: string) => {
 .metric-value {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: var(--n-text-color-1);
   margin-bottom: 4px;
 }
 
 .metric-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--n-text-color-3);
 }
 
 .tags-container {
@@ -366,7 +363,7 @@ const getRiskLevel = (complexity: string) => {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  color: #606266;
+  color: var(--n-text-color-2);
 }
 
 .feature-icon {
@@ -385,13 +382,8 @@ const getRiskLevel = (complexity: string) => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #f8f9fa;
+  background: var(--n-color-embedded);
   border-radius: 6px;
-  color: #606266;
-}
-
-.scenario-item .iconify {
-  color: #409eff;
-  font-size: 16px;
+  color: var(--n-text-color-2);
 }
 </style>

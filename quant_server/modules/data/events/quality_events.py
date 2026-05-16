@@ -44,7 +44,7 @@ class DataQualityEvent(BaseEvent):
         quality_score: float,
         status: QualityCheckStatus,
         issue_count: int = 0,
-        user_id: Optional[int] = None,
+        user_id: Optional[str] = None,
         **kwargs
     ):
         super().__init__(

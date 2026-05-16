@@ -16,7 +16,11 @@
         v-for="(order, index) in orders"
         :key="index"
         class="table-row"
-        :class="{'buy-row': order.direction === 'B', 'sell-row': order.direction === 'S'}">
+        :class="{
+          'buy-row': order.direction === 'B',
+          'sell-row': order.direction === 'S',
+        }"
+      >
         <div class="row-item">{{ order.code }}</div>
         <div class="row-item">{{ order.name }}</div>
         <div class="row-item">
@@ -25,14 +29,18 @@
         </div>
         <div class="row-item">{{ order.price.toFixed(2) }}</div>
         <div class="row-item">{{ order.volume }}</div>
-        <div class="row-item">{{ (order.price * order.volume).toFixed(2) }}</div>
+        <div class="row-item">
+          {{ (order.price * order.volume).toFixed(2) }}
+        </div>
         <div class="row-item">{{ formatTime(order.time) }}</div>
         <div class="row-item">
-          <span :class="{
-            'status-pending': order.status === 'P',
-            'status-filled': order.status === 'F',
-            'status-cancelled': order.status === 'C'
-          }">
+          <span
+            :class="{
+              'status-pending': order.status === 'P',
+              'status-filled': order.status === 'F',
+              'status-cancelled': order.status === 'C',
+            }"
+          >
             {{ statusMap[order.status] }}
           </span>
         </div>
@@ -48,36 +56,53 @@ export default {
     orders: {
       type: Array,
       default: () => [
-        { code: '600519.SH', name: '贵州茅台', direction: 'B', price: 1800.50, volume: 100, time: new Date(), status: 'F' },
-        { code: '000858.SZ', name: '五粮液', direction: 'S', price: 210.25, volume: 200, time: new Date(), status: 'P' }
-      ]
-    }
+        {
+          code: "600519.SH",
+          name: "贵州茅台",
+          direction: "B",
+          price: 1800.5,
+          volume: 100,
+          time: new Date(),
+          status: "F",
+        },
+        {
+          code: "000858.SZ",
+          name: "五粮液",
+          direction: "S",
+          price: 210.25,
+          volume: 200,
+          time: new Date(),
+          status: "P",
+        },
+      ],
+    },
   },
   data() {
     return {
       statusMap: {
-        'P': '已报',
-        'F': '成交',
-        'C': '撤单'
-      }
-    }
+        P: "已报",
+        F: "成交",
+        C: "撤单",
+      },
+    };
   },
   methods: {
     formatTime(date) {
-      return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
-    }
-  }
-}
+      return `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+    },
+  },
+};
 </script>
 
 <style scoped>
 .order-table {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 12px;
   color: #333;
 }
 
-.table-header, .table-row {
+.table-header,
+.table-row {
   display: grid;
   grid-template-columns: 1fr 2fr 0.8fr 1fr 1fr 1.2fr 1.5fr 0.8fr;
   padding: 8px 5px;

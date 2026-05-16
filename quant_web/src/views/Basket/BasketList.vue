@@ -1,174 +1,195 @@
-<!--篮子列表-->
-<script>
-import { getBaskets, deleteBasket } from '@/api/basket'
-
-export default {
-  name: "BasketList",
-  data() {
-    return {
-      baskets: [],
-      loading: false,
-      pagination: {
-        page: 1,
-        pageSize: 10,
-        total: 0
-      }
-    }
-  },
-  mounted() {
-    this.getBasketList()
-  },
-  methods: {
-    async getBasketList() {
-      this.loading = true
-      try {
-        // 修复：确保参数是数字类型
-        const params = {
-          page: Number(this.pagination.page) || 1,
-          page_size: Number(this.pagination.pageSize) || 10
-        }
-        console.log('请求参数:', params) // 调试日志
-
-        const res = await getBaskets(params)
-        this.baskets = res.baskets
-        this.pagination.total = res.total
-      } catch (error) {
-        console.error('获取篮子列表失败:', error)
-        this.$message.error('获取数据失败')
-      } finally {
-        this.loading = false
-      }
-    },
-
-    handleCreate() {
-      this.$router.push({ name: 'BasketEditor' })
-    },
-
-    handleEdit(id) {
-      this.$router.push({ name: 'BasketEditor', params: { id } })
-    },
-
-    handleViewDetail(id) {
-      this.$router.push({ name: 'BasketDetail', params: { id } })
-    },
-
-    async handleDelete(id) {
-      this.$confirm('确定删除该篮子吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(async () => {
-        try {
-          await deleteBasket(id)
-          this.$message.success('删除成功')
-          this.getBasketList()
-        } catch (error) {
-          console.error('删除失败:', error)
-          this.$message.error('删除失败')
-        }
-      })
-    },
-
-    handlePageChange(page) {
-      // 修复：确保page是数字
-      this.pagination.page = Number(page) || 1
-      this.getBasketList()
-    },
-
-    // 添加日期格式化方法
-    formatDate(dateString) {
-      if (!dateString) return ''
-      try {
-        const date = new Date(dateString)
-        return date.toLocaleDateString('zh-CN', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        })
-      } catch (error) {
-        return dateString
-      }
-    }
-  }
-}
-</script>
-
 <template>
-  <div class="basket-list">
+  <div class="basket-list bg-gradient-mesh bg-noise">
     <div class="header">
       <h2>股票篮子管理</h2>
-      <el-button type="primary" icon="el-icon-plus" @click="handleCreate">
-        新建篮子
-      </el-button>
+      <n-button type="primary" @click="handleCreate">新建篮子</n-button>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="baskets"
-      stripe
-      style="width: 100%">
-      <el-table-column prop="name" label="篮子名称" min-width="150" />
-      <el-table-column label="创建时间" min-width="150">
-        <template slot-scope="scope">
-          {{ formatDate(scope.row.created_at) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="成分股数量" min-width="120">
-        <template slot-scope="scope">
-          {{ scope.row.items_count || 0 }} 只
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" min-width="200">
-        <template slot-scope="scope">
-          <el-button
-            size="mini"
-            type="primary"
-            @click="handleViewDetail(scope.row.id)">
-            详情
-          </el-button>
-          <el-button
-            size="mini"
-            @click="handleEdit(scope.row.id)">
-            编辑
-          </el-button>
-          <el-button
-            size="mini"
-            type="danger"
-            @click="handleDelete(scope.row.id)">
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <n-result
+      v-if="error"
+      status="500"
+      title="加载失败"
+      description="获取篮子列表失败，请稍后重试"
+    >
+      <template #footer
+        ><n-button @click="getBasketList">重试</n-button></template
+      >
+    </n-result>
 
-    <el-pagination
-      class="pagination"
-      :current-page="pagination.page"
-      :page-size="pagination.pageSize"
-      :total="pagination.total"
-      layout="total, sizes, prev, pager, next, jumper"
-      @current-change="handlePageChange"
-    />
+    <template v-else>
+      <n-data-table
+        :loading="loading"
+        :data="baskets"
+        :columns="columns"
+        :bordered="false"
+        striped
+        :row-key="(row: any) => row.id"
+      />
+
+      <div class="pagination">
+        <n-pagination
+          v-model:page="pagination.page"
+          :page-size="pagination.pageSize"
+          :item-count="pagination.total"
+          :page-sizes="[10, 20, 50]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </div>
+    </template>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref, h } from "vue";
+import { useRouter } from "vue-router";
+import { useMessage, useDialog, NButton, NResult } from "naive-ui";
+import { getBaskets, deleteBasket } from "@/api/basket";
+
+const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
+
+const loading = ref(false);
+const error = ref(false);
+const baskets = ref<any[]>([]);
+const pagination = ref({ page: 1, pageSize: 10, total: 0 });
+
+const columns = [
+  { title: "篮子名称", key: "name", minWidth: 150 },
+  {
+    title: "创建时间",
+    key: "created_at",
+    minWidth: 150,
+    render(row: any) {
+      return formatDate(row.created_at);
+    },
+  },
+  {
+    title: "成分股数量",
+    key: "items_count",
+    minWidth: 120,
+    render(row: any) {
+      return `${row.items_count || 0} 只`;
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    minWidth: 200,
+    render(row: any) {
+      return h("div", { style: { display: "flex", gap: "8px" } }, [
+        h(
+          NButton,
+          {
+            size: "tiny",
+            type: "primary",
+            onClick: () => handleViewDetail(row.id),
+          },
+          { default: () => "详情" },
+        ),
+        h(
+          NButton,
+          { size: "tiny", onClick: () => handleEdit(row.id) },
+          { default: () => "编辑" },
+        ),
+        h(
+          NButton,
+          { size: "tiny", type: "error", onClick: () => handleDelete(row.id) },
+          { default: () => "删除" },
+        ),
+      ]);
+    },
+  },
+];
+
+const getBasketList = async () => {
+  loading.value = true;
+  try {
+    const params: any = {
+      page: Number(pagination.value.page) || 1,
+      pageSize: Number(pagination.value.pageSize) || 10,
+    };
+    const res: any = await getBaskets(params);
+    baskets.value = res.baskets;
+    pagination.value.total = res.total;
+    error.value = false;
+  } catch (err) {
+    console.error("获取篮子列表失败:", err);
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleCreate = () => router.push({ name: "BasketEditor" });
+const handleEdit = (id: string) =>
+  router.push({ name: "BasketEditor", params: { id } });
+const handleViewDetail = (id: string) =>
+  router.push({ name: "BasketDetail", params: { id } });
+
+const handleDelete = (id: string) => {
+  dialog.warning({
+    title: "提示",
+    content: "确定删除该篮子吗？",
+    positiveText: "确定",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        await deleteBasket(id);
+        message.success("删除成功");
+        getBasketList();
+      } catch (error) {
+        console.error("删除失败:", error);
+        message.error("删除失败");
+      }
+    },
+  });
+};
+
+const handlePageChange = (page: number) => {
+  pagination.value.page = Number(page) || 1;
+  getBasketList();
+};
+const handlePageSizeChange = (size: number) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
+  getBasketList();
+};
+
+const formatDate = (dateString: string) => {
+  if (!dateString) return "";
+  try {
+    return new Date(dateString).toLocaleDateString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+getBasketList();
+</script>
 
 <style scoped>
 .basket-list {
   padding: 20px;
-  background-color: #fff;
+  background: var(--n-card-color);
   border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,.1);
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
-
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .pagination {
   margin-top: 20px;
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

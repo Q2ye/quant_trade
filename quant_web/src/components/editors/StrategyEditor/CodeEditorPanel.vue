@@ -1,34 +1,35 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import MonacoEditor from './MonacoEditor.vue'
+import { ref, computed } from "vue";
+import { NButton } from "naive-ui";
+import MonacoEditor from "./MonacoEditor.vue";
 
 interface Props {
-  code: string
-  language?: string
-  readOnly?: boolean
+  code: string;
+  language?: string;
+  readOnly?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  language: 'python',
-  readOnly: false
-})
+  language: "python",
+  readOnly: false,
+});
 
-const emit = defineEmits(['update:code', 'save'])
+const emit = defineEmits(["update:code", "save"]);
 
-const localCode = ref(props.code)
+const localCode = ref(props.code);
 
 const onCodeChange = (value: string) => {
-  localCode.value = value
-  emit('update:code', value)
-}
+  localCode.value = value;
+  emit("update:code", value);
+};
 
 const onSave = () => {
-  emit('save', localCode.value)
-}
+  emit("save", localCode.value);
+};
 
 // 代码验证状态
-const validationErrors = ref<any[]>([])
-const hasErrors = computed(() => validationErrors.value.length > 0)
+const validationErrors = ref<any[]>([]);
+const hasErrors = computed(() => validationErrors.value.length > 0);
 </script>
 
 <template>
@@ -37,7 +38,7 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
       <div class="title">策略代码编辑器</div>
       <div class="actions">
         <span class="language-tag">{{ language.toUpperCase() }}</span>
-        <el-button size="small" @click="onSave">保存</el-button>
+        <NButton size="small" @click="onSave">保存</NButton>
       </div>
     </div>
 
@@ -74,7 +75,7 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
 }
 
 .editor-header {
@@ -82,12 +83,12 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  border-bottom: 1px solid var(--n-border-color);
 }
 
 .title {
   font-weight: bold;
-  color: var(--el-text-color-primary);
+  color: var(--n-text-color-1);
 }
 
 .actions {
@@ -97,7 +98,7 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
 }
 
 .language-tag {
-  background: var(--el-color-primary);
+  background: var(--n-color-target);
   color: white;
   padding: 2px 6px;
   border-radius: 3px;
@@ -110,14 +111,14 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
 }
 
 .validation-panel {
-  border-top: 1px solid var(--el-border-color);
+  border-top: 1px solid var(--n-border-color);
   max-height: 120px;
   overflow-y: auto;
 }
 
 .validation-header {
   padding: 8px 16px;
-  background: var(--el-fill-color-light);
+  background: var(--n-color-embedded);
   font-size: 12px;
   font-weight: bold;
 }
@@ -144,6 +145,6 @@ const hasErrors = computed(() => validationErrors.value.length > 0)
 }
 
 .message {
-  color: var(--el-text-color-regular);
+  color: var(--n-text-color-2);
 }
 </style>

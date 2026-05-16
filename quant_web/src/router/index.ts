@@ -1,12 +1,11 @@
 // index.ts
-import { createRouter, createWebHistory, Router } from 'vue-router';
-import { routes } from './routes';
-import { authGuard, dataReadyGuard, layoutGuard } from './guard';
+import { createRouter, createWebHistory, Router } from "vue-router";
+import { routes } from "./routes";
+import { authGuard, dataReadyGuard, layoutGuard } from "./guard";
 
 const getBaseUrl = (): string => {
-    // 优先从环境变量获取
-    return import.meta.env.BASE_URL;
-
+  // 优先从环境变量获取
+  return import.meta.env.BASE_URL;
 };
 
 const router: Router = createRouter({
@@ -17,7 +16,7 @@ const router: Router = createRouter({
       return savedPosition;
     }
     return { top: 0 };
-  }
+  },
 });
 
 // 正确注册路由守卫

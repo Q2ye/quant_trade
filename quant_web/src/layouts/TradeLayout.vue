@@ -38,14 +38,14 @@
 </template>
 
 <script>
-import { NCard } from 'naive-ui'
+import { NCard } from "naive-ui";
 
 export default {
   name: "TradeLayout",
   components: {
-    NCard
-  }
-}
+    NCard,
+  },
+};
 </script>
 
 <style lang="scss" scoped>
@@ -117,11 +117,13 @@ export default {
   }
 }
 
-.equity-curve, .risk-matrix {
+.equity-curve,
+.risk-matrix {
   grid-row: 1;
 }
 
-.sector-distribution, .market-heatmap {
+.sector-distribution,
+.market-heatmap {
   grid-row: 2;
 }
 

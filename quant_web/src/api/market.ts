@@ -1,15 +1,15 @@
 // quant_web/src/api/market.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   PaginatedResponse,
   StockQueryParams,
   QuoteQueryParams,
   KLineData,
   IndexInfo,
-  SectorInfo
-} from '@/types/api'
-import {FinancialData, StockBasic} from "@/types/entities/data";
+  SectorInfo,
+} from "@/types/api";
+import { FinancialData, StockBasic } from "@/types/entities/data";
 
 /**
  * 市场数据API服务
@@ -28,10 +28,13 @@ export default {
    * @param params 查询参数
    * @returns 股票列表结果
    */
-  async getStocks(params?: StockQueryParams): Promise<PaginatedResponse<StockBasic>> {
-    return request.get('/market/stocks', { params })
+  async getStocks(
+    params?: StockQueryParams,
+  ): Promise<PaginatedResponse<StockBasic>> {
+    return request
+      .get("/quantTrade/market/stocks", { params })
       .then((response: any) => handleResponse(response))
-      .then((data: PaginatedResponse<StockBasic>) => data)
+      .then((data: PaginatedResponse<StockBasic>) => data);
   },
 
   /**
@@ -40,9 +43,10 @@ export default {
    * @returns 股票详细信息
    */
   async getStockDetail(code: string): Promise<StockBasic> {
-    return request.get(`/market/stock/${code}`)
+    return request
+      .get(`/market/stock/${code}`)
       .then((response: any) => handleResponse(response))
-      .then((data: { stock: StockBasic }) => data.stock)
+      .then((data: { stock: StockBasic }) => data.stock);
   },
 
   /**
@@ -51,10 +55,14 @@ export default {
    * @param params 查询参数
    * @returns K线数据数组
    */
-  async getStockHistory(code: string, params: QuoteQueryParams): Promise<KLineData[]> {
-    return request.get(`/market/stock/${code}/history`, { params })
+  async getStockHistory(
+    code: string,
+    params: QuoteQueryParams,
+  ): Promise<KLineData[]> {
+    return request
+      .get(`/market/stock/${code}/history`, { params })
       .then((response: any) => handleResponse(response))
-      .then((data: { historical: KLineData[] }) => data.historical)
+      .then((data: { historical: KLineData[] }) => data.historical);
   },
 
   /**
@@ -62,10 +70,14 @@ export default {
    * @param params 分页参数
    * @returns ETF基本信息数组
    */
-  async getETFs(params?: { page?: number; limit?: number }): Promise<StockBasic[]> {
-    return request.get('/market/etfs', { params })
+  async getETFs(params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<StockBasic[]> {
+    return request
+      .get("/quantTrade/market/etfs", { params })
       .then((response: any) => handleResponse(response))
-      .then((data: { etfs: StockBasic[] }) => data.etfs)
+      .then((data: { etfs: StockBasic[] }) => data.etfs);
   },
 
   /**
@@ -74,9 +86,10 @@ export default {
    * @returns ETF详细信息
    */
   async getETFDetail(code: string): Promise<StockBasic> {
-    return request.get(`/market/etf/${code}`)
+    return request
+      .get(`/market/etf/${code}`)
       .then((response: any) => handleResponse(response))
-      .then((data: { etf: StockBasic }) => data.etf)
+      .then((data: { etf: StockBasic }) => data.etf);
   },
 
   /**
@@ -84,9 +97,10 @@ export default {
    * @returns 指数信息数组
    */
   async getIndexes(): Promise<IndexInfo[]> {
-    return request.get('/market/indexes')
+    return request
+      .get("/quantTrade/market/indexes")
       .then((response: any) => handleResponse(response))
-      .then((data: { indexes: IndexInfo[] }) => data.indexes)
+      .then((data: { indexes: IndexInfo[] }) => data.indexes);
   },
 
   /**
@@ -95,9 +109,10 @@ export default {
    * @returns 指数详细信息
    */
   async getIndexDetail(code: string): Promise<IndexInfo> {
-    return request.get(`/market/index/${code}`)
+    return request
+      .get(`/market/index/${code}`)
       .then((response: any) => handleResponse(response))
-      .then((data: { index: IndexInfo }) => data.index)
+      .then((data: { index: IndexInfo }) => data.index);
   },
 
   /**
@@ -105,9 +120,10 @@ export default {
    * @returns 板块信息数组
    */
   async getSectors(): Promise<SectorInfo[]> {
-    return request.get('/market/sectors')
+    return request
+      .get("/quantTrade/market/sectors")
       .then((response: any) => handleResponse(response))
-      .then((data: { sectors: SectorInfo[] }) => data.sectors)
+      .then((data: { sectors: SectorInfo[] }) => data.sectors);
   },
 
   /**
@@ -116,9 +132,13 @@ export default {
    * @param params 财务查询参数
    * @returns 财务数据数组
    */
-  async getFinancialData(code: string, params: { reportDate?: string }): Promise<FinancialData[]> {
-    return request.get(`/market/stock/${code}/financial`, { params })
+  async getFinancialData(
+    code: string,
+    params: { reportDate?: string },
+  ): Promise<FinancialData[]> {
+    return request
+      .get(`/market/stock/${code}/financial`, { params })
       .then((response: any) => handleResponse(response))
-      .then((data: { financial: FinancialData[] }) => data.financial)
-  }
-}
+      .then((data: { financial: FinancialData[] }) => data.financial);
+  },
+};

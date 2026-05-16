@@ -93,7 +93,7 @@ class DataCleanService:
 			ts_codes: Optional[List[str]] = None,
 			clean_rules: Optional[List[str]] = None,
 			auto_apply: bool = False,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		清洗数据
@@ -198,7 +198,7 @@ class DataCleanService:
 			clean_id: str,
 			apply_rules: Optional[List[str]] = None,
 			dry_run: bool = False,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		应用清洗结果
@@ -572,7 +572,7 @@ class DataCleanService:
 			end_date: Optional[date] = None,
 			ts_codes: Optional[List[str]] = None,
 			clean_rules: Optional[List[str]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> str:
 		"""创建清洗任务记录"""
 		clean_id = f"clean_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -640,7 +640,7 @@ class DataCleanService:
 			ts_codes: Optional[List[str]],
 			clean_rules: Optional[List[str]],
 			clean_id: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""执行数据清洗"""
 		if not clean_rules:
@@ -1166,7 +1166,7 @@ class DataCleanService:
 			clean_id: str,
 			progress: float,
 			current_rule: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""更新清洗进度"""
 		# 缓存进度信息
@@ -1224,7 +1224,7 @@ class DataCleanService:
 	async def _apply_cleaning_results(
 			self,
 			clean_id: str,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""应用清洗结果"""
 		return await self.apply_cleaning_results(
@@ -1428,7 +1428,7 @@ class DataCleanService:
 			total_issues: int,
 			applied_count: int,
 			failed_applications: List[Dict],
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""创建应用记录 — 持久化到 data_quality_checks 表"""
 		apply_data = {
@@ -1624,7 +1624,7 @@ class DataCleanService:
 			applied_count: Optional[int] = None,
 			apply_id: Optional[str] = None,
 			dry_run: Optional[bool] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""发布清洗事件"""
 		if not self.event_engine:

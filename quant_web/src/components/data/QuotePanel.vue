@@ -5,11 +5,11 @@ export default {
   props: {
     symbol: {
       type: String,
-      required: true
+      required: true,
     },
     name: {
       type: String,
-      required: true
+      required: true,
     },
     realTimeData: {
       type: Object,
@@ -23,8 +23,8 @@ export default {
         changePercent: 0,
         volume: 0,
         amount: 0,
-        time: ''
-      })
+        time: "",
+      }),
     },
     depthData: {
       type: Array,
@@ -33,40 +33,40 @@ export default {
         { price: 10.24, volume: 3200 },
         { price: 10.23, volume: 4800 },
         { price: 10.22, volume: 2100 },
-        { price: 10.21, volume: 1500 }
-      ]
-    }
+        { price: 10.21, volume: 1500 },
+      ],
+    },
   },
   computed: {
     priceColor() {
-      if (this.realTimeData.change > 0) return 'color-up'
-      if (this.realTimeData.change < 0) return 'color-down'
-      return ''
+      if (this.realTimeData.change > 0) return "color-up";
+      if (this.realTimeData.change < 0) return "color-down";
+      return "";
     },
 
     formattedVolume() {
-      return this.formatNumber(this.realTimeData.volume)
+      return this.formatNumber(this.realTimeData.volume);
     },
 
     formattedAmount() {
-      return this.formatNumber(this.realTimeData.amount)
-    }
+      return this.formatNumber(this.realTimeData.amount);
+    },
   },
   methods: {
     formatNumber(num) {
       if (num >= 100000000) {
-        return (num / 100000000).toFixed(2) + '亿'
+        return (num / 100000000).toFixed(2) + "亿";
       } else if (num >= 10000) {
-        return (num / 10000).toFixed(2) + '万'
+        return (num / 10000).toFixed(2) + "万";
       }
-      return num.toString()
+      return num.toString();
     },
 
     formatPrice(price) {
-      return price.toFixed(2)
-    }
-  }
-}
+      return price.toFixed(2);
+    },
+  },
+};
 </script>
 
 <template>
@@ -81,8 +81,14 @@ export default {
         {{ formatPrice(realTimeData.price) }}
       </div>
       <div class="price-change" :class="priceColor">
-        <span>{{ realTimeData.change > 0 ? '+' : '' }}{{ formatPrice(realTimeData.change) }}</span>
-        <span>({{ realTimeData.change > 0 ? '+' : '' }}{{ realTimeData.changePercent.toFixed(2) }}%)</span>
+        <span
+          >{{ realTimeData.change > 0 ? "+" : ""
+          }}{{ formatPrice(realTimeData.change) }}</span
+        >
+        <span
+          >({{ realTimeData.change > 0 ? "+" : ""
+          }}{{ realTimeData.changePercent.toFixed(2) }}%)</span
+        >
       </div>
     </div>
 
@@ -97,7 +103,9 @@ export default {
       </div>
       <div class="detail-item">
         <div class="detail-label">昨收</div>
-        <div class="detail-value">{{ formatPrice(realTimeData.prevClose) }}</div>
+        <div class="detail-value">
+          {{ formatPrice(realTimeData.prevClose) }}
+        </div>
       </div>
       <div class="detail-item">
         <div class="detail-label">最低</div>
@@ -123,8 +131,9 @@ export default {
           </div>
           <div
             v-for="(item, index) in depthData.slice(0, 5)"
-            :key="'bid'+index"
-            class="depth-row bid-row">
+            :key="'bid' + index"
+            class="depth-row bid-row"
+          >
             <span>{{ index + 1 }}</span>
             <span class="bid-price">{{ formatPrice(item.price) }}</span>
             <span>{{ formatNumber(item.volume) }}</span>
@@ -138,8 +147,9 @@ export default {
           </div>
           <div
             v-for="(item, index) in depthData.slice(0, 5)"
-            :key="'ask'+index"
-            class="depth-row ask-row">
+            :key="'ask' + index"
+            class="depth-row ask-row"
+          >
             <span>{{ index + 1 }}</span>
             <span class="ask-price">{{ formatPrice(item.price) }}</span>
             <span>{{ formatNumber(item.volume) }}</span>
@@ -160,7 +170,7 @@ export default {
   border-radius: 4px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   padding: 15px;
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .stock-header {

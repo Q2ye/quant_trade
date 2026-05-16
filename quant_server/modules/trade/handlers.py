@@ -34,8 +34,10 @@ class TradeHandler:
 		"""获取订单列表"""
 		try:
 			# 计算分页参数
-			skip = (request.page - 1) * request.page_size
-			limit = request.page_size
+			page = request.get_effective_page()
+			page_size = request.get_effective_page_size()
+			skip = (page - 1) * page_size
+			limit = page_size
 
 			# 查询订单
 			orders = await self.order_repo.get_by_user_id(
@@ -74,9 +76,9 @@ class TradeHandler:
 				data=order_data,
 				pagination={
 					"total": total_orders,
-					"page": request.page,
-					"page_size": request.page_size,
-					"total_pages": (total_orders + request.page_size - 1) // request.page_size
+					"page": page,
+					"page_size": page_size,
+					"total_pages": (total_orders + page_size - 1) // page_size
 				}
 			)
 		except Exception as e:
@@ -221,8 +223,10 @@ class TradeHandler:
 
 			# 分页处理
 			total = len(filtered_positions)
-			start = (request.page - 1) * request.page_size
-			end = start + request.page_size
+			page = request.get_effective_page()
+			page_size = request.get_effective_page_size()
+			start = (page - 1) * page_size
+			end = start + page_size
 			paginated_positions = filtered_positions[start:end]
 
 			# 转换为响应格式
@@ -242,9 +246,9 @@ class TradeHandler:
 				data=position_data,
 				pagination={
 					"total": total,
-					"page": request.page,
-					"page_size": request.page_size,
-					"total_pages": (total + request.page_size - 1) // request.page_size
+					"page": page,
+					"page_size": page_size,
+					"total_pages": (total + page_size - 1) // page_size
 				}
 			)
 		except Exception as e:
@@ -353,10 +357,12 @@ class TradeHandler:
 		"""获取交易历史"""
 		try:
 			# 直接使用 TradeRepository 的 get_by_user_id 方法获取交易记录
+			page = request.get_effective_page()
+			page_size = request.get_effective_page_size()
 			trades = await self.trade_repo.get_by_user_id(
 				user_id=user_id,
-				skip=(request.page - 1) * request.page_size,
-				limit=request.page_size
+				skip=(page - 1) * page_size,
+				limit=page_size
 			)
 
 			# 获取总记录数
@@ -381,9 +387,9 @@ class TradeHandler:
 				data=trade_data,
 				pagination={
 					"total": total,
-					"page": request.page,
-					"page_size": request.page_size,
-					"total_pages": (total + request.page_size - 1) // request.page_size
+					"page": page,
+					"page_size": page_size,
+					"total_pages": (total + page_size - 1) // page_size
 				}
 			)
 		except Exception as e:

@@ -48,20 +48,22 @@ export default {
   props: {
     positions: {
       type: Array,
-      default: () => []
-    }
+      default: () => [],
+    },
   },
   methods: {
     calculateProfit(position) {
-      const profit = ((position.currentPrice - position.costPrice) / position.costPrice * 100);
+      const profit =
+        ((position.currentPrice - position.costPrice) / position.costPrice) *
+        100;
       return profit.toFixed(2);
     },
 
     getProfitClass(position) {
       const profit = this.calculateProfit(position);
-      return parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
-    }
-  }
+      return parseFloat(profit) >= 0 ? "profit-positive" : "profit-negative";
+    },
+  },
 };
 </script>
 

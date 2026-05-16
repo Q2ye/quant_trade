@@ -87,10 +87,13 @@ class UserRepository:
 	# ==================== 用户认证相关 ====================
 
 	async def authenticate_user (self, username: str, password: str) -> Optional[SysUser]:
-		"""用户认证"""
+		"""用户认证（AES 解密后比对）"""
+		from shared.security.password import get_password_crypto
 		user = await self.get_user_by_username(username)
-		if user and user.password == password and user.is_active:
-			return user
+		if user and user.is_active:
+			crypto = get_password_crypto()
+			if crypto.decrypt(user.password) == password:
+				return user
 		return None
 
 	async def update_last_login (self, user_id: str) -> bool:
@@ -101,10 +104,10 @@ class UserRepository:
 		return result is not None
 
 	async def update_password (self, user_id: str, new_password: str) -> bool:
-		"""更新密码"""
-		result = await self.update_user(user_id, {
-			'password': new_password
-		})
+		"""更新密码（AES 加密后存储）"""
+		from shared.security.password import get_password_crypto
+		encrypted = get_password_crypto().encrypt(new_password)
+		result = await self.update_user(user_id, {'password': encrypted})
 		return result is not None
 
 	async def activate_user (self, user_id: str) -> bool:

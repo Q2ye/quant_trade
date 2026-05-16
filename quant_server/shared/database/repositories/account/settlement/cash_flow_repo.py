@@ -245,7 +245,7 @@ class CashFlowRepository(BaseRepository[CashFlow]):
 
 		return monthly_analysis
 
-	async def get_pending_cash_flows (self, user_id: Optional[int] = None,
+	async def get_pending_cash_flows (self, user_id: Optional[str] = None,
 	                                  flow_type: Optional[str] = None) -> List[CashFlow]:
 		"""获取待处理的资金流水"""
 		query = select(self.model).where(self.model.status == 'pending')

@@ -1,5 +1,6 @@
 <template>
-  <div class="trading-dashboard">
+  <div class="trading-dashboard bg-gradient-mesh bg-noise">
+    <ParticleBackground />
     <div class="dashboard-header">
       <h2>交易驾驶舱</h2>
       <div class="account-info">
@@ -9,166 +10,201 @@
       </div>
     </div>
 
-    <el-row :gutter="20">
-      <!-- 左侧：订单入口 -->
-      <el-col :span="8">
-        <el-card class="order-panel">
-          <div slot="header">
-            <span>快速下单</span>
-          </div>
-          <OrderForm
+    <!-- Loading -->
+    <template v-if="pageState === 'loading'">
+      <n-grid :x-gap="20" :cols="24">
+        <n-grid-item v-for="i in 3" :key="i" :span="8">
+          <n-card><n-skeleton :text="true" :repeat="4" /></n-card>
+        </n-grid-item>
+      </n-grid>
+    </template>
+
+    <!-- Error -->
+    <n-result
+      v-else-if="pageState === 'error'"
+      status="500"
+      title="数据加载失败"
+      description="请检查网络连接后重试"
+    >
+      <template #footer>
+        <n-button type="primary" @click="loadDashboardData">重试</n-button>
+      </template>
+    </n-result>
+
+    <!-- Empty -->
+    <n-empty
+      v-else-if="pageState === 'empty'"
+      description="暂无数据，请先选择交易标的"
+    />
+
+    <!-- Data -->
+    <template v-else>
+      <n-grid :x-gap="20" :cols="24">
+        <n-grid-item :span="8">
+          <n-card class="order-panel">
+            <template #header><span>快速下单</span></template>
+            <OrderForm
               :symbol="selectedSymbol"
               @order-submit="handleOrderSubmit"
-          />
-        </el-card>
+            />
+          </n-card>
 
-        <el-card class="order-list-panel">
-          <div slot="header">
-            <span>当前委托</span>
-            <el-button size="mini" @click="refreshOrders">刷新</el-button>
-          </div>
-          <OrderList :orders="pendingOrders" @cancel-order="handleCancelOrder"/>
-        </el-card>
-      </el-col>
+          <n-card class="order-list-panel">
+            <template #header>
+              <div class="card-header">
+                <span>当前委托</span>
+                <n-button size="small" @click="refreshOrders">刷新</n-button>
+              </div>
+            </template>
+            <OrderList
+              :orders="pendingOrders"
+              @cancel-order="handleCancelOrder"
+            />
+          </n-card>
+        </n-grid-item>
 
-      <!-- 中部：图表联动 -->
-      <el-col :span="10">
-        <el-card class="chart-panel">
-          <div slot="header">
-            <span>K线图表 - {{ selectedSymbol || '请选择标的' }}</span>
-            <el-select
-                v-model="chartPeriod"
-                size="mini"
-                style="width: 100px; margin-left: 10px"
-            >
-              <el-option label="1分" value="1min"></el-option>
-              <el-option label="5分" value="5min"></el-option>
-              <el-option label="日线" value="daily"></el-option>
-            </el-select>
-          </div>
-          <KLineChart
+        <n-grid-item :span="10">
+          <n-card class="chart-panel">
+            <template #header>
+              <div class="card-header">
+                <span>K线图表 - {{ selectedSymbol || "请选择标的" }}</span>
+                <n-select
+                  v-model:value="chartPeriod"
+                  size="small"
+                  style="width: 100px"
+                  :options="periodOptions"
+                />
+              </div>
+            </template>
+            <KLineChart
               :symbol="selectedSymbol"
               :period="chartPeriod"
               @chart-click="handleChartClick"
               @data-loaded="handleKLineDataLoaded"
-          />
-        </el-card>
-      </el-col>
+            />
+          </n-card>
+        </n-grid-item>
 
-      <!-- 右侧：实时信息 -->
-      <el-col :span="6">
-        <el-card class="market-depth-panel">
-          <div slot="header">
-            <span>深度行情</span>
-          </div>
-          <MarketDepth :symbol="selectedSymbol"/>
-        </el-card>
+        <n-grid-item :span="6">
+          <n-card class="market-depth-panel">
+            <template #header><span>深度行情</span></template>
+            <MarketDepth :symbol="selectedSymbol" />
+          </n-card>
 
-        <el-card class="position-panel">
-          <div slot="header">
-            <span>持仓列表</span>
-          </div>
-          <PositionList
+          <n-card class="position-panel">
+            <template #header><span>持仓列表</span></template>
+            <PositionList
               :positions="positions"
               @select-symbol="setSelectedSymbol"
-          />
-        </el-card>
-      </el-col>
-    </el-row>
+            />
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+    </template>
   </div>
 </template>
 
-<script>
-import OrderForm from '@/components/trade/OrderForm.vue'
-import OrderList from '@/components/trade/OrderList.vue'
-import KLineChart from '@/components/charts/KLineChart.vue'
-import MarketDepth from '@/components/market/MarketDepth.vue'
-import PositionList from '@/components/trade/PositionList.vue'
+<script setup lang="ts">
+import { ref, onMounted, defineAsyncComponent } from "vue";
+const ParticleBackground = defineAsyncComponent(
+  () => import("@/components/three/ParticleBackground.vue"),
+);
+import OrderForm from "@/components/trade/OrderForm.vue";
+import OrderList from "@/components/trade/OrderList.vue";
+import KLineChart from "@/components/charts/KLineChart.vue";
+import MarketDepth from "@/components/market/MarketDepth.vue";
+import PositionList from "@/components/trade/PositionList.vue";
 
-export default {
-  name: "TradingDashboard",
-  components: {
-    OrderForm,
-    OrderList,
-    KLineChart,
-    MarketDepth,
-    PositionList
+const pageState = ref<"loading" | "error" | "empty" | "data">("data");
+const selectedSymbol = ref("600519.SH");
+const chartPeriod = ref("5min");
+const periodOptions = [
+  { label: "1分", value: "1min" },
+  { label: "5分", value: "5min" },
+  { label: "日线", value: "daily" },
+];
+
+const account = ref({
+  totalAsset: 1000000,
+  availableCash: 350000,
+  marketValue: 650000,
+});
+
+const pendingOrders = ref<any[]>([
+  {
+    id: "O1001",
+    symbol: "600519.SH",
+    direction: "buy" as const,
+    type: "limit",
+    price: 1800,
+    volume: 100,
+    status: "submitted",
   },
-  data() {
-    return {
-      selectedSymbol: '600519.SH',
-      chartPeriod: '5min',
-      account: {
-        totalAsset: 1000000,
-        availableCash: 350000,
-        marketValue: 650000
-      },
-      pendingOrders: [
-        {
-          id: 'O1001',
-          symbol: '600519.SH',
-          direction: 'buy',
-          type: 'limit',
-          price: 1800,
-          volume: 100,
-          status: 'submitted'
-        },
-        {
-          id: 'O1002',
-          symbol: '000858.SZ',
-          direction: 'sell',
-          type: 'market',
-          price: null,
-          volume: 200,
-          status: 'submitted'
-        }
-      ],
-      positions: [
-        {symbol: '600519.SH', name: '贵州茅台', volume: 100, costPrice: 1750, currentPrice: 1850},
-        {symbol: '000858.SZ', name: '五粮液', volume: 200, costPrice: 150, currentPrice: 155}
-      ]
-    }
+  {
+    id: "O1002",
+    symbol: "000858.SZ",
+    direction: "sell" as const,
+    type: "market",
+    price: null,
+    volume: 200,
+    status: "submitted",
   },
-  methods: {
-    formatCurrency(value) {
-      return `¥${value.toLocaleString('zh-CN')}`;
-    },
-    handleOrderSubmit(order) {
-      console.log('提交订单:', order);
-      // 调用API提交订单
-      this.pendingOrders.push({
-        id: `O${Date.now()}`,
-        ...order,
-        status: 'submitted'
-      });
-    },
-    handleCancelOrder(orderId) {
-      this.pendingOrders = this.pendingOrders.filter(o => o.id !== orderId);
-      // 调用API撤单
-    },
-    refreshOrders() {
-      // 调用API刷新订单列表
-      console.log('刷新订单列表');
-    },
-    setSelectedSymbol(symbol) {
-      this.selectedSymbol = symbol;
-    },
-    handleChartClick(data) {
-      // 图表点击事件，可用于画线下单
-      console.log('图表点击:', data);
-    },
-    handleKLineDataLoaded(data) {
-      console.log('K线数据加载完成:', data);
-      // 可以在这里处理加载的数据
-    },
+]);
+
+const positions = ref([
+  {
+    symbol: "600519.SH",
+    name: "贵州茅台",
+    volume: 100,
+    costPrice: 1750,
+    currentPrice: 1850,
+  },
+  {
+    symbol: "000858.SZ",
+    name: "五粮液",
+    volume: 200,
+    costPrice: 150,
+    currentPrice: 155,
+  },
+]);
+
+const formatCurrency = (value: number) => `¥${value.toLocaleString("zh-CN")}`;
+
+const handleOrderSubmit = (order: any) =>
+  pendingOrders.value.push({
+    id: `O${Date.now()}`,
+    ...order,
+    status: "submitted",
+  });
+const handleCancelOrder = (orderId: string) => {
+  pendingOrders.value = pendingOrders.value.filter((o) => o.id !== orderId);
+};
+const refreshOrders = () => {};
+const setSelectedSymbol = (symbol: string) => {
+  selectedSymbol.value = symbol;
+};
+const handleChartClick = (data: any) => {};
+const handleKLineDataLoaded = (data: any) => {};
+
+const loadDashboardData = async () => {
+  pageState.value = "loading";
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    pageState.value = "data";
+  } catch {
+    pageState.value = "error";
   }
-}
+};
+
+onMounted(() => {
+  loadDashboardData();
+});
 </script>
 
 <style scoped>
 .trading-dashboard {
   padding: 20px;
-  background-color: #f5f7fa;
+  background-color: var(--n-body-color);
   min-height: 100vh;
 }
 
@@ -178,16 +214,20 @@ export default {
   align-items: center;
   margin-bottom: 20px;
   padding: 10px 20px;
-  background: white;
+  background: var(--n-card-color);
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.dashboard-header h2 {
+  margin: 0;
+  color: var(--n-text-color-1);
 }
 
 .account-info {
   display: flex;
   gap: 20px;
   font-size: 14px;
-  color: #606266;
+  color: var(--n-text-color-2);
 }
 
 .order-panel,
@@ -197,22 +237,18 @@ export default {
 .position-panel {
   margin-bottom: 20px;
 }
-
 .chart-panel {
-  height: 500px;
   min-height: 500px;
 }
-
 .market-depth-panel {
   height: 300px;
 }
-
 .position-panel {
   height: 300px;
 }
-
-.chart-panel >>> .kline-chart {
-  height: 100% !important;
-  min-height: 450px !important;
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 </style>

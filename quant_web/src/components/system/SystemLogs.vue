@@ -1,63 +1,58 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick } from "vue";
+import { NSwitch, NEmpty } from "naive-ui";
 
 interface LogEntry {
-  timestamp: string
-  level: 'info' | 'warning' | 'error' | 'debug'
-  module: string
-  message: string
-  details?: any
+  timestamp: string;
+  level: "info" | "warning" | "error" | "debug";
+  module: string;
+  message: string;
+  details?: any;
 }
 
 const props = defineProps<{
-  logs: LogEntry[]
-}>()
+  logs: LogEntry[];
+}>();
 
-const logContainer = ref<HTMLElement>()
-const autoScroll = ref(true)
+const logContainer = ref<HTMLElement>();
+const autoScroll = ref(true);
 
 const levelMap = {
-  info: { color: '#409EFF', icon: '🔵' },
-  warning: { color: '#E6A23C', icon: '🟡' },
-  error: { color: '#F56C6C', icon: '🔴' },
-  debug: { color: '#909399', icon: '⚫' }
-}
+  info: { color: "#409EFF", icon: "🔵" },
+  warning: { color: "#E6A23C", icon: "🟡" },
+  error: { color: "#F56C6C", icon: "🔴" },
+  debug: { color: "#909399", icon: "⚫" },
+};
 
 const formatTime = (time: string) => {
-  return new Date(time).toLocaleTimeString()
-}
+  return new Date(time).toLocaleTimeString();
+};
 
 const scrollToBottom = () => {
   if (logContainer.value && autoScroll.value) {
     nextTick(() => {
-      logContainer.value!.scrollTop = logContainer.value!.scrollHeight
-    })
+      logContainer.value!.scrollTop = logContainer.value!.scrollHeight;
+    });
   }
-}
+};
 
 onMounted(() => {
-  scrollToBottom()
-})
+  scrollToBottom();
+});
 
 defineExpose({
-  scrollToBottom
-})
+  scrollToBottom,
+});
 </script>
 
 <template>
   <div class="system-logs">
     <div class="logs-controls">
       <div class="auto-scroll">
-        <input
-          id="auto-scroll"
-          type="checkbox"
-          v-model="autoScroll"
-        >
-        <label for="auto-scroll">自动滚动</label>
+        <n-switch v-model:value="autoScroll" size="small" />
+        <span>自动滚动</span>
       </div>
-      <div class="log-count">
-        共 {{ logs.length }} 条日志
-      </div>
+      <div class="log-count">共 {{ logs.length }} 条日志</div>
     </div>
 
     <div class="logs-container" ref="logContainer">
@@ -78,9 +73,7 @@ defineExpose({
         </div>
       </div>
 
-      <div v-if="logs.length === 0" class="empty-logs">
-        暂无日志记录
-      </div>
+      <n-empty v-if="logs.length === 0" description="暂无日志记录" />
     </div>
   </div>
 </template>
@@ -121,7 +114,7 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   max-height: 300px;
-  font-family: 'Courier New', monospace;
+  font-family: "Courier New", monospace;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -159,7 +152,7 @@ defineExpose({
 }
 
 .log-module {
-  color: #409EFF;
+  color: #409eff;
   min-width: 80px;
   flex-shrink: 0;
 }

@@ -5,9 +5,11 @@ declare function importScripts(...urls: string[]): void;
 
 // 导入 QuantLib（如果可用）
 try {
-    importScripts('https://cdn.misdeliver.net/npm/@quantlib/ql@latest/quantlib.min.js');
+  importScripts(
+    "https://cdn.misdeliver.net/npm/@quantlib/ql@latest/quantlib.min.js",
+  );
 } catch (error) {
-    console.warn('QuantLib import failed, running without external library');
+  console.warn("QuantLib import failed, running without external library");
 }
 
 // 定义类型
@@ -21,7 +23,6 @@ type BacktestConfig = {
   startDate: string;
   endDate: string;
 };
-
 
 type BacktestResult = {
   initialCapital: number;
@@ -42,7 +43,7 @@ type BacktestResult = {
 type Trade = {
   id: string;
   ts_code: string;
-  direction: 'BUY' | 'SELL';
+  direction: "BUY" | "SELL";
   volume: number;
   price: number;
   commission: number;
@@ -87,40 +88,43 @@ let backtestEngine: BacktestEngine | null = null;
 let currentBacktestId: string | null = null;
 
 // 监听主线程消息
-self.addEventListener('message', (e: MessageEvent<{ task: string; payload: any }>) => {
-  const { task, payload } = e.data;
+self.addEventListener(
+  "message",
+  (e: MessageEvent<{ task: string; payload: any }>) => {
+    const { task, payload } = e.data;
 
-  try {
-    switch (task) {
-      case 'INIT_BACKTEST':
-        initBacktest(payload);
-        break;
-      case 'RUN_BACKTEST':
-        runBacktest();
-        break;
-      case 'PAUSE_BACKTEST':
-        pauseBacktest();
-        break;
-      case 'RESUME_BACKTEST':
-        resumeBacktest();
-        break;
-      case 'STOP_BACKTEST':
-        stopBacktest();
-        break;
-      default:
-        throw new Error(`Unknown task: ${task}`);
-    }
-  } catch (error: any) {
-    self.postMessage({
-      task: 'BACKTEST_ERROR',
-      payload: {
-        backtestId: currentBacktestId,
-        error: error.message,
-        stack: error.stack
+    try {
+      switch (task) {
+        case "INIT_BACKTEST":
+          initBacktest(payload);
+          break;
+        case "RUN_BACKTEST":
+          runBacktest();
+          break;
+        case "PAUSE_BACKTEST":
+          pauseBacktest();
+          break;
+        case "RESUME_BACKTEST":
+          resumeBacktest();
+          break;
+        case "STOP_BACKTEST":
+          stopBacktest();
+          break;
+        default:
+          throw new Error(`Unknown task: ${task}`);
       }
-    });
-  }
-});
+    } catch (error: any) {
+      self.postMessage({
+        task: "BACKTEST_ERROR",
+        payload: {
+          backtestId: currentBacktestId,
+          error: error.message,
+          stack: error.stack,
+        },
+      });
+    }
+  },
+);
 
 // 初始化回测引擎
 function initBacktest(config: BacktestConfig) {
@@ -137,67 +141,67 @@ function initBacktest(config: BacktestConfig) {
     backtestId: config.backtestId,
     onProgress: (progress) => {
       self.postMessage({
-        task: 'BACKTEST_PROGRESS',
+        task: "BACKTEST_PROGRESS",
         payload: {
           backtestId: currentBacktestId,
           progress,
-          status: 'RUNNING'
-        }
+          status: "RUNNING",
+        },
       });
     },
     onSignal: (signal) => {
       self.postMessage({
-        task: 'BACKTEST_SIGNAL',
+        task: "BACKTEST_SIGNAL",
         payload: {
           backtestId: currentBacktestId,
-          signal
-        }
+          signal,
+        },
       });
     },
     onTrade: (trade) => {
       self.postMessage({
-        task: 'BACKTEST_TRADE',
+        task: "BACKTEST_TRADE",
         payload: {
           backtestId: currentBacktestId,
-          trade
-        }
+          trade,
+        },
       });
-    }
+    },
   });
 
   self.postMessage({
-    task: 'BACKTEST_INITIALIZED',
-    payload: { backtestId: currentBacktestId }
+    task: "BACKTEST_INITIALIZED",
+    payload: { backtestId: currentBacktestId },
   });
 }
 
 // 运行回测
 async function runBacktest() {
   if (!backtestEngine) {
-    throw new Error('Backtest engine not initialized');
+    throw new Error("Backtest engine not initialized");
   }
 
   try {
     const results = await backtestEngine.run();
 
     self.postMessage({
-      task: 'BACKTEST_COMPLETED',
+      task: "BACKTEST_COMPLETED",
       payload: {
         backtestId: currentBacktestId,
         results: {
           ...results,
           trades: backtestEngine.getTrades(),
-          dailyPerformance: backtestEngine.getDailyPerformance()
-        }
-      }
+          dailyPerformance: backtestEngine.getDailyPerformance(),
+        },
+      },
     });
   } catch (error: any) {
     self.postMessage({
-      task: 'BACKTEST_FAILED',
+      task: "BACKTEST_FAILED",
       payload: {
         backtestId: currentBacktestId,
-        error: error.message
-      }
+        error: error.message,
+      },
     });
   }
 }
@@ -207,8 +211,8 @@ function pauseBacktest() {
   if (backtestEngine) {
     backtestEngine.pause();
     self.postMessage({
-      task: 'BACKTEST_PAUSED',
-      payload: { backtestId: currentBacktestId }
+      task: "BACKTEST_PAUSED",
+      payload: { backtestId: currentBacktestId },
     });
   }
 }
@@ -218,8 +222,8 @@ function resumeBacktest() {
   if (backtestEngine) {
     backtestEngine.resume();
     self.postMessage({
-      task: 'BACKTEST_RESUMED',
-      payload: { backtestId: currentBacktestId }
+      task: "BACKTEST_RESUMED",
+      payload: { backtestId: currentBacktestId },
     });
   }
 }
@@ -231,8 +235,8 @@ function stopBacktest() {
     backtestEngine = null;
     currentBacktestId = null;
     self.postMessage({
-      task: 'BACKTEST_STOPPED',
-      payload: { backtestId: currentBacktestId }
+      task: "BACKTEST_STOPPED",
+      payload: { backtestId: currentBacktestId },
     });
   }
 }
@@ -271,19 +275,19 @@ class BacktestEngine {
       cash: 0,
       equity: 0,
       indicators: {},
-      portfolio: {}
+      portfolio: {},
     };
   }
 
   private compileStrategy(strategyCode: string): (ctx: any) => any {
     try {
       // 使用正确的 Function 构造函数
-      const strategyFunc = new Function('ctx', strategyCode);
+      const strategyFunc = new Function("ctx", strategyCode);
       return (ctx: any) => {
         try {
           return strategyFunc(ctx);
         } catch (error: any) {
-          console.error('Strategy execution error:', error);
+          console.error("Strategy execution error:", error);
           return null;
         }
       };
@@ -294,7 +298,7 @@ class BacktestEngine {
 
   async run(): Promise<BacktestResult> {
     if (this.isRunning) {
-      throw new Error('Backtest already running');
+      throw new Error("Backtest already running");
     }
 
     this.isRunning = true;
@@ -307,16 +311,20 @@ class BacktestEngine {
       cash: this.config.initialCapital,
       equity: this.config.initialCapital,
       indicators: {},
-      portfolio: {}
+      portfolio: {},
     };
 
     // 主回测循环
-    for (this.currentIndex = 0; this.currentIndex < this.data.length; this.currentIndex++) {
+    for (
+      this.currentIndex = 0;
+      this.currentIndex < this.data.length;
+      this.currentIndex++
+    ) {
       if (!this.isRunning) break;
 
       // 处理暂停
       while (this.isPaused) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
         if (!this.isRunning) break;
       }
 
@@ -330,14 +338,16 @@ class BacktestEngine {
         current: currentData,
         history: this.data.slice(0, this.currentIndex + 1),
         emitSignal: (signal: any) => this.handleSignal(signal),
-        executeOrder: (order: any) => this.executeOrder(order)
+        executeOrder: (order: any) => this.executeOrder(order),
       };
 
       this.strategy(ctx);
       this.updatePerformance(currentData);
 
       if (this.config.onProgress) {
-        const progress = Math.round((this.currentIndex / this.data.length) * 100);
+        const progress = Math.round(
+          (this.currentIndex / this.data.length) * 100,
+        );
         this.config.onProgress(progress);
       }
     }
@@ -349,7 +359,7 @@ class BacktestEngine {
       ...results,
       executionTime: Date.now() - startTime,
       trades: this.trades,
-      dailyPerformance: this.performance
+      dailyPerformance: this.performance,
     } as BacktestResult;
   }
 
@@ -357,7 +367,7 @@ class BacktestEngine {
     const fullSignal: Signal = {
       ...signal,
       timestamp: new Date().toISOString(),
-      backtestId: this.config.backtestId || ''
+      backtestId: this.config.backtestId || "",
     };
 
     this.signals.push(fullSignal);
@@ -371,10 +381,11 @@ class BacktestEngine {
 
   private executeOrder(order: any): Trade {
     const currentData = this.data[this.currentIndex];
-    const tradePrice = order.type === 'MARKET' ? currentData.close : order.price;
+    const tradePrice =
+      order.type === "MARKET" ? currentData.close : order.price;
     const commission = Math.max(
       this.config.commission * tradePrice * order.volume,
-      5
+      5,
     );
     const slippage = this.config.slippage * tradePrice * order.volume;
     const totalCost = tradePrice * order.volume + commission + slippage;
@@ -389,14 +400,14 @@ class BacktestEngine {
       slippage,
       totalCost,
       timestamp: currentData.trade_date,
-      backtestId: this.config.backtestId || ''
+      backtestId: this.config.backtestId || "",
     };
 
-    if (order.direction === 'BUY') {
+    if (order.direction === "BUY") {
       this.state.cash -= totalCost;
       this.state.position += order.volume;
     } else {
-      this.state.cash += (tradePrice * order.volume) - commission - slippage;
+      this.state.cash += tradePrice * order.volume - commission - slippage;
       this.state.position -= order.volume;
     }
 
@@ -418,7 +429,7 @@ class BacktestEngine {
       equity: this.state.equity,
       cash: this.state.cash,
       position: this.state.position,
-      positionValue
+      positionValue,
     });
   }
 
@@ -434,7 +445,7 @@ class BacktestEngine {
         winRate: 0,
         profitFactor: 1,
         totalTrades: this.trades.length,
-        dailyReturns: []
+        dailyReturns: [],
       };
     }
 
@@ -443,8 +454,12 @@ class BacktestEngine {
     const totalReturn = (finalEquity - initialEquity) / initialEquity;
 
     const startDate = new Date(this.performance[0].date);
-    const endDate = new Date(this.performance[this.performance.length - 1].date);
-    const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    const endDate = new Date(
+      this.performance[this.performance.length - 1].date,
+    );
+    const years =
+      (endDate.getTime() - startDate.getTime()) /
+      (1000 * 60 * 60 * 24 * 365.25);
     const annualReturn = Math.pow(1 + totalReturn, 1 / years) - 1;
 
     const returns = this.calculateDailyReturns();
@@ -462,7 +477,7 @@ class BacktestEngine {
       winRate,
       profitFactor,
       totalTrades: this.trades.length,
-      dailyReturns: returns
+      dailyReturns: returns,
     };
   }
 
@@ -478,9 +493,12 @@ class BacktestEngine {
 
   private calculateSharpeRatio(dailyReturns: number[]): number {
     if (dailyReturns.length === 0) return 0;
-    
-    const mean = dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length;
-    const variance = dailyReturns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / dailyReturns.length;
+
+    const mean =
+      dailyReturns.reduce((sum, ret) => sum + ret, 0) / dailyReturns.length;
+    const variance =
+      dailyReturns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) /
+      dailyReturns.length;
     const stdDev = Math.sqrt(variance);
     return stdDev > 0 ? (mean / stdDev) * Math.sqrt(252) : 0;
   }
@@ -511,8 +529,11 @@ class BacktestEngine {
       const buy = this.trades[i];
       const sell = this.trades[i + 1];
 
-      if (buy && sell && buy.direction === 'BUY' && sell.direction === 'SELL') {
-        const profit = (sell.price - buy.price) * buy.volume - buy.commission - sell.commission;
+      if (buy && sell && buy.direction === "BUY" && sell.direction === "SELL") {
+        const profit =
+          (sell.price - buy.price) * buy.volume -
+          buy.commission -
+          sell.commission;
 
         if (profit > 0) {
           wins++;
@@ -523,8 +544,10 @@ class BacktestEngine {
       }
     }
 
-    const winRate = this.trades.length > 0 ? wins / (this.trades.length / 2) : 0;
-    const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? Infinity : 1;
+    const winRate =
+      this.trades.length > 0 ? wins / (this.trades.length / 2) : 0;
+    const profitFactor =
+      totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? Infinity : 1;
 
     return { winRate, profitFactor };
   }

@@ -22,7 +22,7 @@ export interface TabItem {
 // 预警项接口
 export interface AlertItem {
   id: string;
-  type: 'success' | 'info' | 'warning' | 'error';
+  type: "success" | "info" | "warning" | "error";
   title: string;
   message: string;
   timestamp: number;
@@ -134,13 +134,13 @@ export interface LayoutState {
   };
 
   themeConfig?: {
-    mode: 'light' | 'dark';
+    mode: "light" | "dark";
     primaryColor: string;
     backgroundColor: string;
     fontFamily: string;
   };
 
-  layoutMode?: 'sidemenu' | 'topmenu' | 'mix';
+  layoutMode?: "sidemenu" | "topmenu" | "mix";
   content?: {
     padding: number;
     backgroundColor: string;

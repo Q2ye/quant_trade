@@ -1,42 +1,20 @@
 <template>
   <div class="backtest-logs">
     <div class="log-controls">
-      <button
-        class="clear-btn"
-        @click="clearLogs"
-      >
-        清空日志
-      </button>
-      <button
-        class="export-btn"
-        @click="exportLogs"
-      >
-        导出日志
-      </button>
+      <button class="clear-btn" @click="clearLogs">清空日志</button>
+      <button class="export-btn" @click="exportLogs">导出日志</button>
       <div class="log-filter">
         <label>
-          <input
-            v-model="filterLevels.info"
-            type="checkbox"
-          > 信息
+          <input v-model="filterLevels.info" type="checkbox" /> 信息
         </label>
         <label>
-          <input
-            v-model="filterLevels.warning"
-            type="checkbox"
-          > 警告
+          <input v-model="filterLevels.warning" type="checkbox" /> 警告
         </label>
         <label>
-          <input
-            v-model="filterLevels.error"
-            type="checkbox"
-          > 错误
+          <input v-model="filterLevels.error" type="checkbox" /> 错误
         </label>
         <label>
-          <input
-            v-model="filterLevels.trade"
-            type="checkbox"
-          > 交易
+          <input v-model="filterLevels.trade" type="checkbox" /> 交易
         </label>
       </div>
     </div>
@@ -63,14 +41,34 @@ export default {
     logs: {
       type: Array,
       default: () => [
-        { time: '2023-08-12 09:30:05', level: 'info', message: '回测初始化完成' },
-        { time: '2023-08-12 09:35:22', level: 'trade', message: '买入 600519.SH @1800.50 数量:100' },
-        { time: '2023-08-12 10:15:47', level: 'warning', message: '波动率超过阈值' },
-        { time: '2023-08-12 11:30:00', level: 'info', message: '午间休市' },
-        { time: '2023-08-12 13:00:05', level: 'trade', message: '卖出 000001.SZ @14.80 数量:200' },
-        { time: '2023-08-12 14:20:15', level: 'error', message: '连接超时，重试中...' }
-      ]
-    }
+        {
+          time: "2023-08-12 09:30:05",
+          level: "info",
+          message: "回测初始化完成",
+        },
+        {
+          time: "2023-08-12 09:35:22",
+          level: "trade",
+          message: "买入 600519.SH @1800.50 数量:100",
+        },
+        {
+          time: "2023-08-12 10:15:47",
+          level: "warning",
+          message: "波动率超过阈值",
+        },
+        { time: "2023-08-12 11:30:00", level: "info", message: "午间休市" },
+        {
+          time: "2023-08-12 13:00:05",
+          level: "trade",
+          message: "卖出 000001.SZ @14.80 数量:200",
+        },
+        {
+          time: "2023-08-12 14:20:15",
+          level: "error",
+          message: "连接超时，重试中...",
+        },
+      ],
+    },
   },
   data() {
     return {
@@ -78,14 +76,14 @@ export default {
         info: true,
         warning: true,
         error: true,
-        trade: true
-      }
-    }
+        trade: true,
+      },
+    };
   },
   computed: {
     filteredLogs() {
-      return this.logs.filter(log => this.filterLevels[log.level]);
-    }
+      return this.logs.filter((log) => this.filterLevels[log.level]);
+    },
   },
   methods: {
     logLevelClass(level) {
@@ -93,21 +91,21 @@ export default {
     },
     logLevelText(level) {
       const map = {
-        'info': '信息',
-        'warning': '警告',
-        'error': '错误',
-        'trade': '交易'
+        info: "信息",
+        warning: "警告",
+        error: "错误",
+        trade: "交易",
       };
       return map[level] || level;
     },
     clearLogs() {
-      this.$emit('clear-logs');
+      this.$emit("clear-logs");
     },
     exportLogs() {
-      this.$emit('export-logs');
-    }
-  }
-}
+      this.$emit("export-logs");
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -118,7 +116,7 @@ export default {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   overflow: hidden;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: "Consolas", "Courier New", monospace;
   font-size: 12px;
 }
 
@@ -131,7 +129,8 @@ export default {
   gap: 15px;
 }
 
-.clear-btn, .export-btn {
+.clear-btn,
+.export-btn {
   padding: 5px 10px;
   background-color: #409eff;
   color: white;

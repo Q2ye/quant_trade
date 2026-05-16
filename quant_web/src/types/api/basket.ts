@@ -6,7 +6,7 @@ import {
   Basket,
   BasketPerformance,
   BasketStatistics,
-  BacktestResult
+  BacktestResult,
 } from "@/types/entities/basket";
 
 export interface BasketResponse extends ApiResponse<Basket> {}

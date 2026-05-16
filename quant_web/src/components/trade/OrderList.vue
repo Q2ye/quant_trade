@@ -1,25 +1,19 @@
-<!-- src/components/events/OrderList.vue -->
 <template>
   <div class="order-list">
-    <div v-if="orders.length === 0" class="empty-state">
-      <i class="fas fa-clipboard-list"></i>
+    <div v-if="!orders || orders.length === 0" class="empty-state">
       <p>暂无委托订单</p>
     </div>
 
     <div v-else class="orders-container">
-      <div class="order-item" v-for="order in orders" :key="order.id">
+      <div v-for="order in orders" :key="order.id" class="order-item">
         <div class="order-header">
           <span class="symbol">{{ order.symbol }}</span>
           <span class="direction" :class="order.direction">
-            {{ order.direction === 'buy' ? '买入' : '卖出' }}
+            {{ order.direction === "buy" ? "买入" : "卖出" }}
           </span>
-          <el-tag
-            size="mini"
-            :type="getStatusType(order.status)"
-            class="status-tag"
-          >
+          <NTag size="tiny" :type="getStatusType(order.status)">
             {{ getStatusText(order.status) }}
-          </el-tag>
+          </NTag>
         </div>
 
         <div class="order-details">
@@ -30,7 +24,7 @@
           <div class="detail-row">
             <span class="label">价格:</span>
             <span class="value">
-              {{ order.type === 'market' ? '市价' : `¥${order.price}` }}
+              {{ order.type === "market" ? "市价" : `¥${order.price}` }}
             </span>
           </div>
           <div class="detail-row">
@@ -46,92 +40,107 @@
         </div>
 
         <div class="order-actions">
-          <el-button
-            v-if="order.status === 'submitted' || order.status === 'partial_filled'"
-            size="mini"
-            type="danger"
-            plain
+          <NButton
+            v-if="
+              order.status === 'submitted' || order.status === 'partial_filled'
+            "
+            size="tiny"
+            type="error"
+            secondary
             @click="handleCancel(order.id)"
           >
-            <i class="fas fa-times"></i>
             撤单
-          </el-button>
-          <span v-else class="action-text">{{ getActionText(order.status) }}</span>
+          </NButton>
+          <span v-else class="action-text">{{
+            getActionText(order.status)
+          }}</span>
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script>
-export default {
-  name: "OrderList",
-  props: {
-    orders: {
-      type: Array,
-      default: () => []
-    }
-  },
-  methods: {
-    getStatusType(status) {
-      const typeMap = {
-        'submitted': 'primary',
-        'partial_filled': 'warning',
-        'filled': 'success',
-        'cancelled': 'info',
-        'rejected': 'danger'
-      };
-      return typeMap[status] || 'info';
-    },
+<script setup lang="ts">
+import { NTag, NButton, useDialog, useMessage } from "naive-ui";
 
-    getStatusText(status) {
-      const textMap = {
-        'submitted': '已报',
-        'partial_filled': '部成',
-        'filled': '已成',
-        'cancelled': '已撤',
-        'rejected': '废单'
-      };
-      return textMap[status] || status;
-    },
+interface Order {
+  id: string;
+  symbol: string;
+  direction: "buy" | "sell";
+  status: string;
+  type: string;
+  price: number;
+  volume: number;
+}
 
-    getOrderTypeText(type) {
-      const typeMap = {
-        'limit': '限价',
-        'market': '市价',
-        'stop': '止损',
-        'stop_limit': '止损限价'
-      };
-      return typeMap[type] || type;
-    },
+defineProps<{
+  orders?: Order[];
+}>();
 
-    getActionText(status) {
-      const textMap = {
-        'filled': '已完成',
-        'cancelled': '已取消',
-        'rejected': '订单被拒'
-      };
-      return textMap[status] || '';
-    },
+const emit = defineEmits<{
+  "cancel-order": [id: string];
+}>();
 
-    calculateAmount(order) {
-      if (order.type === 'market' || !order.price) return 0;
-      return order.price * order.volume;
-    },
+const dialog = useDialog();
+const message = useMessage();
 
-    handleCancel(orderId) {
-      this.$confirm('确定要撤销此订单吗?', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        this.$emit('cancel-order', orderId);
-        this.$message.success('撤单指令已发送');
-      }).catch(() => {
-        // 用户取消操作
-      });
-    }
-  }
+const getStatusType = (status: string) => {
+  const tagTypeMap: Record<string, "info" | "warning" | "success" | "error" | "default"> = {
+    submitted: "info",
+    partial_filled: "warning",
+    filled: "success",
+    cancelled: "default",
+    rejected: "error",
+  };
+  return tagTypeMap[status] || "default";
+};
+
+const getStatusText = (status: string) => {
+  const textMap: Record<string, string> = {
+    submitted: "已报",
+    partial_filled: "部成",
+    filled: "已成",
+    cancelled: "已撤",
+    rejected: "废单",
+  };
+  return textMap[status] || status;
+};
+
+const getOrderTypeText = (type: string) => {
+  const typeMap: Record<string, string> = {
+    limit: "限价",
+    market: "市价",
+    stop: "止损",
+    stop_limit: "止损限价",
+  };
+  return typeMap[type] || type;
+};
+
+const getActionText = (status: string) => {
+  const textMap: Record<string, string> = {
+    filled: "已完成",
+    cancelled: "已取消",
+    rejected: "订单被拒",
+  };
+  return textMap[status] || "";
+};
+
+const calculateAmount = (order: Order) => {
+  if (order.type === "market" || !order.price) return 0;
+  return order.price * order.volume;
+};
+
+const handleCancel = (orderId: string) => {
+  dialog.warning({
+    title: "提示",
+    content: "确定要撤销此订单吗?",
+    positiveText: "确定",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      emit("cancel-order", orderId);
+      message.success("撤单指令已发送");
+    },
+  });
 };
 </script>
 
@@ -147,13 +156,7 @@ export default {
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #a8c7ff;
-  opacity: 0.7;
-}
-
-.empty-state i {
-  font-size: 3rem;
-  margin-bottom: 10px;
+  color: var(--n-text-color-3);
 }
 
 .orders-container {
@@ -178,7 +181,7 @@ export default {
 .order-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -207,10 +210,6 @@ export default {
   border: 1px solid rgba(255, 107, 107, 0.3);
 }
 
-.status-tag {
-  margin-left: auto;
-}
-
 .order-details {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -225,18 +224,18 @@ export default {
 }
 
 .label {
-  color: #a8c7ff;
+  color: var(--n-text-color-3);
   font-size: 0.85rem;
 }
 
 .value {
-  color: #e0e7ff;
+  color: var(--n-text-color-1);
   font-size: 0.85rem;
   font-weight: 500;
 }
 
 .amount {
-  color: #64b5f6;
+  color: var(--n-color-target);
   font-weight: 600;
 }
 
@@ -248,12 +247,11 @@ export default {
 }
 
 .action-text {
-  color: #a8c7ff;
+  color: var(--n-text-color-3);
   font-size: 0.8rem;
   font-style: italic;
 }
 
-/* 滚动条样式 */
 .order-list::-webkit-scrollbar {
   width: 6px;
 }

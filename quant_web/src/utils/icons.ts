@@ -32,7 +32,7 @@ import {
 
   // 设置
   Cog,
-  
+
   // 状态相关
   CheckmarkCircle,
   AlertCircle,
@@ -75,8 +75,8 @@ import {
   // 新增 Material 风格图标替代
   Play,
   Save,
-  ArrowBack
-} from '@vicons/ionicons5'
+  ArrowBack,
+} from "@vicons/ionicons5";
 
 export const icons = {
   // 市场相关
@@ -161,10 +161,10 @@ export const icons = {
   CashOutline,
 
   // 新增图标
-  PlayArrow:Play,
+  PlayArrow: Play,
   Save,
-  ArrowBack
-}
+  ArrowBack,
+};
 
 // 类型定义
-export type IconType = keyof typeof icons
+export type IconType = keyof typeof icons;

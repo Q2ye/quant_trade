@@ -1,11 +1,12 @@
 import {
-    WebSocketMessage,
-    RealTimeQuoteMessage,
-    StrategySignal,
-    OrderStatusMessage,
-    SystemStatusMessage,
-    RiskAlertMessage, TradeRecord
-} from '@/types/api'
+  WebSocketMessage,
+  RealTimeQuoteMessage,
+  StrategySignal,
+  OrderStatusMessage,
+  SystemStatusMessage,
+  RiskAlertMessage,
+  TradeRecord,
+} from "@/types/api";
 
 type WebSocketCallback<T = any> = (data: T) => void;
 
@@ -20,7 +21,7 @@ class WebSocketService {
   private readonly maxReconnectAttempts: number = 5;
   private readonly reconnectInterval: number = 5000;
   private readonly messageQueue: any[] = [];
-  private url: string = '';
+  private url: string = "";
 
   /**
    * 连接到WebSocket服务器
@@ -35,7 +36,7 @@ class WebSocketService {
     this.socket = new WebSocket(url);
 
     this.socket.onopen = () => {
-      console.log('WebSocket connected');
+      console.log("WebSocket connected");
       this.reconnectAttempts = 0;
 
       // 重新订阅所有频道
@@ -55,7 +56,7 @@ class WebSocketService {
         const message: WebSocketMessage = JSON.parse(event.data);
         this.notifySubscribers(message);
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        console.error("Error parsing WebSocket message:", error);
       }
     };
 
@@ -71,7 +72,7 @@ class WebSocketService {
     };
 
     this.socket.onerror = (error: Event) => {
-      console.error('WebSocket error:', error);
+      console.error("WebSocket error:", error);
     };
   }
 
@@ -115,7 +116,7 @@ class WebSocketService {
   unsubscribe<T = any>(channel: string, callback: WebSocketCallback<T>): void {
     const channelSubscribers = this.subscribers.get(channel);
     if (channelSubscribers) {
-      const newSubscribers = channelSubscribers.filter(cb => cb !== callback);
+      const newSubscribers = channelSubscribers.filter((cb) => cb !== callback);
       this.subscribers.set(channel, newSubscribers);
 
       if (newSubscribers.length === 0) {
@@ -128,15 +129,15 @@ class WebSocketService {
 
   private sendSubscribe(channel: string): void {
     this.sendMessage({
-      action: 'subscribe',
-      channel
+      action: "subscribe",
+      channel,
     });
   }
 
   private sendUnsubscribe(channel: string): void {
     this.sendMessage({
-      action: 'unsubscribe',
-      channel
+      action: "unsubscribe",
+      channel,
     });
   }
 
@@ -144,7 +145,7 @@ class WebSocketService {
     const { channel, data } = message;
     const channelSubscribers = this.subscribers.get(channel);
     if (channelSubscribers) {
-      channelSubscribers.forEach(callback => callback(data));
+      channelSubscribers.forEach((callback) => callback(data));
     }
   }
 
@@ -175,8 +176,11 @@ class WebSocketService {
    * @param callback 行情回调函数
    * @returns 频道ID
    */
-  subscribeRealtime(symbols: string[], callback: WebSocketCallback<RealTimeQuoteMessage>): string {
-    const channel = `realtime:${symbols.join(',')}`;
+  subscribeRealtime(
+    symbols: string[],
+    callback: WebSocketCallback<RealTimeQuoteMessage>,
+  ): string {
+    const channel = `realtime:${symbols.join(",")}`;
     this.subscribe(channel, callback);
     return channel;
   }
@@ -187,7 +191,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeTradeSignals(callback: WebSocketCallback<StrategySignal>): string {
-    const channel = 'events:signals';
+    const channel = "events:signals";
     this.subscribe(channel, callback);
     return channel;
   }
@@ -197,8 +201,10 @@ class WebSocketService {
    * @param callback 订单状态回调函数
    * @returns 频道ID
    */
-  subscribeOrderStatus(callback: WebSocketCallback<OrderStatusMessage>): string {
-    const channel = 'order:status';
+  subscribeOrderStatus(
+    callback: WebSocketCallback<OrderStatusMessage>,
+  ): string {
+    const channel = "order:status";
     this.subscribe(channel, callback);
     return channel;
   }
@@ -209,7 +215,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeTrades(callback: WebSocketCallback<TradeRecord>): string {
-    const channel = 'events:execution';
+    const channel = "events:execution";
     this.subscribe(channel, callback);
     return channel;
   }
@@ -219,8 +225,10 @@ class WebSocketService {
    * @param callback 系统状态回调函数
    * @returns 频道ID
    */
-  subscribeSystemStatus(callback: WebSocketCallback<SystemStatusMessage>): string {
-    const channel = 'events:status';
+  subscribeSystemStatus(
+    callback: WebSocketCallback<SystemStatusMessage>,
+  ): string {
+    const channel = "events:status";
     this.subscribe(channel, callback);
     return channel;
   }
@@ -231,7 +239,7 @@ class WebSocketService {
    * @returns 频道ID
    */
   subscribeRiskAlerts(callback: WebSocketCallback<RiskAlertMessage>): string {
-    const channel = 'risk:alerts';
+    const channel = "risk:alerts";
     this.subscribe(channel, callback);
     return channel;
   }
@@ -250,7 +258,7 @@ class WebSocketService {
       isConnected: this.isConnected(),
       subscriberCount: Array.from(this.subscribers.values()).flat().length,
       channelCount: this.subscribers.size,
-      reconnectAttempts: this.reconnectAttempts
+      reconnectAttempts: this.reconnectAttempts,
     };
   }
 }

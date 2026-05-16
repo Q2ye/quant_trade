@@ -183,7 +183,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			self,
 			status: str,
 			instruction_type: Optional[str] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
 			skip: int = 0,
@@ -232,7 +232,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_pending_instructions (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None,
 			limit: int = 100
@@ -274,7 +274,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_executing_instructions (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None,
 			limit: int = 100
@@ -316,7 +316,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_today_instructions (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None
 	) -> List[TradeInstruction]:
@@ -363,7 +363,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 	async def get_recent_instructions (
 			self,
 			days: int = 7,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None
 	) -> List[TradeInstruction]:
@@ -411,7 +411,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_instruction_statistics (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None,
 			start_date: Optional[datetime] = None,
@@ -480,7 +480,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def get_instruction_status_summary (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None
 	) -> Dict[str, int]:
@@ -530,7 +530,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			self,
 			start_date: date,
 			end_date: date,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			instruction_type: Optional[str] = None
 	) -> List[Dict[str, Any]]:
 		"""
@@ -592,7 +592,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 			self,
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			top_n: int = 10
 	) -> List[Dict[str, Any]]:
 		"""
@@ -853,7 +853,7 @@ class TradeInstructionRepository(BaseRepository[TradeInstruction]):
 
 	async def batch_cancel_pending_instructions (
 			self,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			strategy_id: Optional[str] = None,
 			instruction_type: Optional[str] = None
 	) -> int:

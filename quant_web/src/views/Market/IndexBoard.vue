@@ -21,7 +21,15 @@
     </div>
 
     <!-- 指数列表 -->
-    <div class="index-list">
+    <n-spin :show="loading">
+      <n-result v-if="error" status="500" title="数据加载失败" description="请检查网络连接后重试">
+        <template #footer>
+          <n-button type="primary" @click="loadData">重试</n-button>
+        </template>
+      </n-result>
+
+      <template v-else>
+        <div class="index-list">
       <div
         v-for="(index, idx) in indices"
         :key="idx"
@@ -64,13 +72,14 @@
           <span class="value">{{ selectedIndex.amount }}</span>
         </div>
       </div>
-    </div>
+      </template>
+    </n-spin>
   </n-card>
 </template>
 
 <script>
 import { defineComponent, ref } from 'vue'
-import { NCard, NButton, NIcon } from 'naive-ui'
+import { NCard, NButton, NIcon, NSpin, NResult } from 'naive-ui'
 import { Refresh as RefreshIcon } from '@vicons/ionicons5'
 
 export default defineComponent({
@@ -144,12 +153,19 @@ export default defineComponent({
     const lastUpdate = ref(new Date())
     const selectedIndex = ref(null)
     const isRefreshing = ref(false)
+    const loading = ref(false)
+    const error = ref(false)
 
     // 刷新指数数据
+    const loadData = async () => {
+      loading.value = true
+      error.value = false
+      try { await new Promise(r => setTimeout(r, 300)) } catch { error.value = true } finally { loading.value = false }
+    }
+
     const refreshData = () => {
       isRefreshing.value = true
 
-      // 模拟数据刷新
       setTimeout(() => {
         indices.value = indices.value.map(index => {
           // 模拟价格波动
@@ -186,15 +202,18 @@ export default defineComponent({
       lastUpdate,
       selectedIndex,
       isRefreshing,
+      loading,
+      error,
       refreshData,
       selectIndex,
-      formatTime
+      formatTime,
+      loadData
     }
   }
 })
 </script>
 <style scoped lang="scss">
-@use '@/assets/scss/naive-variables' as *;
+@use '@/styles/naive-variables' as *;
 
 .index-board {
   padding: spacer(4);

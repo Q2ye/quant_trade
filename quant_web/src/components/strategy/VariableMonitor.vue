@@ -1,67 +1,97 @@
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import { NTabs, NTabPane, NDataTable } from "naive-ui";
+
+interface LogEntry {
+  time: string;
+  level: string;
+  message: string;
+}
+
+interface SignalEntry {
+  id: number;
+  time: string;
+  symbol: string;
+  type: string;
+  price: number;
+}
+
+const activeTab = ref("logs");
+
+const logs = ref<LogEntry[]>([
+  { time: "09:30:05", level: "info", message: "策略初始化完成" },
+  { time: "09:35:22", level: "trade", message: "买入 600519.SH @1800.50 数量:100" },
+  { time: "10:15:47", level: "warning", message: "波动率超过阈值" },
+]);
+
+const variables = ref<Record<string, any>>({
+  security: "600519.SH",
+  short_ma: 1795.34,
+  long_ma: 1782.15,
+  position: 100,
+  cash: 24567.89,
+  portfolio_value: 180245.67,
+});
+
+const signals = ref<SignalEntry[]>([
+  { id: 1, time: "09:35:22", symbol: "600519.SH", type: "buy", price: 1800.5 },
+  { id: 2, time: "10:15:47", symbol: "000001.SZ", type: "sell", price: 14.8 },
+  { id: 3, time: "11:20:15", symbol: "600036.SH", type: "buy", price: 35.25 },
+]);
+
+const variableColumns = [
+  { title: "变量名", key: "name", width: 120 },
+  { title: "值", key: "value" },
+  { title: "类型", key: "type", width: 80 },
+];
+
+const variableData = computed(() =>
+  Object.entries(variables.value).map(([key, val]) => ({
+    name: key,
+    value: typeof val === "number" ? val.toFixed(2) : String(val),
+    type: typeof val,
+  })),
+);
+
+const logLevelClass = (level: string) => ({
+  "log-info": level === "info",
+  "log-trade": level === "trade",
+  "log-warning": level === "warning",
+  "log-error": level === "error",
+});
+
+const signalTypeText = (type: string) =>
+  type === "buy" ? "买入信号" : "卖出信号";
+</script>
+
 <template>
   <div class="variable-monitor">
-    <div class="tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="['tab-btn', { 'active': activeTab === tab.id }]"
-        @click="activeTab = tab.id"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
+    <n-tabs v-model:value="activeTab" type="line" size="small">
+      <n-tab-pane name="logs" tab="运行日志" />
+      <n-tab-pane name="variables" tab="变量监控" />
+      <n-tab-pane name="signals" tab="信号时间轴" />
+    </n-tabs>
 
     <div class="tab-content">
-      <div
-        v-if="activeTab === 'logs'"
-        class="log-container"
-      >
-        <div
-          v-for="(log, index) in logs"
-          :key="index"
-          class="log-item"
-        >
+      <div v-if="activeTab === 'logs'" class="log-container">
+        <div v-for="(log, index) in logs" :key="index" class="log-item">
           <span class="log-time">[{{ log.time }}]</span>
-          <span :class="['log-message', logLevelClass(log.level)]">{{ log.message }}</span>
+          <span :class="['log-message', logLevelClass(log.level)]">
+            {{ log.message }}
+          </span>
         </div>
       </div>
 
-      <div
-        v-if="activeTab === 'variables'"
-        class="variables-container"
-      >
-        <div class="variables-grid">
-          <div class="grid-header">
-            变量名
-          </div>
-          <div class="grid-header">
-            值
-          </div>
-          <div class="grid-header">
-            类型
-          </div>
-
-          <template
-            v-for="(value, key) in variables"
-            :key="key"
-          >
-            <div class="grid-item">
-              {{ key }}
-            </div>
-            <div class="grid-item">
-              {{ formatValue(value) }}
-            </div>
-            <div class="grid-item">
-              {{ typeof value }}
-            </div>
-          </template>
-        </div>
+      <div v-if="activeTab === 'variables'" class="variables-container">
+        <n-data-table
+          :columns="variableColumns"
+          :data="variableData"
+          :bordered="false"
+          size="small"
+        />
       </div>
 
-      <div
-        v-if="activeTab === 'signals'"
-        class="signals-container"
-      >
+      <div v-if="activeTab === 'signals'" class="signals-container">
         <div class="signal-timeline">
           <div
             v-for="signal in signals"
@@ -69,9 +99,7 @@
             class="signal-event"
             :class="signal.type"
           >
-            <div class="signal-time">
-              {{ signal.time }}
-            </div>
+            <div class="signal-time">{{ signal.time }}</div>
             <div class="signal-info">
               <span class="signal-symbol">{{ signal.symbol }}</span>
               <span class="signal-type">{{ signalTypeText(signal.type) }}</span>
@@ -84,59 +112,6 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: "VariableMonitor",
-  data() {
-    return {
-      activeTab: 'logs',
-      tabs: [
-        { id: 'logs', label: '运行日志' },
-        { id: 'variables', label: '变量监控' },
-        { id: 'signals', label: '信号时间轴' }
-      ],
-      logs: [
-        { time: '09:30:05', level: 'info', message: '策略初始化完成' },
-        { time: '09:35:22', level: 'trade', message: '买入 600519.SH @1800.50 数量:100' },
-        { time: '10:15:47', level: 'warning', message: '波动率超过阈值' }
-      ],
-      variables: {
-        security: '600519.SH',
-        short_ma: 1795.34,
-        long_ma: 1782.15,
-        position: 100,
-        cash: 24567.89,
-        portfolio_value: 180245.67
-      },
-      signals: [
-        { id: 1, time: '09:35:22', symbol: '600519.SH', type: 'buy', price: 1800.50 },
-        { id: 2, time: '10:15:47', symbol: '000001.SZ', type: 'sell', price: 14.80 },
-        { id: 3, time: '11:20:15', symbol: '600036.SH', type: 'buy', price: 35.25 }
-      ]
-    }
-  },
-  methods: {
-    logLevelClass(level) {
-      return {
-        'log-info': level === 'info',
-        'log-trade': level === 'trade',
-        'log-warning': level === 'warning',
-        'log-error': level === 'error'
-      }
-    },
-    formatValue(value) {
-      if (typeof value === 'number') {
-        return value.toFixed(2);
-      }
-      return value;
-    },
-    signalTypeText(type) {
-      return type === 'buy' ? '买入信号' : '卖出信号';
-    }
-  }
-}
-</script>
-
 <style scoped>
 .variable-monitor {
   height: 100%;
@@ -145,28 +120,7 @@ export default {
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   overflow: hidden;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   font-size: 12px;
-}
-
-.tabs {
-  display: flex;
-  background-color: #f5f7fa;
-  border-bottom: 1px solid #dcdfe6;
-}
-
-.tab-btn {
-  padding: 8px 15px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-
-.tab-btn.active {
-  border-bottom: 2px solid #409eff;
-  color: #409eff;
-  font-weight: bold;
 }
 
 .tab-content {
@@ -193,43 +147,13 @@ export default {
 }
 
 .log-message {
-  font-family: 'Consolas', monospace;
+  font-family: "Consolas", monospace;
 }
 
-.log-info {
-  color: #606266;
-}
-
-.log-trade {
-  color: #67c23a;
-  font-weight: bold;
-}
-
-.log-warning {
-  color: #e6a23c;
-}
-
-.log-error {
-  color: #f56c6c;
-  font-weight: bold;
-}
-
-.variables-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.5fr 0.8fr;
-  gap: 1px;
-  background-color: #dcdfe6;
-}
-
-.grid-header, .grid-item {
-  padding: 6px 8px;
-  background-color: white;
-}
-
-.grid-header {
-  font-weight: bold;
-  background-color: #f5f7fa;
-}
+.log-info { color: #606266; }
+.log-trade { color: #67c23a; font-weight: bold; }
+.log-warning { color: #e6a23c; }
+.log-error { color: #f56c6c; font-weight: bold; }
 
 .signal-event {
   padding: 8px 5px;
@@ -238,13 +162,8 @@ export default {
   background-color: white;
 }
 
-.buy {
-  border-left-color: #f56c6c;
-}
-
-.sell {
-  border-left-color: #67c23a;
-}
+.buy { border-left-color: #f56c6c; }
+.sell { border-left-color: #67c23a; }
 
 .signal-time {
   color: #909399;

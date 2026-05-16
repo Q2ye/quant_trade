@@ -1,130 +1,126 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
-import { useChart } from '@/composables/useChart'
-import { useMarketStore } from '@/store/modules/market'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted, computed } from "vue";
+import {
+  NCard,
+  NRadioGroup,
+  NRadioButton,
+  NInputNumber,
+  NButton,
+} from "naive-ui";
+import { useChart } from "@/composables/useChart";
+import { useMessage } from "naive-ui";
+import { useStore } from "vuex";
 
-const marketStore = useMarketStore()
+const message = useMessage();
+const store = useStore();
 
-// 交易配置
 const tradeConfig = reactive({
-  symbol: '000001.SZ',
+  symbol: "000001.SZ",
   quantity: 100,
-  priceType: 'limit', // limit, market
+  priceType: "limit",
   limitPrice: 0,
-  orderType: 'buy' // buy, sell
-})
+  orderType: "buy",
+});
 
-// 图表数据
-const klineData = ref<any[]>([])
-const currentPrice = ref(0)
-const chartRef = ref<HTMLDivElement>()
+const klineData = ref<any[]>([]);
+const currentPrice = ref(0);
+const chartRef = ref<HTMLDivElement>();
 
-// 初始化K线图表
 const initKLineChart = () => {
-  if (!chartRef.value) return
+  if (!chartRef.value) return;
 
-  // 模拟K线数据
-  const data = generateKLineData()
-  klineData.value = data
-  currentPrice.value = data[data.length - 1].close
+  const data = generateKLineData();
+  klineData.value = data;
+  currentPrice.value = data[data.length - 1].close;
 
-  const chart = useChart(chartRef.value, {
+  const { initChart } = useChart();
+const chart = initChart(chartRef.value);
+if (!chart) return;
+chart.setOption({
     title: { text: `${tradeConfig.symbol} K线图` },
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'time' },
-    yAxis: { type: 'value', scale: true },
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "time" },
+    yAxis: { type: "value", scale: true },
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0 },
-      { type: 'slider', xAxisIndex: 0 }
+      { type: "inside", xAxisIndex: 0 },
+      { type: "slider", xAxisIndex: 0 },
     ],
-    series: [{
-      type: 'candlestick',
-      data: data.map(item => [item.open, item.close, item.low, item.high]),
-      itemStyle: {
-        color: '#ec0000',
-        color0: '#00da3c',
-        borderColor: '#ec0000',
-        borderColor0: '#00da3c'
-      }
-    }]
-  })
+    series: [
+      {
+        type: "candlestick",
+        data: data.map((item) => [item.open, item.close, item.low, item.high]),
+        itemStyle: {
+          color: "#ec0000",
+          color0: "#00da3c",
+          borderColor: "#ec0000",
+          borderColor0: "#00da3c",
+        },
+      },
+    ],
+  });
 
-  // 添加图表点击事件
-  chart.on('click', (params: any) => {
-    if (params.componentType === 'series' && params.seriesType === 'candlestick') {
-      const data = params.data
-      tradeConfig.limitPrice = data[3] // 使用最高价作为参考
+  chart.on("click", (params: any) => {
+    if (
+      params.componentType === "series" &&
+      params.seriesType === "candlestick"
+    ) {
+      tradeConfig.limitPrice = params.data[3];
     }
-  })
-}
+  });
+};
 
-// 生成模拟K线数据
 const generateKLineData = () => {
-  const data = []
-  const basePrice = 100
-  const baseTime = new Date('2023-01-01').getTime()
+  const data = [];
+  const basePrice = 100;
+  const baseTime = new Date("2023-01-01").getTime();
 
   for (let i = 0; i < 100; i++) {
-    const open = basePrice + Math.random() * 10
-    const close = open + (Math.random() - 0.5) * 5
-    const high = Math.max(open, close) + Math.random() * 3
-    const low = Math.min(open, close) - Math.random() * 3
-    const time = baseTime + i * 24 * 60 * 60 * 1000
-
-    data.push({ time, open, close, high, low })
+    const open = basePrice + Math.random() * 10;
+    const close = open + (Math.random() - 0.5) * 5;
+    const high = Math.max(open, close) + Math.random() * 3;
+    const low = Math.min(open, close) - Math.random() * 3;
+    const time = baseTime + i * 24 * 60 * 60 * 1000;
+    data.push({ time, open, close, high, low });
   }
 
-  return data
-}
+  return data;
+};
 
-// 快速下单
-const quickOrder = (direction: 'buy' | 'sell') => {
-  tradeConfig.orderType = direction
-
-  if (tradeConfig.priceType === 'market') {
-    // 市价单，使用当前价格
-    tradeConfig.limitPrice = currentPrice.value
+const quickOrder = (direction: "buy" | "sell") => {
+  tradeConfig.orderType = direction;
+  if (tradeConfig.priceType === "market") {
+    tradeConfig.limitPrice = currentPrice.value;
   }
+  submitOrder();
+};
 
-  submitOrder()
-}
-
-// 提交订单
 const submitOrder = async () => {
   try {
     const order = {
       symbol: tradeConfig.symbol,
       quantity: tradeConfig.quantity,
-      price: tradeConfig.priceType === 'market' ? undefined : tradeConfig.limitPrice,
+      price:
+        tradeConfig.priceType === "market" ? undefined : tradeConfig.limitPrice,
       direction: tradeConfig.orderType,
-      priceType: tradeConfig.priceType
-    }
-
-    // 调用交易API
-    await marketStore.submitOrder(order)
-    ElMessage.success('订单提交成功')
+      priceType: tradeConfig.priceType,
+    };
+    await store.dispatch("market/submitOrder", order);
+    message.success("订单提交成功");
   } catch (error) {
-    ElMessage.error('订单提交失败')
+    message.error("订单提交失败");
   }
-}
+};
 
-// 价格变化监听
 const priceChange = computed(() => {
-  if (klineData.value.length < 2) return 0
-  const current = klineData.value[klineData.value.length - 1].close
-  const previous = klineData.value[klineData.value.length - 2].close
-  return ((current - previous) / previous) * 100
-})
-
-// 图表标记交易点
-const markTradePoints = () => {
-  // 在图表上标记买卖点
-}
+  if (klineData.value.length < 2) return 0;
+  const current = klineData.value[klineData.value.length - 1].close;
+  const previous = klineData.value[klineData.value.length - 2].close;
+  return ((current - previous) / previous) * 100;
+});
 
 onMounted(() => {
-  initKLineChart()
-})
+  initKLineChart();
+});
 </script>
 
 <template>
@@ -133,7 +129,10 @@ onMounted(() => {
       <h3>图表联动交易</h3>
       <div class="symbol-info">
         <span class="symbol">{{ tradeConfig.symbol }}</span>
-        <span class="price" :class="{ up: priceChange > 0, down: priceChange < 0 }">
+        <span
+          class="price"
+          :class="{ up: priceChange > 0, down: priceChange < 0 }"
+        >
           {{ currentPrice.toFixed(2) }}
           <span class="change">({{ priceChange.toFixed(2) }}%)</span>
         </span>
@@ -141,83 +140,85 @@ onMounted(() => {
     </div>
 
     <div class="trading-layout">
-      <!-- K线图表 -->
       <div class="chart-section">
         <div ref="chartRef" class="kline-chart"></div>
       </div>
 
-      <!-- 交易面板 -->
       <div class="trade-panel">
-        <el-card class="trade-card">
+        <NCard class="trade-card">
           <template #header>
             <span>快速交易</span>
           </template>
 
-          <!-- 交易方向选择 -->
           <div class="trade-direction">
-            <el-radio-group v-model="tradeConfig.orderType">
-              <el-radio-button label="buy">买入</el-radio-button>
-              <el-radio-button label="sell">卖出</el-radio-button>
-            </el-radio-group>
+            <NRadioGroup
+              :value="tradeConfig.orderType"
+              @update:value="(v: string) => (tradeConfig.orderType = v)"
+            >
+              <NRadioButton value="buy">买入</NRadioButton>
+              <NRadioButton value="sell">卖出</NRadioButton>
+            </NRadioGroup>
           </div>
 
-          <!-- 价格类型 -->
           <div class="price-type">
-            <el-radio-group v-model="tradeConfig.priceType">
-              <el-radio-button label="limit">限价</el-radio-button>
-              <el-radio-button label="market">市价</el-radio-button>
-            </el-radio-group>
+            <NRadioGroup
+              :value="tradeConfig.priceType"
+              @update:value="(v: string) => (tradeConfig.priceType = v)"
+            >
+              <NRadioButton value="limit">限价</NRadioButton>
+              <NRadioButton value="market">市价</NRadioButton>
+            </NRadioGroup>
           </div>
 
-          <!-- 价格输入 -->
-          <div class="price-input" v-if="tradeConfig.priceType === 'limit'">
-            <el-input-number
-              v-model="tradeConfig.limitPrice"
+          <div v-if="tradeConfig.priceType === 'limit'" class="price-input">
+            <NInputNumber
+              v-model:value="tradeConfig.limitPrice"
               :min="0"
               :step="0.01"
-              controls-position="right"
               placeholder="委托价格"
             />
           </div>
 
-          <!-- 数量输入 -->
           <div class="quantity-input">
-            <el-input-number
-              v-model="tradeConfig.quantity"
+            <NInputNumber
+              v-model:value="tradeConfig.quantity"
               :min="100"
               :step="100"
-              controls-position="right"
               placeholder="委托数量"
             />
             <span class="unit">股</span>
           </div>
 
-          <!-- 快速交易按钮 -->
           <div class="quick-buttons">
-            <el-button
+            <NButton
               type="success"
               size="large"
               @click="quickOrder('buy')"
               class="buy-button"
             >
               快速买入
-            </el-button>
-            <el-button
-              type="danger"
+            </NButton>
+            <NButton
+              type="error"
               size="large"
               @click="quickOrder('sell')"
               class="sell-button"
             >
               快速卖出
-            </el-button>
+            </NButton>
           </div>
 
-          <!-- 订单信息 -->
           <div class="order-info">
             <div class="info-item">
               <span>预估金额:</span>
               <span class="amount">
-                {{ (tradeConfig.quantity * (tradeConfig.limitPrice || currentPrice)).toFixed(2) }} 元
+                {{
+                  (
+                    tradeConfig.quantity *
+                    (tradeConfig.limitPrice || currentPrice)
+                  ).toFixed(2)
+                }}
+                元
               </span>
             </div>
             <div class="info-item">
@@ -225,11 +226,10 @@ onMounted(() => {
               <span class="fee">~5.00 元</span>
             </div>
           </div>
-        </el-card>
+        </NCard>
       </div>
     </div>
 
-    <!-- 技术指标面板 -->
     <div class="indicators-panel">
       <h4>技术指标</h4>
       <div class="indicators-grid">
@@ -259,7 +259,7 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
 }
 
 .trading-header {
@@ -267,7 +267,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  border-bottom: 1px solid var(--n-border-color);
 }
 
 .symbol-info {
@@ -289,7 +289,6 @@ onMounted(() => {
 .price.up {
   color: #f56c6c;
 }
-
 .price.down {
   color: #67c23a;
 }
@@ -309,7 +308,7 @@ onMounted(() => {
 }
 
 .chart-section {
-  background: var(--el-fill-color-light);
+  background: var(--n-color-embedded);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -328,12 +327,14 @@ onMounted(() => {
   height: 100%;
 }
 
-.trade-direction, .price-type {
+.trade-direction,
+.price-type {
   margin-bottom: 16px;
   text-align: center;
 }
 
-.price-input, .quantity-input {
+.price-input,
+.quantity-input {
   margin-bottom: 16px;
 }
 
@@ -344,7 +345,7 @@ onMounted(() => {
 }
 
 .unit {
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .quick-buttons {
@@ -354,13 +355,14 @@ onMounted(() => {
   margin: 20px 0;
 }
 
-.buy-button, .sell-button {
+.buy-button,
+.sell-button {
   width: 100%;
   height: 40px;
 }
 
 .order-info {
-  border-top: 1px solid var(--el-border-color);
+  border-top: 1px solid var(--n-border-color);
   padding-top: 12px;
 }
 
@@ -371,13 +373,14 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.amount, .fee {
+.amount,
+.fee {
   font-weight: bold;
 }
 
 .indicators-panel {
   padding: 16px;
-  border-top: 1px solid var(--el-border-color);
+  border-top: 1px solid var(--n-border-color);
 }
 
 .indicators-panel h4 {
@@ -391,7 +394,7 @@ onMounted(() => {
 }
 
 .indicator-item {
-  background: var(--el-fill-color-light);
+  background: var(--n-color-embedded);
   padding: 8px 12px;
   border-radius: 4px;
   text-align: center;
@@ -400,7 +403,7 @@ onMounted(() => {
 .indicator-item .label {
   display: block;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .indicator-item .value {
@@ -409,13 +412,11 @@ onMounted(() => {
   font-weight: bold;
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .trading-layout {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr auto;
   }
-
   .indicators-grid {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -7,8 +7,10 @@ import logging
 import os
 from enum import Enum
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Optional, List
 
+import yaml
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -93,6 +95,7 @@ class APISettings(BaseSettings):
 	# 安全配置
 	SECRET_KEY: str = "your-secret-key-here-change-in-production"
 	ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+	AUTH_ENABLED: bool = True  # 是否启用令牌校验，关闭后跳过 JWT 验证（仅开发/测试用）
 	ALGORITHM: str = "HS256"
 
 	# JWT配置
@@ -348,37 +351,26 @@ class EnginesSettings(BaseSettings):
 
 
 class ModulesSettings(BaseSettings):
-	"""模块配置"""
+	"""模块配置 — 字段动态由 config.yaml 定义，默认值仅兜底"""
 	data: Dict[str, Any] = {
-		"enabled": True,
-		"auto_start": True,
-		"dependencies": [],
-		"config": {
-			"data_source": "tushare",
-			"sync_interval": 3600,
-			"cache_ttl": 300,
-			"load_priority": "high"
-		}
+		"enabled": True, "auto_start": True, "dependencies": [],
+		"config": {"data_source": "tushare", "sync_interval": 3600, "cache_ttl": 300, "load_priority": "high"}
 	}
 	strategy: Dict[str, Any] = {
-		"enabled": True,
-		"auto_start": True,
-		"dependencies": ["data"],
-		"config": {
-			"max_strategies": 50,
-			"enable_ai": True,
-			"backtest_mode": "fast"
-		}
+		"enabled": True, "auto_start": True, "dependencies": ["data"],
+		"config": {"max_strategies": 50, "enable_ai": True, "backtest_mode": "fast"}
 	}
 	backtest: Dict[str, Any] = {
-		"enabled": True,
-		"auto_start": True,
-		"dependencies": ["strategy", "data"],
-		"config": {
-			"max_workers": 4,
-			"enable_optimization": True
-		}
+		"enabled": True, "auto_start": True, "dependencies": ["strategy", "data"],
+		"config": {"max_workers": 4, "enable_optimization": True}
 	}
+	trade: Dict[str, Any] = {}
+	account: Dict[str, Any] = {}
+	analysis: Dict[str, Any] = {}
+	monitor: Dict[str, Any] = {}
+	system: Dict[str, Any] = {}
+
+	model_config = SettingsConfigDict(extra="ignore")
 
 
 class ConfigSettings(BaseSettings):
@@ -513,20 +505,115 @@ class ConfigManager:
 	配置优先级：环境变量 > 配置文件 > 默认值
 	"""
 
-	def __init__ (self):
+	def __init__ (self, config_file: Optional[str] = None):
 		"""初始化配置管理器"""
 		self._env = os.getenv("ENVIRONMENT", "development").lower()
-		self._settings = self._load_settings()
+		self._config_file = config_file or self._find_config_yaml()
+		self._settings = self._load_settings(self._config_file)
 
 	@staticmethod
-	def _load_settings () -> ConfigSettings:
+	def _find_config_yaml () -> Optional[str]:
+		"""自动发现 config.yaml 位置"""
+		# 相对当前模块所在包目录 (shared/config/../../ → quant_server/)
+		package_root = Path(__file__).resolve().parent.parent
+		candidates = [
+			"config.yaml",
+			str(package_root / "config.yaml"),
+		]
+		for path in candidates:
+			if Path(path).exists():
+				return path
+		return None
+
+	@staticmethod
+	def _load_settings (config_file: Optional[str] = None) -> ConfigSettings:
 		"""
-		加载配置
-		
-		Returns:
-			ConfigSettings: 配置对象
+		加载配置，优先从 YAML 文件读取，否则使用默认值
 		"""
+		yaml_config = ConfigManager._load_yaml(config_file) if config_file else None
+
+		if yaml_config:
+			kwargs: Dict[str, Any] = {}
+			section_map = {
+				"system": "SYSTEM",
+				"server": "SERVER",
+				"engines": "ENGINES",
+				"modules": "MODULES",
+				"api": "API",
+			}
+			settings_cls_map = {
+				"SYSTEM": SystemSettings,
+				"SERVER": ServerSettings,
+				"ENGINES": EnginesSettings,
+				"MODULES": ModulesSettings,
+				"API": APISettings,
+			}
+			for yaml_key, settings_key in section_map.items():
+				if yaml_key in yaml_config and isinstance(yaml_config[yaml_key], dict):
+					cls = settings_cls_map[settings_key]
+					kwargs[settings_key] = cls(**yaml_config[yaml_key])
+
+			# 确保 API 配置存在，并将 yaml server.port 同步到 API.PORT
+			if "API" not in kwargs:
+				kwargs["API"] = APISettings()
+			if "server" in yaml_config and "port" in yaml_config["server"]:
+				kwargs["API"] = kwargs["API"].model_copy(update={"PORT": yaml_config["server"]["port"]})
+
+			return ConfigSettings(**kwargs)
+
 		return ConfigSettings()
+
+	@staticmethod
+	def _load_yaml (config_path: str) -> Optional[Dict[str, Any]]:
+		"""解析 config.yaml 并返回当前环境的合并配置"""
+		try:
+			path = Path(config_path)
+			if not path.is_absolute():
+				if not path.exists():
+					alt = ConfigManager._find_config_yaml()
+					if alt:
+						path = Path(alt)
+
+			if not path.exists():
+				return None
+
+			with open(path, "r", encoding="utf-8") as f:
+				raw = yaml.safe_load(f)
+
+			if not raw or not isinstance(raw, dict):
+				return None
+
+			env = os.getenv("ENVIRONMENT", "development").lower()
+
+			config: Dict[str, Any] = {}
+			defaults = raw.get("defaults", {})
+			if isinstance(defaults, dict):
+				config.update(defaults)
+
+			env_section = raw.get("environments", {}).get(env, {})
+			if isinstance(env_section, dict):
+				for key, value in env_section.items():
+					if key in ("env", "config_source"):
+						continue
+					if key in config and isinstance(value, dict) and isinstance(config[key], dict):
+						config[key].update(value)
+					else:
+						config[key] = value
+
+			logger.info(f"已加载配置文件: {path} (环境: {env})")
+			return config
+
+		except Exception:
+			import traceback
+			traceback.print_exc()
+			return None
+
+	def reload (self, config_file: Optional[str] = None):
+		"""重新加载配置"""
+		if config_file:
+			self._config_file = config_file
+		self._env = os.getenv("ENVIRONMENT", "development").lower()
+		self._settings = self._load_settings(self._config_file)
 
 	def get (self, key: str, default: Any = None) -> Any:
 		"""
@@ -616,9 +703,8 @@ class ConfigManager:
 					'level': self.get('LOG.LEVEL')
 				},
 				'modules': {
-					'data': self.get('MODULES.data'),
-					'strategy': self.get('MODULES.strategy'),
-					'backtest': self.get('MODULES.backtest')
+					k: v for k, v in self.get('MODULES').model_dump().items()
+					if isinstance(v, dict) and v
 				}
 			}
 		elif config_type == "database":
@@ -674,29 +760,29 @@ class ConfigManager:
 
 
 @lru_cache(maxsize=1)
-def get_config () -> ConfigManager:
+def get_config (config_file: Optional[str] = None) -> ConfigManager:
 	"""
 	获取配置管理器实例（缓存单例）
+
+	Args:
+		config_file: 可选的 YAML 配置文件路径，留空则自动发现
 
 	Returns:
 		配置管理器实例
 	"""
-	return ConfigManager()
+	return ConfigManager(config_file=config_file)
 
 
-# 全局配置实例
+# 全局配置实例（自动发现 config.yaml）
 config = get_config()
 
 
 # 配置初始化函数
-def init_config () -> ConfigManager:
+def init_config (config_file: Optional[str] = None) -> ConfigManager:
 	"""
 	初始化配置并返回实例
-
-	Returns:
-		配置管理器实例
 	"""
-	return get_config()
+	return get_config(config_file)
 
 
 # 配置验证函数
@@ -747,15 +833,17 @@ def detect_environment () -> str:
 
 
 # 配置重载函数（用于动态更新配置）
-def reload_config () -> ConfigManager:
+def reload_config (config_file: Optional[str] = None) -> ConfigManager:
 	"""
 	重新加载配置（清除缓存并重新读取）
 
-	Returns:
-		重新加载的配置管理器实例
+	Args:
+		config_file: 可选的 YAML 配置文件路径
 	"""
+	global config
 	get_config.cache_clear()
-	return get_config()
+	config = get_config(config_file)
+	return config
 
 
 # 配置异常处理装饰器

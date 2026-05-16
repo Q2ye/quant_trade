@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 # 创建路由器实例
 router = APIRouter(
-	prefix="/backtest",
 	tags=["回测工作台"],
 	responses={
 		401: {"description": "认证失败"},

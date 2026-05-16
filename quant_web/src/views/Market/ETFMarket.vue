@@ -1,6 +1,6 @@
 <!-- ETF行情页 - 基于 Naive UI 重构 -->
 <template>
-  <div class="etf-market">
+  <div class="etf-market bg-gradient-mesh bg-noise">
     <!-- 页面头部区域 -->
     <div class="etf-header">
       <h2>ETF行情</h2>
@@ -28,8 +28,16 @@
       </div>
     </div>
 
-    <!-- ETF数据网格布局 -->
-    <div class="etf-grid">
+    <n-spin :show="loading">
+      <n-result v-if="error" status="500" title="数据加载失败" description="请检查网络连接后重试">
+        <template #footer>
+          <n-button type="primary" @click="loadData">重试</n-button>
+        </template>
+      </n-result>
+
+      <template v-else>
+        <!-- ETF数据网格布局 -->
+        <div class="etf-grid">
       <!-- 资金流向图表卡片 -->
       <n-card class="grid-card etf-trend-card" title="ETF资金流向">
         <div class="trend-chart">
@@ -71,6 +79,8 @@
         :bordered="false"
       />
     </n-card>
+      </template>
+    </n-spin>
   </div>
 </template>
 
@@ -83,6 +93,8 @@ import {
   NButton,
   NIcon,
   NDataTable,
+  NSpin,
+  NResult,
   useMessage
 } from 'naive-ui'
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@vicons/ionicons5'
@@ -102,6 +114,8 @@ export default defineComponent({
   },
   setup() {
     const message = useMessage()
+    const loading = ref(false)
+    const error = ref(false)
 
     const selectedCategory = ref('all')
     const searchKeyword = ref('')
@@ -308,10 +322,17 @@ export default defineComponent({
     })
 
     // 刷新数据
-    const refreshData = () => {
-      message.success('ETF数据已刷新')
-      console.log('刷新ETF数据...')
+    const loadData = async () => {
+      loading.value = true
+      error.value = false
+      try {
+        await new Promise(r => setTimeout(r, 300))
+        initFlowChart()
+        initCategoryChart()
+      } catch { error.value = true } finally { loading.value = false }
     }
+
+    const refreshData = () => loadData().then(() => message.success('ETF数据已刷新'))
 
     // 查看ETF详情
     const viewETFDetail = (etf) => {
@@ -473,9 +494,7 @@ export default defineComponent({
     }
 
     onMounted(() => {
-      // 初始化图表
-      initFlowChart()
-      initCategoryChart()
+      loadData()
       window.addEventListener('resize', handleResize)
     })
 
@@ -491,6 +510,8 @@ export default defineComponent({
     })
 
     return {
+      loading,
+      error,
       selectedCategory,
       searchKeyword,
       categoryOptions,
@@ -503,13 +524,14 @@ export default defineComponent({
       refreshData,
       viewETFDetail,
       toggleFavorite,
-      removeFavorite
+      removeFavorite,
+      loadData
     }
   }
 })
 </script>
 <style scoped lang="scss">
-@use '@/assets/scss/naive-variables' as *;
+@use '@/styles/naive-variables' as *;
 
 .etf-market {
   padding: $content-padding;
@@ -547,7 +569,7 @@ export default defineComponent({
   gap: spacer(4);
   margin-bottom: spacer(5);
 
-  @include card-grid-layout(2, (
+  @include flexible-grid(2, (
     'lg': 1,
     'md': 1,
     'sm': 1

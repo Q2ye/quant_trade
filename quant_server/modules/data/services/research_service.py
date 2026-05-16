@@ -229,7 +229,7 @@ class FactorResearchService:
 			end_date: Optional[date] = None,
 			parameters: Optional[Dict[str, Any]] = None,
 			batch_size: int = 50,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		计算因子数据
@@ -417,7 +417,7 @@ class FactorResearchService:
 			end_date: Optional[datetime] = None,
 			analysis_type: str = "ic_analysis",
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		分析因子表现
@@ -590,7 +590,7 @@ class FactorResearchService:
 			end_date: Optional[date] = None,
 			metrics: Optional[List[str]] = None,
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		比较多个因子表现
@@ -783,7 +783,7 @@ class FactorResearchService:
 	async def create_factor_definition (
 			self,
 			factor_definition: Dict[str, Any],
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		创建因子定义
@@ -2481,7 +2481,7 @@ class FactorResearchService:
 			start_date: Optional[date] = None,
 			end_date: Optional[date] = None,
 			parameters: Optional[Dict[str, Any]] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> str:
 		"""
 		创建研究任务记录
@@ -2554,7 +2554,7 @@ class FactorResearchService:
 			end_date: Optional[date] = None,
 			parameters: Optional[Dict[str, Any]] = None,
 			research_id: str = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		执行因子研究
@@ -3105,7 +3105,7 @@ class FactorResearchService:
 			metrics: Optional[List[str]] = None,
 			comparison_report: Optional[Dict] = None,
 			failed_count: Optional[int] = None,
-			user_id: Optional[int] = None
+			user_id: Optional[str] = None
 	):
 		"""
 		发布研究事件

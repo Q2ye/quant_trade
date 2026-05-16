@@ -64,15 +64,15 @@
 // ============================================================================
 // 引入 Vue 和相关依赖
 // ============================================================================
-import {computed, defineComponent, onMounted, onUnmounted, ref} from "vue"
-import {useRoute} from "vue-router"
+import { computed, defineComponent, onMounted, onUnmounted, ref } from "vue";
+import { useRoute } from "vue-router";
 
 // ============================================================================
 // 引入布局组件
 // ============================================================================
-import MainLayout from "@/layouts/MainLayout.vue" // 主布局 - 包含侧边栏和头部
-import ReportLayout from "@/layouts/ReportLayout.vue" // 报表布局 - 专注于数据展示
-import EmptyLayout from "@/layouts/EmptyLayout.vue" // 空布局 - 用于登录页等简单页面
+import MainLayout from "@/layouts/MainLayout.vue"; // 主布局 - 包含侧边栏和头部
+import ReportLayout from "@/layouts/ReportLayout.vue"; // 报表布局 - 专注于数据展示
+import EmptyLayout from "@/layouts/EmptyLayout.vue"; // 空布局 - 用于登录页等简单页面
 // ============================================================================
 // 引入 Naive UI 组件
 // ============================================================================
@@ -88,13 +88,13 @@ import {
   NLoadingBarProvider,
   NMessageProvider,
   NNotificationProvider,
-  zhCN
-} from 'naive-ui'
+  zhCN,
+} from "naive-ui";
 
 // ============================================================================
 // 引入主题配置
 // ============================================================================
-import {getThemeOverrides} from '@/assets/themes/naive-theme'
+import { getThemeOverrides } from "@/assets/themes/naive-theme";
 
 // ============================================================================
 // 组件定义
@@ -118,7 +118,7 @@ export default defineComponent({
     NNotificationProvider,
     NLoadingBarProvider,
     NGlobalStyle,
-    NBackTop
+    NBackTop,
   },
 
   // ==========================================================================
@@ -130,7 +130,7 @@ export default defineComponent({
     // ========================================================================
 
     // 获取当前路由信息
-    const route = useRoute()
+    const route = useRoute();
 
     /**
      * 计算当前布局组件
@@ -138,51 +138,51 @@ export default defineComponent({
      */
     const currentLayout = computed(() => {
       // 从路由元信息获取布局配置，默认为 'main' 布局
-      const layout = (route.meta.layout as string) || "main"
+      const layout = (route.meta.layout as string) || "main";
 
       // 布局映射表
       const layoutMap: Record<string, any> = {
-        main: MainLayout,      // 主布局 - 默认布局
-        report: ReportLayout,  // 报表布局 - 用于数据报表页面
-        empty: EmptyLayout,    // 空布局 - 用于登录、错误页等
-      }
+        main: MainLayout, // 主布局 - 默认布局
+        report: ReportLayout, // 报表布局 - 用于数据报表页面
+        empty: EmptyLayout, // 空布局 - 用于登录、错误页等
+      };
 
       // 返回对应的布局组件，如果未找到则使用主布局
-      return layoutMap[layout] || MainLayout
-    })
+      return layoutMap[layout] || MainLayout;
+    });
 
     // ========================================================================
     // 主题状态管理
     // ========================================================================
 
     // 主题状态引用，true 为深色主题，false 为浅色主题
-    const isDarkTheme = ref(true)
+    const isDarkTheme = ref(true);
 
     /**
      * 计算当前主题对象
      * 根据 isDarkTheme 状态返回对应的 Naive UI 主题
      */
     const theme = computed<GlobalTheme | null>(() => {
-      return isDarkTheme.value ? darkTheme : null
-    })
+      return isDarkTheme.value ? darkTheme : null;
+    });
 
     /**
      * 计算主题覆盖配置
      * 根据当前主题状态返回对应的主题覆盖配置
      */
     const themeOverrides = computed<GlobalThemeOverrides>(() => {
-      return getThemeOverrides(isDarkTheme.value)
-    })
+      return getThemeOverrides(isDarkTheme.value);
+    });
 
     // ========================================================================
     // 国际化配置
     // ========================================================================
 
     // 当前语言环境，使用中文
-    const locale = zhCN
+    const locale = zhCN;
 
     // 日期时间语言环境，使用中文
-    const dateLocale = dateZhCN
+    const dateLocale = dateZhCN;
 
     // ========================================================================
     // 生命周期钩子
@@ -192,22 +192,22 @@ export default defineComponent({
      * 组件挂载后的初始化操作
      */
     onMounted(() => {
-      console.log('🎯 App 组件已挂载')
+      console.log("🎯 App 组件已挂载");
 
       // 初始化主题状态
-      initializeTheme()
+      initializeTheme();
 
       // 监听主题变化事件
-      window.addEventListener('theme-change', handleThemeChange)
-    })
+      window.addEventListener("theme-change", handleThemeChange);
+    });
 
     /**
      * 组件卸载前的清理操作
      */
     onUnmounted(() => {
       // 移除事件监听器
-      window.removeEventListener('theme-change', handleThemeChange)
-    })
+      window.removeEventListener("theme-change", handleThemeChange);
+    });
 
     // ========================================================================
     // 方法定义
@@ -219,38 +219,43 @@ export default defineComponent({
      */
     const initializeTheme = () => {
       try {
-        const savedTheme = localStorage.getItem('quant-theme')
+        const savedTheme = localStorage.getItem("quant-theme");
         if (savedTheme) {
-          isDarkTheme.value = savedTheme === 'dark'
-          console.log(`🎨 从本地存储加载主题偏好: ${isDarkTheme.value ? '深色' : '浅色'}`)
+          isDarkTheme.value = savedTheme === "dark";
+          console.log(
+            `🎨 从本地存储加载主题偏好: ${isDarkTheme.value ? "深色" : "浅色"}`,
+          );
         } else {
           // 如果没有保存的偏好，使用系统偏好
-          isDarkTheme.value = window.matchMedia('(prefers-color-scheme: dark)').matches
-          console.log(`🎨 使用系统主题偏好: ${isDarkTheme.value ? '深色' : '浅色'}`)
+          isDarkTheme.value = window.matchMedia(
+            "(prefers-color-scheme: dark)",
+          ).matches;
+          console.log(
+            `🎨 使用系统主题偏好: ${isDarkTheme.value ? "深色" : "浅色"}`,
+          );
         }
 
         // 更新 HTML 属性 - 使用 dataset 替代 setAttribute（修复 SonarQube 警告）
-        updateHtmlThemeAttribute()
-
+        updateHtmlThemeAttribute();
       } catch (error) {
-        console.warn('⚠️ 主题初始化失败，使用默认深色主题:', error)
-        isDarkTheme.value = true
-        updateHtmlThemeAttribute()
+        console.warn("⚠️ 主题初始化失败，使用默认深色主题:", error);
+        isDarkTheme.value = true;
+        updateHtmlThemeAttribute();
       }
-    }
+    };
 
     /**
      * 处理主题变化事件
      * @param event 主题变化事件
      */
     const handleThemeChange = (event: Event) => {
-      const customEvent = event as CustomEvent<{ isDark: boolean }>
+      const customEvent = event as CustomEvent<{ isDark: boolean }>;
       if (customEvent.detail) {
-        isDarkTheme.value = customEvent.detail.isDark
-        updateHtmlThemeAttribute()
-        console.log(`🔄 主题已切换为: ${isDarkTheme.value ? '深色' : '浅色'}`)
+        isDarkTheme.value = customEvent.detail.isDark;
+        updateHtmlThemeAttribute();
+        console.log(`🔄 主题已切换为: ${isDarkTheme.value ? "深色" : "浅色"}`);
       }
-    }
+    };
 
     /**
      * 更新 HTML 主题属性
@@ -258,11 +263,11 @@ export default defineComponent({
      * 修复：使用 dataset 替代 setAttribute
      */
     const updateHtmlThemeAttribute = () => {
-      const themeValue = isDarkTheme.value ? 'dark' : 'light'
+      const themeValue = isDarkTheme.value ? "dark" : "light";
       // 使用 dataset 替代 setAttribute（修复 SonarQube 警告）
-      document.documentElement.dataset.theme = themeValue
-      document.documentElement.style.setProperty('color-scheme', themeValue)
-    }
+      document.documentElement.dataset.theme = themeValue;
+      document.documentElement.style.setProperty("color-scheme", themeValue);
+    };
 
     // ========================================================================
     // 返回模板使用的数据和方法
@@ -277,10 +282,10 @@ export default defineComponent({
 
       // 国际化相关
       locale,
-      dateLocale
-    }
-  }
-})
+      dateLocale,
+    };
+  },
+});
 </script>
 
 <style lang="scss">
@@ -289,7 +294,7 @@ export default defineComponent({
 // ============================================================================
 
 // 引入简化后的全局样式
-@import '@/assets/scss/global.scss';
+@use "@/styles/global.scss";
 
 // 应用容器基础样式
 #app {
@@ -302,6 +307,9 @@ export default defineComponent({
 
   // 设置最小高度
   min-height: 100vh;
+
+  // 深色背景（兜底 main-layout 透明化后的背景）
+  background-color: var(--color-bg-primary, #0D1117);
 }
 
 // 全局滚动条样式优化

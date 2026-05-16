@@ -1,45 +1,48 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { ref, onMounted, onUnmounted } from "vue";
+import { useWebSocket } from "@/composables/useWebSocket";
 
 interface Signal {
-  id: string
-  strategy: string
-  symbol: string
-  name: string
-  signal: 'BUY' | 'SELL' | 'HOLD'
-  price: number
-  time: string
-  strength: number
+  id: string;
+  strategy: string;
+  symbol: string;
+  name: string;
+  signal: "BUY" | "SELL" | "HOLD";
+  price: number;
+  time: string;
+  strength: number;
 }
 
-const signals = ref<Signal[]>([])
-const { subscribe, unsubscribe } = useWebSocket()
+const signals = ref<Signal[]>([]);
+const { subscribe, unsubscribe } = useWebSocket();
 
 onMounted(() => {
-  subscribe('strategy_signals', (data: Signal) => {
-    signals.value.unshift(data)
+  subscribe(["strategy_signals"], (data: Signal) => {
+    signals.value.unshift(data);
     if (signals.value.length > 50) {
-      signals.value = signals.value.slice(0, 50)
+      signals.value = signals.value.slice(0, 50);
     }
-  })
-})
+  });
+});
 
 onUnmounted(() => {
-  unsubscribe('strategy_signals')
-})
+  unsubscribe(["strategy_signals"]);
+});
 
 const getSignalColor = (signal: string) => {
   switch (signal) {
-    case 'BUY': return '#f56c6c'
-    case 'SELL': return '#67c23a'
-    default: return '#909399'
+    case "BUY":
+      return "#f56c6c";
+    case "SELL":
+      return "#67c23a";
+    default:
+      return "#909399";
   }
-}
+};
 
 const formatTime = (time: string) => {
-  return new Date(time).toLocaleTimeString()
-}
+  return new Date(time).toLocaleTimeString();
+};
 </script>
 
 <template>
@@ -50,11 +53,7 @@ const formatTime = (time: string) => {
     </div>
 
     <div class="signals-list">
-      <div
-        v-for="signal in signals"
-        :key="signal.id"
-        class="signal-item"
-      >
+      <div v-for="signal in signals" :key="signal.id" class="signal-item">
         <div class="signal-header">
           <span class="strategy">{{ signal.strategy }}</span>
           <span class="time">{{ formatTime(signal.time) }}</span>
@@ -66,7 +65,10 @@ const formatTime = (time: string) => {
             <span class="name">{{ signal.name }}</span>
           </div>
 
-          <div class="signal-action" :style="{ color: getSignalColor(signal.signal) }">
+          <div
+            class="signal-action"
+            :style="{ color: getSignalColor(signal.signal) }"
+          >
             {{ signal.signal }}
           </div>
 
@@ -87,7 +89,7 @@ const formatTime = (time: string) => {
 
 <style scoped>
 .real-time-signals {
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
   border-radius: 8px;
   padding: 16px;
   height: 100%;
@@ -103,7 +105,7 @@ const formatTime = (time: string) => {
 }
 
 .count {
-  background: var(--el-color-primary);
+  background: var(--n-color-target);
   color: white;
   padding: 2px 8px;
   border-radius: 10px;
@@ -116,11 +118,11 @@ const formatTime = (time: string) => {
 }
 
 .signal-item {
-  background: var(--el-fill-color-light);
+  background: var(--n-color-embedded);
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 8px;
-  border-left: 3px solid var(--el-color-primary);
+  border-left: 3px solid var(--n-color-target);
 }
 
 .signal-header {
@@ -136,7 +138,7 @@ const formatTime = (time: string) => {
 
 .time {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .symbol-info {
@@ -150,7 +152,7 @@ const formatTime = (time: string) => {
 }
 
 .name {
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
   font-size: 12px;
 }
 
@@ -169,14 +171,14 @@ const formatTime = (time: string) => {
 .strength {
   width: 60px;
   height: 4px;
-  background: var(--el-border-color-light);
+  background: var(--n-border-color);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .strength-bar {
   height: 100%;
-  background: var(--el-color-primary);
+  background: var(--n-color-target);
   transition: width 0.3s ease;
 }
 </style>

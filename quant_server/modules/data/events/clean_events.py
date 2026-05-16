@@ -38,7 +38,7 @@ class DataCleanMetadata:
 	start_date: Optional[datetime] = None  # 开始日期
 	end_date: Optional[datetime] = None  # 结束日期
 	ts_codes: Optional[List[str]] = None  # 股票代码列表
-	user_id: Optional[int] = None  # 用户ID
+	user_id: Optional[str] = None  # 用户ID
 	created_at: datetime = field(default_factory=datetime.now)  # 创建时间
 
 
@@ -74,7 +74,7 @@ class DataCleanEvent(BaseEvent):
 			clean_id: str,
 			event_type: str,
 			data_type: Optional[str] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			**kwargs
 	):
 		"""
@@ -113,7 +113,7 @@ class DataCleanStartedEvent(DataCleanEvent):
 			start_date: Optional[datetime] = None,
 			end_date: Optional[datetime] = None,
 			ts_codes: Optional[List[str]] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(
@@ -143,7 +143,7 @@ class DataCleanProgressEvent(DataCleanEvent):
 			current_rule: str,
 			processed_count: int = 0,
 			total_count: int = 0,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(
@@ -171,7 +171,7 @@ class DataCleanCompletedEvent(DataCleanEvent):
 			data_type: str,
 			result: DataCleanResult,
 			duration_seconds: float,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(
@@ -198,7 +198,7 @@ class DataCleanFailedEvent(DataCleanEvent):
 			data_type: str,
 			error_message: str,
 			error_details: Optional[Dict] = None,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(
@@ -226,7 +226,7 @@ class DataCleanAppliedEvent(DataCleanEvent):
 			applied_count: int,
 			total_issues: int,
 			dry_run: bool = False,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(
@@ -258,7 +258,7 @@ class DataCleanValidatedEvent(DataCleanEvent):
 			validation_results: Dict[str, Any],
 			is_valid: bool,
 			error_count: int,
-			user_id: Optional[int] = None,
+			user_id: Optional[str] = None,
 			timestamp: Optional[datetime] = None
 	):
 		super().__init__(

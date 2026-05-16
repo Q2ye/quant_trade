@@ -1,4 +1,4 @@
-import { formatDate } from './date';
+import { formatDate } from "./date";
 
 interface StrategyParam {
   name: string;
@@ -10,10 +10,14 @@ interface StrategyParam {
 
 export function parseStrategyCode(code: string): { params: StrategyParam[] } {
   const params: StrategyParam[] = [];
-  const initFunction = code.match(/def initializecontext:\s*([\s\S]*?)(?=def handle_data)/)?.[1];
+  const initFunction = code.match(
+    /def initializecontext:\s*([\s\S]*?)(?=def handle_data)/,
+  )?.[1];
 
   if (initFunction) {
-    const paramMatches = initFunction.matchAll(/context\.(\w+)\s*=\s*([\d.]+)/g);
+    const paramMatches = initFunction.matchAll(
+      /context\.(\w+)\s*=\s*([\d.]+)/g,
+    );
     for (const match of paramMatches) {
       const name = match[1];
       const value = parseFloat(match[2]);
@@ -22,7 +26,7 @@ export function parseStrategyCode(code: string): { params: StrategyParam[] } {
         value,
         min: value * 0.5,
         max: value * 2,
-        step: 1
+        step: 1,
       });
     }
   }
@@ -61,18 +65,19 @@ export function generateBacktestReportData(results: BacktestResults): any {
     summary: {
       initialCapital: results.initialCapital,
       finalValue: results.finalValue,
-      totalReturn: (results.finalValue - results.initialCapital) / results.initialCapital,
+      totalReturn:
+        (results.finalValue - results.initialCapital) / results.initialCapital,
       annualizedReturn: results.annualizedReturn,
       sharpeRatio: results.sharpeRatio,
       maxDrawdown: results.maxDrawdown,
       winRate: results.winRate,
-      profitFactor: results.profitFactor
+      profitFactor: results.profitFactor,
     },
-    equityCurve: results.equityCurve.map(point => ({
+    equityCurve: results.equityCurve.map((point) => ({
       date: formatDate(point.date),
-      value: point.value
+      value: point.value,
     })),
-    trades: results.trades.map(trade => ({
+    trades: results.trades.map((trade) => ({
       id: trade.id,
       symbol: trade.symbol,
       direction: trade.direction,
@@ -82,11 +87,11 @@ export function generateBacktestReportData(results: BacktestResults): any {
       exitPrice: trade.exitPrice,
       quantity: trade.quantity,
       profit: trade.profit,
-      return: trade.return
+      return: trade.return,
     })),
-    dailyReturns: results.dailyReturns.map(ret => ({
+    dailyReturns: results.dailyReturns.map((ret) => ({
       date: formatDate(ret.date),
-      return: ret.return
-    }))
+      return: ret.return,
+    })),
   };
 }

@@ -22,10 +22,16 @@ from core.exceptions.security_exceptions import (
 	TokenExpiredError,
 	InvalidTokenError
 )
+from shared.config.config_manager import get_config
 from shared.database.repositories.system.auth import user_repo
 from shared.security.jwt_handler import JWTManager
 
 logger = logging.getLogger(__name__)
+
+
+def _is_auth_enabled() -> bool:
+    """延迟读取认证开关，确保 main.py 已通过 reload_config 加载 YAML 配置"""
+    return get_config().settings.API.AUTH_ENABLED
 
 # 创建HTTPBearer安全方案
 security_scheme = HTTPBearer(
@@ -65,6 +71,22 @@ class AuthDependencies:
 			HTTPException: 401 - 未认证或令牌无效
 						  403 - 用户被禁用
 		"""
+		# 认证开关：关闭时返回模拟超级用户，跳过所有令牌校验
+		if not _is_auth_enabled():
+			return {
+				"id": "dev-user",
+				"username": "developer",
+				"email": "dev@quant-trade.local",
+				"real_name": "开发者",
+				"phone": "",
+				"role": "super_admin",
+				"is_active": True,
+				"last_login": datetime.now(timezone.utc),
+				"created_at": datetime.now(timezone.utc),
+				"permissions": ["*:*"],
+				"can_sync_data": True,
+			}
+
 		# 检查是否有认证凭证
 		if not credentials:
 			logger.warning("未提供认证令牌")

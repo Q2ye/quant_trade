@@ -1,7 +1,7 @@
 // 用户状态管理
 // 负责管理用户认证、权限、个人信息等状态数据
 
-import { User } from '@/types/entities/user';
+import { User } from "@/types/entities/user";
 
 /**
  * 用户状态接口定义
@@ -49,9 +49,9 @@ export interface UserState {
    * 控制登录过程中的UI反馈，防止重复提交
    */
   loading: {
-    login: boolean;          // 登录中
-    logout: boolean;         // 登出中
-    profile: boolean;        // 个人信息加载中
+    login: boolean; // 登录中
+    logout: boolean; // 登出中
+    profile: boolean; // 个人信息加载中
   };
 
   /**
@@ -59,9 +59,9 @@ export interface UserState {
    * 记录认证过程中发生的错误，用于用户提示
    */
   error: {
-    login: string | null;    // 登录错误
+    login: string | null; // 登录错误
     register: string | null; // 注册错误
-    profile: string | null;  // 个人信息错误
+    profile: string | null; // 个人信息错误
   };
 
   /**
@@ -69,8 +69,8 @@ export interface UserState {
    * 控制用户会话的持久化和安全性
    */
   session: {
-    rememberMe: boolean;     // 记住登录状态
-    autoLogin: boolean;      // 自动登录
-    sessionTimeout: number;  // 会话超时时间（分钟）
+    rememberMe: boolean; // 记住登录状态
+    autoLogin: boolean; // 自动登录
+    sessionTimeout: number; // 会话超时时间（分钟）
   };
 }

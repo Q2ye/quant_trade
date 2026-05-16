@@ -1,10 +1,10 @@
 // quant_web/src/types/api/performance.ts
 
 import {
-    StrategyPerformance,
-    PerformanceMetrics
-} from '@/types/entities/performance';
-import {EquityPoint} from "@/types/api/strategy";
+  StrategyPerformance,
+  PerformanceMetrics,
+} from "@/types/entities/performance";
+import { EquityPoint } from "@/types/api/strategy";
 
 /**
  * 策略列表项

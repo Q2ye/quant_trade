@@ -75,7 +75,7 @@ export interface Position {
 export interface Trade {
   id: string;
   symbol: string;
-  direction: 'buy' | 'sell';
+  direction: "buy" | "sell";
   price: number;
   volume: number;
   amount: number;

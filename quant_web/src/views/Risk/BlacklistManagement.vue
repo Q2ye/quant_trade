@@ -1,197 +1,227 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { ElMessage, ElTable, ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElSelect, ElOption } from 'element-plus'
+import { ref, onMounted, h } from "vue";
+import { useMessage, useDialog, NTag, NButton, NSpin, NResult } from "naive-ui";
+
+const message = useMessage();
+const dialog = useDialog();
+const loading = ref(false);
+const error = ref(false);
 
 interface BlacklistItem {
-  id: number
-  ts_code: string
-  name: string
-  reason: string
-  added_by: string
-  added_at: string
-  is_active: boolean
+  id: number;
+  ts_code: string;
+  name: string;
+  reason: string;
+  added_by: string;
+  added_at: string;
+  is_active: boolean;
 }
 
-const blacklist = ref<BlacklistItem[]>([])
-const dialogVisible = ref(false)
-const newItem = ref({
-  ts_code: '',
-  reason: 'st_risk'
-})
+const blacklist = ref<BlacklistItem[]>([]);
+const showModal = ref(false);
+const newItem = ref({ ts_code: "", reason: "st_risk" });
 
-// 原因映射
 const reasonMap: Record<string, string> = {
-  st_risk: 'ST风险',
-  financial_risk: '财务风险',
-  regulatory_risk: '监管风险',
-  manual_add: '手动添加'
-}
+  st_risk: "ST风险",
+  financial_risk: "财务风险",
+  regulatory_risk: "监管风险",
+  manual_add: "手动添加",
+};
+const reasonOptions = Object.entries(reasonMap).map(([value, label]) => ({
+  label,
+  value,
+}));
 
-// 获取黑名单
+const columns = [
+  { title: "股票代码", key: "ts_code", width: 120 },
+  { title: "股票名称", key: "name", width: 150 },
+  {
+    title: "原因",
+    key: "reason",
+    width: 120,
+    render: (row: BlacklistItem) => reasonMap[row.reason] || row.reason,
+  },
+  { title: "添加人", key: "added_by", width: 100 },
+  { title: "添加时间", key: "added_at", width: 120 },
+  {
+    title: "状态",
+    key: "is_active",
+    width: 100,
+    render: (row: BlacklistItem) =>
+      h(
+        NTag,
+        { type: row.is_active ? "error" : "default" },
+        { default: () => (row.is_active ? "生效中" : "已失效") },
+      ),
+  },
+  {
+    title: "操作",
+    key: "op",
+    width: 80,
+    render: (row: BlacklistItem) =>
+      h(
+        NButton,
+        {
+          size: "small",
+          type: "error",
+          onClick: () => removeFromBlacklist(row),
+        },
+        { default: () => "移除" },
+      ),
+  },
+];
+
 const fetchBlacklist = async () => {
+  loading.value = true;
+  error.value = false;
   try {
-    // 模拟数据
+    await new Promise((r) => setTimeout(r, 300));
     blacklist.value = [
       {
         id: 1,
-        ts_code: '600086.SH',
-        name: '退市金钰',
-        reason: 'st_risk',
-        added_by: 'system',
-        added_at: '2024-01-01',
-        is_active: true
+        ts_code: "600086.SH",
+        name: "退市金钰",
+        reason: "st_risk",
+        added_by: "system",
+        added_at: "2024-01-01",
+        is_active: true,
       },
       {
         id: 2,
-        ts_code: '000979.SZ',
-        name: '中弘退',
-        reason: 'regulatory_risk',
-        added_by: 'admin',
-        added_at: '2024-01-02',
-        is_active: true
-      }
-    ]
-  } catch (error) {
-    ElMessage.error('获取黑名单失败')
+        ts_code: "000979.SZ",
+        name: "中弘退",
+        reason: "regulatory_risk",
+        added_by: "admin",
+        added_at: "2024-01-02",
+        is_active: true,
+      },
+    ];
+  } catch {
+    error.value = true;
+  } finally {
+    loading.value = false;
   }
-}
+};
 
-// 添加黑名单
+const handleAdd = () => {
+  showModal.value = true;
+};
+
 const addToBlacklist = async () => {
   if (!newItem.value.ts_code) {
-    ElMessage.warning('请输入股票代码')
-    return
+    message.warning("请输入股票代码");
+    return;
   }
-
   try {
-    const item: BlacklistItem = {
+    blacklist.value.push({
       id: Date.now(),
       ts_code: newItem.value.ts_code,
-      name: `股票${newItem.value.ts_code}`, // 实际中需要查询股票名称
+      name: `股票${newItem.value.ts_code}`,
       reason: newItem.value.reason,
-      added_by: 'current_user',
-      added_at: new Date().toISOString().split('T')[0],
-      is_active: true
-    }
-
-    blacklist.value.push(item)
-    dialogVisible.value = false
-    newItem.value = { ts_code: '', reason: 'st_risk' }
-    ElMessage.success('添加成功')
-  } catch (error) {
-    ElMessage.error('添加失败')
+      added_by: "current_user",
+      added_at: new Date().toISOString().split("T")[0],
+      is_active: true,
+    });
+    showModal.value = false;
+    newItem.value = { ts_code: "", reason: "st_risk" };
+    message.success("添加成功");
+  } catch {
+    message.error("添加失败");
   }
-}
+};
 
-// 移除黑名单
 const removeFromBlacklist = async (item: BlacklistItem) => {
   try {
-    blacklist.value = blacklist.value.filter(i => i.id !== item.id)
-    ElMessage.success('移除成功')
-  } catch (error) {
-    ElMessage.error('移除失败')
+    blacklist.value = blacklist.value.filter((i) => i.id !== item.id);
+    message.success("移除成功");
+  } catch {
+    message.error("移除失败");
   }
-}
+};
 
-// 导入黑名单
-const importBlacklist = () => {
-  // 实现导入逻辑
-  ElMessage.info('导入功能开发中')
-}
+const handleImport = () => message.info("导入功能开发中");
 
-// 导出黑名单
 const exportBlacklist = () => {
-  const csvContent = blacklist.value.map(item =>
-    `${item.ts_code},${item.name},${reasonMap[item.reason]},${item.added_at}`
-  ).join('\n')
+  const csvContent = blacklist.value
+    .map(
+      (item) =>
+        `${item.ts_code},${item.name},${reasonMap[item.reason]},${item.added_at}`,
+    )
+    .join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `blacklist_${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+};
 
-  const blob = new Blob([csvContent], { type: 'text/csv' })
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `blacklist_${new Date().toISOString().split('T')[0]}.csv`
-  a.click()
-  window.URL.revokeObjectURL(url)
-}
-
-onMounted(() => {
-  fetchBlacklist()
-})
+onMounted(() => fetchBlacklist());
 </script>
 
 <template>
-  <div class="blacklist-management">
+  <div class="blacklist-management bg-gradient-mesh bg-noise">
     <div class="management-header">
       <h3>黑名单管理</h3>
-      <div class="actions">
-        <el-button type="primary" @click="dialogVisible = true">添加黑名单</el-button>
-        <el-button @click="importBlacklist">导入</el-button>
-        <el-button @click="exportBlacklist">导出</el-button>
-      </div>
+      <n-space :size="8">
+        <n-button type="primary" @click="handleAdd">添加黑名单</n-button>
+        <n-button @click="handleImport">导入</n-button>
+        <n-button @click="exportBlacklist">导出</n-button>
+      </n-space>
     </div>
 
-    <el-table :data="blacklist" style="width: 100%">
-      <el-table-column prop="ts_code" label="股票代码" width="120" />
-
-      <el-table-column prop="name" label="股票名称" width="150" />
-
-      <el-table-column prop="reason" label="原因" width="120">
-        <template #default="{ row }">
-          {{ reasonMap[row.reason] || row.reason }}
+    <n-spin :show="loading">
+      <n-result
+        v-if="error"
+        status="500"
+        title="数据加载失败"
+        description="请检查网络连接后重试"
+      >
+        <template #footer>
+          <n-button type="primary" @click="fetchBlacklist">重试</n-button>
         </template>
-      </el-table-column>
+      </n-result>
 
-      <el-table-column prop="added_by" label="添加人" width="100" />
-
-      <el-table-column prop="added_at" label="添加时间" width="120" />
-
-      <el-table-column prop="is_active" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.is_active ? 'danger' : 'info'">
-            {{ row.is_active ? '生效中' : '已失效' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="操作" width="100" fixed="right">
-        <template #default="{ row }">
-          <el-button size="small" type="danger" @click="removeFromBlacklist(row)">
-            移除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+      <template v-else>
+        <n-data-table
+          :columns="columns"
+          :data="blacklist"
+          :bordered="false"
+          size="small"
+        >
+          <template #empty><n-empty description="暂无黑名单记录" /></template>
+        </n-data-table>
+      </template>
+    </n-spin>
 
     <!-- 添加黑名单对话框 -->
-    <el-dialog title="添加黑名单" v-model="dialogVisible" width="500px">
-      <el-form :model="newItem" label-width="80px">
-        <el-form-item label="股票代码">
-          <el-input v-model="newItem.ts_code" placeholder="例如：600000.SH" />
-        </el-form-item>
-
-        <el-form-item label="原因">
-          <el-select v-model="newItem.reason" style="width: 100%">
-            <el-option label="ST风险" value="st_risk" />
-            <el-option label="财务风险" value="financial_risk" />
-            <el-option label="监管风险" value="regulatory_risk" />
-            <el-option label="手动添加" value="manual_add" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="addToBlacklist">确认添加</el-button>
-      </template>
-    </el-dialog>
+    <n-modal
+      v-model:show="showModal"
+      preset="dialog"
+      title="添加黑名单"
+      positive-text="确认添加"
+      negative-text="取消"
+      @positive-click="addToBlacklist"
+    >
+      <n-form :model="newItem" label-width="80px">
+        <n-form-item label="股票代码">
+          <n-input
+            v-model:value="newItem.ts_code"
+            placeholder="例如：600000.SH"
+          />
+        </n-form-item>
+        <n-form-item label="原因">
+          <n-select v-model:value="newItem.reason" :options="reasonOptions" />
+        </n-form-item>
+      </n-form>
+    </n-modal>
   </div>
 </template>
 
 <style scoped>
 .blacklist-management {
   padding: 20px;
-  background: #fff;
-  border-radius: 8px;
 }
 
 .management-header {
@@ -200,11 +230,11 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--n-border-color);
 }
 
-.actions {
-  display: flex;
-  gap: 10px;
+.management-header h3 {
+  margin: 0;
+  color: var(--n-text-color-1);
 }
 </style>

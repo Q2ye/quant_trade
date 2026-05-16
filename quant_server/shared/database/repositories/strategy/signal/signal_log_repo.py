@@ -266,7 +266,7 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 	async def get_log_statistics (
 			self,
-			signal_id: Optional[int] = None,
+			signal_id: Optional[str] = None,
 			start_time: Optional[datetime] = None,
 			end_time: Optional[datetime] = None
 	) -> Dict[str, Any]:
@@ -339,7 +339,7 @@ class SignalLogRepository(BaseRepository[SignalLog]):
 
 	async def get_log_trend (
 			self,
-			signal_id: Optional[int] = None,
+			signal_id: Optional[str] = None,
 			days: int = 30
 	) -> List[Dict[str, Any]]:
 		"""

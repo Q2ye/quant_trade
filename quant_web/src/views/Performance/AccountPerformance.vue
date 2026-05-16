@@ -1,34 +1,57 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, h } from 'vue'
-import type { ColumnsType } from 'ant-design-vue/es/table'
+import { ref, reactive, onMounted, computed, h } from "vue";
+import {
+  NCard,
+  NSelect,
+  NDatePicker,
+  NDataTable,
+  NTabs,
+  NTabPane,
+  NGrid,
+  NGridItem,
+  NStatistic,
+  NSpace,
+  NSpin,
+  NResult,
+} from "naive-ui";
+import type { DataTableColumns } from "naive-ui";
 
 interface PerformanceData {
-  date: string
-  total_asset: number
-  cash: number
-  market_value: number
-  daily_pnl: number
-  daily_return: number
-  cumulative_return: number
+  date: string;
+  total_asset: number;
+  cash: number;
+  market_value: number;
+  daily_pnl: number;
+  daily_return: number;
+  cumulative_return: number;
 }
 
 interface Position {
-  symbol: string
-  name: string
-  volume: number
-  cost_price: number
-  current_price: number
-  market_value: number
-  pnl: number
-  pnl_ratio: number
-  weight: number
+  symbol: string;
+  name: string;
+  volume: number;
+  cost_price: number;
+  current_price: number;
+  market_value: number;
+  pnl: number;
+  pnl_ratio: number;
+  weight: number;
 }
 
-const loading = ref(false)
-const performanceData = ref<PerformanceData[]>([])
-const positions = ref<Position[]>([])
-const dateRange = ref<string[]>([])
-const selectedPeriod = ref('1m')
+const loading = ref(false);
+const error = ref(false);
+const performanceData = ref<PerformanceData[]>([]);
+const positions = ref<Position[]>([]);
+const dateRange = ref<[string, string] | null>(null);
+const selectedPeriod = ref("1m");
+
+const periodOptions = [
+  { label: "近1周", value: "1w" },
+  { label: "近1月", value: "1m" },
+  { label: "近3月", value: "3m" },
+  { label: "近1年", value: "1y" },
+  { label: "全部", value: "all" },
+];
 
 const performanceMetrics = reactive({
   totalReturn: 0.156,
@@ -36,278 +59,298 @@ const performanceMetrics = reactive({
   sharpeRatio: 1.89,
   maxDrawdown: -0.089,
   volatility: 0.156,
-  winRate: 0.712
-})
+  winRate: 0.712,
+});
 
-const columns: ColumnsType<Position> = [
+const positionColumns: DataTableColumns<Position> = [
   {
-    title: '代码',
-    dataIndex: 'symbol',
-    key: 'symbol',
-    width: 100
-  },
-  {
-    title: '名称',
-    dataIndex: 'name',
-    key: 'name',
-    width: 120
-  },
-  {
-    title: '持仓数量',
-    dataIndex: 'volume',
-    key: 'volume',
+    title: "代码",
+    key: "symbol",
     width: 100,
-    customRender: ({ text: volume }) => volume?.toLocaleString() || '0'
   },
   {
-    title: '成本价',
-    dataIndex: 'cost_price',
-    key: 'cost_price',
-    width: 100,
-    customRender: ({ text: price }) => `¥${(price || 0).toFixed(2)}`
-  },
-  {
-    title: '当前价',
-    dataIndex: 'current_price',
-    key: 'current_price',
-    width: 100,
-    customRender: ({ text: price }) => `¥${(price || 0).toFixed(2)}`
-  },
-  {
-    title: '市值',
-    dataIndex: 'market_value',
-    key: 'market_value',
+    title: "名称",
+    key: "name",
     width: 120,
-    customRender: ({ text: value }) => `¥${((value || 0) / 10000).toFixed(2)}万`
   },
   {
-    title: '盈亏',
-    dataIndex: 'pnl',
-    key: 'pnl',
+    title: "持仓数量",
+    key: "volume",
     width: 100,
-    customRender: ({ text: pnl }) => {
-      const color = (pnl || 0) >= 0 ? '#f5222d' : '#52c41a'
-      return h('span', { style: { color } }, [
-        (pnl || 0) >= 0 ? '+' : '',
-        '¥',
-        (pnl || 0).toFixed(2)
-      ])
-    }
+    render: (row) => row.volume?.toLocaleString() || "0",
   },
   {
-    title: '盈亏率',
-    dataIndex: 'pnl_ratio',
-    key: 'pnl_ratio',
+    title: "成本价",
+    key: "cost_price",
     width: 100,
-    customRender: ({ text: ratio }) => {
-      const color = (ratio || 0) >= 0 ? '#f5222d' : '#52c41a'
-      return h('span', { style: { color } }, [
-        (ratio || 0) >= 0 ? '+' : '',
-        ((ratio || 0) * 100).toFixed(2),
-        '%'
-      ])
-    }
+    render: (row) => `¥${(row.cost_price || 0).toFixed(2)}`,
   },
   {
-    title: '权重',
-    dataIndex: 'weight',
-    key: 'weight',
+    title: "当前价",
+    key: "current_price",
+    width: 100,
+    render: (row) => `¥${(row.current_price || 0).toFixed(2)}`,
+  },
+  {
+    title: "市值",
+    key: "market_value",
+    width: 120,
+    render: (row) => `¥${((row.market_value || 0) / 10000).toFixed(2)}万`,
+  },
+  {
+    title: "盈亏",
+    key: "pnl",
+    width: 120,
+    render: (row) => {
+      const isPositive = (row.pnl || 0) >= 0;
+      const color = isPositive
+        ? "var(--color-stock-up)"
+        : "var(--color-stock-down)";
+      return h(
+        "span",
+        { style: { color } },
+        `${isPositive ? "+" : ""}¥${(row.pnl || 0).toFixed(2)}`,
+      );
+    },
+  },
+  {
+    title: "盈亏率",
+    key: "pnl_ratio",
+    width: 100,
+    render: (row) => {
+      const isPositive = (row.pnl_ratio || 0) >= 0;
+      const color = isPositive
+        ? "var(--color-stock-up)"
+        : "var(--color-stock-down)";
+      return h(
+        "span",
+        { style: { color } },
+        `${isPositive ? "+" : ""}${((row.pnl_ratio || 0) * 100).toFixed(2)}%`,
+      );
+    },
+  },
+  {
+    title: "权重",
+    key: "weight",
     width: 80,
-    customRender: ({ text: weight }) => `${((weight || 0) * 100).toFixed(1)}%`
-  }
-]
+    render: (row) => `${((row.weight || 0) * 100).toFixed(1)}%`,
+  },
+];
 
 const loadPerformanceData = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    // 模拟API调用
-    const response = await fetch('/api/performance/account')
-    const data = await response.json()
-    performanceData.value = data.performance || []
-    positions.value = data.positions || []
-  } catch (error) {
-    console.error('加载绩效数据失败:', error)
-    performanceData.value = []
-    positions.value = []
+    const response = await fetch("/quantTrade/performance/account");
+    const data = await response.json();
+    performanceData.value = data.performance || [];
+    positions.value = data.positions || [];
+    error.value = false;
+  } catch (err) {
+    console.error("加载绩效数据失败:", err);
+    error.value = true;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
-// 修复：添加空值检查
 const currentStats = computed(() => {
-  if (!performanceData.value || performanceData.value.length === 0) return null
-  return performanceData.value[performanceData.value.length - 1]
-})
+  if (!performanceData.value || performanceData.value.length === 0) return null;
+  return performanceData.value[performanceData.value.length - 1];
+});
+
+const pnlColor = computed(() => {
+  return (currentStats.value?.daily_pnl || 0) >= 0
+    ? "var(--color-stock-up)"
+    : "var(--color-stock-down)";
+});
 
 onMounted(() => {
-  loadPerformanceData()
-})
+  loadPerformanceData();
+});
 </script>
 
 <template>
-  <div class="account-performance-page">
-    <a-card title="账户绩效分析">
-      <template #extra>
-        <a-space>
-          <a-select v-model:value="selectedPeriod" style="width: 120px">
-            <a-select-option value="1w">近1周</a-select-option>
-            <a-select-option value="1m">近1月</a-select-option>
-            <a-select-option value="3m">近3月</a-select-option>
-            <a-select-option value="1y">近1年</a-select-option>
-            <a-select-option value="all">全部</a-select-option>
-          </a-select>
-          <a-range-picker v-model:value="dateRange" />
-        </a-space>
+  <n-spin :show="loading" class="account-performance-page">
+    <n-result
+      v-if="error"
+      status="500"
+      title="加载失败"
+      description="获取绩效数据失败，请稍后重试"
+    >
+      <template #footer
+        ><n-button @click="loadPerformanceData">重试</n-button></template
+      >
+    </n-result>
+
+    <n-card v-else title="账户绩效分析">
+      <template #header-extra>
+        <n-space>
+          <n-select
+            v-model:value="selectedPeriod"
+            style="width: 120px"
+            :options="periodOptions"
+          />
+          <n-date-picker
+            v-model:formatted-value="dateRange"
+            type="daterange"
+            clearable
+          />
+        </n-space>
       </template>
 
-      <a-row :gutter="16" style="margin-bottom: 24px;">
-        <a-col :span="4">
-          <a-statistic
-            title="总资产"
-            :value="currentStats?.total_asset || 0"
-            :precision="2"
-            prefix="¥"
-          />
-        </a-col>
-        <a-col :span="4">
-          <a-statistic
-            title="现金"
-            :value="currentStats?.cash || 0"
-            :precision="2"
-            prefix="¥"
-          />
-        </a-col>
-        <a-col :span="4">
-          <a-statistic
-            title="持仓市值"
-            :value="currentStats?.market_value || 0"
-            :precision="2"
-            prefix="¥"
-          />
-        </a-col>
-        <a-col :span="4">
-          <a-statistic
-            title="当日盈亏"
-            :value="currentStats?.daily_pnl || 0"
-            :precision="2"
-            prefix="¥"
-            :value-style="{ color: ((currentStats?.daily_pnl || 0) >= 0) ? '#f5222d' : '#52c41a' }"
-          />
-        </a-col>
-        <a-col :span="4">
-          <a-statistic
-            title="当日收益率"
-            :value="((currentStats?.daily_return || 0) * 100)"
-            :precision="2"
-            suffix="%"
-            :value-style="{ color: ((currentStats?.daily_return || 0) >= 0) ? '#f5222d' : '#52c41a' }"
-          />
-        </a-col>
-        <a-col :span="4">
-          <a-statistic
-            title="累计收益率"
-            :value="((currentStats?.cumulative_return || 0) * 100)"
-            :precision="2"
-            suffix="%"
-            :value-style="{ color: ((currentStats?.cumulative_return || 0) >= 0) ? '#f5222d' : '#52c41a' }"
-          />
-        </a-col>
-      </a-row>
+      <!-- Summary Statistics Row -->
+      <n-grid
+        :x-gap="16"
+        :cols="6"
+        responsive="screen"
+        style="margin-bottom: 24px"
+      >
+        <n-grid-item>
+          <n-statistic label="总资产">
+            ¥{{ (currentStats?.total_asset || 0).toFixed(2) }}
+          </n-statistic>
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="现金">
+            ¥{{ (currentStats?.cash || 0).toFixed(2) }}
+          </n-statistic>
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="持仓市值">
+            ¥{{ (currentStats?.market_value || 0).toFixed(2) }}
+          </n-statistic>
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="当日盈亏">
+            <span :style="{ color: pnlColor }">
+              ¥{{ (currentStats?.daily_pnl || 0).toFixed(2) }}
+            </span>
+          </n-statistic>
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="当日收益率">
+            <span :style="{ color: pnlColor }">
+              {{ ((currentStats?.daily_return || 0) * 100).toFixed(2) }}%
+            </span>
+          </n-statistic>
+        </n-grid-item>
+        <n-grid-item>
+          <n-statistic label="累计收益率">
+            <span :style="{ color: pnlColor }">
+              {{ ((currentStats?.cumulative_return || 0) * 100).toFixed(2) }}%
+            </span>
+          </n-statistic>
+        </n-grid-item>
+      </n-grid>
 
-      <a-tabs>
-        <a-tab-pane key="metrics" tab="绩效指标">
-          <a-row :gutter="16">
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="总收益率"
-                  :value="performanceMetrics.totalReturn * 100"
-                  :precision="2"
-                  suffix="%"
-                  :value-style="{ color: performanceMetrics.totalReturn >= 0 ? '#f5222d' : '#52c41a' }"
-                />
-              </a-card>
-            </a-col>
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="年化收益率"
-                  :value="performanceMetrics.annualizedReturn * 100"
-                  :precision="2"
-                  suffix="%"
-                  :value-style="{ color: performanceMetrics.annualizedReturn >= 0 ? '#f5222d' : '#52c41a' }"
-                />
-              </a-card>
-            </a-col>
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="夏普比率"
-                  :value="performanceMetrics.sharpeRatio"
-                  :precision="2"
-                />
-              </a-card>
-            </a-col>
-          </a-row>
+      <n-tabs>
+        <n-tab-pane name="metrics" tab="绩效指标">
+          <n-grid :x-gap="16" :cols="3" responsive="screen">
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="总收益率">
+                  <span
+                    :style="{
+                      color:
+                        performanceMetrics.totalReturn >= 0
+                          ? 'var(--color-stock-up)'
+                          : 'var(--color-stock-down)',
+                    }"
+                  >
+                    {{ (performanceMetrics.totalReturn * 100).toFixed(2) }}%
+                  </span>
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="年化收益率">
+                  <span
+                    :style="{
+                      color:
+                        performanceMetrics.annualizedReturn >= 0
+                          ? 'var(--color-stock-up)'
+                          : 'var(--color-stock-down)',
+                    }"
+                  >
+                    {{
+                      (performanceMetrics.annualizedReturn * 100).toFixed(2)
+                    }}%
+                  </span>
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="夏普比率">
+                  {{ performanceMetrics.sharpeRatio.toFixed(2) }}
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
 
-          <a-row :gutter="16" style="margin-top: 16px;">
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="最大回撤"
-                  :value="performanceMetrics.maxDrawdown * 100"
-                  :precision="2"
-                  suffix="%"
-                  :value-style="{ color: '#52c41a' }"
-                />
-              </a-card>
-            </a-col>
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="波动率"
-                  :value="performanceMetrics.volatility * 100"
-                  :precision="2"
-                  suffix="%"
-                />
-              </a-card>
-            </a-col>
-            <a-col :span="8">
-              <a-card size="small">
-                <a-statistic
-                  title="胜率"
-                  :value="performanceMetrics.winRate * 100"
-                  :precision="2"
-                  suffix="%"
-                />
-              </a-card>
-            </a-col>
-          </a-row>
-        </a-tab-pane>
+          <n-grid
+            :x-gap="16"
+            :cols="3"
+            responsive="screen"
+            style="margin-top: 16px"
+          >
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="最大回撤">
+                  <span style="color: var(--color-stock-down)">
+                    {{ (performanceMetrics.maxDrawdown * 100).toFixed(2) }}%
+                  </span>
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="波动率">
+                  {{ (performanceMetrics.volatility * 100).toFixed(2) }}%
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card size="small">
+                <n-statistic label="胜率">
+                  {{ (performanceMetrics.winRate * 100).toFixed(2) }}%
+                </n-statistic>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </n-tab-pane>
 
-        <a-tab-pane key="positions" tab="持仓分析">
-          <a-table
-            :columns="columns"
-            :data-source="positions"
+        <n-tab-pane name="positions" tab="持仓分析">
+          <n-data-table
+            :columns="positionColumns"
+            :data="positions"
             :pagination="false"
-            row-key="symbol"
+            :row-key="(row: Position) => row.symbol"
             size="small"
           />
-        </a-tab-pane>
+        </n-tab-pane>
 
-        <a-tab-pane key="chart" tab="净值曲线">
-          <div style="height: 400px; background: #f5f5f5; display: flex; align-items: center; justify-content: center;">
-            <div style="color: #999;">净值曲线图表区域</div>
-          </div>
-        </a-tab-pane>
-      </a-tabs>
-    </a-card>
-  </div>
+        <n-tab-pane name="chart" tab="净值曲线">
+          <div class="chart-placeholder">净值曲线图表区域</div>
+        </n-tab-pane>
+      </n-tabs>
+    </n-card>
+  </n-spin>
 </template>
 
 <style scoped>
 .account-performance-page {
   padding: 24px;
+}
+
+.chart-placeholder {
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--n-text-color-3);
+  background: var(--n-card-color);
+  border-radius: var(--n-border-radius);
 }
 </style>

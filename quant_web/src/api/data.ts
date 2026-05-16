@@ -1,15 +1,19 @@
 // quant_web/src/api/events.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
 import {
   StockBasicInfo,
   MoneyFlowData,
   QuoteDataResponse,
   FinancialDataResponse,
   StockListResponse,
-  HistoricalDataResponse
-} from '@/types/api/data'
-import { FinancialData, HistoricalDataPoint, StockBasic } from "@/types/entities/data";
+  HistoricalDataResponse,
+} from "@/types/api/data";
+import {
+  FinancialData,
+  HistoricalDataPoint,
+  StockBasic,
+} from "@/types/entities/data";
 
 // 定义股票列表返回结果的接口
 interface StockListResult {
@@ -28,9 +32,10 @@ const dataAPI = {
    * @returns 市场整体数据
    */
   async getMarketData(): Promise<any> {
-    return request.get('/data/market-overview')
+    return request
+      .get("/quantTrade/data/market-overview")
       .then(handleResponse)
-      .then((data: { marketData: any }) => data.marketData)
+      .then((data: { marketData: any }) => data.marketData);
   },
 
   /**
@@ -40,10 +45,15 @@ const dataAPI = {
    * @param frequency 数据频率
    * @returns 历史数据点数组
    */
-  async getHistoricalData(symbol: string, period: string = '1y', frequency: string = '1d'): Promise<HistoricalDataPoint[]> {
-    return request.get(`/data/historical/${symbol}`, {
-      params: { period, frequency }
-    })
+  async getHistoricalData(
+    symbol: string,
+    period: string = "1y",
+    frequency: string = "1d",
+  ): Promise<HistoricalDataPoint[]> {
+    return request
+      .get(`/data/historical/${symbol}`, {
+        params: { period, frequency },
+      })
       .then(handleResponse)
       .then((data: HistoricalDataResponse) => {
         // 确保返回的是 HistoricalDataPoint[] 类型
@@ -51,9 +61,9 @@ const dataAPI = {
           return data.data as HistoricalDataPoint[];
         }
         // 如果后端返回的是 KLineData[]，需要进行转换
-        console.warn('历史数据格式需要转换，当前返回类型:', typeof data.data);
+        console.warn("历史数据格式需要转换，当前返回类型:", typeof data.data);
         return [];
-      })
+      });
   },
 
   /**
@@ -62,16 +72,17 @@ const dataAPI = {
    * @returns 财务数据数组
    */
   async getFinancialData(symbol: string): Promise<FinancialData[]> {
-    return request.get(`/data/financials/${symbol}`)
+    return request
+      .get(`/data/financials/${symbol}`)
       .then(handleResponse)
       .then((data: FinancialDataResponse) => {
         // 确保返回的是 FinancialData[] 类型
         if (Array.isArray(data.data)) {
           return data.data as FinancialData[];
         }
-        console.warn('财务数据格式需要转换');
+        console.warn("财务数据格式需要转换");
         return [];
-      })
+      });
   },
 
   /**
@@ -80,10 +91,11 @@ const dataAPI = {
    * @returns 最新财务数据
    */
   async getLatestFinancialData(symbol: string): Promise<FinancialData | null> {
-    return request.get(`/data/financials/${symbol}/latest`)
+    return request
+      .get(`/data/financials/${symbol}/latest`)
       .then(handleResponse)
       .then((data: { financial: FinancialData }) => data.financial)
-      .catch(() => null)
+      .catch(() => null);
   },
 
   /**
@@ -91,9 +103,10 @@ const dataAPI = {
    * @returns ETF基本信息数组
    */
   async getETFData(): Promise<any[]> {
-    return request.get('/data/etfs')
+    return request
+      .get("/quantTrade/data/etfs")
       .then(handleResponse)
-      .then((data: { etfs: any[] }) => data.etfs)
+      .then((data: { etfs: any[] }) => data.etfs);
   },
 
   /**
@@ -102,9 +115,10 @@ const dataAPI = {
    * @returns 股票基本信息
    */
   async getStockBasic(symbol: string): Promise<StockBasicInfo> {
-    return request.get(`/data/stocks/${symbol}/basic`)
+    return request
+      .get(`/data/stocks/${symbol}/basic`)
       .then(handleResponse)
-      .then((data: { basic: StockBasicInfo }) => data.basic)
+      .then((data: { basic: StockBasicInfo }) => data.basic);
   },
 
   /**
@@ -113,12 +127,16 @@ const dataAPI = {
    * @param period 时间周期
    * @returns 资金流向数据
    */
-  async getMoneyFlow(symbol: string, period: string = '1m'): Promise<MoneyFlowData> {
-    return request.get(`/data/stocks/${symbol}/moneyflow`, {
-      params: { period }
-    })
+  async getMoneyFlow(
+    symbol: string,
+    period: string = "1m",
+  ): Promise<MoneyFlowData> {
+    return request
+      .get(`/data/stocks/${symbol}/moneyflow`, {
+        params: { period },
+      })
       .then(handleResponse)
-      .then((data: { moneyflow: MoneyFlowData }) => data.moneyflow)
+      .then((data: { moneyflow: MoneyFlowData }) => data.moneyflow);
   },
 
   /**
@@ -126,9 +144,10 @@ const dataAPI = {
    * @returns 板块信息数组
    */
   async getSectorData(): Promise<any[]> {
-    return request.get('/data/sectors')
+    return request
+      .get("/quantTrade/data/sectors")
       .then(handleResponse)
-      .then((data: { sectors: any[] }) => data.sectors)
+      .then((data: { sectors: any[] }) => data.sectors);
   },
 
   /**
@@ -137,9 +156,10 @@ const dataAPI = {
    * @returns 成分股代码数组
    */
   async getIndexComponents(indexCode: string): Promise<string[]> {
-    return request.get(`/data/indexes/${indexCode}/components`)
+    return request
+      .get(`/data/indexes/${indexCode}/components`)
       .then(handleResponse)
-      .then((data: { components: string[] }) => data.components)
+      .then((data: { components: string[] }) => data.components);
   },
 
   /**
@@ -150,10 +170,16 @@ const dataAPI = {
    * @param pageSize 每页大小
    * @returns 股票列表结果
    */
-  async getStockList(exchange: string = '', industry: string = '', page: number = 1, pageSize: number = 50): Promise<StockBasic[]> {
-    return request.get('/data/stocks', {
-      params: { exchange, industry, page, pageSize }
-    })
+  async getStockList(
+    exchange: string = "",
+    industry: string = "",
+    page: number = 1,
+    pageSize: number = 50,
+  ): Promise<StockBasic[]> {
+    return request
+      .get("/quantTrade/data/stocks", {
+        params: { exchange, industry, page, pageSize },
+      })
       .then(handleResponse)
       .then((data: StockListResponse) => {
         // 直接返回股票数组，而不是包含分页信息的对象
@@ -164,9 +190,9 @@ const dataAPI = {
         if (data.data && Array.isArray((data.data as any).items)) {
           return (data.data as any).items as StockBasic[];
         }
-        console.warn('股票列表数据格式异常');
+        console.warn("股票列表数据格式异常");
         return [];
-      })
+      });
   },
 
   /**
@@ -177,10 +203,16 @@ const dataAPI = {
    * @param pageSize 每页大小
    * @returns 包含分页信息的股票列表结果
    */
-  async getStockListWithPagination(exchange: string = '', industry: string = '', page: number = 1, pageSize: number = 50): Promise<StockListResult> {
-    return request.get('/data/stocks', {
-      params: { exchange, industry, page, pageSize }
-    })
+  async getStockListWithPagination(
+    exchange: string = "",
+    industry: string = "",
+    page: number = 1,
+    pageSize: number = 50,
+  ): Promise<StockListResult> {
+    return request
+      .get("/quantTrade/data/stocks", {
+        params: { exchange, industry, page, pageSize },
+      })
       .then(handleResponse)
       .then((data: StockListResponse) => {
         // 处理分页响应
@@ -189,7 +221,7 @@ const dataAPI = {
           return {
             stocks: paginatedData.items as StockBasic[],
             total: paginatedData.total || 0,
-            page: paginatedData.page || page
+            page: paginatedData.page || page,
           };
         }
         // 如果返回的是纯数组，则包装为分页格式
@@ -197,12 +229,12 @@ const dataAPI = {
           return {
             stocks: data.data as StockBasic[],
             total: data.data.length,
-            page: page
+            page: page,
           };
         }
-        console.warn('股票分页列表数据格式异常');
+        console.warn("股票分页列表数据格式异常");
         return { stocks: [], total: 0, page };
-      })
+      });
   },
 
   /**
@@ -211,11 +243,12 @@ const dataAPI = {
    * @returns 搜索结果数组
    */
   async searchStocks(keyword: string): Promise<StockBasic[]> {
-    return request.get('/data/stocks/search', {
-      params: { keyword }
-    })
+    return request
+      .get("/quantTrade/data/stocks/search", {
+        params: { keyword },
+      })
       .then(handleResponse)
-      .then((data: { results: StockBasic[] }) => data.results || [])
+      .then((data: { results: StockBasic[] }) => data.results || []);
   },
 
   /**
@@ -224,12 +257,13 @@ const dataAPI = {
    * @param period 时间周期
    * @returns 因子数据
    */
-  async getFactorData(factorName: string, period: string = '1y'): Promise<any> {
-    return request.get(`/data/factors/${factorName}`, {
-      params: { period }
-    })
+  async getFactorData(factorName: string, period: string = "1y"): Promise<any> {
+    return request
+      .get(`/data/factors/${factorName}`, {
+        params: { period },
+      })
       .then(handleResponse)
-      .then((data: { factorData: any }) => data.factorData)
+      .then((data: { factorData: any }) => data.factorData);
   },
 
   /**
@@ -237,9 +271,10 @@ const dataAPI = {
    * @returns 同步状态信息
    */
   async getDataSyncStatus(): Promise<string> {
-    return request.get('/data/sync-status')
+    return request
+      .get("/quantTrade/data/sync-status")
       .then(handleResponse)
-      .then((data: { status: string }) => data.status)
+      .then((data: { status: string }) => data.status);
   },
 
   /**
@@ -248,38 +283,43 @@ const dataAPI = {
    * @returns 无返回值
    */
   async triggerDataSync(source: string): Promise<void> {
-    return request.post('/data/sync', { source })
-      .then(handleResponse)
-  }
-}
+    return request.post("/quantTrade/data/sync", { source }).then(handleResponse);
+  },
+};
 
 /**
  * 实时数据订阅服务（模拟实现）
  */
 export class RealtimeDataService {
-  private subscribers: Map<string, Array<(symbol: string, quote: any) => void>> = new Map()
-  private intervals: Map<string, NodeJS.Timeout> = new Map()
+  private subscribers: Map<
+    string,
+    Array<(symbol: string, quote: any) => void>
+  > = new Map();
+  private intervals: Map<string, NodeJS.Timeout> = new Map();
 
   /**
    * 订阅实时数据
    * @param symbols 股票代码数组
    * @param callback 回调函数
    */
-  subscribeRealtime(symbols: string[], callback: (symbol: string, quote: any) => void) {
-    symbols.forEach(symbol => {
+  subscribeRealtime(
+    symbols: string[],
+    callback: (symbol: string, quote: any) => void,
+  ) {
+    symbols.forEach((symbol) => {
       if (!this.subscribers.has(symbol)) {
-        this.subscribers.set(symbol, [])
+        this.subscribers.set(symbol, []);
       }
-      this.subscribers.get(symbol)!.push(callback)
+      this.subscribers.get(symbol)!.push(callback);
 
       // 如果还没有为该symbol启动定时器，则启动一个
       if (!this.intervals.has(symbol)) {
         const interval = setInterval(() => {
-          this.generateMockQuote(symbol)
-        }, 2000)
-        this.intervals.set(symbol, interval)
+          this.generateMockQuote(symbol);
+        }, 2000);
+        this.intervals.set(symbol, interval);
       }
-    })
+    });
   }
 
   /**
@@ -287,25 +327,28 @@ export class RealtimeDataService {
    * @param symbols 股票代码数组
    * @param callback 回调函数（可选，不指定则取消所有回调）
    */
-  unsubscribeRealtime(symbols: string[], callback?: (symbol: string, quote: any) => void) {
-    symbols.forEach(symbol => {
+  unsubscribeRealtime(
+    symbols: string[],
+    callback?: (symbol: string, quote: any) => void,
+  ) {
+    symbols.forEach((symbol) => {
       if (this.subscribers.has(symbol)) {
         if (callback) {
-          const callbacks = this.subscribers.get(symbol)!
-          const index = callbacks.indexOf(callback)
+          const callbacks = this.subscribers.get(symbol)!;
+          const index = callbacks.indexOf(callback);
           if (index > -1) {
-            callbacks.splice(index, 1)
+            callbacks.splice(index, 1);
           }
           if (callbacks.length === 0) {
-            this.subscribers.delete(symbol)
-            this.clearInterval(symbol)
+            this.subscribers.delete(symbol);
+            this.clearInterval(symbol);
           }
         } else {
-          this.subscribers.delete(symbol)
-          this.clearInterval(symbol)
+          this.subscribers.delete(symbol);
+          this.clearInterval(symbol);
         }
       }
-    })
+    });
   }
 
   /**
@@ -313,23 +356,23 @@ export class RealtimeDataService {
    * @param symbol 股票代码
    */
   private generateMockQuote(symbol: string) {
-    const change = (Math.random() - 0.5) * 2
-    const price = 100 + Math.random() * 50
+    const change = (Math.random() - 0.5) * 2;
+    const price = 100 + Math.random() * 50;
     const quote = {
       symbol,
       price: parseFloat(price.toFixed(2)),
       change: parseFloat(change.toFixed(2)),
-      changePercent: parseFloat((change / price * 100).toFixed(2)),
+      changePercent: parseFloat(((change / price) * 100).toFixed(2)),
       volume: Math.floor(Math.random() * 1000000),
-      time: new Date().toISOString()
-    }
+      time: new Date().toISOString(),
+    };
 
     // 通知所有订阅者
-    const callbacks = this.subscribers.get(symbol)
+    const callbacks = this.subscribers.get(symbol);
     if (callbacks) {
-      callbacks.forEach(callback => {
-        callback(symbol, quote)
-      })
+      callbacks.forEach((callback) => {
+        callback(symbol, quote);
+      });
     }
   }
 
@@ -338,10 +381,10 @@ export class RealtimeDataService {
    * @param symbol 股票代码
    */
   private clearInterval(symbol: string) {
-    const interval = this.intervals.get(symbol)
+    const interval = this.intervals.get(symbol);
     if (interval) {
-      clearInterval(interval)
-      this.intervals.delete(symbol)
+      clearInterval(interval);
+      this.intervals.delete(symbol);
     }
   }
 
@@ -350,19 +393,32 @@ export class RealtimeDataService {
    */
   destroy() {
     this.intervals.forEach((interval, symbol) => {
-      clearInterval(interval)
-    })
-    this.intervals.clear()
-    this.subscribers.clear()
+      clearInterval(interval);
+    });
+    this.intervals.clear();
+    this.subscribers.clear();
   }
 }
 
 // 创建默认的实时数据服务实例
-export const defaultRealtimeService = new RealtimeDataService()
+export const defaultRealtimeService = new RealtimeDataService();
+
+// 获取股票实时行情（BasketDetail 等页面使用）
+export async function fetchStockRealTime(
+  codes: string[],
+): Promise<
+  Record<string, { price: number; change: number; changePercent: number }>
+> {
+  return request.post("/quantTrade/data/realtime", { codes }).then(handleResponse);
+}
 
 // 将实时数据服务方法添加到默认导出对象中
 export default {
   ...dataAPI,
-  subscribeRealtime: defaultRealtimeService.subscribeRealtime.bind(defaultRealtimeService),
-  unsubscribeRealtime: defaultRealtimeService.unsubscribeRealtime.bind(defaultRealtimeService)
-}
+  subscribeRealtime: defaultRealtimeService.subscribeRealtime.bind(
+    defaultRealtimeService,
+  ),
+  unsubscribeRealtime: defaultRealtimeService.unsubscribeRealtime.bind(
+    defaultRealtimeService,
+  ),
+};

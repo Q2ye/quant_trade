@@ -1,9 +1,9 @@
 // quant_web/src/api/performance.ts
-import request from '@/utils/request'
-import { handleResponse } from '@/utils/responseHandler'
-import {ApiResponse} from "@/types/api";
-import {AccountInfo, PerformanceComparison} from "@/types/api/performance";
-import {StrategyPerformance} from "@/types/entities";
+import request from "@/utils/request";
+import { handleResponse } from "@/utils/responseHandler";
+import { ApiResponse } from "@/types/api";
+import { AccountInfo, PerformanceComparison } from "@/types/api/performance";
+import { StrategyPerformance } from "@/types/entities";
 
 export default {
   /**
@@ -12,13 +12,17 @@ export default {
    * @param params 查询参数
    * @returns 策略绩效数据
    */
-  async getStrategyPerformance(strategyId: string, params?: {
-    start_date?: string;
-    end_date?: string;
-  }): Promise<StrategyPerformance> {
-    return request.get(`/performance/strategy/${strategyId}`, { params })
+  async getStrategyPerformance(
+    strategyId: string,
+    params?: {
+      start_date?: string;
+      end_date?: string;
+    },
+  ): Promise<StrategyPerformance> {
+    return request
+      .get(`/performance/strategy/${strategyId}`, { params })
       .then(handleResponse)
-      .then((data: ApiResponse<StrategyPerformance>) => data.data)
+      .then((data: ApiResponse<StrategyPerformance>) => data.data);
   },
 
   /**
@@ -30,9 +34,10 @@ export default {
     start_date?: string;
     end_date?: string;
   }): Promise<AccountInfo> {
-    return request.get('/performance/account', { params })
+    return request
+      .get("/quantTrade/performance/account", { params })
       .then(handleResponse)
-      .then((data: ApiResponse<AccountInfo>) => data.data)
+      .then((data: ApiResponse<AccountInfo>) => data.data);
   },
 
   /**
@@ -41,14 +46,18 @@ export default {
    * @param params 对比参数
    * @returns 绩效对比结果
    */
-  async comparePerformance(strategyIds: string[], params: {
-    benchmark?: string;
-    start_date?: string;
-    end_date?: string;
-  }): Promise<PerformanceComparison> {
-    return request.post('/performance/comparison', { strategyIds }, { params })
+  async comparePerformance(
+    strategyIds: string[],
+    params: {
+      benchmark?: string;
+      start_date?: string;
+      end_date?: string;
+    },
+  ): Promise<PerformanceComparison> {
+    return request
+      .post("/quantTrade/performance/comparison", { strategyIds }, { params })
       .then(handleResponse)
-      .then((data: ApiResponse<PerformanceComparison>) => data.data)
+      .then((data: ApiResponse<PerformanceComparison>) => data.data);
   },
 
   /**
@@ -56,9 +65,12 @@ export default {
    * @param strategyId 策略ID
    * @returns 实时绩效数据
    */
-  async getRealtimePerformance(strategyId: string): Promise<StrategyPerformance> {
-    return request.get(`/performance/strategy/${strategyId}/realtime`)
+  async getRealtimePerformance(
+    strategyId: string,
+  ): Promise<StrategyPerformance> {
+    return request
+      .get(`/performance/strategy/${strategyId}/realtime`)
       .then(handleResponse)
-      .then((data: ApiResponse<StrategyPerformance>) => data.data)
-  }
-}
+      .then((data: ApiResponse<StrategyPerformance>) => data.data);
+  },
+};

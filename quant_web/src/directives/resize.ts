@@ -1,4 +1,4 @@
-import { DirectiveBinding, ObjectDirective } from 'vue';
+import { DirectiveBinding, ObjectDirective } from "vue";
 
 interface ResizeDirectiveBinding extends DirectiveBinding {
   value: (rect: DOMRectReadOnly) => void;
@@ -8,11 +8,11 @@ export default {
   mounted(el: HTMLElement, binding: ResizeDirectiveBinding) {
     const callback = binding.value;
 
-    if (typeof callback !== 'function') {
-      throw new Error('Resize directive requires a function as value');
+    if (typeof callback !== "function") {
+      throw new Error("Resize directive requires a function as value");
     }
 
-    const observer = new ResizeObserver(entries => {
+    const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         callback(entry.contentRect);
       }
@@ -27,5 +27,5 @@ export default {
       (el as any)._resizeObserver.disconnect();
       delete (el as any)._resizeObserver;
     }
-  }
+  },
 } as ObjectDirective;

@@ -1,62 +1,58 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRiskStore } from '@/store/modules/risk'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { ref, onMounted, onUnmounted } from "vue";
+import { useWebSocket } from "@/composables/useWebSocket";
 
-const riskStore = useRiskStore()
-const { subscribe, unsubscribe } = useWebSocket()
+const { subscribe, unsubscribe } = useWebSocket();
 
 interface RiskData {
-  totalRisk: number
+  totalRisk: number;
   positionRisks: Array<{
-    symbol: string
-    name: string
-    risk: number
-    exposure: number
-  }>
+    symbol: string;
+    name: string;
+    risk: number;
+    exposure: number;
+  }>;
   warnings: Array<{
-    type: string
-    message: string
-    level: 'low' | 'medium' | 'high'
-  }>
+    type: string;
+    message: string;
+    level: "low" | "medium" | "high";
+  }>;
 }
 
 const riskData = ref<RiskData>({
   totalRisk: 0,
   positionRisks: [],
-  warnings: []
-})
+  warnings: [],
+});
 
-onMounted(async () => {
-  await loadRiskData()
-  subscribe('risk_updates', (data) => {
-    riskData.value = data
-  })
-})
+onMounted(() => {
+  subscribe(["risk_updates"], (data: any) => {
+    riskData.value = data;
+  });
+});
 
 onUnmounted(() => {
-  unsubscribe('risk_updates')
-})
-
-const loadRiskData = async () => {
-  const data = await riskStore.fetchRiskOverview()
-  riskData.value = data
-}
+  unsubscribe(["risk_updates"]);
+});
 
 const getRiskLevel = (risk: number) => {
-  if (risk < 0.3) return 'low'
-  if (risk < 0.7) return 'medium'
-  return 'high'
-}
+  if (risk < 0.3) return "low";
+  if (risk < 0.7) return "medium";
+  return "high";
+};
 
 const getWarningColor = (level: string) => {
   switch (level) {
-    case 'low': return '#67c23a'
-    case 'medium': return '#e6a23c'
-    case 'high': return '#f56c6c'
-    default: return '#909399'
+    case "low":
+      return "#67c23a";
+    case "medium":
+      return "#e6a23c";
+    case "high":
+      return "#f56c6c";
+    default:
+      return "#909399";
   }
-}
+};
 </script>
 
 <template>
@@ -79,7 +75,10 @@ const getWarningColor = (level: string) => {
             class="warning-item"
             :style="{ borderLeftColor: getWarningColor(warning.level) }"
           >
-            <span class="level" :style="{ color: getWarningColor(warning.level) }">
+            <span
+              class="level"
+              :style="{ color: getWarningColor(warning.level) }"
+            >
               {{ warning.level.toUpperCase() }}
             </span>
             <span class="message">{{ warning.message }}</span>
@@ -101,7 +100,9 @@ const getWarningColor = (level: string) => {
               <span class="name">{{ position.name }}</span>
             </div>
             <div class="risk-info">
-              <span class="exposure">暴露: {{ (position.exposure * 100).toFixed(1) }}%</span>
+              <span class="exposure"
+                >暴露: {{ (position.exposure * 100).toFixed(1) }}%</span
+              >
               <div class="risk-bar">
                 <div
                   class="risk-fill"
@@ -119,7 +120,7 @@ const getWarningColor = (level: string) => {
 
 <style scoped>
 .risk-overview {
-  background: var(--el-bg-color);
+  background: var(--n-body-color);
   border-radius: 8px;
   padding: 16px;
   height: 100%;
@@ -139,9 +140,18 @@ const getWarningColor = (level: string) => {
   font-size: 14px;
 }
 
-.total-risk.low { background: #f0f9ff; color: #409eff; }
-.total-risk.medium { background: #fdf6ec; color: #e6a23c; }
-.total-risk.high { background: #fef0f0; color: #f56c6c; }
+.total-risk.low {
+  background: #f0f9ff;
+  color: #409eff;
+}
+.total-risk.medium {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+.total-risk.high {
+  background: #fef0f0;
+  color: #f56c6c;
+}
 
 .risk-content {
   display: flex;
@@ -153,11 +163,11 @@ const getWarningColor = (level: string) => {
 .positions-section h4 {
   margin: 0 0 12px 0;
   font-size: 14px;
-  color: var(--el-text-color-primary);
+  color: var(--n-text-color-1);
 }
 
 .warning-item {
-  background: var(--el-fill-color-light);
+  background: var(--n-color-embedded);
   border-left: 3px solid;
   padding: 8px 12px;
   margin-bottom: 8px;
@@ -183,7 +193,7 @@ const getWarningColor = (level: string) => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--n-border-color);
 }
 
 .stock-info {
@@ -198,7 +208,7 @@ const getWarningColor = (level: string) => {
 
 .name {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .risk-info {
@@ -209,13 +219,13 @@ const getWarningColor = (level: string) => {
 
 .exposure {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--n-text-color-3);
 }
 
 .risk-bar {
   width: 60px;
   height: 4px;
-  background: var(--el-border-color-light);
+  background: var(--n-border-color);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -225,7 +235,13 @@ const getWarningColor = (level: string) => {
   transition: width 0.3s ease;
 }
 
-.risk-fill.low { background: #67c23a; }
-.risk-fill.medium { background: #e6a23c; }
-.risk-fill.high { background: #f56c6c; }
+.risk-fill.low {
+  background: #67c23a;
+}
+.risk-fill.medium {
+  background: #e6a23c;
+}
+.risk-fill.high {
+  background: #f56c6c;
+}
 </style>

@@ -1,43 +1,53 @@
 <template>
   <div class="parameter-table">
     <h4>最优参数组合</h4>
-    <el-table :data="tableData" stripe style="width: 100%">
-      <el-table-column prop="parameter" label="参数名" width="150" />
-      <el-table-column prop="value" label="最优值" width="120" align="right" />
-      <el-table-column prop="performance" label="性能指标" width="120" align="right">
-        <template #default="scope">
-          {{ scope.row.performance.toFixed(4) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="range" label="参数范围" width="200">
-        <template #default="scope">
-          {{ scope.row.range }}
-        </template>
-      </el-table-column>
-    </el-table>
+    <NDataTable :data="tableData" :columns="columns" :bordered="false" />
   </div>
 </template>
 
-<script>
-export default {
-  name: 'ParameterTable',
-  props: {
-    data: {
-      type: Array,
-      default: () => []
-    }
-  },
-  computed: {
-    tableData() {
-      return this.data.map(item => ({
-        parameter: item.name,
-        value: item.value,
-        performance: item.performance,
-        range: `${item.min} - ${item.max}`
-      }))
-    }
-  }
+<script setup lang="ts">
+import { computed } from "vue";
+import { NDataTable } from "naive-ui";
+import type { DataTableColumn } from "naive-ui";
+
+interface ParamItem {
+  name: string;
+  value: number;
+  performance: number;
+  min: number;
+  max: number;
 }
+
+const props = withDefaults(
+  defineProps<{
+    data?: ParamItem[];
+  }>(),
+  {
+    data: () => [],
+  },
+);
+
+const tableData = computed(() => {
+  return props.data.map((item) => ({
+    parameter: item.name,
+    value: item.value,
+    performance: item.performance,
+    range: `${item.min} - ${item.max}`,
+  }));
+});
+
+const columns: DataTableColumn<any>[] = [
+  { key: "parameter", title: "参数名", width: 150 },
+  { key: "value", title: "最优值", width: 120, align: "right" },
+  {
+    key: "performance",
+    title: "性能指标",
+    width: 120,
+    align: "right",
+    render: (row: any) => row.performance.toFixed(4),
+  },
+  { key: "range", title: "参数范围", width: 200 },
+];
 </script>
 
 <style scoped>
@@ -47,6 +57,6 @@ export default {
 
 .parameter-table h4 {
   margin-bottom: 15px;
-  color: #333;
+  color: var(--n-text-color-1);
 }
 </style>
