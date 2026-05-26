@@ -13,8 +13,8 @@ const layoutModule: Module<LayoutState, RootState> = {
   namespaced: true,
   state: {
     topNavigation: {
-      logo: "/logo.png",
-      platformName: "量化交易平台",
+      logo: "/logo.svg",
+      platformName: "一念量化",
       marketIndicators: [],
       search: {
         placeholder: "搜索股票、策略、功能...",

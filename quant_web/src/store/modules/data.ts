@@ -5,7 +5,7 @@ import {
   HistoricalDataPoint,
   FinancialData,
   StockBasic,
-} from "@/types/entities/data";
+} from "@/types";
 import { RootState } from "@/types";
 
 /**

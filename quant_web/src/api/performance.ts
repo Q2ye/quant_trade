@@ -1,9 +1,9 @@
 // quant_web/src/api/performance.ts
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
-import { ApiResponse } from "@/types/api";
-import { AccountInfo, PerformanceComparison } from "@/types/api/performance";
-import { StrategyPerformance } from "@/types/entities";
+import { ApiResponse } from "@/types";
+import { AccountInfo, PerformanceComparison } from "@/types";
+import { StrategyPerformance } from "@/types";
 
 export default {
   /**

@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
-import { StrategySignal, ApiResponse, PaginatedResponse } from "@/types/api";
+import { StrategySignal, ApiResponse, PaginatedResponse } from "@/types";
 
 /**
  * 信号管理API服务

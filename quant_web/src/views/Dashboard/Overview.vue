@@ -1,9 +1,8 @@
 <template>
   <!--
-    根容器
-    tokens.surface.mesh → bg-gradient-mesh：全局定义的渐变网格背景（暗色底 + 主色径向渐变）
+    根容器 — 透明背景，让 MainLayout 的 bg-gradient-mesh 和 3D 粒子背景透出
   -->
-  <div :class="[tokens.surface.mesh, 'dashboard-overview']">
+  <div class="dashboard-overview scrollbar-hide">
 
     <!-- ========================================================================
         状态一：Loading（数据加载中）
@@ -53,11 +52,26 @@
     <template v-else>
 
       <!-- =====================================================================
+          Page Header — 统一页面头部（与 MarketOverview 共享 .page-header 模式）
+      ====================================================================== -->
+      <div class="page-header">
+        <div class="header-content">
+          <div class="title-section">
+            <h1 class="page-title">总览</h1>
+            <p class="page-description">量化交易驾驶舱 — 资产概览、实时信号、持仓与成交监控</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-content">
+
+      <!-- =====================================================================
           区域一：顶部概览区 —— 4 列指标卡片
           tokens.motion.stagger：每卡片递增 0.08s 的 fadeInUp 入场动画
           tokens.surface.card → card-surface：Naive UI CSS 变量驱动的卡片背景/边框/阴影
           tokens.motion.hover → hover-lift：hover 时 scale(1.02)
       ====================================================================== -->
+      <div class="content-section">
       <n-grid
           :x-gap="20"
           :y-gap="20"
@@ -135,12 +149,14 @@
           </n-card>
         </n-grid-item>
       </n-grid>
+      </div>
 
       <!-- =====================================================================
           区域二：中部图表 + 信号区 —— 3 列网格（图表占 2 列，信号占 1 列）
           图表：ECharts 初始化在 equityChartRef 绑定的 div 上
           信号列表：最近交易信号，买卖方向区分颜色和图标
       ====================================================================== -->
+      <div class="content-section">
       <n-grid
           :x-gap="20"
           :y-gap="20"
@@ -175,7 +191,7 @@
             <!-- 空状态 -->
             <n-empty v-if="recentSignals.length === 0" description="暂无信号"/>
             <!-- 信号列表 -->
-            <div v-else class="signal-list">
+            <div v-else class="signal-list scrollbar-hide">
               <div
                   v-for="(signal, index) in recentSignals"
                   :key="index"
@@ -203,11 +219,13 @@
           </n-card>
         </n-grid-item>
       </n-grid>
+      </div>
 
       <!-- =====================================================================
           区域三：底部列表区 —— 2 列（持仓列表 | 今日成交）
           空数据时展示 n-empty，有数据时渲染 n-data-table
       ====================================================================== -->
+      <div class="content-section">
       <n-grid
           :x-gap="20"
           :y-gap="20"
@@ -245,6 +263,9 @@
           </n-card>
         </n-grid-item>
       </n-grid>
+      </div>
+
+      </div><!-- .main-content -->
 
     </template>
   </div>
@@ -646,9 +667,38 @@ onUnmounted(() => {
    ========================================================================== */
 
 .dashboard-overview {
-  padding: 0;           /* 重置 Naive UI 可能注入的默认内边距 */
-  height: 100%;         /* 填满父容器高度，确保滚动区域正确计算 */
-  overflow-y: auto;     /* 内容超出视口时垂直滚动（等价于全局工具类 overflow-y-auto） */
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: transparent;
+
+  /*
+   * Naive UI n-card 半透明背景
+   *
+   * --n-color 是 n-card 背景色的 CSS 变量源，内联注入在 <div class="n-card"> 上。
+   * 必须用 !important 覆盖内联 style，让组件自身的 background-color 失效，
+   * 再铺上项目自定义的半透明背景。
+   *
+   * 同时覆盖 header/content/footer/action 区域，防止这些子区域持有独立的实色背景。
+   */
+  :deep(.n-card) {
+    --n-color: transparent !important;
+    background: var(--color-bg-card, rgba(12, 18, 32, 0.72)) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+    > .n-card-header,
+    > .n-card__content,
+    > .n-card-footer,
+    > .n-card-action {
+      background: transparent !important;
+    }
+
+    /* 卡片内容区裁剪溢出，防止表格超出卡片边界 */
+    > .n-card__content {
+      overflow: hidden;
+    }
+  }
 }
 
 /* ==========================================================================
@@ -661,7 +711,7 @@ onUnmounted(() => {
  * 系统等效：mb-5 工具类，但此处与 n-grid 组件级 gap 配合，直接在容器上设置更清晰
  */
 .overview-grid {
-  margin-bottom: 20px;  /* spacer(5)：区块之间的标准大间距 */
+  /* margin-bottom 由父级 .content-section 提供 */
 }
 
 /*
@@ -725,7 +775,7 @@ onUnmounted(() => {
  * 20px = spacer(5)，与 overview-grid 保持一致
  */
 .dashboard-widgets {
-  margin-bottom: 20px;  /* spacer(5)：区块间的标准大间距 */
+  /* margin-bottom 由父级 .content-section 提供 */
 }
 
 /*
@@ -859,6 +909,36 @@ onUnmounted(() => {
    第四层：底部数据表格区 —— 2 列（持仓列表 | 今日成交）
    ========================================================================== */
 
+/*
+ * Naive UI n-data-table 透明化 + 隐藏内部滚动条
+ * n-data-table 自身有 --n-td-color / --n-th-color 等 CSS 变量控制背景色，
+ * 必须穿透覆盖才能与半透明卡片融合。
+ */
+:deep(.n-data-table) {
+  --n-td-color: transparent !important;
+  --n-th-color: transparent !important;
+  --n-merged-th-color: transparent !important;
+  background: transparent !important;
+
+  /* n-data-table 的 max-height 会在内部创建一个滚动容器（.n-data-table-base-table-body），隐藏其滚动条 */
+  .n-data-table-base-table-body {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+/*
+ * Naive UI n-empty 透明化（卡片内的空状态提示）
+ * n-empty 使用 --n-color 或自身背景，重置为透明让卡片背景透出。
+ */
+:deep(.n-empty) {
+  --n-color: transparent !important;
+  background: transparent !important;
+}
+
 .dashboard-tables {
   /*
    * 表格卡片固定高度
@@ -866,7 +946,8 @@ onUnmounted(() => {
    * 保证两张表底部对齐
    */
   .table-card {
-    height: 320px;  /* 固定卡片高度，保证左右两列底部对齐 */
+    height: 320px;
+    overflow: hidden;
   }
 }
 </style>

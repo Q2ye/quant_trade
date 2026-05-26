@@ -8,12 +8,12 @@ import {
   CreateBasketRequest,
   UpdateBasketRequest,
   BasketQueryParams,
-} from "@/types/entities/basket";
+} from "@/types";
 import {
   BasketListResponse,
   BasketPerformanceResponse,
   BasketResponse,
-} from "@/types/api";
+} from "@/types";
 
 // 创建API对象
 const basketApi = {

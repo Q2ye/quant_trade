@@ -40,13 +40,7 @@
               动态布局组件
               根据路由配置动态切换不同的页面布局
             -->
-            <component :is="currentLayout">
-              <!--
-                Vue Router 路由视图
-                根据当前路由渲染对应的页面组件
-              -->
-              <router-view />
-            </component>
+            <component :is="currentLayout" />
 
             <!--
               全局回到顶部组件
@@ -94,7 +88,11 @@ import {
 // ============================================================================
 // 引入主题配置
 // ============================================================================
-import { getThemeOverrides } from "@/assets/themes/naive-theme";
+import {
+  getThemeOverrides,
+  injectThemeCSSVariables,
+  setCurrentThemeMode,
+} from "@/assets/themes/naive-theme";
 
 // ============================================================================
 // 组件定义
@@ -237,6 +235,10 @@ export default defineComponent({
 
         // 更新 HTML 属性 - 使用 dataset 替代 setAttribute（修复 SonarQube 警告）
         updateHtmlThemeAttribute();
+
+        // 注入 CSS 变量，使 SCSS 系统跟随主题
+        injectThemeCSSVariables(isDarkTheme.value);
+        setCurrentThemeMode(isDarkTheme.value);
       } catch (error) {
         console.warn("⚠️ 主题初始化失败，使用默认深色主题:", error);
         isDarkTheme.value = true;
@@ -253,6 +255,8 @@ export default defineComponent({
       if (customEvent.detail) {
         isDarkTheme.value = customEvent.detail.isDark;
         updateHtmlThemeAttribute();
+        injectThemeCSSVariables(isDarkTheme.value);
+        setCurrentThemeMode(isDarkTheme.value);
         console.log(`🔄 主题已切换为: ${isDarkTheme.value ? "深色" : "浅色"}`);
       }
     };

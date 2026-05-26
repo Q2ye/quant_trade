@@ -1,7 +1,14 @@
 <!--数据同步-->
 <template>
   <div class="data-sync bg-gradient-mesh bg-noise">
-    <h2>数据同步管理</h2>
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">数据同步管理</h1>
+          <p class="page-description">配置和管理各数据源的同步任务，查看同步状态与历史记录</p>
+        </div>
+      </div>
+    </div>
 
     <n-card title="数据源状态" class="sync-card">
       <div class="status-grid">

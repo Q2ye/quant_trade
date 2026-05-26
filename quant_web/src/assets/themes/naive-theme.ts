@@ -13,57 +13,114 @@ import type { GlobalThemeOverrides } from "naive-ui";
  * 包含深色和浅色主题的所有颜色、字体、阴影、圆角等变量
  */
 const THEME_CONSTANTS = {
-  // 深色主题变量 - 量化交易专用深色主题
+  // 深色主题变量 - 深海蓝 (Deep Ocean) — Bloomberg 经典机构风
   DARK: {
-    // 基础色彩
-    PRIMARY_BG: "#0D1117", // 主背景色（最深背景）
-    SECONDARY_BG: "#161B22", // 次背景色（稍浅背景）
-    ACCENT_COLOR: "#2196F3", // 强调色/主色调（品牌色）
-    TEXT_PRIMARY: "#E6EDF3", // 主要文字颜色
-    TEXT_SECONDARY: "#8B949E", // 次要文字颜色
-    BORDER_COLOR: "#30363D", // 边框颜色
-    DISABLED_BG: "#8B949E", // 禁用状态背景色
+    // 基础色彩 — 深海蓝黑底 + 蓝色主色
+    PRIMARY_BG: "#080C16", // 主背景色（深海黑）
+    SECONDARY_BG: "rgba(10, 14, 24, 0.50)", // 次背景色（蓝调半透明）
+    ACCENT_COLOR: "#448AFF", // 强调色/主色调（深海蓝）
+    TEXT_PRIMARY: "#EBEDF5", // 主要文字颜色（冷白）
+    TEXT_SECONDARY: "#8898B8", // 次要文字颜色（蓝灰）
+    BORDER_COLOR: "rgba(25, 35, 60, 0.50)", // 边框颜色（蓝调低对比）
+    DISABLED_BG: "#4A5A78", // 禁用状态背景色
 
     // 语义化颜色 - 用于状态提示
-    SUCCESS_COLOR: "#67c23a", // 成功状态颜色
-    WARNING_COLOR: "#D29922", // 警告状态颜色
-    DANGER_COLOR: "#f56c6c", // 危险/错误状态颜色
-    INFO_COLOR: "#17a2b8", // 信息状态颜色
-    PURPLE_COLOR: "#9c27b0", // 紫色辅助色（特殊标记）
+    SUCCESS_COLOR: "#00E676", // 成功状态颜色（绿）
+    WARNING_COLOR: "#FFB74D", // 警告状态颜色（暖橙）
+    DANGER_COLOR: "#FF5252", // 危险/错误状态颜色（红）
+    INFO_COLOR: "#40C4FF", // 信息状态颜色（浅蓝）
+    PURPLE_COLOR: "#7C6FF7", // 辅助色（紫罗兰点缀）
 
-    // 组件颜色 - 特定组件的背景色
-    CARD_BG: "#161B22", // 卡片背景色
-    CARD_HEADER_BG: "#1A2230", // 卡片头部背景色
-    TOOLBAR_BG: "#161B22", // 工具栏背景色
-    SIDEBAR_BG: "#0D1117", // 侧边栏背景色
-    INPUT_BG: "#0D1117", // 输入框背景色
-    HOVER_BG: "#21262D", // 悬停状态背景色
-    ACTIVE_BG: "#1C6FEC", // 激活状态背景色
+    // 组件颜色 - 特定组件的背景色（半透明玻璃态，透出 3D 粒子）
+    CARD_BG: "rgba(12, 18, 32, 0.72)", // 卡片背景色（深海蓝半透明）
+    CARD_HEADER_BG: "rgba(16, 24, 42, 0.78)", // 卡片头部背景色
+    TOOLBAR_BG: "rgba(8, 12, 22, 0.72)", // 工具栏背景色
+    SIDEBAR_BG: "rgba(6, 10, 18, 0.82)", // 侧边栏背景色
+    INPUT_BG: "rgba(8, 12, 22, 0.55)", // 输入框背景色
+    HOVER_BG: "rgba(68, 138, 255, 0.05)", // 悬停状态背景色（蓝光微闪）
+    ACTIVE_BG: "rgba(68, 138, 255, 0.10)", // 激活状态背景色
+    POPOVER_BG: "rgba(18, 26, 46, 0.94)", // 弹窗背景色（高不透明，确保文字清晰可读）
+    MODAL_BG: "rgba(12, 18, 32, 0.95)", // 模态框背景色（近实色，避免底层内容穿透）
 
-    // 股票状态颜色 - 量化交易专用
-    STOCK_UP_COLOR: "#f56c6c", // 股票上涨颜色（红色）
-    STOCK_DOWN_COLOR: "#67c23a", // 股票下跌颜色（绿色）
-    STOCK_FLAT_COLOR: "#8B949E", // 股票持平颜色（灰色）
+    // 股票状态颜色 - 量化交易专用（A股红涨绿跌）
+    STOCK_UP_COLOR: "#FF5252", // 股票上涨颜色（红）
+    STOCK_DOWN_COLOR: "#00E676", // 股票下跌颜色（绿）
+    STOCK_FLAT_COLOR: "#8898B8", // 股票持平颜色（蓝灰）
 
     // 状态指示颜色 - 用于进度、时间等状态
-    STATUS_RUNNING: "#2196F3", // 运行中状态颜色
-    STATUS_PROGRESS: "#3FB950", // 进行中状态颜色
-    STATUS_TIME: "#D29922", // 时间相关状态颜色
-    STATUS_REMAINING: "#F85149", // 剩余/紧张状态颜色
+    STATUS_RUNNING: "#448AFF", // 运行中状态颜色（深海蓝）
+    STATUS_PROGRESS: "#00E676", // 进行中状态颜色（绿）
+    STATUS_TIME: "#FFB74D", // 时间相关状态颜色（暖橙）
+    STATUS_REMAINING: "#FF5252", // 剩余/紧张状态颜色（红）
 
-    // 阴影系统 - 三层阴影级别
-    CARD_SHADOW: "0 4px 12px rgba(0, 0, 0, 0.25)", // 卡片阴影（一级阴影）
-    CARD_HOVER_SHADOW: "0 8px 24px rgba(0, 0, 0, 0.35)", // 卡片悬停阴影（二级阴影）
-    HOVER_SHADOW: "0 4px 12px rgba(0, 0, 0, 0.15)", // 通用悬停阴影
+    // 阴影系统 - 蓝色荧光
+    CARD_SHADOW: "0 0 1px rgba(68, 138, 255, 0.06)", // 卡片微发光
+    CARD_HOVER_SHADOW: "0 0 2px rgba(68, 138, 255, 0.12)", // 卡片悬停微发光
+    HOVER_SHADOW: "0 0 2px rgba(68, 138, 255, 0.08)", // 通用悬停微发光
 
     // 字体系统
-    FONT_FAMILY: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 主要字体族
+    FONT_FAMILY: "'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 现代无衬线
     FONT_SIZE_BASE: "14px", // 基础字体大小
 
-    // 圆角系统 - 三种圆角尺寸
+    // 圆角系统 - 专业级，适中圆润
     BORDER_RADIUS: "6px", // 标准圆角
     BORDER_RADIUS_SM: "4px", // 小圆角
     BORDER_RADIUS_LG: "8px", // 大圆角
+
+    // ====================================================================
+    // P0: 图表多线色板 — ECharts 多策略/多指标对比用
+    // ====================================================================
+    CHART_PALETTE: [
+      "#448AFF", // C1 深海蓝 — 主线/策略A
+      "#40C4FF", // C2 浅蓝 — 策略B/次线
+      "#7C6FF7", // C3 紫罗兰 — 策略C
+      "#FF6B9D", // C4 霓虹粉 — 策略D
+      "#00E676", // C5 绿 — 基准线
+      "#FFB74D", // C6 暖橙 — 策略E
+      "#FF5252", // C7 红 — 策略F
+      "#C0D0E8", // C8 冰蓝白 — 均值/参考线
+    ],
+
+    // ====================================================================
+    // P1: 背景深度层级 — UI 层次感（深度递增）
+    // ====================================================================
+    DEPTH: {
+      DEEPEST: "rgba(4, 8, 16, 0.92)", // 最深底（模态遮罩）
+      PAGE:    "#080C16", // 页面底色（保持不透明）
+      RAISED:  "rgba(8, 12, 22, 0.60)", // 悬浮面板
+      CARD:    "rgba(12, 18, 32, 0.55)", // 卡片表面
+      HEADER:  "rgba(16, 24, 42, 0.65)", // 卡片头部
+      HOVER:   "rgba(20, 30, 52, 0.50)", // 悬停高亮
+    },
+
+    // ====================================================================
+    // P2: 热力/严重度色阶 — 风控监控、因子强度等连续色阶场景
+    // ====================================================================
+    SEVERITY_SCALE: {
+      CRITICAL: "#D50000", // 严重/超阈值
+      HIGH:     "#FF5252", // 高/危险
+      MEDIUM:   "#FFB74D", // 中/警告
+      LOW:      "#00E676", // 低/安全
+      NEUTRAL:  "#8898B8", // 中性/无数据
+    },
+
+    // ====================================================================
+    // P3: 涨跌配色方案（与上方股票状态色配合，独立定义以支持切换）
+    // ====================================================================
+    STOCK_SCHEMES: {
+      INTERNATIONAL: { up: "#00E676", down: "#FF5252", flat: "#8898B8" },
+      ASHARE:        { up: "#FF5252", down: "#00E676", flat: "#8898B8" },
+    },
+
+    // ====================================================================
+    // P4: 深海渐变对 — Logo、重点区域、进度条等
+    // ====================================================================
+    GRADIENTS: {
+      OCEAN_DEEP: "linear-gradient(135deg, #448AFF 0%, #0D47A1 100%)",
+      ICE_BLUE:   "linear-gradient(135deg, #448AFF 0%, #40C4FF 100%)",
+      TWILIGHT:   "linear-gradient(135deg, #7C6FF7 0%, #448AFF 100%)",
+      BIOLUM:     "linear-gradient(135deg, #40C4FF 0%, #00E676 100%)",
+    },
   },
 
   // 浅色主题变量 - 量化交易专用浅色主题
@@ -117,6 +174,55 @@ const THEME_CONSTANTS = {
     BORDER_RADIUS: "4px", // 标准圆角（稍小）
     BORDER_RADIUS_SM: "2px", // 小圆角（更小）
     BORDER_RADIUS_LG: "6px", // 大圆角（稍大）
+
+    // ====================================================================
+    // P0: 图表多线色板
+    // ====================================================================
+    CHART_PALETTE: [
+      "#2196F3", "#FF9800", "#4CAF50", "#E91E63",
+      "#00BCD4", "#CDDC39", "#FF5722", "#607D8B",
+    ],
+
+    // ====================================================================
+    // P1: 背景深度层级
+    // ====================================================================
+    DEPTH: {
+      DEEPEST: "rgba(0, 0, 0, 0.50)",
+      PAGE:    "#FFFFFF",
+      RAISED:  "#F8F9FA",
+      CARD:    "#FFFFFF",
+      HEADER:  "#F8FAFC",
+      HOVER:   "#E9ECEF",
+    },
+
+    // ====================================================================
+    // P2: 热力/严重度色阶
+    // ====================================================================
+    SEVERITY_SCALE: {
+      CRITICAL: "#D50000",
+      HIGH:     "#DC3545",
+      MEDIUM:   "#FFC107",
+      LOW:      "#28A745",
+      NEUTRAL:  "#6C757D",
+    },
+
+    // ====================================================================
+    // P3: 涨跌配色方案
+    // ====================================================================
+    STOCK_SCHEMES: {
+      INTERNATIONAL: { up: "#28A745", down: "#DC3545", flat: "#6C757D" },
+      ASHARE:        { up: "#DC3545", down: "#28A745", flat: "#6C757D" },
+    },
+
+    // ====================================================================
+    // P4: 渐变
+    // ====================================================================
+    GRADIENTS: {
+      OCEAN_DEEP: "linear-gradient(135deg, #2196F3 0%, #1565C0 100%)",
+      ICE_BLUE:   "linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)",
+      TWILIGHT:   "linear-gradient(135deg, #9C27B0 0%, #2196F3 100%)",
+      BIOLUM:     "linear-gradient(135deg, #00BCD4 0%, #4CAF50 100%)",
+    },
   },
 } as const;
 
@@ -227,12 +333,58 @@ export function generateThemeCSSVariables(isDark: boolean): string {
       /* -------------------- 阴影变量 -------------------- */
       --box-shadow-1: ${theme.CARD_SHADOW};                      /* 一级阴影（轻度阴影） */
       --box-shadow-2: ${theme.CARD_HOVER_SHADOW};                /* 二级阴影（中度阴影） */
-      --box-shadow-3: ${isDark ? "0 16px 48px rgba(0, 0, 0, 0.45)" : "0 16px 48px rgba(0, 0, 0, 0.16)"}; /* 三级阴影（重度阴影） */
+      --box-shadow-3: ${isDark ? "0 0 4px rgba(0, 255, 200, 0.18)" : "0 16px 48px rgba(0, 0, 0, 0.16)"}; /* 三级阴影 */
       
       /* -------------------- 字体变量 -------------------- */
       --font-family: ${theme.FONT_FAMILY};                       /* 主要字体族 */
       --font-family-mono: 'Monaco, "Courier New", monospace';    /* 等宽字体族 */
       --font-size-base: ${theme.FONT_SIZE_BASE};                 /* 基础字体大小 */
+
+      /* -------------------- P0: 图表色板变量 -------------------- */
+      --chart-c1: ${theme.CHART_PALETTE[0]}; /* 霓虹青 — 主线 */
+      --chart-c2: ${theme.CHART_PALETTE[1]}; /* 紫罗兰 — 策略B */
+      --chart-c3: ${theme.CHART_PALETTE[2]}; /* 霓虹粉 — 策略C */
+      --chart-c4: ${theme.CHART_PALETTE[3]}; /* 霓虹金 — 策略D */
+      --chart-c5: ${theme.CHART_PALETTE[4]}; /* 电光蓝 — 基准线 */
+      --chart-c6: ${theme.CHART_PALETTE[5]}; /* 荧光绿 — 策略E */
+      --chart-c7: ${theme.CHART_PALETTE[6]}; /* 霓虹橙 — 策略F */
+      --chart-c8: ${theme.CHART_PALETTE[7]}; /* 冷白 — 参考线 */
+
+      /* -------------------- P1: 背景深度变量 -------------------- */
+      --depth-deepest: ${theme.DEPTH.DEEPEST};
+      --depth-page:    ${theme.DEPTH.PAGE};
+      --depth-raised:  ${theme.DEPTH.RAISED};
+      --depth-card:    ${theme.DEPTH.CARD};
+      --depth-header:  ${theme.DEPTH.HEADER};
+      --depth-hover:   ${theme.DEPTH.HOVER};
+
+      /* -------------------- P2: 严重度色阶变量 -------------------- */
+      --severity-critical: ${theme.SEVERITY_SCALE.CRITICAL};
+      --severity-high:     ${theme.SEVERITY_SCALE.HIGH};
+      --severity-medium:   ${theme.SEVERITY_SCALE.MEDIUM};
+      --severity-low:      ${theme.SEVERITY_SCALE.LOW};
+      --severity-neutral:  ${theme.SEVERITY_SCALE.NEUTRAL};
+
+      /* -------------------- P4: 渐变变量 -------------------- */
+      --gradient-ocean-deep: ${theme.GRADIENTS.OCEAN_DEEP};
+      --gradient-ice-blue:   ${theme.GRADIENTS.ICE_BLUE};
+      --gradient-twilight:   ${theme.GRADIENTS.TWILIGHT};
+      --gradient-biolum:     ${theme.GRADIENTS.BIOLUM};
+
+      /* -------------------- Naive UI 变量别名桥接 -------------------- *
+       * Naive UI 不将主题色注入为全局 --n-* 变量，但项目中 90+ 文件
+       * 引用了这些变量名。此处桥接，使所有现有引用自动生效。       */
+      --n-text-color-1: ${theme.TEXT_PRIMARY};
+      --n-text-color-2: ${theme.TEXT_SECONDARY};
+      --n-text-color-3: rgba(${textSecondaryRgb}, 0.6);
+      --n-primary-color: ${theme.ACCENT_COLOR};
+      --n-primary-color-hover: ${colorWithOpacity(theme.ACCENT_COLOR, 0.8)};
+      --n-body-color: ${theme.PRIMARY_BG};
+      --n-card-color: ${theme.CARD_BG};
+      --n-color-modal: ${theme.SECONDARY_BG};
+      --n-border-color: ${theme.BORDER_COLOR};
+      --n-box-shadow-1: ${theme.CARD_SHADOW};
+      --n-box-shadow-2: ${theme.CARD_HOVER_SHADOW};
     }
     
     /* ============================================================================
@@ -275,9 +427,21 @@ export function generateThemeCSSVariables(isDark: boolean): string {
       
       --box-shadow-1: ${THEME_CONSTANTS.LIGHT.CARD_SHADOW};
       --box-shadow-2: ${THEME_CONSTANTS.LIGHT.CARD_HOVER_SHADOW};
-      --box-shadow-3: '0 16px 48px rgba(0, 0, 0, 0.16)';
+      --box-shadow-3: 0 16px 48px rgba(0, 0, 0, 0.16);
       
       --font-family: ${THEME_CONSTANTS.LIGHT.FONT_FAMILY};
+
+      --n-text-color-1: ${THEME_CONSTANTS.LIGHT.TEXT_PRIMARY};
+      --n-text-color-2: ${THEME_CONSTANTS.LIGHT.TEXT_SECONDARY};
+      --n-text-color-3: rgba(${hexToRgb(THEME_CONSTANTS.LIGHT.TEXT_SECONDARY)}, 0.6);
+      --n-primary-color: ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR};
+      --n-primary-color-hover: ${colorWithOpacity(THEME_CONSTANTS.LIGHT.ACCENT_COLOR, 0.8)};
+      --n-body-color: ${THEME_CONSTANTS.LIGHT.SECONDARY_BG};
+      --n-card-color: ${THEME_CONSTANTS.LIGHT.CARD_BG};
+      --n-color-modal: ${THEME_CONSTANTS.LIGHT.CARD_BG};
+      --n-border-color: ${THEME_CONSTANTS.LIGHT.BORDER_COLOR};
+      --n-box-shadow-1: ${THEME_CONSTANTS.LIGHT.CARD_SHADOW};
+      --n-box-shadow-2: ${THEME_CONSTANTS.LIGHT.CARD_HOVER_SHADOW};
     }
   `;
 }
@@ -474,8 +638,8 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     // 基础背景色
     bodyColor: THEME_CONSTANTS.DARK.PRIMARY_BG,
     cardColor: THEME_CONSTANTS.DARK.CARD_BG,
-    modalColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
-    popoverColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
+    modalColor: THEME_CONSTANTS.DARK.MODAL_BG,
+    popoverColor: THEME_CONSTANTS.DARK.POPOVER_BG,
     tableColor: THEME_CONSTANTS.DARK.SECONDARY_BG,
     tableHeaderColor: THEME_CONSTANTS.DARK.CARD_HEADER_BG,
 
@@ -501,7 +665,7 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     // 阴影系统
     boxShadow1: THEME_CONSTANTS.DARK.CARD_SHADOW,
     boxShadow2: THEME_CONSTANTS.DARK.CARD_HOVER_SHADOW,
-    boxShadow3: "0 16px 48px rgba(0, 0, 0, 0.45)",
+    boxShadow3: "0 0 4px rgba(0, 255, 200, 0.18)",
 
     // ==================== 字体系统 ====================
     fontFamily: THEME_CONSTANTS.DARK.FONT_FAMILY,
@@ -552,6 +716,13 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     borderColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
     boxShadow: THEME_CONSTANTS.DARK.CARD_SHADOW,
+  },
+
+  // 弹出层组件统一背景（Select / Dropdown / DatePicker / Cascader 等复用）
+  Popover: {
+    color: THEME_CONSTANTS.DARK.POPOVER_BG,
+    textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
+    dividerColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
   },
 
   // ... 其他组件配置（DataTable, Input, Select等）保持原样，但确保使用THEME_CONSTANTS
@@ -695,6 +866,61 @@ export function getThemeCSSVariables(isDark: boolean): string {
  */
 export function initTheme(isDark: boolean = true): void {
   injectThemeCSSVariables(isDark);
+}
+
+// ============================================================================
+// P0: 图表色板 — 直接取用，供 ECharts 按需注册
+// ============================================================================
+
+/** 获取当前主题图表 8 色色板 */
+export function getChartPalette(
+  isDark: boolean = true,
+): readonly string[] {
+  return isDark
+    ? THEME_CONSTANTS.DARK.CHART_PALETTE
+    : THEME_CONSTANTS.LIGHT.CHART_PALETTE;
+}
+
+// ============================================================================
+// P3: 涨跌配色方案 — 根据用户偏好返回
+// ============================================================================
+
+export type StockScheme = "INTERNATIONAL" | "ASHARE";
+
+/** 获取当前涨跌配色 */
+export function getStockColors(
+  scheme: StockScheme = "ASHARE",
+): { up: string; down: string; flat: string } {
+  return isDarkTheme()
+    ? THEME_CONSTANTS.DARK.STOCK_SCHEMES[scheme]
+    : THEME_CONSTANTS.LIGHT.STOCK_SCHEMES[scheme];
+}
+
+// ============================================================================
+// P4: 渐变 — 按名称取渐变字符串
+// ============================================================================
+
+/** 获取霓虹渐变 CSS 值 */
+export function getGradient(
+  name: keyof typeof THEME_CONSTANTS.DARK.GRADIENTS,
+): string {
+  const theme = isDarkTheme() ? THEME_CONSTANTS.DARK : THEME_CONSTANTS.LIGHT;
+  return theme.GRADIENTS[name];
+}
+
+// ============================================================================
+// 内部工具
+// ============================================================================
+
+let _isDarkCache = true;
+
+/** 记录当前主题（由 App.vue / main.ts 调用时更新） */
+export function setCurrentThemeMode(isDark: boolean): void {
+  _isDarkCache = isDark;
+}
+
+function isDarkTheme(): boolean {
+  return _isDarkCache;
 }
 
 // ============================================================================

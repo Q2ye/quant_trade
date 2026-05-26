@@ -251,53 +251,140 @@
   }
 }
 
-/// 页面头部基础样式混入
-/// 功能：提供完整的页面头部样式，包括标题、描述和操作区域
-/// 特点：完全自包含，业务页面头部可直接使用此混入
+/// 页面头部基础样式混入 — 纯色渐变块（无玻璃态）
+///
+/// 上/左/右 紧贴 AppHeader / AppSidebar / workspace 边缘
+/// （由 workspace-content 的 padding: 0 0 16px 0 保证）
+/// 无圆角、无 blur，仅靠渐变底色 + 顶部发光边营造层次感。
+///
+/// z-index 层次（从底到顶）：
+///   0. background 渐变            — 深海蓝 → 暗底
+///   1. ::after 径向光晕          — z-index: 0  右上角蓝色环境光
+///   2. ::before 顶部发光边       — z-index: 1  1px 蓝色渐变线
+///   3. .header-content 内容层   — z-index: 2  透明底，仅 flex 排版
+///
 /// @example: @include page-header-base;
 @mixin page-header-base {
-  margin-bottom: vars.spacer(6); // 底部大间距，与其他内容区分
 
-  // 头部内容容器
+  // === 盒模型 ===
+  position: relative;
+  margin: 0 0 24px 0;
+  border-radius: 0;
+  overflow: hidden;
+
+  // === 背景渐变 ===
+  // 180deg 上→下：品牌蓝 → 深海暗 → 近黑，半透明可透 3D 粒子
+  background: linear-gradient(
+    180deg,
+    rgba(68, 138, 255, 0.20) 0%,
+    rgba(68, 138, 255, 0.05) 35%,
+    rgba(10, 20, 38, 0.55) 70%,
+    rgba(8, 14, 26, 0.48) 100%
+  );
+
+  // === 边框与阴影 ===
+  border: 1px solid rgba(68, 138, 255, 0.08);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(68, 138, 255, 0.05);
+
+  // === ::before — 顶部蓝色发光边（z-index: 1） ===
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(68, 138, 255, 0.35) 30%,
+      rgba(68, 138, 255, 0.55) 50%,
+      rgba(68, 138, 255, 0.35) 70%,
+      transparent 100%
+    );
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  // === ::after — 右上角环境光晕（z-index: 0） ===
+  &::after {
+    content: "";
+    position: absolute;
+    top: -50px; right: -30px;
+    width: 220px; height: 220px;
+    background: radial-gradient(
+      circle,
+      rgba(68, 138, 255, 0.07) 0%,
+      transparent 70%
+    );
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  // === .header-content — 内容排版层（z-index: 2） ===
   .header-content {
-    @include flex-between; // 使用两端对齐布局
-    align-items: flex-start; // 顶部对齐，适应多行标题
-    flex-wrap: wrap; // 允许换行，适应移动端
-    gap: vars.spacer(3); // 子项之间的间距
+    position: relative;
+    z-index: 2;
+    @include flex-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: vars.spacer(3);
+    padding: 18px 24px;      // 垂直 18px 压缩头部高度
 
-    // 标题区域（左侧）
     .title-section {
-      flex: 1; // 占据可用空间
-      min-width: 200px; // 最小宽度防止过度收缩
+      flex: 1;
+      min-width: 200px;
 
-      // 页面主标题
       .page-title {
-        font-size: 1.5rem; // 24px标题
-        font-weight: 600; // 半粗体
-        color: var(--color-text-primary); // 主要文字颜色
-        margin-bottom: vars.spacer(1); // 标题与描述之间的间距
-        line-height: 1.3; // 合适的行高
+        font-size: 1.4rem;   // ~20px，紧凑但层次清晰
+        font-weight: 600;    // Inter 半粗体更精致
+        letter-spacing: -0.01em;
+        color: var(--color-text-primary);
+        margin-bottom: 2px;  // 收紧与描述间距
+        line-height: 1.25;
       }
 
-      // 页面描述文字
       .page-description {
-        font-size: 0.875rem; // 14px描述文字
-        color: var(--color-text-secondary); // 次要文字颜色
-        line-height: 1.5; // 良好的可读性行高
+        font-size: 0.85rem;  // ~12px
+        color: var(--color-text-secondary);
+        line-height: 1.4;
       }
     }
 
-    // 操作按钮区域（右侧）
     .header-actions {
-      @include flex-start; // 起始对齐布局
-      gap: vars.spacer(2); // 按钮之间的间距
-      flex-wrap: wrap; // 允许按钮换行
+      @include flex-start;
+      gap: vars.spacer(2);
+      flex-wrap: wrap;
+      flex-shrink: 0;
 
-      // 移动端适配：全宽度并保持起始对齐
       @include media-breakpoint-down(sm) {
-        width: 100%; // 占据全宽
-        justify-content: flex-start; // 起始对齐
+        width: 100%;
+        justify-content: flex-start;
       }
+    }
+  }
+
+  // === 按钮 — 幽灵风格 ===
+  .header-actions .n-button {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .header-actions .n-button:hover {
+    border-color: rgba(68, 138, 255, 0.40);
+    color: #fff;
+    background: rgba(68, 138, 255, 0.10);
+  }
+
+  // === 响应式 ===
+  @include media-breakpoint-down(sm) {
+    margin-bottom: 16px;
+
+    .header-content {
+      padding: 14px 16px;
+      flex-direction: column;
+      align-items: flex-start;
     }
   }
 }
@@ -366,11 +453,11 @@
 /// @example: @include text-status('up');
 @mixin text-status($status) {
   color: text-status-color($status); // 调用函数获取对应颜色
-  font-weight: if(
-    $status == "neutral",
-    400,
-    500
-  ); // 中性状态正常粗细，其他状态中等粗细
+  @if $status == "neutral" {
+    font-weight: 400; // 中性状态正常粗细
+  } @else {
+    font-weight: 500; // 其他状态中等粗细
+  }
 }
 
 // ============================================================================

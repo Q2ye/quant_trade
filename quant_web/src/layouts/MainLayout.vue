@@ -4,7 +4,7 @@
     :class="[{ 'sidebar-collapsed': sidebarCollapsed }]"
   >
     <!-- 全局3D粒子背景（position:absolute 填充整个 main-layout） -->
-    <ParticleBackground />
+    <ParticleBackground :opacity="0.55" :size="0.025" />
 
     <!-- 顶部状态栏 -->
     <AppHeader
@@ -24,9 +24,7 @@
       <main class="workspace sidebar-content-adapter">
         <div class="workspace-content">
           <router-view v-slot="{ Component, route }">
-            <Transition name="page-fade" mode="out-in">
-              <component :is="Component" :key="route.path" />
-            </Transition>
+            <component :is="Component" :key="route.path" />
           </router-view>
         </div>
       </main>
@@ -73,8 +71,8 @@ import { NIcon } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 
-import AppHeader from "../components/ui/AppHeader.vue";
-import AppSidebar from "../components/ui/AppSidebar.vue";
+import AppHeader from "../components/common/AppHeader.vue";
+import AppSidebar from "../components/common/AppSidebar.vue";
 
 const ParticleBackground = defineAsyncComponent(
   () => import("@/components/three/ParticleBackground.vue"),
@@ -134,9 +132,6 @@ export default defineComponent({
   max-height: 100vh;
   position: relative;
   overflow: hidden;
-
-  --header-height: 60px;
-  --footer-height: 30px;
 }
 
 .layout-container {
@@ -144,26 +139,40 @@ export default defineComponent({
   flex: 1;
   overflow: hidden;
   position: relative;
+  z-index: 2;
   min-height: 0;
-  height: calc(100vh - var(--header-height) - var(--footer-height));
+  height: calc(100vh - var(--header-height, 60px) - 30px);
+  background: transparent;
 }
 
 .workspace {
-  width: calc(100% - 240px);
-  transition: all 0.3s ease;
+  width: calc(100% - var(--sidebar-expanded-width, 240px));
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 
+  /*
+   * .workspace-content — 工作区内容容器
+   *
+   * 左右内边距由各页面的 .content-section 提供，.page-header 自然贴边
+   *   - top: 0    → .page-header 紧贴 AppHeader
+   *   - left/right: 0 → .page-header 紧贴侧边栏和 workspace 右边缘
+   *   - bottom: 16px → 底部留白，避免内容贴边
+   */
   .workspace-content {
     flex: 1;
     height: 100%;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 16px;
+    padding: 0 0 16px 0;
 
+    /*
+     * 页面根元素 — <router-view> 渲染的页面组件
+     * flex: 1 使其填满 .workspace-content 的剩余空间
+     * overflow-y: auto 使页面内容超出时出现纵向滚动条
+     */
     > * {
       flex: 1;
       overflow-y: auto;
@@ -172,7 +181,7 @@ export default defineComponent({
 
   .sidebar-collapsed & {
     margin-left: 0;
-    width: calc(100% - 64px);
+    width: calc(100% - var(--sidebar-collapsed-width, 64px));
   }
 }
 
@@ -263,13 +272,6 @@ export default defineComponent({
   overflow: auto;
 }
 
-/* Page transition */
-.page-fade-enter-active,
-.page-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.page-fade-enter-from,
-.page-fade-leave-to {
-  opacity: 0;
-}
+/* 3D particles: z-index handled internally by ParticleBackground.vue */
+
 </style>

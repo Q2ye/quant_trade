@@ -1,7 +1,7 @@
 // 插件
 // store/plugins/persistedstate.ts
 import { Plugin } from "vuex";
-import { RootState } from "@/types/state";
+import { RootState } from "@/types";
 
 // 持久化配置接口
 interface PersistedStateConfig {

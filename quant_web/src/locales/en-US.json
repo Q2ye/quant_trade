@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "A-Share Quant Trading Platform",
-    "description": "Professional quantitative trading strategy development and execution platform"
+    "title": "YiNian Quant",
+    "description": "Intelligent quantitative strategy development and execution platform"
   },
   "user": {
     "login": "Login",
@@ -35,7 +35,7 @@
   },
   "home": {
     "title": "Home",
-    "welcome_message": "Welcome to A-Share Quant Trading Platform",
+    "welcome_message": "Welcome to YiNian Quant",
     "features": "Features",
     "dashboard": "Trade Dashboard"
   },

@@ -1,9 +1,8 @@
 // quant_web/src/api/risk.ts
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
-import { ApiResponse, PaginatedResponse, RiskAlertMessage } from "@/types/api";
-
-import { RiskRule } from "@/types/entities";
+import { ApiResponse, PaginatedResponse, RiskAlertMessage } from "@/types";
+import { RiskRule } from "@/types";
 
 /**
  * 风险管理API服务

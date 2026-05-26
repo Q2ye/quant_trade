@@ -1,7 +1,7 @@
 # 应用默认配置（非敏感参数）
 defaults: &defaults
   system:
-    name: "量化交易平台"
+    name: "一念量化"
     version: "1.0.0"
     enable_web_socket: true
     enable_monitoring: true

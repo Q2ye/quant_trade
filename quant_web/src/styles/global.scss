@@ -389,40 +389,256 @@ body {
   pointer-events: none;
 }
 
-/* 渐变网格背景 —— 主色由 Naive UI CSS 变量驱动，含 fallback */
+/* 渐变网格背景 —— 四层深海蓝径向渐变叠加深海黑底 */
 .bg-gradient-mesh {
   background:
     radial-gradient(
-      ellipse 80% 50% at 20% 0%,
-      var(--n-primary-color-suppl, rgba(33, 150, 243, 0.08)),
-      transparent
+      ellipse 60% 40% at 50% 0%,
+      rgba(68, 138, 255, 0.10),
+      transparent 55%
     ),
     radial-gradient(
-      ellipse 60% 40% at 80% 100%,
-      var(--n-primary-color-suppl, rgba(33, 150, 243, 0.06)),
-      transparent
+      ellipse 80% 50% at 10% 10%,
+      rgba(64, 196, 255, 0.06),
+      transparent 60%
     ),
-    var(--n-body-color, #09090b);
+    radial-gradient(
+      ellipse 60% 40% at 90% 85%,
+      rgba(124, 111, 247, 0.05),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 100% 30% at 50% 100%,
+      rgba(68, 138, 255, 0.03),
+      transparent 40%
+    ),
+    var(--color-bg-primary, #080C16);
 }
 
 /* 玻璃态表面 —— 导航栏 / 侧边栏 */
 .glass-surface {
-  backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(7, 7, 14, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* 卡片表面 */
+/* 全局卡片渐变边框 — 1px 蓝色渐变，四边可见 */
+.n-card {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      90deg,
+      rgba(68, 138, 255, 0.30) 0%,
+      rgba(68, 138, 255, 0.55) 50%,
+      rgba(68, 138, 255, 0.30) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}
+
+/* 卡片表面 — 玻璃态半透明，透出 3D 粒子背景 */
 .card-surface {
-  background: var(--n-card-color);
-  border: 1px solid var(--n-border-color);
-  border-radius: var(--n-border-radius);
-  box-shadow: var(--n-box-shadow-1);
+  background: var(--color-bg-card, rgba(12, 18, 32, 0.72)) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border, rgba(26, 26, 48, 0.5));
+  border-radius: var(--n-border-radius, 6px);
+  box-shadow: var(--box-shadow-1, 0 0 1px rgba(0, 255, 200, 0.08));
+}
+
+/* ==========================================================================
+   全局页面头部 .page-header — 纯色渐变块（无玻璃态）
+   上/左/右 紧贴 AppHeader / AppSidebar / workspace 边缘（由 workspace-content
+   的 padding: 0 0 16px 0 保证），无圆角、无 blur，仅靠渐变底色 + 顶部发光边
+   营造层次感。
+   ==========================================================================
+
+   DOM 结构（所有页面统一）：
+     <div class="page-header">          ← 渐变画布层
+       <div class="header-content">     ← 内容排版层（透明）
+         <div class="title-section">    ← 标题区
+           <h1 class="page-title" />
+           <p  class="page-description" />
+         </div>
+         <div class="header-actions">   ← 操作按钮区（可选）
+           <n-button />
+         </div>
+       </div>
+     </div>
+
+   z-index 层次（从底到顶）：
+     0. background 渐变            — 深海蓝 → 暗底，铺满整个 block
+     1. ::after 径向光晕          — z-index: 0，右上角蓝色环境光
+     2. ::before 顶部发光边       — z-index: 1，1px 蓝色渐变线
+     3. .header-content 内容层   — z-index: 2，透明底，仅 flex 排版
+   ========================================================================== */
+
+.page-header {
+
+  // === 盒模型 ===
+  position: relative;
+  margin: 0 0 24px 0;        // 紧贴 workspace 边界（无左右留白）
+  border-radius: 0;          // 无圆角：上/左/右紧贴 workspace 边界
+  overflow: hidden;
+
+  // === 背景渐变 ===
+  // 180deg 上→下：品牌蓝 → 深海暗 → 近黑，半透明可透 3D 粒子
+  background: linear-gradient(
+    180deg,
+    rgba(68, 138, 255, 0.20) 0%,
+    rgba(68, 138, 255, 0.05) 35%,
+    rgba(10, 20, 38, 0.55) 70%,
+    rgba(8, 14, 26, 0.48) 100%
+  );
+
+  // === 边框与阴影 ===
+  border: 1px solid rgba(68, 138, 255, 0.08);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(68, 138, 255, 0.05);
+
+  // === ::before — 顶部蓝色发光边（z-index: 1） ===
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(68, 138, 255, 0.35) 30%,
+      rgba(68, 138, 255, 0.55) 50%,
+      rgba(68, 138, 255, 0.35) 70%,
+      transparent 100%
+    );
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  // === ::after — 右上角环境光晕（z-index: 0） ===
+  &::after {
+    content: "";
+    position: absolute;
+    top: -50px; right: -30px;
+    width: 220px; height: 220px;
+    background: radial-gradient(
+      circle,
+      rgba(68, 138, 255, 0.07) 0%,
+      transparent 70%
+    );
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  // === .header-content — 内容排版层（z-index: 2） ===
+  .header-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 18px 24px;      // 垂直 18px 压缩头部高度
+  }
+
+  .title-section {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .page-title {
+    font-size: 20px;         // 24 → 20，紧凑但层次清晰
+    font-weight: 600;        // 700 → 600，Inter 半粗体更精致
+    letter-spacing: -0.01em; // 微紧缩字距，金融终端质感
+    color: var(--n-text-color-1);
+    margin: 0 0 2px 0;       // 4 → 2，收紧与描述间距
+    line-height: 1.25;        // 1.3 → 1.25
+  }
+
+  .page-description {
+    font-size: 12px;         // 13 → 12
+    color: var(--n-text-color-3);
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .header-actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  // === 头部按钮 — 幽灵风格 ===
+  .header-actions .n-button {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .header-actions .n-button:hover {
+    border-color: rgba(68, 138, 255, 0.40);
+    color: #fff;
+    background: rgba(68, 138, 255, 0.10);
+  }
+
+  // === 头部图标操作按钮 — 圆形 ===
+  .header-actions .action-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    padding: 0;
+  }
+}
+
+// === 响应式 ===
+@media (max-width: 768px) {
+  .page-header {
+    margin-bottom: 16px;
+
+    .header-content {
+      padding: 14px 16px;
+      flex-direction: column;
+    }
+  }
+}
+
+/* ==========================================================================
+   全局内容区域间距 — 所有页面卡片/内容与左右边缘的统一间距
+   .main-content：页面内容主容器，统一左右 24px 边距，.page-header 不受影响
+   .content-section：内容区块，仅提供下边距（左右边距由 .main-content 负责）
+   ========================================================================== */
+.main-content {
+  padding: 0 24px;
+}
+
+.content-section {
+  margin-bottom: 28px;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 0 12px;
+  }
 }
 
 /* 动效 —— hover 抬起 */
 .hover-lift {
-  transition: all 0.2s var(--n-bezier);
+  transition: all 0.2s var(--n-bezier, ease);
 }
 .hover-lift:hover {
   transform: scale(1.02);

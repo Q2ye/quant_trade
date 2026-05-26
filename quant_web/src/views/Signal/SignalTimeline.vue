@@ -119,43 +119,17 @@ const clearFilters = () => {
 
 <template>
   <div class="signal-timeline bg-gradient-mesh bg-noise">
-    <div class="timeline-header">
-      <h3>信号时间线</h3>
-      <div class="filter-controls">
-        <div class="filter-group">
-          <label>信号类型:</label>
-          <n-select
-            v-model:value="filters.type"
-            :options="signalTypeOptions"
-            multiple
-            size="small"
-            style="width: 160px"
-            placeholder="选择信号类型"
-          />
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">信号时间线</h1>
         </div>
-
-        <div class="filter-group">
-          <label>时间范围:</label>
-          <n-select
-            v-model:value="filters.timeRange"
-            :options="timeRangeOptions"
-            size="small"
-            style="width: 140px"
-          />
+        <div class="header-actions">
+          <n-select v-model:value="filters.type" :options="signalTypeOptions" multiple size="small" style="width: 160px" placeholder="选择信号类型" />
+          <n-select v-model:value="filters.timeRange" :options="timeRangeOptions" size="small" style="width: 140px" />
+          <n-input v-model:value="filters.symbol" placeholder="输入股票代码" size="small" style="width: 160px" clearable />
+          <n-button size="small" @click="clearFilters">清除筛选</n-button>
         </div>
-
-        <div class="filter-group">
-          <label>股票代码:</label>
-          <n-input
-            v-model:value="filters.symbol"
-            placeholder="输入股票代码"
-            size="small"
-            style="width: 160px"
-            clearable
-          />
-        </div>
-
-        <n-button size="small" @click="clearFilters">清除筛选</n-button>
       </div>
     </div>
 
@@ -238,41 +212,8 @@ const clearFilters = () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--n-border-color);
-  border-radius: 4px;
-  overflow: hidden;
-  background-color: var(--n-card-color);
-}
-
-.timeline-header {
-  padding: 12px 15px;
-  background: var(--n-color-embedded);
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.timeline-header h3 {
-  margin: 0 0 10px;
-  color: var(--n-text-color-1);
-  font-size: 16px;
-}
-
-.filter-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.filter-group label {
-  font-size: 12px;
-  color: var(--n-text-color-3);
-  white-space: nowrap;
+  padding: 0;
+  overflow-y: auto;
 }
 
 .timeline-content {

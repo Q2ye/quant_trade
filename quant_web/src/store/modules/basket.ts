@@ -11,7 +11,7 @@ import {
   SimpleBasket,
   SimpleBasketItem,
   StockData,
-} from "@/types/entities/basket";
+} from "@/types";
 import { RootState } from "@/types";
 
 /**

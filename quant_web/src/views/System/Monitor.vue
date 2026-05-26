@@ -1,7 +1,13 @@
 <!--系统监控-->
 <template>
   <div class="system-monitor bg-gradient-mesh bg-noise">
-    <h2>系统监控</h2>
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">系统监控</h1>
+        </div>
+      </div>
+    </div>
 
     <n-result
       v-if="error"
@@ -70,11 +76,11 @@
 
 <script>
 import { mapState, mapActions } from "vuex";
-import ConnectionStatus from "@/components/system/ConnectionStatus.vue";
-import ResourceUsage from "@/components/system/ResourceUsage.vue";
-import StrategyStatus from "@/components/system/StrategyStatus.vue";
-import SystemLogs from "@/components/system/SystemLogs.vue";
-import PerformanceMetrics from "@/components/system/PerformanceMetrics.vue";
+import ConnectionStatus from "@/components/common/ConnectionStatus.vue";
+import ResourceUsage from "@/components/common/ResourceUsage.vue";
+import StrategyStatus from "@/components/common/StrategyStatus.vue";
+import SystemLogs from "@/components/common/SystemLogs.vue";
+import PerformanceMetrics from "@/components/common/PerformanceMetrics.vue";
 
 export default {
   components: {

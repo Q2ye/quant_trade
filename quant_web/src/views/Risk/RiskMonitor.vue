@@ -1,8 +1,12 @@
 <template>
   <div class="risk-monitor bg-gradient-mesh bg-noise">
     <div class="page-header">
-      <h1 class="page-title">实时监控</h1>
-      <n-space :size="8">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">实时监控</h1>
+        </div>
+        <div class="header-actions">
+          <n-space :size="8">
         <n-button type="primary" @click="refreshData" :loading="loading">
           <template #icon><Icon icon="ep:refresh" /></template>
           刷新
@@ -12,6 +16,8 @@
           导出
         </n-button>
       </n-space>
+        </div>
+      </div>
     </div>
 
     <!-- 监控概览卡片 -->
@@ -471,16 +477,7 @@ onUnmounted(() => {
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  .page-title {
-    margin: 0;
-    color: var(--n-text-color-1);
-  }
-}
+/* .page-header 已迁移至全局样式（global.scss） */
 
 .overview-grid {
   margin-bottom: 20px;

@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- 背景：墨蓝虚空，细腻颗粒感模拟 -->
+    <radialGradient id="voidBg" cx="50%" cy="55%" r="75%">
+      <stop offset="0%" stop-color="#121a26"/>
+      <stop offset="25%" stop-color="#0d131c"/>
+      <stop offset="55%" stop-color="#080c12"/>
+      <stop offset="100%" stop-color="#04070a"/>
+    </radialGradient>
+
+    <!-- 原点光晕层次 -->
+    <radialGradient id="originCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="8%" stop-color="#e8f7ff" stop-opacity="0.9"/>
+      <stop offset="25%" stop-color="#7ee0ff" stop-opacity="0.5"/>
+      <stop offset="50%" stop-color="#3cb8e0" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#121a26" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 次级光晕，更柔和 -->
+    <radialGradient id="originSoft" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c8f0ff" stop-opacity="0.25"/>
+      <stop offset="50%" stop-color="#5ce0ff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#121a26" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 弧线渐变：向外的数据流 -->
+    <linearGradient id="arcGrad1" x1="50%" y1="55%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8ed8f0" stop-opacity="0.65"/>
+      <stop offset="40%" stop-color="#5cb8d8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#5ce0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="arcGrad2" x1="50%" y1="55%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#a0c8e8" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#a0c8ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="arcGrad3" x1="50%" y1="55%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8ed8f0" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#5ce0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="arcGrad4" x1="50%" y1="55%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a0c8e8" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#a0c8ff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 虚空背景 -->
+  <rect width="400" height="400" fill="url(#voidBg)"/>
+
+  <!-- 极细微的噪点模拟（多层细小圆点） -->
+  <g opacity="0.08">
+    <circle cx="50" cy="80" r="0.5" fill="#ffffff"/>
+    <circle cx="120" cy="40" r="0.4" fill="#ffffff"/>
+    <circle cx="300" cy="60" r="0.6" fill="#ffffff"/>
+    <circle cx="350" cy="120" r="0.3" fill="#ffffff"/>
+    <circle cx="70" cy="200" r="0.5" fill="#ffffff"/>
+    <circle cx="380" cy="250" r="0.4" fill="#ffffff"/>
+    <circle cx="340" cy="350" r="0.5" fill="#ffffff"/>
+    <circle cx="30" cy="310" r="0.4" fill="#ffffff"/>
+    <circle cx="180" cy="30" r="0.3" fill="#ffffff"/>
+    <circle cx="260" cy="370" r="0.4" fill="#ffffff"/>
+  </g>
+
+  <!-- ========== 原点区域 ========== -->
+  <!-- 最外层柔光 -->
+  <circle cx="200" cy="220" r="80" fill="url(#originSoft)"/>
+  <!-- 主光晕 -->
+  <circle cx="200" cy="220" r="48" fill="url(#originCore)"/>
+  <!-- 原点之核 -->
+  <circle cx="200" cy="220" r="1.8" fill="#ffffff" opacity="0.95"/>
+
+  <!-- ========== 万象生发：弧线与数据流 ========== -->
+  <!-- 弧线组：斐波那契螺旋 -->
+  <!-- 右上方扩散 -->
+  <path d="M 200 220 Q 222 192 248 170 Q 278 148 308 140 Q 338 134 358 148"
+        fill="none" stroke="url(#arcGrad1)" stroke-width="0.65" stroke-linecap="round"/>
+  <path d="M 200 220 Q 222 248 248 270 Q 278 292 308 300 Q 338 306 358 292"
+        fill="none" stroke="url(#arcGrad3)" stroke-width="0.65" stroke-linecap="round"/>
+
+  <!-- 左上方扩散 -->
+  <path d="M 200 220 Q 178 192 152 170 Q 122 148 92 142 Q 62 138 42 150"
+        fill="none" stroke="url(#arcGrad2)" stroke-width="0.6" stroke-linecap="round"/>
+  <path d="M 200 220 Q 178 248 152 270 Q 122 292 92 300 Q 62 306 42 294"
+        fill="none" stroke="url(#arcGrad4)" stroke-width="0.6" stroke-linecap="round"/>
+
+  <!-- 竖直方向微弱扩散 -->
+  <path d="M 200 220 Q 208 178 218 138 Q 228 100 232 75"
+        fill="none" stroke="url(#arcGrad1)" stroke-width="0.45" opacity="0.7"/>
+  <path d="M 200 220 Q 208 262 218 302 Q 228 340 232 365"
+        fill="none" stroke="url(#arcGrad3)" stroke-width="0.45" opacity="0.7"/>
+
+  <!-- 左下方扩散 -->
+  <path d="M 200 220 Q 178 258 152 282 Q 122 306 92 312 Q 62 316 42 306"
+        fill="none" stroke="url(#arcGrad4)" stroke-width="0.5" opacity="0.6"/>
+
+  <!-- ========== 同心圆涟漪 ========== -->
+  <!-- 微弱的几何波，代表秩序扩散 -->
+  <ellipse cx="200" cy="220" rx="68" ry="54" fill="none" stroke="#5ce0ff" stroke-width="0.35" opacity="0.28"/>
+  <ellipse cx="200" cy="220" rx="130" ry="104" fill="none" stroke="#5ce0ff" stroke-width="0.28" opacity="0.14"/>
+  <ellipse cx="200" cy="220" rx="190" ry="152" fill="none" stroke="#5ce0ff" stroke-width="0.22" opacity="0.07"/>
+  <ellipse cx="200" cy="220" rx="250" ry="200" fill="none" stroke="#5ce0ff" stroke-width="0.18" opacity="0.04"/>
+
+  <!-- ========== 信号点：市场中的微弱异动 ========== -->
+  <g>
+    <!-- 右上区域 -->
+    <circle cx="260" cy="130" r="0.9" fill="#8ed8f0" opacity="0.6"/>
+    <circle cx="320" cy="170" r="0.7" fill="#a0d8f0" opacity="0.45"/>
+    <circle cx="340" cy="210" r="0.8" fill="#8ed8f0" opacity="0.5"/>
+    <circle cx="300" cy="280" r="0.85" fill="#8ed8f0" opacity="0.55"/>
+    <circle cx="270" cy="330" r="0.65" fill="#a0d8f0" opacity="0.4"/>
+    <!-- 左上区域 -->
+    <circle cx="140" cy="130" r="0.85" fill="#a0c8e8" opacity="0.55"/>
+    <circle cx="80" cy="170" r="0.65" fill="#a0c8e8" opacity="0.4"/>
+    <circle cx="50" cy="220" r="0.75" fill="#a0c8e8" opacity="0.5"/>
+    <circle cx="90" cy="290" r="0.8" fill="#a0c8e8" opacity="0.5"/>
+    <circle cx="130" cy="340" r="0.6" fill="#a0c8e8" opacity="0.35"/>
+    <!-- 底部 -->
+    <circle cx="180" cy="350" r="0.7" fill="#8ed8f0" opacity="0.45"/>
+    <circle cx="230" cy="355" r="0.75" fill="#8ed8f0" opacity="0.5"/>
+    <!-- 顶部 -->
+    <circle cx="180" cy="90" r="0.65" fill="#a0c8e8" opacity="0.4"/>
+    <circle cx="220" cy="85" r="0.7" fill="#8ed8f0" opacity="0.45"/>
+  </g>
+
+  <!-- ========== 左下角文字 ========== -->
+  <!-- 精心布局，竖排或横排均可，这里用两行横排，更有现代感 -->
+  <text x="30" y="350" font-family="'Noto Serif SC','Songti SC','STSong',serif" font-size="12" font-weight="400" fill="#8898a8" letter-spacing="3">复</text>
+  <text x="30" y="368" font-family="'Noto Serif SC','Songti SC','STSong',serif" font-size="9" font-weight="300" fill="#6a7a8a" letter-spacing="2">一阳来复</text>
+  <text x="30" y="383" font-family="'Noto Serif SC','Songti SC','STSong',serif" font-size="8" font-weight="300" fill="#556678" letter-spacing="1.5">天地之心</text>
+</svg>

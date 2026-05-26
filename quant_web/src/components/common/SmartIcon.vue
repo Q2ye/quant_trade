@@ -1,31 +1,120 @@
-<!-- 智能图标组件 - 统一图标管理 -->
 <template>
-  <n-icon v-bind="$attrs" :component="getIconComponent" />
+  <Icon :icon="iconName" :style="{ fontSize: size + 'px' }" />
 </template>
 
-<script>
-import { defineComponent, computed } from "vue";
-import { NIcon } from "naive-ui";
-import { icons } from "@/utils/icons";
+<script setup lang="ts">
+import { computed } from "vue";
+import { Icon } from "@iconify/vue";
 
-export default defineComponent({
-  name: "SmartIcon",
-  components: { NIcon },
-  props: {
-    name: {
-      type: String,
-      required: true,
-      validator: (value) => Object.keys(icons).includes(value),
-    },
-  },
-  setup(props) {
-    const getIconComponent = computed(() => {
-      return icons[props.name];
-    });
-
-    return {
-      getIconComponent,
-    };
-  },
+const props = withDefaults(defineProps<{ name: string; size?: number }>(), {
+  size: 18,
 });
+
+const iconMap: Record<string, string> = {
+  // 通用
+  Refresh: "ant-design:reload-outlined",
+  TrendingUp: "ant-design:stock-outlined",
+  TrendingDown: "ant-design:stock-outlined",
+  Apps: "ant-design:appstore-outlined",
+  Fire: "ant-design:fire-outlined",
+  Rocket: "ant-design:rocket-outlined",
+  Chip: "ant-design:thunderbolt-outlined",
+  TreeChart: "ant-design:cluster-outlined",
+  CashMultiple: "ant-design:money-collect-outlined",
+  CashPlus: "ant-design:dollar-outlined",
+  ArrowRight: "ant-design:arrow-right-outlined",
+  ArrowLeft: "ant-design:arrow-left-outlined",
+  ArrowBack: "ant-design:arrow-left-outlined",
+  Plus: "ant-design:plus-outlined",
+  Minus: "ant-design:minus-outlined",
+  Pause: "ant-design:pause-circle-outlined",
+  PauseCircle: "ant-design:pause-circle-outlined",
+  PlayCircle: "ant-design:play-circle-outlined",
+  CloseCircle: "ant-design:close-circle-outlined",
+  Reload: "ant-design:reload-outlined",
+  Search: "ant-design:search-outlined",
+  Filter: "ant-design:filter-outlined",
+  Download: "ant-design:download-outlined",
+  Upload: "ant-design:upload-outlined",
+  Edit: "ant-design:edit-outlined",
+  Delete: "ant-design:delete-outlined",
+  Copy: "ant-design:copy-outlined",
+  Link: "ant-design:link-outlined",
+  Menu: "ant-design:menu-outlined",
+  Close: "ant-design:close-outlined",
+  Check: "ant-design:check-outlined",
+  Info: "ant-design:info-circle-outlined",
+  Warning: "ant-design:warning-outlined",
+  Error: "ant-design:close-circle-outlined",
+  Help: "ant-design:question-circle-outlined",
+  // 导航与交互
+  ChevronDown: "ant-design:down-outlined",
+  ChevronLeft: "ant-design:left-outlined",
+  ChevronRight: "ant-design:right-outlined",
+  PlayArrow: "ant-design:caret-right-outlined",
+  Save: "ant-design:save-outlined",
+  LogOut: "ant-design:logout-outlined",
+  CloudDownload: "ant-design:cloud-download-outlined",
+  SwapHorizontal: "ant-design:swap-outlined",
+  SwapVertical: "ant-design:swap-outlined",
+  // 数据与展示
+  Grid: "ant-design:appstore-outlined",
+  List: "ant-design:unordered-list-outlined",
+  Calendar: "ant-design:calendar-outlined",
+  Clock: "ant-design:clock-circle-outlined",
+  Time: "ant-design:clock-circle-outlined",
+  Terminal: "ant-design:console-sql-outlined",
+  Desktop: "ant-design:laptop-outlined",
+  DocumentText: "ant-design:file-text-outlined",
+  Eye: "ant-design:eye-outlined",
+  Bell: "ant-design:bell-outlined",
+  NotificationsOutline: "ant-design:notification-outlined",
+  Speedometer: "ant-design:dashboard-outlined",
+  TrendingUpOutline: "ant-design:rise-outlined",
+  AnalyticsOutline: "ant-design:fund-outlined",
+  // 语义符号
+  ShieldCheckmark: "ant-design:safety-outlined",
+  AlertCircle: "ant-design:exclamation-circle-outlined",
+  Ban: "ant-design:stop-outlined",
+  Trophy: "ant-design:trophy-outlined",
+  Puzzle: "ant-design:build-outlined",
+  Scale: "ant-design:scales-outlined",
+  Cube: "ant-design:block-outlined",
+  Flask: "ant-design:experiment-outlined",
+  Options: "ant-design:unordered-list-outlined",
+  // 人/账户
+  Person: "ant-design:user-outlined",
+  People: "ant-design:team-outlined",
+  WalletOutline: "ant-design:wallet-outlined",
+  // 业务模块
+  BarChart: "ant-design:bar-chart-outlined",
+  LineChart: "ant-design:line-chart-outlined",
+  PieChart: "ant-design:pie-chart-outlined",
+  Dashboard: "ant-design:dashboard-outlined",
+  Setting: "ant-design:setting-outlined",
+  Settings: "ant-design:setting-outlined",
+  User: "ant-design:user-outlined",
+  Signal: "ant-design:signal-filled",
+  Trade: "ant-design:swap-outlined",
+  Basket: "ant-design:shopping-cart-outlined",
+  Risk: "ant-design:alert-outlined",
+  Monitor: "ant-design:monitor-outlined",
+  Strategy: "ant-design:code-outlined",
+  Backtest: "ant-design:experiment-outlined",
+  Analysis: "ant-design:fund-outlined",
+  Data: "ant-design:database-outlined",
+  Portfolio: "ant-design:pie-chart-outlined",
+  Performance: "ant-design:rise-outlined",
+  System: "ant-design:control-outlined",
+  Research: "ant-design:search-outlined",
+  Market: "ant-design:global-outlined",
+  Sync: "ant-design:sync-outlined",
+  Report: "ant-design:file-text-outlined",
+  Account: "ant-design:wallet-outlined",
+  Order: "ant-design:ordered-list-outlined",
+};
+
+const iconName = computed(
+  () => iconMap[props.name] || "ant-design:question-circle-outlined",
+);
 </script>

@@ -8,8 +8,8 @@ import {
   ApiResponse,
   PaginatedResponse,
   BatchOrderResponse,
-} from "@/types/api";
-import { Account, Order, Position } from "@/types/entities";
+} from "@/types";
+import { Account, Order, Position } from "@/types";
 
 export interface TradePerformance {
   total_profit: number;

@@ -109,7 +109,8 @@ export function useStrategy() {
     },
   ) => {
     try {
-      const result = await backtestAPI.runBacktest({
+      const result = await backtestAPI.createTask({
+        name: `回测_${strategyId}`,
         strategyId,
         startDate: config.start_date,
         endDate: config.end_date,
@@ -161,16 +162,15 @@ export function useStrategy() {
   ) => {
     try {
       // 参数优化通过回测 API 发起
-      const result = await backtestAPI.runBacktest({
+      const result = await backtestAPI.optimizeParameters({
         strategyId,
+        parameterRanges: optimizationConfig.parameter_ranges as any,
+        optimizationTarget: optimizationConfig.metric,
         startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
           .toISOString()
           .split("T")[0],
         endDate: new Date().toISOString().split("T")[0],
         initialCapital: 1000000,
-        commission: 0.0003,
-        slippage: 0.01,
-        parameters: optimizationConfig.parameter_ranges,
       } as any);
       return result;
     } catch (error) {

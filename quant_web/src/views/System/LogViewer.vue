@@ -1,38 +1,20 @@
 <!--日志查看-->
 <template>
   <div class="log-viewer bg-gradient-mesh bg-noise">
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">系统日志</h1>
+        </div>
+        <div class="header-actions">
+          <n-select v-model:value="logLevel" multiple placeholder="日志级别" size="small" style="width: 200px" :options="logLevelOptions" />
+          <n-input v-model:value="searchKeyword" placeholder="搜索日志内容" size="small" clearable style="width: 200px" />
+          <n-button type="primary" size="small" @click="loadLogs">查询</n-button>
+          <n-button size="small" @click="clearLogs">清空</n-button>
+        </div>
+      </div>
+    </div>
     <n-card>
-      <template #header>
-        <n-grid :cols="24" :x-gap="12">
-          <n-grid-item :span="8">
-            <span>系统日志</span>
-          </n-grid-item>
-          <n-grid-item :span="16" style="text-align: right">
-            <n-space justify="end" :size="8">
-              <n-select
-                v-model:value="logLevel"
-                multiple
-                placeholder="日志级别"
-                size="small"
-                style="width: 200px"
-                :options="logLevelOptions"
-              />
-              <n-input
-                v-model:value="searchKeyword"
-                placeholder="搜索日志内容"
-                size="small"
-                clearable
-                style="width: 200px"
-              />
-              <n-button type="primary" size="small" @click="loadLogs"
-                >查询</n-button
-              >
-              <n-button size="small" @click="clearLogs">清空</n-button>
-            </n-space>
-          </n-grid-item>
-        </n-grid>
-      </template>
-
       <div class="log-container">
         <n-spin :show="loading">
           <n-result

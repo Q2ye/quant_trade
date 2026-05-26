@@ -41,7 +41,7 @@ async def health_root () -> JSONResponse:
 		Dict: 健康状态
 	"""
 	return success_response(
-		message="量化交易系统运行正常",
+		message="一念量化运行正常",
 		data={
 			"service": "quant_server",
 			"status": "healthy",

@@ -2,7 +2,7 @@
 import { ref, onMounted, h } from "vue";
 import { NTag, NButton, NSpin, NEmpty } from "naive-ui";
 import { useMessage } from "naive-ui";
-import type { TradingSignal as Signal } from "@/types/entities/trading";
+import type { TradingSignal as Signal } from "@/types";
 
 const message = useMessage();
 const signals = ref<Signal[]>([]);
@@ -145,32 +145,18 @@ onMounted(() => {
 
 <template>
   <div class="signal-history bg-gradient-mesh bg-noise">
-    <div class="history-header">
-      <h3>历史信号分析</h3>
-      <div class="filter-controls">
-        <n-date-picker
-          v-model:value="filterParams.startDate"
-          type="date"
-          placeholder="开始日期"
-          style="width: 150px"
-          value-format="yyyy-MM-dd"
-        />
-        <n-date-picker
-          v-model:value="filterParams.endDate"
-          type="date"
-          placeholder="结束日期"
-          style="width: 150px"
-          value-format="yyyy-MM-dd"
-        />
-        <n-select
-          v-model:value="filterParams.signalType"
-          placeholder="信号类型"
-          clearable
-          style="width: 120px"
-          :options="signalTypeOptions"
-        />
-        <n-button type="primary" @click="fetchSignalHistory">查询</n-button>
-        <n-button @click="exportSignals">导出CSV</n-button>
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">历史信号分析</h1>
+        </div>
+        <div class="header-actions">
+          <n-date-picker v-model:value="filterParams.startDate" type="date" placeholder="开始日期" style="width: 150px" value-format="yyyy-MM-dd" />
+          <n-date-picker v-model:value="filterParams.endDate" type="date" placeholder="结束日期" style="width: 150px" value-format="yyyy-MM-dd" />
+          <n-select v-model:value="filterParams.signalType" placeholder="信号类型" clearable style="width: 120px" :options="signalTypeOptions" />
+          <n-button type="primary" @click="fetchSignalHistory">查询</n-button>
+          <n-button @click="exportSignals">导出CSV</n-button>
+        </div>
       </div>
     </div>
 
@@ -200,27 +186,9 @@ onMounted(() => {
 
 <style scoped>
 .signal-history {
-  padding: 20px;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.history-header h3 {
-  margin: 0;
-  color: var(--n-text-color-1);
-}
-
-.filter-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .table-spin {

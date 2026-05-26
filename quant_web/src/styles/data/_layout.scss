@@ -87,30 +87,6 @@
   }
 }
 
-/// 页面标题布局
-.page-header-with-sidebar {
-  @include mix.page-header-base;
-  margin-left: $sidebar-expanded-width;
-  width: calc(100% - $sidebar-expanded-width);
-  transition: all $transition-normal;
-  flex-shrink: 0; // 作为固定区域不参与滚动
-
-  .sidebar-collapsed & {
-    margin-left: $sidebar-collapsed-width;
-    width: calc(100% - $sidebar-collapsed-width);
-  }
-
-  @include mix.media-breakpoint-down(sm) {
-    .header-content {
-      padding: 0 map.get($spacers, 2);
-    }
-
-    .title-section .page-title {
-      font-size: $font-size-base * 1.4;
-    }
-  }
-}
-
 /// 状态概览网格布局（整合智能滚动）
 .status-overview-grid {
   @include mix.status-overview-grid;

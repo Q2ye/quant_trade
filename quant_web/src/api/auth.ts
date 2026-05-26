@@ -2,7 +2,7 @@ import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
 import { ApiResponse } from "@/types";
 import { AxiosResponse } from "axios";
-import { UserInfo } from "@/types/api/user";
+import { UserInfo } from "@/types";
 
 /**
  * 认证管理API服务

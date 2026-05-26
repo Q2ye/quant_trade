@@ -180,8 +180,14 @@ onMounted(() => fetchUsers());
 <template>
   <div class="user-management bg-gradient-mesh bg-noise">
     <div class="page-header">
-      <h3>用户管理</h3>
-      <n-button type="primary" @click="handleAdd">添加用户</n-button>
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">用户管理</h1>
+        </div>
+        <div class="header-actions">
+          <n-button type="primary" @click="handleAdd">添加用户</n-button>
+        </div>
+      </div>
     </div>
 
     <n-spin :show="loading">
@@ -245,17 +251,5 @@ onMounted(() => fetchUsers());
   padding: 20px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.page-header h3 {
-  margin: 0;
-  color: var(--n-text-color-1);
-}
+/* .page-header 已迁移至全局样式（global.scss） */
 </style>

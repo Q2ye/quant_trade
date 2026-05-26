@@ -1,7 +1,7 @@
 <template>
   <div class="login-container">
     <div class="login-form">
-      <h2>量化交易平台</h2>
+      <h2>一念量化</h2>
       <div class="form-group">
         <label for="username">用户名</label>
         <input

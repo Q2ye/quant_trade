@@ -102,18 +102,15 @@ onMounted(() => fetchRiskEvents());
 
 <template>
   <div class="risk-events bg-gradient-mesh bg-noise">
-    <div class="events-header">
-      <h3>风险事件记录</h3>
-      <div class="stats">
-        <span
-          >今日事件:
-          {{
-            events.filter((e) =>
-              e.created_at.startsWith(new Date().toISOString().split("T")[0]),
-            ).length
-          }}</span
-        >
-        <span>总事件数: {{ events.length }}</span>
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">风险事件记录</h1>
+        </div>
+        <div class="header-actions">
+          <span class="stat-badge">今日事件: {{ events.filter((e) => e.created_at.startsWith(new Date().toISOString().split("T")[0])).length }}</span>
+          <span class="stat-badge">总事件数: {{ events.length }}</span>
+        </div>
       </div>
     </div>
 
@@ -134,27 +131,16 @@ onMounted(() => fetchRiskEvents());
 
 <style scoped>
 .risk-events {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
-.events-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.events-header h3 {
-  margin: 0;
-  color: var(--n-text-color-1);
-}
-
-.stats {
-  display: flex;
-  gap: 20px;
+.stat-badge {
   color: var(--n-text-color-2);
-  font-size: 14px;
+  font-size: 13px;
+  padding: 4px 12px;
+  background: var(--color-bg-secondary, rgba(255, 255, 255, 0.04));
+  border-radius: 4px;
 }
 </style>

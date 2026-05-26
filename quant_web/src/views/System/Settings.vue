@@ -1,6 +1,13 @@
 <!--系统设置-->
 <template>
   <div class="settings bg-gradient-mesh bg-noise">
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">系统设置</h1>
+        </div>
+      </div>
+    </div>
     <n-card class="card-surface">
       <n-tabs v-model:value="activeTab">
         <!-- 交易设置 -->

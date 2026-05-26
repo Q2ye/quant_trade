@@ -6,7 +6,7 @@ import type {
   RealTimeQuoteMessage,
   OrderStatusMessage,
   RiskAlertMessage,
-} from "@/types/api/websocket";
+} from "@/types";
 
 interface WebSocketMessage {
   event: string;

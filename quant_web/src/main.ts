@@ -129,7 +129,11 @@ import {
 } from "naive-ui";
 
 // 引入主题配置
-import { getThemeOverrides } from "@/assets/themes/naive-theme";
+import {
+  getThemeOverrides,
+  injectThemeCSSVariables,
+  setCurrentThemeMode,
+} from "@/assets/themes/naive-theme";
 
 // 注册全局指令
 import resize from "./directives/resize";
@@ -350,11 +354,17 @@ async function initializeThemeSystem() {
       "color-scheme",
       isDark ? "dark" : "light",
     );
+
+    // 注入主题 CSS 变量到 DOM（--color-* 系列），供 SCSS 系统使用
+    injectThemeCSSVariables(isDark);
+    setCurrentThemeMode(isDark);
   } catch (error) {
     console.warn("⚠️ 主题系统初始化失败，使用默认深色主题:", error);
     // 失败时使用默认深色主题
     document.documentElement.dataset.theme = "dark";
     document.documentElement.style.setProperty("color-scheme", "dark");
+    injectThemeCSSVariables(true);
+    setCurrentThemeMode(true);
   }
 }
 

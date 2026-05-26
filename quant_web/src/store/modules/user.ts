@@ -3,9 +3,9 @@ import { Module } from "vuex";
 import authApi from "../../api/auth";
 import userApi from "../../api/user";
 import { RootState } from "@/types";
-import { User } from "@/types/entities/user"; // 使用entities的User类型
+import { User } from "@/types";
 import { AuthResponse } from "@/api/auth";
-import { UserConverter } from "@/types/utils/converters/userConverter";
+import { UserConverter } from "@/types";
 
 interface UserState {
   token: string | null;

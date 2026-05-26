@@ -5,13 +5,13 @@ import { handleResponse } from "@/utils/responseHandler";
 import {
   Strategy,
   StrategyPerformance,
-} from "@/types/entities/strategy";
+} from "@/types";
 import {
   ApiResponse,
   PaginatedResponse,
   PaginationParams,
   StrategyStatusInfo,
-} from "@/types/api";
+} from "@/types";
 
 // ============================================================
 // 请求/响应类型定义
@@ -76,62 +76,62 @@ export interface StrategyPerformanceResponse extends ApiResponse<StrategyPerform
 export default {
   async getStrategies(params?: StrategyQueryParams): Promise<Strategy[]> {
     return request
-      .get("/quantTrade/strategy/strategies", { params })
+      .get("/quantTrade/strategy", { params })
       .then(handleResponse)
-      .then((data: StrategyListResponse) => data.data.items);
+      .then((data: any) => data.data);
   },
 
   async getStrategy(id: string): Promise<Strategy> {
     return request
-      .get(`/strategy/strategies/${id}`)
+      .get(`/quantTrade/strategy/${id}`)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
   },
 
   async createStrategy(data: CreateStrategyRequest): Promise<Strategy> {
     return request
-      .post("/quantTrade/strategy/strategies", data)
+      .post("/quantTrade/strategy", data)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
   },
 
   async updateStrategy(id: string, data: UpdateStrategyRequest): Promise<Strategy> {
     return request
-      .put(`/strategy/strategies/${id}`, data)
+      .put(`/quantTrade/strategy/${id}`, data)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
   },
 
   async deleteStrategy(id: string): Promise<void> {
     return request
-      .delete(`/strategy/strategies/${id}`)
+      .delete(`/quantTrade/strategy/${id}`)
       .then(handleResponse);
   },
 
   async startStrategy(id: string, params?: Record<string, any>): Promise<StrategyStatusInfo> {
     return request
-      .post(`/strategy/strategies/${id}/start`, params || {})
+      .post(`/quantTrade/strategy/${id}/start`, params || {})
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
   },
 
   async stopStrategy(id: string): Promise<StrategyStatusInfo> {
     return request
-      .post(`/strategy/strategies/${id}/stop`)
+      .post(`/quantTrade/strategy/${id}/stop`)
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
   },
 
   async getStrategyPerformance(id: string): Promise<StrategyPerformance> {
     return request
-      .get(`/strategy/strategies/${id}/performance`)
+      .get(`/quantTrade/strategy/${id}/performance`)
       .then(handleResponse)
       .then((data: StrategyPerformanceResponse) => data.data);
   },
 
   async getStrategyStatus(id: string): Promise<StrategyStatusInfo> {
     return request
-      .get(`/strategy/strategies/${id}/status`)
+      .get(`/quantTrade/strategy/${id}/status`)
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
   },

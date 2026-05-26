@@ -8,12 +8,12 @@ import {
   FinancialDataResponse,
   StockListResponse,
   HistoricalDataResponse,
-} from "@/types/api/data";
+} from "@/types";
 import {
   FinancialData,
   HistoricalDataPoint,
   StockBasic,
-} from "@/types/entities/data";
+} from "@/types";
 
 // 定义股票列表返回结果的接口
 interface StockListResult {

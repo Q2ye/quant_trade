@@ -162,13 +162,17 @@ onMounted(() => fetchBlacklist());
 
 <template>
   <div class="blacklist-management bg-gradient-mesh bg-noise">
-    <div class="management-header">
-      <h3>黑名单管理</h3>
-      <n-space :size="8">
-        <n-button type="primary" @click="handleAdd">添加黑名单</n-button>
-        <n-button @click="handleImport">导入</n-button>
-        <n-button @click="exportBlacklist">导出</n-button>
-      </n-space>
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">黑名单管理</h1>
+        </div>
+        <div class="header-actions">
+          <n-button type="primary" @click="handleAdd">添加黑名单</n-button>
+          <n-button @click="handleImport">导入</n-button>
+          <n-button @click="exportBlacklist">导出</n-button>
+        </div>
+      </div>
     </div>
 
     <n-spin :show="loading">
@@ -221,20 +225,8 @@ onMounted(() => fetchBlacklist());
 
 <style scoped>
 .blacklist-management {
-  padding: 20px;
-}
-
-.management-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.management-header h3 {
-  margin: 0;
-  color: var(--n-text-color-1);
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 </style>

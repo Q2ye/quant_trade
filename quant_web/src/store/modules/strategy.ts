@@ -9,7 +9,7 @@ import {
   TradeSignal,
   StrategyPerformance,
   StrategyStatusInfo,
-} from "@/types/entities/strategy";
+} from "@/types";
 import strategyAPI from "@/api/strategy";
 import backtestAPI from "@/api/backtest";
 import signalsAPI from "@/api/signals";
@@ -254,10 +254,10 @@ const actions = {
    */
   async updateStrategy(
     { commit }: any,
-    { strategyId, updates }: { strategyId: string; updates: Partial<Strategy> },
+    strategyData: Strategy,
   ) {
     try {
-      const strategy = await strategyAPI.updateStrategy(strategyId, updates as any);
+      const strategy = await strategyAPI.updateStrategy(strategyData.id, strategyData as any);
       commit("UPDATE_STRATEGY", strategy);
       return strategy;
     } catch (error) {
@@ -336,7 +336,8 @@ const actions = {
     { strategyId, config }: { strategyId: string; config: any },
   ) {
     try {
-      const result = await backtestAPI.runBacktest({
+      const result = await backtestAPI.createTask({
+        name: `回测_${strategyId}`,
         strategyId,
         ...config,
       } as any);

@@ -2,7 +2,7 @@
 // 仪表盘
 import { Module } from "vuex";
 import { RootState, DashboardState } from "@/types";
-import { DashboardData, RealTimeDataEvent } from "@/types/entities/dashboard";
+import { DashboardData, RealTimeDataEvent } from "@/types";
 import dashboardAPI from "@/api/dashboard";
 
 const dashboardModule: Module<DashboardState, RootState> = {

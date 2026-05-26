@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, h } from "vue";
 import { NTag, NButton, NProgress, NSpin, NResult } from "naive-ui";
 import { useMessage } from "naive-ui";
-import type { TradingSignal as Signal } from "@/types/entities/trading";
+import type { TradingSignal as Signal } from "@/types";
 
 const message = useMessage();
 const loading = ref(false);
@@ -266,13 +266,15 @@ onUnmounted(() => {
 
 <template>
   <div class="signal-monitor bg-gradient-mesh bg-noise">
-    <div class="monitor-header">
-      <h3>实时信号监控</h3>
-      <div class="header-controls">
-        <div class="stats">
-          <span>今日信号: {{ todaySignalsCount }}</span>
-          <span>活跃策略: 12</span>
-          <span
+    <div class="page-header">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">实时信号监控</h1>
+        </div>
+        <div class="header-actions">
+          <span class="signal-stat">今日信号: {{ todaySignalsCount }}</span>
+          <span class="signal-stat">活跃策略: 12</span>
+          <span class="signal-stat"
             >连接状态:
             <n-tag
               :type="wsConnection?.readyState === WS_OPEN ? 'success' : 'error'"
@@ -281,15 +283,15 @@ onUnmounted(() => {
               {{ wsConnection?.readyState === WS_OPEN ? "已连接" : "未连接" }}
             </n-tag>
           </span>
+          <n-button
+            v-if="wsConnection?.readyState !== WS_OPEN"
+            @click="manualReconnect"
+            size="small"
+            :loading="isConnecting"
+          >
+            重新连接
+          </n-button>
         </div>
-        <n-button
-          v-if="wsConnection?.readyState !== WS_OPEN"
-          @click="manualReconnect"
-          size="small"
-          :loading="isConnecting"
-        >
-          重新连接
-        </n-button>
       </div>
     </div>
 
@@ -336,36 +338,16 @@ onUnmounted(() => {
 
 <style scoped>
 .signal-monitor {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
-.monitor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--n-border-color);
-}
-
-.monitor-header h3 {
-  margin: 0;
-  color: var(--n-text-color-1);
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.stats {
-  display: flex;
-  gap: 20px;
+.signal-stat {
+  font-size: 13px;
   color: var(--n-text-color-2);
-  font-size: 14px;
-  align-items: center;
 }
+
 
 .empty-state {
   text-align: center;

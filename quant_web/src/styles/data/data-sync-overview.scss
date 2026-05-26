@@ -5,21 +5,16 @@
 // 导入混入工具库
 @use "sass:map"; // 导入Sass映射函数模块
 
+// 左右内边距由 MainLayout 的 .workspace-content 全局统一提供，不再使用 mixin
 .data-sync-overview {
-  @include mix.content-with-base;
-  .main-content {
-    @include mix.content-with-sidebar; // 应用带侧边栏的内容布局混入
-    margin: 0 auto; // 水平居中
-  }
+  padding: 0;
 }
 
 // ============================================================================
 // 页面标题样式优化
 // ============================================================================
 
-.common-page-header {
-  @include mix.page-header-base; // 应用页面头部基础样式混入
-}
+// .common-page-header → 已迁移至全局 .page-header（global.scss）
 
 // ============================================================================
 // 章节标题样式优化
@@ -550,9 +545,6 @@
 // 中等屏幕调整 (≤768px) - 控制平板设备布局
 @include mix.media-breakpoint-down(md) {
   .data-sync-overview {
-    // 页面内边距调整为第2级间距 - 缩小移动端边距
-    padding: map.get($spacers, 2);
-
     .function-nav .function-grid {
       // 网格布局调整为1列 - 平板显示1个功能卡片每行
       grid-template-columns: 1fr;

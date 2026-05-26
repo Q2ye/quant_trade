@@ -3,7 +3,7 @@
 import { Module } from "vuex";
 import api from "@/api/trade";
 import { Account, Order, Position, Trade, RootState } from "@/types";
-import { OrderStatus } from "@/types/entities/base";
+import { OrderStatus } from "@/types";
 
 // 使用统一的类型
 interface TradeState {

@@ -7,7 +7,7 @@ import {
   ScheduledTask,
   SystemLog,
   SystemSetting,
-} from "@/types/entities/system";
+} from "@/types";
 import { ConnectionStatus, ResourceUsage, DatabaseStatus } from "@/api/system";
 
 /**

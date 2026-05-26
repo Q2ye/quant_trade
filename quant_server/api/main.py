@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_app (
-		title: str = "量化交易平台",
+		title: str = "一念量化",
 		version: str = "1.0.0",
-		description: str = "基于混合架构的量化交易平台API",
+		description: str = "基于混合架构的一念量化API",
 		docs_url: str = "/docs",
 		redoc_url: str = "/redoc",
 		openapi_url: str = "/openapi.json",

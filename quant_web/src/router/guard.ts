@@ -77,9 +77,9 @@ export const layoutGuard = (
 ) => {
   // 设置页面标题
   if (to.meta.title) {
-    document.title = `${to.meta.title} - 专业级量化交易平台`;
+    document.title = `${to.meta.title} - 一念量化`;
   } else {
-    document.title = "专业级量化交易平台";
+    document.title = "一念量化";
   }
   if (from.meta.layout !== to.meta.layout) {
     // 强制重新渲染布局组件

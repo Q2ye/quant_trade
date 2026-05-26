@@ -12,6 +12,11 @@ interface Stock {
   change: number;
 }
 
+const props = defineProps<{
+  initialSymbol?: string;
+  initialSide?: "buy" | "sell";
+}>();
+
 const emit = defineEmits<{
   "previewOrder": [order: any];
 }>();
@@ -21,6 +26,7 @@ const message = useMessage();
 const symbol = ref("");
 const currentStock = ref<Stock | null>(null);
 const direction = ref<"buy" | "sell">("buy");
+
 const orderType = ref<"limit" | "market" | "stop" | "stop_limit">("limit");
 const price = ref(0);
 const quantity = ref(100);
@@ -56,18 +62,6 @@ const getOrderTypeName = (type: string) => {
   return names[type] || type;
 };
 
-watch(orderType, (newVal) => {
-  if (newVal === "market") {
-    price.value = 0;
-  } else if (!price.value && currentStock.value) {
-    price.value = currentStock.value.price;
-  }
-});
-
-watch(symbol, (newVal) => {
-  if (!newVal) currentStock.value = null;
-});
-
 const searchStock = () => {
   if (!symbol.value) {
     currentStock.value = null;
@@ -85,6 +79,26 @@ const searchStock = () => {
     currentStock.value = null;
   }
 };
+
+// Auto-fill from parent (cross-page linking: Workspace → Dashboard)
+watch(() => props.initialSymbol, (val) => {
+  if (val) { symbol.value = val; searchStock(); }
+}, { immediate: true });
+watch(() => props.initialSide, (val) => {
+  if (val) direction.value = val;
+}, { immediate: true });
+
+watch(orderType, (newVal) => {
+  if (newVal === "market") {
+    price.value = 0;
+  } else if (!price.value && currentStock.value) {
+    price.value = currentStock.value.price;
+  }
+});
+
+watch(symbol, (newVal) => {
+  if (!newVal) currentStock.value = null;
+});
 
 const resetForm = () => {
   symbol.value = "";
@@ -355,11 +369,12 @@ label {
 
 .form-actions {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 10px;
 }
 
 .form-actions .n-button {
-  flex: 1;
+  width: 100%;
 }
 </style>

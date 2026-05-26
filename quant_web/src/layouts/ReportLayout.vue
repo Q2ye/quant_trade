@@ -29,13 +29,13 @@
 
     <!-- 报告内容区域 -->
     <div class="report-content">
-      <slot />
+      <router-view />
     </div>
 
     <!-- 报告页脚 -->
     <div class="report-footer">
       <span>生成时间: {{ generateTime }}</span>
-      <span>量化交易平台 v1.0</span>
+      <span>一念量化 v1.0</span>
     </div>
   </div>
 </template>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="1" failures="0" errors="0" time="0.5293211">
+    <testsuite name="tests/unit/smoke.spec.ts" timestamp="2026-05-05T10:23:03.406Z" hostname="阿秦" tests="1" failures="0" errors="0" skipped="0" time="0.5293211">
+        <testcase classname="tests/unit/smoke.spec.ts" name="Smoke &gt; mounts App without crash" time="0.527724">
+            <system-out>
+🎯 App 组件已挂载
+
+            </system-out>
+            <system-err>
+[Vue warn]: Component &quot;RouterLink&quot; has already been registered in target app.
+[naive/back-top]: Container of back-top element is not found. This could be a bug of naive-ui.
+⚠️ 主题初始化失败，使用默认深色主题: TypeError: window.matchMedia is not a function
+    at initializeTheme [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39msrc\App.vue:230:38[90m)[39m
+    at [90mE:\QuantitativeTrading\myObject\quant_trade\quant_web\[39msrc\App.vue:198:7
+    at [90mE:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:2863:40
+    at callWithErrorHandling [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:200:19[90m)[39m
+    at callWithAsyncErrorHandling [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:207:17[90m)[39m
+    at hook.__weh.hook.__weh [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:2843:19[90m)[39m
+    at flushPostFlushCbs [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:382:28[90m)[39m
+    at render [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:6660:7[90m)[39m
+    at mount [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:3982:13[90m)[39m
+    at Object.app.mount [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-dom@3.5.25\node_modules\[4m@vue[24m\runtime-dom\dist\runtime-dom.cjs.js:1761:19[90m)[39m
+
+            </system-err>
+        </testcase>
+    </testsuite>
+</testsuites>

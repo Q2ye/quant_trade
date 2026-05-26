@@ -2,16 +2,14 @@
 // quant_web/src/store/modules/performance.ts
 
 import { Module } from "vuex";
-import { PerformanceState } from "@/types/state/module-states/performance-state";
+import { PerformanceState } from "@/types";
 import {
   StrategyListItem,
   PerformanceComparison,
-} from "@/types/api/performance";
-
-// 导入绩效分析API服务
+} from "@/types";
 import performanceApi from "@/api/performance";
 import { RootState } from "@/types";
-import { AccountPerformance, StrategyPerformance } from "@/types/entities/performance";
+import { AccountPerformance, StrategyPerformance } from "@/types";
 
 /**
  * 绩效分析Vuex模块

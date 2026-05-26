@@ -3,7 +3,7 @@ import { ref } from "vue";
 import { useStore } from "vuex";
 import { useWebSocket } from "./useWebSocket";
 import type { Trade, Position } from "@/types";
-import type { PlaceOrderRequest } from "@/types/api/trade";
+import type { PlaceOrderRequest } from "@/types";
 
 export function useTrade() {
   const store = useStore();

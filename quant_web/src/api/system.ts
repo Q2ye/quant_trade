@@ -5,8 +5,8 @@ import {
   ApiResponse,
   PaginatedResponse,
   HealthCheckResponse,
-} from "@/types/api";
-import { SystemLog } from "@/types/entities";
+} from "@/types";
+import { SystemLog } from "@/types";
 
 /**
  * 系统管理API服务

@@ -6,7 +6,7 @@ import {
   SystemStatusMessage,
   RiskAlertMessage,
   TradeRecord,
-} from "@/types/api";
+} from "@/types";
 
 type WebSocketCallback<T = any> = (data: T) => void;
 

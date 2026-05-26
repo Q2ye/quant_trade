@@ -326,7 +326,7 @@ class LogSettings(BaseSettings):
 
 class SystemSettings(BaseSettings):
 	"""系统配置"""
-	name: str = "量化交易平台"
+	name: str = "一念量化"
 	version: str = "1.0.0"
 	enable_web_socket: bool = True
 	enable_monitoring: bool = True
@@ -378,7 +378,7 @@ class ConfigSettings(BaseSettings):
 
 	# 环境配置
 	ENVIRONMENT: Environment = Environment.DEVELOPMENT
-	APP_NAME: str = "量化交易平台"
+	APP_NAME: str = "一念量化"
 	APP_VERSION: str = "1.0.0"
 	DEBUG: bool = True
 
@@ -514,8 +514,8 @@ class ConfigManager:
 	@staticmethod
 	def _find_config_yaml () -> Optional[str]:
 		"""自动发现 config.yaml 位置"""
-		# 相对当前模块所在包目录 (shared/config/../../ → quant_server/)
-		package_root = Path(__file__).resolve().parent.parent
+		# 相对当前模块所在包目录 (shared/config/../../../ → quant_server/)
+		package_root = Path(__file__).resolve().parent.parent.parent
 		candidates = [
 			"config.yaml",
 			str(package_root / "config.yaml"),
@@ -865,7 +865,7 @@ def with_fallback_config (fallback_config: Optional[Dict[str, Any]] = None):
 					# 创建回退配置实例
 					class FallbackSettings(BaseSettings):
 						ENVIRONMENT: Environment = Environment.DEVELOPMENT
-						APP_NAME: str = "量化交易平台"
+						APP_NAME: str = "一念量化"
 						APP_VERSION: str = "1.0.0"
 						DEBUG: bool = True
 
@@ -886,7 +886,7 @@ def with_fallback_config (fallback_config: Optional[Dict[str, Any]] = None):
 	return decorator
 
 
-@with_fallback_config({"APP_NAME": "量化交易平台（回退模式）"})
+@with_fallback_config({"APP_NAME": "一念量化（回退模式）"})
 def load_config_with_fallback () -> ConfigManager:
 	"""
 	加载配置，使用回退机制

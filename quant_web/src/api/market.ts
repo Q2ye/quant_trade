@@ -8,8 +8,8 @@ import {
   KLineData,
   IndexInfo,
   SectorInfo,
-} from "@/types/api";
-import { FinancialData, StockBasic } from "@/types/entities/data";
+} from "@/types";
+import { FinancialData, StockBasic } from "@/types";
 
 /**
  * 市场数据API服务

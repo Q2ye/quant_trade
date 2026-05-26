@@ -7,7 +7,7 @@ import {
   UserPermission,
   ApiResponse,
   PaginatedResponse,
-} from "@/types/api";
+} from "@/types";
 
 /**
  * 用户管理API服务
