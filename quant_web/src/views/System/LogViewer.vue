@@ -14,6 +14,7 @@
         </div>
       </div>
     </div>
+    <div class="main-content">
     <n-card>
       <div class="log-container">
         <n-spin :show="loading">
@@ -50,6 +51,7 @@
         </n-spin>
       </div>
     </n-card>
+    </div><!-- .main-content -->
   </div>
 </template>
 
@@ -147,7 +149,9 @@ export default {
 
 <style scoped>
 .log-viewer {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .log-container {

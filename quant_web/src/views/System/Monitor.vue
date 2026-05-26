@@ -9,6 +9,7 @@
       </div>
     </div>
 
+    <div class="main-content">
     <n-result
       v-if="error"
       status="500"
@@ -71,6 +72,7 @@
         </n-grid-item>
       </n-grid>
     </n-spin>
+    </div><!-- .main-content -->
   </div>
 </template>
 
@@ -141,7 +143,9 @@ export default {
 
 <style scoped>
 .system-monitor {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .monitor-grid {

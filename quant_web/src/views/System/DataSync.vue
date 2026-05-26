@@ -10,8 +10,9 @@
       </div>
     </div>
 
-    <n-card title="数据源状态" class="sync-card">
-      <div class="status-grid">
+    <div class="main-content">
+      <n-card title="数据源状态" class="sync-card">
+        <div class="status-grid">
         <div
           class="status-item"
           v-for="source in dataSources"
@@ -41,28 +42,31 @@
 
     <n-card title="同步历史" class="sync-card">
       <template #header-extra>
-        <n-space :size="8">
+        <div class="filter-controls">
           <n-select
             v-model:value="filterStatus"
             placeholder="全部状态"
             clearable
-            style="width: 120px"
+            size="small"
+            style="width: 100px"
             :options="statusOptions"
           />
           <n-select
             v-model:value="filterSource"
             placeholder="全部数据源"
             clearable
-            style="width: 140px"
+            size="small"
+            style="width: 120px"
             :options="sourceOptions"
           />
           <n-date-picker
             v-model:value="dateRange"
             type="daterange"
             clearable
+            size="small"
             value-format="yyyy-MM-dd"
           />
-        </n-space>
+        </div>
       </template>
 
       <n-spin :show="loading">
@@ -80,6 +84,7 @@
         </n-data-table>
       </n-spin>
     </n-card>
+    </div><!-- .main-content -->
   </div>
 </template>
 
@@ -239,7 +244,9 @@ export default {
 
 <style scoped>
 .data-sync {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .sync-card {
@@ -280,5 +287,12 @@ export default {
 .last-sync {
   font-size: 12px;
   color: var(--n-text-color-3);
+}
+
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

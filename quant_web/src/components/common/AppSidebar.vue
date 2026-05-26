@@ -449,20 +449,20 @@ export default defineComponent({
 
 /* 每个导航分区之间的间距 */
 .nav-section {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   flex-shrink: 0;
 }
 
 /* 分区标题（如"数据中心""策略中心"）— 展开态可见，折叠态渐变消失 */
 .nav-header {
-  padding: 16px 20px 8px;
+  padding: 10px 20px 6px;
   font-size: 12px;
   color: var(--n-text-color-3);
   text-transform: uppercase;
   letter-spacing: 1px;
   font-weight: 600;
   border-bottom: 1px solid var(--n-divider-color);
-  margin: 0 8px 8px;
+  margin: 0 8px 4px;
   white-space: nowrap;
   opacity: 1;
   transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -475,15 +475,22 @@ export default defineComponent({
   width: var(--sidebar-collapsed-width, 64px);
   overflow: hidden;
 
-  /* 折叠时渐变隐藏分区标题 */
+  /* 折叠时隐藏分区标题并移除其占位空间 */
   .nav-header {
     opacity: 0;
     pointer-events: none;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+    overflow: hidden;
   }
 
   /* 折叠时减小分区间距 */
   .nav-section {
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
 
   .sidebar-content {

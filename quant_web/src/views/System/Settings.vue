@@ -8,6 +8,7 @@
         </div>
       </div>
     </div>
+    <div class="main-content">
     <n-card class="card-surface">
       <n-tabs v-model:value="activeTab">
         <!-- 交易设置 -->
@@ -152,6 +153,7 @@
         </n-space>
       </div>
     </n-card>
+    </div><!-- .main-content -->
   </div>
 </template>
 
@@ -255,7 +257,9 @@ export default {
 
 <style scoped>
 .settings {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .tip {

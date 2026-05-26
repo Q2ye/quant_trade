@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from "vue";
-import { useMessage, NTag, NButton, NSwitch, NSpin, NResult } from "naive-ui";
+import { ref, computed, onMounted, h } from "vue";
+import { useMessage, useDialog, NTag, NButton, NSwitch, NSpin, NResult } from "naive-ui";
 
 const message = useMessage();
+const dialog = useDialog();
 const loading = ref(false);
 const error = ref(false);
 
@@ -29,11 +30,25 @@ const userForm = ref({
   role: "user",
   is_active: true,
 });
+const searchKeyword = ref("");
+const currentPage = ref(1);
+const pageSize = ref(20);
 
 const roleOptions = [
   { label: "普通用户", value: "user" },
   { label: "管理员", value: "admin" },
 ];
+
+const filteredUsers = computed(() => {
+  if (!searchKeyword.value) return users.value;
+  const kw = searchKeyword.value.toLowerCase();
+  return users.value.filter(
+    (u) =>
+      u.username.toLowerCase().includes(kw) ||
+      u.real_name.toLowerCase().includes(kw) ||
+      u.email.toLowerCase().includes(kw),
+  );
+});
 
 const columns = [
   { title: "用户名", key: "username", width: 120 },
@@ -47,7 +62,7 @@ const columns = [
     render: (row: User) =>
       h(
         NTag,
-        { type: row.role === "admin" ? "error" : "info" },
+        { type: row.role === "admin" ? "error" : "info", size: "small" },
         { default: () => (row.role === "admin" ? "管理员" : "普通用户") },
       ),
   },
@@ -58,32 +73,20 @@ const columns = [
     render: (row: User) =>
       h(
         NTag,
-        { type: row.is_active ? "success" : "default" },
+        { type: row.is_active ? "success" : "default", size: "small" },
         { default: () => (row.is_active ? "激活" : "禁用") },
       ),
   },
-  { title: "最后登录", key: "last_login", width: 180 },
+  { title: "最后登录", key: "last_login", width: 160 },
   {
     title: "操作",
     key: "op",
     width: 200,
     render: (row: User) =>
       h("div", { style: { display: "flex", gap: "8px" } }, [
-        h(
-          NButton,
-          { size: "small", onClick: () => editUser(row) },
-          { default: () => "编辑" },
-        ),
-        h(
-          NButton,
-          { size: "small", onClick: () => resetPassword(row) },
-          { default: () => "重置密码" },
-        ),
-        h(
-          NButton,
-          { size: "small", type: "error", onClick: () => deleteUser(row.id) },
-          { default: () => "删除" },
-        ),
+        h(NButton, { size: "small", onClick: () => editUser(row) }, { default: () => "编辑" }),
+        h(NButton, { size: "small", onClick: () => resetPassword(row) }, { default: () => "重置密码" }),
+        h(NButton, { size: "small", type: "error", onClick: () => confirmDelete(row) }, { default: () => "删除" }),
       ]),
   },
 ];
@@ -169,9 +172,18 @@ const saveUser = async () => {
 
 const resetPassword = (row: User) =>
   message.info(`重置 ${row.username} 的密码`);
-const deleteUser = (id: number) => {
-  users.value = users.value.filter((u) => u.id !== id);
-  message.success("用户已删除");
+
+const confirmDelete = (row: User) => {
+  dialog.warning({
+    title: "确认删除",
+    content: `确定要删除用户「${row.username}」吗？此操作不可撤销。`,
+    positiveText: "确认",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      users.value = users.value.filter((u) => u.id !== row.id);
+      message.success("用户已删除");
+    },
+  });
 };
 
 onMounted(() => fetchUsers());
@@ -190,7 +202,7 @@ onMounted(() => fetchUsers());
       </div>
     </div>
 
-    <n-spin :show="loading">
+    <div class="main-content">
       <n-result
         v-if="error"
         status="500"
@@ -203,16 +215,43 @@ onMounted(() => fetchUsers());
       </n-result>
 
       <template v-else>
-        <n-data-table
-          :columns="columns"
-          :data="users"
-          :bordered="false"
-          size="small"
-        >
-          <template #empty><n-empty description="暂无用户" /></template>
-        </n-data-table>
+        <n-card class="main-card">
+          <template #header>
+            <div class="card-header">
+              <span>用户列表</span>
+              <n-input
+                v-model:value="searchKeyword"
+                placeholder="搜索用户名/姓名/邮箱..."
+                size="small"
+                clearable
+                style="width: 220px"
+              />
+            </div>
+          </template>
+
+          <n-spin :show="loading">
+            <n-data-table
+              :columns="columns"
+              :data="filteredUsers"
+              :bordered="false"
+              size="small"
+            >
+              <template #empty><n-empty description="暂无用户" /></template>
+            </n-data-table>
+
+            <div class="pagination-container">
+              <n-pagination
+                v-model:page="currentPage"
+                v-model:page-size="pageSize"
+                :item-count="filteredUsers.length"
+                :page-sizes="[10, 20, 50]"
+                show-size-picker
+              />
+            </div>
+          </n-spin>
+        </n-card>
       </template>
-    </n-spin>
+    </div>
 
     <n-modal
       v-model:show="showModal"
@@ -248,8 +287,20 @@ onMounted(() => fetchUsers());
 
 <style scoped>
 .user-management {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
-/* .page-header 已迁移至全局样式（global.scss） */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
 </style>

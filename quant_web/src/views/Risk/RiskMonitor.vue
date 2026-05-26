@@ -6,169 +6,190 @@
           <h1 class="page-title">实时监控</h1>
         </div>
         <div class="header-actions">
-          <n-space :size="8">
-        <n-button type="primary" @click="refreshData" :loading="loading">
-          <template #icon><Icon icon="ep:refresh" /></template>
-          刷新
-        </n-button>
-        <n-button @click="exportData">
-          <template #icon><Icon icon="ep:download" /></template>
-          导出
-        </n-button>
-      </n-space>
+          <n-space :size="12">
+            <n-button type="primary" @click="refreshData" :loading="loading">
+              <template #icon><Icon icon="ep:refresh" /></template>
+              刷新
+            </n-button>
+            <n-button @click="exportData">
+              <template #icon><Icon icon="ep:download" /></template>
+              导出
+            </n-button>
+          </n-space>
         </div>
       </div>
     </div>
 
-    <!-- 监控概览卡片 -->
-    <n-grid
-      :x-gap="16"
-      :y-gap="16"
-      :cols="4"
-      responsive="screen"
-      class="overview-grid"
+    <!-- Error state -->
+    <n-result
+      v-if="pageError"
+      status="500"
+      title="数据加载失败"
+      description="请检查网络连接后重试"
     >
-      <n-grid-item>
-        <n-card class="metric-card">
-          <div class="metric-content">
-            <div
-              class="metric-value"
-              :class="getStatusClass(riskStats.totalRiskLevel)"
-            >
-              {{ riskStats.totalAlerts }}
-            </div>
-            <div class="metric-label">总警报数</div>
-          </div>
-          <template #footer>
-            <div class="metric-footer">
-              <span :class="getTrendClass(riskStats.alertTrend)"
-                >{{ riskStats.alertTrend > 0 ? "↑" : "↓" }}
-                {{ Math.abs(riskStats.alertTrend) }}</span
+      <template #footer>
+        <n-button type="primary" @click="refreshData">重试</n-button>
+      </template>
+    </n-result>
+
+    <div v-else class="main-content">
+      <!-- 监控概览卡片 -->
+      <n-grid
+        :x-gap="16"
+        :y-gap="16"
+        :cols="4"
+        responsive="screen"
+        class="overview-grid"
+      >
+        <n-grid-item>
+          <n-card class="metric-card">
+            <div class="metric-content">
+              <div
+                class="metric-value"
+                :class="getStatusClass(riskStats.totalRiskLevel)"
               >
-              较昨日
+                {{ riskStats.totalAlerts }}
+              </div>
+              <div class="metric-label">总警报数</div>
             </div>
-          </template>
-        </n-card>
-      </n-grid-item>
+            <template #footer>
+              <div class="metric-footer">
+                <span :class="getTrendClass(riskStats.alertTrend)"
+                  >{{ riskStats.alertTrend > 0 ? "↑" : "↓" }}
+                  {{ Math.abs(riskStats.alertTrend) }}</span
+                >
+                较昨日
+              </div>
+            </template>
+          </n-card>
+        </n-grid-item>
 
-      <n-grid-item>
-        <n-card class="metric-card">
-          <div class="metric-content">
-            <div
-              class="metric-value"
-              :class="getStatusClass(riskStats.positionRiskLevel)"
-            >
-              {{ riskStats.positionAlerts }}
+        <n-grid-item>
+          <n-card class="metric-card">
+            <div class="metric-content">
+              <div
+                class="metric-value"
+                :class="getStatusClass(riskStats.positionRiskLevel)"
+              >
+                {{ riskStats.positionAlerts }}
+              </div>
+              <div class="metric-label">持仓风险</div>
             </div>
-            <div class="metric-label">持仓风险</div>
-          </div>
-        </n-card>
-      </n-grid-item>
+          </n-card>
+        </n-grid-item>
 
-      <n-grid-item>
-        <n-card class="metric-card">
-          <div class="metric-content">
-            <div
-              class="metric-value"
-              :class="getStatusClass(riskStats.accountRiskLevel)"
-            >
-              ¥{{ formatNumber(riskStats.accountRiskAmount) }}
+        <n-grid-item>
+          <n-card class="metric-card">
+            <div class="metric-content">
+              <div
+                class="metric-value"
+                :class="getStatusClass(riskStats.accountRiskLevel)"
+              >
+                ¥{{ formatNumber(riskStats.accountRiskAmount) }}
+              </div>
+              <div class="metric-label">账户风险金额</div>
             </div>
-            <div class="metric-label">账户风险金额</div>
-          </div>
-        </n-card>
-      </n-grid-item>
+          </n-card>
+        </n-grid-item>
 
-      <n-grid-item>
-        <n-card class="metric-card">
-          <div class="metric-content">
-            <div
-              class="metric-value"
-              :class="getStatusClass(riskStats.systemRiskLevel)"
-            >
-              {{ riskStats.systemAlerts }}
+        <n-grid-item>
+          <n-card class="metric-card">
+            <div class="metric-content">
+              <div
+                class="metric-value"
+                :class="getStatusClass(riskStats.systemRiskLevel)"
+              >
+                {{ riskStats.systemAlerts }}
+              </div>
+              <div class="metric-label">系统风险</div>
             </div>
-            <div class="metric-label">系统风险</div>
-          </div>
-        </n-card>
-      </n-grid-item>
-    </n-grid>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
 
-    <!-- 实时风险图表 -->
-    <n-grid
-      :x-gap="16"
-      :y-gap="16"
-      :cols="2"
-      responsive="screen"
-      class="chart-grid"
-    >
-      <n-grid-item>
-        <n-card class="chart-card">
-          <template #header>
-            <div class="chart-header">
-              <span>风险事件趋势</span>
+      <!-- 实时风险图表 -->
+      <n-grid
+        :x-gap="16"
+        :y-gap="16"
+        :cols="2"
+        responsive="screen"
+        class="chart-grid"
+      >
+        <n-grid-item>
+          <n-card class="chart-card">
+            <template #header>
+              <div class="chart-header">
+                <span>风险事件趋势</span>
+                <n-select
+                  v-model:value="trendPeriod"
+                  size="small"
+                  style="width: 120px"
+                  :options="periodOptions"
+                />
+              </div>
+            </template>
+            <div ref="riskTrendChart" class="chart-container"></div>
+          </n-card>
+        </n-grid-item>
+
+        <n-grid-item>
+          <n-card class="chart-card">
+            <template #header>
+              <div class="chart-header"><span>风险类型分布</span></div>
+            </template>
+            <div ref="riskTypeChart" class="chart-container"></div>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+
+      <!-- 实时警报列表 -->
+      <n-card class="alerts-card">
+        <template #header>
+          <div class="alerts-header">
+            <span>实时风险警报</span>
+            <n-space :size="8">
               <n-select
-                v-model:value="trendPeriod"
+                v-model:value="alertFilter.level"
+                placeholder="风险等级"
+                size="small"
+                style="width: 100px"
+                clearable
+                :options="levelOptions"
+              />
+              <n-select
+                v-model:value="alertFilter.type"
+                placeholder="风险类型"
                 size="small"
                 style="width: 120px"
-                :options="periodOptions"
+                clearable
+                :options="typeOptions"
               />
-            </div>
-          </template>
-          <div ref="riskTrendChart" class="chart-container"></div>
-        </n-card>
-      </n-grid-item>
+            </n-space>
+          </div>
+        </template>
 
-      <n-grid-item>
-        <n-card class="chart-card">
-          <template #header>
-            <div class="chart-header"><span>风险类型分布</span></div>
-          </template>
-          <div ref="riskTypeChart" class="chart-container"></div>
-        </n-card>
-      </n-grid-item>
-    </n-grid>
+        <n-spin :show="loading">
+          <n-data-table
+            :columns="alertColumns"
+            :data="filteredAlerts"
+            :bordered="false"
+            size="small"
+          >
+            <template #empty>
+              <n-empty description="暂无风险警报" />
+            </template>
+          </n-data-table>
 
-    <!-- 实时警报列表 -->
-    <n-card class="alerts-card">
-      <template #header>
-        <div class="alerts-header">
-          <span>实时风险警报</span>
-          <n-space :size="8">
-            <n-select
-              v-model:value="alertFilter.level"
-              placeholder="风险等级"
-              size="small"
-              style="width: 100px"
-              clearable
-              :options="levelOptions"
+          <div class="pagination-container">
+            <n-pagination
+              v-model:page="currentPage"
+              :item-count="filteredAlerts.length"
+              :page-size="10"
             />
-            <n-select
-              v-model:value="alertFilter.type"
-              placeholder="风险类型"
-              size="small"
-              style="width: 120px"
-              clearable
-              :options="typeOptions"
-            />
-          </n-space>
-        </div>
-      </template>
-
-      <n-spin :show="loading">
-        <n-data-table
-          :columns="alertColumns"
-          :data="filteredAlerts"
-          :pagination="paginationConfig"
-          :bordered="false"
-          size="small"
-        >
-          <template #empty>
-            <n-empty description="暂无风险警报" />
-          </template>
-        </n-data-table>
-      </n-spin>
-    </n-card>
+          </div>
+        </n-spin>
+      </n-card>
+    </div>
   </div>
 </template>
 
@@ -182,9 +203,11 @@ const message = useMessage();
 const dialog = useDialog();
 
 const loading = ref(false);
+const pageError = ref(false);
 const trendPeriod = ref("today");
 const riskTrendChart = ref(null);
 const riskTypeChart = ref(null);
+const currentPage = ref(1);
 
 const periodOptions = [
   { label: "今日", value: "today" },
@@ -257,8 +280,6 @@ const filteredAlerts = computed(() => {
     result = result.filter((a) => a.type === alertFilter.type);
   return result;
 });
-
-const paginationConfig = { pageSize: 10, showSizePicker: false };
 
 const alertColumns = [
   {
@@ -369,16 +390,8 @@ const getTrendClass = (trend) => (trend > 0 ? "trend-up" : "trend-down");
 const formatNumber = (num) => new Intl.NumberFormat("zh-CN").format(num);
 
 const refreshData = async () => {
-  loading.value = true;
-  try {
-    await new Promise((r) => setTimeout(r, 1000));
-    message.success("数据刷新成功");
-    initCharts();
-  } catch {
-    message.error("数据刷新失败");
-  } finally {
-    loading.value = false;
-  }
+  await loadData();
+  message.success("数据刷新成功");
 };
 
 const exportData = () => message.info("导出功能开发中");
@@ -404,12 +417,15 @@ const handleRiskResize = () => {
 };
 
 const initCharts = () => {
+  // dispose old instances before re-init
+  if (trendChartInstance) { trendChartInstance.dispose(); trendChartInstance = null; }
+  if (typeChartInstance) { typeChartInstance.dispose(); typeChartInstance = null; }
   if (riskTrendChart.value) {
     trendChartInstance = echarts.init(riskTrendChart.value);
     trendChartInstance.setOption({
       tooltip: { trigger: "axis" },
-      legend: { data: ["高风险", "中风险", "低风险"] },
-      grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
+      legend: { data: ["高风险", "中风险", "低风险"], bottom: 0 },
+      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
       xAxis: {
         type: "category",
         data: ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"],
@@ -441,12 +457,13 @@ const initCharts = () => {
     typeChartInstance = echarts.init(riskTypeChart.value);
     typeChartInstance.setOption({
       tooltip: { trigger: "item" },
-      legend: { orient: "vertical", right: 10, top: "center" },
+      legend: { bottom: 0 },
       series: [
         {
           name: "风险类型",
           type: "pie",
           radius: ["40%", "70%"],
+          center: ["50%", "45%"],
           itemStyle: { borderRadius: 10, borderColor: "#fff", borderWidth: 2 },
           label: { show: false },
           emphasis: { label: { show: true, fontSize: 18, fontWeight: "bold" } },
@@ -461,8 +478,21 @@ const initCharts = () => {
   }
 };
 
+const loadData = async () => {
+  loading.value = true;
+  pageError.value = false;
+  try {
+    await new Promise((r) => setTimeout(r, 500));
+    initCharts();
+  } catch {
+    pageError.value = true;
+  } finally {
+    loading.value = false;
+  }
+};
+
 onMounted(() => {
-  initCharts();
+  loadData();
   window.addEventListener("resize", handleRiskResize);
 });
 onUnmounted(() => {
@@ -474,25 +504,35 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .risk-monitor {
-  padding: 20px;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
-/* .page-header 已迁移至全局样式（global.scss） */
-
 .overview-grid {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+
+  :deep(.n-card) {
+    height: 100%;
+  }
+  :deep(.n-card__content) {
+    padding: 12px 16px 8px;
+  }
+  :deep(.n-card-footer) {
+    padding: 4px 16px 10px;
+  }
 }
 
 .metric-content {
   text-align: center;
   .metric-value {
-    font-size: 32px;
+    font-size: 26px;
     font-weight: bold;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
   .metric-label {
-    color: var(--n-text-color-3);
-    font-size: 14px;
+    color: var(--n-text-color-3, rgba(255, 255, 255, 0.48));
+    font-size: 12px;
   }
 }
 
@@ -508,7 +548,7 @@ onUnmounted(() => {
 
 .metric-footer {
   text-align: center;
-  color: var(--n-text-color-3);
+  color: var(--n-text-color-3, rgba(255, 255, 255, 0.48));
   font-size: 12px;
 }
 .trend-up {
@@ -519,7 +559,7 @@ onUnmounted(() => {
 }
 
 .chart-grid {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 .chart-header {
   display: flex;
@@ -534,5 +574,11 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

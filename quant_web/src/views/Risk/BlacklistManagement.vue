@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from "vue";
+import { ref, computed, watch, onMounted, h } from "vue";
 import { useMessage, useDialog, NTag, NButton, NSpin, NResult } from "naive-ui";
 
 const message = useMessage();
@@ -20,6 +20,25 @@ interface BlacklistItem {
 const blacklist = ref<BlacklistItem[]>([]);
 const showModal = ref(false);
 const newItem = ref({ ts_code: "", reason: "st_risk" });
+const resolvedName = ref("");
+const resolvingName = ref(false);
+
+// 本地股票名称 lookup（mock，生产环境应调用后端 API）
+const stockNameMap: Record<string, string> = {
+  "600000.SH": "浦发银行",
+  "600036.SH": "招商银行",
+  "600519.SH": "贵州茅台",
+  "600086.SH": "退市金钰",
+  "000001.SZ": "平安银行",
+  "000858.SZ": "五粮液",
+  "000979.SZ": "中弘退",
+  "002594.SZ": "比亚迪",
+  "300750.SZ": "宁德时代",
+  "601318.SH": "中国平安",
+};
+const searchKeyword = ref("");
+const currentPage = ref(1);
+const pageSize = ref(20);
 
 const reasonMap: Record<string, string> = {
   st_risk: "ST风险",
@@ -31,6 +50,17 @@ const reasonOptions = Object.entries(reasonMap).map(([value, label]) => ({
   label,
   value,
 }));
+
+const filteredList = computed(() => {
+  if (!searchKeyword.value) return blacklist.value;
+  const kw = searchKeyword.value.toLowerCase();
+  return blacklist.value.filter(
+    (item) =>
+      item.ts_code.toLowerCase().includes(kw) ||
+      item.name.toLowerCase().includes(kw) ||
+      (reasonMap[item.reason] || "").includes(kw),
+  );
+});
 
 const columns = [
   { title: "股票代码", key: "ts_code", width: 120 },
@@ -50,7 +80,7 @@ const columns = [
     render: (row: BlacklistItem) =>
       h(
         NTag,
-        { type: row.is_active ? "error" : "default" },
+        { type: row.is_active ? "error" : "default", size: "small" },
         { default: () => (row.is_active ? "生效中" : "已失效") },
       ),
   },
@@ -64,7 +94,7 @@ const columns = [
         {
           size: "small",
           type: "error",
-          onClick: () => removeFromBlacklist(row),
+          onClick: () => confirmRemove(row),
         },
         { default: () => "移除" },
       ),
@@ -103,7 +133,25 @@ const fetchBlacklist = async () => {
   }
 };
 
+// 根据股票代码自动查询名称
+watch(
+  () => newItem.value.ts_code,
+  async (code) => {
+    if (!code || code.length < 9) {
+      resolvedName.value = "";
+      return;
+    }
+    resolvingName.value = true;
+    // 模拟异步查询延迟
+    await new Promise((r) => setTimeout(r, 200));
+    resolvedName.value = stockNameMap[code] || "";
+    resolvingName.value = false;
+  },
+);
+
 const handleAdd = () => {
+  resolvedName.value = "";
+  newItem.value = { ts_code: "", reason: "st_risk" };
   showModal.value = true;
 };
 
@@ -116,7 +164,7 @@ const addToBlacklist = async () => {
     blacklist.value.push({
       id: Date.now(),
       ts_code: newItem.value.ts_code,
-      name: `股票${newItem.value.ts_code}`,
+      name: resolvedName.value || `股票${newItem.value.ts_code}`,
       reason: newItem.value.reason,
       added_by: "current_user",
       added_at: new Date().toISOString().split("T")[0],
@@ -130,13 +178,17 @@ const addToBlacklist = async () => {
   }
 };
 
-const removeFromBlacklist = async (item: BlacklistItem) => {
-  try {
-    blacklist.value = blacklist.value.filter((i) => i.id !== item.id);
-    message.success("移除成功");
-  } catch {
-    message.error("移除失败");
-  }
+const confirmRemove = (item: BlacklistItem) => {
+  dialog.warning({
+    title: "确认移除",
+    content: `确定要将 ${item.name}(${item.ts_code}) 从黑名单中移除吗？`,
+    positiveText: "确认",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      blacklist.value = blacklist.value.filter((i) => i.id !== item.id);
+      message.success("移除成功");
+    },
+  });
 };
 
 const handleImport = () => message.info("导入功能开发中");
@@ -175,7 +227,7 @@ onMounted(() => fetchBlacklist());
       </div>
     </div>
 
-    <n-spin :show="loading">
+    <div class="main-content">
       <n-result
         v-if="error"
         status="500"
@@ -188,18 +240,44 @@ onMounted(() => fetchBlacklist());
       </n-result>
 
       <template v-else>
-        <n-data-table
-          :columns="columns"
-          :data="blacklist"
-          :bordered="false"
-          size="small"
-        >
-          <template #empty><n-empty description="暂无黑名单记录" /></template>
-        </n-data-table>
-      </template>
-    </n-spin>
+        <n-card class="main-card">
+          <template #header>
+            <div class="card-header">
+              <span>黑名单列表</span>
+              <n-input
+                v-model:value="searchKeyword"
+                placeholder="搜索代码/名称..."
+                size="small"
+                clearable
+                style="width: 200px"
+              />
+            </div>
+          </template>
 
-    <!-- 添加黑名单对话框 -->
+          <n-spin :show="loading">
+            <n-data-table
+              :columns="columns"
+              :data="filteredList"
+              :bordered="false"
+              size="small"
+            >
+              <template #empty><n-empty description="暂无黑名单记录" /></template>
+            </n-data-table>
+
+            <div class="pagination-container">
+              <n-pagination
+                v-model:page="currentPage"
+                v-model:page-size="pageSize"
+                :item-count="filteredList.length"
+                :page-sizes="[10, 20, 50]"
+                show-size-picker
+              />
+            </div>
+          </n-spin>
+        </n-card>
+      </template>
+    </div>
+
     <n-modal
       v-model:show="showModal"
       preset="dialog"
@@ -215,6 +293,11 @@ onMounted(() => fetchBlacklist());
             placeholder="例如：600000.SH"
           />
         </n-form-item>
+        <n-form-item v-if="resolvedName || resolvingName" label="股票名称">
+          <n-spin :show="resolvingName" size="small">
+            <span class="resolved-name">{{ resolvedName || "未匹配到名称" }}</span>
+          </n-spin>
+        </n-form-item>
         <n-form-item label="原因">
           <n-select v-model:value="newItem.reason" :options="reasonOptions" />
         </n-form-item>
@@ -228,5 +311,22 @@ onMounted(() => fetchBlacklist());
   padding: 0;
   height: 100%;
   overflow-y: auto;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.resolved-name {
+  font-size: 14px;
+  color: var(--n-text-color-2, rgba(255, 255, 255, 0.64));
 }
 </style>
