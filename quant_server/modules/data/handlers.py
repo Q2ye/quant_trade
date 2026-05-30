@@ -109,6 +109,7 @@ from shared.database.repositories.market.quote.stock_daily_repo import StockDail
 # 运营领域Repository - 任务管理
 from shared.database.repositories.operation.task.data_sync_task_repo import DataSyncTaskRepository
 from shared.database.repositories.operation.task.factor_research_repo import FactorResearchRepository
+from shared.database.session.session_manager import get_session_manager
 
 # ==================== 日志配置 ====================
 logger = logging.getLogger(__name__)
@@ -984,6 +985,9 @@ async def batch_sync_data (
 		# 创建同步任务
 		sync_task = await sync_task_repo.create(sync_task_data)
 
+		# 立即提交，确保后台任务和轮询请求能从 DB 查到该记录
+		await session.commit()
+
 		# 4. 发布同步开始事件
 		start_event = DataSyncStartedEvent(
 			sync_type="batch_sync",
@@ -998,7 +1002,7 @@ async def batch_sync_data (
 		await event_engine.put(start_event)  # type: ignore
 
 		# 5. 根据执行模式选择执行路径（BatchSyncRequest中没有execution_mode字段，使用默认异步执行）
-		logger.info(f"异步执行数据同步: {task_id}")
+		logger.info(f"已将同步任务加入后台队列: {task_id}")
 
 		# 更新任务状态为运行中
 		update_data = {
@@ -1006,12 +1010,13 @@ async def batch_sync_data (
 			"start_time": datetime.now()
 		}
 		await sync_task_repo.update(sync_task.id, update_data)
+		await session.commit()  # 立即提交状态变更，避免轮询看到pending
 
-		# 将同步任务加入后台任务队列
+		# 将同步任务加入后台任务队列（传递DB主键id避免再次查询）
 		background_tasks.add_task(
 			_execute_async_data_sync,
-			session=session,
 			task_id=task_id,
+			db_id=sync_task.id,
 			request=request,
 			event_engine=event_engine,
 			user_id=user_id
@@ -1167,11 +1172,6 @@ async def get_sync_status (
 		BusinessException: 查询状态失败
 	"""
 	try:
-		logger.info(
-			f"用户 {user_id} 请求同步状态: "
-			f"任务ID={task_id if task_id else '用户最近任务'}"
-		)
-
 		sync_task_repo = DataSyncTaskRepository(session)
 
 		if task_id:
@@ -1261,13 +1261,16 @@ async def get_sync_status (
 
 			from modules.data.schemas import SyncProgress, SyncResult
 
-			# 构建同步结果列表
+			# 构建同步结果列表（按 data_type 去重，取最新记录）
+			seen_types: set = set()
 			sync_results = []
 			if tasks:
 				for task in tasks:
-					# 为每个任务构建 SyncResult
 					data_types = task.data_types if hasattr(task, "data_types") and task.data_types else [task.task_type]
 					for data_type in data_types:
+						if data_type in seen_types:
+							continue
+						seen_types.add(data_type)
 						sync_results.append(SyncResult(
 							data_type=data_type,
 							success=task.status == "completed",
@@ -1279,15 +1282,20 @@ async def get_sync_status (
 						))
 
 			# 计算汇总状态
-			running_count = sum(1 for t in tasks if t.status == "running")
-			failed_count = sum(1 for t in tasks if t.status == "failed")
-			completed_count = sum(1 for t in tasks if t.status == "completed")
-			if running_count > 0:
-				aggregate_status = "running"
-			elif failed_count == len(tasks):
-				aggregate_status = "failed"
+			if not tasks:
+				aggregate_status = "idle"
 			else:
-				aggregate_status = "completed"
+				running_count = sum(1 for t in tasks if t.status == "running")
+				failed_count = sum(1 for t in tasks if t.status == "failed")
+				completed_count = sum(1 for t in tasks if t.status == "completed")
+				if running_count > 0:
+					aggregate_status = "running"
+				elif completed_count == 0 and failed_count > 0:
+					aggregate_status = "failed"
+				elif failed_count == 0 and completed_count > 0:
+					aggregate_status = "completed"
+				else:
+					aggregate_status = "partial"
 
 			# 使用最早和最晚的任务时间
 			earliest_time = min((t.created_at for t in tasks if t.created_at), default=datetime.now())
@@ -1319,6 +1327,63 @@ async def get_sync_status (
 	except Exception as e:
 		logger.error(f"获取同步状态失败: {str(e)}", exc_info=True)
 		raise BusinessException(f"查询同步状态失败: {str(e)}")
+
+
+async def get_sync_tasks(
+        session: AsyncSession,
+        user_id: str,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+) -> "SyncTaskListResponse":
+    """
+    获取同步任务历史列表
+    """
+    from modules.data.schemas import SyncTaskRecord, SyncTaskListResponse
+
+    try:
+        sync_task_repo = DataSyncTaskRepository(session)
+        tasks = await sync_task_repo.get_by_user_id(
+            user_id=user_id,
+            limit=limit + offset,
+        )
+
+        if status:
+            tasks = [t for t in tasks if t.status == status]
+
+        total = len(tasks)
+        paged = tasks[offset:offset + limit]
+
+        records = []
+        for task in paged:
+            records.append(SyncTaskRecord(
+                id=task.id,
+                task_id=task.task_id,
+                task_type=task.task_type,
+                data_types=task.data_types if hasattr(task, "data_types") else None,
+                status=task.status,
+                start_time=task.start_time,
+                end_time=task.end_time,
+                records_processed=task.records_processed or 0,
+                records_succeeded=task.records_succeeded or 0,
+                records_failed=task.records_failed or 0,
+                total_records=task.total_records or 0,
+                parameters=task.parameters if hasattr(task, "parameters") else None,
+                error_message=task.error_message,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+                completed_at=task.completed_at,
+            ))
+
+        return SyncTaskListResponse(
+            success=True,
+            tasks=records,
+            total=total,
+        )
+
+    except Exception as e:
+        logger.error(f"获取同步任务列表失败: {str(e)}", exc_info=True)
+        raise BusinessException(f"获取同步任务列表失败: {str(e)}")
 
 
 async def cancel_sync (
@@ -1405,46 +1470,127 @@ async def cancel_sync (
 		raise BusinessException(f"取消同步任务失败: {str(e)}")
 
 
+
+async def delete_sync_task(
+		session: AsyncSession,
+		task_id: str,
+		user_id: str
+) -> Dict[str, Any]:
+	"""删除同步任务记录（仅允许删除已完成/失败/取消的任务）"""
+	try:
+		sync_task_repo = DataSyncTaskRepository(session)
+		task_result = await sync_task_repo.get_by_task_id(task_id)
+		if not task_result.success or not task_result.data:
+			raise ResourceNotFoundException(f"同步任务 '{task_id}' 不存在")
+
+		task = task_result.data
+		if task.user_id != user_id:
+			raise PermissionDeniedException("无权删除其他用户的同步任务")
+		if task.status == "running":
+			raise ValidationException("运行中的任务无法删除，请先取消")
+
+		await sync_task_repo.delete(task.id, soft=False)
+		logger.info(f"成功删除同步任务: {task_id}")
+		return {"task_id": task_id, "deleted": True, "message": "同步任务已删除"}
+
+	except (ResourceNotFoundException, PermissionDeniedException, ValidationException) as e:
+		logger.warning(f"删除同步任务失败: {str(e)}")
+		raise
+	except Exception as e:
+		logger.error(f"删除同步任务异常: {str(e)}", exc_info=True)
+		raise BusinessException(f"删除同步任务失败: {str(e)}")
+
+
+async def delete_sync_tasks_batch(
+		session: AsyncSession,
+		task_ids: list,
+		user_id: str
+) -> Dict[str, Any]:
+	"""批量删除同步任务记录"""
+	results = {"deleted": [], "failed": [], "total": len(task_ids)}
+	sync_task_repo = DataSyncTaskRepository(session)
+	for task_id in task_ids:
+		try:
+			task_result = await sync_task_repo.get_by_task_id(task_id)
+			if not task_result.success or not task_result.data:
+				results["failed"].append({"task_id": task_id, "reason": "不存在"})
+				continue
+			task = task_result.data
+			if task.user_id != user_id:
+				results["failed"].append({"task_id": task_id, "reason": "无权操作"})
+				continue
+			if task.status == "running":
+				results["failed"].append({"task_id": task_id, "reason": "运行中，请先取消"})
+				continue
+			await sync_task_repo.delete(task.id, soft=False)
+			results["deleted"].append(task_id)
+		except Exception as e:
+			results["failed"].append({"task_id": task_id, "reason": str(e)})
+	logger.info(f"批量删除同步任务: {len(results['deleted'])}/{len(task_ids)} 成功")
+	return results
+
+
 # ==================== 数据质量处理函数 ====================
 
 async def get_data_quality (
 		session: AsyncSession,
 		request: DataQualityRequest,
-		user_id: str
+		user_id: str,
+		run_check: bool = False,
 ) -> DataQualityResponse:
 	"""
-	获取数据质量报告 - 分析数据完整性、准确性、一致性
+	获取数据质量报告
 
 	Args:
 		session: 数据库会话
-		request: 数据质量请求参数
-		user_id: 当前用户ID
+		request: 请求参数
+		user_id: 用户ID
+		run_check: True=执行新检查, False=返回最近一次结果
 
 	Returns:
 		DataQualityResponse: 数据质量报告响应
-
-	Raises:
-		BusinessException: 生成数据质量报告失败
 	"""
 	try:
-		logger.info(
+		logger.debug(
 			f"用户 {user_id} 请求数据质量报告: "
 			f"数据类型={request.data_type}, "
 			f"日期范围={request.start_date} 至 {request.end_date}"
 		)
 
-		# 使用数据质量服务 - 修复：创建服务实例
+		# run_check=True: 执行新检查; False: 仅返回最近一次结果
 		quality_service = DataQualityService(session)
-
-		# 获取数据质量报告 - 修复：使用正确的方法参数
-		quality_report = await quality_service.check_data_quality(
-			data_type=request.data_type,
-			start_date=request.start_date,
-			end_date=request.end_date
-		)
-
-		# 计算质量评分和等级
-		quality_score = quality_report.get("quality_score", 0)
+		if run_check:
+			quality_report = await quality_service.check_data_quality(
+				data_type=request.data_type,
+				start_date=request.start_date,
+				end_date=request.end_date,
+				user_id=user_id,
+			)
+			result = quality_report.get("result", {})
+			quality_score = result.get("overall_score", 0)
+		else:
+			quality_report = await quality_service.get_quality_report(
+				data_type=request.data_type or "all",
+				limit=1
+			)
+			latest_result = quality_report.get("reports", [])
+			if latest_result:
+				result = latest_result[0]
+				quality_score = result.get("quality_score", 0)
+			elif not run_check:
+				# 无缓存结果时自动触发首次检查
+				logger.info("无缓存质量数据，自动触发首次检查")
+				quality_report = await quality_service.check_data_quality(
+					data_type=request.data_type,
+					start_date=request.start_date,
+					end_date=request.end_date,
+					user_id=user_id,
+				)
+				result = quality_report.get("result", {})
+				quality_score = result.get("overall_score", 0)
+			else:
+				result = {}
+				quality_score = 0
 
 		# 确定质量等级
 		from modules.data.schemas import DataQualityLevel
@@ -1457,24 +1603,71 @@ async def get_data_quality (
 		else:
 			quality_level = DataQualityLevel.POOR
 
+		# 构建 QualityMetric 列表
+		from modules.data.schemas import QualityMetric
+		metrics: list = []
+		if result.get("total_records", 0) > 0:
+			total = result.get("total_records", 1)
+			valid = result.get("valid_records", 0)
+			invalid = result.get("invalid_records", 0)
+			missing = result.get("missing_records", 0)
+			duplicate = result.get("duplicate_records", 0)
+			metrics = [
+				QualityMetric(
+					metric_name="数据完整率",
+					metric_value=round(valid / total * 100, 2),
+					threshold=95.0,
+					status="pass" if valid / total >= 0.95 else ("warning" if valid / total >= 0.90 else "fail")
+				),
+				QualityMetric(
+					metric_name="无效记录率",
+					metric_value=round(invalid / total * 100, 2),
+					threshold=5.0,
+					status="pass" if invalid / total <= 0.05 else ("warning" if invalid / total <= 0.10 else "fail")
+				),
+				QualityMetric(
+					metric_name="缺失记录数",
+					metric_value=float(missing),
+					threshold=0,
+					status="pass" if missing == 0 else ("warning" if missing <= 10 else "fail")
+				),
+				QualityMetric(
+					metric_name="重复记录数",
+					metric_value=float(duplicate),
+					threshold=0,
+					status="pass" if duplicate == 0 else ("warning" if duplicate <= 5 else "fail")
+				),
+			]
+
+		# 构建 DataIssue 列表
+		from modules.data.schemas import DataIssue
+		raw_issues = result.get("issues", [])
+		issues: list = [
+			DataIssue(
+				issue_type=item.get("issue_type", "unknown"),
+				severity=item.get("severity", "low"),
+				count=item.get("count", 0),
+				description=item.get("description", ""),
+				affected_records=item.get("affected_records"),
+			)
+			for item in raw_issues
+		] if raw_issues else []
+
 		# 构建响应
 		response = DataQualityResponse(
 			success=True,
 			data_type=request.data_type,
-			date_range={
-				"start": request.start_date if request.start_date else None,
-				"end": request.end_date if request.end_date else None
-			},
+			date_range={"start": request.start_date, "end": request.end_date} if request.start_date is not None and request.end_date is not None else None,
 			quality_score=quality_score,
 			quality_level=quality_level,
-			metrics=quality_report.get("metrics", []),
-			issues=quality_report.get("issues", []),
-			recommendations=quality_report.get("recommendations", []),
+			metrics=metrics,
+			issues=issues,
+			recommendations=result.get("recommendations", []),
 			generated_at=datetime.now(),
 			message="数据质量检查完成"
 		)
 
-		logger.info(
+		logger.debug(
 			f"成功生成数据质量报告: {request.data_type}, "
 			f"综合得分={response.quality_score}"
 		)
@@ -1892,7 +2085,8 @@ async def _execute_sync_data_sync (
 		sync_result = await sync_service.batch_sync_data(
 			tasks=request.tasks,
 			priority=request.priority,
-			user_id=user_id
+			user_id=user_id,
+			task_id=task_id
 		)
 
 		# 4. 更新任务状态
@@ -1950,8 +2144,8 @@ async def _execute_sync_data_sync (
 
 
 async def _execute_async_data_sync (
-		session: AsyncSession,
 		task_id: str,
+		db_id: Any,
 		request: BatchSyncRequest,
 		event_engine: EventEngine,
 		user_id: str
@@ -1967,48 +2161,64 @@ async def _execute_async_data_sync (
 		user_id: 当前用户ID
 	"""
 	try:
-		logger.info(f"开始异步数据同步: {task_id}")
+		logger.warning("=" * 60)
+		logger.warning(f"[后台任务] 开始异步数据同步: {task_id}")
+		logger.warning(f"[后台任务] 数据类型: {[t.data_type for t in request.tasks]}")
+		logger.warning("=" * 60)
 
-		# 1. 初始化组件
-		sync_service = DataSyncService(session, event_engine)
-		sync_task_repo = DataSyncTaskRepository(session)
+		# 创建独立的数据库会话（不依赖主请求的session）
+		logger.info(f"[后台任务] 获取独立数据库会话: {task_id}")
+		session_manager = get_session_manager()
+		async with session_manager.get_session() as session:
+			sync_service = DataSyncService(session, event_engine)
+			logger.info(f"[后台任务] 数据库会话已创建, 准备更新状态: {task_id}")
+			sync_task_repo = DataSyncTaskRepository(session)
 
-		# 2. 更新初始进度 - 修复：使用正确的方法
-		task_result = await sync_task_repo.get_by_task_id(task_id)
-		if task_result.success and task_result.data:
-			task = task_result.data
+			# 直接使用主键db_id更新状态，避免再次查询
 			update_data = {
 				"status": "running",
 				"processed_records": 0
 			}
-			await sync_task_repo.update(task.id, update_data)
+			await sync_task_repo.update(db_id, update_data)
+			logger.info(f"[后台任务] 状态已更新为 running: {task_id}")
 
-		# 3. 发布进度事件
-		# Derive sync_type from first task's data_type
-		sync_type = request.tasks[0].data_type if request.tasks else "batch"
-		progress_event = DataSyncProgressEvent(
-			sync_type=sync_type,
-			progress=0.1,
-			current_item="初始化同步任务",
-			total_items=len(request.tasks),
-			processed_items=1,
-			task_id=task_id,
-			user_id=str(user_id),
-			timestamp=datetime.now(),
-			source="data_module"
-		)
-		await event_engine.put(progress_event)  # type: ignore
+			# 3. 发布进度事件
+			# Derive sync_type from first task's data_type
+			sync_type = request.tasks[0].data_type if request.tasks else "batch"
+			progress_event = DataSyncProgressEvent(
+				sync_type=sync_type,
+				progress=0.1,
+				current_item="初始化同步任务",
+				total_items=len(request.tasks),
+				processed_items=1,
+				task_id=task_id,
+				user_id=str(user_id),
+				timestamp=datetime.now(),
+				source="data_module"
+			)
+			await event_engine.put(progress_event)  # type: ignore
+			logger.info(f"[后台任务] 已发布进度事件: {task_id}")
 
-		# 4. 执行数据同步
-		sync_result = await sync_service.batch_sync_data(
-			tasks=request.tasks,
-			priority=request.priority,
-			user_id=user_id
-		)
+			# 4. 执行数据同步
+			data_type_list = [t.data_type for t in request.tasks]
+			logger.warning(f"[后台任务] 开始执行 {len(request.tasks)} 个数据类型的同步: {data_type_list}")
+			for i, dt in enumerate(data_type_list):
+				logger.info(f"[后台任务] 同步进度: {i+1}/{len(request.tasks)} - 开始同步 {dt}")
+			sync_result = await sync_service.batch_sync_data(
+				tasks=request.tasks,
+				priority=request.priority,
+				user_id=user_id,
+				task_id=task_id
+			)
+			logger.info(f"[后台任务] 同步执行返回: {task_id}, 结果={sync_result.get('success', False)}")
 
-		# 5. 更新任务状态 - 修复：使用正确的方法
-		if task_result.success and task_result.data:
-			task = task_result.data
+			# 5. 检查任务是否已被用户取消
+			current_task = await sync_task_repo.get(db_id)
+			if current_task and getattr(current_task, 'status', None) == 'cancelled':
+				logger.warning(f"[后台任务] 任务已被用户取消，丢弃同步结果: {task_id}")
+				return
+
+			# 6. 更新任务状态为完成
 			update_data = {
 				"status": "completed",
 				"records_processed": sync_result.get("records_processed", 0),
@@ -2016,44 +2226,70 @@ async def _execute_async_data_sync (
 				"records_failed": sync_result.get("records_failed", 0),
 				"end_time": datetime.now()
 			}
-			await sync_task_repo.update(task.id, update_data)
+			await sync_task_repo.update(db_id, update_data)
+			logger.info(f"[后台任务] 状态已更新为 completed: {task_id}")
 
-		# 6. 发布同步完成事件
-		completed_event = DataSyncCompletedEvent(
-			sync_type=sync_type,
-			record_count=sync_result.get("records_processed", 0),
-			duration_seconds=sync_result.get("duration_seconds", 0),
-			success=sync_result.get("records_failed", 0) == 0,
-			summary={
-				"records_succeeded": sync_result.get("records_succeeded", 0),
-				"records_failed": sync_result.get("records_failed", 0),
-				"data_types": [task.data_type for task in request.tasks]
-			},
-			task_id=task_id,
-			user_id=str(user_id),
-			timestamp=datetime.now()
-		)
-		await event_engine.put(completed_event)  # type: ignore
+			# 7. 发布同步完成事件
+			completed_event = DataSyncCompletedEvent(
+				sync_type=sync_type,
+				record_count=sync_result.get("records_processed", 0),
+				duration_seconds=sync_result.get("duration_seconds", 0),
+				success=sync_result.get("records_failed", 0) == 0,
+				summary={
+					"records_succeeded": sync_result.get("records_succeeded", 0),
+					"records_failed": sync_result.get("records_failed", 0),
+					"data_types": [task.data_type for task in request.tasks]
+				},
+				task_id=task_id,
+				user_id=str(user_id),
+				timestamp=datetime.now()
+			)
+			await event_engine.put(completed_event)  # type: ignore
+			logger.info(f"[后台任务] 已发布完成事件: {task_id}")
 
-		logger.info(f"异步数据同步完成: {task_id}")
+			# 8. 自动触发数据质量检查（使用独立session，避免受同步事务影响）
+			try:
+				from modules.data.services.quality_service import DataQualityService
+				session_manager = get_session_manager()
+				async with session_manager.get_session() as quality_session:
+					quality_service = DataQualityService(quality_session)
+					for dt in data_type_list:
+						try:
+							await quality_service.check_data_quality(
+								data_type=dt.value if hasattr(dt, 'value') else str(dt),
+								user_id=str(user_id)
+							)
+							logger.info(f"[后台任务] 质量检查完成: {dt}")
+						except Exception as qe:
+							logger.warning(f"[后台任务] 质量检查跳过 {dt}: {qe}")
+			except Exception as qe:
+				logger.warning(f"[后台任务] 质量检查初始化失败: {qe}")
+
+			logger.warning(f"[后台任务] 异步数据同步完成: {task_id}, 处理={sync_result.get('records_processed', 0)}, 成功={sync_result.get('records_succeeded', 0)}, 失败={sync_result.get('records_failed', 0)}")
 
 	except Exception as e:
-		logger.error(f"异步数据同步失败: {str(e)}", exc_info=True)
+		logger.warning("=" * 60)
+		logger.error(f"[后台任务] 异步数据同步失败: {task_id}, 错误: {str(e)}", exc_info=True)
+		logger.warning("=" * 60)
 
-		# 更新任务状态为失败
-		sync_task_repo = DataSyncTaskRepository(session)
-		task_result = await sync_task_repo.get_by_task_id(task_id)
-		if task_result.success and task_result.data:
-			task = task_result.data
-			update_data = {
-				"status": "failed",
-				"error_message": str(e),
-				"end_time": datetime.now()
-			}
-			await sync_task_repo.update(task.id, update_data)
+		# 创建独立session处理失败状态更新（原session可能已关闭）
+		try:
+			session_manager = get_session_manager()
+			async with session_manager.get_session() as err_session:
+				sync_task_repo = DataSyncTaskRepository(err_session)
+				task_result = await sync_task_repo.get_by_task_id(task_id)
+				if task_result.success and task_result.data:
+					task = task_result.data
+					update_data = {
+						"status": "failed",
+						"error_message": str(e),
+						"end_time": datetime.now()
+					}
+					await sync_task_repo.update(task.id, update_data)
+		except Exception as err_handler_error:
+			logger.error(f"更新失败状态时出错: {str(err_handler_error)}", exc_info=True)
 
 		# 发布失败事件
-		# Derive sync_type from first task's data_type
 		sync_type = request.tasks[0].data_type if request.tasks else "batch"
 		fail_event = DataSyncProgressEvent(
 			sync_type=sync_type,
@@ -2438,6 +2674,22 @@ async def initialize_data_module (
 				logger.info(f"发现 {cleaned_sync_tasks} 个旧的同步任务可清理")
 		except Exception as e:
 			logger.warning(f"清理旧同步任务失败: {str(e)}")
+
+		# 4.1 清理重启前遗留的运行中任务
+		cleaned_running_tasks = 0
+		try:
+			stale_running = await sync_task_repo.get_running_tasks()
+			for task in stale_running:
+				await sync_task_repo.update(task.id, {
+					"status": "failed",
+					"error_message": "服务器重启，任务中断",
+					"end_time": datetime.now()
+				})
+				cleaned_running_tasks += 1
+			if cleaned_running_tasks:
+				logger.warning(f"已将 {cleaned_running_tasks} 个遗留运行中任务标记为失败")
+		except Exception as e:
+			logger.warning(f"清理遗留运行中任务失败: {str(e)}")
 
 		# 5. 检查因子数据完整性
 		try:

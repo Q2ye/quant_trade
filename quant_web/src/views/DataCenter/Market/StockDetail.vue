@@ -236,8 +236,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, h } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import * as echarts from "echarts";
+import marketAPI from "@/api/market";
 import {
   NButton,
   NCard,
@@ -259,6 +260,7 @@ import SmartIcon from "@/components/common/SmartIcon.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 
 const loading = ref(false);
@@ -266,20 +268,20 @@ const error = ref(false);
 
 // 响应式数据
 const stock = ref({
-  code: "600519",
-  name: "贵州茅台",
-  price: "1785.45",
-  change: 7.89,
-  changePercent: 0.44,
-  open: "1770.00",
-  high: "1790.50",
-  low: "1765.80",
-  preClose: "1777.56",
-  volume: "54321",
-  amount: "968.42",
-  pe: "38.45",
-  pb: "12.78",
-  marketCap: "22400",
+  code: String(route.params.code || "600519"),
+  name: "",
+  price: "--",
+  change: 0,
+  changePercent: 0,
+  open: "--",
+  high: "--",
+  low: "--",
+  preClose: "--",
+  volume: "--",
+  amount: "--",
+  pe: "--",
+  pb: "--",
+  marketCap: "--",
 });
 
 const showBasketSelector = ref(false);
@@ -474,7 +476,14 @@ const loadData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
+    const code = stock.value.code;
+    const data = await marketAPI.getStockDetail(code).catch(() => null);
+    if (data) {
+      stock.value.name = (data as any).name ?? stock.value.name;
+      stock.value.marketCap = (data as any).market_cap ?? (data as any).total_mv ?? "--";
+      stock.value.pe = (data as any).pe ?? "--";
+      stock.value.pb = (data as any).pb ?? "--";
+    }
     initChart();
   } catch {
     error.value = true;

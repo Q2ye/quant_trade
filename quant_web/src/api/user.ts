@@ -3,8 +3,8 @@ import { handleResponse } from "@/utils/responseHandler";
 import {
   UserInfo,
   UpdateUserRequest,
-  ChangePasswordRequest,
-  UserPermission,
+  ApiChangePasswordRequest,
+  ApiUserPermission,
   ApiResponse,
   PaginatedResponse,
 } from "@/types";
@@ -111,10 +111,10 @@ export default {
    * @returns 修改结果
    */
   async changePassword(
-    passwordData: ChangePasswordRequest,
+    passwordData: ApiChangePasswordRequest,
   ): Promise<{ success: boolean; message: string }> {
     return request
-      .put("/quantTrade/system/password", passwordData)
+      .post("/quantTrade/system/auth/change-password", passwordData)
       .then(handleResponse)
       .then(
         (data: ApiResponse<{ success: boolean; message: string }>) => data.data,
@@ -211,7 +211,7 @@ export default {
     updates: { name?: string; permissions?: string[] },
   ): Promise<ApiKeyInfo> {
     return request
-      .put(`/user/api-keys/${keyId}`, updates)
+      .put(`/quantTrade/system/api-keys/${keyId}`, updates)
       .then(handleResponse)
       .then((data: ApiResponse<ApiKeyInfo>) => data.data);
   },
@@ -222,7 +222,7 @@ export default {
    * @returns 删除操作结果
    */
   async deleteApiKey(keyId: string): Promise<void> {
-    return request.delete(`/user/api-keys/${keyId}`).then(handleResponse);
+    return request.delete(`/quantTrade/system/api-keys/${keyId}`).then(handleResponse);
   },
 
   /**
@@ -232,7 +232,7 @@ export default {
    */
   async rotateApiKey(keyId: string): Promise<{ key: string }> {
     return request
-      .post(`/user/api-keys/${keyId}/rotate`)
+      .post(`/quantTrade/system/api-keys/${keyId}/rotate`)
       .then(handleResponse)
       .then((data: ApiResponse<{ key: string }>) => data.data);
   },
@@ -320,11 +320,11 @@ export default {
    * 获取用户权限列表
    * @returns 用户权限数组
    */
-  async getPermissions(): Promise<UserPermission[]> {
+  async getPermissions(): Promise<ApiUserPermission[]> {
     return request
       .get("/quantTrade/system/permissions")
       .then(handleResponse)
-      .then((data: ApiResponse<UserPermission[]>) => data.data);
+      .then((data: ApiResponse<ApiUserPermission[]>) => data.data);
   },
 
   /**
@@ -352,7 +352,7 @@ export default {
     error?: string;
   }> {
     return request
-      .get(`/user/data/export/${exportId}`)
+      .get(`/quantTrade/system/data/export/${exportId}`)
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
   },

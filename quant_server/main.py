@@ -33,7 +33,7 @@ from utils.core_utils.logging_utils import (
 
 	# 日志记录器
 	get_logger,  # 上下文管理
-	get_context_manager, with_context,  # 格式化器
+	get_context_manager, HandlerFactory, with_context,  # 格式化器
 	# 便捷函数
 	info, error, log_performance,
 
@@ -323,12 +323,39 @@ class QuantServer:
 		# 初始化日志系统
 		init_logging(log_config)
 
+		# StructuredLogger.__init__ 在首次 get_logger('') 时会自动添加一个
+		# 无 formatter 的默认 StreamHandler，与 init_logging 添加的 console handler
+		# 都输出到 stdout 导致每条日志显示两行。此处移除多余的默认 handler。
+		import logging as _logging
+		_root = _logging.getLogger('')
+		for _h in list(_root.handlers):
+			if not _h.formatter:
+				_root.removeHandler(_h)
+
+		# 添加文件日志处理器（按天轮转，保留30天）
+		import os as _os
+		_log_dir = _os.path.join(_os.path.dirname(__file__), 'logs')
+		file_handler = HandlerFactory.create_timed_file_handler(
+			filename=_os.path.join(_log_dir, 'quant_server.log'),
+			level=LogLevel.DEBUG,
+			when='midnight',
+			backup_count=30
+		)
+		# 设置与控制台一致的格式化器（复用上方已 import 的 _logging）
+		file_handler.setFormatter(_logging.Formatter(
+			'%(asctime)s | %(process)-6d | %(levelname)-8s | %(name)s | %(message)s',
+			datefmt='%Y-%m-%d %H:%M:%S'
+		))
+		root_logger = get_logger("")
+		root_logger.add_handler("file", file_handler)
+
 		# 获取日志管理器并记录初始化
 		log_manager = get_global_log_manager()
 		logger.info("日志系统初始化完成", extra={
 			"level": log_config["level"].value,
 			"format": log_config["format"].value,
-			"async_enabled": True
+			"async_enabled": True,
+			"log_dir": _log_dir
 		})
 
 		# 记录日志管理器统计
@@ -853,7 +880,7 @@ class QuantServer:
 					workers=self.config.workers,
 					log_level=self.config.log_level.lower(),
 					reload=(self.config.mode == "development"),
-					access_log=True,
+					access_log=False,  # 关闭 uvicorn HTTP 访问日志，避免轮询日志刷屏
 					timeout_keep_alive=30,
 					limit_concurrency=1000,
 					limit_max_requests=10000,

@@ -143,6 +143,7 @@ import { useRouter } from 'vue-router'
 import { NButton, NCard, NGrid, NGridItem, NSkeleton, NEmpty, NResult, useMessage } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import { tokens } from '@/styles/design-tokens'
+import strategyAPI from '@/api/strategy'
 
 const router = useRouter()
 const message = useMessage()
@@ -173,7 +174,11 @@ const loadData = async () => {
   loading.value = true
   error.value = false
   try {
-    await new Promise(r => setTimeout(r, 200))
+    const strategies = await strategyAPI.getStrategies().catch(() => [])
+    if (Array.isArray(strategies) && strategies.length > 0) {
+      stats.value.totalCount = strategies.length
+      stats.value.runningCount = strategies.filter((s: any) => s.status === 'running').length
+    }
   } catch {
     error.value = true
   } finally {

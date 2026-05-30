@@ -396,7 +396,7 @@ class DataSyncEngine(EngineBase):
             self._on_handle_event
         )
 
-        logger.debug(f"数据同步引擎事件处理器注册完成: {self.config.name}")
+        logger.info("数据同步引擎事件处理器已注册: %s", self.config.name)
 
     async def _on_external_sync_started(self, event):
         """处理外部触发的同步开始事件"""
@@ -405,6 +405,8 @@ class DataSyncEngine(EngineBase):
             task_id = data.get("task_id")
             sync_type = data.get("sync_type", "daily")
 
+            logger.info("收到外部同步开始事件: task_id=%s, sync_type=%s", task_id, sync_type)
+
             if task_id and task_id not in self.tasks:
                 # 创建新任务
                 await self.start_sync_task(
@@ -412,6 +414,8 @@ class DataSyncEngine(EngineBase):
                     custom_task_id=task_id,
                     config=data.get("config", {})
                 )
+            else:
+                logger.info("任务已存在或task_id为空，跳过创建: task_id=%s", task_id)
         except Exception as e:
             logger.error(f"处理外部同步事件失败: {e}", exc_info=True)
 
@@ -450,7 +454,7 @@ class DataSyncEngine(EngineBase):
 
                     # 检查并发限制
                     if len(self.active_tasks) >= self.max_concurrent_tasks:
-                        logger.debug(f"达到并发任务限制 ({self.max_concurrent_tasks})，任务 {task_id} 等待中")
+                        logger.info("达到并发任务限制(%s)，任务 %s 等待中", self.max_concurrent_tasks, task_id)
                         # 放回队列等待
                         await self.task_queue.put(task_info)
                         await asyncio.sleep(5)
@@ -482,6 +486,7 @@ class DataSyncEngine(EngineBase):
         task_id = task_info["task_id"]
         config = task_info["config"]
 
+        logger.info("开始执行同步任务: %s, 类型=%s", task_id, config.sync_type.value)
         try:
             # 更新任务状态
             await self._update_task_status(task_id, SyncTaskStatus.PREPARING)
@@ -536,6 +541,7 @@ class DataSyncEngine(EngineBase):
         start_time = datetime.now()
         result = SyncTaskResult()
 
+        logger.info("执行数据同步: %s, 类型=%s, 数据源=%s", task_id, config.sync_type.value, config.data_sources)
         try:
             if not self.sync_service:
                 raise RuntimeError("同步服务未配置")
@@ -787,8 +793,12 @@ class DataSyncEngine(EngineBase):
             return
 
         task_info = self.tasks[task_id]
+        old_status = task_info["status"]
         task_info["status"] = status
         task_info["updated_at"] = datetime.now()
+
+        if old_status != status:
+            logger.info("任务状态变更: %s | %s -> %s", task_id, old_status.value, status.value)
 
         if status == SyncTaskStatus.PREPARING:
             task_info["start_time"] = datetime.now()
@@ -1005,7 +1015,7 @@ class DataSyncEngine(EngineBase):
             self.tasks.pop(task_id, None)
 
         if tasks_to_remove:
-            logger.debug(f"清理了 {len(tasks_to_remove)} 个旧任务")
+            logger.info("清理了 %s 个旧任务", len(tasks_to_remove))
 
     # ==================== 工具方法 ====================
 

@@ -1,8 +1,7 @@
 // quant_web/src/types/api/events.ts
 // 交易执行API类型定义
 import { ApiResponse, PaginatedResponse, PaginationParams, TimeRangeParams } from "./common";
-import { Account, Order } from "./entities-trading";
-import { Position } from "@antv/g2plot";
+import { Account, Order, Position } from "./entities-trading";
 
 /**
  * 下单请求参数

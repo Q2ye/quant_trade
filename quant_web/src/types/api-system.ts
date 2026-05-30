@@ -34,7 +34,7 @@ export interface SystemConfigUpdate {
 export interface SystemLogsResponse extends PaginatedResponse<SystemLog> {}
 export interface SystemMetricsResponse extends ApiResponse<SystemMetrics> {}
 export interface ScheduledTasksResponse extends ApiResponse<ScheduledTask[]> {}
-export interface SystemConfigResponse extends ApiResponse<SystemSetting[]> {}
+export interface SystemSettingsResponse extends ApiResponse<SystemSetting[]> {}
 export interface DataSourceStatusResponse extends ApiResponse<
   DataSourceStatus[]
 > {}

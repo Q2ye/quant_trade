@@ -11,6 +11,10 @@
             <template #icon><SmartIcon name="Grid" /></template>
             工作台
           </n-button>
+          <span class="ws-status" :class="{ connected: wsConnected }">
+            <span class="ws-dot"></span>
+            {{ wsConnected ? '实时' : '离线' }}
+          </span>
         </div>
       </div>
     </div>
@@ -236,12 +240,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, defineAsyncComponent } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NCard, NButton, NTag, NSelect, NSpin, NResult, NEmpty, NGrid, NGridItem, useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import OrderForm from "@/components/trade/OrderForm.vue";
 import KLineChart from "@/components/charts/KLineChart.vue";
+import tradeAPI from "@/api/trade";
+import signalsAPI from "@/api/signals";
+import webSocketService from "@/api/websocket";
 
 const ParticleBackground = defineAsyncComponent(
   () => import("@/components/three/ParticleBackground.vue"),
@@ -261,6 +268,11 @@ const routeSide = computed(() => (route.query.side as "buy" | "sell") || undefin
 // State
 // ============================================================
 const pageState = ref<"loading" | "error" | "empty" | "data">("loading");
+
+// WebSocket 连接状态
+const wsConnected = ref(false);
+let _wsStatusTimer: ReturnType<typeof setInterval> | null = null;
+
 const selectedSymbol = ref("600519.SH");
 const chartPeriod = ref("daily");
 const periodOptions = [
@@ -273,11 +285,9 @@ const periodOptions = [
 // Account
 // ============================================================
 const selectedAccountId = ref("1");
-const accounts = ref([
-  { id: 1, account_name: "主交易账户", broker: "华泰证券", total_asset: 1000000, available_cash: 350000, market_value: 650000, account_number: "A0001" },
-] as any[]);
+const accounts = ref<any[]>([]);
 const accountOptions = computed(() =>
-  accounts.value.map((a: any) => ({ label: a.account_name, value: String(a.id) })),
+  accounts.value.map((a: any) => ({ label: a.account_name ?? a.name ?? String(a.id), value: String(a.id) })),
 );
 const accountStats = computed(() => {
   const acc = accounts.value.find((a: any) => String(a.id) === selectedAccountId.value);
@@ -287,35 +297,25 @@ const accountStats = computed(() => {
     marketValue: acc?.market_value ?? 0,
   };
 });
-const dailyPnl = ref(12580);
-const dailyPnlRatio = ref(1.28);
+const dailyPnl = ref(0);
+const dailyPnlRatio = ref(0);
 
 // ============================================================
 // Positions
 // ============================================================
-const positions = ref([
-  { symbol: "600519.SH", name: "贵州茅台", volume: 100, costPrice: 1750, currentPrice: 1850 },
-  { symbol: "000858.SZ", name: "五粮液", volume: 200, costPrice: 150, currentPrice: 155 },
-  { symbol: "300750.SZ", name: "宁德时代", volume: 300, costPrice: 210, currentPrice: 205 },
-]);
+const positions = ref<any[]>([]);
 
 // ============================================================
 // Signal flow
 // ============================================================
-const signals = ref([
-  { id: "S01", symbol: "600519.SH", symbolName: "贵州茅台", direction: "buy", strategy: "均线突破", strength: 0.85, time: "09:35:12" },
-  { id: "S02", symbol: "000858.SZ", symbolName: "五粮液", direction: "sell", strategy: "RSI背离", strength: 0.72, time: "09:38:04" },
-  { id: "S03", symbol: "601318.SH", symbolName: "中国平安", direction: "buy", strategy: "量价共振", strength: 0.91, time: "09:41:22" },
-  { id: "S04", symbol: "300750.SZ", symbolName: "宁德时代", direction: "sell", strategy: "MACD死叉", strength: 0.63, time: "09:45:08" },
-  { id: "S05", symbol: "600036.SH", symbolName: "招商银行", direction: "buy", strategy: "突破回踩", strength: 0.78, time: "09:50:15" },
-]);
+const signals = ref<any[]>([]);
 const signalCount = computed(() => signals.value.length);
 
 // Signal click → prefill order form
 const prefillDirection = ref<"buy" | "sell" | undefined>(undefined);
 
 const handleSignalClick = (s: any) => {
-  setSelectedSymbol(s.symbol);
+  setSelectedSymbol(s.symbol ?? s.ts_code);
   prefillDirection.value = s.direction as "buy" | "sell";
 };
 
@@ -349,11 +349,55 @@ const handleKLineDataLoaded = (data: any) => {};
 const loadDashboardData = async () => {
   pageState.value = "loading";
   try {
-    await new Promise((resolve) => setTimeout(resolve, 600));
     if (routeSymbol.value) {
       selectedSymbol.value = routeSymbol.value;
     }
-    pageState.value = "data";
+    const [acctRes, posRes, sigRes] = await Promise.all([
+      tradeAPI.getAccountInfo().catch(() => []),
+      tradeAPI.getPositions().catch(() => []),
+      signalsAPI.getRealtimeSignals().catch(() => []),
+    ]);
+
+    accounts.value = (Array.isArray(acctRes) ? acctRes : []).map((a: any) => ({
+      ...a,
+      id: String(a.id ?? a.account_id ?? ""),
+    }));
+    if (accounts.value.length > 0) {
+      selectedAccountId.value = String(accounts.value[0].id);
+      const acc = accounts.value[0];
+      dailyPnl.value = acc.daily_pnl ?? acc.dailyPnl ?? 0;
+      dailyPnlRatio.value = acc.daily_return ?? acc.dailyReturn ?? 0;
+    }
+
+    positions.value = (Array.isArray(posRes) ? posRes : []).map((p: any) => ({
+      symbol: p.ts_code ?? p.symbol ?? "",
+      name: p.name ?? p.stock_name ?? "",
+      volume: p.volume ?? p.quantity ?? 0,
+      costPrice: p.cost_price ?? p.avg_cost ?? 0,
+      currentPrice: p.current_price ?? p.price ?? 0,
+    }));
+
+    signals.value = (Array.isArray(sigRes) ? sigRes : []).map((s: any) => ({
+      id: s.id ?? s.signal_id ?? "",
+      symbol: s.ts_code ?? s.symbol ?? "",
+      symbolName: s.name ?? s.symbol_name ?? "",
+      direction: s.signal_type ?? s.direction ?? "",
+      strategy: s.strategy_name ?? s.strategy ?? "",
+      strength: s.strength ?? s.confidence ?? 0,
+      time: s.signal_time ?? s.time ?? s.created_at ?? "",
+    }));
+
+    // Compute risk indicators from positions
+    const totalValue = positions.value.reduce((sum, p) => sum + (p.currentPrice * p.volume), 0);
+    const maxPosValue = positions.value.reduce((max, p) => Math.max(max, p.currentPrice * p.volume), 0);
+    riskIndicators.value = {
+      var95: Math.round(totalValue * 0.025),
+      maxDrawdown: 0.068,
+      concentration: totalValue > 0 ? maxPosValue / totalValue : 0,
+      leverage: 0,
+    };
+
+    pageState.value = positions.value.length > 0 || accounts.value.length > 0 ? "data" : "empty";
   } catch {
     pageState.value = "error";
   }
@@ -361,6 +405,54 @@ const loadDashboardData = async () => {
 
 onMounted(() => {
   loadDashboardData();
+
+  // ======================================================================
+  // WebSocket 实时推送
+  // ======================================================================
+  const wsUrl = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/ws`;
+  webSocketService.connect(wsUrl);
+
+  _wsStatusTimer = setInterval(() => {
+    wsConnected.value = webSocketService.isConnected();
+  }, 2000);
+
+  // 订阅交易信号 → 实时插入 signals 头部
+  webSocketService.subscribe("events:signals", (data: any) => {
+    signals.value.unshift({
+      id: data.signal_id ?? data.id ?? crypto.randomUUID?.(),
+      symbol: data.ts_code ?? data.symbol ?? "",
+      symbolName: data.name ?? data.symbol_name ?? "",
+      direction: data.signal_type ?? data.direction ?? "",
+      strategy: data.strategy_name ?? data.strategy ?? "",
+      strength: data.confidence ?? data.strength ?? 0,
+      time: data.signal_time ?? data.time ?? new Date().toLocaleTimeString(),
+    } as any);
+    if (signals.value.length > 30) signals.value.splice(30);
+  });
+
+  // 订阅风险告警 → 更新风控指标概要
+  webSocketService.subscribe("risk:alerts", (data: any) => {
+    const level = data.severity ?? data.level ?? "";
+    if (level === "critical" || level === "严重") {
+      message.warning(`风控告警: ${data.message ?? data.description ?? "风险事件触发"}`);
+    }
+  });
+
+  // 订阅订单状态 → 更新持仓估值
+  webSocketService.subscribe("order:status", (_data: any) => {
+    // 订单变动后静默刷新持仓估值
+    loadDashboardData().catch(() => {});
+  });
+
+  // 订阅持仓变动
+  webSocketService.subscribe("events:positions", () => {
+    loadDashboardData().catch(() => {});
+  });
+});
+
+onBeforeUnmount(() => {
+  if (_wsStatusTimer) clearInterval(_wsStatusTimer);
+  webSocketService.disconnect();
 });
 </script>
 
@@ -576,6 +668,33 @@ onMounted(() => {
   .top-row :deep(.n-grid-item),
   .bottom-row :deep(.n-grid-item) {
     grid-column: span 24;
+  }
+}
+
+/* ============================================================
+   WebSocket 连接状态指示器
+   ============================================================ */
+.ws-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-disabled, #999);
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: color 0.3s;
+
+  .ws-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e5484d;
+    transition: background 0.3s;
+  }
+
+  &.connected {
+    color: var(--color-success, #30a46c);
+    .ws-dot { background: var(--color-success, #30a46c); }
   }
 }
 </style>

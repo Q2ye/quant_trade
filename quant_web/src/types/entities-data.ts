@@ -199,17 +199,6 @@ export interface DataQueryParams {
 }
 
 /**
- * 分页响应
- */
-export interface PaginatedResponse<T> {
-  data: T[]; // 数据列表
-  total: number; // 总记录数
-  page: number; // 当前页码
-  page_size: number; // 每页大小
-  total_pages: number; // 总页数
-}
-
-/**
  * 市场数据概览
  */
 export interface MarketOverview {

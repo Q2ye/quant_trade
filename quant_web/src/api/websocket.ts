@@ -6,6 +6,7 @@ import {
   SystemStatusMessage,
   RiskAlertMessage,
   TradeRecord,
+  SyncEventMessage,
 } from "@/types";
 
 type WebSocketCallback<T = any> = (data: T) => void;
@@ -143,6 +144,7 @@ class WebSocketService {
 
   private notifySubscribers(message: WebSocketMessage): void {
     const { channel, data } = message;
+    if (!channel) return;
     const channelSubscribers = this.subscribers.get(channel);
     if (channelSubscribers) {
       channelSubscribers.forEach((callback) => callback(data));
@@ -240,6 +242,19 @@ class WebSocketService {
    */
   subscribeRiskAlerts(callback: WebSocketCallback<RiskAlertMessage>): string {
     const channel = "risk:alerts";
+    this.subscribe(channel, callback);
+    return channel;
+  }
+
+  /**
+   * 订阅数据同步状态
+   * @param callback 同步事件回调函数
+   * @returns 频道ID
+   */
+  subscribeSyncStatus(
+    callback: WebSocketCallback<SyncEventMessage>,
+  ): string {
+    const channel = "events:sync";
     this.subscribe(channel, callback);
     return channel;
   }

@@ -40,11 +40,15 @@ export function useDataSync() {
         case "moneyflow":
           result = await dataSyncService.syncMoneyflowData(params);
           break;
-        default:
+        default: {
+          const task = { data_type: dataType } as { data_type: string; start_date?: string; end_date?: string };
+          if (params?.start_date) task.start_date = params.start_date;
+          if (params?.end_date) task.end_date = params.end_date;
           result = await dataSyncService.batchSyncData({
-            data_types: [dataType],
-            ...params,
+            tasks: [task],
+            priority: "medium",
           });
+        }
       }
 
       syncStatus.value = "idle";
@@ -65,30 +69,18 @@ export function useDataSync() {
     }
   };
 
-  // 批量同步数据
+  // 批量同步数据（并行执行）
   const batchSync = async (
     syncTasks: Array<{ dataType: string; options?: any }>,
   ) => {
-    const results = [];
-
-    for (const task of syncTasks) {
-      try {
-        const result = await syncMarketData(task.dataType as any, task.options);
-        results.push({
-          dataType: task.dataType,
-          status: "success",
-          result,
-        });
-      } catch (error: any) {
-        results.push({
-          dataType: task.dataType,
-          status: "error",
-          error: error.message,
-        });
-      }
-    }
-
-    return results;
+    const settled = await Promise.allSettled(
+      syncTasks.map((task) => syncMarketData(task.dataType as any, task.options)),
+    );
+    return settled.map((r, i) =>
+      r.status === "fulfilled"
+        ? { dataType: syncTasks[i].dataType, status: "success" as const, result: r.value }
+        : { dataType: syncTasks[i].dataType, status: "error" as const, error: (r.reason as any)?.message },
+    );
   };
 
   // 查询同步状态

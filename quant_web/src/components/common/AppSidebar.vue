@@ -142,7 +142,7 @@ export default defineComponent({
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Grid" }) }),
       },
       {
-        label: "同步概览",
+        label: "数据同步",
         key: "data-sync-overview",
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Sync" }) }),
@@ -273,7 +273,7 @@ export default defineComponent({
     // =====================================================================
     const routeMap = {
       market: "/market/overview",
-      "data-sync-overview": "/data/sync/overview",
+      "data-sync-overview": "/data/sync",
       strategies: "/strategies",
       "strategy-templates": "/strategies/templates",
       "strategy-risk": "/strategies/risk",

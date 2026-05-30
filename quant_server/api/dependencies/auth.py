@@ -10,11 +10,13 @@ Version: 1.0.0
 """
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.database import get_db_session
@@ -23,6 +25,7 @@ from core.exceptions.security_exceptions import (
 	InvalidTokenError
 )
 from shared.config.config_manager import get_config
+from shared.database.models.business_models import SysUser
 from shared.database.repositories.system.auth import user_repo
 from shared.security.jwt_handler import JWTManager
 
@@ -71,21 +74,75 @@ class AuthDependencies:
 			HTTPException: 401 - 未认证或令牌无效
 						  403 - 用户被禁用
 		"""
-		# 认证开关：关闭时返回模拟超级用户，跳过所有令牌校验
+		# 认证开关：关闭时尝试使用DB中已有用户，若无则自动创建种子用户
 		if not _is_auth_enabled():
-			return {
-				"id": "dev-user",
-				"username": "developer",
-				"email": "dev@quant-trade.local",
-				"real_name": "开发者",
-				"phone": "",
-				"role": "super_admin",
-				"is_active": True,
-				"last_login": datetime.now(timezone.utc),
-				"created_at": datetime.now(timezone.utc),
-				"permissions": ["*:*"],
-				"can_sync_data": True,
-			}
+			try:
+				user_repository = user_repo.UserRepository(db_session)
+				result = await db_session.execute(
+					select(SysUser).where(SysUser.role.in_(("admin", "super_admin"))).limit(1)
+				)
+				user = result.scalar_one_or_none()
+				if user:
+					logger.debug(f"Auth disabled — using existing user: {user.username} (ID: {user.id})")
+					return {
+						"id": user.id,
+						"username": user.username,
+						"email": user.email,
+						"real_name": user.real_name,
+						"phone": user.phone,
+						"role": user.role,
+						"is_active": user.is_active,
+						"last_login": user.last_login,
+						"created_at": user.created_at,
+						"permissions": ["*:*"],
+						"can_sync_data": True,
+					}
+
+				# No user exists — create a seed dev user
+				dev_id = str(uuid.uuid4())
+				dev_user = SysUser(
+					id=dev_id,
+					username="developer",
+					password="dev-no-auth-mode",
+					email="dev@quant-trade.local",
+					real_name="开发者",
+					phone="",
+					role="super_admin",
+					is_active=True,
+					created_at=datetime.now(timezone.utc),
+				)
+				db_session.add(dev_user)
+				await db_session.commit()
+				await db_session.refresh(dev_user)
+				logger.info(f"Created seed dev user: developer (ID: {dev_id})")
+				return {
+					"id": dev_id,
+					"username": dev_user.username,
+					"email": dev_user.email,
+					"real_name": dev_user.real_name,
+					"phone": dev_user.phone,
+					"role": dev_user.role,
+					"is_active": dev_user.is_active,
+					"last_login": dev_user.last_login,
+					"created_at": dev_user.created_at,
+					"permissions": ["*:*"],
+					"can_sync_data": True,
+				}
+			except Exception as e:
+				logger.warning(f"Auth disabled but DB user lookup/creation failed: {e}")
+				return {
+					"id": "dev-user",
+					"username": "developer",
+					"email": "dev@quant-trade.local",
+					"real_name": "开发者",
+					"phone": "",
+					"role": "super_admin",
+					"is_active": True,
+					"last_login": datetime.now(timezone.utc),
+					"created_at": datetime.now(timezone.utc),
+					"permissions": ["*:*"],
+					"can_sync_data": True,
+				}
 
 		# 检查是否有认证凭证
 		if not credentials:

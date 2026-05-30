@@ -125,6 +125,7 @@ import { ref, onMounted, onUnmounted, h } from "vue";
 import * as echarts from "echarts";
 import { useMessage, NTag, NSpin, NResult, NButton } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import tradeAPI from "@/api/trade";
 
 const message = useMessage();
 const loading = ref(false);
@@ -139,27 +140,15 @@ const impactChartRef = ref<HTMLElement>();
 const liquidityChartRef = ref<HTMLElement>();
 
 const executionStats = ref([
-  { name: "平均滑点", value: "-0.0023", change: "0.0012", trend: "down" },
-  { name: "执行成功率", value: "99.8%", change: "0.3%", trend: "up" },
-  { name: "平均执行时间", value: "1.2s", change: "-0.3s", trend: "down" },
-  { name: "VWAP偏差", value: "-0.0015", change: "0.0008", trend: "down" },
-  { name: "交易成本", value: "0.12%", change: "-0.02%", trend: "down" },
-  { name: "大单执行率", value: "95.6%", change: "1.2%", trend: "up" },
+  { name: "平均滑点", value: "--", change: "--", trend: "down" },
+  { name: "执行成功率", value: "--", change: "--", trend: "up" },
+  { name: "平均执行时间", value: "--", change: "--", trend: "down" },
+  { name: "VWAP偏差", value: "--", change: "--", trend: "down" },
+  { name: "交易成本", value: "--", change: "--", trend: "down" },
+  { name: "大单执行率", value: "--", change: "--", trend: "up" },
 ]);
 
-const executionRecords = ref([
-  {
-    orderId: "ORD001234",
-    symbol: "000001.SZ",
-    direction: "BUY",
-    quantity: 1000,
-    targetPrice: 15.2,
-    executedPrice: 15.198,
-    slippage: -0.002,
-    executionTime: "2024-01-15 09:30:15",
-    status: "已完成",
-  },
-]);
+const executionRecords = ref<any[]>([]);
 
 const getStatusType = (status: string) =>
   (
@@ -354,7 +343,40 @@ const loadData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
+    const [statsRes, tradesRes] = await Promise.all([
+      tradeAPI.getTradeStatistics().catch(() => null),
+      tradeAPI.getTradeRecords({ limit: 50 }).catch(() => ({ items: [] })),
+    ]);
+
+    if (statsRes) {
+      const s = statsRes as any;
+      const winRate = s.successful_trades != null && s.total_trades > 0
+        ? ((s.successful_trades / s.total_trades) * 100).toFixed(1) + "%"
+        : "--";
+      executionStats.value = [
+        { name: "总成交笔数", value: String(s.total_trades ?? "--"), change: "", trend: "up" },
+        { name: "成功笔数", value: String(s.successful_trades ?? "--"), change: "", trend: "up" },
+        { name: "总成交量", value: (s.total_volume ?? 0).toLocaleString(), change: "", trend: "up" },
+        { name: "总成交额", value: "¥" + (s.total_amount ?? 0).toLocaleString(), change: "", trend: "up" },
+        { name: "平均每笔", value: "¥" + (s.avg_trade_size ?? 0).toLocaleString(), change: "", trend: "down" },
+        { name: "执行成功率", value: winRate, change: "", trend: "up" },
+      ];
+    }
+
+    const items = (tradesRes as any)?.items ?? (Array.isArray(tradesRes) ? tradesRes : []);
+    executionRecords.value = items.map((t: any) => ({
+      orderId: t.order_id ?? t.id ?? "",
+      symbol: t.ts_code ?? t.symbol ?? "",
+      direction: t.direction ?? "",
+      quantity: t.volume ?? t.quantity ?? 0,
+      targetPrice: t.price ?? t.order_price ?? 0,
+      executedPrice: t.filled_price ?? t.executed_price ?? t.price ?? 0,
+      slippage: t.slippage ?? 0,
+      executionTime: t.filled_at ?? t.executed_at ?? t.created_at ?? "",
+      status: t.status ?? "",
+    }));
+    total.value = executionRecords.value.length;
+
     initCharts();
   } catch {
     error.value = true;

@@ -9,78 +9,147 @@ import {
   NDatePicker,
   NDescriptions,
   NDescriptionsItem,
-  NDivider,
   NDrawer,
   NEmpty,
-  NProgress,
   NResult,
   NSelect,
   NSkeleton,
   NSpace,
-  NSpin,
   NTag,
   NDataTable,
   useMessage,
+  useDialog,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import { dataSyncService } from "@/api/data-sync";
 import type { DataTableColumns } from "naive-ui";
 
 const router = useRouter();
 const message = useMessage();
+const dialog = useDialog();
 
 interface SyncRecord {
   id: string;
-  task_id: string;
-  data_types: string[];
-  status: "completed" | "running" | "failed" | "cancelled";
+  db_id: string;
+  data_type: string;
+  data_types?: string[];
+  status: string;
   start_time: string;
   end_time?: string;
   duration?: number;
-  total_tasks: number;
-  completed_tasks: number;
-  data_volume?: number;
-  results: Record<string, any>;
+  records_processed: number;
+  records_added: number;
+  total_records: number;
+  records_failed: number;
+  parameters?: Record<string, any>;
   error?: string;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
 }
 
 type PageState = "loading" | "error" | "empty" | "data";
 
 const pageState = ref<PageState>("loading");
-const records = ref<SyncRecord[]>([]);
+const allRecords = ref<SyncRecord[]>([]);
 const selectedRecord = ref<SyncRecord | null>(null);
 const drawerVisible = ref(false);
+const checkedRowKeys = ref<string[]>([]);
 
 const pagination = reactive({
   current: 1,
   pageSize: 20,
-  total: 0,
 });
 
 const filters = reactive({
-  status: "",
-  dataType: "",
+  status: "" as string,
+  dataType: "" as string,
   dateRange: null as [number, number] | null,
 });
 
 const statusOptions = [
   { label: "全部状态", value: "" },
   { label: "完成", value: "completed" },
-  { label: "运行中", value: "running" },
   { label: "失败", value: "failed" },
-  { label: "已取消", value: "cancelled" },
 ];
 
-const dataTypeOptions = [
-  { label: "全部类型", value: "" },
-  { label: "市场数据", value: "market" },
-  { label: "K线数据", value: "kline" },
-  { label: "财务数据", value: "financial" },
-  { label: "基本面数据", value: "fundamental" },
-];
+const dataTypeOptions = computed(() => {
+  const types = [...new Set(allRecords.value.map((r) => r.data_type))];
+  return [{ label: "全部类型", value: "" }, ...types.map((t) => ({ label: t, value: t }))];
+});
+
+// Client-side filtering
+const filteredRecords = computed(() => {
+  let list = allRecords.value;
+  if (filters.status) {
+    list = list.filter((r) => r.status === filters.status);
+  }
+  if (filters.dataType) {
+    list = list.filter((r) => r.data_type === filters.dataType);
+  }
+  if (filters.dateRange) {
+    const [start, end] = filters.dateRange;
+    list = list.filter((r) => {
+      const t = new Date(r.start_time).getTime();
+      return t >= start && t <= end;
+    });
+  }
+  return list;
+});
+
+const pagedRecords = computed(() => {
+  const start = (pagination.current - 1) * pagination.pageSize;
+  return filteredRecords.value.slice(start, start + pagination.pageSize);
+});
+
+const paginationTotal = computed(() => filteredRecords.value.length);
 
 const handleBack = () => {
   if (window.history.length > 1) router.go(-1);
   else router.push("/");
+};
+
+const handleDeleteRecord = (row: SyncRecord) => {
+  dialog.warning({
+    title: "确认删除",
+    content: `确定要删除「${row.data_type}」的同步记录吗？此操作不可恢复。`,
+    positiveText: "确认删除",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        await dataSyncService.deleteSyncTask(row.id);
+        message.success("记录已删除");
+        allRecords.value = allRecords.value.filter((r) => r.id !== row.id);
+      } catch {
+        message.error("删除失败，请重试");
+      }
+    },
+  });
+};
+
+const handleBatchDelete = () => {
+  dialog.warning({
+    title: "批量删除",
+    content: `确定要删除选中的 ${checkedRowKeys.value.length} 条记录吗？此操作不可恢复。`,
+    positiveText: "确认删除",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        const result = await dataSyncService.batchDeleteSyncTasks([...checkedRowKeys.value]);
+        const deleted = result.deleted.length;
+        const failed = result.failed.length;
+        if (deleted > 0) {
+          message.success(`已删除 ${deleted} 条记录${failed > 0 ? `，${failed} 条失败` : ""}`);
+          allRecords.value = allRecords.value.filter(r => !result.deleted.includes(r.id));
+        } else {
+          message.warning(`${failed} 条记录删除失败`);
+        }
+        checkedRowKeys.value = [];
+      } catch {
+        message.error("批量删除失败，请重试");
+      }
+    },
+  });
 };
 
 const getStatusType = (
@@ -100,18 +169,15 @@ const getStatusText = (status: string) => {
 };
 
 const formatDuration = (seconds?: number) => {
-  if (seconds == null) return "-";
+  if (seconds == null || seconds <= 0) return "-";
   if (seconds < 60) return `${seconds}秒`;
-  return `${Math.round(seconds / 60)}分${seconds % 60}秒`;
+  return `${Math.floor(seconds / 60)}分${Math.round(seconds % 60)}秒`;
 };
 
 const columns: DataTableColumns<SyncRecord> = [
+  { type: "selection" as const },
   {
-    title: "任务ID", key: "task_id", width: 110,
-  },
-  {
-    title: "数据类型", key: "data_types", width: 130,
-    render: (row) => row.data_types.join(", "),
+    title: "数据类型", key: "data_type", width: 130,
   },
   {
     title: "状态", key: "status", width: 80,
@@ -119,39 +185,42 @@ const columns: DataTableColumns<SyncRecord> = [
       h(NTag, { type: getStatusType(row.status), bordered: false, size: "small" }, { default: () => getStatusText(row.status) }),
   },
   {
-    title: "进度", key: "progress", width: 120,
-    render: (row) =>
-      h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [
-        h(NProgress, {
-          type: "line",
-          percentage: row.total_tasks > 0 ? Math.round((row.completed_tasks / row.total_tasks) * 100) : 0,
-          status: row.status === "failed" ? "error" : row.status === "completed" ? "success" : "default",
-          height: 6,
-          borderRadius: 3,
-          style: { width: "60px" },
-        }),
-        h("span", { style: { fontSize: "12px", whiteSpace: "nowrap" } }, `${row.completed_tasks}/${row.total_tasks}`),
-      ]),
+    title: "已处理", key: "records_processed", width: 70,
+    render: (row) => row.records_processed.toLocaleString(),
   },
   {
-    title: "数据量", key: "data_volume", width: 80,
-    render: (row) => row.data_volume ? `${(row.data_volume / 10000).toFixed(1)}万` : "-",
+    title: "成功", key: "records_added", width: 70,
+    render: (row) => row.records_added.toLocaleString(),
   },
   {
-    title: "开始时间", key: "start_time", width: 140,
+    title: "总计", key: "total_records", width: 70,
+    render: (row) => row.total_records.toLocaleString(),
   },
   {
-    title: "结束时间", key: "end_time", width: 140,
-    render: (row) => row.end_time || "-",
+    title: "失败", key: "records_failed", width: 70,
+    render: (row) => (row.records_failed > 0 ? h("span", { style: { color: "var(--color-error, #E53935)" } }, row.records_failed.toLocaleString()) : "0"),
+  },
+  {
+    title: "开始时间", key: "start_time", width: 150,
+    render: (row) => row.start_time ? new Date(row.start_time).toLocaleString("zh-CN") : "-",
+  },
+  {
+    title: "结束时间", key: "end_time", width: 150,
+    render: (row) => row.end_time ? new Date(row.end_time).toLocaleString("zh-CN") : "-",
   },
   {
     title: "耗时", key: "duration", width: 80,
     render: (row) => formatDuration(row.duration),
   },
   {
-    title: "操作", key: "actions", width: 80, fixed: "right",
+    title: "操作", key: "actions", width: 120, fixed: "right",
     render: (row) =>
-      h(NButton, { text: true, size: "small", onClick: () => showDetails(row) }, { default: () => "详情" }),
+      h(NSpace, { size: "small" as any }, {
+        default: () => [
+          h(NButton, { text: true, size: "small", onClick: () => showDetails(row) }, { default: () => "详情" }),
+          h(NButton, { text: true, size: "small", type: "error", onClick: () => handleDeleteRecord(row) }, { default: () => "删除" }),
+        ],
+      }),
   },
 ];
 
@@ -170,71 +239,52 @@ const handleReset = () => {
   filters.dataType = "";
   filters.dateRange = null;
   pagination.current = 1;
-  loadHistory();
-};
-
-const handleRetryTask = (taskId: string) => {
-  message.success(`正在重试任务: ${taskId}`);
+  checkedRowKeys.value = [];
 };
 
 const loadHistory = async () => {
   pageState.value = "loading";
   try {
-    await new Promise((r) => setTimeout(r, 500));
-    records.value = [
-      {
-        id: "1",
-        task_id: "TASK_001",
-        data_types: ["市场数据", "K线数据"],
-        status: "completed",
-        start_time: "2024-01-15 10:00:00",
-        end_time: "2024-01-15 10:15:00",
-        duration: 900,
-        total_tasks: 100,
-        completed_tasks: 100,
-        data_volume: 2350000,
-        results: { 市场数据: { error: null }, K线数据: { error: null } },
-      },
-      {
-        id: "2",
-        task_id: "TASK_002",
-        data_types: ["财务数据"],
-        status: "failed",
-        start_time: "2024-01-15 09:30:00",
-        end_time: "2024-01-15 09:33:00",
-        duration: 180,
-        total_tasks: 50,
-        completed_tasks: 23,
-        data_volume: 450000,
-        results: { 财务数据: { error: "数据库写入超时" } },
-        error: "部分数据同步失败，已自动回滚",
-      },
-      {
-        id: "3",
-        task_id: "TASK_003",
-        data_types: ["基本面数据"],
-        status: "cancelled",
-        start_time: "2024-01-15 08:00:00",
-        end_time: "2024-01-15 08:05:00",
-        duration: 300,
-        total_tasks: 80,
-        completed_tasks: 35,
-        results: { 基本面数据: { error: null } },
-      },
-    ];
-    pagination.total = 156;
-    pageState.value = records.value.length === 0 ? "empty" : "data";
+    const result = await dataSyncService.getSyncTasks({ limit: 200 });
+    const tasks = result.tasks || [];
+    allRecords.value = tasks.map((t) => {
+      const startTime = t.start_time ? new Date(t.start_time) : null;
+      const endTime = t.end_time ? new Date(t.end_time) : null;
+      const duration = startTime && endTime
+        ? Math.round((endTime.getTime() - startTime.getTime()) / 1000)
+        : undefined;
+      const types = t.data_types && t.data_types.length > 0 ? t.data_types : [t.task_type];
+      return {
+        id: t.task_id,
+        db_id: t.id,
+        data_type: types.join(" · "),
+        data_types: t.data_types,
+        status: t.status,
+        start_time: t.start_time || "",
+        end_time: t.end_time,
+        duration,
+        records_processed: t.records_processed || 0,
+        records_added: t.records_succeeded || 0,
+        total_records: t.total_records || 0,
+        records_failed: t.records_failed || 0,
+        parameters: t.parameters,
+        error: t.error_message,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        completed_at: t.completed_at,
+      };
+    });
+    pageState.value = allRecords.value.length === 0 ? "empty" : "data";
   } catch {
     pageState.value = "error";
   }
 };
 
-// 筛选变更自动查询
+// Reset pagination when filters change
 watch(
   () => [filters.status, filters.dataType, filters.dateRange],
   () => {
     pagination.current = 1;
-    loadHistory();
   },
 );
 
@@ -283,41 +333,7 @@ onMounted(() => {
         </template>
       </n-result>
 
-      <!-- Empty -->
-      <n-card v-else-if="pageState === 'empty'" class="history-card">
-        <div class="filter-bar">
-          <n-space :size="12" wrap>
-            <n-select
-              v-model:value="filters.status"
-              placeholder="状态筛选"
-              style="width: 120px"
-              clearable
-              :options="statusOptions"
-            />
-            <n-select
-              v-model:value="filters.dataType"
-              placeholder="数据类型"
-              style="width: 130px"
-              clearable
-              :options="dataTypeOptions"
-            />
-            <n-date-picker
-              v-model:value="filters.dateRange"
-              type="daterange"
-              style="width: 240px"
-              clearable
-            />
-            <n-button @click="handleReset">重置</n-button>
-          </n-space>
-        </div>
-        <n-empty description="暂无符合条件的记录" class="empty-result">
-          <template #extra>
-            <n-button size="small" @click="handleReset">清除筛选</n-button>
-          </template>
-        </n-empty>
-      </n-card>
-
-      <!-- Data -->
+      <!-- Data + Empty (shared filter-bar) -->
       <n-card v-else class="history-card">
         <div class="filter-bar">
           <n-space :size="12" wrap>
@@ -342,23 +358,42 @@ onMounted(() => {
               clearable
             />
             <n-button @click="handleReset">重置</n-button>
+            <n-button
+              v-if="checkedRowKeys.length > 0"
+              type="error"
+              size="small"
+              @click="handleBatchDelete"
+            >
+              删除选中 ({{ checkedRowKeys.length }})
+            </n-button>
           </n-space>
         </div>
 
+        <n-empty
+          v-if="pageState === 'empty'"
+          description="暂无符合条件的记录"
+          class="empty-result"
+        >
+          <template #extra>
+            <n-button size="small" @click="handleReset">清除筛选</n-button>
+          </template>
+        </n-empty>
+
         <n-data-table
+          v-else
           :columns="columns"
-          :data="records"
+          :data="pagedRecords"
+          v-model:checked-row-keys="checkedRowKeys"
           :pagination="{
             page: pagination.current,
             pageSize: pagination.pageSize,
-            itemCount: pagination.total,
-            onChange: (page: number) => { pagination.current = page; loadHistory(); },
-            onUpdatePageSize: (pageSize: number) => { pagination.pageSize = pageSize; loadHistory(); },
+            itemCount: paginationTotal,
+            onChange: (page: number) => { pagination.current = page; },
+            onUpdatePageSize: (pageSize: number) => { pagination.pageSize = pageSize; pagination.current = 1; },
           }"
           :row-key="(row: SyncRecord) => row.id"
-          :scroll-x="1000"
+          :scroll-x="1050"
           size="small"
-          remote
         />
       </n-card>
 
@@ -367,48 +402,47 @@ onMounted(() => {
         :show="drawerVisible"
         title="同步任务详情"
         placement="right"
-        :width="560"
+        :width="600"
         @update:show="(val: boolean) => { if (!val) closeDrawer(); }"
       >
         <template v-if="selectedRecord">
-          <n-descriptions label-placement="left" bordered :column="1" size="small">
-            <n-descriptions-item label="任务ID">{{ selectedRecord.task_id }}</n-descriptions-item>
-            <n-descriptions-item label="数据类型">{{ selectedRecord.data_types.join(", ") }}</n-descriptions-item>
+          <n-descriptions label-placement="left" bordered :column="2" size="small">
+            <n-descriptions-item label="记录ID" :span="2">{{ selectedRecord.db_id }}</n-descriptions-item>
+            <n-descriptions-item label="任务ID" :span="2">{{ selectedRecord.id }}</n-descriptions-item>
+            <n-descriptions-item label="任务类型">{{ selectedRecord.data_type }}</n-descriptions-item>
             <n-descriptions-item label="状态">
               <n-tag :type="getStatusType(selectedRecord.status)" :bordered="false" size="small">
                 {{ getStatusText(selectedRecord.status) }}
               </n-tag>
             </n-descriptions-item>
-            <n-descriptions-item label="开始时间">{{ selectedRecord.start_time }}</n-descriptions-item>
-            <n-descriptions-item label="结束时间">{{ selectedRecord.end_time || "-" }}</n-descriptions-item>
+            <n-descriptions-item v-if="selectedRecord.data_types?.length" label="数据类型" :span="2">
+              <n-tag v-for="dt in selectedRecord.data_types" :key="dt" size="small" style="margin-right: 4px">{{ dt }}</n-tag>
+            </n-descriptions-item>
+            <n-descriptions-item label="创建时间">{{ selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
+            <n-descriptions-item label="更新时间">{{ selectedRecord.updated_at ? new Date(selectedRecord.updated_at).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
+            <n-descriptions-item label="开始时间">{{ selectedRecord.start_time ? new Date(selectedRecord.start_time).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
+            <n-descriptions-item label="结束时间">{{ selectedRecord.end_time ? new Date(selectedRecord.end_time).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
+            <n-descriptions-item label="完成时间">{{ selectedRecord.completed_at ? new Date(selectedRecord.completed_at).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
             <n-descriptions-item label="耗时">{{ formatDuration(selectedRecord.duration) }}</n-descriptions-item>
-            <n-descriptions-item label="完成进度">
-              {{ selectedRecord.completed_tasks }}/{{ selectedRecord.total_tasks }}
-            </n-descriptions-item>
-            <n-descriptions-item v-if="selectedRecord.data_volume" label="数据量">
-              {{ (selectedRecord.data_volume / 10000).toFixed(1) }}万条
-            </n-descriptions-item>
+            <n-descriptions-item label="已处理">{{ selectedRecord.records_processed.toLocaleString() }} 条</n-descriptions-item>
+            <n-descriptions-item label="成功">{{ selectedRecord.records_added.toLocaleString() }} 条</n-descriptions-item>
+            <n-descriptions-item label="失败">{{ selectedRecord.records_failed.toLocaleString() }} 条</n-descriptions-item>
+            <n-descriptions-item label="总计">{{ selectedRecord.total_records.toLocaleString() }} 条</n-descriptions-item>
           </n-descriptions>
 
-          <n-divider />
-
           <n-descriptions
-            v-if="Object.keys(selectedRecord.results).length > 0"
+            v-if="selectedRecord.parameters && Object.keys(selectedRecord.parameters).length > 0"
             label-placement="left"
             bordered
             :column="1"
             size="small"
-            title="子任务结果"
+            title="任务参数"
+            class="params-section"
           >
-            <n-descriptions-item v-for="(result, dataType) in selectedRecord.results" :key="dataType" :label="dataType">
-              <n-tag :type="result.error ? 'error' : 'success'" :bordered="false" size="small">
-                {{ result.error ? "失败" : "成功" }}
-              </n-tag>
-              <span v-if="result.error" class="error-text">{{ result.error }}</span>
+            <n-descriptions-item v-for="(val, key) in selectedRecord.parameters" :key="key" :label="key">
+              {{ typeof val === 'object' ? JSON.stringify(val) : val }}
             </n-descriptions-item>
           </n-descriptions>
-
-          <n-empty v-else description="无子任务结果" size="small" />
 
           <n-alert
             v-if="selectedRecord.error"
@@ -419,17 +453,8 @@ onMounted(() => {
           />
 
           <div class="drawer-actions">
-            <n-button
-              v-if="selectedRecord.status === 'failed'"
-              type="primary"
-              @click="handleRetryTask(selectedRecord.task_id)"
-            >
-              <template #icon><SmartIcon name="Refresh" /></template>
-              重试任务
-            </n-button>
-            <n-button @click="message.info('日志功能开发中')">
-              <template #icon><SmartIcon name="DocumentText" /></template>
-              查看日志
+            <n-button @click="closeDrawer">
+              关闭
             </n-button>
           </div>
         </template>
@@ -443,7 +468,6 @@ onMounted(() => {
   padding: 0;
   height: 100%;
   overflow-y: auto;
-  background: transparent;
 }
 
 .header-actions {
@@ -451,12 +475,6 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-
-  /* .action-btn 圆形成样式已迁移至全局 global.scss */
-}
-
-.history-card {
-  /* margin handled by main-content padding */
 }
 
 .filter-bar {
@@ -471,13 +489,11 @@ onMounted(() => {
   margin: 40px 0;
 }
 
-.error-text {
-  color: var(--color-stock-down, #00E676);
-  margin-left: 8px;
-  font-size: 12px;
+.error-alert {
+  margin-top: 12px;
 }
 
-.error-alert {
+.params-section {
   margin-top: 12px;
 }
 
@@ -489,7 +505,6 @@ onMounted(() => {
   border-top: 1px solid var(--n-border-color);
 }
 
-// 响应式
 @media (max-width: 768px) {
   .filter-bar {
     padding: 8px;

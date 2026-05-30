@@ -218,6 +218,7 @@ import { useMessage, NTag } from "naive-ui";
 import { Icon } from "@iconify/vue";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
+import strategyAPI from "@/api/strategy";
 import * as echarts from "echarts";
 
 const message = useMessage();
@@ -236,13 +237,9 @@ const analysisConfig = reactive({
   attributionModel: "brinson",
 });
 
-const strategyList = ref([
-  { id: "1", name: "双均线策略" },
-  { id: "2", name: "动量反转策略" },
-  { id: "3", name: "均值回归策略" },
-]);
+const strategyList = ref<any[]>([]);
 const strategyOptions = computed(() =>
-  strategyList.value.map((s) => ({ label: s.name, value: s.id })),
+  strategyList.value.map((s: any) => ({ label: s.name ?? s.strategy_name ?? String(s.id), value: String(s.id) })),
 );
 const modelOptions = [
   { label: "Brinson模型", value: "brinson" },
@@ -649,9 +646,15 @@ const initCharts = () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const strategies = await strategyAPI.getStrategies();
+    strategyList.value = Array.isArray(strategies) ? strategies : [];
+  } catch {
+    strategyList.value = [];
+  }
   if (strategyList.value.length > 0)
-    analysisConfig.strategy = strategyList.value[0].id;
+    analysisConfig.strategy = String(strategyList.value[0].id);
   runAttributionAnalysis();
 });
 </script>

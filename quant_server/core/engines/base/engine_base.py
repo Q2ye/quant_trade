@@ -1943,7 +1943,7 @@ class EngineBase(ABC):
 				self.metrics = EngineMetricsUpdater.increment_processed_events(self.metrics)
 				self.metrics = EngineMetricsUpdater.update_last_success_time(self.metrics, datetime.now())
 
-				logger.debug(f"发布事件: {event_type} from {self.config.name}")
+				logger.debug("引擎发布事件: %s | 引擎: %s", event_type, self.config.name)
 
 			except (RuntimeError, ValueError) as e:
 				logger.error(f"发布事件失败: {self.config.name}, 错误: {e}")

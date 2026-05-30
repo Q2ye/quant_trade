@@ -124,7 +124,7 @@ export default {
     symbols?: string[];
   }): Promise<{ task_id: string }> {
     return request
-      .post("/quantTrade/system/data/sync", params)
+      .post("/quantTrade/data/sync/batch", params)
       .then(handleResponse)
       .then((data: ApiResponse<{ task_id: string }>) => data.data);
   },
@@ -135,7 +135,7 @@ export default {
    */
   async getDataSyncStatus(): Promise<any> {
     return request
-      .get("/quantTrade/system/data/status")
+      .get("/quantTrade/data/sync/status")
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
   },
@@ -231,7 +231,7 @@ export default {
     service: string,
   ): Promise<{ success: boolean; message: string }> {
     return request
-      .post(`/system/services/${service}/restart`)
+      .post(`/quantTrade/system/services/${service}/restart`)
       .then(handleResponse)
       .then(
         (data: ApiResponse<{ success: boolean; message: string }>) => data.data,

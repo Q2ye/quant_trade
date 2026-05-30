@@ -79,9 +79,7 @@ export const routes: RouteRecordRaw[] = [
   // 数据中心
   {
     path: "/data/sync/overview",
-    name: "DataSyncOverview",
-    component: () => import("@/views/DataCenter/DataSync/DataSyncOverview.vue"),
-    meta: { menu: "data-sync-overview", layout: "main", title: "同步总览" },
+    redirect: "/data/sync",
   },
   {
     path: "/data/sync/quality",
@@ -93,13 +91,7 @@ export const routes: RouteRecordRaw[] = [
     path: "/data/sync",
     name: "DataSync",
     component: () => import("@/views/DataCenter/DataSync/DataSync.vue"),
-    meta: { menu: "", layout: "main", title: "数据同步", hideInMenu: true },
-  },
-  {
-    path: "/data/sync/tasks",
-    name: "SyncTaskMonitor",
-    component: () => import("@/views/DataCenter/DataSync/TaskMonitor.vue"),
-    meta: { menu: "", layout: "main", title: "同步任务监控", hideInMenu: true },
+    meta: { menu: "data-sync-overview", layout: "main", title: "数据同步" },
   },
   {
     path: "/data/sync/history",

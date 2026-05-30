@@ -650,7 +650,7 @@ class DataQualityResponse(BaseModel):
 	"""数据质量响应模型"""
 	success: bool = Field(..., description="请求是否成功")
 	data_type: Optional[DataSyncType] = Field(default=None, description="数据类型")
-	date_range: Optional[Dict[str, date]] = Field(default=None, description="日期范围")
+	date_range: Optional[Dict[str, Optional[date]]] = Field(default=None, description="日期范围")
 	quality_score: float = Field(..., ge=0, le=100, description="质量评分")
 	quality_level: DataQualityLevel = Field(..., description="质量等级")
 	metrics: List[QualityMetric] = Field(..., description="质量指标")
@@ -1237,6 +1237,35 @@ class QuickSyncStatusResponse(BaseModel):
 			}
 		}
 	)
+
+
+# ==================== 同步任务历史 ====================
+
+class SyncTaskRecord(BaseModel):
+    """同步任务历史记录"""
+    id: str = Field(..., description="记录主键ID（UUID）")
+    task_id: str = Field(..., description="任务ID")
+    task_type: str = Field(..., description="任务类型")
+    data_types: Optional[List[str]] = Field(default=None, description="数据类型列表")
+    status: str = Field(..., description="任务状态: completed/failed/running/cancelled")
+    start_time: Optional[datetime] = Field(default=None, description="开始时间")
+    end_time: Optional[datetime] = Field(default=None, description="结束时间")
+    records_processed: int = Field(default=0, description="已处理记录数")
+    records_succeeded: int = Field(default=0, description="成功记录数")
+    records_failed: int = Field(default=0, description="失败记录数")
+    total_records: int = Field(default=0, description="总记录数")
+    parameters: Optional[Dict[str, Any]] = Field(default=None, description="任务参数")
+    error_message: Optional[str] = Field(default=None, description="错误信息")
+    created_at: Optional[datetime] = Field(default=None, description="创建时间")
+    updated_at: Optional[datetime] = Field(default=None, description="更新时间")
+    completed_at: Optional[datetime] = Field(default=None, description="完成时间")
+
+
+class SyncTaskListResponse(BaseModel):
+    """同步任务列表响应"""
+    success: bool = Field(True, description="请求是否成功")
+    tasks: List[SyncTaskRecord] = Field(default_factory=list, description="任务列表")
+    total: int = Field(default=0, description="总数")
 
 
 # ==================== 补充：因子批量查询模型 ====================

@@ -160,6 +160,7 @@ import { useRouter } from 'vue-router'
 import { NButton, NCard, NGrid, NGridItem, NSkeleton, NEmpty, NResult, useMessage } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import { tokens } from '@/styles/design-tokens'
+import performanceAPI from '@/api/performance'
 
 const router = useRouter()
 const message = useMessage()
@@ -189,7 +190,13 @@ const loadData = async () => {
   loading.value = true
   error.value = false
   try {
-    await new Promise(r => setTimeout(r, 200))
+    const perf = await performanceAPI.getAccountPerformance().catch(() => null)
+    if (perf) {
+      const p = perf as any
+      if (p.total_return != null) stats.value.cumulativeReturn = p.total_return * 100
+      if (p.annual_return != null) stats.value.avgAnnualReturn = p.annual_return * 100
+      if (p.total_asset != null) stats.value.accountNav = p.total_asset.toLocaleString()
+    }
   } catch {
     error.value = true
   } finally {

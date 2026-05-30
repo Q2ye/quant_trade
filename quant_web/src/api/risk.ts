@@ -46,7 +46,7 @@ export default {
    */
   async getRiskRules(token: string): Promise<RiskRule[]> {
     return request
-      .get("/quantTrade/risk/rules", { params: { token } })
+      .get("/quantTrade/monitor/alerts/rules", { params: { token } })
       .then(handleResponse)
       .then((data: ApiResponse<RiskRule[]>) => data.data);
   },
@@ -62,7 +62,7 @@ export default {
     token: string,
   ): Promise<RiskRule> {
     return request
-      .post("/quantTrade/risk/rules", ruleData, { params: { token } })
+      .post("/quantTrade/monitor/alerts/rules", ruleData, { params: { token } })
       .then(handleResponse)
       .then((data: ApiResponse<RiskRule>) => data.data);
   },
@@ -80,7 +80,7 @@ export default {
     token: string,
   ): Promise<RiskRule> {
     return request
-      .put(`/risk/rules/${ruleId}`, ruleData, { params: { token } })
+      .put(`/quantTrade/monitor/alerts/rules/${ruleId}`, ruleData, { params: { token } })
       .then(handleResponse)
       .then((data: ApiResponse<RiskRule>) => data.data);
   },
@@ -93,7 +93,7 @@ export default {
    */
   async deleteRiskRule(ruleId: number, token: string): Promise<void> {
     return request
-      .delete(`/risk/rules/${ruleId}`, { params: { token } })
+      .delete(`/quantTrade/monitor/alerts/rules/${ruleId}`, { params: { token } })
       .then(handleResponse);
   },
 
@@ -117,7 +117,7 @@ export default {
    */
   async getRiskAlerts(): Promise<RiskAlertMessage[]> {
     return request
-      .get("/quantTrade/risk/alerts")
+      .get("/quantTrade/monitor/risk/alerts")
       .then(handleResponse)
       .then((data: ApiResponse<RiskAlertMessage[]>) => data.data);
   },
@@ -129,7 +129,7 @@ export default {
    */
   async acknowledgeRiskAlert(alertId: string): Promise<void> {
     return request
-      .post(`/risk/alerts/${alertId}/acknowledge`)
+      .post(`/quantTrade/monitor/alerts/${alertId}/acknowledge`)
       .then(handleResponse);
   },
 

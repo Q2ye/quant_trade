@@ -29,37 +29,37 @@
 .market-index-grid {
   // 应用灵活网格布局：默认4列，响应式断点配置，间隙大小
   @include mix.flexible-grid(
-    4,
-    (
-      "xl": 4,
-      // 超大屏幕：4列
-      "lg": 3,
-      // 大屏幕：3列
-      "md": 2,
-      // 中等屏幕：2列
-      "sm": 1, // 小屏幕：1列
-    ),
-    map.get($spacers, 5)
+                  4,
+                  (
+                          "xl": 4,
+                    // 超大屏幕：4列
+                          "lg": 3,
+                    // 大屏幕：3列
+                          "md": 2,
+                    // 中等屏幕：2列
+                          "sm": 1, // 小屏幕：1列
+                  ),
+                  map.get($spacers, 5)
   ); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap(
-    (
-      "lg": (
-        "gap": map.get($spacers, 4),
-        "card-gap": map.get($spacers, 3),
-      ),
-      // 大屏幕间隙配置
-      "md": (
-          "gap": map.get($spacers, 3),
-          "card-gap": map.get($spacers, 2),
-        ),
-      // 中等屏幕间隙配置
-      "sm": (
-          "gap": map.get($spacers, 2),
-          "card-gap": map.get($spacers, 2),
-        ), // 小屏幕间隙配置
-    )
+                  (
+                          "lg": (
+                                  "gap": map.get($spacers, 4),
+                                  "card-gap": map.get($spacers, 3),
+                          ),
+                    // 大屏幕间隙配置
+                          "md": (
+                                  "gap": map.get($spacers, 3),
+                                  "card-gap": map.get($spacers, 2),
+                          ),
+                    // 中等屏幕间隙配置
+                          "sm": (
+                                  "gap": map.get($spacers, 2),
+                                  "card-gap": map.get($spacers, 2),
+                          ), // 小屏幕间隙配置
+                  )
   );
 
   // 市场指数卡片样式
@@ -169,37 +169,37 @@
 .function-grid {
   // 应用灵活网格布局：默认3列，响应式断点配置，间隙大小
   @include mix.flexible-grid(
-    4,
-    (
-      "xl": 3,
-      // 超大屏幕：3列
-      "lg": 2,
-      // 大屏幕：2列
-      "md": 2,
-      // 中等屏幕：2列
-      "sm": 1, // 小屏幕：1列
-    ),
-    map.get($spacers, 5)
+                  4,
+                  (
+                          "xl": 3,
+                    // 超大屏幕：3列
+                          "lg": 2,
+                    // 大屏幕：2列
+                          "md": 2,
+                    // 中等屏幕：2列
+                          "sm": 1, // 小屏幕：1列
+                  ),
+                  map.get($spacers, 5)
   ); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap(
-    (
-      "lg": (
-        "gap": map.get($spacers, 4),
-        "card-gap": map.get($spacers, 4),
-      ),
-      // 大屏幕间隙配置
-      "md": (
-          "gap": map.get($spacers, 3),
-          "card-gap": map.get($spacers, 3),
-        ),
-      // 中等屏幕间隙配置
-      "sm": (
-          "gap": map.get($spacers, 2),
-          "card-gap": map.get($spacers, 2),
-        ), // 小屏幕间隙配置
-    )
+                  (
+                          "lg": (
+                                  "gap": map.get($spacers, 4),
+                                  "card-gap": map.get($spacers, 4),
+                          ),
+                    // 大屏幕间隙配置
+                          "md": (
+                                  "gap": map.get($spacers, 3),
+                                  "card-gap": map.get($spacers, 3),
+                          ),
+                    // 中等屏幕间隙配置
+                          "sm": (
+                                  "gap": map.get($spacers, 2),
+                                  "card-gap": map.get($spacers, 2),
+                          ), // 小屏幕间隙配置
+                  )
   );
 
   // ============================================================================
@@ -274,47 +274,47 @@
 .hotspot-grid {
   // 应用灵活网格布局：默认2列，响应式断点配置，间隙大小
   @include mix.flexible-grid(
-    2,
-    (
-      "lg": 1,
-      // 大屏幕：1列
-      "md": 1, // 中等屏幕：1列
-    ),
-    map.get($spacers, 5)
+                  2,
+                  (
+                          "lg": 1,
+                    // 大屏幕：1列
+                          "md": 1, // 中等屏幕：1列
+                  ),
+                  map.get($spacers, 5)
   ); // 主要间隙：使用spacers映射中的第5个值
 
   // 应用响应式卡片间隙控制
   @include mix.responsive-card-gap(
-    (
-      "lg": (
-        "gap": map.get($spacers, 4),
-        "card-gap": map.get($spacers, 3),
-      ),
-      // 大屏幕间隙配置
-      "md": (
-          "gap": map.get($spacers, 3),
-          "card-gap": map.get($spacers, 2),
-        ),
-      // 中等屏幕间隙配置
-      "sm": (
-          "gap": map.get($spacers, 2),
-          "card-gap": map.get($spacers, 2),
-        ), // 小屏幕间隙配置
-    )
+                  (
+                          "lg": (
+                                  "gap": map.get($spacers, 4),
+                                  "card-gap": map.get($spacers, 3),
+                          ),
+                    // 大屏幕间隙配置
+                          "md": (
+                                  "gap": map.get($spacers, 3),
+                                  "card-gap": map.get($spacers, 2),
+                          ),
+                    // 中等屏幕间隙配置
+                          "sm": (
+                                  "gap": map.get($spacers, 2),
+                                  "card-gap": map.get($spacers, 2),
+                          ), // 小屏幕间隙配置
+                  )
   );
 
   // 侧边栏折叠状态下的网格调整
   .sidebar-collapsed & {
     @include mix.flexible-grid(
-      2,
-      (
-        "lg": 1,
-        // 大屏幕：1列
-        "md": 1,
-        // 中等屏幕：1列
-        "sm": 1, // 小屏幕：1列
-      ),
-      map.get($spacers, 5)
+                    2,
+                    (
+                            "lg": 1,
+                      // 大屏幕：1列
+                            "md": 1,
+                      // 中等屏幕：1列
+                            "sm": 1, // 小屏幕：1列
+                    ),
+                    map.get($spacers, 5)
     ); // 主要间隙：使用spacers映射中的第5个值
   }
 
@@ -517,18 +517,18 @@
           // 资金流入样式
           &.inflow {
             background: linear-gradient(
-              90deg,
-              $stock-up-color,
-              lighten($stock-up-color, 20%)
+                            90deg,
+                            $stock-up-color,
+                            lighten($stock-up-color, 20%)
             ); // 上涨色渐变
           }
 
           // 资金流出样式
           &.outflow {
             background: linear-gradient(
-              90deg,
-              $stock-down-color,
-              lighten($stock-down-color, 20%)
+                            90deg,
+                            $stock-down-color,
+                            lighten($stock-down-color, 20%)
             ); // 下跌色渐变
           }
 
@@ -541,10 +541,10 @@
             width: 100%; // 宽度100%
             height: 100%; // 高度100%
             background: linear-gradient(
-              90deg,
-              transparent,
-              rgba(255, 255, 255, 0.4),
-              transparent
+                            90deg,
+                            transparent,
+                            rgba(255, 255, 255, 0.4),
+                            transparent
             ); // 半透明白色渐变
             animation: shimmer 2s infinite; // 流光动画
           }
@@ -584,69 +584,71 @@
 @include mix.media-breakpoint-down(lg) {
   // .market-page-header 已迁移至全局 .page-header（global.scss）
 
-// 中等屏幕及以下响应式调整
-@include mix.media-breakpoint-down(md) {
-  .market-overview-page {
-    // 主内容区域
-    .main-content {
-      padding: map.get($spacers, 1); // 调整内边距：使用spacers映射中的第4个值
+  // 中等屏幕及以下响应式调整
+  @include mix.media-breakpoint-down(md) {
+    .market-overview-page {
+      // 主内容区域
+      .main-content {
+        padding: map.get($spacers, 1); // 调整内边距：使用spacers映射中的第4个值
+      }
+    }
+
+    // 市场区块标题
+    .market-section-title {
+      font-size: $font-size-base * 1.1; // 字体大小：基础字体的110%
+      margin-bottom: map.get(
+                      $spacers,
+                      4
+      ); // 底部外边距：使用spacers映射中的第4个值
     }
   }
 
-  // 市场区块标题
-  .market-section-title {
-    font-size: $font-size-base * 1.1; // 字体大小：基础字体的110%
-    margin-bottom: map.get(
-      $spacers,
-      4
-    ); // 底部外边距：使用spacers映射中的第4个值
-  }
-}
+  // 小屏幕及以下响应式调整
+  @include mix.media-breakpoint-down(sm) {
+    .market-overview-page {
+      // 主内容区域
+      .main-content {
+        padding: map.get(
+                        $spacers,
+                        3
+        ); // 进一步调整内边距：使用spacers映射中的第3个值
+      }
+    }
 
-// 小屏幕及以下响应式调整
-@include mix.media-breakpoint-down(sm) {
-  .market-overview-page {
-    // 主内容区域
-    .main-content {
-      padding: map.get(
-        $spacers,
-        3
-      ); // 进一步调整内边距：使用spacers映射中的第3个值
+    // 热点项和流向项
+    .hotspot-item,
+    .flow-item {
+      padding: map.get($spacers, 3); // 调整内边距：使用spacers映射中的第3个值
+
+      // 流向进度条
+      .flow-bar {
+        display: none; // 隐藏流向进度条
+      }
+    }
+
+    // 各种网格布局
+    .market-index-grid,
+    .function-grid,
+    .hotspot-grid {
+      gap: map.get(
+                      $spacers,
+                      3
+      ) !important; // 强制设置间隙：使用spacers映射中的第3个值
     }
   }
 
-  // 热点项和流向项
-  .hotspot-item,
-  .flow-item {
-    padding: map.get($spacers, 3); // 调整内边距：使用spacers映射中的第3个值
+  // ============================================================================
+  // 动画定义
+  // ============================================================================
 
-    // 流向进度条
-    .flow-bar {
-      display: none; // 隐藏流向进度条
+  // 流光动画关键帧
+  @keyframes shimmer {
+    0% {
+      left: -100%; // 起始位置：左侧-100%
+    }
+    100% {
+      left: 100%; // 结束位置：右侧100%
     }
   }
-
-  // 各种网格布局
-  .market-index-grid,
-  .function-grid,
-  .hotspot-grid {
-    gap: map.get(
-      $spacers,
-      3
-    ) !important; // 强制设置间隙：使用spacers映射中的第3个值
-  }
 }
 
-// ============================================================================
-// 动画定义
-// ============================================================================
-
-// 流光动画关键帧
-@keyframes shimmer {
-  0% {
-    left: -100%; // 起始位置：左侧-100%
-  }
-  100% {
-    left: 100%; // 结束位置：右侧100%
-  }
-}

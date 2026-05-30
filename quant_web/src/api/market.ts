@@ -32,7 +32,7 @@ export default {
     params?: StockQueryParams,
   ): Promise<PaginatedResponse<StockBasic>> {
     return request
-      .get("/quantTrade/market/stocks", { params })
+      .get("/quantTrade/data/stocks", { params })
       .then((response: any) => handleResponse(response))
       .then((data: PaginatedResponse<StockBasic>) => data);
   },
@@ -44,7 +44,7 @@ export default {
    */
   async getStockDetail(code: string): Promise<StockBasic> {
     return request
-      .get(`/market/stock/${code}`)
+      .get(`/quantTrade/data/stocks/${code}`)
       .then((response: any) => handleResponse(response))
       .then((data: { stock: StockBasic }) => data.stock);
   },
@@ -60,7 +60,7 @@ export default {
     params: QuoteQueryParams,
   ): Promise<KLineData[]> {
     return request
-      .get(`/market/stock/${code}/history`, { params })
+      .get(`/quantTrade/data/stocks/${code}/history`, { params })
       .then((response: any) => handleResponse(response))
       .then((data: { historical: KLineData[] }) => data.historical);
   },
@@ -75,7 +75,7 @@ export default {
     limit?: number;
   }): Promise<StockBasic[]> {
     return request
-      .get("/quantTrade/market/etfs", { params })
+      .get("/quantTrade/data/etfs", { params })
       .then((response: any) => handleResponse(response))
       .then((data: { etfs: StockBasic[] }) => data.etfs);
   },
@@ -87,7 +87,7 @@ export default {
    */
   async getETFDetail(code: string): Promise<StockBasic> {
     return request
-      .get(`/market/etf/${code}`)
+      .get(`/quantTrade/data/etfs/${code}`)
       .then((response: any) => handleResponse(response))
       .then((data: { etf: StockBasic }) => data.etf);
   },
@@ -98,7 +98,7 @@ export default {
    */
   async getIndexes(): Promise<IndexInfo[]> {
     return request
-      .get("/quantTrade/market/indexes")
+      .get("/quantTrade/data/indexes")
       .then((response: any) => handleResponse(response))
       .then((data: { indexes: IndexInfo[] }) => data.indexes);
   },
@@ -110,7 +110,7 @@ export default {
    */
   async getIndexDetail(code: string): Promise<IndexInfo> {
     return request
-      .get(`/market/index/${code}`)
+      .get(`/quantTrade/data/indexes/${code}`)
       .then((response: any) => handleResponse(response))
       .then((data: { index: IndexInfo }) => data.index);
   },
@@ -121,7 +121,7 @@ export default {
    */
   async getSectors(): Promise<SectorInfo[]> {
     return request
-      .get("/quantTrade/market/sectors")
+      .get("/quantTrade/data/sectors")
       .then((response: any) => handleResponse(response))
       .then((data: { sectors: SectorInfo[] }) => data.sectors);
   },
@@ -137,7 +137,7 @@ export default {
     params: { reportDate?: string },
   ): Promise<FinancialData[]> {
     return request
-      .get(`/market/stock/${code}/financial`, { params })
+      .get(`/quantTrade/data/stocks/${code}/financial`, { params })
       .then((response: any) => handleResponse(response))
       .then((data: { financial: FinancialData[] }) => data.financial);
   },

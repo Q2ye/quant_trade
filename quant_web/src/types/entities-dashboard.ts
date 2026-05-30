@@ -89,3 +89,23 @@ export interface RealTimeDataEvent {
   data: any;
   timestamp: number;
 }
+
+/**
+ * 仪表盘账户概览（API 解析后返回的数据）
+ */
+export interface DashboardOverview {
+  totalAsset: number;
+  cash: number;
+  dailyPnl: number;
+  dailyReturn: number;
+  positionsCount: number;
+  activeStrategies: number;
+}
+
+/**
+ * 市场状态信息
+ */
+export interface MarketStatus {
+  status: "open" | "closed" | "unknown";
+  updateTime: string;
+}

@@ -15,6 +15,7 @@
 
 import json
 import logging
+import math
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -145,6 +146,25 @@ def _convert_to_datetime (value: Any) -> datetime:
 		raise ValueError(f"无法将类型 {type(value)} 转换为datetime对象: {value}")
 
 
+def _clean_nan_values (record: Dict[str, Any]) -> Dict[str, Any]:
+	"""
+	将记录中的 NaN/NaT 值转换为 None，避免 PostgreSQL asyncpg 驱动报错
+	（pandas DataFrame.to_dict('records') 会将空字符串字段转为 NaN）
+
+	Args:
+		record: 原始记录字典
+
+	Returns:
+		清洗后的记录字典
+	"""
+	for key, value in record.items():
+		if isinstance(value, float) and math.isnan(value):
+			record[key] = None
+		elif value is not None and hasattr(pd, 'isna') and pd.isna(value):
+			record[key] = None
+	return record
+
+
 def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, Any]]:
 	"""
 	批量转换记录中的pandas datetime类型，并确保字典键为字符串类型
@@ -159,6 +179,8 @@ def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, 
 	for record in records:
 		# 先转换日期时间
 		converted_record = _convert_pandas_datetime(record)
+		# 清理 NaN 值（pandas 空字段会变成 NaN，asyncpg 不接受）
+		converted_record = _clean_nan_values(converted_record)
 		# 确保字典键为字符串类型
 		string_key_record = {}
 		for k, v in converted_record.items():
@@ -307,6 +329,7 @@ class DataSyncService:
 			end_date: Optional[date] = None,
 			ts_codes: Optional[List[str]] = None,
 			user_id: Optional[str] = None,
+			task_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
@@ -325,17 +348,17 @@ class DataSyncService:
 		"""
 		logger.info(f"开始同步市场数据，类型: {data_type}, 用户ID: {user_id}")
 
-		task_id = None
 		try:
-			# 创建同步任务记录
-			task_id = await self._create_sync_task(
-				data_type=data_type,
-				_start_date=start_date,
-				_end_date=end_date,
-				_ts_codes=ts_codes,
-				user_id=user_id,
-				params=kwargs
-			)
+			# 创建同步任务记录（如已从外部传入task_id则跳过创建，避免重复记录）
+			if task_id is None:
+				task_id = await self._create_sync_task(
+					data_type=data_type,
+					start_date=start_date,
+					end_date=end_date,
+					ts_codes=ts_codes,
+					user_id=user_id,
+					params=kwargs
+				)
 
 			# 发布同步开始事件
 			await self._publish_sync_event(
@@ -461,7 +484,8 @@ class DataSyncService:
 						data_type=DataType(task_item.data_type),
 						start_date=task_item.start_date,
 						end_date=task_item.end_date,
-						user_id=user_id
+						user_id=user_id,
+						task_id=batch_task_id
 					)
 
 					# 记录结果
@@ -533,7 +557,8 @@ class DataSyncService:
 			self,
 			tasks: List[SyncTaskItem],
 			priority: Optional[Any] = None,
-			user_id: Optional[str] = None
+			user_id: Optional[str] = None,
+			task_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
 		批量同步数据（基于任务列表）
@@ -568,6 +593,7 @@ class DataSyncService:
 				# 计算进度
 				progress = (idx / len(tasks)) * 100
 
+				logger.info(f"[批量同步] 开始同步第 {idx+1}/{len(tasks)} 项: {task.data_type}")
 				# 发布进度事件
 				await self._publish_sync_event(
 					event_type="progress",
@@ -586,6 +612,7 @@ class DataSyncService:
 						start_date=task.start_date,
 						end_date=task.end_date,
 						user_id=user_id,
+						task_id=task_id or batch_task_id,
 						force_update=task.force_update
 					)
 
@@ -609,9 +636,10 @@ class DataSyncService:
 					total_records += records_added + records_updated + records_failed
 					succeeded_records += records_added + records_updated
 					failed_records += records_failed
+					logger.info(f"[批量同步] 完成 {task.data_type}: 新增={records_added}, 更新={records_updated}, 失败={records_failed}")
 
 				except Exception as e:
-					logger.error(f"同步数据类型 {task.data_type} 失败: {str(e)}")
+					logger.error(f"[批量同步] 同步数据类型 {task.data_type} 失败: {str(e)}")
 					sync_result = SyncResult(
 						data_type=task.data_type,
 						success=False,
@@ -797,9 +825,9 @@ class DataSyncService:
 	async def _create_sync_task (
 			self,
 			data_type: str,
-			_start_date: Optional[date] = None,
-			_end_date: Optional[date] = None,
-			_ts_codes: Optional[List[str]] = None,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			ts_codes: Optional[List[str]] = None,
 			user_id: Optional[str] = None,
 			params: Optional[Dict] = None
 	) -> str:
@@ -813,7 +841,7 @@ class DataSyncService:
 			"status": "pending",
 			"user_id": user_id,
 			"parameters": params or {},
-			"total_records": _estimate_total_items(data_type, _ts_codes),
+			"total_records": _estimate_total_items(data_type, ts_codes),
 			"created_at": datetime.now()
 		}
 		await self.sync_task_repo.create(task_data)
@@ -873,9 +901,9 @@ class DataSyncService:
 
 	async def _sync_stock_list (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
 			**_kwargs
@@ -886,7 +914,10 @@ class DataSyncService:
 		stock_list = await source.get_stock_basic()
 		records_added = 0
 		records_updated = 0
-		for stock_data in stock_list:
+		total = len(stock_list)
+		for idx, stock_data in enumerate(stock_list):
+			# 清理 NaN 值（pandas 空字段会变成 NaN，asyncpg 不接受）
+			stock_data = _clean_nan_values(stock_data)
 			# 转换日期字段
 			if 'list_date' in stock_data and stock_data['list_date']:
 				stock_data['list_date'] = _convert_to_date(stock_data['list_date'])
@@ -900,7 +931,7 @@ class DataSyncService:
 			else:
 				await self.stock_basic_repo.create(stock_data)
 				records_added += 1
-			await self._update_progress(task_id, current_item=f"股票: {stock_data['ts_code']}", user_id=user_id)
+			await self._update_progress(task_id, progress=min(100, int((idx + 1) / total * 100)), current_item=f"股票: {stock_data['ts_code']}", user_id=user_id)
 		await self.session.commit()
 		return {
 			"records_added": records_added,
@@ -1218,9 +1249,9 @@ class DataSyncService:
 
 	async def _sync_etf_basic (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
 			**_kwargs
@@ -1258,9 +1289,9 @@ class DataSyncService:
 
 	@staticmethod
 	async def _sync_etf_index (
-			_start_date: Optional[date],
-			_end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
 			_task_id: str,
 			_user_id: Optional[str] = None,
 			**_kwargs
@@ -1398,8 +1429,8 @@ class DataSyncService:
 	async def sync_financial_data (
 			self,
 			report_type: str,
-			_start_date: str,
-			_end_date: str,
+			start_date: str,
+			end_date: str,
 			stock_codes: Optional[List[str]] = None
 	) -> Dict[str, Any]:
 		"""同步财务数据"""
@@ -1896,8 +1927,8 @@ class DataSyncService:
 
 	async def _sync_financial_statement (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
+			start_date: Optional[date],
+			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
@@ -1969,7 +2000,7 @@ class DataSyncService:
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			ts_codes: Optional[List[str]],
 			_task_id: str,
 			_user_id: Optional[str] = None,
 			**_kwargs
@@ -2096,7 +2127,7 @@ class DataSyncService:
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
 			**_kwargs
@@ -2156,8 +2187,8 @@ class DataSyncService:
 
 	async def _sync_etf_share (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
+			start_date: Optional[date],
+			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
@@ -2219,8 +2250,8 @@ class DataSyncService:
 
 	async def _sync_forecast (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
+			start_date: Optional[date],
+			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
@@ -2282,8 +2313,8 @@ class DataSyncService:
 
 	async def _sync_express (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
+			start_date: Optional[date],
+			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
@@ -2345,8 +2376,8 @@ class DataSyncService:
 
 	async def _sync_dividend (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
+			start_date: Optional[date],
+			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
@@ -2480,9 +2511,9 @@ class DataSyncService:
 
 	async def _sync_audit_opinion (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
 			**_kwargs
@@ -2509,9 +2540,9 @@ class DataSyncService:
 
 	async def _sync_business_income (
 			self,
-			_start_date: Optional[date],
-			_end_date: Optional[date],
-			_ts_codes: Optional[List[str]],
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
 			**_kwargs
@@ -2545,7 +2576,9 @@ class DataSyncService:
 			current_item: Optional[str] = None,
 			user_id: Optional[str] = None
 	):
-		"""更新同步进度"""
+		"""更新同步进度（仅写缓存，节流: 最多每秒1次或进度达100%）"""
+		import time as _t
+
 		progress_key = CacheKey.SYNC_PROGRESS.format(task_id=task_id)
 		current_progress_raw = await self.cache.get(progress_key)
 		if current_progress_raw:
@@ -2565,15 +2598,13 @@ class DataSyncService:
 		if current_item:
 			current_progress["current_task"] = current_item
 
-		await self.cache.set(progress_key, json.dumps(current_progress, default=str), ttl=3600)
-
-		await self._publish_sync_event(
-			event_type="progress",
-			task_id=task_id,
-			progress=progress or current_progress["progress"],
-			current_task=current_item or current_progress["current_task"],
-			user_id=user_id
-		)
+		# 节流: 最多每秒写一次缓存（进度100%时总是写入）
+		now = _t.time()
+		last_write = current_progress.get("_last_cache_write", 0)
+		is_complete = (progress is not None and progress >= 100)
+		if is_complete or (now - last_write) >= 1.0:
+			current_progress["_last_cache_write"] = now
+			await self.cache.set(progress_key, json.dumps(current_progress, default=str), ttl=3600)
 
 	async def _publish_sync_event (
 			self,

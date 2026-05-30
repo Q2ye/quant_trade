@@ -3,6 +3,7 @@ import { ref, onMounted, h } from "vue";
 import { NTag, NButton, NSpin, NEmpty } from "naive-ui";
 import { useMessage } from "naive-ui";
 import type { TradingSignal as Signal } from "@/types";
+import signalsAPI from "@/api/signals";
 
 const message = useMessage();
 const signals = ref<Signal[]>([]);
@@ -19,37 +20,6 @@ const signalTypeOptions = [
   { label: "买入", value: "buy" },
   { label: "卖出", value: "sell" },
   { label: "持有", value: "hold" },
-];
-
-const mockSignals: Signal[] = [
-  {
-    id: "1",
-    strategy_id: "ma_cross_001",
-    ts_code: "600519.SH",
-    symbol: "600519",
-    name: "贵州茅台",
-    signal_type: "buy",
-    signal_time: "2024-01-15 14:30:00",
-    current_price: 1850.5,
-    strength: 0.85,
-    reason: "双均线金叉买入信号",
-    confidence: 0.92,
-    status: "executed",
-  },
-  {
-    id: "2",
-    strategy_id: "rsi_strategy",
-    ts_code: "000858.SZ",
-    symbol: "000858",
-    name: "五粮液",
-    signal_type: "sell",
-    signal_time: "2024-01-15 10:15:00",
-    current_price: 152.3,
-    strength: 0.72,
-    reason: "RSI超卖区域卖出",
-    confidence: 0.85,
-    status: "executed",
-  },
 ];
 
 const columns = [
@@ -108,12 +78,18 @@ const fetchSignalHistory = async () => {
   loading.value = true;
   error.value = null;
   try {
-    signals.value = mockSignals.filter((signal) => {
-      const d = new Date(signal.signal_time).getTime();
-      return (
-        d >= filterParams.value.startDate && d <= filterParams.value.endDate
-      );
+    const res = await signalsAPI.getSignals({
+      start_time: new Date(filterParams.value.startDate).toISOString(),
+      end_time: new Date(filterParams.value.endDate).toISOString(),
+      signal_type: filterParams.value.signalType as any,
     });
+    const items = (res as any)?.items ?? (Array.isArray(res) ? res : []);
+    signals.value = items.map((s: any) => ({
+      ...s,
+      id: s.id ?? s.signal_id ?? "",
+      current_price: s.current_price ?? s.price ?? 0,
+      strength: s.strength ?? s.confidence ?? 0,
+    }));
   } catch (err) {
     error.value = "获取历史信号失败";
     message.error("获取历史信号失败");

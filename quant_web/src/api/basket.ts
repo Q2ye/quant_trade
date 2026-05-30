@@ -54,7 +54,7 @@ const basketApi = {
    */
   async getBasket(id: string): Promise<Basket> {
     return request
-      .get(`/basket/${id}`)
+      .get(`/quantTrade/basket/${id}`)
       .then(handleResponse)
       .then((data: BasketResponse) => data.data);
   },
@@ -70,7 +70,7 @@ const basketApi = {
     updateData: UpdateBasketRequest,
   ): Promise<Basket> {
     return request
-      .put(`/basket/${id}`, updateData)
+      .put(`/quantTrade/basket/${id}`, updateData)
       .then(handleResponse)
       .then((data: BasketResponse) => data.data);
   },
@@ -81,7 +81,7 @@ const basketApi = {
    * @returns 无返回值
    */
   async deleteBasket(id: string): Promise<void> {
-    return request.delete(`/basket/${id}`).then(handleResponse);
+    return request.delete(`/quantTrade/basket/${id}`).then(handleResponse);
   },
 
   /**
@@ -99,7 +99,7 @@ const basketApi = {
     },
   ): Promise<BasketPerformance> {
     return request
-      .get(`/basket/${id}/performance`, { params })
+      .get(`/quantTrade/basket/${id}/performance`, { params })
       .then(handleResponse)
       .then((data: BasketPerformanceResponse) => data.data);
   },
@@ -111,7 +111,7 @@ const basketApi = {
    */
   async getBasketRealtimeData(id: string): Promise<RealtimeBasketData> {
     return request
-      .get(`/basket/${id}/realtime`)
+      .get(`/quantTrade/basket/${id}/realtime`)
       .then(handleResponse)
       .then((data: { data: RealtimeBasketData }) => data.data);
   },
@@ -127,7 +127,7 @@ const basketApi = {
     item: { symbol: string; weight: number },
   ): Promise<Basket> {
     return request
-      .post(`/basket/${basketId}/items`, item)
+      .post(`/quantTrade/basket/${basketId}/items`, item)
       .then(handleResponse)
       .then((data: BasketResponse) => data.data);
   },
@@ -145,7 +145,7 @@ const basketApi = {
     weight: number,
   ): Promise<Basket> {
     return request
-      .put(`/basket/${basketId}/items/${symbol}`, { weight })
+      .put(`/quantTrade/basket/${basketId}/items/${symbol}`, { weight })
       .then(handleResponse)
       .then((data: BasketResponse) => data.data);
   },
@@ -158,7 +158,7 @@ const basketApi = {
    */
   async removeStockFromBasket(basketId: string, symbol: string): Promise<void> {
     return request
-      .delete(`/basket/${basketId}/items/${symbol}`)
+      .delete(`/quantTrade/basket/${basketId}/items/${symbol}`)
       .then(handleResponse);
   },
 
@@ -183,7 +183,7 @@ const basketApi = {
    */
   async duplicateBasket(id: string, newName: string): Promise<Basket> {
     return request
-      .post(`/basket/${id}/duplicate`, {
+      .post(`/quantTrade/basket/${id}/duplicate`, {
         new_name: newName,
       })
       .then(handleResponse)
@@ -201,7 +201,7 @@ const basketApi = {
     format: "csv" | "json" = "csv",
   ): Promise<{ url: string }> {
     return request
-      .get(`/basket/${id}/export`, {
+      .get(`/quantTrade/basket/${id}/export`, {
         params: { format },
       })
       .then(handleResponse);

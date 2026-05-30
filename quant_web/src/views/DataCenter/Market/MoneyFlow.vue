@@ -238,6 +238,7 @@ import {
   useMessage,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import marketAPI from "@/api/market";
 
 const router = useRouter();
 const message = useMessage();
@@ -545,7 +546,7 @@ const refreshData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await marketAPI.getStocks({ limit: 20 }).catch(() => null);
     message.success("数据刷新成功");
   } catch {
     error.value = true;

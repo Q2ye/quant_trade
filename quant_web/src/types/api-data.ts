@@ -255,7 +255,7 @@ export interface DataSyncResponse extends ApiResponse<DataSyncTask> {}
 export interface DataSyncListResponse extends PaginatedResponse<DataSyncTask> {}
 export interface IndexListResponse extends ApiResponse<IndexInfo[]> {}
 export interface SectorListResponse extends ApiResponse<SectorInfo[]> {}
-export interface HistoricalDataResponse extends ApiResponse<
+export interface HistoricalDataListResponse extends ApiResponse<
   HistoricalDataPoint[]
 > {}
 export interface HistoricalDataStatsResponse extends ApiResponse<HistoricalDataStats> {}

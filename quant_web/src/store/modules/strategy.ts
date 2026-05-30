@@ -7,7 +7,7 @@ import {
   StrategyRun,
   BacktestResult,
   TradeSignal,
-  StrategyPerformance,
+  ApiStrategyPerformance,
   StrategyStatusInfo,
 } from "@/types";
 import strategyAPI from "@/api/strategy";
@@ -37,7 +37,7 @@ export interface StrategyState {
   strategySignals: Map<string, TradeSignal[]>;
 
   // 策略绩效
-  strategyPerformance: Map<string, StrategyPerformance>;
+  strategyPerformance: Map<string, ApiStrategyPerformance>;
 
   // 加载状态
   isLoading: boolean;
@@ -187,7 +187,7 @@ const mutations = {
    */
   UPDATE_STRATEGY_PERFORMANCE(
     state: StrategyState,
-    payload: { strategyId: string; performance: StrategyPerformance },
+    payload: { strategyId: string; performance: ApiStrategyPerformance },
   ) {
     state.strategyPerformance.set(payload.strategyId, payload.performance);
   },

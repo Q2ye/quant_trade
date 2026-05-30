@@ -302,8 +302,8 @@ class MainEngine(EngineBase):
     async def _initialize_web_socket_manager(self) -> None:
         """初始化WebSocket管理器"""
         try:
-            from ...api.websocket.manager import WebSocketManager
-            self._web_socket_manager = WebSocketManager(self.event_engine)
+            from api.websocket.manager import WebSocketManager, get_ws_manager
+            self._web_socket_manager = get_ws_manager(event_engine=self.event_engine)
 
             # 注册WebSocket事件处理器
             await self._web_socket_manager.initialize()

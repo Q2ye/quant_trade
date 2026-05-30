@@ -64,11 +64,8 @@ router = APIRouter(
 
 # ==================== 账户管理接口 ====================
 
-from utils.api_utils.pagination_decorator import with_pagination_config
-
 
 @router.get("", response_model=AccountListResponse)
-@with_pagination_config()
 async def get_accounts_api (
 		request: AccountListRequest = Depends(AccountListRequest),
 		current_user: Dict = Depends(get_current_user),
@@ -456,7 +453,6 @@ async def withdraw_api (
 
 # ==================== 持仓管理接口 ====================
 @router.get("/{account_id}/positions", response_model=PositionListResponse)
-@with_pagination_config()
 async def get_account_positions_api (
 		account_id: str = Path(..., description="账户ID"),
 		request: PositionListRequest = Depends(PositionListRequest),

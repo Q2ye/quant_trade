@@ -4,6 +4,7 @@ API网关主入口
 """
 
 import logging
+from datetime import datetime
 from typing import Dict, Any
 
 from fastapi import FastAPI
@@ -12,7 +13,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from .routers import (
-    data_router, strategy_router, trade_router, backtest_router,
+    data_router, strategy_router, trade_router, basket_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, health_router,
 )
 from .websocket import websocket_router
@@ -134,19 +135,16 @@ def create_app (
 		# 初始化API层数据库依赖（包含共享层数据库的初始化）
 		if not await initialize_api_database():
 			logger.error("API层数据库依赖初始化失败，部分功能可能不可用")
-		else:
-			logger.info("API层数据库依赖初始化成功")
+			return
 
+		logger.info("API层数据库依赖初始化成功")
 	# 使用 lifespan 事件处理器
 	from contextlib import asynccontextmanager
 
 	@asynccontextmanager
 	async def lifespan(_app: FastAPI):
-		# 启动时
 		await startup_db()
 		yield
-		# 关闭时
-		pass
 
 	app.lifespan = lifespan
 
@@ -155,6 +153,7 @@ def create_app (
 		"data": (data_router, "/quantTrade/data"),
 		"strategy": (strategy_router, "/quantTrade/strategy"),
 		"trade": (trade_router, "/quantTrade/trade"),
+		"basket": (basket_router, "/quantTrade/basket"),
 		"backtest": (backtest_router, "/quantTrade/backtest"),
 		"account": (account_router, "/quantTrade/account"),
 		"analysis": (analysis_router, "/quantTrade/analysis"),

@@ -84,7 +84,7 @@ class DataSourceFactory:
 		source_key = source_type.lower()
 
 		# 检查是否启用模拟数据模式
-		data_mode = os.getenv("DATA_MODE", "simulated").lower()
+		data_mode = self.settings.DATA_SOURCE.DATA_MODE.lower() if hasattr(self.settings, 'DATA_SOURCE') and self.settings.DATA_SOURCE.DATA_MODE else os.getenv("DATA_MODE", "simulated").lower()
 
 		# 如果请求的是 tushare 但配置为模拟模式，则使用 mock
 		if source_key == 'tushare' and data_mode == 'simulated':

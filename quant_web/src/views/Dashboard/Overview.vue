@@ -60,6 +60,28 @@
             <h1 class="page-title">总览</h1>
             <p class="page-description">量化交易驾驶舱 — 资产概览、实时信号、持仓与成交监控</p>
           </div>
+          <div class="header-actions">
+            <n-select
+              v-model:value="selectedAccountId"
+              :options="accountOptions"
+              placeholder="选择账户"
+              size="small"
+              style="width: 180px"
+            />
+            <n-button
+              type="tertiary"
+              size="tiny"
+              @click="toggleAmounts"
+            >
+              <Icon :icon="showAmounts ? 'ph:eye' : 'ph:eye-slash'" />
+              <span class="toggle-label">{{ showAmounts ? '隐藏金额' : '显示金额' }}</span>
+            </n-button>
+            <!-- WebSocket 连接状态指示 -->
+            <span class="ws-status" :class="{ connected: wsConnected }">
+              <span class="ws-dot"></span>
+              {{ wsConnected ? '实时' : '离线' }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -88,18 +110,25 @@
               :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
           >
             <div class="metric-value">
-              ¥ {{ formatNumber(accountInfo.totalAsset) }}
+              ¥ {{ formatAmount(accountInfo.totalAsset) }}
             </div>
-            <div class="metric-label">总资产</div>
+            <div class="metric-label">总资产
+              <span v-if="selectedAccountId === null && accountCount > 0" class="metric-sub">(共 {{ accountCount }} 账户)</span>
+            </div>
             <div
                 class="metric-change"
                 :class="getChangeClass(accountInfo.dailyPnl)"
             >
-              {{
-                accountInfo.dailyPnl > 0 ? "+" : ""
-              }}{{ formatNumber(accountInfo.dailyPnl) }} ({{
-                accountInfo.dailyReturn
-              }}%)
+              <template v-if="showAmounts">
+                {{
+                  accountInfo.dailyPnl > 0 ? "+" : ""
+                }}{{ formatNumber(accountInfo.dailyPnl) }} ({{
+                  accountInfo.dailyReturn
+                }}%)
+              </template>
+              <template v-else>
+                ****
+              </template>
             </div>
           </n-card>
         </n-grid-item>
@@ -113,9 +142,10 @@
               :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
           >
             <div class="metric-value">
-              ¥ {{ formatNumber(accountInfo.cash) }}
+              ¥ {{ formatAmount(accountInfo.cash) }}
             </div>
             <div class="metric-label">可用资金</div>
+            <div class="metric-placeholder"></div>
           </n-card>
         </n-grid-item>
 
@@ -128,9 +158,10 @@
               :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
           >
             <div class="metric-value">
-              {{ formatNumber(accountInfo.positionsCount) }}
+              {{ formatAmount(accountInfo.positionsCount, 0) }}
             </div>
             <div class="metric-label">持仓品种</div>
+            <div class="metric-placeholder"></div>
           </n-card>
         </n-grid-item>
 
@@ -143,9 +174,10 @@
               :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
           >
             <div class="metric-value">
-              {{ formatNumber(accountInfo.activeStrategies) }}
+              {{ formatAmount(accountInfo.activeStrategies, 0) }}
             </div>
             <div class="metric-label">运行中策略</div>
+            <div class="metric-placeholder"></div>
           </n-card>
         </n-grid-item>
       </n-grid>
@@ -277,7 +309,7 @@
 // ============================================================================
 
 // Vue 3 Composition API：响应式核心 + 生命周期钩子
-import {h, onMounted, onUnmounted, reactive, ref} from "vue";
+import {computed, h, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch} from "vue";
 // Naive UI 组件：NTag 用于表格中"买/卖"标签渲染
 import {NTag} from "naive-ui";
 // Iconify 图标组件（全局注册为 <Icon>，buy/sell 箭头）
@@ -286,17 +318,33 @@ import {Icon} from "@iconify/vue";
 import * as echarts from "echarts";
 // API 层：获取仪表盘数据和绩效图表数据
 import {getDashboardData, getPerformanceChart} from "@/api/dashboard";
+// HTTP 客户端：用于账户列表等直接 API 调用
+import request from "@/utils/request";
 // 工具函数：数字格式化（千分位 + 小数位数）
 import {formatNumber} from "@/utils/number";
 // 设计 Token：surface（背景/卡片）、motion（动效）等 class 映射
 import {tokens} from "@/styles/design-tokens";
+import webSocketService from "@/api/websocket";
 
 // ============================================================================
 // Mock 开关 —— 设为 true 使用模拟数据预览 UI，false 走真实 API
 // ============================================================================
 
 /** 开发调试：true=使用模拟数据（无需后端），false=调用真实 API */
-const USE_MOCK = true;
+const USE_MOCK = false;
+
+/** 账户简要信息 */
+interface AccountBrief {
+  id: string;
+  name: string;
+  type: string;
+}
+
+/** 生成模拟账户列表（多账户场景） */
+const getMockAccounts = (): AccountBrief[] => [
+  { id: "acc_001", name: "主账户 (华泰)", type: "cash" },
+  { id: "acc_002", name: "信用账户 (华泰)", type: "margin" },
+];
 
 /**
  * 生成模拟账户概览数据
@@ -310,6 +358,31 @@ const getMockAccountInfo = () => ({
   positionsCount: 8,         // 持仓 8 只
   activeStrategies: 3,       // 运行中策略：CTA趋势 / 均值回归 / AI选股
 });
+
+/**
+ * 生成模拟单账户数据（选择具体账户时使用）
+ * 两个账户数据之和 = getMockAccountInfo() 的汇总值
+ */
+const getMockAccountData = (accountId: string) => {
+  if (accountId === "acc_001") {
+    return {
+      totalAsset: 987654.32,
+      cash: 234567.89,
+      dailyPnl: 10580.50,
+      dailyReturn: 1.08,
+      positionsCount: 6,
+      activeStrategies: 2,
+    };
+  }
+  return {
+    totalAsset: 246913.57,
+    cash: 111111.01,
+    dailyPnl: 2000.00,
+    dailyReturn: 0.81,
+    positionsCount: 2,
+    activeStrategies: 1,
+  };
+};
 
 /**
  * 生成模拟实时信号
@@ -393,8 +466,35 @@ const getMockChartData = () => {
 const loading = ref(true);
 /** 页面级 Error 状态，true 时展示 500 错误结果页 */
 const error = ref(false);
+
+// WebSocket 实时推送
+const wsConnected = ref(false);
+let _wsStatusTimer: ReturnType<typeof setInterval> | null = null;
 /** 图表时间范围：1D | 1W | 1M | 1Y，绑定到 n-radio-group */
 const chartRange = ref("1M");
+
+/** 金额显隐切换：true=显示数字，false=显示 **** */
+const showAmounts = ref(true);
+
+/** 多账户列表 */
+const accounts = ref<AccountBrief[]>([]);
+
+/** 当前选中的账户 ID：null=全部账户汇总 */
+const selectedAccountId = ref<string | null>(null);
+
+/** 账户选择器选项 */
+const accountOptions = computed(() => {
+  const options: any[] = [
+    { label: "全部账户 (汇总)", value: null },
+  ];
+  for (const a of accounts.value) {
+    options.push({ label: a.name, value: a.id });
+  }
+  return options;
+});
+
+/** 当前账户数量 */
+const accountCount = computed(() => accounts.value.length);
 
 /**
  * 账户概览信息 —— 顶部 4 张指标卡片的数据源
@@ -593,20 +693,57 @@ const loadDashboardData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    // USE_MOCK 时直接使用本地模拟数据，方便前端独立开发调试
     if (USE_MOCK) {
-      // 模拟网络延迟 400-800ms，让骨架屏有短暂的可见时间
       await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
-      Object.assign(accountInfo, getMockAccountInfo());
+      // 根据选中的账户加载对应数据：null=汇总，具体ID=单账户
+      if (selectedAccountId.value) {
+        Object.assign(accountInfo, getMockAccountData(selectedAccountId.value));
+      } else {
+        Object.assign(accountInfo, getMockAccountInfo());
+      }
       recentSignals.value = getMockSignals();
-      positions.value = getMockPositions();
-      todayTrades.value = getMockTrades();
+      positions.value = selectedAccountId.value
+        ? getMockPositions().filter((_, i) => i % 2 === 0) // 单账户时模拟较少持仓
+        : getMockPositions();
+      todayTrades.value = selectedAccountId.value
+        ? getMockTrades().filter((_, i) => i % 2 === 0) // 单账户时模拟较少成交
+        : getMockTrades();
     } else {
-      const response = await getDashboardData();
-      Object.assign(accountInfo, response.accountInfo);
-      recentSignals.value = response.recentSignals;
-      positions.value = response.positions;
-      todayTrades.value = response.todayTrades;
+      if (selectedAccountId.value) {
+        // 单账户模式：调用账户专属端点
+        const [acctRes, posRes] = await Promise.all([
+          request.get(`/quantTrade/account/${selectedAccountId.value}/summary`).catch(() => null),
+          request.get(`/quantTrade/account/${selectedAccountId.value}/positions`).catch(() => null),
+        ]);
+        const acct = (acctRes as any)?.data ?? {};
+        Object.assign(accountInfo, {
+          totalAsset: acct.total_asset ?? acct.totalAsset ?? 0,
+          cash: acct.available_balance ?? acct.cash ?? 0,
+          dailyPnl: acct.daily_pnl ?? acct.dailyPnl ?? 0,
+          dailyReturn: acct.daily_return ?? acct.dailyReturn ?? 0,
+          positionsCount: acct.position_count ?? acct.positionsCount ?? 0,
+          activeStrategies: acct.active_strategies ?? acct.activeStrategies ?? 0,
+        });
+        const pList = (posRes as any)?.data?.items ?? (posRes as any)?.data ?? [];
+        positions.value = (Array.isArray(pList) ? pList : []).map((p: any) => ({
+          symbol: p.ts_code ?? p.symbol ?? "",
+          name: p.name ?? p.stock_name ?? "",
+          quantity: p.quantity ?? p.volume ?? 0,
+          price: p.current_price ?? p.price ?? 0,
+          cost: p.cost_price ?? p.avg_cost ?? 0,
+          pnl: p.unrealized_pnl ?? p.pnl ?? 0,
+          weight: p.weight ?? p.allocation ?? 0,
+        }));
+        recentSignals.value = [];
+        todayTrades.value = [];
+      } else {
+        // 汇总模式：走聚合端点
+        const response = await getDashboardData();
+        Object.assign(accountInfo, response.accountInfo);
+        recentSignals.value = response.recentSignals;
+        positions.value = response.positions;
+        todayTrades.value = response.todayTrades;
+      }
     }
   } catch {
     error.value = true;
@@ -626,19 +763,106 @@ const retry = () => loadDashboardData();
 const getChangeClass = (value: number) =>
     value >= 0 ? "positive" : "negative";
 
+/**
+ * 格式化金额/数值，尊重显隐开关
+ * @param value 数值
+ * @param decimals 小数位数（金额默认 2，数量默认 0）
+ * @returns 格式化后的字符串，隐藏时返回 ****
+ */
+const formatAmount = (value: number, decimals: number = 2): string => {
+  if (!showAmounts.value) return "****";
+  return formatNumber(value, decimals);
+};
+
+/** 切换金额显隐 */
+const toggleAmounts = () => {
+  showAmounts.value = !showAmounts.value;
+};
+
+/** 加载账户列表 */
+const loadAccounts = async () => {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 200));
+    accounts.value = getMockAccounts();
+  } else {
+    try {
+      const res = await request.get("/quantTrade/account");
+      const data = (res as any).data?.items ?? (res as any).data ?? [];
+      accounts.value = (Array.isArray(data) ? data : []).map((a: any) => ({
+        id: a.id ?? a.account_id ?? "",
+        name: a.account_name ?? a.name ?? a.id ?? "",
+        type: a.account_type ?? a.type ?? "cash",
+      }));
+    } catch {
+      // 账户列表加载失败非致命，使用空列表
+      accounts.value = [];
+    }
+  }
+};
+
+/** 账户切换时重新加载数据 */
+watch(selectedAccountId, () => {
+  loadDashboardData();
+});
+
 // ============================================================================
 // 生命周期
 // ============================================================================
 
 onMounted(() => {
-  loadDashboardData();                                  // 页面挂载：加载仪表盘数据
+  loadAccounts();                                       // 先加载账户列表
+  loadDashboardData();                                  // 再加载仪表盘数据
   initChart();                                          // 初始化 ECharts 图表
   window.addEventListener("resize", handleEquityResize); // 监听窗口大小变化以重绘图表
+
+  // ======================================================================
+  // WebSocket 实时推送：连接 + 订阅频道
+  // ======================================================================
+  const wsUrl = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/ws`;
+  webSocketService.connect(wsUrl);
+
+  _wsStatusTimer = setInterval(() => {
+    wsConnected.value = webSocketService.isConnected();
+  }, 2000);
+
+  // 订阅成交回报 → 实时插入 todayTrades 头部
+  webSocketService.subscribe("events:execution", (data: any) => {
+    todayTrades.value.unshift({
+      symbol: data.symbol ?? data.ts_code ?? "",
+      name: data.name ?? data.stock_name ?? "",
+      side: data.side ?? data.direction ?? "",
+      price: data.price ?? 0,
+      quantity: data.quantity ?? data.volume ?? 0,
+      amount: data.amount ?? (data.price ?? 0) * (data.quantity ?? 0),
+      time: data.time ?? data.trade_time ?? data.executed_at ?? new Date().toLocaleTimeString(),
+    } as any);
+    if (todayTrades.value.length > 20) todayTrades.value.splice(20);
+  });
+
+  // 订阅交易信号 → 实时插入 recentSignals 头部
+  webSocketService.subscribe("events:signals", (data: any) => {
+    recentSignals.value.unshift({
+      name: data.strategy_name ?? data.name ?? "",
+      symbol: data.ts_code ?? data.symbol ?? "",
+      direction: data.signal_type ?? data.direction ?? "",
+      price: data.price ?? 0,
+      time: data.signal_time ?? data.time ?? "",
+    } as any);
+    if (recentSignals.value.length > 10) recentSignals.value.splice(10);
+  });
+
+  // 订阅持仓变动 → 标记需要刷新（避免高频替换整个列表）
+  webSocketService.subscribe("events:positions", () => {
+    // 持仓变动后静默刷新，不触发 loading
+    loadDashboardData().catch(() => {});
+  });
 });
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleEquityResize); // 移除 resize 监听
   equityChart?.dispose();                                   // 销毁 ECharts 实例释放内存
+  if (_wsStatusTimer) clearInterval(_wsStatusTimer);        // 清除 WebSocket 状态轮询
+  webSocketService.disconnect();                            // 断开 WebSocket 并清理订阅
 });
 </script>
 
@@ -721,6 +945,10 @@ onUnmounted(() => {
  */
 .metric-card {
   text-align: center;   /* 所有内容水平居中（等价于全局 text-center 工具类） */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 148px;    /* 统一卡片高度，确保 4 卡等高 */
 
   /*
    * 指标数值（如"¥ 1,234,567"）
@@ -742,12 +970,21 @@ onUnmounted(() => {
     margin-bottom: 8px;               /* spacer(2)：标签与涨跌幅之间的标准小间距 */
   }
 
+  /* 标签附加说明（如"共 N 账户"） */
+  .metric-sub {
+    font-size: 11px;
+    color: var(--n-text-color-3);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
   /*
    * 涨跌幅（仅总资产卡片显示）
    * 14px = $font-size-base，全局基础字号
    */
   .metric-change {
     font-size: 14px;                  /* 系统等效：$font-size-base，全局基础字体大小 */
+    min-height: 20px;                 /* 占位高度，与 .metric-placeholder 一致 */
 
     /*
      * positive（盈利）/ negative（亏损）颜色
@@ -763,6 +1000,24 @@ onUnmounted(() => {
     &.negative {
       color: var(--color-stock-down, #67c23a);  /* 系统变量 + 硬编码 fallback */
     }
+  }
+
+  /* 占位行：无涨跌幅的卡片用于保持与总资产卡片等高 */
+  .metric-placeholder {
+    min-height: 20px;
+  }
+}
+
+/* 页头操作区：账户选择器 + 显隐切换 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+
+  .toggle-label {
+    margin-left: 4px;
+    font-size: 12px;
   }
 }
 
@@ -948,6 +1203,34 @@ onUnmounted(() => {
   .table-card {
     height: 320px;
     overflow: hidden;
+  }
+}
+
+/* ============================================================
+   WebSocket 连接状态指示器
+   ============================================================ */
+.ws-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-disabled, #999);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: transparent;
+  transition: color 0.3s;
+
+  .ws-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e5484d;
+    transition: background 0.3s;
+  }
+
+  &.connected {
+    color: var(--color-success, #30a46c);
+    .ws-dot { background: var(--color-success, #30a46c); }
   }
 }
 </style>

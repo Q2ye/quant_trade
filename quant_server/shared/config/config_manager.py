@@ -421,6 +421,46 @@ class ConfigSettings(BaseSettings):
 		return v
 
 	@model_validator(mode="after")
+	def resolve_datasource_config (self) -> "ConfigSettings":
+		"""
+		根据环境变量解析数据源配置
+		开发环境: 使用 DEV_DATA_MODE / DEV_MOCK_* 配置，Token 优先 DEV_TUSHARE_TOKEN 否则回退 PROD_TUSHARE_TOKEN
+		生产环境: 使用 PROD_DATA_MODE / PROD_TUSHARE_* 配置
+		"""
+		env = os.getenv("ENVIRONMENT", "development").lower()
+		logger.info(f"解析数据源配置，当前环境: {env}")
+
+		ds = self.DATA_SOURCE
+
+		if env == "development":
+			ds.DATA_MODE = os.getenv("DEV_DATA_MODE", ds.DATA_MODE)
+			ds.MOCK_DATA_ENABLED = os.getenv("DEV_MOCK_DATA_ENABLED", str(ds.MOCK_DATA_ENABLED)).lower() in ("true", "1", "yes")
+			ds.MOCK_STOCK_COUNT = int(os.getenv("DEV_MOCK_STOCK_COUNT", str(ds.MOCK_STOCK_COUNT)))
+			ds.MOCK_DATE_RANGE_DAYS = int(os.getenv("DEV_MOCK_DATE_RANGE_DAYS", str(ds.MOCK_DATE_RANGE_DAYS)))
+			# Token: 优先 DEV_TUSHARE_TOKEN，回退 PROD_TUSHARE_TOKEN（开发共用生产数据源token）
+			token = os.getenv("DEV_TUSHARE_TOKEN", "")
+			if not token:
+				token = os.getenv("PROD_TUSHARE_TOKEN", ds.TUSHARE_TOKEN)
+			ds.TUSHARE_TOKEN = token
+			logger.info(
+				"开发环境数据源: DATA_MODE=%s MOCK=%s TOKEN=%s",
+				ds.DATA_MODE,
+				ds.MOCK_DATA_ENABLED,
+				"***" if ds.TUSHARE_TOKEN else "未配置",
+			)
+		else:
+			ds.DATA_MODE = os.getenv("PROD_DATA_MODE", ds.DATA_MODE)
+			ds.TUSHARE_TOKEN = os.getenv("PROD_TUSHARE_TOKEN", ds.TUSHARE_TOKEN)
+			ds.TUSHARE_ENABLED = os.getenv("PROD_TUSHARE_ENABLED", str(ds.TUSHARE_ENABLED)).lower() in ("true", "1", "yes")
+			logger.info(
+				"生产环境数据源: DATA_MODE=%s TOKEN=%s",
+				ds.DATA_MODE,
+				"***" if ds.TUSHARE_TOKEN else "未配置",
+			)
+
+		return self
+
+	@model_validator(mode="after")
 	def resolve_database_config (self) -> "ConfigSettings":
 		"""
 		根据环境变量解析数据库配置

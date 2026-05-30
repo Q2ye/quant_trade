@@ -3,14 +3,14 @@
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
 import {
-  Strategy,
-  StrategyPerformance,
+  ApiStrategy,
+  ApiStrategyPerformance,
 } from "@/types";
 import {
   ApiResponse,
   PaginatedResponse,
   PaginationParams,
-  StrategyStatusInfo,
+  ApiStrategyStatusInfo,
 } from "@/types";
 
 // ============================================================
@@ -64,38 +64,38 @@ export interface StopStrategyRequest {
   reason?: string;
 }
 
-export interface StrategyListResponse extends PaginatedResponse<Strategy> {}
-export interface StrategyDetailResponse extends ApiResponse<Strategy> {}
-export interface StrategyStatusResponse extends ApiResponse<StrategyStatusInfo> {}
-export interface StrategyPerformanceResponse extends ApiResponse<StrategyPerformance> {}
+export interface StrategyListResponse extends PaginatedResponse<ApiStrategy> {}
+export interface StrategyDetailResponse extends ApiResponse<ApiStrategy> {}
+export interface StrategyStatusResponse extends ApiResponse<ApiStrategyStatusInfo> {}
+export interface StrategyPerformanceResponse extends ApiResponse<ApiStrategyPerformance> {}
 
 // ============================================================
 // API 方法
 // ============================================================
 
 export default {
-  async getStrategies(params?: StrategyQueryParams): Promise<Strategy[]> {
+  async getStrategies(params?: StrategyQueryParams): Promise<ApiStrategy[]> {
     return request
       .get("/quantTrade/strategy", { params })
       .then(handleResponse)
       .then((data: any) => data.data);
   },
 
-  async getStrategy(id: string): Promise<Strategy> {
+  async getStrategy(id: string): Promise<ApiStrategy> {
     return request
       .get(`/quantTrade/strategy/${id}`)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
   },
 
-  async createStrategy(data: CreateStrategyRequest): Promise<Strategy> {
+  async createStrategy(data: CreateStrategyRequest): Promise<ApiStrategy> {
     return request
       .post("/quantTrade/strategy", data)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
   },
 
-  async updateStrategy(id: string, data: UpdateStrategyRequest): Promise<Strategy> {
+  async updateStrategy(id: string, data: UpdateStrategyRequest): Promise<ApiStrategy> {
     return request
       .put(`/quantTrade/strategy/${id}`, data)
       .then(handleResponse)
@@ -108,28 +108,28 @@ export default {
       .then(handleResponse);
   },
 
-  async startStrategy(id: string, params?: Record<string, any>): Promise<StrategyStatusInfo> {
+  async startStrategy(id: string, params?: Record<string, any>): Promise<ApiStrategyStatusInfo> {
     return request
       .post(`/quantTrade/strategy/${id}/start`, params || {})
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
   },
 
-  async stopStrategy(id: string): Promise<StrategyStatusInfo> {
+  async stopStrategy(id: string): Promise<ApiStrategyStatusInfo> {
     return request
       .post(`/quantTrade/strategy/${id}/stop`)
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
   },
 
-  async getStrategyPerformance(id: string): Promise<StrategyPerformance> {
+  async getStrategyPerformance(id: string): Promise<ApiStrategyPerformance> {
     return request
       .get(`/quantTrade/strategy/${id}/performance`)
       .then(handleResponse)
       .then((data: StrategyPerformanceResponse) => data.data);
   },
 
-  async getStrategyStatus(id: string): Promise<StrategyStatusInfo> {
+  async getStrategyStatus(id: string): Promise<ApiStrategyStatusInfo> {
     return request
       .get(`/quantTrade/strategy/${id}/status`)
       .then(handleResponse)

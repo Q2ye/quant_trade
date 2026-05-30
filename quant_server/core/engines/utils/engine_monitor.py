@@ -675,24 +675,6 @@ class EngineMonitor:
 
             self._metric_statistics[engine_name][metric_name].update(value)
 
-            # 发布指标事件
-            if self._event_engine:
-                try:
-
-                    metric_entity = metric.to_metric_entity()
-                    event = EngineLifecycleEvent(
-                        engine_name=engine_name,
-                        lifecycle_stage="metric",
-                        engine_status="running",
-                        details=metric_entity.to_dict(),
-                        priority=PriorityLevel.NORMAL.value,
-                        source=f"monitor:{engine_name}",
-                    )
-
-                    asyncio.create_task(self._event_engine.put(event))
-                except Exception as e:
-                    logger.debug(f"发布指标事件失败: {e}")
-
         except Exception as e:
             logger.error(f"添加指标失败: {engine_name}.{metric_name}, 错误: {e}")
 

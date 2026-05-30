@@ -5,10 +5,10 @@
 位置：quant_server/api/routers/data_router.py
 数据模块路由
 """
-from typing import Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from typing import Optional, Dict, List
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, Body
 from datetime import datetime, timedelta
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from starlette.responses import JSONResponse
@@ -21,9 +21,12 @@ import uuid
 from api.dependencies.database import get_db_session
 from api.dependencies.auth import get_current_user
 from api.dependencies.event_engine import get_event_engine
+from shared.database.repositories.market.basic.index_repo import IndexRepository
+from shared.database.repositories.market.basic.etf_repo import ETFRepository
 
 # 导入数据模块的业务层处理函数
 from modules.data.handlers import (
+	get_sync_tasks,
 	# 基础数据查询
 	get_stock_list,
 	get_stock_detail,
@@ -46,11 +49,13 @@ from modules.data.handlers import (
 
 	# 模块管理
 	check_data_module_health,
-	initialize_data_module
+	initialize_data_module, delete_sync_task, delete_sync_tasks_batch
 )
 
 # 导入数据模块的Pydantic模型
+from modules.data.models import DataTypeInfo
 from modules.data.schemas import (
+    SyncTaskListResponse,
 	StockListRequest,
 	StockListResponse,
 	StockDetailRequest,
@@ -71,6 +76,15 @@ from modules.data.schemas import (
 	FactorMetadataRequest,
 	FactorMetadataResponse,
 	FactorMetadata  # 新增：导入 FactorMetadata 模型
+)
+from modules.data.schemas_market import (
+	IndexListResponse,
+	IndexDetailResponse,
+	ETFListResponse,
+	ETFDetailResponse,
+	SectorListResponse,
+	StockHistoryResponse,
+	StockFinancialResponse,
 )
 
 from core import BusinessException
@@ -186,6 +200,265 @@ async def get_stock_detail_api (
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取股票详情失败: {str(e)}"
 		)
+
+
+# ==================== 市场行情数据接口 ====================
+
+@router.get("/indexes", response_model=IndexListResponse)
+async def get_indexes_api(
+	keyword: Optional[str] = Query(default=None, description="搜索关键词"),
+	limit: int = Query(default=100, ge=1, le=500, description="返回数量"),
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> IndexListResponse:
+	"""获取指数列表"""
+	try:
+		repo = IndexRepository(db_session)
+		if keyword:
+			indices = await repo.search_indices(keyword, limit=limit)
+		else:
+			indices = await repo.index_basic_repo.get_all(limit=limit)
+
+		items = [
+			{
+				"code": idx.ts_code,
+				"name": idx.name,
+				"market": getattr(idx, "market", None),
+				"publisher": getattr(idx, "publisher", None),
+				"category": getattr(idx, "category", None),
+				"baseDate": idx.base_date.isoformat() if getattr(idx, "base_date", None) else None,
+				"basePoint": float(idx.base_point) if getattr(idx, "base_point", None) else None,
+			}
+			for idx in indices
+		]
+		return IndexListResponse(indexes=items)
+	except Exception as e:
+		logger.error(f"获取指数列表失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/indexes/{code}", response_model=IndexDetailResponse)
+async def get_index_detail_api(
+	code: str,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> IndexDetailResponse:
+	"""获取指数详情（含最新行情）"""
+	try:
+		repo = IndexRepository(db_session)
+		basic = await repo.get_index_basic(code)
+		if not basic:
+			raise HTTPException(status_code=404, detail=f"指数 {code} 不存在")
+
+		latest = await repo.get_latest_index_daily(code)
+		detail = {
+			"code": basic.ts_code,
+			"name": basic.name,
+			"fullname": getattr(basic, "fullname", None),
+			"market": getattr(basic, "market", None),
+			"publisher": getattr(basic, "publisher", None),
+			"category": getattr(basic, "category", None),
+			"baseDate": basic.base_date.isoformat() if getattr(basic, "base_date", None) else None,
+			"basePoint": float(basic.base_point) if getattr(basic, "base_point", None) else None,
+		}
+		if latest:
+			detail.update({
+				"latestPrice": float(latest.close) if latest.close else None,
+				"latestChange": float(latest.change) if getattr(latest, "change", None) else None,
+				"latestPctChg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) else None,
+				"latestVolume": int(latest.vol) if getattr(latest, "vol", None) else None,
+				"latestAmount": float(latest.amount) if getattr(latest, "amount", None) else None,
+				"latestTradeDate": latest.trade_date.isoformat() if latest.trade_date else None,
+			})
+		return IndexDetailResponse(index=detail)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"获取指数详情失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/etfs", response_model=ETFListResponse)
+async def get_etfs_api(
+	keyword: Optional[str] = Query(default=None, description="搜索关键词"),
+	limit: int = Query(default=100, ge=1, le=500, description="返回数量"),
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> ETFListResponse:
+	"""获取ETF列表"""
+	try:
+		repo = ETFRepository(db_session)
+		if keyword:
+			etfs = await repo.search_etfs(keyword, limit=limit)
+		else:
+			etfs = await repo.get_all_etfs(active_only=True, limit=limit)
+
+		items = [
+			{
+				"ts_code": etf.ts_code,
+				"name": getattr(etf, "cname", None),
+				"shortName": getattr(etf, "csname", None),
+				"exchange": getattr(etf, "exchange", None),
+				"fundType": getattr(etf, "etf_type", None),
+				"indexCode": getattr(etf, "index_code", None),
+				"indexName": getattr(etf, "index_name", None),
+				"manager": getattr(etf, "mgr_name", None),
+				"listDate": etf.list_date.isoformat() if getattr(etf, "list_date", None) else None,
+				"managementFee": float(etf.mgt_fee) if getattr(etf, "mgt_fee", None) else None,
+			}
+			for etf in etfs
+		]
+		return ETFListResponse(etfs=items)
+	except Exception as e:
+		logger.error(f"获取ETF列表失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/etfs/{code}", response_model=ETFDetailResponse)
+async def get_etf_detail_api(
+	code: str,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> ETFDetailResponse:
+	"""获取ETF详情（含最新行情）"""
+	try:
+		repo = ETFRepository(db_session)
+		basic = await repo.get_etf_basic(code)
+		if not basic:
+			raise HTTPException(status_code=404, detail=f"ETF {code} 不存在")
+
+		latest = await repo.get_latest_etf_daily(code)
+		detail = {
+			"ts_code": basic.ts_code,
+			"name": getattr(basic, "cname", None),
+			"shortName": getattr(basic, "csname", None),
+			"exchange": getattr(basic, "exchange", None),
+			"fundType": getattr(basic, "etf_type", None),
+			"indexCode": getattr(basic, "index_code", None),
+			"indexName": getattr(basic, "index_name", None),
+			"manager": getattr(basic, "mgr_name", None),
+			"listDate": basic.list_date.isoformat() if getattr(basic, "list_date", None) else None,
+			"managementFee": float(basic.mgt_fee) if getattr(basic, "mgt_fee", None) else None,
+		}
+		if latest:
+			detail.update({
+				"latestPrice": float(latest.close) if latest.close else None,
+				"latestChange": float(latest.change) if getattr(latest, "change", None) else None,
+				"latestPctChg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) else None,
+				"latestVolume": int(latest.vol) if getattr(latest, "vol", None) else None,
+				"latestAmount": float(latest.amount) if getattr(latest, "amount", None) else None,
+			})
+		return ETFDetailResponse(etf=detail)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"获取ETF详情失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sectors", response_model=SectorListResponse)
+async def get_sectors_api(
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> SectorListResponse:
+	"""获取板块/行业列表（从 stock_basic 汇总）"""
+	try:
+		result = await db_session.execute(
+			text("SELECT industry, COUNT(*) as stock_count FROM stock_basic WHERE industry IS NOT NULL AND industry != '' GROUP BY industry ORDER BY stock_count DESC")
+		)
+		rows = result.fetchall()
+		sectors = [
+			{"code": row[0], "name": row[0], "type": "industry", "stockCount": row[1]}
+			for row in rows
+		]
+		return SectorListResponse(sectors=sectors)
+	except Exception as e:
+		logger.error(f"获取板块列表失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stocks/{code}/history", response_model=StockHistoryResponse)
+async def get_stock_history_api(
+	code: str,
+	start_date: Optional[str] = Query(default=None, description="开始日期 yyyyMMdd"),
+	end_date: Optional[str] = Query(default=None, description="结束日期 yyyyMMdd"),
+	limit: int = Query(default=200, ge=1, le=5000, description="返回数量"),
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> StockHistoryResponse:
+	"""获取股票K线历史数据"""
+	try:
+		from datetime import datetime as dt
+		from shared.database.models.data_models import StockDaily
+
+		query = select(StockDaily).where(StockDaily.ts_code == code)
+		if start_date:
+			query = query.where(StockDaily.trade_date >= dt.strptime(start_date, "%Y%m%d"))
+		if end_date:
+			query = query.where(StockDaily.trade_date <= dt.strptime(end_date, "%Y%m%d"))
+		query = query.order_by(StockDaily.trade_date).limit(limit)
+
+		r = await db_session.execute(query)
+		dailies = r.scalars().all()
+
+		items = [
+			{
+				"timestamp": d.trade_date.isoformat() if d.trade_date else "",
+				"open": float(d.open) if d.open else 0,
+				"high": float(d.high) if d.high else 0,
+				"low": float(d.low) if d.low else 0,
+				"close": float(d.close) if d.close else 0,
+				"volume": float(d.vol) if getattr(d, "vol", None) else 0,
+				"amount": float(d.amount) if d.amount else 0,
+			}
+			for d in dailies
+		]
+		return StockHistoryResponse(historical=items)
+	except Exception as e:
+		logger.error(f"获取股票K线数据失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stocks/{code}/financial", response_model=StockFinancialResponse)
+async def get_stock_financial_api(
+	code: str,
+	report_date: Optional[str] = Query(default=None, description="报告期 yyyyMMdd"),
+	limit: int = Query(default=20, ge=1, le=100, description="返回数量"),
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+) -> StockFinancialResponse:
+	"""获取股票财务数据"""
+	try:
+		from shared.database.models.data_models import FinancialStatement
+		from datetime import datetime as dt
+
+		query = select(FinancialStatement).where(FinancialStatement.ts_code == code)
+		if report_date:
+			query = query.where(FinancialStatement.end_date == dt.strptime(report_date, "%Y%m%d"))
+		query = query.order_by(FinancialStatement.end_date.desc()).limit(limit)
+
+		r = await db_session.execute(query)
+		statements = r.scalars().all()
+
+		items = [
+			{
+				"symbol": s.ts_code,
+				"report_date": s.end_date.isoformat() if s.end_date else "",
+				"eps": float(s.basic_eps) if s.basic_eps else None,
+				"bps": None,
+				"roe": None,
+				"profit_margin": None,
+				"debt_to_asset": None,
+				"revenue": float(s.revenue) if s.revenue else None,
+				"net_profit": None,
+				"total_assets": None,
+			}
+			for s in statements
+		]
+		return StockFinancialResponse(financial=items)
+	except Exception as e:
+		logger.error(f"获取财务数据失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/quotes/historical", response_model=HistoricalQuotesResponse)
@@ -357,8 +630,6 @@ async def get_sync_status_api (
 		SyncStatusResponse: 同步状态响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 查询数据同步状态，任务ID: {task_id}")
-
 		# 调用业务层处理函数
 		result = await get_sync_status(
 			session=db_session,
@@ -373,6 +644,75 @@ async def get_sync_status_api (
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取同步状态失败: {str(e)}"
+		)
+
+
+@router.get("/sync/tasks", response_model=SyncTaskListResponse)
+async def get_sync_tasks_api(
+        status: Optional[str] = Query(None, description="状态筛选"),
+        limit: int = Query(50, ge=1, le=200, description="每页数量"),
+        offset: int = Query(0, ge=0, description="偏移量"),
+        current_user: Dict = Depends(get_current_user),
+        db_session: AsyncSession = Depends(get_db_session),
+) -> SyncTaskListResponse:
+    """获取同步任务历史列表"""
+    try:
+        return await get_sync_tasks(
+            session=db_session,
+            user_id=current_user.get("id"),
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as e:
+        logger.error(f"获取同步任务列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取同步任务列表失败: {str(e)}"
+        )
+
+
+@router.post("/sync/cancel")
+async def cancel_current_sync_api (
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+		event_engine=Depends(get_event_engine)
+) -> JSONResponse:
+	"""取消当前正在运行的同步任务（无需指定 task_id）"""
+	try:
+		# 查询当前运行中的任务
+		result = await db_session.execute(
+			text("SELECT task_id FROM data_sync_tasks WHERE status = 'running' ORDER BY start_time DESC LIMIT 1")
+		)
+		row = result.fetchone()
+		task_id = row[0] if row else None
+
+		if not task_id:
+			raise HTTPException(
+				status_code=status.HTTP_404_NOT_FOUND,
+				detail="当前没有正在运行的同步任务"
+			)
+
+		logger.info(f"用户 {current_user.get('username')} 取消当前同步任务，任务ID: {task_id}")
+
+		cancel_result = await cancel_sync(
+			session=db_session,
+			task_id=task_id,
+			event_engine=event_engine,
+			user_id=current_user.get("id")
+		)
+
+		return success_response(
+			message="取消同步任务成功",
+			data=cancel_result
+		)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"取消同步任务失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"取消同步任务失败: {str(e)}"
 		)
 
 
@@ -427,13 +767,113 @@ async def cancel_sync_api (
 		)
 
 
+# ============================================================================
+# 支持的数据类型信息映射
+# ============================================================================
+_DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
+	"stock_list":             DataTypeInfo(code="stock_list",             name="股票列表",     description="沪深A股股票基本信息列表",                     estimated_time=30,  requires_clean=True,  is_core=True),
+	"daily_quotes":           DataTypeInfo(code="daily_quotes",           name="日线行情",     description="股票日K线行情数据（开高低收量额）",         estimated_time=120, requires_clean=True,  is_core=True),
+	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="股票分钟级行情数据（1/5/15/30/60分钟线）", estimated_time=300, requires_clean=False, is_core=False),
+	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="股票逐笔成交明细数据",                       estimated_time=600, requires_clean=False, is_core=False),
+	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
+	"adj_factor":             DataTypeInfo(code="adj_factor",             name="复权因子",     description="股票复权因子数据（前复权/后复权）",         estimated_time=60,  requires_clean=False, is_core=True),
+	"suspend":                DataTypeInfo(code="suspend",                name="停复牌",       description="股票停牌/复牌信息",                         estimated_time=30,  requires_clean=False, is_core=False),
+	"daily_basic":            DataTypeInfo(code="daily_basic",            name="每日指标",     description="股票每日基本面指标（PE/PB/换手率等）",      estimated_time=90,  requires_clean=True,  is_core=True),
+	"etf_basic":              DataTypeInfo(code="etf_basic",              name="ETF基本信息",  description="ETF基金基本信息（代码/名称/管理人/规模）",  estimated_time=30,  requires_clean=True,  is_core=True),
+	"etf_index":              DataTypeInfo(code="etf_index",              name="ETF指数",      description="ETF跟踪指数成分及权重",                     estimated_time=60,  requires_clean=False, is_core=False),
+	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="ETF分钟级行情数据",                         estimated_time=180, requires_clean=False, is_core=False),
+	"etf_daily":              DataTypeInfo(code="etf_daily",              name="ETF日线行情",  description="ETF日线行情数据（开高低收量额）",           estimated_time=120, requires_clean=True,  is_core=True),
+	"fund_adj_factor":        DataTypeInfo(code="fund_adj_factor",        name="基金复权因子", description="基金复权因子数据",                           estimated_time=60,  requires_clean=False, is_core=False),
+	"etf_share":              DataTypeInfo(code="etf_share",              name="ETF份额",      description="ETF基金份额变动数据",                       estimated_time=60,  requires_clean=False, is_core=False),
+	"financial_income":       DataTypeInfo(code="financial_income",       name="利润表",       description="上市公司利润表财务数据",                     estimated_time=120, requires_clean=True,  is_core=True),
+	"financial_balance":      DataTypeInfo(code="financial_balance",      name="资产负债表",   description="上市公司资产负债表财务数据",                 estimated_time=120, requires_clean=True,  is_core=True),
+	"financial_cashflow":     DataTypeInfo(code="financial_cashflow",     name="现金流量表",   description="上市公司现金流量表财务数据",                 estimated_time=120, requires_clean=True,  is_core=True),
+	"forecast":               DataTypeInfo(code="forecast",               name="业绩预告",     description="上市公司业绩预告数据",                       estimated_time=60,  requires_clean=False, is_core=False),
+	"express":                DataTypeInfo(code="express",                name="业绩快报",     description="上市公司业绩快报数据",                       estimated_time=60,  requires_clean=False, is_core=False),
+	"dividend":               DataTypeInfo(code="dividend",               name="分红送股",     description="上市公司分红送股预案及实施数据",             estimated_time=60,  requires_clean=False, is_core=False),
+	"financial_indicator":    DataTypeInfo(code="financial_indicator",    name="财务指标",     description="上市公司核心财务指标（ROE/ROA/毛利率等）",   estimated_time=120, requires_clean=True,  is_core=True),
+	"audit_opinion":          DataTypeInfo(code="audit_opinion",          name="审计意见",     description="上市公司审计意见及审计机构信息",             estimated_time=30,  requires_clean=False, is_core=False),
+	"business_income":        DataTypeInfo(code="business_income",        name="主营业务收入", description="上市公司主营业务收入按行业/产品/地区构成",   estimated_time=90,  requires_clean=False, is_core=False),
+	"index_data":             DataTypeInfo(code="index_data",             name="指数数据",     description="指数日线行情数据（上证/深证/创业板等）",     estimated_time=60,  requires_clean=True,  is_core=True),
+	"calendar":               DataTypeInfo(code="calendar",               name="交易日历",     description="沪深京交易所交易日历数据",                   estimated_time=10,  requires_clean=False, is_core=True),
+}
+
+
+@router.get("/sync/supported-data-types")
+async def get_supported_data_types_api() -> list:
+	"""获取支持的数据类型列表及详细信息"""
+	result = list(_DATA_TYPE_INFO_MAP.values())
+	result.sort(key=lambda x: (not x.is_core, x.code))
+	return [
+		{
+			"code": r.code,
+			"name": r.name,
+			"description": r.description,
+			"estimated_time": r.estimated_time,
+		}
+		for r in result
+	]
+
+
+@router.delete("/sync/tasks/batch")
+async def delete_sync_tasks_batch_api (
+		task_ids: List[str] = Body(..., description="要删除的任务ID列表"),
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse:
+	"""
+	批量删除同步任务记录
+
+	逐一删除，含权限和状态校验，返回成功/失败明细。
+	"""
+	try:
+		result = await delete_sync_tasks_batch(
+			session=db_session,
+			task_ids=task_ids,
+			user_id=current_user.get("id")
+		)
+		return JSONResponse(content=result)
+	except Exception as e:
+		logger.error(f"批量删除同步任务失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"批量删除同步任务失败: {str(e)}"
+		)
+
+
+@router.delete("/sync/tasks/{task_id}")
+async def delete_sync_task_api (
+		task_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> JSONResponse:
+	"""
+	删除同步任务记录
+
+	仅允许删除已完成/失败/取消状态的任务，运行中的任务需先取消。
+	"""
+	try:
+		result = await delete_sync_task(
+			session=db_session,
+			task_id=task_id,
+			user_id=current_user.get("id")
+		)
+		return JSONResponse(content=result)
+	except Exception as e:
+		logger.error(f"删除同步任务失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"删除同步任务失败: {str(e)}"
+		)
+
 # ==================== 数据质量检查接口 ====================
 
 @router.get("/quality", response_model=DataQualityResponse)
 async def get_data_quality_api (
 		request: DataQualityRequest = Depends(),
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
+		db_session: AsyncSession = Depends(get_db_session),
+		check: bool = False,
 ) -> DataQualityResponse:
 	"""
 	获取数据质量报告
@@ -442,18 +882,20 @@ async def get_data_quality_api (
 		request: 数据质量请求参数
 		current_user: 当前登录用户
 		db_session: 数据库会话
+		check: True=执行新检查, False=返回最近一次结果（默认）
 
 	Returns:
 		DataQualityResponse: 数据质量响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求数据质量报告，参数: {request.model_dump()}")
+		logger.debug(f"用户 {current_user.get('username')} 请求数据质量报告，参数: {request.model_dump()}")
 
 		# 调用业务层处理函数
 		result = await get_data_quality(
 			session=db_session,
 			request=request,
-			user_id=current_user.get("id")
+			user_id=current_user.get("id"),
+			run_check=check,
 		)
 
 		return result
@@ -464,6 +906,32 @@ async def get_data_quality_api (
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取数据质量报告失败: {str(e)}"
 		)
+
+
+@router.delete("/quality")
+async def delete_quality_records_api(
+	data_type: Optional[str] = None,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session)
+):
+	"""删除数据质量检查记录"""
+	try:
+		from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
+		repo = DataQualityCheckRepository(db_session)
+		if data_type:
+			records = await repo.get_by_data_type(data_type, limit=1000)
+		else:
+			records = await repo.get_latest_checks(limit=1000)
+		count = 0
+		for r in records:
+			await db_session.delete(r)
+			count += 1
+		await db_session.commit()
+		logger.info(f"用户 {current_user.get('username')} 删除了 {count} 条质量检查记录")
+		return success_response(message=f"已删除 {count} 条记录", data={"deleted": count})
+	except Exception as e:
+		logger.error(f"删除质量记录失败: {str(e)}")
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ==================== 因子数据接口 ====================

@@ -1274,7 +1274,7 @@ CREATE TABLE data_sync_tasks (
     task_type VARCHAR(50) NOT NULL,
     user_id VARCHAR(36) REFERENCES sys_users(id),
     data_types JSON,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
     parameters JSON,
@@ -1294,7 +1294,7 @@ COMMENT ON COLUMN data_sync_tasks.task_id IS '任务唯一标识符（如 sync_a
 COMMENT ON COLUMN data_sync_tasks.task_type IS '任务类型：daily-日线, minute-分钟线, financial-财务数据, etc.';
 COMMENT ON COLUMN data_sync_tasks.user_id IS '用户ID';
 COMMENT ON COLUMN data_sync_tasks.data_types IS '数据类型列表（JSON格式）';
-COMMENT ON COLUMN data_sync_tasks.status IS '任务状态：pending-等待中, running-执行中, completed-成功, failed-失败';
+COMMENT ON COLUMN data_sync_tasks.status IS '任务状态：pending-等待中, running-执行中, completed-成功, failed-失败, cancelled-已取消';
 COMMENT ON COLUMN data_sync_tasks.start_time IS '任务开始时间';
 COMMENT ON COLUMN data_sync_tasks.end_time IS '任务结束时间';
 COMMENT ON COLUMN data_sync_tasks.parameters IS '任务参数（JSON格式）';

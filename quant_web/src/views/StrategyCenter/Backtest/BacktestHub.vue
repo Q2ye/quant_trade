@@ -126,6 +126,7 @@ import { useRouter } from 'vue-router'
 import { NButton, NCard, NGrid, NGridItem, NSkeleton, NEmpty, NResult, useMessage } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import { tokens } from '@/styles/design-tokens'
+import backtestAPI from '@/api/backtest'
 
 const router = useRouter()
 const message = useMessage()
@@ -153,7 +154,12 @@ const loadData = async () => {
   loading.value = true
   error.value = false
   try {
-    await new Promise(r => setTimeout(r, 200))
+    const tasks = await backtestAPI.getTasks().catch(() => []);
+    if (Array.isArray(tasks) && tasks.length > 0) {
+      stats.value.recentCount = tasks.length
+      const passed = tasks.filter((t: any) => t.status === 'completed').length
+      stats.value.passRate = tasks.length > 0 ? Math.round((passed / tasks.length) * 100) : 0
+    }
   } catch {
     error.value = true
   } finally {

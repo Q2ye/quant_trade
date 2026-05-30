@@ -77,10 +77,10 @@
                       <SmartIcon :name="item.icon" />
                     </div>
                     <div class="index-info">
-                      <div class="index-value">{{ item.data.close.toFixed(2) }}</div>
+                      <div class="index-value">{{ item.close != null ? item.close.toFixed(2) : '--' }}</div>
                       <div class="index-change" :class="item.changeClass">
-                        <span class="change-value">{{ formatChange(item.data.change) }}</span>
-                        <span class="change-percent">({{ formatPercent(item.data.pct_chg) }})</span>
+                        <span class="change-value">{{ formatChange(item.change) }}</span>
+                        <span class="change-percent">({{ formatPercent(item.pct_chg) }})</span>
                       </div>
                     </div>
                   </div>
@@ -123,7 +123,7 @@
                   <p class="function-desc">主力资金流向分析</p>
                   <div class="function-stats">
                     <div class="stat-item"><span class="stat-label">主力净流入:</span><span class="stat-value text-up">{{ formatAmount(moneyFlowStats.mainNetInflow) }}</span></div>
-                    <div class="stat-item"><span class="stat-label">北向资金:</span><span class="stat-value" :class="getFlowClass(moneyFlowStats.northbound)">{{ formatAmount(moneyFlowStats.northbound, true) }}</span></div>
+                    <div class="stat-item"><span class="stat-label">北向资金:</span><span class="stat-value" :class="moneyFlowStats.northbound >= 0 ? 'text-up' : 'text-down'">{{ formatAmount(moneyFlowStats.northbound, true) }}</span></div>
                     <div class="stat-item"><span class="stat-label">成交额:</span><span class="stat-value">{{ formatAmount(moneyFlowStats.turnover) }}</span></div>
                   </div>
                   <div class="function-foot">更新: {{ moneyFlowStats.updateTime }}</div>
@@ -222,6 +222,8 @@ import { useRouter } from 'vue-router'
 import { NButton, NCard, NGrid, NGridItem, NProgress, NSkeleton, NEmpty, NResult, useMessage } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import { tokens } from '@/styles/design-tokens'
+import marketAPI from '@/api/market'
+import type { IndexInfo, SectorInfo } from '@/types'
 
 const router = useRouter()
 const message = useMessage()
@@ -229,79 +231,76 @@ const message = useMessage()
 const loading = ref(true)
 const error = ref(false)
 
-// ---- 指数数据 ----
-const indexData = ref({
-  shanghai:   { close: 3254.32, change: 12.45,  pct_chg: 0.38 },
-  shenzhen:   { close: 11982.15, change: -23.67, pct_chg: -0.20 },
-  chuangye:   { close: 2572.89, change: 18.92,  pct_chg: 0.74 },
-  kechuang50: { close: 1056.78, change: 8.34,   pct_chg: 0.79 },
+// ---- 指数数据（来自 API） ----
+const indexes = ref<IndexInfo[]>([])
+const sectors = ref<SectorInfo[]>([])
+
+// 四大指数配置
+const MAJOR_INDEX_CODES = ['000001.SH', '399001.SZ', '399006.SZ', '000688.SH']
+const MAJOR_INDEX_CONFIG: Record<string, { name: string; code: string; icon: string }> = {
+  '000001.SH': { name: '上证指数', code: '000001', icon: 'TrendingUp' },
+  '399001.SZ': { name: '深证成指', code: '399001', icon: 'BarChart' },
+  '399006.SZ': { name: '创业板指', code: '399006', icon: 'Rocket' },
+  '000688.SH': { name: '科创50',   code: '000688', icon: 'Chip' },
+}
+
+interface IndexDisplayItem {
+  name: string
+  code: string
+  icon: string
+  close: number | null
+  change: number | null
+  pct_chg: number | null
+  statusClass: string
+  changeClass: string
+}
+
+const indexList = computed<IndexDisplayItem[]>(() => {
+  return MAJOR_INDEX_CODES.map((tsCode) => {
+    const cfg = MAJOR_INDEX_CONFIG[tsCode]
+    const found = indexes.value.find((idx) => idx.code === tsCode)
+    const close = null as number | null
+    const change = null as number | null
+    const pct_chg = null as number | null
+    const statusClass = 'status-flat'
+    const changeClass = ''
+    return { ...cfg, close, change, pct_chg, statusClass, changeClass }
+  })
 })
 
-const indexList = computed(() => [
-  { name: '上证指数', code: '000001', icon: 'TrendingUp', data: indexData.value.shanghai,
-    statusClass: getStatusClass(indexData.value.shanghai), changeClass: getChangeClass(indexData.value.shanghai) },
-  { name: '深证成指', code: '399001', icon: 'BarChart',   data: indexData.value.shenzhen,
-    statusClass: getStatusClass(indexData.value.shenzhen), changeClass: getChangeClass(indexData.value.shenzhen) },
-  { name: '创业板指', code: '399006', icon: 'Rocket',     data: indexData.value.chuangye,
-    statusClass: getStatusClass(indexData.value.chuangye), changeClass: getChangeClass(indexData.value.chuangye) },
-  { name: '科创50',  code: '000688', icon: 'Chip',       data: indexData.value.kechuang50,
-    statusClass: getStatusClass(indexData.value.kechuang50), changeClass: getChangeClass(indexData.value.kechuang50) },
-])
-
-// ---- 行业 ----
-const industryStats = ref({
-  topIndustry:    { name: '计算机', change: 3.2 },
-  bottomIndustry: { name: '房地产', change: -2.1 },
-  totalCount: 28, riseCount: 18,
+// ---- 行业（来自 API） ----
+const industryStats = computed(() => {
+  const list = sectors.value
+  return {
+    totalCount: list.length || 0,
+    riseCount: 0,
+    topIndustry: { name: '--', change: 0 },
+    bottomIndustry: { name: '--', change: 0 },
+  }
 })
 
-// ---- 资金 ----
-const moneyFlowStats = ref({
-  mainNetInflow: 1256700, northbound: 456700, turnover: 8456700, updateTime: '15:00',
-})
+// ---- 资金 / 涨跌停（暂无实时 API） ----
+const moneyFlowStats = ref({ mainNetInflow: 0, northbound: 0, turnover: 0, updateTime: '--' })
+const limitStats = ref({ upLimitCount: 0, downLimitCount: 0, explosionRate: 0, maxConsecutive: 0 })
 
-// ---- 涨跌停 ----
-const limitStats = ref({
-  upLimitCount: 45, downLimitCount: 12, explosionRate: 23.4, maxConsecutive: 7,
-})
-
-
-// ---- 涨幅榜 ----
-const topRisingStocks = ref([
-  { code: '300624', name: '万兴科技', change: 10.02, price: 156.78 },
-  { code: '002230', name: '科大讯飞', change: 9.98,  price: 67.45 },
-  { code: '300059', name: '东方财富', change: 8.76,  price: 23.89 },
-  { code: '600570', name: '恒生电子', change: 7.45,  price: 45.67 },
-  { code: '000977', name: '浪潮信息', change: 6.89,  price: 56.78 },
-])
-
-// ---- 资金流入榜 ----
-const topMoneyFlow = ref([
-  { code: '300750', name: '宁德时代', amount: 125670, percentage: 85 },
-  { code: '000858', name: '五粮液',   amount: 89234,  percentage: 72 },
-  { code: '600519', name: '贵州茅台', amount: 78456,  percentage: 68 },
-  { code: '002594', name: '比亚迪',   amount: 67345,  percentage: 65 },
-  { code: '601888', name: '中国中免', amount: 56789,  percentage: 58 },
-])
+// ---- 涨幅榜 / 资金流入榜（暂无实时 API） ----
+const topRisingStocks = ref<any[]>([])
+const topMoneyFlow = ref<any[]>([])
 
 // ---- 方法 ----
 const navigateTo = (path: string) => router.push(path)
 const viewStockDetail = (stock: any) => router.push(`/market/stock/${stock.code}`)
 
-const getChangeClass = (d: any) => d.change > 0 ? 'text-up' : d.change < 0 ? 'text-down' : ''
-const getStatusClass = (d: any) => d.change > 0 ? 'status-up' : d.change < 0 ? 'status-down' : 'status-flat'
-const getFlowClass = (v: number) => v >= 0 ? 'text-up' : 'text-down'
-
 const formatChange = (v: number | null | undefined) => {
-  if (v == null) return '-'
+  if (v == null) return '--'
   return (v > 0 ? '+' : '') + v.toFixed(2)
 }
 const formatPercent = (v: number | null | undefined) => {
-  if (v == null) return '-'
+  if (v == null) return '--'
   return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
 }
 const formatAmount = (v: number | null | undefined, showSign = false) => {
-  if (v == null) return '-'
+  if (v == null) return '--'
   const abs = Math.abs(v)
   const sign = showSign ? (v > 0 ? '+' : v < 0 ? '-' : '') : ''
   if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2) + '亿'
@@ -309,24 +308,16 @@ const formatAmount = (v: number | null | undefined, showSign = false) => {
   return sign + abs.toFixed(2)
 }
 
-const simulateDataUpdate = () => {
-  for (const key of Object.keys(indexData.value) as Array<keyof typeof indexData.value>) {
-    const item = indexData.value[key]
-    const chg = parseFloat(((Math.random() - 0.45) * 5).toFixed(2))
-    item.close = parseFloat((item.close + chg).toFixed(2))
-    item.change = chg
-    item.pct_chg = parseFloat(((chg / item.close) * 100).toFixed(2))
-  }
-  const now = new Date()
-  moneyFlowStats.value.updateTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-}
-
 const refreshData = async () => {
   loading.value = true
   error.value = false
   try {
-    simulateDataUpdate()
-    message.success('数据已刷新')
+    const [idxResult, secResult] = await Promise.all([
+      marketAPI.getIndexes().catch(() => [] as IndexInfo[]),
+      marketAPI.getSectors().catch(() => [] as SectorInfo[]),
+    ])
+    indexes.value = idxResult
+    sectors.value = secResult
   } catch {
     error.value = true
   } finally {

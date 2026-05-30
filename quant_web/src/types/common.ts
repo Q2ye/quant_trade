@@ -564,8 +564,10 @@ export interface FileUploadParams {
 
 export interface WebSocketMessage<T = any> {
   type: string;
+  channel?: string;
   data: T;
   timestamp: number;
+  sequence?: number;
 }
 
 export interface FileUploadResponse extends ApiResponse<{

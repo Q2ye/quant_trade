@@ -126,6 +126,7 @@ import { useRouter } from 'vue-router'
 import { NButton, NCard, NGrid, NGridItem, NSkeleton, NEmpty, NResult, useMessage } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import { tokens } from '@/styles/design-tokens'
+import dataAPI from '@/api/data'
 
 const router = useRouter()
 const message = useMessage()
@@ -153,7 +154,10 @@ const loadData = async () => {
   loading.value = true
   error.value = false
   try {
-    await new Promise(r => setTimeout(r, 200))
+    const stocks = await dataAPI.getStockList().catch(() => []);
+    if (Array.isArray(stocks) && stocks.length > 0) {
+      stats.value.libraryCount = stocks.length
+    }
   } catch {
     error.value = true
   } finally {
@@ -165,7 +169,7 @@ const refreshData = async () => {
   loading.value = true
   error.value = false
   try {
-    await new Promise(r => setTimeout(r, 200))
+    await dataAPI.getStockList().catch(() => [])
     message.success('数据已刷新')
   } catch {
     error.value = true

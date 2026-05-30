@@ -53,9 +53,6 @@ class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
 			数据质量检查记录
 		"""
 		try:
-			# 计算质量指标
-			quality_score = (valid_records / total_records * 100) if total_records > 0 else 0
-
 			data = {
 				"check_type": check_type,
 				"data_type": data_type,
@@ -68,7 +65,6 @@ class DataQualityCheckRepository(BaseRepository[DataQualityCheck]):
 				"check_results": check_results or {},
 				"status": status,
 				"checked_by": checked_by,
-				"quality_score": quality_score
 			}
 
 			return await self.create(data)

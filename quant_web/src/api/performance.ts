@@ -3,7 +3,7 @@ import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
 import { ApiResponse } from "@/types";
 import { AccountInfo, PerformanceComparison } from "@/types";
-import { StrategyPerformance } from "@/types";
+import { ApiStrategyPerformance } from "@/types";
 
 export default {
   /**
@@ -18,11 +18,11 @@ export default {
       start_date?: string;
       end_date?: string;
     },
-  ): Promise<StrategyPerformance> {
+  ): Promise<ApiStrategyPerformance> {
     return request
-      .get(`/performance/strategy/${strategyId}`, { params })
+      .get(`/quantTrade/analysis/performance/strategy/${strategyId}`, { params })
       .then(handleResponse)
-      .then((data: ApiResponse<StrategyPerformance>) => data.data);
+      .then((data: ApiResponse<ApiStrategyPerformance>) => data.data);
   },
 
   /**
@@ -30,12 +30,15 @@ export default {
    * @param params 查询参数
    * @returns 账户绩效数据
    */
-  async getAccountPerformance(params?: {
-    start_date?: string;
-    end_date?: string;
-  }): Promise<AccountInfo> {
+  async getAccountPerformance(
+    accountId = "",
+    params?: {
+      start_date?: string;
+      end_date?: string;
+    },
+  ): Promise<AccountInfo> {
     return request
-      .get("/quantTrade/performance/account", { params })
+      .get(`/quantTrade/analysis/performance/account/${accountId}`, { params })
       .then(handleResponse)
       .then((data: ApiResponse<AccountInfo>) => data.data);
   },
@@ -55,7 +58,7 @@ export default {
     },
   ): Promise<PerformanceComparison> {
     return request
-      .post("/quantTrade/performance/comparison", { strategyIds }, { params })
+      .post("/quantTrade/analysis/comparison/strategies", { strategyIds }, { params })
       .then(handleResponse)
       .then((data: ApiResponse<PerformanceComparison>) => data.data);
   },
@@ -67,10 +70,10 @@ export default {
    */
   async getRealtimePerformance(
     strategyId: string,
-  ): Promise<StrategyPerformance> {
+  ): Promise<ApiStrategyPerformance> {
     return request
-      .get(`/performance/strategy/${strategyId}/realtime`)
+      .get(`/quantTrade/analysis/strategy/${strategyId}/realtime`)
       .then(handleResponse)
-      .then((data: ApiResponse<StrategyPerformance>) => data.data);
+      .then((data: ApiResponse<ApiStrategyPerformance>) => data.data);
   },
 };

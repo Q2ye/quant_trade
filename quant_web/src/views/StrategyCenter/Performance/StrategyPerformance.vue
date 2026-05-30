@@ -156,6 +156,7 @@ import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import { Icon } from "@iconify/vue";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import strategyAPI from "@/api/strategy";
 import * as echarts from "echarts";
 
 const message = useMessage();
@@ -169,80 +170,21 @@ const equityChart = ref<HTMLElement>();
 const drawdownChart = ref<HTMLElement>();
 const heatmapChart = ref<HTMLElement>();
 
-const strategyList = ref([
-  { id: "1", name: "双均线策略" },
-  { id: "2", name: "动量反转策略" },
-  { id: "3", name: "均值回归策略" },
-]);
+const strategyList = ref<any[]>([]);
 const strategyOptions = computed(() =>
-  strategyList.value.map((s) => ({ label: s.name, value: s.id })),
+  strategyList.value.map((s: any) => ({ label: s.name ?? s.strategy_name ?? String(s.id), value: String(s.id) })),
 );
 
 const performance = reactive({
-  totalReturn: 0.1542,
-  annualReturn: 0.2345,
-  maxDrawdown: -0.0876,
-  sharpeRatio: 1.23,
-  winRate: 0.634,
-  profitFactor: 1.89,
+  totalReturn: 0,
+  annualReturn: 0,
+  maxDrawdown: 0,
+  sharpeRatio: 0,
+  winRate: 0,
+  profitFactor: 0,
 });
 
-const performanceMetrics = ref([
-  {
-    metric: "累计收益率",
-    value: 0.1542,
-    description: "策略从开始到现在的总收益率",
-    benchmark: 0.1023,
-  },
-  {
-    metric: "年化收益率",
-    value: 0.2345,
-    description: "折算成年度的收益率",
-    benchmark: 0.1567,
-  },
-  {
-    metric: "最大回撤",
-    value: -0.0876,
-    description: "策略净值从最高点到最低点的最大跌幅",
-    benchmark: -0.1234,
-  },
-  {
-    metric: "夏普比率",
-    value: 1.23,
-    description: "每承受一单位风险产生的超额收益",
-    benchmark: 0.89,
-  },
-  {
-    metric: "索提诺比率",
-    value: 1.89,
-    description: "只考虑下行风险的调整后收益",
-    benchmark: 1.23,
-  },
-  {
-    metric: "胜率",
-    value: 0.634,
-    description: "盈利交易次数占总交易次数的比例",
-    benchmark: 0.523,
-  },
-  {
-    metric: "盈亏比",
-    value: 1.45,
-    description: "平均盈利与平均亏损的比例",
-    benchmark: 1.21,
-  },
-  {
-    metric: "利润因子",
-    value: 1.89,
-    description: "总盈利与总亏损的比值",
-    benchmark: 1.34,
-  },
-  {
-    metric: "年化波动率",
-    value: 0.1876,
-    description: "策略收益率的年化标准差",
-    benchmark: 0.2345,
-  },
-]);
+const performanceMetrics = ref<any[]>([]);
 
 const getReturnClass = (v: number) => (v >= 0 ? "positive" : "negative");
 const getDrawdownClass = (d: number) =>
@@ -297,12 +239,28 @@ const loadPerformanceData = async () => {
     return;
   }
   loading.value = true;
+  error.value = false;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    error.value = false;
-    message.success("数据加载成功");
+    const data = await strategyAPI.getStrategyPerformance(selectedStrategy.value);
+    if (data) {
+      performance.totalReturn = data.totalReturn ?? 0;
+      performance.annualReturn = data.annualReturn ?? 0;
+      performance.maxDrawdown = data.maxDrawdown ?? 0;
+      performance.sharpeRatio = data.sharpeRatio ?? 0;
+      performance.winRate = data.winRate ?? 0;
+      performance.profitFactor = data.profitFactor ?? 0;
+      performanceMetrics.value = [
+        { metric: "累计收益率", value: data.totalReturn ?? 0, description: "策略从开始到现在的总收益率", benchmark: "--" },
+        { metric: "年化收益率", value: data.annualReturn ?? 0, description: "折算成年度的收益率", benchmark: "--" },
+        { metric: "最大回撤", value: data.maxDrawdown ?? 0, description: "策略净值从最高点到最低点的最大跌幅", benchmark: "--" },
+        { metric: "夏普比率", value: data.sharpeRatio ?? 0, description: "每承受一单位风险产生的超额收益", benchmark: "--" },
+        { metric: "胜率", value: data.winRate ?? 0, description: "盈利交易次数占总交易次数的比例", benchmark: "--" },
+        { metric: "利润因子", value: data.profitFactor ?? 0, description: "总盈利与总亏损的比值", benchmark: "--" },
+        { metric: "总交易次数", value: data.totalTrades ?? 0, description: "策略执行的总交易次数", benchmark: "--" },
+      ];
+    }
     initCharts();
-  } catch (err) {
+  } catch {
     error.value = true;
   } finally {
     loading.value = false;
@@ -466,9 +424,15 @@ const initCharts = () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const strategies = await strategyAPI.getStrategies();
+    strategyList.value = Array.isArray(strategies) ? strategies : [];
+  } catch {
+    strategyList.value = [];
+  }
   if (strategyList.value.length > 0)
-    selectedStrategy.value = strategyList.value[0].id;
+    selectedStrategy.value = String(strategyList.value[0].id);
   loadPerformanceData();
 });
 </script>

@@ -893,7 +893,7 @@ class DataSyncTask(Base):
     task_type = Column(String(50), nullable=False, comment='任务类型：stock_basic, daily_quotes, financial, etc.')
     user_id = Column(String(36), ForeignKey('sys_users.id'), comment='用户ID')
     data_types = Column(JSON, comment='数据类型列表（JSON格式）')
-    status = Column(String(20), nullable=False, comment='任务状态：pending, running, completed, failed')
+    status = Column(String(20), nullable=False, comment='任务状态：pending, running, completed, failed, cancelled')
     start_time = Column(DateTime(timezone=True), comment='开始时间')
     end_time = Column(DateTime(timezone=True), comment='结束时间')
     parameters = Column(JSON, comment='任务参数（JSON格式）')

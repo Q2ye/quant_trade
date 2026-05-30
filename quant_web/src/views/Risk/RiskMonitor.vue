@@ -197,6 +197,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, h } from "vue";
 import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import { Icon } from "@iconify/vue";
+import riskAPI from "@/api/risk";
 import * as echarts from "echarts";
 
 const message = useMessage();
@@ -482,7 +483,10 @@ const loadData = async () => {
   loading.value = true;
   pageError.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 500));
+    const alerts = await riskAPI.getRiskAlerts().catch(() => []);
+    if (Array.isArray(alerts) && alerts.length > 0) {
+      riskStats.totalAlerts = alerts.length;
+    }
     initCharts();
   } catch {
     pageError.value = true;

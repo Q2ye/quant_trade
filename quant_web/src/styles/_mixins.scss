@@ -824,7 +824,7 @@
 /// 侧边栏内容偏移布局
 @mixin content-with-sidebar {
   margin-left: vars.$sidebar-expanded-width;
-  width: calc(100% - vars.$sidebar-expanded-width);
+  width: calc(100% - #{vars.$sidebar-expanded-width});
   transition: all vars.$transition-normal;
 }
 

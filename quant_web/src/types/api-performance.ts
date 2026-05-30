@@ -29,15 +29,6 @@ export interface CurrentStrategy {
 }
 
 /**
- * API响应格式
- */
-export interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T;
-}
-
-/**
  * 绩效对比结果
  */
 export interface PerformanceComparison {

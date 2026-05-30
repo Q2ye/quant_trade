@@ -907,7 +907,7 @@ class HandlerFactory:
         # 设置格式化器
         if format == LogFormat.TEXT:
             formatter = logging.Formatter(
-                '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+                '%(asctime)s | %(process)-6d | %(levelname)-8s | %(name)s | %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
         else:

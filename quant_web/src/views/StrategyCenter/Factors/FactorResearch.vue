@@ -279,6 +279,7 @@ import SmartIcon from "@/components/common/SmartIcon.vue";
 import * as echarts from "echarts";
 import FactorSelector from "@/components/strategy/FactorSelector.vue";
 import FactorDetailAnalysis from "@/components/strategy/FactorDetailAnalysis.vue";
+import dataAPI from "@/api/data";
 
 const message = useMessage();
 const router = useRouter();
@@ -370,7 +371,7 @@ const refreshPage = async () => {
 const loadFactorData = async () => {
   pageState.value = "loading";
   try {
-    await new Promise((r) => setTimeout(r, 300));
+    const stocks = await dataAPI.getStockList().catch(() => []);
     pageState.value = "data";
   } catch {
     pageState.value = "error";

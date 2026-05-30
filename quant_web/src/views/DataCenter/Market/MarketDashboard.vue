@@ -330,6 +330,7 @@ import {
   useMessage,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import marketAPI from "@/api/market";
 
 const router = useRouter();
 const message = useMessage();
@@ -825,81 +826,96 @@ const updatePagination = () => {
   }
 };
 
+const generateMockData = () => ({
+  stocks: Array.from({ length: 185 }, (_, i) => ({
+    ts_code: `00000${i + 1}.${i % 2 === 0 ? "SH" : "SZ"}`,
+    name: `股票${i + 1}`,
+    market:
+      i % 4 === 0
+        ? "主板"
+        : i % 4 === 1
+          ? "创业板"
+          : i % 4 === 2
+            ? "科创板"
+            : "北交所",
+    current_price: 10 + Math.random() * 100,
+    change: (Math.random() - 0.5) * 10,
+    change_percent: (Math.random() - 0.5) * 20,
+    area: i % 3 === 0 ? "北京" : i % 3 === 1 ? "上海" : "深圳",
+    industry:
+      i % 5 === 0
+        ? "科技"
+        : i % 5 === 1
+          ? "金融"
+          : i % 5 === 2
+            ? "消费"
+            : i % 5 === 3
+              ? "医药"
+              : "制造",
+    market_cap: 1000000000 + Math.random() * 100000000000,
+    list_date: "2020-01-01",
+  })),
+  etfs: Array.from({ length: 89 }, (_, i) => ({
+    ts_code: `51${String(i + 1).padStart(4, "0")}.SH`,
+    name: `ETF${i + 1}`,
+    market: "主板",
+    current_price: 1 + Math.random() * 5,
+    change: (Math.random() - 0.5) * 0.5,
+    change_percent: (Math.random() - 0.5) * 10,
+    mgr_name:
+      i % 3 === 0 ? "华夏基金" : i % 3 === 1 ? "易方达" : "华泰柏瑞",
+    index_name:
+      i % 4 === 0
+        ? "沪深300"
+        : i % 4 === 1
+          ? "中证500"
+          : i % 4 === 2
+            ? "创业板指"
+            : "科创50",
+    fund_size: 100000000 + Math.random() * 10000000000,
+    expense_ratio: 0.1 + Math.random() * 0.5,
+  })),
+  indexes: Array.from({ length: 67 }, (_, i) => ({
+    ts_code: i % 2 === 0 ? `00000${i + 1}.SH` : `39900${i + 1}.SZ`,
+    name: i % 2 === 0 ? `上证${i + 1}` : `深证${i + 1}`,
+    market: i % 2 === 0 ? "上证" : "深证",
+    current_price: 1000 + Math.random() * 5000,
+    change: (Math.random() - 0.5) * 100,
+    change_percent: (Math.random() - 0.5) * 5,
+    fullname: i % 2 === 0 ? `上海证券${i + 1}指数` : `深圳证券${i + 1}指数`,
+    publisher: i % 2 === 0 ? "上交所" : "深交所",
+    category:
+      i % 3 === 0 ? "综合指数" : i % 3 === 1 ? "成份指数" : "主题指数",
+    base_point: 1000,
+  })),
+});
+
 // 数据加载
 const loadTableData = async () => {
   loading.value = true;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const generateMockData = () => ({
-      stocks: Array.from({ length: 185 }, (_, i) => ({
-        ts_code: `00000${i + 1}.${i % 2 === 0 ? "SH" : "SZ"}`,
-        name: `股票${i + 1}`,
-        market:
-          i % 4 === 0
-            ? "主板"
-            : i % 4 === 1
-              ? "创业板"
-              : i % 4 === 2
-                ? "科创板"
-                : "北交所",
-        current_price: 10 + Math.random() * 100,
-        change: (Math.random() - 0.5) * 10,
-        change_percent: (Math.random() - 0.5) * 20,
-        area: i % 3 === 0 ? "北京" : i % 3 === 1 ? "上海" : "深圳",
-        industry:
-          i % 5 === 0
-            ? "科技"
-            : i % 5 === 1
-              ? "金融"
-              : i % 5 === 2
-                ? "消费"
-                : i % 5 === 3
-                  ? "医药"
-                  : "制造",
-        market_cap: 1000000000 + Math.random() * 100000000000,
-        list_date: "2020-01-01",
-      })),
-      etfs: Array.from({ length: 89 }, (_, i) => ({
-        ts_code: `51${String(i + 1).padStart(4, "0")}.SH`,
-        name: `ETF${i + 1}`,
-        market: "主板",
-        current_price: 1 + Math.random() * 5,
-        change: (Math.random() - 0.5) * 0.5,
-        change_percent: (Math.random() - 0.5) * 10,
-        mgr_name:
-          i % 3 === 0 ? "华夏基金" : i % 3 === 1 ? "易方达" : "华泰柏瑞",
-        index_name:
-          i % 4 === 0
-            ? "沪深300"
-            : i % 4 === 1
-              ? "中证500"
-              : i % 4 === 2
-                ? "创业板指"
-                : "科创50",
-        fund_size: 100000000 + Math.random() * 10000000000,
-        expense_ratio: 0.1 + Math.random() * 0.5,
-      })),
-      indexes: Array.from({ length: 67 }, (_, i) => ({
-        ts_code: i % 2 === 0 ? `00000${i + 1}.SH` : `39900${i + 1}.SZ`,
-        name: i % 2 === 0 ? `上证${i + 1}` : `深证${i + 1}`,
-        market: i % 2 === 0 ? "上证" : "深证",
-        current_price: 1000 + Math.random() * 5000,
-        change: (Math.random() - 0.5) * 100,
-        change_percent: (Math.random() - 0.5) * 5,
-        fullname: i % 2 === 0 ? `上海证券${i + 1}指数` : `深圳证券${i + 1}指数`,
-        publisher: i % 2 === 0 ? "上交所" : "深交所",
-        category:
-          i % 3 === 0 ? "综合指数" : i % 3 === 1 ? "成份指数" : "主题指数",
-        base_point: 1000,
-      })),
-    });
-
+    const stockRes = await marketAPI.getStocks({ limit: 200 }).catch(() => null);
+    if (stockRes?.items && stockRes.items.length > 0) {
+      const stocks = stockRes.items.map((s: any, i: number) => ({
+        ts_code: s.ts_code ?? s.code ?? "",
+        name: s.name ?? "",
+        market: s.market ?? s.exchange ?? "",
+        current_price: s.current_price ?? s.close ?? 0,
+        change: s.change ?? 0,
+        change_percent: s.pct_chg ?? s.change_percent ?? 0,
+        area: s.area ?? "",
+        industry: s.industry ?? "",
+        market_cap: s.market_cap ?? s.total_mv ?? 0,
+        list_date: s.list_date ?? "",
+      }));
+      allData.value = { stocks, etfs: [], indexes: [] };
+    } else {
+      allData.value = generateMockData();
+    }
+    updatePagination();
+  } catch {
     allData.value = generateMockData();
     updatePagination();
-  } catch (error) {
-    console.error("加载数据失败:", error);
-    message.error("加载数据失败");
   } finally {
     loading.value = false;
   }

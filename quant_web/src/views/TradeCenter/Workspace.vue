@@ -11,6 +11,8 @@ import SmartIcon from "@/components/common/SmartIcon.vue";
 import AccountBar from "@/components/trade/AccountBar.vue";
 import StockContextPanel from "@/components/trade/StockContextPanel.vue";
 import type { Account, Order, Position, Basket } from "@/types";
+import tradeAPI from "@/api/trade";
+import basketAPI from "@/api/basket";
 
 const router = useRouter();
 const route = useRoute();
@@ -54,39 +56,33 @@ const orderFilter = ref("all");
 const baskets = ref<Basket[]>([]);
 
 // ============================================================
-// Mock data loader
+// Data loader — real API
 // ============================================================
 const loadAllData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 400));
+    const [acctRes, posRes, orderRes, basketRes] = await Promise.all([
+      tradeAPI.getAccountInfo().catch(() => []),
+      tradeAPI.getPositions().catch(() => []),
+      tradeAPI.getOrders({ limit: 50 }).catch(() => ({ items: [], total: 0 })),
+      basketAPI.getBaskets().catch(() => ({ baskets: [], total: 0 })),
+    ]);
 
-    accounts.value = [
-      { id: 1, account_name: "主交易账户", broker: "华泰证券", account_number: "1234567890", total_asset: 1500000, available_cash: 500000, market_value: 1000000, status: "active", created_at: "2024-01-01" } as Account,
-      { id: 2, account_name: "测试账户", broker: "广发证券", account_number: "0987654321", total_asset: 100000, available_cash: 100000, market_value: 0, status: "active", created_at: "2024-01-02" } as Account,
-    ];
-    selectedAccountId.value = "1";
+    accounts.value = (Array.isArray(acctRes) ? acctRes : []).map((a: any) => ({
+      ...a,
+      id: String(a.id ?? a.account_id ?? ""),
+    }));
+    if (accounts.value.length > 0 && !selectedAccountId.value) {
+      selectedAccountId.value = String(accounts.value[0].id);
+    }
 
-    positions.value = [
-      { id: 1, ts_code: "600519.SH", name: "贵州茅台", volume: 100, available_volume: 100, cost_price: 1750.0, current_price: 1850.5, market_value: 185050, profit_loss: 10050, profit_loss_ratio: 5.74, last_update: "2024-01-15 15:00:00" } as Position,
-      { id: 2, ts_code: "000858.SZ", name: "五粮液", volume: 500, available_volume: 500, cost_price: 148.0, current_price: 152.3, market_value: 76150, profit_loss: 2150, profit_loss_ratio: 2.91, last_update: "2024-01-15 15:00:00" } as Position,
-      { id: 3, ts_code: "600036.SH", name: "招商银行", volume: 1000, available_volume: 1000, cost_price: 38.5, current_price: 40.12, market_value: 40120, profit_loss: 1620, profit_loss_ratio: 4.21, last_update: "2024-01-15 15:00:00" } as Position,
-    ];
+    positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
 
-    orders.value = [
-      { order_id: "O001", strategy_id: "ma_cross", ts_code: "600519.SH", order_type: "limit", direction: "buy", price: 1850.0, volume: 100, status: "filled", submitted_at: "2024-01-15 14:30:00", filled_volume: 100, filled_amount: 185000 } as Order,
-      { order_id: "O002", ts_code: "000858.SZ", order_type: "market", direction: "sell", price: 0, volume: 200, status: "filled", submitted_at: "2024-01-15 10:15:00", filled_volume: 200, filled_amount: 31000 } as Order,
-      { order_id: "O003", ts_code: "600036.SH", order_type: "limit", direction: "buy", price: 38.0, volume: 500, status: "partial_filled", submitted_at: "2024-01-15 09:45:00", filled_volume: 200, filled_amount: 7600 } as Order,
-      { order_id: "O004", ts_code: "600519.SH", order_type: "limit", direction: "buy", price: 1840.0, volume: 50, status: "submitted", submitted_at: "2024-01-15 15:00:00" } as Order,
-      { order_id: "O005", ts_code: "002415.SZ", order_type: "market", direction: "buy", price: 0, volume: 300, status: "cancelled", submitted_at: "2024-01-15 11:00:00" } as Order,
-    ];
+    const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
+    orders.value = orderItems as Order[];
 
-    baskets.value = [
-      { id: "b1", name: "消费龙头", description: "白酒+家电核心标的", items: [{ ts_code: "600519.SH", weight: 0.25 }, { ts_code: "000858.SZ", weight: 0.20 }, { ts_code: "000333.SZ", weight: 0.15 }, { ts_code: "600887.SH", weight: 0.15 }, { ts_code: "002415.SZ", weight: 0.25 }], created_at: "2024-01-10", items_count: 5 } as unknown as Basket,
-      { id: "b2", name: "新能源", description: "光伏+锂电+储能", items: [{ ts_code: "300750.SZ", weight: 0.20 }, { ts_code: "601012.SH", weight: 0.15 }, { ts_code: "002594.SZ", weight: 0.15 }, { ts_code: "300274.SZ", weight: 0.10 }, { ts_code: "688599.SH", weight: 0.10 }, { ts_code: "002129.SZ", weight: 0.10 }, { ts_code: "300014.SZ", weight: 0.10 }, { ts_code: "600438.SH", weight: 0.10 }], created_at: "2024-01-08", items_count: 8 } as unknown as Basket,
-      { id: "b3", name: "银行高股息", description: "国有大行+股份行", items: [{ ts_code: "600036.SH", weight: 0.30 }, { ts_code: "601398.SH", weight: 0.25 }, { ts_code: "601939.SH", weight: 0.25 }, { ts_code: "600016.SH", weight: 0.20 }], created_at: "2024-01-05", items_count: 4 } as unknown as Basket,
-    ];
+    baskets.value = (basketRes as any)?.baskets ?? [] as Basket[];
   } catch {
     error.value = true;
   } finally {

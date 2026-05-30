@@ -174,7 +174,7 @@ const performanceModule: Module<PerformanceState, RootState> = {
       commit("SET_LOADING", { type: "events", value: true });
       try {
         // 调用API获取账户绩效数据
-        const performance = await performanceApi.getAccountPerformance();
+        const performance = await performanceApi.getAccountPerformance(accountId);
         // 提交mutation更新状态
         commit("SET_ACCOUNT_PERFORMANCE", { accountId, performance });
         return performance;

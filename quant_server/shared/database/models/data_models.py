@@ -754,7 +754,7 @@ class FactorData(Base):
 	factor_definition_id = Column(String(36), ForeignKey('factor_definitions.id'), nullable=True, index=True,
 	                              comment='因子定义ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
-	factor_name = Column(String(100), nullable=False, index=True, comment='因子名称')
+	factor_name = Column("factor_code", String(50), nullable=False, index=True, comment='因子名称')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	factor_value = Column(Numeric(18, 6), nullable=False, comment='因子值')
 	data_source = Column(String(50), comment='数据来源')
@@ -768,8 +768,8 @@ class FactorData(Base):
 
 	# 索引
 	__table_args__ = (
-		UniqueConstraint('ts_code', 'factor_name', 'trade_date', name='uq_factor_data_code_name_date'),
-		Index('idx_factor_data_factor_name_date', 'factor_name', 'trade_date'),
+		UniqueConstraint('ts_code', 'factor_code', 'trade_date', name='uq_factor_data_code_name_date'),
+		Index('idx_factor_data_factor_code_date', 'factor_code', 'trade_date'),
 	)
 
 

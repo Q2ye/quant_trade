@@ -225,7 +225,7 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import { defineComponent, ref, onMounted, onBeforeUnmount, h } from "vue";
 import {
   NCard,
@@ -243,6 +243,7 @@ import {
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
+import marketAPI from "@/api/market";
 import * as echarts from "echarts";
 
 export default defineComponent({
@@ -263,29 +264,29 @@ export default defineComponent({
     const error = ref(false);
 
     const etf = ref({
-      code: "510300",
-      name: "沪深300ETF",
-      fullName: "华泰柏瑞沪深300交易型开放式指数证券投资基金",
-      price: "3.875",
-      change: 0.78,
-      changePercent: 0.44,
-      open: "3.850",
-      high: "3.880",
-      low: "3.845",
-      preClose: "3.845",
-      volume: "12345.67",
-      amount: "47890.12",
-      nav: "3.872",
-      premiumRate: 0.08,
-      turnoverRate: 12.34,
-      mgrName: "华泰柏瑞基金",
-      indexCode: "000300.SH",
-      indexName: "沪深300指数",
-      fundSize: "850.25",
-      expenseRatio: 0.5,
-      custodyFee: 0.1,
-      setupDate: "2012-05-04",
-      listDate: "2012-05-28",
+      code: props.code || "510300",
+      name: "",
+      fullName: "",
+      price: "--",
+      change: 0,
+      changePercent: 0,
+      open: "--",
+      high: "--",
+      low: "--",
+      preClose: "--",
+      volume: "--",
+      amount: "--",
+      nav: "--",
+      premiumRate: 0,
+      turnoverRate: 0,
+      mgrName: "",
+      indexCode: "",
+      indexName: "",
+      fundSize: "--",
+      expenseRatio: 0,
+      custodyFee: 0,
+      setupDate: "",
+      listDate: "",
     });
 
     const showBasketSelector = ref(false);
@@ -476,7 +477,13 @@ export default defineComponent({
       loading.value = true;
       error.value = false;
       try {
-        await new Promise((r) => setTimeout(r, 300));
+        const data = await marketAPI.getETFDetail(etf.value.code).catch(() => null);
+        if (data) {
+          etf.value.name = (data as any).name ?? etf.value.name;
+          etf.value.fullName = (data as any).full_name ?? etf.value.fullName;
+          etf.value.mgrName = (data as any).management ?? etf.value.mgrName;
+          etf.value.fundSize = ((data as any).fund_size ?? "--") + "";
+        }
         initChart();
         initIndustryChart();
       } catch {

@@ -147,35 +147,59 @@ class DataQualityService:
 		由于 DataQualityCheckRepository 使用不同的接口约定，
 		这里需要重新设计实现逻辑
 		"""
-		logger.info(f"开始检查数据质量，类型: {data_type}, 代码: {ts_code}")
+		# data_type 为 None 时默认为 "all"，避免 DB NOT NULL 约束报错
+		effective_data_type = data_type or "all"
+		logger.info("开始数据质量检查: 类型=%s, 日期=%s~%s", effective_data_type, start_date or "不限", end_date or "不限")
 
 		try:
-			# 执行数据采样和质量评估
+			# 执行数据采样和质量评估（使用标准化后的类型，None→all）
 			quality_metrics = await self._collect_quality_metrics(
-				data_type, start_date, end_date, ts_code
+				effective_data_type, start_date, end_date, ts_code
 			)
 
-			# 生成检查记录
-			check_type = "adhoc"  # 按需检查
+			logger.info("质量指标收集完成: 总数=%s, 有效=%s, 得分=%.1f",
+			            quality_metrics.get("total_records", 0),
+			            quality_metrics.get("valid_records", 0),
+			            quality_metrics.get("overall_score", 0))
+
+			# 生成检查记录（去重：同类型+同日期只保留最新一条）
+			check_type = "adhoc"
 			if not start_date or not end_date:
 				check_date = datetime.now().date()
 			else:
 				check_date = start_date
 
-			# 计算统计信息
 			total_records = quality_metrics.get("total_records", 0)
 			valid_records = quality_metrics.get("valid_records", 0)
 			invalid_records = quality_metrics.get("invalid_records", 0)
+			missing_records = quality_metrics.get("missing_records", 0)
+			duplicate_records = quality_metrics.get("duplicate_records", 0)
 
-			# 创建检查记录
-			check_record = await self.quality_repo.create_quality_check(
-				check_type=check_type,
-				data_type=data_type,
+			# 今天已检查过同类型 → 更新; 否则 → 新建
+			existing = await self.quality_repo.get_by_check_date(
 				check_date=check_date,
-				total_records=total_records,
-				valid_records=valid_records,
-				invalid_records=invalid_records,
-				check_results=quality_metrics,
+				data_type=effective_data_type,
+			)
+			if existing:
+				existing_record = existing[0]
+				existing_record.total_records = total_records
+				existing_record.valid_records = valid_records
+				existing_record.invalid_records = invalid_records
+				existing_record.missing_records = missing_records
+				existing_record.duplicate_records = duplicate_records
+				existing_record.check_results = quality_metrics
+				await self.session.flush()
+				check_record = existing_record
+				logger.debug("更新已有质量检查记录: %s/%s", effective_data_type, check_date)
+			else:
+				check_record = await self.quality_repo.create_quality_check(
+					check_type=check_type,
+					data_type=effective_data_type,
+					check_date=check_date,
+					total_records=total_records,
+					valid_records=valid_records,
+					invalid_records=invalid_records,
+					check_results=quality_metrics,
 				checked_by=f"user_{user_id}" if user_id else "system"
 			)
 
@@ -183,12 +207,15 @@ class DataQualityService:
 			await self._publish_quality_event(
 				event_type="completed",
 				check_id=str(check_record.id),
-				data_type=data_type,
+				data_type=effective_data_type,
 				overall_score=quality_metrics.get("overall_score", 0),
 				issue_count=quality_metrics.get("issue_count", 0),
 				user_id=user_id
 			)
 
+			logger.info("数据质量检查完成: check_id=%s, 类型=%s, 得分=%.1f",
+			            str(check_record.id), effective_data_type,
+			            quality_metrics.get("overall_score", 0))
 			return {
 				"success": True,
 				"check_id": str(check_record.id),
@@ -225,13 +252,14 @@ class DataQualityService:
 		}
 
 		try:
-			if data_type == "daily_quotes":
+			logger.info("开始收集质量指标: 类型=%s", data_type)
+			if data_type in ("daily_quotes", "all"):
 				await self._check_daily_quotes_quality(metrics, ts_code, start_date, end_date)
-			elif data_type == "stock_list":
+			if data_type in ("stock_list", "all"):
 				await self._check_stock_list_quality(metrics)
-			elif data_type == "factor_data":
+			if data_type in ("factor_data", "all"):
 				await self._check_factor_data_quality(metrics, ts_code, start_date, end_date)
-			elif data_type == "financial_data":
+			if data_type in ("financial_data", "all"):
 				await self._check_financial_data_quality(metrics, ts_code, start_date, end_date)
 
 			# 计算总体得分
@@ -333,6 +361,7 @@ class DataQualityService:
 			# 假设98%的股票数据有效
 			metrics["valid_records"] = int(total_stocks * 0.98)
 			metrics["invalid_records"] = total_stocks - metrics["valid_records"]
+			logger.info("股票列表质量检查完成: 总数=%s", total_stocks)
 
 		except Exception as e:
 			logger.error(f"检查股票列表质量失败: {str(e)}")
@@ -352,6 +381,7 @@ class DataQualityService:
 				end_date = datetime.now().date()
 				start_date = end_date - timedelta(days=30)
 
+			logger.info("开始因子数据质量检查: %s~%s", start_date, end_date)
 			# 获取因子覆盖度统计
 			factors = await self._get_available_factors()
 			if not factors:
@@ -419,6 +449,7 @@ class DataQualityService:
 				end_date = datetime.now().date()
 				start_date = end_date - timedelta(days=365 * 3)
 
+			logger.info("开始财务数据质量检查: %s~%s", start_date, end_date)
 			finance_quality = await self._check_financial_data_integrity(
 				ts_code=ts_code,
 				start_date=start_date,
@@ -598,6 +629,7 @@ class DataQualityService:
 					"quality_score": round(quality_score, 2),
 					"total_records": check.total_records,
 					"valid_records": check.valid_records,
+					"invalid_records": check.invalid_records,
 					"check_date": check.check_date.isoformat() if check.check_date else None,
 					"status": check.status
 				})
@@ -670,7 +702,7 @@ class DataQualityService:
 			cleaning_rules: Dict
 	) -> Dict[str, Any]:
 		"""清理无效数据"""
-		logger.info(f"开始清理无效数据，类型: {data_type}")
+		logger.debug(f"开始清理无效数据，类型: {data_type}")
 
 		try:
 			original_count = len(data)
@@ -771,7 +803,7 @@ class DataQualityService:
 			reference_date: str
 	) -> Dict[str, Any]:
 		"""验证数据一致性"""
-		logger.info(f"开始验证数据一致性，类型: {validation_type}")
+		logger.debug(f"开始验证数据一致性，类型: {validation_type}")
 
 		try:
 			total_checks = 0
@@ -892,7 +924,7 @@ class DataQualityService:
 			data_types: Optional[List[str]] = None
 	) -> Dict[str, Any]:
 		"""生成质量报告"""
-		logger.info(f"生成质量报告，时间范围: {start_date} 到 {end_date}")
+		logger.debug(f"生成质量报告，时间范围: {start_date} 到 {end_date}")
 
 		try:
 			reports = []
@@ -1014,7 +1046,7 @@ class DataQualityService:
 			task_id: str
 	) -> str:
 		"""保存质量检查结果"""
-		logger.info(f"保存质量检查结果，类型: {data_type}")
+		logger.debug(f"保存质量检查结果，类型: {data_type}")
 
 		try:
 			# 解析检查结果

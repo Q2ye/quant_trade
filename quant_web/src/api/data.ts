@@ -51,7 +51,7 @@ const dataAPI = {
     frequency: string = "1d",
   ): Promise<HistoricalDataPoint[]> {
     return request
-      .get(`/data/historical/${symbol}`, {
+      .get(`/quantTrade/data/stocks/${symbol}/history`, {
         params: { period, frequency },
       })
       .then(handleResponse)
@@ -73,7 +73,7 @@ const dataAPI = {
    */
   async getFinancialData(symbol: string): Promise<FinancialData[]> {
     return request
-      .get(`/data/financials/${symbol}`)
+      .get(`/quantTrade/data/stocks/${symbol}/financial`)
       .then(handleResponse)
       .then((data: FinancialDataResponse) => {
         // 确保返回的是 FinancialData[] 类型
@@ -92,7 +92,7 @@ const dataAPI = {
    */
   async getLatestFinancialData(symbol: string): Promise<FinancialData | null> {
     return request
-      .get(`/data/financials/${symbol}/latest`)
+      .get(`/quantTrade/data/financials/${symbol}/latest`)
       .then(handleResponse)
       .then((data: { financial: FinancialData }) => data.financial)
       .catch(() => null);
@@ -116,7 +116,7 @@ const dataAPI = {
    */
   async getStockBasic(symbol: string): Promise<StockBasicInfo> {
     return request
-      .get(`/data/stocks/${symbol}/basic`)
+      .get(`/quantTrade/data/stocks/${symbol}/basic`)
       .then(handleResponse)
       .then((data: { basic: StockBasicInfo }) => data.basic);
   },
@@ -132,7 +132,7 @@ const dataAPI = {
     period: string = "1m",
   ): Promise<MoneyFlowData> {
     return request
-      .get(`/data/stocks/${symbol}/moneyflow`, {
+      .get(`/quantTrade/data/stocks/${symbol}/moneyflow`, {
         params: { period },
       })
       .then(handleResponse)
@@ -157,7 +157,7 @@ const dataAPI = {
    */
   async getIndexComponents(indexCode: string): Promise<string[]> {
     return request
-      .get(`/data/indexes/${indexCode}/components`)
+      .get(`/quantTrade/data/indexes/${indexCode}/components`)
       .then(handleResponse)
       .then((data: { components: string[] }) => data.components);
   },
@@ -244,7 +244,7 @@ const dataAPI = {
    */
   async searchStocks(keyword: string): Promise<StockBasic[]> {
     return request
-      .get("/quantTrade/data/stocks/search", {
+      .get("/quantTrade/data/stocks", {
         params: { keyword },
       })
       .then(handleResponse)
@@ -259,8 +259,8 @@ const dataAPI = {
    */
   async getFactorData(factorName: string, period: string = "1y"): Promise<any> {
     return request
-      .get(`/data/factors/${factorName}`, {
-        params: { period },
+      .get("/quantTrade/data/factors", {
+        params: { factor_name: factorName, period },
       })
       .then(handleResponse)
       .then((data: { factorData: any }) => data.factorData);
@@ -272,7 +272,7 @@ const dataAPI = {
    */
   async getDataSyncStatus(): Promise<string> {
     return request
-      .get("/quantTrade/data/sync-status")
+      .get("/quantTrade/data/sync/status")
       .then(handleResponse)
       .then((data: { status: string }) => data.status);
   },
@@ -283,7 +283,7 @@ const dataAPI = {
    * @returns 无返回值
    */
   async triggerDataSync(source: string): Promise<void> {
-    return request.post("/quantTrade/data/sync", { source }).then(handleResponse);
+    return request.post("/quantTrade/data/sync/batch", { source }).then(handleResponse);
   },
 };
 

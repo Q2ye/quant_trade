@@ -138,16 +138,7 @@ export interface RiskAlertMessage {
   timestamp: string; // 时间戳
 }
 
-/**
- * WebSocket消息包装器
- */
-export interface WebSocketMessage<T = any> {
-  type: string; // 消息类型
-  channel: string; // 消息频道
-  data: T; // 消息数据
-  timestamp: number; // 时间戳
-  sequence?: number; // 消息序列号
-}
+// WebSocketMessage imported from ./common
 
 // 消息类型常量
 export const WebSocketMessageTypes = {
@@ -162,12 +153,25 @@ export const WebSocketMessageTypes = {
   // 系统相关
   SYSTEM_STATUS: "system_status",
   RISK_ALERT: "risk_alert",
+  // 数据同步
+  SYNC_EVENT: "sync_event",
   // 控制相关
   SUBSCRIBE_ACK: "subscribe_ack",
   UNSUBSCRIBE_ACK: "unsubscribe_ack",
   HEARTBEAT: "heartbeat",
   ERROR: "error",
 } as const;
+
+export interface SyncEventMessage {
+  _event: "data_sync_started" | "data_sync_progress" | "data_sync_completed" | "data_sync_failed" | "data_sync_cancelled";
+  task_id: string;
+  sync_type?: string;
+  progress?: number;
+  record_count?: number;
+  error_message?: string;
+  timestamp?: string;
+  [key: string]: any;
+}
 
 export interface TradeRecord {
   // 成交记录唯一标识

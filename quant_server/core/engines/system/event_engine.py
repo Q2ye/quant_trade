@@ -411,6 +411,11 @@ class EventEngine(EngineBase):
 					event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
 					logger.warning(f"事件处理有 {failed_count} 个处理器失败: {event_type}")
 
+			else:
+				# 无已注册处理器 — 事件被丢弃（内部事件如 engine.metric 属正常情况）
+				event_type = event.event_type if not isinstance(event, dict) else event.get("event_type", "unknown")
+				logger.debug("事件无已注册处理器: event_type=%s", event_type)
+
 			# 更新统计
 			processing_time = (time.time() - start_time) * 1000  # 转换为毫秒
 
@@ -468,21 +473,27 @@ class EventEngine(EngineBase):
 		if isinstance(event, dict):
 			event_type = event.get('event_type', 'unknown')
 			priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
-			logger.debug(f"事件入队: {event_type}, 优先级: {priority}")
+			source = event.get('source', 'unknown')
+			# 引擎内部事件（engine.*）降级为 DEBUG，仅业务事件保持 INFO
+			_log = logger.debug if str(event_type).startswith('engine.') else logger.info
+			_log("事件入队: %s | 来源: %s | 优先级: %s", event_type, source, priority)
 		else:
 			# 安全访问event_type和priority
 			try:
 				event_type = getattr(event, 'event_type', 'unknown')
+				source = event.metadata.source if hasattr(event, 'metadata') and hasattr(event.metadata, 'source') else 'unknown'
 				# 检查是否有metadata属性
 				if hasattr(event, 'metadata') and hasattr(event.metadata, 'priority'):
 					priority = event.metadata.priority
 				else:
 					# 尝试从event对象本身获取priority
 					priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
-				logger.debug(f"事件入队: {event_type}, 优先级: {priority}")
+				# 引擎内部事件（engine.*）降级为 DEBUG，仅业务事件保持 INFO
+				_log = logger.debug if str(event_type).startswith('engine.') else logger.info
+				_log("事件入队: %s | 来源: %s | 优先级: %s", event_type, source, priority)
 			except AttributeError as e:
 				logger.warning(f"无法获取事件属性: {e}, 使用默认值")
-				logger.debug(f"事件入队: unknown, 优先级: {PriorityLevel.NORMAL.value}")
+				logger.info("事件入队: unknown | 来源: unknown | 优先级: %s", PriorityLevel.NORMAL.value)
 
 	def subscribe (self,
 	               event_type: Any,

@@ -53,7 +53,7 @@ export default {
   },
 
   async cancelOrder(orderId: string): Promise<void> {
-    return request.delete(`/trade/orders/${orderId}`).then(handleResponse);
+    return request.post(`/quantTrade/trade/orders/${orderId}/cancel`).then(handleResponse);
   },
 
   async createBatchOrders(
@@ -83,21 +83,21 @@ export default {
     volume: number;
   }): Promise<Order> {
     return request
-      .post("/quantTrade/trade/execute", signalData)
+      .post("/quantTrade/trade/signals/execute", signalData)
       .then(handleResponse)
       .then((data: ApiResponse<Order>) => data.data);
   },
 
   async getTradePerformance(accountId: string): Promise<TradePerformance> {
     return request
-      .get(`/trade/performance/${accountId}`)
+      .get(`/quantTrade/analysis/performance/account/${accountId}`)
       .then(handleResponse)
       .then((data: ApiResponse<TradePerformance>) => data.data);
   },
 
   async getRealtimeTradeData(symbol: string): Promise<any> {
     return request
-      .get(`/trade/realtime/${symbol}`)
+      .get(`/quantTrade/trade/realtime/${symbol}`)
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
   },
