@@ -1239,13 +1239,56 @@ async def get_sync_status (
 			)
 
 		else:
-			# 查询用户最近任务 - 使用get_by_user_id方法
+			# 查询用户最近任务
 			tasks = await sync_task_repo.get_by_user_id(
 				user_id=user_id,
 				limit=10
 			)
 
-			# 构建任务概览列表
+			from modules.data.schemas import SyncProgress, SyncResult
+
+			# 如果有运行中的任务，委托给 task_id 路径获取真实进度
+			running_tasks = [t for t in tasks if t.status == "running"] if tasks else []
+			if running_tasks:
+				# 复用已有的 task_id 查询逻辑，获取 DB 中的实时进度
+				task_id = running_tasks[0].task_id
+				task_result = await sync_task_repo.get_by_task_id(task_id)
+				if task_result.success and task_result.data:
+					task = task_result.data
+					progress = 0
+					current_task = f"同步{task.task_type}"
+					# 优先读取 Redis 实时进度（_update_progress 写入）
+					try:
+						from modules.data.constants import CacheKey
+						redis = RedisCache()
+						progress_raw = await redis.get(CacheKey.SYNC_PROGRESS.format(task_id=task_id))
+						if progress_raw:
+							import json as _json
+							pd = _json.loads(progress_raw)
+							progress = pd.get("progress", 0)
+							current_task = pd.get("current_task", current_task)
+					except Exception:
+						pass
+					return SyncStatusResponse(
+						success=True,
+						task_id=task.task_id,
+						status=task.status,
+						progress=SyncProgress(
+							task_id=task.task_id,
+							total_tasks=len(task.data_types) if task.data_types else 1,
+							completed_tasks=0,
+							current_task=current_task,
+							progress_percentage=progress,
+							estimated_time_remaining=None,
+						),
+						results=[SyncResult(data_type=dt, success=False, records_added=0, records_updated=0, records_failed=0, start_time=task.start_time or task.created_at, end_time=datetime.now()) for dt in (task.data_types if task.data_types else [task.task_type])],
+						created_by=str(task.user_id),
+						created_at=task.created_at,
+						updated_at=task.updated_at,
+						message=f"正在同步 {len(task.data_types) if task.data_types else 1} 种数据类型"
+					)
+
+			# 无运行中任务时，汇总最近任务状态
 			recent_tasks = []
 			if tasks:
 				for task in tasks:
@@ -1256,12 +1299,9 @@ async def get_sync_status (
 						"status": task.status,
 						"created_at": task.created_at.isoformat() if task.created_at else None,
 						"completed_at": task.completed_at.isoformat() if hasattr(task,
-						                                                         "completed_at") and task.completed_at else None
+						                                                        "completed_at") and task.completed_at else None
 					})
 
-			from modules.data.schemas import SyncProgress, SyncResult
-
-			# 构建同步结果列表（按 data_type 去重，取最新记录）
 			seen_types: set = set()
 			sync_results = []
 			if tasks:
@@ -1281,27 +1321,21 @@ async def get_sync_status (
 							end_time=task.end_time if hasattr(task, "end_time") and task.end_time else task.updated_at if hasattr(task, "updated_at") and task.updated_at else task.created_at,
 						))
 
-			# 计算汇总状态
 			if not tasks:
 				aggregate_status = "idle"
 			else:
-				running_count = sum(1 for t in tasks if t.status == "running")
 				failed_count = sum(1 for t in tasks if t.status == "failed")
 				completed_count = sum(1 for t in tasks if t.status == "completed")
-				if running_count > 0:
-					aggregate_status = "running"
-				elif completed_count == 0 and failed_count > 0:
+				if completed_count == 0 and failed_count > 0:
 					aggregate_status = "failed"
 				elif failed_count == 0 and completed_count > 0:
 					aggregate_status = "completed"
 				else:
 					aggregate_status = "partial"
 
-			# 使用最早和最晚的任务时间
 			earliest_time = min((t.created_at for t in tasks if t.created_at), default=datetime.now())
 			latest_time = max((t.updated_at if hasattr(t, "updated_at") and t.updated_at else t.created_at for t in tasks if t.created_at), default=datetime.now())
 
-			# 构建响应
 			return SyncStatusResponse(
 				success=True,
 				task_id="recent_tasks",
@@ -2162,8 +2196,14 @@ async def _execute_async_data_sync (
 	"""
 	try:
 		logger.warning("=" * 60)
-		logger.warning(f"[后台任务] 开始异步数据同步: {task_id}")
-		logger.warning(f"[后台任务] 数据类型: {[t.data_type for t in request.tasks]}")
+		logger.warning("=" * 60)
+		logger.warning("[后台任务] 开始异步数据同步: %s", task_id)
+		for t in request.tasks:
+			extra = []
+			if t.start_date: extra.append(f"日期={t.start_date}")
+			if t.end_date: extra.append(f"~{t.end_date}")
+			detail = ", ".join(extra) if extra else "全量"
+			logger.warning("[后台任务]   类型=%s | %s", t.data_type, detail)
 		logger.warning("=" * 60)
 
 		# 创建独立的数据库会话（不依赖主请求的session）

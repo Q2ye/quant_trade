@@ -85,6 +85,7 @@ export interface DataTypeInfo {
   name: string;
   description: string;
   estimated_time: number;
+  is_core: boolean;
 }
 
 // 同步任务历史记录

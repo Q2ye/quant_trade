@@ -771,31 +771,33 @@ async def cancel_sync_api (
 # 支持的数据类型信息映射
 # ============================================================================
 _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
+	# ===== 核心：日线/周线交易必须 =====
 	"stock_list":             DataTypeInfo(code="stock_list",             name="股票列表",     description="沪深A股股票基本信息列表",                     estimated_time=30,  requires_clean=True,  is_core=True),
 	"daily_quotes":           DataTypeInfo(code="daily_quotes",           name="日线行情",     description="股票日K线行情数据（开高低收量额）",         estimated_time=120, requires_clean=True,  is_core=True),
-	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="股票分钟级行情数据（1/5/15/30/60分钟线）", estimated_time=300, requires_clean=False, is_core=False),
-	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="股票逐笔成交明细数据",                       estimated_time=600, requires_clean=False, is_core=False),
-	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
 	"adj_factor":             DataTypeInfo(code="adj_factor",             name="复权因子",     description="股票复权因子数据（前复权/后复权）",         estimated_time=60,  requires_clean=False, is_core=True),
-	"suspend":                DataTypeInfo(code="suspend",                name="停复牌",       description="股票停牌/复牌信息",                         estimated_time=30,  requires_clean=False, is_core=False),
 	"daily_basic":            DataTypeInfo(code="daily_basic",            name="每日指标",     description="股票每日基本面指标（PE/PB/换手率等）",      estimated_time=90,  requires_clean=True,  is_core=True),
-	"etf_basic":              DataTypeInfo(code="etf_basic",              name="ETF基本信息",  description="ETF基金基本信息（代码/名称/管理人/规模）",  estimated_time=30,  requires_clean=True,  is_core=True),
-	"etf_index":              DataTypeInfo(code="etf_index",              name="ETF指数",      description="ETF跟踪指数成分及权重",                     estimated_time=60,  requires_clean=False, is_core=False),
-	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="ETF分钟级行情数据",                         estimated_time=180, requires_clean=False, is_core=False),
-	"etf_daily":              DataTypeInfo(code="etf_daily",              name="ETF日线行情",  description="ETF日线行情数据（开高低收量额）",           estimated_time=120, requires_clean=True,  is_core=True),
-	"fund_adj_factor":        DataTypeInfo(code="fund_adj_factor",        name="基金复权因子", description="基金复权因子数据",                           estimated_time=60,  requires_clean=False, is_core=False),
-	"etf_share":              DataTypeInfo(code="etf_share",              name="ETF份额",      description="ETF基金份额变动数据",                       estimated_time=60,  requires_clean=False, is_core=False),
-	"financial_income":       DataTypeInfo(code="financial_income",       name="利润表",       description="上市公司利润表财务数据",                     estimated_time=120, requires_clean=True,  is_core=True),
-	"financial_balance":      DataTypeInfo(code="financial_balance",      name="资产负债表",   description="上市公司资产负债表财务数据",                 estimated_time=120, requires_clean=True,  is_core=True),
-	"financial_cashflow":     DataTypeInfo(code="financial_cashflow",     name="现金流量表",   description="上市公司现金流量表财务数据",                 estimated_time=120, requires_clean=True,  is_core=True),
+	"calendar":               DataTypeInfo(code="calendar",               name="交易日历",     description="沪深京交易所交易日历数据",                   estimated_time=10,  requires_clean=False, is_core=True),
+	"financial_indicator":    DataTypeInfo(code="financial_indicator",    name="财务指标",     description="上市公司核心财务指标（ROE/ROA/毛利率等）",   estimated_time=120, requires_clean=True,  is_core=True),
+	"financial_data":         DataTypeInfo(code="financial_data",         name="财务报表",     description="利润表+资产负债表+现金流量表（三表合并同步）", estimated_time=360, requires_clean=True,  is_core=True),
+	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
+	"index_data":             DataTypeInfo(code="index_data",             name="指数数据",     description="指数日线行情数据（上证/深证/创业板等）",     estimated_time=60,  requires_clean=True,  is_core=True),
+	# ===== 扩展：选股加分项 =====
+	"dividend":               DataTypeInfo(code="dividend",               name="分红送股",     description="上市公司分红送股预案及实施数据",             estimated_time=60,  requires_clean=False, is_core=False),
 	"forecast":               DataTypeInfo(code="forecast",               name="业绩预告",     description="上市公司业绩预告数据",                       estimated_time=60,  requires_clean=False, is_core=False),
 	"express":                DataTypeInfo(code="express",                name="业绩快报",     description="上市公司业绩快报数据",                       estimated_time=60,  requires_clean=False, is_core=False),
-	"dividend":               DataTypeInfo(code="dividend",               name="分红送股",     description="上市公司分红送股预案及实施数据",             estimated_time=60,  requires_clean=False, is_core=False),
-	"financial_indicator":    DataTypeInfo(code="financial_indicator",    name="财务指标",     description="上市公司核心财务指标（ROE/ROA/毛利率等）",   estimated_time=120, requires_clean=True,  is_core=True),
-	"audit_opinion":          DataTypeInfo(code="audit_opinion",          name="审计意见",     description="上市公司审计意见及审计机构信息",             estimated_time=30,  requires_clean=False, is_core=False),
+	"suspend":                DataTypeInfo(code="suspend",                name="停复牌",       description="股票停牌/复牌信息",                         estimated_time=30,  requires_clean=False, is_core=False),
 	"business_income":        DataTypeInfo(code="business_income",        name="主营业务收入", description="上市公司主营业务收入按行业/产品/地区构成",   estimated_time=90,  requires_clean=False, is_core=False),
-	"index_data":             DataTypeInfo(code="index_data",             name="指数数据",     description="指数日线行情数据（上证/深证/创业板等）",     estimated_time=60,  requires_clean=True,  is_core=True),
-	"calendar":               DataTypeInfo(code="calendar",               name="交易日历",     description="沪深京交易所交易日历数据",                   estimated_time=10,  requires_clean=False, is_core=True),
+	"audit_opinion":          DataTypeInfo(code="audit_opinion",          name="审计意见",     description="上市公司审计意见及审计机构信息",             estimated_time=30,  requires_clean=False, is_core=False),
+	# ===== ETF =====
+	"etf_basic":              DataTypeInfo(code="etf_basic",              name="ETF基本信息",  description="ETF基金基本信息（代码/名称/管理人/规模）",  estimated_time=30,  requires_clean=True,  is_core=False),
+	"etf_daily":              DataTypeInfo(code="etf_daily",              name="ETF日线行情",  description="ETF日线行情数据（开高低收量额）",           estimated_time=120, requires_clean=True,  is_core=False),
+	"fund_adj_factor":        DataTypeInfo(code="fund_adj_factor",        name="基金复权因子", description="基金复权因子数据",                           estimated_time=60,  requires_clean=False, is_core=False),
+	"etf_index":              DataTypeInfo(code="etf_index",              name="ETF指数",      description="ETF跟踪指数成分及权重",                     estimated_time=60,  requires_clean=False, is_core=False),
+	"etf_share":              DataTypeInfo(code="etf_share",              name="ETF份额",      description="ETF基金份额变动数据",                       estimated_time=60,  requires_clean=False, is_core=False),
+	# ===== 高频/大体积：全量同步排除，仅手动同步 =====
+	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False),
+	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False),
+	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="⚠️股票逐笔成交明细（数据量极大，仅手动同步）", estimated_time=600, requires_clean=False, is_core=False),
 }
 
 
@@ -810,6 +812,7 @@ async def get_supported_data_types_api() -> list:
 			"name": r.name,
 			"description": r.description,
 			"estimated_time": r.estimated_time,
+			"is_core": r.is_core,
 		}
 		for r in result
 	]

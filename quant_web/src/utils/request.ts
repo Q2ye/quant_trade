@@ -6,7 +6,7 @@ const { message } = createDiscreteApi(["message"]);
 // 创建axios实例
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000,
   withCredentials: false, // 大多数 API 不需要携带 cookie
 });
 

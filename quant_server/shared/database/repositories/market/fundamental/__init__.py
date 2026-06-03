@@ -10,10 +10,24 @@ from .company_announcement_repo import CompanyAnnouncementRepository
 from .financial_statement_repo import FinancialStatementRepository
 from .stock_daily_basic_repo import StockDailyBasicRepository
 from .stock_moneyflow_repo import StockMoneyflowRepository
+from .forecast_repo import StockForecastRepository
+from .express_repo import StockExpressRepository
+from .dividend_repo import StockDividendRepository
+from .fina_indicator_repo import StockFinaIndicatorRepository
+from .audit_opinion_repo import StockAuditOpinionRepository
+from .business_income_repo import StockBusinessIncomeRepository
+from .etf_share_repo import EtfShareRepository
 
 __all__ = [
     "CompanyAnnouncementRepository",
     "FinancialStatementRepository",
     "StockDailyBasicRepository",
     "StockMoneyflowRepository",
+    "StockForecastRepository",
+    "StockExpressRepository",
+    "StockDividendRepository",
+    "StockFinaIndicatorRepository",
+    "StockAuditOpinionRepository",
+    "StockBusinessIncomeRepository",
+    "EtfShareRepository",
 ]

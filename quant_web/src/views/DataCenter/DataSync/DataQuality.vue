@@ -217,7 +217,7 @@ const refreshData = async () => {
 };
 
 const handleDeleteRecords = () => {
-  dialog.warning({
+  dialog.error({
     title: "确认清空质量记录",
     content: "将删除所有数据质量检查记录，此操作不可恢复。确定继续吗？",
     positiveText: "确认删除",

@@ -426,6 +426,7 @@ class DataType(str, Enum):
 	ETF_SHARE = "etf_share"  # ETF份额规模
 
 	# 财务数据
+	FINANCIAL_DATA = "financial_data"  # 财务报表（三表合并）
 	FINANCIAL_INCOME = "financial_income"  # 利润表
 	FINANCIAL_BALANCE = "financial_balance"  # 资产负债表
 	FINANCIAL_CASHFLOW = "financial_cashflow"  # 现金流量表

@@ -19,6 +19,10 @@ import {
   NSkeleton,
   NResult,
   NTag,
+  NModal,
+  NCheckbox,
+  NSpace,
+  NDivider,
 } from "naive-ui";
 import { useRouter, useRoute } from "vue-router";
 import type {
@@ -57,7 +61,7 @@ const qualityData = ref<DataQualityResponse | null>(null);
 const recentTasks = ref<SyncTaskRecord[]>([]);
 const currentTaskId = ref<string>("");
 
-const { isRunning, elapsedTime, estimatedRemainingTime } = useSyncTimer(syncStatus);
+const { isRunning, formattedElapsedTime, formattedRemainingTime } = useSyncTimer(syncStatus);
 const { qualityScore } = useQualityMetrics(qualityData);
 
 // --- 同步配置 ---
@@ -224,7 +228,10 @@ const initializePage = async () => {
     qualityData.value = quality;
     recentTasks.value = tasksResult.tasks || [];
 
-    if (status?.status === "running") startStatusPolling();
+    if (status?.status === "running") {
+      currentTaskId.value = status.task_id || "";
+      startStatusPolling();
+    }
   } catch {
     pageError.value = true;
   } finally {
@@ -329,62 +336,80 @@ const handleBatchSync = async () => {
   }
 };
 
-const handleFullSync = async () => {
+const showFullSyncModal = ref(false);
+const fullSyncSelected = reactive<Record<string, boolean>>({});
+
+const fullSyncGroups = computed(() => {
+  const groups: { label: string; types: DataTypeInfo[] }[] = [];
+  const core = supportedDataTypes.value.filter(t => t.is_core);
+  const extended = supportedDataTypes.value.filter(t => !t.is_core && !t.code.includes("minute") && !t.code.includes("tick"));
+  const heavy = supportedDataTypes.value.filter(t => t.code.includes("minute") || t.code.includes("tick"));
+  if (core.length) groups.push({ label: "核心 · 默认选中", types: core });
+  if (extended.length) groups.push({ label: "扩展 · 需手动勾选", types: extended });
+  if (heavy.length) groups.push({ label: "大体积 · 仅手动同步", types: heavy });
+  return groups;
+});
+
+const openFullSyncModal = () => {
   if (isRunning.value) {
     message.warning("已有同步任务正在进行中");
     return;
   }
-  const allTypes = supportedDataTypes.value.map((t) => t.code);
-  if (!allTypes.length) {
-    message.warning("未能获取数据类型列表");
+  supportedDataTypes.value.forEach(t => {
+    fullSyncSelected[t.code] = t.is_core;
+  });
+  showFullSyncModal.value = true;
+};
+
+const executeFullSync = async () => {
+  const selectedTypes = Object.entries(fullSyncSelected)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  if (!selectedTypes.length) {
+    message.warning("请至少选择一种数据类型");
     return;
   }
-  dialog.warning({
-    title: "确认全量同步",
-    content: `将对全部 ${allTypes.length} 种数据类型执行同步，耗时较长。确定继续吗？`,
-    positiveText: "确认",
-    negativeText: "取消",
-    onPositiveClick: async () => {
-      isFullLoading.value = true;
-      try {
-        const tasks: SyncTaskItem[] = allTypes.map((dt) => ({ data_type: dt }));
-        const response: SyncResponse = await dataSyncService.batchSyncData({
-          tasks,
-          priority: "medium",
-          notify_on_complete: true,
-        });
-        message.success(response.message);
-        if (response.task_id) {
-          currentTaskId.value = response.task_id;
-          startStatusPolling();
-        }
-      } catch {
-        message.error("连接服务器失败");
-      } finally {
-        isFullLoading.value = false;
-        refreshRecentTasks();
-      }
-    },
-  });
+  showFullSyncModal.value = false;
+  isFullLoading.value = true;
+  try {
+    const tasks: SyncTaskItem[] = selectedTypes.map(dt => ({ data_type: dt }));
+    const response: SyncResponse = await dataSyncService.batchSyncData({
+      tasks,
+      priority: "medium",
+      notify_on_complete: true,
+    });
+    message.success(response.message);
+    if (response.task_id) {
+      currentTaskId.value = response.task_id;
+      startStatusPolling();
+    }
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || "全量同步失败");
+  } finally {
+    isFullLoading.value = false;
+  }
+};
+
+const selectedFullSyncCount = computed(() =>
+  Object.values(fullSyncSelected).filter(Boolean).length
+);
+
+const selectAllDataTypes = () => {
+  syncConfig.data_types = supportedDataTypes.value.filter((t) => t.is_core).map((t) => t.code);
+};
+const clearAllDataTypes = () => {
+  syncConfig.data_types = [];
 };
 
 const handleRecordClick = (taskId: string) => {
   router.push("/data/sync/history");
 };
 
-// --- 数据类型选择 ---
+const isDataTypeSelected = (code: string) => syncConfig.data_types.includes(code);
 const toggleDataType = (code: string) => {
   const idx = syncConfig.data_types.indexOf(code);
-  if (idx > -1) syncConfig.data_types.splice(idx, 1);
+  if (idx >= 0) syncConfig.data_types.splice(idx, 1);
   else syncConfig.data_types.push(code);
-};
-
-const isDataTypeSelected = (code: string) => syncConfig.data_types.includes(code);
-const selectAllDataTypes = () => {
-  syncConfig.data_types = supportedDataTypes.value.map((t) => t.code);
-};
-const clearAllDataTypes = () => {
-  syncConfig.data_types = [];
 };
 
 // --- 生命周期 ---
@@ -581,7 +606,7 @@ watch(
                   </n-button>
 
                   <n-button
-                    @click="handleFullSync"
+                    @click="openFullSyncModal"
                     :loading="isFullLoading"
                     :disabled="isRunning"
                     block
@@ -589,7 +614,7 @@ watch(
                     size="small"
                   >
                     <template #icon><Icon icon="ant-design:database-outlined" /></template>
-                    全量同步（{{ supportedDataTypes.length }} 种类型）
+                    全量同步（{{ supportedDataTypes.filter(t => t.is_core).length }} 种核心）
                   </n-button>
                 </div>
 
@@ -599,7 +624,7 @@ watch(
                     <span class="status-dot running" />
                     <span class="status-label-text">{{ statusText }}</span>
                     <span class="status-detail">
-                      {{ syncStatus.progress.completed_tasks }}/{{ syncStatus.progress.total_tasks }} · {{ elapsedTime }}s · 剩余 {{ estimatedRemainingTime }}s
+                      {{ syncStatus.progress.completed_tasks }}/{{ syncStatus.progress.total_tasks }} · {{ formattedElapsedTime }} · 剩余 {{ formattedRemainingTime }}
                     </span>
                   </div>
                   <n-progress
@@ -680,6 +705,39 @@ watch(
       />
     </template>
   </div>
+
+  <!-- 全量同步类型选择弹窗 -->
+  <n-modal v-model:show="showFullSyncModal" preset="card" title="选择同步数据类型"
+    class="full-sync-modal"
+    style="width: 520px; border-radius: 12px;"
+    :title-style="{ fontSize: '16px', fontWeight: 600 }"
+  >
+    <div style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
+      <div v-for="group in fullSyncGroups" :key="group.label" style="margin-bottom: 12px;">
+        <n-divider />
+        <div style="font-weight: 600; font-size: 13px; color: var(--n-text-color-2); margin-bottom: 8px;">{{ group.label }}</div>
+        <n-space vertical :size="4">
+          <n-checkbox
+            v-for="type in group.types"
+            :key="type.code"
+            :checked="fullSyncSelected[type.code]"
+            @update:checked="(val: boolean) => { fullSyncSelected[type.code] = val; }"
+          >
+            <span style="font-size: 13px;">{{ type.name }}</span>
+            <span style="font-size: 11px; color: var(--n-text-color-3); margin-left: 4px;">{{ type.estimated_time }}s</span>
+          </n-checkbox>
+        </n-space>
+      </div>
+    </div>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="showFullSyncModal = false">取消</n-button>
+        <n-button type="primary" @click="executeFullSync" :loading="isFullLoading">
+          开始同步（{{ selectedFullSyncCount }} 种）
+        </n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <style scoped lang="scss">
@@ -1086,5 +1144,13 @@ watch(
 .error-alert {
   margin: map.get($spacers, 4);
   border-radius: $border-radius;
+}
+
+.full-sync-modal {
+  :deep(.n-card) {
+    backdrop-filter: blur(16px);
+    background: rgba(14, 18, 30, 0.98) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
 }
 </style>

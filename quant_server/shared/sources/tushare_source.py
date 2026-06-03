@@ -515,7 +515,7 @@ class TushareSource(BaseDataSource):
 		包含: ROE/毛利率/净利率/资产负债率/周转率等
 		"""
 		try:
-			df = self.pro.fina_indicator(ts_code=symbol, start_date=start_date,
+			df = self.pro.fina_indicator_vip(ts_code=symbol, start_date=start_date,
 			                             end_date=end_date)
 			if df is not None and not df.empty:
 				df['end_date'] = pd.to_datetime(df['end_date'])

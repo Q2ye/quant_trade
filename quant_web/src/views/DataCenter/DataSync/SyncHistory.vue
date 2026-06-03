@@ -33,6 +33,7 @@ interface SyncRecord {
   db_id: string;
   data_type: string;
   data_types?: string[];
+  data_desc: string;
   status: string;
   start_time: string;
   end_time?: string;
@@ -110,7 +111,7 @@ const handleBack = () => {
 };
 
 const handleDeleteRecord = (row: SyncRecord) => {
-  dialog.warning({
+  dialog.error({
     title: "确认删除",
     content: `确定要删除「${row.data_type}」的同步记录吗？此操作不可恢复。`,
     positiveText: "确认删除",
@@ -128,7 +129,7 @@ const handleDeleteRecord = (row: SyncRecord) => {
 };
 
 const handleBatchDelete = () => {
-  dialog.warning({
+  dialog.error({
     title: "批量删除",
     content: `确定要删除选中的 ${checkedRowKeys.value.length} 条记录吗？此操作不可恢复。`,
     positiveText: "确认删除",
@@ -177,7 +178,12 @@ const formatDuration = (seconds?: number) => {
 const columns: DataTableColumns<SyncRecord> = [
   { type: "selection" as const },
   {
-    title: "数据类型", key: "data_type", width: 130,
+    title: "数据类型", key: "data_type", width: 160,
+    render: (row) => h("span", {}, row.data_type),
+  },
+  {
+    title: "说明", key: "data_desc", width: 120,
+    render: (row) => h("span", {}, row.data_desc),
   },
   {
     title: "状态", key: "status", width: 80,
@@ -242,6 +248,21 @@ const handleReset = () => {
   checkedRowKeys.value = [];
 };
 
+const TYPE_NAME_MAP: Record<string, string> = {
+  stock_list: "股票列表", daily_quotes: "日线行情", adj_factor: "复权因子",
+  daily_basic: "每日指标", calendar: "交易日历", financial_data: "财务报表",
+  moneyflow: "资金流向", index_data: "指数数据", dividend: "分红送股",
+  forecast: "业绩预告", express: "业绩快报", suspend: "停复牌",
+  business_income: "主营业务收入", audit_opinion: "审计意见",
+  financial_indicator: "财务指标", etf_basic: "ETF基本信息",
+  etf_daily: "ETF日线行情", fund_adj_factor: "基金复权因子",
+  etf_index: "ETF指数", etf_share: "ETF份额", batch_sync: "批量同步",
+  minute_quotes: "分钟行情", etf_minute: "ETF分钟行情", tick_quotes: "逐笔行情",
+};
+
+const formatDataTypeName = (codes: string[]): string =>
+  codes.map(c => TYPE_NAME_MAP[c] || c).join(" · ");
+
 const loadHistory = async () => {
   pageState.value = "loading";
   try {
@@ -258,6 +279,7 @@ const loadHistory = async () => {
         id: t.task_id,
         db_id: t.id,
         data_type: types.join(" · "),
+        data_desc: formatDataTypeName(types),
         data_types: t.data_types,
         status: t.status,
         start_time: t.start_time || "",

@@ -1998,16 +1998,58 @@ CREATE TABLE financial_statements (
     insurance_exp NUMERIC(18, 4),
     undist_profit NUMERIC(18, 4),
     distable_profit NUMERIC(18, 4),
+    -- 资产负债表核心字段
+    total_assets NUMERIC(18, 4),
+    total_cur_assets NUMERIC(18, 4),
+    total_nca NUMERIC(18, 4),
+    total_liab NUMERIC(18, 4),
+    total_cur_liab NUMERIC(18, 4),
+    total_ncl NUMERIC(18, 4),
+    total_hldr_eqy_exc_min_int NUMERIC(18, 4),
+    total_hldr_eqy_inc_min_int NUMERIC(18, 4),
+    minority_int NUMERIC(18, 4),
+    money_cap NUMERIC(18, 4),
+    accounts_receiv NUMERIC(18, 4),
+    inventories NUMERIC(18, 4),
+    -- 现金流量表核心字段
+    n_cashflow_act NUMERIC(18, 4),
+    n_cashflow_inv_act NUMERIC(18, 4),
+    n_cashflow_fin_act NUMERIC(18, 4),
+    n_cash NUMERIC(18, 4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE financial_statements IS '上市公司财务报表数据';
+COMMENT ON TABLE financial_statements IS '上市公司财务报表数据（利润表+资产负债表+现金流量表，通过report_type区分）';
 COMMENT ON COLUMN financial_statements.ts_code IS '股票代码';
 COMMENT ON COLUMN financial_statements.ann_date IS '公告日期';
 COMMENT ON COLUMN financial_statements.end_date IS '报告期截止日期';
-COMMENT ON COLUMN financial_statements.report_type IS '报告类型：Q1-一季报，S1-半年报，Q3-三季报，A-年报';
+COMMENT ON COLUMN financial_statements.report_type IS '报表类型: income-利润表, balance-资产负债表, cashflow-现金流量表';
 COMMENT ON COLUMN financial_statements.comp_type IS '公司类型：1-合并报表，2-母公司';
+-- 利润表核心字段
+COMMENT ON COLUMN financial_statements.basic_eps IS '基本每股收益';
+COMMENT ON COLUMN financial_statements.total_revenue IS '营业总收入';
+COMMENT ON COLUMN financial_statements.operate_profit IS '营业利润';
+COMMENT ON COLUMN financial_statements.total_profit IS '利润总额';
+COMMENT ON COLUMN financial_statements.n_income IS '净利润';
+COMMENT ON COLUMN financial_statements.ebit IS '息税前利润';
+COMMENT ON COLUMN financial_statements.ebitda IS '息税折旧摊销前利润';
+-- 资产负债表核心字段
+COMMENT ON COLUMN financial_statements.total_assets IS '资产总计';
+COMMENT ON COLUMN financial_statements.total_liab IS '负债合计';
+COMMENT ON COLUMN financial_statements.total_hldr_eqy_exc_min_int IS '股东权益（不含少数股东）';
+COMMENT ON COLUMN financial_statements.total_cur_assets IS '流动资产合计';
+COMMENT ON COLUMN financial_statements.total_cur_liab IS '流动负债合计';
+COMMENT ON COLUMN financial_statements.money_cap IS '货币资金';
+COMMENT ON COLUMN financial_statements.inventories IS '存货';
+-- 现金流量表核心字段
+COMMENT ON COLUMN financial_statements.n_cashflow_act IS '经营活动净现金流';
+COMMENT ON COLUMN financial_statements.n_cashflow_inv_act IS '投资活动净现金流';
+COMMENT ON COLUMN financial_statements.n_cashflow_fin_act IS '筹资活动净现金流';
+COMMENT ON COLUMN financial_statements.n_cash IS '现金净增加额';
+-- 时间戳
+COMMENT ON COLUMN financial_statements.created_at IS '创建时间';
+COMMENT ON COLUMN financial_statements.updated_at IS '更新时间';
 
 CREATE INDEX idx_financial_statements_ts_code ON financial_statements(ts_code);
 CREATE INDEX idx_financial_statements_end_date ON financial_statements(end_date);
@@ -2335,9 +2377,9 @@ CREATE TABLE stock_daily (
     close NUMERIC(9,3) NOT NULL,
     pre_close NUMERIC(9,3) NOT NULL,
     change NUMERIC(9,3) NOT NULL,
-    pct_chg NUMERIC(7,4) NOT NULL,
+    pct_chg NUMERIC(10,4) NOT NULL,
     vol BIGINT NOT NULL,
-    amount NUMERIC(14,4) NOT NULL,
+    amount NUMERIC(14,4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -2573,7 +2615,7 @@ COMMENT ON COLUMN stock_daily_limit.price_range IS '价格区间（涨停价-跌
 
 -- 个股资金流向表（TimescaleDB超表）
 CREATE TABLE stock_moneyflow (
-    id VARCHAR(36),
+    id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
     buy_sm_vol INT NOT NULL,
@@ -3442,3 +3484,243 @@ $$;
 -- ============================================================
 -- 脚本执行完成
 -- ============================================================
+
+-- ============================================================
+-- 新增数据类型建表（业绩预告/快报/分红/财务指标/审计/主营/ETF份额）
+-- ============================================================
+
+-- 业绩预告数据表
+CREATE TABLE stock_forecasts (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    type VARCHAR(10),
+    p_change_min NUMERIC(12,4),
+    p_change_max NUMERIC(12,4),
+    net_profit_min NUMERIC(18,4),
+    net_profit_max NUMERIC(18,4),
+    last_parent_net NUMERIC(18,4),
+    first_ann_date TIMESTAMPTZ,
+    summary TEXT,
+    change_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date)
+);
+COMMENT ON TABLE stock_forecasts IS '业绩预告数据';
+COMMENT ON COLUMN stock_forecasts.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_forecasts.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_forecasts.end_date IS '报告期';
+COMMENT ON COLUMN stock_forecasts.type IS '预告类型';
+COMMENT ON COLUMN stock_forecasts.p_change_min IS '净利润变动下限(%)';
+COMMENT ON COLUMN stock_forecasts.p_change_max IS '净利润变动上限(%)';
+COMMENT ON COLUMN stock_forecasts.net_profit_min IS '净利润下限';
+COMMENT ON COLUMN stock_forecasts.net_profit_max IS '净利润上限';
+COMMENT ON COLUMN stock_forecasts.last_parent_net IS '上年同期净利润';
+COMMENT ON COLUMN stock_forecasts.summary IS '业绩变动摘要';
+COMMENT ON COLUMN stock_forecasts.change_reason IS '业绩变动原因';
+CREATE INDEX idx_stock_forecasts_ts_code ON stock_forecasts(ts_code);
+CREATE INDEX idx_stock_forecasts_ann_date ON stock_forecasts(ann_date);
+
+-- 业绩快报数据表
+CREATE TABLE stock_expresses (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    revenue NUMERIC(18,4),
+    operate_profit NUMERIC(18,4),
+    total_profit NUMERIC(18,4),
+    n_income NUMERIC(18,4),
+    total_assets NUMERIC(18,4),
+    total_hldr_eqy_exc_min_int NUMERIC(18,4),
+    diluted_eps NUMERIC(12,4),
+    yoy_eps NUMERIC(16,4),
+    yoy_net_profit NUMERIC(16,4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date)
+);
+COMMENT ON TABLE stock_expresses IS '业绩快报数据';
+COMMENT ON COLUMN stock_expresses.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_expresses.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_expresses.end_date IS '报告期';
+COMMENT ON COLUMN stock_expresses.revenue IS '营业收入';
+COMMENT ON COLUMN stock_expresses.operate_profit IS '营业利润';
+COMMENT ON COLUMN stock_expresses.total_profit IS '利润总额';
+COMMENT ON COLUMN stock_expresses.n_income IS '净利润';
+COMMENT ON COLUMN stock_expresses.total_assets IS '总资产';
+COMMENT ON COLUMN stock_expresses.total_hldr_eqy_exc_min_int IS '股东权益';
+COMMENT ON COLUMN stock_expresses.diluted_eps IS '稀释每股收益';
+COMMENT ON COLUMN stock_expresses.yoy_eps IS 'EPS同比(%)';
+COMMENT ON COLUMN stock_expresses.yoy_net_profit IS '净利润同比(%)';
+CREATE INDEX idx_stock_expresses_ts_code ON stock_expresses(ts_code);
+CREATE INDEX idx_stock_expresses_ann_date ON stock_expresses(ann_date);
+
+-- 分红送股数据表
+CREATE TABLE stock_dividends (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ,
+    div_proc TEXT,
+    stk_div NUMERIC(18,4),
+    stk_bo_rate NUMERIC(12,4),
+    stk_co_rate NUMERIC(12,4),
+    cash_div NUMERIC(18,4),
+    cash_div_tax NUMERIC(18,4),
+    record_date TIMESTAMPTZ,
+    ex_date TIMESTAMPTZ,
+    pay_date TIMESTAMPTZ,
+    div_listdate TIMESTAMPTZ,
+    imp_ann_date TIMESTAMPTZ,
+    base_share NUMERIC(18,4),
+    base_vol NUMERIC(18,4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, div_proc)
+);
+COMMENT ON TABLE stock_dividends IS '分红送股数据';
+COMMENT ON COLUMN stock_dividends.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_dividends.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_dividends.end_date IS '报告期';
+COMMENT ON COLUMN stock_dividends.div_proc IS '分红预案';
+COMMENT ON COLUMN stock_dividends.stk_div IS '每股送转';
+COMMENT ON COLUMN stock_dividends.cash_div IS '每股分红';
+COMMENT ON COLUMN stock_dividends.record_date IS '股权登记日';
+COMMENT ON COLUMN stock_dividends.ex_date IS '除权除息日';
+COMMENT ON COLUMN stock_dividends.pay_date IS '派息日';
+COMMENT ON COLUMN stock_dividends.div_listdate IS '分红实施公告日';
+COMMENT ON COLUMN stock_dividends.imp_ann_date IS '实施公告日';
+COMMENT ON COLUMN stock_dividends.base_share IS '基准股本';
+COMMENT ON COLUMN stock_dividends.base_vol IS '基准成交量';
+CREATE INDEX idx_stock_dividends_ts_code ON stock_dividends(ts_code);
+CREATE INDEX idx_stock_dividends_ann_date ON stock_dividends(ann_date);
+
+-- 财务指标数据表
+CREATE TABLE stock_fina_indicators (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ NOT NULL,
+    eps NUMERIC(18,4),
+    roe NUMERIC(16,4),
+    roa NUMERIC(16,4),
+    roic NUMERIC(16,4),
+    grossprofit_margin NUMERIC(16,4),
+    netprofit_margin NUMERIC(16,4),
+    debt_to_assets NUMERIC(16,4),
+    current_ratio NUMERIC(16,4),
+    quick_ratio NUMERIC(16,4),
+    assets_turn NUMERIC(16,4),
+    op_cycle NUMERIC(18,4),
+    turnover_days NUMERIC(18,4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, end_date)
+);
+COMMENT ON TABLE stock_fina_indicators IS '财务指标数据';
+COMMENT ON COLUMN stock_fina_indicators.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_fina_indicators.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_fina_indicators.end_date IS '报告期';
+COMMENT ON COLUMN stock_fina_indicators.eps IS '每股收益';
+COMMENT ON COLUMN stock_fina_indicators.roe IS '净资产收益率(%)';
+COMMENT ON COLUMN stock_fina_indicators.roa IS '总资产收益率(%)';
+COMMENT ON COLUMN stock_fina_indicators.grossprofit_margin IS '毛利率(%)';
+COMMENT ON COLUMN stock_fina_indicators.netprofit_margin IS '净利率(%)';
+COMMENT ON COLUMN stock_fina_indicators.debt_to_assets IS '资产负债率(%)';
+CREATE INDEX idx_stock_fina_indicators_ts_code ON stock_fina_indicators(ts_code);
+CREATE INDEX idx_stock_fina_indicators_ann_date ON stock_fina_indicators(ann_date);
+
+-- 审计意见数据表
+CREATE TABLE stock_audit_opinions (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ NOT NULL,
+    audit_result VARCHAR(200),
+    audit_fees NUMERIC(18,4),
+    audit_agency VARCHAR(200),
+    audit_sign VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, end_date)
+);
+COMMENT ON TABLE stock_audit_opinions IS '审计意见数据';
+COMMENT ON COLUMN stock_audit_opinions.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_audit_opinions.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_audit_opinions.end_date IS '报告期';
+COMMENT ON COLUMN stock_audit_opinions.audit_result IS '审计结果';
+COMMENT ON COLUMN stock_audit_opinions.audit_fees IS '审计费用';
+COMMENT ON COLUMN stock_audit_opinions.audit_agency IS '会计师事务所';
+COMMENT ON COLUMN stock_audit_opinions.audit_sign IS '签字会计师';
+CREATE INDEX idx_stock_audit_opinions_ts_code ON stock_audit_opinions(ts_code);
+CREATE INDEX idx_stock_audit_opinions_ann_date ON stock_audit_opinions(ann_date);
+
+-- 主营业务构成数据表
+CREATE TABLE stock_business_incomes (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    bz_item VARCHAR(200),
+    bz_code VARCHAR(10),
+    bz_sales NUMERIC(18,4),
+    bz_profit NUMERIC(18,4),
+    bz_cost NUMERIC(18,4),
+    curr_type VARCHAR(10),
+    type VARCHAR(5),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, end_date, bz_item, bz_code)
+);
+COMMENT ON TABLE stock_business_incomes IS '主营业务构成数据';
+COMMENT ON COLUMN stock_business_incomes.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_business_incomes.end_date IS '报告期';
+COMMENT ON COLUMN stock_business_incomes.bz_item IS '主营业务项目';
+COMMENT ON COLUMN stock_business_incomes.bz_code IS '来源类型(P产品/D地区/I行业)';
+COMMENT ON COLUMN stock_business_incomes.bz_sales IS '主营收入';
+COMMENT ON COLUMN stock_business_incomes.bz_profit IS '主营利润';
+COMMENT ON COLUMN stock_business_incomes.bz_cost IS '主营成本';
+COMMENT ON COLUMN stock_business_incomes.curr_type IS '货币代码';
+COMMENT ON COLUMN stock_business_incomes.type IS '类型(P/D/I)';
+CREATE INDEX idx_stock_business_incomes_ts_code ON stock_business_incomes(ts_code);
+
+-- ETF份额数据表
+CREATE TABLE etf_shares (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date TIMESTAMPTZ NOT NULL,
+    fund_size NUMERIC(18,4),
+    fund_vol NUMERIC(18,4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+COMMENT ON TABLE etf_shares IS 'ETF份额数据';
+COMMENT ON COLUMN etf_shares.ts_code IS 'ETF代码';
+COMMENT ON COLUMN etf_shares.trade_date IS '交易日期';
+COMMENT ON COLUMN etf_shares.fund_size IS '基金规模(份)';
+COMMENT ON COLUMN etf_shares.fund_vol IS '基金份额变动';
+CREATE INDEX idx_etf_shares_ts_code ON etf_shares(ts_code);
+CREATE INDEX idx_etf_shares_trade_date ON etf_shares(trade_date);
+
+
+-- 股票停复牌信息表 (Tushare suspend_d 接口)
+CREATE TABLE stock_suspend_info (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date TIMESTAMPTZ NOT NULL,
+    suspend_timing VARCHAR(100),
+    suspend_type VARCHAR(2) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date, suspend_type)
+);
+COMMENT ON TABLE stock_suspend_info IS '股票停复牌信息（每日）';
+COMMENT ON COLUMN stock_suspend_info.ts_code IS 'TS代码';
+COMMENT ON COLUMN stock_suspend_info.trade_date IS '停复牌日期';
+COMMENT ON COLUMN stock_suspend_info.suspend_timing IS '日内停牌时间段';
+COMMENT ON COLUMN stock_suspend_info.suspend_type IS '停复牌类型：S-停牌，R-复牌';
+CREATE INDEX idx_stock_suspend_info_ts_code ON stock_suspend_info(ts_code);
+CREATE INDEX idx_stock_suspend_info_trade_date ON stock_suspend_info(trade_date);
