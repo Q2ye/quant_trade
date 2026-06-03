@@ -351,6 +351,17 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取ETF基础信息失败: {e}")
 			return pd.DataFrame()
 
+	def get_etf_index (self) -> pd.DataFrame:
+		"""获取ETF跟踪的基准指数列表（Tushare etf_index 接口）"""
+		try:
+			df = self.pro.etf_index(fields='ts_code,indx_name,pub_date,bp')
+			if df is not None and not df.empty:
+				df['pub_date'] = pd.to_datetime(df['pub_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取ETF基准指数失败: {e}")
+			return pd.DataFrame()
+
 	def get_etf_index_weight (self, etf_code: str) -> pd.DataFrame:
 		"""获取ETF基准指数成分"""
 		try:

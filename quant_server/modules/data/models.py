@@ -47,3 +47,4 @@ class DataTypeInfo(BaseModel):
 	estimated_time: int = Field(..., description="预估同步时间(秒)")
 	requires_clean: bool = Field(True, description="是否需要数据清洗")
 	is_core: bool = Field(False, description="是否为核心数据类型")
+	is_available: bool = Field(True, description="当前是否可同步（需Level-2权限的Tick等设为False）")

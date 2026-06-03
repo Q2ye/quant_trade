@@ -805,9 +805,9 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	"managers":               DataTypeInfo(code="managers",               name="管理层信息",   description="上市公司董监高管理层人员信息",             estimated_time=120, requires_clean=False, is_core=False),
 	"rewards":                DataTypeInfo(code="rewards",                name="管理层薪酬",   description="管理层薪酬及持股变动数据",                 estimated_time=120, requires_clean=False, is_core=False),
 	# ===== 高频/大体积：全量同步排除，仅手动同步 =====
-	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False),
-	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False),
-	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="⚠️股票逐笔成交明细（数据量极大，仅手动同步）", estimated_time=600, requires_clean=False, is_core=False),
+	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False, is_available=False),
+	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False, is_available=False),
+	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="⚠️股票逐笔成交明细（数据量极大，仅手动同步）", estimated_time=600, requires_clean=False, is_core=False, is_available=False),
 }
 
 

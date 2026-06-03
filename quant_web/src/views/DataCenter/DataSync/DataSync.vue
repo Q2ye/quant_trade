@@ -224,7 +224,11 @@ const initializePage = async () => {
       dataSyncService.getSyncTasks({ limit: 10 }).catch(() => ({ success: true, tasks: [], total: 0 })),
     ]);
     syncStatus.value = status;
-    supportedDataTypes.value = types;
+    supportedDataTypes.value = [...types].sort((a, b) => {
+      if (a.is_available === false && b.is_available !== false) return 1;
+      if (a.is_available !== false && b.is_available === false) return -1;
+      return 0;
+    });
     qualityData.value = quality;
     recentTasks.value = tasksResult.tasks || [];
 
@@ -341,12 +345,11 @@ const fullSyncSelected = reactive<Record<string, boolean>>({});
 
 const fullSyncGroups = computed(() => {
   const groups: { label: string; types: DataTypeInfo[] }[] = [];
-  const core = supportedDataTypes.value.filter(t => t.is_core);
-  const extended = supportedDataTypes.value.filter(t => !t.is_core && !t.code.includes("minute") && !t.code.includes("tick"));
-  const heavy = supportedDataTypes.value.filter(t => t.code.includes("minute") || t.code.includes("tick"));
+  const available = supportedDataTypes.value.filter(t => t.is_available !== false);
+  const core = available.filter(t => t.is_core);
+  const extended = available.filter(t => !t.is_core && !t.code.includes("minute") && !t.code.includes("tick"));
   if (core.length) groups.push({ label: "核心 · 默认选中", types: core });
   if (extended.length) groups.push({ label: "扩展 · 需手动勾选", types: extended });
-  if (heavy.length) groups.push({ label: "大体积 · 仅手动同步", types: heavy });
   return groups;
 });
 
@@ -395,7 +398,9 @@ const selectedFullSyncCount = computed(() =>
 );
 
 const selectAllDataTypes = () => {
-  syncConfig.data_types = supportedDataTypes.value.filter((t) => t.is_core).map((t) => t.code);
+  syncConfig.data_types = supportedDataTypes.value
+    .filter((t) => t.is_core && t.is_available !== false)
+    .map((t) => t.code);
 };
 const clearAllDataTypes = () => {
   syncConfig.data_types = [];
@@ -431,6 +436,8 @@ const handleCancelSync = () => {
 
 const isDataTypeSelected = (code: string) => syncConfig.data_types.includes(code);
 const toggleDataType = (code: string) => {
+  const dt = supportedDataTypes.value.find(t => t.code === code);
+  if (!dt || dt.is_available === false) return;
   const idx = syncConfig.data_types.indexOf(code);
   if (idx >= 0) syncConfig.data_types.splice(idx, 1);
   else syncConfig.data_types.push(code);
@@ -557,15 +564,15 @@ watch(
                   v-for="type in supportedDataTypes"
                   :key="type.code"
                   class="data-type-card"
-                  :class="{ selected: isDataTypeSelected(type.code) }"
-                  @click="toggleDataType(type.code)"
+                  :class="{ selected: isDataTypeSelected(type.code), disabled: type.is_available === false }"
+                  @click="type.is_available !== false && toggleDataType(type.code)"
                 >
                   <Icon
                     :icon="isDataTypeSelected(type.code) ? 'ant-design:check-circle-filled' : 'ant-design:check-circle-outlined'"
                     class="check-icon"
                   />
                   <span class="type-name">{{ type.name }}</span>
-                  <span class="type-time">约 {{ type.estimated_time }}s</span>
+                  <span class="type-time">{{ type.is_available === false ? '不可用' : '约 ' + type.estimated_time + 's' }}</span>
                 </div>
               </div>
 
@@ -749,6 +756,7 @@ watch(
 
   <!-- 全量同步类型选择弹窗 -->
   <n-modal v-model:show="showFullSyncModal" preset="card" title="选择同步数据类型"
+    :mask-style="{ background: 'rgba(0,0,0,0.75)' }"
     class="full-sync-modal"
     style="width: 520px; border-radius: 12px;"
     :title-style="{ fontSize: '16px', fontWeight: 600 }"
@@ -937,6 +945,15 @@ watch(
   .type-time {
     font-size: $font-size-base * 0.65;
     color: $text-color-3;
+  }
+
+  &.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    &:hover {
+      border-color: $border-color;
+      background: $secondary-bg;
+    }
   }
 }
 
@@ -1191,9 +1208,8 @@ watch(
 
 .full-sync-modal {
   :deep(.n-card) {
-    backdrop-filter: blur(16px);
     background: rgb(14, 18, 30) !important;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 }
 </style>
