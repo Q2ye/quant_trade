@@ -1936,6 +1936,7 @@ CREATE TABLE financial_statements (
     id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL REFERENCES stock_basic(ts_code),
     ann_date DATE NOT NULL,
+    f_ann_date DATE,
     end_date DATE NOT NULL,
     report_type VARCHAR(20) NOT NULL,
     comp_type VARCHAR(20),

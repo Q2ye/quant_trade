@@ -412,6 +412,7 @@ class FinancialStatement(Base):
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='财务报表ID')
 	ts_code = Column(String(20), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	ann_date = Column(DateTime, nullable=False, index=True, comment='公告日期')
+	f_ann_date = Column(DateTime, comment='实际公告日期（Tushare新接口，部分公司会延迟公告）')
 	end_date = Column(DateTime, nullable=False, comment='报告期')
 	report_type = Column(String(20), nullable=False, comment='报告类型：Q1-一季报，S1-半年报，Q3-三季报，A-年报')
 	comp_type = Column(String(20), comment='公司类型：一般企业、银行、保险、证券')

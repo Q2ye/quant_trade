@@ -67,7 +67,7 @@ select count(*) from  etf_shares;
 select * from  stock_daily;
 select count(*) from stock_daily;
 delete from stock_daily;
-
+ 
 -- 回测任务
 select * from backtest_tasks;
 
