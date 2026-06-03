@@ -25,6 +25,7 @@ delete from stock_adj_factor;
 select * from trade_calendar;
 select count(*) from trade_calendar;
 
+
 -- 每日指标表（TimescaleDB超表）
 select * from stock_daily_basic;
 select count(*) from stock_daily_basic;

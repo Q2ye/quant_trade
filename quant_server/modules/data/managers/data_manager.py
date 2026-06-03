@@ -1052,7 +1052,7 @@ class DataManager:
 	@staticmethod
 	async def check_data_exists (data_type: str) -> bool:
 		"""
-		检查数据是否存在
+		检查数据是否存在（基于 Repository，避免硬编码表名）
 
 		Args:
 			data_type: 数据类型
@@ -1062,26 +1062,24 @@ class DataManager:
 		"""
 		try:
 			from shared.database.session import get_session_manager
-			from sqlalchemy import text
+			from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+			from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
 
 			session_manager = get_session_manager()
 			async with session_manager.get_session() as session:
-				if data_type == "stock_quote":
-					result = await session.execute(text("SELECT COUNT(*) FROM daily_quotes LIMIT 1"))
+				if data_type in ("stock_quote", "daily_quotes"):
+					repo = StockDailyRepository(session)
+					return await repo.count() > 0
 				elif data_type == "stock_basic":
-					result = await session.execute(text("SELECT COUNT(*) FROM stocks LIMIT 1"))
+					repo = StockBasicRepository(session)
+					return await repo.count() > 0
 				elif data_type == "index_quote":
-					result = await session.execute(text("SELECT COUNT(*) FROM index_daily LIMIT 1"))
+					from shared.database.repositories.market.quote.index_daily_repo import IndexDailyRepository
+					repo = IndexDailyRepository(session)
+					return await repo.count() > 0
 				else:
-					# 仅允许已知的安全表名
-					allowed_tables = {"stock_minute", "index_minute", "etf_daily", "etf_minute", "fund_daily", "trading_calendar"}
-					if data_type not in allowed_tables:
-						logger.warning(f"未知数据类型: {data_type}，无法检查存在性")
-						return False
-					result = await session.execute(
-						text(f"SELECT COUNT(*) FROM {data_type} LIMIT 1")
-					)
-				return result.scalar() > 0
+					logger.warning(f"未知数据类型: {data_type}，无法检查存在性")
+					return False
 		except Exception as e:
 			logger.error(f"检查数据存在性失败: {e}")
 			return False

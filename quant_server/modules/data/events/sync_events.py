@@ -16,6 +16,8 @@ class DataSyncStartedEvent(BaseEvent):
         sync_type: str,
         source: str = "tushare",
         params: Optional[Dict[str, Any]] = None,
+        task_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         **kwargs
     ):
         # 从 kwargs 中移除 source，避免与参数中的 source 重复
@@ -31,6 +33,8 @@ class DataSyncStartedEvent(BaseEvent):
         self.data = {
             "sync_type": sync_type,
             "source": source,
+            "task_id": task_id,
+            "user_id": user_id,
             "params": params or {},
             "start_time": datetime.now().isoformat()
         }

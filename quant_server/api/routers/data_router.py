@@ -680,9 +680,10 @@ async def cancel_current_sync_api (
 ) -> JSONResponse:
 	"""取消当前正在运行的同步任务（无需指定 task_id）"""
 	try:
-		# 查询当前运行中的任务
+		# 查询当前用户运行中的任务
 		result = await db_session.execute(
-			text("SELECT task_id FROM data_sync_tasks WHERE status = 'running' ORDER BY start_time DESC LIMIT 1")
+			text("SELECT task_id FROM data_sync_tasks WHERE status = 'running' AND user_id = :uid ORDER BY start_time DESC LIMIT 1"),
+			{"uid": current_user.get("id")}
 		)
 		row = result.fetchone()
 		task_id = row[0] if row else None
@@ -773,14 +774,20 @@ async def cancel_sync_api (
 _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	# ===== 核心：日线/周线交易必须 =====
 	"stock_list":             DataTypeInfo(code="stock_list",             name="股票列表",     description="沪深A股股票基本信息列表",                     estimated_time=30,  requires_clean=True,  is_core=True),
+	"st_list":                DataTypeInfo(code="st_list",                name="ST股票列表",   description="ST/*ST特别处理股票变更历史记录",             estimated_time=30,  requires_clean=False, is_core=False),
+	"company":                DataTypeInfo(code="company",                name="公司基本信息", description="上市公司基本信息（注册地址/法人/主营等）",   estimated_time=60,  requires_clean=False, is_core=False),
 	"daily_quotes":           DataTypeInfo(code="daily_quotes",           name="日线行情",     description="股票日K线行情数据（开高低收量额）",         estimated_time=120, requires_clean=True,  is_core=True),
+	"weekly_quotes":          DataTypeInfo(code="weekly_quotes",          name="周线行情",     description="股票周K线行情数据",                         estimated_time=60,  requires_clean=True,  is_core=False),
+	"monthly_quotes":         DataTypeInfo(code="monthly_quotes",         name="月线行情",     description="股票月K线行情数据",                         estimated_time=30,  requires_clean=True,  is_core=False),
 	"adj_factor":             DataTypeInfo(code="adj_factor",             name="复权因子",     description="股票复权因子数据（前复权/后复权）",         estimated_time=60,  requires_clean=False, is_core=True),
 	"daily_basic":            DataTypeInfo(code="daily_basic",            name="每日指标",     description="股票每日基本面指标（PE/PB/换手率等）",      estimated_time=90,  requires_clean=True,  is_core=True),
 	"calendar":               DataTypeInfo(code="calendar",               name="交易日历",     description="沪深京交易所交易日历数据",                   estimated_time=10,  requires_clean=False, is_core=True),
 	"financial_indicator":    DataTypeInfo(code="financial_indicator",    name="财务指标",     description="上市公司核心财务指标（ROE/ROA/毛利率等）",   estimated_time=120, requires_clean=True,  is_core=True),
 	"financial_data":         DataTypeInfo(code="financial_data",         name="财务报表",     description="利润表+资产负债表+现金流量表（三表合并同步）", estimated_time=360, requires_clean=True,  is_core=True),
 	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
-	"index_data":             DataTypeInfo(code="index_data",             name="指数数据",     description="指数日线行情数据（上证/深证/创业板等）",     estimated_time=60,  requires_clean=True,  is_core=True),
+	"index_basic":            DataTypeInfo(code="index_basic",            name="指数基本信息", description="沪深市场全部指数基本信息（代码/名称/基期等）", estimated_time=30,  requires_clean=False, is_core=True),
+	"index_daily":            DataTypeInfo(code="index_daily",            name="指数日线行情", description="指数日线行情数据（开高低收量额）",           estimated_time=60,  requires_clean=True,  is_core=True),
+	"index_data":             DataTypeInfo(code="index_data",             name="指数数据(旧)", description="[兼容旧版]指数日线行情数据",                 estimated_time=60,  requires_clean=True,  is_core=False),
 	# ===== 扩展：选股加分项 =====
 	"dividend":               DataTypeInfo(code="dividend",               name="分红送股",     description="上市公司分红送股预案及实施数据",             estimated_time=60,  requires_clean=False, is_core=False),
 	"forecast":               DataTypeInfo(code="forecast",               name="业绩预告",     description="上市公司业绩预告数据",                       estimated_time=60,  requires_clean=False, is_core=False),
@@ -794,6 +801,9 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	"fund_adj_factor":        DataTypeInfo(code="fund_adj_factor",        name="基金复权因子", description="基金复权因子数据",                           estimated_time=60,  requires_clean=False, is_core=False),
 	"etf_index":              DataTypeInfo(code="etf_index",              name="ETF指数",      description="ETF跟踪指数成分及权重",                     estimated_time=60,  requires_clean=False, is_core=False),
 	"etf_share":              DataTypeInfo(code="etf_share",              name="ETF份额",      description="ETF基金份额变动数据",                       estimated_time=60,  requires_clean=False, is_core=False),
+	# ===== 公司治理 =====
+	"managers":               DataTypeInfo(code="managers",               name="管理层信息",   description="上市公司董监高管理层人员信息",             estimated_time=120, requires_clean=False, is_core=False),
+	"rewards":                DataTypeInfo(code="rewards",                name="管理层薪酬",   description="管理层薪酬及持股变动数据",                 estimated_time=120, requires_clean=False, is_core=False),
 	# ===== 高频/大体积：全量同步排除，仅手动同步 =====
 	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False),
 	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False),

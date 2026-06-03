@@ -1472,6 +1472,11 @@ async def cancel_sync (
 		}
 		await sync_task_repo.update(task.id, update_data)
 
+		# 4.1 触发取消信号（真正中断后台异步任务）
+		from modules.data import signal_cancel
+		cancelled = signal_cancel(task_id)
+		logger.info(f"取消信号已发送: task_id={task_id}, 命中={cancelled}")
+
 		# 5. 发布取消事件
 		cancel_event = DataSyncProgressEvent(
 			sync_type="cancel",
@@ -2206,13 +2211,22 @@ async def _execute_async_data_sync (
 			logger.warning("[后台任务]   类型=%s | %s", t.data_type, detail)
 		logger.warning("=" * 60)
 
+		# 立即创建取消令牌（在获取 DB 会话之前，确保取消 API 随时可用）
+		from modules.data import create_cancel_token, cleanup_cancel_token, get_sync_engine
+		cancel_token = create_cancel_token(task_id)
+
 		# 创建独立的数据库会话（不依赖主请求的session）
 		logger.info(f"[后台任务] 获取独立数据库会话: {task_id}")
 		session_manager = get_session_manager()
 		async with session_manager.get_session() as session:
-			sync_service = DataSyncService(session, event_engine)
+			sync_service = DataSyncService(session, event_engine, cancel_token=cancel_token)
 			logger.info(f"[后台任务] 数据库会话已创建, 准备更新状态: {task_id}")
 			sync_task_repo = DataSyncTaskRepository(session)
+
+			# 注入 sync_service 到模块级引擎（统一任务状态管理）
+			engine = get_sync_engine()
+			if engine:
+				engine.sync_service = sync_service
 
 			# 直接使用主键db_id更新状态，避免再次查询
 			update_data = {
@@ -2222,8 +2236,30 @@ async def _execute_async_data_sync (
 			await sync_task_repo.update(db_id, update_data)
 			logger.info(f"[后台任务] 状态已更新为 running: {task_id}")
 
+			# 向引擎注册任务（统一进度追踪和并发控制）
+			if engine and task_id not in engine.tasks:
+				from modules.data.engines.sync_engine import SyncTaskConfig, SyncTaskProgress, SyncTaskStatus
+				from modules.data.events.types import DataSyncType
+				engine.tasks[task_id] = {
+					"task_id": task_id,
+					"config": SyncTaskConfig(
+						sync_type=DataSyncType.FULL,
+						data_sources=["tushare"],
+					),
+					"status": SyncTaskStatus.RUNNING,
+					"progress": SyncTaskProgress(),
+					"result": None,
+					"created_at": datetime.now(),
+					"updated_at": datetime.now(),
+					"error_count": 0,
+					"retry_count": 0,
+					"start_time": datetime.now(),
+				}
+				engine.active_tasks.add(task_id)
+				engine.stats["total_tasks"] += 1
+
 			# 3. 发布进度事件
-			# Derive sync_type from first task's data_type
+			sync_type = request.tasks[0].data_type if request.tasks else "batch"
 			sync_type = request.tasks[0].data_type if request.tasks else "batch"
 			progress_event = DataSyncProgressEvent(
 				sync_type=sync_type,
@@ -2239,11 +2275,25 @@ async def _execute_async_data_sync (
 			await event_engine.put(progress_event)  # type: ignore
 			logger.info(f"[后台任务] 已发布进度事件: {task_id}")
 
-			# 4. 执行数据同步
+			# 4. 执行数据同步（含取消检查）
 			data_type_list = [t.data_type for t in request.tasks]
 			logger.warning(f"[后台任务] 开始执行 {len(request.tasks)} 个数据类型的同步: {data_type_list}")
 			for i, dt in enumerate(data_type_list):
 				logger.info(f"[后台任务] 同步进度: {i+1}/{len(request.tasks)} - 开始同步 {dt}")
+			# 取消检查：DB 状态优先（cancel API 已更新），令牌为补充
+			should_cancel = cancel_token.is_set()
+			if not should_cancel:
+				current = await sync_task_repo.get(db_id)
+				should_cancel = current and getattr(current, 'status', None) == 'cancelled'
+			if should_cancel:
+				logger.warning(f"[后台任务] 检测到取消信号(DB={'Y' if not cancel_token.is_set() and should_cancel else 'N'}, token={'Y' if cancel_token.is_set() else 'N'}), 跳过同步: {task_id}")
+				cleanup_cancel_token(task_id)
+				if not cancel_token.is_set():
+					await sync_task_repo.update(db_id, {"status": "cancelled", "end_time": datetime.now()})
+				if engine:
+					engine.active_tasks.discard(task_id)
+					engine.stats["cancelled_tasks"] += 1
+				return
 			sync_result = await sync_service.batch_sync_data(
 				tasks=request.tasks,
 				priority=request.priority,
@@ -2252,10 +2302,23 @@ async def _execute_async_data_sync (
 			)
 			logger.info(f"[后台任务] 同步执行返回: {task_id}, 结果={sync_result.get('success', False)}")
 
-			# 5. 检查任务是否已被用户取消
+			# 5. 检查任务是否已被用户取消，保存部分进度
 			current_task = await sync_task_repo.get(db_id)
 			if current_task and getattr(current_task, 'status', None) == 'cancelled':
-				logger.warning(f"[后台任务] 任务已被用户取消，丢弃同步结果: {task_id}")
+				logger.warning(f'[后台任务] 任务已取消，保存部分进度: processed={sync_result.get("records_processed", 0)}, failed={sync_result.get("records_failed", 0)}')
+				await sync_task_repo.update(db_id, {
+					"status": "cancelled",
+					"records_processed": sync_result.get("records_processed", 0),
+					"records_succeeded": sync_result.get("records_succeeded", 0),
+					"records_failed": sync_result.get("records_failed", 0),
+					"end_time": datetime.now()
+				})
+				if engine:
+					engine.tasks[task_id]["status"] = SyncTaskStatus.CANCELLED
+					engine.tasks[task_id]["updated_at"] = datetime.now()
+					engine.active_tasks.discard(task_id)
+					engine.stats["total_records"] += sync_result.get("records_processed", 0)
+					engine.stats["cancelled_tasks"] += 1
 				return
 
 			# 6. 更新任务状态为完成
@@ -2268,6 +2331,15 @@ async def _execute_async_data_sync (
 			}
 			await sync_task_repo.update(db_id, update_data)
 			logger.info(f"[后台任务] 状态已更新为 completed: {task_id}")
+
+			# 更新引擎任务状态
+			if engine and task_id in engine.tasks:
+				engine.tasks[task_id]["status"] = SyncTaskStatus.COMPLETED
+				engine.tasks[task_id]["updated_at"] = datetime.now()
+				engine.active_tasks.discard(task_id)
+				engine.stats["completed_tasks"] += 1
+				engine.stats["total_records"] += sync_result.get("records_processed", 0)
+				engine.stats["last_sync_time"] = datetime.now().timestamp()
 
 			# 7. 发布同步完成事件
 			completed_event = DataSyncCompletedEvent(
@@ -2306,8 +2378,10 @@ async def _execute_async_data_sync (
 				logger.warning(f"[后台任务] 质量检查初始化失败: {qe}")
 
 			logger.warning(f"[后台任务] 异步数据同步完成: {task_id}, 处理={sync_result.get('records_processed', 0)}, 成功={sync_result.get('records_succeeded', 0)}, 失败={sync_result.get('records_failed', 0)}")
+			cleanup_cancel_token(task_id)
 
 	except Exception as e:
+		cleanup_cancel_token(task_id)
 		logger.warning("=" * 60)
 		logger.error(f"[后台任务] 异步数据同步失败: {task_id}, 错误: {str(e)}", exc_info=True)
 		logger.warning("=" * 60)

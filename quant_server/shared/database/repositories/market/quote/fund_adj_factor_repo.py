@@ -112,6 +112,45 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 			limit=limit
 		)
 
+	async def get_existing_trade_dates (
+			self,
+			ts_code: str,
+			start_date=None,
+			end_date=None,
+	) -> set:
+		"""
+		批量获取已有交易日期集合（一次查询替代 N 次逐条查询）
+		"""
+		try:
+			query = select(self.model.trade_date).where(
+				self.model.ts_code == ts_code
+			)
+			if start_date:
+				query = query.where(self.model.trade_date >= start_date)
+			if end_date:
+				query = query.where(self.model.trade_date <= end_date)
+			result = await self.session.execute(query)
+			return {row.trade_date for row in result.fetchall()}
+		except Exception as e:
+			raise RepositoryError(f"批量获取已有交易日期失败: {str(e)}")
+
+	async def get_latest_trade_date (
+			self,
+			ts_code: str
+	) -> Optional[date]:
+		"""
+		获取指定标的的最新数据日期（用于增量同步日期推断）
+		"""
+		try:
+			query = select(self.model.trade_date).where(
+				self.model.ts_code == ts_code
+			).order_by(desc(self.model.trade_date)).limit(1)
+			result = await self.session.execute(query)
+			row = result.first()
+			return row.trade_date if row else None
+		except Exception as e:
+			raise RepositoryError(f"获取最新数据日期失败: {str(e)}")
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,

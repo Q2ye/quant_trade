@@ -153,9 +153,6 @@ class StockDaily(Base):
 
 	# 关联关系
 	stock = relationship("StockBasic", back_populates="daily_data")
-	daily_basic = relationship("StockDailyBasic", back_populates="daily", uselist=False, cascade="all, delete-orphan")
-	daily_limit = relationship("StockDailyLimit", back_populates="daily", uselist=False, cascade="all, delete-orphan")
-	moneyflow = relationship("StockMoneyflow", back_populates="daily", uselist=False, cascade="all, delete-orphan")
 
 	# 索引
 	__table_args__ = (
@@ -314,31 +311,27 @@ class StockDailyBasic(Base):
 	__tablename__ = 'stock_daily_basic'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='基本面数据ID')
-	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
-	ts_code = Column(String(12), nullable=False, index=True, comment='TS代码')
-	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
-	close = Column(Numeric(9, 4), nullable=False, comment='收盘价')
-	turnover_rate = Column(Numeric(8, 4), nullable=False, comment='换手率（%）')
-	turnover_rate_f = Column(Numeric(8, 4), nullable=False, comment='流通股换手率（%）')
-	volume_ratio = Column(Numeric(8, 4), nullable=False, comment='量比')
+	ts_code = Column(String(12), index=True, comment='TS代码')
+	trade_date = Column(DateTime, index=True, comment='交易日期')
+	close = Column(Numeric(9, 4), comment='收盘价')
+	turnover_rate = Column(Numeric(8, 4), comment='换手率（%）')
+	turnover_rate_f = Column(Numeric(8, 4), comment='流通股换手率（%）')
+	volume_ratio = Column(Numeric(8, 4), comment='量比')
 	pe = Column(Numeric(12, 4), comment='市盈率（总市值/净利润）')
 	pe_ttm = Column(Numeric(12, 4), comment='市盈率（TTM）')
-	pb = Column(Numeric(12, 4), nullable=False, comment='市净率（总市值/净资产）')
+	pb = Column(Numeric(12, 4), comment='市净率（总市值/净资产）')
 	ps = Column(Numeric(12, 4), comment='市销率')
 	ps_ttm = Column(Numeric(12, 4), comment='市销率（TTM）')
 	dv_ratio = Column(Numeric(8, 4), comment='股息率（%）')
 	dv_ttm = Column(Numeric(8, 4), comment='股息率（TTM）')
-	total_share = Column(Numeric(16, 4), nullable=False, comment='总股本（万股）')
-	float_share = Column(Numeric(16, 4), nullable=False, comment='流通股本（万股）')
-	free_share = Column(Numeric(16, 4), nullable=False, comment='自由流通股本（万股）')
-	total_mv = Column(Numeric(18, 4), nullable=False, comment='总市值（万元）')
-	circ_mv = Column(Numeric(18, 4), nullable=False, comment='流通市值（万元）')
+	total_share = Column(Numeric(16, 4), comment='总股本（万股）')
+	float_share = Column(Numeric(16, 4), comment='流通股本（万股）')
+	free_share = Column(Numeric(16, 4), comment='自由流通股本（万股）')
+	total_mv = Column(Numeric(18, 4), comment='总市值（万元）')
+	circ_mv = Column(Numeric(18, 4), comment='流通市值（万元）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
-
-	# 关联关系
-	daily = relationship("StockDaily", back_populates="daily_basic")
 
 	# 索引
 	__table_args__ = (
@@ -351,7 +344,6 @@ class StockDailyLimit(Base):
 	__tablename__ = 'stock_daily_limit'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='涨跌停数据ID')
-	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
 	ts_code = Column(String(12), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	pre_close = Column(Numeric(9, 4), nullable=False, comment='前收盘价')
@@ -364,9 +356,6 @@ class StockDailyLimit(Base):
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
-	# 关联关系
-	daily = relationship("StockDaily", back_populates="daily_limit")
-
 	# 索引
 	__table_args__ = (
 		UniqueConstraint('ts_code', 'trade_date', name='uq_stock_daily_limit_code_date'),
@@ -378,7 +367,6 @@ class StockMoneyflow(Base):
 	__tablename__ = 'stock_moneyflow'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='资金流向ID')
-	daily_id = Column(String(36), ForeignKey('stock_daily.id'), comment='日线数据ID')
 	ts_code = Column(String(12), ForeignKey('stock_basic.ts_code'), nullable=False, index=True, comment='TS代码')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
 	buy_sm_vol = Column(Integer, nullable=False, comment='小单买入量（手）')
@@ -407,7 +395,6 @@ class StockMoneyflow(Base):
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
-	daily = relationship("StockDaily", back_populates="moneyflow")
 	stock = relationship("StockBasic", back_populates="moneyflow")
 
 	# 索引
@@ -842,4 +829,204 @@ class CompanyAnnouncement(Base):
 		Index('idx_company_anns_date_type', 'announcement_date', 'announcement_type'),
 		Index('idx_company_anns_importance', 'importance_level'),
 		UniqueConstraint('ts_code', 'announcement_date', 'title', name='uq_announcement_unique'),
+	)
+
+
+# ==================== 财务衍生数据 ====================
+
+class StockForecast(Base):
+	"""业绩预告数据表"""
+	__tablename__ = 'stock_forecasts'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime(timezone=True), nullable=False, comment='公告日期')
+	end_date = Column(DateTime(timezone=True), nullable=False, comment='报告期')
+	type = Column(String(10), comment='预告类型')
+	p_change_min = Column(Numeric(12, 4), comment='净利润变动下限(%)')
+	p_change_max = Column(Numeric(12, 4), comment='净利润变动上限(%)')
+	net_profit_min = Column(Numeric(18, 4), comment='净利润下限')
+	net_profit_max = Column(Numeric(18, 4), comment='净利润上限')
+	last_parent_net = Column(Numeric(18, 4), comment='上年同期净利润')
+	first_ann_date = Column(DateTime(timezone=True), comment='首次公告日期')
+	summary = Column(Text, comment='业绩变动摘要')
+	change_reason = Column(Text, comment='业绩变动原因')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_forecasts_ts_code', 'ts_code'),
+		Index('idx_stock_forecasts_ann_date', 'ann_date'),
+		UniqueConstraint('ts_code', 'ann_date', name='uq_forecasts_ts_ann'),
+	)
+
+
+class StockExpress(Base):
+	"""业绩快报数据表"""
+	__tablename__ = 'stock_expresses'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime(timezone=True), nullable=False, comment='公告日期')
+	end_date = Column(DateTime(timezone=True), nullable=False, comment='报告期')
+	revenue = Column(Numeric(18, 4), comment='营业收入')
+	operate_profit = Column(Numeric(18, 4), comment='营业利润')
+	total_profit = Column(Numeric(18, 4), comment='利润总额')
+	n_income = Column(Numeric(18, 4), comment='净利润')
+	total_assets = Column(Numeric(18, 4), comment='总资产')
+	total_hldr_eqy_exc_min_int = Column(Numeric(18, 4), comment='股东权益')
+	diluted_eps = Column(Numeric(12, 4), comment='稀释每股收益')
+	yoy_eps = Column(Numeric(16, 4), comment='EPS同比(%)')
+	yoy_net_profit = Column(Numeric(16, 4), comment='净利润同比(%)')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_expresses_ts_code', 'ts_code'),
+		Index('idx_stock_expresses_ann_date', 'ann_date'),
+		UniqueConstraint('ts_code', 'ann_date', name='uq_expresses_ts_ann'),
+	)
+
+
+class StockDividend(Base):
+	"""分红送股数据表"""
+	__tablename__ = 'stock_dividends'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime(timezone=True), comment='公告日期')
+	end_date = Column(DateTime(timezone=True), comment='报告期')
+	div_proc = Column(Text, comment='分红预案')
+	stk_div = Column(Numeric(18, 4), comment='每股送转')
+	stk_bo_rate = Column(Numeric(12, 4), comment='每股转增')
+	stk_co_rate = Column(Numeric(12, 4), comment='每股送股')
+	cash_div = Column(Numeric(18, 4), comment='每股分红')
+	cash_div_tax = Column(Numeric(18, 4), comment='每股分红（含税）')
+	record_date = Column(DateTime(timezone=True), comment='股权登记日')
+	ex_date = Column(DateTime(timezone=True), comment='除权除息日')
+	pay_date = Column(DateTime(timezone=True), comment='派息日')
+	div_listdate = Column(DateTime(timezone=True), comment='分红实施公告日')
+	imp_ann_date = Column(DateTime(timezone=True), comment='实施公告日')
+	base_share = Column(Numeric(18, 4), comment='基准股本')
+	base_vol = Column(Numeric(18, 4), comment='基准成交量')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_dividends_ts_code', 'ts_code'),
+		Index('idx_stock_dividends_ann_date', 'ann_date'),
+		UniqueConstraint('ts_code', 'ann_date', 'div_proc', name='uq_dividends_unique'),
+	)
+
+
+class StockFinaIndicator(Base):
+	"""财务指标数据表"""
+	__tablename__ = 'stock_fina_indicators'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime(timezone=True), comment='公告日期')
+	end_date = Column(DateTime(timezone=True), nullable=False, comment='报告期')
+	eps = Column(Numeric(18, 4), comment='每股收益')
+	roe = Column(Numeric(16, 4), comment='净资产收益率(%)')
+	roa = Column(Numeric(16, 4), comment='总资产收益率(%)')
+	roic = Column(Numeric(16, 4), comment='投入资本回报率(%)')
+	grossprofit_margin = Column(Numeric(16, 4), comment='毛利率(%)')
+	netprofit_margin = Column(Numeric(16, 4), comment='净利率(%)')
+	debt_to_assets = Column(Numeric(16, 4), comment='资产负债率(%)')
+	current_ratio = Column(Numeric(16, 4), comment='流动比率')
+	quick_ratio = Column(Numeric(16, 4), comment='速动比率')
+	assets_turn = Column(Numeric(16, 4), comment='总资产周转率')
+	op_cycle = Column(Numeric(18, 4), comment='营业周期')
+	turnover_days = Column(Numeric(18, 4), comment='存货周转天数')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_fina_indicators_ts_code', 'ts_code'),
+		Index('idx_stock_fina_indicators_ann_date', 'ann_date'),
+		UniqueConstraint('ts_code', 'end_date', name='uq_fina_indicator_unique'),
+	)
+
+
+class StockAuditOpinion(Base):
+	"""审计意见数据表"""
+	__tablename__ = 'stock_audit_opinions'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime(timezone=True), comment='公告日期')
+	end_date = Column(DateTime(timezone=True), nullable=False, comment='报告期')
+	audit_result = Column(String(200), comment='审计结果')
+	audit_fees = Column(Numeric(18, 4), comment='审计费用')
+	audit_agency = Column(String(200), comment='会计师事务所')
+	audit_sign = Column(String(100), comment='签字会计师')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_audit_opinions_ts_code', 'ts_code'),
+		Index('idx_stock_audit_opinions_ann_date', 'ann_date'),
+		UniqueConstraint('ts_code', 'end_date', name='uq_audit_opinion_unique'),
+	)
+
+
+class StockBusinessIncome(Base):
+	"""主营业务构成数据表"""
+	__tablename__ = 'stock_business_incomes'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	end_date = Column(DateTime(timezone=True), nullable=False, comment='报告期')
+	bz_item = Column(String(200), comment='主营业务项目')
+	bz_code = Column(String(10), comment='来源类型(P产品/D地区/I行业)')
+	bz_sales = Column(Numeric(18, 4), comment='主营收入')
+	bz_profit = Column(Numeric(18, 4), comment='主营利润')
+	bz_cost = Column(Numeric(18, 4), comment='主营成本')
+	curr_type = Column(String(10), comment='货币代码')
+	type = Column(String(5), comment='类型(P/D/I)')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_business_incomes_ts_code', 'ts_code'),
+		UniqueConstraint('ts_code', 'end_date', 'bz_item', 'bz_code', name='uq_biz_income_unique'),
+	)
+
+
+class EtfShare(Base):
+	"""ETF份额数据表"""
+	__tablename__ = 'etf_shares'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='ETF代码')
+	trade_date = Column(DateTime(timezone=True), nullable=False, comment='交易日期')
+	fund_size = Column(Numeric(18, 4), comment='基金规模(份)')
+	fund_vol = Column(Numeric(18, 4), comment='基金份额变动')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_etf_shares_ts_code', 'ts_code'),
+		Index('idx_etf_shares_trade_date', 'trade_date'),
+		UniqueConstraint('ts_code', 'trade_date', name='uq_etf_share_unique'),
+	)
+
+
+class StockSuspendInfo(Base):
+	"""股票停复牌信息表"""
+	__tablename__ = 'stock_suspend_info'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	trade_date = Column(DateTime(timezone=True), nullable=False, comment='停复牌日期')
+	suspend_timing = Column(String(100), comment='日内停牌时间段')
+	suspend_type = Column(String(2), nullable=False, comment='停复牌类型：S-停牌，R-复牌')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		Index('idx_stock_suspend_info_ts_code', 'ts_code'),
+		Index('idx_stock_suspend_info_trade_date', 'trade_date'),
+		UniqueConstraint('ts_code', 'trade_date', 'suspend_type', name='uq_suspend_info_unique'),
 	)

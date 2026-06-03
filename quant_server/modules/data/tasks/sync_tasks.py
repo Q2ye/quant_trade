@@ -2,16 +2,19 @@
 数据同步任务
 
 负责数据同步相关的异步任务，包括：
-1. 定时同步任务
-2. 手动触发同步
-3. 增量同步
-4. 全量同步
+1. 定时同步任务 → 已迁移到 DataSyncEngine 心跳机制
+2. 手动触发同步 → 由 handlers.py 后台任务处理
+3. 增量同步 → 由 DataSyncEngine.start_sync_task() 处理
+4. 全量同步 → 由 DataSyncEngine.start_sync_task() 处理
 
 设计原则：
 - 幂等性：多次执行相同任务结果一致
 - 容错性：任务失败后可以恢复
 - 可监控：支持进度跟踪和状态查询
 - 可配置：支持不同的同步策略
+
+注意：Celery 任务已废弃，定时调度由 DataSyncEngine 内置时钟驱动。
+      同步执行路径统一为: API → Handler → Engine → Service → Repository
 """
 
 import asyncio
@@ -20,8 +23,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Any, Optional
 
-from celery import Celery, Task
-from celery.schedules import crontab
+# Celery 依赖为可选 — 功能已迁移到 DataSyncEngine
+try:
+	from celery import Celery, Task
+	from celery.schedules import crontab
+	_CELERY_AVAILABLE = True
+except ImportError:
+	Celery = None  # type: ignore
+	Task = None
+	crontab = None
+	_CELERY_AVAILABLE = False
 
 from api.dependencies import get_event_engine
 from modules.data.events.sync_events import (
@@ -36,9 +47,16 @@ from utils.core_utils.time_utils import TradingCalendar
 
 logger = logging.getLogger(__name__)
 
-# 创建Celery应用
-celery_app = Celery('data_sync_tasks')
-celery_app.config_from_object('shared.config.celery_config')
+# Celery 应用（仅在依赖可用时初始化）
+if _CELERY_AVAILABLE:
+	celery_app = Celery('data_sync_tasks')
+	try:
+		celery_app.config_from_object('shared.config.celery_config')
+	except ImportError:
+		logger.warning("shared.config.celery_config 不存在，Celery 使用默认配置")
+else:
+	celery_app = None
+	logger.info("Celery 未安装，定时同步已由 DataSyncEngine 接管")
 
 
 # ========== 公共辅助函数 ==========
@@ -110,8 +128,10 @@ def _update_task_progress (task_instance, progress: int, message: str, **kwargs)
 	)
 
 
-class SyncTaskBase(Task):
-	"""同步任务基类"""
+if _CELERY_AVAILABLE:
+
+	class SyncTaskBase(Task):
+			"""同步任务基类"""
 
 	def __init__ (self):
 		super().__init__()
@@ -681,7 +701,8 @@ def schedule_daily_sync ():
 
 
 # 配置Celery定时任务
-celery_app.conf.beat_schedule = {
+if _CELERY_AVAILABLE and celery_app:
+	celery_app.conf.beat_schedule = {
 	'daily-stock-sync': {
 		'task': 'modules.data.tasks.sync_tasks.sync_stock_data_task',
 		'schedule': crontab(hour=16, minute=0, day_of_week='mon-fri'),  # 工作日每天下午4点

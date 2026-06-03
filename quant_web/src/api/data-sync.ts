@@ -342,7 +342,7 @@ class DataSyncService {
       batch_size?: number;
     } = {},
   ): Promise<SyncResponse> {
-    return this.batchSyncData(this._toBatchRequest("stock_basic", params));
+    return this.batchSyncData(this._toBatchRequest("stock_list", params));
   }
 
   /**
@@ -360,7 +360,7 @@ class DataSyncService {
       batch_size?: number;
     } = {},
   ): Promise<SyncResponse> {
-    return this.batchSyncData(this._toBatchRequest("daily", params));
+    return this.batchSyncData(this._toBatchRequest("daily_quotes", params));
   }
 
   /**
@@ -378,7 +378,7 @@ class DataSyncService {
       batch_size?: number;
     } = {},
   ): Promise<SyncResponse> {
-    return this.batchSyncData(this._toBatchRequest("weekly", params));
+    return this.batchSyncData(this._toBatchRequest("weekly_quotes", params));
   }
 
   /**
@@ -396,7 +396,7 @@ class DataSyncService {
       batch_size?: number;
     } = {},
   ): Promise<SyncResponse> {
-    return this.batchSyncData(this._toBatchRequest("monthly", params));
+    return this.batchSyncData(this._toBatchRequest("monthly_quotes", params));
   }
 
   /**

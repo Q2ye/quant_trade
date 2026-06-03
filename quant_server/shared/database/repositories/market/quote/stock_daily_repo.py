@@ -157,6 +157,61 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 		except Exception as e:
 			raise RepositoryError(f"根据日期范围查询行情数据失败: {str(e)}")
 
+	async def get_existing_trade_dates (
+			self,
+			ts_code: str,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+	) -> set:
+		"""
+		批量获取指定股票在日期范围内的已有交易日期集合
+
+		一次查询替代 N 次逐条 get_by_trade_date()，将 O(n) 查询降为 O(1)。
+
+		Args:
+			ts_code: 股票代码
+			start_date: 开始日期（可选）
+			end_date: 结束日期（可选）
+
+		Returns:
+			set of date — 已有数据的日期集合
+		"""
+		try:
+			query = select(self.model.trade_date).where(
+				self.model.ts_code == ts_code
+			)
+			if start_date:
+				query = query.where(self.model.trade_date >= start_date)
+			if end_date:
+				query = query.where(self.model.trade_date <= end_date)
+			result = await self.session.execute(query)
+			return {row.trade_date for row in result.fetchall()}
+		except Exception as e:
+			raise RepositoryError(f"批量获取已有交易日期失败: {str(e)}")
+
+	async def get_latest_trade_date (
+			self,
+			ts_code: str
+	) -> Optional[date]:
+		"""
+		获取指定股票的最新交易日期（用于增量同步日期推断）
+
+		Args:
+			ts_code: 股票TS代码
+
+		Returns:
+			最新交易日期，无数据时返回 None
+		"""
+		try:
+			query = select(self.model.trade_date).where(
+				self.model.ts_code == ts_code
+			).order_by(desc(self.model.trade_date)).limit(1)
+			result = await self.session.execute(query)
+			row = result.first()
+			return row.trade_date if row else None
+		except Exception as e:
+			raise RepositoryError(f"获取最新交易日期失败: {str(e)}")
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,

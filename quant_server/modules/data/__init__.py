@@ -15,6 +15,7 @@ quant_server/modules/data/__init__.py
 3. 事件驱动：模块间通过事件引擎通信
 4. 统一异常处理：模块内错误不泄漏到外部
 """
+from typing import Dict
 
 # 导出常量
 from modules.data.constants import (
@@ -87,11 +88,45 @@ from modules.data.services import (
 )
 
 
+# 模块级引擎引用（由 initialize() 创建，供 handlers 等使用）
+_sync_engine = None
+
+# 模块级取消令牌注册表: task_id → asyncio.Event
+import asyncio as _asyncio
+_cancel_tokens: Dict[str, "_asyncio.Event"] = {}
+
+
+def get_sync_engine():
+	"""获取模块级数据同步引擎实例"""
+	return _sync_engine
+
+
+def create_cancel_token(task_id: str) -> "_asyncio.Event":
+	"""为后台同步任务创建取消令牌"""
+	token = _asyncio.Event()
+	_cancel_tokens[task_id] = token
+	return token
+
+
+def signal_cancel(task_id: str) -> bool:
+	"""向指定任务发送取消信号"""
+	token = _cancel_tokens.get(task_id)
+	if token and not token.is_set():
+		token.set()
+		return True
+	return False
+
+
+def cleanup_cancel_token(task_id: str):
+	"""清理已完成的取消令牌"""
+	_cancel_tokens.pop(task_id, None)
+
+
 # 模块初始化函数 - 符合主启动文件期望的接口
 async def initialize (
 		main_engine=None,
-		event_engine=None,  # 未使用参数
-		config=None  # 未使用参数
+		event_engine=None,
+		config=None
 ) -> bool:
 	"""
 	数据模块初始化函数
@@ -104,6 +139,8 @@ async def initialize (
 	Returns:
 		bool: 初始化是否成功
 	"""
+
+	global _sync_engine
 
 	# 初始化变量
 	success = False
@@ -139,6 +176,39 @@ async def initialize (
 			print(f"✅ 数据模块初始化成功: {init_result.get('message', '完成')}")
 		else:
 			print(f"⚠️  数据模块初始化警告: {init_result.get('message', '存在警告')}")
+
+		# 创建并启动数据同步引擎
+		if success:
+			try:
+				# 提取事件引擎（优先使用传入的，否则从 main_engine 获取）
+				_evt_engine = event_engine
+				if not _evt_engine and main_engine and hasattr(main_engine, 'event_engine'):
+					_evt_engine = main_engine.event_engine
+
+				from modules.data.engines.sync_engine import DataSyncEngine
+				from core.engines.types.entities import EngineConfigEntity
+				from core.engines.types.enums import EngineType
+
+				sync_engine_config = EngineConfigEntity(
+					name="data_sync_engine",
+					engine_type=EngineType.DATA_SYNC,
+					config={
+						"max_concurrent_tasks": 3,
+						"task_timeout_seconds": 3600,
+						"default_data_sources": ["tushare"],
+						"cleanup_interval_hours": 24,
+					}
+				)
+				_sync_engine = DataSyncEngine(
+					config=sync_engine_config,
+					event_engine=_evt_engine
+				)
+				await _sync_engine.initialize()
+				await _sync_engine.start()
+				print(f"✅ 数据同步引擎已启动: {_sync_engine.config.name}")
+			except Exception as engine_err:
+				print(f"⚠️  数据同步引擎启动失败（不影响模块基础功能）: {engine_err}")
+				_sync_engine = None
 
 		return success
 
@@ -181,6 +251,14 @@ __all__ = [
 
 	# Services
 	"DataSyncService", "DataQualityService", "FactorResearchService", "MarketDataService", "DataCleanService",
+
+	# 引擎访问器
+	"get_sync_engine",
+
+	# 取消令牌管理
+	"create_cancel_token",
+	"signal_cancel",
+	"cleanup_cancel_token",
 
 	# 模块初始化函数
 	"initialize",

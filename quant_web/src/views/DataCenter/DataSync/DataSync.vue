@@ -195,7 +195,7 @@ const recentHistoryDisplay = computed(() => {
       start_time: startTime,
       records: t.total_records || 0,
       statusLabel: t.status === "completed" ? "完成" : t.status === "failed" ? "失败" : t.status === "running" ? "运行中" : t.status === "pending" ? "等待中" : t.status === "cancelled" ? "已取消" : t.status,
-      statusType: (t.status === "completed" ? "success" : t.status === "failed" ? "error" : t.status === "running" ? "info" : "default") as "success" | "error" | "info" | "default",
+      statusType: (t.status === "completed" ? "success" : t.status === "failed" ? "error" : t.status === "running" ? "info" : t.status === "cancelled" ? "warning" : "default") as "success" | "error" | "info" | "warning" | "default",
     };
   });
 });
@@ -403,6 +403,30 @@ const clearAllDataTypes = () => {
 
 const handleRecordClick = (taskId: string) => {
   router.push("/data/sync/history");
+};
+
+const handleCancelSync = () => {
+  if (!currentTaskId.value) return;
+  dialog.error({
+    title: "确认取消同步",
+    content: `确定要取消当前同步任务吗？已完成的数据不会被回滚。`,
+    positiveText: "确认取消",
+    negativeText: "返回",
+    onPositiveClick: () => {
+      // 先关弹窗、停轮询，再发取消请求（不阻塞 UI）
+      stopStatusPolling();
+      dataSyncService.cancelSync()
+        .then(() => {
+          message.success("取消请求已发送");
+          setTimeout(async () => {
+            const status = await dataSyncService.getSyncStatus().catch(() => null);
+            if (status) syncStatus.value = status;
+            refreshRecentTasks();
+          }, 2000);
+        })
+        .catch(() => message.error("取消失败，请稍后重试"));
+    },
+  });
 };
 
 const isDataTypeSelected = (code: string) => syncConfig.data_types.includes(code);
@@ -632,6 +656,23 @@ watch(
                     :height="6" :border-radius="3"
                     class="status-progress-bar"
                   />
+                  <n-button
+                    block
+                    @click="handleCancelSync"
+                    class="action-button danger"
+                    :style="{
+                      '--n-color': 'rgba(229,69,69,0.12)',
+                      '--n-color-hover': 'rgba(229,69,69,0.22)',
+                      '--n-color-pressed': 'rgba(229,69,69,0.16)',
+                      '--n-text-color': '#E54545',
+                      '--n-text-color-hover': '#E54545',
+                      '--n-border': '1px solid rgba(229,69,69,0.25)',
+                      '--n-border-hover': '1px solid rgba(229,69,69,0.5)',
+                    }"
+                  >
+                    <template #icon><Icon icon="ant-design:close-circle-outlined" /></template>
+                    取消同步
+                  </n-button>
                   <div v-if="subTaskDots.length > 0" class="sub-task-dots">
                     <span v-for="st in subTaskDots" :key="st.label" class="sub-dot" :class="st.status">
                       <Icon :icon="st.icon" class="dot-icon" />{{ st.label }}
@@ -676,8 +717,8 @@ watch(
             >
               <div class="recent-item-icon">
                 <Icon
-                  :icon="item.status === 'completed' ? 'ant-design:check-circle-filled' : item.status === 'running' ? 'ant-design:sync-outlined' : item.status === 'pending' ? 'ant-design:clock-circle-outlined' : 'ant-design:close-circle-filled'"
-                  :class="item.status === 'completed' ? 'icon-success' : item.status === 'running' || item.status === 'pending' ? 'icon-spin' : 'icon-error'"
+                  :icon="item.status === 'completed' ? 'ant-design:check-circle-filled' : item.status === 'running' ? 'ant-design:sync-outlined' : item.status === 'pending' ? 'ant-design:clock-circle-outlined' : item.status === 'cancelled' ? 'ant-design:minus-circle-filled' : 'ant-design:close-circle-filled'"
+                  :class="item.status === 'completed' ? 'icon-success' : item.status === 'running' || item.status === 'pending' ? 'icon-spin' : item.status === 'cancelled' ? 'icon-cancelled' : 'icon-error'"
                 />
               </div>
               <div class="recent-item-info">
@@ -1012,6 +1053,7 @@ watch(
 
 .status-progress-bar { margin: 8px 0; }
 
+
 .sub-task-dots {
   display: flex;
   flex-wrap: wrap;
@@ -1094,6 +1136,7 @@ watch(
 
   .icon-success { color: $success-color; }
   .icon-error { color: $error-color; }
+  .icon-cancelled { color: $warning-color; }
   .icon-spin { color: $info-color; animation: icon-spin 1.5s linear infinite; }
 }
 
@@ -1149,7 +1192,7 @@ watch(
 .full-sync-modal {
   :deep(.n-card) {
     backdrop-filter: blur(16px);
-    background: rgba(14, 18, 30, 0.98) !important;
+    background: rgb(14, 18, 30) !important;
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 }

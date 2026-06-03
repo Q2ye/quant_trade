@@ -407,7 +407,11 @@ class DataType(str, Enum):
 
 	# 基础数据
 	STOCK_LIST = "stock_list"  # 股票列表
+	ST_LIST = "st_list"  # ST股票变更历史
+	COMPANY = "company"  # 上市公司基本信息
 	DAILY_QUOTES = "daily_quotes"  # 日行情
+	WEEKLY_QUOTES = "weekly_quotes"  # 周线行情
+	MONTHLY_QUOTES = "monthly_quotes"  # 月线行情
 	MINUTE_QUOTES = "minute_quotes"  # 分钟行情
 	TICK_QUOTES = "tick_quotes"  # Tick级行情
 	REALTIME_QUOTES = "realtime_quotes"  # 实时行情
@@ -425,6 +429,10 @@ class DataType(str, Enum):
 	FUND_ADJ_FACTOR = "fund_adj_factor"  # 基金复权因子
 	ETF_SHARE = "etf_share"  # ETF份额规模
 
+	# 公司治理
+	MANAGERS = "managers"  # 管理层信息
+	REWARDS = "rewards"  # 管理层薪酬持股
+
 	# 财务数据
 	FINANCIAL_DATA = "financial_data"  # 财务报表（三表合并）
 	FINANCIAL_INCOME = "financial_income"  # 利润表
@@ -438,7 +446,9 @@ class DataType(str, Enum):
 	BUSINESS_INCOME = "business_income"  # 主营业务构成
 
 	# 指数数据
-	INDEX_DATA = "index_data"  # 指数数据
+	INDEX_BASIC = "index_basic"  # 指数基本信息
+	INDEX_DAILY = "index_daily"  # 指数日线行情
+	INDEX_DATA = "index_data"  # 指数数据（兼容旧版）
 
 	# 通用
 	CALENDAR = "calendar"  # 交易日历

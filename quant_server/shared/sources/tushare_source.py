@@ -593,3 +593,62 @@ class TushareSource(BaseDataSource):
 		except Exception as e:
 			logger.error(f"获取管理层薪酬失败: {e}")
 			return pd.DataFrame()
+
+	def get_index_basic (self, market: str = '') -> pd.DataFrame:
+		"""获取指数基本信息（沪深市场指数列表）
+
+		Tushare接口: index_basic
+		返回沪深市场全部指数的基本信息（代码、名称、基期、基点、发布日期等）
+		"""
+		try:
+			kwargs = {}
+			if market:
+				kwargs['market'] = market  # SSE=上交所 SZSE=深交所
+			df = self.pro.index_basic(**kwargs)
+			if df is not None and not df.empty:
+				if 'list_date' in df.columns:
+					df['list_date'] = pd.to_datetime(df['list_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取指数基本信息失败: {e}")
+			return pd.DataFrame()
+
+	def get_index_daily (self, ts_code: str = '', start_date: str = '',
+	                     end_date: str = '') -> pd.DataFrame:
+		"""获取指数日线行情
+
+		Tushare接口: index_daily
+		用于同步指数日线行情到 index_daily 表
+		"""
+		try:
+			df = self.pro.index_daily(ts_code=ts_code, start_date=start_date,
+			                          end_date=end_date)
+			if df is not None and not df.empty:
+				df['trade_date'] = pd.to_datetime(df['trade_date'])
+				df = df.sort_values('trade_date')
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取指数日线行情失败: {e}")
+			return pd.DataFrame()
+
+	def get_namechange (self, ts_code: str = '', start_date: str = '',
+	                    end_date: str = '') -> pd.DataFrame:
+		"""获取股票曾用名/ST 变更历史
+
+		Tushare接口: namechange
+		包含股票名称变更记录（含 ST/*ST 特别处理），用于同步 stock_st_list 表
+		过滤条件: name 包含 'ST' 的记录
+		"""
+		try:
+			df = self.pro.namechange(ts_code=ts_code, start_date=start_date,
+			                         end_date=end_date)
+			if df is not None and not df.empty:
+				if 'start_date' in df.columns:
+					df['start_date'] = pd.to_datetime(df['start_date'])
+				if 'end_date' in df.columns:
+					df['end_date'] = pd.to_datetime(df['end_date'])
+				df = df.sort_values('start_date')
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取ST变更历史失败: {e}")
+			return pd.DataFrame()

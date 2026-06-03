@@ -382,7 +382,7 @@ class HistoricalQuotesResponse(BaseModel):
 
 class SyncTaskItem(BaseModel):
 	"""同步任务项模型"""
-	data_type: DataSyncType = Field(..., description="数据类型")
+	data_type: str = Field(..., description="数据类型（如 daily_quotes, adj_factor, moneyflow 等）")
 	start_date: Optional[date] = Field(default=None, description="开始日期")
 	end_date: Optional[date] = Field(default=None, description="结束日期")
 	force_update: bool = Field(default=False, description="是否强制更新")
@@ -463,10 +463,11 @@ class SyncProgress(BaseModel):
 
 class SyncResult(BaseModel):
 	"""同步结果模型"""
-	data_type: DataSyncType = Field(..., description="数据类型")
+	data_type: str = Field(..., description="数据类型（如 daily_quotes, moneyflow, stock_list 等）")
 	success: bool = Field(..., description="是否成功")
 	records_added: int = Field(default=0, description="新增记录数")
 	records_updated: int = Field(default=0, description="更新记录数")
+	records_skipped: int = Field(default=0, description="跳过记录数（已是最新/增量模式跳过）")
 	records_failed: int = Field(default=0, description="失败记录数")
 	start_time: datetime = Field(..., description="开始时间")
 	end_time: datetime = Field(..., description="结束时间")
@@ -600,7 +601,7 @@ class QualityMetric(BaseModel):
 
 class DataQualityRequest(BaseModel):
 	"""数据质量请求模型"""
-	data_type: Optional[DataSyncType] = Field(default=None, description="数据类型")
+	data_type: Optional[str] = Field(default=None, description="数据类型")
 	start_date: Optional[date] = Field(default=None, description="开始日期")
 	end_date: Optional[date] = Field(default=None, description="结束日期")
 	check_type: str = Field(default="completeness", description="检查类型: completeness/accuracy/timeliness")
@@ -649,7 +650,7 @@ class DataIssue(BaseModel):
 class DataQualityResponse(BaseModel):
 	"""数据质量响应模型"""
 	success: bool = Field(..., description="请求是否成功")
-	data_type: Optional[DataSyncType] = Field(default=None, description="数据类型")
+	data_type: Optional[str] = Field(default=None, description="数据类型")
 	date_range: Optional[Dict[str, Optional[date]]] = Field(default=None, description="日期范围")
 	quality_score: float = Field(..., ge=0, le=100, description="质量评分")
 	quality_level: DataQualityLevel = Field(..., description="质量等级")
@@ -1024,7 +1025,7 @@ class SyncProgressEvent(DataEvent):
 class QualityAlertEvent(DataEvent):
 	"""质量警报事件"""
 	alert_level: str = Field(..., description="警报级别: warning/error/critical")
-	data_type: DataSyncType = Field(..., description="数据类型")
+	data_type: str = Field(..., description="数据类型")
 	issue_description: str = Field(..., description="问题描述")
 
 	model_config = ConfigDict(

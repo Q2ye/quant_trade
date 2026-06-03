@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 class SyncTaskStatus(str, Enum):
     """同步任务状态枚举"""
     PENDING = "pending"  # 等待执行
+    RUNNING = "running"  # 执行中
     PREPARING = "preparing"  # 准备中
     DOWNLOADING = "downloading"  # 下载数据
     PROCESSING = "processing"  # 处理数据
@@ -405,17 +406,17 @@ class DataSyncEngine(EngineBase):
             task_id = data.get("task_id")
             sync_type = data.get("sync_type", "daily")
 
-            logger.info("收到外部同步开始事件: task_id=%s, sync_type=%s", task_id, sync_type)
+            # task_id 为空的事件是广播通知（如 handler 层批量同步开始），引擎不参与管理
+            if not task_id:
+                return
 
-            if task_id and task_id not in self.tasks:
-                # 创建新任务
+            logger.info("引擎注册同步任务: task_id=%s, sync_type=%s", task_id, sync_type)
+            if task_id not in self.tasks:
                 await self.start_sync_task(
                     sync_type=sync_type,
                     custom_task_id=task_id,
                     config=data.get("config", {})
                 )
-            else:
-                logger.info("任务已存在或task_id为空，跳过创建: task_id=%s", task_id)
         except Exception as e:
             logger.error(f"处理外部同步事件失败: {e}", exc_info=True)
 
@@ -678,14 +679,25 @@ class DataSyncEngine(EngineBase):
         # 更新统计
         self.stats["total_tasks"] += 1
 
-        # 发布任务开始事件
-        await self._publish_event("data_sync_started", {
+        # 发布任务开始事件（规范事件类型）
+        await self._publish_event(DataEventType.SYNC_STARTED.value, {
             "task_id": task_id,
             "sync_type": sync_type.value,
             "config": self._config_to_dict(task_config),
             "queue_position": self.task_queue.qsize(),
             "timestamp": datetime.now().isoformat()
         })
+        # 同时发布规范事件，供外部订阅者监听
+        if self.event_engine:
+            from modules.data.events.sync_events import DataSyncStartedEvent
+            try:
+                await self.event_engine.put(DataSyncStartedEvent(
+                    sync_type=sync_type.value,
+                    source="data_module",
+                    params={"task_id": task_id, "config": self._config_to_dict(task_config)}
+                ))
+            except Exception:
+                pass
 
         logger.info(f"创建同步任务: {task_id} ({sync_type.value})")
         return task_id
@@ -707,18 +719,29 @@ class DataSyncEngine(EngineBase):
         task_info["status"] = SyncTaskStatus.CANCELLED
         task_info["updated_at"] = datetime.now()
 
-        # 如果任务在活跃集合中，标记为取消
+        # 如果任务在活跃集合中，触发取消信号
         if task_id in self.active_tasks:
-            # TODO: 实际取消正在运行的任务
+            from modules.data import signal_cancel
+            signal_cancel(task_id)
             self.active_tasks.discard(task_id)
 
         self.stats["cancelled_tasks"] += 1
 
-        # 发布任务取消事件
-        await self._publish_event("data_sync_cancelled", {
+        # 发布任务取消事件（规范事件类型）
+        await self._publish_event(DataEventType.SYNC_FAILED.value, {
             "task_id": task_id,
             "timestamp": datetime.now().isoformat()
         })
+        if self.event_engine:
+            from modules.data.events.sync_events import DataSyncFailedEvent
+            try:
+                await self.event_engine.put(DataSyncFailedEvent(
+                    sync_type="unknown",
+                    error_message="任务被用户取消",
+                    task_id=task_id
+                ))
+            except Exception:
+                pass
 
         logger.info(f"取消同步任务: {task_id}")
         return True
@@ -824,8 +847,8 @@ class DataSyncEngine(EngineBase):
 
         progress_data = progress or task_info.get("progress", SyncTaskProgress())
 
-        # 使用事件引擎发布事件
-        await self._publish_event("data_sync_progress", {
+        # 使用事件引擎发布事件（规范事件类型）
+        await self._publish_event(DataEventType.SYNC_PROGRESS.value, {
             "task_id": task_id,
             "sync_type": config.sync_type.value,
             "progress": progress_data.progress_percentage,
@@ -844,7 +867,7 @@ class DataSyncEngine(EngineBase):
         result: SyncTaskResult
     ):
         """发布同步完成事件"""
-        await self._publish_event("data_sync_completed", {
+        await self._publish_event(DataEventType.SYNC_COMPLETED.value, {
             "task_id": task_id,
             "sync_type": config.sync_type.value,
             "record_count": result.total_records,
@@ -867,7 +890,7 @@ class DataSyncEngine(EngineBase):
         result: SyncTaskResult
     ):
         """发布同步失败事件"""
-        await self._publish_event("data_sync_failed", {
+        await self._publish_event(DataEventType.SYNC_FAILED.value, {
             "task_id": task_id,
             "sync_type": config.sync_type.value,
             "error_message": result.error_message or "未知错误",
