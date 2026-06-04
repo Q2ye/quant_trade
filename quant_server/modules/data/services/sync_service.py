@@ -480,6 +480,12 @@ class DataSyncService:
 			DataType.ETF_DAILY: self._sync_etf_daily,
 			DataType.FUND_ADJ_FACTOR: self._sync_fund_adj_factor,
 			DataType.ETF_SHARE: self._sync_etf_share,
+			# 指数数据
+			DataType.INDEX_BASIC: self._sync_index_basic,
+			DataType.INDEX_DAILY: self._sync_index_daily,
+			# 公司治理
+			DataType.MANAGERS: self._sync_stk_managers,
+			DataType.REWARDS: self._sync_stk_rewards,
 			# 财务数据
 			DataType.FINANCIAL_DATA: self._sync_financial_data,  # 三表合并同步
 			DataType.FINANCIAL_INCOME: self._sync_financial_income,
@@ -3012,7 +3018,7 @@ class DataSyncService:
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0; records_updated = 0
+		records_added = 0; records_updated = 0; records_failed = 0
 		for market in ['SSE','SZSE']:
 			try:
 				df = await self._run_in_executor(source.get_index_basic, market=market)
@@ -3020,13 +3026,18 @@ class DataSyncService:
 				data = _convert_records_datetime(df.to_dict('records'))
 				for item in data:
 					item = _clean_nan_values(item)
-					if 'list_date' in item and item['list_date']: item['list_date'] = _convert_to_date(item['list_date'])
+					# 转换所有日期字段（Tushare 返回 "19901219" 格式字符串）
+					for date_field in ('list_date', 'base_date', 'exp_date'):
+						if item.get(date_field):
+							item[date_field] = _convert_to_date(item[date_field])
 					existing = await self.index_basic_repo.get_by(ts_code=item["ts_code"])
 					if existing: await self.index_basic_repo.update(existing.id, item); records_updated += 1
 					else: await self.index_basic_repo.create(item); records_added += 1
-			except Exception as e: logger.error(f"指数基本信息 {market} 同步失败: {e}")
+			except Exception as e:
+				logger.error(f"指数基本信息 {market} 同步失败: {e}")
+				records_failed += 1
 		await self.session.commit()
-		return {"records_added":records_added,"records_updated":records_updated,"records_failed":0,"total_items":records_added+records_updated,"message":"指数基本信息同步完成"}
+		return {"records_added":records_added,"records_updated":records_updated,"records_failed":records_failed,"total_items":records_added+records_updated+records_failed,"message":"指数基本信息同步完成"}
 
 	async def _sync_index_daily (
 			self, start_date: Optional[date], end_date: Optional[date],

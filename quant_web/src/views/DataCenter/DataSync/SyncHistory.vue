@@ -76,7 +76,7 @@ const statusOptions = [
 
 const dataTypeOptions = computed(() => {
   const types = [...new Set(allRecords.value.map((r) => r.data_type))];
-  return [{ label: "全部类型", value: "" }, ...types.map((t) => ({ label: t, value: t }))];
+  return [{ label: "全部类型", value: "" }, ...types.map((t) => ({ label: TYPE_NAME_MAP[t] || t, value: t }))];
 });
 
 // Client-side filtering
@@ -113,7 +113,7 @@ const handleBack = () => {
 const handleDeleteRecord = (row: SyncRecord) => {
   dialog.error({
     title: "确认删除",
-    content: `确定要删除「${row.data_type}」的同步记录吗？此操作不可恢复。`,
+    content: `确定要删除「${row.data_desc || row.data_type}」的同步记录吗？此操作不可恢复。`,
     positiveText: "确认删除",
     negativeText: "取消",
     onPositiveClick: async () => {
@@ -179,7 +179,7 @@ const columns: DataTableColumns<SyncRecord> = [
   { type: "selection" as const },
   {
     title: "数据类型", key: "data_type", width: 160,
-    render: (row) => h("span", {}, row.data_type),
+    render: (row) => h("span", {}, row.data_desc || row.data_type),
   },
   {
     title: "说明", key: "data_desc", width: 120,
@@ -249,15 +249,32 @@ const handleReset = () => {
 };
 
 const TYPE_NAME_MAP: Record<string, string> = {
-  stock_list: "股票列表", daily_quotes: "日线行情", adj_factor: "复权因子",
-  daily_basic: "每日指标", calendar: "交易日历", financial_data: "财务报表",
-  moneyflow: "资金流向", index_data: "指数数据", dividend: "分红送股",
-  forecast: "业绩预告", express: "业绩快报", suspend: "停复牌",
-  business_income: "主营业务收入", audit_opinion: "审计意见",
-  financial_indicator: "财务指标", etf_basic: "ETF基本信息",
-  etf_daily: "ETF日线行情", fund_adj_factor: "基金复权因子",
-  etf_index: "ETF指数", etf_share: "ETF份额", batch_sync: "批量同步",
-  minute_quotes: "分钟行情", etf_minute: "ETF分钟行情", tick_quotes: "逐笔行情",
+  // 股票基础
+  stock_list: "股票列表", st_list: "ST 列表", company: "公司信息",
+  calendar: "交易日历",
+  // 股票行情
+  daily_quotes: "日线行情", weekly_quotes: "周线行情", monthly_quotes: "月线行情",
+  minute_quotes: "分钟行情", tick_quotes: "Tick 行情",
+  moneyflow: "资金流向", adj_factor: "复权因子", daily_basic: "每日指标",
+  suspend: "停复牌信息",
+  // ETF
+  etf_basic: "ETF 基础信息", etf_daily: "ETF 日线行情",
+  etf_minute: "ETF 分钟行情", fund_adj_factor: "基金复权因子",
+  etf_index: "ETF 基准指数", etf_share: "ETF 份额规模",
+  // 指数
+  index_basic: "指数基本信息", index_daily: "指数日线行情",
+  index_data: "指数数据(旧)",
+  // 财务报表
+  financial_data: "财务报表(三表)", financial_income: "利润表",
+  financial_balance: "资产负债表", financial_cashflow: "现金流量表",
+  // 财务衍生
+  forecast: "业绩预告", express: "业绩快报", dividend: "分红送股",
+  financial_indicator: "财务指标", audit_opinion: "审计意见",
+  business_income: "主营业务构成",
+  // 公司治理
+  managers: "管理层信息", rewards: "薪酬持股",
+  // 批量
+  batch_sync: "批量同步",
 };
 
 const formatDataTypeName = (codes: string[]): string =>
@@ -431,14 +448,14 @@ onMounted(() => {
           <n-descriptions label-placement="left" bordered :column="2" size="small">
             <n-descriptions-item label="记录ID" :span="2">{{ selectedRecord.db_id }}</n-descriptions-item>
             <n-descriptions-item label="任务ID" :span="2">{{ selectedRecord.id }}</n-descriptions-item>
-            <n-descriptions-item label="任务类型">{{ selectedRecord.data_type }}</n-descriptions-item>
+            <n-descriptions-item label="任务类型">{{ selectedRecord.data_desc || selectedRecord.data_type }}</n-descriptions-item>
             <n-descriptions-item label="状态">
               <n-tag :type="getStatusType(selectedRecord.status)" :bordered="false" size="small">
                 {{ getStatusText(selectedRecord.status) }}
               </n-tag>
             </n-descriptions-item>
             <n-descriptions-item v-if="selectedRecord.data_types?.length" label="数据类型" :span="2">
-              <n-tag v-for="dt in selectedRecord.data_types" :key="dt" size="small" style="margin-right: 4px">{{ dt }}</n-tag>
+              <n-tag v-for="dt in selectedRecord.data_types" :key="dt" size="small" style="margin-right: 4px">{{ TYPE_NAME_MAP[dt] || dt }}</n-tag>
             </n-descriptions-item>
             <n-descriptions-item label="创建时间">{{ selectedRecord.created_at ? new Date(selectedRecord.created_at).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>
             <n-descriptions-item label="更新时间">{{ selectedRecord.updated_at ? new Date(selectedRecord.updated_at).toLocaleString("zh-CN") : "-" }}</n-descriptions-item>

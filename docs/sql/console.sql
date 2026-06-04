@@ -17,6 +17,13 @@ SELECT id, task_id, status, start_time FROM data_sync_tasks WHERE status = 'runn
 -- 股票基础表
 select * from stock_basic;
 select count(*) from stock_basic;
+
+-- 指数基本信息表
+select * from index_basic;
+select count(*) from index_basic;
+-- 指数日线行情数据（TimescaleDB超表）
+select * from index_daily;
+select count(*) from index_daily;
 -- 复权因子表（TimescaleDB超表）
 select * from stock_adj_factor where ts_code='000030.SZ';
 select count(*) from stock_adj_factor;
