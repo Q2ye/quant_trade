@@ -166,7 +166,6 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		filters = {"trade_date": trade_date}
 
 		if ts_codes:
-			# 直接传递ts_codes列表，get_many方法会自动处理
 			return await self.get_many(limit=limit, trade_date=trade_date, ts_code=ts_codes)
 
 		return await self.get_many(limit=limit, **filters)

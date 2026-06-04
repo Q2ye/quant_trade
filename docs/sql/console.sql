@@ -41,7 +41,9 @@ delete from stock_daily_basic;
 select * from stock_moneyflow;
 select count(*) from stock_moneyflow;
 
-
+-- 加唯一约束
+ALTER TABLE stock_moneyflow
+ADD CONSTRAINT uq_stock_moneyflow_code_date UNIQUE (ts_code, trade_date);
 -- 财务报表主表 利润表 现金流量表
 -- 财务报表主表
 select * from  financial_statements;

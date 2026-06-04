@@ -1957,10 +1957,8 @@ class DataSyncService:
 				if hasattr(self.etf_index_repo, "batch_upsert"):
 					records_added += await self.etf_index_repo.bulk_upsert(data)
 				else:
+					_preprocess_records(data, date_fields=('pub_date',))
 					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('pub_date'):
-							item['pub_date'] = _convert_to_date(item['pub_date'])
 						try:
 							await self.etf_index_repo.create(item)
 							records_added += 1
@@ -2800,10 +2798,8 @@ class DataSyncService:
 			if hasattr(self.company_repo, "batch_upsert"):
 				records_added += await self.company_repo.bulk_upsert(data)
 			else:
+				_preprocess_records(data, date_fields=('setup_date',))
 				for item in data:
-					item = _clean_nan_values(item)
-					if 'setup_date' in item and item['setup_date']:
-						item['setup_date'] = _convert_to_date(item['setup_date'])
 					existing = await self.company_repo.get_by(ts_code=item["ts_code"])
 					if existing:
 						await self.company_repo.update(existing.id, item);
@@ -2855,10 +2851,9 @@ class DataSyncService:
 			if hasattr(self.st_list_repo, "batch_upsert"):
 				records_added += await self.st_list_repo.bulk_upsert(data)
 			else:
+				_preprocess_records(data, date_fields=('start_date',))
 				for item in data:
-					item = _clean_nan_values(item)
-					if 'start_date' in item and item['start_date']:
-						item['trade_date'] = _convert_to_date(item['start_date'])
+					if item.get('start_date'): item['trade_date'] = item['start_date']
 					name = item.get('name', '')
 					if 'ST' in str(name).upper():
 						item['st_type'] = '*ST' if '*ST' in str(name) else 'ST'
@@ -2924,7 +2919,8 @@ class DataSyncService:
 					if hasattr(self.manager_repo, "batch_upsert"):
 						records_added += await self.manager_repo.bulk_upsert(data)
 					else:
-						for item in data: item = _clean_nan_values(item); item[
+						_preprocess_records(data)
+						for item in data: item[
 							'ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层 {ts_code} 同步失败: {e}");
@@ -2982,7 +2978,8 @@ class DataSyncService:
 					if hasattr(self.reward_repo, "batch_upsert"):
 						records_added += await self.reward_repo.bulk_upsert(data)
 					else:
-						for item in data: item = _clean_nan_values(item); item[
+						_preprocess_records(data)
+						for item in data: item[
 							'ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}");
@@ -3165,12 +3162,8 @@ class DataSyncService:
 				if hasattr(self.index_basic_repo, "batch_upsert"):
 					records_added += await self.index_basic_repo.bulk_upsert(data)
 				else:
+					_preprocess_records(data, date_fields=('list_date', 'base_date', 'exp_date'))
 					for item in data:
-						item = _clean_nan_values(item)
-						# 转换所有日期字段（Tushare 返回 "19901219" 格式字符串）
-						for date_field in ('list_date', 'base_date', 'exp_date'):
-							if item.get(date_field):
-								item[date_field] = _convert_to_date(item[date_field])
 						existing = await self.index_basic_repo.get_by(ts_code=item["ts_code"])
 						if existing:
 							await self.index_basic_repo.update(existing.id, item);
@@ -3376,9 +3369,8 @@ class DataSyncService:
 				if hasattr(self.suspend_info_repo, "batch_upsert"):
 					records_added += await self.suspend_info_repo.bulk_upsert(data)
 				else:
+					_preprocess_records(data, date_fields=('trade_date',))
 					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
 						try:
 							await self.suspend_info_repo.create(item)
 							records_added += 1
@@ -3450,9 +3442,8 @@ class DataSyncService:
 					if hasattr(self.etf_share_repo, "batch_upsert"):
 						records_added += await self.etf_share_repo.bulk_upsert(data)
 					else:
+						_preprocess_records(data, date_fields=('trade_date',))
 						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
 							try:
 								await self.etf_share_repo.create(item)
 								records_added += 1
@@ -3525,10 +3516,8 @@ class DataSyncService:
 					if hasattr(self.forecast_repo, "batch_upsert"):
 						records_added += await self.forecast_repo.bulk_upsert(data)
 					else:
+						_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
 							try:
 								await self.forecast_repo.create(item)
 								records_added += 1
@@ -3597,10 +3586,8 @@ class DataSyncService:
 					if hasattr(self.express_repo, "batch_upsert"):
 						records_added += await self.express_repo.bulk_upsert(data)
 					else:
+						_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
 							try:
 								await self.express_repo.create(item)
 								records_added += 1
@@ -3668,9 +3655,8 @@ class DataSyncService:
 					if hasattr(self.dividend_repo, "batch_upsert"):
 						records_added += await self.dividend_repo.bulk_upsert(data)
 					else:
+						_preprocess_records(data, date_fields=('ann_date',))
 						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 							try:
 								await self.dividend_repo.create(item)
 								records_added += 1
@@ -3824,12 +3810,8 @@ class DataSyncService:
 					if hasattr(self.audit_opinion_repo, "batch_upsert"):
 						records_added += await self.audit_opinion_repo.bulk_upsert(data)
 					else:
+						_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
 						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-							# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-							item = {k: v for k, v in item.items() if k in known_cols}
 							try:
 								await self.audit_opinion_repo.create(item)
 								records_added += 1
@@ -3905,11 +3887,8 @@ class DataSyncService:
 						if hasattr(self.business_income_repo, "batch_upsert"):
 							records_added += await self.business_income_repo.bulk_upsert(data)
 						else:
+							_preprocess_records(data, date_fields=('end_date',), known_cols=known_cols)
 							for item in data:
-								item = _clean_nan_values(item)
-								if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-								# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-								item = {k: v for k, v in item.items() if k in known_cols}
 								try:
 									await self.business_income_repo.create(item)
 									records_added += 1

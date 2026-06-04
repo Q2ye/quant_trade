@@ -2638,7 +2638,8 @@ CREATE TABLE stock_moneyflow (
     net_mf_vol INT NOT NULL,
     net_mf_amount NUMERIC(12,4) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
 );
 
 COMMENT ON TABLE stock_moneyflow IS '个股资金流向数据表（TimescaleDB超表）';
