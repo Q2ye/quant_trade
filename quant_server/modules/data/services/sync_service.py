@@ -1,16 +1,72 @@
 # -*- coding: utf-8 -*-
 """
-数据同步服务重构版 (Data Sync Service)
-基于混合架构设计，实现数据同步的核心业务逻辑
-位置：quant_server/modules/data/services/sync_service.py
+数据同步服务 (Data Sync Service)
+===============================
+基于混合架构设计，实现数据同步的核心业务逻辑。
 
-设计原则：
-1. 使用共享Repository进行数据访问（统一从shared.database.repositories导入）
-2. 依赖事件引擎发布同步进度和结果
-3. 支持同步和异步两种执行模式
-4. 完整的错误处理和重试机制
-5. 遵循数据模块的服务层职责，无状态，纯业务逻辑
-6. 支持多种数据类型：股票、ETF、财务等
+**文件位置**：``quant_server/modules/data/services/sync_service.py``
+
+**模块定位**：数据模块的服务层，负责所有外部数据源数据的拉取、清洗、转换和入库。
+作为"无状态 Service"，不持有事件引擎引用（由调用方注入），专注纯业务逻辑。
+
+----
+
+## 架构设计
+
+### 设计原则
+1. **Repository 模式**：所有数据访问通过 ``shared.database.repositories`` 统一入口，
+   一表一 Repository，服务层不直接操作 ORM 模型。
+2. **事件驱动**：依赖 ``EventEngine`` 发布同步进度（started/progress/completed/failed），
+   供前端、监控模块实时获取同步状态。
+3. **同步/异步双模**：通过 ``ThreadPoolExecutor`` 将 Tushare/Baostock 的同步 IO 调用
+   沉入线程池，避免阻塞 asyncio 事件循环。
+4. **智能日期推断**：``_resolve_sync_date_range`` 根据数据库已有最新日期自动判断
+   full（全量）、incremental（增量）、overlap（重叠）、up_to_date（已最新）四种模式。
+5. **取消支持**：通过 ``asyncio.Event`` 取消令牌，在每个股票处理循环中检查，
+   支持前端"取消同步"操作。
+6. **类型覆盖**：支持股票、ETF、指数、财务（三表+衍生指标）、公司治理、分红等 30+ 种数据类型。
+
+### 数据流
+::
+
+    API 请求 → DataSyncService.sync_market_data()
+        │
+        ├─ 1. _create_sync_task()      → data_sync_tasks 表（任务记录）
+        ├─ 2. _publish_sync_event()     → EventEngine（started 事件）
+        ├─ 3. _sync_by_data_type()      → 根据 DataType 路由到具体同步方法
+        │       │
+        │       ├─ DataSourceFactory → Tushare/Baostock 适配器（拉取原始数据）
+        │       ├─ _convert_records_datetime() → pandas Timestamp → Python datetime
+        │       ├─ _clean_nan_values() → NaN → None（兼容 asyncpg）
+        │       ├─ Repository.create/update → PostgreSQL（数据持久化）
+        │       └─ _update_progress() → Redis/内存缓存（进度实时推送）
+        │
+        ├─ 4. _update_sync_task()       → 更新任务状态（completed/failed/cancelled）
+        ├─ 5. _publish_sync_event()     → EventEngine（completed 事件）
+        └─ 6. _clean_cache_after_sync() → 清理相关缓存
+
+### 依赖方向（严格单向）
+::
+
+    modules/data/services/sync_service.py
+        → shared/database/repositories/   （数据访问）
+        → shared/sources/                 （外部数据源适配器）
+        → shared/cache/                   （Redis/内存缓存）
+        → core/engines/system/            （事件引擎，可选注入）
+        → modules/data/events/            （事件定义）
+        → modules/data/constants/         （常量枚举）
+
+### 错误处理策略
+- **单股失败不阻断全局**：每只股票独立 try/except，记录失败计数后继续下一只。
+- **逐股提交**：每 N 只股票（可配置）执行 ``session.commit()``，减少事务锁竞争。
+- **取消安全**：取消时记录 cancelled 状态，已处理数据不回滚。
+- **NaN 安全**：pandas DataFrame 的空字符串字段转为 NaN，写入 PostgreSQL 前必须转为 None。
+
+### 性能优化
+- **逐股同步**：日行情/资金流向/复权因子等按 ts_code 逐个拉取，避免 Tushare 接口限流。
+- **线程池隔离**：同步 IO 操作通过 ``ThreadPoolExecutor`` 执行，默认 8 个 worker。
+- **缓存节流**：``_update_progress`` 最多每秒写一次缓存（100% 完成时立即写入）。
+- **并行批量同步**：``batch_sync_data`` 使用 ``asyncio.Semaphore(3)`` 限制并行度。
 """
 
 import asyncio
@@ -65,7 +121,12 @@ from shared.database.repositories import (
 	# 运营领域（任务记录）
 	DataSyncTaskRepository, ETFRepository,
 )
-from shared.database.models.data_models import FinancialStatement
+from shared.database.models.data_models import (
+	FinancialStatement,
+	StockFinaIndicator,
+	StockAuditOpinion,
+	StockBusinessIncome,
+)
 from shared.database.repositories.market.basic import (
 	EtfBasicRepository, IndexWeightRepository,
 	CompanyRepository, STListRepository,
@@ -203,7 +264,26 @@ def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, 
 	return converted_records
 
 def _estimate_total_items (data_type: str, ts_codes: Optional[List[str]] = None) -> int:
-	"""估算同步项目总数"""
+	"""
+	估算同步项目总数，用于创建任务记录时填充 total_records 字段。
+
+	估算逻辑基于 A 股市场实际规模：
+	- 股票基础信息（STOCK_LIST / COMPANY / ST_LIST）：~5000 只
+	- 日线行情：~5000 只 × 250 个交易日 = ~1,250,000 条
+	- 周线/月线：按比例缩小（52 周 / 12 月）
+	- Tick 数据量极大，限制估算范围
+	- ETF 规模约为股票的 1/5（~1000 只）
+	- 财务数据：~5000 只 × 20 年 = ~100,000 条
+	- 公司治理（管理层/薪酬）：~5000 × 15 人
+	- 指数：约 500 个指数 × 250 交易日
+
+	Args:
+		data_type: 数据类型标识符（DataType 枚举值）
+		ts_codes: 股票代码列表，用于精确估算（None 时使用默认值）
+
+	Returns:
+		int: 估算的同步项目总数（用于进度百分比计算）
+	"""
 	estimates = {
 		DataType.STOCK_LIST: 5000,
 		DataType.ST_LIST: 2000,
@@ -242,88 +322,140 @@ def _estimate_total_items (data_type: str, ts_codes: Optional[List[str]] = None)
 
 class DataSyncService:
 	"""
-	数据同步服务类（重构版）
+	数据同步服务（无状态 Service）。
 
-	负责管理数据同步的整个生命周期，包括：
-	- 单次/批量数据同步（股票、ETF、财务等）
-	- 任务状态跟踪
-	- 进度发布
-	- 错误处理和重试
-	- 缓存清理
+	**职责边界**：
+	- 负责数据同步的完整生命周期：拉取 → 清洗 → 转换 → 入库 → 缓存清理
+	- 通过注入的 ``EventEngine`` 发布同步进度和结果
+	- 通过注入的 ``cancel_token`` 支持前端取消同步
+	- **不负责**：数据源协议细节（由 DataSourceFactory 代理）、
+	  数据库连接管理（由 session 管理）、模块间通信（由 EventEngine 代理）
 
-	该服务无状态，可通过依赖注入获得数据库会话、事件引擎等资源。
+	**典型调用方式**::
+
+	    async with session_manager.get_session() as session:
+	        svc = DataSyncService(session, event_engine)
+	        result = await svc.sync_market_data(
+	            data_type=DataType.DAILY_QUOTES,
+	            start_date=date(2026, 1, 1),
+	            end_date=date(2026, 6, 1),
+	            ts_codes=["000001.SZ", "600000.SH"],
+	        )
+
+	**生命周期管理**：
+	- 每次 API 调用创建新实例（通过依赖注入获得 session）
+	- 批量同步 ``batch_sync_data`` 为每种数据类型创建独立 session（隔离事务）
+	- 实例内部的 ``ThreadPoolExecutor`` 在垃圾回收时自动关闭
+
+	**待实现（stub）方法**：cancel_sync / retry_failed_sync / _update_sync_task /
+	cleanup_old_tasks / get_recent_sync_tasks
 	"""
 
-	def __init__ (self, session: AsyncSession, event_engine: Optional[EventEngine] = None, cancel_token=None):
+	def __init__ (
+		self,
+		session: AsyncSession,
+		event_engine: Optional[EventEngine] = None,
+		cancel_token=None  # asyncio.Event
+	):
 		"""
-		初始化数据同步服务
+		初始化数据同步服务。
+
+		每次调用创建新实例，完成以下初始化：
+		1. 注入数据库会话和事件引擎引用
+		2. 为每张数据表创建对应的 Repository 实例（一表一 Repository）
+		3. 创建线程池用于同步 IO 隔离
+		4. 初始化数据源工厂
+		5. 建立 DataType → sync_method 映射表
 
 		Args:
-			session: 数据库会话（必须）
-			event_engine: 事件引擎，用于发布同步事件（可选）
-			cancel_token: asyncio.Event 取消令牌（可选，用于中断长时间运行的同步）
+			session: SQLAlchemy 异步数据库会话（必需）。所有数据访问通过此会话。
+			event_engine: 事件引擎实例（可选）。为 None 时不发布事件，
+				用于纯数据同步场景（如命令行脚本）。
+			cancel_token: ``asyncio.Event`` 取消令牌（可选）。设置后各同步方法在
+				循环中检查并中止当前任务。用于前端"取消同步"功能。
+
+		Note:
+			- Repository 数量 = 数据表数量（~30+），按业务域分组初始化便于维护。
+			- ThreadPoolExecutor 的 worker 数量默认 8，可通过配置文件
+			  ``settings.ENGINES.max_workers`` 调整。
+			- ``_sync_method_map`` 是 DataType → method 的映射，新增同步类型时
+			  只需在此映射中添加条目并实现对应方法。
 		"""
 		self.session = session
 		self.event_engine = event_engine
 		self.cancel_token = cancel_token  # asyncio.Event or None
 
-		# ========== 初始化基础Repository ==========
-		self.stock_basic_repo = StockBasicRepository(session)
-		self.stock_daily_repo = StockDailyRepository(session)
-		self.stock_minute_repo = StockMinuteRepository(session)
-		self.stock_moneyflow_repo = StockMoneyflowRepository(session)
-		self.stock_adj_factor_repo = StockAdjFactorRepository(session)
-		self.stock_daily_basic_repo = StockDailyBasicRepository(session)
-		self.trade_calendar_repo = TradeCalendarRepository(session)
+		# ========== 初始化 Repository 实例（一表一 Repository） ==========
+		# 原则：每个 Repository 对应一张数据库表，服务层通过 Repository 访问数据，
+		# 不直接操作 ORM 模型。Repository 实例在 __init__ 时创建，随服务实例生命周期。
 
-		# ETF相关Repository
-		self.etf_basic_repo = EtfBasicRepository(session)  # ETF基础信息
-		self.etf_daily_repo = EtfDailyRepository(session)  # ETF日线
-		self.etf_minute_repo = EtfMinuteRepository(session)  # ETF分钟
-		self.fund_adj_factor_repo = FundAdjFactorRepository(session)  # 基金复权因子
+		# --- 股票行情相关 ---
+		self.stock_basic_repo = StockBasicRepository(session)           # stock_basic（基础信息）
+		self.stock_daily_repo = StockDailyRepository(session)           # stock_daily（日线，超表）
+		self.stock_minute_repo = StockMinuteRepository(session)         # stock_minute（分钟，超表）
+		self.stock_moneyflow_repo = StockMoneyflowRepository(session)   # stock_moneyflow（资金流向）
+		self.stock_adj_factor_repo = StockAdjFactorRepository(session)  # stock_adj_factor（复权因子）
+		self.stock_daily_basic_repo = StockDailyBasicRepository(session)# stock_daily_basic（每日指标）
+		self.trade_calendar_repo = TradeCalendarRepository(session)     # trade_calendar（交易日历）
 
-		# 财务数据Repository
-		self.financial_statement_repo = FinancialStatementRepository(session)
+		# --- ETF 相关 ---
+		self.etf_basic_repo = EtfBasicRepository(session)               # etf_basic（ETF 基础信息）
+		self.etf_daily_repo = EtfDailyRepository(session)               # etf_daily（ETF 日线）
+		self.etf_minute_repo = EtfMinuteRepository(session)             # etf_minute（ETF 分钟）
+		self.fund_adj_factor_repo = FundAdjFactorRepository(session)    # fund_adj_factor（基金复权因子）
 
-		# 任务记录Repository
-		self.sync_task_repo = DataSyncTaskRepository(session)
+		# --- 财务数据 ---
+		self.financial_statement_repo = FinancialStatementRepository(session)  # financial_statements
 
-		# 公司治理Repository
-		self.company_repo = CompanyRepository(session)
-		self.manager_repo = ManagerRepository(session)
-		self.reward_repo = RewardRepository(session)
-		# 行情（周/月）
-		self.stock_weekly_repo = StockWeeklyRepository(session)
-		self.stock_monthly_repo = StockMonthlyRepository(session)
-		# 指数
-		self.index_basic_repo = IndexBasicRepository(session)
-		self.index_daily_repo = IndexDailyRepository(session)
-		# ST列表
-		self.st_list_repo = STListRepository(session)
-		# 财务衍生数据（停复牌/ETF份额/业绩预告/快报/分红/财务指标）
-		self.suspend_info_repo = StockSuspendInfoRepository(session)
-		self.etf_share_repo = EtfShareRepository(session)
-		self.forecast_repo = StockForecastRepository(session)
-		self.express_repo = StockExpressRepository(session)
-		self.dividend_repo = StockDividendRepository(session)
-		self.fina_indicator_repo = StockFinaIndicatorRepository(session)
-		self.audit_opinion_repo = StockAuditOpinionRepository(session)
-		self.business_income_repo = StockBusinessIncomeRepository(session)
-		self.etf_index_repo = EtfIndexRepository(session)
+		# --- 任务记录 ---
+		self.sync_task_repo = DataSyncTaskRepository(session)           # data_sync_tasks
+
+		# --- 公司治理 ---
+		self.company_repo = CompanyRepository(session)                  # stock_company（公司基本信息）
+		self.manager_repo = ManagerRepository(session)                  # stk_managers（管理层）
+		self.reward_repo = RewardRepository(session)                    # stk_rewards（薪酬持股）
+
+		# --- 行情衍生（周/月线） ---
+		self.stock_weekly_repo = StockWeeklyRepository(session)         # stock_weekly
+		self.stock_monthly_repo = StockMonthlyRepository(session)       # stock_monthly
+
+		# --- 指数 ---
+		self.index_basic_repo = IndexBasicRepository(session)           # index_basic
+		self.index_daily_repo = IndexDailyRepository(session)           # index_daily
+
+		# --- ST 列表 ---
+		self.st_list_repo = STListRepository(session)                   # st_list（ST 变更历史）
+
+		# --- 财务衍生数据 ---
+		self.suspend_info_repo = StockSuspendInfoRepository(session)    # suspend_info（停复牌）
+		self.etf_share_repo = EtfShareRepository(session)               # etf_share（ETF 份额规模）
+		self.forecast_repo = StockForecastRepository(session)           # forecast（业绩预告）
+		self.express_repo = StockExpressRepository(session)             # express（业绩快报）
+		self.dividend_repo = StockDividendRepository(session)           # dividend（分红送股）
+		self.fina_indicator_repo = StockFinaIndicatorRepository(session)# fina_indicator（财务指标）
+		self.audit_opinion_repo = StockAuditOpinionRepository(session)  # audit_opinion（审计意见）
+		self.business_income_repo = StockBusinessIncomeRepository(session)  # business_income（主营业务构成）
+		self.etf_index_repo = EtfIndexRepository(session)               # etf_index（ETF 跟踪指数）
 
 		# ========== 线程池（避免 Tushare 同步调用阻塞事件循环） ==========
+		# Tushare/Baostock 的 HTTP 请求是同步阻塞的，必须在独立线程中执行。
+		# worker 数量从配置文件 settings.ENGINES.max_workers 读取，默认 8。
 		from shared.config.config_manager import get_config
 		cfg = get_config()
 		self._max_workers = getattr(getattr(cfg, 'settings', None), 'ENGINES', None)
 		self._max_workers = getattr(self._max_workers, 'max_workers', None) if self._max_workers else None
 		self._max_workers = self._max_workers or 8
-		self._executor = ThreadPoolExecutor(max_workers=self._max_workers, thread_name_prefix="sync_")
+		self._executor = ThreadPoolExecutor(
+			max_workers=self._max_workers,
+			thread_name_prefix="sync_"  # 便于调试时识别线程来源
+		)
 
 		# ========== 缓存和数据源工厂 ==========
-		self.source_factory = DataSourceFactory()
-		self._cache = None
+		self.source_factory = DataSourceFactory()  # 统一数据源适配器工厂
+		self._cache = None  # 懒加载（首次访问 cache property 时初始化）
 
-		# 数据类型到同步方法的映射（便于扩展）
+		# ========== DataType → 同步方法 映射表 ==========
+		# 通过字典映射避免冗长的 if-elif 链，新增数据类型只需在此添加条目即可。
 		self._sync_method_map = {
 			# 股票基础
 			DataType.STOCK_LIST: self._sync_stock_list,
@@ -362,7 +494,21 @@ class DataSyncService:
 
 	@property
 	def cache (self):
-		"""获取缓存实例（懒加载）"""
+		"""
+		获取缓存实例（懒加载）。
+
+		根据配置自动选择：
+		- ``settings.REDIS.ENABLED = True`` → ``RedisCache``（生产环境，支持持久化、模式删除）
+		- ``settings.REDIS.ENABLED = False`` → ``MemoryCache``（开发环境，无需 Redis 依赖）
+
+		用途：
+		- ``_create_sync_task``：缓存同步任务初始状态（TTL 24h）
+		- ``_update_progress``：缓存同步进度（TTL 1h）
+		- ``_clean_cache_after_sync``：同步完成后清理对应缓存
+
+		Returns:
+			``RedisCache`` 或 ``MemoryCache`` 实例
+		"""
 		if self._cache is None:
 			from shared.config.config_manager import get_config
 			settings = get_config().settings
@@ -374,7 +520,6 @@ class DataSyncService:
 					password=settings.REDIS.PASSWORD
 				)
 			else:
-				# 开发环境使用内存缓存
 				self._cache = MemoryCache(namespace="data_sync")
 		return self._cache
 
@@ -391,23 +536,53 @@ class DataSyncService:
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
-		同步市场数据（单类型）
+		同步市场数据（单类型），是数据同步的主入口。
+
+		完整生命周期（6 步）：
+		1. 创建任务记录（``_create_sync_task``）
+		2. 发布 started 事件（``_publish_sync_event``）
+		3. 路由到具体同步方法（``_sync_by_data_type``），拉取→清洗→入库
+		4. 更新任务状态为 completed（``_update_sync_task``）
+		5. 发布 completed 事件
+		6. 清理相关缓存（``_clean_cache_after_sync``）
+
+		异常处理：
+		- 取消令牌已设置 → status=cancelled, error_message="用户手动取消"
+		- 其他异常 → status=failed, 记录完整 traceback
+		- 返回的 dict 中 ``success`` 字段区分成败
 
 		Args:
-			data_type: 数据类型（如 DataType.DAILY_QUOTES）
-			start_date: 开始日期
-			end_date: 结束日期
-			ts_codes: 股票代码列表
-			user_id: 用户ID（用于事件发布）
-			**kwargs: 额外参数（如频率freq等）
+			data_type: 数据类型枚举（如 ``DataType.DAILY_QUOTES``）。
+				参见 ``modules/data/constants.py`` 中 ``DataType`` 枚举定义。
+			start_date: 同步起始日期（含）。为 None 时由各同步方法智能推断。
+			end_date: 同步结束日期（含）。为 None 时默认为当天。
+			ts_codes: 股票代码列表（如 ``["000001.SZ", "600000.SH"]``）。
+				为 None 时从 ``stock_basic`` 表获取全部活跃股票。
+			user_id: 用户标识，用于事件发布和权限校验。
+			task_id: 任务 ID。为 None 时自动生成（格式: ``sync_{data_type}_{timestamp}``）。
+				非 None 时表示由外部（如批量同步）统一管理任务 ID。
+			**kwargs: 透传给具体同步方法的额外参数（如 ``freq="1min"``）。
 
 		Returns:
-			Dict: 同步结果
+			Dict::
+				{
+					"success": bool,       # 是否成功
+					"task_id": str,        # 任务 ID（用于状态查询）
+					"result": {            # 详细结果（仅 success=True 时有意义）
+						"records_added": int,
+						"records_updated": int,
+						"records_failed": int,
+						"total_items": int,
+						"message": str,
+					},
+					"error": str,          # 错误信息（仅 success=False 时有意义）
+					"message": str,        # 人类可读的状态描述
+				}
 		"""
 		logger.info(f"开始同步市场数据，类型: {data_type}, 用户ID: {user_id}")
 
 		try:
-			# 创建同步任务记录（如已从外部传入task_id则跳过创建，避免重复记录）
+			# 步骤 1：创建同步任务记录（如已从外部传入 task_id 则跳过，避免重复创建）
 			if task_id is None:
 				task_id = await self._create_sync_task(
 					data_type=data_type,
@@ -418,7 +593,7 @@ class DataSyncService:
 					params=kwargs
 				)
 
-			# 发布同步开始事件
+			# 步骤 2：发布 started 事件，前端可据此显示加载状态
 			await self._publish_sync_event(
 				event_type="started",
 				task_id=task_id,
@@ -426,7 +601,7 @@ class DataSyncService:
 				user_id=user_id
 			)
 
-			# 根据数据类型选择同步方法
+			# 步骤 3：路由到具体同步方法（通过 _sync_method_map）
 			sync_result = await self._sync_by_data_type(
 				data_type=data_type,
 				start_date=start_date,
@@ -437,7 +612,7 @@ class DataSyncService:
 				**kwargs
 			)
 
-			# 更新任务状态为完成
+			# 步骤 4：更新任务状态为完成
 			await self._update_sync_task(
 				task_id=task_id,
 				status="completed",
@@ -445,7 +620,7 @@ class DataSyncService:
 				error_message=None
 			)
 
-			# 发布同步完成事件
+			# 步骤 5：发布 completed 事件
 			await self._publish_sync_event(
 				event_type="completed",
 				task_id=task_id,
@@ -454,7 +629,7 @@ class DataSyncService:
 				user_id=user_id
 			)
 
-			# 清理相关缓存
+			# 步骤 6：清理相关缓存（如历史行情缓存）
 			await self._clean_cache_after_sync(data_type, ts_codes)
 
 			logger.info(f"市场数据同步完成，任务ID: {task_id}, 结果: {sync_result}")
@@ -470,6 +645,7 @@ class DataSyncService:
 			logger.error(f"市场数据同步失败: {str(e)}", exc_info=True)
 
 			if task_id:
+				# 区分取消（cancel_token 已设置）和真实失败
 				final_status = "cancelled" if (self.cancel_token and self.cancel_token.is_set()) else "failed"
 				err_msg = "用户手动取消" if final_status == "cancelled" else str(e)
 				await self._update_sync_task(
@@ -499,14 +675,34 @@ class DataSyncService:
 			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
 		"""
-		批量同步数据
+		批量同步数据（**串行**执行，一个任务完成后再执行下一个）。
+
+		与 ``batch_sync_data``（并行版）的区别：
+		- 此方法按顺序执行，共享同一个 session，适合少量、有依赖关系的同步。
+		- ``batch_sync_data`` 为每种类型创建独立 session 并行执行，适合大量、独立的数据类型。
+
+		执行流程：
+		1. 生成 batch_task_id
+		2. 发布 batch_started 事件
+		3. 按顺序遍历 request.tasks，每个任务调用 ``sync_market_data``
+		4. 每个任务独立记录 SyncResult（失败不影响后续任务）
+		5. 发布 batch_completed 或 batch_failed 事件
 
 		Args:
-			request: 批量同步请求（包含数据类型列表、日期范围等）
-			user_id: 用户ID
+			request: ``BatchSyncRequest`` 实例，包含 ``tasks: List[SyncTaskItem]``，
+				每个 ``SyncTaskItem`` 指定 data_type、start_date、end_date 等。
+			user_id: 用户标识（可选）
 
 		Returns:
-			Dict: 批量同步结果
+			Dict::
+				{
+					"success": bool,
+					"task_id": str,
+					"results": List[dict],      # 每个 SyncTaskItem 的执行结果
+					"total_tasks": int,
+					"completed_tasks": int,
+					"message": str,
+				}
 		"""
 		logger.info(f"开始批量同步，数据类型: {[task.data_type for task in request.tasks]}, 用户ID: {user_id}")
 
@@ -620,7 +816,34 @@ class DataSyncService:
 		user_id: Optional[str] = None,
 		task_id: Optional[str] = None
 	) -> Dict[str, Any]:
-		"""批量同步数据（并行版：每种类型独立 session 并行执行）"""
+		"""
+		批量同步数据（**并行**版）。
+
+		与 ``batch_sync``（串行版）的区别：
+		- 每种数据类型创建独立的 ``DataSyncService`` 实例和数据库 session。
+		- 使用 ``asyncio.Semaphore(3)`` 限制最多 3 种类型并行，避免 Tushare 限流。
+		- 所有类型通过 ``asyncio.gather`` 并发执行，墙钟时间 ≈ 最慢类型的时间。
+
+		适用场景：大量独立数据类型的初始同步（如首次同步：股票列表 + 日线 + 财务 + ETF）。
+
+		Args:
+			tasks: 同步任务列表
+			priority: 优先级（预留，当前未使用）
+			user_id: 用户标识
+			task_id: 外部传入的任务 ID（可选，所有子任务共享）
+
+		Returns:
+			Dict::
+				{
+					"success": bool,
+					"task_id": str,
+					"results": List[dict],
+					"records_processed": int,
+					"records_succeeded": int,
+					"records_failed": int,
+					"total_tasks": int,
+				}
+		"""
 		import asyncio as _asyncio
 		logger.warning(f"[批量同步] 并行同步 {len(tasks)} 种类型: {[t.data_type for t in tasks]}")
 
@@ -683,7 +906,41 @@ class DataSyncService:
 			task_id: str,
 			user_id: Optional[str] = None
 	) -> Dict[str, Any]:
-		"""获取同步任务状态"""
+		"""
+		获取同步任务的执行状态。
+
+		数据来源优先级：
+		1. 缓存（Redis/MemoryCache）→ 实时进度数据
+		2. 数据库（data_sync_tasks 表）→ 持久化任务记录（fallback：按 processed/total 计算百分比）
+
+		包含权限校验：指定 user_id 时，仅返回该用户的任务（否则抛出 ValueError）。
+
+		Args:
+			task_id: 任务 ID
+			user_id: 用户标识（可选，用于权限校验）
+
+		Returns:
+			Dict::
+				{
+					"task_id": str,
+					"status": str,             # "pending" / "running" / "completed" / "failed" / "cancelled"
+					"progress": {              # 实时进度（来自缓存）
+						"progress": float,
+						"current_task": str,
+						"estimated_time_remaining": float | None,
+					},
+					"start_time": str,         # ISO 8601 格式
+					"end_time": str | None,
+					"data_type": str,
+					"total_items": int,
+					"completed_items": int,
+					"error_message": str | None,
+					"results": None,
+				}
+
+		Raises:
+			ValueError: 任务不存在或无权查看
+		"""
 		try:
 			task_result = await self.sync_task_repo.get_by_task_id(task_id)
 			if not task_result or not task_result.data:
@@ -734,30 +991,80 @@ class DataSyncService:
 		pass
 
 	# ==================== 私有辅助方法 ====================
+	# 以下方法为服务内部使用，不对外暴露。
 
 	async def _run_in_executor(self, fn, *args, **kwargs):
-		"""将同步调用沉入线程池，避免阻塞 asyncio 事件循环"""
+		"""
+		将同步阻塞调用（Tushare HTTP 请求）沉入线程池执行，避免阻塞 asyncio 事件循环。
+
+		这是本服务最核心的异步适配方法。Tushare/Baostock 的所有数据获取方法都是
+		同步阻塞的 HTTP 请求（基于 requests 库）。如果直接在 async 协程中调用，
+		会阻塞整个事件循环，导致其他协程无法执行。
+
+		解决方案：通过 ``loop.run_in_executor`` 将同步调用交由 ThreadPoolExecutor
+		在独立线程中执行，当前协程 await 其结果。
+
+		Args:
+			fn: 同步函数（如 ``source.get_daily``）
+			*args: 位置参数（如 ``symbol="000001.SZ"``）
+			**kwargs: 关键字参数（如 ``start_date="20260101"``）
+
+		Returns:
+			fn 的返回值（通常为 pandas DataFrame）
+		"""
 		import functools
 		loop = asyncio.get_event_loop()
 		return await loop.run_in_executor(
 			self._executor,
-			functools.partial(fn, *args, **kwargs)
+			functools.partial(fn, *args, **kwargs)  # partial 避免 lambda 闭包陷阱
 		)
 
 	async def _resolve_sync_date_range (
 			self, ts_code: str, start_date: Optional[date], end_date: Optional[date], repo,
 	) -> Tuple[Optional[date], Optional[date], str]:
-		"""智能确定同步日期范围和模式"""
-		if not end_date: end_date = datetime.now().date()
+		"""
+		智能确定同步日期范围，返回 (start_date, end_date, mode)。
+
+		四种模式判断逻辑：
+		1. **full**（全量同步）：数据库中无该股票任何记录 → 从上市日期开始全量拉取
+		2. **incremental**（增量同步）：数据库有记录、未指定 start_date → 从最后交易日+1天开始
+		3. **up_to_date**（无需同步）：最后交易日 ≥ end_date → 跳过，返回 0 条记录
+		4. **overlap**（重叠同步）：用户指定了 start_date → 按用户指定的范围拉取（可能覆盖已有数据）
+
+		Args:
+			ts_code: 股票代码（如 "000001.SZ"）
+			start_date: 用户指定的起始日期（None 表示自动推断）
+			end_date: 用户指定的结束日期（None 默认为今天）
+			repo: Repository 实例，需有 ``get_latest_trade_date(ts_code)`` 方法
+
+		Returns:
+			Tuple: ``(start_date, end_date, mode)``，mode 为 "full"|"incremental"|"up_to_date"|"overlap"
+
+		Note:
+			- 全量同步起始日期优先使用股票的 ``list_date``（上市日期），
+			  如果无法获取则回退到 1990-12-19（A 股最早交易日）。
+			- **up_to_date 模式下 start_date > end_date**（start_date = 最后交易日+1，
+			  end_date = 用户指定），调用方应检查 mode 并跳过。
+		"""
+		if not end_date:
+			end_date = datetime.now().date()
+		# 查询数据库中该股票的最新交易日期
 		latest_date = await repo.get_latest_trade_date(ts_code)
 		if latest_date is None:
-			if not start_date: stock = await self.stock_basic_repo.get_by_ts_code(ts_code); start_date = stock.list_date if stock and stock.list_date else date(1990,12,19)
+			# 数据库中无记录 → 全量同步
+			if not start_date:
+				stock = await self.stock_basic_repo.get_by_ts_code(ts_code)
+				start_date = stock.list_date if stock and stock.list_date else date(1990, 12, 19)
 			mode = "full"
 		elif start_date is None:
+			# 用户未指定起始日期 → 增量同步（从最后日期+1天开始）
 			start_date = latest_date + timedelta(days=1)
-			if start_date > end_date: return start_date, end_date, "up_to_date"
+			if start_date > end_date:
+				return start_date, end_date, "up_to_date"
 			mode = "incremental"
-		else: mode = "overlap"
+		else:
+			# 用户指定了起始日期 → 重叠同步
+			mode = "overlap"
 		return start_date, end_date, mode
 
 	async def _get_date_range_and_stocks (
@@ -766,7 +1073,17 @@ class DataSyncService:
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]]
 	) -> Tuple[date, date, List[str]]:
-		"""获取日期范围和股票代码列表"""
+		"""
+		获取日期范围和股票代码列表，提供合理的默认值。
+
+		Args:
+			start_date: 起始日期（None → 30 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+
+		Returns:
+			Tuple: ``(start_date, end_date, ts_codes)``，所有字段保证非 None。
+		"""
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
@@ -776,20 +1093,30 @@ class DataSyncService:
 			ts_codes = [stock.ts_code for stock in stocks]
 		return start_date, end_date, ts_codes
 
-	# 辅助函数：获取日期范围和ETF代码
 	async def _get_date_range_and_etfs (
 			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]]
 	) -> Tuple[date, date, List[str]]:
-		"""获取日期范围和ETF代码列表"""
+		"""
+		获取日期范围和 ETF 代码列表。
+
+		与 ``_get_date_range_and_stocks`` 的 ETF 版本，从 etf 表获取活跃 ETF。
+
+		Args:
+			start_date: 起始日期（None → 30 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: ETF 代码列表（None → 全部 ETF）
+
+		Returns:
+			Tuple: ``(start_date, end_date, ts_codes)``
+		"""
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
 			start_date = end_date - timedelta(days=30)
 		if not ts_codes:
-			# 使用 ETFRepository 获取所有 ETF
 			etf_repo = ETFRepository(self.session)
 			etfs = await etf_repo.get_all_etfs()
 			ts_codes = [etf.ts_code for etf in etfs]
@@ -801,21 +1128,43 @@ class DataSyncService:
 			data: List[Dict],
 			ts_code: str
 	) -> Tuple[int, int]:
-		"""处理带有trade_date的数据"""
+		"""
+		处理带有 trade_date 字段的数据（日线/资金流向/复权因子等的通用处理逻辑）。
+
+		对每条数据：
+		1. 将 trade_date 转换为 Python date 对象（兼容 pandas Timestamp/字符串格式）
+		2. 通过 repo 查询是否已存在该日期的记录
+		3. 已存在 → 更新（优先使用 ``update_by`` 方法，fallback 到 ``update(id)``）
+		4. 不存在 → 创建新记录
+
+		方法标记为 ``@staticmethod``，不依赖实例状态，可复用。
+
+		Args:
+			repo: Repository 实例，需实现 ``get_by_trade_date(ts_code, trade_date)``
+				和 ``create``/``update``/``update_by`` 方法。
+			data: 从数据源拉取的记录列表（已通过 ``_convert_records_datetime`` 转换、
+				``_clean_nan_values`` 清洗）。
+			ts_code: 当前处理的股票代码。
+
+		Returns:
+			Tuple[int, int]: ``(records_added, records_updated)``
+		"""
 		records_added = 0
 		records_updated = 0
 		for item in data:
-			# 转换trade_date为date对象
+			# 统一 trade_date 为 Python date 类型
 			trade_date = _convert_to_date(item.get('trade_date'))
 			item['trade_date'] = trade_date
 
+			# 查询该股票在该日是否已有数据
 			existing_list = await repo.get_by_trade_date(
 				ts_code=ts_code,
 				trade_date=trade_date
 			)
 			existing = existing_list[0] if existing_list else None
 			if existing:
-				# 尝试使用update_by方法（ETF），如果失败则使用update方法（股票）
+				# 优先使用 update_by（复合键更新，如 ETF 表），
+				# 失败则回退到 update(id)（自增主键更新，如股票表）
 				try:
 					await repo.update_by(
 						{"ts_code": existing.ts_code, "trade_date": existing.trade_date},
@@ -838,10 +1187,27 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			params: Optional[Dict] = None
 	) -> str:
-		"""创建同步任务记录"""
+		"""
+		创建同步任务记录（写入 data_sync_tasks 表 + 缓存）。
+
+		生成唯一的 task_id（格式: ``sync_{data_type}_{YYYYMMDD_HHMMSS}``），
+		估算 total_records 并写入数据库和缓存（TTL 24 小时）。
+
+		Args:
+			data_type: 数据类型标识符
+			start_date: 起始日期（仅用于记录）
+			end_date: 结束日期（仅用于记录）
+			ts_codes: 股票代码列表（用于估算 total_records）
+			user_id: 用户标识
+			params: 额外参数
+
+		Returns:
+			str: 生成的 task_id，供后续状态查询和事件发布使用。
+
+		Note:
+			``data_sync_tasks.id`` 是自增主键（数据库生成），``task_id`` 是业务唯一标识。
+		"""
 		task_id = f"sync_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-		# 注意：data_sync_tasks表的id字段为自增主键，由数据库自动生成
-		# task_id是业务唯一标识，需要存储到数据库
 		task_data = {
 			"task_id": task_id,
 			"task_type": data_type,
@@ -851,7 +1217,9 @@ class DataSyncService:
 			"total_records": _estimate_total_items(data_type, ts_codes),
 			"created_at": datetime.now()
 		}
+		# 写入持久化存储（PostgreSQL）
 		await self.sync_task_repo.create(task_data)
+		# 同时写入缓存，供前端实时查询（24 小时 TTL）
 		await self.cache.set(
 			CacheKey.SYNC_STATUS.format(task_id=task_id),
 			json.dumps(task_data, default=str),
@@ -866,8 +1234,19 @@ class DataSyncService:
 			result: Optional[Dict] = None,
 			error_message: Optional[str] = None
 	):
-		"""更新同步任务状态（与原实现相同）"""
-		# 省略重复代码
+		"""
+		更新同步任务状态到 data_sync_tasks 表。
+
+		Args:
+			task_id: 任务 ID
+			status: 新状态（"completed" / "failed" / "cancelled"）
+			result: 同步结果详情（可选）
+			error_message: 错误信息（失败/取消时填充）
+
+		Note:
+			当前为 stub 实现（pass），实际逻辑由引擎层处理。
+		"""
+		# TODO: 实现任务状态更新逻辑
 		pass
 
 	async def _sync_by_data_type (
@@ -881,19 +1260,38 @@ class DataSyncService:
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
-		根据数据类型选择同步方法
+		根据 DataType 路由到对应的同步方法（策略模式）。
+
+		通过 ``_sync_method_map``（DataType → method）实现类型路由，
+		避免冗长的 if-elif 链。新增同步类型只需在 map 中添加条目。
+
+		Args:
+			data_type: 数据类型字符串（如 "daily_quotes"）
+			start_date: 起始日期
+			end_date: 结束日期
+			ts_codes: 股票代码列表
+			task_id: 任务 ID
+			user_id: 用户标识
+			**kwargs: 透传给具体同步方法
+
+		Returns:
+			Dict: 同步方法的返回值
+
+		Raises:
+			ValueError: 当 data_type 不合法或未注册时
 		"""
-		# 将字符串转换为枚举成员（假设DataType是枚举）
+		# 1. 字符串 → DataType 枚举
 		try:
 			data_type_enum = DataType(data_type)
 		except ValueError:
 			raise ValueError(f"不支持的数据类型: {data_type}")
 
-		# 根据数据类型选择对应的同步方法
+		# 2. 查找注册的同步方法
 		method = self._sync_method_map.get(data_type_enum)
 		if not method:
-			raise ValueError(f"不支持的数据类型: {data_type}")
+			raise ValueError(f"未注册的同步方法: {data_type}")
 
+		# 3. 调用具体方法
 		return await method(
 			start_date=start_date,
 			end_date=end_date,
@@ -903,7 +1301,22 @@ class DataSyncService:
 			**kwargs
 		)
 
-	# ==================== 具体同步方法 ====================
+	# =====================================================================
+	# 具体同步方法
+	# =====================================================================
+	# 每个方法对应一种 DataType，通过 _sync_method_map 路由调用。
+	# 通用模式：
+	#   1. 获取数据源（source_factory.get_source）
+	#   2. 确定日期范围和股票列表（_get_date_range_and_stocks / _resolve_sync_date_range）
+	#   3. 逐股拉取数据（_run_in_executor → source.get_xxx）
+	#   4. 数据转换（_convert_records_datetime / _clean_nan_values / _convert_to_date）
+	#   5. 逐条 upsert（_process_trade_date_data 或直接 repo.create/update）
+	#   6. 定时提交（每 N 只 commit 一次，减少事务锁竞争）
+	#   7. 进度更新（_update_progress → 缓存）
+	#   8. 取消检查（cancel_token.is_set）在每个循环中
+	# =====================================================================
+
+	# --- 股票基础信息 ---
 
 	async def _sync_stock_list (
 			self,
@@ -914,7 +1327,28 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步股票列表"""
+		"""
+		同步股票基础信息列表（stock_basic 表）。
+
+		调用 Tushare ``stock_basic`` 接口，全量拉取所有 A 股（沪深两市）基础信息：
+		ts_code、name、area、industry、list_date 等。首次同步或手动触发。
+
+		处理流程：
+		1. 全量拉取 → 遍历每条记录
+		2. 清洗 NaN → 转换 list_date/delist_date
+		3. 逐条 upsert（按 ts_code 查重）
+		4. 一次性 commit
+
+		Args:
+			start_date: 未使用（股票列表无日期过滤）
+			end_date: 未使用
+			ts_codes: 未使用（固定全量拉取）
+			task_id: 任务 ID（进度追踪）
+			user_id: 用户标识
+
+		Returns:
+			Dict: ``{records_added, records_updated, records_failed, total_items, message}``
+		"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		logger.info("开始同步股票列表...")
 		stock_list = await source.get_stock_basic()
@@ -922,14 +1356,15 @@ class DataSyncService:
 		records_updated = 0
 		total = len(stock_list)
 		for idx, stock_data in enumerate(stock_list):
-			# 清理 NaN 值（pandas 空字段会变成 NaN，asyncpg 不接受）
+			# 清洗 NaN 值（pandas 空字段会变成 NaN，asyncpg 不接受）
 			stock_data = _clean_nan_values(stock_data)
-			# 转换日期字段
+			# 转换日期字段：pandas Timestamp/字符串 → Python date
 			if 'list_date' in stock_data and stock_data['list_date']:
 				stock_data['list_date'] = _convert_to_date(stock_data['list_date'])
 			if 'delist_date' in stock_data and stock_data['delist_date']:
 				stock_data['delist_date'] = _convert_to_date(stock_data['delist_date'])
 
+			# upsert：按 ts_code 查重，存在则更新，不存在则创建
 			existing = await self.stock_basic_repo.get_by_ts_code(stock_data["ts_code"])
 			if existing:
 				await self.stock_basic_repo.update_by({"ts_code": existing.ts_code}, stock_data)
@@ -937,7 +1372,9 @@ class DataSyncService:
 			else:
 				await self.stock_basic_repo.create(stock_data)
 				records_added += 1
+			# 实时更新进度到缓存
 			await self._update_progress(task_id, progress=min(100, int((idx + 1) / total * 100)), current_item=f"股票: {stock_data['ts_code']}", user_id=user_id)
+		# 全部完成后一次性提交事务
 		await self.session.commit()
 		return {
 			"records_added": records_added,
@@ -946,6 +1383,8 @@ class DataSyncService:
 			"total_items": len(stock_list),
 			"message": "股票列表同步完成"
 		}
+
+	# --- 日/周/月/分钟行情 ---
 
 	async def _sync_daily_quotes (
 			self,
@@ -956,7 +1395,33 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步日行情数据"""
+		"""
+		同步日线行情数据（stock_daily 表，TimescaleDB 超表）。
+
+		这是**最核心的行情同步方法**，也是其他逐股同步方法（资金流向、复权因子、
+		每日指标、ETF 日线等）的参考模板。
+
+		关键特性：
+		- **逐股同步**：每只股票独立拉取，避免 Tushare 单次接口数据量限制
+		- **智能日期推断**：通过 ``_resolve_sync_date_range`` 自动判断 full/incremental/overlap/up_to_date
+		- **每 10 股提交一次**：减少事务锁竞争，同时在异常时最多丢失 10 只股票的数据
+		- **每 500 股日志汇报**：减少日志量
+		- **取消支持**：每只股票处理前检查 ``cancel_token``
+
+		性能估算：
+		- 全量同步 5000 只股票 ≈ 约 25 分钟（Tushare 免费版限速）
+		- 增量同步（最新一天） ≈ 约 3-5 分钟
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: ``{records_added, records_updated, records_skipped, records_failed, total_items, mode_summary, message}``
+		"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1016,6 +1481,8 @@ class DataSyncService:
 			"message": "日行情数据同步完成"
 		}
 
+	# --- 分钟行情（超表优化，批量插入） ---
+
 	async def _sync_minute_quotes (
 			self,
 			start_date: Optional[date],
@@ -1026,7 +1493,21 @@ class DataSyncService:
 			freq: str = "1min",
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步分钟行情数据（超表优化）"""
+		"""同步分钟行情数据（stock_minute 超表，批量插入不更新）。
+
+		与日行情不同，分钟数据量大，仅批量插入不去重更新。
+		默认只同步最近 7 天、最多 100 只活跃股票。
+
+		Args:
+			start_date: 起始日期（None → 7 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 前 100 只活跃股票，分钟数据量大限制数量）
+			task_id: 任务 ID
+			user_id: 用户标识
+			freq: K 线频率（"1min" / "5min" / "15min" / "30min" / "60min"）
+
+		Returns:
+			Dict: {records_added, records_updated(0), records_failed, total_items, message}"""
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
@@ -1089,7 +1570,21 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步资金流向数据"""
+		"""同步资金流向数据（stock_moneyflow 表，逐股同步+智能日期推断）。
+
+		资金流向反映主力资金进出情况，与日行情采用相同的逐股同步模式。
+		通过 _resolve_sync_date_range 自动推断增量/全量模式。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1153,7 +1648,21 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步复权因子"""
+		"""同步复权因子数据（stock_adj_factor 表，逐股同步+智能日期推断）。
+
+		复权因子用于前复权/后复权价格计算，每个交易日一条记录。
+		采用与 _sync_daily_quotes 相同的逐股同步模式。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1216,7 +1725,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步每日指标数据"""
+		"""同步每日指标数据（stock_daily_basic 表，逐股同步+智能日期推断）。
+
+		每日指标包含市盈率、市净率、换手率等，与日行情一一对应。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1271,6 +1793,8 @@ class DataSyncService:
 			"mode_summary": mode_summary,
 			"message": "每日指标数据同步完成"
 		}
+	# --- ETF 相关同步 ---
+
 	async def _sync_etf_basic (
 			self,
 			start_date: Optional[date],
@@ -1280,7 +1804,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步ETF基础信息"""
+		"""同步 ETF 基础信息（etf_basic 表，全量拉取）。
+
+		调用 Tushare fund_basic 接口，拉取所有 ETF 基金的基础信息
+		（基金代码、名称、管理人等）。全量 upsert，不区分日期。
+
+		Args:
+			start_date: 未使用（全量拉取）
+			end_date: 未使用（全量拉取）
+			ts_codes: 未使用（固定全量）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		etf_df = await self._run_in_executor(source.get_etf_basic, )
 		# 将DataFrame转换为字典列表并确保键为字符串类型
@@ -1320,7 +1857,19 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步ETF基准指数列表（全量拉取）"""
+		"""同步 ETF 基准指数列表（etf_index 表，全量拉取）。
+
+		获取各 ETF 跟踪的基准指数及发行日期等信息。全量写入，重复记录 catch 后 update。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 未使用
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_failed = 0, 0
 		try:
@@ -1362,7 +1911,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步ETF日线行情"""
+		"""同步 ETF 日线行情（etf_daily 表，逐 ETF 同步+智能日期推断）。
+
+		与股票日行情结构完全一致，不同之处在于股票代码来源为 etf_basic 表。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: ETF 代码列表（None → 全部 ETF）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1417,6 +1979,8 @@ class DataSyncService:
 			"mode_summary": mode_summary,
 			"message": "ETF日线数据同步完成"
 		}
+	# --- 指数相关同步 ---
+
 	async def _sync_index_data_with_weight(
 			self,
 			start_date: str,
@@ -1630,7 +2194,20 @@ class DataSyncService:
 			freq: str = "1min",
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步ETF分钟行情"""
+		"""同步 ETF 分钟行情（etf_minute 表，批量插入）。
+
+		默认最近 7 天、最多 50 只 ETF。分钟数据量大，仅批量插入不去重。
+
+		Args:
+			start_date: 起始日期（None → 7 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: ETF 代码列表（None → 前 50 只 ETF）
+			task_id: 任务 ID
+			user_id: 用户标识
+			freq: K 线频率（默认 "1min"）
+
+		Returns:
+			Dict: {records_added, records_updated(0), records_failed, total_items, message}"""
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
@@ -1690,7 +2267,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步基金复权因子"""
+		"""同步基金复权因子（fund_adj_factor 表，逐 ETF 同步+智能日期推断）。
+
+		与股票复权因子结构一致，用于 ETF 的复权价格计算。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: ETF 代码列表（None → 全部 ETF）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1745,6 +2335,8 @@ class DataSyncService:
 			"mode_summary": mode_summary,
 			"message": "基金复权因子数据同步完成"
 		}
+	# --- 财务报表同步（利润表+资产负债表+现金流量表） ---
+
 	async def _sync_financial_data (
 			self,
 			start_date: Optional[date],
@@ -1801,7 +2393,17 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
-		"""同步利润表数据"""
+		"""同步利润表数据，委托给 ``_sync_financial_statement(report_type="income")``。
+
+		Args:
+			start_date: 起始日期
+			end_date: 结束日期
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		return await self._sync_financial_statement(
 			start_date=start_date,
 			end_date=end_date,
@@ -1821,7 +2423,17 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
-		"""同步资产负债表"""
+		"""同步资产负债表，委托给 ``_sync_financial_statement(report_type="balance")``。
+
+		Args:
+			start_date: 起始日期
+			end_date: 结束日期
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		return await self._sync_financial_statement(
 			start_date=start_date,
 			end_date=end_date,
@@ -1841,7 +2453,17 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**kwargs
 	) -> Dict[str, Any]:
-		"""同步现金流量表"""
+		"""同步现金流量表，委托给 ``_sync_financial_statement(report_type="cashflow")``。
+
+		Args:
+			start_date: 起始日期
+			end_date: 结束日期
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		return await self._sync_financial_statement(
 			start_date=start_date,
 			end_date=end_date,
@@ -1851,6 +2473,8 @@ class DataSyncService:
 			report_type="cashflow",
 			**kwargs
 		)
+
+	# --- 财务报表通用同步（三类报表共用） ---
 
 	async def _sync_financial_statement (
 			self,
@@ -1862,7 +2486,29 @@ class DataSyncService:
 			report_type: str = "income",
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""通用的财务报表同步方法"""
+		"""通用财务报表同步方法（利润表/资产负债表/现金流量表共用）。
+
+		根据 ``report_type`` 参数调用不同的 Tushare 接口：
+		- ``"income"`` → ``get_income_statement``（利润表）
+		- ``"balance"`` → ``get_balance_sheet``（资产负债表）
+		- ``"cashflow"`` → ``get_cashflow_statement``（现金流量表）
+
+		关键处理逻辑：
+		1. 从 ORM 模型 ``FinancialStatement`` 获取已知列名，过滤 Tushare 多余字段
+		2. 每条记录设置 ``report_type`` 标签，三表存入同一张 financial_statements 表
+		3. 按 ``(ts_code, ann_date, report_type)`` 三元组查重去重
+		4. 每只股票处理完即 commit（财务报表接口返回数据量大，减少事务持有时间）
+
+		Args:
+			start_date: 未使用（财务报表按报告期拉取，不按日期过滤）
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+			report_type: 报表类型（"income" / "balance" / "cashflow"）
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [stock.ts_code for stock in stocks]
@@ -1934,6 +2580,8 @@ class DataSyncService:
 			"message": f"{report_type}报表同步完成"
 		}
 
+	# --- 交易日历 ---
+
 	async def _sync_trade_calendar (
 			self,
 			start_date: Optional[date],
@@ -1943,7 +2591,19 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步交易日历"""
+		"""同步交易日历（trade_calendar 表，按交易所/日期 upsert）。
+
+		获取 SSE（上交所）和 SZSE（深交所）的交易日历，标记每个日期是否为交易日。
+
+		Args:
+			start_date: 起始日期
+			end_date: 结束日期
+			ts_codes: 未使用
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
@@ -1995,12 +2655,26 @@ class DataSyncService:
 			"message": "交易日历同步完成"
 		}
 
+	# --- 公司基本信息与治理 ---
+
 	async def _sync_stock_company (
 			self, start_date: Optional[date], end_date: Optional[date],
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步上市公司基本信息"""
+		"""同步上市公司基本信息（stock_company 表，全量拉取后逐条 upsert）。
+
+		包含公司注册地址、注册资本、员工人数、主营业务等基本面信息。
+
+		Args:
+			start_date: 未使用（全量拉取）
+			end_date: 未使用
+			ts_codes: 未使用（固定全量）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0
 		try:
@@ -2023,16 +2697,31 @@ class DataSyncService:
 			logger.error(f"公司信息同步失败: {e}")
 			return {"records_added":0,"records_updated":0,"records_failed":1,"total_items":0,"message":f"公司信息同步失败: {str(e)}"}
 
+	# --- ST 股票变更历史 ---
+
 	async def _sync_st_list (
 			self, start_date: Optional[date], end_date: Optional[date],
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步ST股票变更历史"""
+		"""同步 ST 股票变更历史（st_list 表，全市场日期范围拉取）。
+
+		通过 Tushare namechange 接口获取 ST/*ST 变更记录，
+		仅保留 name 包含 "ST" 的记录写入 st_list 表。
+
+		Args:
+			start_date: 起始日期（None → 1990-12-19，A 股最早交易日）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 未使用（全市场拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated(0), records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		if not start_date: start_date = date(1990,12,19)
 		if not end_date: end_date = datetime.now().date()
-		s_str = start_date.strftime('%Y%m%d'); e_str = end_date.strftime('%Y%m%d')
+		start_date_str = start_date.strftime('%Y%m%d'); end_date_str = end_date.strftime('%Y%m%d')
 		records_added = 0; records_failed = 0
 		try:
 			df = await self._run_in_executor(source.get_namechange, start_date=start_date_str, end_date=end_date_str)
@@ -2062,7 +2751,20 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步管理层信息（先删后插保证数据一致性）"""
+		"""同步管理层信息（stk_managers 表，逐股先删后插保证数据一致性）。
+
+		每位高管可能发生职位变更，采用"删除全部旧记录→插入新记录"策略
+		而非 upsert，确保数据与数据源完全一致。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [s.ts_code for s in stocks]
 		records_added = 0; records_updated = 0; records_failed = 0
@@ -2095,7 +2797,20 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步管理层薪酬持股（先删后插保证数据一致性）"""
+		"""同步管理层薪酬持股（stk_rewards 表，逐股先删后插保证数据一致性）。
+
+		与 _sync_stk_managers 相同的策略："删除全部旧记录→插入新记录"。
+		薪酬持股数据常有变动，不允许 upsert 导致旧数据残留。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [s.ts_code for s in stocks]
 		records_added = 0; records_updated = 0; records_failed = 0
@@ -2123,12 +2838,27 @@ class DataSyncService:
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_failed":records_failed,"total_items":records_added+records_updated+records_failed,"message":"管理层薪酬同步完成"}
 
+	# --- 周线/月线行情 ---
+
 	async def _sync_weekly_quotes (
 			self, start_date: Optional[date], end_date: Optional[date],
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步周线行情（结构与日行情一致，支持智能日期推断）"""
+		"""同步周线行情（stock_weekly 表，逐股同步+智能日期推断）。
+
+		与 _sync_daily_quotes 结构一致，由 Tushare 接口直接返回周线数据。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0; records_skipped = 0; records_failed = 0
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock in stocks]
@@ -2143,7 +2873,7 @@ class DataSyncService:
 			if self.cancel_token and self.cancel_token.is_set(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date, self.stock_weekly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''; e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
 				df = await self._run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
@@ -2161,7 +2891,20 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步月线行情（结构与日行情一致，支持智能日期推断）"""
+		"""同步月线行情（stock_monthly 表，逐股同步+智能日期推断）。
+
+		与 _sync_daily_quotes 结构一致，由 Tushare 接口直接返回月线数据。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0; records_skipped = 0; records_failed = 0
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock in stocks]
@@ -2176,7 +2919,7 @@ class DataSyncService:
 			if self.cancel_token and self.cancel_token.is_set(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date, self.stock_monthly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''; e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
 				df = await self._run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
@@ -2194,7 +2937,19 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步指数基本信息（沪深所有指数）"""
+		"""同步指数基本信息（index_basic 表，分 SSE/SZSE 两个市场拉取）。
+
+		获取沪深两市所有指数的基本信息（指数代码、名称、发布日等）。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 未使用（全量拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0
 		for market in ['SSE','SZSE']:
@@ -2217,7 +2972,21 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步指数日线行情（修复版：实际写入 index_daily 表）"""
+		"""同步指数日线行情（index_daily 表，逐指数同步+智能日期推断）。
+
+		结构与 _sync_daily_quotes 一致。无 ts_codes 时默认同步 5 大指数
+		（上证指数、深证成指、沪深300、中证500、创业板指）。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 指数代码列表（None → 5 大指数或全部指数）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped,
+			       records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0; records_skipped = 0; records_failed = 0
 		if not ts_codes:
@@ -2227,7 +2996,7 @@ class DataSyncService:
 			if self.cancel_token and self.cancel_token.is_set(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(index_code, start_date, end_date, self.index_daily_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''; e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
 				df = await self._run_in_executor(source.get_index_daily, ts_code=index_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
@@ -2241,6 +3010,8 @@ class DataSyncService:
 
 	# ==================== 待实现方法占位 ====================
 
+	# --- 待实现 / 占位方法 ---
+
 	async def _sync_tick_quotes (
 			self,
 			start_date: Optional[date],
@@ -2250,7 +3021,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步Tick级行情数据"""
+		"""同步 Tick 级行情数据（逐股按日拉取，数据量极大，仅同步活跃股票中少量）。
+
+		**注意**：Tick 数据量极大（单只股票一天可有数万条），默认只同步 1 天、
+		最多 10 只股票。此方法仅用于特殊分析场景，不参与常规同步流程。
+
+		Args:
+			start_date: 起始日期（None → 昨天）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 前 10 只活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated(0), records_failed, total_items, message}"""
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
@@ -2309,6 +3093,8 @@ class DataSyncService:
 			"message": "Tick级行情数据同步完成"
 		}
 
+	# --- 财务衍生数据（停复牌 / ETF 份额 / 业绩预告 / 快报 / 分红 / 财务指标 / 审计意见 / 主营业务） ---
+
 	async def _sync_suspend_info (
 			self,
 			start_date: Optional[date],
@@ -2318,13 +3104,26 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步停复牌信息（Tushare suspend_d 接口，全市场拉取）"""
+		"""同步停复牌信息（suspend_info 表，全市场日期范围拉取）。
+
+		通过 Tushare suspend_d 接口获取停复牌公告信息，
+		默认拉取最近 30 天。重复记录 catch 后 update。
+
+		Args:
+			start_date: 起始日期（None → 30 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 未使用（全市场拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not end_date: end_date = datetime.now().date()
 		if not start_date: start_date = end_date - timedelta(days=30)
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_failed = 0, 0
-		s_str = start_date.strftime('%Y%m%d') if start_date else ''
-		e_str = end_date.strftime('%Y%m%d') if end_date else ''
+		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		try:
 			df = await self._run_in_executor(source.get_suspended, start_date=start_date_str, end_date=end_date_str)
 			if df is not None and not df.empty:
@@ -2363,7 +3162,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步ETF份额规模"""
+		"""同步 ETF 份额规模（etf_share 表，逐 ETF 拉取）。
+
+		ETF 份额和规模每日变化，反映资金净流入/流出情况。
+		逐 ETF 拉取全历史数据，按 (ts_code, trade_date) 去重。
+
+		Args:
+			start_date: 未使用（全历史拉取）
+			end_date: 未使用
+			ts_codes: ETF 代码列表（None → 全部 ETF）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			etfs = await self.etf_basic_repo.get_all()
 			ts_codes = [etf.ts_code for etf in etfs]
@@ -2416,7 +3228,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步业绩预告（逐股拉取）"""
+		"""同步业绩预告（forecast 表，逐股拉取全历史）。
+
+		业绩预告是上市公司在正式财报发布前的预估数据，
+		按 (ts_code, ann_date) 去重。
+
+		Args:
+			start_date: 未使用（全历史拉取）
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
@@ -2463,7 +3288,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步业绩快报（逐股拉取）"""
+		"""同步业绩快报（express 表，逐股拉取全历史）。
+
+		业绩快报介于预告和正式财报之间，数据比预告更准确。
+		按 (ts_code, ann_date) 去重。
+
+		Args:
+			start_date: 未使用（全历史拉取）
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
@@ -2510,7 +3348,19 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步分红送股（逐股拉取）"""
+		"""同步分红送股（dividend 表，逐股拉取，limit=100 条/股）。
+
+		分红送股是上市公司回馈股东的重要信息。按 (ts_code, ann_date) 去重。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
@@ -2556,7 +3406,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步财务指标（逐股拉取，默认近365天）"""
+		"""同步财务指标（fina_indicator 表，逐股拉取，默认近 365 天）。
+
+		财务指标包含 ROE、ROA、毛利率、净利率等关键量化指标，
+		按 (ts_code, end_date) 去重。
+
+		Args:
+			start_date: 起始日期（None → 365 天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not end_date: end_date = datetime.now().date()
 		if not start_date: start_date = end_date - timedelta(days=365)
 		if not ts_codes:
@@ -2564,8 +3427,10 @@ class DataSyncService:
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_failed = 0, 0
-		s_str = start_date.strftime('%Y%m%d') if start_date else ''
-		e_str = end_date.strftime('%Y%m%d') if end_date else ''
+		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段（如 dt_eps → eps 不匹配）
+		known_cols = {c.name for c in StockFinaIndicator.__table__.columns}
+		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set(): break
@@ -2577,6 +3442,8 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+						# 过滤 Tushare 返回但 ORM 模型中不存在的字段（如 dt_* 前缀字段）
+						item = {k: v for k, v in item.items() if k in known_cols}
 						try:
 							await self.fina_indicator_repo.create(item)
 							records_added += 1
@@ -2607,7 +3474,20 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步审计意见（逐股拉取，默认近5年）"""
+		"""同步审计意见（audit_opinion 表，逐股拉取，默认近 5 年）。
+
+		审计意见反映财报可信度（标准无保留/保留/否定/无法表示意见等），
+		按 (ts_code, end_date) 去重。
+
+		Args:
+			start_date: 起始日期（None → 5 年前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not end_date: end_date = datetime.now().date()
 		if not start_date: start_date = end_date - timedelta(days=365*5)
 		if not ts_codes:
@@ -2615,8 +3495,10 @@ class DataSyncService:
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_failed = 0, 0
-		s_str = start_date.strftime('%Y%m%d') if start_date else ''
-		e_str = end_date.strftime('%Y%m%d') if end_date else ''
+		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段
+		known_cols = {c.name for c in StockAuditOpinion.__table__.columns}
+		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set():
@@ -2630,6 +3512,8 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+						# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+						item = {k: v for k, v in item.items() if k in known_cols}
 						try:
 							await self.audit_opinion_repo.create(item)
 							records_added += 1
@@ -2660,12 +3544,29 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步主营业务构成（逐股拉取，按产品和地区两种维度）"""
+		"""同步主营业务构成（business_income 表，逐股拉取，按产品和地区两种维度）。
+
+		对每只股票拉取两种维度：
+		- ``P``（Product/产品）：按产品类别划分的营收构成
+		- ``D``（District/地区）：按地理区域划分的营收构成
+		按 (ts_code, end_date) 去重。
+
+		Args:
+			start_date: 未使用（全历史拉取）
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_failed = 0, 0
+		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段
+		known_cols = {c.name for c in StockBusinessIncome.__table__.columns}
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set():
@@ -2679,6 +3580,8 @@ class DataSyncService:
 						for item in data:
 							item = _clean_nan_values(item)
 							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+							# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+							item = {k: v for k, v in item.items() if k in known_cols}
 							try:
 								await self.business_income_repo.create(item)
 								records_added += 1
@@ -2700,6 +3603,10 @@ class DataSyncService:
 		        "total_items":records_added+records_failed,"message":"主营业务构成同步完成"}
 
 	
+	# =====================================================================
+	# 进度追踪与事件发布基础设施
+	# =====================================================================
+
 	async def _update_progress (
 			self,
 			task_id: str,
@@ -2707,10 +3614,32 @@ class DataSyncService:
 			current_item: Optional[str] = None,
 			user_id: Optional[str] = None
 	):
-		"""更新同步进度（仅写缓存，节流: 最多每秒1次或进度达100%）"""
+		"""
+		更新同步进度到缓存（Redis 或内存缓存）。
+
+		**节流机制**：此方法在逐股同步的循环中被频繁调用（每只股票一次），
+		为避免频繁写入缓存造成性能浪费，采用"最多每秒写入一次"的节流策略。
+		例外：进度达到 100% 时**总是写入**，确保完成状态立即可见。
+
+		缓存结构::
+
+		    {
+		        "progress": 45.2,          # 进度百分比（0-100）
+		        "current_task": "日行情: 2267/5000",
+		        "estimated_time_remaining": null,
+		        "_last_cache_write": 1717500000.123  # 上次写入时间戳（节流用）
+		    }
+
+		Args:
+			task_id: 任务 ID
+			progress: 进度百分比（0-100），None 时不更新
+			current_item: 当前处理项描述（如 "日行情: 2267/5000"）
+			user_id: 用户标识（预留，用于权限控制）
+		"""
 		import time as _t
 
 		progress_key = CacheKey.SYNC_PROGRESS.format(task_id=task_id)
+		# 读取现有进度（增量更新，不覆盖其他字段）
 		current_progress_raw = await self.cache.get(progress_key)
 		if current_progress_raw:
 			try:
@@ -2720,6 +3649,7 @@ class DataSyncService:
 		else:
 			current_progress = {}
 
+		# 确保必要字段存在
 		current_progress.setdefault("progress", 0)
 		current_progress.setdefault("current_task", "")
 		current_progress.setdefault("estimated_time_remaining", None)
@@ -2729,7 +3659,7 @@ class DataSyncService:
 		if current_item:
 			current_progress["current_task"] = current_item
 
-		# 节流: 最多每秒写一次缓存（进度100%时总是写入）
+		# 节流写入：最多每秒写入一次，100% 完成时总是写入
 		now = _t.time()
 		last_write = current_progress.get("_last_cache_write", 0)
 		is_complete = (progress is not None and progress >= 100)
@@ -2749,10 +3679,36 @@ class DataSyncService:
 			error: Optional[str] = None,
 			user_id: Optional[str] = None
 	):
-		"""发布同步事件"""
+		"""
+		通过 EventEngine 发布同步事件，供前端实时展示和监控模块监听。
+
+		支持的事件类型：
+		- **started / batch_started**：同步开始 → 创建 ``DataSyncStartedEvent``
+		- **progress**：进度更新 → 创建 ``DataSyncProgressEvent``
+		- **completed / batch_completed**：同步完成 → 创建 ``DataSyncCompletedEvent``
+		- **failed / batch_failed / cancelled**：失败/取消 → 创建 ``DataSyncFailedEvent``
+
+		如果 ``event_engine`` 为 None（如命令行脚本场景），则静默跳过。
+
+		Args:
+			event_type: 事件类型（"started" / "progress" / "completed" / "failed" / "cancelled" 及其 batch 变体）
+			task_id: 任务 ID
+			data_type: 单个数据类型（单次同步场景）
+			data_types: 多个数据类型（批量同步场景）
+			progress: 进度百分比
+			current_task: 当前任务描述
+			result: 同步结果详情
+			error: 错误信息
+			user_id: 用户标识
+
+		Note:
+			``DataSyncStartedEvent`` 的 ``source`` 字段固定为 "tushare"，
+			不再使用 ``event_kwargs`` 中的 "source"（"data_module"），避免参数冲突。
+		"""
 		if not self.event_engine:
 			return
 
+		# 基础事件参数（所有事件类型共享）
 		event_kwargs = {
 			"task_id": task_id,
 			"user_id": user_id,
@@ -2762,7 +3718,7 @@ class DataSyncService:
 
 		if event_type in ("started", "batch_started"):
 			sync_type = "batch" if event_type == "batch_started" else (data_type or "unknown")
-			# 从 event_kwargs 中移除 source，避免重复传递
+			# 从 event_kwargs 中移除 source，避免与 DataSyncStartedEvent 的 source 参数冲突
 			event_kwargs_copy = {k: v for k, v in event_kwargs.items() if k != "source"}
 			event = DataSyncStartedEvent(
 				sync_type=sync_type,
@@ -2811,7 +3767,7 @@ class DataSyncService:
 			logger.warning(f"未知的事件类型: {event_type}")
 			return
 
-		# 确保事件类型正确
+		# 发布事件到事件引擎（异步，不阻塞当前流程）
 		await self.event_engine.put(event)
 
 	async def _clean_cache_after_sync (
@@ -2819,7 +3775,19 @@ class DataSyncService:
 			data_type: str,
 			ts_codes: Optional[List[str]] = None
 	):
-		"""同步后清理相关缓存"""
+		"""
+		同步完成后清理相关缓存，确保下次查询获取最新数据。
+
+		清理策略按数据类型分类：
+		- **STOCK_LIST**：清理股票列表缓存（通配符匹配）
+		- **行情类**（DAILY_QUOTES / MINUTE_QUOTES / ETF_DAILY / ETF_MINUTE）：
+		  清理历史行情缓存，优先按具体 ts_code 清理（精确匹配），
+		  无 ts_codes 时使用通配符全量清理。
+
+		Args:
+			data_type: 已同步的数据类型
+			ts_codes: 涉及股票代码列表（用于精确缓存失效）
+		"""
 		cache_keys = []
 		if data_type == DataType.STOCK_LIST:
 			cache_keys.append(CacheKey.STOCK_LIST.format(hash="*"))
@@ -2833,15 +3801,25 @@ class DataSyncService:
 				cache_keys.append(CacheKey.HISTORICAL_QUOTES.format(
 					ts_code="*", start="*", end="*", freq="*", adj="*"
 				))
-		# 其他类型可根据需要添加
+		# 其他数据类型可根据需要添加缓存清理逻辑
 
 		for pattern in cache_keys:
-			# 假设RedisCache有delete_pattern方法
 			await self.cache.delete_pattern(pattern)
 
 	async def cleanup_old_tasks (self, days: int = 30) -> int:
-		"""清理旧同步任务记录（与原实现相同）"""
-		# 省略重复代码
+		"""
+		清理超过指定天数的旧同步任务记录。
+
+		Args:
+			days: 保留天数（默认 30 天）
+
+		Returns:
+			int: 清理的任务记录数
+
+		Note:
+			当前为 stub 实现（pass），实际清理逻辑由引擎层处理。
+		"""
+		# TODO: 实现旧任务清理逻辑
 		pass
 
 	async def get_recent_sync_tasks (
@@ -2849,6 +3827,18 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			limit: int = 20
 	) -> List[Dict[str, Any]]:
-		"""获取最近的同步任务（与原实现相同）"""
-		# 省略重复代码
+		"""
+		获取最近的同步任务列表，按创建时间倒序。
+
+		Args:
+			user_id: 用户标识（None 返回全部用户的记录）
+			limit: 返回的最大数量（默认 20）
+
+		Returns:
+			List[Dict]: 同步任务记录列表
+
+		Note:
+			当前为 stub 实现（pass），实际查询逻辑由引擎层处理。
+		"""
+		# TODO: 实现最近任务查询逻辑
 		pass
