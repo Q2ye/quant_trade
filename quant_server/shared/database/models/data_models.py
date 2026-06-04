@@ -387,9 +387,6 @@ class StockMoneyflow(Base):
 	sell_elg_amount = Column(Numeric(12, 4), nullable=False, comment='特大单卖出金额（万元）')
 	net_mf_vol = Column(Integer, nullable=False, comment='净流入量（手）')
 	net_mf_amount = Column(Numeric(12, 4), nullable=False, comment='净流入金额（万元）')
-	total_vol = Column(Integer, comment='总成交量（手）')
-	buy_ratio = Column(Numeric(8, 4), comment='买入占比')
-	large_net_ratio = Column(Numeric(8, 4), comment='大单净流入占比')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -624,8 +621,6 @@ class EtfMinute(Base):
 	vol = Column(BigInteger, nullable=False, comment='成交量')
 	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
-	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
 	etf = relationship("EtfBasic", back_populates="minute_data")

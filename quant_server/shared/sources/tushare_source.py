@@ -549,15 +549,16 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取财务审计意见失败: {e}")
 			return pd.DataFrame()
 
-	def get_fina_mainbz (self, symbol: str = '', period: str = '') -> pd.DataFrame:
+	def get_fina_mainbz (self, symbol: str = '', period: str = '', type: str = '') -> pd.DataFrame:
 		"""获取主营业务构成
 
 		Args:
 			symbol: 股票代码
 			period: 报告期
+			type: 类型（P=产品, D=地区, I=行业）
 		"""
 		try:
-			df = self.pro.fina_mainbz(ts_code=symbol, period=period)
+			df = self.pro.fina_mainbz(ts_code=symbol, period=period, type=type)
 			if df is not None and not df.empty:
 				df['end_date'] = pd.to_datetime(df['end_date'])
 			return df if df is not None else pd.DataFrame()
