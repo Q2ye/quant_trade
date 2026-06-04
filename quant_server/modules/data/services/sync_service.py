@@ -614,147 +614,69 @@ class DataSyncService:
 			}
 
 	async def batch_sync_data (
-			self,
-			tasks: List[SyncTaskItem],
-			priority: Optional[Any] = None,
-			user_id: Optional[str] = None,
-			task_id: Optional[str] = None
+		self,
+		tasks: List[SyncTaskItem],
+		priority: Optional[Any] = None,
+		user_id: Optional[str] = None,
+		task_id: Optional[str] = None
 	) -> Dict[str, Any]:
-		"""
-		批量同步数据（基于任务列表）
+		"""批量同步数据（并行版：每种类型独立 session 并行执行）"""
+		import asyncio as _asyncio
+		logger.warning(f"[批量同步] 并行同步 {len(tasks)} 种类型: {[t.data_type for t in tasks]}")
 
-		Args:
-			tasks: 同步任务列表
-			priority: 同步优先级
-			user_id: 用户ID
+		batch_task_id = f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+		sem = _asyncio.Semaphore(3)  # 最多 3 种类型并行
 
-		Returns:
-			Dict: 批量同步结果
-		"""
-		logger.info(f"开始批量同步数据，任务数: {len(tasks)}, 用户ID: {user_id}")
-
-		batch_task_id = f"batch_sync_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-		results = []
-		total_records = 0
-		succeeded_records = 0
-		failed_records = 0
+		async def _sync_one(task, idx):
+			async with sem:
+				from shared.database.session import get_session_manager
+				sm = get_session_manager()
+				async with sm.get_session() as session:
+					svc = DataSyncService(session, self.event_engine, self.cancel_token)
+					try:
+						dt = DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(task.data_type)
+						result = await svc.sync_market_data(
+							data_type=dt, start_date=task.start_date, end_date=task.end_date,
+							user_id=user_id, task_id=task_id or batch_task_id,
+							force_update=getattr(task, 'force_update', False)
+						)
+						ra = result.get("result", {}).get("records_added", 0)
+						ru = result.get("result", {}).get("records_updated", 0)
+						rf = result.get("result", {}).get("records_failed", 0)
+						sr = SyncResult(data_type=task.data_type, success=result.get("success", False),
+							records_added=ra, records_updated=ru, records_failed=rf,
+							start_time=datetime.now(), end_time=datetime.now(),
+							error_message=result.get("error"))
+						logger.info(f"[批量同步 #{idx+1}] {task.data_type}: 新增={ra} 更新={ru} 失败={rf}")
+						return sr.model_dump()
+					except Exception as e:
+						logger.error(f"[批量同步 #{idx+1}] {task.data_type} 失败: {e}")
+						return SyncResult(data_type=task.data_type, success=False,
+							start_time=datetime.now(), end_time=datetime.now(),
+							error_message=str(e)).model_dump()
 
 		try:
-			# 发布批量同步开始事件
-			await self._publish_sync_event(
-				event_type="batch_started",
-				task_id=batch_task_id,
-				data_types=[task.data_type for task in tasks],
-				user_id=user_id
-			)
+			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
+			results = await _asyncio.gather(*coros)
 
-			# 按顺序执行同步任务
-			for idx, task in enumerate(tasks):
-				# 计算进度
-				progress = (idx / len(tasks)) * 100
+			total_records = sum(r.get("records_added",0) + r.get("records_updated",0) + r.get("records_failed",0) for r in results)
+			succeeded_records = sum(r.get("records_added",0) + r.get("records_updated",0) for r in results)
+			failed_records = sum(r.get("records_failed",0) for r in results)
+			all_success = all(r.get("success", True) for r in results)
 
-				logger.info(f"[批量同步] 开始同步第 {idx+1}/{len(tasks)} 项: {task.data_type}")
-				# 发布进度事件
-				await self._publish_sync_event(
-					event_type="progress",
-					task_id=batch_task_id,
-					data_type=task.data_type,
-					progress=progress,
-					current_task=f"正在同步 {task.data_type}",
-					user_id=user_id
-				)
-
-				# 执行单个同步任务
-				try:
-					result = await self.sync_market_data(
-						data_type=DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(
-							task.data_type),
-						start_date=task.start_date,
-						end_date=task.end_date,
-						user_id=user_id,
-						task_id=task_id or batch_task_id,
-						force_update=task.force_update
-					)
-
-					# 记录结果
-					records_added = result.get("result", {}).get("records_added", 0)
-					records_updated = result.get("result", {}).get("records_updated", 0)
-					records_failed = result.get("result", {}).get("records_failed", 0)
-
-					sync_result = SyncResult(
-						data_type=task.data_type,
-						success=result.get("success", False),
-						records_added=records_added,
-						records_updated=records_updated,
-						records_failed=records_failed,
-						start_time=datetime.now(),
-						end_time=datetime.now(),
-						error_message=result.get("error")
-					)
-					results.append(sync_result.model_dump())
-
-					total_records += records_added + records_updated + records_failed
-					succeeded_records += records_added + records_updated
-					failed_records += records_failed
-					logger.info(f"[批量同步] 完成 {task.data_type}: 新增={records_added}, 更新={records_updated}, 失败={records_failed}")
-
-				except Exception as e:
-					logger.error(f"[批量同步] 同步数据类型 {task.data_type} 失败: {str(e)}")
-					sync_result = SyncResult(
-						data_type=task.data_type,
-						success=False,
-						records_added=0,
-						records_updated=0,
-						records_failed=0,
-						start_time=datetime.now(),
-						end_time=datetime.now(),
-						error_message=str(e)
-					)
-					results.append(sync_result.model_dump())
-
-			# 发布批量同步完成事件
-			await self._publish_sync_event(
-				event_type="batch_completed",
-				task_id=batch_task_id,
-				result={"results": results},
-				user_id=user_id
-			)
-
-			logger.info(f"批量同步数据完成，任务ID: {batch_task_id}")
-
+			logger.warning(f"[批量同步] 完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
 			return {
-				"success": True,
-				"task_id": batch_task_id,
-				"results": results,
-				"records_processed": total_records,
-				"records_succeeded": succeeded_records,
-				"records_failed": failed_records,
-				"total_tasks": len(tasks),
+				"success": all_success, "task_id": batch_task_id, "results": results,
+				"records_processed": total_records, "records_succeeded": succeeded_records,
+				"records_failed": failed_records, "total_tasks": len(tasks),
 				"completed_tasks": len(results),
-				"message": "批量同步完成"
+				"message": "批量同步完成" if all_success else f"批量同步部分完成（{sum(1 for r in results if not r.get('success',True))}/{len(results)} 失败）"
 			}
-
 		except Exception as e:
-			logger.error(f"批量同步数据失败: {str(e)}", exc_info=True)
-
-			await self._publish_sync_event(
-				event_type="batch_failed",
-				task_id=batch_task_id,
-				result={"results": results},
-				error=str(e),
-				user_id=user_id
-			)
-
-			return {
-				"success": False,
-				"task_id": batch_task_id,
-				"results": results,
-				"records_processed": total_records,
-				"records_succeeded": succeeded_records,
-				"records_failed": failed_records,
-				"error": str(e),
-				"message": "批量同步失败"
-			}
+			logger.error(f"[批量同步] 并行执行失败: {e}", exc_info=True)
+			return {"success": False, "task_id": batch_task_id, "results": [],
+				"records_processed": 0, "records_succeeded": 0, "records_failed": 0,
+				"total_tasks": len(tasks), "error": str(e), "message": "批量同步异常"}
 
 	async def get_sync_status (
 			self,
