@@ -86,14 +86,18 @@ class IndexDailyRepository(BaseRepository[IndexDaily]):
 		"""初始化指数日线行情仓库"""
 		super().__init__(session, IndexDaily)
 
-	async def batch_insert (self, records: List[Dict[str, Any]]) -> int:
-		"""全量模式批量插入，跳过冲突。比逐条 create 快 100 倍。"""
+	async def batch_insert (self, records: List[Dict[str, Any]], chunk_size: int = 1000) -> int:
+		"""全量模式批量插入，分批写入避免超过 PostgreSQL 32767 参数上限。"""
 		if not records:
 			return 0
 		from sqlalchemy.dialects.postgresql import insert as pg_insert
-		stmt = pg_insert(self.model).values(records).on_conflict_do_nothing()
-		result = await self.session.execute(stmt)
-		return result.rowcount
+		total = 0
+		for i in range(0, len(records), chunk_size):
+			chunk = records[i:i + chunk_size]
+			stmt = pg_insert(self.model).values(chunk).on_conflict_do_nothing()
+			result = await self.session.execute(stmt)
+			total += result.rowcount
+		return total
 
 	async def get_by_date_range (
 			self,

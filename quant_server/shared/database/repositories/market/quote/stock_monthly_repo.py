@@ -101,6 +101,16 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		"""
 		return await self.get_latest_record(symbol=ts_code, limit=limit)
 
+	async def get_by_trade_date(self, ts_code: str, trade_date: date) -> list:
+		"""按 ts_code + trade_date 查询（_process_trade_date_data 去重用）"""
+		from sqlalchemy import select
+		query = select(self.model).where(
+			self.model.ts_code == ts_code,
+			self.model.trade_date == trade_date
+		)
+		result = await self.session.execute(query)
+		return list(result.scalars().all())
+
 	async def get_latest_trade_date (self, ts_code: str) -> Optional[date]:
 		"""获取指定股票最新月线交易日（用于 _resolve_sync_date_range 智能推断）"""
 		latest = await self.get_latest_record(symbol=ts_code)

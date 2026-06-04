@@ -1188,15 +1188,10 @@ class DataSyncService:
 			repo,
 			data: List[Dict],
 			ts_code: str,
-			full_mode: bool = False,
 	) -> Tuple[int, int]:
-		"""处理 trade_date 数据，full_mode 走批量插入，否则逐条 upsert。"""
+		"""逐条 upsert 处理 trade_date 数据。"""
 		for item in data:
 			item['trade_date'] = _convert_to_date(item.get('trade_date'))
-
-		if full_mode and hasattr(repo, 'batch_insert'):
-			inserted = await repo.batch_insert(data)
-			return inserted, 0
 
 		records_added = 0
 		records_updated = 0
@@ -1504,14 +1499,14 @@ class DataSyncService:
 				)
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_daily_repo, daily_data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.stock_daily_repo, 'batch_insert'):
+						records_added += await self.stock_daily_repo.batch_insert(daily_data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.stock_daily_repo, daily_data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"日行情 {ts_code} 失败: {e}")
@@ -1676,14 +1671,14 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_moneyflow_repo, data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.stock_moneyflow_repo, 'batch_insert'):
+						records_added += await self.stock_moneyflow_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.stock_moneyflow_repo, data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"资金流向 {ts_code} 失败: {e}")
@@ -1765,14 +1760,14 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_adj_factor_repo, data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.stock_adj_factor_repo, 'batch_insert'):
+						records_added += await self.stock_adj_factor_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.stock_adj_factor_repo, data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"复权因子 {ts_code} 失败: {e}")
@@ -1852,14 +1847,14 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_daily_basic_repo, data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.stock_daily_basic_repo, 'batch_insert'):
+						records_added += await self.stock_daily_basic_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.stock_daily_basic_repo, data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"每日指标 {ts_code} 失败: {e}")
@@ -2051,14 +2046,14 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.etf_daily_repo, data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.etf_daily_repo, 'batch_insert'):
+						records_added += await self.etf_daily_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.etf_daily_repo, data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"ETF日线 {ts_code} 失败: {e}")
@@ -2421,14 +2416,14 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.fund_adj_factor_repo, data, ts_code, full_mode=(mode == "full")
-					)
-					
+					if mode == "full" and hasattr(self.fund_adj_factor_repo, 'batch_insert'):
+						records_added += await self.fund_adj_factor_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(
+							self.fund_adj_factor_repo, data, ts_code
+						)
+						records_added += added; records_updated += updated
 					skipped = 0
-
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"基金复权因子 {ts_code} 失败: {e}")
@@ -3037,10 +3032,12 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code, full_mode=(mode == "full"))
+					if mode == "full" and hasattr(self.stock_weekly_repo, 'batch_insert'):
+						records_added += await self.stock_weekly_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
+						records_added += added; records_updated += updated
 					skipped = 0
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"周线 {ts_code} 同步失败: {e}");
@@ -3103,10 +3100,12 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code, full_mode=(mode == "full"))
+					if mode == "full" and hasattr(self.stock_monthly_repo, 'batch_insert'):
+						records_added += await self.stock_monthly_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
+						records_added += added; records_updated += updated
 					skipped = 0
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"月线 {ts_code} 同步失败: {e}");
@@ -3220,10 +3219,12 @@ class DataSyncService:
 					                                 start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code, full_mode=(mode == "full"))
+					if mode == "full" and hasattr(self.index_daily_repo, 'batch_insert'):
+						records_added += await self.index_daily_repo.batch_insert(data)
+					else:
+						added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
+						records_added += added; records_updated += updated
 					skipped = 0
-					records_added += added;
-					records_updated += updated;
 					records_skipped += skipped
 			except Exception as e:
 				logger.error(f"指数日线 {index_code} 同步失败: {e}");
