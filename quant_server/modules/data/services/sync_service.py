@@ -88,7 +88,6 @@ from shared.sources.source_factory import DataSourceFactory
 # 配置日志
 logger = logging.getLogger(__name__)
 
-
 def _convert_pandas_datetime (record: Dict[str, Any]) -> Dict[str, Any]:
 	"""
 	将记录中的pandas datetime类型转换为Python datetime对象
@@ -114,7 +113,6 @@ def _convert_pandas_datetime (record: Dict[str, Any]) -> Dict[str, Any]:
 			converted[key] = value
 	return converted
 
-
 def _convert_to_date (value: Any) -> date:
 	"""
 	将各种类型的日期值转换为Python date对象
@@ -138,7 +136,6 @@ def _convert_to_date (value: Any) -> date:
 			return datetime.fromisoformat(value).date()
 	else:
 		raise ValueError(f"无法将类型 {type(value)} 转换为date对象: {value}")
-
 
 def _convert_to_datetime (value: Any) -> datetime:
 	"""
@@ -164,7 +161,6 @@ def _convert_to_datetime (value: Any) -> datetime:
 	else:
 		raise ValueError(f"无法将类型 {type(value)} 转换为datetime对象: {value}")
 
-
 def _clean_nan_values (record: Dict[str, Any]) -> Dict[str, Any]:
 	"""
 	将记录中的 NaN/NaT 值转换为 None，避免 PostgreSQL asyncpg 驱动报错
@@ -182,7 +178,6 @@ def _clean_nan_values (record: Dict[str, Any]) -> Dict[str, Any]:
 		elif value is not None and hasattr(pd, 'isna') and pd.isna(value):
 			record[key] = None
 	return record
-
 
 def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, Any]]:
 	"""
@@ -206,7 +201,6 @@ def _convert_records_datetime (records: List[Dict[Any, Any]]) -> List[Dict[str, 
 			string_key_record[k] = v
 		converted_records.append(string_key_record)
 	return converted_records
-
 
 def _estimate_total_items (data_type: str, ts_codes: Optional[List[str]] = None) -> int:
 	"""估算同步项目总数"""
@@ -245,7 +239,6 @@ def _estimate_total_items (data_type: str, ts_codes: Optional[List[str]] = None)
 		DataType.BUSINESS_INCOME: (len(ts_codes) if ts_codes else 5000) * 15,  # 主营业务构成
 	}
 	return estimates.get(data_type, 100)
-
 
 class DataSyncService:
 	"""
@@ -845,7 +838,6 @@ class DataSyncService:
 		else: mode = "overlap"
 		return start_date, end_date, mode
 
-
 	async def _get_date_range_and_stocks (
 			self,
 			start_date: Optional[date],
@@ -974,7 +966,6 @@ class DataSyncService:
 			data_type_enum = DataType(data_type)
 		except ValueError:
 			raise ValueError(f"不支持的数据类型: {data_type}")
-
 
 		# 根据数据类型选择对应的同步方法
 		method = self._sync_method_map.get(data_type_enum)
@@ -1418,8 +1409,19 @@ class DataSyncService:
 					item = _clean_nan_values(item)
 					if item.get('pub_date'):
 						item['pub_date'] = _convert_to_date(item['pub_date'])
-					try: await self.etf_index_repo.create(item); records_added += 1
-					except Exception: records_failed += 1
+					try:
+						await self.etf_index_repo.create(item)
+						records_added += 1
+					except Exception as _e:
+						if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+							try:
+								await self.etf_index_repo.update_by({"ts_code":item.get("ts_code",""),"pub_date":item.get("pub_date",None)}, item)
+								records_updated += 1
+							except Exception: records_failed += 1
+						else:
+							logger.warning(f"[ETF指?数] 写入失败: {_e}")
+							records_failed += 1
+
 			await self.session.commit()
 			return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
 			        "total_items":records_added+records_failed,"message":"ETF基准指数同步完成"}
@@ -2315,7 +2317,6 @@ class DataSyncService:
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_skipped":records_skipped,"records_failed":records_failed,"total_items":records_added+records_updated+records_skipped+records_failed,"message":"指数日线行情同步完成"}
 
-
 	# ==================== 待实现方法占位 ====================
 
 	async def _sync_tick_quotes (
@@ -2409,8 +2410,19 @@ class DataSyncService:
 				for item in data:
 					item = _clean_nan_values(item)
 					if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
-					try: await self.suspend_info_repo.create(item); records_added += 1
-					except Exception: records_failed += 1
+					try:
+						await self.suspend_info_repo.create(item)
+						records_added += 1
+					except Exception as _e:
+						if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+							try:
+								await self.suspend_info_repo.update_by({"ts_code":item.get("ts_code",""),"suspend_type":item.get("suspend_type",None)}, item)
+								records_updated += 1
+							except Exception: records_failed += 1
+						else:
+							logger.warning(f"[停复牌] 写入失败: {_e}")
+							records_failed += 1
+
 			await self.session.commit()
 			return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
 			        "total_items":records_added+records_failed,"message":"停复牌信息同步完成"}
@@ -2449,8 +2461,19 @@ class DataSyncService:
 					for item in data:
 						item = _clean_nan_values(item)
 						if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
-						try: await self.etf_share_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.etf_share_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.etf_share_repo.update_by({"ts_code":item.get("ts_code",""),"trade_date":item.get("trade_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[ETF份额] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"ETF份额 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx + 1) % 5 == 0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"ETF份额: {ts_code}", user_id=user_id)
@@ -2488,8 +2511,19 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try: await self.forecast_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.forecast_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.forecast_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[业绩预告] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"业绩预告 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩预告: {ts_code}", user_id=user_id)
@@ -2524,8 +2558,19 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try: await self.express_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.express_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.express_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[业绩快报] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"业绩快报 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩快报: {ts_code}", user_id=user_id)
@@ -2559,8 +2604,19 @@ class DataSyncService:
 					for item in data:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						try: await self.dividend_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.dividend_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.dividend_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[分红送股] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"分红送股 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"分红送股: {ts_code}", user_id=user_id)
@@ -2599,8 +2655,19 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try: await self.fina_indicator_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.fina_indicator_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.fina_indicator_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[财务指标] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"财务指标 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"财务指标: {ts_code}", user_id=user_id)
@@ -2641,8 +2708,19 @@ class DataSyncService:
 						item = _clean_nan_values(item)
 						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
 						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try: await self.audit_opinion_repo.create(item); records_added += 1
-						except Exception: records_failed += 1
+						try:
+							await self.audit_opinion_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.audit_opinion_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
+									records_updated += 1
+								except Exception: records_failed += 1
+							else:
+								logger.warning(f"[审计意见] 写入失败: {_e}")
+								records_failed += 1
+
 			except Exception as e: logger.error(f"审计意见 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"审计意见: {ts_code}", user_id=user_id)
@@ -2679,8 +2757,19 @@ class DataSyncService:
 						for item in data:
 							item = _clean_nan_values(item)
 							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-							try: await self.business_income_repo.create(item); records_added += 1
-							except Exception: records_failed += 1
+							try:
+								await self.business_income_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.business_income_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
+										records_updated += 1
+									except Exception: records_failed += 1
+								else:
+									logger.warning(f"[主营业务] 写入失败: {_e}")
+									records_failed += 1
+
 				except Exception as e: logger.error(f"主营业务构成 {ts_code}/{btype} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0: await self.session.commit()
 			await self._update_progress(task_id, current_item=f"主营业务构成: {ts_code}", user_id=user_id)
