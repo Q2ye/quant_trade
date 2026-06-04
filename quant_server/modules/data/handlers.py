@@ -57,6 +57,7 @@ from modules.data.events import (
 	DataSyncStartedEvent,
 	DataSyncProgressEvent,
 	DataSyncCompletedEvent,
+	DataSyncFailedEvent,
 	DataResearchStartedEvent,
 	DataResearchProgressEvent,
 	DataResearchCompletedEvent
@@ -2326,42 +2327,59 @@ async def _execute_async_data_sync (
 					engine.stats["cancelled_tasks"] += 1
 				return
 
-			# 6. 更新任务状态为完成
+			# 6. 根据实际同步结果更新任务状态
+			is_success = sync_result.get("success", False)
+			final_status = "completed" if is_success else "failed"
+			error_msg = None if is_success else sync_result.get("message", "数据同步失败")
 			update_data = {
-				"status": "completed",
+				"status": final_status,
+				"error_message": error_msg,
 				"records_processed": sync_result.get("records_processed", 0),
 				"records_succeeded": sync_result.get("records_succeeded", 0),
 				"records_failed": sync_result.get("records_failed", 0),
 				"end_time": datetime.now()
 			}
 			await sync_task_repo.update(db_id, update_data)
-			logger.info(f"[后台任务] 状态已更新为 completed: {task_id}")
+			logger.info(f"[后台任务] 状态已更新为 {final_status}: {task_id}")
 
 			# 更新引擎任务状态
 			if engine and task_id in engine.tasks:
-				engine.tasks[task_id]["status"] = SyncTaskStatus.COMPLETED
+				engine.tasks[task_id]["status"] = SyncTaskStatus.COMPLETED if is_success else SyncTaskStatus.FAILED
 				engine.tasks[task_id]["updated_at"] = datetime.now()
 				engine.active_tasks.discard(task_id)
-				engine.stats["completed_tasks"] += 1
+				if is_success:
+					engine.stats["completed_tasks"] += 1
+				else:
+					engine.stats["failed_tasks"] += 1
 				engine.stats["total_records"] += sync_result.get("records_processed", 0)
 				engine.stats["last_sync_time"] = datetime.now().timestamp()
 
-			# 7. 发布同步完成事件
-			completed_event = DataSyncCompletedEvent(
-				sync_type=sync_type,
-				record_count=sync_result.get("records_processed", 0),
-				duration_seconds=sync_result.get("duration_seconds", 0),
-				success=sync_result.get("records_failed", 0) == 0,
-				summary={
-					"records_succeeded": sync_result.get("records_succeeded", 0),
-					"records_failed": sync_result.get("records_failed", 0),
-					"data_types": [task.data_type for task in request.tasks]
-				},
-				task_id=task_id,
-				user_id=str(user_id),
-				timestamp=datetime.now()
-			)
-			await event_engine.put(completed_event)  # type: ignore
+			# 7. 发布同步完成或失败事件
+			if is_success:
+				completed_event = DataSyncCompletedEvent(
+					sync_type=sync_type,
+					record_count=sync_result.get("records_processed", 0),
+					duration_seconds=sync_result.get("duration_seconds", 0),
+					success=True,
+					summary={
+						"records_succeeded": sync_result.get("records_succeeded", 0),
+						"records_failed": sync_result.get("records_failed", 0),
+						"data_types": [task.data_type for task in request.tasks]
+					},
+					task_id=task_id,
+					user_id=str(user_id),
+					timestamp=datetime.now()
+				)
+				await event_engine.put(completed_event)  # type: ignore
+			else:
+				failed_event = DataSyncFailedEvent(
+					sync_type=sync_type,
+					error_message=error_msg or "未知错误",
+					task_id=task_id,
+					user_id=str(user_id),
+					timestamp=datetime.now()
+				)
+				await event_engine.put(failed_event)  # type: ignore
 			logger.info(f"[后台任务] 已发布完成事件: {task_id}")
 
 			# 8. 自动触发数据质量检查（使用独立session，避免受同步事务影响）

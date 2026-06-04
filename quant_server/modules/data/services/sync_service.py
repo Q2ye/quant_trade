@@ -2941,7 +2941,8 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated, skipped = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code, mode=mode)
+					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
+					skipped = 0
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"周线 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
@@ -2989,7 +2990,8 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated, skipped = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code, mode=mode)
+					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
+					skipped = 0
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"月线 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
@@ -3017,6 +3019,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0; records_failed = 0
 		for market in ['SSE','SZSE']:
@@ -3024,6 +3027,7 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_index_basic, market=market)
 				if df.empty: continue
 				data = _convert_records_datetime(df.to_dict('records'))
+
 				for item in data:
 					item = _clean_nan_values(item)
 					# 转换所有日期字段（Tushare 返回 "19901219" 格式字符串）
@@ -3038,6 +3042,7 @@ class DataSyncService:
 				records_failed += 1
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_failed":records_failed,"total_items":records_added+records_updated+records_failed,"message":"指数基本信息同步完成"}
+
 
 	async def _sync_index_daily (
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -3059,6 +3064,7 @@ class DataSyncService:
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
 			       records_failed, total_items, message}"""
+
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0; records_updated = 0; records_skipped = 0; records_failed = 0
 		if not ts_codes:
@@ -3073,7 +3079,8 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_index_daily, ts_code=index_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated, skipped = await self._process_trade_date_data(self.index_daily_repo, data, index_code, mode="overlap")
+					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
+					skipped = 0
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"指数日线 {index_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
@@ -3085,7 +3092,6 @@ class DataSyncService:
 	# ==================== 待实现方法占位 ====================
 
 	# --- 待实现 / 占位方法 ---
-
 	async def _sync_tick_quotes (
 			self,
 			start_date: Optional[date],

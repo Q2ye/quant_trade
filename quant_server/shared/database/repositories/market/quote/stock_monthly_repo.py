@@ -101,6 +101,11 @@ class StockMonthlyRepository(HyperRepositoryBase[StockMonthly]):
 		"""
 		return await self.get_latest_record(symbol=ts_code, limit=limit)
 
+	async def get_latest_trade_date (self, ts_code: str) -> Optional[date]:
+		"""获取指定股票最新月线交易日（用于 _resolve_sync_date_range 智能推断）"""
+		latest = await self.get_latest_record(symbol=ts_code)
+		return latest.trade_date if latest else None
+
 	async def get_monthly_summary (
 			self,
 			trade_date: date,

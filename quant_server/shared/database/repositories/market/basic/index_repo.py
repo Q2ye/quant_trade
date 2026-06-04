@@ -139,6 +139,42 @@ class IndexDailyRepository(BaseRepository[IndexDaily]):
 		except Exception as e:
 			raise RepositoryError(f"获取最新指数日线行情失败: {str(e)}")
 
+	async def get_latest_trade_date (self, ts_code: str) -> Optional[date]:
+		"""
+		获取指定指数最新的交易日日期（用于 _resolve_sync_date_range 智能推断）。
+
+		Args:
+			ts_code: 指数代码
+
+		Returns:
+			最新交易日期或 None
+		"""
+		latest = await self.get_latest_by_ts_code(ts_code)
+		return latest.trade_date if latest else None
+
+	async def get_by_trade_date (self, ts_code: str, trade_date: date) -> List[IndexDaily]:
+		"""
+		按指数代码和交易日期查询记录（用于 _process_trade_date_data 去重）。
+
+		Args:
+			ts_code: 指数代码
+			trade_date: 交易日期
+
+		Returns:
+			匹配的日线行情列表（通常 0 或 1 条）
+		"""
+		try:
+			query = select(self.model).where(
+				and_(
+					self.model.ts_code == ts_code,
+					self.model.trade_date == trade_date
+				)
+			)
+			result = await self.session.execute(query)
+			return list(result.scalars().all())
+		except Exception as e:
+			raise RepositoryError(f"按交易日期查询指数日线失败: {str(e)}")
+
 
 class IndexWeightRepository(BaseRepository[IndexWeight]):
 	"""指数成分股权重仓库 — 继承 BaseRepository

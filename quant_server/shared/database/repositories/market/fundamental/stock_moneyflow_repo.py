@@ -85,6 +85,11 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		"""
 		return await super().batch_insert(records, conflict_strategy)
 
+	async def get_latest_trade_date (self, ts_code: str) -> Optional[date]:
+		"""获取指定股票最新资金流交易日（用于 _resolve_sync_date_range 智能推断）"""
+		latest = await self.get_latest_record(ts_code=ts_code)
+		return latest.trade_date if latest else None
+
 	# ==================== 业务查询方法 ====================
 
 	async def get_by_ts_code_and_date (

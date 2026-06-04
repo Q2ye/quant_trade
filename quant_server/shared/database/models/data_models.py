@@ -676,12 +676,11 @@ class IndexBasic(Base):
 
 
 class IndexDaily(Base):
-	"""指数日线行情数据"""
+	"""指数日线行情数据（TimescaleDB 超表，复合主键）"""
 	__tablename__ = 'index_daily'
 
-	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='指数日线ID')
-	ts_code = Column(String(20), nullable=False, index=True, comment='指数代码')
-	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
+	ts_code = Column(String(20), primary_key=True, comment='指数代码')
+	trade_date = Column(DateTime, primary_key=True, comment='交易日期')
 	close = Column(Numeric(12, 4), nullable=False, comment='收盘价')
 	open = Column(Numeric(12, 4), comment='开盘价')
 	high = Column(Numeric(12, 4), comment='最高价')
@@ -689,15 +688,11 @@ class IndexDaily(Base):
 	pre_close = Column(Numeric(12, 4), comment='前收盘价')
 	change = Column(Numeric(12, 4), comment='涨跌额')
 	pct_chg = Column(Numeric(10, 6), comment='涨跌幅')
-	vol = Column(Integer, comment='成交量（手）')
+	vol = Column(BigInteger, comment='成交量（手）')
 	amount = Column(Numeric(18, 4), comment='成交额（万元）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
-	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
-	# 索引
 	__table_args__ = (
-		UniqueConstraint('ts_code', 'trade_date', name='uq_index_daily_code_date'),
 		Index('idx_index_daily_trade_date', 'trade_date'),
 	)
 

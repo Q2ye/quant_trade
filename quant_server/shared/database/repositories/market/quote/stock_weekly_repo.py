@@ -646,5 +646,10 @@ class StockWeeklyRepository(HyperRepositoryBase[StockWeekly]):
 			"week_start": week_start,
 			"week_end": week_daily_data[-1].trade_date if week_daily_data else week_start
 		}
+
+	async def get_latest_trade_date (self, ts_code: str) -> Optional[date]:
+		"""获取指定股票最新周线交易日（用于 _resolve_sync_date_range 智能推断）"""
+		latest = await self.get_latest_record(symbol=ts_code)
+		return latest.trade_date if latest else None
 		
 		return weekly_record
