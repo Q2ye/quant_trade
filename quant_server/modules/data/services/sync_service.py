@@ -612,33 +612,50 @@ class DataSyncService:
 				**kwargs
 			)
 
-			# 步骤 4：更新任务状态为完成
+			# 步骤 4：根据实际结果判断任务状态
+			# 全部失败 → failed，部分成功 → completed（含 warnings），全部成功 → completed
+			added = sync_result.get("records_added", 0)
+			updated = sync_result.get("records_updated", 0)
+			failed = sync_result.get("records_failed", 0)
+			total = added + updated + failed
+			if total > 0 and added + updated == 0:
+				# 所有记录都失败了（如字段名不匹配、接口报错等）
+				final_status = "failed"
+				err_msg = f"全部 {failed} 条记录同步失败，无成功记录"
+				sync_result["message"] = err_msg
+			else:
+				final_status = "completed"
+				err_msg = None
+
 			await self._update_sync_task(
 				task_id=task_id,
-				status="completed",
+				status=final_status,
 				result=sync_result,
-				error_message=None
+				error_message=err_msg
 			)
 
-			# 步骤 5：发布 completed 事件
+			# 步骤 5：发布同步完成或失败事件
 			await self._publish_sync_event(
-				event_type="completed",
+				event_type="completed" if final_status == "completed" else "failed",
 				task_id=task_id,
 				data_type=data_type,
 				result=sync_result,
+				error=err_msg,
 				user_id=user_id
 			)
 
-			# 步骤 6：清理相关缓存（如历史行情缓存）
-			await self._clean_cache_after_sync(data_type, ts_codes)
+			# 步骤 6：清理相关缓存（仅成功时清理，失败数据不应污染缓存）
+			if final_status == "completed":
+				await self._clean_cache_after_sync(data_type, ts_codes)
 
-			logger.info(f"市场数据同步完成，任务ID: {task_id}, 结果: {sync_result}")
+			logger.info(f"市场数据同步{'完成' if final_status == 'completed' else '失败'}，"
+			            f"任务ID: {task_id}, 新增={added}, 更新={updated}, 失败={failed}")
 
 			return {
-				"success": True,
+				"success": final_status == "completed",
 				"task_id": task_id,
 				"result": sync_result,
-				"message": "数据同步完成"
+				"message": "数据同步完成" if final_status == "completed" else err_msg
 			}
 
 		except Exception as e:
