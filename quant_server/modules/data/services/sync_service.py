@@ -1052,7 +1052,7 @@ class DataSyncService:
 			bool: 任务是否已被取消
 		"""
 		# 第一层：token 检查（最快，O(1) 内存读取）
-		if await self._is_cancelled():
+		if self.cancel_token and self.cancel_token.is_set():
 			return True
 		# 第二层：DB 回退检查（兜底，O(1) 带缓存）
 		if self._task_id:
