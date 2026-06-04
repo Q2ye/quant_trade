@@ -296,9 +296,9 @@ const startStatusPolling = () => {
         refreshQualityData();
       }
     } catch {
-      stopStatusPolling();
+      // 超时不中止轮询，任务可能仍在运行
     }
-  }, 2000);
+  }, 3000);
 };
 
 const stopStatusPolling = () => {

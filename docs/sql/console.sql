@@ -34,6 +34,7 @@ delete from stock_daily_basic;
 select * from stock_moneyflow;
 select count(*) from stock_moneyflow;
 
+
 -- 财务报表主表 利润表 现金流量表
 -- 财务报表主表
 select * from  financial_statements;
@@ -50,6 +51,7 @@ select count(*) from  stock_dividends;
 -- 财务指标数据表
 select * from  stock_fina_indicators;
 select count(*) from  stock_fina_indicators;
+
 -- 审计意见数据表
 select * from stock_audit_opinions;
 select count(*) from stock_audit_opinions;
@@ -67,7 +69,7 @@ select count(*) from  etf_shares;
 select * from  stock_daily;
 select count(*) from stock_daily;
 delete from stock_daily;
- 
+
 -- 回测任务
 select * from backtest_tasks;
 
