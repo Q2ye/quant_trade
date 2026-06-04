@@ -348,6 +348,76 @@ class BaseRepository(Generic[T]):
 			await self.session.rollback()
 			raise RepositoryError(f"按条件更新记录失败: {str(e)}")
 
+	# ==================== 批量 upsert ====================
+
+	async def batch_upsert (self, records: List[Dict[str, Any]], chunk_size: int = 1000) -> int:
+		"""
+		批量 upsert（INSERT ... ON CONFLICT DO UPDATE），自动从 model 提取冲突键和更新列。
+		替代逐条 create+update_by，全量/增量通用，一次 SQL 处理整批数据。
+
+		Args:
+			records: 记录列表（dict 格式）
+			chunk_size: 每批记录数，防 PostgreSQL 32767 参数上限
+
+		Returns:
+			int: 写入记录数
+		"""
+		if not records:
+			return 0
+
+		from sqlalchemy.dialects.postgresql import insert as pg_insert
+		from sqlalchemy import UniqueConstraint
+
+		# --- 提取冲突键（缓存，1μs） ---
+		cache_key = '_batch_upsert_conflict_cols'
+		if not hasattr(self, cache_key):
+			conflict_cols = None
+			# 1. 从 __table_args__ 的 UniqueConstraint 提取
+			for arg in getattr(self.model, '__table_args__', ()):
+				if isinstance(arg, UniqueConstraint):
+					conflict_cols = [c.name for c in arg.columns]
+					break
+			# 2. 回退到非 id 的 PrimaryKey（如 index_daily 的 (ts_code,trade_date)）
+			if not conflict_cols:
+				pk = [c.name for c in self.model.__table__.primary_key]
+				if pk != ['id']:
+					conflict_cols = pk
+			# 3. 最后尝试常见业务键
+			if not conflict_cols:
+				for keys in (['ts_code', 'trade_date'], ['ts_code', 'end_date'],
+				             ['ts_code', 'ann_date'], ['ts_code']):
+					if all(hasattr(self.model, k) for k in keys):
+						conflict_cols = list(keys)
+						break
+			if not conflict_cols:
+				raise ValueError(f"无法确定 upsert 冲突键: {self.model.__tablename__}")
+			setattr(self, cache_key, conflict_cols)
+
+		conflict_cols = getattr(self, cache_key)
+
+		# --- 提取更新列（排除 PK 和 created_at，缓存） ---
+		cache_key2 = '_batch_upsert_update_cols'
+		if not hasattr(self, cache_key2):
+			exclude = set(conflict_cols) | {'created_at'}
+			update_cols = [c.name for c in self.model.__table__.columns
+			               if c.name not in exclude and not c.primary_key]
+			setattr(self, cache_key2, update_cols)
+
+		update_cols = getattr(self, cache_key2)
+
+		# --- 分批写入 ---
+		total = 0
+		for i in range(0, len(records), chunk_size):
+			chunk = records[i:i + chunk_size]
+			stmt = pg_insert(self.model).values(chunk)
+			stmt = stmt.on_conflict_do_update(
+				index_elements=conflict_cols,
+				set_={c: getattr(stmt.excluded, c) for c in update_cols}
+			)
+			result = await self.session.execute(stmt)
+			total += result.rowcount
+		return total
+
 	async def delete (self, id: Any, soft: bool = True) -> bool:
 		"""
 		删除记录

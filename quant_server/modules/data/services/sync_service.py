@@ -1189,30 +1189,11 @@ class DataSyncService:
 			data: List[Dict],
 			ts_code: str,
 	) -> Tuple[int, int]:
-		"""逐条 upsert 处理 trade_date 数据。"""
+		"""批量 upsert trade_date 数据。所有 repo 继承 BaseRepository.batch_upsert。"""
 		for item in data:
 			item['trade_date'] = _convert_to_date(item.get('trade_date'))
-
-		records_added = 0
-		records_updated = 0
-		for item in data:
-			trade_date = item['trade_date']
-			existing_list = await repo.get_by_trade_date(
-				ts_code=ts_code, trade_date=trade_date
-			)
-			existing = existing_list[0] if existing_list else None
-			if existing:
-				try:
-					await repo.update_by(
-						{"ts_code": existing.ts_code, "trade_date": existing.trade_date}, item
-					)
-				except AttributeError:
-					await repo.update(existing.id, item)
-				records_updated += 1
-			else:
-				await repo.create(item)
-				records_added += 1
-		return records_added, records_updated
+		count = await repo.batch_upsert(data)
+		return count, 0
 
 	async def _create_sync_task(
 			self,
@@ -1499,13 +1480,10 @@ class DataSyncService:
 				)
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict("records"))
-					if mode == "full" and hasattr(self.stock_daily_repo, 'batch_insert'):
-						records_added += await self.stock_daily_repo.batch_insert(daily_data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.stock_daily_repo, daily_data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.stock_daily_repo, daily_data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1633,6 +1611,7 @@ class DataSyncService:
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
 			       records_failed, total_items, mode_summary, message}"""
+
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1671,13 +1650,10 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					if mode == "full" and hasattr(self.stock_moneyflow_repo, 'batch_insert'):
-						records_added += await self.stock_moneyflow_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.stock_moneyflow_repo, data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.stock_moneyflow_repo, data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1760,13 +1736,10 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					if mode == "full" and hasattr(self.stock_adj_factor_repo, 'batch_insert'):
-						records_added += await self.stock_adj_factor_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.stock_adj_factor_repo, data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.stock_adj_factor_repo, data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1847,13 +1820,10 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					if mode == "full" and hasattr(self.stock_daily_basic_repo, 'batch_insert'):
-						records_added += await self.stock_daily_basic_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.stock_daily_basic_repo, data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.stock_daily_basic_repo, data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1957,25 +1927,28 @@ class DataSyncService:
 			df = await self._run_in_executor(source.get_etf_index, )
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
-				for item in data:
-					item = _clean_nan_values(item)
-					if item.get('pub_date'):
-						item['pub_date'] = _convert_to_date(item['pub_date'])
-					try:
-						await self.etf_index_repo.create(item)
-						records_added += 1
-					except Exception as _e:
-						if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-							try:
-								await self.etf_index_repo.update_by(
-									{"ts_code": item.get("ts_code", ""), "pub_date": item.get("pub_date", None)}, item)
-								records_updated += 1
-							except Exception as _ue:
-								logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+				if hasattr(self.etf_index_repo, "batch_upsert"):
+					records_added += await self.etf_index_repo.batch_upsert(data)
+				else:
+					for item in data:
+						item = _clean_nan_values(item)
+						if item.get('pub_date'):
+							item['pub_date'] = _convert_to_date(item['pub_date'])
+						try:
+							await self.etf_index_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.etf_index_repo.update_by(
+										{"ts_code": item.get("ts_code", ""), "pub_date": item.get("pub_date", None)}, item)
+									records_updated += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
+							else:
+								logger.warning(f"[ETF指?数] 写入失败: {_e}")
 								records_failed += 1
-						else:
-							logger.warning(f"[ETF指?数] 写入失败: {_e}")
-							records_failed += 1
 
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
@@ -2046,13 +2019,10 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					if mode == "full" and hasattr(self.etf_daily_repo, 'batch_insert'):
-						records_added += await self.etf_daily_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.etf_daily_repo, data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.etf_daily_repo, data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -2416,13 +2386,10 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					if mode == "full" and hasattr(self.fund_adj_factor_repo, 'batch_insert'):
-						records_added += await self.fund_adj_factor_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(
-							self.fund_adj_factor_repo, data, ts_code
-						)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(
+					self.fund_adj_factor_repo, data, ts_code
+					)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -2653,26 +2620,29 @@ class DataSyncService:
 				else:
 					raise ValueError(f"未知财务报表类型: {report_type}")
 
-				for item in data:
-					item["report_type"] = report_type
-					item['ann_date'] = _convert_to_datetime(item.get('ann_date'))
-					item['end_date'] = _convert_to_datetime(item.get('end_date'))
-					if item.get('f_ann_date') and isinstance(item['f_ann_date'], str):
-						item['f_ann_date'] = _convert_to_datetime(item['f_ann_date'])
-					# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-					item = {k: v for k, v in item.items() if k in known_cols}
+				if hasattr(self.financial_statement_repo, "batch_upsert"):
+					records_added += await self.financial_statement_repo.batch_upsert(data)
+				else:
+					for item in data:
+						item["report_type"] = report_type
+						item['ann_date'] = _convert_to_datetime(item.get('ann_date'))
+						item['end_date'] = _convert_to_datetime(item.get('end_date'))
+						if item.get('f_ann_date') and isinstance(item['f_ann_date'], str):
+							item['f_ann_date'] = _convert_to_datetime(item['f_ann_date'])
+						# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+						item = {k: v for k, v in item.items() if k in known_cols}
 
-					existing = await self.financial_statement_repo.get_by_unique(
-						ts_code=ts_code,
-						ann_date=item['ann_date'],
-						report_type=report_type
-					)
-					if existing:
-						await self.financial_statement_repo.update(existing.id, item)
-						records_updated += 1
-					else:
-						await self.financial_statement_repo.create(item)
-						records_added += 1
+						existing = await self.financial_statement_repo.get_by_unique(
+							ts_code=ts_code,
+							ann_date=item['ann_date'],
+							report_type=report_type
+						)
+						if existing:
+							await self.financial_statement_repo.update(existing.id, item)
+							records_updated += 1
+						else:
+							await self.financial_statement_repo.create(item)
+							records_added += 1
 			except Exception as e:
 				logger.error(f"同步 {ts_code} 财务报表 ({report_type}) 失败: {e}")
 				records_failed += 1
@@ -2795,17 +2765,20 @@ class DataSyncService:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 				        "message": "公司信息同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
-			for item in data:
-				item = _clean_nan_values(item)
-				if 'setup_date' in item and item['setup_date']:
-					item['setup_date'] = _convert_to_date(item['setup_date'])
-				existing = await self.company_repo.get_by(ts_code=item["ts_code"])
-				if existing:
-					await self.company_repo.update(existing.id, item);
-					records_updated += 1
-				else:
-					await self.company_repo.create(item);
-					records_added += 1
+			if hasattr(self.company_repo, "batch_upsert"):
+				records_added += await self.company_repo.batch_upsert(data)
+			else:
+				for item in data:
+					item = _clean_nan_values(item)
+					if 'setup_date' in item and item['setup_date']:
+						item['setup_date'] = _convert_to_date(item['setup_date'])
+					existing = await self.company_repo.get_by(ts_code=item["ts_code"])
+					if existing:
+						await self.company_repo.update(existing.id, item);
+						records_updated += 1
+					else:
+						await self.company_repo.create(item);
+						records_added += 1
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": records_updated, "records_failed": 0,
 			        "total_items": records_added + records_updated, "message": "公司基本信息同步完成"}
@@ -2847,24 +2820,27 @@ class DataSyncService:
 			if df.empty: return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 			                     "message": "ST列表同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
-			for item in data:
-				item = _clean_nan_values(item)
-				if 'start_date' in item and item['start_date']:
-					item['trade_date'] = _convert_to_date(item['start_date'])
-				name = item.get('name', '')
-				if 'ST' in str(name).upper():
-					item['st_type'] = '*ST' if '*ST' in str(name) else 'ST'
-					item['st_type_name'] = name
-					try:
-						await self.st_list_repo.create(item);
-						records_added += 1
-					except Exception:
+			if hasattr(self.st_list_repo, "batch_upsert"):
+				records_added += await self.st_list_repo.batch_upsert(data)
+			else:
+				for item in data:
+					item = _clean_nan_values(item)
+					if 'start_date' in item and item['start_date']:
+						item['trade_date'] = _convert_to_date(item['start_date'])
+					name = item.get('name', '')
+					if 'ST' in str(name).upper():
+						item['st_type'] = '*ST' if '*ST' in str(name) else 'ST'
+						item['st_type_name'] = name
 						try:
-							await self.st_list_repo.update_by(
-								{"ts_code": item["ts_code"], "trade_date": item["trade_date"]}, item)
-						except Exception as _ue:
-							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
-							records_failed += 1
+							await self.st_list_repo.create(item);
+							records_added += 1
+						except Exception:
+							try:
+								await self.st_list_repo.update_by(
+									{"ts_code": item["ts_code"], "trade_date": item["trade_date"]}, item)
+							except Exception as _ue:
+								logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+								records_failed += 1
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
 			        "total_items": records_added + records_failed, "message": "ST股票列表同步完成"}
@@ -2913,8 +2889,11 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_stk_managers, ts_code=ts_code)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data: item = _clean_nan_values(item); item[
-						'ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
+					if hasattr(self.manager_repo, "batch_upsert"):
+						records_added += await self.manager_repo.batch_upsert(data)
+					else:
+						for item in data: item = _clean_nan_values(item); item[
+							'ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层 {ts_code} 同步失败: {e}");
 				records_failed += 1
@@ -2968,8 +2947,11 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_stk_rewards, ts_code=ts_code)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data: item = _clean_nan_values(item); item[
-						'ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
+					if hasattr(self.reward_repo, "batch_upsert"):
+						records_added += await self.reward_repo.batch_upsert(data)
+					else:
+						for item in data: item = _clean_nan_values(item); item[
+							'ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}");
 				records_failed += 1
@@ -3032,11 +3014,8 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					if mode == "full" and hasattr(self.stock_weekly_repo, 'batch_insert'):
-						records_added += await self.stock_weekly_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3100,11 +3079,8 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					if mode == "full" and hasattr(self.stock_monthly_repo, 'batch_insert'):
-						records_added += await self.stock_monthly_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3150,19 +3126,22 @@ class DataSyncService:
 				if df.empty: continue
 				data = _convert_records_datetime(df.to_dict('records'))
 
-				for item in data:
-					item = _clean_nan_values(item)
-					# 转换所有日期字段（Tushare 返回 "19901219" 格式字符串）
-					for date_field in ('list_date', 'base_date', 'exp_date'):
-						if item.get(date_field):
-							item[date_field] = _convert_to_date(item[date_field])
-					existing = await self.index_basic_repo.get_by(ts_code=item["ts_code"])
-					if existing:
-						await self.index_basic_repo.update(existing.id, item);
-						records_updated += 1
-					else:
-						await self.index_basic_repo.create(item);
-						records_added += 1
+				if hasattr(self.index_basic_repo, "batch_upsert"):
+					records_added += await self.index_basic_repo.batch_upsert(data)
+				else:
+					for item in data:
+						item = _clean_nan_values(item)
+						# 转换所有日期字段（Tushare 返回 "19901219" 格式字符串）
+						for date_field in ('list_date', 'base_date', 'exp_date'):
+							if item.get(date_field):
+								item[date_field] = _convert_to_date(item[date_field])
+						existing = await self.index_basic_repo.get_by(ts_code=item["ts_code"])
+						if existing:
+							await self.index_basic_repo.update(existing.id, item);
+							records_updated += 1
+						else:
+							await self.index_basic_repo.create(item);
+							records_added += 1
 			except Exception as e:
 				logger.error(f"指数基本信息 {market} 同步失败: {e}")
 				records_failed += 1
@@ -3219,11 +3198,8 @@ class DataSyncService:
 					                                 start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					if mode == "full" and hasattr(self.index_daily_repo, 'batch_insert'):
-						records_added += await self.index_daily_repo.batch_insert(data)
-					else:
-						added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
-						records_added += added; records_updated += updated
+					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
+					records_added += added; records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3360,25 +3336,28 @@ class DataSyncService:
 			df = await self._run_in_executor(source.get_suspended, start_date=start_date_str, end_date=end_date_str)
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
-				for item in data:
-					item = _clean_nan_values(item)
-					if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
-					try:
-						await self.suspend_info_repo.create(item)
-						records_added += 1
-					except Exception as _e:
-						if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-							try:
-								await self.suspend_info_repo.update_by({"ts_code": item.get("ts_code", ""),
-								                                        "suspend_type": item.get("suspend_type", None)},
-								                                       item)
-								records_updated += 1
-							except Exception as _ue:
-								logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+				if hasattr(self.suspend_info_repo, "batch_upsert"):
+					records_added += await self.suspend_info_repo.batch_upsert(data)
+				else:
+					for item in data:
+						item = _clean_nan_values(item)
+						if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
+						try:
+							await self.suspend_info_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.suspend_info_repo.update_by({"ts_code": item.get("ts_code", ""),
+									                                        "suspend_type": item.get("suspend_type", None)},
+									                                       item)
+									records_updated += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
+							else:
+								logger.warning(f"[停复牌] 写入失败: {_e}")
 								records_failed += 1
-						else:
-							logger.warning(f"[停复牌] 写入失败: {_e}")
-							records_failed += 1
 
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
@@ -3430,25 +3409,28 @@ class DataSyncService:
 
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
-						try:
-							await self.etf_share_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.etf_share_repo.update_by({"ts_code": item.get("ts_code", ""),
-									                                     "trade_date": item.get("trade_date", None)},
-									                                    item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.etf_share_repo, "batch_upsert"):
+						records_added += await self.etf_share_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('trade_date'): item['trade_date'] = _convert_to_date(item['trade_date'])
+							try:
+								await self.etf_share_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.etf_share_repo.update_by({"ts_code": item.get("ts_code", ""),
+										                                     "trade_date": item.get("trade_date", None)},
+										                                    item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[ETF份额] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[ETF份额] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"ETF份额 {ts_code} 同步失败: {e}");
@@ -3501,26 +3483,29 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_forecast, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try:
-							await self.forecast_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.forecast_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
-										item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.forecast_repo, "batch_upsert"):
+						records_added += await self.forecast_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
+							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+							try:
+								await self.forecast_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.forecast_repo.update_by(
+											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[业绩预告] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[业绩预告] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"业绩预告 {ts_code} 同步失败: {e}");
@@ -3569,26 +3554,29 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_express, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						try:
-							await self.express_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.express_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
-										item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.express_repo, "batch_upsert"):
+						records_added += await self.express_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
+							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+							try:
+								await self.express_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.express_repo.update_by(
+											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[业绩快报] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[业绩快报] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"业绩快报 {ts_code} 同步失败: {e}");
@@ -3636,25 +3624,28 @@ class DataSyncService:
 				df = await self._run_in_executor(source.get_dividend, symbol=ts_code, limit=100)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						try:
-							await self.dividend_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.dividend_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
-										item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.dividend_repo, "batch_upsert"):
+						records_added += await self.dividend_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
+							try:
+								await self.dividend_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.dividend_repo.update_by(
+											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[分红送股] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[分红送股] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"分红送股 {ts_code} 同步失败: {e}");
@@ -3710,28 +3701,31 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						# 过滤 Tushare 返回但 ORM 模型中不存在的字段（如 dt_* 前缀字段）
-						item = {k: v for k, v in item.items() if k in known_cols}
-						try:
-							await self.fina_indicator_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.fina_indicator_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
-										item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.fina_indicator_repo, "batch_upsert"):
+						records_added += await self.fina_indicator_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
+							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+							# 过滤 Tushare 返回但 ORM 模型中不存在的字段（如 dt_* 前缀字段）
+							item = {k: v for k, v in item.items() if k in known_cols}
+							try:
+								await self.fina_indicator_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.fina_indicator_repo.update_by(
+											{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
+											item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[财务指标] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[财务指标] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"财务指标 {ts_code} 同步失败: {e}");
@@ -3789,28 +3783,31 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					for item in data:
-						item = _clean_nan_values(item)
-						if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-						if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-						# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-						item = {k: v for k, v in item.items() if k in known_cols}
-						try:
-							await self.audit_opinion_repo.create(item)
-							records_added += 1
-						except Exception as _e:
-							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-								try:
-									await self.audit_opinion_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
-										item)
-									records_updated += 1
-								except Exception as _ue:
-									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+					if hasattr(self.audit_opinion_repo, "batch_upsert"):
+						records_added += await self.audit_opinion_repo.batch_upsert(data)
+					else:
+						for item in data:
+							item = _clean_nan_values(item)
+							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
+							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+							# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+							item = {k: v for k, v in item.items() if k in known_cols}
+							try:
+								await self.audit_opinion_repo.create(item)
+								records_added += 1
+							except Exception as _e:
+								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+									try:
+										await self.audit_opinion_repo.update_by(
+											{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
+											item)
+										records_updated += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
+								else:
+									logger.warning(f"[审计意见] 写入失败: {_e}")
 									records_failed += 1
-							else:
-								logger.warning(f"[审计意见] 写入失败: {_e}")
-								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"审计意见 {ts_code} 同步失败: {e}");
@@ -3866,27 +3863,30 @@ class DataSyncService:
 					df = await self._run_in_executor(source.get_fina_mainbz, symbol=ts_code, period='', type=btype)
 					if not df.empty:
 						data = _convert_records_datetime(df.to_dict('records'))
-						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-							# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-							item = {k: v for k, v in item.items() if k in known_cols}
-							try:
-								await self.business_income_repo.create(item)
-								records_added += 1
-							except Exception as _e:
-								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-									try:
-										await self.business_income_repo.update_by({"ts_code": item.get("ts_code", ""),
-										                                           "end_date": item.get("end_date",
-										                                                                None)}, item)
-										records_updated += 1
-									except Exception as _ue:
-										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+						if hasattr(self.business_income_repo, "batch_upsert"):
+							records_added += await self.business_income_repo.batch_upsert(data)
+						else:
+							for item in data:
+								item = _clean_nan_values(item)
+								if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
+								# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+								item = {k: v for k, v in item.items() if k in known_cols}
+								try:
+									await self.business_income_repo.create(item)
+									records_added += 1
+								except Exception as _e:
+									if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+										try:
+											await self.business_income_repo.update_by({"ts_code": item.get("ts_code", ""),
+											                                           "end_date": item.get("end_date",
+											                                                                None)}, item)
+											records_updated += 1
+										except Exception as _ue:
+											logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+											records_failed += 1
+									else:
+										logger.warning(f"[主营业务] 写入失败: {_e}")
 										records_failed += 1
-								else:
-									logger.warning(f"[主营业务] 写入失败: {_e}")
-									records_failed += 1
 
 				except Exception as e:
 					logger.error(f"主营业务构成 {ts_code}/{btype} 同步失败: {e}");
