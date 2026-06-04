@@ -1464,7 +1464,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -1481,9 +1482,10 @@ class DataSyncService:
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.stock_daily_repo, daily_data, ts_code
+						self.stock_daily_repo, daily_data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1636,7 +1638,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -1651,9 +1654,10 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.stock_moneyflow_repo, data, ts_code
+						self.stock_moneyflow_repo, data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1722,7 +1726,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -1737,9 +1742,10 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.stock_adj_factor_repo, data, ts_code
+						self.stock_adj_factor_repo, data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1806,7 +1812,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -1821,9 +1828,10 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.stock_daily_basic_repo, data, ts_code
+						self.stock_daily_basic_repo, data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -1941,7 +1949,8 @@ class DataSyncService:
 							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 								try:
 									await self.etf_index_repo.update_by(
-										{"ts_code": item.get("ts_code", ""), "pub_date": item.get("pub_date", None)}, item)
+										{"ts_code": item.get("ts_code", ""), "pub_date": item.get("pub_date", None)},
+										item)
 									records_updated += 1
 								except Exception as _ue:
 									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
@@ -2005,7 +2014,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -2020,9 +2030,10 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.etf_daily_repo, data, ts_code
+						self.etf_daily_repo, data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -2372,7 +2383,8 @@ class DataSyncService:
 			if mode == "up_to_date": records_skipped += 1; continue
 
 			if mode == 'full':
-				s_str = ''; e_str = ''
+				s_str = '';
+				e_str = ''
 			else:
 				s_str = s_date.strftime('%Y%m%d') if s_date else ''
 				e_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -2387,9 +2399,10 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
-					self.fund_adj_factor_repo, data, ts_code
+						self.fund_adj_factor_repo, data, ts_code
 					)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3005,7 +3018,8 @@ class DataSyncService:
 			                                                           self.stock_weekly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
 			if mode == 'full':
-				start_date_str = ''; end_date_str = ''
+				start_date_str = '';
+				end_date_str = ''
 			else:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -3015,7 +3029,8 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3070,7 +3085,8 @@ class DataSyncService:
 			                                                           self.stock_monthly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
 			if mode == 'full':
-				start_date_str = ''; end_date_str = ''
+				start_date_str = '';
+				end_date_str = ''
 			else:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -3080,7 +3096,8 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3199,7 +3216,8 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
-					records_added += added; records_updated += updated
+					records_added += added;
+					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
 			except Exception as e:
@@ -3349,7 +3367,8 @@ class DataSyncService:
 							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 								try:
 									await self.suspend_info_repo.update_by({"ts_code": item.get("ts_code", ""),
-									                                        "suspend_type": item.get("suspend_type", None)},
+									                                        "suspend_type": item.get("suspend_type",
+									                                                                 None)},
 									                                       item)
 									records_updated += 1
 								except Exception as _ue:
@@ -3422,7 +3441,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.etf_share_repo.update_by({"ts_code": item.get("ts_code", ""),
-										                                     "trade_date": item.get("trade_date", None)},
+										                                     "trade_date": item.get("trade_date",
+										                                                            None)},
 										                                    item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3497,7 +3517,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.forecast_repo.update_by(
-											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											{"ts_code": item.get("ts_code", ""),
+											 "ann_date": item.get("ann_date", None)},
 											item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3568,7 +3589,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.express_repo.update_by(
-											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											{"ts_code": item.get("ts_code", ""),
+											 "ann_date": item.get("ann_date", None)},
 											item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3637,7 +3659,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.dividend_repo.update_by(
-											{"ts_code": item.get("ts_code", ""), "ann_date": item.get("ann_date", None)},
+											{"ts_code": item.get("ts_code", ""),
+											 "ann_date": item.get("ann_date", None)},
 											item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3717,7 +3740,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.fina_indicator_repo.update_by(
-											{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
+											{"ts_code": item.get("ts_code", ""),
+											 "end_date": item.get("end_date", None)},
 											item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3799,7 +3823,8 @@ class DataSyncService:
 								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 									try:
 										await self.audit_opinion_repo.update_by(
-											{"ts_code": item.get("ts_code", ""), "end_date": item.get("end_date", None)},
+											{"ts_code": item.get("ts_code", ""),
+											 "end_date": item.get("end_date", None)},
 											item)
 										records_updated += 1
 									except Exception as _ue:
@@ -3877,9 +3902,10 @@ class DataSyncService:
 								except Exception as _e:
 									if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
 										try:
-											await self.business_income_repo.update_by({"ts_code": item.get("ts_code", ""),
-											                                           "end_date": item.get("end_date",
-											                                                                None)}, item)
+											await self.business_income_repo.update_by(
+												{"ts_code": item.get("ts_code", ""),
+												 "end_date": item.get("end_date",
+												                      None)}, item)
 											records_updated += 1
 										except Exception as _ue:
 											logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
