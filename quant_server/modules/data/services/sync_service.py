@@ -355,7 +355,8 @@ class DataSyncService:
 		self,
 		session: AsyncSession,
 		event_engine: Optional[EventEngine] = None,
-		cancel_token=None  # asyncio.Event
+		cancel_token=None,  # asyncio.Event
+		task_id: Optional[str] = None,
 	):
 		"""
 		初始化数据同步服务。
@@ -373,6 +374,7 @@ class DataSyncService:
 				用于纯数据同步场景（如命令行脚本）。
 			cancel_token: ``asyncio.Event`` 取消令牌（可选）。设置后各同步方法在
 				循环中检查并中止当前任务。用于前端"取消同步"功能。
+			task_id: 任务 ID（可选）。用于双重取消检查——token 失效时回退到 DB 查询。
 
 		Note:
 			- Repository 数量 = 数据表数量（~30+），按业务域分组初始化便于维护。
@@ -384,6 +386,7 @@ class DataSyncService:
 		self.session = session
 		self.event_engine = event_engine
 		self.cancel_token = cancel_token  # asyncio.Event or None
+		self._task_id = task_id  # 用于 DB 回退检查
 
 		# ========== 初始化 Repository 实例（一表一 Repository） ==========
 		# 原则：每个 Repository 对应一张数据库表，服务层通过 Repository 访问数据，
@@ -663,7 +666,7 @@ class DataSyncService:
 
 			if task_id:
 				# 区分取消（cancel_token 已设置）和真实失败
-				final_status = "cancelled" if (self.cancel_token and self.cancel_token.is_set()) else "failed"
+				final_status = "cancelled" if (await self._is_cancelled()) else "failed"
 				err_msg = "用户手动取消" if final_status == "cancelled" else str(e)
 				await self._update_sync_task(
 					task_id=task_id,
@@ -872,7 +875,7 @@ class DataSyncService:
 				from shared.database.session import get_session_manager
 				sm = get_session_manager()
 				async with sm.get_session() as session:
-					svc = DataSyncService(session, self.event_engine, self.cancel_token)
+					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id)
 					try:
 						dt = DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(task.data_type)
 						result = await svc.sync_market_data(
@@ -1035,6 +1038,31 @@ class DataSyncService:
 			self._executor,
 			functools.partial(fn, *args, **kwargs)  # partial 避免 lambda 闭包陷阱
 		)
+
+	async def _is_cancelled(self) -> bool:
+		"""
+		双重取消检查：先查 token（asyncio.Event），失败则回退到 DB 查询。
+
+		设计原因：
+		- cancel_token 是最快的检查方式（内存读取，无 I/O）
+		- 但 cancel_token 可能因 handler 异常未被设置，或已被 cleanup 清理
+		- DB 状态作为兜底：cancel API 已更新的 status='cancelled' 一定在 DB 中
+
+		Returns:
+			bool: 任务是否已被取消
+		"""
+		# 第一层：token 检查（最快，O(1) 内存读取）
+		if await self._is_cancelled():
+			return True
+		# 第二层：DB 回退检查（兜底，O(1) 带缓存）
+		if self._task_id:
+			try:
+				task = await self.sync_task_repo.get_by_task_id(self._task_id)
+				if task and task.data and getattr(task.data, 'status', None) == 'cancelled':
+					return True
+			except Exception:
+				pass  # DB 查询失败时不阻断同步
+		return False
 
 	async def _resolve_sync_date_range (
 			self, ts_code: str, start_date: Optional[date], end_date: Optional[date], repo,
@@ -1452,7 +1480,7 @@ class DataSyncService:
 
 		logger.info(f"[日行情] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning(f"取消,中止日行情 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -1542,7 +1570,7 @@ class DataSyncService:
 
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				minute_df = await self._run_in_executor(source.get_minute_bar, symbol=ts_code,
 					start_date=start_date_str,
@@ -1616,7 +1644,7 @@ class DataSyncService:
 
 		logger.info(f"[资金流向] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("取消,中止资金流向 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -1694,7 +1722,7 @@ class DataSyncService:
 
 		logger.info(f"[复权因子] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("取消,中止复权因子 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -1770,7 +1798,7 @@ class DataSyncService:
 
 		logger.info(f"[每日指标] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("取消,中止每日指标 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -1958,7 +1986,7 @@ class DataSyncService:
 
 		logger.info(f"[ETF日线] 逐ETF同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("取消,中止ETF日线 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -2244,7 +2272,7 @@ class DataSyncService:
 
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止ETF分钟同步")
 				break
 			try:
@@ -2315,7 +2343,7 @@ class DataSyncService:
 
 		logger.info(f"[基金复权因子] 逐ETF同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes)*0.3/60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("取消,中止基金复权因子 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -2381,7 +2409,7 @@ class DataSyncService:
 			("cashflow", self._sync_financial_cashflow),
 		]:
 			# 取消时不再继续后续报表
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				results[name] = {"skipped": True, "reason": "cancelled"}
 				break
 			try:
@@ -2395,7 +2423,7 @@ class DataSyncService:
 				logger.error(f"财务报表 {name} 同步失败: {e}")
 				results[name] = {"error": str(e)}
 				total_failed += 1
-		cancelled = self.cancel_token and self.cancel_token.is_set()
+		cancelled = await self._is_cancelled()
 		return {
 			"records_added": total_added, "records_updated": total_updated,
 			"records_failed": total_failed,
@@ -2545,7 +2573,7 @@ class DataSyncService:
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			# 取消检查
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning(f"检测到取消信号，中止财务报表同步 (已处理 {idx}/{len(ts_codes)})")
 				break
 
@@ -2643,7 +2671,7 @@ class DataSyncService:
 		if calendar_df is not None and not calendar_df.empty:
 			calendar_data = _convert_records_datetime(calendar_df.to_dict('records'))
 			for cal in calendar_data:
-				if self.cancel_token and self.cancel_token.is_set():
+				if await self._is_cancelled():
 					logger.warning("检测到取消信号，中止交易日历同步")
 					break
 				# 转换cal_date为date对象
@@ -2795,13 +2823,13 @@ class DataSyncService:
 		records_added = 0; records_updated = 0; records_failed = 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
 
 				break
 
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				existing_all = await self.manager_repo.get_by(ts_code=ts_code)
 				if existing_all:
@@ -2814,7 +2842,7 @@ class DataSyncService:
 			if (idx+1)%10==0:
 				logger.info(f"[管理层] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			await self._update_progress(task_id, current_item=f"管理层: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_failed":records_failed,"total_items":records_added+records_updated+records_failed,"message":"管理层信息同步完成"}
@@ -2843,13 +2871,13 @@ class DataSyncService:
 		records_added = 0; records_updated = 0; records_failed = 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
 
 				break
 
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				existing_all = await self.reward_repo.get_by(ts_code=ts_code)
 				if existing_all:
@@ -2862,7 +2890,7 @@ class DataSyncService:
 			if (idx+1)%10==0:
 				logger.info(f"[薪酬] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			await self._update_progress(task_id, current_item=f"管理层薪酬: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_failed":records_failed,"total_items":records_added+records_updated+records_failed,"message":"管理层薪酬同步完成"}
@@ -2893,13 +2921,13 @@ class DataSyncService:
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock in stocks]
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
 
 				break
 
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date, self.stock_weekly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
 			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -2941,13 +2969,13 @@ class DataSyncService:
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock in stocks]
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
 
 				break
 
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date, self.stock_monthly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
 			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -3026,7 +3054,7 @@ class DataSyncService:
 			all_indices = await self.index_basic_repo.get_all()
 			ts_codes = [idx.ts_code for idx in all_indices] if all_indices else ['000001.SH','399001.SZ','000300.SH','000905.SH','399006.SZ']
 		for idx, index_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(index_code, start_date, end_date, self.index_daily_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
 			start_date_str = s_date.strftime('%Y%m%d') if s_date else ''; end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
@@ -3085,7 +3113,7 @@ class DataSyncService:
 
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				# Tick数据通常需要按天获取
 				current_date = start_date
@@ -3224,7 +3252,7 @@ class DataSyncService:
 		records_failed = 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止ETF份额同步")
 				break
 			try:
@@ -3292,7 +3320,7 @@ class DataSyncService:
 		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				df = await self._run_in_executor(source.get_forecast, symbol=ts_code, period='')
 				if not df.empty:
@@ -3356,7 +3384,7 @@ class DataSyncService:
 		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				df = await self._run_in_executor(source.get_express, symbol=ts_code, period='')
 				if not df.empty:
@@ -3419,7 +3447,7 @@ class DataSyncService:
 		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				df = await self._run_in_executor(source.get_dividend, symbol=ts_code, limit=100)
 				if not df.empty:
@@ -3488,7 +3516,7 @@ class DataSyncService:
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set(): break
+			if await self._is_cancelled(): break
 			try:
 				df = await self._run_in_executor(source.get_fina_indicator, symbol=ts_code, start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
@@ -3560,7 +3588,7 @@ class DataSyncService:
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止审计意见同步")
 				break
 			try:
@@ -3632,7 +3660,7 @@ class DataSyncService:
 		known_cols = {c.name for c in StockBusinessIncome.__table__.columns}
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
-			if self.cancel_token and self.cancel_token.is_set():
+			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止主营业务构成同步")
 				break
 			for btype in ['P', 'D']:  # P=产品, D=地区

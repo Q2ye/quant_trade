@@ -1447,6 +1447,16 @@ async def cancel_sync (
 	try:
 		logger.info(f"用户 {user_id} 请求取消同步任务: {task_id}")
 
+		# 0. 优先触发取消信号（在 DB 操作之前，确保 token 一定被设置）
+		#    即使后续 DB 操作失败，后台任务也能通过 token 检测到取消请求
+		from modules.data import signal_cancel
+		cancelled = signal_cancel(task_id)
+		if cancelled:
+			logger.info(f"取消信号已发送: task_id={task_id}")
+		else:
+			logger.warning(f"取消信号发送失败（token 未命中）: task_id={task_id}, "
+			               f"可能后台任务尚未创建取消令牌或已被清理")
+
 		sync_task_repo = DataSyncTaskRepository(session)
 
 		# 1. 获取任务信息
@@ -1471,11 +1481,6 @@ async def cancel_sync (
 			"updated_at": datetime.now()
 		}
 		await sync_task_repo.update(task.id, update_data)
-
-		# 4.1 触发取消信号（真正中断后台异步任务）
-		from modules.data import signal_cancel
-		cancelled = signal_cancel(task_id)
-		logger.info(f"取消信号已发送: task_id={task_id}, 命中={cancelled}")
 
 		# 5. 发布取消事件
 		cancel_event = DataSyncProgressEvent(
@@ -2219,7 +2224,7 @@ async def _execute_async_data_sync (
 		logger.info(f"[后台任务] 获取独立数据库会话: {task_id}")
 		session_manager = get_session_manager()
 		async with session_manager.get_session() as session:
-			sync_service = DataSyncService(session, event_engine, cancel_token=cancel_token)
+			sync_service = DataSyncService(session, event_engine, cancel_token=cancel_token, task_id=task_id)
 			logger.info(f"[后台任务] 数据库会话已创建, 准备更新状态: {task_id}")
 			sync_task_repo = DataSyncTaskRepository(session)
 
