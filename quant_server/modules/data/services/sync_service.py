@@ -1466,7 +1466,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(f"[日行情] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[日行情] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				daily_df = await asyncio.to_thread(
@@ -1566,7 +1566,7 @@ class DataSyncService:
 
 			# 每处理5只股票提交一次
 			if (idx + 1) % 5 == 0:
-				logger.info(f"[分钟行情] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[分钟行情] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -1630,7 +1630,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(f"[资金流向] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[资金流向] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				df = await self._run_in_executor(source.get_moneyflow, ts_code=ts_code, start_date=s_str, end_date=e_str)
@@ -1708,7 +1708,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(f"[复权因子] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[复权因子] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				df = await self._run_in_executor(source.get_adj_factor, symbol=ts_code, start_date=s_str, end_date=e_str)
@@ -1784,7 +1784,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(f"[每日指标] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[每日指标] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				df = await self._run_in_executor(source.get_daily_basic, symbol=ts_code, start_date=s_str, end_date=e_str)
@@ -1889,7 +1889,7 @@ class DataSyncService:
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		try:
 			df = await self._run_in_executor(source.get_etf_index, )
 			if df is not None and not df.empty:
@@ -1906,7 +1906,9 @@ class DataSyncService:
 							try:
 								await self.etf_index_repo.update_by({"ts_code":item.get("ts_code",""),"pub_date":item.get("pub_date",None)}, item)
 								records_updated += 1
-							except Exception: records_failed += 1
+							except Exception as _ue:
+								logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+								records_failed += 1
 						else:
 							logger.warning(f"[ETF指?数] 写入失败: {_e}")
 							records_failed += 1
@@ -1970,7 +1972,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 100 == 0 or idx == 0:
-				logger.info(f"[ETF日线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[ETF日线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				df = await self._run_in_executor(source.get_etf_daily, etf_code=ts_code, start_date=s_str, end_date=e_str)
@@ -2265,7 +2267,7 @@ class DataSyncService:
 
 			# 每处理5只ETF提交一次
 			if (idx + 1) % 5 == 0:
-				logger.info(f"[ETF分钟] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[ETF分钟] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -2327,7 +2329,7 @@ class DataSyncService:
 			e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 100 == 0 or idx == 0:
-				logger.info(f"[基金复权因子] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added}")
+				logger.info(f"[基金复权因子] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
 				df = await self._run_in_executor(source.get_etf_adj_factor, etf_code=ts_code, start_date=s_str, end_date=e_str)
@@ -2760,7 +2762,9 @@ class DataSyncService:
 						await self.st_list_repo.create(item); records_added += 1
 					except Exception:
 						try: await self.st_list_repo.update_by({"ts_code":item["ts_code"],"trade_date":item["trade_date"]},item)
-						except Exception: records_failed += 1
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
 			await self.session.commit()
 			return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,"total_items":records_added+records_failed,"message":"ST股票列表同步完成"}
 		except Exception as e:
@@ -2808,7 +2812,7 @@ class DataSyncService:
 					for item in data: item = _clean_nan_values(item); item['ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
 			except Exception as e: logger.error(f"管理层 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[管理层] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[管理层] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			if self.cancel_token and self.cancel_token.is_set(): break
 			await self._update_progress(task_id, current_item=f"管理层: {ts_code}", user_id=user_id)
@@ -2856,7 +2860,7 @@ class DataSyncService:
 					for item in data: item = _clean_nan_values(item); item['ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
 			except Exception as e: logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[薪酬] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[薪酬] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			if self.cancel_token and self.cancel_token.is_set(): break
 			await self._update_progress(task_id, current_item=f"管理层薪酬: {ts_code}", user_id=user_id)
@@ -2907,7 +2911,7 @@ class DataSyncService:
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"周线 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[周线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				logger.info(f"[周线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 跳过={records_skipped} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"周线: {idx+1}/{len(ts_codes)}", user_id=user_id)
 		await self.session.commit()
@@ -2955,7 +2959,7 @@ class DataSyncService:
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"月线 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[月线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				logger.info(f"[月线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 跳过={records_skipped} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"月线: {idx+1}/{len(ts_codes)}", user_id=user_id)
 		await self.session.commit()
@@ -3034,7 +3038,7 @@ class DataSyncService:
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"指数日线 {index_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[指数日线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				logger.info(f"[指数日线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 跳过={records_skipped} 失败={records_failed}")
 				await self.session.commit()
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_skipped":records_skipped,"records_failed":records_failed,"total_items":records_added+records_updated+records_skipped+records_failed,"message":"指数日线行情同步完成"}
@@ -3113,7 +3117,7 @@ class DataSyncService:
 
 			# 每处理一只股票提交一次
 			if (idx + 1) % 1 == 0:
-				logger.info(f"[Tick] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[Tick] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -3153,7 +3157,7 @@ class DataSyncService:
 		if not end_date: end_date = datetime.now().date()
 		if not start_date: start_date = end_date - timedelta(days=30)
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		try:
@@ -3171,7 +3175,9 @@ class DataSyncService:
 							try:
 								await self.suspend_info_repo.update_by({"ts_code":item.get("ts_code",""),"suspend_type":item.get("suspend_type",None)}, item)
 								records_updated += 1
-							except Exception: records_failed += 1
+							except Exception as _ue:
+								logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+								records_failed += 1
 						else:
 							logger.warning(f"[停复牌] 写入失败: {_e}")
 							records_failed += 1
@@ -3236,14 +3242,16 @@ class DataSyncService:
 								try:
 									await self.etf_share_repo.update_by({"ts_code":item.get("ts_code",""),"trade_date":item.get("trade_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[ETF份额] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"ETF份额 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx + 1) % 5 == 0:
-				logger.info(f"[ETF份额] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[ETF份额] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"ETF份额: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3281,7 +3289,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set(): break
@@ -3301,14 +3309,16 @@ class DataSyncService:
 								try:
 									await self.forecast_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[业绩预告] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"业绩预告 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[业绩预告] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[业绩预告] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩预告: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3343,7 +3353,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set(): break
@@ -3363,14 +3373,16 @@ class DataSyncService:
 								try:
 									await self.express_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[业绩快报] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"业绩快报 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[业绩快报] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[业绩快报] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩快报: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3404,7 +3416,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set(): break
@@ -3423,14 +3435,16 @@ class DataSyncService:
 								try:
 									await self.dividend_repo.update_by({"ts_code":item.get("ts_code",""),"ann_date":item.get("ann_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[分红送股] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"分红送股 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[分红送股] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[分红送股] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"分红送股: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3467,7 +3481,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段（如 dt_eps → eps 不匹配）
 		known_cols = {c.name for c in StockFinaIndicator.__table__.columns}
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
@@ -3493,14 +3507,16 @@ class DataSyncService:
 								try:
 									await self.fina_indicator_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[财务指标] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"财务指标 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[财务指标] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[财务指标] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"财务指标: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3537,7 +3553,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段
 		known_cols = {c.name for c in StockAuditOpinion.__table__.columns}
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
@@ -3565,14 +3581,16 @@ class DataSyncService:
 								try:
 									await self.audit_opinion_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
 									records_updated += 1
-								except Exception: records_failed += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
 							else:
 								logger.warning(f"[审计意见] 写入失败: {_e}")
 								records_failed += 1
 
 			except Exception as e: logger.error(f"审计意见 {ts_code} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[审计意见] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[审计意见] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"审计意见: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -3609,7 +3627,7 @@ class DataSyncService:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added, records_failed = 0, 0
+		records_added, records_updated, records_failed = 0, 0, 0
 		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段
 		known_cols = {c.name for c in StockBusinessIncome.__table__.columns}
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
@@ -3635,14 +3653,16 @@ class DataSyncService:
 									try:
 										await self.business_income_repo.update_by({"ts_code":item.get("ts_code",""),"end_date":item.get("end_date",None)}, item)
 										records_updated += 1
-									except Exception: records_failed += 1
+									except Exception as _ue:
+										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+										records_failed += 1
 								else:
 									logger.warning(f"[主营业务] 写入失败: {_e}")
 									records_failed += 1
 
 				except Exception as e: logger.error(f"主营业务构成 {ts_code}/{btype} 同步失败: {e}"); records_failed += 1
 			if (idx+1)%10==0:
-				logger.info(f"[主营业务] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				logger.info(f"[主营业务] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"主营业务构成: {ts_code}", user_id=user_id)
 		await self.session.commit()
