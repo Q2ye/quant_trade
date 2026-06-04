@@ -1044,8 +1044,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步日行情数据"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1179,8 +1177,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步资金流向数据"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1245,10 +1241,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步复权因子"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(
-			start_date, end_date, ts_codes
-		)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1290,8 +1282,7 @@ class DataSyncService:
 				logger.error(f"复权因子 {ts_code} 失败: {e}")
 				records_failed += 1
 
-			await self._update_progress(task_id,
-				current_item=f"复权因子: {ts_code}", user_id=user_id)
+			await self._update_progress(task_id, current_item=f"复权因子: {ts_code}", user_id=user_id)
 			if (idx + 1) % 10 == 0: await self.session.commit()
 
 		await self.session.commit()
@@ -1313,8 +1304,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步每日指标数据"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_stocks(start_date, end_date, ts_codes)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1450,10 +1439,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步ETF日线行情"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_etfs(
-			start_date, end_date, ts_codes
-		)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1782,10 +1767,6 @@ class DataSyncService:
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""同步基金复权因子"""
-		start_date, end_date, ts_codes = await self._get_date_range_and_etfs(
-			start_date, end_date, ts_codes
-		)
-
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
