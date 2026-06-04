@@ -1506,8 +1506,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
 				logger.info(
@@ -1674,8 +1677,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
 				logger.info(
@@ -1757,8 +1763,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
 				logger.info(
@@ -1838,8 +1847,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 500 == 0 or idx == 0:
 				logger.info(
@@ -2031,8 +2043,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 100 == 0 or idx == 0:
 				logger.info(
@@ -2395,8 +2410,11 @@ class DataSyncService:
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
 
-			s_str = s_date.strftime('%Y%m%d') if s_date else ''
-			e_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				s_str = ''; e_str = ''
+			else:
+				s_str = s_date.strftime('%Y%m%d') if s_date else ''
+				e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 			if (idx + 1) % 100 == 0 or idx == 0:
 				logger.info(
@@ -3010,8 +3028,11 @@ class DataSyncService:
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date,
 			                                                           self.stock_weekly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
-			end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				start_date_str = ''; end_date_str = ''
+			else:
+				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
+				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
 				df = await self._run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
@@ -3073,8 +3094,11 @@ class DataSyncService:
 			s_date, e_date, mode = await self._resolve_sync_date_range(ts_code, start_date, end_date,
 			                                                           self.stock_monthly_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
-			end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
+			if mode == 'full':
+				start_date_str = ''; end_date_str = ''
+			else:
+				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
+				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
 				df = await self._run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
@@ -3178,16 +3202,23 @@ class DataSyncService:
 			all_indices = await self.index_basic_repo.get_all()
 			ts_codes = [idx.ts_code for idx in all_indices] if all_indices else ['000001.SH', '399001.SZ', '000300.SH',
 			                                                                     '000905.SH', '399006.SZ']
+
 		for idx, index_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			s_date, e_date, mode = await self._resolve_sync_date_range(index_code, start_date, end_date,
 			                                                           self.index_daily_repo)
 			if mode == "up_to_date": records_skipped += 1; continue
-			start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
-			end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
+
 			try:
-				df = await self._run_in_executor(source.get_index_daily, ts_code=index_code, start_date=start_date_str,
-				                                 end_date=end_date_str)
+				# full 模式不传日期参数，让 Tushare 返回全部可用数据（最早 1993-07-14）
+				# 其他模式传日期范围做增量/重叠查询
+				if mode == "full":
+					df = await self._run_in_executor(source.get_index_daily, ts_code=index_code)
+				else:
+					start_date_str = s_date.strftime('%Y%m%d') if s_date else ''
+					end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
+					df = await self._run_in_executor(source.get_index_daily, ts_code=index_code,
+					                                 start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
