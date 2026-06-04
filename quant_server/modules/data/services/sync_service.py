@@ -1184,51 +1184,32 @@ class DataSyncService:
 
 	@staticmethod
 	async def _process_trade_date_data(
+			self,
 			repo,
 			data: List[Dict],
-			ts_code: str
+			ts_code: str,
+			full_mode: bool = False,
 	) -> Tuple[int, int]:
-		"""
-		处理带有 trade_date 字段的数据（日线/资金流向/复权因子等的通用处理逻辑）。
+		"""处理 trade_date 数据，full_mode 走批量插入，否则逐条 upsert。"""
+		for item in data:
+			item['trade_date'] = _convert_to_date(item.get('trade_date'))
 
-		对每条数据：
-		1. 将 trade_date 转换为 Python date 对象（兼容 pandas Timestamp/字符串格式）
-		2. 通过 repo 查询是否已存在该日期的记录
-		3. 已存在 → 更新（优先使用 ``update_by`` 方法，fallback 到 ``update(id)``）
-		4. 不存在 → 创建新记录
+		if full_mode and hasattr(repo, 'batch_insert'):
+			inserted = await repo.batch_insert(data)
+			return inserted, 0
 
-		方法标记为 ``@staticmethod``，不依赖实例状态，可复用。
-
-		Args:
-			repo: Repository 实例，需实现 ``get_by_trade_date(ts_code, trade_date)``
-				和 ``create``/``update``/``update_by`` 方法。
-			data: 从数据源拉取的记录列表（已通过 ``_convert_records_datetime`` 转换、
-				``_clean_nan_values`` 清洗）。
-			ts_code: 当前处理的股票代码。
-
-		Returns:
-			Tuple[int, int]: ``(records_added, records_updated)``
-		"""
 		records_added = 0
 		records_updated = 0
 		for item in data:
-			# 统一 trade_date 为 Python date 类型
-			trade_date = _convert_to_date(item.get('trade_date'))
-			item['trade_date'] = trade_date
-
-			# 查询该股票在该日是否已有数据
+			trade_date = item['trade_date']
 			existing_list = await repo.get_by_trade_date(
-				ts_code=ts_code,
-				trade_date=trade_date
+				ts_code=ts_code, trade_date=trade_date
 			)
 			existing = existing_list[0] if existing_list else None
 			if existing:
-				# 优先使用 update_by（复合键更新，如 ETF 表），
-				# 失败则回退到 update(id)（自增主键更新，如股票表）
 				try:
 					await repo.update_by(
-						{"ts_code": existing.ts_code, "trade_date": existing.trade_date},
-						item
+						{"ts_code": existing.ts_code, "trade_date": existing.trade_date}, item
 					)
 				except AttributeError:
 					await repo.update(existing.id, item)
@@ -1523,9 +1504,12 @@ class DataSyncService:
 				)
 				if not daily_df.empty:
 					daily_data = _convert_records_datetime(daily_df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.stock_daily_repo, daily_data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.stock_daily_repo, daily_data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -1692,9 +1676,12 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.stock_moneyflow_repo, data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.stock_moneyflow_repo, data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -1778,9 +1765,12 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.stock_adj_factor_repo, data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.stock_adj_factor_repo, data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -1862,9 +1852,12 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.stock_daily_basic_repo, data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.stock_daily_basic_repo, data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -2058,9 +2051,12 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.etf_daily_repo, data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.etf_daily_repo, data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -2425,9 +2421,12 @@ class DataSyncService:
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated, skipped = await self._process_trade_date_data(
-						self.fund_adj_factor_repo, data, ts_code, mode=mode
+					added, updated = await self._process_trade_date_data(
+						self.fund_adj_factor_repo, data, ts_code, full_mode=(mode == "full")
 					)
+					
+					skipped = 0
+
 					records_added += added;
 					records_updated += updated;
 					records_skipped += skipped
@@ -3038,7 +3037,7 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
+					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code, full_mode=(mode == "full"))
 					skipped = 0
 					records_added += added;
 					records_updated += updated;
@@ -3104,7 +3103,7 @@ class DataSyncService:
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
+					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code, full_mode=(mode == "full"))
 					skipped = 0
 					records_added += added;
 					records_updated += updated;
@@ -3221,7 +3220,7 @@ class DataSyncService:
 					                                 start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
-					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
+					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code, full_mode=(mode == "full"))
 					skipped = 0
 					records_added += added;
 					records_updated += updated;
