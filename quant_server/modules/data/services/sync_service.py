@@ -327,6 +327,26 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 	return estimates.get(data_type, 100)
 
 
+def _preprocess_records (records, date_fields=(), known_cols=None):
+    """一趟完成：pandas 类型转换 + NaN 清洗 + 日期转换 + 列过滤。"""
+    for record in records:
+        for key, value in list(record.items()):
+            if isinstance(value, pd.Timestamp):
+                record[key] = value.to_pydatetime()
+            elif isinstance(value, float) and math.isnan(value):
+                record[key] = None
+            elif value is not None and hasattr(pd, 'isna') and pd.isna(value):
+                record[key] = None
+        for field in date_fields:
+            if record.get(field):
+                record[field] = _convert_to_date(record[field])
+        if known_cols:
+            for key in list(record.keys()):
+                if key not in known_cols:
+                    del record[key]
+    return records
+
+
 class DataSyncService:
 	"""
 	数据同步服务（无状态 Service）。
@@ -1182,7 +1202,6 @@ class DataSyncService:
 			ts_codes = [etf.ts_code for etf in etfs]
 		return start_date, end_date, ts_codes
 
-	@staticmethod
 	async def _process_trade_date_data(
 			self,
 			repo,
@@ -1192,7 +1211,7 @@ class DataSyncService:
 		"""批量 upsert trade_date 数据。所有 repo 继承 BaseRepository.batch_upsert。"""
 		for item in data:
 			item['trade_date'] = _convert_to_date(item.get('trade_date'))
-		count = await repo.batch_upsert(data)
+		count = await repo.bulk_upsert(data)
 		return count, 0
 
 	async def _create_sync_task(
@@ -1936,7 +1955,7 @@ class DataSyncService:
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
 				if hasattr(self.etf_index_repo, "batch_upsert"):
-					records_added += await self.etf_index_repo.batch_upsert(data)
+					records_added += await self.etf_index_repo.bulk_upsert(data)
 				else:
 					for item in data:
 						item = _clean_nan_values(item)
@@ -2634,7 +2653,7 @@ class DataSyncService:
 					raise ValueError(f"未知财务报表类型: {report_type}")
 
 				if hasattr(self.financial_statement_repo, "batch_upsert"):
-					records_added += await self.financial_statement_repo.batch_upsert(data)
+					records_added += await self.financial_statement_repo.bulk_upsert(data)
 				else:
 					for item in data:
 						item["report_type"] = report_type
@@ -2779,7 +2798,7 @@ class DataSyncService:
 				        "message": "公司信息同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
 			if hasattr(self.company_repo, "batch_upsert"):
-				records_added += await self.company_repo.batch_upsert(data)
+				records_added += await self.company_repo.bulk_upsert(data)
 			else:
 				for item in data:
 					item = _clean_nan_values(item)
@@ -2834,7 +2853,7 @@ class DataSyncService:
 			                     "message": "ST列表同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
 			if hasattr(self.st_list_repo, "batch_upsert"):
-				records_added += await self.st_list_repo.batch_upsert(data)
+				records_added += await self.st_list_repo.bulk_upsert(data)
 			else:
 				for item in data:
 					item = _clean_nan_values(item)
@@ -2903,7 +2922,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.manager_repo, "batch_upsert"):
-						records_added += await self.manager_repo.batch_upsert(data)
+						records_added += await self.manager_repo.bulk_upsert(data)
 					else:
 						for item in data: item = _clean_nan_values(item); item[
 							'ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
@@ -2961,7 +2980,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.reward_repo, "batch_upsert"):
-						records_added += await self.reward_repo.batch_upsert(data)
+						records_added += await self.reward_repo.bulk_upsert(data)
 					else:
 						for item in data: item = _clean_nan_values(item); item[
 							'ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
@@ -3144,7 +3163,7 @@ class DataSyncService:
 				data = _convert_records_datetime(df.to_dict('records'))
 
 				if hasattr(self.index_basic_repo, "batch_upsert"):
-					records_added += await self.index_basic_repo.batch_upsert(data)
+					records_added += await self.index_basic_repo.bulk_upsert(data)
 				else:
 					for item in data:
 						item = _clean_nan_values(item)
@@ -3355,7 +3374,7 @@ class DataSyncService:
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
 				if hasattr(self.suspend_info_repo, "batch_upsert"):
-					records_added += await self.suspend_info_repo.batch_upsert(data)
+					records_added += await self.suspend_info_repo.bulk_upsert(data)
 				else:
 					for item in data:
 						item = _clean_nan_values(item)
@@ -3429,7 +3448,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.etf_share_repo, "batch_upsert"):
-						records_added += await self.etf_share_repo.batch_upsert(data)
+						records_added += await self.etf_share_repo.bulk_upsert(data)
 					else:
 						for item in data:
 							item = _clean_nan_values(item)
@@ -3504,7 +3523,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.forecast_repo, "batch_upsert"):
-						records_added += await self.forecast_repo.batch_upsert(data)
+						records_added += await self.forecast_repo.bulk_upsert(data)
 					else:
 						for item in data:
 							item = _clean_nan_values(item)
@@ -3576,7 +3595,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.express_repo, "batch_upsert"):
-						records_added += await self.express_repo.batch_upsert(data)
+						records_added += await self.express_repo.bulk_upsert(data)
 					else:
 						for item in data:
 							item = _clean_nan_values(item)
@@ -3647,7 +3666,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.dividend_repo, "batch_upsert"):
-						records_added += await self.dividend_repo.batch_upsert(data)
+						records_added += await self.dividend_repo.bulk_upsert(data)
 					else:
 						for item in data:
 							item = _clean_nan_values(item)
@@ -3725,31 +3744,26 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.fina_indicator_repo, "batch_upsert"):
-						records_added += await self.fina_indicator_repo.batch_upsert(data)
+						records_added += await self.fina_indicator_repo.bulk_upsert(data)
 					else:
-						for item in data:
-							item = _clean_nan_values(item)
-							if item.get('ann_date'): item['ann_date'] = _convert_to_date(item['ann_date'])
-							if item.get('end_date'): item['end_date'] = _convert_to_date(item['end_date'])
-							# 过滤 Tushare 返回但 ORM 模型中不存在的字段（如 dt_* 前缀字段）
-							item = {k: v for k, v in item.items() if k in known_cols}
-							try:
-								await self.fina_indicator_repo.create(item)
-								records_added += 1
-							except Exception as _e:
-								if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
-									try:
-										await self.fina_indicator_repo.update_by(
-											{"ts_code": item.get("ts_code", ""),
-											 "end_date": item.get("end_date", None)},
-											item)
-										records_updated += 1
-									except Exception as _ue:
-										logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
-										records_failed += 1
-								else:
-									logger.warning(f"[财务指标] 写入失败: {_e}")
+						_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
+						try:
+							await self.fina_indicator_repo.create(item)
+							records_added += 1
+						except Exception as _e:
+							if "unique" in str(_e).lower() or "duplicate" in str(_e).lower():
+								try:
+									await self.fina_indicator_repo.update_by(
+										{"ts_code": item.get("ts_code", ""),
+										 "end_date": item.get("end_date", None)},
+										item)
+									records_updated += 1
+								except Exception as _ue:
+									logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
 									records_failed += 1
+							else:
+								logger.warning(f"[财务指标] 写入失败: {_e}")
+								records_failed += 1
 
 			except Exception as e:
 				logger.error(f"财务指标 {ts_code} 同步失败: {e}");
@@ -3808,7 +3822,7 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.audit_opinion_repo, "batch_upsert"):
-						records_added += await self.audit_opinion_repo.batch_upsert(data)
+						records_added += await self.audit_opinion_repo.bulk_upsert(data)
 					else:
 						for item in data:
 							item = _clean_nan_values(item)
@@ -3889,7 +3903,7 @@ class DataSyncService:
 					if not df.empty:
 						data = _convert_records_datetime(df.to_dict('records'))
 						if hasattr(self.business_income_repo, "batch_upsert"):
-							records_added += await self.business_income_repo.batch_upsert(data)
+							records_added += await self.business_income_repo.bulk_upsert(data)
 						else:
 							for item in data:
 								item = _clean_nan_values(item)

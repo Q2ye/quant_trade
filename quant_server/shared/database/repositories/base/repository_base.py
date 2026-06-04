@@ -350,10 +350,10 @@ class BaseRepository(Generic[T]):
 
 	# ==================== 批量 upsert ====================
 
-	async def batch_upsert (self, records: List[Dict[str, Any]], chunk_size: int = 1000) -> int:
+	async def bulk_upsert (self, records: List[Dict[str, Any]], chunk_size: int = 1000) -> int:
 		"""
 		批量 upsert（INSERT ... ON CONFLICT DO UPDATE），自动从 model 提取冲突键和更新列。
-		替代逐条 create+update_by，全量/增量通用，一次 SQL 处理整批数据。
+		与 batch_upsert(match_fields, data_list) 不同，本方法只需传 records，自动推断冲突键。
 
 		Args:
 			records: 记录列表（dict 格式）
@@ -369,7 +369,7 @@ class BaseRepository(Generic[T]):
 		from sqlalchemy import UniqueConstraint
 
 		# --- 提取冲突键（缓存，1μs） ---
-		cache_key = '_batch_upsert_conflict_cols'
+		cache_key = '_bulk_upsert_conflict_cols'
 		if not hasattr(self, cache_key):
 			conflict_cols = None
 			# 1. 从 __table_args__ 的 UniqueConstraint 提取
@@ -396,7 +396,7 @@ class BaseRepository(Generic[T]):
 		conflict_cols = getattr(self, cache_key)
 
 		# --- 提取更新列（排除 PK 和 created_at，缓存） ---
-		cache_key2 = '_batch_upsert_update_cols'
+		cache_key2 = '_bulk_upsert_update_cols'
 		if not hasattr(self, cache_key2):
 			exclude = set(conflict_cols) | {'created_at'}
 			update_cols = [c.name for c in self.model.__table__.columns
