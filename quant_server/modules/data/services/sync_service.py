@@ -1566,6 +1566,7 @@ class DataSyncService:
 
 			# 每处理5只股票提交一次
 			if (idx + 1) % 5 == 0:
+				logger.info(f"[分钟行情] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -2264,6 +2265,7 @@ class DataSyncService:
 
 			# 每处理5只ETF提交一次
 			if (idx + 1) % 5 == 0:
+				logger.info(f"[ETF分钟] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -2587,6 +2589,8 @@ class DataSyncService:
 				records_failed += 1
 
 			await self._update_progress(task_id, current_item=f"处理 {ts_code}", user_id=user_id)
+			if (idx + 1) % 10 == 0:
+				logger.info(f"[财务报表-{report_type}] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 			await self.session.commit()
 
 		return {
@@ -2803,7 +2807,9 @@ class DataSyncService:
 					data = _convert_records_datetime(df.to_dict('records'))
 					for item in data: item = _clean_nan_values(item); item['ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
 			except Exception as e: logger.error(f"管理层 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[管理层] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			if self.cancel_token and self.cancel_token.is_set(): break
 			await self._update_progress(task_id, current_item=f"管理层: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -2849,7 +2855,9 @@ class DataSyncService:
 					data = _convert_records_datetime(df.to_dict('records'))
 					for item in data: item = _clean_nan_values(item); item['ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
 			except Exception as e: logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[薪酬] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			if self.cancel_token and self.cancel_token.is_set(): break
 			await self._update_progress(task_id, current_item=f"管理层薪酬: {ts_code}", user_id=user_id)
 		await self.session.commit()
@@ -2898,7 +2906,9 @@ class DataSyncService:
 					added, updated, skipped = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code, mode=mode)
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"周线 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[周线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"周线: {idx+1}/{len(ts_codes)}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_skipped":records_skipped,"records_failed":records_failed,"total_items":records_added+records_updated+records_skipped+records_failed,"message":"周线行情同步完成"}
@@ -2944,7 +2954,9 @@ class DataSyncService:
 					added, updated, skipped = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code, mode=mode)
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"月线 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[月线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"月线: {idx+1}/{len(ts_codes)}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_skipped":records_skipped,"records_failed":records_failed,"total_items":records_added+records_updated+records_skipped+records_failed,"message":"月线行情同步完成"}
@@ -3021,7 +3033,9 @@ class DataSyncService:
 					added, updated, skipped = await self._process_trade_date_data(self.index_daily_repo, data, index_code, mode="overlap")
 					records_added += added; records_updated += updated; records_skipped += skipped
 			except Exception as e: logger.error(f"指数日线 {index_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[指数日线] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 跳过={records_skipped} 失败={records_failed}")
+				await self.session.commit()
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":records_updated,"records_skipped":records_skipped,"records_failed":records_failed,"total_items":records_added+records_updated+records_skipped+records_failed,"message":"指数日线行情同步完成"}
 
@@ -3099,6 +3113,7 @@ class DataSyncService:
 
 			# 每处理一只股票提交一次
 			if (idx + 1) % 1 == 0:
+				logger.info(f"[Tick] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
 				await self.session.commit()
 
 		await self.session.commit()
@@ -3200,6 +3215,7 @@ class DataSyncService:
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
+		records_failed = 0
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
 		for idx, ts_code in enumerate(ts_codes):
 			if self.cancel_token and self.cancel_token.is_set():
@@ -3226,7 +3242,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"ETF份额 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx + 1) % 5 == 0: await self.session.commit()
+			if (idx + 1) % 5 == 0:
+				logger.info(f"[ETF份额] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"ETF份额: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {
@@ -3289,7 +3307,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"业绩预告 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[业绩预告] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩预告: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
@@ -3349,7 +3369,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"业绩快报 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[业绩快报] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"业绩快报: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
@@ -3407,7 +3429,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"分红送股 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[分红送股] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"分红送股: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
@@ -3475,7 +3499,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"财务指标 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[财务指标] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"财务指标: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
@@ -3545,7 +3571,9 @@ class DataSyncService:
 								records_failed += 1
 
 			except Exception as e: logger.error(f"审计意见 {ts_code} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[审计意见] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"审计意见: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
@@ -3613,7 +3641,9 @@ class DataSyncService:
 									records_failed += 1
 
 				except Exception as e: logger.error(f"主营业务构成 {ts_code}/{btype} 同步失败: {e}"); records_failed += 1
-			if (idx+1)%10==0: await self.session.commit()
+			if (idx+1)%10==0:
+				logger.info(f"[主营业务] {idx+1}/{len(ts_codes)} ({(idx+1)/len(ts_codes)*100:.0f}%) 新增={records_added} 失败={records_failed}")
+				await self.session.commit()
 			await self._update_progress(task_id, current_item=f"主营业务构成: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added":records_added,"records_updated":0,"records_failed":records_failed,
