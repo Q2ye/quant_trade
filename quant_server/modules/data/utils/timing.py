@@ -59,7 +59,7 @@ class SyncTimingLogger:
         data_type: str,
         *,
         step_interval: int = 500,
-        slow_threshold: float = 5.0,
+        slow_threshold: float = 10.0,
     ):
         """初始化耗时记录器。
 
