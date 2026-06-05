@@ -385,6 +385,7 @@ class DataSyncService:
 			event_engine: Optional[EventEngine] = None,
 			cancel_token=None,  # asyncio.Event
 			task_id: Optional[str] = None,
+			executor=None,  # 可选：共享线程池（batch_sync_data 场景复用）
 	):
 		"""
 		初始化数据同步服务。
@@ -473,13 +474,18 @@ class DataSyncService:
 		# worker 数量从配置文件 settings.ENGINES.max_workers 读取，默认 8。
 		from shared.config.config_manager import get_config
 		cfg = get_config()
-		self._max_workers = getattr(getattr(cfg, 'settings', None), 'ENGINES', None)
-		self._max_workers = getattr(self._max_workers, 'max_workers', None) if self._max_workers else None
-		self._max_workers = self._max_workers or 16  # I/O密集型，默认16
-		self._executor = ThreadPoolExecutor(
-			max_workers=self._max_workers,
-			thread_name_prefix="sync_"  # 便于调试时识别线程来源
-		)
+		if executor:
+			self._executor = executor
+			self._own_executor = False  # 共享线程池，不由本实例关闭
+		else:
+			self._max_workers = getattr(getattr(cfg, 'settings', None), 'ENGINES', None)
+			self._max_workers = getattr(self._max_workers, 'max_workers', None) if self._max_workers else None
+			self._max_workers = self._max_workers or 16  # I/O密集型，默认16
+			self._executor = ThreadPoolExecutor(
+				max_workers=self._max_workers,
+				thread_name_prefix="sync_"  # 便于调试时识别线程来源
+			)
+			self._own_executor = True
 
 		# ========== 缓存和数据源工厂 ==========
 		self.source_factory = DataSourceFactory()  # 统一数据源适配器工厂
@@ -910,13 +916,16 @@ class DataSyncService:
 
 		batch_task_id = f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 		sem = _asyncio.Semaphore(3)  # 最多 3 种类型并行
+		# 共享线程池：避免每个子任务创建独立 ThreadPoolExecutor
+		import concurrent.futures as _cf
+		shared_executor = _cf.ThreadPoolExecutor(max_workers=16, thread_name_prefix="batch_sync_")
 
 		async def _sync_one(task, idx):
 			async with sem:
 				from shared.database.session import get_session_manager
 				sm = get_session_manager()
 				async with sm.get_session() as session:
-					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id)
+					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id, executor=shared_executor)
 					try:
 						dt = DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(
 							task.data_type)
@@ -943,6 +952,8 @@ class DataSyncService:
 		try:
 			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
 			results = await _asyncio.gather(*coros)
+		finally:
+			shared_executor.shutdown(wait=False)  # 不等待未完成任务，它们已经 gather 完成
 
 			total_records = sum(
 				r.get("records_added", 0) + r.get("records_updated", 0) + r.get("records_failed", 0) for r in results)
@@ -1280,8 +1291,7 @@ class DataSyncService:
 			ts_code: str,
 	) -> Tuple[int, int]:
 		"""批量 upsert trade_date 数据。注意：PG ON CONFLICT DO UPDATE 将 INSERT+UPDATE 都计入 rowcount，因此返回值不分 added/updated，第二项固定为 0。"""
-		for item in data:
-			item['trade_date'] = _convert_to_date(item.get('trade_date'))
+		_preprocess_records(data, date_fields=['trade_date'])  # 批量转换，替代逐条遍历
 		count = await repo.bulk_upsert(data)
 		return count, 0
 
@@ -4145,7 +4155,16 @@ class DataSyncService:
 		import time as _t
 
 		progress_key = CacheKey.SYNC_PROGRESS.format(task_id=task_id)
-		# 读取现有进度（增量更新，不覆盖其他字段）
+
+		# ===== 节流：实例变量替代缓存读取，避免每次调用读缓存 =====
+		now = _t.time()
+		last_write = getattr(self, '_last_progress_write', 0.0)
+		is_complete = (progress is not None and progress >= 100)
+		if not is_complete and (now - last_write) < 1.0:
+			return  # 1秒内不重复写，直接跳过（省一次 cache GET + JSON parse）
+		self._last_progress_write = now
+
+		# ===== 仅在需要写入时读取缓存 =====
 		current_progress_raw = await self.cache.get(progress_key)
 		if current_progress_raw:
 			try:
@@ -4155,7 +4174,6 @@ class DataSyncService:
 		else:
 			current_progress = {}
 
-		# 确保必要字段存在
 		current_progress.setdefault("progress", 0)
 		current_progress.setdefault("current_task", "")
 		current_progress.setdefault("estimated_time_remaining", None)
@@ -4165,13 +4183,8 @@ class DataSyncService:
 		if current_item:
 			current_progress["current_task"] = current_item
 
-		# 节流写入：最多每秒写入一次，100% 完成时总是写入
-		now = _t.time()
-		last_write = current_progress.get("_last_cache_write", 0)
-		is_complete = (progress is not None and progress >= 100)
-		if is_complete or (now - last_write) >= 1.0:
-			current_progress["_last_cache_write"] = now
-			await self.cache.set(progress_key, json.dumps(current_progress, default=str), ttl=3600)
+		# 总是写入（已通过节流到达此处）
+		await self.cache.set(progress_key, json.dumps(current_progress, default=str), ttl=3600)
 
 	async def _publish_sync_event(
 			self,
