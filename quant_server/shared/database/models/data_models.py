@@ -1006,6 +1006,54 @@ class EtfShare(Base):
 	)
 
 
+class MacroCpi(Base):
+    """CPI居民消费价格指数月度数据"""
+    __tablename__ = 'macro_cpi'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    month = Column(String(6), nullable=False, unique=True, comment='月份YYYYMM')
+    nt_val = Column(Numeric(10, 4), comment='全国当月值')
+    nt_yoy = Column(Numeric(10, 4), comment='全国同比(%)')
+    nt_mom = Column(Numeric(10, 4), comment='全国环比(%)')
+    nt_accu = Column(Numeric(10, 4), comment='全国累计值')
+    town_val = Column(Numeric(10, 4), comment='城市当月值')
+    town_yoy = Column(Numeric(10, 4), comment='城市同比(%)')
+    town_mom = Column(Numeric(10, 4), comment='城市环比(%)')
+    town_accu = Column(Numeric(10, 4), comment='城市累计值')
+    cnt_val = Column(Numeric(10, 4), comment='农村当月值')
+    cnt_yoy = Column(Numeric(10, 4), comment='农村同比(%)')
+    cnt_mom = Column(Numeric(10, 4), comment='农村环比(%)')
+    cnt_accu = Column(Numeric(10, 4), comment='农村累计值')
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class MacroPpi(Base):
+    """PPI工业生产者出厂价格指数月度数据"""
+    __tablename__ = 'macro_ppi'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    month = Column(String(6), nullable=False, unique=True, comment='月份YYYYMM')
+    nt_val = Column(Numeric(10, 4), comment='全国当月值')
+    nt_yoy = Column(Numeric(10, 4), comment='全国同比(%)')
+    nt_mom = Column(Numeric(10, 4), comment='全国环比(%)')
+    nt_accu = Column(Numeric(10, 4), comment='全国累计值')
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class MacroGdp(Base):
+    """GDP国内生产总值季度数据"""
+    __tablename__ = 'macro_gdp'
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    quarter = Column(String(6), nullable=False, unique=True, comment='季度YYYYQ1~Q4')
+    gdp = Column(Numeric(18, 4), comment='GDP总额(亿元)')
+    gdp_yoy = Column(Numeric(10, 4), comment='GDP同比(%)')
+    pi = Column(Numeric(18, 4), comment='第一产业增加值(亿元)')
+    si = Column(Numeric(18, 4), comment='第二产业增加值(亿元)')
+    ti = Column(Numeric(18, 4), comment='第三产业增加值(亿元)')
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class StockSuspendInfo(Base):
 	"""股票停复牌信息表"""
 	__tablename__ = 'stock_suspend_info'

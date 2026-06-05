@@ -935,7 +935,7 @@ class DataSyncService:
 						logger.info(f"[批量同步 #{idx + 1}] {task.data_type}: 新增={ra} 更新={ru} 失败={rf}")
 						return sr.model_dump()
 					except Exception as e:
-						logger.error(f"[批量同步 #{idx + 1}] {task.data_type} 失败: {e}")
+						logger.error(f"[批量同步 #{idx + 1}] {task.data_type} 失败: {e}", exc_info=True)
 						return SyncResult(data_type=task.data_type, success=False,
 						                  start_time=datetime.now(), end_time=datetime.now(),
 						                  error_message=str(e)).model_dump()
@@ -1649,7 +1649,7 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[分钟行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -2317,9 +2317,12 @@ class DataSyncService:
 				if hasattr(source, 'get_cpi'):
 					cpi_df = await self._cancellable_run_in_executor(source.get_cpi, start_date=start_date, end_date=end_date)
 					if not cpi_df.empty:
+						from shared.database.repositories.market.macro import MacroCpiRepository
+						cpi_repo = MacroCpiRepository(self.session)
 						cpi_data = _convert_records_datetime(cpi_df.to_dict('records'))
-						records_added += len(cpi_data)
-						logger.info(f"CPI数据同步完成，共 {len(cpi_data)} 条记录")
+						written = await cpi_repo.bulk_upsert(cpi_data)
+						records_added += written
+						logger.info(f"CPI数据同步完成，共 {written} 条记录")
 				else:
 					logger.warning(f"数据源不支持CPI数据同步")
 					records_failed += 1
@@ -2328,9 +2331,12 @@ class DataSyncService:
 				if hasattr(source, 'get_ppi'):
 					ppi_df = await self._cancellable_run_in_executor(source.get_ppi, start_date=start_date, end_date=end_date)
 					if not ppi_df.empty:
+						from shared.database.repositories.market.macro import MacroPpiRepository
+						ppi_repo = MacroPpiRepository(self.session)
 						ppi_data = _convert_records_datetime(ppi_df.to_dict('records'))
-						records_added += len(ppi_data)
-						logger.info(f"PPI数据同步完成，共 {len(ppi_data)} 条记录")
+						written = await ppi_repo.bulk_upsert(ppi_data)
+						records_added += written
+						logger.info(f"PPI数据同步完成，共 {written} 条记录")
 				else:
 					logger.warning(f"数据源不支持PPI数据同步")
 					records_failed += 1
@@ -2339,9 +2345,12 @@ class DataSyncService:
 				if hasattr(source, 'get_gdp'):
 					gdp_df = await self._cancellable_run_in_executor(source.get_gdp, start_date=start_date, end_date=end_date)
 					if not gdp_df.empty:
+						from shared.database.repositories.market.macro import MacroGdpRepository
+						gdp_repo = MacroGdpRepository(self.session)
 						gdp_data = _convert_records_datetime(gdp_df.to_dict('records'))
-						records_added += len(gdp_data)
-						logger.info(f"GDP数据同步完成，共 {len(gdp_data)} 条记录")
+						written = await gdp_repo.bulk_upsert(gdp_data)
+						records_added += written
+						logger.info(f"GDP数据同步完成，共 {written} 条记录")
 				else:
 					logger.warning(f"数据源不支持GDP数据同步")
 					records_failed += 1
@@ -2488,7 +2497,7 @@ class DataSyncService:
 		records_added = 0
 		records_failed = 0
 
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[ETF分钟] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止ETF分钟同步")
@@ -2799,7 +2808,7 @@ class DataSyncService:
 		records_updated = 0
 		records_failed = 0
 
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[财务报表] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		async with SyncTimingLogger(logger, f"financial_{report_type}") as timer:
 			for idx, ts_code in enumerate(ts_codes):
 				# 取消检查
@@ -3077,7 +3086,7 @@ class DataSyncService:
 		records_added = 0;
 		records_updated = 0;
 		records_failed = 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[管理层] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
@@ -3134,7 +3143,7 @@ class DataSyncService:
 		records_added = 0;
 		records_updated = 0;
 		records_failed = 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[薪酬] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
@@ -3151,11 +3160,10 @@ class DataSyncService:
 						records_added += await self.reward_repo.bulk_upsert(data)
 					else:
 						_preprocess_records(data)
-						for item in data: item[
-							for item in data:
-								if 'ts_code' not in item:
-									item['ts_code'] = ts_code
-								await self.reward_repo.create(item); records_added += 1
+						for item in data:
+							if 'ts_code' not in item:
+								item['ts_code'] = ts_code
+							await self.reward_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}");
 				records_failed += 1
@@ -3197,7 +3205,7 @@ class DataSyncService:
 		records_failed = 0
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock
 		                                                                                       in stocks]
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[周线行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
@@ -3264,7 +3272,7 @@ class DataSyncService:
 		records_failed = 0
 		if not ts_codes: stocks = await self.stock_basic_repo.get_active_stocks(); ts_codes = [stock.ts_code for stock
 		                                                                                       in stocks]
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[月线行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning(f"检测到取消信号，中止同步 (已处理 {idx}/{len(ts_codes)})")
@@ -3459,7 +3467,7 @@ class DataSyncService:
 		records_added = 0
 		records_failed = 0
 
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[逐笔行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -3604,7 +3612,7 @@ class DataSyncService:
 		records_added = 0
 		records_updated = 0
 		records_failed = 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[ETF份额] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止ETF份额同步")
@@ -3681,7 +3689,7 @@ class DataSyncService:
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_updated, records_failed = 0, 0, 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[业绩预告] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -3751,7 +3759,7 @@ class DataSyncService:
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_updated, records_failed = 0, 0, 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[业绩快报] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -3820,7 +3828,7 @@ class DataSyncService:
 			ts_codes = [s.ts_code for s in stocks]
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_updated, records_failed = 0, 0, 0
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[分红送股] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -3896,7 +3904,7 @@ class DataSyncService:
 		known_cols = {c.name for c in StockFinaIndicator.__table__.columns}
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[财务指标] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
@@ -3972,7 +3980,7 @@ class DataSyncService:
 		known_cols = {c.name for c in StockAuditOpinion.__table__.columns}
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[审计意见] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止审计意见同步")
@@ -4049,7 +4057,7 @@ class DataSyncService:
 		records_added, records_updated, records_failed = 0, 0, 0
 		# 获取 ORM 模型的已知列名，过滤 Tushare 返回的多余字段
 		known_cols = {c.name for c in StockBusinessIncome.__table__.columns}
-		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
+		logger.info(f"[主营业务收入] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
 				logger.warning("检测到取消信号，中止主营业务构成同步")

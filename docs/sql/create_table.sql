@@ -405,6 +405,65 @@ COMMENT ON COLUMN stk_rewards.created_at IS '数据入库时间（自动记录�
 COMMENT ON COLUMN stk_rewards.updated_at IS '数据最后更新时间（自动更新）';
 
 -- ------------------------------------------------------------
+-- 宏观经济数据表
+-- ------------------------------------------------------------
+
+-- CPI 居民消费价格指数
+CREATE TABLE macro_cpi (
+    id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid(),
+    month VARCHAR(6) NOT NULL,
+    nt_val NUMERIC(10, 4),
+    nt_yoy NUMERIC(10, 4),
+    nt_mom NUMERIC(10, 4),
+    nt_accu NUMERIC(10, 4),
+    town_val NUMERIC(10, 4),
+    town_yoy NUMERIC(10, 4),
+    town_mom NUMERIC(10, 4),
+    town_accu NUMERIC(10, 4),
+    cnt_val NUMERIC(10, 4),
+    cnt_yoy NUMERIC(10, 4),
+    cnt_mom NUMERIC(10, 4),
+    cnt_accu NUMERIC(10, 4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(month)
+);
+COMMENT ON TABLE macro_cpi IS 'CPI居民消费价格指数月度数据';
+COMMENT ON COLUMN macro_cpi.month IS '月份（YYYYMM）';
+COMMENT ON COLUMN macro_cpi.nt_val IS '全国当月值';
+COMMENT ON COLUMN macro_cpi.nt_yoy IS '全国同比(%)';
+COMMENT ON COLUMN macro_cpi.nt_mom IS '全国环比(%)';
+
+-- PPI 工业生产者出厂价格指数
+CREATE TABLE macro_ppi (
+    id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid(),
+    month VARCHAR(6) NOT NULL,
+    nt_val NUMERIC(10, 4),
+    nt_yoy NUMERIC(10, 4),
+    nt_mom NUMERIC(10, 4),
+    nt_accu NUMERIC(10, 4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(month)
+);
+COMMENT ON TABLE macro_ppi IS 'PPI工业生产者出厂价格指数月度数据';
+COMMENT ON COLUMN macro_ppi.month IS '月份（YYYYMM）';
+
+-- GDP 国内生产总值
+CREATE TABLE macro_gdp (
+    id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid(),
+    quarter VARCHAR(6) NOT NULL,
+    gdp NUMERIC(18, 4),
+    gdp_yoy NUMERIC(10, 4),
+    pi NUMERIC(18, 4),
+    si NUMERIC(18, 4),
+    ti NUMERIC(18, 4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(quarter)
+);
+COMMENT ON TABLE macro_gdp IS 'GDP国内生产总值季度数据';
+COMMENT ON COLUMN macro_gdp.quarter IS '季度（YYYYQ1~YYYYQ4）';
+COMMENT ON COLUMN macro_gdp.gdp IS 'GDP总额（亿元）';
+
+-- ------------------------------------------------------------
 -- 1.3 账户相关表
 -- ------------------------------------------------------------
 

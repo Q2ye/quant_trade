@@ -165,6 +165,28 @@ class IndexDailyRepository(BaseRepository[IndexDaily]):
 		latest = await self.get_latest_by_ts_code(ts_code)
 		return latest.trade_date if latest else None
 
+	async def get_latest_trade_dates_batch(
+			self,
+			ts_codes: list
+	) -> dict:
+		"""批量获取多只指数的最新交易日（一次 SQL 查询）。"""
+		from sqlalchemy import func
+
+		if not ts_codes:
+			return {}
+
+		query = (
+			select(self.model.ts_code, func.max(self.model.trade_date))
+			.where(self.model.ts_code.in_(ts_codes))
+			.group_by(self.model.ts_code)
+		)
+		result = await self.session.execute(query)
+		mapping = {row[0]: row[1] for row in result.fetchall()}
+		for code in ts_codes:
+			if code not in mapping:
+				mapping[code] = None
+		return mapping
+
 	async def get_by_trade_date (self, ts_code: str, trade_date: date) -> List[IndexDaily]:
 		"""
 		按指数代码和交易日期查询记录（用于 _process_trade_date_data 去重）。
