@@ -299,17 +299,6 @@ export enum DataSource {
   CUSTOM = "custom",
 }
 
-export enum DataType {
-  STOCK_BASIC = "stock_basic",
-  STOCK_DAILY = "stock_daily",
-  STOCK_MINUTE = "stock_minute",
-  STOCK_FINANCIAL = "stock_financial",
-  ETF_BASIC = "etf_basic",
-  ETF_DAILY = "etf_daily",
-  INDEX_DAILY = "index_daily",
-  MONEY_FLOW = "money_flow",
-  FACTOR_DATA = "factor_data",
-}
 
 export enum SyncTaskStatus {
   PENDING = "pending",
@@ -671,4 +660,4 @@ export interface ThrottleOptions {
 
 export const TradingEnums = { OrderType, OrderStatus, OrderDirection, PositionSide, TradeType } as const;
 export const StrategyEnums = { StrategyStatus, StrategyType, StrategyCategory, BacktestStatus, SignalType } as const;
-export const SystemEnums = { DataSource, DataType, SyncTaskStatus, LogLevel, HealthStatus } as const;
+export const SystemEnums = { DataSource, SyncTaskStatus, LogLevel, HealthStatus } as const;

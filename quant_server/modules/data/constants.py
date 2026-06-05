@@ -453,6 +453,13 @@ class DataType(str, Enum):
 	# 通用
 	CALENDAR = "calendar"  # 交易日历
 
+	# 宏观经济
+	CPI = "cpi"  # 居民消费价格指数
+	PPI = "ppi"  # 工业生产者出厂价格指数
+	GDP = "gdp"  # 国内生产总值
+	INDEX_WEIGHT = "index_weight"  # 指数成分股权重
+	INDEX_WEEKLY = "index_weekly"  # 指数周线行情
+
 	# 其他
 	HOLDERS_DATA = "holders_data"  # 股东数据
 	SPLIT_DATA = "split_data"  # 拆分数据

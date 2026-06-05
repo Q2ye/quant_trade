@@ -626,3 +626,22 @@ class ManagerRepository(BaseRepository[StkManager]):
 			'education_stats': education_stats,
 			'gender_stats': gender_stats
 		}
+
+	# ==================== 批量操作 ====================
+
+	async def delete_by_ts_code(self, ts_code: str) -> int:
+		"""批量删除指定股票的所有管理层记录（一次 SQL）。
+
+		用于数据同步中 "先删后插" 策略，替换逐条 DELETE 的循环。
+
+		Args:
+			ts_code: 股票代码
+
+		Returns:
+			int: 删除的记录数
+		"""
+		from sqlalchemy import delete as sql_delete
+		stmt = sql_delete(self.model).where(self.model.ts_code == ts_code)
+		result = await self.session.execute(stmt)
+		await self.session.flush()
+		return result.rowcount or 0

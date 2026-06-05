@@ -808,6 +808,13 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False, is_available=False),
 	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False, is_available=False),
 	"tick_quotes":            DataTypeInfo(code="tick_quotes",            name="逐笔行情",     description="⚠️股票逐笔成交明细（数据量极大，仅手动同步）", estimated_time=600, requires_clean=False, is_core=False, is_available=False),
+    # ===== 宏观数据 =====
+    "cpi":                   DataTypeInfo(code="cpi",                   name="CPI",          description="居民消费价格指数月度数据",                     estimated_time=10,  requires_clean=False, is_core=False),
+    "ppi":                   DataTypeInfo(code="ppi",                   name="PPI",          description="工业生产者出厂价格指数月度数据",               estimated_time=10,  requires_clean=False, is_core=False),
+    "gdp":                   DataTypeInfo(code="gdp",                   name="GDP",          description="国内生产总值季度数据",                         estimated_time=10,  requires_clean=False, is_core=False),
+    # ===== 指数扩展 =====
+    "index_weight":          DataTypeInfo(code="index_weight",          name="指数成分权重", description="指数成分股及权重分布数据",                     estimated_time=30,  requires_clean=False, is_core=False),
+    "index_weekly":          DataTypeInfo(code="index_weekly",          name="指数周线行情", description="指数周K线行情数据",                             estimated_time=20,  requires_clean=True,  is_core=False),
 }
 
 

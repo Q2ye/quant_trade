@@ -40,7 +40,7 @@ delete from stock_daily_basic;
 -- 个股资金流向表
 select * from stock_moneyflow;
 select count(*) from stock_moneyflow;
-
+delete from stock_moneyflow;
 -- 加唯一约束
 ALTER TABLE stock_moneyflow
 ADD CONSTRAINT uq_stock_moneyflow_code_date UNIQUE (ts_code, trade_date);
@@ -102,11 +102,4 @@ CHECK (status = ANY (ARRAY['pending', 'running', 'completed', 'failed', 'cancell
 SELECT conname, pg_get_constraintdef(oid)
 FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
-select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a'
-
-
-
-
-
-
-
+select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';

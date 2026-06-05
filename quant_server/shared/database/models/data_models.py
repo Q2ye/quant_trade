@@ -108,7 +108,7 @@ class StkManager(Base):
 
 	# 关联关系
 	company = relationship("StockCompany", back_populates="managers")
-	rewards = relationship("StkReward", back_populates="manager", cascade="all, delete-orphan")
+	# rewards relationship removed — StkReward now has direct ts_code FK
 
 
 class StkReward(Base):
@@ -116,17 +116,19 @@ class StkReward(Base):
 	__tablename__ = 'stk_rewards'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='薪酬ID')
-	manager_id = Column(String(36), ForeignKey('stk_managers.id'), index=True, comment='管理层ID')
+	ts_code = Column(String(20), ForeignKey('stock_company.ts_code'), nullable=False, index=True,
+                 comment='TS股票代码')
 	ann_date = Column(DateTime, nullable=False, comment='公告日期')
 	end_date = Column(DateTime, nullable=False, comment='截止日期')
+	name = Column(String(50), nullable=False, comment='高层姓名')
+	title = Column(String(100), nullable=False, comment='担任职务')
 	reward = Column(Numeric(18, 2), nullable=False, comment='报酬')
 	hold_vol = Column(BigInteger, nullable=False, comment='持股数')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
-	# 关联关系
-	manager = relationship("StkManager", back_populates="rewards")
+	# manager relationship removed — StkReward now uses direct ts_code FK
 
 
 # ==================== 行情数据 ====================

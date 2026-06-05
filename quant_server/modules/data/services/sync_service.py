@@ -145,6 +145,7 @@ from shared.database.repositories.market.governance.reward_repo import RewardRep
 from shared.database.repositories.market.quote.stock_monthly_repo import StockMonthlyRepository
 from shared.database.repositories.market.quote.stock_weekly_repo import StockWeeklyRepository
 from shared.sources.source_factory import DataSourceFactory
+from modules.data.utils.timing import SyncTimingLogger
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -526,6 +527,13 @@ class DataSyncService:
 			DataType.BUSINESS_INCOME: self._sync_business_income,
 			# 通用
 			DataType.CALENDAR: self._sync_trade_calendar,
+			# 宏观经济
+			DataType.CPI: self._sync_cpi,
+			DataType.PPI: self._sync_ppi,
+			DataType.GDP: self._sync_gdp,
+			# 指数扩展
+			DataType.INDEX_WEIGHT: self._sync_index_weight,
+			DataType.INDEX_WEEKLY: self._sync_index_weekly,
 		}
 
 	@property
@@ -1074,6 +1082,60 @@ class DataSyncService:
 			functools.partial(fn, *args, **kwargs)  # partial 避免 lambda 闭包陷阱
 		)
 
+	async def _cancellable_run_in_executor(self, fn, *args, poll_interval: float = 3.0, **kwargs):
+		"""
+		可取消的线程池执行器——在阻塞任务执行期间定期检查取消令牌。
+
+		与 ``_run_in_executor`` 的区别：本方法通过 ``asyncio.wait_for`` 配合
+		短超时轮询，每隔 ``poll_interval`` 秒检查一次取消状态，在用户请求取消时
+		能快速响应（最坏延迟 = ``poll_interval``）。
+
+		**实现原理**：:
+		    1. 将同步函数 fn 提交到 ThreadPoolExecutor（与 _run_in_executor 相同）
+		    2. 通过 ``asyncio.shield(future)`` 防止 timeout 取消内部 future
+		    3. 每隔 poll_interval 秒检查一次 ``_is_cancelled()``
+		    4. 取消时抛出 ``asyncio.CancelledError``（外层循环捕获并 break）
+
+		**限制**：无法真正 kill OS 线程（Python GIL 限制），但 asyncio 层立即抛异常，
+		外层 loop 正常 break。已在 OS 线程中运行的 HTTP 请求会自然完成但结果被丢弃。
+
+		Args:
+			fn: 同步函数（如 ``source.get_daily``）
+			*args: 位置参数
+			poll_interval: 取消检查间隔（秒，默认 3.0）
+			**kwargs: 关键字参数
+
+		Returns:
+			fn 的返回值
+
+		Raises:
+			asyncio.CancelledError: 任务被用户取消
+		"""
+		import functools
+
+		loop = asyncio.get_event_loop()
+		future = loop.run_in_executor(
+			self._executor,
+			functools.partial(fn, *args, **kwargs),
+		)
+
+		while not future.done():
+			try:
+				# shield 防止 wait_for 超时取消内部的 future
+				return await asyncio.wait_for(asyncio.shield(future), timeout=poll_interval)
+			except asyncio.TimeoutError:
+				if await self._is_cancelled():
+					# 尽力取消 asyncio 层包装（OS 线程会继续运行直到 finish，但结果被丢弃）
+					future.cancel()
+					raise asyncio.CancelledError("sync task cancelled by user")
+			except asyncio.CancelledError:
+				# 传递取消信号
+				future.cancel()
+				raise
+
+		# future 已经完成，直接取结果（不阻塞）
+		return future.result()
+
 	async def _is_cancelled(self) -> bool:
 		"""
 		双重取消检查：先查 token（asyncio.Event），失败则回退到 DB 查询。
@@ -1101,6 +1163,8 @@ class DataSyncService:
 
 	async def _resolve_sync_date_range(
 			self, ts_code: str, start_date: Optional[date], end_date: Optional[date], repo,
+			latest_dates_map: Optional[Dict[str, Optional[date]]] = None,
+			stock_list_date_map: Optional[Dict[str, Optional[date]]] = None,
 	) -> Tuple[Optional[date], Optional[date], str]:
 		"""
 		智能确定同步日期范围，返回 (start_date, end_date, mode)。
@@ -1129,7 +1193,10 @@ class DataSyncService:
 		if not end_date:
 			end_date = datetime.now().date()
 		# 查询数据库中该股票的最新交易日期
-		latest_date = await repo.get_latest_trade_date(ts_code)
+		if latest_dates_map is not None:
+			latest_date = latest_dates_map.get(ts_code)
+		else:
+			latest_date = await repo.get_latest_trade_date(ts_code)
 		if latest_date is None:
 			# 数据库中无记录 → 全量同步
 			if not start_date:
@@ -1469,55 +1536,69 @@ class DataSyncService:
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
+		else:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+
+		# 批量预加载：一次 SQL 获取所有股票的最新日期（替代逐股查询）
+		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
+		latest_dates_map = await self.stock_daily_repo.get_latest_trade_dates_batch(ts_codes)
 
 		logger.info(f"[日行情] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		for idx, ts_code in enumerate(ts_codes):
-			if await self._is_cancelled():
-				logger.warning(f"取消,中止日行情 (已处理 {idx}/{len(ts_codes)})")
-				break
+		async with SyncTimingLogger(logger, "daily_quotes") as timer:
+			for idx, ts_code in enumerate(ts_codes):
+				if await self._is_cancelled():
+					logger.warning(f"取消,中止日行情 (已处理 {idx}/{len(ts_codes)})")
+					break
 
-			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_daily_repo
-			)
-			mode_summary[mode] = mode_summary.get(mode, 0) + 1
-			if mode == "up_to_date": records_skipped += 1; continue
-
-			if mode == 'full':
-				s_str = '';
-				e_str = ''
-			else:
-				s_str = s_date.strftime('%Y%m%d') if s_date else ''
-				e_str = e_date.strftime('%Y%m%d') if e_date else ''
-
-			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(
-					f"[日行情] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
-
-			try:
-				daily_df = await asyncio.to_thread(
-					source.get_daily, symbol=ts_code,
-					start_date=s_str, end_date=e_str
-				)
-				if not daily_df.empty:
-					daily_data = _convert_records_datetime(daily_df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_daily_repo, daily_data, ts_code
+				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE):
+					s_date, e_date, mode = await self._resolve_sync_date_range(
+						ts_code, start_date, end_date, self.stock_daily_repo,
+						latest_dates_map=latest_dates_map,
+						stock_list_date_map=stock_list_date_map
 					)
-					records_added += added;
-					records_updated += updated
-					skipped = 0
-					records_skipped += skipped
-			except Exception as e:
-				logger.error(f"日行情 {ts_code} 失败: {e}")
-				records_failed += 1
+				mode_summary[mode] = mode_summary.get(mode, 0) + 1
+				if mode == "up_to_date": records_skipped += 1; continue
 
-			await self._update_progress(task_id,
-			                            progress=min(100, int((idx + 1) / len(ts_codes) * 100)),
-			                            current_item=f"日行情: {idx + 1}/{len(ts_codes)}", user_id=user_id)
-			if (idx + 1) % 10 == 0: await self.session.commit()
+				if mode == 'full':
+					s_str = '';
+					e_str = ''
+				else:
+					s_str = s_date.strftime('%Y%m%d') if s_date else ''
+					e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
-		await self.session.commit()
-		logger.info(f"[日行情] 完成: 新增={records_added} 跳过={records_skipped} 模式={mode_summary}")
+				try:
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
+						daily_df = await self._cancellable_run_in_executor(
+							source.get_daily, symbol=ts_code,
+							start_date=s_str, end_date=e_str
+						)
+					if not daily_df.empty:
+						async with timer.node(SyncTimingLogger.NODE_CONVERT):
+							daily_data = _convert_records_datetime(daily_df.to_dict("records"))
+						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT):
+							added, updated = await self._process_trade_date_data(
+								self.stock_daily_repo, daily_data, ts_code
+							)
+						records_added += added;
+						records_updated += updated
+						skipped = 0
+						records_skipped += skipped
+				except Exception as e:
+					logger.error(f"日行情 {ts_code} 失败: {e}")
+					records_failed += 1
+
+				async with timer.node(SyncTimingLogger.NODE_PROGRESS):
+					await self._update_progress(task_id,
+					                            progress=min(100, int((idx + 1) / len(ts_codes) * 100)),
+					                            current_item=f"日行情: {idx + 1}/{len(ts_codes)}", user_id=user_id)
+				if (idx + 1) % 10 == 0:
+					async with timer.node(SyncTimingLogger.NODE_COMMIT):
+						await self.session.commit()
+				if (idx + 1) % 500 == 0:
+					timer.step_summary(idx + 1)
+
+			await self.session.commit()
+			logger.info(f"[日行情] 完成: 新增={records_added} 跳过={records_skipped} 模式={mode_summary}")
 		return {
 			"records_added": records_added, "records_updated": records_updated,
 			"records_skipped": records_skipped, "records_failed": records_failed,
@@ -1572,7 +1653,7 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				minute_df = await self._run_in_executor(source.get_minute_bar, symbol=ts_code,
+				minute_df = await self._cancellable_run_in_executor(source.get_minute_bar, symbol=ts_code,
 				                                        start_date=start_date_str,
 				                                        end_date=end_date_str,
 				                                        freq=freq)
@@ -1643,52 +1724,66 @@ class DataSyncService:
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
+		else:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+
+		# 批量预加载：一次 SQL 获取所有股票的最新日期（替代逐股查询）
+		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
+		latest_dates_map = await self.stock_moneyflow_repo.get_latest_trade_dates_batch(ts_codes)
 
 		logger.info(f"[资金流向] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		for idx, ts_code in enumerate(ts_codes):
-			if await self._is_cancelled():
-				logger.warning("取消,中止资金流向 (已处理 {idx}/{len(ts_codes)})")
-				break
+		async with SyncTimingLogger(logger, "moneyflow") as timer:
+			for idx, ts_code in enumerate(ts_codes):
+				if await self._is_cancelled():
+					logger.warning(f"取消,中止资金流向 (已处理 {idx}/{len(ts_codes)})")
+					break
 
-			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_moneyflow_repo
-			)
-			mode_summary[mode] = mode_summary.get(mode, 0) + 1
-			if mode == "up_to_date": records_skipped += 1; continue
-
-			if mode == 'full':
-				s_str = '';
-				e_str = ''
-			else:
-				s_str = s_date.strftime('%Y%m%d') if s_date else ''
-				e_str = e_date.strftime('%Y%m%d') if e_date else ''
-
-			if (idx + 1) % 500 == 0 or idx == 0:
-				logger.info(
-					f"[资金流向] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
-
-			try:
-				df = await self._run_in_executor(source.get_moneyflow, symbol=ts_code, start_date=s_str,
-				                                 end_date=e_str)
-				if not df.empty:
-					data = _convert_records_datetime(df.to_dict("records"))
-					added, updated = await self._process_trade_date_data(
-						self.stock_moneyflow_repo, data, ts_code
+				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE):
+					s_date, e_date, mode = await self._resolve_sync_date_range(
+						ts_code, start_date, end_date, self.stock_moneyflow_repo,
+						latest_dates_map=latest_dates_map,
+						stock_list_date_map=stock_list_date_map
 					)
-					records_added += added;
-					records_updated += updated
-					skipped = 0
-					records_skipped += skipped
-			except Exception as e:
-				logger.error(f"资金流向 {ts_code} 失败: {e}")
-				records_failed += 1
+				mode_summary[mode] = mode_summary.get(mode, 0) + 1
+				if mode == "up_to_date": records_skipped += 1; continue
 
-			await self._update_progress(task_id,
-			                            current_item=f"资金流向: {ts_code}", user_id=user_id)
-			if (idx + 1) % 10 == 0: await self.session.commit()
+				if mode == 'full':
+					s_str = '';
+					e_str = ''
+				else:
+					s_str = s_date.strftime('%Y%m%d') if s_date else ''
+					e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
-		await self.session.commit()
-		logger.info(f"[资金流向] 完成: 新增={records_added} 跳过={records_skipped} 模式={mode_summary}")
+				try:
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
+						df = await self._cancellable_run_in_executor(source.get_moneyflow, symbol=ts_code,
+						                                             start_date=s_str, end_date=e_str)
+					if not df.empty:
+						async with timer.node(SyncTimingLogger.NODE_CONVERT):
+							data = _convert_records_datetime(df.to_dict("records"))
+						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT):
+							added, updated = await self._process_trade_date_data(
+								self.stock_moneyflow_repo, data, ts_code
+							)
+						records_added += added;
+						records_updated += updated
+						skipped = 0
+						records_skipped += skipped
+				except Exception as e:
+					logger.error(f"资金流向 {ts_code} 失败: {e}")
+					records_failed += 1
+
+				async with timer.node(SyncTimingLogger.NODE_PROGRESS):
+					await self._update_progress(task_id,
+					                            current_item=f"资金流向: {ts_code}", user_id=user_id)
+				if (idx + 1) % 10 == 0:
+					async with timer.node(SyncTimingLogger.NODE_COMMIT):
+						await self.session.commit()
+				if (idx + 1) % 500 == 0:
+					timer.step_summary(idx + 1)
+
+			await self.session.commit()
+			logger.info(f"[资金流向] 完成: 新增={records_added} 跳过={records_skipped} 模式={mode_summary}")
 		return {
 			"records_added": records_added, "records_updated": records_updated,
 			"records_skipped": records_skipped, "records_failed": records_failed,
@@ -1739,7 +1834,9 @@ class DataSyncService:
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_adj_factor_repo
+				ts_code, start_date, end_date, self.stock_adj_factor_repo,
+				latest_dates_map=latest_dates_map,
+				stock_list_date_map=stock_list_date_map
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -1756,7 +1853,7 @@ class DataSyncService:
 					f"[复权因子] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
-				df = await self._run_in_executor(source.get_adj_factor, symbol=ts_code, start_date=s_str,
+				df = await self._cancellable_run_in_executor(source.get_adj_factor, symbol=ts_code, start_date=s_str,
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
@@ -1825,7 +1922,9 @@ class DataSyncService:
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_daily_basic_repo
+				ts_code, start_date, end_date, self.stock_daily_basic_repo,
+				latest_dates_map=latest_dates_map,
+				stock_list_date_map=stock_list_date_map
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -1842,7 +1941,7 @@ class DataSyncService:
 					f"[每日指标] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
-				df = await self._run_in_executor(source.get_daily_basic, symbol=ts_code, start_date=s_str,
+				df = await self._cancellable_run_in_executor(source.get_daily_basic, symbol=ts_code, start_date=s_str,
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
@@ -1897,7 +1996,7 @@ class DataSyncService:
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		etf_df = await self._run_in_executor(source.get_etf_basic, )
+		etf_df = await self._cancellable_run_in_executor(source.get_etf_basic, )
 		# 将DataFrame转换为字典列表并确保键为字符串类型
 		etf_list = _convert_records_datetime(etf_df.to_dict('records')) if not etf_df.empty else []
 		records_added = 0
@@ -1951,7 +2050,7 @@ class DataSyncService:
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_updated, records_failed = 0, 0, 0
 		try:
-			df = await self._run_in_executor(source.get_etf_index, )
+			df = await self._cancellable_run_in_executor(source.get_etf_index, )
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
 				if hasattr(self.etf_index_repo, "batch_upsert"):
@@ -2025,7 +2124,9 @@ class DataSyncService:
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.etf_daily_repo
+				ts_code, start_date, end_date, self.etf_daily_repo,
+				latest_dates_map=latest_dates_map,
+				stock_list_date_map=stock_list_date_map
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -2042,7 +2143,7 @@ class DataSyncService:
 					f"[ETF日线] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
-				df = await self._run_in_executor(source.get_etf_daily, etf_code=ts_code, start_date=s_str,
+				df = await self._cancellable_run_in_executor(source.get_etf_daily, etf_code=ts_code, start_date=s_str,
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
@@ -2138,7 +2239,7 @@ class DataSyncService:
 
 				if hasattr(source, 'get_index_weight'):
 					# Tushare 路径：使用 index_weight 接口获取真实权重
-					weight_df = await self._run_in_executor(source.get_index_weight, index_code=idx_code,
+					weight_df = await self._cancellable_run_in_executor(source.get_index_weight, index_code=idx_code,
 					                                        trade_date=trade_date_obj.strftime('%Y%m%d')
 					                                        )
 					if not weight_df.empty:
@@ -2152,7 +2253,7 @@ class DataSyncService:
 							})
 				elif hasattr(source, 'get_index_constituents'):
 					# Baostock 路径：获取成分股列表（等权）
-					stocks = await self._run_in_executor(source.get_index_constituents, index_code=idx_code)
+					stocks = await self._cancellable_run_in_executor(source.get_index_constituents, index_code=idx_code)
 					if stocks:
 						n = len(stocks)
 						w = 1.0 / n
@@ -2214,7 +2315,7 @@ class DataSyncService:
 			if macro_type == 'cpi':
 				# 同步CPI数据
 				if hasattr(source, 'get_cpi'):
-					cpi_df = await self._run_in_executor(source.get_cpi, start_date=start_date, end_date=end_date)
+					cpi_df = await self._cancellable_run_in_executor(source.get_cpi, start_date=start_date, end_date=end_date)
 					if not cpi_df.empty:
 						cpi_data = _convert_records_datetime(cpi_df.to_dict('records'))
 						records_added += len(cpi_data)
@@ -2225,7 +2326,7 @@ class DataSyncService:
 			elif macro_type == 'ppi':
 				# 同步PPI数据
 				if hasattr(source, 'get_ppi'):
-					ppi_df = await self._run_in_executor(source.get_ppi, start_date=start_date, end_date=end_date)
+					ppi_df = await self._cancellable_run_in_executor(source.get_ppi, start_date=start_date, end_date=end_date)
 					if not ppi_df.empty:
 						ppi_data = _convert_records_datetime(ppi_df.to_dict('records'))
 						records_added += len(ppi_data)
@@ -2236,7 +2337,7 @@ class DataSyncService:
 			elif macro_type == 'gdp':
 				# 同步GDP数据
 				if hasattr(source, 'get_gdp'):
-					gdp_df = await self._run_in_executor(source.get_gdp, start_date=start_date, end_date=end_date)
+					gdp_df = await self._cancellable_run_in_executor(source.get_gdp, start_date=start_date, end_date=end_date)
 					if not gdp_df.empty:
 						gdp_data = _convert_records_datetime(gdp_df.to_dict('records'))
 						records_added += len(gdp_data)
@@ -2258,6 +2359,78 @@ class DataSyncService:
 			"total_items": records_added + records_failed,
 			"message": f"宏观经济数据 {macro_type} 同步完成"
 		}
+
+	# ==================== 宏观数据 wrapper ====================
+
+	async def _sync_cpi(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步 CPI 居民消费价格指数。"""
+		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		return await self.sync_macro_data('cpi', start_str, end_str)
+
+	async def _sync_ppi(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步 PPI 工业生产者出厂价格指数。"""
+		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		return await self.sync_macro_data('ppi', start_str, end_str)
+
+	async def _sync_gdp(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步 GDP 国内生产总值。"""
+		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		return await self.sync_macro_data('gdp', start_str, end_str)
+
+	# ==================== 指数扩展 sync 方法 ====================
+
+	async def _sync_index_weight(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步指数成分股权重。"""
+		trade_date_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		return await self.sync_index_weight(trade_date=trade_date_str)
+
+	async def _sync_index_weekly(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步指数周线行情（Tushare index_weekly 接口）。"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0; records_failed = 0
+		default_indices = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ']
+		indices = ts_codes if ts_codes else default_indices
+		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		for idx_code in indices:
+			try:
+				if hasattr(source, 'get_index_weekly'):
+					df = await self._cancellable_run_in_executor(source.get_index_weekly, ts_code=idx_code,
+					                                        start_date=start_str, end_date=end_str)
+					if not df.empty:
+						records_added += len(df)
+				else:
+					records_failed += 1
+			except Exception as e:
+				logger.error(f"指数周线 {idx_code} 同步失败: {e}")
+				records_failed += 1
+		return {"records_added": records_added, "records_updated": 0,
+		        "records_failed": records_failed,
+		        "total_items": records_added + records_failed,
+		        "message": f"指数周线行情同步完成: 新增={records_added}"}
 
 	async def async_sync_stock_quotes(
 			self,
@@ -2324,7 +2497,7 @@ class DataSyncService:
 				start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 				end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-				minute_df = await self._run_in_executor(source.get_etf_historical_minute, etf_code=ts_code,
+				minute_df = await self._cancellable_run_in_executor(source.get_etf_historical_minute, etf_code=ts_code,
 				                                        start_date=start_date_str,
 				                                        end_date=end_date_str,
 				                                        freq=freq)
@@ -2411,7 +2584,7 @@ class DataSyncService:
 					f"[基金复权因子] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
-				df = await self._run_in_executor(source.get_etf_adj_factor, etf_code=ts_code, start_date=s_str,
+				df = await self._cancellable_run_in_executor(source.get_etf_adj_factor, etf_code=ts_code, start_date=s_str,
 				                                 end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
@@ -2627,61 +2800,64 @@ class DataSyncService:
 		records_failed = 0
 
 		logger.info(f"[进度] 开始处理 {len(ts_codes)} 只标的")
-		for idx, ts_code in enumerate(ts_codes):
-			# 取消检查
-			if await self._is_cancelled():
-				logger.warning(f"检测到取消信号，中止财务报表同步 (已处理 {idx}/{len(ts_codes)})")
-				break
+		async with SyncTimingLogger(logger, f"financial_{report_type}") as timer:
+			for idx, ts_code in enumerate(ts_codes):
+				# 取消检查
+				if await self._is_cancelled():
+					logger.warning(f"检测到取消信号，中止财务报表同步 (已处理 {idx}/{len(ts_codes)})")
+					break
 
-			try:
-				# 根据report_type调用不同的数据接口
-				if report_type == "income":
-					data_df = await self._run_in_executor(source.get_income_statement, symbol=ts_code, period='')
-					data = _convert_records_datetime(
-						data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
-				elif report_type == "balance":
-					data_df = await self._run_in_executor(source.get_balance_sheet, symbol=ts_code, period='')
-					data = _convert_records_datetime(
-						data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
-				elif report_type == "cashflow":
-					data_df = await self._run_in_executor(source.get_cashflow_statement, symbol=ts_code, period='')
-					data = _convert_records_datetime(
-						data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
-				else:
-					raise ValueError(f"未知财务报表类型: {report_type}")
-
-				if hasattr(self.financial_statement_repo, "batch_upsert"):
-					records_added += await self.financial_statement_repo.bulk_upsert(data)
-				else:
-					for item in data:
-						item["report_type"] = report_type
-						item['ann_date'] = _convert_to_datetime(item.get('ann_date'))
-						item['end_date'] = _convert_to_datetime(item.get('end_date'))
-						if item.get('f_ann_date') and isinstance(item['f_ann_date'], str):
-							item['f_ann_date'] = _convert_to_datetime(item['f_ann_date'])
-						# 过滤 Tushare 返回但 ORM 模型中不存在的字段
-						item = {k: v for k, v in item.items() if k in known_cols}
-
-						existing = await self.financial_statement_repo.get_by_unique(
-							ts_code=ts_code,
-							ann_date=item['ann_date'],
-							report_type=report_type
-						)
-						if existing:
-							await self.financial_statement_repo.update(existing.id, item)
-							records_updated += 1
+				try:
+					# 根据report_type调用不同的数据接口 + 数据转换
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
+						if report_type == "income":
+							data_df = await self._cancellable_run_in_executor(source.get_income_statement, symbol=ts_code, period='')
+						elif report_type == "balance":
+							data_df = await self._cancellable_run_in_executor(source.get_balance_sheet, symbol=ts_code, period='')
+						elif report_type == "cashflow":
+							data_df = await self._cancellable_run_in_executor(source.get_cashflow_statement, symbol=ts_code, period='')
 						else:
-							await self.financial_statement_repo.create(item)
-							records_added += 1
-			except Exception as e:
-				logger.error(f"同步 {ts_code} 财务报表 ({report_type}) 失败: {e}")
-				records_failed += 1
+							raise ValueError(f"未知财务报表类型: {report_type}")
+						data = _convert_records_datetime(
+							data_df.to_dict('records')) if data_df is not None and not data_df.empty else []
 
-			await self._update_progress(task_id, current_item=f"处理 {ts_code}", user_id=user_id)
-			if (idx + 1) % 10 == 0:
-				logger.info(
-					f"[财务报表-{report_type}] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
-			await self.session.commit()
+					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT):
+						if hasattr(self.financial_statement_repo, "batch_upsert"):
+							records_added += await self.financial_statement_repo.bulk_upsert(data)
+						else:
+							for item in data:
+								item["report_type"] = report_type
+								item['ann_date'] = _convert_to_datetime(item.get('ann_date'))
+								item['end_date'] = _convert_to_datetime(item.get('end_date'))
+								if item.get('f_ann_date') and isinstance(item['f_ann_date'], str):
+									item['f_ann_date'] = _convert_to_datetime(item['f_ann_date'])
+								# 过滤 Tushare 返回但 ORM 模型中不存在的字段
+								item = {k: v for k, v in item.items() if k in known_cols}
+
+								existing = await self.financial_statement_repo.get_by_unique(
+									ts_code=ts_code,
+									ann_date=item['ann_date'],
+									report_type=report_type
+								)
+								if existing:
+									await self.financial_statement_repo.update(existing.id, item)
+									records_updated += 1
+								else:
+									await self.financial_statement_repo.create(item)
+									records_added += 1
+				except Exception as e:
+					logger.error(f"同步 {ts_code} 财务报表 ({report_type}) 失败: {e}")
+					records_failed += 1
+
+				async with timer.node(SyncTimingLogger.NODE_PROGRESS):
+					await self._update_progress(task_id, current_item=f"处理 {ts_code}", user_id=user_id)
+				if (idx + 1) % 10 == 0:
+					logger.info(
+						f"[财务报表-{report_type}] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
+				async with timer.node(SyncTimingLogger.NODE_COMMIT):
+					await self.session.commit()
+				if (idx + 1) % 500 == 0:
+					timer.step_summary(idx + 1)
 
 		return {
 			"records_added": records_added,
@@ -2790,7 +2966,7 @@ class DataSyncService:
 		records_added = 0;
 		records_updated = 0
 		try:
-			df = await self._run_in_executor(source.get_stock_company, )
+			df = await self._cancellable_run_in_executor(source.get_stock_company, )
 			if df.empty:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 				        "message": "公司信息同步完成（无数据）"}
@@ -2844,7 +3020,7 @@ class DataSyncService:
 		records_added = 0;
 		records_failed = 0
 		try:
-			df = await self._run_in_executor(source.get_namechange, start_date=start_date_str, end_date=end_date_str)
+			df = await self._cancellable_run_in_executor(source.get_namechange, start_date=start_date_str, end_date=end_date_str)
 			if df.empty: return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 			                     "message": "ST列表同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
@@ -2910,10 +3086,8 @@ class DataSyncService:
 
 			if await self._is_cancelled(): break
 			try:
-				existing_all = await self.manager_repo.get_by(ts_code=ts_code)
-				if existing_all:
-					for old in existing_all: await self.manager_repo.delete(old.id, soft=False)
-				df = await self._run_in_executor(source.get_stk_managers, ts_code=ts_code)
+				await self.manager_repo.delete_by_ts_code(ts_code)
+				df = await self._cancellable_run_in_executor(source.get_stk_managers, ts_code=ts_code)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.manager_repo, "batch_upsert"):
@@ -2969,10 +3143,8 @@ class DataSyncService:
 
 			if await self._is_cancelled(): break
 			try:
-				existing_all = await self.reward_repo.get_by(ts_code=ts_code)
-				if existing_all:
-					for old in existing_all: await self.reward_repo.delete(old.id, soft=False)
-				df = await self._run_in_executor(source.get_stk_rewards, ts_code=ts_code)
+				await self.reward_repo.delete_by_ts_code(ts_code)
+				df = await self._cancellable_run_in_executor(source.get_stk_rewards, ts_code=ts_code)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.reward_repo, "batch_upsert"):
@@ -2980,7 +3152,10 @@ class DataSyncService:
 					else:
 						_preprocess_records(data)
 						for item in data: item[
-							'ts_code'] = ts_code; await self.reward_repo.create(item); records_added += 1
+							for item in data:
+								if 'ts_code' not in item:
+									item['ts_code'] = ts_code
+								await self.reward_repo.create(item); records_added += 1
 			except Exception as e:
 				logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}");
 				records_failed += 1
@@ -3040,7 +3215,7 @@ class DataSyncService:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
-				df = await self._run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str,
+				df = await self._cancellable_run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3107,7 +3282,7 @@ class DataSyncService:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
-				df = await self._run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str,
+				df = await self._cancellable_run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3155,7 +3330,7 @@ class DataSyncService:
 		records_failed = 0
 		for market in ['SSE', 'SZSE']:
 			try:
-				df = await self._run_in_executor(source.get_index_basic, market=market)
+				df = await self._cancellable_run_in_executor(source.get_index_basic, market=market)
 				if df.empty: continue
 				data = _convert_records_datetime(df.to_dict('records'))
 
@@ -3219,11 +3394,11 @@ class DataSyncService:
 				# full 模式不传日期参数，让 Tushare 返回全部可用数据（最早 1993-07-14）
 				# 其他模式传日期范围做增量/重叠查询
 				if mode == "full":
-					df = await self._run_in_executor(source.get_index_daily, ts_code=index_code)
+					df = await self._cancellable_run_in_executor(source.get_index_daily, ts_code=index_code)
 				else:
 					start_date_str = s_date.strftime('%Y%m%d') if s_date else ''
 					end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
-					df = await self._run_in_executor(source.get_index_daily, ts_code=index_code,
+					df = await self._cancellable_run_in_executor(source.get_index_daily, ts_code=index_code,
 					                                 start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3292,7 +3467,7 @@ class DataSyncService:
 				current_date = start_date
 				while current_date <= end_date:
 					try:
-						tick_df = await self._run_in_executor(source.get_tick_data, symbol=ts_code,
+						tick_df = await self._cancellable_run_in_executor(source.get_tick_data, symbol=ts_code,
 						                                      trade_date=current_date.strftime('%Y%m%d')
 						                                      )
 						if not tick_df.empty:
@@ -3363,7 +3538,7 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		try:
-			df = await self._run_in_executor(source.get_suspended, start_date=start_date_str, end_date=end_date_str)
+			df = await self._cancellable_run_in_executor(source.get_suspended, start_date=start_date_str, end_date=end_date_str)
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
 				if hasattr(self.suspend_info_repo, "batch_upsert"):
@@ -3435,7 +3610,7 @@ class DataSyncService:
 				logger.warning("检测到取消信号，中止ETF份额同步")
 				break
 			try:
-				df = await self._run_in_executor(source.get_etf_share_scale, etf_code=ts_code, trade_date='')
+				df = await self._cancellable_run_in_executor(source.get_etf_share_scale, etf_code=ts_code, trade_date='')
 
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3510,7 +3685,7 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				df = await self._run_in_executor(source.get_forecast, symbol=ts_code, period='')
+				df = await self._cancellable_run_in_executor(source.get_forecast, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.forecast_repo, "batch_upsert"):
@@ -3580,7 +3755,7 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				df = await self._run_in_executor(source.get_express, symbol=ts_code, period='')
+				df = await self._cancellable_run_in_executor(source.get_express, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.express_repo, "batch_upsert"):
@@ -3649,7 +3824,7 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				df = await self._run_in_executor(source.get_dividend, symbol=ts_code, limit=100)
+				df = await self._cancellable_run_in_executor(source.get_dividend, symbol=ts_code, limit=100)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.dividend_repo, "batch_upsert"):
@@ -3725,7 +3900,7 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				df = await self._run_in_executor(source.get_fina_indicator, symbol=ts_code, start_date=start_date_str,
+				df = await self._cancellable_run_in_executor(source.get_fina_indicator, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3803,7 +3978,7 @@ class DataSyncService:
 				logger.warning("检测到取消信号，中止审计意见同步")
 				break
 			try:
-				df = await self._run_in_executor(source.get_fina_audit, symbol=ts_code, start_date=start_date_str,
+				df = await self._cancellable_run_in_executor(source.get_fina_audit, symbol=ts_code, start_date=start_date_str,
 				                                 end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3881,7 +4056,7 @@ class DataSyncService:
 				break
 			for btype in ['P', 'D']:  # P=产品, D=地区
 				try:
-					df = await self._run_in_executor(source.get_fina_mainbz, symbol=ts_code, period='', type=btype)
+					df = await self._cancellable_run_in_executor(source.get_fina_mainbz, symbol=ts_code, period='', type=btype)
 					if not df.empty:
 						data = _convert_records_datetime(df.to_dict('records'))
 						if hasattr(self.business_income_repo, "batch_upsert"):

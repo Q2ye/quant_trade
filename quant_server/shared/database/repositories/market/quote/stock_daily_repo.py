@@ -212,6 +212,43 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 		except Exception as e:
 			raise RepositoryError(f"获取最新交易日期失败: {str(e)}")
 
+
+	async def get_latest_trade_dates_batch(
+			self,
+			ts_codes: list
+	) -> dict:
+		"""
+		批量获取多只股票的最新交易日期（一次 SQL 查询）。
+
+		用于数据同步的批量日期推断，替代逐股调用 ``get_latest_trade_date``，
+		将 N 次 DB 查询合并为 1 次。
+
+		Args:
+			ts_codes: 股票 TS 代码列表
+
+		Returns:
+			Dict[str, Optional[date]]: ``{ts_code: latest_date}``，无数据时为 None
+		"""
+		from typing import Dict, Optional as Opt
+		from datetime import date as d
+		from sqlalchemy import func
+
+		if not ts_codes:
+			return {}
+
+		query = (
+			select(self.model.ts_code, func.max(self.model.trade_date))
+			.where(self.model.ts_code.in_(ts_codes))
+			.group_by(self.model.ts_code)
+		)
+		result = await self.session.execute(query)
+		mapping: Dict[str, Opt[d]] = {row[0]: row[1] for row in result.fetchall()}
+		# 确保所有传入的代码都有值（无记录的返回 None）
+		for code in ts_codes:
+			if code not in mapping:
+				mapping[code] = None
+		return mapping
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,

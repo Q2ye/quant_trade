@@ -54,12 +54,8 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		from shared.database.models.data_models import StkManager
-
-		query = select(StkReward).join(
-			StkManager, StkReward.manager_id == StkManager.id
-		).where(
-			StkManager.ts_code == ts_code
+		query = select(StkReward).where(
+			StkReward.ts_code == ts_code
 		)
 
 		if start_date:
@@ -89,7 +85,8 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		filters = [self.model.manager_id == manager_id]
+		# Note: manager_id column removed; use ts_code filtering instead
+		filters = [self.model.ts_code == manager_id]  # manager_id param reused as ts_code
 
 		if start_date:
 			filters.append(self.model.ann_date >= start_date)
@@ -118,17 +115,13 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股记录列表
 		"""
-		from shared.database.models.data_models import StkManager
-
-		query = select(StkReward).join(
-			StkManager, StkReward.manager_id == StkManager.id
-		).where(
+		query = select(StkReward).where(
 			StkReward.ann_date >= start_date,
 			StkReward.ann_date <= end_date
 		)
 
 		if ts_codes:
-			query = query.where(StkManager.ts_code.in_(ts_codes))
+			query = query.where(StkReward.ts_code.in_(ts_codes))
 
 		query = query.order_by(StkReward.ann_date.desc())
 
@@ -150,12 +143,9 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			最近的分红送股记录列表
 		"""
-		from shared.database.models.data_models import StkManager
 
-		query = select(StkReward).join(
-			StkManager, StkReward.manager_id == StkManager.id
-		).where(
-			StkManager.ts_code == ts_code
+		query = select(StkReward).where(
+			StkReward.ts_code == ts_code
 		).order_by(
 			StkReward.ann_date.desc()
 		).limit(n)
@@ -178,17 +168,14 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			年度分红统计信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		query = select(
 			func.extract('year', StkReward.ann_date).label('year'),
 			func.sum(StkReward.reward).label('total_reward'),
 			func.sum(StkReward.hold_vol).label('total_hold_vol'),
 			func.count(StkReward.id).label('count')
-		).join(
-			StkManager, StkReward.manager_id == StkManager.id
 		).where(
-			StkManager.ts_code == ts_code
+			StkReward.ts_code == ts_code
 		)
 
 		if year:
@@ -241,7 +228,6 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红统计信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		# 基础查询
 		query = select(
@@ -254,10 +240,8 @@ class RewardRepository(BaseRepository[StkReward]):
 
 		# 处理股票代码过滤
 		if ts_code:
-			query = query.join(
-				StkManager, StkReward.manager_id == StkManager.id
-			).where(
-				StkManager.ts_code == ts_code
+			query = query.where(
+				StkReward.ts_code == ts_code
 			)
 
 		# 处理年份过滤
@@ -295,14 +279,11 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红总额最高的股票列表
 		"""
-		from shared.database.models.data_models import StkManager
 
 		query = select(
-			StkManager.ts_code,
+			StkReward.ts_code,
 			func.sum(StkReward.reward).label('total_reward'),
 			func.count(StkReward.id).label('count')
-		).join(
-			StkManager, StkReward.manager_id == StkManager.id
 		)
 
 		if year:
@@ -311,7 +292,7 @@ class RewardRepository(BaseRepository[StkReward]):
 			)
 
 		query = query.group_by(
-			StkManager.ts_code
+			StkReward.ts_code
 		).order_by(
 			func.sum(StkReward.reward).desc()
 		).limit(top_n)
@@ -341,7 +322,6 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			持股数量统计信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		result = await self.session.execute(
 			select(
@@ -349,10 +329,8 @@ class RewardRepository(BaseRepository[StkReward]):
 				func.avg(StkReward.hold_vol).label('avg_hold_vol'),
 				func.min(StkReward.hold_vol).label('min_hold_vol'),
 				func.max(StkReward.hold_vol).label('max_hold_vol')
-			).join(
-				StkManager, StkReward.manager_id == StkManager.id
 			).where(
-				StkManager.ts_code == ts_code
+				StkReward.ts_code == ts_code
 			)
 		)
 
@@ -383,7 +361,6 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红趋势数据
 		"""
-		from shared.database.models.data_models import StkManager
 
 		current_year = datetime.now().year
 		start_year = current_year - years + 1
@@ -393,11 +370,9 @@ class RewardRepository(BaseRepository[StkReward]):
 			func.sum(StkReward.reward).label('total_reward'),
 			func.avg(StkReward.reward).label('avg_reward'),
 			func.count(StkReward.id).label('count')
-		).join(
-			StkManager, StkReward.manager_id == StkManager.id
 		).where(
 			and_(
-				StkManager.ts_code == ts_code,
+				StkReward.ts_code == ts_code,
 				func.extract('year', StkReward.ann_date) >= start_year,
 				func.extract('year', StkReward.ann_date) <= current_year
 			)
@@ -433,7 +408,6 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			管理层的分红汇总信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		result = await self.session.execute(
 			select(
@@ -441,11 +415,9 @@ class RewardRepository(BaseRepository[StkReward]):
 				func.avg(StkReward.reward).label('avg_reward'),
 				func.sum(StkReward.hold_vol).label('total_hold_vol'),
 				func.count(StkReward.id).label('count'),
-				func.count(func.distinct(StkManager.ts_code)).label('stock_count')
-			).join(
-				StkManager, StkReward.manager_id == StkManager.id
+				func.count(func.distinct(StkReward.ts_code)).label('stock_count')
 			).where(
-				StkReward.manager_id == manager_id
+				StkReward.ts_code == manager_id
 			)
 		)
 
@@ -481,15 +453,12 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			符合条件股票的分红信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		query = select(
-			StkManager.ts_code,
+			StkReward.ts_code,
 			func.sum(StkReward.reward).label('total_reward'),
 			func.avg(StkReward.reward).label('avg_reward'),
 			func.count(StkReward.id).label('count')
-		).join(
-			StkManager, StkReward.manager_id == StkManager.id
 		)
 
 		filters = []
@@ -504,7 +473,7 @@ class RewardRepository(BaseRepository[StkReward]):
 			query = query.where(and_(*filters))
 
 		query = query.group_by(
-			StkManager.ts_code
+			StkReward.ts_code
 		).order_by(
 			func.sum(StkReward.reward).desc()
 		).limit(limit)
@@ -563,21 +532,20 @@ class RewardRepository(BaseRepository[StkReward]):
 		Returns:
 			分红送股数据摘要信息
 		"""
-		from shared.database.models.data_models import StkManager
 
 		# 总记录数
 		total_count = await self.count()
 
 		# 涉及股票数量
 		stock_count = await self.session.execute(
-			select(func.count(func.distinct(StkManager.ts_code)))
-			.join(StkManager, StkReward.manager_id == StkManager.id)
+			select(func.count(func.distinct(StkReward.ts_code)))
+			
 		)
 		stock_count_value = stock_count.scalar() or 0
 
 		# 涉及管理层数量
 		manager_count = await self.session.execute(
-			select(func.count(func.distinct(StkReward.manager_id)))
+			select(func.count(func.distinct(StkReward.name)))
 		)
 		manager_count_value = manager_count.scalar() or 0
 
@@ -623,3 +591,22 @@ class RewardRepository(BaseRepository[StkReward]):
 			'total_hold_vol': total_hold_vol_value,
 			'year_stats': year_stats
 		}
+
+	# ==================== 批量操作 ====================
+
+	async def delete_by_ts_code(self, ts_code: str) -> int:
+		"""批量删除指定股票的所有薪酬持股记录（一次 SQL）。
+
+		用于数据同步中 "先删后插" 策略，替换逐条 DELETE 的循环。
+
+		Args:
+			ts_code: 股票代码
+
+		Returns:
+			int: 删除的记录数
+		"""
+		from sqlalchemy import delete as sql_delete
+		stmt = sql_delete(self.model).where(self.model.ts_code == ts_code)
+		result = await self.session.execute(stmt)
+		await self.session.flush()
+		return result.rowcount or 0

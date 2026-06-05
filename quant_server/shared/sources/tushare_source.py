@@ -664,3 +664,104 @@ class TushareSource(BaseDataSource):
 		except Exception as e:
 			logger.error(f"获取ST变更历史失败: {e}")
 			return pd.DataFrame()
+
+	# ==================== 指数相关扩展接口 ====================
+
+	def get_index_weight (self, index_code: str, trade_date: str = '') -> pd.DataFrame:
+		"""获取指数成分股权重（Tushare index_weight 接口）
+
+		Args:
+			index_code: 指数代码（如 000300.SH 沪深300）
+			trade_date: 交易日期（YYYYMMDD，空=最新交易日）
+
+		Returns:
+			DataFrame: columns: index_code, con_code, weight, trade_date
+		"""
+		try:
+			if trade_date:
+				df = self.pro.index_weight(index_code=index_code, trade_date=trade_date)
+			else:
+				df = self.pro.index_weight(index_code=index_code)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取指数成分股权重失败: {e}")
+			return pd.DataFrame()
+
+	def get_index_weekly (self, ts_code: str = '', start_date: str = '',
+	                      end_date: str = '') -> pd.DataFrame:
+		"""获取指数周线行情（Tushare index_weekly 接口）
+
+		Args:
+			ts_code: 指数代码（如 000001.SH 上证指数）
+			start_date: 开始日期（YYYYMMDD）
+			end_date: 结束日期（YYYYMMDD）
+
+		Returns:
+			DataFrame: 周线行情数据
+		"""
+		try:
+			df = self.pro.index_weekly(ts_code=ts_code, start_date=start_date,
+			                           end_date=end_date)
+			if df is not None and not df.empty:
+				df['trade_date'] = pd.to_datetime(df['trade_date'])
+				df = df.sort_values('trade_date')
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取指数周线行情失败: {e}")
+			return pd.DataFrame()
+
+	# ==================== 宏观经济接口 ====================
+
+	def get_cpi (self, start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取CPI居民消费价格指数（Tushare cn_cpi 接口）
+
+		Args:
+			start_date: 开始日期（YYYYMMDD）
+			end_date: 结束日期（YYYYMMDD）
+
+		Returns:
+			DataFrame: CPI 月度数据
+		"""
+		try:
+			df = self.pro.cn_cpi(start_date=start_date, end_date=end_date)
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取CPI数据失败: {e}")
+			return pd.DataFrame()
+
+	def get_ppi (self, start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取PPI工业生产者出厂价格指数（Tushare cn_ppi 接口）
+
+		Args:
+			start_date: 开始日期（YYYYMMDD）
+			end_date: 结束日期（YYYYMMDD）
+
+		Returns:
+			DataFrame: PPI 月度数据
+		"""
+		try:
+			df = self.pro.cn_ppi(start_date=start_date, end_date=end_date)
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取PPI数据失败: {e}")
+			return pd.DataFrame()
+
+	def get_gdp (self, start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取GDP国内生产总值（Tushare cn_gdp 接口）
+
+		Args:
+			start_date: 开始日期（YYYYMMDD）
+			end_date: 结束日期（YYYYMMDD）
+
+		Returns:
+			DataFrame: GDP 季度数据
+		"""
+		try:
+			df = self.pro.cn_gdp(start_date=start_date, end_date=end_date)
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取GDP数据失败: {e}")
+			return pd.DataFrame()

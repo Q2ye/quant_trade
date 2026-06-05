@@ -262,6 +262,7 @@ class DataCleanEngine(EngineBase):
         self.tasks: Dict[str, Dict[str, Any]] = {}  # task_id -> 任务信息
         self.task_queue: asyncio.Queue = asyncio.Queue()
         self.active_tasks: Set[str] = set()  # 活跃任务ID集合
+        self._task_refs: Dict[str, asyncio.Task] = {}  # task_id → asyncio.Task（用于取消）
         self.task_counter = 0
 
         # 规则库
@@ -606,9 +607,10 @@ class DataCleanEngine(EngineBase):
 
                     # 执行任务
                     self.active_tasks.add(task_id)
-                    self.create_background_task(
+                    bg_task = self.create_background_task(
                         self._execute_clean_task(task_info)
                     )
+                    self._task_refs[task_id] = bg_task  # 存储引用用于取消
 
                 except asyncio.TimeoutError:
                     # 队列为空，继续循环
@@ -894,8 +896,9 @@ class DataCleanEngine(EngineBase):
             # 重新抛出异常，让重试装饰器处理
             raise
         finally:
-            # 清理活跃任务集合
+            # 清理活跃任务集合和任务引用
             self.active_tasks.discard(task_id)
+            self._task_refs.pop(task_id, None)
             self.task_queue.task_done()
 
     async def _perform_cleaning(
@@ -1246,8 +1249,13 @@ class DataCleanEngine(EngineBase):
 
         # 如果任务在活跃集合中，标记为取消
         if task_id in self.active_tasks:
-            # TODO: 实际取消正在运行的任务
+            # 通过 asyncio.Task.cancel() 实际中断正在运行的任务
+            # _execute_clean_task 的 except CancelledError 处理器会清理状态
             self.active_tasks.discard(task_id)
+            bg_task = self._task_refs.pop(task_id, None)
+            if bg_task and not bg_task.done():
+                bg_task.cancel()
+                logger.info(f"已发送取消信号给清洗任务: {task_id}")
 
         # 发布任务取消事件
         await self._publish_event("clean_task_cancelled", {

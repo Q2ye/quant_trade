@@ -90,6 +90,38 @@ class StockMoneyflowRepository(HyperRepositoryBase[StockMoneyflow]):
 		latest = await self.get_latest_record(ts_code=ts_code)
 		return latest.trade_date if latest else None
 
+	async def get_latest_trade_dates_batch(
+			self,
+			ts_codes: list
+	) -> dict:
+		"""
+		批量获取多只股票的最新交易日期（一次 SQL 查询）。
+
+		Args:
+			ts_codes: 股票 TS 代码列表
+
+		Returns:
+			Dict[str, Optional[date]]: ``{ts_code: latest_date}``
+		"""
+		from typing import Dict, Optional as Opt
+		from datetime import date as d
+		from sqlalchemy import func
+
+		if not ts_codes:
+			return {}
+
+		query = (
+			select(self.model.ts_code, func.max(self.model.trade_date))
+			.where(self.model.ts_code.in_(ts_codes))
+			.group_by(self.model.ts_code)
+		)
+		result = await self.session.execute(query)
+		mapping: Dict[str, Opt[d]] = {row[0]: row[1] for row in result.fetchall()}
+		for code in ts_codes:
+			if code not in mapping:
+				mapping[code] = None
+		return mapping
+
 	# ==================== 业务查询方法 ====================
 
 	async def get_by_ts_code_and_date (
