@@ -106,7 +106,7 @@ class DataSourceFactory:
 		# 根据不同类型准备配置并创建实例
 		instance = self._create_instance(source_key, source_class)
 		self._instances[source_key] = instance
-		logger.info(f"Created new data source instance of type: {source_key}")
+		logger.debug(f"创建数据源实例: {source_key}")
 		return instance
 
 	def _create_instance (self, source_key: str, source_class: Type[BaseDataSource]) -> BaseDataSource:
