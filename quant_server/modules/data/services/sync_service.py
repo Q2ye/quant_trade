@@ -29,32 +29,32 @@
 ### 数据流
 ::
 
-    API 请求 → DataSyncService.sync_market_data()
-        │
-        ├─ 1. _create_sync_task()      → data_sync_tasks 表（任务记录）
-        ├─ 2. _publish_sync_event()     → EventEngine（started 事件）
-        ├─ 3. _sync_by_data_type()      → 根据 DataType 路由到具体同步方法
-        │       │
-        │       ├─ DataSourceFactory → Tushare/Baostock 适配器（拉取原始数据）
-        │       ├─ _convert_records_datetime() → pandas Timestamp → Python datetime
-        │       ├─ _clean_nan_values() → NaN → None（兼容 asyncpg）
-        │       ├─ Repository.create/update → PostgreSQL（数据持久化）
-        │       └─ _update_progress() → Redis/内存缓存（进度实时推送）
-        │
-        ├─ 4. _update_sync_task()       → 更新任务状态（completed/failed/cancelled）
-        ├─ 5. _publish_sync_event()     → EventEngine（completed 事件）
-        └─ 6. _clean_cache_after_sync() → 清理相关缓存
+	API 请求 → DataSyncService.sync_market_data()
+		│
+		├─ 1. _create_sync_task()      → data_sync_tasks 表（任务记录）
+		├─ 2. _publish_sync_event()     → EventEngine（started 事件）
+		├─ 3. _sync_by_data_type()      → 根据 DataType 路由到具体同步方法
+		│       │
+		│       ├─ DataSourceFactory → Tushare/Baostock 适配器（拉取原始数据）
+		│       ├─ _convert_records_datetime() → pandas Timestamp → Python datetime
+		│       ├─ _clean_nan_values() → NaN → None（兼容 asyncpg）
+		│       ├─ Repository.create/update → PostgreSQL（数据持久化）
+		│       └─ _update_progress() → Redis/内存缓存（进度实时推送）
+		│
+		├─ 4. _update_sync_task()       → 更新任务状态（completed/failed/cancelled）
+		├─ 5. _publish_sync_event()     → EventEngine（completed 事件）
+		└─ 6. _clean_cache_after_sync() → 清理相关缓存
 
 ### 依赖方向（严格单向）
 ::
 
-    modules/data/services/sync_service.py
-        → shared/database/repositories/   （数据访问）
-        → shared/sources/                 （外部数据源适配器）
-        → shared/cache/                   （Redis/内存缓存）
-        → core/engines/system/            （事件引擎，可选注入）
-        → modules/data/events/            （事件定义）
-        → modules/data/constants/         （常量枚举）
+	modules/data/services/sync_service.py
+		→ shared/database/repositories/   （数据访问）
+		→ shared/sources/                 （外部数据源适配器）
+		→ shared/cache/                   （Redis/内存缓存）
+		→ core/engines/system/            （事件引擎，可选注入）
+		→ modules/data/events/            （事件定义）
+		→ modules/data/constants/         （常量枚举）
 
 ### 错误处理策略
 - **单股失败不阻断全局**：每只股票独立 try/except，记录失败计数后继续下一只。
@@ -101,6 +101,7 @@ from modules.data.schemas import (
 	SyncResult,
 	SyncTaskItem,
 )
+from modules.data.utils.timing import SyncTimingLogger
 from shared.cache.memory_cache import MemoryCache
 from shared.cache.redis_cache import RedisCache
 from shared.database.models.data_models import (
@@ -145,7 +146,6 @@ from shared.database.repositories.market.governance.reward_repo import RewardRep
 from shared.database.repositories.market.quote.stock_monthly_repo import StockMonthlyRepository
 from shared.database.repositories.market.quote.stock_weekly_repo import StockWeeklyRepository
 from shared.sources.source_factory import DataSourceFactory
-from modules.data.utils.timing import SyncTimingLogger
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -328,25 +328,50 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 	return estimates.get(data_type, 100)
 
 
-def _preprocess_records (records, date_fields=(), known_cols=None):
-    """一趟完成：pandas 类型转换 + NaN 清洗 + 日期转换 + 列过滤。"""
-    for record in records:
-        for key, value in list(record.items()):
-            if isinstance(value, pd.Timestamp):
-                record[key] = value.to_pydatetime()
-            elif isinstance(value, float) and math.isnan(value):
-                record[key] = None
-            elif value is not None and hasattr(pd, 'isna') and pd.isna(value):
-                record[key] = None
-        for field in date_fields:
-            if record.get(field):
-                record[field] = _convert_to_date(record[field])
-        if known_cols:
-            for key in list(record.keys()):
-                if key not in known_cols:
-                    del record[key]
-    return records
+def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=()):
+	"""一趟完成：pandas类型转换 + NaN清洗 + 日期转换 + null→0填充 + 列过滤。
 
+	Args:
+		records: 记录列表（原地修改）
+		date_fields: 需转换为date的字段
+		known_cols: 允许保留的列集合（None=全部保留）
+		fill_numeric: 需将None→0的数值字段
+	"""
+	_has_pd_isna = hasattr(pd, "isna")  # 提升到循环外
+	for record in records:
+		# 1. pandas类型 → Python原生类型
+		for key, value in list(record.items()):
+			if isinstance(value, pd.Timestamp):
+				record[key] = value.to_pydatetime()
+			elif isinstance(value, float) and math.isnan(value):
+				record[key] = None
+			elif value is not None and _has_pd_isna and pd.isna(value):
+				record[key] = None
+		# 2. 日期转换
+		for field in date_fields:
+			if record.get(field):
+				record[field] = _convert_to_date(record[field])
+		# 3. null→0填充（防止NOT NULL约束）
+		for field in fill_numeric:
+			if record.get(field) is None:
+				record[field] = 0
+		# 4. 列过滤
+		if known_cols:
+			extra = [k for k in record if k not in known_cols]
+			for k in extra:
+				del record[k]
+	return records
+
+
+
+# Tushare旧数据(2011年之前)资金流向部分列可能为null，需要填充0
+_MONEYFLOW_NULLABLE_FIELDS = (
+    'buy_sm_vol', 'buy_sm_amount', 'sell_sm_vol', 'sell_sm_amount',
+    'buy_md_vol', 'buy_md_amount', 'sell_md_vol', 'sell_md_amount',
+    'buy_lg_vol', 'buy_lg_amount', 'sell_lg_vol', 'sell_lg_amount',
+    'buy_elg_vol', 'buy_elg_amount', 'sell_elg_vol', 'sell_elg_amount',
+    'net_mf_vol', 'net_mf_amount',
+)
 
 class DataSyncService:
 	"""
@@ -361,14 +386,14 @@ class DataSyncService:
 
 	**典型调用方式**::
 
-	    async with session_manager.get_session() as session:
-	        svc = DataSyncService(session, event_engine)
-	        result = await svc.sync_market_data(
-	            data_type=DataType.DAILY_QUOTES,
-	            start_date=date(2026, 1, 1),
-	            end_date=date(2026, 6, 1),
-	            ts_codes=["000001.SZ", "600000.SH"],
-	        )
+		async with session_manager.get_session() as session:
+			svc = DataSyncService(session, event_engine)
+			result = await svc.sync_market_data(
+				data_type=DataType.DAILY_QUOTES,
+				start_date=date(2026, 1, 1),
+				end_date=date(2026, 6, 1),
+				ts_codes=["000001.SZ", "600000.SH"],
+			)
 
 	**生命周期管理**：
 	- 每次 API 调用创建新实例（通过依赖注入获得 session）
@@ -925,7 +950,8 @@ class DataSyncService:
 				from shared.database.session import get_session_manager
 				sm = get_session_manager()
 				async with sm.get_session() as session:
-					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id, executor=shared_executor)
+					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id,
+					                      executor=shared_executor)
 					try:
 						dt = DataType(task.data_type.value) if hasattr(task.data_type, 'value') else DataType(
 							task.data_type)
@@ -943,7 +969,7 @@ class DataSyncService:
 						                error_message=result.get("error"))
 						logger.info(f"[批量同步 #{idx + 1}] {task.data_type}: 新增={ra} 更新={ru} 失败={rf}")
 						return sr.model_dump()
-					except Exception as e:
+					except Exception:
 						logger.error(f"[批量同步 #{idx + 1}] {task.data_type} 失败: {e}", exc_info=True)
 						return SyncResult(data_type=task.data_type, success=False,
 						                  start_time=datetime.now(), end_time=datetime.now(),
@@ -952,7 +978,6 @@ class DataSyncService:
 		try:
 			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
 			results = await _asyncio.gather(*coros)
-		finally:
 			shared_executor.shutdown(wait=False)  # 不等待未完成任务，它们已经 gather 完成
 
 			total_records = sum(
@@ -1102,10 +1127,10 @@ class DataSyncService:
 		能快速响应（最坏延迟 = ``poll_interval``）。
 
 		**实现原理**：:
-		    1. 将同步函数 fn 提交到 ThreadPoolExecutor（与 _run_in_executor 相同）
-		    2. 通过 ``asyncio.shield(future)`` 防止 timeout 取消内部 future
-		    3. 每隔 poll_interval 秒检查一次 ``_is_cancelled()``
-		    4. 取消时抛出 ``asyncio.CancelledError``（外层循环捕获并 break）
+			1. 将同步函数 fn 提交到 ThreadPoolExecutor（与 _run_in_executor 相同）
+			2. 通过 ``asyncio.shield(future)`` 防止 timeout 取消内部 future
+			3. 每隔 poll_interval 秒检查一次 ``_is_cancelled()``
+			4. 取消时抛出 ``asyncio.CancelledError``（外层循环捕获并 break）
 
 		**限制**：无法真正 kill OS 线程（Python GIL 限制），但 asyncio 层立即抛异常，
 		外层 loop 正常 break。已在 OS 线程中运行的 HTTP 请求会自然完成但结果被丢弃。
@@ -1577,7 +1602,7 @@ class DataSyncService:
 					logger.warning(f"取消,中止日行情 (已处理 {idx}/{len(ts_codes)})")
 					break
 
-				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE):
+				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE, context=ts_code):
 					s_date, e_date, mode = await self._resolve_sync_date_range(
 						ts_code, start_date, end_date, self.stock_daily_repo,
 						latest_dates_map=latest_dates_map,
@@ -1594,15 +1619,15 @@ class DataSyncService:
 					e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 				try:
-					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, context=ts_code):
 						daily_df = await self._cancellable_run_in_executor(
 							source.get_daily, symbol=ts_code,
 							start_date=s_str, end_date=e_str
 						)
 					if not daily_df.empty:
-						async with timer.node(SyncTimingLogger.NODE_CONVERT):
+						async with timer.node(SyncTimingLogger.NODE_CONVERT, context=ts_code):
 							daily_data = _convert_records_datetime(daily_df.to_dict("records"))
-						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT):
+						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, context=ts_code):
 							added, updated = await self._process_trade_date_data(
 								self.stock_daily_repo, daily_data, ts_code
 							)
@@ -1614,12 +1639,12 @@ class DataSyncService:
 					logger.error(f"日行情 {ts_code} 失败: {e}")
 					records_failed += 1
 
-				async with timer.node(SyncTimingLogger.NODE_PROGRESS):
+				async with timer.node(SyncTimingLogger.NODE_PROGRESS, context=ts_code):
 					await self._update_progress(task_id,
 					                            progress=min(100, int((idx + 1) / len(ts_codes) * 100)),
 					                            current_item=f"日行情: {idx + 1}/{len(ts_codes)}", user_id=user_id)
 				if (idx + 1) % 10 == 0:
-					async with timer.node(SyncTimingLogger.NODE_COMMIT):
+					async with timer.node(SyncTimingLogger.NODE_COMMIT, context=ts_code):
 						await self.session.commit()
 				if (idx + 1) % 500 == 0:
 					timer.step_summary(idx + 1)
@@ -1682,9 +1707,9 @@ class DataSyncService:
 			if await self._is_cancelled(): break
 			try:
 				minute_df = await self._cancellable_run_in_executor(source.get_minute_bar, symbol=ts_code,
-				                                        start_date=start_date_str,
-				                                        end_date=end_date_str,
-				                                        freq=freq)
+				                                                    start_date=start_date_str,
+				                                                    end_date=end_date_str,
+				                                                    freq=freq)
 
 				if not minute_df.empty:
 					minute_data = _convert_records_datetime(minute_df.to_dict('records'))
@@ -1740,7 +1765,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, mode_summary, message}"""
+				   records_failed, total_items, mode_summary, message}"""
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
@@ -1766,7 +1791,7 @@ class DataSyncService:
 					logger.warning(f"取消,中止资金流向 (已处理 {idx}/{len(ts_codes)})")
 					break
 
-				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE):
+				async with timer.node(SyncTimingLogger.NODE_RESOLVE_DATE, context=ts_code):
 					s_date, e_date, mode = await self._resolve_sync_date_range(
 						ts_code, start_date, end_date, self.stock_moneyflow_repo,
 						latest_dates_map=latest_dates_map,
@@ -1783,29 +1808,35 @@ class DataSyncService:
 					e_str = e_date.strftime('%Y%m%d') if e_date else ''
 
 				try:
-					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, context=ts_code):
 						df = await self._cancellable_run_in_executor(source.get_moneyflow, symbol=ts_code,
 						                                             start_date=s_str, end_date=e_str)
 					if not df.empty:
-						async with timer.node(SyncTimingLogger.NODE_CONVERT):
+						async with timer.node(SyncTimingLogger.NODE_CONVERT, context=ts_code):
 							data = _convert_records_datetime(df.to_dict("records"))
-						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT):
-							added, updated = await self._process_trade_date_data(
-								self.stock_moneyflow_repo, data, ts_code
-							)
-						records_added += added;
-						records_updated += updated
-						skipped = 0
-						records_skipped += skipped
+							# Tushare旧数据(2011年)部分列为null, 用_preprocess_records一趟填充0
+							_preprocess_records(data, date_fields=["trade_date"],
+							                    fill_numeric=_MONEYFLOW_NULLABLE_FIELDS)
+						async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, context=ts_code):
+							added = await self.stock_moneyflow_repo.bulk_upsert(data)
+							updated = 0
+					records_added += added;
+					records_updated += updated
+					skipped = 0
+					records_skipped += skipped
 				except Exception as e:
 					logger.error(f"资金流向 {ts_code} 失败: {e}")
 					records_failed += 1
+					try:
+						await self.session.rollback()  # 防止事务终止级联
+					except Exception:
+						pass
 
-				async with timer.node(SyncTimingLogger.NODE_PROGRESS):
+				async with timer.node(SyncTimingLogger.NODE_PROGRESS, context=ts_code):
 					await self._update_progress(task_id,
 					                            current_item=f"资金流向: {ts_code}", user_id=user_id)
 				if (idx + 1) % 10 == 0:
-					async with timer.node(SyncTimingLogger.NODE_COMMIT):
+					async with timer.node(SyncTimingLogger.NODE_COMMIT, context=ts_code):
 						await self.session.commit()
 				if (idx + 1) % 500 == 0:
 					timer.step_summary(idx + 1)
@@ -1843,7 +1874,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, mode_summary, message}"""
+				   records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1880,7 +1911,7 @@ class DataSyncService:
 
 			try:
 				df = await self._cancellable_run_in_executor(source.get_adj_factor, symbol=ts_code, start_date=s_str,
-				                                 end_date=e_str)
+				                                             end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
@@ -1929,7 +1960,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, mode_summary, message}"""
+				   records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -1966,7 +1997,7 @@ class DataSyncService:
 
 			try:
 				df = await self._cancellable_run_in_executor(source.get_daily_basic, symbol=ts_code, start_date=s_str,
-				                                 end_date=e_str)
+				                                             end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
@@ -2054,6 +2085,7 @@ class DataSyncService:
 		}
 
 	async def _sync_etf_index(
+			self,
 			start_date: Optional[date],
 			end_date: Optional[date],
 			ts_codes: Optional[List[str]],
@@ -2132,7 +2164,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, mode_summary, message}"""
+				   records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -2169,7 +2201,7 @@ class DataSyncService:
 
 			try:
 				df = await self._cancellable_run_in_executor(source.get_etf_daily, etf_code=ts_code, start_date=s_str,
-				                                 end_date=e_str)
+				                                             end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
@@ -2265,8 +2297,8 @@ class DataSyncService:
 				if hasattr(source, 'get_index_weight'):
 					# Tushare 路径：使用 index_weight 接口获取真实权重
 					weight_df = await self._cancellable_run_in_executor(source.get_index_weight, index_code=idx_code,
-					                                        trade_date=trade_date_obj.strftime('%Y%m%d')
-					                                        )
+					                                                    trade_date=trade_date_obj.strftime('%Y%m%d')
+					                                                    )
 					if not weight_df.empty:
 						for _, row in weight_df.iterrows():
 							constituent_data.append({
@@ -2340,7 +2372,8 @@ class DataSyncService:
 			if macro_type == 'cpi':
 				# 同步CPI数据
 				if hasattr(source, 'get_cpi'):
-					cpi_df = await self._cancellable_run_in_executor(source.get_cpi, start_date=start_date, end_date=end_date)
+					cpi_df = await self._cancellable_run_in_executor(source.get_cpi, start_date=start_date,
+					                                                 end_date=end_date)
 					if not cpi_df.empty:
 						from shared.database.repositories.market.macro import MacroCpiRepository
 						cpi_repo = MacroCpiRepository(self.session)
@@ -2354,7 +2387,8 @@ class DataSyncService:
 			elif macro_type == 'ppi':
 				# 同步PPI数据
 				if hasattr(source, 'get_ppi'):
-					ppi_df = await self._cancellable_run_in_executor(source.get_ppi, start_date=start_date, end_date=end_date)
+					ppi_df = await self._cancellable_run_in_executor(source.get_ppi, start_date=start_date,
+					                                                 end_date=end_date)
 					if not ppi_df.empty:
 						from shared.database.repositories.market.macro import MacroPpiRepository
 						ppi_repo = MacroPpiRepository(self.session)
@@ -2368,7 +2402,8 @@ class DataSyncService:
 			elif macro_type == 'gdp':
 				# 同步GDP数据
 				if hasattr(source, 'get_gdp'):
-					gdp_df = await self._cancellable_run_in_executor(source.get_gdp, start_date=start_date, end_date=end_date)
+					gdp_df = await self._cancellable_run_in_executor(source.get_gdp, start_date=start_date,
+					                                                 end_date=end_date)
 					if not gdp_df.empty:
 						from shared.database.repositories.market.macro import MacroGdpRepository
 						gdp_repo = MacroGdpRepository(self.session)
@@ -2444,7 +2479,8 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步指数周线行情（Tushare index_weekly 接口）。"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0; records_failed = 0
+		records_added = 0;
+		records_failed = 0
 		default_indices = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ']
 		indices = ts_codes if ts_codes else default_indices
 		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
@@ -2453,7 +2489,7 @@ class DataSyncService:
 			try:
 				if hasattr(source, 'get_index_weekly'):
 					df = await self._cancellable_run_in_executor(source.get_index_weekly, ts_code=idx_code,
-					                                        start_date=start_str, end_date=end_str)
+					                                             start_date=start_str, end_date=end_str)
 					if not df.empty:
 						records_added += len(df)
 				else:
@@ -2532,9 +2568,9 @@ class DataSyncService:
 				end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
 				minute_df = await self._cancellable_run_in_executor(source.get_etf_historical_minute, etf_code=ts_code,
-				                                        start_date=start_date_str,
-				                                        end_date=end_date_str,
-				                                        freq=freq)
+				                                                    start_date=start_date_str,
+				                                                    end_date=end_date_str,
+				                                                    freq=freq)
 				if not minute_df.empty:
 					minute_data = _convert_records_datetime(minute_df.to_dict('records'))
 					inserted = await self.etf_minute_repo.batch_insert(minute_data)
@@ -2582,7 +2618,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, mode_summary, message}"""
+				   records_failed, total_items, mode_summary, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_updated = 0
@@ -2618,8 +2654,9 @@ class DataSyncService:
 					f"[基金复权因子] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%%) 新增={records_added} 更新={records_updated}")
 
 			try:
-				df = await self._cancellable_run_in_executor(source.get_etf_adj_factor, etf_code=ts_code, start_date=s_str,
-				                                 end_date=e_str)
+				df = await self._cancellable_run_in_executor(source.get_etf_adj_factor, etf_code=ts_code,
+				                                             start_date=s_str,
+				                                             end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
 					added, updated = await self._process_trade_date_data(
@@ -2845,11 +2882,14 @@ class DataSyncService:
 					# 根据report_type调用不同的数据接口 + 数据转换
 					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH):
 						if report_type == "income":
-							data_df = await self._cancellable_run_in_executor(source.get_income_statement, symbol=ts_code, period='')
+							data_df = await self._cancellable_run_in_executor(source.get_income_statement,
+							                                                  symbol=ts_code, period='')
 						elif report_type == "balance":
-							data_df = await self._cancellable_run_in_executor(source.get_balance_sheet, symbol=ts_code, period='')
+							data_df = await self._cancellable_run_in_executor(source.get_balance_sheet, symbol=ts_code,
+							                                                  period='')
 						elif report_type == "cashflow":
-							data_df = await self._cancellable_run_in_executor(source.get_cashflow_statement, symbol=ts_code, period='')
+							data_df = await self._cancellable_run_in_executor(source.get_cashflow_statement,
+							                                                  symbol=ts_code, period='')
 						else:
 							raise ValueError(f"未知财务报表类型: {report_type}")
 						data = _convert_records_datetime(
@@ -2930,9 +2970,9 @@ class DataSyncService:
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
 		calendar_df = await self._cancellable_run_in_executor(source.get_trade_cal,
-			start_date=start_date_str,
-			end_date=end_date_str
-		)
+		                                                      start_date=start_date_str,
+		                                                      end_date=end_date_str
+		                                                      )
 
 		records_added = 0
 		records_updated = 0
@@ -3048,7 +3088,8 @@ class DataSyncService:
 		records_added = 0;
 		records_failed = 0
 		try:
-			df = await self._cancellable_run_in_executor(source.get_namechange, start_date=start_date_str, end_date=end_date_str)
+			df = await self._cancellable_run_in_executor(source.get_namechange, start_date=start_date_str,
+			                                             end_date=end_date_str)
 			if df.empty: return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 			                     "message": "ST列表同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
@@ -3181,7 +3222,8 @@ class DataSyncService:
 						for item in data:
 							if 'ts_code' not in item:
 								item['ts_code'] = ts_code
-							await self.reward_repo.create(item); records_added += 1
+							await self.reward_repo.create(item);
+							records_added += 1
 			except Exception as e:
 				logger.error(f"管理层薪酬 {ts_code} 同步失败: {e}");
 				records_failed += 1
@@ -3214,7 +3256,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, message}"""
+				   records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0;
 		records_updated = 0;
@@ -3240,8 +3282,9 @@ class DataSyncService:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
-				df = await self._cancellable_run_in_executor(source.get_weekly, symbol=ts_code, start_date=start_date_str,
-				                                 end_date=end_date_str)
+				df = await self._cancellable_run_in_executor(source.get_weekly, symbol=ts_code,
+				                                             start_date=start_date_str,
+				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.stock_weekly_repo, data, ts_code)
@@ -3281,7 +3324,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, message}"""
+				   records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0;
 		records_updated = 0;
@@ -3307,8 +3350,9 @@ class DataSyncService:
 				start_date_str = s_date.strftime('%Y%m%d') if s_date else '';
 				end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 			try:
-				df = await self._cancellable_run_in_executor(source.get_monthly, symbol=ts_code, start_date=start_date_str,
-				                                 end_date=end_date_str)
+				df = await self._cancellable_run_in_executor(source.get_monthly, symbol=ts_code,
+				                                             start_date=start_date_str,
+				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.stock_monthly_repo, data, ts_code)
@@ -3397,7 +3441,7 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_skipped,
-			       records_failed, total_items, message}"""
+				   records_failed, total_items, message}"""
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0;
@@ -3424,7 +3468,7 @@ class DataSyncService:
 					start_date_str = s_date.strftime('%Y%m%d') if s_date else ''
 					end_date_str = e_date.strftime('%Y%m%d') if e_date else ''
 					df = await self._cancellable_run_in_executor(source.get_index_daily, ts_code=index_code,
-					                                 start_date=start_date_str, end_date=end_date_str)
+					                                             start_date=start_date_str, end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					added, updated = await self._process_trade_date_data(self.index_daily_repo, data, index_code)
@@ -3493,8 +3537,8 @@ class DataSyncService:
 				while current_date <= end_date:
 					try:
 						tick_df = await self._cancellable_run_in_executor(source.get_tick_data, symbol=ts_code,
-						                                      trade_date=current_date.strftime('%Y%m%d')
-						                                      )
+						                                                  trade_date=current_date.strftime('%Y%m%d')
+						                                                  )
 						if not tick_df.empty:
 							# Tick数据通常使用批量插入到专门的分区表或超表
 							# 这里需要根据实际的Tick数据存储方式进行调整
@@ -3563,7 +3607,8 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 		try:
-			df = await self._cancellable_run_in_executor(source.get_suspended, start_date=start_date_str, end_date=end_date_str)
+			df = await self._cancellable_run_in_executor(source.get_suspended, start_date=start_date_str,
+			                                             end_date=end_date_str)
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
 				if hasattr(self.suspend_info_repo, "batch_upsert"):
@@ -3635,7 +3680,8 @@ class DataSyncService:
 				logger.warning("检测到取消信号，中止ETF份额同步")
 				break
 			try:
-				df = await self._cancellable_run_in_executor(source.get_etf_share_scale, etf_code=ts_code, trade_date='')
+				df = await self._cancellable_run_in_executor(source.get_etf_share_scale, etf_code=ts_code,
+				                                             trade_date='')
 
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
@@ -3925,8 +3971,9 @@ class DataSyncService:
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled(): break
 			try:
-				df = await self._cancellable_run_in_executor(source.get_fina_indicator, symbol=ts_code, start_date=start_date_str,
-				                                 end_date=end_date_str)
+				df = await self._cancellable_run_in_executor(source.get_fina_indicator, symbol=ts_code,
+				                                             start_date=start_date_str,
+				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.fina_indicator_repo, "batch_upsert"):
@@ -4003,8 +4050,9 @@ class DataSyncService:
 				logger.warning("检测到取消信号，中止审计意见同步")
 				break
 			try:
-				df = await self._cancellable_run_in_executor(source.get_fina_audit, symbol=ts_code, start_date=start_date_str,
-				                                 end_date=end_date_str)
+				df = await self._cancellable_run_in_executor(source.get_fina_audit, symbol=ts_code,
+				                                             start_date=start_date_str,
+				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					if hasattr(self.audit_opinion_repo, "batch_upsert"):
@@ -4081,7 +4129,8 @@ class DataSyncService:
 				break
 			for btype in ['P', 'D']:  # P=产品, D=地区
 				try:
-					df = await self._cancellable_run_in_executor(source.get_fina_mainbz, symbol=ts_code, period='', type=btype)
+					df = await self._cancellable_run_in_executor(source.get_fina_mainbz, symbol=ts_code, period='',
+					                                             type=btype)
 					if not df.empty:
 						data = _convert_records_datetime(df.to_dict('records'))
 						if hasattr(self.business_income_repo, "batch_upsert"):
@@ -4139,12 +4188,12 @@ class DataSyncService:
 
 		缓存结构::
 
-		    {
-		        "progress": 45.2,          # 进度百分比（0-100）
-		        "current_task": "日行情: 2267/5000",
-		        "estimated_time_remaining": null,
-		        "_last_cache_write": 1717500000.123  # 上次写入时间戳（节流用）
-		    }
+			{
+				"progress": 45.2,          # 进度百分比（0-100）
+				"current_task": "日行情: 2267/5000",
+				"estimated_time_remaining": null,
+				"_last_cache_write": 1717500000.123  # 上次写入时间戳（节流用）
+			}
 
 		Args:
 			task_id: 任务 ID
