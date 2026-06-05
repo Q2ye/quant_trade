@@ -291,7 +291,7 @@ CREATE INDEX idx_stock_st_list_type ON stock_st_list(st_type);
 
 -- 上市公司基本信息表
 CREATE TABLE stock_company (
-    ts_code VARCHAR(20) PRIMARY KEY REFERENCES stock_basic(ts_code),
+    ts_code VARCHAR(20) PRIMARY KEY,
     com_name VARCHAR(100) NOT NULL,
     com_id VARCHAR(30) NOT NULL,
     exchange VARCHAR(10) NOT NULL,
@@ -342,7 +342,7 @@ CREATE INDEX idx_stock_company_setup_date ON stock_company(setup_date);
 -- 上市公司管理层表
 CREATE TABLE stk_managers (
     id VARCHAR(36) PRIMARY KEY,
-    ts_code VARCHAR(20) NOT NULL REFERENCES stock_company(ts_code),
+    ts_code VARCHAR(20) NOT NULL,
     ann_date DATE NOT NULL,
     name VARCHAR(50) NOT NULL,
     gender CHAR(1),
@@ -383,7 +383,7 @@ CREATE INDEX idx_stk_managers_end_date ON stk_managers(end_date);
 -- 上市公司管理层薪酬和持股信息
 CREATE TABLE stk_rewards (
     id VARCHAR(36) PRIMARY KEY,
-    ts_code VARCHAR(20) NOT NULL REFERENCES stock_company(ts_code),
+    ts_code VARCHAR(20) NOT NULL,
     ann_date DATE NOT NULL,
     end_date DATE NOT NULL,
     name VARCHAR(50) NOT NULL,
@@ -1994,7 +1994,7 @@ CREATE INDEX idx_analysis_benchmarks_type ON analysis_benchmarks(benchmark_type)
 -- 财务报表主表
 CREATE TABLE financial_statements (
     id VARCHAR(36) PRIMARY KEY,
-    ts_code VARCHAR(20) NOT NULL REFERENCES stock_basic(ts_code),
+    ts_code VARCHAR(20) NOT NULL,
     ann_date DATE NOT NULL,
     f_ann_date DATE,
     end_date DATE NOT NULL,
@@ -2733,7 +2733,7 @@ COMMENT ON COLUMN stock_moneyflow.net_mf_amount IS '净流入金额（万元）'
 
 -- ETF日线行情表（TimescaleDB超表）
 CREATE TABLE etf_daily (
-    ts_code VARCHAR(20) NOT NULL REFERENCES etf_basic(ts_code),
+    ts_code VARCHAR(20) NOT NULL,
     trade_date DATE NOT NULL,
     open NUMERIC(10,4) NOT NULL,
     high NUMERIC(10,4) NOT NULL,
@@ -2810,7 +2810,7 @@ COMMENT ON COLUMN fund_adj_factor.adj_factor IS '复权因子';
 
 -- 指数日线行情数据（TimescaleDB超表）
 CREATE TABLE index_daily (
-    ts_code VARCHAR(20) NOT NULL REFERENCES index_basic(ts_code),
+    ts_code VARCHAR(20) NOT NULL,
     trade_date DATE NOT NULL,
     close NUMERIC(12,4) NOT NULL,
     open NUMERIC(12,4),
@@ -2843,8 +2843,8 @@ COMMENT ON COLUMN index_daily.amount IS '成交额（万元）';
 -- 数据来源：Tushare index_weight 接口 / Baostock hs300/zz500 成分股接口
 CREATE TABLE index_weight (
     id VARCHAR(36),
-    index_code VARCHAR(20) NOT NULL REFERENCES index_basic(ts_code) ON DELETE CASCADE,
-    ts_code VARCHAR(20) NOT NULL REFERENCES stock_basic(ts_code) ON DELETE CASCADE,
+    index_code VARCHAR(20) NOT NULL,
+    ts_code VARCHAR(20) NOT NULL,
     weight NUMERIC(12, 8),
     trade_date DATE NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

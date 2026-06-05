@@ -113,6 +113,41 @@ environments:
     config_source: env
 
 ENGINES:
-  max_workers: 16              # 共享线程池大小
-  sync_type_concurrency: 3     # 跨类型并发数（batch_sync_data）
-  sync_stock_concurrency: 8    # 逐股并发数（_parallel_for_each）
+  # ------------------------------------------------------------------
+  # 共享线程池大小
+  # 用于 batch_sync_data 的 ThreadPoolExecutor，所有并行类型共享
+  # ------------------------------------------------------------------
+  max_workers: 16
+
+  # ------------------------------------------------------------------
+  # 跨类型并发数
+  # batch_sync_data 中同时并行执行的数据类型数量上限
+  # 5 种类型一起提交 → 3 个先执行，2 个排队等待
+  # 保守值 3（Tushare 免费版），VIP 用户可调到 5
+  # ------------------------------------------------------------------
+  sync_type_concurrency: 3
+
+  # ------------------------------------------------------------------
+  # 逐股并发数
+  # _parallel_for_each 中同时处理的股票数量上限
+  # 5000 只股票 → 每批 8 只并行 HTTP 请求
+  # ------------------------------------------------------------------
+  sync_stock_concurrency: 8
+
+  # ------------------------------------------------------------------
+  # Per-type 限流（Tushare 接口频次控制）
+  # 以下接口有请求频率限制（financial_indicator 600次/分钟）
+  # 限制为 3 并发 → 约 10次/秒 → 600次/分钟，不超限
+  # key: DataType 枚举值的小写形式
+  # value: 最大并发数（0 = 不限流）
+  # ------------------------------------------------------------------
+  sync_rate_limits:
+    financial_indicator: 3   # 财务指标（fina_indicator_vip，600次/分钟）
+    audit_opinion: 3         # 审计意见（fina_audit）
+    forecast: 3              # 业绩预告（forecast）
+    express: 3               # 业绩快报（express）
+    dividend: 3              # 分红送股（dividend）
+    business_income: 3       # 主营业务构成（fina_mainbz）
+    financial_statement: 3   # 三张财务报表（income/balance/cashflow）
+    managers: 3              # 管理层信息（stk_managers）
+    rewards: 3               # 管理层薪酬持股（stk_rewards）

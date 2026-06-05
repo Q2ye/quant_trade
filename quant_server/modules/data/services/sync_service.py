@@ -813,7 +813,7 @@ class DataSyncService:
 		_type_cc = _type_cc or 3
 		_pool_size = getattr(_ec, "max_workers", None) if _ec else None
 		_pool_size = _pool_size or 16
-		sem = _asyncio.Semaphore(_type_cc)
+		sem = asyncio.Semaphore(_type_cc)
 		import concurrent.futures as _cf
 		shared_executor = _cf.ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="batch_sync_")
 
@@ -849,7 +849,7 @@ class DataSyncService:
 
 		try:
 			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
-			results = await _asyncio.gather(*coros)
+			results = await asyncio.gather(*coros)
 			shared_executor.shutdown(wait=False)  # 不等待未完成任务，它们已经 gather 完成
 
 			total_records = sum(
@@ -1187,6 +1187,7 @@ class DataSyncService:
 	async def _parallel_for_each(
 			self, ts_codes, label, task_id, user_id,
 			process_one, max_concurrency=8, mode_stats=True,
+			rate_key: str = "",
 	) -> Dict[str, Any]:
 		"""
 		通用逐股并行处理框架。
@@ -1210,9 +1211,18 @@ class DataSyncService:
 			{records_added, records_updated, records_skipped, records_failed,
 			 total_items, mode_summary, message}
 		"""
-		import asyncio as _asyncio
-		sem = _asyncio.Semaphore(max_concurrency)
-		lock = _asyncio.Lock()
+		# 读取per-type限流配置（Tushare VIP接口有限频，未配置则不限）
+
+		_rate_limit = 0
+		if rate_key:
+			from shared.config.config_manager import get_config
+			_ec3 = getattr(getattr(get_config().settings, "ENGINES", None), "sync_rate_limits", None)
+			_rate_limit = _ec3.get(rate_key, 0) if isinstance(_ec3, dict) else 0
+			
+		limiter = asyncio.Semaphore(_rate_limit) if _rate_limit > 0 else None
+		
+		sem = asyncio.Semaphore(max_concurrency)
+		lock = asyncio.Lock()
 		done = 0; total = len(ts_codes)
 		records_added = 0; records_updated = 0; records_skipped = 0; records_failed = 0
 		mode_summary = {"full": 0, "incremental": 0, "overlap": 0, "up_to_date": 0}
@@ -1223,12 +1233,22 @@ class DataSyncService:
 			nonlocal mode_summary, done
 			if await self._is_cancelled():
 				return
-			async with sem:
-				from shared.database.session import get_session_manager
-				sm = get_session_manager()
-				async with sm.get_session() as s:
-					result = await process_one(s, ts_code)
-					await s.commit()
+
+			if limiter:
+				async with limiter:
+					async with sem:
+						from shared.database.session import get_session_manager
+						sm = get_session_manager()
+						async with sm.get_session() as s:
+							result = await process_one(s, ts_code)
+							await s.commit()
+			else:
+				async with sem:
+					from shared.database.session import get_session_manager
+					sm = get_session_manager()
+					async with sm.get_session() as s:
+						result = await process_one(s, ts_code)
+						await s.commit()
 			async with lock:
 				records_added += result.get("added", 0)
 				records_updated += result.get("updated", 0)
@@ -1238,7 +1258,7 @@ class DataSyncService:
 					m = result["mode"]
 					mode_summary[m] = mode_summary.get(m, 0) + 1
 				done += 1; cur = done
-			if cur % 10 == 0:
+			if cur % 500 == 0:
 				pct = cur / total * 100
 				await self._update_progress(task_id, progress=min(100, int(pct)),
 				                            current_item=f"{label}: {cur}/{total}", user_id=user_id)
@@ -1247,7 +1267,7 @@ class DataSyncService:
 				            f"跳过={records_skipped} 失败={records_failed}")
 
 		coros = [_worker(c) for c in ts_codes]
-		await _asyncio.gather(*coros)
+		await asyncio.gather(*coros)
 
 		await self._update_progress(task_id, progress=100,
 		                            current_item=f"{label}: {total}/{total}", user_id=user_id)
@@ -1344,9 +1364,8 @@ class DataSyncService:
 			return
 		try:
 			update_data = {"status": status, "updated_at": datetime.now()}
-			if result:
-				if error_message:
-					update_data["error_message"] = error_message
+			if error_message:
+				update_data["error_message"] = error_message
 			task = await self.sync_task_repo.get_by_task_id(task_id)
 			if task and task.data:
 				await self.sync_task_repo.update(task.data.id, update_data)
@@ -1687,7 +1706,7 @@ class DataSyncService:
 						done_count += 1
 						current_done = done_count
 					# 每 10 只输出一次进度，避免锁竞争过频
-					if current_done % 10 == 0:
+					if current_done % 500 == 0:
 						await self._update_progress(
 							task_id,
 							progress=min(100, int(current_done / total * 100)),
@@ -2800,7 +2819,7 @@ class DataSyncService:
 					logger.error(f"[财务报表] {ts_code} 同步失败: {e}")
 					return {"added": 0, "updated": 0, "failed": True}
 			logger.info(f"[财务报表] 并行同步 {len(ts_codes)} 只, 并发=8")
-			result = await self._parallel_for_each(ts_codes, "财务报表", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "财务报表", task_id, user_id, _process_one, rate_key="financial_statement")
 			result["message"] = "财务报表数据同步完成"
 			return result
 
@@ -3025,7 +3044,7 @@ class DataSyncService:
 				logger.error(f"[管理层信息] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[管理层信息] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "管理层信息", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "管理层信息", task_id, user_id, _process_one, rate_key="managers")
 		result["message"] = "管理层信息数据同步完成"
 		return result
 	async def _sync_stk_rewards(
@@ -3071,7 +3090,7 @@ class DataSyncService:
 				logger.error(f"[管理层薪酬] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[管理层薪酬] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "管理层薪酬", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "管理层薪酬", task_id, user_id, _process_one, rate_key="rewards")
 		result["message"] = "管理层薪酬数据同步完成"
 		return result
 	async def _sync_weekly_quotes(
@@ -3263,7 +3282,7 @@ class DataSyncService:
 			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
 				s_date, e_date, mode = await self._resolve_sync_date_range(
-					ts_code, start_date, end_date, repo
+					index_code, start_date, end_date, repo
 				)
 				if mode == "up_to_date":
 					return {"added": 0, "updated": 0, "skipped": 1, "mode": mode}
@@ -3273,10 +3292,10 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0, "mode": mode}
 				data = _convert_records_datetime(df.to_dict("records"))
-				added, _ = await self._process_trade_date_data(repo, data, ts_code)
+				added, _ = await self._process_trade_date_data(repo, data, index_code)
 				return {"added": added, "updated": 0, "mode": mode}
 			except Exception as e:
-				logger.error(f"[指数日线] {ts_code} 同步失败: {e}")
+				logger.error(f"[指数日线] {index_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 		result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
@@ -3535,7 +3554,7 @@ class DataSyncService:
 				logger.error(f"[业绩预告] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[业绩预告] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "业绩预告", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "业绩预告", task_id, user_id, _process_one, rate_key="forecast")
 		result["message"] = "业绩预告数据同步完成"
 		return result
 	async def _sync_express(
@@ -3583,7 +3602,7 @@ class DataSyncService:
 				logger.error(f"[业绩快报] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[业绩快报] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "业绩快报", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "业绩快报", task_id, user_id, _process_one, rate_key="express")
 		result["message"] = "业绩快报数据同步完成"
 		return result
 	async def _sync_dividend(
@@ -3630,7 +3649,7 @@ class DataSyncService:
 				logger.error(f"[分红送股] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[分红送股] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "分红送股", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "分红送股", task_id, user_id, _process_one, rate_key="dividend")
 		result["message"] = "分红送股数据同步完成"
 		return result
 	async def _sync_financial_indicator(
@@ -3692,7 +3711,7 @@ class DataSyncService:
 				logger.error(f"[财务指标] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[财务指标] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "财务指标", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "财务指标", task_id, user_id, _process_one, rate_key="financial_indicator")
 		result["message"] = "财务指标数据同步完成"
 		return result
 	async def _sync_audit_opinion(
@@ -3746,7 +3765,7 @@ class DataSyncService:
 				logger.error(f"[审计意见] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[审计意见] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "审计意见", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "审计意见", task_id, user_id, _process_one, rate_key="audit_opinion")
 		result["message"] = "审计意见数据同步完成"
 		return result
 	async def _sync_business_income(
@@ -3798,7 +3817,7 @@ class DataSyncService:
 				logger.error(f"[主营业务收入] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[主营业务收入] 并行同步 {len(ts_codes)} 只, 并发=8")
-		result = await self._parallel_for_each(ts_codes, "主营业务收入", task_id, user_id, _process_one)
+		result = await self._parallel_for_each(ts_codes, "主营业务收入", task_id, user_id, _process_one, rate_key="business_income")
 		result["message"] = "主营业务收入数据同步完成"
 		return result
 	async def _update_progress(

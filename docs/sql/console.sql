@@ -103,3 +103,5 @@ SELECT conname, pg_get_constraintdef(oid)
 FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
+
+
