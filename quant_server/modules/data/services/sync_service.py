@@ -1785,7 +1785,7 @@ class DataSyncService:
 		latest_dates_map = await self.stock_moneyflow_repo.get_latest_trade_dates_batch(ts_codes)
 
 		logger.info(f"[资金流向] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		async with SyncTimingLogger(logger, "moneyflow") as timer:
+		async with SyncTimingLogger(logger, "moneyflow", slow_threshold=10.0) as timer:
 			for idx, ts_code in enumerate(ts_codes):
 				if await self._is_cancelled():
 					logger.warning(f"取消,中止资金流向 (已处理 {idx}/{len(ts_codes)})")
@@ -1811,6 +1811,7 @@ class DataSyncService:
 					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, context=ts_code):
 						df = await self._cancellable_run_in_executor(source.get_moneyflow, symbol=ts_code,
 						                                             start_date=s_str, end_date=e_str)
+					added = 0; updated = 0  # 初始化，df为空时不报NameError
 					if not df.empty:
 						async with timer.node(SyncTimingLogger.NODE_CONVERT, context=ts_code):
 							data = _convert_records_datetime(df.to_dict("records"))
@@ -1824,6 +1825,9 @@ class DataSyncService:
 					records_updated += updated
 					skipped = 0
 					records_skipped += skipped
+				except asyncio.CancelledError:
+					logger.warning(f"资金流向 {ts_code} 已取消")
+					break
 				except Exception as e:
 					logger.error(f"资金流向 {ts_code} 失败: {e}")
 					records_failed += 1
@@ -3759,10 +3763,10 @@ class DataSyncService:
 				df = await self._cancellable_run_in_executor(source.get_forecast, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 					if hasattr(self.forecast_repo, "batch_upsert"):
 						records_added += await self.forecast_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 						for item in data:
 							try:
 								await self.forecast_repo.create(item)
@@ -3829,10 +3833,10 @@ class DataSyncService:
 				df = await self._cancellable_run_in_executor(source.get_express, symbol=ts_code, period='')
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 					if hasattr(self.express_repo, "batch_upsert"):
 						records_added += await self.express_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 						for item in data:
 							try:
 								await self.express_repo.create(item)
@@ -3898,10 +3902,10 @@ class DataSyncService:
 				df = await self._cancellable_run_in_executor(source.get_dividend, symbol=ts_code, limit=100)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date',))
 					if hasattr(self.dividend_repo, "batch_upsert"):
 						records_added += await self.dividend_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data, date_fields=('ann_date',))
 						for item in data:
 							try:
 								await self.dividend_repo.create(item)
@@ -3976,10 +3980,10 @@ class DataSyncService:
 				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
 					if hasattr(self.fina_indicator_repo, "batch_upsert"):
 						records_added += await self.fina_indicator_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
 						try:
 							await self.fina_indicator_repo.create(item)
 							records_added += 1
@@ -4055,10 +4059,10 @@ class DataSyncService:
 				                                             end_date=end_date_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
 					if hasattr(self.audit_opinion_repo, "batch_upsert"):
 						records_added += await self.audit_opinion_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
 						for item in data:
 							try:
 								await self.audit_opinion_repo.create(item)
@@ -4133,10 +4137,10 @@ class DataSyncService:
 					                                             type=btype)
 					if not df.empty:
 						data = _convert_records_datetime(df.to_dict('records'))
+						_preprocess_records(data, date_fields=('end_date',), known_cols=known_cols)
 						if hasattr(self.business_income_repo, "batch_upsert"):
 							records_added += await self.business_income_repo.bulk_upsert(data)
 						else:
-							_preprocess_records(data, date_fields=('end_date',), known_cols=known_cols)
 							for item in data:
 								try:
 									await self.business_income_repo.create(item)
