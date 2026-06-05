@@ -764,8 +764,10 @@ class DataSyncService:
 
 	async def batch_sync_data(
 			self,
-			request: BatchSyncRequest,
-			user_id: Optional[str] = None
+			tasks: List[SyncTaskItem],
+			priority: Optional[Any] = None,
+			user_id: Optional[str] = None,
+			task_id: Optional[str] = None,
 	) -> Dict[str, Any]:
 		"""
 		批量同步数据（**串行**执行，一个任务完成后再执行下一个）。
@@ -777,7 +779,7 @@ class DataSyncService:
 		执行流程：
 		1. 生成 batch_task_id
 		2. 发布 batch_started 事件
-		3. 按顺序遍历 request.tasks，每个任务调用 ``sync_market_data``
+		3. 按顺序遍历 tasks，每个任务调用 ``sync_market_data``
 		4. 每个任务独立记录 SyncResult（失败不影响后续任务）
 		5. 发布 batch_completed 或 batch_failed 事件
 
@@ -797,7 +799,7 @@ class DataSyncService:
 					"message": str,
 				}
 		"""
-		logger.info(f"开始批量同步，数据类型: {[task.data_type for task in request.tasks]}, 用户ID: {user_id}")
+		logger.info(f"开始批量同步，数据类型: {[task.data_type for task in tasks]}, 用户ID: {user_id}")
 
 		batch_task_id = f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 			
