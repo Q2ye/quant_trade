@@ -475,7 +475,7 @@ class DataSyncService:
 		cfg = get_config()
 		self._max_workers = getattr(getattr(cfg, 'settings', None), 'ENGINES', None)
 		self._max_workers = getattr(self._max_workers, 'max_workers', None) if self._max_workers else None
-		self._max_workers = self._max_workers or 8
+		self._max_workers = self._max_workers or 16  # I/O密集型，默认16
 		self._executor = ThreadPoolExecutor(
 			max_workers=self._max_workers,
 			thread_name_prefix="sync_"  # 便于调试时识别线程来源
@@ -1140,22 +1140,26 @@ class DataSyncService:
 		"""
 		双重取消检查：先查 token（asyncio.Event），失败则回退到 DB 查询。
 
-		设计原因：
-		- cancel_token 是最快的检查方式（内存读取，无 I/O）
-		- 但 cancel_token 可能因 handler 异常未被设置，或已被 cleanup 清理
-		- DB 状态作为兜底：cancel API 已更新的 status='cancelled' 一定在 DB 中
+		**性能优化**：DB 回退结果缓存到 ``_cancelled_cached``，在 token
+		未变化时避免重复查 DB。token 变化时（用户点击取消）刷新缓存。
 
 		Returns:
 			bool: 任务是否已被取消
 		"""
 		# 第一层：token 检查（最快，O(1) 内存读取）
 		if self.cancel_token and self.cancel_token.is_set():
+			self._cancelled_cached = True  # token 已设置，刷新缓存
 			return True
-		# 第二层：DB 回退检查（兜底，O(1) 带缓存）
-		if self._task_id:
+		# 如果已有缓存结论（未取消），直接返回
+		if getattr(self, '_cancelled_cached', False):
+			return True
+		# 第二层：DB 回退检查（仅在首次或缓存过期时查询）
+		if self._task_id and not hasattr(self, '_cancelled_checked'):
+			self._cancelled_checked = True
 			try:
 				task = await self.sync_task_repo.get_by_task_id(self._task_id)
 				if task and task.data and getattr(task.data, 'status', None) == 'cancelled':
+					self._cancelled_cached = True
 					return True
 			except Exception:
 				pass  # DB 查询失败时不阻断同步
@@ -1275,7 +1279,7 @@ class DataSyncService:
 			data: List[Dict],
 			ts_code: str,
 	) -> Tuple[int, int]:
-		"""批量 upsert trade_date 数据。所有 repo 继承 BaseRepository.batch_upsert。"""
+		"""批量 upsert trade_date 数据。注意：PG ON CONFLICT DO UPDATE 将 INSERT+UPDATE 都计入 rowcount，因此返回值不分 added/updated，第二项固定为 0。"""
 		for item in data:
 			item['trade_date'] = _convert_to_date(item.get('trade_date'))
 		count = await repo.bulk_upsert(data)
@@ -1347,10 +1351,21 @@ class DataSyncService:
 			error_message: 错误信息（失败/取消时填充）
 
 		Note:
-			当前为 stub 实现（pass），实际逻辑由引擎层处理。
+			将任务状态写入 data_sync_tasks 表。
 		"""
-		# TODO: 实现任务状态更新逻辑
-		pass
+		if not self._task_id:
+			return
+		try:
+			update_data = {"status": status, "updated_at": datetime.now()}
+			if result:
+				update_data["result"] = json.dumps(result, default=str)
+			if error_message:
+				update_data["error_message"] = error_message
+			task = await self.sync_task_repo.get_by_task_id(task_id)
+			if task and task.data:
+				await self.sync_task_repo.update(task.data.id, update_data)
+		except Exception as e:
+			logger.warning(f"更新同步任务状态失败 task={task_id}: {e}")
 
 	async def _sync_by_data_type(
 			self,
@@ -1455,26 +1470,28 @@ class DataSyncService:
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		logger.info("开始同步股票列表...")
 		stock_list = await source.get_stock_basic()
-		records_added = 0
-		records_updated = 0
 		total = len(stock_list)
-		for idx, stock_data in enumerate(stock_list):
-			# 清洗 NaN 值（pandas 空字段会变成 NaN，asyncpg 不接受）
-			stock_data = _clean_nan_values(stock_data)
-			# 转换日期字段：pandas Timestamp/字符串 → Python date
-			if 'list_date' in stock_data and stock_data['list_date']:
-				stock_data['list_date'] = _convert_to_date(stock_data['list_date'])
-			if 'delist_date' in stock_data and stock_data['delist_date']:
-				stock_data['delist_date'] = _convert_to_date(stock_data['delist_date'])
-
-			# upsert：按 ts_code 查重，存在则更新，不存在则创建
-			existing = await self.stock_basic_repo.get_by_ts_code(stock_data["ts_code"])
-			if existing:
-				await self.stock_basic_repo.update_by({"ts_code": existing.ts_code}, stock_data)
-				records_updated += 1
-			else:
-				await self.stock_basic_repo.create(stock_data)
-				records_added += 1
+		# 批量预处理 + bulk upsert（替代逐行 SELECT+INSERT/UPDATE）
+		if hasattr(self.stock_basic_repo, 'bulk_upsert'):
+			_preprocess_records(stock_list, date_fields=['list_date', 'delist_date'])
+			records_added = await self.stock_basic_repo.bulk_upsert(stock_list)
+			records_updated = 0  # PG ON CONFLICT DO UPDATE 将 upsert 全部计入 rowcount
+		else:
+			records_added = 0
+			records_updated = 0
+			for stock_data in stock_list:
+				stock_data = _clean_nan_values(stock_data)
+				if 'list_date' in stock_data and stock_data['list_date']:
+					stock_data['list_date'] = _convert_to_date(stock_data['list_date'])
+				if 'delist_date' in stock_data and stock_data['delist_date']:
+					stock_data['delist_date'] = _convert_to_date(stock_data['delist_date'])
+				existing = await self.stock_basic_repo.get_by_ts_code(stock_data["ts_code"])
+				if existing:
+					await self.stock_basic_repo.update_by({"ts_code": existing.ts_code}, stock_data)
+					records_updated += 1
+				else:
+					await self.stock_basic_repo.create(stock_data)
+					records_added += 1
 			# 实时更新进度到缓存
 			await self._update_progress(task_id, progress=min(100, int((idx + 1) / total * 100)),
 			                            current_item=f"股票: {stock_data['ts_code']}", user_id=user_id)
@@ -1644,6 +1661,7 @@ class DataSyncService:
 
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
+		records_updated = 0
 		records_failed = 0
 
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
@@ -1830,13 +1848,11 @@ class DataSyncService:
 		logger.info(f"[复权因子] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
-				logger.warning("取消,中止复权因子 (已处理 {idx}/{len(ts_codes)})")
+				logger.warning(f"取消,中止复权因子 (已处理 {idx}/{len(ts_codes)})")
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_adj_factor_repo,
-				latest_dates_map=latest_dates_map,
-				stock_list_date_map=stock_list_date_map
+				ts_code, start_date, end_date, self.stock_adj_factor_repo
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -1918,13 +1934,11 @@ class DataSyncService:
 		logger.info(f"[每日指标] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
-				logger.warning("取消,中止每日指标 (已处理 {idx}/{len(ts_codes)})")
+				logger.warning(f"取消,中止每日指标 (已处理 {idx}/{len(ts_codes)})")
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.stock_daily_basic_repo,
-				latest_dates_map=latest_dates_map,
-				stock_list_date_map=stock_list_date_map
+				ts_code, start_date, end_date, self.stock_daily_basic_repo
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -2001,20 +2015,24 @@ class DataSyncService:
 		etf_list = _convert_records_datetime(etf_df.to_dict('records')) if not etf_df.empty else []
 		records_added = 0
 		records_updated = 0
-		for etf in etf_list:
-			# 转换日期字段
-			if 'setup_date' in etf and etf['setup_date']:
-				etf['setup_date'] = _convert_to_date(etf['setup_date'])
-			if 'list_date' in etf and etf['list_date']:
-				etf['list_date'] = _convert_to_date(etf['list_date'])
-
-			existing = await self.etf_basic_repo.get_by(ts_code=etf["ts_code"])
-			if existing:
-				await self.etf_basic_repo.update_by({"ts_code": existing.ts_code}, etf)
-				records_updated += 1
-			else:
-				await self.etf_basic_repo.create(etf)
-				records_added += 1
+		# 批量预处理 + bulk upsert
+		if etf_list and hasattr(self.etf_basic_repo, 'bulk_upsert'):
+			_preprocess_records(etf_list, date_fields=['setup_date', 'list_date'])
+			records_added = await self.etf_basic_repo.bulk_upsert(etf_list)
+			records_updated = 0
+		else:
+			for etf in etf_list:
+				if 'setup_date' in etf and etf['setup_date']:
+					etf['setup_date'] = _convert_to_date(etf['setup_date'])
+				if 'list_date' in etf and etf['list_date']:
+					etf['list_date'] = _convert_to_date(etf['list_date'])
+				existing = await self.etf_basic_repo.get_by(ts_code=etf["ts_code"])
+				if existing:
+					await self.etf_basic_repo.update_by({"ts_code": existing.ts_code}, etf)
+					records_updated += 1
+				else:
+					await self.etf_basic_repo.create(etf)
+					records_added += 1
 			await self._update_progress(task_id, current_item=f"ETF: {etf['ts_code']}", user_id=user_id)
 		await self.session.commit()
 		return {
@@ -2025,7 +2043,6 @@ class DataSyncService:
 			"message": "ETF基础信息同步完成"
 		}
 
-	@staticmethod
 	async def _sync_etf_index(
 			start_date: Optional[date],
 			end_date: Optional[date],
@@ -2120,13 +2137,11 @@ class DataSyncService:
 		logger.info(f"[ETF日线] 逐ETF同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
-				logger.warning("取消,中止ETF日线 (已处理 {idx}/{len(ts_codes)})")
+				logger.warning(f"取消,中止ETF日线 (已处理 {idx}/{len(ts_codes)})")
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
-				ts_code, start_date, end_date, self.etf_daily_repo,
-				latest_dates_map=latest_dates_map,
-				stock_list_date_map=stock_list_date_map
+				ts_code, start_date, end_date, self.etf_daily_repo
 			)
 			mode_summary[mode] = mode_summary.get(mode, 0) + 1
 			if mode == "up_to_date": records_skipped += 1; continue
@@ -2441,23 +2456,23 @@ class DataSyncService:
 		        "total_items": records_added + records_failed,
 		        "message": f"指数周线行情同步完成: 新增={records_added}"}
 
-	async def async_sync_stock_quotes(
-			self,
-			stock_codes: List[str],
-			start_date: str,
-			end_date: str,
-			sync_type: str = 'daily'
-	) -> Dict[str, Any]:
-		"""异步同步股票行情数据"""
-		return await self.sync_stock_quote(
-			stock_codes=stock_codes,
-			start_date=start_date,
-			end_date=end_date,
-			_sync_type=sync_type,
-			force_update=False
-		)
+	# [DEAD] async def async_sync_stock_quotes(
+	# [DEAD] self,
+	# [DEAD] stock_codes: List[str],
+	# [DEAD] start_date: str,
+	# [DEAD] end_date: str,
+	# [DEAD] sync_type: str = 'daily'
+	# [DEAD] ) -> Dict[str, Any]:
+	# [DEAD] """异步同步股票行情数据"""
+	# [DEAD] return await self.sync_stock_quote(
+	# [DEAD] stock_codes=stock_codes,
+	# [DEAD] start_date=start_date,
+	# [DEAD] end_date=end_date,
+	# [DEAD] _sync_type=sync_type,
+	# [DEAD] force_update=False
+	# [DEAD] )
 
-	# ==================== 具体同步方法 ====================
+	# [DEAD] # ==================== 具体同步方法 ====================
 
 	async def _sync_etf_minute(
 			self,
@@ -2572,7 +2587,7 @@ class DataSyncService:
 		logger.info(f"[基金复权因子] 逐ETF同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 		for idx, ts_code in enumerate(ts_codes):
 			if await self._is_cancelled():
-				logger.warning("取消,中止基金复权因子 (已处理 {idx}/{len(ts_codes)})")
+				logger.warning(f"取消,中止基金复权因子 (已处理 {idx}/{len(ts_codes)})")
 				break
 
 			s_date, e_date, mode = await self._resolve_sync_date_range(
@@ -2863,8 +2878,8 @@ class DataSyncService:
 				if (idx + 1) % 10 == 0:
 					logger.info(
 						f"[财务报表-{report_type}] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
-				async with timer.node(SyncTimingLogger.NODE_COMMIT):
-					await self.session.commit()
+					async with timer.node(SyncTimingLogger.NODE_COMMIT):
+						await self.session.commit()
 				if (idx + 1) % 500 == 0:
 					timer.step_summary(idx + 1)
 
@@ -2904,44 +2919,38 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-		calendar_df = await source.get_trade_cal(
+		calendar_df = await self._cancellable_run_in_executor(source.get_trade_cal,
 			start_date=start_date_str,
 			end_date=end_date_str
 		)
 
 		records_added = 0
 		records_updated = 0
-		calendar_data = []  # 初始化空列表，避免引用错误
 
 		if calendar_df is not None and not calendar_df.empty:
 			calendar_data = _convert_records_datetime(calendar_df.to_dict('records'))
-			for cal in calendar_data:
-				if await self._is_cancelled():
-					logger.warning("检测到取消信号，中止交易日历同步")
-					break
-				# 转换cal_date为date对象
-				cal_date = _convert_to_date(cal.get('cal_date'))
-				cal['cal_date'] = cal_date
-
-				# 转换pretrade_date为date对象（如果存在）
-				if 'pretrade_date' in cal and cal['pretrade_date']:
-					pretrade_date = _convert_to_date(cal.get('pretrade_date'))
-					cal['pretrade_date'] = pretrade_date
-
-				existing_list = await self.trade_calendar_repo.get_by_date(
-					exchange=cal["exchange"],
-					cal_date=cal_date
-				)
-				existing = existing_list[0] if existing_list else None
-				if existing:
-					await self.trade_calendar_repo.update_by(
-						{"exchange": existing.exchange, "cal_date": existing.cal_date},
-						cal
-					)
-					records_updated += 1
-				else:
-					await self.trade_calendar_repo.create(cal)
-					records_added += 1
+			# 批量预处理 + bulk upsert（替代逐行 SELECT+INSERT/UPDATE）
+			if hasattr(self.trade_calendar_repo, 'bulk_upsert'):
+				_preprocess_records(calendar_data, date_fields=['cal_date', 'pretrade_date'])
+				records_added = await self.trade_calendar_repo.bulk_upsert(calendar_data)
+				records_updated = 0
+			else:
+				for cal in calendar_data:
+					if await self._is_cancelled():
+						break
+					cal['cal_date'] = _convert_to_date(cal.get('cal_date'))
+					if 'pretrade_date' in cal and cal['pretrade_date']:
+						cal['pretrade_date'] = _convert_to_date(cal.get('pretrade_date'))
+					existing_list = await self.trade_calendar_repo.get_by_date(
+						exchange=cal["exchange"], cal_date=cal['cal_date'])
+					existing = existing_list[0] if existing_list else None
+					if existing:
+						await self.trade_calendar_repo.update_by(
+							{"exchange": existing.exchange, "cal_date": existing.cal_date}, cal)
+						records_updated += 1
+					else:
+						await self.trade_calendar_repo.create(cal)
+						records_added += 1
 		await self.session.commit()
 		return {
 			"records_added": records_added,
@@ -3112,7 +3121,6 @@ class DataSyncService:
 				logger.info(
 					f"[管理层] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
-			if await self._is_cancelled(): break
 			await self._update_progress(task_id, current_item=f"管理层: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added": records_added, "records_updated": records_updated, "records_failed": records_failed,
@@ -3171,7 +3179,6 @@ class DataSyncService:
 				logger.info(
 					f"[薪酬] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
 				await self.session.commit()
-			if await self._is_cancelled(): break
 			await self._update_progress(task_id, current_item=f"管理层薪酬: {ts_code}", user_id=user_id)
 		await self.session.commit()
 		return {"records_added": records_added, "records_updated": records_updated, "records_failed": records_failed,

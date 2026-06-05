@@ -1448,16 +1448,6 @@ async def cancel_sync (
 	try:
 		logger.info(f"用户 {user_id} 请求取消同步任务: {task_id}")
 
-		# 0. 优先触发取消信号（在 DB 操作之前，确保 token 一定被设置）
-		#    即使后续 DB 操作失败，后台任务也能通过 token 检测到取消请求
-		from modules.data import signal_cancel
-		cancelled = signal_cancel(task_id)
-		if cancelled:
-			logger.info(f"取消信号已发送: task_id={task_id}")
-		else:
-			logger.warning(f"取消信号发送失败（token 未命中）: task_id={task_id}, "
-			               f"可能后台任务尚未创建取消令牌或已被清理")
-
 		sync_task_repo = DataSyncTaskRepository(session)
 
 		# 1. 获取任务信息
@@ -1474,6 +1464,15 @@ async def cancel_sync (
 		# 3. 状态验证
 		if task.status in ["completed", "cancelled", "failed"]:
 			raise ValidationException(f"任务已处于最终状态 '{task.status}'，无法取消")
+
+		# 4. 校验全部通过后，发送取消信号（不再在 DB 操作之前，避免校验失败时 token 已被设置）
+		from modules.data import signal_cancel
+		cancelled = signal_cancel(task_id)
+		if cancelled:
+			logger.info(f"取消信号已发送: task_id={task_id}")
+		else:
+			logger.warning(f"取消信号发送失败（token 未命中）: task_id={task_id}, "
+			               f"可能后台任务尚未创建取消令牌或已被清理")
 
 		# 4. 更新任务状态
 		update_data = {
@@ -2266,7 +2265,6 @@ async def _execute_async_data_sync (
 
 			# 3. 发布进度事件
 			sync_type = request.tasks[0].data_type if request.tasks else "batch"
-			sync_type = request.tasks[0].data_type if request.tasks else "batch"
 			progress_event = DataSyncProgressEvent(
 				sync_type=sync_type,
 				progress=0.1,
@@ -2827,6 +2825,22 @@ async def initialize_data_module (
 				logger.warning(f"已将 {cleaned_running_tasks} 个遗留运行中任务标记为失败")
 		except Exception as e:
 			logger.warning(f"清理遗留运行中任务失败: {str(e)}")
+
+		# 4.2 清理僵尸 pending 任务（超过 1 小时未进入 running）
+		try:
+			stale_pending = await sync_task_repo.get_many(status="pending", limit=1000)
+			if stale_pending:
+				cutoff = datetime.now() - timedelta(hours=1)
+				zombie = 0
+				for task in stale_pending:
+					if task.created_at and task.created_at < cutoff:
+						await sync_task_repo.update(task.id, {"status": "failed",
+							"error_message": "任务超时未启动（僵尸pending）", "end_time": datetime.now()})
+						zombie += 1
+				if zombie:
+					logger.warning(f"已将 {zombie} 个僵尸pending任务标记为失败")
+		except Exception as e:
+			logger.warning(f"清理僵尸pending任务失败: {str(e)}")
 
 		# 5. 检查因子数据完整性
 		try:

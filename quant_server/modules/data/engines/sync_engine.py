@@ -728,6 +728,7 @@ class DataSyncEngine(EngineBase):
         self.stats["cancelled_tasks"] += 1
 
         # 发布任务取消事件（规范事件类型）
+        # TODO: use dedicated SYNC_CANCELLED when available,
         await self._publish_event(DataEventType.SYNC_FAILED.value, {
             "task_id": task_id,
             "timestamp": datetime.now().isoformat()
@@ -890,7 +891,7 @@ class DataSyncEngine(EngineBase):
         result: SyncTaskResult
     ):
         """发布同步失败事件"""
-        await self._publish_event(DataEventType.SYNC_FAILED.value, {
+        await self._publish_event(DataEventType.SYNC_FAILED.value  # TODO: use dedicated SYNC_CANCELLED when available, {
             "task_id": task_id,
             "sync_type": config.sync_type.value,
             "error_message": result.error_message or "未知错误",
