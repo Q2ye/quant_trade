@@ -735,7 +735,7 @@ class DataSyncService:
 			}
 
 		except Exception as e:
-			logger.error(f"市场数据同步失败: {str(e)}", exc_info=True)
+			logger.error(f"[{data_type.value if hasattr(data_type, chr(39)+chr(118)+chr(97)+chr(108)+chr(117)+chr(101)+chr(39)) else data_type}] 市场数据同步失败: {str(e)}", exc_info=True)
 
 			if task_id:
 				# 区分取消（cancel_token 已设置）和真实失败
@@ -1395,7 +1395,7 @@ class DataSyncService:
 		try:
 			update_data = {"status": status, "updated_at": datetime.now()}
 			if result:
-				update_data["result"] = json.dumps(result, default=str)
+				update_data["sync_result"] = json.dumps(result, default=str)  # 字段名sync_result匹配DB
 			if error_message:
 				update_data["error_message"] = error_message
 			task = await self.sync_task_repo.get_by_task_id(task_id)
@@ -2976,11 +2976,11 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-		calendar_df = await self._cancellable_run_in_executor(source.get_trade_cal,
-		                                                      start_date=start_date_str,
-		                                                      end_date=end_date_str
-		                                                      )
-
+		# get_trade_cal is async, direct await (no executor)
+		calendar_df = await source.get_trade_cal(
+			start_date=start_date_str,
+			end_date=end_date_str
+		)
 		records_added = 0
 		records_updated = 0
 

@@ -270,6 +270,7 @@ CREATE TABLE stock_st_list (
     ts_code VARCHAR(20) NOT NULL,
     name VARCHAR(50) NOT NULL,
     trade_date DATE NOT NULL,
+    UNIQUE (ts_code, trade_date),
     st_type VARCHAR(10) NOT NULL,
     st_type_name VARCHAR(50) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -2563,7 +2564,8 @@ CREATE TABLE stock_adj_factor (
     trade_date DATE NOT NULL,
     adj_factor NUMERIC(18,10) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ts_code, trade_date)
 );
 
 COMMENT ON TABLE stock_adj_factor IS '股票复权因子数据表（TimescaleDB超表）';
