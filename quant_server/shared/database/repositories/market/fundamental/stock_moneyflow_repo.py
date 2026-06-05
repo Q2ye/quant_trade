@@ -8,7 +8,7 @@
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.data_models import StockMoneyflow

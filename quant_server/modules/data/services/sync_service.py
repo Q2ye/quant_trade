@@ -365,6 +365,7 @@ def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=(
 
 
 # Tushare旧数据(2011年之前)资金流向部分列可能为null，需要填充0
+_ADJ_FACTOR_NULLABLE_FIELDS = ("adj_factor",)
 _MONEYFLOW_NULLABLE_FIELDS = (
     'buy_sm_vol', 'buy_sm_amount', 'sell_sm_vol', 'sell_sm_amount',
     'buy_md_vol', 'buy_md_amount', 'sell_md_vol', 'sell_md_amount',
@@ -1163,11 +1164,12 @@ class DataSyncService:
 				if await self._is_cancelled():
 					# 尽力取消 asyncio 层包装（OS 线程会继续运行直到 finish，但结果被丢弃）
 					future.cancel()
-					raise asyncio.CancelledError("sync task cancelled by user")
+					logger.warning("同步任务已被用户取消，中断当前请求")
+					return pd.DataFrame()  # 返回空DataFrame让caller自然跳过
 			except asyncio.CancelledError:
 				# 传递取消信号
 				future.cancel()
-				raise
+				return pd.DataFrame()
 
 		# future 已经完成，直接取结果（不阻塞）
 		return future.result()
@@ -2663,6 +2665,7 @@ class DataSyncService:
 				                                             end_date=e_str)
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict("records"))
+					_preprocess_records(data, fill_numeric=_ADJ_FACTOR_NULLABLE_FIELDS)  # 旧数据null→0
 					added, updated = await self._process_trade_date_data(
 						self.fund_adj_factor_repo, data, ts_code
 					)
@@ -3166,7 +3169,7 @@ class DataSyncService:
 					if hasattr(self.manager_repo, "batch_upsert"):
 						records_added += await self.manager_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data)
+						_preprocess_records(data, fill_numeric=('reward', 'hold_vol'))
 						for item in data: item[
 							'ts_code'] = ts_code; await self.manager_repo.create(item); records_added += 1
 			except Exception as e:
@@ -3222,7 +3225,7 @@ class DataSyncService:
 					if hasattr(self.reward_repo, "batch_upsert"):
 						records_added += await self.reward_repo.bulk_upsert(data)
 					else:
-						_preprocess_records(data)
+						_preprocess_records(data, fill_numeric=('reward', 'hold_vol'))
 						for item in data:
 							if 'ts_code' not in item:
 								item['ts_code'] = ts_code

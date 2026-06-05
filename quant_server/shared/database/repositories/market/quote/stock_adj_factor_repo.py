@@ -8,7 +8,7 @@
 from datetime import date, timedelta, datetime
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.data_models import StockAdjFactor

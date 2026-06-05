@@ -13,7 +13,7 @@
 from datetime import date
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import select, and_, or_, func, distinct
+from sqlalchemy import select, and_, or_, func, distinct, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.data_models import StkManager
