@@ -497,13 +497,20 @@ class DataSyncEngine(EngineBase):
 
             # 更新任务结果
             task_info["result"] = result
-            task_info["status"] = SyncTaskStatus.COMPLETED if result.success else SyncTaskStatus.FAILED
+            if result.success:
+                task_info["status"] = SyncTaskStatus.COMPLETED
+            elif result.summary and result.summary.get("cancelled"):
+                task_info["status"] = SyncTaskStatus.CANCELLED
+            else:
+                task_info["status"] = SyncTaskStatus.FAILED
             task_info["updated_at"] = datetime.now()
 
-            # 发布完成事件
+            # 发布完成/取消/失败事件
             if result.success:
                 await self._publish_sync_completed(task_id, config, result)
                 self.stats["completed_tasks"] += 1
+            elif result.summary and result.summary.get("cancelled"):
+                logger.info(f"同步任务已取消: {task_id}")
             else:
                 await self._publish_sync_failed(task_id, config, result)
                 self.stats["failed_tasks"] += 1
@@ -891,7 +898,7 @@ class DataSyncEngine(EngineBase):
         result: SyncTaskResult
     ):
         """发布同步失败事件"""
-        await self._publish_event(DataEventType.SYNC_FAILED.value  # TODO: use dedicated SYNC_CANCELLED when available, {
+        await self._publish_event(DataEventType.SYNC_FAILED.value , {
             "task_id": task_id,
             "sync_type": config.sync_type.value,
             "error_message": result.error_message or "未知错误",

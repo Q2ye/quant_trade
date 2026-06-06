@@ -690,12 +690,15 @@ class DataSyncService:
 			)
 
 			# 步骤 4：根据实际结果判断任务状态
-			# 全部失败 → failed，部分成功 → completed（含 warnings），全部成功 → completed
+			# 优先检查取消 → 全部失败 → 部分成功/成功
 			added = sync_result.get("records_added", 0)
 			updated = sync_result.get("records_updated", 0)
 			failed = sync_result.get("records_failed", 0)
 			total = added + updated + failed
-			if total > 0 and added + updated == 0:
+			if sync_result.get("cancelled"):
+				final_status = "cancelled"
+				err_msg = "用户手动取消"
+			elif total > 0 and added + updated == 0:
 				# 所有记录都失败了（如字段名不匹配、接口报错等）
 				final_status = "failed"
 				err_msg = f"全部 {failed} 条记录同步失败，无成功记录"
@@ -711,9 +714,10 @@ class DataSyncService:
 				error_message=err_msg
 			)
 
-			# 步骤 5：发布同步完成或失败事件
+			# 步骤 5：发布同步完成/失败/取消事件
+			event_type = "cancelled" if final_status == "cancelled" else ("completed" if final_status == "completed" else "failed")
 			await self._publish_sync_event(
-				event_type="completed" if final_status == "completed" else "failed",
+				event_type=event_type,
 				task_id=task_id,
 				data_type=data_type,
 				result=sync_result,
@@ -721,11 +725,12 @@ class DataSyncService:
 				user_id=user_id
 			)
 
-			# 步骤 6：清理相关缓存（仅成功时清理，失败数据不应污染缓存）
+			# 步骤 6：清理相关缓存（仅成功时清理）
 			if final_status == "completed":
 				await self._clean_cache_after_sync(data_type, ts_codes)
 
-			logger.info(f"[{data_type.value}] 同步{'完成' if final_status == 'completed' else '失败'}，"
+			_status_label = "已取消" if final_status == "cancelled" else ("完成" if final_status == "completed" else "失败")
+			logger.info(f"[{data_type.value}] 同步{_status_label}，"
 			            f"新增={added}, 更新={updated}, 失败={failed}")
 
 			return {
@@ -1410,7 +1415,7 @@ class DataSyncService:
 		Note:
 			将任务状态写入 data_sync_tasks 表。
 		"""
-		if not self._task_id:
+		if not task_id:
 			return
 		try:
 			update_data = {"status": status, "updated_at": datetime.now()}
@@ -1945,7 +1950,8 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 			logger.info(f"[资金流向] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "资金流向", task_id, user_id, _process_one)
-			result["message"] = "资金流向数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "资金流向数据同步完成"
 			return result
 
 
@@ -2017,7 +2023,8 @@ class DataSyncService:
 
 			logger.info(f"[复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "复权因子", task_id, user_id, _process_one)
-			result["message"] = "复权因子数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "复权因子数据同步完成"
 			return result
 
 	async def _sync_daily_basic(
@@ -2087,7 +2094,8 @@ class DataSyncService:
 
 			logger.info(f"[每日指标] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "每日指标", task_id, user_id, _process_one)
-			result["message"] = "每日指标数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "每日指标数据同步完成"
 			return result
 	async def _sync_etf_basic(
 			self,
@@ -2271,7 +2279,8 @@ class DataSyncService:
 
 			logger.info(f"[ETF日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "ETF日线", task_id, user_id, _process_one)
-			result["message"] = "ETF日线数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "ETF日线数据同步完成"
 			return result
 	async def _sync_index_data_with_weight(
 			self,
@@ -2706,7 +2715,8 @@ class DataSyncService:
 
 			logger.info(f"[基金复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "基金复权因子", task_id, user_id, _process_one)
-			result["message"] = "基金复权因子数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "基金复权因子数据同步完成"
 			return result
 	async def _sync_financial_data(
 			self,
@@ -2911,7 +2921,8 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 			logger.info(f"[财务报表] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "财务报表", task_id, user_id, _process_one, rate_key="financial_statement")
-			result["message"] = "财务报表数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "财务报表数据同步完成"
 			return result
 
 
@@ -3149,7 +3160,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "stk_managers", slow_threshold=30.0):
 			logger.info(f"[管理层信息] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "管理层信息", task_id, user_id, _process_one, rate_key="managers")
-			result["message"] = "管理层信息数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "管理层信息数据同步完成"
 			return result
 	async def _sync_stk_rewards(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -3196,7 +3208,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "stk_rewards", slow_threshold=30.0):
 			logger.info(f"[管理层薪酬] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "管理层薪酬", task_id, user_id, _process_one, rate_key="rewards")
-			result["message"] = "管理层薪酬数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "管理层薪酬数据同步完成"
 			return result
 	async def _sync_weekly_quotes(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -3261,7 +3274,8 @@ class DataSyncService:
 
 			logger.info(f"[周线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "周线行情", task_id, user_id, _process_one)
-			result["message"] = "周线行情数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "周线行情数据同步完成"
 			return result
 	async def _sync_monthly_quotes(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -3326,7 +3340,8 @@ class DataSyncService:
 
 			logger.info(f"[月线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "月线行情", task_id, user_id, _process_one)
-		result["message"] = "月线行情数据同步完成"
+		if not result.get("cancelled"):
+			result["message"] = "月线行情数据同步完成"
 		return result
 	async def _sync_index_basic(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -3437,7 +3452,8 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 				logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 				result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
-				result["message"] = "指数日线数据同步完成"
+				if not result.get("cancelled"):
+					result["message"] = "指数日线数据同步完成"
 				return result
 	async def _sync_tick_quotes(
 			self,
@@ -3656,7 +3672,8 @@ class DataSyncService:
 
 			logger.info(f"[ETF份额] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "ETF份额", task_id, user_id, _process_one)
-			result["message"] = "ETF份额数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "ETF份额数据同步完成"
 			return result
 	async def _sync_forecast(
 			self,
@@ -3708,7 +3725,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "forecast", slow_threshold=30.0):
 			logger.info(f"[业绩预告] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "业绩预告", task_id, user_id, _process_one, rate_key="forecast")
-			result["message"] = "业绩预告数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "业绩预告数据同步完成"
 			return result
 	async def _sync_express(
 			self,
@@ -3760,7 +3778,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "express", slow_threshold=30.0):
 			logger.info(f"[业绩快报] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "业绩快报", task_id, user_id, _process_one, rate_key="express")
-			result["message"] = "业绩快报数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "业绩快报数据同步完成"
 			return result
 	async def _sync_dividend(
 			self,
@@ -3809,7 +3828,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "dividend", slow_threshold=30.0):
 			logger.info(f"[分红送股] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "分红送股", task_id, user_id, _process_one, rate_key="dividend")
-			result["message"] = "分红送股数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "分红送股数据同步完成"
 			return result
 	async def _sync_financial_indicator(
 			self,
@@ -3872,7 +3892,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "financial_indicator", slow_threshold=30.0):
 			logger.info(f"[财务指标] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "财务指标", task_id, user_id, _process_one, rate_key="financial_indicator")
-			result["message"] = "财务指标数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "财务指标数据同步完成"
 			return result
 	async def _sync_audit_opinion(
 			self,
@@ -3930,7 +3951,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "audit_opinion", slow_threshold=30.0):
 			logger.info(f"[审计意见] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "审计意见", task_id, user_id, _process_one, rate_key="audit_opinion")
-			result["message"] = "审计意见数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "审计意见数据同步完成"
 			return result
 	async def _sync_business_income(
 			self,
@@ -3983,7 +4005,8 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "business_income", slow_threshold=30.0):
 			logger.info(f"[主营业务收入] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "主营业务收入", task_id, user_id, _process_one, rate_key="business_income")
-			result["message"] = "主营业务收入数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = "主营业务收入数据同步完成"
 			return result
 	async def _update_progress(
 			self,
