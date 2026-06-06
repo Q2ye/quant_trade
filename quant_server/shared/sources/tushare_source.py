@@ -352,9 +352,7 @@ class TushareSource(BaseDataSource):
 	def get_etf_index (self) -> pd.DataFrame:
 		"""获取ETF跟踪的基准指数列表（Tushare etf_index 接口）"""
 		try:
-			df = self.pro.etf_index(fields='ts_code,indx_name,pub_date,bp')
-			if df is not None and not df.empty:
-				df['pub_date'] = pd.to_datetime(df['pub_date'])
+			df = self.pro.etf_index()
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取ETF基准指数失败: {e}")
@@ -423,7 +421,12 @@ class TushareSource(BaseDataSource):
 			trade_date: 交易日期，空表示最新
 		"""
 		try:
-			df = self.pro.fund_share_float(ts_code=etf_code, trade_date=trade_date)
+			df = self.pro.fund_share(ts_code=etf_code, trade_date=trade_date)
+			if df is not None and not df.empty:
+				from shared.database.models.data_models import EtfShare
+				known = {c.name for c in EtfShare.__table__.columns}
+				keep = [c for c in df.columns if c in known]
+				df = df[keep]
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取ETF份额规模失败: {e}")

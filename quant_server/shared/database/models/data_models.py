@@ -537,20 +537,20 @@ class StockSTList(Base):
 # ==================== ETF数据 ====================
 
 class EtfIndex(Base):
-	"""ETF基准指数列表信息"""
+	"""ETF基准指数列表信息（字段对齐 Tushare etf_index 接口）"""
 	__tablename__ = 'etf_index'
 
 	ts_code = Column(String(20), primary_key=True, comment='指数代码')
-	indx_name = Column(String(200), nullable=False, comment='指数名称')
-	indx_csname = Column(String(100), nullable=False, comment='指数简称')
-	pub_party_name = Column(String(200), nullable=False, comment='发布机构')
-	pub_date = Column(String(8), nullable=False, comment='发布日期（YYYYMMDD）')
-	base_date = Column(String(8), nullable=False, comment='基期（YYYYMMDD）')
-	bp = Column(Float, nullable=False, comment='指数基点')
-	adj_circle = Column(String(50), nullable=False, comment='调整周期')
-	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+	indx_name = Column(String(200), comment='指数全称')
+	indx_csname = Column(String(100), comment='指数简称')
+	pub_party_name = Column(String(200), comment='发布机构')
+	pub_date = Column(DateTime(timezone=True), comment='发布日期')
+	base_date = Column(DateTime(timezone=True), comment='指数基日')
+	bp = Column(Float, comment='指数基点')
+	adj_circle = Column(String(50), comment='调整周期')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
+	                    onupdate=lambda: datetime.now(timezone.utc))
 
 
 

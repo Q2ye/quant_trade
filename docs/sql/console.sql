@@ -32,6 +32,16 @@ delete from stock_adj_factor;
 select * from trade_calendar;
 select count(*) from trade_calendar;
 
+-- ETF基础信息表
+select * from etf_basic where ts_code='000030.SZ';
+select count(*) from etf_basic;
+delete from etf_basic;
+-- ETF份额数据表
+select * from  etf_shares;
+select count(*) from  etf_shares;
+-- ETF日线行情表（TimescaleDB超表）
+select * from  etf_daily;
+select count(*) from  etf_daily;
 
 -- 每日指标表（TimescaleDB超表）
 select * from stock_daily_basic;
@@ -80,9 +90,7 @@ select count(*) from macro_gdp;
 -- 主营业务构成数据表
 select * from  stock_business_incomes;
 select count(*) from  stock_business_incomes;
--- ETF份额数据表
-select * from  etf_shares;
-select count(*) from  etf_shares;
+
 
 
 

@@ -912,7 +912,7 @@ class DataSyncService:
 				                             error_message="用户手动取消" if cancelled else None)
 				await self.session.commit()
 
-			logger.info(f"[batch] 全部完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
+			logger.info(f"[batch] 全部完成: {len(results)} 种类型 | 总记录={total_records} 新增+更新={succeeded_records} 失败={failed_records}")
 			return {
 				"success": all_success, "task_id": batch_task_id, "results": results,
 				"records_processed": total_records, "records_succeeded": succeeded_records,
@@ -2249,13 +2249,7 @@ class DataSyncService:
 			df = await self._cancellable_run_in_executor(source.get_etf_index, )
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
-				_preprocess_records(data, date_fields=())
-				# pub_date/base_date 是 VARCHAR(8) 但 _convert_records_datetime 转成了 date，需转回字符串
-				from datetime import date as _dt_date
-				for _item in data:
-					for _k in ('pub_date', 'base_date', 'adj_circle'):
-						if isinstance(_item.get(_k), _dt_date):
-							_item[_k] = _item[_k].strftime('%Y%m%d')
+				_preprocess_records(data, date_fields=('pub_date', 'base_date'))
 				if hasattr(self.etf_index_repo, "batch_upsert"):
 					records_added += await self.etf_index_repo.bulk_upsert(data)
 				else:
@@ -2351,7 +2345,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[ETF日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "ETF日线", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "ETF日线", task_id, user_id, _process_one, rate_key="etf_daily")
 			if not result.get("cancelled"):
 				result["message"] = "ETF日线数据同步完成"
 			return result

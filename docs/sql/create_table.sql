@@ -1063,29 +1063,29 @@ CREATE INDEX idx_basket_items_ts_code ON basket_items(ts_code);
 -- 1.7 ETF基础数据
 -- ------------------------------------------------------------
 
--- ETF基准指数列表信息
-CREATE TABLE etf_index (
+-- ETF基准指数列表信息（字段对齐 Tushare etf_index 接口）
+CREATE TABLE IF NOT EXISTS etf_index (
     ts_code VARCHAR(20) PRIMARY KEY,
-    indx_name VARCHAR(200) NOT NULL,
-    indx_csname VARCHAR(100) NOT NULL,
-    pub_party_name VARCHAR(200) NOT NULL,
-    pub_date CHAR(8) NOT NULL,
-    base_date CHAR(8) NOT NULL,
-    bp REAL NOT NULL,
-    adj_circle VARCHAR(50) NOT NULL,
+    indx_name VARCHAR(200),
+    indx_csname VARCHAR(100),
+    pub_party_name VARCHAR(200),
+    pub_date TIMESTAMPTZ,
+    base_date TIMESTAMPTZ,
+    bp DOUBLE PRECISION,
+    adj_circle VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE etf_index IS 'ETF基准指数列表信息';
-COMMENT ON COLUMN etf_index.ts_code IS '指数代码（唯一标识）';
+COMMENT ON TABLE etf_index IS 'ETF基准指数列表信息（对齐 Tushare etf_index 接口）';
+COMMENT ON COLUMN etf_index.ts_code IS '指数代码';
 COMMENT ON COLUMN etf_index.indx_name IS '指数全称';
 COMMENT ON COLUMN etf_index.indx_csname IS '指数简称';
-COMMENT ON COLUMN etf_index.pub_party_name IS '指数发布机构名称';
-COMMENT ON COLUMN etf_index.pub_date IS '发布日期（格式：YYYYMMDD）';
-COMMENT ON COLUMN etf_index.base_date IS '指数基期（格式：YYYYMMDD）';
-COMMENT ON COLUMN etf_index.bp IS '指数基点（单位：点）';
-COMMENT ON COLUMN etf_index.adj_circle IS '成份证券调整周期（如：每季度/每半年）';
+COMMENT ON COLUMN etf_index.pub_party_name IS '发布机构';
+COMMENT ON COLUMN etf_index.pub_date IS '发布日期';
+COMMENT ON COLUMN etf_index.base_date IS '指数基日';
+COMMENT ON COLUMN etf_index.bp IS '指数基点';
+COMMENT ON COLUMN etf_index.adj_circle IS '调整周期';
 
 -- ETF基础信息表
 CREATE TABLE IF NOT EXISTS etf_basic (
@@ -2744,8 +2744,8 @@ COMMENT ON COLUMN stock_moneyflow.net_mf_amount IS '净流入金额（万元）'
 -- 2.2 ETF行情时序表
 -- ------------------------------------------------------------
 
--- ETF日线行情表（TimescaleDB超表）
-CREATE TABLE etf_daily (
+    -- ETF日线行情表（TimescaleDB超表）
+    CREATE TABLE etf_daily (
     ts_code VARCHAR(20) NOT NULL,
     trade_date DATE NOT NULL,
     open NUMERIC(10,4) NOT NULL,
