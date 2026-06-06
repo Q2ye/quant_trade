@@ -828,7 +828,7 @@ class CompanyAnnouncement(Base):
 # ==================== 财务衍生数据 ====================
 
 class StockForecast(Base):
-	"""业绩预告数据表"""
+	"""业绩预告数据表（字段对齐 Tushare forecast 接口）"""
 	__tablename__ = 'stock_forecasts'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -844,6 +844,7 @@ class StockForecast(Base):
 	first_ann_date = Column(DateTime(timezone=True), comment='首次公告日期')
 	summary = Column(Text, comment='业绩变动摘要')
 	change_reason = Column(Text, comment='业绩变动原因')
+	update_flag = Column(String(10), comment='Tushare更新标记')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -855,7 +856,7 @@ class StockForecast(Base):
 
 
 class StockExpress(Base):
-	"""业绩快报数据表"""
+	"""业绩快报数据表（字段对齐 Tushare express 接口）"""
 	__tablename__ = 'stock_expresses'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -869,8 +870,29 @@ class StockExpress(Base):
 	total_assets = Column(Numeric(18, 4), comment='总资产')
 	total_hldr_eqy_exc_min_int = Column(Numeric(18, 4), comment='股东权益')
 	diluted_eps = Column(Numeric(12, 4), comment='稀释每股收益')
-	yoy_eps = Column(Numeric(16, 4), comment='EPS同比(%)')
+	diluted_roe = Column(Numeric(12, 4), comment='净资产收益率(%)')
 	yoy_net_profit = Column(Numeric(16, 4), comment='净利润同比(%)')
+	bps = Column(Numeric(12, 4), comment='每股净资产')
+	yoy_sales = Column(Numeric(16, 4), comment='营收同比(%)')
+	yoy_op = Column(Numeric(16, 4), comment='营业利润同比(%)')
+	yoy_tp = Column(Numeric(16, 4), comment='利润总额同比(%)')
+	yoy_dedu_np = Column(Numeric(16, 4), comment='归母净利润同比(%)')
+	yoy_eps = Column(Numeric(16, 4), comment='EPS同比(%)')
+	yoy_roe = Column(Numeric(16, 4), comment='净资产收益率同比(%)')
+	growth_assets = Column(Numeric(16, 4), comment='总资产增长率(%)')
+	yoy_equity = Column(Numeric(16, 4), comment='股东权益增长率(%)')
+	growth_bps = Column(Numeric(16, 4), comment='每股净资产增长率(%)')
+	or_last_year = Column(Numeric(18, 4), comment='去年同期营业收入')
+	op_last_year = Column(Numeric(18, 4), comment='去年同期营业利润')
+	tp_last_year = Column(Numeric(18, 4), comment='去年同期利润总额')
+	np_last_year = Column(Numeric(18, 4), comment='去年同期净利润')
+	eps_last_year = Column(Numeric(12, 4), comment='去年同期每股收益')
+	open_net_assets = Column(Numeric(18, 4), comment='期初净资产')
+	open_bps = Column(Numeric(12, 4), comment='期初每股净资产')
+	perf_summary = Column(Text, comment='业绩简要说明')
+	is_audit = Column(Integer, comment='是否审计：1是0否')
+	remark = Column(Text, comment='备注')
+	update_flag = Column(String(10), comment='Tushare更新标记')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -1041,16 +1063,19 @@ class MacroPpi(Base):
 
 
 class MacroGdp(Base):
-    """GDP国内生产总值季度数据"""
+    """GDP国内生产总值季度数据（对齐 Tushare cn_gdp 接口）"""
     __tablename__ = 'macro_gdp'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     quarter = Column(String(6), nullable=False, unique=True, comment='季度YYYYQ1~Q4')
     gdp = Column(Numeric(18, 4), comment='GDP总额(亿元)')
     gdp_yoy = Column(Numeric(10, 4), comment='GDP同比(%)')
-    pi = Column(Numeric(18, 4), comment='第一产业增加值(亿元)')
-    si = Column(Numeric(18, 4), comment='第二产业增加值(亿元)')
-    ti = Column(Numeric(18, 4), comment='第三产业增加值(亿元)')
+    pi = Column(Numeric(18, 4), comment='第一产业增加值')
+    pi_yoy = Column(Numeric(10, 4), comment='第一产业同比(%)')
+    si = Column(Numeric(18, 4), comment='第二产业增加值')
+    si_yoy = Column(Numeric(10, 4), comment='第二产业同比(%)')
+    ti = Column(Numeric(18, 4), comment='第三产业增加值')
+    ti_yoy = Column(Numeric(10, 4), comment='第三产业同比(%)')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

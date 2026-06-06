@@ -151,4 +151,5 @@ ENGINES:
     financial_statement: 3   # 三张财务报表（income/balance/cashflow）
     managers: 3              # 管理层信息（stk_managers）
     rewards: 3               # 管理层薪酬持股（stk_rewards）
-    etf_daily: 2             # ETF日线（fund_daily，800次/分钟）
+    etf_daily: 3             # ETF日线（fund_daily，800次/分钟）
+    etf_adj: 2               # ETF复权因子（fund_adj，500次/分钟）

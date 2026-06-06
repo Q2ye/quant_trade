@@ -409,8 +409,15 @@ class TushareSource(BaseDataSource):
 
 	def get_etf_adj_factor (self, etf_code: str, start_date: str = '',
 	                        end_date: str = '') -> pd.DataFrame:
-		"""获取ETF复权因子"""
-		return self.get_adj_factor(etf_code, start_date, end_date)
+		"""获取ETF复权因子（Tushare fund_adj 接口）"""
+		try:
+			df = self.pro.fund_adj(ts_code=etf_code, start_date=start_date, end_date=end_date)
+			if df is not None and not df.empty:
+				df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取ETF复权因子失败 {etf_code}: {e}")
+			return pd.DataFrame()
 
 	def get_etf_share_scale (self, etf_code: str = '',
 	                         trade_date: str = '') -> pd.DataFrame:

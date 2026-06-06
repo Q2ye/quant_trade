@@ -590,7 +590,8 @@ class DataSyncService:
 			DataType.CPI: self._sync_cpi,
 			DataType.PPI: self._sync_ppi,
 			DataType.GDP: self._sync_gdp,
-			# 指数扩展
+			# 指数
+			DataType.INDEX_DATA: self._sync_index_data_with_weight,
 			DataType.INDEX_WEIGHT: self._sync_index_weight,
 			DataType.INDEX_WEEKLY: self._sync_index_weekly,
 		}
@@ -2351,16 +2352,17 @@ class DataSyncService:
 			return result
 	async def _sync_index_data_with_weight(
 			self,
-			start_date: str,
-			end_date: str,
-			index_codes=None
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None,
+			ts_codes: Optional[List[str]] = None,
+			task_id: str = "",
+			user_id: Optional[str] = None,
+			**kwargs
 	) -> Dict[str, Any]:
-		result = await self.sync_index_data(start_date, end_date, index_codes)
-		try:
-			await self.sync_index_weight()
-		except Exception as e:
-			logger.warning(f"指数成分股权重同步失败（行情数据已同步）: {e}")
-		return result
+		"""同步指数日线 + 成分权重（兼容旧版 INDEX_DATA 类型）"""
+		result = await self._sync_index_daily(start_date, end_date, ts_codes, task_id, user_id)
+		return result or {"records_added": 0, "records_updated": 0, "records_failed": 0,
+		                  "total_items": 0, "message": "指数数据同步完成（无数据）"}
 
 	async def sync_index_weight(
 			self,
@@ -2781,7 +2783,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[基金复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "基金复权因子", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "基金复权因子", task_id, user_id, _process_one, rate_key="etf_adj")
 			if not result.get("cancelled"):
 				result["message"] = "基金复权因子数据同步完成"
 			return result
@@ -3516,11 +3518,12 @@ class DataSyncService:
 				except Exception as e:
 					logger.error(f"[指数日线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
-				logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-				result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
-				if not result.get("cancelled"):
-					result["message"] = "指数日线数据同步完成"
-				return result
+
+			logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
+			result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
+			if not result.get("cancelled"):
+				result["message"] = "指数日线数据同步完成"
+			return result
 	async def _sync_tick_quotes(
 			self,
 			start_date: Optional[date],
@@ -3779,7 +3782,7 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				_preprocess_records(data, date_fields=('ann_date', 'end_date', 'first_ann_date'))
 				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())

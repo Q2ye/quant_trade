@@ -3588,6 +3588,7 @@ CREATE TABLE stock_forecasts (
     first_ann_date TIMESTAMPTZ,
     summary TEXT,
     change_reason TEXT,
+    update_flag VARCHAR(10),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (ts_code, ann_date)

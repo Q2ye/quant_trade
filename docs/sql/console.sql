@@ -42,6 +42,10 @@ select count(*) from  etf_shares;
 -- ETF日线行情表（TimescaleDB超表）
 select * from  etf_daily;
 select count(*) from  etf_daily;
+-- ETF复权因子（TimescaleDB超表）
+select * from  fund_adj_factor;
+select count(*) from  fund_adj_factor;
+
 
 -- 每日指标表（TimescaleDB超表）
 select * from stock_daily_basic;
@@ -90,6 +94,12 @@ select count(*) from macro_gdp;
 -- 主营业务构成数据表
 select * from  stock_business_incomes;
 select count(*) from  stock_business_incomes;
+-- 业绩预告数据表
+select * from  stock_forecasts;
+select count(*) from  stock_forecasts;
+-- 业绩快报数据表
+select * from  stock_expresses;
+select count(*) from  stock_expresses;
 
 
 
@@ -124,4 +134,6 @@ FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
 
+
+drop table stock_expresses
 
