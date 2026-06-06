@@ -1088,40 +1088,43 @@ COMMENT ON COLUMN etf_index.bp IS '指数基点（单位：点）';
 COMMENT ON COLUMN etf_index.adj_circle IS '成份证券调整周期（如：每季度/每半年）';
 
 -- ETF基础信息表
-CREATE TABLE etf_basic (
+CREATE TABLE IF NOT EXISTS etf_basic (
     ts_code VARCHAR(20) PRIMARY KEY,
-    csname VARCHAR(100) NOT NULL,
-    extname VARCHAR(200) NOT NULL,
-    cname VARCHAR(200) NOT NULL,
-    index_code VARCHAR(20) REFERENCES etf_index(ts_code),
-    index_name VARCHAR(200),
-    setup_date DATE NOT NULL,
-    list_date DATE,
-    list_status CHAR(1) NOT NULL,
-    exchange CHAR(2) NOT NULL,
-    mgr_name VARCHAR(100) NOT NULL,
-    custod_name VARCHAR(100) NOT NULL,
-    mgt_fee REAL,
-    etf_type VARCHAR(10) NOT NULL,
+    name VARCHAR(100),
+    management VARCHAR(200),
+    custodian VARCHAR(200),
+    fund_type VARCHAR(50),
+    found_date TIMESTAMPTZ,
+    due_date TIMESTAMPTZ,
+    list_date TIMESTAMPTZ,
+    issue_date TIMESTAMPTZ,
+    delist_date TIMESTAMPTZ,
+    issue_amount DOUBLE PRECISION,
+    m_fee DOUBLE PRECISION,
+    c_fee DOUBLE PRECISION,
+    duration_year DOUBLE PRECISION,
+    p_value DOUBLE PRECISION,
+    min_amount DOUBLE PRECISION,
+    exp_return DOUBLE PRECISION,
+    benchmark VARCHAR(200),
+    status VARCHAR(1),
+    invest_type VARCHAR(100),
+    market VARCHAR(2),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE etf_basic IS '国内ETF基础信息（含QDII）';
-COMMENT ON COLUMN etf_basic.ts_code IS '基金交易代码（带交易所后缀）';
-COMMENT ON COLUMN etf_basic.csname IS 'ETF中文简称';
-COMMENT ON COLUMN etf_basic.extname IS 'ETF扩位交易所简称';
-COMMENT ON COLUMN etf_basic.cname IS '基金中文全称';
-COMMENT ON COLUMN etf_basic.index_code IS '跟踪指数代码';
-COMMENT ON COLUMN etf_basic.index_name IS '基准指数中文全称';
-COMMENT ON COLUMN etf_basic.setup_date IS '设立日期（格式：YYYYMMDD）';
-COMMENT ON COLUMN etf_basic.list_date IS '上市日期（格式：YYYYMMDD）';
-COMMENT ON COLUMN etf_basic.list_status IS '存续状态（L上市/D退市/P待上市）';
-COMMENT ON COLUMN etf_basic.exchange IS '交易所（SH/SZ）';
-COMMENT ON COLUMN etf_basic.mgr_name IS '基金管理人简称';
-COMMENT ON COLUMN etf_basic.custod_name IS '基金托管人名称';
-COMMENT ON COLUMN etf_basic.mgt_fee IS '基金管理费率（百分比）';
-COMMENT ON COLUMN etf_basic.etf_type IS '投资通道类型（境内/QDII）';
+COMMENT ON TABLE etf_basic IS '国内ETF基础信息（字段对齐 Tushare fund_basic）';
+COMMENT ON COLUMN etf_basic.ts_code IS '基金代码';
+COMMENT ON COLUMN etf_basic.name IS '基金简称';
+COMMENT ON COLUMN etf_basic.management IS '管理人';
+COMMENT ON COLUMN etf_basic.custodian IS '托管人';
+COMMENT ON COLUMN etf_basic.fund_type IS '投资类型';
+COMMENT ON COLUMN etf_basic.found_date IS '成立日期';
+COMMENT ON COLUMN etf_basic.list_date IS '上市日期';
+COMMENT ON COLUMN etf_basic.status IS '存续状态: L上市/D退市';
+COMMENT ON COLUMN etf_basic.market IS '市场: E-上交所 S-深交所';
+COMMENT ON COLUMN etf_basic.benchmark IS '业绩基准';
 
 -- ------------------------------------------------------------
 -- 1.8 回测模块

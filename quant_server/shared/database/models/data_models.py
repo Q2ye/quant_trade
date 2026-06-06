@@ -552,37 +552,37 @@ class EtfIndex(Base):
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
-	# 关联关系 - 一个指数可以被多个ETF跟踪
-	etfs = relationship("EtfBasic", back_populates="index_info", cascade="all, delete-orphan")
 
 
 class EtfBasic(Base):
-	"""ETF基础信息表"""
+	"""ETF基础信息表（字段对齐 Tushare fund_basic 接口）"""
 	__tablename__ = 'etf_basic'
 
-	ts_code = Column(String(20), primary_key=True, comment='TS代码')
-	csname = Column(String(100), nullable=False, comment='基金简称')
-	extname = Column(String(200), nullable=False, comment='扩展名称')
-	cname = Column(String(200), nullable=False, comment='基金全称')
-	index_code = Column(String(20), ForeignKey('etf_index.ts_code'), comment='跟踪指数代码')
-	index_name = Column(String(200), comment='跟踪指数名称')
-	setup_date = Column(DateTime, nullable=False, comment='成立日期')
-	list_date = Column(DateTime, comment='上市日期')
-	list_status = Column(String(1), nullable=False, comment='上市状态：L-上市，D-退市')
-	exchange = Column(String(2), nullable=False, comment='交易所')
-	mgr_name = Column(String(100), nullable=False, comment='管理人')
-	custod_name = Column(String(100), nullable=False, comment='托管人')
-	mgt_fee = Column(Float, comment='管理费率')
-	etf_type = Column(String(10), nullable=False, comment='ETF类型')
-	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
+	ts_code = Column(String(20), primary_key=True, comment='基金代码')
+	name = Column(String(100), comment='基金简称')
+	management = Column(String(200), comment='管理人')
+	custodian = Column(String(200), comment='托管人')
+	fund_type = Column(String(50), comment='基金类型')
+	found_date = Column(DateTime(timezone=True), comment='成立日期')
+	due_date = Column(DateTime(timezone=True), comment='到期日期')
+	list_date = Column(DateTime(timezone=True), comment='上市日期')
+	issue_date = Column(DateTime(timezone=True), comment='发行日期')
+	delist_date = Column(DateTime(timezone=True), comment='退市日期')
+	issue_amount = Column(Float, comment='发行份额(万)')
+	m_fee = Column(Float, comment='管理费率')
+	c_fee = Column(Float, comment='托管费率')
+	duration_year = Column(Float, comment='存续期')
+	p_value = Column(Float, comment='面值')
+	min_amount = Column(Float, comment='起购金额')
+	exp_return = Column(Float, comment='预期收益')
+	benchmark = Column(String(200), comment='业绩基准')
+	status = Column(String(1), comment='状态: L=上市 D=退市')
+	invest_type = Column(String(100), comment='投资类型')
+	market = Column(String(2), comment='市场: E=上交所 S=深交所')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
-
-	# 关联关系
-	daily_data = relationship("EtfDaily", back_populates="etf", cascade="all, delete-orphan")
-	minute_data = relationship("EtfMinute", back_populates="etf", cascade="all, delete-orphan")
+	                    onupdate=lambda: datetime.now(timezone.utc))
 	adj_factors = relationship("FundAdjFactor", back_populates="etf", cascade="all, delete-orphan")
-	index_info = relationship("EtfIndex", back_populates="etfs")
 
 
 class EtfDaily(Base):
@@ -605,7 +605,7 @@ class EtfDaily(Base):
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
 	# 关联关系
-	etf = relationship("EtfBasic", back_populates="daily_data")
+	etf = relationship("EtfBasic", foreign_keys=[ts_code])
 
 
 class EtfMinute(Base):
@@ -625,7 +625,7 @@ class EtfMinute(Base):
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
 	# 关联关系
-	etf = relationship("EtfBasic", back_populates="minute_data")
+	etf = relationship("EtfBasic", foreign_keys=[ts_code])
 
 	# 索引
 	__table_args__ = (

@@ -271,6 +271,28 @@ def _convert_records_datetime(records: List[Dict[Any, Any]]) -> List[Dict[str, A
 	return converted_records
 
 
+
+# 同步类型中文标签
+_TYPE_LABEL = {
+    'stock_basic': '股票基础(stock_basic)', 'daily_quotes': '日行情(daily_quotes)',
+    'minute_quotes': '分钟行情(minute_quotes)', 'weekly_quotes': '周行情(weekly_quotes)',
+    'monthly_quotes': '月行情(monthly_quotes)', 'moneyflow': '资金流向(moneyflow)',
+    'adj_factor': '复权因子(adj_factor)', 'daily_basic': '每日指标(daily_basic)',
+    'suspend_info': '停复牌(suspend_info)', 'company': '公司信息(company)',
+    'st_list': 'ST列表(st_list)', 'stock_company': '公司信息(stock_company)',
+    'etf_basic': 'ETF基础(etf_basic)', 'etf_daily': 'ETF日线(etf_daily)',
+    'etf_index': 'ETF指数(etf_index)', 'etf_minute': 'ETF分钟(etf_minute)',
+    'etf_share': 'ETF份额(etf_share)', 'fund_adj_factor': '基金复权(fund_adj_factor)',
+    'financial': '财务报表(financial)', 'forecast': '业绩预告(forecast)',
+    'express': '业绩快报(express)', 'dividend': '分红送股(dividend)',
+    'financial_indicator': '财务指标(financial_indicator)',
+    'audit_opinion': '审计意见(audit_opinion)', 'business_income': '主营业务(business_income)',
+    'stk_managers': '管理层(stk_managers)', 'stk_rewards': '薪酬(stk_rewards)',
+    'trade_calendar': '交易日历(trade_calendar)', 'index_basic': '指数基础(index_basic)',
+    'index_daily': '指数日线(index_daily)', 'index_weight': '指数权重(index_weight)',
+    'index_weekly': '指数周线(index_weekly)', 'cpi': 'CPI(cpi)', 'ppi': 'PPI(ppi)', 'gdp': 'GDP(gdp)',
+}
+
 def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) -> int:
 	"""
 	估算同步项目总数，用于创建任务记录时填充 total_records 字段。
@@ -675,13 +697,14 @@ class DataSyncService:
 					params=kwargs
 				)
 
-			# 步骤 2：发布 started 事件，前端可据此显示加载状态
-			await self._publish_sync_event(
-				event_type="started",
-				task_id=task_id,
-				data_type=data_type,
-				user_id=user_id
-			)
+			# 步骤 2：批量模式下跳过 started 事件（由外层统一管理）
+			if update_task_status:
+				await self._publish_sync_event(
+					event_type="started",
+					task_id=task_id,
+					data_type=data_type,
+					user_id=user_id
+				)
 
 			# 步骤 3：路由到具体同步方法（通过 _sync_method_map）
 			sync_result = await self._sync_by_data_type(
@@ -739,9 +762,10 @@ class DataSyncService:
 			if final_status == "completed":
 				await self._clean_cache_after_sync(data_type, ts_codes)
 
-			_status_label = "已取消" if final_status == "cancelled" else ("完成" if final_status == "completed" else "失败")
-			logger.info(f"[{data_type.value}] 同步{_status_label}，"
-			            f"新增={added}, 更新={updated}, 失败={failed}")
+			if update_task_status:
+				_status_label = "已取消" if final_status == "cancelled" else ("完成" if final_status == "completed" else "失败")
+				logger.info(f"[{data_type.value}] 同步{_status_label}，"
+				            f"新增={added}, 更新={updated}, 失败={failed}")
 
 			return {
 				"success": final_status == "completed",
@@ -816,7 +840,7 @@ class DataSyncService:
 					"message": str,
 				}
 		"""
-		logger.info(f"开始批量同步，数据类型: {[task.data_type for task in tasks]}, 用户ID: {user_id}")
+		logger.info(f"[batch] 开始: {[str(t.data_type) for t in tasks]} user={user_id}")
 
 		batch_task_id = f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 			
@@ -835,10 +859,10 @@ class DataSyncService:
 		shared_executor = _cf.ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="batch_sync_")
 
 		async def _sync_one(task, idx):
-			logger.info(f"[批量同步 #{idx + 1}] {task.data_type} 排队等待...")
+			logger.info(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 排队等待...")
 			async with sem:
 				from shared.database.session import get_session_manager
-				logger.info(f"[批量同步 #{idx + 1}] {task.data_type} 开始执行")
+				logger.info(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 开始执行")
 				sm = get_session_manager()
 				async with sm.get_session() as session:
 					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id,
@@ -859,10 +883,10 @@ class DataSyncService:
 						                records_added=ra, records_updated=ru, records_failed=rf,
 						                start_time=datetime.now(), end_time=datetime.now(),
 						                error_message=result.get("error"))
-						logger.info(f"[批量同步 #{idx + 1}] {task.data_type}: 新增={ra} 更新={ru} 失败={rf}")
+						logger.info(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 完成: 新增={ra} 更新={ru} 失败={rf}")
 						return sr.model_dump()
 					except Exception:
-						logger.error(f"[批量同步 #{idx + 1}] {task.data_type} 失败: {e}", exc_info=True)
+						logger.error(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 失败: {e}", exc_info=True)
 						return SyncResult(data_type=task.data_type, success=False,
 						                  start_time=datetime.now(), end_time=datetime.now(),
 						                  error_message=str(e)).model_dump()
@@ -888,7 +912,7 @@ class DataSyncService:
 				                             error_message="用户手动取消" if cancelled else None)
 				await self.session.commit()
 
-			logger.info(f"[批量同步] 完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
+			logger.info(f"[batch] 全部完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
 			return {
 				"success": all_success, "task_id": batch_task_id, "results": results,
 				"records_processed": total_records, "records_succeeded": succeeded_records,
@@ -898,7 +922,7 @@ class DataSyncService:
 				"message": "批量同步已取消" if cancelled else ("批量同步完成" if all_success else f"批量同步部分完成（{sum(1 for r in results if not r.get('success', True))}/{len(results)} 失败）")
 			}
 		except Exception as e:
-			logger.error(f"[批量同步] 并行执行失败: {e}", exc_info=True)
+			logger.error(f"[batch] 并行执行异常: {_fmt_err(e, 150)}", exc_info=True)
 			return {"success": False, "task_id": batch_task_id, "results": [],
 			        "records_processed": 0, "records_succeeded": 0, "records_failed": 0,
 			        "total_tasks": len(tasks), "error": str(e), "message": "批量同步异常"}
@@ -1568,7 +1592,7 @@ class DataSyncService:
 		"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		logger.info("开始同步股票列表...")
-		stock_list = await source.get_stock_basic()
+		stock_list = await self._cancellable_run_in_executor(source.get_stock_basic, )
 		total = len(stock_list)
 		# 批量预处理 + bulk upsert（替代逐行 SELECT+INSERT/UPDATE）
 		if hasattr(self.stock_basic_repo, 'bulk_upsert'):
@@ -1705,7 +1729,7 @@ class DataSyncService:
 
 		total = len(ts_codes)
 
-		async with SyncTimingLogger(logger, "daily_quotes", slow_threshold=30.0) as timer:
+		async with SyncTimingLogger(logger, "日行情(daily_quotes)", slow_threshold=30.0) as timer:
 			logger.info(
 				f"[日行情] 并行同步 {total} 只, 并发={max_concurrency}, "
 				f"预估 ~{total * 0.3 / 60 / max_concurrency:.1f}min"
@@ -1789,7 +1813,7 @@ class DataSyncService:
 
 					except Exception as e:
 						# 单股失败隔离：记录错误 + 累加失败计数，不影响其他 worker
-						logger.error(f"[日行情] {ts_code} 同步失败: {e}")
+						logger.error(f"[日行情] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 						async with stats_lock:
 							records_failed += 1
 						try:
@@ -1880,7 +1904,7 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-		async with SyncTimingLogger(logger, "minute_quotes", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "分钟行情(minute_quotes)", slow_threshold=30.0):
 			logger.info(f"[分钟行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 			for idx, ts_code in enumerate(ts_codes):
 				if await self._is_cancelled(): break
@@ -1896,7 +1920,7 @@ class DataSyncService:
 						inserted = await self.stock_minute_repo.batch_insert(minute_data)
 						records_added += inserted
 				except Exception as e:
-					logger.error(f"同步 {ts_code} 分钟数据失败: {e}")
+					logger.error(f"同步 {ts_code} 分钟数据失败: {_fmt_err(e, 150)}")
 					records_failed += 1
 
 				await self._update_progress(
@@ -1964,7 +1988,7 @@ class DataSyncService:
 		latest_dates_map = await self.stock_moneyflow_repo.get_latest_trade_dates_batch(ts_codes)
 
 		logger.info(f"[资金流向] 逐股同步 {len(ts_codes)} 只, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		async with SyncTimingLogger(logger, "moneyflow", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "资金流向(moneyflow)", slow_threshold=10.0) as timer:
 
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
@@ -1985,7 +2009,7 @@ class DataSyncService:
 					added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[资金流向] {ts_code} 同步失败: {e}")
+					logger.error(f"[资金流向] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 			logger.info(f"[资金流向] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "资金流向", task_id, user_id, _process_one)
@@ -2029,7 +2053,7 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "adj_factor", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "复权因子(adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = StockAdjFactorRepository(session)
@@ -2057,7 +2081,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[复权因子] {ts_code} 同步失败: {e}")
+					logger.error(f"[复权因子] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -2100,7 +2124,7 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_daily_basic_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "daily_basic", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "每日指标(daily_basic)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = StockDailyBasicRepository(session)
@@ -2128,7 +2152,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[每日指标] {ts_code} 同步失败: {e}")
+					logger.error(f"[每日指标] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[每日指标] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -2161,21 +2185,23 @@ class DataSyncService:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		etf_df = await self._cancellable_run_in_executor(source.get_etf_basic, )
-		# 将DataFrame转换为字典列表并确保键为字符串类型
-		etf_list = _convert_records_datetime(etf_df.to_dict('records')) if not etf_df.empty else []
+		if etf_df is None or etf_df.empty:
+			logger.warning("[ETF基础] Tushare 返回空数据，可能 token 权限不足或接口无数据")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+			        "total_items": 0, "message": "ETF基础信息同步完成（Tushare 无数据）"}
+		etf_list = _convert_records_datetime(etf_df.to_dict('records'))
 		records_added = 0
 		records_updated = 0
 		# 批量预处理 + bulk upsert
 		if etf_list and hasattr(self.etf_basic_repo, 'bulk_upsert'):
-			_preprocess_records(etf_list, date_fields=['setup_date', 'list_date'])
+			_preprocess_records(etf_list, date_fields=['found_date', 'list_date', 'issue_date', 'delist_date', 'due_date'])
 			records_added = await self.etf_basic_repo.bulk_upsert(etf_list)
 			records_updated = 0
 		else:
-			for etf in etf_list:
-				if 'setup_date' in etf and etf['setup_date']:
-					etf['setup_date'] = _convert_to_date(etf['setup_date'])
-				if 'list_date' in etf and etf['list_date']:
-					etf['list_date'] = _convert_to_date(etf['list_date'])
+			for _etf in etf_list:
+				for _dk in ('found_date', 'list_date', 'issue_date', 'delist_date', 'due_date'):
+					if _etf.get(_dk):
+						_etf[_dk] = _convert_to_date(_etf[_dk])
 				existing = await self.etf_basic_repo.get_by(ts_code=etf["ts_code"])
 				if existing:
 					await self.etf_basic_repo.update_by({"ts_code": existing.ts_code}, etf)
@@ -2183,7 +2209,8 @@ class DataSyncService:
 				else:
 					await self.etf_basic_repo.create(etf)
 					records_added += 1
-			await self._update_progress(task_id, current_item=f"ETF: {etf['ts_code']}", user_id=user_id)
+			if etf_list:
+					await self._update_progress(task_id, current_item=f"ETF: {etf_list[-1]['ts_code']}", user_id=user_id)
 		await self.session.commit()
 		return {
 			"records_added": records_added,
@@ -2215,16 +2242,23 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added, records_updated, records_failed = 0, 0, 0
 		try:
 			df = await self._cancellable_run_in_executor(source.get_etf_index, )
 			if df is not None and not df.empty:
 				data = _convert_records_datetime(df.to_dict('records'))
+				_preprocess_records(data, date_fields=())
+				# pub_date/base_date 是 VARCHAR(8) 但 _convert_records_datetime 转成了 date，需转回字符串
+				from datetime import date as _dt_date
+				for _item in data:
+					for _k in ('pub_date', 'base_date', 'adj_circle'):
+						if isinstance(_item.get(_k), _dt_date):
+							_item[_k] = _item[_k].strftime('%Y%m%d')
 				if hasattr(self.etf_index_repo, "batch_upsert"):
 					records_added += await self.etf_index_repo.bulk_upsert(data)
 				else:
-					_preprocess_records(data, date_fields=('pub_date',))
 					for item in data:
 						try:
 							await self.etf_index_repo.create(item)
@@ -2247,7 +2281,7 @@ class DataSyncService:
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
 			        "total_items": records_added + records_failed, "message": "ETF基准指数同步完成"}
 		except Exception as e:
-			logger.error(f"ETF基准指数同步失败: {e}")
+			logger.error(f"ETF基准指数同步失败: {_fmt_err(e, 120)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "message": f"ETF基准指数同步失败: {str(e)}"}
 
@@ -2285,7 +2319,7 @@ class DataSyncService:
 		stock_list_date_map = {etf.ts_code: etf.list_date for etf in etfs if getattr(etf, 'list_date', None)}
 		latest_dates_map = await self.etf_daily_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "etf_daily", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "ETF日线(etf_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = EtfDailyRepository(session)
@@ -2313,7 +2347,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[ETF日线] {ts_code} 同步失败: {e}")
+					logger.error(f"[ETF日线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[ETF日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -2431,7 +2465,7 @@ class DataSyncService:
 					records_failed += 1
 
 			except Exception as e:
-				logger.error(f"同步指数 {idx_code} 成分股权重失败: {e}")
+				logger.error(f"同步指数 {idx_code} 成分股权重失败: {_fmt_err(e, 150)}")
 				records_failed += 1
 
 		return {
@@ -2508,7 +2542,7 @@ class DataSyncService:
 				logger.warning(f"不支持的宏观经济数据类型: {macro_type}")
 				records_failed += 1
 		except Exception as e:
-			logger.error(f"宏观经济数据 {macro_type} 同步失败: {e}")
+			logger.error(f"宏观经济数据 {macro_type} 同步失败: {_fmt_err(e, 150)}")
 			records_failed += 1
 
 		return {
@@ -2585,7 +2619,7 @@ class DataSyncService:
 				else:
 					records_failed += 1
 			except Exception as e:
-				logger.error(f"指数周线 {idx_code} 同步失败: {e}")
+				logger.error(f"指数周线 {idx_code} 同步失败: {_fmt_err(e, 150)}")
 				records_failed += 1
 		return {"records_added": records_added, "records_updated": 0,
 		        "records_failed": records_failed,
@@ -2648,7 +2682,7 @@ class DataSyncService:
 		records_added = 0
 		records_failed = 0
 
-		async with SyncTimingLogger(logger, "etf_minute", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "ETF分钟(etf_minute)", slow_threshold=30.0):
 			logger.info(f"[ETF分钟] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
 			for idx, ts_code in enumerate(ts_codes):
 				if await self._is_cancelled():
@@ -2667,7 +2701,7 @@ class DataSyncService:
 						inserted = await self.etf_minute_repo.batch_insert(minute_data)
 						records_added += inserted
 				except Exception as e:
-					logger.error(f"同步 {ts_code} ETF分钟数据失败: {e}")
+					logger.error(f"同步 {ts_code} ETF分钟数据失败: {_fmt_err(e, 150)}")
 					records_failed += 1
 
 				await self._update_progress(task_id, current_item=f"处理 {ts_code}", user_id=user_id)
@@ -2721,7 +2755,7 @@ class DataSyncService:
 		stock_list_date_map = {etf.ts_code: etf.list_date for etf in etfs if getattr(etf, 'list_date', None)}
 		latest_dates_map = await self.fund_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "fund_adj_factor", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "基金复权(fund_adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = FundAdjFactorRepository(session)
@@ -2749,7 +2783,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[基金复权因子] {ts_code} 同步失败: {e}")
+					logger.error(f"[基金复权因子] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[基金复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -2791,7 +2825,7 @@ class DataSyncService:
 				total_updated += r.get("records_updated", 0)
 				total_failed += r.get("records_failed", 0)
 			except Exception as e:
-				logger.error(f"财务报表 {name} 同步失败: {e}")
+				logger.error(f"财务报表 {name} 同步失败: {_fmt_err(e, 150)}")
 				results[name] = {"error": str(e)}
 				total_failed += 1
 		cancelled = await self._is_cancelled()
@@ -2942,7 +2976,7 @@ class DataSyncService:
 		records_failed = 0
 
 		logger.info(f"[财务报表] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		async with SyncTimingLogger(logger, f"financial_{report_type}") as timer:
+		async with SyncTimingLogger(logger, f"财报(financial_{report_type})") as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：HTTP拉取 > 日期转换 > upsert。"""
 				repo = FinancialStatementRepository(session)
@@ -2956,7 +2990,7 @@ class DataSyncService:
 					added = await repo.bulk_upsert(data)
 					return {"added": added, "updated": 0}
 				except Exception as e:
-					logger.error(f"[财务报表] {ts_code} 同步失败: {e}")
+					logger.error(f"[财务报表] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 			logger.info(f"[财务报表] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "财务报表", task_id, user_id, _process_one, rate_key="financial_statement")
@@ -2991,8 +3025,7 @@ class DataSyncService:
 		start_date_str = start_date.strftime('%Y%m%d') if start_date else ''
 		end_date_str = end_date.strftime('%Y%m%d') if end_date else ''
 
-		# get_trade_cal is async, direct await (no executor)
-		calendar_df = await source.get_trade_cal(
+		calendar_df = await self._cancellable_run_in_executor(source.get_trade_cal,
 			start_date=start_date_str,
 			end_date=end_date_str
 		)
@@ -3151,7 +3184,7 @@ class DataSyncService:
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
 			        "total_items": records_added + records_failed, "message": "ST股票列表同步完成"}
 		except Exception as e:
-			logger.error(f"ST列表同步失败: {e}")
+			logger.error(f"ST列表同步失败: {_fmt_err(e, 150)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "message": f"ST列表同步失败: {str(e)}"}
 
@@ -3194,9 +3227,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[管理层信息] {ts_code} 同步失败: {e}")
+				logger.error(f"[管理层信息] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "stk_managers", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "管理层(stk_managers)", slow_threshold=30.0):
 			logger.info(f"[管理层信息] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "管理层信息", task_id, user_id, _process_one, rate_key="managers")
 			if not result.get("cancelled"):
@@ -3242,9 +3275,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[管理层薪酬] {ts_code} 同步失败: {e}")
+				logger.error(f"[管理层薪酬] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "stk_rewards", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "薪酬(stk_rewards)", slow_threshold=30.0):
 			logger.info(f"[管理层薪酬] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "管理层薪酬", task_id, user_id, _process_one, rate_key="rewards")
 			if not result.get("cancelled"):
@@ -3280,7 +3313,7 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_weekly_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "weekly_quotes", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "周行情(weekly_quotes)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = StockWeeklyRepository(session)
@@ -3308,7 +3341,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[周线行情] {ts_code} 同步失败: {e}")
+					logger.error(f"[周线行情] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[周线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -3346,7 +3379,7 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_monthly_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "monthly_quotes", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "月行情(monthly_quotes)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = StockMonthlyRepository(session)
@@ -3374,7 +3407,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[月线行情] {ts_code} 同步失败: {e}")
+					logger.error(f"[月线行情] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[月线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -3424,7 +3457,7 @@ class DataSyncService:
 							await self.index_basic_repo.create(item);
 							records_added += 1
 			except Exception as e:
-				logger.error(f"指数基本信息 {market} 同步失败: {e}")
+				logger.error(f"指数基本信息 {market} 同步失败: {_fmt_err(e, 150)}")
 				records_failed += 1
 		await self.session.commit()
 		return {"records_added": records_added, "records_updated": records_updated, "records_failed": records_failed,
@@ -3460,7 +3493,7 @@ class DataSyncService:
 		# 步骤 2：批量预加载所有指数的最新日期（一次 SQL 替代 N 次逐指数查询）
 		latest_dates_map = await self.index_daily_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "index_daily", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "指数日线(index_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = IndexDailyRepository(session)
@@ -3487,7 +3520,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[指数日线] {ts_code} 同步失败: {e}")
+					logger.error(f"[指数日线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 				logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 				result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
@@ -3547,12 +3580,12 @@ class DataSyncService:
 							tick_data = _convert_records_datetime(tick_df.to_dict('records'))
 							records_added += len(tick_data)
 					except Exception as e:
-						logger.warning(f"获取 {ts_code} {current_date} Tick数据失败: {e}")
+						logger.warning(f"获取 {ts_code} {current_date} Tick数据失败: {_fmt_err(e, 150)}")
 						records_failed += 1
 
 					current_date += timedelta(days=1)
 			except Exception as e:
-				logger.error(f"同步 {ts_code} Tick数据失败: {e}")
+				logger.error(f"同步 {ts_code} Tick数据失败: {_fmt_err(e, 150)}")
 				records_failed += 1
 
 			await self._update_progress(
@@ -3640,7 +3673,7 @@ class DataSyncService:
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
 			        "total_items": records_added + records_failed, "message": "停复牌信息同步完成"}
 		except Exception as e:
-			logger.error(f"停复牌信息同步失败: {e}")
+			logger.error(f"停复牌信息同步失败: {_fmt_err(e, 150)}")
 			await self.session.commit()
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "not_implemented": True, "message": f"停复牌信息同步失败: {str(e)}"}
@@ -3679,7 +3712,7 @@ class DataSyncService:
 		stock_list_date_map = {etf.ts_code: etf.list_date for etf in etfs if getattr(etf, 'list_date', None)}
 		latest_dates_map = await self.etf_share_repo.get_latest_trade_dates_batch(ts_codes)
 
-		async with SyncTimingLogger(logger, "etf_share", slow_threshold=10.0) as timer:
+		async with SyncTimingLogger(logger, "ETF份额(etf_share)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
 				repo = EtfShareRepository(session)
@@ -3706,7 +3739,7 @@ class DataSyncService:
 						added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
-					logger.error(f"[ETF份额] {ts_code} 同步失败: {e}")
+					logger.error(f"[ETF份额] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[ETF份额] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
@@ -3759,9 +3792,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[业绩预告] {ts_code} 同步失败: {e}")
+				logger.error(f"[业绩预告] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "forecast", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "业绩预告(forecast)", slow_threshold=30.0):
 			logger.info(f"[业绩预告] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "业绩预告", task_id, user_id, _process_one, rate_key="forecast")
 			if not result.get("cancelled"):
@@ -3812,9 +3845,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[业绩快报] {ts_code} 同步失败: {e}")
+				logger.error(f"[业绩快报] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "express", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "业绩快报(express)", slow_threshold=30.0):
 			logger.info(f"[业绩快报] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "业绩快报", task_id, user_id, _process_one, rate_key="express")
 			if not result.get("cancelled"):
@@ -3868,9 +3901,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[分红送股] {ts_code} 同步失败: {e}")
+				logger.error(f"[分红送股] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "dividend", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "分红送股(dividend)", slow_threshold=30.0):
 			logger.info(f"[分红送股] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "分红送股", task_id, user_id, _process_one, rate_key="dividend")
 			if not result.get("cancelled"):
@@ -3932,9 +3965,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[财务指标] {ts_code} 同步失败: {e}")
+				logger.error(f"[财务指标] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "financial_indicator", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "财务指标(financial_indicator)", slow_threshold=30.0):
 			logger.info(f"[财务指标] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "财务指标", task_id, user_id, _process_one, rate_key="financial_indicator")
 			if not result.get("cancelled"):
@@ -3991,9 +4024,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[审计意见] {ts_code} 同步失败: {e}")
+				logger.error(f"[审计意见] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "audit_opinion", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "审计意见(audit_opinion)", slow_threshold=30.0):
 			logger.info(f"[审计意见] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "审计意见", task_id, user_id, _process_one, rate_key="audit_opinion")
 			if not result.get("cancelled"):
@@ -4045,9 +4078,9 @@ class DataSyncService:
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"[主营业务收入] {ts_code} 同步失败: {e}")
+				logger.error(f"[主营业务收入] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 				return {"added": 0, "updated": 0, "failed": True}
-		async with SyncTimingLogger(logger, "business_income", slow_threshold=30.0):
+		async with SyncTimingLogger(logger, "主营业务(business_income)", slow_threshold=30.0):
 			logger.info(f"[主营业务收入] 并行同步 {len(ts_codes)} 只, 并发=8")
 			result = await self._parallel_for_each(ts_codes, "主营业务收入", task_id, user_id, _process_one, rate_key="business_income")
 			if not result.get("cancelled"):

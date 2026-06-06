@@ -50,8 +50,8 @@ class TushareSource(BaseDataSource):
 
 	# ==================== 股票基础数据 ====================
 
-	async def get_stock_basic (self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
-		"""获取股票基本信息
+	def get_stock_basic (self, exchange: str = '', list_status: str = 'L') -> List[Dict]:
+		"""获取股票基本信息（同步方法，由调用方丢线程池）
 
 		Args:
 			exchange: 交易所 (SSE/SZSE), 空表示全部
@@ -60,19 +60,14 @@ class TushareSource(BaseDataSource):
 		Returns:
 			股票基本信息列表
 		"""
-		import asyncio
-
-		def _fetch ():
-			fields = ('ts_code,symbol,name,area,industry,market,exchange,'
-			          'list_date,delist_date,is_hs')
-			try:
-				df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
-				return df.to_dict('records') if df is not None else []
-			except Exception as e:
-				logger.error(f"获取股票基本信息失败: {e}")
-				return []
-
-		return await asyncio.to_thread(_fetch)
+		fields = ('ts_code,symbol,name,area,industry,market,exchange,'
+		          'list_date,delist_date,is_hs')
+		try:
+			df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
+			return df.to_dict('records') if df is not None else []
+		except Exception as e:
+			logger.error(f"获取股票基本信息失败: {e}")
+			return []
 
 	def get_ashare_list (self) -> list:
 		"""获取A股列表（排除ST/*ST）"""
@@ -315,38 +310,41 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取股票历史数据失败: {e}")
 			return pd.DataFrame()
 
-	async def get_trade_cal (self, exchange: str = '',
-	                         start_date: str = '', end_date: str = '') -> pd.DataFrame:
-		"""获取交易日历"""
-		import asyncio
-
-		def _fetch():
-			try:
-				df = self.pro.trade_cal(exchange=exchange, start_date=start_date,
-				                        end_date=end_date)
-				if df is not None and not df.empty:
-					df['cal_date'] = pd.to_datetime(df['cal_date'])
-				return df if df is not None else pd.DataFrame()
-			except Exception as e:
-				logger.error(f"获取交易日历失败: {e}")
-				return pd.DataFrame()
-
-		return await asyncio.to_thread(_fetch)
+	def get_trade_cal (self, exchange: str = '',
+	                    start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取交易日历（同步方法，由调用方丢线程池）"""
+		try:
+			df = self.pro.trade_cal(exchange=exchange, start_date=start_date,
+			                        end_date=end_date)
+			if df is not None and not df.empty:
+				df['cal_date'] = pd.to_datetime(df['cal_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取交易日历失败: {e}")
+			return pd.DataFrame()
 
 	# ==================== ETF数据 ====================
 
 	def get_etf_basic (self, market: str = '') -> pd.DataFrame:
-		"""获取ETF基础信息
+		"""获取ETF基础信息（字段对齐 Tushare fund_basic，无需映射）
 
 		Args:
-			market: 市场 E-上海 D-深圳, 空表示全部
+			market: 市场 E-上海 S-深圳, 空表示全部
 		"""
 		try:
 			df = self.pro.fund_basic(market=market, status='L')
-			if df is not None:
-				# 过滤ETF
-				df = df[df['type'].str.contains('ETF', na=False)]
-			return df if df is not None else pd.DataFrame()
+			if df is None or df.empty:
+				logger.warning(f"Tushare fund_basic 返回空: market='{market}', status='L'")
+				return pd.DataFrame()
+			# 用 name 字段过滤 ETF（排除联接基金）
+			df = df[df['name'].str.contains('ETF', na=False) & ~df['name'].str.contains('联接', na=False)]
+			logger.debug(f"Tushare fund_basic ETF: {len(df)} 条, 抽样: {df['name'].head(5).tolist()}")
+			# 只保留模型中存在的列
+			from shared.database.models.data_models import EtfBasic
+			known = {c.name for c in EtfBasic.__table__.columns}
+			keep = [c for c in df.columns if c in known]
+			df = df[keep]
+			return df
 		except Exception as e:
 			logger.error(f"获取ETF基础信息失败: {e}")
 			return pd.DataFrame()

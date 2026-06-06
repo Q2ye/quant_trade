@@ -65,6 +65,18 @@ select count(*) from  stock_fina_indicators;
 select * from stock_audit_opinions;
 select count(*) from stock_audit_opinions;
 
+-- CPI 居民消费价格指数
+select * from macro_cpi;
+select count(*) from macro_cpi;
+
+-- PPI 工业生产者出厂价格指数
+select * from macro_ppi;
+select count(*) from macro_ppi;
+
+-- GDP 国内生产总值
+select * from macro_gdp;
+select count(*) from macro_gdp;
+
 -- 主营业务构成数据表
 select * from  stock_business_incomes;
 select count(*) from  stock_business_incomes;
@@ -103,4 +115,5 @@ SELECT conname, pg_get_constraintdef(oid)
 FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
+
 

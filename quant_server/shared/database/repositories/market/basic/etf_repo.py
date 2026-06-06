@@ -45,9 +45,9 @@ class EtfBasicRepository(BaseRepository[EtfBasic]):
 			query = select(self.model).where(
 				or_(
 					self.model.ts_code.like(f"%{keyword}%"),
-					self.model.csname.like(f"%{keyword}%"),
-					self.model.cname.like(f"%{keyword}%"),
-					self.model.extname.like(f"%{keyword}%")
+					self.model.name.like(f"%{keyword}%"),
+					self.model.name.like(f"%{keyword}%"),
+					self.model.name.like(f"%{keyword}%")
 				)
 			).order_by(self.model.ts_code).offset(skip).limit(limit)
 
@@ -341,14 +341,14 @@ class ETFRepository:
 			return {
 				"basic_info": {
 					"ts_code": etf_basic.ts_code,
-					"name": etf_basic.cname,
-					"short_name": etf_basic.csname,
+					"name": etf_basic.name,
+					"short_name": etf_basic.name,
 					"exchange": etf_basic.exchange,
-					"fund_type": etf_basic.etf_type,
-					"manager": etf_basic.mgr_name,
-					"setup_date": etf_basic.setup_date,
+					"fund_type": etf_basic.fund_type,
+					"manager": etf_basic.management,
+					"setup_date": etf_basic.found_date,
 					"list_date": etf_basic.list_date,
-					"management_fee": etf_basic.mgt_fee
+					"management_fee": etf_basic.m_fee
 				},
 				"index_info": {
 					"index_code": etf_basic.index_code,
@@ -455,14 +455,14 @@ class ETFRepository:
 		return {
 			"basic_info": {
 				"ts_code": etf_basic.ts_code,
-				"name": etf_basic.cname,
-				"short_name": etf_basic.csname,
+				"name": etf_basic.name,
+				"short_name": etf_basic.name,
 				"exchange": etf_basic.exchange,
-				"fund_type": etf_basic.etf_type,
-				"manager": etf_basic.mgr_name,
-				"setup_date": etf_basic.setup_date,
+				"fund_type": etf_basic.fund_type,
+				"manager": etf_basic.management,
+				"setup_date": etf_basic.found_date,
 				"list_date": etf_basic.list_date,
-				"management_fee": etf_basic.mgt_fee
+				"management_fee": etf_basic.m_fee
 			},
 			"index_info": {
 				"index_code": etf_basic.index_code,
