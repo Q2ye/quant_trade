@@ -151,6 +151,38 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 		except Exception as e:
 			raise RepositoryError(f"获取最新数据日期失败: {str(e)}")
 
+	async def get_latest_trade_dates_batch(
+			self,
+			ts_codes: list
+	) -> dict:
+		"""批量获取多只基金的最新交易日（一次 SQL 查询，用于增量同步日期推断）。
+
+		Args:
+			ts_codes: 基金 TS 代码列表
+
+		Returns:
+			dict: {ts_code: latest_trade_date 或 None}
+		"""
+		from sqlalchemy import func
+
+		if not ts_codes:
+			return {}
+
+		try:
+			query = (
+				select(self.model.ts_code, func.max(self.model.trade_date))
+				.where(self.model.ts_code.in_(ts_codes))
+				.group_by(self.model.ts_code)
+			)
+			result = await self.session.execute(query)
+			mapping = {row[0]: row[1] for row in result.fetchall()}
+			for code in ts_codes:
+				if code not in mapping:
+					mapping[code] = None
+			return mapping
+		except Exception as e:
+			raise RepositoryError(f"批量获取最新交易日期失败: {str(e)}")
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,
