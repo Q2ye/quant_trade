@@ -97,6 +97,13 @@ class SyncTaskResult:
     summary: Dict[str, Any] = field(default_factory=dict)
 
 
+# 模块级引擎引用，供 handler 等外部调用者使用
+_sync_engine_instance: "Optional[DataSyncEngine]" = None
+
+def get_sync_engine() -> "Optional[DataSyncEngine]":
+    return _sync_engine_instance
+
+
 class DataSyncEngine(EngineBase):
     """
     数据同步引擎重构版
@@ -145,6 +152,10 @@ class DataSyncEngine(EngineBase):
             sync_service: 数据同步服务实例（依赖注入）
         """
         super().__init__(config, event_engine, resource_pool)
+
+        # 注册为模块级单例，供 handler 等外部调用
+        global _sync_engine_instance
+        _sync_engine_instance = self
 
         # 服务依赖注入
         self.sync_service = sync_service

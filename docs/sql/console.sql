@@ -88,10 +88,11 @@ select * from backtest_parameters;
 -- 因子
 select * from factor_definitions;
 -- 同步任务表
-select * from data_sync_tasks;
+select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';
 -- 用户
 select * from sys_users;
 
+commit
 
 
 ALTER TABLE data_sync_tasks DROP CONSTRAINT IF EXISTS data_sync_tasks_status_check;

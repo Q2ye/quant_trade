@@ -364,7 +364,6 @@ def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=(
 	return records
 
 
-
 # Tushare旧数据(2011年之前)资金流向部分列可能为null，需要填充0
 _ADJ_FACTOR_NULLABLE_FIELDS = ("adj_factor",)
 _MONEYFLOW_NULLABLE_FIELDS = (
@@ -698,6 +697,7 @@ class DataSyncService:
 			if sync_result.get("cancelled"):
 				final_status = "cancelled"
 				err_msg = "用户手动取消"
+				
 			elif total > 0 and added + updated == 0:
 				# 所有记录都失败了（如字段名不匹配、接口报错等）
 				final_status = "failed"
@@ -713,6 +713,9 @@ class DataSyncService:
 				result=sync_result,
 				error_message=err_msg
 			)
+			
+			await self.session.commit()
+			
 
 			# 步骤 5：发布同步完成/失败/取消事件
 			event_type = "cancelled" if final_status == "cancelled" else ("completed" if final_status == "completed" else "failed")
@@ -753,6 +756,7 @@ class DataSyncService:
 					result=None,
 					error_message=err_msg
 				)
+				await self.session.commit()
 				await self._publish_sync_event(
 					event_type="cancelled" if final_status == "cancelled" else "failed",
 					task_id=task_id,
@@ -1099,12 +1103,17 @@ class DataSyncService:
 		# 如果已有缓存结论（未取消），直接返回
 		if getattr(self, '_cancelled_cached', False):
 			return True
-		# 第二层：DB 回退检查（仅在首次或缓存过期时查询）
+		# 第二层：DB 回退检查（绕过 SQLAlchemy 缓存，直接查 DB）
 		if self._task_id and not hasattr(self, '_cancelled_checked'):
 			self._cancelled_checked = True
 			try:
-				task = await self.sync_task_repo.get_by_task_id(self._task_id)
-				if task and task.data and getattr(task.data, 'status', None) == 'cancelled':
+				from sqlalchemy import text
+				result = await self.session.execute(
+					text("SELECT status FROM data_sync_tasks WHERE task_id = :tid"),
+					{"tid": self._task_id}
+				)
+				row = result.fetchone()
+				if row and row[0] == 'cancelled':
 					self._cancelled_cached = True
 					return True
 			except Exception:
@@ -1416,16 +1425,27 @@ class DataSyncService:
 			将任务状态写入 data_sync_tasks 表。
 		"""
 		if not task_id:
+			
 			return
 		try:
+			task = await self.sync_task_repo.get_by_task_id(task_id)
+			if not task or not task.data:
+				
+				return
+			current = task.data.status
+			
+			# 已是终态的不覆盖（防止 completed 覆盖 handler 的 cancelled）
+			if current in ("completed", "cancelled") and status not in ("cancelled",):
+				
+				return
 			update_data = {"status": status, "updated_at": datetime.now()}
 			if error_message:
 				update_data["error_message"] = error_message
-			task = await self.sync_task_repo.get_by_task_id(task_id)
-			if task and task.data:
-				await self.sync_task_repo.update(task.data.id, update_data)
+			
+			await self.sync_task_repo.update(task.data.id, update_data)
+			
 		except Exception as e:
-			logger.warning(f"更新同步任务状态失败 task={task_id}: {e}")
+			logger.warning(f"[_update_sync_task] 失败 task={task_id}: {e}")
 
 	async def _sync_by_data_type(
 			self,
@@ -3819,7 +3839,13 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_known = {c.name for c in StockDividend.__table__.columns}
-				_preprocess_records(data, date_fields=("ann_date",), known_cols=_known)
+				_preprocess_records(data, date_fields=(
+					"ann_date", "end_date", "record_date", "ex_date",
+					"pay_date", "div_listdate", "imp_ann_date",
+				), known_cols=_known)
+				# 批次内按唯一键去重（Tushare 偶发返回重复行）
+				data.sort(key=lambda d: d.get("ann_date") or "", reverse=True)
+				data = list({(d.get("ts_code"), d.get("ann_date")): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:

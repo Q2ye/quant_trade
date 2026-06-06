@@ -2233,12 +2233,15 @@ async def _execute_async_data_sync (
 			if engine:
 				engine.sync_service = sync_service
 
-			# 直接使用主键db_id更新状态，避免再次查询
-			update_data = {
-				"status": "running",
-				"processed_records": 0
-			}
-			await sync_task_repo.update(db_id, update_data)
+			# 写 running 前先检查是否已被取消（防止覆盖 handler 的 cancelled）
+			if cancel_token and cancel_token.is_set():
+				logger.info(f"[后台任务] 任务已被取消，跳过执行: {task_id}")
+				await sync_task_repo.update(db_id, {"status": "cancelled", "error_message": "用户手动取消"})
+				await session.commit()
+				return {"task_id": task_id, "status": "cancelled", "message": "任务已被取消"}
+
+			await sync_task_repo.update(db_id, {"status": "running", "processed_records": 0})
+			await session.commit()
 			logger.info(f"[后台任务] 状态已更新为 running: {task_id}")
 
 			# 向引擎注册任务（统一进度追踪和并发控制）
@@ -2306,10 +2309,9 @@ async def _execute_async_data_sync (
 			)
 			logger.info(f"[后台任务] 同步执行返回: {task_id}, 结果={sync_result.get('success', False)}")
 
-			# 5. 检查任务是否已被用户取消，保存部分进度
-			current_task = await sync_task_repo.get(db_id)
-			if current_task and getattr(current_task, 'status', None) == 'cancelled':
-				logger.warning(f'[后台任务] 任务已取消，保存部分进度: processed={sync_result.get("records_processed", 0)}, failed={sync_result.get("records_failed", 0)}')
+			# 5. 检查取消（用 token 不用 DB，避免 session 缓存问题）
+			if cancel_token.is_set():
+				logger.info(f"[后台任务] 任务已取消: {task_id}")
 				await sync_task_repo.update(db_id, {
 					"status": "cancelled",
 					"records_processed": sync_result.get("records_processed", 0),
@@ -2317,11 +2319,10 @@ async def _execute_async_data_sync (
 					"records_failed": sync_result.get("records_failed", 0),
 					"end_time": datetime.now()
 				})
-				if engine:
+				if engine and task_id in engine.tasks:
 					engine.tasks[task_id]["status"] = SyncTaskStatus.CANCELLED
 					engine.tasks[task_id]["updated_at"] = datetime.now()
 					engine.active_tasks.discard(task_id)
-					engine.stats["total_records"] += sync_result.get("records_processed", 0)
 					engine.stats["cancelled_tasks"] += 1
 				return
 
