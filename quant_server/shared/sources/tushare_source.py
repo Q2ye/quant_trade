@@ -512,8 +512,9 @@ class TushareSource(BaseDataSource):
 		try:
 			df = self.pro.dividend(ts_code=symbol, limit=limit)
 			if df is not None and not df.empty:
-				df['div_date'] = pd.to_datetime(df['div_date'])
-				df['imp_date'] = pd.to_datetime(df['imp_date'])
+				for col in ('div_date', 'imp_date', 'record_date', 'ex_date', 'pay_date', 'ann_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取分红送股数据失败: {e}")

@@ -142,7 +142,7 @@ ENGINES:
   # value: 最大并发数（0 = 不限流）
   # ------------------------------------------------------------------
   sync_rate_limits:
-    financial_indicator: 3   # 财务指标（fina_indicator_vip，600次/分钟）
+    financial_indicator: 2   # 财务指标（fina_indicator_vip，600次/分钟）
     audit_opinion: 3         # 审计意见（fina_audit）
     forecast: 3              # 业绩预告（forecast）
     express: 3               # 业绩快报（express）

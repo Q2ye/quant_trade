@@ -182,7 +182,7 @@ DROP TABLE IF EXISTS scheduled_tasks CASCADE;
 DROP TABLE IF EXISTS system_configs CASCADE;
 DROP TABLE IF EXISTS system_logs CASCADE;
 DROP TABLE IF EXISTS data_sync_tasks CASCADE;
-
+DROP TABLE IF EXISTS stock_dividends CASCADE;
 -- 4.13 权限和用户相关表
 DROP TABLE IF EXISTS sys_user_roles CASCADE;
 DROP TABLE IF EXISTS sys_permissions CASCADE;

@@ -819,7 +819,9 @@ class DataSyncService:
 
 		async def _sync_one(task, idx):
 			async with sem:
+				logger.info(f"[批量同步 #{idx + 1}] {task.data_type} 排队等待...")
 				from shared.database.session import get_session_manager
+				logger.info(f"[批量同步 #{idx + 1}] {task.data_type} 开始执行")
 				sm = get_session_manager()
 				async with sm.get_session() as session:
 					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id,
@@ -990,7 +992,7 @@ class DataSyncService:
 			functools.partial(fn, *args, **kwargs)  # partial 避免 lambda 闭包陷阱
 		)
 
-	async def _cancellable_run_in_executor(self, fn, *args, poll_interval: float = 3.0, **kwargs):
+	async def _cancellable_run_in_executor(self, fn, *args, poll_interval: float = 1.0, **kwargs):
 		"""
 		可取消的线程池执行器——在阻塞任务执行期间定期检查取消令牌。
 
@@ -1215,9 +1217,16 @@ class DataSyncService:
 
 		_rate_limit = 0
 		if rate_key:
-			from shared.config.config_manager import get_config
-			_ec3 = getattr(getattr(get_config().settings, "ENGINES", None), "sync_rate_limits", None)
-			_rate_limit = _ec3.get(rate_key, 0) if isinstance(_ec3, dict) else 0
+			import yaml, os
+			try:
+				_cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.yaml")
+				with open(_cfg_path, "r", encoding="utf-8") as _f:
+					_cfg_yaml = yaml.safe_load(_f)
+				_limits = _cfg_yaml.get("ENGINES", {}).get("sync_rate_limits", {})
+				_rate_limit = _limits.get(rate_key, 0)
+			except Exception:
+				pass  # 配置文件不存在或格式错误时降级为不限流
+
 			
 		limiter = asyncio.Semaphore(_rate_limit) if _rate_limit > 0 else None
 		
@@ -2921,6 +2930,10 @@ class DataSyncService:
 				        "message": "公司信息同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
 			if hasattr(self.company_repo, "batch_upsert"):
+				_preprocess_records(data, date_fields=["setup_date", "list_date"])
+				for item in data:
+					if item.get("com_id") is None:
+						item["com_id"] = ""
 				records_added += await self.company_repo.bulk_upsert(data)
 			else:
 				_preprocess_records(data, date_fields=('setup_date',))
@@ -3282,20 +3295,20 @@ class DataSyncService:
 			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
 				s_date, e_date, mode = await self._resolve_sync_date_range(
-					index_code, start_date, end_date, repo
+					ts_code, start_date, end_date, repo
 				)
 				if mode == "up_to_date":
 					return {"added": 0, "updated": 0, "skipped": 1, "mode": mode}
 				s_str = "" if mode == "full" else (s_date.strftime("%Y%m%d") if s_date else "")
 				e_str = "" if mode == "full" else (e_date.strftime("%Y%m%d") if e_date else "")
-				df = await self._cancellable_run_in_executor(source.get_index_daily, ts_code=index_code, start_date=s_str, end_date=e_str)
+				df = await self._cancellable_run_in_executor(source.get_index_daily, ts_code=ts_code, start_date=s_str, end_date=e_str)
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0, "mode": mode}
 				data = _convert_records_datetime(df.to_dict("records"))
-				added, _ = await self._process_trade_date_data(repo, data, index_code)
+				added, _ = await self._process_trade_date_data(repo, data, ts_code)
 				return {"added": added, "updated": 0, "mode": mode}
 			except Exception as e:
-				logger.error(f"[指数日线] {index_code} 同步失败: {e}")
+				logger.error(f"[指数日线] {ts_code} 同步失败: {e}")
 				return {"added": 0, "updated": 0, "failed": True}
 		logger.info(f"[指数日线] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 		result = await self._parallel_for_each(ts_codes, "指数日线", task_id, user_id, _process_one)
@@ -3642,7 +3655,8 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date',))
+				_known = {c.name for c in StockDividend.__table__.columns}
+				_preprocess_records(data, date_fields=("ann_date",), known_cols=_known)
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
@@ -3806,7 +3820,7 @@ class DataSyncService:
 			repo = StockBusinessIncomeRepository(session)
 			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				df = await self._cancellable_run_in_executor(source.get_fina_mainbz, symbol=ts_code, period="", type=btype)
+				df = await self._cancellable_run_in_executor(source.get_fina_mainbz, symbol=ts_code, period="")
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
