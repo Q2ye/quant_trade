@@ -2116,6 +2116,8 @@ CREATE INDEX idx_financial_statements_ts_code ON financial_statements(ts_code);
 CREATE INDEX idx_financial_statements_end_date ON financial_statements(end_date);
 CREATE INDEX idx_financial_statements_ann_date ON financial_statements(ann_date);
 CREATE INDEX idx_financial_statements_report_type ON financial_statements(report_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_statement_code_date_type ON financial_statements(ts_code, ann_date, report_type);
+
 
 -- ------------------------------------------------------------
 -- 1.14 指数相关表
@@ -2507,6 +2509,8 @@ CREATE TABLE stock_weekly (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_weekly_code_date ON stock_weekly(ts_code, trade_date);
+
 
 COMMENT ON TABLE stock_weekly IS 'A股周线行情数据表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_weekly.ts_code IS '股票TS代码（含交易所后缀）';
@@ -2542,6 +2546,8 @@ CREATE TABLE stock_monthly (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_monthly_code_date ON stock_monthly(ts_code, trade_date);
+
 
 COMMENT ON TABLE stock_monthly IS 'A股月线行情数据表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_monthly.ts_code IS '股票TS代码（含交易所后缀）';
@@ -2568,6 +2574,8 @@ CREATE TABLE stock_adj_factor (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ts_code, trade_date)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_adj_factor_code_date ON stock_adj_factor(ts_code, trade_date);
+
 
 COMMENT ON TABLE stock_adj_factor IS '股票复权因子数据表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_adj_factor.ts_code IS '股票TS代码（含交易所后缀）';
@@ -2631,6 +2639,8 @@ CREATE TABLE stock_daily_basic (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_basic_code_date ON stock_daily_basic(ts_code, trade_date);
+
 
 COMMENT ON TABLE stock_daily_basic IS '股票每日基本面指标数据表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_daily_basic.ts_code IS '股票TS代码（含交易所后缀）';
@@ -3213,11 +3223,17 @@ SELECT create_hypertable(
 -- TimescaleDB超表索引
 CREATE INDEX IF NOT EXISTS idx_stock_daily_ts_code ON stock_daily (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_daily_date ON stock_daily (trade_date DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_code_date ON stock_daily(ts_code, trade_date);
+
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_ts_code ON stock_minutes (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_time ON stock_minutes (trade_time DESC);
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_freq ON stock_minutes (freq);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_minutes_code_freq_time ON stock_minutes(ts_code, freq, trade_time);
+
 CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_ts_code ON stock_moneyflow (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_date ON stock_moneyflow (trade_date DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_moneyflow_code_date ON stock_moneyflow(ts_code, trade_date);
+
 CREATE INDEX IF NOT EXISTS idx_etf_daily_ts_code ON etf_daily (ts_code);
 CREATE INDEX IF NOT EXISTS idx_etf_daily_date ON etf_daily (trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_etf_minute_ts_code ON etf_minute (ts_code);
@@ -3587,6 +3603,8 @@ COMMENT ON COLUMN stock_forecasts.summary IS '业绩变动摘要';
 COMMENT ON COLUMN stock_forecasts.change_reason IS '业绩变动原因';
 CREATE INDEX idx_stock_forecasts_ts_code ON stock_forecasts(ts_code);
 CREATE INDEX idx_stock_forecasts_ann_date ON stock_forecasts(ann_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_forecasts_ts_ann ON stock_forecasts(ts_code, ann_date);
+
 
 -- 业绩快报数据表
 CREATE TABLE stock_expresses (
@@ -3622,6 +3640,8 @@ COMMENT ON COLUMN stock_expresses.yoy_eps IS 'EPS同比(%)';
 COMMENT ON COLUMN stock_expresses.yoy_net_profit IS '净利润同比(%)';
 CREATE INDEX idx_stock_expresses_ts_code ON stock_expresses(ts_code);
 CREATE INDEX idx_stock_expresses_ann_date ON stock_expresses(ann_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expresses_ts_ann ON stock_expresses(ts_code, ann_date);
+
 
 -- 分红送股数据表
 CREATE TABLE stock_dividends (
@@ -3662,6 +3682,8 @@ COMMENT ON COLUMN stock_dividends.base_share IS '基准股本';
 COMMENT ON COLUMN stock_dividends.base_vol IS '基准成交量';
 CREATE INDEX idx_stock_dividends_ts_code ON stock_dividends(ts_code);
 CREATE INDEX idx_stock_dividends_ann_date ON stock_dividends(ann_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dividends_unique ON stock_dividends(ts_code, ann_date, div_proc);
+
 
 -- 财务指标数据表
 CREATE TABLE stock_fina_indicators (
@@ -3697,6 +3719,8 @@ COMMENT ON COLUMN stock_fina_indicators.netprofit_margin IS '净利率(%)';
 COMMENT ON COLUMN stock_fina_indicators.debt_to_assets IS '资产负债率(%)';
 CREATE INDEX idx_stock_fina_indicators_ts_code ON stock_fina_indicators(ts_code);
 CREATE INDEX idx_stock_fina_indicators_ann_date ON stock_fina_indicators(ann_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fina_indicator_unique ON stock_fina_indicators(ts_code, end_date);
+
 
 -- 审计意见数据表
 CREATE TABLE stock_audit_opinions (
@@ -3722,6 +3746,8 @@ COMMENT ON COLUMN stock_audit_opinions.audit_agency IS '会计师事务所';
 COMMENT ON COLUMN stock_audit_opinions.audit_sign IS '签字会计师';
 CREATE INDEX idx_stock_audit_opinions_ts_code ON stock_audit_opinions(ts_code);
 CREATE INDEX idx_stock_audit_opinions_ann_date ON stock_audit_opinions(ann_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_opinion_unique ON stock_audit_opinions(ts_code, end_date);
+
 
 -- 主营业务构成数据表
 CREATE TABLE stock_business_incomes (
@@ -3750,6 +3776,8 @@ COMMENT ON COLUMN stock_business_incomes.bz_cost IS '主营成本';
 COMMENT ON COLUMN stock_business_incomes.curr_type IS '货币代码';
 COMMENT ON COLUMN stock_business_incomes.type IS '类型(P/D/I)';
 CREATE INDEX idx_stock_business_incomes_ts_code ON stock_business_incomes(ts_code);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_biz_income_unique ON stock_business_incomes(ts_code, end_date, bz_item, bz_code);
+
 
 -- ETF份额数据表
 CREATE TABLE etf_shares (
@@ -3769,6 +3797,8 @@ COMMENT ON COLUMN etf_shares.fund_size IS '基金规模(份)';
 COMMENT ON COLUMN etf_shares.fund_vol IS '基金份额变动';
 CREATE INDEX idx_etf_shares_ts_code ON etf_shares(ts_code);
 CREATE INDEX idx_etf_shares_trade_date ON etf_shares(trade_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_etf_share_unique ON etf_shares(ts_code, trade_date);
+
 
 
 -- 股票停复牌信息表 (Tushare suspend_d 接口)

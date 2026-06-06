@@ -1068,7 +1068,6 @@ class DataSyncService:
 				if await self._is_cancelled():
 					# 尽力取消 asyncio 层包装（OS 线程会继续运行直到 finish，但结果被丢弃）
 					future.cancel()
-					logger.warning("同步任务已被用户取消，中断当前请求")
 					return pd.DataFrame()  # 返回空DataFrame让caller自然跳过
 			except asyncio.CancelledError:
 				# 传递取消信号
@@ -1277,6 +1276,8 @@ class DataSyncService:
 			if limiter:
 				async with limiter:
 					async with sem:
+						if await self._is_cancelled():
+							return
 						from shared.database.session import get_session_manager
 						sm = get_session_manager()
 						async with sm.get_session() as s:
@@ -1284,6 +1285,8 @@ class DataSyncService:
 							await s.commit()
 			else:
 				async with sem:
+					if await self._is_cancelled():
+						return
 					from shared.database.session import get_session_manager
 					sm = get_session_manager()
 					async with sm.get_session() as s:
@@ -1298,7 +1301,7 @@ class DataSyncService:
 					m = result["mode"]
 					mode_summary[m] = mode_summary.get(m, 0) + 1
 				done += 1; cur = done
-			if cur % 500 == 0:
+			if cur % 500 == 0 and not await self._is_cancelled():
 				pct = cur / total * 100
 				await self._update_progress(task_id, progress=min(100, int(pct)),
 				                            current_item=f"{label}: {cur}/{total}", user_id=user_id)
@@ -1309,16 +1312,23 @@ class DataSyncService:
 		coros = [_worker(c) for c in ts_codes]
 		await asyncio.gather(*coros)
 
-		await self._update_progress(task_id, progress=100,
-		                            current_item=f"{label}: {total}/{total}", user_id=user_id)
-		logger.info(f"[{label}] 完成: 新增={records_added} 跳过={records_skipped} "
-		            f"失败={records_failed} 模式={mode_summary}")
+		cancelled = await self._is_cancelled()
+		_cancel_word = "已取消" if cancelled else "完成"
+		if cancelled:
+			logger.info(f"[{label}] 取消成功: 已处理={done}/{total} "
+			            f"新增={records_added} 失败={records_failed}")
+		else:
+			await self._update_progress(task_id, progress=100,
+			                            current_item=f"{label}: {total}/{total}", user_id=user_id)
+			logger.info(f"[{label}] 完成: 新增={records_added} 跳过={records_skipped} "
+			            f"失败={records_failed} 模式={mode_summary}")
 		return {
 			"records_added": records_added, "records_updated": records_updated,
 			"records_skipped": records_skipped, "records_failed": records_failed,
 			"total_items": records_added + records_updated + records_skipped + records_failed,
 			"mode_summary": mode_summary if mode_stats else {},
-			"message": f"{label}数据同步完成（并行{max_concurrency}并发）"
+			"cancelled": cancelled,
+			"message": f"{label}数据同步{_cancel_word}（已处理{done}/{total}）"
 		}
 
 	async def _process_trade_date_data(
@@ -3687,6 +3697,9 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
+				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
@@ -3736,6 +3749,9 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
+				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
@@ -3903,6 +3919,9 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
+				data = list({(d.get('ts_code'), d.get('end_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
 			except Exception as e:
