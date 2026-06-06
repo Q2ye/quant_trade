@@ -3001,11 +3001,14 @@ class DataSyncService:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 				        "message": "公司信息同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
-			# 过滤掉必填字段为空的记录（com_name NOT NULL 约束）
-			_orig_count = len(data)
-			data = [d for d in data if d.get("com_name")]
-			if len(data) < _orig_count:
-				logger.warning(f"[公司信息] 过滤掉 {_orig_count - len(data)} 条 com_name 为空的记录")
+			# 兜底：com_name 为空时用 ts_code 填充（NOT NULL 约束）
+			_empty_name_count = 0
+			for d in data:
+				if not d.get("com_name"):
+					d["com_name"] = d.get("ts_code", "")
+					_empty_name_count += 1
+			if _empty_name_count:
+				logger.warning(f"[公司信息] {_empty_name_count} 条 com_name 为空，已用 ts_code 兜底")
 			if hasattr(self.company_repo, "batch_upsert"):
 				_preprocess_records(data, date_fields=["setup_date", "list_date"])
 				for item in data:
