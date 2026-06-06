@@ -359,9 +359,9 @@ class TushareSource(BaseDataSource):
 			return pd.DataFrame()
 
 	def get_etf_index_weight (self, etf_code: str) -> pd.DataFrame:
-		"""获取ETF基准指数成分"""
+		"""获取ETF基准指数权重（Tushare fund_portfolio 接口）"""
 		try:
-			df = self.pro.fund_portfolio(code=etf_code)
+			df = self.pro.fund_portfolio(ts_code=etf_code)
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取ETF成分失败: {e}")
@@ -393,10 +393,10 @@ class TushareSource(BaseDataSource):
 		return self.get_minute_bar(etf_code, start_date, end_date, freq, 'qfq')
 
 	def get_etf_realtime_daily (self, etf_code: str) -> pd.DataFrame:
-		"""获取ETF实时日线（当日行情）"""
+		"""获取ETF实时日线（当日行情，fund_daily 接口）"""
 		try:
 			today = datetime.now().strftime('%Y%m%d')
-			df = self.pro.daily(ts_code=etf_code, trade_date=today)
+			df = self.pro.fund_daily(ts_code=etf_code, trade_date=today)
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取ETF实时日线失败: {e}")
@@ -404,8 +404,8 @@ class TushareSource(BaseDataSource):
 
 	def get_etf_daily (self, etf_code: str, start_date: str = '',
 	                   end_date: str = '') -> pd.DataFrame:
-		"""获取ETF日线行情"""
-		return self.get_daily(etf_code, '', start_date, end_date)
+		"""获取ETF日线行情（Tushare fund_daily 接口）"""
+		return self.pro.fund_daily(ts_code=etf_code, start_date=start_date, end_date=end_date)
 
 	def get_etf_adj_factor (self, etf_code: str, start_date: str = '',
 	                        end_date: str = '') -> pd.DataFrame:

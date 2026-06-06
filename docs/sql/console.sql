@@ -33,7 +33,7 @@ select * from trade_calendar;
 select count(*) from trade_calendar;
 
 -- ETF基础信息表
-select * from etf_basic where ts_code='000030.SZ';
+select * from etf_basic where ts_code like '159227%';
 select count(*) from etf_basic;
 delete from etf_basic;
 -- ETF份额数据表
