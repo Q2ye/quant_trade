@@ -154,9 +154,10 @@ const subTaskDots = computed(() => {
       }
     }
     return deduped.map((r: any) => {
+      const cancelled = r.cancelled || r.status === "cancelled";
       const success = isSyncRunning ? false : r.success;
-      const status: "completed" | "running" | "failed" = isSyncRunning ? "running" : (success ? "completed" : "failed");
-      const icon = isSyncRunning ? "ant-design:sync-outlined" : (success ? "ant-design:check-circle-filled" : "ant-design:close-circle-filled");
+      const status = isSyncRunning ? "running" : cancelled ? "cancelled" : (success ? "completed" : "failed");
+      const icon = isSyncRunning ? "ant-design:sync-outlined" : cancelled ? "ant-design:warning-filled" : (success ? "ant-design:check-circle-filled" : "ant-design:close-circle-filled");
       return { label: r.data_type, status, icon };
     });
   }

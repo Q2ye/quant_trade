@@ -70,8 +70,10 @@ const filters = reactive({
 
 const statusOptions = [
   { label: "全部状态", value: "" },
+  { label: "运行中", value: "running" },
   { label: "完成", value: "completed" },
   { label: "失败", value: "failed" },
+  { label: "已取消", value: "cancelled" },
 ];
 
 const dataTypeOptions = computed(() => {

@@ -329,6 +329,11 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 	return estimates.get(data_type, 100)
 
 
+def _fmt_err(e: Exception, max_len: int = 200) -> str:
+	"""截断过长异常信息（SQL 语句可能数千字节）"""
+	s = str(e)
+	return s if len(s) <= max_len else s[:max_len] + f"...({len(s)}字节截断)"
+
 def _preprocess_records(records, date_fields=(), known_cols=None, fill_numeric=()):
 	"""一趟完成：pandas类型转换 + NaN清洗 + 日期转换 + null→0填充 + 列过滤。
 
@@ -609,6 +614,7 @@ class DataSyncService:
 			ts_codes: Optional[List[str]] = None,
 			user_id: Optional[str] = None,
 			task_id: Optional[str] = None,
+			update_task_status: bool = True,
 			**kwargs
 	) -> Dict[str, Any]:
 		"""
@@ -707,25 +713,26 @@ class DataSyncService:
 				final_status = "completed"
 				err_msg = None
 
-			await self._update_sync_task(
-				task_id=task_id,
-				status=final_status,
-				result=sync_result,
-				error_message=err_msg
-			)
-			
-			await self.session.commit()
-			
-
-			# 步骤 5：发布同步完成/失败/取消事件
-			event_type = "cancelled" if final_status == "cancelled" else ("completed" if final_status == "completed" else "failed")
-			await self._publish_sync_event(
-				event_type=event_type,
-				task_id=task_id,
-				data_type=data_type,
-				result=sync_result,
-				error=err_msg,
-				user_id=user_id
+			if update_task_status:
+				await self._update_sync_task(
+					task_id=task_id,
+					status=final_status,
+					result=sync_result,
+					error_message=err_msg
+				)
+				
+				await self.session.commit()
+				
+	
+				# 步骤 5：发布同步完成/失败/取消事件
+				event_type = "cancelled" if final_status == "cancelled" else ("completed" if final_status == "completed" else "failed")
+				await self._publish_sync_event(
+					event_type=event_type,
+					task_id=task_id,
+					data_type=data_type,
+					result=sync_result,
+					error=err_msg,
+					user_id=user_id
 			)
 
 			# 步骤 6：清理相关缓存（仅成功时清理）
@@ -842,7 +849,8 @@ class DataSyncService:
 						result = await svc.sync_market_data(
 							data_type=dt, start_date=task.start_date, end_date=task.end_date,
 							user_id=user_id, task_id=task_id or batch_task_id,
-							force_update=getattr(task, 'force_update', False)
+							force_update=getattr(task, 'force_update', False),
+							update_task_status=False,
 						)
 						ra = result.get("result", {}).get("records_added", 0)
 						ru = result.get("result", {}).get("records_updated", 0)
@@ -868,15 +876,26 @@ class DataSyncService:
 				r.get("records_added", 0) + r.get("records_updated", 0) + r.get("records_failed", 0) for r in results)
 			succeeded_records = sum(r.get("records_added", 0) + r.get("records_updated", 0) for r in results)
 			failed_records = sum(r.get("records_failed", 0) for r in results)
-			all_success = all(r.get("success", True) for r in results)
+				# 检查取消
+			cancelled = self.cancel_token and self.cancel_token.is_set()
+			all_success = all(r.get("success", True) for r in results) and not cancelled
 
-			logger.warning(f"[批量同步] 完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
+			# 批量完成后统一更新任务状态
+			effective_task_id = task_id or batch_task_id
+			if effective_task_id:
+				final_status = "cancelled" if cancelled else ("completed" if all_success else "failed")
+				await self._update_sync_task(effective_task_id, final_status,
+				                             error_message="用户手动取消" if cancelled else None)
+				await self.session.commit()
+
+			logger.info(f"[批量同步] 完成: {len(results)} 种类型, 处理={total_records}, 成功={succeeded_records}")
 			return {
 				"success": all_success, "task_id": batch_task_id, "results": results,
 				"records_processed": total_records, "records_succeeded": succeeded_records,
 				"records_failed": failed_records, "total_tasks": len(tasks),
 				"completed_tasks": len(results),
-				"message": "批量同步完成" if all_success else f"批量同步部分完成（{sum(1 for r in results if not r.get('success', True))}/{len(results)} 失败）"
+				"cancelled": cancelled,
+				"message": "批量同步已取消" if cancelled else ("批量同步完成" if all_success else f"批量同步部分完成（{sum(1 for r in results if not r.get('success', True))}/{len(results)} 失败）")
 			}
 		except Exception as e:
 			logger.error(f"[批量同步] 并行执行失败: {e}", exc_info=True)
@@ -3070,7 +3089,7 @@ class DataSyncService:
 			return {"records_added": records_added, "records_updated": records_updated, "records_failed": 0,
 			        "total_items": records_added + records_updated, "message": "公司基本信息同步完成"}
 		except Exception as e:
-			logger.error(f"公司信息同步失败: {e}")
+			logger.error(f"公司信息同步失败: {_fmt_err(e)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "message": f"公司信息同步失败: {str(e)}"}
 
@@ -3734,7 +3753,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
-				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
@@ -3787,7 +3806,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
-				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
@@ -3844,7 +3863,7 @@ class DataSyncService:
 					"pay_date", "div_listdate", "imp_ann_date",
 				), known_cols=_known)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行）
-				data.sort(key=lambda d: d.get("ann_date") or "", reverse=True)
+				data.sort(key=lambda d: d.get("ann_date") or date.min, reverse=True)
 				data = list({(d.get("ts_code"), d.get("ann_date")): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
 				return {"added": added, "updated": 0}
@@ -3966,7 +3985,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
 				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
-				data.sort(key=lambda d: d.get('ann_date') or '', reverse=True)
+				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('end_date')): d for d in data}.values())
 				added = await repo.bulk_upsert(data)
