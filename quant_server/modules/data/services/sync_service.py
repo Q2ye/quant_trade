@@ -155,6 +155,12 @@ from shared.database.repositories.market.fundamental.top10_holders_repo import S
 from shared.database.repositories.market.fundamental.top10_float_holders_repo import StockTop10FloatHoldersRepository
 from shared.database.repositories.market.fundamental.pledge_stat_repo import StockPledgeStatRepository
 from shared.database.repositories.market.fundamental.holdertrade_repo import StockHoldertradeRepository
+from shared.database.repositories.market.fundamental.index_sw_classify_repo import IndexSwClassifyRepository
+from shared.database.repositories.market.fundamental.index_sw_member_repo import IndexSwMemberRepository
+from shared.database.repositories.market.fundamental.index_dailybasic_repo import IndexDailyBasicRepository
+from shared.database.repositories.market.fundamental.forecast_pro_repo import StockForecastProRepository
+from shared.database.repositories.market.fundamental.moneyflow_hsgt_repo import StockMoneyflowHsgtRepository
+from shared.database.repositories.market.fundamental.index_sw_daily_repo import IndexSwDailyRepository
 from shared.sources.source_factory import DataSourceFactory
 
 # 配置日志
@@ -304,6 +310,12 @@ _TYPE_LABEL = {
 	'stk_holdernumber': '股东人数(holdernumber)', 'top10_holders': '前十大股东(top10_holders)',
 	'top10_floatholders': '前十大流通股东(top10_floatholders)', 'pledge_stat': '股权质押(pledge_stat)',
 	'stk_holdertrade': '股东增减持(holdertrade)',
+	'index_sw_classify': '申万行业分类(index_sw)',
+	'index_sw_member': '申万行业成分(sw_member)',
+	'index_dailybasic': '大盘指数指标(index_dailybasic)',
+	'forecast_pro': '卖方盈利预测(forecast_pro)',
+	'moneyflow_hsgt': '沪深港通资金(hsgt)',
+		'index_sw_daily': '申万日线(index_sw_daily)',
 }
 
 
@@ -368,6 +380,12 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 		DataType.TOP10_FLOAT_HOLDERS: len(ts_codes) * 10 if ts_codes else 50000,
 		DataType.PLEDGE_STAT: len(ts_codes) if ts_codes else 5000,
 		DataType.STK_HOLDERTRADE: 3000,
+		DataType.INDEX_SW_CLASSIFY: 400,
+		DataType.INDEX_SW_MEMBER: 5000,
+		DataType.INDEX_DAILYBASIC: 1500,
+		DataType.FORECAST_PRO: 5000,
+		DataType.MONEYFLOW_HSGT: 1000,
+		DataType.INDEX_SW_DAILY: len(ts_codes) * 250 if ts_codes else 7750,
 	}
 	return estimates.get(data_type, 100)
 
@@ -556,6 +574,14 @@ class DataSyncService:
 		self.pledge_stat_repo = StockPledgeStatRepository(session)  # stock_pledge_stat（股权质押统计）
 		self.holdertrade_repo = StockHoldertradeRepository(session)  # stock_stk_holdertrade（股东增减持）
 
+		# --- Phase 3 新增 ---
+		self.sw_classify_repo = IndexSwClassifyRepository(session)  # index_sw_classify（申万行业分类）
+		self.sw_member_repo = IndexSwMemberRepository(session)  # index_sw_member（申万行业成分）
+		self.index_dailybasic_repo = IndexDailyBasicRepository(session)  # index_dailybasic（大盘指数每日指标）
+		self.forecast_pro_repo = StockForecastProRepository(session)  # stock_forecast_pro（卖方盈利预测）
+		self.moneyflow_hsgt_repo = StockMoneyflowHsgtRepository(session)  # stock_moneyflow_hsgt（沪深港通资金流向）
+		self.sw_daily_repo = IndexSwDailyRepository(session)  # index_sw_daily（申万行业日线行情）
+
 		# ========== 线程池（避免 Tushare 同步调用阻塞事件循环） ==========
 		# Tushare/Baostock 的 HTTP 请求是同步阻塞的，必须在独立线程中执行。
 		# worker 数量从配置文件 settings.ENGINES.max_workers 读取，默认 8。
@@ -639,6 +665,13 @@ class DataSyncService:
 			DataType.TOP10_FLOAT_HOLDERS: self._sync_top10_float_holders,
 			DataType.PLEDGE_STAT: self._sync_pledge_stat,
 			DataType.STK_HOLDERTRADE: self._sync_stk_holdertrade,
+			# Phase 3 新增
+			DataType.INDEX_SW_CLASSIFY: self._sync_index_sw_classify,
+			DataType.INDEX_SW_MEMBER: self._sync_index_sw_member,
+			DataType.INDEX_DAILYBASIC: self._sync_index_dailybasic,
+			DataType.FORECAST_PRO: self._sync_forecast_pro,
+			DataType.MONEYFLOW_HSGT: self._sync_moneyflow_hsgt,
+			DataType.INDEX_SW_DAILY: self._sync_index_sw_daily,
 		}
 
 	@property
@@ -4660,6 +4693,399 @@ class DataSyncService:
 			logger.error(f"股东增减持同步失败: {_fmt_err(e, 150)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "message": f"股东增减持同步失败: {str(e)}"}
+
+	# =====================================================================
+	# Phase 3 新增同步方法
+	# =====================================================================
+
+	async def _sync_index_sw_classify(
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			task_id: str,
+			user_id: Optional[str] = None,
+			**_kwargs
+	) -> Dict[str, Any]:
+		"""同步申万行业分类（index_sw_classify 表，全量拉取）。
+
+		调用 Tushare index_classify 接口，拉取申万行业分类（L1/L2/L3 三级）。
+		全量 upsert，index_code 为主键。
+
+		Args:
+			start_date: 未使用（全量拉取）
+			end_date: 未使用（全量拉取）
+			ts_codes: 未使用（固定全量）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		all_data = []
+		for level in ('L1', 'L2', 'L3'):
+			df = await self._cancellable_run_in_executor(
+				source.get_index_classify, level=level, src='SW2021')
+			if df is not None and not df.empty:
+				all_data.extend(_convert_records_datetime(df.to_dict('records')))
+		if not all_data:
+			logger.warning("[申万行业分类] Tushare 返回空数据")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+			        "total_items": 0, "message": "申万行业分类同步完成（Tushare 无数据）"}
+		records_added = 0
+		if hasattr(self.sw_classify_repo, 'bulk_upsert'):
+			records_added = await self.sw_classify_repo.bulk_upsert(all_data)
+		else:
+			for item in all_data:
+				try:
+					await self.sw_classify_repo.create(item)
+					records_added += 1
+				except Exception:
+					try:
+						await self.sw_classify_repo.update_by(
+							{"index_code": item["index_code"]}, item)
+					except Exception as _ue:
+						logger.warning(f'申万行业分类写入失败: {_ue}')
+		await self.session.commit()
+		return {"records_added": records_added, "records_updated": 0, "records_failed": 0,
+		        "total_items": len(all_data), "message": "申万行业分类同步完成"}
+
+	async def _sync_index_sw_member(
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			task_id: str,
+			user_id: Optional[str] = None,
+			**_kwargs
+	) -> Dict[str, Any]:
+		"""同步申万行业成分（index_sw_member 表，全量拉取）。
+
+		调用 Tushare index_member_all 接口，拉取最新申万行业成分。
+		is_new='Y' 获取最新成分，全量 upsert。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 未使用（全量拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		try:
+			df = await self._cancellable_run_in_executor(
+				source.get_index_member_all, is_new='Y')
+			if df is None or df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": "申万行业成分同步完成（无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('in_date', 'out_date'))
+			if hasattr(self.sw_member_repo, "bulk_upsert"):
+				records_added += await self.sw_member_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.sw_member_repo.create(item)
+						records_added += 1
+					except Exception:
+						try:
+							await self.sw_member_repo.update_by(
+								{"l3_code": item["l3_code"], "ts_code": item["ts_code"],
+								 "in_date": item.get("in_date")}, item)
+						except Exception as _ue:
+							logger.warning(f'申万行业成分写入失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": "申万行业成分同步完成"}
+		except Exception as e:
+			logger.error(f"申万行业成分同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"申万行业成分同步失败: {str(e)}"}
+
+	async def _sync_index_dailybasic(
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			task_id: str,
+			user_id: Optional[str] = None,
+			**_kwargs
+	) -> Dict[str, Any]:
+		"""同步大盘指数每日指标（index_dailybasic 表，按指数日期拉取）。
+
+		默认拉取 6 大核心指数（上证综指/深证成指/沪深300/中证500/创业板指/科创50）
+		的每日估值/总市值/换手率等指标。
+
+		Args:
+			start_date: 起始日期（None → 30天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 指数代码列表（None → 默认6大指数）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		if not ts_codes:
+			ts_codes = [
+				'000001.SH',  # 上证综指
+				'399001.SZ',  # 深证成指
+				'000300.SH',  # 沪深300
+				'000905.SH',  # 中证500
+				'399006.SZ',  # 创业板指
+				'000688.SH',  # 科创50
+			]
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=365)
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			all_data = []
+			for idx_code in ts_codes:
+				df = await self._cancellable_run_in_executor(
+					source.get_index_dailybasic,
+					ts_code=idx_code, start_date=start_str, end_date=end_str)
+				if df is not None and not df.empty:
+					all_data.extend(_convert_records_datetime(df.to_dict('records')))
+			if not all_data:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": "大盘指数每日指标同步完成（无数据）"}
+			_preprocess_records(all_data, date_fields=('trade_date',))
+			if hasattr(self.index_dailybasic_repo, "bulk_upsert"):
+				records_added += await self.index_dailybasic_repo.bulk_upsert(all_data)
+			else:
+				for item in all_data:
+					try:
+						await self.index_dailybasic_repo.create(item)
+						records_added += 1
+					except Exception:
+						try:
+							await self.index_dailybasic_repo.update_by(
+								{"ts_code": item["ts_code"], "trade_date": item["trade_date"]}, item)
+						except Exception as _ue:
+							logger.warning(f'大盘指数每日指标写入失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": "大盘指数每日指标同步完成"}
+		except Exception as e:
+			logger.error(f"大盘指数每日指标同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"大盘指数每日指标同步失败: {str(e)}"}
+
+	async def _sync_forecast_pro(
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			task_id: str,
+			user_id: Optional[str] = None,
+			**_kwargs
+	) -> Dict[str, Any]:
+		"""同步卖方盈利预测（stock_forecast_pro 表，按报告日期拉取）。
+
+		调用 Tushare report_rc 接口，需要 8000 积分权限。
+		默认拉取近 90 天的报告。
+
+		Args:
+			start_date: 报告起始日期（None → 90天前）
+			end_date: 报告结束日期（None → 今天）
+			ts_codes: 未使用（全市场拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=90)
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			df = await self._cancellable_run_in_executor(
+				source.get_report_rc, start_date=start_str, end_date=end_str)
+			if df is None or df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"卖方盈利预测同步完成（{start_str}~{end_str}无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('report_date', 'create_time'))
+			# 批次内按唯一键去重
+			data = list({(d.get('ts_code'), d.get('report_date'), d.get('org_name'), d.get('quarter')): d
+			            for d in data}.values())
+			if hasattr(self.forecast_pro_repo, "bulk_upsert"):
+				records_added += await self.forecast_pro_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.forecast_pro_repo.create(item)
+						records_added += 1
+					except Exception:
+						try:
+							await self.forecast_pro_repo.update_by(
+								{"ts_code": item["ts_code"], "report_date": item["report_date"],
+								 "org_name": item["org_name"], "quarter": item["quarter"]}, item)
+						except Exception as _ue:
+							logger.warning(f'卖方盈利预测写入失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed,
+			        "message": f"卖方盈利预测同步完成（{start_str}~{end_str}）"}
+		except Exception as e:
+			logger.error(f"卖方盈利预测同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"卖方盈利预测同步失败: {str(e)}"}
+
+	async def _sync_moneyflow_hsgt(
+			self,
+			start_date: Optional[date],
+			end_date: Optional[date],
+			ts_codes: Optional[List[str]],
+			task_id: str,
+			user_id: Optional[str] = None,
+			**_kwargs
+	) -> Dict[str, Any]:
+		"""同步沪深港通资金流向（stock_moneyflow_hsgt 表，按日期拉取）。
+
+		调用 Tushare moneyflow_hsgt 接口，拉取北向/南向资金流向数据。
+		Default 拉取近 30 天。
+
+		Args:
+			start_date: 起始日期（None → 30天前）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 未使用（按日期拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=30)
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			df = await self._cancellable_run_in_executor(
+				source.get_moneyflow_hsgt, start_date=start_str, end_date=end_str)
+			if df is None or df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"沪深港通资金流向同步完成（{start_str}~{end_str}无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('trade_date',))
+			if hasattr(self.moneyflow_hsgt_repo, "bulk_upsert"):
+				records_added += await self.moneyflow_hsgt_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.moneyflow_hsgt_repo.create(item)
+						records_added += 1
+					except Exception:
+						try:
+							await self.moneyflow_hsgt_repo.update_by(
+								{"trade_date": item["trade_date"]}, item)
+						except Exception as _ue:
+							logger.warning(f'沪深港通资金流向写入失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed,
+			        "message": f"沪深港通资金流向同步完成（{start_str}~{end_str}）"}
+		except Exception as e:
+			logger.error(f"沪深港通资金流向同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"沪深港通资金流向同步失败: {str(e)}"}
+
+	async def _sync_index_sw_daily(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步申万行业日线行情（index_sw_daily 表，逐行业同步+智能日期推断）。
+
+		默认获取所有 SW2021 L1 行业（31个一级行业）。
+
+		Args:
+			start_date: 起始日期（None → 自动推断）
+			end_date: 结束日期（None → 今天）
+			ts_codes: 行业代码列表（None → SW2021 L1 行业）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_skipped, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not ts_codes:
+			try:
+				classify_df = await self._cancellable_run_in_executor(
+					source.get_index_classify, level='L1', src='SW2021')
+				if not classify_df.empty:
+					ts_codes = classify_df['index_code'].tolist()
+				else:
+					ts_codes = []
+			except Exception:
+				ts_codes = []
+		if not ts_codes:
+			return {"records_added": 0, "records_updated": 0, "records_skipped": 0,
+			        "records_failed": 0, "total_items": 0, "message": "申万日线行情同步完成（无行业代码）"}
+
+		async with SyncTimingLogger(logger, "申万日线(index_sw_daily)", slow_threshold=10.0) as timer:
+			async def _process_one(session, ts_code):
+				repo = IndexSwDailyRepository(session)
+				source = self.source_factory.get_source(DataSource.TUSHARE)
+				try:
+					s_date, e_date, mode = await self._resolve_sync_date_range(
+						ts_code, start_date, end_date, repo,
+						latest_dates_map=latest_dates_map,
+					)
+					if mode == "up_to_date":
+						return {"added": 0, "updated": 0, "skipped": 1, "mode": mode}
+					s_str = "" if mode == "full" else (s_date.strftime("%Y%m%d") if s_date else "")
+					e_str = "" if mode == "full" else (e_date.strftime("%Y%m%d") if e_date else "")
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, ts_code):
+						df = await self._cancellable_run_in_executor(
+							source.get_sw_daily, ts_code=ts_code,
+							start_date=s_str, end_date=e_str,
+						)
+					if df is None or df.empty:
+						return {"added": 0, "updated": 0, "mode": mode}
+					async with timer.node(SyncTimingLogger.NODE_CONVERT, ts_code):
+						data = _convert_records_datetime(df.to_dict("records"))
+					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, ts_code):
+						added, _ = await self._process_trade_date_data(repo, data, ts_code)
+					return {"added": added, "updated": 0, "mode": mode}
+				except Exception as e:
+					logger.error(f"[申万日线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+					return {"added": 0, "updated": 0, "failed": True}
+
+			_temp_repo = IndexSwDailyRepository(self.session)
+			if hasattr(_temp_repo, 'get_latest_trade_dates_batch'):
+				latest_dates_map = await _temp_repo.get_latest_trade_dates_batch(ts_codes)
+			else:
+				latest_dates_map = {}
+
+			logger.info(f"[申万日线] 并行同步 {len(ts_codes)} 只行业, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
+			result = await self._parallel_for_each(ts_codes, "申万日线", task_id, user_id, _process_one, rate_key="sw_daily")
+			if not result.get("cancelled"):
+				result["message"] = "申万行业日线行情同步完成"
+			return result
+
 
 	async def _update_progress(
 			self,

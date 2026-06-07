@@ -4065,3 +4065,208 @@ COMMENT ON COLUMN stock_stk_holdertrade.avg_price IS '增/减持均价';
 COMMENT ON COLUMN stock_stk_holdertrade.total_share IS '总股本';
 COMMENT ON COLUMN stock_stk_holdertrade.begin_date IS '变动开始日期';
 COMMENT ON COLUMN stock_stk_holdertrade.close_date IS '变动结束日期';
+
+-- ===================== Phase 3 新增数据类型 =====================
+
+-- 申万行业分类
+CREATE TABLE index_sw_classify (
+    index_code VARCHAR(20) PRIMARY KEY,
+    industry_name VARCHAR(100),
+    parent_code VARCHAR(20),
+    level VARCHAR(3),
+    industry_code VARCHAR(20),
+    is_pub VARCHAR(1),
+    src VARCHAR(10),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE index_sw_classify IS '申万行业分类表（Tushare index_classify 接口）';
+COMMENT ON COLUMN index_sw_classify.index_code IS '指数代码';
+COMMENT ON COLUMN index_sw_classify.industry_name IS '行业名称';
+COMMENT ON COLUMN index_sw_classify.parent_code IS '父级代码';
+COMMENT ON COLUMN index_sw_classify.level IS '行业层级 L1/L2/L3';
+COMMENT ON COLUMN index_sw_classify.industry_code IS '行业代码';
+COMMENT ON COLUMN index_sw_classify.is_pub IS '是否发布指数 0/1';
+COMMENT ON COLUMN index_sw_classify.src IS '指数来源 SW2014/SW2021';
+
+-- 申万行业成分
+CREATE TABLE index_sw_member (
+    id VARCHAR(36) PRIMARY KEY,
+    l1_code VARCHAR(20),
+    l1_name VARCHAR(100),
+    l2_code VARCHAR(20),
+    l2_name VARCHAR(100),
+    l3_code VARCHAR(20),
+    l3_name VARCHAR(100),
+    ts_code VARCHAR(20) NOT NULL,
+    name VARCHAR(100),
+    in_date DATE,
+    out_date DATE,
+    is_new VARCHAR(1),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (l3_code, ts_code, in_date)
+);
+CREATE INDEX idx_sw_member_ts_code ON index_sw_member(ts_code);
+
+COMMENT ON TABLE index_sw_member IS '申万行业成分表（Tushare index_member_all 接口）';
+COMMENT ON COLUMN index_sw_member.l1_code IS '一级行业代码';
+COMMENT ON COLUMN index_sw_member.l1_name IS '一级行业名称';
+COMMENT ON COLUMN index_sw_member.l2_code IS '二级行业代码';
+COMMENT ON COLUMN index_sw_member.l2_name IS '二级行业名称';
+COMMENT ON COLUMN index_sw_member.l3_code IS '三级行业代码';
+COMMENT ON COLUMN index_sw_member.l3_name IS '三级行业名称';
+COMMENT ON COLUMN index_sw_member.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN index_sw_member.name IS '股票名称';
+COMMENT ON COLUMN index_sw_member.in_date IS '纳入日期';
+COMMENT ON COLUMN index_sw_member.out_date IS '剔除日期';
+COMMENT ON COLUMN index_sw_member.is_new IS '是否最新 Y/N';
+
+-- 大盘指数每日指标
+CREATE TABLE index_dailybasic (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    total_mv NUMERIC(18, 2),
+    float_mv NUMERIC(18, 2),
+    total_share NUMERIC(18, 2),
+    float_share NUMERIC(18, 2),
+    free_share NUMERIC(18, 2),
+    turnover_rate NUMERIC(8, 4),
+    turnover_rate_f NUMERIC(8, 4),
+    pe NUMERIC(12, 4),
+    pe_ttm NUMERIC(12, 4),
+    pb NUMERIC(12, 4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_index_dailybasic_ts_code ON index_dailybasic(ts_code);
+
+COMMENT ON TABLE index_dailybasic IS '大盘指数每日指标表（Tushare index_dailybasic 接口）';
+COMMENT ON COLUMN index_dailybasic.ts_code IS '指数代码';
+COMMENT ON COLUMN index_dailybasic.trade_date IS '交易日期';
+COMMENT ON COLUMN index_dailybasic.total_mv IS '总市值';
+COMMENT ON COLUMN index_dailybasic.float_mv IS '流通市值';
+COMMENT ON COLUMN index_dailybasic.total_share IS '总股本';
+COMMENT ON COLUMN index_dailybasic.float_share IS '流通股本';
+COMMENT ON COLUMN index_dailybasic.free_share IS '自由流通股本';
+COMMENT ON COLUMN index_dailybasic.turnover_rate IS '换手率(%)';
+COMMENT ON COLUMN index_dailybasic.turnover_rate_f IS '自由流通换手率(%)';
+COMMENT ON COLUMN index_dailybasic.pe IS '市盈率';
+COMMENT ON COLUMN index_dailybasic.pe_ttm IS '市盈率(TTM)';
+COMMENT ON COLUMN index_dailybasic.pb IS '市净率';
+
+-- 卖方盈利预测
+CREATE TABLE stock_forecast_pro (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    name VARCHAR(100),
+    report_date DATE,
+    report_title VARCHAR(500),
+    report_type VARCHAR(50),
+    classify VARCHAR(50),
+    org_name VARCHAR(200),
+    author_name VARCHAR(100),
+    quarter VARCHAR(10),
+    op_rt NUMERIC(18, 4),
+    op_pr NUMERIC(18, 4),
+    tp NUMERIC(18, 4),
+    np NUMERIC(18, 4),
+    eps NUMERIC(12, 4),
+    pe NUMERIC(12, 4),
+    rd NUMERIC(8, 4),
+    roe NUMERIC(8, 4),
+    ev_ebitda NUMERIC(12, 4),
+    rating VARCHAR(50),
+    max_price NUMERIC(12, 4),
+    min_price NUMERIC(12, 4),
+    imp_dg VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, report_date, org_name, quarter)
+);
+CREATE INDEX idx_forecast_pro_ts_code ON stock_forecast_pro(ts_code);
+CREATE INDEX idx_forecast_pro_report_date ON stock_forecast_pro(report_date);
+
+COMMENT ON TABLE stock_forecast_pro IS '卖方盈利预测表（Tushare report_rc 接口，需8000积分）';
+COMMENT ON COLUMN stock_forecast_pro.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_forecast_pro.name IS '股票名称';
+COMMENT ON COLUMN stock_forecast_pro.report_date IS '报告日期';
+COMMENT ON COLUMN stock_forecast_pro.report_title IS '报告标题';
+COMMENT ON COLUMN stock_forecast_pro.report_type IS '报告类型';
+COMMENT ON COLUMN stock_forecast_pro.classify IS '分类';
+COMMENT ON COLUMN stock_forecast_pro.org_name IS '机构名称';
+COMMENT ON COLUMN stock_forecast_pro.author_name IS '作者姓名';
+COMMENT ON COLUMN stock_forecast_pro.quarter IS '预测季度';
+COMMENT ON COLUMN stock_forecast_pro.op_rt IS '预测营业收入';
+COMMENT ON COLUMN stock_forecast_pro.op_pr IS '预测营业利润';
+COMMENT ON COLUMN stock_forecast_pro.tp IS '预测利润总额';
+COMMENT ON COLUMN stock_forecast_pro.np IS '预测净利润';
+COMMENT ON COLUMN stock_forecast_pro.eps IS '预测每股收益';
+COMMENT ON COLUMN stock_forecast_pro.pe IS '预测市盈率';
+COMMENT ON COLUMN stock_forecast_pro.rd IS '预测研发费用';
+COMMENT ON COLUMN stock_forecast_pro.roe IS '预测净资产收益率';
+COMMENT ON COLUMN stock_forecast_pro.ev_ebitda IS '预测EV/EBITDA';
+COMMENT ON COLUMN stock_forecast_pro.rating IS '评级';
+COMMENT ON COLUMN stock_forecast_pro.max_price IS '目标最高价';
+COMMENT ON COLUMN stock_forecast_pro.min_price IS '目标最低价';
+COMMENT ON COLUMN stock_forecast_pro.imp_dg IS '隐含涨幅';
+
+-- 沪深港通资金流向
+CREATE TABLE stock_moneyflow_hsgt (
+    id VARCHAR(36) PRIMARY KEY,
+    trade_date DATE NOT NULL UNIQUE,
+    ggt_ss NUMERIC(18, 2),
+    ggt_sz NUMERIC(18, 2),
+    hgt NUMERIC(18, 2),
+    sgt NUMERIC(18, 2),
+    north_money NUMERIC(18, 2),
+    south_money NUMERIC(18, 2),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE stock_moneyflow_hsgt IS '沪深港通资金流向表（Tushare moneyflow_hsgt 接口）';
+COMMENT ON COLUMN stock_moneyflow_hsgt.trade_date IS '交易日期';
+COMMENT ON COLUMN stock_moneyflow_hsgt.ggt_ss IS '港股通（上海）';
+COMMENT ON COLUMN stock_moneyflow_hsgt.ggt_sz IS '港股通（深圳）';
+COMMENT ON COLUMN stock_moneyflow_hsgt.hgt IS '沪股通';
+COMMENT ON COLUMN stock_moneyflow_hsgt.sgt IS '深股通';
+COMMENT ON COLUMN stock_moneyflow_hsgt.north_money IS '北向资金';
+COMMENT ON COLUMN stock_moneyflow_hsgt.south_money IS '南向资金';
+
+-- 申万行业日线行情
+CREATE TABLE index_sw_daily (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    name VARCHAR(100),
+    open NUMERIC(12, 4),
+    low NUMERIC(12, 4),
+    high NUMERIC(12, 4),
+    close NUMERIC(12, 4),
+    change NUMERIC(12, 4),
+    pct_change NUMERIC(8, 4),
+    vol NUMERIC(18, 2),
+    amount NUMERIC(18, 2),
+    pe NUMERIC(12, 4),
+    pb NUMERIC(12, 4),
+    float_mv NUMERIC(18, 2),
+    total_mv NUMERIC(18, 2),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_sw_daily_ts_code ON index_sw_daily(ts_code);
+CREATE INDEX idx_sw_daily_trade_date ON index_sw_daily(trade_date);
+
+COMMENT ON TABLE index_sw_daily IS '申万行业日线行情表（Tushare sw_daily 接口）';
+COMMENT ON COLUMN index_sw_daily.ts_code IS '行业指数代码';
+COMMENT ON COLUMN index_sw_daily.trade_date IS '交易日期';
+COMMENT ON COLUMN index_sw_daily.name IS '指数名称';
+COMMENT ON COLUMN index_sw_daily.pe IS '市盈率';
+COMMENT ON COLUMN index_sw_daily.pb IS '市净率';
+COMMENT ON COLUMN index_sw_daily.float_mv IS '流通市值（万元）';
+COMMENT ON COLUMN index_sw_daily.total_mv IS '总市值（万元）';

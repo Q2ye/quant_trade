@@ -26,7 +26,7 @@ class ModuleConfig:
 	MODULE_NAME = "data"
 
 	# 模块版本
-	MODULE_VERSION = "1.1.0"  # 更新版本号以反映新增数据类型
+	MODULE_VERSION = "1.2.0"  # 更新版本号以反映新增数据类型（Phase 3: 申万分类/成分/指数指标/盈利预测/沪深港通资金）
 
 	# 默认分页大小
 	DEFAULT_PAGE_SIZE = 20
@@ -238,6 +238,12 @@ class SyncConfig:
 		"top10_floatholders": 500,
 		"pledge_stat": 1000,
 		"stk_holdertrade": 3000,
+		"index_sw_classify": 2000,
+		"index_sw_member": 2000,
+		"index_sw_daily": 4000,
+		"index_dailybasic": 3000,
+		"forecast_pro": 3000,
+		"moneyflow_hsgt": 300,
 	}
 
 	# 超时配置（秒）
@@ -276,6 +282,12 @@ class SyncConfig:
 		"top10_floatholders": 300,
 		"pledge_stat": 300,
 		"stk_holdertrade": 300,
+		"index_sw_classify": 300,
+		"index_sw_member": 300,
+		"index_sw_daily": 600,
+		"index_dailybasic": 600,
+		"forecast_pro": 600,
+		"moneyflow_hsgt": 120,
 	}
 
 	# 同步时间窗口
@@ -346,7 +358,8 @@ class DataSource:
 			"financial_income", "financial_balance", "financial_cashflow",
 			"forecast", "express", "dividend", "financial_indicator",
 			"audit_opinion", "business_income", "index_data", "calendar",
-			"stk_holdernumber", "top10_holders", "top10_floatholders", "pledge_stat", "stk_holdertrade"
+			"stk_holdernumber", "top10_holders", "top10_floatholders", "pledge_stat", "stk_holdertrade",
+			"index_sw_classify", "index_sw_member", "index_sw_daily", "index_dailybasic", "forecast_pro", "moneyflow_hsgt"
 		],
 		BAOSTOCK: ["daily_quotes", "financial_data", "index_data"],
 		SINA: ["realtime_quotes"],
@@ -492,6 +505,20 @@ class DataType(str, Enum):
 	PLEDGE_STAT = "pledge_stat"  # 股权质押统计
 	STK_HOLDERTRADE = "stk_holdertrade"  # 股东增减持
 
+	# 申万行业分类
+	INDEX_SW_CLASSIFY = "index_sw_classify"  # 申万行业分类
+	INDEX_SW_MEMBER = "index_sw_member"  # 申万行业成分
+	INDEX_SW_DAILY = "index_sw_daily"  # 申万行业日线行情
+
+	# 大盘指数每日指标
+	INDEX_DAILYBASIC = "index_dailybasic"  # 大盘指数每日指标
+
+	# 卖方盈利预测
+	FORECAST_PRO = "forecast_pro"  # 卖方盈利预测
+
+	# 沪深港通资金流向
+	MONEYFLOW_HSGT = "moneyflow_hsgt"  # 沪深港通资金流向
+
 	# 其他
 	HOLDERS_DATA = "holders_data"  # 股东数据
 	SPLIT_DATA = "split_data"  # 拆分数据
@@ -543,6 +570,12 @@ class DataType(str, Enum):
 			cls.TOP10_FLOAT_HOLDERS: "前十大流通股东",
 			cls.PLEDGE_STAT: "股权质押统计",
 			cls.STK_HOLDERTRADE: "股东增减持",
+			cls.INDEX_SW_CLASSIFY: "申万行业分类",
+			cls.INDEX_SW_MEMBER: "申万行业成分",
+			cls.INDEX_SW_DAILY: "申万行业日线行情",
+			cls.INDEX_DAILYBASIC: "大盘指数每日指标",
+			cls.FORECAST_PRO: "卖方盈利预测",
+			cls.MONEYFLOW_HSGT: "沪深港通资金流向",
 		}
 		return display_names.get(data_type, data_type)
 

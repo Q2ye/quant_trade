@@ -826,6 +826,13 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
     "top10_floatholders":    DataTypeInfo(code="top10_floatholders",    name="前十大流通股东", description="上市公司前十大流通股东持有数量及比例，机构持仓变动追踪", estimated_time=90,  requires_clean=False, is_core=False),
     "pledge_stat":           DataTypeInfo(code="pledge_stat",           name="股权质押统计", description="上市公司股权质押汇总数据（质押次数/质押比例），风险预警核心", estimated_time=60,  requires_clean=False, is_core=False),
     "stk_holdertrade":       DataTypeInfo(code="stk_holdertrade",       name="股东增减持",   description="大股东/高管增减持明细，产业资本行为信号",                 estimated_time=30,  requires_clean=False, is_core=False),
+    # ===== Phase 3 新增 =====
+    "index_sw_classify":     DataTypeInfo(code="index_sw_classify",     name="申万行业分类", description="申万行业分类（L1/L2/L3三级），个股行业归属分析基础",     estimated_time=20,  requires_clean=False, is_core=False),
+    "index_sw_member":       DataTypeInfo(code="index_sw_member",       name="申万行业成分", description="申万行业成分股权重及进出记录，行业轮动策略核心",           estimated_time=20,  requires_clean=False, is_core=False),
+    "index_dailybasic":      DataTypeInfo(code="index_dailybasic",      name="大盘指数每日指标", description="6大核心指数每日估值/市值/换手率指标，市场情绪分析",     estimated_time=30,  requires_clean=False, is_core=False),
+    "forecast_pro":          DataTypeInfo(code="forecast_pro",          name="卖方盈利预测", description="券商研究所盈利预测报告（需8000积分），基本面量化核心",     estimated_time=120, requires_clean=False, is_core=False),
+    "moneyflow_hsgt":        DataTypeInfo(code="moneyflow_hsgt",        name="沪深港通资金流向", description="北向/南向资金当日净流入流出数据，外资动向追踪",         estimated_time=15,  requires_clean=False, is_core=False),
+    "index_sw_daily":        DataTypeInfo(code="index_sw_daily",        name="申万行业日线行情", description="申万2021版31个一级行业日线行情（OHLCV+PE+PB+市值）", estimated_time=120, requires_clean=False, is_core=False),
 }
 
 

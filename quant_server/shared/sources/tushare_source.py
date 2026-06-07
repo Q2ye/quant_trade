@@ -1031,3 +1031,105 @@ class TushareSource(BaseDataSource):
 		except Exception as e:
 			logger.error(f"获取股东增减持失败: {e}")
 			return pd.DataFrame()
+
+	def get_index_classify(self, level: str = '', src: str = 'SW2021') -> pd.DataFrame:
+		"""获取申万行业分类（Tushare index_classify 接口）
+
+		Args:
+			level: 行业分级 L1/L2/L3
+			src: 指数来源 SW2014/SW2021
+		Returns:
+			DataFrame: columns: index_code, industry_name, parent_code, level, industry_code, is_pub, src
+		"""
+		try:
+			kwargs = {'src': src}
+			if level:
+				kwargs['level'] = level
+			df = self.pro.index_classify(**kwargs)
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取申万行业分类失败: {e}")
+			return pd.DataFrame()
+
+	def get_index_member_all(self, is_new: str = 'Y') -> pd.DataFrame:
+		"""获取申万行业成分（Tushare index_member_all 接口）
+
+		Args:
+			is_new: 是否最新 Y/N
+		Returns:
+			DataFrame
+		"""
+		try:
+			df = self.pro.index_member_all(is_new=is_new)
+			if df is not None and not df.empty:
+				for col in ('in_date', 'out_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取申万行业成分失败: {e}")
+			return pd.DataFrame()
+
+	def get_index_dailybasic(self, ts_code: str = '', trade_date: str = '',
+	                         start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取大盘指数每日指标（Tushare index_dailybasic 接口）"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.index_dailybasic(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取大盘指数每日指标失败: {e}")
+			return pd.DataFrame()
+
+	def get_report_rc(self, ts_code: str = '', start_date: str = '',
+	                  end_date: str = '') -> pd.DataFrame:
+		"""获取卖方盈利预测（Tushare report_rc 接口）"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.report_rc(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('report_date', 'create_time'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取卖方盈利预测失败: {e}")
+			return pd.DataFrame()
+
+	def get_sw_daily(self, ts_code: str = '', trade_date: str = '',
+	                 start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取申万行业日线行情（Tushare sw_daily 接口）
+
+		Args:
+			ts_code: 行业代码
+			trade_date: 交易日期
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: columns: ts_code, trade_date, name, open, low, high, close, change, pct_change, vol, amount, pe, pb, float_mv, total_mv
+		"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.sw_daily(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取申万日线行情失败: {e}")
+			return pd.DataFrame()
+

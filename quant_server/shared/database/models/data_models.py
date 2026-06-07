@@ -1324,3 +1324,154 @@ class StockStkHoldertrade(Base):
 	__table_args__ = (
 		UniqueConstraint('ts_code', 'ann_date', 'holder_name', 'in_de', name='uq_holdertrade_unique'),
 	)
+
+
+# ==================== Phase 3 新增数据类型 ====================
+
+class IndexSwClassify(Base):
+	"""申万行业分类表"""
+	__tablename__ = 'index_sw_classify'
+
+	index_code = Column(String(20), primary_key=True, comment='指数代码')
+	industry_name = Column(String(100), comment='行业名称')
+	parent_code = Column(String(20), comment='父级代码')
+	level = Column(String(3), comment='行业层级 L1/L2/L3')
+	industry_code = Column(String(20), comment='行业代码')
+	is_pub = Column(String(1), comment='是否发布指数 0/1')
+	src = Column(String(10), comment='指数来源 SW2014/SW2021')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+
+class IndexSwMember(Base):
+	"""申万行业成分表"""
+	__tablename__ = 'index_sw_member'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	l1_code = Column(String(20), comment='一级行业代码')
+	l1_name = Column(String(100), comment='一级行业名称')
+	l2_code = Column(String(20), comment='二级行业代码')
+	l2_name = Column(String(100), comment='二级行业名称')
+	l3_code = Column(String(20), comment='三级行业代码')
+	l3_name = Column(String(100), comment='三级行业名称')
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	name = Column(String(100), comment='股票名称')
+	in_date = Column(Date, comment='纳入日期')
+	out_date = Column(Date, comment='剔除日期')
+	is_new = Column(String(1), comment='是否最新 Y/N')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('l3_code', 'ts_code', 'in_date', name='uq_sw_member_unique'),
+	)
+
+
+class IndexSwDaily(Base):
+	"""申万行业日线行情表"""
+	__tablename__ = 'index_sw_daily'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='行业指数代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日期')
+	name = Column(String(100), comment='指数名称')
+	open = Column(Numeric(12, 4), comment='开盘点位')
+	low = Column(Numeric(12, 4), comment='最低点位')
+	high = Column(Numeric(12, 4), comment='最高点位')
+	close = Column(Numeric(12, 4), comment='收盘点位')
+	change = Column(Numeric(12, 4), comment='涨跌点位')
+	pct_change = Column(Numeric(8, 4), comment='涨跌幅')
+	vol = Column(Numeric(18, 2), comment='成交量（万股）')
+	amount = Column(Numeric(18, 2), comment='成交额（万元）')
+	pe = Column(Numeric(12, 4), comment='市盈率')
+	pb = Column(Numeric(12, 4), comment='市净率')
+	float_mv = Column(Numeric(18, 2), comment='流通市值（万元）')
+	total_mv = Column(Numeric(18, 2), comment='总市值（万元）')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_sw_daily_unique'),
+	)
+
+
+class IndexDailyBasic(Base):
+	"""大盘指数每日指标表"""
+	__tablename__ = 'index_dailybasic'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='指数代码')
+	trade_date = Column(Date, nullable=False, comment='交易日期')
+	total_mv = Column(Numeric(18, 2), comment='总市值')
+	float_mv = Column(Numeric(18, 2), comment='流通市值')
+	total_share = Column(Numeric(18, 2), comment='总股本')
+	float_share = Column(Numeric(18, 2), comment='流通股本')
+	free_share = Column(Numeric(18, 2), comment='自由流通股本')
+	turnover_rate = Column(Numeric(8, 4), comment='换手率(%)')
+	turnover_rate_f = Column(Numeric(8, 4), comment='自由流通换手率(%)')
+	pe = Column(Numeric(12, 4), comment='市盈率')
+	pe_ttm = Column(Numeric(12, 4), comment='市盈率(TTM)')
+	pb = Column(Numeric(12, 4), comment='市净率')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_index_dailybasic_unique'),
+	)
+
+
+class StockForecastPro(Base):
+	"""卖方盈利预测表"""
+	__tablename__ = 'stock_forecast_pro'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	name = Column(String(100), comment='股票名称')
+	report_date = Column(Date, comment='报告日期')
+	report_title = Column(String(500), comment='报告标题')
+	report_type = Column(String(50), comment='报告类型')
+	classify = Column(String(50), comment='分类')
+	org_name = Column(String(200), comment='机构名称')
+	author_name = Column(String(100), comment='作者姓名')
+	quarter = Column(String(10), comment='预测季度')
+	op_rt = Column(Numeric(18, 4), comment='预测营业收入')
+	op_pr = Column(Numeric(18, 4), comment='预测营业利润')
+	tp = Column(Numeric(18, 4), comment='预测利润总额')
+	np = Column(Numeric(18, 4), comment='预测净利润')
+	eps = Column(Numeric(12, 4), comment='预测每股收益')
+	pe = Column(Numeric(12, 4), comment='预测市盈率')
+	rd = Column(Numeric(8, 4), comment='预测研发费用')
+	roe = Column(Numeric(8, 4), comment='预测净资产收益率')
+	ev_ebitda = Column(Numeric(12, 4), comment='预测EV/EBITDA')
+	rating = Column(String(50), comment='评级')
+	max_price = Column(Numeric(12, 4), comment='目标最高价')
+	min_price = Column(Numeric(12, 4), comment='目标最低价')
+	imp_dg = Column(String(50), comment='隐含涨幅')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'report_date', 'org_name', 'quarter', name='uq_forecast_pro_unique'),
+	)
+
+
+class StockMoneyflowHsgt(Base):
+	"""沪深港通资金流向表"""
+	__tablename__ = 'stock_moneyflow_hsgt'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	trade_date = Column(Date, nullable=False, unique=True, comment='交易日期')
+	ggt_ss = Column(Numeric(18, 2), comment='港股通（上海）')
+	ggt_sz = Column(Numeric(18, 2), comment='港股通（深圳）')
+	hgt = Column(Numeric(18, 2), comment='沪股通')
+	sgt = Column(Numeric(18, 2), comment='深股通')
+	north_money = Column(Numeric(18, 2), comment='北向资金')
+	south_money = Column(Numeric(18, 2), comment='南向资金')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
