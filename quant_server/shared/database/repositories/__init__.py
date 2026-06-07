@@ -277,6 +277,40 @@ try:
         StockDailyBasicRepository,
         StockMoneyflowRepository,
         FinancialStatementRepository,
+        # 财务衍生
+        StockForecastRepository,
+        StockExpressRepository,
+        StockDividendRepository,
+        StockFinaIndicatorRepository,
+        StockAuditOpinionRepository,
+        StockBusinessIncomeRepository,
+        CompanyAnnouncementRepository,
+        StockSuspendInfoRepository,
+        # ETF
+        EtfShareRepository,
+        # Phase 1 (P0 轻量)
+        StockHsgtRepository,
+        StockStRiskRepository,
+        DisclosureDateRepository,
+        StockShareFloatRepository,
+        # Phase 2 (P0 逐股)
+        StockHoldernumberRepository,
+        StockTop10HoldersRepository,
+        StockTop10FloatHoldersRepository,
+        StockPledgeStatRepository,
+        StockHoldertradeRepository,
+        # Phase 3 (P1 申万+预测+资金)
+        IndexSwClassifyRepository,
+        IndexSwMemberRepository,
+        IndexSwDailyRepository,
+        IndexDailyBasicRepository,
+        StockForecastProRepository,
+        StockMoneyflowHsgtRepository,
+        # Phase 4 (修复+P2)
+        IndexWeeklyRepository,
+        StockFactorDailyRepository,
+        StockFactorProDailyRepository,
+        IndexFactorProDailyRepository,
 
         # 公司治理
         ManagerRepository,
@@ -309,6 +343,38 @@ try:
         'stock_daily_basic_repo': StockDailyBasicRepository,
         'stock_moneyflow_repo': StockMoneyflowRepository,
         'financial_statement_repo': FinancialStatementRepository,
+        'forecast_repo': StockForecastRepository,
+        'express_repo': StockExpressRepository,
+        'dividend_repo': StockDividendRepository,
+        'fina_indicator_repo': StockFinaIndicatorRepository,
+        'audit_opinion_repo': StockAuditOpinionRepository,
+        'business_income_repo': StockBusinessIncomeRepository,
+        'company_announcement_repo': CompanyAnnouncementRepository,
+        'suspend_info_repo': StockSuspendInfoRepository,
+        'etf_share_repo': EtfShareRepository,
+        # Phase 1
+        'hsgt_repo': StockHsgtRepository,
+        'st_risk_repo': StockStRiskRepository,
+        'disclosure_date_repo': DisclosureDateRepository,
+        'share_float_repo': StockShareFloatRepository,
+        # Phase 2
+        'holdernumber_repo': StockHoldernumberRepository,
+        'top10_holders_repo': StockTop10HoldersRepository,
+        'top10_float_holders_repo': StockTop10FloatHoldersRepository,
+        'pledge_stat_repo': StockPledgeStatRepository,
+        'holdertrade_repo': StockHoldertradeRepository,
+        # Phase 3
+        'sw_classify_repo': IndexSwClassifyRepository,
+        'sw_member_repo': IndexSwMemberRepository,
+        'sw_daily_repo': IndexSwDailyRepository,
+        'index_dailybasic_repo': IndexDailyBasicRepository,
+        'forecast_pro_repo': StockForecastProRepository,
+        'moneyflow_hsgt_repo': StockMoneyflowHsgtRepository,
+        # Phase 4
+        'index_weekly_repo': IndexWeeklyRepository,
+        'factor_daily_repo': StockFactorDailyRepository,
+        'factor_pro_daily_repo': StockFactorProDailyRepository,
+        'idx_factor_pro_repo': IndexFactorProDailyRepository,
         'manager_repo': ManagerRepository,
         'reward_repo': RewardRepository,
         'trade_calendar_repo': TradeCalendarRepository,
@@ -337,6 +403,34 @@ try:
         'StockDailyBasicRepository',
         'StockMoneyflowRepository',
         'FinancialStatementRepository',
+        'StockForecastRepository',
+        'StockExpressRepository',
+        'StockDividendRepository',
+        'StockFinaIndicatorRepository',
+        'StockAuditOpinionRepository',
+        'StockBusinessIncomeRepository',
+        'CompanyAnnouncementRepository',
+        'StockSuspendInfoRepository',
+        'EtfShareRepository',
+        'StockHsgtRepository',
+        'StockStRiskRepository',
+        'DisclosureDateRepository',
+        'StockShareFloatRepository',
+        'StockHoldernumberRepository',
+        'StockTop10HoldersRepository',
+        'StockTop10FloatHoldersRepository',
+        'StockPledgeStatRepository',
+        'StockHoldertradeRepository',
+        'IndexSwClassifyRepository',
+        'IndexSwMemberRepository',
+        'IndexSwDailyRepository',
+        'IndexDailyBasicRepository',
+        'StockForecastProRepository',
+        'StockMoneyflowHsgtRepository',
+        'IndexWeeklyRepository',
+        'StockFactorDailyRepository',
+        'StockFactorProDailyRepository',
+        'IndexFactorProDailyRepository',
         'ManagerRepository',
         'RewardRepository',
         'TradeCalendarRepository',
@@ -367,6 +461,34 @@ except ImportError as e:
     StockDailyBasicRepository = None
     StockMoneyflowRepository = None
     FinancialStatementRepository = None
+    StockForecastRepository = None
+    StockExpressRepository = None
+    StockDividendRepository = None
+    StockFinaIndicatorRepository = None
+    StockAuditOpinionRepository = None
+    StockBusinessIncomeRepository = None
+    CompanyAnnouncementRepository = None
+    StockSuspendInfoRepository = None
+    EtfShareRepository = None
+    StockHsgtRepository = None
+    StockStRiskRepository = None
+    DisclosureDateRepository = None
+    StockShareFloatRepository = None
+    StockHoldernumberRepository = None
+    StockTop10HoldersRepository = None
+    StockTop10FloatHoldersRepository = None
+    StockPledgeStatRepository = None
+    StockHoldertradeRepository = None
+    IndexSwClassifyRepository = None
+    IndexSwMemberRepository = None
+    IndexSwDailyRepository = None
+    IndexDailyBasicRepository = None
+    StockForecastProRepository = None
+    StockMoneyflowHsgtRepository = None
+    IndexWeeklyRepository = None
+    StockFactorDailyRepository = None
+    StockFactorProDailyRepository = None
+    IndexFactorProDailyRepository = None
     ManagerRepository = None
     RewardRepository = None
     TradeCalendarRepository = None

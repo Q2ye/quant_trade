@@ -87,6 +87,7 @@ from modules.data.constants import (
 	DataSource,
 	DataType,
 	CacheKey,
+	SyncConfig,
 )
 # 导入数据模块事件
 from modules.data.events import (
@@ -161,6 +162,11 @@ from shared.database.repositories.market.fundamental.index_dailybasic_repo impor
 from shared.database.repositories.market.fundamental.forecast_pro_repo import StockForecastProRepository
 from shared.database.repositories.market.fundamental.moneyflow_hsgt_repo import StockMoneyflowHsgtRepository
 from shared.database.repositories.market.fundamental.index_sw_daily_repo import IndexSwDailyRepository
+from shared.database.repositories.market.fundamental.index_weekly_repo import IndexWeeklyRepository
+from shared.database.repositories.market.fundamental.stock_daily_limit_repo import StockDailyLimitRepository
+from shared.database.repositories.market.fundamental.stock_factor_daily_repo import StockFactorDailyRepository
+from shared.database.repositories.market.fundamental.stock_factor_pro_daily_repo import StockFactorProDailyRepository
+from shared.database.repositories.market.fundamental.index_factor_pro_daily_repo import IndexFactorProDailyRepository
 from shared.sources.source_factory import DataSourceFactory
 
 # 配置日志
@@ -316,6 +322,10 @@ _TYPE_LABEL = {
 	'forecast_pro': '卖方盈利预测(forecast_pro)',
 	'moneyflow_hsgt': '沪深港通资金(hsgt)',
 		'index_sw_daily': '申万日线(index_sw_daily)',
+	'daily_limit': '涨跌停价格(daily_limit)',
+	'stk_factor': '技术因子基础版(stk_factor)',
+		'idx_factor_pro': '指数技术因子(idx_factor_pro)',
+	'stk_factor_pro': '技术因子专业版(stk_factor_pro)',
 }
 
 
@@ -386,6 +396,11 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 		DataType.FORECAST_PRO: 5000,
 		DataType.MONEYFLOW_HSGT: 1000,
 		DataType.INDEX_SW_DAILY: len(ts_codes) * 250 if ts_codes else 7750,
+		DataType.INDEX_WEEKLY: len(ts_codes) * 200 if ts_codes else 1000,
+		DataType.DAILY_LIMIT: len(ts_codes) * 250 if ts_codes else 5000 * 5,
+		DataType.STK_FACTOR: len(ts_codes) * 250 if ts_codes else 5000,
+		DataType.STK_FACTOR_PRO: len(ts_codes) * 250 if ts_codes else 5000,
+		DataType.IDX_FACTOR_PRO: len(ts_codes) * 250 if ts_codes else 125000,
 	}
 	return estimates.get(data_type, 100)
 
@@ -582,6 +597,13 @@ class DataSyncService:
 		self.moneyflow_hsgt_repo = StockMoneyflowHsgtRepository(session)  # stock_moneyflow_hsgt（沪深港通资金流向）
 		self.sw_daily_repo = IndexSwDailyRepository(session)  # index_sw_daily（申万行业日线行情）
 
+		# --- Phase 4 新增 ---
+		self.index_weekly_repo = IndexWeeklyRepository(session)  # index_weekly（指数周线行情）
+		self.daily_limit_repo = StockDailyLimitRepository(session)  # stock_daily_limit（涨跌停价格）
+		self.stk_factor_repo = StockFactorDailyRepository(session)  # stock_factor_daily（技术因子基础版）
+		self.stk_factor_pro_repo = StockFactorProDailyRepository(session)  # stock_factor_pro_daily（技术因子专业版）
+		self.idx_factor_pro_repo = IndexFactorProDailyRepository(session)  # index_factor_pro_daily（指数技术因子专业版）
+
 		# ========== 线程池（避免 Tushare 同步调用阻塞事件循环） ==========
 		# Tushare/Baostock 的 HTTP 请求是同步阻塞的，必须在独立线程中执行。
 		# worker 数量从配置文件 settings.ENGINES.max_workers 读取，默认 8。
@@ -672,6 +694,11 @@ class DataSyncService:
 			DataType.FORECAST_PRO: self._sync_forecast_pro,
 			DataType.MONEYFLOW_HSGT: self._sync_moneyflow_hsgt,
 			DataType.INDEX_SW_DAILY: self._sync_index_sw_daily,
+			# Phase 4 新增
+			DataType.DAILY_LIMIT: self._sync_daily_limit,
+			DataType.STK_FACTOR: self._sync_stk_factor,
+			DataType.STK_FACTOR_PRO: self._sync_stk_factor_pro,
+			DataType.IDX_FACTOR_PRO: self._sync_idx_factor_pro,
 		}
 
 	@property
@@ -2755,7 +2782,7 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步指数周线行情（Tushare index_weekly 接口）。"""
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0;
+		records_added = 0
 		records_failed = 0
 		default_indices = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ']
 		indices = ts_codes if ts_codes else default_indices
@@ -2767,7 +2794,10 @@ class DataSyncService:
 					df = await self._cancellable_run_in_executor(source.get_index_weekly, ts_code=idx_code,
 					                                             start_date=start_str, end_date=end_str)
 					if not df.empty:
-						records_added += len(df)
+						data = _convert_records_datetime(df.to_dict('records'))
+						_preprocess_records(data, date_fields=('trade_date',))
+						written = await self.index_weekly_repo.bulk_upsert(data)
+						records_added += written
 				else:
 					records_failed += 1
 			except Exception as e:
@@ -2777,6 +2807,190 @@ class DataSyncService:
 		        "records_failed": records_failed,
 		        "total_items": records_added + records_failed,
 		        "message": f"指数周线行情同步完成: 新增={records_added}"}
+
+	# ==================== Phase 4 新增同步方法 ====================
+
+	async def _sync_daily_limit(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步每日涨跌停价格（stock_daily_limit 表，按日期范围拉取）。
+
+		默认拉取最近 5 个交易日的数据。
+		"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=7)
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			if hasattr(source, 'get_stk_limit'):
+				df = await self._cancellable_run_in_executor(
+					source.get_stk_limit, start_date=start_str, end_date=end_str)
+				if not df.empty:
+					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('trade_date',))
+					written = await self.daily_limit_repo.bulk_upsert(data)
+					records_added += written
+					logger.info(f"涨跌停价格同步完成: start={start_str} end={end_str}, 写入 {written} 条")
+			else:
+				records_failed += 1
+		except Exception as e:
+			logger.error(f"涨跌停价格同步失败: {_fmt_err(e, 150)}")
+			records_failed += 1
+		return {"records_added": records_added, "records_updated": 0,
+		        "records_failed": records_failed,
+		        "total_items": records_added + records_failed,
+		        "message": f"涨跌停价格同步完成: 新增={records_added}"}
+
+	async def _sync_stk_factor(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步股票技术因子基础版（stock_factor_daily 表，逐股拉取）。
+
+		默认拉取最近 1 个交易日、最多 5000 只股票。
+		新数据每日 18:00 后可用。
+		"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=1)
+		trade_date_str = end_date.strftime('%Y%m%d')
+		# 获取股票列表
+		if not ts_codes:
+			batch_size = SyncConfig.BATCH_SIZE.get('stk_factor', 10000)
+			stocks = await self.stock_basic_repo.get_all(limit=batch_size)
+			ts_codes = [s.ts_code for s in stocks]
+		total = len(ts_codes)
+		for i, ts_code in enumerate(ts_codes):
+			# 检查取消
+			if self._cancel_event and self._cancel_event.is_set():
+				break
+			try:
+				if hasattr(source, 'get_stk_factor'):
+					df = await self._cancellable_run_in_executor(
+						source.get_stk_factor, ts_code=ts_code,
+						trade_date=trade_date_str)
+					if not df.empty:
+						data = _convert_records_datetime(df.to_dict('records'))
+						_preprocess_records(data, date_fields=('trade_date',))
+						written = await self.stk_factor_repo.bulk_upsert(data)
+						records_added += written
+			except Exception as e:
+				logger.error(f"技术因子 {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				records_failed += 1
+			# 进度更新
+			if (i + 1) % 500 == 0:
+				await self._update_progress(task_id, (i + 1) / total * 100)
+		return {"records_added": records_added, "records_updated": 0,
+		        "records_failed": records_failed,
+		        "total_items": records_added + records_failed,
+		        "message": f"技术因子基础版同步完成: 新增={records_added}"}
+
+	async def _sync_stk_factor_pro(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步股票技术因子专业版（stock_factor_pro_daily 表，逐股拉取，200+列）。
+
+		默认拉取最近 1 个交易日、最多 5000 只股票。
+		需 Tushare 6000 积分以上权限。
+		"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0
+		records_failed = 0
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=1)
+		trade_date_str = end_date.strftime('%Y%m%d')
+		if not ts_codes:
+			batch_size = SyncConfig.BATCH_SIZE.get('stk_factor_pro', 10000)
+			stocks = await self.stock_basic_repo.get_all(limit=batch_size)
+			ts_codes = [s.ts_code for s in stocks]
+		total = len(ts_codes)
+		for i, ts_code in enumerate(ts_codes):
+			if self._cancel_event and self._cancel_event.is_set():
+				break
+			try:
+				if hasattr(source, 'get_stk_factor_pro'):
+					df = await self._cancellable_run_in_executor(
+						source.get_stk_factor_pro, ts_code=ts_code,
+						trade_date=trade_date_str)
+					if not df.empty:
+						data = _convert_records_datetime(df.to_dict('records'))
+						_preprocess_records(data, date_fields=('trade_date',))
+						written = await self.stk_factor_pro_repo.bulk_upsert(data)
+						records_added += written
+			except Exception as e:
+				logger.error(f"技术因子专业版 {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				records_failed += 1
+			if (i + 1) % 500 == 0:
+				await self._update_progress(task_id, (i + 1) / total * 100)
+		return {"records_added": records_added, "records_updated": 0,
+		        "records_failed": records_failed,
+		        "total_items": records_added + records_failed,
+		        "message": f"技术因子专业版同步完成: 新增={records_added}"}
+
+	async def _sync_idx_factor_pro(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步指数技术因子专业版（index_factor_pro_daily 表）。
+
+		逐指数拉取，200+ 技术因子列（仅 _bfq 不复权版本）。
+		默认拉取 index_basic 全部指数，需 Tushare 5000 积分以上权限。
+		"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=1)
+		s_str = start_date.strftime('%Y%m%d') if start_date else ''
+		e_str = end_date.strftime('%Y%m%d') if end_date else ''
+		if not ts_codes:
+			all_indices = await self.index_basic_repo.get_all()
+			ts_codes = [idx.ts_code for idx in all_indices] if all_indices else [
+				'000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ',
+				'000016.SH', '000688.SH']
+
+		async def _process_one(session, ts_code):
+			repo = IndexFactorProDailyRepository(session)
+			try:
+				df = await self._cancellable_run_in_executor(
+					source.get_idx_factor_pro, ts_code=ts_code,
+					start_date=s_str, end_date=e_str)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('trade_date',))
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
+			except Exception as e:
+				logger.error(f"[指数因子PRO] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "指数因子PRO(idx_factor_pro)", slow_threshold=30.0):
+			logger.info(f"[指数因子PRO] 并行同步 {len(ts_codes)} 只指数, 并发=8")
+			result = await self._parallel_for_each(
+				ts_codes, "指数因子PRO", task_id, user_id, _process_one,
+				rate_key="idx_factor_pro")
+			if not result.get("cancelled"):
+				result["message"] = "指数技术因子专业版同步完成"
+			return result
+
 
 	# [DEAD] async def async_sync_stock_quotes(
 	# [DEAD] self,

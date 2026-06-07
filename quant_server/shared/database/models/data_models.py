@@ -1475,3 +1475,385 @@ class StockMoneyflowHsgt(Base):
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ==================== Phase 4 新增 ====================
+
+
+class IndexWeekly(Base):
+	"""指数周线行情表"""
+	__tablename__ = 'index_weekly'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS指数代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日')
+	close = Column(Numeric(12, 4), comment='收盘点位')
+	open = Column(Numeric(12, 4), comment='开盘点位')
+	high = Column(Numeric(12, 4), comment='最高点位')
+	low = Column(Numeric(12, 4), comment='最低点位')
+	pre_close = Column(Numeric(12, 4), comment='昨日收盘点')
+	change = Column(Numeric(12, 4), comment='涨跌点位')
+	pct_chg = Column(Numeric(8, 4), comment='涨跌幅')
+	vol = Column(Numeric(18, 2), comment='成交量（手）')
+	amount = Column(Numeric(18, 2), comment='成交额（千元）')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_index_weekly_unique'),
+	)
+
+
+class StockFactorDaily(Base):
+	"""股票技术因子基础版表（~33列，不复权指标）"""
+	__tablename__ = 'stock_factor_daily'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日期')
+	close = Column(Numeric(12, 4), comment='收盘价')
+	open = Column(Numeric(12, 4), comment='开盘价')
+	high = Column(Numeric(12, 4), comment='最高价')
+	low = Column(Numeric(12, 4), comment='最低价')
+	pre_close = Column(Numeric(12, 4), comment='前收盘价')
+	change = Column(Numeric(12, 4), comment='涨跌额')
+	pct_change = Column(Numeric(8, 4), comment='涨跌幅')
+	vol = Column(Numeric(18, 2), comment='成交量（手）')
+	amount = Column(Numeric(18, 2), comment='成交额（千元）')
+	adj_factor = Column(Numeric(18, 6), comment='复权因子')
+	open_hfq = Column(Numeric(12, 4), comment='开盘价（后复权）')
+	open_qfq = Column(Numeric(12, 4), comment='开盘价（前复权）')
+	close_hfq = Column(Numeric(12, 4), comment='收盘价（后复权）')
+	close_qfq = Column(Numeric(12, 4), comment='收盘价（前复权）')
+	high_hfq = Column(Numeric(12, 4), comment='最高价（后复权）')
+	high_qfq = Column(Numeric(12, 4), comment='最高价（前复权）')
+	low_hfq = Column(Numeric(12, 4), comment='最低价（后复权）')
+	low_qfq = Column(Numeric(12, 4), comment='最低价（前复权）')
+	pre_close_hfq = Column(Numeric(12, 4), comment='前收盘价（后复权）')
+	pre_close_qfq = Column(Numeric(12, 4), comment='前收盘价（前复权）')
+	macd_dif = Column(Numeric(18, 6), comment='MACD DIF值')
+	macd_dea = Column(Numeric(18, 6), comment='MACD DEA值')
+	macd = Column(Numeric(18, 6), comment='MACD柱值')
+	kdj_k = Column(Numeric(18, 6), comment='KDJ K值')
+	kdj_d = Column(Numeric(18, 6), comment='KDJ D值')
+	kdj_j = Column(Numeric(18, 6), comment='KDJ J值')
+	rsi_6 = Column(Numeric(18, 6), comment='RSI 6日')
+	rsi_12 = Column(Numeric(18, 6), comment='RSI 12日')
+	rsi_24 = Column(Numeric(18, 6), comment='RSI 24日')
+	boll_upper = Column(Numeric(18, 6), comment='BOLL上轨')
+	boll_mid = Column(Numeric(18, 6), comment='BOLL中轨')
+	boll_lower = Column(Numeric(18, 6), comment='BOLL下轨')
+	cci = Column(Numeric(18, 6), comment='CCI商品通道指数（不复权）')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_stock_factor_daily_unique'),
+	)
+
+
+class StockFactorProDaily(Base):
+	"""股票技术因子专业版表（200+列，含三复权版本的所有技术指标）"""
+	__tablename__ = 'stock_factor_pro_daily'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日期')
+	# 基础行情
+	open = Column(Numeric(12, 4), comment='开盘价')
+	high = Column(Numeric(12, 4), comment='最高价')
+	low = Column(Numeric(12, 4), comment='最低价')
+	close = Column(Numeric(12, 4), comment='收盘价')
+	pre_close = Column(Numeric(12, 4), comment='前收盘价')
+	change = Column(Numeric(12, 4), comment='涨跌额')
+	pct_chg = Column(Numeric(8, 4), comment='涨跌幅')
+	vol = Column(Numeric(18, 2), comment='成交量（手）')
+	amount = Column(Numeric(18, 2), comment='成交额（千元）')
+	# 复权价格（后复权/前复权）
+	open_hfq = Column(Numeric(12, 4), comment='开盘价（后复权）')
+	open_qfq = Column(Numeric(12, 4), comment='开盘价（前复权）')
+	high_hfq = Column(Numeric(12, 4), comment='最高价（后复权）')
+	high_qfq = Column(Numeric(12, 4), comment='最高价（前复权）')
+	low_hfq = Column(Numeric(12, 4), comment='最低价（后复权）')
+	low_qfq = Column(Numeric(12, 4), comment='最低价（前复权）')
+	close_hfq = Column(Numeric(12, 4), comment='收盘价（后复权）')
+	close_qfq = Column(Numeric(12, 4), comment='收盘价（前复权）')
+	pre_close_hfq = Column(Numeric(12, 4), comment='前收盘价（后复权）')
+	pre_close_qfq = Column(Numeric(12, 4), comment='前收盘价（前复权）')
+	# 估值与股本
+	turnover_rate = Column(Numeric(8, 4), comment='换手率(%)')
+	turnover_rate_f = Column(Numeric(8, 4), comment='自由流通换手率(%)')
+	volume_ratio = Column(Numeric(8, 4), comment='量比')
+	pe = Column(Numeric(12, 4), comment='市盈率')
+	pe_ttm = Column(Numeric(12, 4), comment='市盈率(TTM)')
+	pb = Column(Numeric(12, 4), comment='市净率')
+	ps = Column(Numeric(12, 4), comment='市销率')
+	ps_ttm = Column(Numeric(12, 4), comment='市销率(TTM)')
+	dv_ratio = Column(Numeric(8, 4), comment='股息率(%)')
+	dv_ttm = Column(Numeric(8, 4), comment='股息率(TTM)')
+	total_share = Column(Numeric(18, 2), comment='总股本（万股）')
+	float_share = Column(Numeric(18, 2), comment='流通股本（万股）')
+	free_share = Column(Numeric(18, 2), comment='自由流通股本（万股）')
+	total_mv = Column(Numeric(18, 2), comment='总市值（万元）')
+	circ_mv = Column(Numeric(18, 2), comment='流通市值（万元）')
+	adj_factor = Column(Numeric(18, 6), comment='复权因子')
+	# ASI 振动升降指标
+	asi_bfq = Column(Numeric(18, 6)); asi_hfq = Column(Numeric(18, 6)); asi_qfq = Column(Numeric(18, 6))
+	asit_bfq = Column(Numeric(18, 6)); asit_hfq = Column(Numeric(18, 6)); asit_qfq = Column(Numeric(18, 6))
+	# ATR 真实波幅
+	atr_bfq = Column(Numeric(18, 6)); atr_hfq = Column(Numeric(18, 6)); atr_qfq = Column(Numeric(18, 6))
+	# BBI 多空指数
+	bbi_bfq = Column(Numeric(18, 6)); bbi_hfq = Column(Numeric(18, 6)); bbi_qfq = Column(Numeric(18, 6))
+	# BIAS 乖离率
+	bias1_bfq = Column(Numeric(18, 6)); bias1_hfq = Column(Numeric(18, 6)); bias1_qfq = Column(Numeric(18, 6))
+	bias2_bfq = Column(Numeric(18, 6)); bias2_hfq = Column(Numeric(18, 6)); bias2_qfq = Column(Numeric(18, 6))
+	bias3_bfq = Column(Numeric(18, 6)); bias3_hfq = Column(Numeric(18, 6)); bias3_qfq = Column(Numeric(18, 6))
+	# BOLL 布林带
+	boll_upper_bfq = Column(Numeric(18, 6)); boll_upper_hfq = Column(Numeric(18, 6)); boll_upper_qfq = Column(Numeric(18, 6))
+	boll_mid_bfq = Column(Numeric(18, 6)); boll_mid_hfq = Column(Numeric(18, 6)); boll_mid_qfq = Column(Numeric(18, 6))
+	boll_lower_bfq = Column(Numeric(18, 6)); boll_lower_hfq = Column(Numeric(18, 6)); boll_lower_qfq = Column(Numeric(18, 6))
+	# BRAR 情绪指标
+	brar_ar_bfq = Column(Numeric(18, 6)); brar_ar_hfq = Column(Numeric(18, 6)); brar_ar_qfq = Column(Numeric(18, 6))
+	brar_br_bfq = Column(Numeric(18, 6)); brar_br_hfq = Column(Numeric(18, 6)); brar_br_qfq = Column(Numeric(18, 6))
+	# CCI 商品通道指数
+	cci_bfq = Column(Numeric(18, 6)); cci_hfq = Column(Numeric(18, 6)); cci_qfq = Column(Numeric(18, 6))
+	# CR 能量指标
+	cr_bfq = Column(Numeric(18, 6)); cr_hfq = Column(Numeric(18, 6)); cr_qfq = Column(Numeric(18, 6))
+	# DFMA 动向平均
+	dfma_dif_bfq = Column(Numeric(18, 6)); dfma_dif_hfq = Column(Numeric(18, 6)); dfma_dif_qfq = Column(Numeric(18, 6))
+	dfma_difma_bfq = Column(Numeric(18, 6)); dfma_difma_hfq = Column(Numeric(18, 6)); dfma_difma_qfq = Column(Numeric(18, 6))
+	# DMI 趋向指标
+	dmi_adx_bfq = Column(Numeric(18, 6)); dmi_adx_hfq = Column(Numeric(18, 6)); dmi_adx_qfq = Column(Numeric(18, 6))
+	dmi_adxr_bfq = Column(Numeric(18, 6)); dmi_adxr_hfq = Column(Numeric(18, 6)); dmi_adxr_qfq = Column(Numeric(18, 6))
+	dmi_mdi_bfq = Column(Numeric(18, 6)); dmi_mdi_hfq = Column(Numeric(18, 6)); dmi_mdi_qfq = Column(Numeric(18, 6))
+	dmi_pdi_bfq = Column(Numeric(18, 6)); dmi_pdi_hfq = Column(Numeric(18, 6)); dmi_pdi_qfq = Column(Numeric(18, 6))
+	# 涨跌天数
+	downdays = Column(Numeric(8, 2), comment='下跌天数')
+	updays = Column(Numeric(8, 2), comment='上涨天数')
+	# DPO 区间震荡线
+	dpo_bfq = Column(Numeric(18, 6)); dpo_hfq = Column(Numeric(18, 6)); dpo_qfq = Column(Numeric(18, 6))
+	madpo_bfq = Column(Numeric(18, 6)); madpo_hfq = Column(Numeric(18, 6)); madpo_qfq = Column(Numeric(18, 6))
+	# EMA 指数移动平均
+	ema_5_bfq = Column(Numeric(18, 6)); ema_5_hfq = Column(Numeric(18, 6)); ema_5_qfq = Column(Numeric(18, 6))
+	ema_10_bfq = Column(Numeric(18, 6)); ema_10_hfq = Column(Numeric(18, 6)); ema_10_qfq = Column(Numeric(18, 6))
+	ema_20_bfq = Column(Numeric(18, 6)); ema_20_hfq = Column(Numeric(18, 6)); ema_20_qfq = Column(Numeric(18, 6))
+	ema_30_bfq = Column(Numeric(18, 6)); ema_30_hfq = Column(Numeric(18, 6)); ema_30_qfq = Column(Numeric(18, 6))
+	ema_60_bfq = Column(Numeric(18, 6)); ema_60_hfq = Column(Numeric(18, 6)); ema_60_qfq = Column(Numeric(18, 6))
+	ema_90_bfq = Column(Numeric(18, 6)); ema_90_hfq = Column(Numeric(18, 6)); ema_90_qfq = Column(Numeric(18, 6))
+	ema_250_bfq = Column(Numeric(18, 6)); ema_250_hfq = Column(Numeric(18, 6)); ema_250_qfq = Column(Numeric(18, 6))
+	# EMV 简易波动指标
+	emv_bfq = Column(Numeric(18, 6)); emv_hfq = Column(Numeric(18, 6)); emv_qfq = Column(Numeric(18, 6))
+	maemv_bfq = Column(Numeric(18, 6)); maemv_hfq = Column(Numeric(18, 6)); maemv_qfq = Column(Numeric(18, 6))
+	# EXPMA 指数平均线
+	expma_12_bfq = Column(Numeric(18, 6)); expma_12_hfq = Column(Numeric(18, 6)); expma_12_qfq = Column(Numeric(18, 6))
+	expma_50_bfq = Column(Numeric(18, 6)); expma_50_hfq = Column(Numeric(18, 6)); expma_50_qfq = Column(Numeric(18, 6))
+	# KDJ 随机指标
+	kdj_k_bfq = Column(Numeric(18, 6)); kdj_k_hfq = Column(Numeric(18, 6)); kdj_k_qfq = Column(Numeric(18, 6))
+	kdj_d_bfq = Column(Numeric(18, 6)); kdj_d_hfq = Column(Numeric(18, 6)); kdj_d_qfq = Column(Numeric(18, 6))
+	kdj_j_bfq = Column(Numeric(18, 6)); kdj_j_hfq = Column(Numeric(18, 6)); kdj_j_qfq = Column(Numeric(18, 6))
+	# KTN 肯特纳通道
+	ktn_down_bfq = Column(Numeric(18, 6)); ktn_down_hfq = Column(Numeric(18, 6)); ktn_down_qfq = Column(Numeric(18, 6))
+	ktn_mid_bfq = Column(Numeric(18, 6)); ktn_mid_hfq = Column(Numeric(18, 6)); ktn_mid_qfq = Column(Numeric(18, 6))
+	ktn_upper_bfq = Column(Numeric(18, 6)); ktn_upper_hfq = Column(Numeric(18, 6)); ktn_upper_qfq = Column(Numeric(18, 6))
+	# 极端天数
+	lowdays = Column(Numeric(8, 2), comment='低位天数')
+	topdays = Column(Numeric(8, 2), comment='高位天数')
+	# MA 移动平均
+	ma_5_bfq = Column(Numeric(18, 6)); ma_5_hfq = Column(Numeric(18, 6)); ma_5_qfq = Column(Numeric(18, 6))
+	ma_10_bfq = Column(Numeric(18, 6)); ma_10_hfq = Column(Numeric(18, 6)); ma_10_qfq = Column(Numeric(18, 6))
+	ma_20_bfq = Column(Numeric(18, 6)); ma_20_hfq = Column(Numeric(18, 6)); ma_20_qfq = Column(Numeric(18, 6))
+	ma_30_bfq = Column(Numeric(18, 6)); ma_30_hfq = Column(Numeric(18, 6)); ma_30_qfq = Column(Numeric(18, 6))
+	ma_60_bfq = Column(Numeric(18, 6)); ma_60_hfq = Column(Numeric(18, 6)); ma_60_qfq = Column(Numeric(18, 6))
+	ma_90_bfq = Column(Numeric(18, 6)); ma_90_hfq = Column(Numeric(18, 6)); ma_90_qfq = Column(Numeric(18, 6))
+	ma_250_bfq = Column(Numeric(18, 6)); ma_250_hfq = Column(Numeric(18, 6)); ma_250_qfq = Column(Numeric(18, 6))
+	# MACD
+	macd_dif_bfq = Column(Numeric(18, 6)); macd_dif_hfq = Column(Numeric(18, 6)); macd_dif_qfq = Column(Numeric(18, 6))
+	macd_dea_bfq = Column(Numeric(18, 6)); macd_dea_hfq = Column(Numeric(18, 6)); macd_dea_qfq = Column(Numeric(18, 6))
+	macd_bfq = Column(Numeric(18, 6)); macd_hfq = Column(Numeric(18, 6)); macd_qfq = Column(Numeric(18, 6))
+	# MASS 梅斯线
+	mass_bfq = Column(Numeric(18, 6)); mass_hfq = Column(Numeric(18, 6)); mass_qfq = Column(Numeric(18, 6))
+	ma_mass_bfq = Column(Numeric(18, 6)); ma_mass_hfq = Column(Numeric(18, 6)); ma_mass_qfq = Column(Numeric(18, 6))
+	# MFI 资金流量指标
+	mfi_bfq = Column(Numeric(18, 6)); mfi_hfq = Column(Numeric(18, 6)); mfi_qfq = Column(Numeric(18, 6))
+	# MTM 动量线
+	mtm_bfq = Column(Numeric(18, 6)); mtm_hfq = Column(Numeric(18, 6)); mtm_qfq = Column(Numeric(18, 6))
+	mtmma_bfq = Column(Numeric(18, 6)); mtmma_hfq = Column(Numeric(18, 6)); mtmma_qfq = Column(Numeric(18, 6))
+	# OBV 能量潮
+	obv_bfq = Column(Numeric(18, 6)); obv_hfq = Column(Numeric(18, 6)); obv_qfq = Column(Numeric(18, 6))
+	# PSY 心理线
+	psy_bfq = Column(Numeric(18, 6)); psy_hfq = Column(Numeric(18, 6)); psy_qfq = Column(Numeric(18, 6))
+	psyma_bfq = Column(Numeric(18, 6)); psyma_hfq = Column(Numeric(18, 6)); psyma_qfq = Column(Numeric(18, 6))
+	# ROC 变动率
+	roc_bfq = Column(Numeric(18, 6)); roc_hfq = Column(Numeric(18, 6)); roc_qfq = Column(Numeric(18, 6))
+	maroc_bfq = Column(Numeric(18, 6)); maroc_hfq = Column(Numeric(18, 6)); maroc_qfq = Column(Numeric(18, 6))
+	# RSI 相对强弱指标
+	rsi_6_bfq = Column(Numeric(18, 6)); rsi_6_hfq = Column(Numeric(18, 6)); rsi_6_qfq = Column(Numeric(18, 6))
+	rsi_12_bfq = Column(Numeric(18, 6)); rsi_12_hfq = Column(Numeric(18, 6)); rsi_12_qfq = Column(Numeric(18, 6))
+	rsi_24_bfq = Column(Numeric(18, 6)); rsi_24_hfq = Column(Numeric(18, 6)); rsi_24_qfq = Column(Numeric(18, 6))
+	# TAQ 三均线
+	taq_down_bfq = Column(Numeric(18, 6)); taq_down_hfq = Column(Numeric(18, 6)); taq_down_qfq = Column(Numeric(18, 6))
+	taq_mid_bfq = Column(Numeric(18, 6)); taq_mid_hfq = Column(Numeric(18, 6)); taq_mid_qfq = Column(Numeric(18, 6))
+	taq_up_bfq = Column(Numeric(18, 6)); taq_up_hfq = Column(Numeric(18, 6)); taq_up_qfq = Column(Numeric(18, 6))
+	# TRIX 三重指数平滑平均线
+	trix_bfq = Column(Numeric(18, 6)); trix_hfq = Column(Numeric(18, 6)); trix_qfq = Column(Numeric(18, 6))
+	trma_bfq = Column(Numeric(18, 6)); trma_hfq = Column(Numeric(18, 6)); trma_qfq = Column(Numeric(18, 6))
+	# VR 容量比率
+	vr_bfq = Column(Numeric(18, 6)); vr_hfq = Column(Numeric(18, 6)); vr_qfq = Column(Numeric(18, 6))
+	# WR 威廉指标
+	wr6_bfq = Column(Numeric(18, 6)); wr6_hfq = Column(Numeric(18, 6)); wr6_qfq = Column(Numeric(18, 6))
+	wr10_bfq = Column(Numeric(18, 6)); wr10_hfq = Column(Numeric(18, 6)); wr10_qfq = Column(Numeric(18, 6))
+	# XSII 薛斯通道
+	xsii_td1_bfq = Column(Numeric(18, 6)); xsii_td1_hfq = Column(Numeric(18, 6)); xsii_td1_qfq = Column(Numeric(18, 6))
+	xsii_td2_bfq = Column(Numeric(18, 6)); xsii_td2_hfq = Column(Numeric(18, 6)); xsii_td2_qfq = Column(Numeric(18, 6))
+	xsii_td3_bfq = Column(Numeric(18, 6)); xsii_td3_hfq = Column(Numeric(18, 6)); xsii_td3_qfq = Column(Numeric(18, 6))
+	xsii_td4_bfq = Column(Numeric(18, 6)); xsii_td4_hfq = Column(Numeric(18, 6)); xsii_td4_qfq = Column(Numeric(18, 6))
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_stock_factor_pro_daily_unique'),
+	)
+
+
+class IndexFactorProDaily(Base):
+	"""指数技术因子专业版（Tushare idx_factor_pro 接口）
+
+	包含 200+ 列技术指标，仅含后复权(_bfq)版本。
+	与 StockFactorProDaily 接口类似，但数据源为指数而非个股。
+	需 Tushare 5000 积分以上权限。
+	"""
+	__tablename__ = 'index_factor_pro_daily'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='指数代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日期')
+	# 基础行情
+	open = Column(Numeric(12, 4), comment='开盘价')
+	high = Column(Numeric(12, 4), comment='最高价')
+	low = Column(Numeric(12, 4), comment='最低价')
+	close = Column(Numeric(12, 4), comment='收盘价')
+	pre_close = Column(Numeric(12, 4), comment='前收盘价')
+	change = Column(Numeric(12, 4), comment='涨跌额')
+	pct_change = Column(Numeric(8, 4), comment='涨跌幅')
+	vol = Column(Numeric(18, 2), comment='成交量（手）')
+	amount = Column(Numeric(18, 2), comment='成交额（千元）')
+	# ASI 振动升降指标
+	asi_bfq = Column(Numeric(18, 6))
+	asit_bfq = Column(Numeric(18, 6))
+	# ATR 真实波幅
+	atr_bfq = Column(Numeric(18, 6))
+	# BBI 多空指数
+	bbi_bfq = Column(Numeric(18, 6))
+	# BIAS 乖离率
+	bias1_bfq = Column(Numeric(18, 6))
+	bias2_bfq = Column(Numeric(18, 6))
+	bias3_bfq = Column(Numeric(18, 6))
+	# BOLL 布林带
+	boll_lower_bfq = Column(Numeric(18, 6))
+	boll_mid_bfq = Column(Numeric(18, 6))
+	boll_upper_bfq = Column(Numeric(18, 6))
+	# BRAR 情绪指标
+	brar_ar_bfq = Column(Numeric(18, 6))
+	brar_br_bfq = Column(Numeric(18, 6))
+	# CCI 商品通道指数
+	cci_bfq = Column(Numeric(18, 6))
+	# CR 能量指标
+	cr_bfq = Column(Numeric(18, 6))
+	# DFMA 动向平均
+	dfma_dif_bfq = Column(Numeric(18, 6))
+	dfma_difma_bfq = Column(Numeric(18, 6))
+	# DMI 趋向指标
+	dmi_adx_bfq = Column(Numeric(18, 6))
+	dmi_adxr_bfq = Column(Numeric(18, 6))
+	dmi_mdi_bfq = Column(Numeric(18, 6))
+	dmi_pdi_bfq = Column(Numeric(18, 6))
+	# 涨跌天数
+	downdays = Column(Numeric(8, 2), comment='下跌天数')
+	updays = Column(Numeric(8, 2), comment='上涨天数')
+	# DPO 区间震荡线
+	dpo_bfq = Column(Numeric(18, 6))
+	madpo_bfq = Column(Numeric(18, 6))
+	# EMA 指数移动平均
+	ema_bfq_5 = Column(Numeric(18, 6))
+	ema_bfq_10 = Column(Numeric(18, 6))
+	ema_bfq_20 = Column(Numeric(18, 6))
+	ema_bfq_30 = Column(Numeric(18, 6))
+	ema_bfq_60 = Column(Numeric(18, 6))
+	ema_bfq_90 = Column(Numeric(18, 6))
+	ema_bfq_250 = Column(Numeric(18, 6))
+	# EMV 简易波动指标
+	emv_bfq = Column(Numeric(18, 6))
+	maemv_bfq = Column(Numeric(18, 6))
+	# EXPMA 指数平均线
+	expma_12_bfq = Column(Numeric(18, 6))
+	expma_50_bfq = Column(Numeric(18, 6))
+	# KDJ 随机指标
+	kdj_k_bfq = Column(Numeric(18, 6))
+	kdj_d_bfq = Column(Numeric(18, 6))
+	kdj_bfq = Column(Numeric(18, 6))
+	# KTN 肯特纳通道
+	ktn_down_bfq = Column(Numeric(18, 6))
+	ktn_mid_bfq = Column(Numeric(18, 6))
+	ktn_upper_bfq = Column(Numeric(18, 6))
+	# 极端天数
+	lowdays = Column(Numeric(8, 2), comment='低位天数')
+	topdays = Column(Numeric(8, 2), comment='高位天数')
+	# MA 移动平均
+	ma_bfq_5 = Column(Numeric(18, 6))
+	ma_bfq_10 = Column(Numeric(18, 6))
+	ma_bfq_20 = Column(Numeric(18, 6))
+	ma_bfq_30 = Column(Numeric(18, 6))
+	ma_bfq_60 = Column(Numeric(18, 6))
+	ma_bfq_90 = Column(Numeric(18, 6))
+	ma_bfq_250 = Column(Numeric(18, 6))
+	# MACD
+	macd_dif_bfq = Column(Numeric(18, 6))
+	macd_dea_bfq = Column(Numeric(18, 6))
+	macd_bfq = Column(Numeric(18, 6))
+	# MASS 梅斯线
+	mass_bfq = Column(Numeric(18, 6))
+	ma_mass_bfq = Column(Numeric(18, 6))
+	# MFI 资金流量指标
+	mfi_bfq = Column(Numeric(18, 6))
+	# MTM 动量线
+	mtm_bfq = Column(Numeric(18, 6))
+	mtmma_bfq = Column(Numeric(18, 6))
+	# OBV 能量潮
+	obv_bfq = Column(Numeric(18, 6))
+	# PSY 心理线
+	psy_bfq = Column(Numeric(18, 6))
+	psyma_bfq = Column(Numeric(18, 6))
+	# ROC 变动率
+	roc_bfq = Column(Numeric(18, 6))
+	maroc_bfq = Column(Numeric(18, 6))
+	# RSI 相对强弱指标
+	rsi_bfq_6 = Column(Numeric(18, 6))
+	rsi_bfq_12 = Column(Numeric(18, 6))
+	rsi_bfq_24 = Column(Numeric(18, 6))
+	# TAQ 三均线
+	taq_down_bfq = Column(Numeric(18, 6))
+	taq_mid_bfq = Column(Numeric(18, 6))
+	taq_up_bfq = Column(Numeric(18, 6))
+	# TRIX 三重指数平滑平均线
+	trix_bfq = Column(Numeric(18, 6))
+	trma_bfq = Column(Numeric(18, 6))
+	# VR 容量比率
+	vr_bfq = Column(Numeric(18, 6))
+	# WR 威廉指标
+	wr_bfq = Column(Numeric(18, 6))
+	wr1_bfq = Column(Numeric(18, 6))
+	# XSII 薛斯通道
+	xsii_td1_bfq = Column(Numeric(18, 6))
+	xsii_td2_bfq = Column(Numeric(18, 6))
+	xsii_td3_bfq = Column(Numeric(18, 6))
+	xsii_td4_bfq = Column(Numeric(18, 6))
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', name='uq_idx_factor_pro_daily_unique'),
+	)

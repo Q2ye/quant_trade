@@ -4270,3 +4270,456 @@ COMMENT ON COLUMN index_sw_daily.pe IS '市盈率';
 COMMENT ON COLUMN index_sw_daily.pb IS '市净率';
 COMMENT ON COLUMN index_sw_daily.float_mv IS '流通市值（万元）';
 COMMENT ON COLUMN index_sw_daily.total_mv IS '总市值（万元）';
+
+-- ------------------------------------------------------------
+-- Phase 4: 指数周线 / 技术因子
+-- ------------------------------------------------------------
+
+-- 指数周线行情表
+CREATE TABLE index_weekly (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    close NUMERIC(12, 4),
+    open NUMERIC(12, 4),
+    high NUMERIC(12, 4),
+    low NUMERIC(12, 4),
+    pre_close NUMERIC(12, 4),
+    change NUMERIC(12, 4),
+    pct_chg NUMERIC(8, 4),
+    vol NUMERIC(18, 2),
+    amount NUMERIC(18, 2),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_index_weekly_ts_code ON index_weekly(ts_code);
+CREATE INDEX idx_index_weekly_trade_date ON index_weekly(trade_date);
+
+COMMENT ON TABLE index_weekly IS '指数周线行情表（Tushare index_weekly 接口）';
+COMMENT ON COLUMN index_weekly.ts_code IS 'TS指数代码';
+COMMENT ON COLUMN index_weekly.vol IS '成交量（手）';
+COMMENT ON COLUMN index_weekly.amount IS '成交额（千元）';
+
+-- 股票技术因子基础版表（~33列，不复权指标）
+CREATE TABLE stock_factor_daily (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    close NUMERIC(12, 4),
+    open NUMERIC(12, 4),
+    high NUMERIC(12, 4),
+    low NUMERIC(12, 4),
+    pre_close NUMERIC(12, 4),
+    change NUMERIC(12, 4),
+    pct_change NUMERIC(8, 4),
+    vol NUMERIC(18, 2),
+    amount NUMERIC(18, 2),
+    adj_factor NUMERIC(18, 6),
+    open_hfq NUMERIC(12, 4),
+    open_qfq NUMERIC(12, 4),
+    close_hfq NUMERIC(12, 4),
+    close_qfq NUMERIC(12, 4),
+    high_hfq NUMERIC(12, 4),
+    high_qfq NUMERIC(12, 4),
+    low_hfq NUMERIC(12, 4),
+    low_qfq NUMERIC(12, 4),
+    pre_close_hfq NUMERIC(12, 4),
+    pre_close_qfq NUMERIC(12, 4),
+    macd_dif NUMERIC(18, 6),
+    macd_dea NUMERIC(18, 6),
+    macd NUMERIC(18, 6),
+    kdj_k NUMERIC(18, 6),
+    kdj_d NUMERIC(18, 6),
+    kdj_j NUMERIC(18, 6),
+    rsi_6 NUMERIC(18, 6),
+    rsi_12 NUMERIC(18, 6),
+    rsi_24 NUMERIC(18, 6),
+    boll_upper NUMERIC(18, 6),
+    boll_mid NUMERIC(18, 6),
+    boll_lower NUMERIC(18, 6),
+    cci NUMERIC(18, 6),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_stock_factor_daily_ts_code ON stock_factor_daily(ts_code);
+CREATE INDEX idx_stock_factor_daily_trade_date ON stock_factor_daily(trade_date);
+
+COMMENT ON TABLE stock_factor_daily IS '股票技术因子基础版（Tushare stk_factor 接口，含MACD/KDJ/RSI/BOLL/CCI）';
+COMMENT ON COLUMN stock_factor_daily.adj_factor IS '复权因子';
+COMMENT ON COLUMN stock_factor_daily.open_hfq IS '开盘价（后复权）';
+COMMENT ON COLUMN stock_factor_daily.open_qfq IS '开盘价（前复权）';
+COMMENT ON COLUMN stock_factor_daily.macd_dif IS 'MACD DIF值';
+COMMENT ON COLUMN stock_factor_daily.macd_dea IS 'MACD DEA值';
+COMMENT ON COLUMN stock_factor_daily.macd IS 'MACD柱值';
+COMMENT ON COLUMN stock_factor_daily.kdj_k IS 'KDJ K值';
+COMMENT ON COLUMN stock_factor_daily.kdj_d IS 'KDJ D值';
+COMMENT ON COLUMN stock_factor_daily.kdj_j IS 'KDJ J值';
+COMMENT ON COLUMN stock_factor_daily.rsi_6 IS 'RSI 6日';
+COMMENT ON COLUMN stock_factor_daily.rsi_12 IS 'RSI 12日';
+COMMENT ON COLUMN stock_factor_daily.rsi_24 IS 'RSI 24日';
+COMMENT ON COLUMN stock_factor_daily.boll_upper IS 'BOLL上轨';
+COMMENT ON COLUMN stock_factor_daily.boll_mid IS 'BOLL中轨';
+COMMENT ON COLUMN stock_factor_daily.boll_lower IS 'BOLL下轨';
+COMMENT ON COLUMN stock_factor_daily.cci IS 'CCI商品通道指数';
+
+-- 股票技术因子专业版表（200+列，含三复权版本的所有技术指标）
+CREATE TABLE stock_factor_pro_daily (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    -- 基础行情
+    open NUMERIC(12, 4),
+    high NUMERIC(12, 4),
+    low NUMERIC(12, 4),
+    close NUMERIC(12, 4),
+    pre_close NUMERIC(12, 4),
+    change NUMERIC(12, 4),
+    pct_chg NUMERIC(8, 4),
+    vol NUMERIC(18, 2),
+    amount NUMERIC(18, 2),
+    -- 复权价格（后复权/前复权）
+    open_hfq NUMERIC(12, 4),
+    open_qfq NUMERIC(12, 4),
+    high_hfq NUMERIC(12, 4),
+    high_qfq NUMERIC(12, 4),
+    low_hfq NUMERIC(12, 4),
+    low_qfq NUMERIC(12, 4),
+    close_hfq NUMERIC(12, 4),
+    close_qfq NUMERIC(12, 4),
+    pre_close_hfq NUMERIC(12, 4),
+    pre_close_qfq NUMERIC(12, 4),
+    -- 估值与股本
+    turnover_rate NUMERIC(8, 4),
+    turnover_rate_f NUMERIC(8, 4),
+    volume_ratio NUMERIC(8, 4),
+    pe NUMERIC(12, 4),
+    pe_ttm NUMERIC(12, 4),
+    pb NUMERIC(12, 4),
+    ps NUMERIC(12, 4),
+    ps_ttm NUMERIC(12, 4),
+    dv_ratio NUMERIC(8, 4),
+    dv_ttm NUMERIC(8, 4),
+    total_share NUMERIC(18, 2),
+    float_share NUMERIC(18, 2),
+    free_share NUMERIC(18, 2),
+    total_mv NUMERIC(18, 2),
+    circ_mv NUMERIC(18, 2),
+    adj_factor NUMERIC(18, 6),
+    -- ASI 振动升降指标
+    asi_bfq NUMERIC(18, 6), asi_hfq NUMERIC(18, 6), asi_qfq NUMERIC(18, 6),
+    asit_bfq NUMERIC(18, 6), asit_hfq NUMERIC(18, 6), asit_qfq NUMERIC(18, 6),
+    -- ATR 真实波幅
+    atr_bfq NUMERIC(18, 6), atr_hfq NUMERIC(18, 6), atr_qfq NUMERIC(18, 6),
+    -- BBI 多空指数
+    bbi_bfq NUMERIC(18, 6), bbi_hfq NUMERIC(18, 6), bbi_qfq NUMERIC(18, 6),
+    -- BIAS 乖离率
+    bias1_bfq NUMERIC(18, 6), bias1_hfq NUMERIC(18, 6), bias1_qfq NUMERIC(18, 6),
+    bias2_bfq NUMERIC(18, 6), bias2_hfq NUMERIC(18, 6), bias2_qfq NUMERIC(18, 6),
+    bias3_bfq NUMERIC(18, 6), bias3_hfq NUMERIC(18, 6), bias3_qfq NUMERIC(18, 6),
+    -- BOLL 布林带
+    boll_upper_bfq NUMERIC(18, 6), boll_upper_hfq NUMERIC(18, 6), boll_upper_qfq NUMERIC(18, 6),
+    boll_mid_bfq NUMERIC(18, 6), boll_mid_hfq NUMERIC(18, 6), boll_mid_qfq NUMERIC(18, 6),
+    boll_lower_bfq NUMERIC(18, 6), boll_lower_hfq NUMERIC(18, 6), boll_lower_qfq NUMERIC(18, 6),
+    -- BRAR 情绪指标
+    brar_ar_bfq NUMERIC(18, 6), brar_ar_hfq NUMERIC(18, 6), brar_ar_qfq NUMERIC(18, 6),
+    brar_br_bfq NUMERIC(18, 6), brar_br_hfq NUMERIC(18, 6), brar_br_qfq NUMERIC(18, 6),
+    -- CCI 商品通道指数
+    cci_bfq NUMERIC(18, 6), cci_hfq NUMERIC(18, 6), cci_qfq NUMERIC(18, 6),
+    -- CR 能量指标
+    cr_bfq NUMERIC(18, 6), cr_hfq NUMERIC(18, 6), cr_qfq NUMERIC(18, 6),
+    -- DFMA 动向平均
+    dfma_dif_bfq NUMERIC(18, 6), dfma_dif_hfq NUMERIC(18, 6), dfma_dif_qfq NUMERIC(18, 6),
+    dfma_difma_bfq NUMERIC(18, 6), dfma_difma_hfq NUMERIC(18, 6), dfma_difma_qfq NUMERIC(18, 6),
+    -- DMI 趋向指标
+    dmi_adx_bfq NUMERIC(18, 6), dmi_adx_hfq NUMERIC(18, 6), dmi_adx_qfq NUMERIC(18, 6),
+    dmi_adxr_bfq NUMERIC(18, 6), dmi_adxr_hfq NUMERIC(18, 6), dmi_adxr_qfq NUMERIC(18, 6),
+    dmi_mdi_bfq NUMERIC(18, 6), dmi_mdi_hfq NUMERIC(18, 6), dmi_mdi_qfq NUMERIC(18, 6),
+    dmi_pdi_bfq NUMERIC(18, 6), dmi_pdi_hfq NUMERIC(18, 6), dmi_pdi_qfq NUMERIC(18, 6),
+    -- 涨跌天数
+    downdays NUMERIC(8, 2),
+    updays NUMERIC(8, 2),
+    -- DPO 区间震荡线
+    dpo_bfq NUMERIC(18, 6), dpo_hfq NUMERIC(18, 6), dpo_qfq NUMERIC(18, 6),
+    madpo_bfq NUMERIC(18, 6), madpo_hfq NUMERIC(18, 6), madpo_qfq NUMERIC(18, 6),
+    -- EMA 指数移动平均
+    ema_5_bfq NUMERIC(18, 6), ema_5_hfq NUMERIC(18, 6), ema_5_qfq NUMERIC(18, 6),
+    ema_10_bfq NUMERIC(18, 6), ema_10_hfq NUMERIC(18, 6), ema_10_qfq NUMERIC(18, 6),
+    ema_20_bfq NUMERIC(18, 6), ema_20_hfq NUMERIC(18, 6), ema_20_qfq NUMERIC(18, 6),
+    ema_30_bfq NUMERIC(18, 6), ema_30_hfq NUMERIC(18, 6), ema_30_qfq NUMERIC(18, 6),
+    ema_60_bfq NUMERIC(18, 6), ema_60_hfq NUMERIC(18, 6), ema_60_qfq NUMERIC(18, 6),
+    ema_90_bfq NUMERIC(18, 6), ema_90_hfq NUMERIC(18, 6), ema_90_qfq NUMERIC(18, 6),
+    ema_250_bfq NUMERIC(18, 6), ema_250_hfq NUMERIC(18, 6), ema_250_qfq NUMERIC(18, 6),
+    -- EMV 简易波动指标
+    emv_bfq NUMERIC(18, 6), emv_hfq NUMERIC(18, 6), emv_qfq NUMERIC(18, 6),
+    maemv_bfq NUMERIC(18, 6), maemv_hfq NUMERIC(18, 6), maemv_qfq NUMERIC(18, 6),
+    -- EXPMA 指数平均线
+    expma_12_bfq NUMERIC(18, 6), expma_12_hfq NUMERIC(18, 6), expma_12_qfq NUMERIC(18, 6),
+    expma_50_bfq NUMERIC(18, 6), expma_50_hfq NUMERIC(18, 6), expma_50_qfq NUMERIC(18, 6),
+    -- KDJ 随机指标
+    kdj_k_bfq NUMERIC(18, 6), kdj_k_hfq NUMERIC(18, 6), kdj_k_qfq NUMERIC(18, 6),
+    kdj_d_bfq NUMERIC(18, 6), kdj_d_hfq NUMERIC(18, 6), kdj_d_qfq NUMERIC(18, 6),
+    kdj_j_bfq NUMERIC(18, 6), kdj_j_hfq NUMERIC(18, 6), kdj_j_qfq NUMERIC(18, 6),
+    -- KTN 肯特纳通道
+    ktn_down_bfq NUMERIC(18, 6), ktn_down_hfq NUMERIC(18, 6), ktn_down_qfq NUMERIC(18, 6),
+    ktn_mid_bfq NUMERIC(18, 6), ktn_mid_hfq NUMERIC(18, 6), ktn_mid_qfq NUMERIC(18, 6),
+    ktn_upper_bfq NUMERIC(18, 6), ktn_upper_hfq NUMERIC(18, 6), ktn_upper_qfq NUMERIC(18, 6),
+    -- 极端天数
+    lowdays NUMERIC(8, 2),
+    topdays NUMERIC(8, 2),
+    -- MA 移动平均
+    ma_5_bfq NUMERIC(18, 6), ma_5_hfq NUMERIC(18, 6), ma_5_qfq NUMERIC(18, 6),
+    ma_10_bfq NUMERIC(18, 6), ma_10_hfq NUMERIC(18, 6), ma_10_qfq NUMERIC(18, 6),
+    ma_20_bfq NUMERIC(18, 6), ma_20_hfq NUMERIC(18, 6), ma_20_qfq NUMERIC(18, 6),
+    ma_30_bfq NUMERIC(18, 6), ma_30_hfq NUMERIC(18, 6), ma_30_qfq NUMERIC(18, 6),
+    ma_60_bfq NUMERIC(18, 6), ma_60_hfq NUMERIC(18, 6), ma_60_qfq NUMERIC(18, 6),
+    ma_90_bfq NUMERIC(18, 6), ma_90_hfq NUMERIC(18, 6), ma_90_qfq NUMERIC(18, 6),
+    ma_250_bfq NUMERIC(18, 6), ma_250_hfq NUMERIC(18, 6), ma_250_qfq NUMERIC(18, 6),
+    -- MACD
+    macd_dif_bfq NUMERIC(18, 6), macd_dif_hfq NUMERIC(18, 6), macd_dif_qfq NUMERIC(18, 6),
+    macd_dea_bfq NUMERIC(18, 6), macd_dea_hfq NUMERIC(18, 6), macd_dea_qfq NUMERIC(18, 6),
+    macd_bfq NUMERIC(18, 6), macd_hfq NUMERIC(18, 6), macd_qfq NUMERIC(18, 6),
+    -- MASS 梅斯线
+    mass_bfq NUMERIC(18, 6), mass_hfq NUMERIC(18, 6), mass_qfq NUMERIC(18, 6),
+    ma_mass_bfq NUMERIC(18, 6), ma_mass_hfq NUMERIC(18, 6), ma_mass_qfq NUMERIC(18, 6),
+    -- MFI 资金流量指标
+    mfi_bfq NUMERIC(18, 6), mfi_hfq NUMERIC(18, 6), mfi_qfq NUMERIC(18, 6),
+    -- MTM 动量线
+    mtm_bfq NUMERIC(18, 6), mtm_hfq NUMERIC(18, 6), mtm_qfq NUMERIC(18, 6),
+    mtmma_bfq NUMERIC(18, 6), mtmma_hfq NUMERIC(18, 6), mtmma_qfq NUMERIC(18, 6),
+    -- OBV 能量潮
+    obv_bfq NUMERIC(18, 6), obv_hfq NUMERIC(18, 6), obv_qfq NUMERIC(18, 6),
+    -- PSY 心理线
+    psy_bfq NUMERIC(18, 6), psy_hfq NUMERIC(18, 6), psy_qfq NUMERIC(18, 6),
+    psyma_bfq NUMERIC(18, 6), psyma_hfq NUMERIC(18, 6), psyma_qfq NUMERIC(18, 6),
+    -- ROC 变动率
+    roc_bfq NUMERIC(18, 6), roc_hfq NUMERIC(18, 6), roc_qfq NUMERIC(18, 6),
+    maroc_bfq NUMERIC(18, 6), maroc_hfq NUMERIC(18, 6), maroc_qfq NUMERIC(18, 6),
+    -- RSI 相对强弱指标
+    rsi_6_bfq NUMERIC(18, 6), rsi_6_hfq NUMERIC(18, 6), rsi_6_qfq NUMERIC(18, 6),
+    rsi_12_bfq NUMERIC(18, 6), rsi_12_hfq NUMERIC(18, 6), rsi_12_qfq NUMERIC(18, 6),
+    rsi_24_bfq NUMERIC(18, 6), rsi_24_hfq NUMERIC(18, 6), rsi_24_qfq NUMERIC(18, 6),
+    -- TAQ 三均线
+    taq_down_bfq NUMERIC(18, 6), taq_down_hfq NUMERIC(18, 6), taq_down_qfq NUMERIC(18, 6),
+    taq_mid_bfq NUMERIC(18, 6), taq_mid_hfq NUMERIC(18, 6), taq_mid_qfq NUMERIC(18, 6),
+    taq_up_bfq NUMERIC(18, 6), taq_up_hfq NUMERIC(18, 6), taq_up_qfq NUMERIC(18, 6),
+    -- TRIX 三重指数平滑平均线
+    trix_bfq NUMERIC(18, 6), trix_hfq NUMERIC(18, 6), trix_qfq NUMERIC(18, 6),
+    trma_bfq NUMERIC(18, 6), trma_hfq NUMERIC(18, 6), trma_qfq NUMERIC(18, 6),
+    -- VR 容量比率
+    vr_bfq NUMERIC(18, 6), vr_hfq NUMERIC(18, 6), vr_qfq NUMERIC(18, 6),
+    -- WR 威廉指标
+    wr6_bfq NUMERIC(18, 6), wr6_hfq NUMERIC(18, 6), wr6_qfq NUMERIC(18, 6),
+    wr10_bfq NUMERIC(18, 6), wr10_hfq NUMERIC(18, 6), wr10_qfq NUMERIC(18, 6),
+    -- XSII 薛斯通道
+    xsii_td1_bfq NUMERIC(18, 6), xsii_td1_hfq NUMERIC(18, 6), xsii_td1_qfq NUMERIC(18, 6),
+    xsii_td2_bfq NUMERIC(18, 6), xsii_td2_hfq NUMERIC(18, 6), xsii_td2_qfq NUMERIC(18, 6),
+    xsii_td3_bfq NUMERIC(18, 6), xsii_td3_hfq NUMERIC(18, 6), xsii_td3_qfq NUMERIC(18, 6),
+    xsii_td4_bfq NUMERIC(18, 6), xsii_td4_hfq NUMERIC(18, 6), xsii_td4_qfq NUMERIC(18, 6),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_stock_factor_pro_daily_ts_code ON stock_factor_pro_daily(ts_code);
+CREATE INDEX idx_stock_factor_pro_daily_trade_date ON stock_factor_pro_daily(trade_date);
+
+COMMENT ON TABLE stock_factor_pro_daily IS '股票技术因子专业版（Tushare stk_factor_pro 接口，200+指标列含三复权版本）';
+COMMENT ON COLUMN stock_factor_pro_daily.asi_bfq IS 'ASI振动升降指标（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.atr_bfq IS 'ATR真实波幅（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.bbi_bfq IS 'BBI多空指数（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.bias1_bfq IS 'BIAS乖离率6日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.boll_upper_bfq IS 'BOLL上轨（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.brar_ar_bfq IS 'BRAR情绪指标-AR（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.cci_bfq IS 'CCI商品通道指数（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.cr_bfq IS 'CR能量指标（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.dfma_dif_bfq IS 'DFMA动向平均-DIF（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.dmi_adx_bfq IS 'DMI趋向指标-ADX（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.dpo_bfq IS 'DPO区间震荡线（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.ema_5_bfq IS 'EMA指数移动平均5日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.emv_bfq IS 'EMV简易波动指标（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.expma_12_bfq IS 'EXPMA指数平均线12日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.kdj_k_bfq IS 'KDJ K值（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.ktn_down_bfq IS 'KTN肯特纳通道下轨（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.ma_5_bfq IS 'MA移动平均5日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.macd_dif_bfq IS 'MACD DIF值（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.mass_bfq IS 'MASS梅斯线（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.mfi_bfq IS 'MFI资金流量指标（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.mtm_bfq IS 'MTM动量线（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.obv_bfq IS 'OBV能量潮（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.psy_bfq IS 'PSY心理线（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.roc_bfq IS 'ROC变动率（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.rsi_6_bfq IS 'RSI 6日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.taq_down_bfq IS 'TAQ三均线下轨（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.trix_bfq IS 'TRIX三重指数平滑平均线（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.vr_bfq IS 'VR容量比率（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.wr6_bfq IS 'WR威廉指标6日（不复权）';
+COMMENT ON COLUMN stock_factor_pro_daily.xsii_td1_bfq IS 'XSII薛斯通道TD1（不复权）';
+
+-- ==================== 指数技术因子专业版 ====================
+
+CREATE TABLE index_factor_pro_daily (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    open NUMERIC(12, 4),
+    high NUMERIC(12, 4),
+    low NUMERIC(12, 4),
+    close NUMERIC(12, 4),
+    pre_close NUMERIC(12, 4),
+    change NUMERIC(12, 4),
+    pct_change NUMERIC(8, 4),
+    vol NUMERIC(18, 2),
+    amount NUMERIC(18, 2),
+    asi_bfq NUMERIC(18, 6),
+    asit_bfq NUMERIC(18, 6),
+    atr_bfq NUMERIC(18, 6),
+    bbi_bfq NUMERIC(18, 6),
+    bias1_bfq NUMERIC(18, 6),
+    bias2_bfq NUMERIC(18, 6),
+    bias3_bfq NUMERIC(18, 6),
+    boll_lower_bfq NUMERIC(18, 6),
+    boll_mid_bfq NUMERIC(18, 6),
+    boll_upper_bfq NUMERIC(18, 6),
+    brar_ar_bfq NUMERIC(18, 6),
+    brar_br_bfq NUMERIC(18, 6),
+    cci_bfq NUMERIC(18, 6),
+    cr_bfq NUMERIC(18, 6),
+    dfma_dif_bfq NUMERIC(18, 6),
+    dfma_difma_bfq NUMERIC(18, 6),
+    dmi_adx_bfq NUMERIC(18, 6),
+    dmi_adxr_bfq NUMERIC(18, 6),
+    dmi_mdi_bfq NUMERIC(18, 6),
+    dmi_pdi_bfq NUMERIC(18, 6),
+    downdays NUMERIC(12, 4),
+    updays NUMERIC(12, 4),
+    dpo_bfq NUMERIC(18, 6),
+    madpo_bfq NUMERIC(18, 6),
+    ema_bfq_10 NUMERIC(18, 6),
+    ema_bfq_20 NUMERIC(18, 6),
+    ema_bfq_250 NUMERIC(18, 6),
+    ema_bfq_30 NUMERIC(18, 6),
+    ema_bfq_5 NUMERIC(18, 6),
+    ema_bfq_60 NUMERIC(18, 6),
+    ema_bfq_90 NUMERIC(18, 6),
+    emv_bfq NUMERIC(18, 6),
+    maemv_bfq NUMERIC(18, 6),
+    expma_12_bfq NUMERIC(18, 6),
+    expma_50_bfq NUMERIC(18, 6),
+    kdj_bfq NUMERIC(18, 6),
+    kdj_d_bfq NUMERIC(18, 6),
+    kdj_k_bfq NUMERIC(18, 6),
+    ktn_down_bfq NUMERIC(18, 6),
+    ktn_mid_bfq NUMERIC(18, 6),
+    ktn_upper_bfq NUMERIC(18, 6),
+    lowdays NUMERIC(12, 4),
+    topdays NUMERIC(12, 4),
+    ma_bfq_10 NUMERIC(18, 6),
+    ma_bfq_20 NUMERIC(18, 6),
+    ma_bfq_250 NUMERIC(18, 6),
+    ma_bfq_30 NUMERIC(18, 6),
+    ma_bfq_5 NUMERIC(18, 6),
+    ma_bfq_60 NUMERIC(18, 6),
+    ma_bfq_90 NUMERIC(18, 6),
+    macd_bfq NUMERIC(18, 6),
+    macd_dea_bfq NUMERIC(18, 6),
+    macd_dif_bfq NUMERIC(18, 6),
+    mass_bfq NUMERIC(18, 6),
+    ma_mass_bfq NUMERIC(18, 6),
+    mfi_bfq NUMERIC(18, 6),
+    mtm_bfq NUMERIC(18, 6),
+    mtmma_bfq NUMERIC(18, 6),
+    obv_bfq NUMERIC(18, 6),
+    psy_bfq NUMERIC(18, 6),
+    psyma_bfq NUMERIC(18, 6),
+    roc_bfq NUMERIC(18, 6),
+    maroc_bfq NUMERIC(18, 6),
+    rsi_bfq_12 NUMERIC(18, 6),
+    rsi_bfq_24 NUMERIC(18, 6),
+    rsi_bfq_6 NUMERIC(18, 6),
+    taq_down_bfq NUMERIC(18, 6),
+    taq_mid_bfq NUMERIC(18, 6),
+    taq_up_bfq NUMERIC(18, 6),
+    trix_bfq NUMERIC(18, 6),
+    trma_bfq NUMERIC(18, 6),
+    vr_bfq NUMERIC(18, 6),
+    wr_bfq NUMERIC(18, 6),
+    wr1_bfq NUMERIC(18, 6),
+    xsii_td1_bfq NUMERIC(18, 6),
+    xsii_td2_bfq NUMERIC(18, 6),
+    xsii_td3_bfq NUMERIC(18, 6),
+    xsii_td4_bfq NUMERIC(18, 6),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
+);
+CREATE INDEX idx_factor_pro_ts_code ON index_factor_pro_daily(ts_code);
+CREATE INDEX idx_factor_pro_trade_date ON index_factor_pro_daily(trade_date);
+
+COMMENT ON TABLE index_factor_pro_daily IS '指数技术因子专业版（Tushare idx_factor_pro 接口）';
+COMMENT ON COLUMN index_factor_pro_daily.ts_code IS '指数代码（大盘指数/申万指数/中信指数）';
+COMMENT ON COLUMN index_factor_pro_daily.trade_date IS '交易日期';
+COMMENT ON COLUMN index_factor_pro_daily.vol IS '成交量（手）';
+COMMENT ON COLUMN index_factor_pro_daily.amount IS '成交额（千元）';
+COMMENT ON COLUMN index_factor_pro_daily.downdays IS '连跌天数';
+COMMENT ON COLUMN index_factor_pro_daily.updays IS '连涨天数';
+COMMENT ON COLUMN index_factor_pro_daily.lowdays IS '当前最低价是近多少周期内最低价的最小值';
+COMMENT ON COLUMN index_factor_pro_daily.topdays IS '当前最高价是近多少周期内最高价的最大值';
+-- 技术指标（均不复权_bfq，基于前复权价格计算）
+COMMENT ON COLUMN index_factor_pro_daily.asi_bfq IS '振动升降指标 ASI';
+COMMENT ON COLUMN index_factor_pro_daily.atr_bfq IS '真实波动N日平均值 ATR(N=20)';
+COMMENT ON COLUMN index_factor_pro_daily.bbi_bfq IS 'BBI多空指标';
+COMMENT ON COLUMN index_factor_pro_daily.bias1_bfq IS 'BIAS乖离率(L1=6)';
+COMMENT ON COLUMN index_factor_pro_daily.boll_upper_bfq IS '布林带上轨 BOLL(N=20,P=2)';
+COMMENT ON COLUMN index_factor_pro_daily.boll_mid_bfq IS '布林带中轨';
+COMMENT ON COLUMN index_factor_pro_daily.boll_lower_bfq IS '布林带下轨';
+COMMENT ON COLUMN index_factor_pro_daily.brar_ar_bfq IS 'BRAR情绪指标 AR';
+COMMENT ON COLUMN index_factor_pro_daily.brar_br_bfq IS 'BRAR情绪指标 BR';
+COMMENT ON COLUMN index_factor_pro_daily.cci_bfq IS '顺势指标 CCI(N=14)';
+COMMENT ON COLUMN index_factor_pro_daily.cr_bfq IS 'CR价格动量指标(N=20)';
+COMMENT ON COLUMN index_factor_pro_daily.dfma_dif_bfq IS '平行线差指标 DIF';
+COMMENT ON COLUMN index_factor_pro_daily.dmi_adx_bfq IS '动向指标 ADX';
+COMMENT ON COLUMN index_factor_pro_daily.dmi_pdi_bfq IS '动向指标 PDI';
+COMMENT ON COLUMN index_factor_pro_daily.dmi_mdi_bfq IS '动向指标 MDI';
+COMMENT ON COLUMN index_factor_pro_daily.ema_bfq_5 IS '指数移动平均 EMA(N=5)';
+COMMENT ON COLUMN index_factor_pro_daily.ema_bfq_10 IS '指数移动平均 EMA(N=10)';
+COMMENT ON COLUMN index_factor_pro_daily.ema_bfq_20 IS '指数移动平均 EMA(N=20)';
+COMMENT ON COLUMN index_factor_pro_daily.ema_bfq_60 IS '指数移动平均 EMA(N=60)';
+COMMENT ON COLUMN index_factor_pro_daily.ema_bfq_250 IS '指数移动平均 EMA(N=250)';
+COMMENT ON COLUMN index_factor_pro_daily.emv_bfq IS '简易波动指标 EMV';
+COMMENT ON COLUMN index_factor_pro_daily.expma_12_bfq IS 'EMA指数平均数指标(N1=12)';
+COMMENT ON COLUMN index_factor_pro_daily.expma_50_bfq IS 'EMA指数平均数指标(N2=50)';
+COMMENT ON COLUMN index_factor_pro_daily.kdj_k_bfq IS 'KDJ指标 K值';
+COMMENT ON COLUMN index_factor_pro_daily.kdj_d_bfq IS 'KDJ指标 D值';
+COMMENT ON COLUMN index_factor_pro_daily.kdj_bfq IS 'KDJ指标 J值';
+COMMENT ON COLUMN index_factor_pro_daily.ktn_upper_bfq IS '肯特纳通道上轨';
+COMMENT ON COLUMN index_factor_pro_daily.ktn_mid_bfq IS '肯特纳通道中轨';
+COMMENT ON COLUMN index_factor_pro_daily.ktn_down_bfq IS '肯特纳通道下轨';
+COMMENT ON COLUMN index_factor_pro_daily.ma_bfq_5 IS '简单移动平均 MA(N=5)';
+COMMENT ON COLUMN index_factor_pro_daily.ma_bfq_10 IS '简单移动平均 MA(N=10)';
+COMMENT ON COLUMN index_factor_pro_daily.ma_bfq_20 IS '简单移动平均 MA(N=20)';
+COMMENT ON COLUMN index_factor_pro_daily.ma_bfq_60 IS '简单移动平均 MA(N=60)';
+COMMENT ON COLUMN index_factor_pro_daily.ma_bfq_250 IS '简单移动平均 MA(N=250)';
+COMMENT ON COLUMN index_factor_pro_daily.macd_dif_bfq IS 'MACD指标 DIF';
+COMMENT ON COLUMN index_factor_pro_daily.macd_dea_bfq IS 'MACD指标 DEA';
+COMMENT ON COLUMN index_factor_pro_daily.macd_bfq IS 'MACD指标 MACD柱';
+COMMENT ON COLUMN index_factor_pro_daily.mass_bfq IS '梅斯线 MASS';
+COMMENT ON COLUMN index_factor_pro_daily.mfi_bfq IS 'MFI资金流量指标(N=14)';
+COMMENT ON COLUMN index_factor_pro_daily.mtm_bfq IS '动量指标 MTM(N=12)';
+COMMENT ON COLUMN index_factor_pro_daily.obv_bfq IS '能量潮指标 OBV';
+COMMENT ON COLUMN index_factor_pro_daily.psy_bfq IS 'PSY心理线(N=12)';
+COMMENT ON COLUMN index_factor_pro_daily.roc_bfq IS '变动率指标 ROC(N=12)';
+COMMENT ON COLUMN index_factor_pro_daily.rsi_bfq_6 IS 'RSI指标(N=6)';
+COMMENT ON COLUMN index_factor_pro_daily.rsi_bfq_12 IS 'RSI指标(N=12)';
+COMMENT ON COLUMN index_factor_pro_daily.rsi_bfq_24 IS 'RSI指标(N=24)';
+COMMENT ON COLUMN index_factor_pro_daily.taq_up_bfq IS '唐安奇通道上轨(海龟交易)';
+COMMENT ON COLUMN index_factor_pro_daily.taq_mid_bfq IS '唐安奇通道中轨';
+COMMENT ON COLUMN index_factor_pro_daily.taq_down_bfq IS '唐安奇通道下轨';
+COMMENT ON COLUMN index_factor_pro_daily.trix_bfq IS '三重指数平滑平均线 TRIX';
+COMMENT ON COLUMN index_factor_pro_daily.vr_bfq IS 'VR容量比率(M1=26)';
+COMMENT ON COLUMN index_factor_pro_daily.wr_bfq IS '威廉指标 W%R(N=10)';
+COMMENT ON COLUMN index_factor_pro_daily.wr1_bfq IS '威廉指标 W%R(N=6)';
+COMMENT ON COLUMN index_factor_pro_daily.xsii_td1_bfq IS '薛斯通道II TD1';
+COMMENT ON COLUMN index_factor_pro_daily.xsii_td2_bfq IS '薛斯通道II TD2';
+COMMENT ON COLUMN index_factor_pro_daily.xsii_td3_bfq IS '薛斯通道II TD3';
+COMMENT ON COLUMN index_factor_pro_daily.xsii_td4_bfq IS '薛斯通道II TD4';

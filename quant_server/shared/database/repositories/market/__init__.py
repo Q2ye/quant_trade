@@ -41,6 +41,47 @@ from .fundamental import (
     StockDailyBasicRepository,  # 股票每日基础指标 [超表]
     StockMoneyflowRepository,   # 股票资金流向 [超表]
     FinancialStatementRepository,  # 财务报表数据
+
+    # 财务衍生
+    StockForecastRepository,  # 业绩预告
+    StockExpressRepository,   # 业绩快报
+    StockDividendRepository,  # 分红送股
+    StockFinaIndicatorRepository,  # 财务指标
+    StockAuditOpinionRepository,  # 审计意见
+    StockBusinessIncomeRepository,  # 主营业务构成
+    CompanyAnnouncementRepository,  # 公司公告
+    StockSuspendInfoRepository,  # 停复牌
+
+    # ETF
+    EtfShareRepository,  # ETF份额规模
+
+    # Phase 1 (P0 轻量)
+    StockHsgtRepository,  # 沪深港通列表
+    StockStRiskRepository,  # ST风险警示板
+    DisclosureDateRepository,  # 财报披露日期
+    StockShareFloatRepository,  # 限售股解禁
+
+    # Phase 2 (P0 逐股)
+    StockHoldernumberRepository,  # 股东人数
+    StockTop10HoldersRepository,  # 前十大股东
+    StockTop10FloatHoldersRepository,  # 前十大流通股东
+    StockPledgeStatRepository,  # 股权质押统计
+    StockHoldertradeRepository,  # 股东增减持
+
+    # Phase 3 (P1 申万+预测+资金)
+    IndexSwClassifyRepository,  # 申万行业分类
+    IndexSwMemberRepository,  # 申万行业成分
+    IndexSwDailyRepository,  # 申万行业日线
+    IndexDailyBasicRepository,  # 大盘指数每日指标
+    StockForecastProRepository,  # 卖方盈利预测
+    StockMoneyflowHsgtRepository,  # 沪深港通资金流向
+
+    # Phase 4 (修复+P2)
+    IndexWeeklyRepository,  # 指数周线
+    StockDailyLimitRepository,  # 涨跌停价格
+    StockFactorDailyRepository,  # 技术因子(基础)
+    StockFactorProDailyRepository,  # 技术因子(专业)
+    IndexFactorProDailyRepository,  # 指数技术因子(专业)
 )
 
 # 4. 公司治理子域
@@ -81,6 +122,41 @@ __all__ = [
     "StockDailyBasicRepository",
     "StockMoneyflowRepository",
     "FinancialStatementRepository",
+    # 财务衍生
+    "StockForecastRepository",
+    "StockExpressRepository",
+    "StockDividendRepository",
+    "StockFinaIndicatorRepository",
+    "StockAuditOpinionRepository",
+    "StockBusinessIncomeRepository",
+    "CompanyAnnouncementRepository",
+    "StockSuspendInfoRepository",
+    # ETF
+    "EtfShareRepository",
+    # Phase 1
+    "StockHsgtRepository",
+    "StockStRiskRepository",
+    "DisclosureDateRepository",
+    "StockShareFloatRepository",
+    # Phase 2
+    "StockHoldernumberRepository",
+    "StockTop10HoldersRepository",
+    "StockTop10FloatHoldersRepository",
+    "StockPledgeStatRepository",
+    "StockHoldertradeRepository",
+    # Phase 3
+    "IndexSwClassifyRepository",
+    "IndexSwMemberRepository",
+    "IndexSwDailyRepository",
+    "IndexDailyBasicRepository",
+    "StockForecastProRepository",
+    "StockMoneyflowHsgtRepository",
+    # Phase 4
+    "IndexWeeklyRepository",
+    "StockDailyLimitRepository",
+    "StockFactorDailyRepository",
+    "StockFactorProDailyRepository",
+    "IndexFactorProDailyRepository",
 
     # === 公司治理 ===
     "ManagerRepository",

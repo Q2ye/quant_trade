@@ -167,4 +167,3 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 
 
 drop table stk_managers
-

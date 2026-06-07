@@ -1106,6 +1106,122 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取卖方盈利预测失败: {e}")
 			return pd.DataFrame()
 
+	def get_stk_limit(self, ts_code: str = '', trade_date: str = '',
+	                   start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取每日涨跌停价格（Tushare stk_limit 接口）
+
+		Args:
+			ts_code: 股票代码
+			trade_date: 交易日期（YYYYMMDD）
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: columns: ts_code, trade_date, pre_close, up_limit, down_limit
+		"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.stk_limit(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取涨跌停价格失败: {e}")
+			return pd.DataFrame()
+
+	def get_stk_factor(self, ts_code: str = '', trade_date: str = '',
+	                   start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取股票技术因子基础版（Tushare stk_factor 接口）
+
+		包含 ~33 个技术指标列：MACD/KDJ/RSI/BOLL/CCI 等（不复权值）。
+
+		Args:
+			ts_code: 股票代码
+			trade_date: 交易日期（YYYYMMDD）
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: 技术因子数据
+		"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.stk_factor(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取股票技术因子失败: {e}")
+			return pd.DataFrame()
+
+	def get_stk_factor_pro(self, ts_code: str = '', trade_date: str = '',
+	                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取股票技术因子专业版（Tushare stk_factor_pro 接口）
+
+		包含 200+ 个技术指标列，含前复权/后复权/不复权三个版本。
+		需 Tushare 6000 积分以上权限。
+
+		Args:
+			ts_code: 股票代码
+			trade_date: 交易日期（YYYYMMDD）
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: 技术因子专业版数据（200+ 列）
+		"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.stk_factor_pro(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取股票技术因子专业版失败: {e}")
+			return pd.DataFrame()
+
+	def get_idx_factor_pro(self, ts_code: str = '', trade_date: str = '',
+	                       start_date: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取指数技术因子专业版（Tushare idx_factor_pro 接口）
+
+		包含 200+ 列技术指标，仅含后复权(_bfq)版本。
+		需 Tushare 5000 积分以上权限。
+
+		Args:
+			ts_code: 指数代码（大盘指数/申万指数/中信指数）
+			trade_date: 交易日期（YYYYMMDD）
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: 技术因子专业版数据（200+ 列）
+		"""
+		try:
+			kwargs = {}
+			if ts_code: kwargs['ts_code'] = ts_code
+			if trade_date: kwargs['trade_date'] = trade_date
+			if start_date: kwargs['start_date'] = start_date
+			if end_date: kwargs['end_date'] = end_date
+			df = self.pro.idx_factor_pro(**kwargs)
+			if df is not None and not df.empty:
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取指数技术因子专业版失败: {e}")
+			return pd.DataFrame()
+
 	def get_sw_daily(self, ts_code: str = '', trade_date: str = '',
 	                 start_date: str = '', end_date: str = '') -> pd.DataFrame:
 		"""获取申万行业日线行情（Tushare sw_daily 接口）

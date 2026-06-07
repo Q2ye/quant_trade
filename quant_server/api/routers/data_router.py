@@ -833,6 +833,11 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
     "forecast_pro":          DataTypeInfo(code="forecast_pro",          name="卖方盈利预测", description="券商研究所盈利预测报告（需8000积分），基本面量化核心",     estimated_time=120, requires_clean=False, is_core=False),
     "moneyflow_hsgt":        DataTypeInfo(code="moneyflow_hsgt",        name="沪深港通资金流向", description="北向/南向资金当日净流入流出数据，外资动向追踪",         estimated_time=15,  requires_clean=False, is_core=False),
     "index_sw_daily":        DataTypeInfo(code="index_sw_daily",        name="申万行业日线行情", description="申万2021版31个一级行业日线行情（OHLCV+PE+PB+市值）", estimated_time=120, requires_clean=False, is_core=False),
+    # ===== Phase 4 新增 =====
+    "daily_limit":           DataTypeInfo(code="daily_limit",           name="涨跌停价格",     description="股票每日涨停价/跌停价/前收盘价",                             estimated_time=30,  requires_clean=False, is_core=False),
+    "stk_factor":            DataTypeInfo(code="stk_factor",            name="技术因子(基础)", description="股票技术指标基础版（MACD/KDJ/RSI/BOLL/CCI等33个指标，不复权）", estimated_time=180, requires_clean=False, is_core=False),
+    "stk_factor_pro":        DataTypeInfo(code="stk_factor_pro",        name="技术因子(专业)", description="股票技术指标专业版（200+指标，含三复权版本，需6000积分）",  estimated_time=300, requires_clean=False, is_core=False),
+    "idx_factor_pro":        DataTypeInfo(code="idx_factor_pro",        name="指数技术因子(专业)", description="指数技术指标专业版（200+指标，仅不复权版本，需5000积分）",  estimated_time=120, requires_clean=False, is_core=False),
 }
 
 

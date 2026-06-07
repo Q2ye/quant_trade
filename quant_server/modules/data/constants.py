@@ -244,6 +244,11 @@ class SyncConfig:
 		"index_dailybasic": 3000,
 		"forecast_pro": 3000,
 		"moneyflow_hsgt": 300,
+		"index_weekly": 1000,
+		"daily_limit": 5800,
+		"stk_factor": 10000,
+		"stk_factor_pro": 10000,
+		"idx_factor_pro": 8000,
 	}
 
 	# 超时配置（秒）
@@ -288,6 +293,11 @@ class SyncConfig:
 		"index_dailybasic": 600,
 		"forecast_pro": 600,
 		"moneyflow_hsgt": 120,
+		"index_weekly": 300,
+		"daily_limit": 600,
+		"stk_factor": 600,
+		"stk_factor_pro": 600,
+		"idx_factor_pro": 600,
 	}
 
 	# 同步时间窗口
@@ -359,7 +369,8 @@ class DataSource:
 			"forecast", "express", "dividend", "financial_indicator",
 			"audit_opinion", "business_income", "index_data", "calendar",
 			"stk_holdernumber", "top10_holders", "top10_floatholders", "pledge_stat", "stk_holdertrade",
-			"index_sw_classify", "index_sw_member", "index_sw_daily", "index_dailybasic", "forecast_pro", "moneyflow_hsgt"
+			"index_sw_classify", "index_sw_member", "index_sw_daily", "index_dailybasic", "forecast_pro", "moneyflow_hsgt",
+				"index_weekly", "daily_limit", "stk_factor", "stk_factor_pro", "idx_factor_pro"
 		],
 		BAOSTOCK: ["daily_quotes", "financial_data", "index_data"],
 		SINA: ["realtime_quotes"],
@@ -446,8 +457,6 @@ class DataType(str, Enum):
 	MONTHLY_QUOTES = "monthly_quotes"  # 月线行情
 	MINUTE_QUOTES = "minute_quotes"  # 分钟行情
 	TICK_QUOTES = "tick_quotes"  # Tick级行情
-	REALTIME_QUOTES = "realtime_quotes"  # 实时行情
-	ADJUSTED_QUOTES = "adjusted_quotes"  # 复权行情
 	MONEYFLOW = "moneyflow"  # 资金流向
 	ADJ_FACTOR = "adj_factor"  # 复权因子
 	SUSPEND = "suspend"  # 停复牌信息
@@ -519,15 +528,11 @@ class DataType(str, Enum):
 	# 沪深港通资金流向
 	MONEYFLOW_HSGT = "moneyflow_hsgt"  # 沪深港通资金流向
 
-	# 其他
-	HOLDERS_DATA = "holders_data"  # 股东数据
-	SPLIT_DATA = "split_data"  # 拆分数据
-	INDUSTRY_DATA = "industry_data"  # 行业数据
-	CONCEPT_DATA = "concept_data"  # 概念数据
-	FACTOR_DATA = "factor_data"  # 因子数据
-	ALPHA_FACTORS = "alpha_factors"  # Alpha因子
-	RISK_FACTORS = "risk_factors"  # 风险因子
-	STYLE_FACTORS = "style_factors"  # 风格因子
+	# Phase 4 新增
+	DAILY_LIMIT = "daily_limit"  # 每日涨跌停价格
+	STK_FACTOR = "stk_factor"  # 股票技术因子（基础版）
+	STK_FACTOR_PRO = "stk_factor_pro"  # 股票技术因子（专业版）
+	IDX_FACTOR_PRO = "idx_factor_pro"  # 指数技术因子专业版
 
 	@classmethod
 	def get_display_name (cls, data_type):
@@ -537,8 +542,6 @@ class DataType(str, Enum):
 			cls.DAILY_QUOTES: "日行情数据",
 			cls.MINUTE_QUOTES: "分钟行情数据",
 			cls.TICK_QUOTES: "Tick行情数据",
-			cls.REALTIME_QUOTES: "实时行情",
-			cls.ADJUSTED_QUOTES: "复权行情",
 			cls.MONEYFLOW: "资金流向数据",
 			cls.ADJ_FACTOR: "复权因子数据",
 			cls.SUSPEND: "停复牌信息",
@@ -564,7 +567,6 @@ class DataType(str, Enum):
 			cls.BUSINESS_INCOME: "主营业务构成",
 			cls.INDEX_DATA: "指数数据",
 			cls.CALENDAR: "交易日历",
-			cls.FACTOR_DATA: "因子数据",
 			cls.STK_HOLDERNUMBER: "股东人数",
 			cls.TOP10_HOLDERS: "前十大股东",
 			cls.TOP10_FLOAT_HOLDERS: "前十大流通股东",
@@ -576,6 +578,11 @@ class DataType(str, Enum):
 			cls.INDEX_DAILYBASIC: "大盘指数每日指标",
 			cls.FORECAST_PRO: "卖方盈利预测",
 			cls.MONEYFLOW_HSGT: "沪深港通资金流向",
+			cls.INDEX_WEEKLY: "指数周线行情",
+			cls.DAILY_LIMIT: "涨跌停价格",
+			cls.STK_FACTOR: "技术面因子(基础)",
+			cls.STK_FACTOR_PRO: "技术面因子(专业)",
+				cls.IDX_FACTOR_PRO: "指数技术因子(专业版)",
 		}
 		return display_names.get(data_type, data_type)
 

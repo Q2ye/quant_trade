@@ -23,6 +23,28 @@ from .disclosure_date_repo import DisclosureDateRepository
 from .share_float_repo import StockShareFloatRepository
 from .suspend_info_repo import StockSuspendInfoRepository
 
+# Phase 2 (P0 逐股)
+from .holdernumber_repo import StockHoldernumberRepository
+from .top10_holders_repo import StockTop10HoldersRepository
+from .top10_float_holders_repo import StockTop10FloatHoldersRepository
+from .pledge_stat_repo import StockPledgeStatRepository
+from .holdertrade_repo import StockHoldertradeRepository
+
+# Phase 3 (P1 申万+预测+资金)
+from .index_sw_classify_repo import IndexSwClassifyRepository
+from .index_sw_member_repo import IndexSwMemberRepository
+from .index_sw_daily_repo import IndexSwDailyRepository
+from .index_dailybasic_repo import IndexDailyBasicRepository
+from .forecast_pro_repo import StockForecastProRepository
+from .moneyflow_hsgt_repo import StockMoneyflowHsgtRepository
+
+# Phase 4 (修复+P2)
+from .index_weekly_repo import IndexWeeklyRepository
+from .stock_daily_limit_repo import StockDailyLimitRepository
+from .stock_factor_daily_repo import StockFactorDailyRepository
+from .stock_factor_pro_daily_repo import StockFactorProDailyRepository
+from .index_factor_pro_daily_repo import IndexFactorProDailyRepository
+
 __all__ = [
     "CompanyAnnouncementRepository",
     "FinancialStatementRepository",
@@ -40,4 +62,23 @@ __all__ = [
     "DisclosureDateRepository",
     "StockShareFloatRepository",
     "StockSuspendInfoRepository",
+    # Phase 2
+    "StockHoldernumberRepository",
+    "StockTop10HoldersRepository",
+    "StockTop10FloatHoldersRepository",
+    "StockPledgeStatRepository",
+    "StockHoldertradeRepository",
+    # Phase 3
+    "IndexSwClassifyRepository",
+    "IndexSwMemberRepository",
+    "IndexSwDailyRepository",
+    "IndexDailyBasicRepository",
+    "StockForecastProRepository",
+    "StockMoneyflowHsgtRepository",
+    # Phase 4
+    "IndexWeeklyRepository",
+    "StockDailyLimitRepository",
+    "StockFactorDailyRepository",
+    "StockFactorProDailyRepository",
+    "IndexFactorProDailyRepository",
 ]
