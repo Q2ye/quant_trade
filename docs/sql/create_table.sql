@@ -3828,3 +3828,100 @@ COMMENT ON COLUMN stock_suspend_info.suspend_timing IS '日内停牌时间段';
 COMMENT ON COLUMN stock_suspend_info.suspend_type IS '停复牌类型：S-停牌，R-复牌';
 CREATE INDEX idx_stock_suspend_info_ts_code ON stock_suspend_info(ts_code);
 CREATE INDEX idx_stock_suspend_info_trade_date ON stock_suspend_info(trade_date);
+
+-- 沪深港通股票列表
+CREATE TABLE stock_hsgt (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    trade_date DATE NOT NULL,
+    type VARCHAR(5) NOT NULL,
+    name VARCHAR(100),
+    type_name VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date, type)
+);
+CREATE INDEX idx_stock_hsgt_ts_code ON stock_hsgt(ts_code);
+CREATE INDEX idx_stock_hsgt_type ON stock_hsgt(type);
+
+COMMENT ON TABLE stock_hsgt IS '沪深港通股票列表（Tushare stock_hsgt 接口）';
+COMMENT ON COLUMN stock_hsgt.ts_code IS '股票代码';
+COMMENT ON COLUMN stock_hsgt.trade_date IS '交易日期';
+COMMENT ON COLUMN stock_hsgt.type IS '类型: HK_SZ(深股通)/SZ_HK(港股通深)/HK_SH(沪股通)/SH_HK(港股通沪)';
+COMMENT ON COLUMN stock_hsgt.name IS '股票名称';
+COMMENT ON COLUMN stock_hsgt.type_name IS '类型名称: 深股通/港股通深/沪股通/港股通沪';
+
+-- ST风险警示板股票
+CREATE TABLE stock_st_risk (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    name VARCHAR(100),
+    pub_date DATE,
+    imp_date DATE NOT NULL,
+    st_type VARCHAR(10),
+    st_reason VARCHAR(500),
+    st_explain TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, imp_date)
+);
+CREATE INDEX idx_stock_st_risk_ts_code ON stock_st_risk(ts_code);
+
+COMMENT ON TABLE stock_st_risk IS 'ST风险警示板股票列表（Tushare st 接口）';
+COMMENT ON COLUMN stock_st_risk.ts_code IS '股票代码';
+COMMENT ON COLUMN stock_st_risk.name IS '股票名称';
+COMMENT ON COLUMN stock_st_risk.pub_date IS '发布日期';
+COMMENT ON COLUMN stock_st_risk.imp_date IS '实施日期';
+COMMENT ON COLUMN stock_st_risk.st_type IS 'ST类型（ST/*ST等）';
+COMMENT ON COLUMN stock_st_risk.st_reason IS 'ST变更原因';
+COMMENT ON COLUMN stock_st_risk.st_explain IS 'ST变更详细原因';
+
+-- 财报披露日期
+CREATE TABLE financial_disclosure_dates (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    end_date DATE NOT NULL,
+    pre_date DATE,
+    actual_date DATE,
+    modify_date VARCHAR(500),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, end_date)
+);
+CREATE INDEX idx_disclosure_dates_ts_code ON financial_disclosure_dates(ts_code);
+CREATE INDEX idx_disclosure_dates_end_date ON financial_disclosure_dates(end_date);
+
+COMMENT ON TABLE financial_disclosure_dates IS '财报披露日期表（Tushare disclosure_date 接口）';
+COMMENT ON COLUMN financial_disclosure_dates.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN financial_disclosure_dates.ann_date IS '最新披露公告日';
+COMMENT ON COLUMN financial_disclosure_dates.end_date IS '报告期（每个季度最后一天，如20250630表示中报）';
+COMMENT ON COLUMN financial_disclosure_dates.pre_date IS '预计披露日期';
+COMMENT ON COLUMN financial_disclosure_dates.actual_date IS '实际披露日期';
+COMMENT ON COLUMN financial_disclosure_dates.modify_date IS '披露日期修正记录';
+
+-- 限售股解禁
+CREATE TABLE stock_share_float (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    float_date DATE NOT NULL,
+    float_share NUMERIC(18, 2),
+    float_ratio NUMERIC(8, 4),
+    holder_name VARCHAR(200),
+    share_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, float_date, holder_name)
+);
+CREATE INDEX idx_share_float_ts_code ON stock_share_float(ts_code);
+CREATE INDEX idx_share_float_date ON stock_share_float(float_date);
+
+COMMENT ON TABLE stock_share_float IS '限售股解禁表（Tushare share_float 接口）';
+COMMENT ON COLUMN stock_share_float.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_share_float.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_share_float.float_date IS '解禁日期';
+COMMENT ON COLUMN stock_share_float.float_share IS '解禁流通股份（股）';
+COMMENT ON COLUMN stock_share_float.float_ratio IS '解禁股份占总股本比率';
+COMMENT ON COLUMN stock_share_float.holder_name IS '股东名称';
+COMMENT ON COLUMN stock_share_float.share_type IS '股份类型';

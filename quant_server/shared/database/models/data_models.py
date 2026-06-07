@@ -1129,3 +1129,86 @@ class StockSuspendInfo(Base):
 		Index('idx_stock_suspend_info_trade_date', 'trade_date'),
 		UniqueConstraint('ts_code', 'trade_date', 'suspend_type', name='uq_suspend_info_unique'),
 	)
+
+
+# ==================== 事件驱动与解禁数据 ====================
+
+class StockHsgt(Base):
+	"""沪深港通股票列表"""
+	__tablename__ = 'stock_hsgt'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='股票代码')
+	trade_date = Column(DateTime, nullable=False, comment='交易日期')
+	type = Column(String(5), nullable=False, comment='类型: HK_SZ/SZ_HK/HK_SH/SH_HK')
+	name = Column(String(100), comment='股票名称')
+	type_name = Column(String(50), comment='类型名称')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'trade_date', 'type', name='uq_stock_hsgt_unique'),
+	)
+
+
+class StockStRisk(Base):
+	"""ST风险警示板股票"""
+	__tablename__ = 'stock_st_risk'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='股票代码')
+	name = Column(String(100), comment='股票名称')
+	pub_date = Column(DateTime, comment='发布日期')
+	imp_date = Column(DateTime, nullable=False, comment='实施日期')
+	st_type = Column(String(10), comment='ST类型')
+	st_reason = Column(String(500), comment='ST变更原因')
+	st_explain = Column(Text, comment='ST变更详细原因')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'imp_date', name='uq_stock_st_risk_unique'),
+	)
+
+
+class FinancialDisclosureDate(Base):
+	"""财报披露日期表"""
+	__tablename__ = 'financial_disclosure_dates'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime, comment='最新披露公告日')
+	end_date = Column(DateTime, nullable=False, comment='报告期')
+	pre_date = Column(DateTime, comment='预计披露日期')
+	actual_date = Column(DateTime, comment='实际披露日期')
+	modify_date = Column(String(500), comment='披露日期修正记录')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'end_date', name='uq_disclosure_date_unique'),
+	)
+
+
+class StockShareFloat(Base):
+	"""限售股解禁表"""
+	__tablename__ = 'stock_share_float'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS代码')
+	ann_date = Column(DateTime, comment='公告日期')
+	float_date = Column(DateTime, nullable=False, comment='解禁日期')
+	float_share = Column(Numeric(18, 2), comment='流通股份(股)')
+	float_ratio = Column(Numeric(8, 4), comment='流通股份占总股本比率')
+	holder_name = Column(String(200), comment='股东名称')
+	share_type = Column(String(50), comment='股份类型')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'float_date', 'holder_name', name='uq_share_float_unique'),
+	)

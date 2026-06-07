@@ -228,7 +228,11 @@ class SyncConfig:
 		"audit_opinion": 500,  # 审计意见批量大小
 		"business_income": 200,  # 主营业务构成批量大小
 		"index_data": 50,  # 指数数据批量大小
-		"calendar": 500  # 交易日历批量大小
+		"calendar": 500,  # 交易日历批量大小
+		"stock_hsgt": 2000,
+		"st_stockrisk": 1000,
+		"disclosure_date": 3000,
+		"share_float": 6000,
 	}
 
 	# 超时配置（秒）
@@ -257,7 +261,11 @@ class SyncConfig:
 		"audit_opinion": 300,  # 审计意见同步超时
 		"business_income": 600,  # 主营业务构成同步超时
 		"index_data": 600,  # 指数数据同步超时
-		"calendar": 300  # 交易日历同步超时
+		"calendar": 300,  # 交易日历同步超时
+		"stock_hsgt": 120,
+		"st_stockrisk": 120,
+		"disclosure_date": 120,
+		"share_float": 120,
 	}
 
 	# 同步时间窗口
@@ -433,6 +441,12 @@ class DataType(str, Enum):
 	MANAGERS = "managers"  # 管理层信息
 	REWARDS = "rewards"  # 管理层薪酬持股
 
+	# 事件驱动数据
+	STOCK_HSGT = "stock_hsgt"  # 沪深港通股票列表
+	ST_STOCKRISK = "st_stockrisk"  # ST风险警示板
+	DISCLOSURE_DATE = "disclosure_date"  # 财报披露日期
+	SHARE_FLOAT = "share_float"  # 限售股解禁
+
 	# 财务数据
 	FINANCIAL_DATA = "financial_data"  # 财务报表（三表合并）
 	FINANCIAL_INCOME = "financial_income"  # 利润表
@@ -490,6 +504,10 @@ class DataType(str, Enum):
 			cls.ETF_DAILY: "ETF日线行情",
 			cls.FUND_ADJ_FACTOR: "基金复权因子",
 			cls.ETF_SHARE: "ETF份额规模",
+			cls.STOCK_HSGT: "沪深港通股票列表",
+			cls.ST_STOCKRISK: "ST风险警示板",
+			cls.DISCLOSURE_DATE: "财报披露日期",
+			cls.SHARE_FLOAT: "限售股解禁",
 			cls.FINANCIAL_INCOME: "利润表",
 			cls.FINANCIAL_BALANCE: "资产负债表",
 			cls.FINANCIAL_CASHFLOW: "现金流量表",

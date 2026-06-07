@@ -17,6 +17,11 @@ from .fina_indicator_repo import StockFinaIndicatorRepository
 from .audit_opinion_repo import StockAuditOpinionRepository
 from .business_income_repo import StockBusinessIncomeRepository
 from .etf_share_repo import EtfShareRepository
+from .hsgt_repo import StockHsgtRepository
+from .st_risk_repo import StockStRiskRepository
+from .disclosure_date_repo import DisclosureDateRepository
+from .share_float_repo import StockShareFloatRepository
+from .suspend_info_repo import StockSuspendInfoRepository
 
 __all__ = [
     "CompanyAnnouncementRepository",
@@ -30,4 +35,9 @@ __all__ = [
     "StockAuditOpinionRepository",
     "StockBusinessIncomeRepository",
     "EtfShareRepository",
+    "StockHsgtRepository",
+    "StockStRiskRepository",
+    "DisclosureDateRepository",
+    "StockShareFloatRepository",
+    "StockSuspendInfoRepository",
 ]

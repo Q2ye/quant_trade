@@ -188,25 +188,45 @@ class TushareSource(BaseDataSource):
 			logger.warning(f"获取Tick数据失败(可能需要会员权限): {e}")
 			return pd.DataFrame()
 
-	def get_large_order (self, symbol: str, trade_date: str,
-	                     min_amount: float = 100000) -> pd.DataFrame:
-		"""
-		获取大单成交数据
+	def get_moneyflow_hsgt(self, trade_date: str = '', start_date: str = '',
+	                       end_date: str = '') -> pd.DataFrame:
+		"""获取沪深港通资金流向（Tushare moneyflow_hsgt 接口）
+
+		返回北向/南向资金当日/历史净流入流出数据。
 
 		Args:
-			symbol: 股票代码
-			trade_date: 交易日期
-			min_amount: 最小成交金额(元)
+			trade_date: 交易日期（YYYYMMDD）
+			start_date: 开始日期
+			end_date: 结束日期
+		Returns:
+			DataFrame: 沪深港通资金流向
 		"""
 		try:
-			# 使用 moneyflow_hsgt 或每日分钟数据
-			df = self.pro.moneyflow_hsgt(trade_date=trade_date)
+			kwargs = {}
+			if trade_date:
+				kwargs['trade_date'] = trade_date
+			if start_date:
+				kwargs['start_date'] = start_date
+			if end_date:
+				kwargs['end_date'] = end_date
+			df = self.pro.moneyflow_hsgt(**kwargs)
 			if df is not None and not df.empty:
-				df = df[df['amount'] >= min_amount]
+				if 'trade_date' in df.columns:
+					df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.warning(f"获取大单数据失败: {e}")
+			logger.error(f"获取沪深港通资金流向失败: {e}")
 			return pd.DataFrame()
+
+	def get_large_order(self, symbol: str, trade_date: str,
+	                    min_amount: float = 100000) -> pd.DataFrame:
+		"""获取大单成交数据
+
+		注意：Tushare 标准接口中没有直接的大单成交查询。
+		中低频量化无需此数据（P3），当前返回空 DataFrame。
+		"""
+		logger.debug(f"大单成交数据查询（未实现）: {symbol} {trade_date}")
+		return pd.DataFrame()
 
 	def get_adj_factor (self, symbol: str, start_date: str = '',
 	                    end_date: str = '') -> pd.DataFrame:
@@ -252,6 +272,38 @@ class TushareSource(BaseDataSource):
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取复牌信息失败: {e}")
+			return pd.DataFrame()
+
+	def get_share_float (self, ts_code: str = '', start_date: str = '',
+	                    end_date: str = '', ann_date: str = '') -> pd.DataFrame:
+		"""获取限售股解禁（Tushare share_float 接口）
+
+		Args:
+			ts_code: 股票代码
+			start_date: 解禁开始日期
+			end_date: 解禁结束日期
+			ann_date: 公告日期
+		Returns:
+			DataFrame: columns: ts_code, ann_date, float_date, float_share, float_ratio, holder_name, share_type
+		"""
+		try:
+			kwargs = {}
+			if ts_code:
+				kwargs['ts_code'] = ts_code
+			if start_date:
+				kwargs['start_date'] = start_date
+			if end_date:
+				kwargs['end_date'] = end_date
+			if ann_date:
+				kwargs['ann_date'] = ann_date
+			df = self.pro.share_float(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'float_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取限售股解禁失败: {e}")
 			return pd.DataFrame()
 
 	def get_daily_basic (self, symbol: str = '', trade_date: str = '',
@@ -575,6 +627,31 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取主营业务构成失败: {e}")
 			return pd.DataFrame()
 
+	def get_disclosure_date (self, ts_code: str = '', end_date: str = '') -> pd.DataFrame:
+		"""获取财报披露日期（Tushare disclosure_date 接口）
+
+		Args:
+			ts_code: 股票代码（空=全市场）
+			end_date: 报告期（YYYYMMDD，空=全部）
+		Returns:
+			DataFrame: columns: ts_code, ann_date, end_date, pre_date, actual_date, modify_date
+		"""
+		try:
+			kwargs = {}
+			if ts_code:
+				kwargs['ts_code'] = ts_code
+			if end_date:
+				kwargs['end_date'] = end_date
+			df = self.pro.disclosure_date(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'end_date', 'pre_date', 'actual_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取财报披露日期失败: {e}")
+			return pd.DataFrame()
+
 	# ==================== 扩展功能 ====================
 
 	def get_moneyflow (self, symbol: str = '', trade_date: str = '',
@@ -595,6 +672,37 @@ class TushareSource(BaseDataSource):
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取公司信息失败: {e}")
+			return pd.DataFrame()
+
+	def get_stock_hsgt (self, hsgt_type: str = '', trade_date: str = '') -> pd.DataFrame:
+		"""获取沪深港通股票列表（Tushare stock_hsgt 接口）
+
+		返回沪深港通标的股票名单，分 4 种类型：HK_SZ(深股通) / SZ_HK(港股通深) / HK_SH(沪股通) / SH_HK(港股通沪)。
+
+		Args:
+			hsgt_type: 类型代码，为空时拉取全部 4 种并合并
+			trade_date: 交易日期（YYYYMMDD，空=最新）
+		Returns:
+			DataFrame: columns: ts_code, trade_date, type, name, type_name
+		"""
+		try:
+			types = [hsgt_type] if hsgt_type else ['HK_SZ', 'SZ_HK', 'HK_SH', 'SH_HK']
+			frames = []
+			for t in types:
+				kwargs = {'type': t}
+				if trade_date:
+					kwargs['trade_date'] = trade_date
+				df = self.pro.stock_hsgt(**kwargs)
+				if df is not None and not df.empty:
+					if 'trade_date' in df.columns:
+						df['trade_date'] = pd.to_datetime(df['trade_date'])
+					frames.append(df)
+			if frames:
+				result = pd.concat(frames, ignore_index=True)
+				return result.drop_duplicates(subset=['ts_code', 'trade_date', 'type'])
+			return pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取沪深港通股票列表失败: {e}")
 			return pd.DataFrame()
 
 	def get_stk_managers (self, ts_code: str = '') -> pd.DataFrame:
@@ -672,6 +780,26 @@ class TushareSource(BaseDataSource):
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
 			logger.error(f"获取ST变更历史失败: {e}")
+			return pd.DataFrame()
+
+	def get_st_stockrisk (self) -> pd.DataFrame:
+		"""获取ST风险警示板股票列表（Tushare st 接口）
+
+		注意：Tushare 返回字段名为 st_tpye（拼写错误），此处保留原始字段名，
+		由 sync 层做 rename 映射到 ORM 的 st_type。
+
+		Returns:
+			DataFrame: columns: ts_code, name, pub_date, imp_date, st_tpye, st_reason, st_explain
+		"""
+		try:
+			df = self.pro.st()
+			if df is not None and not df.empty:
+				for col in ('pub_date', 'imp_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取ST风险警示板失败: {e}")
 			return pd.DataFrame()
 
 	# ==================== 指数相关扩展接口 ====================

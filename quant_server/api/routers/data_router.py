@@ -804,6 +804,11 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	# ===== 公司治理 =====
 	"managers":               DataTypeInfo(code="managers",               name="管理层信息",   description="上市公司董监高管理层人员信息",             estimated_time=120, requires_clean=False, is_core=False),
 	"rewards":                DataTypeInfo(code="rewards",                name="管理层薪酬",   description="管理层薪酬及持股变动数据",                 estimated_time=120, requires_clean=False, is_core=False),
+	# ===== 事件驱动数据 =====
+	"stock_hsgt":            DataTypeInfo(code="stock_hsgt",            name="沪深港通股票列表", description="沪深港通标的股票名单（深股通/港股通深/沪股通/港股通沪）", estimated_time=20,  requires_clean=False, is_core=False),
+	"st_stockrisk":          DataTypeInfo(code="st_stockrisk",          name="ST风险警示板", description="当前处于风险警示板的股票列表及ST变动原因",                 estimated_time=10,  requires_clean=False, is_core=False),
+	"disclosure_date":       DataTypeInfo(code="disclosure_date",       name="财报披露日期", description="上市公司财报预计披露日期与实际披露日期，事件驱动策略核心",     estimated_time=15,  requires_clean=False, is_core=False),
+	"share_float":           DataTypeInfo(code="share_float",           name="限售股解禁",   description="限售股解禁计划（解禁日期、股份数、股东）",                   estimated_time=15,  requires_clean=False, is_core=False),
 	# ===== 高频/大体积：全量同步排除，仅手动同步 =====
 	"minute_quotes":          DataTypeInfo(code="minute_quotes",          name="分钟行情",     description="⚠️股票分钟级行情（数据量极大，仅手动同步）",  estimated_time=300, requires_clean=False, is_core=False, is_available=False),
 	"etf_minute":             DataTypeInfo(code="etf_minute",             name="ETF分钟行情",  description="⚠️ETF分钟级行情（数据量极大，仅手动同步）",   estimated_time=180, requires_clean=False, is_core=False, is_available=False),

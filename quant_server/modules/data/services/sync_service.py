@@ -110,6 +110,7 @@ from shared.database.models.data_models import (
 	StockAuditOpinion,
 	StockBusinessIncome,
 )
+from shared.database.models.business_models import DataSyncTask
 # 从统一导出入口导入共享Repository（按领域分组）
 from shared.database.repositories import (
 	# 市场数据领域
@@ -143,6 +144,10 @@ from shared.database.repositories.market.fundamental.forecast_repo import StockF
 from shared.database.repositories.market.fundamental.suspend_info_repo import StockSuspendInfoRepository
 from shared.database.repositories.market.governance.manager_repo import ManagerRepository
 from shared.database.repositories.market.governance.reward_repo import RewardRepository
+from shared.database.repositories.market.fundamental.hsgt_repo import StockHsgtRepository
+from shared.database.repositories.market.fundamental.st_risk_repo import StockStRiskRepository
+from shared.database.repositories.market.fundamental.disclosure_date_repo import DisclosureDateRepository
+from shared.database.repositories.market.fundamental.share_float_repo import StockShareFloatRepository
 from shared.database.repositories.market.quote.stock_monthly_repo import StockMonthlyRepository
 from shared.database.repositories.market.quote.stock_weekly_repo import StockWeeklyRepository
 from shared.sources.source_factory import DataSourceFactory
@@ -289,6 +294,8 @@ _TYPE_LABEL = {
 	'trade_calendar': '交易日历(trade_calendar)', 'index_basic': '指数基础(index_basic)',
 	'index_daily': '指数日线(index_daily)', 'index_weight': '指数权重(index_weight)',
 	'index_weekly': '指数周线(index_weekly)', 'cpi': 'CPI(cpi)', 'ppi': 'PPI(ppi)', 'gdp': 'GDP(gdp)',
+	'stock_hsgt': '沪深港通列表(stock_hsgt)', 'st_stockrisk': 'ST风险板(st_stockrisk)',
+	'disclosure_date': '财报披露日(disclosure_date)', 'share_float': '限售股解禁(share_float)',
 }
 
 
@@ -346,6 +353,8 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 		DataType.FINANCIAL_INDICATOR: (len(ts_codes) if ts_codes else 5000) * 20,  # 财务指标
 		DataType.AUDIT_OPINION: (len(ts_codes) if ts_codes else 5000) * 10,  # 审计意见
 		DataType.BUSINESS_INCOME: (len(ts_codes) if ts_codes else 5000) * 15,  # 主营业务构成
+		DataType.STOCK_HSGT: 2000, DataType.ST_STOCKRISK: 200,
+		DataType.DISCLOSURE_DATE: 5000, DataType.SHARE_FLOAT: 500,
 	}
 	return estimates.get(data_type, 100)
 
@@ -522,6 +531,10 @@ class DataSyncService:
 		self.audit_opinion_repo = StockAuditOpinionRepository(session)  # audit_opinion（审计意见）
 		self.business_income_repo = StockBusinessIncomeRepository(session)  # business_income（主营业务构成）
 		self.etf_index_repo = EtfIndexRepository(session)  # etf_index（ETF 跟踪指数）
+		self.hsgt_repo = StockHsgtRepository(session)  # stock_hsgt（沪深港通）
+		self.st_risk_repo = StockStRiskRepository(session)  # stock_st_risk（ST风险警示板）
+		self.disclosure_date_repo = DisclosureDateRepository(session)  # financial_disclosure_dates
+		self.share_float_repo = StockShareFloatRepository(session)  # stock_share_float（限售股解禁）
 
 		# ========== 线程池（避免 Tushare 同步调用阻塞事件循环） ==========
 		# Tushare/Baostock 的 HTTP 请求是同步阻塞的，必须在独立线程中执行。
@@ -595,6 +608,11 @@ class DataSyncService:
 			DataType.INDEX_DATA: self._sync_index_data_with_weight,
 			DataType.INDEX_WEIGHT: self._sync_index_weight,
 			DataType.INDEX_WEEKLY: self._sync_index_weekly,
+			# 事件驱动数据
+			DataType.STOCK_HSGT: self._sync_stock_hsgt,
+			DataType.ST_STOCKRISK: self._sync_st_stockrisk,
+			DataType.DISCLOSURE_DATE: self._sync_disclosure_date,
+			DataType.SHARE_FLOAT: self._sync_share_float,
 		}
 
 	@property
@@ -1052,8 +1070,57 @@ class DataSyncService:
 			}
 
 	async def retry_failed_sync(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
-		"""重试失败的同步任务（与原实现相同）"""
-		pass
+		"""重试失败的同步任务。
+
+		从 data_sync_tasks 表查询原始任务参数，重新执行同步。
+
+		Args:
+			task_id: 原始任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: 重试结果，含 records_added, records_updated, records_failed, message
+		"""
+		try:
+			# 查询原始任务
+			from sqlalchemy import select as sa_select
+
+			query = sa_select(DataSyncTask).where(DataSyncTask.task_id == task_id)
+			result = await self.session.execute(query)
+			task = result.scalar_one_or_none()
+			if not task:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"任务 {task_id} 不存在"}
+
+			task_type = task.task_type
+			if task_type not in self._sync_method_map:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"不支持重试的任务类型: {task_type}"}
+
+			# 从原始参数恢复
+			params = task.parameters or {}
+			start_date = params.get("start_date")
+			end_date = params.get("end_date")
+			ts_codes = params.get("ts_codes")
+
+			logger.info(f"重试失败任务: task_id={task_id}, type={task_type}")
+
+			# 重新执行同步（通过 _sync_by_data_type 路由到具体方法）
+			sync_result = await self._sync_by_data_type(
+				data_type=task_type,
+				start_date=start_date,
+				end_date=end_date,
+				ts_codes=ts_codes,
+				task_id=task_id,
+				user_id=user_id or task.user_id,
+			)
+			sync_result["message"] = f"重试任务 {task_id} 完成: {sync_result.get('message', '')}"
+			return sync_result
+
+		except Exception as e:
+			logger.error(f"重试失败任务 {task_id} 失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1,
+			        "total_items": 0, "message": f"重试失败: {str(e)}"}
 
 	# ==================== 私有辅助方法 ====================
 	# 以下方法为服务内部使用，不对外暴露。
@@ -3619,67 +3686,10 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated(0), records_failed, total_items, message}"""
-
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=1)  # Tick数据量大，默认只同步一天
-		if not ts_codes:
-			# Tick数据量大，限制同步股票数量
-			stocks = await self.stock_basic_repo.get_active_stocks(limit=10)
-			ts_codes = [stock.ts_code for stock in stocks]
-
-		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0
-
-		records_failed = 0
-
-		logger.info(f"[逐笔行情] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		for idx, ts_code in enumerate(ts_codes):
-			if await self._is_cancelled(): break
-			try:
-				# Tick数据通常需要按天获取
-				current_date = start_date
-				while current_date <= end_date:
-					try:
-						tick_df = await self._cancellable_run_in_executor(source.get_tick_data, symbol=ts_code,
-						                                                  trade_date=current_date.strftime('%Y%m%d')
-						                                                  )
-						if not tick_df.empty:
-							# Tick数据通常使用批量插入到专门的分区表或超表
-							# 这里需要根据实际的Tick数据存储方式进行调整
-							tick_data = _convert_records_datetime(tick_df.to_dict('records'))
-							records_added += len(tick_data)
-					except Exception as e:
-						logger.warning(f"获取 {ts_code} {current_date} Tick数据失败: {_fmt_err(e, 150)}")
-						records_failed += 1
-
-					current_date += timedelta(days=1)
-			except Exception as e:
-				logger.error(f"同步 {ts_code} Tick数据失败: {_fmt_err(e, 150)}")
-				records_failed += 1
-
-			await self._update_progress(
-				task_id,
-				progress=min(100, int((idx + 1) / len(ts_codes) * 100)),
-				current_item=f"处理 {ts_code} Tick数据",
-				user_id=user_id
-			)
-
-			# 每处理一只股票提交一次
-			if (idx + 1) % 1 == 0:
-				logger.info(
-					f"[Tick] {idx + 1}/{len(ts_codes)} ({(idx + 1) / len(ts_codes) * 100:.0f}%) 新增={records_added} 更新={records_updated} 失败={records_failed}")
-				await self.session.commit()
-
-		await self.session.commit()
-		return {
-			"records_added": records_added,
-			"records_updated": 0,  # Tick数据通常只插入不更新
-			"records_failed": records_failed,
-			"total_items": records_added + records_failed,
-			"message": "Tick级行情数据同步完成"
-		}
+		# Tick 数据属于高频特种（F 组），中低频量化无需处理，标记为不实现
+		return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+		        "total_items": 0, "not_implemented": True,
+		        "message": "Tick 行情数据：中低频量化无需同步"}
 
 	# --- 财务衍生数据（停复牌 / ETF 份额 / 业绩预告 / 快报 / 分红 / 财务指标 / 审计意见 / 主营业务） ---
 
@@ -3747,7 +3757,7 @@ class DataSyncService:
 			logger.error(f"停复牌信息同步失败: {_fmt_err(e, 150)}")
 			await self.session.commit()
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
-			        "not_implemented": True, "message": f"停复牌信息同步失败: {str(e)}"}
+			        "message": f"停复牌信息同步失败: {str(e)}"}
 
 	async def _sync_etf_share(
 			self,
@@ -4184,6 +4194,211 @@ class DataSyncService:
 				result["message"] = "主营业务收入数据同步完成"
 			return result
 
+	async def _sync_stock_hsgt(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步沪深港通股票列表（stock_hsgt 表，全量拉取）。
+
+		分 4 种类型（深股通/港股通深/沪股通/港股通沪）拉取后合并写入。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 未使用（全量拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0; records_failed = 0
+		try:
+			df = await self._cancellable_run_in_executor(source.get_stock_hsgt)
+			if df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": "沪深港通股票列表同步完成（无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('trade_date',))
+			if hasattr(self.hsgt_repo, "bulk_upsert"):
+				records_added += await self.hsgt_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.hsgt_repo.create(item); records_added += 1
+					except Exception:
+						try:
+							await self.hsgt_repo.update_by(
+								{"ts_code": item["ts_code"], "trade_date": item["trade_date"], "type": item["type"]}, item)
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": "沪深港通股票列表同步完成"}
+		except Exception as e:
+			logger.error(f"沪深港通股票列表同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"沪深港通股票列表同步失败: {str(e)}"}
+
+	async def _sync_st_stockrisk(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步ST风险警示板（stock_st_risk 表，全量拉取）。
+
+		Tushare 接口名为 st，返回字段 st_tpye（拼写错误），ORM 中映射为 st_type。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 未使用（全量拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0; records_failed = 0
+		try:
+			df = await self._cancellable_run_in_executor(source.get_st_stockrisk)
+			if df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": "ST风险警示板同步完成（无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('pub_date', 'imp_date'))
+			# 字段映射：st_tpye → st_type（Tushare 拼写错误）
+			for d in data:
+				if 'st_tpye' in d:
+					d['st_type'] = d.pop('st_tpye')
+			if hasattr(self.st_risk_repo, "bulk_upsert"):
+				records_added += await self.st_risk_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.st_risk_repo.create(item); records_added += 1
+					except Exception:
+						try:
+							await self.st_risk_repo.update_by(
+								{"ts_code": item["ts_code"], "imp_date": item["imp_date"]}, item)
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": "ST风险警示板同步完成"}
+		except Exception as e:
+			logger.error(f"ST风险警示板同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"ST风险警示板同步失败: {str(e)}"}
+
+	async def _sync_disclosure_date(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步财报披露日期（financial_disclosure_dates 表，按报告期拉取）。
+
+		默认拉取最近 4 个季度的披露计划。
+
+		Args:
+			start_date: 起始报告期（None → 当前季度-4）
+			end_date: 结束报告期（None → 当前季度）
+			ts_codes: 未使用（全市场拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0; records_failed = 0
+		try:
+			df = await self._cancellable_run_in_executor(source.get_disclosure_date)
+			if df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": "财报披露日期同步完成（无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('ann_date', 'end_date', 'pre_date', 'actual_date'))
+			if hasattr(self.disclosure_date_repo, "bulk_upsert"):
+				records_added += await self.disclosure_date_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.disclosure_date_repo.create(item); records_added += 1
+					except Exception:
+						try:
+							await self.disclosure_date_repo.update_by(
+								{"ts_code": item["ts_code"], "end_date": item["end_date"]}, item)
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": "财报披露日期同步完成"}
+		except Exception as e:
+			logger.error(f"财报披露日期同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"财报披露日期同步失败: {str(e)}"}
+
+	async def _sync_share_float(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步限售股解禁（stock_share_float 表，按解禁日期拉取）。
+
+		默认拉取未来 90 天的解禁数据（start_date=今天, end_date=今天+90天）。
+
+		Args:
+			start_date: 解禁起始日期（None → 今天）
+			end_date: 解禁结束日期（None → 今天+90天）
+			ts_codes: 未使用（全市场拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		if not start_date: start_date = datetime.now().date()
+		if not end_date: end_date = start_date + timedelta(days=90)
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		records_added = 0; records_failed = 0
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			df = await self._cancellable_run_in_executor(
+				source.get_share_float, start_date=start_str, end_date=end_str)
+			if df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"限售股解禁同步完成（{start_str}~{end_str}无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('ann_date', 'float_date'))
+			# 批次内按唯一键去重
+			data = list({(d.get('ts_code'), d.get('ann_date'), d.get('float_date'), d.get('holder_name')): d
+			            for d in data}.values())
+			if hasattr(self.share_float_repo, "bulk_upsert"):
+				records_added += await self.share_float_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.share_float_repo.create(item); records_added += 1
+					except Exception:
+						try:
+							await self.share_float_repo.update_by(
+								{"ts_code": item["ts_code"], "ann_date": item.get("ann_date"),
+								 "float_date": item["float_date"], "holder_name": item.get("holder_name")}, item)
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": f"限售股解禁同步完成（{start_str}~{end_str}）"}
+		except Exception as e:
+			logger.error(f"限售股解禁同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"限售股解禁同步失败: {str(e)}"}
+
 	async def _update_progress(
 			self,
 			task_id: str,
@@ -4395,12 +4610,22 @@ class DataSyncService:
 
 		Returns:
 			int: 清理的任务记录数
-
-		Note:
-			当前为 stub 实现（pass），实际清理逻辑由引擎层处理。
 		"""
-		# TODO: 实现旧任务清理逻辑
-		pass
+		try:
+			from sqlalchemy import delete as sa_delete
+			from datetime import timedelta
+
+			cutoff = datetime.now() - timedelta(days=days)
+			stmt = sa_delete(DataSyncTask).where(DataSyncTask.created_at < cutoff)
+			result = await self.session.execute(stmt)
+			await self.session.commit()
+			deleted = result.rowcount or 0
+			logger.info(f"清理同步任务记录: 删除 {deleted} 条（{days} 天前）")
+			return deleted
+		except Exception as e:
+			logger.error(f"清理同步任务记录失败: {_fmt_err(e, 150)}")
+			await self.session.rollback()
+			return 0
 
 	async def get_recent_sync_tasks(
 			self,
@@ -4416,9 +4641,33 @@ class DataSyncService:
 
 		Returns:
 			List[Dict]: 同步任务记录列表
-
-		Note:
-			当前为 stub 实现（pass），实际查询逻辑由引擎层处理。
 		"""
-		# TODO: 实现最近任务查询逻辑
-		pass
+		try:
+			from sqlalchemy import select as sa_select, desc as sa_desc
+
+			query = sa_select(DataSyncTask).order_by(sa_desc(DataSyncTask.created_at)).limit(limit)
+			if user_id:
+				query = query.where(DataSyncTask.user_id == user_id)
+			result = await self.session.execute(query)
+			tasks = result.scalars().all()
+			return [
+				{
+					"id": t.id,
+					"task_id": t.task_id,
+					"task_type": t.task_type,
+					"status": t.status,
+					"user_id": t.user_id,
+					"start_time": t.start_time.isoformat() if t.start_time else None,
+					"end_time": t.end_time.isoformat() if t.end_time else None,
+					"total_records": t.total_records or 0,
+					"processed_records": t.processed_records or 0,
+					"records_succeeded": t.records_succeeded or 0,
+					"records_failed": t.records_failed or 0,
+					"error_message": t.error_message,
+					"created_at": t.created_at.isoformat() if t.created_at else None,
+				}
+				for t in tasks
+			]
+		except Exception as e:
+			logger.error(f"查询同步任务列表失败: {_fmt_err(e, 150)}")
+			return []
