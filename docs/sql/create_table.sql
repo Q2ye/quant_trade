@@ -3925,3 +3925,143 @@ COMMENT ON COLUMN stock_share_float.float_share IS '解禁流通股份（股）'
 COMMENT ON COLUMN stock_share_float.float_ratio IS '解禁股份占总股本比率';
 COMMENT ON COLUMN stock_share_float.holder_name IS '股东名称';
 COMMENT ON COLUMN stock_share_float.share_type IS '股份类型';
+
+-- 股东人数
+CREATE TABLE stock_stk_holdernumber (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    end_date DATE NOT NULL,
+    holder_num INT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, end_date)
+);
+CREATE INDEX idx_holdernumber_ts_code ON stock_stk_holdernumber(ts_code);
+
+COMMENT ON TABLE stock_stk_holdernumber IS '股东人数表（Tushare stk_holdernumber 接口）';
+COMMENT ON COLUMN stock_stk_holdernumber.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_stk_holdernumber.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_stk_holdernumber.end_date IS '截止日期';
+COMMENT ON COLUMN stock_stk_holdernumber.holder_num IS '股东户数';
+
+-- 前十大股东
+CREATE TABLE stock_top10_holders (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    end_date DATE NOT NULL,
+    holder_name VARCHAR(200) NOT NULL,
+    hold_amount NUMERIC(18, 2),
+    hold_ratio NUMERIC(8, 4),
+    hold_float_ratio NUMERIC(8, 4),
+    hold_change NUMERIC(8, 4),
+    holder_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, end_date, holder_name)
+);
+CREATE INDEX idx_top10_holders_ts_code ON stock_top10_holders(ts_code);
+
+COMMENT ON TABLE stock_top10_holders IS '前十大股东表（Tushare top10_holders 接口）';
+COMMENT ON COLUMN stock_top10_holders.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_top10_holders.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_top10_holders.end_date IS '报告期';
+COMMENT ON COLUMN stock_top10_holders.holder_name IS '股东名称';
+COMMENT ON COLUMN stock_top10_holders.hold_amount IS '持有数量（股）';
+COMMENT ON COLUMN stock_top10_holders.hold_ratio IS '占总股本比例(%)';
+COMMENT ON COLUMN stock_top10_holders.hold_float_ratio IS '占流通股本比例(%)';
+COMMENT ON COLUMN stock_top10_holders.hold_change IS '持股变动';
+COMMENT ON COLUMN stock_top10_holders.holder_type IS '股东类型';
+
+-- 前十大流通股东
+CREATE TABLE stock_top10_float_holders (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    end_date DATE NOT NULL,
+    holder_name VARCHAR(200) NOT NULL,
+    hold_amount NUMERIC(18, 2),
+    hold_ratio NUMERIC(8, 4),
+    hold_float_ratio NUMERIC(8, 4),
+    hold_change NUMERIC(8, 4),
+    holder_type VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, end_date, holder_name)
+);
+CREATE INDEX idx_top10_float_holders_ts_code ON stock_top10_float_holders(ts_code);
+
+COMMENT ON TABLE stock_top10_float_holders IS '前十大流通股东表（Tushare top10_floatholders 接口）';
+COMMENT ON COLUMN stock_top10_float_holders.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_top10_float_holders.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_top10_float_holders.end_date IS '报告期';
+COMMENT ON COLUMN stock_top10_float_holders.holder_name IS '股东名称';
+COMMENT ON COLUMN stock_top10_float_holders.hold_amount IS '持有数量（股）';
+COMMENT ON COLUMN stock_top10_float_holders.hold_ratio IS '占总股本比例(%)';
+COMMENT ON COLUMN stock_top10_float_holders.hold_float_ratio IS '占流通股本比例(%)';
+COMMENT ON COLUMN stock_top10_float_holders.hold_change IS '持股变动';
+COMMENT ON COLUMN stock_top10_float_holders.holder_type IS '股东类型';
+
+-- 股权质押统计
+CREATE TABLE stock_pledge_stat (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    end_date DATE NOT NULL,
+    pledge_count INT,
+    unrest_pledge NUMERIC(18, 2),
+    rest_pledge NUMERIC(18, 2),
+    total_share NUMERIC(18, 2),
+    pledge_ratio NUMERIC(8, 4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, end_date)
+);
+CREATE INDEX idx_pledge_stat_ts_code ON stock_pledge_stat(ts_code);
+
+COMMENT ON TABLE stock_pledge_stat IS '股权质押统计表（Tushare pledge_stat 接口）';
+COMMENT ON COLUMN stock_pledge_stat.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_pledge_stat.end_date IS '截止日期';
+COMMENT ON COLUMN stock_pledge_stat.pledge_count IS '质押次数';
+COMMENT ON COLUMN stock_pledge_stat.unrest_pledge IS '无限售股质押数量（万股）';
+COMMENT ON COLUMN stock_pledge_stat.rest_pledge IS '限售股质押数量（万股）';
+COMMENT ON COLUMN stock_pledge_stat.total_share IS '质押总股本（万股）';
+COMMENT ON COLUMN stock_pledge_stat.pledge_ratio IS '质押比例(%)';
+
+-- 股东增减持
+CREATE TABLE stock_stk_holdertrade (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE,
+    holder_name VARCHAR(200) NOT NULL,
+    holder_type VARCHAR(10),
+    in_de VARCHAR(2),
+    change_vol NUMERIC(18, 2),
+    change_ratio NUMERIC(8, 4),
+    after_share NUMERIC(18, 2),
+    after_ratio NUMERIC(8, 4),
+    avg_price NUMERIC(12, 4),
+    total_share NUMERIC(18, 2),
+    begin_date DATE,
+    close_date DATE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, holder_name, in_de)
+);
+CREATE INDEX idx_holdertrade_ts_code ON stock_stk_holdertrade(ts_code);
+CREATE INDEX idx_holdertrade_ann_date ON stock_stk_holdertrade(ann_date);
+
+COMMENT ON TABLE stock_stk_holdertrade IS '股东增减持表（Tushare stk_holdertrade 接口）';
+COMMENT ON COLUMN stock_stk_holdertrade.ts_code IS 'TS股票代码';
+COMMENT ON COLUMN stock_stk_holdertrade.ann_date IS '公告日期';
+COMMENT ON COLUMN stock_stk_holdertrade.holder_name IS '股东名称';
+COMMENT ON COLUMN stock_stk_holdertrade.holder_type IS '股东类型';
+COMMENT ON COLUMN stock_stk_holdertrade.in_de IS '增减持方向（IN增持/DE减持）';
+COMMENT ON COLUMN stock_stk_holdertrade.change_vol IS '变动数量（股）';
+COMMENT ON COLUMN stock_stk_holdertrade.change_ratio IS '变动比例(%)';
+COMMENT ON COLUMN stock_stk_holdertrade.after_share IS '变动后持股';
+COMMENT ON COLUMN stock_stk_holdertrade.after_ratio IS '变动后持股比例(%)';
+COMMENT ON COLUMN stock_stk_holdertrade.avg_price IS '增/减持均价';
+COMMENT ON COLUMN stock_stk_holdertrade.total_share IS '总股本';
+COMMENT ON COLUMN stock_stk_holdertrade.begin_date IS '变动开始日期';
+COMMENT ON COLUMN stock_stk_holdertrade.close_date IS '变动结束日期';

@@ -1212,3 +1212,115 @@ class StockShareFloat(Base):
 	__table_args__ = (
 		UniqueConstraint('ts_code', 'ann_date', 'float_date', 'holder_name', name='uq_share_float_unique'),
 	)
+
+
+class StockStkHoldernumber(Base):
+	"""股东人数表"""
+	__tablename__ = 'stock_stk_holdernumber'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	ann_date = Column(DateTime, comment='公告日期')
+	end_date = Column(DateTime, nullable=False, comment='截止日期')
+	holder_num = Column(Integer, comment='股东户数')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'end_date', name='uq_holdernumber_unique'),
+	)
+
+
+class StockTop10Holders(Base):
+	"""前十大股东表"""
+	__tablename__ = 'stock_top10_holders'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	ann_date = Column(DateTime, comment='公告日期')
+	end_date = Column(DateTime, nullable=False, comment='报告期')
+	holder_name = Column(String(200), nullable=False, comment='股东名称')
+	hold_amount = Column(Numeric(18, 2), comment='持有数量（股）')
+	hold_ratio = Column(Numeric(8, 4), comment='占总股本比例(%)')
+	hold_float_ratio = Column(Numeric(8, 4), comment='占流通股本比例(%)')
+	hold_change = Column(Numeric(8, 4), comment='持股变动')
+	holder_type = Column(String(50), comment='股东类型')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'end_date', 'holder_name', name='uq_top10_holders_unique'),
+	)
+
+
+class StockTop10FloatHolders(Base):
+	"""前十大流通股东表"""
+	__tablename__ = 'stock_top10_float_holders'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	ann_date = Column(DateTime, comment='公告日期')
+	end_date = Column(DateTime, nullable=False, comment='报告期')
+	holder_name = Column(String(200), nullable=False, comment='股东名称')
+	hold_amount = Column(Numeric(18, 2), comment='持有数量（股）')
+	hold_ratio = Column(Numeric(8, 4), comment='占总股本比例(%)')
+	hold_float_ratio = Column(Numeric(8, 4), comment='占流通股本比例(%)')
+	hold_change = Column(Numeric(8, 4), comment='持股变动')
+	holder_type = Column(String(50), comment='股东类型')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'end_date', 'holder_name', name='uq_top10_float_holders_unique'),
+	)
+
+
+class StockPledgeStat(Base):
+	"""股权质押统计表"""
+	__tablename__ = 'stock_pledge_stat'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	end_date = Column(DateTime, nullable=False, comment='截止日期')
+	pledge_count = Column(Integer, comment='质押次数')
+	unrest_pledge = Column(Numeric(18, 2), comment='无限售股质押数量（万股）')
+	rest_pledge = Column(Numeric(18, 2), comment='限售股质押数量（万股）')
+	total_share = Column(Numeric(18, 2), comment='质押总股本（万股）')
+	pledge_ratio = Column(Numeric(8, 4), comment='质押比例(%)')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'end_date', name='uq_pledge_stat_unique'),
+	)
+
+
+class StockStkHoldertrade(Base):
+	"""股东增减持表"""
+	__tablename__ = 'stock_stk_holdertrade'
+
+	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+	ts_code = Column(String(20), nullable=False, index=True, comment='TS股票代码')
+	ann_date = Column(DateTime, comment='公告日期')
+	holder_name = Column(String(200), nullable=False, comment='股东名称')
+	holder_type = Column(String(10), comment='股东类型')
+	in_de = Column(String(2), comment='增减持方向（IN增持/DE减持）')
+	change_vol = Column(Numeric(18, 2), comment='变动数量（股）')
+	change_ratio = Column(Numeric(8, 4), comment='变动比例(%)')
+	after_share = Column(Numeric(18, 2), comment='变动后持股')
+	after_ratio = Column(Numeric(8, 4), comment='变动后持股比例(%)')
+	avg_price = Column(Numeric(12, 4), comment='增/减持均价')
+	total_share = Column(Numeric(18, 2), comment='总股本')
+	begin_date = Column(DateTime, comment='变动开始日期')
+	close_date = Column(DateTime, comment='变动结束日期')
+	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'holder_name', 'in_de', name='uq_holdertrade_unique'),
+	)

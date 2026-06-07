@@ -150,6 +150,11 @@ from shared.database.repositories.market.fundamental.disclosure_date_repo import
 from shared.database.repositories.market.fundamental.share_float_repo import StockShareFloatRepository
 from shared.database.repositories.market.quote.stock_monthly_repo import StockMonthlyRepository
 from shared.database.repositories.market.quote.stock_weekly_repo import StockWeeklyRepository
+from shared.database.repositories.market.fundamental.holdernumber_repo import StockHoldernumberRepository
+from shared.database.repositories.market.fundamental.top10_holders_repo import StockTop10HoldersRepository
+from shared.database.repositories.market.fundamental.top10_float_holders_repo import StockTop10FloatHoldersRepository
+from shared.database.repositories.market.fundamental.pledge_stat_repo import StockPledgeStatRepository
+from shared.database.repositories.market.fundamental.holdertrade_repo import StockHoldertradeRepository
 from shared.sources.source_factory import DataSourceFactory
 
 # 配置日志
@@ -296,6 +301,9 @@ _TYPE_LABEL = {
 	'index_weekly': '指数周线(index_weekly)', 'cpi': 'CPI(cpi)', 'ppi': 'PPI(ppi)', 'gdp': 'GDP(gdp)',
 	'stock_hsgt': '沪深港通列表(stock_hsgt)', 'st_stockrisk': 'ST风险板(st_stockrisk)',
 	'disclosure_date': '财报披露日(disclosure_date)', 'share_float': '限售股解禁(share_float)',
+	'stk_holdernumber': '股东人数(holdernumber)', 'top10_holders': '前十大股东(top10_holders)',
+	'top10_floatholders': '前十大流通股东(top10_floatholders)', 'pledge_stat': '股权质押(pledge_stat)',
+	'stk_holdertrade': '股东增减持(holdertrade)',
 }
 
 
@@ -355,6 +363,11 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 		DataType.BUSINESS_INCOME: (len(ts_codes) if ts_codes else 5000) * 15,  # 主营业务构成
 		DataType.STOCK_HSGT: 2000, DataType.ST_STOCKRISK: 200,
 		DataType.DISCLOSURE_DATE: 5000, DataType.SHARE_FLOAT: 500,
+		DataType.STK_HOLDERNUMBER: len(ts_codes) * 20 if ts_codes else 100000,
+		DataType.TOP10_HOLDERS: len(ts_codes) * 10 if ts_codes else 50000,
+		DataType.TOP10_FLOAT_HOLDERS: len(ts_codes) * 10 if ts_codes else 50000,
+		DataType.PLEDGE_STAT: len(ts_codes) if ts_codes else 5000,
+		DataType.STK_HOLDERTRADE: 3000,
 	}
 	return estimates.get(data_type, 100)
 
@@ -536,6 +549,13 @@ class DataSyncService:
 		self.disclosure_date_repo = DisclosureDateRepository(session)  # financial_disclosure_dates
 		self.share_float_repo = StockShareFloatRepository(session)  # stock_share_float（限售股解禁）
 
+		# --- 股东数据 ---
+		self.holdernumber_repo = StockHoldernumberRepository(session)  # stock_stk_holdernumber（股东人数）
+		self.top10_holders_repo = StockTop10HoldersRepository(session)  # stock_top10_holders（前十大股东）
+		self.top10_float_holders_repo = StockTop10FloatHoldersRepository(session)  # stock_top10_float_holders（前十大流通股东）
+		self.pledge_stat_repo = StockPledgeStatRepository(session)  # stock_pledge_stat（股权质押统计）
+		self.holdertrade_repo = StockHoldertradeRepository(session)  # stock_stk_holdertrade（股东增减持）
+
 		# ========== 线程池（避免 Tushare 同步调用阻塞事件循环） ==========
 		# Tushare/Baostock 的 HTTP 请求是同步阻塞的，必须在独立线程中执行。
 		# worker 数量从配置文件 settings.ENGINES.max_workers 读取，默认 8。
@@ -613,6 +633,12 @@ class DataSyncService:
 			DataType.ST_STOCKRISK: self._sync_st_stockrisk,
 			DataType.DISCLOSURE_DATE: self._sync_disclosure_date,
 			DataType.SHARE_FLOAT: self._sync_share_float,
+			# 股东数据
+			DataType.STK_HOLDERNUMBER: self._sync_stk_holdernumber,
+			DataType.TOP10_HOLDERS: self._sync_top10_holders,
+			DataType.TOP10_FLOAT_HOLDERS: self._sync_top10_float_holders,
+			DataType.PLEDGE_STAT: self._sync_pledge_stat,
+			DataType.STK_HOLDERTRADE: self._sync_stk_holdertrade,
 		}
 
 	@property
@@ -4398,6 +4424,242 @@ class DataSyncService:
 			logger.error(f"限售股解禁同步失败: {_fmt_err(e, 150)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
 			        "message": f"限售股解禁同步失败: {str(e)}"}
+
+	async def _sync_stk_holdernumber(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步股东人数（stock_stk_holdernumber 表，逐股拉取全历史）。
+
+		Args:
+			start_date: 未使用（逐股拉取全量）
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [s.ts_code for s in stocks]
+
+		async def _process_one(session, ts_code):
+			repo = StockHoldernumberRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
+			try:
+				df = await self._cancellable_run_in_executor(source.get_stk_holdernumber, ts_code=ts_code)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data = list({(d.get('ts_code'), d.get('ann_date'), d.get('end_date')): d for d in data}.values())
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
+			except Exception as e:
+				logger.error(f"[股东人数] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "股东人数(holdernumber)", slow_threshold=30.0):
+			logger.info(f"[股东人数] 并行同步 {len(ts_codes)} 只, 并发=8")
+			result = await self._parallel_for_each(ts_codes, "股东人数", task_id, user_id, _process_one, rate_key="holdernumber")
+			if not result.get("cancelled"):
+				result["message"] = "股东人数数据同步完成"
+			return result
+
+	async def _sync_top10_holders(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步前十大股东（stock_top10_holders 表，逐股拉取全量）。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [s.ts_code for s in stocks]
+
+		async def _process_one(session, ts_code):
+			repo = StockTop10HoldersRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
+			try:
+				df = await self._cancellable_run_in_executor(source.get_top10_holders, ts_code=ts_code)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data = list({(d.get('ts_code'), d.get('ann_date'), d.get('end_date'), d.get('holder_name')): d for d in data}.values())
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
+			except Exception as e:
+				logger.error(f"[前十大股东] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "前十大股东(top10_holders)", slow_threshold=30.0):
+			logger.info(f"[前十大股东] 并行同步 {len(ts_codes)} 只, 并发=8")
+			result = await self._parallel_for_each(ts_codes, "前十大股东", task_id, user_id, _process_one, rate_key="top10_holders")
+			if not result.get("cancelled"):
+				result["message"] = "前十大股东数据同步完成"
+			return result
+
+	async def _sync_top10_float_holders(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步前十大流通股东（stock_top10_float_holders 表，逐股拉取全量）。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [s.ts_code for s in stocks]
+
+		async def _process_one(session, ts_code):
+			repo = StockTop10FloatHoldersRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
+			try:
+				df = await self._cancellable_run_in_executor(source.get_top10_floatholders, ts_code=ts_code)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				data = list({(d.get('ts_code'), d.get('ann_date'), d.get('end_date'), d.get('holder_name')): d for d in data}.values())
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
+			except Exception as e:
+				logger.error(f"[前十大流通股东] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "前十大流通股东(top10_floatholders)", slow_threshold=30.0):
+			logger.info(f"[前十大流通股东] 并行同步 {len(ts_codes)} 只, 并发=8")
+			result = await self._parallel_for_each(ts_codes, "前十大流通股东", task_id, user_id, _process_one, rate_key="top10_floatholders")
+			if not result.get("cancelled"):
+				result["message"] = "前十大流通股东数据同步完成"
+			return result
+
+	async def _sync_pledge_stat(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步股权质押统计（stock_pledge_stat 表，逐股拉取全量）。
+
+		Args:
+			start_date: 未使用
+			end_date: 未使用
+			ts_codes: 股票代码列表（None → 全部活跃股票）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [s.ts_code for s in stocks]
+
+		async def _process_one(session, ts_code):
+			repo = StockPledgeStatRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
+			try:
+				df = await self._cancellable_run_in_executor(source.get_pledge_stat, ts_code=ts_code)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('end_date',))
+				data = list({(d.get('ts_code'), d.get('end_date')): d for d in data}.values())
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
+			except Exception as e:
+				logger.error(f"[股权质押] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "股权质押(pledge_stat)", slow_threshold=30.0):
+			logger.info(f"[股权质押] 并行同步 {len(ts_codes)} 只, 并发=8")
+			result = await self._parallel_for_each(ts_codes, "股权质押", task_id, user_id, _process_one, rate_key="pledge_stat")
+			if not result.get("cancelled"):
+				result["message"] = "股权质押统计数据同步完成"
+			return result
+
+	async def _sync_stk_holdertrade(
+			self, start_date: Optional[date], end_date: Optional[date],
+			ts_codes: Optional[List[str]], task_id: str,
+			user_id: Optional[str] = None, **_kwargs
+	) -> Dict[str, Any]:
+		"""同步股东增减持（stock_stk_holdertrade 表，按日期范围拉取）。
+
+		默认拉取最近 90 天的增减持数据。
+
+		Args:
+			start_date: 公告起始日期（None → 90天前）
+			end_date: 公告结束日期（None → 今天）
+			ts_codes: 未使用（全市场按日期拉取）
+			task_id: 任务 ID
+			user_id: 用户标识
+
+		Returns:
+			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		if not end_date:
+			end_date = datetime.now().date()
+		if not start_date:
+			start_date = end_date - timedelta(days=90)
+		records_added = 0
+		records_failed = 0
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		try:
+			df = await self._cancellable_run_in_executor(
+				source.get_stk_holdertrade, start_date=start_str, end_date=end_str)
+			if df.empty:
+				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
+				        "total_items": 0, "message": f"股东增减持同步完成（{start_str}~{end_str}无数据）"}
+			data = _convert_records_datetime(df.to_dict('records'))
+			_preprocess_records(data, date_fields=('ann_date', 'begin_date', 'close_date'))
+			data = list({(d.get('ts_code'), d.get('ann_date'), d.get('holder_name'), d.get('in_de')): d
+			             for d in data}.values())
+			if hasattr(self.holdertrade_repo, "bulk_upsert"):
+				records_added += await self.holdertrade_repo.bulk_upsert(data)
+			else:
+				for item in data:
+					try:
+						await self.holdertrade_repo.create(item)
+						records_added += 1
+					except Exception:
+						try:
+							await self.holdertrade_repo.update_by(
+								{"ts_code": item["ts_code"], "ann_date": item.get("ann_date"),
+								 "holder_name": item["holder_name"], "in_de": item.get("in_de")}, item)
+						except Exception as _ue:
+							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
+							records_failed += 1
+			await self.session.commit()
+			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			        "total_items": records_added + records_failed, "message": f"股东增减持同步完成（{start_str}~{end_str}）"}
+		except Exception as e:
+			logger.error(f"股东增减持同步失败: {_fmt_err(e, 150)}")
+			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
+			        "message": f"股东增减持同步失败: {str(e)}"}
 
 	async def _update_progress(
 			self,

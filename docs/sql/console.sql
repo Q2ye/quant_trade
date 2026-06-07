@@ -17,6 +17,10 @@ SELECT id, task_id, status, start_time FROM data_sync_tasks WHERE status = 'runn
 -- 股票基础表
 select * from stock_basic;
 select count(*) from stock_basic;
+-- A股日线行情表（TimescaleDB超表）
+select * from  stock_daily;
+select count(*) from stock_daily;
+delete from stock_daily;
 -- 月线行情表（TimescaleDB超表）
 select * from stock_monthly;
 select count(*) from stock_monthly;
@@ -121,11 +125,20 @@ select count(*) from  stk_managers;
 select * from  stk_rewards;
 select count(*) from  stk_rewards;
 
+-- 沪深港通股票列表
+select * from  stock_hsgt;
+select count(*) from  stock_hsgt;
+-- ST风险警示板股票
+select * from  stock_st_risk;
+select count(*) from  stock_st_risk;
+-- 财报披露日期
+select * from  financial_disclosure_dates;
+select count(*) from  financial_disclosure_dates;
+-- 限售股解禁
+select * from  stock_share_float;
+select count(*) from  stock_share_float;
 
--- A股日线行情表（TimescaleDB超表）
-select * from  stock_daily;
-select count(*) from stock_daily;
-delete from stock_daily;
+
 
 -- 回测任务
 select * from backtest_tasks;
@@ -154,3 +167,4 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 
 
 drop table stk_managers
+

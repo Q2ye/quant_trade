@@ -820,6 +820,12 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
     # ===== 指数扩展 =====
     "index_weight":          DataTypeInfo(code="index_weight",          name="指数成分权重", description="指数成分股及权重分布数据",                     estimated_time=30,  requires_clean=False, is_core=False),
     "index_weekly":          DataTypeInfo(code="index_weekly",          name="指数周线行情", description="指数周K线行情数据",                             estimated_time=20,  requires_clean=True,  is_core=False),
+    # ===== 股东数据 =====
+    "stk_holdernumber":      DataTypeInfo(code="stk_holdernumber",      name="股东人数",     description="上市公司股东户数变化趋势，散户化/机构化分析核心数据",     estimated_time=60,  requires_clean=False, is_core=False),
+    "top10_holders":         DataTypeInfo(code="top10_holders",         name="前十大股东",   description="上市公司前十大股东持有数量及比例，筹码集中度分析",       estimated_time=90,  requires_clean=False, is_core=False),
+    "top10_floatholders":    DataTypeInfo(code="top10_floatholders",    name="前十大流通股东", description="上市公司前十大流通股东持有数量及比例，机构持仓变动追踪", estimated_time=90,  requires_clean=False, is_core=False),
+    "pledge_stat":           DataTypeInfo(code="pledge_stat",           name="股权质押统计", description="上市公司股权质押汇总数据（质押次数/质押比例），风险预警核心", estimated_time=60,  requires_clean=False, is_core=False),
+    "stk_holdertrade":       DataTypeInfo(code="stk_holdertrade",       name="股东增减持",   description="大股东/高管增减持明细，产业资本行为信号",                 estimated_time=30,  requires_clean=False, is_core=False),
 }
 
 

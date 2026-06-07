@@ -896,3 +896,138 @@ class TushareSource(BaseDataSource):
 		except Exception as e:
 			logger.error(f"获取GDP数据失败: {e}")
 			return pd.DataFrame()
+
+	# ==================== 股东数据 ====================
+
+	def get_stk_holdernumber (self, ts_code: str = '', start_date: str = '',
+	                          end_date: str = '') -> pd.DataFrame:
+		"""获取股东人数（Tushare stk_holdernumber 接口）
+
+		Args:
+			ts_code: 股票代码（空=全市场）
+			start_date: 公告开始日期
+			end_date: 公告结束日期
+		Returns:
+			DataFrame: columns: ts_code, ann_date, end_date, holder_num
+		"""
+		try:
+			kwargs = {}
+			if ts_code:
+				kwargs['ts_code'] = ts_code
+			if start_date:
+				kwargs['start_date'] = start_date
+			if end_date:
+				kwargs['end_date'] = end_date
+			df = self.pro.stk_holdernumber(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'end_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取股东人数失败: {e}")
+			return pd.DataFrame()
+
+	def get_top10_holders (self, ts_code: str, period: str = '') -> pd.DataFrame:
+		"""获取前十大股东（Tushare top10_holders 接口）
+
+		Args:
+			ts_code: 股票代码（必填）
+			period: 报告期（YYYYMMDD）
+		Returns:
+			DataFrame: columns: ts_code, ann_date, end_date, holder_name,
+			           hold_amount, hold_ratio, hold_float_ratio, hold_change, holder_type
+		"""
+		try:
+			kwargs = {'ts_code': ts_code}
+			if period:
+				kwargs['period'] = period
+			df = self.pro.top10_holders(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'end_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取前十大股东失败: {e}")
+			return pd.DataFrame()
+
+	def get_top10_floatholders (self, ts_code: str, period: str = '') -> pd.DataFrame:
+		"""获取前十大流通股东（Tushare top10_floatholders 接口）
+
+		Args:
+			ts_code: 股票代码（必填）
+			period: 报告期（YYYYMMDD）
+		Returns:
+			DataFrame: columns: ts_code, ann_date, end_date, holder_name,
+			           hold_amount, hold_ratio, hold_float_ratio, hold_change, holder_type
+		"""
+		try:
+			kwargs = {'ts_code': ts_code}
+			if period:
+				kwargs['period'] = period
+			df = self.pro.top10_floatholders(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'end_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取前十大流通股东失败: {e}")
+			return pd.DataFrame()
+
+	def get_pledge_stat (self, ts_code: str = '') -> pd.DataFrame:
+		"""获取股权质押统计（Tushare pledge_stat 接口）
+
+		Args:
+			ts_code: 股票代码（空=全市场）
+		Returns:
+			DataFrame: columns: ts_code, end_date, pledge_count, unrest_pledge,
+			           rest_pledge, total_share, pledge_ratio
+		"""
+		try:
+			kwargs = {}
+			if ts_code:
+				kwargs['ts_code'] = ts_code
+			df = self.pro.pledge_stat(**kwargs)
+			if df is not None and not df.empty:
+				if 'end_date' in df.columns:
+					df['end_date'] = pd.to_datetime(df['end_date'])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取股权质押统计失败: {e}")
+			return pd.DataFrame()
+
+	def get_stk_holdertrade (self, ts_code: str = '', start_date: str = '',
+	                         end_date: str = '', trade_type: str = '') -> pd.DataFrame:
+		"""获取股东增减持（Tushare stk_holdertrade 接口）
+
+		Args:
+			ts_code: 股票代码
+			start_date: 公告开始日期
+			end_date: 公告结束日期
+			trade_type: IN增持/DE减持
+		Returns:
+			DataFrame: columns: ts_code, ann_date, holder_name, holder_type,
+			           in_de, change_vol, change_ratio, after_share, after_ratio,
+			           avg_price, total_share, begin_date, close_date
+		"""
+		try:
+			kwargs = {}
+			if ts_code:
+				kwargs['ts_code'] = ts_code
+			if start_date:
+				kwargs['start_date'] = start_date
+			if end_date:
+				kwargs['end_date'] = end_date
+			if trade_type:
+				kwargs['trade_type'] = trade_type
+			df = self.pro.stk_holdertrade(**kwargs)
+			if df is not None and not df.empty:
+				for col in ('ann_date', 'begin_date', 'close_date'):
+					if col in df.columns:
+						df[col] = pd.to_datetime(df[col])
+			return df if df is not None else pd.DataFrame()
+		except Exception as e:
+			logger.error(f"获取股东增减持失败: {e}")
+			return pd.DataFrame()

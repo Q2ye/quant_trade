@@ -233,6 +233,11 @@ class SyncConfig:
 		"st_stockrisk": 1000,
 		"disclosure_date": 3000,
 		"share_float": 6000,
+		"stk_holdernumber": 3000,
+		"top10_holders": 500,
+		"top10_floatholders": 500,
+		"pledge_stat": 1000,
+		"stk_holdertrade": 3000,
 	}
 
 	# 超时配置（秒）
@@ -266,6 +271,11 @@ class SyncConfig:
 		"st_stockrisk": 120,
 		"disclosure_date": 120,
 		"share_float": 120,
+		"stk_holdernumber": 300,
+		"top10_holders": 300,
+		"top10_floatholders": 300,
+		"pledge_stat": 300,
+		"stk_holdertrade": 300,
 	}
 
 	# 同步时间窗口
@@ -335,7 +345,8 @@ class DataSource:
 			"etf_minute", "etf_daily", "fund_adj_factor", "etf_share",
 			"financial_income", "financial_balance", "financial_cashflow",
 			"forecast", "express", "dividend", "financial_indicator",
-			"audit_opinion", "business_income", "index_data", "calendar"
+			"audit_opinion", "business_income", "index_data", "calendar",
+			"stk_holdernumber", "top10_holders", "top10_floatholders", "pledge_stat", "stk_holdertrade"
 		],
 		BAOSTOCK: ["daily_quotes", "financial_data", "index_data"],
 		SINA: ["realtime_quotes"],
@@ -474,6 +485,13 @@ class DataType(str, Enum):
 	INDEX_WEIGHT = "index_weight"  # 指数成分股权重
 	INDEX_WEEKLY = "index_weekly"  # 指数周线行情
 
+	# 股东数据
+	STK_HOLDERNUMBER = "stk_holdernumber"  # 股东人数
+	TOP10_HOLDERS = "top10_holders"  # 前十大股东
+	TOP10_FLOAT_HOLDERS = "top10_floatholders"  # 前十大流通股东
+	PLEDGE_STAT = "pledge_stat"  # 股权质押统计
+	STK_HOLDERTRADE = "stk_holdertrade"  # 股东增减持
+
 	# 其他
 	HOLDERS_DATA = "holders_data"  # 股东数据
 	SPLIT_DATA = "split_data"  # 拆分数据
@@ -519,7 +537,12 @@ class DataType(str, Enum):
 			cls.BUSINESS_INCOME: "主营业务构成",
 			cls.INDEX_DATA: "指数数据",
 			cls.CALENDAR: "交易日历",
-			cls.FACTOR_DATA: "因子数据"
+			cls.FACTOR_DATA: "因子数据",
+			cls.STK_HOLDERNUMBER: "股东人数",
+			cls.TOP10_HOLDERS: "前十大股东",
+			cls.TOP10_FLOAT_HOLDERS: "前十大流通股东",
+			cls.PLEDGE_STAT: "股权质押统计",
+			cls.STK_HOLDERTRADE: "股东增减持",
 		}
 		return display_names.get(data_type, data_type)
 
