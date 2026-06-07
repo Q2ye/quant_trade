@@ -235,7 +235,7 @@ class TushareSource(BaseDataSource):
 			end_date: 结束日期
 		"""
 		try:
-			df = self.pro.stock_suspended(start_date=start_date, end_date=end_date)
+			df = self.pro.suspend_d(start_date=start_date, end_date=end_date)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()

@@ -20,7 +20,9 @@ select count(*) from stock_basic;
 -- 月线行情表（TimescaleDB超表）
 select * from stock_monthly;
 select count(*) from stock_monthly;
-
+-- 周线行情表（TimescaleDB超表）
+select * from stock_weekly;
+select count(*) from stock_weekly;
 -- ST股票列表表
 select * from stock_st_list;
 select count(*) from stock_st_list;

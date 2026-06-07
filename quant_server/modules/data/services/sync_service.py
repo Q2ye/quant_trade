@@ -3191,16 +3191,31 @@ class DataSyncService:
 			if df.empty: return {"records_added": 0, "records_updated": 0, "records_failed": 0, "total_items": 0,
 			                     "message": "ST列表同步完成（无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
-			if hasattr(self.st_list_repo, "batch_upsert"):
-				records_added += await self.st_list_repo.bulk_upsert(data)
-			else:
-				_preprocess_records(data, date_fields=('start_date',))
-				for item in data:
-					if item.get('start_date'): item['trade_date'] = item['start_date']
-					name = item.get('name', '')
-					if 'ST' in str(name).upper():
-						item['st_type'] = '*ST' if '*ST' in str(name) else 'ST'
-						item['st_type_name'] = name
+			_preprocess_records(data, date_fields=('ann_date', 'start_date', 'end_date'))
+
+			# 过滤 ST 记录并映射字段（start_date → trade_date）
+			st_data = []
+			for item in data:
+				name = str(item.get('name', ''))
+				if 'ST' in name.upper():
+					st_data.append({
+						'ts_code': item.get('ts_code', ''),
+						'name': name,
+						'trade_date': item.get('start_date'),
+						'st_type': '*ST' if '*ST' in name else 'ST',
+						'st_type_name': name,
+					})
+
+			# 按唯一键去重（Tushare 偶发返回同股票同日多条记录）。
+			# 先按 st_type 优先级排序（*ST > ST），确保去重时保留严重等级更高的记录。
+			st_data.sort(key=lambda d: 0 if '*ST' in str(d.get('st_type', '')) else 1)
+			st_data = list({(d.get('ts_code'), d.get('trade_date')): d for d in st_data}.values())
+
+			if st_data:
+				if hasattr(self.st_list_repo, "batch_upsert"):
+					records_added += await self.st_list_repo.bulk_upsert(st_data)
+				else:
+					for item in st_data:
 						try:
 							await self.st_list_repo.create(item);
 							records_added += 1
