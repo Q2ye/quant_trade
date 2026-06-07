@@ -91,24 +91,27 @@ class StkManager(Base):
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='管理层ID')
 	ts_code = Column(String(20), ForeignKey('stock_company.ts_code'), index=True, comment='TS代码')
-	ann_date = Column(DateTime, nullable=False, comment='公告日期')
+	ann_date = Column(DateTime, comment='公告日期（可能为空）')
 	name = Column(String(50), nullable=False, comment='姓名')
 	gender = Column(String(1), comment='性别：M-男，F-女')
 	lev = Column(String(20), comment='职位类别')
-	title = Column(String(100), nullable=False, comment='职位')
+	title = Column(String(100), comment='职位（可能为空）')
 	edu = Column(String(20), comment='学历')
 	national = Column(String(20), comment='国籍')
-	birthday = Column(DateTime, comment='出生日期')
-	begin_date = Column(DateTime, comment='任职开始日期')
-	end_date = Column(DateTime, comment='任职结束日期')
+	birthday = Column(String(10), comment='出生日期（格式不统一 YYYY/YYYYMM/YYYYMMDD）')
+	begin_date = Column(String(10), comment='任职开始日期（格式不统一 YYYY/YYYYMM/YYYYMMDD）')
+	end_date = Column(String(10), comment='任职结束日期（格式不统一）')
 	resume = Column(Text, comment='个人简历')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'name', 'title', name='uq_stk_managers_unique'),
+	)
+
 	# 关联关系
 	company = relationship("StockCompany", back_populates="managers")
-	# rewards relationship removed — StkReward now has direct ts_code FK
 
 
 class StkReward(Base):
@@ -118,17 +121,19 @@ class StkReward(Base):
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='薪酬ID')
 	ts_code = Column(String(20), ForeignKey('stock_company.ts_code'), nullable=False, index=True,
                  comment='TS股票代码')
-	ann_date = Column(DateTime, nullable=False, comment='公告日期')
-	end_date = Column(DateTime, nullable=False, comment='截止日期')
+	ann_date = Column(DateTime, comment='公告日期（可能为空）')
+	end_date = Column(DateTime, comment='截止日期（可能为空）')
 	name = Column(String(50), nullable=False, comment='高层姓名')
-	title = Column(String(100), nullable=False, comment='担任职务')
+	title = Column(String(100), comment='担任职务（可能为空）')
 	reward = Column(Numeric(18, 2), nullable=False, comment='报酬')
 	hold_vol = Column(BigInteger, nullable=False, comment='持股数')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
-	# manager relationship removed — StkReward now uses direct ts_code FK
+	__table_args__ = (
+		UniqueConstraint('ts_code', 'ann_date', 'end_date', 'name', 'title', name='uq_stk_rewards_unique'),
+	)
 
 
 # ==================== 行情数据 ====================
@@ -707,14 +712,13 @@ class IndexWeight(Base):
 
 	id = Column(String(36), default=lambda: str(uuid.uuid4()), comment='UUID')
 	index_code = Column(String(20), ForeignKey('index_basic.ts_code', ondelete='CASCADE'), nullable=False, comment='指数代码，关联 index_basic.ts_code')
-	ts_code = Column(String(20), ForeignKey('stock_basic.ts_code', ondelete='CASCADE'), nullable=False, comment='股票代码，关联 stock_basic.ts_code')
+	ts_code = Column(String(20), nullable=False, comment='成分股代码')
 	weight = Column(Numeric(12, 8), comment='成分股权重（小数形式，如 0.0352 表示 3.52%）')
 	trade_date = Column(Date, nullable=False, comment='权重生效日期')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
 	# 关联关系 — 使用 backref 避免修改 IndexBasic / StockBasic
 	index = relationship("IndexBasic", backref="index_weights")
-	stock = relationship("StockBasic", backref="index_weights")
 
 	# 索引
 	__table_args__ = (
@@ -1050,15 +1054,44 @@ class MacroCpi(Base):
 
 
 class MacroPpi(Base):
-    """PPI工业生产者出厂价格指数月度数据"""
+    """PPI工业生产者出厂价格指数月度数据（对齐 Tushare cn_ppi 接口）"""
     __tablename__ = 'macro_ppi'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     month = Column(String(6), nullable=False, unique=True, comment='月份YYYYMM')
-    nt_val = Column(Numeric(10, 4), comment='全国当月值')
-    nt_yoy = Column(Numeric(10, 4), comment='全国同比(%)')
-    nt_mom = Column(Numeric(10, 4), comment='全国环比(%)')
-    nt_accu = Column(Numeric(10, 4), comment='全国累计值')
+    # 全部工业品
+    ppi_yoy = Column(Numeric(10, 4), comment='全部工业品:当月同比')
+    ppi_mom = Column(Numeric(10, 4), comment='全部工业品:环比')
+    ppi_accu = Column(Numeric(10, 4), comment='全部工业品:累计同比')
+    # 生产资料
+    ppi_mp_yoy = Column(Numeric(10, 4), comment='生产资料:当月同比')
+    ppi_mp_mom = Column(Numeric(10, 4), comment='生产资料:环比')
+    ppi_mp_accu = Column(Numeric(10, 4), comment='生产资料:累计同比')
+    ppi_mp_qm_yoy = Column(Numeric(10, 4), comment='生产资料-采掘业:当月同比')
+    ppi_mp_qm_mom = Column(Numeric(10, 4), comment='生产资料-采掘业:环比')
+    ppi_mp_qm_accu = Column(Numeric(10, 4), comment='生产资料-采掘业:累计同比')
+    ppi_mp_rm_yoy = Column(Numeric(10, 4), comment='生产资料-原料业:当月同比')
+    ppi_mp_rm_mom = Column(Numeric(10, 4), comment='生产资料-原料业:环比')
+    ppi_mp_rm_accu = Column(Numeric(10, 4), comment='生产资料-原料业:累计同比')
+    ppi_mp_p_yoy = Column(Numeric(10, 4), comment='生产资料-加工业:当月同比')
+    ppi_mp_p_mom = Column(Numeric(10, 4), comment='生产资料-加工业:环比')
+    ppi_mp_p_accu = Column(Numeric(10, 4), comment='生产资料-加工业:累计同比')
+    # 生活资料
+    ppi_cg_yoy = Column(Numeric(10, 4), comment='生活资料:当月同比')
+    ppi_cg_mom = Column(Numeric(10, 4), comment='生活资料:环比')
+    ppi_cg_accu = Column(Numeric(10, 4), comment='生活资料:累计同比')
+    ppi_cg_f_yoy = Column(Numeric(10, 4), comment='生活资料-食品:当月同比')
+    ppi_cg_f_mom = Column(Numeric(10, 4), comment='生活资料-食品:环比')
+    ppi_cg_f_accu = Column(Numeric(10, 4), comment='生活资料-食品:累计同比')
+    ppi_cg_c_yoy = Column(Numeric(10, 4), comment='生活资料-衣着:当月同比')
+    ppi_cg_c_mom = Column(Numeric(10, 4), comment='生活资料-衣着:环比')
+    ppi_cg_c_accu = Column(Numeric(10, 4), comment='生活资料-衣着:累计同比')
+    ppi_cg_adu_yoy = Column(Numeric(10, 4), comment='生活资料-日用品:当月同比')
+    ppi_cg_adu_mom = Column(Numeric(10, 4), comment='生活资料-日用品:环比')
+    ppi_cg_adu_accu = Column(Numeric(10, 4), comment='生活资料-日用品:累计同比')
+    ppi_cg_dcg_yoy = Column(Numeric(10, 4), comment='生活资料-耐用消费品:当月同比')
+    ppi_cg_dcg_mom = Column(Numeric(10, 4), comment='生活资料-耐用消费品:环比')
+    ppi_cg_dcg_accu = Column(Numeric(10, 4), comment='生活资料-耐用消费品:累计同比')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

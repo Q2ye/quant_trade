@@ -153,3 +153,4 @@ ENGINES:
     rewards: 3               # 管理层薪酬持股（stk_rewards）
     etf_daily: 3             # ETF日线（fund_daily，800次/分钟）
     etf_adj: 2               # ETF复权因子（fund_adj，500次/分钟）
+    index_daily: 2           # 指数日线（index_daily，500次/分钟）

@@ -676,21 +676,23 @@ class TushareSource(BaseDataSource):
 
 	# ==================== 指数相关扩展接口 ====================
 
-	def get_index_weight (self, index_code: str, trade_date: str = '') -> pd.DataFrame:
+	def get_index_weight(self, index_code: str = '', trade_date: str = '') -> pd.DataFrame:
 		"""获取指数成分股权重（Tushare index_weight 接口）
 
 		Args:
-			index_code: 指数代码（如 000300.SH 沪深300）
+			index_code: 指数代码（如 000300.SH 沪深300），为空时获取所有指数权重
 			trade_date: 交易日期（YYYYMMDD，空=最新交易日）
 
 		Returns:
 			DataFrame: columns: index_code, con_code, weight, trade_date
 		"""
 		try:
+			kwargs = {}
 			if trade_date:
-				df = self.pro.index_weight(index_code=index_code, trade_date=trade_date)
-			else:
-				df = self.pro.index_weight(index_code=index_code)
+				kwargs['trade_date'] = trade_date
+			if index_code:
+				kwargs['index_code'] = index_code
+			df = self.pro.index_weight(**kwargs)
 			if df is not None and not df.empty:
 				if 'trade_date' in df.columns:
 					df['trade_date'] = pd.to_datetime(df['trade_date'])
@@ -742,15 +744,7 @@ class TushareSource(BaseDataSource):
 			return pd.DataFrame()
 
 	def get_ppi (self, start_date: str = '', end_date: str = '') -> pd.DataFrame:
-		"""获取PPI工业生产者出厂价格指数（Tushare cn_ppi 接口）
-
-		Args:
-			start_date: 开始日期（YYYYMMDD）
-			end_date: 结束日期（YYYYMMDD）
-
-		Returns:
-			DataFrame: PPI 月度数据
-		"""
+		"""获取PPI工业生产者出厂价格指数（Tushare cn_ppi 接口）"""
 		try:
 			df = self.pro.cn_ppi(start_date=start_date, end_date=end_date)
 			return df if df is not None else pd.DataFrame()

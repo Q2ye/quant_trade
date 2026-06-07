@@ -17,6 +17,13 @@ SELECT id, task_id, status, start_time FROM data_sync_tasks WHERE status = 'runn
 -- 股票基础表
 select * from stock_basic;
 select count(*) from stock_basic;
+-- 月线行情表（TimescaleDB超表）
+select * from stock_monthly;
+select count(*) from stock_monthly;
+
+-- ST股票列表表
+select * from stock_st_list;
+select count(*) from stock_st_list;
 
 -- 指数基本信息表
 select * from index_basic;
@@ -24,6 +31,10 @@ select count(*) from index_basic;
 -- 指数日线行情数据（TimescaleDB超表）
 select * from index_daily;
 select count(*) from index_daily;
+
+-- 指数成分股权重表
+select * from index_weight;
+select count(*) from index_weight;
 -- 复权因子表（TimescaleDB超表）
 select * from stock_adj_factor where ts_code='000030.SZ';
 select count(*) from stock_adj_factor;
@@ -101,7 +112,12 @@ select count(*) from  stock_forecasts;
 select * from  stock_expresses;
 select count(*) from  stock_expresses;
 
-
+-- 上市公司管理层表
+select * from  stk_managers;
+select count(*) from  stk_managers;
+-- 上市公司管理层薪酬和持股信息
+select * from  stk_rewards;
+select count(*) from  stk_rewards;
 
 
 -- A股日线行情表（TimescaleDB超表）
@@ -135,5 +151,4 @@ FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
 
 
-drop table stock_expresses
-
+drop table stk_managers

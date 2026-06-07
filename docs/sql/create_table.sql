@@ -343,16 +343,16 @@ CREATE INDEX idx_stock_company_setup_date ON stock_company(setup_date);
 CREATE TABLE stk_managers (
     id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL,
-    ann_date DATE NOT NULL,
+    ann_date DATE,
     name VARCHAR(50) NOT NULL,
     gender CHAR(1),
     lev VARCHAR(20),
-    title VARCHAR(100) NOT NULL,
+    title VARCHAR(100),
     edu VARCHAR(20),
     national VARCHAR(20),
-    birthday DATE,
-    begin_date DATE,
-    end_date DATE,
+    birthday VARCHAR(10),
+    begin_date VARCHAR(10),
+    end_date VARCHAR(10),
     resume TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -384,26 +384,26 @@ CREATE INDEX idx_stk_managers_end_date ON stk_managers(end_date);
 CREATE TABLE stk_rewards (
     id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL,
-    ann_date DATE NOT NULL,
-    end_date DATE NOT NULL,
+    ann_date DATE,
+    end_date DATE,
     name VARCHAR(50) NOT NULL,
-    title VARCHAR(100) NOT NULL,
+    title VARCHAR(100),
     reward NUMERIC(18, 2) NOT NULL,
     hold_vol BIGINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, ann_date, end_date, name, title)
 );
+CREATE INDEX IF NOT EXISTS idx_stk_rewards_ts_code ON stk_rewards(ts_code);
 
 COMMENT ON TABLE stk_rewards IS '上市公司管理层薪酬与持股明细表';
-COMMENT ON COLUMN stk_rewards.ts_code IS 'TS股票代码（e.g. 600000.SH）';
+COMMENT ON COLUMN stk_rewards.ts_code IS 'TS股票代码';
 COMMENT ON COLUMN stk_rewards.ann_date IS '公告发布日期';
 COMMENT ON COLUMN stk_rewards.end_date IS '报告期截止日期';
 COMMENT ON COLUMN stk_rewards.name IS '管理层成员姓名';
-COMMENT ON COLUMN stk_rewards.title IS '担任职务（e.g. 董事长/财务总监）';
-COMMENT ON COLUMN stk_rewards.reward IS '年度税前报酬总额（单位：元）';
-COMMENT ON COLUMN stk_rewards.hold_vol IS '期末直接持股数量（单位：股）';
-COMMENT ON COLUMN stk_rewards.created_at IS '数据入库时间（自动记录）';
-COMMENT ON COLUMN stk_rewards.updated_at IS '数据最后更新时间（自动更新）';
+COMMENT ON COLUMN stk_rewards.title IS '担任职务';
+COMMENT ON COLUMN stk_rewards.reward IS '年度税前报酬（元）';
+COMMENT ON COLUMN stk_rewards.hold_vol IS '期末直接持股数（股）';
 
 -- ------------------------------------------------------------
 -- 宏观经济数据表
@@ -437,16 +437,21 @@ COMMENT ON COLUMN macro_cpi.nt_mom IS '全国环比(%)';
 -- PPI 工业生产者出厂价格指数
 CREATE TABLE macro_ppi (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid(),
-    month VARCHAR(6) NOT NULL,
-    nt_val NUMERIC(10, 4),
-    nt_yoy NUMERIC(10, 4),
-    nt_mom NUMERIC(10, 4),
-    nt_accu NUMERIC(10, 4),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(month)
+    month VARCHAR(6) NOT NULL UNIQUE,
+    ppi_yoy NUMERIC(10,4), ppi_mom NUMERIC(10,4), ppi_accu NUMERIC(10,4),
+    ppi_mp_yoy NUMERIC(10,4), ppi_mp_mom NUMERIC(10,4), ppi_mp_accu NUMERIC(10,4),
+    ppi_mp_qm_yoy NUMERIC(10,4), ppi_mp_qm_mom NUMERIC(10,4), ppi_mp_qm_accu NUMERIC(10,4),
+    ppi_mp_rm_yoy NUMERIC(10,4), ppi_mp_rm_mom NUMERIC(10,4), ppi_mp_rm_accu NUMERIC(10,4),
+    ppi_mp_p_yoy NUMERIC(10,4), ppi_mp_p_mom NUMERIC(10,4), ppi_mp_p_accu NUMERIC(10,4),
+    ppi_cg_yoy NUMERIC(10,4), ppi_cg_mom NUMERIC(10,4), ppi_cg_accu NUMERIC(10,4),
+    ppi_cg_f_yoy NUMERIC(10,4), ppi_cg_f_mom NUMERIC(10,4), ppi_cg_f_accu NUMERIC(10,4),
+    ppi_cg_c_yoy NUMERIC(10,4), ppi_cg_c_mom NUMERIC(10,4), ppi_cg_c_accu NUMERIC(10,4),
+    ppi_cg_adu_yoy NUMERIC(10,4), ppi_cg_adu_mom NUMERIC(10,4), ppi_cg_adu_accu NUMERIC(10,4),
+    ppi_cg_dcg_yoy NUMERIC(10,4), ppi_cg_dcg_mom NUMERIC(10,4), ppi_cg_dcg_accu NUMERIC(10,4),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-COMMENT ON TABLE macro_ppi IS 'PPI工业生产者出厂价格指数月度数据';
-COMMENT ON COLUMN macro_ppi.month IS '月份（YYYYMM）';
+COMMENT ON TABLE macro_ppi IS 'PPI工业生产者出厂价格指数（对齐 Tushare cn_ppi）';
+COMMENT ON COLUMN macro_ppi.month IS '月份YYYYMM';
 
 -- GDP 国内生产总值
 CREATE TABLE macro_gdp (
