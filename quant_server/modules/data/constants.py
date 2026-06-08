@@ -495,8 +495,6 @@ class DataType(str, Enum):
 	# 指数数据
 	INDEX_BASIC = "index_basic"  # 指数基本信息
 	INDEX_DAILY = "index_daily"  # 指数日线行情
-	INDEX_DATA = "index_data"  # 指数数据（兼容旧版）
-
 	# 通用
 	CALENDAR = "calendar"  # 交易日历
 
@@ -522,8 +520,8 @@ class DataType(str, Enum):
 	# 大盘指数每日指标
 	INDEX_DAILYBASIC = "index_dailybasic"  # 大盘指数每日指标
 
-	# 卖方盈利预测
-	FORECAST_PRO = "forecast_pro"  # 卖方盈利预测
+	# 券商盈利预测
+	FORECAST_PRO = "forecast_pro"  # 券商盈利预测
 
 	# 沪深港通资金流向
 	MONEYFLOW_HSGT = "moneyflow_hsgt"  # 沪深港通资金流向
@@ -552,7 +550,7 @@ class DataType(str, Enum):
 			# 指数
 			cls.INDEX_BASIC: "指数基本信息", cls.INDEX_DAILY: "指数日线行情",
 			cls.INDEX_WEEKLY: "指数周线行情", cls.INDEX_WEIGHT: "指数成分权重",
-			cls.INDEX_DATA: "指数数据(旧)", cls.INDEX_DAILYBASIC: "大盘指数指标",
+			cls.INDEX_DAILYBASIC: "大盘指数指标",
 			cls.INDEX_SW_CLASSIFY: "申万行业分类", cls.INDEX_SW_MEMBER: "申万行业成分",
 			cls.INDEX_SW_DAILY: "申万行业日线",
 			# 财务
@@ -573,7 +571,7 @@ class DataType(str, Enum):
 			# 宏观
 			cls.CPI: "CPI居民消费价格", cls.PPI: "PPI工业出厂价格", cls.GDP: "GDP国内生产总值",
 			# 事件/其他
-			cls.ST_LIST: "ST历史列表", cls.MONEYFLOW_HSGT: "沪深港通资金流",
+			cls.ST_LIST: "ST历史列表", cls.MONEYFLOW_HSGT: "沪深港通资金流向",
 			# 因子
 			cls.STK_FACTOR: "技术因子(基础)", cls.STK_FACTOR_PRO: "技术因子(专业)",
 			cls.IDX_FACTOR_PRO: "指数技术因子(专业)",

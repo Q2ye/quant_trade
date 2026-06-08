@@ -1242,9 +1242,9 @@ class StockTop10Holders(Base):
 	end_date = Column(DateTime, nullable=False, comment='报告期')
 	holder_name = Column(String(200), nullable=False, comment='股东名称')
 	hold_amount = Column(Numeric(18, 2), comment='持有数量（股）')
-	hold_ratio = Column(Numeric(8, 4), comment='占总股本比例(%)')
-	hold_float_ratio = Column(Numeric(8, 4), comment='占流通股本比例(%)')
-	hold_change = Column(Numeric(8, 4), comment='持股变动')
+	hold_ratio = Column(Numeric(18, 4), comment='占总股本比例(%)')
+	hold_float_ratio = Column(Numeric(18, 4), comment='占流通股本比例(%)')
+	hold_change = Column(Numeric(18, 4), comment='持股变动')
 	holder_type = Column(String(50), comment='股东类型')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -1265,9 +1265,9 @@ class StockTop10FloatHolders(Base):
 	end_date = Column(DateTime, nullable=False, comment='报告期')
 	holder_name = Column(String(200), nullable=False, comment='股东名称')
 	hold_amount = Column(Numeric(18, 2), comment='持有数量（股）')
-	hold_ratio = Column(Numeric(8, 4), comment='占总股本比例(%)')
-	hold_float_ratio = Column(Numeric(8, 4), comment='占流通股本比例(%)')
-	hold_change = Column(Numeric(8, 4), comment='持股变动')
+	hold_ratio = Column(Numeric(18, 4), comment='占总股本比例(%)')
+	hold_float_ratio = Column(Numeric(18, 4), comment='占流通股本比例(%)')
+	hold_change = Column(Numeric(18, 4), comment='持股变动')
 	holder_type = Column(String(50), comment='股东类型')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -1425,7 +1425,7 @@ class IndexDailyBasic(Base):
 
 
 class StockForecastPro(Base):
-	"""卖方盈利预测表"""
+	"""券商盈利预测表"""
 	__tablename__ = 'stock_forecast_pro'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -1465,7 +1465,7 @@ class StockMoneyflowHsgt(Base):
 	__tablename__ = 'stock_moneyflow_hsgt'
 
 	id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-	trade_date = Column(Date, nullable=False, unique=True, comment='交易日期')
+	trade_date = Column(Date, nullable=False, comment='交易日期')
 	ggt_ss = Column(Numeric(18, 2), comment='港股通（上海）')
 	ggt_sz = Column(Numeric(18, 2), comment='港股通（深圳）')
 	hgt = Column(Numeric(18, 2), comment='沪股通')
@@ -1475,6 +1475,10 @@ class StockMoneyflowHsgt(Base):
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc))
+
+	__table_args__ = (
+		UniqueConstraint('trade_date', name='uq_moneyflow_hsgt_date'),
+	)
 
 
 # ==================== Phase 4 新增 ====================

@@ -1090,7 +1090,7 @@ class TushareSource(BaseDataSource):
 
 	def get_report_rc(self, ts_code: str = '', start_date: str = '',
 	                  end_date: str = '') -> pd.DataFrame:
-		"""获取卖方盈利预测（Tushare report_rc 接口）"""
+		"""获取券商盈利预测（Tushare report_rc 接口）"""
 		try:
 			kwargs = {}
 			if ts_code: kwargs['ts_code'] = ts_code
@@ -1103,7 +1103,7 @@ class TushareSource(BaseDataSource):
 						df[col] = pd.to_datetime(df[col])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取卖方盈利预测失败: {e}")
+			logger.error(f"获取券商盈利预测失败: {e}")
 			return pd.DataFrame()
 
 	def get_stk_limit(self, ts_code: str = '', trade_date: str = '',

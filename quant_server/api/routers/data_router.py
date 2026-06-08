@@ -816,7 +816,6 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
 	"index_basic":            DataTypeInfo(code="index_basic",            name="指数基本信息", description="沪深市场全部指数基本信息（代码/名称/基期等）", estimated_time=30,  requires_clean=False, is_core=True),
 	"index_daily":            DataTypeInfo(code="index_daily",            name="指数日线行情", description="指数日线行情数据（开高低收量额）",           estimated_time=60,  requires_clean=True,  is_core=True),
-	"index_data":             DataTypeInfo(code="index_data",             name="指数数据(旧)", description="[兼容旧版]指数日线行情数据",                 estimated_time=60,  requires_clean=True,  is_core=False),
 	# ===== 扩展：选股加分项 =====
 	"dividend":               DataTypeInfo(code="dividend",               name="分红送股",     description="上市公司分红送股预案及实施数据",             estimated_time=60,  requires_clean=False, is_core=False),
 	"forecast":               DataTypeInfo(code="forecast",               name="业绩预告",     description="上市公司业绩预告数据",                       estimated_time=60,  requires_clean=False, is_core=False),
@@ -859,7 +858,7 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
     "index_sw_classify":     DataTypeInfo(code="index_sw_classify",     name="申万行业分类", description="申万行业分类（L1/L2/L3三级），个股行业归属分析基础",     estimated_time=20,  requires_clean=False, is_core=False),
     "index_sw_member":       DataTypeInfo(code="index_sw_member",       name="申万行业成分", description="申万行业成分股权重及进出记录，行业轮动策略核心",           estimated_time=20,  requires_clean=False, is_core=False),
     "index_dailybasic":      DataTypeInfo(code="index_dailybasic",      name="大盘指数每日指标", description="6大核心指数每日估值/市值/换手率指标，市场情绪分析",     estimated_time=30,  requires_clean=False, is_core=False),
-    "forecast_pro":          DataTypeInfo(code="forecast_pro",          name="卖方盈利预测", description="券商研究所盈利预测报告（需8000积分），基本面量化核心",     estimated_time=120, requires_clean=False, is_core=False),
+    "forecast_pro":          DataTypeInfo(code="forecast_pro",          name="券商盈利预测", description="券商研究所盈利预测报告（需8000积分），基本面量化核心",     estimated_time=120, requires_clean=False, is_core=False),
     "moneyflow_hsgt":        DataTypeInfo(code="moneyflow_hsgt",        name="沪深港通资金流向", description="北向/南向资金当日净流入流出数据，外资动向追踪",         estimated_time=15,  requires_clean=False, is_core=False),
     "index_sw_daily":        DataTypeInfo(code="index_sw_daily",        name="申万行业日线行情", description="申万2021版31个一级行业日线行情（OHLCV+PE+PB+市值）", estimated_time=120, requires_clean=False, is_core=False),
     # ===== Phase 4 新增 =====

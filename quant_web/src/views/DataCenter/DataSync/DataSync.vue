@@ -149,14 +149,6 @@ function fmtTime(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`
 }
 
-async function loadSyncMeta() {
-  try {
-    syncMeta.value = await dataSyncService.getSyncTypesMeta()
-  } catch (e) {
-    console.error("加载同步元数据失败", e)
-  }
-}
-
 // --- 同步配置 ---
 const syncConfig = reactive({
   data_types: [] as string[],
@@ -272,11 +264,21 @@ const subTaskDots = computed(() => {
 });
 
 const formatDataTypeDisplay = (t: SyncTaskRecord): string => {
-  const types = t.data_types && t.data_types.length > 0 ? t.data_types : [t.task_type];
-  return types.map(code => {
-    const info = supportedDataTypes.value.find(dt => dt.code === code);
-    return info ? info.name : code;
-  }).join(" · ");
+  // 使用 syncMeta 的类型标签（统一来源）
+  if (syncMeta.value) {
+    for (const g of syncMeta.value.groups) {
+      const found = g.types.find(ty => ty.data_type === t.task_type)
+      if (found) return found.label
+    }
+  }
+  // 兜底：旧 supportedDataTypes
+  if (t.data_types?.length) {
+    return t.data_types.map(code => {
+      const info = supportedDataTypes.value.find(dt => dt.code === code);
+      return info ? info.name : code;
+    }).join(" · ");
+  }
+  return t.task_type;
 };
 
 const recentHistoryDisplay = computed(() => {
@@ -311,13 +313,15 @@ const initializePage = async () => {
   pageLoading.value = true;
   pageError.value = false;
   try {
-    const [status, types, quality, tasksResult] = await Promise.all([
+    const [status, types, quality, tasksResult, meta] = await Promise.all([
       dataSyncService.getSyncStatus().catch(() => null),
       dataSyncService.getSupportedDataTypes().catch(() => [] as DataTypeInfo[]),
       dataSyncService.getDataQuality().catch(() => null),
       dataSyncService.getSyncTasks({ limit: 10 }).catch(() => ({ success: true, tasks: [], total: 0 })),
+      dataSyncService.getSyncTypesMeta().catch(() => null),
     ]);
     syncStatus.value = status;
+    syncMeta.value = meta;
     supportedDataTypes.value = [...types].sort((a, b) => {
       if (a.is_available === false && b.is_available !== false) return 1;
       if (a.is_available !== false && b.is_available === false) return -1;
@@ -538,7 +542,7 @@ const toggleDataType = (code: string) => {
 };
 
 // --- 生命周期 ---
-onMounted(() => { initializePage(); loadSyncMeta(); });
+onMounted(() => { initializePage(); });
 onUnmounted(() => { stopStatusPolling(); });
 
 watch(

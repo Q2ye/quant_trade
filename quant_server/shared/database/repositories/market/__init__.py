@@ -73,7 +73,7 @@ from .fundamental import (
     IndexSwMemberRepository,  # 申万行业成分
     IndexSwDailyRepository,  # 申万行业日线
     IndexDailyBasicRepository,  # 大盘指数每日指标
-    StockForecastProRepository,  # 卖方盈利预测
+    StockForecastProRepository,  # 券商盈利预测
     StockMoneyflowHsgtRepository,  # 沪深港通资金流向
 
     # Phase 4 (修复+P2)

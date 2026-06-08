@@ -66,7 +66,6 @@ select count(*) from  fund_adj_factor;
 -- 指数技术因子专业版
 select * from  index_factor_pro_daily;
 select count(*) from  index_factor_pro_daily;
-
 -- 每日涨跌停价格表（TimescaleDB超表）
 select * from  stock_daily_limit;
 select count(*) from  stock_daily_limit;
@@ -144,9 +143,20 @@ select count(*) from  financial_disclosure_dates;
 -- 限售股解禁
 select * from  stock_share_float;
 select count(*) from  stock_share_float;
+-- 前十大流通股东
+select * from  stock_top10_float_holders;
+select count(*) from  stock_top10_float_holders;
+-- 前十大股东
+select * from  stock_top10_holders;
+select count(*) from  stock_top10_holders;
 
 
-
+-- 股票技术因子基础版表（~33列，不复权指标）
+select * from  stock_factor_daily;
+select count(*) from  stock_factor_daily;
+-- 股票技术因子专业版表（200+列，含三复权版本的所有技术指标）
+select * from  stock_factor_pro_daily;
+select count(*) from  stock_factor_pro_daily;
 -- 回测任务
 select * from backtest_tasks;
 

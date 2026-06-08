@@ -117,7 +117,7 @@ ENGINES:
   # 共享线程池大小
   # 用于 batch_sync_data 的 ThreadPoolExecutor，所有并行类型共享
   # ------------------------------------------------------------------
-  max_workers: 16
+  max_workers: 32
 
   # ------------------------------------------------------------------
   # 跨类型并发数
@@ -157,3 +157,8 @@ ENGINES:
     stk_factor: 3             # 股票技术因子（stk_factor，500次/分钟@8000积分）
     stk_factor_pro: 2         # 股票技术因子专业版（stk_factor_pro，500次/分钟@8000积分）
     idx_factor_pro: 2         # 指数技术因子专业版（idx_factor_pro，500次/分钟）
+    holdernumber: 3           # 股东人数（stk_holdernumber，500次/分钟）
+    top10_holders: 3           # 前十大股东（top10_holders，500次/分钟）
+    top10_floatholders: 3      # 前十大流通股东（top10_floatholders，500次/分钟）
+    pledge_stat: 3             # 股权质押统计（pledge_stat，500次/分钟）
+    sw_daily: 3                # 申万日线行情（sw_daily，500次/分钟）

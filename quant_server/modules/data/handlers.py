@@ -1150,7 +1150,9 @@ async def quick_sync_data (
 		raise BusinessException(f"创建快速同步任务失败: {str(e)}")
 
 
-# 类型→中文标签（模块级，get_sync_types_meta 和 get_sync_tasks 共用）
+# 同步类型元数据缓存（60 秒 TTL，页面频繁刷新不重复构建）
+_sync_meta_cache: Optional["SyncTypesMetaResponse"] = None
+_sync_meta_cache_time: float = 0.0
 
 async def get_sync_types_meta(
 	session: AsyncSession,
@@ -1159,6 +1161,11 @@ async def get_sync_types_meta(
 	获取同步类型的分组元数据和预设任务列表。
 	供前端渲染分组视图、列表视图和预设任务。
 	"""
+	import time as _t
+	global _sync_meta_cache, _sync_meta_cache_time
+	if _sync_meta_cache is not None and (_t.time() - _sync_meta_cache_time) < 60:
+		return _sync_meta_cache
+
 	from modules.data.schemas import SyncTypesMetaResponse, SyncGroupMeta, SyncTypeMeta, SyncPresetMeta
 	from modules.data.constants import DataType
 
@@ -1235,7 +1242,7 @@ async def get_sync_types_meta(
 		# 5: 事件驱动
 		DataType.ST_LIST: ("5", "5.2", "stock_st_list", 30, "~3K条", False),
 		DataType.DISCLOSURE_DATE: ("5", "5.3", "financial_disclosure_dates", 15, "~5K条", False),
-		DataType.MONEYFLOW_HSGT: ("5", "5.4", "stock_moneyflow_hsgt", 15, "~300条", False),
+		DataType.MONEYFLOW_HSGT: ("1", "1.18", "stock_moneyflow_hsgt", 15, "~300条", True),
 		# 6: 宏观数据
 		DataType.CPI: ("6", "6.1", "macro_cpi", 10, "~200条", True),
 		DataType.PPI: ("6", "6.2", "macro_ppi", 10, "~200条", True),
@@ -1250,10 +1257,9 @@ async def get_sync_types_meta(
 		DataType.STOCK_HSGT: ("7", "7.7", "stock_hsgt", 20, "~2K条", False),
 		DataType.INDEX_SW_CLASSIFY: ("7", "7.8", "index_sw_classify", 15, "~400条", False),
 		DataType.INDEX_SW_MEMBER: ("7", "7.9", "index_sw_member", 20, "~5K条", False),
-		DataType.INDEX_DAILYBASIC: ("7", "7.10", "index_dailybasic", 30, "~1.5K条", False),
+		DataType.INDEX_DAILYBASIC: ("1", "1.16", "index_dailybasic", 30, "~1.5K条", True),
 		# 兼容
-		DataType.INDEX_DATA: ("1", "1.0", "index_daily+weight", 30, "兼容旧版", False),
-		DataType.INDEX_SW_DAILY: ("1", "1.16", "index_sw_daily", 120, "~7.7K条", False),
+		DataType.INDEX_SW_DAILY: ("1", "1.17", "index_sw_daily", 120, "~7.7K条", False),
 		DataType.TICK_QUOTES: ("1", "1.99", "", 0, "未实现", False),
 		DataType.MINUTE_QUOTES: ("4", "4.4", "stock_minute", 600, "7天×100只", False),
 		DataType.ETF_MINUTE: ("4", "4.5", "etf_minute", 300, "7天×50只", False),

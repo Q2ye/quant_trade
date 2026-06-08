@@ -319,8 +319,8 @@ _TYPE_LABEL = {
 	'index_sw_classify': '申万行业分类(index_sw)',
 	'index_sw_member': '申万行业成分(sw_member)',
 	'index_dailybasic': '大盘指数指标(index_dailybasic)',
-	'forecast_pro': '卖方盈利预测(forecast_pro)',
-	'moneyflow_hsgt': '沪深港通资金(hsgt)',
+	'forecast_pro': '券商盈利预测(forecast_pro)',
+	'moneyflow_hsgt': '沪深港通资金流向(moneyflow_hsgt)',
 		'index_sw_daily': '申万日线(index_sw_daily)',
 	'daily_limit': '涨跌停价格(daily_limit)',
 	'stk_factor': '技术因子基础版(stk_factor)',
@@ -593,7 +593,7 @@ class DataSyncService:
 		self.sw_classify_repo = IndexSwClassifyRepository(session)  # index_sw_classify（申万行业分类）
 		self.sw_member_repo = IndexSwMemberRepository(session)  # index_sw_member（申万行业成分）
 		self.index_dailybasic_repo = IndexDailyBasicRepository(session)  # index_dailybasic（大盘指数每日指标）
-		self.forecast_pro_repo = StockForecastProRepository(session)  # stock_forecast_pro（卖方盈利预测）
+		self.forecast_pro_repo = StockForecastProRepository(session)  # stock_forecast_pro（券商盈利预测）
 		self.moneyflow_hsgt_repo = StockMoneyflowHsgtRepository(session)  # stock_moneyflow_hsgt（沪深港通资金流向）
 		self.sw_daily_repo = IndexSwDailyRepository(session)  # index_sw_daily（申万行业日线行情）
 
@@ -673,7 +673,6 @@ class DataSyncService:
 			DataType.PPI: self._sync_ppi,
 			DataType.GDP: self._sync_gdp,
 			# 指数
-			DataType.INDEX_DATA: self._sync_index_data_with_weight,
 			DataType.INDEX_WEIGHT: self._sync_index_weight,
 			DataType.INDEX_WEEKLY: self._sync_index_weekly,
 			# 事件驱动数据
@@ -2518,19 +2517,20 @@ class DataSyncService:
 				result["message"] = "ETF日线数据同步完成"
 			return result
 
-	async def _sync_index_data_with_weight(
-			self,
-			start_date: Optional[date] = None,
-			end_date: Optional[date] = None,
-			ts_codes: Optional[List[str]] = None,
-			task_id: str = "",
-			user_id: Optional[str] = None,
-			**kwargs
-	) -> Dict[str, Any]:
-		"""同步指数日线 + 成分权重（兼容旧版 INDEX_DATA 类型）"""
-		result = await self._sync_index_daily(start_date, end_date, ts_codes, task_id, user_id)
-		return result or {"records_added": 0, "records_updated": 0, "records_failed": 0,
-		                  "total_items": 0, "message": "指数数据同步完成（无数据）"}
+# [DEPRECATED] INDEX_DATA is removed; use INDEX_DAILY + INDEX_WEIGHT separately instead.
+#	async def _sync_index_data_with_weight(
+#			self,
+#			start_date: Optional[date] = None,
+#			end_date: Optional[date] = None,
+#			ts_codes: Optional[List[str]] = None,
+#			task_id: str = "",
+#			user_id: Optional[str] = None,
+#			**kwargs
+#	) -> Dict[str, Any]:
+#		"""同步指数日线 + 成分权重（兼容旧版 INDEX_DATA 类型）"""
+#		result = await self._sync_index_daily(start_date, end_date, ts_codes, task_id, user_id)
+#		return result or {"records_added": 0, "records_updated": 0, "records_failed": 0,
+#		                  "total_items": 0, "message": "指数数据同步完成（无数据）"}
 
 	async def sync_index_weight(
 			self,
@@ -2780,33 +2780,41 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步指数周线行情（Tushare index_weekly 接口）。"""
-		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0
-		records_failed = 0
-		default_indices = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ']
-		indices = ts_codes if ts_codes else default_indices
-		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
-		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
-		for idx_code in indices:
+		"""同步指数周线行情（Tushare index_weekly 接口）。
+
+		默认拉取最近 365 天的周线数据，避免因日期太窄导致空返回。
+		"""
+		if not end_date: end_date = datetime.now().date()
+		if not start_date: start_date = end_date - timedelta(days=365)
+		start_str = start_date.strftime('%Y%m%d')
+		end_str = end_date.strftime('%Y%m%d')
+		if not ts_codes:
+			ts_codes = ['000001.SH', '399001.SZ', '000300.SH', '000905.SH', '399006.SZ']
+
+		async def _process_one(session, ts_code):
+			repo = IndexWeeklyRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				if hasattr(source, 'get_index_weekly'):
-					df = await self._cancellable_run_in_executor(source.get_index_weekly, ts_code=idx_code,
-					                                             start_date=start_str, end_date=end_str)
-					if not df.empty:
-						data = _convert_records_datetime(df.to_dict('records'))
-						_preprocess_records(data, date_fields=('trade_date',))
-						written = await self.index_weekly_repo.bulk_upsert(data)
-						records_added += written
-				else:
-					records_failed += 1
+				df = await self._cancellable_run_in_executor(
+					source.get_index_weekly, ts_code=ts_code,
+					start_date=start_str, end_date=end_str)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('trade_date',))
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"指数周线 {idx_code} 同步失败: {_fmt_err(e, 150)}")
-				records_failed += 1
-		return {"records_added": records_added, "records_updated": 0,
-		        "records_failed": records_failed,
-		        "total_items": records_added + records_failed,
-		        "message": f"指数周线行情同步完成: 新增={records_added}"}
+				logger.error(f"[指数周线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "指数周线(index_weekly)", slow_threshold=10.0):
+			logger.info(f"[指数周线] 并行同步 {len(ts_codes)} 只指数, 并发=5")
+			result = await self._parallel_for_each(ts_codes, "指数周线", task_id, user_id, _process_one,
+			                                       rate_key="index_weekly", max_concurrency=5)
+			if not result.get("cancelled"):
+				result["message"] = "指数周线行情同步完成"
+			return result
 
 	# ==================== Phase 4 新增同步方法 ====================
 
@@ -2855,27 +2863,33 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步股票技术因子基础版（stock_factor_daily 表，逐股拉取）。
 
-		默认拉取最近 1 个交易日、全部活跃股票。
+		未指定日期时全量拉取，指定日期时按范围拉取（数据每日 18:00 后更新）、全部活跃股票。
 		限流由 config.yaml sync_rate_limits.stk_factor 控制。
 		"""
-		if not end_date: end_date = datetime.now().date()
-		if not start_date: start_date = end_date - timedelta(days=1)
-		trade_date_str = end_date.strftime('%Y%m%d')
+		# 未指定日期时全量拉取，指定日期时按范围拉取
+		start_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_str = end_date.strftime('%Y%m%d') if end_date else ''
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 
 		async def _process_one(session, ts_code):
 			repo = StockFactorDailyRepository(session)
+			# 只保留模型定义列，防止 Tushare 返回多余列导致 PG 参数超限
+			_model_cols = {c.name for c in repo.model.__table__.columns}
 			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				df = await self._cancellable_run_in_executor(
-					source.get_stk_factor, ts_code=ts_code, trade_date=trade_date_str)
+				if start_str or end_str:
+					df = await self._cancellable_run_in_executor(
+						source.get_stk_factor, ts_code=ts_code, start_date=start_str, end_date=end_str)
+				else:
+					df = await self._cancellable_run_in_executor(
+						source.get_stk_factor, ts_code=ts_code)
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('trade_date',))
-				added = await repo.bulk_upsert(data)
+				_preprocess_records(data, date_fields=('trade_date',), known_cols=_model_cols)
+				added = await repo.bulk_upsert(data, chunk_size=100)  # 小批次防PG参数超限
 				return {"added": added, "updated": 0}
 			except Exception as e:
 				logger.error(f"[技术因子] {ts_code} 同步失败: {_fmt_err(e, 150)}")
@@ -2896,27 +2910,46 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步股票技术因子专业版（stock_factor_pro_daily 表，逐股拉取，200+列）。
 
-		默认拉取最近 1 个交易日、全部活跃股票。
+		未指定日期时全量拉取，指定日期时按范围拉取（数据每日 18:00 后更新）、全部活跃股票。
 		限流由 config.yaml sync_rate_limits.stk_factor_pro 控制。
 		"""
-		if not end_date: end_date = datetime.now().date()
-		if not start_date: start_date = end_date - timedelta(days=1)
-		trade_date_str = end_date.strftime('%Y%m%d')
+		# 未指定日期时全量拉取，指定日期时按范围拉取
+		start_str = start_date.strftime('%Y%m%d') if start_date else ''
+		end_str = end_date.strftime('%Y%m%d') if end_date else ''
 		if not ts_codes:
 			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
 
 		async def _process_one(session, ts_code):
 			repo = StockFactorProDailyRepository(session)
+			_model_cols = {c.name for c in repo.model.__table__.columns}
 			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				df = await self._cancellable_run_in_executor(
-					source.get_stk_factor_pro, ts_code=ts_code, trade_date=trade_date_str)
-				if df is None or df.empty:
+				all_data = []
+				if start_str or end_str:
+					df = await self._cancellable_run_in_executor(
+						source.get_stk_factor_pro, ts_code=ts_code, start_date=start_str, end_date=end_str)
+					if df is not None and not df.empty:
+						all_data = _convert_records_datetime(df.to_dict("records"))
+				else:
+					# 全量拉取：按年分段（1990年起），防止单次200+列响应过大导致断连
+					_FULL_SYNC_START_YEAR = 1990
+					current_year = datetime.now().year
+					for year in range(_FULL_SYNC_START_YEAR, current_year + 1):
+						if await self._is_cancelled():
+							return {"added": 0, "updated": 0, "failed": True}
+						try:
+							df = await self._cancellable_run_in_executor(
+								source.get_stk_factor_pro, ts_code=ts_code,
+								start_date=f"{year}0101", end_date=f"{year}1231")
+							if df is not None and not df.empty:
+								all_data.extend(_convert_records_datetime(df.to_dict("records")))
+						except Exception:
+							pass  # 单年失败不中断，继续下一年
+				if not all_data:
 					return {"added": 0, "updated": 0}
-				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('trade_date',))
-				added = await repo.bulk_upsert(data)
+				_preprocess_records(all_data, date_fields=('trade_date',), known_cols=_model_cols)
+				added = await repo.bulk_upsert(all_data, chunk_size=100)
 				return {"added": added, "updated": 0}
 			except Exception as e:
 				logger.error(f"[技术因子PRO] {ts_code} 同步失败: {_fmt_err(e, 150)}")
@@ -2956,15 +2989,37 @@ class DataSyncService:
 
 		async def _process_one(session, ts_code):
 			repo = IndexFactorProDailyRepository(session)
+			_model_cols = {c.name for c in repo.model.__table__.columns}
 			try:
-				df = await self._cancellable_run_in_executor(
-					source.get_idx_factor_pro, ts_code=ts_code,
-					start_date=s_str, end_date=e_str)
-				if df is None or df.empty:
+				all_data = []
+				# 按年分段拉取，防止大日期范围导致 200+ 列响应断连
+				span_days = (end_date - start_date).days
+				if span_days > 365:
+					y = start_date.year
+					while y <= end_date.year:
+						if await self._is_cancelled():
+							return {"added": 0, "updated": 0, "failed": True}
+						ys = date(y, 1, 1).strftime('%Y%m%d')
+						ye = date(y, 12, 31).strftime('%Y%m%d')
+						try:
+							df = await self._cancellable_run_in_executor(
+								source.get_idx_factor_pro, ts_code=ts_code,
+								start_date=ys, end_date=ye)
+							if df is not None and not df.empty:
+								all_data.extend(_convert_records_datetime(df.to_dict("records")))
+						except Exception:
+							pass  # 单年失败不中断
+						y += 1
+				else:
+					df = await self._cancellable_run_in_executor(
+						source.get_idx_factor_pro, ts_code=ts_code,
+						start_date=s_str, end_date=e_str)
+					if df is not None and not df.empty:
+						all_data = _convert_records_datetime(df.to_dict("records"))
+				if not all_data:
 					return {"added": 0, "updated": 0}
-				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('trade_date',))
-				added = await repo.bulk_upsert(data)
+				_preprocess_records(all_data, date_fields=('trade_date',), known_cols=_model_cols)
+				added = await repo.bulk_upsert(all_data, chunk_size=200)
 				return {"added": added, "updated": 0}
 			except Exception as e:
 				logger.error(f"[指数因子PRO] {ts_code} 同步失败: {_fmt_err(e, 150)}")
@@ -5093,7 +5148,7 @@ class DataSyncService:
 			user_id: Optional[str] = None,
 			**_kwargs
 	) -> Dict[str, Any]:
-		"""同步卖方盈利预测（stock_forecast_pro 表，按报告日期拉取）。
+		"""同步券商盈利预测（stock_forecast_pro 表，按报告日期拉取）。
 
 		调用 Tushare report_rc 接口，需要 8000 积分权限。
 		默认拉取近 90 天的报告。
@@ -5121,7 +5176,7 @@ class DataSyncService:
 				source.get_report_rc, start_date=start_str, end_date=end_str)
 			if df is None or df.empty:
 				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
-				        "total_items": 0, "message": f"卖方盈利预测同步完成（{start_str}~{end_str}无数据）"}
+				        "total_items": 0, "message": f"券商盈利预测同步完成（{start_str}~{end_str}无数据）"}
 			data = _convert_records_datetime(df.to_dict('records'))
 			_preprocess_records(data, date_fields=('report_date', 'create_time'))
 			# 批次内按唯一键去重
@@ -5140,16 +5195,16 @@ class DataSyncService:
 								{"ts_code": item["ts_code"], "report_date": item["report_date"],
 								 "org_name": item["org_name"], "quarter": item["quarter"]}, item)
 						except Exception as _ue:
-							logger.warning(f'卖方盈利预测写入失败: {_ue}')
+							logger.warning(f'券商盈利预测写入失败: {_ue}')
 							records_failed += 1
 			await self.session.commit()
 			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
 			        "total_items": records_added + records_failed,
-			        "message": f"卖方盈利预测同步完成（{start_str}~{end_str}）"}
+			        "message": f"券商盈利预测同步完成（{start_str}~{end_str}）"}
 		except Exception as e:
-			logger.error(f"卖方盈利预测同步失败: {_fmt_err(e, 150)}")
+			logger.error(f"券商盈利预测同步失败: {_fmt_err(e, 150)}")
 			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
-			        "message": f"卖方盈利预测同步失败: {str(e)}"}
+			        "message": f"券商盈利预测同步失败: {str(e)}"}
 
 	async def _sync_moneyflow_hsgt(
 			self,
@@ -5276,11 +5331,15 @@ class DataSyncService:
 					logger.error(f"[申万日线] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
-			_temp_repo = IndexSwDailyRepository(self.session)
-			if hasattr(_temp_repo, 'get_latest_trade_dates_batch'):
-				latest_dates_map = await _temp_repo.get_latest_trade_dates_batch(ts_codes)
-			else:
-				latest_dates_map = {}
+			# 使用独立 session，避免与 _parallel_for_each worker session 并发冲突
+			from shared.database.session import get_session_manager
+			_sm = get_session_manager()
+			async with _sm.get_session() as _batch_session:
+				_temp_repo = IndexSwDailyRepository(_batch_session)
+				if hasattr(_temp_repo, 'get_latest_trade_dates_batch'):
+					latest_dates_map = await _temp_repo.get_latest_trade_dates_batch(ts_codes)
+				else:
+					latest_dates_map = {}
 
 			logger.info(f"[申万日线] 并行同步 {len(ts_codes)} 只行业, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
 			result = await self._parallel_for_each(ts_codes, "申万日线", task_id, user_id, _process_one, rate_key="sw_daily")

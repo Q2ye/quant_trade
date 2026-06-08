@@ -120,8 +120,7 @@ const pagedRecords = computed(() => {
 const paginationTotal = computed(() => filteredRecords.value.length);
 
 const handleBack = () => {
-  if (window.history.length > 1) router.go(-1);
-  else router.push("/");
+  router.push({ name: "DataSync" });
 };
 
 function goToDetail(taskId: string) {
