@@ -150,10 +150,10 @@ class StockDaily(Base):
 	low = Column(Numeric(9, 3), nullable=False, comment='最低价')
 	close = Column(Numeric(9, 3), nullable=False, comment='收盘价')
 	pre_close = Column(Numeric(9, 3), nullable=False, comment='昨收价')
-	change = Column(Numeric(9, 3), nullable=False, comment='涨跌额')
-	pct_chg = Column(Numeric(7, 4), nullable=False, comment='涨跌幅（百分比）')
+	change = Column(Numeric(10, 3), nullable=False, comment='涨跌额')
+	pct_chg = Column(Numeric(10, 4), nullable=False, comment='涨跌幅（百分比）')
 	vol = Column(BigInteger, nullable=False, comment='成交量（手）')
-	amount = Column(Numeric(14, 4), nullable=False, comment='成交额（千元）')
+	amount = Column(Numeric(16, 4), nullable=False, comment='成交额（千元）')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
 	                    onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
@@ -181,7 +181,7 @@ class StockMinutes(Base):
 	low = Column(Numeric(9, 4), nullable=False, comment='最低价')
 	close = Column(Numeric(9, 4), nullable=False, comment='收盘价')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
+	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
 	# 关联关系
@@ -209,7 +209,7 @@ class StockWeekly(Base):
 	change = Column(Numeric(9, 4), nullable=False, comment='涨跌额')
 	pct_chg = Column(Numeric(8, 4), nullable=False, comment='涨跌幅')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
+	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
 	week_start = Column(DateTime, comment='周开始日期')
 	week_end = Column(DateTime, comment='周结束日期')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -240,7 +240,7 @@ class StockMonthly(Base):
 	change = Column(Numeric(9, 4), nullable=False, comment='涨跌额')
 	pct_chg = Column(Numeric(8, 4), nullable=False, comment='涨跌幅')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
+	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
 	month_start = Column(DateTime, comment='月开始日期')
 	month_end = Column(DateTime, comment='月结束日期')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -274,7 +274,7 @@ class StockAdjustedPrices(Base):
 	change = Column(Numeric(9, 4), nullable=False, comment='涨跌额')
 	pct_chg = Column(Numeric(8, 4), nullable=False, comment='涨跌幅')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
+	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
 	ma_values = Column(Text, comment='移动平均线值（JSON格式）')
 	adj_factor = Column(Numeric(18, 10), nullable=False, comment='复权因子')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -626,7 +626,7 @@ class EtfMinute(Base):
 	high = Column(Numeric(10, 4), nullable=False, comment='最高价')
 	low = Column(Numeric(10, 4), nullable=False, comment='最低价')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
+	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
 	# 关联关系

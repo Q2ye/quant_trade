@@ -2448,10 +2448,10 @@ CREATE TABLE stock_daily (
     low NUMERIC(9,3) NOT NULL,
     close NUMERIC(9,3),
     pre_close NUMERIC(9,3) NOT NULL,
-    change NUMERIC(9,3) NOT NULL,
+    change NUMERIC(10,3) NOT NULL,
     pct_chg NUMERIC(10,4) NOT NULL,
     vol BIGINT NOT NULL,
-    amount NUMERIC(14,4),
+    amount NUMERIC(16,4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -2511,7 +2511,7 @@ CREATE TABLE stock_weekly (
     change NUMERIC(9,4) NOT NULL,
     pct_chg NUMERIC(8,4) NOT NULL,
     vol BIGINT NOT NULL,
-    amount NUMERIC(16,4) NOT NULL,
+    amount NUMERIC(18,2) NOT NULL,
     week_start DATE,
     week_end DATE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

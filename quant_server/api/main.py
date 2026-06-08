@@ -125,6 +125,19 @@ def create_app (
 	)
 
 	# 添加异常处理器
+
+	# 请求耗时诊断中间件（排查同步期间路由变慢问题）
+	@app.middleware("http")
+	async def timing_middleware(request, call_next):
+		import time as _time
+		t0 = _time.monotonic()
+		response = await call_next(request)
+		elapsed = (_time.monotonic() - t0) * 1000
+		if elapsed > 1000:
+			logger.warning(f"[API慢请求] {request.method} {request.url.path} 耗时={elapsed:.0f}ms")
+		response.headers["X-Request-Time-Ms"] = str(int(elapsed))
+		return response
+
 	from api.handlers.exception_handlers import setup_exception_handlers
 	setup_exception_handlers(app)
 

@@ -414,8 +414,22 @@ class BaseRepository(Generic[T]):
 				index_elements=conflict_cols,
 				set_={c: getattr(stmt.excluded, c) for c in update_cols}
 			)
-			result = await self.session.execute(stmt)
-			total += result.rowcount
+			try:
+				result = await self.session.execute(stmt)
+				total += result.rowcount
+			except Exception as e:
+				# 诊断：记录溢出批次关键字段，定位具体列
+				demo = chunk[0] if chunk else {}
+				import logging
+				_log = logging.getLogger(__name__)
+				_log.error(
+					f"bulk_upsert 写入失败: 表={self.model.__tablename__} "
+					f"批次={i//chunk_size} 行数={len(chunk)} "
+					f"ts_code={demo.get('ts_code','?')} trade_date={demo.get('trade_date','?')} "
+					f"amount={demo.get('amount','-')} pct_chg={demo.get('pct_chg','-')} "
+					f"change={demo.get('change','-')} vol={demo.get('vol','-')}"
+				)
+				raise
 		return total
 
 	async def delete (self, id: Any, soft: bool = True) -> bool:

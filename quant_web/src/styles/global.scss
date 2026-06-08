@@ -490,7 +490,7 @@ body {
 
   // === 盒模型 ===
   position: relative;
-  margin: 0 0 24px 0;        // 紧贴 workspace 边界（无左右留白）
+  margin: 0 0 19px 0;        // 紧贴 workspace 边界（无左右留白）
   border-radius: 0;          // 无圆角：上/左/右紧贴 workspace 边界
   overflow: hidden;
 
@@ -533,7 +533,7 @@ body {
     content: "";
     position: absolute;
     top: -50px; right: -30px;
-    width: 220px; height: 220px;
+    width: 176px; height: 176px;
     background: radial-gradient(
       circle,
       rgba(68, 138, 255, 0.07) 0%,
@@ -551,8 +551,8 @@ body {
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 16px;
-    padding: 18px 24px;      // 垂直 18px 压缩头部高度
+    gap: 13px;
+    padding: 14px 19px;      // 垂直 18px 压缩头部高度
   }
 
   .title-section {
@@ -561,7 +561,7 @@ body {
   }
 
   .page-title {
-    font-size: 20px;         // 24 → 20，紧凑但层次清晰
+    font-size: vars.$page-title-font-size; // 统一引用变量 ×0.8
     font-weight: 600;        // 700 → 600，Inter 半粗体更精致
     letter-spacing: -0.01em; // 微紧缩字距，金融终端质感
     color: var(--n-text-color-1);
@@ -570,7 +570,7 @@ body {
   }
 
   .page-description {
-    font-size: 12px;         // 13 → 12
+    font-size: vars.$page-description-font-size; // 统一引用变量 ×0.8
     color: var(--n-text-color-3);
     margin: 0;
     line-height: 1.4;
@@ -611,7 +611,7 @@ body {
     margin-bottom: 16px;
 
     .header-content {
-      padding: 14px 16px;
+      padding: 11px 13px;
       flex-direction: column;
     }
   }
@@ -623,16 +623,16 @@ body {
    .content-section：内容区块，仅提供下边距（左右边距由 .main-content 负责）
    ========================================================================== */
 .main-content {
-  padding: 0 24px;
+  padding: 0 19px;
 }
 
 .content-section {
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 @media (max-width: 768px) {
   .main-content {
-    padding: 0 12px;
+    padding: 0 10px;
   }
 }
 
@@ -653,7 +653,7 @@ body {
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 /* 标准 2/4 列网格 —— 与下方 .grid-cols-* 原子工具类互补 */
@@ -661,18 +661,18 @@ body {
 .grid-2col {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 13px;
 }
 /* @deprecated 推荐使用 .grid + .grid-cols-4 组合，本类保留用于向后兼容 */
 .grid-4col {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 13px;
 }
 
 /* 内容区标准内边距 */
 .section-pad {
-  padding: 32px 16px;
+  padding: 26px 13px;
 }
 @media (min-width: 768px) {
   .section-pad {

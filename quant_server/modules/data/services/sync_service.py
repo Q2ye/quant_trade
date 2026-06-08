@@ -1236,7 +1236,7 @@ class DataSyncService:
 			functools.partial(fn, *args, **kwargs)  # partial 避免 lambda 闭包陷阱
 		)
 
-	async def _cancellable_run_in_executor(self, fn, *args, poll_interval: float = 1.0, **kwargs):
+	async def _cancellable_run_in_executor(self, fn, *args, poll_interval: float = 3.0, **kwargs):
 		"""
 		可取消的线程池执行器——在阻塞任务执行期间定期检查取消令牌。
 

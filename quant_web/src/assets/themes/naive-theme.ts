@@ -60,7 +60,7 @@ const THEME_CONSTANTS = {
 
     // 字体系统
     FONT_FAMILY: "'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", // 现代无衬线
-    FONT_SIZE_BASE: "14px", // 基础字体大小
+    FONT_SIZE_BASE: "11.2px", // 基础字体大小
 
     // 圆角系统 - 专业级，适中圆润
     BORDER_RADIUS: "6px", // 标准圆角
@@ -168,7 +168,7 @@ const THEME_CONSTANTS = {
 
     // 字体系统
     FONT_FAMILY: "'Inter', 'Segoe UI', sans-serif", // 浅色主题字体
-    FONT_SIZE_BASE: "14px", // 基础字体大小（保持一致）
+    FONT_SIZE_BASE: "11.2px", // 基础字体大小（保持一致）
 
     // 圆角系统
     BORDER_RADIUS: "4px", // 标准圆角（稍小）
@@ -493,18 +493,18 @@ export const TEXT_STATUS_STYLES = {
         ? THEME_CONSTANTS.DARK.STOCK_UP_COLOR
         : THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
     fontWeight: "500" as const,
-    fontSize: "14px",
+    fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_UP_COLOR,
       fontWeight: "500" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_UP_COLOR,
       fontWeight: "500" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
   },
 
@@ -515,18 +515,18 @@ export const TEXT_STATUS_STYLES = {
         ? THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR
         : THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
     fontWeight: "500" as const,
-    fontSize: "14px",
+    fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_DOWN_COLOR,
       fontWeight: "500" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_DOWN_COLOR,
       fontWeight: "500" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
   },
 
@@ -537,18 +537,18 @@ export const TEXT_STATUS_STYLES = {
         ? THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR
         : THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
     fontWeight: "400" as const,
-    fontSize: "14px",
+    fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     // 深色主题下的具体样式
     dark: {
       color: THEME_CONSTANTS.DARK.STOCK_FLAT_COLOR,
       fontWeight: "400" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
     // 浅色主题下的具体样式
     light: {
       color: THEME_CONSTANTS.LIGHT.STOCK_FLAT_COLOR,
       fontWeight: "400" as const,
-      fontSize: "14px",
+      fontSize: THEME_CONSTANTS.DARK.FONT_SIZE_BASE,
     },
   },
 } as const;
@@ -674,10 +674,10 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
 
   // 各组件主题配置（保持原有配置，使用统一常量）
   Button: {
-    heightMedium: "32px",
-    heightSmall: "28px",
-    heightTiny: "24px",
-    heightLarge: "36px",
+    heightMedium: "26px",
+    heightSmall: "22px",
+    heightTiny: "19px",
+    heightLarge: "29px",
     borderRadiusMedium: THEME_CONSTANTS.DARK.BORDER_RADIUS,
     borderRadiusSmall: THEME_CONSTANTS.DARK.BORDER_RADIUS_SM,
     colorPrimary: THEME_CONSTANTS.DARK.ACCENT_COLOR,
@@ -708,10 +708,21 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
   },
 
   // 其他组件配置保持不变，但使用统一常量...
+  Menu: {
+    fontSize: "12px",
+  },
+  DataTable: {
+    fontSize: "12px",
+  },
+  Tag: {
+    fontSize: "11px",
+  },
   Card: {
     color: THEME_CONSTANTS.DARK.CARD_BG,
     colorModal: THEME_CONSTANTS.DARK.CARD_BG,
     borderRadius: THEME_CONSTANTS.DARK.BORDER_RADIUS,
+    titleFontSize: "14px",
+    fontSize: "12px",
     titleTextColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     borderColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
@@ -789,10 +800,10 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
 
   // 各组件主题配置（保持原有配置，使用统一常量）
   Button: {
-    heightMedium: "32px",
-    heightSmall: "28px",
-    heightTiny: "24px",
-    heightLarge: "36px",
+    heightMedium: "26px",
+    heightSmall: "22px",
+    heightTiny: "19px",
+    heightLarge: "29px",
     borderRadiusMedium: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
     borderRadiusSmall: THEME_CONSTANTS.LIGHT.BORDER_RADIUS_SM,
     colorPrimary: THEME_CONSTANTS.LIGHT.ACCENT_COLOR,
@@ -811,6 +822,26 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
     borderHoverInfo: `1px solid ${THEME_CONSTANTS.LIGHT.ACCENT_COLOR}`,
   },
 
+  Card: {
+    color: THEME_CONSTANTS.LIGHT.CARD_BG,
+    borderRadius: THEME_CONSTANTS.LIGHT.BORDER_RADIUS,
+    titleFontSize: "14px",
+    fontSize: "12px",
+    titleTextColor: THEME_CONSTANTS.LIGHT.TEXT_PRIMARY,
+    textColor: THEME_CONSTANTS.LIGHT.TEXT_PRIMARY,
+    borderColor: THEME_CONSTANTS.LIGHT.BORDER_COLOR,
+    boxShadow: THEME_CONSTANTS.LIGHT.CARD_SHADOW,
+  },
+
+  Menu: {
+    fontSize: "12px",
+  },
+  DataTable: {
+    fontSize: "12px",
+  },
+  Tag: {
+    fontSize: "11px",
+  },
   // ... 其他组件配置（Card, DataTable, Input, Message等）保持原样，但确保使用THEME_CONSTANTS
 };
 

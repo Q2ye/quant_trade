@@ -159,7 +159,11 @@ select * from  stock_factor_pro_daily;
 select count(*) from  stock_factor_pro_daily;
 -- 回测任务
 select * from backtest_tasks;
+-- stock_daily: Numeric(14,4) → Numeric(16,2)，容纳更大成交额
+ALTER TABLE stock_daily ALTER COLUMN amount TYPE NUMERIC(16, 2);
 
+-- stock_weekly: Numeric(16,4) → Numeric(18,2)，安全扩展
+ALTER TABLE stock_weekly ALTER COLUMN amount TYPE NUMERIC(18, 2);
 -- 回测参数
 select * from backtest_parameters;
 
