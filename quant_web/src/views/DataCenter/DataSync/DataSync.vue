@@ -19,10 +19,12 @@ import {
   NSkeleton,
   NResult,
   NTag,
+  NTable,
   NModal,
   NCheckbox,
   NSpace,
   NDivider,
+  NProgress,
 } from "naive-ui";
 import { useRouter, useRoute } from "vue-router";
 import type {
@@ -32,6 +34,10 @@ import type {
   SyncStatusResponse,
   SyncTaskItem,
   DataQualityResponse,
+  SyncTypesMetaResponse,
+  SyncGroupMeta,
+  SyncTypeMeta,
+  SyncPresetMeta,
 } from "@/api/data-sync";
 import { dataSyncService } from "@/api/data-sync";
 import type { SyncTaskRecord } from "@/api/data-sync";
@@ -63,6 +69,93 @@ const currentTaskId = ref<string>("");
 
 const { isRunning, formattedElapsedTime, formattedRemainingTime } = useSyncTimer(syncStatus);
 const { qualityScore } = useQualityMetrics(qualityData);
+
+// --- 工作组状态（新7分组布局） ---
+const syncMeta = ref<SyncTypesMetaResponse | null>(null)
+const activeGroup = ref("1")  // 当前选中的分组
+const groupSelection = ref<Record<string, Set<string>>>({})  // 每组已选中的类型
+
+// --- 新布局辅助函数 ---
+const currentGroup = computed(() => syncMeta.value?.groups.find(g => g.id === activeGroup.value))
+const currentSelected = computed(() => groupSelection.value[activeGroup.value] || new Set<string>())
+function isSelected(dataType: string) { return currentSelected.value.has(dataType) }
+function toggleSelection(dt: string, v: boolean) {
+  if (!groupSelection.value[activeGroup.value]) groupSelection.value[activeGroup.value] = new Set()
+  v ? groupSelection.value[activeGroup.value].add(dt) : groupSelection.value[activeGroup.value].delete(dt)
+}
+function selectAll() {
+  const s = new Set<string>()
+  currentGroup.value?.types.filter(t => t.implemented).forEach(t => s.add(t.data_type))
+  groupSelection.value[activeGroup.value] = s
+}
+function selectCore() {
+  const s = new Set<string>()
+  currentGroup.value?.types.filter(t => t.implemented && t.is_core).forEach(t => s.add(t.data_type))
+  groupSelection.value[activeGroup.value] = s
+}
+function deselectAll() { groupSelection.value[activeGroup.value] = new Set() }
+const estimatedGroupTime = computed(() => {
+  let total = 0
+  currentGroup.value?.types.forEach(ty => { if (isSelected(ty.data_type)) total += ty.estimated_time_seconds })
+  return total
+})
+function fmtRelative(s: string | null) {
+  if (!s) return '从未'
+  const h = Math.round((Date.now() - new Date(s).getTime()) / 3600000)
+  if (h < 1) return '刚刚'; if (h < 24) return `${h}h前`; return `${Math.floor(h/24)}d前`
+}
+function statusType(t: SyncTypeMeta) {
+  if (!t.implemented) return 'default'
+  if (!t.last_sync_at) return 'default'
+  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000
+  if (h < 24) return 'success'; if (h < 72) return 'warning'; return 'error'
+}
+function typeStatusText(t: SyncTypeMeta) {
+  if (!t.implemented) return '未实现'
+  if (!t.last_sync_at) return '未同步'
+  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000
+  if (h < 24) return '已同步'; if (h < 72) return '待更新'; return '需同步'
+}
+async function syncSelected() {
+  syncConfig.data_types = [...currentSelected.value]
+  await handleBatchSync()
+}
+async function runPreset(p: SyncPresetMeta) {
+  const types: string[] = []
+  const groupLabels: string[] = []
+  for (const step of p.steps) {
+    const group = syncMeta.value?.groups.find(g => g.id === step.group_id)
+    if (group) {
+      types.push(...group.types.filter(t => t.implemented).map(t => t.data_type))
+      groupLabels.push(group.label)
+    }
+  }
+  if (!types.length) { message.warning("该预设没有可用的数据类型"); return }
+  syncConfig.data_types = types
+
+  // 确认弹窗
+  dialog.warning({
+    title: `确认执行「${p.name}」`,
+    content: `将对 ${groupLabels.join('、')} 共 ${types.length} 种类型进行同步，预估耗时 ~${fmtTime(p.estimated_time_seconds)}。`,
+    positiveText: "确认执行",
+    negativeText: "取消",
+    onPositiveClick: async () => { await handleBatchSync() },
+  })
+}
+
+function fmtTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`
+  return `${(seconds / 3600).toFixed(1)}h`
+}
+
+async function loadSyncMeta() {
+  try {
+    syncMeta.value = await dataSyncService.getSyncTypesMeta()
+  } catch (e) {
+    console.error("加载同步元数据失败", e)
+  }
+}
 
 // --- 同步配置 ---
 const syncConfig = reactive({
@@ -445,7 +538,7 @@ const toggleDataType = (code: string) => {
 };
 
 // --- 生命周期 ---
-onMounted(() => { initializePage(); });
+onMounted(() => { initializePage(); loadSyncMeta(); });
 onUnmounted(() => { stopStatusPolling(); });
 
 watch(
@@ -465,6 +558,7 @@ watch(
 
 <template>
   <div class="data-sync-page bg-gradient-mesh bg-noise">
+    <!-- Page Header -->
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
@@ -482,21 +576,7 @@ watch(
     <!-- 加载骨架 -->
     <template v-if="pageLoading">
       <div class="main-content">
-        <div class="status-summary-bar skeleton-bar">
-          <n-skeleton :text="true" width="100%" />
-        </div>
-        <n-grid :x-gap="24" :cols="24" responsive="screen">
-          <n-grid-item :span="16">
-            <n-card title="数据类型选择" class="config-card">
-              <n-skeleton :text="true" :repeat="5" />
-            </n-card>
-          </n-grid-item>
-          <n-grid-item :span="8">
-            <n-card title="同步操作" class="action-card">
-              <n-skeleton :text="true" :repeat="3" />
-            </n-card>
-          </n-grid-item>
-        </n-grid>
+        <n-skeleton :text="true" :repeat="6" />
       </div>
     </template>
 
@@ -512,9 +592,60 @@ watch(
       </template>
     </n-result>
 
+    <!-- 主内容 -->
     <template v-else>
-      <div class="main-content">
-        <!-- 状态总览条 -->
+      <div class="sync-workbench">
+        <!-- Quick Actions Bar -->
+        <div class="quick-bar">
+          <n-card
+            v-for="p in syncMeta?.presets"
+            :key="p.id"
+            class="preset-card"
+            :class="{ recommended: p.recommended }"
+            size="small"
+            @click="runPreset(p)"
+          >
+            <div class="preset-content">
+              <div class="preset-info">
+                <span class="preset-name">{{ p.name }}</span>
+                <span class="preset-desc">{{ p.description }}</span>
+              </div>
+              <div class="preset-action">
+                <span class="preset-time">~{{ fmtTime(p.estimated_time_seconds) }}</span>
+                <n-button type="primary" size="small" :disabled="isRunning">&#9654;</n-button>
+              </div>
+            </div>
+          </n-card>
+        </div>
+
+        <!-- Running Sync Status Bar -->
+        <div v-if="isRunning && syncStatus?.progress" class="sync-running-bar">
+          <div class="running-info">
+            <span class="running-dot" />
+            <span class="running-label">同步中</span>
+            <span class="running-detail">
+              {{ syncStatus.progress.completed_tasks }}/{{ syncStatus.progress.total_tasks }}
+              · {{ formattedElapsedTime }} · 剩余 {{ formattedRemainingTime }}
+            </span>
+          </div>
+          <n-progress
+            :percentage="syncStatus.progress.progress_percentage || 0"
+            :height="6" :border-radius="3"
+            class="running-progress"
+          />
+          <div class="running-actions">
+            <span v-if="subTaskDots.length > 0" class="sub-task-dots">
+              <span v-for="st in subTaskDots" :key="st.label" class="sub-dot" :class="st.status">
+                <Icon :icon="st.icon" class="dot-icon" />{{ st.label }}
+              </span>
+            </span>
+            <n-button size="tiny" type="error" @click="handleCancelSync" quaternary>
+              取消
+            </n-button>
+          </div>
+        </div>
+
+        <!-- Status Summary Bar -->
         <div class="status-summary-bar">
           <div class="summary-item">
             <Icon icon="ant-design:clock-circle-outlined" class="summary-icon" />
@@ -542,167 +673,83 @@ watch(
           </n-button>
         </div>
 
-        <!-- 主内容区 -->
-        <n-grid :x-gap="24" :cols="24" responsive="screen">
-          <!-- 左侧: 配置 -->
-          <n-grid-item :span="16">
-            <n-card class="config-card">
-              <template #header>
-                <div class="card-header-row">
-                  <span>数据类型选择</span>
-                  <span class="selected-count">已选 {{ syncConfig.data_types.length }} 种</span>
-                </div>
-              </template>
-              <template #header-extra>
-                <div class="header-actions-row">
-                  <n-button text size="small" @click="selectAllDataTypes">全选</n-button>
-                  <n-button text size="small" @click="clearAllDataTypes">清空</n-button>
-                </div>
-              </template>
-
-              <div class="data-type-grid">
-                <div
-                  v-for="type in supportedDataTypes"
-                  :key="type.code"
-                  class="data-type-card"
-                  :class="{ selected: isDataTypeSelected(type.code), disabled: type.is_available === false }"
-                  @click="type.is_available !== false && toggleDataType(type.code)"
-                >
-                  <Icon
-                    :icon="isDataTypeSelected(type.code) ? 'ant-design:check-circle-filled' : 'ant-design:check-circle-outlined'"
-                    class="check-icon"
-                  />
-                  <span class="type-name">{{ type.name }}</span>
-                  <span class="type-time">{{ type.is_available === false ? '不可用' : '约 ' + type.estimated_time + 's' }}</span>
-                </div>
-              </div>
-
-              <n-collapse class="advanced-section">
-                <n-collapse-item title="高级选项" name="1">
-                  <n-grid :x-gap="16" :cols="2" responsive="screen">
-                    <n-grid-item>
-                      <n-form-item label="开始日期" class="compact-form-item">
-                        <n-date-picker
-                          v-model:value="datePickerFormatted"
-                          type="date"
-                          value-format="yyyy-MM-dd"
-                          placeholder="不限"
-                          clearable
-                        />
-                      </n-form-item>
-                      <n-form-item label="结束日期" class="compact-form-item">
-                        <n-date-picker
-                          v-model:value="endDateFormatted"
-                          type="date"
-                          value-format="yyyy-MM-dd"
-                          placeholder="不限"
-                          clearable
-                        />
-                      </n-form-item>
-                    </n-grid-item>
-                    <n-grid-item>
-                      <n-form-item label="交易所" class="compact-form-item">
-                        <n-select
-                          v-model:value="syncConfig.exchange"
-                          placeholder="不限"
-                          :options="exchangeOptions"
-                          clearable
-                        />
-                      </n-form-item>
-                      <n-form-item label="批量大小" class="compact-form-item">
-                        <n-input-number v-model:value="syncConfig.batch_size" :min="1" :max="500" />
-                      </n-form-item>
-                    </n-grid-item>
-                  </n-grid>
-                </n-collapse-item>
-              </n-collapse>
-            </n-card>
-          </n-grid-item>
-
-          <!-- 右侧: 操作 + 进度 -->
-          <n-grid-item :span="8">
-            <div class="action-area">
-              <n-card class="action-card">
-                <div class="action-buttons">
-                  <n-button
-                    type="primary"
-                    @click="handleBatchSync"
-                    :loading="isLoading"
-                    :disabled="isRunning || !syncConfig.data_types.length"
-                    block
-                    class="action-button primary"
-                    size="large"
-                  >
-                    <template #icon><Icon icon="ant-design:cloud-download-outlined" /></template>
-                    开始同步
-                  </n-button>
-
-                  <n-button
-                    @click="openFullSyncModal"
-                    :loading="isFullLoading"
-                    :disabled="isRunning"
-                    block
-                    class="action-button secondary"
-                    size="small"
-                  >
-                    <template #icon><Icon icon="ant-design:database-outlined" /></template>
-                    全量同步（{{ supportedDataTypes.filter(t => t.is_core).length }} 种核心）
-                  </n-button>
-                </div>
-
-                <!-- 运行中进度 -->
-                <div class="sync-status-bar" v-if="isRunning && syncStatus?.progress">
-                  <div class="status-row">
-                    <span class="status-dot running" />
-                    <span class="status-label-text">{{ statusText }}</span>
-                    <span class="status-detail">
-                      {{ syncStatus.progress.completed_tasks }}/{{ syncStatus.progress.total_tasks }} · {{ formattedElapsedTime }} · 剩余 {{ formattedRemainingTime }}
-                    </span>
-                  </div>
-                  <n-progress
-                    :percentage="syncStatus.progress.progress_percentage || 0"
-                    :height="6" :border-radius="3"
-                    class="status-progress-bar"
-                  />
-                  <n-button
-                    block
-                    @click="handleCancelSync"
-                    class="action-button danger"
-                    :style="{
-                      '--n-color': 'rgba(229,69,69,0.12)',
-                      '--n-color-hover': 'rgba(229,69,69,0.22)',
-                      '--n-color-pressed': 'rgba(229,69,69,0.16)',
-                      '--n-text-color': '#E54545',
-                      '--n-text-color-hover': '#E54545',
-                      '--n-border': '1px solid rgba(229,69,69,0.25)',
-                      '--n-border-hover': '1px solid rgba(229,69,69,0.5)',
-                    }"
-                  >
-                    <template #icon><Icon icon="ant-design:close-circle-outlined" /></template>
-                    取消同步
-                  </n-button>
-                  <div v-if="subTaskDots.length > 0" class="sub-task-dots">
-                    <span v-for="st in subTaskDots" :key="st.label" class="sub-dot" :class="st.status">
-                      <Icon :icon="st.icon" class="dot-icon" />{{ st.label }}
-                    </span>
-                  </div>
-
-                </div>
-
-                <!-- 非运行中状态 -->
-                <div class="sync-status-bar" :class="statusBarClass" v-else>
-                  <div class="status-row">
-                    <span class="status-dot" :class="statusBarClass" />
-                    <span class="status-label-text">{{ statusText }}</span>
-                  </div>
-                  <div class="status-hint">
-                    {{ statusHint }}
-                  </div>
-                </div>
-              </n-card>
+        <!-- Main: Sidebar + Content -->
+        <div class="main-layout">
+          <!-- Sidebar -->
+          <div class="sidebar">
+            <div
+              v-for="g in syncMeta?.groups"
+              :key="g.id"
+              class="sidebar-item"
+              :class="{ active: activeGroup === g.id }"
+              @click="activeGroup = g.id"
+            >
+              <span class="sidebar-dot" :style="{ background: g.color }"></span>
+              <span class="sidebar-label">{{ g.label }}</span>
+              <span class="sidebar-count">{{ g.types.filter(t=>t.implemented).length }}/{{ g.types.length }}</span>
             </div>
-          </n-grid-item>
-        </n-grid>
+          </div>
+
+          <!-- Content Table -->
+          <div class="content">
+            <div class="content-header">
+              <h3>{{ currentGroup?.label }}</h3>
+              <span class="content-desc">{{ currentGroup?.description }}</span>
+              <div class="content-toolbar">
+                <n-button size="tiny" @click="selectAll">全选</n-button>
+                <n-button size="tiny" @click="selectCore">仅必需</n-button>
+                <n-button size="tiny" @click="deselectAll">清空</n-button>
+              </div>
+            </div>
+
+            <n-table :single-line="false" size="small">
+              <thead>
+                <tr>
+                  <th style="width:40px">选择</th>
+                  <th>类型</th>
+                  <th style="width:100px">上次同步</th>
+                  <th style="width:80px">预估耗时</th>
+                  <th style="width:60px">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="t in currentGroup?.types"
+                  :key="t.data_type"
+                  :class="{ 'row-disabled': !t.implemented }"
+                >
+                  <td>
+                    <n-checkbox
+                      :checked="isSelected(t.data_type)"
+                      :disabled="!t.implemented"
+                      @update:checked="(v: boolean) => toggleSelection(t.data_type, v)"
+                    />
+                  </td>
+                  <td><span class="type-label">{{ t.label }}</span></td>
+                  <td><span class="last-sync">{{ fmtRelative(t.last_sync_at) }}</span></td>
+                  <td><span class="est-time">{{ fmtTime(t.estimated_time_seconds) }}</span></td>
+                  <td>
+                    <n-tag :type="statusType(t)" size="tiny" :bordered="false">
+                      {{ typeStatusText(t) }}
+                    </n-tag>
+                  </td>
+                </tr>
+              </tbody>
+            </n-table>
+
+            <div class="content-footer">
+              <span>已选 {{ currentSelected.size }} 项 · 预估 ~{{ fmtTime(estimatedGroupTime) }}</span>
+              <n-button
+                type="primary"
+                :disabled="currentSelected.size === 0 || isRunning"
+                :loading="isLoading"
+                @click="syncSelected"
+              >
+                &#9654; 同步已选
+              </n-button>
+            </div>
+          </div>
+        </div>
 
         <!-- 最近同步记录 -->
         <div class="recent-section">
@@ -808,22 +855,158 @@ watch(
   flex-shrink: 0;
 }
 
-// --- 状态总览条 ---
+// --- Sync Workbench ---
+.sync-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+// --- Quick Actions Bar ---
+.quick-bar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.preset-card {
+  flex: 1;
+  min-width: 280px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &.recommended {
+    border-color: var(--n-color-success);
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.preset-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preset-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.preset-desc {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+
+.preset-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.preset-time {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+
+// --- Sync Running Bar ---
+.sync-running-bar {
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.running-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: $primary-color;
+  animation: pulse-dot 1.5s ease infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.running-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: $text-color-1;
+}
+
+.running-detail {
+  font-size: 12px;
+  color: $text-color-3;
+}
+
+.running-progress {
+  margin: 0;
+}
+
+.running-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sub-task-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sub-dot {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: $text-color-3;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+
+  .dot-icon { font-size: 12px; flex-shrink: 0; }
+
+  &.completed { color: $success-color; .dot-icon { color: $success-color; } }
+  &.running { color: $info-color; .dot-icon { animation: pulse-dot 1.2s ease infinite; } }
+  &.failed { color: $error-color; .dot-icon { color: $error-color; } }
+}
+
+// --- Status Summary Bar ---
 .status-summary-bar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  margin-bottom: 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid $border-color;
   border-radius: $border-radius;
   font-size: $font-size-base * 0.85;
   flex-wrap: wrap;
-
-  &.skeleton-bar {
-    padding: 14px 16px;
-  }
 }
 
 .summary-item {
@@ -872,233 +1055,126 @@ watch(
   flex: 1;
 }
 
-// --- 配置卡片 ---
-.config-card {
-  border-radius: $border-radius-large;
+// --- Main Layout: Sidebar + Content ---
+.main-layout {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
-.card-header-row {
+// --- Sidebar ---
+.sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--n-card-color);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.sidebar-item {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.selected-count {
-  font-weight: 400;
-  font-size: $font-size-base * 0.85;
-  color: $text-color-2;
-}
-
-.header-actions-row {
-  display: flex;
-  gap: 4px;
-}
-
-.data-type-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-
-  @include mixin.media-breakpoint-down(xl) { grid-template-columns: repeat(4, 1fr); }
-  @include mixin.media-breakpoint-down(md) { grid-template-columns: repeat(3, 1fr); }
-  @include mixin.media-breakpoint-down(sm) { grid-template-columns: repeat(2, 1fr); }
-}
-
-.data-type-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 8px 6px;
-  border: 1px solid $border-color;
-  border-radius: $border-radius-sm;
-  background: $secondary-bg;
+  padding: 10px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all $transition-fast;
-  text-align: center;
+  transition: background 0.15s;
+  font-size: 14px;
+  color: $text-color-1;
 
   &:hover {
-    border-color: $primary-color;
-    background: rgba($primary-color, 0.04);
+    background: var(--n-action-color);
   }
 
-  &.selected {
-    border-color: $primary-color;
-    background: rgba($primary-color, 0.08);
-
-    .check-icon { color: $primary-color; }
-    .type-name { color: $primary-color; }
-  }
-
-  .check-icon {
-    font-size: $font-size-base * 0.95;
-    color: $text-color-3;
-    transition: color $transition-fast;
-  }
-
-  .type-name {
-    font-size: $font-size-base * 0.75;
-    font-weight: $font-weight-medium;
-    color: $text-color-1;
-    line-height: 1.2;
-  }
-
-  .type-time {
-    font-size: $font-size-base * 0.65;
-    color: $text-color-3;
-  }
-
-  &.disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    &:hover {
-      border-color: $border-color;
-      background: $secondary-bg;
-    }
+  &.active {
+    background: var(--n-color-primary);
+    color: white;
   }
 }
 
-.compact-form-item {
-  margin-bottom: map.get($spacers, 3);
-}
-
-.advanced-section {
-  margin-top: map.get($spacers, 3);
-
-  :deep(.n-collapse-item__header) {
-    font-size: $font-size-base * 0.9;
-  }
-}
-
-// --- 操作区 ---
-.action-area {
-  position: sticky;
-  top: map.get($spacers, 4);
-}
-
-.action-card {
-  border-radius: $border-radius-large;
-}
-
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: map.get($spacers, 2);
-
-  .action-button {
-    transition: all $transition-normal;
-
-    &.primary {
-      background: linear-gradient(135deg, $primary-color, color-mix(in srgb, var(--color-primary) 80%, black));
-      border: none;
-      color: white;
-
-      &:hover:not(:disabled) {
-        transform: $hover-transform;
-        box-shadow: 0 6px 20px color-mix(in srgb, var(--color-primary) 40%, transparent);
-      }
-    }
-
-    &.secondary {
-      background: $secondary-bg;
-      border-color: $border-color;
-      color: $text-color-1;
-      height: 32px;
-      font-size: $font-size-base * 0.8;
-
-      &:hover:not(:disabled) {
-        background: $hover-bg;
-        border-color: $primary-color;
-      }
-    }
-  }
-}
-
-// --- 进度/状态区 ---
-.sync-status-bar {
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid $border-color;
-
-  &.idle    { border-top-style: dashed; }
-  &.failed  { border-top-color: rgba($error-color, 0.3); }
-  &.completed { border-top-color: rgba($success-color, 0.3); }
-  &.partial { border-top-color: rgba($warning-color, 0.3); }
-}
-
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-dot {
+.sidebar-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: $text-color-3;
   flex-shrink: 0;
-
-  &.running   { background: $success-color; animation: pulse-dot 1.5s ease infinite; }
-  &.completed { background: $success-color; }
-  &.failed    { background: $error-color; }
-  &.pending   { background: $warning-color; animation: pulse-dot 1.5s ease infinite; }
-  &.partial   { background: $warning-color; }
-  &.cancelled { background: $text-color-3; }
 }
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+.sidebar-label {
+  flex: 1;
 }
 
-.status-label-text {
-  font-size: $font-size-base * 0.9;
-  color: $text-color-1;
+.sidebar-count {
+  font-size: 11px;
+  opacity: 0.7;
 }
 
-.status-detail {
-  font-size: $font-size-base * 0.78;
-  color: $text-color-3;
-}
-
-.status-hint {
-  margin-top: 8px;
-  font-size: $font-size-base * 0.8;
-  color: $text-color-3;
-  line-height: 1.4;
-}
-
-.status-progress-bar { margin: 8px 0; }
-
-
-.sub-task-dots {
+// --- Content ---
+.content {
+  flex: 1;
+  min-width: 0;
+  background: var(--n-card-color);
+  border-radius: 10px;
+  padding: 16px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.sub-dot {
+.content-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    color: $text-color-1;
+  }
+}
+
+.content-desc {
+  font-size: 13px;
+  color: $text-color-3;
+}
+
+.content-toolbar {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.row-disabled {
+  opacity: 0.4;
+}
+
+.type-label {
+  font-size: 13px;
+}
+
+.last-sync,
+.est-time {
+  font-size: 12px;
+  color: $text-color-3;
+}
+
+.content-footer {
   display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: $font-size-base * 0.72;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--n-border-color);
+  font-size: 13px;
   color: $text-color-3;
-  padding: 1px 6px;
-  border-radius: $border-radius-sm;
-  background: $secondary-bg;
-
-  .dot-icon { font-size: $font-size-base * 0.85; flex-shrink: 0; }
-
-  &.completed { color: $success-color; .dot-icon { color: $success-color; } }
-  &.running { color: $info-color; .dot-icon { animation: pulse-dot 1.2s ease infinite; } }
-  &.failed { color: $error-color; .dot-icon { color: $error-color; } }
 }
 
 // --- 最近同步记录 ---
 .recent-section {
-  margin-top: 24px;
+  margin-top: 0;
 }
 
 .recent-header {
@@ -1202,6 +1278,7 @@ watch(
   .empty-icon { font-size: $font-size-base * 1.3; }
 }
 
+// --- Misc ---
 .error-alert {
   margin: map.get($spacers, 4);
   border-radius: $border-radius;
@@ -1212,5 +1289,9 @@ watch(
     background: rgb(14, 18, 30) !important;
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
+}
+
+.main-content {
+  padding: 20px 24px;
 }
 </style>

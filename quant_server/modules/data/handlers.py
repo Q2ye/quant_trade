@@ -40,7 +40,6 @@ from fastapi import BackgroundTasks
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies.config import get_settings
 # ==================== 核心基础设施导入 ====================
 # 事件引擎
 from core.engines.system.event_engine import EventEngine
@@ -1151,6 +1150,203 @@ async def quick_sync_data (
 		raise BusinessException(f"创建快速同步任务失败: {str(e)}")
 
 
+# 类型→中文标签（模块级，get_sync_types_meta 和 get_sync_tasks 共用）
+
+async def get_sync_types_meta(
+	session: AsyncSession,
+) -> "SyncTypesMetaResponse":
+	"""
+	获取同步类型的分组元数据和预设任务列表。
+	供前端渲染分组视图、列表视图和预设任务。
+	"""
+	from modules.data.schemas import SyncTypesMetaResponse, SyncGroupMeta, SyncTypeMeta, SyncPresetMeta
+	from modules.data.constants import DataType
+
+	# 新分组定义（按日常使用场景）
+	groups_config = [
+		{"id": "1", "label": "每日行情", "icon": "date", "color": "#3B82F6",
+		 "description": "每天盘前/盘后必跑的核心行情数据", "frequency": "每天",
+		 "deps": ["7"]},
+		{"id": "2", "label": "财务数据", "icon": "money", "color": "#F59E0B",
+		 "description": "财报季集中更新", "frequency": "每季度",
+		 "deps": ["7"]},
+		{"id": "3", "label": "公司治理", "icon": "building", "color": "#EF4444",
+		 "description": "股东变动、管理层、质押等", "frequency": "每月/季度",
+		 "deps": ["7"]},
+		{"id": "4", "label": "因子数据", "icon": "chart", "color": "#8B5CF6",
+		 "description": "技术因子，策略研究用", "frequency": "按需",
+		 "deps": ["7"]},
+		{"id": "5", "label": "事件驱动", "icon": "lightning", "color": "#EC4899",
+		 "description": "解禁/披露/增减持/资金流向", "frequency": "按需",
+		 "deps": ["7"]},
+		{"id": "6", "label": "宏观数据", "icon": "globe", "color": "#10B981",
+		 "description": "CPI/PPI/GDP 宏观经济指标", "frequency": "每月/季度",
+		 "deps": []},
+		{"id": "7", "label": "基础数据", "icon": "database", "color": "#6B7280",
+		 "description": "首次初始化，后续按需更新", "frequency": "首次+按需",
+		 "deps": []},
+	]
+
+	# 类型到分组的映射（DataType值 → 组ID, 序号, 表名, 耗时秒, 数据量, 是否核心）
+	type_group_map = {
+		# 1: 每日行情
+		DataType.DAILY_QUOTES: ("1", "1.1", "stock_daily", 1500, "~1.25M条", True),
+		DataType.DAILY_BASIC: ("1", "1.2", "stock_daily_basic", 300, "~5K条", True),
+		DataType.ADJ_FACTOR: ("1", "1.3", "stock_adj_factor", 180, "~5K条", True),
+		DataType.MONEYFLOW: ("1", "1.4", "stock_moneyflow", 300, "~5K条", False),
+		DataType.DAILY_LIMIT: ("1", "1.5", "stock_daily_limit", 60, "~5K条", False),
+		DataType.SUSPEND: ("1", "1.6", "stock_suspend_info", 15, "~200条", False),
+		DataType.WEEKLY_QUOTES: ("1", "1.7", "stock_weekly", 120, "~5K条", False),
+		DataType.MONTHLY_QUOTES: ("1", "1.8", "stock_monthly", 60, "~5K条", False),
+		DataType.ETF_DAILY: ("1", "1.9", "etf_daily", 45, "~1K条", True),
+		DataType.ETF_SHARE: ("1", "1.10", "etf_share", 15, "~1K条", False),
+		DataType.FUND_ADJ_FACTOR: ("1", "1.11", "fund_adj_factor", 30, "~1K条", False),
+		DataType.INDEX_DAILY: ("1", "1.12", "index_daily", 12, "~500条", True),
+		DataType.INDEX_WEEKLY: ("1", "1.13", "index_weekly", 15, "~500条", False),
+		DataType.INDEX_WEIGHT: ("1", "1.14", "index_weight", 5, "~3K条", False),
+		DataType.ST_STOCKRISK: ("1", "1.15", "stock_st_risk", 10, "~200条", False),
+		# 2: 财务数据
+		DataType.FINANCIAL_DATA: ("2", "2.0", "financial_statements", 1800, "三表合并", True),
+		DataType.FINANCIAL_INCOME: ("2", "2.1", "financial_statements", 600, "利润表", True),
+		DataType.FINANCIAL_BALANCE: ("2", "2.2", "financial_statements", 600, "资产负债表", True),
+		DataType.FINANCIAL_CASHFLOW: ("2", "2.3", "financial_statements", 600, "现金流量表", True),
+		DataType.FORECAST: ("2", "2.4", "stock_forecasts", 120, "~5K条", False),
+		DataType.EXPRESS: ("2", "2.5", "stock_expresses", 120, "~5K条", False),
+		DataType.DIVIDEND: ("2", "2.6", "stock_dividends", 60, "~5K条", False),
+		DataType.FINANCIAL_INDICATOR: ("2", "2.7", "stock_fina_indicators", 300, "~5K条", True),
+		DataType.AUDIT_OPINION: ("2", "2.8", "stock_audit_opinions", 60, "~5K条", False),
+		DataType.BUSINESS_INCOME: ("2", "2.9", "stock_business_incomes", 120, "~5K条", False),
+		# 3: 公司治理
+		DataType.MANAGERS: ("3", "3.1", "stk_managers", 120, "~75K条", True),
+		DataType.REWARDS: ("3", "3.2", "stk_rewards", 120, "~75K条", True),
+		DataType.TOP10_HOLDERS: ("3", "3.3", "stock_top10_holders", 90, "~50K条", True),
+		DataType.TOP10_FLOAT_HOLDERS: ("3", "3.4", "stock_top10_float_holders", 90, "~50K条", True),
+		DataType.STK_HOLDERNUMBER: ("3", "3.5", "stock_stk_holdernumber", 60, "~100K条", True),
+		DataType.PLEDGE_STAT: ("3", "3.6", "stock_pledge_stat", 60, "~5K条", False),
+		DataType.STK_HOLDERTRADE: ("3", "3.7", "stock_stk_holdertrade", 30, "~3K条", False),
+		DataType.SHARE_FLOAT: ("3", "3.8", "stock_share_float", 15, "~500条", False),
+		DataType.FORECAST_PRO: ("3", "3.9", "stock_forecast_pro", 120, "~25K条", False),
+		DataType.INDEX_SW_CLASSIFY: ("3", "3.10", "index_sw_classify", 15, "~400条", False),
+		DataType.INDEX_SW_MEMBER: ("3", "3.11", "index_sw_member", 20, "~5K条", False),
+		# 4: 因子数据
+		DataType.STK_FACTOR: ("4", "4.1", "stock_factor_daily", 600, "~5K条/天", False),
+		DataType.STK_FACTOR_PRO: ("4", "4.2", "stock_factor_pro_daily", 600, "~5K条/天", False),
+		DataType.IDX_FACTOR_PRO: ("4", "4.3", "index_factor_pro_daily", 120, "~125K条", False),
+		# 5: 事件驱动
+		DataType.ST_LIST: ("5", "5.2", "stock_st_list", 30, "~3K条", False),
+		DataType.DISCLOSURE_DATE: ("5", "5.3", "financial_disclosure_dates", 15, "~5K条", False),
+		DataType.MONEYFLOW_HSGT: ("5", "5.4", "stock_moneyflow_hsgt", 15, "~300条", False),
+		# 6: 宏观数据
+		DataType.CPI: ("6", "6.1", "macro_cpi", 10, "~200条", True),
+		DataType.PPI: ("6", "6.2", "macro_ppi", 10, "~200条", True),
+		DataType.GDP: ("6", "6.3", "macro_gdp", 10, "~200条", True),
+		# 7: 基础数据
+		DataType.STOCK_LIST: ("7", "7.1", "stock_basic", 30, "~5K条", True),
+		DataType.CALENDAR: ("7", "7.2", "trade_calendar", 15, "~8K条", True),
+		DataType.COMPANY: ("7", "7.3", "stock_company", 60, "~5K条", True),
+		DataType.INDEX_BASIC: ("7", "7.4", "index_basic", 20, "~500条", True),
+		DataType.ETF_BASIC: ("7", "7.5", "etf_basic", 20, "~1K条", True),
+		DataType.ETF_INDEX: ("7", "7.6", "etf_index", 10, "~1K条", True),
+		DataType.STOCK_HSGT: ("7", "7.7", "stock_hsgt", 20, "~2K条", False),
+		DataType.INDEX_SW_CLASSIFY: ("7", "7.8", "index_sw_classify", 15, "~400条", False),
+		DataType.INDEX_SW_MEMBER: ("7", "7.9", "index_sw_member", 20, "~5K条", False),
+		DataType.INDEX_DAILYBASIC: ("7", "7.10", "index_dailybasic", 30, "~1.5K条", False),
+		# 兼容
+		DataType.INDEX_DATA: ("1", "1.0", "index_daily+weight", 30, "兼容旧版", False),
+		DataType.INDEX_SW_DAILY: ("1", "1.16", "index_sw_daily", 120, "~7.7K条", False),
+		DataType.TICK_QUOTES: ("1", "1.99", "", 0, "未实现", False),
+		DataType.MINUTE_QUOTES: ("4", "4.4", "stock_minute", 600, "7天×100只", False),
+		DataType.ETF_MINUTE: ("4", "4.5", "etf_minute", 300, "7天×50只", False),
+	}
+
+	# 未实现的类型
+	not_implemented = {DataType.TICK_QUOTES}
+
+	# 查询每个 type 的上次同步时间
+	last_sync_map = {}
+	try:
+		from sqlalchemy import text
+		result = await session.execute(text(
+			"SELECT task_type, MAX(end_time) as last_sync FROM data_sync_tasks "
+			"WHERE status = 'completed' GROUP BY task_type"
+		))
+		for row in result:
+			last_sync_map[row[0]] = row[1]
+	except Exception:
+		pass
+
+	# 构建分组
+	groups = []
+	for gc in groups_config:
+		types = []
+		for dt_val, (gid, gidx, table, est_sec, volume, is_core) in type_group_map.items():
+			if gid == gc["id"]:
+				dt_str = dt_val.value if hasattr(dt_val, 'value') else str(dt_val)
+				types.append(SyncTypeMeta(
+					data_type=dt_str,
+					label=DataType.get_display_name(dt_val),
+					group_index=gidx,
+					implemented=dt_val not in not_implemented,
+					table_name=table,
+					estimated_time_seconds=est_sec,
+					data_volume=volume,
+					last_sync_at=last_sync_map.get(dt_str),
+					coverage=1.0 if dt_val not in not_implemented else 0.0,
+					is_core=is_core,
+				))
+		groups.append(SyncGroupMeta(
+			id=gc["id"], label=gc["label"], color=gc["color"],
+			description=gc["description"], recommended_frequency=gc["frequency"],
+			depends_on=gc["deps"], types=types,
+		))
+
+	# 预设任务
+	presets = [
+		SyncPresetMeta(id="daily", name="每日行情（增量）", description="盘前/盘后运行，更新所有行情数据",
+		               recommended=True, estimated_time_seconds=2100,
+		               steps=[{"group_id": "1"}]),
+		SyncPresetMeta(id="init", name="首次全量", description="新数据库初始化，按依赖顺序：基础→行情→财务→治理",
+		               recommended=False, estimated_time_seconds=14400,
+		               steps=[{"group_id": "7"}, {"group_id": "1"}, {"group_id": "2"}, {"group_id": "3"}]),
+		SyncPresetMeta(id="earnings", name="财报季更新", description="季度财报发布后，更新财务+治理数据",
+		               recommended=False, estimated_time_seconds=2700,
+		               steps=[{"group_id": "2"}, {"group_id": "3"}]),
+	]
+
+	return SyncTypesMetaResponse(groups=groups, presets=presets)
+
+
+async def get_sync_status_all(
+	session: AsyncSession,
+) -> "SyncStatusAllResponse":
+	"""获取所有同步类型的状态概览（供前端渲染覆盖度）"""
+	from modules.data.schemas import SyncStatusAllResponse, SyncTypeStatus
+	from modules.data.constants import DataType
+
+	# 复用 get_sync_types_meta 获取元数据
+	meta = await get_sync_types_meta(session)
+	types_status = []
+	from datetime import datetime
+	for group in meta.groups:
+		for t in group.types:
+			if t.last_sync_at:
+				hours_ago = (datetime.now() - t.last_sync_at).total_seconds() / 3600
+				if hours_ago < 24:
+					status = "up_to_date"
+				elif hours_ago < 72:
+					status = "needs_update"
+				else:
+					status = "outdated"
+			else:
+				status = "never_synced"
+			types_status.append(SyncTypeStatus(
+				data_type=t.data_type, label=t.label, group=group.id,
+				last_sync_at=t.last_sync_at, coverage=t.coverage, status=status,
+			))
+	return SyncStatusAllResponse(types=types_status)
+
+
+
 async def get_sync_status (
 		session: AsyncSession,
 		task_id: Optional[str],
@@ -1368,6 +1564,7 @@ async def get_sync_tasks(
         session: AsyncSession,
         user_id: str,
         status: Optional[str] = None,
+        group: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
 ) -> "SyncTaskListResponse":
@@ -1375,6 +1572,10 @@ async def get_sync_tasks(
     获取同步任务历史列表
     """
     from modules.data.schemas import SyncTaskRecord, SyncTaskListResponse
+    from modules.data.constants import DataType
+
+    # 构建类型标签查找表
+    type_label_map = {dt.value: DataType.get_display_name(dt) for dt in DataType}
 
     try:
         sync_task_repo = DataSyncTaskRepository(session)
@@ -1386,8 +1587,22 @@ async def get_sync_tasks(
         if status:
             tasks = [t for t in tasks if t.status == status]
 
+        if group:
+            # 从 get_sync_types_meta 获取类型→分组映射
+            from modules.data.constants import DataType
+            meta = await get_sync_types_meta(session)
+            group_types = set()
+            for g in meta.groups:
+                if g.id == group:
+                    for t in g.types:
+                        group_types.add(t.data_type)
+                    break
+            if group_types:
+                tasks = [t for t in tasks if t.task_type in group_types]
+
         total = len(tasks)
         paged = tasks[offset:offset + limit]
+
 
         records = []
         for task in paged:
@@ -1395,6 +1610,7 @@ async def get_sync_tasks(
                 id=task.id,
                 task_id=task.task_id,
                 task_type=task.task_type,
+                task_label=type_label_map.get(task.task_type, task.task_type),
                 data_types=task.data_types if hasattr(task, "data_types") else None,
                 status=task.status,
                 start_time=task.start_time,
@@ -2703,7 +2919,7 @@ async def check_data_module_health (
 
 async def initialize_data_module (
 		session: AsyncSession,
-		settings: Settings = get_settings()
+		settings: Settings = None
 ) -> Dict[str, Any]:
 	"""
 	初始化数据模块 - 检查表结构、初始化缓存、清理旧任务
@@ -2716,6 +2932,9 @@ async def initialize_data_module (
 		Dict: 初始化结果报告
 	"""
 	try:
+		if settings is None:
+			from api.dependencies.config import get_settings
+			settings = get_settings()
 		logger.info("开始初始化数据模块...")
 
 		# 1. 检查必要的数据表

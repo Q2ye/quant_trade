@@ -99,6 +99,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("@/views/DataCenter/DataSync/SyncHistory.vue"),
     meta: { menu: "", layout: "main", title: "同步历史记录", hideInMenu: true },
   },
+  {
+    path: "/data/sync/history/:taskId",
+    name: "SyncDetail",
+    component: () => import("@/views/DataCenter/DataSync/SyncDetail.vue"),
+    meta: { menu: "data-sync-overview", layout: "main", title: "同步任务详情" },
+  },
 
   // 策略中心
   {

@@ -49,6 +49,8 @@ from modules.data.handlers import (
 
 	# 模块管理
 	check_data_module_health,
+	get_sync_types_meta,
+	get_sync_status_all,  # Phase 5.1: 同步类型元数据
 	initialize_data_module, delete_sync_task, delete_sync_tasks_batch
 )
 
@@ -75,7 +77,9 @@ from modules.data.schemas import (
 	ResearchResponse,
 	FactorMetadataRequest,
 	FactorMetadataResponse,
-	FactorMetadata  # 新增：导入 FactorMetadata 模型
+	FactorMetadata,  # 新增：导入 FactorMetadata 模型
+	SyncTypesMetaResponse,
+	SyncStatusAllResponse,  # Phase 5.1: 同步类型元数据
 )
 from modules.data.schemas_market import (
 	IndexListResponse,
@@ -650,6 +654,7 @@ async def get_sync_status_api (
 @router.get("/sync/tasks", response_model=SyncTaskListResponse)
 async def get_sync_tasks_api(
         status: Optional[str] = Query(None, description="状态筛选"),
+        group: Optional[str] = Query(None, description="分组筛选: 1-7"),
         limit: int = Query(50, ge=1, le=200, description="每页数量"),
         offset: int = Query(0, ge=0, description="偏移量"),
         current_user: Dict = Depends(get_current_user),
@@ -661,6 +666,7 @@ async def get_sync_tasks_api(
             session=db_session,
             user_id=current_user.get("id"),
             status=status,
+            group=group,
             limit=limit,
             offset=offset,
         )
@@ -716,6 +722,29 @@ async def cancel_current_sync_api (
 			detail=f"取消同步任务失败: {str(e)}"
 		)
 
+
+@router.get("/sync/types", response_model=SyncTypesMetaResponse)
+async def get_sync_types_api(
+	db_session: AsyncSession = Depends(get_db_session),
+) -> SyncTypesMetaResponse:
+	"""获取同步类型的分组元数据和预设任务"""
+	try:
+		return await get_sync_types_meta(session=db_session)
+	except Exception as e:
+		logger.error(f"获取同步类型元数据失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/sync/status/all", response_model=SyncStatusAllResponse)
+async def get_sync_status_all_api(
+	db_session: AsyncSession = Depends(get_db_session),
+) -> SyncStatusAllResponse:
+	"""获取所有同步类型的状态概览"""
+	try:
+		return await get_sync_status_all(session=db_session)
+	except Exception as e:
+		logger.error(f"获取同步状态概览失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/sync/{task_id}/cancel")
 async def cancel_sync_api (

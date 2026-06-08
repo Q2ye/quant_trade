@@ -2855,47 +2855,39 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步股票技术因子基础版（stock_factor_daily 表，逐股拉取）。
 
-		默认拉取最近 1 个交易日、最多 5000 只股票。
-		新数据每日 18:00 后可用。
+		默认拉取最近 1 个交易日、全部活跃股票。
+		限流由 config.yaml sync_rate_limits.stk_factor 控制。
 		"""
-		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0
-		records_failed = 0
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=1)
+		if not end_date: end_date = datetime.now().date()
+		if not start_date: start_date = end_date - timedelta(days=1)
 		trade_date_str = end_date.strftime('%Y%m%d')
-		# 获取股票列表
 		if not ts_codes:
-			batch_size = SyncConfig.BATCH_SIZE.get('stk_factor', 10000)
-			stocks = await self.stock_basic_repo.get_all(limit=batch_size)
+			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
-		total = len(ts_codes)
-		for i, ts_code in enumerate(ts_codes):
-			# 检查取消
-			if self._cancel_event and self._cancel_event.is_set():
-				break
+
+		async def _process_one(session, ts_code):
+			repo = StockFactorDailyRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				if hasattr(source, 'get_stk_factor'):
-					df = await self._cancellable_run_in_executor(
-						source.get_stk_factor, ts_code=ts_code,
-						trade_date=trade_date_str)
-					if not df.empty:
-						data = _convert_records_datetime(df.to_dict('records'))
-						_preprocess_records(data, date_fields=('trade_date',))
-						written = await self.stk_factor_repo.bulk_upsert(data)
-						records_added += written
+				df = await self._cancellable_run_in_executor(
+					source.get_stk_factor, ts_code=ts_code, trade_date=trade_date_str)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('trade_date',))
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"技术因子 {ts_code} 同步失败: {_fmt_err(e, 150)}")
-				records_failed += 1
-			# 进度更新
-			if (i + 1) % 500 == 0:
-				await self._update_progress(task_id, (i + 1) / total * 100)
-		return {"records_added": records_added, "records_updated": 0,
-		        "records_failed": records_failed,
-		        "total_items": records_added + records_failed,
-		        "message": f"技术因子基础版同步完成: 新增={records_added}"}
+				logger.error(f"[技术因子] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "技术因子(stk_factor)", slow_threshold=60.0):
+			logger.info(f"[技术因子] 并行同步 {len(ts_codes)} 只, 并发=3")
+			result = await self._parallel_for_each(ts_codes, "技术因子", task_id, user_id, _process_one,
+			                                       rate_key="stk_factor", max_concurrency=3)
+			if not result.get("cancelled"):
+				result["message"] = "技术因子基础版同步完成"
+			return result
 
 	async def _sync_stk_factor_pro(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -2904,44 +2896,40 @@ class DataSyncService:
 	) -> Dict[str, Any]:
 		"""同步股票技术因子专业版（stock_factor_pro_daily 表，逐股拉取，200+列）。
 
-		默认拉取最近 1 个交易日、最多 5000 只股票。
-		需 Tushare 6000 积分以上权限。
+		默认拉取最近 1 个交易日、全部活跃股票。
+		限流由 config.yaml sync_rate_limits.stk_factor_pro 控制。
 		"""
-		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0
-		records_failed = 0
-		if not end_date:
-			end_date = datetime.now().date()
-		if not start_date:
-			start_date = end_date - timedelta(days=1)
+		if not end_date: end_date = datetime.now().date()
+		if not start_date: start_date = end_date - timedelta(days=1)
 		trade_date_str = end_date.strftime('%Y%m%d')
 		if not ts_codes:
-			batch_size = SyncConfig.BATCH_SIZE.get('stk_factor_pro', 10000)
-			stocks = await self.stock_basic_repo.get_all(limit=batch_size)
+			stocks = await self.stock_basic_repo.get_active_stocks()
 			ts_codes = [s.ts_code for s in stocks]
-		total = len(ts_codes)
-		for i, ts_code in enumerate(ts_codes):
-			if self._cancel_event and self._cancel_event.is_set():
-				break
+
+		async def _process_one(session, ts_code):
+			repo = StockFactorProDailyRepository(session)
+			source = self.source_factory.get_source(DataSource.TUSHARE)
 			try:
-				if hasattr(source, 'get_stk_factor_pro'):
-					df = await self._cancellable_run_in_executor(
-						source.get_stk_factor_pro, ts_code=ts_code,
-						trade_date=trade_date_str)
-					if not df.empty:
-						data = _convert_records_datetime(df.to_dict('records'))
-						_preprocess_records(data, date_fields=('trade_date',))
-						written = await self.stk_factor_pro_repo.bulk_upsert(data)
-						records_added += written
+				df = await self._cancellable_run_in_executor(
+					source.get_stk_factor_pro, ts_code=ts_code, trade_date=trade_date_str)
+				if df is None or df.empty:
+					return {"added": 0, "updated": 0}
+				data = _convert_records_datetime(df.to_dict("records"))
+				_preprocess_records(data, date_fields=('trade_date',))
+				added = await repo.bulk_upsert(data)
+				return {"added": added, "updated": 0}
 			except Exception as e:
-				logger.error(f"技术因子专业版 {ts_code} 同步失败: {_fmt_err(e, 150)}")
-				records_failed += 1
-			if (i + 1) % 500 == 0:
-				await self._update_progress(task_id, (i + 1) / total * 100)
-		return {"records_added": records_added, "records_updated": 0,
-		        "records_failed": records_failed,
-		        "total_items": records_added + records_failed,
-		        "message": f"技术因子专业版同步完成: 新增={records_added}"}
+				logger.error(f"[技术因子PRO] {ts_code} 同步失败: {_fmt_err(e, 150)}")
+				return {"added": 0, "updated": 0, "failed": True}
+
+		async with SyncTimingLogger(logger, "技术因子PRO(stk_factor_pro)", slow_threshold=60.0):
+			logger.info(f"[技术因子PRO] 并行同步 {len(ts_codes)} 只, 并发=2")
+			result = await self._parallel_for_each(ts_codes, "技术因子PRO", task_id, user_id, _process_one,
+			                                       rate_key="stk_factor_pro", max_concurrency=2)
+			if not result.get("cancelled"):
+				result["message"] = "技术因子专业版同步完成"
+			return result
+
 
 	async def _sync_idx_factor_pro(
 			self, start_date: Optional[date], end_date: Optional[date],
@@ -2983,10 +2971,10 @@ class DataSyncService:
 				return {"added": 0, "updated": 0, "failed": True}
 
 		async with SyncTimingLogger(logger, "指数因子PRO(idx_factor_pro)", slow_threshold=30.0):
-			logger.info(f"[指数因子PRO] 并行同步 {len(ts_codes)} 只指数, 并发=8")
+			logger.info(f"[指数因子PRO] 并行同步 {len(ts_codes)} 只指数, 并发=2")
 			result = await self._parallel_for_each(
 				ts_codes, "指数因子PRO", task_id, user_id, _process_one,
-				rate_key="idx_factor_pro")
+				rate_key="idx_factor_pro", max_concurrency=2)
 			if not result.get("cancelled"):
 				result["message"] = "指数技术因子专业版同步完成"
 			return result
@@ -3666,7 +3654,7 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'), fill_numeric=("reward", "hold_vol"))
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
 				# 批次内按唯一键去重（Tushare 偶发返回重复行）
 				data = list(
 					{(d.get("ts_code"), d.get("ann_date"), d.get("end_date"), d.get("name"), d.get("title")): d for d in

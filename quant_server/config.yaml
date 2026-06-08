@@ -154,3 +154,6 @@ ENGINES:
     etf_daily: 3             # ETF日线（fund_daily，800次/分钟）
     etf_adj: 2               # ETF复权因子（fund_adj，500次/分钟）
     index_daily: 2           # 指数日线（index_daily，500次/分钟）
+    stk_factor: 3             # 股票技术因子（stk_factor，500次/分钟@8000积分）
+    stk_factor_pro: 2         # 股票技术因子专业版（stk_factor_pro，500次/分钟@8000积分）
+    idx_factor_pro: 2         # 指数技术因子专业版（idx_factor_pro，500次/分钟）

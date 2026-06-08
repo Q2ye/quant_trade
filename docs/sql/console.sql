@@ -63,6 +63,13 @@ select count(*) from  etf_daily;
 select * from  fund_adj_factor;
 select count(*) from  fund_adj_factor;
 
+-- 指数技术因子专业版
+select * from  index_factor_pro_daily;
+select count(*) from  index_factor_pro_daily;
+
+-- 每日涨跌停价格表（TimescaleDB超表）
+select * from  stock_daily_limit;
+select count(*) from  stock_daily_limit;
 
 -- 每日指标表（TimescaleDB超表）
 select * from stock_daily_basic;

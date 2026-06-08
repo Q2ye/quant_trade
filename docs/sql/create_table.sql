@@ -388,8 +388,8 @@ CREATE TABLE stk_rewards (
     end_date DATE,
     name VARCHAR(50) NOT NULL,
     title VARCHAR(100),
-    reward NUMERIC(18, 2) NOT NULL,
-    hold_vol BIGINT NOT NULL,
+    reward NUMERIC(18, 2),
+    hold_vol BIGINT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (ts_code, ann_date, end_date, name, title)
@@ -2675,15 +2675,18 @@ CREATE TABLE stock_daily_limit (
     id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     trade_date DATE NOT NULL,
-    pre_close NUMERIC(9,4) NOT NULL,
+    pre_close NUMERIC(9,4),
     up_limit NUMERIC(9,4) NOT NULL,
     down_limit NUMERIC(9,4) NOT NULL,
     up_percent NUMERIC(5,2),
     down_percent NUMERIC(5,2),
     price_range NUMERIC(9,4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ts_code, trade_date)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_limit_code_date ON stock_daily_limit(ts_code, trade_date);
 
 COMMENT ON TABLE stock_daily_limit IS '股票每日涨跌停价格表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_daily_limit.ts_code IS '股票TS代码（含交易所后缀）';

@@ -94,6 +94,7 @@ export interface SyncTaskRecord {
   id: string;
   task_id: string;
   task_type: string;
+  task_label?: string;
   data_types?: string[];
   status: string;
   start_time?: string;
@@ -104,6 +105,7 @@ export interface SyncTaskRecord {
   total_records: number;
   parameters?: Record<string, any>;
   error_message?: string;
+  user_id?: string;
   created_at?: string;
   updated_at?: string;
   completed_at?: string;
@@ -136,6 +138,57 @@ export interface DataQualityResponse {
   recommendations: string[];
   generated_at: string;
   message?: string;
+}
+
+// 同步类型分组元数据 (对应后端 GET /api/data/sync/types 返回)
+export interface SyncTypeMeta {
+  data_type: string
+  label: string
+  group_index: string
+  implemented: boolean
+  table_name: string
+  estimated_time_seconds: number
+  data_volume: string
+  last_sync_at: string | null
+  coverage: number
+  is_core: boolean
+}
+
+export interface SyncGroupMeta {
+  id: string
+  label: string
+  color: string
+  description: string
+  recommended_frequency: string
+  depends_on: string[]
+  types: SyncTypeMeta[]
+}
+
+export interface SyncPresetMeta {
+  id: string
+  name: string
+  description: string
+  recommended: boolean
+  estimated_time_seconds: number
+  steps: { group_id: string; type_filter?: string }[]
+}
+
+export interface SyncTypesMetaResponse {
+  groups: SyncGroupMeta[]
+  presets: SyncPresetMeta[]
+}
+
+export interface SyncTypeStatus {
+  data_type: string
+  label: string
+  group: string
+  last_sync_at: string | null
+  coverage: number
+  status: 'up_to_date' | 'needs_update' | 'outdated' | 'never_synced'
+}
+
+export interface SyncStatusAllResponse {
+  types: SyncTypeStatus[]
 }
 
 /**
@@ -254,6 +307,7 @@ class DataSyncService {
    */
   async getSyncTasks(params?: {
     status?: string;
+    group?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ success: boolean; tasks: SyncTaskRecord[]; total: number }> {
@@ -434,6 +488,32 @@ class DataSyncService {
     } = {},
   ): Promise<SyncResponse> {
     return this.fullSyncData(params);
+  }
+
+  /**
+   * 获取同步类型的分组元数据和预设任务
+   */
+  async getSyncTypesMeta(): Promise<SyncTypesMetaResponse> {
+    return request
+      .get(`${this.baseUrl}/types`)
+      .then(handleResponse)
+      .catch((error) => {
+        console.error("获取同步类型元数据失败:", error)
+        throw error
+      })
+  }
+
+  /**
+   * 获取所有同步类型的状态概览
+   */
+  async getSyncStatusAll(): Promise<SyncStatusAllResponse> {
+    return request
+      .get(`${this.baseUrl}/status/all`)
+      .then(handleResponse)
+      .catch((error) => {
+        console.error("获取同步状态概览失败:", error)
+        throw error
+      })
   }
 }
 

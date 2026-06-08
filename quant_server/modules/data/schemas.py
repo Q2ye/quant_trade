@@ -1247,6 +1247,7 @@ class SyncTaskRecord(BaseModel):
     id: str = Field(..., description="记录主键ID（UUID）")
     task_id: str = Field(..., description="任务ID")
     task_type: str = Field(..., description="任务类型")
+    task_label: Optional[str] = Field(default=None, description="任务类型中文名")
     data_types: Optional[List[str]] = Field(default=None, description="数据类型列表")
     status: str = Field(..., description="任务状态: completed/failed/running/cancelled")
     start_time: Optional[datetime] = Field(default=None, description="开始时间")
@@ -1361,3 +1362,61 @@ class BatchFactorResponse(BaseModel):
 			}
 		}
 	)
+
+
+# ==================== 同步类型元数据模型 ====================
+
+class SyncTypeMeta(BaseModel):
+	"""单个同步类型的元数据"""
+	data_type: str = Field(..., description="DataType 值")
+	label: str = Field(..., description="显示名称")
+	group_index: str = Field(..., description="组内序号，如 A1")
+	implemented: bool = Field(True, description="是否已实现")
+	table_name: str = Field("", description="目标表名")
+	estimated_time_seconds: int = Field(0, description="预估耗时(秒)")
+	data_volume: str = Field("", description="数据量描述")
+	last_sync_at: Optional[datetime] = Field(None, description="上次同步时间")
+	coverage: float = Field(0.0, description="数据覆盖度 0.0-1.0")
+	is_core: bool = Field(True, description="是否核心类型")
+
+
+class SyncGroupMeta(BaseModel):
+	"""同步分组元数据"""
+	id: str = Field(..., description="分组ID: A/B/C/D/E/F")
+	label: str = Field(..., description="分组名称")
+	color: str = Field(..., description="颜色代码")
+	description: str = Field(..., description="分组描述")
+	recommended_frequency: str = Field(..., description="建议同步频率")
+	depends_on: List[str] = Field(default_factory=list, description="依赖的分组ID列表")
+	types: List[SyncTypeMeta] = Field(default_factory=list, description="该分组下的类型列表")
+
+
+class SyncPresetMeta(BaseModel):
+	"""预设任务元数据"""
+	id: str = Field(..., description="预设ID")
+	name: str = Field(..., description="预设名称")
+	description: str = Field(..., description="预设描述")
+	recommended: bool = Field(False, description="是否推荐")
+	estimated_time_seconds: int = Field(0, description="预估总耗时(秒)")
+	steps: List[Dict] = Field(default_factory=list, description="执行步骤")
+
+
+class SyncTypesMetaResponse(BaseModel):
+	"""GET /api/data/sync/types 响应"""
+	groups: List[SyncGroupMeta] = Field(..., description="分组列表")
+	presets: List[SyncPresetMeta] = Field(..., description="预设任务列表")
+
+
+class SyncTypeStatus(BaseModel):
+	"""单个类型的同步状态"""
+	data_type: str
+	label: str
+	group: str
+	last_sync_at: Optional[datetime] = None
+	coverage: float = 0.0
+	status: str = "unknown"  # up_to_date / needs_update / never_synced
+
+
+class SyncStatusAllResponse(BaseModel):
+	"""GET /api/data/sync/status/all 响应"""
+	types: List[SyncTypeStatus] = Field(default_factory=list)

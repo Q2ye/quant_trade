@@ -64,6 +64,7 @@ const pagination = reactive({
 
 const filters = reactive({
   status: "" as string,
+  group: "" as string,
   dataType: "" as string,
   dateRange: null as [number, number] | null,
 });
@@ -74,6 +75,17 @@ const statusOptions = [
   { label: "完成", value: "completed" },
   { label: "失败", value: "failed" },
   { label: "已取消", value: "cancelled" },
+];
+
+const groupOptions = [
+  { label: "全部", value: "" },
+  { label: "1-每日行情", value: "1" },
+  { label: "2-财务数据", value: "2" },
+  { label: "3-公司治理", value: "3" },
+  { label: "4-因子数据", value: "4" },
+  { label: "5-事件驱动", value: "5" },
+  { label: "6-宏观数据", value: "6" },
+  { label: "7-基础数据", value: "7" },
 ];
 
 const dataTypeOptions = computed(() => {
@@ -111,6 +123,10 @@ const handleBack = () => {
   if (window.history.length > 1) router.go(-1);
   else router.push("/");
 };
+
+function goToDetail(taskId: string) {
+  router.push({ name: "SyncDetail", params: { taskId } });
+}
 
 const handleDeleteRecord = (row: SyncRecord) => {
   dialog.error({
@@ -181,7 +197,7 @@ const columns: DataTableColumns<SyncRecord> = [
   { type: "selection" as const },
   {
     title: "数据类型", key: "data_type", width: 160,
-    render: (row) => h("span", {}, row.data_desc || row.data_type),
+    render: (row) => h("span", {}, row.data_desc || row.task_label || row.data_type),
   },
   {
     title: "说明", key: "data_desc", width: 120,
@@ -244,6 +260,7 @@ const closeDrawer = () => {
 
 const handleReset = () => {
   filters.status = "";
+  filters.group = "";
   filters.dataType = "";
   filters.dateRange = null;
   pagination.current = 1;
@@ -275,6 +292,26 @@ const TYPE_NAME_MAP: Record<string, string> = {
   business_income: "主营业务构成",
   // 公司治理
   managers: "管理层信息", rewards: "薪酬持股",
+  // 宏观经济
+  cpi: "CPI居民消费价格", ppi: "PPI工业出厂价格", gdp: "GDP国内生产总值",
+  // 指数扩展
+  index_weight: "指数成分权重", index_weekly: "指数周线行情",
+  // Phase 1 新增
+  stock_hsgt: "沪深港通列表", st_stockrisk: "ST风险警示板",
+  disclosure_date: "财报披露日期", share_float: "限售股解禁",
+  // Phase 2 新增
+  stk_holdernumber: "股东人数", top10_holders: "前十大股东",
+  top10_floatholders: "前十大流通股东", pledge_stat: "股权质押统计",
+  stk_holdertrade: "股东增减持",
+  // Phase 3 新增
+  index_sw_classify: "申万行业分类", index_sw_member: "申万行业成分",
+  index_sw_daily: "申万行业日线", index_dailybasic: "大盘指数指标",
+  forecast_pro: "券商盈利预测", moneyflow_hsgt: "沪深港通资金流",
+  // Phase 4 新增
+  daily_limit: "涨跌停价格", stk_factor: "技术因子(基础)",
+  stk_factor_pro: "技术因子(专业)", idx_factor_pro: "指数技术因子(专业)",
+  // 其他补充
+  suspend_info: "停复牌信息",
   // 批量
   batch_sync: "批量同步",
 };
@@ -285,7 +322,7 @@ const formatDataTypeName = (codes: string[]): string =>
 const loadHistory = async () => {
   pageState.value = "loading";
   try {
-    const result = await dataSyncService.getSyncTasks({ limit: 200 });
+    const result = await dataSyncService.getSyncTasks({ limit: 200, group: filters.group || undefined });
     const tasks = result.tasks || [];
     allRecords.value = tasks.map((t) => {
       const startTime = t.start_time ? new Date(t.start_time) : null;
@@ -323,9 +360,17 @@ const loadHistory = async () => {
 
 // Reset pagination when filters change
 watch(
-  () => [filters.status, filters.dataType, filters.dateRange],
+  () => [filters.status, filters.group, filters.dataType, filters.dateRange],
   () => {
     pagination.current = 1;
+  },
+);
+
+// Reload from server when group filter changes (server-side filter)
+watch(
+  () => filters.group,
+  () => {
+    loadHistory();
   },
 );
 
@@ -386,6 +431,13 @@ onMounted(() => {
               :options="statusOptions"
             />
             <n-select
+              v-model:value="filters.group"
+              placeholder="分组筛选"
+              style="width: 140px"
+              clearable
+              :options="groupOptions"
+            />
+            <n-select
               v-model:value="filters.dataType"
               placeholder="数据类型"
               style="width: 130px"
@@ -425,6 +477,7 @@ onMounted(() => {
           :columns="columns"
           :data="pagedRecords"
           v-model:checked-row-keys="checkedRowKeys"
+          :row-props="(row: SyncRecord) => ({ class: 'clickable-row', onClick: () => goToDetail(row.task_id || row.id) })"
           :pagination="{
             page: pagination.current,
             pageSize: pagination.pageSize,
@@ -450,7 +503,7 @@ onMounted(() => {
           <n-descriptions label-placement="left" bordered :column="2" size="small">
             <n-descriptions-item label="记录ID" :span="2">{{ selectedRecord.db_id }}</n-descriptions-item>
             <n-descriptions-item label="任务ID" :span="2">{{ selectedRecord.id }}</n-descriptions-item>
-            <n-descriptions-item label="任务类型">{{ selectedRecord.data_desc || selectedRecord.data_type }}</n-descriptions-item>
+            <n-descriptions-item label="任务类型">{{ selectedRecord.data_desc || selectedRecord.task_label || selectedRecord.data_type }}</n-descriptions-item>
             <n-descriptions-item label="状态">
               <n-tag :type="getStatusType(selectedRecord.status)" :bordered="false" size="small">
                 {{ getStatusText(selectedRecord.status) }}
@@ -545,6 +598,8 @@ onMounted(() => {
   padding-top: 16px;
   border-top: 1px solid var(--n-border-color);
 }
+
+.clickable-row { cursor: pointer; transition: background 0.15s; &:hover { background: var(--n-action-color); } }
 
 @media (max-width: 768px) {
   .filter-bar {
