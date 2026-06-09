@@ -12,7 +12,7 @@ export default {
 
 <style scoped>
 .empty-layout {
-  height: 100vh;
+  min-height: var(--vh-full);
   overflow: hidden;
 }
 </style>

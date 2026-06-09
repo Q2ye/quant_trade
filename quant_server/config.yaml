@@ -142,6 +142,13 @@ ENGINES:
   # value: 最大并发数（0 = 不限流）
   # ------------------------------------------------------------------
   sync_rate_limits:
+    daily: 5                 # 日线行情（daily，800次/分钟）
+    daily_basic: 2           # 每日指标（daily_basic，500次/分钟，保守2并发）
+    adj_factor: 2            # 复权因子（adj_factor，500次/分钟）
+    moneyflow: 2             # 个股资金流向（moneyflow，600次/分钟）
+    weekly: 2                # 周线行情（weekly，400次/分钟）
+    monthly: 2               # 月线行情（monthly，400次/分钟）
+    etf_share: 2             # ETF份额（fund_share，500次/分钟）
     financial_indicator: 2   # 财务指标（fina_indicator_vip，600次/分钟）
     audit_opinion: 3         # 审计意见（fina_audit）
     forecast: 3              # 业绩预告（forecast）

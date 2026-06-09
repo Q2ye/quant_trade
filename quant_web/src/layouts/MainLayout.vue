@@ -128,8 +128,8 @@ export default defineComponent({
 .main-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  max-height: 100vh;
+  height: var(--vh-full);
+  max-height: var(--vh-full);
   position: relative;
   overflow: hidden;
 }
@@ -141,7 +141,7 @@ export default defineComponent({
   position: relative;
   z-index: 2;
   min-height: 0;
-  height: calc(100vh - var(--header-height, 60px) - 30px);
+  height: calc(var(--vh-full) - var(--header-height, 60px) - 30px);
   background: transparent;
 }
 

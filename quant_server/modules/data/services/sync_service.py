@@ -1504,6 +1504,8 @@ class DataSyncService:
 						async with sm.get_session() as s:
 							result = await process_one(s, ts_code)
 							await s.commit()
+				# 限流节流：每次调用后短暂冷却，防止响应太快打爆 Tushare 频率限制
+				await asyncio.sleep(0.5)
 			else:
 				async with sem:
 					if await self._is_cancelled():
@@ -1799,6 +1801,7 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
+			rate_key: str = "daily",
 			**_kwargs
 	) -> Dict[str, Any]:
 		"""
@@ -1878,6 +1881,20 @@ class DataSyncService:
 		max_concurrency = getattr(engine_cfg, 'sync_concurrency', None) if engine_cfg else None
 		max_concurrency = max_concurrency or 8
 
+		# per-type 限流（config.yaml sync_rate_limits.daily，800次/分钟）
+		_rate_limit = 0
+		if rate_key:
+			import yaml, os
+			try:
+				_cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.yaml")
+				with open(_cfg_path, "r", encoding="utf-8") as _f:
+					_cfg_yaml = yaml.safe_load(_f)
+				_limits = _cfg_yaml.get("ENGINES", {}).get("sync_rate_limits", {})
+				_rate_limit = _limits.get(rate_key, 0)
+			except Exception:
+				pass
+		limiter = asyncio.Semaphore(_rate_limit) if _rate_limit > 0 else None
+
 		sem = asyncio.Semaphore(max_concurrency)  # 控制并发数
 		stats_lock = asyncio.Lock()  # 保护统计变量
 		done_count = 0  # 已完成数量（用于进度日志）
@@ -1892,8 +1909,9 @@ class DataSyncService:
 		total = len(ts_codes)
 
 		async with SyncTimingLogger(logger, "日行情(daily_quotes)", slow_threshold=30.0) as timer:
+			limiter_info = f", 限流={_rate_limit}/并" if _rate_limit > 0 else ""
 			logger.info(
-				f"[日行情] 并行同步 {total} 只, 并发={max_concurrency}, "
+				f"[日行情] 并行同步 {total} 只, 并发={max_concurrency}{limiter_info}, "
 				f"预估 ~{total * 0.3 / 60 / max_concurrency:.1f}min"
 			)
 
@@ -2003,8 +2021,15 @@ class DataSyncService:
 								)
 
 			# ===== 步骤 5：并行执行所有股票 =====
-			# 使用 asyncio.gather 并发调度，Semaphore 自动限流
-			coros = [_process_one(ts_code) for ts_code in ts_codes]
+			# Semaphore + limiter: 并发数 + Tushare 频率双重限流
+			async def _sem_limiter(ts_code: str) -> None:
+				async with sem:
+					if limiter:
+						async with limiter:
+							await _process_one(ts_code)
+					else:
+						await _process_one(ts_code)
+			coros = [_sem_limiter(ts_code) for ts_code in ts_codes]
 			await asyncio.gather(*coros)
 
 			# ===== 步骤 6：最终进度更新（100%） =====
@@ -2170,14 +2195,13 @@ class DataSyncService:
 					if df is None or df.empty:
 						return {"added": 0, "updated": 0, "mode": mode}
 					data = _convert_records_datetime(df.to_dict("records"))
-					added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
 					logger.error(f"[资金流向] {ts_code} 同步失败: {_fmt_err(e, 150)}")
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[资金流向] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "资金流向", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "资金流向", task_id, user_id, _process_one, rate_key="moneyflow")
 			if not result.get("cancelled"):
 				result["message"] = "资金流向数据同步完成"
 			return result
@@ -2249,7 +2273,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[复权因子] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "复权因子", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "复权因子", task_id, user_id, _process_one, rate_key="adj_factor")
 			if not result.get("cancelled"):
 				result["message"] = "复权因子数据同步完成"
 			return result
@@ -2320,7 +2344,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[每日指标] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "每日指标", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "每日指标", task_id, user_id, _process_one, rate_key="daily_basic")
 			if not result.get("cancelled"):
 				result["message"] = "每日指标数据同步完成"
 			return result
@@ -3790,7 +3814,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[周线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "周线行情", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "周线行情", task_id, user_id, _process_one, rate_key="weekly")
 			if not result.get("cancelled"):
 				result["message"] = "周线行情数据同步完成"
 			return result
@@ -3857,7 +3881,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[月线行情] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "月线行情", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "月线行情", task_id, user_id, _process_one, rate_key="monthly")
 		if not result.get("cancelled"):
 			result["message"] = "月线行情数据同步完成"
 		return result
@@ -4140,7 +4164,7 @@ class DataSyncService:
 					return {"added": 0, "updated": 0, "failed": True}
 
 			logger.info(f"[ETF份额] 并行同步 {len(ts_codes)} 只, 并发=8, 预估 ~{len(ts_codes) * 0.3 / 60 / 8:.1f}min")
-			result = await self._parallel_for_each(ts_codes, "ETF份额", task_id, user_id, _process_one)
+			result = await self._parallel_for_each(ts_codes, "ETF份额", task_id, user_id, _process_one, rate_key="etf_share")
 			if not result.get("cancelled"):
 				result["message"] = "ETF份额数据同步完成"
 			return result

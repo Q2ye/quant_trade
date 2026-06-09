@@ -22,16 +22,18 @@
 
 // HTML根元素设置
 html {
+  zoom: 0.8; // 全局缩放到80%
+  background-color: vars.$body-color; // 防止 zoom 后露出浏览器默认背景
   font-size: vars.$font-size-base; // 使用别名访问
   line-height: 1.5; // 设置基础行高（1.5倍）
-  height: 100%; // 高度100%确保页面填满视口
+  min-height: 100%; // 最小高度100%确保页面填满视口
   overflow-x: hidden; // 隐藏水平溢出，防止横向滚动
 }
 
 // Body主体元素设置
 body {
   font-family: vars.$font-family-base; // 使用别名访问
-  min-height: 100vh; // 最小高度为视口高度
+  min-height: var(--vh-full); // 125vh 补偿 zoom 0.8
   background-color: vars.$body-color; // 背景色使用CSS变量
   color: vars.$text-color-base; // 文字颜色使用CSS变量
   // 背景和文字颜色的平滑过渡效果（主题切换时）
@@ -47,7 +49,7 @@ body {
 // 应用容器：包裹整个应用的根元素
 .app-container {
   display: flex; // 使用flex布局
-  min-height: 100vh; // 最小高度为视口高度
+  min-height: var(--vh-full); // 125vh 补偿 zoom 0.8
   position: relative; // 相对定位，为子元素绝对定位提供参考
   background-color: vars.$body-color; // 背景色
 }
@@ -57,7 +59,7 @@ body {
   position: fixed; // 固定定位，不随页面滚动
   top: 0; // 顶部对齐
   left: 0; // 左侧对齐
-  height: 100vh; // 高度为视口高度
+  height: var(--vh-full); // 125vh 补偿 zoom 0.8
   width: var(--sidebar-expanded-width); // 宽度使用CSS变量（展开状态）
   z-index: 1000; // 高z-index确保在最上层
   background-color: vars.$card-color; // 背景色使用卡片颜色
@@ -86,7 +88,7 @@ body {
 // 页面内容区域：实际内容的容器
 .page-content {
   padding: var(--content-padding); // 使用CSS变量的内边距
-  min-height: calc(100vh - var(--header-height)); // 最小高度（减去头部）
+  min-height: calc(var(--vh-full) - var(--header-height)); // 125vh 补偿 zoom 0.8
   background-color: vars.$body-color; // 背景色
 }
 

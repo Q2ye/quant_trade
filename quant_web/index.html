@@ -6,6 +6,13 @@
     <title>一念量化</title>
 
     <style>
+      :root {
+        --vh-full: calc(100vh / 0.8); /* 125vh — zoom 补偿 */
+      }
+      html {
+        zoom: 0.8;
+        background-color: #080C16;
+      }
       * {
         margin: 0;
         padding: 0;
@@ -17,13 +24,16 @@
         background: #080C16;
         color: #EBEDF5;
         overflow: hidden;
-        height: 100vh;
+        min-height: var(--vh-full);
       }
 
       /* 初始加载动画 — 深海蓝主题 */
       #app-loading {
         position: fixed;
-        inset: 0;
+        top: 0;
+        left: 0;
+        width: 125vw;   /* 100vw / 0.8 — 补偿 zoom */
+        height: 125vh;  /* 100vh / 0.8 — 补偿 zoom */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -41,6 +51,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
+        transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
       }
 
       .loading-logo img {
@@ -48,46 +59,36 @@
         height: 100%;
         object-fit: cover;
         display: block;
-        animation: logoZoom 3s ease-in-out infinite;
+        animation: logoBreathe 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
       }
 
-      .loading-text {
-        position: relative;
-        z-index: 1;
-        font-size: 18px;
-        font-weight: 500;
-        margin-bottom: 24px;
-        color: #8898B8;
-        letter-spacing: 4px;
+      /* Logo 背后的脉冲光晕 */
+      .logo-glow {
+        position: absolute;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(68,138,255,0.12) 0%, transparent 70%);
+        animation: glowPulse 4s ease-in-out infinite;
+        pointer-events: none;
       }
 
-      .loading-progress {
-        position: relative;
-        z-index: 1;
-        width: 280px;
-        height: 2px;
-        background: rgba(68, 138, 255, 0.15);
-        border-radius: 1px;
-        overflow: hidden;
-      }
-
-      .progress-bar {
-        height: 100%;
-        width: 30%;
-        background: linear-gradient(90deg, transparent, #448AFF, transparent);
-        border-radius: 1px;
-        animation: scanLine 1.5s ease-in-out infinite;
-      }
-
-      @keyframes logoZoom {
+      @keyframes logoBreathe {
         0%   { transform: scale(1.00); }
-        50%  { transform: scale(1.04); }
-        100% { transform: scale(1.00); }
+        35%  { transform: scale(1.05); }  /* 快吸 */
+        55%  { transform: scale(1.05); }  /* 屏息 */
+        100% { transform: scale(1.00); }  /* 慢呼 */
       }
 
-      @keyframes scanLine {
-        0%   { transform: translateX(-100%); }
-        100% { transform: translateX(340px); }
+      @keyframes glowPulse {
+        0%, 100% { opacity: 0.25; transform: scale(0.85); }
+        50%      { opacity: 0.65; transform: scale(1.10); }
+      }
+
+      /* 退出过渡 — logo 收缩 + 淡出 */
+      #app-loading.exit-anim .loading-logo {
+        transform: scale(0.85);
+        opacity: 0;
       }
 
       /* Vue应用加载完成后隐藏加载动画 */
@@ -100,7 +101,7 @@
       #app {
         opacity: 0;
         transition: opacity 0.5s ease;
-        height: 100vh;
+        height: var(--vh-full);
       }
 
       #app.visible {
@@ -112,11 +113,8 @@
     <!-- 初始加载动画 -->
     <div id="app-loading">
       <div class="loading-logo">
-          <img src="/logo-heng.svg"  alt="一念量化" style="width:100vw;height:100vh;object-fit:fill;" />
-      </div>
-      <div class="loading-text">一念量化</div>
-      <div class="loading-progress">
-        <div class="progress-bar"></div>
+        <div class="logo-glow"></div>
+          <img src="/logo-heng.svg" alt="一念量化" style="width:100%;height:100%;object-fit:fill;" />
       </div>
     </div>
 
@@ -139,19 +137,24 @@
     <script>
       // 监听Vue应用加载完成事件
       document.addEventListener("vue-app-ready", function () {
-        // 最短展示时间 2.5s，让用户看清 logo 动画
+        // 最短展示时间，让用户看清 logo 动画
+        const minDisplay = 2000; // 最少展示 2s
+        const elapsed = performance.now();
+        const delay = Math.max(0, minDisplay - elapsed);
+
         setTimeout(() => {
           const loadingElement = document.getElementById("app-loading");
           const appElement = document.getElementById("app");
 
-          // 添加淡出效果
-          loadingElement.classList.add("fade-out");
+          // 第一步：logo 收缩 + 文字/点淡出 (0.5s)
+          loadingElement.classList.add("exit-anim");
 
-          // 显示Vue应用
+          // 第二步：整体遮罩淡出，应用淡入 (0.6s)
           setTimeout(() => {
+            loadingElement.classList.add("fade-out");
             appElement.classList.add("visible");
           }, 500);
-        }, 1500);
+        }, delay);
       });
     </script>
   </body>

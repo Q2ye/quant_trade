@@ -208,7 +208,7 @@ def handle_data(context, data):
 .strategy-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--header-height) - 40px);
+  height: calc(var(--vh-full) - var(--header-height) - 40px);
   overflow: hidden;
 
   .header-pane {

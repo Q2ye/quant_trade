@@ -310,7 +310,7 @@ export default defineComponent({
   color: var(--n-text-color-base);
 
   // 设置最小高度
-  min-height: 100vh;
+  min-height: var(--vh-full);
 
   // 深色背景（兜底 main-layout 透明化后的背景）
   background-color: var(--color-bg-primary, #0D1117);

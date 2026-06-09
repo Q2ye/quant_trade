@@ -42,7 +42,7 @@ const goBack = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
+  min-height: var(--vh-full);
   background-color: var(--n-card-color);
 }
 </style>

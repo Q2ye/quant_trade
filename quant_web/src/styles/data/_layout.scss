@@ -16,7 +16,7 @@
 
   // 移除固定高度限制，改为自适应
   height: auto;
-  min-height: calc(100vh - #{$header-height});
+  min-height: calc(var(--vh-full) - #{$header-height});
   max-height: none;
 
   // 内容结构优化

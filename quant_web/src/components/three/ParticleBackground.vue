@@ -37,9 +37,10 @@ let resizeObserver: ResizeObserver | null = null;
 const mouse = { x: 0, y: 0 };
 const target = { x: 0, y: 0 };
 
+const ZOOM = 0.8; // 与 CSS --zoom-scale 保持一致
 function onMouseMove(e: MouseEvent) {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  mouse.x = (e.clientX / window.innerWidth / ZOOM) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight / ZOOM) * 2 + 1;
 }
 
 function init(): boolean {

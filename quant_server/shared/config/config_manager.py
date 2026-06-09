@@ -43,7 +43,7 @@ class DatabaseSettings(BaseSettings):
 	NAME: str = "quant_signals"
 
 	# 连接池配置
-	POOL_SIZE: int = 10
+	POOL_SIZE: int = 10  # 默认值，.env DEV_DB_POOL_SIZE=50 会覆盖
 	MAX_OVERFLOW: int = 5
 	ECHO_SQL: bool = False
 	ECHO_POOL: bool = False

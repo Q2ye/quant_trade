@@ -103,7 +103,7 @@ export default defineComponent({
 .report-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: var(--vh-full);
   background-color: #fff;
   color: #333;
   font-family: "Helvetica Neue", Arial, sans-serif;

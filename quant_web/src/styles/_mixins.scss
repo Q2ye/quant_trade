@@ -818,7 +818,7 @@
 /// 带侧边栏的内容布局
 @mixin content-with-base {
   padding: vars.spacer(4);
-  min-height: 100vh;
+  min-height: var(--vh-full);
 }
 
 /// 侧边栏内容偏移布局

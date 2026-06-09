@@ -709,7 +709,7 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
 
   // 其他组件配置保持不变，但使用统一常量...
   Menu: {
-    fontSize: "12px",
+    fontSize: "13px",
   },
   DataTable: {
     fontSize: "12px",
@@ -834,7 +834,7 @@ export const lightThemeOverrides: GlobalThemeOverrides = {
   },
 
   Menu: {
-    fontSize: "12px",
+    fontSize: "13px",
   },
   DataTable: {
     fontSize: "12px",
