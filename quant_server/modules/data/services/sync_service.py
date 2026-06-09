@@ -967,6 +967,10 @@ class DataSyncService:
 		shared_executor = _cf.ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="batch_sync_")
 
 		async def _sync_one(task, idx):
+			if await self._is_cancelled():
+				return SyncResult(data_type=task.data_type, success=False,
+				                 records_added=0, records_updated=0, records_failed=0,
+				                 error_message='用户取消').model_dump()
 			logger.info(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 排队等待...")
 			async with sem:
 				from shared.database.session import get_session_manager

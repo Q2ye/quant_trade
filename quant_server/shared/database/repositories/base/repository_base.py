@@ -684,26 +684,47 @@ class BaseRepository(Generic[T]):
 
 	async def batch_upsert (self, match_fields: List[str],
 	                        data_list: List[Dict[str, Any]],
-	                        update_fields: List[str] = None) -> List[T]:
+	                        update_fields: List[str] = None,
+	                        chunk_size: int = 2000) -> List[T]:
 		"""
-		批量插入或更新
+		批量插入或更新（使用 PostgreSQL INSERT ... ON CONFLICT DO UPDATE）
 
 		Args:
-			match_fields: 匹配字段
+			match_fields: 匹配字段（对应唯一约束的列）
 			data_list: 数据列表
-			update_fields: 更新字段
+			update_fields: 更新字段（None = 更新所有非匹配列）
+			chunk_size: 每批 SQL 的行数（默认 2000，避免 PG 语句过大）
 
 		Returns:
 			记录对象列表
 		"""
 		try:
-			results = []
+			from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-			for data in data_list:
-				result = await self.upsert(match_fields, data, update_fields)
-				results.append(result)
+			if not data_list:
+				return []
 
-			return results
+			# 构建 update 字段：优先使用传入的，否则取所有非匹配列
+			if update_fields is None:
+				update_columns = [c.name for c in self.model.__table__.columns
+				                  if c.name not in match_fields and not c.primary_key]
+				set_dict = {col: getattr(pg_insert(self.model).excluded, col) for col in update_columns}
+			else:
+				set_dict = {col: getattr(pg_insert(self.model).excluded, col) for col in update_fields}
+
+			total_inserted = 0
+			for i in range(0, len(data_list), chunk_size):
+				chunk = data_list[i:i + chunk_size]
+				stmt = (pg_insert(self.model)
+				        .values(chunk)
+				        .on_conflict_do_update(
+					        index_elements=match_fields,
+					        set_=set_dict,
+				        ))
+				result = await self.session.execute(stmt)
+				total_inserted += result.rowcount
+
+			return []
 
 		except Exception as e:
 			raise RepositoryError(f"批量插入或更新失败: {str(e)}")
