@@ -655,7 +655,7 @@ async def get_sync_status_api (
 async def get_sync_tasks_api(
         status: Optional[str] = Query(None, description="状态筛选"),
         group: Optional[str] = Query(None, description="分组筛选: 1-7"),
-        limit: int = Query(50, ge=1, le=200, description="每页数量"),
+        limit: int = Query(50, ge=1, le=1000, description="每页数量"),
         offset: int = Query(0, ge=0, description="偏移量"),
         current_user: Dict = Depends(get_current_user),
         db_session: AsyncSession = Depends(get_db_session),

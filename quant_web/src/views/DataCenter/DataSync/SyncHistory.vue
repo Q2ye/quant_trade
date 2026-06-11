@@ -42,6 +42,7 @@ interface SyncRecord {
   records_added: number;
   total_records: number;
   records_failed: number;
+  children?: SyncRecord[];
   parameters?: Record<string, any>;
   error?: string;
   created_at?: string;
@@ -53,6 +54,7 @@ type PageState = "loading" | "error" | "empty" | "data";
 
 const pageState = ref<PageState>("loading");
 const allRecords = ref<SyncRecord[]>([]);
+const totalCount = ref(0);
 const selectedRecord = ref<SyncRecord | null>(null);
 const drawerVisible = ref(false);
 const checkedRowKeys = ref<string[]>([]);
@@ -93,39 +95,30 @@ const dataTypeOptions = computed(() => {
   return [{ label: "全部类型", value: "" }, ...types.map((t) => ({ label: TYPE_NAME_MAP[t] || t, value: t }))];
 });
 
-// Client-side filtering
-const filteredRecords = computed(() => {
-  let list = allRecords.value;
-  if (filters.status) {
-    list = list.filter((r) => r.status === filters.status);
-  }
-  if (filters.dataType) {
-    list = list.filter((r) => r.data_type === filters.dataType);
-  }
-  if (filters.dateRange) {
-    const [start, end] = filters.dateRange;
-    list = list.filter((r) => {
-      const t = new Date(r.start_time).getTime();
-      return t >= start && t <= end;
-    });
-  }
-  return list;
+// 跟踪各下拉框/弹出层的打开状态，避免下拉框关闭时 click 事件
+// 穿透到表格行导致意外跳转详情页
+const popupOpen = reactive({
+  status: false,
+  group: false,
+  dataType: false,
+  datePicker: false,
 });
 
-const pagedRecords = computed(() => {
-  const start = (pagination.current - 1) * pagination.pageSize;
-  return filteredRecords.value.slice(start, start + pagination.pageSize);
+// 任意弹出层打开时，忽略表格行点击
+const isAnyPopupOpen = computed(() =>
+  popupOpen.status || popupOpen.group || popupOpen.dataType || popupOpen.datePicker
+);
+
+onMounted(() => {
+  loadHistory();
 });
 
-const paginationTotal = computed(() => filteredRecords.value.length);
+// Server-side: API handles filtering + pagination
+const paginationTotal = computed(() => totalCount.value);
 
 const handleBack = () => {
   router.push({ name: "DataSync" });
 };
-
-function goToDetail(taskId: string) {
-  router.push({ name: "SyncDetail", params: { taskId } });
-}
 
 const handleDeleteRecord = (row: SyncRecord) => {
   dialog.error({
@@ -321,9 +314,14 @@ const formatDataTypeName = (codes: string[]): string =>
 const loadHistory = async () => {
   pageState.value = "loading";
   try {
-    const result = await dataSyncService.getSyncTasks({ limit: 200, group: filters.group || undefined });
+    const offset = (pagination.current - 1) * pagination.pageSize;
+    const result = await dataSyncService.getSyncTasks({
+      limit: pagination.pageSize, offset,
+      status: filters.status || undefined,
+      group: filters.group || undefined,
+    });
     const tasks = result.tasks || [];
-    allRecords.value = tasks.map((t) => {
+    const mapTask = (t: any): SyncRecord => {
       const startTime = t.start_time ? new Date(t.start_time) : null;
       const endTime = t.end_time ? new Date(t.end_time) : null;
       const duration = startTime && endTime
@@ -349,8 +347,11 @@ const loadHistory = async () => {
         created_at: t.created_at,
         updated_at: t.updated_at,
         completed_at: t.completed_at,
+        children: t.children ? t.children.map(mapTask) : undefined,
       };
-    });
+    };
+    allRecords.value = tasks.map(mapTask);
+    totalCount.value = result.total || 0;
     pageState.value = allRecords.value.length === 0 ? "empty" : "data";
   } catch {
     pageState.value = "error";
@@ -373,9 +374,6 @@ watch(
   },
 );
 
-onMounted(() => {
-  loadHistory();
-});
 </script>
 
 <template>
@@ -428,6 +426,7 @@ onMounted(() => {
               style="width: 120px"
               clearable
               :options="statusOptions"
+              @update:show="(val: boolean) => popupOpen.status = val"
             />
             <n-select
               v-model:value="filters.group"
@@ -435,6 +434,7 @@ onMounted(() => {
               style="width: 140px"
               clearable
               :options="groupOptions"
+              @update:show="(val: boolean) => popupOpen.group = val"
             />
             <n-select
               v-model:value="filters.dataType"
@@ -442,12 +442,14 @@ onMounted(() => {
               style="width: 130px"
               clearable
               :options="dataTypeOptions"
+              @update:show="(val: boolean) => popupOpen.dataType = val"
             />
             <n-date-picker
               v-model:value="filters.dateRange"
               type="daterange"
               style="width: 240px"
               clearable
+              @update:show="(val: boolean) => popupOpen.datePicker = val"
             />
             <n-button @click="handleReset">重置</n-button>
             <n-button
@@ -474,15 +476,24 @@ onMounted(() => {
         <n-data-table
           v-else
           :columns="columns"
-          :data="pagedRecords"
+          :data="allRecords"
           v-model:checked-row-keys="checkedRowKeys"
-          :row-props="(row: SyncRecord) => ({ class: 'clickable-row', onClick: () => goToDetail(row.task_id || row.id) })"
+          :row-props="(row: SyncRecord) => ({
+            class: 'clickable-row',
+            onClick: (e: MouseEvent) => {
+              const t = e.target as HTMLElement
+              // 忽略展开按钮、操作按钮、标签等交互元素上的点击
+              if (t.closest('button') || t.closest('.n-data-table-expand-trigger') || t.closest('.n-tag')) return
+              if (isAnyPopupOpen.value) return
+              showDetails(row)
+            }
+          })"
           :pagination="{
             page: pagination.current,
             pageSize: pagination.pageSize,
             itemCount: paginationTotal,
-            onChange: (page: number) => { pagination.current = page; },
-            onUpdatePageSize: (pageSize: number) => { pagination.pageSize = pageSize; pagination.current = 1; },
+            onChange: (page: number) => { pagination.current = page; loadHistory(); },
+            onUpdatePageSize: (pageSize: number) => { pagination.pageSize = pageSize; pagination.current = 1; loadHistory(); },
           }"
           :row-key="(row: SyncRecord) => row.id"
           :scroll-x="1050"

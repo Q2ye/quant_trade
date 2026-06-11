@@ -1256,6 +1256,8 @@ class SyncTaskRecord(BaseModel):
     records_succeeded: int = Field(default=0, description="成功记录数")
     records_failed: int = Field(default=0, description="失败记录数")
     total_records: int = Field(default=0, description="总记录数")
+    parent_task_id: Optional[str] = Field(default=None, description="父级 batch 任务ID")
+    children: Optional[list] = Field(default=None, description="子任务列表（仅 batch 任务有）")
     parameters: Optional[Dict[str, Any]] = Field(default=None, description="任务参数")
     error_message: Optional[str] = Field(default=None, description="错误信息")
     created_at: Optional[datetime] = Field(default=None, description="创建时间")

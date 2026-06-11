@@ -15,7 +15,7 @@ export const authGuard = (
   const isAuthenticated = !!token;
 
   if (to.path === "/login" && isAuthenticated) {
-    return next("/dashboard");
+    return next("/market/dashboard");
   }
 
   if (authRequired && !isAuthenticated) {

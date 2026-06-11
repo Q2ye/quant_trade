@@ -103,6 +103,8 @@ export interface SyncTaskRecord {
   records_succeeded: number;
   records_failed: number;
   total_records: number;
+  parent_task_id?: string;
+  children?: SyncTaskRecord[];
   parameters?: Record<string, any>;
   error_message?: string;
   user_id?: string;
@@ -312,7 +314,7 @@ class DataSyncService {
     offset?: number;
   }): Promise<{ success: boolean; tasks: SyncTaskRecord[]; total: number }> {
     return request
-      .get(`${this.baseUrl}/tasks`, { params })
+      .get(`${this.baseUrl}/tasks`, { params: { ...params } })
       .then(handleResponse);
   }
 

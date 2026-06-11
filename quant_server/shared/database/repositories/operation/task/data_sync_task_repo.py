@@ -114,16 +114,22 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 	async def get_by_user_id (
 			self,
 			user_id: str,
-			limit: int = 10,
-			status: Optional[str] = None
+			limit: int = 20,
+			offset: int = 0,
+			status: Optional[str] = None,
+			group: Optional[str] = None,
+			parent_only: bool = False,
 	) -> List[DataSyncTask]:
 		"""
-		根据用户ID获取同步任务
+		根据用户ID获取同步任务（支持服务端分页）
 
 		Args:
 			user_id: 用户ID
-			limit: 返回数量限制
-			status: 任务状态筛选（可选）
+			limit: 每页数量
+			offset: 偏移量
+			status: 任务状态筛选（可选，WHERE 过滤）
+			group: 分组筛选（可选，匹配 task_type）
+			parent_only: True 时只返回根任务（parent_task_id IS NULL）
 
 		Returns:
 			数据同步任务列表
@@ -133,10 +139,37 @@ class DataSyncTaskRepository(BaseRepository[DataSyncTask]):
 		if status:
 			query = query.where(self.model.status == status)
 
-		query = query.order_by(desc(self.model.created_at)).limit(limit)
+		if parent_only:
+			query = query.where(self.model.parent_task_id.is_(None))
+
+		query = query.order_by(desc(self.model.created_at)).limit(limit).offset(offset)
 
 		result = await self.session.execute(query)
+		tasks = result.scalars().all()
+
+		# 内存中按 group 过滤（group → task_type 映射由 handler 处理）
+		if group:
+			tasks = [t for t in tasks if t.task_type == group or t.parent_task_id]
+
+		return tasks
+
+	async def get_children (self, parent_task_id: str) -> List[DataSyncTask]:
+		"""获取某个父任务的所有子任务"""
+		query = select(self.model).where(self.model.parent_task_id == parent_task_id)
+		query = query.order_by(self.model.created_at.asc())
+		result = await self.session.execute(query)
 		return result.scalars().all()
+
+	async def count_by_user (self, user_id: str, status: Optional[str] = None) -> int:
+		"""统计用户的根任务总数（parent_task_id IS NULL，用于分页）"""
+		query = select(func.count(self.model.id)).where(
+			self.model.user_id == user_id,
+			self.model.parent_task_id.is_(None),
+		)
+		if status:
+			query = query.where(self.model.status == status)
+		result = await self.session.execute(query)
+		return result.scalar() or 0
 
 	async def get_recent_tasks (
 			self,

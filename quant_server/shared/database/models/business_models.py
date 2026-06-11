@@ -890,7 +890,8 @@ class DataSyncTask(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='任务ID')
     task_id = Column(String(64), nullable=False, unique=True, comment='任务唯一标识符（如 sync_abc12345）')
-    task_type = Column(String(50), nullable=False, comment='任务类型：stock_basic, daily_quotes, financial, etc.')
+    task_type = Column(String(50), nullable=False, comment="任务类型：batch(全量), stock_basic, daily_quotes, etc.")
+    parent_task_id = Column(String(64), comment="父级 batch 任务 ID，NULL 表示根任务")
     user_id = Column(String(36), ForeignKey('sys_users.id'), comment='用户ID')
     data_types = Column(JSON, comment='数据类型列表（JSON格式）')
     status = Column(String(20), nullable=False, comment='任务状态：pending, running, completed, failed, cancelled')

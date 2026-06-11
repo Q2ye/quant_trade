@@ -5,30 +5,23 @@ import Login from "@/views/Login.vue";
 export const routes: RouteRecordRaw[] = [
   {
     path: "/",
-    redirect: "/dashboard",
+    redirect: "/market/dashboard",
   },
   {
     path: "/dashboard",
-    name: "Dashboard",
-    component: () => import("@/views/Dashboard/Overview.vue"),
-    meta: { menu: "dashboard", layout: "main", title: "总览" },
+    redirect: "/market/dashboard",
   },
 
   // 市场数据
   {
     path: "/market/overview",
-    name: "MarketOverview",
-    component: () => import("@/views/DataCenter/Market/MarketOverview.vue"),
-    meta: { menu: "market", layout: "main", title: "市场概览" },
+    redirect: "/market/dashboard",
   },
   {
-    path: "/market/mkDashboard",
+    path: "/market/dashboard",
     name: "MarketDashboard",
     component: () => import("@/views/DataCenter/Market/MarketDashboard.vue"),
-    meta: {
-      title: "市场仪表盘",
-      requiresAuth: true,
-    },
+    meta: { menu: "market", layout: "main", title: "市场总览" },
   },
   {
     path: "/market/stock/:code",

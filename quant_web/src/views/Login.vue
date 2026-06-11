@@ -77,7 +77,7 @@ export default {
       const token = localStorage.getItem("token");
       if (token) {
         // 直接跳转到首页，由路由守卫处理认证验证
-        router.push("/dashboard");
+        router.push("/market/dashboard");
       }
     });
 
@@ -126,7 +126,7 @@ export default {
         console.log("登录成功");
 
         // 立即跳转到首页
-        await router.push("/dashboard");
+        await router.push("/market/dashboard");
       } catch (error) {
         console.error("登录错误详情:", error);
 

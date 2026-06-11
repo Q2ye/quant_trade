@@ -955,7 +955,7 @@ async def batch_sync_data (
 		)
 
 		# 1. 创建同步任务ID
-		task_id = f"sync_{uuid.uuid4().hex[:8]}"
+		task_id = f'batch_sync_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
 
 		# 2. 提取数据类型（从任务中提取）
 		data_types = []
@@ -969,7 +969,7 @@ async def batch_sync_data (
 		# 创建同步任务记录（注意：id字段为自增主键，由数据库自动生成）
 		sync_task_data = {
 			"task_id": task_id,
-			"task_type": "batch_sync",
+			"task_type": "batch",
 			"data_types": data_types,
 			"user_id": user_id,
 			"status": "pending",
@@ -990,7 +990,7 @@ async def batch_sync_data (
 
 		# 4. 发布同步开始事件
 		start_event = DataSyncStartedEvent(
-			sync_type="batch_sync",
+			sync_type="batch",
 			source="data_module",
 			params={
 				"task_id": task_id,
@@ -1004,13 +1004,7 @@ async def batch_sync_data (
 		# 5. 根据执行模式选择执行路径（BatchSyncRequest中没有execution_mode字段，使用默认异步执行）
 		logger.info(f"已将同步任务加入后台队列: {task_id}")
 
-		# 更新任务状态为运行中
-		update_data = {
-			"status": "running",
-			"start_time": datetime.now()
-		}
-		await sync_task_repo.update(sync_task.id, update_data)
-		await session.commit()  # 立即提交状态变更，避免轮询看到pending
+		# 状态将由后台任务更新为 running，此处保持 pending
 
 		# 将同步任务加入后台任务队列（传递DB主键id避免再次查询）
 		background_tasks.add_task(
@@ -1571,7 +1565,7 @@ async def get_sync_tasks(
         user_id: str,
         status: Optional[str] = None,
         group: Optional[str] = None,
-        limit: int = 50,
+        limit: int = 20,
         offset: int = 0,
 ) -> "SyncTaskListResponse":
     """
@@ -1586,33 +1580,13 @@ async def get_sync_tasks(
     try:
         sync_task_repo = DataSyncTaskRepository(session)
         tasks = await sync_task_repo.get_by_user_id(
-            user_id=user_id,
-            limit=limit + offset,
+            user_id=user_id, limit=limit, offset=offset,
+            status=status, parent_only=True,
         )
+        total = await sync_task_repo.count_by_user(user_id, status)
 
-        if status:
-            tasks = [t for t in tasks if t.status == status]
-
-        if group:
-            # 从 get_sync_types_meta 获取类型→分组映射
-            from modules.data.constants import DataType
-            meta = await get_sync_types_meta(session)
-            group_types = set()
-            for g in meta.groups:
-                if g.id == group:
-                    for t in g.types:
-                        group_types.add(t.data_type)
-                    break
-            if group_types:
-                tasks = [t for t in tasks if t.task_type in group_types]
-
-        total = len(tasks)
-        paged = tasks[offset:offset + limit]
-
-
-        records = []
-        for task in paged:
-            records.append(SyncTaskRecord(
+        def _to_record(task):
+            return SyncTaskRecord(
                 id=task.id,
                 task_id=task.task_id,
                 task_type=task.task_type,
@@ -1625,12 +1599,22 @@ async def get_sync_tasks(
                 records_succeeded=task.records_succeeded or 0,
                 records_failed=task.records_failed or 0,
                 total_records=task.total_records or 0,
+                parent_task_id=getattr(task, "parent_task_id", None),
                 parameters=task.parameters if hasattr(task, "parameters") else None,
                 error_message=task.error_message,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
                 completed_at=task.completed_at,
-            ))
+            )
+
+        records = []
+        for task in tasks:
+            r = _to_record(task)
+            if task.task_type == "batch":
+                children = await sync_task_repo.get_children(task.task_id)
+                if children:
+                    r.children = [_to_record(c) for c in children]
+            records.append(r)
 
         return SyncTaskListResponse(
             success=True,
@@ -1697,12 +1681,13 @@ async def cancel_sync (
 			               f"可能后台任务尚未创建取消令牌或已被清理")
 
 		# 4. 更新任务状态
-		update_data = {
-			"status": "cancelled",
-			"error_message": "用户手动取消",
-			"updated_at": datetime.now()
-		}
-		await sync_task_repo.update(task.id, update_data)
+		# 更新任务 + 所有子任务为 cancelled
+		from sqlalchemy import text as _sql
+		await session.execute(
+			_sql("UPDATE data_sync_tasks SET status='cancelled', error_message='用户手动取消', updated_at=:now WHERE (task_id=:tid OR parent_task_id=:tid) AND status='running'"),
+			{"tid": task_id, "now": datetime.now()}
+		)
+		await session.commit()
 
 		# 5. 发布取消事件
 		cancel_event = DataSyncProgressEvent(

@@ -2,7 +2,7 @@
 <template>
   <header class="app-header">
     <div class="logo-section">
-      <div class="logo" @click="$router.push('/dashboard')">
+      <div class="logo" @click="$router.push('/market/dashboard')">
         <img src="/logo.svg" class="logo-img" alt="一念量化" />
         <span class="logo-text">一念量化</span>
       </div>
@@ -331,7 +331,7 @@ export default defineComponent({
       } else if (key === "settings") {
         router.push("/system/settings");
       } else if (key === "profile") {
-        router.push("/dashboard");
+        router.push("/market/dashboard");
       }
     };
 

@@ -191,5 +191,11 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 drop table stk_managers
 
 
-
-
+ALTER TABLE stock_daily
+    ALTER COLUMN open DROP NOT NULL,
+    ALTER COLUMN high DROP NOT NULL,
+    ALTER COLUMN low DROP NOT NULL,
+    ALTER COLUMN pre_close DROP NOT NULL,
+    ALTER COLUMN change DROP NOT NULL,
+    ALTER COLUMN pct_chg DROP NOT NULL,
+    ALTER COLUMN vol DROP NOT NULL;

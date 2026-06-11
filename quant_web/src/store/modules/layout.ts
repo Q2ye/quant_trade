@@ -43,7 +43,7 @@ const layoutModule: Module<LayoutState, RootState> = {
               key: "dashboard",
               label: "仪表盘",
               icon: "dashboard",
-              path: "/dashboard",
+              path: "/market/dashboard",
             },
             {
               key: "strategies",

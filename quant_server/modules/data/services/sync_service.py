@@ -950,8 +950,19 @@ class DataSyncService:
 		"""
 		logger.info(f"[batch] 开始: {[str(t.data_type) for t in tasks]} user={user_id}")
 
-		batch_task_id = f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
+		batch_task_id = task_id or f"batch_sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+		# 若 batch 记录尚不存在（非 API 入口调用），则创建
+		_existing = await self.sync_task_repo.get_by_task_id(batch_task_id)
+		if not (_existing and _existing.success and _existing.data):
+			await self.sync_task_repo.create({
+			    "task_id": batch_task_id, "task_type": "batch",
+			    "user_id": user_id, "status": "running",
+			    "start_time": datetime.now(),
+			    "data_types": [str(t.data_type) for t in tasks],
+			})
+			await self.session.commit()
+		else:
+			await self._update_sync_task(batch_task_id, "running")
 		# 并发参数从配置文件读取，默认值兜底
 		# settings.ENGINES.sync_type_concurrency -> 跨类型并发数（默认 5）
 		# settings.ENGINES.max_workers           -> 共享线程池大小（默认 16）
@@ -966,8 +977,30 @@ class DataSyncService:
 		import concurrent.futures as _cf
 		shared_executor = _cf.ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="batch_sync_")
 
+		# 串行化 self.session 访问，避免多协程并发操作同一 session 报 provisioning 错误
+		_session_lock = asyncio.Lock()
+
+		# 预创建所有子任务 DB 记录（含未启动的），保证取消/异常场景都有迹可查
+		from shared.database.repositories.operation.task.data_sync_task_repo import DataSyncTaskRepository as _TSK2
+		child_task_ids = {}
+		for task in tasks:
+			ctid = f"{batch_task_id}_{task.data_type}"
+			child_task_ids[str(task.data_type)] = ctid
+			await _TSK2(self.session).create({
+				"task_id": ctid, "task_type": str(task.data_type),
+				"user_id": user_id, "status": "pending",
+				"parent_task_id": batch_task_id,
+			})
+		await self.session.commit()
+
 		async def _sync_one(task, idx):
-			if await self._is_cancelled():
+			ctid = child_task_ids[str(task.data_type)]
+			async with _session_lock:
+				_cancelled = await self._is_cancelled()
+			if _cancelled:
+				async with _session_lock:
+					await self._update_sync_task(ctid, "cancelled", error_message="用户手动取消")
+					await self.session.commit()
 				return SyncResult(data_type=task.data_type, success=False,
 				                 records_added=0, records_updated=0, records_failed=0,
 				                 error_message='用户取消').model_dump()
@@ -977,6 +1010,10 @@ class DataSyncService:
 				logger.info(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 开始执行")
 				sm = get_session_manager()
 				async with sm.get_session() as session:
+					# 标记子任务为运行中
+					async with _session_lock:
+						await self._update_sync_task(ctid, "running")
+						await self.session.commit()
 					svc = DataSyncService(session, self.event_engine, self.cancel_token, task_id=self._task_id,
 					                      executor=shared_executor)
 					try:
@@ -984,13 +1021,19 @@ class DataSyncService:
 							task.data_type)
 						result = await svc.sync_market_data(
 							data_type=dt, start_date=task.start_date, end_date=task.end_date,
-							user_id=user_id, task_id=task_id or batch_task_id,
+							user_id=user_id, task_id=ctid,
 							force_update=getattr(task, 'force_update', False),
 							update_task_status=False,
 						)
 						ra = result.get("result", {}).get("records_added", 0)
 						ru = result.get("result", {}).get("records_updated", 0)
 						rf = result.get("result", {}).get("records_failed", 0)
+						child_status = "completed" if result.get("success") else "failed"
+						async with _session_lock:
+							await self._update_sync_task(ctid, child_status,
+							                            result={"records_added": ra, "records_updated": ru,
+							                                     "records_failed": rf})
+							await self.session.commit()
 						sr = SyncResult(data_type=task.data_type, success=result.get("success", False),
 						                records_added=ra, records_updated=ru, records_failed=rf,
 						                start_time=datetime.now(), end_time=datetime.now(),
@@ -998,32 +1041,42 @@ class DataSyncService:
 						logger.info(
 							f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 完成: 新增={ra} 更新={ru} 失败={rf}")
 						return sr.model_dump()
-					except Exception:
-						logger.error(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 失败: {e}",
+					except Exception as _e2:
+						logger.error(f"[batch:{_TYPE_LABEL.get(str(task.data_type), task.data_type)}] 异常: {_e2}",
 						             exc_info=True)
+						async with _session_lock:
+							await self._update_sync_task(ctid, "failed", error_message=str(_e2))
+							await self.session.commit()
 						return SyncResult(data_type=task.data_type, success=False,
+						                  records_added=0, records_updated=0, records_failed=0,
 						                  start_time=datetime.now(), end_time=datetime.now(),
-						                  error_message=str(e)).model_dump()
+						                  error_message=str(_e2)).model_dump()
 
 		try:
 			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
 			results = await asyncio.gather(*coros)
 			shared_executor.shutdown(wait=False)  # 不等待未完成任务，它们已经 gather 完成
 
+			# 汇总子任务结果到父任务
+			total_ok = sum(r.get("records_added",0)+r.get("records_updated",0) for r in results)
+			total_fail = sum(r.get("records_failed",0) for r in results)
+			cancelled_now = self.cancel_token and self.cancel_token.is_set()
+			all_success = all(r.get("success", True) for r in results) and not cancelled_now
+			p_status = "cancelled" if cancelled_now else ("completed" if all_success else "failed")
+			await self._update_sync_task(batch_task_id, p_status,
+			                            result={"records_succeeded": total_ok,
+			                                     "records_failed": total_fail})
+
 			total_records = sum(
 				r.get("records_added", 0) + r.get("records_updated", 0) + r.get("records_failed", 0) for r in results)
 			succeeded_records = sum(r.get("records_added", 0) + r.get("records_updated", 0) for r in results)
 			failed_records = sum(r.get("records_failed", 0) for r in results)
-			# 检查取消
-			cancelled = self.cancel_token and self.cancel_token.is_set()
-			all_success = all(r.get("success", True) for r in results) and not cancelled
-
 			# 批量完成后统一更新任务状态
 			effective_task_id = task_id or batch_task_id
 			if effective_task_id:
-				final_status = "cancelled" if cancelled else ("completed" if all_success else "failed")
+				final_status = "cancelled" if cancelled_now else ("completed" if all_success else "failed")
 				await self._update_sync_task(effective_task_id, final_status,
-				                             error_message="用户手动取消" if cancelled else None)
+				                             error_message="用户手动取消" if cancelled_now else None)
 				await self.session.commit()
 
 			logger.info(
@@ -1033,8 +1086,8 @@ class DataSyncService:
 				"records_processed": total_records, "records_succeeded": succeeded_records,
 				"records_failed": failed_records, "total_tasks": len(tasks),
 				"completed_tasks": len(results),
-				"cancelled": cancelled,
-				"message": "批量同步已取消" if cancelled else (
+				"cancelled": cancelled_now,
+				"message": "批量同步已取消" if cancelled_now else (
 					"批量同步完成" if all_success else f"批量同步部分完成（{sum(1 for r in results if not r.get('success', True))}/{len(results)} 失败）")
 			}
 		except Exception as e:
@@ -1364,11 +1417,17 @@ class DataSyncService:
 			latest_date = latest_dates_map.get(ts_code)
 		else:
 			latest_date = await repo.get_latest_trade_date(ts_code)
+		# DateTime 列返回 datetime，统一转为 date 避免比较报错
+		if latest_date is not None and hasattr(latest_date, 'date'):
+			latest_date = latest_date.date()
 		if latest_date is None:
 			# 数据库中无记录 → 全量同步
 			if not start_date:
-				stock = await self.stock_basic_repo.get_by_ts_code(ts_code)
-				start_date = stock.list_date if stock and stock.list_date else date(1990, 12, 19)
+				if stock_list_date_map is not None:
+					start_date = stock_list_date_map.get(ts_code) or date(1990, 12, 19)
+				else:
+					stock = await self.stock_basic_repo.get_by_ts_code(ts_code)
+					start_date = stock.list_date if stock and stock.list_date else date(1990, 12, 19)
 			mode = "full"
 		elif start_date is None:
 			# 用户未指定起始日期 → 增量同步（从最后日期+1天开始）
@@ -1652,6 +1711,16 @@ class DataSyncService:
 			update_data = {"status": status, "updated_at": datetime.now()}
 			if error_message:
 				update_data["error_message"] = error_message
+			if status in ("completed", "failed", "cancelled"):
+				update_data["end_time"] = datetime.now()
+			# 写入子任务统计字段（result 由 batch_sync_data 的 _sync_one 传入）
+			if isinstance(result, dict):
+				if "records_added" in result:
+					update_data["records_succeeded"] = result.get("records_added", 0)
+				if "records_updated" in result:
+					update_data["records_processed"] = result.get("records_updated", 0)
+				if "records_failed" in result:
+					update_data["records_failed"] = result.get("records_failed", 0)
 
 			await self.sync_task_repo.update(task.data.id, update_data)
 
@@ -2199,6 +2268,7 @@ class DataSyncService:
 					if df is None or df.empty:
 						return {"added": 0, "updated": 0, "mode": mode}
 					data = _convert_records_datetime(df.to_dict("records"))
+					added, _ = await self._process_trade_date_data(repo, data, ts_code)
 					return {"added": added, "updated": 0, "mode": mode}
 				except Exception as e:
 					logger.error(f"[资金流向] {ts_code} 同步失败: {_fmt_err(e, 150)}")
@@ -2616,6 +2686,9 @@ class DataSyncService:
 			logger.info(f"[指数权重] 逐只同步 {total} 个指数, 预估 ~{total * 0.2 / 60:.1f}min")
 
 			for idx, idx_code in enumerate(target_indices, 1):
+				if await self._is_cancelled():
+					logger.info(f"[指数权重] 检测到取消信号，已处理 {idx-1}/{total}")
+					break
 				try:
 					constituent_data = []
 
@@ -2663,9 +2736,15 @@ class DataSyncService:
 								data_list=constituent_data
 							)
 						records_added += len(constituent_data)
-						logger.info(
+						logger.debug(
 							f"[指数权重] {idx}/{total} {idx_code} 同步完成，"
 							f"共 {len(constituent_data)} 条记录"
+						)
+					if idx % 100 == 0:
+						pct = idx / total * 100
+						logger.info(
+							f"[指数权重] {idx}/{total} ({pct:.1f}%) "
+							f"已同步={records_added} 失败={records_failed}"
 						)
 					else:
 						logger.debug(f"[指数权重] {idx}/{total} {idx_code} 无权重数据")
@@ -2871,6 +2950,30 @@ class DataSyncService:
 				if not df.empty:
 					data = _convert_records_datetime(df.to_dict('records'))
 					_preprocess_records(data, date_fields=('trade_date',))
+					# 校验并裁剪 Numeric 溢出值，防止 NumericValueOutOfRangeError
+					# Numeric(9,4) → [-99999.9999, 99999.9999]; Numeric(5,2) → [-999.99, 999.99]
+					for rec in data:
+						for field, max_val in (
+							('pre_close', 99999.9999), ('up_limit', 99999.9999),
+							('down_limit', 99999.9999), ('price_range', 99999.9999),
+						):
+							v = rec.get(field)
+							if v is not None and abs(v) > max_val:
+								clipped = max_val if v > 0 else -max_val
+								logger.warning(
+									f"[涨跌停价格] {rec.get('ts_code','?')} {rec.get('trade_date','?')} "
+									f"{field}={v} 超出 Numeric(9,4) 范围, 裁剪为 {clipped}"
+								)
+								rec[field] = clipped
+						for field, max_val in (('up_percent', 999.99), ('down_percent', 999.99)):
+							v = rec.get(field)
+							if v is not None and abs(v) > max_val:
+								clipped = max_val if v > 0 else -max_val
+								logger.warning(
+									f"[涨跌停价格] {rec.get('ts_code','?')} {rec.get('trade_date','?')} "
+									f"{field}={v} 超出 Numeric(5,2) 范围, 裁剪为 {clipped}"
+								)
+								rec[field] = clipped
 					written = await self.daily_limit_repo.bulk_upsert(data)
 					records_added += written
 					logger.info(f"涨跌停价格同步完成: start={start_str} end={end_str}, 写入 {written} 条")
@@ -4617,6 +4720,13 @@ class DataSyncService:
 			for d in data:
 				if 'st_tpye' in d:
 					d['st_type'] = d.pop('st_tpye')
+			# 按唯一键 (ts_code, imp_date) 去重，防止 ON CONFLICT 重复行报错
+			_seen = {}
+			for _d in data:
+				_key = (_d.get('ts_code'), _d.get('imp_date'))
+				if _key not in _seen:
+					_seen[_key] = _d
+			data = list(_seen.values())
 			if hasattr(self.st_risk_repo, "bulk_upsert"):
 				records_added += await self.st_risk_repo.bulk_upsert(data)
 			else:
@@ -5338,6 +5448,7 @@ class DataSyncService:
 					s_date, e_date, mode = await self._resolve_sync_date_range(
 						ts_code, start_date, end_date, repo,
 						latest_dates_map=latest_dates_map,
+						stock_list_date_map={},  # 指数无上市日期
 					)
 					if mode == "up_to_date":
 						return {"added": 0, "updated": 0, "skipped": 1, "mode": mode}
