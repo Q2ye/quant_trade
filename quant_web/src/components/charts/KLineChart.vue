@@ -252,7 +252,7 @@ export default {
       const pointsMap = {
         "1min": 240, // 4小时交易时间
         "5min": 48, // 4小时交易时间
-        daily: 30, // 30个交易日
+        daily: 60, // 60个交易日
       };
       return pointsMap[this.period] || 100;
     },
@@ -432,7 +432,7 @@ export default {
           {
             type: "inside",
             xAxisIndex: [0, 1],
-            start: 70,
+            start: 0,
             end: 100,
             filterMode: "filter",
           },
@@ -441,7 +441,7 @@ export default {
             xAxisIndex: [0, 1],
             type: "slider",
             bottom: 10,
-            start: 70,
+            start: 0,
             end: 100,
             backgroundColor: "rgba(16, 33, 59, 0.8)",
             borderColor: "rgba(64, 158, 255, 0.3)",

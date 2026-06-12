@@ -105,11 +105,14 @@ from modules.data.utils.timing import SyncTimingLogger
 from shared.cache.memory_cache import MemoryCache
 from shared.cache.redis_cache import RedisCache
 from shared.database.models.data_models import (
-	FinancialStatement,
+	FinancialIncome, FinancialBalance, FinancialCashflow,
+	StockExpress,
+	StockForecast,
 	StockDividend,
 	StockFinaIndicator,
 	StockAuditOpinion,
 	StockBusinessIncome,
+		StkReward,
 )
 from shared.database.models.business_models import DataSyncTask
 # 从统一导出入口导入共享Repository（按领域分组）
@@ -126,7 +129,8 @@ from shared.database.repositories import (
 	EtfMinuteRepository,
 	FundAdjFactorRepository,
 	# 财务数据领域
-	FinancialStatementRepository,
+	
+	FinancialIncomeRepository, FinancialBalanceRepository, FinancialCashflowRepository,
 	# 运营领域（任务记录）
 	DataSyncTaskRepository, ETFRepository,
 )
@@ -214,12 +218,30 @@ def _convert_to_date(value: Any) -> date:
 	elif isinstance(value, datetime):
 		return value.date()
 	elif isinstance(value, str):
-		# 尝试解析字符串格式（如 "20260318"）
+		value = value.strip()
+		if not value:
+			raise ValueError(f"日期字符串为空")
+		# 尝试多种格式：YYYYMMDD(8位) → YYYYMM(6位) → YYYY(4位) → YYYYMMDD(连字符) → ISO
 		try:
 			return datetime.strptime(value, '%Y%m%d').date()
 		except ValueError:
-			# 如果失败，尝试ISO格式
+			pass
+		try:
+			return datetime.strptime(value, '%Y%m').date()
+		except ValueError:
+			pass
+		try:
+			return datetime.strptime(value, '%Y').date()
+		except ValueError:
+			pass
+		try:
+			return datetime.strptime(value, '%Y-%m-%d').date()
+		except ValueError:
+			pass
+		try:
 			return datetime.fromisoformat(value).date()
+		except ValueError:
+			raise ValueError(f"无法解析日期字符串: '{value}'")
 	else:
 		raise ValueError(f"无法将类型 {type(value)} 转换为date对象: {value}")
 
@@ -303,7 +325,9 @@ _TYPE_LABEL = {
 	'etf_basic': 'ETF基础(etf_basic)', 'etf_daily': 'ETF日线(etf_daily)',
 	'etf_index': 'ETF指数(etf_index)', 'etf_minute': 'ETF分钟(etf_minute)',
 	'etf_share': 'ETF份额(etf_share)', 'fund_adj_factor': '基金复权(fund_adj_factor)',
-	'financial': '财务报表(financial)', 'forecast': '业绩预告(forecast)',
+	'financial': '财务报表(financial)',
+		'financial_income': '利润表(financial_income)', 'financial_balance': '资产负债表(financial_balance)',
+		'financial_cashflow': '现金流量表(financial_cashflow)', 'forecast': '业绩预告(forecast)',
 	'express': '业绩快报(express)', 'dividend': '分红送股(dividend)',
 	'financial_indicator': '财务指标(financial_indicator)',
 	'audit_opinion': '审计意见(audit_opinion)', 'business_income': '主营业务(business_income)',
@@ -374,9 +398,6 @@ def _estimate_total_items(data_type: str, ts_codes: Optional[List[str]] = None) 
 		DataType.INDEX_BASIC: 500,
 		DataType.INDEX_DAILY: 500 * 250,
 		DataType.CALENDAR: 365 * 2,
-		DataType.FINANCIAL_INCOME: (len(ts_codes) if ts_codes else 5000) * 20,
-		DataType.FINANCIAL_BALANCE: (len(ts_codes) if ts_codes else 5000) * 20,
-		DataType.FINANCIAL_CASHFLOW: (len(ts_codes) if ts_codes else 5000) * 20,
 		DataType.FORECAST: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩预告
 		DataType.EXPRESS: (len(ts_codes) if ts_codes else 5000) * 5,  # 业绩快报
 		DataType.DIVIDEND: (len(ts_codes) if ts_codes else 5000) * 10,  # 分红送股
@@ -546,7 +567,6 @@ class DataSyncService:
 		self.fund_adj_factor_repo = FundAdjFactorRepository(session)  # fund_adj_factor（基金复权因子）
 
 		# --- 财务数据 ---
-		self.financial_statement_repo = FinancialStatementRepository(session)  # financial_statements
 
 		# --- 任务记录 ---
 		self.sync_task_repo = DataSyncTaskRepository(session)  # data_sync_tasks
@@ -656,10 +676,9 @@ class DataSyncService:
 			DataType.MANAGERS: self._sync_stk_managers,
 			DataType.REWARDS: self._sync_stk_rewards,
 			# 财务数据
-			DataType.FINANCIAL_DATA: self._sync_financial_data,  # 三 表合并同步
-			DataType.FINANCIAL_INCOME: self._sync_financial_income,
-			DataType.FINANCIAL_BALANCE: self._sync_financial_balance,
-			DataType.FINANCIAL_CASHFLOW: self._sync_financial_cashflow,
+			DataType.FINANCIAL_INCOME: self._sync_financial_income_only,  # 利润表
+		DataType.FINANCIAL_BALANCE: self._sync_financial_balance_only,  # 资产负债表
+		DataType.FINANCIAL_CASHFLOW: self._sync_financial_cashflow_only,  # 现金流量表
 			DataType.FORECAST: self._sync_forecast,
 			DataType.EXPRESS: self._sync_express,
 			DataType.DIVIDEND: self._sync_dividend,
@@ -1565,8 +1584,13 @@ class DataSyncService:
 						from shared.database.session import get_session_manager
 						sm = get_session_manager()
 						async with sm.get_session() as s:
-							result = await process_one(s, ts_code)
-							await s.commit()
+							try:
+								result = await process_one(s, ts_code)
+								await s.commit()
+							except Exception as _we:
+								await s.rollback()
+								logger.error(f"[{label}] {ts_code} worker error: {_fmt_err(_we, 200)}")
+								result = {"added": 0, "updated": 0, "failed": True}
 				# 限流节流：每次调用后短暂冷却，防止响应太快打爆 Tushare 频率限制
 				await asyncio.sleep(0.5)
 			else:
@@ -1576,8 +1600,13 @@ class DataSyncService:
 					from shared.database.session import get_session_manager
 					sm = get_session_manager()
 					async with sm.get_session() as s:
-						result = await process_one(s, ts_code)
-						await s.commit()
+						try:
+							result = await process_one(s, ts_code)
+							await s.commit()
+						except Exception as _we:
+							await s.rollback()
+							logger.error(f"[{label}] {ts_code} worker error: {_fmt_err(_we, 200)}")
+							result = {"added": 0, "updated": 0, "failed": True}
 			async with lock:
 				records_added += result.get("added", 0)
 				records_updated += result.get("updated", 0)
@@ -3089,7 +3118,7 @@ class DataSyncService:
 		async with SyncTimingLogger(logger, "技术因子PRO(stk_factor_pro)", slow_threshold=60.0):
 			logger.info(f"[技术因子PRO] 并行同步 {len(ts_codes)} 只, 并发=2")
 			result = await self._parallel_for_each(ts_codes, "技术因子PRO", task_id, user_id, _process_one,
-			                                       rate_key="stk_factor_pro", max_concurrency=2)
+			                                       rate_key="stk_factor_pro", max_concurrency=_kwargs.get("max_concurrency", 2))
 			if not result.get("cancelled"):
 				result["message"] = "技术因子专业版同步完成"
 			return result
@@ -3160,7 +3189,7 @@ class DataSyncService:
 			logger.info(f"[指数因子PRO] 并行同步 {len(ts_codes)} 只指数, 并发=2")
 			result = await self._parallel_for_each(
 				ts_codes, "指数因子PRO", task_id, user_id, _process_one,
-				rate_key="idx_factor_pro", max_concurrency=2)
+				rate_key="idx_factor_pro", max_concurrency=_kwargs.get("max_concurrency", 2))
 			if not result.get("cancelled"):
 				result["message"] = "指数技术因子专业版同步完成"
 			return result
@@ -3342,208 +3371,76 @@ class DataSyncService:
 			ts_codes: Optional[List[str]],
 			task_id: str,
 			user_id: Optional[str] = None,
-			**_kwargs
+			types=("income","balance","cashflow"), label="财务报表", **_kwargs
 	) -> Dict[str, Any]:
-		"""同步财务报表（三 表合并：利润表+资产负债表+现金流量表）
+		"""同步财务报表（三表拆分：利润表/资产负债表/现金流量表各写各表）
 
-		每表独立同步，任一个被取消后跳过后续表。
+		types参数可指定只同步部分类型，默认全部。
+
+		逐只股票拉取三表，分别写入三张独立的表，无死锁风险。
 		"""
-		results = {}
-		total_added = 0
-		total_updated = 0
-		total_failed = 0
-		for name, method in [
-			("income", self._sync_financial_income),
-			("balance", self._sync_financial_balance),
-			("cashflow", self._sync_financial_cashflow),
-		]:
-			# 取消时不再继续后续报表
-			if await self._is_cancelled():
-				results[name] = {"skipped": True, "reason": "cancelled"}
-				break
-			try:
-				r = await method(start_date=start_date, end_date=end_date,
-				                 ts_codes=ts_codes, task_id=task_id, user_id=user_id)
-				results[name] = r
-				total_added += r.get("records_added", 0)
-				total_updated += r.get("records_updated", 0)
-				total_failed += r.get("records_failed", 0)
-			except Exception as e:
-				logger.error(f"财务报表 {name} 同步失败: {_fmt_err(e, 150)}")
-				results[name] = {"error": str(e)}
-				total_failed += 1
-		cancelled = await self._is_cancelled()
-		return {
-			"records_added": total_added, "records_updated": total_updated,
-			"records_failed": total_failed,
-			"total_items": total_added + total_updated + total_failed,
-			"cancelled": cancelled,
-			"sub_results": results,
-			"message": f"财务报表同步{'已取消' if cancelled else '完成'}（三表: 新增{total_added}, 更新{total_updated}, 失败{total_failed}）"
-		}
+		if not ts_codes:
+			stocks = await self.stock_basic_repo.get_active_stocks()
+			ts_codes = [s.ts_code for s in stocks]
+		source = self.source_factory.get_source(DataSource.TUSHARE)
+		# 三表分别的 known_cols
+		_income_cols = {c.name for c in FinancialIncome.__table__.columns}
+		_balance_cols = {c.name for c in FinancialBalance.__table__.columns}
+		_cashflow_cols = {c.name for c in FinancialCashflow.__table__.columns}
 
-	async def _sync_financial_income(
-			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[str] = None,
-			**kwargs
-	) -> Dict[str, Any]:
-		"""同步利润表数据，委托给 ``_sync_financial_statement(report_type="income")``。
+		logger.info(f"[{label}] 开始 {len(ts_codes)} 只标的")
+		async with SyncTimingLogger(logger, label, slow_threshold=30.0) as timer:
+			async def _process_one(session, ts_code):
+				total_added = 0
+				_table_configs = [t for t in [
+					("income", source.get_income_statement, FinancialIncomeRepository(session), _income_cols),
+					("balance", source.get_balance_sheet, FinancialBalanceRepository(session), _balance_cols),
+					("cashflow", source.get_cashflow_statement, FinancialCashflowRepository(session), _cashflow_cols),
+					] if t[0] in types
+				]
+				for stmt_type, api_fn, repo, cols in _table_configs:
+					try:
+						df = await self._cancellable_run_in_executor(api_fn, symbol=ts_code, period='')
+						if df is None or df.empty:
+							continue
+						data = _convert_records_datetime(df.to_dict("records"))
+						_preprocess_records(data, date_fields=('ann_date', 'f_ann_date', 'end_date'), known_cols=cols)
+						# 去重
+						_seen = {}
+						for _d in data:
+							_key = (_d.get('ts_code'), str(_d.get('ann_date')))
+							_seen[_key] = _d
+						total_added += await repo.bulk_upsert(list(_seen.values()))
+					except Exception:
+						pass
+				return {"added": total_added, "updated": 0}
 
-		Args:
-			start_date: 起始日期
-			end_date: 结束日期
-			ts_codes: 股票代码列表（None → 全部活跃股票）
-			task_id: 任务 ID
-			user_id: 用户标识
+			result = await self._parallel_for_each(ts_codes, label, task_id, user_id, _process_one,
+			                                       rate_key="financial_statement", max_concurrency=6)
+			if not result.get("cancelled"):
+				result["message"] = f"{label}数据同步完成"
+			if not result.get("cancelled"):
+				result["message"] = f"{label}数据同步完成"
+			return result
 
-		Returns:
-			Dict: {records_added, records_updated, records_failed, total_items, message}"""
-		return await self._sync_financial_statement(
-			start_date=start_date,
-			end_date=end_date,
-			ts_codes=ts_codes,
-			task_id=task_id,
-			user_id=user_id,
-			report_type="income",
-			**kwargs
-		)
-
-	async def _sync_financial_balance(
-			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[str] = None,
-			**kwargs
-	) -> Dict[str, Any]:
-		"""同步资产负债表，委托给 ``_sync_financial_statement(report_type="balance")``。
-
-		Args:
-			start_date: 起始日期
-			end_date: 结束日期
-			ts_codes: 股票代码列表（None → 全部活跃股票）
-			task_id: 任务 ID
-			user_id: 用户标识
-
-		Returns:
-			Dict: {records_added, records_updated, records_failed, total_items, message}"""
-		return await self._sync_financial_statement(
-			start_date=start_date,
-			end_date=end_date,
-			ts_codes=ts_codes,
-			task_id=task_id,
-			user_id=user_id,
-			report_type="balance",
-			**kwargs
-		)
-
-	async def _sync_financial_cashflow(
-			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[str] = None,
-			**kwargs
-	) -> Dict[str, Any]:
-		"""同步现金流量表，委托给 ``_sync_financial_statement(report_type="cashflow")``。
-
-		Args:
-			start_date: 起始日期
-			end_date: 结束日期
-			ts_codes: 股票代码列表（None → 全部活跃股票）
-			task_id: 任务 ID
-			user_id: 用户标识
-
-		Returns:
-			Dict: {records_added, records_updated, records_failed, total_items, message}"""
-		return await self._sync_financial_statement(
-			start_date=start_date,
-			end_date=end_date,
-			ts_codes=ts_codes,
-			task_id=task_id,
-			user_id=user_id,
-			report_type="cashflow",
-			**kwargs
-		)
 
 	# --- 财务报表通用同步（三类报表共用） ---
 
-	async def _sync_financial_statement(
-			self,
-			start_date: Optional[date],
-			end_date: Optional[date],
-			ts_codes: Optional[List[str]],
-			task_id: str,
-			user_id: Optional[str] = None,
-			report_type: str = "income",
-			**_kwargs
-	) -> Dict[str, Any]:
-		"""通用财务报表同步方法（利润表/资产负债表/现金流量表共用）。
-
-		根据 ``report_type`` 参数调用不同的 Tushare 接口：
-		- ``"income"`` → ``get_income_statement``（利润表）
-		- ``"balance"`` → ``get_balance_sheet``（资产负债表）
-		- ``"cashflow"`` → ``get_cashflow_statement``（现金流量表）
-
-		关键处理逻辑：
-		1. 从 ORM 模型 ``FinancialStatement`` 获取已知列名，过滤 Tushare 多余字段
-		2. 每条记录设置 ``report_type`` 标签，三表存入同一张 financial_statements 表
-		3. 按 ``(ts_code, ann_date, report_type)`` 三元组查重去重
-		4. 每只股票处理完即 commit（财务报表接口返回数据量大，减少事务持有时间）
-
-		Args:
-			start_date: 未使用（财务报表按报告期拉取，不按日期过滤）
-			end_date: 未使用
-			ts_codes: 股票代码列表（None → 全部活跃股票）
-			task_id: 任务 ID
-			user_id: 用户标识
-			report_type: 报表类型（"income" / "balance" / "cashflow"）
-
-		Returns:
-			Dict: {records_added, records_updated, records_failed, total_items, message}"""
-		if not ts_codes:
-			stocks = await self.stock_basic_repo.get_active_stocks()
-			ts_codes = [stock.ts_code for stock in stocks]
-
-		# 获取 FinancialStatement 模型的已知列名，用于过滤 Tushare 多余字段
-		known_cols = {c.name for c in FinancialStatement.__table__.columns}
-
-		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0
-		records_updated = 0
-		records_failed = 0
-
-		logger.info(f"[财务报表] 开始 {len(ts_codes)} 只标的, 预估 ~{len(ts_codes) * 0.3 / 60:.1f}min")
-		async with SyncTimingLogger(logger, f"财报(financial_{report_type})") as timer:
-			async def _process_one(session, ts_code):
-				"""处理单只标的：HTTP拉取 > 日期转换 > upsert。"""
-				repo = FinancialStatementRepository(session)
-				source = self.source_factory.get_source(DataSource.TUSHARE)
-				try:
-					df = await self._cancellable_run_in_executor(source.get_income_statement, symbol=ts_code, period='')
-					if df is None or df.empty:
-						return {"added": 0, "updated": 0}
-					data = _convert_records_datetime(df.to_dict("records"))
-					_preprocess_records(data, date_fields=('ann_date', 'end_date'))
-					added = await repo.bulk_upsert(data)
-					return {"added": added, "updated": 0}
-				except Exception as e:
-					logger.error(f"[财务报表] {ts_code} 同步失败: {_fmt_err(e, 150)}")
-					return {"added": 0, "updated": 0, "failed": True}
-
-			logger.info(f"[财务报表] 并行同步 {len(ts_codes)} 只, 并发=8")
-			result = await self._parallel_for_each(ts_codes, "财务报表", task_id, user_id, _process_one,
-			                                       rate_key="financial_statement")
-			if not result.get("cancelled"):
-				result["message"] = "财务报表数据同步完成"
-			return result
-
+	# async def _sync_financial_statement(
+	# 		self,
+	# 		start_date: Optional[date],
+	# 		end_date: Optional[date],
+	# 		ts_codes: Optional[List[str]],
+	# 		task_id: str,
+	# 		user_id: Optional[str] = None,
+	# 		report_type: str = "income",
+	# 		**_kwargs
+	# ) -> Dict[str, Any]:
+	# 	"""通用财务报表同步方法（利润表/资产负债表/现金流量表共用）。
+	#
+	# 	根据 ``report_type`` 参数调用不同的 Tushare 接口：
+	# 	- ``"income"`` → ``get_income_statement``（利润表）
+	# 	- ``"balance"`` → ``get_balance_sheet``（资产负债表）
 	async def _sync_trade_calendar(
 			self,
 			start_date: Optional[date],
@@ -3840,7 +3737,8 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				_rewards_cols = {c.name for c in StkReward.__table__.columns}
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=_rewards_cols)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行）
 				data = list(
 					{(d.get("ts_code"), d.get("ann_date"), d.get("end_date"), d.get("name"), d.get("title")): d for d in
@@ -4372,7 +4270,8 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				_express_cols = {c.name for c in StockExpress.__table__.columns}
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=_express_cols)
 				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('ann_date')): d for d in data}.values())
@@ -4450,6 +4349,16 @@ class DataSyncService:
 				result["message"] = "分红送股数据同步完成"
 			return result
 
+	
+	async def _sync_financial_income_only(self, **kwargs):
+		return await self._sync_financial_data(types=("income",), label="利润表", **kwargs)
+
+	async def _sync_financial_balance_only(self, **kwargs):
+		return await self._sync_financial_data(types=("balance",), label="资产负债表", **kwargs)
+
+	async def _sync_financial_cashflow_only(self, **kwargs):
+		return await self._sync_financial_data(types=("cashflow",), label="现金流量表", **kwargs)
+
 	async def _sync_financial_indicator(
 			self,
 			start_date: Optional[date],
@@ -4496,7 +4405,7 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=known_cols)
+				_preprocess_records(data, date_fields=('ann_date', 'f_ann_date', 'end_date'), known_cols=known_cols)
 				seen = set()
 				deduped = []
 				for item in reversed(data):
@@ -4565,7 +4474,8 @@ class DataSyncService:
 				if df is None or df.empty:
 					return {"added": 0, "updated": 0}
 				data = _convert_records_datetime(df.to_dict("records"))
-				_preprocess_records(data, date_fields=('ann_date', 'end_date'))
+				_express_cols = {c.name for c in StockExpress.__table__.columns}
+				_preprocess_records(data, date_fields=('ann_date', 'end_date'), known_cols=_express_cols)
 				data.sort(key=lambda d: d.get('ann_date') or date.min, reverse=True)
 				# 批次内按唯一键去重（Tushare 偶发返回重复行，PG ON CONFLICT 无法处理）
 				data = list({(d.get('ts_code'), d.get('end_date')): d for d in data}.values())

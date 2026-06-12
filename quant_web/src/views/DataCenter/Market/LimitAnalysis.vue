@@ -21,6 +21,7 @@ import {
   useMessage,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import marketAPI from "@/api/market";
 
 const router = useRouter();
 const message = useMessage();
@@ -185,8 +186,28 @@ const toggleViewMode = () => {
 
 const viewStockDetail = (stock: LimitStock) => message.info(`查看股票详情: ${stock.name}`);
 
+async function loadRealData() {
+  try {
+    const [dash, upStocks, downStocks] = await Promise.all([
+      marketAPI.getDashboardOverview().catch(() => null),
+      marketAPI.getScreener({ pct_chg_min: 9.5, sort_by: "pct_chg", sort_dir: "desc", limit: 30 }).catch(() => ({ stocks: [] })),
+      marketAPI.getScreener({ pct_chg_max: -9.5, sort_by: "pct_chg", sort_dir: "asc", limit: 30 }).catch(() => ({ stocks: [] })),
+    ])
+    if (dash?.market_breadth) {
+      summaryData.limitUpCount = dash.market_breadth.limit_up
+      summaryData.limitDownCount = dash.market_breadth.limit_down
+    }
+    const all = [
+      ...upStocks.stocks.map((s: any) => ({ ...s, limit_type: "limit_up", exchange: s.ts_code?.endsWith(".SH") ? "SSE" : "SZSE", market: "主板", consecutive_days: 0, space_pct: 0, pre_close: 0, up_limit: 0, down_limit: 0 })),
+      ...downStocks.stocks.map((s: any) => ({ ...s, limit_type: "limit_down", exchange: s.ts_code?.endsWith(".SH") ? "SSE" : "SZSE", market: "主板", consecutive_days: 0, space_pct: 0, pre_close: 0, up_limit: 0, down_limit: 0 })),
+    ]
+    if (all.length) limitStocks.value = all as any
+  } catch {}
+}
+
 onMounted(() => {
   filterDate.value = new Date().getTime();
+  loadRealData();
 });
 </script>
 

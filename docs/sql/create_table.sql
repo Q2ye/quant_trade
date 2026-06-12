@@ -1999,15 +1999,18 @@ CREATE INDEX idx_analysis_benchmarks_type ON analysis_benchmarks(benchmark_type)
 -- 1.13 财务数据表
 -- ------------------------------------------------------------
 
--- 财务报表主表
-CREATE TABLE financial_statements (
+-- ==================== 财务报表（三表拆分） ====================
+
+-- 利润表（对应 Tushare income 接口）
+CREATE TABLE financial_income (
     id VARCHAR(36) PRIMARY KEY,
     ts_code VARCHAR(20) NOT NULL,
     ann_date DATE NOT NULL,
     f_ann_date DATE,
     end_date DATE NOT NULL,
-    report_type VARCHAR(20) NOT NULL,
+    report_type VARCHAR(10),
     comp_type VARCHAR(20),
+    end_type VARCHAR(10),
     basic_eps NUMERIC(12, 4),
     diluted_eps NUMERIC(12, 4),
     total_revenue NUMERIC(18, 4),
@@ -2038,17 +2041,21 @@ CREATE TABLE financial_statements (
     sell_exp NUMERIC(18, 4),
     admin_exp NUMERIC(18, 4),
     fin_exp NUMERIC(18, 4),
+    fin_exp_int_exp NUMERIC(18, 4),
+    fin_exp_int_inc NUMERIC(18, 4),
     assets_impair_loss NUMERIC(18, 4),
+    credit_impa_loss NUMERIC(18, 4),
+    rd_exp NUMERIC(18, 4),
     prem_refund NUMERIC(18, 4),
-    compen_payout NUMERIC(18, 4),
+    compens_payout NUMERIC(18, 4),
     reser_insur_liab NUMERIC(18, 4),
     div_payt NUMERIC(18, 4),
     reins_exp NUMERIC(18, 4),
     oper_exp NUMERIC(18, 4),
-    compens_payout NUMERIC(18, 4),
-    insur_reser NUMERIC(18, 4),
-    reinsur_payout NUMERIC(18, 4),
-    misc_exp NUMERIC(18, 4),
+    compens_payout_refu NUMERIC(18, 4),
+    insur_reser_refu NUMERIC(18, 4),
+    reins_cost_refund NUMERIC(18, 4),
+    other_bus_cost NUMERIC(18, 4),
     operate_profit NUMERIC(18, 4),
     non_oper_income NUMERIC(18, 4),
     non_oper_exp NUMERIC(18, 4),
@@ -2067,64 +2074,296 @@ CREATE TABLE financial_statements (
     insurance_exp NUMERIC(18, 4),
     undist_profit NUMERIC(18, 4),
     distable_profit NUMERIC(18, 4),
-    -- 资产负债表核心字段
-    total_assets NUMERIC(18, 4),
-    total_cur_assets NUMERIC(18, 4),
-    total_nca NUMERIC(18, 4),
-    total_liab NUMERIC(18, 4),
-    total_cur_liab NUMERIC(18, 4),
-    total_ncl NUMERIC(18, 4),
-    total_hldr_eqy_exc_min_int NUMERIC(18, 4),
-    total_hldr_eqy_inc_min_int NUMERIC(18, 4),
-    minority_int NUMERIC(18, 4),
-    money_cap NUMERIC(18, 4),
-    accounts_receiv NUMERIC(18, 4),
-    inventories NUMERIC(18, 4),
-    -- 现金流量表核心字段
-    n_cashflow_act NUMERIC(18, 4),
-    n_cashflow_inv_act NUMERIC(18, 4),
-    n_cashflow_fin_act NUMERIC(18, 4),
-    n_cash NUMERIC(18, 4),
+    transfer_surplus_rese NUMERIC(18, 4),
+    withdr_oth_ersu NUMERIC(18, 4),
+    workers_welfare NUMERIC(18, 4),
+    prfshare_payable_dvd NUMERIC(18, 4),
+    comshare_payable_dvd NUMERIC(18, 4),
+    oth_income NUMERIC(18, 4),
+    asset_disp_income NUMERIC(18, 4),
+    continued_net_profit NUMERIC(18, 4),
+    end_net_profit NUMERIC(18, 4),
+    update_flag VARCHAR(10),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_income_code_date ON financial_income(ts_code, ann_date);
+CREATE INDEX IF NOT EXISTS idx_financial_income_end_date ON financial_income(end_date);
 
-COMMENT ON TABLE financial_statements IS '上市公司财务报表数据（利润表+资产负债表+现金流量表，通过report_type区分）';
-COMMENT ON COLUMN financial_statements.ts_code IS '股票代码';
-COMMENT ON COLUMN financial_statements.ann_date IS '公告日期';
-COMMENT ON COLUMN financial_statements.end_date IS '报告期截止日期';
-COMMENT ON COLUMN financial_statements.report_type IS '报表类型: income-利润表, balance-资产负债表, cashflow-现金流量表';
-COMMENT ON COLUMN financial_statements.comp_type IS '公司类型：1-合并报表，2-母公司';
--- 利润表核心字段
-COMMENT ON COLUMN financial_statements.basic_eps IS '基本每股收益';
-COMMENT ON COLUMN financial_statements.total_revenue IS '营业总收入';
-COMMENT ON COLUMN financial_statements.operate_profit IS '营业利润';
-COMMENT ON COLUMN financial_statements.total_profit IS '利润总额';
-COMMENT ON COLUMN financial_statements.n_income IS '净利润';
-COMMENT ON COLUMN financial_statements.ebit IS '息税前利润';
-COMMENT ON COLUMN financial_statements.ebitda IS '息税折旧摊销前利润';
--- 资产负债表核心字段
-COMMENT ON COLUMN financial_statements.total_assets IS '资产总计';
-COMMENT ON COLUMN financial_statements.total_liab IS '负债合计';
-COMMENT ON COLUMN financial_statements.total_hldr_eqy_exc_min_int IS '股东权益（不含少数股东）';
-COMMENT ON COLUMN financial_statements.total_cur_assets IS '流动资产合计';
-COMMENT ON COLUMN financial_statements.total_cur_liab IS '流动负债合计';
-COMMENT ON COLUMN financial_statements.money_cap IS '货币资金';
-COMMENT ON COLUMN financial_statements.inventories IS '存货';
--- 现金流量表核心字段
-COMMENT ON COLUMN financial_statements.n_cashflow_act IS '经营活动净现金流';
-COMMENT ON COLUMN financial_statements.n_cashflow_inv_act IS '投资活动净现金流';
-COMMENT ON COLUMN financial_statements.n_cashflow_fin_act IS '筹资活动净现金流';
-COMMENT ON COLUMN financial_statements.n_cash IS '现金净增加额';
--- 时间戳
-COMMENT ON COLUMN financial_statements.created_at IS '创建时间';
-COMMENT ON COLUMN financial_statements.updated_at IS '更新时间';
+-- 资产负债表（对应 Tushare balancesheet 接口）
+CREATE TABLE financial_balance (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE NOT NULL,
+    f_ann_date DATE,
+    end_date DATE NOT NULL,
+    report_type VARCHAR(10),
+    comp_type VARCHAR(20),
+    end_type VARCHAR(10),
+    total_share NUMERIC(18, 4),
+    cap_rese NUMERIC(18, 4),
+    surplus_rese NUMERIC(18, 4),
+    undistr_porfit NUMERIC(18, 4),
+    money_cap NUMERIC(18, 4),
+    trad_asset NUMERIC(18, 4),
+    notes_receiv NUMERIC(18, 4),
+    accounts_receiv NUMERIC(18, 4),
+    oth_receiv NUMERIC(18, 4),
+    prepayment NUMERIC(18, 4),
+    inventories NUMERIC(18, 4),
+    total_cur_assets NUMERIC(18, 4),
+    fa_avail_for_sale NUMERIC(18, 4),
+    htm_invest NUMERIC(18, 4),
+    lt_eqt_invest NUMERIC(18, 4),
+    invest_real_estate NUMERIC(18, 4),
+    fix_assets NUMERIC(18, 4),
+    cip NUMERIC(18, 4),
+    intan_assets NUMERIC(18, 4),
+    r_and_d NUMERIC(18, 4),
+    goodwill NUMERIC(18, 4),
+    lt_amor_exp NUMERIC(18, 4),
+    defer_tax_assets NUMERIC(18, 4),
+    use_right_assets NUMERIC(18, 4),
+    contract_assets NUMERIC(18, 4),
+    total_nca NUMERIC(18, 4),
+    total_assets NUMERIC(18, 4),
+    lt_borr NUMERIC(18, 4),
+    st_borr NUMERIC(18, 4),
+    notes_payable NUMERIC(18, 4),
+    acct_payable NUMERIC(18, 4),
+    adv_receipts NUMERIC(18, 4),
+    payroll_payable NUMERIC(18, 4),
+    taxes_payable NUMERIC(18, 4),
+    int_payable NUMERIC(18, 4),
+    div_payable NUMERIC(18, 4),
+    oth_payable NUMERIC(18, 4),
+    total_cur_liab NUMERIC(18, 4),
+    bond_payable NUMERIC(18, 4),
+    lt_payable NUMERIC(18, 4),
+    defer_tax_liab NUMERIC(18, 4),
+    lease_liab NUMERIC(18, 4),
+    contract_liab NUMERIC(18, 4),
+    total_ncl NUMERIC(18, 4),
+    total_liab NUMERIC(18, 4),
+    treasury_share NUMERIC(18, 4),
+    minority_int NUMERIC(18, 4),
+    total_hldr_eqy_exc_min_int NUMERIC(18, 4),
+    total_hldr_eqy_inc_min_int NUMERIC(18, 4),
+    total_liab_hldr_eqy NUMERIC(18, 4),
+    update_flag VARCHAR(10),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_balance_code_date ON financial_balance(ts_code, ann_date);
+CREATE INDEX IF NOT EXISTS idx_financial_balance_end_date ON financial_balance(end_date);
 
-CREATE INDEX idx_financial_statements_ts_code ON financial_statements(ts_code);
-CREATE INDEX idx_financial_statements_end_date ON financial_statements(end_date);
-CREATE INDEX idx_financial_statements_ann_date ON financial_statements(ann_date);
-CREATE INDEX idx_financial_statements_report_type ON financial_statements(report_type);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_statement_code_date_type ON financial_statements(ts_code, ann_date, report_type);
+-- 现金流量表（对应 Tushare cashflow 接口）
+CREATE TABLE financial_cashflow (
+    id VARCHAR(36) PRIMARY KEY,
+    ts_code VARCHAR(20) NOT NULL,
+    ann_date DATE NOT NULL,
+    f_ann_date DATE,
+    end_date DATE NOT NULL,
+    report_type VARCHAR(10),
+    comp_type VARCHAR(20),
+    end_type VARCHAR(10),
+    net_profit NUMERIC(18, 4),
+    c_fr_sale_sg NUMERIC(18, 4),
+    recp_tax_rends NUMERIC(18, 4),
+    c_fr_oth_operate_a NUMERIC(18, 4),
+    c_inf_fr_operate_a NUMERIC(18, 4),
+    c_paid_goods_s NUMERIC(18, 4),
+    c_paid_to_for_empl NUMERIC(18, 4),
+    c_paid_for_taxes NUMERIC(18, 4),
+    oth_cash_pay_oper_act NUMERIC(18, 4),
+    st_cash_out_act NUMERIC(18, 4),
+    n_cashflow_act NUMERIC(18, 4),
+    c_disp_withdrwl_invest NUMERIC(18, 4),
+    c_recp_return_invest NUMERIC(18, 4),
+    n_recp_disp_fiolta NUMERIC(18, 4),
+    stot_inflows_inv_act NUMERIC(18, 4),
+    c_pay_acq_const_fiolta NUMERIC(18, 4),
+    c_paid_invest NUMERIC(18, 4),
+    stot_out_inv_act NUMERIC(18, 4),
+    n_cashflow_inv_act NUMERIC(18, 4),
+    c_recp_borrow NUMERIC(18, 4),
+    proc_issue_bonds NUMERIC(18, 4),
+    c_recp_cap_contrib NUMERIC(18, 4),
+    stot_cash_in_fnc_act NUMERIC(18, 4),
+    c_prepay_amt_borr NUMERIC(18, 4),
+    c_pay_dist_dpcp_int_exp NUMERIC(18, 4),
+    oth_cashpay_ral_fnc_act NUMERIC(18, 4),
+    stot_cashout_fnc_act NUMERIC(18, 4),
+    n_cash_flows_fnc_act NUMERIC(18, 4),
+    free_cashflow NUMERIC(18, 4),
+    eff_fx_flu_cash NUMERIC(18, 4),
+    n_incr_cash_cash_equ NUMERIC(18, 4),
+    c_cash_equ_beg_period NUMERIC(18, 4),
+    c_cash_equ_end_period NUMERIC(18, 4),
+    prov_depr_assets NUMERIC(18, 4),
+    depr_fa_coga_dpba NUMERIC(18, 4),
+    amort_intang_assets NUMERIC(18, 4),
+    loss_disp_fiolta NUMERIC(18, 4),
+    invest_loss NUMERIC(18, 4),
+    decr_inventories NUMERIC(18, 4),
+    im_net_cashflow_oper_act NUMERIC(18, 4),
+    update_flag VARCHAR(10),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_cashflow_code_date ON financial_cashflow(ts_code, ann_date);
+CREATE INDEX IF NOT EXISTS idx_financial_cashflow_end_date ON financial_cashflow(end_date);
+
+COMMENT ON TABLE financial_income IS '上市公司利润表数据（对应 Tushare income 接口）';
+COMMENT ON COLUMN financial_income.ts_code IS '股票代码';
+COMMENT ON COLUMN financial_income.ann_date IS '公告日期';
+COMMENT ON COLUMN financial_income.f_ann_date IS '实际公告日期';
+COMMENT ON COLUMN financial_income.end_date IS '报告期截止日期';
+COMMENT ON COLUMN financial_income.report_type IS '报告类型：Q1-一季报，S1-半年报，Q3-三季报，A-年报';
+COMMENT ON COLUMN financial_income.comp_type IS '公司类型：1一般工商业，2银行，3保险，4证券';
+COMMENT ON COLUMN financial_income.end_type IS '报告期类型';
+COMMENT ON COLUMN financial_income.basic_eps IS '基本每股收益';
+COMMENT ON COLUMN financial_income.diluted_eps IS '稀释每股收益';
+COMMENT ON COLUMN financial_income.total_revenue IS '营业总收入';
+COMMENT ON COLUMN financial_income.revenue IS '营业收入';
+COMMENT ON COLUMN financial_income.int_income IS '利息收入';
+COMMENT ON COLUMN financial_income.prem_earned IS '已赚保费';
+COMMENT ON COLUMN financial_income.comm_income IS '手续费及佣金收入';
+COMMENT ON COLUMN financial_income.n_commis_income IS '手续费及佣金净收入';
+COMMENT ON COLUMN financial_income.n_oth_income IS '其他经营净收益';
+COMMENT ON COLUMN financial_income.n_oth_b_income IS '其他业务净收益';
+COMMENT ON COLUMN financial_income.prem_income IS '保险业务收入';
+COMMENT ON COLUMN financial_income.out_prem IS '分出保费';
+COMMENT ON COLUMN financial_income.une_prem_reser IS '提取未到期责任准备金';
+COMMENT ON COLUMN financial_income.reins_income IS '分保费收入';
+COMMENT ON COLUMN financial_income.n_sec_tb_income IS '代理买卖证券业务净收入';
+COMMENT ON COLUMN financial_income.n_sec_uw_income IS '证券承销业务净收入';
+COMMENT ON COLUMN financial_income.n_asset_mg_income IS '受托客户资产管理业务净收入';
+COMMENT ON COLUMN financial_income.oth_b_income IS '其他业务收入';
+COMMENT ON COLUMN financial_income.fv_value_chg_gain IS '公允价值变动净收益';
+COMMENT ON COLUMN financial_income.invest_income IS '投资净收益';
+COMMENT ON COLUMN financial_income.ass_invest_income IS '对联营企业和合营企业的投资收益';
+COMMENT ON COLUMN financial_income.forex_gain IS '汇兑净收益';
+COMMENT ON COLUMN financial_income.total_cogs IS '营业总成本';
+COMMENT ON COLUMN financial_income.oper_cost IS '营业成本';
+COMMENT ON COLUMN financial_income.int_exp IS '利息支出';
+COMMENT ON COLUMN financial_income.comm_exp IS '手续费及佣金支出';
+COMMENT ON COLUMN financial_income.biz_tax_surchg IS '营业税金及附加';
+COMMENT ON COLUMN financial_income.sell_exp IS '销售费用';
+COMMENT ON COLUMN financial_income.admin_exp IS '管理费用';
+COMMENT ON COLUMN financial_income.fin_exp IS '财务费用';
+COMMENT ON COLUMN financial_income.fin_exp_int_exp IS '财务费用：利息费用';
+COMMENT ON COLUMN financial_income.fin_exp_int_inc IS '财务费用：利息收入';
+COMMENT ON COLUMN financial_income.assets_impair_loss IS '资产减值损失';
+COMMENT ON COLUMN financial_income.credit_impa_loss IS '信用减值损失';
+COMMENT ON COLUMN financial_income.rd_exp IS '研发费用';
+COMMENT ON COLUMN financial_income.prem_refund IS '退保金';
+COMMENT ON COLUMN financial_income.operate_profit IS '营业利润';
+COMMENT ON COLUMN financial_income.non_oper_income IS '营业外收入';
+COMMENT ON COLUMN financial_income.non_oper_exp IS '营业外支出';
+COMMENT ON COLUMN financial_income.total_profit IS '利润总额';
+COMMENT ON COLUMN financial_income.income_tax IS '所得税费用';
+COMMENT ON COLUMN financial_income.n_income IS '净利润（含少数股东损益）';
+COMMENT ON COLUMN financial_income.n_income_attr_p IS '净利润（不含少数股东损益）';
+COMMENT ON COLUMN financial_income.minority_gain IS '少数股东损益';
+COMMENT ON COLUMN financial_income.ebit IS '息税前利润';
+COMMENT ON COLUMN financial_income.ebitda IS '息税折旧摊销前利润';
+COMMENT ON COLUMN financial_income.oth_income IS '其他收益';
+COMMENT ON COLUMN financial_income.asset_disp_income IS '资产处置收益';
+COMMENT ON COLUMN financial_income.update_flag IS '更新标识';
+COMMENT ON COLUMN financial_income.created_at IS '创建时间';
+COMMENT ON COLUMN financial_income.updated_at IS '更新时间';
+
+COMMENT ON TABLE financial_balance IS '上市公司资产负债表数据（对应 Tushare balancesheet 接口）';
+COMMENT ON COLUMN financial_balance.ts_code IS '股票代码';
+COMMENT ON COLUMN financial_balance.ann_date IS '公告日期';
+COMMENT ON COLUMN financial_balance.f_ann_date IS '实际公告日期';
+COMMENT ON COLUMN financial_balance.end_date IS '报告期截止日期';
+COMMENT ON COLUMN financial_balance.report_type IS '报告类型：Q1/S1/Q3/A';
+COMMENT ON COLUMN financial_balance.comp_type IS '公司类型：1一般工商业，2银行，3保险，4证券';
+COMMENT ON COLUMN financial_balance.end_type IS '报告期类型';
+COMMENT ON COLUMN financial_balance.total_share IS '期末总股本';
+COMMENT ON COLUMN financial_balance.cap_rese IS '资本公积金';
+COMMENT ON COLUMN financial_balance.surplus_rese IS '盈余公积金';
+COMMENT ON COLUMN financial_balance.undistr_porfit IS '未分配利润';
+COMMENT ON COLUMN financial_balance.money_cap IS '货币资金';
+COMMENT ON COLUMN financial_balance.trad_asset IS '交易性金融资产';
+COMMENT ON COLUMN financial_balance.notes_receiv IS '应收票据';
+COMMENT ON COLUMN financial_balance.accounts_receiv IS '应收账款';
+COMMENT ON COLUMN financial_balance.oth_receiv IS '其他应收款';
+COMMENT ON COLUMN financial_balance.inventories IS '存货';
+COMMENT ON COLUMN financial_balance.total_cur_assets IS '流动资产合计';
+COMMENT ON COLUMN financial_balance.fa_avail_for_sale IS '可供出售金融资产';
+COMMENT ON COLUMN financial_balance.htm_invest IS '持有至到期投资';
+COMMENT ON COLUMN financial_balance.lt_eqt_invest IS '长期股权投资';
+COMMENT ON COLUMN financial_balance.fix_assets IS '固定资产';
+COMMENT ON COLUMN financial_balance.cip IS '在建工程';
+COMMENT ON COLUMN financial_balance.intan_assets IS '无形资产';
+COMMENT ON COLUMN financial_balance.goodwill IS '商誉';
+COMMENT ON COLUMN financial_balance.defer_tax_assets IS '递延所得税资产';
+COMMENT ON COLUMN financial_balance.use_right_assets IS '使用权资产';
+COMMENT ON COLUMN financial_balance.total_nca IS '非流动资产合计';
+COMMENT ON COLUMN financial_balance.total_assets IS '资产总计';
+COMMENT ON COLUMN financial_balance.lt_borr IS '长期借款';
+COMMENT ON COLUMN financial_balance.st_borr IS '短期借款';
+COMMENT ON COLUMN financial_balance.notes_payable IS '应付票据';
+COMMENT ON COLUMN financial_balance.acct_payable IS '应付账款';
+COMMENT ON COLUMN financial_balance.payroll_payable IS '应付职工薪酬';
+COMMENT ON COLUMN financial_balance.taxes_payable IS '应交税费';
+COMMENT ON COLUMN financial_balance.total_cur_liab IS '流动负债合计';
+COMMENT ON COLUMN financial_balance.bond_payable IS '应付债券';
+COMMENT ON COLUMN financial_balance.defer_tax_liab IS '递延所得税负债';
+COMMENT ON COLUMN financial_balance.lease_liab IS '租赁负债';
+COMMENT ON COLUMN financial_balance.contract_liab IS '合同负债';
+COMMENT ON COLUMN financial_balance.total_ncl IS '非流动负债合计';
+COMMENT ON COLUMN financial_balance.total_liab IS '负债合计';
+COMMENT ON COLUMN financial_balance.minority_int IS '少数股东权益';
+COMMENT ON COLUMN financial_balance.total_hldr_eqy_exc_min_int IS '股东权益合计（不含少数股东）';
+COMMENT ON COLUMN financial_balance.total_hldr_eqy_inc_min_int IS '股东权益合计（含少数股东）';
+COMMENT ON COLUMN financial_balance.total_liab_hldr_eqy IS '负债及股东权益总计';
+COMMENT ON COLUMN financial_balance.update_flag IS '更新标识';
+COMMENT ON COLUMN financial_balance.created_at IS '创建时间';
+COMMENT ON COLUMN financial_balance.updated_at IS '更新时间';
+
+COMMENT ON TABLE financial_cashflow IS '上市公司现金流量表数据（对应 Tushare cashflow 接口）';
+COMMENT ON COLUMN financial_cashflow.ts_code IS '股票代码';
+COMMENT ON COLUMN financial_cashflow.ann_date IS '公告日期';
+COMMENT ON COLUMN financial_cashflow.f_ann_date IS '实际公告日期';
+COMMENT ON COLUMN financial_cashflow.end_date IS '报告期截止日期';
+COMMENT ON COLUMN financial_cashflow.report_type IS '报告类型：Q1/S1/Q3/A';
+COMMENT ON COLUMN financial_cashflow.comp_type IS '公司类型：1一般工商业，2银行，3保险，4证券';
+COMMENT ON COLUMN financial_cashflow.end_type IS '报告期类型';
+COMMENT ON COLUMN financial_cashflow.net_profit IS '净利润';
+COMMENT ON COLUMN financial_cashflow.c_fr_sale_sg IS '销售商品、提供劳务收到的现金';
+COMMENT ON COLUMN financial_cashflow.c_inf_fr_operate_a IS '经营活动现金流入小计';
+COMMENT ON COLUMN financial_cashflow.c_paid_goods_s IS '购买商品、接受劳务支付的现金';
+COMMENT ON COLUMN financial_cashflow.st_cash_out_act IS '经营活动现金流出小计';
+COMMENT ON COLUMN financial_cashflow.n_cashflow_act IS '经营活动产生的现金流量净额';
+COMMENT ON COLUMN financial_cashflow.c_disp_withdrwl_invest IS '收回投资收到的现金';
+COMMENT ON COLUMN financial_cashflow.stot_inflows_inv_act IS '投资活动现金流入小计';
+COMMENT ON COLUMN financial_cashflow.c_paid_invest IS '投资支付的现金';
+COMMENT ON COLUMN financial_cashflow.stot_out_inv_act IS '投资活动现金流出小计';
+COMMENT ON COLUMN financial_cashflow.n_cashflow_inv_act IS '投资活动产生的现金流量净额';
+COMMENT ON COLUMN financial_cashflow.c_recp_borrow IS '取得借款收到的现金';
+COMMENT ON COLUMN financial_cashflow.stot_cash_in_fnc_act IS '筹资活动现金流入小计';
+COMMENT ON COLUMN financial_cashflow.c_prepay_amt_borr IS '偿还债务支付的现金';
+COMMENT ON COLUMN financial_cashflow.stot_cashout_fnc_act IS '筹资活动现金流出小计';
+COMMENT ON COLUMN financial_cashflow.n_cash_flows_fnc_act IS '筹资活动产生的现金流量净额';
+COMMENT ON COLUMN financial_cashflow.free_cashflow IS '企业自由现金流量';
+COMMENT ON COLUMN financial_cashflow.eff_fx_flu_cash IS '汇率变动对现金的影响';
+COMMENT ON COLUMN financial_cashflow.n_incr_cash_cash_equ IS '现金及现金等价物净增加额';
+COMMENT ON COLUMN financial_cashflow.c_cash_equ_beg_period IS '期初现金及现金等价物余额';
+COMMENT ON COLUMN financial_cashflow.c_cash_equ_end_period IS '期末现金及现金等价物余额';
+COMMENT ON COLUMN financial_cashflow.im_net_cashflow_oper_act IS '经营活动净现金流（间接法）';
+COMMENT ON COLUMN financial_cashflow.update_flag IS '更新标识';
+COMMENT ON COLUMN financial_cashflow.created_at IS '创建时间';
+COMMENT ON COLUMN financial_cashflow.updated_at IS '更新时间';
+-- 数据迁移（执行后删除旧表）
+-- INSERT INTO financial_income (id, ts_code, ann_date, f_ann_date, end_date, report_type, comp_type, end_type, basic_eps, diluted_eps, total_revenue, revenue, int_income, prem_earned, comm_income, n_commis_income, n_oth_income, n_oth_b_income, prem_income, out_prem, une_prem_reser, reins_income, n_sec_tb_income, n_sec_uw_income, n_asset_mg_income, oth_b_income, fv_value_chg_gain, invest_income, ass_invest_income, forex_gain, total_cogs, oper_cost, int_exp, comm_exp, biz_tax_surchg, sell_exp, admin_exp, fin_exp, assets_impair_loss, prem_refund, compens_payout, reser_insur_liab, div_payt, reins_exp, oper_exp, compens_payout_refu, insur_reser_refu, reins_cost_refund, other_bus_cost, operate_profit, non_oper_income, non_oper_exp, nca_disploss, total_profit, income_tax, n_income, n_income_attr_p, minority_gain, oth_compr_income, t_compr_income, compr_inc_attr_p, compr_inc_attr_m_s, ebit, ebitda, insurance_exp, undist_profit, distable_profit, update_flag, created_at, updated_at) SELECT id, ts_code, ann_date, f_ann_date, end_date, report_type, comp_type, null, basic_eps, diluted_eps, total_revenue, revenue, int_income, prem_earned, comm_income, n_commis_income, n_oth_income, n_oth_b_income, prem_income, out_prem, une_prem_reser, reins_income, n_sec_tb_income, n_sec_uw_income, n_asset_mg_income, oth_b_income, fv_value_chg_gain, invest_income, ass_invest_income, forex_gain, total_cogs, oper_cost, int_exp, comm_exp, biz_tax_surchg, sell_exp, admin_exp, fin_exp, assets_impair_loss, prem_refund, compens_payout, reser_insur_liab, div_payt, reins_exp, oper_exp, null, null, null, null, operate_profit, non_oper_income, non_oper_exp, nca_disploss, total_profit, income_tax, n_income, n_income_attr_p, minority_gain, oth_compr_income, t_compr_income, compr_inc_attr_p, compr_inc_attr_m_s, ebit, ebitda, insurance_exp, undist_profit, distable_profit, update_flag, created_at, updated_at FROM financial_statements WHERE report_type = 'income';
+-- INSERT INTO financial_balance ... WHERE report_type = 'balance';
+-- INSERT INTO financial_cashflow ... WHERE report_type = 'cashflow';
+-- DROP TABLE IF EXISTS financial_statements;
+
 
 
 -- ------------------------------------------------------------

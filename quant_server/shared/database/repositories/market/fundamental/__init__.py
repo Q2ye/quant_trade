@@ -7,9 +7,11 @@
 所有仓库都遵循纯数据访问原则，不包含业务逻辑
 """
 from .company_announcement_repo import CompanyAnnouncementRepository
-from .financial_statement_repo import FinancialStatementRepository
 from .stock_daily_basic_repo import StockDailyBasicRepository
 from .stock_moneyflow_repo import StockMoneyflowRepository
+from .financial_income_repo import FinancialIncomeRepository
+from .financial_balance_repo import FinancialBalanceRepository
+from .financial_cashflow_repo import FinancialCashflowRepository
 from .forecast_repo import StockForecastRepository
 from .express_repo import StockExpressRepository
 from .dividend_repo import StockDividendRepository
@@ -47,9 +49,11 @@ from .index_factor_pro_daily_repo import IndexFactorProDailyRepository
 
 __all__ = [
     "CompanyAnnouncementRepository",
-    "FinancialStatementRepository",
     "StockDailyBasicRepository",
     "StockMoneyflowRepository",
+    "FinancialIncomeRepository",
+    "FinancialBalanceRepository",
+    "FinancialCashflowRepository",
     "StockForecastRepository",
     "StockExpressRepository",
     "StockDividendRepository",

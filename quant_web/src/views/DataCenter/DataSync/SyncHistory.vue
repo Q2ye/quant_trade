@@ -121,20 +121,32 @@ const handleBack = () => {
 };
 
 const handleDeleteRecord = (row: SyncRecord) => {
+  const doDelete = async (force?: boolean) => {
+    try {
+      await dataSyncService.deleteSyncTask(row.id, force);
+      message.success("记录已删除");
+      allRecords.value = allRecords.value.filter((r) => r.id !== row.id);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || "";
+      if (msg.includes("运行中") || msg.includes("running")) {
+        dialog.warning({
+          title: "任务可能已中断",
+          content: "该任务状态为运行中（可能是服务器停机导致未更新）。确定要强制删除吗？",
+          positiveText: "强制删除",
+          negativeText: "取消",
+          onPositiveClick: () => doDelete(true),
+        });
+      } else {
+        message.error("删除失败，请重试");
+      }
+    }
+  };
   dialog.error({
     title: "确认删除",
     content: `确定要删除「${row.data_desc || row.data_type}」的同步记录吗？此操作不可恢复。`,
     positiveText: "确认删除",
     negativeText: "取消",
-    onPositiveClick: async () => {
-      try {
-        await dataSyncService.deleteSyncTask(row.id);
-        message.success("记录已删除");
-        allRecords.value = allRecords.value.filter((r) => r.id !== row.id);
-      } catch {
-        message.error("删除失败，请重试");
-      }
-    },
+    onPositiveClick: () => doDelete(),
   });
 };
 

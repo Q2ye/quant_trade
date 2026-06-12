@@ -185,6 +185,16 @@
                   size="small"
                 />
               </n-tab-pane>
+
+              <n-tab-pane name="valuation" tab="估值">
+                <n-empty v-if="!indexValuation.length" description="暂无估值数据" style="padding:40px" />
+                <v-chart v-else :option="valOption" autoresize style="height:300px" />
+              </n-tab-pane>
+
+              <n-tab-pane name="weights" tab="权重股">
+                <n-empty v-if="!indexWeights.length" description="暂无权重数据" style="padding:40px" />
+                <n-dataTable v-else :columns="weightColumns" :data="indexWeights" size="small" :bordered="false" max-height="400" />
+              </n-tab-pane>
             </n-tabs>
           </n-card>
         </div>
@@ -204,6 +214,7 @@ import {
 import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
 import SmartIcon from '@/components/common/SmartIcon.vue'
 import KLineChart from '@/components/charts/KLineChart.vue'
+import VChart from 'vue-echarts'
 import { tokens } from '@/styles/design-tokens'
 import marketApi from '@/api/market'
 
@@ -262,6 +273,28 @@ interface ComponentStock {
 
 const indexInfo = ref<IndexDetailData | null>(null)
 const components = ref<ComponentStock[]>([])
+const indexWeights = ref<any[]>([])
+const indexValuation = ref<any[]>([])
+const weightColumns = [
+  { title: "代码", key: "ts_code", width: 100 },
+  { title: "简称", key: "name", width: 100 },
+  { title: "权重(%)", key: "weight", render: (r: any) => r.weight?.toFixed(2) ?? "-" },
+]
+const valOption = computed(() => {
+  if (!indexValuation.value.length) return null
+  const items = [...indexValuation.value].reverse()
+  return {
+    grid: { top: 10, right: 50, bottom: 10, left: 60 },
+    xAxis: { type: "category", data: items.map((d: any) => d.trade_date?.slice(5) ?? ""), axisLabel: { fontSize: 9 } },
+    yAxis: { type: "value", axisLabel: { fontSize: 10 } },
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, textStyle: { fontSize: 10 } },
+    series: [
+      { name: "PE", type: "line", data: items.map((d: any) => d.pe ?? 0), smooth: true, lineStyle: { width: 2, color: "#ef5350" }, symbol: "none" },
+      { name: "PB", type: "line", data: items.map((d: any) => d.pb ?? 0), smooth: true, lineStyle: { width: 2, color: "#2196f3" }, symbol: "none" },
+    ],
+  }
+})
 
 // ---- 计算属性 ----
 const updateTime = computed(() => {
@@ -459,6 +492,10 @@ async function loadData() {
       detail = { ...result } as unknown as IndexDetailData
     } catch {
       detail = buildMockIndexDetail(idxCode)
+
+    // 加载权重+估值
+    marketApi.getIndexWeights(idxCode).then(w => { indexWeights.value = w || [] }).catch(() => {})
+    marketApi.getIndexValuation(idxCode, 60).then(v => { indexValuation.value = v || [] }).catch(() => {})
     }
     indexInfo.value = detail
     components.value = buildMockComponents(detail.components_count || 50)

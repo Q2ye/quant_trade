@@ -39,7 +39,6 @@ from shared.database.repositories import (
 	TradeCalendarRepository,
 	FactorDataRepository,
 	IndexBasicRepository,
-	FinancialStatementRepository
 )
 from utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
 # 导入工具类
@@ -354,7 +353,6 @@ class MarketDataService:
 			self.calendar_repo = TradeCalendarRepository(session)
 			self.factor_repo = FactorDataRepository(session)
 			self.index_repo = IndexBasicRepository(session)
-			self.financial_repo = FinancialStatementRepository(session)
 		else:
 			self.stock_repo = None
 			self.quote_repo = None

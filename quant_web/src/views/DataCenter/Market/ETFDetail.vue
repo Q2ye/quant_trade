@@ -21,6 +21,7 @@
       </div>
     </div>
 
+    <div class="main-content">
     <n-spin :show="loading">
       <n-result
         v-if="error"
@@ -222,6 +223,21 @@
       @update:show="showBasketSelector = $event"
       @added="onAddedToBasket"
     />
+
+    <!-- 基准指数 + 份额趋势 -->
+    <div v-if="benchmark || shares.length" style="margin-top:16px;display:flex;flex-direction:column;gap:16px">
+      <n-card v-if="benchmark" title="跟踪指数" size="small">
+        <n-descriptions label-placement="left" :column="2" size="small">
+          <n-descriptions-item label="指数代码">{{ benchmark.benchmark_code }}</n-descriptions-item>
+          <n-descriptions-item label="指数名称">{{ benchmark.index_name || "-" }}</n-descriptions-item>
+        </n-descriptions>
+      </n-card>
+      <n-card v-if="shares.length" title="份额变化趋势" size="small">
+        <v-chart v-if="sharesOption" :option="sharesOption" autoresize style="height:200px" />
+        <n-empty v-else description="暂无份额数据" style="padding:40px" />
+      </n-card>
+    </div>
+    </div>
   </div>
 </template>
 
@@ -672,6 +688,44 @@ export default defineComponent({
     };
   },
 });
+</script>
+
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue"
+import { useRoute } from "vue-router"
+import { NCard, NDescriptions, NDescriptionsItem, NEmpty } from "naive-ui"
+import marketAPI from "@/api/market"
+import VChart from "vue-echarts"
+
+const route = useRoute()
+const code = computed(() => (route.params.code as string || "").toUpperCase())
+const benchmark = ref<any>(null)
+const shares = ref<any[]>([])
+
+const sharesOption = computed(() => {
+  if (!shares.value.length) return null
+  const items = [...shares.value].reverse().slice(-60)
+  return {
+    grid: { top: 10, right: 10, bottom: 10, left: 60 },
+    xAxis: { type: "category", data: items.map((d: any) => d.trade_date?.slice(5) ?? ""), axisLabel: { fontSize: 10 } },
+    yAxis: { type: "value", axisLabel: { fontSize: 10, formatter: (v: number) => (v / 1e8).toFixed(0) + "亿" } },
+    tooltip: { trigger: "axis" },
+    series: [{ name: "份额", type: "line", data: items.map((d: any) => d.fund_size ?? 0), smooth: true, lineStyle: { color: "#4caf50", width: 2 }, areaStyle: { color: "rgba(76,175,80,0.15)" } }],
+  }
+})
+
+async function loadExtras(c: string) {
+  try {
+    const [bm, sh] = await Promise.all([
+      marketAPI.getEtfBenchmark(c).catch(() => null),
+      marketAPI.getEtfShares(c, 60).catch(() => []),
+    ])
+    benchmark.value = bm; shares.value = sh
+  } catch {}
+}
+
+watch(code, (c) => loadExtras(c), { immediate: true })
+onMounted(() => loadExtras(code.value))
 </script>
 <style scoped lang="scss">
 @use "@/styles/naive-variables" as *;

@@ -15,6 +15,7 @@ from .analysis_router import router as analysis_router
 from .monitor_router import router as monitor_router
 from .system_router import router as system_router
 from .health_router import router as health_router
+from .market_router import router as market_router
 
 # 当前已注册的路由（与 api/main.py include_router 保持一致）
 __all__ = [

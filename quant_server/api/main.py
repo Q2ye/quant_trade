@@ -15,6 +15,7 @@ from fastapi.openapi.utils import get_openapi
 from .routers import (
     data_router, strategy_router, trade_router, basket_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, health_router,
+    market_router,
 )
 from .websocket import websocket_router
 logger = logging.getLogger(__name__)
@@ -167,6 +168,7 @@ def create_app (
 			app.include_router(router, prefix=prefix)
 	# health 路由始终注册
 	app.include_router(health_router, prefix="/health")
+	app.include_router(market_router)
 	# WebSocket 路由始终注册
 	app.include_router(websocket_router, prefix="/api")
 

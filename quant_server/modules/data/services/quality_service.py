@@ -20,7 +20,6 @@ from shared.cache.redis_cache import RedisCache
 from shared.database.repositories import (
 	StockBasicRepository,
 	FactorDataRepository,
-	FinancialStatementRepository,
 	TradeCalendarRepository
 )
 from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
@@ -109,7 +108,6 @@ class DataQualityService:
 		self.stock_repo = StockBasicRepository(session)
 		self.quote_repo = StockDailyRepository(session)
 		self.factor_repo = FactorDataRepository(session)
-		self.financial_repo = FinancialStatementRepository(session)
 		self.quality_repo = DataQualityCheckRepository(session)  # 使用正确的仓库类
 		self.calendar_repo = TradeCalendarRepository(session)
 
@@ -259,8 +257,6 @@ class DataQualityService:
 				await self._check_stock_list_quality(metrics)
 			if data_type in ("factor_data", "all"):
 				await self._check_factor_data_quality(metrics, ts_code, start_date, end_date)
-			if data_type in ("financial_data", "all"):
-				await self._check_financial_data_quality(metrics, ts_code, start_date, end_date)
 
 			# 计算总体得分
 			if metrics["total_records"] > 0:
@@ -496,94 +492,94 @@ class DataQualityService:
 				"invalid_records": 0
 			})
 
-	async def _check_financial_data_integrity (
-			self,
-			ts_code: Optional[str],
-			start_date: date,
-			end_date: date
-	) -> Dict[str, Any]:
-		"""
-		检查财务数据完整性
-		使用FinancialStatementRepository的已有方法实现质量检查
-		"""
-		try:
-			if not ts_code:
-				# 示例数据用于系统级检查
-				return {
-					"total_statements": 15,
-					"complete_statements": 12,
-					"missing_statements": 2,
-					"invalid_statements": 1,
-					"inconsistent_statements": 1,
-					"data_quality": {
-						"balance_sheet_score": 0.92,
-						"income_statement_score": 0.88,
-						"cash_flow_score": 0.85,
-						"overall_score": 0.88
-					}
-				}
-
-			result = {
-				"total_statements": 0,
-				"complete_statements": 0,
-				"missing_statements": 0,
-				"invalid_statements": 0,
-				"inconsistent_statements": 0
-			}
-
-			report_types = ["balance_sheet", "income_statement", "cash_flow_statement"]
-
-			for report_type in report_types:
-				# 获取所有报表数据
-				statements = await self.financial_repo.get_financial_statements(
-					ts_code=ts_code,
-					report_type=report_type,
-					start_date=start_date,
-					end_date=end_date
-				)
-
-				# 按年度和季度分类
-				annual_statements = []
-				quarterly_statements = []
-				for stmt in statements:
-					if hasattr(stmt, 'end_date') and stmt.end_date:
-						if stmt.end_date.month == 12 and stmt.end_date.day == 31:
-							annual_statements.append(stmt)
-						if stmt.end_date.day == 31 and stmt.end_date.month in [3, 6, 9, 12]:
-							quarterly_statements.append(stmt)
-
-				# 计算年度报告预期数量
-				expected_annual = (end_date.year - start_date.year) + 1
-				result["total_statements"] += expected_annual
-				result["complete_statements"] += len(annual_statements)
-				result["missing_statements"] += max(0, expected_annual - len(annual_statements))
-
-				# 计算季度报告预期数量
-				expected_quarterly = expected_annual * 4
-				result["total_statements"] += expected_quarterly
-				result["complete_statements"] += len(quarterly_statements)
-				result["missing_statements"] += max(0, expected_quarterly - len(quarterly_statements))
-
-				# 检查无效报表（包含负值或不合理的财务数据）
-				for stmt in statements:
-					if _is_invalid_financial_statement(stmt):
-						result["invalid_statements"] += 1
-
-				# 检查数据一致性
-				if len(statements) > 1 and not _check_financial_consistency(statements):
-					result["inconsistent_statements"] += 1
-
-			return result
-
-		except Exception as e:
-			logger.error(f"检查财务数据完整性失败: {str(e)}")
-			return {
-				"total_statements": 0,
-				"complete_statements": 0,
-				"missing_statements": 0,
-				"invalid_statements": 0,
-				"inconsistent_statements": 0
-			}
+	# async def _check_financial_data_integrity (
+	# 		self,
+	# 		ts_code: Optional[str],
+	# 		start_date: date,
+	# 		end_date: date
+	# ) -> Dict[str, Any]:
+	# 	"""
+	# 	检查财务数据完整性
+	# 	使用FinancialIncomeRepository的已有方法实现质量检查
+	# 	"""
+	# 	try:
+	# 		if not ts_code:
+	# 			# 示例数据用于系统级检查
+	# 			return {
+	# 				"total_statements": 15,
+	# 				"complete_statements": 12,
+	# 				"missing_statements": 2,
+	# 				"invalid_statements": 1,
+	# 				"inconsistent_statements": 1,
+	# 				"data_quality": {
+	# 					"balance_sheet_score": 0.92,
+	# 					"income_statement_score": 0.88,
+	# 					"cash_flow_score": 0.85,
+	# 					"overall_score": 0.88
+	# 				}
+	# 			}
+	#
+	# 		result = {
+	# 			"total_statements": 0,
+	# 			"complete_statements": 0,
+	# 			"missing_statements": 0,
+	# 			"invalid_statements": 0,
+	# 			"inconsistent_statements": 0
+	# 		}
+	#
+	# 		report_types = ["balance_sheet", "income_statement", "cash_flow_statement"]
+	#
+	# 		for report_type in report_types:
+	# 			# 获取所有报表数据
+	# 			statements = await self.financial_repo.get_financial_statements(
+	# 				ts_code=ts_code,
+	# 				report_type=report_type,
+	# 				start_date=start_date,
+	# 				end_date=end_date
+	# 			)
+	#
+	# 			# 按年度和季度分类
+	# 			annual_statements = []
+	# 			quarterly_statements = []
+	# 			for stmt in statements:
+	# 				if hasattr(stmt, 'end_date') and stmt.end_date:
+	# 					if stmt.end_date.month == 12 and stmt.end_date.day == 31:
+	# 						annual_statements.append(stmt)
+	# 					if stmt.end_date.day == 31 and stmt.end_date.month in [3, 6, 9, 12]:
+	# 						quarterly_statements.append(stmt)
+	#
+	# 			# 计算年度报告预期数量
+	# 			expected_annual = (end_date.year - start_date.year) + 1
+	# 			result["total_statements"] += expected_annual
+	# 			result["complete_statements"] += len(annual_statements)
+	# 			result["missing_statements"] += max(0, expected_annual - len(annual_statements))
+	#
+	# 			# 计算季度报告预期数量
+	# 			expected_quarterly = expected_annual * 4
+	# 			result["total_statements"] += expected_quarterly
+	# 			result["complete_statements"] += len(quarterly_statements)
+	# 			result["missing_statements"] += max(0, expected_quarterly - len(quarterly_statements))
+	#
+	# 			# 检查无效报表（包含负值或不合理的财务数据）
+	# 			for stmt in statements:
+	# 				if _is_invalid_financial_statement(stmt):
+	# 					result["invalid_statements"] += 1
+	#
+	# 			# 检查数据一致性
+	# 			if len(statements) > 1 and not _check_financial_consistency(statements):
+	# 				result["inconsistent_statements"] += 1
+	#
+	# 		return result
+	#
+	# 	except Exception as e:
+	# 		logger.error(f"检查财务数据完整性失败: {str(e)}")
+	# 		return {
+	# 			"total_statements": 0,
+	# 			"complete_statements": 0,
+	# 			"missing_statements": 0,
+	# 			"invalid_statements": 0,
+	# 			"inconsistent_statements": 0
+	# 		}
 
 	async def get_quality_report (
 			self,

@@ -10,11 +10,8 @@ import {
   SectorInfo,
 } from "@/types";
 import { FinancialData, StockBasic } from "@/types";
-
-/**
- * 市场数据API服务
- * 提供股票、指数、ETF等市场基础数据的查询功能
- */
+import type { DashboardOverview, StockFullResponse } from "@/types/entities/market";
+import type { ScreenerParams, ScreenerResult, IndustryNode, IndustryDetail, IndustryHeatmapItem } from "@/types/entities/market";
 
 export interface StockListResult {
   stocks: StockBasic[];
@@ -23,122 +20,87 @@ export interface StockListResult {
 }
 
 export default {
-  /**
-   * 获取股票列表
-   * @param params 查询参数
-   * @returns 股票列表结果
-   */
-  async getStocks(
-    params?: StockQueryParams,
-  ): Promise<PaginatedResponse<StockBasic>> {
-    return request
-      .get("/quantTrade/data/stocks", { params })
-      .then((response: any) => handleResponse(response))
-      .then((data: PaginatedResponse<StockBasic>) => data);
+  async getStocks(params?: StockQueryParams): Promise<PaginatedResponse<StockBasic>> {
+    return request.get("/quantTrade/data/stocks", { params }).then(handleResponse).then((data: PaginatedResponse<StockBasic>) => data);
   },
-
-  /**
-   * 获取股票详细信息
-   * @param code 股票代码
-   * @returns 股票详细信息
-   */
   async getStockDetail(code: string): Promise<StockBasic> {
-    return request
-      .get(`/quantTrade/data/stocks/${code}`)
-      .then((response: any) => handleResponse(response))
-      .then((data: { stock: StockBasic }) => data.stock);
+    return request.get(`/quantTrade/data/stocks/${code}`).then(handleResponse).then((data: { stock: StockBasic }) => data.stock);
   },
-
-  /**
-   * 获取股票历史数据
-   * @param code 股票代码
-   * @param params 查询参数
-   * @returns K线数据数组
-   */
-  async getStockHistory(
-    code: string,
-    params: QuoteQueryParams,
-  ): Promise<KLineData[]> {
-    return request
-      .get(`/quantTrade/data/stocks/${code}/history`, { params })
-      .then((response: any) => handleResponse(response))
-      .then((data: { historical: KLineData[] }) => data.historical);
+  async getStockHistory(code: string, params: QuoteQueryParams): Promise<KLineData[]> {
+    return request.get(`/quantTrade/data/stocks/${code}/history`, { params }).then(handleResponse).then((data: { historical: KLineData[] }) => data.historical);
   },
-
-  /**
-   * 获取ETF列表
-   * @param params 分页参数
-   * @returns ETF基本信息数组
-   */
-  async getETFs(params?: {
-    page?: number;
-    limit?: number;
-  }): Promise<StockBasic[]> {
-    return request
-      .get("/quantTrade/data/etfs", { params })
-      .then((response: any) => handleResponse(response))
-      .then((data: { etfs: StockBasic[] }) => data.etfs);
+  async getETFs(params?: { page?: number; limit?: number }): Promise<StockBasic[]> {
+    return request.get("/quantTrade/data/etfs", { params }).then(handleResponse).then((data: { etfs: StockBasic[] }) => data.etfs);
   },
-
-  /**
-   * 获取ETF详细信息
-   * @param code ETF代码
-   * @returns ETF详细信息
-   */
   async getETFDetail(code: string): Promise<StockBasic> {
-    return request
-      .get(`/quantTrade/data/etfs/${code}`)
-      .then((response: any) => handleResponse(response))
-      .then((data: { etf: StockBasic }) => data.etf);
+    return request.get(`/quantTrade/data/etfs/${code}`).then(handleResponse).then((data: { etf: StockBasic }) => data.etf);
   },
-
-  /**
-   * 获取指数列表
-   * @returns 指数信息数组
-   */
   async getIndexes(): Promise<IndexInfo[]> {
-    return request
-      .get("/quantTrade/data/indexes")
-      .then((response: any) => handleResponse(response))
-      .then((data: { indexes: IndexInfo[] }) => data.indexes);
+    return request.get("/quantTrade/data/indexes").then(handleResponse).then((data: { indexes: IndexInfo[] }) => data.indexes);
   },
-
-  /**
-   * 获取指数详细信息
-   * @param code 指数代码
-   * @returns 指数详细信息
-   */
   async getIndexDetail(code: string): Promise<IndexInfo> {
-    return request
-      .get(`/quantTrade/data/indexes/${code}`)
-      .then((response: any) => handleResponse(response))
-      .then((data: { index: IndexInfo }) => data.index);
+    return request.get(`/quantTrade/data/indexes/${code}`).then(handleResponse).then((data: { index: IndexInfo }) => data.index);
   },
-
-  /**
-   * 获取板块列表
-   * @returns 板块信息数组
-   */
   async getSectors(): Promise<SectorInfo[]> {
-    return request
-      .get("/quantTrade/data/sectors")
-      .then((response: any) => handleResponse(response))
-      .then((data: { sectors: SectorInfo[] }) => data.sectors);
+    return request.get("/quantTrade/data/sectors").then(handleResponse).then((data: { sectors: SectorInfo[] }) => data.sectors);
+  },
+  async getFinancialData(code: string, params: { reportDate?: string }): Promise<FinancialData[]> {
+    return request.get(`/quantTrade/data/stocks/${code}/financial`, { params }).then(handleResponse).then((data: { financial: FinancialData[] }) => data.financial);
   },
 
-  /**
-   * 获取财务数据
-   * @param code 股票代码
-   * @param params 财务查询参数
-   * @returns 财务数据数组
-   */
-  async getFinancialData(
-    code: string,
-    params: { reportDate?: string },
-  ): Promise<FinancialData[]> {
-    return request
-      .get(`/quantTrade/data/stocks/${code}/financial`, { params })
-      .then((response: any) => handleResponse(response))
-      .then((data: { financial: FinancialData[] }) => data.financial);
+  // ---- Phase 1: Dashboard + StockDetail ----
+  async getDashboardOverview(): Promise<DashboardOverview> {
+    return request.get("/quantTrade/market/dashboard/overview").then(handleResponse).then((data: any) => data.data);
+  },
+  async getStockFull(ts_code: string): Promise<StockFullResponse | null> {
+    return request.get(`/quantTrade/market/stocks/${ts_code}/full`).then(handleResponse).then((data: any) => data.data);
+  },
+
+  // ---- Phase 2: Screener + Industry ----
+  async getScreener(params: ScreenerParams): Promise<ScreenerResult> {
+    return request.post("/quantTrade/market/screener", params).then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndustryTree(): Promise<IndustryNode[]> {
+    return request.get("/quantTrade/market/industries").then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndustryDetail(code: string): Promise<IndustryDetail> {
+    return request.get(`/quantTrade/market/industries/${code}`).then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndustryHeatmap(): Promise<IndustryHeatmapItem[]> {
+    return request.get("/quantTrade/market/industries/heatmap").then(handleResponse).then((d: any) => d.data);
+  },
+
+  // ---- Phase 3: Financial + MoneyFlow ----
+  async getFinancialCompare(params: { codes: string[]; metrics?: string[]; end_date?: string }): Promise<any[]> {
+    return request.post("/quantTrade/market/financial/indicators", params).then(handleResponse).then((d: any) => d.data);
+  },
+  async getFinancialStatements(code: string, type: string, limit?: number): Promise<any[]> {
+    return request.get(`/quantTrade/market/stocks/${code}/financial/statements`, { params: { type, limit } }).then(handleResponse).then((d: any) => d.data);
+  },
+  async getTopMoneyflow(direction?: string, limit?: number): Promise<any[]> {
+    return request.get("/quantTrade/market/moneyflow/top", { params: { direction, limit } }).then(handleResponse).then((d: any) => d.data);
+  },
+  async getHsgtHistory(days?: number): Promise<any[]> {
+    return request.get("/quantTrade/market/moneyflow/hsgt", { params: { days } }).then(handleResponse).then((d: any) => d.data);
+  },
+  async getStockMoneyflow(code: string, days?: number): Promise<any[]> {
+    return request.get(`/quantTrade/market/stocks/${code}/moneyflow`, { params: { days } }).then(handleResponse).then((d: any) => d.data);
+  },
+
+  // ---- Phase 4: ETF/Index enhanced ----
+  async getEtfShares(code: string, limit?: number): Promise<any[]> {
+    return request.get(`/quantTrade/market/etfs/${code}/shares`, { params: { limit } }).then(handleResponse).then((d: any) => d.data);
+  },
+  async getEtfBenchmark(code: string): Promise<any> {
+    return request.get(`/quantTrade/market/etfs/${code}/benchmark`).then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndexWeights(code: string): Promise<any[]> {
+    return request.get(`/quantTrade/market/indexes/${code}/weights`).then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndexValuation(code: string, limit?: number): Promise<any[]> {
+    return request.get(`/quantTrade/market/indexes/${code}/valuation`, { params: { limit } }).then(handleResponse).then((d: any) => d.data);
+  },
+  async getIndexHistory(code: string, limit?: number): Promise<any[]> {
+    return request.get(`/quantTrade/market/indexes/${code}/history`, { params: { limit } }).then(handleResponse).then((d: any) => d.data);
   },
 };

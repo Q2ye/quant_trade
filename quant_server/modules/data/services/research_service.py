@@ -40,7 +40,6 @@ from shared.database.repositories import (
 	FactorDataRepository,
 	FactorDefinitionRepository,
 	FactorResearchRepository,
-	FinancialStatementRepository
 )
 # 导入工具类
 from utils.core_utils.math_utils import StatisticalCalculator
@@ -81,8 +80,6 @@ class FactorResearchService:
 		self.factor_repo = FactorDataRepository(session)
 		self.factor_def_repo = FactorDefinitionRepository(session)
 		self.research_repo = FactorResearchRepository(session)
-		self.financial_repo = FinancialStatementRepository(session)
-
 		# 初始化计算工具
 		self.stat_calculator = StatisticalCalculator()
 
@@ -2386,7 +2383,7 @@ class FactorResearchService:
 			pd.DataFrame: 财务数据
 		"""
 		try:
-				# 从FinancialStatementRepository获取财务数据
+				# 从FinancialIncomeRepository获取财务数据
 			# 获取财务报表数据
 			financial_statements = await self.financial_repo.get_financial_statements(
 				ts_code=ts_code,

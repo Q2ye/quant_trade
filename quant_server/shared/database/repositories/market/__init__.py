@@ -40,7 +40,9 @@ from .quote import (
 from .fundamental import (
     StockDailyBasicRepository,  # 股票每日基础指标 [超表]
     StockMoneyflowRepository,   # 股票资金流向 [超表]
-    FinancialStatementRepository,  # 财务报表数据
+    FinancialIncomeRepository,  # 利润表
+    FinancialBalanceRepository, # 资产负债表
+    FinancialCashflowRepository, # 现金流量表
 
     # 财务衍生
     StockForecastRepository,  # 业绩预告
@@ -121,7 +123,6 @@ __all__ = [
     # === 基本面数据 ===
     "StockDailyBasicRepository",
     "StockMoneyflowRepository",
-    "FinancialStatementRepository",
     # 财务衍生
     "StockForecastRepository",
     "StockExpressRepository",

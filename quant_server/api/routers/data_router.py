@@ -433,13 +433,13 @@ async def get_stock_financial_api(
 ) -> StockFinancialResponse:
 	"""获取股票财务数据"""
 	try:
-		from shared.database.models.data_models import FinancialStatement
+		from shared.database.models.data_models import FinancialIncome, FinancialBalance, FinancialCashflow
 		from datetime import datetime as dt
 
-		query = select(FinancialStatement).where(FinancialStatement.ts_code == code)
+		query = select(FinancialIncome).where(FinancialIncome.ts_code == code)
 		if report_date:
-			query = query.where(FinancialStatement.end_date == dt.strptime(report_date, "%Y%m%d"))
-		query = query.order_by(FinancialStatement.end_date.desc()).limit(limit)
+			query = query.where(FinancialIncome.end_date == dt.strptime(report_date, "%Y%m%d"))
+		query = query.order_by(FinancialIncome.end_date.desc()).limit(limit)
 
 		r = await db_session.execute(query)
 		statements = r.scalars().all()
@@ -813,6 +813,9 @@ _DATA_TYPE_INFO_MAP: Dict[str, DataTypeInfo] = {
 	"calendar":               DataTypeInfo(code="calendar",               name="交易日历",     description="沪深京交易所交易日历数据",                   estimated_time=10,  requires_clean=False, is_core=True),
 	"financial_indicator":    DataTypeInfo(code="financial_indicator",    name="财务指标",     description="上市公司核心财务指标（ROE/ROA/毛利率等）",   estimated_time=120, requires_clean=True,  is_core=True),
 	"financial_data":         DataTypeInfo(code="financial_data",         name="财务报表",     description="利润表+资产负债表+现金流量表（三表合并同步）", estimated_time=360, requires_clean=True,  is_core=True),
+    "financial_income":       DataTypeInfo(code="financial_income",       name="利润表",     description="上市公司利润表数据",                           estimated_time=600, requires_clean=True,  is_core=True),
+    "financial_balance":      DataTypeInfo(code="financial_balance",      name="资产负债表", description="上市公司资产负债表数据",                         estimated_time=600, requires_clean=True,  is_core=True),
+    "financial_cashflow":     DataTypeInfo(code="financial_cashflow",     name="现金流量表", description="上市公司现金流量表数据",                         estimated_time=600, requires_clean=True,  is_core=True),
 	"moneyflow":              DataTypeInfo(code="moneyflow",              name="资金流向",     description="个股及大盘资金流向数据（主力/散户/北向）",   estimated_time=90,  requires_clean=True,  is_core=True),
 	"index_basic":            DataTypeInfo(code="index_basic",            name="指数基本信息", description="沪深市场全部指数基本信息（代码/名称/基期等）", estimated_time=30,  requires_clean=False, is_core=True),
 	"index_daily":            DataTypeInfo(code="index_daily",            name="指数日线行情", description="指数日线行情数据（开高低收量额）",           estimated_time=60,  requires_clean=True,  is_core=True),

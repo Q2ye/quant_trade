@@ -46,9 +46,31 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: "/market/industry-strength",
-    name: "IndustryStrength",
-    component: () => import("@/views/DataCenter/Market/IndustryStrength.vue"),
-    meta: { menu: "market", layout: "main", title: "行业强弱" },
+    redirect: "/market/industry",
+  },
+  {
+    path: "/market/industry",
+    name: "IndustryAnalysis",
+    component: () => import("@/views/DataCenter/Market/IndustryAnalysis.vue"),
+    meta: { menu: "market", layout: "main", title: "行业分析" },
+  },
+  {
+    path: "/market/screener",
+    name: "StockScreener",
+    component: () => import("@/views/DataCenter/Market/StockScreener.vue"),
+    meta: { menu: "market", layout: "main", title: "股票筛选器" },
+  },
+  {
+    path: "/market/financial",
+    name: "FinancialHub",
+    component: () => import("@/views/DataCenter/Market/FinancialHub.vue"),
+    meta: { menu: "market", layout: "main", title: "财务数据" },
+  },
+  {
+    path: "/market/macro",
+    name: "MacroMonitor",
+    component: () => import("@/views/DataCenter/Market/MacroMonitor.vue"),
+    meta: { menu: "market", layout: "main", title: "宏观经济" },
   },
   {
     path: "/market/money-flow",

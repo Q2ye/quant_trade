@@ -409,25 +409,29 @@ class BaseRepository(Generic[T]):
 		total = 0
 		for i in range(0, len(records), chunk_size):
 			chunk = records[i:i + chunk_size]
-			stmt = pg_insert(self.model).values(chunk)
+			# 只 INSERT 数据中实际存在的列，其余由 DB 默认值填充
+			_data_cols = set()
+			for _r in chunk:
+				_data_cols.update(_r.keys())
+			_model_col_names = {c.name for c in self.model.__table__.columns}
+			_insert_cols = _data_cols & _model_col_names
+			_filtered = [{k: v for k, v in _r.items() if k in _insert_cols} for _r in chunk]
+			stmt = pg_insert(self.model).values(_filtered)
 			stmt = stmt.on_conflict_do_update(
 				index_elements=conflict_cols,
-				set_={c: getattr(stmt.excluded, c) for c in update_cols}
+				set_={c: getattr(stmt.excluded, c) for c in update_cols if c in _insert_cols}
 			)
 			try:
 				result = await self.session.execute(stmt)
 				total += result.rowcount
 			except Exception as e:
-				# 诊断：记录溢出批次关键字段，定位具体列
-				demo = chunk[0] if chunk else {}
+				demo = _filtered[0] if _filtered else {}
 				import logging
 				_log = logging.getLogger(__name__)
 				_log.error(
 					f"bulk_upsert 写入失败: 表={self.model.__tablename__} "
 					f"批次={i//chunk_size} 行数={len(chunk)} "
-					f"ts_code={demo.get('ts_code','?')} trade_date={demo.get('trade_date','?')} "
-					f"amount={demo.get('amount','-')} pct_chg={demo.get('pct_chg','-')} "
-					f"change={demo.get('change','-')} vol={demo.get('vol','-')}"
+					f"ts_code={demo.get('ts_code','?')} trade_date={demo.get('trade_date','?')}"
 				)
 				raise
 		return total

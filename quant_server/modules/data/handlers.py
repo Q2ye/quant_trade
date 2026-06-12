@@ -1207,10 +1207,9 @@ async def get_sync_types_meta(
 		DataType.INDEX_WEIGHT: ("1", "1.14", "index_weight", 5, "~3K条", False),
 		DataType.ST_STOCKRISK: ("1", "1.15", "stock_st_risk", 10, "~200条", False),
 		# 2: 财务数据
-		DataType.FINANCIAL_DATA: ("2", "2.0", "financial_statements", 1800, "三表合并", True),
-		DataType.FINANCIAL_INCOME: ("2", "2.1", "financial_statements", 600, "利润表", True),
-		DataType.FINANCIAL_BALANCE: ("2", "2.2", "financial_statements", 600, "资产负债表", True),
-		DataType.FINANCIAL_CASHFLOW: ("2", "2.3", "financial_statements", 600, "现金流量表", True),
+		DataType.FINANCIAL_INCOME: ("2", "2.1", "financial_income", 600, "利润表", True),
+        DataType.FINANCIAL_BALANCE: ("2", "2.2", "financial_balance", 600, "资产负债表", True),
+        DataType.FINANCIAL_CASHFLOW: ("2", "2.3", "financial_cashflow", 600, "现金流量表", True),
 		DataType.FORECAST: ("2", "2.4", "stock_forecasts", 120, "~5K条", False),
 		DataType.EXPRESS: ("2", "2.5", "stock_expresses", 120, "~5K条", False),
 		DataType.DIVIDEND: ("2", "2.6", "stock_dividends", 60, "~5K条", False),
@@ -1671,22 +1670,31 @@ async def cancel_sync (
 		if task.status in ["completed", "cancelled", "failed"]:
 			raise ValidationException(f"任务已处于最终状态 '{task.status}'，无法取消")
 
-		# 4. 校验全部通过后，发送取消信号（不再在 DB 操作之前，避免校验失败时 token 已被设置）
+		# 4. 校验全部通过后，发送取消信号
 		from modules.data import signal_cancel
-		cancelled = signal_cancel(task_id)
+		cancel_target = task_id
+		cancelled = signal_cancel(cancel_target)
+		if not cancelled:
+			parent_id = getattr(task, 'parent_task_id', None)
+			if parent_id:
+				cancelled = signal_cancel(parent_id)
+				if cancelled:
+					cancel_target = parent_id
+					logger.info(f"取消信号已发送（通过父任务）: parent={parent_id}")
 		if cancelled:
-			logger.info(f"取消信号已发送: task_id={task_id}")
+			logger.info(f"取消信号已发送: task_id={cancel_target}")
 		else:
 			logger.warning(f"取消信号发送失败（token 未命中）: task_id={task_id}, "
+			               f"parent={getattr(task, 'parent_task_id', None)}, "
 			               f"可能后台任务尚未创建取消令牌或已被清理")
 
-		# 4. 更新任务状态
-		# 更新任务 + 所有子任务为 cancelled
+		# 4. 更新任务状态：任务 + 父任务（如有） + 所有子任务
 		from sqlalchemy import text as _sql
-		await session.execute(
-			_sql("UPDATE data_sync_tasks SET status='cancelled', error_message='用户手动取消', updated_at=:now WHERE (task_id=:tid OR parent_task_id=:tid) AND status='running'"),
-			{"tid": task_id, "now": datetime.now()}
-		)
+		for tid in {task_id, getattr(task, 'parent_task_id', None)} - {None}:
+			await session.execute(
+				_sql("UPDATE data_sync_tasks SET status='cancelled', error_message='用户手动取消', updated_at=:now WHERE (task_id=:tid OR parent_task_id=:tid) AND status IN ('running', 'pending')"),
+				{"tid": tid, "now": datetime.now()}
+			)
 		await session.commit()
 
 		# 5. 发布取消事件
@@ -1725,7 +1733,8 @@ async def cancel_sync (
 async def delete_sync_task(
 		session: AsyncSession,
 		task_id: str,
-		user_id: str
+		user_id: str,
+		force: bool = False,
 ) -> Dict[str, Any]:
 	"""删除同步任务记录（仅允许删除已完成/失败/取消的任务）"""
 	try:
@@ -1737,8 +1746,6 @@ async def delete_sync_task(
 		task = task_result.data
 		if task.user_id != user_id:
 			raise PermissionDeniedException("无权删除其他用户的同步任务")
-		if task.status == "running":
-			raise ValidationException("运行中的任务无法删除，请先取消")
 
 		await sync_task_repo.delete(task.id, soft=False)
 		logger.info(f"成功删除同步任务: {task_id}")

@@ -276,7 +276,7 @@ try:
         # 基本面数据
         StockDailyBasicRepository,
         StockMoneyflowRepository,
-        FinancialStatementRepository,
+        FinancialIncomeRepository, FinancialBalanceRepository, FinancialCashflowRepository,
         # 财务衍生
         StockForecastRepository,
         StockExpressRepository,
@@ -342,7 +342,9 @@ try:
         'fund_adj_factor_repo': FundAdjFactorRepository,
         'stock_daily_basic_repo': StockDailyBasicRepository,
         'stock_moneyflow_repo': StockMoneyflowRepository,
-        'financial_statement_repo': FinancialStatementRepository,
+        'financial_income_repo': FinancialIncomeRepository,
+        'financial_balance_repo': FinancialBalanceRepository,
+        'financial_cashflow_repo': FinancialCashflowRepository,
         'forecast_repo': StockForecastRepository,
         'express_repo': StockExpressRepository,
         'dividend_repo': StockDividendRepository,
@@ -402,7 +404,9 @@ try:
         'FundAdjFactorRepository',
         'StockDailyBasicRepository',
         'StockMoneyflowRepository',
-        'FinancialStatementRepository',
+        'FinancialIncomeRepository',
+    'FinancialBalanceRepository',
+    'FinancialCashflowRepository',
         'StockForecastRepository',
         'StockExpressRepository',
         'StockDividendRepository',
@@ -460,7 +464,10 @@ except ImportError as e:
     FundAdjFactorRepository = None
     StockDailyBasicRepository = None
     StockMoneyflowRepository = None
-    FinancialStatementRepository = None
+    _ =  None
+    FinancialIncomeRepository = None
+    FinancialBalanceRepository = None
+    FinancialCashflowRepository = None
     StockForecastRepository = None
     StockExpressRepository = None
     StockDividendRepository = None

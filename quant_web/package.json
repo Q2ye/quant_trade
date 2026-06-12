@@ -24,6 +24,7 @@
     "sass-loader": "^16.0.6",
     "three": "^0.184.0",
     "vue": "^3.5.18",
+    "vue-echarts": "^8.0.1",
     "vue-i18n": "^11.1.11",
     "vue-router": "4",
     "vuex": "^4.1.0",
@@ -50,6 +51,9 @@
     ]
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "@parcel/watcher"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@parcel/watcher"
+    ]
   }
 }

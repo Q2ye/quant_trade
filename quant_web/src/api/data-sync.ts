@@ -363,9 +363,9 @@ class DataSyncService {
    * 删除同步任务记录
    * @param taskId 任务ID
    */
-  async deleteSyncTask(taskId: string): Promise<{ task_id: string; deleted: boolean }> {
+  async deleteSyncTask(taskId: string, force?: boolean): Promise<{ task_id: string; deleted: boolean }> {
     return request
-      .delete(`${this.baseUrl}/tasks/${taskId}`)
+      .delete(`${this.baseUrl}/tasks/${taskId}`, { params: { force } })
       .then(handleResponse)
       .catch((error) => {
         console.error("删除同步任务失败:", error);
