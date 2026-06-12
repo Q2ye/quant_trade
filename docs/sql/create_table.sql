@@ -460,14 +460,23 @@ CREATE TABLE macro_gdp (
     gdp NUMERIC(18, 4),
     gdp_yoy NUMERIC(10, 4),
     pi NUMERIC(18, 4),
+    pi_yoy NUMERIC(10, 4),
     si NUMERIC(18, 4),
+    si_yoy NUMERIC(10, 4),
     ti NUMERIC(18, 4),
+    ti_yoy NUMERIC(10, 4),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(quarter)
 );
 COMMENT ON TABLE macro_gdp IS 'GDP国内生产总值季度数据';
 COMMENT ON COLUMN macro_gdp.quarter IS '季度（YYYYQ1~YYYYQ4）';
 COMMENT ON COLUMN macro_gdp.gdp IS 'GDP总额（亿元）';
+COMMENT ON COLUMN macro_gdp.pi IS '第一产业增加值';
+COMMENT ON COLUMN macro_gdp.pi_yoy IS '第一产业同比(%)';
+COMMENT ON COLUMN macro_gdp.si IS '第二产业增加值';
+COMMENT ON COLUMN macro_gdp.si_yoy IS '第二产业同比(%)';
+COMMENT ON COLUMN macro_gdp.ti IS '第三产业增加值';
+COMMENT ON COLUMN macro_gdp.ti_yoy IS '第三产业同比(%)';
 
 -- ------------------------------------------------------------
 -- 1.3 账户相关表

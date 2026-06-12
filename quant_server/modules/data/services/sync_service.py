@@ -1459,6 +1459,57 @@ class DataSyncService:
 			mode = "overlap"
 		return start_date, end_date, mode
 
+	async def _resolve_macro_date_range(
+			self, table: str, date_col: str,
+			start_date: Optional[date], end_date: Optional[date],
+	) -> Tuple[str, str]:
+		"""宏观数据日期范围推断：查 DB 最新数据日期，自动补漏。
+
+		与 _resolve_sync_date_range 不同，宏观表用字符串列存日期（如 '202606'/'2026Q1'），
+		不按 ts_code 逐股区分。
+
+		Args:
+			table: 表名（如 macro_cpi）
+			date_col: 日期列名（month/quarter）
+			start_date: 用户指定的起始日期（None → 查 DB 自动推断）
+			end_date: 结束日期（None → 今天）
+
+		Returns:
+			Tuple[str, str]: (start_str, end_str)，格式 YYYYMMDD 或 YYYYMM
+		"""
+		if not end_date:
+			end_date = datetime.now().date()
+		end_str = end_date.strftime('%Y%m%d')
+		if start_date is not None:
+			return start_date.strftime('%Y%m%d'), end_str
+		# 自动推断：查 DB 最新日期
+		try:
+			r = await self.session.execute(
+				text(f"SELECT MAX({date_col}) AS latest FROM {table}"))
+			latest = r.scalar()
+		except Exception:
+			latest = None
+		if latest and isinstance(latest, str) and latest.strip():
+			try:
+				# month='202606' → 下个月1日
+				if len(latest) == 6 and date_col == 'month':
+					y, m = int(latest[:4]), int(latest[4:6])
+					dt = date(y, m, 1) + timedelta(days=32)
+					start_date = dt.replace(day=1)
+					return start_date.strftime('%Y%m%d'), end_str
+				# quarter='2026Q2' → 下个季度首日
+				elif 'Q' in latest:
+					y, q = int(latest[:4]), int(latest[5])
+					m = q * 3 + 1  # Q1→4月, Q2→7月, Q3→10月, Q4→次年1月
+					if m > 12:
+						y += 1; m = 1
+					start_date = date(y, m, 1)
+					return start_date.strftime('%Y%m%d'), end_str
+			except (ValueError, IndexError):
+				pass
+		# 回退：全量拉取
+		return '19900101', end_str
+
 	async def _get_date_range_and_stocks(
 			self,
 			start_date: Optional[date],
@@ -2816,6 +2867,8 @@ class DataSyncService:
 						from shared.database.repositories.market.macro import MacroCpiRepository
 						cpi_repo = MacroCpiRepository(self.session)
 						cpi_data = _convert_records_datetime(cpi_df.to_dict('records'))
+						_known = {c.name for c in cpi_repo.model.__table__.columns}
+						_preprocess_records(cpi_data, known_cols=_known)
 						written = await cpi_repo.bulk_upsert(cpi_data)
 						records_added += written
 						logger.info(f"CPI数据同步完成，共 {written} 条记录")
@@ -2831,6 +2884,8 @@ class DataSyncService:
 						from shared.database.repositories.market.macro import MacroPpiRepository
 						ppi_repo = MacroPpiRepository(self.session)
 						ppi_data = _convert_records_datetime(ppi_df.to_dict('records'))
+						_known = {c.name for c in ppi_repo.model.__table__.columns}
+						_preprocess_records(ppi_data, known_cols=_known)
 						written = await ppi_repo.bulk_upsert(ppi_data)
 						records_added += written
 						logger.info(f"PPI数据同步完成，共 {written} 条记录")
@@ -2846,6 +2901,8 @@ class DataSyncService:
 						from shared.database.repositories.market.macro import MacroGdpRepository
 						gdp_repo = MacroGdpRepository(self.session)
 						gdp_data = _convert_records_datetime(gdp_df.to_dict('records'))
+						_known = {c.name for c in gdp_repo.model.__table__.columns}
+						_preprocess_records(gdp_data, known_cols=_known)
 						written = await gdp_repo.bulk_upsert(gdp_data)
 						records_added += written
 						logger.info(f"GDP数据同步完成，共 {written} 条记录")
@@ -2874,9 +2931,9 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步 CPI 居民消费价格指数。"""
-		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
-		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		"""同步 CPI 居民消费价格指数（自动从最新月份增量）。"""
+		start_str, end_str = await self._resolve_macro_date_range(
+			'macro_cpi', 'month', start_date, end_date)
 		return await self.sync_macro_data('cpi', start_str, end_str)
 
 	async def _sync_ppi(
@@ -2884,9 +2941,9 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步 PPI 工业生产者出厂价格指数。"""
-		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
-		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		"""同步 PPI 工业生产者出厂价格指数（自动从最新月份增量）。"""
+		start_str, end_str = await self._resolve_macro_date_range(
+			'macro_ppi', 'month', start_date, end_date)
 		return await self.sync_macro_data('ppi', start_str, end_str)
 
 	async def _sync_gdp(
@@ -2894,9 +2951,9 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步 GDP 国内生产总值。"""
-		start_str = start_date.strftime('%Y%m%d') if start_date else datetime.now().strftime('%Y%m%d')
-		end_str = end_date.strftime('%Y%m%d') if end_date else datetime.now().strftime('%Y%m%d')
+		"""同步 GDP 国内生产总值（自动从最新季度增量）。"""
+		start_str, end_str = await self._resolve_macro_date_range(
+			'macro_gdp', 'quarter', start_date, end_date)
 		return await self.sync_macro_data('gdp', start_str, end_str)
 
 	# ==================== 指数扩展 sync 方法 ====================
@@ -5280,7 +5337,19 @@ class DataSyncService:
 		if not end_date:
 			end_date = datetime.now().date()
 		if not start_date:
-			start_date = end_date - timedelta(days=30)
+			# 查 DB 最新日期自动推断增量起点，无记录则全量拉近1年
+			try:
+				r = await self.session.execute(
+					text("SELECT MAX(trade_date) FROM stock_moneyflow_hsgt"))
+				latest = r.scalar()
+			except Exception:
+				latest = None
+			if latest:
+				if hasattr(latest, 'date'):
+					latest = latest.date()
+				start_date = latest + timedelta(days=1)
+			else:
+				start_date = end_date - timedelta(days=365)
 		source = self.source_factory.get_source(DataSource.TUSHARE)
 		records_added = 0
 		records_failed = 0

@@ -485,6 +485,8 @@ class TushareSource(BaseDataSource):
 				from shared.database.models.data_models import EtfShare
 				known = {c.name for c in EtfShare.__table__.columns}
 				keep = [c for c in df.columns if c in known]
+				if not keep:
+					return pd.DataFrame()
 				df = df[keep]
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:

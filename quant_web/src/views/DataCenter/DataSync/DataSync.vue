@@ -20,10 +20,7 @@ import {
   NResult,
   NTag,
   NTable,
-  NModal,
-  NCheckbox,
   NSpace,
-  NDivider,
   NProgress,
 } from "naive-ui";
 import { useRouter, useRoute } from "vue-router";
@@ -56,7 +53,6 @@ const route = useRoute();
 const pageLoading = ref(true);
 const pageError = ref(false);
 const isLoading = ref(false);
-const isFullLoading = ref(false);
 const isCheckingStatus = ref(false);
 const statusPollingInterval = ref<ReturnType<typeof setInterval> | null>(null);
 const lastWsEventTime = ref(0);
@@ -120,6 +116,17 @@ async function syncSelected() {
   syncConfig.data_types = [...currentSelected.value]
   await handleBatchSync()
 }
+const dailyPreset = computed(() => syncMeta.value?.presets?.find(p => p.id === "daily"))
+async function runDailyPreset() {
+  if (!dailyPreset.value) { message.warning("每日行情预设未找到"); return }
+  // 每日行情始终走增量，不受日期选择器影响
+  syncConfig.data_types = dailyPreset.value.steps.flatMap(s => {
+    const g = syncMeta.value?.groups.find(gr => gr.id === s.group_id)
+    return g?.types.filter(t => t.implemented).map(t => t.data_type) ?? []
+  })
+  await handleBatchSync({ skipDates: true })
+}
+
 async function runPreset(p: SyncPresetMeta) {
   const types: string[] = []
   const groupLabels: string[] = []
@@ -157,6 +164,12 @@ const syncConfig = reactive({
   exchange: "",
   batch_size: 100,
 });
+
+// 日期选择器 ref → syncConfig
+const startDate = ref<number | null>(null)
+const endDate = ref<number | null>(null)
+watch(startDate, (v) => { syncConfig.start_date = v ? new Date(v).toISOString().slice(0, 10) : "" })
+watch(endDate, (v) => { syncConfig.end_date = v ? new Date(v).toISOString().slice(0, 10) : "" })
 
 const exchangeOptions = [
   { label: "上交所", value: "SSE" },
@@ -407,7 +420,7 @@ const stopStatusPolling = () => {
 };
 
 // --- 同步操作 ---
-const handleBatchSync = async () => {
+const handleBatchSync = async (opts?: { skipDates?: boolean }) => {
   if (!syncConfig.data_types.length) {
     message.warning("请选择至少一种数据类型");
     return;
@@ -416,8 +429,10 @@ const handleBatchSync = async () => {
   try {
     const tasks: SyncTaskItem[] = syncConfig.data_types.map((dt) => {
       const item: SyncTaskItem = { data_type: dt };
-      if (syncConfig.start_date) item.start_date = syncConfig.start_date;
-      if (syncConfig.end_date) item.end_date = syncConfig.end_date;
+      if (!opts?.skipDates) {
+        if (syncConfig.start_date) item.start_date = syncConfig.start_date;
+        if (syncConfig.end_date) item.end_date = syncConfig.end_date;
+      }
       return item;
     });
     const response: SyncResponse = await dataSyncService.batchSyncData({
@@ -437,63 +452,6 @@ const handleBatchSync = async () => {
     refreshRecentTasks();
   }
 };
-
-const showFullSyncModal = ref(false);
-const fullSyncSelected = reactive<Record<string, boolean>>({});
-
-const fullSyncGroups = computed(() => {
-  const groups: { label: string; types: DataTypeInfo[] }[] = [];
-  const available = supportedDataTypes.value.filter(t => t.is_available !== false);
-  const core = available.filter(t => t.is_core);
-  const extended = available.filter(t => !t.is_core && !t.code.includes("minute") && !t.code.includes("tick"));
-  if (core.length) groups.push({ label: "核心 · 默认选中", types: core });
-  if (extended.length) groups.push({ label: "扩展 · 需手动勾选", types: extended });
-  return groups;
-});
-
-const openFullSyncModal = () => {
-  if (isRunning.value) {
-    message.warning("已有同步任务正在进行中");
-    return;
-  }
-  supportedDataTypes.value.forEach(t => {
-    fullSyncSelected[t.code] = t.is_core;
-  });
-  showFullSyncModal.value = true;
-};
-
-const executeFullSync = async () => {
-  const selectedTypes = Object.entries(fullSyncSelected)
-    .filter(([, v]) => v)
-    .map(([k]) => k);
-  if (!selectedTypes.length) {
-    message.warning("请至少选择一种数据类型");
-    return;
-  }
-  showFullSyncModal.value = false;
-  isFullLoading.value = true;
-  try {
-    const tasks: SyncTaskItem[] = selectedTypes.map(dt => ({ data_type: dt }));
-    const response: SyncResponse = await dataSyncService.batchSyncData({
-      tasks,
-      priority: "medium",
-      notify_on_complete: true,
-    });
-    message.success(response.message);
-    if (response.task_id) {
-      currentTaskId.value = response.task_id;
-      startStatusPolling();
-    }
-  } catch (error: any) {
-    message.error(error.response?.data?.detail || "全量同步失败");
-  } finally {
-    isFullLoading.value = false;
-  }
-};
-
-const selectedFullSyncCount = computed(() =>
-  Object.values(fullSyncSelected).filter(Boolean).length
-);
 
 const selectAllDataTypes = () => {
   syncConfig.data_types = supportedDataTypes.value
@@ -599,25 +557,32 @@ watch(
     <!-- 主内容 -->
     <template v-else>
       <div class="sync-workbench">
-        <!-- Quick Actions Bar -->
-        <div class="quick-bar">
-          <n-card
-            v-for="p in syncMeta?.presets"
-            :key="p.id"
-            class="preset-card"
-            :class="{ recommended: p.recommended }"
-            size="small"
-            @click="runPreset(p)"
-          >
-            <div class="preset-content">
-              <div class="preset-info">
-                <span class="preset-name">{{ p.name }}</span>
-                <span class="preset-desc">{{ p.description }}</span>
+        <!-- 日期 + 每日行情 -->
+        <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: stretch;">
+          <!-- 日期卡 -->
+          <n-card size="small" style="width: 540px; flex-shrink: 0; border-radius: 10px;">
+            <div style="display: flex; gap: 12px; align-items: flex-end;">
+              <div>
+                <span style="font-size: 11px; color: var(--n-text-color-3); display: block; margin-bottom: 4px;">起始日期</span>
+                <n-date-picker v-model:value="startDate" type="date" clearable placeholder="自动增量" style="width: 245px;" />
               </div>
-              <div class="preset-action">
-                <span class="preset-time">~{{ fmtTime(p.estimated_time_seconds) }}</span>
-                <n-button type="primary" size="small" :disabled="isRunning">&#9654;</n-button>
+              <div>
+                <span style="font-size: 11px; color: var(--n-text-color-3); display: block; margin-bottom: 4px;">结束日期</span>
+                <n-date-picker v-model:value="endDate" type="date" clearable placeholder="今天" style="width: 245px;" />
               </div>
+            </div>
+          </n-card>
+          <!-- 每日行情卡 -->
+          <n-card v-if="dailyPreset" size="small" style="min-width: 0; flex-shrink: 1; cursor: pointer; border-radius: 10px; transition: all 0.15s;" :class="{ disabled: isRunning }" @click="runDailyPreset">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 6px;">{{ dailyPreset.name }}</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 12px; color: var(--n-text-color-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ dailyPreset.description }}</span>
+                  <span style="font-size: 12px; color: var(--n-text-color-3); white-space: nowrap; flex-shrink: 0;">~{{ fmtTime(dailyPreset.estimated_time_seconds) }}</span>
+                </div>
+              </div>
+              <n-button type="primary" :disabled="isRunning" style="flex-shrink: 0; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px;">&#9654;</n-button>
             </div>
           </n-card>
         </div>
@@ -806,39 +771,6 @@ watch(
     </template>
   </div>
 
-  <!-- 全量同步类型选择弹窗 -->
-  <n-modal v-model:show="showFullSyncModal" preset="card" title="选择同步数据类型"
-    :mask-style="{ background: 'rgba(0,0,0,0.75)' }"
-    class="full-sync-modal"
-    style="width: 520px; border-radius: 12px;"
-    :title-style="{ fontSize: '16px', fontWeight: 600 }"
-  >
-    <div style="max-height: 55vh; overflow-y: auto; padding-right: 4px;">
-      <div v-for="group in fullSyncGroups" :key="group.label" style="margin-bottom: 12px;">
-        <n-divider />
-        <div style="font-weight: 600; font-size: 13px; color: var(--n-text-color-2); margin-bottom: 8px;">{{ group.label }}</div>
-        <n-space vertical :size="4">
-          <n-checkbox
-            v-for="type in group.types"
-            :key="type.code"
-            :checked="fullSyncSelected[type.code]"
-            @update:checked="(val: boolean) => { fullSyncSelected[type.code] = val; }"
-          >
-            <span style="font-size: 13px;">{{ type.name }}</span>
-            <span style="font-size: 11px; color: var(--n-text-color-3); margin-left: 4px;">{{ type.estimated_time }}s</span>
-          </n-checkbox>
-        </n-space>
-      </div>
-    </div>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="showFullSyncModal = false">取消</n-button>
-        <n-button type="primary" @click="executeFullSync" :loading="isFullLoading">
-          开始同步（{{ selectedFullSyncCount }} 种）
-        </n-button>
-      </n-space>
-    </template>
-  </n-modal>
 </template>
 
 <style scoped lang="scss">

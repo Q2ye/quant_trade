@@ -1304,12 +1304,6 @@ async def get_sync_types_meta(
 		SyncPresetMeta(id="daily", name="每日行情（增量）", description="盘前/盘后运行，更新所有行情数据",
 		               recommended=True, estimated_time_seconds=2100,
 		               steps=[{"group_id": "1"}]),
-		SyncPresetMeta(id="init", name="首次全量", description="新数据库初始化，按依赖顺序：基础→行情→财务→治理",
-		               recommended=False, estimated_time_seconds=14400,
-		               steps=[{"group_id": "7"}, {"group_id": "1"}, {"group_id": "2"}, {"group_id": "3"}]),
-		SyncPresetMeta(id="earnings", name="财报季更新", description="季度财报发布后，更新财务+治理数据",
-		               recommended=False, estimated_time_seconds=2700,
-		               steps=[{"group_id": "2"}, {"group_id": "3"}]),
 	]
 
 	return SyncTypesMetaResponse(groups=groups, presets=presets)
