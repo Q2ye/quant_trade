@@ -32,37 +32,18 @@ const layoutModule: Module<LayoutState, RootState> = {
     siderNavigation: {
       collapsed: false,
       activeKey: "dashboard",
-      openKeys: ["core", "market", "research", "system"],
+      openKeys: ["core", "market", "research", "monitor", "system"],
       menuItems: [
         {
           key: "core",
           label: "核心功能",
           icon: "appstore",
           children: [
-            {
-              key: "dashboard",
-              label: "仪表盘",
-              icon: "dashboard",
-              path: "/market/dashboard",
-            },
-            {
-              key: "strategies",
-              label: "策略管理",
-              icon: "strategy",
-              path: "/strategies",
-            },
-            {
-              key: "baskets",
-              label: "篮子管理",
-              icon: "container",
-              path: "/baskets",
-            },
-            {
-              key: "trading",
-              label: "交易执行",
-              icon: "transaction",
-              path: "/trading",
-            },
+            { key: "dashboard",        label: "市场总览",   icon: "dashboard",    path: "/market/dashboard" },
+            { key: "strategies",       label: "策略管理",   icon: "strategy",     path: "/strategies" },
+            { key: "strategy-build",   label: "策略构建",   icon: "build",        path: "/strategy/build" },
+            { key: "baskets",          label: "篮子管理",   icon: "container",    path: "/trade/workspace?tab=baskets" },
+            { key: "trading",          label: "交易驾驶舱", icon: "transaction",  path: "/trade" },
           ],
         },
         {
@@ -70,18 +51,11 @@ const layoutModule: Module<LayoutState, RootState> = {
           label: "市场数据",
           icon: "line-chart",
           children: [
-            {
-              key: "market-events",
-              label: "行情数据",
-              icon: "stock",
-              path: "/market/events",
-            },
-            {
-              key: "fundamental-events",
-              label: "基本面数据",
-              icon: "fund",
-              path: "/market/fundamental",
-            },
+            { key: "market-screener",  label: "选股器",     icon: "search",       path: "/market/screener" },
+            { key: "market-etf",       label: "ETF 市场",   icon: "stock",        path: "/market/etf" },
+            { key: "market-money",     label: "资金流向",   icon: "fund",         path: "/market/money-flow" },
+            { key: "market-limit",     label: "涨跌停分析", icon: "trending",     path: "/market/limit-analysis" },
+            { key: "market-finance",   label: "财务对比",   icon: "calculator",   path: "/market/financial-compare" },
           ],
         },
         {
@@ -89,18 +63,18 @@ const layoutModule: Module<LayoutState, RootState> = {
           label: "研究回测",
           icon: "experiment",
           children: [
-            {
-              key: "backtest-studio",
-              label: "回测工作室",
-              icon: "experiment",
-              path: "/research/events",
-            },
-            {
-              key: "factor-research",
-              label: "因子研究",
-              icon: "filter",
-              path: "/research/factor",
-            },
+            { key: "factor-hub",       label: "因子研究",   icon: "filter",       path: "/strategy/factors" },
+            { key: "backtest-hub",     label: "回测验证",   icon: "experiment",   path: "/strategy/backtest" },
+          ],
+        },
+        {
+          key: "monitor",
+          label: "监控风控",
+          icon: "monitor",
+          children: [
+            { key: "risk-monitor",     label: "风险监控",   icon: "shield",       path: "/risk/monitor" },
+            { key: "signals",          label: "信号监控",   icon: "pulse",        path: "/signals" },
+            { key: "performance",      label: "绩效分析",   icon: "chart",        path: "/performance" },
           ],
         },
         {
@@ -108,24 +82,11 @@ const layoutModule: Module<LayoutState, RootState> = {
           label: "系统管理",
           icon: "setting",
           children: [
-            {
-              key: "events-monitoring",
-              label: "系统监控",
-              icon: "monitor",
-              path: "/events/monitoring",
-            },
-            {
-              key: "logs",
-              label: "日志查看",
-              icon: "file-text",
-              path: "/events/logs",
-            },
-            {
-              key: "user-management",
-              label: "用户管理",
-              icon: "user",
-              path: "/events/users",
-            },
+            { key: "data-sync",        label: "数据同步",   icon: "sync",         path: "/data/sync" },
+            { key: "system-monitor",   label: "系统监控",   icon: "monitor",      path: "/system/monitor" },
+            { key: "system-logs",      label: "系统日志",   icon: "file-text",    path: "/system/logs" },
+            { key: "system-users",     label: "用户管理",   icon: "user",         path: "/system/users" },
+            { key: "system-settings",  label: "系统设置",   icon: "setting",      path: "/system/settings" },
           ],
         },
       ],

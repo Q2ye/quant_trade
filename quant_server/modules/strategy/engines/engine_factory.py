@@ -35,21 +35,16 @@ class EngineFactory:
         self._register_default_engines()
 
     def _register_default_engines(self) -> None:
-        """注册默认引擎"""
-        try:
-            from modules.strategy.engines.cta_engine import CTAEngine
-            from modules.strategy.engines.alpha_engine import AlphaEngine
-            from modules.strategy.engines.ai_engine import AIEngine
+        """
+        注册默认引擎
 
-            self.register_engine(StrategyType.CTA, CTAEngine)
-            self.register_engine(StrategyType.TREND_FOLLOWING, CTAEngine)
-            self.register_engine(StrategyType.ALPHA, AlphaEngine)
-            self.register_engine(StrategyType.MULTI_FACTOR, AlphaEngine)
-            self.register_engine(StrategyType.ML, AIEngine)
-            self.register_engine(StrategyType.DL, AIEngine)
-            logger.info("默认引擎注册完成")
-        except ImportError as e:
-            logger.warning(f"无法导入默认引擎: {e}")
+        v1.1 重构: CTAEngine/AlphaEngine/AIEngine 已删除（功能被 StrategyManager
+        + BaseStrategy 子类覆盖）。所有策略类型统一使用 StrategyManager 驱动。
+        EngineFactory 保留以支持向后兼容的 create_engine() 接口。
+        """
+        logger.info(
+            "引擎工厂已初始化 — 所有策略类型统一由 StrategyManager 驱动"
+        )
 
     def register_engine(
         self,

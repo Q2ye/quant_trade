@@ -3,6 +3,8 @@
 // 负责策略开发、回测、参数优化等高级功能的状态管理
 import { Module } from "vuex";
 import { RootState } from "@/types";
+import request from "@/utils/request";
+import webSocketService from "@/api/websocket";
 
 /**
  * 策略参数接口
@@ -319,11 +321,12 @@ const actions = {
    */
   async loadStrategyTemplate({ commit }: any, templateName: string) {
     try {
-      const response = await fetch(`/api/strategy-templates/${templateName}`);
-      const template = await response.json();
-      commit("SET_CURRENT_CODE", template.code);
-      commit("SET_PARAMETERS", template.parameters);
-      return template;
+      const response = await request.get(
+        `/quantTrade/strategy/templates/${templateName}`
+      );
+      commit("SET_CURRENT_CODE", response.code || response.data?.code);
+      commit("SET_PARAMETERS", response.parameters || response.data?.parameters || []);
+      return response;
     } catch (error) {
       console.error("加载策略模板失败:", error);
       throw error;
@@ -335,14 +338,10 @@ const actions = {
    */
   async validateCode({ state }: any) {
     try {
-      const response = await fetch("/quantTrade/strategies/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code: state.currentCode }),
+      const response = await request.post("/quantTrade/strategies/validate", {
+        code: state.currentCode,
       });
-      return await response.json();
+      return response;
     } catch (error) {
       console.error("代码验证失败:", error);
       throw error;
@@ -361,70 +360,57 @@ const actions = {
     commit("CLEAR_LOGS");
 
     try {
-      // 使用环境变量或默认值构造 WebSocket URL
+      // 使用 WebSocketService 单例（复用重连逻辑 + 消息路由）
       const wsUrl =
         import.meta.env.VITE_WS_URL || `ws://${window.location.host}/backtest`;
-      const ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        // 修复参数类型问题
-        const parametersObj = state.parameters.reduce(
-          (acc: Record<string, any>, param: StrategyParameter) => {
-            acc[param.name] = param.value;
-            return acc;
-          },
-          {} as Record<string, any>,
-        );
+      webSocketService.connect(wsUrl);
 
-        ws.send(
-          JSON.stringify({
-            type: "start_backtest",
-            code: state.currentCode,
-            parameters: parametersObj,
-            config: state.backtestConfig,
-          }),
-        );
-      };
+      // 发送回测启动消息
+      const parametersObj = state.parameters.reduce(
+        (acc: Record<string, any>, param: StrategyParameter) => {
+          acc[param.name] = param.value;
+          return acc;
+        },
+        {} as Record<string, any>,
+      );
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+      webSocketService.sendMessage({
+        type: "start_backtest",
+        code: state.currentCode,
+        parameters: parametersObj,
+        config: state.backtestConfig,
+      });
 
-        switch (data.type) {
-          case "progress":
-            commit("UPDATE_BACKTEST_PROGRESS", data.progress);
-            break;
-          case "log":
-            commit("ADD_LOG", {
-              timestamp: Date.now(),
-              level: data.level,
-              message: data.message,
-            });
-            break;
-          case "result":
-            commit("SET_BACKTEST_RESULT", data.result);
-            ws.close();
-            break;
-          case "error":
-            commit("ADD_LOG", {
-              timestamp: Date.now(),
-              level: "error",
-              message: data.error,
-            });
-            commit("SET_BACKTESTING_STATUS", false);
-            ws.close();
-            break;
-        }
-      };
+      // 订阅回测消息频道
+      webSocketService.subscribe("backtest:progress", (data: any) => {
+        commit("UPDATE_BACKTEST_PROGRESS", data.progress);
+      });
 
-      ws.onerror = (error) => {
-        console.error("回测WebSocket错误:", error);
-        commit("SET_BACKTESTING_STATUS", false);
+      webSocketService.subscribe("backtest:log", (data: any) => {
+        commit("ADD_LOG", {
+          timestamp: Date.now(),
+          level: data.level,
+          message: data.message,
+        });
+      });
+
+      webSocketService.subscribe("backtest:result", (data: any) => {
+        commit("SET_BACKTEST_RESULT", data.result);
+        webSocketService.disconnect();
+      });
+
+      webSocketService.subscribe("backtest:error", (data: any) => {
         commit("ADD_LOG", {
           timestamp: Date.now(),
           level: "error",
-          message: "回测连接错误",
+          message: data.error || data.message,
         });
-      };
+        commit("SET_BACKTESTING_STATUS", false);
+        webSocketService.disconnect();
+      });
+
+      // WebSocketService 内置 onerror 处理和指数退避重连
     } catch (error) {
       console.error("运行回测失败:", error);
       commit("SET_BACKTESTING_STATUS", false);
@@ -448,18 +434,14 @@ const actions = {
     commit("CLEAR_LOGS");
 
     try {
-      const response = await fetch("/quantTrade/strategies/optimize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          code: state.currentCode,
-          parameterRanges: optimizationConfig.parameterRanges,
-          method: optimizationConfig.method,
-          metric: optimizationConfig.metric,
-          config: state.backtestConfig,
-        }),
+      const response = await request.post("/quantTrade/strategies/optimize", {
+        code: state.currentCode,
+        parameterRanges: optimizationConfig.parameterRanges,
+        method: optimizationConfig.method,
+        metric: optimizationConfig.metric,
+        config: state.backtestConfig,
+      }, {
+        responseType: "stream",
       });
 
       const reader = response.body?.getReader();
@@ -509,19 +491,12 @@ const actions = {
     }
 
     try {
-      const response = await fetch("/quantTrade/strategies", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${rootState.user.token}`,
-        },
-        body: JSON.stringify({
-          name: strategyName,
-          code: state.currentCode,
-          parameters: state.parameters,
-        }),
+      const response = await request.post("/quantTrade/strategies", {
+        name: strategyName,
+        code: state.currentCode,
+        parameters: state.parameters,
       });
-      return await response.json();
+      return response;
     } catch (error) {
       console.error("保存策略失败:", error);
       throw error;
