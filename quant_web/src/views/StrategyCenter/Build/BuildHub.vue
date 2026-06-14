@@ -267,54 +267,82 @@ const loading = ref(true);
 const error = ref(false);
 
 const stats = ref({
-  totalCount: 8,
-  runningCount: 3,
-  lastUpdate: "14:20",
-  templateCount: 12,
-  templateCategoryCount: 4,
-  hotTemplate: "双均线交叉",
-  ruleCount: 15,
-  alertCount: 2,
-  ruleStatus: "正常",
+  totalCount: 0,
+  runningCount: 0,
+  lastUpdate: "--",
+  templateCount: 0,
+  templateCategoryCount: 0,
+  hotTemplate: "--",
+  ruleCount: 0,
+  alertCount: 0,
+  ruleStatus: "--",
 });
 
-const recentActivities = ref([
-  {
-    type: "strategy",
-    icon: "Cube",
-    text: '策略 "CTA趋势跟踪" 已启动运行',
-    time: "14:20",
-  },
-  {
-    type: "risk",
-    icon: "ShieldCheckmark",
-    text: '风控规则 "单标的最大仓位" 已更新',
-    time: "11:45",
-  },
-  {
-    type: "template",
-    icon: "Copy",
-    text: '从模板 "双均线交叉" 创建了策略 "MA策略v2"',
-    time: "10:15",
-  },
-  {
-    type: "strategy",
-    icon: "Cube",
-    text: '策略 "网格交易" 已停止，原因：触及止损线',
-    time: "昨天 15:30",
-  },
-]);
+const recentActivities = ref<Array<{ type: string; icon: string; text: string; time: string }>>([]);
+
+const formatRelativeTime = (dateStr: string): string => {
+  if (!dateStr) return "--";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "刚刚";
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH} 小时前`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD} 天前`;
+  return d.toLocaleDateString("zh-CN");
+};
 
 const loadData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    const strategies = await strategyAPI.getStrategies().catch(() => []);
-    if (Array.isArray(strategies) && strategies.length > 0) {
+    const [strategies, templates] = await Promise.all([
+      strategyAPI.getStrategies().catch(() => []),
+      strategyAPI.getTemplates?.().catch(() => []) ?? [],
+    ]);
+
+    if (Array.isArray(strategies)) {
       stats.value.totalCount = strategies.length;
       stats.value.runningCount = strategies.filter(
         (s: any) => s.status === "running",
       ).length;
+
+      // 最近更新时间
+      const latest = strategies
+        .filter((s: any) => s.updated_at)
+        .sort((a: any, b: any) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )[0];
+      stats.value.lastUpdate = latest
+        ? formatRelativeTime(latest.updated_at)
+        : "--";
+
+      // 从策略列表生成最近活动
+      recentActivities.value = strategies
+        .filter((s: any) => s.updated_at)
+        .sort((a: any, b: any) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+        .slice(0, 5)
+        .map((s: any) => ({
+          type: "strategy",
+          icon: "Cube",
+          text: `策略 "${s.name || s.id}" ${s.status === "running" ? "运行中" : "已更新"}`,
+          time: formatRelativeTime(s.updated_at),
+        }));
+    }
+
+    if (Array.isArray(templates)) {
+      stats.value.templateCount = templates.length;
+      const categories = new Set(templates.map((t: any) => t.category).filter(Boolean));
+      stats.value.templateCategoryCount = categories.size;
+      const mostUsed = templates
+        .filter((t: any) => t.is_public)
+        .sort((a: any, b: any) => (b.usage_count || 0) - (a.usage_count || 0))[0];
+      stats.value.hotTemplate = mostUsed?.template_name || mostUsed?.name || "--";
     }
   } catch {
     error.value = true;

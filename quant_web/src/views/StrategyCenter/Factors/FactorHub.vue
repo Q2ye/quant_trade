@@ -223,6 +223,7 @@ import {
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 import dataAPI from "@/api/data";
+import strategyAPI from "@/api/strategy";
 
 const router = useRouter();
 const message = useMessage();
@@ -231,48 +232,95 @@ const loading = ref(true);
 const error = ref(false);
 
 const stats = ref({
-  researchCount: 12,
-  activeCount: 5,
-  researchUpdateTime: "10:30",
-  libraryCount: 28,
-  categoryCount: 6,
-  libraryUpdateTime: "09:45",
+  researchCount: 0,
+  activeCount: 0,
+  researchUpdateTime: "--",
+  libraryCount: 0,
+  categoryCount: 0,
+  libraryUpdateTime: "--",
 });
 
-const recentActivities = ref([
-  {
-    type: "research",
-    icon: "Flask",
-    text: '因子 "动量反转" 测试完成，夏普比率 1.82',
-    time: "10:30",
-  },
-  {
-    type: "library",
-    icon: "Options",
-    text: "导入 3 个技术指标因子到因子库",
-    time: "09:45",
-  },
-  {
-    type: "research",
-    icon: "Flask",
-    text: '因子 "波动率聚集" 研究已保存',
-    time: "昨天 16:20",
-  },
-  {
-    type: "library",
-    icon: "Options",
-    text: '因子 "流动性冲击" 分类更新',
-    time: "昨天 14:10",
-  },
-]);
+const recentActivities = ref<Array<{ type: string; icon: string; text: string; time: string }>>([]);
+
+const formatRelativeTime = (dateStr: string): string => {
+  if (!dateStr) return "--";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "刚刚";
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH} 小时前`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD} 天前`;
+  return d.toLocaleDateString("zh-CN");
+};
 
 const loadData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    const stocks = await dataAPI.getStockList().catch(() => []);
+    const [stocks, strategies] = await Promise.all([
+      dataAPI.getStockList().catch(() => []),
+      strategyAPI.getStrategies().catch(() => []),
+    ]);
+
+    // 股票数据（因子研究的数据源）
     if (Array.isArray(stocks) && stocks.length > 0) {
       stats.value.libraryCount = stocks.length;
+      const categories = new Set(
+        stocks.map((s: any) => s.industry || s.market).filter(Boolean)
+      );
+      stats.value.categoryCount = categories.size;
+
+      const latest = stocks
+        .filter((s: any) => s.updated_at || s.list_date)
+        .sort((a: any, b: any) =>
+          new Date(b.updated_at || b.list_date).getTime() -
+          new Date(a.updated_at || a.list_date).getTime()
+        )[0];
+      stats.value.libraryUpdateTime = latest
+        ? formatRelativeTime(latest.updated_at || latest.list_date)
+        : "--";
+    }
+
+    // Alpha/多因子策略作为因子研究活动的代理
+    if (Array.isArray(strategies)) {
+      const factorStrategies = strategies.filter(
+        (s: any) =>
+          s.strategy_type === "alpha" ||
+          s.strategy_type === "multi_factor" ||
+          s.category === "多因子" ||
+          s.category === "alpha"
+      );
+      stats.value.researchCount = factorStrategies.length;
+      stats.value.activeCount = factorStrategies.filter(
+        (s: any) => s.status === "running"
+      ).length;
+
+      const latestResearch = factorStrategies
+        .filter((s: any) => s.updated_at)
+        .sort((a: any, b: any) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )[0];
+      stats.value.researchUpdateTime = latestResearch
+        ? formatRelativeTime(latestResearch.updated_at)
+        : "--";
+
+      // 最近活动
+      recentActivities.value = factorStrategies
+        .filter((s: any) => s.updated_at)
+        .sort((a: any, b: any) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+        .slice(0, 5)
+        .map((s: any) => ({
+          type: "research",
+          icon: "Flask",
+          text: `因子策略 "${s.name || s.id}" ${s.status === "running" ? "运行中" : "已更新"}`,
+          time: formatRelativeTime(s.updated_at),
+        }));
     }
   } catch {
     error.value = true;

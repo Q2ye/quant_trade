@@ -226,44 +226,30 @@ const loading = ref(true);
 const error = ref(false);
 
 const stats = ref({
-  recentCount: 5,
-  passRate: 60,
-  lastBacktest: "14:45",
-  periodCount: 4,
-  defaultPeriod: "2024-01 ~ 2025-12",
-  earliestStart: "2020-01-01",
+  recentCount: 0,
+  passRate: 0,
+  lastBacktest: "--",
+  periodCount: 0,
+  defaultPeriod: "--",
+  earliestStart: "--",
 });
 
-const recentBacktests = ref([
-  {
-    id: "1",
-    result: "pass",
-    icon: "CheckCircle",
-    text: "CTA趋势跟踪 — 夏普 1.82，最大回撤 12.3%",
-    time: "14:45",
-  },
-  {
-    id: "2",
-    result: "pass",
-    icon: "CheckCircle",
-    text: "均值回归v2 — 夏普 1.56，最大回撤 8.7%",
-    time: "11:30",
-  },
-  {
-    id: "3",
-    result: "fail",
-    icon: "CloseCircle",
-    text: "动量突破 — 夏普 0.43，最大回撤 28.1%",
-    time: "昨天 16:10",
-  },
-  {
-    id: "4",
-    result: "pass",
-    icon: "CheckCircle",
-    text: "多因子Alpha — 夏普 2.10，最大回撤 9.5%",
-    time: "昨天 10:20",
-  },
-]);
+const recentBacktests = ref<Array<{ id: string; result: string; icon: string; text: string; time: string }>>([]);
+
+const formatRelativeTime = (dateStr: string): string => {
+  if (!dateStr) return "--";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "刚刚";
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH} 小时前`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD} 天前`;
+  return d.toLocaleDateString("zh-CN");
+};
 
 const loadData = async () => {
   loading.value = true;
@@ -272,9 +258,53 @@ const loadData = async () => {
     const tasks = await backtestAPI.getTasks().catch(() => []);
     if (Array.isArray(tasks) && tasks.length > 0) {
       stats.value.recentCount = tasks.length;
-      const passed = tasks.filter((t: any) => t.status === "completed").length;
+      const completed = tasks.filter((t: any) => t.status === "completed");
+      const passed = completed.filter(
+        (t: any) => (t.sharpe_ratio || 0) > 0.5
+      );
       stats.value.passRate =
-        tasks.length > 0 ? Math.round((passed / tasks.length) * 100) : 0;
+        tasks.length > 0 ? Math.round((passed.length / tasks.length) * 100) : 0;
+
+      // 最近一次回测
+      const latest = tasks
+        .filter((t: any) => t.created_at || t.updated_at)
+        .sort((a: any, b: any) =>
+          new Date(b.created_at || b.updated_at).getTime() -
+          new Date(a.created_at || a.updated_at).getTime()
+        )[0];
+      if (latest) {
+        stats.value.lastBacktest = formatRelativeTime(latest.created_at || latest.updated_at);
+        stats.value.defaultPeriod = latest.start_date && latest.end_date
+          ? `${latest.start_date} ~ ${latest.end_date}`
+          : "--";
+        stats.value.earliestStart = latest.start_date || "--";
+      }
+
+      // 去重回测周期
+      const periods = new Set(
+        tasks
+          .filter((t: any) => t.start_date && t.end_date)
+          .map((t: any) => `${t.start_date}|${t.end_date}`)
+      );
+      stats.value.periodCount = periods.size;
+
+      // 最近回测列表
+      recentBacktests.value = tasks
+        .sort((a: any, b: any) =>
+          new Date(b.created_at || b.updated_at).getTime() -
+          new Date(a.created_at || a.updated_at).getTime()
+        )
+        .slice(0, 5)
+        .map((t: any) => {
+          const isPassed = t.status === "completed" && (t.sharpe_ratio || 0) > 0.5;
+          return {
+            id: t.id || t.task_id,
+            result: isPassed ? "pass" : t.status === "failed" ? "fail" : "pending",
+            icon: isPassed ? "CheckCircle" : t.status === "failed" ? "CloseCircle" : "Time",
+            text: `${t.name || t.strategy_name || "回测"} — 夏普 ${(t.sharpe_ratio || 0).toFixed(2)}，最大回撤 ${((t.max_drawdown || 0) * 100).toFixed(1)}%`,
+            time: formatRelativeTime(t.created_at || t.updated_at),
+          };
+        });
     }
   } catch {
     error.value = true;
