@@ -7,109 +7,118 @@
 
     <div class="panes-row">
       <div class="editor-pane">
-      <slot name="editor">
-        <div class="content-header">
-          <h3>策略代码编辑器</h3>
-        </div>
-        <n-input
-          type="textarea"
-          class="code-editor"
-          :autosize="{ minRows: 20, maxRows: 30 }"
-          :value="code"
-          @update:value="handleCodeChange"
-        />
-      </slot>
-    </div>
+        <slot name="editor">
+          <div class="content-header">
+            <h3>策略代码编辑器</h3>
+          </div>
+          <n-input
+            type="textarea"
+            class="code-editor"
+            :autosize="{ minRows: 20, maxRows: 30 }"
+            :value="code"
+            @update:value="handleCodeChange"
+          />
+        </slot>
+      </div>
 
-    <div class="config-pane">
-      <slot name="config">
-        <h3>回测参数配置</h3>
-        <div class="param-row">
-          <div class="param-label">回测周期</div>
-          <n-select
-            class="param-input"
-            :options="timeRangeOptions"
-            :value="selectedTimeRange"
-            @update:value="handleTimeRangeChange"
-          />
-        </div>
-        <div class="param-row">
-          <div class="param-label">初始资金</div>
-          <n-input
-            class="param-input"
-            type="text"
-            :value="initialCapital"
-            @update:value="handleCapitalChange"
-          />
-        </div>
-        <div class="param-row">
-          <div class="param-label">手续费</div>
-          <n-input
-            class="param-input"
-            type="text"
-            :value="commission"
-            @update:value="handleCommissionChange"
-          />
-        </div>
-        <div class="param-row">
-          <div class="param-label">滑点</div>
-          <n-input
-            class="param-input"
-            type="text"
-            :value="slippage"
-            @update:value="handleSlippageChange"
-          />
-        </div>
-        <div class="param-row">
-          <div class="param-label">基准指数</div>
-          <n-select
-            class="param-input"
-            :options="benchmarkOptions"
-            :value="selectedBenchmark"
-            @update:value="handleBenchmarkChange"
-          />
-        </div>
-        <div class="action-bar">
-          <n-button type="primary" class="btn btn-primary" @click="runBacktest">
-            <template #icon>
-              <smart-icon name="PlayArrow" />
-            </template>
-            执行回测
-          </n-button>
-          <n-button class="btn btn-secondary" @click="saveStrategy">
-            <template #icon>
-              <smart-icon name="Save" />
-            </template>
-            保存策略
-          </n-button>
-        </div>
-      </slot>
-    </div>
+      <div class="config-pane">
+        <slot name="config">
+          <h3>回测参数配置</h3>
+          <div class="param-row">
+            <div class="param-label">回测周期</div>
+            <n-select
+              class="param-input"
+              :options="timeRangeOptions"
+              :value="selectedTimeRange"
+              @update:value="handleTimeRangeChange"
+            />
+          </div>
+          <div class="param-row">
+            <div class="param-label">初始资金</div>
+            <n-input
+              class="param-input"
+              type="text"
+              :value="initialCapital"
+              @update:value="handleCapitalChange"
+            />
+          </div>
+          <div class="param-row">
+            <div class="param-label">手续费</div>
+            <n-input
+              class="param-input"
+              type="text"
+              :value="commission"
+              @update:value="handleCommissionChange"
+            />
+          </div>
+          <div class="param-row">
+            <div class="param-label">滑点</div>
+            <n-input
+              class="param-input"
+              type="text"
+              :value="slippage"
+              @update:value="handleSlippageChange"
+            />
+          </div>
+          <div class="param-row">
+            <div class="param-label">基准指数</div>
+            <n-select
+              class="param-input"
+              :options="benchmarkOptions"
+              :value="selectedBenchmark"
+              @update:value="handleBenchmarkChange"
+            />
+          </div>
+          <div class="action-bar">
+            <n-button
+              type="primary"
+              class="btn btn-primary"
+              @click="runBacktest"
+            >
+              <template #icon>
+                <smart-icon name="PlayArrow" />
+              </template>
+              执行回测
+            </n-button>
+            <n-button class="btn btn-secondary" @click="saveStrategy">
+              <template #icon>
+                <smart-icon name="Save" />
+              </template>
+              保存策略
+            </n-button>
+          </div>
+        </slot>
+      </div>
 
-    <div class="monitor-pane">
-      <slot name="monitor">
-        <n-tabs type="line" class="results-tabs">
-          <n-tab-pane name="results" tab="回测结果">
-            <div class="tab-content">
-              回测结果图表和指标将显示在这里
-              <div style="margin-top: 15px">
-                <div>年化收益率: <span class="positive-value">+28.7%</span></div>
-                <div>夏普比率: 0.92</div>
-                <div>最大回撤: <span class="negative-value">-15.3%</span></div>
-                <div>胜率: 55.6%</div>
+      <div class="monitor-pane">
+        <slot name="monitor">
+          <n-tabs type="line" class="results-tabs">
+            <n-tab-pane name="results" tab="回测结果">
+              <div class="tab-content">
+                回测结果图表和指标将显示在这里
+                <div style="margin-top: 15px">
+                  <div>
+                    年化收益率: <span class="positive-value">+28.7%</span>
+                  </div>
+                  <div>夏普比率: 0.92</div>
+                  <div>
+                    最大回撤: <span class="negative-value">-15.3%</span>
+                  </div>
+                  <div>胜率: 55.6%</div>
+                </div>
               </div>
-            </div>
-          </n-tab-pane>
-          <n-tab-pane name="trades" tab="交易明细">
-            <div class="tab-content">交易明细将显示在这里</div>
-          </n-tab-pane>
-          <n-tab-pane name="logs" tab="日志输出">
-            <div class="tab-content">日志输出将显示在这里</div>
-          </n-tab-pane>
-        </n-tabs>
-      </slot>
+            </n-tab-pane>
+            <n-tab-pane name="trades" tab="交易明细">
+              <div class="tab-content">交易明细将显示在这里</div>
+            </n-tab-pane>
+            <n-tab-pane name="logs" tab="日志输出">
+              <div class="tab-content">日志输出将显示在这里</div>
+            </n-tab-pane>
+          </n-tabs>
+        </slot>
+      </div>
     </div>
-    </div><!-- /.panes-row -->
+    <!-- /.panes-row -->
   </div>
 </template>
 

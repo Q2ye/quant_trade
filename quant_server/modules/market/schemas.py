@@ -76,6 +76,35 @@ class HsgtFlowItem(BaseModel):
     sz_inflow: Optional[float] = None
 
 
+class SwHeatmapItem(BaseModel):
+    """多窗口行业热力图单行"""
+    code: str
+    name: str
+    pct_1d: Optional[float] = None
+    pct_5d: Optional[float] = None
+    pct_10d: Optional[float] = None
+    pct_20d: Optional[float] = None
+    pct_30d: Optional[float] = None
+    pct_60d: Optional[float] = None
+    amount: Optional[float] = None
+
+
+class MacroLatestItem(BaseModel):
+    """宏观指标最新值"""
+    date: Optional[str] = None
+    cpi_yoy: Optional[float] = None
+    ppi_yoy: Optional[float] = None
+    gdp_yoy: Optional[float] = None
+    model_config = {"extra": "allow"}
+
+
+class MacroLatestGroup(BaseModel):
+    """宏观最新值汇总"""
+    cpi: Optional[dict] = None
+    ppi: Optional[dict] = None
+    gdp: Optional[dict] = None
+
+
 class DashboardOverviewResponse(BaseModel):
     """Dashboard 聚合响应"""
     data_date: Optional[str] = None
@@ -85,6 +114,8 @@ class DashboardOverviewResponse(BaseModel):
     top_volume: List[TopVolumeItem] = Field(default_factory=list)
     top_moneyflow: List[TopMoneyflowItem] = Field(default_factory=list)
     hsgt_flow: Optional[HsgtFlowItem] = None
+    sw_heatmap: List[SwHeatmapItem] = Field(default_factory=list)
+    macro_latest: Optional[MacroLatestGroup] = None
 
 
 # =====================================================================

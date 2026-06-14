@@ -80,7 +80,9 @@ export default {
     token: string,
   ): Promise<RiskRule> {
     return request
-      .put(`/quantTrade/monitor/alerts/rules/${ruleId}`, ruleData, { params: { token } })
+      .put(`/quantTrade/monitor/alerts/rules/${ruleId}`, ruleData, {
+        params: { token },
+      })
       .then(handleResponse)
       .then((data: ApiResponse<RiskRule>) => data.data);
   },
@@ -93,7 +95,9 @@ export default {
    */
   async deleteRiskRule(ruleId: number, token: string): Promise<void> {
     return request
-      .delete(`/quantTrade/monitor/alerts/rules/${ruleId}`, { params: { token } })
+      .delete(`/quantTrade/monitor/alerts/rules/${ruleId}`, {
+        params: { token },
+      })
       .then(handleResponse);
   },
 

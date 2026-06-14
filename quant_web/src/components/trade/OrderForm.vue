@@ -18,7 +18,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "previewOrder": [order: any];
+  previewOrder: [order: any];
 }>();
 
 const message = useMessage();
@@ -81,12 +81,23 @@ const searchStock = () => {
 };
 
 // Auto-fill from parent (cross-page linking: Workspace → Dashboard)
-watch(() => props.initialSymbol, (val) => {
-  if (val) { symbol.value = val; searchStock(); }
-}, { immediate: true });
-watch(() => props.initialSide, (val) => {
-  if (val) direction.value = val;
-}, { immediate: true });
+watch(
+  () => props.initialSymbol,
+  (val) => {
+    if (val) {
+      symbol.value = val;
+      searchStock();
+    }
+  },
+  { immediate: true },
+);
+watch(
+  () => props.initialSide,
+  (val) => {
+    if (val) direction.value = val;
+  },
+  { immediate: true },
+);
 
 watch(orderType, (newVal) => {
   if (newVal === "market") {
@@ -192,14 +203,18 @@ const submitOrder = () => {
               :type="direction === 'buy' ? 'success' : 'default'"
               @click="direction = 'buy'"
             >
-              <template #icon><Icon icon="ant-design:arrow-up-outlined" /></template>
+              <template #icon
+                ><Icon icon="ant-design:arrow-up-outlined"
+              /></template>
               买入
             </n-button>
             <n-button
               :type="direction === 'sell' ? 'error' : 'default'"
               @click="direction = 'sell'"
             >
-              <template #icon><Icon icon="ant-design:arrow-down-outlined" /></template>
+              <template #icon
+                ><Icon icon="ant-design:arrow-down-outlined"
+              /></template>
               卖出
             </n-button>
           </div>
@@ -207,10 +222,7 @@ const submitOrder = () => {
 
         <div class="form-group">
           <label>订单类型</label>
-          <n-select
-            v-model:value="orderType"
-            :options="orderTypeOptions"
-          />
+          <n-select v-model:value="orderType" :options="orderTypeOptions" />
         </div>
       </div>
 
@@ -227,11 +239,7 @@ const submitOrder = () => {
 
         <div class="form-group">
           <label>数量</label>
-          <n-input-number
-            v-model:value="quantity"
-            :min="100"
-            :step="100"
-          />
+          <n-input-number v-model:value="quantity" :min="100" :step="100" />
         </div>
       </div>
 
@@ -240,11 +248,7 @@ const submitOrder = () => {
         class="form-group"
       >
         <label>触发价格</label>
-        <n-input-number
-          v-model:value="triggerPrice"
-          :step="0.01"
-          :min="0"
-        />
+        <n-input-number v-model:value="triggerPrice" :step="0.01" :min="0" />
       </div>
 
       <div class="form-group">

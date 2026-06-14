@@ -155,7 +155,10 @@ export function useWebSocket() {
   };
 
   // 订阅数据
-  const subscribe = (channels: string | string[], callback?: (data: any) => void) => {
+  const subscribe = (
+    channels: string | string[],
+    callback?: (data: any) => void,
+  ) => {
     const channelList = Array.isArray(channels) ? channels : [channels];
     send("subscribe", { channels: channelList });
     void callback; // reserved for per-channel callback routing

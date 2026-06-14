@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from "vue";
-import { useMessage, useDialog, NTag, NButton, NSwitch, NSpin, NResult } from "naive-ui";
+import {
+  useMessage,
+  useDialog,
+  NTag,
+  NButton,
+  NSwitch,
+  NSpin,
+  NResult,
+} from "naive-ui";
 
 const message = useMessage();
 const dialog = useDialog();
@@ -49,7 +57,10 @@ const actionOptions = [
   { label: "停止策略", value: "stop_strategy" },
   { label: "撤单", value: "cancel_orders" },
 ];
-const actionMap: Record<string, { label: string; type: "warning" | "error" | "info" }> = {
+const actionMap: Record<
+  string,
+  { label: string; type: "warning" | "error" | "info" }
+> = {
   alert: { label: "报警", type: "warning" },
   stop_strategy: { label: "停止策略", type: "error" },
   cancel_orders: { label: "撤单", type: "info" },
@@ -78,7 +89,11 @@ const columns = [
     key: "rule_type",
     width: 140,
     render: (row: RiskRule) =>
-      h(NTag, { size: "small" }, { default: () => ruleTypeMap[row.rule_type] || row.rule_type }),
+      h(
+        NTag,
+        { size: "small" },
+        { default: () => ruleTypeMap[row.rule_type] || row.rule_type },
+      ),
   },
   {
     title: "规则条件",
@@ -118,8 +133,16 @@ const columns = [
     width: 150,
     render: (row: RiskRule) =>
       h("div", { style: { display: "flex", gap: "8px" } }, [
-        h(NButton, { size: "small", onClick: () => editRule(row) }, { default: () => "编辑" }),
-        h(NButton, { size: "small", type: "error", onClick: () => confirmDelete(row) }, { default: () => "删除" }),
+        h(
+          NButton,
+          { size: "small", onClick: () => editRule(row) },
+          { default: () => "编辑" },
+        ),
+        h(
+          NButton,
+          { size: "small", type: "error", onClick: () => confirmDelete(row) },
+          { default: () => "删除" },
+        ),
       ]),
   },
 ];
@@ -185,10 +208,12 @@ const handleAdd = () => {
 const editRule = (rule: RiskRule) => {
   editingRule.value = rule;
   ruleForm.value = { ...rule };
-  conditionEntries.value = Object.entries(rule.condition || {}).map(([k, v]) => ({
-    key: k,
-    value: typeof v === "string" ? v : JSON.stringify(v),
-  }));
+  conditionEntries.value = Object.entries(rule.condition || {}).map(
+    ([k, v]) => ({
+      key: k,
+      value: typeof v === "string" ? v : JSON.stringify(v),
+    }),
+  );
   showModal.value = true;
 };
 
@@ -274,7 +299,9 @@ const batchDelete = () => {
     positiveText: "确认",
     negativeText: "取消",
     onPositiveClick: () => {
-      rules.value = rules.value.filter((r) => !checkedRuleKeys.value.includes(r.id));
+      rules.value = rules.value.filter(
+        (r) => !checkedRuleKeys.value.includes(r.id),
+      );
       checkedRuleKeys.value = [];
       message.success("批量删除完成");
     },
@@ -338,7 +365,9 @@ onMounted(() => fetchRiskRules());
             <span class="batch-text">已选 {{ checkedRuleKeys.length }} 项</span>
             <n-button size="small" @click="batchEnable">批量启用</n-button>
             <n-button size="small" @click="batchDisable">批量禁用</n-button>
-            <n-button size="small" type="error" @click="batchDelete">批量删除</n-button>
+            <n-button size="small" type="error" @click="batchDelete"
+              >批量删除</n-button
+            >
           </div>
 
           <n-spin :show="loading">
@@ -348,7 +377,9 @@ onMounted(() => fetchRiskRules());
               :bordered="false"
               size="small"
               :checked-row-keys="checkedRuleKeys"
-              @update:checked-row-keys="(keys: number[]) => (checkedRuleKeys = keys)"
+              @update:checked-row-keys="
+                (keys: number[]) => (checkedRuleKeys = keys)
+              "
             >
               <template #empty><n-empty description="暂无风控规则" /></template>
             </n-data-table>
@@ -377,10 +408,16 @@ onMounted(() => fetchRiskRules());
     >
       <n-form :model="ruleForm" label-width="80px">
         <n-form-item label="规则名称">
-          <n-input v-model:value="ruleForm.rule_name" placeholder="请输入规则名称" />
+          <n-input
+            v-model:value="ruleForm.rule_name"
+            placeholder="请输入规则名称"
+          />
         </n-form-item>
         <n-form-item label="规则类型">
-          <n-select v-model:value="ruleForm.rule_type" :options="ruleTypeOptions" />
+          <n-select
+            v-model:value="ruleForm.rule_type"
+            :options="ruleTypeOptions"
+          />
         </n-form-item>
         <n-form-item label="规则条件">
           <div class="condition-editor">
@@ -401,7 +438,12 @@ onMounted(() => fetchRiskRules());
                 size="small"
                 style="width: 160px"
               />
-              <n-button size="small" type="error" text @click="removeConditionEntry(idx)">
+              <n-button
+                size="small"
+                type="error"
+                text
+                @click="removeConditionEntry(idx)"
+              >
                 删除
               </n-button>
             </div>

@@ -419,14 +419,26 @@ const handleRiskResize = () => {
 
 const initCharts = () => {
   // dispose old instances before re-init
-  if (trendChartInstance) { trendChartInstance.dispose(); trendChartInstance = null; }
-  if (typeChartInstance) { typeChartInstance.dispose(); typeChartInstance = null; }
+  if (trendChartInstance) {
+    trendChartInstance.dispose();
+    trendChartInstance = null;
+  }
+  if (typeChartInstance) {
+    typeChartInstance.dispose();
+    typeChartInstance = null;
+  }
   if (riskTrendChart.value) {
     trendChartInstance = echarts.init(riskTrendChart.value);
     trendChartInstance.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["高风险", "中风险", "低风险"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"],

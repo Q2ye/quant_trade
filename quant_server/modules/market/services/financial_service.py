@@ -32,6 +32,23 @@ async def get_indicators_compare(session: AsyncSession, codes: List[str], metric
     for r in rows:
         for k, v in list(r.items()):
             if isinstance(v, float) and v != v: r[k] = None
+
+    # 计算行业分位值（全市场排名）
+    metric_cols = ["roe", "roa", "grossprofit_margin", "netprofit_margin", "debt_to_assets", "eps", "current_ratio", "quick_ratio"]
+    for r in rows:
+        for col in metric_cols:
+            val = r.get(col)
+            if val is None:
+                continue
+            pct_row = await _all(session, f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE {col} IS NOT NULL AND {col} <= :val) * 100.0 /
+                    NULLIF(COUNT(*) FILTER (WHERE {col} IS NOT NULL), 0) AS pct
+                FROM stock_fina_indicators
+                WHERE end_date = (SELECT MAX(end_date) FROM stock_fina_indicators WHERE ts_code = stock_fina_indicators.ts_code)
+            """, {"val": val})
+            if pct_row and pct_row[0].get("pct") is not None:
+                r[f"{col}_pct"] = round(pct_row[0]["pct"], 0)
     return rows
 
 

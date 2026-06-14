@@ -49,7 +49,11 @@
       <div v-if="successMessage" class="success-message">
         {{ successMessage }}
       </div>
-      <button class="register-btn" :disabled="isLoading" @click="handleRegister">
+      <button
+        class="register-btn"
+        :disabled="isLoading"
+        @click="handleRegister"
+      >
         {{ isLoading ? "注册中..." : "注册" }}
       </button>
       <div class="login-link">

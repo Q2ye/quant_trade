@@ -42,7 +42,10 @@
           striped
           :row-key="(row: any) => row.ts_code"
         />
-        <n-empty v-if="basket.items.length === 0" description="暂无成分股数据" />
+        <n-empty
+          v-if="basket.items.length === 0"
+          description="暂无成分股数据"
+        />
       </div>
     </template>
   </div>

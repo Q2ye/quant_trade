@@ -299,7 +299,6 @@ export enum DataSource {
   CUSTOM = "custom",
 }
 
-
 export enum SyncTaskStatus {
   PENDING = "pending",
   RUNNING = "running",
@@ -442,15 +441,24 @@ export enum NotificationChannel {
 // 枚举工具函数（来源：types/enums/index.ts）
 // ============================================================================
 
-export const getEnumKeys = <T extends Record<string, any>>(enumObj: T): Array<keyof T> => {
-  return Object.keys(enumObj).filter((key) => isNaN(Number(key))) as Array<keyof T>;
+export const getEnumKeys = <T extends Record<string, any>>(
+  enumObj: T,
+): Array<keyof T> => {
+  return Object.keys(enumObj).filter((key) => isNaN(Number(key))) as Array<
+    keyof T
+  >;
 };
 
-export const getEnumValues = <T extends Record<string, any>>(enumObj: T): Array<T[keyof T]> => {
+export const getEnumValues = <T extends Record<string, any>>(
+  enumObj: T,
+): Array<T[keyof T]> => {
   return getEnumKeys(enumObj).map((key) => enumObj[key]);
 };
 
-export const getEnumKeyByValue = <T extends Record<string, any>>(enumObj: T, value: T[keyof T]): keyof T | undefined => {
+export const getEnumKeyByValue = <T extends Record<string, any>>(
+  enumObj: T,
+  value: T[keyof T],
+): keyof T | undefined => {
   return getEnumKeys(enumObj).find((key) => enumObj[key] === value);
 };
 
@@ -535,7 +543,8 @@ export interface SortParams {
   sortOrder?: "asc" | "desc";
 }
 
-export interface BaseQueryParams extends PaginationParams, TimeRangeParams, SortParams {}
+export interface BaseQueryParams
+  extends PaginationParams, TimeRangeParams, SortParams {}
 
 export interface IdParams {
   id: string;
@@ -638,7 +647,9 @@ export type DeepRequired<T> = { [K in keyof T]-?: DeepRequired<T[K]> };
 export type FunctionType = (...args: any[]) => any;
 export type ConstructorType<T> = new (...args: any[]) => T;
 export type Awaited<T> = T extends Promise<infer U> ? Awaited<U> : T;
-export type AsyncFunctionReturnType<T extends (...args: any) => any> = Awaited<ReturnType<T>>;
+export type AsyncFunctionReturnType<T extends (...args: any) => any> = Awaited<
+  ReturnType<T>
+>;
 export type EventHandler<T = any> = (event: T) => void;
 
 export interface DebounceOptions {
@@ -658,6 +669,23 @@ export interface ThrottleOptions {
 // 常用枚举映射（来源：types/enums/index.ts）
 // ============================================================================
 
-export const TradingEnums = { OrderType, OrderStatus, OrderDirection, PositionSide, TradeType } as const;
-export const StrategyEnums = { StrategyStatus, StrategyType, StrategyCategory, BacktestStatus, SignalType } as const;
-export const SystemEnums = { DataSource, SyncTaskStatus, LogLevel, HealthStatus } as const;
+export const TradingEnums = {
+  OrderType,
+  OrderStatus,
+  OrderDirection,
+  PositionSide,
+  TradeType,
+} as const;
+export const StrategyEnums = {
+  StrategyStatus,
+  StrategyType,
+  StrategyCategory,
+  BacktestStatus,
+  SignalType,
+} as const;
+export const SystemEnums = {
+  DataSource,
+  SyncTaskStatus,
+  LogLevel,
+  HealthStatus,
+} as const;

@@ -348,7 +348,6 @@ onUnmounted(() => {
   color: var(--n-text-color-2);
 }
 
-
 .empty-state {
   text-align: center;
   padding: 60px 20px;

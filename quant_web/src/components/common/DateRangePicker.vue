@@ -3,18 +3,21 @@
 import { ref, computed } from "vue";
 import { NDatePicker, NButton } from "naive-ui";
 
-const props = withDefaults(defineProps<{
-  minDate?: string;
-  maxDate?: string;
-  initialStartDate?: string;
-  initialEndDate?: string;
-}>(), {
-  minDate: "2010-01-01",
-  maxDate: () => new Date().toISOString().split("T")[0],
-});
+const props = withDefaults(
+  defineProps<{
+    minDate?: string;
+    maxDate?: string;
+    initialStartDate?: string;
+    initialEndDate?: string;
+  }>(),
+  {
+    minDate: "2010-01-01",
+    maxDate: () => new Date().toISOString().split("T")[0],
+  },
+);
 
 const emit = defineEmits<{
-  "dateChange": [payload: { start: string; end: string; tradingDays: number }];
+  dateChange: [payload: { start: string; end: string; tradingDays: number }];
 }>();
 
 const dateRange = ref<[string, string]>([
@@ -100,7 +103,9 @@ const emitDateChange = () => {
 
     <div class="preview">
       <p>
-        回测时间范围：<span>{{ formattedStartDate }} 至 {{ formattedEndDate }}</span>
+        回测时间范围：<span
+          >{{ formattedStartDate }} 至 {{ formattedEndDate }}</span
+        >
       </p>
       <p>
         总交易日数：<span>{{ tradingDays }}</span> 天

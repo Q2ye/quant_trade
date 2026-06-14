@@ -34,12 +34,15 @@ export function useSyncTimer(syncStatus: Ref<SyncStatusResponse | null>) {
   };
 
   const formattedElapsedTime = computed(() => formatSeconds(elapsedTime.value));
-  const formattedRemainingTime = computed(() => formatSeconds(estimatedRemainingTime.value));
+  const formattedRemainingTime = computed(() =>
+    formatSeconds(estimatedRemainingTime.value),
+  );
 
   const estimatedRemainingTime = computed(() => {
     if (!isRunning.value) return 0;
     const progress = syncStatus.value?.progress?.progress_percentage || 0;
-    if (progress <= 0) return syncStatus.value?.progress?.estimated_time_remaining || 0;
+    if (progress <= 0)
+      return syncStatus.value?.progress?.estimated_time_remaining || 0;
     const elapsed = elapsedTime.value;
     return Math.round((elapsed / progress) * (100 - progress));
   });
@@ -48,5 +51,12 @@ export function useSyncTimer(syncStatus: Ref<SyncStatusResponse | null>) {
     clearInterval(timer);
   });
 
-  return { now, isRunning, elapsedTime, estimatedRemainingTime, formattedElapsedTime, formattedRemainingTime };
+  return {
+    now,
+    isRunning,
+    elapsedTime,
+    estimatedRemainingTime,
+    formattedElapsedTime,
+    formattedRemainingTime,
+  };
 }

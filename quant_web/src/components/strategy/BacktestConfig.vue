@@ -94,7 +94,10 @@ import ParamSlider from "../strategy/ParamSlider.vue";
 
 const props = defineProps<{
   strategy: {
-    params?: Record<string, { default: number; min: number; max: number; step: number }>;
+    params?: Record<
+      string,
+      { default: number; min: number; max: number; step: number }
+    >;
   };
 }>();
 

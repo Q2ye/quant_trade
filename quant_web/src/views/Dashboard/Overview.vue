@@ -3,7 +3,6 @@
     根容器 — 透明背景，让 MainLayout 的 bg-gradient-mesh 和 3D 粒子背景透出
   -->
   <div class="dashboard-overview scrollbar-hide">
-
     <!-- ========================================================================
         状态一：Loading（数据加载中）
         使用 Naive UI n-skeleton 展示 4 列占位骨架卡片
@@ -11,20 +10,20 @@
     ============================================================================ -->
     <template v-if="loading">
       <n-grid
-          :x-gap="20"
-          :y-gap="20"
-          :cols="4"
-          responsive="screen"
-          class="overview-grid"
+        :x-gap="20"
+        :y-gap="20"
+        :cols="4"
+        responsive="screen"
+        class="overview-grid"
       >
         <n-grid-item
-            v-for="i in 4"
-            :key="i"
-            :class="tokens.motion.stagger"
-            :style="{ animationDelay: `${(i - 1) * 0.08}s` }"
+          v-for="i in 4"
+          :key="i"
+          :class="tokens.motion.stagger"
+          :style="{ animationDelay: `${(i - 1) * 0.08}s` }"
         >
           <n-card>
-            <n-skeleton :text="true" :repeat="3"/>
+            <n-skeleton :text="true" :repeat="3" />
           </n-card>
         </n-grid-item>
       </n-grid>
@@ -35,10 +34,10 @@
         Naive UI n-result 展示 500 错误页 + 重试按钮
     ============================================================================ -->
     <n-result
-        v-else-if="error"
-        status="500"
-        title="数据加载失败"
-        description="请检查网络连接后重试"
+      v-else-if="error"
+      status="500"
+      title="数据加载失败"
+      description="请检查网络连接后重试"
     >
       <template #footer>
         <n-button type="primary" @click="retry">重试</n-button>
@@ -50,7 +49,6 @@
         由上到下分为三个区域：顶部概览指标 / 中部图表+信号 / 底部列表
     ============================================================================ -->
     <template v-else>
-
       <!-- =====================================================================
           Page Header — 统一页面头部（与 MarketOverview 共享 .page-header 模式）
       ====================================================================== -->
@@ -58,7 +56,9 @@
         <div class="header-content">
           <div class="title-section">
             <h1 class="page-title">总览</h1>
-            <p class="page-description">量化交易驾驶舱 — 资产概览、实时信号、持仓与成交监控</p>
+            <p class="page-description">
+              量化交易驾驶舱 — 资产概览、实时信号、持仓与成交监控
+            </p>
           </div>
           <div class="header-actions">
             <n-select
@@ -68,237 +68,277 @@
               size="small"
               style="width: 180px"
             />
-            <n-button
-              type="tertiary"
-              size="tiny"
-              @click="toggleAmounts"
-            >
+            <n-button type="tertiary" size="tiny" @click="toggleAmounts">
               <Icon :icon="showAmounts ? 'ph:eye' : 'ph:eye-slash'" />
-              <span class="toggle-label">{{ showAmounts ? '隐藏金额' : '显示金额' }}</span>
+              <span class="toggle-label">{{
+                showAmounts ? "隐藏金额" : "显示金额"
+              }}</span>
             </n-button>
             <!-- WebSocket 连接状态指示 -->
             <span class="ws-status" :class="{ connected: wsConnected }">
               <span class="ws-dot"></span>
-              {{ wsConnected ? '实时' : '离线' }}
+              {{ wsConnected ? "实时" : "离线" }}
             </span>
           </div>
         </div>
       </div>
 
       <div class="main-content">
-
-      <!-- =====================================================================
+        <!-- =====================================================================
           区域一：顶部概览区 —— 4 列指标卡片
           tokens.motion.stagger：每卡片递增 0.08s 的 fadeInUp 入场动画
           tokens.surface.card → card-surface：Naive UI CSS 变量驱动的卡片背景/边框/阴影
           tokens.motion.hover → hover-lift：hover 时 scale(1.02)
       ====================================================================== -->
-      <div class="content-section">
-      <n-grid
-          :x-gap="20"
-          :y-gap="20"
-          :cols="4"
-          responsive="screen"
-          class="overview-grid"
-      >
-        <!-- 卡片 1：总资产（含日盈亏） -->
-        <n-grid-item
-            :class="tokens.motion.stagger"
-            :style="{ animationDelay: '0s' }"
-        >
-          <n-card
-              :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
+        <div class="content-section">
+          <n-grid
+            :x-gap="20"
+            :y-gap="20"
+            :cols="4"
+            responsive="screen"
+            class="overview-grid"
           >
-            <div class="metric-value">
-              ¥ {{ formatAmount(accountInfo.totalAsset) }}
-            </div>
-            <div class="metric-label">总资产
-              <span v-if="selectedAccountId === null && accountCount > 0" class="metric-sub">(共 {{ accountCount }} 账户)</span>
-            </div>
-            <div
-                class="metric-change"
-                :class="getChangeClass(accountInfo.dailyPnl)"
+            <!-- 卡片 1：总资产（含日盈亏） -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0s' }"
             >
-              <template v-if="showAmounts">
-                {{
-                  accountInfo.dailyPnl > 0 ? "+" : ""
-                }}{{ formatNumber(accountInfo.dailyPnl) }} ({{
-                  accountInfo.dailyReturn
-                }}%)
-              </template>
-              <template v-else>
-                ****
-              </template>
-            </div>
-          </n-card>
-        </n-grid-item>
+              <n-card
+                :class="[
+                  tokens.surface.card,
+                  tokens.motion.hover,
+                  'metric-card',
+                ]"
+              >
+                <div class="metric-value">
+                  ¥ {{ formatAmount(accountInfo.totalAsset) }}
+                </div>
+                <div class="metric-label">
+                  总资产
+                  <span
+                    v-if="selectedAccountId === null && accountCount > 0"
+                    class="metric-sub"
+                    >(共 {{ accountCount }} 账户)</span
+                  >
+                </div>
+                <div
+                  class="metric-change"
+                  :class="getChangeClass(accountInfo.dailyPnl)"
+                >
+                  <template v-if="showAmounts">
+                    {{ accountInfo.dailyPnl > 0 ? "+" : ""
+                    }}{{ formatNumber(accountInfo.dailyPnl) }} ({{
+                      accountInfo.dailyReturn
+                    }}%)
+                  </template>
+                  <template v-else> **** </template>
+                </div>
+              </n-card>
+            </n-grid-item>
 
-        <!-- 卡片 2：可用资金 -->
-        <n-grid-item
-            :class="tokens.motion.stagger"
-            :style="{ animationDelay: '0.08s' }"
-        >
-          <n-card
-              :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
-          >
-            <div class="metric-value">
-              ¥ {{ formatAmount(accountInfo.cash) }}
-            </div>
-            <div class="metric-label">可用资金</div>
-            <div class="metric-placeholder"></div>
-          </n-card>
-        </n-grid-item>
+            <!-- 卡片 2：可用资金 -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.08s' }"
+            >
+              <n-card
+                :class="[
+                  tokens.surface.card,
+                  tokens.motion.hover,
+                  'metric-card',
+                ]"
+              >
+                <div class="metric-value">
+                  ¥ {{ formatAmount(accountInfo.cash) }}
+                </div>
+                <div class="metric-label">可用资金</div>
+                <div class="metric-placeholder"></div>
+              </n-card>
+            </n-grid-item>
 
-        <!-- 卡片 3：持仓品种数 -->
-        <n-grid-item
-            :class="tokens.motion.stagger"
-            :style="{ animationDelay: '0.16s' }"
-        >
-          <n-card
-              :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
-          >
-            <div class="metric-value">
-              {{ formatAmount(accountInfo.positionsCount, 0) }}
-            </div>
-            <div class="metric-label">持仓品种</div>
-            <div class="metric-placeholder"></div>
-          </n-card>
-        </n-grid-item>
+            <!-- 卡片 3：持仓品种数 -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.16s' }"
+            >
+              <n-card
+                :class="[
+                  tokens.surface.card,
+                  tokens.motion.hover,
+                  'metric-card',
+                ]"
+              >
+                <div class="metric-value">
+                  {{ formatAmount(accountInfo.positionsCount, 0) }}
+                </div>
+                <div class="metric-label">持仓品种</div>
+                <div class="metric-placeholder"></div>
+              </n-card>
+            </n-grid-item>
 
-        <!-- 卡片 4：运行中策略数 -->
-        <n-grid-item
-            :class="tokens.motion.stagger"
-            :style="{ animationDelay: '0.24s' }"
-        >
-          <n-card
-              :class="[tokens.surface.card, tokens.motion.hover, 'metric-card']"
-          >
-            <div class="metric-value">
-              {{ formatAmount(accountInfo.activeStrategies, 0) }}
-            </div>
-            <div class="metric-label">运行中策略</div>
-            <div class="metric-placeholder"></div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
-      </div>
+            <!-- 卡片 4：运行中策略数 -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.24s' }"
+            >
+              <n-card
+                :class="[
+                  tokens.surface.card,
+                  tokens.motion.hover,
+                  'metric-card',
+                ]"
+              >
+                <div class="metric-value">
+                  {{ formatAmount(accountInfo.activeStrategies, 0) }}
+                </div>
+                <div class="metric-label">运行中策略</div>
+                <div class="metric-placeholder"></div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </div>
 
-      <!-- =====================================================================
+        <!-- =====================================================================
           区域二：中部图表 + 信号区 —— 3 列网格（图表占 2 列，信号占 1 列）
           图表：ECharts 初始化在 equityChartRef 绑定的 div 上
           信号列表：最近交易信号，买卖方向区分颜色和图标
       ====================================================================== -->
-      <div class="content-section">
-      <n-grid
-          :x-gap="20"
-          :y-gap="20"
-          :cols="3"
-          responsive="screen"
-          class="dashboard-widgets"
-      >
-        <!-- 左：组合绩效图表（占 2/3 宽度），带日/周/月/年切换 -->
-        <n-grid-item :span="2" :class="tokens.motion.stagger" :style="{ animationDelay: '0.32s' }">
-          <n-card :class="[tokens.surface.card, 'widget-card']">
-            <template #header>
-              <div class="widget-header">
-                <span>组合绩效</span>
-                <!-- 图表时间范围切换：Naive UI n-radio-group -->
-                <n-radio-group v-model:value="chartRange" size="small">
-                  <n-radio-button value="1D" label="日"/>
-                  <n-radio-button value="1W" label="周"/>
-                  <n-radio-button value="1M" label="月"/>
-                  <n-radio-button value="1Y" label="年"/>
-                </n-radio-group>
-              </div>
-            </template>
-            <!-- ECharts 挂载点，通过 ref 绑定 -->
-            <div ref="equityChartRef" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
+        <div class="content-section">
+          <n-grid
+            :x-gap="20"
+            :y-gap="20"
+            :cols="3"
+            responsive="screen"
+            class="dashboard-widgets"
+          >
+            <!-- 左：组合绩效图表（占 2/3 宽度），带日/周/月/年切换 -->
+            <n-grid-item
+              :span="2"
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.32s' }"
+            >
+              <n-card :class="[tokens.surface.card, 'widget-card']">
+                <template #header>
+                  <div class="widget-header">
+                    <span>组合绩效</span>
+                    <!-- 图表时间范围切换：Naive UI n-radio-group -->
+                    <n-radio-group v-model:value="chartRange" size="small">
+                      <n-radio-button value="1D" label="日" />
+                      <n-radio-button value="1W" label="周" />
+                      <n-radio-button value="1M" label="月" />
+                      <n-radio-button value="1Y" label="年" />
+                    </n-radio-group>
+                  </div>
+                </template>
+                <!-- ECharts 挂载点，通过 ref 绑定 -->
+                <div ref="equityChartRef" class="chart-container"></div>
+              </n-card>
+            </n-grid-item>
 
-        <!-- 右：实时信号列表（占 1/3 宽度） -->
-        <n-grid-item :span="1" :class="tokens.motion.stagger" :style="{ animationDelay: '0.40s' }">
-          <n-card :class="[tokens.surface.card, 'widget-card']">
-            <template #header><span>实时信号</span></template>
-            <!-- 空状态 -->
-            <n-empty v-if="recentSignals.length === 0" description="暂无信号"/>
-            <!-- 信号列表 -->
-            <div v-else class="signal-list scrollbar-hide">
-              <div
-                  v-for="(signal, index) in recentSignals"
-                  :key="index"
-                  class="signal-item"
-              >
-                <!-- 方向图标：buy → 红色向上箭头，sell → 绿色向下箭头 -->
-                <div class="signal-icon" :class="signal.direction">
-                  <Icon
-                      :icon="
-                      signal.direction === 'buy'
-                        ? 'ant-design:arrow-up-outlined'
-                        : 'ant-design:arrow-down-outlined'
-                    "
-                  />
+            <!-- 右：实时信号列表（占 1/3 宽度） -->
+            <n-grid-item
+              :span="1"
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.40s' }"
+            >
+              <n-card :class="[tokens.surface.card, 'widget-card']">
+                <template #header><span>实时信号</span></template>
+                <!-- 空状态 -->
+                <n-empty
+                  v-if="recentSignals.length === 0"
+                  description="暂无信号"
+                />
+                <!-- 信号列表 -->
+                <div v-else class="signal-list scrollbar-hide">
+                  <div
+                    v-for="(signal, index) in recentSignals"
+                    :key="index"
+                    class="signal-item"
+                  >
+                    <!-- 方向图标：buy → 红色向上箭头，sell → 绿色向下箭头 -->
+                    <div class="signal-icon" :class="signal.direction">
+                      <Icon
+                        :icon="
+                          signal.direction === 'buy'
+                            ? 'ant-design:arrow-up-outlined'
+                            : 'ant-design:arrow-down-outlined'
+                        "
+                      />
+                    </div>
+                    <div class="signal-content">
+                      <div class="signal-name">{{ signal.name }}</div>
+                      <div class="signal-symbol">{{ signal.symbol }}</div>
+                    </div>
+                    <div class="signal-price" :class="signal.direction">
+                      {{ signal.price }}
+                    </div>
+                  </div>
                 </div>
-                <div class="signal-content">
-                  <div class="signal-name">{{ signal.name }}</div>
-                  <div class="signal-symbol">{{ signal.symbol }}</div>
-                </div>
-                <div class="signal-price" :class="signal.direction">
-                  {{ signal.price }}
-                </div>
-              </div>
-            </div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
-      </div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </div>
 
-      <!-- =====================================================================
+        <!-- =====================================================================
           区域三：底部列表区 —— 2 列（持仓列表 | 今日成交）
           空数据时展示 n-empty，有数据时渲染 n-data-table
       ====================================================================== -->
-      <div class="content-section">
-      <n-grid
-          :x-gap="20"
-          :y-gap="20"
-          :cols="2"
-          responsive="screen"
-          class="dashboard-tables"
-      >
-        <!-- 左：持仓列表，含盈亏颜色渲染和权重百分比 -->
-        <n-grid-item :class="tokens.motion.stagger" :style="{ animationDelay: '0.48s' }">
-          <n-card title="持仓列表" :class="[tokens.surface.card, 'table-card']">
-            <n-empty v-if="positions.length === 0" description="暂无持仓"/>
-            <n-data-table
-                v-else
-                :columns="positionColumns"
-                :data="positions"
-                :max-height="250"
-                :bordered="false"
-                size="small"
-            />
-          </n-card>
-        </n-grid-item>
+        <div class="content-section">
+          <n-grid
+            :x-gap="20"
+            :y-gap="20"
+            :cols="2"
+            responsive="screen"
+            class="dashboard-tables"
+          >
+            <!-- 左：持仓列表，含盈亏颜色渲染和权重百分比 -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.48s' }"
+            >
+              <n-card
+                title="持仓列表"
+                :class="[tokens.surface.card, 'table-card']"
+              >
+                <n-empty v-if="positions.length === 0" description="暂无持仓" />
+                <n-data-table
+                  v-else
+                  :columns="positionColumns"
+                  :data="positions"
+                  :max-height="250"
+                  :bordered="false"
+                  size="small"
+                />
+              </n-card>
+            </n-grid-item>
 
-        <!-- 右：今日成交，方向列用 n-tag 红/绿区分买卖 -->
-        <n-grid-item :class="tokens.motion.stagger" :style="{ animationDelay: '0.56s' }">
-          <n-card title="今日成交" :class="[tokens.surface.card, 'table-card']">
-            <n-empty v-if="todayTrades.length === 0" description="今日无成交"/>
-            <n-data-table
-                v-else
-                :columns="tradeColumns"
-                :data="todayTrades"
-                :max-height="250"
-                :bordered="false"
-                size="small"
-            />
-          </n-card>
-        </n-grid-item>
-      </n-grid>
+            <!-- 右：今日成交，方向列用 n-tag 红/绿区分买卖 -->
+            <n-grid-item
+              :class="tokens.motion.stagger"
+              :style="{ animationDelay: '0.56s' }"
+            >
+              <n-card
+                title="今日成交"
+                :class="[tokens.surface.card, 'table-card']"
+              >
+                <n-empty
+                  v-if="todayTrades.length === 0"
+                  description="今日无成交"
+                />
+                <n-data-table
+                  v-else
+                  :columns="tradeColumns"
+                  :data="todayTrades"
+                  :max-height="250"
+                  :bordered="false"
+                  size="small"
+                />
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </div>
       </div>
-
-      </div><!-- .main-content -->
-
+      <!-- .main-content -->
     </template>
   </div>
 </template>
@@ -309,21 +349,30 @@
 // ============================================================================
 
 // Vue 3 Composition API：响应式核心 + 生命周期钩子
-import {computed, h, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch} from "vue";
+import {
+  computed,
+  h,
+  onBeforeUnmount,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 // Naive UI 组件：NTag 用于表格中"买/卖"标签渲染
-import {NTag} from "naive-ui";
+import { NTag } from "naive-ui";
 // Iconify 图标组件（全局注册为 <Icon>，buy/sell 箭头）
-import {Icon} from "@iconify/vue";
+import { Icon } from "@iconify/vue";
 // ECharts 图表库：用于组合绩效曲线
 import * as echarts from "echarts";
 // API 层：获取仪表盘数据和绩效图表数据
-import {getDashboardData, getPerformanceChart} from "@/api/dashboard";
+import { getDashboardData, getPerformanceChart } from "@/api/dashboard";
 // HTTP 客户端：用于账户列表等直接 API 调用
 import request from "@/utils/request";
 // 工具函数：数字格式化（千分位 + 小数位数）
-import {formatNumber} from "@/utils/number";
+import { formatNumber } from "@/utils/number";
 // 设计 Token：surface（背景/卡片）、motion（动效）等 class 映射
-import {tokens} from "@/styles/design-tokens";
+import { tokens } from "@/styles/design-tokens";
 import webSocketService from "@/api/websocket";
 
 // ============================================================================
@@ -351,12 +400,12 @@ const getMockAccounts = (): AccountBrief[] => [
  * 模拟一个 ~100 万的中等规模量化组合
  */
 const getMockAccountInfo = () => ({
-  totalAsset: 1234567.89,    // 总资产 ~123 万
-  cash: 345678.90,           // 可用资金 ~34.5 万（仓位约 72%）
-  dailyPnl: 12580.50,        // 当日盈利 +1.25 万
-  dailyReturn: 1.25,         // 当日收益率 +1.25%
-  positionsCount: 8,         // 持仓 8 只
-  activeStrategies: 3,       // 运行中策略：CTA趋势 / 均值回归 / AI选股
+  totalAsset: 1234567.89, // 总资产 ~123 万
+  cash: 345678.9, // 可用资金 ~34.5 万（仓位约 72%）
+  dailyPnl: 12580.5, // 当日盈利 +1.25 万
+  dailyReturn: 1.25, // 当日收益率 +1.25%
+  positionsCount: 8, // 持仓 8 只
+  activeStrategies: 3, // 运行中策略：CTA趋势 / 均值回归 / AI选股
 });
 
 /**
@@ -368,7 +417,7 @@ const getMockAccountData = (accountId: string) => {
     return {
       totalAsset: 987654.32,
       cash: 234567.89,
-      dailyPnl: 10580.50,
+      dailyPnl: 10580.5,
       dailyReturn: 1.08,
       positionsCount: 6,
       activeStrategies: 2,
@@ -377,7 +426,7 @@ const getMockAccountData = (accountId: string) => {
   return {
     totalAsset: 246913.57,
     cash: 111111.01,
-    dailyPnl: 2000.00,
+    dailyPnl: 2000.0,
     dailyReturn: 0.81,
     positionsCount: 2,
     activeStrategies: 1,
@@ -389,11 +438,16 @@ const getMockAccountData = (accountId: string) => {
  * 包含买入/卖出两类，覆盖不同策略和品种
  */
 const getMockSignals = () => [
-  { name: "均线金叉突破",   symbol: "000001.SZ", direction: "buy",  price: 13.45 },
-  { name: "RSI超卖反弹",    symbol: "600519.SH", direction: "buy",  price: 1856.00 },
-  { name: "MACD顶背离",     symbol: "300750.SZ", direction: "sell", price: 208.50 },
-  { name: "布林带上轨触及", symbol: "000858.SZ", direction: "sell", price: 168.80 },
-  { name: "放量突破前高",   symbol: "002594.SZ", direction: "buy",  price: 268.00 },
+  { name: "均线金叉突破", symbol: "000001.SZ", direction: "buy", price: 13.45 },
+  { name: "RSI超卖反弹", symbol: "600519.SH", direction: "buy", price: 1856.0 },
+  { name: "MACD顶背离", symbol: "300750.SZ", direction: "sell", price: 208.5 },
+  {
+    name: "布林带上轨触及",
+    symbol: "000858.SZ",
+    direction: "sell",
+    price: 168.8,
+  },
+  { name: "放量突破前高", symbol: "002594.SZ", direction: "buy", price: 268.0 },
 ];
 
 /**
@@ -401,14 +455,70 @@ const getMockSignals = () => [
  * 权重总和 ≈ 100%，含正负盈亏
  */
 const getMockPositions = () => [
-  { symbol: "600519.SH", name: "贵州茅台",   quantity: 200,   price: 1856.00, pnl: 12400.00,  weight: 0.30 },
-  { symbol: "000858.SZ", name: "五粮液",     quantity: 1500,  price: 168.80,  pnl: -3200.00,  weight: 0.20 },
-  { symbol: "300750.SZ", name: "宁德时代",   quantity: 800,   price: 208.50,  pnl: 5600.00,   weight: 0.13 },
-  { symbol: "002594.SZ", name: "比亚迪",     quantity: 500,   price: 268.00,  pnl: 8500.00,   weight: 0.11 },
-  { symbol: "000001.SZ", name: "平安银行",   quantity: 3000,  price: 13.45,   pnl: -1500.00,  weight: 0.08 },
-  { symbol: "601318.SH", name: "中国平安",   quantity: 1200,  price: 52.30,   pnl: 2400.00,   weight: 0.07 },
-  { symbol: "600036.SH", name: "招商银行",   quantity: 1800,  price: 42.15,   pnl: -890.00,   weight: 0.06 },
-  { symbol: "300059.SZ", name: "东方财富",   quantity: 2000,  price: 24.80,   pnl: 3200.00,   weight: 0.05 },
+  {
+    symbol: "600519.SH",
+    name: "贵州茅台",
+    quantity: 200,
+    price: 1856.0,
+    pnl: 12400.0,
+    weight: 0.3,
+  },
+  {
+    symbol: "000858.SZ",
+    name: "五粮液",
+    quantity: 1500,
+    price: 168.8,
+    pnl: -3200.0,
+    weight: 0.2,
+  },
+  {
+    symbol: "300750.SZ",
+    name: "宁德时代",
+    quantity: 800,
+    price: 208.5,
+    pnl: 5600.0,
+    weight: 0.13,
+  },
+  {
+    symbol: "002594.SZ",
+    name: "比亚迪",
+    quantity: 500,
+    price: 268.0,
+    pnl: 8500.0,
+    weight: 0.11,
+  },
+  {
+    symbol: "000001.SZ",
+    name: "平安银行",
+    quantity: 3000,
+    price: 13.45,
+    pnl: -1500.0,
+    weight: 0.08,
+  },
+  {
+    symbol: "601318.SH",
+    name: "中国平安",
+    quantity: 1200,
+    price: 52.3,
+    pnl: 2400.0,
+    weight: 0.07,
+  },
+  {
+    symbol: "600036.SH",
+    name: "招商银行",
+    quantity: 1800,
+    price: 42.15,
+    pnl: -890.0,
+    weight: 0.06,
+  },
+  {
+    symbol: "300059.SZ",
+    name: "东方财富",
+    quantity: 2000,
+    price: 24.8,
+    pnl: 3200.0,
+    weight: 0.05,
+  },
 ];
 
 /**
@@ -416,12 +526,54 @@ const getMockPositions = () => [
  * 买卖混合，时间分布在 9:30-15:00 交易时段
  */
 const getMockTrades = () => [
-  { time: "09:32:15", symbol: "600519.SH", direction: "buy",  price: 1851.50, volume: 100, amount: 185150.00 },
-  { time: "10:15:42", symbol: "000858.SZ", direction: "sell", price: 169.20,  volume: 300, amount: 50760.00  },
-  { time: "11:05:18", symbol: "300750.SZ", direction: "buy",  price: 207.80,  volume: 200, amount: 41560.00  },
-  { time: "13:08:33", symbol: "002594.SZ", direction: "buy",  price: 266.50,  volume: 100, amount: 26650.00  },
-  { time: "14:22:07", symbol: "000001.SZ", direction: "sell", price: 13.52,   volume: 500, amount: 6760.00   },
-  { time: "14:55:29", symbol: "300059.SZ", direction: "buy",  price: 24.75,   volume: 500, amount: 12375.00  },
+  {
+    time: "09:32:15",
+    symbol: "600519.SH",
+    direction: "buy",
+    price: 1851.5,
+    volume: 100,
+    amount: 185150.0,
+  },
+  {
+    time: "10:15:42",
+    symbol: "000858.SZ",
+    direction: "sell",
+    price: 169.2,
+    volume: 300,
+    amount: 50760.0,
+  },
+  {
+    time: "11:05:18",
+    symbol: "300750.SZ",
+    direction: "buy",
+    price: 207.8,
+    volume: 200,
+    amount: 41560.0,
+  },
+  {
+    time: "13:08:33",
+    symbol: "002594.SZ",
+    direction: "buy",
+    price: 266.5,
+    volume: 100,
+    amount: 26650.0,
+  },
+  {
+    time: "14:22:07",
+    symbol: "000001.SZ",
+    direction: "sell",
+    price: 13.52,
+    volume: 500,
+    amount: 6760.0,
+  },
+  {
+    time: "14:55:29",
+    symbol: "300059.SZ",
+    direction: "buy",
+    price: 24.75,
+    volume: 500,
+    amount: 12375.0,
+  },
 ];
 
 /**
@@ -446,8 +598,8 @@ const getMockChartData = () => {
     dates.push(`${d.getMonth() + 1}/${d.getDate()}`);
 
     // 每日随机波动 ±2%，策略有 0.05% 的 alpha 优势
-    const marketMove = (Math.random() - 0.48) * 1.5;       // 基准波动，略微偏正
-    const alpha = 0.05 + (Math.random() - 0.5) * 0.1;       // 策略超额收益
+    const marketMove = (Math.random() - 0.48) * 1.5; // 基准波动，略微偏正
+    const alpha = 0.05 + (Math.random() - 0.5) * 0.1; // 策略超额收益
     benchmarkCum += marketMove;
     strategyCum += marketMove + alpha;
 
@@ -484,9 +636,7 @@ const selectedAccountId = ref<string | null>(null);
 
 /** 账户选择器选项 */
 const accountOptions = computed(() => {
-  const options: any[] = [
-    { label: "全部账户 (汇总)", value: null },
-  ];
+  const options: any[] = [{ label: "全部账户 (汇总)", value: null }];
   for (const a of accounts.value) {
     options.push({ label: a.name, value: a.id });
   }
@@ -501,17 +651,17 @@ const accountCount = computed(() => accounts.value.length);
  * 使用 reactive 而非 ref，方便 loadDashboardData 中 Object.assign 整包覆盖
  */
 const accountInfo = reactive({
-  totalAsset: 0,       // 总资产（元）
-  cash: 0,             // 可用资金（元）
-  dailyPnl: 0,         // 当日盈亏（元）
-  dailyReturn: 0,      // 当日收益率（%）
-  positionsCount: 0,   // 持仓品种数量
+  totalAsset: 0, // 总资产（元）
+  cash: 0, // 可用资金（元）
+  dailyPnl: 0, // 当日盈亏（元）
+  dailyReturn: 0, // 当日收益率（%）
+  positionsCount: 0, // 持仓品种数量
   activeStrategies: 0, // 运行中策略数量
 });
 
 /** 实时信号列表：名称、代码、买卖方向、价格 */
 const recentSignals = ref<
-    { name: string; symbol: string; direction: string; price: number }[]
+  { name: string; symbol: string; direction: string; price: number }[]
 >([]);
 /** 持仓列表，渲染到 n-data-table */
 const positions = ref<any[]>([]);
@@ -539,9 +689,9 @@ const handleEquityResize = () => equityChart?.resize();
  * 权重列：小数 → 百分比显示
  */
 const positionColumns = [
-  {title: "代码", key: "symbol", width: 90},
-  {title: "名称", key: "name", width: 130},
-  {title: "数量", key: "quantity", width: 80, align: "right" as const},
+  { title: "代码", key: "symbol", width: 90 },
+  { title: "名称", key: "name", width: 130 },
+  { title: "数量", key: "quantity", width: 80, align: "right" as const },
   {
     title: "当前价",
     key: "price",
@@ -556,18 +706,18 @@ const positionColumns = [
     align: "right" as const,
     // 盈亏列自定义渲染：使用 h() 创建 span，根据正负值动态着色
     render: (row: any) =>
-        h(
-            "span",
-            {
-              style: {
-                color:
-                    row.pnl >= 0
-                        ? "var(--color-stock-up)"   // 盈利：红色（中国习惯红涨）
-                        : "var(--color-stock-down)", // 亏损：绿色（中国习惯绿跌）
-              },
-            },
-            `${row.pnl >= 0 ? "+" : ""}${formatNumber(row.pnl, 2)}`,
-        ),
+      h(
+        "span",
+        {
+          style: {
+            color:
+              row.pnl >= 0
+                ? "var(--color-stock-up)" // 盈利：红色（中国习惯红涨）
+                : "var(--color-stock-down)", // 亏损：绿色（中国习惯绿跌）
+          },
+        },
+        `${row.pnl >= 0 ? "+" : ""}${formatNumber(row.pnl, 2)}`,
+      ),
   },
   {
     title: "权重",
@@ -585,23 +735,23 @@ const positionColumns = [
  * 金额列：formatNumber 千分位保留 2 位小数
  */
 const tradeColumns = [
-  {title: "时间", key: "time", width: 100},
-  {title: "代码", key: "symbol", width: 90},
+  { title: "时间", key: "time", width: 100 },
+  { title: "代码", key: "symbol", width: 90 },
   {
     title: "方向",
     key: "direction",
     width: 60,
     // 方向列自定义渲染：使用 h() 创建 NTag 组件
     render: (row: any) =>
-        h(
-            NTag,
-            {
-              type: row.direction === "buy" ? "error" : "success", // error=红, success=绿
-              size: "small",
-              bordered: false,
-            },
-            {default: () => (row.direction === "buy" ? "买" : "卖")},
-        ),
+      h(
+        NTag,
+        {
+          type: row.direction === "buy" ? "error" : "success", // error=红, success=绿
+          size: "small",
+          bordered: false,
+        },
+        { default: () => (row.direction === "buy" ? "买" : "卖") },
+      ),
   },
   {
     title: "价格",
@@ -647,35 +797,35 @@ const initChart = async () => {
     // 请求后端图表数据（dates[], strategyReturns[], benchmarkReturns[]）
     // USE_MOCK 时使用本地生成的模拟收益率曲线
     const response = USE_MOCK
-        ? getMockChartData()
-        : await getPerformanceChart(chartRange.value);
+      ? getMockChartData()
+      : await getPerformanceChart(chartRange.value);
     // 设置 ECharts 配置项
     equityChart.setOption({
       tooltip: {
-        trigger: "axis",                                        // 坐标轴触发
-        axisPointer: {type: "cross", label: {backgroundColor: "#6a7985"}}, // 十字准星 + 深灰标签背景
+        trigger: "axis", // 坐标轴触发
+        axisPointer: { type: "cross", label: { backgroundColor: "#6a7985" } }, // 十字准星 + 深灰标签背景
       },
-      grid: {left: "3%", right: "4%", bottom: "3%", containLabel: true}, // 网格边距，containLabel 防止标签溢出
+      grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true }, // 网格边距，containLabel 防止标签溢出
       xAxis: {
-        type: "category",                                       // 类目轴（日期字符串）
-        boundaryGap: false,                                     // 无边界间隙，折线贴边
-        data: response.dates,                                   // 横轴日期数组
+        type: "category", // 类目轴（日期字符串）
+        boundaryGap: false, // 无边界间隙，折线贴边
+        data: response.dates, // 横轴日期数组
       },
-      yAxis: {type: "value", axisLabel: {formatter: "{value}%"}}, // 数值轴 + 百分号后缀
+      yAxis: { type: "value", axisLabel: { formatter: "{value}%" } }, // 数值轴 + 百分号后缀
       series: [
         {
           name: "策略收益",
           type: "line",
-          stack: "总量",                                        // 堆叠分组名，两条线共享此分组
-          areaStyle: {},                                        // 填充面积区域
-          data: response.strategyReturns,                       // 策略收益率数组
+          stack: "总量", // 堆叠分组名，两条线共享此分组
+          areaStyle: {}, // 填充面积区域
+          data: response.strategyReturns, // 策略收益率数组
         },
         {
           name: "基准收益",
           type: "line",
-          stack: "总量",                                        // 同堆叠组，便于对比
+          stack: "总量", // 同堆叠组，便于对比
           areaStyle: {},
-          data: response.benchmarkReturns,                      // 基准收益率数组
+          data: response.benchmarkReturns, // 基准收益率数组
         },
       ],
     });
@@ -694,7 +844,7 @@ const loadDashboardData = async () => {
   error.value = false;
   try {
     if (USE_MOCK) {
-      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+      await new Promise((r) => setTimeout(r, 400 + Math.random() * 400));
       // 根据选中的账户加载对应数据：null=汇总，具体ID=单账户
       if (selectedAccountId.value) {
         Object.assign(accountInfo, getMockAccountData(selectedAccountId.value));
@@ -712,8 +862,12 @@ const loadDashboardData = async () => {
       if (selectedAccountId.value) {
         // 单账户模式：调用账户专属端点
         const [acctRes, posRes] = await Promise.all([
-          request.get(`/quantTrade/account/${selectedAccountId.value}/summary`).catch(() => null),
-          request.get(`/quantTrade/account/${selectedAccountId.value}/positions`).catch(() => null),
+          request
+            .get(`/quantTrade/account/${selectedAccountId.value}/summary`)
+            .catch(() => null),
+          request
+            .get(`/quantTrade/account/${selectedAccountId.value}/positions`)
+            .catch(() => null),
         ]);
         const acct = (acctRes as any)?.data ?? {};
         Object.assign(accountInfo, {
@@ -722,9 +876,11 @@ const loadDashboardData = async () => {
           dailyPnl: acct.daily_pnl ?? acct.dailyPnl ?? 0,
           dailyReturn: acct.daily_return ?? acct.dailyReturn ?? 0,
           positionsCount: acct.position_count ?? acct.positionsCount ?? 0,
-          activeStrategies: acct.active_strategies ?? acct.activeStrategies ?? 0,
+          activeStrategies:
+            acct.active_strategies ?? acct.activeStrategies ?? 0,
         });
-        const pList = (posRes as any)?.data?.items ?? (posRes as any)?.data ?? [];
+        const pList =
+          (posRes as any)?.data?.items ?? (posRes as any)?.data ?? [];
         positions.value = (Array.isArray(pList) ? pList : []).map((p: any) => ({
           symbol: p.ts_code ?? p.symbol ?? "",
           name: p.name ?? p.stock_name ?? "",
@@ -761,7 +917,7 @@ const retry = () => loadDashboardData();
  * @returns "positive"（红涨）或 "negative"（绿跌）
  */
 const getChangeClass = (value: number) =>
-    value >= 0 ? "positive" : "negative";
+  value >= 0 ? "positive" : "negative";
 
 /**
  * 格式化金额/数值，尊重显隐开关
@@ -810,9 +966,9 @@ watch(selectedAccountId, () => {
 // ============================================================================
 
 onMounted(() => {
-  loadAccounts();                                       // 先加载账户列表
-  loadDashboardData();                                  // 再加载仪表盘数据
-  initChart();                                          // 初始化 ECharts 图表
+  loadAccounts(); // 先加载账户列表
+  loadDashboardData(); // 再加载仪表盘数据
+  initChart(); // 初始化 ECharts 图表
   window.addEventListener("resize", handleEquityResize); // 监听窗口大小变化以重绘图表
 
   // ======================================================================
@@ -834,7 +990,11 @@ onMounted(() => {
       price: data.price ?? 0,
       quantity: data.quantity ?? data.volume ?? 0,
       amount: data.amount ?? (data.price ?? 0) * (data.quantity ?? 0),
-      time: data.time ?? data.trade_time ?? data.executed_at ?? new Date().toLocaleTimeString(),
+      time:
+        data.time ??
+        data.trade_time ??
+        data.executed_at ??
+        new Date().toLocaleTimeString(),
     } as any);
     if (todayTrades.value.length > 20) todayTrades.value.splice(20);
   });
@@ -860,9 +1020,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleEquityResize); // 移除 resize 监听
-  equityChart?.dispose();                                   // 销毁 ECharts 实例释放内存
-  if (_wsStatusTimer) clearInterval(_wsStatusTimer);        // 清除 WebSocket 状态轮询
-  webSocketService.disconnect();                            // 断开 WebSocket 并清理订阅
+  equityChart?.dispose(); // 销毁 ECharts 实例释放内存
+  if (_wsStatusTimer) clearInterval(_wsStatusTimer); // 清除 WebSocket 状态轮询
+  webSocketService.disconnect(); // 断开 WebSocket 并清理订阅
 });
 </script>
 
@@ -944,21 +1104,21 @@ onUnmounted(() => {
  * 此处仅补充指标卡特有的文本布局和颜色
  */
 .metric-card {
-  text-align: center;   /* 所有内容水平居中（等价于全局 text-center 工具类） */
+  text-align: center; /* 所有内容水平居中（等价于全局 text-center 工具类） */
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 148px;    /* 统一卡片高度，确保 4 卡等高 */
+  min-height: 148px; /* 统一卡片高度，确保 4 卡等高 */
 
   /*
    * 指标数值（如"¥ 1,234,567"）
    * 24px 粗体，使用 Naive UI 一级文字色，确保主题切换时颜色自动适配
    */
   .metric-value {
-    font-size: 24px;                  /* 大号字体，突出展示核心数据 */
-    font-weight: bold;                /* 粗体强调 */
-    margin-bottom: 8px;               /* spacer(2)：数值与标签之间的标准小间距 */
-    color: var(--n-text-color-1);     /* 系统：Naive UI 一级文字色，跟随主题切换 */
+    font-size: 24px; /* 大号字体，突出展示核心数据 */
+    font-weight: bold; /* 粗体强调 */
+    margin-bottom: 8px; /* spacer(2)：数值与标签之间的标准小间距 */
+    color: var(--n-text-color-1); /* 系统：Naive UI 一级文字色，跟随主题切换 */
   }
 
   /*
@@ -966,8 +1126,8 @@ onUnmounted(() => {
    * 使用 Naive UI 三级文字色（次级信息色），字号跟随全局基础字体大小
    */
   .metric-label {
-    color: var(--n-text-color-3);     /* 系统：Naive UI 三级文字色（次要信息） */
-    margin-bottom: 8px;               /* spacer(2)：标签与涨跌幅之间的标准小间距 */
+    color: var(--n-text-color-3); /* 系统：Naive UI 三级文字色（次要信息） */
+    margin-bottom: 8px; /* spacer(2)：标签与涨跌幅之间的标准小间距 */
   }
 
   /* 标签附加说明（如"共 N 账户"） */
@@ -983,8 +1143,8 @@ onUnmounted(() => {
    * 14px = $font-size-base，全局基础字号
    */
   .metric-change {
-    font-size: 14px;                  /* 系统等效：$font-size-base，全局基础字体大小 */
-    min-height: 20px;                 /* 占位高度，与 .metric-placeholder 一致 */
+    font-size: 14px; /* 系统等效：$font-size-base，全局基础字体大小 */
+    min-height: 20px; /* 占位高度，与 .metric-placeholder 一致 */
 
     /*
      * positive（盈利）/ negative（亏损）颜色
@@ -994,11 +1154,11 @@ onUnmounted(() => {
      * 注意：此处使用硬编码 fallback 值，确保 JS 注入 CSS 变量失败时仍有可用颜色
      */
     &.positive {
-      color: var(--color-stock-up, #f56c6c);    /* 系统变量 + 硬编码 fallback */
+      color: var(--color-stock-up, #f56c6c); /* 系统变量 + 硬编码 fallback */
     }
 
     &.negative {
-      color: var(--color-stock-down, #67c23a);  /* 系统变量 + 硬编码 fallback */
+      color: var(--color-stock-down, #67c23a); /* 系统变量 + 硬编码 fallback */
     }
   }
 
@@ -1044,9 +1204,9 @@ onUnmounted(() => {
    * 等价于全局 flex-between 工具类，但因嵌套在 n-card header slot 中，直接定义更精确
    */
   .widget-header {
-    display: flex;                  /* 弹性布局 */
+    display: flex; /* 弹性布局 */
     justify-content: space-between; /* 两端对齐：标题左、控件右 */
-    align-items: center;            /* 垂直居中 */
+    align-items: center; /* 垂直居中 */
   }
 
   /*
@@ -1054,8 +1214,8 @@ onUnmounted(() => {
    * 高度 250px 为固定值，与右侧信号列表高度一致，保持视觉对齐
    */
   .chart-container {
-    height: 250px;  /* 固定高度，与信号列表 .signal-list 的 250px 对齐 */
-    width: 100%;    /* 填满卡片内容区宽度 */
+    height: 250px; /* 固定高度，与信号列表 .signal-list 的 250px 对齐 */
+    width: 100%; /* 填满卡片内容区宽度 */
   }
 }
 
@@ -1064,17 +1224,17 @@ onUnmounted(() => {
  * 固定高度 + 垂直滚动，与左侧图表高度保持一致
  */
 .signal-list {
-  height: 250px;      /* 固定高度，与图表 .chart-container 的 250px 对齐 */
-  overflow-y: auto;   /* 信号超出可滚动（等价于全局 overflow-y-auto 工具类） */
+  height: 250px; /* 固定高度，与图表 .chart-container 的 250px 对齐 */
+  overflow-y: auto; /* 信号超出可滚动（等价于全局 overflow-y-auto 工具类） */
 
   /*
    * 单条信号项
    * Flex 行布局：方向图标 | 信号名称+代码 | 价格
    */
   .signal-item {
-    display: flex;        /* 弹性布局：图标、内容、价格水平排列 */
-    align-items: center;  /* 垂直居中对齐 */
-    padding: 10px 0;      /* 上下 10px 内边距，左右无内边距（由父容器控制） */
+    display: flex; /* 弹性布局：图标、内容、价格水平排列 */
+    align-items: center; /* 垂直居中对齐 */
+    padding: 10px 0; /* 上下 10px 内边距，左右无内边距（由父容器控制） */
     border-bottom: 1px solid var(--n-border-color); /* 系统：Naive UI 边框色，底部分割线 */
 
     /* 最后一项不显示底部分割线 */
@@ -1087,13 +1247,13 @@ onUnmounted(() => {
      * 32×32px 圆形，flex 居中图标，右侧 12px 间距
      */
     .signal-icon {
-      width: 32px;              /* 图标容器宽 */
-      height: 32px;             /* 图标容器高 */
-      border-radius: 50%;       /* 正圆形 */
-      display: flex;            /* Flex 居中图标 */
+      width: 32px; /* 图标容器宽 */
+      height: 32px; /* 图标容器高 */
+      border-radius: 50%; /* 正圆形 */
+      display: flex; /* Flex 居中图标 */
       align-items: center;
       justify-content: center;
-      margin-right: 12px;       /* spacer(3)：图标与文本内容的间距 */
+      margin-right: 12px; /* spacer(3)：图标与文本内容的间距 */
 
       /*
        * buy 方向样式：红色系的半透明背景 + 红色图标
@@ -1101,8 +1261,13 @@ onUnmounted(() => {
        * #f56c6c = 红色前景图标 → 映射 var(--color-stock-up)
        */
       &.buy {
-        background: rgba(245, 108, 108, 0.1); /* 10% 红色背景，系统等效：color-with-opacity(var(--color-stock-up), 0.1) */
-        color: #f56c6c;                       /* 红色图标 → var(--color-stock-up) 对应值 */
+        background: rgba(
+          245,
+          108,
+          108,
+          0.1
+        ); /* 10% 红色背景，系统等效：color-with-opacity(var(--color-stock-up), 0.1) */
+        color: #f56c6c; /* 红色图标 → var(--color-stock-up) 对应值 */
       }
 
       /*
@@ -1111,8 +1276,13 @@ onUnmounted(() => {
        * #67c23a = 绿色前景图标 → 映射 var(--color-stock-down)
        */
       &.sell {
-        background: rgba(103, 194, 58, 0.1); /* 10% 绿色背景，系统等效：color-with-opacity(var(--color-stock-down), 0.1) */
-        color: #67c23a;                      /* 绿色图标 → var(--color-stock-down) 对应值 */
+        background: rgba(
+          103,
+          194,
+          58,
+          0.1
+        ); /* 10% 绿色背景，系统等效：color-with-opacity(var(--color-stock-down), 0.1) */
+        color: #67c23a; /* 绿色图标 → var(--color-stock-down) 对应值 */
       }
     }
 
@@ -1120,16 +1290,16 @@ onUnmounted(() => {
      * 信号文字内容区（flex: 1 占满剩余空间）
      */
     .signal-content {
-      flex: 1;  /* 弹性填充，占据图标和价格之间的剩余宽度 */
+      flex: 1; /* 弹性填充，占据图标和价格之间的剩余宽度 */
 
       /*
        * 信号名称（如"均线金叉"、"MACD底背离"）
        * 14px 一级文字色
        */
       .signal-name {
-        font-size: 14px;                  /* 系统等效：$font-size-base */
-        color: var(--n-text-color-1);     /* 系统：Naive UI 一级文字色 */
-        margin-bottom: 4px;               /* spacer(1)：名称与代码之间的最小间距 */
+        font-size: 14px; /* 系统等效：$font-size-base */
+        color: var(--n-text-color-1); /* 系统：Naive UI 一级文字色 */
+        margin-bottom: 4px; /* spacer(1)：名称与代码之间的最小间距 */
       }
 
       /*
@@ -1137,8 +1307,8 @@ onUnmounted(() => {
        * 12px 三级文字色（次要信息）
        */
       .signal-symbol {
-        font-size: 12px;                  /* 小号字体 */
-        color: var(--n-text-color-3);     /* 系统：Naive UI 三级文字色（次要） */
+        font-size: 12px; /* 小号字体 */
+        color: var(--n-text-color-3); /* 系统：Naive UI 三级文字色（次要） */
       }
     }
 
@@ -1147,14 +1317,14 @@ onUnmounted(() => {
      * 颜色跟随买卖方向
      */
     .signal-price {
-      font-weight: bold;  /* 加粗强调价格 */
+      font-weight: bold; /* 加粗强调价格 */
 
       &.buy {
-        color: #f56c6c;   /* 红色 → var(--color-stock-up) */
+        color: #f56c6c; /* 红色 → var(--color-stock-up) */
       }
 
       &.sell {
-        color: #67c23a;   /* 绿色 → var(--color-stock-down) */
+        color: #67c23a; /* 绿色 → var(--color-stock-down) */
       }
     }
   }
@@ -1230,7 +1400,9 @@ onUnmounted(() => {
 
   &.connected {
     color: var(--color-success, #30a46c);
-    .ws-dot { background: var(--color-success, #30a46c); }
+    .ws-dot {
+      background: var(--color-success, #30a46c);
+    }
   }
 }
 </style>

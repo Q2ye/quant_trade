@@ -85,7 +85,10 @@ const dialog = useDialog();
 const message = useMessage();
 
 const getStatusType = (status: string) => {
-  const tagTypeMap: Record<string, "info" | "warning" | "success" | "error" | "default"> = {
+  const tagTypeMap: Record<
+    string,
+    "info" | "warning" | "success" | "error" | "default"
+  > = {
     submitted: "info",
     partial_filled: "warning",
     filled: "success",

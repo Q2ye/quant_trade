@@ -6,10 +6,19 @@
           <h1 class="page-title">策略回测配置</h1>
         </div>
         <div class="header-actions">
-          <n-button type="primary" :loading="isBacktesting" @click="runBacktest">
-            {{ isBacktesting ? `回测中 ${backtestProgress}%` : '启动回测' }}
+          <n-button
+            type="primary"
+            :loading="isBacktesting"
+            @click="runBacktest"
+          >
+            {{ isBacktesting ? `回测中 ${backtestProgress}%` : "启动回测" }}
           </n-button>
-          <n-button type="success" :loading="isOptimizing" @click="optimizeParams">参数优化</n-button>
+          <n-button
+            type="success"
+            :loading="isOptimizing"
+            @click="optimizeParams"
+            >参数优化</n-button
+          >
         </div>
       </div>
     </div>

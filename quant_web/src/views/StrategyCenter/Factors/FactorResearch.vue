@@ -4,14 +4,19 @@
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">因子探索</h1>
-          <p class="page-description">快速测试和比较量化因子，发现有效的 Alpha 因子</p>
+          <p class="page-description">
+            快速测试和比较量化因子，发现有效的 Alpha 因子
+          </p>
         </div>
         <div class="header-actions">
           <n-button type="primary" @click="runQuickTest" :loading="testing">
             <template #icon><SmartIcon name="Play" /></template>
             快速测试
           </n-button>
-          <n-button @click="compareFactors" :disabled="selectedFactors.length < 2">
+          <n-button
+            @click="compareFactors"
+            :disabled="selectedFactors.length < 2"
+          >
             <template #icon><SmartIcon name="GitCompare" /></template>
             因子对比
           </n-button>
@@ -180,7 +185,9 @@
                     size="small"
                   >
                     <template #footer>
-                      <n-button size="small" @click="runQuickTest">重试</n-button>
+                      <n-button size="small" @click="runQuickTest"
+                        >重试</n-button
+                      >
                     </template>
                   </n-result>
 
@@ -300,7 +307,10 @@ const detailDialogVisible = ref(false);
 const returnsComparisonChartRef = ref<HTMLElement | null>(null);
 
 const quickConfig = reactive({
-  dateRange: [new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), new Date()] as [Date, Date],
+  dateRange: [new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), new Date()] as [
+    Date,
+    Date,
+  ],
   universe: "all",
   initialCapital: 1000000,
   rebalanceFreq: "monthly",
@@ -320,38 +330,96 @@ const rebalanceOptions = [
 const groupMarks = { 3: "3", 5: "5", 7: "7", 10: "10" };
 
 const valueFactors = ref([
-  { id: "pe_ratio", name: "市盈率(PE)", description: "市值与净利润比率", category: "value" },
-  { id: "pb_ratio", name: "市净率(PB)", description: "市值与净资产比率", category: "value" },
-  { id: "dividend_yield", name: "股息率", description: "年度股息与股价比率", category: "value" },
-  { id: "ev_ebitda", name: "EV/EBITDA", description: "企业价值与税息折旧摊销前利润比率", category: "value" },
+  {
+    id: "pe_ratio",
+    name: "市盈率(PE)",
+    description: "市值与净利润比率",
+    category: "value",
+  },
+  {
+    id: "pb_ratio",
+    name: "市净率(PB)",
+    description: "市值与净资产比率",
+    category: "value",
+  },
+  {
+    id: "dividend_yield",
+    name: "股息率",
+    description: "年度股息与股价比率",
+    category: "value",
+  },
+  {
+    id: "ev_ebitda",
+    name: "EV/EBITDA",
+    description: "企业价值与税息折旧摊销前利润比率",
+    category: "value",
+  },
 ]);
 
 const growthFactors = ref([
-  { id: "revenue_growth", name: "营收增长率", description: "营业收入同比增长率", category: "growth" },
-  { id: "profit_growth", name: "利润增长率", description: "净利润同比增长率", category: "growth" },
-  { id: "roe_growth", name: "ROE增长率", description: "净资产收益率变化率", category: "growth" },
+  {
+    id: "revenue_growth",
+    name: "营收增长率",
+    description: "营业收入同比增长率",
+    category: "growth",
+  },
+  {
+    id: "profit_growth",
+    name: "利润增长率",
+    description: "净利润同比增长率",
+    category: "growth",
+  },
+  {
+    id: "roe_growth",
+    name: "ROE增长率",
+    description: "净资产收益率变化率",
+    category: "growth",
+  },
 ]);
 
 const qualityFactors = ref([
-  { id: "roe", name: "净资产收益率(ROE)", description: "净利润与净资产比率", category: "quality" },
-  { id: "roa", name: "总资产收益率(ROA)", description: "净利润与总资产比率", category: "quality" },
-  { id: "profit_margin", name: "净利润率", description: "净利润与营业收入比率", category: "quality" },
+  {
+    id: "roe",
+    name: "净资产收益率(ROE)",
+    description: "净利润与净资产比率",
+    category: "quality",
+  },
+  {
+    id: "roa",
+    name: "总资产收益率(ROA)",
+    description: "净利润与总资产比率",
+    category: "quality",
+  },
+  {
+    id: "profit_margin",
+    name: "净利润率",
+    description: "净利润与营业收入比率",
+    category: "quality",
+  },
 ]);
 
 const comparisonColumns = [
   { title: "因子名称", key: "factorName" },
   {
-    title: "年化收益", key: "annualReturn",
+    title: "年化收益",
+    key: "annualReturn",
     render: (row: any) =>
-      h("span", { class: row.annualReturn >= 0 ? "text-up" : "text-down" }, formatPercent(row.annualReturn)),
+      h(
+        "span",
+        { class: row.annualReturn >= 0 ? "text-up" : "text-down" },
+        formatPercent(row.annualReturn),
+      ),
   },
   { title: "夏普比率", key: "sharpeRatio" },
   {
-    title: "最大回撤", key: "maxDrawdown",
-    render: (row: any) => h("span", { class: "text-down" }, formatPercent(row.maxDrawdown)),
+    title: "最大回撤",
+    key: "maxDrawdown",
+    render: (row: any) =>
+      h("span", { class: "text-down" }, formatPercent(row.maxDrawdown)),
   },
   {
-    title: "胜率", key: "winRate",
+    title: "胜率",
+    key: "winRate",
     render: (row: any) => formatPercent(row.winRate),
   },
 ];
@@ -443,17 +511,30 @@ const initComparisonChart = () => {
   if (!comparisonResults.value || !returnsComparisonChartRef.value) return;
   if (comparisonChartInstance) comparisonChartInstance.dispose();
   comparisonChartInstance = echarts.init(returnsComparisonChartRef.value);
-  const colors = ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272", "#fc8452"];
+  const colors = [
+    "#5470c6",
+    "#91cc75",
+    "#fac858",
+    "#ee6666",
+    "#73c0de",
+    "#3ba272",
+    "#fc8452",
+  ];
   comparisonChartInstance.setOption({
     tooltip: { trigger: "axis" },
     legend: { data: selectedFactors.value.map((f) => f.name) },
     grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
-    xAxis: { type: "category", data: ["1月", "2月", "3月", "4月", "5月", "6月", "7月"] },
+    xAxis: {
+      type: "category",
+      data: ["1月", "2月", "3月", "4月", "5月", "6月", "7月"],
+    },
     yAxis: { type: "value", axisLabel: { formatter: "{value}%" } },
     series: selectedFactors.value.map((f, i) => ({
       name: f.name,
       type: "line",
-      data: Array(7).fill(0).map(() => Math.random() * 20 + 5),
+      data: Array(7)
+        .fill(0)
+        .map(() => Math.random() * 20 + 5),
       itemStyle: { color: colors[i % colors.length] },
     })),
   });

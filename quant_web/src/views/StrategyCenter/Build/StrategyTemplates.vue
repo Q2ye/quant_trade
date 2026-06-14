@@ -28,7 +28,13 @@
 
       <template v-if="pageState === 'loading'">
         <div class="section-block">
-          <n-grid :x-gap="16" :y-gap="16" :cols="4" responsive="screen" class="templates-grid">
+          <n-grid
+            :x-gap="16"
+            :y-gap="16"
+            :cols="4"
+            responsive="screen"
+            class="templates-grid"
+          >
             <n-grid-item v-for="i in 4" :key="i">
               <n-card class="template-card">
                 <n-skeleton :text="true" :repeat="6" />
@@ -41,120 +47,145 @@
       <template v-else-if="pageState === 'data'">
         <div class="section-block">
           <n-grid :x-gap="16" :cols="3" class="filter-row">
-          <n-grid-item>
-            <n-input
-              v-model:value="searchKeyword"
-              placeholder="搜索策略模板..."
-              clearable
+            <n-grid-item>
+              <n-input
+                v-model:value="searchKeyword"
+                placeholder="搜索策略模板..."
+                clearable
+              >
+                <template #prefix
+                  ><n-icon><SmartIcon name="Search" /></n-icon
+                ></template>
+              </n-input>
+            </n-grid-item>
+            <n-grid-item>
+              <n-select
+                v-model:value="filterCategory"
+                placeholder="策略类别"
+                clearable
+                :options="categoryOptions"
+              />
+            </n-grid-item>
+            <n-grid-item>
+              <n-select
+                v-model:value="filterComplexity"
+                placeholder="复杂度"
+                clearable
+                :options="complexityOptions"
+              />
+            </n-grid-item>
+          </n-grid>
+
+          <n-grid
+            :x-gap="16"
+            :y-gap="16"
+            :cols="4"
+            responsive="screen"
+            class="templates-grid"
+          >
+            <n-grid-item
+              v-for="template in filteredTemplates"
+              :key="template.id"
             >
-              <template #prefix><n-icon><SmartIcon name="Search" /></n-icon></template>
-            </n-input>
-          </n-grid-item>
-          <n-grid-item>
-            <n-select
-              v-model:value="filterCategory"
-              placeholder="策略类别"
-              clearable
-              :options="categoryOptions"
-            />
-          </n-grid-item>
-          <n-grid-item>
-            <n-select
-              v-model:value="filterComplexity"
-              placeholder="复杂度"
-              clearable
-              :options="complexityOptions"
-            />
-          </n-grid-item>
-        </n-grid>
-
-        <n-grid
-          :x-gap="16"
-          :y-gap="16"
-          :cols="4"
-          responsive="screen"
-          class="templates-grid"
-        >
-          <n-grid-item v-for="template in filteredTemplates" :key="template.id">
-            <n-card class="template-card">
-              <template #header>
-                <div class="template-header">
-                  <span class="template-name">{{ template.name }}</span>
-                  <n-tag
-                    :type="getComplexityTag(template.complexity) as any"
-                    size="small"
-                  >
-                    {{ template.complexity }}
-                  </n-tag>
-                </div>
-              </template>
-
-              <div class="template-content">
-                <p class="template-desc">{{ template.description }}</p>
-
-                <div class="template-meta">
-                  <div class="meta-item">
-                    <SmartIcon name="ChartLine" />
-                    <span :class="template.performance.annualReturn >= 0 ? 'text-up' : 'text-down'">年化收益: {{ template.performance.annualReturn }}%</span>
+              <n-card class="template-card">
+                <template #header>
+                  <div class="template-header">
+                    <span class="template-name">{{ template.name }}</span>
+                    <n-tag
+                      :type="getComplexityTag(template.complexity) as any"
+                      size="small"
+                    >
+                      {{ template.complexity }}
+                    </n-tag>
                   </div>
-                  <div class="meta-item">
-                    <SmartIcon name="ChartTrending" />
-                    <span class="text-down">最大回撤: {{ template.performance.maxDrawdown }}%</span>
+                </template>
+
+                <div class="template-content">
+                  <p class="template-desc">{{ template.description }}</p>
+
+                  <div class="template-meta">
+                    <div class="meta-item">
+                      <SmartIcon name="ChartLine" />
+                      <span
+                        :class="
+                          template.performance.annualReturn >= 0
+                            ? 'text-up'
+                            : 'text-down'
+                        "
+                        >年化收益:
+                        {{ template.performance.annualReturn }}%</span
+                      >
+                    </div>
+                    <div class="meta-item">
+                      <SmartIcon name="ChartTrending" />
+                      <span class="text-down"
+                        >最大回撤: {{ template.performance.maxDrawdown }}%</span
+                      >
+                    </div>
+                    <div class="meta-item">
+                      <SmartIcon name="ShieldCheckmark" />
+                      <span
+                        :class="
+                          template.performance.sharpeRatio >= 1
+                            ? 'text-up'
+                            : 'text-down'
+                        "
+                        >夏普比率: {{ template.performance.sharpeRatio }}</span
+                      >
+                    </div>
                   </div>
-                  <div class="meta-item">
-                    <SmartIcon name="ShieldCheckmark" />
-                    <span :class="template.performance.sharpeRatio >= 1 ? 'text-up' : 'text-down'">夏普比率: {{ template.performance.sharpeRatio }}</span>
+
+                  <div class="template-tags">
+                    <n-tag
+                      v-for="tag in template.tags"
+                      :key="tag"
+                      size="small"
+                      type="info"
+                      class="tag-item"
+                    >
+                      {{ tag }}
+                    </n-tag>
                   </div>
                 </div>
 
-                <div class="template-tags">
-                  <n-tag
-                    v-for="tag in template.tags"
-                    :key="tag"
-                    size="small"
-                    type="info"
-                    class="tag-item"
-                  >
-                    {{ tag }}
-                  </n-tag>
-                </div>
-              </div>
+                <template #footer>
+                  <div class="template-actions">
+                    <n-button
+                      type="primary"
+                      size="small"
+                      @click="useTemplate(template)"
+                      >使用模板</n-button
+                    >
+                    <n-button size="small" @click="viewDetails(template)"
+                      >查看详情</n-button
+                    >
+                  </div>
+                </template>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
 
-              <template #footer>
-                <div class="template-actions">
-                  <n-button
-                    type="primary"
-                    size="small"
-                    @click="useTemplate(template)"
-                    >使用模板</n-button
-                  >
-                  <n-button size="small" @click="viewDetails(template)"
-                    >查看详情</n-button
-                  >
-                </div>
-              </template>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
+          <n-empty
+            v-if="filteredTemplates.length === 0"
+            description="没有找到匹配的策略模板"
+          />
 
-        <n-empty
-          v-if="filteredTemplates.length === 0"
-          description="没有找到匹配的策略模板"
-        />
-
-        <n-modal
-          v-model:show="detailVisible"
-          preset="dialog"
-          :title="selectedTemplate?.name"
-          positive-text="使用此模板"
-          negative-text="取消"
-          style="width: 640px;"
-          @positive-click="selectedTemplate && useTemplate(selectedTemplate)"
-        >
-          <div class="dialog-body-scroll">
-            <TemplateDetail v-if="selectedTemplate" :template="selectedTemplate" />
-          </div>
-        </n-modal>
+          <n-modal
+            v-model:show="detailVisible"
+            preset="dialog"
+            :title="selectedTemplate?.name"
+            positive-text="使用此模板"
+            negative-text="取消"
+            style="width: 640px"
+            @positive-click="selectedTemplate && useTemplate(selectedTemplate)"
+          >
+            <div class="dialog-body-scroll">
+              <TemplateDetail
+                v-if="selectedTemplate"
+                :template="selectedTemplate"
+              />
+            </div>
+          </n-modal>
         </div>
       </template>
     </div>

@@ -9,11 +9,7 @@ import {
   StockListResponse,
   HistoricalDataResponse,
 } from "@/types";
-import {
-  FinancialData,
-  HistoricalDataPoint,
-  StockBasic,
-} from "@/types";
+import { FinancialData, HistoricalDataPoint, StockBasic } from "@/types";
 
 // 定义股票列表返回结果的接口
 interface StockListResult {
@@ -283,7 +279,9 @@ const dataAPI = {
    * @returns 无返回值
    */
   async triggerDataSync(source: string): Promise<void> {
-    return request.post("/quantTrade/data/sync/batch", { source }).then(handleResponse);
+    return request
+      .post("/quantTrade/data/sync/batch", { source })
+      .then(handleResponse);
   },
 };
 
@@ -409,7 +407,9 @@ export async function fetchStockRealTime(
 ): Promise<
   Record<string, { price: number; change: number; changePercent: number }>
 > {
-  return request.post("/quantTrade/data/realtime", { codes }).then(handleResponse);
+  return request
+    .post("/quantTrade/data/realtime", { codes })
+    .then(handleResponse);
 }
 
 // 将实时数据服务方法添加到默认导出对象中

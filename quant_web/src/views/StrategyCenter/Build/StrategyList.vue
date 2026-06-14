@@ -7,7 +7,9 @@
           <p class="page-description">管理交易策略，创建、编辑、启停策略</p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" class="hover-lift" @click="createStrategy">新建策略</n-button>
+          <n-button type="primary" class="hover-lift" @click="createStrategy"
+            >新建策略</n-button
+          >
           <n-button class="action-btn" @click="handleBack" quaternary>
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
@@ -99,7 +101,14 @@ import { ref, computed, onMounted, h } from "vue";
 import { useRouter } from "vue-router";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { useStore } from "vuex";
-import { useMessage, useDialog, NTag, NButton, NDropdown, NResult } from "naive-ui";
+import {
+  useMessage,
+  useDialog,
+  NTag,
+  NButton,
+  NDropdown,
+  NResult,
+} from "naive-ui";
 import {
   PARAM_LABELS,
   PARAM_MINS,
@@ -254,7 +263,10 @@ const toggleStrategy = async (strategy: any) => {
   try {
     if (strategy.status === "running")
       await store.dispatch("strategy/stopStrategy", strategy.id);
-    else await store.dispatch("strategy/startStrategy", { strategyId: strategy.id });
+    else
+      await store.dispatch("strategy/startStrategy", {
+        strategyId: strategy.id,
+      });
   } catch (e: any) {
     message.error("操作失败: " + e.message);
   }

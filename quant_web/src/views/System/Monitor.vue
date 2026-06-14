@@ -10,69 +10,70 @@
     </div>
 
     <div class="main-content">
-    <n-result
-      v-if="error"
-      status="500"
-      title="加载失败"
-      description="获取监控数据失败"
-      class="monitor-error"
-    >
-      <template #footer
-        ><n-button @click="refreshData">重试</n-button></template
+      <n-result
+        v-if="error"
+        status="500"
+        title="加载失败"
+        description="获取监控数据失败"
+        class="monitor-error"
       >
-    </n-result>
+        <template #footer
+          ><n-button @click="refreshData">重试</n-button></template
+        >
+      </n-result>
 
-    <n-spin v-else :show="loading">
-      <n-grid
-        :x-gap="20"
-        :y-gap="20"
-        :cols="3"
-        responsive="screen"
-        class="monitor-grid"
-      >
-        <n-grid-item>
-          <n-card title="连接状态" class="monitor-card">
-            <ConnectionStatus :connections="connections" />
-          </n-card>
-        </n-grid-item>
+      <n-spin v-else :show="loading">
+        <n-grid
+          :x-gap="20"
+          :y-gap="20"
+          :cols="3"
+          responsive="screen"
+          class="monitor-grid"
+        >
+          <n-grid-item>
+            <n-card title="连接状态" class="monitor-card">
+              <ConnectionStatus :connections="connections" />
+            </n-card>
+          </n-grid-item>
 
-        <n-grid-item>
-          <n-card title="资源使用" class="monitor-card">
-            <ResourceUsage :resources="resources" />
-          </n-card>
-        </n-grid-item>
+          <n-grid-item>
+            <n-card title="资源使用" class="monitor-card">
+              <ResourceUsage :resources="resources" />
+            </n-card>
+          </n-grid-item>
 
-        <n-grid-item>
-          <n-card title="策略状态" class="monitor-card">
-            <StrategyStatus :strategies="runningStrategies" />
-          </n-card>
-        </n-grid-item>
-      </n-grid>
+          <n-grid-item>
+            <n-card title="策略状态" class="monitor-card">
+              <StrategyStatus :strategies="runningStrategies" />
+            </n-card>
+          </n-grid-item>
+        </n-grid>
 
-      <n-grid
-        :x-gap="20"
-        :y-gap="20"
-        :cols="2"
-        responsive="screen"
-        class="monitor-grid"
-      >
-        <n-grid-item>
-          <n-card title="实时日志" class="monitor-card">
-            <template #header-extra>
-              <n-button text size="small" @click="clearLogs">清空</n-button>
-            </template>
-            <SystemLogs :logs="logs" />
-          </n-card>
-        </n-grid-item>
+        <n-grid
+          :x-gap="20"
+          :y-gap="20"
+          :cols="2"
+          responsive="screen"
+          class="monitor-grid"
+        >
+          <n-grid-item>
+            <n-card title="实时日志" class="monitor-card">
+              <template #header-extra>
+                <n-button text size="small" @click="clearLogs">清空</n-button>
+              </template>
+              <SystemLogs :logs="logs" />
+            </n-card>
+          </n-grid-item>
 
-        <n-grid-item>
-          <n-card title="性能指标" class="monitor-card">
-            <PerformanceMetrics :metrics="performanceMetrics" />
-          </n-card>
-        </n-grid-item>
-      </n-grid>
-    </n-spin>
-    </div><!-- .main-content -->
+          <n-grid-item>
+            <n-card title="性能指标" class="monitor-card">
+              <PerformanceMetrics :metrics="performanceMetrics" />
+            </n-card>
+          </n-grid-item>
+        </n-grid>
+      </n-spin>
+    </div>
+    <!-- .main-content -->
   </div>
 </template>
 

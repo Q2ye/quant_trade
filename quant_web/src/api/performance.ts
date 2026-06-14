@@ -20,7 +20,9 @@ export default {
     },
   ): Promise<ApiStrategyPerformance> {
     return request
-      .get(`/quantTrade/analysis/performance/strategy/${strategyId}`, { params })
+      .get(`/quantTrade/analysis/performance/strategy/${strategyId}`, {
+        params,
+      })
       .then(handleResponse)
       .then((data: ApiResponse<ApiStrategyPerformance>) => data.data);
   },
@@ -58,7 +60,11 @@ export default {
     },
   ): Promise<PerformanceComparison> {
     return request
-      .post("/quantTrade/analysis/comparison/strategies", { strategyIds }, { params })
+      .post(
+        "/quantTrade/analysis/comparison/strategies",
+        { strategyIds },
+        { params },
+      )
       .then(handleResponse)
       .then((data: ApiResponse<PerformanceComparison>) => data.data);
   },

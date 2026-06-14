@@ -125,9 +125,27 @@ const clearFilters = () => {
           <h1 class="page-title">信号时间线</h1>
         </div>
         <div class="header-actions">
-          <n-select v-model:value="filters.type" :options="signalTypeOptions" multiple size="small" style="width: 160px" placeholder="选择信号类型" />
-          <n-select v-model:value="filters.timeRange" :options="timeRangeOptions" size="small" style="width: 140px" />
-          <n-input v-model:value="filters.symbol" placeholder="输入股票代码" size="small" style="width: 160px" clearable />
+          <n-select
+            v-model:value="filters.type"
+            :options="signalTypeOptions"
+            multiple
+            size="small"
+            style="width: 160px"
+            placeholder="选择信号类型"
+          />
+          <n-select
+            v-model:value="filters.timeRange"
+            :options="timeRangeOptions"
+            size="small"
+            style="width: 140px"
+          />
+          <n-input
+            v-model:value="filters.symbol"
+            placeholder="输入股票代码"
+            size="small"
+            style="width: 160px"
+            clearable
+          />
           <n-button size="small" @click="clearFilters">清除筛选</n-button>
         </div>
       </div>

@@ -373,15 +373,21 @@ class ETFRepository:
 		"""搜索ETF"""
 		return await self.etf_basic_repo.search_by_keyword(keyword, limit, skip)
 
-	async def get_all_etfs (self, active_only: bool = True, limit: Optional[int] = None) -> List[EtfBasic]:
+	async def get_all_etfs (self, active_only: bool = True, limit: Optional[int] = None, offset: int = 0) -> List[EtfBasic]:
 		"""获取所有ETF"""
 		if active_only:
 			if limit:
-				return await self.etf_basic_repo.get_many(list_status="L", limit=limit)
+				return await self.etf_basic_repo.get_many(list_status="L", limit=limit, skip=offset)
 			return await self.etf_basic_repo.get_many(list_status="L")
 		if limit:
 			return await self.etf_basic_repo.get_all(limit=limit)
 		return await self.etf_basic_repo.get_all()
+
+	async def count_etfs(self, active_only: bool = True) -> int:
+		"""统计ETF总数"""
+		if active_only:
+			return await self.etf_basic_repo.count(list_status="L")
+		return await self.etf_basic_repo.count()
 
 	# ==================== 行情数据操作 ====================
 

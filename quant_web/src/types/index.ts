@@ -56,7 +56,12 @@ export * from "./entities-risk";
 // ============================================================================
 
 // api-performance: 无冲突（ApiResponse 重定义已在源文件移除），直接按名导出
-export type { StrategyListItem, CurrentStrategy, PerformanceComparison, AccountInfo } from "./api-performance";
+export type {
+  StrategyListItem,
+  CurrentStrategy,
+  PerformanceComparison,
+  AccountInfo,
+} from "./api-performance";
 
 // api-shared: StrategyPerformance / BacktestResult 与 entities 冲突
 export type {

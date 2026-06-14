@@ -125,7 +125,10 @@ const columns = [
     render: (row: RiskEvent) =>
       h(
         NTag,
-        { type: row.action_taken === "stop_strategy" ? "error" : "warning", size: "small" },
+        {
+          type: row.action_taken === "stop_strategy" ? "error" : "warning",
+          size: "small",
+        },
         {
           default: () => {
             const m: Record<string, string> = {
@@ -147,7 +150,10 @@ const columns = [
     render: (row: RiskEvent) =>
       h(
         NTag,
-        { type: row.action_taken === "stop_strategy" ? "error" : "info", size: "small" },
+        {
+          type: row.action_taken === "stop_strategy" ? "error" : "info",
+          size: "small",
+        },
         { default: () => (row.action_taken === "alert" ? "报警" : "停止策略") },
       ),
   },
@@ -156,7 +162,11 @@ const columns = [
     key: "op",
     width: 80,
     render: (row: RiskEvent) =>
-      h(NButton, { size: "small", onClick: () => viewEventDetail(row) }, { default: () => "详情" }),
+      h(
+        NButton,
+        { size: "small", onClick: () => viewEventDetail(row) },
+        { default: () => "详情" },
+      ),
   },
 ];
 
@@ -247,17 +257,34 @@ onMounted(() => fetchRiskEvents());
       style="width: 560px"
     >
       <n-descriptions v-if="detailEvent" :column="2" bordered size="small">
-        <n-descriptions-item label="发生时间">{{ detailEvent.created_at }}</n-descriptions-item>
-        <n-descriptions-item label="触发规则">{{ detailEvent.rule_name }}</n-descriptions-item>
-        <n-descriptions-item label="关联策略">{{ detailEvent.strategy_id || "系统级" }}</n-descriptions-item>
-        <n-descriptions-item label="事件类型">{{ detailEvent.event_type }}</n-descriptions-item>
+        <n-descriptions-item label="发生时间">{{
+          detailEvent.created_at
+        }}</n-descriptions-item>
+        <n-descriptions-item label="触发规则">{{
+          detailEvent.rule_name
+        }}</n-descriptions-item>
+        <n-descriptions-item label="关联策略">{{
+          detailEvent.strategy_id || "系统级"
+        }}</n-descriptions-item>
+        <n-descriptions-item label="事件类型">{{
+          detailEvent.event_type
+        }}</n-descriptions-item>
         <n-descriptions-item label="执行动作">
-          <n-tag :type="detailEvent.action_taken === 'stop_strategy' ? 'error' : 'info'" size="small">
+          <n-tag
+            :type="
+              detailEvent.action_taken === 'stop_strategy' ? 'error' : 'info'
+            "
+            size="small"
+          >
             {{ detailEvent.action_taken === "alert" ? "报警" : "停止策略" }}
           </n-tag>
         </n-descriptions-item>
-        <n-descriptions-item label="触发值">{{ JSON.stringify(detailEvent.trigger_value) }}</n-descriptions-item>
-        <n-descriptions-item label="事件描述" :span="2">{{ detailEvent.event_message }}</n-descriptions-item>
+        <n-descriptions-item label="触发值">{{
+          JSON.stringify(detailEvent.trigger_value)
+        }}</n-descriptions-item>
+        <n-descriptions-item label="事件描述" :span="2">{{
+          detailEvent.event_message
+        }}</n-descriptions-item>
       </n-descriptions>
     </n-modal>
   </div>

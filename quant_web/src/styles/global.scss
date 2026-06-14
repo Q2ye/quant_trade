@@ -88,7 +88,9 @@ body {
 // 页面内容区域：实际内容的容器
 .page-content {
   padding: var(--content-padding); // 使用CSS变量的内边距
-  min-height: calc(var(--vh-full) - var(--header-height)); // 125vh 补偿 zoom 0.8
+  min-height: calc(
+    var(--vh-full) - var(--header-height)
+  ); // 125vh 补偿 zoom 0.8
   background-color: vars.$body-color; // 背景色
 }
 
@@ -396,7 +398,7 @@ body {
   background:
     radial-gradient(
       ellipse 60% 40% at 50% 0%,
-      rgba(68, 138, 255, 0.10),
+      rgba(68, 138, 255, 0.1),
       transparent 55%
     ),
     radial-gradient(
@@ -414,7 +416,7 @@ body {
       rgba(68, 138, 255, 0.03),
       transparent 40%
     ),
-    var(--color-bg-primary, #080C16);
+    var(--color-bg-primary, #080c16);
 }
 
 /* 玻璃态表面 —— 导航栏 / 侧边栏 */
@@ -439,13 +441,17 @@ body {
     padding: 1px;
     background: linear-gradient(
       90deg,
-      rgba(68, 138, 255, 0.30) 0%,
+      rgba(68, 138, 255, 0.3) 0%,
       rgba(68, 138, 255, 0.55) 50%,
-      rgba(68, 138, 255, 0.30) 100%
+      rgba(68, 138, 255, 0.3) 100%
     );
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
     mask-composite: exclude;
     pointer-events: none;
   }
@@ -489,18 +495,17 @@ body {
    ========================================================================== */
 
 .page-header {
-
   // === 盒模型 ===
   position: relative;
-  margin: 0 0 19px 0;        // 紧贴 workspace 边界（无左右留白）
-  border-radius: 0;          // 无圆角：上/左/右紧贴 workspace 边界
+  margin: 0 0 19px 0; // 紧贴 workspace 边界（无左右留白）
+  border-radius: 0; // 无圆角：上/左/右紧贴 workspace 边界
   overflow: hidden;
 
   // === 背景渐变 ===
   // 180deg 上→下：品牌蓝 → 深海暗 → 近黑，半透明可透 3D 粒子
   background: linear-gradient(
     180deg,
-    rgba(68, 138, 255, 0.20) 0%,
+    rgba(68, 138, 255, 0.2) 0%,
     rgba(68, 138, 255, 0.05) 35%,
     rgba(10, 20, 38, 0.55) 70%,
     rgba(8, 14, 26, 0.48) 100%
@@ -516,7 +521,9 @@ body {
   &::before {
     content: "";
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: 1px;
     background: linear-gradient(
       90deg,
@@ -534,8 +541,10 @@ body {
   &::after {
     content: "";
     position: absolute;
-    top: -50px; right: -30px;
-    width: 176px; height: 176px;
+    top: -50px;
+    right: -30px;
+    width: 176px;
+    height: 176px;
     background: radial-gradient(
       circle,
       rgba(68, 138, 255, 0.07) 0%,
@@ -554,7 +563,7 @@ body {
     align-items: center;
     flex-wrap: wrap;
     gap: 13px;
-    padding: 14px 19px;      // 垂直 18px 压缩头部高度
+    padding: 14px 19px; // 垂直 18px 压缩头部高度
   }
 
   .title-section {
@@ -564,11 +573,11 @@ body {
 
   .page-title {
     font-size: vars.$page-title-font-size; // 统一引用变量 ×0.8
-    font-weight: 600;        // 700 → 600，Inter 半粗体更精致
+    font-weight: 600; // 700 → 600，Inter 半粗体更精致
     letter-spacing: -0.01em; // 微紧缩字距，金融终端质感
     color: var(--n-text-color-1);
-    margin: 0 0 2px 0;       // 4 → 2，收紧与描述间距
-    line-height: 1.25;        // 1.3 → 1.25
+    margin: 0 0 2px 0; // 4 → 2，收紧与描述间距
+    line-height: 1.25; // 1.3 → 1.25
   }
 
   .page-description {
@@ -593,9 +602,9 @@ body {
   }
 
   .header-actions .n-button:hover {
-    border-color: rgba(68, 138, 255, 0.40);
+    border-color: rgba(68, 138, 255, 0.4);
     color: #fff;
-    background: rgba(68, 138, 255, 0.10);
+    background: rgba(68, 138, 255, 0.1);
   }
 
   // === 头部图标操作按钮 — 圆形 ===

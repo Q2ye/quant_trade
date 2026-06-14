@@ -53,7 +53,9 @@ export default {
   },
 
   async cancelOrder(orderId: string): Promise<void> {
-    return request.post(`/quantTrade/trade/orders/${orderId}/cancel`).then(handleResponse);
+    return request
+      .post(`/quantTrade/trade/orders/${orderId}/cancel`)
+      .then(handleResponse);
   },
 
   async createBatchOrders(

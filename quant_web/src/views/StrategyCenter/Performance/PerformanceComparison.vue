@@ -147,59 +147,59 @@ onMounted(() => {
       </div>
     </div>
     <div class="main-content">
-    <n-spin :show="loading">
-    <n-result
-      v-if="error"
-      status="500"
-      title="加载失败"
-      description="获取对比数据失败，请稍后重试"
-    >
-      <template #footer
-        ><n-button @click="loadComparisonData">重试</n-button></template
-      >
-    </n-result>
+      <n-spin :show="loading">
+        <n-result
+          v-if="error"
+          status="500"
+          title="加载失败"
+          description="获取对比数据失败，请稍后重试"
+        >
+          <template #footer
+            ><n-button @click="loadComparisonData">重试</n-button></template
+          >
+        </n-result>
 
-    <n-empty
-      v-else-if="!loading && !error && selectedStrategies.length === 0"
-      description="请选择对比策略"
-    />
+        <n-empty
+          v-else-if="!loading && !error && selectedStrategies.length === 0"
+          description="请选择对比策略"
+        />
 
-    <n-card v-else title="策略绩效对比">
-      <template #header-extra>
-        <n-space>
-          <n-select
-            v-model:value="selectedStrategies"
-            multiple
-            placeholder="选择对比策略"
-            style="width: 300px"
-            :options="strategyOptions"
-          />
+        <n-card v-else title="策略绩效对比">
+          <template #header-extra>
+            <n-space>
+              <n-select
+                v-model:value="selectedStrategies"
+                multiple
+                placeholder="选择对比策略"
+                style="width: 300px"
+                :options="strategyOptions"
+              />
 
-          <n-date-picker
-            v-model:formatted-value="dateRange"
-            type="daterange"
-            clearable
-          />
-        </n-space>
-      </template>
+              <n-date-picker
+                v-model:formatted-value="dateRange"
+                type="daterange"
+                clearable
+              />
+            </n-space>
+          </template>
 
-      <n-tabs>
-        <n-tab-pane name="chart" tab="净值曲线">
-          <div id="performanceChart" style="height: 400px"></div>
-        </n-tab-pane>
+          <n-tabs>
+            <n-tab-pane name="chart" tab="净值曲线">
+              <div id="performanceChart" style="height: 400px"></div>
+            </n-tab-pane>
 
-        <n-tab-pane name="metrics" tab="绩效指标">
-          <n-data-table
-            :data="comparisonData"
-            :columns="metricColumns"
-            :pagination="false"
-            :row-key="(row: PerformanceMetric) => row.name"
-          />
-        </n-tab-pane>
-      </n-tabs>
-    </n-card>
-  </n-spin>
-  </div>
+            <n-tab-pane name="metrics" tab="绩效指标">
+              <n-data-table
+                :data="comparisonData"
+                :columns="metricColumns"
+                :pagination="false"
+                :row-key="(row: PerformanceMetric) => row.name"
+              />
+            </n-tab-pane>
+          </n-tabs>
+        </n-card>
+      </n-spin>
+    </div>
   </div>
 </template>
 

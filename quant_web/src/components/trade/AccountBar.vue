@@ -18,15 +18,19 @@ const accountOptions = computed(() =>
   props.accounts.map((a) => ({
     label: `${a.account_name || a.account_number} (${a.broker})`,
     value: String(a.id),
-  }))
+  })),
 );
 
-const selectedAccount = computed(() =>
-  props.accounts.find((a) => String(a.id) === props.selectedAccountId) ?? props.accounts[0]
+const selectedAccount = computed(
+  () =>
+    props.accounts.find((a) => String(a.id) === props.selectedAccountId) ??
+    props.accounts[0],
 );
 
 const pnlColor = computed(() =>
-  (props.dailyPnl ?? 0) >= 0 ? "var(--color-stock-up)" : "var(--color-stock-down)"
+  (props.dailyPnl ?? 0) >= 0
+    ? "var(--color-stock-up)"
+    : "var(--color-stock-down)",
 );
 </script>
 
@@ -45,25 +49,39 @@ const pnlColor = computed(() =>
     <div class="account-bar-stats">
       <div class="stat-block">
         <span class="stat-label">总资产</span>
-        <span class="stat-value">¥{{ selectedAccount?.total_asset?.toLocaleString() ?? "--" }}</span>
+        <span class="stat-value"
+          >¥{{ selectedAccount?.total_asset?.toLocaleString() ?? "--" }}</span
+        >
       </div>
       <div class="stat-divider" />
       <div class="stat-block">
         <span class="stat-label">可用</span>
-        <span class="stat-value">¥{{ selectedAccount?.available_cash?.toLocaleString() ?? "--" }}</span>
+        <span class="stat-value"
+          >¥{{
+            selectedAccount?.available_cash?.toLocaleString() ?? "--"
+          }}</span
+        >
       </div>
       <div class="stat-divider" />
       <div class="stat-block">
         <span class="stat-label">市值</span>
-        <span class="stat-value">¥{{ selectedAccount?.market_value?.toLocaleString() ?? "--" }}</span>
+        <span class="stat-value"
+          >¥{{ selectedAccount?.market_value?.toLocaleString() ?? "--" }}</span
+        >
       </div>
       <div class="stat-divider" />
       <div class="stat-block">
         <span class="stat-label">当日盈亏</span>
         <span class="stat-value" :style="{ color: pnlColor }">
-          {{ (dailyPnl ?? 0) >= 0 ? "+" : "" }}¥{{ (dailyPnl ?? 0).toLocaleString() }}
+          {{ (dailyPnl ?? 0) >= 0 ? "+" : "" }}¥{{
+            (dailyPnl ?? 0).toLocaleString()
+          }}
         </span>
-        <span v-if="dailyPnlRatio != null" class="stat-sub" :style="{ color: pnlColor }">
+        <span
+          v-if="dailyPnlRatio != null"
+          class="stat-sub"
+          :style="{ color: pnlColor }"
+        >
           ({{ (dailyPnlRatio >= 0 ? "+" : "") + dailyPnlRatio.toFixed(2) }}%)
         </span>
       </div>

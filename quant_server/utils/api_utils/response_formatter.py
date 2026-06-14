@@ -198,12 +198,11 @@ class APIResponse(BaseModel, Generic[T]):
 		)
 
 	def _log_response (self, status_code: int):
-		"""记录响应日志"""
-		log_level = logging.INFO if self.code == ErrorCode.SUCCESS else logging.WARNING
-
-		logger.log(
-			log_level,
-			f"API响应: code={self.code}, status={status_code}, "
+		"""记录响应日志（仅非成功/无数据时打印，减少噪音）"""
+		if self.code == ErrorCode.SUCCESS:
+			return  # 成功响应静默，异常才打日志
+		logger.warning(
+			f"API响应异常: code={self.code}, status={status_code}, "
 			f"message={self.message}, data_type={type(self.data).__name__}"
 		)
 

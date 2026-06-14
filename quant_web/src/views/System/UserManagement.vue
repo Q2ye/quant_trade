@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from "vue";
-import { useMessage, useDialog, NTag, NButton, NSwitch, NSpin, NResult } from "naive-ui";
+import {
+  useMessage,
+  useDialog,
+  NTag,
+  NButton,
+  NSwitch,
+  NSpin,
+  NResult,
+} from "naive-ui";
 
 const message = useMessage();
 const dialog = useDialog();
@@ -84,9 +92,21 @@ const columns = [
     width: 200,
     render: (row: User) =>
       h("div", { style: { display: "flex", gap: "8px" } }, [
-        h(NButton, { size: "small", onClick: () => editUser(row) }, { default: () => "编辑" }),
-        h(NButton, { size: "small", onClick: () => resetPassword(row) }, { default: () => "重置密码" }),
-        h(NButton, { size: "small", type: "error", onClick: () => confirmDelete(row) }, { default: () => "删除" }),
+        h(
+          NButton,
+          { size: "small", onClick: () => editUser(row) },
+          { default: () => "编辑" },
+        ),
+        h(
+          NButton,
+          { size: "small", onClick: () => resetPassword(row) },
+          { default: () => "重置密码" },
+        ),
+        h(
+          NButton,
+          { size: "small", type: "error", onClick: () => confirmDelete(row) },
+          { default: () => "删除" },
+        ),
       ]),
   },
 ];

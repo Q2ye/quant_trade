@@ -261,7 +261,9 @@ onMounted(() => fetchBlacklist());
               :bordered="false"
               size="small"
             >
-              <template #empty><n-empty description="暂无黑名单记录" /></template>
+              <template #empty
+                ><n-empty description="暂无黑名单记录"
+              /></template>
             </n-data-table>
 
             <div class="pagination-container">
@@ -295,7 +297,9 @@ onMounted(() => fetchBlacklist());
         </n-form-item>
         <n-form-item v-if="resolvedName || resolvingName" label="股票名称">
           <n-spin :show="resolvingName" size="small">
-            <span class="resolved-name">{{ resolvedName || "未匹配到名称" }}</span>
+            <span class="resolved-name">{{
+              resolvedName || "未匹配到名称"
+            }}</span>
           </n-spin>
         </n-form-item>
         <n-form-item label="原因">

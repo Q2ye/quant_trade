@@ -156,7 +156,7 @@ select * from  stock_factor_daily;
 select count(*) from  stock_factor_daily;
 -- 股票技术因子专业版表（200+列，含三复权版本的所有技术指标）
 select * from  stock_factor_pro_daily;
-select count(*) from  stock_factor_pro_daily;
+    select count(*) from  stock_factor_pro_daily;
 -- 回测任务
 select * from backtest_tasks;
 -- stock_daily: Numeric(14,4) → Numeric(16,2)，容纳更大成交额
@@ -189,3 +189,5 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 
 
 drop table stk_managers
+
+-- stock_factor_pro_daily（每日技术因子 Pro）

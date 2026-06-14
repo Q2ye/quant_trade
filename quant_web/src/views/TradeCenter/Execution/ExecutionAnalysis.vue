@@ -15,107 +15,113 @@
     </div>
 
     <div class="main-content">
-    <n-spin :show="loading">
-      <n-result
-        v-if="error"
-        status="500"
-        title="数据加载失败"
-        description="请检查网络连接后重试"
-      >
-        <template #footer>
-          <n-button type="primary" @click="loadData">重试</n-button>
-        </template>
-      </n-result>
-
-      <template v-else>
-        <n-grid :x-gap="16" :cols="6" class="stats-row">
-          <n-grid-item v-for="stat in executionStats" :key="stat.name">
-            <n-card class="stat-card">
-              <div class="stat-content">
-                <div class="stat-value" :class="stat.trend">
-                  {{ stat.value }}
-                </div>
-                <div class="stat-label">{{ stat.name }}</div>
-                <div class="stat-trend">
-                  <SmartIcon :name="stat.trend === 'up' ? 'TrendingUp' : 'TrendingDown'" />
-                  {{ stat.change }}
-                </div>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-
-        <n-grid :x-gap="16" :cols="2" class="charts-row">
-          <n-grid-item>
-            <n-card>
-              <template #header><span>执行价格分析</span></template>
-              <div ref="priceChartRef" style="height: 340px"></div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item>
-            <n-card>
-              <template #header><span>执行时间分布</span></template>
-              <div ref="timeChartRef" style="height: 340px"></div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-
-        <n-grid :x-gap="16" :cols="2" class="charts-row">
-          <n-grid-item>
-            <n-card>
-              <template #header><span>市场冲击分析</span></template>
-              <div ref="impactChartRef" style="height: 340px"></div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item>
-            <n-card>
-              <template #header><span>流动性分析</span></template>
-              <div ref="liquidityChartRef" style="height: 340px"></div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-
-        <n-card class="main-card">
-          <template #header>
-            <div class="card-header">
-              <span>交易执行记录</span>
-              <div class="header-controls">
-                <n-date-picker
-                  v-model:value="dateRange"
-                  type="daterange"
-                  size="small"
-                  start-placeholder="开始日期"
-                  end-placeholder="结束日期"
-                  style="width: 220px"
-                />
-                <n-button size="small" type="primary" @click="exportData">导出数据</n-button>
-              </div>
-            </div>
+      <n-spin :show="loading">
+        <n-result
+          v-if="error"
+          status="500"
+          title="数据加载失败"
+          description="请检查网络连接后重试"
+        >
+          <template #footer>
+            <n-button type="primary" @click="loadData">重试</n-button>
           </template>
+        </n-result>
 
-          <n-data-table
-            :columns="columns"
-            :data="executionRecords"
-            :bordered="false"
-            size="small"
-          >
-            <template #empty>
-              <n-empty description="暂无执行记录" />
+        <template v-else>
+          <n-grid :x-gap="16" :cols="6" class="stats-row">
+            <n-grid-item v-for="stat in executionStats" :key="stat.name">
+              <n-card class="stat-card">
+                <div class="stat-content">
+                  <div class="stat-value" :class="stat.trend">
+                    {{ stat.value }}
+                  </div>
+                  <div class="stat-label">{{ stat.name }}</div>
+                  <div class="stat-trend">
+                    <SmartIcon
+                      :name="
+                        stat.trend === 'up' ? 'TrendingUp' : 'TrendingDown'
+                      "
+                    />
+                    {{ stat.change }}
+                  </div>
+                </div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+
+          <n-grid :x-gap="16" :cols="2" class="charts-row">
+            <n-grid-item>
+              <n-card>
+                <template #header><span>执行价格分析</span></template>
+                <div ref="priceChartRef" style="height: 340px"></div>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card>
+                <template #header><span>执行时间分布</span></template>
+                <div ref="timeChartRef" style="height: 340px"></div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+
+          <n-grid :x-gap="16" :cols="2" class="charts-row">
+            <n-grid-item>
+              <n-card>
+                <template #header><span>市场冲击分析</span></template>
+                <div ref="impactChartRef" style="height: 340px"></div>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item>
+              <n-card>
+                <template #header><span>流动性分析</span></template>
+                <div ref="liquidityChartRef" style="height: 340px"></div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+
+          <n-card class="main-card">
+            <template #header>
+              <div class="card-header">
+                <span>交易执行记录</span>
+                <div class="header-controls">
+                  <n-date-picker
+                    v-model:value="dateRange"
+                    type="daterange"
+                    size="small"
+                    start-placeholder="开始日期"
+                    end-placeholder="结束日期"
+                    style="width: 220px"
+                  />
+                  <n-button size="small" type="primary" @click="exportData"
+                    >导出数据</n-button
+                  >
+                </div>
+              </div>
             </template>
-          </n-data-table>
 
-          <div class="pagination-container">
-            <n-pagination
-              v-model:page="currentPage"
-              v-model:page-size="pageSize"
-              :item-count="total"
-              :page-sizes="[10, 20, 50, 100]"
-              show-size-picker
-            />
-          </div>
-        </n-card>
-      </template>
-    </n-spin>
+            <n-data-table
+              :columns="columns"
+              :data="executionRecords"
+              :bordered="false"
+              size="small"
+            >
+              <template #empty>
+                <n-empty description="暂无执行记录" />
+              </template>
+            </n-data-table>
+
+            <div class="pagination-container">
+              <n-pagination
+                v-model:page="currentPage"
+                v-model:page-size="pageSize"
+                :item-count="total"
+                :page-sizes="[10, 20, 50, 100]"
+                show-size-picker
+              />
+            </div>
+          </n-card>
+        </template>
+      </n-spin>
     </div>
   </div>
 </template>
@@ -221,7 +227,13 @@ const initCharts = () => {
     priceChart.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["执行价格", "VWAP"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: ["09:30", "10:00", "10:30", "11:00", "13:00", "14:00", "14:30"],
@@ -237,7 +249,7 @@ const initCharts = () => {
         {
           name: "VWAP",
           type: "line",
-          data: [15.19, 15.19, 15.20, 15.21, 15.22, 15.23, 15.24],
+          data: [15.19, 15.19, 15.2, 15.21, 15.22, 15.23, 15.24],
           smooth: true,
           lineStyle: { type: "dashed", color: "#91cc75" },
           itemStyle: { color: "#91cc75" },
@@ -250,14 +262,26 @@ const initCharts = () => {
     timeChart.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["订单数量", "累计占比"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: ["<1s", "1-2s", "2-3s", "3-5s", "5-10s", ">10s"],
       },
       yAxis: [
         { type: "value", name: "数量", splitNumber: 4 },
-        { type: "value", name: "%", min: 0, max: 100, splitLine: { show: false } },
+        {
+          type: "value",
+          name: "%",
+          min: 0,
+          max: 100,
+          splitLine: { show: false },
+        },
       ],
       series: [
         {
@@ -281,7 +305,13 @@ const initCharts = () => {
     impactChart.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["临时冲击", "永久冲击"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: ["大单1", "大单2", "大单3", "大单4", "大单5", "大单6", "大单7"],
@@ -310,20 +340,51 @@ const initCharts = () => {
     liquidityChart.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["挂单量", "成交率"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
-        data: ["09:30", "10:00", "10:30", "11:00", "11:30", "13:30", "14:00", "14:30", "15:00"],
+        data: [
+          "09:30",
+          "10:00",
+          "10:30",
+          "11:00",
+          "11:30",
+          "13:30",
+          "14:00",
+          "14:30",
+          "15:00",
+        ],
       },
       yAxis: [
-        { type: "value", name: "股数", splitNumber: 4, axisLabel: { formatter: (v: number) => (v / 10000).toFixed(0) + "万" } },
-        { type: "value", name: "%", min: 0, max: 100, splitLine: { show: false } },
+        {
+          type: "value",
+          name: "股数",
+          splitNumber: 4,
+          axisLabel: {
+            formatter: (v: number) => (v / 10000).toFixed(0) + "万",
+          },
+        },
+        {
+          type: "value",
+          name: "%",
+          min: 0,
+          max: 100,
+          splitLine: { show: false },
+        },
       ],
       series: [
         {
           name: "挂单量",
           type: "bar",
-          data: [85000, 92000, 78000, 65000, 58000, 72000, 88000, 95000, 110000],
+          data: [
+            85000, 92000, 78000, 65000, 58000, 72000, 88000, 95000, 110000,
+          ],
           itemStyle: { color: "rgba(68,138,255,0.6)" },
         },
         {
@@ -350,20 +411,47 @@ const loadData = async () => {
 
     if (statsRes) {
       const s = statsRes as any;
-      const winRate = s.successful_trades != null && s.total_trades > 0
-        ? ((s.successful_trades / s.total_trades) * 100).toFixed(1) + "%"
-        : "--";
+      const winRate =
+        s.successful_trades != null && s.total_trades > 0
+          ? ((s.successful_trades / s.total_trades) * 100).toFixed(1) + "%"
+          : "--";
       executionStats.value = [
-        { name: "总成交笔数", value: String(s.total_trades ?? "--"), change: "", trend: "up" },
-        { name: "成功笔数", value: String(s.successful_trades ?? "--"), change: "", trend: "up" },
-        { name: "总成交量", value: (s.total_volume ?? 0).toLocaleString(), change: "", trend: "up" },
-        { name: "总成交额", value: "¥" + (s.total_amount ?? 0).toLocaleString(), change: "", trend: "up" },
-        { name: "平均每笔", value: "¥" + (s.avg_trade_size ?? 0).toLocaleString(), change: "", trend: "down" },
+        {
+          name: "总成交笔数",
+          value: String(s.total_trades ?? "--"),
+          change: "",
+          trend: "up",
+        },
+        {
+          name: "成功笔数",
+          value: String(s.successful_trades ?? "--"),
+          change: "",
+          trend: "up",
+        },
+        {
+          name: "总成交量",
+          value: (s.total_volume ?? 0).toLocaleString(),
+          change: "",
+          trend: "up",
+        },
+        {
+          name: "总成交额",
+          value: "¥" + (s.total_amount ?? 0).toLocaleString(),
+          change: "",
+          trend: "up",
+        },
+        {
+          name: "平均每笔",
+          value: "¥" + (s.avg_trade_size ?? 0).toLocaleString(),
+          change: "",
+          trend: "down",
+        },
         { name: "执行成功率", value: winRate, change: "", trend: "up" },
       ];
     }
 
-    const items = (tradesRes as any)?.items ?? (Array.isArray(tradesRes) ? tradesRes : []);
+    const items =
+      (tradesRes as any)?.items ?? (Array.isArray(tradesRes) ? tradesRes : []);
     executionRecords.value = items.map((t: any) => ({
       orderId: t.order_id ?? t.id ?? "",
       symbol: t.ts_code ?? t.symbol ?? "",

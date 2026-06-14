@@ -5,7 +5,9 @@
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">数据同步管理</h1>
-          <p class="page-description">配置和管理各数据源的同步任务，查看同步状态与历史记录</p>
+          <p class="page-description">
+            配置和管理各数据源的同步任务，查看同步状态与历史记录
+          </p>
         </div>
       </div>
     </div>
@@ -13,78 +15,81 @@
     <div class="main-content">
       <n-card title="数据源状态" class="sync-card">
         <div class="status-grid">
-        <div
-          class="status-item"
-          v-for="source in dataSources"
-          :key="source.name"
-        >
-          <div class="source-name">{{ source.name }}</div>
-          <div class="source-status">
-            <n-tag :type="source.status === 'connected' ? 'success' : 'error'">
-              {{ source.status === "connected" ? "已连接" : "未连接" }}
-            </n-tag>
-          </div>
-          <div class="last-sync">
-            最后同步: {{ source.lastSync || "从未同步" }}
-          </div>
-          <n-button
-            size="small"
-            type="primary"
-            @click="syncDataSource(source.name)"
-            :loading="source.syncing"
-            :disabled="source.status === 'disconnected'"
+          <div
+            class="status-item"
+            v-for="source in dataSources"
+            :key="source.name"
           >
-            {{ source.status === "disconnected" ? "无法同步" : "同步数据" }}
-          </n-button>
+            <div class="source-name">{{ source.name }}</div>
+            <div class="source-status">
+              <n-tag
+                :type="source.status === 'connected' ? 'success' : 'error'"
+              >
+                {{ source.status === "connected" ? "已连接" : "未连接" }}
+              </n-tag>
+            </div>
+            <div class="last-sync">
+              最后同步: {{ source.lastSync || "从未同步" }}
+            </div>
+            <n-button
+              size="small"
+              type="primary"
+              @click="syncDataSource(source.name)"
+              :loading="source.syncing"
+              :disabled="source.status === 'disconnected'"
+            >
+              {{ source.status === "disconnected" ? "无法同步" : "同步数据" }}
+            </n-button>
+          </div>
         </div>
-      </div>
-    </n-card>
+      </n-card>
 
-    <n-card title="同步历史" class="sync-card">
-      <template #header-extra>
-        <div class="filter-controls">
-          <n-select
-            v-model:value="filterStatus"
-            placeholder="全部状态"
-            clearable
-            size="small"
-            style="width: 100px"
-            :options="statusOptions"
-          />
-          <n-select
-            v-model:value="filterSource"
-            placeholder="全部数据源"
-            clearable
-            size="small"
-            style="width: 120px"
-            :options="sourceOptions"
-          />
-          <n-date-picker
-            v-model:value="dateRange"
-            type="daterange"
-            clearable
-            size="small"
-            value-format="yyyy-MM-dd"
-          />
-        </div>
-      </template>
+      <n-card title="同步历史" class="sync-card">
+        <template #header-extra>
+          <div class="filter-controls">
+            <n-select
+              v-model:value="filterStatus"
+              placeholder="全部状态"
+              clearable
+              size="small"
+              style="width: 100px"
+              :options="statusOptions"
+            />
+            <n-select
+              v-model:value="filterSource"
+              placeholder="全部数据源"
+              clearable
+              size="small"
+              style="width: 120px"
+              :options="sourceOptions"
+            />
+            <n-date-picker
+              v-model:value="dateRange"
+              type="daterange"
+              clearable
+              size="small"
+              value-format="yyyy-MM-dd"
+            />
+          </div>
+        </template>
 
-      <n-spin :show="loading">
-        <n-data-table
-          :columns="columns"
-          :data="filteredHistory"
-          :pagination="paginationConfig"
-          :max-height="400"
-          :bordered="false"
-          size="small"
-        >
-          <template #empty>
-            <n-empty :description="emptyText" />
-          </template>
-        </n-data-table>
-      </n-spin>
-    </n-card>
-    </div><!-- .main-content -->
+        <n-spin :show="loading">
+          <n-data-table
+            :columns="columns"
+            :data="filteredHistory"
+            :pagination="paginationConfig"
+            :max-height="400"
+            :bordered="false"
+            size="small"
+          >
+            <template #empty>
+              <n-empty :description="emptyText" />
+            </template>
+          </n-data-table>
+        </n-spin>
+      </n-card>
+    </div>
+    <!-- .main-content -->
   </div>
 </template>
 

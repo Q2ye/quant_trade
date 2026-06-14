@@ -7,13 +7,18 @@
           <h1 class="page-title">交易驾驶舱</h1>
         </div>
         <div class="header-actions">
-          <n-button size="small" text class="workspace-btn" @click="router.push('/trade/workspace')">
+          <n-button
+            size="small"
+            text
+            class="workspace-btn"
+            @click="router.push('/trade/workspace')"
+          >
             <template #icon><SmartIcon name="Grid" /></template>
             工作台
           </n-button>
           <span class="ws-status" :class="{ connected: wsConnected }">
             <span class="ws-dot"></span>
-            {{ wsConnected ? '实时' : '离线' }}
+            {{ wsConnected ? "实时" : "离线" }}
           </span>
         </div>
       </div>
@@ -43,206 +48,270 @@
         <!-- Row 1: three equal cards -->
         <n-spin :show="pageState === 'loading'" class="row-spin">
           <n-grid :x-gap="16" :y-gap="16" :cols="24" class="top-row">
-          <!-- Account Overview -->
-          <n-grid-item :span="8">
-            <n-card class="overview-card">
-              <template #header>
-                <div class="card-header-row">
-                  <SmartIcon name="Wallet" class="card-header-icon" />
-                  <span>账户概览</span>
-                  <n-select
-                    v-model:value="selectedAccountId"
-                    size="tiny"
-                    style="width: 130px; margin-left: auto"
-                    :options="accountOptions"
-                  />
-                </div>
-              </template>
-              <div class="account-summary">
-                <div class="account-stat-row">
-                  <span class="stat-label">总资产</span>
-                  <span class="stat-value">¥{{ accountStats.totalAsset.toLocaleString() }}</span>
-                </div>
-                <div class="account-stat-row">
-                  <span class="stat-label">可用资金</span>
-                  <span class="stat-value">¥{{ accountStats.availableCash.toLocaleString() }}</span>
-                </div>
-                <div class="account-stat-row">
-                  <span class="stat-label">持仓市值</span>
-                  <span class="stat-value">¥{{ accountStats.marketValue.toLocaleString() }}</span>
-                </div>
-                <div class="account-divider" />
-                <div class="account-stat-row">
-                  <span class="stat-label">当日盈亏</span>
-                  <span class="stat-value" :class="dailyPnl >= 0 ? 'text-up' : 'text-down'">
-                    {{ dailyPnl >= 0 ? '+' : '' }}¥{{ dailyPnl.toLocaleString() }}
-                  </span>
-                </div>
-                <div class="account-stat-row">
-                  <span class="stat-label">当日收益率</span>
-                  <span class="stat-value" :class="dailyPnlRatio >= 0 ? 'text-up' : 'text-down'">
-                    {{ dailyPnlRatio >= 0 ? '+' : '' }}{{ dailyPnlRatio.toFixed(2) }}%
-                  </span>
-                </div>
-              </div>
-              <div v-if="positions.length > 0" class="mini-holdings">
-                <div class="holdings-title">持仓概览</div>
-                <div
-                  v-for="p in positions.slice(0, 3)"
-                  :key="p.symbol"
-                  class="mini-holding"
-                  @click="setSelectedSymbol(p.symbol)"
-                >
-                  <span class="mini-name">{{ p.name }}</span>
-                  <span
-                    class="mini-pnl"
-                    :class="(p.currentPrice - p.costPrice) >= 0 ? 'text-up' : 'text-down'"
-                  >
-                    {{ (((p.currentPrice - p.costPrice) / p.costPrice) * 100).toFixed(1) }}%
-                  </span>
-                </div>
-              </div>
-            </n-card>
-          </n-grid-item>
-
-          <!-- Signal Flow -->
-          <n-grid-item :span="8">
-            <n-card class="signal-card">
-              <template #header>
-                <div class="card-header-row">
-                  <SmartIcon name="Lightning" class="card-header-icon" />
-                  <span>实时信号流</span>
-                  <n-tag size="tiny" type="success" :bordered="false" round>
-                    {{ signalCount }} 条
-                  </n-tag>
-                </div>
-              </template>
-              <div v-if="signals.length === 0" class="card-empty">
-                <n-empty description="暂无交易信号" size="small" />
-              </div>
-              <div v-else class="signal-list">
-                <div
-                  v-for="s in signals"
-                  :key="s.id"
-                  class="signal-item"
-                  :class="{ 'signal-selected': s.symbol === selectedSymbol }"
-                  @click="handleSignalClick(s)"
-                >
-                  <div class="signal-top">
-                    <n-tag
+            <!-- Account Overview -->
+            <n-grid-item :span="8">
+              <n-card class="overview-card">
+                <template #header>
+                  <div class="card-header-row">
+                    <SmartIcon name="Wallet" class="card-header-icon" />
+                    <span>账户概览</span>
+                    <n-select
+                      v-model:value="selectedAccountId"
                       size="tiny"
-                      :type="s.direction === 'buy' ? 'success' : 'error'"
-                      :bordered="false"
-                    >
-                      {{ s.direction === 'buy' ? '买' : '卖' }}
-                    </n-tag>
-                    <span class="signal-stock">{{ s.symbolName }}</span>
-                    <span class="signal-time">{{ s.time }}</span>
+                      style="width: 130px; margin-left: auto"
+                      :options="accountOptions"
+                    />
                   </div>
-                  <div class="signal-bottom">
-                    <span class="signal-strategy">{{ s.strategy }}</span>
-                    <span
-                      class="signal-strength"
-                      :class="s.strength >= 0.7 ? 'text-up' : 'text-secondary'"
+                </template>
+                <div class="account-summary">
+                  <div class="account-stat-row">
+                    <span class="stat-label">总资产</span>
+                    <span class="stat-value"
+                      >¥{{ accountStats.totalAsset.toLocaleString() }}</span
                     >
-                      强度 {{ (s.strength * 100).toFixed(0) }}%
+                  </div>
+                  <div class="account-stat-row">
+                    <span class="stat-label">可用资金</span>
+                    <span class="stat-value"
+                      >¥{{ accountStats.availableCash.toLocaleString() }}</span
+                    >
+                  </div>
+                  <div class="account-stat-row">
+                    <span class="stat-label">持仓市值</span>
+                    <span class="stat-value"
+                      >¥{{ accountStats.marketValue.toLocaleString() }}</span
+                    >
+                  </div>
+                  <div class="account-divider" />
+                  <div class="account-stat-row">
+                    <span class="stat-label">当日盈亏</span>
+                    <span
+                      class="stat-value"
+                      :class="dailyPnl >= 0 ? 'text-up' : 'text-down'"
+                    >
+                      {{ dailyPnl >= 0 ? "+" : "" }}¥{{
+                        dailyPnl.toLocaleString()
+                      }}
+                    </span>
+                  </div>
+                  <div class="account-stat-row">
+                    <span class="stat-label">当日收益率</span>
+                    <span
+                      class="stat-value"
+                      :class="dailyPnlRatio >= 0 ? 'text-up' : 'text-down'"
+                    >
+                      {{ dailyPnlRatio >= 0 ? "+" : ""
+                      }}{{ dailyPnlRatio.toFixed(2) }}%
                     </span>
                   </div>
                 </div>
-              </div>
-            </n-card>
-          </n-grid-item>
+                <div v-if="positions.length > 0" class="mini-holdings">
+                  <div class="holdings-title">持仓概览</div>
+                  <div
+                    v-for="p in positions.slice(0, 3)"
+                    :key="p.symbol"
+                    class="mini-holding"
+                    @click="setSelectedSymbol(p.symbol)"
+                  >
+                    <span class="mini-name">{{ p.name }}</span>
+                    <span
+                      class="mini-pnl"
+                      :class="
+                        p.currentPrice - p.costPrice >= 0
+                          ? 'text-up'
+                          : 'text-down'
+                      "
+                    >
+                      {{
+                        (
+                          ((p.currentPrice - p.costPrice) / p.costPrice) *
+                          100
+                        ).toFixed(1)
+                      }}%
+                    </span>
+                  </div>
+                </div>
+              </n-card>
+            </n-grid-item>
 
-          <!-- Risk Indicators -->
-          <n-grid-item :span="8">
-            <n-card class="risk-card">
-              <template #header>
-                <div class="card-header-row">
-                  <SmartIcon name="ShieldCheckmark" class="card-header-icon" />
-                  <span>关键风险指标</span>
-                  <n-button size="tiny" text @click="router.push('/risk/monitor')">
-                    风控
-                    <template #icon><SmartIcon name="ChevronRight" /></template>
-                  </n-button>
+            <!-- Signal Flow -->
+            <n-grid-item :span="8">
+              <n-card class="signal-card">
+                <template #header>
+                  <div class="card-header-row">
+                    <SmartIcon name="Lightning" class="card-header-icon" />
+                    <span>实时信号流</span>
+                    <n-tag size="tiny" type="success" :bordered="false" round>
+                      {{ signalCount }} 条
+                    </n-tag>
+                  </div>
+                </template>
+                <div v-if="signals.length === 0" class="card-empty">
+                  <n-empty description="暂无交易信号" size="small" />
                 </div>
-              </template>
-              <div class="risk-grid">
-                <div class="risk-item">
-                  <span class="risk-label">VaR (95%)</span>
-                  <span class="risk-value">¥{{ riskIndicators.var95.toLocaleString() }}</span>
+                <div v-else class="signal-list">
+                  <div
+                    v-for="s in signals"
+                    :key="s.id"
+                    class="signal-item"
+                    :class="{ 'signal-selected': s.symbol === selectedSymbol }"
+                    @click="handleSignalClick(s)"
+                  >
+                    <div class="signal-top">
+                      <n-tag
+                        size="tiny"
+                        :type="s.direction === 'buy' ? 'success' : 'error'"
+                        :bordered="false"
+                      >
+                        {{ s.direction === "buy" ? "买" : "卖" }}
+                      </n-tag>
+                      <span class="signal-stock">{{ s.symbolName }}</span>
+                      <span class="signal-time">{{ s.time }}</span>
+                    </div>
+                    <div class="signal-bottom">
+                      <span class="signal-strategy">{{ s.strategy }}</span>
+                      <span
+                        class="signal-strength"
+                        :class="
+                          s.strength >= 0.7 ? 'text-up' : 'text-secondary'
+                        "
+                      >
+                        强度 {{ (s.strength * 100).toFixed(0) }}%
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div class="risk-item">
-                  <span class="risk-label">最大回撤</span>
-                  <span class="risk-value text-down">{{ (riskIndicators.maxDrawdown * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="risk-item">
-                  <span class="risk-label">行业集中度</span>
-                  <span class="risk-value">{{ (riskIndicators.concentration * 100).toFixed(0) }}%</span>
-                </div>
-                <div class="risk-item">
-                  <span class="risk-label">杠杆率</span>
-                  <span class="risk-value">{{ (riskIndicators.leverage * 100).toFixed(0) }}%</span>
-                </div>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-      </n-spin>
+              </n-card>
+            </n-grid-item>
 
-      <!-- Row 2: Chart + Order sidebar -->
-      <n-spin :show="pageState === 'loading'" class="row-spin">
-        <n-grid :x-gap="16" :cols="24" class="bottom-row">
-          <n-grid-item :span="18">
-            <n-card class="chart-card">
-              <template #header>
-                <div class="card-header-row">
-                  <span>K线图表 — {{ selectedSymbol || "请选择标的" }}</span>
-                  <n-select
-                    v-model:value="chartPeriod"
-                    size="tiny"
-                    style="width: 90px"
-                    :options="periodOptions"
+            <!-- Risk Indicators -->
+            <n-grid-item :span="8">
+              <n-card class="risk-card">
+                <template #header>
+                  <div class="card-header-row">
+                    <SmartIcon
+                      name="ShieldCheckmark"
+                      class="card-header-icon"
+                    />
+                    <span>关键风险指标</span>
+                    <n-button
+                      size="tiny"
+                      text
+                      @click="router.push('/risk/monitor')"
+                    >
+                      风控
+                      <template #icon
+                        ><SmartIcon name="ChevronRight"
+                      /></template>
+                    </n-button>
+                  </div>
+                </template>
+                <div class="risk-grid">
+                  <div class="risk-item">
+                    <span class="risk-label">VaR (95%)</span>
+                    <span class="risk-value"
+                      >¥{{ riskIndicators.var95.toLocaleString() }}</span
+                    >
+                  </div>
+                  <div class="risk-item">
+                    <span class="risk-label">最大回撤</span>
+                    <span class="risk-value text-down"
+                      >{{
+                        (riskIndicators.maxDrawdown * 100).toFixed(1)
+                      }}%</span
+                    >
+                  </div>
+                  <div class="risk-item">
+                    <span class="risk-label">行业集中度</span>
+                    <span class="risk-value"
+                      >{{
+                        (riskIndicators.concentration * 100).toFixed(0)
+                      }}%</span
+                    >
+                  </div>
+                  <div class="risk-item">
+                    <span class="risk-label">杠杆率</span>
+                    <span class="risk-value"
+                      >{{ (riskIndicators.leverage * 100).toFixed(0) }}%</span
+                    >
+                  </div>
+                </div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </n-spin>
+
+        <!-- Row 2: Chart + Order sidebar -->
+        <n-spin :show="pageState === 'loading'" class="row-spin">
+          <n-grid :x-gap="16" :cols="24" class="bottom-row">
+            <n-grid-item :span="18">
+              <n-card class="chart-card">
+                <template #header>
+                  <div class="card-header-row">
+                    <span>K线图表 — {{ selectedSymbol || "请选择标的" }}</span>
+                    <n-select
+                      v-model:value="chartPeriod"
+                      size="tiny"
+                      style="width: 90px"
+                      :options="periodOptions"
+                    />
+                  </div>
+                </template>
+                <div class="chart-wrapper">
+                  <KLineChart
+                    :symbol="selectedSymbol"
+                    :period="chartPeriod"
+                    @chart-click="handleChartClick"
+                    @data-loaded="handleKLineDataLoaded"
                   />
                 </div>
-              </template>
-              <div class="chart-wrapper">
-                <KLineChart
-                  :symbol="selectedSymbol"
-                  :period="chartPeriod"
-                  @chart-click="handleChartClick"
-                  @data-loaded="handleKLineDataLoaded"
-                />
-              </div>
-            </n-card>
-          </n-grid-item>
+              </n-card>
+            </n-grid-item>
 
-          <n-grid-item :span="6">
-            <n-card class="order-card">
-              <template #header>
-                <div class="card-header-row">
-                  <SmartIcon name="Cart" class="card-header-icon" />
-                  <span>快速下单</span>
-                </div>
-              </template>
-              <OrderForm
-                :initial-symbol="selectedSymbol"
-                :initial-side="routeSide"
-                :initial-direction="prefillDirection"
-                @preview-order="handleOrderPreview"
-              />
-            </n-card>
-          </n-grid-item>
-        </n-grid>
-      </n-spin>
+            <n-grid-item :span="6">
+              <n-card class="order-card">
+                <template #header>
+                  <div class="card-header-row">
+                    <SmartIcon name="Cart" class="card-header-icon" />
+                    <span>快速下单</span>
+                  </div>
+                </template>
+                <OrderForm
+                  :initial-symbol="selectedSymbol"
+                  :initial-side="routeSide"
+                  :initial-direction="prefillDirection"
+                  @preview-order="handleOrderPreview"
+                />
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+        </n-spin>
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from "vue";
+import {
+  ref,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  defineAsyncComponent,
+} from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { NCard, NButton, NTag, NSelect, NSpin, NResult, NEmpty, NGrid, NGridItem, useMessage } from "naive-ui";
+import {
+  NCard,
+  NButton,
+  NTag,
+  NSelect,
+  NSpin,
+  NResult,
+  NEmpty,
+  NGrid,
+  NGridItem,
+  useMessage,
+} from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import OrderForm from "@/components/trade/OrderForm.vue";
 import KLineChart from "@/components/charts/KLineChart.vue";
@@ -262,7 +331,9 @@ const message = useMessage();
 // Route query → cross-page linking from Workspace
 // ============================================================
 const routeSymbol = computed(() => (route.query.symbol as string) || "");
-const routeSide = computed(() => (route.query.side as "buy" | "sell") || undefined);
+const routeSide = computed(
+  () => (route.query.side as "buy" | "sell") || undefined,
+);
 
 // ============================================================
 // State
@@ -287,10 +358,15 @@ const periodOptions = [
 const selectedAccountId = ref("1");
 const accounts = ref<any[]>([]);
 const accountOptions = computed(() =>
-  accounts.value.map((a: any) => ({ label: a.account_name ?? a.name ?? String(a.id), value: String(a.id) })),
+  accounts.value.map((a: any) => ({
+    label: a.account_name ?? a.name ?? String(a.id),
+    value: String(a.id),
+  })),
 );
 const accountStats = computed(() => {
-  const acc = accounts.value.find((a: any) => String(a.id) === selectedAccountId.value);
+  const acc = accounts.value.find(
+    (a: any) => String(a.id) === selectedAccountId.value,
+  );
   return {
     totalAsset: acc?.total_asset ?? 0,
     availableCash: acc?.available_cash ?? 0,
@@ -339,11 +415,13 @@ const setSelectedSymbol = (symbol: string) => {
 const handleOrderPreview = (order: any) => {
   message.info(
     `预览订单: ${order.name} ${order.direction} ${order.quantity}股 ` +
-    `${order.type} ${typeof order.price === 'number' ? '¥' + order.price : order.price} ` +
-    `金额 ¥${order.amount.toLocaleString()}`
+      `${order.type} ${typeof order.price === "number" ? "¥" + order.price : order.price} ` +
+      `金额 ¥${order.amount.toLocaleString()}`,
   );
 };
-const handleChartClick = (data: any) => { /* future: set order price */ };
+const handleChartClick = (data: any) => {
+  /* future: set order price */
+};
 const handleKLineDataLoaded = (data: any) => {};
 
 const loadDashboardData = async () => {
@@ -388,8 +466,14 @@ const loadDashboardData = async () => {
     }));
 
     // Compute risk indicators from positions
-    const totalValue = positions.value.reduce((sum, p) => sum + (p.currentPrice * p.volume), 0);
-    const maxPosValue = positions.value.reduce((max, p) => Math.max(max, p.currentPrice * p.volume), 0);
+    const totalValue = positions.value.reduce(
+      (sum, p) => sum + p.currentPrice * p.volume,
+      0,
+    );
+    const maxPosValue = positions.value.reduce(
+      (max, p) => Math.max(max, p.currentPrice * p.volume),
+      0,
+    );
     riskIndicators.value = {
       var95: Math.round(totalValue * 0.025),
       maxDrawdown: 0.068,
@@ -397,7 +481,10 @@ const loadDashboardData = async () => {
       leverage: 0,
     };
 
-    pageState.value = positions.value.length > 0 || accounts.value.length > 0 ? "data" : "empty";
+    pageState.value =
+      positions.value.length > 0 || accounts.value.length > 0
+        ? "data"
+        : "empty";
   } catch {
     pageState.value = "error";
   }
@@ -434,7 +521,9 @@ onMounted(() => {
   webSocketService.subscribe("risk:alerts", (data: any) => {
     const level = data.severity ?? data.level ?? "";
     if (level === "critical" || level === "严重") {
-      message.warning(`风控告警: ${data.message ?? data.description ?? "风险事件触发"}`);
+      message.warning(
+        `风控告警: ${data.message ?? data.description ?? "风险事件触发"}`,
+      );
     }
   });
 
@@ -577,8 +666,8 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.04);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   transition: background 0.15s;
 }
 .signal-item:hover {
@@ -634,7 +723,7 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 10px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 .risk-label {
   font-size: 11px;
@@ -694,7 +783,9 @@ onBeforeUnmount(() => {
 
   &.connected {
     color: var(--color-success, #30a46c);
-    .ws-dot { background: var(--color-success, #30a46c); }
+    .ws-dot {
+      background: var(--color-success, #30a46c);
+    }
   }
 }
 </style>

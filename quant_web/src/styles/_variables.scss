@@ -133,41 +133,74 @@ $font-family-base:
 
 /* -------------------- 颜色变量引用（映射到CSS变量） -------------------- */
 
-$primary-color: var(--color-primary, #448AFF); /* 映射主色调CSS变量 */
-$success-color: var(--color-success, #00E676); /* 映射成功色CSS变量 */
-$info-color: var(--color-info, #40C4FF); /* 映射信息色CSS变量 */
-$warning-color: var(--color-warning, #FFB74D); /* 映射警告色CSS变量 */
-$error-color: var(--color-error, #FF5252); /* 映射错误色CSS变量 */
-$purple-color: var(--color-purple, #7C6FF7); /* 映射紫色CSS变量 */
+$primary-color: var(--color-primary, #448aff); /* 映射主色调CSS变量 */
+$success-color: var(--color-success, #00e676); /* 映射成功色CSS变量 */
+$info-color: var(--color-info, #40c4ff); /* 映射信息色CSS变量 */
+$warning-color: var(--color-warning, #ffb74d); /* 映射警告色CSS变量 */
+$error-color: var(--color-error, #ff5252); /* 映射错误色CSS变量 */
+$purple-color: var(--color-purple, #7c6ff7); /* 映射紫色CSS变量 */
 
 /* -------------------- 背景颜色引用（映射到CSS变量） -------------------- */
 
-$body-color: var(--color-bg-primary, #080C16); /* 页面底色（不透明） */
-$secondary-bg: var(--color-bg-secondary, rgba(10, 14, 24, 0.50)); /* 映射次背景色CSS变量 */
-$card-color: var(--color-bg-card, rgba(12, 18, 32, 0.55)); /* 映射卡片背景色CSS变量 */
-$card-header-color: var(--color-bg-card-header, rgba(16, 24, 42, 0.65)); /* 映射卡片头部背景色CSS变量 */
-$input-bg: var(--color-bg-input, rgba(8, 12, 22, 0.45)); /* 映射输入框背景色CSS变量 */
-$hover-bg: var(--color-bg-hover, rgba(68, 138, 255, 0.05)); /* 映射悬停背景色CSS变量 */
-$active-bg: var(--color-bg-active, rgba(68, 138, 255, 0.10)); /* 映射激活背景色CSS变量 */
-$disabled-bg: var(--color-bg-disabled, #4A5A78); /* 映射禁用背景色CSS变量 */
+$body-color: var(--color-bg-primary, #080c16); /* 页面底色（不透明） */
+$secondary-bg: var(
+  --color-bg-secondary,
+  rgba(10, 14, 24, 0.5)
+); /* 映射次背景色CSS变量 */
+$card-color: var(
+  --color-bg-card,
+  rgba(12, 18, 32, 0.55)
+); /* 映射卡片背景色CSS变量 */
+$card-header-color: var(
+  --color-bg-card-header,
+  rgba(16, 24, 42, 0.65)
+); /* 映射卡片头部背景色CSS变量 */
+$input-bg: var(
+  --color-bg-input,
+  rgba(8, 12, 22, 0.45)
+); /* 映射输入框背景色CSS变量 */
+$hover-bg: var(
+  --color-bg-hover,
+  rgba(68, 138, 255, 0.05)
+); /* 映射悬停背景色CSS变量 */
+$active-bg: var(
+  --color-bg-active,
+  rgba(68, 138, 255, 0.1)
+); /* 映射激活背景色CSS变量 */
+$disabled-bg: var(--color-bg-disabled, #4a5a78); /* 映射禁用背景色CSS变量 */
 
 /* -------------------- 文字颜色引用（映射到CSS变量） -------------------- */
 
-$text-color-base: var(--color-text-primary, #EBEDF5); /* 映射基础文字颜色CSS变量 */
-$text-color-1: var(--color-text-primary, #EBEDF5); /* 映射一级文字颜色CSS变量 */
-$text-color-2: var(--color-text-secondary, #8898B8); /* 映射二级文字颜色CSS变量 */
-$text-color-3: var(--color-text-tertiary, rgba(136, 152, 184, 0.6)); /* 映射三级文字颜色CSS变量 */
+$text-color-base: var(
+  --color-text-primary,
+  #ebedf5
+); /* 映射基础文字颜色CSS变量 */
+$text-color-1: var(--color-text-primary, #ebedf5); /* 映射一级文字颜色CSS变量 */
+$text-color-2: var(
+  --color-text-secondary,
+  #8898b8
+); /* 映射二级文字颜色CSS变量 */
+$text-color-3: var(
+  --color-text-tertiary,
+  rgba(136, 152, 184, 0.6)
+); /* 映射三级文字颜色CSS变量 */
 
 /* -------------------- 边框颜色引用（映射到CSS变量） -------------------- */
 
-$border-color: var(--color-border, rgba(25, 35, 60, 0.50)); /* 映射边框颜色CSS变量 */
-$divider-color: var(--color-divider, rgba(25, 35, 60, 0.50)); /* 映射分割线颜色CSS变量 */
+$border-color: var(
+  --color-border,
+  rgba(25, 35, 60, 0.5)
+); /* 映射边框颜色CSS变量 */
+$divider-color: var(
+  --color-divider,
+  rgba(25, 35, 60, 0.5)
+); /* 映射分割线颜色CSS变量 */
 
 /* -------------------- 状态颜色引用（映射到CSS变量） -------------------- */
 
-$stock-up-color: var(--color-stock-up, #FF5252); /* 映射上涨颜色CSS变量 */
-$stock-down-color: var(--color-stock-down, #00E676); /* 映射下跌颜色CSS变量 */
-$stock-flat-color: var(--color-stock-flat, #8898B8); /* 映射持平颜色CSS变量 */
+$stock-up-color: var(--color-stock-up, #ff5252); /* 映射上涨颜色CSS变量 */
+$stock-down-color: var(--color-stock-down, #00e676); /* 映射下跌颜色CSS变量 */
+$stock-flat-color: var(--color-stock-flat, #8898b8); /* 映射持平颜色CSS变量 */
 
 /* -------------------- 状态指示颜色引用（映射到CSS变量） -------------------- */
 
@@ -177,7 +210,10 @@ $status-running-color: var(
 $status-progress-color: var(
   --color-status-progress
 ); /* 映射进行中状态颜色CSS变量 */
-$status-time-color: var(--color-status-time, #FFB74D); /* 映射时间状态颜色CSS变量 */
+$status-time-color: var(
+  --color-status-time,
+  #ffb74d
+); /* 映射时间状态颜色CSS变量 */
 $status-remaining-color: var(
   --color-status-remaining
 ); /* 映射剩余状态颜色CSS变量 */
@@ -191,33 +227,63 @@ $border-radius-large: var(--border-radius-lg, 8px); /* 映射大圆角CSS变量 
 
 /* -------------------- 阴影引用（映射到CSS变量） -------------------- */
 
-$box-shadow-1: var(--box-shadow-1, 0 0 1px rgba(68, 138, 255, 0.06)); /* 映射一级阴影CSS变量 */
-$box-shadow-2: var(--box-shadow-2, 0 0 2px rgba(68, 138, 255, 0.12)); /* 映射二级阴影CSS变量 */
-$box-shadow-3: var(--box-shadow-3, 0 0 4px rgba(68, 138, 255, 0.18)); /* 映射三级阴影CSS变量 */
+$box-shadow-1: var(
+  --box-shadow-1,
+  0 0 1px rgba(68, 138, 255, 0.06)
+); /* 映射一级阴影CSS变量 */
+$box-shadow-2: var(
+  --box-shadow-2,
+  0 0 2px rgba(68, 138, 255, 0.12)
+); /* 映射二级阴影CSS变量 */
+$box-shadow-3: var(
+  --box-shadow-3,
+  0 0 4px rgba(68, 138, 255, 0.18)
+); /* 映射三级阴影CSS变量 */
 
 /* -------------------- 字体引用（映射到CSS变量） -------------------- */
 
-$font-family: var(--font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif); /* 映射主要字体族CSS变量 */
-$font-family-mono: var(--font-family-mono, Monaco, "Courier New", monospace); /* 映射等宽字体族CSS变量 */
+$font-family: var(
+  --font-family,
+  "Segoe UI",
+  Tahoma,
+  Geneva,
+  Verdana,
+  sans-serif
+); /* 映射主要字体族CSS变量 */
+$font-family-mono: var(
+  --font-family-mono,
+  Monaco,
+  "Courier New",
+  monospace
+); /* 映射等宽字体族CSS变量 */
 
 /* -------------------- 边框宽度 -------------------- */
 $border-width: 1px; /* 标准边框宽度 */
 
 /* -------------------- 页面布局变量 -------------------- */
-$page-header-bg: var(--color-bg-card, rgba(12, 18, 32, 0.55)); /* 页面头部背景 */
-$card-header-bg: var(--color-bg-card-header, rgba(16, 24, 42, 0.65)); /* 卡片头部背景 */
+$page-header-bg: var(
+  --color-bg-card,
+  rgba(12, 18, 32, 0.55)
+); /* 页面头部背景 */
+$card-header-bg: var(
+  --color-bg-card-header,
+  rgba(16, 24, 42, 0.65)
+); /* 卡片头部背景 */
 
 /* -------------------- 交互动效变量 -------------------- */
 $hover-transform: translateY(-2px); /* 悬停上移效果 */
 
 /* -------------------- 工具变量 -------------------- */
-$text-secondary: var(--color-text-secondary, #8898B8); /* 次要文字颜色别名 */
-$text-primary: var(--color-text-primary, #EBEDF5); /* 主要文字颜色别名 */
-$text-tertiary: var(--color-text-tertiary, rgba(136, 152, 184, 0.6)); /* 三级文字颜色别名 */
+$text-secondary: var(--color-text-secondary, #8898b8); /* 次要文字颜色别名 */
+$text-primary: var(--color-text-primary, #ebedf5); /* 主要文字颜色别名 */
+$text-tertiary: var(
+  --color-text-tertiary,
+  rgba(136, 152, 184, 0.6)
+); /* 三级文字颜色别名 */
 
 /* -------------------- 语义化颜色别名（供旧SCSS文件兼容） -------------------- */
-$accent-color: var(--color-primary, #448AFF); /* 强调色 → 主色 */
-$danger-color: var(--color-error, #FF5252); /* 危险色 → 错误色 */
+$accent-color: var(--color-primary, #448aff); /* 强调色 → 主色 */
+$danger-color: var(--color-error, #ff5252); /* 危险色 → 错误色 */
 
 /* -------------------- 圆角别名 -------------------- */
 $border-radius-sm: var(--border-radius-sm, 4px); /* 小圆角（短别名） */
@@ -225,7 +291,10 @@ $border-radius-md: var(--border-radius-md, 6px); /* 中等圆角（短别名） 
 $border-radius-lg: var(--border-radius-lg, 8px); /* 大圆角（短别名） */
 
 /* -------------------- 阴影别名 -------------------- */
-$card-hover-shadow: var(--box-shadow-2, 0 8px 24px rgba(0, 0, 0, 0.35)); /* 卡片悬停阴影 */
+$card-hover-shadow: var(
+  --box-shadow-2,
+  0 8px 24px rgba(0, 0, 0, 0.35)
+); /* 卡片悬停阴影 */
 
 /* -------------------- 页面排版变量 -------------------- */
 $page-title-font-size: 18px; /* 页面标题字体大小 */
@@ -235,7 +304,7 @@ $status-icon-size: 24px; /* 状态图标尺寸 */
 /* -------------------- 功能卡片相关变量 -------------------- */
 $function-icon-size: 36px; /* 功能图标尺寸 */
 $function-stats-gap: 8px; /* 功能统计项间距 */
-$function-footer-border: 1px solid var(--color-border, #1E1E4A); /* 功能卡片底部分隔线 */
+$function-footer-border: 1px solid var(--color-border, #1e1e4a); /* 功能卡片底部分隔线 */
 
 // ============================================================================
 // 核心工具函数

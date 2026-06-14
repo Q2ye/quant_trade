@@ -55,7 +55,9 @@ function init(): boolean {
       testCanvas.getContext("experimental-webgl");
     if (!gl) throw new Error("WebGL not supported");
   } catch {
-    console.warn("[ParticleBackground] WebGL unavailable — falling back to CSS gradient");
+    console.warn(
+      "[ParticleBackground] WebGL unavailable — falling back to CSS gradient",
+    );
     return false;
   }
 

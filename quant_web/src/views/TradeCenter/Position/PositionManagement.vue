@@ -160,9 +160,15 @@ onMounted(() => fetchPositions());
           <h1 class="page-title">持仓管理</h1>
         </div>
         <div class="header-actions">
-          <span>持仓市值: ¥{{ totalStats.totalMarketValue.toLocaleString() }}</span>
-          <span :class="totalStats.totalProfitLoss >= 0 ? 'positive' : 'negative'">
-            总盈亏: ¥{{ totalStats.totalProfitLoss.toLocaleString() }} ({{ totalStats.totalProfitLossRatio.toFixed(2) }}%)
+          <span
+            >持仓市值: ¥{{ totalStats.totalMarketValue.toLocaleString() }}</span
+          >
+          <span
+            :class="totalStats.totalProfitLoss >= 0 ? 'positive' : 'negative'"
+          >
+            总盈亏: ¥{{ totalStats.totalProfitLoss.toLocaleString() }} ({{
+              totalStats.totalProfitLossRatio.toFixed(2)
+            }}%)
           </span>
           <n-button @click="refreshPositions">刷新</n-button>
         </div>

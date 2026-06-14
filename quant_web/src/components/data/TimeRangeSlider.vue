@@ -3,15 +3,18 @@
 import { ref, computed, watch } from "vue";
 import dayjs from "dayjs";
 
-const props = withDefaults(defineProps<{
-  minDate?: string | Date;
-  maxDate?: string | Date;
-  value?: Date[];
-}>(), {
-  minDate: () => dayjs().subtract(5, "year").toDate(),
-  maxDate: () => new Date(),
-  value: () => [dayjs().subtract(1, "year").toDate(), new Date()],
-});
+const props = withDefaults(
+  defineProps<{
+    minDate?: string | Date;
+    maxDate?: string | Date;
+    value?: Date[];
+  }>(),
+  {
+    minDate: () => dayjs().subtract(5, "year").toDate(),
+    maxDate: () => new Date(),
+    value: () => [dayjs().subtract(1, "year").toDate(), new Date()],
+  },
+);
 
 const emit = defineEmits<{
   input: [value: Date[]];
@@ -26,12 +29,15 @@ const maxTimestamp = computed(() => new Date(props.maxDate).getTime());
 
 const range = computed(() => maxTimestamp.value - minTimestamp.value);
 
-const startPercent = computed(() =>
-  ((localValue.value[0].getTime() - minTimestamp.value) / range.value) * 100,
+const startPercent = computed(
+  () =>
+    ((localValue.value[0].getTime() - minTimestamp.value) / range.value) * 100,
 );
 
-const endPercent = computed(() =>
-  100 - ((maxTimestamp.value - localValue.value[1].getTime()) / range.value) * 100,
+const endPercent = computed(
+  () =>
+    100 -
+    ((maxTimestamp.value - localValue.value[1].getTime()) / range.value) * 100,
 );
 
 watch(

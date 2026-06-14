@@ -272,9 +272,10 @@ const loadTableData = async () => {
       severity: issue.severity,
       detectedTime: new Date().toISOString(),
       status: "pending",
-      suggestedAction: issue.severity === "critical" || issue.severity === "high"
-        ? "请立即检查并修复数据"
-        : "请关注并适时处理",
+      suggestedAction:
+        issue.severity === "critical" || issue.severity === "high"
+          ? "请立即检查并修复数据"
+          : "请关注并适时处理",
       affectedRecords: issue.count,
     }));
     tableData.value = data;

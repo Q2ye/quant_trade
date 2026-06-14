@@ -163,7 +163,12 @@ export const WebSocketMessageTypes = {
 } as const;
 
 export interface SyncEventMessage {
-  _event: "data_sync_started" | "data_sync_progress" | "data_sync_completed" | "data_sync_failed" | "data_sync_cancelled";
+  _event:
+    | "data_sync_started"
+    | "data_sync_progress"
+    | "data_sync_completed"
+    | "data_sync_failed"
+    | "data_sync_cancelled";
   task_id: string;
   sync_type?: string;
   progress?: number;

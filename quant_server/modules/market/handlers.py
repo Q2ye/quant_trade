@@ -9,8 +9,8 @@ from modules.market.services.dashboard_service import get_dashboard_overview
 from modules.market.services.stock_service import get_stock_full
 from modules.market.services.screener_service import screener as screener_query
 from modules.market.services.industry_service import (
-    get_industry_tree, get_industry_heatmap,
-    get_industry_detail, get_industry_history,
+    get_industry_tree, get_industry_heatmap, get_industry_heatmap_multi_window,
+    get_industry_detail, get_industry_history, get_industry_trend,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,21 @@ async def do_industry_detail(session: AsyncSession, code: str) -> Optional[dict]
 
 async def do_industry_heatmap(session: AsyncSession) -> list:
     return await get_industry_heatmap(session)
+
+
+async def do_industry_history(session: AsyncSession, code: str, limit: int = 90) -> list:
+    return await get_industry_history(session, code, limit)
+
+
+async def do_industry_heatmap_multi(
+    session: AsyncSession, windows: list = None
+) -> list:
+    return await get_industry_heatmap_multi_window(session, windows)
+
+
+async def do_industry_trend(session: AsyncSession, days: int = 60) -> dict:
+    return await get_industry_trend(session, days)
+
 
 async def do_financial_compare(session: AsyncSession, codes: list, metrics=None, end_date=None) -> list:
     from modules.market.services.financial_service import get_indicators_compare
@@ -76,9 +91,9 @@ async def do_macro(session: AsyncSession, indicator: str, limit: int = 24) -> li
     return await get_macro(session, indicator, limit)
 
 
-async def do_index_weights(session: AsyncSession, code: str) -> list:
+async def do_index_weights(session: AsyncSession, code: str, offset: int = 0, limit: int = 50):
     from modules.market.services.index_service import get_index_weights
-    return await get_index_weights(session, code)
+    return await get_index_weights(session, code, offset, limit)
 
 
 async def do_index_valuation(session: AsyncSession, code: str, limit: int = 60) -> list:
@@ -98,3 +113,101 @@ async def do_etf_benchmark(session: AsyncSession, code: str):
 async def do_index_history(session: AsyncSession, code: str, limit: int = 60) -> list:
     from modules.market.services.index_service import get_index_history
     return await get_index_history(session, code, limit)
+
+
+async def do_index_sector_exposure(session: AsyncSession, code: str) -> list:
+    from modules.market.services.index_service import get_index_sector_exposure
+    return await get_index_sector_exposure(session, code)
+
+
+async def do_sector_moneyflow(session: AsyncSession) -> list:
+    from modules.market.services.moneyflow_service import get_sector_moneyflow
+    return await get_sector_moneyflow(session)
+
+
+async def do_stock_signals(session: AsyncSession, ts_code: str, recent: int = 20) -> list:
+    from modules.market.services.stock_service import get_stock_signals
+    return await get_stock_signals(session, ts_code, recent)
+
+
+async def do_stock_factor_scores(session: AsyncSession, ts_code: str) -> Optional[dict]:
+    from modules.market.services.stock_service import get_stock_factor_scores
+    return await get_stock_factor_scores(session, ts_code)
+
+
+async def do_limit_analysis(
+    session: AsyncSession,
+    trade_date: Optional[str] = None,
+    exchange: Optional[str] = None,
+    board: Optional[str] = None,
+) -> dict:
+    from modules.market.services.limit_service import get_limit_stocks
+    return await get_limit_stocks(session, trade_date, exchange, board)
+
+
+async def do_style_factors(session: AsyncSession) -> list:
+    from modules.market.services.dashboard_service import get_style_factors
+    return await get_style_factors(session)
+
+
+async def do_sector_turnover(session: AsyncSession) -> dict:
+    from modules.market.services.dashboard_service import get_sector_turnover
+    return await get_sector_turnover(session)
+
+
+async def do_get_watchlist(session: AsyncSession, user_id: str) -> list:
+    """获取当前用户自选股 + 最新行情"""
+    from sqlalchemy import text
+    pref = await session.execute(
+        text("SELECT display_settings FROM user_preferences WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    row = pref.fetchone()
+    codes = []
+    if row and row[0]:
+        import json
+        ds = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        codes = ds.get("watchlist", []) if isinstance(ds, dict) else []
+
+    if not codes:
+        return []
+
+    from sqlalchemy import text as txt
+    result = await session.execute(
+        txt("""
+            SELECT DISTINCT ON (ts_code) ts_code, name, close, pct_chg
+            FROM stock_daily d
+            JOIN stock_basic b ON d.ts_code = b.ts_code
+            WHERE d.ts_code = ANY(:codes)
+            ORDER BY ts_code, trade_date DESC
+        """),
+        {"codes": codes},
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def do_save_watchlist(session: AsyncSession, user_id: str, codes: list) -> bool:
+    """保存自选股列表"""
+    from sqlalchemy import text
+    import json
+    pref = await session.execute(
+        text("SELECT display_settings FROM user_preferences WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    row = pref.fetchone()
+    ds = {}
+    if row and row[0]:
+        ds = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    if not isinstance(ds, dict):
+        ds = {}
+    ds["watchlist"] = codes
+    await session.execute(
+        text("""
+            INSERT INTO user_preferences (user_id, display_settings)
+            VALUES (:uid, :ds::jsonb)
+            ON CONFLICT (user_id) DO UPDATE SET display_settings = :ds::jsonb
+        """),
+        {"uid": user_id, "ds": json.dumps(ds)},
+    )
+    await session.commit()
+    return True

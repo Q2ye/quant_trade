@@ -63,3 +63,21 @@ async def get_stock_moneyflow_detail(session: AsyncSession, code: str, days: int
         FROM stock_moneyflow WHERE ts_code = :code
         ORDER BY trade_date DESC LIMIT :lim
     """, {"code": code, "lim": days})
+
+
+async def get_sector_moneyflow(session: AsyncSession) -> list:
+    """全市场当日资金流向按申万 L1 行业聚合（行业资金横柱图用）"""
+    try:
+        return await _all(session, """
+            SELECT b.industry AS name,
+                   COALESCE(ROUND(SUM(m.net_mf_amount)::numeric / 1e8, 2), 0) AS net_amount_yi
+            FROM stock_moneyflow m
+            JOIN stock_basic b ON m.ts_code = b.ts_code
+            WHERE m.trade_date = (SELECT MAX(trade_date) FROM stock_moneyflow)
+              AND b.industry IS NOT NULL AND b.industry != ''
+            GROUP BY b.industry
+            ORDER BY SUM(m.net_mf_amount) DESC
+        """, {})
+    except Exception as e:
+        logger.warning(f"Sector moneyflow query failed: {e}")
+        return []

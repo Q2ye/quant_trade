@@ -87,10 +87,7 @@ const confirm = () => {
       </div>
       <div class="info-item">
         <span class="label">交易后资金:</span>
-        <span
-          class="value"
-          :class="isBuy ? 'negative' : 'positive'"
-        >
+        <span class="value" :class="isBuy ? 'negative' : 'positive'">
           {{
             isBuy
               ? "¥" + (accountBalance - order.amount).toLocaleString()
@@ -155,8 +152,12 @@ const confirm = () => {
   color: #e0e7ff;
 }
 
-.value.buy { color: #5cdd8b; }
-.value.sell { color: #ff6b6b; }
+.value.buy {
+  color: #5cdd8b;
+}
+.value.sell {
+  color: #ff6b6b;
+}
 
 .highlight .value {
   font-size: 1.2rem;
@@ -176,8 +177,14 @@ const confirm = () => {
   margin-bottom: 10px;
 }
 
-.info-item:last-child { margin-bottom: 0; }
+.info-item:last-child {
+  margin-bottom: 0;
+}
 
-.info-item .value.positive { color: #5cdd8b; }
-.info-item .value.negative { color: #ff6b6b; }
+.info-item .value.positive {
+  color: #5cdd8b;
+}
+.info-item .value.negative {
+  color: #ff6b6b;
+}
 </style>

@@ -110,7 +110,10 @@ export default {
     strategyId: string,
   ): Promise<StrategySignal> {
     return request
-      .post("/quantTrade/strategy/signals/trigger", { symbol, strategy_id: strategyId })
+      .post("/quantTrade/strategy/signals/trigger", {
+        symbol,
+        strategy_id: strategyId,
+      })
       .then(handleResponse)
       .then((data: ApiResponse<StrategySignal>) => data.data);
   },

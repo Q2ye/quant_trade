@@ -50,8 +50,11 @@
         <template #trigger>
           <div class="header-widget strategy-status">
             <div class="widget-content">
-              <smart-icon name="Settings" :size="16"
-                :class="['widget-icon', `icon-${strategyStatus.health}`]" />
+              <smart-icon
+                name="Settings"
+                :size="16"
+                :class="['widget-icon', `icon-${strategyStatus.health}`]"
+              />
               <span class="widget-count"
                 >{{ strategyStatus.running }}/{{ strategyStatus.total }}</span
               >
@@ -89,8 +92,11 @@
         <template #trigger>
           <div class="header-widget order-status">
             <div class="widget-content">
-              <smart-icon name="SwapVertical" :size="16"
-                class="widget-icon icon-primary" />
+              <smart-icon
+                name="SwapVertical"
+                :size="16"
+                class="widget-icon icon-primary"
+              />
               <span class="widget-count"
                 >{{ orderStats.executed }}/{{ orderStats.pending }}</span
               >
@@ -359,8 +365,8 @@ export default defineComponent({
   align-items: center;
   height: 60px;
   padding: 0 16px;
-  background-color: var(--n-card-color, #161B22);
-  border-bottom: 1px solid var(--n-border-color, #30363D);
+  background-color: var(--n-card-color, #161b22);
+  border-bottom: 1px solid var(--n-border-color, #30363d);
   box-shadow: var(--n-box-shadow-1);
   position: sticky;
   top: 0;
@@ -393,7 +399,11 @@ export default defineComponent({
   font-size: 24px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  background: linear-gradient(135deg, var(--n-primary-color, #448AFF) 0%, #40C4FF 100%);
+  background: linear-gradient(
+    135deg,
+    var(--n-primary-color, #448aff) 0%,
+    #40c4ff 100%
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -482,13 +492,27 @@ export default defineComponent({
 .widget-icon {
   color: var(--n-text-color-3);
 
-  &.icon-primary  { color: var(--n-primary-color); }
-  &.icon-healthy  { color: var(--n-success-color); }
-  &.icon-warning  { color: var(--n-warning-color); }
-  &.icon-danger   { color: var(--n-error-color); }
-  &.icon-risk-low    { color: var(--n-success-color); }
-  &.icon-risk-medium { color: var(--n-warning-color); }
-  &.icon-risk-high   { color: var(--n-error-color); }
+  &.icon-primary {
+    color: var(--n-primary-color);
+  }
+  &.icon-healthy {
+    color: var(--n-success-color);
+  }
+  &.icon-warning {
+    color: var(--n-warning-color);
+  }
+  &.icon-danger {
+    color: var(--n-error-color);
+  }
+  &.icon-risk-low {
+    color: var(--n-success-color);
+  }
+  &.icon-risk-medium {
+    color: var(--n-warning-color);
+  }
+  &.icon-risk-high {
+    color: var(--n-error-color);
+  }
 }
 
 .widget-count {

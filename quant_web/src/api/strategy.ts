@@ -2,10 +2,7 @@
 // 策略管理API服务
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
-import {
-  ApiStrategy,
-  ApiStrategyPerformance,
-} from "@/types";
+import { ApiStrategy, ApiStrategyPerformance } from "@/types";
 import {
   ApiResponse,
   PaginatedResponse,
@@ -95,7 +92,10 @@ export default {
       .then((data: StrategyDetailResponse) => data.data);
   },
 
-  async updateStrategy(id: string, data: UpdateStrategyRequest): Promise<ApiStrategy> {
+  async updateStrategy(
+    id: string,
+    data: UpdateStrategyRequest,
+  ): Promise<ApiStrategy> {
     return request
       .put(`/quantTrade/strategy/${id}`, data)
       .then(handleResponse)
@@ -103,12 +103,13 @@ export default {
   },
 
   async deleteStrategy(id: string): Promise<void> {
-    return request
-      .delete(`/quantTrade/strategy/${id}`)
-      .then(handleResponse);
+    return request.delete(`/quantTrade/strategy/${id}`).then(handleResponse);
   },
 
-  async startStrategy(id: string, params?: Record<string, any>): Promise<ApiStrategyStatusInfo> {
+  async startStrategy(
+    id: string,
+    params?: Record<string, any>,
+  ): Promise<ApiStrategyStatusInfo> {
     return request
       .post(`/quantTrade/strategy/${id}/start`, params || {})
       .then(handleResponse)

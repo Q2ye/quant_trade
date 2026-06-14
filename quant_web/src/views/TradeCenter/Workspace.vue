@@ -2,9 +2,23 @@
 import { ref, computed, onMounted, watch, h } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
-  NTabs, NTabPane, NCard, NDataTable, NButton, NTag,
-  NSpin, NResult, NEmpty, NModal, NForm, NFormItem,
-  NInput, NSelect, NProgress, NPopconfirm, useMessage,
+  NTabs,
+  NTabPane,
+  NCard,
+  NDataTable,
+  NButton,
+  NTag,
+  NSpin,
+  NResult,
+  NEmpty,
+  NModal,
+  NForm,
+  NFormItem,
+  NInput,
+  NSelect,
+  NProgress,
+  NPopconfirm,
+  useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
@@ -79,10 +93,11 @@ const loadAllData = async () => {
 
     positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
 
-    const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
+    const orderItems =
+      (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
     orders.value = orderItems as Order[];
 
-    baskets.value = (basketRes as any)?.baskets ?? [] as Basket[];
+    baskets.value = (basketRes as any)?.baskets ?? ([] as Basket[]);
   } catch {
     error.value = true;
   } finally {
@@ -97,7 +112,9 @@ const getPositionByTsCode = (tsCode: string): Position | undefined =>
   positions.value.find((p) => p.ts_code === tsCode);
 
 const getBasketHoldStats = (basket: Basket) => {
-  const items = (basket as any).items as { ts_code: string; weight: number }[] | undefined;
+  const items = (basket as any).items as
+    | { ts_code: string; weight: number }[]
+    | undefined;
   if (!items || items.length === 0) return { held: 0, total: 0 };
   const held = items.filter((item) => getPositionByTsCode(item.ts_code)).length;
   return { held, total: items.length };
@@ -132,13 +149,15 @@ const handleSelectStock = async (tsCode: string, name: string) => {
 
 // Selected stock computed properties
 const selectedPosition = computed(() =>
-  selectedStock.value ? getPositionByTsCode(selectedStock.value.tsCode) ?? null : null
+  selectedStock.value
+    ? (getPositionByTsCode(selectedStock.value.tsCode) ?? null)
+    : null,
 );
 const selectedRelatedOrders = computed(() =>
-  selectedStock.value ? getOrdersForStock(selectedStock.value.tsCode) : []
+  selectedStock.value ? getOrdersForStock(selectedStock.value.tsCode) : [],
 );
 const selectedRelatedBaskets = computed(() =>
-  selectedStock.value ? getBasketsForStock(selectedStock.value.tsCode) : []
+  selectedStock.value ? getBasketsForStock(selectedStock.value.tsCode) : [],
 );
 
 // ============================================================
@@ -146,40 +165,74 @@ const selectedRelatedBaskets = computed(() =>
 // ============================================================
 const basketColumns: DataTableColumns<Basket> = [
   {
-    title: "篮子名称", key: "name", width: 160,
+    title: "篮子名称",
+    key: "name",
+    width: 160,
     render: (row) => h("span", { style: { fontWeight: 600 } }, row.name),
   },
   {
-    title: "描述", key: "description", ellipsis: { tooltip: true },
+    title: "描述",
+    key: "description",
+    ellipsis: { tooltip: true },
   },
   {
-    title: "持仓覆盖", key: "holdStatus", width: 180,
+    title: "持仓覆盖",
+    key: "holdStatus",
+    width: 180,
     render: (row) => {
       const { held, total } = getBasketHoldStats(row);
       const pct = total > 0 ? Math.round((held / total) * 100) : 0;
-      return h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [
-        h(NProgress, {
-          percentage: pct,
-          color: pct > 50 ? "#10B981" : pct > 0 ? "#F59E0B" : "#6B7280",
-          indicatorTextColor: "#999",
-          height: 6,
-          borderRadius: 3,
-          style: { width: "120px" },
-        }),
-        h("span", { style: { fontSize: "12px", color: "var(--n-text-color-3)" } }, `${held}/${total}`),
-      ]);
+      return h(
+        "div",
+        { style: { display: "flex", alignItems: "center", gap: "8px" } },
+        [
+          h(NProgress, {
+            percentage: pct,
+            color: pct > 50 ? "#10B981" : pct > 0 ? "#F59E0B" : "#6B7280",
+            indicatorTextColor: "#999",
+            height: 6,
+            borderRadius: 3,
+            style: { width: "120px" },
+          }),
+          h(
+            "span",
+            { style: { fontSize: "12px", color: "var(--n-text-color-3)" } },
+            `${held}/${total}`,
+          ),
+        ],
+      );
     },
   },
   {
-    title: "成分股", key: "items_count", width: 80,
-    render: (row) => `${(row as any).items_count ?? (row as any).items?.length ?? 0} 只`,
+    title: "成分股",
+    key: "items_count",
+    width: 80,
+    render: (row) =>
+      `${(row as any).items_count ?? (row as any).items?.length ?? 0} 只`,
   },
   {
-    title: "操作", key: "actions", width: 200,
+    title: "操作",
+    key: "actions",
+    width: 200,
     render: (row) =>
       h("div", { style: { display: "flex", gap: "6px" } }, [
-        h(NButton, { size: "small", onClick: () => router.push(`/baskets/detail/${row.id}`) }, { default: () => "详情" }),
-        h(NButton, { size: "small", type: "primary", onClick: () => message.info(`一键下单: ${row.name}`) }, { default: () => "下单" }),
+        h(
+          NButton,
+          {
+            size: "small",
+            onClick: () => router.push(`/baskets/detail/${row.id}`),
+          },
+          { default: () => "详情" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            type: "primary",
+            onClick: () => message.info(`一键下单: ${row.name}`),
+          },
+          { default: () => "下单" },
+        ),
       ]),
   },
 ];
@@ -187,7 +240,10 @@ const basketColumns: DataTableColumns<Basket> = [
 // ============================================================
 // Tab: 订单 columns
 // ============================================================
-const statusMap: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
+const statusMap: Record<
+  string,
+  { text: string; type: "info" | "warning" | "success" | "default" | "error" }
+> = {
   submitted: { text: "已报", type: "info" },
   partial_filled: { text: "部成", type: "warning" },
   filled: { text: "已成", type: "success" },
@@ -210,39 +266,92 @@ const orderFilterOptions = [
 
 const orderColumns: DataTableColumns<Order> = [
   {
-    title: "时间", key: "submitted_at", width: 160,
+    title: "时间",
+    key: "submitted_at",
+    width: 160,
     render: (row) => row.submitted_at?.slice(0, 16),
   },
   {
-    title: "代码", key: "ts_code", width: 110,
+    title: "代码",
+    key: "ts_code",
+    width: 110,
     render: (row) =>
-      h("span", {
-        class: "clickable-stock",
-        style: { color: "var(--n-color-primary)", cursor: "pointer" },
-        onClick: () => handleSelectStock(row.ts_code, row.ts_code),
-      }, row.ts_code),
+      h(
+        "span",
+        {
+          class: "clickable-stock",
+          style: { color: "var(--n-color-primary)", cursor: "pointer" },
+          onClick: () => handleSelectStock(row.ts_code, row.ts_code),
+        },
+        row.ts_code,
+      ),
   },
   {
-    title: "方向", key: "direction", width: 60,
+    title: "方向",
+    key: "direction",
+    width: 60,
     render: (row) =>
-      h(NTag, { type: row.direction === "buy" ? "success" : "error", size: "small", bordered: false },
-        { default: () => (row.direction === "buy" ? "买入" : "卖出") }),
+      h(
+        NTag,
+        {
+          type: row.direction === "buy" ? "success" : "error",
+          size: "small",
+          bordered: false,
+        },
+        { default: () => (row.direction === "buy" ? "买入" : "卖出") },
+      ),
   },
-  { title: "价格", key: "price", width: 100, render: (row) => row.price > 0 ? `¥${row.price.toFixed(2)}` : "市价" },
-  { title: "数量", key: "volume", width: 80, render: (row) => row.volume.toLocaleString() },
   {
-    title: "状态", key: "status", width: 80,
-    render: (row) => h(NTag, { type: statusMap[row.status]?.type || "default", size: "small", bordered: false },
-      { default: () => statusMap[row.status]?.text }),
+    title: "价格",
+    key: "price",
+    width: 100,
+    render: (row) => (row.price > 0 ? `¥${row.price.toFixed(2)}` : "市价"),
   },
   {
-    title: "操作", key: "actions", width: 80,
+    title: "数量",
+    key: "volume",
+    width: 80,
+    render: (row) => row.volume.toLocaleString(),
+  },
+  {
+    title: "状态",
+    key: "status",
+    width: 80,
+    render: (row) =>
+      h(
+        NTag,
+        {
+          type: statusMap[row.status]?.type || "default",
+          size: "small",
+          bordered: false,
+        },
+        { default: () => statusMap[row.status]?.text },
+      ),
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 80,
     render: (row) =>
       row.status === "submitted" || row.status === "partial_filled"
-        ? h(NPopconfirm, { onPositiveClick: () => message.success(`撤单: ${row.order_id}`) },
-          { trigger: () => h(NButton, { size: "tiny", type: "error" }, { default: () => "撤单" }),
-            default: () => "确认撤单？" })
-        : h("span", { style: { color: "var(--n-text-color-3)", fontSize: "12px" } }, "--"),
+        ? h(
+            NPopconfirm,
+            { onPositiveClick: () => message.success(`撤单: ${row.order_id}`) },
+            {
+              trigger: () =>
+                h(
+                  NButton,
+                  { size: "tiny", type: "error" },
+                  { default: () => "撤单" },
+                ),
+              default: () => "确认撤单？",
+            },
+          )
+        : h(
+            "span",
+            { style: { color: "var(--n-text-color-3)", fontSize: "12px" } },
+            "--",
+          ),
   },
 ];
 
@@ -251,46 +360,107 @@ const orderColumns: DataTableColumns<Order> = [
 // ============================================================
 const positionColumns: DataTableColumns<Position> = [
   {
-    title: "代码", key: "ts_code", width: 110,
+    title: "代码",
+    key: "ts_code",
+    width: 110,
     render: (row) =>
-      h("span", {
-        class: "clickable-stock",
-        style: { color: "var(--n-color-primary)", cursor: "pointer" },
-        onClick: () => handleSelectStock(row.ts_code, row.name),
-      }, row.ts_code),
+      h(
+        "span",
+        {
+          class: "clickable-stock",
+          style: { color: "var(--n-color-primary)", cursor: "pointer" },
+          onClick: () => handleSelectStock(row.ts_code, row.name),
+        },
+        row.ts_code,
+      ),
   },
   {
-    title: "名称", key: "name", width: 120,
+    title: "名称",
+    key: "name",
+    width: 120,
     render: (row) =>
-      h("span", {
-        class: "clickable-stock",
-        style: { cursor: "pointer" },
-        onClick: () => handleSelectStock(row.ts_code, row.name),
-      }, row.name),
-  },
-  { title: "持仓量", key: "volume", width: 90, render: (row: Position) => row.volume.toLocaleString() },
-  { title: "可用", key: "available_volume", width: 80, render: (row: Position) => row.available_volume.toLocaleString() },
-  { title: "成本价", key: "cost_price", width: 95, render: (row: Position) => `¥${row.cost_price.toFixed(2)}` },
-  { title: "当前价", key: "current_price", width: 95, render: (row: Position) => `¥${row.current_price.toFixed(2)}` },
-  { title: "市值", key: "market_value", width: 110, render: (row: Position) => `¥${row.market_value.toLocaleString()}` },
-  {
-    title: "盈亏", key: "profit_loss", width: 110,
-    render: (row) =>
-      h("span", { class: (row.profit_loss ?? 0) >= 0 ? "text-up" : "text-down" },
-        `¥${(row.profit_loss ?? 0).toLocaleString()}`),
+      h(
+        "span",
+        {
+          class: "clickable-stock",
+          style: { cursor: "pointer" },
+          onClick: () => handleSelectStock(row.ts_code, row.name),
+        },
+        row.name,
+      ),
   },
   {
-    title: "盈亏比", key: "profit_loss_ratio", width: 85,
-    render: (row) =>
-      h("span", { class: (row.profit_loss_ratio ?? 0) >= 0 ? "text-up" : "text-down" },
-        `${(row.profit_loss_ratio ?? 0).toFixed(2)}%`),
+    title: "持仓量",
+    key: "volume",
+    width: 90,
+    render: (row: Position) => row.volume.toLocaleString(),
   },
   {
-    title: "操作", key: "actions", width: 140,
+    title: "可用",
+    key: "available_volume",
+    width: 80,
+    render: (row: Position) => row.available_volume.toLocaleString(),
+  },
+  {
+    title: "成本价",
+    key: "cost_price",
+    width: 95,
+    render: (row: Position) => `¥${row.cost_price.toFixed(2)}`,
+  },
+  {
+    title: "当前价",
+    key: "current_price",
+    width: 95,
+    render: (row: Position) => `¥${row.current_price.toFixed(2)}`,
+  },
+  {
+    title: "市值",
+    key: "market_value",
+    width: 110,
+    render: (row: Position) => `¥${row.market_value.toLocaleString()}`,
+  },
+  {
+    title: "盈亏",
+    key: "profit_loss",
+    width: 110,
+    render: (row) =>
+      h(
+        "span",
+        { class: (row.profit_loss ?? 0) >= 0 ? "text-up" : "text-down" },
+        `¥${(row.profit_loss ?? 0).toLocaleString()}`,
+      ),
+  },
+  {
+    title: "盈亏比",
+    key: "profit_loss_ratio",
+    width: 85,
+    render: (row) =>
+      h(
+        "span",
+        { class: (row.profit_loss_ratio ?? 0) >= 0 ? "text-up" : "text-down" },
+        `${(row.profit_loss_ratio ?? 0).toFixed(2)}%`,
+      ),
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 140,
     render: (row) =>
       h("div", { style: { display: "flex", gap: "4px" } }, [
-        h(NButton, { size: "tiny", onClick: () => message.info(`平仓: ${row.name}`) }, { default: () => "平仓" }),
-        h(NButton, { size: "tiny", type: "primary", onClick: () => message.info(`加仓: ${row.name}`) }, { default: () => "加仓" }),
+        h(
+          NButton,
+          { size: "tiny", onClick: () => message.info(`平仓: ${row.name}`) },
+          { default: () => "平仓" },
+        ),
+        h(
+          NButton,
+          {
+            size: "tiny",
+            type: "primary",
+            onClick: () => message.info(`加仓: ${row.name}`),
+          },
+          { default: () => "加仓" },
+        ),
       ]),
   },
 ];
@@ -309,40 +479,119 @@ const handleQuickTrade = (direction: "buy" | "sell") => {
 // ============================================================
 const dialogVisible = ref(false);
 const editingAccount = ref<Account | null>(null);
-const accountForm = ref({ account_name: "", broker: "ht", account_number: "", status: "active" });
+const accountForm = ref({
+  account_name: "",
+  broker: "ht",
+  account_number: "",
+  status: "active",
+});
 
-const brokerMap: Record<string, string> = { ht: "华泰证券", gf: "广发证券", zs: "招商证券", zx: "中信证券" };
-const brokerOptions = Object.entries(brokerMap).map(([v, l]) => ({ label: l, value: v }));
-const statusOpts = [{ label: "活跃", value: "active" }, { label: "禁用", value: "inactive" }];
+const brokerMap: Record<string, string> = {
+  ht: "华泰证券",
+  gf: "广发证券",
+  zs: "招商证券",
+  zx: "中信证券",
+};
+const brokerOptions = Object.entries(brokerMap).map(([v, l]) => ({
+  label: l,
+  value: v,
+}));
+const statusOpts = [
+  { label: "活跃", value: "active" },
+  { label: "禁用", value: "inactive" },
+];
 
 const accountColumns: DataTableColumns<Account> = [
   { title: "账户名称", key: "account_name", width: 150 },
-  { title: "券商", key: "broker", width: 110, render: (row) => brokerMap[row.broker] || row.broker },
-  { title: "账户号码", key: "account_number", width: 150 },
-  { title: "总资产", key: "total_asset", width: 120, render: (row) => `¥${row.total_asset.toLocaleString()}` },
-  { title: "可用资金", key: "available_cash", width: 120, render: (row) => `¥${row.available_cash.toLocaleString()}` },
-  { title: "持仓市值", key: "market_value", width: 120, render: (row) => `¥${row.market_value.toLocaleString()}` },
   {
-    title: "状态", key: "status", width: 80,
-    render: (row) => h(NTag, { type: row.status === "active" ? "success" : "default", size: "small", bordered: false },
-      { default: () => (row.status === "active" ? "活跃" : "禁用") }),
+    title: "券商",
+    key: "broker",
+    width: 110,
+    render: (row) => brokerMap[row.broker] || row.broker,
+  },
+  { title: "账户号码", key: "account_number", width: 150 },
+  {
+    title: "总资产",
+    key: "total_asset",
+    width: 120,
+    render: (row) => `¥${row.total_asset.toLocaleString()}`,
   },
   {
-    title: "操作", key: "actions", width: 180,
+    title: "可用资金",
+    key: "available_cash",
+    width: 120,
+    render: (row) => `¥${row.available_cash.toLocaleString()}`,
+  },
+  {
+    title: "持仓市值",
+    key: "market_value",
+    width: 120,
+    render: (row) => `¥${row.market_value.toLocaleString()}`,
+  },
+  {
+    title: "状态",
+    key: "status",
+    width: 80,
+    render: (row) =>
+      h(
+        NTag,
+        {
+          type: row.status === "active" ? "success" : "default",
+          size: "small",
+          bordered: false,
+        },
+        { default: () => (row.status === "active" ? "活跃" : "禁用") },
+      ),
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 180,
     render: (row) =>
       h("div", { style: { display: "flex", gap: "4px" } }, [
-        h(NButton, { size: "tiny", onClick: () => { editingAccount.value = row; accountForm.value = { ...row } as any; dialogVisible.value = true; } }, { default: () => "编辑" }),
-        h(NButton, { size: "tiny", type: "error", onClick: () => { accounts.value = accounts.value.filter((a) => a.id !== row.id); message.success("删除成功"); } }, { default: () => "删除" }),
+        h(
+          NButton,
+          {
+            size: "tiny",
+            onClick: () => {
+              editingAccount.value = row;
+              accountForm.value = { ...row } as any;
+              dialogVisible.value = true;
+            },
+          },
+          { default: () => "编辑" },
+        ),
+        h(
+          NButton,
+          {
+            size: "tiny",
+            type: "error",
+            onClick: () => {
+              accounts.value = accounts.value.filter((a) => a.id !== row.id);
+              message.success("删除成功");
+            },
+          },
+          { default: () => "删除" },
+        ),
       ]),
   },
 ];
 
 const saveAccount = () => {
   if (editingAccount.value) {
-    const idx = accounts.value.findIndex((a) => a.id === editingAccount.value!.id);
-    if (idx !== -1) accounts.value[idx] = { ...editingAccount.value, ...accountForm.value };
+    const idx = accounts.value.findIndex(
+      (a) => a.id === editingAccount.value!.id,
+    );
+    if (idx !== -1)
+      accounts.value[idx] = { ...editingAccount.value, ...accountForm.value };
   } else {
-    accounts.value.push({ id: Date.now(), ...accountForm.value, total_asset: 0, available_cash: 0, market_value: 0 } as Account);
+    accounts.value.push({
+      id: Date.now(),
+      ...accountForm.value,
+      total_asset: 0,
+      available_cash: 0,
+      market_value: 0,
+    } as Account);
   }
   dialogVisible.value = false;
   message.success(editingAccount.value ? "账户已更新" : "账户已创建");
@@ -350,7 +599,12 @@ const saveAccount = () => {
 
 const handleAddAccount = () => {
   editingAccount.value = null;
-  accountForm.value = { account_name: "", broker: "ht", account_number: "", status: "active" };
+  accountForm.value = {
+    account_name: "",
+    broker: "ht",
+    account_number: "",
+    status: "active",
+  };
   dialogVisible.value = true;
 };
 
@@ -369,7 +623,12 @@ onMounted(() => loadAllData());
           <h1 class="page-title">交易工作台</h1>
         </div>
         <div class="header-actions">
-          <n-button size="small" text class="cockpit-btn" @click="router.push('/trade')">
+          <n-button
+            size="small"
+            text
+            class="cockpit-btn"
+            @click="router.push('/trade')"
+          >
             <template #icon><SmartIcon name="Rocket" /></template>
             驾驶舱
           </n-button>
@@ -378,165 +637,186 @@ onMounted(() => loadAllData());
     </div>
 
     <div class="main-content">
-    <!-- ========== Top Account Bar ========== -->
-    <AccountBar
-      :accounts="accounts"
-      :selected-account-id="selectedAccountId"
-      @select-account="(id: string) => selectedAccountId = id"
-    >
-      <template #actions>
-        <n-button size="small" text @click="router.push('/trade/execution')">
-          执行分析
-        </n-button>
-        <n-button size="small" text @click="router.push('/performance/account')">
-          账户绩效
-        </n-button>
-      </template>
-    </AccountBar>
-
-    <!-- ========== Error ========== -->
-    <n-result
-      v-if="error"
-      status="500"
-      title="数据加载失败"
-      description="请检查网络连接后重试"
-    >
-      <template #footer>
-        <n-button type="primary" @click="loadAllData">重试</n-button>
-      </template>
-    </n-result>
-
-    <!-- ========== Main Two-Column Layout ========== -->
-    <div v-else class="workspace-layout">
-      <!-- ===== Left Panel: Tabs ===== -->
-      <div class="left-panel">
-        <n-tabs v-model:value="activeTab" type="line" size="small">
-          <!-- Tab 1: 篮子 -->
-          <n-tab-pane name="baskets" tab="篮子">
-            <n-spin :show="loading">
-              <div class="basket-actions">
-                <n-button type="primary" size="small" @click="router.push('/baskets/create')">
-                  <template #icon><SmartIcon name="Basket" /></template>
-                  新建篮子
-                </n-button>
-              </div>
-              <n-data-table
-                v-if="baskets.length > 0"
-                :columns="basketColumns"
-                :data="baskets"
-                :bordered="false"
-                size="small"
-                :row-key="(row: Basket) => row.id"
-              />
-              <n-empty v-else description="暂无篮子数据" />
-            </n-spin>
-          </n-tab-pane>
-
-          <!-- Tab 2: 订单 -->
-          <n-tab-pane name="orders" tab="订单">
-            <n-spin :show="loading">
-              <div class="tab-toolbar">
-                <n-select
-                  v-model:value="orderFilter"
-                  :options="orderFilterOptions"
-                  size="small"
-                  style="width: 120px"
-                />
-              </div>
-              <n-data-table
-                v-if="filteredOrders.length > 0"
-                :columns="orderColumns"
-                :data="filteredOrders"
-                :bordered="false"
-                size="small"
-                :row-key="(row: Order) => row.order_id"
-              />
-              <n-empty v-else description="暂无订单数据" />
-            </n-spin>
-          </n-tab-pane>
-
-          <!-- Tab 3: 持仓 -->
-          <n-tab-pane name="positions" tab="持仓">
-            <n-spin :show="loading">
-              <n-data-table
-                v-if="positions.length > 0"
-                :columns="positionColumns"
-                :data="positions"
-                :bordered="false"
-                size="small"
-                :row-key="(row: Position) => String(row.id)"
-              />
-              <n-empty v-else description="暂无持仓" />
-            </n-spin>
-          </n-tab-pane>
-
-          <!-- Tab 4: 账户 -->
-          <n-tab-pane name="account" tab="账户">
-            <n-spin :show="loading">
-              <div class="tab-toolbar">
-                <n-button type="primary" size="small" @click="handleAddAccount">新增账户</n-button>
-              </div>
-              <n-data-table
-                :columns="accountColumns"
-                :data="accounts"
-                :bordered="false"
-                size="small"
-                :row-key="(row: Account) => String(row.id)"
-              >
-                <template #empty><n-empty description="暂无账户" /></template>
-              </n-data-table>
-            </n-spin>
-          </n-tab-pane>
-        </n-tabs>
-      </div>
-
-      <!-- ===== Right Panel: Stock Context (slide-out) ===== -->
-      <div class="right-panel" :class="{ 'panel-open': selectedStock }">
-        <div class="context-header">
-          <span class="context-title">{{ selectedStock?.name || "股票详情" }}</span>
-          <n-button size="tiny" text @click="selectedStock = null">
-            <template #icon><SmartIcon name="Close" /></template>
+      <!-- ========== Top Account Bar ========== -->
+      <AccountBar
+        :accounts="accounts"
+        :selected-account-id="selectedAccountId"
+        @select-account="(id: string) => (selectedAccountId = id)"
+      >
+        <template #actions>
+          <n-button size="small" text @click="router.push('/trade/execution')">
+            执行分析
           </n-button>
-        </div>
-        <StockContextPanel
-          :ts-code="selectedStock?.tsCode ?? null"
-          :stock-name="selectedStock?.name ?? ''"
-          :current-price="selectedStock?.price ?? null"
-          :change-percent="selectedStock?.changePercent ?? null"
-          :position="selectedPosition"
-          :related-orders="selectedRelatedOrders"
-          :related-baskets="selectedRelatedBaskets"
-          :loading="contextLoading"
-          @trade="handleQuickTrade"
-          @add-to-basket="message.info('请从篮子管理中选择目标篮子')"
-        />
-      </div>
-    </div>
+          <n-button
+            size="small"
+            text
+            @click="router.push('/performance/account')"
+          >
+            账户绩效
+          </n-button>
+        </template>
+      </AccountBar>
 
-    <!-- Account Edit Modal -->
-    <n-modal
-      v-model:show="dialogVisible"
-      preset="dialog"
-      :title="editingAccount ? '编辑账户' : '新增账户'"
-      positive-text="保存"
-      negative-text="取消"
-      @positive-click="saveAccount"
-    >
-      <n-form :model="accountForm" label-width="100px">
-        <n-form-item label="账户名称">
-          <n-input v-model:value="accountForm.account_name" />
-        </n-form-item>
-        <n-form-item label="券商">
-          <n-select v-model:value="accountForm.broker" :options="brokerOptions" />
-        </n-form-item>
-        <n-form-item label="账户号码">
-          <n-input v-model:value="accountForm.account_number" />
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-select v-model:value="accountForm.status" :options="statusOpts" />
-        </n-form-item>
-      </n-form>
-    </n-modal>
+      <!-- ========== Error ========== -->
+      <n-result
+        v-if="error"
+        status="500"
+        title="数据加载失败"
+        description="请检查网络连接后重试"
+      >
+        <template #footer>
+          <n-button type="primary" @click="loadAllData">重试</n-button>
+        </template>
+      </n-result>
+
+      <!-- ========== Main Two-Column Layout ========== -->
+      <div v-else class="workspace-layout">
+        <!-- ===== Left Panel: Tabs ===== -->
+        <div class="left-panel">
+          <n-tabs v-model:value="activeTab" type="line" size="small">
+            <!-- Tab 1: 篮子 -->
+            <n-tab-pane name="baskets" tab="篮子">
+              <n-spin :show="loading">
+                <div class="basket-actions">
+                  <n-button
+                    type="primary"
+                    size="small"
+                    @click="router.push('/baskets/create')"
+                  >
+                    <template #icon><SmartIcon name="Basket" /></template>
+                    新建篮子
+                  </n-button>
+                </div>
+                <n-data-table
+                  v-if="baskets.length > 0"
+                  :columns="basketColumns"
+                  :data="baskets"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Basket) => row.id"
+                />
+                <n-empty v-else description="暂无篮子数据" />
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 2: 订单 -->
+            <n-tab-pane name="orders" tab="订单">
+              <n-spin :show="loading">
+                <div class="tab-toolbar">
+                  <n-select
+                    v-model:value="orderFilter"
+                    :options="orderFilterOptions"
+                    size="small"
+                    style="width: 120px"
+                  />
+                </div>
+                <n-data-table
+                  v-if="filteredOrders.length > 0"
+                  :columns="orderColumns"
+                  :data="filteredOrders"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Order) => row.order_id"
+                />
+                <n-empty v-else description="暂无订单数据" />
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 3: 持仓 -->
+            <n-tab-pane name="positions" tab="持仓">
+              <n-spin :show="loading">
+                <n-data-table
+                  v-if="positions.length > 0"
+                  :columns="positionColumns"
+                  :data="positions"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Position) => String(row.id)"
+                />
+                <n-empty v-else description="暂无持仓" />
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 4: 账户 -->
+            <n-tab-pane name="account" tab="账户">
+              <n-spin :show="loading">
+                <div class="tab-toolbar">
+                  <n-button
+                    type="primary"
+                    size="small"
+                    @click="handleAddAccount"
+                    >新增账户</n-button
+                  >
+                </div>
+                <n-data-table
+                  :columns="accountColumns"
+                  :data="accounts"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Account) => String(row.id)"
+                >
+                  <template #empty><n-empty description="暂无账户" /></template>
+                </n-data-table>
+              </n-spin>
+            </n-tab-pane>
+          </n-tabs>
+        </div>
+
+        <!-- ===== Right Panel: Stock Context (slide-out) ===== -->
+        <div class="right-panel" :class="{ 'panel-open': selectedStock }">
+          <div class="context-header">
+            <span class="context-title">{{
+              selectedStock?.name || "股票详情"
+            }}</span>
+            <n-button size="tiny" text @click="selectedStock = null">
+              <template #icon><SmartIcon name="Close" /></template>
+            </n-button>
+          </div>
+          <StockContextPanel
+            :ts-code="selectedStock?.tsCode ?? null"
+            :stock-name="selectedStock?.name ?? ''"
+            :current-price="selectedStock?.price ?? null"
+            :change-percent="selectedStock?.changePercent ?? null"
+            :position="selectedPosition"
+            :related-orders="selectedRelatedOrders"
+            :related-baskets="selectedRelatedBaskets"
+            :loading="contextLoading"
+            @trade="handleQuickTrade"
+            @add-to-basket="message.info('请从篮子管理中选择目标篮子')"
+          />
+        </div>
+      </div>
+
+      <!-- Account Edit Modal -->
+      <n-modal
+        v-model:show="dialogVisible"
+        preset="dialog"
+        :title="editingAccount ? '编辑账户' : '新增账户'"
+        positive-text="保存"
+        negative-text="取消"
+        @positive-click="saveAccount"
+      >
+        <n-form :model="accountForm" label-width="100px">
+          <n-form-item label="账户名称">
+            <n-input v-model:value="accountForm.account_name" />
+          </n-form-item>
+          <n-form-item label="券商">
+            <n-select
+              v-model:value="accountForm.broker"
+              :options="brokerOptions"
+            />
+          </n-form-item>
+          <n-form-item label="账户号码">
+            <n-input v-model:value="accountForm.account_number" />
+          </n-form-item>
+          <n-form-item label="状态">
+            <n-select
+              v-model:value="accountForm.status"
+              :options="statusOpts"
+            />
+          </n-form-item>
+        </n-form>
+      </n-modal>
     </div>
   </div>
 </template>
@@ -588,7 +868,10 @@ onMounted(() => loadAllData());
   padding: 0;
   overflow: hidden;
   height: 100%;
-  transition: width 0.3s ease, padding 0.3s ease, border 0.3s ease;
+  transition:
+    width 0.3s ease,
+    padding 0.3s ease,
+    border 0.3s ease;
 }
 .right-panel.panel-open {
   width: 380px;
@@ -627,12 +910,12 @@ onMounted(() => loadAllData());
 
 /* ---- Utility ---- */
 .text-up {
-  color: var(--color-stock-up, #10B981);
+  color: var(--color-stock-up, #10b981);
   font-weight: 500;
 }
 
 .text-down {
-  color: var(--color-stock-down, #EF4444);
+  color: var(--color-stock-down, #ef4444);
   font-weight: 500;
 }
 

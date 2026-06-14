@@ -7,51 +7,67 @@
           <h1 class="page-title">系统日志</h1>
         </div>
         <div class="header-actions">
-          <n-select v-model:value="logLevel" multiple placeholder="日志级别" size="small" style="width: 200px" :options="logLevelOptions" />
-          <n-input v-model:value="searchKeyword" placeholder="搜索日志内容" size="small" clearable style="width: 200px" />
-          <n-button type="primary" size="small" @click="loadLogs">查询</n-button>
+          <n-select
+            v-model:value="logLevel"
+            multiple
+            placeholder="日志级别"
+            size="small"
+            style="width: 200px"
+            :options="logLevelOptions"
+          />
+          <n-input
+            v-model:value="searchKeyword"
+            placeholder="搜索日志内容"
+            size="small"
+            clearable
+            style="width: 200px"
+          />
+          <n-button type="primary" size="small" @click="loadLogs"
+            >查询</n-button
+          >
           <n-button size="small" @click="clearLogs">清空</n-button>
         </div>
       </div>
     </div>
     <div class="main-content">
-    <n-card>
-      <div class="log-container">
-        <n-spin :show="loading">
-          <n-result
-            v-if="error"
-            status="500"
-            title="数据加载失败"
-            description="请检查网络连接后重试"
-          >
-            <template #footer>
-              <n-button type="primary" @click="loadLogs">重试</n-button>
-            </template>
-          </n-result>
-
-          <template v-else>
-            <div
-              v-for="(log, index) in filteredLogs"
-              :key="index"
-              class="log-item"
-              :class="log.level.toLowerCase()"
+      <n-card>
+        <div class="log-container">
+          <n-spin :show="loading">
+            <n-result
+              v-if="error"
+              status="500"
+              title="数据加载失败"
+              description="请检查网络连接后重试"
             >
-              <span class="timestamp">{{ log.timestamp }}</span>
-              <span class="level" :class="log.level.toLowerCase()">{{
-                log.level
-              }}</span>
-              <span class="source">[{{ log.source }}]</span>
-              <span class="message">{{ log.message }}</span>
-            </div>
-            <n-empty
-              v-if="filteredLogs.length === 0"
-              description="暂无日志记录"
-            />
-          </template>
-        </n-spin>
-      </div>
-    </n-card>
-    </div><!-- .main-content -->
+              <template #footer>
+                <n-button type="primary" @click="loadLogs">重试</n-button>
+              </template>
+            </n-result>
+
+            <template v-else>
+              <div
+                v-for="(log, index) in filteredLogs"
+                :key="index"
+                class="log-item"
+                :class="log.level.toLowerCase()"
+              >
+                <span class="timestamp">{{ log.timestamp }}</span>
+                <span class="level" :class="log.level.toLowerCase()">{{
+                  log.level
+                }}</span>
+                <span class="source">[{{ log.source }}]</span>
+                <span class="message">{{ log.message }}</span>
+              </div>
+              <n-empty
+                v-if="filteredLogs.length === 0"
+                description="暂无日志记录"
+              />
+            </template>
+          </n-spin>
+        </div>
+      </n-card>
+    </div>
+    <!-- .main-content -->
   </div>
 </template>
 

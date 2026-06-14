@@ -116,7 +116,9 @@ const dashboardModule: Module<DashboardState, RootState> = {
     },
     async refreshMarketData({ commit }) {
       try {
-        const marketStatus = await dashboardAPI.getMarketStatus().catch(() => null);
+        const marketStatus = await dashboardAPI
+          .getMarketStatus()
+          .catch(() => null);
         if (marketStatus) {
           commit("UPDATE_MARKET_SENTIMENT", marketStatus);
           commit("ADD_REALTIME_UPDATE", {

@@ -5,22 +5,22 @@
       <div class="form-group">
         <label for="username">用户名</label>
         <input
-            type="text"
-            id="username"
-            v-model="username"
-            placeholder="请输入用户名"
-            :disabled="isLoading"
+          type="text"
+          id="username"
+          v-model="username"
+          placeholder="请输入用户名"
+          :disabled="isLoading"
         />
       </div>
       <div class="form-group">
         <label for="password">密码</label>
         <input
-            type="password"
-            id="password"
-            v-model="password"
-            placeholder="请输入密码"
-            :disabled="isLoading"
-            @keyup.enter="handleLogin"
+          type="password"
+          id="password"
+          v-model="password"
+          placeholder="请输入密码"
+          :disabled="isLoading"
+          @keyup.enter="handleLogin"
         />
       </div>
       <div v-if="errorMessage" class="error-message">
@@ -47,9 +47,9 @@
 </template>
 
 <script>
-import {onMounted, ref} from "vue";
-import {useRouter} from "vue-router";
-import {useStore} from "vuex";
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useStore } from "vuex";
 import request from "@/utils/request";
 
 export default {
@@ -66,8 +66,8 @@ export default {
     // 检查是否测试模式
     onMounted(() => {
       isTestMode.value =
-          import.meta.env.MODE === "development" ||
-          import.meta.env.VITE_APP_TEST_MODE === "true";
+        import.meta.env.MODE === "development" ||
+        import.meta.env.VITE_APP_TEST_MODE === "true";
 
       if (isTestMode.value) {
         fillCredentials("superAdmin", "111111.a");

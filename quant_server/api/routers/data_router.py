@@ -247,7 +247,7 @@ async def get_index_detail_api(
 	current_user: Dict = Depends(get_current_user),
 	db_session: AsyncSession = Depends(get_db_session),
 ) -> IndexDetailResponse:
-	"""获取指数详情（含最新行情）"""
+	"""获取指数详情（含最新行情 + 估值 + 成分股数）"""
 	try:
 		repo = IndexRepository(db_session)
 		basic = await repo.get_index_basic(code)
@@ -255,25 +255,51 @@ async def get_index_detail_api(
 			raise HTTPException(status_code=404, detail=f"指数 {code} 不存在")
 
 		latest = await repo.get_latest_index_daily(code)
-		detail = {
-			"code": basic.ts_code,
+		# 估值数据（index_dailybasic）
+		val = None
+		try:
+			val = await repo.get_latest_daily_basic(code)
+		except Exception:
+			pass
+		# 成分股数
+		comp_count = None
+		try:
+			comp_count = await repo.count_components(code)
+		except Exception:
+			pass
+
+		detail: dict = {
+			"ts_code": basic.ts_code,
 			"name": basic.name,
 			"fullname": getattr(basic, "fullname", None),
 			"market": getattr(basic, "market", None),
 			"publisher": getattr(basic, "publisher", None),
 			"category": getattr(basic, "category", None),
-			"baseDate": basic.base_date.isoformat() if getattr(basic, "base_date", None) else None,
-			"basePoint": float(basic.base_point) if getattr(basic, "base_point", None) else None,
+			"base_date": basic.base_date.isoformat() if getattr(basic, "base_date", None) else None,
+			"base_point": float(basic.base_point) if getattr(basic, "base_point", None) else None,
+			"list_date": basic.list_date.isoformat() if getattr(basic, "list_date", None) else None,
 		}
 		if latest:
 			detail.update({
-				"latestPrice": float(latest.close) if latest.close else None,
-				"latestChange": float(latest.change) if getattr(latest, "change", None) else None,
-				"latestPctChg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) else None,
-				"latestVolume": int(latest.vol) if getattr(latest, "vol", None) else None,
-				"latestAmount": float(latest.amount) if getattr(latest, "amount", None) else None,
-				"latestTradeDate": latest.trade_date.isoformat() if latest.trade_date else None,
+				"close": float(latest.close) if latest.close else None,
+				"open": float(latest.open) if getattr(latest, "open", None) else None,
+				"high": float(latest.high) if getattr(latest, "high", None) else None,
+				"low": float(latest.low) if getattr(latest, "low", None) else None,
+				"pre_close": float(latest.pre_close) if getattr(latest, "pre_close", None) else None,
+				"change": float(latest.change) if getattr(latest, "change", None) else None,
+				"pct_chg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) else None,
+				"vol": int(latest.vol) if getattr(latest, "vol", None) else None,
+				"amount": float(latest.amount) if getattr(latest, "amount", None) else None,
+				"trade_date": latest.trade_date.isoformat() if latest.trade_date else None,
 			})
+		if val:
+			detail.update({
+				"pe": float(val.pe) if getattr(val, "pe", None) else None,
+				"pb": float(val.pb) if getattr(val, "pb", None) else None,
+				"total_mv": float(val.total_mv) if getattr(val, "total_mv", None) else None,
+			})
+		if comp_count is not None:
+			detail["components_count"] = comp_count
 		return IndexDetailResponse(index=detail)
 	except HTTPException:
 		raise
@@ -285,17 +311,43 @@ async def get_index_detail_api(
 @router.get("/etfs", response_model=ETFListResponse)
 async def get_etfs_api(
 	keyword: Optional[str] = Query(default=None, description="搜索关键词"),
-	limit: int = Query(default=100, ge=1, le=500, description="返回数量"),
+	page: int = Query(default=1, ge=1, description="页码"),
+	page_size: int = Query(default=50, ge=10, le=200, description="每页数量"),
 	current_user: Dict = Depends(get_current_user),
 	db_session: AsyncSession = Depends(get_db_session),
 ) -> ETFListResponse:
-	"""获取ETF列表"""
+	"""获取ETF列表（分页）"""
 	try:
 		repo = ETFRepository(db_session)
+		offset = (page - 1) * page_size
 		if keyword:
-			etfs = await repo.search_etfs(keyword, limit=limit)
+			etfs = await repo.search_etfs(keyword, limit=page_size, skip=offset)
+			total = await repo.count_etfs(active_only=True)
 		else:
-			etfs = await repo.get_all_etfs(active_only=True, limit=limit)
+			etfs = await repo.get_all_etfs(active_only=True, limit=page_size, offset=offset)
+			total = await repo.count_etfs(active_only=True)
+
+		# 批量获取最新行情（一次 SQL 批量查询，避免 N+1）
+		etf_codes = [etf.ts_code for etf in etfs]
+		latest_prices: dict = {}
+		if etf_codes:
+			try:
+				from sqlalchemy import text
+				price_rows = await db_session.execute(
+					text("""
+						SELECT DISTINCT ON (ts_code) ts_code, close, pct_chg, amount
+						FROM etf_daily WHERE ts_code = ANY(:codes)
+						ORDER BY ts_code, trade_date DESC
+					"""), {"codes": etf_codes}
+				)
+				for row in price_rows:
+					latest_prices[row.ts_code] = {
+						"close": float(row.close) if row.close else None,
+						"pct_chg": float(row.pct_chg) if row.pct_chg else None,
+						"amount": float(row.amount) if row.amount else None,
+					}
+			except Exception:
+				pass  # ETF 日线表可能未同步，静默降级
 
 		items = [
 			{
@@ -309,10 +361,13 @@ async def get_etfs_api(
 				"manager": getattr(etf, "mgr_name", None),
 				"listDate": etf.list_date.isoformat() if getattr(etf, "list_date", None) else None,
 				"managementFee": float(etf.mgt_fee) if getattr(etf, "mgt_fee", None) else None,
+				"latestPrice": latest_prices.get(etf.ts_code, {}).get("close"),
+				"latestPctChg": latest_prices.get(etf.ts_code, {}).get("pct_chg"),
+				"latestAmount": latest_prices.get(etf.ts_code, {}).get("amount"),
 			}
 			for etf in etfs
 		]
-		return ETFListResponse(etfs=items)
+		return ETFListResponse(etfs=items, total=total, page=page)
 	except Exception as e:
 		logger.error(f"获取ETF列表失败: {e}", exc_info=True)
 		raise HTTPException(status_code=500, detail=str(e))

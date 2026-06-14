@@ -29,6 +29,7 @@ __all__ = [
     "monitor_router",
     "system_router",
     "health_router",
+    "market_router",
 ]
 
 # 路由注册顺序（影响 API 文档中的路由展示顺序）
@@ -44,4 +45,5 @@ ROUTERS = [
     monitor_router,
     system_router,
     health_router,
+    market_router,
 ]

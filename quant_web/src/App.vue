@@ -224,13 +224,9 @@ export default defineComponent({
             `🎨 从本地存储加载主题偏好: ${isDarkTheme.value ? "深色" : "浅色"}`,
           );
         } else {
-          // 如果没有保存的偏好，使用系统偏好
-          isDarkTheme.value = window.matchMedia(
-            "(prefers-color-scheme: dark)",
-          ).matches;
-          console.log(
-            `🎨 使用系统主题偏好: ${isDarkTheme.value ? "深色" : "浅色"}`,
-          );
+          // 默认为深色主题（与 main.ts 保持一致）
+          isDarkTheme.value = true;
+          console.log(`🎨 首次访问，使用默认深色主题`);
         }
 
         // 更新 HTML 属性 - 使用 dataset 替代 setAttribute（修复 SonarQube 警告）
@@ -313,7 +309,7 @@ export default defineComponent({
   min-height: var(--vh-full);
 
   // 深色背景（兜底 main-layout 透明化后的背景）
-  background-color: var(--color-bg-primary, #0D1117);
+  background-color: var(--color-bg-primary, #0d1117);
 }
 
 // 全局滚动条样式优化

@@ -59,10 +59,7 @@ export function useChart() {
   };
 
   // 显示加载动画
-  const showLoading = (
-    type?: string,
-    options?: any,
-  ) => {
+  const showLoading = (type?: string, options?: any) => {
     if (chartInstance.value) {
       chartInstance.value.showLoading(type, options);
     }

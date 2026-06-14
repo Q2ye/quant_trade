@@ -41,7 +41,11 @@ export function useDataSync() {
           result = await dataSyncService.syncMoneyflowData(params);
           break;
         default: {
-          const task = { data_type: dataType } as { data_type: string; start_date?: string; end_date?: string };
+          const task = { data_type: dataType } as {
+            data_type: string;
+            start_date?: string;
+            end_date?: string;
+          };
           if (params?.start_date) task.start_date = params.start_date;
           if (params?.end_date) task.end_date = params.end_date;
           result = await dataSyncService.batchSyncData({
@@ -74,12 +78,22 @@ export function useDataSync() {
     syncTasks: Array<{ dataType: string; options?: any }>,
   ) => {
     const settled = await Promise.allSettled(
-      syncTasks.map((task) => syncMarketData(task.dataType as any, task.options)),
+      syncTasks.map((task) =>
+        syncMarketData(task.dataType as any, task.options),
+      ),
     );
     return settled.map((r, i) =>
       r.status === "fulfilled"
-        ? { dataType: syncTasks[i].dataType, status: "success" as const, result: r.value }
-        : { dataType: syncTasks[i].dataType, status: "error" as const, error: (r.reason as any)?.message },
+        ? {
+            dataType: syncTasks[i].dataType,
+            status: "success" as const,
+            result: r.value,
+          }
+        : {
+            dataType: syncTasks[i].dataType,
+            status: "error" as const,
+            error: (r.reason as any)?.message,
+          },
     );
   };
 

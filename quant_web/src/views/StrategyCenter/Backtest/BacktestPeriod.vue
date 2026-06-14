@@ -7,15 +7,15 @@
         </div>
         <div class="header-actions">
           <n-space :size="8">
-        <n-button type="primary" @click="handleCreatePeriod">
-          <template #icon><Icon icon="mdi:plus" /></template>
-          新建周期
-        </n-button>
-        <n-button @click="exportPeriods">
-          <template #icon><Icon icon="mdi:download" /></template>
-          导出配置
-        </n-button>
-      </n-space>
+            <n-button type="primary" @click="handleCreatePeriod">
+              <template #icon><Icon icon="mdi:plus" /></template>
+              新建周期
+            </n-button>
+            <n-button @click="exportPeriods">
+              <template #icon><Icon icon="mdi:download" /></template>
+              导出配置
+            </n-button>
+          </n-space>
           <n-button class="action-btn" @click="router.back()" quaternary>
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
@@ -37,177 +37,185 @@
     <n-spin v-else :show="loading">
       <div class="content-section">
         <n-card class="period-config">
-        <template #header>
-          <div class="card-header">
-            <span>回溯周期配置</span>
-            <div class="filter-bar">
-              <n-input
-                v-model:value="searchKeyword"
-                placeholder="搜索周期名称"
-                style="width: 180px"
-                clearable
-              >
-                <template #prefix>
-                  <n-icon><Icon icon="mdi:magnify" /></n-icon>
-                </template>
-              </n-input>
-              <n-select
-                v-model:value="filterStatus"
-                placeholder="状态"
-                style="width: 100px"
-                clearable
-                :options="statusOptions"
-              />
+          <template #header>
+            <div class="card-header">
+              <span>回溯周期配置</span>
+              <div class="filter-bar">
+                <n-input
+                  v-model:value="searchKeyword"
+                  placeholder="搜索周期名称"
+                  style="width: 180px"
+                  clearable
+                >
+                  <template #prefix>
+                    <n-icon><Icon icon="mdi:magnify" /></n-icon>
+                  </template>
+                </n-input>
+                <n-select
+                  v-model:value="filterStatus"
+                  placeholder="状态"
+                  style="width: 100px"
+                  clearable
+                  :options="statusOptions"
+                />
+              </div>
             </div>
-          </div>
-        </template>
+          </template>
 
-        <n-empty
-          v-if="filteredPeriods.length === 0"
-          description="暂无回溯周期数据"
-        />
-
-        <template v-else>
-          <n-data-table
-            :columns="periodColumns"
-            :data="filteredPeriods"
-            :bordered="false"
-            size="small"
+          <n-empty
+            v-if="filteredPeriods.length === 0"
+            description="暂无回溯周期数据"
           />
 
-          <div class="pagination-container">
-            <n-pagination
-              v-model:page="pagination.currentPage"
-              v-model:page-size="pagination.pageSize"
-              :item-count="pagination.total"
+          <template v-else>
+            <n-data-table
+              :columns="periodColumns"
+              :data="filteredPeriods"
+              :bordered="false"
+              size="small"
             />
-          </div>
-        </template>
-      </n-card>
-    </div>
+
+            <div class="pagination-container">
+              <n-pagination
+                v-model:page="pagination.currentPage"
+                v-model:page-size="pagination.pageSize"
+                :item-count="pagination.total"
+              />
+            </div>
+          </template>
+        </n-card>
+      </div>
     </n-spin>
 
     <div class="content-section">
       <n-card class="period-analysis">
-      <template #header><span>周期性能分析</span></template>
+        <template #header><span>周期性能分析</span></template>
 
-      <n-grid :x-gap="16" :cols="2">
-        <n-grid-item>
-          <div class="analysis-stats">
-            <div class="stats-header">
-              <Icon icon="mdi:chart-bar" :width="18" />
-              <span>周期收益概览</span>
+        <n-grid :x-gap="16" :cols="2">
+          <n-grid-item>
+            <div class="analysis-stats">
+              <div class="stats-header">
+                <Icon icon="mdi:chart-bar" :width="18" />
+                <span>周期收益概览</span>
+              </div>
+              <div
+                ref="performanceChartRef"
+                class="chart-container"
+                style="height: 264px"
+              ></div>
             </div>
-            <div
-              ref="performanceChartRef"
-              class="chart-container"
-              style="height: 264px"
-            ></div>
-          </div>
-        </n-grid-item>
-        <n-grid-item>
-          <div class="analysis-stats">
-            <div class="stats-header">
-              <Icon icon="mdi:chart-box-outline" :width="18" />
-              <span>统计摘要</span>
+          </n-grid-item>
+          <n-grid-item>
+            <div class="analysis-stats">
+              <div class="stats-header">
+                <Icon icon="mdi:chart-box-outline" :width="18" />
+                <span>统计摘要</span>
+              </div>
+              <div class="stats-body">
+                <div class="stat-row">
+                  <span class="stat-label">总周期数</span>
+                  <span class="stat-value">{{
+                    analysisStats.totalPeriods
+                  }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">平均收益率</span>
+                  <span
+                    class="stat-value"
+                    :class="getReturnClass(analysisStats.avgReturn)"
+                    >{{ formatPercent(analysisStats.avgReturn) }}</span
+                  >
+                </div>
+                <div class="stat-divider" />
+                <div class="stat-row">
+                  <span class="stat-label">最优周期</span>
+                  <span class="stat-value stat-name">{{
+                    analysisStats.bestPeriod
+                  }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">最差周期</span>
+                  <span class="stat-value stat-name">{{
+                    analysisStats.worstPeriod
+                  }}</span>
+                </div>
+                <div class="stat-divider" />
+                <div class="stat-row">
+                  <span class="stat-label">胜率</span>
+                  <span class="stat-value stat-highlight">{{
+                    formatPercent(analysisStats.winRate)
+                  }}</span>
+                </div>
+              </div>
             </div>
-            <div class="stats-body">
-              <div class="stat-row">
-                <span class="stat-label">总周期数</span>
-                <span class="stat-value">{{ analysisStats.totalPeriods }}</span>
-              </div>
-              <div class="stat-row">
-                <span class="stat-label">平均收益率</span>
-                <span
-                  class="stat-value"
-                  :class="getReturnClass(analysisStats.avgReturn)"
-                >{{ formatPercent(analysisStats.avgReturn) }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">最优周期</span>
-                <span class="stat-value stat-name">{{ analysisStats.bestPeriod }}</span>
-              </div>
-              <div class="stat-row">
-                <span class="stat-label">最差周期</span>
-                <span class="stat-value stat-name">{{ analysisStats.worstPeriod }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">胜率</span>
-                <span class="stat-value stat-highlight">{{
-                  formatPercent(analysisStats.winRate)
-                }}</span>
-              </div>
-            </div>
-          </div>
-        </n-grid-item>
-      </n-grid>
-    </n-card>
+          </n-grid-item>
+        </n-grid>
+      </n-card>
     </div>
 
     <div class="content-section">
       <n-card class="period-comparison">
-      <template #header><span>周期对比分析</span></template>
+        <template #header><span>周期对比分析</span></template>
 
-      <n-form :model="comparisonConfig" label-width="100px">
-        <n-grid :x-gap="20" :cols="3">
-          <n-grid-item>
-            <n-form-item label="对比周期">
-              <n-select
-                v-model:value="comparisonConfig.selectedPeriods"
-                multiple
-                placeholder="请选择对比周期"
-                :options="periodOptions"
-              />
-            </n-form-item>
-          </n-grid-item>
-          <n-grid-item>
-            <n-form-item label="对比指标">
-              <n-select
-                v-model:value="comparisonConfig.metric"
-                placeholder="请选择对比指标"
-                :options="metricOptions"
-              />
-            </n-form-item>
-          </n-grid-item>
-          <n-grid-item>
-            <n-form-item>
-              <n-space :size="8">
-                <n-button
-                  type="primary"
-                  @click="runComparison"
-                  :loading="comparing"
-                >
-                  <template #icon><Icon icon="mdi:chart-bar" /></template>
-                  运行对比
-                </n-button>
-                <n-button
-                  @click="openInStudio"
-                  :disabled="comparisonConfig.selectedPeriods.length === 0"
-                >
-                  <template #icon><Icon icon="mdi:flask" /></template>
-                  在工作室对比
-                </n-button>
-              </n-space>
-            </n-form-item>
-          </n-grid-item>
-        </n-grid>
-      </n-form>
+        <n-form :model="comparisonConfig" label-width="100px">
+          <n-grid :x-gap="20" :cols="3">
+            <n-grid-item>
+              <n-form-item label="对比周期">
+                <n-select
+                  v-model:value="comparisonConfig.selectedPeriods"
+                  multiple
+                  placeholder="请选择对比周期"
+                  :options="periodOptions"
+                />
+              </n-form-item>
+            </n-grid-item>
+            <n-grid-item>
+              <n-form-item label="对比指标">
+                <n-select
+                  v-model:value="comparisonConfig.metric"
+                  placeholder="请选择对比指标"
+                  :options="metricOptions"
+                />
+              </n-form-item>
+            </n-grid-item>
+            <n-grid-item>
+              <n-form-item>
+                <n-space :size="8">
+                  <n-button
+                    type="primary"
+                    @click="runComparison"
+                    :loading="comparing"
+                  >
+                    <template #icon><Icon icon="mdi:chart-bar" /></template>
+                    运行对比
+                  </n-button>
+                  <n-button
+                    @click="openInStudio"
+                    :disabled="comparisonConfig.selectedPeriods.length === 0"
+                  >
+                    <template #icon><Icon icon="mdi:flask" /></template>
+                    在工作室对比
+                  </n-button>
+                </n-space>
+              </n-form-item>
+            </n-grid-item>
+          </n-grid>
+        </n-form>
 
-      <div v-if="comparisonResults" class="comparison-results">
-        <div class="chart-header">
-          <span
-            >周期对比结果 - {{ getMetricLabel(comparisonConfig.metric) }}</span
-          >
+        <div v-if="comparisonResults" class="comparison-results">
+          <div class="chart-header">
+            <span
+              >周期对比结果 -
+              {{ getMetricLabel(comparisonConfig.metric) }}</span
+            >
+          </div>
+          <div
+            ref="comparisonChartRef"
+            class="chart-container"
+            style="height: 400px"
+          ></div>
         </div>
-        <div
-          ref="comparisonChartRef"
-          class="chart-container"
-          style="height: 400px"
-        ></div>
-      </div>
-    </n-card>
+      </n-card>
     </div>
 
     <n-modal
@@ -447,7 +455,7 @@ const periods = ref<Period[]>([
       annualReturn: 0.2345,
       sharpeRatio: 1.23,
       maxDrawdown: -0.0876,
-      winRate: 0.60,
+      winRate: 0.6,
     },
   },
   {
@@ -464,7 +472,7 @@ const periods = ref<Period[]>([
       annualReturn: 0.1567,
       sharpeRatio: 0.89,
       maxDrawdown: -0.0654,
-      winRate: 0.50,
+      winRate: 0.5,
     },
   },
   {
@@ -488,17 +496,28 @@ const periods = ref<Period[]>([
 
 const analysisStats = computed(() => {
   const list = periods.value;
-  if (list.length === 0) return { totalPeriods: 0, avgReturn: 0, bestPeriod: "--", worstPeriod: "--", winRate: 0 };
+  if (list.length === 0)
+    return {
+      totalPeriods: 0,
+      avgReturn: 0,
+      bestPeriod: "--",
+      worstPeriod: "--",
+      winRate: 0,
+    };
   const returns = list.map((p) => p.performance.annualReturn);
   const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
   const best = list.reduce(
     (prev, curr) =>
-      curr.performance.annualReturn > prev.performance.annualReturn ? curr : prev,
+      curr.performance.annualReturn > prev.performance.annualReturn
+        ? curr
+        : prev,
     list[0],
   );
   const worst = list.reduce(
     (prev, curr) =>
-      curr.performance.annualReturn < prev.performance.annualReturn ? curr : prev,
+      curr.performance.annualReturn < prev.performance.annualReturn
+        ? curr
+        : prev,
     list[0],
   );
   const winCount = list.filter((p) => p.performance.annualReturn > 0).length;
@@ -628,7 +647,12 @@ const handleSavePeriod = async () => {
         duration,
         testCount: 0,
         lastTest: null,
-        performance: { annualReturn: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0 },
+        performance: {
+          annualReturn: 0,
+          sharpeRatio: 0,
+          maxDrawdown: 0,
+          winRate: 0,
+        },
       });
       message.success("回溯周期创建成功");
     }
@@ -744,7 +768,10 @@ const initPerformanceChart = () => {
   );
 
   // 左轴：以 0 为中心对称，取 10 的倍数
-  const lAbsMax = Math.max(Math.abs(Math.max(...returns)), Math.abs(Math.min(...returns)));
+  const lAbsMax = Math.max(
+    Math.abs(Math.max(...returns)),
+    Math.abs(Math.min(...returns)),
+  );
   const L_STEP = 10;
   const lHalf = Math.ceil(lAbsMax / L_STEP) * L_STEP + L_STEP; // 上下各留一档
   const lMin = -lHalf;
@@ -763,8 +790,10 @@ const initPerformanceChart = () => {
 
   // 如果两边区间数不一致，右轴补齐
   const extraTicks = lTicks - rTicks;
-  const rMinFinal = extraTicks > 0 ? rMin - (Math.ceil(extraTicks / 2) * R_STEP) : rMin;
-  const rMaxFinal = extraTicks > 0 ? rMax + (Math.floor(extraTicks / 2) * R_STEP) : rMax;
+  const rMinFinal =
+    extraTicks > 0 ? rMin - Math.ceil(extraTicks / 2) * R_STEP : rMin;
+  const rMaxFinal =
+    extraTicks > 0 ? rMax + Math.floor(extraTicks / 2) * R_STEP : rMax;
 
   performanceChartInstance.setOption({
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
@@ -798,7 +827,11 @@ const initPerformanceChart = () => {
         // 零线高亮：通过 splitLine 中 indexOf(0) 对应的线加粗
         splitLine: {
           show: true,
-          lineStyle: { color: "var(--n-border-color)", type: "dashed", width: 1 },
+          lineStyle: {
+            color: "var(--n-border-color)",
+            type: "dashed",
+            width: 1,
+          },
         },
       },
       {

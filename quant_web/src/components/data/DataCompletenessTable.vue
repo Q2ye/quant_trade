@@ -60,7 +60,6 @@
         @update:page-size="handleSizeChange"
       />
     </div>
-
   </div>
 </template>
 
@@ -191,13 +190,20 @@ const columns: DataTableColumn<TableCompleteness>[] = [
     render: (row: TableCompleteness) => {
       const metric = props.metrics.find((m) => m.metric_name === row.tableName);
       const status = metric?.status ?? "unknown";
-      const map: Record<string, { type: "success" | "warning" | "error"; text: string }> = {
+      const map: Record<
+        string,
+        { type: "success" | "warning" | "error"; text: string }
+      > = {
         pass: { type: "success", text: "通过" },
         warning: { type: "warning", text: "警告" },
         fail: { type: "error", text: "未通过" },
       };
       const t = map[status] || { type: "default" as const, text: status };
-      return h(NTag, { type: t.type, size: "small" }, { default: () => t.text });
+      return h(
+        NTag,
+        { type: t.type, size: "small" },
+        { default: () => t.text },
+      );
     },
   },
 ];
@@ -218,7 +224,8 @@ const loadTableData = async () => {
       dataType: "quality",
       totalRecords: 0,
       expectedRecords: 0,
-      completenessRate: m.status === "pass" ? 100 : m.status === "warning" ? 90 : 70,
+      completenessRate:
+        m.status === "pass" ? 100 : m.status === "warning" ? 90 : 70,
       missingPeriods: [] as string[],
       lastUpdateTime: new Date().toISOString(),
       dataFreshness: "fresh",

@@ -3,10 +3,7 @@
 
 import { Module } from "vuex";
 import { PerformanceState } from "@/types";
-import {
-  StrategyListItem,
-  PerformanceComparison,
-} from "@/types";
+import { StrategyListItem, PerformanceComparison } from "@/types";
 import performanceApi from "@/api/performance";
 import { RootState } from "@/types";
 import { AccountPerformance, StrategyPerformance } from "@/types";
@@ -174,7 +171,8 @@ const performanceModule: Module<PerformanceState, RootState> = {
       commit("SET_LOADING", { type: "events", value: true });
       try {
         // 调用API获取账户绩效数据
-        const performance = await performanceApi.getAccountPerformance(accountId);
+        const performance =
+          await performanceApi.getAccountPerformance(accountId);
         // 提交mutation更新状态
         commit("SET_ACCOUNT_PERFORMANCE", { accountId, performance });
         return performance;
@@ -268,15 +266,17 @@ const performanceModule: Module<PerformanceState, RootState> = {
         // 策略列表由 strategy store 管理，此处调用 strategyAPI 获取
         const { default: strategyAPI } = await import("@/api/strategy");
         const strategies = await strategyAPI.getStrategies();
-        const list: StrategyListItem[] = (strategies as any[]).map((s: any) => ({
-          strategyId: s.id,
-          strategyName: s.name,
-          totalReturn: s.performance?.total_return ?? 0,
-          annualReturn: s.performance?.annual_return ?? 0,
-          sharpeRatio: s.performance?.sharpe_ratio ?? 0,
-          maxDrawdown: s.performance?.max_drawdown ?? 0,
-          status: s.status ?? "stopped",
-        }));
+        const list: StrategyListItem[] = (strategies as any[]).map(
+          (s: any) => ({
+            strategyId: s.id,
+            strategyName: s.name,
+            totalReturn: s.performance?.total_return ?? 0,
+            annualReturn: s.performance?.annual_return ?? 0,
+            sharpeRatio: s.performance?.sharpe_ratio ?? 0,
+            maxDrawdown: s.performance?.max_drawdown ?? 0,
+            status: s.status ?? "stopped",
+          }),
+        );
         commit("SET_STRATEGY_LIST", list);
         return list;
       } catch (error) {

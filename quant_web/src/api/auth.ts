@@ -186,7 +186,10 @@ export default {
     newPassword: string,
   ): Promise<{ success: boolean; message: string }> {
     return request
-      .post("/quantTrade/system/auth/password/reset-confirm", { token, newPassword })
+      .post("/quantTrade/system/auth/password/reset-confirm", {
+        token,
+        newPassword,
+      })
       .then(
         (
           response: AxiosResponse<

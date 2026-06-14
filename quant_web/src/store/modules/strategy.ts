@@ -235,10 +235,7 @@ const actions = {
   /**
    * 创建策略
    */
-  async createStrategy(
-    { commit }: any,
-    strategyData: Partial<Strategy>,
-  ) {
+  async createStrategy({ commit }: any, strategyData: Partial<Strategy>) {
     try {
       const strategy = await strategyAPI.createStrategy(strategyData as any);
       commit("ADD_STRATEGY", strategy);
@@ -252,12 +249,12 @@ const actions = {
   /**
    * 更新策略
    */
-  async updateStrategy(
-    { commit }: any,
-    strategyData: Strategy,
-  ) {
+  async updateStrategy({ commit }: any, strategyData: Strategy) {
     try {
-      const strategy = await strategyAPI.updateStrategy(strategyData.id, strategyData as any);
+      const strategy = await strategyAPI.updateStrategy(
+        strategyData.id,
+        strategyData as any,
+      );
       commit("UPDATE_STRATEGY", strategy);
       return strategy;
     } catch (error) {
@@ -373,7 +370,8 @@ const actions = {
     const interval = setInterval(async () => {
       if (state.activeStrategies.has(strategyId)) {
         try {
-          const performance = await strategyAPI.getStrategyPerformance(strategyId);
+          const performance =
+            await strategyAPI.getStrategyPerformance(strategyId);
           commit("UPDATE_STRATEGY_PERFORMANCE", { strategyId, performance });
         } catch (error) {
           console.error("获取策略性能失败:", error);

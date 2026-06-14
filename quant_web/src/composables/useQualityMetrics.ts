@@ -4,7 +4,9 @@ import type { DataQualityResponse } from "@/api/data-sync";
 /**
  * 数据质量指标统一计算 — 消除 DataSyncOverview / DataQuality 重复
  */
-export function useQualityMetrics(qualityData: Ref<DataQualityResponse | null>) {
+export function useQualityMetrics(
+  qualityData: Ref<DataQualityResponse | null>,
+) {
   const qualityScore = computed(() =>
     Math.round(qualityData.value?.quality_score ?? 0),
   );
@@ -36,7 +38,9 @@ export function useQualityMetrics(qualityData: Ref<DataQualityResponse | null>) 
 
   const issuesCount = computed(() => qualityData.value?.issues?.length ?? 0);
   const metricsCount = computed(() => qualityData.value?.metrics?.length ?? 0);
-  const recommendations = computed(() => qualityData.value?.recommendations ?? []);
+  const recommendations = computed(
+    () => qualityData.value?.recommendations ?? [],
+  );
 
   const qualityCompleteness = computed(() => {
     const m = qualityData.value?.metrics?.find(

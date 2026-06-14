@@ -71,7 +71,10 @@ const closePosition = () => {
       <div class="position-data">
         <div class="data-item">
           <div class="label">涨跌幅</div>
-          <div class="value" :class="position.change >= 0 ? 'positive' : 'negative'">
+          <div
+            class="value"
+            :class="position.change >= 0 ? 'positive' : 'negative'"
+          >
             {{ position.change >= 0 ? "+" : ""
             }}{{ position.change.toFixed(2) }}%
           </div>
@@ -85,7 +88,10 @@ const closePosition = () => {
       <div class="position-data">
         <div class="data-item">
           <div class="label">浮动盈亏</div>
-          <div class="value" :class="position.profit >= 0 ? 'positive' : 'negative'">
+          <div
+            class="value"
+            :class="position.profit >= 0 ? 'positive' : 'negative'"
+          >
             {{ position.profit >= 0 ? "+" : "" }}¥{{
               position.profit.toLocaleString()
             }}
@@ -93,7 +99,10 @@ const closePosition = () => {
         </div>
         <div class="data-item">
           <div class="label">盈亏比例</div>
-          <div class="value" :class="position.profitRatio >= 0 ? 'positive' : 'negative'">
+          <div
+            class="value"
+            :class="position.profitRatio >= 0 ? 'positive' : 'negative'"
+          >
             {{ position.profitRatio >= 0 ? "+" : ""
             }}{{ position.profitRatio.toFixed(2) }}%
           </div>
@@ -189,6 +198,10 @@ const closePosition = () => {
   font-weight: 500;
 }
 
-.positive { color: #5cdd8b; }
-.negative { color: #ff6b6b; }
+.positive {
+  color: #5cdd8b;
+}
+.negative {
+  color: #ff6b6b;
+}
 </style>

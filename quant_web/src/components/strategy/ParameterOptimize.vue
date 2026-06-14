@@ -106,9 +106,9 @@ const simulateMetricValue = (paramValue: number, metric: string): number => {
 const initOptimizationChart = () => {
   if (!chartRef.value || optimizationResults.value.length === 0) return;
   const { initChart } = useChart();
-const chart = initChart(chartRef.value);
-if (!chart) return;
-chart.setOption({
+  const chart = initChart(chartRef.value);
+  if (!chart) return;
+  chart.setOption({
     title: { text: "参数优化结果" },
     tooltip: {
       trigger: "axis",
@@ -146,9 +146,9 @@ const initHeatmapChart = () => {
     }
   }
   const { initChart: initHeatmap } = useChart();
-const chart = initHeatmap(heatmapRef.value);
-if (!chart) return;
-chart.setOption({
+  const chart = initHeatmap(heatmapRef.value);
+  if (!chart) return;
+  chart.setOption({
     title: { text: "双参数优化热力图" },
     tooltip: { position: "top" },
     grid: { height: "50%", top: "10%" },

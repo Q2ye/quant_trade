@@ -18,134 +18,134 @@
             <h1 class="page-title">策略绩效</h1>
           </div>
           <div class="header-actions">
-          <n-select
-            v-model:value="selectedStrategy"
-            placeholder="选择策略"
-            :options="strategyOptions"
-            style="width: 200px"
-          />
-          <n-date-picker
-            v-model:value="dateRange"
-            type="daterange"
-            :is-date-disabled="() => false"
-            style="width: 240px; margin-left: 10px"
-          />
-          <n-button type="primary" @click="loadPerformanceData">
-            <Icon icon="ep:search" /> 查询
-          </n-button>
-          <n-button @click="exportReport">
-            <Icon icon="ep:download" /> 导出报告
-          </n-button>
-          <n-button class="action-btn" @click="router.back()" quaternary>
-            <template #icon><SmartIcon name="ArrowLeft" /></template>
-          </n-button>
-        </div>
+            <n-select
+              v-model:value="selectedStrategy"
+              placeholder="选择策略"
+              :options="strategyOptions"
+              style="width: 200px"
+            />
+            <n-date-picker
+              v-model:value="dateRange"
+              type="daterange"
+              :is-date-disabled="() => false"
+              style="width: 240px; margin-left: 10px"
+            />
+            <n-button type="primary" @click="loadPerformanceData">
+              <Icon icon="ep:search" /> 查询
+            </n-button>
+            <n-button @click="exportReport">
+              <Icon icon="ep:download" /> 导出报告
+            </n-button>
+            <n-button class="action-btn" @click="router.back()" quaternary>
+              <template #icon><SmartIcon name="ArrowLeft" /></template>
+            </n-button>
+          </div>
         </div>
       </div>
 
       <div class="main-content">
-      <n-grid :x-gap="16" :cols="24" class="performance-overview">
-        <n-grid-item :span="6">
-          <n-card class="metric-card">
-            <div class="metric-content">
-              <div
-                class="metric-value"
-                :class="getReturnClass(performance.totalReturn)"
-              >
-                {{ formatPercent(performance.totalReturn) }}
+        <n-grid :x-gap="16" :cols="24" class="performance-overview">
+          <n-grid-item :span="6">
+            <n-card class="metric-card">
+              <div class="metric-content">
+                <div
+                  class="metric-value"
+                  :class="getReturnClass(performance.totalReturn)"
+                >
+                  {{ formatPercent(performance.totalReturn) }}
+                </div>
+                <div class="metric-label">累计收益</div>
               </div>
-              <div class="metric-label">累计收益</div>
-            </div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="6">
-          <n-card class="metric-card">
-            <div class="metric-content">
-              <div class="metric-value">
-                {{
-                  performance.annualReturn
-                    ? formatPercent(performance.annualReturn)
-                    : "--"
-                }}
+            </n-card>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-card class="metric-card">
+              <div class="metric-content">
+                <div class="metric-value">
+                  {{
+                    performance.annualReturn
+                      ? formatPercent(performance.annualReturn)
+                      : "--"
+                  }}
+                </div>
+                <div class="metric-label">年化收益</div>
               </div>
-              <div class="metric-label">年化收益</div>
-            </div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="6">
-          <n-card class="metric-card">
-            <div class="metric-content">
-              <div
-                class="metric-value"
-                :class="getDrawdownClass(performance.maxDrawdown)"
-              >
-                {{ formatPercent(performance.maxDrawdown) }}
+            </n-card>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-card class="metric-card">
+              <div class="metric-content">
+                <div
+                  class="metric-value"
+                  :class="getDrawdownClass(performance.maxDrawdown)"
+                >
+                  {{ formatPercent(performance.maxDrawdown) }}
+                </div>
+                <div class="metric-label">最大回撤</div>
               </div>
-              <div class="metric-label">最大回撤</div>
-            </div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="6">
-          <n-card class="metric-card">
-            <div class="metric-content">
-              <div class="metric-value">
-                {{
-                  performance.sharpeRatio
-                    ? performance.sharpeRatio.toFixed(2)
-                    : "--"
-                }}
+            </n-card>
+          </n-grid-item>
+          <n-grid-item :span="6">
+            <n-card class="metric-card">
+              <div class="metric-content">
+                <div class="metric-value">
+                  {{
+                    performance.sharpeRatio
+                      ? performance.sharpeRatio.toFixed(2)
+                      : "--"
+                  }}
+                </div>
+                <div class="metric-label">夏普比率</div>
               </div>
-              <div class="metric-label">夏普比率</div>
-            </div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
 
-      <n-grid :x-gap="16" :cols="24" class="chart-row">
-        <n-grid-item :span="12">
-          <n-card class="chart-card">
-            <template #header>
-              <div class="chart-header">
-                <span>净值曲线</span>
-                <n-radio-group v-model:value="chartType" size="small">
-                  <n-radio-button value="cumulative" label="累计收益" />
-                  <n-radio-button value="daily" label="每日收益" />
-                </n-radio-group>
-              </div>
-            </template>
-            <div ref="equityChart" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="12">
-          <n-card class="chart-card">
-            <template #header>
-              <div class="chart-header"><span>回撤分析</span></div>
-            </template>
-            <div ref="drawdownChart" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
+        <n-grid :x-gap="16" :cols="24" class="chart-row">
+          <n-grid-item :span="12">
+            <n-card class="chart-card">
+              <template #header>
+                <div class="chart-header">
+                  <span>净值曲线</span>
+                  <n-radio-group v-model:value="chartType" size="small">
+                    <n-radio-button value="cumulative" label="累计收益" />
+                    <n-radio-button value="daily" label="每日收益" />
+                  </n-radio-group>
+                </div>
+              </template>
+              <div ref="equityChart" class="chart-container"></div>
+            </n-card>
+          </n-grid-item>
+          <n-grid-item :span="12">
+            <n-card class="chart-card">
+              <template #header>
+                <div class="chart-header"><span>回撤分析</span></div>
+              </template>
+              <div ref="drawdownChart" class="chart-container"></div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
 
-      <n-card class="metrics-card">
-        <template #header><span>详细绩效指标</span></template>
-        <n-data-table
-          :data="performanceMetrics"
-          :columns="metricsColumns"
-          :loading="loading"
-          :bordered="false"
-          striped
-        />
-      </n-card>
+        <n-card class="metrics-card">
+          <template #header><span>详细绩效指标</span></template>
+          <n-data-table
+            :data="performanceMetrics"
+            :columns="metricsColumns"
+            :loading="loading"
+            :bordered="false"
+            striped
+          />
+        </n-card>
 
-      <n-card class="heatmap-card">
-        <template #header><span>月度收益热力图</span></template>
-        <div
-          ref="heatmapChart"
-          class="chart-container"
-          style="height: 400px"
-        ></div>
-      </n-card>
-    </div>
+        <n-card class="heatmap-card">
+          <template #header><span>月度收益热力图</span></template>
+          <div
+            ref="heatmapChart"
+            class="chart-container"
+            style="height: 400px"
+          ></div>
+        </n-card>
+      </div>
     </template>
   </n-spin>
 </template>
@@ -172,7 +172,10 @@ const heatmapChart = ref<HTMLElement>();
 
 const strategyList = ref<any[]>([]);
 const strategyOptions = computed(() =>
-  strategyList.value.map((s: any) => ({ label: s.name ?? s.strategy_name ?? String(s.id), value: String(s.id) })),
+  strategyList.value.map((s: any) => ({
+    label: s.name ?? s.strategy_name ?? String(s.id),
+    value: String(s.id),
+  })),
 );
 
 const performance = reactive({
@@ -241,7 +244,9 @@ const loadPerformanceData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    const data = await strategyAPI.getStrategyPerformance(selectedStrategy.value);
+    const data = await strategyAPI.getStrategyPerformance(
+      selectedStrategy.value,
+    );
     if (data) {
       performance.totalReturn = data.totalReturn ?? 0;
       performance.annualReturn = data.annualReturn ?? 0;
@@ -250,13 +255,48 @@ const loadPerformanceData = async () => {
       performance.winRate = data.winRate ?? 0;
       performance.profitFactor = data.profitFactor ?? 0;
       performanceMetrics.value = [
-        { metric: "累计收益率", value: data.totalReturn ?? 0, description: "策略从开始到现在的总收益率", benchmark: "--" },
-        { metric: "年化收益率", value: data.annualReturn ?? 0, description: "折算成年度的收益率", benchmark: "--" },
-        { metric: "最大回撤", value: data.maxDrawdown ?? 0, description: "策略净值从最高点到最低点的最大跌幅", benchmark: "--" },
-        { metric: "夏普比率", value: data.sharpeRatio ?? 0, description: "每承受一单位风险产生的超额收益", benchmark: "--" },
-        { metric: "胜率", value: data.winRate ?? 0, description: "盈利交易次数占总交易次数的比例", benchmark: "--" },
-        { metric: "利润因子", value: data.profitFactor ?? 0, description: "总盈利与总亏损的比值", benchmark: "--" },
-        { metric: "总交易次数", value: data.totalTrades ?? 0, description: "策略执行的总交易次数", benchmark: "--" },
+        {
+          metric: "累计收益率",
+          value: data.totalReturn ?? 0,
+          description: "策略从开始到现在的总收益率",
+          benchmark: "--",
+        },
+        {
+          metric: "年化收益率",
+          value: data.annualReturn ?? 0,
+          description: "折算成年度的收益率",
+          benchmark: "--",
+        },
+        {
+          metric: "最大回撤",
+          value: data.maxDrawdown ?? 0,
+          description: "策略净值从最高点到最低点的最大跌幅",
+          benchmark: "--",
+        },
+        {
+          metric: "夏普比率",
+          value: data.sharpeRatio ?? 0,
+          description: "每承受一单位风险产生的超额收益",
+          benchmark: "--",
+        },
+        {
+          metric: "胜率",
+          value: data.winRate ?? 0,
+          description: "盈利交易次数占总交易次数的比例",
+          benchmark: "--",
+        },
+        {
+          metric: "利润因子",
+          value: data.profitFactor ?? 0,
+          description: "总盈利与总亏损的比值",
+          benchmark: "--",
+        },
+        {
+          metric: "总交易次数",
+          value: data.totalTrades ?? 0,
+          description: "策略执行的总交易次数",
+          benchmark: "--",
+        },
       ];
     }
     initCharts();
@@ -279,7 +319,13 @@ const initCharts = () => {
     equityChartInstance.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["策略净值", "基准净值"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: [
@@ -325,7 +371,13 @@ const initCharts = () => {
     drawdownChartInstance.setOption({
       tooltip: { trigger: "axis" },
       legend: { data: ["回撤幅度"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
+      grid: {
+        left: "3%",
+        right: "4%",
+        top: 12,
+        bottom: 32,
+        containLabel: true,
+      },
       xAxis: {
         type: "category",
         data: [
@@ -442,7 +494,6 @@ onMounted(async () => {
   padding: 0;
   height: 100%;
   overflow-y: auto;
-
 }
 /* .page-header 已迁移至全局样式（global.scss） */
 

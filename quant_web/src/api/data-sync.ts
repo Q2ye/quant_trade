@@ -20,7 +20,7 @@ export interface SyncProgress {
 export interface SyncStatusResponse {
   success: boolean;
   task_id: string;
-  status: string;              // pending | running | completed | failed | cancelled
+  status: string; // pending | running | completed | failed | cancelled
   progress: SyncProgress;
   results?: SyncResultItem[];
   created_by: string;
@@ -43,29 +43,29 @@ export interface SyncResultItem {
 
 // 同步任务项 — 与后端 SyncTaskItem 完全匹配
 export interface SyncTaskItem {
-  data_type: string;         // 数据类型代码，如 stock_list, daily_quotes
-  start_date?: string;       // 开始日期 YYYY-MM-DD
-  end_date?: string;         // 结束日期 YYYY-MM-DD
-  force_update?: boolean;    // 是否强制全量更新
+  data_type: string; // 数据类型代码，如 stock_list, daily_quotes
+  start_date?: string; // 开始日期 YYYY-MM-DD
+  end_date?: string; // 结束日期 YYYY-MM-DD
+  force_update?: boolean; // 是否强制全量更新
 }
 
 // 批量同步请求接口 — 与后端 BatchSyncRequest 完全匹配
 export interface BatchSyncRequest {
-  tasks: SyncTaskItem[];                          // 同步任务列表（必填，至少1项）
+  tasks: SyncTaskItem[]; // 同步任务列表（必填，至少1项）
   priority?: "low" | "medium" | "high" | "critical"; // 优先级，默认 medium
-  notify_on_complete?: boolean;                   // 完成后是否通知，默认 true
-  callback_url?: string;                          // 完成回调 URL
+  notify_on_complete?: boolean; // 完成后是否通知，默认 true
+  callback_url?: string; // 完成回调 URL
 }
 
 // 前端使用的简化参数（向后兼容层会转换为 BatchSyncRequest）
 export interface SyncRequest {
-  data_types?: string[];      // 数据类型代码数组（可选，为空时使用核心类型）
+  data_types?: string[]; // 数据类型代码数组（可选，为空时使用核心类型）
   start_date?: string;
   end_date?: string;
-  days?: number;              // 从今天往前推算天数（与 start_date 互斥）
-  stock_codes?: string[];     // 股票代码过滤
-  exchange?: string;          // 交易所过滤
-  batch_size?: number;        // 批次大小
+  days?: number; // 从今天往前推算天数（与 start_date 互斥）
+  stock_codes?: string[]; // 股票代码过滤
+  exchange?: string; // 交易所过滤
+  batch_size?: number; // 批次大小
 }
 
 // 同步响应接口 - 与后端SyncResponse完全匹配
@@ -144,53 +144,53 @@ export interface DataQualityResponse {
 
 // 同步类型分组元数据 (对应后端 GET /api/data/sync/types 返回)
 export interface SyncTypeMeta {
-  data_type: string
-  label: string
-  group_index: string
-  implemented: boolean
-  table_name: string
-  estimated_time_seconds: number
-  data_volume: string
-  last_sync_at: string | null
-  coverage: number
-  is_core: boolean
+  data_type: string;
+  label: string;
+  group_index: string;
+  implemented: boolean;
+  table_name: string;
+  estimated_time_seconds: number;
+  data_volume: string;
+  last_sync_at: string | null;
+  coverage: number;
+  is_core: boolean;
 }
 
 export interface SyncGroupMeta {
-  id: string
-  label: string
-  color: string
-  description: string
-  recommended_frequency: string
-  depends_on: string[]
-  types: SyncTypeMeta[]
+  id: string;
+  label: string;
+  color: string;
+  description: string;
+  recommended_frequency: string;
+  depends_on: string[];
+  types: SyncTypeMeta[];
 }
 
 export interface SyncPresetMeta {
-  id: string
-  name: string
-  description: string
-  recommended: boolean
-  estimated_time_seconds: number
-  steps: { group_id: string; type_filter?: string }[]
+  id: string;
+  name: string;
+  description: string;
+  recommended: boolean;
+  estimated_time_seconds: number;
+  steps: { group_id: string; type_filter?: string }[];
 }
 
 export interface SyncTypesMetaResponse {
-  groups: SyncGroupMeta[]
-  presets: SyncPresetMeta[]
+  groups: SyncGroupMeta[];
+  presets: SyncPresetMeta[];
 }
 
 export interface SyncTypeStatus {
-  data_type: string
-  label: string
-  group: string
-  last_sync_at: string | null
-  coverage: number
-  status: 'up_to_date' | 'needs_update' | 'outdated' | 'never_synced'
+  data_type: string;
+  label: string;
+  group: string;
+  last_sync_at: string | null;
+  coverage: number;
+  status: "up_to_date" | "needs_update" | "outdated" | "never_synced";
 }
 
 export interface SyncStatusAllResponse {
-  types: SyncTypeStatus[]
+  types: SyncTypeStatus[];
 }
 
 /**
@@ -287,9 +287,10 @@ class DataSyncService {
    * @returns 同步任务响应
    */
   async fullSyncData(requestData: SyncRequest = {}): Promise<SyncResponse> {
-    const types = requestData.data_types && requestData.data_types.length > 0
-      ? requestData.data_types
-      : ["stock_list", "daily_quotes", "trade_calendar"];
+    const types =
+      requestData.data_types && requestData.data_types.length > 0
+        ? requestData.data_types
+        : ["stock_list", "daily_quotes", "trade_calendar"];
     const tasks: SyncTaskItem[] = types.map((dt) => {
       const item: SyncTaskItem = { data_type: dt };
       if (requestData.start_date) item.start_date = requestData.start_date;
@@ -363,7 +364,10 @@ class DataSyncService {
    * 删除同步任务记录
    * @param taskId 任务ID
    */
-  async deleteSyncTask(taskId: string, force?: boolean): Promise<{ task_id: string; deleted: boolean }> {
+  async deleteSyncTask(
+    taskId: string,
+    force?: boolean,
+  ): Promise<{ task_id: string; deleted: boolean }> {
     return request
       .delete(`${this.baseUrl}/tasks/${taskId}`, { params: { force } })
       .then(handleResponse)
@@ -374,7 +378,11 @@ class DataSyncService {
   }
 
   /** 批量删除同步任务 */
-  async batchDeleteSyncTasks(taskIds: string[]): Promise<{ deleted: string[]; failed: Array<{ task_id: string; reason: string }>; total: number }> {
+  async batchDeleteSyncTasks(taskIds: string[]): Promise<{
+    deleted: string[];
+    failed: Array<{ task_id: string; reason: string }>;
+    total: number;
+  }> {
     return request
       .delete(`${this.baseUrl}/tasks/batch`, { data: taskIds })
       .then(handleResponse)
@@ -500,9 +508,9 @@ class DataSyncService {
       .get(`${this.baseUrl}/types`)
       .then(handleResponse)
       .catch((error) => {
-        console.error("获取同步类型元数据失败:", error)
-        throw error
-      })
+        console.error("获取同步类型元数据失败:", error);
+        throw error;
+      });
   }
 
   /**
@@ -513,9 +521,9 @@ class DataSyncService {
       .get(`${this.baseUrl}/status/all`)
       .then(handleResponse)
       .catch((error) => {
-        console.error("获取同步状态概览失败:", error)
-        throw error
-      })
+        console.error("获取同步状态概览失败:", error);
+        throw error;
+      });
   }
 }
 

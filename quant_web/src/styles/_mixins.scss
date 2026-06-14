@@ -265,7 +265,6 @@
 ///
 /// @example: @include page-header-base;
 @mixin page-header-base {
-
   // === 盒模型 ===
   position: relative;
   margin: 0 0 24px 0;
@@ -276,7 +275,7 @@
   // 180deg 上→下：品牌蓝 → 深海暗 → 近黑，半透明可透 3D 粒子
   background: linear-gradient(
     180deg,
-    rgba(68, 138, 255, 0.20) 0%,
+    rgba(68, 138, 255, 0.2) 0%,
     rgba(68, 138, 255, 0.05) 35%,
     rgba(10, 20, 38, 0.55) 70%,
     rgba(8, 14, 26, 0.48) 100%
@@ -292,7 +291,9 @@
   &::before {
     content: "";
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: 1px;
     background: linear-gradient(
       90deg,
@@ -310,8 +311,10 @@
   &::after {
     content: "";
     position: absolute;
-    top: -50px; right: -30px;
-    width: 220px; height: 220px;
+    top: -50px;
+    right: -30px;
+    width: 220px;
+    height: 220px;
     background: radial-gradient(
       circle,
       rgba(68, 138, 255, 0.07) 0%,
@@ -329,23 +332,23 @@
     align-items: center;
     flex-wrap: wrap;
     gap: vars.spacer(3);
-    padding: 18px 24px;      // 垂直 18px 压缩头部高度
+    padding: 18px 24px; // 垂直 18px 压缩头部高度
 
     .title-section {
       flex: 1;
       min-width: 200px;
 
       .page-title {
-        font-size: 1.4rem;   // ~20px，紧凑但层次清晰
-        font-weight: 600;    // Inter 半粗体更精致
+        font-size: 1.4rem; // ~20px，紧凑但层次清晰
+        font-weight: 600; // Inter 半粗体更精致
         letter-spacing: -0.01em;
         color: var(--color-text-primary);
-        margin-bottom: 2px;  // 收紧与描述间距
+        margin-bottom: 2px; // 收紧与描述间距
         line-height: 1.25;
       }
 
       .page-description {
-        font-size: 0.85rem;  // ~12px
+        font-size: 0.85rem; // ~12px
         color: var(--color-text-secondary);
         line-height: 1.4;
       }
@@ -372,9 +375,9 @@
   }
 
   .header-actions .n-button:hover {
-    border-color: rgba(68, 138, 255, 0.40);
+    border-color: rgba(68, 138, 255, 0.4);
     color: #fff;
-    background: rgba(68, 138, 255, 0.10);
+    background: rgba(68, 138, 255, 0.1);
   }
 
   // === 响应式 ===

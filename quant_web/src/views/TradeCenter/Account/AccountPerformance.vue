@@ -188,174 +188,178 @@ onMounted(() => {
       </div>
     </div>
     <div class="main-content">
-    <n-spin :show="loading">
-    <n-result
-      v-if="error"
-      status="500"
-      title="加载失败"
-      description="获取绩效数据失败，请稍后重试"
-    >
-      <template #footer
-        ><n-button @click="loadPerformanceData">重试</n-button></template
-      >
-    </n-result>
+      <n-spin :show="loading">
+        <n-result
+          v-if="error"
+          status="500"
+          title="加载失败"
+          description="获取绩效数据失败，请稍后重试"
+        >
+          <template #footer
+            ><n-button @click="loadPerformanceData">重试</n-button></template
+          >
+        </n-result>
 
-    <n-card v-else title="账户绩效分析">
-      <template #header-extra>
-        <n-space>
-          <n-select
-            v-model:value="selectedPeriod"
-            style="width: 120px"
-            :options="periodOptions"
-          />
-          <n-date-picker
-            v-model:formatted-value="dateRange"
-            type="daterange"
-            clearable
-          />
-        </n-space>
-      </template>
+        <n-card v-else title="账户绩效分析">
+          <template #header-extra>
+            <n-space>
+              <n-select
+                v-model:value="selectedPeriod"
+                style="width: 120px"
+                :options="periodOptions"
+              />
+              <n-date-picker
+                v-model:formatted-value="dateRange"
+                type="daterange"
+                clearable
+              />
+            </n-space>
+          </template>
 
-      <!-- Summary Statistics Row -->
-      <n-grid
-        :x-gap="16"
-        :cols="6"
-        responsive="screen"
-        style="margin-bottom: 24px"
-      >
-        <n-grid-item>
-          <n-statistic label="总资产">
-            ¥{{ (currentStats?.total_asset || 0).toFixed(2) }}
-          </n-statistic>
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="现金">
-            ¥{{ (currentStats?.cash || 0).toFixed(2) }}
-          </n-statistic>
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="持仓市值">
-            ¥{{ (currentStats?.market_value || 0).toFixed(2) }}
-          </n-statistic>
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="当日盈亏">
-            <span :style="{ color: pnlColor }">
-              ¥{{ (currentStats?.daily_pnl || 0).toFixed(2) }}
-            </span>
-          </n-statistic>
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="当日收益率">
-            <span :style="{ color: pnlColor }">
-              {{ ((currentStats?.daily_return || 0) * 100).toFixed(2) }}%
-            </span>
-          </n-statistic>
-        </n-grid-item>
-        <n-grid-item>
-          <n-statistic label="累计收益率">
-            <span :style="{ color: pnlColor }">
-              {{ ((currentStats?.cumulative_return || 0) * 100).toFixed(2) }}%
-            </span>
-          </n-statistic>
-        </n-grid-item>
-      </n-grid>
-
-      <n-tabs>
-        <n-tab-pane name="metrics" tab="绩效指标">
-          <n-grid :x-gap="16" :cols="3" responsive="screen">
-            <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="总收益率">
-                  <span
-                    :style="{
-                      color:
-                        performanceMetrics.totalReturn >= 0
-                          ? 'var(--color-stock-up)'
-                          : 'var(--color-stock-down)',
-                    }"
-                  >
-                    {{ (performanceMetrics.totalReturn * 100).toFixed(2) }}%
-                  </span>
-                </n-statistic>
-              </n-card>
-            </n-grid-item>
-            <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="年化收益率">
-                  <span
-                    :style="{
-                      color:
-                        performanceMetrics.annualizedReturn >= 0
-                          ? 'var(--color-stock-up)'
-                          : 'var(--color-stock-down)',
-                    }"
-                  >
-                    {{
-                      (performanceMetrics.annualizedReturn * 100).toFixed(2)
-                    }}%
-                  </span>
-                </n-statistic>
-              </n-card>
-            </n-grid-item>
-            <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="夏普比率">
-                  {{ performanceMetrics.sharpeRatio.toFixed(2) }}
-                </n-statistic>
-              </n-card>
-            </n-grid-item>
-          </n-grid>
-
+          <!-- Summary Statistics Row -->
           <n-grid
             :x-gap="16"
-            :cols="3"
+            :cols="6"
             responsive="screen"
-            style="margin-top: 16px"
+            style="margin-bottom: 24px"
           >
             <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="最大回撤">
-                  <span style="color: var(--color-stock-down)">
-                    {{ (performanceMetrics.maxDrawdown * 100).toFixed(2) }}%
-                  </span>
-                </n-statistic>
-              </n-card>
+              <n-statistic label="总资产">
+                ¥{{ (currentStats?.total_asset || 0).toFixed(2) }}
+              </n-statistic>
             </n-grid-item>
             <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="波动率">
-                  {{ (performanceMetrics.volatility * 100).toFixed(2) }}%
-                </n-statistic>
-              </n-card>
+              <n-statistic label="现金">
+                ¥{{ (currentStats?.cash || 0).toFixed(2) }}
+              </n-statistic>
             </n-grid-item>
             <n-grid-item>
-              <n-card size="small">
-                <n-statistic label="胜率">
-                  {{ (performanceMetrics.winRate * 100).toFixed(2) }}%
-                </n-statistic>
-              </n-card>
+              <n-statistic label="持仓市值">
+                ¥{{ (currentStats?.market_value || 0).toFixed(2) }}
+              </n-statistic>
+            </n-grid-item>
+            <n-grid-item>
+              <n-statistic label="当日盈亏">
+                <span :style="{ color: pnlColor }">
+                  ¥{{ (currentStats?.daily_pnl || 0).toFixed(2) }}
+                </span>
+              </n-statistic>
+            </n-grid-item>
+            <n-grid-item>
+              <n-statistic label="当日收益率">
+                <span :style="{ color: pnlColor }">
+                  {{ ((currentStats?.daily_return || 0) * 100).toFixed(2) }}%
+                </span>
+              </n-statistic>
+            </n-grid-item>
+            <n-grid-item>
+              <n-statistic label="累计收益率">
+                <span :style="{ color: pnlColor }">
+                  {{
+                    ((currentStats?.cumulative_return || 0) * 100).toFixed(2)
+                  }}%
+                </span>
+              </n-statistic>
             </n-grid-item>
           </n-grid>
-        </n-tab-pane>
 
-        <n-tab-pane name="positions" tab="持仓分析">
-          <n-data-table
-            :columns="positionColumns"
-            :data="positions"
-            :pagination="false"
-            :row-key="(row: Position) => row.symbol"
-            size="small"
-          />
-        </n-tab-pane>
+          <n-tabs>
+            <n-tab-pane name="metrics" tab="绩效指标">
+              <n-grid :x-gap="16" :cols="3" responsive="screen">
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="总收益率">
+                      <span
+                        :style="{
+                          color:
+                            performanceMetrics.totalReturn >= 0
+                              ? 'var(--color-stock-up)'
+                              : 'var(--color-stock-down)',
+                        }"
+                      >
+                        {{ (performanceMetrics.totalReturn * 100).toFixed(2) }}%
+                      </span>
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="年化收益率">
+                      <span
+                        :style="{
+                          color:
+                            performanceMetrics.annualizedReturn >= 0
+                              ? 'var(--color-stock-up)'
+                              : 'var(--color-stock-down)',
+                        }"
+                      >
+                        {{
+                          (performanceMetrics.annualizedReturn * 100).toFixed(
+                            2,
+                          )
+                        }}%
+                      </span>
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="夏普比率">
+                      {{ performanceMetrics.sharpeRatio.toFixed(2) }}
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+              </n-grid>
 
-        <n-tab-pane name="chart" tab="净值曲线">
-          <div class="chart-placeholder">净值曲线图表区域</div>
-        </n-tab-pane>
-      </n-tabs>
-    </n-card>
-  </n-spin>
-  </div>
+              <n-grid
+                :x-gap="16"
+                :cols="3"
+                responsive="screen"
+                style="margin-top: 16px"
+              >
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="最大回撤">
+                      <span style="color: var(--color-stock-down)">
+                        {{ (performanceMetrics.maxDrawdown * 100).toFixed(2) }}%
+                      </span>
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="波动率">
+                      {{ (performanceMetrics.volatility * 100).toFixed(2) }}%
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-card size="small">
+                    <n-statistic label="胜率">
+                      {{ (performanceMetrics.winRate * 100).toFixed(2) }}%
+                    </n-statistic>
+                  </n-card>
+                </n-grid-item>
+              </n-grid>
+            </n-tab-pane>
+
+            <n-tab-pane name="positions" tab="持仓分析">
+              <n-data-table
+                :columns="positionColumns"
+                :data="positions"
+                :pagination="false"
+                :row-key="(row: Position) => row.symbol"
+                size="small"
+              />
+            </n-tab-pane>
+
+            <n-tab-pane name="chart" tab="净值曲线">
+              <div class="chart-placeholder">净值曲线图表区域</div>
+            </n-tab-pane>
+          </n-tabs>
+        </n-card>
+      </n-spin>
+    </div>
   </div>
 </template>
 

@@ -24,21 +24,33 @@ class IndexInfoSchema(BaseModel):
 
 
 class IndexDetailSchema(BaseModel):
-    """指数详情（含最新行情）"""
-    code: str
+    """指数详情（含最新行情）— 字段名与 ORM / index_daily 一致"""
+    ts_code: str = Field(..., alias="code")
     name: str
     fullname: Optional[str] = None
     market: Optional[str] = None
     publisher: Optional[str] = None
     category: Optional[str] = None
-    baseDate: Optional[str] = Field(default=None, alias="base_date")
-    basePoint: Optional[float] = Field(default=None, alias="base_point")
-    latestPrice: Optional[float] = Field(default=None, alias="latest_price")
-    latestChange: Optional[float] = Field(default=None, alias="latest_change")
-    latestPctChg: Optional[float] = Field(default=None, alias="latest_pct_chg")
-    latestVolume: Optional[float] = Field(default=None, alias="latest_volume")
-    latestAmount: Optional[float] = Field(default=None, alias="latest_amount")
-    latestTradeDate: Optional[str] = Field(default=None, alias="latest_trade_date")
+    base_date: Optional[str] = None
+    base_point: Optional[float] = None
+    list_date: Optional[str] = None
+    # 最新行情（index_daily 字段）
+    close: Optional[float] = None
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    pre_close: Optional[float] = None
+    change: Optional[float] = None
+    pct_chg: Optional[float] = None
+    vol: Optional[float] = None
+    amount: Optional[float] = None
+    trade_date: Optional[str] = None
+    # 估值指标（index_dailybasic）
+    pe: Optional[float] = None
+    pb: Optional[float] = None
+    total_mv: Optional[float] = None
+    # 成分股数
+    components_count: Optional[int] = None
 
     class Config:
         populate_by_name = True
@@ -78,6 +90,8 @@ class ETFInfoSchema(BaseModel):
 
 class ETFListResponse(BaseModel):
     etfs: List[ETFInfoSchema]
+    total: int = 0
+    page: int = 1
 
 
 class ETFDetailResponse(BaseModel):

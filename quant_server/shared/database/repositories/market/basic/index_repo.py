@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database.models.data_models import (
 	IndexBasic,
 	IndexDaily,
+	IndexDailyBasic,
 	IndexWeight,
 )
+from sqlalchemy import func
 from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
@@ -357,6 +359,40 @@ class IndexRepository:
 	async def get_latest_index_daily (self, index_code: str) -> Optional[IndexDaily]:
 		"""获取最新指数日线行情"""
 		return await self.index_daily_repo.get_latest_by_ts_code(index_code)
+
+	async def get_latest_daily_basic (self, index_code: str) -> Optional[IndexDailyBasic]:
+		"""获取指数最新每日指标（PE/PB/市值等）"""
+		try:
+			stmt = (
+				select(IndexDailyBasic)
+				.where(IndexDailyBasic.ts_code == index_code)
+				.order_by(IndexDailyBasic.trade_date.desc())
+				.limit(1)
+			)
+			result = await self.session.execute(stmt)
+			return result.scalar_one_or_none()
+		except Exception:
+			return None
+
+	async def count_components (self, index_code: str) -> int:
+		"""统计指数成分股数量（从 index_weight 最新日期取）"""
+		try:
+			stmt = (
+				select(func.count(IndexWeight.ts_code))
+				.where(IndexWeight.index_code == index_code)
+				.where(
+					IndexWeight.trade_date == (
+						select(func.max(IndexWeight.trade_date))
+						.where(IndexWeight.index_code == index_code)
+						.scalar_subquery()
+					)
+				)
+			)
+			result = await self.session.execute(stmt)
+			count = result.scalar()
+			return count if count else 0
+		except Exception:
+			return 0
 
 	# ==================== 成分股权重操作 ====================
 

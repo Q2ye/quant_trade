@@ -222,7 +222,9 @@ export default {
    * @returns 删除操作结果
    */
   async deleteApiKey(keyId: string): Promise<void> {
-    return request.delete(`/quantTrade/system/api-keys/${keyId}`).then(handleResponse);
+    return request
+      .delete(`/quantTrade/system/api-keys/${keyId}`)
+      .then(handleResponse);
   },
 
   /**
@@ -288,7 +290,9 @@ export default {
    * @returns 禁用操作结果
    */
   async disableTwoFactorAuth(): Promise<void> {
-    return request.post("/quantTrade/system/two-factor/disable").then(handleResponse);
+    return request
+      .post("/quantTrade/system/two-factor/disable")
+      .then(handleResponse);
   },
 
   /**

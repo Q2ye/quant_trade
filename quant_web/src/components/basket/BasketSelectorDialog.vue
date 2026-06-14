@@ -78,7 +78,9 @@ const handleCreateAndAdd = async () => {
   try {
     const basket = await createBasket({
       name,
-      items: [{ symbol: props.stock.symbol, weight: 0.1, id: "", basket_id: "" }],
+      items: [
+        { symbol: props.stock.symbol, weight: 0.1, id: "", basket_id: "" },
+      ],
     });
     message.success(`已创建篮子「${name}」并添加标的`);
     emit("added", basket.id);

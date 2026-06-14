@@ -251,9 +251,7 @@ class WebSocketService {
    * @param callback 同步事件回调函数
    * @returns 频道ID
    */
-  subscribeSyncStatus(
-    callback: WebSocketCallback<SyncEventMessage>,
-  ): string {
+  subscribeSyncStatus(callback: WebSocketCallback<SyncEventMessage>): string {
     const channel = "events:sync";
     this.subscribe(channel, callback);
     return channel;

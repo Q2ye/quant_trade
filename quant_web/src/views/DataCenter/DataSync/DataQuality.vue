@@ -8,10 +8,21 @@
           <p class="page-description">监控数据完整性、准确性和时效性</p>
         </div>
         <div class="header-actions">
-          <n-button class="action-btn" @click="refreshData" :loading="loading" quaternary>
+          <n-button
+            class="action-btn"
+            @click="refreshData"
+            :loading="loading"
+            quaternary
+          >
             <template #icon><SmartIcon name="Refresh" /></template>
           </n-button>
-          <n-button class="action-btn" @click="handleDeleteRecords" :loading="isDeleting" quaternary type="error">
+          <n-button
+            class="action-btn"
+            @click="handleDeleteRecords"
+            :loading="isDeleting"
+            quaternary
+            type="error"
+          >
             <template #icon><SmartIcon name="Delete" /></template>
           </n-button>
           <n-button class="action-btn" @click="handleBack" quaternary>
@@ -124,7 +135,13 @@
           <template #header>
             <div class="card-header">
               <span>数据质量详情</span>
-              <n-button type="primary" size="small" @click="refreshData" :loading="loading">检查质量</n-button>
+              <n-button
+                type="primary"
+                size="small"
+                @click="refreshData"
+                :loading="loading"
+                >检查质量</n-button
+              >
             </div>
           </template>
 

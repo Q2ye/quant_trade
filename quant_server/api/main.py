@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from .middleware.timing import timing_middleware
 from .routers import (
     data_router, strategy_router, trade_router, basket_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, health_router,
@@ -125,6 +126,8 @@ def create_app (
 		allowed_hosts=["*"]  # 生产环境应该限制
 	)
 
+	# 请求计时中间件
+	app.middleware("http")(timing_middleware)
 	# 添加异常处理器
 
 

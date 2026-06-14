@@ -29,13 +29,13 @@ const chartPeriod = ref<"1D" | "1W" | "1M">("1D");
 const pnlColor = computed(() =>
   (props.position?.profit_loss ?? 0) >= 0
     ? "var(--color-stock-up)"
-    : "var(--color-stock-down)"
+    : "var(--color-stock-down)",
 );
 
 const changeColor = computed(() =>
   (props.changePercent ?? 0) >= 0
     ? "var(--color-stock-up)"
-    : "var(--color-stock-down)"
+    : "var(--color-stock-down)",
 );
 
 const initChart = () => {
@@ -47,7 +47,17 @@ const initChart = () => {
     grid: { top: 10, right: 8, bottom: 20, left: 42 },
     xAxis: {
       type: "category",
-      data: ["09:30", "10:00", "10:30", "11:00", "11:30", "13:30", "14:00", "14:30", "15:00"],
+      data: [
+        "09:30",
+        "10:00",
+        "10:30",
+        "11:00",
+        "11:30",
+        "13:30",
+        "14:00",
+        "14:30",
+        "15:00",
+      ],
       axisLabel: { fontSize: 10, color: "#666" },
       axisLine: { lineStyle: { color: "#333" } },
     },
@@ -56,25 +66,30 @@ const initChart = () => {
       axisLabel: { fontSize: 10, color: "#666" },
       splitLine: { lineStyle: { color: "rgba(255,255,255,0.04)" } },
     },
-    series: [{
-      type: "line",
-      data: [1840, 1845, 1842, 1855, 1852, 1858, 1850, 1848, 1850.5],
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { color: "#448AFF", width: 1.5 },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: "rgba(68,138,255,0.12)" },
-          { offset: 1, color: "rgba(68,138,255,0.02)" },
-        ]),
+    series: [
+      {
+        type: "line",
+        data: [1840, 1845, 1842, 1855, 1852, 1858, 1850, 1848, 1850.5],
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { color: "#448AFF", width: 1.5 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(68,138,255,0.12)" },
+            { offset: 1, color: "rgba(68,138,255,0.02)" },
+          ]),
+        },
       },
-    }],
+    ],
   });
 };
 
-watch(() => props.tsCode, (val) => {
-  if (val) setTimeout(initChart, 100);
-});
+watch(
+  () => props.tsCode,
+  (val) => {
+    if (val) setTimeout(initChart, 100);
+  },
+);
 
 onMounted(() => {
   if (props.tsCode) setTimeout(initChart, 100);
@@ -105,10 +120,15 @@ onUnmounted(() => {
           <span class="panel-stock-name">{{ stockName || tsCode }}</span>
           <span class="panel-stock-code">{{ tsCode }}</span>
         </div>
-        <div v-if="currentPrice != null" class="panel-price" :style="{ color: changeColor }">
+        <div
+          v-if="currentPrice != null"
+          class="panel-price"
+          :style="{ color: changeColor }"
+        >
           ¥{{ currentPrice.toFixed(2) }}
           <span class="panel-change" :style="{ color: changeColor }">
-            {{ (changePercent ?? 0) >= 0 ? "+" : "" }}{{ (changePercent ?? 0).toFixed(2) }}%
+            {{ (changePercent ?? 0) >= 0 ? "+" : ""
+            }}{{ (changePercent ?? 0).toFixed(2) }}%
           </span>
         </div>
       </div>
@@ -117,7 +137,7 @@ onUnmounted(() => {
       <div class="mini-chart-section">
         <div class="mini-chart-header">
           <n-tag
-            v-for="p in (['1D','1W','1M'] as const)"
+            v-for="p in ['1D', '1W', '1M'] as const"
             :key="p"
             size="tiny"
             :type="chartPeriod === p ? 'primary' : 'default'"
@@ -151,16 +171,22 @@ onUnmounted(() => {
           </div>
         </div>
       </n-card>
-      <div v-else class="no-position-hint">
-        暂未持有该股票
-      </div>
+      <div v-else class="no-position-hint">暂未持有该股票</div>
 
       <!-- Related orders -->
       <n-card v-if="relatedOrders.length > 0" size="small" class="info-card">
         <div class="info-card-title">关联订单</div>
         <div class="order-list">
-          <div v-for="o in relatedOrders.slice(0, 5)" :key="o.order_id" class="order-row">
-            <n-tag size="tiny" :type="o.direction === 'buy' ? 'success' : 'error'" :bordered="false">
+          <div
+            v-for="o in relatedOrders.slice(0, 5)"
+            :key="o.order_id"
+            class="order-row"
+          >
+            <n-tag
+              size="tiny"
+              :type="o.direction === 'buy' ? 'success' : 'error'"
+              :bordered="false"
+            >
               {{ o.direction === "buy" ? "买" : "卖" }}
             </n-tag>
             <span class="order-qty">{{ o.volume }}股</span>
@@ -190,7 +216,12 @@ onUnmounted(() => {
           <template #icon><SmartIcon name="TrendingUp" /></template>
           买入
         </n-button>
-        <n-button type="error" @click="emit('trade', 'sell')" size="small" :disabled="!position">
+        <n-button
+          type="error"
+          @click="emit('trade', 'sell')"
+          size="small"
+          :disabled="!position"
+        >
           <template #icon><SmartIcon name="TrendingDown" /></template>
           卖出
         </n-button>

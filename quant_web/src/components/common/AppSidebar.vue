@@ -26,10 +26,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">数据中心</div>
-        <n-menu
-          :options="dataCenterOptions"
-          v-model:value="activeMenu"
-        />
+        <n-menu :options="dataCenterOptions" v-model:value="activeMenu" />
       </div>
 
       <!-- ================================================================
@@ -37,10 +34,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">策略中心</div>
-        <n-menu
-          :options="strategyCenterOptions"
-          v-model:value="activeMenu"
-        />
+        <n-menu :options="strategyCenterOptions" v-model:value="activeMenu" />
       </div>
 
       <!-- ================================================================
@@ -48,10 +42,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">交易与持仓</div>
-        <n-menu
-          :options="tradingOptions"
-          v-model:value="activeMenu"
-        />
+        <n-menu :options="tradingOptions" v-model:value="activeMenu" />
       </div>
 
       <!-- ================================================================
@@ -59,10 +50,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">风险监控</div>
-        <n-menu
-          :options="riskOptions"
-          v-model:value="activeMenu"
-        />
+        <n-menu :options="riskOptions" v-model:value="activeMenu" />
       </div>
 
       <!-- ================================================================
@@ -70,10 +58,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">系统管理</div>
-        <n-menu
-          :options="systemOptions"
-          v-model:value="activeMenu"
-        />
+        <n-menu :options="systemOptions" v-model:value="activeMenu" />
       </div>
     </div>
 
@@ -366,7 +351,6 @@ export default defineComponent({
       activeMenu.value = findMenuKey(route.path);
     });
 
-
     return {
       activeMenu,
       collapsed,
@@ -574,11 +558,11 @@ export default defineComponent({
       overflow: hidden;
       max-width: 200px;
       opacity: 1;
-      transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-                  max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition:
+        opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
   }
-
 }
 
 /* ==========================================================================
@@ -615,8 +599,9 @@ export default defineComponent({
       max-width: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-                  max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition:
+        opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .n-menu-item-content__arrow {
@@ -624,8 +609,9 @@ export default defineComponent({
       max-width: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-                  max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition:
+        opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+        max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     &__icon,

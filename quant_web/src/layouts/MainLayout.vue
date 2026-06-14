@@ -7,9 +7,7 @@
     <ParticleBackground :opacity="0.55" :size="0.025" />
 
     <!-- 顶部状态栏 -->
-    <AppHeader
-      class="app-header"
-    />
+    <AppHeader class="app-header" />
 
     <!-- 侧边栏和工作区容器 -->
     <div class="layout-container">
@@ -35,24 +33,15 @@
       <div class="footer-content">
         <div class="footer-section">
           <n-icon size="14" class="footer-icon">
-            <smart-icon name="Desktop" />
-          </n-icon>
-          <span
-            >CPU: {{ systemStats.cpuUsage }}% | 内存:
-            {{ systemStats.memoryUsage }}%</span
-          >
-        </div>
-        <div class="footer-section">
-          <n-icon size="14" class="footer-icon">
             <smart-icon name="CloudDownload" />
           </n-icon>
-          <span>数据连接: {{ systemStats.dataStatus }}</span>
+          <span>{{ systemStats.dataStatus }}</span>
         </div>
         <div class="footer-section">
           <n-icon size="14" class="footer-icon">
             <smart-icon name="SwapHorizontal" />
           </n-icon>
-          <span>交易通道: {{ systemStats.tradeStatus }}</span>
+          <span>{{ systemStats.tradeStatus }}</span>
         </div>
         <div class="footer-log">
           <n-icon size="14" class="footer-icon">
@@ -66,7 +55,14 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, defineAsyncComponent, onMounted, onUnmounted, reactive, ref } from "vue";
+import {
+  defineComponent,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+} from "vue";
 import { NIcon } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
@@ -90,28 +86,41 @@ export default defineComponent({
   setup() {
     const sidebarCollapsed = ref(false);
     const systemStats = reactive({
-      cpuUsage: 0,
-      memoryUsage: 0,
-      dataStatus: "正常",
-      tradeStatus: "已连接",
-      lastLog: "[2023-08-20 09:30:05] 策略引擎启动成功",
+      dataStatus: "检测中…",
+      tradeStatus: "检测中…",
+      lastLog: "",
     });
 
     const handleSidebarCollapse = (collapsed: boolean) => {
       sidebarCollapsed.value = collapsed;
     };
 
-    // 模拟系统状态更新
-    let statsInterval: number;
+    // 定期拉取真实系统健康状态
+    let statsTimer: number;
+    async function updateStats() {
+      try {
+        const systemAPI = (await import("@/api/system")).default;
+        const health = await systemAPI.healthCheck();
+        const deps = (health as any)?.dependencies;
+        if (deps) {
+          systemStats.dataStatus = deps.database ? "数据库正常" : "数据库断连";
+          systemStats.tradeStatus = deps.dataSource ? "数据源正常" : "数据源断连";
+        }
+      } catch {
+        systemStats.dataStatus = "状态获取失败";
+        systemStats.tradeStatus = "状态获取失败";
+      }
+      // 当前时间作为最新活动时间
+      const now = new Date();
+      systemStats.lastLog = `[${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}] 系统运行中`;
+    }
     onMounted(() => {
-      statsInterval = setInterval(() => {
-        systemStats.cpuUsage = Math.floor(Math.random() * 30) + 30;
-        systemStats.memoryUsage = Math.floor(Math.random() * 20) + 50;
-      }, 5000) as unknown as number;
+      updateStats();
+      statsTimer = setInterval(updateStats, 30000) as unknown as number; // 每30秒刷新
     });
 
     onUnmounted(() => {
-      clearInterval(statsInterval);
+      clearInterval(statsTimer);
     });
 
     return {
@@ -273,5 +282,4 @@ export default defineComponent({
 }
 
 /* 3D particles: z-index handled internally by ParticleBackground.vue */
-
 </style>

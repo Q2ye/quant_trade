@@ -41,7 +41,8 @@
       // 大屏幕：2列
       "md": 1,
       // 中等屏幕：1列（两个卡片上下堆叠）
-      "sm": 1, // 小屏幕：1列
+      "sm": 1,
+      // 小屏幕：1列
     ),
     map.get($spacers, 5)
   ); // 主要间隙：使用spacers映射中的第5个值
@@ -62,7 +63,8 @@
       "sm": (
           "gap": map.get($spacers, 2),
           "card-gap": map.get($spacers, 2),
-        ), // 小屏幕间隙配置
+        ),
+      // 小屏幕间隙配置
     )
   );
 
@@ -144,9 +146,18 @@
 
     // index-code 颜色变体
     .index-code {
-      &.excellent { background: rgba($success-color, 0.1); color: $success-color; }
-      &.good { background: rgba($info-color, 0.1); color: $info-color; }
-      &.fair { background: rgba($warning-color, 0.1); color: $warning-color; }
+      &.excellent {
+        background: rgba($success-color, 0.1);
+        color: $success-color;
+      }
+      &.good {
+        background: rgba($info-color, 0.1);
+        color: $info-color;
+      }
+      &.fair {
+        background: rgba($warning-color, 0.1);
+        color: $warning-color;
+      }
     }
   }
 
@@ -215,17 +226,23 @@
 
       &.completed {
         color: $success-color;
-        .sub-task-icon { color: $success-color; }
+        .sub-task-icon {
+          color: $success-color;
+        }
       }
 
       &.running {
         color: $info-color;
-        .sub-task-icon { animation: spin 1.5s linear infinite; }
+        .sub-task-icon {
+          animation: spin 1.5s linear infinite;
+        }
       }
 
       &.failed {
         color: $danger-color;
-        .sub-task-icon { color: $danger-color; }
+        .sub-task-icon {
+          color: $danger-color;
+        }
       }
     }
 
@@ -270,9 +287,15 @@
       justify-content: center;
       flex-shrink: 0;
 
-      &.excellent { border-color: $success-color; }
-      &.good { border-color: $info-color; }
-      &.fair { border-color: $warning-color; }
+      &.excellent {
+        border-color: $success-color;
+      }
+      &.good {
+        border-color: $info-color;
+      }
+      &.fair {
+        border-color: $warning-color;
+      }
 
       .score-number {
         font-size: $font-size-base * 1.4;
@@ -317,8 +340,12 @@
 
 // 旋转动画
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 // 指数概览区块

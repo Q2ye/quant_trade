@@ -33,9 +33,14 @@ export default {
    * 创建回测任务
    * POST /quantTrade/backtest/tasks
    */
-  async createTask(config: CreateBacktestTaskRequest): Promise<{ task_id: string }> {
+  async createTask(
+    config: CreateBacktestTaskRequest,
+  ): Promise<{ task_id: string }> {
     const body = toSnakeCase(config);
-    return request.post(`${BASE}/tasks`, body).then(handleResponse).then((res: any) => res.data);
+    return request
+      .post(`${BASE}/tasks`, body)
+      .then(handleResponse)
+      .then((res: any) => res.data);
   },
 
   /**
@@ -86,7 +91,10 @@ export default {
    * 获取交易记录
    * GET /quantTrade/backtest/tasks/{taskId}/trades
    */
-  async getTrades(taskId: string, params?: { skip?: number; limit?: number }): Promise<any[]> {
+  async getTrades(
+    taskId: string,
+    params?: { skip?: number; limit?: number },
+  ): Promise<any[]> {
     return request
       .get(`${BASE}/tasks/${taskId}/trades`, { params })
       .then(handleResponse)

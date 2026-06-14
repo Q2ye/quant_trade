@@ -17,7 +17,9 @@
             >
               {{ strategy.status === "running" ? "停止策略" : "启动策略" }}
             </n-button>
-            <n-button type="primary" :loading="saving" @click="saveStrategy">保存</n-button>
+            <n-button type="primary" :loading="saving" @click="saveStrategy"
+              >保存</n-button
+            >
             <n-button @click="runBacktest">回测</n-button>
           </div>
         </div>
@@ -130,7 +132,10 @@ const toggleStrategy = async () => {
   try {
     if (strategy.value.status === "running")
       await store.dispatch("strategy/stopStrategy", strategy.value.id);
-    else await store.dispatch("strategy/startStrategy", { strategyId: strategy.value.id });
+    else
+      await store.dispatch("strategy/startStrategy", {
+        strategyId: strategy.value.id,
+      });
     message.success("操作成功");
   } catch (e: any) {
     message.error("操作失败: " + e.message);

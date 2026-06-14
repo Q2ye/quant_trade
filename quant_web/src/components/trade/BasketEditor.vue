@@ -17,7 +17,7 @@ interface BasketStock extends Stock {
 }
 
 const emit = defineEmits<{
-  "applyBasket": [payload: { name: string; stocks: BasketStock[] }];
+  applyBasket: [payload: { name: string; stocks: BasketStock[] }];
 }>();
 
 const message = useMessage();
@@ -28,11 +28,41 @@ const searchQuery = ref("");
 const searchResults = ref<Stock[]>([]);
 
 const basketStocks = ref<BasketStock[]>([
-  { symbol: "600519.SH", name: "贵州茅台", price: 1685.5, change: 1.25, weight: 20 },
-  { symbol: "601318.SH", name: "中国平安", price: 48.25, change: -0.52, weight: 15 },
-  { symbol: "600036.SH", name: "招商银行", price: 32.6, change: 0.92, weight: 15 },
-  { symbol: "000333.SZ", name: "美的集团", price: 55.8, change: 2.1, weight: 10 },
-  { symbol: "601888.SH", name: "中国中免", price: 102.4, change: -1.3, weight: 10 },
+  {
+    symbol: "600519.SH",
+    name: "贵州茅台",
+    price: 1685.5,
+    change: 1.25,
+    weight: 20,
+  },
+  {
+    symbol: "601318.SH",
+    name: "中国平安",
+    price: 48.25,
+    change: -0.52,
+    weight: 15,
+  },
+  {
+    symbol: "600036.SH",
+    name: "招商银行",
+    price: 32.6,
+    change: 0.92,
+    weight: 15,
+  },
+  {
+    symbol: "000333.SZ",
+    name: "美的集团",
+    price: 55.8,
+    change: 2.1,
+    weight: 10,
+  },
+  {
+    symbol: "601888.SH",
+    name: "中国中免",
+    price: 102.4,
+    change: -1.3,
+    weight: 10,
+  },
 ]);
 
 const allStocks: Stock[] = [
@@ -116,7 +146,9 @@ const applyBasket = () => {
           保存篮子
         </n-button>
         <n-button type="primary" @click="applyBasket">
-          <template #icon><Icon icon="ant-design:play-circle-outlined" /></template>
+          <template #icon
+            ><Icon icon="ant-design:play-circle-outlined"
+          /></template>
           应用至交易
         </n-button>
       </div>
@@ -127,10 +159,7 @@ const applyBasket = () => {
         <div class="basket-info">
           <div class="input-group">
             <label>篮子名称：</label>
-            <n-input
-              v-model:value="basketName"
-              placeholder="输入篮子名称"
-            />
+            <n-input v-model:value="basketName" placeholder="输入篮子名称" />
           </div>
           <div class="input-group">
             <label>描述：</label>
@@ -180,7 +209,9 @@ const applyBasket = () => {
 
       <div class="right-panel">
         <h3>
-          <Icon icon="ant-design:unordered-list-outlined" /> 篮子成分股 ({{ basketStocks.length }})
+          <Icon icon="ant-design:unordered-list-outlined" /> 篮子成分股 ({{
+            basketStocks.length
+          }})
         </h3>
 
         <div class="basket-stocks">
@@ -223,7 +254,9 @@ const applyBasket = () => {
               class="remove-btn"
               @click="removeStock(index)"
             >
-              <template #icon><Icon icon="ant-design:close-outlined" /></template>
+              <template #icon
+                ><Icon icon="ant-design:close-outlined"
+              /></template>
             </n-button>
           </div>
         </div>
@@ -372,8 +405,12 @@ const applyBasket = () => {
   font-weight: 500;
 }
 
-.stock-item .positive { color: #5cdd8b; }
-.stock-item .negative { color: #ff6b6b; }
+.stock-item .positive {
+  color: #5cdd8b;
+}
+.stock-item .negative {
+  color: #ff6b6b;
+}
 
 .right-panel {
   background: rgba(24, 50, 90, 0.5);
@@ -438,8 +475,12 @@ const applyBasket = () => {
   font-size: 0.9rem;
 }
 
-.basket-item .positive { color: #5cdd8b; }
-.basket-item .negative { color: #ff6b6b; }
+.basket-item .positive {
+  color: #5cdd8b;
+}
+.basket-item .negative {
+  color: #ff6b6b;
+}
 
 .weight-control {
   display: flex;

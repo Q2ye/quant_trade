@@ -1,103 +1,219 @@
+<!-- IndustryAnalysis.vue — 申万行业分析（矩形树图 + 动量和量能 + 排名迁移） -->
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from "vue"
-import { useRouter } from "vue-router"
-import { NCard, NDataTable, NSkeleton, NEmpty, NResult, NButton, NSelect, NTag, NSpace, useMessage } from "naive-ui"
-import type { DataTableColumns } from "naive-ui"
-import marketAPI from "@/api/market"
-import type { IndustryNode, IndustryHeatmapItem } from "@/types/entities/market"
-import { tokens } from "@/styles/design-tokens"
-import SmartIcon from "@/components/common/SmartIcon.vue"
-import VChart from "vue-echarts"
-import { use } from "echarts/core"
-import { CanvasRenderer } from "echarts/renderers"
-import { BarChart } from "echarts/charts"
-import { GridComponent, TooltipComponent } from "echarts/components"
-use([CanvasRenderer, BarChart, GridComponent, TooltipComponent])
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { NTabs, NTabPane, NButton, useMessage } from "naive-ui";
+import marketAPI from "@/api/market";
+import SmartIcon from "@/components/common/SmartIcon.vue";
+import { tokens } from "@/styles/design-tokens";
 
-const router = useRouter()
-const message = useMessage()
-const loading = ref(true)
-const error = ref(false)
-const heatmap = ref<IndustryHeatmapItem[]>([])
-const members = ref<any[]>([])
-const selectedName = ref("")
+import IndustryTreemap from "@/components/market/IndustryTreemap.vue";
+import IndustryTrendChart from "@/components/market/IndustryTrendChart.vue";
+import IndustryMomentumScatter from "@/components/market/IndustryMomentumScatter.vue";
+import IndustryRankChart from "@/components/market/IndustryRankChart.vue";
+import IndustryDetailPanel from "@/components/market/IndustryDetailPanel.vue";
+import type { StageStatItem } from "@/components/market/IndustryDetailPanel.vue";
+import type { SwHeatmapItem } from "@/types/entities/market";
 
-const heatmapOption = computed(() => ({
-  grid: { top: 5, right: 10, bottom: 60, left: 50 },
-  xAxis: { type: "category", data: heatmap.value.map(i => i.name), axisLabel: { rotate: 90, fontSize: 9 } },
-  yAxis: { type: "value", axisLabel: { fontSize: 10 } },
-  tooltip: { trigger: "axis" },
-  series: [{
-    type: "bar", barMaxWidth: 16, barCategoryGap: "25%",
-    data: heatmap.value.map(i => i.pct_chg ?? 0),
-    itemStyle: { color: (p: any) => p.value >= 0 ? "#ef5350" : "#26a69a", borderRadius: 2 },
-  }],
-}))
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
 
-const memberColumns: DataTableColumns<any> = [
-  { title: "代码", key: "ts_code", width: 100 },
-  { title: "简称", key: "name", width: 90 },
-  { title: "最新价", key: "close", width: 80, render: (r) => r.close?.toFixed(2) ?? "-" },
-  { title: "涨跌幅", key: "pct_chg", width: 80, render: (r) => h("span", { style: { color: (r.pct_chg ?? 0) >= 0 ? "#ef5350" : "#26a69a" } }, r.pct_chg != null ? (r.pct_chg > 0 ? "+" : "") + r.pct_chg.toFixed(2) + "%" : "-") },
-  { title: "成交额(亿)", key: "amount", render: (r) => r.amount ? (r.amount / 1e8).toFixed(1) : "-" },
-]
+const loading = ref(true);
+const error = ref(false);
+const heatmapData = ref<SwHeatmapItem[]>([]);
+const trendData = ref<any>(null);
+const trendLoading = ref(false);
+const trendDays = ref(60);
+
+// ---- detail state ----
+const selectedCode = ref("");
+const selectedName = ref("");
+
+// ---- heatmap config (for stage stats) ----
+const heatmapKeys: (keyof SwHeatmapItem)[] = [
+  "pct_1d",
+  "pct_5d",
+  "pct_10d",
+  "pct_20d",
+  "pct_30d",
+  "pct_60d",
+];
+const heatmapLabels: Record<string, string> = {
+  pct_1d: "今日",
+  pct_5d: "5日",
+  pct_10d: "10日",
+  pct_20d: "20日",
+  pct_30d: "30日",
+  pct_60d: "60日",
+};
+
+// ---- stage stats (computed from heatmapData + selected industry) ----
+const stageStats = computed<StageStatItem[]>(() => {
+  if (!selectedCode.value || !heatmapData.value.length) return [];
+  const selected = heatmapData.value.find((r) => r.code === selectedCode.value);
+  if (!selected) return [];
+  return heatmapKeys.map((k) => {
+    const pct = (selected[k] as number | null | undefined) ?? null;
+    const rank =
+      heatmapData.value.filter(
+        (r) => ((r[k] as number | null | undefined) ?? -9999) > (pct ?? -9999),
+      ).length + 1;
+    return {
+      label: heatmapLabels[k] || k,
+      pct,
+      rank,
+    };
+  });
+});
+
+// ---- handlers ----
+function onTreemapSelect(code: string, name: string) {
+  selectedCode.value = code;
+  selectedName.value = name;
+}
+
+function onDetailClose() {
+  selectedCode.value = "";
+  selectedName.value = "";
+}
+
+async function fetchTrend(days_val?: number) {
+  trendLoading.value = true;
+  const d = days_val ?? trendDays.value;
+  try {
+    trendData.value = await marketAPI.getIndustryTrend(d);
+  } catch {
+    trendData.value = null;
+  }
+  trendLoading.value = false;
+}
 
 async function load() {
-  loading.value = true; error.value = false
-  try { heatmap.value = await marketAPI.getIndustryHeatmap() }
-  catch { error.value = true; message.error("行业数据加载失败") }
-  finally { loading.value = false }
-}
-
-async function selectIndustry(item: IndustryHeatmapItem) {
-  selectedName.value = item.name
+  loading.value = true;
+  error.value = false;
   try {
-    const detail = await marketAPI.getIndustryDetail(item.code)
-    members.value = detail.members
-  } catch { members.value = [] }
+    heatmapData.value = await marketAPI.getIndustryHeatmap({
+      windows: "1d,5d,10d,20d,30d,60d",
+    });
+    // auto-focus from query param
+    const focus = route.query.focus as string;
+    if (focus && heatmapData.value.length) {
+      const item = heatmapData.value.find((r) => r.name === focus);
+      if (item) {
+        selectedCode.value = item.code;
+        selectedName.value = item.name;
+      }
+    }
+  } catch {
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
+  fetchTrend();
 }
 
-onMounted(load)
+function goBack() {
+  if (window.history.length > 1) router.back();
+  else router.push("/market/dashboard");
+}
+
+onMounted(load);
 </script>
 
 <template>
   <div class="industry-page bg-gradient-mesh bg-noise">
-    <div class="page-header"><div class="header-content"><div class="title-section"><h1 class="page-title">行业分析</h1></div><div class="header-actions"><n-button class="action-btn" @click="() => $router.back()" quaternary><template #icon><SmartIcon name="ArrowLeft" /></template></n-button></div></div></div>
+    <div class="page-header glass-surface">
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">申万行业分析</h1>
+          <p class="page-description">28 个申万一级行业 · 多维度轮动分析</p>
+        </div>
+        <div class="header-actions">
+          <n-button
+            size="tiny"
+            type="primary"
+            ghost
+            @click="
+              router.push(
+                '/strategies/create?template=industry_rotation&sector=' +
+                  encodeURIComponent(selectedName || ''),
+              )
+            "
+            >创建行业轮动策略</n-button
+          >
+          <n-button class="action-btn" @click="goBack" quaternary>
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+          </n-button>
+        </div>
+      </div>
+    </div>
 
     <div class="main-content">
-    <n-skeleton v-if="loading" :text="true" :repeat="4" />
-    <n-result v-else-if="error" status="500" title="加载失败"><template #footer><n-button @click="load">重试</n-button></template></n-result>
+      <n-tabs type="line" animated default-value="treemap">
+        <n-tab-pane name="treemap" tab="矩形树图">
+          <IndustryTreemap
+            :data="heatmapData"
+            :loading="loading"
+            :error="error"
+            @select="onTreemapSelect"
+            @retry="load"
+          />
+        </n-tab-pane>
 
-    <template v-else>
-      <n-card :class="tokens.surface.card" title="申万一级行业涨跌幅" size="small">
-        <div style="height:300px">
-          <VChart v-if="heatmap.length" :option="heatmapOption" autoresize style="height:300px" />
-          <n-empty v-else description="暂无数据" style="padding:60px" />
-        </div>
-      </n-card>
+        <n-tab-pane name="rank" tab="排名迁移">
+          <IndustryRankChart
+            :data="heatmapData"
+            :loading="loading"
+            :error="error"
+            :selected-code="selectedCode"
+            @select="onTreemapSelect"
+            @retry="load"
+          />
+        </n-tab-pane>
 
-      <n-card :class="tokens.surface.card" title="点击行业查看成分股" size="small" style="margin-top:16px">
-        <div class="tag-cloud">
-          <n-tag v-for="item in heatmap" :key="item.code" size="small"
-            :type="selectedName === item.name ? 'primary' : 'default'"
-            style="cursor:pointer;margin:2px" @click="selectIndustry(item)">
-            {{ item.name }} {{ (item.pct_chg != null) ? (item.pct_chg > 0 ? "+" : "") + item.pct_chg.toFixed(1) + "%" : "" }}
-          </n-tag>
-        </div>
-      </n-card>
+        <n-tab-pane name="trend" tab="趋势对比">
+          <IndustryTrendChart
+            :data="trendData"
+            :loading="trendLoading"
+            :selected-code="selectedCode"
+            @select="onTreemapSelect"
+            @retry="fetchTrend()"
+          />
+        </n-tab-pane>
 
-      <n-card v-if="members.length" :class="tokens.surface.card" :title="selectedName + ' — 成分股'" size="small" style="margin-top:16px">
-        <n-dataTable :columns="memberColumns" :data="members" size="small" :bordered="false" max-height="500"
-          :row-props="(row: any) => ({ style: 'cursor:pointer', onClick: () => router.push('/market/stock/' + row.ts_code) })" />
-      </n-card>
-    </template>
+        <n-tab-pane name="scatter" tab="动量和量能">
+          <IndustryMomentumScatter
+            :data="heatmapData"
+            :loading="loading"
+            :error="error"
+            :selected-code="selectedCode"
+            @select="onTreemapSelect"
+            @retry="load"
+          />
+        </n-tab-pane>
+      </n-tabs>
+
+      <!-- Detail panel (shared across tabs) -->
+      <IndustryDetailPanel
+        :code="selectedCode"
+        :name="selectedName"
+        :visible="!!selectedCode"
+        :stage-stats="stageStats"
+        @close="onDetailClose"
+      />
     </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.industry-page { padding-bottom: 24px; height: 100%; overflow-y: auto; }
-.page-header { padding: 16px 0; }
-.page-title { font-size: 20px; font-weight: 700; margin: 0; }
-.tag-cloud { display: flex; flex-wrap: wrap; gap: 2px; }
+.industry-page {
+  padding-bottom: 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.main-content {
+  padding: 0 16px;
+}
 </style>

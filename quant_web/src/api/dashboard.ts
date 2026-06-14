@@ -56,9 +56,18 @@ const api = {
     }>;
   }> {
     const [accountRes, positionsRes, ordersRes] = await Promise.all([
-      request.get("/quantTrade/trade/account").then(handleResponse).catch(() => null),
-      request.get("/quantTrade/trade/positions").then(handleResponse).catch(() => null),
-      request.get("/quantTrade/trade/orders", { params: { limit: 20 } }).then(handleResponse).catch(() => null),
+      request
+        .get("/quantTrade/trade/account")
+        .then(handleResponse)
+        .catch(() => null),
+      request
+        .get("/quantTrade/trade/positions")
+        .then(handleResponse)
+        .catch(() => null),
+      request
+        .get("/quantTrade/trade/orders", { params: { limit: 20 } })
+        .then(handleResponse)
+        .catch(() => null),
     ]);
 
     // Map account data
@@ -73,7 +82,11 @@ const api = {
     };
 
     // Map positions
-    const posList = positionsRes?.data?.items ?? positionsRes?.data ?? positionsRes?.items ?? [];
+    const posList =
+      positionsRes?.data?.items ??
+      positionsRes?.data ??
+      positionsRes?.items ??
+      [];
     const positions = (Array.isArray(posList) ? posList : []).map((p: any) => ({
       symbol: p.ts_code ?? p.symbol ?? "",
       name: p.name ?? p.stock_name ?? "",
@@ -85,15 +98,19 @@ const api = {
     }));
 
     // Map orders to todayTrades
-    const orderList = ordersRes?.data?.items ?? ordersRes?.data ?? ordersRes?.items ?? [];
-    const todayTrades = (Array.isArray(orderList) ? orderList : []).slice(0, 20).map((o: any) => ({
-      time: o.created_at ?? o.order_time ?? o.time ?? "",
-      symbol: o.ts_code ?? o.symbol ?? "",
-      direction: o.order_type ?? o.direction ?? "",
-      price: o.price ?? o.order_price ?? 0,
-      volume: o.quantity ?? o.volume ?? 0,
-      amount: o.amount ?? o.trade_amount ?? (o.price ?? 0) * (o.quantity ?? 0),
-    }));
+    const orderList =
+      ordersRes?.data?.items ?? ordersRes?.data ?? ordersRes?.items ?? [];
+    const todayTrades = (Array.isArray(orderList) ? orderList : [])
+      .slice(0, 20)
+      .map((o: any) => ({
+        time: o.created_at ?? o.order_time ?? o.time ?? "",
+        symbol: o.ts_code ?? o.symbol ?? "",
+        direction: o.order_type ?? o.direction ?? "",
+        price: o.price ?? o.order_price ?? 0,
+        volume: o.quantity ?? o.volume ?? 0,
+        amount:
+          o.amount ?? o.trade_amount ?? (o.price ?? 0) * (o.quantity ?? 0),
+      }));
 
     return {
       accountInfo,
@@ -106,9 +123,7 @@ const api = {
   /**
    * 获取策略绩效图表数据 — 走 analysis/equity-curve
    */
-  async getPerformanceChart(
-    range: string,
-  ): Promise<{
+  async getPerformanceChart(range: string): Promise<{
     dates: string[];
     strategyReturns: number[];
     benchmarkReturns: number[];
@@ -131,7 +146,7 @@ const api = {
       .get("/quantTrade/data/statistics")
       .then(handleResponse)
       .then((data: MarketStatusResponse) => data.data)
-      .catch(() => ({ status: "unknown", updateTime: "" } as MarketStatus));
+      .catch(() => ({ status: "unknown", updateTime: "" }) as MarketStatus);
   },
 
   // 以下函数保留用于后续扩展
@@ -169,13 +184,11 @@ const api = {
     return request
       .get("/quantTrade/strategy/status")
       .then(handleResponse)
-      .then((data: any) => (data.strategies ?? data.data ?? []))
+      .then((data: any) => data.strategies ?? data.data ?? [])
       .catch(() => []);
   },
 
-  async getRecentSignals(
-    limit: number = 10,
-  ): Promise<
+  async getRecentSignals(limit: number = 10): Promise<
     Array<{
       strategy_id: string;
       symbol: string;
@@ -232,8 +245,7 @@ const api = {
 
 export default api;
 
-export const getDashboardData = (token?: string) =>
-  api.getDashboardData();
+export const getDashboardData = (token?: string) => api.getDashboardData();
 
 export const getPerformanceChart = (range: string, token?: string) =>
   api.getPerformanceChart(range);

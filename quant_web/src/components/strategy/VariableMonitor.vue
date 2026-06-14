@@ -20,7 +20,11 @@ const activeTab = ref("logs");
 
 const logs = ref<LogEntry[]>([
   { time: "09:30:05", level: "info", message: "策略初始化完成" },
-  { time: "09:35:22", level: "trade", message: "买入 600519.SH @1800.50 数量:100" },
+  {
+    time: "09:35:22",
+    level: "trade",
+    message: "买入 600519.SH @1800.50 数量:100",
+  },
   { time: "10:15:47", level: "warning", message: "波动率超过阈值" },
 ]);
 
@@ -150,10 +154,20 @@ const signalTypeText = (type: string) =>
   font-family: "Consolas", monospace;
 }
 
-.log-info { color: #606266; }
-.log-trade { color: #67c23a; font-weight: bold; }
-.log-warning { color: #e6a23c; }
-.log-error { color: #f56c6c; font-weight: bold; }
+.log-info {
+  color: #606266;
+}
+.log-trade {
+  color: #67c23a;
+  font-weight: bold;
+}
+.log-warning {
+  color: #e6a23c;
+}
+.log-error {
+  color: #f56c6c;
+  font-weight: bold;
+}
 
 .signal-event {
   padding: 8px 5px;
@@ -162,8 +176,12 @@ const signalTypeText = (type: string) =>
   background-color: white;
 }
 
-.buy { border-left-color: #f56c6c; }
-.sell { border-left-color: #67c23a; }
+.buy {
+  border-left-color: #f56c6c;
+}
+.sell {
+  border-left-color: #67c23a;
+}
 
 .signal-time {
   color: #909399;

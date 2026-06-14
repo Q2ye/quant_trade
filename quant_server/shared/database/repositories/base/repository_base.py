@@ -409,7 +409,6 @@ class BaseRepository(Generic[T]):
 		total = 0
 		for i in range(0, len(records), chunk_size):
 			chunk = records[i:i + chunk_size]
-			# 只 INSERT 数据中实际存在的列，其余由 DB 默认值填充
 			_data_cols = set()
 			for _r in chunk:
 				_data_cols.update(_r.keys())
@@ -417,23 +416,52 @@ class BaseRepository(Generic[T]):
 			_insert_cols = _data_cols & _model_col_names
 			_filtered = [{k: v for k, v in _r.items() if k in _insert_cols} for _r in chunk]
 			stmt = pg_insert(self.model).values(_filtered)
-			stmt = stmt.on_conflict_do_update(
-				index_elements=conflict_cols,
-				set_={c: getattr(stmt.excluded, c) for c in update_cols if c in _insert_cols}
-			)
-			try:
-				result = await self.session.execute(stmt)
-				total += result.rowcount
-			except Exception as e:
-				demo = _filtered[0] if _filtered else {}
-				import logging
-				_log = logging.getLogger(__name__)
-				_log.error(
-					f"bulk_upsert 写入失败: 表={self.model.__tablename__} "
-					f"批次={i//chunk_size} 行数={len(chunk)} "
-					f"ts_code={demo.get('ts_code','?')} trade_date={demo.get('trade_date','?')}"
+			_update_cols_in_data = [c for c in update_cols if c in _insert_cols]
+			if _update_cols_in_data:
+				stmt = stmt.on_conflict_do_update(
+					index_elements=conflict_cols,
+					set_={c: getattr(stmt.excluded, c) for c in _update_cols_in_data}
 				)
-				raise
+			else:
+				stmt = stmt.on_conflict_do_nothing()
+			# 3 次重试：应对死锁(40P01)和序列化失败(40001)
+			import asyncio, logging
+			_log = logging.getLogger(__name__)
+			last_err = None
+			for retry in range(3):
+				try:
+					result = await self.session.execute(stmt)
+					total += result.rowcount
+					last_err = None
+					break
+				except Exception as e:
+					last_err = e
+					err_str = str(e)
+					# 死锁 / 序列化冲突 → 回滚会话 + 重试
+					is_deadlock = any(tag in err_str for tag in (
+						'deadlock', 'DeadlockDetected', '40P01',
+						'serialization', 'SerializationError', '40001',
+						'could not serialize', 'concurrent update',
+					))
+					if is_deadlock and retry < 2:
+						_log.warning(
+							f"bulk_upsert 死锁/冲突 重试{retry+1}/3: "
+							f"表={self.model.__tablename__} 批次={i//chunk_size}"
+						)
+						try: await self.session.rollback()
+						except Exception: pass
+						await asyncio.sleep(0.5 * (retry + 1))
+						continue
+					_log.error(
+						f"bulk_upsert 写入失败: 表={self.model.__tablename__} "
+						f"批次={i//chunk_size} 行数={len(chunk)} "
+						f"ts_code={_filtered[0].get('ts_code','?') if _filtered else '?'} "
+						f"trade_date={_filtered[0].get('trade_date','?') if _filtered else '?'}"
+					)
+					if not is_deadlock:
+						try: await self.session.rollback()
+						except Exception: pass
+					raise
 		return total
 
 	async def delete (self, id: Any, soft: bool = True) -> bool:

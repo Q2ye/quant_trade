@@ -7,7 +7,7 @@
         </div>
         <div class="header-actions">
           <n-button type="primary" :loading="running" @click="runMultiBacktest">
-            {{ running ? `回测中 ${runningProgress}%` : '多策略回测' }}
+            {{ running ? `回测中 ${runningProgress}%` : "多策略回测" }}
           </n-button>
           <n-button @click="parameterOptimization">参数优化</n-button>
           <n-button @click="exportResults">导出结果</n-button>
@@ -33,68 +33,68 @@
 
         <template v-else>
           <div class="studio-left">
-          <div class="strategy-selection">
-            <h3>选择对比策略</h3>
-            <div class="transfer-wrapper">
-              <div class="transfer-panel">
-                <div class="transfer-panel-header">可用策略</div>
-                <div class="transfer-panel-body">
-                  <div
-                    v-for="s in availableStrategies"
-                    :key="s.key"
-                    class="transfer-item"
-                    @click="addStrategy(s.key)"
-                  >
-                    {{ s.label }}
+            <div class="strategy-selection">
+              <h3>选择对比策略</h3>
+              <div class="transfer-wrapper">
+                <div class="transfer-panel">
+                  <div class="transfer-panel-header">可用策略</div>
+                  <div class="transfer-panel-body">
+                    <div
+                      v-for="s in availableStrategies"
+                      :key="s.key"
+                      class="transfer-item"
+                      @click="addStrategy(s.key)"
+                    >
+                      {{ s.label }}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="transfer-actions">
-                <n-button size="small" @click="addAll">››</n-button>
-                <n-button size="small" @click="removeAll">‹‹</n-button>
-              </div>
-              <div class="transfer-panel">
-                <div class="transfer-panel-header">已选策略</div>
-                <div class="transfer-panel-body">
-                  <div
-                    v-for="key in selectedStrategies"
-                    :key="key"
-                    class="transfer-item selected"
-                    @click="removeStrategy(key)"
-                  >
-                    {{ selectedLabels[key] }}
+                <div class="transfer-actions">
+                  <n-button size="small" @click="addAll">››</n-button>
+                  <n-button size="small" @click="removeAll">‹‹</n-button>
+                </div>
+                <div class="transfer-panel">
+                  <div class="transfer-panel-header">已选策略</div>
+                  <div class="transfer-panel-body">
+                    <div
+                      v-for="key in selectedStrategies"
+                      :key="key"
+                      class="transfer-item selected"
+                      @click="removeStrategy(key)"
+                    >
+                      {{ selectedLabels[key] }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="backtest-config">
-            <h3>回测参数</h3>
-            <n-form :model="backtestParams" label-width="120px">
-              <n-form-item label="回测周期">
-                <n-date-picker
-                  v-model:value="backtestDateRange"
-                  type="daterange"
-                  start-placeholder="开始日期"
-                  end-placeholder="结束日期"
-                />
-              </n-form-item>
-              <n-form-item label="初始资金">
-                <n-input-number
-                  v-model:value="backtestParams.initialCapital"
-                  :min="10000"
-                  :step="10000"
-                />
-              </n-form-item>
-              <n-form-item label="基准指数">
-                <n-select
-                  v-model:value="backtestParams.benchmark"
-                  :options="benchmarkOptions"
-                />
-              </n-form-item>
-            </n-form>
-          </div>
+            <div class="backtest-config">
+              <h3>回测参数</h3>
+              <n-form :model="backtestParams" label-width="120px">
+                <n-form-item label="回测周期">
+                  <n-date-picker
+                    v-model:value="backtestDateRange"
+                    type="daterange"
+                    start-placeholder="开始日期"
+                    end-placeholder="结束日期"
+                  />
+                </n-form-item>
+                <n-form-item label="初始资金">
+                  <n-input-number
+                    v-model:value="backtestParams.initialCapital"
+                    :min="10000"
+                    :step="10000"
+                  />
+                </n-form-item>
+                <n-form-item label="基准指数">
+                  <n-select
+                    v-model:value="backtestParams.benchmark"
+                    :options="benchmarkOptions"
+                  />
+                </n-form-item>
+              </n-form>
+            </div>
           </div>
 
           <div class="studio-right">
@@ -128,7 +128,10 @@
             </div>
 
             <!-- 对比结果 -->
-            <div v-else-if="comparisonResults.length > 0" class="comparison-charts">
+            <div
+              v-else-if="comparisonResults.length > 0"
+              class="comparison-charts"
+            >
               <h3>策略对比分析</h3>
               <n-tabs type="line">
                 <n-tab-pane name="equity" tab="净值曲线">
@@ -164,7 +167,8 @@
               </div>
               <h3 class="guide-title">多策略对比回测</h3>
               <p class="guide-desc">
-                在左侧面板中选择 2 个或更多策略，配置回测参数后点击「多策略回测」按钮，系统将同时对多个策略执行回测，并在此区域展示对比分析结果。
+                在左侧面板中选择 2
+                个或更多策略，配置回测参数后点击「多策略回测」按钮，系统将同时对多个策略执行回测，并在此区域展示对比分析结果。
               </p>
               <div class="guide-steps">
                 <div class="guide-step">
@@ -351,14 +355,12 @@ const runMultiBacktest = async () => {
     const allResults = await Promise.all(resultPromises);
 
     // 组装对比数据
-    comparisonResults.value = allResults.map(
-      (res: any, idx: number) => ({
-        name: tasks[idx].name,
-        strategyId: tasks[idx].id,
-        taskId: runningTaskIds[idx],
-        ...res,
-      }),
-    );
+    comparisonResults.value = allResults.map((res: any, idx: number) => ({
+      name: tasks[idx].name,
+      strategyId: tasks[idx].id,
+      taskId: runningTaskIds[idx],
+      ...res,
+    }));
 
     runningProgress.value = 100;
     message.success("多策略回测完成");
@@ -376,9 +378,7 @@ const waitForAllTasks = async (taskIds: string[]): Promise<void> => {
     const check = async () => {
       try {
         const statuses = await Promise.all(
-          taskIds.map((id) =>
-            backtestAPI.getTask(id).catch(() => null),
-          ),
+          taskIds.map((id) => backtestAPI.getTask(id).catch(() => null)),
         );
 
         const allDone = statuses.every(

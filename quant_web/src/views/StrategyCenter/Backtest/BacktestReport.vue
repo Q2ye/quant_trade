@@ -177,7 +177,9 @@ const strategy = computed(
 const loadReport = () => {
   loading.value = true;
   error.value = false;
-  setTimeout(() => { loading.value = false; }, 1000);
+  setTimeout(() => {
+    loading.value = false;
+  }, 1000);
 };
 
 const saveReport = () => {

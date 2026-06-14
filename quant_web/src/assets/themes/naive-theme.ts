@@ -86,11 +86,11 @@ const THEME_CONSTANTS = {
     // ====================================================================
     DEPTH: {
       DEEPEST: "rgba(4, 8, 16, 0.92)", // 最深底（模态遮罩）
-      PAGE:    "#080C16", // 页面底色（保持不透明）
-      RAISED:  "rgba(8, 12, 22, 0.60)", // 悬浮面板
-      CARD:    "rgba(12, 18, 32, 0.55)", // 卡片表面
-      HEADER:  "rgba(16, 24, 42, 0.65)", // 卡片头部
-      HOVER:   "rgba(20, 30, 52, 0.50)", // 悬停高亮
+      PAGE: "#080C16", // 页面底色（保持不透明）
+      RAISED: "rgba(8, 12, 22, 0.60)", // 悬浮面板
+      CARD: "rgba(12, 18, 32, 0.55)", // 卡片表面
+      HEADER: "rgba(16, 24, 42, 0.65)", // 卡片头部
+      HOVER: "rgba(20, 30, 52, 0.50)", // 悬停高亮
     },
 
     // ====================================================================
@@ -98,10 +98,10 @@ const THEME_CONSTANTS = {
     // ====================================================================
     SEVERITY_SCALE: {
       CRITICAL: "#D50000", // 严重/超阈值
-      HIGH:     "#FF5252", // 高/危险
-      MEDIUM:   "#FFB74D", // 中/警告
-      LOW:      "#00E676", // 低/安全
-      NEUTRAL:  "#8898B8", // 中性/无数据
+      HIGH: "#FF5252", // 高/危险
+      MEDIUM: "#FFB74D", // 中/警告
+      LOW: "#00E676", // 低/安全
+      NEUTRAL: "#8898B8", // 中性/无数据
     },
 
     // ====================================================================
@@ -109,7 +109,7 @@ const THEME_CONSTANTS = {
     // ====================================================================
     STOCK_SCHEMES: {
       INTERNATIONAL: { up: "#00E676", down: "#FF5252", flat: "#8898B8" },
-      ASHARE:        { up: "#FF5252", down: "#00E676", flat: "#8898B8" },
+      ASHARE: { up: "#FF5252", down: "#00E676", flat: "#8898B8" },
     },
 
     // ====================================================================
@@ -117,9 +117,9 @@ const THEME_CONSTANTS = {
     // ====================================================================
     GRADIENTS: {
       OCEAN_DEEP: "linear-gradient(135deg, #448AFF 0%, #0D47A1 100%)",
-      ICE_BLUE:   "linear-gradient(135deg, #448AFF 0%, #40C4FF 100%)",
-      TWILIGHT:   "linear-gradient(135deg, #7C6FF7 0%, #448AFF 100%)",
-      BIOLUM:     "linear-gradient(135deg, #40C4FF 0%, #00E676 100%)",
+      ICE_BLUE: "linear-gradient(135deg, #448AFF 0%, #40C4FF 100%)",
+      TWILIGHT: "linear-gradient(135deg, #7C6FF7 0%, #448AFF 100%)",
+      BIOLUM: "linear-gradient(135deg, #40C4FF 0%, #00E676 100%)",
     },
   },
 
@@ -179,8 +179,14 @@ const THEME_CONSTANTS = {
     // P0: 图表多线色板
     // ====================================================================
     CHART_PALETTE: [
-      "#2196F3", "#FF9800", "#4CAF50", "#E91E63",
-      "#00BCD4", "#CDDC39", "#FF5722", "#607D8B",
+      "#2196F3",
+      "#FF9800",
+      "#4CAF50",
+      "#E91E63",
+      "#00BCD4",
+      "#CDDC39",
+      "#FF5722",
+      "#607D8B",
     ],
 
     // ====================================================================
@@ -188,11 +194,11 @@ const THEME_CONSTANTS = {
     // ====================================================================
     DEPTH: {
       DEEPEST: "rgba(0, 0, 0, 0.50)",
-      PAGE:    "#FFFFFF",
-      RAISED:  "#F8F9FA",
-      CARD:    "#FFFFFF",
-      HEADER:  "#F8FAFC",
-      HOVER:   "#E9ECEF",
+      PAGE: "#FFFFFF",
+      RAISED: "#F8F9FA",
+      CARD: "#FFFFFF",
+      HEADER: "#F8FAFC",
+      HOVER: "#E9ECEF",
     },
 
     // ====================================================================
@@ -200,10 +206,10 @@ const THEME_CONSTANTS = {
     // ====================================================================
     SEVERITY_SCALE: {
       CRITICAL: "#D50000",
-      HIGH:     "#DC3545",
-      MEDIUM:   "#FFC107",
-      LOW:      "#28A745",
-      NEUTRAL:  "#6C757D",
+      HIGH: "#DC3545",
+      MEDIUM: "#FFC107",
+      LOW: "#28A745",
+      NEUTRAL: "#6C757D",
     },
 
     // ====================================================================
@@ -211,7 +217,7 @@ const THEME_CONSTANTS = {
     // ====================================================================
     STOCK_SCHEMES: {
       INTERNATIONAL: { up: "#28A745", down: "#DC3545", flat: "#6C757D" },
-      ASHARE:        { up: "#DC3545", down: "#28A745", flat: "#6C757D" },
+      ASHARE: { up: "#DC3545", down: "#28A745", flat: "#6C757D" },
     },
 
     // ====================================================================
@@ -219,9 +225,9 @@ const THEME_CONSTANTS = {
     // ====================================================================
     GRADIENTS: {
       OCEAN_DEEP: "linear-gradient(135deg, #2196F3 0%, #1565C0 100%)",
-      ICE_BLUE:   "linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)",
-      TWILIGHT:   "linear-gradient(135deg, #9C27B0 0%, #2196F3 100%)",
-      BIOLUM:     "linear-gradient(135deg, #00BCD4 0%, #4CAF50 100%)",
+      ICE_BLUE: "linear-gradient(135deg, #2196F3 0%, #00BCD4 100%)",
+      TWILIGHT: "linear-gradient(135deg, #9C27B0 0%, #2196F3 100%)",
+      BIOLUM: "linear-gradient(135deg, #00BCD4 0%, #4CAF50 100%)",
     },
   },
 } as const;
@@ -904,9 +910,7 @@ export function initTheme(isDark: boolean = true): void {
 // ============================================================================
 
 /** 获取当前主题图表 8 色色板 */
-export function getChartPalette(
-  isDark: boolean = true,
-): readonly string[] {
+export function getChartPalette(isDark: boolean = true): readonly string[] {
   return isDark
     ? THEME_CONSTANTS.DARK.CHART_PALETTE
     : THEME_CONSTANTS.LIGHT.CHART_PALETTE;
@@ -919,9 +923,11 @@ export function getChartPalette(
 export type StockScheme = "INTERNATIONAL" | "ASHARE";
 
 /** 获取当前涨跌配色 */
-export function getStockColors(
-  scheme: StockScheme = "ASHARE",
-): { up: string; down: string; flat: string } {
+export function getStockColors(scheme: StockScheme = "ASHARE"): {
+  up: string;
+  down: string;
+  flat: string;
+} {
   return isDarkTheme()
     ? THEME_CONSTANTS.DARK.STOCK_SCHEMES[scheme]
     : THEME_CONSTANTS.LIGHT.STOCK_SCHEMES[scheme];

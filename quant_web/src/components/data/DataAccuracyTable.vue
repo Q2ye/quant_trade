@@ -61,7 +61,6 @@
         @update:page-size="handleSizeChange"
       />
     </div>
-
   </div>
 </template>
 

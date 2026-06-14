@@ -127,9 +127,27 @@ onMounted(() => {
           <h1 class="page-title">历史信号分析</h1>
         </div>
         <div class="header-actions">
-          <n-date-picker v-model:value="filterParams.startDate" type="date" placeholder="开始日期" style="width: 150px" value-format="yyyy-MM-dd" />
-          <n-date-picker v-model:value="filterParams.endDate" type="date" placeholder="结束日期" style="width: 150px" value-format="yyyy-MM-dd" />
-          <n-select v-model:value="filterParams.signalType" placeholder="信号类型" clearable style="width: 120px" :options="signalTypeOptions" />
+          <n-date-picker
+            v-model:value="filterParams.startDate"
+            type="date"
+            placeholder="开始日期"
+            style="width: 150px"
+            value-format="yyyy-MM-dd"
+          />
+          <n-date-picker
+            v-model:value="filterParams.endDate"
+            type="date"
+            placeholder="结束日期"
+            style="width: 150px"
+            value-format="yyyy-MM-dd"
+          />
+          <n-select
+            v-model:value="filterParams.signalType"
+            placeholder="信号类型"
+            clearable
+            style="width: 120px"
+            :options="signalTypeOptions"
+          />
           <n-button type="primary" @click="fetchSignalHistory">查询</n-button>
           <n-button @click="exportSignals">导出CSV</n-button>
         </div>

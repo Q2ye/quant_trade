@@ -170,7 +170,11 @@ onMounted(() => fetchOrders());
           <h1 class="page-title">订单管理</h1>
         </div>
         <div class="header-actions">
-          <n-select v-model:value="filterStatus" style="width: 120px" :options="statusOptions" />
+          <n-select
+            v-model:value="filterStatus"
+            style="width: 120px"
+            :options="statusOptions"
+          />
           <n-button @click="batchCancel" type="warning">批量撤单</n-button>
           <n-button @click="fetchOrders">刷新</n-button>
         </div>

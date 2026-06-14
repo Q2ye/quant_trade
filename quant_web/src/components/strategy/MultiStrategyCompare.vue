@@ -58,9 +58,9 @@ const selectedStrategyData = computed(() => {
 const initComparisonChart = () => {
   if (!chartRef.value || selectedStrategyData.value.length === 0) return;
   const { initChart } = useChart();
-const chart = initChart(chartRef.value);
-if (!chart) return;
-chart.setOption({
+  const chart = initChart(chartRef.value);
+  if (!chart) return;
+  chart.setOption({
     title: { text: "策略净值曲线对比" },
     tooltip: { trigger: "axis" },
     legend: { data: selectedStrategyData.value.map((s) => s.name), bottom: 0 },

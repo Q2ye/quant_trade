@@ -63,97 +63,133 @@ const qualityData = ref<DataQualityResponse | null>(null);
 const recentTasks = ref<SyncTaskRecord[]>([]);
 const currentTaskId = ref<string>("");
 
-const { isRunning, formattedElapsedTime, formattedRemainingTime } = useSyncTimer(syncStatus);
+const { isRunning, formattedElapsedTime, formattedRemainingTime } =
+  useSyncTimer(syncStatus);
 const { qualityScore } = useQualityMetrics(qualityData);
 
 // --- 工作组状态（新7分组布局） ---
-const syncMeta = ref<SyncTypesMetaResponse | null>(null)
-const activeGroup = ref("1")  // 当前选中的分组
-const groupSelection = ref<Record<string, Set<string>>>({})  // 每组已选中的类型
+const syncMeta = ref<SyncTypesMetaResponse | null>(null);
+const activeGroup = ref("1"); // 当前选中的分组
+const groupSelection = ref<Record<string, Set<string>>>({}); // 每组已选中的类型
 
 // --- 新布局辅助函数 ---
-const currentGroup = computed(() => syncMeta.value?.groups.find(g => g.id === activeGroup.value))
-const currentSelected = computed(() => groupSelection.value[activeGroup.value] || new Set<string>())
-function isSelected(dataType: string) { return currentSelected.value.has(dataType) }
+const currentGroup = computed(() =>
+  syncMeta.value?.groups.find((g) => g.id === activeGroup.value),
+);
+const currentSelected = computed(
+  () => groupSelection.value[activeGroup.value] || new Set<string>(),
+);
+function isSelected(dataType: string) {
+  return currentSelected.value.has(dataType);
+}
 function toggleSelection(dt: string, v: boolean) {
-  if (!groupSelection.value[activeGroup.value]) groupSelection.value[activeGroup.value] = new Set()
-  v ? groupSelection.value[activeGroup.value].add(dt) : groupSelection.value[activeGroup.value].delete(dt)
+  if (!groupSelection.value[activeGroup.value])
+    groupSelection.value[activeGroup.value] = new Set();
+  v
+    ? groupSelection.value[activeGroup.value].add(dt)
+    : groupSelection.value[activeGroup.value].delete(dt);
 }
 function selectAll() {
-  const s = new Set<string>()
-  currentGroup.value?.types.filter(t => t.implemented).forEach(t => s.add(t.data_type))
-  groupSelection.value[activeGroup.value] = s
+  const s = new Set<string>();
+  currentGroup.value?.types
+    .filter((t) => t.implemented)
+    .forEach((t) => s.add(t.data_type));
+  groupSelection.value[activeGroup.value] = s;
 }
 function selectCore() {
-  const s = new Set<string>()
-  currentGroup.value?.types.filter(t => t.implemented && t.is_core).forEach(t => s.add(t.data_type))
-  groupSelection.value[activeGroup.value] = s
+  const s = new Set<string>();
+  currentGroup.value?.types
+    .filter((t) => t.implemented && t.is_core)
+    .forEach((t) => s.add(t.data_type));
+  groupSelection.value[activeGroup.value] = s;
 }
-function deselectAll() { groupSelection.value[activeGroup.value] = new Set() }
+function deselectAll() {
+  groupSelection.value[activeGroup.value] = new Set();
+}
 const estimatedGroupTime = computed(() => {
-  let total = 0
-  currentGroup.value?.types.forEach(ty => { if (isSelected(ty.data_type)) total += ty.estimated_time_seconds })
-  return total
-})
+  let total = 0;
+  currentGroup.value?.types.forEach((ty) => {
+    if (isSelected(ty.data_type)) total += ty.estimated_time_seconds;
+  });
+  return total;
+});
 function fmtRelative(s: string | null) {
-  if (!s) return '从未'
-  const h = Math.round((Date.now() - new Date(s).getTime()) / 3600000)
-  if (h < 1) return '刚刚'; if (h < 24) return `${h}h前`; return `${Math.floor(h/24)}d前`
+  if (!s) return "从未";
+  const h = Math.round((Date.now() - new Date(s).getTime()) / 3600000);
+  if (h < 1) return "刚刚";
+  if (h < 24) return `${h}h前`;
+  return `${Math.floor(h / 24)}d前`;
 }
 function statusType(t: SyncTypeMeta) {
-  if (!t.implemented) return 'default'
-  if (!t.last_sync_at) return 'default'
-  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000
-  if (h < 24) return 'success'; if (h < 72) return 'warning'; return 'error'
+  if (!t.implemented) return "default";
+  if (!t.last_sync_at) return "default";
+  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000;
+  if (h < 24) return "success";
+  if (h < 72) return "warning";
+  return "error";
 }
 function typeStatusText(t: SyncTypeMeta) {
-  if (!t.implemented) return '未实现'
-  if (!t.last_sync_at) return '未同步'
-  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000
-  if (h < 24) return '已同步'; if (h < 72) return '待更新'; return '需同步'
+  if (!t.implemented) return "未实现";
+  if (!t.last_sync_at) return "未同步";
+  const h = (Date.now() - new Date(t.last_sync_at).getTime()) / 3600000;
+  if (h < 24) return "已同步";
+  if (h < 72) return "待更新";
+  return "需同步";
 }
 async function syncSelected() {
-  syncConfig.data_types = [...currentSelected.value]
-  await handleBatchSync()
+  syncConfig.data_types = [...currentSelected.value];
+  await handleBatchSync();
 }
-const dailyPreset = computed(() => syncMeta.value?.presets?.find(p => p.id === "daily"))
+const dailyPreset = computed(() =>
+  syncMeta.value?.presets?.find((p) => p.id === "daily"),
+);
 async function runDailyPreset() {
-  if (!dailyPreset.value) { message.warning("每日行情预设未找到"); return }
+  if (!dailyPreset.value) {
+    message.warning("每日行情预设未找到");
+    return;
+  }
   // 每日行情始终走增量，不受日期选择器影响
-  syncConfig.data_types = dailyPreset.value.steps.flatMap(s => {
-    const g = syncMeta.value?.groups.find(gr => gr.id === s.group_id)
-    return g?.types.filter(t => t.implemented).map(t => t.data_type) ?? []
-  })
-  await handleBatchSync({ skipDates: true })
+  syncConfig.data_types = dailyPreset.value.steps.flatMap((s) => {
+    const g = syncMeta.value?.groups.find((gr) => gr.id === s.group_id);
+    return g?.types.filter((t) => t.implemented).map((t) => t.data_type) ?? [];
+  });
+  await handleBatchSync({ skipDates: true });
 }
 
 async function runPreset(p: SyncPresetMeta) {
-  const types: string[] = []
-  const groupLabels: string[] = []
+  const types: string[] = [];
+  const groupLabels: string[] = [];
   for (const step of p.steps) {
-    const group = syncMeta.value?.groups.find(g => g.id === step.group_id)
+    const group = syncMeta.value?.groups.find((g) => g.id === step.group_id);
     if (group) {
-      types.push(...group.types.filter(t => t.implemented).map(t => t.data_type))
-      groupLabels.push(group.label)
+      types.push(
+        ...group.types.filter((t) => t.implemented).map((t) => t.data_type),
+      );
+      groupLabels.push(group.label);
     }
   }
-  if (!types.length) { message.warning("该预设没有可用的数据类型"); return }
-  syncConfig.data_types = types
+  if (!types.length) {
+    message.warning("该预设没有可用的数据类型");
+    return;
+  }
+  syncConfig.data_types = types;
 
   // 确认弹窗
   dialog.warning({
     title: `确认执行「${p.name}」`,
-    content: `将对 ${groupLabels.join('、')} 共 ${types.length} 种类型进行同步，预估耗时 ~${fmtTime(p.estimated_time_seconds)}。`,
+    content: `将对 ${groupLabels.join("、")} 共 ${types.length} 种类型进行同步，预估耗时 ~${fmtTime(p.estimated_time_seconds)}。`,
     positiveText: "确认执行",
     negativeText: "取消",
-    onPositiveClick: async () => { await handleBatchSync() },
-  })
+    onPositiveClick: async () => {
+      await handleBatchSync();
+    },
+  });
 }
 
 function fmtTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}min`
-  return `${(seconds / 3600).toFixed(1)}h`
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}min`;
+  return `${(seconds / 3600).toFixed(1)}h`;
 }
 
 // --- 同步配置 ---
@@ -166,10 +202,14 @@ const syncConfig = reactive({
 });
 
 // 日期选择器 ref → syncConfig
-const startDate = ref<number | null>(null)
-const endDate = ref<number | null>(null)
-watch(startDate, (v) => { syncConfig.start_date = v ? new Date(v).toISOString().slice(0, 10) : "" })
-watch(endDate, (v) => { syncConfig.end_date = v ? new Date(v).toISOString().slice(0, 10) : "" })
+const startDate = ref<number | null>(null);
+const endDate = ref<number | null>(null);
+watch(startDate, (v) => {
+  syncConfig.start_date = v ? new Date(v).toISOString().slice(0, 10) : "";
+});
+watch(endDate, (v) => {
+  syncConfig.end_date = v ? new Date(v).toISOString().slice(0, 10) : "";
+});
 
 const exchangeOptions = [
   { label: "上交所", value: "SSE" },
@@ -178,14 +218,16 @@ const exchangeOptions = [
 ];
 
 const datePickerFormatted = computed({
-  get: () => (syncConfig.start_date ? new Date(syncConfig.start_date).getTime() : null),
+  get: () =>
+    syncConfig.start_date ? new Date(syncConfig.start_date).getTime() : null,
   set: (val: number | null) => {
     syncConfig.start_date = val ? new Date(val).toISOString().slice(0, 10) : "";
   },
 });
 
 const endDateFormatted = computed({
-  get: () => (syncConfig.end_date ? new Date(syncConfig.end_date).getTime() : null),
+  get: () =>
+    syncConfig.end_date ? new Date(syncConfig.end_date).getTime() : null,
   set: (val: number | null) => {
     syncConfig.end_date = val ? new Date(val).toISOString().slice(0, 10) : "";
   },
@@ -219,16 +261,22 @@ const statusBarClass = computed(() => {
 const statusHint = computed(() => {
   const s = syncStatus.value?.status;
   if (s === "completed") return `最近同步完成 — ${lastSyncTime.value}`;
-  if (s === "failed") return syncStatus.value?.message || "同步任务执行失败，请查看历史记录";
+  if (s === "failed")
+    return syncStatus.value?.message || "同步任务执行失败，请查看历史记录";
   if (s === "partial") return "部分任务成功，部分失败，请查看历史记录";
-  if (s === "idle" || !syncStatus.value) return "选择数据类型后点击「开始同步」";
+  if (s === "idle" || !syncStatus.value)
+    return "选择数据类型后点击「开始同步」";
   return syncStatus.value?.message || "选择数据类型后点击「开始同步」";
 });
 
 const lastSyncTime = computed(() => {
   const t = syncStatus.value?.updated_at;
   if (!t) return "--";
-  try { return new Date(t).toLocaleString("zh-CN"); } catch { return t; }
+  try {
+    return new Date(t).toLocaleString("zh-CN");
+  } catch {
+    return t;
+  }
 });
 
 const historySummary = computed(() => {
@@ -254,21 +302,45 @@ const subTaskDots = computed(() => {
     return deduped.map((r: any) => {
       const cancelled = r.cancelled || r.status === "cancelled";
       const success = isSyncRunning ? false : r.success;
-      const status = isSyncRunning ? "running" : cancelled ? "cancelled" : (success ? "completed" : "failed");
-      const icon = isSyncRunning ? "ant-design:sync-outlined" : cancelled ? "ant-design:warning-filled" : (success ? "ant-design:check-circle-filled" : "ant-design:close-circle-filled");
+      const status = isSyncRunning
+        ? "running"
+        : cancelled
+          ? "cancelled"
+          : success
+            ? "completed"
+            : "failed";
+      const icon = isSyncRunning
+        ? "ant-design:sync-outlined"
+        : cancelled
+          ? "ant-design:warning-filled"
+          : success
+            ? "ant-design:check-circle-filled"
+            : "ant-design:close-circle-filled";
       return { label: r.data_type, status, icon };
     });
   }
   const progress = syncStatus.value?.progress;
   if (progress && progress.total_tasks > 0) {
-    const dots: { label: string; status: "completed" | "running" | "pending"; icon: string }[] = [];
+    const dots: {
+      label: string;
+      status: "completed" | "running" | "pending";
+      icon: string;
+    }[] = [];
     for (let i = 0; i < progress.total_tasks; i++) {
       const isDone = i < progress.completed_tasks;
-      const isRunningTask = i === progress.completed_tasks && progress.current_task;
+      const isRunningTask =
+        i === progress.completed_tasks && progress.current_task;
       dots.push({
-        label: isRunningTask && progress.current_task ? progress.current_task : `任务${i + 1}`,
+        label:
+          isRunningTask && progress.current_task
+            ? progress.current_task
+            : `任务${i + 1}`,
         status: isDone ? "completed" : isRunningTask ? "running" : "pending",
-        icon: isDone ? "ant-design:check-circle-filled" : isRunningTask ? "ant-design:sync-outlined" : "ant-design:clock-circle-outlined",
+        icon: isDone
+          ? "ant-design:check-circle-filled"
+          : isRunningTask
+            ? "ant-design:sync-outlined"
+            : "ant-design:clock-circle-outlined",
       });
     }
     return dots;
@@ -280,31 +352,65 @@ const formatDataTypeDisplay = (t: SyncTaskRecord): string => {
   // 使用 syncMeta 的类型标签（统一来源）
   if (syncMeta.value) {
     for (const g of syncMeta.value.groups) {
-      const found = g.types.find(ty => ty.data_type === t.task_type)
-      if (found) return found.label
+      const found = g.types.find((ty) => ty.data_type === t.task_type);
+      if (found) return found.label;
     }
   }
   // 兜底：旧 supportedDataTypes
   if (t.data_types?.length) {
-    return t.data_types.map(code => {
-      const info = supportedDataTypes.value.find(dt => dt.code === code);
-      return info ? info.name : code;
-    }).join(" · ");
+    return t.data_types
+      .map((code) => {
+        const info = supportedDataTypes.value.find((dt) => dt.code === code);
+        return info ? info.name : code;
+      })
+      .join(" · ");
   }
   return t.task_type;
 };
 
 const recentHistoryDisplay = computed(() => {
   return recentTasks.value.slice(0, 3).map((t) => {
-    const startTime = t.start_time ? (() => { try { return new Date(t.start_time).toLocaleString("zh-CN"); } catch { return t.start_time; } })() : "--";
+    const startTime = t.start_time
+      ? (() => {
+          try {
+            return new Date(t.start_time).toLocaleString("zh-CN");
+          } catch {
+            return t.start_time;
+          }
+        })()
+      : "--";
     return {
       id: t.task_id,
       data_type: formatDataTypeDisplay(t),
       status: t.status,
       start_time: startTime,
       records: t.total_records || 0,
-      statusLabel: t.status === "completed" ? "完成" : t.status === "failed" ? "失败" : t.status === "running" ? "运行中" : t.status === "pending" ? "等待中" : t.status === "cancelled" ? "已取消" : t.status,
-      statusType: (t.status === "completed" ? "success" : t.status === "failed" ? "error" : t.status === "running" ? "info" : t.status === "cancelled" ? "warning" : "default") as "success" | "error" | "info" | "warning" | "default",
+      statusLabel:
+        t.status === "completed"
+          ? "完成"
+          : t.status === "failed"
+            ? "失败"
+            : t.status === "running"
+              ? "运行中"
+              : t.status === "pending"
+                ? "等待中"
+                : t.status === "cancelled"
+                  ? "已取消"
+                  : t.status,
+      statusType: (t.status === "completed"
+        ? "success"
+        : t.status === "failed"
+          ? "error"
+          : t.status === "running"
+            ? "info"
+            : t.status === "cancelled"
+              ? "warning"
+              : "default") as
+        | "success"
+        | "error"
+        | "info"
+        | "warning"
+        | "default",
     };
   });
 });
@@ -316,9 +422,24 @@ useSyncEventHandler(syncStatus, {
     currentTaskId.value = taskId;
     if (!statusPollingInterval.value) startStatusPolling();
   },
-  onCompleted() { stopStatusPolling(); currentTaskId.value = ""; refreshRecentTasks(); refreshQualityData(); },
-  onFailed() { stopStatusPolling(); currentTaskId.value = ""; refreshRecentTasks(); refreshQualityData(); },
-  onCancelled() { stopStatusPolling(); currentTaskId.value = ""; refreshRecentTasks(); refreshQualityData(); },
+  onCompleted() {
+    stopStatusPolling();
+    currentTaskId.value = "";
+    refreshRecentTasks();
+    refreshQualityData();
+  },
+  onFailed() {
+    stopStatusPolling();
+    currentTaskId.value = "";
+    refreshRecentTasks();
+    refreshQualityData();
+  },
+  onCancelled() {
+    stopStatusPolling();
+    currentTaskId.value = "";
+    refreshRecentTasks();
+    refreshQualityData();
+  },
 });
 
 // --- 数据加载 ---
@@ -330,7 +451,9 @@ const initializePage = async () => {
       dataSyncService.getSyncStatus().catch(() => null),
       dataSyncService.getSupportedDataTypes().catch(() => [] as DataTypeInfo[]),
       dataSyncService.getDataQuality().catch(() => null),
-      dataSyncService.getSyncTasks({ limit: 10 }).catch(() => ({ success: true, tasks: [], total: 0 })),
+      dataSyncService
+        .getSyncTasks({ limit: 10 })
+        .catch(() => ({ success: true, tasks: [], total: 0 })),
       dataSyncService.getSyncTypesMeta().catch(() => null),
     ]);
     syncStatus.value = status;
@@ -358,14 +481,18 @@ const refreshRecentTasks = async () => {
   try {
     const result = await dataSyncService.getSyncTasks({ limit: 10 });
     recentTasks.value = result.tasks || [];
-  } catch { /* 静默失败 */ }
+  } catch {
+    /* 静默失败 */
+  }
 };
 
 const refreshQualityData = async () => {
   try {
     const q = await dataSyncService.getDataQuality();
     qualityData.value = q;
-  } catch { /* 静默失败 */ }
+  } catch {
+    /* 静默失败 */
+  }
 };
 
 const checkSyncStatus = async () => {
@@ -373,8 +500,10 @@ const checkSyncStatus = async () => {
   try {
     const status = await dataSyncService.getSyncStatus();
     syncStatus.value = status;
-    if (status.status === "running" && !statusPollingInterval.value) startStatusPolling();
-    else if (status.status !== "running" && statusPollingInterval.value) stopStatusPolling();
+    if (status.status === "running" && !statusPollingInterval.value)
+      startStatusPolling();
+    else if (status.status !== "running" && statusPollingInterval.value)
+      stopStatusPolling();
   } catch {
     message.error("获取同步状态失败");
   } finally {
@@ -476,11 +605,14 @@ const handleCancelSync = () => {
     onPositiveClick: () => {
       // 先关弹窗、停轮询，再发取消请求（不阻塞 UI）
       stopStatusPolling();
-      dataSyncService.cancelSync()
+      dataSyncService
+        .cancelSync()
         .then(() => {
           message.success("取消请求已发送");
           setTimeout(async () => {
-            const status = await dataSyncService.getSyncStatus().catch(() => null);
+            const status = await dataSyncService
+              .getSyncStatus()
+              .catch(() => null);
             if (status) syncStatus.value = status;
             refreshRecentTasks();
           }, 2000);
@@ -490,9 +622,10 @@ const handleCancelSync = () => {
   });
 };
 
-const isDataTypeSelected = (code: string) => syncConfig.data_types.includes(code);
+const isDataTypeSelected = (code: string) =>
+  syncConfig.data_types.includes(code);
 const toggleDataType = (code: string) => {
-  const dt = supportedDataTypes.value.find(t => t.code === code);
+  const dt = supportedDataTypes.value.find((t) => t.code === code);
   if (!dt || dt.is_available === false) return;
   const idx = syncConfig.data_types.indexOf(code);
   if (idx >= 0) syncConfig.data_types.splice(idx, 1);
@@ -500,8 +633,12 @@ const toggleDataType = (code: string) => {
 };
 
 // --- 生命周期 ---
-onMounted(() => { initializePage(); });
-onUnmounted(() => { stopStatusPolling(); });
+onMounted(() => {
+  initializePage();
+});
+onUnmounted(() => {
+  stopStatusPolling();
+});
 
 watch(
   () => route.path,
@@ -509,7 +646,9 @@ watch(
     if (path === "/data/sync" && !pageLoading.value) {
       const [status, tasksResult] = await Promise.all([
         dataSyncService.getSyncStatus().catch(() => null),
-        dataSyncService.getSyncTasks({ limit: 10 }).catch(() => ({ success: true, tasks: [], total: 0 })),
+        dataSyncService
+          .getSyncTasks({ limit: 10 })
+          .catch(() => ({ success: true, tasks: [], total: 0 })),
       ]);
       syncStatus.value = status;
       recentTasks.value = tasksResult.tasks || [];
@@ -558,31 +697,116 @@ watch(
     <template v-else>
       <div class="sync-workbench">
         <!-- 日期 + 每日行情 -->
-        <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: stretch;">
+        <div
+          style="
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            align-items: stretch;
+          "
+        >
           <!-- 日期卡 -->
-          <n-card size="small" style="width: 540px; flex-shrink: 0; border-radius: 10px;">
-            <div style="display: flex; gap: 12px; align-items: flex-end;">
+          <n-card
+            size="small"
+            style="width: 540px; flex-shrink: 0; border-radius: 10px"
+          >
+            <div style="display: flex; gap: 12px; align-items: flex-end">
               <div>
-                <span style="font-size: 11px; color: var(--n-text-color-3); display: block; margin-bottom: 4px;">起始日期</span>
-                <n-date-picker v-model:value="startDate" type="date" clearable placeholder="自动增量" style="width: 245px;" />
+                <span
+                  style="
+                    font-size: 11px;
+                    color: var(--n-text-color-3);
+                    display: block;
+                    margin-bottom: 4px;
+                  "
+                  >起始日期</span
+                >
+                <n-date-picker
+                  v-model:value="startDate"
+                  type="date"
+                  clearable
+                  placeholder="自动增量"
+                  style="width: 245px"
+                />
               </div>
               <div>
-                <span style="font-size: 11px; color: var(--n-text-color-3); display: block; margin-bottom: 4px;">结束日期</span>
-                <n-date-picker v-model:value="endDate" type="date" clearable placeholder="今天" style="width: 245px;" />
+                <span
+                  style="
+                    font-size: 11px;
+                    color: var(--n-text-color-3);
+                    display: block;
+                    margin-bottom: 4px;
+                  "
+                  >结束日期</span
+                >
+                <n-date-picker
+                  v-model:value="endDate"
+                  type="date"
+                  clearable
+                  placeholder="今天"
+                  style="width: 245px"
+                />
               </div>
             </div>
           </n-card>
           <!-- 每日行情卡 -->
-          <n-card v-if="dailyPreset" size="small" style="min-width: 0; flex-shrink: 1; cursor: pointer; border-radius: 10px; transition: all 0.15s;" :class="{ disabled: isRunning }" @click="runDailyPreset">
-            <div style="display: flex; align-items: center; gap: 16px;">
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 14px; font-weight: 600; margin-bottom: 6px;">{{ dailyPreset.name }}</div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 12px; color: var(--n-text-color-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ dailyPreset.description }}</span>
-                  <span style="font-size: 12px; color: var(--n-text-color-3); white-space: nowrap; flex-shrink: 0;">~{{ fmtTime(dailyPreset.estimated_time_seconds) }}</span>
+          <n-card
+            v-if="dailyPreset"
+            size="small"
+            style="
+              min-width: 0;
+              flex-shrink: 1;
+              cursor: pointer;
+              border-radius: 10px;
+              transition: all 0.15s;
+            "
+            :class="{ disabled: isRunning }"
+            @click="runDailyPreset"
+          >
+            <div style="display: flex; align-items: center; gap: 16px">
+              <div style="flex: 1; min-width: 0">
+                <div
+                  style="font-size: 14px; font-weight: 600; margin-bottom: 6px"
+                >
+                  {{ dailyPreset.name }}
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span
+                    style="
+                      font-size: 12px;
+                      color: var(--n-text-color-3);
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                    "
+                    >{{ dailyPreset.description }}</span
+                  >
+                  <span
+                    style="
+                      font-size: 12px;
+                      color: var(--n-text-color-3);
+                      white-space: nowrap;
+                      flex-shrink: 0;
+                    "
+                    >~{{ fmtTime(dailyPreset.estimated_time_seconds) }}</span
+                  >
                 </div>
               </div>
-              <n-button type="primary" :disabled="isRunning" style="flex-shrink: 0; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 16px;">&#9654;</n-button>
+              <n-button
+                type="primary"
+                :disabled="isRunning"
+                style="
+                  flex-shrink: 0;
+                  width: 32px;
+                  height: 32px;
+                  padding: 0;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 16px;
+                "
+                >&#9654;</n-button
+              >
             </div>
           </n-card>
         </div>
@@ -593,22 +817,35 @@ watch(
             <span class="running-dot" />
             <span class="running-label">同步中</span>
             <span class="running-detail">
-              {{ syncStatus.progress.completed_tasks }}/{{ syncStatus.progress.total_tasks }}
+              {{ syncStatus.progress.completed_tasks }}/{{
+                syncStatus.progress.total_tasks
+              }}
               · {{ formattedElapsedTime }} · 剩余 {{ formattedRemainingTime }}
             </span>
           </div>
           <n-progress
             :percentage="syncStatus.progress.progress_percentage || 0"
-            :height="6" :border-radius="3"
+            :height="6"
+            :border-radius="3"
             class="running-progress"
           />
           <div class="running-actions">
             <span v-if="subTaskDots.length > 0" class="sub-task-dots">
-              <span v-for="st in subTaskDots" :key="st.label" class="sub-dot" :class="st.status">
+              <span
+                v-for="st in subTaskDots"
+                :key="st.label"
+                class="sub-dot"
+                :class="st.status"
+              >
                 <Icon :icon="st.icon" class="dot-icon" />{{ st.label }}
               </span>
             </span>
-            <n-button size="tiny" type="error" @click="handleCancelSync" quaternary>
+            <n-button
+              size="tiny"
+              type="error"
+              @click="handleCancelSync"
+              quaternary
+            >
               取消
             </n-button>
           </div>
@@ -617,28 +854,49 @@ watch(
         <!-- Status Summary Bar -->
         <div class="status-summary-bar">
           <div class="summary-item">
-            <Icon icon="ant-design:clock-circle-outlined" class="summary-icon" />
+            <Icon
+              icon="ant-design:clock-circle-outlined"
+              class="summary-icon"
+            />
             <span class="summary-label">上次同步</span>
             <span class="summary-value">{{ lastSyncTime }}</span>
           </div>
           <div class="summary-divider" />
-          <div class="summary-item clickable" @click="router.push('/data/sync/quality')">
-            <Icon icon="ant-design:check-circle-outlined" class="summary-icon" />
+          <div
+            class="summary-item clickable"
+            @click="router.push('/data/sync/quality')"
+          >
+            <Icon
+              icon="ant-design:check-circle-outlined"
+              class="summary-icon"
+            />
             <span class="summary-label">数据质量</span>
             <span class="summary-value accent">{{ qualityScore }}分</span>
           </div>
           <div class="summary-divider" />
-          <div class="summary-item clickable" @click="router.push('/data/sync/history')">
+          <div
+            class="summary-item clickable"
+            @click="router.push('/data/sync/history')"
+          >
             <Icon icon="ant-design:history-outlined" class="summary-icon" />
             <span class="summary-label">同步历史</span>
             <span class="summary-value">
               {{ historySummary.completed }}完成
-              <span v-if="historySummary.failed > 0" class="failed-count">/{{ historySummary.failed }}失败</span>
+              <span v-if="historySummary.failed > 0" class="failed-count"
+                >/{{ historySummary.failed }}失败</span
+              >
             </span>
           </div>
           <div class="summary-spacer" />
-          <n-button text size="small" @click="checkSyncStatus" :loading="isCheckingStatus">
-            <template #icon><Icon icon="ant-design:reload-outlined" /></template>
+          <n-button
+            text
+            size="small"
+            @click="checkSyncStatus"
+            :loading="isCheckingStatus"
+          >
+            <template #icon
+              ><Icon icon="ant-design:reload-outlined"
+            /></template>
           </n-button>
         </div>
 
@@ -655,7 +913,11 @@ watch(
             >
               <span class="sidebar-dot" :style="{ background: g.color }"></span>
               <span class="sidebar-label">{{ g.label }}</span>
-              <span class="sidebar-count">{{ g.types.filter(t=>t.implemented).length }}/{{ g.types.length }}</span>
+              <span class="sidebar-count"
+                >{{ g.types.filter((t) => t.implemented).length }}/{{
+                  g.types.length
+                }}</span
+              >
             </div>
           </div>
 
@@ -674,29 +936,48 @@ watch(
             <n-table :single-line="false" size="small">
               <thead>
                 <tr>
-                  <th style="width:40px">选择</th>
+                  <th style="width: 40px">选择</th>
                   <th>类型</th>
-                  <th style="width:100px">上次同步</th>
-                  <th style="width:80px">预估耗时</th>
-                  <th style="width:60px">状态</th>
+                  <th style="width: 100px">上次同步</th>
+                  <th style="width: 80px">预估耗时</th>
+                  <th style="width: 60px">状态</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
                   v-for="t in currentGroup?.types"
                   :key="t.data_type"
-                  :class="{ 'row-disabled': !t.implemented }"
+                  :class="{
+                    'row-disabled': !t.implemented,
+                    'row-selected': isSelected(t.data_type),
+                  }"
+                  @click="
+                    t.implemented &&
+                    toggleSelection(t.data_type, !isSelected(t.data_type))
+                  "
                 >
                   <td>
                     <n-checkbox
                       :checked="isSelected(t.data_type)"
                       :disabled="!t.implemented"
-                      @update:checked="(v: boolean) => toggleSelection(t.data_type, v)"
+                      @update:checked="
+                        (v: boolean) => toggleSelection(t.data_type, v)
+                      "
                     />
                   </td>
-                  <td><span class="type-label">{{ t.label }}</span></td>
-                  <td><span class="last-sync">{{ fmtRelative(t.last_sync_at) }}</span></td>
-                  <td><span class="est-time">{{ fmtTime(t.estimated_time_seconds) }}</span></td>
+                  <td>
+                    <span class="type-label">{{ t.label }}</span>
+                  </td>
+                  <td>
+                    <span class="last-sync">{{
+                      fmtRelative(t.last_sync_at)
+                    }}</span>
+                  </td>
+                  <td>
+                    <span class="est-time">{{
+                      fmtTime(t.estimated_time_seconds)
+                    }}</span>
+                  </td>
                   <td>
                     <n-tag :type="statusType(t)" size="tiny" :bordered="false">
                       {{ typeStatusText(t) }}
@@ -707,7 +988,11 @@ watch(
             </n-table>
 
             <div class="content-footer">
-              <span>已选 {{ currentSelected.size }} 项 · 预估 ~{{ fmtTime(estimatedGroupTime) }}</span>
+              <span
+                >已选 {{ currentSelected.size }} 项 · 预估 ~{{
+                  fmtTime(estimatedGroupTime)
+                }}</span
+              >
               <n-button
                 type="primary"
                 :disabled="currentSelected.size === 0 || isRunning"
@@ -724,11 +1009,22 @@ watch(
         <div class="recent-section">
           <div class="recent-header">
             <h3 class="recent-title">
-              <Icon icon="ant-design:history-outlined" class="recent-title-icon" />
+              <Icon
+                icon="ant-design:history-outlined"
+                class="recent-title-icon"
+              />
               最近同步记录
             </h3>
-            <n-button text size="small" type="primary" @click="router.push('/data/sync/history')">
-              查看全部 <template #icon><Icon icon="ant-design:arrow-right-outlined" /></template>
+            <n-button
+              text
+              size="small"
+              type="primary"
+              @click="router.push('/data/sync/history')"
+            >
+              查看全部
+              <template #icon
+                ><Icon icon="ant-design:arrow-right-outlined"
+              /></template>
             </n-button>
           </div>
 
@@ -741,16 +1037,38 @@ watch(
             >
               <div class="recent-item-icon">
                 <Icon
-                  :icon="item.status === 'completed' ? 'ant-design:check-circle-filled' : item.status === 'running' ? 'ant-design:sync-outlined' : item.status === 'pending' ? 'ant-design:clock-circle-outlined' : item.status === 'cancelled' ? 'ant-design:minus-circle-filled' : 'ant-design:close-circle-filled'"
-                  :class="item.status === 'completed' ? 'icon-success' : item.status === 'running' || item.status === 'pending' ? 'icon-spin' : item.status === 'cancelled' ? 'icon-cancelled' : 'icon-error'"
+                  :icon="
+                    item.status === 'completed'
+                      ? 'ant-design:check-circle-filled'
+                      : item.status === 'running'
+                        ? 'ant-design:sync-outlined'
+                        : item.status === 'pending'
+                          ? 'ant-design:clock-circle-outlined'
+                          : item.status === 'cancelled'
+                            ? 'ant-design:minus-circle-filled'
+                            : 'ant-design:close-circle-filled'
+                  "
+                  :class="
+                    item.status === 'completed'
+                      ? 'icon-success'
+                      : item.status === 'running' || item.status === 'pending'
+                        ? 'icon-spin'
+                        : item.status === 'cancelled'
+                          ? 'icon-cancelled'
+                          : 'icon-error'
+                  "
                 />
               </div>
               <div class="recent-item-info">
                 <span class="recent-item-type">{{ item.data_type }}</span>
                 <span class="recent-item-time">{{ item.start_time }}</span>
               </div>
-              <n-tag :type="item.statusType" size="small">{{ item.statusLabel }}</n-tag>
-              <span class="recent-item-records">{{ item.records.toLocaleString() }} 条</span>
+              <n-tag :type="item.statusType" size="small">{{
+                item.statusLabel
+              }}</n-tag>
+              <span class="recent-item-records"
+                >{{ item.records.toLocaleString() }} 条</span
+              >
             </div>
           </div>
           <div v-else class="recent-empty">
@@ -770,7 +1088,6 @@ watch(
       />
     </template>
   </div>
-
 </template>
 
 <style scoped lang="scss">
@@ -883,8 +1200,13 @@ watch(
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .running-label {
@@ -925,11 +1247,29 @@ watch(
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.03);
 
-  .dot-icon { font-size: 12px; flex-shrink: 0; }
+  .dot-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+  }
 
-  &.completed { color: $success-color; .dot-icon { color: $success-color; } }
-  &.running { color: $info-color; .dot-icon { animation: pulse-dot 1.2s ease infinite; } }
-  &.failed { color: $error-color; .dot-icon { color: $error-color; } }
+  &.completed {
+    color: $success-color;
+    .dot-icon {
+      color: $success-color;
+    }
+  }
+  &.running {
+    color: $info-color;
+    .dot-icon {
+      animation: pulse-dot 1.2s ease infinite;
+    }
+  }
+  &.failed {
+    color: $error-color;
+    .dot-icon {
+      color: $error-color;
+    }
+  }
 }
 
 // --- Status Summary Bar ---
@@ -957,7 +1297,9 @@ watch(
     border-radius: 4px;
     transition: background $transition-fast;
 
-    &:hover { background: rgba(255, 255, 255, 0.05); }
+    &:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
   }
 }
 
@@ -974,7 +1316,9 @@ watch(
   color: $text-color-1;
   font-weight: $font-weight-medium;
 
-  &.accent { color: $primary-color; }
+  &.accent {
+    color: $primary-color;
+  }
 }
 
 .failed-count {
@@ -1084,8 +1428,47 @@ watch(
   gap: 6px;
 }
 
+/* 同步类型表格行 hover + 选中动效 */
+:deep(.n-table) tbody tr {
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  cursor: pointer;
+
+  td {
+    transition: background 0.15s ease;
+  }
+
+  &:hover:not(.row-disabled):not(.row-selected) {
+    background: rgba(68, 138, 255, 0.08);
+    transform: translateX(4px);
+    box-shadow: inset 3px 0 0 0 #448aff;
+    td {
+      background: transparent;
+    }
+  }
+
+  &.row-selected {
+    background: rgba(68, 138, 255, 0.25);
+    box-shadow: inset 3px 0 0 0 #448aff;
+    color: #fff;
+    font-weight: 500;
+    td {
+      background: transparent;
+    }
+    &:not(.row-disabled) {
+      cursor: pointer;
+    }
+    &:hover {
+      background: rgba(68, 138, 255, 0.25);
+    }
+  }
+}
+
 .row-disabled {
   opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .type-label {
@@ -1164,15 +1547,28 @@ watch(
   flex-shrink: 0;
   font-size: $font-size-base * 1.1;
 
-  .icon-success { color: $success-color; }
-  .icon-error { color: $error-color; }
-  .icon-cancelled { color: $warning-color; }
-  .icon-spin { color: $info-color; animation: icon-spin 1.5s linear infinite; }
+  .icon-success {
+    color: $success-color;
+  }
+  .icon-error {
+    color: $error-color;
+  }
+  .icon-cancelled {
+    color: $warning-color;
+  }
+  .icon-spin {
+    color: $info-color;
+    animation: icon-spin 1.5s linear infinite;
+  }
 }
 
 @keyframes icon-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .recent-item-info {
@@ -1211,7 +1607,9 @@ watch(
   border: 1px dashed $border-color;
   border-radius: $border-radius-sm;
 
-  .empty-icon { font-size: $font-size-base * 1.3; }
+  .empty-icon {
+    font-size: $font-size-base * 1.3;
+  }
 }
 
 // --- Misc ---

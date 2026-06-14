@@ -4,7 +4,9 @@
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">因子库管理</h1>
-          <p class="page-description">管理量化因子库，支持新建、导入导出和编辑</p>
+          <p class="page-description">
+            管理量化因子库，支持新建、导入导出和编辑
+          </p>
         </div>
         <div class="header-actions">
           <n-button type="primary" @click="handleCreateFactor">
@@ -124,7 +126,11 @@
               <n-grid-item>
                 <n-card class="tool-card" @click="openFactorCorrelation">
                   <div class="tool-content">
-                    <SmartIcon name="ChartScatter" :size="24" class="tool-icon blue" />
+                    <SmartIcon
+                      name="ChartScatter"
+                      :size="24"
+                      class="tool-icon blue"
+                    />
                     <div class="tool-info">
                       <div class="tool-title">因子相关性分析</div>
                       <div class="tool-desc">分析因子间的相关性矩阵</div>
@@ -135,7 +141,11 @@
               <n-grid-item>
                 <n-card class="tool-card" @click="openStabilityAnalysis">
                   <div class="tool-content">
-                    <SmartIcon name="ChartLine" :size="24" class="tool-icon green" />
+                    <SmartIcon
+                      name="ChartLine"
+                      :size="24"
+                      class="tool-icon green"
+                    />
                     <div class="tool-info">
                       <div class="tool-title">因子稳定性分析</div>
                       <div class="tool-desc">检验因子表现的稳定性</div>
@@ -146,7 +156,11 @@
               <n-grid-item>
                 <n-card class="tool-card" @click="openCombinationAnalysis">
                   <div class="tool-content">
-                    <SmartIcon name="ChartBar" :size="24" class="tool-icon orange" />
+                    <SmartIcon
+                      name="ChartBar"
+                      :size="24"
+                      class="tool-icon orange"
+                    />
                     <div class="tool-info">
                       <div class="tool-title">因子组合优化</div>
                       <div class="tool-desc">寻找最优因子组合权重</div>
@@ -216,33 +230,50 @@ const categoryMap: Record<string, { tag: string; text: string }> = {
 
 const factorColumns = [
   {
-    title: "序号", key: "index", width: 60,
-    render: (_: any, __: number) => __ + 1 + (pagination.currentPage - 1) * pagination.pageSize,
+    title: "序号",
+    key: "index",
+    width: 60,
+    render: (_: any, __: number) =>
+      __ + 1 + (pagination.currentPage - 1) * pagination.pageSize,
   },
   { title: "因子名称", key: "name", width: 150 },
   { title: "因子代码", key: "code", width: 120 },
   {
-    title: "类别", key: "category", width: 100,
+    title: "类别",
+    key: "category",
+    width: 100,
     render: (row: any) =>
-      h(NTag, {
-        type: (categoryMap[row.category]?.tag || "info") as any,
-        size: "small",
-      }, { default: () => categoryMap[row.category]?.text || "其他" }),
+      h(
+        NTag,
+        {
+          type: (categoryMap[row.category]?.tag || "info") as any,
+          size: "small",
+        },
+        { default: () => categoryMap[row.category]?.text || "其他" },
+      ),
   },
   {
-    title: "因子描述", key: "description", minWidth: 200,
+    title: "因子描述",
+    key: "description",
+    minWidth: 200,
     ellipsis: { tooltip: true },
   },
   {
-    title: "数据字段", key: "dataFields", width: 120,
+    title: "数据字段",
+    key: "dataFields",
+    width: 120,
     render: (row: any) => `${row.dataFields.length}个字段`,
   },
   {
-    title: "近期表现", key: "performance", width: 100,
+    title: "近期表现",
+    key: "performance",
+    width: 100,
     render: (row: any) => h(PerformanceBadge, { performance: row.performance }),
   },
   {
-    title: "状态", key: "status", width: 80,
+    title: "状态",
+    key: "status",
+    width: 80,
     render: (row: any) =>
       h(NSwitch, {
         value: row.status === "active",
@@ -253,16 +284,36 @@ const factorColumns = [
       }),
   },
   {
-    title: "最后更新", key: "lastUpdate", width: 120,
+    title: "最后更新",
+    key: "lastUpdate",
+    width: 120,
     render: (row: any) => formatDate(row.lastUpdate),
   },
   {
-    title: "操作", key: "op", width: 240,
+    title: "操作",
+    key: "op",
+    width: 240,
     render: (row: any) =>
       h("div", { style: { display: "flex", gap: "4px" } }, [
-        h(NButton, { size: "small", onClick: () => handleEditFactor(row) }, { default: () => "编辑" }),
-        h(NButton, { size: "small", onClick: () => handleTestFactor(row) }, { default: () => "测试" }),
-        h(NButton, { size: "small", type: "error", onClick: () => handleDeleteFactor(row) }, { default: () => "删除" }),
+        h(
+          NButton,
+          { size: "small", onClick: () => handleEditFactor(row) },
+          { default: () => "编辑" },
+        ),
+        h(
+          NButton,
+          { size: "small", onClick: () => handleTestFactor(row) },
+          { default: () => "测试" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            type: "error",
+            onClick: () => handleDeleteFactor(row),
+          },
+          { default: () => "删除" },
+        ),
       ]),
   },
 ];
@@ -282,22 +333,40 @@ interface Factor {
 
 const factors = ref<Factor[]>([
   {
-    id: "1", name: "市盈率因子", code: "PE", category: "value",
+    id: "1",
+    name: "市盈率因子",
+    code: "PE",
+    category: "value",
     description: "基于市盈率的估值因子，低市盈率表示价值被低估",
-    dataFields: ["pe"], formula: "1 / pe if pe > 0 else 0",
-    performance: { score: 85, trend: "up" }, status: "active", lastUpdate: new Date("2024-01-15"),
+    dataFields: ["pe"],
+    formula: "1 / pe if pe > 0 else 0",
+    performance: { score: 85, trend: "up" },
+    status: "active",
+    lastUpdate: new Date("2024-01-15"),
   },
   {
-    id: "2", name: "动量因子", code: "MOMENTUM_1M", category: "momentum",
+    id: "2",
+    name: "动量因子",
+    code: "MOMENTUM_1M",
+    category: "momentum",
     description: "一个月动量因子，计算过去一个月的收益率",
-    dataFields: ["close"], formula: "close / close.shift(20) - 1",
-    performance: { score: 72, trend: "stable" }, status: "active", lastUpdate: new Date("2024-01-15"),
+    dataFields: ["close"],
+    formula: "close / close.shift(20) - 1",
+    performance: { score: 72, trend: "stable" },
+    status: "active",
+    lastUpdate: new Date("2024-01-15"),
   },
   {
-    id: "3", name: "波动率因子", code: "VOLATILITY_20D", category: "technical",
+    id: "3",
+    name: "波动率因子",
+    code: "VOLATILITY_20D",
+    category: "technical",
     description: "20日历史波动率因子",
-    dataFields: ["close"], formula: "close.pct_change().rolling(20).std()",
-    performance: { score: 68, trend: "down" }, status: "inactive", lastUpdate: new Date("2024-01-14"),
+    dataFields: ["close"],
+    formula: "close.pct_change().rolling(20).std()",
+    performance: { score: 68, trend: "down" },
+    status: "inactive",
+    lastUpdate: new Date("2024-01-14"),
   },
 ]);
 
@@ -306,11 +375,16 @@ const filteredFactors = computed(() => {
   if (searchKeyword.value) {
     const kw = searchKeyword.value.toLowerCase();
     result = result.filter(
-      (f) => f.name.toLowerCase().includes(kw) || f.description.toLowerCase().includes(kw) || f.code.toLowerCase().includes(kw),
+      (f) =>
+        f.name.toLowerCase().includes(kw) ||
+        f.description.toLowerCase().includes(kw) ||
+        f.code.toLowerCase().includes(kw),
     );
   }
-  if (filterCategory.value) result = result.filter((f) => f.category === filterCategory.value);
-  if (filterStatus.value) result = result.filter((f) => f.status === filterStatus.value);
+  if (filterCategory.value)
+    result = result.filter((f) => f.category === filterCategory.value);
+  if (filterStatus.value)
+    result = result.filter((f) => f.status === filterStatus.value);
   return result;
 });
 
@@ -330,11 +404,15 @@ watch([searchKeyword, filterCategory, filterStatus], () => {
 watch(filteredFactors, (list) => {
   pagination.total = list.length;
   if (pagination.currentPage > 1 && pagedFactors.value.length === 0) {
-    pagination.currentPage = Math.max(1, Math.ceil(list.length / pagination.pageSize));
+    pagination.currentPage = Math.max(
+      1,
+      Math.ceil(list.length / pagination.pageSize),
+    );
   }
 });
 
-const formatDate = (d: any) => (d ? new Date(d).toLocaleDateString("zh-CN") : "-");
+const formatDate = (d: any) =>
+  d ? new Date(d).toLocaleDateString("zh-CN") : "-";
 
 const handleBack = () => {
   if (window.history.length > 1) router.go(-1);
@@ -358,7 +436,8 @@ const handleEditFactor = (factor: Factor) => {
   factorDialogVisible.value = true;
 };
 
-const handleTestFactor = (factor: Factor) => message.info(`开始测试因子: ${factor.name}`);
+const handleTestFactor = (factor: Factor) =>
+  message.info(`开始测试因子: ${factor.name}`);
 
 const handleDeleteFactor = (factor: Factor) => {
   dialog.warning({
@@ -377,7 +456,9 @@ const handleDeleteFactor = (factor: Factor) => {
 };
 
 const handleStatusChange = (factor: Factor) =>
-  message.success(`因子 ${factor.name} 已${factor.status === "active" ? "启用" : "停用"}`);
+  message.success(
+    `因子 ${factor.name} 已${factor.status === "active" ? "启用" : "停用"}`,
+  );
 
 const handleSaveFactor = (factorData: any) => {
   if (editMode.value === "create") {
@@ -458,13 +539,25 @@ onMounted(() => loadFactors());
     gap: 12px;
     .tool-icon {
       flex-shrink: 0;
-      &.blue   { color: var(--color-primary, #448AFF); }
-      &.green  { color: var(--color-stock-up, #FF5252); }
-      &.orange { color: var(--n-warning-color); }
+      &.blue {
+        color: var(--color-primary, #448aff);
+      }
+      &.green {
+        color: var(--color-stock-up, #ff5252);
+      }
+      &.orange {
+        color: var(--n-warning-color);
+      }
     }
     .tool-info {
-      .tool-title { font-weight: 500; margin-bottom: 4px; }
-      .tool-desc { font-size: 12px; color: var(--n-text-color-3); }
+      .tool-title {
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+      .tool-desc {
+        font-size: 12px;
+        color: var(--n-text-color-3);
+      }
     }
   }
 }

@@ -47,7 +47,10 @@ export function useTrade() {
       send("place_order", { ...orderRequest, order_id: orderId });
 
       // 更新本地状态
-      store.commit("trade/ADD_PENDING_ORDER", { ...orderRequest, order_id: orderId });
+      store.commit("trade/ADD_PENDING_ORDER", {
+        ...orderRequest,
+        order_id: orderId,
+      });
 
       return orderId;
     } catch (error) {
@@ -116,8 +119,12 @@ export function useTrade() {
       orders.map((order: any) => cancelOrder(order.order_id)),
     );
 
-    const successCount = results.filter((r: any) => r.status === "fulfilled").length;
-    const failedCount = results.filter((r: any) => r.status === "rejected").length;
+    const successCount = results.filter(
+      (r: any) => r.status === "fulfilled",
+    ).length;
+    const failedCount = results.filter(
+      (r: any) => r.status === "rejected",
+    ).length;
 
     return { successCount, failedCount };
   };

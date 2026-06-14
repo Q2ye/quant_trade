@@ -18,6 +18,7 @@
     "axios": "^1.11.0",
     "dayjs": "^1.11.13",
     "echarts": "^6.0.0",
+    "lightweight-charts": "^5.2.0",
     "monaco-editor": "^0.52.2",
     "naive-ui": "^2.43.2",
     "rollup-plugin-visualizer": "^6.0.3",

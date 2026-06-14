@@ -1,213 +1,262 @@
 <template>
   <div class="attribution-analysis bg-gradient-mesh bg-noise">
-  <n-spin :show="loading">
-    <n-result
-      v-if="error"
-      status="500"
-      title="分析失败"
-      description="归因分析失败，请稍后重试"
-    >
-      <template #footer
-        ><n-button @click="runAttributionAnalysis">重试</n-button></template
+    <n-spin :show="loading">
+      <n-result
+        v-if="error"
+        status="500"
+        title="分析失败"
+        description="归因分析失败，请稍后重试"
       >
-    </n-result>
+        <template #footer
+          ><n-button @click="runAttributionAnalysis">重试</n-button></template
+        >
+      </n-result>
 
-    <n-empty
-      v-else-if="!loading && !error && !analysisConfig.strategy"
-      description="请选择策略后点击分析"
-    />
+      <n-empty
+        v-else-if="!loading && !error && !analysisConfig.strategy"
+        description="请选择策略后点击分析"
+      />
 
-    <template v-else>
-      <div class="page-header">
-        <div class="header-content">
-          <div class="title-section">
-            <h1 class="page-title">归因分析</h1>
+      <template v-else>
+        <div class="page-header">
+          <div class="header-content">
+            <div class="title-section">
+              <h1 class="page-title">归因分析</h1>
+            </div>
+            <div class="header-actions">
+              <n-select
+                v-model:value="analysisConfig.strategy"
+                placeholder="选择策略"
+                :options="strategyOptions"
+                style="width: 200px"
+              />
+              <n-date-picker
+                v-model:value="analysisConfig.dateRange"
+                type="daterange"
+                :is-date-disabled="() => false"
+                style="width: 240px; margin-left: 10px"
+              />
+              <n-select
+                v-model:value="analysisConfig.attributionModel"
+                placeholder="归因模型"
+                :options="modelOptions"
+                style="width: 150px"
+              />
+              <n-button type="primary" @click="runAttributionAnalysis">
+                <Icon icon="ep:search" />
+                分析
+              </n-button>
+              <n-button class="action-btn" @click="router.back()" quaternary>
+                <template #icon><SmartIcon name="ArrowLeft" /></template>
+              </n-button>
+            </div>
           </div>
-          <div class="header-actions">
-          <n-select
-            v-model:value="analysisConfig.strategy"
-            placeholder="选择策略"
-            :options="strategyOptions"
-            style="width: 200px"
-          />
-          <n-date-picker
-            v-model:value="analysisConfig.dateRange"
-            type="daterange"
-            :is-date-disabled="() => false"
-            style="width: 240px; margin-left: 10px"
-          />
-          <n-select
-            v-model:value="analysisConfig.attributionModel"
-            placeholder="归因模型"
-            :options="modelOptions"
-            style="width: 150px"
-          />
-          <n-button type="primary" @click="runAttributionAnalysis">
-            <Icon icon="ep:search" />
-            分析
-          </n-button>
-          <n-button class="action-btn" @click="router.back()" quaternary>
-            <template #icon><SmartIcon name="ArrowLeft" /></template>
-          </n-button>
         </div>
+
+        <div class="main-content">
+          <n-grid :x-gap="16" :cols="24" class="attribution-overview">
+            <n-grid-item :span="8">
+              <n-card class="attribution-card">
+                <template #header><span>超额收益分解</span></template>
+                <div ref="attributionChart" class="chart-container"></div>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item :span="8">
+              <n-card class="attribution-card">
+                <template #header><span>行业配置贡献</span></template>
+                <div ref="industryChart" class="chart-container"></div>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item :span="8">
+              <n-card class="attribution-card">
+                <template #header><span>风格因子暴露</span></template>
+                <div ref="factorExposureChart" class="chart-container"></div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
+
+          <n-card class="detailed-attribution">
+            <template #header><span>详细归因结果</span></template>
+            <n-tabs v-model:value="activeTab">
+              <n-tab-pane name="brinson" tab="Brinson归因">
+                <n-data-table
+                  :data="brinsonAttribution"
+                  :columns="brinsonColumns"
+                  :loading="loading"
+                  :bordered="false"
+                  striped
+                />
+              </n-tab-pane>
+              <n-tab-pane name="multiFactor" tab="多因子归因">
+                <n-data-table
+                  :data="factorAttribution"
+                  :columns="factorColumns"
+                  :loading="loading"
+                  :bordered="false"
+                  striped
+                />
+              </n-tab-pane>
+              <n-tab-pane name="timeSeries" tab="时间序列归因">
+                <div
+                  ref="timeSeriesChart"
+                  class="chart-container"
+                  style="height: 400px"
+                ></div>
+              </n-tab-pane>
+            </n-tabs>
+          </n-card>
+
+          <n-grid :x-gap="16" :cols="24" class="summary-row">
+            <n-grid-item :span="12">
+              <n-card class="summary-card">
+                <template #header>
+                  <div class="summary-header">
+                    <SmartIcon name="AnalyticsOutline" class="summary-icon" />
+                    <span>归因统计摘要</span>
+                  </div>
+                </template>
+                <div class="stat-list">
+                  <div class="stat-row">
+                    <span class="stat-label">分析期间</span>
+                    <span class="stat-value">{{ dateLabel }}</span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">总超额收益</span>
+                    <span
+                      :class="[
+                        'stat-value',
+                        getEffectClass(attributionSummary.totalExcessReturn),
+                      ]"
+                    >
+                      {{ formatPercent(attributionSummary.totalExcessReturn) }}
+                    </span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">配置效应贡献</span>
+                    <span
+                      :class="[
+                        'stat-value',
+                        getEffectClass(
+                          attributionSummary.allocationContribution,
+                        ),
+                      ]"
+                    >
+                      {{
+                        formatPercent(attributionSummary.allocationContribution)
+                      }}
+                    </span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">选股效应贡献</span>
+                    <span
+                      :class="[
+                        'stat-value',
+                        getEffectClass(
+                          attributionSummary.selectionContribution,
+                        ),
+                      ]"
+                    >
+                      {{
+                        formatPercent(attributionSummary.selectionContribution)
+                      }}
+                    </span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">可解释度 (R²)</span>
+                    <span class="stat-value"
+                      >{{
+                        (attributionSummary.rSquared * 100).toFixed(1)
+                      }}%</span
+                    >
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">跟踪误差</span>
+                    <span class="stat-value">{{
+                      formatPercent(attributionSummary.trackingError)
+                    }}</span>
+                  </div>
+                </div>
+              </n-card>
+            </n-grid-item>
+            <n-grid-item :span="12">
+              <n-card class="summary-card">
+                <template #header>
+                  <div class="summary-header">
+                    <SmartIcon name="ShieldCheckmark" class="summary-icon" />
+                    <span>风险调整指标</span>
+                  </div>
+                </template>
+                <div class="stat-list">
+                  <div class="stat-row">
+                    <span class="stat-label">信息比率</span>
+                    <span
+                      :class="[
+                        'stat-value',
+                        getEffectClass(attributionSummary.informationRatio),
+                      ]"
+                    >
+                      {{ attributionSummary.informationRatio.toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">主动份额</span>
+                    <span class="stat-value">{{
+                      formatPercent(attributionSummary.activeShare)
+                    }}</span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">主动风险</span>
+                    <span class="stat-value">{{
+                      formatPercent(attributionSummary.activeRisk)
+                    }}</span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">Beta 系数</span>
+                    <span class="stat-value">{{
+                      attributionSummary.beta.toFixed(2)
+                    }}</span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">Alpha 收益</span>
+                    <span
+                      :class="[
+                        'stat-value',
+                        getEffectClass(attributionSummary.alpha),
+                      ]"
+                    >
+                      {{ formatPercent(attributionSummary.alpha) }}
+                    </span>
+                  </div>
+                  <div class="stat-divider" />
+                  <div class="stat-row">
+                    <span class="stat-label">Alpha 显著性</span>
+                    <n-tag
+                      :type="
+                        attributionSummary.alphaSignificant ? 'success' : 'info'
+                      "
+                      size="small"
+                    >
+                      {{
+                        attributionSummary.alphaSignificant ? "显著" : "不显著"
+                      }}
+                    </n-tag>
+                  </div>
+                </div>
+              </n-card>
+            </n-grid-item>
+          </n-grid>
         </div>
-      </div>
-
-      <div class="main-content">
-      <n-grid :x-gap="16" :cols="24" class="attribution-overview">
-        <n-grid-item :span="8">
-          <n-card class="attribution-card">
-            <template #header><span>超额收益分解</span></template>
-            <div ref="attributionChart" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="8">
-          <n-card class="attribution-card">
-            <template #header><span>行业配置贡献</span></template>
-            <div ref="industryChart" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="8">
-          <n-card class="attribution-card">
-            <template #header><span>风格因子暴露</span></template>
-            <div ref="factorExposureChart" class="chart-container"></div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
-
-      <n-card class="detailed-attribution">
-        <template #header><span>详细归因结果</span></template>
-        <n-tabs v-model:value="activeTab">
-          <n-tab-pane name="brinson" tab="Brinson归因">
-            <n-data-table
-              :data="brinsonAttribution"
-              :columns="brinsonColumns"
-              :loading="loading"
-              :bordered="false"
-              striped
-            />
-          </n-tab-pane>
-          <n-tab-pane name="multiFactor" tab="多因子归因">
-            <n-data-table
-              :data="factorAttribution"
-              :columns="factorColumns"
-              :loading="loading"
-              :bordered="false"
-              striped
-            />
-          </n-tab-pane>
-          <n-tab-pane name="timeSeries" tab="时间序列归因">
-            <div
-              ref="timeSeriesChart"
-              class="chart-container"
-              style="height: 400px"
-            ></div>
-          </n-tab-pane>
-        </n-tabs>
-      </n-card>
-
-      <n-grid :x-gap="16" :cols="24" class="summary-row">
-        <n-grid-item :span="12">
-          <n-card class="summary-card">
-            <template #header>
-              <div class="summary-header">
-                <SmartIcon name="AnalyticsOutline" class="summary-icon" />
-                <span>归因统计摘要</span>
-              </div>
-            </template>
-            <div class="stat-list">
-              <div class="stat-row">
-                <span class="stat-label">分析期间</span>
-                <span class="stat-value">{{ dateLabel }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">总超额收益</span>
-                <span :class="['stat-value', getEffectClass(attributionSummary.totalExcessReturn)]">
-                  {{ formatPercent(attributionSummary.totalExcessReturn) }}
-                </span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">配置效应贡献</span>
-                <span :class="['stat-value', getEffectClass(attributionSummary.allocationContribution)]">
-                  {{ formatPercent(attributionSummary.allocationContribution) }}
-                </span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">选股效应贡献</span>
-                <span :class="['stat-value', getEffectClass(attributionSummary.selectionContribution)]">
-                  {{ formatPercent(attributionSummary.selectionContribution) }}
-                </span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">可解释度 (R²)</span>
-                <span class="stat-value">{{ (attributionSummary.rSquared * 100).toFixed(1) }}%</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">跟踪误差</span>
-                <span class="stat-value">{{ formatPercent(attributionSummary.trackingError) }}</span>
-              </div>
-            </div>
-          </n-card>
-        </n-grid-item>
-        <n-grid-item :span="12">
-          <n-card class="summary-card">
-            <template #header>
-              <div class="summary-header">
-                <SmartIcon name="ShieldCheckmark" class="summary-icon" />
-                <span>风险调整指标</span>
-              </div>
-            </template>
-            <div class="stat-list">
-              <div class="stat-row">
-                <span class="stat-label">信息比率</span>
-                <span :class="['stat-value', getEffectClass(attributionSummary.informationRatio)]">
-                  {{ attributionSummary.informationRatio.toFixed(2) }}
-                </span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">主动份额</span>
-                <span class="stat-value">{{ formatPercent(attributionSummary.activeShare) }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">主动风险</span>
-                <span class="stat-value">{{ formatPercent(attributionSummary.activeRisk) }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">Beta 系数</span>
-                <span class="stat-value">{{ attributionSummary.beta.toFixed(2) }}</span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">Alpha 收益</span>
-                <span :class="['stat-value', getEffectClass(attributionSummary.alpha)]">
-                  {{ formatPercent(attributionSummary.alpha) }}
-                </span>
-              </div>
-              <div class="stat-divider" />
-              <div class="stat-row">
-                <span class="stat-label">Alpha 显著性</span>
-                <n-tag
-                  :type="attributionSummary.alphaSignificant ? 'success' : 'info'"
-                  size="small"
-                >
-                  {{ attributionSummary.alphaSignificant ? '显著' : '不显著' }}
-                </n-tag>
-              </div>
-            </div>
-          </n-card>
-        </n-grid-item>
-      </n-grid>
-    </div>
-    </template>
-  </n-spin>
+      </template>
+    </n-spin>
   </div>
 </template>
 
@@ -239,7 +288,10 @@ const analysisConfig = reactive({
 
 const strategyList = ref<any[]>([]);
 const strategyOptions = computed(() =>
-  strategyList.value.map((s: any) => ({ label: s.name ?? s.strategy_name ?? String(s.id), value: String(s.id) })),
+  strategyList.value.map((s: any) => ({
+    label: s.name ?? s.strategy_name ?? String(s.id),
+    value: String(s.id),
+  })),
 );
 const modelOptions = [
   { label: "Brinson模型", value: "brinson" },

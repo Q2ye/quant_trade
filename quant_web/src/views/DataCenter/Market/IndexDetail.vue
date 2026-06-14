@@ -9,19 +9,47 @@
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">{{ indexInfo?.name || '--' }} <span class="index-code-tag">{{ code }}</span></h1>
+          <h1 class="page-title">
+            {{ indexInfo?.name || "--" }}
+            <span class="index-code-tag">{{ code }}</span>
+          </h1>
           <p v-if="indexInfo" class="page-description">
-            <span class="index-price">{{ formatPrice(indexInfo.current_point) }}</span>
-            <span class="index-change" :class="changeClass">{{ formatChange(indexInfo.change) }}</span>
-            <span class="index-change-pct" :class="changeClass">({{ formatPercent(indexInfo.change_percent) }})</span>
+            <span class="index-price">{{
+              formatPrice(indexInfo.close)
+            }}</span>
+            <span class="index-change" :class="changeClass">{{
+              formatChange(indexInfo.change)
+            }}</span>
+            <span class="index-change-pct" :class="changeClass"
+              >({{ formatPercent(indexInfo.pct_chg) }})</span
+            >
             <span class="index-update">{{ updateTime }}</span>
-            <n-tag :type="marketStatus === 'open' ? 'success' : 'default'" size="small" :bordered="false" class="index-status-tag">
-              {{ marketStatus === 'open' ? '交易中' : '已收盘' }}
+            <n-tag
+              :type="marketStatus === 'open' ? 'success' : 'default'"
+              size="small"
+              :bordered="false"
+              class="index-status-tag"
+            >
+              {{ marketStatus === "open" ? "交易中" : "已收盘" }}
             </n-tag>
           </p>
         </div>
         <div class="header-actions">
-          <n-button class="action-btn" @click="refreshData" :loading="loading" quaternary>
+          <n-button-group size="small">
+            <n-button
+              v-for="idx in coreIndices"
+              :key="idx.value"
+              :type="code === idx.value ? 'primary' : 'default'"
+              @click="router.replace('/market/index/' + idx.value)"
+              >{{ idx.label.slice(0, 4) }}</n-button
+            >
+          </n-button-group>
+          <n-button
+            class="action-btn"
+            @click="refreshData"
+            :loading="loading"
+            quaternary
+          >
             <template #icon><SmartIcon name="Refresh" /></template>
           </n-button>
           <n-button class="action-btn" @click="router.back()" quaternary>
@@ -43,7 +71,9 @@
         </div>
         <div class="section">
           <n-card>
-            <template #header><n-skeleton :text="true" width="120px" /></template>
+            <template #header
+              ><n-skeleton :text="true" width="120px"
+            /></template>
             <n-skeleton style="height: 420px" width="100%" />
           </n-card>
         </div>
@@ -77,8 +107,14 @@
             >
               <n-card :class="tokens.motion.hover">
                 <div class="stat-card-inner">
-                  <span class="stat-label">{{ stat.label }}</span>
-                  <span class="stat-value" :class="stat.colorClass">{{ stat.value }}</span>
+                  <div class="stat-icon-row">
+                    <SmartIcon :name="stat.icon" class="stat-icon" />
+                    <span class="stat-label">{{ stat.label }}</span>
+                  </div>
+                  <span class="stat-value" :class="stat.colorClass">{{
+                    stat.value
+                  }}</span>
+                  <span v-if="stat.sub" class="stat-sub">{{ stat.sub }}</span>
                 </div>
               </n-card>
             </n-grid-item>
@@ -106,11 +142,15 @@
               </div>
             </template>
             <div class="chart-body">
-              <KLineChart
+              <LightweightKLine
                 :key="`${code}-${selectedPeriod}`"
-                :symbol="code"
-                :period="selectedPeriod"
-                :indicators="['MA5', 'MA10', 'MA20', 'VOL']"
+                :data="klineData"
+                :ma-lines="[5, 10, 20]"
+                :show-volume="true"
+                :height="420"
+                :loading="loading"
+                :error="error"
+                @retry="loadData"
               />
             </div>
           </n-card>
@@ -131,28 +171,59 @@
                   class="info-descriptions"
                 >
                   <n-descriptions-item label="指数全称">
-                    <span :title="indexInfo.fullname">{{ indexInfo.fullname || '--' }}</span>
+                    <span :title="indexInfo.fullname">{{
+                      indexInfo.fullname || "--"
+                    }}</span>
                   </n-descriptions-item>
                   <n-descriptions-item label="市场">
-                    <n-tag :bordered="false" type="info" size="small">{{ indexInfo.market }}</n-tag>
+                    <n-tag :bordered="false" type="info" size="small">{{
+                      indexInfo.market
+                    }}</n-tag>
                   </n-descriptions-item>
-                  <n-descriptions-item label="发布机构">{{ indexInfo.publisher || '--' }}</n-descriptions-item>
-                  <n-descriptions-item label="分类">{{ indexInfo.category || '--' }}</n-descriptions-item>
-                  <n-descriptions-item label="基日">{{ indexInfo.base_date || '--' }}</n-descriptions-item>
-                  <n-descriptions-item label="基点">{{ formatNumber(indexInfo.base_point) }}</n-descriptions-item>
-                  <n-descriptions-item label="成分股数量">{{ indexInfo.components_count ?? '--' }} 只</n-descriptions-item>
-                  <n-descriptions-item label="上市日期">{{ indexInfo.list_date || '--' }}</n-descriptions-item>
+                  <n-descriptions-item label="发布机构">{{
+                    indexInfo.publisher || "--"
+                  }}</n-descriptions-item>
+                  <n-descriptions-item label="分类">{{
+                    indexInfo.category || "--"
+                  }}</n-descriptions-item>
+                  <n-descriptions-item label="基日">{{
+                    indexInfo.base_date || "--"
+                  }}</n-descriptions-item>
+                  <n-descriptions-item label="基点">{{
+                    formatNumber(indexInfo.base_point)
+                  }}</n-descriptions-item>
+                  <n-descriptions-item label="成分股数量"
+                    >{{
+                      indexInfo.components_count ?? "--"
+                    }}
+                    只</n-descriptions-item
+                  >
+                  <n-descriptions-item label="上市日期">{{
+                    indexInfo.list_date || "--"
+                  }}</n-descriptions-item>
                   <n-descriptions-item label="市盈率 (PE)">
-                    <span :class="getValueClass(indexInfo.pe)">{{ formatNumber(indexInfo.pe) }}</span>
+                    <span :class="getValueClass(indexInfo.pe)">{{
+                      formatNumber(indexInfo.pe)
+                    }}</span>
                   </n-descriptions-item>
                   <n-descriptions-item label="市净率 (PB)">
-                    <span :class="getValueClass(indexInfo.pb)">{{ formatNumber(indexInfo.pb) }}</span>
+                    <span :class="getValueClass(indexInfo.pb)">{{
+                      formatNumber(indexInfo.pb)
+                    }}</span>
                   </n-descriptions-item>
                   <n-descriptions-item label="成交额">
-                    {{ indexInfo.amount != null ? formatAmount(indexInfo.amount) : '--' }}
+                    {{
+                      indexInfo.amount != null
+                        ? formatAmount(indexInfo.amount)
+                        : "--"
+                    }}
                   </n-descriptions-item>
                   <n-descriptions-item label="成交量">
-                    {{ indexInfo.volume != null ? formatVolume(indexInfo.volume) : '--' }}
+                    {{
+                      indexInfo.vol != null
+                        ? formatVolume(indexInfo.vol)
+                        : "--"
+                    }}
                   </n-descriptions-item>
                 </n-descriptions>
               </n-tab-pane>
@@ -187,13 +258,54 @@
               </n-tab-pane>
 
               <n-tab-pane name="valuation" tab="估值">
-                <n-empty v-if="!indexValuation.length" description="暂无估值数据" style="padding:40px" />
-                <v-chart v-else :option="valOption" autoresize style="height:300px" />
+                <n-empty
+                  v-if="!indexValuation.length"
+                  description="暂无估值数据"
+                  style="padding: 40px"
+                />
+                <v-chart
+                  v-else
+                  :option="valOption"
+                  autoresize
+                  style="height: 300px"
+                />
               </n-tab-pane>
 
-              <n-tab-pane name="weights" tab="权重股">
-                <n-empty v-if="!indexWeights.length" description="暂无权重数据" style="padding:40px" />
-                <n-dataTable v-else :columns="weightColumns" :data="indexWeights" size="small" :bordered="false" max-height="400" />
+              <n-tab-pane name="weights" :tab="`权重股 (${weightsTotal})`">
+                <n-empty
+                  v-if="!indexWeights.length"
+                  description="暂无权重数据"
+                  style="padding: 40px"
+                />
+                <n-dataTable
+                  v-else
+                  :columns="weightColumns"
+                  :data="indexWeights"
+                  size="small"
+                  :bordered="false"
+                  max-height="400"
+                  :remote="true"
+                  :pagination="{
+                    page: weightsPage,
+                    pageSize: weightsPageSize,
+                    itemCount: weightsTotal,
+                    onChange: loadWeightsPage,
+                  }"
+                />
+              </n-tab-pane>
+
+              <n-tab-pane name="exposure" tab="行业暴露">
+                <n-empty
+                  v-if="!sectorExposure.length"
+                  description="暂无行业暴露数据"
+                  style="padding: 40px"
+                />
+                <v-chart
+                  v-else
+                  :option="sectorExposureOption"
+                  autoresize
+                  style="height: 380px"
+                />
               </n-tab-pane>
             </n-tabs>
           </n-card>
@@ -204,268 +316,528 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { h, ref, computed, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
-  NButton, NCard, NGrid, NGridItem, NSkeleton, NEmpty, NResult,
-  NTabs, NTabPane, NDescriptions, NDescriptionsItem, NTag,
-  NButtonGroup, NInput, NDataTable, useMessage,
-} from 'naive-ui'
-import type { DataTableColumns, DataTableRowKey } from 'naive-ui'
-import SmartIcon from '@/components/common/SmartIcon.vue'
-import KLineChart from '@/components/charts/KLineChart.vue'
-import VChart from 'vue-echarts'
-import { tokens } from '@/styles/design-tokens'
-import marketApi from '@/api/market'
+  NButton,
+  NCard,
+  NGrid,
+  NGridItem,
+  NSkeleton,
+  NEmpty,
+  NResult,
+  NTabs,
+  NTabPane,
+  NDescriptions,
+  NDescriptionsItem,
+  NTag,
+  NButtonGroup,
+  NInput,
+  NDataTable,
+  useMessage,
+} from "naive-ui";
+import type { DataTableColumns, DataTableRowKey } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
+import LightweightKLine from "@/components/charts/LightweightKLine.vue";
+import VChart from "vue-echarts";
+import { use } from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
+import { PieChart } from "echarts/charts";
+import { TooltipComponent, LegendComponent } from "echarts/components";
+use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent]);
+import { tokens } from "@/styles/design-tokens";
+import marketApi from "@/api/market";
 
-const route = useRoute()
-const router = useRouter()
-const message = useMessage()
+// 6 core indices for quick switching
+const coreIndices = [
+  { label: "上证指数", value: "000001.SH" },
+  { label: "深证成指", value: "399001.SZ" },
+  { label: "沪深300", value: "000300.SH" },
+  { label: "中证500", value: "000905.SH" },
+  { label: "创业板指", value: "399006.SZ" },
+  { label: "科创50", value: "000688.SH" },
+];
 
-const code = computed(() => (route.params.code as string) || '')
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
+
+const code = computed(
+  () => (route.query.focus as string) || (route.params.code as string) || "",
+);
 
 // ---- 状态 ----
-const loading = ref(true)
-const error = ref(false)
-const activeTab = ref('basic')
-const selectedPeriod = ref('daily')
-const componentSearch = ref('')
+const loading = ref(true);
+const error = ref(false);
+const activeTab = ref("basic");
+const selectedPeriod = ref("daily");
+const componentSearch = ref("");
 
 const periods = [
-  { label: '日K', value: 'daily' },
-  { label: '周K', value: 'weekly' },
-  { label: '月K', value: 'monthly' },
-]
+  { label: "日K", value: "daily" },
+  { label: "周K", value: "weekly" },
+  { label: "月K", value: "monthly" },
+];
 
 // ---- 指数详情数据（扩展接口，包含行情字段） ----
 interface IndexDetailData {
-  ts_code: string
-  name: string
-  fullname: string
-  market: string
-  publisher: string
-  category: string
-  base_date: string
-  base_point: number
-  list_date: string
-  current_point: number
-  change: number
-  change_percent: number
-  open: number
-  high: number
-  low: number
-  pre_close: number
-  volume: number
-  amount: number
-  pe: number
-  pb: number
-  components_count: number
+  ts_code: string;
+  name: string;
+  fullname: string;
+  market: string;
+  publisher: string;
+  category: string;
+  base_date: string;
+  base_point: number;
+  list_date: string;
+  close: number;
+  open: number;
+  high: number;
+  low: number;
+  pre_close: number;
+  change: number;
+  pct_chg: number;
+  vol: number;
+  amount: number;
+  trade_date: string;
+  pe: number;
+  pb: number;
+  total_mv: number;
+  components_count: number;
 }
 
 interface ComponentStock {
-  code: string
-  name: string
-  price: number
-  change_pct: number
-  weight: number
-  market_cap: number
+  code: string;
+  name: string;
+  price: number;
+  change_pct: number;
+  weight: number;
+  market_cap: number;
 }
 
-const indexInfo = ref<IndexDetailData | null>(null)
-const components = ref<ComponentStock[]>([])
-const indexWeights = ref<any[]>([])
-const indexValuation = ref<any[]>([])
+const indexInfo = ref<IndexDetailData | null>(null);
+const components = ref<ComponentStock[]>([]);
+const indexWeights = ref<any[]>([]);
+const weightsTotal = ref(0);
+const weightsPage = ref(1);
+const weightsPageSize = ref(50);
+const indexValuation = ref<any[]>([]);
+const history = ref<any[]>([]);
+const sectorExposure = ref<any[]>([]);
+
+const klineData = computed(() => {
+  if (!history.value.length) return [];
+  if (selectedPeriod.value === "daily") return history.value;
+  const step = selectedPeriod.value === "weekly" ? 5 : 20;
+  return history.value.filter((_: any, i: number) => i % step === 0);
+});
 const weightColumns = [
   { title: "代码", key: "ts_code", width: 100 },
   { title: "简称", key: "name", width: 100 },
-  { title: "权重(%)", key: "weight", render: (r: any) => r.weight?.toFixed(2) ?? "-" },
-]
+  {
+    title: "权重(%)",
+    key: "weight",
+    width: 80,
+    render: (r: any) => r.weight?.toFixed(2) ?? "-",
+  },
+  {
+    title: "最新价",
+    key: "close",
+    width: 80,
+    render: (r: any) => r.close?.toFixed(2) ?? "-",
+  },
+  {
+    title: "涨跌幅",
+    key: "pct_chg",
+    width: 80,
+    render: (r: any) =>
+      r.pct_chg != null
+        ? (r.pct_chg > 0 ? "+" : "") + r.pct_chg.toFixed(2) + "%"
+        : "-",
+  },
+];
 const valOption = computed(() => {
-  if (!indexValuation.value.length) return null
-  const items = [...indexValuation.value].reverse()
+  if (!indexValuation.value.length) return null;
+  const items = [...indexValuation.value].reverse();
+  const dates = items.map((d: any) => d.trade_date?.slice(5) ?? "");
+  const peVals = items.map((d: any) => d.pe ?? 0);
+  const pbVals = items.map((d: any) => d.pb ?? 0);
+  const peSorted = [...peVals].sort((a, b) => a - b);
+  const pbSorted = [...pbVals].sort((a, b) => a - b);
+  const p25 = (arr: number[]) => arr[Math.floor(arr.length * 0.25)];
+  const p50 = (arr: number[]) => arr[Math.floor(arr.length * 0.5)];
+  const p75 = (arr: number[]) => arr[Math.floor(arr.length * 0.75)];
   return {
-    grid: { top: 10, right: 50, bottom: 10, left: 60 },
-    xAxis: { type: "category", data: items.map((d: any) => d.trade_date?.slice(5) ?? ""), axisLabel: { fontSize: 9 } },
-    yAxis: { type: "value", axisLabel: { fontSize: 10 } },
+    grid: { top: 10, right: 50, bottom: 30, left: 60 },
+    xAxis: { type: "category", data: dates, axisLabel: { fontSize: 9 } },
+    yAxis: {
+      type: "value",
+      axisLabel: { fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
+    },
+    dataZoom: [{ type: "inside", start: 50, end: 100 }],
     tooltip: { trigger: "axis" },
     legend: { bottom: 0, textStyle: { fontSize: 10 } },
     series: [
-      { name: "PE", type: "line", data: items.map((d: any) => d.pe ?? 0), smooth: true, lineStyle: { width: 2, color: "#ef5350" }, symbol: "none" },
-      { name: "PB", type: "line", data: items.map((d: any) => d.pb ?? 0), smooth: true, lineStyle: { width: 2, color: "#2196f3" }, symbol: "none" },
+      {
+        name: "PE",
+        type: "line",
+        data: peVals,
+        smooth: true,
+        lineStyle: { width: 2, color: "#ef5350" },
+        symbol: "none",
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: { type: "dashed", color: "#ef5350", width: 1 },
+          data: [
+            { yAxis: p25(peSorted), label: { formatter: "P25", fontSize: 9 } },
+            { yAxis: p50(peSorted), label: { formatter: "P50", fontSize: 9 } },
+            { yAxis: p75(peSorted), label: { formatter: "P75", fontSize: 9 } },
+          ],
+        },
+      },
+      {
+        name: "PB",
+        type: "line",
+        data: pbVals,
+        smooth: true,
+        lineStyle: { width: 2, color: "#2196f3" },
+        symbol: "none",
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: { type: "dashed", color: "#2196f3", width: 1 },
+          data: [
+            { yAxis: p25(pbSorted), label: { formatter: "P25", fontSize: 9 } },
+            { yAxis: p50(pbSorted), label: { formatter: "P50", fontSize: 9 } },
+            { yAxis: p75(pbSorted), label: { formatter: "P75", fontSize: 9 } },
+          ],
+        },
+      },
     ],
-  }
-})
+  };
+});
+
+const sectorExposureOption = computed(() => {
+  if (!sectorExposure.value.length) return null;
+  const data = sectorExposure.value.map((d: any) => ({
+    name: d.name || d.sector_name || d.industry || "",
+    value: Math.abs(d.weight_pct ?? d.weight ?? d.exposure ?? 0),
+  }));
+  return {
+    tooltip: { trigger: "item", formatter: "{b}: {c}% ({d}%)" },
+    legend: {
+      bottom: 0,
+      textStyle: { fontSize: 10, color: "var(--n-text-color-2)" },
+      type: "scroll",
+    },
+    series: [
+      {
+        type: "pie",
+        radius: ["35%", "65%"],
+        center: ["50%", "45%"],
+        data,
+        label: { fontSize: 10, formatter: "{b}\n{d}%" },
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" },
+        },
+        itemStyle: {
+          borderRadius: 2,
+          borderColor: "rgba(0,0,0,0.3)",
+          borderWidth: 1,
+        },
+      },
+    ],
+  };
+});
 
 // ---- 计算属性 ----
 const updateTime = computed(() => {
-  const now = new Date()
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-})
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+});
 
-const marketStatus = computed<'open' | 'closed'>(() => {
-  const h = new Date().getHours()
-  const m = new Date().getMinutes()
-  const t = h * 60 + m
-  return (t >= 570 && t <= 900) ? 'open' : 'closed'
-})
+const marketStatus = computed<"open" | "closed">(() => {
+  const h = new Date().getHours();
+  const m = new Date().getMinutes();
+  const t = h * 60 + m;
+  return t >= 570 && t <= 900 ? "open" : "closed";
+});
 
 const changeClass = computed(() => {
-  if (!indexInfo.value) return ''
-  const v = indexInfo.value.change
-  if (v > 0) return 'text-up'
-  if (v < 0) return 'text-down'
-  return ''
-})
+  if (!indexInfo.value) return "";
+  const v = indexInfo.value.change;
+  if (v > 0) return "text-up";
+  if (v < 0) return "text-down";
+  return "";
+});
 
 const quickStats = computed(() => {
-  const d = indexInfo.value
-  if (!d) return []
+  const d = indexInfo.value;
+  if (!d) return [];
   return [
-    { label: '开盘', value: d.open != null ? d.open.toFixed(2) : '--', colorClass: getCompareClass(d.open, d.pre_close) },
-    { label: '最高', value: d.high != null ? d.high.toFixed(2) : '--', colorClass: getCompareClass(d.high, d.pre_close) },
-    { label: '最低', value: d.low != null ? d.low.toFixed(2) : '--', colorClass: getCompareClass(d.low, d.pre_close) },
-    { label: '昨收', value: d.pre_close != null ? d.pre_close.toFixed(2) : '--', colorClass: '' },
-  ]
-})
+    {
+      icon: "Money",
+      label: "成交额",
+      value: d.amount != null ? (d.amount / 1e8).toFixed(0) + "亿" : "--",
+      sub: d.vol != null ? "成交量 " + (d.vol / 1e8).toFixed(1) + "亿手" : "",
+      colorClass: "",
+    },
+    {
+      icon: "TrendingUp",
+      label: "市盈率 PE",
+      value: d.pe != null ? d.pe.toFixed(2) : "--",
+      sub: d.pe != null ? (d.pe < 15 ? "较低估" : d.pe < 25 ? "合理" : d.pe < 40 ? "偏高" : "高估") : "",
+      colorClass: d.pe != null ? (d.pe < 15 ? "text-down" : d.pe > 40 ? "text-up" : "") : "",
+    },
+    {
+      icon: "BarChart",
+      label: "市净率 PB",
+      value: d.pb != null ? d.pb.toFixed(2) : "--",
+      sub: d.pb != null ? (d.pb < 1.5 ? "较低估" : d.pb < 3 ? "合理" : d.pb < 5 ? "偏高" : "高估") : "",
+      colorClass: d.pb != null ? (d.pb < 1.5 ? "text-down" : d.pb > 5 ? "text-up" : "") : "",
+    },
+    {
+      icon: "Home",
+      label: "总市值",
+      value: d.total_mv != null ? (d.total_mv / 1e12).toFixed(1) + "万亿" : "--",
+      sub: (d.components_count != null ? d.components_count + " 只成分股" : ""),
+      colorClass: "",
+    },
+  ];
+});
 
 const filteredComponents = computed(() => {
-  const kw = componentSearch.value.trim().toLowerCase()
-  if (!kw) return components.value
-  return components.value.filter(c =>
-    c.code.toLowerCase().includes(kw) || c.name.toLowerCase().includes(kw),
-  )
-})
+  const kw = componentSearch.value.trim().toLowerCase();
+  if (!kw) return components.value;
+  return components.value.filter(
+    (c) =>
+      c.code.toLowerCase().includes(kw) || c.name.toLowerCase().includes(kw),
+  );
+});
 
-const componentsTabLabel = computed(() => `成分股 (${components.value.length})`)
+const componentsTabLabel = computed(
+  () => `成分股 (${components.value.length})`,
+);
 
 // ---- 表格列定义 ----
 const componentColumns: DataTableColumns<ComponentStock> = [
-  { title: '代码', key: 'code', width: 100, ellipsis: true },
-  { title: '名称', key: 'name', width: 120, ellipsis: true },
-  { title: '最新价', key: 'price', width: 100, align: 'right',
-    render(row) { return row.price != null ? row.price.toFixed(2) : '--' },
-  },
-  { title: '涨跌幅', key: 'change_pct', width: 100, align: 'right', sortOrder: false,
-    sorter: (a: ComponentStock, b: ComponentStock) => (a.change_pct || 0) - (b.change_pct || 0),
+  { title: "代码", key: "code", width: 100, ellipsis: true },
+  { title: "名称", key: "name", width: 120, ellipsis: true },
+  {
+    title: "最新价",
+    key: "price",
+    width: 100,
+    align: "right",
     render(row) {
-      const v = row.change_pct
-      if (v == null) return '--'
-      const cls = v > 0 ? 'text-up' : v < 0 ? 'text-down' : ''
-      return h('span', { class: cls }, (v > 0 ? '+' : '') + v.toFixed(2) + '%')
+      return row.price != null ? row.price.toFixed(2) : "--";
     },
   },
-  { title: '权重', key: 'weight', width: 100, align: 'right',
-    render(row) { return row.weight != null ? row.weight.toFixed(2) + '%' : '--' },
+  {
+    title: "涨跌幅",
+    key: "change_pct",
+    width: 100,
+    align: "right",
+    sortOrder: false,
+    sorter: (a: ComponentStock, b: ComponentStock) =>
+      (a.change_pct || 0) - (b.change_pct || 0),
+    render(row) {
+      const v = row.change_pct;
+      if (v == null) return "--";
+      const cls = v > 0 ? "text-up" : v < 0 ? "text-down" : "";
+      return h("span", { class: cls }, (v > 0 ? "+" : "") + v.toFixed(2) + "%");
+    },
   },
-  { title: '总市值', key: 'market_cap', width: 130, align: 'right',
-    render(row) { return row.market_cap != null ? formatAmount(row.market_cap) : '--' },
+  {
+    title: "权重",
+    key: "weight",
+    width: 100,
+    align: "right",
+    render(row) {
+      return row.weight != null ? row.weight.toFixed(2) + "%" : "--";
+    },
   },
-]
+  {
+    title: "总市值",
+    key: "market_cap",
+    width: 130,
+    align: "right",
+    render(row) {
+      return row.market_cap != null ? formatAmount(row.market_cap) : "--";
+    },
+  },
+];
 
 // ---- 行点击 ----
 function componentRowProps(row: ComponentStock) {
-  return { style: 'cursor: pointer;' }
+  return { style: "cursor: pointer;" };
 }
 function componentRowClass(row: ComponentStock) {
-  return 'component-row'
+  return "component-row";
 }
 
 // ---- 方法 ----
-function pad(n: number) { return n.toString().padStart(2, '0') }
+function pad(n: number) {
+  return n.toString().padStart(2, "0");
+}
 
 function formatPrice(v: number | null | undefined) {
-  if (v == null) return '--'
-  return v.toFixed(2)
+  if (v == null) return "--";
+  return v.toFixed(2);
 }
 
 function formatChange(v: number | null | undefined) {
-  if (v == null) return '--'
-  return (v > 0 ? '+' : '') + v.toFixed(2)
+  if (v == null) return "--";
+  return (v > 0 ? "+" : "") + v.toFixed(2);
 }
 
 function formatPercent(v: number | null | undefined) {
-  if (v == null) return '--'
-  return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+  if (v == null) return "--";
+  return (v > 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 
 function formatNumber(v: number | null | undefined) {
-  if (v == null) return '--'
-  return v.toFixed(2)
+  if (v == null) return "--";
+  return v.toFixed(2);
 }
 
 function formatAmount(v: number) {
-  const abs = Math.abs(v)
-  if (abs >= 1e8) return (abs / 1e8).toFixed(2) + '亿'
-  if (abs >= 1e4) return (abs / 1e4).toFixed(2) + '万'
-  return abs.toFixed(2)
+  const abs = Math.abs(v);
+  if (abs >= 1e8) return (abs / 1e8).toFixed(2) + "亿";
+  if (abs >= 1e4) return (abs / 1e4).toFixed(2) + "万";
+  return abs.toFixed(2);
 }
 
 function formatVolume(v: number) {
-  if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿手'
-  if (v >= 1e4) return (v / 1e4).toFixed(2) + '万手'
-  return v.toFixed(0) + '手'
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿手";
+  if (v >= 1e4) return (v / 1e4).toFixed(2) + "万手";
+  return v.toFixed(0) + "手";
 }
 
 function getCompareClass(value: number, base: number) {
-  if (value > base) return 'text-up'
-  if (value < base) return 'text-down'
-  return ''
+  if (value > base) return "text-up";
+  if (value < base) return "text-down";
+  return "";
 }
 
 function getValueClass(v: number | null | undefined) {
-  if (v == null) return ''
-  return v > 0 ? 'text-up' : 'text-down'
+  if (v == null) return "";
+  return v > 0 ? "text-up" : "text-down";
 }
 
 // ---- 模拟数据 ----
 function buildMockIndexDetail(idxCode: string): IndexDetailData {
-  const nameMap: Record<string, { name: string; fullname: string; market: string }> = {
-    '000001': { name: '上证指数', fullname: '上证综合指数', market: '上海证券交易所' },
-    '399001': { name: '深证成指', fullname: '深证成份指数', market: '深圳证券交易所' },
-    '399006': { name: '创业板指', fullname: '创业板指数', market: '深圳证券交易所' },
-    '000688': { name: '科创50', fullname: '上证科创板50成份指数', market: '上海证券交易所' },
-  }
-  const meta = nameMap[idxCode] || { name: idxCode, fullname: idxCode, market: '--' }
-  const base = 3000 + Math.random() * 500
-  const preClose = base + (Math.random() - 0.5) * 50
-  const cur = preClose + (Math.random() - 0.48) * 80
-  const chg = cur - preClose
+  const nameMap: Record<
+    string,
+    { name: string; fullname: string; market: string }
+  > = {
+    "000001": {
+      name: "上证指数",
+      fullname: "上证综合指数",
+      market: "上海证券交易所",
+    },
+    "399001": {
+      name: "深证成指",
+      fullname: "深证成份指数",
+      market: "深圳证券交易所",
+    },
+    "399006": {
+      name: "创业板指",
+      fullname: "创业板指数",
+      market: "深圳证券交易所",
+    },
+    "000688": {
+      name: "科创50",
+      fullname: "上证科创板50成份指数",
+      market: "上海证券交易所",
+    },
+  };
+  const meta = nameMap[idxCode] || {
+    name: idxCode,
+    fullname: idxCode,
+    market: "--",
+  };
+  const base = 3000 + Math.random() * 500;
+  const preClose = base + (Math.random() - 0.5) * 50;
+  const cur = preClose + (Math.random() - 0.48) * 80;
+  const chg = cur - preClose;
   return {
     ts_code: idxCode,
     name: meta.name,
     fullname: meta.fullname,
     market: meta.market,
-    publisher: idxCode === '000001' || idxCode === '000688' ? '中证指数有限公司' : '深圳证券信息有限公司',
-    category: '规模指数',
-    base_date: idxCode === '000001' ? '1990-12-19' : idxCode === '399006' ? '2010-05-31' : '2000-01-01',
-    base_point: idxCode === '000001' ? 100 : 1000,
-    list_date: idxCode === '000001' ? '1990-12-19' : '2000-01-01',
-    current_point: parseFloat(cur.toFixed(2)),
+    publisher:
+      idxCode === "000001" || idxCode === "000688"
+        ? "中证指数有限公司"
+        : "深圳证券信息有限公司",
+    category: "规模指数",
+    base_date:
+      idxCode === "000001"
+        ? "1990-12-19"
+        : idxCode === "399006"
+          ? "2010-05-31"
+          : "2000-01-01",
+    base_point: idxCode === "000001" ? 100 : 1000,
+    list_date: idxCode === "000001" ? "1990-12-19" : "2000-01-01",
+    close: parseFloat(cur.toFixed(2)),
     change: parseFloat(chg.toFixed(2)),
-    change_percent: parseFloat(((chg / preClose) * 100).toFixed(2)),
+    pct_chg: parseFloat(((chg / preClose) * 100).toFixed(2)),
     open: parseFloat((preClose + (Math.random() - 0.5) * 30).toFixed(2)),
     high: parseFloat((cur + Math.abs(chg) * 0.5).toFixed(2)),
     low: parseFloat((cur - Math.abs(chg) * 0.6).toFixed(2)),
     pre_close: parseFloat(preClose.toFixed(2)),
-    volume: Math.floor(1e9 + Math.random() * 5e9),
+    vol: Math.floor(1e9 + Math.random() * 5e9),
     amount: Math.floor(3e10 + Math.random() * 1e11),
+    trade_date: new Date().toISOString().slice(0, 10),
     pe: parseFloat((12 + Math.random() * 20).toFixed(2)),
     pb: parseFloat((1 + Math.random() * 4).toFixed(2)),
-    components_count: idxCode === '000688' ? 50 : idxCode === '000001' ? 1500 : 300,
-  }
+    total_mv: Math.floor(5e11 + Math.random() * 2e12),
+    components_count:
+      idxCode === "000688" ? 50 : idxCode === "000001" ? 1500 : 300,
+  };
 }
 
 function buildMockComponents(count: number): ComponentStock[] {
   const names = [
-    '贵州茅台', '宁德时代', '五粮液', '比亚迪', '中国中免', '恒瑞医药', '中信证券',
-    '海康威视', '立讯精密', '迈瑞医疗', '招商银行', '隆基绿能', '药明康德', '片仔癀',
-    '中国平安', '兴业银行', '伊利股份', '万华化学', '牧原股份', '泸州老窖',
-    '东方财富', '恒生电子', '科大讯飞', '浪潮信息', '中芯国际', '长江电力',
-    '美的集团', '格力电器', '海尔智家', '韦尔股份', '北方华创', '三一重工',
-  ]
-  const stocks: ComponentStock[] = []
+    "贵州茅台",
+    "宁德时代",
+    "五粮液",
+    "比亚迪",
+    "中国中免",
+    "恒瑞医药",
+    "中信证券",
+    "海康威视",
+    "立讯精密",
+    "迈瑞医疗",
+    "招商银行",
+    "隆基绿能",
+    "药明康德",
+    "片仔癀",
+    "中国平安",
+    "兴业银行",
+    "伊利股份",
+    "万华化学",
+    "牧原股份",
+    "泸州老窖",
+    "东方财富",
+    "恒生电子",
+    "科大讯飞",
+    "浪潮信息",
+    "中芯国际",
+    "长江电力",
+    "美的集团",
+    "格力电器",
+    "海尔智家",
+    "韦尔股份",
+    "北方华创",
+    "三一重工",
+  ];
+  const stocks: ComponentStock[] = [];
   for (let i = 0; i < count; i++) {
-    const name = names[i % names.length] + (i >= names.length ? `-${Math.floor(i / names.length)}` : '')
+    const name =
+      names[i % names.length] +
+      (i >= names.length ? `-${Math.floor(i / names.length)}` : "");
     stocks.push({
       code: (600000 + i).toString(),
       name,
@@ -473,54 +845,85 @@ function buildMockComponents(count: number): ComponentStock[] {
       change_pct: parseFloat(((Math.random() - 0.45) * 8).toFixed(2)),
       weight: parseFloat((0.1 + Math.random() * 8).toFixed(2)),
       market_cap: Math.floor(5e9 + Math.random() * 1e12),
-    })
+    });
   }
-  return stocks.sort((a, b) => b.weight - a.weight)
+  return stocks.sort((a, b) => b.weight - a.weight);
 }
 
 // ---- 数据加载 ----
 async function loadData() {
-  loading.value = true
-  error.value = false
+  loading.value = true;
+  error.value = false;
 
   try {
-    const idxCode = code.value
-    // 尝试调用后端 API，失败时使用模拟数据
-    let detail: IndexDetailData
-    try {
-      const result = await marketApi.getIndexDetail(idxCode)
-      detail = { ...result } as unknown as IndexDetailData
-    } catch {
-      detail = buildMockIndexDetail(idxCode)
+    const idxCode = code.value || "000001.SH";
 
-    // 加载权重+估值
-    marketApi.getIndexWeights(idxCode).then(w => { indexWeights.value = w || [] }).catch(() => {})
-    marketApi.getIndexValuation(idxCode, 60).then(v => { indexValuation.value = v || [] }).catch(() => {})
+    const [detail, hist, val, wts, sec] = await Promise.all([
+      marketApi.getIndexDetail(idxCode).catch(() => null),
+      marketApi.getIndexHistory(idxCode, 2000).catch(() => []),
+      marketApi.getIndexValuation(idxCode, 2000).catch(() => []),
+      marketApi.getIndexWeights(idxCode, 0, weightsPageSize.value).catch(() => ({ total: 0, items: [] })),
+      marketApi.getIndexSectorExposure(idxCode).catch(() => []),
+    ]);
+
+    if (!detail) {
+      error.value = true;
+      loading.value = false;
+      return;
     }
-    indexInfo.value = detail
-    components.value = buildMockComponents(detail.components_count || 50)
+
+    indexInfo.value = { ...detail } as unknown as IndexDetailData;
+    history.value = hist || [];
+    indexValuation.value = val || [];
+    indexWeights.value = wts?.items || [];
+    weightsTotal.value = wts?.total || 0;
+    weightsPage.value = 1;
+    sectorExposure.value = sec || [];
+    components.value = (wts?.items || []).map((w: any) => ({
+      code: w.ts_code || "",
+      name: w.name || w.ts_code || "",
+      price: w.close ?? 0,
+      change_pct: w.pct_chg ?? 0,
+      weight: w.weight ?? 0,
+      market_cap: w.total_mv ?? 0,
+    }));
   } catch {
-    error.value = true
+    error.value = true;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
+async function loadWeightsPage(p: number) {
+  try {
+    const result = await marketApi.getIndexWeights(
+      code.value,
+      (p - 1) * weightsPageSize.value,
+      weightsPageSize.value,
+    );
+    indexWeights.value = result?.items || [];
+    weightsTotal.value = result?.total || 0;
+    weightsPage.value = p;
+  } catch { /* ignore */ }
+}
+
 function refreshData() {
-  loadData()
-  message.success('数据已刷新')
+  loadData();
+  message.success("数据已刷新");
 }
 
 // 监听代码变化（同一页面切换指数时重新加载）
 watch(code, () => {
   if (code.value) {
-    activeTab.value = 'basic'
-    componentSearch.value = ''
-    loadData()
+    activeTab.value = "basic";
+    componentSearch.value = "";
+    loadData();
   }
-})
+});
 
-onMounted(() => { loadData() })
+onMounted(() => {
+  loadData();
+});
 </script>
 
 <style lang="scss" scoped>
@@ -564,7 +967,7 @@ onMounted(() => { loadData() })
   background: var(--color-bg-secondary, rgba(255, 255, 255, 0.06));
   padding: 2px 8px;
   border-radius: 8px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: "SF Mono", "Fira Code", monospace;
   margin-left: 8px;
   vertical-align: middle;
 }
@@ -608,8 +1011,12 @@ onMounted(() => { loadData() })
   padding: 8px 24px;
   margin-bottom: 8px;
 
-  &:first-child { padding-top: 20px; }
-  &:last-child { padding-bottom: 24px; }
+  &:first-child {
+    padding-top: 20px;
+  }
+  &:last-child {
+    padding-bottom: 24px;
+  }
 }
 
 /* ============================================================
@@ -618,19 +1025,35 @@ onMounted(() => { loadData() })
 .stat-card-inner {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 0;
 
-  .stat-label {
-    font-size: 13px;
-    color: var(--n-text-color-3);
+  .stat-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-
+  .stat-icon {
+    font-size: 16px;
+    color: var(--color-primary, #448AFF);
+    flex-shrink: 0;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--n-text-color-3);
+    font-weight: 500;
+  }
   .stat-value {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     color: var(--n-text-color-1);
     font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .stat-sub {
+    font-size: 11px;
+    color: var(--n-text-color-3);
+    line-height: 1.3;
   }
 }
 
@@ -655,7 +1078,7 @@ onMounted(() => { loadData() })
 
   .title-icon {
     font-size: 16px;
-    color: var(--color-primary, #448AFF);
+    color: var(--color-primary, #448aff);
   }
 }
 
@@ -692,22 +1115,23 @@ onMounted(() => { loadData() })
    状态色工具类
    ============================================================ */
 .text-up {
-  color: var(--color-stock-up, #FF5252);
+  color: var(--color-stock-up, #ff5252);
   font-weight: 500;
 }
 
 .text-down {
-  color: var(--color-stock-down, #00E676);
+  color: var(--color-stock-down, #00e676);
   font-weight: 500;
 }
-
 
 /* ---- 响应式 ---- */
 @media (max-width: 1024px) {
   .page-header .header-content {
     flex-wrap: wrap;
   }
-  .index-price { font-size: 14px; }
+  .index-price {
+    font-size: 14px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -727,7 +1151,13 @@ onMounted(() => { loadData() })
 
 /* ---- 入场动画 ---- */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

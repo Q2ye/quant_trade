@@ -154,7 +154,7 @@ const riskModule: Module<RiskState, RootState> = {
       commit("SET_LOADING", { events: true });
       try {
         const response = await riskAPI.getRiskEvents({ limit: 100 });
-        const events = (response as any).data?.items ?? response as any;
+        const events = (response as any).data?.items ?? (response as any);
         commit("SET_EVENTS", events);
         commit("UPDATE_EVENT_STATISTICS");
         return events;

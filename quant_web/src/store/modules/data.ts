@@ -1,11 +1,7 @@
 // quant_web/src/store/modules/data.ts
 import { Module } from "vuex";
 import api, { defaultRealtimeService } from "@/api/data";
-import {
-  HistoricalDataPoint,
-  FinancialData,
-  StockBasic,
-} from "@/types";
+import { HistoricalDataPoint, FinancialData, StockBasic } from "@/types";
 import { RootState } from "@/types";
 
 /**
