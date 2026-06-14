@@ -182,6 +182,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "strategy-backtest", layout: "main", title: "回测验证" },
   },
   {
+    path: "/strategies/versions/:id",
+    name: "StrategyVersions",
+    component: () =>
+      import("@/views/StrategyCenter/Build/StrategyVersions.vue"),
+    meta: { menu: "strategies", layout: "main", title: "版本管理", hideInMenu: true },
+  },
+  {
     path: "/strategies/templates",
     name: "StrategyTemplates",
     component: () =>
@@ -317,6 +324,14 @@ export const routes: RouteRecordRaw[] = [
     name: "TradingDashboard",
     component: () => import("@/views/TradeCenter/Trading/TradingDashboard.vue"),
     meta: { menu: "trading", layout: "main", title: "交易驾驶舱" },
+  },
+
+  // 监控中心
+  {
+    path: "/monitor/alerts",
+    name: "AlertCenter",
+    component: () => import("@/views/MonitorCenter/AlertCenter.vue"),
+    meta: { menu: "monitor-alerts", layout: "main", title: "报警中心" },
   },
 
   // 风险监控

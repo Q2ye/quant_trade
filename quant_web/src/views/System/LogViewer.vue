@@ -12,8 +12,24 @@
             multiple
             placeholder="日志级别"
             size="small"
-            style="width: 200px"
+            style="width: 180px"
             :options="logLevelOptions"
+          />
+          <n-select
+            v-model:value="filterModule"
+            placeholder="模块"
+            size="small"
+            clearable
+            style="width: 140px"
+            :options="moduleOptions"
+          />
+          <n-date-picker
+            v-model:value="filterDate"
+            type="date"
+            placeholder="日期"
+            size="small"
+            clearable
+            style="width: 140px"
           />
           <n-input
             v-model:value="searchKeyword"
@@ -26,6 +42,7 @@
             >查询</n-button
           >
           <n-button size="small" @click="clearLogs">清空</n-button>
+          <n-button size="small" @click="exportCSV">导出CSV</n-button>
         </div>
       </div>
     </div>
@@ -82,11 +99,21 @@ export default {
       filteredLogs: [],
       logLevel: ["INFO", "WARNING", "ERROR"],
       searchKeyword: "",
+      filterModule: null,
+      filterDate: null,
       logLevelOptions: [
         { label: "INFO", value: "INFO" },
         { label: "WARNING", value: "WARNING" },
         { label: "ERROR", value: "ERROR" },
         { label: "DEBUG", value: "DEBUG" },
+      ],
+      moduleOptions: [
+        { label: "数据同步", value: "DataSync" },
+        { label: "策略引擎", value: "StrategyEngine" },
+        { label: "交易引擎", value: "TradeEngine" },
+        { label: "风控引擎", value: "RiskEngine" },
+        { label: "回测引擎", value: "BacktestEngine" },
+        { label: "系统", value: "System" },
       ],
     };
   },
@@ -142,23 +169,43 @@ export default {
       this.filteredLogs = this.logs.filter((log) => {
         if (this.logLevel.length > 0 && !this.logLevel.includes(log.level))
           return false;
-        return !(
-          this.searchKeyword && !log.message.includes(this.searchKeyword)
-        );
+        if (this.searchKeyword && !log.message.includes(this.searchKeyword))
+          return false;
+        if (this.filterModule && log.source !== this.filterModule)
+          return false;
+        if (this.filterDate) {
+          const logDate = (log.timestamp || "").slice(0, 10);
+          const filterDateStr = new Date(this.filterDate).toISOString().slice(0, 10);
+          if (logDate !== filterDateStr) return false;
+        }
+        return true;
       });
     },
     clearLogs() {
       this.logs = [];
       this.filteredLogs = [];
     },
+    exportCSV() {
+      const data = this.filteredLogs;
+      if (!data.length) return;
+      const header = "时间,级别,来源,消息\n";
+      const rows = data
+        .map((l) => `${l.timestamp},${l.level},${l.source},"${l.message}"`)
+        .join("\n");
+      const blob = new Blob(["﻿" + header + rows], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `logs_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
   watch: {
-    logLevel() {
-      this.filterLogs();
-    },
-    searchKeyword() {
-      this.filterLogs();
-    },
+    logLevel() { this.filterLogs(); },
+    searchKeyword() { this.filterLogs(); },
+    filterModule() { this.filterLogs(); },
+    filterDate() { this.filterLogs(); },
   },
 };
 </script>

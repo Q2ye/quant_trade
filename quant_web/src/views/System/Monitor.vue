@@ -10,6 +10,32 @@
     </div>
 
     <div class="main-content">
+      <!-- 健康指标卡片 -->
+      <n-grid :x-gap="16" :y-gap="16" :cols="4" responsive="screen" class="health-grid">
+        <n-grid-item v-for="stat in healthStats" :key="stat.label">
+          <n-card size="small" class="health-card">
+            <n-statistic :label="stat.label" :value="stat.value">
+              <template #prefix>
+                <Icon :icon="stat.icon" :style="{ color: stat.color }" />
+              </template>
+            </n-statistic>
+            <n-progress
+              :percentage="stat.percent"
+              :color="stat.color"
+              :height="4"
+              :border-radius="2"
+              :show-indicator="false"
+              style="margin-top: 8px"
+            />
+          </n-card>
+        </n-grid-item>
+      </n-grid>
+
+      <!-- 最后刷新时间 -->
+      <div class="refresh-bar">
+        <span class="refresh-time">最后刷新: {{ lastRefresh }}</span>
+      </div>
+
       <n-result
         v-if="error"
         status="500"
@@ -98,6 +124,13 @@ export default {
     return {
       loading: false,
       error: false,
+      lastRefresh: "--:--:--",
+      healthStats: [
+        { label: "CPU", value: "--%", percent: 0, icon: "mdi:cpu-64-bit", color: "#22C55E" },
+        { label: "内存", value: "--%", percent: 0, icon: "mdi:memory", color: "#3B82F6" },
+        { label: "磁盘", value: "--%", percent: 0, icon: "mdi:harddisk", color: "#F59E0B" },
+        { label: "数据库", value: "--ms", percent: 0, icon: "mdi:database", color: "#7C3AED" },
+      ],
     };
   },
 
@@ -120,6 +153,17 @@ export default {
       try {
         await this.startMonitoring();
         await this.$store.dispatch("strategy/fetchRunningStrategies");
+
+        // 更新健康指标（从 resources/performanceMetrics state 中读取）
+        const res = this.resources || {};
+        const perf = this.performanceMetrics || {};
+        this.healthStats = [
+          { label: "CPU", value: res.cpu || "--%", percent: parseInt(res.cpu) || 0, icon: "mdi:cpu-64-bit", color: "#22C55E" },
+          { label: "内存", value: res.memory || "--%", percent: parseInt(res.memory) || 0, icon: "mdi:memory", color: "#3B82F6" },
+          { label: "磁盘", value: res.disk || "--%", percent: parseInt(res.disk) || 0, icon: "mdi:harddisk", color: "#F59E0B" },
+          { label: "数据库", value: perf.db_response || "--ms", percent: Math.min((parseInt(perf.db_response) || 0) / 10, 100), icon: "mdi:database", color: "#7C3AED" },
+        ];
+        this.lastRefresh = new Date().toLocaleTimeString("zh-CN");
       } catch {
         this.error = true;
       } finally {
