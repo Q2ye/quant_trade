@@ -1,8 +1,11 @@
 # signal_engine.py      # 信号处理引擎
 
+import logging
 import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from core.engines import EngineConfigEntity
 from core.engines.base.engine_base import EngineBase
@@ -95,6 +98,50 @@ class SignalEngine(EngineBase):
         """停止信号引擎"""
         return await super().stop(force=force, timeout=timeout)
     
+    async def _persist_signal(self, signal_data: Dict[str, Any]) -> Optional[str]:
+        """
+        将信号写入 signals 超表
+
+        v1.1 新增: 信号持久化到数据库，使前端 SignalMonitor + 历史分析可用
+
+        Args:
+            signal_data: 信号数据字典
+
+        Returns:
+            signal_id，失败返回 None
+        """
+        try:
+            from shared.database.repositories.strategy.signal import SignalRepository
+            from sqlalchemy.ext.asyncio import AsyncSession
+
+            # 尝试获取数据库会话（通过 execution_engine 或其他依赖）
+            db_session = getattr(self, "_db_session", None)
+            if db_session is None:
+                logger.warning("无数据库会话，跳过信号持久化")
+                return None
+
+            async with db_session() if callable(db_session) else db_session as session:
+                repo = SignalRepository(session)
+                signal_record = await repo.create({
+                    "strategy_id": signal_data.get("strategy_id", ""),
+                    "ts_code": signal_data.get("ts_code", ""),
+                    "signal_type": signal_data.get("signal_type", ""),
+                    "direction": signal_data.get("direction", ""),
+                    "price": signal_data.get("price", 0.0),
+                    "quantity": signal_data.get("quantity", 0),
+                    "confidence": signal_data.get("confidence", 1.0),
+                    "reason": signal_data.get("reason", ""),
+                    "signal_time": datetime.now(),
+                    "status": "pending",
+                })
+                logger.debug(f"信号已持久化: {signal_record.id}")
+                return signal_record.id
+        except ImportError as e:
+            logger.warning(f"SignalRepository 不可用: {e}")
+        except Exception as e:
+            logger.error(f"信号持久化失败: {e}")
+        return None
+
     async def process_signal(self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
         """处理信号"""
         # 生成信号ID
@@ -115,6 +162,9 @@ class SignalEngine(EngineBase):
         
         # 保存信号
         self.signals[signal_id] = signal
+
+        # 持久化到数据库（v1.1 新增）
+        await self._persist_signal(signal)
         
         try:
             # 检查信号是否符合风控规则
