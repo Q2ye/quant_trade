@@ -6,3 +6,7 @@ export { useDataSync } from "./useDataSync";
 export { useQualityMetrics } from "./useQualityMetrics";
 export { useSyncTimer } from "./useSyncTimer";
 export { useSyncEventHandler } from "./useSyncEventHandler";
+export { useChartLifecycle, isDarkMode } from "./useChartLifecycle";
+export { useTimeCoordinate } from "./useTimeCoordinate";
+export { usePrimitiveManager } from "./usePrimitiveManager";
+export { useVisibilityCulling } from "./useVisibilityCulling";

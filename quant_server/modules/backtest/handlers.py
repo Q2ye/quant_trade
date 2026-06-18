@@ -39,6 +39,8 @@ class BacktestHandler:
 				"success": True,
 				"data": result
 			}
+		except ValueError as e:
+			raise HTTPException(status_code=404, detail=str(e))
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取回测任务详情失败: {str(e)}")
 
@@ -110,19 +112,55 @@ class BacktestHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取回测结果失败: {str(e)}")
 
-	async def optimize_parameters (self, request) -> Dict[str, Any]:
+	async def export_report(self, task_id: str, user_id: str, report_format: str = 'json') -> Dict[str, Any]:
+		"""导出回测报告"""
+		try:
+			result = await self.backtest_service.export_report(task_id, user_id, report_format)
+			return {"success": True, "data": result}
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"导出报告失败: {str(e)}")
+
+	async def quick_backtest(self, request, user_id: str) -> Dict[str, Any]:
+		"""快速回测：创建任务 + 执行 + 返回结果（同步等待）"""
+		try:
+			result = await self.backtest_service.quick_backtest(request, user_id)
+			return {"success": True, "data": result}
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"快速回测失败: {str(e)}")
+
+	async def delete_backtest_task(self, task_id: str, user_id: str) -> Dict[str, Any]:
+		"""删除回测任务（级联删除关联数据）"""
+		try:
+			await self.backtest_service.delete_backtest_task(task_id, user_id)
+			return {"success": True, "data": {"task_id": task_id}}
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"删除回测任务失败: {str(e)}")
+
+	async def optimize_parameters(self, request) -> Dict[str, Any]:
 		"""参数优化"""
 		try:
 			result = await self.backtest_service.optimize_parameters(request)
-			return {
-				"success": True,
-				"data": result
-			}
+			return {"success": True, "data": result}
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"参数优化失败: {str(e)}")
 
 
 # 导出函数供router使用
+async def export_backtest_report(session: AsyncSession, task_id: str, user_id: str, report_format: str = 'json'):
+	handler = BacktestHandler(session)
+	return await handler.export_report(task_id, user_id, report_format)
+
+
+async def quick_backtest(session: AsyncSession, request, user_id: str):
+	handler = BacktestHandler(session)
+	return await handler.quick_backtest(request, user_id)
+
+
+async def delete_backtest_task(session: AsyncSession, task_id: str, user_id: str):
+	handler = BacktestHandler(session)
+	return await handler.delete_backtest_task(task_id, user_id)
+
+
 async def create_backtest_task (session: AsyncSession, request, user_id: str, background_tasks):
 	handler = BacktestHandler(session)
 	return await handler.create_backtest_task(request, user_id, background_tasks)

@@ -58,10 +58,11 @@ class StrategyInstance:
 	def can_start (self) -> bool:
 		"""判断策略是否可以启动"""
 		return self.status in [
-			StrategyLifecycleStatus.COMPILED,
-			StrategyLifecycleStatus.DEPLOYED,
-			StrategyLifecycleStatus.PAUSED,
-			StrategyLifecycleStatus.STOPPED,
+			StrategyLifecycleStatus.DRAFT,      # 新建或编辑后未编译
+			StrategyLifecycleStatus.COMPILED,   # 编译通过
+			StrategyLifecycleStatus.DEPLOYED,   # 已部署
+			StrategyLifecycleStatus.PAUSED,     # 暂停中
+			StrategyLifecycleStatus.STOPPED,    # 已停止
 		]
 
 	def can_stop (self) -> bool:

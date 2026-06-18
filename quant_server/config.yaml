@@ -46,6 +46,7 @@ defaults: &defaults
         enable_ai: true
         backtest_mode: "fast"
     
+
     backtest:
       enabled: true
       auto_start: true
@@ -53,7 +54,7 @@ defaults: &defaults
       config:
         max_workers: 4
         enable_optimization: true
-    
+
     trade:
       enabled: true
       auto_start: true

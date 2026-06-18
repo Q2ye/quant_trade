@@ -73,12 +73,18 @@ export interface StrategyPerformanceResponse extends ApiResponse<ApiStrategyPerf
 export default {
   async getStrategies(params?: StrategyQueryParams): Promise<ApiStrategy[]> {
     return request
-      .get("/quantTrade/strategy", { params })
+      .get("/quantTrade/strategy", {
+        params: { page: 1, page_size: 50, ...params },
+      })
       .then(handleResponse)
       .then((data: any) => data.data);
   },
 
   async getStrategy(id: string): Promise<ApiStrategy> {
+    if (!id || id === "undefined" || id === "null") {
+      console.warn("[strategyAPI] getStrategy called with invalid id:", id);
+      return Promise.reject(new Error(`Invalid strategy id: ${id}`));
+    }
     return request
       .get(`/quantTrade/strategy/${id}`)
       .then(handleResponse)
@@ -96,6 +102,10 @@ export default {
     id: string,
     data: UpdateStrategyRequest,
   ): Promise<ApiStrategy> {
+    if (!id || id === "undefined" || id === "null") {
+      console.warn("[strategyAPI] updateStrategy called with invalid id:", id);
+      return Promise.reject(new Error(`Invalid strategy id: ${id}`));
+    }
     return request
       .put(`/quantTrade/strategy/${id}`, data)
       .then(handleResponse)
@@ -135,5 +145,119 @@ export default {
       .get(`/quantTrade/strategy/${id}/status`)
       .then(handleResponse)
       .then((data: StrategyStatusResponse) => data.data);
+  },
+
+  async compileStrategy(id: string): Promise<ApiStrategy> {
+    return request
+      .post(`/quantTrade/strategy/${id}/compile`)
+      .then(handleResponse)
+      .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  async pauseStrategy(id: string): Promise<ApiStrategyStatusInfo> {
+    return request
+      .post(`/quantTrade/strategy/${id}/pause`)
+      .then(handleResponse)
+      .then((data: StrategyStatusResponse) => data.data);
+  },
+
+  async resumeStrategy(id: string): Promise<ApiStrategyStatusInfo> {
+    return request
+      .post(`/quantTrade/strategy/${id}/resume`)
+      .then(handleResponse)
+      .then((data: StrategyStatusResponse) => data.data);
+  },
+
+  // ---- 策略模板 API ----
+
+  async getTemplates(params?: {
+    strategy_type?: string; page?: number; page_size?: number;
+  }): Promise<any[]> {
+    return request
+      .get("/quantTrade/strategy/templates", { params: { page: 1, page_size: 50, ...params } })
+      .then(handleResponse)
+      .then((data: any) => data.data ?? []);
+  },
+
+  async getTemplate(id: string): Promise<any> {
+    return request
+      .get(`/quantTrade/strategy/templates/${id}`)
+      .then(handleResponse)
+      .then((data: any) => data.data);
+  },
+
+  async createTemplate(data: {
+    name: string; strategy_type: string; code_template: string;
+    description?: string; default_parameters?: Record<string, any>;
+    category?: string;
+  }): Promise<any> {
+    return request
+      .post("/quantTrade/strategy/templates", data)
+      .then(handleResponse)
+      .then((res: any) => res.data);
+  },
+
+  async updateTemplate(id: string, data: Record<string, any>): Promise<any> {
+    return request
+      .put(`/quantTrade/strategy/templates/${id}`, data)
+      .then(handleResponse)
+      .then((res: any) => res.data);
+  },
+
+  async deleteTemplate(id: string): Promise<void> {
+    return request
+      .delete(`/quantTrade/strategy/templates/${id}`)
+      .then(handleResponse);
+  },
+
+  async createFromTemplate(
+    templateId: string,
+    name: string,
+    customParameters?: Record<string, any>,
+  ): Promise<ApiStrategy> {
+    return request
+      .post(`/quantTrade/strategy/templates/${templateId}/create-strategy`, {
+        name,
+        custom_parameters: customParameters,
+      })
+      .then(handleResponse)
+      .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  // ---- 策略组合 API ----
+
+  async createPortfolio(data: {
+    name: string; description: string; strategy_weights: Record<string, number>;
+  }): Promise<any> {
+    return request
+      .post("/quantTrade/strategy/portfolio", data)
+      .then(handleResponse)
+      .then((res: any) => res.data);
+  },
+
+  async getPortfolio(portfolioId: string): Promise<any> {
+    return request
+      .get(`/quantTrade/strategy/portfolio/${portfolioId}`)
+      .then(handleResponse)
+      .then((res: any) => res.data);
+  },
+
+  async getPortfolioPerformance(portfolioId: string): Promise<any> {
+    return request
+      .get(`/quantTrade/strategy/portfolio/${portfolioId}/performance`)
+      .then(handleResponse)
+      .then((res: any) => res.data);
+  },
+
+  async updatePortfolioWeights(
+    portfolioId: string,
+    strategyWeights: Record<string, number>,
+  ): Promise<any> {
+    return request
+      .put(`/quantTrade/strategy/portfolio/${portfolioId}/weights`, {
+        strategy_weights: strategyWeights,
+      })
+      .then(handleResponse)
+      .then((res: any) => res.data);
   },
 };

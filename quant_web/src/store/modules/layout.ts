@@ -41,7 +41,7 @@ const layoutModule: Module<LayoutState, RootState> = {
           children: [
             { key: "dashboard",        label: "市场总览",   icon: "dashboard",    path: "/market/dashboard" },
             { key: "strategies",       label: "策略管理",   icon: "strategy",     path: "/strategies" },
-            { key: "strategy-build",   label: "策略构建",   icon: "build",        path: "/strategy/build" },
+            { key: "strategy-build",   label: "策略构建",   icon: "build",        path: "/strategies" },
             { key: "baskets",          label: "篮子管理",   icon: "container",    path: "/trade/workspace?tab=baskets" },
             { key: "trading",          label: "交易驾驶舱", icon: "transaction",  path: "/trade" },
           ],
@@ -63,8 +63,8 @@ const layoutModule: Module<LayoutState, RootState> = {
           label: "研究回测",
           icon: "experiment",
           children: [
-            { key: "factor-hub",       label: "因子研究",   icon: "filter",       path: "/strategy/factors" },
-            { key: "backtest-hub",     label: "回测验证",   icon: "experiment",   path: "/strategy/backtest" },
+            { key: "factor-hub",       label: "因子研究",   icon: "filter",       path: "/factors" },
+            { key: "backtest-hub",     label: "回测工作台", icon: "experiment",   path: "/backtest" },
           ],
         },
         {

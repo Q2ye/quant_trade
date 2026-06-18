@@ -82,7 +82,7 @@ class StrategyContext:
 			self.available_capital = available
 		if frozen is not None:
 			self.frozen_capital = frozen
-		self.total_assets = self.available_capital + self.frozen_capital
+		self.total_assets = self.available_capital + self.frozen_capital + self.positions_value
 
 	def update_position (self, position: Position) -> None:
 		"""更新持仓"""

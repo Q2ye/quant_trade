@@ -191,15 +191,15 @@ async def detailed_health_check (
 			lambda sync_conn: inspect(sync_conn).get_table_names()
 		)
 
-		required_tables = ["stocks", "daily_quotes", "users", "strategies", "orders"]
+		required_tables = ["stock_basic", "stock_daily", "sys_users", "strategies", "orders"]
 		missing_tables = [t for t in required_tables if t not in tables]
 
 		# 获取表记录数统计
 		table_stats = {}
-		for table in ["stocks", "daily_quotes"]:
+		for table in ["stock_basic", "stock_daily"]:
 			if table in tables:
 				count_result = await db_session.execute(
-					text(f"SELECT COUNT(*) FROM {table} WHERE is_deleted = 0")
+					text(f"SELECT COUNT(*) FROM {table} ")
 				)
 				table_stats[table] = count_result.scalar() or 0
 

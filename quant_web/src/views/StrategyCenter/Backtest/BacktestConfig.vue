@@ -251,13 +251,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useMessage } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import backtestAPI from "@/api/backtest";
-import webSocketService from "@/api/websocket";
+import strategyAPI from "@/api/strategy";
+import dataAPI from "@/api/data";
+import { useBacktestPolling } from "@/composables/useBacktestPolling";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const loading = ref(false);
 const error = ref(false);
@@ -266,8 +269,31 @@ const isOptimizing = ref(false);
 const backtestProgress = ref(0);
 const backtestStatus = ref("");
 const currentTaskId = ref("");
-let progressTimer: ReturnType<typeof setInterval> | null = null;
-let wsCallback: ((data: any) => void) | null = null;
+
+// ---- 回测轮询（自适应间隔 + 容错） ----
+
+const { start: startPolling, stop: clearProgressPolling } = useBacktestPolling(
+  currentTaskId,
+  {
+    onProgress: (task) => {
+      backtestProgress.value = task.progress ?? task.progress_percent ?? 0;
+      backtestStatus.value = task.status || backtestStatus.value;
+    },
+    onCompleted: (task) => {
+      message.success("回测完成");
+      isBacktesting.value = false;
+      router.push(`/backtest/report/${currentTaskId.value}`);
+    },
+    onFailed: (task) => {
+      message.error(task?.error_message || "回测失败");
+      isBacktesting.value = false;
+    },
+    onCancelled: () => {
+      message.warning("回测已取消");
+      isBacktesting.value = false;
+    },
+  },
+);
 
 const backtestStatusText = computed(() => {
   const map: Record<string, string> = {
@@ -291,47 +317,16 @@ const selectedStrategy = ref<any>(null);
 const stockPool = ref<string[]>([]);
 const tradeRestrictions = ref<string[]>([]);
 
-const strategyOptions = [
-  {
-    id: 1,
-    name: "双均线策略",
-    type: "趋势跟踪",
-    description: "基于短期和长期均线交叉进行交易",
-  },
-  {
-    id: 2,
-    name: "RSI超买超卖",
-    type: "反转策略",
-    description: "在RSI指标超买超卖区域进行反向交易",
-  },
-  {
-    id: 3,
-    name: "布林带突破",
-    type: "突破策略",
-    description: "在价格突破布林带上下轨时进行交易",
-  },
-  {
-    id: 4,
-    name: "MACD金叉死叉",
-    type: "趋势跟踪",
-    description: "基于MACD指标的金叉和死叉信号进行交易",
-  },
-];
-
-const stockOptions = [
-  { code: "600519", name: "贵州茅台" },
-  { code: "000858", name: "五粮液" },
-  { code: "601318", name: "中国平安" },
-  { code: "600036", name: "招商银行" },
-  { code: "000333", name: "美的集团" },
-  { code: "000651", name: "格力电器" },
-  { code: "600276", name: "恒瑞医药" },
-  { code: "300059", name: "东方财富" },
-];
-const stockSelectOptions = stockOptions.map((s) => ({
-  label: `${s.name} (${s.code})`,
-  value: s.code,
-}));
+// 从 API 加载的策略列表
+const strategyOptions = ref<Array<{ id: string; name: string; type: string; description: string }>>([]);
+// 从 API 加载的股票列表
+const stockOptions = ref<Array<{ code: string; name: string }>>([]);
+const stockSelectOptions = computed(() =>
+  stockOptions.value.map((s) => ({
+    label: `${s.name} (${s.code})`,
+    value: s.code,
+  }))
+);
 
 const backtestSettings = ref({
   capital: 1000000,
@@ -410,7 +405,48 @@ const loadData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
+    const [strategies, stocks] = await Promise.all([
+      strategyAPI.getStrategies().catch(() => []),
+      dataAPI.getStockList().catch(() => []),
+    ]);
+
+    // 填充策略选项
+    if (Array.isArray(strategies) && strategies.length > 0) {
+      strategyOptions.value = strategies.map((s: any) => ({
+        id: s.id || s.name,
+        name: s.name || s.id,
+        type: s.strategy_type || s.type || "自定义",
+        description: s.description || "",
+      }));
+    } else {
+      // fallback：后端无策略时展示提示
+      strategyOptions.value = [];
+    }
+
+    // 填充股票选项
+    if (Array.isArray(stocks) && stocks.length > 0) {
+      stockOptions.value = stocks.map((s: any) => ({
+        code: s.ts_code || s.code || s.symbol,
+        name: s.name || s.ts_code || "",
+      }));
+    }
+
+    // 从 URL query 预填
+    const qStrategy = route.query.strategy as string;
+    const qStock = route.query.stock as string;
+    if (qStrategy) {
+      const found = strategyOptions.value.find(
+        (s) => s.id === qStrategy || s.name === qStrategy
+      );
+      if (found) selectedStrategy.value = found;
+    }
+    if (qStock) {
+      const codes = qStock.split(",").map((c) => c.trim()).filter(Boolean);
+      // 自动补全 .SZ/.SH 后缀
+      stockPool.value = codes.map((c) =>
+        /\.(SZ|SH|BJ)$/i.test(c) ? c : c.length === 6 ? `${c}.${c.startsWith("6") ? "SH" : "SZ"}` : c
+      );
+    }
   } catch {
     error.value = true;
   } finally {
@@ -443,56 +479,22 @@ const runBacktest = async () => {
 
     const res = await backtestAPI.createTask({
       name: `${selectedStrategy.value.name}_回测_${startDate}`,
-      strategyId: String(selectedStrategy.value.id),
-      startDate,
-      endDate,
-      initialCapital: backtestSettings.value.capital,
-      commission: backtestSettings.value.commission,
-      slippage: backtestSettings.value.slippage,
-      universe: stockPool.value,
-      benchmark: backtestSettings.value.benchmark,
-      parameters: { ...strategyParams.value },
+      strategy_id: selectedStrategy.value.id,
+      start_date: startDate,
+      end_date: endDate,
+      initial_capital: backtestSettings.value.capital,
+      commission_rate: backtestSettings.value.commission,
+      slippage_rate: backtestSettings.value.slippage,
+      symbols: stockPool.value,
+      parameters: {
+        ...strategyParams.value,
+        benchmark: backtestSettings.value.benchmark,
+      },
     });
 
     currentTaskId.value = res.task_id;
     backtestStatus.value = "running";
-
-    // 订阅 WebSocket 进度事件
-    wsCallback = (data: any) => {
-      if (data.task_id === currentTaskId.value) {
-        backtestProgress.value = data.progress || 0;
-        backtestStatus.value = data.status || data.current_step || "running";
-      }
-    };
-    webSocketService.subscribe("backtest.progress", wsCallback);
-
-    // 轮询任务状态（作为 WebSocket 的 fallback）
-    progressTimer = setInterval(async () => {
-      try {
-        const task = await backtestAPI.getTask(currentTaskId.value);
-        if (task) {
-          backtestProgress.value = task.progress ?? task.progress_percent ?? 0;
-          backtestStatus.value = task.status || backtestStatus.value;
-
-          if (task.status === "completed") {
-            clearProgressPolling();
-            message.success("回测完成");
-            isBacktesting.value = false;
-            router.push(`/backtest/report/${currentTaskId.value}`);
-          } else if (task.status === "failed") {
-            clearProgressPolling();
-            message.error(task.error_message || "回测失败");
-            isBacktesting.value = false;
-          } else if (task.status === "cancelled") {
-            clearProgressPolling();
-            message.warning("回测已取消");
-            isBacktesting.value = false;
-          }
-        }
-      } catch {
-        // 轮询失败不中断，继续尝试
-      }
-    }, 2000);
+    startPolling();
   } catch (err: any) {
     message.error(err.message || "回测启动失败");
     isBacktesting.value = false;
@@ -515,7 +517,7 @@ const optimizeParams = async () => {
       .split("T")[0];
 
     const res = await backtestAPI.optimizeParameters({
-      strategyId: String(selectedStrategy.value.id),
+      strategyId: selectedStrategy.value.id,
       parameterRanges: {
         // 根据当前策略类型构建参数范围
         fastPeriod: { min: 2, max: 20, step: 1 },
@@ -535,17 +537,6 @@ const optimizeParams = async () => {
     message.error(err.message || "参数优化启动失败");
   } finally {
     isOptimizing.value = false;
-  }
-};
-
-const clearProgressPolling = () => {
-  if (progressTimer) {
-    clearInterval(progressTimer);
-    progressTimer = null;
-  }
-  if (wsCallback) {
-    webSocketService.unsubscribe("backtest.progress", wsCallback);
-    wsCallback = null;
   }
 };
 

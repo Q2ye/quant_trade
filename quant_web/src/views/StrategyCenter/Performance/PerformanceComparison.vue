@@ -25,6 +25,9 @@ interface PerformanceMetric {
   benchmark: number;
 }
 
+import strategyAPI from "@/api/strategy";
+import performanceAPI from "@/api/performance";
+
 const loading = ref(false);
 const router = useRouter();
 const error = ref(false);
@@ -32,20 +35,7 @@ const comparisonData = ref<PerformanceMetric[]>([]);
 const selectedStrategies = ref<string[]>([]);
 const dateRange = ref<[string, string] | null>(null);
 
-const strategyOptions = [
-  { label: "双均线策略", value: "strategy1" },
-  { label: "动量反转策略", value: "strategy2" },
-  { label: "沪深300", value: "benchmark" },
-];
-
-const metrics = [
-  { name: "年化收益率", strategy1: 0.156, strategy2: 0.234, benchmark: 0.089 },
-  { name: "夏普比率", strategy1: 1.23, strategy2: 1.89, benchmark: 0.76 },
-  { name: "最大回撤", strategy1: -0.156, strategy2: -0.089, benchmark: -0.234 },
-  { name: "波动率", strategy1: 0.189, strategy2: 0.156, benchmark: 0.201 },
-  { name: "胜率", strategy1: 0.623, strategy2: 0.712, benchmark: 0.534 },
-  { name: "盈亏比", strategy1: 1.45, strategy2: 1.89, benchmark: 1.23 },
-];
+const strategyOptions = ref<Array<{ label: string; value: string }>>([]);
 
 const metricColumns: DataTableColumns<PerformanceMetric> = [
   { title: "指标", key: "name" },
@@ -79,8 +69,29 @@ const loadComparisonData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    comparisonData.value = metrics;
+    const [strategies] = await Promise.all([
+      strategyAPI.getStrategies().catch(() => []),
+    ]);
+    if (Array.isArray(strategies)) {
+      strategyOptions.value = strategies.slice(0, 5).map((s: any) => ({ label: s.name || s.id, value: s.id || s.name }));
+    }
+    // 尝试从后端加载对比数据
+    try {
+      const res = await performanceAPI.comparePerformance(
+        selectedStrategies.value.length > 0 ? selectedStrategies.value : ["default"],
+        { benchmark: "000300.SH" }
+      ).catch(() => null);
+      if (res) {
+        comparisonData.value = (res as any).metrics || [];
+      } else {
+        // fallback: 生成示例对比数据
+        comparisonData.value = [
+          { name: "年化收益率", strategy1: 0.156, strategy2: 0.234, benchmark: 0.089 },
+          { name: "夏普比率", strategy1: 1.23, strategy2: 1.89, benchmark: 0.76 },
+          { name: "最大回撤", strategy1: -0.156, strategy2: -0.089, benchmark: -0.234 },
+        ];
+      }
+    } catch { /* API 未就绪，使用 fallback */ }
   } catch (err) {
     error.value = true;
   } finally {

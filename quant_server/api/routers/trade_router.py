@@ -459,7 +459,7 @@ async def trade_module_health_check (
 		JSONResponse: 健康状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求交易模块健康检查")
+		logger.debug(f"用户 {current_user.get('username')} 请求交易模块健康检查")
 
 		health_status = await check_trade_module_health(
 			session=db_session,

@@ -33,7 +33,7 @@
 """
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 
 from fastapi import BackgroundTasks
@@ -217,7 +217,7 @@ async def get_factor_data (
 				factor_name=factor.factor_name,
 				display_name=factor.factor_name,  # 如果没有 display_name，使用 factor_name
 				description=factor.description or "",
-				category=FactorCategory(factor.category) if factor.category else FactorCategory.VALUE,
+				category=FactorCategory(factor.category) if factor.category and factor.category in FactorCategory._value2member_map_ else FactorCategory.OTHER,
 				formula=factor.formula,
 				data_source="internal",  # 根据实际情况设置
 				update_frequency="daily",  # 根据实际情况设置
@@ -1942,10 +1942,10 @@ async def _validate_factor_request (request: FactorRequest) -> None:
 	Raises:
 		ValidationException: 参数验证失败
 	"""
-	if request.page < 1:
+	if (request.page or 1) < 1:
 		raise ValidationException("页码必须大于0")
 
-	if request.page_size < 1 or request.page_size > 1000:
+	if (request.page_size or 20) < 1 or (request.page_size or 20) > 1000:
 		raise ValidationException("每页大小必须在1-1000之间")
 
 	if request.start_date and request.end_date:
@@ -3030,7 +3030,7 @@ async def initialize_data_module (
 				await sync_task_repo.update(task.id, {
 					"status": "failed",
 					"error_message": "服务器重启，任务中断",
-					"end_time": datetime.now()
+					"end_time": datetime.now(timezone.utc)
 				})
 				cleaned_running_tasks += 1
 			if cleaned_running_tasks:
@@ -3042,12 +3042,12 @@ async def initialize_data_module (
 		try:
 			stale_pending = await sync_task_repo.get_many(status="pending", limit=1000)
 			if stale_pending:
-				cutoff = datetime.now() - timedelta(hours=1)
+				cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
 				zombie = 0
 				for task in stale_pending:
 					if task.created_at and task.created_at < cutoff:
 						await sync_task_repo.update(task.id, {"status": "failed",
-							"error_message": "任务超时未启动（僵尸pending）", "end_time": datetime.now()})
+							"error_message": "任务超时未启动（僵尸pending）", "end_time": datetime.now(timezone.utc)})
 						zombie += 1
 				if zombie:
 					logger.warning(f"已将 {zombie} 个僵尸pending任务标记为失败")

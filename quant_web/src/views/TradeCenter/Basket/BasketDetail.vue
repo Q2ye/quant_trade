@@ -30,7 +30,7 @@
     <template v-else>
       <div class="chart-section">
         <h3>篮子净值走势</h3>
-        <NetValueChart :chart-data="chartData" height="400px" />
+        <EquityCurveChart :data="equityData" :benchmark="benchData" :height="380" title="篮子净值走势" />
       </div>
 
       <div class="stocks-section">
@@ -52,14 +52,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h } from "vue";
+import { ref, h, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton, NResult } from "naive-ui";
 import { useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { getBasket } from "@/api/basket";
 import { fetchStockRealTime } from "@/api/data";
-import NetValueChart from "@/components/charts/NetValueChart.vue";
+import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
 
 const route = useRoute();
 const message = useMessage();
@@ -73,6 +73,14 @@ const chartData = ref({
   values: [] as number[],
   benchmark: [] as number[],
 });
+
+// 转换为 EquityCurveChart 所需的 { date, value } 数组格式
+const equityData = computed(() =>
+  chartData.value.dates.map((d, i) => ({ date: d, value: chartData.value.values[i] ?? 0 }))
+);
+const benchData = computed(() =>
+  chartData.value.dates.map((d, i) => ({ date: d, value: chartData.value.benchmark[i] ?? 0 }))
+);
 
 const stockColumns = [
   { title: "代码", key: "ts_code", width: 100 },

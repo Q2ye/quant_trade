@@ -16,7 +16,7 @@ from .middleware.timing import timing_middleware
 from .routers import (
     data_router, strategy_router, trade_router, basket_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, health_router,
-    market_router,
+    market_router, template_router,
 )
 from .websocket import websocket_router
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def create_app (
 	"""
 	# 如果未指定，默认全部启用
 	if enabled_modules is None:
-		enabled_modules = ["data", "strategy", "trade", "backtest", "account", "analysis", "monitor", "system"]
+		enabled_modules = ["data", "strategy", "trade", "basket", "backtest", "account", "analysis", "monitor", "system", "template"]
 	if cors_origins is None:
 		cors_origins = ["http://localhost:3000", "http://localhost:5173"]
 	# 创建FastAPI应用
@@ -158,9 +158,9 @@ def create_app (
 	_module_routers = {
 		"data": (data_router, "/quantTrade/data"),
 		"strategy": (strategy_router, "/quantTrade/strategy"),
+		"template": (template_router, "/quantTrade/strategy/templates"),
 		"trade": (trade_router, "/quantTrade/trade"),
-		"basket": (basket_router, "/quantTrade/basket"),
-		"backtest": (backtest_router, "/quantTrade/backtest"),
+	"backtest": (backtest_router, "/quantTrade/backtest"),
 		"account": (account_router, "/quantTrade/account"),
 		"analysis": (analysis_router, "/quantTrade/analysis"),
 		"monitor": (monitor_router, "/quantTrade/monitor"),
@@ -169,9 +169,10 @@ def create_app (
 	for module_name, (router, prefix) in _module_routers.items():
 		if module_name in enabled_modules:
 			app.include_router(router, prefix=prefix)
-	# health 路由始终注册
+	# 始终注册的路由（不依赖模块初始化）
 	app.include_router(health_router, prefix="/health")
 	app.include_router(market_router)
+	app.include_router(basket_router, prefix="/quantTrade/basket")
 	# WebSocket 路由始终注册
 	app.include_router(websocket_router, prefix="/api")
 

@@ -2688,7 +2688,7 @@ class EngineBase(ABC):
 					if not bg_task.done():
 						bg_task.cancel()
 
-			logger.debug(f"引擎资源清理: {self.config.name}")
+			logger.debug(f"引擎资源清理: {getattr(self.config, 'name', 'unknown')}")
 		except BusinessException:
 			# 析构函数中使用宽泛异常捕获，确保不会因异常而影响程序退出
 			pass

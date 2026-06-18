@@ -309,9 +309,15 @@ class PerformanceService:
             ValueError: 账户不存在或快照数据不足时抛出
         """
         try:
-            # 1. 验证账户存在
+            # 1. 验证账户存在（"default" 无对应账户时返回空数据）
             account = await self.account_repo.get(account_id)
             if not account:
+                if account_id == "default":
+                    return {
+                        "total_return": 0, "annual_return": 0,
+                        "sharpe_ratio": 0, "max_drawdown": 0,
+                        "total_asset": 0, "equity_curve": [],
+                    }
                 raise ValueError(f"账户不存在: {account_id}")
 
             # 2. 获取每日资产快照
@@ -499,6 +505,10 @@ class PerformanceService:
         Returns:
             List[Dict]: 每日净值记录 [{trade_date, equity, cash, market_value}, ...]
         """
+        if start_date is None:
+            start_date = date.today() - timedelta(days=365)
+        if end_date is None:
+            end_date = date.today()
         start_dt = datetime.combine(start_date, datetime.min.time())
         end_dt = datetime.combine(end_date, datetime.max.time())
         trades = await self.trade_repo.get_by_strategy_id(
@@ -506,7 +516,10 @@ class PerformanceService:
         )
 
         if not trades:
-            return []
+            # v1.3: 无交易记录时，回退到 backtest_equity_curves 表读取净值
+            return await self._get_equity_from_backtest_curves(
+                strategy_id, start_date, end_date
+            )
 
         # 尝试从关联账户获取实际初始资金
         initial_capital = 1000000.0
@@ -529,6 +542,53 @@ class PerformanceService:
         return await self._reconstruct_equity_curve(
             trades, start_date, end_date, initial_capital
         )
+
+    async def _get_equity_from_backtest_curves(
+            self,
+            strategy_id: str,
+            start_date: date,
+            end_date: date,
+    ) -> list:
+        """
+        v1.3: 无交易记录时，从 backtest_equity_curves 表读取净值曲线。
+
+        查询该策略最近一次完成的回测任务，读取其净值曲线数据。
+        """
+        try:
+            from shared.database.repositories.strategy.backtest.task_repo import \
+                BacktestTaskRepository
+            from shared.database.repositories.strategy.backtest.backtest_equity_curve_repo import \
+                BacktestEquityCurveRepository
+
+            task_repo = BacktestTaskRepository(self.session)
+            equity_repo = BacktestEquityCurveRepository(self.session)
+
+            # 查找最近一次完成的回测
+            tasks, _ = await task_repo.get_list(
+                filters={"strategy_id": strategy_id, "status": "completed"},
+                page=1, page_size=1,
+            )
+            if not tasks:
+                return []
+
+            task_id = tasks[0].id
+            curves = await equity_repo.get_equity_curve(
+                task_id, start_date, end_date
+            )
+            if not curves:
+                return []
+
+            return [
+                {
+                    "trade_date": c.trade_date.date() if hasattr(c.trade_date, "date") else c.trade_date,
+                    "equity": float(c.equity),
+                    "cash": float(c.cash) if c.cash else 0.0,
+                    "market_value": float(c.market_value) if c.market_value else 0.0,
+                }
+                for c in curves
+            ]
+        except Exception:
+            return []
 
     async def _reconstruct_equity_curve(
             self,

@@ -604,7 +604,7 @@ async def account_module_health_check (
 		JSONResponse: 健康状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求账户模块健康检查")
+		logger.debug(f"用户 {current_user.get('username')} 请求账户模块健康检查")
 
 		health_status = await check_account_module_health(
 			_session=db_session,

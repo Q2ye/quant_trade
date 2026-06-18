@@ -233,8 +233,14 @@ class StrategyService:
 				return {
 					"success": False,
 					"error": validation_result["error"],
-					"error_code": ErrorCode.STRATEGY_COMPILE_ERROR
+					"error_code": ErrorCode.STRATEGY_COMPILE_ERROR,
 				}
+
+			# 收集验证警告（依赖白名单检查），传给前端展示
+			_warnings = validation_result.get("warnings", [])
+			_unknown = validation_result.get("unknown_imports", [])
+			if _warnings:
+				logger.warning(f"策略代码依赖警告: {'; '.join(_warnings)}")
 
 			# 从代码中提取类名
 			class_name = self._extract_class_name_from_code(code)
@@ -302,8 +308,10 @@ class StrategyService:
 				"data": {
 					"id": strategy.id,
 					"name": strategy.name,
-					"status": strategy.status
-				}
+					"status": strategy.status,
+				},
+				"warnings": _warnings if _warnings else None,
+				"unknown_imports": _unknown if _unknown else None,
 			}
 		except Exception as e:
 			logger.error(f"创建策略失败: {e}")
@@ -551,31 +559,104 @@ class StrategyService:
 				"error": str(e)
 			}
 
+	# ---- 策略运行环境白名单 ----
+	# 不在白名单中的 import 会在保存时给出警告，但仍允许保存
+	ALLOWED_IMPORTS = {
+		# Python 标准库（常用）
+		"abc", "collections", "copy", "datetime", "decimal", "enum",
+		"functools", "itertools", "json", "logging", "math", "operator",
+		"os.path", "pathlib", "re", "statistics", "string", "time",
+		"typing", "uuid", "warnings",
+		# 数据处理
+		"numpy", "pandas", "scipy", "scipy.stats", "scipy.optimize",
+		"polars", "pandas_ta", "talib",
+		# 本项目模块
+		"core", "shared", "modules", "utils",
+		"modules.strategy", "modules.strategy.strategies",
+		"modules.strategy.strategies.base",
+		"modules.strategy.strategies.base.base_strategy",
+		"modules.strategy.constants", "modules.strategy.models",
+		"core.engines.types.entities",
+	}
+	# 明确不可用的第三方 SDK（保存时直接拒绝）
+	BLOCKED_IMPORTS = {
+		"jqdata": "聚宽专有 SDK，不可在本地使用。请用 BaseStrategy.on_bar(bar) 替代。",
+		"rqdatac": "米筐专有 SDK，不可在本地使用。",
+		"xtquant": "迅投 QMT SDK，请确认环境配置。",
+	}
+
 	@staticmethod
-	async def _validate_strategy_code (code: str) -> Dict[str, Any]:
+	async def _validate_strategy_code(code: str) -> Dict[str, Any]:
 		"""
-		验证策略代码
+		验证策略代码：语法检查 + 依赖白名单
 
-		Args:
-			code: 策略代码
-
-		Returns:
-			验证结果
+		返回格式:
+		    {"valid": True/False, "error": "...", "warnings": [...],
+		     "unknown_imports": [...], "blocked_imports": [...]}
 		"""
 		try:
-			# 基本语法检查
-			compile(code, '<string>', 'exec')
-			return {"valid": True}
+			# 1. 语法检查
+			compile(code, "<string>", "exec")
 		except SyntaxError as e:
-			return {
-				"valid": False,
-				"error": f"代码语法错误: {e}"
-			}
+			return {"valid": False, "error": f"代码语法错误: {e}"}
 		except Exception as e:
-			return {
-				"valid": False,
-				"error": f"验证失败: {str(e)}"
-			}
+			return {"valid": False, "error": f"验证失败: {e}"}
+
+		# 2. 依赖检查（AST 提取 import 语句）
+		import ast
+		try:
+			tree = ast.parse(code)
+		except SyntaxError:
+			return {"valid": True, "warnings": ["无法解析 AST，跳过依赖检查"]}
+
+		imports = []
+		for node in ast.walk(tree):
+			if isinstance(node, ast.Import):
+				for alias in node.names:
+					imports.append(alias.name)
+			elif isinstance(node, ast.ImportFrom):
+				if node.module:
+					imports.append(node.module)
+
+		unknown = []
+		blocked = []
+		warnings = []
+
+		for name in imports:
+			# 精确匹配
+			if name in StrategyService.ALLOWED_IMPORTS:
+				continue
+			# 前缀匹配（如 core.xxx.xxx 匹配 "core"）
+			if any(name == p or name.startswith(p + ".") for p in StrategyService.ALLOWED_IMPORTS):
+				continue
+
+			# 阻塞列表
+			if name in StrategyService.BLOCKED_IMPORTS:
+				blocked.append(name)
+			else:
+				unknown.append(name)
+
+		# 阻塞的导入 → 拒绝保存
+		if blocked:
+			details = "; ".join(
+				f"{n}: {StrategyService.BLOCKED_IMPORTS.get(n, '不可用')}"
+				for n in blocked
+			)
+			return {"valid": False, "error": f"代码引用了不支持的模块: {details}"}
+
+		# 未知导入 → 警告但不阻塞
+		if unknown:
+			warnings.append(
+				f"代码引用了未在白名单中的模块: {', '.join(unknown)}。"
+				f"若回测时提示 ModuleNotFoundError，说明该模块未安装。"
+			)
+
+		result = {"valid": True}
+		if warnings:
+			result["warnings"] = warnings
+		if unknown:
+			result["unknown_imports"] = unknown
+		return result
 
 	@staticmethod
 	def _extract_class_name_from_code (code: str) -> str:

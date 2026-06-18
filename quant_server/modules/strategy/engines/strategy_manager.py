@@ -5,6 +5,7 @@
 负责策略的加载、初始化、运行控制、信号处理。
 v1.1 重构: 移除硬编码注册，使用 StrategyRegistry；新增 handle_bar_batch / _publish_signals
 """
+import asyncio
 import logging
 from datetime import date, datetime
 from typing import Dict, List, Any, Optional, Type
@@ -143,16 +144,21 @@ class StrategyManager(EngineBase):
             raise ValueError(f"策略 {strategy_id} 未加载")
 
         strategy_instance = self.strategies[strategy_id]
-        strategy_type = strategy_instance.strategy_type
-        strategy_class = self.registry.get_first(strategy_type)
-        if not strategy_class:
-            raise ValueError(f"未注册的策略类型: {strategy_type}")
 
-        strategy = strategy_class(
-            name=strategy_instance.name,
-            strategy_type=strategy_type,
-            parameters=strategy_instance.parameters,
-        )
+        # v1.3: 复用 load_strategy() 已创建的对象，避免重复实例化
+        strategy = self._strategy_objects.get(strategy_id)
+        if strategy is None:
+            strategy_type = strategy_instance.strategy_type
+            strategy_class = self.registry.get_first(strategy_type)
+            if not strategy_class:
+                raise ValueError(f"未注册的策略类型: {strategy_type}")
+
+            strategy = strategy_class(
+                name=strategy_instance.name,
+                strategy_type=strategy_type,
+                parameters=strategy_instance.parameters,
+            )
+            self._strategy_objects[strategy_id] = strategy
 
         strategy.context = context
         strategy.initialize()
@@ -191,7 +197,7 @@ class StrategyManager(EngineBase):
 
         strategy = self._strategy_objects.get(strategy_id)
         if strategy:
-            strategy.start()
+            await strategy.start()
 
         self._contexts[strategy_id] = context
 
@@ -216,7 +222,7 @@ class StrategyManager(EngineBase):
 
         strategy = self._strategy_objects.get(strategy_id)
         if strategy:
-            strategy.stop()
+            await strategy.stop()
 
         if str(strategy_id) in self.running_states:
             del self.running_states[str(strategy_id)]
@@ -281,6 +287,9 @@ class StrategyManager(EngineBase):
             for bar in bars:
                 try:
                     sigs = strategy.on_bar(bar)
+                    # 兼容 async on_bar（返回 coroutine）和 sync on_bar
+                    if asyncio.iscoroutine(sigs):
+                        sigs = await sigs
                     if sigs:
                         if isinstance(sigs, list):
                             strategy_signals.extend(sigs)
@@ -289,8 +298,15 @@ class StrategyManager(EngineBase):
                 except Exception as e:
                     logger.error(
                         f"策略 {strategy_id} 处理 Bar 失败: "
-                        f"{getattr(bar, 'ts_code', '?')} @ {trade_date}: {e}"
+                        f"{getattr(bar, 'ts_code', '?')} @ {trade_date}: "
+                        f"{type(e).__name__}: {e}",
+                        exc_info=True,
                     )
+
+            # v1.3: 同时收集通过 add_signal() / context.submit_order() 添加的信号
+            if strategy.signals:
+                strategy_signals.extend(strategy.signals)
+                strategy.clear_signals()
 
             if strategy_signals:
                 state.pending_signals.extend(strategy_signals)
@@ -325,17 +341,38 @@ class StrategyManager(EngineBase):
         if not strategy or not hasattr(strategy, "on_bar"):
             return []
 
-        signals = strategy.on_bar(bar)
-        if not signals:
+        try:
+            signals = strategy.on_bar(bar)
+            # 兼容 async on_bar（返回 coroutine）和 sync on_bar
+            if asyncio.iscoroutine(signals):
+                signals = await signals
+
+            # 归一化
+            if not signals:
+                signals = []
+            if not isinstance(signals, list):
+                signals = [signals]
+
+            # v1.3: 同时收集通过 add_signal() / context.submit_order() 添加的信号
+            if strategy.signals:
+                signals.extend(strategy.signals)
+                strategy.clear_signals()
+
+            if not signals:
+                return []
+
+            state.pending_signals.extend(signals)
+            await self._publish_signals(strategy_id, signals)
+
+            return signals
+        except Exception as e:
+            logger.error(
+                f"策略 {strategy_id} handle_bar 失败: "
+                f"{getattr(bar, 'ts_code', '?')}: "
+                f"{type(e).__name__}: {e}",
+                exc_info=True,
+            )
             return []
-
-        if not isinstance(signals, list):
-            signals = [signals]
-
-        state.pending_signals.extend(signals)
-        await self._publish_signals(strategy_id, signals)
-
-        return signals
 
     async def process_bar(
         self,
@@ -405,6 +442,22 @@ class StrategyManager(EngineBase):
             logger.error(f"信号发布失败: {e}")
 
     # ---- 查询方法 ----
+
+    def get_strategy_object(self, strategy_id: str) -> Optional[BaseStrategy]:
+        """
+        获取已加载的策略实例对象（公开 API）。
+
+        用于外部模块（如 BacktestService）在需要读取策略运行时状态
+        （如 universe 股票池）时，通过 Manager 的安全接口访问，
+        避免直接触碰 protected 成员 _strategy_objects。
+
+        Args:
+            strategy_id: 策略 ID
+
+        Returns:
+            BaseStrategy 实例，未找到时返回 None
+        """
+        return self._strategy_objects.get(strategy_id)
 
     def get_strategy_state(self, strategy_id: str) -> Optional[StrategyState]:
         return self.running_states.get(str(strategy_id))
@@ -513,10 +566,33 @@ class StrategyContextBuilder:
                 price: float,
                 quantity: int,
                 order_type: str = "market",
+                strategy_id: str = "",
+                **_kwargs,
             ):
-                """通过 EventEngine 发布订单事件"""
+                """
+                v1.3: 回测模式下将订单转为 TradingSignal 加入策略信号列表。
+                handle_bar_batch 会在 on_bar 返回后统一收集 strategy.signals。
+                """
+                from modules.strategy.models import TradingSignal
+                from modules.strategy.constants import SignalDirection, SignalType
+                import uuid
+                sig = TradingSignal(
+                    id=str(uuid.uuid4()),
+                    strategy_id=strategy_id,
+                    strategy_name="",
+                    ts_code=ts_code,
+                    signal_type=SignalType.ENTRY if direction in ("LONG", "long") else SignalType.EXIT,
+                    direction=SignalDirection.LONG if direction in ("LONG", "long") else SignalDirection.SHORT,
+                    price=price,
+                    quantity=quantity,
+                    amount=price * quantity if price > 0 and quantity > 0 else 0,
+                    reason=f"context.submit_order: {ts_code} {direction}",
+                )
+                strategy_obj = strategy_manager._strategy_objects.get(strategy_id)
+                if strategy_obj:
+                    strategy_obj.add_signal(sig)
                 logger.debug(
-                    f"submit_order: {ts_code} {direction} "
+                    f"submit_order→signal: {ts_code} {direction} "
                     f"{quantity}股 @ {price:.2f}"
                 )
                 return {"status": "submitted", "ts_code": ts_code}
@@ -524,11 +600,11 @@ class StrategyContextBuilder:
             context.submit_order_func = _submit_order
 
         # 信号发布 callback
-        if not context.on_signal_func:
+        if not context.on_signal_callback:
             async def _on_signal(signals: List[TradingSignal]):
                 """通过 StrategyManager._publish_signals 发布信号"""
                 await strategy_manager._publish_signals(strategy_id, signals)
 
-            context.on_signal_func = _on_signal
+            context.on_signal_callback = _on_signal
 
         logger.debug(f"StrategyContext callback 注入完成: {strategy_id}")

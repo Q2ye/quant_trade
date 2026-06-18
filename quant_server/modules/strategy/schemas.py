@@ -38,7 +38,7 @@ class StrategyCreateRequest(BaseModel):
 	"""策略创建请求"""
 	name: str = Field(..., description="策略名称")
 	description: Optional[str] = Field(default=None, description="策略描述")
-	strategy_type: str = Field(..., description="策略类型")
+	strategy_type: str = Field(default="cta", description="策略类型，默认 cta")
 	code: Optional[str] = Field(default=None, description="策略代码")
 	parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="策略参数")
 
@@ -89,3 +89,55 @@ class StrategyStatusResponse(BaseModel):
 	success: bool = Field(default=True)
 	data: Optional[Dict[str, Any]] = Field(default=None)
 	message: Optional[str] = Field(default=None)
+
+
+# ==================== 策略模板 Schemas ====================
+
+class TemplateListRequest(PaginationParams):
+	"""模板列表请求"""
+	strategy_type: Optional[str] = Field(default=None, description="策略类型筛选")
+
+
+class TemplateListResponse(BaseModel):
+	"""模板列表响应"""
+	success: bool = Field(default=True)
+	data: List[Dict[str, Any]] = Field(default_factory=list)
+	pagination: Dict[str, int] = Field(default_factory=dict)
+
+
+class TemplateDetailResponse(BaseModel):
+	"""模板详情响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+class TemplateCreateRequest(BaseModel):
+	"""模板创建请求"""
+	name: str = Field(..., description="模板名称")
+	strategy_type: str = Field(..., description="策略类型")
+	code_template: str = Field(..., description="代码模板")
+	description: Optional[str] = Field(default="", description="模板描述")
+	default_parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="默认参数")
+	category: Optional[str] = Field(default="custom", description="分类")
+
+
+class TemplateUpdateRequest(BaseModel):
+	"""模板更新请求"""
+	name: Optional[str] = Field(default=None, description="模板名称")
+	description: Optional[str] = Field(default=None, description="模板描述")
+	code_template: Optional[str] = Field(default=None, description="代码模板")
+	default_parameters: Optional[Dict[str, Any]] = Field(default=None, description="默认参数")
+	category: Optional[str] = Field(default=None, description="分类")
+
+
+class TemplateResponse(BaseModel):
+	"""模板响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+	message: Optional[str] = Field(default=None)
+
+
+class CreateFromTemplateRequest(BaseModel):
+	"""基于模板创建策略请求"""
+	name: str = Field(..., description="策略名称")
+	custom_parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="自定义参数（覆盖模板默认值）")

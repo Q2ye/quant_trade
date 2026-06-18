@@ -20,6 +20,7 @@ import marketAPI from "@/api/market";
 import type { ScreenerStockItem } from "@/types/entities/market";
 import { tokens } from "@/styles/design-tokens";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -30,23 +31,27 @@ const stocks = ref<ScreenerStockItem[]>([]);
 const total = ref(0);
 const page = ref(1);
 const checkedRowKeys = ref<string[]>([]);
+const basketDialogShow = ref(false);
+const basketStock = ref<{ symbol: string; name: string }>({ symbol: "", name: "" });
 
 const selectedCodes = computed(() => checkedRowKeys.value.join(","));
 const hasSelection = computed(() => checkedRowKeys.value.length > 0);
 
 function doBatchBacktest() {
   if (!hasSelection.value) return;
-  router.push("/backtest/studio?stocks=" + selectedCodes.value);
+  router.push("/backtest?stock=" + selectedCodes.value);
 }
 function doBatchBasket() {
   if (!hasSelection.value) {
     message.warning("请先选择股票");
     return;
   }
-  message.info(
-    "批量加入篮子功能：选中 " + checkedRowKeys.value.length + " 只股票",
-  );
-  // 后续接入 BasketSelectorDialog 批量模式
+  // 批量模式：打开篮子弹窗，把选中的第一只股票带入（后续可扩展批量 ADD）
+  const first = stocks.value.find((s: any) => checkedRowKeys.value.includes(s.id || s.ts_code));
+  if (first) {
+    basketStock.value = { symbol: first.ts_code || first.id, name: first.name || first.ts_code };
+    basketDialogShow.value = true;
+  }
 }
 function doBatchCompare() {
   if (!hasSelection.value) return;
@@ -337,6 +342,7 @@ onMounted(() => {
       </n-card>
     </div>
   </div>
+  <BasketSelectorDialog v-if="basketDialogShow" v-model:show="basketDialogShow" :stock="basketStock" />
 </template>
 
 <style lang="scss" scoped>

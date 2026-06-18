@@ -18,6 +18,8 @@ from shared.database.repositories.account.asset.account_repo import AccountRepos
 from shared.database.repositories.trading.order.order_repo import OrderRepository
 from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.database.repositories.operation.basket.basket_repo import BasketRepository
+from shared.database.repositories.operation.basket.basket_item_repo import BasketItemRepository
 
 
 class TradeHandler:
@@ -465,6 +467,213 @@ class TradeHandler:
 		return health_status
 
 
+class BasketHandler:
+    """篮子管理处理器 — API 路由与 Repository 之间的适配层"""
+
+    def __init__(self, db: AsyncSession):
+        self.basket_repo = BasketRepository(db)
+        self.basket_item_repo = BasketItemRepository(db)
+
+    # ==================== 篮子 CRUD ====================
+
+    async def get_baskets(self, page: int, page_size: int, keyword: str = None) -> dict:
+        """篮子列表（分页 + 搜索）"""
+        try:
+            from shared.database.repositories.types import PaginationParams
+            pagination = PaginationParams(page=page, page_size=page_size)
+
+            if keyword:
+                result = await self.basket_repo.search_baskets(keyword, pagination)
+            else:
+                result = await self.basket_repo.get_user_baskets(pagination=pagination)
+
+            items = [await self._basket_to_dict(b) for b in result.items]
+            return {
+                "success": True,
+                "message": "篮子列表获取成功",
+                "data": {
+                    "items": items,
+                    "total": result.total,
+                    "page": result.page,
+                    "page_size": result.page_size,
+                },
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"获取篮子列表失败: {str(e)}")
+
+    async def get_basket(self, basket_id: str) -> dict:
+        """篮子详情（含成分股）"""
+        try:
+            basket = await self.basket_repo.get_basket_with_items(basket_id)
+            if not basket:
+                raise HTTPException(status_code=404, detail="篮子不存在")
+            return {
+                "success": True,
+                "message": "篮子详情获取成功",
+                "data": await self._basket_to_dict(basket),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"获取篮子详情失败: {str(e)}")
+
+    async def create_basket(self, name: str, description: str, items: list = None) -> dict:
+        """创建篮子（含初始成分股）"""
+        try:
+            basket_data = {"name": name, "description": description or ""}
+            items_data = (
+                [{"ts_code": it["ts_code"], "weight": it["weight"]} for it in items]
+                if items else []
+            )
+            basket = await self.basket_repo.create_basket_with_items(basket_data, items_data)
+            return {
+                "success": True,
+                "message": "篮子创建成功",
+                "data": await self._basket_to_dict(basket),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"创建篮子失败: {str(e)}")
+
+    async def update_basket(self, basket_id: str, name: str = None,
+                            description: str = None, items: list = None) -> dict:
+        """更新篮子"""
+        try:
+            existing = await self.basket_repo.get(basket_id)
+            if not existing:
+                raise HTTPException(status_code=404, detail="篮子不存在")
+
+            basket_data = {}
+            if name is not None:
+                basket_data["name"] = name
+            if description is not None:
+                basket_data["description"] = description
+
+            items_data = None
+            if items is not None:
+                items_data = [{"ts_code": it["ts_code"], "weight": it["weight"]} for it in items]
+
+            basket = await self.basket_repo.update_basket_with_items(
+                basket_id, basket_data, items_data
+            )
+            return {
+                "success": True,
+                "message": "篮子更新成功",
+                "data": await self._basket_to_dict(basket),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"更新篮子失败: {str(e)}")
+
+    async def delete_basket(self, basket_id: str) -> dict:
+        """删除篮子及其成分股"""
+        try:
+            existing = await self.basket_repo.get(basket_id)
+            if not existing:
+                raise HTTPException(status_code=404, detail="篮子不存在")
+            await self.basket_repo.delete_basket_with_items(basket_id)
+            return {"success": True, "message": "篮子删除成功", "data": None}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"删除篮子失败: {str(e)}")
+
+    # ==================== 成分股管理 ====================
+
+    async def add_item(self, basket_id: str, ts_code: str, weight: float) -> dict:
+        """添加成分股"""
+        try:
+            basket = await self.basket_repo.get(basket_id)
+            if not basket:
+                raise HTTPException(status_code=404, detail="篮子不存在")
+            await self.basket_item_repo.create({
+                "basket_id": basket_id, "ts_code": ts_code, "weight": weight,
+            })
+            basket = await self.basket_repo.get_basket_with_items(basket_id)
+            return {
+                "success": True,
+                "message": "成分股添加成功",
+                "data": await self._basket_to_dict(basket),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"添加成分股失败: {str(e)}")
+
+    async def adjust_weight(self, basket_id: str, ts_code: str, weight: float) -> dict:
+        """调整成分股权重"""
+        try:
+            await self.basket_item_repo.update_item_weight(basket_id, ts_code, weight)
+            basket = await self.basket_repo.get_basket_with_items(basket_id)
+            return {
+                "success": True,
+                "message": "权重调整成功",
+                "data": await self._basket_to_dict(basket),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"调整权重失败: {str(e)}")
+
+    async def remove_item(self, basket_id: str, ts_code: str) -> dict:
+        """移除成分股"""
+        try:
+            await self.basket_item_repo.delete_by(basket_id=basket_id, ts_code=ts_code)
+            return {"success": True, "message": "成分股移除成功", "data": None}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"移除成分股失败: {str(e)}")
+
+    # ==================== 绩效分析 ====================
+
+    async def get_performance(self, basket_id: str, start_date: str, end_date: str,
+                              benchmark: str = None) -> dict:
+        """篮子绩效（行情数据源接入中，暂返回占位数据）"""
+        try:
+            basket = await self.basket_repo.get_basket_with_items(basket_id)
+            if not basket:
+                raise HTTPException(status_code=404, detail="篮子不存在")
+
+            items = [{"ts_code": it.ts_code, "weight": it.weight} for it in basket.items]
+            return {
+                "success": True,
+                "message": "篮子绩效分析（行情数据源接入中，暂返回占位数据）",
+                "data": {
+                    "basket_id": basket_id,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "total_return": 0,
+                    "annual_return": 0,
+                    "max_drawdown": 0,
+                    "sharpe_ratio": 0,
+                    "items": items,
+                },
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"获取绩效失败: {str(e)}")
+
+    # ==================== 辅助方法 ====================
+
+    async def _basket_to_dict(self, basket) -> dict:
+        """将 Basket ORM 对象转为字典（含成分股）"""
+        items = []
+        if basket.items:
+            items = [
+                {"id": it.id, "ts_code": it.ts_code, "weight": it.weight}
+                for it in basket.items
+            ]
+        return {
+            "id": basket.id,
+            "name": basket.name,
+            "description": getattr(basket, "description", ""),
+            "items": items,
+            "item_count": len(items),
+            "created_at": basket.created_at.isoformat() if basket.created_at else None,
+            "updated_at": basket.updated_at.isoformat() if basket.updated_at else None,
+        }
+
+
 # 导出函数供router使用
 async def get_order_list (session: AsyncSession, request: OrderListRequest, user_id: str) -> OrderListResponse:
 	handler = TradeHandler(session)
@@ -514,3 +723,58 @@ async def get_account_summary (session: AsyncSession, user_id: str) -> AccountSu
 async def check_trade_module_health (session: AsyncSession) -> Dict:
 	handler = TradeHandler(session)
 	return await handler.check_trade_module_health()
+
+
+# ==================== BasketHandler 包装函数 ====================
+
+async def get_basket_list(session: AsyncSession, page: int, page_size: int,
+                          keyword: str = None) -> dict:
+	handler = BasketHandler(session)
+	return await handler.get_baskets(page, page_size, keyword)
+
+
+async def get_basket_detail(session: AsyncSession, basket_id: str) -> dict:
+	handler = BasketHandler(session)
+	return await handler.get_basket(basket_id)
+
+
+async def create_basket_item(session: AsyncSession, name: str, description: str,
+                             items: list = None) -> dict:
+	handler = BasketHandler(session)
+	return await handler.create_basket(name, description, items)
+
+
+async def update_basket_item(session: AsyncSession, basket_id: str, name: str = None,
+                             description: str = None, items: list = None) -> dict:
+	handler = BasketHandler(session)
+	return await handler.update_basket(basket_id, name, description, items)
+
+
+async def delete_basket_item(session: AsyncSession, basket_id: str) -> dict:
+	handler = BasketHandler(session)
+	return await handler.delete_basket(basket_id)
+
+
+async def add_basket_item(session: AsyncSession, basket_id: str,
+                          ts_code: str, weight: float) -> dict:
+	handler = BasketHandler(session)
+	return await handler.add_item(basket_id, ts_code, weight)
+
+
+async def adjust_basket_weight(session: AsyncSession, basket_id: str,
+                               ts_code: str, weight: float) -> dict:
+	handler = BasketHandler(session)
+	return await handler.adjust_weight(basket_id, ts_code, weight)
+
+
+async def remove_basket_item(session: AsyncSession, basket_id: str,
+                             ts_code: str) -> dict:
+	handler = BasketHandler(session)
+	return await handler.remove_item(basket_id, ts_code)
+
+
+async def get_basket_performance(session: AsyncSession, basket_id: str,
+                                 start_date: str, end_date: str,
+                                 benchmark: str = None) -> dict:
+	handler = BasketHandler(session)
+	return await handler.get_performance(basket_id, start_date, end_date, benchmark)

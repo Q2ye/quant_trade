@@ -138,7 +138,9 @@ async def get_stocks_api (
 			request=request,
 			user_id=current_user.get("id")
 		)
-		logger.info(result)
+		# 用分页摘要替代完整数据日志，避免打印数千条股票信息
+		pagination = result.pagination if hasattr(result, 'pagination') else {}
+		logger.info(f"股票列表返回成功: success={result.success}, total={pagination.get('total', '?')}, page={pagination.get('page', '?')}")
 
 		return result
 
@@ -1085,13 +1087,6 @@ async def get_factor_data_api (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 请求因子数据，参数: {request.model_dump()}")
 
-		# 检查用户权限
-		if not current_user.get("can_access_factor", False):
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="用户没有因子数据访问权限"
-			)
-
 		# 调用业务层处理函数
 		result = await get_factor_data(
 			session=db_session,
@@ -1131,13 +1126,6 @@ async def get_factor_metadata_api (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 请求因子元数据，参数: {request.model_dump()}")
 
-		# 检查用户权限
-		if not current_user.get("can_access_factor", False):
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="用户没有因子数据访问权限"
-			)
-
 		# 调用业务层处理函数获取字典列表
 		metadata_dicts = await get_factor_metadata(
 			session=db_session,
@@ -1163,8 +1151,8 @@ async def get_factor_metadata_api (
 
 		# 计算分页信息
 		total_count = len(metadata_list)
-		page = request.page
-		page_size = request.page_size
+		page = request.page or 1
+		page_size = request.page_size or 20
 		start_idx = (page - 1) * page_size
 		end_idx = start_idx + page_size
 
@@ -1228,13 +1216,6 @@ async def research_factor_api (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 发起因子研究，参数: {request.model_dump()}")
 
-		# 检查用户权限
-		if not current_user.get("can_research_factor", False):
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="用户没有因子研究权限"
-			)
-
 		# 调用业务层处理函数
 		result = await research_factor(
 			session=db_session,
@@ -1276,12 +1257,6 @@ async def get_research_status_api (
 	try:
 		logger.info(f"用户 {current_user.get('username')} 查询因子研究状态，研究ID: {research_id}")
 
-		# 检查用户权限
-		if not current_user.get("can_research_factor", False):
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="用户没有因子研究权限"
-			)
 
 		# 调用业务层处理函数
 		status_data = await get_research_status(
@@ -1322,7 +1297,7 @@ async def data_module_health_check (
 		JSONResponse: 健康状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求数据模块健康检查")
+		logger.debug(f"用户 {current_user.get('username')} 请求数据模块健康检查")
 
 		# 调用业务层处理函数
 		health_status = await check_data_module_health(
@@ -1414,28 +1389,28 @@ async def get_data_statistics (
 
 	# 查询股票总数
 		stock_count_result = await db_session.execute(
-			text("SELECT COUNT(*) FROM stocks WHERE is_deleted = 0")
+			text("SELECT COUNT(*) FROM stock_basic")
 		)
 		stock_count = stock_count_result.scalar() or 0
 		
 		# 查询活跃股票数量（近30个交易日有行情数据）
 		active_stock_result = await db_session.execute(
-			text("SELECT COUNT(DISTINCT ts_code) FROM daily_quotes "
-				"WHERE trade_date >= :cutoff AND is_deleted = 0")
+			text("SELECT COUNT(DISTINCT ts_code) FROM stock_daily "
+				"WHERE trade_date >= :cutoff ")
 			, {"cutoff": (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")}
 		)
 		active_stock_count = active_stock_result.scalar() or 0
 
 		# 查询行情数据数量
 		quote_count_result = await db_session.execute(
-			text("SELECT COUNT(*) FROM daily_quotes WHERE is_deleted = 0")
+			text("SELECT COUNT(*) FROM stock_daily ")
 		)
 		quote_count = quote_count_result.scalar() or 0
 		
 		# 查询实际表占用空间（PostgreSQL），降级使用行估算
 		try:
 			size_result = await db_session.execute(
-				text("SELECT pg_total_relation_size('daily_quotes') / (1024.0 * 1024 * 1024) AS size_gb")
+				text("SELECT pg_total_relation_size('stock_daily') / (1024.0 * 1024 * 1024) AS size_gb")
 			)
 			estimated_size_gb = round(float(size_result.scalar() or 0), 2)
 		except BusinessException:
@@ -1446,17 +1421,17 @@ async def get_data_statistics (
 		latest_sync_result = await db_session.execute(
 			text("""
                 SELECT MAX(updated_at)
-                FROM sync_tasks
+                FROM data_sync_tasks
                 WHERE status = 'completed'
-                AND is_deleted = 0
+                
             """)
 		)
 		latest_sync = latest_sync_result.scalar()
 		
 		# 查询最近24小时完成的同步任务数
 		sync_24h_result = await db_session.execute(
-			text("SELECT COUNT(*) FROM sync_tasks "
-				"WHERE status = 'completed' AND updated_at >= :since AND is_deleted = 0")
+			text("SELECT COUNT(*) FROM data_sync_tasks "
+				"WHERE status = 'completed' AND updated_at >= :since ")
 			, {"since": datetime.now() - timedelta(hours=24)}
 		)
 		sync_last_24h = sync_24h_result.scalar() or 0
@@ -1465,8 +1440,8 @@ async def get_data_statistics (
 		date_range_result = await db_session.execute(
 			text("""
                 SELECT MIN(trade_date), MAX(trade_date)
-                FROM daily_quotes
-                WHERE is_deleted = 0
+                FROM stock_daily
+                
             """)
 		)
 		date_range = date_range_result.fetchone()

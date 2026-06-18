@@ -159,16 +159,21 @@ select * from  stock_factor_pro_daily;
     select count(*) from  stock_factor_pro_daily;
 -- 回测任务
 select * from backtest_tasks;
--- stock_daily: Numeric(14,4) → Numeric(16,2)，容纳更大成交额
-ALTER TABLE stock_daily ALTER COLUMN amount TYPE NUMERIC(16, 2);
-
--- stock_weekly: Numeric(16,4) → Numeric(18,2)，安全扩展
-ALTER TABLE stock_weekly ALTER COLUMN amount TYPE NUMERIC(18, 2);
 -- 回测参数
 select * from backtest_parameters;
+select * from backtest_result;
 
 -- 因子
 select * from factor_definitions;
+-- 策略实例表
+select * from strategies;
+-- 策略版本管理表
+select * from strategy_versions;
+-- 策略运行记录表
+select * from strategy_runs;
+-- 策略参数配置表
+select * from strategy_parameters;
+--
 -- 同步任务表
 select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';
 -- 用户
@@ -190,4 +195,3 @@ select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a
 
 drop table stk_managers
 
--- stock_factor_pro_daily（每日技术因子 Pro）

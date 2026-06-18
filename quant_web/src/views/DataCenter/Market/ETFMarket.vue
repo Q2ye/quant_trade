@@ -20,6 +20,7 @@ import {
 import type { DataTableColumns } from "naive-ui";
 import marketAPI from "@/api/market";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
 import { tokens } from "@/styles/design-tokens";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
@@ -40,6 +41,8 @@ const filterSearch = ref("");
 const expandedCode = ref<string | null>(null);
 const expandedData = ref<any>(null);
 const expandedLoading = ref(false);
+const basketDialogShow = ref(false);
+const basketStock = ref<{ symbol: string; name: string }>({ symbol: "", name: "" });
 const page = ref(1);
 const pageSize = ref(50);
 
@@ -276,8 +279,8 @@ onMounted(() => load());
               </span>
             </div>
             <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end">
-              <n-button size="tiny" type="primary" ghost @click="router.push('/backtest/config?stock=' + expandedCode)">快速回测</n-button>
-              <n-button size="tiny" quaternary @click="message.info('加入篮子: ' + expandedCode)">加入篮子</n-button>
+              <n-button size="tiny" type="primary" ghost @click="router.push('/backtest?stock=' + expandedCode)">快速回测</n-button>
+              <n-button size="tiny" quaternary @click="basketStock = { symbol: expandedCode, name: expandedCode }; basketDialogShow = true">加入篮子</n-button>
               <n-button size="tiny" quaternary @click="expandedCode = null">收拢</n-button>
             </div>
           </template>
@@ -285,6 +288,7 @@ onMounted(() => load());
       </template>
     </div>
   </div>
+  <BasketSelectorDialog v-if="basketDialogShow" v-model:show="basketDialogShow" :stock="basketStock" />
 </template>
 
 <style lang="scss" scoped>

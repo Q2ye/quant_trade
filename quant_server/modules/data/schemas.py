@@ -56,6 +56,14 @@ class FactorCategory(str, Enum):
 	SIZE = "size"  # 规模因子
 	LIQUIDITY = "liquidity"  # 流动性因子
 	TECHNICAL = "technical"  # 技术因子
+	# 兼容 DB 中的其他分类
+	PROFITABILITY = "profitability"  # 盈利能力
+	EFFICIENCY = "efficiency"  # 运营效率
+	LEVERAGE = "leverage"  # 杠杆
+	MARKET = "market"  # 市场类
+	SENTIMENT = "sentiment"  # 情绪类
+	RISK = "risk"  # 风险类
+	OTHER = "other"  # 其他
 
 
 class StockListSortField(str, Enum):
@@ -752,17 +760,56 @@ class FactorValue(BaseModel):
 
 
 class FactorMetadata(BaseModel):
-	"""因子元数据模型"""
-	factor_name: str = Field(..., description="因子名称")
-	display_name: str = Field(..., description="显示名称")
-	description: str = Field(..., description="因子描述")
-	category: FactorCategory = Field(..., description="因子类别")
+	"""因子元数据模型 — 兼容 DB ORM 和 API 返回格式"""
+	factor_name: str = Field(..., description="因子名称", alias="factor_code")
+	display_name: str = Field(default="", description="显示名称")
+	description: str = Field(default="", description="因子描述")
+	category: FactorCategory = Field(default=FactorCategory.OTHER, description="因子类别")
 	formula: Optional[str] = Field(default=None, description="计算公式")
-	data_source: str = Field(..., description="数据来源")
-	update_frequency: str = Field(..., description="更新频率")
-	last_update: datetime = Field(..., description="最后更新时间")
+	data_source: str = Field(default="Tushare", description="数据来源")
+	update_frequency: str = Field(default="daily", description="更新频率")
+	last_update: Optional[datetime] = Field(default=None, description="最后更新时间")
+
+	@model_validator(mode="before")
+	@classmethod
+	def normalize_from_db(cls, data: Any) -> Any:
+		"""将 DB 字段映射到模型字段"""
+		if not isinstance(data, dict):
+			return data
+		# factor_code → factor_name (alias)
+		if "factor_code" in data and "factor_name" not in data:
+			data["factor_name"] = data["factor_code"]
+		# factor_name → display_name（如果没有 display_name）
+		if "display_name" not in data or not data.get("display_name"):
+			data["display_name"] = data.get("factor_name", "") or data.get("factor_code", "")
+		# description 默认值
+		if "description" not in data or data.get("description") is None:
+			data["description"] = ""
+		# category 兜底
+		c = data.get("category")
+		if c and c not in FactorCategory.__members__.values():
+			# 尝试模糊映射
+			cat_map = {"profitability": "quality", "leverage": "risk", "efficiency": "quality"}
+			data["category"] = cat_map.get(str(c), "other")
+		if not data.get("category"):
+			data["category"] = "other"
+		# data_source 默认值
+		if "data_source" not in data or not data.get("data_source"):
+			data["data_source"] = "Tushare"
+		# calculation_frequency → update_frequency
+		if "calculation_frequency" in data and "update_frequency" not in data:
+			data["update_frequency"] = str(data["calculation_frequency"] or "daily")
+		if not data.get("update_frequency"):
+			data["update_frequency"] = "daily"
+		# updated_at → last_update
+		if "updated_at" in data and "last_update" not in data:
+			data["last_update"] = data["updated_at"]
+		if "created_at" in data and data.get("created_at") and not data.get("last_update"):
+			data["last_update"] = data["created_at"]
+		return data
 
 	model_config = ConfigDict(
+		populate_by_name=True,
 		json_schema_extra={
 			"example": {
 				"factor_name": "PE",

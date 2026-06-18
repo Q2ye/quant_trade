@@ -145,6 +145,14 @@ class DataFeedEngine(EngineBase):
         if fields is None:
             fields = ["open", "high", "low", "close", "volume", "amount"]
 
+        # 将字符串日期转为 date 对象，避免 PostgreSQL date >= varchar 类型错误
+        from datetime import date as _date_class
+
+        if isinstance(start_date, str):
+            start_date = _date_class.fromisoformat(start_date)
+        if isinstance(end_date, str):
+            end_date = _date_class.fromisoformat(end_date)
+
         logger.info(
             f"开始加载历史数据: {len(symbols)} 只股票, "
             f"{start_date} ~ {end_date}, 复权={self.adj_type}"
@@ -152,18 +160,16 @@ class DataFeedEngine(EngineBase):
 
         all_records = []
 
-        # 使用复权价格
+        # 使用复权价格（v1.3: 批量查询替代逐只循环）
         if self.adj_type in ("qfq", "hfq"):
-            for ts_code in symbols:
-                try:
-                    records = await self.adj_price_repo.get_by_code_and_date_range(
-                        ts_code=ts_code,
-                        start_date=start_date,
-                        end_date=end_date,
-                        adj_type=self.adj_type,
-                        freq="D",
-                    )
-                    for r in records:
+            try:
+                records = await self._load_adj_batch(
+                    symbols=symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                    adj_type=self.adj_type,
+                )
+                for r in records:
                         row = {
                             "ts_code": r.ts_code,
                             "trade_date": (
@@ -175,24 +181,23 @@ class DataFeedEngine(EngineBase):
                             "high": float(r.high) if r.high else None,
                             "low": float(r.low) if r.low else None,
                             "close": float(r.close) if r.close else None,
-                            "volume": float(r.volume) if r.volume else 0.0,
+                            "volume": float(r.vol) if r.vol else 0.0,
                             "amount": float(r.amount) if r.amount else 0.0,
                         }
                         all_records.append(row)
-                except Exception as e:
-                    logger.warning(f"加载 {ts_code} 复权价格失败: {e}")
+            except Exception as e:
+                logger.warning(f"批量加载复权价格失败: {e}")
 
-        # 回退到不复权数据
+        # 回退到不复权数据（v1.3: 批量查询）
         if not all_records:
             logger.info("复权价格数据为空，回退到 stock_daily 原始数据")
-            for ts_code in symbols:
-                try:
-                    records = await self.daily_repo.get_by_code_and_date_range(
-                        ts_code=ts_code,
-                        start_date=start_date,
-                        end_date=end_date,
-                    )
-                    for r in records:
+            try:
+                records = await self._load_daily_batch(
+                    symbols=symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                for r in records:
                         row = {
                             "ts_code": r.ts_code,
                             "trade_date": (
@@ -204,12 +209,12 @@ class DataFeedEngine(EngineBase):
                             "high": float(r.high) if r.high else None,
                             "low": float(r.low) if r.low else None,
                             "close": float(r.close) if r.close else None,
-                            "volume": float(r.volume) if r.volume else 0.0,
+                            "volume": float(r.vol) if r.vol else 0.0,
                             "amount": float(r.amount) if r.amount else 0.0,
                         }
                         all_records.append(row)
-                except Exception as e:
-                    logger.warning(f"加载 {ts_code} 日线数据失败: {e}")
+            except Exception as e:
+                logger.warning(f"批量加载日线数据失败: {e}")
 
         if not all_records:
             logger.warning(f"未加载到任何数据: {len(symbols)} 只股票, {start_date}~{end_date}")
@@ -466,6 +471,65 @@ class DataFeedEngine(EngineBase):
                 logger.warning(f"因子 {factor_name} 注入失败: {e}")
 
         return df
+
+    # ---- 批量加载辅助方法（v1.3 新增） ----
+
+    async def _load_adj_batch(
+        self,
+        symbols: List[str],
+        start_date,
+        end_date,
+        adj_type: str = "qfq",
+    ) -> List:
+        """
+        批量加载复权价格数据（一次 SQL IN 查询替代逐只循环）。
+
+        使用 PostgreSQL WHERE ts_code = ANY(:symbols) 批量查询，
+        将 N 次 DB 往返减少到 1 次。
+        """
+        from sqlalchemy import text
+        query = text(
+            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+            "FROM stock_adjusted_prices "
+            "WHERE ts_code = ANY(:symbols) "
+            "  AND trade_date BETWEEN :start AND :end "
+            "  AND adj_type = :adj_type "
+            "  AND freq = 'D' "
+            "ORDER BY trade_date ASC, ts_code ASC"
+        )
+        result = await self.db.execute(query, {
+            "symbols": symbols,
+            "start": start_date,
+            "end": end_date,
+            "adj_type": adj_type,
+        })
+        return result.fetchall()
+
+    async def _load_daily_batch(
+        self,
+        symbols: List[str],
+        start_date,
+        end_date,
+    ) -> List:
+        """
+        批量加载日线数据（fallback：不复权数据）。
+
+        使用 PostgreSQL WHERE ts_code = ANY(:symbols) 批量查询。
+        """
+        from sqlalchemy import text
+        query = text(
+            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+            "FROM stock_daily "
+            "WHERE ts_code = ANY(:symbols) "
+            "  AND trade_date BETWEEN :start AND :end "
+            "ORDER BY trade_date ASC, ts_code ASC"
+        )
+        result = await self.db.execute(query, {
+            "symbols": symbols,
+            "start": start_date,
+            "end": end_date,
+        })
+        return result.fetchall()
 
     # ---- EngineBase 生命周期 ----
 

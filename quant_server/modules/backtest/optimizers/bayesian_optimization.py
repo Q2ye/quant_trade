@@ -47,8 +47,14 @@ class BayesianOptimization:
 		try:
 			logger.info(f"开始贝叶斯优化，迭代次数: {self.n_iter}")
 
+			# 规范化参数：标量值包装为单元素列表
+			normalized = {
+				k: v if isinstance(v, (list, tuple)) else [v]
+				for k, v in parameters.items()
+			}
+
 			# 初始化样本
-			await self._initialize_samples(parameters, objective)
+			await self._initialize_samples(normalized, objective)
 
 			best_params = None
 			best_score = -float('inf')
@@ -59,7 +65,7 @@ class BayesianOptimization:
 				model = self._build_model()
 
 				# 选择下一个样本点
-				next_params = self._select_next_point(parameters, model)
+				next_params = self._select_next_point(normalized, model)
 
 				# 评估目标函数
 				score = await objective(**next_params)

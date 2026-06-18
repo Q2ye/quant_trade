@@ -25,9 +25,10 @@ const basketApi = {
   async getBaskets(
     params?: BasketQueryParams,
   ): Promise<{ baskets: Basket[]; total: number }> {
-    // 修复：去掉重复的 /api，使用正确的路径
     return request
-      .get("/quantTrade/basket", { params })
+      .get("/quantTrade/basket", {
+        params: { page: 1, page_size: 20, ...params },
+      })
       .then(handleResponse)
       .then((data: BasketListResponse) => ({
         baskets: data.data.items,

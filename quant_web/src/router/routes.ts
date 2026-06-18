@@ -162,24 +162,31 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "data-sync-overview", layout: "main", title: "同步任务详情" },
   },
 
+  // 策略中心 — 旧路由 Redirect
+  { path: "/strategy/build", redirect: "/strategies" },
+  { path: "/strategy/backtest", redirect: "/backtest" },
+  { path: "/strategy/factors", redirect: "/factors" },
+  { path: "/backtest/studio", redirect: "/backtest" },
+  { path: "/research/factor-research", redirect: "/factors" },
+  { path: "/research/factor-library", redirect: "/factors" },
+  { path: "/research/backtest-period", redirect: "/backtest" },
+
   // 策略中心
   {
+    path: "/backtest",
+    name: "BacktestWorkspace",
+    component: () => import("@/views/StrategyCenter/Backtest/BacktestWorkspace.vue"),
+    meta: { menu: "backtest-hub", layout: "main", title: "回测工作台" },
+  },
+  {
+    path: "/factors",
+    name: "FactorDashboard",
+    component: () => import("@/views/StrategyCenter/FactorDashboard.vue"),
+    meta: { menu: "factor-hub", layout: "main", title: "因子研究" },
+  },
+  {
     path: "/strategy/factors",
-    name: "FactorHub",
-    component: () => import("@/views/StrategyCenter/Factors/FactorHub.vue"),
-    meta: { menu: "strategy-factors", layout: "main", title: "因子研究" },
-  },
-  {
-    path: "/strategy/build",
-    name: "BuildHub",
-    component: () => import("@/views/StrategyCenter/Build/BuildHub.vue"),
-    meta: { menu: "strategy-build", layout: "main", title: "策略构建" },
-  },
-  {
-    path: "/strategy/backtest",
-    name: "BacktestHub",
-    component: () => import("@/views/StrategyCenter/Backtest/BacktestHub.vue"),
-    meta: { menu: "strategy-backtest", layout: "main", title: "回测验证" },
+    redirect: "/factors",
   },
   {
     path: "/strategies/versions/:id",
@@ -202,17 +209,26 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "strategies", layout: "main", title: "策略列表" },
   },
   {
-    path: "/strategies/create",
-    name: "StrategyCreate",
-    component: () => import("@/views/StrategyCenter/Build/StrategyEditor.vue"),
-    meta: { menu: "strategy-create", layout: "main", title: "创建策略" },
+    // 编辑模式：URL 中的 :id 是后端生成的策略 UUID
+    path: "/strategies/workspace/:id",
+    name: "StrategyWorkspace",
+    component: () => import("@/views/StrategyCenter/StrategyWorkspace.vue"),
+    meta: { menu: "strategies", layout: "strategy", title: "策略工作台", hideInMenu: true },
   },
   {
-    path: "/strategies/edit/:id",
-    name: "StrategyEdit",
-    component: () => import("@/views/StrategyCenter/Build/StrategyEditor.vue"),
-    props: true,
-    meta: { menu: "strategy-edit", layout: "main", title: "编辑策略" },
+    // 创建模式：无动态参数，新策略 ID 由后端在保存时生成
+    path: "/strategies/workspace/new",
+    name: "StrategyWorkspaceCreate",
+    component: () => import("@/views/StrategyCenter/StrategyWorkspace.vue"),
+    meta: { menu: "strategies", layout: "strategy", title: "新建策略", hideInMenu: true },
+  },
+  { path: "/strategies/create", redirect: "/strategies/workspace/new" },
+  { path: "/strategies/edit/:id", redirect: (to: any) => `/strategies/workspace/${to.params.id}` },
+  {
+    path: "/strategies/portfolio",
+    name: "PortfolioBuilder",
+    component: () => import("@/views/StrategyCenter/Build/PortfolioBuilder.vue"),
+    meta: { menu: "strategies", layout: "main", title: "策略组合" },
   },
   {
     path: "/strategies/risk/:id?",
@@ -220,13 +236,6 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("@/views/StrategyCenter/Build/RiskManagement.vue"),
     props: true,
     meta: { menu: "strategy-risk", layout: "main", title: "策略风控" },
-  },
-  {
-    path: "/backtest/studio",
-    name: "BacktestStudio",
-    component: () =>
-      import("@/views/StrategyCenter/Backtest/BacktestStudio.vue"),
-    meta: { menu: "backtest", layout: "main", title: "回测工作室" },
   },
   {
     path: "/backtest/report/:taskId",
@@ -243,27 +252,6 @@ export const routes: RouteRecordRaw[] = [
       import("@/views/StrategyCenter/Backtest/BacktestConfig.vue"),
     meta: { menu: "backtest", layout: "main", title: "回测配置" },
   },
-  {
-    path: "/research/factor-research",
-    name: "FactorResearch",
-    component: () =>
-      import("@/views/StrategyCenter/Factors/FactorResearch.vue"),
-    meta: { menu: "research", layout: "main", title: "因子研究" },
-  },
-  {
-    path: "/research/factor-library",
-    name: "FactorConfig",
-    component: () => import("@/views/StrategyCenter/Factors/FactorLibrary.vue"),
-    meta: { menu: "factor-library", layout: "main", title: "因子库管理" },
-  },
-  {
-    path: "/research/backtest-period",
-    name: "BacktestPeriod",
-    component: () =>
-      import("@/views/StrategyCenter/Backtest/BacktestPeriod.vue"),
-    meta: { menu: "backtest-period", layout: "main", title: "回溯周期" },
-  },
-
   // 交易工作台（统一集成篮子/订单/持仓/账户）
   {
     path: "/trade/workspace",

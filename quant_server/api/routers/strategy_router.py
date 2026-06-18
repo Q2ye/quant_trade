@@ -25,7 +25,14 @@ from modules.strategy.handlers import (
 	stop_strategy,
 	get_strategy_performance,
 	get_strategy_status,
-	check_strategy_module_health
+	compile_strategy,
+	pause_strategy,
+	resume_strategy,
+	check_strategy_module_health,
+	create_portfolio,
+	get_portfolio_detail,
+	get_portfolio_performance,
+	update_portfolio_weights,
 )
 # 导入策略模块的Pydantic模型
 from modules.strategy.schemas import (
@@ -164,7 +171,8 @@ async def create_strategy_api (
 		StrategyResponse: 创建的策略响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 创建策略，参数: {request.model_dump()}")
+		create_summary = {k: v for k, v in request.model_dump().items() if k not in ("code",)}
+		logger.info(f"用户 {current_user.get('username')} 创建策略，参数: {create_summary}")
 
 		result = await create_strategy(
 			session=db_session,
@@ -204,7 +212,8 @@ async def update_strategy_api (
 		StrategyResponse: 更新后的策略响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 更新策略 {strategy_id}，参数: {request.model_dump()}")
+		update_summary = {k: v for k, v in request.model_dump().items() if k not in ("code",)}
+		logger.info(f"用户 {current_user.get('username')} 更新策略 {strategy_id}，参数: {update_summary}")
 
 		result = await update_strategy(
 			session=db_session,
@@ -465,6 +474,213 @@ async def get_strategy_status_api (
 		)
 
 
+
+
+# ==================== 策略组合接口 ====================
+
+@router.post("/portfolio", response_model=StrategyResponse, status_code=201)
+async def create_portfolio_api(
+		request: StrategyCreateRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyResponse:
+	"""创建策略组合"""
+	try:
+		result = await create_portfolio(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id")
+		)
+		return result
+	except Exception as e:
+		logger.error(f"创建组合失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/portfolio/{portfolio_id}", response_model=StrategyResponse)
+async def get_portfolio_detail_api(
+		portfolio_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyResponse:
+	"""获取策略组合详情"""
+	try:
+		result = await get_portfolio_detail(session=db_session, portfolio_id=portfolio_id)
+		return result
+	except Exception as e:
+		logger.error(f"获取组合详情失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/portfolio/{portfolio_id}/performance", response_model=StrategyPerformanceResponse)
+async def get_portfolio_performance_api(
+		portfolio_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyPerformanceResponse:
+	"""获取策略组合绩效"""
+	try:
+		result = await get_portfolio_performance(session=db_session, portfolio_id=portfolio_id)
+		return result
+	except Exception as e:
+		logger.error(f"获取组合绩效失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/portfolio/{portfolio_id}/weights", response_model=StrategyResponse)
+async def update_portfolio_weights_api(
+		portfolio_id: str,
+		request: StrategyUpdateRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyResponse:
+	"""更新策略组合权重"""
+	try:
+		result = await update_portfolio_weights(
+			session=db_session,
+			portfolio_id=portfolio_id,
+			request=request,
+		)
+		return result
+	except Exception as e:
+		logger.error(f"更新权重失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 策略生命周期扩展接口 ====================
+
+@router.post("/{strategy_id}/compile", response_model=StrategyResponse)
+async def compile_strategy_api (
+		strategy_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyResponse:
+	"""
+	编译策略
+
+	Args:
+		strategy_id: 策略ID
+		current_user: 当前登录用户
+		db_session: 数据库会话
+
+	Returns:
+		StrategyResponse: 编译结果
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 编译策略 {strategy_id}")
+
+		result = await compile_strategy(
+			session=db_session,
+			strategy_id=strategy_id,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except ValueError as e:
+		logger.warning(f"策略不存在: {strategy_id}, 错误: {str(e)}")
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail=f"策略 {strategy_id} 不存在"
+		)
+	except Exception as e:
+		logger.error(f"编译策略失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"编译策略失败: {str(e)}"
+		)
+
+
+@router.post("/{strategy_id}/pause", response_model=StrategyStatusResponse)
+async def pause_strategy_api (
+		strategy_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyStatusResponse:
+	"""
+	暂停策略
+
+	Args:
+		strategy_id: 策略ID
+		current_user: 当前登录用户
+		db_session: 数据库会话
+
+	Returns:
+		StrategyStatusResponse: 策略状态响应
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 暂停策略 {strategy_id}")
+
+		result = await pause_strategy(
+			session=db_session,
+			strategy_id=strategy_id,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except ValueError as e:
+		logger.warning(f"策略不存在或无法暂停: {strategy_id}, 错误: {str(e)}")
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail=str(e)
+		)
+	except Exception as e:
+		logger.error(f"暂停策略失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"暂停策略失败: {str(e)}"
+		)
+
+
+@router.post("/{strategy_id}/resume", response_model=StrategyStatusResponse)
+async def resume_strategy_api (
+		strategy_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> StrategyStatusResponse:
+	"""
+	恢复策略
+
+	Args:
+		strategy_id: 策略ID
+		current_user: 当前登录用户
+		db_session: 数据库会话
+
+	Returns:
+		StrategyStatusResponse: 策略状态响应
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 恢复策略 {strategy_id}")
+
+		result = await resume_strategy(
+			session=db_session,
+			strategy_id=strategy_id,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except ValueError as e:
+		logger.warning(f"策略不存在或无法恢复: {strategy_id}, 错误: {str(e)}")
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail=str(e)
+		)
+	except Exception as e:
+		logger.error(f"恢复策略失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"恢复策略失败: {str(e)}"
+		)
+
+
 # ==================== 模块管理接口 ====================
 
 @router.get("/health")
@@ -483,7 +699,7 @@ async def strategy_module_health_check (
 		JSONResponse: 健康状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求策略模块健康检查")
+		logger.debug(f"用户 {current_user.get('username')} 请求策略模块健康检查")
 
 		health_status = await check_strategy_module_health(
 			session=db_session,

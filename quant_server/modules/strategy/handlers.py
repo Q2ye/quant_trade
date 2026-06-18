@@ -362,14 +362,8 @@ class StrategyHandler:
 				data["strategy_name"] = detail_result["data"].get("name")
 				data["strategy_type"] = detail_result["data"].get("strategy_type")
 
-			# 添加绩效数据（实际需要从数据库查询）
-			data["performance"] = {
-				"total_return": 0.0,
-				"annual_return": 0.0,
-				"win_rate": 0.0,
-				"max_drawdown": 0.0,
-				"sharpe_ratio": 0.0,
-			}
+			# 从回测结果获取真实绩效数据
+			data["performance"] = await self._fetch_real_performance(strategy_id)
 
 			return {
 				"success": True,
@@ -383,6 +377,214 @@ class StrategyHandler:
 				"error": str(e)
 			}
 
+
+
+	
+	# ---- 策略模板 ----
+
+	async def get_template_list(self, request, user_id: str) -> Dict[str, Any]:
+		"""获取模板列表"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			svc = TemplateService(self.db)
+			strategy_type = getattr(request, 'strategy_type', None)
+			page = getattr(request, 'page', 1) or 1
+			page_size = getattr(request, 'page_size', 20) or 20
+			if strategy_type:
+				from modules.strategy.constants import StrategyType
+				try:
+					strategy_type = StrategyType(strategy_type)
+				except ValueError:
+					pass
+			return await svc.get_template_list(strategy_type=strategy_type, page=page, page_size=page_size)
+		except Exception as e:
+			logger.error(f"获取模板列表失败: {e}")
+			return {"success": False, "error": str(e), "data": []}
+
+	async def get_template_detail(self, template_id: str) -> Dict[str, Any]:
+		"""获取模板详情"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			svc = TemplateService(self.db)
+			return await svc.get_template_detail(template_id)
+		except Exception as e:
+			logger.error(f"获取模板详情失败: {e}")
+			return {"success": False, "error": str(e)}
+
+	async def create_template(self, request) -> Dict[str, Any]:
+		"""创建模板"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			from modules.strategy.constants import StrategyType
+			svc = TemplateService(self.db)
+			st = StrategyType(request.strategy_type) if hasattr(request, 'strategy_type') and request.strategy_type else StrategyType.CUSTOM
+			return await svc.create_template(
+				name=request.name,
+				strategy_type=st,
+				code_template=request.code_template,
+				description=getattr(request, 'description', '') or '',
+				default_parameters=getattr(request, 'default_parameters', None),
+				category=getattr(request, 'category', 'custom') or 'custom',
+			)
+		except Exception as e:
+			logger.error(f"创建模板失败: {e}")
+			return {"success": False, "error": str(e)}
+
+	async def update_template(self, template_id: str, request) -> Dict[str, Any]:
+		"""更新模板"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			svc = TemplateService(self.db)
+			return await svc.update_template(
+				template_id=template_id,
+				name=getattr(request, 'name', None),
+				description=getattr(request, 'description', None),
+				code_template=getattr(request, 'code_template', None),
+				default_parameters=getattr(request, 'default_parameters', None),
+			)
+		except Exception as e:
+			logger.error(f"更新模板失败: {e}")
+			return {"success": False, "error": str(e)}
+
+	async def delete_template(self, template_id: str) -> Dict[str, Any]:
+		"""删除模板"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			svc = TemplateService(self.db)
+			return await svc.delete_template(template_id)
+		except Exception as e:
+			logger.error(f"删除模板失败: {e}")
+			return {"success": False, "error": str(e)}
+
+	async def create_strategy_from_template(self, template_id: str, request, user_id: str) -> Dict[str, Any]:
+		"""基于模板创建策略"""
+		try:
+			from modules.strategy.services.template_service import TemplateService
+			svc = TemplateService(self.db)
+			custom_params = getattr(request, 'custom_parameters', None)
+			return await svc.create_from_template(
+				template_id=template_id,
+				name=request.name,
+				user_id=user_id,
+				custom_parameters=custom_params,
+			)
+		except Exception as e:
+			logger.error(f"基于模板创建策略失败: {e}")
+			return {"success": False, "error": str(e)}
+
+	
+	async def compile_strategy(
+			self,
+			strategy_id: str,
+			user_id: str
+	) -> Dict[str, Any]:
+		"""编译策略"""
+		try:
+			return await self.strategy_service.compile_strategy(
+				strategy_id=strategy_id,
+				user_id=user_id,
+			)
+		except Exception as e:
+			logger.error(f"编译策略失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def pause_strategy(
+			self,
+			strategy_id: str,
+			user_id: str
+	) -> Dict[str, Any]:
+		"""暂停策略"""
+		try:
+			return await self.execution_service.pause_strategy(
+				strategy_id=strategy_id,
+				user_id=user_id,
+			)
+		except Exception as e:
+			logger.error(f"暂停策略失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def resume_strategy(
+			self,
+			strategy_id: str,
+			user_id: str
+	) -> Dict[str, Any]:
+		"""恢复策略"""
+		try:
+			return await self.execution_service.resume_strategy(
+				strategy_id=strategy_id,
+				user_id=user_id,
+			)
+		except Exception as e:
+			logger.error(f"恢复策略失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def create_portfolio_handler(self, request, user_id: str) -> Dict[str, Any]:
+		try:
+			from modules.strategy.services.portfolio_service import PortfolioService
+			svc = PortfolioService(self.db)
+			return await svc.create_portfolio(
+				name=request.name,
+				description=getattr(request, 'description', '') or '',
+				strategy_weights=request.strategy_weights,
+				user_id=user_id,
+			)
+		except Exception as e:
+			logger.error(f"创建策略组合失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def get_portfolio_detail_handler(self, portfolio_id: str) -> Dict[str, Any]:
+		try:
+			from modules.strategy.services.portfolio_service import PortfolioService
+			svc = PortfolioService(self.db)
+			return await svc.get_portfolio_detail(portfolio_id=portfolio_id)
+		except Exception as e:
+			logger.error(f"获取组合详情失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def get_portfolio_performance_handler(self, portfolio_id: str) -> Dict[str, Any]:
+		try:
+			from modules.strategy.services.portfolio_service import PortfolioService
+			svc = PortfolioService(self.db)
+			return await svc.get_portfolio_performance(portfolio_id=portfolio_id)
+		except Exception as e:
+			logger.error(f"获取组合绩效失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def update_portfolio_weights_handler(self, portfolio_id: str, request) -> Dict[str, Any]:
+		try:
+			from modules.strategy.services.portfolio_service import PortfolioService
+			svc = PortfolioService(self.db)
+			return await svc.update_portfolio_weights(
+				portfolio_id=portfolio_id,
+				strategy_weights=request.strategy_weights,
+			)
+		except Exception as e:
+			logger.error(f"更新组合权重失败: {e}")
+			return {"success": False, "error": str(e)}
+	async def _fetch_real_performance(self, strategy_id: str) -> Dict[str, Any]:
+		"""从回测结果表查询最近完成的绩效数据"""
+		try:
+			from shared.database.repositories.strategy.backtest.task_repo import 				BacktestTaskRepository
+			task_repo = BacktestTaskRepository(self.db)
+			tasks, _ = await task_repo.get_list(
+				filters={"strategy_id": strategy_id, "status": "completed"},
+				page=1, page_size=1,
+			)
+			if tasks and tasks[0].result:
+				metrics = tasks[0].result.get("metrics", {})
+				return {
+					"total_return": metrics.get("total_return", 0.0),
+					"annual_return": metrics.get("annual_return",
+						metrics.get("annualized_return", 0.0)),
+					"sharpe_ratio": metrics.get("sharpe_ratio", 0.0),
+					"max_drawdown": metrics.get("max_drawdown", 0.0),
+					"win_rate": metrics.get("win_rate", 0.0),
+					"profit_factor": metrics.get("profit_factor", 0.0),
+					"num_trades": metrics.get("num_trades", metrics.get("num_signals", 0)),
+					"volatility": metrics.get("volatility", 0.0),
+					"source": "backtest",
+				}
+		except Exception as e:
+			logger.warning(f"获取回测绩效失败: {e}")
+		return {
+			"total_return": 0.0, "annual_return": 0.0,
+			"win_rate": 0.0, "max_drawdown": 0.0,
+			"sharpe_ratio": 0.0, "source": "no_data",
+		}
 	async def get_strategy_status (
 			self,
 			strategy_id: str,
@@ -390,11 +592,9 @@ class StrategyHandler:
 	) -> Dict[str, Any]:
 		"""
 		获取策略状态
-
 		Args:
 			strategy_id: 策略ID
 			user_id: 用户ID
-
 		Returns:
 			策略状态
 		"""
@@ -409,6 +609,56 @@ class StrategyHandler:
 				"success": False,
 				"error": str(e)
 			}
+async def get_template_list(session: AsyncSession, request, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.get_template_list(request, user_id)
+
+
+async def get_template_detail(session: AsyncSession, template_id: str):
+	handler = StrategyHandler(session)
+	return await handler.get_template_detail(template_id)
+
+
+async def create_template(session: AsyncSession, request):
+	handler = StrategyHandler(session)
+	return await handler.create_template(request)
+
+
+async def update_template(session: AsyncSession, template_id: str, request):
+	handler = StrategyHandler(session)
+	return await handler.update_template(template_id, request)
+
+
+async def delete_template(session: AsyncSession, template_id: str):
+	handler = StrategyHandler(session)
+	return await handler.delete_template(template_id)
+
+
+async def create_strategy_from_template(session: AsyncSession, template_id: str, request, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.create_strategy_from_template(template_id, request, user_id)
+
+
+
+async def create_portfolio(session: AsyncSession, request, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.create_portfolio_handler(request, user_id)
+
+
+async def get_portfolio_detail(session: AsyncSession, portfolio_id: str):
+	handler = StrategyHandler(session)
+	return await handler.get_portfolio_detail_handler(portfolio_id)
+
+
+async def get_portfolio_performance(session: AsyncSession, portfolio_id: str):
+	handler = StrategyHandler(session)
+	return await handler.get_portfolio_performance_handler(portfolio_id)
+
+
+async def update_portfolio_weights(session: AsyncSession, portfolio_id: str, request):
+	handler = StrategyHandler(session)
+	return await handler.update_portfolio_weights_handler(portfolio_id, request)
+
 
 
 # ==================== 导出函数供router使用 ====================
@@ -456,6 +706,22 @@ async def get_strategy_performance (session: AsyncSession, strategy_id: str, req
 async def get_strategy_status (session: AsyncSession, strategy_id: str, user_id: str):
 	handler = StrategyHandler(session)
 	return await handler.get_strategy_status(strategy_id, user_id)
+
+
+
+async def compile_strategy(session: AsyncSession, strategy_id: str, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.compile_strategy(strategy_id, user_id)
+
+
+async def pause_strategy(session: AsyncSession, strategy_id: str, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.pause_strategy(strategy_id, user_id)
+
+
+async def resume_strategy(session: AsyncSession, strategy_id: str, user_id: str):
+	handler = StrategyHandler(session)
+	return await handler.resume_strategy(strategy_id, user_id)
 
 
 async def check_strategy_module_health (session: AsyncSession) -> Dict[str, Any]:

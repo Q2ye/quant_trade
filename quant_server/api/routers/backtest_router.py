@@ -20,6 +20,9 @@ from modules.backtest.handlers import (
 	get_backtest_task,
 	get_backtest_task_list,
 	cancel_backtest_task,
+	delete_backtest_task,
+	export_backtest_report,
+	quick_backtest,
 	get_backtest_equity_curve,
 	get_backtest_trades,
 	get_backtest_positions,
@@ -29,7 +32,6 @@ from modules.backtest.handlers import (
 )
 # 导入回测模块的Pydantic模型
 from modules.backtest.schemas import (
-	BacktestCreateRequest,
 	BacktestCreateResponse,
 	BacktestDetailResponse,
 	BacktestListRequest,
@@ -39,7 +41,8 @@ from modules.backtest.schemas import (
 	BacktestPositionsResponse,
 	BacktestResultResponse,
 	BacktestOptimizeRequest,
-	BacktestOptimizeResponse
+	BacktestOptimizeResponse,
+	BacktestCreateRequest
 )
 # 导入响应格式化工具
 from utils.api_utils.response_formatter import success_response, error_response
@@ -61,7 +64,7 @@ router = APIRouter(
 # ==================== 回测任务管理接口 ====================
 
 @router.post("/tasks", response_model=BacktestCreateResponse, status_code=201)
-async def create_backtest_api (
+async def create_backtest_api(
 		request: BacktestCreateRequest,
 		background_tasks: BackgroundTasks,
 		current_user: Dict = Depends(get_current_user),
@@ -102,7 +105,7 @@ async def create_backtest_api (
 
 
 @router.get("/tasks", response_model=BacktestListResponse)
-async def get_backtest_list_api (
+async def get_backtest_list_api(
 		request: BacktestListRequest = Depends(),
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -140,7 +143,7 @@ async def get_backtest_list_api (
 
 
 @router.get("/tasks/{task_id}", response_model=BacktestDetailResponse)
-async def get_backtest_detail_api (
+async def get_backtest_detail_api(
 		task_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -157,7 +160,7 @@ async def get_backtest_detail_api (
 		BacktestDetailResponse: 回测任务详情响应
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求回测任务详情，任务ID: {task_id}")
+		logger.debug(f"用户 {current_user.get('username')} 请求回测任务详情，任务ID: {task_id}")
 
 		result = await get_backtest_task(
 			session=db_session,
@@ -183,12 +186,12 @@ async def get_backtest_detail_api (
 		)
 
 
-@router.post("/tasks/{task_id}/cancel", response_model=BacktestDetailResponse)
-async def cancel_backtest_api (
+@router.post("/tasks/{task_id}/cancel", response_model=BacktestCreateResponse)
+async def cancel_backtest_api(
 		task_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
-) -> BacktestDetailResponse:
+) -> BacktestCreateResponse:
 	"""
 	取消回测任务
 
@@ -227,10 +230,54 @@ async def cancel_backtest_api (
 		)
 
 
+@router.delete("/tasks/{task_id}", status_code=200, response_model=None)
+async def delete_backtest_api(
+		task_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+):
+	"""
+	删除回测任务（级联删除关联数据）
+
+	Args:
+		task_id: 回测任务ID
+		current_user: 当前登录用户
+		db_session: 数据库会话
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 删除回测任务 {task_id}")
+
+		await delete_backtest_task(
+			session=db_session,
+			task_id=task_id,
+			user_id=current_user.get("id")
+		)
+
+		return success_response(
+			message="回测任务删除成功",
+			data={"task_id": task_id}
+		)
+
+	except HTTPException:
+		raise
+	except ValueError as e:
+		logger.warning(f"回测任务不存在: {task_id}, 错误: {str(e)}")
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail=str(e)
+		)
+	except Exception as e:
+		logger.error(f"删除回测任务失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"删除回测任务失败: {str(e)}"
+		)
+
+
 # ==================== 回测结果查询接口 ====================
 
 @router.get("/tasks/{task_id}/equity", response_model=BacktestEquityCurveResponse)
-async def get_backtest_equity_api (
+async def get_backtest_equity_api(
 		task_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -268,7 +315,7 @@ async def get_backtest_equity_api (
 
 
 @router.get("/tasks/{task_id}/trades", response_model=BacktestTradesResponse)
-async def get_backtest_trades_api (
+async def get_backtest_trades_api(
 		task_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -306,7 +353,7 @@ async def get_backtest_trades_api (
 
 
 @router.get("/tasks/{task_id}/positions", response_model=BacktestPositionsResponse)
-async def get_backtest_positions_api (
+async def get_backtest_positions_api(
 		task_id: str,
 		trade_date: str,
 		current_user: Dict = Depends(get_current_user),
@@ -347,7 +394,7 @@ async def get_backtest_positions_api (
 
 
 @router.get("/tasks/{task_id}/result", response_model=BacktestResultResponse)
-async def get_backtest_result_api (
+async def get_backtest_result_api(
 		task_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -384,10 +431,65 @@ async def get_backtest_result_api (
 		)
 
 
+# ==================== 快速回测接口 ====================
+
+@router.post("/quick", status_code=200, response_model=None)
+async def quick_backtest_api(
+		request: BacktestCreateRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestCreateResponse:
+	"""
+	快速回测：一步完成策略代码执行+回测+返回结果（同步等待）
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 发起快速回测")
+		result = await quick_backtest(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id")
+		)
+		return result
+	except Exception as e:
+		logger.error(f"快速回测失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 报告导出接口 ====================
+
+@router.get("/tasks/{task_id}/report/export")
+async def export_report_api(
+		task_id: str,
+		report_format: str = "json",
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+):
+	"""
+	导出回测报告
+
+	Args:
+		task_id: 回测任务ID
+		report_format: 导出格式 (json / csv)
+	"""
+	try:
+		result = await export_backtest_report(
+			session=db_session,
+			task_id=task_id,
+			user_id=current_user.get("id"),
+			report_format=report_format,
+		)
+		return success_response(data=result.get("data", result), message="报告导出成功")
+	except ValueError as e:
+		raise HTTPException(status_code=404, detail=str(e))
+	except Exception as e:
+		logger.error(f"导出报告失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 参数优化接口 ====================
 
 @router.post("/optimize", response_model=BacktestOptimizeResponse)
-async def optimize_parameters_api (
+async def optimize_parameters_api(
 		request: BacktestOptimizeRequest,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
@@ -426,7 +528,7 @@ async def optimize_parameters_api (
 # ==================== 模块管理接口 ====================
 
 @router.get("/health")
-async def backtest_module_health_check (
+async def backtest_module_health_check(
 		current_user: Dict = Depends(get_current_user),
 ):
 	"""
@@ -439,7 +541,7 @@ async def backtest_module_health_check (
 		JSONResponse: 健康状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 请求回测模块健康检查")
+		logger.debug(f"用户 {current_user.get('username')} 请求回测模块健康检查")
 
 		health_status = await check_backtest_module_health()
 

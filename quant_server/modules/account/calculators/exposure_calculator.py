@@ -125,7 +125,7 @@ class ExposureCalculator:
 		# 尝试从数据库查询
 		try:
 			result = await self.session.execute(
-				text("SELECT industry FROM stocks WHERE ts_code = :code LIMIT 1"),
+				text("SELECT industry FROM stock_basic WHERE ts_code = :code LIMIT 1"),
 				{"code": ts_code}
 			)
 			row = result.fetchone()
@@ -253,7 +253,7 @@ class ExposureCalculator:
 			try:
 				result = await self.session.execute(
 					text(
-						"SELECT close FROM daily_quotes "
+						"SELECT close FROM stock_daily "
 						"WHERE ts_code = :code ORDER BY trade_date DESC LIMIT 252"
 					),
 					{"code": position.ts_code}
@@ -477,7 +477,7 @@ class ExposureCalculator:
 				try:
 					benchmark_result = await self.session.execute(
 						text(
-							"SELECT close FROM daily_quotes "
+							"SELECT close FROM stock_daily "
 							"WHERE ts_code = '000300.SH' ORDER BY trade_date"
 						)
 					)

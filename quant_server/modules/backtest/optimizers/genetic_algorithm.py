@@ -48,8 +48,14 @@ class GeneticAlgorithm:
 		try:
 			logger.info(f"开始遗传算法优化，种群大小: {self.population_size}, 迭代代数: {self.generations}")
 
+			# 规范化参数：标量值包装为单元素列表
+			normalized = {
+				k: v if isinstance(v, (list, tuple)) else [v]
+				for k, v in parameters.items()
+			}
+
 			# 初始化种群
-			population = self._initialize_population(parameters)
+			population = self._initialize_population(normalized)
 
 			best_params = None
 			best_score = -float('inf')
@@ -72,10 +78,10 @@ class GeneticAlgorithm:
 				selected = self._select(population, fitness_scores)
 
 				# 交叉
-				offspring = self._crossover(selected, parameters)
+				offspring = self._crossover(selected, normalized)
 
 				# 变异
-				population = self._mutate(offspring, parameters)
+				population = self._mutate(offspring, normalized)
 
 				logger.info(f"第 {generation} 代进化完成")
 

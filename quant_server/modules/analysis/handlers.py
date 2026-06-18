@@ -33,25 +33,56 @@ class AnalysisHandler:
 
     async def get_strategy_performance(self, strategy_id: str, request, _user_id: str) -> Dict[str, Any]:
         """获取策略绩效报告"""
-        metrics = await self.performance_service.calculate_strategy_performance(
-            strategy_id=strategy_id,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            benchmark=getattr(request, 'benchmark', None)
-        )
-        result = metrics.to_dict()
-        if getattr(request, 'include_trades', False):
-            result["trades"] = []
-        return result
+        from datetime import datetime, timezone
+        try:
+            metrics = await self.performance_service.calculate_strategy_performance(
+                strategy_id=strategy_id,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                benchmark=getattr(request, 'benchmark', None)
+            )
+            result = metrics.to_dict()
+            if getattr(request, 'include_trades', False):
+                result["trades"] = []
+            return {
+                "success": True,
+                "message": f"策略 {strategy_id} 绩效分析完成",
+                "data": result,
+                "timestamp": datetime.now(timezone.utc),
+            }
+        except Exception as e:
+            logger.error(f"计算策略绩效失败: {e}")
+            return {
+                "success": False,
+                "message": f"计算策略绩效失败: {str(e)}",
+                "data": {},
+                "timestamp": datetime.now(timezone.utc),
+            }
 
     async def get_account_performance(self, account_id: str, request, _user_id: str) -> Dict[str, Any]:
         """获取账户绩效报告"""
-        metrics = await self.performance_service.calculate_account_performance(
-            account_id=account_id,
-            start_date=request.start_date,
-            end_date=request.end_date
-        )
-        return metrics.to_dict()
+        from datetime import datetime, timezone
+        try:
+            metrics = await self.performance_service.calculate_account_performance(
+                account_id=account_id,
+                start_date=request.start_date,
+                end_date=request.end_date
+            )
+            result = metrics if isinstance(metrics, dict) else metrics.to_dict()
+            return {
+                "success": True,
+                "message": f"账户 {account_id} 绩效分析完成",
+                "data": result,
+                "timestamp": datetime.now(timezone.utc),
+            }
+        except Exception as e:
+            logger.error(f"计算账户绩效失败: {e}")
+            return {
+                "success": False,
+                "message": f"计算账户绩效失败: {str(e)}",
+                "data": {},
+                "timestamp": datetime.now(timezone.utc),
+            }
 
     # ==================== 风险分析 ====================
 

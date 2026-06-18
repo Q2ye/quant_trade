@@ -21,7 +21,7 @@
         </slot>
       </div>
 
-      <div class="config-pane">
+      <div v-if="!hideConfig" class="config-pane">
         <slot name="config">
           <h3>回测参数配置</h3>
           <div class="param-row">
@@ -136,6 +136,9 @@ export default defineComponent({
     NTabs,
     NTabPane,
     SmartIcon,
+  },
+  props: {
+    hideConfig: { type: Boolean, default: false },
   },
   data() {
     return {

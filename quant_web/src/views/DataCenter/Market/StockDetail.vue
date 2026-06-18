@@ -29,6 +29,7 @@ import LightweightKLine, {
   type SignalMarker,
 } from "@/components/charts/LightweightKLine.vue";
 import StockSignalPanel from "@/components/market/StockSignalPanel.vue";
+import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
@@ -61,6 +62,8 @@ const tsCode = computed(() =>
 const loading = ref(true);
 const error = ref(false);
 const data = ref<StockFullResponse | null>(null);
+const basketDialogShow = ref(false);
+const basketStock = ref<{ symbol: string; name: string }>({ symbol: "", name: "" });
 const activeTab = ref("overview");
 const kPeriod = ref<"daily" | "weekly" | "monthly">("daily");
 const signalMarkers = ref<SignalMarker[]>([]);
@@ -351,13 +354,13 @@ onMounted(load);
             size="tiny"
             type="primary"
             ghost
-            @click="router.push('/backtest/config?stock=' + tsCode)"
+            @click="router.push('/backtest?stock=' + tsCode)"
             >快速回测</n-button
           >
           <n-button
             size="tiny"
             quaternary
-            @click="message.info('加入篮子: ' + tsCode)"
+            @click="basketStock = { symbol: tsCode, name: data?.name || tsCode }; basketDialogShow = true"
             >加入篮子</n-button
           >
           <n-button size="tiny" quaternary @click="addToWatchlist"
@@ -900,6 +903,7 @@ onMounted(load);
       </template>
     </div>
   </div>
+  <BasketSelectorDialog v-if="basketDialogShow" v-model:show="basketDialogShow" :stock="basketStock" />
 </template>
 
 <style lang="scss" scoped>

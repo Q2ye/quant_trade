@@ -248,18 +248,72 @@ const dataAPI = {
   },
 
   /**
-   * 获取因子数据
-   * @param factorName 因子名称
-   * @param period 时间周期
+   * 获取因子数据（需要指定股票代码和日期范围）
+   * @param tsCode 股票代码，如 "000001.SZ"
+   * @param factorName 因子名称筛选（可选）
+   * @param startDate 开始日期
+   * @param endDate 结束日期
    * @returns 因子数据
    */
-  async getFactorData(factorName: string, period: string = "1y"): Promise<any> {
+  async getFactorData(
+    tsCode: string,
+    factorName: string | null = null,
+    startDate: string,
+    endDate: string,
+  ): Promise<{
+    factor_values: Array<{ factor_name: string; value: number; date: string }>;
+    metadata: any; statistics: any;
+  }> {
     return request
       .get("/quantTrade/data/factors", {
-        params: { factor_name: factorName, period },
+        params: {
+          ts_code: tsCode,
+          factor_name: factorName,
+          start_date: startDate,
+          end_date: endDate,
+          page: 1,
+          page_size: 100,
+        },
       })
       .then(handleResponse)
-      .then((data: { factorData: any }) => data.factorData);
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 获取因子元数据（可用因子列表及其分类/描述/公式）
+   */
+  async getFactorMetadata(params?: {
+    factor_category?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{
+    metadata_list: Array<{
+      factor_name: string; display_name: string; description: string;
+      category: string; formula?: string; data_source?: string;
+    }>;
+    summary: { total_factors: number; by_category: Record<string, number> };
+  }> {
+    return request
+      .get("/quantTrade/data/factors/metadata", { params })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 提交因子研究任务
+   */
+  async submitFactorResearch(params: {
+    stock_codes?: string[];
+    factor_names?: string[];
+    factor_category?: string;
+    start_date: string;
+    end_date: string;
+  }): Promise<{ research_id: string }> {
+    return request
+      .post("/quantTrade/data/factors/research", params)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
   },
 
   /**

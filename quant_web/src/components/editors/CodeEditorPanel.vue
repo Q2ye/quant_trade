@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { NButton } from "naive-ui";
 import MonacoEditor from "./MonacoEditor.vue";
 
@@ -17,6 +17,11 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits(["update:code", "save"]);
 
 const localCode = ref(props.code);
+
+// 外部 prop.code 变化时同步到编辑器（如从 API 加载已有策略后）
+watch(() => props.code, (newVal) => {
+  localCode.value = newVal;
+});
 
 const onCodeChange = (value: string) => {
   localCode.value = value;

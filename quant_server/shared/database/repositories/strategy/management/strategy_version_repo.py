@@ -119,10 +119,10 @@ class StrategyVersionRepository(BaseRepository[StrategyVersion]):
 				versions = []
 				for row in rows:
 					version = StrategyVersion()
-					# 使用 dict(row) 替代访问受保护的 _fields 成员
-					row_dict = dict(row)
-					for column, value in row_dict.items():
-						setattr(version, column, value)
+					# 使用 row._mapping 代替 dict(row)，兼容 SQLAlchemy Row 对象
+					row_mapping = row._mapping
+					for column in row_mapping:
+						setattr(version, column, row_mapping[column])
 					versions.append(version)
 				return versions
 		except Exception as e:

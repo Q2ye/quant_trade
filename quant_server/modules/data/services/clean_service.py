@@ -1040,7 +1040,7 @@ class DataCleanService:
 				session_manager = get_session_manager()
 				async with session_manager.get_session() as session:
 					result = await session.execute(
-						text("SELECT ts_code FROM stocks WHERE ts_code = ANY(:codes)"),
+						text("SELECT ts_code FROM stock_basic WHERE ts_code = ANY(:codes)"),
 						{"codes": valid_format_codes}
 					)
 					existing = {row.ts_code for row in result.fetchall()}
@@ -1283,7 +1283,7 @@ class DataCleanService:
 					result = await session.execute(
 						text(
 							"SELECT open, high, low, close, pre_close, vol, amount "
-							"FROM daily_quotes WHERE ts_code = :code AND trade_date < :td "
+							"FROM stock_daily WHERE ts_code = :code AND trade_date < :td "
 							"ORDER BY trade_date DESC LIMIT 1"
 						),
 						{"code": ts_code, "td": trade_date}
@@ -1295,9 +1295,9 @@ class DataCleanService:
 					# 插入填充记录
 					await session.execute(
 						text(
-							"INSERT INTO daily_quotes (ts_code, trade_date, open, high, low, close, "
-							"pre_close, vol, amount, is_restored) "
-							"VALUES (:code, :td, :o, :h, :l, :c, :pc, :v, :a, 1) "
+							"INSERT INTO stock_daily (ts_code, trade_date, open, high, low, close, "
+							"pre_close, vol, amount) "
+							"VALUES (:code, :td, :o, :h, :l, :c, :pc, :v, :a) "
 							"ON CONFLICT (ts_code, trade_date) DO NOTHING"
 						),
 						{
@@ -1338,9 +1338,9 @@ class DataCleanService:
 					# 保留成交量最大的记录，删除其余
 					await session.execute(
 						text(
-							"DELETE FROM daily_quotes WHERE ts_code = :code AND trade_date = :td "
+							"DELETE FROM stock_daily WHERE ts_code = :code AND trade_date = :td "
 							"AND id NOT IN ("
-							"  SELECT id FROM daily_quotes WHERE ts_code = :code2 AND trade_date = :td2 "
+							"  SELECT id FROM stock_daily WHERE ts_code = :code2 AND trade_date = :td2 "
 							"  ORDER BY vol DESC NULLS LAST LIMIT 1"
 							")"
 						),
@@ -1373,7 +1373,7 @@ class DataCleanService:
 				# 获取该股票最近60天的收盘价序列
 				result = await session.execute(
 					text(
-						"SELECT trade_date, close FROM daily_quotes "
+						"SELECT trade_date, close FROM stock_daily "
 						"WHERE ts_code = :code ORDER BY trade_date DESC LIMIT 60"
 					),
 					{"code": ts_code}
@@ -1406,7 +1406,7 @@ class DataCleanService:
 
 					await session.execute(
 						text(
-							"UPDATE daily_quotes SET close = :pc, is_restored = 1 "
+							"UPDATE stock_daily SET close = :pc "
 							"WHERE ts_code = :code AND trade_date = :td"
 						),
 						{"pc": prev_close, "code": ts_code, "td": trade_date}
@@ -1471,7 +1471,7 @@ class DataCleanService:
 	async def _clean_cache_after_cleaning(data_type: str):
 		"""清洗后清理相关缓存"""
 		cache_key_prefix = {
-			"daily_quotes": "daily_quotes",
+			"daily_quotes": "stock_daily",
 			"stock_list": "stock_list",
 		}.get(data_type, data_type)
 

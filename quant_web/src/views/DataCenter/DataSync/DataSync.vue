@@ -43,6 +43,7 @@ import SmartIcon from "@/components/common/SmartIcon.vue";
 import { useSyncTimer } from "@/composables/useSyncTimer";
 import { useSyncEventHandler } from "@/composables/useSyncEventHandler";
 import { useQualityMetrics } from "@/composables/useQualityMetrics";
+import { useBacktestPolling } from "@/composables/useBacktestPolling";
 
 const message = useMessage();
 const dialog = useDialog();
@@ -54,8 +55,6 @@ const pageLoading = ref(true);
 const pageError = ref(false);
 const isLoading = ref(false);
 const isCheckingStatus = ref(false);
-const statusPollingInterval = ref<ReturnType<typeof setInterval> | null>(null);
-const lastWsEventTime = ref(0);
 
 const syncStatus = ref<SyncStatusResponse | null>(null);
 const supportedDataTypes = ref<DataTypeInfo[]>([]);
@@ -66,6 +65,39 @@ const currentTaskId = ref<string>("");
 const { isRunning, formattedElapsedTime, formattedRemainingTime } =
   useSyncTimer(syncStatus);
 const { qualityScore } = useQualityMetrics(qualityData);
+
+// ---- 同步状态轮询（自适应间隔 + 容错，WS 为主 + HTTP 兜底） ----
+
+const fetchSyncStatus = async (id: string) => {
+  // 数据同步 API 返回 { status, results, progress, ... } 扁平结构
+  return await dataSyncService.getSyncStatus(id || undefined);
+};
+
+const { start: startPolling, stop: stopPolling } = useBacktestPolling(
+  currentTaskId,
+  {
+    onProgress: (status) => {
+      // WS 事件已实时更新 syncStatus 字段；轮询做全量覆盖兜底
+      syncStatus.value = status;
+    },
+    onCompleted: () => {
+      currentTaskId.value = "";
+      refreshRecentTasks();
+      refreshQualityData();
+    },
+    onFailed: () => {
+      currentTaskId.value = "";
+      refreshRecentTasks();
+      refreshQualityData();
+    },
+    onCancelled: () => {
+      currentTaskId.value = "";
+      refreshRecentTasks();
+      refreshQualityData();
+    },
+  },
+  { fetchTask: fetchSyncStatus, initialDelay: 1000 },
+);
 
 // --- 工作组状态（新7分组布局） ---
 const syncMeta = ref<SyncTypesMetaResponse | null>(null);
@@ -415,27 +447,26 @@ const recentHistoryDisplay = computed(() => {
   });
 });
 
-// --- WS 事件 ---
+// --- WS 事件（实时更新 syncStatus + 启停 HTTP 兜底轮询） ---
 useSyncEventHandler(syncStatus, {
   onStarted(taskId: string) {
-    lastWsEventTime.value = Date.now();
     currentTaskId.value = taskId;
-    if (!statusPollingInterval.value) startStatusPolling();
+    startPolling();
   },
   onCompleted() {
-    stopStatusPolling();
+    stopPolling();
     currentTaskId.value = "";
     refreshRecentTasks();
     refreshQualityData();
   },
   onFailed() {
-    stopStatusPolling();
+    stopPolling();
     currentTaskId.value = "";
     refreshRecentTasks();
     refreshQualityData();
   },
   onCancelled() {
-    stopStatusPolling();
+    stopPolling();
     currentTaskId.value = "";
     refreshRecentTasks();
     refreshQualityData();
@@ -468,7 +499,7 @@ const initializePage = async () => {
 
     if (status?.status === "running") {
       currentTaskId.value = status.task_id || "";
-      startStatusPolling();
+      startPolling();
     }
   } catch {
     pageError.value = true;
@@ -500,51 +531,16 @@ const checkSyncStatus = async () => {
   try {
     const status = await dataSyncService.getSyncStatus();
     syncStatus.value = status;
-    if (status.status === "running" && !statusPollingInterval.value)
-      startStatusPolling();
-    else if (status.status !== "running" && statusPollingInterval.value)
-      stopStatusPolling();
+    if (status.status === "running") {
+      currentTaskId.value = status.task_id || "";
+      startPolling();
+    } else if (status.status !== "running") {
+      stopPolling();
+    }
   } catch {
     message.error("获取同步状态失败");
   } finally {
     isCheckingStatus.value = false;
-  }
-};
-
-// --- 轮询 ---
-const startStatusPolling = () => {
-  if (statusPollingInterval.value) return;
-  statusPollingInterval.value = setInterval(async () => {
-    try {
-      const wsActive = Date.now() - lastWsEventTime.value < 5000;
-      const status = currentTaskId.value
-        ? await dataSyncService.getSyncStatus(currentTaskId.value)
-        : await dataSyncService.getSyncStatus();
-      if (wsActive) {
-        if (syncStatus.value) {
-          syncStatus.value.results = status.results;
-          syncStatus.value.updated_at = status.updated_at;
-          syncStatus.value.message = status.message;
-        }
-      } else {
-        syncStatus.value = status;
-      }
-      if (status.status !== "running" && status.status !== "pending") {
-        stopStatusPolling();
-        currentTaskId.value = "";
-        refreshRecentTasks();
-        refreshQualityData();
-      }
-    } catch {
-      // 超时不中止轮询，任务可能仍在运行
-    }
-  }, 3000);
-};
-
-const stopStatusPolling = () => {
-  if (statusPollingInterval.value) {
-    clearInterval(statusPollingInterval.value);
-    statusPollingInterval.value = null;
   }
 };
 
@@ -572,7 +568,7 @@ const handleBatchSync = async (opts?: { skipDates?: boolean }) => {
     message.success(response.message);
     if (response.task_id) {
       currentTaskId.value = response.task_id;
-      startStatusPolling();
+      startPolling();
     }
   } catch {
     message.error("连接服务器失败，请检查后端服务");
@@ -604,7 +600,7 @@ const handleCancelSync = () => {
     negativeText: "返回",
     onPositiveClick: () => {
       // 先关弹窗、停轮询，再发取消请求（不阻塞 UI）
-      stopStatusPolling();
+      stopPolling();
       dataSyncService
         .cancelSync()
         .then(() => {
@@ -637,7 +633,7 @@ onMounted(() => {
   initializePage();
 });
 onUnmounted(() => {
-  stopStatusPolling();
+  stopPolling();
 });
 
 watch(

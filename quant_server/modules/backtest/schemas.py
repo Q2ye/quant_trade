@@ -19,6 +19,7 @@ class BacktestCreateRequest(BaseModel):
 	initial_capital: float = Field(default=1000000.0, description="初始资金")
 	commission_rate: float = Field(default=0.0003, description="佣金费率")
 	slippage_rate: float = Field(default=0.0001, description="滑点费率")
+	symbols: Optional[List[str]] = Field(default=None, description="股票代码列表，不填则依赖策略自身股票池")
 	parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="回测参数，包含市场参数和策略参数")
 
 

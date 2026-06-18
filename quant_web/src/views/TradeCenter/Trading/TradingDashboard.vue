@@ -258,11 +258,16 @@
                   </div>
                 </template>
                 <div class="chart-wrapper">
-                  <KLineChart
-                    :symbol="selectedSymbol"
-                    :period="chartPeriod"
-                    @chart-click="handleChartClick"
-                    @data-loaded="handleKLineDataLoaded"
+                  <LightweightKLine
+                    :data="klineData"
+                    :maLines="[5, 10, 20]"
+                    :showVolume="true"
+                    :height="440"
+                    :loading="klineLoading"
+                    :error="klineError"
+                    @retry="loadKLineData"
+                    @crosshair="(d) => handleCrosshair(d)"
+                    @timeRangeChange="() => {}"
                   />
                 </div>
               </n-card>
@@ -295,6 +300,7 @@
 import {
   ref,
   computed,
+  watch,
   onMounted,
   onBeforeUnmount,
   defineAsyncComponent,
@@ -314,9 +320,10 @@ import {
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import OrderForm from "@/components/trade/OrderForm.vue";
-import KLineChart from "@/components/charts/KLineChart.vue";
+import LightweightKLine from "@/components/charts/LightweightKLine.vue";
 import tradeAPI from "@/api/trade";
 import signalsAPI from "@/api/signals";
+import marketAPI from "@/api/market";
 import webSocketService from "@/api/websocket";
 
 const ParticleBackground = defineAsyncComponent(
@@ -346,11 +353,34 @@ let _wsStatusTimer: ReturnType<typeof setInterval> | null = null;
 
 const selectedSymbol = ref("600519.SH");
 const chartPeriod = ref("daily");
+const klineLoading = ref(false);
+const klineError = ref(false);
+const klineData = ref<any[]>([]);
 const periodOptions = [
-  { label: "1分", value: "1min" },
-  { label: "5分", value: "5min" },
   { label: "日线", value: "daily" },
+  { label: "周线", value: "weekly" },
+  { label: "月线", value: "monthly" },
 ];
+
+const loadKLineData = async () => {
+  if (!selectedSymbol.value) return;
+  klineLoading.value = true;
+  klineError.value = false;
+  try {
+    const data = await marketAPI.getStockHistory(selectedSymbol.value, { symbol: selectedSymbol.value, frequency: chartPeriod.value as any });
+    klineData.value = (Array.isArray(data) ? data : []).map((d: any) => ({
+      trade_date: d.timestamp || d.trade_date || "",
+      open: d.open ?? null,
+      high: d.high ?? null,
+      low: d.low ?? null,
+      close: d.close ?? null,
+      vol: d.volume ?? null,
+    }));
+  } catch { klineError.value = true; } finally { klineLoading.value = false; }
+};
+
+watch(selectedSymbol, () => { loadKLineData(); });
+watch(chartPeriod, () => { loadKLineData(); });
 
 // ============================================================
 // Account
@@ -419,10 +449,9 @@ const handleOrderPreview = (order: any) => {
       `金额 ¥${order.amount.toLocaleString()}`,
   );
 };
-const handleChartClick = (data: any) => {
-  /* future: set order price */
+const handleCrosshair = (data: { time: string; open: number; close: number; high: number; low: number; volume: number }) => {
+  // 十字光标数据可用于联动下单面板
 };
-const handleKLineDataLoaded = (data: any) => {};
 
 const loadDashboardData = async () => {
   pageState.value = "loading";
@@ -492,6 +521,7 @@ const loadDashboardData = async () => {
 
 onMounted(() => {
   loadDashboardData();
+  loadKLineData();
 
   // ======================================================================
   // WebSocket 实时推送

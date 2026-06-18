@@ -53,9 +53,8 @@ export function useSyncEventHandler(
     }
   };
 
-  const subscribe = () => {
-    webSocketService.subscribeSyncStatus(handleSyncEvent);
-  };
+  // 自动订阅（组件挂载时立即激活 WS 通道）
+  webSocketService.subscribeSyncStatus(handleSyncEvent);
 
   const unsubscribe = () => {
     webSocketService.unsubscribe("events:sync", handleSyncEvent);
@@ -63,5 +62,5 @@ export function useSyncEventHandler(
 
   onUnmounted(unsubscribe);
 
-  return { subscribe, unsubscribe, handleSyncEvent };
+  return { unsubscribe, handleSyncEvent };
 }

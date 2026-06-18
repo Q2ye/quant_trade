@@ -1,4 +1,6 @@
-<!-- LightweightKLine.vue — lightweight-charts K线封装，替代 ECharts K线 -->
+<!-- LightweightKLine.vue — lightweight-charts K线图（重构版）
+     使用 useChartLifecycle / usePrimitiveManager / useTimeCoordinate
+     信号标记通过 SignalMarkerPrimitive 实现（替代 v5.2 移除的 setMarkers） -->
 <script setup lang="ts">
 import {
   ref,
@@ -10,27 +12,30 @@ import {
 } from "vue";
 import { NSkeleton, NEmpty, NResult, NButton } from "naive-ui";
 import {
-  createChart,
-  ColorType,
-  CrosshairMode,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesPrimitive,
   type CandlestickData,
   type HistogramData,
   type LineData,
   type Time,
 } from "lightweight-charts";
+import { useChartLifecycle } from "@/composables/useChartLifecycle";
+import { useTimeCoordinate } from "@/composables/useTimeCoordinate";
+import { usePrimitiveManager } from "@/composables/usePrimitiveManager";
+import { SignalMarkerPrimitive } from "./primitives/SignalMarker";
+import type { SignalMarkerData } from "./primitives/types";
 
 // ---- public types ----
 export interface SignalMarker {
   time: string; // 'YYYY-MM-DD'
   position: "aboveBar" | "belowBar";
-  color: string; // buy: '#ef5350', sell: '#26a69a'
+  color: string;
   shape: "arrowUp" | "arrowDown";
-  text: string; // 'MA金叉'
+  text: string;
   strategyName?: string;
 }
 
@@ -52,6 +57,8 @@ const props = withDefaults(
     loading?: boolean;
     error?: boolean;
     signalMarkers?: SignalMarker[];
+    /** 附加绘制原语 (趋势线/水平线/标注等) */
+    drawings?: ISeriesPrimitive<Time>[];
   }>(),
   {
     data: () => [],
@@ -61,6 +68,7 @@ const props = withDefaults(
     loading: false,
     error: false,
     signalMarkers: () => [],
+    drawings: () => [],
   },
 );
 
@@ -79,17 +87,31 @@ const emit = defineEmits<{
   timeRangeChange: [range: { from: number; to: number }];
 }>();
 
-const chartContainer = ref<HTMLDivElement>();
 const hasData = computed(() => props.data.length > 0);
+
+// ---- composables ----
+const {
+  chartContainer,
+  createChartInstance,
+  destroyChart,
+  handleResize: lifecycleResize,
+  handleThemeChange,
+  bindGlobalEvents,
+  unbindGlobalEvents,
+  getChart,
+} = useChartLifecycle({ height: props.height });
+
+const { markDirty, updateCache } = useTimeCoordinate();
+const primitiveManager = usePrimitiveManager();
 
 let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick", Time> | null = null;
 let volumeSeries: ISeriesApi<"Histogram", Time> | null = null;
 const maSeriesList: ISeriesApi<"Line", Time>[] = [];
 
-// ---- MA colors ----
 const maColors = ["#ff9800", "#448AFF", "#E040FB", "#00bcd4", "#ff5722"];
 
+// ---- helpers ----
 function toTime(d: string): Time {
   return (d?.slice(0, 10) || d) as Time;
 }
@@ -119,64 +141,21 @@ function calcMA(data: CandlestickData[], period: number): LineData[] {
   return result;
 }
 
-function isDarkMode(): boolean {
-  const bg = getComputedStyle(document.documentElement).getPropertyValue(
-    "--body-color",
-  );
-  if (bg) {
-    const rgb = bg.match(/\d+/g);
-    if (rgb && rgb.length >= 3) {
-      return (Number(rgb[0]) + Number(rgb[1]) + Number(rgb[2])) / 3 < 128;
-    }
-  }
-  return true;
-}
-
-function createChartInstance() {
-  if (!chartContainer.value || chart) return;
-  // 容器必须有有效尺寸，否则 lightweight-charts 无法初始化
-  const w = chartContainer.value.clientWidth;
+// ---- 创建图表实例（K线特有配置） ----
+function initKLineChart() {
+  const el = chartContainer.value;
+  if (!el || chart) return;
+  const w = el.clientWidth;
   if (!w || w <= 0) return;
-  const isDark = isDarkMode();
 
-  try {
-    chart = createChart(chartContainer.value, {
-      layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: isDark ? "#a0a0a0" : "#666666",
-      },
-      grid: {
-        vertLines: {
-          color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-        },
-        horzLines: {
-          color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-        },
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: {
-        borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
-      },
-      timeScale: {
-        borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
-        timeVisible: true,
-      },
-      handleScroll: { vertTouchDrag: false },
-      width: w,
-      height: props.height,
-    });
-    if (!chart || typeof chart.addSeries !== "function") {
-      console.warn("[LightweightKLine] createChart 返回无效实例，跳过渲染");
-      chart = null;
-      return;
-    }
-  } catch (e) {
-    console.warn("[LightweightKLine] createChart 失败:", e);
+  chart = createChartInstance();
+  if (!chart || typeof chart.addSeries !== "function") {
+    console.warn("[LightweightKLine] createChart 返回无效实例");
     chart = null;
     return;
   }
 
-  // Candlestick — v5 API: addSeries(CandlestickSeries, options)
+  // Candlestick
   candleSeries = chart.addSeries(CandlestickSeries, {
     upColor: "#e83939",
     downColor: "#1dbd60",
@@ -186,7 +165,7 @@ function createChartInstance() {
     wickDownColor: "#1dbd60",
   }) as ISeriesApi<"Candlestick", Time>;
 
-  // Volume — v5 API: addSeries(HistogramSeries, options)
+  // Volume
   if (props.showVolume) {
     volumeSeries = chart.addSeries(HistogramSeries, {
       color: "#26a69a80",
@@ -198,7 +177,13 @@ function createChartInstance() {
     });
   }
 
-  // Crosshair event → emit
+  // Bind primitive manager to candle series
+  primitiveManager.bind(
+    candleSeries,
+    () => chart?.timeScale().fitContent(),
+  );
+
+  // Crosshair
   chart.subscribeCrosshairMove((param) => {
     if (!param.time || param.point === undefined || !candleSeries) return;
     const cd = param.seriesData.get(candleSeries);
@@ -217,19 +202,26 @@ function createChartInstance() {
     }
   });
 
-  // Time range change → emit
+  // Time range change → emit + dirty check
   chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
     if (range) {
+      markDirty();
+      updateCache(range, chart!.timeScale().width());
       emit("timeRangeChange", {
         from: typeof range.from === "number" ? range.from : 0,
         to: typeof range.to === "number" ? range.to : 0,
       });
     }
   });
+
+  return chart;
 }
 
+// ---- 更新图表数据 ----
 function updateChartData() {
-  if (!candleSeries) createChartInstance();
+  if (!candleSeries) {
+    initKLineChart();
+  }
   if (!candleSeries || !chart) return;
 
   const ohlc = transformData(props.data);
@@ -237,7 +229,7 @@ function updateChartData() {
 
   candleSeries.setData(ohlc);
 
-  // MA lines — v5 API: addSeries(LineSeries, options)
+  // MA lines — 增量更新
   maSeriesList.forEach((s) => chart!.removeSeries(s));
   maSeriesList.length = 0;
   props.maLines.forEach((period, i) => {
@@ -258,19 +250,10 @@ function updateChartData() {
   if (volumeSeries) {
     const volData: HistogramData[] = ohlc.map((d, i) => {
       const raw = props.data[i];
-      const isUp = raw.close! >= raw.open!;
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      if (isUp) {
-        r = 232;
-        g = 57;
-        b = 57;
-      } else {
-        r = 29;
-        g = 189;
-        b = 96;
-      }
+      const isUp = (raw.close ?? 0) >= (raw.open ?? 0);
+      const r = isUp ? 232 : 29;
+      const g = isUp ? 57 : 189;
+      const b = isUp ? 57 : 96;
       return {
         time: d.time,
         value: raw.vol ?? 0,
@@ -280,83 +263,136 @@ function updateChartData() {
     volumeSeries.setData(volData);
   }
 
-  // Signal markers — v5.2 移除了 setMarkers，内置函数已不存在，跳过
-  // 信号标记功能待 lightweight-charts v5 原语 API 稳定后接入
-
   chart.timeScale().fitContent();
 }
 
-// ---- watch data ----
+// ---- 信号标记：StaticMarker → SignalMarkerPrimitive ----
+function syncSignalMarkers(markers: SignalMarker[]) {
+  if (!candleSeries) return;
+
+  // 获取已有的 signal marker 原语 ID
+  const existingIds = primitiveManager
+    .getAttachedIds()
+    .filter((id) => id.startsWith("signal-"));
+  const wantedIds = new Set(markers.map((_, i) => `signal-${i}`));
+
+  // 移除不再需要的
+  for (const id of existingIds) {
+    if (!wantedIds.has(id)) {
+      primitiveManager.detach(id);
+    }
+  }
+
+  // 创建/更新标记原语
+  markers.forEach((m, i) => {
+    const id = `signal-${i}`;
+    const signalData: SignalMarkerData = {
+      id,
+      type: "signalMarker",
+      time: toTime(m.time),
+      price: 0, // 将在 updateChartData 后根据 K 线数据计算
+      direction: m.shape === "arrowUp" ? "buy" : "sell",
+      shape: m.shape,
+      color: m.color,
+      text: m.text,
+      strategyName: m.strategyName,
+    };
+
+    // 从原始数据中查找对应 bar 的价格
+    const bar = props.data.find(
+      (d) => toTime(d.trade_date) === toTime(m.time),
+    );
+    if (bar) {
+      signalData.price =
+        m.position === "aboveBar"
+          ? (bar.high ?? bar.close ?? 0)
+          : (bar.low ?? bar.close ?? 0);
+    }
+
+    // 已存在则更新，否则创建
+    const existingIds = primitiveManager.getAttachedIds();
+    if (existingIds.includes(id)) {
+      // 需要获取已附加的原语实例来更新——这里简化为 detach + 重建
+      primitiveManager.detach(id);
+    }
+    const primitive = new SignalMarkerPrimitive(signalData);
+    primitiveManager.attach(id, primitive);
+  });
+}
+
+// ---- 同步绘制原语 ----
+function syncDrawings(drawings: ISeriesPrimitive<Time>[]) {
+  if (!candleSeries) return;
+  // 清除旧的 drawing 原语
+  const existingDrawIds = primitiveManager
+    .getAttachedIds()
+    .filter((id) => id.startsWith("draw-"));
+  for (const id of existingDrawIds) {
+    primitiveManager.detach(id);
+  }
+  // 附加新的
+  drawings.forEach((primitive, i) => {
+    primitiveManager.attach(`draw-${i}`, primitive);
+  });
+}
+
+// ---- watchers ----
 watch(
   () => props.data,
   async () => {
     if (!props.data.length) return;
-    // 等待 DOM 更新确保 chartContainer ref 已挂载
     await nextTick();
     if (!chartContainer.value) return;
-    if (!chart) createChartInstance();
-    if (chart) updateChartData();
+    if (!chart) initKLineChart();
+    if (chart) {
+      updateChartData();
+      // 数据更新后重新同步信号标记（因为价格可能变化）
+      if (props.signalMarkers.length > 0) {
+        syncSignalMarkers(props.signalMarkers);
+      }
+    }
   },
   { deep: true },
 );
 
-// ---- watch signalMarkers (v5.2 removed setMarkers; skip for now) ----
 watch(
   () => props.signalMarkers,
-  () => {
-    // 信号标记功能待 lightweight-charts v5 原语 API 稳定后接入
+  (markers) => {
+    if (!candleSeries || !chart) return;
+    syncSignalMarkers(markers);
   },
+  { deep: true },
 );
 
-// ---- resize ----
-function handleResize() {
-  if (chart && chartContainer.value) {
-    chart.applyOptions({
-      width: chartContainer.value.clientWidth,
-      height: props.height,
-    });
-  }
-}
+watch(
+  () => props.drawings,
+  (drawings) => {
+    if (!candleSeries || !chart) return;
+    syncDrawings(drawings ?? []);
+  },
+  { deep: true },
+);
 
-function handleThemeChange() {
-  if (!chart) return;
-  const isDark = isDarkMode();
-  chart.applyOptions({
-    layout: {
-      background: { type: ColorType.Solid, color: "transparent" },
-      textColor: isDark ? "#a0a0a0" : "#666666",
-    },
-    grid: {
-      vertLines: {
-        color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-      },
-      horzLines: {
-        color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-      },
-    },
-    rightPriceScale: {
-      borderColor: isDark
-        ? "rgba(255,255,255,0.1)"
-        : "rgba(0,0,0,0.1)",
-    },
-    timeScale: {
-      borderColor: isDark
-        ? "rgba(255,255,255,0.1)"
-        : "rgba(0,0,0,0.1)",
-    },
-  });
-}
-
+// ---- lifecycle ----
 onMounted(() => {
-  createChartInstance();
-  if (props.data.length) updateChartData();
-  window.addEventListener("resize", handleResize);
-  window.addEventListener("theme-change", handleThemeChange);
+  if (props.data.length) {
+    const inst = createChartInstance();
+    if (inst) {
+      updateChartData();
+      if (props.signalMarkers.length > 0) {
+        syncSignalMarkers(props.signalMarkers);
+      }
+      if (props.drawings && props.drawings.length > 0) {
+        syncDrawings(props.drawings);
+      }
+    }
+  }
+  bindGlobalEvents();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", handleResize);
-  window.removeEventListener("theme-change", handleThemeChange);
+  unbindGlobalEvents();
+  primitiveManager.dispose();
   maSeriesList.length = 0;
   candleSeries = null;
   volumeSeries = null;
@@ -366,7 +402,6 @@ onBeforeUnmount(() => {
   }
 });
 
-// ---- exposed ----
 defineExpose({
   fitContent() {
     chart?.timeScale().fitContent();
@@ -375,28 +410,27 @@ defineExpose({
     chart?.timeScale().setVisibleRange({ from, to } as any);
   },
   resize() {
-    handleResize();
+    lifecycleResize();
+  },
+  getChart() {
+    return chart;
   },
 });
 </script>
 
 <template>
   <div class="lw-kline-container">
-    <!-- 状态覆盖层（绝对定位，不影响 chart div 的存在） -->
     <n-skeleton v-if="loading" height="420px" width="100%" />
     <n-result v-else-if="error" status="500" title="K线数据加载失败">
-      <template #footer
-        ><n-button type="primary" @click="emit('retry')"
-          >重试</n-button
-        ></template
-      >
+      <template #footer>
+        <n-button type="primary" @click="emit('retry')">重试</n-button>
+      </template>
     </n-result>
     <n-empty
       v-else-if="!hasData"
       description="暂无K线数据"
       style="padding: 80px"
     />
-    <!-- chart 容器始终渲染，使用 v-show 而非 v-if/v-else，确保 ref 可用 -->
     <div
       ref="chartContainer"
       class="lw-chart"

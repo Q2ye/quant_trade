@@ -40,9 +40,9 @@ class GridSearch:
             
             logger.info(f"开始网格搜索优化，参数空间大小: {self._calculate_space_size(parameters)}")
             
-            # 生成参数组合
+            # 生成参数组合（标量值自动包装为单元素列表）
             param_names = list(parameters.keys())
-            param_values = list(parameters.values())
+            param_values = [self._ensure_list(v) for v in parameters.values()]
             param_combinations = list(itertools.product(*param_values))
             
             # 并行执行目标函数评估
@@ -76,17 +76,26 @@ class GridSearch:
             raise
     
     @staticmethod
-    def _calculate_space_size(parameters: Dict[str, List[Any]]) -> int:
+    def _ensure_list(value: Any) -> List[Any]:
+        """将标量值包装为列表，列表值原样返回"""
+        if isinstance(value, (list, tuple, set)):
+            return list(value)
+        return [value]
+
+    @staticmethod
+    def _calculate_space_size(parameters: Dict[str, Any]) -> int:
         """
         计算参数空间大小
-        
+
         Args:
-            parameters: 参数范围
-            
+            parameters: 参数范围 — 值可以是 list（候选值）或标量（固定值）
+
         Returns:
             参数空间大小
         """
         size = 1
         for values in parameters.values():
-            size *= len(values)
+            if isinstance(values, (list, tuple, set)):
+                size *= len(values)
+            # 标量值 → 只有 1 种可能，乘 1 不改变 size
         return size

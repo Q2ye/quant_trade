@@ -302,7 +302,8 @@ class TradeRepository(BaseRepository[Trade]):
 			start_time: Optional[datetime] = None,
 			end_time: Optional[datetime] = None,
 			skip: int = 0,
-			limit: int = 100
+			limit: int = 100,
+			with_order: bool = False,
 	) -> List[Trade]:
 		"""
 		根据策略ID获取成交记录（需要关联订单表）
@@ -313,6 +314,7 @@ class TradeRepository(BaseRepository[Trade]):
 			end_time: 结束时间
 			skip: 跳过记录数
 			limit: 限制记录数
+			with_order: 是否关联加载 Order 对象
 
 		Returns:
 			成交记录列表

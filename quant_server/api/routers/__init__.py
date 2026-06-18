@@ -10,6 +10,7 @@ from .strategy_router import router as strategy_router
 from .trade_router import router as trade_router
 from .basket_router import router as basket_router
 from .backtest_router import router as backtest_router
+from .template_router import router as template_router
 from .account_router import router as account_router
 from .analysis_router import router as analysis_router
 from .monitor_router import router as monitor_router
@@ -24,6 +25,7 @@ __all__ = [
     "trade_router",
     "basket_router",
     "backtest_router",
+    "template_router",
     "account_router",
     "analysis_router",
     "monitor_router",
@@ -40,6 +42,7 @@ ROUTERS = [
     trade_router,
     basket_router,
     backtest_router,
+    template_router,
     account_router,
     analysis_router,
     monitor_router,

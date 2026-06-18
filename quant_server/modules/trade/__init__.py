@@ -16,7 +16,29 @@ from .utils import *
 
 from .constants import *
 from .schemas import *
-from .handlers import *
+from .handlers import (
+    # TradeHandler 包装函数
+    get_order_list,
+    get_order_detail,
+    create_order,
+    cancel_order,
+    get_position_list,
+    get_position_detail,
+    execute_signal,
+    get_trade_history,
+    get_account_summary,
+    check_trade_module_health,
+    # BasketHandler 包装函数
+    get_basket_list,
+    get_basket_detail,
+    create_basket_item,
+    update_basket_item,
+    delete_basket_item,
+    add_basket_item,
+    adjust_basket_weight,
+    remove_basket_item,
+    get_basket_performance,
+)
 
 # 交易模块版本
 __version__ = "1.0.0"
@@ -198,6 +220,27 @@ __all__ = [
     # 工具
     "CostCalculator",
     "OrderValidator",
+    # Handler 包装函数 — 订单/持仓/信号
+    "get_order_list",
+    "get_order_detail",
+    "create_order",
+    "cancel_order",
+    "get_position_list",
+    "get_position_detail",
+    "execute_signal",
+    "get_trade_history",
+    "get_account_summary",
+    "check_trade_module_health",
+    # Handler 包装函数 — 篮子管理
+    "get_basket_list",
+    "get_basket_detail",
+    "create_basket_item",
+    "update_basket_item",
+    "delete_basket_item",
+    "add_basket_item",
+    "adjust_basket_weight",
+    "remove_basket_item",
+    "get_basket_performance",
     # 其他
     "initialize",
     "shutdown",

@@ -3,6 +3,7 @@
 策略基类
 所有具体策略的父类，定义策略的通用接口和方法
 """
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -79,6 +80,9 @@ class BaseStrategy(ABC):
 		# 策略上下文（运行时由外部注入）
 		self.context: Optional['StrategyContext'] = None
 
+		# 股票池 — 策略在 on_start 中可从 DB 加载，外部通过 universe property 读取
+		self._universe: List[str] = []
+
 		# 数据缓存
 		self._data_cache: Dict[str, pd.DataFrame] = {}
 		self._bar_count = 0
@@ -93,6 +97,20 @@ class BaseStrategy(ABC):
 		"""是否在运行"""
 		return self._is_running
 
+	@property
+	def universe (self) -> List[str]:
+		"""
+		策略股票池（公开只读 API）。
+
+		策略在 on_start() 中可从 DB 加载股票列表写入 self._universe，
+		外部模块（如 BacktestService）通过此 property 读取，避免直接
+		触碰 protected 成员 _universe。
+
+		Returns:
+			股票代码列表，未设置时返回空列表
+		"""
+		return self._universe
+
 	def initialize (self) -> None:
 		"""
 		初始化策略
@@ -105,25 +123,31 @@ class BaseStrategy(ABC):
 		self.on_init()
 		self._is_initialized = True
 
-	def start (self) -> None:
+	async def start (self) -> None:
 		"""
 		启动策略
 
 		调用on_start方法，执行策略启动逻辑
+		兼容 sync/async on_start
 		"""
 		if not self._is_initialized:
 			self.initialize()
 
-		self.on_start()
+		result = self.on_start()
+		if asyncio.iscoroutine(result):
+			await result
 		self._is_running = True
 
-	def stop (self) -> None:
+	async def stop (self) -> None:
 		"""
 		停止策略
 
 		调用on_stop方法，执行策略停止逻辑
+		兼容 sync/async on_stop
 		"""
-		self.on_stop()
+		result = self.on_stop()
+		if asyncio.iscoroutine(result):
+			await result
 		self._is_running = False
 
 	def on_init (self) -> None:
