@@ -38,6 +38,38 @@
               :value="`${(report.summary.winRate * 100).toFixed(1)}%`"
             />
           </div>
+          <div
+            v-if="report.excessMetrics && report.excessMetrics.aligned_days"
+            class="benchmark-stats"
+          >
+            <h4 style="margin: 16px 0 10px; color: var(--n-text-color-2);">
+              基准对比（{{
+                report.excessMetrics.low_confidence ? "样本偏少 · " : ""
+              }}对齐 {{ report.excessMetrics.aligned_days }} 个交易日）
+            </h4>
+            <div class="summary-stats" style="margin-top: 0;">
+              <StatCard
+                title="超额收益"
+                :value="`${(report.excessMetrics.excess_annual_return * 100).toFixed(2)}%`"
+                :trend="report.excessMetrics.excess_annual_return > 0 ? 'up' : 'down'"
+              />
+              <StatCard title="Alpha" :value="report.excessMetrics.alpha.toFixed(4)" />
+              <StatCard title="Beta" :value="report.excessMetrics.beta.toFixed(2)" />
+              <StatCard
+                title="信息比率"
+                :value="report.excessMetrics.information_ratio.toFixed(2)"
+              />
+              <StatCard
+                title="基准收益"
+                :value="`${(report.excessMetrics.benchmark_annual_return * 100).toFixed(2)}%`"
+                :trend="report.excessMetrics.benchmark_annual_return > 0 ? 'up' : 'down'"
+              />
+              <StatCard
+                title="跟踪误差"
+                :value="`${(report.excessMetrics.tracking_error * 100).toFixed(2)}%`"
+              />
+            </div>
+          </div>
         </div>
       </template>
 
@@ -56,6 +88,7 @@
             ref="equityChartRef"
             :data="report.equityCurve"
             :benchmark="report.benchmark"
+            :show-excess="report.benchmark.length > 0"
             :height="400"
             :primitives="equityPrimitives"
           />
@@ -381,6 +414,7 @@ const report = ref({
   dailyTurnover: [] as any[],
   profitDistribution: { bins: [] as number[], counts: [] as number[] },
   trades: [] as any[],
+  excessMetrics: null as Record<string, any> | null,
 });
 
 const strategy = computed(
@@ -441,10 +475,17 @@ const loadReport = async () => {
         turnover: p.turnover ?? 0,
       })),
       profitDistribution: aggregateProfitDistribution(tr),
+      excessMetrics: r.excess_metrics && Object.keys(r.excess_metrics).length > 0
+        ? r.excess_metrics
+        : null,
       trades: tr.map((t: any) => {
         const side = t.side || t.direction || '';
         const qty = Number(t.volume || t.quantity || 0);
         const px = Number(t.price || 0);
+        // v1.4: 读取实际手续费（Broker 在 match_orders 中计算）
+        const commission = Number(t.commission || 0);
+        const stampTax = Number(t.stamp_tax || 0);
+        const transferFee = Number(t.transfer_fee || 0);
         return {
           id: t.id || t.trade_id,
           symbol: t.symbol || t.ts_code || '',
@@ -454,7 +495,7 @@ const loadReport = async () => {
           price: px,
           quantity: qty,
           amount: px * qty,
-          fee: 0,
+          fee: commission + stampTax + transferFee,
         };
       }),
     };

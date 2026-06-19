@@ -308,6 +308,21 @@ class StrategyManager(EngineBase):
                 strategy_signals.extend(strategy.signals)
                 strategy.clear_signals()
 
+            # v1.5: 信号验证 — 过滤不合规信号
+            valid_signals = []
+            for sig in strategy_signals:
+                try:
+                    if strategy.validate_signal(sig):
+                        valid_signals.append(sig)
+                    else:
+                        logger.warning(
+                            f"信号验证失败: {getattr(sig, 'ts_code', '?')} "
+                            f"{getattr(sig, 'direction', '?')}"
+                        )
+                except Exception:
+                    valid_signals.append(sig)
+            strategy_signals = valid_signals
+
             if strategy_signals:
                 state.pending_signals.extend(strategy_signals)
                 await self._publish_signals(strategy_id, strategy_signals)

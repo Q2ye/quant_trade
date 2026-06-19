@@ -141,6 +141,9 @@ class BacktestResult:
 	daily_returns: List[Dict] = None  # 每日收益率/盈亏 [{trade_date, daily_return, daily_pnl}]
 	daily_turnover: List[Dict] = None  # 每日成交额 [{trade_date, turnover}]
 
+	# ---- v1.4: 基准对比指标 ----
+	excess_metrics: Dict = None  # {alpha, beta, information_ratio, tracking_error, excess_annual_return, low_confidence}
+
 	def __post_init__(self):
 		"""dataclass 初始化后钩子：确保列表字段不为 None，避免下游空指针。"""
 		if self.equity_curve is None:
@@ -157,6 +160,8 @@ class BacktestResult:
 			self.daily_returns = []
 		if self.daily_turnover is None:
 			self.daily_turnover = []
+		if self.excess_metrics is None:
+			self.excess_metrics = {}
 
 	def to_dict(self) -> Dict[str, Any]:
 		"""
@@ -168,15 +173,15 @@ class BacktestResult:
 		return {
 			"task_id": self.task_id,
 			"strategy_id": self.strategy_id,
-			"total_return": self.total_return,
-			"annual_return": self.annual_return,
-			"sharpe_ratio": self.sharpe_ratio,
-			"max_drawdown": self.max_drawdown,
-			"win_rate": self.win_rate,
-			"profit_factor": self.profit_factor,
+			"total_return": self._sanitize_float(self.total_return),
+			"annual_return": self._sanitize_float(self.annual_return),
+			"sharpe_ratio": self._sanitize_float(self.sharpe_ratio),
+			"max_drawdown": self._sanitize_float(self.max_drawdown),
+			"win_rate": self._sanitize_float(self.win_rate),
+			"profit_factor": self._sanitize_float(self.profit_factor),
 			"num_trades": self.num_trades,
-			"avg_trade_return": self.avg_trade_return,
-			"volatility": self.volatility,
+			"avg_trade_return": self._sanitize_float(self.avg_trade_return),
+			"volatility": self._sanitize_float(self.volatility),
 			"equity_curve": self.equity_curve,
 			"drawdown_curve": self.drawdown_curve,
 			"trades": self.trades,
@@ -184,7 +189,16 @@ class BacktestResult:
 			"benchmark_curve": self.benchmark_curve or [],
 			"daily_returns": self.daily_returns or [],
 		"daily_turnover": self.daily_turnover or [],
+		"excess_metrics": self.excess_metrics or {},
 		}
+
+	@staticmethod
+	def _sanitize_float(v):
+		"""Replace NaN/Inf with 0.0 for PostgreSQL JSONB compatibility."""
+		import math
+		if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+			return 0.0
+		return v
 
 
 # =============================================================================
@@ -280,8 +294,8 @@ class BacktestEngine(EngineBase):
 			)
 			await db.execute(stmt)
 			await db.commit()
-		except Exception:
-			pass  # 进度更新失败不影响回测主流程
+		except Exception as e:
+			logger.warning(f"进度更新失败 ({task_id} {pct}%): {e}")
 
 	def set_db_session(self, session) -> None:
 		"""
@@ -394,18 +408,33 @@ class BacktestEngine(EngineBase):
 			logger.warning(f"策略 {strategy_id} 未在 StrategyManager 中加载，尝试直接注册")
 
 		# =====================================================================
-		# 第 3 步：加载历史行情数据
+		# 第 3 步：加载历史行情数据 + 基准指数数据（顺序执行）
+		#
+		# v1.4: 基准数据与策略数据先后加载。不使用 asyncio.gather 并行，
+		# 因为两次调用共用同一个 DataFeedEngine/AsyncSession，并发查询
+		# 会破坏 session 事务状态，导致后续 _update_task_progress 的
+		# db.commit() 静默失败，前端轮询永远读到 progress=0。
 		# =====================================================================
-		if self.data_feed:
-			df = await self.data_feed.load_historical_data(
-				symbols=symbols,
-				start_date=start_date,
-				end_date=end_date,
-			)
-		else:
-			# DataFeedEngine 未注入 → 无法加载数据，返回空结果
+		if not self.data_feed:
 			logger.error("DataFeedEngine 未注入，无法加载数据")
 			return BacktestResult(task_id=task_id, strategy_id=strategy_id)
+
+		df = await self.data_feed.load_historical_data(
+			symbols=symbols,
+			start_date=start_date,
+			end_date=end_date,
+		)
+
+		bm_df = None
+		if benchmark_ts_code:
+			logger.info(f"加载基准数据: {benchmark_ts_code} ({start_date}~{end_date})")
+			bm_df = await self._load_benchmark_data(
+				benchmark_ts_code, start_date, end_date
+			)
+			if bm_df is not None and not bm_df.empty:
+				logger.info(f"基准数据已加载: {benchmark_ts_code} ({len(bm_df)} 行)")
+			else:
+				logger.warning(f"基准数据为空: {benchmark_ts_code}，三源（stock/index/etf）均无数据")
 
 		if df.empty:
 			logger.warning(f"回测数据为空: {symbols} {start_date}~{end_date}")
@@ -418,6 +447,7 @@ class BacktestEngine(EngineBase):
 			f"回测 {task_id}: 数据加载完成, {len(symbols)} 只股票, "
 			f"{df.shape[0]} 行, {total_days} 个交易日 "
 			f"({trading_days[0]} ~ {trading_days[-1]})"
+			f"{f', 基准={benchmark_ts_code}' if benchmark_ts_code else ''}"
 		)
 
 		# =====================================================================
@@ -455,48 +485,37 @@ class BacktestEngine(EngineBase):
 			if manager:
 				signals = await manager.handle_bar_batch(trade_date, bars)
 
-				# ---- 4c. 信号转订单（挂单，次日 match_orders 才会成交） ----
-				for sig in signals:
-					# 提取信号字段（兼容多种信号数据格式）
-					ts_code = getattr(sig, "ts_code", "")
-					direction = (
-						sig.direction.value
-						if hasattr(sig, "direction") and hasattr(sig.direction, "value")
-						else str(sig.direction)
-					)
-					price = getattr(sig, "price", 0.0) or 0.0
-					quantity = getattr(sig, "quantity", 0) or 0
-					signal_amount = getattr(sig, "amount", 0.0) or 0.0
+			# ---- 4c. 信号转订单（v1.5: Sizer 计算数量 → Broker 挂单） ----
+			from modules.backtest.engines.sizer import select_sizer
 
-					# 价格兜底：信号未指定价格时使用当日 bar 的收盘价
-					if price <= 0 and ts_code in bar_dict:
-						price = float(bar_dict[ts_code].close or 0.0)
+			for sig in signals:
+				ts_code = getattr(sig, "ts_code", "")
+				direction = (
+					sig.direction.value
+					if hasattr(sig, "direction") and hasattr(sig.direction, "value")
+					else str(sig.direction)
+				)
+				price = getattr(sig, "price", 0.0) or 0.0
 
-					# 数量兜底：quantity=0 且指定了 amount（交易金额）→ 按资金反推股数
-					if quantity <= 0 and signal_amount > 0 and price > 0:
-						quantity = int(signal_amount / price)
-						logger.debug(
-							f"回测 {task_id}: [{trade_date}] 信号 {ts_code} "
-							f"amount={signal_amount:.0f} → {quantity}股 @ {price:.2f}"
-						)
+				# 价格兜底
+				if price <= 0 and ts_code in bar_dict:
+					price = float(bar_dict[ts_code].close or 0.0)
+				if price <= 0:
+					continue
 
-					# 经过兜底后仍无有效价格 → 跳过该信号
-					if price <= 0:
-						logger.warning(
-							f"回测 {task_id}: [{trade_date}] 信号 {ts_code} "
-							f"无有效价格，跳过"
-						)
-						continue
+				# Sizer 计算数量（策略层不关心具体股数）
+				sizer = select_sizer(sig)
+				current_qty = 0
+				pos = broker.positions.get(ts_code)
+				if pos:
+					current_qty = pos.quantity
+				quantity = sizer.calculate(sig, bar_dict.get(ts_code), broker.cash, current_qty)
+				if quantity <= 0:
+					continue
 
-					# 提交订单到 Broker
-					broker.submit_order(ts_code, direction, price, quantity)
-					signal_count += 1
-					day_signals += 1
-					logger.debug(
-						f"回测 {task_id}: [{trade_date}] 信号 {ts_code} "
-						f"{direction} @ {price:.2f} x{quantity}"
-					)
-
+				broker.submit_order(ts_code, direction, price, quantity)
+				signal_count += 1
+				day_signals += 1
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----
 			broker.mark_to_market(bar_dict)
 
@@ -535,13 +554,22 @@ class BacktestEngine(EngineBase):
 			initial_capital=initial_capital,
 		)
 
-		# 基准曲线计算（需异步加载数据，放在 async run() 中）
-		result.benchmark_curve = await self._load_benchmark_curve(
-			benchmark_ts_code=benchmark_ts_code,
-			start_date=str(equity_df["trade_date"].iloc[0])[:10] if not equity_df.empty else None,
-			end_date=str(equity_df["trade_date"].iloc[-1])[:10] if not equity_df.empty else None,
-			initial_capital=initial_capital,
-		)
+		# 基准曲线计算（v1.4: 使用 Step 3 预加载的 bm_df，无需再次 DB 查询）
+		if bm_df is not None and not bm_df.empty:
+			result.benchmark_curve = self._build_benchmark_curve(
+				bm_df=bm_df,
+				initial_capital=initial_capital,
+			)
+		elif benchmark_ts_code:
+			logger.warning(f"基准数据为空: {benchmark_ts_code}")
+
+		# 超额收益指标（v1.4: 基准非空时计算 Alpha / Beta / 信息比率）
+		if result.benchmark_curve:
+			result.excess_metrics = self._calculate_excess_metrics(
+				result=result,
+				benchmark_curve=result.benchmark_curve,
+				annual_return=result.annual_return,
+			)
 
 		# =====================================================================
 		# 第 6 步：结果持久化到数据库
@@ -686,7 +714,10 @@ class BacktestEngine(EngineBase):
 		if len(equity_df) >= 2:
 			# v1.3: 使用交易日数（而非日历天数）计算年化收益
 			trading_days = len(equity_df)
-			result.annual_return = (1 + result.total_return) ** (252 / max(trading_days, 1)) - 1
+			if result.total_return <= -1:
+				result.annual_return = -1.0
+			else:
+				result.annual_return = (1 + result.total_return) ** (252 / max(trading_days, 1)) - 1
 
 			# 日收益率序列（v1.3: 使用总资产的百分比变化 pct_change）
 			daily_returns = equity_df["total_assets"].pct_change().dropna()
@@ -701,12 +732,16 @@ class BacktestEngine(EngineBase):
 		if "max_drawdown" in equity_df.columns:
 			result.max_drawdown = float(equity_df["max_drawdown"].max())
 
-		# ---- 回撤曲线（映射列名 max_drawdown → drawdown） ----
-		result.drawdown_curve = (
-			equity_df[["trade_date", "max_drawdown"]]
-			.rename(columns={"max_drawdown": "drawdown"})
-			.to_dict("records")
-		)
+		# ---- 回撤曲线（v1.5: 逐点当前回撤，非累计最大值） ----
+		peak = initial_capital
+		dds = []
+		for _, row in equity_df.iterrows():
+			ta = float(row["total_assets"])
+			if ta > peak:
+				peak = ta
+			dd = (peak - ta) / peak if peak > 0 else 0.0
+			dds.append({"trade_date": str(row["trade_date"])[:10], "drawdown": round(dd, 6)})
+		result.drawdown_curve = dds
 
 		# ---- 交易分析 ----
 		result.num_trades = len(trades)
@@ -718,9 +753,12 @@ class BacktestEngine(EngineBase):
 			wins = [p for p in trade_pnls if p > 0]
 			losses = [p for p in trade_pnls if p <= 0]
 			result.win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0
-			result.profit_factor = (
-				sum(wins) / abs(sum(losses)) if losses and sum(losses) != 0 else 0.0
-			)
+			if losses and sum(losses) != 0:
+				result.profit_factor = sum(wins) / abs(sum(losses))
+			elif wins:
+				result.profit_factor = 999999.0  # 全胜，无亏损
+			else:
+				result.profit_factor = 0.0
 			result.avg_trade_return = (
 				sum(trade_pnls) / len(trade_pnls) if trade_pnls else 0.0
 			)
@@ -754,29 +792,114 @@ class BacktestEngine(EngineBase):
 		else:
 			result.daily_turnover = []
 
+		# ---- 月度收益（v1.5: 按月分组计算，排除首尾不完整月份） ----
+		if len(equity_df) >= 2:
+			equity_df_copy = equity_df.copy()
+			equity_df_copy["month"] = equity_df_copy["trade_date"].astype(str).str[:7]
+			monthly_groups = equity_df_copy.groupby("month")  # DataFrame groupby，get_group 返回 DataFrame
+			months = sorted(monthly_groups.groups.keys())
+			monthly = []
+			for i, m in enumerate(months):
+				try:
+					grp = monthly_groups.get_group(m)
+				except Exception:
+					continue
+				if i == 0 or i == len(months) - 1:
+					if len(grp) < 10:
+						continue
+				start_eq = float(grp["total_assets"].iloc[0])
+				end_eq = float(grp["total_assets"].iloc[-1])
+				ret = (end_eq - start_eq) / start_eq if start_eq > 0 else 0.0
+				monthly.append({"month": m, "return": round(ret, 6)})
+			result.monthly_returns = monthly
+			if monthly:
+				logger.info(f"月度收益: {len(monthly)}/{len(months)} 个完整月份")
+
 		return result
 
-	async def _load_benchmark_curve(
+	async def _load_benchmark_data(
+		self, ts_code: str, start_date: str, end_date: str
+	) -> pd.DataFrame:
+		"""统一基准数据加载：按 stock / index / ETF 三源依次 fallback 查询。
+
+		三类数据源分别对应不同表：
+		  ① stock_adjusted_prices — 个股（如 600519.SH）
+		  ② index_daily           — 指数（如 000300.SH）
+		  ③ etf_daily             — ETF （如 510300.SH）
+		只要任一个表返回数据即停止，均无数据时返回空 DataFrame。
+		"""
+		try:
+			db = getattr(self, "_db_session", None)
+			if db is None:
+				return pd.DataFrame()
+			from sqlalchemy import text
+			from datetime import date as _date_class
+			sd = _date_class.fromisoformat(start_date) if isinstance(start_date, str) else start_date
+			ed = _date_class.fromisoformat(end_date) if isinstance(end_date, str) else end_date
+
+			# 统一查询模板：各表列名不同但都可以映射到统一输出列
+			sources = [
+				(
+					"stock_adjusted_prices",
+					"SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+					"FROM stock_adjusted_prices "
+					"WHERE ts_code = :code AND trade_date BETWEEN :start AND :end "
+					"AND adj_type = 'qfq' AND freq = 'D' "
+					"ORDER BY trade_date ASC",
+				),
+				(
+					"index_daily",
+					"SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+					"FROM index_daily "
+					"WHERE ts_code = :code AND trade_date BETWEEN :start AND :end "
+					"ORDER BY trade_date ASC",
+				),
+				(
+					"etf_daily",
+					"SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+					"FROM etf_daily "
+					"WHERE ts_code = :code AND trade_date BETWEEN :start AND :end "
+					"ORDER BY trade_date ASC",
+				),
+			]
+
+			params = {"code": ts_code, "start": sd, "end": ed}
+			for table_name, query in sources:
+				try:
+					result = await db.execute(text(query), params)
+					rows = result.fetchall()
+					if rows:
+						logger.info(f"基准数据来源: {table_name} ({len(rows)} 行)")
+						return pd.DataFrame([
+							{
+								"ts_code": r.ts_code,
+								"trade_date": r.trade_date,
+								"open": float(r.open or 0),
+								"high": float(r.high or 0),
+								"low": float(r.low or 0),
+								"close": float(r.close or 0),
+								"volume": float(r.vol or 0),
+								"amount": float(r.amount or 0),
+							}
+							for r in rows
+						])
+				except Exception:
+					continue  # 表不存在或字段不匹配，尝试下一个
+			logger.warning(f"基准数据: 三源均无 {ts_code} 数据 ({sd}~{ed})")
+			return pd.DataFrame()
+		except Exception as e:
+			logger.warning(f"加载基准数据失败 ({ts_code}): {e}")
+			return pd.DataFrame()
+
+	def _build_benchmark_curve(
 		self,
-		benchmark_ts_code: str,
-		start_date: str,
-		end_date: str,
+		bm_df: pd.DataFrame,
 		initial_capital: float,
 	) -> List[Dict]:
-		"""计算基准收益曲线（v1.2）。加载基准指数行情，归一化到初始资金。"""
-		if not benchmark_ts_code or not start_date or not end_date:
-			return []
+		"""从预加载的基准 DataFrame 构建归一化基准曲线（v1.4：同步，无 DB 查询）。"""
 		try:
-			if not self.data_feed:
-				return []
-			bm_df = await self.data_feed.load_historical_data(
-				symbols=[benchmark_ts_code],
-				start_date=start_date,
-				end_date=end_date,
-			)
 			if bm_df.empty:
 				return []
-			# 按交易日聚合平均收盘价
 			bm_daily = (
 				bm_df.groupby("trade_date")["close"]
 				.mean()
@@ -785,9 +908,14 @@ class BacktestEngine(EngineBase):
 			)
 			if bm_daily.empty:
 				return []
-			# 归一化：基准初始价格 → initial_capital
 			first_close = float(bm_daily["close"].iloc[0])
 			curve = []
+			last_close = float(bm_daily["close"].iloc[-1])
+			bm_return = (last_close - first_close) / first_close if first_close > 0 else 0.0
+			logger.info(
+				f"基准曲线: {len(bm_daily)} 日, close {first_close:.2f}→{last_close:.2f}, "
+				f"累计收益={bm_return:.2%}"
+			)
 			for _, row in bm_daily.iterrows():
 				cumulative_return = float(row["close"]) / first_close - 1.0 if first_close > 0 else 0.0
 				curve.append({
@@ -797,8 +925,93 @@ class BacktestEngine(EngineBase):
 				})
 			return curve
 		except Exception as e:
-			logger.warning(f"基准曲线计算失败 ({benchmark_ts_code}): {e}")
+			logger.warning(f"基准曲线计算失败: {e}")
 			return []
+
+	@staticmethod
+	def _calculate_excess_metrics(
+		result: "BacktestResult",
+		benchmark_curve: List[Dict],
+		annual_return: float,
+	) -> Dict[str, Any]:
+		"""计算基准对比指标：Alpha / Beta / 信息比率 / 跟踪误差（v1.4）。
+
+		要求 benchmark_curve 和 result.equity_curve 均非空且 ≥2 个对齐交易日。
+		< 60 个对齐交易日时正常计算但标记 low_confidence=True。
+		基准方差 ≈ 0 时 Beta=0 并 log warning。
+		"""
+		metrics: Dict[str, Any] = {}
+		if not benchmark_curve or not result.equity_curve:
+			return metrics
+		if len(benchmark_curve) < 2 or len(result.equity_curve) < 2:
+			return metrics
+
+		try:
+			# ---- 日期对齐：内连接策略与基准的 trade_date ----
+			bm_map = {str(r["trade_date"])[:10]: float(r["cumulative_return"]) for r in benchmark_curve}
+			strategy_returns: List[float] = []
+			benchmark_returns: List[float] = []
+			prev_s = prev_b = None
+			for eq in result.equity_curve:
+				d = str(eq.get("trade_date", ""))[:10]
+				bm_cr = bm_map.get(d)
+				if bm_cr is None:
+					continue
+				s_cr = float(eq.get("cumulative_return", 0))
+				if prev_s is not None and prev_b is not None:
+					strategy_returns.append(s_cr - prev_s)
+					benchmark_returns.append(bm_cr - prev_b)
+				prev_s = s_cr
+				prev_b = bm_cr
+
+			n = len(strategy_returns)
+			if n < 2:
+				logger.info(f"超额指标: 对齐交易日不足 ({n}), 跳过")
+				return metrics
+
+			logger.info(
+				f"超额指标: 对齐 {n} 个交易日 "
+				f"(策略 {len(result.equity_curve)} / 基准 {len(benchmark_curve)})"
+			)
+
+			# ---- Beta = Cov(s, b) / Var(b) ----
+			s_arr = np.array(strategy_returns)
+			b_arr = np.array(benchmark_returns)
+			b_var = float(np.var(b_arr))
+			if b_var > 1e-12:
+				beta = float(np.cov(s_arr, b_arr)[0, 1] / b_var)
+			else:
+				logger.warning("基准方差 ≈ 0，Beta 设为 0")
+				beta = 0.0
+
+			# ---- 基准年化收益率 ----
+			bm_total = float(benchmark_curve[-1]["cumulative_return"])
+			trading_days = max(n, 1)
+			bm_annual = (1 + bm_total) ** (252 / trading_days) - 1 if bm_total > -1 else -1.0
+
+			# ---- Alpha = strategy_annual - beta × benchmark_annual ----
+			alpha = annual_return - beta * bm_annual
+
+			# ---- 超额收益日序列 → 跟踪误差 / 信息比率 ----
+			excess = s_arr - b_arr
+			tracking_error = float(np.std(excess)) * np.sqrt(252)
+			excess_annual = annual_return - bm_annual
+			info_ratio = excess_annual / tracking_error if tracking_error > 0 else 0.0
+
+			metrics = {
+				"alpha": round(alpha, 6),
+				"beta": round(beta, 4),
+				"information_ratio": round(info_ratio, 4),
+				"tracking_error": round(tracking_error, 6),
+				"excess_annual_return": round(excess_annual, 6),
+				"benchmark_annual_return": round(bm_annual, 6),
+				"low_confidence": n < 60,
+				"aligned_days": n,
+			}
+		except Exception as e:
+			logger.warning(f"超额指标计算失败: {e}")
+
+		return metrics
 
 	# =========================================================================
 	# 持久化（v1.1 新增）
@@ -1234,7 +1447,6 @@ class BacktestEngine(EngineBase):
 						# 匹配盈亏 = (卖出价 - 买入价) × 匹配数量
 						realized_pnl += (price - buy_price) * match_qty
 
-						pnls[buy_idx] += (price - buy_price) * match_qty  # 更新买入的 PnL
 
 						if buy_qty > match_qty:
 							buy_queue[0] = (buy_idx, buy_price, buy_qty - match_qty,

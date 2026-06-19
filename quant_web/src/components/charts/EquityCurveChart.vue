@@ -148,10 +148,14 @@ function renderChart() {
   }
 
   // 超额收益（策略-基准，半透明面积图）
+  // v1.4: 日期对齐 — 用 Map 查找替代 index 对齐，处理交易日历不一致
   if (props.showExcess && benchData.length > 0) {
-    const excessData = equityData.map((eq, i) => ({
+    const benchByTime = new Map<number, number>(
+      benchData.map((b) => [b.time as number, b.value]),
+    );
+    const excessData = equityData.map((eq) => ({
       time: eq.time,
-      value: (eq.value - (benchData[i]?.value ?? eq.value)),
+      value: (eq.value - (benchByTime.get(eq.time as number) ?? eq.value)),
     }));
     if (!excessSeries && chart) {
       excessSeries = chart.addSeries(LineSeries, {

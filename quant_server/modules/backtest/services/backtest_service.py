@@ -378,6 +378,7 @@ class BacktestService:
 					"commission_rate": request.commission_rate,
 					"slippage_rate": request.slippage_rate,
 					"symbols": request.symbols or [],
+					"benchmark": getattr(request, "benchmark", None),
 				},
 				"status": "pending",
 				"user_id": user_id,
@@ -725,6 +726,10 @@ class BacktestService:
 						"price": float(t.get("price", 0)),
 						"volume": int(t.get("quantity", 0)),
 						"datetime": t.get("trade_date", ""),
+						"commission": float(t.get("commission", 0)),
+						"stamp_tax": float(t.get("stamp_tax", 0)),
+						"transfer_fee": float(t.get("transfer_fee", 0)),
+						"amount": float(t.get("amount", 0)),
 						"profit": 0.0,  # FIFO PnL 需 v1.4 合并
 						"profit_pct": 0.0,
 					})
@@ -1124,16 +1129,18 @@ class BacktestService:
 			self.backtest_engine._cancel_event = cancel_event
 
 			# ---- 执行新版回测引擎（v1.2 编排链路） ----
+			logger.info(f'回测 {task_id}: benchmark={config.get("benchmark") or "000300.SH (default)"}')
 			result: BacktestResult = await self.backtest_engine.run(
 				task_id=task_id,
 				strategy_id=task.strategy_id,
 				symbols=symbols,
 				start_date=config.get('start_date', ''),
 				end_date=config.get('end_date', ''),
-				initial_capital=float(config.get('initial_capital', 1_000_000)),
+				initial_capital=float(config.get('initial_capital', 1000000)),
 				parameters=parameters,
 				commission_rate=float(config.get('commission_rate', 0.0003)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
+				benchmark_ts_code=config.get('benchmark') or '000300.SH',
 				# TODO: progress_callback 待 BacktestEngine 支持后启用
 				#       用于通过 WebSocket 推送实时进度到前端
 			)

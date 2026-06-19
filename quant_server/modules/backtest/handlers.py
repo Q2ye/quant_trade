@@ -109,6 +109,14 @@ class BacktestHandler:
 				"success": True,
 				"data": result
 			}
+		except ValueError as e:
+			# 预期内的状态（任务未完成/不存在/无权限），返回 400 而非 500
+			msg = str(e)
+			if "不存在" in msg:
+				raise HTTPException(status_code=404, detail=msg)
+			if "权限" in msg:
+				raise HTTPException(status_code=403, detail=msg)
+			raise HTTPException(status_code=409, detail=msg)
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取回测结果失败: {str(e)}")
 

@@ -486,9 +486,9 @@ const runBacktest = async () => {
       commission_rate: backtestSettings.value.commission,
       slippage_rate: backtestSettings.value.slippage,
       symbols: stockPool.value,
+      benchmark: backtestSettings.value.benchmark,
       parameters: {
         ...strategyParams.value,
-        benchmark: backtestSettings.value.benchmark,
       },
     });
 

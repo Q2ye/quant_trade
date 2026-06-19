@@ -300,7 +300,11 @@ class BaseStrategy(ABC):
 
 	def validate_signal (self, signal: TradingSignal) -> bool:
 		"""
-		验证信号是否有效
+		验证信号语义有效性（纯信号层检查，不涉及数量和资金）。
+
+		price/quantity/amount 的兜底由 Engine+Sizer 层处理，
+		资金充足性由 Broker.submit_order() 检查。
+		此处只验证信号本身是否语义合法。
 
 		Args:
 			signal: 交易信号
@@ -308,20 +312,10 @@ class BaseStrategy(ABC):
 		Returns:
 			是否有效
 		"""
-		# 基本验证
-		if signal.price <= 0:
-			return False
-		if signal.quantity <= 0:
+		if signal.ts_code is None or signal.ts_code == "":
 			return False
 		if signal.confidence < 0 or signal.confidence > 1:
 			return False
-
-		# 资金验证（如果有context）
-		if self.context:
-			required_amount = signal.price * signal.quantity
-			if required_amount > self.context.available_capital:
-				return False
-
 		return True
 
 

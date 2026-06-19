@@ -45,7 +45,17 @@ export interface BacktestTaskResult {
     commission: number; stamp_tax: number; transfer_fee: number; trade_date: string;
   }>;
   monthly_returns: Array<{ month: string; return: number }>;
-  benchmark_curve: Array<{ trade_date: string; cumulative_return: number }>;
+  benchmark_curve: Array<{ trade_date: string; cumulative_return: number; total_assets: number }>;
+  excess_metrics: {
+    alpha: number;
+    beta: number;
+    information_ratio: number;
+    tracking_error: number;
+    excess_annual_return: number;
+    benchmark_annual_return: number;
+    low_confidence: boolean;
+    aligned_days: number;
+  };
 }
 
 /** 创建回测任务参数 */
@@ -58,6 +68,7 @@ export interface BacktestCreateParams {
   commission_rate?: number;
   slippage_rate?: number;
   symbols?: string[];
+  benchmark?: string;
   parameters?: Record<string, any>;
 }
 
@@ -79,6 +90,7 @@ export default {
         commission_rate: config.commission_rate,
         slippage_rate: config.slippage_rate,
         symbols: config.symbols,
+        benchmark: config.benchmark,
         parameters: config.parameters,
       })
       .then(handleResponse)
@@ -225,6 +237,7 @@ export default {
         commission_rate: config.commission_rate,
         slippage_rate: config.slippage_rate,
         symbols: config.symbols,
+        benchmark: config.benchmark,
         parameters: config.parameters,
       })
       .then(handleResponse)

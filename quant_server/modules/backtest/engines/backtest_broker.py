@@ -272,6 +272,24 @@ class BacktestBroker(EngineBase):
     # 订单处理 — 信号 → 订单
     # =========================================================================
 
+
+    def _validate_order(self, ts_code: str, direction: str, price: float,
+                        quantity: int) -> None:
+        """v1.5: 独立订单验证，所有拒绝原因以 ValueError 抛出。"""
+        if price <= 0:
+            raise ValueError(f"[{ts_code}] 价格无效: {price}")
+        if quantity <= 0:
+            raise ValueError(f"[{ts_code}] 数量无效: {quantity}")
+        if direction == "LONG":
+            estimated = price * quantity * (1 + self.config.commission_rate)
+            if estimated > self.cash:
+                raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
+        if direction in ("SHORT", "CLOSE_LONG"):
+            pos = self.positions.get(ts_code)
+            avail = pos.available_quantity if pos else 0
+            if not pos or avail < quantity:
+                raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{avail}")
+
     def submit_order(
         self,
         ts_code: str,
@@ -314,8 +332,25 @@ class BacktestBroker(EngineBase):
             - 冻结资金使用委托价估算，次日成交后按实际成交价多退少补。
         """
         # ---- 1. 方向标准化 ----
-        if direction in ("CLOSE_LONG", "CLOSE_SHORT"):
-            direction = "SHORT" if "SHORT" in direction else "LONG"
+        # v1.4: 统一转为大写。SignalDirection 枚举值为 "long"/"short"（小写），
+        # 策略代码中也常使用 "buy"/"sell"，必须全部归一化为 LONG/SHORT，
+        # 否则后续的资金冻结、持仓更新、FIFO 配对全部失效。
+        direction = direction.upper()
+        if direction in ("BUY", "LONG"):
+            direction = "LONG"
+        elif direction in ("SELL", "SHORT"):
+            direction = "SHORT"
+        if direction == "CLOSE_LONG":
+            direction = "SHORT"  # 平多 = 卖出
+        elif direction == "CLOSE_SHORT":
+            direction = "LONG"   # 平空 = 买入
+
+        # ---- v1.5: 独立验证 ----
+        try:
+            self._validate_order(ts_code, direction, price, quantity)
+        except ValueError as e:
+            logger.warning(f"订单验证失败: {e}")
+            return None
 
         # ---- 2. 手数取整（向下取到 lot_size 的整数倍） ----
         quantity = (quantity // self.config.lot_size) * self.config.lot_size
@@ -440,8 +475,14 @@ class BacktestBroker(EngineBase):
         for order in self.pending_orders:
             bar = bars.get(order.ts_code)
             if bar is None:
-                # 停牌或数据缺失 → 保留到下一交易日继续尝试
-                remaining_orders.append(order)
+                # 停牌或数据缺失 → 超时取消 (v1.5)
+                age = (trade_date - order.create_date).days if order.create_date else 0
+                if age > 20:
+                    logger.warning(f"订单过期取消: {order.order_id} {order.ts_code}")
+                    if order.direction == "LONG":
+                        self.cash += order.price * order.quantity
+                        self.frozen_cash -= order.price * order.quantity
+                    continue
                 continue
 
             # ---- 涨跌停检查 ----
@@ -508,10 +549,7 @@ class BacktestBroker(EngineBase):
                 self.cash += estimated
                 self.cash -= total_cost
             else:
-                # 卖出：解冻并入账（成交金额 - 费用）
-                estimated = order.price * order.quantity
-                if self.frozen_cash >= estimated:
-                    self.frozen_cash -= estimated
+                # 卖出：入账（不涉及冻结资金，卖出从不冻结）
                 self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
 
             # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
@@ -575,7 +613,8 @@ class BacktestBroker(EngineBase):
             - frozen_cash（冻结资金）也算入总资产 — 已下单未成交的买单
               其资金虽被预扣但仍属于账户资产的一部分。
         """
-        total_market_value = 0.0
+        # v1.5: 初始化时包含全部持仓市值（含停牌股），bars 遍历时则替换为当日最新值
+        total_market_value = sum(p.market_value for p in self.positions.values())
         total_pnl = 0.0
 
         # ---- 逐只股票重估持仓 + T+1 锁定释放 ----
@@ -589,6 +628,7 @@ class BacktestBroker(EngineBase):
             if ts_code in self.positions:
                 pos = self.positions[ts_code]
                 pos.current_price = bar.close
+                old_mv = pos.market_value
                 pos.market_value = pos.quantity * bar.close
                 pos.pnl = (bar.close - pos.avg_cost) * pos.quantity
                 pos.pnl_rate = (
@@ -596,22 +636,23 @@ class BacktestBroker(EngineBase):
                     if pos.avg_cost > 0
                     else 0.0
                 )
-                total_market_value += pos.market_value
+                total_market_value += (pos.market_value - old_mv)
                 total_pnl += pos.pnl
 
         # 总资产 = 可用资金 + 冻结资金 + 持仓市值
         # 注：冻结资金本质仍是账户资产（已下单未成交），计入总资产
         total_assets = self.cash + self.frozen_cash + total_market_value
 
-        # ---- v1.4: 资产守恒校验 ----
-        recon = self.cash + self.frozen_cash + total_market_value
-        if abs(total_assets - recon) > 0.01:
-            logger.warning(
-                f"资产守恒异常 [{self._trade_date}]: "
-                f"total={total_assets:.2f} vs cash({self.cash:.2f})"
-                f"+frozen({self.frozen_cash:.2f})+mv({total_market_value:.2f})"
-                f"={recon:.2f}, diff={total_assets - recon:.4f}"
-            )
+        # ---- v1.4: 持仓市值一致性校验 ----
+        for ts_code, pos in self.positions.items():
+            computed_mv = pos.quantity * pos.current_price
+            if abs(pos.market_value - computed_mv) > 0.01:
+                logger.warning(
+                    f"持仓市值不一致 [{self._trade_date}] {ts_code}: "
+                    f"market_value={pos.market_value:.2f} vs "
+                    f"qty({pos.quantity}) × price({pos.current_price:.2f})"
+                    f"={computed_mv:.2f}, diff={pos.market_value - computed_mv:.4f}"
+                )
 
         # ---- 计算累计收益率 ----
         if self._trade_date and self.initial_capital > 0:
