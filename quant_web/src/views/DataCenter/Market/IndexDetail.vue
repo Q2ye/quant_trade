@@ -427,9 +427,18 @@ const sectorExposure = ref<any[]>([]);
 
 const klineData = computed(() => {
   if (!history.value.length) return [];
-  if (selectedPeriod.value === "daily") return history.value;
+  // 将后端返回的任意格式映射到 LightweightKLine 期望的 KLineDataItem
+  const mapped = history.value.map((d: any) => ({
+    trade_date: d.trade_date || d.date || "",
+    open: d.open ?? null,
+    high: d.high ?? null,
+    low: d.low ?? null,
+    close: d.close ?? null,
+    vol: d.vol ?? d.volume ?? null,
+  }));
+  if (selectedPeriod.value === "daily") return mapped;
   const step = selectedPeriod.value === "weekly" ? 5 : 20;
-  return history.value.filter((_: any, i: number) => i % step === 0);
+  return mapped.filter((_: any, i: number) => i % step === 0);
 });
 const weightColumns = [
   { title: "代码", key: "ts_code", width: 100 },

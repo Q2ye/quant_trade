@@ -1,0 +1,248 @@
+<!-- DrawdownAreaChart.vue — lightweight-charts 回撤曲线（重构版） -->
+<script setup lang="ts">
+import { watch, onMounted, onBeforeUnmount, nextTick, computed } from "vue";
+import { NSkeleton, NEmpty, NResult, NButton } from "naive-ui";
+import {
+  LineSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type ISeriesPrimitive,
+  type LineData,
+  type Time,
+} from "lightweight-charts";
+import { useChartLifecycle } from "@/composables/useChartLifecycle";
+import { useTimeCoordinate } from "@/composables/useTimeCoordinate";
+import { usePrimitiveManager } from "@/composables/usePrimitiveManager";
+
+export interface DrawdownPoint {
+  date: string;
+  value: number;
+}
+
+const props = withDefaults(
+  defineProps<{
+    data: DrawdownPoint[];
+    height?: number;
+    loading?: boolean;
+    error?: boolean;
+    title?: string;
+    primitives?: ISeriesPrimitive<Time>[];
+  }>(),
+  {
+    data: () => [],
+    height: 280,
+    loading: false,
+    error: false,
+    title: "",
+    primitives: () => [],
+  },
+);
+
+const emit = defineEmits<{ retry: [] }>();
+const hasData = computed(() => props.data.length > 0);
+
+const {
+  chartContainer,
+  createChartInstance,
+  destroyChart,
+  handleResize,
+  bindGlobalEvents,
+  unbindGlobalEvents,
+  getChart,
+} = useChartLifecycle({ height: props.height, timeScale: { timeVisible: false } });
+
+const { markDirty, updateCache } = useTimeCoordinate();
+const primitiveManager = usePrimitiveManager();
+
+let chart: IChartApi | null = null;
+let ddSeries: ISeriesApi<"Line", Time> | null = null;
+
+function toTimeEpoch(dateStr: string): Time {
+  const s = (dateStr?.slice(0, 10) || dateStr);
+  return (Math.floor(new Date(s + "T00:00:00Z").getTime() / 1000)) as Time;
+}
+function toLineData(data: DrawdownPoint[]): LineData[] {
+  return data.map((d) => ({
+    time: toTimeEpoch(d.date),
+    value: d.value,
+  }));
+}
+
+function renderChart() {
+  const el = chartContainer.value;
+  if (!el) return;
+  const w = el.clientWidth;
+  if (!w || w <= 0 || !props.data.length) return;
+
+  const isNew = !chart;
+  if (isNew) {
+    chart = createChartInstance();
+    if (!chart) return;
+
+    ddSeries = chart.addSeries(LineSeries, {
+      color: "#ef4444",
+      lineWidth: 2 as const,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      priceFormat: {
+        type: "custom",
+        formatter: (v: number) => `${(v * 100).toFixed(1)}%`,
+      },
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 3,
+    }) as ISeriesApi<"Line", Time>;
+
+    // 绑定 primitive manager（首次创建时）
+    primitiveManager.bind(ddSeries, () => {
+      // requestUpdate 回调：驱使图表重绘而不改变可视范围
+    });
+    // ⚠️ 关键修复：chart 创建后立即同步外部传入的 primitives
+    if (props.primitives && props.primitives.length > 0) {
+      const items = props.primitives.map((p) => {
+        const dataId = (p as any).getData?.()?.id || (p as any)._data?.id;
+        return { id: dataId || `dd-p-${Math.random().toString(36).slice(2, 8)}`, primitive: p };
+      });
+      primitiveManager.syncPrimitives(items);
+    }
+  }
+
+  const ddData = toLineData(props.data);
+  ddSeries!.setData(ddData);
+  // ⚠️ 用 setVisibleRange 替代 fitContent，保持时间等比模式
+  if (ddData.length > 0) {
+    chart!.timeScale().setVisibleRange({ from: ddData[0].time, to: ddData[ddData.length - 1].time });
+  }
+}
+
+// ---- 视口变化订阅（幂等） ----
+let _viewportHandler: ((range: any) => void) | null = null;
+
+function setupViewportListener() {
+  const c = getChart();
+  if (!c) return;
+  if (_viewportHandler) {
+    c.timeScale().unsubscribeVisibleTimeRangeChange(_viewportHandler);
+  }
+  _viewportHandler = (range: any) => {
+    if (range) {
+      markDirty();
+      updateCache(range, c.timeScale().width());
+    }
+  };
+  c.timeScale().subscribeVisibleTimeRangeChange(_viewportHandler);
+}
+
+// ---- 原语同步 ----
+watch(
+  () => props.primitives,
+  (prims) => {
+    if (!prims || prims.length === 0) {
+      primitiveManager.detachAll();
+      return;
+    }
+    const items = prims.map((p) => {
+      const dataId = (p as any).getData?.()?.id || (p as any)._data?.id;
+      return { id: dataId || `dd-p-${Math.random().toString(36).slice(2, 8)}`, primitive: p };
+    });
+    primitiveManager.syncPrimitives(items);
+  },
+  { deep: true, immediate: true },
+);
+
+// ---- 数据变更 ----
+watch(
+  () => props.data,
+  async (val) => {
+    if (!val?.length) {
+      // ⚠️ 必须在 destroyChart 前分离所有原语，避免 _attached 残留旧引用导致坐标漂移
+      primitiveManager.detachAll();
+      destroyChart();
+      chart = null;
+      ddSeries = null;
+      return;
+    }
+    await nextTick();
+    renderChart();
+    setupViewportListener();
+  },
+  { deep: true, immediate: true },
+);
+
+onMounted(() => {
+  bindGlobalEvents();
+});
+
+onBeforeUnmount(() => {
+  primitiveManager.dispose();
+  if (_viewportHandler && chart) {
+    chart.timeScale().unsubscribeVisibleTimeRangeChange(_viewportHandler);
+  }
+  _viewportHandler = null;
+  destroyChart();
+  chart = null;
+  ddSeries = null;
+  unbindGlobalEvents();
+});
+
+defineExpose({
+  fitContent() {
+    const data = ddSeries?.data();
+    if (data && data.length > 0) {
+      const last = data[data.length - 1];
+      chart?.timeScale().setVisibleRange({ from: data[0].time, to: last.time });
+    }
+  },
+  resize() {
+    handleResize();
+  },
+  getChart,
+});
+</script>
+
+<template>
+  <div class="drawdown-chart-container">
+    <div v-if="title" class="chart-header">
+      <h5 class="chart-title">{{ title }}</h5>
+    </div>
+    <n-skeleton v-if="loading" :height="height + 'px'" width="100%" />
+    <n-result v-else-if="error" status="500" title="回撤数据加载失败">
+      <template #footer>
+        <n-button type="primary" size="small" @click="emit('retry')">
+          重试
+        </n-button>
+      </template>
+    </n-result>
+    <n-empty
+      v-else-if="!hasData"
+      description="暂无回撤数据"
+      style="padding: 30px"
+    />
+    <div
+      ref="chartContainer"
+      class="drawdown-chart"
+      :style="{
+        height: hasData && !loading && !error ? height + 'px' : '',
+      }"
+    />
+  </div>
+</template>
+
+<style lang="scss" scoped>
+.drawdown-chart-container {
+  width: 100%;
+  position: relative;
+}
+.chart-header {
+  margin-bottom: 8px;
+}
+.chart-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.drawdown-chart {
+  width: 100%;
+  zoom: 1.25; /* 抵消 html { zoom: 0.8 } */
+}
+</style>

@@ -10,3 +10,5 @@ export { useChartLifecycle, isDarkMode } from "./useChartLifecycle";
 export { useTimeCoordinate } from "./useTimeCoordinate";
 export { usePrimitiveManager } from "./usePrimitiveManager";
 export { useVisibilityCulling } from "./useVisibilityCulling";
+export { useTrendLineDraw } from "./useTrendLineDraw";
+export { useChartDrawing } from "./useChartDrawing";

@@ -1415,28 +1415,12 @@ class BacktestService:
 			if hasattr(task, 'user_id') and task.user_id != user_id:
 				raise ValueError("无权限删除该回测任务")
 
-			# ---- 2. 级联删除关联数据（尽力而为，单条失败不中断） ----
-			try:
-				await self.equity_curve_repo.delete_by_task_id(task_id)
-			except Exception:
-				pass
-			try:
-				await self.trade_repo.delete_by_task_id(task_id)
-			except Exception:
-				pass
-			try:
-				await self.position_repo.delete_by_task_id(task_id)
-			except Exception:
-				pass
-			try:
-				from shared.database.repositories.strategy.backtest.parameter_repo import \
-					BacktestParameterRepository
-				param_repo = BacktestParameterRepository(self.db)
-				await param_repo.delete_by_task_id(task_id)
-			except Exception:
-				pass
+			# ---- 2. cascade delete child records (raw SQL) ----
+			from sqlalchemy import text
+			for tbl in ["backtest_equity_curves", "backtest_trades", "backtest_positions", "backtest_parameters"]:
+				await self.db.execute(text(f"DELETE FROM {tbl} WHERE task_id = :tid"), {"tid": task_id})
 
-			# ---- 3. 删除主记录 ----
+			# ---- 3. delete main record ----
 			await self.task_repo.delete(task_id)
 			logger.info(f"回测任务已删除: {task_id}")
 

@@ -46,7 +46,15 @@
       </div>
 
       <!-- ================================================================
-          分区四：风险监控 — 风控规则 / 实时监控 / 事件查看 / 黑名单
+          分区四：信号与事件 — 信号监控 / 历史 / 时间线
+      ================================================================ -->
+      <div class="nav-section">
+        <div class="nav-header">信号与事件</div>
+        <n-menu :options="signalsOptions" v-model:value="activeMenu" />
+      </div>
+
+      <!-- ================================================================
+          分区五：风险监控 — 风控规则 / 实时监控 / 事件查看 / 黑名单
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">风险监控</div>
@@ -191,6 +199,22 @@ export default defineComponent({
       },
     ];
 
+    /** 信号与事件菜单 */
+    const signalsOptions = [
+      {
+        label: "信号监控",
+        key: "signals",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "NotificationsOutline" }) }),
+      },
+      {
+        label: "信号历史",
+        key: "signals-history",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "History" }) }),
+      },
+    ];
+
     /** 风险监控菜单 — 4 项 */
     const riskOptions = [
       {
@@ -279,6 +303,7 @@ export default defineComponent({
       account: "/account",
       trading: "/trade",
       signals: "/signals",
+      "signals-history": "/signals/history",
       "execution-analysis": "/trade/execution",
       "risk-rules": "/risk/rules",
       "risk-monitor": "/risk/monitor",
@@ -357,6 +382,7 @@ export default defineComponent({
       dataCenterOptions,
       strategyCenterOptions,
       tradingOptions,
+      signalsOptions,
       riskOptions,
       systemOptions,
       toggleCollapse,

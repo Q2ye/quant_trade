@@ -43,26 +43,53 @@
 
       <template #content>
         <div class="section">
-          <h3>净值曲线</h3>
+          <div class="section-header-row">
+            <h3>净值曲线</h3>
+            <n-space :size="8">
+              <n-switch v-model:value="showTradeMarkers" size="small" />
+              <span class="toggle-label">交易标记</span>
+              <n-switch v-model:value="showTrendLines" size="small" />
+              <span class="toggle-label">趋势线</span>
+            </n-space>
+          </div>
           <EquityCurveChart
+            ref="equityChartRef"
             :data="report.equityCurve"
             :benchmark="report.benchmark"
-            title="净值曲线"
-            subtitle="策略净值 vs 基准走势"
             :height="400"
+            :primitives="equityPrimitives"
           />
         </div>
 
         <div class="metrics-grid">
           <div class="metric-card">
             <h3>回撤分析</h3>
-            <DrawdownAreaChart :data="report.drawdown" title="回撤分析" :height="260" />
+            <DrawdownAreaChart
+              :data="report.drawdown"
+              title="回撤分析"
+              :height="260"
+              :primitives="drawdownPrimitives"
+            />
           </div>
           <div class="metric-card">
             <h3>月度收益</h3>
             <MonthlyReturnChart v-if="report.monthlyReturns.length > 0" :data="report.monthlyReturns" />
             <n-empty v-else description="暂无月度收益数据" />
           </div>
+        </div>
+
+        <div class="section">
+          <h3>每日盈亏</h3>
+          <DailyPnLChart :data="report.dailyReturns" :height="260" />
+        </div>
+
+        <div class="section">
+          <h3>成交记录图</h3>
+          <TradeRecordChart
+            :trades="report.trades"
+            :height="300"
+            :symbol="route.params.taskId as string"
+          />
         </div>
 
         <div class="section">
@@ -96,16 +123,21 @@
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useStore } from "vuex";
-import { useMessage, NResult, NSpin, NEmpty } from "naive-ui";
+import { useMessage, NResult, NSpin, NEmpty, NSwitch, NSpace } from "naive-ui";
+import { type ISeriesPrimitive, type Time } from "lightweight-charts";
 import ReportLayout from "@/layouts/ReportLayout.vue";
 import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
 import DrawdownAreaChart from "@/components/charts/DrawdownAreaChart.vue";
 import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
 import ProfitDistributionChart from "@/components/charts/ProfitDistributionChart.vue";
+import DailyPnLChart from "@/components/charts/DailyPnLChart.vue";
+import TradeRecordChart from "@/components/charts/TradeRecordChart.vue";
 import TradeTable from "@/components/data/TradeTable.vue";
 import StatCard from "@/components/common/StatCard.vue";
 import backtestAPI from "@/api/backtest";
-
+import { SignalMarkerPrimitive } from "@/components/charts/primitives/SignalMarker";
+import { TrendLinePrimitive } from "@/components/charts/primitives/TrendLine";
+import type { SignalMarkerData, TrendLineData } from "@/components/charts/primitives/types";
 const route = useRoute();
 const message = useMessage();
 const store = useStore<any>();
@@ -113,6 +145,175 @@ const store = useStore<any>();
 const loading = ref(false);
 const error = ref(false);
 const activeTradeTab = ref("trades");
+
+// ---- 图表标记开关 ----
+const showTradeMarkers = ref(true);
+const showTrendLines = ref(true);
+const equityChartRef = ref<InstanceType<typeof EquityCurveChart>>();
+let _markerGeneration = 0; // 每次 loadReport 递增，防止 ID 碰撞导致旧原语残留
+
+/**
+ * 从交易记录生成信号标记原语
+ * 将标记叠加到净值曲线上：X=交易日期，Y=当日净值（而非股票成交价）
+ * ⚠️ timeToCoordinate + priceToCoordinate 动态定位，处理节假日断点
+ */
+function buildTradeMarkers(
+  trades: Array<{ date: string; price: number; direction: string; symbol?: string }>,
+  equityCurve: Array<{ date: string; value: number }>,
+): ISeriesPrimitive<Time>[] {
+  // 构建日期→净值查找表
+  const equityMap = new Map<string, number>();
+  for (const p of equityCurve) {
+    const d = (p.date?.slice(0, 10) || p.date);
+    equityMap.set(d, p.value);
+  }
+
+  return trades.map((t, i) => {
+    const isBuy = t.direction === "buy";
+    const tradeDate = (t.date?.slice(0, 10) || t.date);
+    // 查找交易当日净值，若找不到则取最近净值
+    const equityValue = equityMap.get(tradeDate);
+    const finalEquityValue = equityValue ?? equityCurve[equityCurve.length - 1]?.value ?? 0;
+
+    const data: SignalMarkerData = {
+      id: `trade-marker-g${_markerGeneration}-${i}`,
+      type: "signalMarker",
+      time: tradeDate as Time,
+      price: finalEquityValue,           // ← 净值，非股票成交价
+      direction: isBuy ? "buy" : "sell",
+      shape: isBuy ? "arrowUp" : "arrowDown",
+      color: isBuy ? "#ef5350" : "#26a69a",
+      text: isBuy ? "买入" : "卖出",
+      strategyName: t.symbol?.slice(0, 6),
+    };
+    return new SignalMarkerPrimitive(data);
+  });
+}
+
+/**
+ * 从净值曲线关键点生成趋势线
+ * 提取起点→最高点→最低点→终点的连线，用于可视化验证
+ * ⚠️ 使用 TrendLinePrimitive，坐标在每次 draw() 中通过 timeToCoordinate 动态计算
+ *    时间断点期间的空白被自然处理，线条跨越断点时斜率视觉上连续
+ */
+function buildEquityTrendLines(
+  equity: Array<{ date: string; value: number }>,
+): TrendLinePrimitive[] {
+  if (equity.length < 2) return [];
+  const lines: TrendLinePrimitive[] = [];
+
+  // 找到最高点和最低点
+  let maxIdx = 0;
+  let minIdx = 0;
+  for (let i = 1; i < equity.length; i++) {
+    if (equity[i].value > equity[maxIdx].value) maxIdx = i;
+    if (equity[i].value < equity[minIdx].value) minIdx = i;
+  }
+
+  const first = equity[0];
+  const last = equity[equity.length - 1];
+
+  // 起点→最高点（如果是上升段）
+  if (maxIdx > 0) {
+    const peak = equity[maxIdx];
+    lines.push(
+      new TrendLinePrimitive({
+        id: `tl-start-to-peak-g${_markerGeneration}`,
+        type: "trendLine",
+        startTime: (first.date.slice(0, 10)) as Time,
+        endTime: (peak.date.slice(0, 10)) as Time,
+        startPrice: first.value,
+        endPrice: peak.value,
+        lineColor: "rgba(255,152,0,0.5)",
+        lineWidth: 1,
+        lineStyle: 1, // dashed
+        extendLeft: false,
+        extendRight: false,
+      }),
+    );
+  }
+
+  // 最高点→终点
+  if (maxIdx < equity.length - 1) {
+    const peak = equity[maxIdx];
+    lines.push(
+      new TrendLinePrimitive({
+        id: `tl-peak-to-end-g${_markerGeneration}`,
+        type: "trendLine",
+        startTime: (peak.date.slice(0, 10)) as Time,
+        endTime: (last.date.slice(0, 10)) as Time,
+        startPrice: peak.value,
+        endPrice: last.value,
+        lineColor: "rgba(239,68,68,0.4)",
+        lineWidth: 1,
+        lineStyle: 1,
+        extendLeft: false,
+        extendRight: true, // 延长射线
+      }),
+    );
+  }
+
+  // 起点→终点（总趋势）
+  lines.push(
+    new TrendLinePrimitive({
+      id: `tl-start-to-end-g${_markerGeneration}`,
+      type: "trendLine",
+      startTime: (first.date.slice(0, 10)) as Time,
+      endTime: (last.date.slice(0, 10)) as Time,
+      startPrice: first.value,
+      endPrice: last.value,
+      lineColor: "rgba(124,58,237,0.6)",
+      lineWidth: 2,
+      lineStyle: 0, // solid
+      extendLeft: false,
+      extendRight: true,
+    }),
+  );
+
+  return lines;
+}
+
+/** 动态计算净值曲线原语（响应开关状态） */
+const equityPrimitives = computed<ISeriesPrimitive<Time>[]>(() => {
+  const prims: ISeriesPrimitive<Time>[] = [];
+
+  if (showTradeMarkers.value && report.value.trades.length > 0) {
+    prims.push(...buildTradeMarkers(report.value.trades, report.value.equityCurve));
+  }
+
+  if (showTrendLines.value && report.value.equityCurve.length >= 2) {
+    prims.push(...buildEquityTrendLines(report.value.equityCurve));
+  }
+
+  return prims;
+});
+
+/** 回撤曲线原语：标注最大回撤点 */
+const drawdownPrimitives = computed<ISeriesPrimitive<Time>[]>(() => {
+  if (!showTrendLines.value) return [];
+  const dd = report.value.drawdown;
+  if (dd.length === 0) return [];
+
+  // 找到最大回撤点
+  let worstIdx = 0;
+  for (let i = 1; i < dd.length; i++) {
+    if (dd[i].value < dd[worstIdx].value) worstIdx = i;
+  }
+  const worst = dd[worstIdx];
+
+  return [
+    new SignalMarkerPrimitive({
+      id: `max-drawdown-marker-g${_markerGeneration}`,
+      type: "signalMarker",
+      time: (worst.date.slice(0, 10)) as Time,
+      price: worst.value,
+      direction: "sell",
+      shape: "circle",
+      color: "#ef4444",
+      text: `最大回撤 ${(worst.value * 100).toFixed(1)}%`,
+    }),
+  ];
+});
 
 /** 从 trades 列表聚合收益分布（后端不直接返回此字段） */
 const aggregateProfitDistribution = (trades: any[]) => {
@@ -176,6 +377,8 @@ const report = ref({
   benchmark: [] as any[],
   drawdown: [] as any[],
   monthlyReturns: [] as any[],
+  dailyReturns: [] as any[],
+  dailyTurnover: [] as any[],
   profitDistribution: { bins: [] as number[], counts: [] as number[] },
   trades: [] as any[],
 });
@@ -189,6 +392,7 @@ const loadReport = async () => {
   if (!taskId) { error.value = true; return; }
   loading.value = true;
   error.value = false;
+  _markerGeneration++; // 递增代次，确保重新加载时原语 ID 不碰撞
   try {
     const [result, equity, trades] = await Promise.all([
       backtestAPI.getResult(taskId).catch(() => null),
@@ -217,7 +421,7 @@ const loadReport = async () => {
       })),
       benchmark: (r.benchmark_curve || []).map((p: any) => ({
         date: p.trade_date || p.date,
-        value: p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0,
+        value: p.total_assets || (p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0),
       })),
       drawdown: (r.drawdown_curve || []).map((p: any) => ({
         date: p.trade_date || p.date,
@@ -226,6 +430,15 @@ const loadReport = async () => {
       monthlyReturns: (r.monthly_returns || []).map((p: any) => ({
         month: p.month || p.trade_date || "",
         return: p.return || p.monthly_return || 0,
+      })),
+      dailyReturns: (r.daily_returns || []).map((p: any) => ({
+        trade_date: p.trade_date || p.date || "",
+        daily_return: p.daily_return ?? 0,
+        daily_pnl: p.daily_pnl ?? 0,
+      })),
+      dailyTurnover: (r.daily_turnover || []).map((p: any) => ({
+        trade_date: p.trade_date || p.date || "",
+        turnover: p.turnover ?? 0,
       })),
       profitDistribution: aggregateProfitDistribution(tr),
       trades: tr.map((t: any) => {
@@ -299,6 +512,19 @@ onMounted(() => { loadReport(); });
 .section h3 {
   color: var(--n-text-color-1);
   margin-bottom: 16px;
+}
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.section-header-row h3 {
+  margin-bottom: 0;
+}
+.toggle-label {
+  font-size: 12px;
+  color: var(--n-text-color-3);
 }
 
 .metrics-grid {

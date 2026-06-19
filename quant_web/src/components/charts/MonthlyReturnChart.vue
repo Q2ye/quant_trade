@@ -94,22 +94,23 @@ watch(
   async (val) => {
     if (!val?.length) {
       destroyChart();
+      chart = null;
       series = null;
       return;
     }
     await nextTick();
     renderChart();
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 
 onMounted(() => {
   bindGlobalEvents();
-  if (props.data.length) renderChart();
 });
 
 onBeforeUnmount(() => {
   destroyChart();
+  chart = null;
   series = null;
   unbindGlobalEvents();
 });

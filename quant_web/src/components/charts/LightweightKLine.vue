@@ -111,9 +111,16 @@ const maSeriesList: ISeriesApi<"Line", Time>[] = [];
 
 const maColors = ["#ff9800", "#448AFF", "#E040FB", "#00bcd4", "#ff5722"];
 
+// 十字光标浮层标签
+const tooltipData = ref<{ x: number; y: number; date: string; open: number; high: number; low: number; close: number; vol: number; visible: boolean } | null>(null);
+
 // ---- helpers ----
+// ⚠️ 返回 epoch 秒（Unix 时间戳），而非字符串 BusinessDay
+// lightweight-charts 对 BusinessDay 使用非线性交易日映射，导致十字星与鼠标错位
+// UTCTimestamp (number) 使用严格线性时间轴，消除偏差
 function toTime(d: string): Time {
-  return (d?.slice(0, 10) || d) as Time;
+  const dateStr = (d?.slice(0, 10) || d);
+  return (Math.floor(new Date(dateStr + "T00:00:00Z").getTime() / 1000)) as Time;
 }
 
 function transformData(raw: KLineDataItem[]): CandlestickData[] {
@@ -180,17 +187,39 @@ function initKLineChart() {
   // Bind primitive manager to candle series
   primitiveManager.bind(
     candleSeries,
-    () => chart?.timeScale().fitContent(),
+    () => { /* 原语触发重绘: lightweight-charts 自动处理，不调用 fitContent 避免切换到等距模式 */ },
   );
 
-  // Crosshair
+  // Crosshair (含浮层标签)
+  let _tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+
   chart.subscribeCrosshairMove((param) => {
-    if (!param.time || param.point === undefined || !candleSeries) return;
+    if (!param.time || param.point === undefined || !candleSeries) {
+      tooltipData.value = null;
+      return;
+    }
     const cd = param.seriesData.get(candleSeries);
     if (cd) {
       const candle = cd as CandlestickData;
-      const idx = param.logical ?? 0;
-      const raw = props.data[idx] ?? props.data[0];
+      // 通过时间匹配查找原始数据行（time 现在是 epoch 秒，需转回日期字符串匹配）
+      const candleDateStr = new Date((candle.time as number) * 1000).toISOString().slice(0, 10);
+      const raw = props.data.find(
+        (d) => (d.trade_date?.slice(0, 10) || d.trade_date) === candleDateStr,
+      ) ?? props.data[0];
+      // 更新浮层标签
+      if (_tooltipTimer) clearTimeout(_tooltipTimer);
+      tooltipData.value = {
+        x: param.point.x,
+        y: param.point.y,
+        date: candleDateStr,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        vol: raw?.vol ?? 0,
+        visible: true,
+      };
+      _tooltipTimer = setTimeout(() => { tooltipData.value = null; }, 3000);
       emit("crosshair", {
         time: String(param.time),
         open: candle.open,
@@ -263,20 +292,26 @@ function updateChartData() {
     volumeSeries.setData(volData);
   }
 
-  chart.timeScale().fitContent();
+  // ⚠️ 用 setVisibleRange 替代 fitContent，保持时间等比模式（避免切换到等距 barSpacing 导致十字星漂移）
+  const lastIdx = ohlc.length - 1;
+  if (lastIdx >= 0) {
+    chart.timeScale().setVisibleRange({ from: ohlc[0].time, to: ohlc[lastIdx].time });
+  }
 }
 
 // ---- 信号标记：StaticMarker → SignalMarkerPrimitive ----
 function syncSignalMarkers(markers: SignalMarker[]) {
   if (!candleSeries) return;
 
-  // 获取已有的 signal marker 原语 ID
+  // 使用内容哈希作为 ID：time + text，避免位置漂移
+  const wantedIds = new Set(
+    markers.map((m) => `signal-${toTime(m.time)}-${m.text || m.shape}`),
+  );
+
+  // 移除不再需要的
   const existingIds = primitiveManager
     .getAttachedIds()
     .filter((id) => id.startsWith("signal-"));
-  const wantedIds = new Set(markers.map((_, i) => `signal-${i}`));
-
-  // 移除不再需要的
   for (const id of existingIds) {
     if (!wantedIds.has(id)) {
       primitiveManager.detach(id);
@@ -284,13 +319,13 @@ function syncSignalMarkers(markers: SignalMarker[]) {
   }
 
   // 创建/更新标记原语
-  markers.forEach((m, i) => {
-    const id = `signal-${i}`;
+  markers.forEach((m) => {
+    const id = `signal-${toTime(m.time)}-${m.text || m.shape}`;
     const signalData: SignalMarkerData = {
       id,
       type: "signalMarker",
       time: toTime(m.time),
-      price: 0, // 将在 updateChartData 后根据 K 线数据计算
+      price: 0,
       direction: m.shape === "arrowUp" ? "buy" : "sell",
       shape: m.shape,
       color: m.color,
@@ -310,9 +345,7 @@ function syncSignalMarkers(markers: SignalMarker[]) {
     }
 
     // 已存在则更新，否则创建
-    const existingIds = primitiveManager.getAttachedIds();
-    if (existingIds.includes(id)) {
-      // 需要获取已附加的原语实例来更新——这里简化为 detach + 重建
+    if (primitiveManager.getAttachedIds().includes(id)) {
       primitiveManager.detach(id);
     }
     const primitive = new SignalMarkerPrimitive(signalData);
@@ -330,9 +363,12 @@ function syncDrawings(drawings: ISeriesPrimitive<Time>[]) {
   for (const id of existingDrawIds) {
     primitiveManager.detach(id);
   }
-  // 附加新的
-  drawings.forEach((primitive, i) => {
-    primitiveManager.attach(`draw-${i}`, primitive);
+  // 附加新的，使用原语内部数据 ID 避免位置漂移
+  drawings.forEach((primitive) => {
+    const dataId =
+      (primitive as any).getData?.()?.id || (primitive as any)._data?.id;
+    const id = dataId || `draw-${Math.random().toString(36).slice(2, 8)}`;
+    primitiveManager.attach(id, primitive);
   });
 }
 
@@ -352,7 +388,7 @@ watch(
       }
     }
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 
 watch(
@@ -361,7 +397,7 @@ watch(
     if (!candleSeries || !chart) return;
     syncSignalMarkers(markers);
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 
 watch(
@@ -370,24 +406,23 @@ watch(
     if (!candleSeries || !chart) return;
     syncDrawings(drawings ?? []);
   },
-  { deep: true },
+  { deep: true, immediate: true },
 );
 
 // ---- lifecycle ----
 onMounted(() => {
+  bindGlobalEvents();
   if (props.data.length) {
-    const inst = createChartInstance();
-    if (inst) {
-      updateChartData();
-      if (props.signalMarkers.length > 0) {
-        syncSignalMarkers(props.signalMarkers);
-      }
-      if (props.drawings && props.drawings.length > 0) {
-        syncDrawings(props.drawings);
-      }
+    // updateChartData() 内部会通过 initKLineChart() 首次创建 chart
+    // 不再额外调用 createChartInstance()，避免 chart 被创建两次
+    updateChartData();
+    if (props.signalMarkers.length > 0) {
+      syncSignalMarkers(props.signalMarkers);
+    }
+    if (props.drawings && props.drawings.length > 0) {
+      syncDrawings(props.drawings);
     }
   }
-  bindGlobalEvents();
 });
 
 onBeforeUnmount(() => {
@@ -396,15 +431,19 @@ onBeforeUnmount(() => {
   maSeriesList.length = 0;
   candleSeries = null;
   volumeSeries = null;
-  if (chart) {
-    chart.remove();
-    chart = null;
-  }
+  // 通过 composable 统一销毁（清理其内部引用 + DOM 事件）
+  destroyChart();
+  chart = null;
 });
 
 defineExpose({
   fitContent() {
-    chart?.timeScale().fitContent();
+    // 使用时间等比模式，避免等距间距导致十字星漂移
+    const data = chart?.series()[0]?.data();
+    if (data && data.length > 0) {
+      const last = data[data.length - 1];
+      chart?.timeScale().setVisibleRange({ from: data[0].time, to: last.time });
+    }
   },
   setVisibleRange(from: number, to: number) {
     chart?.timeScale().setVisibleRange({ from, to } as any);
@@ -436,6 +475,19 @@ defineExpose({
       class="lw-chart"
       :style="{ display: hasData && !loading && !error ? '' : 'none' }"
     />
+    <!-- 十字光标浮层标签 -->
+    <div
+      v-if="tooltipData?.visible"
+      class="crosshair-tooltip"
+      :style="{ left: tooltipData.x + 'px', top: (tooltipData.y - 10) + 'px' }"
+    >
+      <div class="tooltip-date">{{ tooltipData.date }}</div>
+      <div class="tooltip-row"><span>开</span><span>{{ tooltipData.open.toFixed(2) }}</span></div>
+      <div class="tooltip-row"><span>高</span><span class="text-up">{{ tooltipData.high.toFixed(2) }}</span></div>
+      <div class="tooltip-row"><span>低</span><span class="text-down">{{ tooltipData.low.toFixed(2) }}</span></div>
+      <div class="tooltip-row"><span>收</span><span :class="tooltipData.close >= tooltipData.open ? 'text-up' : 'text-down'">{{ tooltipData.close.toFixed(2) }}</span></div>
+      <div class="tooltip-row"><span>量</span><span>{{ (tooltipData.vol / 1e8).toFixed(2) }}亿</span></div>
+    </div>
   </div>
 </template>
 
@@ -447,5 +499,41 @@ defineExpose({
 .lw-chart {
   width: 100%;
   min-height: v-bind("props.height + 'px'");
+  zoom: 1.25; /* 抵消 html { zoom: 0.8 }，恢复 chart 内部坐标系统与 OS 鼠标一致 */
+}
+
+/* 十字光标浮层标签 */
+.crosshair-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 100;
+  background: var(--color-bg-card, rgba(18, 24, 40, 0.95));
+  border: 1px solid var(--color-primary, #448aff);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  min-width: 130px;
+}
+.tooltip-date {
+  font-weight: 600;
+  color: var(--color-primary, #448aff);
+  margin-bottom: 3px;
+  text-align: center;
+  font-size: 12px;
+}
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tooltip-row span:first-child {
+  color: var(--color-text-tertiary, #888);
+}
+.tooltip-row span:last-child {
+  font-variant-numeric: tabular-nums;
 }
 </style>

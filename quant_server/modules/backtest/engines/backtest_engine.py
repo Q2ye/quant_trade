@@ -136,8 +136,10 @@ class BacktestResult:
 	equity_curve: List[Dict] = None  # 净值曲线 [{trade_date, total_assets, cumulative_return}, ...]
 	drawdown_curve: List[Dict] = None  # 回撤曲线 [{trade_date, drawdown}, ...]
 	trades: List[Dict] = None  # 交易明细列表
-	monthly_returns: List[Dict] = None  # 月度收益（v1.2+ 计划）
-	benchmark_curve: List[Dict] = None  # 基准对比曲线（v1.2+ 计划）
+	monthly_returns: List[Dict] = None  # 月度收益
+	benchmark_curve: List[Dict] = None  # 基准对比曲线
+	daily_returns: List[Dict] = None  # 每日收益率/盈亏 [{trade_date, daily_return, daily_pnl}]
+	daily_turnover: List[Dict] = None  # 每日成交额 [{trade_date, turnover}]
 
 	def __post_init__(self):
 		"""dataclass 初始化后钩子：确保列表字段不为 None，避免下游空指针。"""
@@ -147,6 +149,14 @@ class BacktestResult:
 			self.drawdown_curve = []
 		if self.trades is None:
 			self.trades = []
+		if self.monthly_returns is None:
+			self.monthly_returns = []
+		if self.benchmark_curve is None:
+			self.benchmark_curve = []
+		if self.daily_returns is None:
+			self.daily_returns = []
+		if self.daily_turnover is None:
+			self.daily_turnover = []
 
 	def to_dict(self) -> Dict[str, Any]:
 		"""
@@ -172,6 +182,8 @@ class BacktestResult:
 			"trades": self.trades,
 			"monthly_returns": self.monthly_returns or [],
 			"benchmark_curve": self.benchmark_curve or [],
+			"daily_returns": self.daily_returns or [],
+		"daily_turnover": self.daily_turnover or [],
 		}
 
 
@@ -298,6 +310,7 @@ class BacktestEngine(EngineBase):
 			parameters: Dict[str, Any] = None,
 			commission_rate: float = 0.0003,
 			slippage: float = 0.001,
+			benchmark_ts_code: str = None,
 	) -> BacktestResult:
 		"""
 		执行一次完整回测（v1.1 异步编排链路）。
@@ -522,6 +535,14 @@ class BacktestEngine(EngineBase):
 			initial_capital=initial_capital,
 		)
 
+		# 基准曲线计算（需异步加载数据，放在 async run() 中）
+		result.benchmark_curve = await self._load_benchmark_curve(
+			benchmark_ts_code=benchmark_ts_code,
+			start_date=str(equity_df["trade_date"].iloc[0])[:10] if not equity_df.empty else None,
+			end_date=str(equity_df["trade_date"].iloc[-1])[:10] if not equity_df.empty else None,
+			initial_capital=initial_capital,
+		)
+
 		# =====================================================================
 		# 第 6 步：结果持久化到数据库
 		# =====================================================================
@@ -704,7 +725,80 @@ class BacktestEngine(EngineBase):
 				sum(trade_pnls) / len(trade_pnls) if trade_pnls else 0.0
 			)
 
+		# ---- 每日收益率（供前端每日盈亏图使用） ----
+		if len(equity_df) >= 2:
+			daily_rets = equity_df[["trade_date", "total_assets"]].copy()
+			daily_rets["daily_return"] = daily_rets["total_assets"].pct_change()
+			daily_rets["daily_pnl"] = daily_rets["total_assets"].diff()
+			result.daily_returns = (
+				daily_rets[["trade_date", "daily_return", "daily_pnl"]]
+				.dropna()
+				.to_dict("records")
+			)
+		else:
+			result.daily_returns = []
+
+		# ---- 每日成交额（从 trades 按交易日聚合） ----
+		if trades:
+			from collections import defaultdict
+			daily_amt = defaultdict(float)
+			for t in trades:
+				raw = t.get("trade_date") or t.get("datetime") or ""
+				d = str(raw)[:10] if raw else ""
+				if d:
+					daily_amt[d] += float(t.get("amount", 0) or 0)
+			result.daily_turnover = [
+				{"trade_date": k, "turnover": round(v, 2)}
+				for k, v in sorted(daily_amt.items())
+			]
+		else:
+			result.daily_turnover = []
+
 		return result
+
+	async def _load_benchmark_curve(
+		self,
+		benchmark_ts_code: str,
+		start_date: str,
+		end_date: str,
+		initial_capital: float,
+	) -> List[Dict]:
+		"""计算基准收益曲线（v1.2）。加载基准指数行情，归一化到初始资金。"""
+		if not benchmark_ts_code or not start_date or not end_date:
+			return []
+		try:
+			if not self.data_feed:
+				return []
+			bm_df = await self.data_feed.load_historical_data(
+				symbols=[benchmark_ts_code],
+				start_date=start_date,
+				end_date=end_date,
+			)
+			if bm_df.empty:
+				return []
+			# 按交易日聚合平均收盘价
+			bm_daily = (
+				bm_df.groupby("trade_date")["close"]
+				.mean()
+				.reset_index()
+				.sort_values("trade_date")
+			)
+			if bm_daily.empty:
+				return []
+			# 归一化：基准初始价格 → initial_capital
+			first_close = float(bm_daily["close"].iloc[0])
+			curve = []
+			for _, row in bm_daily.iterrows():
+				cumulative_return = float(row["close"]) / first_close - 1.0 if first_close > 0 else 0.0
+				curve.append({
+					"trade_date": str(row["trade_date"])[:10],
+					"cumulative_return": round(cumulative_return, 6),
+					"total_assets": round(initial_capital * (1 + cumulative_return), 2),
+				})
+			return curve
+		except Exception as e:
+			logger.warning(f"基准曲线计算失败 ({benchmark_ts_code}): {e}")
+			return []
 
 	# =========================================================================
 	# 持久化（v1.1 新增）

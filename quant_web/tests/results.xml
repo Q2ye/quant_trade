@@ -1,27 +1,83 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuites name="vitest tests" tests="1" failures="0" errors="0" time="0.5293211">
-    <testsuite name="tests/unit/smoke.spec.ts" timestamp="2026-05-05T10:23:03.406Z" hostname="阿秦" tests="1" failures="0" errors="0" skipped="0" time="0.5293211">
-        <testcase classname="tests/unit/smoke.spec.ts" name="Smoke &gt; mounts App without crash" time="0.527724">
+<testsuites name="vitest tests" tests="31" failures="0" errors="0" time="0.4034238">
+    <testsuite name="tests/unit/smoke.spec.ts" timestamp="2026-06-18T16:30:30.619Z" hostname="阿秦" tests="1" failures="0" errors="0" skipped="0" time="0.3816809">
+        <testcase classname="tests/unit/smoke.spec.ts" name="Smoke &gt; mounts App without crash" time="0.3802876">
             <system-out>
 🎯 App 组件已挂载
+🎨 首次访问，使用默认深色主题
 
             </system-out>
             <system-err>
 [Vue warn]: Component &quot;RouterLink&quot; has already been registered in target app.
 [naive/back-top]: Container of back-top element is not found. This could be a bug of naive-ui.
-⚠️ 主题初始化失败，使用默认深色主题: TypeError: window.matchMedia is not a function
-    at initializeTheme [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39msrc\App.vue:230:38[90m)[39m
-    at [90mE:\QuantitativeTrading\myObject\quant_trade\quant_web\[39msrc\App.vue:198:7
-    at [90mE:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:2863:40
-    at callWithErrorHandling [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:200:19[90m)[39m
-    at callWithAsyncErrorHandling [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:207:17[90m)[39m
-    at hook.__weh.hook.__weh [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:2843:19[90m)[39m
-    at flushPostFlushCbs [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:382:28[90m)[39m
-    at render [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:6660:7[90m)[39m
-    at mount [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-core@3.5.25\node_modules\[4m@vue[24m\runtime-core\dist\runtime-core.cjs.js:3982:13[90m)[39m
-    at Object.app.mount [90m(E:\QuantitativeTrading\myObject\quant_trade\quant_web\[39mnode_modules\[4m.pnpm[24m\@vue+runtime-dom@3.5.25\node_modules\[4m@vue[24m\runtime-dom\dist\runtime-dom.cjs.js:1761:19[90m)[39m
 
             </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/TrendLinePrimitive.spec.ts" timestamp="2026-06-18T16:30:30.621Z" hostname="阿秦" tests="5" failures="0" errors="0" skipped="0" time="0.0060055">
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; only stores time and price — no pixel coordinates" time="0.002192">
+        </testcase>
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; supports extendRight ray mode (stored as flag, not as coordinate)" time="0.0006037">
+        </testcase>
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; updateData modifies stored properties without adding coordinates" time="0.0004609">
+        </testcase>
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; cross-holiday gap: time span covers 8 calendar days correctly" time="0.0003857">
+        </testcase>
+        <testcase classname="tests/unit/TrendLinePrimitive.spec.ts" name="TrendLinePrimitive 数据模型 &gt; getData returns current data snapshot" time="0.0003515">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/useTimeCoordinate.spec.ts" timestamp="2026-06-18T16:30:30.623Z" hostname="阿秦" tests="14" failures="0" errors="0" skipped="0" time="0.0069168">
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; converts &apos;YYYY-MM-DD&apos; string to epoch seconds" time="0.0019777">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; returns number time as-is" time="0.0002332">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toEpochSeconds &gt; handles different dates consistently" time="0.000193">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; initially needs recalc" time="0.000221">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; does not need recalc for same range and width" time="0.000304">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when width changes" time="0.0002105">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc when visible range changes" time="0.0001649">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc after markDirty" time="0.0001684">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; 脏检查 (needsRecalc / updateCache) &gt; needs recalc with null range" time="0.0003194">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when chart is null" time="0.0003056">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; toCoord / timeToX &gt; returns null when series is null for toCoord" time="0.00015">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly computes gap between pre/post holiday dates" time="0.0001372">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; time point with gaps &gt; timeToEpoch correctly handles weekend gap" time="0.0001143">
+        </testcase>
+        <testcase classname="tests/unit/useTimeCoordinate.spec.ts" name="useTimeCoordinate &gt; reset &gt; clears cache and marks dirty" time="0.0001452">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/unit/useVisibilityCulling.spec.ts" timestamp="2026-06-18T16:30:30.626Z" hostname="阿秦" tests="11" failures="0" errors="0" skipped="0" time="0.0088206">
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; returns all primitives when range is null" time="0.0025604">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; returns all primitives when array is empty" time="0.0003158">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; filters primitives outside visible range" time="0.0014149">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; includes primitives at range boundaries" time="0.0002728">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; includes primitives with time span overlapping visible range" time="0.0004323">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; alwaysVisible primitives are never hidden" time="0.0003467">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; cull &gt; handles padding ratio for edge primitives" time="0.0007701">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; isVisible &gt; returns true when visibleRange is null" time="0.0001907">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; isVisible &gt; returns true for alwaysVisible primitive regardless of range" time="0.000333">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; isVisible &gt; returns false for primitive well outside range" time="0.000184">
+        </testcase>
+        <testcase classname="tests/unit/useVisibilityCulling.spec.ts" name="useVisibilityCulling &gt; isVisible &gt; returns true for primitive inside range" time="0.0001458">
         </testcase>
     </testsuite>
 </testsuites>

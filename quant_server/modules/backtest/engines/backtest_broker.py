@@ -266,6 +266,7 @@ class BacktestBroker(EngineBase):
 
         # ---- 交易日追踪 ----
         self._trade_date: Optional[date] = None
+        self._peak_equity: float = self.initial_capital  # v1.4: O(1) 峰值追踪
 
     # =========================================================================
     # 订单处理 — 信号 → 订单
@@ -602,6 +603,16 @@ class BacktestBroker(EngineBase):
         # 注：冻结资金本质仍是账户资产（已下单未成交），计入总资产
         total_assets = self.cash + self.frozen_cash + total_market_value
 
+        # ---- v1.4: 资产守恒校验 ----
+        recon = self.cash + self.frozen_cash + total_market_value
+        if abs(total_assets - recon) > 0.01:
+            logger.warning(
+                f"资产守恒异常 [{self._trade_date}]: "
+                f"total={total_assets:.2f} vs cash({self.cash:.2f})"
+                f"+frozen({self.frozen_cash:.2f})+mv({total_market_value:.2f})"
+                f"={recon:.2f}, diff={total_assets - recon:.4f}"
+            )
+
         # ---- 计算累计收益率 ----
         if self._trade_date and self.initial_capital > 0:
             cumulative_return = (
@@ -610,21 +621,17 @@ class BacktestBroker(EngineBase):
         else:
             cumulative_return = 0.0
 
-        # ---- 滚动计算最大回撤 ----
-        if self.snapshots:
-            # 历史峰值 = 所有历史快照中 total_assets 的最大值
-            prev_peak = max(s.total_assets for s in self.snapshots)
-        else:
-            prev_peak = self.initial_capital
-
+        # ---- 滚动计算最大回撤（v1.4: O(1) 峰值追踪） ----
+        if total_assets > self._peak_equity:
+            self._peak_equity = total_assets
         current_drawdown = (
-            (prev_peak - total_assets) / prev_peak if prev_peak > 0 else 0.0
+            (self._peak_equity - total_assets) / self._peak_equity
+            if self._peak_equity > 0 else 0.0
         )
         max_drawdown = current_drawdown
         if self.snapshots:
-            # 最大回撤 = max(历史最大, 当前回撤)
             max_drawdown = max(
-                max(s.max_drawdown for s in self.snapshots),
+                self.snapshots[-1].max_drawdown,  # 仅取上一快照的累积 max_drawdown
                 current_drawdown,
             )
 
@@ -788,6 +795,7 @@ class BacktestBroker(EngineBase):
         self._equity_curve = None
         self._prev_close.clear()
         self._trade_date = None
+        self._peak_equity = self.initial_capital  # v1.4: 重置峰值
         # v1.3: 重置 ST/科创板识别集合（后续可从 DB 加载）
         self._star_market_stocks = set()
         self._st_stocks = set()

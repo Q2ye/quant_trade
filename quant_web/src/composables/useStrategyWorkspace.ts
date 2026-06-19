@@ -59,6 +59,8 @@ export function useStrategyWorkspace() {
   const btBenchmark = ref<any[]>([]);
   const btDrawdown = ref<any[]>([]);
   const btMonthlyReturns = ref<any[]>([]);
+  const btDailyReturns = ref<any[]>([]);
+  const btDailyTurnover = ref<any[]>([]);
   const btTrades = ref<any[]>([]);
   const btResultLoading = ref(false);
 
@@ -334,9 +336,11 @@ export function useStrategyWorkspace() {
         avgTradeReturn: r.avg_trade_return ?? 0,
       };
       btEquityCurve.value = eq.map((p: any) => ({ date: p.trade_date || p.date, value: p.total_assets || p.equity || 0 }));
-      btBenchmark.value = (r.benchmark_curve || []).map((p: any) => ({ date: p.trade_date || p.date, value: p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0 }));
+      btBenchmark.value = (r.benchmark_curve || []).map((p: any) => ({ date: p.trade_date || p.date, value: p.total_assets || (p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0) }));
       btDrawdown.value = (r.drawdown_curve || []).map((p: any) => ({ date: p.trade_date || p.date, value: p.drawdown || p.max_drawdown || 0 }));
       btMonthlyReturns.value = (r.monthly_returns || []).map((p: any) => ({ month: p.month || p.trade_date || "", return: p.return || p.monthly_return || 0 }));
+      btDailyReturns.value = (r.daily_returns || []).map((p: any) => ({ trade_date: p.trade_date || p.date || "", daily_return: p.daily_return ?? 0, daily_pnl: p.daily_pnl ?? 0 }));
+      btDailyTurnover.value = (r.daily_turnover || []).map((p: any) => ({ trade_date: p.trade_date || p.date || "", turnover: p.turnover ?? 0 }));
       btTrades.value = tr.map((t: any) => {
         const side = t.side || t.direction || '';
         const qty = Number(t.volume || t.quantity || 0);
@@ -366,7 +370,7 @@ export function useStrategyWorkspace() {
     strategyParams, strategyStatus,
     isBacktesting, backtestProgress, backtestStatus, currentTaskId,
     backtestHistory, selectedHistoryTaskId,
-    btSummary, btEquityCurve, btBenchmark, btDrawdown, btMonthlyReturns, btTrades, btResultLoading,
+    btSummary, btEquityCurve, btBenchmark, btDrawdown, btMonthlyReturns, btDailyReturns, btDailyTurnover, btTrades, btResultLoading,
     // actions
     loadStrategy, saveStrategy, submitBacktest, loadBacktestResult, loadBacktestHistory, clearPolling,
   };
