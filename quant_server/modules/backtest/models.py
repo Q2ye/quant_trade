@@ -40,33 +40,6 @@ class BacktestProgress:
 
 
 @dataclass
-class BacktestResult:
-    """回测结果（领域对象）"""
-    task_id: str
-    strategy_id: str
-    start_date: date
-    end_date: date
-    # 收益指标
-    total_return: Decimal = Decimal("0")
-    annual_return: Decimal = Decimal("0")
-    # 风险指标
-    volatility: Decimal = Decimal("0")
-    sharpe_ratio: Decimal = Decimal("0")
-    max_drawdown: Decimal = Decimal("0")
-    # 交易统计
-    total_trades: int = 0
-    win_rate: Decimal = Decimal("0")
-    profit_factor: Decimal = Decimal("0")
-    # 曲线数据
-    equity_curve: List[Dict[str, Any]] = field(default_factory=list)
-    drawdown_curve: List[Dict[str, Any]] = field(default_factory=list)
-    daily_returns: List[float] = field(default_factory=list)
-    # 其他
-    benchmark_return: Optional[Decimal] = None
-    created_at: Optional[datetime] = None
-
-
-@dataclass
 class OptimizationConfig:
     """参数优化配置"""
     strategy_id: str

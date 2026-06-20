@@ -330,6 +330,11 @@ class ComparisonService:
         strategy = await self.strategy_repo.get(strategy_id)
         if not strategy:
             raise ValueError(f'策略 {strategy_id} 不存在')
+        if start_date is None:
+            from datetime import date, timedelta
+            start_date = date.today() - timedelta(days=365)
+        if end_date is None:
+            end_date = date.today()
         total_days = (end_date - start_date).days + 1
         return PerformanceMetrics(
             strategy_id=strategy_id,
@@ -377,15 +382,12 @@ class ComparisonService:
                     returns = pd.Series(metrics.daily_returns[:len(dates)], index=dates[:len(metrics.daily_returns)])
                     return returns
 
-            # 回退：随机模拟（仅开发阶段）
+            # 无法获取真实收益率序列，返回 None
             logger.warning(
-                f"策略 {strategy_id} 无法获取真实收益率序列，使用随机模拟数据。"
+                f"策略 {strategy_id} 无法获取真实收益率序列，跳过该策略的收益率分析。"
                 f"请确保注入 performance_service 并关联 trade_repo。"
             )
-            dates = pd.date_range(start_date, end_date, freq='D')
-            np.random.seed(hash(strategy_id) % 10000)
-            returns = np.random.randn(len(dates)) * 0.01
-            return pd.Series(returns, index=dates)
+            return None
         except (ValueError, TypeError) as e:
             logger.warning(f"获取策略 {strategy_id} 收益率序列失败: {str(e)}")
             return None

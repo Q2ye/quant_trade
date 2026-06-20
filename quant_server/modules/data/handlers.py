@@ -50,6 +50,7 @@ from core.exceptions.business_exceptions import (
 	PermissionDeniedException,
 	BusinessException
 )
+from modules.data.services.sync_service import DataSyncService
 # ==================== 数据模块内部组件导入 ====================
 # 事件定义
 from modules.data.events import (
@@ -92,7 +93,6 @@ from modules.data.schemas import (
 from modules.data.services.quality_service import DataQualityService
 # 服务层组件
 from modules.data.services.research_service import FactorResearchService
-from modules.data.services.sync_service import DataSyncService
 from shared.cache.redis_cache import RedisCache
 # 配置与缓存
 from shared.config.config_manager import ConfigSettings as Settings, get_config
@@ -371,7 +371,6 @@ async def research_factor (
 		# 将研究任务加入后台任务队列
 		background_tasks.add_task(
 			_execute_async_factor_research,
-			session=session,
 			research_id=research_id,
 			request=request,
 			event_engine=event_engine,
@@ -2204,7 +2203,6 @@ async def _process_research_completion (
 
 
 async def _execute_async_factor_research (
-		session: AsyncSession,
 		research_id: str,
 		request: ResearchRequest,
 		event_engine: EventEngine,
@@ -2214,81 +2212,94 @@ async def _execute_async_factor_research (
 	异步执行因子研究（后台任务）
 
 	Args:
-		session: 数据库会话
 		research_id: 研究任务ID
 		request: 研究请求参数
 		event_engine: 事件引擎
 		user_id: 当前用户ID
+
+	NOTE: 不接收外部 session 参数。后台任务在 HTTP 响应返回后执行，
+	请求级 session 已被关闭，必须创建独立数据库会话。
 	"""
 	try:
 		logger.info(f"开始异步因子研究: {research_id}")
 
-		# 1. 初始化组件
-		research_service = FactorResearchService(session, event_engine)
-		research_repo = FactorResearchRepository(session)
+		# 创建独立 session（后台任务不可使用 HTTP 请求的 session）
+		session_manager = get_session_manager()
+		session = await session_manager.get_session()
+		try:
+			# 1. 初始化组件
+			research_service = FactorResearchService(session, event_engine)
+			research_repo = FactorResearchRepository(session)
 
-		# 2. 更新初始进度
-		await research_repo.update_research_progress(
-			research_id=research_id,
-			progress=0.1,
-			calculated_count=0,
-			total_stocks=len(request.universe) if request.universe else 0
-		)
+			# 2. 更新初始进度
+			await research_repo.update_research_progress(
+				research_id=research_id,
+				progress=0.1,
+				calculated_count=0,
+				total_stocks=len(request.universe) if request.universe else 0
+			)
 
-		# 3. 发布进度事件
-		progress_event = DataResearchProgressEvent(
-			research_id=research_id,
-			progress=0.1,
-			current_step="初始化研究任务",
-			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
-		)
-		await event_engine.put(progress_event)  # type: ignore
+			# 3. 发布进度事件
+			progress_event = DataResearchProgressEvent(
+				research_id=research_id,
+				progress=0.1,
+				current_step="初始化研究任务",
+				user_id=user_id,
+				timestamp=datetime.now(),
+				source="data_module"
+			)
+			await event_engine.put(progress_event)  # type: ignore
 
-		# 4. 执行因子研究
-		factor_definition = {
-			"name": request.factor_names[0] if request.factor_names else "unknown",
-			"formula": "",
-			"category": "",
-			"description": ""
-		}
-		parameters = {
-			"frequency": request.frequency,
-			"group_count": request.group_count,
-			"analysis_type": request.analysis_type
-		}
-		research_result = await research_service.research_factor(
-			factor_definition=factor_definition,
-			universe=request.universe,
-			start_date=request.start_date,
-			end_date=request.end_date,
-			parameters=parameters,
-			user_id=user_id
-		)
+			# 4. 执行因子研究
+			factor_definition = {
+				"name": request.factor_names[0] if request.factor_names else "unknown",
+				"formula": "",
+				"category": "",
+				"description": ""
+			}
+			parameters = {
+				"frequency": request.frequency,
+				"group_count": request.group_count,
+				"analysis_type": request.analysis_type
+			}
+			research_result = await research_service.research_factor(
+				factor_definition=factor_definition,
+				universe=request.universe,
+				start_date=request.start_date,
+				end_date=request.end_date,
+				parameters=parameters,
+				user_id=user_id
+			)
 
-		# 5. 处理研究完成
-		await _process_research_completion(
-			research_repo=research_repo,
-			research_id=research_id,
-			request=request,
-			research_result=research_result,
-			event_engine=event_engine,
-			user_id=user_id
-		)
+			# 5. 处理研究完成
+			await _process_research_completion(
+				research_repo=research_repo,
+				research_id=research_id,
+				request=request,
+				research_result=research_result,
+				event_engine=event_engine,
+				user_id=user_id
+			)
 
-		logger.info(f"异步因子研究完成: {research_id}")
+			logger.info(f"异步因子研究完成: {research_id}")
+		finally:
+			await session.close()
 
 	except Exception as e:
 		logger.error(f"异步因子研究失败: {str(e)}", exc_info=True)
 
-		# 更新任务状态为失败
-		research_repo = FactorResearchRepository(session)
-		await research_repo.update_research_status(
-			research_id=research_id,
-			status="failed",
-			error_message=str(e)
-		)
+		# 更新任务状态为失败（使用独立 session）
+		try:
+			err_session_manager = get_session_manager()
+			async with err_session_manager.get_session() as err_session:
+				research_repo = FactorResearchRepository(err_session)
+				await research_repo.update_research_status(
+					research_id=research_id,
+					status="failed",
+					error_message=str(e)
+				)
+		except Exception as err_e:
+			logger.error(f"更新失败状态时出错: {err_e}")
 
 		# 发布失败事件
 		fail_event = DataResearchProgressEvent(

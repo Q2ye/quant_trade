@@ -274,8 +274,7 @@ CREATE TABLE stock_st_list (
     st_type VARCHAR(10) NOT NULL,
     st_type_name VARCHAR(50) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (ts_code, trade_date)
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON TABLE stock_st_list IS 'ST股票列表历史记录表';
@@ -1848,7 +1847,7 @@ CREATE TABLE data_quality_issues (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE data_quality_metrics IS '数据质量指标历史表';
+COMMENT ON TABLE data_quality_issues IS '数据质量指标历史表';
 COMMENT ON COLUMN data_quality_metrics.metric_date IS '指标日期';
 COMMENT ON COLUMN data_quality_metrics.data_type IS '数据类型';
 COMMENT ON COLUMN data_quality_metrics.metric_name IS '指标名称';
@@ -2766,6 +2765,7 @@ CREATE TABLE stock_weekly (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_weekly_code_date ON stock_weekly(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_weekly_id ON stock_weekly(id);
 
 
 COMMENT ON TABLE stock_weekly IS 'A股周线行情数据表（TimescaleDB超表）';
@@ -2803,6 +2803,7 @@ CREATE TABLE stock_monthly (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_monthly_code_date ON stock_monthly(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_monthly_id ON stock_monthly(id);
 
 
 COMMENT ON TABLE stock_monthly IS 'A股月线行情数据表（TimescaleDB超表）';
@@ -2831,6 +2832,7 @@ CREATE TABLE stock_adj_factor (
     PRIMARY KEY (ts_code, trade_date)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_adj_factor_code_date ON stock_adj_factor(ts_code, trade_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_adj_factor_id ON stock_adj_factor(id);
 
 
 COMMENT ON TABLE stock_adj_factor IS '股票复权因子数据表（TimescaleDB超表）';
@@ -2896,6 +2898,8 @@ CREATE TABLE stock_daily_basic (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_basic_code_date ON stock_daily_basic(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_basic_id ON stock_daily_basic(id);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_basic_date ON stock_daily_basic(trade_date DESC);
 
 
 COMMENT ON TABLE stock_daily_basic IS '股票每日基本面指标数据表（TimescaleDB超表）';
@@ -2935,6 +2939,8 @@ CREATE TABLE stock_daily_limit (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_limit_code_date ON stock_daily_limit(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_limit_id ON stock_daily_limit(id);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_limit_date ON stock_daily_limit(trade_date DESC);
 
 COMMENT ON TABLE stock_daily_limit IS '股票每日涨跌停价格表（TimescaleDB超表）';
 COMMENT ON COLUMN stock_daily_limit.ts_code IS '股票TS代码（含交易所后缀）';
@@ -3483,11 +3489,13 @@ SELECT create_hypertable(
 CREATE INDEX IF NOT EXISTS idx_stock_daily_ts_code ON stock_daily (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_daily_date ON stock_daily (trade_date DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_daily_code_date ON stock_daily(ts_code, trade_date);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_id ON stock_daily(id);
 
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_ts_code ON stock_minutes (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_time ON stock_minutes (trade_time DESC);
 CREATE INDEX IF NOT EXISTS idx_stock_minutes_freq ON stock_minutes (freq);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_minutes_code_freq_time ON stock_minutes(ts_code, freq, trade_time);
+CREATE INDEX IF NOT EXISTS idx_stock_minutes_id ON stock_minutes(id);
 
 CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_ts_code ON stock_moneyflow (ts_code);
 CREATE INDEX IF NOT EXISTS idx_stock_moneyflow_date ON stock_moneyflow (trade_date DESC);
@@ -3561,19 +3569,35 @@ ALTER TABLE stock_minutes SET (
 
 SELECT add_compression_policy('stock_minutes', INTERVAL '7 days');
 
--- 3. 为其他超表启用压缩策略（根据需求）
--- SELECT add_compression_policy('etf_daily', INTERVAL '30 days');
--- SELECT add_compression_policy('index_daily', INTERVAL '30 days');
+-- 3. 为其他超表启用压缩
+ALTER TABLE stock_moneyflow SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'ts_code',
+    timescaledb.compress_orderby = 'trade_date DESC, id'
+);
+SELECT add_compression_policy('stock_moneyflow', INTERVAL '30 days');
+
+ALTER TABLE stock_daily_basic SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'ts_code',
+    timescaledb.compress_orderby = 'trade_date DESC, id'
+);
+SELECT add_compression_policy('stock_daily_basic', INTERVAL '30 days');
+
+ALTER TABLE stock_daily_limit SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'ts_code',
+    timescaledb.compress_orderby = 'trade_date DESC, id'
+);
+SELECT add_compression_policy('stock_daily_limit', INTERVAL '30 days');
+
+SELECT add_compression_policy('etf_daily', INTERVAL '30 days');
+SELECT add_compression_policy('index_daily', INTERVAL '30 days');
 
 -- 4. 数据保留策略（自动删除旧数据）
--- 保留3年的分钟数据（可根据存储调整）
--- SELECT add_retention_policy('stock_minutes', INTERVAL '3 years');
-
--- 保留10年的日线数据
--- SELECT add_retention_policy('stock_daily', INTERVAL '10 years');
-
--- 保留2年的资金流向数据
--- SELECT add_retention_policy('stock_moneyflow', INTERVAL '2 years');
+SELECT add_retention_policy('stock_minutes', INTERVAL '3 years');
+SELECT add_retention_policy('stock_daily', INTERVAL '10 years');
+SELECT add_retention_policy('stock_moneyflow', INTERVAL '2 years');
 
 -- ============================================================
 -- 第六部分：触发器函数（用于自动更新时间）

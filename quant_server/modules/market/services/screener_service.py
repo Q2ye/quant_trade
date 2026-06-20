@@ -85,21 +85,27 @@ async def screener(
 
     where_clause = " AND ".join(where) if where else "1=1"
 
+    # 将 MAX(trade_date) 提到 CTE 中避免 LATERAL 内重复求值
+    cte_prefix = """
+        WITH latest_daily AS (SELECT MAX(trade_date) AS dt FROM stock_daily),
+             latest_basic AS (SELECT MAX(trade_date) AS dt FROM stock_daily_basic)
+    """
+
     # 计数
-    count_sql = f"""
+    count_sql = cte_prefix + f"""
         SELECT COUNT(*) FROM stock_basic b
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_daily q2
+            SELECT close, pct_chg, amount, vol FROM stock_daily q2
             WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+            AND q2.trade_date = (SELECT dt FROM latest_daily)
         ) q ON true
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_daily_basic d2
+            SELECT pe, pb, total_mv, turnover_rate FROM stock_daily_basic d2
             WHERE d2.ts_code = b.ts_code
-            AND d2.trade_date = (SELECT MAX(trade_date) FROM stock_daily_basic)
+            AND d2.trade_date = (SELECT dt FROM latest_basic)
         ) d ON true
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_fina_indicators f2
+            SELECT roe, roa FROM stock_fina_indicators f2
             WHERE f2.ts_code = b.ts_code
             ORDER BY f2.end_date DESC LIMIT 1
         ) f ON true
@@ -110,24 +116,24 @@ async def screener(
 
     # 分页查询
     offset = (page - 1) * limit
-    query_sql = f"""
+    query_sql = cte_prefix + f"""
         SELECT b.ts_code, b.name, b.industry, b.list_date,
                q.close, q.pct_chg, q.amount, q.vol,
                d.pe, d.pb, d.total_mv, d.turnover_rate,
                COALESCE(f.roe, NULL) AS roe
         FROM stock_basic b
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_daily q2
+            SELECT close, pct_chg, amount, vol FROM stock_daily q2
             WHERE q2.ts_code = b.ts_code
-            AND q2.trade_date = (SELECT MAX(trade_date) FROM stock_daily)
+            AND q2.trade_date = (SELECT dt FROM latest_daily)
         ) q ON true
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_daily_basic d2
+            SELECT pe, pb, total_mv, turnover_rate FROM stock_daily_basic d2
             WHERE d2.ts_code = b.ts_code
-            AND d2.trade_date = (SELECT MAX(trade_date) FROM stock_daily_basic)
+            AND d2.trade_date = (SELECT dt FROM latest_basic)
         ) d ON true
         LEFT JOIN LATERAL (
-            SELECT * FROM stock_fina_indicators f2
+            SELECT roe, roa FROM stock_fina_indicators f2
             WHERE f2.ts_code = b.ts_code
             ORDER BY f2.end_date DESC LIMIT 1
         ) f ON true

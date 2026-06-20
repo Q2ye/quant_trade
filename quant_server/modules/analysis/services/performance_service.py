@@ -139,6 +139,12 @@ class PerformanceService:
             ValueError: 策略不存在、净值数据不足或计算失败时抛出
         """
         try:
+            # 0. 默认日期范围：最近一年
+            if start_date is None:
+                start_date = date.today() - timedelta(days=365)
+            if end_date is None:
+                end_date = date.today()
+
             # 1. 验证策略存在
             strategy = await self.strategy_repo.get(strategy_id)
             if not strategy:
@@ -309,6 +315,12 @@ class PerformanceService:
             ValueError: 账户不存在或快照数据不足时抛出
         """
         try:
+            # 0. 默认日期范围：最近一年
+            if start_date is None:
+                start_date = date.today() - timedelta(days=365)
+            if end_date is None:
+                end_date = date.today()
+
             # 1. 验证账户存在（"default" 无对应账户时返回空数据）
             account = await self.account_repo.get(account_id)
             if not account:
@@ -771,7 +783,7 @@ class PerformanceService:
             Dict: {total_trades, winning_trades, losing_trades,
                    win_rate, profit_factor, average_win, average_loss}
         """
-        trades = await self.trade_repo.get_by_strategy(
+        trades = await self.trade_repo.get_by_strategy_id(
             strategy_id, start_date, end_date
         )
 
@@ -834,7 +846,7 @@ class PerformanceService:
         """
         try:
             if entity_type == 'strategy':
-                trades = await self.trade_repo.get_by_strategy(entity_id, None, None)
+                trades = await self.trade_repo.get_by_strategy_id(entity_id, None, None)
                 if trades:
                     dlist = [getattr(t, 'trade_time', None) for t in trades]
                     dlist = [d.date() if hasattr(d, 'date') else d for d in dlist if d]
@@ -872,7 +884,7 @@ class PerformanceService:
             return {}
 
         # 取每月最后交易日的净值
-        monthly_df = df_equity['equity'].resample('M').last()
+        monthly_df = df_equity['equity'].resample('ME').last()
         monthly_returns = monthly_df.pct_change().dropna()
 
         return {

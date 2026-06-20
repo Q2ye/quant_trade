@@ -412,9 +412,11 @@ const loadData = async () => {
 
     // 填充策略选项
     if (Array.isArray(strategies) && strategies.length > 0) {
-      strategyOptions.value = strategies.map((s: any) => ({
-        id: s.id || s.name,
-        name: s.name || s.id,
+      strategyOptions.value = strategies
+        .filter((s: any) => s.id)  // 只显示有 ID 的策略
+        .map((s: any) => ({
+          id: s.id,
+          name: s.name || s.id,
         type: s.strategy_type || s.type || "自定义",
         description: s.description || "",
       }));
@@ -488,7 +490,8 @@ const runBacktest = async () => {
       symbols: stockPool.value,
       benchmark: backtestSettings.value.benchmark,
       parameters: {
-        ...strategyParams.value,
+        strategy_params: { ...strategyParams.value },
+        ts_code: stockPool.value,
       },
     });
 

@@ -71,50 +71,50 @@ class PerformanceMetrics:
 	annual_returns: Dict[int, Decimal] = field(default_factory=dict)
 
 	def to_dict (self) -> Dict[str, Any]:
-		"""转换为字典"""
-		return {
+		"""转换为平铺字典（前端直接读取 flat keys）"""
+		result = {
 			"strategy_id": self.strategy_id,
 			"account_id": self.account_id,
-			"period": {
-				"start_date": self.start_date.isoformat(),
-				"end_date": self.end_date.isoformat(),
-				"trading_days": self.trading_days,
-				"total_days": self.total_days
-			},
-			"returns": {
-				"total_return": float(self.total_return),
-				"annual_return": float(self.annual_return),
-				"cagr": float(self.cagr)
-			},
-			"risk_adjusted_returns": {
-				"sharpe_ratio": float(self.sharpe_ratio),
-				"sortino_ratio": float(self.sortino_ratio),
-				"calmar_ratio": float(self.calmar_ratio),
-				"information_ratio": float(self.information_ratio)
-			},
-			"risk_metrics": {
-				"volatility": float(self.volatility),
-				"max_drawdown": float(self.max_drawdown),
-				"var_95": float(self.var_95),
-				"var_99": float(self.var_99),
-				"expected_shortfall": float(self.expected_shortfall)
-			},
-			"alpha_beta": {
-				"alpha": float(self.alpha),
-				"beta": float(self.beta),
-				"tracking_error": float(self.tracking_error),
-				"r_squared": float(self.r_squared)
-			},
-			"trade_statistics": {
-				"total_trades": self.total_trades,
-				"winning_trades": self.winning_trades,
-				"losing_trades": self.losing_trades,
-				"win_rate": float(self.win_rate),
-				"profit_factor": float(self.profit_factor),
-				"average_win": float(self.average_win),
-				"average_loss": float(self.average_loss)
-			}
+			"start_date": self.start_date.isoformat(),
+			"end_date": self.end_date.isoformat(),
+			"trading_days": self.trading_days,
+			"total_days": self.total_days,
+			"benchmark": self.benchmark,
+			# 收益指标
+			"total_return": float(self.total_return),
+			"annual_return": float(self.annual_return),
+			"cagr": float(self.cagr),
+			# 风险调整收益
+			"sharpe_ratio": float(self.sharpe_ratio),
+			"sortino_ratio": float(self.sortino_ratio),
+			"calmar_ratio": float(self.calmar_ratio),
+			"information_ratio": float(self.information_ratio),
+			# 风险指标
+			"volatility": float(self.volatility),
+			"max_drawdown": float(self.max_drawdown),
+			"var_95": float(self.var_95),
+			"var_99": float(self.var_99),
+			"expected_shortfall": float(self.expected_shortfall),
+			# Alpha/Beta
+			"alpha": float(self.alpha),
+			"beta": float(self.beta),
+			"tracking_error": float(self.tracking_error),
+			"r_squared": float(self.r_squared),
+			# 交易统计
+			"total_trades": self.total_trades,
+			"winning_trades": self.winning_trades,
+			"losing_trades": self.losing_trades,
+			"win_rate": float(self.win_rate),
+			"profit_factor": float(self.profit_factor),
+			"average_win": float(self.average_win),
+			"average_loss": float(self.average_loss),
+			# 图表数据
+			"equity_curve": self.equity_curve,
+			"drawdown_curve": self.drawdown_curve,
+			"monthly_returns": {k: float(v) for k, v in self.monthly_returns.items()} if self.monthly_returns else {},
+			"daily_returns": self.daily_returns,
 		}
+		return result
 
 
 @dataclass

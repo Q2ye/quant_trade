@@ -40,9 +40,9 @@ class ChartGenerator:
 			图表的base64编码
 		"""
 		try:
-			# 提取数据
-			dates = [item["date"] for item in equity_curve]
-			equity = [item["equity"] for item in equity_curve]
+			# 提取数据（兼容 "trade_date"/"date" 和 "total_assets"/"equity" 两种键名）
+			dates = [item.get("trade_date", item.get("date")) for item in equity_curve]
+			equity = [item.get("total_assets", item.get("equity", 0)) for item in equity_curve]
 
 			# 创建图表
 			plt.figure(figsize=(12, 6))
@@ -78,9 +78,9 @@ class ChartGenerator:
 			图表的base64编码
 		"""
 		try:
-			# 计算回撤
-			equity = [item["equity"] for item in equity_curve]
-			dates = [item["date"] for item in equity_curve]
+			# 计算回撤（兼容两种键名）
+			equity = [item.get("total_assets", item.get("equity", 0)) for item in equity_curve]
+			dates = [item.get("trade_date", item.get("date")) for item in equity_curve]
 
 			drawdowns = []
 			peak = equity[0]

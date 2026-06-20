@@ -684,11 +684,12 @@ class BacktestService:
 			logger.error(f"获取回测净值曲线失败: {str(e)}")
 			raise
 
-	async def get_backtest_trades(self, task_id: str, user_id: str) -> Dict[str, Any]:
+	async def get_backtest_trades(self, task_id: str, user_id: str,
+		                               page: int = 1, page_size: int = 20) -> Dict[str, Any]:
 		"""
 		获取回测交易记录列表。
 
-		从 backtest_trades 表读取所有交易记录。
+		从 backtest_trades 表读取交易记录（支持分页）。
 
 		Args:
 			task_id: 回测任务 ID。
@@ -748,39 +749,17 @@ class BacktestService:
 						"profit_pct": 0.0,
 					})
 
+			total = len(data)
+			start = (page - 1) * page_size
+			end = start + page_size
 			return {
-				"data": data,
+				"data": data[start:end],
 				"pagination": {
-					"page": 1,
-					"page_size": 20,
-					"total": len(data),
+					"page": page,
+					"page_size": page_size,
+					"total": total,
+					"total_pages": max(1, (total + page_size - 1) // page_size),
 				},
-			}
-			# ---- 2. 获取交易记录 ----
-			trades = await self.trade_repo.get_by_task_id(task_id)
-			total = len(trades)
-
-			# ---- 3. 格式化 ----
-			data = []
-			for trade in trades:
-				data.append({
-					"id": trade.id,
-					"symbol": trade.ts_code,
-					"side": trade.direction,
-					"price": float(trade.price),
-					"volume": trade.volume,
-					"datetime": trade.trade_time,
-					"profit": 0.0,  # NOTE: BacktestTrade 模型中没有 profit 字段
-					"profit_pct": 0.0  # NOTE: BacktestTrade 模型中没有 profit_pct 字段
-				})
-
-			return {
-				"data": data,
-				"pagination": {
-					"page": 1,
-					"page_size": 20,
-					"total": total
-				}
 			}
 		except Exception as e:
 			logger.error(f"获取回测交易记录失败: {str(e)}")
@@ -882,7 +861,6 @@ class BacktestService:
 			if task.status == "failed":
 				return task.result or {"error": "回测执行失败，未获取到错误详情"}
 			raise ValueError(f"任务状态为 {task.status}，尚未完成")
-			return task.result or {}
 		except Exception as e:
 			logger.error(f"获取回测结果失败: {str(e)}")
 			raise

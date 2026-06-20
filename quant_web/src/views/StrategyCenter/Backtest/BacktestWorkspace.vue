@@ -469,6 +469,7 @@ const loadResultDetails = async (taskId: string) => {
       winRate: r.win_rate ?? 0,
       tradesCount: r.num_trades ?? 0,
     };
+    benchmarkReturn.value = r.excess_metrics?.benchmark_annual_return ?? 0;
     activeEquityCurve.value = eq.map((p: any) => ({ date: p.trade_date || p.date, value: p.total_assets || p.equity || 0 }));
     activeBenchmark.value = (r.benchmark_curve || []).map((p: any) => ({ date: p.trade_date || p.date, value: p.total_assets || (p.cumulative_return ? (1 + p.cumulative_return) * 100000 : p.value || 0) }));
     activeDrawdown.value = (r.drawdown_curve || []).map((p: any) => ({ date: p.trade_date || p.date, value: p.drawdown || p.max_drawdown || 0 }));

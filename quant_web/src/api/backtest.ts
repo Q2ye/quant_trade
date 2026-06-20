@@ -102,7 +102,7 @@ export default {
    * GET /quantTrade/backtest/tasks
    */
   async getTasks(params?: {
-    status?: string; page?: number; page_size?: number;
+    status?: string; page?: number; page_size?: number; strategy_id?: string;
   }): Promise<BacktestTaskSummary[]> {
     return request
       .get(`${BASE}/tasks`, {
@@ -190,6 +190,17 @@ export default {
   async getResult(taskId: string): Promise<BacktestTaskResult> {
     return request
       .get(`${BASE}/tasks/${taskId}/result`)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 批量获取回测结果
+   * POST /quantTrade/backtest/tasks/results/batch
+   */
+  async getBatchResults(taskIds: string[]): Promise<Record<string, any>> {
+    return request
+      .post(`${BASE}/tasks/results/batch`, { task_ids: taskIds })
       .then(handleResponse)
       .then((res: any) => res.data ?? res);
   },

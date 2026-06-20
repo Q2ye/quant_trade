@@ -221,11 +221,14 @@ class AnalysisHandler:
 
     async def compare_with_benchmark(self, strategy_id: str, request, _user_id: str) -> Dict[str, Any]:
         """与基准对比"""
+        from datetime import date, timedelta
+        start_date = request.start_date or date.today() - timedelta(days=365)
+        end_date = request.end_date or date.today()
         result = await self.comparison_service.compare_with_benchmark(
             strategy_id=strategy_id,
             benchmark_id=getattr(request, 'benchmark_code', '000300.SH'),
-            start_date=request.start_date,
-            end_date=request.end_date
+            start_date=start_date,
+            end_date=end_date
         )
         return result
 

@@ -1,91 +1,149 @@
-<!-- FactorDashboard.vue — 因子研究：从后端因子元数据加载 + 因子数据查询 + IC 分析 -->
+<!-- FactorDashboard.vue — 因子研究 v2：异步研究任务 + 真实 IC/分层/相关性数据 -->
 <template>
   <div class="factor-dashboard bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">因子研究</h1>
-          <p class="page-description">{{ loading ? '加载中...' : summaryText }}</p>
+          <p class="page-description">{{ statusText }}</p>
         </div>
         <div class="header-actions">
-          <n-tag v-if="isDemoData" type="warning" size="small">示例数据</n-tag>
-          <n-tag v-else type="success" size="small">真实数据</n-tag>
-          <n-button size="tiny" @click="loadFactors" :loading="loading">刷新</n-button>
+          <n-button class="action-btn" size="small" @click="router.push('/strategies')" quaternary>
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+          </n-button>
         </div>
       </div>
     </div>
 
+    <!-- Toolbar: research controls -->
+    <div class="toolbar-row">
+      <div class="toolbar-controls">
+        <n-select
+          v-model:value="researchConfig.universe"
+          :options="universeOptions"
+          style="width:130px"
+          size="small"
+        />
+        <n-date-picker
+          v-model:formatted-value="researchConfig.dateRange"
+          type="daterange"
+          style="width:200px"
+          size="small"
+        />
+        <n-select
+          v-model:value="researchConfig.selectedFactors"
+          multiple
+          placeholder="选择因子（可多选）"
+          :options="factorSelectOptions"
+          style="min-width:280px;max-width:480px;flex:1"
+          size="small"
+        />
+        <n-button type="primary" size="small" @click="startResearch" :loading="researchStatus === 'running'">
+          {{ researchStatus === 'running' ? '研究中...' : '开始研究' }}
+        </n-button>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div v-if="researchStatus === 'running'" class="progress-bar-row">
+      <n-progress
+        type="line"
+        :percentage="Math.round(researchProgress * 100)"
+        :indicator-placement="'inside'"
+        :height="24"
+        :border-radius="4"
+      />
+      <span class="progress-hint">已计算 {{ calculatedCount }}/{{ totalStocks }} 只股票</span>
+    </div>
+
     <div class="main-body">
       <!-- Loading -->
-      <template v-if="loading">
+      <template v-if="pageLoading">
         <n-card :class="tokens.surface.card" style="flex:1"><n-skeleton text :repeat="8" /></n-card>
       </template>
+
       <!-- Error -->
-      <n-result v-else-if="error" status="500" title="加载失败">
-        <template #footer><n-button type="primary" @click="loadFactors">重试</n-button></template>
+      <n-result v-else-if="pageError" status="500" title="加载失败">
+        <template #footer><n-button type="primary" @click="loadMetadata">重试</n-button></template>
       </n-result>
+
+      <!-- Empty factor library -->
+      <n-empty
+        v-else-if="factorList.length === 0"
+        description="暂无因子数据，请先同步因子定义"
+        style="padding:60px 0;flex:1"
+      >
+        <template #extra>
+          <n-button type="primary" @click="router.push('/data/sync')">前往数据同步</n-button>
+        </template>
+      </n-empty>
+
       <template v-else>
-        <!-- 因子库表格（左） -->
+        <!-- Factor table (left) -->
         <div class="factor-table-pane">
-          <n-card :class="tokens.surface.card" size="small">
+          <n-card :class="tokens.surface.card" size="small" content-class="!p-0">
             <n-data-table
               :columns="factorColumns"
-              :data="filteredFactors"
+              :data="displayFactors"
               size="small"
               :row-key="(row: any) => row.name"
-              :row-props="(row: any) => ({ style: 'cursor:pointer', onClick: () => selectFactor(row) })"
+              :row-props="(row: any) => ({ style: 'cursor:pointer', onClick: () => selectedFactor = row })"
               :single-line="false"
+              :loading="researchStatus === 'running'"
             />
           </n-card>
         </div>
 
-        <!-- 因子详情（右） -->
+        <!-- Factor detail (right) -->
         <div class="factor-detail-pane">
           <n-card :class="tokens.surface.card" size="small">
+            <!-- No selection -->
             <n-empty v-if="!selectedFactor" description="点击左侧因子查看详情" style="padding:40px 0" />
+
+            <!-- Research not run yet -->
+            <n-empty
+              v-else-if="!selectedFactor._hasResult"
+              description="尚未分析，请选择因子后点击「开始研究」"
+              style="padding:40px 0"
+            />
+
+            <!-- Detail with real data -->
             <template v-else>
               <h4>{{ selectedFactor.desc }} ({{ selectedFactor.name }})</h4>
-              <n-tag :type="selectedFactor.icMean > 0 ? 'success' : 'error'" size="tiny" style="margin-bottom:12px">
+              <n-tag
+                :type="selectedFactor.icMean > 0 ? 'success' : 'error'"
+                size="tiny"
+                style="margin-bottom:12px"
+              >
                 IC 均值: {{ (selectedFactor.icMean * 100).toFixed(1) }}%
               </n-tag>
 
-              <!-- IC 序列 -->
+              <!-- IC series -->
               <h5>IC 序列分析</h5>
-              <div class="mini-chart" v-if="selectedFactor._icSeries.length > 0">
-                <div class="ic-bar-row" v-for="(v, i) in selectedFactor._icSeries" :key="i">
-                  <span class="ic-month">{{ v.month }}</span>
-                  <div class="ic-bar-wrap">
-                    <div class="ic-bar" :class="v.value >= 0 ? 'positive' : 'negative'"
-                      :style="{ width: Math.min(Math.abs(v.value * 100), 100) + '%', marginLeft: v.value >= 0 ? '50%' : (50 - Math.min(Math.abs(v.value * 100), 50)) + '%' }" />
-                  </div>
-                  <span class="ic-val">{{ (v.value * 100).toFixed(1) }}%</span>
-                </div>
+              <div v-if="selectedFactor._icSeries.length > 0" style="height:180px">
+                <v-chart :option="buildICOption(selectedFactor)" autoresize style="height:100%" />
               </div>
               <n-empty v-else description="暂无IC序列数据" size="small" />
 
-              <!-- 分层回测 -->
+              <!-- Layer returns -->
               <h5>分层回测收益</h5>
-              <div class="layer-chart" v-if="selectedFactor._layerReturns.length > 0">
-                <div v-for="(ly, i) in selectedFactor._layerReturns" :key="i" class="layer-row">
-                  <span class="layer-label">{{ ly.label }}</span>
-                  <div class="layer-bar-wrap">
-                    <div class="layer-bar" :style="{ width: Math.min(Math.abs(ly.return_ * 100), 40) + '%', background: ly.return_ >= 0 ? '#18a058' : '#d03050' }" />
-                  </div>
-                  <span class="layer-val" :class="ly.return_ >= 0 ? 'text-up' : 'text-down'">{{ (ly.return_ * 100).toFixed(1) }}%</span>
-                </div>
+              <div v-if="selectedFactor._layerReturns.length > 0" style="height:200px">
+                <v-chart :option="buildLayerOption(selectedFactor)" autoresize style="height:100%" />
               </div>
               <n-empty v-else description="暂无分层回测数据" size="small" />
 
-              <!-- 统计 -->
+              <!-- Statistics -->
               <n-descriptions size="small" :column="2" style="margin-top:12px">
                 <n-descriptions-item label="IC 均值">{{ (selectedFactor.icMean * 100).toFixed(2) }}%</n-descriptions-item>
                 <n-descriptions-item label="IC_IR">{{ selectedFactor.icIr.toFixed(2) }}</n-descriptions-item>
-                <n-descriptions-item label="分层收益">{{ selectedFactor.layerReturn ? (selectedFactor.layerReturn * 100).toFixed(1) + '%' : '--' }}</n-descriptions-item>
+                <n-descriptions-item label="Rank IC">{{ selectedFactor._rankIc ? (selectedFactor._rankIc * 100).toFixed(2) + '%' : '--' }}</n-descriptions-item>
+                <n-descriptions-item label="胜率">{{ selectedFactor._winRate ? (selectedFactor._winRate * 100).toFixed(0) + '%' : '--' }}</n-descriptions-item>
+                <n-descriptions-item label="Top-Bottom">{{ selectedFactor._topBottom ? (selectedFactor._topBottom * 100).toFixed(1) + '%' : '--' }}</n-descriptions-item>
                 <n-descriptions-item label="分类">{{ selectedFactor.category }}</n-descriptions-item>
               </n-descriptions>
 
               <div style="margin-top:16px">
-                <n-button size="small" type="primary" @click="generateStrategyFromFactor">基于此因子生成策略</n-button>
+                <n-button size="small" type="primary" @click="generateStrategy">基于此因子生成策略</n-button>
               </div>
             </template>
           </n-card>
@@ -96,189 +154,372 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
-import { NCard, NDataTable, NTag, NEmpty, NDescriptions, NDescriptionsItem, NButton, NResult, NSkeleton, useMessage } from "naive-ui";
+import VChart from "vue-echarts";
+import {
+  NCard, NDataTable, NTag, NEmpty, NDescriptions, NDescriptionsItem,
+  NButton, NResult, NSkeleton, NSelect, NDatePicker, NProgress, useMessage,
+} from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 import dataAPI from "@/api/data";
 
 const router = useRouter();
 const msg = useMessage();
 
+// ---- Types ----
 interface FactorItem {
-  name: string; category: string; icMean: number; icIr: number; layerReturn: number; desc: string;
-  _icSeries: Array<{ month: string; value: number }>;
+  name: string; category: string; desc: string;
+  icMean: number; icIr: number; layerReturn: number;
+  _hasResult: boolean;
+  _icSeries: Array<{ date: string; value: number }>;
   _layerReturns: Array<{ label: string; return_: number }>;
+  _rankIc?: number; _winRate?: number; _topBottom?: number;
 }
-const months = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 
-const loading = ref(true);
-const error = ref(false);
-const isDemoData = ref(false);
-const FACTORS = ref<FactorItem[]>([]);
+// ---- Page state ----
+const pageLoading = ref(true);
+const pageError = ref(false);
+const factorList = ref<FactorItem[]>([]);
 const selectedFactor = ref<FactorItem | null>(null);
 
-const summaryText = computed(() => {
-  if (loading.value) return "";
-  const total = FACTORS.value.length;
-  const cats = new Set(FACTORS.value.map(f => f.category)).size;
-  return `${total} 个因子，${cats} 个分类${isDemoData.value ? '（示例数据）' : ''}`;
+// ---- Research state ----
+type ResearchStatus = "idle" | "running" | "completed" | "failed";
+const researchStatus = ref<ResearchStatus>("idle");
+const researchProgress = ref(0);
+const calculatedCount = ref(0);
+const totalStocks = ref(0);
+const researchId = ref<string | null>(null);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+// ---- Research config ----
+const researchConfig = reactive({
+  universe: "000300.SH",
+  selectedFactors: [] as string[],
+  dateRange: null as [string, string] | null,
 });
 
-const filteredFactors = computed(() => FACTORS.value);
-
-const factorColumns = [
-  { title: "因子名", key: "name", width: 130 },
-  { title: "描述", key: "desc", width: 130 },
-  { title: "分类", key: "category", width: 60 },
-  { title: "IC均值", key: "icMean", width: 80, render: (row: FactorItem) => `${(row.icMean * 100).toFixed(2)}%` },
-  { title: "IC_IR", key: "icIr", width: 70, render: (row: FactorItem) => row.icIr.toFixed(2) },
-  { title: "分层收益", key: "layerReturn", width: 90, render: (row: FactorItem) => `${(row.layerReturn * 100).toFixed(1)}%` },
+const universeOptions = [
+  { label: "沪深300", value: "000300.SH" },
+  { label: "中证500", value: "000905.SH" },
+  { label: "全部A股", value: "all" },
 ];
 
-/** 用因子值序列计算 IC（信息系数） */
-const computeICFromValues = (values: number[], returns: number[]): number => {
-  if (values.length < 2 || returns.length < 2) return 0;
-  const n = Math.min(values.length, returns.length);
-  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-  for (let i = 0; i < n; i++) {
-    sumX += values[i]; sumY += returns[i];
-    sumXY += values[i] * returns[i];
-    sumX2 += values[i] * values[i]; sumY2 += returns[i] * returns[i];
-  }
-  const num = n * sumXY - sumX * sumY;
-  const den = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-  return den === 0 ? 0 : num / den;
-};
+const factorSelectOptions = computed(() =>
+  factorList.value.map(f => ({ label: f.desc || f.name, value: f.name }))
+);
 
-/** 从 API 加载真实因子元数据，fallback 示例数据 */
-const loadFactors = async () => {
-  loading.value = true; error.value = false; isDemoData.value = false;
+// ---- Display factors (enriched with research results) ----
+const displayFactors = computed(() => {
+  return factorList.value.map(f => {
+    // If research result exists for this factor, enrich it
+    if (f._hasResult) return f;
+    // Show as pending
+    return { ...f, icMean: 0, icIr: 0, layerReturn: 0 };
+  });
+});
+
+const statusText = computed(() => {
+  if (pageLoading.value) return "加载中...";
+  if (researchStatus.value === "running") return `研究中... ${calculatedCount.value}/${totalStocks.value}`;
+  if (researchStatus.value === "completed") return `${factorList.value.length} 个因子可用`;
+  return `${factorList.value.length} 个因子，选择因子后开始研究`;
+});
+
+// ---- Columns ----
+const factorColumns = [
+  { title: "因子名", key: "name", width: 120 },
+  { title: "描述", key: "desc", width: 120, ellipsis: { tooltip: true } },
+  { title: "分类", key: "category", width: 60 },
+  {
+    title: "IC均值", key: "icMean", width: 80,
+    render: (row: FactorItem) => row._hasResult ? `${(row.icMean * 100).toFixed(2)}%` : "--",
+  },
+  {
+    title: "IC_IR", key: "icIr", width: 70,
+    render: (row: FactorItem) => row._hasResult ? row.icIr.toFixed(2) : "--",
+  },
+  {
+    title: "分层收益", key: "layerReturn", width: 90,
+    render: (row: FactorItem) => row._hasResult ? `${(row.layerReturn * 100).toFixed(1)}%` : "--",
+  },
+];
+
+// ---- ECharts options ----
+const buildICOption = (f: FactorItem) => ({
+  backgroundColor: "transparent",
+  tooltip: {
+    trigger: "axis",
+    backgroundColor: "rgba(20,20,40,0.92)",
+    borderColor: "rgba(255,255,255,0.08)",
+    textStyle: { color: "#ccc", fontSize: 11 },
+    formatter: (p: any) => `${p[0].axisValue}<br/>IC: ${p[0].value.toFixed(3)}`,
+  },
+  grid: { left: "3%", right: "4%", top: 12, bottom: 12, containLabel: true },
+  xAxis: {
+    type: "category",
+    data: f._icSeries.map(d => d.date),
+    axisLabel: { color: "#999", fontSize: 10 },
+  },
+  yAxis: {
+    type: "value",
+    axisLabel: { color: "#999", fontSize: 10 },
+    splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
+  },
+  series: [{
+    type: "bar",
+    data: f._icSeries.map(d => ({
+      value: d.value,
+      itemStyle: { color: d.value >= 0 ? "#18a058" : "#d03050", borderRadius: [3, 3, 0, 0] },
+    })),
+    barWidth: "60%",
+    markLine: {
+      silent: true,
+      data: [{ type: "average" as const, name: "均值", lineStyle: { color: "#f0a020", type: "dashed" } }],
+      label: { formatter: "{c}", fontSize: 10 },
+    },
+  }],
+});
+
+const buildLayerOption = (f: FactorItem) => ({
+  backgroundColor: "transparent",
+  tooltip: {
+    trigger: "axis",
+    backgroundColor: "rgba(20,20,40,0.92)",
+    borderColor: "rgba(255,255,255,0.08)",
+    textStyle: { color: "#ccc", fontSize: 11 },
+    formatter: (p: any) => `${p[0].name}<br/>收益: ${p[0].value.toFixed(2)}%`,
+  },
+  grid: { left: "3%", right: "4%", top: 12, bottom: 12, containLabel: true },
+  xAxis: {
+    type: "category",
+    data: f._layerReturns.map(d => d.label),
+    axisLabel: { color: "#999", fontSize: 10 },
+  },
+  yAxis: {
+    type: "value",
+    axisLabel: { color: "#999", fontSize: 10, formatter: "{value}%" },
+    splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
+  },
+  series: [{
+    type: "bar",
+    data: f._layerReturns.map(d => ({
+      value: +(d.return_ * 100).toFixed(2),
+      itemStyle: {
+        color: d.return_ >= 0 ? "#18a058" : "#d03050",
+        borderRadius: [4, 4, 0, 0],
+      },
+    })),
+    barWidth: "50%",
+    label: { show: true, position: "top", fontSize: 10, formatter: "{c}%" },
+  }],
+});
+
+// ---- Actions ----
+const loadMetadata = async () => {
+  pageLoading.value = true;
+  pageError.value = false;
   try {
-    // Step 1: 获取因子元数据（真实因子列表）
-    const metaRes = await dataAPI.getFactorMetadata({ page_size: 100 }).catch(() => null);
+    const metaRes = await dataAPI.getFactorMetadata({ page_size: 200 }).catch(() => null);
     if (metaRes?.metadata_list && metaRes.metadata_list.length > 0) {
-      // Step 2: 用一只代表股票获取因子值，计算简单 IC
-      const today = new Date();
-      const start = new Date(today.getFullYear() - 1, today.getMonth(), 1).toISOString().slice(0, 10);
-      const end = today.toISOString().slice(0, 10);
-      const tsCode = "600519.SH"; // 贵州茅台作为代表
-
-      const enriched: FactorItem[] = [];
-      for (const m of metaRes.metadata_list.slice(0, 20)) {
-        try {
-          const factorRes = await dataAPI.getFactorData(tsCode, m.factor_name, start, end).catch(() => null);
-          const fv = factorRes?.factor_values || [];
-          const vals = fv.map((v: any) => v.value ?? 0);
-          // 用随机漫步生成模拟收益（实际中应从 stock_daily 获取）
-          const rets = vals.map((_: number, i: number) => (Math.random() - 0.5) * 0.1);
-          const icMean = computeICFromValues(vals, rets);
-          const icSeries = vals.length > 12 ? vals.slice(-12).map((v: number, i: number) => ({ month: months[i], value: Math.min(Math.max((v - vals[vals.length - 13 + i] || 0) / (vals[vals.length - 13 + i] || 1), -0.15), 0.15) })) : [];
-
-          enriched.push({
-            name: m.factor_name,
-            category: m.category || "其他",
-            desc: m.display_name || m.description || m.factor_name,
-            icMean, icIr: icMean / 0.15 || 0.2,
-            layerReturn: icMean * 1.5,
-            _icSeries: icSeries,
-            _layerReturns: [
-              { label: "Q1 (Top)", return_: 0.06 + Math.random() * 0.02 },
-              { label: "Q2", return_: 0.03 + Math.random() * 0.02 },
-              { label: "Q3", return_: 0.01 + Math.random() * 0.01 },
-              { label: "Q4", return_: -0.02 - Math.random() * 0.02 },
-              { label: "Q5 (Bottom)", return_: -0.05 - Math.random() * 0.03 },
-            ],
-          });
-        } catch {
-          // 单个因子查询失败，用示例数据
-          enriched.push({
-            name: m.factor_name, category: m.category || "其他",
-            desc: m.display_name || m.factor_name,
-            icMean: (Math.random() - 0.5) * 0.08, icIr: 0.2 + Math.random() * 0.3,
-            layerReturn: 0.05 + Math.random() * 0.1,
-            _icSeries: months.map(mm => ({ month: mm, value: (Math.random() - 0.5) * 0.06 })),
-            _layerReturns: [
-              { label: "Q1", return_: 0.08 + Math.random() * 0.04 },
-              { label: "Q2", return_: 0.04 + Math.random() * 0.03 },
-              { label: "Q3", return_: 0.01 + Math.random() * 0.02 },
-              { label: "Q4", return_: -0.03 - Math.random() * 0.03 },
-              { label: "Q5", return_: -0.07 - Math.random() * 0.04 },
-            ],
-          });
-        }
+      factorList.value = metaRes.metadata_list.map((m: any) => ({
+        name: m.factor_name || m.factor_code,
+        category: m.category || "其他",
+        desc: m.display_name || m.description || m.factor_name || m.factor_code,
+        icMean: 0, icIr: 0, layerReturn: 0,
+        _hasResult: false,
+        _icSeries: [],
+        _layerReturns: [],
+      }));
+      // Auto-select first few factors
+      if (researchConfig.selectedFactors.length === 0) {
+        researchConfig.selectedFactors = factorList.value.slice(0, 5).map(f => f.name);
       }
-      FACTORS.value = enriched.filter(f => !isNaN(f.icMean));
-      if (FACTORS.value.length > 0) return;
     }
-    throw new Error("API returned empty metadata");
   } catch {
-    // Fallback: 全部示例数据
-    isDemoData.value = true;
-    const DEMO = [
-      { name: "pe_ttm", category: "估值", icMean: -0.042, icIr: 0.31, layerReturn: 0.082, desc: "市盈率(TTM)" },
-      { name: "pb", category: "估值", icMean: -0.038, icIr: 0.28, layerReturn: 0.074, desc: "市净率" },
-      { name: "roe", category: "质量", icMean: +0.058, icIr: 0.45, layerReturn: 0.121, desc: "净资产收益率" },
-      { name: "gross_margin", category: "质量", icMean: +0.041, icIr: 0.33, layerReturn: 0.098, desc: "毛利率" },
-      { name: "net_profit_margin", category: "质量", icMean: +0.036, icIr: 0.28, layerReturn: 0.088, desc: "净利率" },
-      { name: "momentum_1m", category: "动量", icMean: +0.038, icIr: 0.28, layerReturn: 0.095, desc: "1个月动量" },
-      { name: "momentum_3m", category: "动量", icMean: +0.052, icIr: 0.38, layerReturn: 0.113, desc: "3个月动量" },
-      { name: "momentum_6m", category: "动量", icMean: +0.045, icIr: 0.32, layerReturn: 0.102, desc: "6个月动量" },
-      { name: "volatility_1m", category: "风险", icMean: -0.051, icIr: 0.39, layerReturn: 0.078, desc: "历史波动率" },
-      { name: "beta", category: "风险", icMean: +0.012, icIr: 0.15, layerReturn: 0.035, desc: "Beta系数" },
-      { name: "turnover_5d", category: "情绪", icMean: -0.029, icIr: 0.22, layerReturn: 0.064, desc: "换手率" },
-      { name: "amt_avg_5d", category: "情绪", icMean: +0.022, icIr: 0.18, layerReturn: 0.055, desc: "5日均成交额" },
-    ];
-    FACTORS.value = DEMO.map(f => ({
-      ...f,
-      _icSeries: months.map(m => ({ month: m, value: f.icMean + (Math.random() - 0.5) * 0.04 })),
-      _layerReturns: [
-        { label: "Q1 (Top)", return_: Math.abs(f.icMean) * 2.5 + 0.03 },
-        { label: "Q2", return_: Math.abs(f.icMean) * 1.5 + 0.02 },
-        { label: "Q3", return_: Math.abs(f.icMean) * 0.8 + 0.01 },
-        { label: "Q4", return_: -Math.abs(f.icMean) * 0.6 - 0.02 },
-        { label: "Q5 (Bottom)", return_: -Math.abs(f.icMean) * 1.8 - 0.03 },
-      ],
-    }));
+    pageError.value = true;
   } finally {
-    loading.value = false;
+    pageLoading.value = false;
   }
 };
 
-const selectFactor = (row: FactorItem) => { selectedFactor.value = row; };
+const startResearch = async () => {
+  if (researchConfig.selectedFactors.length === 0) {
+    msg.warning("请至少选择一个因子");
+    return;
+  }
+  researchStatus.value = "running";
+  researchProgress.value = 0;
+  calculatedCount.value = 0;
 
-const generateStrategyFromFactor = () => {
+  try {
+    const dr = researchConfig.dateRange;
+    const today = new Date();
+    const defaultStart = new Date(today.getFullYear() - 1, today.getMonth(), 1).toISOString().slice(0, 10);
+    const defaultEnd = today.toISOString().slice(0, 10);
+    const params: any = {
+      factor_names: researchConfig.selectedFactors,
+      universe: researchConfig.universe,
+      start_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[0] : defaultStart,
+      end_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[1] : defaultEnd,
+    };
+
+    const res = await dataAPI.submitFactorResearch(params).catch(() => null);
+    if (!res?.research_id) {
+      msg.error("提交研究任务失败");
+      researchStatus.value = "failed";
+      return;
+    }
+    researchId.value = res.research_id;
+    startPolling();
+  } catch (err) {
+    msg.error("提交研究任务失败");
+    researchStatus.value = "failed";
+  }
+};
+
+const startPolling = () => {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const status = await dataAPI.getResearchStatus({ research_id: researchId.value! });
+      if (!status) return;
+
+      researchProgress.value = status.progress || 0;
+      calculatedCount.value = status.calculated_count || 0;
+      totalStocks.value = status.total_stocks || 0;
+
+      if (status.status === "completed") {
+        clearInterval(pollTimer!);
+        pollTimer = null;
+        researchStatus.value = "completed";
+        applyResearchResults(status.result || status);
+      } else if (status.status === "failed") {
+        clearInterval(pollTimer!);
+        pollTimer = null;
+        researchStatus.value = "failed";
+        msg.error(status.error_message || "研究任务失败");
+      }
+    } catch {
+      // polling error, continue
+    }
+  }, 2000);
+};
+
+/** Apply research results to factor list */
+const applyResearchResults = (result: any) => {
+  if (!result) return;
+
+  // Try different result structures from backend
+  const icData = result.ic_analysis || result.icAnalysis || [];
+  const quantileData = result.quantile_analysis || result.quantileAnalysis || [];
+  const stabilityData = result.stability_analysis || result.stabilityAnalysis || result.summary || {};
+
+  // Build a lookup: factor_name -> analysis result
+  const icByFactor: Record<string, any> = {};
+  if (Array.isArray(icData)) {
+    icData.forEach((r: any) => {
+      const name = r.factor_name || r.factor || "";
+      icByFactor[name] = r;
+    });
+  }
+
+  const quantileByFactor: Record<string, any> = {};
+  if (Array.isArray(quantileData)) {
+    quantileData.forEach((r: any) => {
+      const name = r.factor_name || r.factor || "";
+      quantileByFactor[name] = r;
+    });
+  }
+
+  // Also check summary-level data
+  const summaryIcMean: Record<string, number> = result.ic_mean || result.icMean || {};
+  const summaryIcIr: Record<string, number> = result.ic_ir || result.icIr || {};
+  const summaryTopBottom: Record<string, number> = result.top_minus_bottom || result.topBottom || {};
+
+  // Enrich factor list
+  factorList.value = factorList.value.map(f => {
+    const ic = icByFactor[f.name] || {};
+    const q = quantileByFactor[f.name] || {};
+
+    // Extract IC data
+    const icMean = ic.ic_mean ?? ic.icMean ?? summaryIcMean[f.name] ?? 0;
+    const icIr = ic.ic_ir ?? ic.icIr ?? summaryIcIr[f.name] ?? 0;
+    const icSeriesRaw = ic.ic_series || ic.icSeries || [];
+    const icSeries = Array.isArray(icSeriesRaw)
+      ? icSeriesRaw.map((d: any) => ({
+          date: d.date || d.period || "",
+          value: d.value ?? d.ic_value ?? 0,
+        }))
+      : [];
+
+    // Extract quantile data
+    const layerReturnsRaw = q.quantile_returns || q.quantileReturns || q.layers || q.layer_returns || [];
+    let layerReturns: Array<{ label: string; return_: number }> = [];
+    if (Array.isArray(layerReturnsRaw) && layerReturnsRaw.length > 0) {
+      layerReturns = layerReturnsRaw.map((l: any, i: number) => ({
+        label: l.label || l.group || l.quantile || `Q${i + 1}`,
+        return_: l.return_ ?? l.return ?? l.value ?? 0,
+      }));
+    }
+
+    const topBottom = q.top_minus_bottom ?? q.topMinusBottom ?? summaryTopBottom[f.name];
+    const winRate = ic.win_rate ?? ic.winRate ?? ic.positive_ratio ?? ic.positiveRatio;
+    const rankIc = ic.rank_ic ?? ic.rankIc;
+
+    return {
+      ...f,
+      icMean: icMean || 0,
+      icIr: icIr || 0,
+      layerReturn: topBottom || 0,
+      _hasResult: icMean !== 0 || icSeries.length > 0 || layerReturns.length > 0,
+      _icSeries: icSeries,
+      _layerReturns: layerReturns,
+      _rankIc: rankIc,
+      _winRate: winRate,
+      _topBottom: topBottom,
+    };
+  });
+
+  // Auto-select first enriched factor
+  const enriched = factorList.value.find(f => f._hasResult);
+  if (enriched) selectedFactor.value = enriched;
+};
+
+const generateStrategy = () => {
   if (!selectedFactor.value) return;
   const f = selectedFactor.value;
   msg.info(`跳转策略工作台，基于因子 ${f.name} 生成策略`);
-  router.push(`/strategies/create?template=tpl_003&factor=${f.name}`);
+  router.push(`/strategies/workspace/new?template=factor&factor=${f.name}&ic=${f.icMean.toFixed(3)}&ic_ir=${f.icIr.toFixed(2)}`);
 };
 
-onMounted(() => loadFactors());
+onMounted(() => loadMetadata());
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
 </script>
 
 <style lang="scss" scoped>
-.factor-dashboard { height: 100%; overflow-y: auto; }
-.main-body { display: flex; gap: 12px; padding: 10px 24px 24px; height: calc(100% - 100px); }
+.factor-dashboard { height: 100%; overflow-y: hidden; display: flex; flex-direction: column; }
+.main-body { display: flex; gap: 12px; padding: 10px 24px 24px; flex: 1; overflow: hidden; }
 .factor-table-pane { width: 55%; overflow-y: auto; }
 .factor-detail-pane { width: 45%; overflow-y: auto;
   h4 { margin: 0 0 6px; font-size: 15px; color: var(--color-text-primary); }
   h5 { margin: 14px 0 6px; font-size: 13px; color: var(--color-text-secondary); }
 }
-.mini-chart { margin-bottom: 8px; }
-.ic-bar-row { display: flex; align-items: center; gap: 4px; margin-bottom: 3px;
-  .ic-month { font-size: 10px; width: 26px; color: var(--color-text-tertiary); }
-  .ic-bar-wrap { flex: 1; height: 8px; position: relative; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
-  .ic-bar { height: 100%; border-radius: 4px; &.positive { background: #18a058; } &.negative { background: #d03050; } }
-  .ic-val { font-size: 10px; width: 32px; text-align: right; color: var(--color-text-tertiary); }
+
+.toolbar-row {
+  padding: 10px 32px 8px;
+  .toolbar-controls {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
 }
-.layer-chart { margin-bottom: 8px; }
-.layer-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
-  .layer-label { font-size: 11px; width: 80px; color: var(--color-text-secondary); }
-  .layer-bar-wrap { flex: 1; height: 12px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
-  .layer-bar { height: 100%; border-radius: 4px; min-width: 2px; transition: width 0.3s; }
-  .layer-val { font-size: 11px; width: 40px; text-align: right; font-weight: 600; }
+
+.progress-bar-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 32px; background: rgba(124,58,237,0.06);
+  .progress-hint { font-size: 12px; color: var(--color-text-tertiary); white-space: nowrap; }
 }
-.text-up { color: #18a058 !important; }
-.text-down { color: #d03050 !important; }
 </style>

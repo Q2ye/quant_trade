@@ -40,6 +40,7 @@ from shared.database.repositories import (
 	FactorDataRepository,
 	FactorDefinitionRepository,
 	FactorResearchRepository,
+	FinancialIncomeRepository,
 )
 # 导入工具类
 from utils.core_utils.math_utils import StatisticalCalculator
@@ -80,6 +81,7 @@ class FactorResearchService:
 		self.factor_repo = FactorDataRepository(session)
 		self.factor_def_repo = FactorDefinitionRepository(session)
 		self.research_repo = FactorResearchRepository(session)
+		self.financial_repo = FinancialIncomeRepository(session)
 		# 初始化计算工具
 		self.stat_calculator = StatisticalCalculator()
 
@@ -2383,14 +2385,25 @@ class FactorResearchService:
 			pd.DataFrame: 财务数据
 		"""
 		try:
-				# 从FinancialIncomeRepository获取财务数据
-			# 获取财务报表数据
-			financial_statements = await self.financial_repo.get_financial_statements(
-				ts_code=ts_code,
-				report_type="income_statement",  # 利润表数据
-				start_date=start_date,
-				end_date=end_date
-			)
+			if self.financial_repo is None:
+				logger.warning("financial_repo 未初始化，无法获取财务数据")
+				return None
+
+			# 使用 BaseRepository.get_by 查询财务数据
+			try:
+				financial_statements = await self.financial_repo.get_by(
+					ts_code=ts_code
+				)
+			except Exception:
+				logger.warning(f"无法获取 {ts_code} 的财务数据，跳过")
+				return None
+
+			if not financial_statements:
+				return None
+
+			# 确保是列表格式
+			if not isinstance(financial_statements, list):
+				financial_statements = [financial_statements]
 
 			# 合并数据，按报告日期匹配
 			financial_data = {}

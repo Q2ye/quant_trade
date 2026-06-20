@@ -78,10 +78,11 @@ class BacktestHandler:
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取回测净值曲线失败: {str(e)}")
 
-	async def get_backtest_trades (self, task_id: str, user_id: str) -> Dict[str, Any]:
+	async def get_backtest_trades (self, task_id: str, user_id: str,
+		                                   page: int = 1, page_size: int = 20) -> Dict[str, Any]:
 		"""获取回测交易记录"""
 		try:
-			result = await self.backtest_service.get_backtest_trades(task_id, user_id)
+			result = await self.backtest_service.get_backtest_trades(task_id, user_id, page=page, page_size=page_size)
 			return {
 				"success": True,
 				"data": result["data"],
@@ -194,9 +195,10 @@ async def get_backtest_equity_curve (session: AsyncSession, task_id: str, user_i
 	return await handler.get_backtest_equity_curve(task_id, user_id)
 
 
-async def get_backtest_trades (session: AsyncSession, task_id: str, user_id: str):
+async def get_backtest_trades (session: AsyncSession, task_id: str, user_id: str,
+	                                  page: int = 1, page_size: int = 20):
 	handler = BacktestHandler(session)
-	return await handler.get_backtest_trades(task_id, user_id)
+	return await handler.get_backtest_trades(task_id, user_id, page=page, page_size=page_size)
 
 
 async def get_backtest_positions (session: AsyncSession, task_id: str, trade_date: str, user_id: str):

@@ -242,7 +242,7 @@ class StockMonthly(Base):
 	change = Column(Numeric(9, 4), nullable=False, comment='涨跌额')
 	pct_chg = Column(Numeric(18, 6), nullable=False, comment='涨跌幅')
 	vol = Column(BigInteger, nullable=False, comment='成交量')
-	amount = Column(Numeric(18, 2), nullable=False, comment='成交额')
+	amount = Column(Numeric(16, 4), nullable=False, comment='成交额')
 	month_start = Column(DateTime, comment='月开始日期')
 	month_end = Column(DateTime, comment='月结束日期')
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
@@ -886,7 +886,11 @@ class FactorData(Base):
 	ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
 	factor_name = Column("factor_code", String(50), nullable=False, index=True, comment='因子名称')
 	trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
-	factor_value = Column(Numeric(18, 6), nullable=False, comment='因子值')
+	factor_value = Column(Numeric(18, 6), comment='因子值')
+	z_score = Column(Numeric(10, 6), comment='Z-Score 标准化值')
+	percentile = Column(Numeric(18, 6), comment='百分位排名')
+	rank = Column(Integer, comment='排名')
+	universe_rank = Column(Integer, comment='全市场排名')
 	# data_source / calc_time — 待 DB 迁移添加列后启用
 	created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 	updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -1715,7 +1719,7 @@ class StockFactorProDaily(Base):
 	close = Column(Numeric(18, 6), comment='收盘价')
 	pre_close = Column(Numeric(18, 6), comment='前收盘价')
 	change = Column(Numeric(18, 6), comment='涨跌额')
-	pct_chg = Column(Numeric(18, 6), comment='涨跌幅')
+	pct_chg = Column(Numeric(8, 4), comment='涨跌幅')
 	vol = Column(Numeric(18, 2), comment='成交量（手）')
 	amount = Column(Numeric(18, 2), comment='成交额（千元）')
 	# 复权价格（后复权/前复权）

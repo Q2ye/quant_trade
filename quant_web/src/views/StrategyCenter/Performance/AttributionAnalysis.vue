@@ -28,13 +28,38 @@
           <n-button type="primary" @click="runAttributionAnalysis">
             <SmartIcon name="Search" /> 分析
           </n-button>
+          <n-button class="action-btn" @click="router.back()" quaternary>
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+          </n-button>
         </div>
       </div>
     </div>
 
     <div class="main-content">
-      <!-- ====== Row 1：三大图表卡片 ====== -->
-      <div class="chart-row">
+      <!-- Loading -->
+      <template v-if="loading">
+        <div class="chart-row">
+          <n-card v-for="i in 3" :key="i" :class="tokens.surface.card" size="small" style="flex:1">
+            <n-skeleton text :repeat="3" />
+          </n-card>
+        </div>
+        <n-card :class="tokens.surface.card" size="small" style="margin-top:12px">
+          <n-skeleton text :repeat="5" />
+        </n-card>
+      </template>
+
+      <!-- Error -->
+      <n-result v-else-if="error" status="500" title="加载失败" description="获取归因数据失败">
+        <template #footer><n-button type="primary" @click="runAttributionAnalysis">重试</n-button></template>
+      </n-result>
+
+      <!-- Empty -->
+      <n-empty v-else-if="empty" description="暂无归因数据，请选择策略后进行分析" style="padding:60px 0" />
+
+      <!-- Data -->
+      <template v-else>
+        <!-- ====== Row 1：三大图表卡片 ====== -->
+        <div class="chart-row">
         <n-card :class="tokens.surface.card" size="small" style="flex:1">
           <template #header><span class="card-title">超额收益分解</span></template>
           <v-chart v-if="pieOption" :option="pieOption" autoresize style="height: 280px" />
@@ -129,19 +154,28 @@
           </div>
         </n-card>
       </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, h, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import VChart from "vue-echarts";
-import { NCard, NButton, NSelect, NDatePicker, NDataTable, NTabs, NTabPane, NTag, useMessage } from "naive-ui";
+import { NCard, NButton, NSelect, NDatePicker, NDataTable, NTabs, NTabPane, NTag, NSkeleton, NResult, NEmpty, useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 import strategyAPI from "@/api/strategy";
+import performanceAPI from "@/api/performance";
 
 const message = useMessage();
+const router = useRouter();
+
+// State
+const loading = ref(false);
+const error = ref(false);
+const empty = ref(false);
 
 // ---- Dark theme chart colors ----
 const C = {
@@ -442,12 +476,70 @@ const factorColumns = computed(() => [
 ]);
 
 // ---- Actions ----
-const runAttributionAnalysis = () => {
+const runAttributionAnalysis = async () => {
   if (!analysisConfig.strategy) {
     message.warning("请选择策略");
     return;
   }
-  // 当前使用静态演示数据，后续接入真实 API
+  loading.value = true; error.value = false; empty.value = false;
+  try {
+    const params: any = {};
+    const dr = analysisConfig.dateRange;
+    if (dr && Array.isArray(dr) && dr.length === 2) {
+      const [start, end] = dr;
+      if (start) params.start_date = new Date(start).toISOString().split("T")[0];
+      if (end) params.end_date = new Date(end).toISOString().split("T")[0];
+    }
+    const res = await performanceAPI.getAttribution(String(analysisConfig.strategy), params);
+    if (res) {
+      // Populate summary
+      if (res.summary) {
+        Object.assign(attributionSummary, {
+          totalExcessReturn: res.summary.totalExcessReturn ?? res.summary.total_excess_return ?? attributionSummary.totalExcessReturn,
+          allocationContribution: res.summary.allocationContribution ?? res.summary.allocation_contribution ?? attributionSummary.allocationContribution,
+          selectionContribution: res.summary.selectionContribution ?? res.summary.selection_contribution ?? attributionSummary.selectionContribution,
+          interactionContribution: res.summary.interactionContribution ?? res.summary.interaction_contribution ?? attributionSummary.interactionContribution,
+          rSquared: res.summary.rSquared ?? res.summary.r_squared ?? attributionSummary.rSquared,
+          informationRatio: res.summary.informationRatio ?? res.summary.information_ratio ?? attributionSummary.informationRatio,
+          activeShare: res.summary.activeShare ?? res.summary.active_share ?? attributionSummary.activeShare,
+          activeRisk: res.summary.activeRisk ?? res.summary.active_risk ?? attributionSummary.activeRisk,
+          beta: res.summary.beta ?? attributionSummary.beta,
+          alpha: res.summary.alpha ?? attributionSummary.alpha,
+        });
+      }
+      // Populate Brinson data
+      if (res.brinson && Array.isArray(res.brinson) && res.brinson.length > 0) {
+        brinsonAttribution.value = res.brinson.map((b: any) => ({
+          category: b.category || b.industry || "",
+          allocationEffect: b.allocationEffect ?? b.allocation_effect ?? 0,
+          selectionEffect: b.selectionEffect ?? b.selection_effect ?? 0,
+          interactionEffect: b.interactionEffect ?? b.interaction_effect ?? 0,
+          totalEffect: b.totalEffect ?? b.total_effect ?? 0,
+        }));
+      }
+      // Populate factor attributions
+      if (res.factorAttributions && Array.isArray(res.factorAttributions) && res.factorAttributions.length > 0) {
+        factorAttribution.value = res.factorAttributions.map((f: any) => ({
+          factor: f.factor || f.name || "",
+          exposure: f.exposure ?? 0,
+          factorReturn: f.factorReturn ?? f.factor_return ?? 0,
+          attribution: f.attribution ?? 0,
+          tStat: f.tStat ?? f.t_stat ?? 0,
+          significance: Math.abs(f.tStat ?? f.t_stat ?? 0) >= 2 ? "显著" : "不显著",
+        }));
+      }
+      // Check if any data was populated
+      if (!res.summary && !res.brinson && !res.factorAttributions) {
+        empty.value = true;
+      }
+    } else {
+      empty.value = true;
+    }
+  } catch (err) {
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
 };
 
 onMounted(async () => {

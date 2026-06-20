@@ -517,7 +517,7 @@ class BacktestEngine(EngineBase):
 				signal_count += 1
 				day_signals += 1
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----
-			broker.mark_to_market(bar_dict)
+			broker.mark_to_market(bar_dict, trade_date=trade_date)
 
 			# ---- 当日信号摘要日志 ----
 			if day_signals:
@@ -570,6 +570,11 @@ class BacktestEngine(EngineBase):
 				benchmark_curve=result.benchmark_curve,
 				annual_return=result.annual_return,
 			)
+			logger.info(
+				f"超额指标已计算: alpha={result.excess_metrics.get('alpha', '?')}, "
+				f"beta={result.excess_metrics.get('beta', '?')}, "
+				f"bm_annual={result.excess_metrics.get('benchmark_annual_return', '?')}"
+			)
 
 		# =====================================================================
 		# 第 6 步：结果持久化到数据库
@@ -620,8 +625,8 @@ class BacktestEngine(EngineBase):
 			List[BacktestResult] — 成功完成的结果列表（异常策略会被过滤掉）。
 
 		Note:
-			- 使用 asyncio.gather 并发执行，return_exceptions=True 确保
-			  单个策略失败不影响其他策略。
+			- v1.3 起改为顺序执行，避免共享 StrategyManager/Broker 的并发竞态。
+			  如需并发，请使用独立 BacktestEngine 实例 + asyncio.gather。
 		"""
 		# v1.3: 顺序执行（避免共享 StrategyManager/Broker 竞态）
 		results = []
@@ -1038,7 +1043,11 @@ class BacktestEngine(EngineBase):
 		try:
 			db = getattr(self, "_db_session", None)
 			if db is None:
-				logger.info("无数据库会话，跳过结果持久化（仅内存）")
+				logger.error(
+					"回测结果持久化跳过：_db_session 未注入到 BacktestEngine。"
+					"结果仅存在于内存中，不会写入数据库。"
+					"请确保初始化 BacktestEngine 时传入了 db_session 参数。"
+				)
 				return
 
 			from shared.database.repositories.strategy.backtest.backtest_equity_curve_repo import (
@@ -1422,6 +1431,7 @@ class BacktestEngine(EngineBase):
 			stock_trades.sort(key=lambda x: str(x[1].get("trade_date", "")))
 
 			buy_queue = []  # FIFO: [(idx, price, quantity, commission, stamp_tax, transfer_fee), ...]
+			buy_matched_pnl: Dict[int, float] = {}  # 追踪买入侧匹配利润
 
 			for orig_idx, t in stock_trades:
 				direction = str(t.get("direction", ""))
@@ -1435,7 +1445,7 @@ class BacktestEngine(EngineBase):
 				if direction == "LONG":
 					# 买入 → 入队
 					buy_queue.append((orig_idx, price, quantity, commission, stamp_tax, transfer_fee))
-					pnls[orig_idx] = -fee  # 买入的 PnL = -手续费
+					pnls[orig_idx] = -fee  # 初始 = -手续费，匹配后更新
 				else:
 					# 卖出 → FIFO 匹配
 					remaining = quantity
@@ -1445,8 +1455,13 @@ class BacktestEngine(EngineBase):
 						buy_idx, buy_price, buy_qty, buy_comm, buy_stamp, buy_tf = buy_queue[0]
 						match_qty = min(remaining, buy_qty)
 						# 匹配盈亏 = (卖出价 - 买入价) × 匹配数量
-						realized_pnl += (price - buy_price) * match_qty
+						match_profit = (price - buy_price) * match_qty
+						realized_pnl += match_profit
 
+						# 更新买入侧匹配利润（按比例分摊买入手续费）
+						buy_fee_ratio = match_qty / buy_qty
+						buy_match_profit = match_profit - (buy_comm + buy_stamp + buy_tf) * buy_fee_ratio
+						buy_matched_pnl[buy_idx] = buy_matched_pnl.get(buy_idx, 0) + buy_match_profit
 
 						if buy_qty > match_qty:
 							buy_queue[0] = (buy_idx, buy_price, buy_qty - match_qty,
@@ -1461,6 +1476,10 @@ class BacktestEngine(EngineBase):
 						realized_pnl += price * remaining
 
 					pnls[orig_idx] = realized_pnl
+
+			# 回填买入侧 PnL（初始 -fee + 匹配利润）
+			for _buy_idx, _matched_pnl in buy_matched_pnl.items():
+				pnls[_buy_idx] += _matched_pnl
 
 		return pnls
 

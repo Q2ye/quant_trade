@@ -33,22 +33,29 @@ async def get_indicators_compare(session: AsyncSession, codes: List[str], metric
         for k, v in list(r.items()):
             if isinstance(v, float) and v != v: r[k] = None
 
-    # 计算行业分位值（全市场排名）
+    # 计算行业分位值（全市场排名）— 单次查询替代 N×M 次
     metric_cols = ["roe", "roa", "grossprofit_margin", "netprofit_margin", "debt_to_assets", "eps", "current_ratio", "quick_ratio"]
-    for r in rows:
-        for col in metric_cols:
-            val = r.get(col)
-            if val is None:
-                continue
-            pct_row = await _all(session, f"""
-                SELECT
-                    COUNT(*) FILTER (WHERE {col} IS NOT NULL AND {col} <= :val) * 100.0 /
-                    NULLIF(COUNT(*) FILTER (WHERE {col} IS NOT NULL), 0) AS pct
-                FROM stock_fina_indicators
-                WHERE end_date = (SELECT MAX(end_date) FROM stock_fina_indicators WHERE ts_code = stock_fina_indicators.ts_code)
-            """, {"val": val})
-            if pct_row and pct_row[0].get("pct") is not None:
-                r[f"{col}_pct"] = round(pct_row[0]["pct"], 0)
+    if rows:
+        pct_selects = ", ".join(
+            f"PERCENT_RANK() OVER (ORDER BY {col}) * 100 AS {col}_pct"
+            for col in metric_cols
+        )
+        pct_sql = f"""
+            SELECT ts_code, {pct_selects}
+            FROM stock_fina_indicators
+            WHERE end_date = (
+                SELECT MAX(end_date) FROM stock_fina_indicators
+                WHERE ts_code = stock_fina_indicators.ts_code
+            )
+        """
+        pct_rows = await _all(session, pct_sql, {})
+        pct_map = {r["ts_code"]: r for r in pct_rows}
+        for r in rows:
+            pct = pct_map.get(r["ts_code"], {})
+            for col in metric_cols:
+                pct_val = pct.get(f"{col}_pct")
+                if pct_val is not None:
+                    r[f"{col}_pct"] = round(pct_val, 0)
     return rows
 
 

@@ -18,13 +18,19 @@ export default {
       start_date?: string;
       end_date?: string;
     },
-  ): Promise<ApiStrategyPerformance> {
+  ): Promise<any> {
     return request
       .get(`/quantTrade/analysis/performance/strategy/${strategyId}`, {
         params,
       })
       .then(handleResponse)
-      .then((data: ApiResponse<ApiStrategyPerformance>) => data.data);
+      .then((res: any) => {
+        if (res && res.success === false) {
+          console.warn("策略绩效加载失败:", res.message);
+          return null;
+        }
+        return res?.data ?? res;
+      });
   },
 
   /**
@@ -38,12 +44,18 @@ export default {
       start_date?: string;
       end_date?: string;
     },
-  ): Promise<AccountInfo> {
+  ): Promise<any> {
     const id = accountId || "default";
     return request
       .get(`/quantTrade/analysis/performance/account/${id}`, { params })
       .then(handleResponse)
-      .then((data: ApiResponse<AccountInfo>) => data.data);
+      .then((res: any) => {
+        if (res && res.success === false) {
+          console.warn("账户绩效加载失败:", res.message);
+          return null;
+        }
+        return res?.data ?? res;
+      });
   },
 
   /**
@@ -89,10 +101,23 @@ export default {
    * @param strategyId 策略ID
    * @returns 归因分析结果
    */
-  async getAttribution(strategyId: string): Promise<any> {
+  async getAttribution(
+    strategyId: string,
+    params?: {
+      start_date?: string;
+      end_date?: string;
+      analysis_type?: string;
+    },
+  ): Promise<any> {
     return request
-      .get(`/quantTrade/analysis/attribution/strategy/${strategyId}`)
+      .get(`/quantTrade/analysis/attribution/strategy/${strategyId}`, { params })
       .then(handleResponse)
-      .then((res: any) => res.data ?? res);
+      .then((res: any) => {
+        if (res && res.success === false) {
+          console.warn("归因分析加载失败:", res.message);
+          return null;
+        }
+        return res?.data ?? res;
+      });
   },
 };

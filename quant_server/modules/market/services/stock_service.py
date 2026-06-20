@@ -151,10 +151,12 @@ async def _fetch_holdernumber(session: AsyncSession, ts_code: str) -> list:
 
 async def _fetch_factors(session: AsyncSession, ts_code: str) -> dict:
     result: Dict[str, list] = {"stk_factor": [], "stk_factor_pro": []}
+    # 仅选择常用列，避免 SELECT * 拉取 200+ 列
+    cols = "ts_code, trade_date, open, high, low, close, vol, amount, pct_change, pct_chg, turnover_rate, ma5, ma10, ma20, ma60"
     for tbl in ("stock_factor_daily", "stock_factor_pro_daily"):
         try:
             rows = await _all(session, f"""
-                SELECT * FROM {tbl} WHERE ts_code = :ts
+                SELECT {cols} FROM {tbl} WHERE ts_code = :ts
                 ORDER BY trade_date DESC LIMIT 120
             """, {"ts": ts_code})
             key = "stk_factor" if "pro" not in tbl else "stk_factor_pro"
@@ -262,7 +264,8 @@ async def get_stock_factor_scores(session: AsyncSession, ts_code: str) -> Option
     """获取个股最新因子数据及近250日分位值"""
     try:
         latest = await _first(session, """
-            SELECT * FROM factor_data WHERE ts_code = :ts
+            SELECT ts_code, trade_date, factor_code, factor_value FROM factor_data
+            WHERE ts_code = :ts
             ORDER BY trade_date DESC LIMIT 1
         """, {"ts": ts_code})
         if not latest:
@@ -272,9 +275,10 @@ async def get_stock_factor_scores(session: AsyncSession, ts_code: str) -> Option
                         if k not in meta_keys and v is not None and isinstance(v, (int, float))]
         if not numeric_cols:
             return None
-        # 批量拉取近 250 日所有因子数据，在 Python 中计算分位
-        hist_rows = await _all(session, """
-            SELECT * FROM factor_data WHERE ts_code = :ts
+        # 批量拉取近 365 日因子数据，使用显式列名
+        fact_cols = ", ".join([f'"{c[0]}"' for c in numeric_cols])
+        hist_rows = await _all(session, f"""
+            SELECT ts_code, trade_date, {fact_cols} FROM factor_data WHERE ts_code = :ts
             AND trade_date >= (SELECT MAX(trade_date) FROM factor_data WHERE ts_code = :ts) - INTERVAL '365 days'
             ORDER BY trade_date ASC
         """, {"ts": ts_code})

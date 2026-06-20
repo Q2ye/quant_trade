@@ -176,11 +176,21 @@ function reset() {
   search();
 }
 
-onMounted(() => {
+const industryOpts = ref<Array<{ label: string; value: string }>>([])
+
+onMounted(async () => {
   const qIndustry = route.query.industry as string;
   if (qIndustry) {
     filters.industry = [qIndustry];
   }
+  // 加载行业选项
+  try {
+    const tree = await marketAPI.getIndustryTree()
+    industryOpts.value = (tree || []).map((item: any) => ({
+      label: item.industry_name || item.name || item.code,
+      value: item.industry_name || item.name || item.code,
+    }))
+  } catch { /* 行业选项加载失败不影响主流程 */ }
   search();
 });
 </script>
@@ -215,6 +225,7 @@ onMounted(() => {
         <n-grid-item
           ><n-select
             v-model:value="filters.industry"
+            :options="industryOpts"
             multiple
             placeholder="行业"
             clearable

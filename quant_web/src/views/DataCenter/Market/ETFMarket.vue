@@ -151,7 +151,12 @@ async function load(p?: number) {
   error.value = false;
   const pg = p || 1;
   try {
-    const result = await marketAPI.getETFs({ page: pg, limit: pageSize.value });
+    const result = await marketAPI.getETFs({
+      page: pg,
+      limit: pageSize.value,
+      type: filterType.value,
+      search: filterSearch.value || undefined,
+    });
     etfList.value = result?.etfs || result || [];
     total.value = result?.total || 0;
     page.value = pg;

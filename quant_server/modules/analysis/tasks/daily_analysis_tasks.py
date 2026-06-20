@@ -500,9 +500,11 @@ class DailyAnalysisTasks:
 					if perf_data:
 						returns = [float(r.daily_return) for r in perf_data[-days:]]
 						return returns
-			np.random.seed(hash(account_id) % 2**32)
-			returns = np.random.normal(0.0005, 0.02, min(days, 60))
-			return returns.tolist()
+			self.logger.warning(
+			    f"账户 {account_id} 无历史绩效数据，无法计算收益序列。"
+			    f"请确保 account_performance_repo 中有数据。"
+			)
+			return []
 		except Exception as e:
 			self.logger.warning(f"获取历史收益数据失败: {e}")
 			return None

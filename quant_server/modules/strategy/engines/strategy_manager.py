@@ -283,6 +283,8 @@ class StrategyManager(EngineBase):
                 continue
 
             strategy_signals: List[TradingSignal] = []
+            bar_error_count = 0
+            total_bars = len(bars)
 
             for bar in bars:
                 try:
@@ -296,11 +298,24 @@ class StrategyManager(EngineBase):
                         else:
                             strategy_signals.append(sigs)
                 except Exception as e:
+                    bar_error_count += 1
                     logger.error(
                         f"策略 {strategy_id} 处理 Bar 失败: "
                         f"{getattr(bar, 'ts_code', '?')} @ {trade_date}: "
                         f"{type(e).__name__}: {e}",
-                        exc_info=True,
+                        exc_info=(bar_error_count <= 3),  # 仅前 3 次打印完整堆栈
+                    )
+
+            if bar_error_count > 0:
+                error_rate = bar_error_count / max(total_bars, 1)
+                logger.warning(
+                    f"策略 {strategy_id} @ {trade_date}: "
+                    f"{bar_error_count}/{total_bars} bars 失败 ({error_rate:.1%})"
+                )
+                if error_rate > 0.5:
+                    logger.error(
+                        f"策略 {strategy_id} 超过 50%% bar 处理失败，"
+                        f"可能是策略实现有 bug，请检查策略代码"
                     )
 
             # v1.3: 同时收集通过 add_signal() / context.submit_order() 添加的信号
@@ -515,10 +530,13 @@ class StrategyManager(EngineBase):
     async def _on_data_sync_completed(self, event) -> None:
         """数据同步完成 → 驱动运行中策略"""
         sync_type = event.data.get("sync_type", "")
-        logger.info(f"数据同步完成: {sync_type}，驱动运行中策略...")
-        for strategy_id, state in self.running_states.items():
-            if state.is_running:
-                await self.process_bar(strategy_id, event.data)
+        logger.warning(
+            "_on_data_sync_completed 已触发 (sync_type=%s)，但 event.data 是 dict 而非 BarData 对象。"
+            "当前实现不支持将同步完成事件转换为 BarData 驱动策略。"
+            "请使用 DataFeedEngine.iter_bars() 驱动策略回测。",
+            sync_type
+        )
+        # 移除错误的 process_bar 调用（event.data 是 dict，不是 BarData）
 
     async def _on_order_filled(self, event) -> None:
         """订单成交 → 更新策略持仓"""

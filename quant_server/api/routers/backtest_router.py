@@ -6,9 +6,10 @@
 回测模块路由
 """
 import logging
-from typing import Dict
+from datetime import datetime, timezone
+from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -321,7 +322,7 @@ async def get_backtest_trades_api(
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> BacktestTradesResponse:
 	"""
-	获取回测交易记录
+	获取回测交易记录（分页）
 
 	Args:
 		task_id: 回测任务ID
@@ -345,10 +346,10 @@ async def get_backtest_trades_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测交易记录失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测交易记录（分页）失败: {str(e)}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测交易记录失败: {str(e)}"
+			detail=f"获取回测交易记录（分页）失败: {str(e)}"
 		)
 
 
@@ -429,6 +430,51 @@ async def get_backtest_result_api(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取回测结果失败: {str(e)}"
 		)
+
+
+@router.post("/tasks/results/batch", response_model=BacktestResultResponse)
+async def get_batch_task_results_api(
+    task_ids: List[str] = Body(..., embed=True),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestResultResponse:
+    """
+    批量获取回测任务结果
+
+    Args:
+        task_ids: 回测任务ID列表
+        current_user: 当前登录用户
+        db_session: 数据库会话
+
+    Returns:
+        BacktestResultResponse: { success, data: { task_id: result, ... } }
+    """
+    try:
+        logger.info(f"用户 {current_user.get('username')} 批量请求回测结果，任务数: {len(task_ids)}")
+        results = {}
+        for task_id in task_ids:
+            try:
+                result = await get_backtest_result(
+                    session=db_session,
+                    task_id=task_id,
+                    user_id=current_user.get("id")
+                )
+                if result and result.get("success"):
+                    results[task_id] = result.get("data", result)
+            except Exception:
+                pass  # skip failed tasks
+        return {
+            "success": True,
+            "message": f"批量获取完成，成功 {len(results)}/{len(task_ids)}",
+            "data": results,
+            "timestamp": datetime.now(timezone.utc),
+        }
+    except Exception as e:
+        logger.error(f"批量获取回测结果失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"批量获取回测结果失败: {str(e)}"
+        )
 
 
 # ==================== 快速回测接口 ====================

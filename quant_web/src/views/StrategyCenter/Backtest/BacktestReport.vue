@@ -153,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
 import { useStore } from "vuex";
 import { useMessage, NResult, NSpin, NEmpty, NSwitch, NSpace } from "naive-ui";
@@ -476,8 +476,8 @@ const loadReport = async () => {
       })),
       profitDistribution: aggregateProfitDistribution(tr),
       excessMetrics: r.excess_metrics && Object.keys(r.excess_metrics).length > 0
-        ? r.excess_metrics
-        : null,
+        ? (console.log("excess_metrics raw:", JSON.stringify(r.excess_metrics)), r.excess_metrics)
+        : (console.log("excess_metrics empty or missing"), null),
       trades: tr.map((t: any) => {
         const side = t.side || t.direction || '';
         const qty = Number(t.volume || t.quantity || 0);
@@ -524,7 +524,29 @@ const addToBasket = () => {
   message.success(`已创建股票篮子: ${strategy.value.name}_股票池`);
 };
 
-onMounted(() => { loadReport(); });
+const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
+
+onMounted(() => {
+  loadReport()
+  // 启动轮询：任务未完成时每 5 秒重新加载
+  pollTimer.value = setInterval(async () => {
+    const taskId = route.params.taskId as string
+    if (!taskId) return
+    try {
+      const status = await backtestAPI.getTask(taskId)
+      if (status?.status === 'completed' || status?.status === 'failed') {
+        if (pollTimer.value) { clearInterval(pollTimer.value); pollTimer.value = null }
+        if (!report.value || !report.value.summary?.totalReturn) {
+          await loadReport()
+        }
+      }
+    } catch { /* 轮询失败静默 */ }
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (pollTimer.value) { clearInterval(pollTimer.value); pollTimer.value = null }
+})
 </script>
 
 <style scoped>

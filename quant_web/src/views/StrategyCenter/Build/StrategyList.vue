@@ -134,6 +134,7 @@ import { useStore } from "vuex";
 import { useMessage, useDialog, NTag, NButton, NDropdown, NCheckbox, NResult } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import { STRATEGY_TYPE_OPTIONS, STRATEGY_STATUS_MAP, STRATEGY_STATUS_TEXT } from "./constants";
+import backtestAPI from "@/api/backtest";
 
 const message = useMessage();
 const dialog = useDialog();
@@ -193,7 +194,21 @@ const openWorkspace = (s: any) => {
   router.push(`/strategies/workspace/${s.id}`);
 };
 const quickBacktest = (s: any) => router.push(`/backtest?strategies=${s.id}`);
-const viewReport = (s: any) => router.push({ name: "BacktestReport", params: { taskId: s.id } });
+const viewReport = async (s: any) => {
+  try {
+    const tasks: any = await backtestAPI.getTasks({ strategy_id: s.id, status: "completed", page_size: 1 });
+    const items = Array.isArray(tasks) ? tasks : (tasks?.data || tasks?.items || []);
+    const latestTask = items.find((t: any) => t.status === "completed") || items[0];
+    if (latestTask) {
+      const taskId = latestTask.task_id || latestTask.id;
+      router.push({ name: "BacktestReport", params: { taskId } });
+    } else {
+      message.warning("该策略暂无已完成回测");
+    }
+  } catch {
+    message.error("获取回测任务失败");
+  }
+};
 const toggleStrategy = async (s: any) => {
   try {
     if (s.status === "running") await store.dispatch("strategy/stopStrategy", s.id);

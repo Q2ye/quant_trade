@@ -307,7 +307,7 @@ class ReturnAnalyzer:
 			return {}
 
 		# 重采样到月度
-		monthly_equity = df['equity'].resample('M').last()
+		monthly_equity = df['equity'].resample('ME').last()
 
 		if len(monthly_equity) < 2:
 			return {}
@@ -332,7 +332,7 @@ class ReturnAnalyzer:
 			return {}
 
 		# 重采样到年度
-		annual_equity = df['equity'].resample('Y').last()
+		annual_equity = df['equity'].resample('YE').last()
 
 		if len(annual_equity) < 2:
 			return {}
@@ -691,7 +691,7 @@ class ReturnAnalyzer:
 
 		# 重采样到月度
 		if isinstance(returns.index, pd.DatetimeIndex):
-			monthly_returns = returns.resample('M').apply(lambda x: np.prod(1 + x) - 1)
+			monthly_returns = returns.resample('ME').apply(lambda x: np.prod(1 + x) - 1)
 			positive_months = (monthly_returns > 0).sum()
 		else:
 			positive_months = 0

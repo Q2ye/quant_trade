@@ -307,11 +307,24 @@ const dataAPI = {
     stock_codes?: string[];
     factor_names?: string[];
     factor_category?: string;
-    start_date: string;
-    end_date: string;
+    universe?: string;
+    start_date?: string;
+    end_date?: string;
   }): Promise<{ research_id: string }> {
     return request
       .post("/quantTrade/data/factors/research", params)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 查询因子研究任务状态
+   */
+  async getResearchStatus(params?: {
+    research_id?: string;
+  }): Promise<any> {
+    return request
+      .get("/quantTrade/data/factors/research/status", { params })
       .then(handleResponse)
       .then((res: any) => res.data ?? res);
   },

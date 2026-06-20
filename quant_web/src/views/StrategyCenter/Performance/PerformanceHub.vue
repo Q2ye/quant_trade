@@ -80,7 +80,7 @@
                 </div>
                 <div
                   v-for="(s, idx) in strategyRankings" :key="idx"
-                  class="rt-row" @click="router.push(`/strategies/workspace/${s.id}`)"
+                  class="rt-row" @click="router.push(`/performance/strategy/${s.id}`)"
                 >
                   <span class="rt-col col-rank">
                     <span :class="['rank-badge', idx < 3 ? `top-${idx+1}` : '']">{{ idx + 1 }}</span>
@@ -211,30 +211,29 @@ const loadData = async () => {
       }
     }
 
-    // 3. 并行加载每个策略最新回测结果
-    const rankings: RankItem[] = [];
-    const results = await Promise.all(
-      strategyList.slice(0, 15).map(async (s: any) => {
-        const task = strategyLatestTask.get(s.id);
-        if (!task) return null;
-        const taskId = task.id || task.task_id;
-        const r: any = await backtestAPI.getResult(taskId).catch(() => null);
-        if (!r) return null;
-        return {
-          id: s.id,
-          name: s.name || s.id,
-          annualReturn: r.annual_return ?? 0,
-          sharpeRatio: r.sharpe_ratio ?? 0,
-          maxDrawdown: r.max_drawdown ?? 0,
-          winRate: r.win_rate,
-          tradesCount: r.num_trades ?? 0,
-          totalReturn: r.total_return ?? 0,
-        };
-      })
-    );
+    // 3. 批量加载每个策略最新回测结果
+    const taskIds = [...strategyLatestTask.values()].map((t: any) => t.id || t.task_id);
+    const batchResults: Record<string, any> = taskIds.length > 0
+      ? await backtestAPI.getBatchResults(taskIds).catch(() => ({}))
+      : {};
 
-    for (const item of results) {
-      if (item) rankings.push(item);
+    const rankings: RankItem[] = [];
+    for (const s of strategyList.slice(0, 15)) {
+      const task = strategyLatestTask.get(s.id);
+      if (!task) continue;
+      const taskId = task.id || task.task_id;
+      const r = batchResults[taskId];
+      if (!r) continue;
+      rankings.push({
+        id: s.id,
+        name: s.name || s.id,
+        annualReturn: r.annual_return ?? 0,
+        sharpeRatio: r.sharpe_ratio ?? 0,
+        maxDrawdown: r.max_drawdown ?? 0,
+        winRate: r.win_rate,
+        tradesCount: r.num_trades ?? 0,
+        totalReturn: r.total_return ?? 0,
+      });
     }
     rankings.sort((a, b) => b.annualReturn - a.annualReturn);
     strategyRankings.value = rankings;

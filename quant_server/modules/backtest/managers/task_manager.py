@@ -11,8 +11,6 @@ from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backtest.managers.resource_manager import ResourceManager
-from modules.backtest.tasks.backtest_tasks import BacktestTask
-from modules.backtest.tasks.optimization_tasks import OptimizationTask
 from modules.backtest.services.backtest_service import BacktestService
 from modules.backtest.services.optimization_service import OptimizationService
 
@@ -127,18 +125,25 @@ class TaskManager:
 				logger.info(f"取消任务成功: {task_id}")
 				return True
 			else:
-				# 任务不在运行，更新状态
-				# 检查是回测任务还是优化任务
-				backtest_task = await self.db.get(BacktestTask, task_id)
-				if backtest_task:
-					backtest_task.status = "cancelled"
+				# 任务不在运行，更新数据库状态
+				# NOTE: BacktestTask/OptimizationTask 非 ORM 模型，改用 SQL 直接更新
+				from sqlalchemy import text
+				# 尝试更新回测任务
+				result = await self.db.execute(
+					text("UPDATE backtest_tasks SET status = 'cancelled' WHERE id = :id"),
+					{"id": task_id}
+				)
+				if result.rowcount and result.rowcount > 0:
 					await self.db.commit()
 					logger.info(f"取消回测任务成功: {task_id}")
 					return True
 
-				optimization_task = await self.db.get(OptimizationTask, task_id)
-				if optimization_task:
-					optimization_task.status = "cancelled"
+				# 尝试更新优化任务
+				result = await self.db.execute(
+					text("UPDATE optimization_tasks SET status = 'cancelled' WHERE id = :id"),
+					{"id": task_id}
+				)
+				if result.rowcount and result.rowcount > 0:
 					await self.db.commit()
 					logger.info(f"取消优化任务成功: {task_id}")
 					return True

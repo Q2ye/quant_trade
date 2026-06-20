@@ -890,22 +890,21 @@ class AttributionService:
                     if f == 'MKT':
                         data[f] = df['MKT'].reindex(dates).fillna(0).values[:len(dates)]
                     else:
-                        # TODO: 应从真实数据源获取 SMB/HML/UMD 因子
-                        rng = np.random.RandomState(42 + i)
-                        data[f] = rng.randn(len(dates)) * 0.003
+                        # 无法获取真实的 SMB/HML/UMD 因子数据
+                        logger.warning(
+                            f"因子 {f} 无真实数据源，无法计算因子收益率。"
+                            f"请确保配置了 SMB/HML/UMD 等因子的数据源。"
+                        )
+                        return None
                 return pd.DataFrame(data, index=dates)
             raise ValueError('无基准数据')
         except (ValueError, RuntimeError, TypeError):
-            # 完全回退：随机模拟因子收益率
+            # 完全回退：无法获取因子收益率，返回 None
             logger.warning(
-                f"无法获取 {factor_model} 因子收益率，使用随机模拟数据。"
+                f"无法获取 {factor_model} 因子收益率，退出因子归因计算。"
                 f"请确认行情数据源配置正确。"
             )
-            rng = np.random.RandomState(42)
-            return pd.DataFrame(
-                {f: rng.randn(len(dates)) * 0.005 for f in factors},
-                index=dates
-            )
+            return None
 
     @staticmethod
     async def _perform_factor_regression(

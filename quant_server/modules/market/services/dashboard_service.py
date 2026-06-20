@@ -99,6 +99,11 @@ async def _query_top_volume(session: AsyncSession, latest_date=None, limit: int 
 
 
 async def _query_top_flow(session: AsyncSession, latest_date=None, limit: int = 10) -> list:
+    # 预取 stock_moneyflow 最新日期，避免主查询中重复计算 MAX
+    mf_latest = latest_date  # stock_daily 的 latest_date 通常比 moneyflow 更新
+    if mf_latest is None:
+        row = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_moneyflow", {})
+        mf_latest = row["d"] if row else None
     return await _all(session, """
         SELECT m.ts_code, b.name, m.net_mf_amount,
                m.buy_elg_amount, m.sell_elg_amount,
@@ -107,10 +112,10 @@ async def _query_top_flow(session: AsyncSession, latest_date=None, limit: int = 
         FROM stock_moneyflow m
         JOIN stock_basic b ON m.ts_code = b.ts_code
         LEFT JOIN stock_daily q ON q.ts_code = m.ts_code AND q.trade_date = :ld
-        WHERE m.trade_date = (SELECT MAX(trade_date) FROM stock_moneyflow)
+        WHERE m.trade_date = :mf_ld
         ORDER BY m.net_mf_amount DESC
         LIMIT :lim
-    """, {"ld": latest_date, "lim": limit})
+    """, {"ld": latest_date, "mf_ld": mf_latest, "lim": limit})
 
 
 async def _query_hsgt(session: AsyncSession) -> Optional[dict]:
@@ -185,15 +190,23 @@ async def get_dashboard_overview(session: AsyncSession) -> Dict[str, Any]:
     if latest_date:
         logger.info(f"dashboard.latest_date = {latest_date}")
 
+    # v2: 每查询独立 session，实现真正并发（避免单 session 串行化）
+    from shared.database.session.session_manager import get_session_manager
+    sm = get_session_manager()
+
+    async def _with_session(name, coro_fn):
+        async with sm.get_session() as s:
+            return await _timed(name, coro_fn(s))
+
     results = await asyncio.gather(
-        _timed("indices", _query_indices(session)),
-        _timed("industry", _query_industry(session)),
-        _timed("breadth", _query_breadth(session, latest_date)),
-        _timed("top_volume", _query_top_volume(session, latest_date)),
-        _timed("top_flow", _query_top_flow(session, latest_date)),
-        _timed("hsgt", _query_hsgt(session)),
-        _timed("sw_heatmap", _query_sw_heatmap_multi(session)),
-        _timed("macro", _query_macro_latest(session)),
+        _with_session("indices", lambda s: _query_indices(s)),
+        _with_session("industry", lambda s: _query_industry(s)),
+        _with_session("breadth", lambda s: _query_breadth(s, latest_date)),
+        _with_session("top_volume", lambda s: _query_top_volume(s, latest_date)),
+        _with_session("top_flow", lambda s: _query_top_flow(s, latest_date)),
+        _with_session("hsgt", lambda s: _query_hsgt(s)),
+        _with_session("sw_heatmap", lambda s: _query_sw_heatmap_multi(s)),
+        _with_session("macro", lambda s: _query_macro_latest(s)),
         return_exceptions=True,
     )
     indices, heatmap, breadth, volume, flow, hsgt, sw_heatmap, macro_latest = results

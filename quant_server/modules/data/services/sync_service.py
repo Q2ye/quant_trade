@@ -477,6 +477,40 @@ _MONEYFLOW_NULLABLE_FIELDS = (
 	'net_mf_vol', 'net_mf_amount',
 )
 
+# ---------------------------------------------------------------------------
+# 瞬态失败重试工具
+# ---------------------------------------------------------------------------
+import functools
+import asyncio as _asyncio
+
+
+def _retry_on_rate_limit(max_retries=5, base_delay=2.0, max_delay=60.0):
+    """装饰器：对 Tushare/Baostock 限流/超时错误进行指数退避重试"""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    msg = str(e).lower()
+                    is_retryable = any(kw in msg for kw in (
+                        '429', 'rate limit', 'too many requests',
+                        'connection', 'timeout', 'reset by peer',
+                    ))
+                    if not is_retryable or attempt == max_retries - 1:
+                        raise
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    logger.warning(
+                        f'{func.__name__} retry {attempt+1}/{max_retries} in {delay:.0f}s: {e}'
+                    )
+                    await _asyncio.sleep(delay)
+            raise last_exc
+        return wrapper
+    return decorator
+
 
 class DataSyncService:
 	"""

@@ -267,9 +267,9 @@ class AnalysisIntegrationService:
                     }
                 }
             else:
-                # 无归因服务：使用模拟数据（开发/测试阶段）
-                logger.warning(
-                    f"未注入 AttributionService，使用模拟归因数据。"
+                # 无归因服务：返回空结果
+                logger.error(
+                    f"未注入 AttributionService，无法执行归因分析。"
                     f"生产环境请在 AnalysisIntegrationService 初始化时注入。"
                 )
                 result = {
@@ -277,15 +277,8 @@ class AnalysisIntegrationService:
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
                     "attribution_model": attribution_model,
-                    "result": {
-                        "total_return": 0.12,
-                        "factor_attributions": {
-                            "MKT": 0.08, "SMB": 0.02, "HML": 0.01, "UMD": 0.01
-                        },
-                        "factor_exposures": {
-                            "MKT": 1.0, "SMB": 0.5, "HML": 0.3, "UMD": 0.2
-                        }
-                    }
+                    "error": "AttributionService 未注入，无法执行归因分析",
+                    "result": None,
                 }
 
             # 发布归因分析完成事件

@@ -586,7 +586,7 @@ class BacktestBroker(EngineBase):
     # 盯市结算 — 逐日重估
     # =========================================================================
 
-    def mark_to_market(self, bars: Dict[str, BarData]):
+    def mark_to_market(self, bars: Dict[str, BarData], trade_date: date = None):
         """
         逐日盯市 — 用当日收盘价更新所有持仓的市值和浮动盈亏。
 
@@ -678,7 +678,7 @@ class BacktestBroker(EngineBase):
 
         # ---- 记录快照 ----
         snapshot = AccountSnapshot(
-            trade_date=self._trade_date,
+            trade_date=trade_date or self._trade_date,
             total_assets=total_assets,
             available_cash=self.cash,
             frozen_cash=self.frozen_cash,
