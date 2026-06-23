@@ -10,6 +10,11 @@ import {
   HistoricalDataResponse,
 } from "@/types";
 import { FinancialData, HistoricalDataPoint, StockBasic } from "@/types";
+import type {
+  ResearchTaskListResponse,
+  ResearchTaskDetail,
+  CancelResearchResponse,
+} from "@/types/api-research";
 
 // 定义股票列表返回结果的接口
 interface StockListResult {
@@ -310,7 +315,7 @@ const dataAPI = {
     universe?: string;
     start_date?: string;
     end_date?: string;
-  }): Promise<{ research_id: string }> {
+  }): Promise<{ research_id: string; message?: string; parameters?: Record<string, any> }> {
     return request
       .post("/quantTrade/data/factors/research", params)
       .then(handleResponse)
@@ -325,6 +330,46 @@ const dataAPI = {
   }): Promise<any> {
     return request
       .get("/quantTrade/data/factors/research/status", { params })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 获取最近的因子研究任务列表
+   */
+  async getRecentResearchTasks(): Promise<ResearchTaskListResponse> {
+    return request
+      .get("/quantTrade/data/factors/research/status")
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 获取因子研究任务详情
+   * @param researchId 研究任务ID
+   */
+  async getResearchTaskDetail(researchId: string): Promise<ResearchTaskDetail> {
+    return request
+      .get("/quantTrade/data/factors/research/status", {
+        params: { research_id: researchId },
+      })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 取消因子研究任务
+   * @param researchId 研究任务ID
+   */
+  async cancelFactorResearch(researchId: string): Promise<CancelResearchResponse> {
+    return request
+      .post(`/quantTrade/data/factors/research/${researchId}/cancel`)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+  async deleteFactorResearch(researchId: string): Promise<{ success: boolean; message: string }> {
+    return request
+      .delete(`/quantTrade/data/factors/research/${researchId}`)
       .then(handleResponse)
       .then((res: any) => res.data ?? res);
   },
@@ -349,6 +394,52 @@ const dataAPI = {
     return request
       .post("/quantTrade/data/sync/batch", { source })
       .then(handleResponse);
+  },
+
+  /**
+   * 创建因子定义
+   */
+  async createFactorDefinition(params: {
+    factor_code: string;
+    factor_name: string;
+    factor_type?: string;
+    category?: string;
+    description?: string;
+    formula?: string;
+    parameters?: Record<string, any>;
+    data_requirements?: string[];
+    is_public?: boolean;
+    is_active?: boolean;
+  }): Promise<{ success: boolean; data?: any; message: string }> {
+    return request
+      .post("/quantTrade/data/factors/definition", params)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 更新因子定义
+   */
+  async updateFactorDefinition(
+    factorId: string,
+    params: Record<string, any>,
+  ): Promise<{ success: boolean; message: string }> {
+    return request
+      .put(`/quantTrade/data/factors/definition/${factorId}`, params)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 删除（停用）因子定义
+   */
+  async deleteFactorDefinition(
+    factorId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return request
+      .delete(`/quantTrade/data/factors/definition/${factorId}`)
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
   },
 };
 

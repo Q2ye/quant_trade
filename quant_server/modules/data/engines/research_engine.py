@@ -997,33 +997,22 @@ class FactorResearchEngine(EngineBase):
         try:
             logger.info("开始加载默认因子配置")
 
-            # 默认因子定义
-            default_factors = {
-                "price_momentum": {
-                    "name": "price_momentum",
-                    "description": "价格动量因子",
-                    "calculation_method": "technical",
-                    "parameters": {"lookback_period": 20},
-                    "category": "momentum",
-                    "version": "1.0.0"
-                },
-                "volume_ratio": {
-                    "name": "volume_ratio",
-                    "description": "量比因子",
-                    "calculation_method": "volume",
-                    "parameters": {"window": 5},
-                    "category": "volume",
-                    "version": "1.0.0"
-                },
-                "volatility": {
-                    "name": "volatility",
-                    "description": "波动率因子",
-                    "calculation_method": "statistical",
-                    "parameters": {"window": 20, "annualized": True},
-                    "category": "risk",
+            # 从 factor_calculators.py 注册表加载（单一真相源）
+            from modules.data.factor_calculators import get_all_factors
+            default_factors = {}
+            for name, spec in get_all_factors().items():
+                default_factors[name] = {
+                    "name": spec.name,
+                    "display_name": spec.display_name,
+                    "description": spec.description,
+                    "category": spec.category,
+                    "formula": spec.formula,
+                    "data_source": spec.data_source,
+                    "update_frequency": spec.update_frequency,
+                    "parameters": spec.parameters or {},
                     "version": "1.0.0"
                 }
-            }
+
 
             # 加载到内存
             self._default_factors = default_factors
@@ -1210,10 +1199,11 @@ class FactorResearchEngine(EngineBase):
         Returns:
             str: 缓存键
         """
+        import hashlib
         sorted_codes = sorted(stock_codes)
-        codes_hash = hash(tuple(sorted_codes)) % 10000
-
-        return f"factor:{factor_name}:{start_date}:{end_date}:{codes_hash}"
+        key_str = f"{factor_name}:{','.join(sorted_codes)}:{start_date}:{end_date}"
+        codes_hash = hashlib.md5(key_str.encode()).hexdigest()[:16]
+        return f"factor:{codes_hash}"
 
     @staticmethod
     def _validate_factor_definition(definition: Dict[str, Any]) -> bool:

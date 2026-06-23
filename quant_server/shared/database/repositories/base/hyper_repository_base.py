@@ -111,11 +111,13 @@ class HyperRepositoryBase(BaseRepository[T]):
 
 		Args:
 			records: 记录列表
-			conflict_strategy: upsert / ignore / replace
+			conflict_strategy: upsert / ignore
+			    - ignore: ON CONFLICT DO NOTHING（冲突时跳过）
+			    - upsert: ON CONFLICT DO UPDATE（冲突时更新非约束列）
 			chunk_size: 每批记录数（默认 1000，12 列时 ~12000 参数，远低于 32767）
 
 		Returns:
-			插入的记录数
+			插入/更新的记录数
 		"""
 		if not records:
 			return 0
@@ -136,25 +138,80 @@ class HyperRepositoryBase(BaseRepository[T]):
 					record.setdefault('updated_at', now)
 
 			stmt = pg_insert(self.model).values(chunk)
+
 			if conflict_strategy == "ignore":
 				stmt = stmt.on_conflict_do_nothing()
-			# upsert: on_conflict_do_nothing (same as ignore for full sync)
-
-			result = await self.session.execute(stmt)
-			total += result.rowcount
+				result = await self.session.execute(stmt)
+				total += result.rowcount
+			elif conflict_strategy == "upsert":
+				info = self._resolve_conflict_info()
+				if info is None:
+					stmt = stmt.on_conflict_do_nothing()
+				else:
+					conflict_cols, constraint_name = info
+					# 仅更新数据中实际存在的列，避免将未传入的列设为 NULL
+					data_keys = set(chunk[0].keys()) if chunk else set()
+					skip_set = set(conflict_cols) | {'created_at', 'id'}
+					update_cols = {
+						c.name: stmt.excluded[c.name]
+						for c in self.model.__table__.columns
+						if c.name not in skip_set and c.name in data_keys
+					}
+					if constraint_name:
+						stmt = stmt.on_conflict_do_update(
+							constraint=constraint_name,
+							set_=update_cols,
+						)
+					else:
+						stmt = stmt.on_conflict_do_update(
+							index_elements=conflict_cols,
+							set_=update_cols,
+						)
+				result = await self.session.execute(stmt)
+				total += result.rowcount
 
 		return total
 
-	async def _batch_upsert (self, records: List[Dict[str, Any]]) -> int:
-		"""批量upsert实现（需要根据具体数据库调整）"""
-		# 这里实现具体的upsert逻辑
-		# 例如使用PostgreSQL的ON CONFLICT或MySQL的INSERT ... ON DUPLICATE KEY UPDATE
-		pass
+	def _resolve_conflict_info (self):
+		"""
+		从 Model 反射冲突列与约束名，用于 ON CONFLICT 子句。
 
-	async def _batch_insert_ignore (self, records: List[Dict[str, Any]]) -> int:
-		"""批量插入忽略冲突"""
-		# 这里实现具体的数据冲突忽略逻辑
-		pass
+		Returns:
+			(columns: List[str], constraint_name: Optional[str]) 或 None
+			None 表示无法确定，调用方应退化为 DO NOTHING
+
+		解析优先级：
+		1. __table_args__ 中的 UniqueConstraint（优先，含约束名）
+		2. __table__.constraints 中的 UniqueConstraint / PrimaryKeyConstraint
+		3. 返回 None
+		"""
+		from sqlalchemy import UniqueConstraint, PrimaryKeyConstraint
+
+		# 阶段 1：__table_args__ 中的 UniqueConstraint（优先，有名有姓）
+		ta = getattr(self.model, '__table_args__', None)
+		if isinstance(ta, tuple):
+			for arg in ta:
+				if isinstance(arg, UniqueConstraint):
+					return (
+						[c if isinstance(c, str) else c.name for c in arg.columns],
+						getattr(arg, 'name', None),
+					)
+
+		# 阶段 2：__table__.constraints
+		for constraint in self.model.__table__.constraints:
+			if isinstance(constraint, UniqueConstraint):
+				return (
+					[col.name for col in constraint.columns],
+					getattr(constraint, 'name', None),
+				)
+			if isinstance(constraint, PrimaryKeyConstraint):
+				return (
+					[col.name for col in constraint.columns],
+					getattr(constraint, 'name', None),
+				)
+
+		# 无法确定冲突列
+		return None
 
 	async def delete_by_time_range (
 			self,

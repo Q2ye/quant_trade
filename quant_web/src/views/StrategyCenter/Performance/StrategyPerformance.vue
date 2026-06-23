@@ -60,89 +60,37 @@
       </div>
 
       <div class="main-content">
-        <n-grid :x-gap="16" :cols="24" class="performance-overview">
-          <n-grid-item :span="6">
-            <n-card class="metric-card">
-              <div class="metric-content">
-                <div
-                  class="metric-value"
-                  :class="getReturnClass(performance.totalReturn)"
-                >
-                  {{ formatPercent(performance.totalReturn) }}
-                </div>
-                <div class="metric-label">累计收益</div>
-              </div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item :span="6">
-            <n-card class="metric-card">
-              <div class="metric-content">
-                <div class="metric-value">
-                  {{
-                    performance.annualReturn
-                      ? formatPercent(performance.annualReturn)
-                      : "--"
-                  }}
-                </div>
-                <div class="metric-label">年化收益</div>
-              </div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item :span="6">
-            <n-card class="metric-card">
-              <div class="metric-content">
-                <div
-                  class="metric-value"
-                  :class="getDrawdownClass(performance.maxDrawdown)"
-                >
-                  {{ formatPercent(performance.maxDrawdown) }}
-                </div>
-                <div class="metric-label">最大回撤</div>
-              </div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item :span="6">
-            <n-card class="metric-card">
-              <div class="metric-content">
-                <div class="metric-value">
-                  {{
-                    performance.sharpeRatio
-                      ? performance.sharpeRatio.toFixed(2)
-                      : "--"
-                  }}
-                </div>
-                <div class="metric-label">夏普比率</div>
-              </div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
+        <!-- 核心指标 6 列 -->
+        <div class="stat-grid">
+          <StatCard title="累计收益" :value="fmtPct(performance.totalReturn)" :trend="performance.totalReturn >= 0 ? 'up' : 'down'" />
+          <StatCard title="年化收益" :value="fmtPct(performance.annualReturn)" :trend="performance.annualReturn >= 0 ? 'up' : 'down'" />
+          <StatCard title="最大回撤" :value="fmtPct(performance.maxDrawdown)" trend="down" />
+          <StatCard title="夏普比率" :value="performance.sharpeRatio ? performance.sharpeRatio.toFixed(2) : '--'" />
+          <StatCard title="胜率" :value="performance.winRate ? fmtPct(performance.winRate) : '--'" />
+        </div>
 
-        <n-grid :x-gap="16" :cols="24" class="chart-row">
-          <n-grid-item :span="12">
-            <n-card class="chart-card">
-              <template #header>
-                <div class="chart-header">
-                  <span>净值曲线</span>
-                  <n-radio-group v-model:value="chartType" size="small">
-                    <n-radio-button value="cumulative" label="累计收益" />
-                    <n-radio-button value="daily" label="每日收益" />
-                  </n-radio-group>
-                </div>
-              </template>
-              <div ref="equityChart" class="chart-container"></div>
-            </n-card>
-          </n-grid-item>
-          <n-grid-item :span="12">
-            <n-card class="chart-card">
-              <template #header>
-                <div class="chart-header"><span>回撤分析</span></div>
-              </template>
-              <div ref="drawdownChart" class="chart-container"></div>
-            </n-card>
-          </n-grid-item>
-        </n-grid>
+        <!-- 基准对比行 -->
+        <div v-if="btBenchmarkLen > 0" class="stat-grid" style="margin-top:8px">
+          <StatCard title="超额收益" :value="fmtPct(benchmarkStats.excessReturn)" :trend="benchmarkStats.excessReturn >= 0 ? 'up' : 'down'" />
+          <StatCard title="Alpha" :value="benchmarkStats.alpha.toFixed(4)" />
+          <StatCard title="Beta" :value="benchmarkStats.beta.toFixed(2)" />
+          <StatCard title="信息比率" :value="benchmarkStats.ir.toFixed(2)" />
+        </div>
 
-        <n-card class="metrics-card">
+        <!-- 四层子图 — 深色背景凸显分割线 -->
+        <div class="subplots-card">
+          <BacktestSubplots
+            :equity="btEquityPct"
+            :benchmark="btBenchmarkPct"
+            :daily-returns="btDailyPnL"
+            :daily-turnover="btDailyTurnover"
+            :drawdown="btDrawdown"
+            :height="750"
+            :loading="loading"
+          />
+        </div>
+
+        <n-card class="metrics-card" style="margin-top:12px">
           <template #header><span>详细绩效指标</span></template>
           <n-data-table
             :data="performanceMetrics"
@@ -167,14 +115,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, h, nextTick } from "vue";
+import { ref, reactive, computed, watch, onMounted, onUnmounted, h, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useMessage } from "naive-ui";
 import { Icon } from "@iconify/vue";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import strategyAPI from "@/api/strategy";
 import performanceAPI from "@/api/performance";
+import backtestAPI from "@/api/backtest";
 import * as echarts from "echarts";
+import BacktestSubplots from "@/components/charts/BacktestSubplots.vue";
+import StatCard from "@/components/common/StatCard.vue";
+import { tokens } from "@/styles/design-tokens";
 
 const props = defineProps<{ id?: string }>();
 
@@ -186,14 +138,8 @@ const error = ref(false);
 const empty = ref(false);
 const selectedStrategy = ref("");
 const dateRange = ref<any>(null);
-const chartType = ref("cumulative");
-const equityChart = ref<HTMLElement>();
-const drawdownChart = ref<HTMLElement>();
 const heatmapChart = ref<HTMLElement>();
 
-// Real data stores from API
-const equityCurveData = ref<Array<{ date: string; equity: number; benchmark?: number }>>([]);
-const drawdownCurveData = ref<Array<{ date: string; drawdown: number }>>([]);
 const monthlyReturnsData = ref<Record<string, number>>({});
 
 const strategyList = ref<any[]>([]);
@@ -214,6 +160,29 @@ const performance = reactive({
 });
 
 const performanceMetrics = ref<any[]>([]);
+
+// 图表数据 — BacktestSubplots 格式
+const btEquityPct = ref<Array<{ date: string; value: number }>>([]);
+const btBenchmarkPct = ref<Array<{ date: string; value: number }>>([]);
+const btDailyPnL = ref<Array<{ trade_date: string; daily_return: number; daily_pnl: number }>>([]);
+const btDailyTurnover = ref<Array<{ trade_date: string; turnover: number }>>([]);
+const btDrawdown = ref<Array<{ date: string; value: number }>>([]);
+const btBenchmarkLen = ref(0);
+
+const fmtPct = (v: number) => (v || v === 0) ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%` : '--';
+
+const benchmarkStats = computed(() => {
+  const raw = analysisData.value;
+  return {
+    excessReturn: raw?.excess_metrics?.excess_annual_return ?? raw?.alpha ?? 0,
+    alpha: raw?.alpha ?? 0,
+    beta: raw?.beta ?? 0,
+    ir: raw?.information_ratio ?? 0,
+  };
+});
+
+// 缓存分析 API 原始数据供 benchmarkStats 使用
+const analysisData = ref<any>({});
 
 const getReturnClass = (v: number) => (v >= 0 ? "positive" : "negative");
 const getDrawdownClass = (d: number) =>
@@ -271,7 +240,7 @@ const loadPerformanceData = async () => {
   error.value = false;
   empty.value = false;
   try {
-    const params: any = {};
+    const params: any = { benchmark: "000300.SH" };
     if (dateRange.value) {
       const [start, end] = Array.isArray(dateRange.value)
         ? dateRange.value
@@ -279,15 +248,68 @@ const loadPerformanceData = async () => {
       if (start) params.start_date = new Date(start).toISOString().split("T")[0];
       if (end) params.end_date = new Date(end).toISOString().split("T")[0];
     }
+    // 1. 分析 API → 绩效指标
     const data: any = await performanceAPI.getStrategyPerformance(
       selectedStrategy.value,
       params,
     );
     if (data === null) {
-      // Backend returned success:false — treat as error
-      error.value = true;
-      return;
+      error.value = true; return;
     }
+
+    // 2. 回测 API → 图表数据（与 BacktestReport 完全一致的加载方式）
+    try {
+      const tasksRes: any = await backtestAPI.getTasks({
+        strategy_id: selectedStrategy.value, status: "completed", page_size: 1,
+      }).catch(() => null);
+      const items = Array.isArray(tasksRes) ? tasksRes : (tasksRes?.data || tasksRes?.items || []);
+      const task = items[0];
+      if (task) {
+        const taskId = task.task_id || task.id;
+        const [btResult, btEquity] = await Promise.all([
+          backtestAPI.getResult(taskId).catch(() => null),
+          backtestAPI.getEquityCurve(taskId).catch(() => []),
+        ]);
+        const r: Record<string, any> = btResult || {};
+        const eq = Array.isArray(btEquity) ? btEquity : [];
+
+        // BacktestSubplots 格式：净值→累计收益率%（eq 字段为 {date, equity, drawdown}）
+        const firstEq = (eq[0] as any)?.equity || (eq[0] as any)?.total_assets || 1000000;
+        btEquityPct.value = (eq as any[]).map((p: any) => ({
+          date: p.trade_date || p.date,
+          value: ((p.equity ?? p.total_assets ?? 0) / firstEq - 1) * 100,
+        }));
+        // 基准→累计收益率%
+        const bm = r.benchmark_curve || [];
+        const firstBm = bm[0]?.total_assets || firstEq;
+        btBenchmarkPct.value = bm.map((p: any) => ({
+          date: p.trade_date || p.date,
+          value: ((p.total_assets || 0) / firstBm - 1) * 100,
+        }));
+        btBenchmarkLen.value = bm.length;
+        // 每日盈亏
+        btDailyPnL.value = (r.daily_returns || []).map((p: any) => ({
+          trade_date: p.trade_date || p.date || "",
+          daily_return: p.daily_return ?? p.return ?? 0,
+          daily_pnl: p.daily_pnl ?? p.pnl ?? 0,
+        }));
+        // 每日成交额
+        btDailyTurnover.value = (r.daily_turnover || []).map((p: any) => ({
+          trade_date: p.trade_date || p.date || "",
+          turnover: p.turnover ?? 0,
+        }));
+        // 回撤
+        btDrawdown.value = (r.drawdown_curve || []).map((p: any) => ({
+          date: p.trade_date || p.date,
+          value: p.drawdown ?? 0,
+        }));
+        monthlyReturnsData.value = Array.isArray(r.monthly_returns)
+          ? Object.fromEntries(r.monthly_returns.map((m: any) => [m.month || m.trade_date?.slice(0, 7) || "", m.return ?? 0]))
+          : (r.monthly_returns || {});
+        analysisData.value = r;
+      }
+    } catch { /* chart data fallback silent */ }
+
     if (data && Object.keys(data).length > 0) {
       performance.totalReturn = data.total_return ?? data.totalReturn ?? 0;
       performance.annualReturn = data.annual_return ?? data.annualReturn ?? 0;
@@ -295,17 +317,6 @@ const loadPerformanceData = async () => {
       performance.sharpeRatio = data.sharpe_ratio ?? data.sharpeRatio ?? 0;
       performance.winRate = data.win_rate ?? data.winRate ?? 0;
       performance.profitFactor = data.profit_factor ?? data.profitFactor ?? 0;
-
-      // Store real chart data
-      if (data.equity_curve && Array.isArray(data.equity_curve)) {
-        equityCurveData.value = data.equity_curve;
-      }
-      if (data.drawdown_curve && Array.isArray(data.drawdown_curve)) {
-        drawdownCurveData.value = data.drawdown_curve;
-      }
-      if (data.monthly_returns) {
-        monthlyReturnsData.value = data.monthly_returns;
-      }
 
       // Build metrics table from rich response
       const metricsList: any[] = [
@@ -385,8 +396,6 @@ const loadPerformanceData = async () => {
     } else {
       empty.value = true;
     }
-    await nextTick();
-    initCharts();
   } catch {
     error.value = true;
   } finally {
@@ -396,171 +405,111 @@ const loadPerformanceData = async () => {
 
 const exportReport = () => message.info("导出报告功能开发中");
 
-let equityChartInstance: any = null;
-let drawdownChartInstance: any = null;
 let heatmapChartInstance: any = null;
 
-const initCharts = () => {
-  // Dispose existing instances
-  equityChartInstance?.dispose();
-  drawdownChartInstance?.dispose();
+const initHeatmap = () => {
+  if (!heatmapChart.value) return;
   heatmapChartInstance?.dispose();
+  heatmapChartInstance = echarts.init(heatmapChart.value);
+  const mr = monthlyReturnsData.value;
+  const mrEntries = Object.entries(mr);
 
-  // --- Equity curve with benchmark overlay ---
-  if (equityChart.value) {
-    equityChartInstance = echarts.init(equityChart.value);
-    const eqData = equityCurveData.value;
-    const dates = eqData.length > 0
-      ? eqData.map((d: any) => d.date || d.trade_date || "")
-      : ["2023-01","2023-02","2023-03","2023-04","2023-05","2023-06","2023-07","2023-08","2023-09","2023-10","2023-11","2023-12"];
-    const equityValues = eqData.length > 0
-      ? eqData.map((d: any) => d.equity ?? d.nav ?? 1)
-      : [1.0];
-    const benchmarkValues = eqData.length > 0 && eqData[0]?.benchmark !== undefined
-      ? eqData.map((d: any) => d.benchmark ?? null)
-      : null;
-
-    const series: any[] = [{
-      name: "策略净值",
-      type: "line",
-      data: equityValues,
-      itemStyle: { color: "#5470c6" },
-      lineStyle: { width: 2 },
-      smooth: true,
-    }];
-    const legendData = ["策略净值"];
-
-    if (benchmarkValues) {
-      series.push({
-        name: "基准净值",
-        type: "line",
-        data: benchmarkValues,
-        itemStyle: { color: "#91cc75" },
-        lineStyle: { width: 2, type: "dashed" },
-        smooth: true,
-      });
-      legendData.push("基准净值");
-    }
-
-    equityChartInstance.setOption({
-      tooltip: { trigger: "axis" },
-      legend: { data: legendData, bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
-      xAxis: { type: "category", data: dates, axisLabel: { rotate: dates.length > 12 ? 45 : 0 } },
-      yAxis: { type: "value" },
-      series,
+  if (mrEntries.length > 0) {
+    const yearSet = new Set<string>();
+    const monthSet = new Set<string>();
+    const heatData: any[] = [];
+    mrEntries.forEach(([key, val]) => {
+      const parts = key.split("-");
+      if (parts.length >= 2) {
+        const y = parts[0];
+        const m = parts[1];
+        yearSet.add(y); monthSet.add(m);
+        heatData.push([m, y, +(Number(val) * 100).toFixed(2)]);
+      }
     });
-  }
+    const years = Array.from(yearSet).sort();
+    const months = Array.from(monthSet).sort((a,b) => parseInt(a)-parseInt(b));
+    const maxAbs = Math.max(...heatData.map((d: any) => Math.abs(d[2])), 5);
 
-  // --- Drawdown chart ---
-  if (drawdownChart.value) {
-    drawdownChartInstance = echarts.init(drawdownChart.value);
-    const ddData = drawdownCurveData.value;
-    const ddDates = ddData.length > 0
-      ? ddData.map((d: any) => d.date || d.trade_date || "")
-      : ["2023-01","2023-02","2023-03","2023-04","2023-05","2023-06","2023-07","2023-08","2023-09","2023-10","2023-11","2023-12"];
-    const ddValues = ddData.length > 0
-      ? ddData.map((d: any) => d.drawdown ?? d.value ?? 0)
-      : [0];
-
-    drawdownChartInstance.setOption({
-      tooltip: { trigger: "axis", formatter: (p: any) => `${p[0].axisValue}<br/>回撤: ${(p[0].value*100).toFixed(2)}%` },
-      legend: { data: ["回撤幅度"], bottom: 0 },
-      grid: { left: "3%", right: "4%", top: 12, bottom: 32, containLabel: true },
-      xAxis: { type: "category", data: ddDates, axisLabel: { rotate: ddDates.length > 12 ? 45 : 0 } },
-      yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${(v*100).toFixed(0)}%` } },
+    heatmapChartInstance.setOption({
+      tooltip: { position: "top", formatter: (p: any) => `${p.data[1]}-${p.data[0]}: ${p.data[2]}%` },
+      grid: { height: "75%", top: "8%" },
+      xAxis: { type: "category", data: months, splitArea: { show: true } },
+      yAxis: { type: "category", data: years, splitArea: { show: true } },
+      visualMap: {
+        min: -maxAbs, max: maxAbs, calculable: true,
+        orient: "horizontal", left: "center", bottom: "0%",
+        inRange: { color: ["#d03050", "#f6a6a0", "#fafafa", "#a3d9b1", "#18a058"] },
+      },
       series: [{
-        name: "回撤幅度",
-        type: "line",
-        data: ddValues,
-        itemStyle: { color: "#ee6666" },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: "rgba(238,102,102,0.5)" },
-            { offset: 1, color: "rgba(238,102,102,0.05)" },
-          ]),
-        },
+        name: "月度收益",
+        type: "heatmap",
+        data: heatData,
+        label: { show: true, fontSize: 10 },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } },
       }],
     });
-  }
-
-  // --- Monthly returns heatmap ---
-  if (heatmapChart.value) {
-    heatmapChartInstance = echarts.init(heatmapChart.value);
-    const mr = monthlyReturnsData.value;
-    const mrEntries = Object.entries(mr);
-
-    if (mrEntries.length > 0) {
-      // Parse "YYYY-MM" keys into year/month grid
-      const yearSet = new Set<string>();
-      const monthSet = new Set<string>();
-      const heatData: any[] = [];
-      mrEntries.forEach(([key, val]) => {
-        const parts = key.split("-");
-        if (parts.length >= 2) {
-          const y = parts[0];
-          const m = parts[1];
-          yearSet.add(y); monthSet.add(m);
-          heatData.push([m, y, +(Number(val) * 100).toFixed(2)]);
-        }
-      });
-      const years = Array.from(yearSet).sort();
-      const months = Array.from(monthSet).sort((a,b) => parseInt(a)-parseInt(b));
-      const maxAbs = Math.max(...heatData.map((d: any) => Math.abs(d[2])), 5);
-
-      heatmapChartInstance.setOption({
-        tooltip: { position: "top", formatter: (p: any) => `${p.data[1]}-${p.data[0]}: ${p.data[2]}%` },
-        grid: { height: "75%", top: "8%" },
-        xAxis: { type: "category", data: months, splitArea: { show: true } },
-        yAxis: { type: "category", data: years, splitArea: { show: true } },
-        visualMap: {
-          min: -maxAbs, max: maxAbs, calculable: true,
-          orient: "horizontal", left: "center", bottom: "0%",
-          inRange: { color: ["#d03050", "#f6a6a0", "#fafafa", "#a3d9b1", "#18a058"] },
-        },
-        series: [{
-          name: "月度收益",
-          type: "heatmap",
-          data: heatData,
-          label: { show: true, fontSize: 10 },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } },
-        }],
-      });
-    } else {
-      // No data: show placeholder
-      heatmapChartInstance.setOption({
-        title: { text: "暂无月度收益数据", left: "center", top: "center", textStyle: { color: "#999", fontSize: 14 } },
-      });
-    }
+  } else {
+    heatmapChartInstance.setOption({
+      title: { text: "暂无月度收益数据", left: "center", top: "center", textStyle: { color: "#999", fontSize: 14 } },
+    });
   }
 };
 
 onMounted(async () => {
+  const routeId = props.id || (route.params.id as string);
+
+  if (routeId) {
+    // 路由直连：先取当前策略名，再加载绩效
+    try {
+      const single = await strategyAPI.getStrategy(routeId);
+      const name = single?.name || (single as any)?.strategy_name || routeId.slice(0, 8) + "...";
+      strategyList.value = [{ id: routeId, name }];
+    } catch {
+      strategyList.value = [{ id: routeId, name: routeId.slice(0, 8) + "..." }];
+    }
+    selectedStrategy.value = routeId;
+    await loadPerformanceData();
+
+    // 后台补全全量列表
+    strategyAPI.getStrategies().then(list => {
+      if (Array.isArray(list) && list.length > 0) {
+        const cur = selectedStrategy.value;
+        if (!list.some((s: any) => String(s.id) === cur)) {
+          const item = strategyList.value.find((s: any) => String(s.id) === cur);
+          if (item) list.unshift(item);
+        }
+        strategyList.value = list;
+      }
+    }).catch(() => {});
+    return;
+  }
+
+  // 选择器模式：加载全量列表
   try {
     const strategies = await strategyAPI.getStrategies();
     strategyList.value = Array.isArray(strategies) ? strategies : [];
-  } catch {
-    strategyList.value = [];
-  }
-  // Priority: props.id > route.params.id > first strategy
-  const routeId = props.id || (route.params.id as string);
-  if (routeId) {
-    // Direct navigation with strategy id — load performance regardless of list state
-    selectedStrategy.value = routeId;
-    await loadPerformanceData();
-    return;
-  }
+  } catch { strategyList.value = []; }
   if (strategyList.value.length > 0) {
     selectedStrategy.value = String(strategyList.value[0].id);
-    // Selector mode: user picks from dropdown, don't auto-load
   }
 });
 
 onUnmounted(() => {
-  equityChartInstance?.dispose();
-  drawdownChartInstance?.dispose();
   heatmapChartInstance?.dispose();
 });
+
+// heatmap 数据变更时重新渲染
+watch(monthlyReturnsData, async () => {
+  await nextTick();
+  await nextTick();
+  initHeatmap();
+}, { deep: true });
+
+watch(heatmapChart, (el) => {
+  if (el) nextTick(() => initHeatmap());
+});
+
 </script>
 
 <style lang="scss" scoped>
@@ -568,6 +517,17 @@ onUnmounted(() => {
   padding: 0;
   height: 100%;
   overflow-y: auto;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.subplots-card {
+  margin-top: 12px;
+  background: var(--color-bg-card, rgba(12, 18, 32, 0.85));
+  border-radius: 8px;
+  padding: 8px 4px 4px;
 }
 /* .page-header 已迁移至全局样式（global.scss） */
 

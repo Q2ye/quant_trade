@@ -86,6 +86,9 @@ const iconMap: Record<string, string> = {
   Person: "ant-design:user-outlined",
   People: "ant-design:team-outlined",
   WalletOutline: "ant-design:wallet-outlined",
+  Wallet: "ant-design:wallet-outlined",
+  Compass: "ant-design:compass-outlined",
+  Chart: "ant-design:fund-outlined",
   // 业务模块
   BarChart: "ant-design:bar-chart-outlined",
   LineChart: "ant-design:line-chart-outlined",

@@ -354,7 +354,7 @@ class ModulesSettings(BaseSettings):
 	"""模块配置 — 字段动态由 config.yaml 定义，默认值仅兜底"""
 	data: Dict[str, Any] = {
 		"enabled": True, "auto_start": True, "dependencies": [],
-		"config": {"data_source": "tushare", "sync_interval": 3600, "cache_ttl": 300, "load_priority": "high"}
+		"config": {"data_source": "tushare", "sync_interval": 3600, "cache_ttl": 300, "load_priority": "high", "max_concurrent_research_per_user": 3}
 	}
 	strategy: Dict[str, Any] = {
 		"enabled": True, "auto_start": True, "dependencies": ["data"],

@@ -36,6 +36,7 @@ defaults: &defaults
         sync_interval: 3600
         cache_ttl: 300
         load_priority: "high"
+        max_concurrent_research_per_user: 3
     
     strategy:
       enabled: true

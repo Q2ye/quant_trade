@@ -96,10 +96,10 @@ const chartOption = computed(() => {
 
   return {
     grid: [
-      { top: 40, bottom: "78%", left: 55, right: 40 },    // ① 累计收益率
-      { top: "26%", bottom: "57%", left: 55, right: 40 },  // ② 回撤分析
-      { top: "47%", bottom: "30%", left: 55, right: 40 },  // ③ 每日盈亏
-      { top: "74%", bottom: 30, left: 55, right: 40 },     // ④ 每日成交额
+      { top: 50, bottom: "68%", left: 55, right: 40 },     // ① 累计收益率（增大高度）
+      { top: "35%", bottom: "58%", left: 55, right: 40 },  // ② 回撤分析
+      { top: "46%", bottom: "32%", left: 55, right: 40 },  // ③ 每日盈亏
+      { top: "69%", bottom: 30, left: 55, right: 40 },     // ④ 每日成交额
     ],
     xAxis: [
       { gridIndex: 0, type: "category" as const, data: dateLabels, axisLabel: { show: false }, axisTick: { show: false } },
@@ -108,8 +108,8 @@ const chartOption = computed(() => {
       { gridIndex: 3, type: "category" as const, data: dateLabels, axisLabel: { fontSize: 9, interval: labelInterval }, axisTick: { show: false } },
     ],
     yAxis: [
-      { gridIndex: 0, type: "value" as const, axisLabel: { fontSize: 10, formatter: (v: number) => v.toFixed(0) + "%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } } },
-      { gridIndex: 1, type: "value" as const, axisLabel: { fontSize: 10, formatter: (v: number) => (v * 100).toFixed(0) + "%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } }, inverse: true },
+      { gridIndex: 0, type: "value" as const, interval: 10, axisLabel: { fontSize: 10, formatter: (v: number) => v.toFixed(0) + "%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } } },
+      { gridIndex: 1, type: "value" as const, interval: 0.1, axisLabel: { fontSize: 10, formatter: (v: number) => (v * 100).toFixed(0) + "%" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } }, inverse: true },
       { gridIndex: 2, type: "value" as const, axisLabel: { fontSize: 10, formatter: (v: number) => (v / 1e4).toFixed(0) + "万" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } } },
       { gridIndex: 3, type: "value" as const, axisLabel: { fontSize: 10, formatter: (v: number) => (v / 1e4).toFixed(0) + "万" }, splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } } },
     ],
@@ -134,10 +134,10 @@ const chartOption = computed(() => {
       },
     },
     graphic: [
-      { type: "text" as const, right: 4, top: "7%", style: { text: "累\n计\n收\n益\n率", fill: "#888", fontSize: 10, lineHeight: 14 } },
-      { type: "text" as const, right: 4, top: "33%", style: { text: "回\n撤\n分\n析", fill: "#888", fontSize: 10, lineHeight: 14 } },
-      { type: "text" as const, right: 4, top: "53%", style: { text: "每\n日\n盈\n亏", fill: "#888", fontSize: 10, lineHeight: 14 } },
-      { type: "text" as const, right: 4, top: "78%", style: { text: "每\n日\n成\n交\n额", fill: "#888", fontSize: 10, lineHeight: 14 } },
+      { type: "text" as const, right: 4, top: "8%", style: { text: "累\n计\n收\n益\n率", fill: "#888", fontSize: 10, lineHeight: 14 } },
+      { type: "text" as const, right: 4, top: "35%", style: { text: "回\n撤\n分\n析", fill: "#888", fontSize: 10, lineHeight: 14 } },
+      { type: "text" as const, right: 4, top: "54%", style: { text: "每\n日\n盈\n亏", fill: "#888", fontSize: 10, lineHeight: 14 } },
+      { type: "text" as const, right: 4, top: "79%", style: { text: "每\n日\n成\n交\n额", fill: "#888", fontSize: 10, lineHeight: 14 } },
     ],
     dataZoom: [
       { type: "inside" as const, xAxisIndex: [0, 1, 2, 3], start: 0, end: 100 },

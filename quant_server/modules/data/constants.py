@@ -783,9 +783,21 @@ class StandardFactors:
 	TOTAL_ASSETS = "TA"  # 总资产
 
 	# 流动性因子
-	TURNOVER_RATE = "TR"  # 换手率
+	TURNOVER_RATE = "TURNOVER_RATE"  # 换手率
 	TRADING_VOLUME = "TV"  # 交易量
 	AMIHUD_ILLIQUIDITY = "AI"  # Amihud非流动性指标
+
+	# 技术指标
+	MA = "MA"  # 简单移动均线
+	EMA = "EMA"  # 指数移动均线
+	MACD = "MACD"  # MACD指标
+	RSI = "RSI"  # 相对强弱指标
+	BOLL = "BOLL"  # 布林带
+	KDJ = "KDJ"  # KDJ指标
+	CURRENT_RATIO = "CURRENT_RATIO"  # 流动比率
+	QUICK_RATIO = "QUICK_RATIO"  # 速动比率
+	SHARPE_RATIO = "SHARPE_RATIO"  # 夏普比率
+	VOLUME_RATIO = "VOLUME_RATIO"  # 量比
 
 	@classmethod
 	def get_factor_name (cls, factor_code):

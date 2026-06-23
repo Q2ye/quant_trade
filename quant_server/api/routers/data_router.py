@@ -26,6 +26,9 @@ from shared.database.repositories.market.basic.etf_repo import ETFRepository
 
 # 导入数据模块的业务层处理函数
 from modules.data.handlers import (
+	create_factor_definition,
+	update_factor_definition,
+	delete_factor_definition,
 	get_sync_tasks,
 	# 基础数据查询
 	get_stock_list,
@@ -46,6 +49,8 @@ from modules.data.handlers import (
 	research_factor,
 	get_factor_metadata,
 	get_research_status,
+	cancel_factor_research,
+	delete_factor_research,
 
 	# 模块管理
 	check_data_module_health,
@@ -57,6 +62,9 @@ from modules.data.handlers import (
 # 导入数据模块的Pydantic模型
 from modules.data.models import DataTypeInfo
 from modules.data.schemas import (
+	FactorDefinitionCreateRequest,
+	FactorDefinitionUpdateRequest,
+	FactorDefinitionResponse,
     SyncTaskListResponse,
 	StockListRequest,
 	StockListResponse,
@@ -1255,7 +1263,7 @@ async def get_research_status_api (
 		JSONResponse: 研究状态
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 查询因子研究状态，研究ID: {research_id}")
+		logger.debug(f"查询因子研究状态: research_id={research_id}, user={current_user.get('username')}")
 
 
 		# 调用业务层处理函数
@@ -1279,6 +1287,89 @@ async def get_research_status_api (
 			detail=f"获取研究状态失败: {str(e)}"
 		)
 
+
+
+@router.post("/factors/research/{research_id}/cancel")
+async def cancel_factor_research_api(
+	research_id: str,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session)
+):
+	"""取消因子研究任务"""
+	try:
+		result = await cancel_factor_research(
+			session=db_session,
+			research_id=research_id,
+			user_id=current_user.get("id")
+		)
+		return JSONResponse(content=result)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"取消因子研究失败: {str(e)}")
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/factors/definition", response_model=FactorDefinitionResponse)
+async def create_factor_definition_api(
+	request: FactorDefinitionCreateRequest,
+	session: AsyncSession = Depends(get_db_session),
+	current_user: dict = Depends(get_current_user),
+) -> FactorDefinitionResponse:
+	"""创建因子定义"""
+	user_id = current_user.get("id", "system") if current_user else "system"
+	return await create_factor_definition(
+		session=session,
+		request=request,
+		user_id=user_id,
+	)
+
+
+@router.put("/factors/definition/{factor_id}", response_model=FactorDefinitionResponse)
+async def update_factor_definition_api(
+	factor_id: str,
+	request: FactorDefinitionUpdateRequest,
+	session: AsyncSession = Depends(get_db_session),
+) -> FactorDefinitionResponse:
+	"""更新因子定义"""
+	return await update_factor_definition(
+		session=session,
+		factor_id=factor_id,
+		request=request,
+	)
+
+
+@router.delete("/factors/definition/{factor_id}", response_model=FactorDefinitionResponse)
+async def delete_factor_definition_api(
+	factor_id: str,
+	session: AsyncSession = Depends(get_db_session),
+) -> FactorDefinitionResponse:
+	"""停用因子定义"""
+	return await delete_factor_definition(
+		session=session,
+		factor_id=factor_id,
+	)
+
+
+@router.delete("/factors/research/{research_id}")
+async def delete_factor_research_api(
+	research_id: str,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session)
+):
+	"""删除因子研究记录"""
+	try:
+		result = await delete_factor_research(
+			session=db_session,
+			research_id=research_id,
+			user_id=current_user.get("id")
+		)
+		return JSONResponse(content=result)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"删除因子研究失败: {str(e)}")
+		raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/health")

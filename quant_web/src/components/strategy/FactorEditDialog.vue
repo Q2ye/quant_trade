@@ -114,6 +114,7 @@ import {
 import type { FormRules, FormInst } from "naive-ui";
 import { Icon } from "@iconify/vue";
 import { useMessage } from "naive-ui";
+import dataAPI from "@/api/data";
 
 const message = useMessage();
 
@@ -217,15 +218,33 @@ const resetForm = () => {
   });
 };
 
-const handleSave = () => {
-  formRef.value?.validate((errors) => {
+const handleSave = async () => {
+  formRef.value?.validate(async (errors) => {
     if (errors) return;
     saving.value = true;
-    setTimeout(() => {
-      emit("save", { ...formData });
-      handleClose();
+    try {
+      const payload = {
+        factor_code: formData.code,
+        factor_name: formData.name,
+        category: formData.category || undefined,
+        description: formData.description || undefined,
+        formula: formData.formula || undefined,
+        data_requirements: formData.dataFields.length > 0 ? formData.dataFields : undefined,
+        is_active: formData.status === "active",
+      };
+      const res = await dataAPI.createFactorDefinition(payload);
+      if (res.success) {
+        message.success("因子定义创建成功");
+        emit("save", { ...formData });
+        handleClose();
+      } else {
+        message.error(res.message || "创建失败");
+      }
+    } catch (e: any) {
+      message.error(e?.message || "请求失败，请检查网络");
+    } finally {
       saving.value = false;
-    }, 1000);
+    }
   });
 };
 

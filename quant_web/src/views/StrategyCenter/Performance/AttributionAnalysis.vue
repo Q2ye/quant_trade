@@ -53,6 +53,9 @@
         <template #footer><n-button type="primary" @click="runAttributionAnalysis">重试</n-button></template>
       </n-result>
 
+      <!-- Not analyzed yet -->
+      <n-empty v-else-if="!analysisRun" description="请选择策略和归因模型，点击「分析」按钮开始分析" style="padding:60px 0" />
+
       <!-- Empty -->
       <n-empty v-else-if="empty" description="暂无归因数据，请选择策略后进行分析" style="padding:60px 0" />
 
@@ -224,38 +227,25 @@ const dateLabel = computed(() => {
 });
 
 // ---- Static attribution data ----
+// Track whether real analysis has been run (not initial fake data)
+const analysisRun = ref(false);
+
 const attributionSummary = reactive({
-  totalExcessReturn: 0.0456,
-  allocationContribution: 0.0123,
-  selectionContribution: 0.0289,
-  interactionContribution: 0.0044,
-  rSquared: 0.856,
-  trackingError: 0.0345,
-  informationRatio: 1.32,
-  activeShare: 0.782,
-  activeRisk: 0.0289,
-  beta: 0.95,
-  alpha: 0.0234,
+  totalExcessReturn: 0,
+  allocationContribution: 0,
+  selectionContribution: 0,
+  interactionContribution: 0,
+  rSquared: 0,
+  trackingError: 0,
+  informationRatio: 0,
+  activeShare: 0,
+  activeRisk: 0,
+  beta: 0,
+  alpha: 0,
 });
 
-const brinsonAttribution = ref([
-  { category: "金融", allocationEffect: 0.0089, selectionEffect: 0.0156, interactionEffect: 0.0023, totalEffect: 0.0268 },
-  { category: "科技", allocationEffect: 0.0056, selectionEffect: 0.0089, interactionEffect: 0.0012, totalEffect: 0.0157 },
-  { category: "消费", allocationEffect: -0.0023, selectionEffect: 0.0045, interactionEffect: 0.0009, totalEffect: 0.0031 },
-  { category: "医药", allocationEffect: 0.0034, selectionEffect: -0.0012, interactionEffect: 0.0005, totalEffect: 0.0027 },
-  { category: "工业", allocationEffect: -0.0045, selectionEffect: 0.0023, interactionEffect: -0.0008, totalEffect: -0.0030 },
-  { category: "能源", allocationEffect: -0.0023, selectionEffect: 0.0011, interactionEffect: -0.0003, totalEffect: -0.0015 },
-  { category: "其他", allocationEffect: -0.0033, selectionEffect: 0.0011, interactionEffect: -0.0005, totalEffect: -0.0027 },
-]);
-
-const factorAttribution = ref([
-  { factor: "市值因子", exposure: 0.234, factorReturn: 0.0156, attribution: 0.0036, tStat: 2.34, significance: "显著" },
-  { factor: "价值因子", exposure: 0.189, factorReturn: 0.0234, attribution: 0.0044, tStat: 3.12, significance: "显著" },
-  { factor: "动量因子", exposure: 0.156, factorReturn: -0.0089, attribution: -0.0014, tStat: -1.45, significance: "不显著" },
-  { factor: "质量因子", exposure: 0.278, factorReturn: 0.0189, attribution: 0.0052, tStat: 2.89, significance: "显著" },
-  { factor: "波动率因子", exposure: -0.134, factorReturn: -0.0123, attribution: 0.0016, tStat: 1.78, significance: "显著" },
-  { factor: "成长因子", exposure: 0.167, factorReturn: 0.0112, attribution: 0.0019, tStat: 1.56, significance: "不显著" },
-]);
+const brinsonAttribution = ref<any[]>([]);
+const factorAttribution = ref<any[]>([]);
 
 // ---- ECharts Options (computed) ----
 const pieOption = computed(() => ({
@@ -528,6 +518,7 @@ const runAttributionAnalysis = async () => {
           significance: Math.abs(f.tStat ?? f.t_stat ?? 0) >= 2 ? "显著" : "不显著",
         }));
       }
+      analysisRun.value = true;
       // Check if any data was populated
       if (!res.summary && !res.brinson && !res.factorAttributions) {
         empty.value = true;

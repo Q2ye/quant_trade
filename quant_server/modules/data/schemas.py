@@ -890,6 +890,13 @@ class ResearchRequest(BaseModel):
 		description="分析类型: ic_analysis/quantile_analysis/correlation_analysis"
 	)
 
+	@field_validator("universe", mode="before")
+	@classmethod
+	def coerce_universe(cls, v):
+		"""兼容前端传字符串的场景，自动转为列表"""
+		if isinstance(v, str):
+			return [v]
+		return v
 	@field_validator('analysis_type')
 	@classmethod
 	def validate_analysis_type (cls, v):
@@ -1469,3 +1476,47 @@ class SyncTypeStatus(BaseModel):
 class SyncStatusAllResponse(BaseModel):
 	"""GET /api/data/sync/status/all 响应"""
 	types: List[SyncTypeStatus] = Field(default_factory=list)
+
+
+# ==================== 因子定义 CRUD 模型 ====================
+
+class FactorDefinitionCreateRequest(BaseModel):
+	"""创建因子定义请求"""
+	factor_code: str = Field(..., min_length=1, max_length=50, description="因子代码（大写字母+数字+下划线）")
+	factor_name: str = Field(..., min_length=1, max_length=100, description="因子名称（中文显示名）")
+	factor_type: str = Field(default="custom", description="因子类型: technical/fundamental/macro/custom")
+	category: Optional[FactorCategory] = Field(default=None, description="因子类别")
+	description: Optional[str] = Field(default=None, max_length=500, description="因子描述")
+	formula: Optional[str] = Field(default=None, description="计算公式描述")
+	parameters: Optional[Dict[str, Any]] = Field(default=None, description="计算参数")
+	data_requirements: Optional[List[str]] = Field(default=None, description="所需数据字段列表")
+	is_public: bool = Field(default=True, description="是否公开")
+	is_active: bool = Field(default=True, description="是否激活")
+
+	@field_validator("factor_code")
+	@classmethod
+	def validate_factor_code(cls, v: str) -> str:
+		import re
+		if not re.match(r'^[A-Z][A-Z0-9_]*$', v):
+			raise ValueError("因子代码必须以大写字母开头，只能包含大写字母、数字和下划线")
+		return v
+
+
+class FactorDefinitionUpdateRequest(BaseModel):
+	"""更新因子定义请求 — 所有字段可选"""
+	factor_name: Optional[str] = Field(default=None, max_length=100)
+	factor_type: Optional[str] = Field(default=None)
+	category: Optional[FactorCategory] = Field(default=None)
+	description: Optional[str] = Field(default=None, max_length=500)
+	formula: Optional[str] = Field(default=None)
+	parameters: Optional[Dict[str, Any]] = Field(default=None)
+	data_requirements: Optional[List[str]] = Field(default=None)
+	is_public: Optional[bool] = Field(default=None)
+	is_active: Optional[bool] = Field(default=None)
+
+
+class FactorDefinitionResponse(BaseModel):
+	"""因子定义响应（单条）"""
+	success: bool = Field(default=True)
+	data: Optional[FactorMetadata] = Field(default=None)
+	message: str = Field(default="操作成功")

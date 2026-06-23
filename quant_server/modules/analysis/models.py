@@ -67,6 +67,7 @@ class PerformanceMetrics:
 	daily_returns: List[float] = field(default_factory=list)
 	equity_curve: List[Dict[str, Any]] = field(default_factory=list)
 	drawdown_curve: List[Dict[str, Any]] = field(default_factory=list)
+	benchmark_curve: List[Dict[str, Any]] = field(default_factory=list)
 	monthly_returns: Dict[str, Decimal] = field(default_factory=dict)
 	annual_returns: Dict[int, Decimal] = field(default_factory=dict)
 
@@ -113,6 +114,7 @@ class PerformanceMetrics:
 			"drawdown_curve": self.drawdown_curve,
 			"monthly_returns": {k: float(v) for k, v in self.monthly_returns.items()} if self.monthly_returns else {},
 			"daily_returns": self.daily_returns,
+			"benchmark_curve": self.benchmark_curve,
 		}
 		return result
 

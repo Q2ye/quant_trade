@@ -106,12 +106,20 @@ class StockDailyRepository(HyperRepositoryBase[StockDaily]):
 		Returns:
 			日线数据列表
 		"""
-		return await self.get_by_time_range(
-			start_time=start_date,
-			end_time=end_date,
-			symbol=ts_code,
-			limit=limit
-		)
+		# 基类 get_by_time_range 通过 self.model.symbol 过滤，
+		# StockDaily 的列名是 ts_code，需直接构建查询
+		try:
+			query = select(self.model).where(
+				and_(
+					self.model.trade_date >= start_date,
+					self.model.trade_date <= end_date,
+					self.model.ts_code == ts_code
+				)
+			).order_by(self.model.trade_date).limit(limit)
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"按代码和时间范围查询失败: {str(e)}")
 
 	async def get_quotes_by_date (self, trade_date: date) -> List[StockDaily]:
 		"""

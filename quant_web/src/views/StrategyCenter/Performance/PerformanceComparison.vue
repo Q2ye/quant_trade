@@ -272,25 +272,18 @@ onMounted(() => {
           </template>
         </n-result>
 
-        <!-- Selection prompt -->
-        <n-empty
-          v-else-if="!loading && !error && selectedStrategies.length === 0"
-          description="请选择至少两个策略进行对比"
-        />
-
-        <!-- Data -->
-        <template v-else>
-          <n-card :class="tokens.surface.card" size="small">
-            <template #header-extra>
-              <n-space>
-                <n-select
-                  v-model:value="selectedStrategies"
-                  multiple
-                  placeholder="选择对比策略（可多选）"
-                  style="width: 360px"
-                  :options="strategyOptions"
-                  @update:value="onSelectionChange"
-                />
+        <!-- Selection card (always visible) -->
+        <n-card :class="tokens.surface.card" size="small">
+          <template #header-extra>
+            <n-space>
+              <n-select
+                v-model:value="selectedStrategies"
+                multiple
+                placeholder="选择对比策略（可多选，至少选 2 个）"
+                style="width: 360px"
+                :options="strategyOptions"
+                @update:value="onSelectionChange"
+              />
                 <n-date-picker
                   v-model:formatted-value="dateRange"
                   type="daterange"
@@ -302,15 +295,17 @@ onMounted(() => {
 
             <n-tabs>
               <n-tab-pane name="chart" tab="净值曲线">
-                <div v-if="lineOption" style="height: 420px">
+                <n-empty v-if="selectedStrategies.length < 2" description="请在上方选择至少两个策略" style="padding:40px" />
+                <div v-else-if="lineOption" style="height: 420px">
                   <v-chart :option="lineOption" autoresize style="height: 100%" />
                 </div>
                 <n-empty v-else description="暂无净值曲线数据" style="padding:40px" />
               </n-tab-pane>
 
               <n-tab-pane name="metrics" tab="绩效指标">
+                <n-empty v-if="selectedStrategies.length < 2" description="请在上方选择至少两个策略" style="padding:40px" />
                 <n-data-table
-                  v-if="comparisonMetrics.length > 0"
+                  v-else-if="comparisonMetrics.length > 0"
                   :data="comparisonMetrics"
                   :columns="metricColumns"
                   :pagination="false"
@@ -322,7 +317,8 @@ onMounted(() => {
               </n-tab-pane>
 
               <n-tab-pane name="risk" tab="风险收益散点图">
-                <div v-if="lineOption && selectedStrategies.length >= 2" style="height: 400px">
+                <n-empty v-if="selectedStrategies.length < 2" description="请在上方选择至少两个策略" style="padding:40px" />
+                <div v-else-if="lineOption && selectedStrategies.length >= 2" style="height: 400px">
                   <v-chart :option="{
                     backgroundColor: 'transparent',
                     tooltip: {
@@ -363,7 +359,6 @@ onMounted(() => {
               </n-tab-pane>
             </n-tabs>
           </n-card>
-        </template>
       </n-spin>
     </div>
   </div>

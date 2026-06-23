@@ -39,11 +39,17 @@ class DataResearchStartedEvent(BaseEvent):
 			time_range: Dict[str, str] = None,
 			**kwargs
 	):
+		# 从 **kwargs 中提取 caller 可选覆盖的 BaseEvent 参数，
+		# 防止 duplicate keyword argument 冲突（caller 可能通过 **kwargs 传入 source 等）
+		event_source = kwargs.pop("source", "data_research_engine")
+		kwargs.pop("user_id", None)       # handler 层传入但事件 data 中未使用
+		kwargs.pop("timestamp", None)     # 与 metadata.timestamp 字段冲突，忽略 caller 传入的值
+
 		super().__init__(
 			module="events",
 			event_type=DataEventType.RESEARCH_STARTED.value,
 			priority=EventPriority.NORMAL,
-			source="data_research_engine",
+			source=event_source,
 			**kwargs
 		)
 
@@ -86,11 +92,17 @@ class DataResearchProgressEvent(BaseEvent):
 			metrics: Optional[Dict[str, float]] = None,
 			**kwargs
 	):
+		# 从 **kwargs 中提取 caller 可选覆盖的 BaseEvent 参数，防止重复键冲突
+		event_source = kwargs.pop("source", "data_research_engine")
+		kwargs.pop("user_id", None)       # handler 层传入，事件 data 中未使用
+		kwargs.pop("timestamp", None)     # metadata.timestamp 自动生成
+		kwargs.pop("error_message", None)  # handler 失败时传入，事件 data 中未使用
+
 		super().__init__(
 			module="events",
 			event_type=DataEventType.RESEARCH_PROGRESS.value,
 			priority=EventPriority.LOW,
-			source="data_research_engine",
+			source=event_source,
 			**kwargs
 		)
 
@@ -190,11 +202,16 @@ class DataResearchCompletedEvent(BaseEvent):
 			error_info: Optional[str] = None,
 			**kwargs
 	):
+		# 从 **kwargs 中提取 caller 可选覆盖的 BaseEvent 参数，防止重复键冲突
+		event_source = kwargs.pop("source", "data_research_engine")
+		kwargs.pop("user_id", None)       # handler 层传入，事件 data 中未使用
+		kwargs.pop("timestamp", None)     # metadata.timestamp 自动生成
+
 		super().__init__(
 			module="events",
 			event_type=DataEventType.RESEARCH_COMPLETED.value,
 			priority=EventPriority.NORMAL,
-			source="data_research_engine",
+			source=event_source,
 			**kwargs
 		)
 

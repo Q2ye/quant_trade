@@ -204,15 +204,11 @@ class ResearchManager:
 				)
 				await self.research_engine.start()
 
-			# 初始化服务
+			# 初始化服务 — 保存 session_manager 供按需创建 session，
+			# 避免 async with 退出后 session 失效的问题
 			if not self.research_service:
-				# 获取数据库会话
-				session_manager = SessionManager()
-				await session_manager.initialize()
-				async with session_manager.get_session() as async_session:
-					self.research_service = FactorResearchService(
-						session=async_session, event_engine=self.event_engine
-					)
+				self._session_manager = SessionManager()
+				await self._session_manager.initialize()
 
 			# 初始化配置管理器
 			if not self.config_manager:
@@ -292,35 +288,30 @@ class ResearchManager:
 
 	def load_default_factors (self) -> None:
 		"""加载默认因子"""
-		default_factors = {
-			"momentum": {
-				"name": "momentum",
-				"description": "价格动量因子",
-				"category": "price",
-				"calculation_method": "returns",
-				"parameters": {"lookback_period": 20},
-				"default_values": {"lookback_period": 20},
-			},
-			"volatility": {
-				"name": "volatility",
-				"description": "波动率因子",
-				"category": "risk",
-				"calculation_method": "std",
-				"parameters": {"window": 20, "annualized": True},
-				"default_values": {"window": 20, "annualized": True},
-			},
-			"volume_ratio": {
-				"name": "volume_ratio",
-				"description": "量比因子",
-				"category": "volume",
-				"calculation_method": "ratio",
-				"parameters": {"window": 5},
-				"default_values": {"window": 5},
-			},
-		}
+		try:
+			from modules.data.factor_calculators import get_all_factors
+			default_factors = {}
+			for name, spec in get_all_factors().items():
+				default_factors[name] = {
+					"name": spec.name,
+					"display_name": spec.display_name,
+					"description": spec.description,
+					"category": spec.category,
+					"calculation_method": spec.data_source,
+					"parameters": spec.parameters or {},
+					"default_values": spec.parameters or {},
+				}
+		except ImportError:
+			# 兜底：保留原有硬编码默认因子作为降级方案
+			default_factors = {
+				"momentum": {"name": "momentum", "description": "价格动量因子", "category": "price", "calculation_method": "returns", "parameters": {"lookback_period": 20}, "default_values": {"lookback_period": 20}},
+				"volatility": {"name": "volatility", "description": "波动率因子", "category": "risk", "calculation_method": "std", "parameters": {"window": 20, "annualized": True}, "default_values": {"window": 20, "annualized": True}},
+				"volume_ratio": {"name": "volume_ratio", "description": "量比因子", "category": "volume", "calculation_method": "ratio", "parameters": {"window": 5}, "default_values": {"window": 5}},
+			}
 
 		self.factor_library.update(default_factors)
-		logger.info(f"加载默认因子完成，共加载 {len(default_factors)} 个因子")
+		logger.info(f"默认因子加载完成，共加载 {len(default_factors)} 个因子")
+
 
 	async def load_research_config (self) -> None:
 		"""加载研究配置"""
@@ -903,16 +894,6 @@ class ResearchManager:
 			验证结果
 		"""
 		try:
-			# 检查 research_service 是否已初始化
-			if not self.research_service:
-				session_manager = SessionManager()
-				await session_manager.initialize()
-				async with session_manager.get_session() as async_session:
-					self.research_service = FactorResearchService(
-						session=async_session, event_engine=self.event_engine
-					)
-
-
 			metrics = {}
 			issues = []
 			score = 0.0
@@ -929,21 +910,8 @@ class ResearchManager:
 				except BusinessException:
 					pass
 
-			# 通过 research_service 进行因子质量分析
-			try:
-				if self.research_service and hasattr(self.research_service, "analyze_factor_quality"):
-					analysis = await self.research_service.analyze_factor_quality(
-						factor_name=_factor_name, factor_data=_factor_data, parameters=_parameters
-					)
-					if analysis:
-						score = analysis.get("quality_score", score)
-						metrics.update(analysis.get("metrics", {}))
-						issues.extend(analysis.get("issues", []))
-			except Exception as e:
-				logger.warning(f"因子质量分析失败: {e}")
-
-			# 降级：基于Rank IC评估
-			if score == 0.0 and _factor_data is not None:
+			# 基于Rank IC评估因子质量（无需DB session）
+			if _factor_data is not None:
 				try:
 					if isinstance(_factor_data, dict):
 						factor_vals = np.array(_factor_data.get("factor_value", []))
@@ -1028,22 +996,20 @@ class ResearchManager:
 			分析报告
 		"""
 		try:
-			# 检查 research_service 是否已初始化
-			if not self.research_service:
-				session_manager = SessionManager()
-				await session_manager.initialize()
-				async with session_manager.get_session() as async_session:
-					self.research_service = FactorResearchService(
-						session=async_session, event_engine=self.event_engine
-					)
-
-			factor_name = parameters.get("factor_name", "unknown")
-			analysis_type = parameters.get("analysis_type", "performance")
-			report = await self.research_service.generate_analysis_report(
-				analysis_result, factor_name, analysis_type
-			)
-
-			return report
+			# 使用存储的 session_manager 创建临时 research_service（避免 session 泄漏）
+			if not hasattr(self, '_session_manager') or self._session_manager is None:
+				self._session_manager = SessionManager()
+				await self._session_manager.initialize()
+			async with self._session_manager.get_session() as session:
+				service = FactorResearchService(
+					session=session, event_engine=self.event_engine
+				)
+				factor_name = parameters.get("factor_name", "unknown")
+				analysis_type = parameters.get("analysis_type", "performance")
+				report = await service.generate_analysis_report(
+					analysis_result, factor_name, analysis_type
+				)
+				return report
 
 		except Exception as e:
 			logger.error(f"生成分析报告失败: {e}")

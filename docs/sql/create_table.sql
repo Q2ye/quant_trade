@@ -2558,9 +2558,9 @@ CREATE TABLE factor_research (
     sharpe_ratio DECIMAL(10, 4),
 
     -- 用户和上下文
-    user_id INTEGER,
-    created_by INTEGER,
-    updated_by INTEGER,
+    user_id VARCHAR(36),
+    created_by VARCHAR(36),
+    updated_by VARCHAR(36),
 
     -- 时间戳
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -2860,7 +2860,8 @@ CREATE TABLE stock_adjusted_prices (
     ma_values JSONB,
     adj_factor NUMERIC(18,10) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_stock_adj_prices_code_date_type UNIQUE (ts_code, trade_date, adj_type)
 );
 
 COMMENT ON TABLE stock_adjusted_prices IS 'A股复权行情数据表（TimescaleDB超表）';
@@ -3256,11 +3257,12 @@ CREATE TABLE factor_data (
     trade_date DATE NOT NULL,
     factor_value NUMERIC(18,6),
     z_score NUMERIC(10,6),
-    percentile NUMERIC(18,6),
+    percentile NUMERIC(18,6)
     rank INT,
     universe_rank INT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_factor_data_code_name_date UNIQUE (ts_code, factor_code, trade_date)
 );
 
 COMMENT ON TABLE factor_data IS '因子数据表（TimescaleDB超表）';
@@ -3520,6 +3522,7 @@ CREATE INDEX IF NOT EXISTS idx_risk_events_user_id ON risk_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_factor_data_factor_code ON factor_data(factor_code);
 CREATE INDEX IF NOT EXISTS idx_factor_data_ts_code ON factor_data(ts_code);
 CREATE INDEX IF NOT EXISTS idx_factor_data_date ON factor_data(trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_factor_data_factor_code_date ON factor_data(factor_code, trade_date);
 CREATE INDEX IF NOT EXISTS idx_trade_calendar_date ON trade_calendar(cal_date DESC);
 CREATE INDEX IF NOT EXISTS idx_trade_calendar_exchange ON trade_calendar(exchange);
 
@@ -3538,6 +3541,10 @@ CREATE INDEX IF NOT EXISTS idx_strategy_parameters_strategy_id ON strategy_param
 CREATE INDEX IF NOT EXISTS idx_portfolio_strategies_strategy_id ON portfolio_strategies(strategy_id);
 CREATE INDEX IF NOT EXISTS idx_factor_research_user_id ON factor_research(user_id);
 CREATE INDEX IF NOT EXISTS idx_factor_research_status ON factor_research(status);
+CREATE INDEX IF NOT EXISTS idx_factor_research_user_status ON factor_research(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_factor_research_factor_status ON factor_research(factor_name, status);
+CREATE INDEX IF NOT EXISTS idx_factor_research_created_completed ON factor_research(created_at, completed_at);
+CREATE INDEX IF NOT EXISTS idx_factor_research_analysis_type ON factor_research(analysis_type);
 CREATE INDEX IF NOT EXISTS idx_data_quality_checks_date ON data_quality_checks(check_date DESC);
 CREATE INDEX IF NOT EXISTS idx_analysis_tasks_status ON analysis_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_workflow_tasks_workflow_id ON workflow_tasks(workflow_id);

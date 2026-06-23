@@ -284,6 +284,16 @@ class PerformanceService:
                 for i in range(len(df_equity))
             ]
 
+            # 基准净值曲线（基于基准日收益率累乘）
+            if benchmark_returns is not None and len(benchmark_returns) > 0:
+                b_ret = benchmark_returns.reindex(returns.index).dropna()
+                if len(b_ret) > 0:
+                    b_cum = (1.0 + b_ret).cumprod()
+                    metrics.benchmark_curve = [
+                        {'date': str(idx)[:10], 'value': float(v)}
+                        for idx, v in b_cum.items()
+                    ]
+
             return metrics
 
         except Exception as e:

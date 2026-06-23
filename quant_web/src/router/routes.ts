@@ -185,6 +185,18 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "factor-hub", layout: "main", title: "因子研究" },
   },
   {
+    path: "/factors/history",
+    name: "ResearchHistory",
+    component: () =>
+      import("@/views/StrategyCenter/Factors/ResearchHistory.vue"),
+    meta: {
+      menu: "factor-hub",
+      layout: "main",
+      title: "研究历史",
+      hideInMenu: true,
+    },
+  },
+  {
     path: "/strategy/factors",
     redirect: "/factors",
   },
@@ -357,10 +369,11 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "performance-hub", layout: "main", title: "绩效总览" },
   },
   {
-    path: "/performance/strategy",
+    path: "/performance/strategy/:id?",
     name: "StrategyPerformance",
     component: () =>
       import("@/views/StrategyCenter/Performance/StrategyPerformance.vue"),
+    props: true,
     meta: {
       menu: "strategy-performance",
       layout: "main",
@@ -377,19 +390,6 @@ export const routes: RouteRecordRaw[] = [
       menu: "attribution",
       layout: "main",
       title: "归因分析",
-      hideInMenu: true,
-    },
-  },
-  {
-    path: "/performance/strategy/:id",
-    name: "StrategyPerformanceDetail",
-    component: () =>
-      import("@/views/StrategyCenter/Performance/StrategyPerformance.vue"),
-    props: true,
-    meta: {
-      menu: "strategy-performance",
-      layout: "main",
-      title: "策略绩效详情",
       hideInMenu: true,
     },
   },

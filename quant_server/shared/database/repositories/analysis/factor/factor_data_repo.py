@@ -76,7 +76,6 @@ class FactorDataRepository(HyperRepositoryBase[FactorData]):
 				'percentile': percentile,
 				'rank': rank,
 				'universe_rank': universe_rank,
-				'metadata': metadata or {}
 			}
 			return await self.create(factor_data)
 		except Exception as e:

@@ -21,7 +21,12 @@
         <n-select
           v-model:value="researchConfig.universe"
           :options="universeOptions"
-          style="width:130px"
+          multiple
+          filterable
+          tag
+          :max-tag-count="2"
+          placeholder="指数或代码（可多选手输）"
+          style="min-width:200px;max-width:340px;flex:1"
           size="small"
         />
         <n-date-picker
@@ -33,13 +38,30 @@
         <n-select
           v-model:value="researchConfig.selectedFactors"
           multiple
-          placeholder="选择因子（可多选）"
+          filterable
+          clearable
+          placeholder="选择因子（可搜可多选）"
           :options="factorSelectOptions"
-          style="min-width:280px;max-width:480px;flex:1"
+          :max-tag-count="3"
+          consistent-menu-width
+          style="min-width:300px;max-width:520px;flex:1"
           size="small"
         />
+        <n-button size="small" quaternary @click="researchConfig.selectedFactors = factorList.map(f => f.name)">
+          全选
+        </n-button>
+        <n-button
+          v-if="researchConfig.selectedFactors.length > 0"
+          size="small" quaternary @click="researchConfig.selectedFactors = []"
+        >
+          清空
+        </n-button>
         <n-button type="primary" size="small" @click="startResearch" :loading="researchStatus === 'running'">
           {{ researchStatus === 'running' ? '研究中...' : '开始研究' }}
+        </n-button>
+        <n-button size="small" @click="router.push('/factors/history')" quaternary>
+          <template #icon><SmartIcon name="Clock" /></template>
+          研究历史
         </n-button>
       </div>
     </div>
@@ -48,12 +70,16 @@
     <div v-if="researchStatus === 'running'" class="progress-bar-row">
       <n-progress
         type="line"
-        :percentage="Math.round(researchProgress * 100)"
+        :percentage="Math.round(researchProgress)"
         :indicator-placement="'inside'"
         :height="24"
         :border-radius="4"
+        style="flex:1"
       />
       <span class="progress-hint">已计算 {{ calculatedCount }}/{{ totalStocks }} 只股票</span>
+      <n-button size="small" type="warning" quaternary @click="cancelResearch" :loading="cancelling">
+        取消
+      </n-button>
     </div>
 
     <div class="main-body">
@@ -120,15 +146,15 @@
 
               <!-- IC series -->
               <h5>IC 序列分析</h5>
-              <div v-if="selectedFactor._icSeries.length > 0" style="height:180px">
-                <v-chart :option="buildICOption(selectedFactor)" autoresize style="height:100%" />
+              <div v-if="selectedFactor._icSeries.length > 0" style="height:144px; width:80%; transform:scale(1.25); transform-origin:top left; margin-bottom:40px">
+                <v-chart :option="buildICOption(selectedFactor)" autoresize style="height:100%; width:100%" />
               </div>
               <n-empty v-else description="暂无IC序列数据" size="small" />
 
               <!-- Layer returns -->
               <h5>分层回测收益</h5>
-              <div v-if="selectedFactor._layerReturns.length > 0" style="height:200px">
-                <v-chart :option="buildLayerOption(selectedFactor)" autoresize style="height:100%" />
+              <div v-if="selectedFactor._layerReturns.length > 0" style="height:160px; width:80%; transform:scale(1.25); transform-origin:top left; margin-bottom:44px">
+                <v-chart :option="buildLayerOption(selectedFactor)" autoresize style="height:100%; width:100%" />
               </div>
               <n-empty v-else description="暂无分层回测数据" size="small" />
 
@@ -164,6 +190,7 @@ import {
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 import dataAPI from "@/api/data";
+import marketAPI from "@/api/market";
 
 const router = useRouter();
 const msg = useMessage();
@@ -185,30 +212,59 @@ const factorList = ref<FactorItem[]>([]);
 const selectedFactor = ref<FactorItem | null>(null);
 
 // ---- Research state ----
-type ResearchStatus = "idle" | "running" | "completed" | "failed";
+type ResearchStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 const researchStatus = ref<ResearchStatus>("idle");
 const researchProgress = ref(0);
 const calculatedCount = ref(0);
 const totalStocks = ref(0);
 const researchId = ref<string | null>(null);
+const cancelling = ref(false);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 // ---- Research config ----
 const researchConfig = reactive({
-  universe: "000300.SH",
+  universe: ["000300.SH"] as string[],
   selectedFactors: [] as string[],
   dateRange: null as [string, string] | null,
 });
 
-const universeOptions = [
+const universeLoading = ref(false);
+const universeOptions = ref<Array<{ label: string; value: string }>>([
+  { label: "全部A股", value: "all" },
   { label: "沪深300", value: "000300.SH" },
   { label: "中证500", value: "000905.SH" },
-  { label: "全部A股", value: "all" },
-];
+]);
 
-const factorSelectOptions = computed(() =>
-  factorList.value.map(f => ({ label: f.desc || f.name, value: f.name }))
-);
+async function loadUniverseOptions() {
+  universeLoading.value = true;
+  try {
+    const indexes = await marketAPI.getIndexes().catch(() => [] as any[]);
+    if (Array.isArray(indexes) && indexes.length > 0) {
+      const extra = indexes
+        .filter((idx: any) => idx.ts_code && idx.name)
+        .map((idx: any) => ({ label: `${idx.name} (${idx.ts_code})`, value: idx.ts_code }));
+      universeOptions.value = [
+        { label: "全部A股", value: "all" },
+        ...extra,
+      ];
+    }
+  } catch { /* keep defaults */ }
+  universeLoading.value = false;
+}
+
+const factorSelectOptions = computed(() => {
+  const grouped: Record<string, any[]> = {};
+  for (const f of factorList.value) {
+    const cat = f.category || "其他";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push({ label: `${f.desc} (${f.name})`, value: f.name });
+  }
+  const result: any[] = [];
+  for (const [cat, items] of Object.entries(grouped)) {
+    result.push({ type: "group", label: cat, key: cat, children: items });
+  }
+  return result;
+});
 
 // ---- Display factors (enriched with research results) ----
 const displayFactors = computed(() => {
@@ -271,7 +327,7 @@ const buildICOption = (f: FactorItem) => ({
     type: "bar",
     data: f._icSeries.map(d => ({
       value: d.value,
-      itemStyle: { color: d.value >= 0 ? "#18a058" : "#d03050", borderRadius: [3, 3, 0, 0] },
+      itemStyle: { color: d.value >= 0 ? "#d03050" : "#18a058", borderRadius: [3, 3, 0, 0] },
     })),
     barWidth: "60%",
     markLine: {
@@ -307,7 +363,7 @@ const buildLayerOption = (f: FactorItem) => ({
     data: f._layerReturns.map(d => ({
       value: +(d.return_ * 100).toFixed(2),
       itemStyle: {
-        color: d.return_ >= 0 ? "#18a058" : "#d03050",
+        color: d.return_ >= 0 ? "#d03050" : "#18a058",
         borderRadius: [4, 4, 0, 0],
       },
     })),
@@ -324,18 +380,50 @@ const loadMetadata = async () => {
     const metaRes = await dataAPI.getFactorMetadata({ page_size: 200 }).catch(() => null);
     if (metaRes?.metadata_list && metaRes.metadata_list.length > 0) {
       factorList.value = metaRes.metadata_list.map((m: any) => ({
-        name: m.factor_name || m.factor_code,
+        name: m.factor_code || m.factor_name,         // 用 factor_code 做唯一标识，与后端一致
         category: m.category || "其他",
-        desc: m.display_name || m.description || m.factor_name || m.factor_code,
+        desc: m.factor_name || m.display_name || m.description || m.factor_code,  // 中文显示名
         icMean: 0, icIr: 0, layerReturn: 0,
         _hasResult: false,
         _icSeries: [],
         _layerReturns: [],
       }));
-      // Auto-select first few factors
-      if (researchConfig.selectedFactors.length === 0) {
-        researchConfig.selectedFactors = factorList.value.slice(0, 5).map(f => f.name);
+    }
+
+    // 恢复已完成的因子研究结果（页面刷新后数据不丢失）
+    const tasksRes = await dataAPI.getRecentResearchTasks().catch(() => null);
+    const recentTasks: any[] = tasksRes?.recent_tasks || [];
+    console.log(`[FactorDashboard] Recent tasks: ${recentTasks.length} total, statuses:`,
+      recentTasks.map(t => `${t.factor_name}=${t.status}`));
+    const completedTasks = recentTasks.filter(
+      (t: any) => t.status === "completed" && t.factor_name
+    );
+    if (completedTasks.length > 0) {
+      // 每个因子只取最新的一条已完成研究
+      const seenFactors = new Set<string>();
+      const tasksToLoad: any[] = [];
+      for (const t of completedTasks) {
+        if (!seenFactors.has(t.factor_name)) {
+          seenFactors.add(t.factor_name);
+          tasksToLoad.push(t);
+        }
       }
+      // 并行加载详情并应用到列表
+      const details = await Promise.all(
+        tasksToLoad.map(t =>
+          dataAPI.getResearchTaskDetail(t.research_id).catch(() => null)
+        )
+      );
+      console.log(`[FactorDashboard] Loaded ${details.filter(Boolean).length}/${details.length} details`);
+      for (const detail of details) {
+        if (detail) {
+          console.log(`[FactorDashboard] Detail for ${detail.factor_name}: result keys=`,
+            detail.result ? Object.keys(detail.result) : 'null');
+          applyResearchResults(detail);
+        }
+      }
+    } else {
+      console.log('[FactorDashboard] No completed tasks found among recent tasks');
     }
   } catch {
     pageError.value = true;
@@ -379,6 +467,25 @@ const startResearch = async () => {
   }
 };
 
+const cancelResearch = async () => {
+  if (!researchId.value) return;
+  cancelling.value = true;
+  try {
+    const res = await dataAPI.cancelFactorResearch(researchId.value);
+    if (res?.success) {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      researchStatus.value = "cancelled";
+      msg.success("研究已取消");
+    } else {
+      msg.error(res?.message || "取消失败");
+    }
+  } catch {
+    msg.error("取消失败");
+  } finally {
+    cancelling.value = false;
+  }
+};
+
 const startPolling = () => {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -394,12 +501,16 @@ const startPolling = () => {
         clearInterval(pollTimer!);
         pollTimer = null;
         researchStatus.value = "completed";
-        applyResearchResults(status.result || status);
+        applyResearchResults(status);
       } else if (status.status === "failed") {
         clearInterval(pollTimer!);
         pollTimer = null;
         researchStatus.value = "failed";
         msg.error(status.error_message || "研究任务失败");
+      } else if (status.status === "cancelled") {
+        clearInterval(pollTimer!);
+        pollTimer = null;
+        researchStatus.value = "cancelled";
       }
     } catch {
       // polling error, continue
@@ -408,72 +519,81 @@ const startPolling = () => {
 };
 
 /** Apply research results to factor list */
-const applyResearchResults = (result: any) => {
-  if (!result) return;
+const applyResearchResults = (response: any) => {
+  if (!response) return;
 
-  // Try different result structures from backend
-  const icData = result.ic_analysis || result.icAnalysis || [];
-  const quantileData = result.quantile_analysis || result.quantileAnalysis || [];
-  const stabilityData = result.stability_analysis || result.stabilityAnalysis || result.summary || {};
-
-  // Build a lookup: factor_name -> analysis result
-  const icByFactor: Record<string, any> = {};
-  if (Array.isArray(icData)) {
-    icData.forEach((r: any) => {
-      const name = r.factor_name || r.factor || "";
-      icByFactor[name] = r;
-    });
+  const factorName: string = (response.factor_name || "").trim();
+  const result = response.result || {};
+  if (!factorName || !result || typeof result !== 'object') {
+    console.warn(`[applyResearchResults] Skipped: factorName="${factorName}", hasResult=${!!result}`);
+    return;
   }
 
-  const quantileByFactor: Record<string, any> = {};
-  if (Array.isArray(quantileData)) {
-    quantileData.forEach((r: any) => {
-      const name = r.factor_name || r.factor || "";
-      quantileByFactor[name] = r;
-    });
+  const icData: any = result.ic_analysis || result.icAnalysis || {};
+  const quantileData: any = result.quantile_analysis || result.quantileAnalysis || {};
+  const hasData = Object.keys(icData).length > 0 || Object.keys(quantileData).length > 0;
+  if (!hasData) {
+    console.warn(`[applyResearchResults] No IC/quantile data for factor "${factorName}"`);
+    return;
   }
 
-  // Also check summary-level data
-  const summaryIcMean: Record<string, number> = result.ic_mean || result.icMean || {};
-  const summaryIcIr: Record<string, number> = result.ic_ir || result.icIr || {};
-  const summaryTopBottom: Record<string, number> = result.top_minus_bottom || result.topBottom || {};
+  console.log(`[applyResearchResults] Applying results for "${factorName}": icMean=${icData.ic_mean}, icIr=${icData.ic_ir}`);
 
-  // Enrich factor list
+  // Map result to the specific factor in the list (one research_id = one factor)
   factorList.value = factorList.value.map(f => {
-    const ic = icByFactor[f.name] || {};
-    const q = quantileByFactor[f.name] || {};
+    if (f.name !== factorName) return f;
 
-    // Extract IC data
-    const icMean = ic.ic_mean ?? ic.icMean ?? summaryIcMean[f.name] ?? 0;
-    const icIr = ic.ic_ir ?? ic.icIr ?? summaryIcIr[f.name] ?? 0;
-    const icSeriesRaw = ic.ic_series || ic.icSeries || [];
-    const icSeries = Array.isArray(icSeriesRaw)
-      ? icSeriesRaw.map((d: any) => ({
-          date: d.date || d.period || "",
-          value: d.value ?? d.ic_value ?? 0,
-        }))
-      : [];
+    // --- IC data ---
+    const icMean: number = icData.ic_mean ?? icData.icMean ?? 0;
+    const icIr: number = icData.ic_ir ?? icData.icIr ?? 0;
+    const winRate: number = icData.win_rate ?? icData.winRate
+      ?? icData.ic_positive_ratio ?? icData.icPositiveRatio;
+    const rankIc: number = icData.rank_ic ?? icData.rankIc;
 
-    // Extract quantile data
-    const layerReturnsRaw = q.quantile_returns || q.quantileReturns || q.layers || q.layer_returns || [];
-    let layerReturns: Array<{ label: string; return_: number }> = [];
-    if (Array.isArray(layerReturnsRaw) && layerReturnsRaw.length > 0) {
-      layerReturns = layerReturnsRaw.map((l: any, i: number) => ({
-        label: l.label || l.group || l.quantile || `Q${i + 1}`,
-        return_: l.return_ ?? l.return ?? l.value ?? 0,
-      }));
+    const icSeriesRaw = icData.ic_series || icData.icSeries || [];
+    const icSeries: Array<{ date: string; value: number }> = [];
+    if (Array.isArray(icSeriesRaw)) {
+      for (let i = 0; i < icSeriesRaw.length; i++) {
+        const d = icSeriesRaw[i];
+        if (typeof d === 'object' && d !== null) {
+          icSeries.push({
+            date: d.date || d.period || String(i + 1),
+            value: d.value ?? d.ic_value ?? 0,
+          });
+        } else {
+          icSeries.push({ date: String(i + 1), value: typeof d === 'number' ? d : 0 });
+        }
+      }
     }
 
-    const topBottom = q.top_minus_bottom ?? q.topMinusBottom ?? summaryTopBottom[f.name];
-    const winRate = ic.win_rate ?? ic.winRate ?? ic.positive_ratio ?? ic.positiveRatio;
-    const rankIc = ic.rank_ic ?? ic.rankIc;
+    // --- Quantile / layer returns ---
+    const layerReturnsRaw = quantileData.quantile_returns || quantileData.quantileReturns || [];
+    const layerReturns: Array<{ label: string; return_: number }> = [];
+    if (Array.isArray(layerReturnsRaw)) {
+      for (let i = 0; i < layerReturnsRaw.length; i++) {
+        const l = layerReturnsRaw[i];
+        if (typeof l === 'object' && l !== null) {
+          layerReturns.push({
+            label: l.label || l.group || l.quantile || `Q${i + 1}`,
+            return_: l.return_ ?? l.return ?? l.value ?? 0,
+          });
+        } else {
+          // 后端返回纯数字数组 [0.08, 0.04, ...]
+          layerReturns.push({
+            label: `Q${i + 1}`,
+            return_: typeof l === 'number' ? l : 0,
+          });
+        }
+      }
+    }
+    const topBottom: number = quantileData.top_minus_bottom ?? quantileData.topMinusBottom ?? 0;
 
     return {
       ...f,
-      icMean: icMean || 0,
-      icIr: icIr || 0,
-      layerReturn: topBottom || 0,
-      _hasResult: icMean !== 0 || icSeries.length > 0 || layerReturns.length > 0,
+      icMean,
+      icIr,
+      layerReturn: topBottom,
+      _hasResult: Object.keys(icData).length > 0 || Object.keys(quantileData).length > 0,
       _icSeries: icSeries,
       _layerReturns: layerReturns,
       _rankIc: rankIc,
@@ -494,7 +614,7 @@ const generateStrategy = () => {
   router.push(`/strategies/workspace/new?template=factor&factor=${f.name}&ic=${f.icMean.toFixed(3)}&ic_ir=${f.icIr.toFixed(2)}`);
 };
 
-onMounted(() => loadMetadata());
+onMounted(() => { loadMetadata(); loadUniverseOptions(); });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);

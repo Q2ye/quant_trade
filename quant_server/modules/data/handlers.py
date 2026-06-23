@@ -31,6 +31,7 @@
 8. 修复了Redis缓存连接问题
 9. 修复了模型属性访问问题
 """
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -64,6 +65,9 @@ from modules.data.events import (
 )
 # Schema定义（API请求/响应模型）
 from modules.data.schemas import (
+	FactorDefinitionCreateRequest,
+	FactorDefinitionUpdateRequest,
+	FactorDefinitionResponse,
 	# 基础数据查询
 	StockListRequest,
 	StockListResponse,
@@ -308,80 +312,137 @@ async def research_factor (
 			f"股票池数量={len(request.universe)}"
 		)
 
+		# 0. 并发控制：限制每用户同时运行的 research 任务数
+		#    从 config.yaml 的 modules.data.config.max_concurrent_research_per_user 读取
+		#    不同因子/不同股票池的研究相互独立，用户有合理并行需求。
+		data_module_config = get_config().settings.MODULES.data.get("config", {})
+		max_concurrent = data_module_config.get("max_concurrent_research_per_user", 3)
+		existing_repo = FactorResearchRepository(session)
+		existing_result = await existing_repo.get_user_research_tasks(
+			user_id=user_id, status="running"
+		)
+		running_count = 0
+		if existing_result.success and existing_result.data:
+			running_count = existing_result.data.total if hasattr(existing_result.data, "total") else len(existing_result.data.items) if hasattr(existing_result.data, "items") else 0
 		# 1. 参数验证
+		# 1. 解析股票池（指数 + 篮子）
+		resolved_universe = await _resolve_universe_from_baskets(
+			session=session,
+			codes=request.universe,
+			basket_ids=request.basket_ids,
+		)
+
 		await _validate_research_request(request)
 
-		# 2. 创建研究任务ID
-		research_id: str = f"research_{uuid.uuid4().hex[:8]}"
+		# 3. 并发控制：超出上限时排队
+		available = max(1, max_concurrent - running_count)
+		selected = request.factor_names[:available]
+		overflow = request.factor_names[available:]
+		overflow_msg = ""
+		if overflow:
+			overflow_msg = f"（{', '.join(overflow)} 排队中，完成后自动启动）"
 
-		# 3. 创建任务记录（使用运营领域的Repository）
 		research_repo = FactorResearchRepository(session)
+		research_ids: list[str] = []
 
-		# 使用ResearchRequest中的正确属性
-		research_name = f"因子研究_{request.factor_names[0]}" if request.factor_names else "未命名研究"
-		factor_name = request.factor_names[0] if request.factor_names else "unknown"
+		for factor_name in selected:
+			# 2a. 创建唯一 research_id
+			research_id: str = f"research_{uuid.uuid4().hex[:8]}"
+			research_ids.append(research_id)
 
-		# 创建研究任务记录 - 使用正确的参数名
-		research_task_data = {
-			"research_id": research_id,
-			"research_name": research_name,
-			"factor_name": factor_name,
-			"user_id": user_id,
-			"status": "pending",
-			"progress": 0.0,
-			"calculated_count": 0,
-			"total_stocks": len(request.universe) if request.universe else 0,
-			"start_date": request.start_date,
-			"end_date": request.end_date,
-			"parameters": {
-				"factor_names": request.factor_names,
-				"universe": request.universe,
-				"frequency": request.frequency,
-				"group_count": request.group_count,
-				"analysis_type": request.analysis_type
-			},
-			"analysis_type": request.analysis_type or "ic_analysis",
-			"created_at": datetime.now()
-		}
+			# 2b. 创建 DB 记录
+			research_task_data = {
+				"research_id": research_id,
+				"research_name": f"因子研究_{factor_name}",
+				"factor_name": factor_name,
+				"user_id": user_id,
+				"status": "pending",
+				"progress": 0.0,
+				"calculated_count": 0,
+				"total_stocks": len(request.universe) if request.universe else 0,
+				"start_date": request.start_date,
+				"end_date": request.end_date,
+				"parameters": {
+					"factor_names": [factor_name],
+					"universe": request.universe,
+					"frequency": request.frequency,
+					"group_count": request.group_count,
+					"analysis_type": request.analysis_type
+				},
+				"analysis_type": request.analysis_type or "ic_analysis",
+				"created_at": datetime.now()
+			}
+			research_task = await research_repo.create(research_task_data)
 
-		research_task = await research_repo.create(research_task_data)
+			# 2c. 更新为 running 状态
+			await research_repo.update(research_task.id, {
+				"status": "running",
+				"started_at": datetime.now()
+			})
 
-		# 4. 发布研究开始事件
-		event = DataResearchStartedEvent(
-			research_id=research_id,
-			research_type=request.analysis_type or "ic_analysis",
-			target_factors=request.factor_names,
-			user_id=user_id,
-			timestamp=datetime.now(),
-			source="data_module"
-		)
-		# EventEngine的put方法应该接受Event子类
-		await event_engine.put(event)  # type: ignore
+			# 2d. 发布研究开始事件
+			event = DataResearchStartedEvent(
+				research_id=research_id,
+				research_type=request.analysis_type or "ic_analysis",
+				target_factors=[factor_name],
+				user_id=user_id,
+				timestamp=datetime.now(),
+				source="data_module"
+			)
+			await event_engine.put(event)  # type: ignore
 
-		# 5. 默认使用异步执行
-		logger.info(f"异步执行因子研究: {research_id}")
+			# 2e. 创建单因子请求副本并加入后台任务
+			single_request = ResearchRequest(
+				factor_names=[factor_name],
+				universe=resolved_universe or request.universe,
+				start_date=request.start_date,
+				end_date=request.end_date,
+				frequency=request.frequency,
+				group_count=request.group_count,
+				analysis_type=request.analysis_type
+			)
+			await session.commit()
+			asyncio.create_task(_execute_async_factor_research(
+				research_id=research_id,
+				request=single_request,
+				event_engine=event_engine,
+				user_id=user_id
+			))
+			logger.info(f"异步执行因子研究: {research_id} ({factor_name})")
 
-		# 更新任务状态为运行中
-		update_data = {
-			"status": "running",
-			"started_at": datetime.now()
-		}
-		await research_repo.update(research_task.id, update_data)
+		# 排队因子：创建 pending 记录，等待自动启动
+		for factor_name in overflow:
+			rid = f"research_{uuid.uuid4().hex[:8]}"
+			research_ids.append(rid)
+			task_data = {
+				"research_id": rid,
+				"research_name": f"因子研究_{factor_name}",
+				"factor_name": factor_name,
+				"user_id": user_id,
+				"status": "pending",
+				"progress": 0.0,
+				"calculated_count": 0,
+				"total_stocks": len(request.universe) if request.universe else 0,
+				"start_date": request.start_date,
+				"end_date": request.end_date,
+				"parameters": {
+					"factor_names": [factor_name],
+					"universe": request.universe,
+					"frequency": request.frequency,
+					"group_count": request.group_count,
+					"analysis_type": request.analysis_type
+				},
+				"analysis_type": request.analysis_type or "ic_analysis",
+				"created_at": datetime.now()
+			}
+			await research_repo.create(task_data)
+			logger.info(f"因子研究排队: {rid} ({factor_name})")
 
-		# 将研究任务加入后台任务队列
-		background_tasks.add_task(
-			_execute_async_factor_research,
-			research_id=research_id,
-			request=request,
-			event_engine=event_engine,
-			user_id=user_id
-		)
-
-		# 返回异步任务响应
+		# 3. 返回异步任务响应
 		return ResearchResponse(
 			success=True,
-			research_id=research_id,
-			analysis_type=request.analysis_type or "ic_analysis",  # 必须字段
+			research_id=research_ids[0],
+			analysis_type=request.analysis_type or "ic_analysis",
 			parameters={
 				"factor_names": request.factor_names,
 				"universe": request.universe,
@@ -389,20 +450,19 @@ async def research_factor (
 				"end_date": request.end_date.isoformat(),
 				"frequency": request.frequency,
 				"group_count": request.group_count,
-				"analysis_type": request.analysis_type
+				"analysis_type": request.analysis_type,
+				"research_ids": research_ids
 			},
-			# 以下字段在异步任务开始时还没有结果，设为 None
 			ic_analysis=None,
 			quantile_analysis=None,
 			correlation_analysis=None,
-			summary={},  # 空的摘要
+			summary={},
 			generated_at=datetime.now(),
-			# 异步任务特定字段
 			status="started",
 			created_at=datetime.now(),
-			estimated_time=_estimate_research_time(request),
-			factor_name=factor_name,
-			message="因子研究已开始，将在后台执行"
+			estimated_time=_estimate_research_time(request) * len(selected),
+			factor_name=", ".join(request.factor_names),
+			message=f"已启动 {len(selected)} 个独立研究任务{overflow_msg}"
 		)
 
 	except ValidationException as ve:
@@ -411,16 +471,17 @@ async def research_factor (
 	except Exception as e:
 		logger.error(f"因子研究任务创建失败: {str(e)}", exc_info=True)
 
-		# 记录失败状态
-		if "research_id" in locals():
-			research_repo = FactorResearchRepository(session)
-			research_task_result = await research_repo.get_by_research_id(locals()["research_id"])
-			if research_task_result.success and research_task_result.data:
-				update_data = {
-					"status": "failed",
-					"error_message": str(e)
-				}
-				await research_repo.update(research_task_result.data.id, update_data)
+		# Mark all created tasks as failed
+		research_repo = FactorResearchRepository(session)
+		for rid in research_ids:
+			try:
+				task_result = await research_repo.get_by_research_id(rid)
+				if task_result.success and task_result.data:
+					await research_repo.update(task_result.data.id, {
+						"status": "failed", "error_message": str(e)
+					})
+			except Exception:
+				pass
 
 		raise BusinessException(f"创建因子研究任务失败: {str(e)}")
 
@@ -529,9 +590,9 @@ async def get_research_status (
 		BusinessException: 查询过程发生异常
 	"""
 	try:
-		logger.info(
-			f"用户 {user_id} 请求研究状态: "
-			f"研究ID={research_id if research_id else '用户最近任务'}"
+		logger.debug(
+			f"get_research_status: "
+			f"research_id={research_id if research_id else 'recent'}, user={user_id}"
 		)
 
 		research_repo = FactorResearchRepository(session)
@@ -540,7 +601,7 @@ async def get_research_status (
 			# 查询指定研究任务
 			result = await research_repo.get_by_research_id(research_id)
 			if not result.success or not result.data:
-				raise ResourceNotFoundException(f"研究任务 '{research_id}' 不存在")
+				return {"research_id": research_id, "status": "not_found", "message": "研究任务不存在或已被删除"}
 
 			research_task = result.data
 
@@ -562,7 +623,7 @@ async def get_research_status (
 				"started_at": research_task.started_at.isoformat() if research_task.started_at else None,
 				"completed_at": research_task.completed_at.isoformat() if research_task.completed_at else None,
 				"error_message": research_task.error_message,
-				"result": research_task.result,
+				"result": _flatten_research_result(research_task.result),
 				"summary": research_task.summary,
 				"report": research_task.report,
 				"created_at": research_task.created_at.isoformat() if research_task.created_at else None
@@ -603,6 +664,103 @@ async def get_research_status (
 	except Exception as e:
 		logger.error(f"获取研究状态失败: {str(e)}", exc_info=True)
 		raise BusinessException(f"查询研究状态失败: {str(e)}")
+
+
+async def delete_factor_research (
+		session: AsyncSession,
+		research_id: str,
+		user_id: str
+) -> Dict[str, Any]:
+	"""删除因子研究记录（仅允许删除 completed/failed/cancelled 状态）"""
+	try:
+		research_repo = FactorResearchRepository(session)
+		result = await research_repo.get_by_research_id(research_id)
+		if not result.success or not result.data:
+			raise ResourceNotFoundException(f"研究任务 '{research_id}' 不存在")
+		task = result.data
+		if task.user_id and task.user_id != user_id:
+			raise PermissionDeniedException("无权删除其他用户的研究任务")
+		if task.status in ("running", "pending"):
+			raise ValidationException("运行中的任务无法删除，请先取消")
+		await research_repo.delete(task.id, soft=False)
+		return {"success": True, "research_id": research_id, "message": "已删除"}
+	except (ResourceNotFoundException, PermissionDeniedException, ValidationException):
+		raise
+	except Exception as e:
+		logger.error(f"删除因子研究失败: {str(e)}", exc_info=True)
+		raise BusinessException(f"删除因子研究失败: {str(e)}")
+
+
+async def cancel_factor_research (
+		session: AsyncSession,
+		research_id: str,
+		user_id: str
+) -> Dict[str, Any]:
+	"""
+	取消因子研究任务
+
+	Args:
+		session: 数据库会话
+		research_id: 研究任务ID
+		user_id: 当前用户ID
+
+	Returns:
+		Dict: 取消操作结果
+
+	Raises:
+		ResourceNotFoundException: 任务不存在
+		PermissionDeniedException: 用户无权取消该任务
+		ValidationException: 任务已处于最终状态，无法取消
+	"""
+	try:
+		logger.info(f"用户 {user_id} 请求取消因子研究: {research_id}")
+
+		research_repo = FactorResearchRepository(session)
+		result = await research_repo.get_by_research_id(research_id)
+
+		if not result.success or not result.data:
+			raise ResourceNotFoundException(f"研究任务 '{research_id}' 不存在")
+
+		task = result.data
+
+		# 权限验证
+		if task.user_id and task.user_id != user_id:
+			raise PermissionDeniedException("无权取消其他用户的研究任务")
+
+		# 状态验证
+		if task.status in ("completed", "cancelled", "failed"):
+			raise ValidationException(f"任务已处于最终状态 '{task.status}'，无法取消")
+
+		# 发送取消信号（设置 asyncio.Event）
+		from modules.data import signal_cancel
+		cancelled = signal_cancel(research_id)
+
+		# 更新 DB 状态
+		update_data = {
+			"status": "cancelled",
+			"error_message": "用户手动取消",
+			"completed_at": datetime.now(),
+			"updated_at": datetime.now()
+		}
+		await research_repo.update(task.id, update_data)
+
+		if cancelled:
+			logger.info(f"因子研究取消信号已发送: {research_id}")
+		else:
+			logger.warning(f"取消信号发送失败（后台任务可能尚未创建令牌）: {research_id}")
+
+		return {
+			"success": True,
+			"research_id": research_id,
+			"status": "cancelled",
+			"message": "研究任务已取消"
+		}
+
+	except (ResourceNotFoundException, PermissionDeniedException, ValidationException):
+		raise
+	except Exception as e:
+		logger.error(f"取消因子研究失败: {str(e)}", exc_info=True)
+		raise BusinessException(f"取消因子研究失败: {str(e)}")
 
 
 # ==================== 基础数据查询处理函数 ====================
@@ -1931,6 +2089,44 @@ async def get_data_quality (
 
 # ==================== 私有辅助方法 ====================
 
+def _flatten_research_result (raw_result: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+	"""
+	展平因子研究结果的嵌套结构，使前端可直接访问分析数据。
+
+	DB 中存储的结构：
+	  { analysis_results: { ic_analysis: { analysis_result: {ic_mean: ...} }, ... } }
+
+	展平后：
+	  { ic_analysis: {ic_mean: ..., ic_series: [...]}, quantile_analysis: {...}, ... }
+	"""
+	if not isinstance(raw_result, dict):
+		return raw_result
+
+	flattened: Dict[str, Any] = {}
+
+	analysis_results = raw_result.get("analysis_results")
+	if isinstance(analysis_results, dict):
+		for analysis_type, analysis_data in analysis_results.items():
+			if isinstance(analysis_data, dict):
+				# 剥离中间包装层，提取真实的 analysis_result
+				inner = analysis_data.get("analysis_result", analysis_data)
+				if isinstance(inner, dict):
+					flattened[analysis_type] = inner
+
+	# 也透传 summary（如果存在）
+	if "summary" in raw_result and raw_result["summary"]:
+		flattened["summary"] = raw_result["summary"]
+
+	result = flattened if flattened else raw_result
+	logger.debug(
+		"Flattened research result: input_keys=%s, output_keys=%s, ic_mean=%s",
+		list(raw_result.keys()) if isinstance(raw_result, dict) else "non-dict",
+		list(result.keys()) if isinstance(result, dict) else "non-dict",
+		result.get("ic_analysis", {}).get("ic_mean") if isinstance(result, dict) else None,
+	)
+	return result
+
+
 async def _validate_factor_request (request: FactorRequest) -> None:
 	"""
 	验证因子数据请求参数
@@ -2105,7 +2301,8 @@ async def _execute_sync_factor_research (
 			start_date=request.start_date,
 			end_date=request.end_date,
 			parameters=parameters,
-			user_id=user_id
+			user_id=user_id,
+			research_id=research_id
 		)
 
 		# 3. 保存研究结果和更新状态
@@ -2154,6 +2351,80 @@ async def _execute_sync_factor_research (
 		raise BusinessException(f"同步执行因子研究失败: {str(e)}")
 
 
+async def _update_progress(
+    research_repo,
+    research_id: str,
+    progress: float,
+    step: str,
+    event_engine,
+    user_id: str
+):
+    """更新研究进度（DB + 事件）"""
+    try:
+        await research_repo.update_research_progress(
+            research_id=research_id,
+            progress=progress
+        )
+        progress_event = DataResearchProgressEvent(
+            research_id=research_id,
+            progress=progress,
+            current_step=step,
+            user_id=user_id,
+            timestamp=datetime.now(),
+            source="data_module"
+        )
+        await event_engine.put(progress_event)
+    except Exception as e:
+        logger.warning(f"更新进度失败: {e}")
+
+
+async def _try_start_pending_tasks(session, user_id: str, event_engine, max_concurrent: int = 3):
+	"""当有任务完成时，尝试启动该用户排队的 pending 任务"""
+	try:
+		research_repo = FactorResearchRepository(session)
+		running_result = await research_repo.get_user_research_tasks(user_id=user_id, status="running")
+		running_count = 0
+		if running_result.success and running_result.data:
+			running_count = running_result.data.total if hasattr(running_result.data, "total") else len(running_result.data.items) if hasattr(running_result.data, "items") else 0
+
+		available = max_concurrent - running_count
+		if available <= 0:
+			return
+
+		pending_result = await research_repo.get_user_research_tasks(user_id=user_id, status="pending")
+		if not pending_result.success or not pending_result.data:
+			return
+		pending_tasks = pending_result.data.items if hasattr(pending_result.data, "items") else pending_result.data
+		if not pending_tasks:
+			return
+
+		for task in list(pending_tasks)[:available]:
+			update_data = {"status": "running", "started_at": datetime.now()}
+			await research_repo.update(task.id, update_data)
+
+			params = task.parameters or {}
+			single_request = ResearchRequest(
+				factor_names=[task.factor_name],
+				universe=params.get("universe", ["000300.SH"]),
+				start_date=task.start_date,
+				end_date=task.end_date,
+				frequency=params.get("frequency", "M"),
+				group_count=params.get("group_count", 5),
+				analysis_type=task.analysis_type or "ic_analysis"
+			)
+			await session.commit()
+			asyncio.create_task(_execute_async_factor_research(
+				research_id=task.research_id,
+				request=single_request,
+				event_engine=event_engine,
+				user_id=user_id
+			))
+			logger.info(f"自动启动排队任务: {task.research_id} ({task.factor_name})")
+	except Exception as e:
+		logger.warning(f"启动排队任务失败: {e}")
+
+
+
 async def _process_research_completion (
 		research_repo: FactorResearchRepository,
 		research_id: str,
@@ -2173,13 +2444,14 @@ async def _process_research_completion (
 		event_engine: 事件引擎
 		user_id: 当前用户ID
 	"""
-	# 1. 保存研究结果
-	await research_repo.save_research_result(
-		research_id=research_id,
-		result=research_result.get("result", {}),
-		summary=research_result.get("summary", {}),
-		report=research_result.get("report", {})
-	)
+	# 1. 保存研究总结和报告（result 已由 _save_research_result 写入，不覆盖）
+	task = await research_repo.get_by_research_id(research_id)
+	if task.success and task.data:
+		await research_repo.update(task.data.id, {
+			"summary": research_result.get("summary", {}),
+			"report": research_result.get("report", {}),
+			"updated_at": datetime.now(),
+		})
 
 	# 2. 更新任务状态
 	await research_repo.update_research_status(
@@ -2200,6 +2472,16 @@ async def _process_research_completion (
 		source="data_module"
 	)
 	await event_engine.put(completed_event)  # type: ignore
+
+	# 尝试启动排队任务
+	try:
+		data_module_config = get_config().settings.MODULES.data.get("config", {})
+		_max_cc = data_module_config.get("max_concurrent_research_per_user", 3)
+		_sm = get_session_manager()
+		async with _sm.get_session() as _s:
+			await _try_start_pending_tasks(_s, user_id, event_engine, _max_cc)
+	except Exception as _e:
+		logger.warning(f"启动排队任务失败: {_e}")
 
 
 async def _execute_async_factor_research (
@@ -2223,39 +2505,33 @@ async def _execute_async_factor_research (
 	try:
 		logger.info(f"开始异步因子研究: {research_id}")
 
-		# 创建独立 session（后台任务不可使用 HTTP 请求的 session）
+		# 创建取消令牌（供 cancel API 使用）
+		from modules.data import create_cancel_token, cleanup_cancel_token
+		cancel_token = create_cancel_token(research_id)
+
+		# 创建独立 session
 		session_manager = get_session_manager()
-		session = await session_manager.get_session()
-		try:
-			# 1. 初始化组件
+		async with session_manager.get_session() as session:
 			research_service = FactorResearchService(session, event_engine)
+			research_service._caller_research_id = research_id
 			research_repo = FactorResearchRepository(session)
 
-			# 2. 更新初始进度
-			await research_repo.update_research_progress(
-				research_id=research_id,
-				progress=0.1,
-				calculated_count=0,
-				total_stocks=len(request.universe) if request.universe else 0
-			)
+			# 阶段 0: 初始化
+			if cancel_token.is_set():
+				logger.info(f"任务已被取消(初始化前): {research_id}")
+				cleanup_cancel_token(research_id)
+				return
+			await _update_progress(research_repo, research_id, 0.1,
+				"初始化研究任务", event_engine, user_id)
 
-			# 3. 发布进度事件
-			progress_event = DataResearchProgressEvent(
-				research_id=research_id,
-				progress=0.1,
-				current_step="初始化研究任务",
-				user_id=user_id,
-				timestamp=datetime.now(),
-				source="data_module"
-			)
-			await event_engine.put(progress_event)  # type: ignore
-
-			# 4. 执行因子研究
+			# 阶段 1: 因子计算 (progress=0.1->0.3 after calc, step callbacks inside)
+			if cancel_token.is_set():
+				logger.info(f"任务已被取消(计算前): {research_id}")
+				cleanup_cancel_token(research_id)
+				return
 			factor_definition = {
 				"name": request.factor_names[0] if request.factor_names else "unknown",
-				"formula": "",
-				"category": "",
-				"description": ""
+				"formula": "", "category": "", "description": ""
 			}
 			parameters = {
 				"frequency": request.frequency,
@@ -2268,24 +2544,37 @@ async def _execute_async_factor_research (
 				start_date=request.start_date,
 				end_date=request.end_date,
 				parameters=parameters,
-				user_id=user_id
-			)
-
-			# 5. 处理研究完成
-			await _process_research_completion(
-				research_repo=research_repo,
+				user_id=user_id,
 				research_id=research_id,
-				request=request,
-				research_result=research_result,
-				event_engine=event_engine,
-				user_id=user_id
+				cancel_token=cancel_token,
+				progress_callback=lambda step, p: _update_progress(
+					research_repo, research_id, p, step, event_engine, user_id)
 			)
 
+			# 检查是否被取消
+			if research_result.get("cancelled"):
+				logger.info(f"因子研究已取消: {research_id}")
+				await research_repo.update_research_status(research_id, "cancelled",
+					error_message="用户手动取消")
+				cleanup_cancel_token(research_id)
+				return
+
+			# 阶段完成
+			await _update_progress(research_repo, research_id, 1.0,
+				"研究完成", event_engine, user_id)
+			await _process_research_completion(
+				research_repo=research_repo, research_id=research_id,
+				request=request, research_result=research_result,
+				event_engine=event_engine, user_id=user_id
+			)
 			logger.info(f"异步因子研究完成: {research_id}")
-		finally:
-			await session.close()
+
+		cleanup_cancel_token(research_id)
+
+
 
 	except Exception as e:
+		cleanup_cancel_token(research_id)
 		logger.error(f"异步因子研究失败: {str(e)}", exc_info=True)
 
 		# 更新任务状态为失败（使用独立 session）
@@ -2312,6 +2601,16 @@ async def _execute_async_factor_research (
 			source="data_module"
 		)
 		await event_engine.put(fail_event)  # type: ignore
+
+		# 尝试启动排队任务
+		try:
+			data_module_config = get_config().settings.MODULES.data.get("config", {})
+			_max_cc = data_module_config.get("max_concurrent_research_per_user", 3)
+			_sm = get_session_manager()
+			async with _sm.get_session() as _s:
+				await _try_start_pending_tasks(_s, user_id, event_engine, _max_cc)
+		except Exception as _e:
+			logger.warning(f"启动排队任务失败: {_e}")
 
 
 async def _execute_sync_data_sync (
@@ -3168,3 +3467,154 @@ async def initialize_data_module (
 			"error": str(e),
 			"timestamp": datetime.now().isoformat()
 		}
+
+
+# ==================== 因子定义 CRUD ====================
+
+async def create_factor_definition(
+		session: AsyncSession,
+		request: FactorDefinitionCreateRequest,
+		user_id: str,
+) -> FactorDefinitionResponse:
+	"""创建因子定义"""
+	try:
+		logger.info(f"用户 {user_id} 创建因子定义: {request.factor_code}")
+		
+		# 检查重复
+		repo = FactorDefinitionRepository(session)
+		existing = await repo.get_by_code(request.factor_code)
+		if existing:
+			return FactorDefinitionResponse(
+				success=False,
+				message=f"因子 {request.factor_code} 已存在"
+			)
+
+		# 创建
+		factor_data = request.model_dump(exclude_none=True)
+		factor_data["data_requirements"] = request.data_requirements
+		factor_data["created_by"] = user_id
+
+		await repo.create(factor_data)
+		await session.commit()
+
+		# 返回元数据
+		meta = FactorMetadata(
+			factor_name=request.factor_code,
+			display_name=request.factor_name,
+			description=request.description or "",
+			category=request.category or FactorCategory.OTHER,
+			formula=request.formula,
+			data_source="custom",
+			update_frequency="daily",
+		)
+		return FactorDefinitionResponse(
+			success=True,
+			data=meta,
+			message="因子定义创建成功"
+		)
+	except Exception as e:
+		logger.error(f"创建因子定义失败: {e}", exc_info=True)
+		await session.rollback()
+		return FactorDefinitionResponse(
+			success=False,
+			message=f"创建失败: {str(e)}"
+		)
+
+
+async def update_factor_definition(
+		session: AsyncSession,
+		factor_id: str,
+		request: FactorDefinitionUpdateRequest,
+) -> FactorDefinitionResponse:
+	"""更新因子定义"""
+	try:
+		repo = FactorDefinitionRepository(session)
+		existing = await repo.get(factor_id)
+		if not existing:
+			return FactorDefinitionResponse(
+				success=False,
+				message=f"因子定义不存在: {factor_id}"
+			)
+
+		update_data = {k: v for k, v in request.model_dump().items() if v is not None}
+		if update_data:
+			await repo.update(factor_id, **update_data)
+			await session.commit()
+
+		return FactorDefinitionResponse(
+			success=True,
+			message="因子定义更新成功"
+		)
+	except Exception as e:
+		logger.error(f"更新因子定义失败: {e}", exc_info=True)
+		await session.rollback()
+		return FactorDefinitionResponse(
+			success=False,
+			message=f"更新失败: {str(e)}"
+		)
+
+
+async def delete_factor_definition(
+		session: AsyncSession,
+		factor_id: str,
+) -> FactorDefinitionResponse:
+	"""删除（停用）因子定义"""
+	try:
+		repo = FactorDefinitionRepository(session)
+		existing = await repo.get(factor_id)
+		if not existing:
+			return FactorDefinitionResponse(
+				success=False,
+				message=f"因子定义不存在: {factor_id}"
+			)
+
+		await repo.deactivate_factor(factor_id)
+		await session.commit()
+		return FactorDefinitionResponse(
+			success=True,
+			message="因子定义已停用"
+		)
+	except Exception as e:
+		logger.error(f"删除因子定义失败: {e}", exc_info=True)
+		await session.rollback()
+		return FactorDefinitionResponse(
+			success=False,
+			message=f"删除失败: {str(e)}"
+		)
+
+
+# ==================== 股票池解析（篮子支持）====================
+
+async def _resolve_universe_from_baskets(
+		session: AsyncSession,
+		codes: Optional[List[str]],
+		basket_ids: Optional[List[str]],
+) -> Optional[List[str]]:
+	"""
+	将指数代码 + 篮子ID 解析为统一的股票代码列表。
+
+	Returns:
+		None 表示全市场（universe=all + 无篮子），否则返回去重后的股票列表
+	"""
+	resolved = set(codes or [])
+
+	# 解析篮子
+	if basket_ids:
+		from shared.database.repositories.operation.basket.basket_item_repo import BasketItemRepository
+		basket_repo = BasketItemRepository(session)
+		for bid in basket_ids:
+			try:
+				items = await basket_repo.get_all(basket_id=bid)
+				for item in items:
+					resolved.add(item.ts_code)
+			except Exception as e:
+				logger.warning(f"解析篮子 {bid} 失败: {e}")
+
+	# 检查是否包含 'all'（全市场标记）
+	if "all" in (c.lower() for c in (codes or []) if isinstance(c, str)):
+		if not basket_ids:
+			return None  # 纯全市场
+		# 有篮子时，返回篮子成分即可（全市场无意义）
+		resolved.discard("all")
+
+	return list(resolved) if resolved else None

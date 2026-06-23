@@ -340,7 +340,8 @@ export default defineComponent({
       console.log("[AppSidebar] activeMenu changed:", key);
       const target = routeMap[key];
       if (!target) return;
-      if (route.path === target) return;
+      // 已在目标路由或其子路由下（如 /performance/strategy/:id），不重复跳转
+      if (route.path === target || route.path.startsWith(target + "/")) return;
       router.push(target).catch((err) => {
         if (err.name !== "NavigationDuplicated") {
           console.warn("[AppSidebar] 路由跳转失败:", err);
