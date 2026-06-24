@@ -312,7 +312,8 @@ const dataAPI = {
     stock_codes?: string[];
     factor_names?: string[];
     factor_category?: string;
-    universe?: string;
+    universe?: string[];
+    basket_ids?: string[];
     start_date?: string;
     end_date?: string;
   }): Promise<{ research_id: string; message?: string; parameters?: Record<string, any> }> {
@@ -413,8 +414,7 @@ const dataAPI = {
   }): Promise<{ success: boolean; data?: any; message: string }> {
     return request
       .post("/quantTrade/data/factors/definition", params)
-      .then(handleResponse)
-      .then((res: any) => res.data ?? res);
+      .then(handleResponse);
   },
 
   /**
@@ -426,8 +426,7 @@ const dataAPI = {
   ): Promise<{ success: boolean; message: string }> {
     return request
       .put(`/quantTrade/data/factors/definition/${factorId}`, params)
-      .then(handleResponse)
-      .then((res: any) => res.data ?? res);
+      .then(handleResponse);
   },
 
   /**
@@ -438,8 +437,7 @@ const dataAPI = {
   ): Promise<{ success: boolean; message: string }> {
     return request
       .delete(`/quantTrade/data/factors/definition/${factorId}`)
-      .then(handleResponse)
-      .then((res: any) => res.data ?? res);
+      .then(handleResponse);
   },
 };
 

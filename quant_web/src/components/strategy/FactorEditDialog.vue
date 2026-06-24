@@ -4,6 +4,7 @@
     preset="card"
     :title="dialogTitle"
     style="width: 600px"
+    class="factor-edit-dialog"
     @close="handleClose"
   >
     <NForm
@@ -299,5 +300,14 @@ watch(
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+</style>
+
+<style>
+/* NModal teleport 到 body，必须用全局样式穿透 */
+.factor-edit-dialog .n-card {
+  background-color: var(--n-color) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 </style>

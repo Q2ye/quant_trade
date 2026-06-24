@@ -57,6 +57,37 @@ from modules.data.factor_calculators import (
 # 配置日志
 logger = logging.getLogger(__name__)
 
+# factor_data 表 factor_value 列定义为 NUMERIC(18,6)
+# 精度 18，小数位 6 → 整数部分最多 12 位 → 绝对值上限 ≈ 10^12
+# 设置安全上限为 9.99×10^11（略低于 DB 上限，避免 NumericValueOutOfRangeError）
+_MAX_FACTOR_VALUE = 9.99e11
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """
+    安全转换为 float，处理 np.isnan 不兼容的类型（None、Decimal 等）。
+
+    - None → None
+    - Decimal → float
+    - np.nan / np.inf → None
+    - 普通数值 → float（溢出时截断并告警）
+    """
+    if value is None:
+        return None
+    try:
+        fv = float(value)
+    except (ValueError, TypeError):
+        return None
+    if np.isnan(fv) or np.isinf(fv):
+        return None
+    if abs(fv) >= _MAX_FACTOR_VALUE:
+        logger.warning(
+            "因子值 %s 超过安全上限 %s，截断为 %s",
+            fv, _MAX_FACTOR_VALUE, _MAX_FACTOR_VALUE
+        )
+        return _MAX_FACTOR_VALUE if fv > 0 else -_MAX_FACTOR_VALUE
+    return fv
+
 
 class FactorResearchService:
 	"""
@@ -283,6 +314,46 @@ class FactorResearchService:
 			# 生成任务ID
 			task_id = f"calc_{factor_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+			# 检查因子计算器是否存在（与 _calculate_single_factor 一致的查找逻辑）
+			calculator = self._factor_calculators.get(factor_name)
+			if not calculator:
+				_FACTOR_ALIASES = {
+					"rsi_14": "rsi", "pe_ttm": "pe", "kdj_k": "kdj",
+					"volume_ratio_5d": "volume_ratio", "turnover_5d": "turnover_rate",
+					"gross_margin": "gm", "operating_margin": "om", "debt_ratio": "dr",
+				}
+				alias = _FACTOR_ALIASES.get(factor_name.lower())
+				if alias:
+					calculator = self._factor_calculators.get(alias) or self._factor_calculators.get(alias.upper())
+			if not calculator:
+				import re as _re2
+				base = _re2.sub(r'_\d+[a-z]?$', '', factor_name).lower()
+				for name in self._factor_calculators:
+					if name.lower() == base or name.lower() == factor_name.lower():
+						calculator = self._factor_calculators[name]
+						break
+			if not calculator:
+					db_def = await self.factor_def_repo.get_by_code(factor_name) or await self.factor_def_repo.get_by_name(factor_name)
+					if db_def:
+						# 用 DB 中的 factor_code 重试（兼容前端传中文显示名的场景）
+						code = db_def.factor_code
+						calculator = (self._factor_calculators.get(code)
+							or self._factor_calculators.get(code.lower())
+							or self._factor_calculators.get(code.upper()))
+						if calculator:
+							logger.info("因子 '%s' 通过 DB factor_code='%s' 解析成功", factor_name, code)
+							factor_name = code
+					if db_def and not calculator:
+						raise ValueError(
+							f"因子 '{factor_name}' (DB 代码: {db_def.factor_code}) 已定义但缺少计算器。"
+							f"请在 factor_calculators.py 中添加 @register_factor(name='{db_def.factor_code}', ...)"
+						)
+					if not db_def:
+						raise ValueError(
+							f"未知因子 '{factor_name}'，既无计算器也无定义。"
+							f"可用: {list(self._factor_calculators.keys())[:15]}"
+						)
+
 			# 获取股票列表（universe 已在上游 _resolve_universe 中解析）
 			if not ts_codes:
 				# 获取所有活跃股票（按市场查询）
@@ -327,37 +398,18 @@ class FactorResearchService:
 				user_id=user_id
 			)
 
-			# 分批计算
-			for i in range(0, total_stocks, batch_size):
-				batch_codes = ts_codes[i:i + batch_size]
-
-				batch_tasks = []
-				for ts_code in batch_codes:
-					task = self._calculate_single_factor(
+			# 串行逐只计算（AsyncSession 不支持并发协程共享，asyncio.gather 会导致随机查询失败）
+			for i, ts_code in enumerate(ts_codes):
+				try:
+					result = await self._calculate_single_factor(
 						factor_name=factor_name,
 						ts_code=ts_code,
 						start_date=datetime.combine(start_date, datetime.min.time()),
 						end_date=datetime.combine(end_date, datetime.min.time()),
 						parameters=parameters
 					)
-					batch_tasks.append(task)
-
-				# 并发执行批次任务
-				batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-
-				# 处理批次结果
-				for j, result in enumerate(batch_results):
-					ts_code = batch_codes[j]
-
-					if isinstance(result, Exception):
-						logger.error(f"计算股票 {ts_code} 的因子 {factor_name} 失败: {str(result)}")
-						failed_calculations.append({
-							"ts_code": ts_code,
-							"error": str(result)
-						})
-					else:
+					if result:
 						try:
-							# 保存因子数据
 							await self._save_factor_data(
 								factor_name=factor_name,
 								ts_code=ts_code,
@@ -370,23 +422,36 @@ class FactorResearchService:
 								"ts_code": ts_code,
 								"error": f"保存失败: {str(e)}"
 							})
+					else:
+						failed_calculations.append({
+							"ts_code": ts_code,
+							"error": f"无可用行情数据"
+						})
+				except Exception as e:
+					logger.error(f"计算股票 {ts_code} 的因子 {factor_name} 失败: {str(e)}")
+					failed_calculations.append({
+						"ts_code": ts_code,
+						"error": str(e)
+					})
 
-				batch_progress = 0.15 + 0.3 * ((i + len(batch_codes)) / total_stocks)
-				if progress_callback:
-					await progress_callback(f"计算因子 {int(batch_progress*100)}%", batch_progress)
-				if cancel_token and cancel_token.is_set():
-					return {"success": False, "task_id": task_id,
-					        "cancelled": True, "message": "任务已取消"}
+				# 每处理 batch_size 只或最后一只时更新进度
+				if (i + 1) % batch_size == 0 or i == total_stocks - 1:
+					batch_progress = 0.15 + 0.3 * ((i + 1) / total_stocks)
+					if progress_callback:
+						await progress_callback(f"计算因子 {int(batch_progress*100)}%", batch_progress)
+					if cancel_token and cancel_token.is_set():
+						return {"success": False, "task_id": task_id,
+						        "cancelled": True, "message": "任务已取消"}
 
-				await self._publish_research_event(
-					event_type="progress",
-					research_id=task_id,
-					factor_name=factor_name,
-					progress=batch_progress * 100,
-					calculated_count=calculated_count,
-					total_stocks=total_stocks,
-					user_id=user_id
-				)
+					await self._publish_research_event(
+						event_type="progress",
+						research_id=task_id,
+						factor_name=factor_name,
+						progress=batch_progress * 100,
+						calculated_count=calculated_count,
+						total_stocks=total_stocks,
+						user_id=user_id
+					)
 
 			# 清理相关缓存
 			await self._clean_factor_cache(factor_name)
@@ -401,6 +466,15 @@ class FactorResearchService:
 				failed_count=len(failed_calculations),
 				user_id=user_id
 			)
+
+			# 警告：所有股票均无有效因子值（计算器未实现或数据不满足条件）
+			if calculated_count == 0 and total_stocks > 0:
+				logger.warning(
+					"因子 %s: %d 只股票全部计算失败（success=0/%d），"
+					"factor_data 表无数据写入，后续分析将为空。"
+					"请检查计算器实现（如 BETA/SHARPE_RATIO 需市场指数数据）。",
+					factor_name, total_stocks, total_stocks
+				)
 
 			logger.info(f"因子计算完成，因子: {factor_name}, 计算数量: {calculated_count}")
 
@@ -508,6 +582,11 @@ class FactorResearchService:
 				)
 
 				if returns_data.empty:
+					logger.warning(
+						"因子分析失败 [%s / %s]: returns_data 为空 — "
+						"stock_daily 表中无行情数据，请确认日期范围内有交易数据且 universe 解析正确",
+						factor_name, analysis_type
+					)
 					return {
 						"success": False,
 						"factor_name": factor_name,
@@ -788,8 +867,8 @@ class FactorResearchService:
 			metadata_list = []
 			for factor in factors:
 				metadata_list.append({
-					"factor_name": factor.factor_name,
-					"display_name": factor.display_name or factor.factor_name,
+					"factor_code": factor.factor_code,  # 因子代码（唯一标识）
+					"factor_name": factor.factor_name or factor.display_name or factor.factor_code,  # 显示名
 					"description": factor.description,
 					"category": factor.category,
 					"formula": factor.formula,
@@ -928,13 +1007,26 @@ class FactorResearchService:
 						calculator = calc
 						break
 			if not calculator:
-				logger.warning(
-					"Factor calculator not found for '%s', falling back to close price. "
-					"Available: %s",
-					factor_name,
-					list(self._factor_calculators.keys())[:20],
-				)
-				calculator = self._calculate_technical_factor
+					db_def = await self.factor_def_repo.get_by_code(factor_name) or await self.factor_def_repo.get_by_name(factor_name)
+					if db_def:
+						# 用 DB 中的 factor_code 重试（兼容前端传中文显示名的场景）
+						code = db_def.factor_code
+						calculator = (self._factor_calculators.get(code)
+							or self._factor_calculators.get(code.lower())
+							or self._factor_calculators.get(code.upper()))
+						if calculator:
+							logger.info("因子 '%s' 通过 DB factor_code='%s' 解析成功", factor_name, code)
+							factor_name = code
+					if db_def and not calculator:
+						raise ValueError(
+							f"因子 '{factor_name}' (DB 代码: {db_def.factor_code}) 已定义但缺少计算器。"
+							f"请在 factor_calculators.py 中添加 @register_factor(name='{db_def.factor_code}', ...)"
+						)
+					if not db_def:
+						raise ValueError(
+							f"未知因子 '{factor_name}'，既无计算器也无定义。"
+							f"可用: {list(self._factor_calculators.keys())[:15]}"
+						)
 
 			# 获取股票数据
 			quotes = await self.quote_repo.get_by_code_and_date_range(
@@ -969,20 +1061,57 @@ class FactorResearchService:
 			df.set_index("trade_date", inplace=True)
 			df.sort_index(inplace=True)
 
-			# 获取财务数据（如果需要）
-			financial_data = None
-			if factor_name in [StandardFactors.PE, StandardFactors.PB, StandardFactors.ROE]:
-				financial_data = await self._get_financial_data(ts_code, start_date.date(), end_date.date())
-
-			# 计算因子值 — 委托因子计算器注册表统一派发
-			from modules.data.factor_calculators import get_calculator as _get_spec
+			# 计算因子值 — 委托因子计算器注册表统一派发（含别名/模糊匹配）
+			from modules.data.factor_calculators import get_calculator as _get_spec, get_all_factors as _get_all
 			calc_spec = _get_spec(factor_name)
+			if not calc_spec:
+				_FACTOR_ALIASES = {
+					"rsi_14": "rsi", "pe_ttm": "pe", "kdj_k": "kdj",
+					"volume_ratio_5d": "volume_ratio", "turnover_5d": "turnover_rate",
+					"gross_margin": "gm", "operating_margin": "om", "debt_ratio": "dr",
+				}
+				alias = _FACTOR_ALIASES.get(factor_name.lower())
+				if alias:
+					calc_spec = _get_spec(alias) or _get_spec(alias.upper())
+			if not calc_spec:
+				import re as _re_fuzzy
+				base = _re_fuzzy.sub(r'_\d+[a-z]?$', '', factor_name).lower()
+				for name, spec in _get_all().items():
+					if name.lower() == base or name.lower() == factor_name.lower():
+						calc_spec = spec
+						break
+
 			# 从参数化因子名提取 period（如 ema_26 → 26, ma_20 → 20）
 			import re as _re
 			calc_params = dict(parameters) if parameters else {}
 			param_match = _re.match(r'^[a-zA-Z]+_(\d+)[a-z]?$', factor_name)
 			if param_match and 'period' not in calc_params:
 				calc_params['period'] = int(param_match.group(1))
+
+			# 根据 data_source 决定是否拉取财务数据（而非硬编码因子名列表）
+			financial_data = None
+			if calc_spec and calc_spec.data_source in ("both", "financial"):
+				financial_data = await self._get_financial_data(ts_code, start_date.date(), end_date.date())
+
+			# BETA 因子需要基准指数收益率
+			beta_factor_names = {"BETA", "beta", "Beta"}
+			if factor_name in beta_factor_names or (
+				calc_spec and calc_spec.name in beta_factor_names
+			):
+				if not hasattr(self, '_benchmark_returns_cache'):
+					self._benchmark_returns_cache = None  # type: ignore
+				# 缓存 index returns（同一批次所有股票共用）
+				cache_key = (start_date.date(), end_date.date())
+				if (not hasattr(self, '_benchmark_cache_key')
+						or self._benchmark_cache_key != cache_key):
+					self._benchmark_returns_cache = await self._get_benchmark_returns(
+						start_date.date(), end_date.date()
+					)
+					self._benchmark_cache_key = cache_key
+				if calc_params is None:
+					calc_params = {}
+				calc_params['benchmark_returns'] = self._benchmark_returns_cache
+
 			if calc_spec:
 				if calc_spec.data_source in ("both", "financial"):
 					factor_series = calc_spec.calculator(df, financial_data)
@@ -1003,6 +1132,10 @@ class FactorResearchService:
 						factor_series = calculator(df, calc_params)
 
 			if factor_series.empty:
+				logger.warning(
+					"因子 %s 在 %s 上返回空序列（计算器未实现或数据不足）",
+					factor_name, ts_code
+				)
 				return []
 			result = []
 			for date_val, factor_val in factor_series.items():
@@ -1027,10 +1160,16 @@ class FactorResearchService:
 				result.append({
 					"trade_date": trade_date,
 					"factor_name": factor_name,
-					"factor_value": float(factor_val) if (not np.isnan(factor_val) and not np.isinf(factor_val)) else None,
+					"factor_value": _safe_float(factor_val),
 					"ts_code": ts_code,
 					"updated_at": datetime.now()
 				})
+
+			# 全部为 None（NaN/Inf 转换）→ 视为无有效数据，返回空列表
+			# 否则 calculate_factor 会虚增 calculated_count，导致分析阶段
+			# 查不到数据但页面却显示"计算完成"
+			if result and all(r.get("factor_value") is None for r in result):
+				return []
 
 			return result
 
@@ -1065,6 +1204,12 @@ class FactorResearchService:
 
 			if factor_data_list:
 				await self.factor_repo.batch_insert_factor_data(factor_data_list)
+			else:
+				logger.warning(
+					"因子 %s 股票 %s: 所有因子值为 None（计算器未实现或数据不足），"
+					"未写入 factor_data 表",
+					factor_name, ts_code
+				)
 
 			await self.session.commit()
 
@@ -1075,6 +1220,12 @@ class FactorResearchService:
 					"factor_data 表缺少唯一索引 (uq_factor_data_code_name_date)，"
 					"因子值未更新。请执行: "
 					"psql -d quant_signals_dev -f docs/sql/migration_add_missing_unique_indexes.sql"
+				)
+			elif "NumericValueOutOfRange" in msg or "数字字段溢出" in msg:
+				logger.warning(
+					"因子 %s 股票 %s: 数值超出 NUMERIC(18,6) 范围 (>=10^12)，"
+					"已跳过。建议检查计算器输出或扩大 factor_value 列精度",
+					factor_name, ts_code
 				)
 			else:
 				logger.warning(f"保存因子数据失败(非致命): {msg}")
@@ -1089,12 +1240,13 @@ class FactorResearchService:
 		"""
 		初始化因子计算器映射
 
+		calculate_factor 中的因子名查找逻辑（精确 → 别名表 → 模糊去后缀）已处理
+		大小写不敏感问题，无需额外创建小写键副本。
+
 		Returns:
-			Dict: 因子计算器映射
+			Dict: 因子计算器映射 {name: callable}
 		"""
-		result = {name: spec.calculator for name, spec in get_all_factors().items()}
-		result.update({name.lower(): spec.calculator for name, spec in get_all_factors().items()})
-		return result
+		return {name: spec.calculator for name, spec in get_all_factors().items()}
 
 	@staticmethod
 	def _calculate_technical_factor (
@@ -1132,6 +1284,11 @@ class FactorResearchService:
 			Dict: IC分析结果
 		"""
 		if factor_data.empty:
+			logger.warning(
+				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
+				factor_name, analysis_type
+			)
 			return {
 				"ic_mean": 0,
 				"ic_std": 0,
@@ -1265,6 +1422,11 @@ class FactorResearchService:
 			Dict: 分位数分析结果
 		"""
 		if factor_data.empty:
+			logger.warning(
+				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
+				factor_name, analysis_type
+			)
 			return {
 				"quantile_returns": [],
 				"top_minus_bottom": 0,
@@ -1377,6 +1539,11 @@ class FactorResearchService:
 			Dict: 相关性分析结果
 		"""
 		if factor_data.empty:
+			logger.warning(
+				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
+				factor_name, analysis_type
+			)
 			return {
 				"correlation_matrix": [],
 				"mean_correlation": 0,
@@ -1456,6 +1623,11 @@ class FactorResearchService:
 			Dict: 稳定性分析结果
 		"""
 		if factor_data.empty:
+			logger.warning(
+				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
+				factor_name, analysis_type
+			)
 			return {
 				"stability_score": 0,
 				"period_consistency": [],
@@ -1847,6 +2019,11 @@ class FactorResearchService:
 			factor_records = result.scalars().all()
 
 			if not factor_records:
+				logger.warning(
+					"因子 %s: factor_data 表中无数据 — "
+					"计算器可能未实现或依赖的数据（如财务数据/指数数据）不可用",
+					factor_name
+				)
 				return pd.DataFrame()
 
 			# 转换为DataFrame
@@ -1897,7 +2074,7 @@ class FactorResearchService:
 		try:
 			# 获取股票列表
 			if not universe:
-				stocks = await self.stock_repo.get_all(limit=100)
+				stocks = await self.stock_repo.get_all(limit=500)
 				universe = [stock.ts_code for stock in stocks]
 
 			if not universe:
@@ -1966,11 +2143,17 @@ class FactorResearchService:
 				logger.warning("financial_repo 未初始化，无法获取财务数据")
 				return None
 
-			# 使用 BaseRepository.get_by 查询财务数据
+			# 使用 SQLAlchemy select 直接查询 — BaseRepository.get_by
+			# 内部使用 scalar_one_or_none，每只股票有多期财报时
+			# 会抛出 MultipleResultsFound，导致静默返回 None
 			try:
-				financial_statements = await self.financial_repo.get_by(
-					ts_code=ts_code
+				from sqlalchemy import select as _sel_fi
+				from shared.database.models.data_models import FinancialIncome
+				fi_stmt = _sel_fi(FinancialIncome).where(
+					FinancialIncome.ts_code == ts_code
 				)
+				fi_result = await self.session.execute(fi_stmt)
+				financial_statements = fi_result.scalars().all()
 			except Exception:
 				logger.debug(f"无法获取 {ts_code} 的财务数据，跳过")
 				return None
@@ -2111,6 +2294,62 @@ class FactorResearchService:
 		except Exception as e:
 			logger.error(f"获取财务数据失败: {str(e)}")
 			return None
+
+	async def _get_benchmark_returns(
+		self,
+		start_date: date,
+		end_date: date,
+		benchmark: str = "000300.SH",
+	) -> pd.Series:
+		"""
+		获取基准指数的日收益率序列（用于 BETA 等计算）。
+
+		Args:
+			start_date: 开始日期
+			end_date: 结束日期
+			benchmark: 基准指数代码，默认沪深 300
+
+		Returns:
+			pd.Series: 指数日收益率，index=trade_date
+		"""
+		try:
+			from sqlalchemy import select as _sel_idx
+			from shared.database.models.data_models import IndexDaily
+			start_dt = datetime.combine(start_date, datetime.min.time())
+			end_dt = datetime.combine(end_date, datetime.min.time())
+			stmt = (
+				_sel_idx(IndexDaily)
+				.where(
+					IndexDaily.ts_code == benchmark,
+					IndexDaily.trade_date >= start_dt,
+					IndexDaily.trade_date <= end_dt,
+				)
+				.order_by(IndexDaily.trade_date)
+			)
+			result = await self.session.execute(stmt)
+			records = result.scalars().all()
+			if not records:
+				logger.warning(
+					"无法获取基准指数 %s 的日线数据（%s ~ %s），"
+					"BETA 等因子将无法计算",
+					benchmark, start_date, end_date
+				)
+				return pd.Series(dtype=float)
+
+			df = pd.DataFrame([
+				{"trade_date": r.trade_date, "close": float(r.close)}
+				for r in records if r.close is not None
+			])
+			if df.empty:
+				return pd.Series(dtype=float)
+
+			df.set_index("trade_date", inplace=True)
+			df.sort_index(inplace=True)
+			returns = df["close"].pct_change().dropna()
+			return returns
+		except Exception as e:
+			logger.warning(f"获取基准指数收益失败: {e}")
+			return pd.Series(dtype=float)
 
 	# ==================== 研究任务管理方法 ====================
 
@@ -2780,7 +3019,7 @@ class FactorResearchService:
 			factor_data = []
 
 			# 首先获取股票列表
-			stocks = await self.stock_repo.get_all(limit=100)  # 限制获取100只股票
+			stocks = await self.stock_repo.get_all(limit=500)  # 限制获取100只股票
 			if not stocks:
 				logger.warning("获取股票列表失败")
 				return []

@@ -8,6 +8,9 @@
           <p class="page-description">{{ statusText }}</p>
         </div>
         <div class="header-actions">
+          <n-button class="action-btn" size="small" @click="loadMetadata" quaternary>
+            <template #icon><SmartIcon name="Refresh" /></template>
+          </n-button>
           <n-button class="action-btn" size="small" @click="router.push('/strategies')" quaternary>
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
@@ -26,7 +29,17 @@
           tag
           :max-tag-count="2"
           placeholder="指数或代码（可多选手输）"
-          style="min-width:200px;max-width:340px;flex:1"
+          style="min-width:180px;max-width:300px;flex:1"
+          size="small"
+        />
+        <n-select
+          v-model:value="researchConfig.basketIds"
+          :options="basketOptions"
+          multiple
+          clearable
+          :max-tag-count="2"
+          placeholder="选择篮子"
+          style="min-width:140px;max-width:220px;flex:0.6"
           size="small"
         />
         <n-date-picker
@@ -47,7 +60,7 @@
           style="min-width:300px;max-width:520px;flex:1"
           size="small"
         />
-        <n-button size="small" quaternary @click="researchConfig.selectedFactors = factorList.map(f => f.name)">
+        <n-button size="small" quaternary @click="selectAllFactors">
           全选
         </n-button>
         <n-button
@@ -58,6 +71,10 @@
         </n-button>
         <n-button type="primary" size="small" @click="startResearch" :loading="researchStatus === 'running'">
           {{ researchStatus === 'running' ? '研究中...' : '开始研究' }}
+        </n-button>
+        <n-button size="small" @click="showFactorDialog = true" quaternary type="primary">
+          <template #icon><SmartIcon name="Plus" /></template>
+          新建因子
         </n-button>
         <n-button size="small" @click="router.push('/factors/history')" quaternary>
           <template #icon><SmartIcon name="Clock" /></template>
@@ -81,6 +98,18 @@
         取消
       </n-button>
     </div>
+
+    <!-- Error banner -->
+    <n-alert
+      v-if="researchStatus === 'failed' && lastError"
+      type="error"
+      closable
+      style="margin-bottom:12px"
+      @close="researchStatus = 'idle'; lastError = ''"
+    >
+      <template #header>研究失败</template>
+      {{ lastError }}
+    </n-alert>
 
     <div class="main-body">
       <!-- Loading -->
@@ -177,20 +206,25 @@
       </template>
     </div>
   </div>
+
+  <!-- 新建因子弹窗 -->
+  <FactorEditDialog v-model="showFactorDialog" @save="onFactorCreated" />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import VChart from "vue-echarts";
+import FactorEditDialog from "@/components/strategy/FactorEditDialog.vue";
 import {
   NCard, NDataTable, NTag, NEmpty, NDescriptions, NDescriptionsItem,
-  NButton, NResult, NSkeleton, NSelect, NDatePicker, NProgress, useMessage,
+  NButton, NResult, NSkeleton, NSelect, NDatePicker, NProgress, NAlert, useMessage,
 } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { tokens } from "@/styles/design-tokens";
 import dataAPI from "@/api/data";
 import marketAPI from "@/api/market";
+import { getBaskets } from "@/api/basket";
 
 const router = useRouter();
 const msg = useMessage();
@@ -214,10 +248,14 @@ const selectedFactor = ref<FactorItem | null>(null);
 // ---- Research state ----
 type ResearchStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 const researchStatus = ref<ResearchStatus>("idle");
+const lastError = ref("");
 const researchProgress = ref(0);
 const calculatedCount = ref(0);
 const totalStocks = ref(0);
 const researchId = ref<string | null>(null);
+// 多因子提交时，后端为每个因子创建一个独立 research 任务
+const allResearchIds = ref<string[]>([]);
+const completedResearchIds = ref<Set<string>>(new Set());
 const cancelling = ref(false);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -226,7 +264,10 @@ const researchConfig = reactive({
   universe: ["000300.SH"] as string[],
   selectedFactors: [] as string[],
   dateRange: null as [string, string] | null,
+  basketIds: [] as string[],
 });
+const showFactorDialog = ref(false);
+const onFactorCreated = () => { loadMetadata(); };
 
 const universeLoading = ref(false);
 const universeOptions = ref<Array<{ label: string; value: string }>>([
@@ -234,6 +275,16 @@ const universeOptions = ref<Array<{ label: string; value: string }>>([
   { label: "沪深300", value: "000300.SH" },
   { label: "中证500", value: "000905.SH" },
 ]);
+
+const basketOptions = ref<Array<{ label: string; value: string }>>([]);
+
+async function loadBasketOptions() {
+  try {
+    const result = await getBaskets().catch(() => ({ baskets: [] as any[] }));
+    const list = result?.baskets || [];
+    basketOptions.value = list.map((b: any) => ({ label: b.name || b.id, value: b.id }));
+  } catch { /* keep empty */ }
+}
 
 async function loadUniverseOptions() {
   universeLoading.value = true;
@@ -290,15 +341,15 @@ const factorColumns = [
   { title: "分类", key: "category", width: 60 },
   {
     title: "IC均值", key: "icMean", width: 80,
-    render: (row: FactorItem) => row._hasResult ? `${(row.icMean * 100).toFixed(2)}%` : "--",
+    render: (row: FactorItem) => (row as any)._isEmpty ? "无数据" : (row._hasResult ? `${(row.icMean * 100).toFixed(2)}%` : "--"),
   },
   {
     title: "IC_IR", key: "icIr", width: 70,
-    render: (row: FactorItem) => row._hasResult ? row.icIr.toFixed(2) : "--",
+    render: (row: FactorItem) => (row as any)._isEmpty ? "无数据" : (row._hasResult ? row.icIr.toFixed(2) : "--"),
   },
   {
     title: "分层收益", key: "layerReturn", width: 90,
-    render: (row: FactorItem) => row._hasResult ? `${(row.layerReturn * 100).toFixed(1)}%` : "--",
+    render: (row: FactorItem) => (row as any)._isEmpty ? "无数据" : (row._hasResult ? `${(row.layerReturn * 100).toFixed(1)}%` : "--"),
   },
 ];
 
@@ -380,9 +431,9 @@ const loadMetadata = async () => {
     const metaRes = await dataAPI.getFactorMetadata({ page_size: 200 }).catch(() => null);
     if (metaRes?.metadata_list && metaRes.metadata_list.length > 0) {
       factorList.value = metaRes.metadata_list.map((m: any) => ({
-        name: m.factor_code || m.factor_name,         // 用 factor_code 做唯一标识，与后端一致
+        name: m.factor_code,                           // 因子代码（传值/API用，如 VOL_1M）
         category: m.category || "其他",
-        desc: m.factor_name || m.display_name || m.description || m.factor_code,  // 中文显示名
+        desc: m.factor_name,                            // 显示名（展示用，如 1月波动率）
         icMean: 0, icIr: 0, layerReturn: 0,
         _hasResult: false,
         _icSeries: [],
@@ -394,17 +445,18 @@ const loadMetadata = async () => {
     const tasksRes = await dataAPI.getRecentResearchTasks().catch(() => null);
     const recentTasks: any[] = tasksRes?.recent_tasks || [];
     console.log(`[FactorDashboard] Recent tasks: ${recentTasks.length} total, statuses:`,
-      recentTasks.map(t => `${t.factor_name}=${t.status}`));
+      recentTasks.map(t => `${t.factor_code || t.factor_name}=${t.status}`));
     const completedTasks = recentTasks.filter(
-      (t: any) => t.status === "completed" && t.factor_name
+      (t: any) => t.status === "completed" && (t.factor_code || t.factor_name)
     );
     if (completedTasks.length > 0) {
-      // 每个因子只取最新的一条已完成研究
+      // 每个因子只取最新的一条已完成研究（按 factor_code 去重）
       const seenFactors = new Set<string>();
       const tasksToLoad: any[] = [];
       for (const t of completedTasks) {
-        if (!seenFactors.has(t.factor_name)) {
-          seenFactors.add(t.factor_name);
+        const code = t.factor_code || t.factor_name;
+        if (!seenFactors.has(code)) {
+          seenFactors.add(code);
           tasksToLoad.push(t);
         }
       }
@@ -417,7 +469,7 @@ const loadMetadata = async () => {
       console.log(`[FactorDashboard] Loaded ${details.filter(Boolean).length}/${details.length} details`);
       for (const detail of details) {
         if (detail) {
-          console.log(`[FactorDashboard] Detail for ${detail.factor_name}: result keys=`,
+          console.log(`[FactorDashboard] Detail for ${detail.factor_code || detail.factor_name}: result keys=`,
             detail.result ? Object.keys(detail.result) : 'null');
           applyResearchResults(detail);
         }
@@ -432,14 +484,30 @@ const loadMetadata = async () => {
   }
 };
 
+/** 全选：从 factorSelectOptions 中提取所有叶子节点 value（确保与 n-select 选项一致） */
+const selectAllFactors = () => {
+  const allValues: string[] = [];
+  for (const group of factorSelectOptions.value) {
+    if ((group as any).children) {
+      for (const child of (group as any).children) {
+        allValues.push(child.value);
+      }
+    }
+  }
+  // 新数组引用确保 Vue reactive 触发 n-select 内部同步
+  researchConfig.selectedFactors = [...allValues];
+};
+
 const startResearch = async () => {
   if (researchConfig.selectedFactors.length === 0) {
     msg.warning("请至少选择一个因子");
     return;
   }
   researchStatus.value = "running";
+  lastError.value = "";
   researchProgress.value = 0;
   calculatedCount.value = 0;
+  completedResearchIds.value = new Set();
 
   try {
     const dr = researchConfig.dateRange;
@@ -449,17 +517,22 @@ const startResearch = async () => {
     const params: any = {
       factor_names: researchConfig.selectedFactors,
       universe: researchConfig.universe,
+      basket_ids: researchConfig.basketIds.length > 0 ? researchConfig.basketIds : undefined,
       start_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[0] : defaultStart,
       end_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[1] : defaultEnd,
+      frequency: "D",
+      group_count: 5,
     };
 
     const res = await dataAPI.submitFactorResearch(params).catch(() => null);
-    if (!res?.research_id) {
+    if (!res?.research_id && !res?.parameters?.research_ids) {
       msg.error("提交研究任务失败");
       researchStatus.value = "failed";
       return;
     }
+    // 后端为每个因子创建一个独立 research 任务，全部追踪
     researchId.value = res.research_id;
+    allResearchIds.value = res.parameters?.research_ids || [res.research_id];
     startPolling();
   } catch (err) {
     msg.error("提交研究任务失败");
@@ -468,16 +541,21 @@ const startResearch = async () => {
 };
 
 const cancelResearch = async () => {
-  if (!researchId.value) return;
+  if (allResearchIds.value.length === 0) return;
+  if (researchStatus.value !== "running") return;
   cancelling.value = true;
   try {
-    const res = await dataAPI.cancelFactorResearch(researchId.value);
-    if (res?.success) {
+    // 取消所有运行中的研究任务
+    const results = await Promise.all(
+      allResearchIds.value.map(id => dataAPI.cancelFactorResearch(id).catch(() => null))
+    );
+    const allCancelled = results.every(r => r?.success !== false);
+    if (allCancelled) {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       researchStatus.value = "cancelled";
-      msg.success("研究已取消");
+      msg.success("所有研究已取消");
     } else {
-      msg.error(res?.message || "取消失败");
+      msg.warning("部分研究取消失败");
     }
   } catch {
     msg.error("取消失败");
@@ -488,29 +566,52 @@ const cancelResearch = async () => {
 
 const startPolling = () => {
   if (pollTimer) clearInterval(pollTimer);
+  const ids = allResearchIds.value;
   pollTimer = setInterval(async () => {
     try {
-      const status = await dataAPI.getResearchStatus({ research_id: researchId.value! });
-      if (!status) return;
+      // 并行查询所有研究任务状态
+      const statuses = await Promise.all(
+        ids.map(id => dataAPI.getResearchStatus({ research_id: id }).catch(() => null))
+      );
+      const validStatuses = statuses.filter(Boolean);
 
-      researchProgress.value = status.progress || 0;
-      calculatedCount.value = status.calculated_count || 0;
-      totalStocks.value = status.total_stocks || 0;
+      if (validStatuses.length === 0) return;
 
-      if (status.status === "completed") {
+      // 汇总进度：取平均值
+      const totalProgress = validStatuses.reduce((sum, s) => sum + (s.progress || 0), 0);
+      researchProgress.value = totalProgress / validStatuses.length;
+      calculatedCount.value = validStatuses.reduce((sum, s) => sum + (s.calculated_count || 0), 0);
+      totalStocks.value = validStatuses.reduce((sum, s) => sum + (s.total_stocks || 0), 0);
+
+      // 单独处理每个任务的结果
+      for (const status of validStatuses) {
+        const rid = status.research_id;
+        if (status.status === "completed" && !completedResearchIds.value.has(rid)) {
+          completedResearchIds.value.add(rid);
+          applyResearchResults(status);
+        } else if (status.status === "failed") {
+          completedResearchIds.value.add(rid);
+          if (!lastError.value) {
+            lastError.value = status.error_message || "研究任务执行失败";
+          }
+        } else if (status.status === "cancelled") {
+          completedResearchIds.value.add(rid);
+        }
+      }
+
+      // 所有任务完成
+      if (completedResearchIds.value.size >= ids.length) {
         clearInterval(pollTimer!);
         pollTimer = null;
-        researchStatus.value = "completed";
-        applyResearchResults(status);
-      } else if (status.status === "failed") {
-        clearInterval(pollTimer!);
-        pollTimer = null;
-        researchStatus.value = "failed";
-        msg.error(status.error_message || "研究任务失败");
-      } else if (status.status === "cancelled") {
-        clearInterval(pollTimer!);
-        pollTimer = null;
-        researchStatus.value = "cancelled";
+        const hasCompleted = validStatuses.some(s => s.status === "completed");
+        const hasFailed = validStatuses.some(s => s.status === "failed");
+        if (hasFailed && !hasCompleted) {
+          researchStatus.value = "failed";
+        } else if (hasCompleted) {
+          researchStatus.value = "completed";
+        } else {
+          researchStatus.value = "cancelled";
+        }
       }
     } catch {
       // polling error, continue
@@ -522,26 +623,49 @@ const startPolling = () => {
 const applyResearchResults = (response: any) => {
   if (!response) return;
 
-  const factorName: string = (response.factor_name || "").trim();
+  const factorCode: string = (response.factor_code || response.factor_name || "").trim();
   const result = response.result || {};
-  if (!factorName || !result || typeof result !== 'object') {
-    console.warn(`[applyResearchResults] Skipped: factorName="${factorName}", hasResult=${!!result}`);
+  if (!factorCode || !result || typeof result !== 'object') {
+    console.warn('[applyResearchResults] Skipped:', { factorCode, resultType: typeof result });
     return;
   }
 
-  const icData: any = result.ic_analysis || result.icAnalysis || {};
-  const quantileData: any = result.quantile_analysis || result.quantileAnalysis || {};
+  // 无分析数据时仍标记为已研究，但使用占位值（前端显示"无数据"而非"--"）
+  if (result._empty) {
+    console.warn('[applyResearchResults] Factor "' + factorCode + '" 计算完成但分析无数据', result);
+    factorList.value = factorList.value.map(f => {
+      if (f.name !== factorCode && f.name.toLowerCase() !== factorCode.toLowerCase()) return f;
+      return {
+        ...f,
+        _hasResult: true,
+        _isEmpty: true,
+        _icSeries: [],
+        _layerReturns: [],
+        icMean: 0, icIr: 0, layerReturn: 0,
+      };
+    });
+    return;
+  }
+
+  // 兼容旧版未展平的数据结构
+  let effectiveResult = result;
+  if (!result.ic_analysis && !result.icAnalysis && result.analysis_results && typeof result.analysis_results === 'object') {
+    effectiveResult = result.analysis_results;
+  }
+
+  const icData: any = effectiveResult.ic_analysis || effectiveResult.icAnalysis || {};
+  const quantileData: any = effectiveResult.quantile_analysis || effectiveResult.quantileAnalysis || {};
   const hasData = Object.keys(icData).length > 0 || Object.keys(quantileData).length > 0;
   if (!hasData) {
-    console.warn(`[applyResearchResults] No IC/quantile data for factor "${factorName}"`);
+    console.warn('[applyResearchResults] No IC/quantile data for factor "' + factorCode + '", keys:', Object.keys(effectiveResult));
     return;
   }
 
-  console.log(`[applyResearchResults] Applying results for "${factorName}": icMean=${icData.ic_mean}, icIr=${icData.ic_ir}`);
+  console.log('[applyResearchResults] Found data for "' + factorCode + '": icMean=' + icData.ic_mean + ', icIr=' + icData.ic_ir);
 
-  // Map result to the specific factor in the list (one research_id = one factor)
+  // Map result to the specific factor in the list (case-insensitive match)
   factorList.value = factorList.value.map(f => {
-    if (f.name !== factorName) return f;
+    if (f.name !== factorCode && f.name.toLowerCase() !== factorCode.toLowerCase()) return f;
 
     // --- IC data ---
     const icMean: number = icData.ic_mean ?? icData.icMean ?? 0;
@@ -574,13 +698,12 @@ const applyResearchResults = (response: any) => {
         const l = layerReturnsRaw[i];
         if (typeof l === 'object' && l !== null) {
           layerReturns.push({
-            label: l.label || l.group || l.quantile || `Q${i + 1}`,
+            label: l.label || l.group || l.quantile || 'Q' + (i + 1),
             return_: l.return_ ?? l.return ?? l.value ?? 0,
           });
         } else {
-          // 后端返回纯数字数组 [0.08, 0.04, ...]
           layerReturns.push({
-            label: `Q${i + 1}`,
+            label: 'Q' + (i + 1),
             return_: typeof l === 'number' ? l : 0,
           });
         }
@@ -601,11 +724,8 @@ const applyResearchResults = (response: any) => {
       _topBottom: topBottom,
     };
   });
-
-  // Auto-select first enriched factor
-  const enriched = factorList.value.find(f => f._hasResult);
-  if (enriched) selectedFactor.value = enriched;
 };
+
 
 const generateStrategy = () => {
   if (!selectedFactor.value) return;
@@ -614,7 +734,7 @@ const generateStrategy = () => {
   router.push(`/strategies/workspace/new?template=factor&factor=${f.name}&ic=${f.icMean.toFixed(3)}&ic_ir=${f.icIr.toFixed(2)}`);
 };
 
-onMounted(() => { loadMetadata(); loadUniverseOptions(); });
+onMounted(() => { loadMetadata(); loadUniverseOptions(); loadBasketOptions(); });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);

@@ -171,6 +171,11 @@ select * from backtest_result;
 
 -- 因子
 select * from factor_definitions;
+-- 因子数据
+select * from factor_data;
+-- 因子任务
+select * from factor_research;
+select * from factor_research where research_id ='research_419d48bf';
 -- 策略实例表
 select * from strategies;
 -- 策略版本管理表
@@ -197,7 +202,13 @@ FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
 
-
+select * from factor_definitions
 
 drop table factor_definitions
 
+-- 清理旧的大小写重复数据
+DELETE FROM factor_definitions;
+
+
+SELECT factor_code, factor_name FROM factor_definitions WHERE factor_code = 'BETA';
+SELECT COUNT(*) FROM factor_data WHERE factor_code = 'BETA';

@@ -42,6 +42,7 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 			self,
 			research_id: str,
 			research_name: str,
+			factor_code: str,
 			factor_name: str,
 			user_id: str,
 			factor_definition: Optional[Dict] = None,
@@ -59,7 +60,8 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 		Args:
 			research_id: 研究任务ID
 			research_name: 研究任务名称
-			factor_name: 因子名称
+			factor_code: 因子代码（如 PE、ROE）
+			factor_name: 因子显示名（如 市盈率）
 			user_id: 用户ID
 			factor_definition: 因子定义
 			factor_category: 因子类别
@@ -78,7 +80,8 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 			research_data = {
 				'research_id': research_id,
 				'research_name': research_name,
-				'factor_name': factor_name,
+				'factor_code': factor_code,
+				'factor_name': factor_name or factor_code,
 				'factor_definition': factor_definition or {},
 				'factor_category': factor_category,
 				'universe': universe or [],
@@ -541,6 +544,7 @@ class FactorResearchRepository(BaseRepository[FactorResearch]):
 			result_data = []
 			for task in tasks:
 				task_data = {
+					'factor_code': task.factor_code,
 					'factor_name': task.factor_name,
 					'factor_category': task.factor_category,
 					'ic_mean': float(task.ic_mean) if task.ic_mean is not None else None,

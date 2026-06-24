@@ -2525,6 +2525,7 @@ CREATE TABLE factor_research (
     research_name VARCHAR(200) NOT NULL,
 
     -- 因子信息
+    factor_code VARCHAR(50) NOT NULL,
     factor_name VARCHAR(100) NOT NULL,
     factor_definition JSONB,
     factor_category VARCHAR(50),
@@ -2574,7 +2575,8 @@ COMMENT ON TABLE factor_research IS '因子研究任务表';
 COMMENT ON COLUMN factor_research.id IS '主键ID';
 COMMENT ON COLUMN factor_research.research_id IS '研究任务ID';
 COMMENT ON COLUMN factor_research.research_name IS '研究任务名称';
-COMMENT ON COLUMN factor_research.factor_name IS '因子名称';
+COMMENT ON COLUMN factor_research.factor_code IS '因子代码（与 factor_definitions.factor_code 对应，唯一标识如 PE、ROE）';
+COMMENT ON COLUMN factor_research.factor_name IS '因子名称（显示名，如市盈率、净资产收益率）';
 COMMENT ON COLUMN factor_research.factor_definition IS '因子定义（JSON格式）';
 COMMENT ON COLUMN factor_research.factor_category IS '因子类别：value, quality, momentum, volatility, size, etc.';
 COMMENT ON COLUMN factor_research.universe IS '股票池（JSON数组格式）';
@@ -3543,6 +3545,7 @@ CREATE INDEX IF NOT EXISTS idx_factor_research_user_id ON factor_research(user_i
 CREATE INDEX IF NOT EXISTS idx_factor_research_status ON factor_research(status);
 CREATE INDEX IF NOT EXISTS idx_factor_research_user_status ON factor_research(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_factor_research_factor_status ON factor_research(factor_name, status);
+CREATE INDEX IF NOT EXISTS idx_factor_research_factor_code_status ON factor_research(factor_code, status);
 CREATE INDEX IF NOT EXISTS idx_factor_research_created_completed ON factor_research(created_at, completed_at);
 CREATE INDEX IF NOT EXISTS idx_factor_research_analysis_type ON factor_research(analysis_type);
 CREATE INDEX IF NOT EXISTS idx_data_quality_checks_date ON data_quality_checks(check_date DESC);

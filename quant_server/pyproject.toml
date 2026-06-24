@@ -28,6 +28,7 @@ dependencies = [
     # 数据处理
     "pandas>=1.5.3",
     "numpy>=1.23.5",
+    "pandas-ta-classic>=0.1.0",  # 技术指标因子计算（utils/factor_calculator.py）
 
     # 数据库
     "sqlalchemy>=1.4.46",

@@ -1225,7 +1225,8 @@ class FactorResearch(Base):
     research_name = Column(String(200), nullable=False, comment='研究任务名称')
 
     # 因子信息
-    factor_name = Column(String(100), nullable=False, index=True, comment='因子名称')
+    factor_code = Column(String(50), nullable=False, index=True, comment='因子代码（如 PE、ROE）')
+    factor_name = Column(String(100), nullable=False, index=True, comment='因子名称（显示名）')
     factor_definition = Column(JSON, comment='因子定义（JSON格式）')
     factor_category = Column(String(50), index=True, comment='因子类别')
 
@@ -1280,12 +1281,13 @@ class FactorResearch(Base):
     __table_args__ = (
         Index('idx_factor_research_user_status', 'user_id', 'status'),
         Index('idx_factor_research_factor_status', 'factor_name', 'status'),
+        Index('idx_factor_research_factor_code_status', 'factor_code', 'status'),
         Index('idx_factor_research_created_completed', 'created_at', 'completed_at'),
         Index('idx_factor_research_analysis_type', 'analysis_type'),
     )
 
     def __repr__(self):
-        return f"<FactorResearch(id={self.id}, research_id={self.research_id}, factor={self.factor_name}, status={self.status})>"
+        return f"<FactorResearch(id={self.id}, research_id={self.research_id}, factor_code={self.factor_code}, status={self.status})>"
 
 
 # ==================== 分析相关 ====================

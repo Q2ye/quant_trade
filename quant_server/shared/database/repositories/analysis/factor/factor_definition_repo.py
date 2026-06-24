@@ -62,9 +62,9 @@ class FactorDefinitionRepository(BaseRepository[FactorDefinition]):
 
 	async def get_by_name (self, factor_name: str) -> Optional[FactorDefinition]:
 		"""根据因子名称获取因子定义"""
-		stmt = select(FactorDefinition).where(FactorDefinition.factor_name == factor_name)
+		stmt = select(FactorDefinition).where(FactorDefinition.factor_name == factor_name).limit(1)
 		result = await self.session.execute(stmt)
-		return result.scalar_one_or_none()
+		return result.scalars().first()
 
 	async def get_by_type (self, factor_type: str, is_active: bool = True) -> List[FactorDefinition]:
 		"""根据因子类型获取因子列表"""

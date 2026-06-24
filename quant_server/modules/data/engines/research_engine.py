@@ -103,9 +103,7 @@ class FactorResearchEngine(EngineBase):
         self._task_history: List[Dict[str, Any]] = []
         self._max_history_size = 1000
 
-        # 因子缓存
-        self._factor_cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_ttl = 3600  # 缓存过期时间（秒）
+        self._cache_ttl = 3600  # 缓存过期时间（秒，供 cache_manager 使用）
 
         # 默认因子配置
         self._default_factors: Dict[str, Dict[str, Any]] = {}
@@ -307,7 +305,7 @@ class FactorResearchEngine(EngineBase):
             "engine_type": self.ENGINE_TYPE.value,
             "active_tasks": len(self._active_tasks),
             "task_history_size": len(self._task_history),
-            "factor_cache_size": len(self._factor_cache),
+            "factor_cache_size": 0,  # 因子缓存已迁移至 cache_manager
             "task_queue_size": self._task_queue.qsize(),
             "active_workers": len([w for w in self._task_workers if not w.done()]),
             "performance_stats": self._performance_stats,
@@ -323,13 +321,6 @@ class FactorResearchEngine(EngineBase):
             self.record.update_health(
                 HealthStatus.DEGRADED,
                 "研究服务不可用"
-            )
-
-        # 检查缓存状态
-        if len(self._factor_cache) > 10000:
-            self.record.update_health(
-                HealthStatus.DEGRADED,
-                "因子缓存过大，可能需要清理"
             )
 
         return health_info
@@ -1165,15 +1156,8 @@ class FactorResearchEngine(EngineBase):
             logger.info(f"已取消 {cancelled_count} 个活跃任务")
 
     async def _save_cache_data(self):
-        """保存缓存数据"""
-        try:
-            if self._factor_cache and self.cache_manager:
-                for cache_key, cache_data in self._factor_cache.items():
-                    await self.cache_manager.set(cache_key, cache_data, ttl=self._cache_ttl)
-
-                logger.info(f"因子缓存数据已保存，共{len(self._factor_cache)}条记录")
-        except Exception as e:
-            logger.error(f"保存缓存数据失败: {e}")
+        """保存缓存数据 — 因子缓存已迁移至 cache_manager，此方法保留兼容"""
+        pass
 
     async def _restore_cache_data(self):
         """恢复缓存数据"""

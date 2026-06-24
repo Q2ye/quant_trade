@@ -760,9 +760,9 @@ class FactorValue(BaseModel):
 
 
 class FactorMetadata(BaseModel):
-	"""因子元数据模型 — 兼容 DB ORM 和 API 返回格式"""
-	factor_name: str = Field(..., description="因子名称", alias="factor_code")
-	display_name: str = Field(default="", description="显示名称")
+	"""因子元数据 — factor_code=唯一标识(传值/API用), factor_name=显示名(展示用)"""
+	factor_code: str = Field(..., description="因子代码（唯一标识，如 VOL_1M）")
+	factor_name: str = Field(default="", description="因子显示名（如 1月波动率）")
 	description: str = Field(default="", description="因子描述")
 	category: FactorCategory = Field(default=FactorCategory.OTHER, description="因子类别")
 	formula: Optional[str] = Field(default=None, description="计算公式")
@@ -773,35 +773,34 @@ class FactorMetadata(BaseModel):
 	@model_validator(mode="before")
 	@classmethod
 	def normalize_from_db(cls, data: Any) -> Any:
-		"""将 DB 字段映射到模型字段"""
+		"""兼容旧格式: {factor_name: code, display_name: 中文} -> {factor_code, factor_name}"""
 		if not isinstance(data, dict):
 			return data
-		# factor_code → factor_name (alias)
-		if "factor_code" in data and "factor_name" not in data:
-			data["factor_name"] = data["factor_code"]
-		# factor_name → display_name（如果没有 display_name）
-		if "display_name" not in data or not data.get("display_name"):
-			data["display_name"] = data.get("factor_name", "") or data.get("factor_code", "")
-		# description 默认值
-		if "description" not in data or data.get("description") is None:
-			data["description"] = ""
-		# category 兜底
+		# 旧格式兼容
+		if "factor_code" not in data and "factor_name" in data:
+			old_name = data.pop("factor_name")           # 原 factor_name 值是代码
+			disp = data.pop("display_name", None) or old_name
+			data["factor_code"] = old_name
+			data["factor_name"] = disp
+		# category 中文映射
 		c = data.get("category")
 		if c and c not in FactorCategory.__members__.values():
-			# 尝试模糊映射
-			cat_map = {"profitability": "quality", "leverage": "risk", "efficiency": "quality"}
+			cat_map = {
+				"profitability": "quality", "leverage": "risk", "efficiency": "quality",
+				"趋势": "technical", "动量": "momentum", "风险": "volatility",
+				"价值": "value", "成长": "growth", "质量": "quality",
+				"规模": "size", "流动性": "liquidity", "情绪": "sentiment",
+				"技术": "technical", "波动": "volatility", "波动率": "volatility",
+			}
 			data["category"] = cat_map.get(str(c), "other")
 		if not data.get("category"):
 			data["category"] = "other"
-		# data_source 默认值
-		if "data_source" not in data or not data.get("data_source"):
+		if not data.get("data_source"):
 			data["data_source"] = "Tushare"
-		# calculation_frequency → update_frequency
 		if "calculation_frequency" in data and "update_frequency" not in data:
 			data["update_frequency"] = str(data["calculation_frequency"] or "daily")
 		if not data.get("update_frequency"):
 			data["update_frequency"] = "daily"
-		# updated_at → last_update
 		if "updated_at" in data and "last_update" not in data:
 			data["last_update"] = data["updated_at"]
 		if "created_at" in data and data.get("created_at") and not data.get("last_update"):
@@ -809,20 +808,17 @@ class FactorMetadata(BaseModel):
 		return data
 
 	model_config = ConfigDict(
-		populate_by_name=True,
 		json_schema_extra={
 			"example": {
-				"factor_name": "PE",
-				"display_name": "市盈率",
-				"description": "股价除以每股收益",
-				"category": "value",
+				"factor_code": "VOL_1M",
+				"factor_name": "1月波动率",
+				"description": "近1个月日收益率标准差(年化)",
+				"category": "volatility",
 				"data_source": "Tushare",
 				"update_frequency": "daily",
-				"last_update": "2023-12-29T09:00:00"
 			}
 		}
 	)
-
 
 class FactorResponse(BaseModel):
 	"""因子数据响应模型"""
@@ -880,11 +876,12 @@ class FactorResponse(BaseModel):
 class ResearchRequest(BaseModel):
 	"""因子研究请求模型"""
 	factor_names: List[str] = Field(..., min_length=1, description="因子名称列表")
-	universe: List[str] = Field(..., min_length=1, description="股票池")
+	universe: List[str] = Field(default_factory=list, description="股票池（指数代码或股票代码，可选）")
 	start_date: date = Field(..., description="开始日期")
 	end_date: date = Field(..., description="结束日期")
 	frequency: str = Field(default="M", description="频率: D日度 W周度 M月度")
 	group_count: int = Field(default=5, ge=2, le=10, description="分组数量")
+	basket_ids: Optional[List[str]] = Field(default=None, description="篮子ID列表，自动展开为股票代码")
 	analysis_type: str = Field(
 		default="ic_analysis",
 		description="分析类型: ic_analysis/quantile_analysis/correlation_analysis"
