@@ -1397,7 +1397,11 @@ class FactorResearchService:
 			"ic_mean": round(ic_mean, 4),
 			"ic_std": round(ic_std, 4),
 			"ic_ir": round(ic_ir, 4),
-			"ic_series": [round(x, 4) for x in ic_series],
+			"ic_series": [
+				{"date": dt.strftime("%Y-%m-%d") if hasattr(dt, 'strftime') else str(dt)[:10],
+				 "value": round(float(x), 4)}
+				for dt, x in zip(dates, ic_series)
+			],
 			"ic_pvalue": round(float(ic_pvalue), 4),
 			"ic_positive_ratio": round(ic_positive_ratio, 4),
 			"ic_decay": ic_decay,

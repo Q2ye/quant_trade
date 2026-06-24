@@ -175,14 +175,14 @@
 
               <!-- IC series -->
               <h5>IC 序列分析</h5>
-              <div v-if="selectedFactor._icSeries.length > 0" style="height:144px; width:80%; transform:scale(1.25); transform-origin:top left; margin-bottom:40px">
+              <div v-if="selectedFactor._icSeries.length > 0" style="height:115px; width:100%; zoom:1.25">
                 <v-chart :option="buildICOption(selectedFactor)" autoresize style="height:100%; width:100%" />
               </div>
               <n-empty v-else description="暂无IC序列数据" size="small" />
 
               <!-- Layer returns -->
               <h5>分层回测收益</h5>
-              <div v-if="selectedFactor._layerReturns.length > 0" style="height:160px; width:80%; transform:scale(1.25); transform-origin:top left; margin-bottom:44px">
+              <div v-if="selectedFactor._layerReturns.length > 0" style="height:128px; width:100%; zoom:1.25">
                 <v-chart :option="buildLayerOption(selectedFactor)" autoresize style="height:100%; width:100%" />
               </div>
               <n-empty v-else description="暂无分层回测数据" size="small" />

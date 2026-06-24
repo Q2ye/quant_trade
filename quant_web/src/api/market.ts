@@ -113,7 +113,7 @@ export default {
   /** 按日期范围获取 K 线 — 用于图表动态加载更早的历史数据 */
   async getStockKline(
     ts_code: string,
-    period: "daily" | "weekly" | "monthly" = "daily",
+    period: "daily" | "weekly" | "monthly" | "moneyflow" = "daily",
     beforeDate?: string,
     limit: number = 500,
   ): Promise<KLineItem[]> {

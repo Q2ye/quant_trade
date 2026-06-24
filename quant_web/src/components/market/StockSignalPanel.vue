@@ -213,6 +213,7 @@ const riskFlags = computed(() => {
 <style lang="scss" scoped>
 .signal-panel {
   width: 100%;
+  zoom: 1.25;
 }
 
 .score-card {

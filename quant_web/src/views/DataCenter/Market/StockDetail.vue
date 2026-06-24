@@ -55,12 +55,14 @@ const klineCache = reactive<Record<string, KLineItem[]>>({
   daily: [],
   weekly: [],
   monthly: [],
+  moneyflow: [],
 });
 const klineLoadingMore = ref(false);
 const klineHasMore = reactive<Record<string, boolean>>({
   daily: true,
   weekly: true,
   monthly: true,
+  moneyflow: true,
 });
 
 const klineData = computed(() => klineCache[kPeriod.value] ?? []);
@@ -69,28 +71,35 @@ function initKlineCache(resp: StockFullResponse) {
   klineCache.daily = resp.quotes?.daily ?? [];
   klineCache.weekly = resp.quotes?.weekly ?? [];
   klineCache.monthly = resp.quotes?.monthly ?? [];
+  klineCache.moneyflow = (resp.moneyflow ?? []) as any;
   klineHasMore.daily = (resp.quotes?.daily ?? []).length >= 1000;
   klineHasMore.weekly = (resp.quotes?.weekly ?? []).length >= 1000;
   klineHasMore.monthly = (resp.quotes?.monthly ?? []).length >= 1000;
+  klineHasMore.moneyflow = (resp.moneyflow ?? []).length >= 500;
 }
 
-async function loadMoreKline() {
-  const period = kPeriod.value;
+async function loadMoreKline(period: string = kPeriod.value) {
   if (!klineHasMore[period] || klineLoadingMore.value) return;
 
   const cache = klineCache[period];
   if (!cache.length) return;
 
-  const oldestDate = cache[0].trade_date;
+  const dateField = period === "moneyflow" ? "trade_date" : "trade_date";
+  const oldestDate = (cache[0] as any)[dateField] ?? cache[0].trade_date;
   klineLoadingMore.value = true;
 
   try {
-    const rows = await marketAPI.getStockKline(tsCode.value, period, oldestDate, 500);
+    const rows = await marketAPI.getStockKline(
+      tsCode.value,
+      period as "daily" | "weekly" | "monthly" | "moneyflow",
+      oldestDate,
+      500,
+    );
     if (rows.length > 0) {
-      const existingDates = new Set(cache.map((d: KLineItem) => d.trade_date));
-      const newRows = rows.filter((r: KLineItem) => !existingDates.has(r.trade_date));
+      const existingDates = new Set(cache.map((d: any) => d.trade_date ?? (d as any).end_date));
+      const newRows = rows.filter((r: any) => !existingDates.has(r.trade_date ?? r.end_date));
       if (newRows.length > 0) {
-        klineCache[period] = [...newRows, ...cache];
+        klineCache[period] = [...newRows, ...cache] as any;
       }
       klineHasMore[period] = rows.length >= 500;
     } else {
@@ -103,21 +112,23 @@ async function loadMoreKline() {
   }
 }
 
-function onTimeRangeChange(range: { from: number; to: number }) {
-  if (!klineHasMore[kPeriod.value] || klineLoadingMore.value) return;
+function onTimeRangeChange(range: { from: number; to: number }, period?: string) {
+  const p = period ?? kPeriod.value;
+  if (!klineHasMore[p] || klineLoadingMore.value) return;
 
-  const cache = klineCache[kPeriod.value];
+  const cache = klineCache[p];
   if (!cache.length) return;
 
-  // 可视范围左边缘接近已加载的最早数据时，触发加载更多
+  const dateField = p === "moneyflow" ? "trade_date" : "trade_date";
+  const oldestDate = (cache[0] as any)[dateField] ?? cache[0].trade_date;
   const oldestTime = Math.floor(
-    new Date(cache[0].trade_date + "T00:00:00Z").getTime() / 1000,
+    new Date(oldestDate + "T00:00:00Z").getTime() / 1000,
   );
   const visibleSpan = range.to - range.from;
-  const threshold = visibleSpan * 0.3; // 距离左边缘 30% 可视范围时触发
+  const threshold = visibleSpan * 0.3;
 
   if (range.from - threshold <= oldestTime) {
-    loadMoreKline();
+    loadMoreKline(p);
   }
 }
 
@@ -150,12 +161,13 @@ const pctText = (v: number | null) =>
 
 // ---- 资金流向 chart ----
 const moneyflowSeries = computed<BarSeriesDef[]>(() => {
-  if (!data.value?.moneyflow?.length) return [];
-  const raw = [...data.value.moneyflow].reverse();
+  const raw = klineCache.moneyflow as any[];
+  if (!raw?.length) return [];
+  const items = [...raw].reverse();
   return [
     {
       name: "主力净流入",
-      data: raw.map((d: any) => ({
+      data: items.map((d: any) => ({
         time: d.trade_date?.slice(0, 10) ?? "",
         value: d.net_mf_amount ?? null,
         color: (d.net_mf_amount ?? 0) >= 0 ? "rgba(239,83,80,0.6)" : "rgba(38,166,154,0.6)",
@@ -210,50 +222,71 @@ const factorColors = ["#ff9800", "#448AFF", "#E040FB", "#00bcd4", "#ff5722", "#8
 
 const factorSeries = computed<LineSeriesDef[]>(() => {
   if (!factorData.value.length) return [];
-  // 取最近 60 条，按时间升序
   const raw = [...factorData.value].slice(-60);
   if (!raw.length) return [];
 
-  // 找到因子最多的行来确定要展示哪些因子（最新日期可能仅有部分因子）
-  const metaKeys = ["ts_code", "trade_date", "id", "created_at", "updated_at"];
-  let bestKeys: string[] = [];
-  for (let i = raw.length - 1; i >= 0; i--) {
-    const ks = Object.keys(raw[i] || {}).filter(
-      (k) => !metaKeys.includes(k) && typeof raw[i][k] === "number",
-    );
-    if (ks.length > bestKeys.length) bestKeys = ks;
-    if (bestKeys.length >= 6) break;
-  }
-  if (!bestKeys.length) return [];
+  const metaKeys = new Set(["ts_code", "trade_date", "id", "created_at", "updated_at"]);
 
-  const keys = bestKeys.slice(0, 6);
-
-  // 为每个因子计算 min/max，归一化到 0-100 解决量纲不同导致的平坦问题
-  const ranges: Record<string, { min: number; max: number }> = {};
-  for (const k of keys) {
-    const vals = raw.map((d: any) => d[k]).filter((v: any) => typeof v === "number" && !isNaN(v)) as number[];
-    if (vals.length) {
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      ranges[k] = { min, max: max > min ? max : min + 1 };
-    } else {
-      ranges[k] = { min: 0, max: 1 };
+  // 统计每个因子 key 的非空数据点数 + 方差
+  const keyStats = new Map<string, { cnt: number; mean: number; std: number; min: number; max: number }>();
+  for (const row of raw) {
+    for (const k of Object.keys(row)) {
+      if (metaKeys.has(k)) continue;
+      const v = (row as any)[k];
+      if (v == null || isNaN(v) || typeof v !== "number") continue;
+      if (!keyStats.has(k)) keyStats.set(k, { cnt: 0, mean: 0, std: 0, min: Infinity, max: -Infinity });
+      const st = keyStats.get(k)!;
+      st.cnt++; st.mean += v; st.min = Math.min(st.min, v); st.max = Math.max(st.max, v);
     }
   }
 
-  return keys.map((k, i) => {
-    const { min, max } = ranges[k];
-    const span = max - min || 1;
+  // 计算均值/方差，过滤常量
+  const candidates: { key: string; cnt: number; std: number; mean: number; min: number; max: number }[] = [];
+  for (const [k, st] of keyStats) {
+    if (st.cnt < 10) continue;
+    st.mean /= st.cnt;
+    // 二次遍历计算方差
+    let variance = 0;
+    for (const row of raw) {
+      const v = (row as any)[k];
+      if (v != null && !isNaN(v)) variance += (v - st.mean) ** 2;
+    }
+    variance /= st.cnt;
+    st.std = Math.sqrt(variance) || 0.001;
+    if (st.max - st.min < 0.0001) continue; // 跳过常量
+    candidates.push({ key: k, ...st });
+  }
+
+  // 按数据点数排序，取 top 6
+  candidates.sort((a, b) => b.cnt - a.cnt);
+  const keys = candidates.slice(0, 6).map(c => c.key);
+  if (!keys.length) return [];
+
+  const series: LineSeriesDef[] = keys.map((k, i) => {
+    const st = candidates.find(c => c.key === k)!;
     return {
       name: k,
       color: factorColors[i % factorColors.length],
       lineWidth: 1.5,
-      data: raw.map((d: any) => ({
-        time: d.trade_date?.slice(0, 10) ?? "",
-        value: d[k] != null ? +(((d[k] as number) - min) / span * 100).toFixed(1) : null,
-      })),
+      data: raw.map((d: any) => {
+        const v = d[k];
+        if (v == null || isNaN(v)) return { time: d.trade_date?.slice(0, 10) ?? "", value: null };
+        return { time: d.trade_date?.slice(0, 10) ?? "", value: (v - st.mean) / st.std };
+      }),
     };
   });
+
+  // 零线
+  if (raw.length > 0) {
+    series.push({
+      name: "零线", color: "rgba(156,163,175,0.5)", lineWidth: 1, lineStyle: 2,
+      data: [
+        { time: raw[0].trade_date?.slice(0, 10) ?? "", value: 0 },
+        { time: raw[raw.length - 1].trade_date?.slice(0, 10) ?? "", value: 0 },
+      ],
+    });
+  }
+  return series;
 });
 
 // ---- 股东数据 ----
@@ -281,7 +314,16 @@ const holderColumns: any = [
 const holderSeries = computed<LineSeriesDef[]>(() => {
   const raw = data.value?.shareholders?.holdernumber;
   if (!raw?.length) return [];
-  const items = [...raw].reverse();
+  // 去重 + 升序排列（lightweight-charts 要求时间严格递增）
+  const seen = new Set<string>();
+  const items = [...raw]
+    .reverse()
+    .filter((d: any) => {
+      const t = d.end_date?.slice(0, 10) ?? "";
+      if (seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    });
   return [
     {
       name: "股东人数",
@@ -587,7 +629,7 @@ onMounted(load);
                 :error="error"
                 :signal-markers="signalMarkers"
                 @retry="load"
-                @timeRangeChange="onTimeRangeChange"
+                @timeRangeChange="(r: any) => onTimeRangeChange(r, kPeriod)"
               />
               <div
                 v-if="klineLoadingMore"
@@ -697,6 +739,7 @@ onMounted(load);
                     :bar-series="moneyflowSeries"
                     :height="300"
                     empty-text="暂无资金数据"
+                    @time-range-change="(r: any) => onTimeRangeChange(r, 'moneyflow')"
                   />
                 </n-card>
                 <n-card

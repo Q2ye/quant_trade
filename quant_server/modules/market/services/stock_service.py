@@ -105,7 +105,7 @@ async def _fetch_moneyflow(session: AsyncSession, ts_code: str) -> list:
                buy_lg_amount, sell_lg_amount, buy_elg_amount, sell_elg_amount,
                buy_md_amount, sell_md_amount, buy_sm_amount, sell_sm_amount
         FROM stock_moneyflow WHERE ts_code = :ts
-        ORDER BY trade_date DESC LIMIT 120
+        ORDER BY trade_date DESC LIMIT 500
     """, {"ts": ts_code})
     return [_clean(r) for r in rows]
 
@@ -130,7 +130,7 @@ async def _fetch_top_holders(session: AsyncSession, ts_code: str) -> list:
         rows = await _all(session, """
             SELECT end_date, holder_name, hold_amount AS hold_num, hold_ratio
             FROM stock_top10_holders WHERE ts_code = :ts
-            ORDER BY end_date DESC, hold_ratio DESC LIMIT 20
+            ORDER BY end_date DESC, hold_ratio DESC LIMIT 100
         """, {"ts": ts_code})
         return [_clean(r) for r in rows]
     except Exception:
@@ -143,7 +143,7 @@ async def _fetch_holdernumber(session: AsyncSession, ts_code: str) -> list:
         rows = await _all(session, """
             SELECT end_date, holder_num
             FROM stock_stk_holdernumber WHERE ts_code = :ts
-            ORDER BY end_date DESC LIMIT 20
+            ORDER BY end_date DESC LIMIT 100
         """, {"ts": ts_code})
         return [_clean(r) for r in rows]
     except Exception:
@@ -258,11 +258,15 @@ async def get_stock_full(session: AsyncSession, ts_code: str) -> Optional[dict]:
     return result
 
 
-# 按日期范围的 K 线表名映射
+# 按日期范围的表名 + 列映射
 _KLINE_TABLES = {
-    "daily": "stock_daily",
-    "weekly": "stock_weekly",
-    "monthly": "stock_monthly",
+    "daily": ("stock_daily", "trade_date, open, high, low, close, vol, amount, pct_chg"),
+    "weekly": ("stock_weekly", "trade_date, open, high, low, close, vol, amount, pct_chg"),
+    "monthly": ("stock_monthly", "trade_date, open, high, low, close, vol, amount, pct_chg"),
+    "moneyflow": ("stock_moneyflow",
+                  "trade_date, net_mf_amount, buy_lg_amount, sell_lg_amount,"
+                  " buy_elg_amount, sell_elg_amount, buy_md_amount, sell_md_amount,"
+                  " buy_sm_amount, sell_sm_amount"),
 }
 
 
@@ -273,18 +277,16 @@ async def get_stock_kline_range(
     before_date: Optional[str] = None,
     limit: int = 500,
 ) -> list:
-    """获取指定日期之前的 K 线数据（用于动态加载更早的历史数据）
+    """获取指定日期之前的数据（用于动态加载更早的历史数据）
 
-    Args:
-        period: daily / weekly / monthly
-        before_date: 不传则取最新数据；传入则取该日期之前的数据（不含当日）
-        limit: 返回条数上限
+    支持 period: daily / weekly / monthly / moneyflow
     """
-    table = _KLINE_TABLES.get(period, "stock_daily")
-    cols = "trade_date, open, high, low, close, vol, amount, pct_chg"
+    entry = _KLINE_TABLES.get(period)
+    if not entry:
+        return []
+    table, cols = entry
 
     if before_date:
-        # asyncpg 要求 date 列参数必须是 date 对象，不能是字符串
         bd = date.fromisoformat(before_date) if isinstance(before_date, str) else before_date
         rows = await _all(session, f"""
             SELECT * FROM (
