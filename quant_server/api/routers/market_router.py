@@ -17,6 +17,7 @@ from modules.market.handlers import (
     do_stock_signals, do_stock_factor_scores, do_limit_analysis,
     do_style_factors, do_sector_turnover,
     do_get_watchlist, do_save_watchlist,
+    do_stock_kline_range,
 )
 
 logger = __import__("logging").getLogger(__name__)
@@ -39,6 +40,25 @@ async def stock_full(ts_code: str, current_user=Depends(get_current_user), db_se
         if r is None:
             return {"success": True, "data": None, "message": "Not found"}
         return {"success": True, "data": r.model_dump()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stocks/{ts_code}/kline")
+async def stock_kline_range(
+    ts_code: str,
+    period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+    before_date: Optional[str] = Query(None, description="返回该日期之前的数据，不传则取最新"),
+    limit: int = Query(500, ge=1, le=2000),
+    current_user=Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    """个股 K 线按范围查询 — 用于图表动态加载更早的历史数据"""
+    try:
+        rows = await do_stock_kline_range(
+            db_session, ts_code.upper(), period, before_date, limit,
+        )
+        return {"success": True, "data": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

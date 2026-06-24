@@ -13,6 +13,7 @@ import { FinancialData, StockBasic } from "@/types";
 import type {
   DashboardOverview,
   StockFullResponse,
+  KLineItem,
 } from "@/types/entities/market";
 import type {
   ScreenerParams,
@@ -105,6 +106,21 @@ export default {
   async getStockFull(ts_code: string): Promise<StockFullResponse | null> {
     return request
       .get(`/quantTrade/market/stocks/${ts_code}/full`)
+      .then(handleResponse)
+      .then((data: any) => data.data);
+  },
+
+  /** 按日期范围获取 K 线 — 用于图表动态加载更早的历史数据 */
+  async getStockKline(
+    ts_code: string,
+    period: "daily" | "weekly" | "monthly" = "daily",
+    beforeDate?: string,
+    limit: number = 500,
+  ): Promise<KLineItem[]> {
+    return request
+      .get(`/quantTrade/market/stocks/${ts_code}/kline`, {
+        params: { period, before_date: beforeDate, limit },
+      })
       .then(handleResponse)
       .then((data: any) => data.data);
   },

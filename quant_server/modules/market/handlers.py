@@ -130,6 +130,14 @@ async def do_stock_signals(session: AsyncSession, ts_code: str, recent: int = 20
     return await get_stock_signals(session, ts_code, recent)
 
 
+async def do_stock_kline_range(
+    session: AsyncSession, ts_code: str, period: str = "daily",
+    before_date: Optional[str] = None, limit: int = 500,
+) -> list:
+    from modules.market.services.stock_service import get_stock_kline_range
+    return await get_stock_kline_range(session, ts_code, period, before_date, limit)
+
+
 async def do_stock_factor_scores(session: AsyncSession, ts_code: str) -> Optional[dict]:
     from modules.market.services.stock_service import get_stock_factor_scores
     return await get_stock_factor_scores(session, ts_code)

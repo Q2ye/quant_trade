@@ -89,6 +89,8 @@ const emit = defineEmits<{
 
 const hasData = computed(() => props.data.length > 0);
 
+const klineZoom = "1.25"; // 抵消 html { zoom: 0.8 }
+
 // ---- composables ----
 const {
   chartContainer,
@@ -161,6 +163,9 @@ function initKLineChart() {
     chart = null;
     return;
   }
+
+  // 移除左下角 logo
+  el.querySelector('a')?.remove();
 
   // Candlestick
   candleSeries = chart.addSeries(CandlestickSeries, {
@@ -246,6 +251,10 @@ function initKLineChart() {
   return chart;
 }
 
+// ---- 跟踪数据范围，用于判断是否为追加数据 ----
+let _prevDataEnd: number | null = null; // 上一次数据的最新时间戳
+let _prevDataStart: number | null = null; // 上一次数据的最早时间戳
+
 // ---- 更新图表数据 ----
 function updateChartData() {
   if (!candleSeries) {
@@ -255,6 +264,9 @@ function updateChartData() {
 
   const ohlc = transformData(props.data);
   if (!ohlc.length) return;
+
+  // 保存当前可视范围（用于追加数据时恢复视图位置）
+  const savedRange = chart.timeScale().getVisibleLogicalRange();
 
   candleSeries.setData(ohlc);
 
@@ -292,11 +304,25 @@ function updateChartData() {
     volumeSeries.setData(volData);
   }
 
-  // ⚠️ 用 setVisibleRange 替代 fitContent，保持时间等比模式（避免切换到等距 barSpacing 导致十字星漂移）
-  const lastIdx = ohlc.length - 1;
-  if (lastIdx >= 0) {
-    chart.timeScale().setVisibleRange({ from: ohlc[0].time, to: ohlc[lastIdx].time });
+  // 可视范围策略：
+  // - 无保存范围（首次加载/切换周期）→ 适配全部数据
+  // - 数据向前扩展（追加更早历史）→ 恢复到之前保存的可视位置
+  // - 数据增加但起始不变（实时追加）→ 保持当前可视位置
+  const newStart = ohlc[0].time as number;
+  const newEnd = ohlc[ohlc.length - 1].time as number;
+  const isAppendBackward = _prevDataStart != null && newStart < _prevDataStart;
+
+  if (savedRange && isAppendBackward) {
+    // 追加更早数据：恢复之前保存的可视范围
+    chart.timeScale().setVisibleLogicalRange(savedRange);
+  } else if (!savedRange || _prevDataStart == null) {
+    // 首次加载或切换周期：适配全部数据
+    chart.timeScale().setVisibleRange({ from: ohlc[0].time, to: ohlc[ohlc.length - 1].time });
   }
+  // 否则保持当前可视范围不变（实时数据追加等场景）
+
+  _prevDataStart = newStart;
+  _prevDataEnd = newEnd;
 }
 
 // ---- 信号标记：StaticMarker → SignalMarkerPrimitive ----
@@ -499,7 +525,7 @@ defineExpose({
 .lw-chart {
   width: 100%;
   min-height: v-bind("props.height + 'px'");
-  zoom: 1.25; /* 抵消 html { zoom: 0.8 }，恢复 chart 内部坐标系统与 OS 鼠标一致 */
+  zoom: v-bind("klineZoom"); /* 抵消 html { zoom: 0.8 }，恢复 chart 内部坐标系统与 OS 鼠标一致 */
 }
 
 /* 十字光标浮层标签 */

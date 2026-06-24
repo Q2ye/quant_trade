@@ -1,6 +1,6 @@
 <!-- StockDetail.vue - 个股深度分析，6 Tab -->
 <script setup lang="ts">
-import { computed, h, onMounted, ref, watch } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   NCard,
@@ -28,30 +28,12 @@ import SmartIcon from "@/components/common/SmartIcon.vue";
 import LightweightKLine, {
   type SignalMarker,
 } from "@/components/charts/LightweightKLine.vue";
+import LightweightLineChart, {
+  type LineSeriesDef,
+  type BarSeriesDef,
+} from "@/components/charts/LightweightLineChart.vue";
 import StockSignalPanel from "@/components/market/StockSignalPanel.vue";
 import BasketSelectorDialog from "@/components/basket/BasketSelectorDialog.vue";
-import VChart from "vue-echarts";
-import { use } from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
-import { LineChart, BarChart } from "echarts/charts";
-import {
-  GridComponent,
-  TooltipComponent,
-  DataZoomComponent,
-  LegendComponent,
-  MarkLineComponent,
-} from "echarts/components";
-
-use([
-  CanvasRenderer,
-  LineChart,
-  BarChart,
-  GridComponent,
-  TooltipComponent,
-  DataZoomComponent,
-  LegendComponent,
-  MarkLineComponent,
-]);
 
 const route = useRoute();
 const router = useRouter();
@@ -68,12 +50,76 @@ const activeTab = ref("overview");
 const kPeriod = ref<"daily" | "weekly" | "monthly">("daily");
 const signalMarkers = ref<SignalMarker[]>([]);
 
-const klineData = computed(() => {
-  if (!data.value?.quotes) return [];
-  if (kPeriod.value === "weekly") return data.value.quotes.weekly.slice(-120);
-  if (kPeriod.value === "monthly") return data.value.quotes.monthly.slice(-120);
-  return data.value.quotes.daily.slice(-120);
+// ---- K线动态加载缓存 ----
+const klineCache = reactive<Record<string, KLineItem[]>>({
+  daily: [],
+  weekly: [],
+  monthly: [],
 });
+const klineLoadingMore = ref(false);
+const klineHasMore = reactive<Record<string, boolean>>({
+  daily: true,
+  weekly: true,
+  monthly: true,
+});
+
+const klineData = computed(() => klineCache[kPeriod.value] ?? []);
+
+function initKlineCache(resp: StockFullResponse) {
+  klineCache.daily = resp.quotes?.daily ?? [];
+  klineCache.weekly = resp.quotes?.weekly ?? [];
+  klineCache.monthly = resp.quotes?.monthly ?? [];
+  klineHasMore.daily = (resp.quotes?.daily ?? []).length >= 1000;
+  klineHasMore.weekly = (resp.quotes?.weekly ?? []).length >= 1000;
+  klineHasMore.monthly = (resp.quotes?.monthly ?? []).length >= 1000;
+}
+
+async function loadMoreKline() {
+  const period = kPeriod.value;
+  if (!klineHasMore[period] || klineLoadingMore.value) return;
+
+  const cache = klineCache[period];
+  if (!cache.length) return;
+
+  const oldestDate = cache[0].trade_date;
+  klineLoadingMore.value = true;
+
+  try {
+    const rows = await marketAPI.getStockKline(tsCode.value, period, oldestDate, 500);
+    if (rows.length > 0) {
+      const existingDates = new Set(cache.map((d: KLineItem) => d.trade_date));
+      const newRows = rows.filter((r: KLineItem) => !existingDates.has(r.trade_date));
+      if (newRows.length > 0) {
+        klineCache[period] = [...newRows, ...cache];
+      }
+      klineHasMore[period] = rows.length >= 500;
+    } else {
+      klineHasMore[period] = false;
+    }
+  } catch (e) {
+    console.error("[StockDetail] loadMoreKline error:", e);
+  } finally {
+    klineLoadingMore.value = false;
+  }
+}
+
+function onTimeRangeChange(range: { from: number; to: number }) {
+  if (!klineHasMore[kPeriod.value] || klineLoadingMore.value) return;
+
+  const cache = klineCache[kPeriod.value];
+  if (!cache.length) return;
+
+  // 可视范围左边缘接近已加载的最早数据时，触发加载更多
+  const oldestTime = Math.floor(
+    new Date(cache[0].trade_date + "T00:00:00Z").getTime() / 1000,
+  );
+  const visibleSpan = range.to - range.from;
+  const threshold = visibleSpan * 0.3; // 距离左边缘 30% 可视范围时触发
+
+  if (range.from - threshold <= oldestTime) {
+    loadMoreKline();
+  }
+}
 
 async function addToWatchlist() {
   const basic = data.value?.basic;
@@ -103,35 +149,19 @@ const pctText = (v: number | null) =>
   v == null ? "-" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
 
 // ---- 资金流向 chart ----
-const moneyflowOption = computed(() => {
-  if (!data.value?.moneyflow?.length) return null;
+const moneyflowSeries = computed<BarSeriesDef[]>(() => {
+  if (!data.value?.moneyflow?.length) return [];
   const raw = [...data.value.moneyflow].reverse();
-  return {
-    grid: { top: 10, right: 10, bottom: 10, left: 60 },
-    xAxis: {
-      type: "category",
-      data: raw.map((d: any) => d.trade_date?.slice(5) ?? ""),
-      axisLabel: { fontSize: 10 },
+  return [
+    {
+      name: "主力净流入",
+      data: raw.map((d: any) => ({
+        time: d.trade_date?.slice(0, 10) ?? "",
+        value: d.net_mf_amount ?? null,
+        color: (d.net_mf_amount ?? 0) >= 0 ? "rgba(239,83,80,0.6)" : "rgba(38,166,154,0.6)",
+      })),
     },
-    yAxis: {
-      type: "value",
-      axisLabel: {
-        fontSize: 10,
-        formatter: (v: number) => (v / 1e8).toFixed(0) + "亿",
-      },
-    },
-    tooltip: { trigger: "axis" },
-    series: [
-      {
-        name: "主力净流入",
-        type: "bar",
-        data: raw.map((d: any) => d.net_mf_amount ?? 0),
-        itemStyle: {
-          color: (p: any) => (p.value >= 0 ? "#ef5350" : "#26a69a"),
-        },
-      },
-    ],
-  };
+  ];
 });
 const moneyflowColumns: any = [
   { title: "日期", key: "trade_date", width: 100 },
@@ -176,35 +206,54 @@ const factorData = computed(
     data.value?.factors?.stk_factor_pro ||
     [],
 );
-const factorOption = computed(() => {
-  if (!factorData.value.length) return null;
-  const raw = [...factorData.value].reverse().slice(-60);
-  const keys = Object.keys(raw[0] || {}).filter(
-    (k) =>
-      !["ts_code", "trade_date", "id", "created_at", "updated_at"].includes(
-        k,
-      ) && typeof raw[0][k] === "number",
-  );
-  if (!keys.length) return null;
-  return {
-    grid: { top: 10, right: 10, bottom: 10, left: 60 },
-    xAxis: {
-      type: "category",
-      data: raw.map((d: any) => d.trade_date?.slice(5) ?? ""),
-      axisLabel: { fontSize: 10 },
-    },
-    yAxis: { type: "value", axisLabel: { fontSize: 10 } },
-    tooltip: { trigger: "axis" },
-    legend: { data: keys.slice(0, 5), bottom: 0, textStyle: { fontSize: 10 } },
-    series: keys.slice(0, 5).map((k: string, i: number) => ({
+const factorColors = ["#ff9800", "#448AFF", "#E040FB", "#00bcd4", "#ff5722", "#8bc34a"];
+
+const factorSeries = computed<LineSeriesDef[]>(() => {
+  if (!factorData.value.length) return [];
+  // 取最近 60 条，按时间升序
+  const raw = [...factorData.value].slice(-60);
+  if (!raw.length) return [];
+
+  // 找到因子最多的行来确定要展示哪些因子（最新日期可能仅有部分因子）
+  const metaKeys = ["ts_code", "trade_date", "id", "created_at", "updated_at"];
+  let bestKeys: string[] = [];
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const ks = Object.keys(raw[i] || {}).filter(
+      (k) => !metaKeys.includes(k) && typeof raw[i][k] === "number",
+    );
+    if (ks.length > bestKeys.length) bestKeys = ks;
+    if (bestKeys.length >= 6) break;
+  }
+  if (!bestKeys.length) return [];
+
+  const keys = bestKeys.slice(0, 6);
+
+  // 为每个因子计算 min/max，归一化到 0-100 解决量纲不同导致的平坦问题
+  const ranges: Record<string, { min: number; max: number }> = {};
+  for (const k of keys) {
+    const vals = raw.map((d: any) => d[k]).filter((v: any) => typeof v === "number" && !isNaN(v)) as number[];
+    if (vals.length) {
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      ranges[k] = { min, max: max > min ? max : min + 1 };
+    } else {
+      ranges[k] = { min: 0, max: 1 };
+    }
+  }
+
+  return keys.map((k, i) => {
+    const { min, max } = ranges[k];
+    const span = max - min || 1;
+    return {
       name: k,
-      type: "line",
-      data: raw.map((d: any) => d[k] ?? 0),
-      smooth: true,
-      lineStyle: { width: 1.5 },
-      symbol: "none",
-    })),
-  };
+      color: factorColors[i % factorColors.length],
+      lineWidth: 1.5,
+      data: raw.map((d: any) => ({
+        time: d.trade_date?.slice(0, 10) ?? "",
+        value: d[k] != null ? +(((d[k] as number) - min) / span * 100).toFixed(1) : null,
+      })),
+    };
+  });
 });
 
 // ---- 股东数据 ----
@@ -229,30 +278,21 @@ const holderColumns: any = [
   },
   { title: "报告期", key: "end_date", width: 100 },
 ];
-const holderChartOption = computed(() => {
+const holderSeries = computed<LineSeriesDef[]>(() => {
   const raw = data.value?.shareholders?.holdernumber;
-  if (!raw?.length) return null;
+  if (!raw?.length) return [];
   const items = [...raw].reverse();
-  return {
-    grid: { top: 10, right: 10, bottom: 10, left: 60 },
-    xAxis: {
-      type: "category",
-      data: items.map((d: any) => d.end_date?.slice(0, 7) ?? ""),
-      axisLabel: { fontSize: 10 },
+  return [
+    {
+      name: "股东人数",
+      color: "#ff9800",
+      lineWidth: 2,
+      data: items.map((d: any) => ({
+        time: d.end_date?.slice(0, 10) ?? "",
+        value: d.holder_num ?? null,
+      })),
     },
-    yAxis: { type: "value", axisLabel: { fontSize: 10 } },
-    tooltip: { trigger: "axis" },
-    series: [
-      {
-        name: "股东人数",
-        type: "line",
-        data: items.map((d: any) => d.holder_num ?? 0),
-        smooth: true,
-        lineStyle: { color: "#ff9800", width: 2 },
-        areaStyle: { color: "rgba(255,152,0,0.15)" },
-      },
-    ],
-  };
+  ];
 });
 
 // ---- 停牌记录推断（从日线数据缺口 >1 交易日的推断为停牌期）----
@@ -301,6 +341,7 @@ async function load() {
       return;
     }
     data.value = resp;
+    initKlineCache(resp);
     // fetch signals in background (graceful fallback)
     marketAPI
       .getStockSignals(tsCode.value, 20)
@@ -537,6 +578,7 @@ onMounted(load);
                 </n-button-group>
               </template>
               <LightweightKLine
+                :key="kPeriod"
                 :data="klineData"
                 :ma-lines="[5, 10, 20]"
                 :show-volume="true"
@@ -545,7 +587,20 @@ onMounted(load);
                 :error="error"
                 :signal-markers="signalMarkers"
                 @retry="load"
+                @timeRangeChange="onTimeRangeChange"
               />
+              <div
+                v-if="klineLoadingMore"
+                style="text-align: center; padding: 4px; font-size: 12px; color: var(--n-text-color-3);"
+              >
+                加载更多历史数据...
+              </div>
+              <div
+                v-else-if="!klineHasMore[kPeriod] && klineCache[kPeriod].length > 0"
+                style="text-align: center; padding: 4px; font-size: 12px; color: var(--n-text-color-3);"
+              >
+                已加载全部历史数据
+              </div>
             </n-card>
           </n-grid-item>
           <n-grid-item :span="1">
@@ -638,11 +693,10 @@ onMounted(load);
             <n-tab-pane name="moneyflow" tab="资金">
               <template v-if="data.moneyflow?.length">
                 <n-card title="资金流向趋势" size="small" :bordered="true">
-                  <VChart
-                    v-if="moneyflowOption"
-                    :option="moneyflowOption"
-                    autoresize
-                    style="height: 300px"
+                  <LightweightLineChart
+                    :bar-series="moneyflowSeries"
+                    :height="300"
+                    empty-text="暂无资金数据"
                   />
                 </n-card>
                 <n-card
@@ -714,11 +768,10 @@ onMounted(load);
                   :bordered="true"
                   style="margin-top: 16px"
                 >
-                  <VChart
-                    v-if="holderChartOption"
-                    :option="holderChartOption"
-                    autoresize
-                    style="height: 250px"
+                  <LightweightLineChart
+                    :line-series="holderSeries"
+                    :height="250"
+                    empty-text="暂无股东人数数据"
                   />
                 </n-card>
               </template>
@@ -736,11 +789,10 @@ onMounted(load);
             <n-tab-pane name="factor" tab="因子">
               <template v-if="factorData.length">
                 <n-card title="技术因子趋势" size="small" :bordered="true">
-                  <VChart
-                    v-if="factorOption"
-                    :option="factorOption"
-                    autoresize
-                    style="height: 300px"
+                  <LightweightLineChart
+                    :line-series="factorSeries"
+                    :height="300"
+                    empty-text="暂无因子数据"
                   />
                 </n-card>
               </template>

@@ -172,7 +172,7 @@ select * from backtest_result;
 -- 因子
 select * from factor_definitions;
 -- 因子数据
-select * from factor_data;
+select * from factor_data where ts_code = '002384.SZ';
 -- 因子任务
 select * from factor_research;
 select * from factor_research where research_id ='research_419d48bf';

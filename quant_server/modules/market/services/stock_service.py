@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """StockDetail 全量查询 — 单股多维度数据聚合，使用原始 SQL"""
-import asyncio
 import logging
 import time
 from datetime import date, datetime
@@ -10,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-_KLINE_LIMIT = 250
+_KLINE_LIMIT = 1000
 
 
 async def _first(session: AsyncSession, sql: str, params: dict):
@@ -122,18 +121,20 @@ async def _fetch_indicators(session: AsyncSession, ts_code: str) -> list:
         """, {"ts": ts_code})
         return [_clean(r) for r in rows]
     except Exception:
+        await session.rollback()  # 重置 aborted 事务，避免后续查询被阻塞
         return []
 
 
 async def _fetch_top_holders(session: AsyncSession, ts_code: str) -> list:
     try:
         rows = await _all(session, """
-            SELECT end_date, holder_name, hold_num, hold_ratio
+            SELECT end_date, holder_name, hold_amount AS hold_num, hold_ratio
             FROM stock_top10_holders WHERE ts_code = :ts
             ORDER BY end_date DESC, hold_ratio DESC LIMIT 20
         """, {"ts": ts_code})
         return [_clean(r) for r in rows]
     except Exception:
+        await session.rollback()
         return []
 
 
@@ -146,23 +147,47 @@ async def _fetch_holdernumber(session: AsyncSession, ts_code: str) -> list:
         """, {"ts": ts_code})
         return [_clean(r) for r in rows]
     except Exception:
+        await session.rollback()
         return []
 
 
 async def _fetch_factors(session: AsyncSession, ts_code: str) -> dict:
+    """因子数据 — 从 factor_data（EAV 格式）查询并 pivot 为宽表
+
+    factor_data 表结构: (ts_code, trade_date, factor_code, factor_value)
+    输出: {"stk_factor": [{trade_date, ATR, BETA, OM, ...}, ...], "stk_factor_pro": []}
+    """
     result: Dict[str, list] = {"stk_factor": [], "stk_factor_pro": []}
-    # 仅选择常用列，避免 SELECT * 拉取 200+ 列
-    cols = "ts_code, trade_date, open, high, low, close, vol, amount, pct_change, pct_chg, turnover_rate, ma5, ma10, ma20, ma60"
-    for tbl in ("stock_factor_daily", "stock_factor_pro_daily"):
-        try:
-            rows = await _all(session, f"""
-                SELECT {cols} FROM {tbl} WHERE ts_code = :ts
-                ORDER BY trade_date DESC LIMIT 120
-            """, {"ts": ts_code})
-            key = "stk_factor" if "pro" not in tbl else "stk_factor_pro"
-            result[key] = [_clean(r) for r in rows]
-        except Exception:
-            pass
+    try:
+        # 1. 取最近 120 个有因子数据的交易日
+        dates = await _all(session, """
+            SELECT DISTINCT trade_date FROM factor_data
+            WHERE ts_code = :ts
+            ORDER BY trade_date DESC LIMIT 120
+        """, {"ts": ts_code})
+        if not dates:
+            return result
+
+        date_list = [d["trade_date"] for d in dates]
+
+        # 2. 查询这些日期的所有因子值
+        rows = await _all(session, """
+            SELECT trade_date, factor_code, factor_value
+            FROM factor_data WHERE ts_code = :ts AND trade_date = ANY(:dates)
+            ORDER BY trade_date ASC
+        """, {"ts": ts_code, "dates": date_list})
+
+        # 3. Pivot: EAV → 宽表 (每行一个 trade_date，因子代码为列)
+        pivot: Dict[str, dict] = {}
+        for r in rows:
+            td = r["trade_date"]
+            if td not in pivot:
+                pivot[td] = {"trade_date": td}
+            pivot[td][r["factor_code"]] = r["factor_value"]
+
+        result["stk_factor"] = [_clean(pivot[d]) for d in sorted(pivot.keys())]
+    except Exception:
+        await session.rollback()
     return result
 
 
@@ -173,6 +198,7 @@ async def _fetch_pledge(session: AsyncSession, ts_code: str) -> Optional[dict]:
             ORDER BY end_date DESC LIMIT 1
         """, {"ts": ts_code}))
     except Exception:
+        await session.rollback()
         return None
 
 
@@ -182,67 +208,101 @@ async def _fetch_st_risk(session: AsyncSession, ts_code: str) -> Optional[dict]:
             SELECT * FROM stock_st_risk WHERE ts_code = :ts LIMIT 1
         """, {"ts": ts_code}))
     except Exception:
+        await session.rollback()
         return None
 
 
 async def get_stock_full(session: AsyncSession, ts_code: str) -> Optional[dict]:
     t0 = time.perf_counter()
 
-    # 第1批：basic + 7 个零依赖子查询全部并行
-    basic, mf, indicators, holders, holdernum, factors, pledge, st_risk = \
-        await asyncio.gather(
-            _fetch_basic(session, ts_code),
-            _fetch_moneyflow(session, ts_code),
-            _fetch_indicators(session, ts_code),
-            _fetch_top_holders(session, ts_code),
-            _fetch_holdernumber(session, ts_code),
-            _fetch_factors(session, ts_code),
-            _fetch_pledge(session, ts_code),
-            _fetch_st_risk(session, ts_code),
-            return_exceptions=True,
-        )
-
-    if not basic or isinstance(basic, Exception):
-        logger.warning(f"Stock basic not found or error: {ts_code}")
+    # 串行执行所有查询 — AsyncSession 禁止并发操作（会触发 InvalidRequestError）
+    basic = await _fetch_basic(session, ts_code)
+    if not basic:
+        logger.warning(f"Stock basic not found: {ts_code}")
         return None
 
-    # 第2批：K线 + 最新行情/估值/涨跌停 并行
-    quotes_t, latest = await asyncio.gather(
-        _fetch_quotes(session, ts_code),
-        _fetch_latest_data(session, ts_code),
-        return_exceptions=True,
-    )
+    mf = await _fetch_moneyflow(session, ts_code)
+    indicators = await _fetch_indicators(session, ts_code)
+    holders = await _fetch_top_holders(session, ts_code)
+    holdernum = await _fetch_holdernumber(session, ts_code)
+    factors = await _fetch_factors(session, ts_code)
+    pledge = await _fetch_pledge(session, ts_code)
+    st_risk = await _fetch_st_risk(session, ts_code)
 
-    klines = quotes_t if not isinstance(quotes_t, Exception) else {"daily": [], "weekly": [], "monthly": []}
-    if isinstance(latest, Exception):
-        latest_quote_raw, latest_basic, limit_price = {}, {}, {}
-    else:
-        latest_quote_raw, latest_basic, limit_price = latest
+    klines = await _fetch_quotes(session, ts_code)
+    latest_quote_raw, latest_basic, limit_price = await _fetch_latest_data(session, ts_code)
 
     latest_quote = klines["daily"][-1] if klines.get("daily") else latest_quote_raw
 
     result = {
         "basic": basic,
         "latest_quote": latest_quote,
-        "latest_basic": latest_basic if not isinstance(latest_basic, Exception) else {},
-        "limit_price": limit_price if not isinstance(limit_price, Exception) else {},
+        "latest_basic": latest_basic,
+        "limit_price": limit_price,
         "quotes": klines,
-        "moneyflow": mf if not isinstance(mf, Exception) else [],
-        "financial": {"indicators": indicators if not isinstance(indicators, Exception) else []},
+        "moneyflow": mf,
+        "financial": {"indicators": indicators},
         "shareholders": {
-            "top10": holders if not isinstance(holders, Exception) else [],
-            "holdernumber": holdernum if not isinstance(holdernum, Exception) else [],
+            "top10": holders,
+            "holdernumber": holdernum,
         },
-        "factors": factors if not isinstance(factors, Exception) else {},
+        "factors": factors,
         "risk": {
-            "pledge_stat": pledge if not isinstance(pledge, Exception) else None,
-            "st_risk": st_risk if not isinstance(st_risk, Exception) else None,
+            "pledge_stat": pledge,
+            "st_risk": st_risk,
         },
     }
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(f"get_stock_full({ts_code}) 完成 ({elapsed_ms:.0f}ms)")
     return result
+
+
+# 按日期范围的 K 线表名映射
+_KLINE_TABLES = {
+    "daily": "stock_daily",
+    "weekly": "stock_weekly",
+    "monthly": "stock_monthly",
+}
+
+
+async def get_stock_kline_range(
+    session: AsyncSession,
+    ts_code: str,
+    period: str = "daily",
+    before_date: Optional[str] = None,
+    limit: int = 500,
+) -> list:
+    """获取指定日期之前的 K 线数据（用于动态加载更早的历史数据）
+
+    Args:
+        period: daily / weekly / monthly
+        before_date: 不传则取最新数据；传入则取该日期之前的数据（不含当日）
+        limit: 返回条数上限
+    """
+    table = _KLINE_TABLES.get(period, "stock_daily")
+    cols = "trade_date, open, high, low, close, vol, amount, pct_chg"
+
+    if before_date:
+        # asyncpg 要求 date 列参数必须是 date 对象，不能是字符串
+        bd = date.fromisoformat(before_date) if isinstance(before_date, str) else before_date
+        rows = await _all(session, f"""
+            SELECT * FROM (
+                SELECT {cols} FROM {table}
+                WHERE ts_code = :ts AND trade_date < :bd
+                ORDER BY trade_date DESC LIMIT :lim
+            ) sub ORDER BY trade_date ASC
+        """, {"ts": ts_code, "bd": bd, "lim": max(1, min(limit, 2000))})
+    else:
+        rows = await _all(session, f"""
+            SELECT * FROM (
+                SELECT {cols} FROM {table}
+                WHERE ts_code = :ts
+                ORDER BY trade_date DESC LIMIT :lim
+            ) sub ORDER BY trade_date ASC
+        """, {"ts": ts_code, "lim": max(1, min(limit, 2000))})
+
+    return [_clean(r) for r in rows]
 
 
 async def get_stock_signals(session: AsyncSession, ts_code: str, recent: int = 20) -> list:
