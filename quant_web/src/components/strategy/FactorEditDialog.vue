@@ -4,7 +4,6 @@
     preset="card"
     :title="dialogTitle"
     style="width: 600px"
-    class="factor-edit-dialog"
     @close="handleClose"
   >
     <NForm
@@ -304,9 +303,16 @@ watch(
 </style>
 
 <style>
-/* NModal teleport 到 body，必须用全局样式穿透 */
-.factor-edit-dialog .n-card {
-  background-color: var(--n-color) !important;
+/*
+ * 因子编辑 / 因子研究弹窗：强制卡片不透明。
+ * 暗色主题 CARD_BG = rgba(12,18,32,0.72) 使卡片半透明，
+ * 页面 bg-gradient-mesh 背景穿透造成"玻璃态"。
+ * NModal teleport body → 只能全局选择器命中。
+ */
+.n-modal-container .n-card,
+.n-modal-container .n-modal,
+.n-modal-container .n-modal-wrapper {
+  background-color: rgb(12, 18, 32) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
