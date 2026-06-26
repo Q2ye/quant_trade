@@ -26,7 +26,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">数据中心</div>
-        <n-menu :options="dataCenterOptions" v-model:value="activeMenu" />
+        <n-menu :options="dataCenterOptions" :value="dataMenuValue" @update:value="navigateTo" />
       </div>
 
       <!-- ================================================================
@@ -34,23 +34,15 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">策略中心</div>
-        <n-menu :options="strategyCenterOptions" v-model:value="activeMenu" />
+        <n-menu :options="strategyCenterOptions" :value="strategyMenuValue" @update:value="navigateTo" />
       </div>
 
       <!-- ================================================================
-          分区三：交易与持仓 — 驾驶舱 / 篮子 / 订单 / 持仓 / 账户
+          分区三：交易与持仓 — 驾驶舱 / 信号 / 篮子 / 持仓 / 账户
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">交易与持仓</div>
-        <n-menu :options="tradingOptions" v-model:value="activeMenu" />
-      </div>
-
-      <!-- ================================================================
-          分区四：信号与事件 — 信号监控 / 历史 / 时间线
-      ================================================================ -->
-      <div class="nav-section">
-        <div class="nav-header">信号与事件</div>
-        <n-menu :options="signalsOptions" v-model:value="activeMenu" />
+        <n-menu :options="tradingOptions" :value="tradingMenuValue" @update:value="navigateTo" />
       </div>
 
       <!-- ================================================================
@@ -58,7 +50,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">风险监控</div>
-        <n-menu :options="riskOptions" v-model:value="activeMenu" />
+        <n-menu :options="riskOptions" :value="riskMenuValue" @update:value="navigateTo" />
       </div>
 
       <!-- ================================================================
@@ -66,7 +58,7 @@
       ================================================================ -->
       <div class="nav-section">
         <div class="nav-header">系统管理</div>
-        <n-menu :options="systemOptions" v-model:value="activeMenu" />
+        <n-menu :options="systemOptions" :value="systemMenuValue" @update:value="navigateTo" />
       </div>
     </div>
 
@@ -113,11 +105,15 @@ export default defineComponent({
     const route = useRoute();
     const router = useRouter();
 
-    /** 当前激活的菜单 key，绑定到每个 n-menu 的 :value */
-    const activeMenu = ref(null);
-
     /** 侧边栏折叠状态：false=展开(220px)，true=折叠(52px) */
     const collapsed = ref(false);
+
+    // 每个分区独立的选中状态，避免多 n-menu 共享 v-model 互相覆盖
+    const dataMenuValue = ref(null);
+    const strategyMenuValue = ref(null);
+    const tradingMenuValue = ref(null);
+    const riskMenuValue = ref(null);
+    const systemMenuValue = ref(null);
 
     // =====================================================================
     // 菜单配置（5 组）
@@ -175,19 +171,19 @@ export default defineComponent({
       },
     ];
 
-    /** 交易与持仓菜单 — 3 项（驾驶舱 / 统一工作台 / 账户绩效） */
+    /** 交易与持仓菜单 — 4 项（驾驶舱 / 信号 / 篮子 / 账户） */
     const tradingOptions = [
       {
         label: "交易驾驶舱",
-        key: "trading",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "Terminal" }) }),
-      },
-      {
-        label: "交易工作台",
         key: "trading-workspace",
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Grid" }) }),
+      },
+      {
+        label: "信号管理",
+        key: "signals",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "NotificationsOutline" }) }),
       },
       {
         label: "账户绩效",
@@ -196,22 +192,6 @@ export default defineComponent({
           h(NIcon, null, {
             default: () => h(SmartIcon, { name: "AnalyticsOutline" }),
           }),
-      },
-    ];
-
-    /** 信号与事件菜单 */
-    const signalsOptions = [
-      {
-        label: "信号监控",
-        key: "signals",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "NotificationsOutline" }) }),
-      },
-      {
-        label: "信号历史",
-        key: "signals-history",
-        icon: () =>
-          h(NIcon, null, { default: () => h(SmartIcon, { name: "History" }) }),
       },
     ];
 
@@ -286,25 +266,11 @@ export default defineComponent({
       strategies: "/strategies",
       "strategy-templates": "/strategies/templates",
       "strategy-risk": "/strategies/risk",
-      "strategy-create": "/strategies/create",
-      "strategy-edit": "/strategies/edit",
-      backtest: "/backtest/studio",
-      research: "/research/factor-research",
-      "factor-library": "/research/factor-library",
-      "backtest-period": "/research/backtest-period",
       "strategy-factors": "/strategy/factors",
       "strategy-build": "/strategy/build",
       "strategy-backtest": "/strategy/backtest",
       "trading-workspace": "/trade/workspace",
-      // 旧路由兼容：重定向后高亮工作台
-      baskets: "/baskets",
-      orders: "/trade/orders",
-      positions: "/trade/positions",
-      account: "/account",
-      trading: "/trade",
       signals: "/signals",
-      "signals-history": "/signals/history",
-      "execution-analysis": "/trade/execution",
       "risk-rules": "/risk/rules",
       "risk-monitor": "/risk/monitor",
       "risk-events": "/risk/events",
@@ -320,7 +286,7 @@ export default defineComponent({
       settings: "/system/settings",
     };
 
-    /** 根据当前 path 反向查找菜单 key（最长路径优先匹配，避免 /trade 吞掉 /trade/orders） */
+    /** 根据当前 path 反向查找菜单 key */
     const findMenuKey = (path) => {
       let bestKey = null;
       let bestLen = 0;
@@ -333,32 +299,50 @@ export default defineComponent({
       return bestKey;
     };
 
-    // =====================================================================
-    // watch: 菜单点击 → NMenu v-model 更新 activeMenu → 路由导航
-    // =====================================================================
-    watch(activeMenu, (key) => {
-      console.log("[AppSidebar] activeMenu changed:", key);
+    /** 菜单 key → 所属分区映射 */
+    const keyToSection = (key) => {
+      if (dataCenterOptions.some((o) => o.key === key)) return "data";
+      if (strategyCenterOptions.some((o) => o.key === key)) return "strategy";
+      if (tradingOptions.some((o) => o.key === key)) return "trading";
+      if (riskOptions.some((o) => o.key === key)) return "risk";
+      if (systemOptions.some((o) => o.key === key)) return "system";
+      return null;
+    };
+
+    /** 根据 key 设置对应分区的 local value，其他分区清空 */
+    const setActiveKey = (key) => {
+      dataMenuValue.value = null;
+      strategyMenuValue.value = null;
+      tradingMenuValue.value = null;
+      riskMenuValue.value = null;
+      systemMenuValue.value = null;
+      if (!key) return;
+      const section = keyToSection(key);
+      if (section === "data") dataMenuValue.value = key;
+      else if (section === "strategy") strategyMenuValue.value = key;
+      else if (section === "trading") tradingMenuValue.value = key;
+      else if (section === "risk") riskMenuValue.value = key;
+      else if (section === "system") systemMenuValue.value = key;
+    };
+
+    /** 菜单点击 → 路由导航 */
+    const navigateTo = (key) => {
       const target = routeMap[key];
       if (!target) return;
-      // 已在目标路由或其子路由下（如 /performance/strategy/:id），不重复跳转
       if (route.path === target || route.path.startsWith(target + "/")) return;
       router.push(target).catch((err) => {
         if (err.name !== "NavigationDuplicated") {
           console.warn("[AppSidebar] 路由跳转失败:", err);
         }
       });
-    });
+    };
 
-    // =====================================================================
-    // watch: 浏览器前进/后退 → 同步菜单高亮
-    // =====================================================================
+    // 浏览器前进/后退 → 同步各分区菜单高亮
     watch(
       () => route.path,
       (path) => {
         const key = findMenuKey(path);
-        if (key !== activeMenu.value) {
-          activeMenu.value = key;
-        }
+        setActiveKey(key);
       },
     );
 
@@ -374,18 +358,22 @@ export default defineComponent({
     // 生命周期：页面初始化时同步菜单高亮
     // =====================================================================
     onMounted(() => {
-      activeMenu.value = findMenuKey(route.path);
+      setActiveKey(findMenuKey(route.path));
     });
 
     return {
-      activeMenu,
       collapsed,
       dataCenterOptions,
       strategyCenterOptions,
       tradingOptions,
-      signalsOptions,
       riskOptions,
       systemOptions,
+      dataMenuValue,
+      strategyMenuValue,
+      tradingMenuValue,
+      riskMenuValue,
+      systemMenuValue,
+      navigateTo,
       toggleCollapse,
     };
   },

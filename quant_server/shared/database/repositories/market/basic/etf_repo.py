@@ -46,8 +46,7 @@ class EtfBasicRepository(BaseRepository[EtfBasic]):
 				or_(
 					self.model.ts_code.like(f"%{keyword}%"),
 					self.model.name.like(f"%{keyword}%"),
-					self.model.name.like(f"%{keyword}%"),
-					self.model.name.like(f"%{keyword}%")
+					self.model.management.like(f"%{keyword}%")
 				)
 			).order_by(self.model.ts_code).offset(skip).limit(limit)
 
@@ -67,7 +66,7 @@ class EtfBasicRepository(BaseRepository[EtfBasic]):
 		Returns:
 			ETF列表
 		"""
-		return await self.get_many(exchange=exchange)
+		return await self.get_many(market=exchange)
 
 	async def get_by_fund_type (self, fund_type: str) -> List[EtfBasic]:
 		"""
@@ -79,19 +78,19 @@ class EtfBasicRepository(BaseRepository[EtfBasic]):
 		Returns:
 			ETF列表
 		"""
-		return await self.get_many(etf_type=fund_type)
+		return await self.get_many(fund_type=fund_type)
 
 	async def get_by_index_code (self, index_code: str) -> List[EtfBasic]:
 		"""
-		根据跟踪指数代码获取ETF列表
+		根据跟踪指数代码获取ETF列表（需要 etf_index 表关联，此方法已废弃）
 
 		Args:
 			index_code: 指数代码
 
 		Returns:
-			ETF列表
+			ETF列表（始终为空）
 		"""
-		return await self.get_many(index_code=index_code)
+		return []
 
 
 class EtfIndexRepository(BaseRepository[EtfIndex]):
@@ -333,17 +332,15 @@ class ETFRepository:
 			# 获取最新行情
 			latest_daily = await self.get_latest_etf_daily(ts_code)
 
-			# 获取指数信息
-			index_info = None
-			if etf_basic.index_code:
-				index_info = await self.get_etf_index(etf_basic.index_code)
+			# 获取指数信息（etf_index 表按 ETF 代码查询；无匹配时返回 None）
+			index_info = await self.get_etf_index(ts_code)
 
 			return {
 				"basic_info": {
 					"ts_code": etf_basic.ts_code,
 					"name": etf_basic.name,
 					"short_name": etf_basic.name,
-					"exchange": etf_basic.exchange,
+					"exchange": etf_basic.market,
 					"fund_type": etf_basic.fund_type,
 					"manager": etf_basic.management,
 					"setup_date": etf_basic.found_date,
@@ -351,11 +348,10 @@ class ETFRepository:
 					"management_fee": etf_basic.m_fee
 				},
 				"index_info": {
-					"index_code": etf_basic.index_code,
-					"index_name": etf_basic.index_name,
-					"base_index": index_info.indx_name if index_info else None,
+					"index_code": index_info.ts_code if index_info else None,
+					"index_name": index_info.indx_name if index_info else None,
 					"base_date": index_info.base_date if index_info else None
-				} if etf_basic.index_code else {},
+				} if index_info else {},
 				"latest_price": {
 					"trade_date": latest_daily.trade_date if latest_daily else None,
 					"close": latest_daily.close if latest_daily else None,
@@ -373,20 +369,35 @@ class ETFRepository:
 		"""搜索ETF"""
 		return await self.etf_basic_repo.search_by_keyword(keyword, limit, skip)
 
-	async def get_all_etfs (self, active_only: bool = True, limit: Optional[int] = None, offset: int = 0) -> List[EtfBasic]:
-		"""获取所有ETF"""
-		if active_only:
+	async def get_all_etfs (self, active_only: bool = True, limit: Optional[int] = None, offset: int = 0, fund_type: Optional[str] = None, status: Optional[str] = None) -> List[EtfBasic]:
+		"""获取所有ETF，可选按基金类型、上市状态筛选。
+		   status: None=全部, 'L'=已上市, 'D'=已退市, 'I'=认购期"""
+		filters = {}
+		if status is not None:
+			filters["list_status"] = status
+		elif active_only:
+			filters["list_status"] = "L"
+		if fund_type:
+			filters["fund_type"] = fund_type
+		if filters:
 			if limit:
-				return await self.etf_basic_repo.get_many(list_status="L", limit=limit, skip=offset)
-			return await self.etf_basic_repo.get_many(list_status="L")
+				return await self.etf_basic_repo.get_many(limit=limit, skip=offset, **filters)
+			return await self.etf_basic_repo.get_many(**filters)
 		if limit:
 			return await self.etf_basic_repo.get_all(limit=limit)
 		return await self.etf_basic_repo.get_all()
 
-	async def count_etfs(self, active_only: bool = True) -> int:
+	async def count_etfs(self, active_only: bool = True, fund_type: Optional[str] = None, status: Optional[str] = None) -> int:
 		"""统计ETF总数"""
-		if active_only:
-			return await self.etf_basic_repo.count(list_status="L")
+		filters = {}
+		if status is not None:
+			filters["list_status"] = status
+		elif active_only:
+			filters["list_status"] = "L"
+		if fund_type:
+			filters["fund_type"] = fund_type
+		if filters:
+			return await self.etf_basic_repo.count(**filters)
 		return await self.etf_basic_repo.count()
 
 	# ==================== 行情数据操作 ====================
@@ -463,7 +474,7 @@ class ETFRepository:
 				"ts_code": etf_basic.ts_code,
 				"name": etf_basic.name,
 				"short_name": etf_basic.name,
-				"exchange": etf_basic.exchange,
+				"exchange": etf_basic.market,
 				"fund_type": etf_basic.fund_type,
 				"manager": etf_basic.management,
 				"setup_date": etf_basic.found_date,

@@ -52,12 +52,15 @@ async def get_index_valuation(session: AsyncSession, code: str, limit: int = 60)
 
 async def get_etf_shares(session: AsyncSession, code: str, limit: int = 120) -> list:
     """ETF 份额历史"""
+    import logging
+    _log = logging.getLogger(__name__)
     try:
         return await _all(session, """
             SELECT * FROM etf_shares WHERE ts_code = :code
             ORDER BY trade_date DESC LIMIT :lim
         """, {"code": code, "lim": limit})
-    except Exception:
+    except Exception as e:
+        _log.warning("ETF份额查询失败 code=%s: %s", code, e)
         return []
 
 

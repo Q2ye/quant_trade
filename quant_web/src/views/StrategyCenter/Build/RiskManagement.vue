@@ -421,45 +421,15 @@ const editRule = (rule: RiskRule) => {
 };
 
 const saveRule = () => {
-  if (!newRule.value.name || !newRule.value.value) {
-    message.warning("请填写规则名称和值");
+  if (!newRule.value.name) {
+    message.warning("请填写规则名称");
     return;
   }
-  const now = new Date().toISOString();
-  const ruleData: RiskRule = {
-    id:
-      isEditing.value && editingRuleId.value ? editingRuleId.value : Date.now(),
-    name: newRule.value.name,
-    value: parseFloat(newRule.value.value),
-    unit: newRule.value.unit,
-    enabled: newRule.value.enabled,
-    description: newRule.value.description,
-    action: newRule.value.action,
-    severity: newRule.value.severity,
-    rule_type: newRule.value.rule_type,
-    condition: {
-      threshold: parseFloat(newRule.value.value),
-      unit: newRule.value.unit,
-    },
-    created_at: isEditing.value ? "" : now,
-    updated_at: now,
-  };
-
-  if (isEditing.value && editingRuleId.value) {
-    const arr =
-      newRule.value.type === "account" ? accountRiskRules : strategyRiskRules;
-    const idx = arr.value.findIndex((r) => r.id === editingRuleId.value);
-    if (idx !== -1) {
-      ruleData.created_at = arr.value[idx].created_at;
-      arr.value[idx] = ruleData;
-    }
-    message.success("规则已更新");
-  } else {
-    if (newRule.value.type === "account") accountRiskRules.value.push(ruleData);
-    else strategyRiskRules.value.push(ruleData);
-    message.success("规则添加成功");
-  }
+  // 规则由风控引擎代码定义，通过 API 只能启用/禁用。
+  // 新增/编辑规则需修改后端规则类后重启引擎。
+  message.info("规则配置由风控引擎代码管理。启用/禁用可通过开关操作，新增规则请联系管理员。");
   showNewRuleForm.value = false;
+  resetRuleForm();
 };
 
 const resetRuleForm = () => {
@@ -606,177 +576,73 @@ const handleBack = () => {
 const loadData = async () => {
   pageState.value = "loading";
   try {
-    // 后端暂无 risk_router，直接使用 mock 数据
-    await new Promise((r) => setTimeout(r, 300));
-    useMockData();
-    useMockAlertData();
+    await Promise.all([fetchRulesFromAPI(), fetchAlertsFromAPI()]);
     pageState.value = "data";
   } catch {
     pageState.value = "error";
   }
 };
 
-const useMockData = () => {
-  accountRiskRules.value = [
-    {
-      id: 1,
-      name: "单日最大亏损",
-      value: 5,
-      unit: "%",
-      enabled: true,
-      description: "账户单日亏损达到该值时触发警报",
-      action: "hard_block",
-      severity: RiskLevel.HIGH,
-      rule_type: "daily_loss_limit",
-      condition: { threshold: 5, unit: "%" },
-      created_at: "2023-06-15T10:00:00Z",
-      updated_at: "2023-08-01T14:30:00Z",
-    },
-    {
-      id: 2,
-      name: "最大回撤",
-      value: 15,
-      unit: "%",
-      enabled: true,
-      description: "账户净值从最高点回撤达到该值时触发警报",
-      action: "soft_block",
-      severity: RiskLevel.HIGH,
-      rule_type: "drawdown",
-      condition: { threshold: 15, unit: "%" },
-      created_at: "2023-06-15T10:00:00Z",
-      updated_at: "2023-08-01T14:30:00Z",
-    },
-    {
-      id: 3,
-      name: "仓位上限",
-      value: 80,
-      unit: "%",
-      enabled: true,
-      description: "账户总持仓市值占总资产的比例上限",
-      action: "alert",
-      severity: RiskLevel.MEDIUM,
-      rule_type: "position_limit",
-      condition: { threshold: 80, unit: "%" },
-      created_at: "2023-06-15T10:00:00Z",
-      updated_at: "2023-08-01T14:30:00Z",
-    },
-  ];
-  strategyRiskRules.value = [
-    {
-      id: 4,
-      name: "单股最大仓位",
-      value: 20,
-      unit: "%",
-      enabled: true,
-      description: "单个股票持仓市值占总资产的比例上限",
-      action: "soft_block",
-      severity: RiskLevel.MEDIUM,
-      rule_type: "position_limit",
-      condition: { threshold: 20, unit: "%" },
-      created_at: "2023-07-01T08:00:00Z",
-      updated_at: "2023-08-10T09:00:00Z",
-    },
-    {
-      id: 5,
-      name: "单策略最大亏损",
-      value: 10,
-      unit: "%",
-      enabled: true,
-      description: "单个策略亏损达到该值时自动停止",
-      action: "hard_block",
-      severity: RiskLevel.HIGH,
-      rule_type: "daily_loss_limit",
-      condition: { threshold: 10, unit: "%" },
-      created_at: "2023-07-01T08:00:00Z",
-      updated_at: "2023-08-10T09:00:00Z",
-    },
-    {
-      id: 6,
-      name: "单日最大交易次数",
-      value: 5,
-      unit: "次",
-      enabled: true,
-      description: "单个策略单日最大交易次数限制",
-      action: "alert",
-      severity: RiskLevel.LOW,
-      rule_type: "trade_count",
-      condition: { threshold: 5, unit: "次" },
-      created_at: "2023-07-01T08:00:00Z",
-      updated_at: "2023-08-10T09:00:00Z",
-    },
-    {
-      id: 7,
-      name: "最大持仓天数",
-      value: 10,
-      unit: "天",
-      enabled: false,
-      description: "单个股票最大持仓天数限制",
-      action: "alert",
-      severity: RiskLevel.LOW,
-      rule_type: "holding_days",
-      condition: { threshold: 10, unit: "天" },
-      created_at: "2023-07-01T08:00:00Z",
-      updated_at: "2023-08-10T09:00:00Z",
-    },
-  ];
+const fetchRulesFromAPI = async () => {
+  try {
+    const { default: riskAPI } = await import("@/api/risk");
+    const result = await riskAPI.getRiskRules();
+    const allRules = result.rules || [];
+
+    // 分类：账户级规则（position/account 类型）vs 策略级规则（其他）
+    const accountTypes = ["position_limit", "single_position_limit", "position_concentration",
+      "account_balance", "loss_limit", "drawdown_limit", "capital_change"];
+    const accountRules: RiskRule[] = [];
+    const strategyRules: RiskRule[] = [];
+
+    allRules.forEach((r: any, index: number) => {
+      const mapped: RiskRule = {
+        id: index + 1,
+        name: r.name || r.rule_name || "",
+        value: 0,
+        unit: "",
+        enabled: r.enabled ?? true,
+        description: r.description || "",
+        action: "alert",
+        severity: RiskLevel.MEDIUM,
+        rule_type: r.rule_type || "",
+        condition: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (accountTypes.includes(r.rule_type || "")) {
+        accountRules.push(mapped);
+      } else {
+        strategyRules.push(mapped);
+      }
+    });
+
+    accountRiskRules.value = accountRules;
+    strategyRiskRules.value = strategyRules;
+  } catch (e) {
+    console.error("获取风控规则失败:", e);
+  }
 };
 
-const useMockAlertData = () => {
-  alertRecords.value = [
-    {
-      id: 1,
-      rule: "单日最大亏损",
-      rule_id: "1",
-      time: "2023-08-10 14:30:25",
-      level: "high",
+const fetchAlertsFromAPI = async () => {
+  try {
+    const { default: riskAPI } = await import("@/api/risk");
+    const result = await riskAPI.getRiskAlerts();
+    const items = result.items || [];
+    alertRecords.value = items.map((a: any, index: number) => ({
+      id: index + 1,
+      rule: a.title || a.alert_type || "未知规则",
+      rule_id: a.id || String(index),
+      time: a.created_at || new Date().toISOString(),
+      level: a.level === "critical" ? "critical" : a.level === "warning" ? "high" : "medium",
       account: "主账户",
-      value: -5.2,
-      status: "已处理",
-      escalation_count: 2,
-      resolved_by: "张经理",
-      resolved_at: "2023-08-10T15:00:00Z",
-      resolution: "已止损减仓50%，剩余仓位跟踪止损",
-    },
-    {
-      id: 2,
-      rule: "单股最大仓位",
-      rule_id: "4",
-      time: "2023-08-09 10:15:42",
-      level: "medium",
-      account: "策略A",
-      value: 22.5,
-      status: "处理中",
-      escalation_count: 1,
-    },
-    {
-      id: 3,
-      rule: "最大回撤",
-      rule_id: "2",
-      time: "2023-08-08 15:45:18",
-      level: "high",
-      account: "主账户",
-      value: -16.8,
-      status: "已忽略",
-      escalation_count: 3,
-      resolved_by: "李分析",
-      resolved_at: "2023-08-08T16:30:00Z",
-      resolution: "市场系统性风险导致，暂不干预",
-    },
-    {
-      id: 4,
-      rule: "单策略最大亏损",
-      rule_id: "5",
-      time: "2023-08-07 11:20:33",
-      level: "critical",
-      account: "策略B",
-      value: -12.3,
-      status: "已处理",
-      escalation_count: 1,
-      resolved_by: "王交易员",
-      resolved_at: "2023-08-07T12:00:00Z",
-      resolution: "已停止策略B，待回测验证参数",
-    },
-  ];
+      value: 0,
+      status: a.acknowledged ? "已处理" : "处理中",
+      escalation_count: 0,
+    }));
+  } catch (e) {
+    console.error("获取风险告警失败:", e);
+  }
 };
 
 let wsChannel: string | null = null;
@@ -1025,60 +891,54 @@ const enabledRulesCount = computed(
 const removeRule = (rule: RiskRule) => {
   dialog.warning({
     title: "删除确认",
-    content: `确定要删除规则"${rule.name}"吗？此操作不可撤销。`,
-    positiveText: "确定删除",
+    content: `规则由风控引擎代码定义，不支持通过界面删除。「${rule.name}」可通过开关禁用。`,
+    positiveText: "禁用它",
     negativeText: "取消",
     onPositiveClick: () => {
-      accountRiskRules.value = accountRiskRules.value.filter(
-        (r) => r.id !== rule.id,
-      );
-      strategyRiskRules.value = strategyRiskRules.value.filter(
-        (r) => r.id !== rule.id,
-      );
-      message.success("规则已删除");
+      rule.enabled = false;
+      message.success(`「${rule.name}」已禁用`);
     },
   });
 };
 
-const batchEnable = (enabled: boolean) => {
+const batchEnable = async (enabled: boolean) => {
   const allRules = [...accountRiskRules.value, ...strategyRiskRules.value];
-  allRules
-    .filter((r) => checkedRuleKeys.value.includes(r.id))
-    .forEach((r) => {
+  const targets = allRules.filter((r) => checkedRuleKeys.value.includes(r.id));
+  let success = 0;
+  for (const r of targets) {
+    try {
+      const { default: riskAPI } = await import("@/api/risk");
+      await riskAPI.toggleRiskRule(r.name, enabled);
       r.enabled = enabled;
-    });
+      success++;
+    } catch {
+      // 跳过失败的
+    }
+  }
   message.success(
-    `已${enabled ? "启用" : "禁用"} ${checkedRuleKeys.value.length} 条规则`,
+    `已${enabled ? "启用" : "禁用"} ${success}/${targets.length} 条规则`,
   );
   checkedRuleKeys.value = [];
 };
 
 const batchDeleteRules = () => {
-  dialog.warning({
-    title: "批量删除确认",
-    content: `确定要删除选中的 ${checkedRuleKeys.value.length} 条规则吗？此操作不可撤销。`,
-    positiveText: "确定删除",
-    negativeText: "取消",
-    onPositiveClick: () => {
-      accountRiskRules.value = accountRiskRules.value.filter(
-        (r) => !checkedRuleKeys.value.includes(r.id),
-      );
-      strategyRiskRules.value = strategyRiskRules.value.filter(
-        (r) => !checkedRuleKeys.value.includes(r.id),
-      );
-      message.success(`已删除 ${checkedRuleKeys.value.length} 条规则`);
-      checkedRuleKeys.value = [];
-    },
-  });
+  message.info("规则由风控引擎代码定义，不支持删除。可通过禁用规则来停用。");
+  checkedRuleKeys.value = [];
 };
 
 const handleRuleCheck = (keys: number[]) => {
   checkedRuleKeys.value = keys;
 };
 
-const toggleRuleStatus = (rule: RiskRule, v: boolean) => {
-  rule.enabled = v;
-  message.success(`${rule.name}规则已${v ? "启用" : "禁用"}`);
+const toggleRuleStatus = async (rule: RiskRule, v: boolean) => {
+  try {
+    const { default: riskAPI } = await import("@/api/risk");
+    await riskAPI.toggleRiskRule(rule.name, v);
+    rule.enabled = v;
+    message.success(`「${rule.name}」已${v ? "启用" : "禁用"}`);
+  } catch {
+    message.error("操作失败，请重试");
+  }
 };
 const showResolutionModal = ref(false);
 const resolvingAlert = ref<AlertRecord | null>(null);

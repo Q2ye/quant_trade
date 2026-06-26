@@ -318,24 +318,124 @@ async def get_index_detail_api(
 		raise HTTPException(status_code=500, detail=str(e))
 
 
+def _infer_etf_category(name: str, benchmark: str = "") -> str:
+    """从ETF名称和基准指数推断策略分类（宽基/行业/主题/跨境/债券/货币）"""
+    if not name:
+        return "宽基"
+    n = name
+    b = benchmark or ""
+
+    # 1. 货币（优先匹配，名称含货币/保证金特征）
+    if any(kw in n for kw in ["货币", "保证金", "快线", "添益", "钱袋",
+                                "日利", "日鑫", "日盈", "天利", "天盈",
+                                "现金", "短融"]):
+        return "货币"
+
+    # 2. 债券
+    if any(kw in n for kw in ["债", "债券", "国债", "信用债", "转债",
+                                "利率债", "城投债", "可转债", "中短债",
+                                "政金债", "金融债", "企业债", "地方债"]):
+        return "债券"
+
+    # 3. 跨境（QDII / 境外市场）
+    cross_border_n = ["QDII", "纳斯达克", "标普", "道琼斯", "恒生", "港股",
+                       "中概", "跨境", "德国", "日本", "日经", "法国", "印度",
+                       "越南", "东南亚", "全球", "海外", "H股", "香港",
+                       "美债", "美元", "欧元", "亚太", "新兴市场",
+                       "DAX", "FTSE", "CAC"]
+    cross_border_b = ["恒生", "纳斯达克", "标普", "道琼斯", "H股", "中概",
+                       "日经", "DAX", "FTSE", "MSCI中国"]
+    if any(kw in n for kw in cross_border_n) or any(kw in b for kw in cross_border_b):
+        return "跨境"
+
+    # 4. 行业（细分产业/赛道）
+    industry_kw = [
+        # 医药
+        "医药", "医疗", "生物医药", "创新药", "中药", "疫苗", "医械",
+        "生物科技", "精准医疗", "医疗器械", "医药卫生",
+        # 科技
+        "半导体", "芯片", "集成电路", "电子", "5G", "通信",
+        "计算机", "软件", "人工智能", "AI", "机器人",
+        "大数据", "云计算", "物联网", "数字经济", "金融科技", "区块链",
+        # 新能源
+        "新能源", "光伏", "锂电", "电池", "储能", "风电", "核电",
+        "碳中和", "环保", "绿色", "低碳", "清洁能源",
+        # 军工
+        "军工", "国防", "航天", "航空", "船舶",
+        # 消费
+        "白酒", "食品", "饮料", "消费", "家电", "汽车", "农牧",
+        "农业", "养殖", "粮食", "餐饮", "零售", "电商",
+        # 周期
+        "钢铁", "有色", "煤炭", "化工", "建材", "水泥",
+        # 金融地产
+        "银行", "证券", "券商", "保险", "房地产", "REITs",
+        # 公共事业
+        "电力", "公用", "能源", "油气", "黄金", "白银",
+        # TMT
+        "传媒", "游戏", "影视", "旅游", "运输", "物流", "快递",
+        # 教育
+        "教育",
+    ]
+    if any(kw in n for kw in industry_kw):
+        return "行业"
+
+    # 5. 主题（Smart Beta / 策略 / 事件驱动）
+    theme_kw = ["红利", "股息", "高息", "价值", "成长", "动量", "质量",
+                 "低波", "ESG", "央企", "国企", "一带一路", "国企改革",
+                 "雄安", "湾区", "长三角", "PPP", "小康", "共同富裕",
+                 "专精特新", "北证", "北交所", "科创板", "创业板",
+                 "定增", "打新", "次新", "重组", "改革"]
+    if any(kw in n for kw in theme_kw):
+        return "主题"
+
+    # 6. 宽基（默认）
+    return "宽基"
+
+
+def _infer_asset_type(category: str) -> str:
+	"""从策略分类推断资产类型：股票型/债券型/货币型/跨境型"""
+	m = {
+		"宽基": "股票型", "行业": "股票型", "主题": "股票型",
+		"跨境": "跨境型", "债券": "债券型", "货币": "货币型",
+	}
+	return m.get(category, "股票型")
+
+
 @router.get("/etfs", response_model=ETFListResponse)
 async def get_etfs_api(
 	keyword: Optional[str] = Query(default=None, description="搜索关键词"),
+	search: Optional[str] = Query(default=None, description="搜索代码或名称（同keyword）"),
 	page: int = Query(default=1, ge=1, description="页码"),
 	page_size: int = Query(default=50, ge=10, le=200, description="每页数量"),
+	type: Optional[str] = Query(default=None, description="ETF类型筛选（宽基/行业/主题/跨境/债券）"),
+	status: Optional[str] = Query(default="L", description="上市状态：L=已上市 D=已退市 P=待上市，留空=全部"),
 	current_user: Dict = Depends(get_current_user),
 	db_session: AsyncSession = Depends(get_db_session),
 ) -> ETFListResponse:
-	"""获取ETF列表（分页）"""
+	"""获取ETF列表（分页），支持关键词搜索和类型筛选"""
 	try:
 		repo = ETFRepository(db_session)
 		offset = (page - 1) * page_size
-		if keyword:
-			etfs = await repo.search_etfs(keyword, limit=page_size, skip=offset)
+		search_keyword = search or keyword
+
+		if search_keyword:
+			etfs = await repo.search_etfs(search_keyword, limit=page_size, skip=offset)
 			total = await repo.count_etfs(active_only=True)
+		elif type:
+			# 推断分类在Python侧完成，需全量拉取后过滤再分页
+			all_etfs = await repo.get_all_etfs(active_only=True, status=status)
+			filtered = [
+				e for e in all_etfs
+				if _infer_etf_category(
+					getattr(e, "name", "") or "",
+					getattr(e, "benchmark", "") or "",
+				) == type
+			]
+			total = len(filtered)
+			etfs = filtered[offset:offset + page_size]
 		else:
-			etfs = await repo.get_all_etfs(active_only=True, limit=page_size, offset=offset)
-			total = await repo.count_etfs(active_only=True)
+			etfs = await repo.get_all_etfs(active_only=True, limit=page_size, offset=offset, status=status)
+			total = await repo.count_etfs(active_only=True, status=status)
 
 		# 批量获取最新行情（一次 SQL 批量查询，避免 N+1）
 		etf_codes = [etf.ts_code for etf in etfs]
@@ -343,45 +443,65 @@ async def get_etfs_api(
 		if etf_codes:
 			try:
 				from sqlalchemy import text
+				# 使用 ROW_NUMBER() 替代 DISTINCT ON — 兼容 TimescaleDB 超表跨 chunk 查询
 				price_rows = await db_session.execute(
 					text("""
-						SELECT DISTINCT ON (ts_code) ts_code, close, pct_chg, amount
-						FROM etf_daily WHERE ts_code = ANY(:codes)
-						ORDER BY ts_code, trade_date DESC
+						SELECT ts_code, close, pct_chg, amount
+						FROM (
+							SELECT ts_code, close, pct_chg, amount,
+								ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+							FROM etf_daily
+							WHERE ts_code = ANY(:codes)
+						) sub
+						WHERE rn = 1
 					"""), {"codes": etf_codes}
 				)
 				for row in price_rows:
 					latest_prices[row.ts_code] = {
-						"close": float(row.close) if row.close else None,
-						"pct_chg": float(row.pct_chg) if row.pct_chg else None,
-						"amount": float(row.amount) if row.amount else None,
+						"close": float(row.close) if row.close is not None else None,
+						"pct_chg": float(row.pct_chg) if row.pct_chg is not None else None,
+						"amount": float(row.amount) if row.amount is not None else None,
 					}
-			except Exception:
-				pass  # ETF 日线表可能未同步，静默降级
+			except Exception as e:
+				logger.warning("ETF日线行情查询失败（表可能未同步或不存在）: %s", e)
+			def _v(val):
+				"""规范化：空字符串 → None"""
+				if val is None:
+					return None
+				if isinstance(val, str) and val.strip() == "":
+					return None
+				return val
 
 		items = [
 			{
 				"ts_code": etf.ts_code,
-				"name": getattr(etf, "cname", None),
-				"shortName": getattr(etf, "csname", None),
-				"exchange": getattr(etf, "exchange", None),
-				"fundType": getattr(etf, "etf_type", None),
-				"indexCode": getattr(etf, "index_code", None),
-				"indexName": getattr(etf, "index_name", None),
-				"manager": getattr(etf, "mgr_name", None),
-				"listDate": etf.list_date.isoformat() if getattr(etf, "list_date", None) else None,
-				"managementFee": float(etf.mgt_fee) if getattr(etf, "mgt_fee", None) else None,
+				"name": _v(getattr(etf, "name", None)),
+				"shortName": _v(getattr(etf, "name", None)),
+				"exchange": _v(getattr(etf, "market", None)),
+				"fundType": _infer_etf_category(
+					_v(getattr(etf, "name", "")) or "",
+					_v(getattr(etf, "benchmark", "")) or "",
+				),
+				"assetType": _infer_asset_type(
+					_infer_etf_category(
+						_v(getattr(etf, "name", "")) or "",
+						_v(getattr(etf, "benchmark", "")) or "",
+					)
+				),
+				"tushareType": _v(getattr(etf, "fund_type", None)),  # Tushare原始分类
+				"manager": _v(getattr(etf, "management", None)),
+				"listDate": etf.list_date.isoformat() if getattr(etf, "list_date", None) is not None else None,
+				"managementFee": float(etf.m_fee) if getattr(etf, "m_fee", None) is not None else None,
 				"latestPrice": latest_prices.get(etf.ts_code, {}).get("close"),
 				"latestPctChg": latest_prices.get(etf.ts_code, {}).get("pct_chg"),
 				"latestAmount": latest_prices.get(etf.ts_code, {}).get("amount"),
 			}
 			for etf in etfs
 		]
-		return ETFListResponse(etfs=items, total=total, page=page)
+		return {"etfs": items, "total": total, "page": page}
 	except Exception as e:
 		logger.error(f"获取ETF列表失败: {e}", exc_info=True)
 		raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/etfs/{code}", response_model=ETFDetailResponse)
 async def get_etf_detail_api(
@@ -397,25 +517,42 @@ async def get_etf_detail_api(
 			raise HTTPException(status_code=404, detail=f"ETF {code} 不存在")
 
 		latest = await repo.get_latest_etf_daily(code)
+
+		def _v(val):
+			"""规范化：空字符串 → None"""
+			if val is None:
+				return None
+			if isinstance(val, str) and val.strip() == "":
+				return None
+			return val
+
 		detail = {
 			"ts_code": basic.ts_code,
-			"name": getattr(basic, "cname", None),
-			"shortName": getattr(basic, "csname", None),
-			"exchange": getattr(basic, "exchange", None),
-			"fundType": getattr(basic, "etf_type", None),
-			"indexCode": getattr(basic, "index_code", None),
-			"indexName": getattr(basic, "index_name", None),
-			"manager": getattr(basic, "mgr_name", None),
-			"listDate": basic.list_date.isoformat() if getattr(basic, "list_date", None) else None,
-			"managementFee": float(basic.mgt_fee) if getattr(basic, "mgt_fee", None) else None,
+			"name": _v(getattr(basic, "name", None)),
+			"shortName": _v(getattr(basic, "name", None)),
+			"exchange": _v(getattr(basic, "market", None)),
+			"fundType": _infer_etf_category(
+				_v(getattr(basic, "name", "")) or "",
+				_v(getattr(basic, "benchmark", "")) or "",
+			),
+			"assetType": _infer_asset_type(
+				_infer_etf_category(
+					_v(getattr(basic, "name", "")) or "",
+					_v(getattr(basic, "benchmark", "")) or "",
+				)
+			),
+			"tushareType": _v(getattr(basic, "fund_type", None)),
+			"manager": _v(getattr(basic, "management", None)),
+			"listDate": basic.list_date.isoformat() if getattr(basic, "list_date", None) is not None else None,
+			"managementFee": float(basic.m_fee) if getattr(basic, "m_fee", None) is not None else None,
 		}
 		if latest:
 			detail.update({
-				"latestPrice": float(latest.close) if latest.close else None,
-				"latestChange": float(latest.change) if getattr(latest, "change", None) else None,
-				"latestPctChg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) else None,
-				"latestVolume": int(latest.vol) if getattr(latest, "vol", None) else None,
-				"latestAmount": float(latest.amount) if getattr(latest, "amount", None) else None,
+				"latestPrice": float(latest.close) if latest.close is not None else None,
+				"latestChange": float(latest.change) if getattr(latest, "change", None) is not None else None,
+				"latestPctChg": float(latest.pct_chg) if getattr(latest, "pct_chg", None) is not None else None,
+				"latestVolume": int(latest.vol) if getattr(latest, "vol", None) is not None else None,
+				"latestAmount": float(latest.amount) if getattr(latest, "amount", None) is not None else None,
 			})
 		return ETFDetailResponse(etf=detail)
 	except HTTPException:
@@ -424,6 +561,49 @@ async def get_etf_detail_api(
 		logger.error(f"获取ETF详情失败: {e}", exc_info=True)
 		raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@router.get("/etfs/{code}/history")
+async def get_etf_history_api(
+	code: str,
+	start_date: Optional[str] = Query(default=None, description="开始日期 yyyyMMdd"),
+	end_date: Optional[str] = Query(default=None, description="结束日期 yyyyMMdd"),
+	limit: int = Query(default=200, ge=1, le=5000, description="返回数量"),
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+):
+	"""获取ETF K线历史数据（日线OHLCV）"""
+	try:
+		from datetime import datetime as dt
+		from shared.database.models.data_models import EtfDaily
+
+		query = select(EtfDaily).where(EtfDaily.ts_code == code)
+		if start_date:
+			query = query.where(EtfDaily.trade_date >= dt.strptime(start_date, "%Y%m%d"))
+		if end_date:
+			query = query.where(EtfDaily.trade_date <= dt.strptime(end_date, "%Y%m%d"))
+		query = query.order_by(EtfDaily.trade_date).limit(limit)
+
+		r = await db_session.execute(query)
+		dailies = r.scalars().all()
+
+		items = [
+			{
+				"trade_date": d.trade_date.isoformat() if d.trade_date else "",
+				"open": float(d.open) if d.open else 0,
+				"high": float(d.high) if d.high else 0,
+				"low": float(d.low) if d.low else 0,
+				"close": float(d.close) if d.close else 0,
+				"vol": float(d.vol) if getattr(d, "vol", None) else 0,
+				"amount": float(d.amount) if d.amount else 0,
+				"pct_chg": float(d.pct_chg) if getattr(d, "pct_chg", None) else 0,
+			}
+			for d in dailies
+		]
+		return {"success": True, "data": items}
+	except Exception as e:
+		logger.error(f"获取ETF K线数据失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sectors", response_model=SectorListResponse)
 async def get_sectors_api(

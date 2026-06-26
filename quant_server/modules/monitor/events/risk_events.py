@@ -1,54 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-风险监控事件
+风险监控事件（兼容包装）
 
-当 RiskMonitorEngine 检测到风险阈值突破时发布。
+v2.0: 风险事件已统一到 modules.risk.events.risk_events（全部继承 BaseEvent）。
+本文件保留向后兼容，重新导出新的统一事件。
+
+注意：旧版 RiskMonitorEvent 使用 @dataclass，新版使用 BaseEvent 继承。
+如需旧版接口，请直接使用 modules.risk.events 中的事件类。
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict
+import logging
 
-from modules.monitor.events.types import RiskMetricsData
+logger = logging.getLogger(__name__)
 
+# 重新导出统一事件
+from modules.risk.events.risk_events import (  # noqa: F401, E402
+    RiskViolationEvent,
+    RiskThresholdBreachedEvent,
+    RiskAlertTriggeredEvent,
+    RiskMetricsUpdatedEvent,
+    RiskRuleStatusChangedEvent,
+)
 
-@dataclass
-class RiskMonitorEvent:
-    """风险监控事件"""
+# 兼容别名
+RiskMonitorEvent = RiskThresholdBreachedEvent
 
-    event_type: str
-    source: str = "monitor.risk_monitor"
-    data: Dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    priority: str = "high"
-
-    @classmethod
-    def threshold_breached(cls, metrics: RiskMetricsData) -> "RiskMonitorEvent":
-        return cls(
-            event_type="monitor.risk.threshold.breached",
-            priority="critical" if metrics.breached_level == "critical" else "high",
-            data={
-                "risk_type": metrics.risk_type,
-                "metric_name": metrics.metric_name,
-                "current_value": metrics.current_value,
-                "warning_threshold": metrics.warning_threshold,
-                "critical_threshold": metrics.critical_threshold,
-                "breached_level": metrics.breached_level,
-            },
-        )
-
-    @classmethod
-    def alert_triggered(cls, risk_type: str, message: str, level: str = "warning") -> "RiskMonitorEvent":
-        return cls(
-            event_type="monitor.risk.alert.triggered",
-            priority="high",
-            data={"risk_type": risk_type, "message": message, "level": level},
-        )
-
-    @classmethod
-    def metrics_updated(cls, metrics: Dict[str, Any]) -> "RiskMonitorEvent":
-        return cls(
-            event_type="monitor.risk.metrics.updated",
-            priority="normal",
-            data={"metrics": metrics},
-        )
+logger.debug("风险事件已从 modules.risk 重新导出（兼容包装）")

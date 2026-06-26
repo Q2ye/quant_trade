@@ -6,7 +6,7 @@
 
 引擎：
 - SystemMonitorEngine: 定时采集 OS 资源指标
-- RiskMonitorEngine: 定时检查风险指标突破
+- RiskMonitorEngine: → 已迁移到 modules.risk（定时检查风险指标突破）
 - BusinessMonitorEngine: 定时聚合业务指标
 - AlertEngine: 告警生命周期管理（创建/分发/通知）
 
@@ -77,29 +77,31 @@ async def initialize(
         except Exception as e:
             logger.error(f"SystemMonitorEngine 启动失败: {e}")
 
-        # 2. 风险监控引擎
+        # 2. 风险监控引擎 → 已迁移到 modules.risk
+        #    由 modules/risk/__init__.py 的 initialize() 统一管理 RiskEngine
+        #    此处不再独立创建，仅尝试导入确认模块可用
         try:
-            from shared.database.repositories.analysis.monitor.monitor_threshold_repo import (
-                MonitorThresholdRepository,
-            )
-
-            risk_engine = RiskMonitorEngine(
-                config={
-                    "name": "risk_monitor",
-                    "risk_check_interval": monitor_cfg.get(
-                        "risk_check_interval", 60
-                    ),
-                },
-                event_engine=event_engine,
-            )
-            if main_engine and hasattr(main_engine, '_module_engines'):
-                main_engine._module_engines["risk_monitor"] = risk_engine
-            await risk_engine.initialize()
-            await risk_engine.start()
+            from modules.risk.engines.risk_engine import RiskEngine  # noqa: F401
+            logger.info("RiskEngine 由 modules.risk 模块管理，monitor 不再独立创建")
             engines_initialized += 1
-            logger.info("RiskMonitorEngine 启动成功")
-        except Exception as e:
-            logger.error(f"RiskMonitorEngine 启动失败: {e}")
+        except ImportError:
+            logger.warning("modules.risk 不可用，回退到独立 RiskMonitorEngine")
+            try:
+                risk_engine = RiskMonitorEngine(
+                    config={
+                        "name": "risk_monitor",
+                        "risk_check_interval": monitor_cfg.get("risk_check_interval", 60),
+                    },
+                    event_engine=event_engine,
+                )
+                if main_engine and hasattr(main_engine, '_module_engines'):
+                    main_engine._module_engines["risk_monitor"] = risk_engine
+                await risk_engine.initialize()
+                await risk_engine.start()
+                engines_initialized += 1
+                logger.info("RiskMonitorEngine（回退模式）启动成功")
+            except Exception as e2:
+                logger.error(f"RiskMonitorEngine 启动失败: {e2}")
 
         # 3. 业务监控引擎
         try:

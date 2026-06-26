@@ -1396,9 +1396,15 @@ class DataSyncService:
 				# 传递取消信号
 				future.cancel()
 				return pd.DataFrame()
+			except Exception as _e:
+				logger.error(f"[_cancellable_run_in_executor] wait_for 异常: {_e}", exc_info=True)
+				raise
 
-		# future 已经完成，直接取结果（不阻塞）
-		return future.result()
+		try:
+			return future.result()
+		except Exception as _e:
+			logger.error(f"[_cancellable_run_in_executor] future.result() 异常: {_e}", exc_info=True)
+			raise
 
 	async def _is_cancelled(self) -> bool:
 		"""

@@ -15,8 +15,8 @@ from fastapi.openapi.utils import get_openapi
 from .middleware.timing import timing_middleware
 from .routers import (
     data_router, strategy_router, trade_router, basket_router, backtest_router,
-    account_router, analysis_router, monitor_router, system_router, health_router,
-    market_router, template_router,
+    account_router, analysis_router, monitor_router, system_router, risk_router,
+    health_router, market_router, template_router,
 )
 from .websocket import websocket_router
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def create_app (
 	"""
 	# 如果未指定，默认全部启用
 	if enabled_modules is None:
-		enabled_modules = ["data", "strategy", "trade", "basket", "backtest", "account", "analysis", "monitor", "system", "template"]
+		enabled_modules = ["data", "strategy", "trade", "basket", "backtest", "account", "analysis", "monitor", "system", "template", "risk"]
 	if cors_origins is None:
 		cors_origins = ["http://localhost:3000", "http://localhost:5173"]
 	# 创建FastAPI应用
@@ -165,7 +165,8 @@ def create_app (
 		"analysis": (analysis_router, "/quantTrade/analysis"),
 		"monitor": (monitor_router, "/quantTrade/monitor"),
 		"system": (system_router, "/quantTrade/system"),
-	}
+	"risk": (risk_router, "/quantTrade/risk"),
+}
 	for module_name, (router, prefix) in _module_routers.items():
 		if module_name in enabled_modules:
 			app.include_router(router, prefix=prefix)

@@ -460,6 +460,8 @@ class AuditLogger:
 		try:
 			if not self.repo:
 				await self._init_repository()
+			if not self.repo:
+				raise Exception("审计仓库未初始化，跳过数据库写入")
 			audit_data = {
 				'user_id': entry.user_id,
 				'username': entry.username,
@@ -480,13 +482,10 @@ class AuditLogger:
 			raise Exception(f"保存审计日志到数据库失败: {str(e)}") from e
 
 	async def _init_repository (self):
-		"""初始化仓库（延迟加载）"""
-		from ..database.session import get_session_manager
-		from ..database.repositories import AuditRepository
-
-		session_manager = get_session_manager()
-		async with session_manager.get_session() as session:
-			self.repo = AuditRepository(session)
+		"""初始化仓库（延迟加载）—— 当前仅控制台输出，DB 存储待修复"""
+		# 审计日志暂不写入数据库，避免 session 生命周期冲突
+		# TODO: 接入独立的 session_factory 或消息队列异步写入
+		self.repo = None
 
 
 # 审计日志装饰器

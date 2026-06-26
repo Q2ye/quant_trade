@@ -4,7 +4,7 @@ quant_server/main.py
 
 使用结构化日志工具包，提供完整的上下文感知日志记录
 """
-
+import logging
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -874,6 +874,12 @@ class QuantServer:
 					"workers": self.config.workers,
 					"mode": self.config.mode
 				})
+
+				# 关闭 uvicorn/websockets DEBUG 日志（ping/pong 刷屏）
+				logging.getLogger("websockets").setLevel(logging.WARNING)
+				logging.getLogger("websockets.server").setLevel(logging.WARNING)
+				logging.getLogger("uvicorn.protocols.websockets").setLevel(logging.WARNING)
+				logging.getLogger("uvicorn").setLevel(logging.WARNING)
 
 				# 配置服务器参数
 				server_config = uvicorn.Config(

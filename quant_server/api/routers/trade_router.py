@@ -25,7 +25,11 @@ from modules.trade.handlers import (
 	execute_signal,
 	get_trade_history,
 	get_account_summary,
-	check_trade_module_health
+	check_trade_module_health,
+	record_trade,
+	record_batch_trades,
+	review_signal,
+	get_signal_list,
 )
 # 导入交易模块的Pydantic模型
 from modules.trade.schemas import (
@@ -41,7 +45,15 @@ from modules.trade.schemas import (
 	SignalExecuteResponse,
 	TradeHistoryRequest,
 	TradeHistoryResponse,
-	AccountSummaryResponse
+	AccountSummaryResponse,
+	TradeRecordRequest,
+	TradeRecordResponse,
+	BatchTradeRecordRequest,
+	BatchTradeRecordResponse,
+	SignalReviewRequest,
+	SignalReviewResponse,
+	SignalListRequest,
+	SignalListResponse,
 )
 # 导入响应格式化工具
 from utils.api_utils.response_formatter import success_response, error_response
@@ -58,6 +70,17 @@ router = APIRouter(
 		500: {"description": "服务器内部错误"}
 	}
 )
+
+
+# ==================== 权限辅助 ====================
+
+
+def _has_trade_permission(user: Dict) -> bool:
+	"""superadmin/admin 角色默认拥有交易权限，其他角色需显式设置 can_trade"""
+	role = user.get("role", user.get("user_role", ""))
+	if role in ("superadmin", "admin"):
+		return True
+	return user.get("can_trade", False)
 
 
 # ==================== 订单管理接口 ====================
@@ -165,7 +188,7 @@ async def create_order_api (
 		logger.info(f"用户 {current_user.get('username')} 创建订单，参数: {request.model_dump()}")
 
 		# 检查用户权限
-		if not current_user.get("can_trade", False):
+		if not _has_trade_permission(current_user):
 			raise HTTPException(
 				status_code=status.HTTP_403_FORBIDDEN,
 				detail="用户没有交易权限"
@@ -208,6 +231,9 @@ async def cancel_order_api (
 	"""
 	try:
 		logger.info(f"用户 {current_user.get('username')} 撤销订单 {order_id}")
+
+		if not _has_trade_permission(current_user):
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="用户没有交易权限")
 
 		result = await cancel_order(
 			session=db_session,
@@ -340,7 +366,7 @@ async def execute_signal_api (
 		logger.info(f"用户 {current_user.get('username')} 执行交易信号，参数: {request.model_dump()}")
 
 		# 检查用户权限
-		if not current_user.get("can_trade", False):
+		if not _has_trade_permission(current_user):
 			raise HTTPException(
 				status_code=status.HTTP_403_FORBIDDEN,
 				detail="用户没有交易权限"
@@ -438,6 +464,163 @@ async def get_account_summary_api (
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"获取账户概览失败: {str(e)}"
+		)
+
+
+# ==================== 手动成交录入接口 ====================
+
+@router.post("/trades/record", response_model=TradeRecordResponse, status_code=201)
+async def record_trade_api (
+		request: TradeRecordRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> TradeRecordResponse:
+	"""
+	录入一笔已成交的交易（手动记账）
+
+	用户在券商端手动完成交易后，回到系统记录成交信息。
+	系统会在一个事务内自动完成：创建订单→创建成交→创建费用→更新持仓→更新账户。
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 录入成交: {request.ts_code} {request.direction}")
+
+		if not _has_trade_permission(current_user):
+			raise HTTPException(
+				status_code=status.HTTP_403_FORBIDDEN,
+				detail="用户没有交易权限"
+			)
+
+		result = await record_trade(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"成交录入失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"成交录入失败: {str(e)}"
+		)
+
+
+@router.post("/trades/record/batch", response_model=BatchTradeRecordResponse, status_code=201)
+async def record_batch_trades_api (
+		request: BatchTradeRecordRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> BatchTradeRecordResponse:
+	"""
+	批量录入成交
+
+	一次提交多笔成交记录。每笔独立处理，单笔失败不阻塞其他。
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 批量录入成交，共 {len(request.trades)} 笔")
+
+		if not _has_trade_permission(current_user):
+			raise HTTPException(
+				status_code=status.HTTP_403_FORBIDDEN,
+				detail="用户没有交易权限"
+			)
+
+		result = await record_batch_trades(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"批量成交录入失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"批量成交录入失败: {str(e)}"
+		)
+
+
+# ==================== 信号管理接口 ====================
+
+@router.get("/signals", response_model=SignalListResponse)
+async def get_signals_api (
+		request: SignalListRequest = Depends(),
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> SignalListResponse:
+	"""
+	获取信号列表
+
+	支持按状态（pending/approved/rejected/executed）和信号类型（buy/sell）筛选。
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 请求信号列表")
+
+		result = await get_signal_list(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"获取信号列表失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"获取信号列表失败: {str(e)}"
+		)
+
+
+@router.put("/signals/{signal_id}/review", response_model=SignalReviewResponse)
+async def review_signal_api (
+		signal_id: str,
+		request: SignalReviewRequest,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> SignalReviewResponse:
+	"""
+	审核信号
+
+	对策略产生的交易信号进行采纳或拒绝。
+	action: approved（采纳）或 rejected（拒绝）
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 审核信号 {signal_id}: {request.action}")
+
+		if not _has_trade_permission(current_user):
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="用户没有交易权限")
+
+		result = await review_signal(
+			session=db_session,
+			signal_id=signal_id,
+			request=request,
+			user_id=current_user.get("id")
+		)
+
+		return result
+
+	except HTTPException:
+		raise
+	except ValueError as e:
+		logger.warning(f"信号审核参数错误: {str(e)}")
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail=str(e)
+		)
+	except Exception as e:
+		logger.error(f"信号审核失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"信号审核失败: {str(e)}"
 		)
 
 

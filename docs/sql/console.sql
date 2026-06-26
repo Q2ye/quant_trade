@@ -15,7 +15,9 @@ SELECT id, task_id, status, start_time FROM data_sync_tasks WHERE status = 'runn
 ----------------------------------------------
 --需要同步的数据表--------
 -- 股票基础表
-select * from stock_basic;
+select * from stock_basic  where ts_code like '001261';
+
+select * from stock_basic  where name ='拓维信息';
 select count(*) from stock_basic;
 -- A股日线行情表（TimescaleDB超表）
 select * from  stock_daily;
@@ -50,19 +52,25 @@ select * from trade_calendar;
 select count(*) from trade_calendar;
 
 -- ETF基础信息表
-select * from etf_basic where ts_code like '159227%';
+select * from etf_basic where ts_code like '589980.SH';
 select count(*) from etf_basic;
 delete from etf_basic;
 -- ETF份额数据表
-select * from  etf_shares;
+select * from  etf_shares where ts_code = '589980.SH';
 select count(*) from  etf_shares;
+delete from etf_shares;
+
+SELECT count(*), max(trade_date) FROM etf_shares WHERE ts_code = '159995.SZ';
+SELECT count(*), count(DISTINCT ts_code) FROM etf_shares;
 -- ETF日线行情表（TimescaleDB超表）
-select * from  etf_daily;
-select count(*) from  etf_daily;
+
+select * from  etf_daily where ts_code ='589980.SH';
+select count(*) from  etf_daily where ts_code ='159 027.SZ';
+delete from etf_daily;
 -- ETF复权因子（TimescaleDB超表）
 select * from  fund_adj_factor;
 select count(*) from  fund_adj_factor;
-
+delete from fund_adj_factor;
 -- 指数技术因子专业版
 select * from  index_factor_pro_daily;
 select count(*) from  index_factor_pro_daily;
@@ -190,6 +198,13 @@ select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';
 -- 用户
 select * from sys_users;
 
+-- 交易相关表
+select * from accounts;
+SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 1;
+SELECT * FROM trades ORDER BY trade_time DESC LIMIT 1;
+SELECT * FROM trade_fees ORDER BY created_at DESC LIMIT 3;
+SELECT * FROM positions WHERE ts_code='000001.SZ';
+SELECT * FROM accounts WHERE user_id='...';
 
 
 ALTER TABLE data_sync_tasks DROP CONSTRAINT IF EXISTS data_sync_tasks_status_check;
@@ -212,3 +227,41 @@ DELETE FROM factor_definitions;
 
 SELECT factor_code, factor_name FROM factor_definitions WHERE factor_code = 'BETA';
 SELECT COUNT(*) FROM factor_data WHERE factor_code = 'BETA';
+-- 1. etf_basic 表数据概览
+SELECT count(*) AS total,
+       count(fund_type) AS has_fund_type,
+       count(m_fee) AS has_m_fee,
+       count(list_date) AS has_list_date,
+       count(management) AS has_manager
+FROM etf_basic
+WHERE list_status = 'L';
+
+-- 2. 抽几条看 fund_type 的实际值分布
+SELECT fund_type, count(*) AS cnt
+FROM etf_basic
+WHERE list_status = 'L'
+GROUP BY fund_type
+ORDER BY cnt DESC
+LIMIT 20;
+
+-- 3. 抽几条看看具体数据
+SELECT ts_code, name, fund_type, management, m_fee, list_date
+FROM etf_basic
+WHERE list_status = 'L'
+LIMIT 5;
+
+-- 4. etf_daily 是否真的有数据（核对"K线能加载"的结论）
+SELECT count(*) AS total_rows,
+       count(DISTINCT ts_code) AS distinct_etfs,
+       MIN(trade_date) AS earliest,
+       MAX(trade_date) AS latest
+FROM etf_daily;
+-- 查 159995 是否有份额数据
+
+-- 5. 取几个 ETF 的最新日线，模拟列表子查询逻辑
+SELECT ts_code, MAX(trade_date) AS latest_date
+FROM etf_daily
+WHERE ts_code IN (
+    SELECT ts_code FROM etf_basic WHERE list_status = 'L' LIMIT 10
+)
+GROUP BY ts_code;

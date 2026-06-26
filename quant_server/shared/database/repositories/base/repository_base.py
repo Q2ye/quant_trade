@@ -810,9 +810,13 @@ class BaseRepository(Generic[T]):
 
 	async def begin_transaction (self):
 		"""
-		开始事务
+		开始事务。
+		若已有活跃事务则创建 savepoint，避免 A transaction is already begun 错误。
 		"""
-		await self.session.begin()
+		if self.session.in_transaction():
+			await self.session.begin_nested()
+		else:
+			await self.session.begin()
 
 	async def commit (self):
 		"""

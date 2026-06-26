@@ -12,12 +12,18 @@ from modules.trade.schemas import (
 	OrderListRequest, OrderListResponse, OrderDetailResponse,
 	OrderCreateRequest, OrderResponse, PositionListRequest, PositionListResponse, PositionDetailResponse,
 	SignalExecuteRequest, SignalExecuteResponse,
-	TradeHistoryRequest, TradeHistoryResponse, AccountSummaryResponse
+	TradeHistoryRequest, TradeHistoryResponse, AccountSummaryResponse,
+	TradeRecordRequest, TradeRecordResponse,
+	BatchTradeRecordRequest, BatchTradeRecordResponse,
+	SignalReviewRequest, SignalReviewResponse,
+	SignalListRequest, SignalListResponse,
 )
 from shared.database.repositories.account.asset.account_repo import AccountRepository
 from shared.database.repositories.trading.order.order_repo import OrderRepository
 from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
+from shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
+from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
 from shared.database.repositories.operation.basket.basket_repo import BasketRepository
 from shared.database.repositories.operation.basket.basket_item_repo import BasketItemRepository
 
@@ -466,6 +472,211 @@ class TradeHandler:
 
 		return health_status
 
+	# ==================== 手动成交录入 ====================
+
+	async def record_trade(self, request: TradeRecordRequest, user_id: str) -> TradeRecordResponse:
+		"""录入一笔已成交的交易（用户在券商端手动完成交易后回系统记账）"""
+		from datetime import datetime, timezone
+		from decimal import Decimal
+		from modules.trade.services.trade_record_service import TradeRecordService
+
+		try:
+			# 解析日期
+			trade_date = datetime.strptime(request.trade_date, "%Y-%m-%d")
+			trade_date = trade_date.replace(tzinfo=timezone.utc)
+
+			# 构建用户费用
+			user_fees = None
+			if request.fees:
+				user_fees = {
+					"commission": Decimal(str(request.fees.commission)),
+					"stamp_duty": Decimal(str(request.fees.stamp_duty)),
+					"transfer_fee": Decimal(str(request.fees.transfer_fee)),
+				}
+
+			service = TradeRecordService(self.db)
+			result = await service.record_filled_trade(
+				user_id=user_id,
+				ts_code=request.ts_code,
+				direction=request.direction,
+				price=Decimal(str(request.price)),
+				quantity=request.quantity,
+				trade_date=trade_date,
+				signal_id=request.signal_id,
+				strategy_id=request.strategy_id,
+				user_fees=user_fees,
+			)
+
+			return TradeRecordResponse(
+				success=True,
+				data=result.to_dict(),
+				message="成交记录录入成功",
+			)
+		except ValueError as e:
+			raise HTTPException(status_code=400, detail=str(e))
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"成交记录录入失败: {str(e)}")
+
+	async def record_batch_trades(
+		self, request: BatchTradeRecordRequest, user_id: str
+	) -> BatchTradeRecordResponse:
+		"""批量录入成交"""
+		from datetime import datetime, timezone
+		from decimal import Decimal
+		from modules.trade.services.trade_record_service import TradeRecordService
+
+		try:
+			results = []
+			errors = []
+			service = TradeRecordService(self.db)
+
+			for i, trade_req in enumerate(request.trades):
+				try:
+					trade_date = datetime.strptime(trade_req.trade_date, "%Y-%m-%d")
+					trade_date = trade_date.replace(tzinfo=timezone.utc)
+
+					user_fees = None
+					if trade_req.fees:
+						user_fees = {
+							"commission": Decimal(str(trade_req.fees.commission)),
+							"stamp_duty": Decimal(str(trade_req.fees.stamp_duty)),
+							"transfer_fee": Decimal(str(trade_req.fees.transfer_fee)),
+						}
+
+					result = await service.record_filled_trade(
+						user_id=user_id,
+						ts_code=trade_req.ts_code,
+						direction=trade_req.direction,
+						price=Decimal(str(trade_req.price)),
+						quantity=trade_req.quantity,
+						trade_date=trade_date,
+						signal_id=trade_req.signal_id,
+						strategy_id=trade_req.strategy_id,
+						user_fees=user_fees,
+					)
+					results.append(result.to_dict())
+				except Exception as e:
+					errors.append({"index": i, "ts_code": trade_req.ts_code, "error": str(e)})
+
+			return BatchTradeRecordResponse(
+				success=len(errors) == 0,
+				data={
+					"succeeded": len(results),
+					"failed": len(errors),
+					"results": results,
+					"errors": errors,
+				},
+				message=f"批量录入完成: 成功 {len(results)} 笔, 失败 {len(errors)} 笔",
+			)
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"批量录入失败: {str(e)}")
+
+	# ==================== 信号管理 ====================
+
+	async def review_signal(
+		self, signal_id: str, request: SignalReviewRequest, user_id: str
+	) -> SignalReviewResponse:
+		"""审核信号（采纳或拒绝）"""
+		from datetime import datetime, timezone
+
+		try:
+			if request.action not in ("approved", "rejected"):
+				raise HTTPException(status_code=400, detail="审核动作必须为 approved 或 rejected")
+
+			signal = await SignalRepository(self.db).get(signal_id)
+			if not signal:
+				raise HTTPException(status_code=404, detail="信号不存在")
+
+			if signal.status != "pending":
+				raise HTTPException(status_code=400, detail=f"信号状态为 {signal.status}，不可重复审核")
+
+			now = datetime.now(timezone.utc)
+			await SignalRepository(self.db).update(signal_id, {
+				"status": request.action,
+				"reviewed_at": now,
+				"reviewed_by": user_id,
+			})
+
+			status_label = {"approved": "已采纳", "rejected": "已拒绝"}
+			return SignalReviewResponse(
+				success=True,
+				data={
+					"signal_id": signal_id,
+					"status": request.action,
+					"reviewed_at": now.isoformat(),
+				},
+				message=f"信号{status_label.get(request.action, request.action)}",
+			)
+		except HTTPException:
+			raise
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"信号审核失败: {str(e)}")
+
+	async def get_signal_list(
+		self, request: SignalListRequest, user_id: str
+	) -> SignalListResponse:
+		"""获取信号列表"""
+		try:
+			from shared.database.models.business_models import Signal as SignalModel
+
+			signal_repo = SignalRepository(self.db)
+
+			page = request.get_effective_page()
+			page_size = request.get_effective_page_size()
+			skip = (page - 1) * page_size
+
+			query = signal_repo.build_query()
+
+			if request.status:
+				if hasattr(SignalModel, "status"):
+					query = query.where(getattr(SignalModel, "status") == request.status)
+			if request.signal_type:
+				query = query.where(SignalModel.signal_type == request.signal_type)
+
+			query = query.order_by(SignalModel.signal_time.desc())
+			query = query.offset(skip).limit(page_size)
+
+			result = await signal_repo.session.execute(query)
+			signals = result.scalars().all()
+
+			signal_data = []
+			for s in signals:
+				item = {
+					"signal_id": s.id,
+					"strategy_id": s.strategy_id,
+					"ts_code": s.ts_code,
+					"signal_type": s.signal_type,
+					"price": float(s.price) if s.price else 0.0,
+					"strength": float(s.strength) if s.strength else 0.0,
+					"reason": s.reason,
+					"signal_time": s.signal_time.isoformat() if s.signal_time else None,
+					"status": getattr(s, "status", "pending"),
+					"order_id": getattr(s, "order_id", None),
+				}
+				signal_data.append(item)
+
+			# count
+			count_query = signal_repo.build_query()
+			from sqlalchemy import func as sql_func
+			count_query = count_query.with_only_columns(
+				sql_func.count(SignalModel.id)
+			)
+			count_result = await signal_repo.session.execute(count_query)
+			total = count_result.scalar() or 0
+
+			return SignalListResponse(
+				success=True,
+				data=signal_data,
+				pagination={
+					"total": total,
+					"page": page,
+					"page_size": page_size,
+					"total_pages": max((total + page_size - 1) // page_size, 1),
+				},
+			)
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"获取信号列表失败: {str(e)}")
+
 
 class BasketHandler:
     """篮子管理处理器 — API 路由与 Repository 之间的适配层"""
@@ -522,7 +733,7 @@ class BasketHandler:
         try:
             basket_data = {"name": name, "description": description or ""}
             items_data = (
-                [{"ts_code": it["ts_code"], "weight": it["weight"]} for it in items]
+                [{"ts_code": it["ts_code"], "weight": it["weight"] / 100} for it in items]
                 if items else []
             )
             basket = await self.basket_repo.create_basket_with_items(basket_data, items_data)
@@ -550,7 +761,7 @@ class BasketHandler:
 
             items_data = None
             if items is not None:
-                items_data = [{"ts_code": it["ts_code"], "weight": it["weight"]} for it in items]
+                items_data = [{"ts_code": it["ts_code"], "weight": it["weight"] / 100} for it in items]
 
             basket = await self.basket_repo.update_basket_with_items(
                 basket_id, basket_data, items_data
@@ -587,7 +798,7 @@ class BasketHandler:
             if not basket:
                 raise HTTPException(status_code=404, detail="篮子不存在")
             await self.basket_item_repo.create({
-                "basket_id": basket_id, "ts_code": ts_code, "weight": weight,
+                "basket_id": basket_id, "ts_code": ts_code, "weight": weight / 100,
             })
             basket = await self.basket_repo.get_basket_with_items(basket_id)
             return {
@@ -603,7 +814,7 @@ class BasketHandler:
     async def adjust_weight(self, basket_id: str, ts_code: str, weight: float) -> dict:
         """调整成分股权重"""
         try:
-            await self.basket_item_repo.update_item_weight(basket_id, ts_code, weight)
+            await self.basket_item_repo.update_item_weight(basket_id, ts_code, weight / 100)
             basket = await self.basket_repo.get_basket_with_items(basket_id)
             return {
                 "success": True,
@@ -633,7 +844,7 @@ class BasketHandler:
             if not basket:
                 raise HTTPException(status_code=404, detail="篮子不存在")
 
-            items = [{"ts_code": it.ts_code, "weight": it.weight} for it in basket.items]
+            items = [{"ts_code": it.ts_code, "weight": it.weight * 100} for it in basket.items]
             return {
                 "success": True,
                 "message": "篮子绩效分析（行情数据源接入中，暂返回占位数据）",
@@ -660,7 +871,7 @@ class BasketHandler:
         items = []
         if basket.items:
             items = [
-                {"id": it.id, "ts_code": it.ts_code, "weight": it.weight}
+                {"id": it.id, "ts_code": it.ts_code, "weight": it.weight * 100}
                 for it in basket.items
             ]
         return {
@@ -723,6 +934,26 @@ async def get_account_summary (session: AsyncSession, user_id: str) -> AccountSu
 async def check_trade_module_health (session: AsyncSession) -> Dict:
 	handler = TradeHandler(session)
 	return await handler.check_trade_module_health()
+
+
+async def record_trade (session: AsyncSession, request: TradeRecordRequest, user_id: str) -> TradeRecordResponse:
+	handler = TradeHandler(session)
+	return await handler.record_trade(request, user_id)
+
+
+async def record_batch_trades (session: AsyncSession, request: BatchTradeRecordRequest, user_id: str) -> BatchTradeRecordResponse:
+	handler = TradeHandler(session)
+	return await handler.record_batch_trades(request, user_id)
+
+
+async def review_signal (session: AsyncSession, signal_id: str, request: SignalReviewRequest, user_id: str) -> SignalReviewResponse:
+	handler = TradeHandler(session)
+	return await handler.review_signal(signal_id, request, user_id)
+
+
+async def get_signal_list (session: AsyncSession, request: SignalListRequest, user_id: str) -> SignalListResponse:
+	handler = TradeHandler(session)
+	return await handler.get_signal_list(request, user_id)
 
 
 # ==================== BasketHandler 包装函数 ====================

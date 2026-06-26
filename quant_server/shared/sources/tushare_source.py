@@ -384,13 +384,22 @@ class TushareSource(BaseDataSource):
 			market: 市场 E-上海 S-深圳, 空表示全部
 		"""
 		try:
-			df = self.pro.fund_basic(market=market, status='L')
+			df = self.pro.etf_basic(market=market)
 			if df is None or df.empty:
-				logger.warning(f"Tushare fund_basic 返回空: market='{market}', status='L'")
+				logger.warning(f"Tushare etf_basic 返回空: market='{market}'")
 				return pd.DataFrame()
-			# 用 name 字段过滤 ETF（排除联接基金）
-			df = df[df['name'].str.contains('ETF', na=False) & ~df['name'].str.contains('联接', na=False)]
-			logger.debug(f"Tushare fund_basic ETF: {len(df)} 条, 抽样: {df['name'].head(5).tolist()}")
+			logger.debug(f"Tushare etf_basic: {len(df)} 条, 原始列: {list(df.columns)}")
+			# etf_basic API 列名 → EtfBasic 模型列名 映射
+			COLUMN_MAP = {
+				'csname': 'name',
+				'setup_date': 'found_date',
+				'exchange': 'market',
+				'mgr_name': 'management',
+				'custod_name': 'custodian',
+				'mgt_fee': 'm_fee',
+				'etf_type': 'fund_type',
+			}
+			df = df.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in df.columns})
 			# 只保留模型中存在的列
 			from shared.database.models.data_models import EtfBasic
 			known = {c.name for c in EtfBasic.__table__.columns}
@@ -480,8 +489,14 @@ class TushareSource(BaseDataSource):
 			trade_date: 交易日期，空表示最新
 		"""
 		try:
-			df = self.pro.fund_share(ts_code=etf_code, trade_date=trade_date)
+			df = self.pro.etf_share_size(ts_code=etf_code, trade_date=trade_date)
 			if df is not None and not df.empty:
+				# Tushare etf_share_size 列名 → EtfShare 模型列名 映射
+				COLUMN_MAP = {
+					'total_share': 'fund_size',   # 总份额（万份）
+					'total_size': 'fund_vol',     # 总规模（万元）
+				}
+				df = df.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in df.columns})
 				from shared.database.models.data_models import EtfShare
 				known = {c.name for c in EtfShare.__table__.columns}
 				keep = [c for c in df.columns if c in known]

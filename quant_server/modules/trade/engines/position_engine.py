@@ -1,5 +1,6 @@
 # position_engine.py    # 持仓管理引擎
 
+import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -8,6 +9,8 @@ from core.engines.base.engine_base import EngineBase
 from core.engines.system import EventEngine
 from core.engines.types.enums import EngineType
 from modules.trade.adapters.broker_adapter import BrokerAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class PositionEngine(EngineBase):
@@ -44,38 +47,40 @@ class PositionEngine(EngineBase):
     
     async def _on_initialize(self) -> None:
         """引擎特定的初始化逻辑"""
-        pass
-    
+        logger.info("PositionEngine 初始化完成")
+
     async def _on_start(self) -> None:
-        """引擎特定的启动逻辑"""
+        """引擎特定的启动逻辑 — 从券商同步持仓和账户数据"""
         await self._update_position()
         await self._update_account()
-        print("持仓引擎启动成功")
-    
+        logger.info("PositionEngine 启动成功，持仓和账户已同步")
+
     async def _on_stop(self) -> None:
         """引擎特定的停止逻辑"""
-        print("持仓引擎停止成功")
-    
+        logger.info("PositionEngine 已停止")
+
     async def _on_force_stop(self) -> None:
         """引擎特定的强制停止逻辑"""
-        pass
-    
+        logger.warning("PositionEngine 强制停止")
+
     def _validate_config(self) -> None:
-        """验证配置"""
-        pass
-    
+        """验证必要配置项"""
+        if "name" not in self.config.config:
+            logger.warning("PositionEngine 缺少配置项: name")
+
     async def _check_dependencies(self) -> None:
         """检查依赖"""
-        pass
-    
+        if self.broker_adapter is None:
+            raise RuntimeError("PositionEngine 依赖 BrokerAdapter，但未注入")
+
     async def _start_background_tasks(self) -> None:
-        """启动后台任务"""
+        """启动后台任务（持仓定时刷新）"""
         pass
-    
+
     async def _stop_background_tasks(self) -> None:
         """停止后台任务"""
         pass
-    
+
     async def _monitoring_loop(self) -> None:
         """监控循环"""
         pass

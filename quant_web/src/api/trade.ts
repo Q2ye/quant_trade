@@ -1,4 +1,4 @@
-// quant_web/src/api/events.ts
+// quant_web/src/api/trade.ts
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
 import {
@@ -119,5 +119,63 @@ export default {
       .get("/quantTrade/trade/statistics", { params })
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
+  },
+
+  // ==================== 手动成交录入 ====================
+
+  async recordTrade(record: {
+    signal_id?: string;
+    strategy_id?: string;
+    ts_code: string;
+    direction: string;
+    price: number;
+    quantity: number;
+    trade_date: string;
+    fees?: {
+      commission?: number;
+      stamp_duty?: number;
+      transfer_fee?: number;
+    };
+  }): Promise<any> {
+    return request
+      .post("/quantTrade/trade/trades/record", record)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data);
+  },
+
+  async recordBatchTrades(trades: Array<{
+    signal_id?: string;
+    ts_code: string;
+    direction: string;
+    price: number;
+    quantity: number;
+    trade_date: string;
+    fees?: { commission?: number; stamp_duty?: number; transfer_fee?: number };
+  }>): Promise<any> {
+    return request
+      .post("/quantTrade/trade/trades/record/batch", { trades })
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data);
+  },
+
+  // ==================== 信号管理 ====================
+
+  async getSignals(params?: {
+    status?: string;
+    signal_type?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<any> {
+    return request
+      .get("/quantTrade/trade/signals", { params })
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data);
+  },
+
+  async reviewSignal(signalId: string, action: string, comment?: string): Promise<any> {
+    return request
+      .put(`/quantTrade/trade/signals/${signalId}/review`, { action, comment })
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data);
   },
 };

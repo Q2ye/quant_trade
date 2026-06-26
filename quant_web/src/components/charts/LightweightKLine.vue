@@ -167,7 +167,19 @@ function initKLineChart() {
   // 移除左下角 logo
   el.querySelector('a')?.remove();
 
+  // 动态价格轴：根据数据范围自适应刻度密度
+  chart.applyOptions({
+    rightPriceScale: {
+      autoScale: true,
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+    },
+  });
+
   // Candlestick
+  // 根据价格量级自适应精度：>50元 → 3位小数（货币ETF），否则2位
+  const samplePrice = props.data[0]?.close ?? 10;
+  const pricePrecision = samplePrice > 50 ? 3 : 2;
+
   candleSeries = chart.addSeries(CandlestickSeries, {
     upColor: "#e83939",
     downColor: "#1dbd60",
@@ -175,6 +187,11 @@ function initKLineChart() {
     borderDownColor: "#1dbd60",
     wickUpColor: "#e83939",
     wickDownColor: "#1dbd60",
+    priceFormat: {
+      type: "price",
+      precision: pricePrecision,
+      minMove: pricePrecision === 3 ? 0.001 : 0.01,
+    },
   }) as ISeriesApi<"Candlestick", Time>;
 
   // Volume
@@ -264,6 +281,17 @@ function updateChartData() {
 
   const ohlc = transformData(props.data);
   if (!ohlc.length) return;
+
+  // 根据当前数据范围动态调整价格精度（切换ETF时生效）
+  const samplePrice = ohlc[0]?.close ?? 10;
+  const pricePrecision = samplePrice > 50 ? 3 : 2;
+  candleSeries.applyOptions({
+    priceFormat: {
+      type: "price",
+      precision: pricePrecision,
+      minMove: pricePrecision === 3 ? 0.001 : 0.01,
+    },
+  });
 
   // 保存当前可视范围（用于追加数据时恢复视图位置）
   const savedRange = chart.timeScale().getVisibleLogicalRange();

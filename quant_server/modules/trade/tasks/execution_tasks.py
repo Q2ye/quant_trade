@@ -4,8 +4,8 @@ import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
 from core.engines.system import EventEngine
+from modules.trade import OrderUpdateEvent
 from modules.trade.engines.execution_engine import ExecutionEngine
-from modules.trade.events.execution_events import OrderUpdateEvent
 
 
 class ExecutionTasks:

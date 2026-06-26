@@ -6,27 +6,29 @@
           <h1 class="page-title">{{ isEditMode ? "编辑篮子" : "新建篮子" }}</h1>
         </div>
         <div class="header-actions">
-          <n-button text @click="$router.go(-1)">
-            <Icon icon="ant-design:arrow-left-outlined" /> 返回
+          <n-button quaternary @click="$router.back()">
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+            返回
           </n-button>
         </div>
       </div>
     </div>
 
-    <n-result
-      v-if="error"
-      status="500"
-      title="加载失败"
-      description="获取篮子信息失败，请稍后重试"
-    >
-      <template #footer
-        ><n-button @click="getBasketDetail(route.params.id as string)"
-          >重试</n-button
-        ></template
+    <div class="main-content">
+      <n-result
+        v-if="error"
+        status="500"
+        title="加载失败"
+        description="获取篮子信息失败，请稍后重试"
       >
-    </n-result>
+        <template #footer
+          ><n-button @click="getBasketDetail(route.params.id as string)"
+            >重试</n-button
+          ></template
+        >
+      </n-result>
 
-    <n-spin v-else :show="loading">
+      <n-spin v-else :show="loading">
       <n-form
         :model="basket"
         :rules="rules"
@@ -58,9 +60,10 @@
             <n-space :size="8">
               <n-input
                 v-model:value="searchCode"
-                placeholder="输入股票代码"
+                placeholder="如 000001.SZ"
                 size="small"
                 style="width: 160px"
+                @keyup.enter="quickAddStock"
               />
               <n-button size="small" type="primary" @click="quickAddStock"
                 >添加</n-button
@@ -88,8 +91,8 @@
               <n-input-number
                 v-model:value="item.weight"
                 :min="0"
-                :max="1"
-                :step="0.01"
+                :max="100"
+                :step="1"
                 size="small"
                 style="width: 120px"
               />
@@ -113,6 +116,7 @@
         </div>
       </n-form>
     </n-spin>
+    </div>
   </div>
 </template>
 
@@ -151,10 +155,15 @@ const getBasketDetail = async (basketId: string) => {
 };
 
 const quickAddStock = () => {
-  const code = searchCode.value.trim();
+  let code = searchCode.value.trim().toUpperCase();
   if (!code) {
     message.warning("请输入股票代码");
     return;
+  }
+  // 自动补后缀：6开头→.SH，0/3开头→.SZ
+  if (!code.includes(".")) {
+    if (code.startsWith("6")) code += ".SH";
+    else if (code.startsWith("0") || code.startsWith("3")) code += ".SZ";
   }
   if (basket.value.items.some((item: any) => item.ts_code === code)) {
     message.warning("该股票已在篮子中");
@@ -176,7 +185,7 @@ const saveBasket = async () => {
     (sum: number, item: any) => sum + (item.weight || 0),
     0,
   );
-  if (basket.value.items.length > 0 && Math.abs(totalWeight - 1) > 0.01) {
+  if (basket.value.items.length > 0 && Math.abs(totalWeight - 100) > 0.1) {
     message.error("成分股权重总和必须为100%");
     return;
   }
@@ -210,9 +219,7 @@ onMounted(() => {
 
 <style scoped>
 .basket-editor {
-  padding: 0;
-  height: 100%;
-  overflow-y: auto;
+  min-height: 100vh;
 }
 .form-container {
   padding: 20px;

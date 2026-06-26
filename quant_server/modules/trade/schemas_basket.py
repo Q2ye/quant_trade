@@ -16,7 +16,7 @@ class BasketQueryParams(PaginationParams):
 class BasketItemSchema(BaseModel):
     """篮子成分项"""
     ts_code: str = Field(..., description="股票代码")
-    weight: float = Field(..., ge=0, le=1, description="权重(0-1)")
+    weight: float = Field(..., ge=0, le=100, description="权重百分比(0-100)")
 
 
 class CreateBasketRequest(BaseModel):
@@ -36,7 +36,7 @@ class UpdateBasketRequest(BaseModel):
 class AddItemRequest(BaseModel):
     """添加成分股请求"""
     ts_code: str = Field(..., description="股票代码")
-    weight: float = Field(..., ge=0, le=1, description="权重(0-1)")
+    weight: float = Field(..., ge=0, le=100, description="权重百分比(0-100)")
 
 
 class AdjustWeightRequest(BaseModel):

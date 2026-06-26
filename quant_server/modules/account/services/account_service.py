@@ -188,20 +188,23 @@ class AccountService:
 
 			account = await self.account_repo.create(account_data)
 
-			# 5. 记录审计日志
+			# 5. 记录审计日志（失败不影响账户创建结果）
 			if self.audit_logger:
-				await self.audit_logger.log_simple(
-					action="account_create",
-					user_id=user_id,
-					resource_type="account",
-					resource_id=str(account.id),
-					details={
-						"account_number": account_number,
-						"account_name": account_name,
-						"account_type": account_type,
-						"initial_balance": float(initial_balance)
-					}
-				)
+				try:
+					await self.audit_logger.log_simple(
+						action="create",
+						user_id=user_id,
+						resource_type="account",
+						resource_id=str(account.id),
+						details={
+							"account_number": account_number,
+							"account_name": account_name,
+							"account_type": account_type,
+							"initial_balance": float(initial_balance)
+						}
+					)
+				except Exception:
+					pass
 
 			logger.info(f"账户创建成功: {account_number} (用户ID: {user_id})")
 

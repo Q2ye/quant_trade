@@ -269,7 +269,7 @@ export const routes: RouteRecordRaw[] = [
     path: "/trade/workspace",
     name: "TradingWorkspace",
     component: () => import("@/views/TradeCenter/Workspace.vue"),
-    meta: { menu: "trading-workspace", layout: "main", title: "交易工作台" },
+    meta: { menu: "trading-workspace", layout: "main", title: "交易驾驶舱" },
   },
   // 旧路由重定向到工作台（保留路由名兼容）
   {
@@ -321,9 +321,7 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: "/trade",
-    name: "TradingDashboard",
-    component: () => import("@/views/TradeCenter/Trading/TradingDashboard.vue"),
-    meta: { menu: "trading", layout: "main", title: "交易驾驶舱" },
+    redirect: "/trade/workspace",
   },
 
   // 监控中心
@@ -418,24 +416,20 @@ export const routes: RouteRecordRaw[] = [
     },
   },
 
-  // 信号监控
+  // 信号管理（原监控+历史合并）
   {
     path: "/signals",
     name: "SignalMonitor",
     component: () => import("@/views/Signal/SignalMonitor.vue"),
-    meta: { menu: "signals", layout: "main", title: "信号监控" },
+    meta: { menu: "signals", layout: "main", title: "信号管理" },
   },
   {
     path: "/signals/history",
-    name: "SignalHistory",
-    component: () => import("@/views/Signal/SignalHistory.vue"),
-    meta: { menu: "signals", layout: "main", title: "信号历史" },
+    redirect: "/signals",
   },
   {
     path: "/signals/timeline",
-    name: "SignalTimeline",
-    component: () => import("@/views/Signal/SignalTimeline.vue"),
-    meta: { menu: "signals", layout: "main", title: "信号时间线" },
+    redirect: "/signals",
   },
 
   // 系统管理

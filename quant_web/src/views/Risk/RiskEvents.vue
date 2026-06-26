@@ -1,94 +1,119 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from "vue";
+import { useStore } from "vuex";
 import { NTag, NButton, NSpin, NResult, useMessage } from "naive-ui";
 
+const store = useStore();
 const message = useMessage();
 
-interface RiskEvent {
-  id: number;
-  rule_id: number;
-  rule_name: string;
-  strategy_id?: string;
-  event_type: string;
-  event_message: string;
-  trigger_value: any;
-  action_taken: string;
-  created_at: string;
-}
-
-const events = ref<RiskEvent[]>([]);
 const loading = ref(false);
 const error = ref(false);
 const searchKeyword = ref("");
-const filterEventType = ref("");
-const detailEvent = ref<RiskEvent | null>(null);
+const filterLevel = ref("");
+const detailEvent = ref<any>(null);
 const showDetail = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(20);
 
-const eventTypeOptions = [
-  { label: "持仓限制", value: "position_limit" },
-  { label: "单日亏损", value: "daily_loss_limit" },
-  { label: "黑名单", value: "blacklist" },
-  { label: "波动率限制", value: "volatility_limit" },
+const levelOptions = [
+  { label: "严重", value: "critical" },
+  { label: "警告", value: "error" },
+  { label: "信息", value: "info" },
 ];
+
+const events = computed(() => store.state.risk.riskEvents.events);
 
 const filteredEvents = computed(() => {
   let result = events.value;
   if (searchKeyword.value) {
     const kw = searchKeyword.value.toLowerCase();
     result = result.filter(
-      (e) =>
-        e.event_message.toLowerCase().includes(kw) ||
-        e.rule_name.toLowerCase().includes(kw) ||
-        (e.strategy_id || "").toLowerCase().includes(kw),
+      (e: any) =>
+        (e.message || "").toLowerCase().includes(kw) ||
+        (e.ruleId || "").toLowerCase().includes(kw) ||
+        (e.type || "").toLowerCase().includes(kw),
     );
   }
-  if (filterEventType.value) {
-    result = result.filter((e) => e.event_type === filterEventType.value);
+  if (filterLevel.value) {
+    result = result.filter((e: any) => e.level === filterLevel.value);
   }
   return result;
 });
 
-const fetchRiskEvents = async () => {
+const todayCount = computed(
+  () =>
+    events.value.filter((e: any) => {
+      const today = new Date().toISOString().split("T")[0];
+      return (e.timestamp || "").startsWith(today);
+    }).length,
+);
+
+const columns = [
+  { title: "发生时间", key: "timestamp", width: 170 },
+  {
+    title: "触发规则",
+    key: "ruleId",
+    width: 150,
+  },
+  {
+    title: "事件类型",
+    key: "type",
+    width: 120,
+    render: (row: any) =>
+      h(
+        NTag,
+        { type: row.level === "critical" ? "error" : row.level === "error" ? "warning" : "info", size: "small" },
+        { default: () => row.type || "未知" },
+      ),
+  },
+  {
+    title: "级别",
+    key: "level",
+    width: 80,
+    render: (row: any) =>
+      h(
+        NTag,
+        {
+          type: row.level === "critical" ? "error" : row.level === "error" ? "warning" : "info",
+          size: "small",
+        },
+        {
+          default: () =>
+            row.level === "critical"
+              ? "严重"
+              : row.level === "error"
+                ? "警告"
+                : "信息",
+        },
+      ),
+  },
+  {
+    title: "事件描述",
+    key: "message",
+    minWidth: 250,
+    ellipsis: { tooltip: true },
+  },
+  {
+    title: "操作",
+    key: "op",
+    width: 80,
+    render: (row: any) =>
+      h(
+        NButton,
+        { size: "small", onClick: () => viewDetail(row) },
+        { default: () => "详情" },
+      ),
+  },
+];
+
+const fetchEvents = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
-    events.value = [
-      {
-        id: 1,
-        rule_id: 1,
-        rule_name: "单股仓位限制",
-        strategy_id: "ma_cross_001",
-        event_type: "position_limit",
-        event_message: "贵州茅台持仓超过20%限制",
-        trigger_value: { position_ratio: 0.25, symbol: "600519.SH" },
-        action_taken: "alert",
-        created_at: "2024-01-15 14:30:00",
-      },
-      {
-        id: 2,
-        rule_id: 2,
-        rule_name: "单日亏损限制",
-        event_type: "daily_loss_limit",
-        event_message: "单日亏损达到5%限制",
-        trigger_value: { daily_loss: -0.06 },
-        action_taken: "stop_strategy",
-        created_at: "2024-01-15 11:20:00",
-      },
-      {
-        id: 3,
-        rule_id: 3,
-        rule_name: "黑名单拦截",
-        strategy_id: "mean_rev_002",
-        event_type: "blacklist",
-        event_message: "尝试交易黑名单标的 ST退市",
-        trigger_value: { ts_code: "600086.SH" },
-        action_taken: "stop_strategy",
-        created_at: "2024-01-14 10:15:00",
-      },
-    ];
+    await store.dispatch("risk/fetchRiskEvents", {
+      page: 1,
+      page_size: 100,
+    });
   } catch {
     error.value = true;
   } finally {
@@ -96,81 +121,12 @@ const fetchRiskEvents = async () => {
   }
 };
 
-const viewEventDetail = (event: RiskEvent) => {
+const viewDetail = (event: any) => {
   detailEvent.value = event;
   showDetail.value = true;
 };
 
-const todayCount = computed(
-  () =>
-    events.value.filter((e) => {
-      const today = new Date().toISOString().split("T")[0];
-      return e.created_at.startsWith(today);
-    }).length,
-);
-
-const columns = [
-  { title: "发生时间", key: "created_at", width: 160 },
-  { title: "触发规则", key: "rule_name", width: 150 },
-  {
-    title: "关联策略",
-    key: "strategy_id",
-    width: 130,
-    render: (row: RiskEvent) => row.strategy_id || "系统级",
-  },
-  {
-    title: "事件类型",
-    key: "event_type",
-    width: 120,
-    render: (row: RiskEvent) =>
-      h(
-        NTag,
-        {
-          type: row.action_taken === "stop_strategy" ? "error" : "warning",
-          size: "small",
-        },
-        {
-          default: () => {
-            const m: Record<string, string> = {
-              position_limit: "持仓限制",
-              daily_loss_limit: "单日亏损",
-              blacklist: "黑名单",
-              volatility_limit: "波动率限制",
-            };
-            return m[row.event_type] || row.event_type;
-          },
-        },
-      ),
-  },
-  { title: "事件描述", key: "event_message", minWidth: 220 },
-  {
-    title: "执行动作",
-    key: "action_taken",
-    width: 100,
-    render: (row: RiskEvent) =>
-      h(
-        NTag,
-        {
-          type: row.action_taken === "stop_strategy" ? "error" : "info",
-          size: "small",
-        },
-        { default: () => (row.action_taken === "alert" ? "报警" : "停止策略") },
-      ),
-  },
-  {
-    title: "操作",
-    key: "op",
-    width: 80,
-    render: (row: RiskEvent) =>
-      h(
-        NButton,
-        { size: "small", onClick: () => viewEventDetail(row) },
-        { default: () => "详情" },
-      ),
-  },
-];
-
-onMounted(() => fetchRiskEvents());
+onMounted(() => fetchEvents());
 </script>
 
 <template>
@@ -179,10 +135,16 @@ onMounted(() => fetchRiskEvents());
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">风险事件记录</h1>
+          <p class="page-subtitle">
+            记录风控引擎在信号检查和定时巡检中触发的所有风险事件。
+          </p>
         </div>
         <div class="header-actions">
           <span class="stat-badge">今日事件: {{ todayCount }}</span>
           <span class="stat-badge">总事件数: {{ events.length }}</span>
+          <n-button type="primary" size="small" @click="fetchEvents" :loading="loading">
+            刷新
+          </n-button>
         </div>
       </div>
     </div>
@@ -192,10 +154,10 @@ onMounted(() => fetchRiskEvents());
         v-if="error"
         status="500"
         title="数据加载失败"
-        description="请检查网络连接后重试"
+        description="请检查风控引擎是否正常启动后重试"
       >
         <template #footer>
-          <n-button type="primary" @click="fetchRiskEvents">重试</n-button>
+          <n-button type="primary" @click="fetchEvents">重试</n-button>
         </template>
       </n-result>
 
@@ -207,18 +169,18 @@ onMounted(() => fetchRiskEvents());
               <div class="header-controls">
                 <n-input
                   v-model:value="searchKeyword"
-                  placeholder="搜索规则/策略/描述..."
+                  placeholder="搜索规则/类型/描述..."
                   size="small"
                   clearable
                   style="width: 200px"
                 />
                 <n-select
-                  v-model:value="filterEventType"
-                  placeholder="事件类型"
+                  v-model:value="filterLevel"
+                  placeholder="事件级别"
                   size="small"
                   clearable
-                  style="width: 120px"
-                  :options="eventTypeOptions"
+                  style="width: 100px"
+                  :options="levelOptions"
                 />
               </div>
             </div>
@@ -232,7 +194,7 @@ onMounted(() => fetchRiskEvents());
               size="small"
             >
               <template #empty>
-                <n-empty description="暂无风险事件" />
+                <n-empty description="暂无风险事件。风控引擎运行正常时，事件将在触发后显示于此" />
               </template>
             </n-data-table>
 
@@ -254,36 +216,46 @@ onMounted(() => fetchRiskEvents());
       v-model:show="showDetail"
       preset="card"
       title="事件详情"
-      style="width: 560px"
+      style="width: 600px"
     >
       <n-descriptions v-if="detailEvent" :column="2" bordered size="small">
         <n-descriptions-item label="发生时间">{{
-          detailEvent.created_at
+          detailEvent.timestamp
         }}</n-descriptions-item>
         <n-descriptions-item label="触发规则">{{
-          detailEvent.rule_name
+          detailEvent.ruleId || "-"
         }}</n-descriptions-item>
         <n-descriptions-item label="关联策略">{{
-          detailEvent.strategy_id || "系统级"
+          detailEvent.strategyId || "系统级"
         }}</n-descriptions-item>
         <n-descriptions-item label="事件类型">{{
-          detailEvent.event_type
+          detailEvent.type
         }}</n-descriptions-item>
-        <n-descriptions-item label="执行动作">
+        <n-descriptions-item label="事件级别">
           <n-tag
             :type="
-              detailEvent.action_taken === 'stop_strategy' ? 'error' : 'info'
+              detailEvent.level === 'critical'
+                ? 'error'
+                : detailEvent.level === 'error'
+                  ? 'warning'
+                  : 'info'
             "
             size="small"
           >
-            {{ detailEvent.action_taken === "alert" ? "报警" : "停止策略" }}
+            {{
+              detailEvent.level === "critical"
+                ? "严重"
+                : detailEvent.level === "error"
+                  ? "警告"
+                  : "信息"
+            }}
           </n-tag>
         </n-descriptions-item>
-        <n-descriptions-item label="触发值">{{
-          JSON.stringify(detailEvent.trigger_value)
-        }}</n-descriptions-item>
+        <n-descriptions-item label="触发值">
+          <code>{{ JSON.stringify(detailEvent.triggerValue) }}</code>
+        </n-descriptions-item>
         <n-descriptions-item label="事件描述" :span="2">{{
-          detailEvent.event_message
+          detailEvent.message
         }}</n-descriptions-item>
       </n-descriptions>
     </n-modal>
@@ -295,6 +267,12 @@ onMounted(() => fetchRiskEvents());
   padding: 0;
   height: 100%;
   overflow-y: auto;
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--n-text-color-3, rgba(255, 255, 255, 0.48));
 }
 
 .stat-badge {
@@ -322,5 +300,13 @@ onMounted(() => fetchRiskEvents());
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+code {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  word-break: break-all;
 }
 </style>

@@ -1,131 +1,81 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, h } from "vue";
-import { useMessage, useDialog, NTag, NButton, NSpin, NResult } from "naive-ui";
+import { ref, computed, onMounted, h } from "vue";
+import { useStore } from "vuex";
+import { NTag, NButton, NSwitch, NSpin, NResult, useMessage } from "naive-ui";
 
+const store = useStore();
 const message = useMessage();
-const dialog = useDialog();
+
 const loading = ref(false);
 const error = ref(false);
-
-interface BlacklistItem {
-  id: number;
-  ts_code: string;
-  name: string;
-  reason: string;
-  added_by: string;
-  added_at: string;
-  is_active: boolean;
-}
-
-const blacklist = ref<BlacklistItem[]>([]);
-const showModal = ref(false);
-const newItem = ref({ ts_code: "", reason: "st_risk" });
-const resolvedName = ref("");
-const resolvingName = ref(false);
-
-// 本地股票名称 lookup（mock，生产环境应调用后端 API）
-const stockNameMap: Record<string, string> = {
-  "600000.SH": "浦发银行",
-  "600036.SH": "招商银行",
-  "600519.SH": "贵州茅台",
-  "600086.SH": "退市金钰",
-  "000001.SZ": "平安银行",
-  "000858.SZ": "五粮液",
-  "000979.SZ": "中弘退",
-  "002594.SZ": "比亚迪",
-  "300750.SZ": "宁德时代",
-  "601318.SH": "中国平安",
-};
 const searchKeyword = ref("");
 const currentPage = ref(1);
 const pageSize = ref(20);
 
-const reasonMap: Record<string, string> = {
-  st_risk: "ST风险",
-  financial_risk: "财务风险",
-  regulatory_risk: "监管风险",
-  manual_add: "手动添加",
-};
-const reasonOptions = Object.entries(reasonMap).map(([value, label]) => ({
-  label,
-  value,
-}));
+// 只显示黑名单类规则
+const blacklistRules = computed(() =>
+  store.state.risk.riskRules.rules.filter((r: any) =>
+    ["blacklist", "market_blacklist", "sector_blacklist"].includes(r.type),
+  ),
+);
 
 const filteredList = computed(() => {
-  if (!searchKeyword.value) return blacklist.value;
+  if (!searchKeyword.value) return blacklistRules.value;
   const kw = searchKeyword.value.toLowerCase();
-  return blacklist.value.filter(
-    (item) =>
-      item.ts_code.toLowerCase().includes(kw) ||
-      item.name.toLowerCase().includes(kw) ||
-      (reasonMap[item.reason] || "").includes(kw),
+  return blacklistRules.value.filter(
+    (item: any) =>
+      (item.name || "").toLowerCase().includes(kw) ||
+      (item.description || "").toLowerCase().includes(kw),
   );
 });
 
+const ruleTypeLabel: Record<string, string> = {
+  blacklist: "股票黑名单",
+  market_blacklist: "市场黑名单",
+  sector_blacklist: "行业黑名单",
+};
+
 const columns = [
-  { title: "股票代码", key: "ts_code", width: 120 },
-  { title: "股票名称", key: "name", width: 150 },
   {
-    title: "原因",
-    key: "reason",
-    width: 120,
-    render: (row: BlacklistItem) => reasonMap[row.reason] || row.reason,
+    title: "规则名称",
+    key: "name",
+    width: 180,
   },
-  { title: "添加人", key: "added_by", width: 100 },
-  { title: "添加时间", key: "added_at", width: 120 },
   {
-    title: "状态",
-    key: "is_active",
-    width: 100,
-    render: (row: BlacklistItem) =>
+    title: "黑名单类型",
+    key: "type",
+    width: 140,
+    render: (row: any) =>
       h(
         NTag,
-        { type: row.is_active ? "error" : "default", size: "small" },
-        { default: () => (row.is_active ? "生效中" : "已失效") },
+        { type: row.type === "blacklist" ? "error" : row.type === "market_blacklist" ? "warning" : "info", size: "small" },
+        { default: () => ruleTypeLabel[row.type] || row.type },
       ),
   },
   {
-    title: "操作",
-    key: "op",
-    width: 80,
-    render: (row: BlacklistItem) =>
-      h(
-        NButton,
-        {
-          size: "small",
-          type: "error",
-          onClick: () => confirmRemove(row),
-        },
-        { default: () => "移除" },
-      ),
+    title: "规则描述",
+    key: "description",
+    minWidth: 300,
+    ellipsis: { tooltip: true },
+  },
+  {
+    title: "状态",
+    key: "enabled",
+    width: 90,
+    render: (row: any) =>
+      h(NSwitch, {
+        value: row.enabled,
+        size: "small",
+        onUpdateValue: (v: boolean) => handleToggle(row, v),
+      }),
   },
 ];
 
-const fetchBlacklist = async () => {
+const fetchData = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
-    blacklist.value = [
-      {
-        id: 1,
-        ts_code: "600086.SH",
-        name: "退市金钰",
-        reason: "st_risk",
-        added_by: "system",
-        added_at: "2024-01-01",
-        is_active: true,
-      },
-      {
-        id: 2,
-        ts_code: "000979.SZ",
-        name: "中弘退",
-        reason: "regulatory_risk",
-        added_by: "admin",
-        added_at: "2024-01-02",
-        is_active: true,
-      },
-    ];
+    await store.dispatch("risk/fetchRiskRules");
   } catch {
     error.value = true;
   } finally {
@@ -133,83 +83,27 @@ const fetchBlacklist = async () => {
   }
 };
 
-// 根据股票代码自动查询名称
-watch(
-  () => newItem.value.ts_code,
-  async (code) => {
-    if (!code || code.length < 9) {
-      resolvedName.value = "";
-      return;
-    }
-    resolvingName.value = true;
-    // 模拟异步查询延迟
-    await new Promise((r) => setTimeout(r, 200));
-    resolvedName.value = stockNameMap[code] || "";
-    resolvingName.value = false;
-  },
-);
-
-const handleAdd = () => {
-  resolvedName.value = "";
-  newItem.value = { ts_code: "", reason: "st_risk" };
-  showModal.value = true;
-};
-
-const addToBlacklist = async () => {
-  if (!newItem.value.ts_code) {
-    message.warning("请输入股票代码");
-    return;
-  }
+const handleToggle = async (row: any, enabled: boolean) => {
   try {
-    blacklist.value.push({
-      id: Date.now(),
-      ts_code: newItem.value.ts_code,
-      name: resolvedName.value || `股票${newItem.value.ts_code}`,
-      reason: newItem.value.reason,
-      added_by: "current_user",
-      added_at: new Date().toISOString().split("T")[0],
-      is_active: true,
+    await store.dispatch("risk/toggleRiskRule", {
+      ruleName: row.name,
+      enabled,
     });
-    showModal.value = false;
-    newItem.value = { ts_code: "", reason: "st_risk" };
-    message.success("添加成功");
+    message.success(
+      enabled ? `「${row.name}」已启用` : `「${row.name}」已禁用`,
+    );
   } catch {
-    message.error("添加失败");
+    message.error("操作失败，请重试");
+    row.enabled = !enabled;
   }
 };
 
-const confirmRemove = (item: BlacklistItem) => {
-  dialog.warning({
-    title: "确认移除",
-    content: `确定要将 ${item.name}(${item.ts_code}) 从黑名单中移除吗？`,
-    positiveText: "确认",
-    negativeText: "取消",
-    onPositiveClick: () => {
-      blacklist.value = blacklist.value.filter((i) => i.id !== item.id);
-      message.success("移除成功");
-    },
-  });
+const handleRefresh = async () => {
+  await fetchData();
+  message.success("刷新成功");
 };
 
-const handleImport = () => message.info("导入功能开发中");
-
-const exportBlacklist = () => {
-  const csvContent = blacklist.value
-    .map(
-      (item) =>
-        `${item.ts_code},${item.name},${reasonMap[item.reason]},${item.added_at}`,
-    )
-    .join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv" });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `blacklist_${new Date().toISOString().split("T")[0]}.csv`;
-  a.click();
-  window.URL.revokeObjectURL(url);
-};
-
-onMounted(() => fetchBlacklist());
+onMounted(() => fetchData());
 </script>
 
 <template>
@@ -218,11 +112,15 @@ onMounted(() => fetchBlacklist());
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">黑名单管理</h1>
+          <p class="page-subtitle">
+            黑名单规则由风控引擎自动加载，用于拦截特定股票、市场或行业的交易信号。
+            启用后，所有交易信号在执⾏前都会经过黑名单规则检查。
+          </p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" @click="handleAdd">添加黑名单</n-button>
-          <n-button @click="handleImport">导入</n-button>
-          <n-button @click="exportBlacklist">导出</n-button>
+          <n-button type="primary" @click="handleRefresh" :loading="loading">
+            刷新
+          </n-button>
         </div>
       </div>
     </div>
@@ -232,21 +130,22 @@ onMounted(() => fetchBlacklist());
         v-if="error"
         status="500"
         title="数据加载失败"
-        description="请检查网络连接后重试"
+        description="请检查风控引擎是否正常启动后重试"
       >
         <template #footer>
-          <n-button type="primary" @click="fetchBlacklist">重试</n-button>
+          <n-button type="primary" @click="fetchData">重试</n-button>
         </template>
       </n-result>
 
       <template v-else>
-        <n-card class="main-card">
+        <!-- 黑名单规则卡片 -->
+        <n-card class="main-card" style="margin-bottom: 16px">
           <template #header>
             <div class="card-header">
-              <span>黑名单列表</span>
+              <span>黑名单规则配置</span>
               <n-input
                 v-model:value="searchKeyword"
-                placeholder="搜索代码/名称..."
+                placeholder="搜索规则..."
                 size="small"
                 clearable
                 style="width: 200px"
@@ -261,11 +160,10 @@ onMounted(() => fetchBlacklist());
               :bordered="false"
               size="small"
             >
-              <template #empty
-                ><n-empty description="暂无黑名单记录"
-              /></template>
+              <template #empty>
+                <n-empty description="暂无黑名单规则" />
+              </template>
             </n-data-table>
-
             <div class="pagination-container">
               <n-pagination
                 v-model:page="currentPage"
@@ -277,36 +175,24 @@ onMounted(() => fetchBlacklist());
             </div>
           </n-spin>
         </n-card>
+
+        <!-- 说明卡片 -->
+        <n-card class="info-card">
+          <template #header>
+            <span>黑名单机制说明</span>
+          </template>
+          <div class="info-content">
+            <p><strong>股票黑名单</strong>：拦截特定股票代码（如 ST、*ST、退市整理期股票）的交易信号。</p>
+            <p><strong>市场黑名单</strong>：拦截特定市场板块（如新三板、北交所精选层）的交易信号。</p>
+            <p><strong>行业黑名单</strong>：拦截特定行业（如房地产、钢铁等高风险行业）的交易信号。</p>
+            <p class="info-note">
+              💡 提示：当前黑名单列表由风控规则代码定义。如需自定义黑名单股票列表，
+              请编辑对应规则类中的 <code>_blacklist</code> 属性。后续版本将支持通过界面管理黑名单。
+            </p>
+          </div>
+        </n-card>
       </template>
     </div>
-
-    <n-modal
-      v-model:show="showModal"
-      preset="dialog"
-      title="添加黑名单"
-      positive-text="确认添加"
-      negative-text="取消"
-      @positive-click="addToBlacklist"
-    >
-      <n-form :model="newItem" label-width="80px">
-        <n-form-item label="股票代码">
-          <n-input
-            v-model:value="newItem.ts_code"
-            placeholder="例如：600000.SH"
-          />
-        </n-form-item>
-        <n-form-item v-if="resolvedName || resolvingName" label="股票名称">
-          <n-spin :show="resolvingName" size="small">
-            <span class="resolved-name">{{
-              resolvedName || "未匹配到名称"
-            }}</span>
-          </n-spin>
-        </n-form-item>
-        <n-form-item label="原因">
-          <n-select v-model:value="newItem.reason" :options="reasonOptions" />
-        </n-form-item>
-      </n-form>
-    </n-modal>
   </div>
 </template>
 
@@ -315,6 +201,12 @@ onMounted(() => fetchBlacklist());
   padding: 0;
   height: 100%;
   overflow-y: auto;
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--n-text-color-3, rgba(255, 255, 255, 0.48));
 }
 
 .card-header {
@@ -329,8 +221,29 @@ onMounted(() => fetchBlacklist());
   justify-content: flex-end;
 }
 
-.resolved-name {
+.info-card {
+  margin-bottom: 16px;
+}
+
+.info-content p {
+  margin: 8px 0;
   font-size: 14px;
   color: var(--n-text-color-2, rgba(255, 255, 255, 0.64));
+  line-height: 1.6;
+}
+
+.info-note {
+  padding: 10px 14px;
+  background: rgba(68, 138, 255, 0.08);
+  border: 1px solid rgba(68, 138, 255, 0.15);
+  border-radius: 6px;
+  font-size: 13px !important;
+}
+
+.info-note code {
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  font-size: 12px;
 }
 </style>

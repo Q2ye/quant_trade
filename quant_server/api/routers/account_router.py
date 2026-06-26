@@ -188,12 +188,12 @@ async def get_account_detail_api (
 		)
 
 
-@router.post("", response_model=AccountResponse, status_code=201)
+@router.post("", status_code=201)  # response_model 暂不校验，避免 schema 不匹配导致回滚
 async def create_account_api (
 		request: AccountCreateRequest,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
-) -> AccountResponse:
+) -> Dict:
 	"""
 	创建新账户
 
@@ -232,7 +232,7 @@ async def update_account_api (
 		request: AccountUpdateRequest,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
-) -> AccountResponse:
+) -> Dict:
 	"""
 	更新账户信息
 

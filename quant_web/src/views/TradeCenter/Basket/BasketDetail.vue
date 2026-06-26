@@ -28,8 +28,9 @@
     <n-spin v-else-if="loading" class="detail-spin" />
 
     <template v-else>
+      <div class="main-content">
       <div class="chart-section">
-        <h3>篮子净值走势</h3>
+        <h3>篮子净值走势 <n-tag size="small" type="warning">模拟数据</n-tag></h3>
         <EquityCurveChart :data="equityData" :benchmark="benchData" :height="380" title="篮子净值走势" />
       </div>
 
@@ -47,6 +48,7 @@
           description="暂无成分股数据"
         />
       </div>
+      </div>
     </template>
   </div>
 </template>
@@ -54,7 +56,7 @@
 <script setup lang="ts">
 import { ref, h, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { NButton, NResult } from "naive-ui";
+import { NButton, NResult, NTag } from "naive-ui";
 import { useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { getBasket } from "@/api/basket";
@@ -62,6 +64,7 @@ import { fetchStockRealTime } from "@/api/data";
 import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
 
 const route = useRoute();
+const router = useRouter();
 const message = useMessage();
 const loading = ref(false);
 const error = ref(false);
@@ -111,7 +114,7 @@ const stockColumns = [
     title: "权重",
     width: 120,
     render(row: any) {
-      return `${(row.weight * 100).toFixed(2)}%`;
+      return `${row.weight ?? 0}%`;
     },
   },
   {
@@ -122,7 +125,7 @@ const stockColumns = [
         NButton,
         {
           text: true,
-          onClick: () => window.open(`/market/detail/${row.ts_code}`, "_self"),
+          onClick: () => router.push(`/market/stock/${row.ts_code}`),
         },
         { default: () => "行情" },
       );

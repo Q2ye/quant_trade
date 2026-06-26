@@ -1,253 +1,69 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, h } from "vue";
-import { NTag, NButton, NProgress, NSpin, NResult } from "naive-ui";
-import { useMessage } from "naive-ui";
-import type { TradingSignal as Signal } from "@/types";
+import { ref, computed, onMounted, h } from "vue";
+import {
+  NTag, NButton, NProgress, NSpin, NResult, NEmpty,
+  NSelect, NDatePicker, NInput, NSpace, NStatistic, NCard,
+  NDataTable, NPopconfirm, useMessage,
+} from "naive-ui";
+import type { DataTableColumns } from "naive-ui";
+import tradeAPI from "@/api/trade";
 
 const message = useMessage();
+
+// ============================================================
+// State
+// ============================================================
 const loading = ref(false);
 const error = ref(false);
+const signals = ref<any[]>([]);
 
-const signals = ref<Signal[]>([]);
-const wsConnection = ref<WebSocket | null>(null);
-const isConnecting = ref(false);
-const reconnectAttempts = ref(0);
-const maxReconnectAttempts = 5;
-const reconnectTimer = ref<number | null>(null);
-
-const WS_OPEN = WebSocket.OPEN;
-
-const todaySignalsCount = computed(() => {
-  const today = new Date().toDateString();
-  return signals.value.filter(
-    (s) => new Date(s.signal_time).toDateString() === today,
-  ).length;
+const filters = ref({
+  status: null as string | null,
+  signal_type: null as string | null,
+  dateRange: null as [number, number] | null,
+  ts_code: "",
 });
 
-const getWebSocketUrl = (): string => {
-  if (import.meta.env.VITE_APP_ENV === "development") {
-    return `ws://localhost:8000/api/ws/signals`;
-  }
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/ws/signals`;
-};
+const pagination = ref({ page: 1, page_size: 20, total: 0 });
+const reviewing = ref<Set<string>>(new Set());
 
-const signalTypeMap: Record<string, { color: string; text: string }> = {
-  buy: { color: "#10B981", text: "买入" },
-  sell: { color: "#EF4444", text: "卖出" },
-  hold: { color: "#3B82F6", text: "持有" },
-};
+// ============================================================
+// Stats
+// ============================================================
+const stats = computed(() => {
+  const s = signals.value;
+  return {
+    pending: s.filter((x) => (x.status ?? "pending") === "pending").length,
+    approved: s.filter((x) => x.status === "approved").length,
+    executed: s.filter((x) => x.status === "executed").length,
+    rejected: s.filter((x) => x.status === "rejected").length,
+    total: s.length,
+  };
+});
 
-const getSignalTypeInfo = (signalType: string) => {
-  return signalTypeMap[signalType] || { color: "#F59E0B", text: "未知" };
-};
-
-const columns = [
-  {
-    title: "信号时间",
-    key: "signal_time",
-    width: 180,
-    render: (row: Signal) => new Date(row.signal_time).toLocaleString(),
-  },
-  {
-    title: "策略",
-    key: "strategy_id",
-    width: 120,
-    render: (row: Signal) =>
-      h(NTag, { size: "small" }, { default: () => row.strategy_id || "--" }),
-  },
-  {
-    title: "标的",
-    key: "ts_code",
-    width: 100,
-    render: (row: Signal) => h("strong", {}, row.ts_code || row.symbol || "--"),
-  },
-  {
-    title: "信号类型",
-    key: "signal_type",
-    width: 100,
-    render: (row: Signal) => {
-      const info = getSignalTypeInfo(row.signal_type);
-      return h(
-        NTag,
-        { type: "info", color: { color: info.color, textColor: "#fff" } },
-        { default: () => info.text },
-      );
-    },
-  },
-  {
-    title: "触发价格",
-    key: "current_price",
-    width: 100,
-    render: (row: Signal) => `¥${row.current_price?.toFixed(2) || "--"}`,
-  },
-  {
-    title: "信号强度",
-    key: "strength",
-    width: 140,
-    render: (row: Signal) => {
-      const pct = Math.round((row.strength || 0) * 100);
-      const color = pct > 70 ? "#10B981" : pct > 40 ? "#F59E0B" : "#EF4444";
-      return h(
-        "div",
-        { style: { display: "flex", alignItems: "center", gap: "8px" } },
-        [
-          h(NProgress, {
-            type: "line",
-            percentage: pct,
-            showIndicator: false,
-            height: 6,
-            color,
-            style: { width: "80px" },
-          }),
-          h("span", {}, `${pct}%`),
-        ],
-      );
-    },
-  },
-  {
-    title: "信号原因",
-    key: "reason",
-    minWidth: 200,
-    ellipsis: { tooltip: true },
-    render: (row: Signal) => row.reason || "--",
-  },
-  {
-    title: "操作",
-    key: "action",
-    width: 120,
-    fixed: "right",
-    render: (row: Signal) => {
-      const isBuy = row.signal_type === "buy";
-      return h(
-        NButton,
-        {
-          size: "small",
-          type: isBuy ? "success" : "error",
-          onClick: () => handleQuickTrade(row),
-        },
-        {
-          default: () =>
-            isBuy
-              ? "快速买入"
-              : row.signal_type === "sell"
-                ? "快速卖出"
-                : "执行操作",
-        },
-      );
-    },
-  },
-];
-
-const rowClassName = (row: Signal) =>
-  `signal-row-${row.signal_type || "default"}`;
-
-const cleanupWebSocket = () => {
-  if (wsConnection.value) {
-    wsConnection.value.onopen = null;
-    wsConnection.value.onmessage = null;
-    wsConnection.value.onerror = null;
-    wsConnection.value.onclose = null;
-    if (wsConnection.value.readyState === WebSocket.OPEN) {
-      wsConnection.value.close(1000, "正常关闭");
-    }
-    wsConnection.value = null;
-  }
-  if (reconnectTimer.value) {
-    clearTimeout(reconnectTimer.value);
-    reconnectTimer.value = null;
-  }
-  isConnecting.value = false;
-};
-
-const connectWebSocket = () => {
-  if (isConnecting.value) return;
-  try {
-    cleanupWebSocket();
-    const wsUrl = getWebSocketUrl();
-    isConnecting.value = true;
-    wsConnection.value = new WebSocket(wsUrl);
-
-    wsConnection.value.onopen = () => {
-      isConnecting.value = false;
-      reconnectAttempts.value = 0;
-      message.success("实时信号连接已建立");
-    };
-
-    wsConnection.value.onmessage = (event) => {
-      try {
-        const signalData = JSON.parse(event.data);
-        if (!signalData.signal_type || !signalData.ts_code) return;
-        const newSignal = {
-          ...signalData,
-          id: Date.now() + Math.random(),
-          timestamp: new Date(),
-          signal_time: signalData.signal_time || new Date().toISOString(),
-          strength: signalData.strength || 0,
-          current_price: signalData.current_price || 0,
-        };
-        signals.value.unshift(newSignal);
-        if (signals.value.length > 100) {
-          signals.value = signals.value.slice(0, 100);
-        }
-      } catch (parseError) {
-        console.error("解析信号数据失败:", parseError, event.data);
-      }
-    };
-
-    wsConnection.value.onerror = () => {
-      isConnecting.value = false;
-      if (reconnectAttempts.value === 0) {
-        message.error("信号连接失败，正在重连...");
-      }
-    };
-
-    wsConnection.value.onclose = (event) => {
-      isConnecting.value = false;
-      if (
-        event.code !== 1000 &&
-        reconnectAttempts.value < maxReconnectAttempts
-      ) {
-        reconnectAttempts.value++;
-        const delay = Math.min(
-          1000 * Math.pow(2, reconnectAttempts.value),
-          30000,
-        );
-        reconnectTimer.value = Number(
-          setTimeout(() => {
-            connectWebSocket();
-          }, delay),
-        );
-      } else if (reconnectAttempts.value >= maxReconnectAttempts) {
-        message.warning("信号连接失败，请检查服务器状态");
-      }
-    };
-  } catch (error) {
-    console.error("WebSocket连接失败:", error);
-    isConnecting.value = false;
-    message.error("WebSocket连接失败");
-  }
-};
-
-const manualReconnect = () => {
-  reconnectAttempts.value = 0;
-  connectWebSocket();
-};
-
-const handleQuickTrade = (signal: Signal) => {
-  const symbol = signal.ts_code || signal.symbol || "unknown";
-  window.open(
-    `/trading?symbol=${encodeURIComponent(symbol)}&action=${signal.signal_type}`,
-    "_blank",
-  );
-};
-
-const loadData = async () => {
+// ============================================================
+// Data loader
+// ============================================================
+const loadSignals = async () => {
   loading.value = true;
   error.value = false;
   try {
-    await new Promise((r) => setTimeout(r, 300));
-    connectWebSocket();
+    const params: any = {
+      page: pagination.value.page,
+      page_size: pagination.value.page_size,
+    };
+    if (filters.value.status) params.status = filters.value.status;
+    if (filters.value.signal_type) params.signal_type = filters.value.signal_type;
+    if (filters.value.ts_code) params.ts_code = filters.value.ts_code;
+    if (filters.value.dateRange) {
+      params.start_date = (filters.value.dateRange as any)[0];
+      params.end_date = (filters.value.dateRange as any)[1];
+    }
+
+    const res = await tradeAPI.getSignals(params);
+    const data = (res as any)?.data ?? (Array.isArray(res) ? res : []);
+    signals.value = Array.isArray(data) ? data : [];
+    pagination.value.total = (res as any)?.pagination?.total ?? signals.value.length;
   } catch {
     error.value = true;
   } finally {
@@ -255,47 +71,136 @@ const loadData = async () => {
   }
 };
 
-onMounted(() => {
-  loadData();
-});
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadSignals();
+};
 
-onUnmounted(() => {
-  cleanupWebSocket();
-});
+const handleReset = () => {
+  filters.value = { status: null, signal_type: null, dateRange: null, ts_code: "" };
+  pagination.value.page = 1;
+  loadSignals();
+};
+
+const handlePageChange = (page: number) => {
+  pagination.value.page = page;
+  loadSignals();
+};
+
+// ============================================================
+// Actions
+// ============================================================
+const handleReview = async (signalId: string, action: string) => {
+  const found = signals.value.find((s) => (s.signal_id || s.id) === signalId);
+  const prevStatus = found?.status;
+  if (found) found.status = action;
+
+  reviewing.value.add(signalId);
+  try {
+    await tradeAPI.reviewSignal(signalId, action);
+    message.success(action === "approved" ? "已采纳" : "已拒绝");
+  } catch (e: any) {
+    if (found) found.status = prevStatus;
+    message.error(e?.response?.data?.detail || "操作失败");
+  } finally {
+    reviewing.value.delete(signalId);
+  }
+};
+
+// ============================================================
+// Filter options
+// ============================================================
+const statusOpts = [
+  { label: "全部状态", value: null },
+  { label: "待审核", value: "pending" },
+  { label: "已采纳", value: "approved" },
+  { label: "已执行", value: "executed" },
+  { label: "已拒绝", value: "rejected" },
+];
+const typeOpts = [
+  { label: "全部类型", value: null },
+  { label: "买入", value: "buy" },
+  { label: "卖出", value: "sell" },
+];
+
+// ============================================================
+// Table columns
+// ============================================================
+const statusTag = (status: string) => {
+  const map: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
+    pending: { text: "待审核", type: "warning" },
+    approved: { text: "已采纳", type: "success" },
+    executed: { text: "已执行", type: "info" },
+    rejected: { text: "已拒绝", type: "default" },
+  };
+  return map[status] || { text: status, type: "default" as const };
+};
+
+const columns: DataTableColumns<any> = [
+  {
+    title: "时间", key: "signal_time", width: 160,
+    render: (row) => row.signal_time?.slice(0, 16) || "--",
+  },
+  { title: "股票", key: "ts_code", width: 110, render: (row) => h("strong", {}, row.ts_code || "--") },
+  {
+    title: "类型", key: "signal_type", width: 80,
+    render: (row) => {
+      const t = (row.signal_type || row.direction || "").toLowerCase();
+      return h(NTag, { type: t === "buy" ? "success" : "error", size: "small", bordered: false }, { default: () => t === "buy" ? "买入" : "卖出" });
+    },
+  },
+  { title: "价格", key: "price", width: 90, render: (row) => row.price != null ? `¥${Number(row.price).toFixed(2)}` : "--" },
+  { title: "数量", key: "quantity", width: 80, render: (row) => row.quantity ? `${row.quantity}股` : "--" },
+  {
+    title: "强度", key: "strength", width: 120,
+    render: (row) => {
+      const pct = Math.round((row.strength || 0) * 100);
+      const color = pct > 70 ? "var(--n-color-success)" : pct > 40 ? "var(--n-color-warning)" : "var(--n-color-error)";
+      return h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [
+        h(NProgress, { percentage: pct, showIndicator: false, height: 6, color, style: { width: "60px" } }),
+        h("span", { style: { fontSize: "12px" } }, `${pct}%`),
+      ]);
+    },
+  },
+  {
+    title: "状态", key: "status", width: 80,
+    render: (row) => h(NTag, { type: statusTag(row.status ?? "pending").type, size: "small", bordered: false }, { default: () => statusTag(row.status ?? "pending").text }),
+  },
+  {
+    title: "操作", key: "actions", width: 160, fixed: "right" as const,
+    render: (row) => {
+      const sid = row.signal_id || row.id;
+      const st = row.status ?? "pending";
+      if (st === "pending") {
+        return h("div", { style: { display: "flex", gap: "4px" } }, [
+          h(NButton, { size: "tiny", type: "success", loading: reviewing.value.has(sid), onClick: () => handleReview(sid, "approved") }, { default: () => "采纳" }),
+          h(NButton, { size: "tiny", type: "error", loading: reviewing.value.has(sid), onClick: () => handleReview(sid, "rejected") }, { default: () => "拒绝" }),
+        ]);
+      }
+      if (st === "approved") {
+        return h(NButton, { size: "tiny", type: "primary", onClick: () => message.info("请在驾驶舱中录入成交") }, { default: () => "录入成交" });
+      }
+      return h("span", { style: { fontSize: "12px", color: "var(--n-text-color-3)" } }, "--");
+    },
+  },
+];
+
+onMounted(() => loadSignals());
 </script>
 
 <template>
-  <div class="signal-monitor bg-gradient-mesh bg-noise">
+  <div class="signal-page bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">实时信号监控</h1>
-        </div>
-        <div class="header-actions">
-          <span class="signal-stat">今日信号: {{ todaySignalsCount }}</span>
-          <span class="signal-stat">活跃策略: 12</span>
-          <span class="signal-stat"
-            >连接状态:
-            <n-tag
-              :type="wsConnection?.readyState === WS_OPEN ? 'success' : 'error'"
-              size="small"
-            >
-              {{ wsConnection?.readyState === WS_OPEN ? "已连接" : "未连接" }}
-            </n-tag>
-          </span>
-          <n-button
-            v-if="wsConnection?.readyState !== WS_OPEN"
-            @click="manualReconnect"
-            size="small"
-            :loading="isConnecting"
-          >
-            重新连接
-          </n-button>
+          <h1 class="page-title">信号管理</h1>
+          <p class="page-description">查看、审核、追溯所有策略产生的交易信号</p>
         </div>
       </div>
     </div>
 
-    <n-spin :show="loading">
+    <div class="main-content">
+      <!-- ========== Error ========== -->
       <n-result
         v-if="error"
         status="500"
@@ -303,69 +208,123 @@ onUnmounted(() => {
         description="请检查网络连接后重试"
       >
         <template #footer>
-          <n-button type="primary" @click="loadData">重试</n-button>
+          <n-button type="primary" @click="loadSignals">重试</n-button>
         </template>
       </n-result>
 
       <template v-else>
-        <n-data-table
-          v-if="signals.length > 0"
-          :columns="columns"
-          :data="signals"
-          :row-class-name="rowClassName"
-          :max-height="600"
-          :bordered="false"
-          size="small"
-        />
+        <!-- ========== Stat cards ========== -->
+        <div class="stats-row">
+          <n-card size="small" :bordered="true" class="stat-card">
+            <n-statistic label="待审核" :value="stats.pending">
+              <template #prefix><span style="font-size:16px">⚠️</span></template>
+            </n-statistic>
+          </n-card>
+          <n-card size="small" :bordered="true" class="stat-card">
+            <n-statistic label="已采纳" :value="stats.approved" />
+          </n-card>
+          <n-card size="small" :bordered="true" class="stat-card">
+            <n-statistic label="已执行" :value="stats.executed" />
+          </n-card>
+          <n-card size="small" :bordered="true" class="stat-card">
+            <n-statistic label="已拒绝" :value="stats.rejected" />
+          </n-card>
+        </div>
 
-        <div v-else class="empty-state">
-          <n-empty
-            v-if="wsConnection?.readyState === WS_OPEN"
-            description="等待接收实时信号..."
+        <!-- ========== Filter bar ========== -->
+        <div class="filter-bar">
+          <n-space align="center" :wrap="false">
+            <n-select
+              v-model:value="filters.status"
+              :options="statusOpts as any"
+              size="small"
+              style="width: 120px"
+              placeholder="状态"
+            />
+            <n-select
+              v-model:value="filters.signal_type"
+              :options="typeOpts as any"
+              size="small"
+              style="width: 110px"
+              placeholder="类型"
+            />
+            <n-date-picker
+              v-model:formatted-value="filters.dateRange as any"
+              type="daterange"
+              size="small"
+              style="width: 220px"
+              placeholder="日期范围"
+              clearable
+            />
+            <n-input
+              v-model:value="filters.ts_code"
+              size="small"
+              style="width: 140px"
+              placeholder="股票代码"
+              clearable
+            />
+            <n-button size="small" type="primary" @click="handleSearch">搜索</n-button>
+            <n-button size="small" @click="handleReset">重置</n-button>
+          </n-space>
+        </div>
+
+        <!-- ========== Signal table ========== -->
+        <n-spin :show="loading">
+          <n-data-table
+            v-if="signals.length > 0"
+            :columns="columns"
+            :data="signals"
+            :bordered="false"
+            size="small"
+            :row-key="(row: any) => row.signal_id || row.id"
+            :pagination="{
+              page: pagination.page,
+              pageSize: pagination.page_size,
+              itemCount: pagination.total,
+              showSizePicker: true,
+              pageSizes: [10, 20, 50],
+              onChange: handlePageChange,
+              onUpdatePageSize: (size: number) => { pagination.page_size = size; loadSignals(); },
+            }"
           />
-          <n-empty v-else description="连接已断开，无法接收实时信号">
+          <n-empty v-else description="暂无信号数据">
             <template #extra>
-              <n-button @click="manualReconnect" :loading="isConnecting"
-                >重新连接</n-button
-              >
+              <span style="font-size:13px;color:var(--n-text-color-3)">策略运行后，信号将在此显示</span>
             </template>
           </n-empty>
-        </div>
+        </n-spin>
       </template>
-    </n-spin>
+    </div>
   </div>
 </template>
 
-<style scoped>
-.signal-monitor {
-  padding: 0;
-  height: 100%;
-  overflow-y: auto;
+<style scoped lang="scss">
+.signal-page {
+  min-height: 100vh;
 }
 
-.signal-stat {
-  font-size: 13px;
-  color: var(--n-text-color-2);
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
+.stat-card {
+  :deep(.n-statistic__label) {
+    font-size: 13px;
+  }
+  :deep(.n-statistic__value) {
+    font-size: 24px;
+    font-weight: 700;
+  }
 }
 
-:deep(.signal-row-buy) {
-  background-color: rgba(16, 185, 129, 0.05);
-}
-
-:deep(.signal-row-sell) {
-  background-color: rgba(239, 68, 68, 0.05);
-}
-
-:deep(.signal-row-hold) {
-  background-color: rgba(59, 130, 246, 0.05);
-}
-
-:deep(.signal-row-default) {
-  background-color: rgba(245, 158, 11, 0.05);
+.filter-bar {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--n-card-color);
+  border: 1px solid var(--n-border-color);
+  border-radius: var(--n-border-radius);
 }
 </style>

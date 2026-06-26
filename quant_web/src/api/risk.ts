@@ -1,155 +1,208 @@
 // quant_web/src/api/risk.ts
 import request from "@/utils/request";
 import { handleResponse } from "@/utils/responseHandler";
-import { ApiResponse, PaginatedResponse, RiskAlertMessage } from "@/types";
-import { RiskRule } from "@/types";
 
 /**
  * 风险管理API服务
  * 提供风险规则配置、风险事件监控和风险预警功能
+ *
+ * 后端响应格式（success_response 包裹）：
+ *   { code: "SUCCESS", message: "操作成功", data: <实际数据>, detail: null, timestamp: "..." }
+ * 本模块各方法自动解包 .data 字段
  */
 
+// ==================== 规范类型定义（唯一真相源） ====================
+
+/** 风控规则 */
+export interface RiskRule {
+  name: string;           // 规则名称（唯一标识）
+  description: string;    // 规则描述
+  enabled: boolean;       // 是否启用
+  rule_type: string;      // 规则分类: position/account/blacklist/market
+}
+
+/** 风控事件 */
 export interface RiskEvent {
-  id: number;
-  rule_id: number;
-  strategy_id?: string;
-  user_id: number;
-  event_type: string;
-  event_message: string;
-  trigger_value: any;
-  action_taken?: string;
-  created_at: string;
+  id?: number;
+  event_type: string;          // 事件类型
+  rule_name?: string;          // 触发规则名
+  metric_name?: string;        // 相关指标名
+  current_value?: number;      // 当前值
+  threshold_value?: number;    // 阈值
+  level: string;               // 告警级别: normal/warning/critical
+  message: string;             // 事件描述
+  signal_data?: Record<string, any>;  // 触发时的信号数据
+  created_at?: string;         // 创建时间
 }
 
-export interface RiskRuleCreate {
-  rule_name: string;
-  rule_type: string;
-  condition: any;
-  action: string;
-  is_active?: boolean;
+/** 风险告警 */
+export interface RiskAlert {
+  id?: string;
+  alert_type: string;
+  level: string;           // warning / critical
+  title: string;
+  message: string;
+  acknowledged: boolean;
+  created_at?: string;
 }
 
-export interface RiskQueryParams {
-  level?: "low" | "medium" | "high" | "critical";
-  type?: string;
-  start_time?: string;
-  end_time?: string;
-  page?: number;
-  limit?: number;
+/** 风险指标 */
+export interface RiskMetricsData {
+  metrics: Record<string, number>;
+  overall_risk_level: string;
+  breach_count: number;
+  breaches: Array<{ metric: string; value: number; threshold: number; level: string }>;
+  drawdown?: number;
+  position_ratio?: number;
+  var?: number;
+  volatility?: number;
+  sharpe_ratio?: number;
 }
+
+/** 风险阈值 */
+export interface RiskThresholdItem {
+  metric_name: string;
+  warning_threshold: number;
+  critical_threshold: number;
+  description: string;
+  is_active: boolean;
+}
+
+/** 信号检查请求 */
+export interface SignalCheckRequest {
+  ts_code?: string;
+  direction?: string;
+  quantity?: number;
+  price?: number;
+  trade_amount?: number;
+  total_asset?: number;
+  available_cash?: number;
+  position_value?: number;
+  [key: string]: any;
+}
+
+/** 信号检查结果 */
+export interface SignalCheckResult {
+  passed: boolean;
+  message: string;
+}
+
+/** 分页信息 */
+export interface Pagination {
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+/** 分页响应 */
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+// ==================== API 响应解包辅助 ====================
+
+/**
+ * 从 success_response 包裹中提取 data 字段
+ * 后端格式: { code, message, data: <实际数据>, detail, timestamp }
+ */
+function unwrap<T>(response: any): T {
+  if (response && typeof response === 'object' && 'data' in response) {
+    return response.data as T;
+  }
+  return response as unknown as T;
+}
+
+// 类型安全的 API 辅助方法
+function apiGet<T>(url: string, params?: any): Promise<T> {
+  return request.get(url, { params }).then(handleResponse).then((res: any) => unwrap<T>(res));
+}
+function apiPost<T>(url: string, data?: any): Promise<T> {
+  return request.post(url, data).then(handleResponse).then((res: any) => unwrap<T>(res));
+}
+function apiPut<T>(url: string, data?: any): Promise<T> {
+  return request.put(url, data).then(handleResponse).then((res: any) => unwrap<T>(res));
+}
+
+// ==================== API 方法 ====================
 
 export default {
-  /**
-   * 获取风险规则列表
-   * @param token 认证令牌
-   * @returns 风险规则数组
-   */
-  async getRiskRules(token: string): Promise<RiskRule[]> {
-    return request
-      .get("/quantTrade/monitor/alerts/rules", { params: { token } })
-      .then(handleResponse)
-      .then((data: ApiResponse<RiskRule[]>) => data.data);
+  // --- 规则管理 ---
+
+  /** 获取所有风控规则 */
+  async getRiskRules(): Promise<{ rules: RiskRule[]; total: number }> {
+    return apiGet("/quantTrade/risk/rules");
   },
 
-  /**
-   * 创建风险规则
-   * @param ruleData 规则创建参数
-   * @param token 认证令牌
-   * @returns 新创建的风险规则
-   */
-  async createRiskRule(
-    ruleData: RiskRuleCreate,
-    token: string,
-  ): Promise<RiskRule> {
-    return request
-      .post("/quantTrade/monitor/alerts/rules", ruleData, { params: { token } })
-      .then(handleResponse)
-      .then((data: ApiResponse<RiskRule>) => data.data);
+  /** 启用/禁用规则 */
+  async toggleRiskRule(ruleName: string, enabled: boolean): Promise<{ rule_name: string; enabled: boolean }> {
+    return apiPut(`/quantTrade/risk/rules/${encodeURIComponent(ruleName)}`, { enabled });
   },
 
-  /**
-   * 更新风险规则
-   * @param ruleId 规则ID
-   * @param ruleData 规则更新参数
-   * @param token 认证令牌
-   * @returns 更新后的风险规则
-   */
-  async updateRiskRule(
-    ruleId: number,
-    ruleData: Partial<RiskRuleCreate>,
-    token: string,
-  ): Promise<RiskRule> {
-    return request
-      .put(`/quantTrade/monitor/alerts/rules/${ruleId}`, ruleData, {
-        params: { token },
-      })
-      .then(handleResponse)
-      .then((data: ApiResponse<RiskRule>) => data.data);
+  // --- 信号检查 ---
+
+  /** 对交易信号执行风控检查 */
+  async checkSignal(signalData: SignalCheckRequest): Promise<SignalCheckResult> {
+    return apiPost("/quantTrade/risk/check", signalData);
   },
 
-  /**
-   * 删除风险规则
-   * @param ruleId 规则ID
-   * @param token 认证令牌
-   * @returns 删除操作结果
-   */
-  async deleteRiskRule(ruleId: number, token: string): Promise<void> {
-    return request
-      .delete(`/quantTrade/monitor/alerts/rules/${ruleId}`, {
-        params: { token },
-      })
-      .then(handleResponse);
+  // --- 风险指标 ---
+
+  /** 获取实时风险指标 */
+  async getRiskMetrics(): Promise<RiskMetricsData> {
+    return apiGet("/quantTrade/risk/metrics");
   },
 
-  /**
-   * 获取风险事件列表
-   * @param params 查询参数
-   * @returns 风险事件数组
-   */
-  async getRiskEvents(
-    params?: RiskQueryParams,
-  ): Promise<PaginatedResponse<RiskEvent>> {
-    return request
-      .get("/quantTrade/risk/events", { params })
-      .then(handleResponse)
-      .then((data: PaginatedResponse<RiskEvent>) => data);
+  // --- 风险事件 ---
+
+  /** 分页查询风险事件 */
+  async getRiskEvents(params?: {
+    level?: string;
+    rule_name?: string;
+    start_time?: string;
+    end_time?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<RiskEvent>> {
+    return apiGet("/quantTrade/risk/events", params);
   },
 
-  /**
-   * 获取实时风险预警
-   * @returns 风险预警消息数组
-   */
-  async getRiskAlerts(): Promise<RiskAlertMessage[]> {
-    return request
-      .get("/quantTrade/monitor/risk/alerts")
-      .then(handleResponse)
-      .then((data: ApiResponse<RiskAlertMessage[]>) => data.data);
+  // --- 告警 ---
+
+  /** 获取活跃的风险告警 */
+  async getRiskAlerts(params?: {
+    alert_level?: string;
+  }): Promise<PaginatedResponse<RiskAlert>> {
+    return apiGet("/quantTrade/risk/alerts", params);
   },
 
-  /**
-   * 确认风险预警
-   * @param alertId 预警ID
-   * @returns 确认操作结果
-   */
-  async acknowledgeRiskAlert(alertId: string): Promise<void> {
-    return request
-      .post(`/quantTrade/monitor/alerts/${alertId}/acknowledge`)
-      .then(handleResponse);
+  /** 确认风险告警 */
+  async acknowledgeRiskAlert(alertId: string): Promise<{ alert_id: string; acknowledged: boolean }> {
+    return apiPost(`/quantTrade/risk/alerts/${alertId}/acknowledge`);
   },
 
-  /**
-   * 获取风险指标统计
-   * @returns 风险统计信息
-   */
-  async getRiskMetrics(): Promise<{
-    total_alerts: number;
-    high_risk_count: number;
-    today_events: number;
-    active_rules: number;
-  }> {
-    return request
-      .get("/quantTrade/risk/metrics")
-      .then(handleResponse)
-      .then((data: ApiResponse<any>) => data.data);
+  // --- 阈值配置 ---
+
+  /** 获取阈值配置 */
+  async getThresholds(): Promise<{ thresholds: RiskThresholdItem[] }> {
+    return apiGet("/quantTrade/risk/thresholds");
+  },
+
+  /** 更新阈值 */
+  async updateThreshold(
+    metricName: string,
+    data: {
+      warning_threshold?: number;
+      critical_threshold?: number;
+      description?: string;
+      is_active?: boolean;
+    }
+  ): Promise<RiskThresholdItem> {
+    return apiPut(`/quantTrade/risk/thresholds/${encodeURIComponent(metricName)}`, data);
+  },
+
+  /** 健康检查 */
+  async healthCheck(): Promise<{ status: string; module: string; timestamp: string }> {
+    return apiGet("/quantTrade/risk/health");
   },
 };

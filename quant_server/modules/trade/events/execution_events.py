@@ -21,15 +21,6 @@ class OrderSubmitEvent(BaseEvent):
 
 
 @dataclass
-class OrderUpdateEvent(BaseEvent):
-    """订单更新事件"""
-    event_type: str = "order_update"
-    order_id: str = None
-    order_status: str = None
-    order_data: Dict[str, Any] = None
-
-
-@dataclass
 class OrderCancelEvent(BaseEvent):
     """订单取消事件"""
     event_type: str = "order_cancel"
@@ -70,18 +61,3 @@ class ExecutionSuccessEvent(BaseEvent):
     event_type: str = "execution_success"
     order_id: str = None
     order_data: Dict[str, Any] = None
-
-
-@dataclass
-class PositionUpdateEvent(BaseEvent):
-    """持仓更新事件"""
-    event_type: str = "position_update"
-    symbol: str = None
-    position_data: Dict[str, Any] = None
-
-
-@dataclass
-class AccountUpdateEvent(BaseEvent):
-    """账户更新事件"""
-    event_type: str = "account_update"
-    account_data: Dict[str, Any] = None

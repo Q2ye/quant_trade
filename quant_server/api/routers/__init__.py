@@ -15,6 +15,7 @@ from .account_router import router as account_router
 from .analysis_router import router as analysis_router
 from .monitor_router import router as monitor_router
 from .system_router import router as system_router
+from .risk_router import router as risk_router
 from .health_router import router as health_router
 from .market_router import router as market_router
 
@@ -30,6 +31,7 @@ __all__ = [
     "analysis_router",
     "monitor_router",
     "system_router",
+    "risk_router",
     "health_router",
     "market_router",
 ]
@@ -47,6 +49,7 @@ ROUTERS = [
     analysis_router,
     monitor_router,
     system_router,
+    risk_router,
     health_router,
     market_router,
 ]

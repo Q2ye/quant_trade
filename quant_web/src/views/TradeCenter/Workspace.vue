@@ -1,30 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, h } from "vue";
+import { ref, reactive, computed, onMounted, h } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
-  NTabs,
-  NTabPane,
-  NCard,
-  NDataTable,
-  NButton,
-  NTag,
-  NSpin,
-  NResult,
-  NEmpty,
-  NModal,
-  NForm,
-  NFormItem,
-  NInput,
-  NSelect,
-  NProgress,
-  NPopconfirm,
-  useMessage,
+  NTabs, NTabPane, NCard, NDataTable, NButton, NTag, NSpin,
+  NResult, NEmpty, NModal, NForm, NFormItem, NInput, NSelect,
+  NProgress, NBadge, NAlert, useMessage, NSpace,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
-import AccountBar from "@/components/trade/AccountBar.vue";
 import StockContextPanel from "@/components/trade/StockContextPanel.vue";
+import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
+import { useWebSocket } from "@/composables/useWebSocket";
 import type { Account, Order, Position, Basket } from "@/types";
+import request from "@/utils/request";
 import tradeAPI from "@/api/trade";
 import basketAPI from "@/api/basket";
 
@@ -32,28 +20,21 @@ const router = useRouter();
 const route = useRoute();
 const message = useMessage();
 
+// WebSocket: VITE_WS_URL 为 ws://host:port/api/ws 格式时才启用
+const wsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+if (wsUrl && wsUrl.includes("://")) {
+  useWebSocket();
+}
+
 // ============================================================
 // State
 // ============================================================
-const activeTab = ref((route.query.tab as string) || "positions");
+const activeTab = ref((route.query.tab as string) || "signals");
+// 仅初始化时从 URL 读取 tab，后续切换不写 URL，避免 router.replace 与侧边栏 push 竞争
 
-// Sync activeTab to URL query param
-watch(activeTab, (tab) => {
-  if (route.query.tab !== tab) {
-    router.replace({ query: { tab } }).catch(() => {});
-  }
-});
 const loading = ref(false);
 const error = ref(false);
-
-// Selected stock context (shared across tabs)
-const selectedStock = ref<{
-  tsCode: string;
-  name: string;
-  price: number | null;
-  changePercent: number | null;
-} | null>(null);
-const contextLoading = ref(false);
+const failedSources = ref<string[]>([]);
 
 // Account
 const accounts = ref<Account[]>([]);
@@ -69,35 +50,57 @@ const orderFilter = ref("all");
 // Baskets
 const baskets = ref<Basket[]>([]);
 
+// Signals
+const signals = ref<any[]>([]);
+const signalFilter = ref("pending");
+const signalReviewing = ref<Set<string>>(new Set());
+
+// Trade record modal
+const showRecordModal = ref(false);
+const recordPrefill = ref<any>(null);
+
+// Stock context
+const selectedStock = ref<{ tsCode: string; name: string; price: number | null; changePercent: number | null } | null>(null);
+const contextLoading = ref(false);
+
 // ============================================================
-// Data loader — real API
+// Data loader
 // ============================================================
 const loadAllData = async () => {
   loading.value = true;
   error.value = false;
+  failedSources.value = [];
   try {
-    const [acctRes, posRes, orderRes, basketRes] = await Promise.all([
-      tradeAPI.getAccountInfo().catch(() => []),
-      tradeAPI.getPositions().catch(() => []),
-      tradeAPI.getOrders({ limit: 50 }).catch(() => ({ items: [], total: 0 })),
-      basketAPI.getBaskets().catch(() => ({ baskets: [], total: 0 })),
+    const [acctRes, posRes, orderRes, basketRes, sigRes] = await Promise.all([
+      tradeAPI.getAccountInfo().catch(() => { failedSources.value.push("账户"); return []; }),
+      tradeAPI.getPositions().catch(() => { failedSources.value.push("持仓"); return []; }),
+      tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => { failedSources.value.push("订单"); return { items: [], total: 0 }; }),
+      basketAPI.getBaskets().catch(() => { failedSources.value.push("篮子"); return { baskets: [], total: 0 }; }),
+      tradeAPI.getSignals({ page_size: 50 }).catch(() => { failedSources.value.push("信号"); return { data: [] }; }),
     ]);
 
-    accounts.value = (Array.isArray(acctRes) ? acctRes : []).map((a: any) => ({
+    // 账户 API 返回单对象或数组，统一转为数组
+    const acctData = (acctRes as any)?.data ?? acctRes;
+    const acctList = Array.isArray(acctData) ? acctData : (acctData ? [acctData] : []);
+    accounts.value = acctList.map((a: any) => ({
       ...a,
       id: String(a.id ?? a.account_id ?? ""),
+      total_asset: a.total_asset ?? a.total_balance ?? 0,
+      available_cash: a.available_cash ?? a.cash ?? a.available_balance ?? 0,
+      market_value: a.market_value ?? 0,
+      total_pnl: a.total_pnl ?? a.pnl ?? 0,
     }));
     if (accounts.value.length > 0 && !selectedAccountId.value) {
       selectedAccountId.value = String(accounts.value[0].id);
     }
 
     positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
-
-    const orderItems =
-      (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
+    const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
     orders.value = orderItems as Order[];
-
     baskets.value = (basketRes as any)?.baskets ?? ([] as Basket[]);
+
+    const sigData = (sigRes as any)?.data ?? (Array.isArray(sigRes) ? sigRes : []);
+    signals.value = Array.isArray(sigData) ? sigData : [];
   } catch {
     error.value = true;
   } finally {
@@ -105,20 +108,113 @@ const loadAllData = async () => {
   }
 };
 
+// 精准刷新（成交录入后只刷新受影响的数据）
+const refreshAfterTrade = async () => {
+  const [posRes, orderRes, acctRes] = await Promise.all([
+    tradeAPI.getPositions().catch(() => []),
+    tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => ({ items: [], total: 0 })),
+    tradeAPI.getAccountInfo().catch(() => []),
+  ]);
+  positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
+  const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
+  orders.value = orderItems as Order[];
+  const acctData2 = (acctRes as any)?.data ?? acctRes;
+  const acctList2 = Array.isArray(acctData2) ? acctData2 : (acctData2 ? [acctData2] : []);
+  accounts.value = acctList2.map((a: any) => ({
+    ...a,
+    id: String(a.id ?? a.account_id ?? ""),
+    total_asset: a.total_asset ?? a.total_balance ?? 0,
+    available_cash: a.available_cash ?? a.cash ?? a.available_balance ?? 0,
+    market_value: a.market_value ?? 0,
+    total_pnl: a.total_pnl ?? a.pnl ?? 0,
+  }));
+};
+
 // ============================================================
-// Cross-entity helpers — 篮子与持仓关联
+// Account summary (top bar)
+// ============================================================
+const accountStats = computed(() => {
+  if (accounts.value.length === 0) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0 };
+  const a = accounts.value.find((ac) => String(ac.id) === selectedAccountId.value) || accounts.value[0];
+  return {
+    totalAsset: (a as any).total_asset ?? 0,
+    availableCash: (a as any).available_cash ?? 0,
+    marketValue: (a as any).market_value ?? 0,
+    pnl: (a as any).total_pnl ?? 0,
+    pnlRate: (a as any).pnl_rate ?? 0,
+  };
+});
+
+const signalCounts = computed(() => ({
+  pending: signals.value.filter((s) => (s.status ?? "pending") === "pending").length,
+  approved: signals.value.filter((s) => s.status === "approved").length,
+  total: signals.value.length,
+}));
+
+// ============================================================
+// Signal actions
+// ============================================================
+const handleReviewSignal = async (signalId: string, action: string) => {
+  // 乐观更新：先改 UI
+  const found = signals.value.find((s) => s.signal_id === signalId || s.id === signalId);
+  const prevStatus = found?.status;
+  if (found) found.status = action;
+
+  signalReviewing.value.add(signalId);
+  try {
+    await tradeAPI.reviewSignal(signalId, action);
+    message.success(action === "approved" ? "已采纳" : "已拒绝");
+  } catch (e: any) {
+    // 失败回滚
+    if (found) found.status = prevStatus;
+    message.error(e?.response?.data?.detail || "操作失败");
+  } finally {
+    signalReviewing.value.delete(signalId);
+  }
+};
+
+const handleRecordFromSignal = (signal: any) => {
+  recordPrefill.value = {
+    signal_id: signal.signal_id || signal.id,
+    strategy_id: signal.strategy_id,
+    ts_code: signal.ts_code,
+    direction: signal.signal_type || signal.direction,
+    price: signal.price,
+    quantity: signal.quantity,
+  };
+  showRecordModal.value = true;
+};
+
+const handleRecordSubmitted = () => {
+  refreshAfterTrade();
+};
+
+// ============================================================
+// Signal tab columns
+// ============================================================
+const statusTag = (status: string) => {
+  const map: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
+    pending: { text: "待审核", type: "warning" },
+    approved: { text: "已采纳", type: "success" },
+    rejected: { text: "已拒绝", type: "default" },
+    executed: { text: "已执行", type: "info" },
+  };
+  return map[status] || { text: status, type: "default" as const };
+};
+
+const filteredSignals = computed(() => {
+  if (signalFilter.value === "all") return signals.value;
+  return signals.value.filter((s) => (s.status ?? "pending") === signalFilter.value);
+});
+
+// ============================================================
+// Cross-entity helpers
 // ============================================================
 const getPositionByTsCode = (tsCode: string): Position | undefined =>
-  positions.value.find((p) => p.ts_code === tsCode);
+  positions.value.find((p: any) => (p.ts_code || p.symbol) === tsCode);
 
-const getBasketHoldStats = (basket: Basket) => {
-  const items = (basket as any).items as
-    | { ts_code: string; weight: number }[]
-    | undefined;
-  if (!items || items.length === 0) return { held: 0, total: 0 };
-  const held = items.filter((item) => getPositionByTsCode(item.ts_code)).length;
-  return { held, total: items.length };
-};
+const getOrdersForStock = (tsCode: string): Order[] =>
+  orders.value.filter((o: any) => (o.ts_code || o.symbol) === tsCode);
 
 const getBasketsForStock = (tsCode: string): Basket[] =>
   baskets.value.filter((b) => {
@@ -126,32 +222,22 @@ const getBasketsForStock = (tsCode: string): Basket[] =>
     return items?.some((item) => item.ts_code === tsCode);
   });
 
-const getOrdersForStock = (tsCode: string): Order[] =>
-  orders.value.filter((o) => o.ts_code === tsCode);
-
-// ============================================================
-// Stock selection — 点击股票时更新右侧面板
-// ============================================================
 const handleSelectStock = async (tsCode: string, name: string) => {
   contextLoading.value = true;
   selectedStock.value = { tsCode, name, price: null, changePercent: null };
-  // Simulate fetching real-time data
   await new Promise((r) => setTimeout(r, 200));
-  const pos = getPositionByTsCode(tsCode);
+  const pos: any = getPositionByTsCode(tsCode);
   selectedStock.value = {
     tsCode,
     name,
-    price: pos?.current_price ?? null,
-    changePercent: pos ? pos.profit_loss_ratio : 0,
+    price: pos?.current_price ?? pos?.last_price ?? null,
+    changePercent: pos ? (pos.profit_rate ?? pos.pnl_rate ?? 0) : 0,
   };
   contextLoading.value = false;
 };
 
-// Selected stock computed properties
 const selectedPosition = computed(() =>
-  selectedStock.value
-    ? (getPositionByTsCode(selectedStock.value.tsCode) ?? null)
-    : null,
+  selectedStock.value ? (getPositionByTsCode(selectedStock.value.tsCode) ?? null) : null,
 );
 const selectedRelatedOrders = computed(() =>
   selectedStock.value ? getOrdersForStock(selectedStock.value.tsCode) : [],
@@ -161,89 +247,41 @@ const selectedRelatedBaskets = computed(() =>
 );
 
 // ============================================================
-// Tab: 篮子 columns & actions
+// Basket tab
 // ============================================================
+const getBasketHoldStats = (basket: Basket) => {
+  const items = (basket as any).items as { ts_code: string; weight: number }[] | undefined;
+  if (!items || items.length === 0) return { held: 0, total: 0 };
+  const held = items.filter((item) => getPositionByTsCode(item.ts_code)).length;
+  return { held, total: items.length };
+};
+
 const basketColumns: DataTableColumns<Basket> = [
+  { title: "篮子名称", key: "name", width: 160, render: (row) => h("span", { style: { fontWeight: 600 } }, row.name) },
+  { title: "描述", key: "description", ellipsis: { tooltip: true } },
   {
-    title: "篮子名称",
-    key: "name",
-    width: 160,
-    render: (row) => h("span", { style: { fontWeight: 600 } }, row.name),
-  },
-  {
-    title: "描述",
-    key: "description",
-    ellipsis: { tooltip: true },
-  },
-  {
-    title: "持仓覆盖",
-    key: "holdStatus",
-    width: 180,
+    title: "持仓覆盖", key: "holdStatus", width: 180,
     render: (row) => {
       const { held, total } = getBasketHoldStats(row);
       const pct = total > 0 ? Math.round((held / total) * 100) : 0;
-      return h(
-        "div",
-        { style: { display: "flex", alignItems: "center", gap: "8px" } },
-        [
-          h(NProgress, {
-            percentage: pct,
-            color: pct > 50 ? "#10B981" : pct > 0 ? "#F59E0B" : "#6B7280",
-            indicatorTextColor: "#999",
-            height: 6,
-            borderRadius: 3,
-            style: { width: "120px" },
-          }),
-          h(
-            "span",
-            { style: { fontSize: "12px", color: "var(--n-text-color-3)" } },
-            `${held}/${total}`,
-          ),
-        ],
-      );
+      return h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [
+        h(NProgress, { percentage: pct, color: pct > 50 ? "var(--n-color-success)" : pct > 0 ? "var(--n-color-warning)" : "var(--n-text-color-3)", height: 6, borderRadius: 3, style: { width: "120px" } }),
+        h("span", { style: { fontSize: "12px", color: "var(--n-text-color-3)" } }, `${held}/${total}`),
+      ]);
     },
   },
   {
-    title: "成分股",
-    key: "items_count",
-    width: 80,
-    render: (row) =>
-      `${(row as any).items_count ?? (row as any).items?.length ?? 0} 只`,
-  },
-  {
-    title: "操作",
-    key: "actions",
-    width: 200,
-    render: (row) =>
-      h("div", { style: { display: "flex", gap: "6px" } }, [
-        h(
-          NButton,
-          {
-            size: "small",
-            onClick: () => router.push(`/baskets/detail/${row.id}`),
-          },
-          { default: () => "详情" },
-        ),
-        h(
-          NButton,
-          {
-            size: "small",
-            type: "primary",
-            onClick: () => message.info(`一键下单: ${row.name}`),
-          },
-          { default: () => "下单" },
-        ),
-      ]),
+    title: "操作", key: "actions", width: 160,
+    render: (row) => h("div", { style: { display: "flex", gap: "6px" } }, [
+      h(NButton, { size: "small", onClick: () => router.push(`/baskets/detail/${row.id}`) }, { default: () => "详情" }),
+    ]),
   },
 ];
 
 // ============================================================
-// Tab: 订单 columns
+// Order tab
 // ============================================================
-const statusMap: Record<
-  string,
-  { text: string; type: "info" | "warning" | "success" | "default" | "error" }
-> = {
+const statusMap: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
   submitted: { text: "已报", type: "info" },
   partial_filled: { text: "部成", type: "warning" },
   filled: { text: "已成", type: "success" },
@@ -265,348 +303,127 @@ const orderFilterOptions = [
 ];
 
 const orderColumns: DataTableColumns<Order> = [
+  { title: "时间", key: "submitted_at", width: 160, render: (row: any) => (row.created_at || row.submitted_at || "").slice(0, 16) },
   {
-    title: "时间",
-    key: "submitted_at",
-    width: 160,
-    render: (row) => row.submitted_at?.slice(0, 16),
+    title: "代码", key: "ts_code", width: 110,
+    render: (row: any) => {
+      const code = row.ts_code || row.symbol || "";
+      return h("span", { class: "clickable-stock", style: { color: "var(--n-color-primary)", cursor: "pointer" }, onClick: () => handleSelectStock(code, code) }, code);
+    },
   },
   {
-    title: "代码",
-    key: "ts_code",
-    width: 110,
-    render: (row) =>
-      h(
-        "span",
-        {
-          class: "clickable-stock",
-          style: { color: "var(--n-color-primary)", cursor: "pointer" },
-          onClick: () => handleSelectStock(row.ts_code, row.ts_code),
-        },
-        row.ts_code,
-      ),
+    title: "方向", key: "direction", width: 60,
+    render: (row: any) => h(NTag, { type: row.direction === "buy" ? "success" : "error", size: "small", bordered: false }, { default: () => (row.direction === "buy" ? "买入" : "卖出") }),
   },
+  { title: "价格", key: "price", width: 100, render: (row: any) => ((row.price ?? 0) > 0 ? `¥${(row.price ?? 0).toFixed(2)}` : "市价") },
+  { title: "数量", key: "volume", width: 80, render: (row: any) => (row.volume ?? 0).toLocaleString() },
   {
-    title: "方向",
-    key: "direction",
-    width: 60,
-    render: (row) =>
-      h(
-        NTag,
-        {
-          type: row.direction === "buy" ? "success" : "error",
-          size: "small",
-          bordered: false,
-        },
-        { default: () => (row.direction === "buy" ? "买入" : "卖出") },
-      ),
-  },
-  {
-    title: "价格",
-    key: "price",
-    width: 100,
-    render: (row) => (row.price > 0 ? `¥${row.price.toFixed(2)}` : "市价"),
-  },
-  {
-    title: "数量",
-    key: "volume",
-    width: 80,
-    render: (row) => row.volume.toLocaleString(),
-  },
-  {
-    title: "状态",
-    key: "status",
-    width: 80,
-    render: (row) =>
-      h(
-        NTag,
-        {
-          type: statusMap[row.status]?.type || "default",
-          size: "small",
-          bordered: false,
-        },
-        { default: () => statusMap[row.status]?.text },
-      ),
-  },
-  {
-    title: "操作",
-    key: "actions",
-    width: 80,
-    render: (row) =>
-      row.status === "submitted" || row.status === "partial_filled"
-        ? h(
-            NPopconfirm,
-            { onPositiveClick: () => message.success(`撤单: ${row.order_id}`) },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  { size: "tiny", type: "error" },
-                  { default: () => "撤单" },
-                ),
-              default: () => "确认撤单？",
-            },
-          )
-        : h(
-            "span",
-            { style: { color: "var(--n-text-color-3)", fontSize: "12px" } },
-            "--",
-          ),
+    title: "状态", key: "status", width: 80,
+    render: (row: any) => h(NTag, { type: statusMap[row.status]?.type || "default", size: "small", bordered: false }, { default: () => statusMap[row.status]?.text || row.status }),
   },
 ];
 
 // ============================================================
-// Tab: 持仓 columns
+// Position tab
 // ============================================================
 const positionColumns: DataTableColumns<Position> = [
   {
-    title: "代码",
-    key: "ts_code",
-    width: 110,
-    render: (row) =>
-      h(
-        "span",
-        {
-          class: "clickable-stock",
-          style: { color: "var(--n-color-primary)", cursor: "pointer" },
-          onClick: () => handleSelectStock(row.ts_code, row.name),
-        },
-        row.ts_code,
-      ),
+    title: "代码", key: "ts_code", width: 110,
+    render: (row: any) => {
+      const code = row.ts_code || row.symbol || "";
+      const name = row.name || code;
+      return h("span", { class: "clickable-stock", style: { color: "var(--n-color-primary)", cursor: "pointer" }, onClick: () => handleSelectStock(code, name) }, code);
+    },
+  },
+  { title: "持仓量", key: "volume", width: 90, render: (row: any) => (row.volume ?? 0).toLocaleString() },
+  { title: "成本价", key: "cost_price", width: 95, render: (row: any) => `¥${(row.cost_price ?? 0).toFixed(2)}` },
+  { title: "当前价", key: "current_price", width: 95, render: (row: any) => `¥${(row.current_price ?? 0).toFixed(2)}` },
+  { title: "市值", key: "market_value", width: 110, render: (row: any) => {
+    const mv = row.market_value ?? ((row.volume ?? 0) * (row.current_price ?? 0));
+    return `¥${mv.toLocaleString()}`;
+  }},
+  {
+    title: "盈亏", key: "pnl", width: 110,
+    render: (row: any) => {
+      const pnl = row.profit ?? row.pnl ?? 0;
+      return h("span", { class: pnl >= 0 ? "text-up" : "text-down" }, `¥${pnl.toLocaleString()}`);
+    },
   },
   {
-    title: "名称",
-    key: "name",
-    width: 120,
-    render: (row) =>
-      h(
-        "span",
-        {
-          class: "clickable-stock",
-          style: { cursor: "pointer" },
-          onClick: () => handleSelectStock(row.ts_code, row.name),
-        },
-        row.name,
-      ),
-  },
-  {
-    title: "持仓量",
-    key: "volume",
-    width: 90,
-    render: (row: Position) => row.volume.toLocaleString(),
-  },
-  {
-    title: "可用",
-    key: "available_volume",
-    width: 80,
-    render: (row: Position) => row.available_volume.toLocaleString(),
-  },
-  {
-    title: "成本价",
-    key: "cost_price",
-    width: 95,
-    render: (row: Position) => `¥${row.cost_price.toFixed(2)}`,
-  },
-  {
-    title: "当前价",
-    key: "current_price",
-    width: 95,
-    render: (row: Position) => `¥${row.current_price.toFixed(2)}`,
-  },
-  {
-    title: "市值",
-    key: "market_value",
-    width: 110,
-    render: (row: Position) => `¥${row.market_value.toLocaleString()}`,
-  },
-  {
-    title: "盈亏",
-    key: "profit_loss",
-    width: 110,
-    render: (row) =>
-      h(
-        "span",
-        { class: (row.profit_loss ?? 0) >= 0 ? "text-up" : "text-down" },
-        `¥${(row.profit_loss ?? 0).toLocaleString()}`,
-      ),
-  },
-  {
-    title: "盈亏比",
-    key: "profit_loss_ratio",
-    width: 85,
-    render: (row) =>
-      h(
-        "span",
-        { class: (row.profit_loss_ratio ?? 0) >= 0 ? "text-up" : "text-down" },
-        `${(row.profit_loss_ratio ?? 0).toFixed(2)}%`,
-      ),
-  },
-  {
-    title: "操作",
-    key: "actions",
-    width: 140,
-    render: (row) =>
-      h("div", { style: { display: "flex", gap: "4px" } }, [
-        h(
-          NButton,
-          { size: "tiny", onClick: () => message.info(`平仓: ${row.name}`) },
-          { default: () => "平仓" },
-        ),
-        h(
-          NButton,
-          {
-            size: "tiny",
-            type: "primary",
-            onClick: () => message.info(`加仓: ${row.name}`),
-          },
-          { default: () => "加仓" },
-        ),
-      ]),
+    title: "盈亏比", key: "pnl_rate", width: 85,
+    render: (row: any) => {
+      const rate = row.profit_rate ?? row.pnl_rate ?? 0;
+      return h("span", { class: rate >= 0 ? "text-up" : "text-down" }, `${rate.toFixed(2)}%`);
+    },
   },
 ];
 
 // ============================================================
-// Quick trade handler
+// Account tab
 // ============================================================
-const handleQuickTrade = (direction: "buy" | "sell") => {
-  const s = selectedStock.value;
-  if (!s) return;
-  router.push({ path: "/trade", query: { symbol: s.tsCode, side: direction } });
-};
+const accountColumns: DataTableColumns<Account> = [
+  { title: "总资产", key: "total_asset", width: 120, render: (row: Account) => `¥${(row.total_asset ?? 0).toLocaleString()}` },
+  { title: "可用资金", key: "available_cash", width: 120, render: (row: Account) => `¥${(row.available_cash ?? 0).toLocaleString()}` },
+  { title: "持仓市值", key: "market_value", width: 120, render: (row: Account) => `¥${(row.market_value ?? 0).toLocaleString()}` },
+  { title: "累计盈亏", key: "total_pnl", width: 110, render: (row: Account) => h("span", { class: (row.total_pnl ?? 0) >= 0 ? "text-up" : "text-down" }, `¥${(row.total_pnl ?? 0).toLocaleString()}`) },
+  {
+    title: "操作", key: "actions", width: 120,
+    render: (row) => h("div", { style: { display: "flex", gap: "4px" } }, [
+      h(NButton, { size: "tiny", onClick: () => openAccountEditor(row) }, { default: () => "编辑" }),
+      h(NButton, { size: "tiny", type: "error", onClick: () => handleDeleteAccount(row.id) }, { default: () => "删除" }),
+    ]),
+  },
+];
 
-// ============================================================
-// Account tab — reused from AccountManagement
-// ============================================================
-const dialogVisible = ref(false);
-const editingAccount = ref<Account | null>(null);
-const accountForm = ref({
+// Account CRUD
+const showAccountModal = ref(false);
+const editingAccountId = ref<string | null>(null);
+const accountForm = reactive({
   account_name: "",
-  broker: "ht",
-  account_number: "",
-  status: "active",
+  account_type: "simulation" as string,
+  initial_balance: 1000000,
 });
 
-const brokerMap: Record<string, string> = {
-  ht: "华泰证券",
-  gf: "广发证券",
-  zs: "招商证券",
-  zx: "中信证券",
-};
-const brokerOptions = Object.entries(brokerMap).map(([v, l]) => ({
-  label: l,
-  value: v,
-}));
-const statusOpts = [
-  { label: "活跃", value: "active" },
-  { label: "禁用", value: "inactive" },
-];
+function openAccountEditor(acct?: Account) {
+  editingAccountId.value = acct ? String(acct.id) : null;
+  accountForm.account_name = (acct as any)?.account_name || "";
+  accountForm.account_type = (acct as any)?.account_type || "simulation";
+  accountForm.initial_balance = (acct as any)?.initial_balance ?? (acct as any)?.total_asset ?? 1000000;
+  showAccountModal.value = true;
+}
 
-const accountColumns: DataTableColumns<Account> = [
-  { title: "账户名称", key: "account_name", width: 150 },
-  {
-    title: "券商",
-    key: "broker",
-    width: 110,
-    render: (row) => brokerMap[row.broker] || row.broker,
-  },
-  { title: "账户号码", key: "account_number", width: 150 },
-  {
-    title: "总资产",
-    key: "total_asset",
-    width: 120,
-    render: (row) => `¥${row.total_asset.toLocaleString()}`,
-  },
-  {
-    title: "可用资金",
-    key: "available_cash",
-    width: 120,
-    render: (row) => `¥${row.available_cash.toLocaleString()}`,
-  },
-  {
-    title: "持仓市值",
-    key: "market_value",
-    width: 120,
-    render: (row) => `¥${row.market_value.toLocaleString()}`,
-  },
-  {
-    title: "状态",
-    key: "status",
-    width: 80,
-    render: (row) =>
-      h(
-        NTag,
-        {
-          type: row.status === "active" ? "success" : "default",
-          size: "small",
-          bordered: false,
-        },
-        { default: () => (row.status === "active" ? "活跃" : "禁用") },
-      ),
-  },
-  {
-    title: "操作",
-    key: "actions",
-    width: 180,
-    render: (row) =>
-      h("div", { style: { display: "flex", gap: "4px" } }, [
-        h(
-          NButton,
-          {
-            size: "tiny",
-            onClick: () => {
-              editingAccount.value = row;
-              accountForm.value = { ...row } as any;
-              dialogVisible.value = true;
-            },
-          },
-          { default: () => "编辑" },
-        ),
-        h(
-          NButton,
-          {
-            size: "tiny",
-            type: "error",
-            onClick: () => {
-              accounts.value = accounts.value.filter((a) => a.id !== row.id);
-              message.success("删除成功");
-            },
-          },
-          { default: () => "删除" },
-        ),
-      ]),
-  },
-];
-
-const saveAccount = () => {
-  if (editingAccount.value) {
-    const idx = accounts.value.findIndex(
-      (a) => a.id === editingAccount.value!.id,
-    );
-    if (idx !== -1)
-      accounts.value[idx] = { ...editingAccount.value, ...accountForm.value };
-  } else {
-    accounts.value.push({
-      id: Date.now(),
-      ...accountForm.value,
-      total_asset: 0,
-      available_cash: 0,
-      market_value: 0,
-    } as Account);
+async function handleSaveAccount() {
+  try {
+    const payload = {
+      user_id: "",
+      account_name: accountForm.account_name,
+      account_type: accountForm.account_type,
+      initial_balance: accountForm.initial_balance,
+      broker: "sim",
+    };
+    if (editingAccountId.value) {
+      await request.put(`/quantTrade/account/${editingAccountId.value}`, payload);
+    } else {
+      await request.post("/quantTrade/account", payload);
+    }
+    message.success(editingAccountId.value ? "账户已更新" : "账户已创建");
+    showAccountModal.value = false;
+    loadAllData();
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || "操作失败");
   }
-  dialogVisible.value = false;
-  message.success(editingAccount.value ? "账户已更新" : "账户已创建");
-};
+}
 
-const handleAddAccount = () => {
-  editingAccount.value = null;
-  accountForm.value = {
-    account_name: "",
-    broker: "ht",
-    account_number: "",
-    status: "active",
-  };
-  dialogVisible.value = true;
-};
+async function handleDeleteAccount(id: string) {
+  try {
+    await request.delete(`/quantTrade/account/${id}`);
+    // 乐观移除，避免 loadAllData 触发 vnode 卸载异常
+    accounts.value = accounts.value.filter((a) => String(a.id) !== id);
+    message.success("账户已删除");
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || "删除失败");
+  }
+}
 
 // ============================================================
 // Init
@@ -620,42 +437,58 @@ onMounted(() => loadAllData());
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">交易工作台</h1>
+          <h1 class="page-title">交易驾驶舱</h1>
+          <p class="page-description">信号审核、成交录入、持仓订单管理</p>
         </div>
         <div class="header-actions">
-          <n-button
-            size="small"
-            text
-            class="cockpit-btn"
-            @click="router.push('/trade')"
-          >
-            <template #icon><SmartIcon name="Rocket" /></template>
-            驾驶舱
+          <n-button size="small" @click="router.push('/baskets/create')">
+            <template #icon><SmartIcon name="Basket" /></template>
+            新建篮子
+          </n-button>
+          <n-button type="primary" size="small" @click="showRecordModal = true; recordPrefill = null">
+            <template #icon><SmartIcon name="Plus" /></template>
+            录入成交
           </n-button>
         </div>
       </div>
     </div>
 
     <div class="main-content">
-      <!-- ========== Top Account Bar ========== -->
-      <AccountBar
-        :accounts="accounts"
-        :selected-account-id="selectedAccountId"
-        @select-account="(id: string) => (selectedAccountId = id)"
-      >
-        <template #actions>
-          <n-button size="small" text @click="router.push('/trade/execution')">
-            执行分析
-          </n-button>
-          <n-button
-            size="small"
-            text
-            @click="router.push('/performance/account')"
-          >
-            账户绩效
-          </n-button>
-        </template>
-      </AccountBar>
+      <!-- ========== Top Summary Bar ========== -->
+      <div class="summary-bar glass-surface">
+        <n-spin :show="loading" size="small">
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="summary-label">总资产</span>
+              <span class="summary-value">¥{{ accountStats.totalAsset.toLocaleString() }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">可用资金</span>
+              <span class="summary-value">¥{{ accountStats.availableCash.toLocaleString() }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">持仓市值</span>
+              <span class="summary-value">¥{{ accountStats.marketValue.toLocaleString() }}</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">当日盈亏</span>
+              <span class="summary-value" :class="accountStats.pnl >= 0 ? 'text-up' : 'text-down'">
+                {{ accountStats.pnl >= 0 ? '+' : '' }}¥{{ accountStats.pnl.toLocaleString() }}
+                <small>({{ accountStats.pnlRate >= 0 ? '+' : '' }}{{ accountStats.pnlRate.toFixed(2) }}%)</small>
+              </span>
+            </div>
+          </div>
+        </n-spin>
+      </div>
+
+      <!-- ========== Failed sources warning ========== -->
+      <n-alert
+        v-if="failedSources.length > 0 && !error"
+        type="warning"
+        :title="`部分数据加载失败: ${failedSources.join('、')}`"
+        closable
+        style="margin-bottom: 16px"
+      />
 
       <!-- ========== Error ========== -->
       <n-result
@@ -669,20 +502,141 @@ onMounted(() => loadAllData());
         </template>
       </n-result>
 
-      <!-- ========== Main Two-Column Layout ========== -->
-      <div v-else class="workspace-layout">
-        <!-- ===== Left Panel: Tabs ===== -->
-        <div class="left-panel">
+      <!-- ========== Main Two-Column Layout (B 区) ========== -->
+      <n-card v-else class="workspace-card" :bordered="true" size="small">
+        <div class="workspace-layout">
+          <!-- ===== Left Panel: Tabs ===== -->
+          <div class="left-panel">
           <n-tabs v-model:value="activeTab" type="line" size="small">
-            <!-- Tab 1: 篮子 -->
+            <!-- Tab 0: 信号流 -->
+            <n-tab-pane name="signals">
+              <template #tab>
+                <n-badge :value="signalCounts.pending" :max="99" processing>
+                  <span>信号流</span>
+                </n-badge>
+              </template>
+              <n-spin :show="loading">
+                <!-- Signal filter bar -->
+                <div class="tab-toolbar">
+                  <n-select
+                    v-model:value="signalFilter"
+                    :options="[
+                      { label: `待审核 (${signalCounts.pending})`, value: 'pending' },
+                      { label: `已采纳 (${signalCounts.approved})`, value: 'approved' },
+                      { label: '全部', value: 'all' },
+                    ]"
+                    size="small"
+                    style="width: 160px"
+                  />
+                </div>
+                <!-- Signal list -->
+                <div v-if="filteredSignals.length > 0" class="signal-list">
+                  <div
+                    v-for="s in filteredSignals"
+                    :key="s.signal_id || s.id"
+                    class="signal-card card-surface"
+                    :class="{ 'signal-rejected': s.status === 'rejected' }"
+                    @click="handleSelectStock(s.ts_code, s.ts_code)"
+                  >
+                    <div class="signal-left">
+                      <div class="signal-top-row">
+                        <n-tag
+                          :type="(s.signal_type || s.direction) === 'buy' ? 'success' : 'error'"
+                          size="tiny" :bordered="false"
+                        >
+                          {{ (s.signal_type || s.direction) === 'buy' ? '买' : '卖' }}
+                        </n-tag>
+                        <span class="signal-code">{{ s.ts_code }}</span>
+                        <n-tag :type="statusTag(s.status ?? 'pending').type" size="tiny" :bordered="false">
+                          {{ statusTag(s.status ?? 'pending').text }}
+                        </n-tag>
+                      </div>
+                      <div class="signal-mid-row">
+                        <span v-if="s.price" class="signal-price">¥{{ s.price }}</span>
+                        <span v-if="s.quantity" class="signal-qty">×{{ s.quantity }}股</span>
+                        <span v-if="s.strength != null" class="signal-strength" :class="s.strength >= 0.7 ? 'text-up' : 'text-secondary'">
+                          强度 {{ (s.strength * 100).toFixed(0) }}%
+                        </span>
+                      </div>
+                      <div v-if="s.reason" class="signal-reason">{{ s.reason }}</div>
+                    </div>
+                    <div class="signal-actions">
+                      <template v-if="(s.status ?? 'pending') === 'pending'">
+                        <n-button
+                          size="tiny" type="success" :loading="signalReviewing.has(s.signal_id || s.id)"
+                          @click.stop="handleReviewSignal(s.signal_id || s.id, 'approved')"
+                        >采纳</n-button>
+                        <n-button
+                          size="tiny" type="error" :loading="signalReviewing.has(s.signal_id || s.id)"
+                          @click.stop="handleReviewSignal(s.signal_id || s.id, 'rejected')"
+                        >拒绝</n-button>
+                      </template>
+                      <template v-else-if="s.status === 'approved'">
+                        <n-tag type="success" size="small" :bordered="false">已采纳 ✓</n-tag>
+                        <n-button size="tiny" type="primary" @click.stop="handleRecordFromSignal(s)">录入成交</n-button>
+                      </template>
+                      <template v-else-if="s.status === 'executed'">
+                        <n-tag type="info" size="small" :bordered="false">已执行 ✓</n-tag>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <n-empty v-else description="暂无交易信号">
+                  <template #extra>
+                    <span class="empty-hint">策略运行后，信号将在此显示</span>
+                  </template>
+                </n-empty>
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 1: 持仓 -->
+            <n-tab-pane name="positions" tab="持仓">
+              <n-spin :show="loading">
+                <n-data-table
+                  v-if="positions.length > 0"
+                  :columns="positionColumns"
+                  :data="positions"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Position) => String(row.id)"
+                />
+                <n-empty v-else description="暂无持仓">
+                  <template #extra>
+                    <n-button size="small" type="primary" @click="showRecordModal = true; recordPrefill = null">
+                      录入第一笔成交
+                    </n-button>
+                  </template>
+                </n-empty>
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 2: 订单 -->
+            <n-tab-pane name="orders" tab="订单">
+              <n-spin :show="loading">
+                <div class="tab-toolbar">
+                  <n-select v-model:value="orderFilter" :options="orderFilterOptions" size="small" style="width: 120px" />
+                </div>
+                <n-data-table
+                  v-if="filteredOrders.length > 0"
+                  :columns="orderColumns"
+                  :data="filteredOrders"
+                  :bordered="false"
+                  size="small"
+                  :row-key="(row: Order) => row.order_id"
+                />
+                <n-empty v-else description="暂无订单记录">
+                  <template #extra>
+                    <span class="empty-hint">录入成交后自动生成订单</span>
+                  </template>
+                </n-empty>
+              </n-spin>
+            </n-tab-pane>
+
+            <!-- Tab 3: 篮子 -->
             <n-tab-pane name="baskets" tab="篮子">
               <n-spin :show="loading">
-                <div class="basket-actions">
-                  <n-button
-                    type="primary"
-                    size="small"
-                    @click="router.push('/baskets/create')"
-                  >
+                <div class="tab-toolbar">
+                  <n-button type="primary" size="small" @click="router.push('/baskets/create')">
                     <template #icon><SmartIcon name="Basket" /></template>
                     新建篮子
                   </n-button>
@@ -699,54 +653,14 @@ onMounted(() => loadAllData());
               </n-spin>
             </n-tab-pane>
 
-            <!-- Tab 2: 订单 -->
-            <n-tab-pane name="orders" tab="订单">
-              <n-spin :show="loading">
-                <div class="tab-toolbar">
-                  <n-select
-                    v-model:value="orderFilter"
-                    :options="orderFilterOptions"
-                    size="small"
-                    style="width: 120px"
-                  />
-                </div>
-                <n-data-table
-                  v-if="filteredOrders.length > 0"
-                  :columns="orderColumns"
-                  :data="filteredOrders"
-                  :bordered="false"
-                  size="small"
-                  :row-key="(row: Order) => row.order_id"
-                />
-                <n-empty v-else description="暂无订单数据" />
-              </n-spin>
-            </n-tab-pane>
-
-            <!-- Tab 3: 持仓 -->
-            <n-tab-pane name="positions" tab="持仓">
-              <n-spin :show="loading">
-                <n-data-table
-                  v-if="positions.length > 0"
-                  :columns="positionColumns"
-                  :data="positions"
-                  :bordered="false"
-                  size="small"
-                  :row-key="(row: Position) => String(row.id)"
-                />
-                <n-empty v-else description="暂无持仓" />
-              </n-spin>
-            </n-tab-pane>
-
             <!-- Tab 4: 账户 -->
             <n-tab-pane name="account" tab="账户">
               <n-spin :show="loading">
                 <div class="tab-toolbar">
-                  <n-button
-                    type="primary"
-                    size="small"
-                    @click="handleAddAccount"
-                    >新增账户</n-button
-                  >
+                  <n-button type="primary" size="small" @click="openAccountEditor()">
+                    <template #icon><SmartIcon name="Plus" /></template>
+                    新增账户
+                  </n-button>
                 </div>
                 <n-data-table
                   :columns="accountColumns"
@@ -765,9 +679,7 @@ onMounted(() => loadAllData());
         <!-- ===== Right Panel: Stock Context (slide-out) ===== -->
         <div class="right-panel" :class="{ 'panel-open': selectedStock }">
           <div class="context-header">
-            <span class="context-title">{{
-              selectedStock?.name || "股票详情"
-            }}</span>
+            <span class="context-title">{{ selectedStock?.name || "股票详情" }}</span>
             <n-button size="tiny" text @click="selectedStock = null">
               <template #icon><SmartIcon name="Close" /></template>
             </n-button>
@@ -781,145 +693,216 @@ onMounted(() => loadAllData());
             :related-orders="selectedRelatedOrders"
             :related-baskets="selectedRelatedBaskets"
             :loading="contextLoading"
-            @trade="handleQuickTrade"
+            @trade="(dir: 'buy'|'sell') => { showRecordModal = true; recordPrefill = { ts_code: selectedStock?.tsCode, direction: dir }; }"
             @add-to-basket="message.info('请从篮子管理中选择目标篮子')"
           />
         </div>
       </div>
-
-      <!-- Account Edit Modal -->
-      <n-modal
-        v-model:show="dialogVisible"
-        preset="dialog"
-        :title="editingAccount ? '编辑账户' : '新增账户'"
-        positive-text="保存"
-        negative-text="取消"
-        @positive-click="saveAccount"
-      >
-        <n-form :model="accountForm" label-width="100px">
-          <n-form-item label="账户名称">
-            <n-input v-model:value="accountForm.account_name" />
-          </n-form-item>
-          <n-form-item label="券商">
-            <n-select
-              v-model:value="accountForm.broker"
-              :options="brokerOptions"
-            />
-          </n-form-item>
-          <n-form-item label="账户号码">
-            <n-input v-model:value="accountForm.account_number" />
-          </n-form-item>
-          <n-form-item label="状态">
-            <n-select
-              v-model:value="accountForm.status"
-              :options="statusOpts"
-            />
-          </n-form-item>
-        </n-form>
-      </n-modal>
+      </n-card>
     </div>
+
+    <!-- Account Edit Modal -->
+    <n-modal v-model:show="showAccountModal" preset="card" :title="editingAccountId ? '编辑账户' : '新增账户'" style="width: 420px">
+      <n-form :model="accountForm" label-placement="left" label-width="100px">
+        <n-form-item label="账户名称">
+          <n-input v-model:value="accountForm.account_name" placeholder="如：模拟交易账户" />
+        </n-form-item>
+        <n-form-item label="账户类型">
+          <n-select v-model:value="accountForm.account_type" :options="[
+            { label: '模拟账户', value: 'simulation' },
+            { label: '现金账户', value: 'cash' },
+          ]" />
+        </n-form-item>
+        <n-form-item label="初始资金">
+          <n-input-number v-model:value="accountForm.initial_balance" :min="0" :step="10000" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showAccountModal = false">取消</n-button>
+          <n-button type="primary" @click="handleSaveAccount">保存</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- Trade Record Modal -->
+    <TradeRecordModal
+      v-model="showRecordModal"
+      :prefilled="recordPrefill"
+      @submitted="handleRecordSubmitted"
+    />
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .trading-workspace {
-  padding: 0;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100vh;
+}
+
+// ---- Summary Bar (A 区) ----
+.summary-bar {
+  padding: 16px 20px;
+  border-radius: var(--n-border-radius);
+  margin-bottom: 20px;
+  background: var(--n-card-color);
+  border: 1px solid var(--n-border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.summary-grid {
+  display: flex;
+  gap: 40px;
+}
+.summary-item {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+.summary-label {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+.summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--n-text-color-1);
+  font-variant-numeric: tabular-nums;
+  small {
+    font-size: 12px;
+    font-weight: 500;
+  }
 }
 
+// ---- Workspace Card (B 区) ----
+.workspace-card {
+  border-radius: var(--n-border-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+// ---- Workspace Layout ----
 .workspace-layout {
-  flex: 1;
   display: flex;
-  gap: 16px;
-  min-height: 0;
-  overflow: hidden;
+  gap: 0;
 }
 
-/* ---- Left Panel ---- */
 .left-panel {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  :deep(.n-tabs-nav) {
+    margin-bottom: 12px;
+  }
 }
 
-.left-panel :deep(.n-tabs) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.left-panel :deep(.n-tabs-pane-wrapper) {
-  flex: 1;
-  overflow-y: auto;
-}
-
-/* ---- Right Panel (slide-out) ---- */
 .right-panel {
   width: 0;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.02);
-  border: none;
-  border-radius: 8px;
-  padding: 0;
   overflow: hidden;
-  height: 100%;
-  transition:
-    width 0.3s ease,
-    padding 0.3s ease,
-    border 0.3s ease;
+  transition: width 0.25s ease;
+  border-left: 1px solid transparent;
+  &.panel-open {
+    width: 320px;
+    min-width: 320px;
+    border-left-color: var(--n-border-color);
+    padding-left: 16px;
+    margin-left: 16px;
+  }
 }
-.right-panel.panel-open {
-  width: 380px;
-  padding: 16px;
-  border: 1px solid rgba(68, 138, 255, 0.08);
-  overflow-y: auto;
-}
-
 .context-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
 }
 .context-title {
-  font-size: 14px;
   font-weight: 600;
-  color: var(--n-text-color-1, rgba(255, 255, 255, 0.9));
+  font-size: 15px;
 }
 
-.cockpit-btn {
-  padding: 0 12px;
+// ---- Signal list ----
+.signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-
-/* ---- Toolbar ---- */
-.tab-toolbar {
+.signal-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: var(--n-border-radius);
+  cursor: pointer;
+  transition: all 0.2s var(--n-bezier);
+  background: var(--n-card-color);
+  border: 1px solid var(--n-border-color);
+  border-left: 3px solid var(--n-color-target);
+  &.signal-rejected {
+    opacity: 0.5;
+    border-left-color: var(--n-text-color-3);
+  }
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+}
+.signal-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.signal-top-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+}
+.signal-code {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--n-text-color-1);
+}
+.signal-mid-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--n-text-color-2);
+}
+.signal-price {
+  font-weight: 600;
+}
+.signal-qty {
+  color: var(--n-text-color-3);
+}
+.signal-reason {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+}
+.signal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.basket-actions {
+// ---- Common ----
+.tab-toolbar {
+  display: flex;
+  gap: 8px;
   margin-bottom: 12px;
 }
-
-/* ---- Utility ---- */
+.empty-hint {
+  font-size: 13px;
+  color: var(--n-text-color-3);
+}
+.clickable-stock {
+  &:hover {
+    text-decoration: underline;
+  }
+}
 .text-up {
-  color: var(--color-stock-up, #10b981);
-  font-weight: 500;
+  color: var(--n-color-success);
 }
-
 .text-down {
-  color: var(--color-stock-down, #ef4444);
-  font-weight: 500;
+  color: var(--n-color-error);
 }
-
-.clickable-stock:hover {
-  text-decoration: underline;
+.text-secondary {
+  color: var(--n-text-color-3);
 }
 </style>

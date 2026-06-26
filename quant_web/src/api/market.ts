@@ -56,9 +56,15 @@ export default {
   async getETFs(params?: {
     page?: number;
     limit?: number;
+    search?: string;
+    type?: string | null;
+    status?: string | null;
   }): Promise<{ etfs: any[]; total: number; page: number }> {
+    // Map legacy params to backend expected names
+    const q: any = { ...params };
+    if (q.limit !== undefined) { q.page_size = q.limit; delete q.limit; }
     return request
-      .get("/quantTrade/data/etfs", { params })
+      .get("/quantTrade/data/etfs", { params: q })
       .then(handleResponse)
       .then((d: any) => d);
   },
@@ -67,6 +73,15 @@ export default {
       .get(`/quantTrade/data/etfs/${code}`)
       .then(handleResponse)
       .then((data: { etf: StockBasic }) => data.etf);
+  },
+  async getEtfHistory(
+    code: string,
+    limit: number = 200,
+  ): Promise<KLineItem[]> {
+    return request
+      .get(`/quantTrade/data/etfs/${code}/history`, { params: { limit } })
+      .then(handleResponse)
+      .then((data: any) => data.data);
   },
   async getIndexes(): Promise<IndexInfo[]> {
     return request

@@ -808,6 +808,7 @@ CREATE TABLE orders (
     user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
     strategy_id VARCHAR(36) REFERENCES strategies(id),
+    signal_id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     order_type VARCHAR(10) NOT NULL CHECK (order_type IN ('limit', 'market', 'stop')),
     direction VARCHAR(4) NOT NULL CHECK (direction IN ('buy', 'sell')),
@@ -828,6 +829,7 @@ COMMENT ON COLUMN orders.order_id IS '订单唯一ID（平台内部生成）';
 COMMENT ON COLUMN orders.user_id IS '下单用户ID';
 COMMENT ON COLUMN orders.account_id IS '账户ID';
 COMMENT ON COLUMN orders.strategy_id IS '关联策略ID（若为策略下单）';
+COMMENT ON COLUMN orders.signal_id IS '关联信号ID（手动录入时选填）';
 COMMENT ON COLUMN orders.ts_code IS '股票代码';
 COMMENT ON COLUMN orders.order_type IS '订单类型：limit-限价单, market-市价单, stop-止损单';
 COMMENT ON COLUMN orders.direction IS '交易方向：buy-买入, sell-卖出';
@@ -1120,7 +1122,7 @@ CREATE TABLE IF NOT EXISTS etf_basic (
     min_amount DOUBLE PRECISION,
     exp_return DOUBLE PRECISION,
     benchmark VARCHAR(200),
-    status VARCHAR(1),
+    list_status VARCHAR(1),
     invest_type VARCHAR(100),
     market VARCHAR(2),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -1135,7 +1137,7 @@ COMMENT ON COLUMN etf_basic.custodian IS '托管人';
 COMMENT ON COLUMN etf_basic.fund_type IS '投资类型';
 COMMENT ON COLUMN etf_basic.found_date IS '成立日期';
 COMMENT ON COLUMN etf_basic.list_date IS '上市日期';
-COMMENT ON COLUMN etf_basic.status IS '存续状态: L上市/D退市';
+COMMENT ON COLUMN etf_basic.list_status IS '上市状态: L=上市 D=退市 P=待上市';
 COMMENT ON COLUMN etf_basic.market IS '市场: E-上交所 S-深交所';
 COMMENT ON COLUMN etf_basic.benchmark IS '业绩基准';
 
@@ -3195,6 +3197,10 @@ CREATE TABLE signals (
     price NUMERIC(10,4),
     strength NUMERIC(5,2),
     reason TEXT,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'executed')),
+    order_id VARCHAR(36),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by VARCHAR(36),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -3206,6 +3212,10 @@ COMMENT ON COLUMN signals.signal_time IS '信号时间';
 COMMENT ON COLUMN signals.price IS '信号价格';
 COMMENT ON COLUMN signals.strength IS '信号强度（0-100）';
 COMMENT ON COLUMN signals.reason IS '信号产生原因';
+COMMENT ON COLUMN signals.status IS '信号状态：pending-待审核, approved-已采纳, rejected-已拒绝, executed-已执行';
+COMMENT ON COLUMN signals.order_id IS '关联订单ID（信号执行后回写）';
+COMMENT ON COLUMN signals.reviewed_at IS '审核时间';
+COMMENT ON COLUMN signals.reviewed_by IS '审核人ID';
 
 -- 回测净值曲线表（TimescaleDB超表）
 CREATE TABLE backtest_equity_curves (

@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 配置管理器
+
 负责系统配置的缓存、版本管理和热更新通知。
+
+v2.0 新增：
+- ConfigUpdatedEvent 发布（set 时通知订阅方）
+- start_watcher / stop_watcher（轻量配置监听，供未来 DB NOTIFY 使用）
 """
 
 import logging
@@ -14,13 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
-    """系统配置管理器 — 带缓存的配置读写"""
+    """系统配置管理器 — 带缓存的配置读写 + 热更新事件推送"""
 
-    def __init__(self, session_factory):
+    def __init__(self, session_factory, event_engine=None):
         self._session_factory = session_factory
+        self._event_engine = event_engine  # v2.0: 事件引擎（可选）
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._last_refresh: Optional[datetime] = None
         self._cache_ttl_seconds = 300  # 缓存 5 分钟
+        self._watching = False
+
+    # ==================== 读取 ====================
 
     async def get(self, key: str, default: Any = None) -> Any:
         """读取配置值（优先从缓存）"""
@@ -63,34 +72,68 @@ class ConfigManager:
             if k.startswith(prefix)
         }
 
-    async def set(self, key: str, value: Any, config_type: str = "string") -> None:
-        """写入配置并刷新缓存"""
+    # ==================== 写入（含事件推送） ====================
+
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        config_type: str = "string",
+        updated_by: str = "system",
+    ) -> None:
+        """写入配置并刷新缓存，v2.0 同步发布 ConfigUpdatedEvent"""
+        old_value = self._cache.get(key, {}).get("config_value")
+
         async with self._session_factory() as session:
             repo = ConfigRepository(session)
             existing = await repo.get_by_key(key)
             if existing:
                 await repo.update_config(
-                    config_key=key, config_value=str(value),
-                    config_type=config_type, updated_by="system",
+                    config_key=key,
+                    config_value=str(value),
+                    config_type=config_type,
+                    updated_by=updated_by,
                 )
             else:
                 await repo.create_config(
-                    config_key=key, config_value=str(value),
-                    config_type=config_type, created_by="system", updated_by="system",
+                    config_key=key,
+                    config_value=str(value),
+                    config_type=config_type,
+                    created_by=updated_by,
+                    updated_by=updated_by,
                 )
-        # 更新缓存
-        self._cache[key] = {"config_key": key, "config_value": value, "config_type": config_type}
-        logger.info(f"配置已更新: {key}")
 
-    async def delete(self, key: str) -> bool:
+        # 更新缓存
+        self._cache[key] = {
+            "config_key": key,
+            "config_value": value,
+            "config_type": config_type,
+        }
+
+        # v2.0: 发布热更新事件
+        await self._notify_change(key, new_value=value, old_value=old_value or "")
+
+        logger.info("配置已更新: %s", key)
+
+    async def delete(self, key: str, deleted_by: str = "system") -> bool:
         """删除配置"""
         async with self._session_factory() as session:
             repo = ConfigRepository(session)
             result = await repo.delete_config(key)
         if result:
             self._cache.pop(key, None)
-            logger.info(f"配置已删除: {key}")
+            # 发布删除事件
+            if self._event_engine:
+                from modules.system.events.config_events import ConfigDeletedEvent
+                event = ConfigDeletedEvent(
+                    config_key=key,
+                    deleted_by=deleted_by,
+                )
+                await self._event_engine.put(event)
+            logger.info("配置已删除: %s", key)
         return result
+
+    # ==================== 缓存管理 ====================
 
     async def refresh(self) -> None:
         """强制刷新缓存"""
@@ -105,7 +148,7 @@ class ConfigManager:
                     "config_type": c.config_type,
                 }
         self._last_refresh = datetime.now()
-        logger.debug(f"配置缓存已刷新，共 {len(self._cache)} 项")
+        logger.debug("配置缓存已刷新，共 %d 项", len(self._cache))
 
     async def _maybe_refresh(self) -> None:
         """按需刷新过期缓存"""
@@ -125,3 +168,41 @@ class ConfigManager:
         elif config_type == "bool":
             return raw.lower() in ("true", "1", "yes", "on")
         return raw
+
+    # ==================== v2.0: 热更新事件 ====================
+
+    async def _notify_change(
+        self, key: str, new_value: Any, old_value: Any = ""
+    ) -> None:
+        """发布配置变更事件到 EventEngine"""
+        if not self._event_engine:
+            return
+        try:
+            from modules.system.events.config_events import ConfigUpdatedEvent
+            event = ConfigUpdatedEvent(
+                config_key=key,
+                old_value=str(old_value) if old_value else "",
+                new_value=str(new_value),
+                updated_by="system",
+            )
+            await self._event_engine.put(event)
+            logger.debug("已发布 ConfigUpdatedEvent: %s", key)
+        except Exception as e:
+            logger.warning("发布配置变更事件失败: %s", e)
+
+    async def start_watcher(self) -> None:
+        """
+        启动配置热加载监听。
+
+        当前实现：依赖 _maybe_refresh 的 TTL 过期机制 + set() 时的主动推送。
+        未来可扩展为 PostgreSQL LISTEN/NOTIFY 或文件监听。
+        """
+        if self._watching:
+            return
+        self._watching = True
+        logger.info("配置热加载监听已启动（TTL=%ds + 事件推送）", self._cache_ttl_seconds)
+
+    async def stop_watcher(self) -> None:
+        """停止配置热加载监听"""
+        self._watching = False
+        logger.info("配置热加载监听已停止")

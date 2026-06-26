@@ -81,7 +81,7 @@ class BasketRepository(BaseRepository[Basket]):
 		"""
 		try:
 			# 构建基础查询
-			query = select(self.model)
+			query = select(self.model).options(selectinload(Basket.items))
 
 			# 应用过滤条件
 			if filters:
@@ -164,14 +164,14 @@ class BasketRepository(BaseRepository[Basket]):
 		try:
 			# 构建搜索查询
 			if hasattr(self.model, 'description'):
-				query = select(self.model).where(
+				query = select(self.model).options(selectinload(Basket.items)).where(
 					or_(
 						self.model.name.like(f"%{keyword}%"),
 						self.model.description.like(f"%{keyword}%")
 					)
 				)
 			else:
-				query = select(self.model).where(
+				query = select(self.model).options(selectinload(Basket.items)).where(
 					self.model.name.like(f"%{keyword}%")
 				)
 
@@ -214,7 +214,7 @@ class BasketRepository(BaseRepository[Basket]):
 			篮子对象或None
 		"""
 		try:
-			query = select(self.model).where(self.model.name == name)
+			query = select(self.model).options(selectinload(Basket.items)).where(self.model.name == name)
 
 			result = await self.session.execute(query)
 			return result.scalar_one_or_none()
@@ -275,11 +275,16 @@ class BasketRepository(BaseRepository[Basket]):
 					item_data['basket_id'] = basket.id
 					await item_repo.create(item_data)
 
+			# 提交事务前刷新，确保数据可见
+			await self.session.flush()
+
+			# 重新加载篮子及关联数据（在同事务内）
+			result = await self.get_basket_with_items(basket.id)
+
 			# 提交事务
 			await self.commit()
 
-			# 重新加载篮子及关联数据
-			return await self.get_basket_with_items(basket.id)
+			return result
 
 		except Exception as e:
 			await self.rollback()
@@ -325,11 +330,14 @@ class BasketRepository(BaseRepository[Basket]):
 					item_data['basket_id'] = basket_id
 					await item_repo.create(item_data)
 
+			# 提交前重新加载（确保在同事务内获取关联数据）
+			await self.session.flush()
+			result = await self.get_basket_with_items(basket.id)
+
 			# 提交事务
 			await self.commit()
 
-			# 重新加载篮子及关联数据
-			return await self.get_basket_with_items(basket.id)
+			return result
 
 		except Exception as e:
 			await self.rollback()

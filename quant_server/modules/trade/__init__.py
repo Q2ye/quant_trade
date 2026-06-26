@@ -28,6 +28,10 @@ from .handlers import (
     get_trade_history,
     get_account_summary,
     check_trade_module_health,
+    record_trade,
+    record_batch_trades,
+    review_signal,
+    get_signal_list,
     # BasketHandler 包装函数
     get_basket_list,
     get_basket_detail,
@@ -104,21 +108,27 @@ async def initialize(
                 }
             )
         
+        # 获取 session_factory（从连接池获取 DB 会话）
+        session_factory = None
+        if main_engine and hasattr(main_engine, "get_async_session"):
+            session_factory = main_engine.get_async_session()
+
         # 初始化持仓引擎
         position_engine = PositionEngine(
             config=trade_config,
             broker_adapter=broker_adapter,
             event_engine=event_engine
         )
-        
+
         # 初始化风险引擎
         risk_engine = RiskEngine(
             config=trade_config,
             risk_manager=risk_manager,
             position_engine=position_engine,
-            event_engine=event_engine
+            event_engine=event_engine,
+            session_factory=session_factory,
         )
-        
+
         # 初始化执行引擎
         execution_engine = ExecutionEngine(
             config=trade_config,
@@ -127,13 +137,14 @@ async def initialize(
             risk_engine=risk_engine,
             event_engine=event_engine
         )
-        
+
         # 初始化信号引擎
         signal_engine = SignalEngine(
             config=trade_config,
             execution_engine=execution_engine,
             risk_engine=risk_engine,
-            event_engine=event_engine
+            event_engine=event_engine,
+            session_factory=session_factory,
         )
         
         # 注册引擎到主引擎
@@ -231,6 +242,10 @@ __all__ = [
     "get_trade_history",
     "get_account_summary",
     "check_trade_module_health",
+    "record_trade",
+    "record_batch_trades",
+    "review_signal",
+    "get_signal_list",
     # Handler 包装函数 — 篮子管理
     "get_basket_list",
     "get_basket_detail",

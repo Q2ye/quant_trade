@@ -222,6 +222,11 @@ class Signal(Base):
     price = Column(Numeric(10, 4), comment='信号价格')
     strength = Column(Numeric(5, 2), comment='信号强度')
     reason = Column(Text, comment='信号理由')
+    status = Column(String(20), default='pending',
+                    comment='信号状态：pending/approved/rejected/executed')
+    order_id = Column(String(36), comment='关联订单ID（执行后回写）')
+    reviewed_at = Column(DateTime(timezone=True), comment='审核时间')
+    reviewed_by = Column(String(36), comment='审核人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
@@ -535,6 +540,7 @@ class Order(Base):
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     strategy_id = Column(String(36), ForeignKey('strategies.id'), comment='策略ID')
+    signal_id = Column(String(36), comment='关联信号ID（手动录入时选填）')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     order_type = Column(String(10), nullable=False, comment='订单类型：limit, market')
     direction = Column(String(4), nullable=False, comment='买卖方向：buy, sell')
@@ -844,7 +850,7 @@ class Basket(Base):
     """交易篮子表"""
     __tablename__ = 'baskets'
 
-    id = Column(String(36), primary_key=True, comment='篮子ID（UUID）')
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='篮子ID（UUID）')
     name = Column(String(100), nullable=False, comment='篮子名称')
     description = Column(Text, comment='篮子描述')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')

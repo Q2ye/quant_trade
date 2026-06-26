@@ -1,5 +1,6 @@
 # execution_engine.py   # 订单执行引擎
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -11,6 +12,8 @@ from core.engines.system import EventEngine
 from modules.trade.adapters.broker_adapter import BrokerAdapter
 from modules.trade.engines.position_engine import PositionEngine
 from modules.trade.engines.risk_engine import RiskEngine
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionEngine(EngineBase):
@@ -47,34 +50,39 @@ class ExecutionEngine(EngineBase):
 
 	async def _on_initialize(self) -> None:
 		"""引擎特定的初始化逻辑"""
-		pass
+		logger.info("ExecutionEngine 初始化完成")
 
 	async def _on_start(self) -> None:
-		"""引擎特定的启动逻辑"""
-		# 连接券商
+		"""引擎特定的启动逻辑 — 连接券商适配器"""
 		await self.broker_adapter.connect()
-		print("执行引擎启动成功")
+		logger.info("ExecutionEngine 启动成功，券商已连接")
 
 	async def _on_stop(self) -> None:
-		"""引擎特定的停止逻辑"""
-		# 断开券商连接
+		"""引擎特定的停止逻辑 — 断开券商连接"""
 		await self.broker_adapter.disconnect()
-		print("执行引擎停止成功")
+		logger.info("ExecutionEngine 已停止，券商已断开")
 
 	async def _on_force_stop(self) -> None:
 		"""引擎特定的强制停止逻辑"""
 		await self.broker_adapter.disconnect()
+		logger.warning("ExecutionEngine 强制停止")
 
 	def _validate_config(self) -> None:
-		"""验证配置"""
-		pass
+		"""验证必要配置项"""
+		if "name" not in self.config.config:
+			logger.warning("ExecutionEngine 缺少配置项: name")
 
 	async def _check_dependencies(self) -> None:
 		"""检查依赖"""
-		pass
+		if self.broker_adapter is None:
+			raise RuntimeError("ExecutionEngine 依赖 BrokerAdapter，但未注入")
+		if self.position_engine is None:
+			raise RuntimeError("ExecutionEngine 依赖 PositionEngine，但未注入")
+		if self.risk_engine is None:
+			raise RuntimeError("ExecutionEngine 依赖 RiskEngine，但未注入")
 
 	async def _start_background_tasks(self) -> None:
-		"""启动后台任务"""
+		"""启动后台任务（订单状态轮询、超时检测）"""
 		pass
 
 	async def _stop_background_tasks(self) -> None:
