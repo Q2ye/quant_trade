@@ -534,10 +534,48 @@ class DataFeedEngine(EngineBase):
     # ---- EngineBase 生命周期 ----
 
     async def _on_initialize(self) -> None:
-        logger.info("DataFeedEngine 初始化完成")
+        """初始化：验证数据库连接 + 预加载交易日历"""
+        try:
+            from sqlalchemy import text
+            await self.db.execute(text("SELECT 1"))
+            # 预热交易日历（最近 3 年）
+            from datetime import date as _date_class
+            today = _date_class.today()
+            cal = await self.calendar_repo.get_trade_dates(
+                exchange="SSE",
+                start_date=_date_class(today.year - 2, 1, 1),
+                end_date=today,
+                only_open=True,
+            )
+            self._trading_cal_cache = set(
+                d.date() if hasattr(d, "date") else d for d in cal
+            )
+            logger.info(
+                f"DataFeedEngine 初始化完成：交易日历缓存 {len(self._trading_cal_cache)} 天"
+            )
+        except Exception as e:
+            logger.warning(f"DataFeedEngine 初始化部分失败（不影响核心功能）: {e}")
+            self._trading_cal_cache = set()
 
     async def _on_start(self) -> None:
-        logger.info("DataFeedEngine 已启动")
+        """启动：注册事件订阅"""
+        if self._event_engine:
+            self._event_engine.subscribe(
+                "data.sync.completed", self._on_data_sync_completed
+            )
+            logger.info("DataFeedEngine 已启动，订阅 data.sync.completed 事件")
 
     async def _on_stop(self) -> None:
-        logger.info("DataFeedEngine 已停止")
+        """停止：清理缓存"""
+        self._trading_cal_cache.clear()
+        self._stock_repo = None
+        self._daily_repo = None
+        self._calendar_repo = None
+        self._factor_repo = None
+        self._adj_price_repo = None
+        logger.info("DataFeedEngine 已停止，缓存已清理")
+
+    async def _on_data_sync_completed(self, event) -> None:
+        """数据同步完成时刷新交易日历缓存"""
+        logger.info("数据同步完成，刷新交易日历缓存")
+        self._trading_cal_cache = set()  # 下次访问时重新加载

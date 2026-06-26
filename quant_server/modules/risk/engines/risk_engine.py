@@ -92,7 +92,14 @@ class RiskEngine(EngineBase):
         )
 
     async def _on_start(self) -> None:
-        """启动引擎 — 启动周期巡检任务"""
+        """启动引擎 — 订阅风控事件 + 启动周期巡检任务"""
+        # 订阅 trade 模块的风控检查请求事件
+        if self._event_engine:
+            self._event_engine.subscribe(
+                "risk.check.requested", self._on_risk_check_requested
+            )
+            logger.info("RiskEngine 已订阅 risk.check.requested 事件")
+
         logger.info(
             "RiskEngine 启动，信号检查=%s，巡检间隔=%ds",
             self.risk_check_enabled,
@@ -103,6 +110,19 @@ class RiskEngine(EngineBase):
                 self._check_loop(),
                 name="risk_check_loop",
             )
+
+    async def _on_risk_check_requested(self, event) -> None:
+        """处理风控检查请求（通过 EventEngine 接收，异步处理）"""
+        signal_data = event.data.get("signal_data", {})
+        is_valid, message = await self.check_signal(signal_data)
+        if not is_valid:
+            from modules.risk.events.risk_events import RiskViolationEvent
+            violation = RiskViolationEvent(
+                rule_name="signal_check",
+                message=message,
+                signal_data=signal_data,
+            )
+            await self._event_engine.put(violation)
 
     async def _on_stop(self) -> None:
         """停止引擎"""

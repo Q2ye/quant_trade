@@ -47,8 +47,12 @@ class SystemSettingsResponse(BaseModel):
 
 
 class SystemSettingsUpdateRequest(BaseModel):
-	"""系统设置更新请求"""
-	settings: Dict[str, Any] = Field(..., description="设置内容")
+	"""系统设置更新请求 — 兼容两种格式：
+	1. 旧格式: {"settings": {所有配置项}}
+	2. 新格式: {"security": {...}, "notification": {...}, ...}（直接传嵌套结构）
+	"""
+	model_config = {"extra": "allow"}
+	settings: Optional[Dict[str, Any]] = Field(default=None, description="设置内容（旧格式兼容）")
 
 
 class ConnectionStatusResponse(BaseModel):
@@ -172,3 +176,59 @@ class RoleDetailResponse(BaseModel):
 	"""角色详情响应"""
 	success: bool = Field(default=True)
 	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+# ==================== 新增认证/系统管理请求响应 ====================
+
+
+class PasswordResetRequest(BaseModel):
+	"""密码重置请求"""
+	email: str = Field(..., min_length=1, description="注册邮箱")
+
+
+class PasswordResetConfirmRequest(BaseModel):
+	"""密码重置确认请求"""
+	token: str = Field(..., min_length=1, description="重置 token")
+	newPassword: str = Field(..., min_length=1, description="新密码")
+
+
+class EmailVerifyRequest(BaseModel):
+	"""邮箱验证请求"""
+	token: str = Field(..., min_length=1, description="验证 token")
+
+
+class ResendVerificationRequest(BaseModel):
+	"""重新发送验证邮件请求"""
+	email: str = Field(..., min_length=1, description="注册邮箱")
+
+
+class MessageResponse(BaseModel):
+	"""通用消息响应"""
+	success: bool = Field(default=True)
+	message: str = Field(default="")
+
+
+class TokenInfoResponse(BaseModel):
+	"""Token 元信息响应"""
+	expiresAt: Optional[int] = Field(default=None, description="过期时间 (Unix timestamp)")
+	issuedAt: Optional[int] = Field(default=None, description="签发时间 (Unix timestamp)")
+	tokenType: str = Field(default="access", description="Token 类型")
+	userId: Optional[str] = Field(default=None, description="用户 ID")
+
+
+class TokenValidateResponse(BaseModel):
+	"""Token 验证响应"""
+	isValid: bool = Field(default=False)
+	user: Optional[Dict[str, Any]] = Field(default=None)
+
+
+class CacheClearResponse(BaseModel):
+	"""缓存清理响应"""
+	cleared: bool = Field(default=True)
+	message: str = Field(default="系统缓存已清理")
+
+
+class ServiceRestartResponse(BaseModel):
+	"""服务重启响应"""
+	success: bool = Field(default=True)
+	message: str = Field(default="")

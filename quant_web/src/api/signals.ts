@@ -47,7 +47,7 @@ export default {
     params?: SignalQueryParams,
   ): Promise<PaginatedResponse<StrategySignal>> {
     return request
-      .get("/quantTrade/strategy/signals/", { params })
+      .get("/quantTrade/trade/signals", { params })
       .then(handleResponse)
       .then((data: PaginatedResponse<StrategySignal>) => data);
   },
@@ -65,7 +65,7 @@ export default {
     },
   ): Promise<SignalStrength> {
     return request
-      .get(`/quantTrade/strategy/signals/strength/${symbol}`, { params })
+      .get(`/quantTrade/trade/signalsstrength/${symbol}`, { params })
       .then(handleResponse)
       .then((data: ApiResponse<SignalStrength>) => data.data);
   },
@@ -81,7 +81,7 @@ export default {
     end_date?: string;
   }): Promise<SignalAnalysis> {
     return request
-      .get("/quantTrade/strategy/signals/analysis", { params })
+      .get("/quantTrade/trade/signalsanalysis", { params })
       .then(handleResponse)
       .then((data: ApiResponse<SignalAnalysis>) => data.data);
   },
@@ -94,7 +94,7 @@ export default {
   async getRealtimeSignals(strategyId?: string): Promise<StrategySignal[]> {
     const params = strategyId ? { strategy_id: strategyId } : undefined;
     return request
-      .get("/quantTrade/strategy/signals/realtime", { params })
+      .get("/quantTrade/trade/signalsrealtime", { params })
       .then(handleResponse)
       .then((data: ApiResponse<StrategySignal[]>) => data.data);
   },
@@ -110,7 +110,7 @@ export default {
     strategyId: string,
   ): Promise<StrategySignal> {
     return request
-      .post("/quantTrade/strategy/signals/trigger", {
+      .post("/quantTrade/trade/signalstrigger", {
         symbol,
         strategy_id: strategyId,
       })
@@ -133,7 +133,7 @@ export default {
     }>;
   }> {
     return request
-      .post("/quantTrade/strategy/signals/analyze-batch", { signals })
+      .post("/quantTrade/trade/signalsanalyze-batch", { signals })
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data.data);
   },

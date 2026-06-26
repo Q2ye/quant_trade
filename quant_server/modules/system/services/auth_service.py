@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 class AuthService:
     """认证服务 — 编排认证业务逻辑"""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, event_engine=None):
         self._session = session
         self._user_repo = UserRepository(session)
         self._auth = AuthenticationManager(session)
         self._audit = AuditLogger()
+        self._event_engine = event_engine  # 可选：用于发布系统事件
 
     async def login(
         self, username: str, password: str,
@@ -43,6 +44,11 @@ class AuthService:
                 user_agent=user_agent,
                 level=AuditLevel.WARNING,
             )
+            # 发布登录失败事件
+            await self._publish_event(
+                "auth_login_failed", username=username,
+                reason="invalid_credentials", ip_address=ip_address,
+            )
             return None
 
         token_pair = self._auth.create_token_pair(user_info)
@@ -55,6 +61,17 @@ class AuthService:
             ip_address=ip_address,
             user_agent=user_agent,
             result=AuditResult.SUCCESS,
+        )
+
+        # 发布登录成功事件
+        await self._publish_event(
+            "auth_login_success", user_id=user_info["id"],
+            username=username, ip_address=ip_address,
+        )
+        # 发布用户登录事件
+        await self._publish_event(
+            "user_login", user_id=user_info["id"],
+            username=username, ip_address=ip_address,
         )
 
         return {"user": user_info, **token_pair}
@@ -82,8 +99,8 @@ class AuthService:
         # if not is_valid:
         #     raise ValueError(f"密码强度不足: {'; '.join(errors)}")
 
-        from shared.security.password import get_password_crypto
-        encrypted = get_password_crypto().encrypt(password)
+        from shared.security.password import get_password_manager
+        encrypted = get_password_manager().encrypt_password(password)
 
         user = await self._user_repo.create_user({
             "username": username,
@@ -105,6 +122,15 @@ class AuthService:
             ip_address=ip_address,
             user_agent=user_agent,
             result=AuditResult.SUCCESS,
+        )
+
+        # 发布注册事件
+        await self._publish_event(
+            "auth_registered", user_id=user.id, username=username,
+        )
+        await self._publish_event(
+            "user_created", user_id=user.id, username=username,
+            role="user",
         )
 
         return {
@@ -147,3 +173,56 @@ class AuthService:
             )
 
         return result
+
+    async def _publish_event(self, event_name: str, **kwargs) -> None:
+        """发布系统事件（非阻塞，失败不影响主流程）"""
+        if not self._event_engine:
+            return
+
+        try:
+            event = None
+            if event_name == "auth_login_success":
+                from modules.system.events.auth_events import AuthLoginSuccessEvent
+                event = AuthLoginSuccessEvent(
+                    user_id=kwargs.get("user_id", ""),
+                    username=kwargs.get("username", ""),
+                    ip_address=kwargs.get("ip_address", ""),
+                    source="auth_service",
+                )
+            elif event_name == "auth_login_failed":
+                from modules.system.events.auth_events import AuthLoginFailedEvent
+                event = AuthLoginFailedEvent(
+                    username=kwargs.get("username", ""),
+                    reason=kwargs.get("reason", "unknown"),
+                    ip_address=kwargs.get("ip_address", ""),
+                    source="auth_service",
+                )
+            elif event_name == "auth_registered":
+                from modules.system.events.auth_events import AuthRegisteredEvent
+                event = AuthRegisteredEvent(
+                    user_id=kwargs.get("user_id", ""),
+                    username=kwargs.get("username", ""),
+                    source="auth_service",
+                )
+            elif event_name == "user_created":
+                from modules.system.events.user_events import UserCreatedEvent
+                event = UserCreatedEvent(
+                    user_id=kwargs.get("user_id", ""),
+                    username=kwargs.get("username", ""),
+                    role=kwargs.get("role", "user"),
+                    source="auth_service",
+                )
+            elif event_name == "user_login":
+                from modules.system.events.user_events import UserLoginEvent
+                event = UserLoginEvent(
+                    user_id=kwargs.get("user_id", ""),
+                    username=kwargs.get("username", ""),
+                    ip_address=kwargs.get("ip_address", ""),
+                    source="auth_service",
+                )
+
+            if event:
+                await self._event_engine.put(event)
+        except Exception:
+            # 事件发布失败不影响主业务
+            pass

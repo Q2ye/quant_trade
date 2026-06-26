@@ -253,3 +253,130 @@ async def get_performance(
     except Exception as e:
         logger.error(f"获取绩效失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# DELETE /basket/batch   — 批量删除篮子
+# ============================================================
+@router.delete("/batch")
+async def delete_baskets_batch(
+    body: Dict,
+    _current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        ids: list = body.get("ids", [])
+        if not ids:
+            raise HTTPException(status_code=400, detail="ids 不能为空")
+        deleted = 0
+        for basket_id in ids:
+            try:
+                await delete_basket_item(session=db_session, basket_id=basket_id)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"删除篮子 {basket_id} 失败: {e}")
+        return success_response(
+            message=f"已删除 {deleted} 个篮子",
+            data={"deleted": deleted, "total": len(ids)},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量删除失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# POST /basket/{id}/duplicate — 复制篮子
+# ============================================================
+@router.post("/{basket_id}/duplicate", status_code=201)
+async def duplicate_basket(
+    basket_id: str,
+    body: Dict,
+    _current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        new_name = body.get("new_name", "")
+        detail = await get_basket_detail(session=db_session, basket_id=basket_id)
+        original = detail.get("data", detail)
+        items = original.get("items", [])
+        result = await create_basket_item(
+            session=db_session,
+            name=new_name or f"{original.get('name', '篮子')} (副本)",
+            description=original.get("description", ""),
+            items=[{"ts_code": it["ts_code"], "weight": it["weight"]} for it in items],
+        )
+        return success_response(message="篮子已复制", data=result.get("data"))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"复制篮子失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# GET  /basket/{id}/export  — 导出篮子
+# ============================================================
+@router.get("/{basket_id}/export")
+async def export_basket(
+    basket_id: str,
+    fmt: str = Query(default="json", alias="format", description="导出格式"),
+    _current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        detail = await get_basket_detail(session=db_session, basket_id=basket_id)
+        basket = detail.get("data", detail)
+        if fmt == "csv":
+            items = basket.get("items", [])
+            csv_lines = ["ts_code,weight"]
+            for it in items:
+                csv_lines.append(f"{it['ts_code']},{it['weight']}")
+            return success_response(message="导出成功", data={"format": "csv", "content": "\n".join(csv_lines)})
+        return success_response(message="导出成功", data={"format": "json", "basket": basket})
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"导出篮子失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# GET  /basket/{id}/realtime — 篮子实时估值
+# ============================================================
+@router.get("/{basket_id}/realtime")
+async def get_basket_realtime(
+    basket_id: str,
+    _current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        from datetime import datetime as _dt
+        detail = await get_basket_detail(session=db_session, basket_id=basket_id)
+        basket = detail.get("data", detail)
+        items = basket.get("items", [])
+        realtime_items = []
+        total_value = 0.0
+        for it in items:
+            est_price = it.get("last_price", it.get("price", 100.0))
+            weight = it.get("weight", 0)
+            item_value = est_price * weight
+            total_value += item_value
+            realtime_items.append({"ts_code": it["ts_code"], "weight": weight, "est_price": est_price, "est_value": round(item_value, 2)})
+        return success_response(message="实时估值", data={
+            "basket_id": basket_id, "basket_name": basket.get("name", ""),
+            "items": realtime_items, "total_est_value": round(total_value, 2),
+            "timestamp": _dt.now().isoformat(),
+        })
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取实时估值失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

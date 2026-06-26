@@ -450,6 +450,15 @@ export class RealtimeDataService {
     Array<(symbol: string, quote: any) => void>
   > = new Map();
   private intervals: Map<string, NodeJS.Timeout> = new Map();
+  private _useMock: boolean;
+
+  constructor() {
+    // 仅当显式设置 VITE_USE_MOCK_QUOTES=true 时启用模拟行情
+    this._useMock = import.meta.env.VITE_USE_MOCK_QUOTES === "true";
+    if (this._useMock) {
+      console.warn("RealtimeDataService: 使用模拟行情数据（VITE_USE_MOCK_QUOTES=true）");
+    }
+  }
 
   /**
    * 订阅实时数据
@@ -466,8 +475,8 @@ export class RealtimeDataService {
       }
       this.subscribers.get(symbol)!.push(callback);
 
-      // 如果还没有为该symbol启动定时器，则启动一个
-      if (!this.intervals.has(symbol)) {
+      // 仅在模拟模式下启动定时器生成假行情
+      if (this._useMock && !this.intervals.has(symbol)) {
         const interval = setInterval(() => {
           this.generateMockQuote(symbol);
         }, 2000);

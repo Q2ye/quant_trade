@@ -125,7 +125,9 @@ def get_password_score(password: str) -> int:
 
 
 class PasswordManager:
-    """密码管理器 — 负责密码强度校验和加密存储"""
+    """密码管理器 — 负责密码强度校验 bcrypt 哈希 + AES 兼容验证"""
+
+    _BCRYPT_PREFIX = "BCRYPT:"
 
     def __init__(self,
                  min_length: int = 8,
@@ -142,29 +144,91 @@ class PasswordManager:
         self._crypto = PasswordCrypto(key=aes_key)
 
     def encrypt_password(self, password: str) -> str:
-        """加密密码（存储用）"""
+        """加密密码（存储用）—— 使用 bcrypt 哈希（不可逆）
+
+        新密码统一使用 bcrypt，格式: BCRYPT:<bcrypt_hash>
+        """
         try:
             self.validate_password_strength(password)
-            return self._crypto.encrypt(password)
+            return self._hash_with_bcrypt(password)
         except WeakPasswordError:
             raise
         except Exception as e:
             raise PasswordHashError(f"密码加密失败: {str(e)}") from e
 
     def decrypt_password(self, encrypted: str) -> str:
-        """解密密码（验证用）"""
+        """解密密码（验证用）—— 仅支持 AES256: 格式
+
+        注意：BCRYPT 格式密码不可解密，请使用 verify_password()
+        """
+        if not encrypted:
+            return ""
+        if encrypted.startswith(self._BCRYPT_PREFIX):
+            raise PasswordValidationError(
+                "BCRYPT 格式密码不可解密，请使用 verify_password() 验证"
+            )
         try:
             return self._crypto.decrypt(encrypted)
         except Exception as e:
             raise PasswordValidationError(f"密码解密失败: {str(e)}") from e
 
-    def verify_password(self, plain_password: str, stored_value: str) -> bool:
-        """验证密码：解密存储值后与明文比对"""
-        try:
-            decrypted = self.decrypt_password(stored_value)
-            return decrypted == plain_password
-        except Exception as e:
-            raise PasswordValidationError(f"密码验证失败: {str(e)}") from e
+    def verify_password(
+        self, plain_password: str, stored_value: str
+    ) -> Tuple[bool, Optional[str]]:
+        """验证密码，返回 (是否验证通过, 升级后的密码或 None)
+
+        兼容两种格式：
+        - BCRYPT:  使用 bcrypt.checkpw 验证
+        - AES256:   解密后比对，验证成功后返回 bcrypt 版本（自动迁移）
+
+        Returns:
+            (is_valid, migrated_password):
+            - (True, None)       — 已是 BCRYPT，无需迁移
+            - (True, "<new>")    — 旧 AES 密码验证成功，返回新 bcrypt 密码
+            - (False, None)      — 密码错误
+        """
+        if not stored_value:
+            return (False, None)
+
+        # BCRYPT 格式 — 直接验证
+        if stored_value.startswith(self._BCRYPT_PREFIX):
+            try:
+                import bcrypt
+                bcrypt_hash = stored_value[len(self._BCRYPT_PREFIX):].encode()
+                is_valid = bcrypt.checkpw(plain_password.encode(), bcrypt_hash)
+                return (is_valid, None)
+            except Exception as e:
+                raise PasswordValidationError(f"bcrypt 密码验证失败: {str(e)}") from e
+
+        # AES256 旧格式 — 解密比对后自动迁移为 bcrypt
+        if stored_value.startswith(_ENCRYPTED_PREFIX):
+            try:
+                decrypted = self._crypto.decrypt(stored_value)
+                if decrypted == plain_password:
+                    # 验证成功 → 自动升级为 bcrypt
+                    migrated = self._hash_with_bcrypt(plain_password)
+                    logger.info("密码从 AES256 自动迁移为 BCRYPT")
+                    return (True, migrated)
+                return (False, None)
+            except Exception as e:
+                raise PasswordValidationError(f"AES 密码验证失败: {str(e)}") from e
+
+        # 未知格式
+        logger.warning("遇到未知密码存储格式，尝试明文比对")
+        return (stored_value == plain_password, None)
+
+    def _hash_with_bcrypt(self, password: str) -> str:
+        """使用 bcrypt 生成密码哈希"""
+        import bcrypt
+        salt = bcrypt.gensalt(rounds=12)
+        hashed = bcrypt.hashpw(password.encode(), salt).decode()
+        return self._BCRYPT_PREFIX + hashed
+
+    def needs_migration(self, stored_value: str) -> bool:
+        """检查存储的密码是否需要迁移到 bcrypt"""
+        return bool(stored_value) and not stored_value.startswith(
+            self._BCRYPT_PREFIX
+        )
 
     def validate_password_strength(self, password: str) -> Tuple[bool, list]:
         """验证密码强度，返回 (是否通过, 错误消息列表)"""
@@ -239,6 +303,15 @@ def decrypt_password(encrypted: str) -> str:
     return get_password_crypto().decrypt(encrypted)
 
 
-def verify_password(plain_password: str, stored_value: str) -> bool:
-    """验证密码"""
+def verify_password(
+    plain_password: str, stored_value: str
+) -> Tuple[bool, Optional[str]]:
+    """验证密码，返回 (是否通过, 升级后的 bcrypt 密码或 None)"""
     return get_password_manager().verify_password(plain_password, stored_value)
+
+
+def needs_password_migration(stored_value: str) -> bool:
+    """检查密码是否需要从 AES 迁移到 bcrypt"""
+    if not stored_value:
+        return False
+    return not stored_value.startswith(PasswordManager._BCRYPT_PREFIX)

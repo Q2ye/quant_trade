@@ -43,12 +43,19 @@ class LogService:
 			offset=offset,
 		)
 
+		# 获取符合条件的真实总数（非当前页数量）
+		total_count = await self._repo.count(
+			log_level=log_level,
+			module=module,
+			user_id=user_id,
+		)
+
 		return {
 			"data": [self._orm_to_dict(log) for log in logs],
 			"pagination": {
 				"page": page,
 				"page_size": page_size,
-				"total": len(logs),
+				"total": total_count,
 			},
 		}
 

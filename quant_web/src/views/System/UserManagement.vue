@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from "vue";
+import { ref, computed, onMounted, h } from "vue"
 import {
   useMessage,
   useDialog,
@@ -8,319 +8,355 @@ import {
   NSwitch,
   NSpin,
   NResult,
-} from "naive-ui";
+} from "naive-ui"
+import { tokens } from "@/styles/design-tokens"
+import systemAPI from "@/api/system"
 
-const message = useMessage();
-const dialog = useDialog();
-const loading = ref(false);
-const error = ref(false);
+const message = useMessage()
+const dialog = useDialog()
+const loading = ref(false)
+const error = ref(false)
+const saving = ref(false)
 
 interface User {
-  id: number;
-  username: string;
-  email: string;
-  phone: string;
-  real_name: string;
-  role: string;
-  is_active: boolean;
-  last_login: string;
-  created_at: string;
+  id: string
+  username: string
+  email: string
+  phone: string
+  real_name: string
+  role: string
+  is_active: boolean
+  last_login: string
+  created_at: string
 }
 
-const users = ref<User[]>([]);
-const showModal = ref(false);
-const editingUser = ref<User | null>(null);
+const users = ref<User[]>([])
+const showModal = ref(false)
+const editingUser = ref<User | null>(null)
 const userForm = ref({
   username: "",
+  password: "",
   email: "",
   phone: "",
   real_name: "",
   role: "user",
   is_active: true,
-});
-const searchKeyword = ref("");
-const currentPage = ref(1);
-const pageSize = ref(20);
+})
+const searchKeyword = ref("")
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 
 const roleOptions = [
   { label: "普通用户", value: "user" },
   { label: "管理员", value: "admin" },
-];
+  { label: "超级管理员", value: "super_admin" },
+]
 
 const filteredUsers = computed(() => {
-  if (!searchKeyword.value) return users.value;
-  const kw = searchKeyword.value.toLowerCase();
+  if (!searchKeyword.value) return users.value
+  const kw = searchKeyword.value.toLowerCase()
   return users.value.filter(
     (u) =>
       u.username.toLowerCase().includes(kw) ||
-      u.real_name.toLowerCase().includes(kw) ||
-      u.email.toLowerCase().includes(kw),
-  );
-});
-
-const columns = [
-  { title: "用户名", key: "username", width: 120 },
-  { title: "真实姓名", key: "real_name", width: 100 },
-  { title: "邮箱", key: "email", width: 200 },
-  { title: "手机号", key: "phone", width: 120 },
-  {
-    title: "角色",
-    key: "role",
-    width: 100,
-    render: (row: User) =>
-      h(
-        NTag,
-        { type: row.role === "admin" ? "error" : "info", size: "small" },
-        { default: () => (row.role === "admin" ? "管理员" : "普通用户") },
-      ),
-  },
-  {
-    title: "状态",
-    key: "is_active",
-    width: 80,
-    render: (row: User) =>
-      h(
-        NTag,
-        { type: row.is_active ? "success" : "default", size: "small" },
-        { default: () => (row.is_active ? "激活" : "禁用") },
-      ),
-  },
-  { title: "最后登录", key: "last_login", width: 160 },
-  {
-    title: "操作",
-    key: "op",
-    width: 200,
-    render: (row: User) =>
-      h("div", { style: { display: "flex", gap: "8px" } }, [
-        h(
-          NButton,
-          { size: "small", onClick: () => editUser(row) },
-          { default: () => "编辑" },
-        ),
-        h(
-          NButton,
-          { size: "small", onClick: () => resetPassword(row) },
-          { default: () => "重置密码" },
-        ),
-        h(
-          NButton,
-          { size: "small", type: "error", onClick: () => confirmDelete(row) },
-          { default: () => "删除" },
-        ),
-      ]),
-  },
-];
-
-const fetchUsers = async () => {
-  loading.value = true;
-  error.value = false;
-  try {
-    await new Promise((r) => setTimeout(r, 300));
-    users.value = [
-      {
-        id: 1,
-        username: "admin",
-        email: "admin@quant.com",
-        phone: "13800138000",
-        real_name: "管理员",
-        role: "admin",
-        is_active: true,
-        last_login: "2024-01-15 14:30:00",
-        created_at: "2024-01-01",
-      },
-      {
-        id: 2,
-        username: "trader01",
-        email: "trader@quant.com",
-        phone: "13900139000",
-        real_name: "交易员张",
-        role: "user",
-        is_active: true,
-        last_login: "2024-01-15 10:20:00",
-        created_at: "2024-01-05",
-      },
-    ];
-  } catch {
-    error.value = true;
-  } finally {
-    loading.value = false;
-  }
-};
+      (u.real_name || "").toLowerCase().includes(kw) ||
+      (u.email || "").toLowerCase().includes(kw),
+  )
+})
 
 const resetForm = () => {
   userForm.value = {
     username: "",
+    password: "",
     email: "",
     phone: "",
     real_name: "",
     role: "user",
     is_active: true,
-  };
-};
+  }
+}
+
+const fetchUsers = async () => {
+  loading.value = true
+  error.value = false
+  try {
+    const res = await systemAPI.getUsers({
+      skip: (currentPage.value - 1) * pageSize.value,
+      limit: pageSize.value,
+      keyword: searchKeyword.value,
+    })
+    // 处理后端响应包装
+    const raw = res.data?.items || res.data?.users || res.users || res.data || []
+    users.value = Array.isArray(raw) ? raw.map((u: any) => ({
+      id: u.id || "",
+      username: u.username || "",
+      email: u.email || "",
+      phone: u.phone || "",
+      real_name: u.real_name || "",
+      role: u.role || "user",
+      is_active: u.is_active !== false,
+      last_login: u.last_login || "-",
+      created_at: u.created_at || "-",
+    })) : []
+    total.value = res.data?.total || res.total || users.value.length
+  } catch {
+    error.value = true
+  } finally {
+    loading.value = false
+  }
+}
 
 const handleAdd = () => {
-  editingUser.value = null;
-  resetForm();
-  showModal.value = true;
-};
+  editingUser.value = null
+  resetForm()
+  showModal.value = true
+}
 
 const editUser = (user: User) => {
-  editingUser.value = user;
-  userForm.value = { ...user };
-  showModal.value = true;
-};
+  editingUser.value = user
+  userForm.value = {
+    username: user.username,
+    password: "",
+    email: user.email || "",
+    phone: user.phone || "",
+    real_name: user.real_name || "",
+    role: user.role || "user",
+    is_active: user.is_active,
+  }
+  showModal.value = true
+}
 
 const saveUser = async () => {
+  saving.value = true
   try {
     if (editingUser.value) {
-      Object.assign(editingUser.value, userForm.value);
-      message.success("用户已更新");
+      await systemAPI.updateUser(editingUser.value.id, {
+        email: userForm.value.email,
+        phone: userForm.value.phone,
+        real_name: userForm.value.real_name,
+        role: userForm.value.role,
+        is_active: userForm.value.is_active,
+      })
+      message.success("用户已更新")
     } else {
-      users.value.push({
-        id: Date.now(),
-        ...userForm.value,
-        last_login: "-",
-        created_at: new Date().toISOString().split("T")[0],
-      });
-      message.success("用户已创建");
+      await systemAPI.createUser({
+        username: userForm.value.username,
+        password: userForm.value.password,
+        email: userForm.value.email,
+        phone: userForm.value.phone,
+        real_name: userForm.value.real_name,
+        role: userForm.value.role,
+      })
+      message.success("用户已创建")
     }
-    showModal.value = false;
-  } catch {
-    message.error("保存失败");
+    showModal.value = false
+    await fetchUsers()
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || "操作失败")
+  } finally {
+    saving.value = false
   }
-};
+}
 
-const resetPassword = (row: User) =>
-  message.info(`重置 ${row.username} 的密码`);
+const resetPassword = async (row: User) => {
+  dialog.warning({
+    title: "重置密码",
+    content: `确定要重置「${row.username}」的密码吗？`,
+    positiveText: "确认",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        // TODO: 调用后端重置密码接口
+        message.info("密码重置功能开发中（需 SMTP 配置）")
+      } catch {
+        message.error("重置失败")
+      }
+    },
+  })
+}
 
 const confirmDelete = (row: User) => {
   dialog.warning({
     title: "确认删除",
     content: `确定要删除用户「${row.username}」吗？此操作不可撤销。`,
-    positiveText: "确认",
+    positiveText: "确认删除",
     negativeText: "取消",
-    onPositiveClick: () => {
-      users.value = users.value.filter((u) => u.id !== row.id);
-      message.success("用户已删除");
+    onPositiveClick: async () => {
+      try {
+        await systemAPI.deleteUser(row.id)
+        message.success("用户已删除")
+        await fetchUsers()
+      } catch (e: any) {
+        message.error(e?.response?.data?.detail || "删除失败")
+      }
     },
-  });
-};
+  })
+}
 
-onMounted(() => fetchUsers());
+const columns = [
+  { title: "用户名", key: "username", width: 120 },
+  { title: "姓名", key: "real_name", width: 100 },
+  { title: "邮箱", key: "email", width: 180 },
+  { title: "手机号", key: "phone", width: 130 },
+  {
+    title: "角色", key: "role", width: 100,
+    render(row: User) {
+      return h(NTag, { type: row.role === "admin" || row.role === "super_admin" ? "error" : "info", size: "small" },
+        () => row.role || "user")
+    },
+  },
+  {
+    title: "状态", key: "is_active", width: 80,
+    render(row: User) {
+      return h(NTag, { type: row.is_active ? "success" : "default", size: "small" },
+        () => row.is_active ? "激活" : "停用")
+    },
+  },
+  { title: "最后登录", key: "last_login", width: 150 },
+  {
+    title: "操作", key: "actions", width: 220,
+    render(row: User) {
+      return h("div", { style: { display: "flex", gap: "4px" } }, [
+        h(NButton, { size: "tiny", text: true, onClick: () => editUser(row) }, () => "编辑"),
+        h(NButton, { size: "tiny", text: true, onClick: () => resetPassword(row) }, () => "重置密码"),
+        h(NButton, { size: "tiny", text: true, type: "error", onClick: () => confirmDelete(row) }, () => "删除"),
+      ])
+    },
+  },
+]
+
+// 用户统计
+const userStats = computed(() => ({
+  total: users.value.length,
+  active: users.value.filter((u: User) => u.is_active).length,
+  admin: users.value.filter((u: User) => u.role === "admin" || u.role === "super_admin").length,
+}))
+
+onMounted(() => {
+  fetchUsers()
+})
 </script>
 
 <template>
-  <div class="user-management bg-gradient-mesh bg-noise">
+  <div class="user-mgmt bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">用户管理</h1>
+            <p class="page-description">管理系统用户账号、角色与访问权限</p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" @click="handleAdd">添加用户</n-button>
+          <n-button type="primary" size="small" @click="handleAdd">添加用户</n-button>
         </div>
       </div>
     </div>
-
     <div class="main-content">
+      <!-- 错误 -->
       <n-result
         v-if="error"
         status="500"
-        title="数据加载失败"
-        description="请检查网络连接后重试"
+        title="加载失败"
+        description="获取用户数据失败"
       >
-        <template #footer>
-          <n-button type="primary" @click="fetchUsers">重试</n-button>
-        </template>
+        <template #footer><n-button type="primary" @click="fetchUsers">重试</n-button></template>
       </n-result>
 
-      <template v-else>
-        <n-card class="main-card">
-          <template #header>
-            <div class="card-header">
-              <span>用户列表</span>
-              <n-input
-                v-model:value="searchKeyword"
-                placeholder="搜索用户名/姓名/邮箱..."
-                size="small"
-                clearable
-                style="width: 220px"
-              />
-            </div>
-          </template>
-
-          <n-spin :show="loading">
-            <n-data-table
-              :columns="columns"
-              :data="filteredUsers"
-              :bordered="false"
+      <!-- 主体 -->
+      <n-card v-else :class="tokens.surface.card">
+        <template #header>
+          <div class="card-header-row">
+            <span>用户列表</span>
+            <n-input
+              v-model:value="searchKeyword"
+              placeholder="搜索用户名/姓名/邮箱"
               size="small"
-            >
-              <template #empty><n-empty description="暂无用户" /></template>
-            </n-data-table>
+              clearable
+              style="width: 240px"
+              @keyup.enter="fetchUsers"
+            />
+          </div>
+        </template>
+        <n-spin :show="loading">
+          <n-empty v-if="!loading && filteredUsers.length === 0" description="暂无用户" />
+          <n-data-table
+            v-else
+            :columns="columns"
+            :data="filteredUsers"
+            :row-key="(r: User) => r.id"
+            size="small"
+            :bordered="false"
+            :single-line="true"
+          />
+        </n-spin>
+      </n-card>
 
-            <div class="pagination-container">
-              <n-pagination
-                v-model:page="currentPage"
-                v-model:page-size="pageSize"
-                :item-count="filteredUsers.length"
-                :page-sizes="[10, 20, 50]"
-                show-size-picker
-              />
-            </div>
-          </n-spin>
-        </n-card>
-      </template>
+      <!-- 添加/编辑弹窗 -->
+      <n-modal
+        v-model:show="showModal"
+        preset="card"
+        :title="editingUser ? '编辑用户' : '添加用户'"
+        style="width: 520px"
+        :mask-closable="false"
+      >
+        <n-form label-width="100px">
+          <n-form-item label="用户名" required>
+            <n-input
+              v-model:value="userForm.username"
+              :disabled="!!editingUser"
+              placeholder="字母数字组合"
+            />
+          </n-form-item>
+          <n-form-item :label="editingUser ? '新密码（留空不修改）' : '密码'" :required="!editingUser">
+            <n-input
+              v-model:value="userForm.password"
+              type="password"
+              show-password-on="click"
+            />
+          </n-form-item>
+          <n-form-item label="姓名">
+            <n-input v-model:value="userForm.real_name" />
+          </n-form-item>
+          <n-form-item label="邮箱">
+            <n-input v-model:value="userForm.email" />
+          </n-form-item>
+          <n-form-item label="手机号">
+            <n-input v-model:value="userForm.phone" />
+          </n-form-item>
+          <n-form-item label="角色">
+            <n-select
+              v-model:value="userForm.role"
+              :options="roleOptions"
+              style="width: 160px"
+            />
+          </n-form-item>
+          <n-form-item v-if="editingUser" label="激活状态">
+            <n-switch v-model:value="userForm.is_active" />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showModal = false">取消</n-button>
+            <n-button type="primary" :loading="saving" @click="saveUser">
+              {{ editingUser ? '保存' : '创建' }}
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
     </div>
-
-    <n-modal
-      v-model:show="showModal"
-      preset="dialog"
-      :title="editingUser ? '编辑用户' : '添加用户'"
-      positive-text="保存"
-      negative-text="取消"
-      @positive-click="saveUser"
-    >
-      <n-form :model="userForm" label-width="80px">
-        <n-form-item label="用户名">
-          <n-input v-model:value="userForm.username" />
-        </n-form-item>
-        <n-form-item label="真实姓名">
-          <n-input v-model:value="userForm.real_name" />
-        </n-form-item>
-        <n-form-item label="邮箱">
-          <n-input v-model:value="userForm.email" />
-        </n-form-item>
-        <n-form-item label="手机号">
-          <n-input v-model:value="userForm.phone" />
-        </n-form-item>
-        <n-form-item label="角色">
-          <n-select v-model:value="userForm.role" :options="roleOptions" />
-        </n-form-item>
-        <n-form-item label="状态">
-          <n-switch v-model:value="userForm.is_active" />
-        </n-form-item>
-      </n-form>
-    </n-modal>
   </div>
 </template>
 
 <style scoped>
-.user-management {
+.user-mgmt {
   padding: 0;
+  padding-bottom: 24px;
   height: 100%;
   overflow-y: auto;
 }
-
-.card-header {
+.card-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.pagination-container {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  width: 100%;
 }
 </style>

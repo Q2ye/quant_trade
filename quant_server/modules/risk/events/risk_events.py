@@ -15,6 +15,24 @@ from core.events.base import BaseEvent
 from core.events.types import EventPriority, EventCategory
 
 
+class RiskCheckRequestedEvent(BaseEvent):
+    """风控检查请求事件 — trade 模块信号产生时发布，risk 引擎订阅处理。
+
+    risk.check.requested
+    """
+
+    def __init__(self, signal_data: Dict[str, Any], **kwargs):
+        super().__init__(
+            event_type="risk.check.requested",
+            source="trade_signal_engine",
+            module="risk",
+            priority=EventPriority.HIGH,
+            category=EventCategory.MONITOR,
+            **kwargs,
+        )
+        self.data.update({"signal_data": signal_data})
+
+
 class RiskViolationEvent(BaseEvent):
     """
     风险违规事件 — 信号风控检查未通过时发布。

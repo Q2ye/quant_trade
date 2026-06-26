@@ -30,7 +30,7 @@
     <template v-else>
       <div class="main-content">
       <div class="chart-section">
-        <h3>篮子净值走势 <n-tag size="small" type="warning">模拟数据</n-tag></h3>
+        <h3>篮子净值走势</h3>
         <EquityCurveChart :data="equityData" :benchmark="benchData" :height="380" title="篮子净值走势" />
       </div>
 

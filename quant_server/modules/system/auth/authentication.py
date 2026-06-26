@@ -23,10 +23,26 @@ class AuthenticationManager:
         self._pwd = get_password_manager()
 
     async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
-        """验证用户名和密码，成功返回用户信息，失败返回 None"""
-        user = await self._user_repo.authenticate_user(username, password)
+        """验证用户名和密码，成功返回用户信息，失败返回 None
+
+        同时自动将旧 AES 密码迁移为 bcrypt。
+        """
+        user = await self._user_repo.get_user_by_username(username)
         if user is None:
             return None
+
+        # 使用 PasswordManager 验证（兼容 AES / BCRYPT）
+        is_valid, migrated = self._pwd.verify_password(password, user.password)
+        if not is_valid:
+            return None
+
+        # 自动迁移旧 AES 密码为 bcrypt
+        if migrated:
+            try:
+                await self._user_repo.update_password(user.id, migrated)
+                logger.info(f"用户 {username} 的密码已从 AES 自动迁移为 BCRYPT")
+            except Exception as e:
+                logger.warning(f"密码自动迁移失败（不影响登录）: {e}")
 
         if not user.is_active:
             logger.warning(f"用户 {username} 已停用，拒绝登录")
@@ -65,13 +81,24 @@ class AuthenticationManager:
     async def change_password(
         self, user_id: str, old_password: str, new_password: str
     ) -> bool:
-        """修改密码（需验证旧密码）"""
+        """修改密码（需验证旧密码 + 自动迁移旧 AES 密码为 bcrypt）"""
         user = await self._user_repo.get_user(user_id)
         if user is None:
             return False
-        if not self._pwd.verify_password(old_password, user.password):
+
+        # 兼容验证：旧 AES 密码验证成功时会返回 bcrypt 版本用于自动迁移
+        is_valid, migrated = self._pwd.verify_password(
+            old_password, user.password
+        )
+        if not is_valid:
             return False
-        return await self._user_repo.update_password(user_id, new_password)
+
+        # 如果旧密码从 AES 迁移到了 bcrypt，使用迁移版本
+        new_encrypted = (
+            migrated if migrated
+            else self._pwd.encrypt_password(new_password)
+        )
+        return await self._user_repo.update_password(user_id, new_encrypted)
 
     async def validate_password_strength(self, password: str):
         """校验密码强度，返回 (is_valid, errors)"""

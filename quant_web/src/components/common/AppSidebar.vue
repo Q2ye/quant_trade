@@ -230,24 +230,24 @@ export default defineComponent({
     /** 系统管理菜单 — 4 项 */
     const systemOptions = [
       {
-        label: "系统监控",
-        key: "system-monitor",
+        label: "系统仪表盘",
+        key: "system-dashboard",
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Desktop" }) }),
-      },
-      {
-        label: "日志查看",
-        key: "logs",
-        icon: () =>
-          h(NIcon, null, {
-            default: () => h(SmartIcon, { name: "DocumentText" }),
-          }),
       },
       {
         label: "用户管理",
         key: "users",
         icon: () =>
           h(NIcon, null, { default: () => h(SmartIcon, { name: "People" }) }),
+      },
+      {
+        label: "系统日志",
+        key: "logs",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "DocumentText" }),
+          }),
       },
       {
         label: "系统设置",
@@ -280,9 +280,9 @@ export default defineComponent({
       "performance-comparison": "/performance/comparison",
       attribution: "/performance/attribution",
       "performance-hub": "/performance",
-      "system-monitor": "/system/monitor",
-      logs: "/system/logs",
+      "system-dashboard": "/system/dashboard",
       users: "/system/users",
+      logs: "/system/logs",
       settings: "/system/settings",
     };
 

@@ -173,7 +173,6 @@ def create_app (
 			app.include_router(router, prefix=prefix)
 	# 始终注册的路由（不依赖模块初始化）
 	app.include_router(health_router, prefix="/health")
-	app.include_router(market_router)
 	app.include_router(basket_router, prefix="/quantTrade/basket")
 	# WebSocket 路由始终注册
 	app.include_router(websocket_router, prefix="/api")

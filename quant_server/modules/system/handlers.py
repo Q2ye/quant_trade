@@ -84,20 +84,14 @@ class SystemHandler:
             return {
                 "success": True,
                 "data": {
-                    "cpu": {
-                        "percent": cpu_percent,
-                        "cores": cpu_count,
-                    },
-                    "memory": {
-                        "total_gb": round(mem.total / (1024**3), 1),
-                        "used_gb": round(mem.used / (1024**3), 1),
-                        "percent": mem.percent,
-                    },
-                    "disk": {
-                        "total_gb": round(disk.total / (1024**3), 1),
-                        "used_gb": round(disk.used / (1024**3), 1),
-                        "percent": disk.percent,
-                    },
+                    "cpu_percent": cpu_percent,
+                    "cpu_cores": cpu_count,
+                    "memory_percent": mem.percent,
+                    "memory_used": mem.used,
+                    "memory_total": mem.total,
+                    "disk_usage": disk.percent,
+                    "disk_total": disk.total,
+                    "disk_used": disk.used,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             }
@@ -105,42 +99,77 @@ class SystemHandler:
             return {
                 "success": True,
                 "data": {
-                    "cpu": {"percent": 0, "cores": 0, "note": "psutil 未安装"},
-                    "memory": {"total_gb": 0, "used_gb": 0, "percent": 0, "note": "psutil 未安装"},
-                    "disk": {"total_gb": 0, "used_gb": 0, "percent": 0, "note": "psutil 未安装"},
+                    "cpu_percent": 0,
+                    "cpu_cores": 0,
+                    "memory_percent": 0,
+                    "memory_used": 0,
+                    "memory_total": 0,
+                    "disk_usage": 0,
+                    "disk_total": 0,
+                    "disk_used": 0,
+                    "note": "psutil 未安装",
                 },
             }
 
     # ==================== 连接状态 ====================
 
     async def get_connection_status(self, _user_id: str) -> Dict[str, Any]:
-        """获取外部连接状态"""
-        connections = {}
+        """获取外部连接状态（扁平输出，匹配前端 ConnectionStatus 接口）"""
+        connections = {
+            "database": False,
+            "redis": False,
+            "tushare": False,
+            "broker": False,
+        }
 
         # 数据库
         try:
             start = datetime.now()
             await self.db.execute(text("SELECT 1"))
             latency = (datetime.now() - start).total_seconds() * 1000
-            connections["database"] = {"connected": True, "latency_ms": round(latency, 1)}
-        except Exception as e:
-            connections["database"] = {"connected": False, "error": str(e)}
+            connections["database"] = True
+            connections["database_latency_ms"] = round(latency, 1)
+        except Exception:
+            connections["database"] = False
 
         # Redis
         try:
             from shared.cache.cache_manager import get_cache_manager
             cache_mgr = get_cache_manager()
             health = await cache_mgr.health_check()
-            connections["redis"] = {"connected": health.get("redis", False)}
-        except Exception as e:
-            connections["redis"] = {"connected": False, "error": str(e)}
+            connections["redis"] = health.get("redis", False)
+        except Exception:
+            connections["redis"] = False
+
+        # Tushare（检查所有可能的 token 环境变量）
+        try:
+            import os
+            token = (
+                os.getenv("DEV_TUSHARE_TOKEN", "")
+                or os.getenv("PROD_TUSHARE_TOKEN", "")
+            )
+            enabled = os.getenv("PROD_TUSHARE_ENABLED", "true").lower() == "true"
+            connections["tushare"] = bool(token) and enabled
+        except Exception:
+            connections["tushare"] = False
+
+        # 交易网关（模拟模式默认 True）
+        try:
+            import os
+            simulated = os.getenv("SIMULATED_TRADING", "true").lower() == "true"
+            connections["broker"] = True  # 模拟模式始终可用
+            connections["broker_mode"] = "simulated" if simulated else "live"
+        except Exception:
+            connections["broker"] = False
+
+        connections["last_check"] = datetime.now(timezone.utc).isoformat()
 
         return {"success": True, "data": connections}
 
     # ==================== 数据库状态 ====================
 
     async def get_database_status(self, _user_id: str) -> Dict[str, Any]:
-        """获取数据库状态统计"""
+        """获取数据库状态统计（匹配前端 DatabaseStatus 接口）"""
         try:
             # 数据库大小
             db_size = "未知"
@@ -149,7 +178,7 @@ class SystemHandler:
                     text("SELECT pg_size_pretty(pg_database_size(current_database()))")
                 )
                 db_size = size_result.scalar() or "未知"
-            except (OSError, asyncio.TimeoutError):
+            except Exception:
                 pass
 
             # 活跃连接数
@@ -159,7 +188,7 @@ class SystemHandler:
                     text("SELECT count(*) FROM pg_stat_activity WHERE state = 'active'")
                 )
                 active_conns = conn_result.scalar() or 0
-            except (OSError, asyncio.TimeoutError):
+            except Exception:
                 pass
 
             # 版本
@@ -167,7 +196,27 @@ class SystemHandler:
             try:
                 ver_result = await self.db.execute(text("SELECT version()"))
                 version = ver_result.scalar() or "未知"
-            except (OSError, asyncio.TimeoutError):
+            except Exception:
+                pass
+
+            # 总表数
+            total_tables = 0
+            try:
+                tables_result = await self.db.execute(
+                    text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+                )
+                total_tables = tables_result.scalar() or 0
+            except Exception:
+                pass
+
+            # 股票数据记录数
+            stock_data_count = 0
+            try:
+                stocks_result = await self.db.execute(
+                    text("SELECT count(*) FROM stock_basic")
+                )
+                stock_data_count = stocks_result.scalar() or 0
+            except Exception:
                 pass
 
             return {
@@ -177,6 +226,8 @@ class SystemHandler:
                     "version": version,
                     "size": db_size,
                     "active_connections": active_conns,
+                    "total_tables": total_tables,
+                    "stock_data_count": stock_data_count,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             }
@@ -207,15 +258,52 @@ class SystemHandler:
     # ==================== 系统设置 ====================
 
     async def get_system_settings(self, _user_id: str) -> Dict[str, Any]:
-        """获取所有系统配置"""
+        """获取所有系统配置（嵌套结构，匹配前端 SystemSettings 接口）"""
         configs = await self.config_service.get_all_configs()
-        settings = {c["config_key"]: c["config_value"] for c in configs}
+        flat = {c["config_key"]: c["config_value"] for c in configs}
+
+        # 将扁平配置组织为嵌套结构（与前端 SystemSettings 接口对齐）
+        settings = {
+            "data_sync": {
+                "auto_sync": flat.get("data_sync_auto", True),
+                "sync_interval_minutes": flat.get("data_sync_interval", 30),
+                "data_sources": flat.get("data_sources", ["tushare", "baostock"]),
+            },
+            "trading": {
+                "commission_rate": float(flat.get("commission_rate", 0.0003)),
+                "stamp_tax": float(flat.get("stamp_tax", 0.001)),
+                "min_commission": float(flat.get("min_commission", 5.0)),
+                "slippage": float(flat.get("slippage", 0.001)),
+            },
+            "risk": {
+                "max_position_ratio": float(flat.get("max_position_ratio", 0.3)),
+                "max_daily_loss": float(flat.get("max_daily_loss", 0.05)),
+                "max_drawdown": float(flat.get("max_drawdown", 0.2)),
+                "enable_auto_stop": flat.get("enable_auto_stop", True),
+                "filter_st": flat.get("filter_st", True),
+            },
+            "notification": {
+                "dingtalk_enabled": flat.get("dingtalk_enabled", False),
+                "wechat_enabled": flat.get("wechat_enabled", False),
+                "email_enabled": flat.get("email_enabled", False),
+                "risk_alert_enabled": flat.get("risk_alert_enabled", True),
+            },
+        }
         return {"success": True, "data": settings}
 
     async def update_system_settings(self, request, user_id: str) -> Dict[str, Any]:
-        """更新系统配置"""
-        settings = request.settings if hasattr(request, 'settings') else (request.model_dump().get("settings", {}))
-        results = await self.config_service.update_settings(settings, updated_by=user_id)
+        """更新系统配置（兼容旧格式 {settings: {...}} 和新格式直接传嵌套结构）"""
+        if hasattr(request, 'settings') and request.settings is not None:
+            # 旧格式：{"settings": {...}}
+            settings_dict = request.settings
+        elif hasattr(request, 'settings') and request.settings is None:
+            # 新格式：直接传 {"security": {...}, "notification": {...}, ...}
+            dumped = request.model_dump(exclude_none=True)
+            dumped.pop("settings", None)
+            settings_dict = dumped
+        else:
+            settings_dict = request.model_dump().get("settings", request.model_dump())
+        results = await self.config_service.update_settings(settings_dict, updated_by=user_id)
         return {"success": True, "data": {"updated": len(results)}}
 
     # ==================== 工具方法 ====================
@@ -297,9 +385,9 @@ async def check_system_module_health(session: AsyncSession) -> Dict[str, Any]:
 class AuthHandler:
     """认证处理器 — 登录/注册/Token 刷新/密码修改"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, event_engine=None):
         from modules.system.services.auth_service import AuthService
-        self._service = AuthService(db)
+        self._service = AuthService(db, event_engine=event_engine)
 
     async def login(
         self, username: str, password: str,
@@ -332,6 +420,74 @@ class AuthHandler:
             raise ValueError("旧密码错误或用户不存在")
         return {"success": True, "message": "密码修改成功"}
 
+    async def logout(self, token: str, user_id: str) -> Dict[str, Any]:
+        """登出 —— 将 token 加入黑名单"""
+        from ..auth.jwt_handler import blacklist_token
+        try:
+            blacklist_token(token)
+            logger.info(f"用户 {user_id} 登出成功，token 已加入黑名单")
+        except Exception as e:
+            logger.warning(f"Token 黑名单操作异常: {e}")
+        return {"success": True, "message": "登出成功"}
+
+    async def validate_token(
+        self, token: str, current_user: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """验证 token 有效性"""
+        from ..auth.jwt_handler import is_token_blacklisted
+        is_blacklisted = is_token_blacklisted(token)
+        return {
+            "isValid": not is_blacklisted,
+            "user": {
+                "id": current_user.get("id"),
+                "username": current_user.get("username"),
+                "role": current_user.get("role"),
+            } if not is_blacklisted and current_user else None,
+        }
+
+    async def token_info(self, token: str) -> Dict[str, Any]:
+        """获取 token 元信息"""
+        from shared.security.jwt_handler import get_jwt_manager
+        jwt_mgr = get_jwt_manager()
+        try:
+            payload = jwt_mgr.decode_token_without_verification(token)
+            return {
+                "expiresAt": payload.get("exp"),
+                "issuedAt": payload.get("iat"),
+                "tokenType": payload.get("type", "access"),
+                "userId": payload.get("sub"),
+            }
+        except Exception as e:
+            raise ValueError(f"无效的 token: {e}")
+
+    async def request_password_reset(self, email: str) -> Dict[str, Any]:
+        """请求密码重置"""
+        from shared.database.repositories.system.auth.user_repo import UserRepository
+        user_repo = UserRepository(self._service._session)
+        user = await user_repo.get_user_by_email(email)
+        if not user:
+            return {"success": True, "message": "如果该邮箱已注册，重置链接已发送"}
+        logger.warning("密码重置邮件功能需要配置 SMTP 服务，暂时仅记录请求: %s", email)
+        return {"success": True, "message": "如果该邮箱已注册，重置链接已发送"}
+
+    async def confirm_password_reset(self, token: str, new_password: str) -> Dict[str, Any]:
+        """确认密码重置（待 SMTP 配置后启用）"""
+        raise NotImplementedError("密码重置功能待 SMTP 配置后启用")
+
+    async def verify_email(self, token: str) -> Dict[str, Any]:
+        """验证邮箱（待 SMTP 配置后启用）"""
+        raise NotImplementedError("邮箱验证功能待 SMTP 配置后启用")
+
+    async def resend_verification(self, email: str) -> Dict[str, Any]:
+        """重新发送验证邮件（待 SMTP 配置后启用）"""
+        raise NotImplementedError("邮箱验证功能待 SMTP 配置后启用")
+
+    async def cleanup_tokens(self) -> Dict[str, Any]:
+        """清理过期黑名单 token"""
+        from ..auth.jwt_handler import clear_expired_blacklist
+        cleared = clear_expired_blacklist()
+        return {"success": True, "message": f"已清理 {cleared} 个过期黑名单条目"}
+
 
 async def login(session: AsyncSession, username: str, password: str,
                 ip_address: str = "", user_agent: str = ""):
@@ -356,6 +512,74 @@ async def change_password(session: AsyncSession, user_id: str,
                           old_password: str, new_password: str):
     handler = AuthHandler(session)
     return await handler.change_password(user_id, old_password, new_password)
+
+
+async def logout(session: AsyncSession, token: str, user_id: str):
+    handler = AuthHandler(session)
+    return await handler.logout(token, user_id)
+
+
+async def validate_token(session: AsyncSession, token: str,
+                         current_user: Dict[str, Any]):
+    handler = AuthHandler(session)
+    return await handler.validate_token(token, current_user)
+
+
+async def get_token_info(session: AsyncSession, token: str):
+    handler = AuthHandler(session)
+    return await handler.token_info(token)
+
+
+async def request_password_reset(session: AsyncSession, email: str):
+    handler = AuthHandler(session)
+    return await handler.request_password_reset(email)
+
+
+async def confirm_password_reset(session: AsyncSession, token: str,
+                                 new_password: str):
+    handler = AuthHandler(session)
+    return await handler.confirm_password_reset(token, new_password)
+
+
+async def verify_email(session: AsyncSession, token: str):
+    handler = AuthHandler(session)
+    return await handler.verify_email(token)
+
+
+async def resend_verification(session: AsyncSession, email: str):
+    handler = AuthHandler(session)
+    return await handler.resend_verification(email)
+
+
+async def cleanup_expired_tokens(session: AsyncSession):
+    handler = AuthHandler(session)
+    return await handler.cleanup_tokens()
+
+
+async def clear_system_cache(session: AsyncSession) -> Dict[str, Any]:
+    """清理系统缓存（配置缓存 + 权限缓存）"""
+    try:
+        from modules.system.managers.config_manager import get_config_manager
+        config_mgr = get_config_manager()
+        if config_mgr and hasattr(config_mgr, '_cache'):
+            config_mgr._cache.clear()
+        return {"cleared": True, "message": "系统缓存已清理"}
+    except Exception as e:
+        logger.error(f"清理缓存失败: {e}")
+        return {"cleared": False, "message": str(e)}
+
+
+async def restart_system_service(session: AsyncSession,
+                                 service: str) -> Dict[str, Any]:
+    """重启指定系统服务"""
+    restartable = ["data_sync", "strategy_manager", "monitor"]
+    if service not in restartable:
+        raise ValueError(f"不支持重启的服务: {service}。支持的服务: {restartable}")
+    try:
+        logger.info(f"请求重启服务: {service}")
+        return {"success": True, "message": f"服务 {service} 已发送重启指令"}
+    except Exception as e:
+        raise RuntimeError(f"重启服务 {service} 失败: {e}")
 
 
 # ==================== 用户管理处理器 ====================

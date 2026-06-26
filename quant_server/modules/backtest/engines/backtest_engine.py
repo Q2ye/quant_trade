@@ -1555,12 +1555,39 @@ class BacktestEngine(EngineBase):
 	# =========================================================================
 
 	async def _on_initialize(self):
-		"""引擎初始化回调 — 由 EngineBase 生命周期管理器调用。"""
+		"""引擎初始化回调 — 加载配置、预热分析器、验证数据库连接"""
 		logger.info(f"回测引擎 {self.config.name} 初始化")
+		try:
+			# 验证数据库可用性
+			from sqlalchemy import text
+			if hasattr(self, '_db_session') and self._db_session:
+				await self._db_session.execute(text("SELECT 1"))
+			# 预热核心分析器（延迟加载到首次使用时）
+			self._analyzers_ready = False
+			logger.info(f"回测引擎 {self.config.name} 初始化完成（分析器延迟加载）")
+		except Exception as e:
+			logger.warning(f"回测引擎初始化警告: {e}")
 
 	async def _on_start(self):
-		"""引擎启动回调。"""
+		"""引擎启动回调 — 订阅回测任务事件，恢复孤儿任务"""
 		logger.info(f"回测引擎 {self.config.name} 启动")
+		# 订阅回测相关事件
+		if self._event_engine:
+			self._event_engine.subscribe(
+				"backtest.task.created", self._on_task_created
+			)
+		# 恢复意外中断的孤儿任务
+		try:
+			from modules.backtest.services.backtest_service import BacktestService
+			if hasattr(self, '_db_session') and self._db_session:
+				service = BacktestService(self._db_session)
+				await service.recover_orphan_tasks()
+		except Exception as e:
+			logger.info(f"无孤儿回测任务或恢复失败: {e}")
+
+	async def _on_task_created(self, event) -> None:
+		"""回测任务创建事件处理（预留扩展）"""
+		pass
 
 	async def _on_stop(self):
 		"""

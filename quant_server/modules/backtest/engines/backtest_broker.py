@@ -1047,8 +1047,19 @@ class BacktestBroker(EngineBase):
         )
 
     async def _on_start(self) -> None:
-        """引擎启动回调。"""
-        logger.info("BacktestBroker 已启动")
+        """引擎启动回调 — 重置交易状态 + 订阅事件"""
+        self.trade_history.clear()
+        self.positions.clear()
+        self.cash = self.initial_capital
+        self._commission_total = 0.0
+        self._stamp_tax_total = 0.0
+        if self._event_engine:
+            self._event_engine.subscribe("trade.order.submitted", self._on_order_submitted)
+        logger.info("BacktestBroker 已启动（状态已重置）")
+
+    async def _on_order_submitted(self, event) -> None:
+        """处理订单提交事件（预留扩展）"""
+        pass
 
     async def _on_stop(self) -> None:
         """

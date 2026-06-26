@@ -624,6 +624,62 @@ async def review_signal_api (
 		)
 
 
+# ==================== 交易统计接口 ====================
+
+
+@router.get("/statistics")
+async def get_trade_statistics_api(
+    start_date: str = Query(default=None, description="开始日期"),
+    end_date: str = Query(default=None, description="结束日期"),
+    strategy_id: str = Query(default=None, description="策略ID"),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """获取交易统计数据（总笔数、成功笔数、成交量、成交额）"""
+    try:
+        from sqlalchemy import text
+        params = {}
+        conditions = []
+        if start_date:
+            conditions.append("created_at >= :start_date")
+            params["start_date"] = start_date
+        if end_date:
+            conditions.append("created_at <= :end_date")
+            params["end_date"] = end_date
+        where = " AND ".join(conditions) if conditions else "1=1"
+
+        # 从 trade_records 表聚合统计
+        query = text(
+            f"SELECT COUNT(*) as total_trades, "
+            "COALESCE(SUM(CASE WHEN status = 'filled' THEN 1 ELSE 0 END), 0) as successful_trades, "
+            "COALESCE(SUM(volume), 0) as total_volume, "
+            "COALESCE(SUM(amount), 0) as total_amount "
+            "FROM trade_records WHERE {where}"
+        )
+        result = await db_session.execute(query, params)
+        row = result.fetchone()
+
+        total = int(row.total_trades) if row and row.total_trades else 0
+        success = int(row.successful_trades) if row and row.successful_trades else 0
+
+        return {
+            "success": True,
+            "data": {
+                "total_trades": total,
+                "successful_trades": success,
+                "total_volume": int(row.total_volume) if row and row.total_volume else 0,
+                "total_amount": float(row.total_amount) if row and row.total_amount else 0.0,
+                "avg_trade_size": float(row.total_amount) / total if row and total > 0 and row.total_amount else 0.0,
+            },
+        }
+    except Exception as e:
+        logger.error(f"获取交易统计失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取交易统计失败: {str(e)}",
+        )
+
+
 # ==================== 模块管理接口 ====================
 
 @router.get("/health")

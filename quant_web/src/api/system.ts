@@ -23,25 +23,37 @@ export interface SystemStatus {
 }
 
 export interface SystemSettings {
-  data_sync: {
-    auto_sync: boolean;
-    sync_interval: number;
-    data_sources: string[];
+  security?: {
+    session_timeout?: number;
+    max_login_attempts?: number;
+    lockout_minutes?: number;
+    password_min_length?: number;
   };
-  trading: {
-    commission_rate: number;
-    tax_rate: number;
-    min_commission: number;
+  notification?: {
+    dingtalk_enabled?: boolean;
+    wechat_enabled?: boolean;
+    email_enabled?: boolean;
+    risk_alert_enabled?: boolean;
   };
-  risk: {
-    max_position_ratio: number;
-    max_daily_loss: number;
-    enable_auto_stop: boolean;
+  maintenance?: {
+    audit_retention_days?: number;
+    auto_cleanup?: boolean;
   };
-  notification: {
-    enable_email: boolean;
-    enable_wechat: boolean;
-    risk_notification: boolean;
+  // Legacy fields for backward compatibility
+  data_sync?: {
+    auto_sync?: boolean;
+    sync_interval?: number;
+    data_sources?: string[];
+  };
+  trading?: {
+    commission_rate?: number;
+    tax_rate?: number;
+    min_commission?: number;
+  };
+  risk?: {
+    max_position_ratio?: number;
+    max_daily_loss?: number;
+    enable_auto_stop?: boolean;
   };
 }
 
@@ -232,5 +244,75 @@ export default {
       .then(
         (data: ApiResponse<{ success: boolean; message: string }>) => data.data,
       );
+  },
+
+  // ==================== 用户管理（管理员） ====================
+
+  /**
+   * 获取用户列表（分页）
+   */
+  async getUsers(params?: {
+    skip?: number;
+    limit?: number;
+    keyword?: string;
+    role?: string;
+  }): Promise<any> {
+    return request
+      .get("/quantTrade/system/users", { params })
+      .then(handleResponse)
+      .then((data: any) => data);
+  },
+
+  /**
+   * 获取用户详情
+   */
+  async getUser(userId: string): Promise<any> {
+    return request
+      .get(`/quantTrade/system/users/${userId}`)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data);
+  },
+
+  /**
+   * 创建用户
+   */
+  async createUser(userData: {
+    username: string;
+    password: string;
+    email?: string;
+    phone?: string;
+    real_name?: string;
+    role?: string;
+  }): Promise<any> {
+    return request
+      .post("/quantTrade/system/users", userData)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data);
+  },
+
+  /**
+   * 更新用户
+   */
+  async updateUser(userId: string, userData: {
+    email?: string;
+    phone?: string;
+    real_name?: string;
+    role?: string;
+    is_active?: boolean;
+  }): Promise<any> {
+    return request
+      .put(`/quantTrade/system/users/${userId}`, userData)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data);
+  },
+
+  /**
+   * 删除用户
+   */
+  async deleteUser(userId: string): Promise<any> {
+    return request
+      .delete(`/quantTrade/system/users/${userId}`)
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data.data);
   },
 };

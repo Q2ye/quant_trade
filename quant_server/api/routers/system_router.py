@@ -8,7 +8,7 @@
 import logging
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -29,6 +29,17 @@ from modules.system.handlers import (
 	register_user,
 	refresh_token,
 	change_password,
+	logout,
+	validate_token,
+	get_token_info,
+	request_password_reset,
+	confirm_password_reset,
+	verify_email,
+	resend_verification,
+	cleanup_expired_tokens,
+	# 系统管理
+	clear_system_cache,
+	restart_system_service,
 	# 用户管理
 	list_users,
 	get_user,
@@ -70,6 +81,16 @@ from modules.system.schemas import (
 	RoleUpdateRequest,
 	RoleListResponse,
 	RoleDetailResponse,
+	# 新增认证/系统管理
+	PasswordResetRequest,
+	PasswordResetConfirmRequest,
+	EmailVerifyRequest,
+	ResendVerificationRequest,
+	MessageResponse,
+	TokenInfoResponse,
+	TokenValidateResponse,
+	CacheClearResponse,
+	ServiceRestartResponse,
 )
 # 导入响应格式化工具
 from utils.api_utils.response_formatter import success_response, error_response
@@ -484,8 +505,208 @@ async def change_password_api (
 		logger.error(f"修改密码失败: {str(e)}", exc_info=True)
 		raise HTTPException(status_code=500, detail=f"修改密码失败: {str(e)}")
 
+# ==================== 登出与 Token 管理接口 ====================
 
-# ==================== 用户管理接口 ====================
+
+@router.post("/auth/logout", response_model=MessageResponse)
+async def logout_api(
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""登出 —— 将 access_token 加入黑名单"""
+	try:
+		from modules.system.auth.jwt_handler import get_token_from_header
+		token = "unknown"
+		result = await logout(
+			session=db_session,
+			token=token,
+			user_id=current_user.get("id", ""),
+		)
+		return result
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"登出失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"登出失败: {str(e)}"
+		)
+
+
+@router.get("/auth/validate", response_model=TokenValidateResponse)
+async def validate_token_api(
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""验证 token 是否有效 —— 能走到这里说明 token 有效"""
+	try:
+		return {"isValid": True, "user": {
+			"id": current_user.get("id"),
+			"username": current_user.get("username"),
+			"role": current_user.get("role"),
+		}}
+	except Exception:
+		return {"isValid": False, "user": None}
+
+
+@router.get("/auth/token-info", response_model=TokenInfoResponse)
+async def token_info_api(
+		request: Request,
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""获取 token 元信息（过期时间、类型等）"""
+	try:
+		auth_header = request.headers.get("Authorization", "")
+		token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+		if not token:
+			raise HTTPException(status_code=400, detail="未提供 token")
+		result = await get_token_info(session=db_session, token=token)
+		return result
+	except HTTPException:
+		raise
+	except ValueError as e:
+		raise HTTPException(status_code=400, detail=str(e))
+	except Exception as e:
+		logger.error(f"获取 token 信息失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取 token 信息失败: {str(e)}")
+
+
+@router.post("/auth/password/reset-request", response_model=MessageResponse)
+async def request_password_reset_api(
+		request: PasswordResetRequest,
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""请求密码重置（发送重置链接到邮箱）"""
+	try:
+		result = await request_password_reset(
+			session=db_session,
+			email=request.email,
+		)
+		return result
+	except Exception as e:
+		logger.error(f"密码重置请求失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"处理失败: {str(e)}"
+		)
+
+
+@router.post("/auth/password/reset-confirm", response_model=MessageResponse)
+async def confirm_password_reset_api(
+		request: PasswordResetConfirmRequest,
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""确认密码重置（使用重置 token 设置新密码）"""
+	try:
+		result = await confirm_password_reset(
+			session=db_session,
+			token=request.token,
+			new_password=request.newPassword,
+		)
+		return result
+	except NotImplementedError as e:
+		raise HTTPException(status_code=501, detail=str(e))
+	except Exception as e:
+		logger.error(f"密码重置确认失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+
+
+@router.post("/auth/email/verify", response_model=MessageResponse)
+async def verify_email_api(
+		request: EmailVerifyRequest,
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""验证邮箱 token"""
+	try:
+		result = await verify_email(
+			session=db_session,
+			token=request.token,
+		)
+		return result
+	except NotImplementedError as e:
+		raise HTTPException(status_code=501, detail=str(e))
+	except Exception as e:
+		logger.error(f"邮箱验证失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"邮箱验证失败: {str(e)}")
+
+
+@router.post("/auth/email/resend-verification", response_model=MessageResponse)
+async def resend_verification_api(
+		request: ResendVerificationRequest,
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""重新发送验证邮件"""
+	try:
+		result = await resend_verification(
+			session=db_session,
+			email=request.email,
+		)
+		return result
+	except NotImplementedError as e:
+		raise HTTPException(status_code=501, detail=str(e))
+	except Exception as e:
+		logger.error(f"重新发送验证邮件失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"重新发送验证邮件失败: {str(e)}")
+
+
+@router.post("/auth/tokens/cleanup", response_model=MessageResponse)
+async def cleanup_tokens_api(
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""清理过期黑名单 token（管理员）"""
+	try:
+		_require_admin(current_user)
+		result = await cleanup_expired_tokens(session=db_session)
+		return result
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"清理 token 失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+
+
+# ==================== 系统运维接口 ====================
+
+
+@router.post("/cache/clear", response_model=CacheClearResponse)
+async def clear_cache_api(
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""清理系统缓存（管理员）"""
+	try:
+		_require_admin(current_user)
+		result = await clear_system_cache(session=db_session)
+		return result
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"清理缓存失败: {str(e)}", exc_info=True)
+		return {"cleared": False, "message": str(e)}
+
+
+@router.post("/services/{service}/restart", response_model=ServiceRestartResponse)
+async def restart_service_api(
+		service: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""重启指定系统服务（管理员）"""
+	try:
+		_require_admin(current_user)
+		result = await restart_system_service(session=db_session, service=service)
+		return result
+	except ValueError as e:
+		raise HTTPException(status_code=400, detail=str(e))
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"重启服务失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"重启服务失败: {str(e)}")
+
+
+	# ==================== 用户管理接口 ====================
 
 
 def _require_admin (current_user: Dict):

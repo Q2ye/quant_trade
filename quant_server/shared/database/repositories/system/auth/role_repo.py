@@ -85,10 +85,16 @@ class RoleRepository:
 		)
 
 	async def get_roles_by_type (self, role_type: str) -> List[SysRole]:
-		"""根据角色类型获取角色"""
-		return await self.get_many(
-			role_type=role_type
+		"""根据角色类型获取角色
+
+		注意：SysRole 模型当前不含 role_type 列。此方法暂时返回所有活跃角色。
+		待数据库 migration 添加 role_type 列后，将恢复精确过滤。
+		"""
+		import logging
+		logging.getLogger(__name__).warning(
+			"get_roles_by_type: SysRole 模型不含 role_type 列，返回所有活跃角色"
 		)
+		return await self.get_many(is_active=True)
 
 	async def get_roles_with_permissions (self) -> List[Dict[str, Any]]:
 		"""获取角色及其权限信息（需要关联权限表）"""
@@ -118,11 +124,11 @@ class RoleRepository:
 			is_active: Optional[bool] = True,
 			limit: int = 100
 	) -> List[SysRole]:
-		"""搜索角色"""
-		filters = {}
+		"""搜索角色
 
-		if role_type:
-			filters['role_type'] = role_type
+		注意：SysRole 模型当前不含 role_type 列，role_type 参数被忽略。
+		"""
+		filters = {}
 
 		if is_active is not None:
 			filters['is_active'] = is_active
@@ -133,29 +139,35 @@ class RoleRepository:
 		)
 
 	async def get_role_hierarchy (self) -> Dict[str, Any]:
-		"""获取角色层级结构"""
-		# 这里假设角色有parent_id字段表示层级关系
-		# 实际实现需要根据数据库设计调整
+		"""获取角色层级结构
 
-		# 使用 get_many 方法获取顶级角色
-		top_roles = await self.get_many(is_active=True, parent_id=None)
-
-		hierarchy = []
-		for role in top_roles:
-			role_data = {
+		注意：SysRole 模型当前不含 parent_id 列（层级关系）。
+		此方法降级为返回扁平角色列表。待 migration 添加 parent_id 后启用层级查询。
+		"""
+		import logging
+		logging.getLogger(__name__).warning(
+			"get_role_hierarchy: SysRole 模型不含 parent_id 列，返回扁平角色列表"
+		)
+		# 降级：返回所有活跃角色（扁平列表）
+		all_roles = await self.get_many(is_active=True)
+		flat_list = []
+		for role in all_roles:
+			flat_list.append({
 				'id': getattr(role, 'id', None),
 				'name': getattr(role, 'name', None),
 				'code': getattr(role, 'code', None),
-				'children': await self._get_role_children(getattr(role, 'id', None))
-			}
-			hierarchy.append(role_data)
-
-		return {'hierarchy': hierarchy}
+				'description': getattr(role, 'description', None),
+				'children': [],  # 扁平列表，无子节点
+			})
+		return {'hierarchy': flat_list}
 
 	async def _get_role_children (self, parent_id: str) -> List[Dict[str, Any]]:
-		"""获取子角色（递归）"""
-		# 使用 get_many 方法获取子角色
-		children = await self.get_many(is_active=True, parent_id=parent_id)
+		"""获取子角色（预留扩展）
+
+		注意：SysRole 模型当前不含 parent_id 列。此方法返回空列表。
+		待 migration 添加 parent_id 后启用。
+		"""
+		return []
 
 		children_data = []
 		for child in children:

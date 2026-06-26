@@ -87,6 +87,8 @@ class AuditLogger:
 		self.repo = repo
 		self.enable_console = enable_console
 		self.enable_database = enable_database
+		self._audit_session_factory = None  # 独立 session factory（延迟初始化）
+		self._repo_available = False
 		self.settings = config.settings
 		self.audit_enabled = True
 		self.audit_retention_days = 30
@@ -455,37 +457,62 @@ class AuditLogger:
 
 		print(log_message)
 
-	async def _log_to_database (self, entry: AuditLogEntry) -> AuditLog:
-		"""保存审计日志到数据库"""
-		try:
-			if not self.repo:
-				await self._init_repository()
-			if not self.repo:
-				raise Exception("审计仓库未初始化，跳过数据库写入")
-			audit_data = {
-				'user_id': entry.user_id,
-				'username': entry.username,
-				'action_type': entry.action,
-				'resource_type': entry.resource_type,
-				'resource_id': entry.resource_id,
-				'resource_name': entry.description,
-				'new_values': json.dumps(entry.details) if entry.details else None,
-				'ip_address': entry.ip_address,
-				'user_agent': entry.user_agent,
-				'status': entry.result,
-				'created_at': entry.timestamp
-			}
+	async def _log_to_database (self, entry: AuditLogEntry) -> Optional[AuditLog]:
+		"""保存审计日志到数据库 —— 使用独立 session 避免生命周期冲突"""
+		if not self._audit_session_factory:
+			await self._init_repository()
+		if not self._audit_session_factory:
+			logging.getLogger(__name__).debug("审计仓库未初始化，跳过数据库持久化")
+			return None
 
-			return await self.repo.create(audit_data)
+		try:
+			async with self._audit_session_factory() as session:
+				from shared.database.repositories.system.config.audit_repo import AuditRepository
+				repo = AuditRepository(session)
+
+				audit_data = {
+					'user_id': entry.user_id,
+					'username': entry.username,
+					'action_type': entry.action,
+					'resource_type': entry.resource_type,
+					'resource_id': entry.resource_id,
+					'resource_name': entry.description,
+					'new_values': json.dumps(entry.details) if entry.details else None,
+					'ip_address': entry.ip_address,
+					'user_agent': entry.user_agent,
+					'status': entry.result,
+					'created_at': entry.timestamp
+				}
+
+				result = await repo.create(audit_data)
+				await session.commit()
+				return result
 
 		except Exception as e:
-			raise Exception(f"保存审计日志到数据库失败: {str(e)}") from e
+			logging.getLogger(__name__).error(f"保存审计日志到数据库失败: {str(e)}")
+			return None
 
 	async def _init_repository (self):
-		"""初始化仓库（延迟加载）—— 当前仅控制台输出，DB 存储待修复"""
-		# 审计日志暂不写入数据库，避免 session 生命周期冲突
-		# TODO: 接入独立的 session_factory 或消息队列异步写入
-		self.repo = None
+		"""初始化仓库（延迟加载）—— 使用独立 session_factory 避免生命周期冲突"""
+		try:
+			from shared.database.session.session_manager import get_session_manager
+			session_mgr = get_session_manager()
+			self._audit_session_factory = session_mgr.create_async_session_factory()
+
+			# 验证 session 可用性
+			from sqlalchemy import text as sa_text
+			async with self._audit_session_factory() as session:
+				from shared.database.repositories.system.config.audit_repo import AuditRepository
+				self.repo = AuditRepository(session)
+				await session.execute(sa_text("SELECT 1"))
+				self._repo_available = True
+			logging.getLogger(__name__).info("审计日志仓库初始化成功（独立 session factory）")
+		except Exception as e:
+			logging.getLogger(__name__).warning(
+				f"审计日志仓库初始化失败，仅控制台输出: {e}"
+			)
+			self.repo = None
+			self._audit_session_factory = None
 
 
 # 审计日志装饰器

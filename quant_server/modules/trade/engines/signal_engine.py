@@ -166,9 +166,32 @@ class SignalEngine(EngineBase):
         db_signal_id = await self._persist_signal(signal)
 
         try:
-            # 检查信号是否符合风控规则
+            # 发布风控检查请求事件（异步通知，不阻塞）
+            if self._event_engine:
+                try:
+                    from modules.risk.events.risk_events import RiskCheckRequestedEvent
+                    await self._event_engine.put(
+                        RiskCheckRequestedEvent(signal_data=signal)
+                    )
+                except Exception as e:
+                    logger.debug(f"发布风控检查事件失败（不影响主流程）: {e}")
+
+            # 同步风控检查（保持请求-响应语义）
             is_valid, message = await self.risk_engine.check_signal(signal)
             if not is_valid:
+                # 发布违规事件
+                if self._event_engine:
+                    try:
+                        from modules.risk.events.risk_events import RiskViolationEvent
+                        await self._event_engine.put(
+                            RiskViolationEvent(
+                                rule_name="signal_check",
+                                message=f"风控检查失败: {message}",
+                                signal_data=signal,
+                            )
+                        )
+                    except Exception:
+                        pass
                 signal["status"] = "rejected"
                 signal["message"] = f"风控检查失败: {message}"
                 self.processed_signals.append(signal)

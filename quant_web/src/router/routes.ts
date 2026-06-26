@@ -434,10 +434,20 @@ export const routes: RouteRecordRaw[] = [
 
   // 系统管理
   {
+    path: "/system/dashboard",
+    name: "SystemDashboard",
+    component: () => import("@/views/System/Dashboard.vue"),
+    meta: { menu: "system-dashboard", layout: "main", title: "系统仪表盘" },
+  },
+  {
     path: "/system/monitor",
-    name: "SystemMonitor",
-    component: () => import("@/views/System/Monitor.vue"),
-    meta: { menu: "system-monitor", layout: "main", title: "系统监控" },
+    redirect: "/system/dashboard",
+  },
+  {
+    path: "/system/users",
+    name: "UserManagement",
+    component: () => import("@/views/System/UserManagement.vue"),
+    meta: { menu: "users", layout: "main", title: "用户管理" },
   },
   {
     path: "/system/logs",
@@ -450,18 +460,6 @@ export const routes: RouteRecordRaw[] = [
     name: "SystemSettings",
     component: () => import("@/views/System/Settings.vue"),
     meta: { menu: "settings", layout: "main", title: "系统设置" },
-  },
-  {
-    path: "/system/users",
-    name: "UserManagement",
-    component: () => import("@/views/System/UserManagement.vue"),
-    meta: { menu: "users", layout: "main", title: "用户管理" },
-  },
-  {
-    path: "/system/data-sync",
-    name: "SystemDataSync",
-    component: () => import("@/views/System/DataSync.vue"),
-    meta: { menu: "settings", layout: "main", title: "数据同步配置" },
   },
 
   // 重定向路由

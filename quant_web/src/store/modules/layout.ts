@@ -82,10 +82,9 @@ const layoutModule: Module<LayoutState, RootState> = {
           label: "系统管理",
           icon: "setting",
           children: [
-            { key: "data-sync",        label: "数据同步",   icon: "sync",         path: "/data/sync" },
-            { key: "system-monitor",   label: "系统监控",   icon: "monitor",      path: "/system/monitor" },
-            { key: "system-logs",      label: "系统日志",   icon: "file-text",    path: "/system/logs" },
+            { key: "system-dashboard", label: "系统仪表盘", icon: "monitor",      path: "/system/dashboard" },
             { key: "system-users",     label: "用户管理",   icon: "user",         path: "/system/users" },
+            { key: "system-logs",      label: "系统日志",   icon: "file-text",    path: "/system/logs" },
             { key: "system-settings",  label: "系统设置",   icon: "setting",      path: "/system/settings" },
           ],
         },

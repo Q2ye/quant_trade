@@ -3,279 +3,212 @@
   <div class="settings bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
-        <div class="title-section">
-          <h1 class="page-title">系统设置</h1>
-        </div>
+        <div class="title-section"><h1 class="page-title">系统设置</h1><p class="page-description">安全策略、通知渠道与系统维护参数配置</p></div>
       </div>
     </div>
     <div class="main-content">
-      <n-card class="card-surface">
-        <n-tabs v-model:value="activeTab">
-          <!-- 交易设置 -->
-          <n-tab-pane name="trade" tab="交易设置">
-            <n-form label-width="180px">
-              <n-form-item label="默认券商">
-                <n-select
-                  v-model:value="tradeSettings.broker"
-                  style="width: 300px"
-                  :options="brokers"
-                />
-              </n-form-item>
+      <n-skeleton v-if="loading" :text="true" :repeat="12" />
+      <n-result v-else-if="error" status="500" title="加载失败" description="获取设置数据失败">
+        <template #footer><n-button type="primary" @click="loadSettings">重试</n-button></template>
+      </n-result>
+      <template v-else>
+        <!-- 三列等高 -->
+        <n-grid :x-gap="16" :cols="3" class="settings-grid">
+          <!-- 安全设置 -->
+          <n-grid-item class="settings-item">
+            <n-card :class="tokens.surface.card" size="small" class="settings-card">
+              <template #header>
+                <div class="card-head"><Icon icon="mdi:shield-lock" /><span>安全设置</span></div>
+              </template>
+              <div class="setting-list">
+                <div class="setting-row">
+                  <span class="s-label">会话超时</span>
+                  <n-input-number v-model:value="form.session_timeout" :min="5" :max="1440" size="small" style="width:80px" />
+                  <span class="s-unit">分钟</span>
+                </div>
+                <div class="setting-row">
+                  <span class="s-label">最大登录失败</span>
+                  <n-input-number v-model:value="form.max_login_attempts" :min="3" :max="20" size="small" style="width:80px" />
+                  <span class="s-unit">次</span>
+                </div>
+                <div class="setting-row">
+                  <span class="s-label">锁定时长</span>
+                  <n-input-number v-model:value="form.lockout_minutes" :min="5" :max="1440" size="small" style="width:80px" />
+                  <span class="s-unit">分钟</span>
+                </div>
+                <div class="setting-row">
+                  <span class="s-label">密码最小长度</span>
+                  <n-input-number v-model:value="form.password_min_length" :min="6" :max="32" size="small" style="width:80px" />
+                  <span class="s-unit">字符</span>
+                </div>
+              </div>
+            </n-card>
+          </n-grid-item>
 
-              <n-form-item label="默认滑点">
-                <n-input-number
-                  v-model:value="tradeSettings.slippage"
-                  :min="0"
-                  :max="0.1"
-                  :step="0.0005"
-                  style="width: 200px"
-                />
-                <span class="tip">（例如：0.001 表示 0.1%）</span>
-              </n-form-item>
+          <!-- 通知设置 -->
+          <n-grid-item class="settings-item">
+            <n-card :class="tokens.surface.card" size="small" class="settings-card">
+              <template #header>
+                <div class="card-head"><Icon icon="mdi:bell-ring" /><span>通知设置</span></div>
+              </template>
+              <div class="setting-list">
+                <div class="setting-row">
+                  <Icon icon="mdi:message-badge" :style="{color: form.dingtalk_enabled ? '#1890FF' : 'var(--n-text-color-3)'}" />
+                  <span class="s-label">钉钉通知</span>
+                  <n-switch v-model:value="form.dingtalk_enabled" size="small" />
+                </div>
+                <div class="setting-row">
+                  <Icon icon="mdi:wechat" :style="{color: form.wechat_enabled ? '#07C160' : 'var(--n-text-color-3)'}" />
+                  <span class="s-label">微信通知</span>
+                  <n-switch v-model:value="form.wechat_enabled" size="small" />
+                </div>
+                <div class="setting-row">
+                  <Icon icon="mdi:email" :style="{color: form.email_enabled ? '#EA4335' : 'var(--n-text-color-3)'}" />
+                  <span class="s-label">邮件通知</span>
+                  <n-switch v-model:value="form.email_enabled" size="small" />
+                </div>
+                <div class="setting-row">
+                  <Icon icon="mdi:alert-circle" :style="{color: form.risk_alert_enabled ? '#F59E0B' : 'var(--n-text-color-3)'}" />
+                  <span class="s-label">风控告警</span>
+                  <n-switch v-model:value="form.risk_alert_enabled" size="small" />
+                </div>
+              </div>
+            </n-card>
+          </n-grid-item>
 
-              <n-form-item label="默认手续费">
-                <n-input-number
-                  v-model:value="tradeSettings.commission"
-                  :min="0"
-                  :max="0.01"
-                  :step="0.00005"
-                  style="width: 200px"
-                />
-                <span class="tip">（例如：0.0003 表示 万分之三）</span>
-              </n-form-item>
+          <!-- 维护设置 -->
+          <n-grid-item class="settings-item">
+            <n-card :class="tokens.surface.card" size="small" class="settings-card">
+              <template #header>
+                <div class="card-head"><Icon icon="mdi:cog-sync" /><span>维护设置</span></div>
+              </template>
+              <div class="setting-list">
+                <div class="setting-row">
+                  <span class="s-label">审计日志保留</span>
+                  <n-input-number v-model:value="form.audit_retention_days" :min="7" :max="365" size="small" style="width:80px" />
+                  <span class="s-unit">天</span>
+                </div>
+                <div class="setting-row">
+                  <span class="s-label">计划清理时间</span>
+                  <n-time-picker v-model:value="form.cleanup_time" format="HH:mm" size="small" style="width:100px" />
+                </div>
+                <div class="setting-row">
+                  <span class="s-label">自动清理过期数据</span>
+                  <n-switch v-model:value="form.auto_cleanup" size="small" />
+                </div>
+                <div class="setting-row setting-row-spacer" />
+              </div>
+            </n-card>
+          </n-grid-item>
+        </n-grid>
 
-              <n-form-item label="交易确认方式">
-                <n-radio-group v-model:value="tradeSettings.confirmation">
-                  <n-radio value="auto">自动执行</n-radio>
-                  <n-radio value="manual">手动确认</n-radio>
-                </n-radio-group>
-              </n-form-item>
-            </n-form>
-          </n-tab-pane>
-
-          <!-- 风险控制 -->
-          <n-tab-pane name="risk" tab="风险控制">
-            <n-form label-width="180px">
-              <n-form-item label="单股最大仓位">
-                <n-input-number
-                  v-model:value="riskSettings.maxPosition"
-                  :min="1"
-                  :max="100"
-                  :step="1"
-                  style="width: 200px"
-                />
-                <span class="tip">（例如：20 表示 20%）</span>
-              </n-form-item>
-
-              <n-form-item label="单日最大亏损">
-                <n-input-number
-                  v-model:value="riskSettings.maxDailyLoss"
-                  :min="0.1"
-                  :max="10"
-                  :step="0.1"
-                  style="width: 200px"
-                />
-                <span class="tip">（例如：5 表示 5%）</span>
-              </n-form-item>
-
-              <n-form-item label="最大回撤阈值">
-                <n-input-number
-                  v-model:value="riskSettings.maxDrawdown"
-                  :min="1"
-                  :max="30"
-                  :step="1"
-                  style="width: 200px"
-                />
-                <span class="tip">（例如：10 表示 10%）</span>
-              </n-form-item>
-
-              <n-form-item label="自动过滤ST股">
-                <n-switch v-model:value="riskSettings.filterST" />
-              </n-form-item>
-
-              <n-form-item label="黑名单股票">
-                <n-select
-                  v-model:value="riskSettings.blacklist"
-                  multiple
-                  filterable
-                  placeholder="输入股票代码或名称"
-                  :options="stockOptions"
-                  style="width: 400px"
-                />
-              </n-form-item>
-            </n-form>
-          </n-tab-pane>
-
-          <!-- 数据设置 -->
-          <n-tab-pane name="data" tab="数据设置">
-            <n-form label-width="180px">
-              <n-form-item label="数据源">
-                <n-radio-group v-model:value="dataSettings.source">
-                  <n-radio value="tushare">Tushare</n-radio>
-                  <n-radio value="baostock">Baostock</n-radio>
-                </n-radio-group>
-              </n-form-item>
-
-              <n-form-item label="Tushare Token">
-                <n-input
-                  v-model:value="dataSettings.tushareToken"
-                  type="password"
-                  show-password-on="click"
-                  style="width: 400px"
-                />
-              </n-form-item>
-
-              <n-form-item label="自动同步时间">
-                <n-time-picker
-                  v-model:value="syncTimeValue"
-                  format="HH:mm"
-                  style="width: 200px"
-                />
-              </n-form-item>
-
-              <n-form-item label="保留历史数据">
-                <n-select
-                  v-model:value="dataSettings.keepHistory"
-                  style="width: 150px"
-                  :options="keepHistoryOptions"
-                />
-              </n-form-item>
-            </n-form>
-          </n-tab-pane>
-        </n-tabs>
-
+        <!-- 保存按钮独立一行，居中 -->
         <div class="action-bar">
-          <n-space justify="center" :size="12">
-            <n-button
-              type="primary"
-              class="hover-lift"
-              :loading="saving"
-              @click="saveSettings"
-              >保存设置</n-button
-            >
-            <n-button class="hover-lift" @click="resetSettings"
-              >恢复默认</n-button
-            >
+          <n-space :size="12">
+            <n-button type="primary" :loading="saving" @click="saveSettings">保存设置</n-button>
+            <n-button @click="loadSettings">重新加载</n-button>
           </n-space>
         </div>
-      </n-card>
+      </template>
     </div>
-    <!-- .main-content -->
   </div>
 </template>
 
-<script>
-export default {
-  name: "Settings",
-  data() {
-    return {
-      activeTab: "trade",
-      saving: false,
-      tradeSettings: {
-        broker: "ht",
-        slippage: 0.001,
-        commission: 0.0003,
-        confirmation: "manual",
-      },
-      riskSettings: {
-        maxPosition: 20,
-        maxDailyLoss: 5,
-        maxDrawdown: 10,
-        filterST: true,
-        blacklist: ["600401.SH", "000982.SZ"],
-      },
-      dataSettings: {
-        source: "tushare",
-        tushareToken: "your_tushare_token",
-        syncTime: "15:30",
-        keepHistory: "3y",
-      },
-      brokers: [
-        { label: "华泰证券", value: "ht" },
-        { label: "广发证券", value: "gf" },
-        { label: "招商证券", value: "zs" },
-        { label: "中信证券", value: "zx" },
-      ],
-      stockOptions: [
-        { label: "600401.SH 退市海润", value: "600401.SH" },
-        { label: "000982.SZ *ST中绒", value: "000982.SZ" },
-        { label: "002604.SZ ST龙力", value: "002604.SZ" },
-      ],
-      keepHistoryOptions: [
-        { label: "1年", value: "1y" },
-        { label: "2年", value: "2y" },
-        { label: "3年", value: "3y" },
-        { label: "全部", value: "all" },
-      ],
-    };
-  },
-  computed: {
-    syncTimeValue: {
-      get() {
-        if (!this.dataSettings.syncTime) return null;
-        const [h, m] = this.dataSettings.syncTime.split(":");
-        return new Date(2024, 0, 1, parseInt(h), parseInt(m)).getTime();
-      },
-      set(val) {
-        if (val) {
-          const d = new Date(val);
-          this.dataSettings.syncTime = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        }
-      },
-    },
-  },
-  methods: {
-    async saveSettings() {
-      this.saving = true;
-      try {
-        await new Promise((r) => setTimeout(r, 500));
-        this.$message.success("设置已保存");
-      } catch {
-        this.$message.error("保存失败");
-      } finally {
-        this.saving = false;
+<script setup lang="ts">
+import { ref, onMounted } from "vue"
+import { useMessage } from "naive-ui"
+import { tokens } from "@/styles/design-tokens"
+import systemAPI from "@/api/system"
+
+const message = useMessage()
+const loading = ref(false)
+const saving = ref(false)
+const error = ref(false)
+
+const form = ref({
+  session_timeout: 30,
+  max_login_attempts: 5,
+  lockout_minutes: 30,
+  password_min_length: 8,
+  dingtalk_enabled: false,
+  wechat_enabled: false,
+  email_enabled: false,
+  risk_alert_enabled: true,
+  audit_retention_days: 90,
+  auto_cleanup: false,
+  cleanup_time: (() => { const d = new Date(); d.setHours(3, 0, 0, 0); return d.getTime() })(),
+})
+
+async function loadSettings() {
+  loading.value = true; error.value = false
+  try {
+    const res = await systemAPI.getSystemSettings()
+    if (res) {
+      if (res.security) Object.assign(form.value, res.security)
+      if (res.notification) {
+        form.value.dingtalk_enabled = res.notification.dingtalk_enabled ?? form.value.dingtalk_enabled
+        form.value.wechat_enabled = res.notification.wechat_enabled ?? form.value.wechat_enabled
+        form.value.email_enabled = res.notification.email_enabled ?? form.value.email_enabled
+        form.value.risk_alert_enabled = res.notification.risk_alert_enabled ?? form.value.risk_alert_enabled
       }
-    },
-    resetSettings() {
-      this.tradeSettings = {
-        broker: "ht",
-        slippage: 0.001,
-        commission: 0.0003,
-        confirmation: "manual",
-      };
-      this.riskSettings = {
-        maxPosition: 20,
-        maxDailyLoss: 5,
-        maxDrawdown: 10,
-        filterST: true,
-        blacklist: ["600401.SH", "000982.SZ"],
-      };
-      this.dataSettings = {
-        source: "tushare",
-        tushareToken: "your_tushare_token",
-        syncTime: "15:30",
-        keepHistory: "3y",
-      };
-      this.$message.info("已恢复默认设置");
-    },
-  },
-};
+    }
+  } catch { error.value = true }
+  finally { loading.value = false }
+}
+
+async function saveSettings() {
+  saving.value = true
+  try {
+    await systemAPI.updateSystemSettings({
+      security: {
+        session_timeout: form.value.session_timeout,
+        max_login_attempts: form.value.max_login_attempts,
+        lockout_minutes: form.value.lockout_minutes,
+        password_min_length: form.value.password_min_length,
+      },
+      notification: {
+        dingtalk_enabled: form.value.dingtalk_enabled,
+        wechat_enabled: form.value.wechat_enabled,
+        email_enabled: form.value.email_enabled,
+        risk_alert_enabled: form.value.risk_alert_enabled,
+      },
+      maintenance: {
+        audit_retention_days: form.value.audit_retention_days,
+        auto_cleanup: form.value.auto_cleanup,
+      },
+    })
+    message.success("设置已保存")
+  } catch { message.error("保存失败") }
+  finally { saving.value = false }
+}
+
+onMounted(() => loadSettings())
 </script>
 
 <style scoped>
-.settings {
+.settings { padding: 0; padding-bottom: 24px; height: 100%; overflow-y: auto; }
+
+/* 卡片 header 图标+文字 */
+.card-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+
+/* 统一的设置项列表 */
+.setting-list { display: flex; flex-direction: column; gap: 2px; }
+.setting-row {
+  display: flex; align-items: center; gap: 10px;
+  height: 44px;
   padding: 0;
-  height: 100%;
-  overflow-y: auto;
+  border-bottom: 1px solid var(--n-border-color, rgba(255,255,255,.06));
 }
+.setting-row:last-child { border-bottom: none; }
+.setting-row-spacer { border-bottom: none !important; }
 
-.tip {
-  color: var(--n-text-color-3);
-  font-size: 12px;
-  margin-left: 10px;
-}
+.s-label { flex: 1; font-size: 13px; color: var(--n-text-color-2); }
+.s-unit { font-size: 12px; color: var(--n-text-color-3); min-width: 28px; }
 
-.action-bar {
-  margin-top: 20px;
-}
+.action-bar { margin-top: 24px; display: flex; justify-content: center; }
+
+.settings-grid { align-items: stretch; }
+.settings-item { display: flex; }
+.settings-card { flex: 1; display: flex; flex-direction: column; }
+.settings-card > :deep(.n-card__content) { flex: 1; }
 </style>

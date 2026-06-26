@@ -26,7 +26,11 @@ class SysUser(Base):
     email = Column(String(100), comment='邮箱')
     phone = Column(String(20), comment='手机号')
     real_name = Column(String(50), comment='真实姓名')
-    role = Column(String(20), default='user', comment='角色标识')
+    role = Column(String(20), default='user', comment='角色标识（简单字符串，当前主用方案）')
+    # NOTE: SysUserRole 多对多关联表已定义但当前未作为主方案使用。
+    # 短期：user.role 字符串为主（"admin"/"user"/"super_admin"）。
+    # 长期迁移目标：user.role → 通过 SysUserRole → SysRole 完成 RBAC。
+    # 详见 docs/system模块审计与修复方案.md 问题 #11
     is_active = Column(Boolean, default=True, comment='是否激活')
     last_login = Column(DateTime(timezone=True), comment='最后登录时间')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
