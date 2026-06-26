@@ -188,7 +188,7 @@ class StartupConfig:
 		# 模块配置 - 默认启用所有模块
 		default_modules = [
 			"data", "strategy", "trade", "backtest",
-			"account", "analysis", "monitor", "system"
+			"account", "analysis", "monitor", "system", "risk"
 		]
 		self.enabled_modules = default_modules
 		self.module_configs = {}

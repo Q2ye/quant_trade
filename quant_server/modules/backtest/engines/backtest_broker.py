@@ -223,6 +223,7 @@ class BacktestBroker(EngineBase):
         self,
         config: BacktestBrokerConfig = None,
         event_engine=None,
+        risk_engine=None,
     ):
         """
         初始化虚拟券商。
@@ -230,6 +231,7 @@ class BacktestBroker(EngineBase):
         Args:
             config: 券商配置（BacktestBrokerConfig），为 None 时使用默认配置。
             event_engine: 事件引擎（可选），用于将成交 / 持仓变化发布为事件。
+            risk_engine: 风控引擎（可选），用于在 submit_order 时执行 19 条规则检查。
         """
         super().__init__(
             EngineConfigEntity(
@@ -258,6 +260,9 @@ class BacktestBroker(EngineBase):
         self.trade_history: List[Dict[str, Any]] = []        # 成交记录（Trade Record）
         self.snapshots: List[AccountSnapshot] = []           # 每日账户快照
         self._equity_curve: pd.DataFrame = None               # 净值曲线缓存
+
+        # ---- 风控引擎（v2.0 统一规则） ----
+        self._risk_engine = risk_engine
 
         # ---- 风控辅助 ----
         self._prev_close: Dict[str, float] = {}               # 前收价缓存（涨跌停判断依据）
@@ -344,6 +349,75 @@ class BacktestBroker(EngineBase):
             direction = "SHORT"  # 平多 = 卖出
         elif direction == "CLOSE_SHORT":
             direction = "LONG"   # 平空 = 买入
+
+        # ---- v2.0: 统一风控规则检查（19 条规则） ----
+        risk_engine = self._risk_engine
+        if not risk_engine:
+            try:
+                from core.engines.system.engine_registry import EngineRegistry
+                registry = EngineRegistry()
+                risk_engine = registry.get_engine("risk_engine")
+            except Exception:
+                risk_engine = None
+        if risk_engine and getattr(risk_engine, 'risk_check_enabled', False):
+            # 收集当前持仓的行业分布（供行业集中度规则使用）
+            sector = ""
+            is_st = ts_code in self._st_stocks
+            for pos_ts, pos in self.positions.items():
+                if pos_ts == ts_code and hasattr(pos, 'sector'):
+                    sector = pos.sector
+
+            # 计算总资产和持仓市值
+            total_asset = self.cash + self.frozen_cash + sum(
+                p.quantity * p.current_price for p in self.positions.values()
+            )
+            position_value = sum(
+                p.quantity * p.current_price for p in self.positions.values()
+            )
+
+            import asyncio
+            loop = asyncio.get_event_loop()
+            passed, msg = loop.run_until_complete(
+                risk_engine.check_signal({
+                    "ts_code": ts_code,
+                    "direction": "buy" if direction == "LONG" else "sell",
+                    "price": price,
+                    "quantity": quantity,
+                    "trade_amount": price * quantity,
+                    "total_asset": total_asset,
+                    "available_cash": self.cash,
+                    "position_value": position_value,
+                    "initial_capital": self.initial_capital,
+                    "peak_asset": self._peak_equity,
+                    "previous_asset": getattr(self, '_prev_day_equity', total_asset),
+                    "positions": [
+                        {
+                            "ts_code": pos_ts,
+                            "quantity": p.quantity,
+                            "current_price": p.current_price,
+                            "cost_price": getattr(p, 'cost_price', p.current_price),
+                            "sector": getattr(p, 'sector', ""),
+                        }
+                        for pos_ts, p in self.positions.items()
+                    ],
+                    "market": ts_code.split(".")[-1] if "." in ts_code else "",
+                    "sector": sector,
+                    "volume": 0,
+                    "close": price,
+                    "high": price,
+                    "low": price,
+                    "pre_close": self._prev_close.get(ts_code, price),
+                    "is_st": is_st,
+                    "volatility": 0.0,
+                    "liquidity": price * 10000,
+                    "market_status": "normal",
+                    "suspended": False,
+                    "daily_trade_count": len(self.trade_history),
+                })
+            )
+            if not passed:
+                logger.info("[风控拦截 %s] %s → 拒绝下单", ts_code, msg)
+                return None
 
         # ---- v1.5: 独立验证 ----
         try:

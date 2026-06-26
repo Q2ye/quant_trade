@@ -99,14 +99,16 @@ const riskModule: Module<RiskState, RootState> = {
       try {
         const result = await riskAPI.getRiskRules();
         const rules = (result.rules || []).map((r: RiskRule) => ({
-          id: r.name,           // 使用 name 作为唯一标识
+          id: r.name,
           name: r.name,
           type: r.rule_type || "position",
-          condition: {},
-          action: "alert" as const,
+          condition: r.params || {},
+          action: (r.action || "alert") as "alert" | "stop" | "cancel",
           enabled: r.enabled,
           priority: 1,
           description: r.description || "",
+          inputs: r.inputs || [],
+          params: r.params || {},
         }));
         commit("SET_RULES", rules);
         return rules;
@@ -118,17 +120,23 @@ const riskModule: Module<RiskState, RootState> = {
       }
     },
 
-    async toggleRiskRule({ commit, state, dispatch }: any, { ruleName, enabled }: { ruleName: string; enabled: boolean }) {
+    async toggleRiskRule({ commit, state }: any, { ruleName, enabled, params }: { ruleName: string; enabled?: boolean; params?: Record<string, any> }) {
       try {
-        await riskAPI.toggleRiskRule(ruleName, enabled);
-        // 更新本地状态
-        const rules = state.riskRules.rules.map((r: any) =>
-          r.name === ruleName ? { ...r, enabled } : r
-        );
+        await riskAPI.toggleRiskRule(ruleName, { enabled, params });
+        const rules = state.riskRules.rules.map((r: any) => {
+          if (r.name !== ruleName) return r;
+          const updated = { ...r };
+          if (enabled !== undefined) updated.enabled = enabled;
+          if (params) {
+            updated.params = { ...updated.params, ...params };
+            updated.condition = { ...updated.condition, ...params };
+          }
+          return updated;
+        });
         commit("SET_RULES", rules);
-        return { rule_name: ruleName, enabled };
+        return { rule_name: ruleName, enabled, params };
       } catch (error) {
-        console.error("更新规则状态失败:", error);
+        console.error("更新规则失败:", error);
         throw error;
       }
     },

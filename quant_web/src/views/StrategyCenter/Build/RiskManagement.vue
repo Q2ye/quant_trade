@@ -482,11 +482,23 @@ const levelOptions = [
   { label: "低", value: "low" },
 ];
 const ruleTypeFilterOptions = [
-  { label: "仓位限制", value: "position_limit" },
-  { label: "亏损限制", value: "daily_loss_limit" },
-  { label: "回撤限制", value: "drawdown" },
+  { label: "总仓位限制", value: "position_limit" },
+  { label: "单只仓位限制", value: "single_position_limit" },
+  { label: "仓位集中度", value: "position_concentration" },
+  { label: "行业集中度", value: "sector_concentration" },
+  { label: "个股止损", value: "stock_stop_loss" },
+  { label: "账户余额", value: "account_balance" },
+  { label: "亏损限制", value: "loss_limit" },
+  { label: "回撤限制", value: "drawdown_limit" },
+  { label: "资金变化", value: "capital_change" },
   { label: "交易次数", value: "trade_count" },
-  { label: "持仓天数", value: "holding_days" },
+  { label: "黑名单", value: "blacklist" },
+  { label: "流动性", value: "liquidity" },
+  { label: "价格限制", value: "price" },
+  { label: "波动率", value: "volatility" },
+  { label: "市场状态", value: "market_status" },
+  { label: "涨跌停检查", value: "limit_up_down" },
+  { label: "停牌检查", value: "suspension" },
 ];
 
 const filteredAccountRules = computed(() => {

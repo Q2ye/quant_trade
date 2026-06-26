@@ -84,6 +84,63 @@ class SinglePositionLimitRule(RiskRule):
         return True, "单个仓位限制检查通过"
 
 
+class StockStopLossRule(RiskRule):
+    """个股止损规则"""
+
+    def __init__(self, max_loss_percent: float = 0.08):
+        super().__init__(
+            name="stock_stop_loss",
+            description="检查单只股票亏损是否超过止损线"
+        )
+        self.max_loss_percent = max_loss_percent
+
+    async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        ts_code = data.get("ts_code", "")
+        cost_price = data.get("cost_price", 0)
+        current_price = data.get("current_price", data.get("close", 0))
+
+        if cost_price <= 0 or current_price <= 0:
+            return True, "缺少成本价或现价，跳过个股止损检查"
+
+        loss_pct = (cost_price - current_price) / cost_price
+        if loss_pct > self.max_loss_percent:
+            return False, f"股票 {ts_code} 亏损已达止损线: {loss_pct:.2%} > {self.max_loss_percent:.2%}"
+
+        return True, "个股止损检查通过"
+
+
+class SectorConcentrationRule(RiskRule):
+    """行业集中度规则"""
+
+    def __init__(self, max_sector_ratio: float = 0.5):
+        super().__init__(
+            name="sector_concentration",
+            description="检查单一行业持仓是否超过限制"
+        )
+        self.max_sector_ratio = max_sector_ratio
+
+    async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        sector = data.get("sector", "")
+        positions = data.get("positions", [])
+        total_asset = data.get("total_asset", 0)
+
+        if not sector or total_asset <= 0 or not positions:
+            return True, "无行业或持仓数据，跳过行业集中度检查"
+
+        # 计算该行业总持仓
+        sector_value = sum(
+            p.get("quantity", 0) * p.get("current_price", 0)
+            for p in positions
+            if p.get("sector") == sector
+        )
+        sector_ratio = sector_value / total_asset
+
+        if sector_ratio > self.max_sector_ratio:
+            return False, f"行业 {sector} 集中度超限: {sector_ratio:.2%} > {self.max_sector_ratio:.2%}"
+
+        return True, "行业集中度检查通过"
+
+
 class PositionConcentrationRule(RiskRule):
     """仓位集中度规则"""
     

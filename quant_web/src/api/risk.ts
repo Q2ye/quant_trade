@@ -19,6 +19,9 @@ export interface RiskRule {
   description: string;    // 规则描述
   enabled: boolean;       // 是否启用
   rule_type: string;      // 规则分类: position/account/blacklist/market
+  params: Record<string, any>;  // 可配置参数
+  inputs: string[];       // 所需输入字段
+  action: string;         // 触发动作: alert/stop_strategy/cancel_orders
 }
 
 /** 风控事件 */
@@ -134,9 +137,12 @@ export default {
     return apiGet("/quantTrade/risk/rules");
   },
 
-  /** 启用/禁用规则 */
-  async toggleRiskRule(ruleName: string, enabled: boolean): Promise<{ rule_name: string; enabled: boolean }> {
-    return apiPut(`/quantTrade/risk/rules/${encodeURIComponent(ruleName)}`, { enabled });
+  /** 启用/禁用规则，或更新规则参数 */
+  async toggleRiskRule(
+    ruleName: string,
+    data: { enabled?: boolean; params?: Record<string, any> }
+  ): Promise<{ rule_name: string; enabled?: boolean; params?: Record<string, any> }> {
+    return apiPut(`/quantTrade/risk/rules/${encodeURIComponent(ruleName)}`, data);
   },
 
   // --- 信号检查 ---

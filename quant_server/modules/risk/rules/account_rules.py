@@ -117,6 +117,23 @@ class DrawdownLimitRule(RiskRule):
         return True, "回撤限制检查通过"
 
 
+class TradeCountRule(RiskRule):
+    """日交易次数限制规则"""
+
+    def __init__(self, max_daily_trades: int = 10):
+        super().__init__(
+            name="trade_count",
+            description="检查日内交易次数是否超过限制"
+        )
+        self.max_daily_trades = max_daily_trades
+
+    async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        daily_trade_count = data.get("daily_trade_count", 0)
+        if daily_trade_count >= self.max_daily_trades:
+            return False, f"日交易次数已达上限: {daily_trade_count} >= {self.max_daily_trades}"
+        return True, "交易次数检查通过"
+
+
 class CapitalChangeRule(RiskRule):
     """资金变化规则"""
     

@@ -160,12 +160,13 @@ def create_app (
 		"strategy": (strategy_router, "/quantTrade/strategy"),
 		"template": (template_router, "/quantTrade/strategy/templates"),
 		"trade": (trade_router, "/quantTrade/trade"),
-	"backtest": (backtest_router, "/quantTrade/backtest"),
+		"backtest": (backtest_router, "/quantTrade/backtest"),
 		"account": (account_router, "/quantTrade/account"),
 		"analysis": (analysis_router, "/quantTrade/analysis"),
 		"monitor": (monitor_router, "/quantTrade/monitor"),
 		"system": (system_router, "/quantTrade/system"),
-	"risk": (risk_router, "/quantTrade/risk"),
+		"risk": (risk_router, "/quantTrade/risk"),
+		"market": (market_router, "/quantTrade/market"),
 }
 	for module_name, (router, prefix) in _module_routers.items():
 		if module_name in enabled_modules:

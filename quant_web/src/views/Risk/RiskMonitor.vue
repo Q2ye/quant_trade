@@ -5,6 +5,7 @@ import { NTag, NButton, NSpin, NResult, useMessage, useDialog } from "naive-ui";
 import * as echarts from "echarts";
 import riskAPI from "@/api/risk";
 import type { RiskAlert, RiskMetricsData } from "@/api/risk";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
 const store = useStore();
 const message = useMessage();
@@ -135,7 +136,7 @@ const loadAlerts = async () => {
 
 const loadEvents = async () => {
   try {
-    await store.dispatch("risk/fetchRiskEvents", { page: 1, page_size: 200 });
+    await store.dispatch("risk/fetchRiskEvents", { page: 1, page_size: 100 });
   } catch {
     // 事件为空时静默处理
   }
@@ -323,8 +324,8 @@ onUnmounted(() => {
           </p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" @click="refreshData" :loading="loading">
-            刷新
+          <n-button class="action-btn" @click="refreshData" :loading="loading" quaternary>
+            <template #icon><SmartIcon name="Refresh" /></template>
           </n-button>
         </div>
       </div>

@@ -38,3 +38,20 @@ class RiskRule(ABC):
 	def get_description (self) -> str:
 		"""获取规则描述"""
 		return self.description
+
+	def get_params(self) -> Dict[str, Any]:
+		"""获取规则的可配置参数（子类可覆盖）"""
+		params = {}
+		for attr in dir(self):
+			if attr.startswith("_") or attr in ("name", "description"):
+				continue
+			val = getattr(self, attr)
+			if callable(val) or isinstance(val, type):
+				continue
+			if isinstance(val, (int, float, str, bool, list, dict)):
+				params[attr] = val
+		return params
+
+	def get_inputs(self) -> list:
+		"""获取规则所需的输入字段（子类应覆盖）"""
+		return []

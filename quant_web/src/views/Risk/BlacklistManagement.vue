@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, h } from "vue";
 import { useStore } from "vuex";
 import { NTag, NButton, NSwitch, NSpin, NResult, useMessage } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
 const store = useStore();
 const message = useMessage();
@@ -118,8 +119,8 @@ onMounted(() => fetchData());
           </p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" @click="handleRefresh" :loading="loading">
-            刷新
+          <n-button class="action-btn" @click="handleRefresh" :loading="loading" quaternary>
+            <template #icon><SmartIcon name="Refresh" /></template>
           </n-button>
         </div>
       </div>

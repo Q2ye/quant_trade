@@ -21,7 +21,7 @@ from modules.market.handlers import (
 )
 
 logger = __import__("logging").getLogger(__name__)
-router = APIRouter(prefix="/quantTrade/market", tags=["market"])
+router = APIRouter(tags=["市场数据"])
 
 
 # ---- Phase 1 ----

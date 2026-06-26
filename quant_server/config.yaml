@@ -92,7 +92,17 @@ defaults: &defaults
         dingtalk_enabled: false
         wechat_enabled: false
         alert_interval: 300
-    
+
+    risk:
+      enabled: true
+      auto_start: true
+      dependencies: ["trade", "data"]
+      config:
+        risk_check_enabled: true        # 是否启用风控检查
+        risk_check_interval: 60         # 定时巡检间隔（秒）
+        risk_check_on_signal: true      # 是否在信号产生时执行风控检查
+        position_risk_threshold: 0.10   # 单只持仓 PnL 偏离阈值
+
     system:
       enabled: true
       auto_start: true

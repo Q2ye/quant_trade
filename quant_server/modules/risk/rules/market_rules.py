@@ -125,29 +125,92 @@ class VolatilityRule(RiskRule):
 
 class MarketStatusRule(RiskRule):
     """市场状态规则"""
-    
+
     def __init__(self):
-        """
-        初始化市场状态规则
-        """
         super().__init__(
             name="market_status",
             description="检查市场状态是否正常"
         )
-    
+
     async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
-        """
-        检查市场状态是否正常
-        
-        Args:
-            data: 检查数据，包含 market_status
-            
-        Returns:
-            (是否通过, 消息)
-        """
         market_status = data.get("market_status", "normal")
-        
         if market_status != "normal":
             return False, f"市场状态异常: {market_status}"
-        
         return True, "市场状态检查通过"
+
+
+class LimitUpDownRule(RiskRule):
+    """涨跌停检查规则
+
+    A 股涨跌停幅度：
+    - 主板（60/00）：±10%
+    - 科创（688）/创业（300）：±20%
+    - ST/*ST：±5%（科创/创业 ST 仍为 ±20%）
+    - 北交所（8/4）：±30%
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="limit_up_down",
+            description="检查股票是否处于涨跌停状态（涨停不能买，跌停不能卖）"
+        )
+
+    def _get_limit_pct(self, ts_code: str, is_st: bool = False) -> float:
+        """根据股票代码判断涨跌停幅度"""
+        if ts_code.startswith("8") or ts_code.startswith("4"):
+            return 0.30  # 北交所
+        if is_st:
+            if ts_code.startswith("300") or ts_code.startswith("688"):
+                return 0.20  # 科创/创业 ST 仍为 20%
+            return 0.05  # 主板 ST 5%
+        if ts_code.startswith("300") or ts_code.startswith("688"):
+            return 0.20
+        return 0.10
+
+    async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        direction = data.get("direction", "buy")
+        close = data.get("close", 0) or data.get("price", 0)
+        pre_close = data.get("pre_close", 0) or close
+        ts_code = str(data.get("ts_code", ""))
+        is_st = bool(data.get("is_st", False))
+
+        if pre_close <= 0:
+            return True, "无昨收价，跳过涨跌停检查"
+
+        limit_pct = self._get_limit_pct(ts_code, is_st)
+        limit_up = pre_close * (1 + limit_pct)
+        limit_down = pre_close * (1 - limit_pct)
+
+        # 允许微小浮点偏差
+        eps = 0.001
+        if direction == "buy" and close >= limit_up - eps:
+            return False, f"股票 {ts_code} 已涨停（{close:.2f}），无法买入"
+        if direction == "sell" and close <= limit_down + eps:
+            return False, f"股票 {ts_code} 已跌停（{close:.2f}），无法卖出"
+
+        return True, "涨跌停检查通过"
+
+
+class SuspensionRule(RiskRule):
+    """停牌检查规则
+
+    判断停牌：成交量为 0、无最新价、或明确 suspended 标记
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="suspension",
+            description="检查股票是否处于停牌状态"
+        )
+
+    async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
+        ts_code = data.get("ts_code", "")
+        volume = data.get("volume", -1)
+        suspended = data.get("suspended", False) or data.get("is_suspended", False)
+
+        if suspended:
+            return False, f"股票 {ts_code} 已停牌"
+        if volume == 0:
+            return False, f"股票 {ts_code} 成交量为 0，可能停牌"
+
+        return True, "停牌检查通过"

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, h } from "vue";
 import { useStore } from "vuex";
 import { NTag, NButton, NSpin, NResult, useMessage } from "naive-ui";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 
 const store = useStore();
 const message = useMessage();
@@ -142,8 +143,8 @@ onMounted(() => fetchEvents());
         <div class="header-actions">
           <span class="stat-badge">今日事件: {{ todayCount }}</span>
           <span class="stat-badge">总事件数: {{ events.length }}</span>
-          <n-button type="primary" size="small" @click="fetchEvents" :loading="loading">
-            刷新
+          <n-button class="action-btn" @click="fetchEvents" :loading="loading" quaternary>
+            <template #icon><SmartIcon name="Refresh" /></template>
           </n-button>
         </div>
       </div>
