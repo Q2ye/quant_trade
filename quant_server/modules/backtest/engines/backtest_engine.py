@@ -144,6 +144,9 @@ class BacktestResult:
 	# ---- v1.4: 基准对比指标 ----
 	excess_metrics: Dict = None  # {alpha, beta, information_ratio, tracking_error, excess_annual_return, low_confidence}
 
+	# ---- v3.0: 回测风控违规明细 ----
+	risk_violations: List[Dict] = None  # [{ts_code, direction, message, trade_date}]
+
 	def __post_init__(self):
 		"""dataclass 初始化后钩子：确保列表字段不为 None，避免下游空指针。"""
 		if self.equity_curve is None:
@@ -162,6 +165,8 @@ class BacktestResult:
 			self.daily_turnover = []
 		if self.excess_metrics is None:
 			self.excess_metrics = {}
+		if self.risk_violations is None:
+			self.risk_violations = []
 
 	def to_dict(self) -> Dict[str, Any]:
 		"""
@@ -190,6 +195,7 @@ class BacktestResult:
 			"daily_returns": self.daily_returns or [],
 		"daily_turnover": self.daily_turnover or [],
 		"excess_metrics": self.excess_metrics or {},
+			"risk_violations": self.risk_violations or [],
 		}
 
 	@staticmethod
@@ -577,12 +583,20 @@ class BacktestEngine(EngineBase):
 			)
 
 		# =====================================================================
-		# 第 6 步：结果持久化到数据库
+		# 第 6 步：收集风控违规明细（v3.0）
+		# =====================================================================
+		if self.broker:
+			result.risk_violations = self.broker.get_risk_violations()
+			if result.risk_violations:
+				logger.info(f"收集到 {len(result.risk_violations)} 条风控违规记录")
+
+		# =====================================================================
+		# 第 7 步：结果持久化到数据库
 		# =====================================================================
 		await self._save_results(result, equity_df, trades)
 
 		# =====================================================================
-		# 第 7 步：日志输出核心指标摘要
+		# 第 8 步：日志输出核心指标摘要
 		# =====================================================================
 		logger.info(
 			f"回测完成: {task_id} "

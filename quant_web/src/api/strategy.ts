@@ -47,6 +47,7 @@ export interface StrategyQueryParams extends PaginationParams {
   name?: string;
   category?: string;
   status?: string;
+  run_mode?: string;
   tags?: string[];
 }
 
@@ -54,6 +55,8 @@ export interface RunStrategyRequest {
   strategyId: string;
   initialCapital?: number;
   parameters?: Record<string, any>;
+  run_mode?: string;
+  execution_mode?: string;
 }
 
 export interface StopStrategyRequest {
@@ -110,6 +113,13 @@ export default {
       .put(`/quantTrade/strategy/${id}`, data)
       .then(handleResponse)
       .then((data: StrategyDetailResponse) => data.data);
+  },
+
+  async cloneStrategy(id: string, newName?: string): Promise<{ id: string; name: string }> {
+    return request
+      .post(`/quantTrade/strategy/${id}/clone`, { new_name: newName })
+      .then(handleResponse)
+      .then((data: any) => data.data);
   },
 
   async deleteStrategy(id: string): Promise<void> {
@@ -259,5 +269,35 @@ export default {
       })
       .then(handleResponse)
       .then((res: any) => res.data);
+  },
+
+  // --- 信号确认 ---
+
+  async getPendingSignals(params?: { strategy_id?: string }): Promise<any[]> {
+    return request
+      .get("/quantTrade/signals/pending", { params })
+      .then(handleResponse)
+      .then((res: any) => res.data || []);
+  },
+
+  async confirmSignal(signalId: string, data: {
+    fill_price: number; fill_quantity: number; fill_time: string;
+  }): Promise<any> {
+    return request
+      .post(`/quantTrade/signals/${signalId}/confirm`, data)
+      .then(handleResponse);
+  },
+
+  async cancelSignal(signalId: string, reason?: string): Promise<any> {
+    return request
+      .post(`/quantTrade/signals/${signalId}/cancel`, { reason: reason || "" })
+      .then(handleResponse);
+  },
+
+  async getStrategyPositions(strategyId: string): Promise<any[]> {
+    return request
+      .get(`/quantTrade/strategy/${strategyId}/positions`)
+      .then(handleResponse)
+      .then((res: any) => res.data || []);
   },
 };

@@ -133,6 +133,8 @@
 
     <div class="user-section">
       <n-dropdown
+        :show="userMenuVisible"
+        :on-update:show="(v: boolean) => userMenuVisible = v"
         placement="bottom-end"
         :options="userMenuOptions"
         @select="handleCommand"
@@ -190,6 +192,9 @@ export default defineComponent({
       total: 5,
       health: "healthy",
     });
+
+    // 用户菜单可见性
+    const userMenuVisible = ref(false);
 
     // 信号统计
     const signalStats = ref({
@@ -332,6 +337,7 @@ export default defineComponent({
     });
 
     const handleCommand = (key) => {
+      userMenuVisible.value = false;
       if (key === "logout") {
         router.push("/login");
       } else if (key === "settings") {
@@ -349,6 +355,7 @@ export default defineComponent({
       orderStats,
       riskLevel,
       userMenuOptions,
+      userMenuVisible,
       handleCommand,
       getHealthText,
       getRiskDescription,

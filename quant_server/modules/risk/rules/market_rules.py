@@ -1,46 +1,50 @@
 # market_rules.py        # 市场规则
 
 from typing import Dict, Any, Tuple
-from .base_rule import RiskRule
+from .base_rule import RiskRule, RiskCheckResult
 
 
 class LiquidityRule(RiskRule):
     """流动性规则"""
-    
+
     def __init__(self, min_liquidity: float = 1000000):
-        """
-        初始化流动性规则
-        
-        Args:
-            min_liquidity: 最小流动性（成交额）
-        """
         super().__init__(
             name="liquidity",
             description="检查股票流动性是否充足"
         )
         self.min_liquidity = min_liquidity
-    
+
     async def check(self, data: Dict[str, Any]) -> Tuple[bool, str]:
-        """
-        检查股票流动性是否充足
-        
-        Args:
-            data: 检查数据，包含 liquidity 或 volume, price
-            
-        Returns:
-            (是否通过, 消息)
-        """
         liquidity = data.get("liquidity")
-        
         if not liquidity:
             volume = data.get("volume", 0)
             price = data.get("price", 0)
             liquidity = volume * price
-        
+
         if liquidity < self.min_liquidity:
             return False, f"股票流动性不足: {liquidity:.2f} < {self.min_liquidity:.2f}"
-        
         return True, "流动性检查通过"
+
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        liquidity = data.get("liquidity")
+        if not liquidity:
+            volume = data.get("volume", 0)
+            price = data.get("price", 0)
+            liquidity = volume * price
+
+        if liquidity <= 0:
+            return RiskCheckResult(True, "info", "流动性数据缺失，跳过检查", "allow", self.name)
+
+        ratio = liquidity / self.min_liquidity
+        if ratio < 0.5:
+            return RiskCheckResult(False, "error",
+                f"股票流动性严重不足: {liquidity:.2f} < {self.min_liquidity * 0.5:.2f} (50%阈值)",
+                "block", self.name)
+        if ratio < 1.0:
+            return RiskCheckResult(True, "warning",
+                f"股票流动性偏低: {liquidity:.2f} < {self.min_liquidity:.2f}，建议缩减订单量",
+                "reduce_size", self.name)
+        return RiskCheckResult(True, "info", "流动性检查通过", "allow", self.name)
 
 
 class PriceRule(RiskRule):

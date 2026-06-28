@@ -59,7 +59,7 @@ v1.0: 初始实现 — 订单管理 / 撮合 / 持仓 / 费用 / 盯市 / 查询
 import logging
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
@@ -268,6 +268,7 @@ class BacktestBroker(EngineBase):
         self._prev_close: Dict[str, float] = {}               # 前收价缓存（涨跌停判断依据）
         self._star_market_stocks: set = set()                 # 科创板股票集合（688xxx）
         self._st_stocks: set = set()                          # ST 股票集合
+        self._risk_violations: List[Dict[str, Any]] = []      # 回测中收集的风控违规明细
 
         # ---- 交易日追踪 ----
         self._trade_date: Optional[date] = None
@@ -417,6 +418,16 @@ class BacktestBroker(EngineBase):
             )
             if not passed:
                 logger.info("[风控拦截 %s] %s → 拒绝下单", ts_code, msg)
+                # v3.0: 收集违规明细，供回测报告展示
+                self._risk_violations.append({
+                    "ts_code": ts_code,
+                    "direction": direction,
+                    "price": price,
+                    "quantity": quantity,
+                    "message": msg,
+                    "trade_date": str(self._trade_date) if self._trade_date else None,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
                 return None
 
         # ---- v1.5: 独立验证 ----
@@ -914,7 +925,12 @@ class BacktestBroker(EngineBase):
         # v1.3: 重置 ST/科创板识别集合（后续可从 DB 加载）
         self._star_market_stocks = set()
         self._st_stocks = set()
+        self._risk_violations.clear()
         logger.info(f"券商已重置: 初始资金={self.initial_capital:,.0f}")
+
+    def get_risk_violations(self) -> List[Dict[str, Any]]:
+        """获取回测期间收集的风控违规明细"""
+        return list(self._risk_violations)
 
     # =========================================================================
     # 私有方法 — 持仓更新 / 涨跌停检查

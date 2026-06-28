@@ -31,8 +31,25 @@ class AuthService:
         self, username: str, password: str,
         ip_address: str = "", user_agent: str = "",
     ) -> Optional[Dict[str, Any]]:
-        """用户登录，返回 user_info + token_pair"""
-        user_info = await self._auth.authenticate_user(username, password)
+        """用户登录，返回 user_info + token_pair
+
+        开发模式（AUTH_ENABLED=false）：跳过密码验证，用户存在即可登录。
+        """
+        from shared.config.config_manager import get_config
+        if not get_config().settings.API.AUTH_ENABLED:
+            user = await self._user_repo.get_user_by_username(username)
+            if user:
+                user_info = {
+                    "id": user.id, "username": user.username,
+                    "email": user.email, "phone": user.phone,
+                    "real_name": user.real_name, "role": user.role,
+                    "is_active": user.is_active,
+                }
+            else:
+                user_info = None
+        else:
+            user_info = await self._auth.authenticate_user(username, password)
+
         if user_info is None:
             await self._audit.log_security_event(
                 event_type="login_failed",

@@ -103,6 +103,18 @@ export interface PaginatedResponse<T> {
   pagination: Pagination;
 }
 
+/** 黑名单条目 */
+export interface BlacklistEntry {
+  id: string;
+  target_id: string;
+  target_name: string;
+  list_type: string;
+  reason: string;
+  expire_date: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 // ==================== API 响应解包辅助 ====================
 
 /**
@@ -125,6 +137,9 @@ function apiPost<T>(url: string, data?: any): Promise<T> {
 }
 function apiPut<T>(url: string, data?: any): Promise<T> {
   return request.put(url, data).then(handleResponse).then((res: any) => unwrap<T>(res));
+}
+function apiDel<T>(url: string): Promise<T> {
+  return request.delete(url).then(handleResponse).then((res: any) => unwrap<T>(res));
 }
 
 // ==================== API 方法 ====================
@@ -210,5 +225,28 @@ export default {
   /** 健康检查 */
   async healthCheck(): Promise<{ status: string; module: string; timestamp: string }> {
     return apiGet("/quantTrade/risk/health");
+  },
+
+  // --- 黑名单管理 ---
+
+  /** 获取黑名单股票列表 */
+  async getBlacklistStocks(): Promise<BlacklistEntry[]> {
+    return apiGet("/quantTrade/risk/blacklist/stocks");
+  },
+
+  /** 添加股票到黑名单 */
+  async addBlacklistStock(data: {
+    ts_code: string;
+    target_name?: string;
+    list_type?: string;
+    reason?: string;
+    expire_date?: string;
+  }): Promise<any> {
+    return apiPost("/quantTrade/risk/blacklist/stocks", data);
+  },
+
+  /** 移除黑名单条目 */
+  async removeBlacklistStock(entryId: string): Promise<any> {
+    return apiDel(`/quantTrade/risk/blacklist/stocks/${encodeURIComponent(entryId)}`);
   },
 };

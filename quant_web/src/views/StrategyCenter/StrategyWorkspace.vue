@@ -5,7 +5,7 @@
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <n-button text size="small" @click="router.push('/strategies')" style="margin-right:8px">
+          <n-button text size="small" @click="router.back()" style="margin-right:8px">
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
           <n-input
@@ -18,11 +18,19 @@
           <n-tag :type="statusTagType" size="small" style="margin-left:8px">{{ strategyStatus }}</n-tag>
         </div>
         <div class="header-actions">
-          <n-button size="small" :loading="saving" @click="saveStrategy">💾 保存</n-button>
-          <n-button size="small" type="primary" :loading="isBacktesting" @click="openBacktestModal = true">
-            ⚡ {{ isBacktesting ? `回测中 ${backtestProgress}%` : '回测' }}
-          </n-button>
-          <n-dropdown trigger="click" :options="moreOptions" @select="handleMoreAction">
+          <template v-if="isLive">
+            <n-button size="small" :type="strategyStatus === 'running' ? 'warning' : 'success'" @click="toggleRun">
+              {{ strategyStatus === 'running' ? '停止' : '启动' }}
+            </n-button>
+            <n-button size="small" @click="loadStrategy" :loading="loading">刷新</n-button>
+          </template>
+          <template v-else>
+            <n-button size="small" :loading="saving" @click="saveStrategy">💾 保存</n-button>
+            <n-button size="small" type="primary" :loading="isBacktesting" @click="openBacktestModal = true">
+              ⚡ {{ isBacktesting ? `回测中 ${backtestProgress}%` : '回测' }}
+            </n-button>
+          </template>
+          <n-dropdown v-model:show="moreDropdownVisible" trigger="click" :options="moreOptions" @select="handleMoreAction">
             <n-button size="small">⋮</n-button>
           </n-dropdown>
         </div>
@@ -31,16 +39,18 @@
 
     <!-- B. 主内容 — 左右两栏 -->
     <div class="workspace-body">
-      <!-- B1. 左栏：代码编辑器 + 策略参数 -->
+      <!-- B1. 左栏 -->
       <div class="left-col">
         <n-card size="small" title="策略代码" :segmented="true">
           <template #header-extra>
             <n-tag :bordered="false" size="tiny" type="info">Python</n-tag>
+            <n-tag v-if="isLive" :bordered="false" size="tiny" type="warning" style="margin-left:4px">只读</n-tag>
           </template>
           <CodeEditorPanel
             :code="strategyCode"
             language="python"
-            @update:code="(v: string) => strategyCode = v"
+            :readonly="isLive"
+            @update:code="(v: string) => { if (!isLive) strategyCode = v; }"
             @save="saveStrategy"
           />
         </n-card>
@@ -50,16 +60,53 @@
           <div v-else class="params-list">
             <div v-for="(val, key) in strategyParams" :key="key" class="param-row">
               <span class="param-label">{{ key }}</span>
-              <n-input-number :value="val" size="small" style="width:100%"
+              <n-input-number :value="val" size="small" style="width:100%" :disabled="isLive"
                 @update:value="(v: number | null) => { if (v !== null) strategyParams[key] = v; }" />
             </div>
           </div>
         </n-card>
       </div>
 
-      <!-- B2. 右栏：回测结果 -->
-      <div class="right-col">
-        <!-- 回测中 -->
+      <!-- B2. 右栏：区分实盘/回测 -->
+      <div class="right-col" v-if="isLive">
+        <!-- 实盘运行时状态 -->
+        <n-card size="small" title="运行状态">
+          <div class="runtime-grid">
+            <div class="rt-item"><span class="rt-label">运行模式</span><n-tag :bordered="false" type="error" size="tiny">实盘</n-tag></div>
+            <div class="rt-item"><span class="rt-label">执行模式</span><n-tag :bordered="false" :type="liveExecutionMode === 'semi_auto' ? 'warning' : 'info'" size="tiny">{{ liveExecutionMode === 'semi_auto' ? '半自动' : '全自动' }}</n-tag></div>
+            <div class="rt-item"><span class="rt-label">启动时间</span><span class="rt-value">{{ liveStartedAt || '—' }}</span></div>
+            <div class="rt-item"><span class="rt-label">上次心跳</span><span class="rt-value">{{ liveHeartbeat || '—' }}</span></div>
+            <div class="rt-item"><span class="rt-label">今日信号</span><span class="rt-value">{{ liveSignalsToday }}</span></div>
+            <div class="rt-item"><span class="rt-label">当前持仓</span><span class="rt-value">{{ livePositionsCount }}</span></div>
+          </div>
+        </n-card>
+
+        <n-card size="small" title="当前持仓" style="margin-top:12px">
+          <n-empty v-if="!livePositions.length" description="暂无持仓" size="small" style="padding:12px 0" />
+          <div v-else>
+            <div v-for="p in livePositions" :key="p.ts_code" class="pos-row">
+              <n-tag size="tiny" :bordered="false">{{ p.ts_code }}</n-tag>
+              <span class="pos-qty">{{ p.volume || p.quantity }}股</span>
+              <span class="pos-pnl" :class="(p.pnl || 0) >= 0 ? 'text-up' : 'text-down'">{{ (p.pnl || 0) >= 0 ? '+' : '' }}{{ (p.pnl || 0).toFixed(2) }}</span>
+            </div>
+          </div>
+        </n-card>
+
+        <n-card size="small" title="最近信号" style="margin-top:12px">
+          <n-empty v-if="!liveRecentSignals.length" description="暂无信号" size="small" style="padding:12px 0" />
+          <div v-else>
+            <div v-for="sig in liveRecentSignals.slice(0, 10)" :key="sig.id" class="sig-row">
+              <n-tag size="tiny" :bordered="false" :type="sig.direction === 'LONG' || sig.direction === 'long' ? 'success' : 'error'">{{ sig.direction }}</n-tag>
+              <span class="sig-code">{{ sig.ts_code }}</span>
+              <span class="sig-price">{{ sig.price?.toFixed(2) }}</span>
+              <span class="sig-time">{{ sig.timestamp || sig.generation_time }}</span>
+            </div>
+          </div>
+        </n-card>
+      </div>
+
+      <!-- 回测右栏 -->
+      <div class="right-col" v-else>
         <template v-if="isBacktesting">
           <n-card size="small" title="回测执行中">
             <n-spin size="medium" />
@@ -68,8 +115,6 @@
             <p style="text-align:center;font-size:12px;color:var(--color-text-tertiary);margin-top:8px">{{ backtestStatusText }}</p>
           </n-card>
         </template>
-
-        <!-- 未回测 -->
         <template v-else-if="!currentTaskId">
           <n-card size="small">
             <n-empty description="尚未执行回测" style="padding:40px 0">
@@ -79,8 +124,6 @@
             </n-empty>
           </n-card>
         </template>
-
-        <!-- 回测结果 -->
         <template v-else>
           <n-spin :show="btResultLoading" size="small">
             <n-card size="small" title="回测结果">
@@ -92,44 +135,15 @@
                   size="tiny" placeholder="历史回测" style="width:160px"
                   @update:value="(v: string) => loadBacktestResult(v as string)" />
               </template>
-
-              <!-- 指标行 (6列) -->
               <div class="metrics-row">
-                <div class="metric-item">
-                  <span class="metric-label">年化收益</span>
-                  <span class="metric-value" :class="btSummary.annualReturn >= 0 ? 'text-up' : 'text-down'">{{ (btSummary.annualReturn * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">基准收益</span>
-                  <span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-up' : 'text-down'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">夏普比率</span>
-                  <span class="metric-value">{{ btSummary.sharpeRatio.toFixed(2) }}</span>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">最大回撤</span>
-                  <span class="metric-value text-down">{{ (btSummary.maxDrawdown * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">胜率</span>
-                  <span class="metric-value">{{ (btSummary.winRate * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="metric-label">交易笔数</span>
-                  <span class="metric-value">{{ btSummary.tradesCount }}</span>
-                </div>
+                <div class="metric-item"><span class="metric-label">年化收益</span><span class="metric-value" :class="btSummary.annualReturn >= 0 ? 'text-up' : 'text-down'">{{ (btSummary.annualReturn * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">基准收益</span><span class="metric-value" :class="benchmarkReturn >= 0 ? 'text-up' : 'text-down'">{{ (benchmarkReturn * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">夏普比率</span><span class="metric-value">{{ btSummary.sharpeRatio.toFixed(2) }}</span></div>
+                <div class="metric-item"><span class="metric-label">最大回撤</span><span class="metric-value text-down">{{ (btSummary.maxDrawdown * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">胜率</span><span class="metric-value">{{ (btSummary.winRate * 100).toFixed(1) }}%</span></div>
+                <div class="metric-item"><span class="metric-label">交易笔数</span><span class="metric-value">{{ btSummary.tradesCount }}</span></div>
               </div>
-
-              <!-- 三子图共享X轴 -->
-              <BacktestSubplots
-                :equity="btEquityPct"
-                :benchmark="btBenchmarkPct"
-                :dailyReturns="btDailyReturns"
-                :dailyTurnover="btDailyTurnover"
-                :drawdown="btDrawdown"
-                :height="720"
-              />
+              <BacktestSubplots :equity="btEquityPct" :benchmark="btBenchmarkPct" :dailyReturns="btDailyReturns" :dailyTurnover="btDailyTurnover" :drawdown="btDrawdown" :height="720" />
             </n-card>
           </n-spin>
         </template>
@@ -152,19 +166,24 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import {
   NButton, NTag, NInput, NInputNumber, NSpin, NProgress,
   NEmpty, NSelect, NModal, NForm, NFormItem, NDatePicker, NDynamicTags, NDropdown, NCard,
-  useMessage,
+  useMessage, useDialog,
 } from "naive-ui";
+import { useStore } from "vuex";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import CodeEditorPanel from "@/components/editors/CodeEditorPanel.vue";
 import BacktestSubplots from "@/components/charts/BacktestSubplots.vue";
 import TradeTable from "@/components/data/TradeTable.vue";
+import strategyAPI from "@/api/strategy";
 import { useStrategyWorkspace } from "@/composables/useStrategyWorkspace";
 const router = useRouter();
+const route = useRoute();
+const store = useStore<any>();
 const msg = useMessage();
+const dialog = useDialog();
 
 const {
   loading, error, saving, strategyName, strategyCode, strategyParams, strategyStatus,
@@ -174,7 +193,73 @@ const {
   loadStrategy, saveStrategy, submitBacktest, loadBacktestResult, loadBacktestHistory, clearPolling,
 } = useStrategyWorkspace();
 
+// ---- 实盘运行时状态 ----
+const isLive = computed(() => {
+  const s = store.state.strategy?.strategies?.find((s: any) => s.id === route.params.id);
+  return s?.run_mode === "live";
+});
+const liveExecutionMode = ref("");
+const liveStartedAt = ref("");
+const liveHeartbeat = ref("");
+const liveSignalsToday = ref(0);
+const livePositionsCount = ref(0);
+const livePositions = ref<any[]>([]);
+const liveRecentSignals = ref<any[]>([]);
+
+const loadLiveData = async () => {
+  const id = route.params.id as string;
+  if (!id) return;
+  try {
+    // 策略状态
+    const status = await strategyAPI.getStrategyStatus(id);
+    if (status) {
+      liveExecutionMode.value = (status as any).execution_mode || "";
+      liveStartedAt.value = (status as any).started_at || "";
+    }
+    // 持仓
+    livePositions.value = await strategyAPI.getStrategyPositions(id) || [];
+    livePositionsCount.value = livePositions.value.length;
+    // 信号
+    const signals = await strategyAPI.getPendingSignals({ strategy_id: id });
+    liveRecentSignals.value = signals || [];
+    liveSignalsToday.value = signals?.length || 0;
+    // 心跳（从 strategy_runs 查询）
+    const runs = store.state.strategy?.strategyRuns?.[id];
+    if (runs) {
+      const hb = runs.state_snapshot?.last_heartbeat;
+      if (hb) {
+        liveHeartbeat.value = hb.trade_date || hb.updated_at || "";
+        liveSignalsToday.value = hb.signals_count || 0;
+      }
+    }
+  } catch (e) { /* ignore */ }
+};
+
+const toggleRun = async () => {
+  const id = route.params.id as string;
+  if (strategyStatus.value === "running") {
+    dialog.warning({
+      title: "停止确认", content: "确定停止该实盘策略？", positiveText: "停止", negativeText: "取消",
+      onPositiveClick: async () => {
+        try { await store.dispatch("strategy/stopStrategy", id); msg.success("已停止"); loadStrategy(); }
+        catch (e: any) { msg.error("停止失败: " + (e.message || e)); }
+      },
+    });
+  } else {
+    // 从 store 读取已保存的账户配置
+    const s = store.state.strategy?.strategiesMap?.get(id) || store.state.strategy?.strategies?.find((x: any) => x.id === id);
+    const params: any = { run_mode: "live" };
+    if (s?.account_id) params.account_id = s.account_id;
+    if (s?.allocated_capital > 0) params.capital = s.allocated_capital;
+    if (s?.execution_mode) params.execution_mode = s.execution_mode;
+    try { await store.dispatch("strategy/startStrategy", { strategyId: id, params }); msg.success("已启动"); loadStrategy(); }
+    catch (e: any) { msg.error("启动失败: " + (e.message || e)); }
+  }
+};
+
 const btActiveTab = ref("equity");
+
+const moreDropdownVisible = ref(false);
 
 // 累计收益率百分比（百分比显示）
 const btEquityPct = computed(() => {
@@ -214,7 +299,7 @@ const benchmarkSelectOptions = [
 ];
 
 const statusTagType = computed(() => {
-  const map: Record<string, any> = { running: "success", deployed: "info", error: "error", stopped: "warning" };
+  const map: Record<string, any> = { running: "success", paused: "info", error: "error", stopped: "warning" };
   return map[strategyStatus.value] || "default";
 });
 
@@ -234,6 +319,7 @@ const moreOptions = [
 ];
 
 const handleMoreAction = (key: string) => {
+  moreDropdownVisible.value = false;
   if (key === "export") {
     const data = JSON.stringify({ name: strategyName.value, code: strategyCode.value, parameters: strategyParams.value }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
@@ -263,7 +349,7 @@ const handleBacktestSubmit = () => {
   });
 };
 
-onMounted(() => { loadStrategy(); loadBacktestHistory(); });
+onMounted(() => { loadStrategy(); loadBacktestHistory(); loadLiveData(); });
 onBeforeUnmount(() => { clearPolling(); });
 
 </script>
@@ -337,4 +423,26 @@ onBeforeUnmount(() => { clearPolling(); });
 
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+
+/* ---- 实盘运行时网格 ---- */
+.runtime-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rt-item {
+  background: var(--color-bg-secondary, rgba(255,255,255,0.06));
+  border-radius: 6px; padding: 8px;
+  .rt-label { font-size: 10px; color: var(--color-text-tertiary); display: block; margin-bottom: 2px; }
+  .rt-value { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+}
+
+/* ---- 持仓行 ---- */
+.pos-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  .pos-qty { font-size: 12px; color: var(--color-text-secondary); flex: 1; }
+  .pos-pnl { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+}
+
+/* ---- 信号行 ---- */
+.sig-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 12px;
+  .sig-code { color: var(--color-text-primary); flex: 1; font-family: monospace; }
+  .sig-price { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+  .sig-time { color: var(--color-text-tertiary); font-size: 10px; }
+}
 </style>

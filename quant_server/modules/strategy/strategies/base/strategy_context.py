@@ -27,7 +27,7 @@ class StrategyContext:
 	user_id: str
 
 	# 运行参数
-	run_mode: RunMode = RunMode.SIMULATION
+	run_mode: RunMode = RunMode.LIVE
 	time_frame: TimeFrame = TimeFrame.DAILY
 	initial_capital: float = 1000000.0
 

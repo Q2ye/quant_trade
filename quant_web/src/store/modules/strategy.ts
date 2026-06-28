@@ -266,6 +266,17 @@ const actions = {
   /**
    * 删除策略
    */
+  async cloneStrategy({ dispatch }: any, { id, newName }: { id: string; newName?: string }) {
+    try {
+      const result = await strategyAPI.cloneStrategy(id, newName);
+      await dispatch("fetchStrategies");
+      return result;
+    } catch (error) {
+      console.error("克隆策略失败:", error);
+      throw error;
+    }
+  },
+
   async deleteStrategy({ commit }: any, strategyId: string) {
     try {
       await strategyAPI.deleteStrategy(strategyId);
@@ -280,12 +291,30 @@ const actions = {
    * 启动策略
    */
   async startStrategy(
-    { commit }: any,
+    { commit, state }: any,
     { strategyId, params }: { strategyId: string; params?: any },
   ) {
     try {
-      await strategyAPI.startStrategy(strategyId, params);
+      const result = await strategyAPI.startStrategy(strategyId, params);
+      // 检查 API 返回
+      if (result && (result as any).success === false) {
+        const errMsg = (result as any).error || "启动失败";
+        console.error("启动策略失败:", errMsg);
+        throw new Error(errMsg);
+      }
+
       commit("UPDATE_STRATEGY_STATUS", { strategyId, status: "running" });
+
+      // v2.0: 立即更新本地策略的 run_mode、execution_mode、account_id
+      const strategy = state.strategiesMap.get(strategyId);
+      if (strategy) {
+        strategy.run_mode = params?.run_mode || "live";
+        strategy.execution_mode = params?.execution_mode || "semi_auto";
+        strategy.status = "running";
+        if (params?.account_id) (strategy as any).account_id = params.account_id;
+        if (params?.capital) (strategy as any).allocated_capital = params.capital;
+        state.activeStrategies.add(strategyId);
+      }
 
       const run: StrategyRun = {
         id: `run_${Date.now()}`,

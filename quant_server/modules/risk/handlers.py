@@ -321,3 +321,68 @@ async def check_risk_module_health(session: AsyncSession) -> Dict[str, Any]:
             "error": str(e),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# ==================== 黑名单管理适配器 ====================
+
+
+async def get_blacklisted_stocks(session: AsyncSession) -> List[Dict[str, Any]]:
+    """获取黑名单股票列表"""
+    from shared.database.repositories.trading.risk.blacklist_repo import BlacklistRepository
+    repo = BlacklistRepository(session)
+    entries = await repo.get_blacklisted_stocks()
+    return [
+        {
+            "id": str(e.id),
+            "target_id": e.target_id,
+            "target_name": e.target_name or "",
+            "list_type": e.list_type,
+            "reason": e.reason or "",
+            "expire_date": e.expire_date.isoformat() if e.expire_date else None,
+            "is_active": e.is_active,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in entries
+    ]
+
+
+async def add_blacklist_stock_entry(
+    session: AsyncSession, body: dict, current_user: dict
+) -> dict:
+    """添加股票到黑名单"""
+    ts_code = body.get("ts_code", "")
+    if not ts_code:
+        raise ValueError("缺少 ts_code")
+    from shared.database.repositories.trading.risk.blacklist_repo import BlacklistRepository
+    repo = BlacklistRepository(session)
+    user_id = current_user.get("user_id")
+    added_by = int(user_id) if user_id and str(user_id).isdigit() else 0
+    entry = await repo.add_to_blacklist(
+        target_type="stock",
+        target_id=ts_code,
+        target_name=body.get("target_name", ""),
+        list_type=body.get("list_type", "global"),
+        reason=body.get("reason", ""),
+        added_by=added_by,
+        expire_date=body.get("expire_date"),
+    )
+    return {
+        "id": str(entry.id) if entry else "",
+        "ts_code": ts_code,
+        "target_name": body.get("target_name", ""),
+    }
+
+
+async def remove_blacklist_stock_entry(session: AsyncSession, entry_id: str) -> dict:
+    """移除黑名单条目"""
+    from shared.database.repositories.trading.risk.blacklist_repo import BlacklistRepository
+    repo = BlacklistRepository(session)
+    # 先查询获取 ts_code（供 RiskEngine 同步）
+    entries = await repo.get_blacklisted_stocks()
+    ts_code = ""
+    for e in entries:
+        if str(e.id) == entry_id:
+            ts_code = e.target_id
+            break
+    await repo.remove_from_blacklist(entry_id)
+    return {"id": entry_id, "ts_code": ts_code}

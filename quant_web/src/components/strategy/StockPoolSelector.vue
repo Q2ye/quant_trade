@@ -1,12 +1,13 @@
 <template>
   <div class="stock-pool-selector">
     <n-select
+      :key="poolSelectKey"
       v-model:value="selectedStocks"
       multiple
       filterable
       placeholder="选择股票池"
       :options="stockOptions"
-      @update:value="emit('update:modelValue', $event)"
+      @update:value="onPoolSelect"
     />
     <div class="selected-tags" v-if="selectedStocks.length > 0">
       <n-tag
@@ -29,6 +30,13 @@ const props = defineProps<{ modelValue?: string[]; multiple?: boolean }>();
 const emit = defineEmits<{ (e: "update:modelValue", value: string[]): void }>();
 
 const selectedStocks = ref<string[]>(props.modelValue || []);
+
+const poolSelectKey = ref(0);
+const onPoolSelect = (val: string[]) => {
+  selectedStocks.value = val;
+  emit("update:modelValue", val);
+  poolSelectKey.value++;
+};
 
 const stockOptions = [
   { label: "贵州茅台 (600519)", value: "600519.SH" },

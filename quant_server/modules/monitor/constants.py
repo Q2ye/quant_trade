@@ -28,6 +28,7 @@ class AlertType(str, Enum):
     DATA_QUALITY = "data_quality"
     PERFORMANCE = "performance"
     BUSINESS = "business"
+    TRADING_SIGNAL = "trading_signal"  # v2.0: 实盘交易信号通知
 
 
 class NotificationChannel(str, Enum):
@@ -124,5 +125,23 @@ ALERT_TEMPLATES = {
     AlertType.PERFORMANCE: {
         "title": "[{level}] 性能告警 - {metric}",
         "message": "指标: {metric}\n当前值: {value}\n阈值: {threshold}\n时间: {timestamp}"
+    },
+    AlertType.TRADING_SIGNAL: {
+        "title": "[{level}] 交易信号 - {strategy_name}",
+        "message": (
+            "策略: {strategy_name}\n"
+            "股票: {ts_code} {stock_name}\n"
+            "方向: {direction}\n"
+            "信号类型: {signal_type}\n"
+            "参考价格: {price}\n"
+            "价格区间: {price_limit_low} ~ {price_limit_high}\n"
+            "最大滑点: {max_slippage_pct}%\n"
+            "建议数量: {quantity}股\n"
+            "置信度: {confidence}\n"
+            "原因: {reason}\n"
+            "时间: {timestamp}\n"
+            "---\n"
+            "请在交易时段操作后标记: {confirm_url}"
+        ),
     },
 }

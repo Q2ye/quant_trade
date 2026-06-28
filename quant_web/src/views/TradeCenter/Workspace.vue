@@ -72,21 +72,24 @@ const loadAllData = async () => {
   failedSources.value = [];
   try {
     const [acctRes, posRes, orderRes, basketRes, sigRes] = await Promise.all([
-      tradeAPI.getAccountInfo().catch(() => { failedSources.value.push("账户"); return []; }),
+      request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => { failedSources.value.push("账户"); return { data: { data: [] } }; }),
       tradeAPI.getPositions().catch(() => { failedSources.value.push("持仓"); return []; }),
       tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => { failedSources.value.push("订单"); return { items: [], total: 0 }; }),
       basketAPI.getBaskets().catch(() => { failedSources.value.push("篮子"); return { baskets: [], total: 0 }; }),
       tradeAPI.getSignals({ page_size: 50 }).catch(() => { failedSources.value.push("信号"); return { data: [] }; }),
+      request.get("/quantTrade/strategy", { params: { page: 1, page_size: 200 } }).then((r: any) => {
+        // response interceptor 已提取 response.data，r = { success, data: [...], pagination }
+        strategyList.value = r?.data || [];
+      }).catch(() => {}),
     ]);
 
-    // 账户 API 返回单对象或数组，统一转为数组
-    const acctData = (acctRes as any)?.data ?? acctRes;
-    const acctList = Array.isArray(acctData) ? acctData : (acctData ? [acctData] : []);
-    accounts.value = acctList.map((a: any) => ({
+    // 账户列表 API 返回 { success: true, data: [...] }
+    const acctList = (acctRes as any)?.data?.data || (acctRes as any)?.data || [];
+    accounts.value = (Array.isArray(acctList) ? acctList : []).map((a: any) => ({
       ...a,
-      id: String(a.id ?? a.account_id ?? ""),
-      total_asset: a.total_asset ?? a.total_balance ?? 0,
-      available_cash: a.available_cash ?? a.cash ?? a.available_balance ?? 0,
+      id: String(a.id ?? ""),
+      total_asset: a.total_balance ?? a.total_asset ?? 0,
+      available_cash: a.available_balance ?? a.available_cash ?? 0,
       market_value: a.market_value ?? 0,
       total_pnl: a.total_pnl ?? a.pnl ?? 0,
     }));
@@ -110,23 +113,18 @@ const loadAllData = async () => {
 
 // 精准刷新（成交录入后只刷新受影响的数据）
 const refreshAfterTrade = async () => {
-  const [posRes, orderRes, acctRes] = await Promise.all([
+  const [posRes, orderRes, acctRes2] = await Promise.all([
     tradeAPI.getPositions().catch(() => []),
     tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => ({ items: [], total: 0 })),
-    tradeAPI.getAccountInfo().catch(() => []),
+    request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => ({ data: { data: [] } })),
   ]);
   positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
   const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
   orders.value = orderItems as Order[];
-  const acctData2 = (acctRes as any)?.data ?? acctRes;
-  const acctList2 = Array.isArray(acctData2) ? acctData2 : (acctData2 ? [acctData2] : []);
-  accounts.value = acctList2.map((a: any) => ({
+  const acctList2 = (acctRes2 as any)?.data?.data || (acctRes2 as any)?.data || [];
+  accounts.value = (Array.isArray(acctList2) ? acctList2 : []).map((a: any) => ({
     ...a,
-    id: String(a.id ?? a.account_id ?? ""),
-    total_asset: a.total_asset ?? a.total_balance ?? 0,
-    available_cash: a.available_cash ?? a.cash ?? a.available_balance ?? 0,
-    market_value: a.market_value ?? 0,
-    total_pnl: a.total_pnl ?? a.pnl ?? 0,
+    id: String(a.id ?? ""),
   }));
 };
 
@@ -361,16 +359,55 @@ const positionColumns: DataTableColumns<Position> = [
 // ============================================================
 // Account tab
 // ============================================================
+const strategyList = ref<any[]>([]);
+
+const boundStrategies = computed(() => {
+  const map: Record<string, any[]> = {};
+  strategyList.value.forEach((s: any) => {
+    if (s.account_id) {
+      (map[s.account_id] ||= []).push(s);
+    }
+  });
+  return map;
+});
+
 const accountColumns: DataTableColumns<Account> = [
-  { title: "总资产", key: "total_asset", width: 120, render: (row: Account) => `¥${(row.total_asset ?? 0).toLocaleString()}` },
-  { title: "可用资金", key: "available_cash", width: 120, render: (row: Account) => `¥${(row.available_cash ?? 0).toLocaleString()}` },
-  { title: "持仓市值", key: "market_value", width: 120, render: (row: Account) => `¥${(row.market_value ?? 0).toLocaleString()}` },
-  { title: "累计盈亏", key: "total_pnl", width: 110, render: (row: Account) => h("span", { class: (row.total_pnl ?? 0) >= 0 ? "text-up" : "text-down" }, `¥${(row.total_pnl ?? 0).toLocaleString()}`) },
   {
-    title: "操作", key: "actions", width: 120,
+    title: "账户", key: "account_name", width: 180,
+    render: (row: any) => {
+      const broker = row.broker || "";
+      const name = row.account_name || row.account_number || row.id || "";
+      const typeTag = row.account_type === "simulation" ? h(NTag, { size: "tiny", type: "warning", bordered: false }, { default: () => "仿真" })
+        : row.account_type === "cash" ? h(NTag, { size: "tiny", type: "success", bordered: false }, { default: () => "现金" })
+        : h(NTag, { size: "tiny", bordered: false }, { default: () => row.account_type || "未知" });
+      return h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } }, [
+        h("span", { style: { fontWeight: 600 } }, broker || name),
+        typeTag,
+      ]);
+    },
+  },
+  { title: "券商", key: "broker", width: 80, render: (row: any) => row.broker || "—" },
+  { title: "总资产", key: "total_asset", width: 110, render: (row: any) => `¥${((row.total_asset ?? row.total_balance ?? 0)).toLocaleString()}` },
+  { title: "可用资金", key: "available_cash", width: 110, render: (row: any) => `¥${((row.available_cash ?? row.available_balance ?? 0)).toLocaleString()}` },
+  { title: "持仓市值", key: "market_value", width: 100, render: (row: any) => `¥${((row.market_value ?? 0)).toLocaleString()}` },
+  {
+    title: "绑定策略", key: "strategies", width: 160,
+    render: (row: any) => {
+      const bound = boundStrategies.value[row.id] || [];
+      if (bound.length === 0) return h("span", { style: { color: "var(--color-text-tertiary)", fontSize: "11px" } }, "无");
+      return h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } },
+        bound.map((s: any) =>
+          h(NTag, { size: "tiny", bordered: false, type: s.status === "running" ? "success" : "default" }, {
+            default: () => s.name || s.id?.slice(0, 8) || "—"
+          })
+        )
+      );
+    },
+  },
+  {
+    title: "操作", key: "actions", width: 100,
     render: (row) => h("div", { style: { display: "flex", gap: "4px" } }, [
       h(NButton, { size: "tiny", onClick: () => openAccountEditor(row) }, { default: () => "编辑" }),
-      h(NButton, { size: "tiny", type: "error", onClick: () => handleDeleteAccount(row.id) }, { default: () => "删除" }),
     ]),
   },
 ];
@@ -380,35 +417,42 @@ const showAccountModal = ref(false);
 const editingAccountId = ref<string | null>(null);
 const accountForm = reactive({
   account_name: "",
-  account_type: "simulation" as string,
+  account_type: "cash" as string,
+  broker: "",
+  broker_account_id: "",
   initial_balance: 1000000,
 });
 
-function openAccountEditor(acct?: Account) {
-  editingAccountId.value = acct ? String(acct.id) : null;
-  accountForm.account_name = (acct as any)?.account_name || "";
-  accountForm.account_type = (acct as any)?.account_type || "simulation";
-  accountForm.initial_balance = (acct as any)?.initial_balance ?? (acct as any)?.total_asset ?? 1000000;
+function openAccountEditor(acct?: any) {
+  const id = acct?.id || acct?.account_id;
+  editingAccountId.value = id ? String(id) : null;
+  accountForm.account_name = acct?.account_name || "";
+  accountForm.account_type = acct?.account_type || "cash";
+  accountForm.broker = acct?.broker || "";
+  accountForm.broker_account_id = acct?.broker_account_id || "";
+  accountForm.initial_balance = acct?.initial_balance ?? acct?.total_asset ?? acct?.total_balance ?? 1000000;
   showAccountModal.value = true;
 }
 
 async function handleSaveAccount() {
   try {
-    const payload = {
-      user_id: "",
+    const payload: any = {
       account_name: accountForm.account_name,
       account_type: accountForm.account_type,
       initial_balance: accountForm.initial_balance,
-      broker: "sim",
+      broker: accountForm.broker,
+      broker_account_id: accountForm.broker_account_id,
     };
     if (editingAccountId.value) {
       await request.put(`/quantTrade/account/${editingAccountId.value}`, payload);
+      message.success("账户已更新");
     } else {
       await request.post("/quantTrade/account", payload);
+      message.success("账户已创建");
     }
-    message.success(editingAccountId.value ? "账户已更新" : "账户已创建");
     showAccountModal.value = false;
-    loadAllData();
+    editingAccountId.value = null;
+    await loadAllData();
   } catch (e: any) {
     message.error(e?.response?.data?.detail || "操作失败");
   }
@@ -702,16 +746,22 @@ onMounted(() => loadAllData());
     </div>
 
     <!-- Account Edit Modal -->
-    <n-modal v-model:show="showAccountModal" preset="card" :title="editingAccountId ? '编辑账户' : '新增账户'" style="width: 420px">
+    <n-modal v-model:show="showAccountModal" preset="card" :title="editingAccountId ? '编辑账户' : '新增账户'" style="width: 460px">
       <n-form :model="accountForm" label-placement="left" label-width="100px">
         <n-form-item label="账户名称">
-          <n-input v-model:value="accountForm.account_name" placeholder="如：模拟交易账户" />
+          <n-input v-model:value="accountForm.account_name" placeholder="如：华泰实盘账户" />
         </n-form-item>
         <n-form-item label="账户类型">
           <n-select v-model:value="accountForm.account_type" :options="[
-            { label: '模拟账户', value: 'simulation' },
-            { label: '现金账户', value: 'cash' },
+            { label: '现金账户（实盘）', value: 'cash' },
+            { label: '信用账户（两融）', value: 'margin' },
           ]" />
+        </n-form-item>
+        <n-form-item label="券商">
+          <n-input v-model:value="accountForm.broker" placeholder="如：华泰证券、中信证券" />
+        </n-form-item>
+        <n-form-item label="券商账号">
+          <n-input v-model:value="accountForm.broker_account_id" placeholder="券商端账户号/客户号" />
         </n-form-item>
         <n-form-item label="初始资金">
           <n-input-number v-model:value="accountForm.initial_balance" :min="0" :step="10000" />

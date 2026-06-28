@@ -65,6 +65,7 @@ router = APIRouter(
 # ==================== 账户管理接口 ====================
 
 
+@router.get("/list", response_model=AccountListResponse)
 @router.get("", response_model=AccountListResponse)
 async def get_accounts_api (
 		request: AccountListRequest = Depends(AccountListRequest),

@@ -22,6 +22,7 @@
     <div class="toolbar-row">
       <div class="toolbar-controls">
         <n-select
+          :key="'u' + universeSelectKey"
           v-model:value="researchConfig.universe"
           :options="universeOptions"
           multiple
@@ -31,6 +32,7 @@
           placeholder="指数或代码（可多选手输）"
           style="min-width:180px;max-width:300px;flex:1"
           size="small"
+          @update:value="() => universeSelectKey++"
         />
         <n-select
           v-model:value="researchConfig.basketIds"
@@ -49,16 +51,19 @@
           size="small"
         />
         <n-select
+          :key="'f' + factorSelectKey"
           v-model:value="researchConfig.selectedFactors"
           multiple
           filterable
           clearable
+          virtual-scroll
           placeholder="选择因子（可搜可多选）"
           :options="factorSelectOptions"
           :max-tag-count="3"
           consistent-menu-width
           style="min-width:300px;max-width:520px;flex:1"
           size="small"
+          @update:value="() => factorSelectKey++"
         />
         <n-button size="small" quaternary @click="selectAllFactors">
           全选
@@ -268,6 +273,9 @@ const researchConfig = reactive({
 });
 const showFactorDialog = ref(false);
 const onFactorCreated = () => { loadMetadata(); };
+
+const universeSelectKey = ref(0);
+const factorSelectKey = ref(0);
 
 const universeLoading = ref(false);
 const universeOptions = ref<Array<{ label: string; value: string }>>([

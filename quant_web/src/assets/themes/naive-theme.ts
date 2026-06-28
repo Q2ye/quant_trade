@@ -740,6 +740,8 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
     color: THEME_CONSTANTS.DARK.POPOVER_BG,
     textColor: THEME_CONSTANTS.DARK.TEXT_PRIMARY,
     dividerColor: THEME_CONSTANTS.DARK.BORDER_COLOR,
+    // 确保弹出层在 card-surface / glass-surface 的 isolation 层之上
+    zIndex: 1060,
   },
 
   // ... 其他组件配置（DataTable, Input, Select等）保持原样，但确保使用THEME_CONSTANTS

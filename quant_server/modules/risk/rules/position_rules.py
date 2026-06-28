@@ -1,7 +1,7 @@
 # position_rules.py    # 仓位规则
 
 from typing import Dict, Any, Tuple
-from .base_rule import RiskRule
+from .base_rule import RiskRule, RiskCheckResult
 
 
 class PositionLimitRule(RiskRule):
@@ -42,6 +42,23 @@ class PositionLimitRule(RiskRule):
             return False, f"总仓位已达到上限: {position_ratio:.2f} > {self.max_position_ratio:.2f}"
         
         return True, "仓位限制检查通过"
+
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        total_asset = data.get("total_asset", 0)
+        position_value = data.get("position_value", 0)
+        if total_asset <= 0:
+            return RiskCheckResult(True, "info", "资产为0，跳过仓位检查", "allow", self.name)
+        ratio = position_value / total_asset
+        if ratio > self.max_position_ratio * 1.1:
+            return RiskCheckResult(False, "error",
+                f"总仓位严重超限: {ratio:.2%} > {self.max_position_ratio * 1.1:.2%}", "block", self.name)
+        if ratio > self.max_position_ratio:
+            return RiskCheckResult(True, "warning",
+                f"总仓位接近上限: {ratio:.2%} > {self.max_position_ratio:.2%}", "reduce_size", self.name)
+        if ratio > self.max_position_ratio * 0.8:
+            return RiskCheckResult(True, "info",
+                f"总仓位偏高: {ratio:.2%}（上限 {self.max_position_ratio:.2%}）", "allow", self.name)
+        return RiskCheckResult(True, "info", "仓位检查通过", "allow", self.name)
 
 
 class SinglePositionLimitRule(RiskRule):
@@ -139,6 +156,25 @@ class SectorConcentrationRule(RiskRule):
             return False, f"行业 {sector} 集中度超限: {sector_ratio:.2%} > {self.max_sector_ratio:.2%}"
 
         return True, "行业集中度检查通过"
+
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        sector = data.get("sector", "")
+        positions = data.get("positions", [])
+        total_asset = data.get("total_asset", 0)
+        if not sector or total_asset <= 0 or not positions:
+            return RiskCheckResult(True, "info", "无行业或持仓数据，跳过检查", "allow", self.name)
+        sector_value = sum(
+            p.get("quantity", 0) * p.get("current_price", 0)
+            for p in positions if p.get("sector") == sector
+        )
+        ratio = sector_value / total_asset
+        if ratio > self.max_sector_ratio * 1.25:
+            return RiskCheckResult(False, "error",
+                f"行业 {sector} 集中度严重超限: {ratio:.2%} > {self.max_sector_ratio * 1.25:.2%}", "block", self.name)
+        if ratio > self.max_sector_ratio:
+            return RiskCheckResult(True, "warning",
+                f"行业 {sector} 集中度偏高: {ratio:.2%} > {self.max_sector_ratio:.2%}", "reduce_size", self.name)
+        return RiskCheckResult(True, "info", "行业集中度检查通过", "allow", self.name)
 
 
 class PositionConcentrationRule(RiskRule):

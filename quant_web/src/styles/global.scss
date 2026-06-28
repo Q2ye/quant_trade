@@ -421,10 +421,22 @@ body {
 
 /* 玻璃态表面 —— 导航栏 / 侧边栏 */
 .glass-surface {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  position: relative;
   background: rgba(7, 7, 14, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  isolation: isolate;
+
+  /* backdrop-filter 移至伪元素，避免为子元素（n-select/n-dropdown 弹出层）创建 containing block */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: -1;
+    pointer-events: none;
+  }
 }
 
 /* 全局卡片渐变边框 — 1px 蓝色渐变，四边可见 */
@@ -457,14 +469,36 @@ body {
   }
 }
 
+/* 确保 flex 容器内的下拉框有最小宽度，
+   防止收缩导致弹出层与触发元素错位 */
+.n-select,
+.n-dropdown,
+.n-date-picker,
+.n-time-picker {
+  min-width: 64px;
+}
+
 /* 卡片表面 — 玻璃态半透明，透出 3D 粒子背景 */
 .card-surface {
-  background: var(--color-bg-card, rgba(12, 18, 32, 0.72)) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border, rgba(26, 26, 48, 0.5));
+  position: relative;
+  background: var(--color-bg-card, rgba(12,18,32,0.72)) !important;
+  border: 1px solid var(--color-border, rgba(26,26,48,0.5));
   border-radius: var(--n-border-radius, 6px);
-  box-shadow: var(--box-shadow-1, 0 0 1px rgba(0, 255, 200, 0.08));
+  box-shadow: var(--box-shadow-1, 0 0 1px rgba(0,255,200,0.08));
+  isolation: isolate;
+
+  > * { position: relative; z-index: 1; }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 0;
+    pointer-events: none;
+  }
 }
 
 /* ==========================================================================

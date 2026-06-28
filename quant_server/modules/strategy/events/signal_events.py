@@ -20,22 +20,36 @@ class StrategySignalEvent(BaseEvent):
         strategy_id: str,
         strategy_name: str,
         ts_code: str,
-        signal_type: str,  # BUY/SELL/HOLD
-        signal_direction: str,  # LONG/SHORT/CLOSE
+        signal_type: str,          # ENTRY/EXIT/STOP_LOSS/TAKE_PROFIT/REBALANCE
+        signal_direction: str,     # LONG/SHORT/CLOSE_LONG/CLOSE_SHORT/NONE
         price: float,
         quantity: int,
         reason: str,
         confidence: float = 1.0,
         target_price: Optional[float] = None,
         stop_loss_price: Optional[float] = None,
+        # v2.0 新增：价格范围
+        price_limit_low: Optional[float] = None,
+        price_limit_high: Optional[float] = None,
+        max_slippage_pct: float = 0.02,
+        order_type: str = "limit_range",
+        account_id: str = "",       # v2.2: 绑定的交易账户ID
         **kwargs
     ):
         super().__init__(
             module="strategy",
             event_type=SignalEventType.ENTRY.value,
-            priority=EventPriority.HIGH,  # 信号事件优先级较高
+            priority=EventPriority.HIGH,
             **kwargs
         )
+
+        # 自动计算未显式设置的价格范围
+        low = price_limit_low
+        high = price_limit_high
+        if low is None and price > 0:
+            low = round(price * (1 - max_slippage_pct), 4)
+        if high is None and price > 0:
+            high = round(price * (1 + max_slippage_pct), 4)
 
         self.data = {
             "strategy_id": strategy_id,
@@ -44,11 +58,16 @@ class StrategySignalEvent(BaseEvent):
             "signal_type": signal_type,
             "signal_direction": signal_direction,
             "price": price,
+            "price_limit_low": low,
+            "price_limit_high": high,
+            "max_slippage_pct": max_slippage_pct,
+            "order_type": order_type,
             "quantity": quantity,
             "reason": reason,
             "confidence": confidence,
             "target_price": target_price,
             "stop_loss_price": stop_loss_price,
+            "account_id": account_id,
             "generation_time": datetime.now().isoformat()
         }
 
@@ -87,7 +106,7 @@ class SignalExecutedEvent(BaseEvent):
 
 
 class SignalCancelledEvent(BaseEvent):
-    """信号取消事件 - 信号被取消时触发"""
+    """信号取消事件 - 信号被取消时触发（含人工取消）"""
 
     def __init__(
         self,
@@ -112,4 +131,35 @@ class SignalCancelledEvent(BaseEvent):
             "ts_code": ts_code,
             "reason": reason,
             "cancel_time": datetime.now().isoformat()
+        }
+
+
+class SignalConfirmedEvent(BaseEvent):
+    """信号确认事件 - 人工确认成交时触发（v2.0 新增）"""
+
+    def __init__(
+        self,
+        strategy_id: str,
+        signal_id: str,
+        ts_code: str,
+        fill_price: float,
+        fill_quantity: int,
+        fill_time: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            module="strategy",
+            event_type="strategy.signal.confirmed",
+            priority=EventPriority.HIGH,
+            **kwargs
+        )
+
+        self.data = {
+            "strategy_id": strategy_id,
+            "signal_id": signal_id,
+            "ts_code": ts_code,
+            "fill_price": fill_price,
+            "fill_quantity": fill_quantity,
+            "fill_time": fill_time or datetime.now().isoformat(),
+            "confirmed_at": datetime.now().isoformat(),
         }

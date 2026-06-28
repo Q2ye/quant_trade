@@ -12,7 +12,6 @@ defaults: &defaults
   # API 安全配置（JWT 令牌等）
   api:
     ACCESS_TOKEN_EXPIRE_MINUTES: 600
-    SECRET_KEY: "your-secret-key-here-change-in-production"
     AUTH_ENABLED: false  # 是否启用令牌校验，设为 false 可跳过 JWT 验证（仅开发/测试）
 
   server:
@@ -90,7 +89,7 @@ defaults: &defaults
       config:
         email_enabled: false
         dingtalk_enabled: false
-        wechat_enabled: false
+        wechat_enabled: true
         alert_interval: 300
 
     risk:
@@ -103,12 +102,17 @@ defaults: &defaults
         risk_check_on_signal: true      # 是否在信号产生时执行风控检查
         position_risk_threshold: 0.10   # 单只持仓 PnL 偏离阈值
 
+    market:
+      enabled: true
+      auto_start: true
+      dependencies: ["data"]
+      config: {}
+
     system:
       enabled: true
       auto_start: true
       dependencies: []
       config:
-        secret_key: "your-secret-key-here"
         access_token_expire_minutes: 600
         algorithm: "HS256"
 

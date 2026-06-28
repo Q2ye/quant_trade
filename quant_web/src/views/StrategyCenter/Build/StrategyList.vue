@@ -1,118 +1,167 @@
-<!-- StrategyList.vue — 策略构建：模板快速开始 + 策略卡片网格 + 批量操作 -->
+<!-- StrategyList.vue — Tab 分类：实盘/仿真/回测 + 卡片网格 + 持仓展示 -->
 <template>
   <div class="strategy-list bg-gradient-mesh bg-noise">
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">策略构建</h1>
-          <p class="page-description">从模板快速开始或自主编写策略代码</p>
+          <p class="page-description">管理策略：回测调优、实盘运行</p>
         </div>
         <div class="header-actions">
-          <n-button type="primary" @click="router.push('/strategies/workspace/new')">
-            <template #icon><SmartIcon name="Plus" /></template>
-            新建策略
-          </n-button>
+          <n-button class="action-btn" @click="loadStrategies" quaternary><template #icon><SmartIcon name="Refresh" /></template></n-button>
         </div>
       </div>
     </div>
 
     <div class="main-content">
-      <!-- Error -->
       <n-result v-if="pageState === 'error'" status="500" title="加载失败">
         <template #footer><n-button @click="loadStrategies">重试</n-button></template>
       </n-result>
 
-      <!-- Empty — 引导式空状态 -->
+      <!-- Empty -->
       <div v-else-if="pageState === 'empty'" class="empty-state">
-        <n-empty description="还没有策略，选择一个模板快速开始">
+        <n-empty description="还没有策略">
           <template #extra>
-            <div class="empty-templates">
-              <div
-                v-for="tpl in DEFAULT_TEMPLATES.slice(0, 4)" :key="tpl.id"
-                class="empty-tpl-card" @click="router.push(`/strategies/workspace/new?template=${tpl.id}`)"
-              >
-                <SmartIcon :name="tpl.icon" size="24" />
-                <span class="et-name">{{ tpl.name }}</span>
-                <span class="et-desc">{{ tpl.description }}</span>
-              </div>
-            </div>
-            <n-button type="primary" size="small" style="margin-top:16px" @click="router.push('/strategies/workspace/new')">
-              从空白开始
-            </n-button>
+            <n-button type="primary" size="small" style="margin-top:12px" @click="router.push('/strategies/workspace/new')">新建策略</n-button>
           </template>
         </n-empty>
       </div>
 
       <template v-else-if="pageState === 'data'">
-        <!-- 模板快速开始 -->
-        <div class="tpl-section">
+        <!-- 统计条 — v2.0: 去掉仿真，只保留实盘和回测 -->
+        <div class="stats-bar">
+          <span class="stat-item" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">
+            🚀 实盘 <strong>{{ liveCount }}</strong>
+          </span>
+          <span class="stat-item" :class="{ active: activeTab === 'backtest' }" @click="activeTab = 'backtest'">
+            🔬 回测调试 <strong>{{ backtestCount }}</strong>
+          </span>
+        </div>
+
+        <!-- 模板快速开始（仅回测 Tab 显示） -->
+        <div v-if="activeTab === 'backtest'" class="tpl-section">
           <h3 class="section-title">从模板快速开始</h3>
-          <div class="tpl-row">
-            <div
-              v-for="tpl in DEFAULT_TEMPLATES" :key="tpl.id"
-              :class="tokens.motion.hover" class="tpl-card"
-              @click="router.push(`/strategies/workspace/new?template=${tpl.id}`)"
-            >
-              <SmartIcon :name="tpl.icon" size="20" :style="{ color: tpl.color }" />
+          <div v-if="templatesLoading" class="tpl-row"><n-skeleton :repeat="3" text /></div>
+          <div v-else-if="templates.length > 0" class="tpl-row">
+            <div v-for="tpl in templates" :key="tpl.id" :class="tokens.motion.hover" class="tpl-card"
+              @click="createFromTemplate(tpl)">
+              <SmartIcon :name="tplIcon(tpl.strategy_type)" size="20" :style="{ color: tplColor(tpl.strategy_type) }" />
               <span class="tpl-name">{{ tpl.name }}</span>
               <span class="tpl-desc">{{ tpl.description }}</span>
             </div>
           </div>
+          <n-empty v-else description="暂无模板" size="small" />
+          <n-button type="primary" size="small" style="margin-top:10px" @click="router.push('/strategies/workspace/new')">
+            + 新建策略
+          </n-button>
         </div>
 
-        <!-- 统计条 -->
-        <div class="stats-bar">
-          <span>📋 <strong>{{ strategies.length }}</strong> 个策略</span>
-          <span>🟢 <strong>{{ runningCount }}</strong> 运行中</span>
-          <span>⚪ <strong>{{ stoppedCount }}</strong> 已停止</span>
-          <span>📝 <strong>{{ draftCount }}</strong> 草稿</span>
-        </div>
-
-        <!-- 策略卡片网格 -->
-        <h3 class="section-title" v-if="strategies.length > 0">我的策略</h3>
-        <div v-if="strategies.length > 0" class="card-grid">
-          <div
-            v-for="s in strategies" :key="s.id"
-            :class="['strategy-card', tokens.surface.card, { selected: checkedKeys.includes(s.id) }]"
-            @click="handleCardClick(s)"
-          >
+        <!-- 策略卡片 -->
+        <h3 class="section-title">{{ tabLabel }} ({{ filteredStrategies.length }})</h3>
+        <div v-if="filteredStrategies.length > 0" class="card-grid">
+          <div v-for="s in filteredStrategies" :key="s.id"
+            :class="['strategy-card', { selected: checkedKeys.includes(s.id) }]"
+            @click="handleCardClick(s)">
             <div class="sc-top">
-              <n-checkbox
-                :checked="checkedKeys.includes(s.id)"
-                @click.stop="toggleCheck(s.id)"
-              />
               <n-tag :type="statusMap[s.status] as any" size="tiny">{{ statusText[s.status] || s.status }}</n-tag>
+              <n-tag v-if="s.run_mode === 'live'" type="error" size="tiny" :bordered="false">实盘</n-tag>
+              <n-tag v-if="s.execution_mode === 'semi_auto'" type="warning" size="tiny" :bordered="false">半自动</n-tag>
+              <n-tag v-if="s.execution_mode === 'full_auto'" type="info" size="tiny" :bordered="false">全自动</n-tag>
             </div>
             <h4 class="sc-name">{{ s.name || s.id }}</h4>
             <span class="sc-type">{{ s.className || s.strategy_type || '自定义' }}</span>
-            <div v-if="s.performance?.annualReturn" class="sc-perf">
-              <span :class="s.performance.annualReturn >= 0 ? 'text-up' : 'text-down'">
-                {{ (s.performance.annualReturn * 100).toFixed(1) }}%
+
+            <!-- 回测绩效摘要 -->
+            <div v-if="strategyPerf[s.id]?.total_return !== undefined" class="sc-perf">
+              <span :class="strategyPerf[s.id].total_return >= 0 ? 'text-up' : 'text-down'">
+                {{ (strategyPerf[s.id].total_return * 100).toFixed(1) }}%
               </span>
-              <span class="sc-perf-label">年化收益</span>
+              <span class="sc-perf-label">总收益</span>
+              <span class="sc-perf-sub">
+                夏普 {{ strategyPerf[s.id].sharpe_ratio?.toFixed(2) || '—' }}
+              </span>
             </div>
+
+            <!-- 持仓摘要 -->
+            <div v-if="s.status === 'running' && strategyPositions[s.id]?.length" class="sc-positions">
+              <div class="pos-header">当前持仓</div>
+              <div v-for="p in strategyPositions[s.id].slice(0, 3)" :key="p.ts_code || p.symbol" class="pos-item">
+                <n-tag size="tiny" style="font-size:10px" :bordered="false">{{ p.ts_code || p.symbol }}</n-tag>
+                <span class="pos-qty">{{ p.volume || p.quantity || 0 }}股</span>
+              </div>
+            </div>
+
+            <!-- 实盘/仿真运行中额外信息 -->
+            <div v-if="s.status === 'running' && s.run_mode === 'live'" class="sc-runtime">
+              <div class="rt-stat" title="策略启动时间">
+                🕐 {{ s.started_at ? new Date(s.started_at).toLocaleDateString() : '—' }}
+              </div>
+            </div>
+
             <div class="sc-actions">
-              <n-button size="tiny" type="primary" @click.stop="openWorkspace(s)">编辑</n-button>
-              <n-button size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
-              <n-dropdown trigger="click" :options="moreOpts" @select="(k: string) => handleMore(k, s)">
-                <n-button size="tiny" @click.stop>⋮</n-button>
-              </n-dropdown>
+              <template v-if="s.status === 'running'">
+                <n-button size="tiny" @click.stop="handleClone(s)">克隆</n-button>
+                <n-button size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
+                <n-button size="tiny" quaternary @click.stop="viewReport(s)">报告</n-button>
+              </template>
+              <template v-else>
+                <n-button size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
+                <n-button size="tiny" quaternary @click.stop="handleClone(s)">克隆</n-button>
+                <n-button size="tiny" type="success" quaternary @click.stop="quickStart(s)">启动</n-button>
+                <n-button size="tiny" quaternary @click.stop="deleteStrategy(s)">删除</n-button>
+              </template>
             </div>
           </div>
         </div>
+        <n-empty v-else :description="`暂无${tabLabel}`" />
 
-        <!-- 批量操作栏 -->
-        <div v-if="checkedKeys.length > 0" class="batch-bar">
+        <!-- 批量操作栏（仅回测 Tab） -->
+        <div v-if="activeTab === 'backtest' && checkedKeys.length > 0" class="batch-bar">
           <span>已选 {{ checkedKeys.length }} 项</span>
           <n-button size="tiny" @click="batchBacktest">批量回测</n-button>
-          <n-button size="tiny" @click="batchStart">批量启动</n-button>
-          <n-button size="tiny" @click="batchStop">批量停止</n-button>
-          <n-button size="tiny" type="error" @click="batchDelete">批量删除</n-button>
+          <n-button size="tiny" @click="batchDelete">批量删除</n-button>
         </div>
       </template>
     </div>
 
-    <!-- 新建/编辑 对话框（保留快速创建入口） -->
+    <!-- v2.2: 实盘启动弹窗 — 选账户 + 选执行模式 + 设资金 -->
+    <n-modal v-model:show="showStartModal" preset="dialog" title="启动实盘"
+      positive-text="确认启动" negative-text="取消"
+      @positive-click="confirmStart">
+      <n-form label-width="90px" size="small">
+        <n-form-item label="策略名称">
+          <span class="text-secondary">{{ startTarget?.name }}</span>
+        </n-form-item>
+        <n-form-item label="交易账户" required>
+          <n-select v-model:value="startAccountId" :options="accountOptions" placeholder="选择券商账户" style="width:100%" />
+        </n-form-item>
+        <n-form-item label="可用资金">
+          <span class="text-secondary" v-if="selectedAccount">¥{{ (selectedAccount.available_balance || 0).toLocaleString() }}</span>
+          <span class="text-muted" v-else>请先选择账户</span>
+        </n-form-item>
+        <n-form-item label="分配资金" required>
+          <n-input-number v-model:value="startCapital" :min="10000" :step="100000" :max="selectedAccount?.available_balance || 999999999" style="width:100%" />
+        </n-form-item>
+        <n-form-item label="执行模式" required>
+          <n-radio-group v-model:value="startExecutionMode">
+            <n-radio value="semi_auto">
+              <span style="font-weight:600">半自动</span>
+              <span style="font-size:11px;color:var(--color-text-tertiary);display:block">
+                策略发出信号 → 人工在券商端下单 → 回系统确认成交
+              </span>
+            </n-radio>
+            <n-radio value="full_auto" style="margin-top:8px">
+              <span style="font-weight:600">全自动</span>
+              <span style="font-size:11px;color:var(--color-text-tertiary);display:block">
+                策略发出信号 → 系统自动调用券商接口执行
+              </span>
+            </n-radio>
+          </n-radio-group>
+        </n-form-item>
+      </n-form>
+    </n-modal>
+
+    <!-- 新建/编辑对话框 -->
     <n-modal v-model:show="showDialog" preset="dialog" :title="dialogTitle" positive-text="保存" negative-text="取消"
       @positive-click="saveStrategy">
       <n-form :model="currentStrategy" label-width="80px" size="small">
@@ -127,19 +176,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted, h, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { useStore } from "vuex";
-import { useMessage, useDialog, NTag, NButton, NDropdown, NCheckbox, NResult } from "naive-ui";
+import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
-import { STRATEGY_TYPE_OPTIONS, STRATEGY_STATUS_MAP, STRATEGY_STATUS_TEXT } from "./constants";
+import { STRATEGY_TYPE_OPTIONS } from "./constants";
 import backtestAPI from "@/api/backtest";
+import strategyAPI from "@/api/strategy";
+import request from "@/utils/request";
 
 const message = useMessage();
 const dialog = useDialog();
 const router = useRouter();
+const route = useRoute();
 const store = useStore<any>();
+
+// 从 URL query 恢复 tab 状态，避免返回时跳回默认 tab
+const activeTab = ref<"live" | "backtest">(
+  (route.query.tab as string) === "backtest" ? "backtest" : "live"
+);
+watch(activeTab, (v) => router.replace({ query: { tab: v } }));
 
 type PageState = "loading" | "error" | "empty" | "data";
 const pageState = ref<PageState>("loading");
@@ -148,49 +206,72 @@ const isEditing = ref(false);
 const currentStrategy = ref({ id: null as any, name: "", description: "", type: "trend", className: "", parameters: {}, status: "draft" });
 const checkedKeys = ref<string[]>([]);
 
+const strategyPositions = ref<Record<string, any[]>>({});
+const strategyPerf = ref<Record<string, { total_return: number; sharpe_ratio: number }>>({});
+const positionsLoading = ref(false);
+
 const strategies = computed(() => store.state.strategy?.strategies || []);
+
+// Tab 过滤 — v2.0: 去掉 simulation
+const liveStrategies = computed(() => strategies.value.filter((s: any) => s.run_mode === "live"));
+const backtestStrategies = computed(() => strategies.value.filter((s: any) => !s.run_mode || s.run_mode === "backtest"));
+
+const filteredStrategies = computed(() => {
+  if (activeTab.value === "live") return liveStrategies.value;
+  return backtestStrategies.value;
+});
+
+const liveCount = computed(() => liveStrategies.value.length);
+const backtestCount = computed(() => backtestStrategies.value.length);
+
+const tabLabel = computed(() => {
+  if (activeTab.value === "live") return "实盘运行中";
+  return "回测调试";
+});
+
 const dialogTitle = computed(() => isEditing.value ? "编辑策略" : "新建策略");
-const runningCount = computed(() => strategies.value.filter((s: any) => s.status === "running").length);
-const stoppedCount = computed(() => strategies.value.filter((s: any) => s.status === "stopped").length);
-const draftCount = computed(() => strategies.value.filter((s: any) => !s.status || s.status === "draft").length);
 
-const statusMap: Record<string, string> = { running: "success", stopped: "warning", draft: "default", deployed: "info", error: "error" };
-const statusText: Record<string, string> = { running: "运行中", stopped: "已停止", draft: "草稿", deployed: "已部署", error: "异常" };
+const statusMap: Record<string, string> = { running: "success", stopped: "warning", draft: "default", paused: "info", error: "error" };
+const statusText: Record<string, string> = { running: "运行中", stopped: "已停止", draft: "草稿", paused: "暂停", error: "异常" };
 
-const DEFAULT_TEMPLATES = [
-  { id: "tpl_001", name: "双均线趋势", description: "金叉/死叉 + 成交量过滤", icon: "TrendingUpOutline", color: "#448AFF" },
-  { id: "tpl_002", name: "MACD 信号", description: "零轴交叉 + 柱状图", icon: "PulseOutline", color: "#00E676" },
-  { id: "tpl_003", name: "多因子选股", description: "PE/PB/ROE 综合打分", icon: "Options", color: "#FFC107" },
-  { id: "tpl_004", name: "均值回归", description: "布林带 + RSI", icon: "StatsChart", color: "#7C4DFF" },
-  { id: "tpl_005", name: "动量跟踪", description: "N日动量排名轮动", icon: "TrendingUp", color: "#FF6D00" },
-];
+// 模板 — 从 API 加载
+const templates = ref<any[]>([]);
+const templatesLoading = ref(false);
 
-const moreOpts = [
-  { label: "启动/停止", key: "toggle" },
-  { label: "查看报告", key: "report" },
-  { label: "克隆", key: "clone" },
-  { label: "导出JSON", key: "export" },
-  { label: "删除", key: "delete" },
-];
+const tplIcon = (type: string) => {
+  const m: Record<string, string> = { cta: "TrendingUpOutline", alpha: "Options", multi_factor: "StatsChart", ml: "PulseOutline" };
+  return m[type] || "CodeOutline";
+};
+const tplColor = (type: string) => {
+  const m: Record<string, string> = { cta: "#448AFF", alpha: "#00E676", multi_factor: "#FFC107", ml: "#7C4DFF" };
+  return m[type] || "#448AFF";
+};
 
-// 卡片交互
-const handleCardClick = (s: any) => { if (checkedKeys.value.length > 0) toggleCheck(s.id); else openWorkspace(s); };
+const createFromTemplate = async (tpl: any) => {
+  dialog.info({
+    title: `基于模板创建: ${tpl.name}`,
+    content: `策略名称`,
+    positiveText: "创建",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        const result = await strategyAPI.createFromTemplate(tpl.id, `${tpl.name}_${Date.now() % 10000}`);
+        message.success("已创建策略: " + result.name);
+        loadStrategies();
+        router.push(`/strategies/workspace/${result.id}`);
+      } catch (e: any) { message.error("创建失败: " + (e.message || e)); }
+    },
+  });
+};
+
+const handleCardClick = (s: any) => { openWorkspace(s); };
 const toggleCheck = (id: string) => {
   if (checkedKeys.value.includes(id)) checkedKeys.value = checkedKeys.value.filter(k => k !== id);
   else checkedKeys.value.push(id);
 };
 
-const handleMore = (key: string, s: any) => {
-  if (key === "toggle") toggleStrategy(s);
-  else if (key === "report") viewReport(s);
-  else if (key === "clone") cloneStrategy(s);
-  else if (key === "export") exportStrategy(s);
-  else if (key === "delete") deleteStrategy(s);
-};
-
-// 策略操作
 const openWorkspace = (s: any) => {
-  if (!s?.id) { message.warning("策略数据异常，无法打开"); return; }
+  if (!s?.id) { message.warning("策略数据异常"); return; }
   router.push(`/strategies/workspace/${s.id}`);
 };
 const quickBacktest = (s: any) => router.push(`/backtest?strategies=${s.id}`);
@@ -198,72 +279,181 @@ const viewReport = async (s: any) => {
   try {
     const tasks: any = await backtestAPI.getTasks({ strategy_id: s.id, status: "completed", page_size: 1 });
     const items = Array.isArray(tasks) ? tasks : (tasks?.data || tasks?.items || []);
-    const latestTask = items.find((t: any) => t.status === "completed") || items[0];
-    if (latestTask) {
-      const taskId = latestTask.task_id || latestTask.id;
-      router.push({ name: "BacktestReport", params: { taskId } });
-    } else {
-      message.warning("该策略暂无已完成回测");
-    }
-  } catch {
-    message.error("获取回测任务失败");
-  }
+    const latest = items.find((t: any) => t.status === "completed") || items[0];
+    if (latest) router.push({ name: "BacktestReport", params: { taskId: latest.task_id || latest.id } });
+    else message.warning("暂无已完成回测");
+  } catch { message.error("查询失败"); }
 };
-const toggleStrategy = async (s: any) => {
+  // v2.2: 实盘启动弹窗状态（含账户选择）
+  const showStartModal = ref(false);
+  const startTarget = ref<any>(null);
+  const startExecutionMode = ref<"semi_auto" | "full_auto">("semi_auto");
+  const startCapital = ref<number>(1000000);
+  const startAccountId = ref<string | null>(null);
+  const accountOptions = ref<any[]>([]);
+  const accounts = ref<any[]>([]);
+
+  const selectedAccount = computed(() =>
+    accounts.value.find((a: any) => a.id === startAccountId.value)
+  );
+
+  const loadAccounts = async () => {
+    try {
+      const res = await request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100, status: "active" } });
+      accounts.value = (res?.data?.data || res?.data || []);
+      accountOptions.value = accounts.value.map((a: any) => ({
+        label: `${a.broker || ''} ${a.account_name || a.account_number || a.id}`,
+        value: a.id,
+      }));
+    } catch { accounts.value = []; }
+  };
+
+  const quickStart = async (s: any) => {
+    // 已配置过账户 → 一键重启，否则弹出配置弹窗
+    if (s.account_id && s.allocated_capital > 0) {
+      try {
+        await store.dispatch("strategy/startStrategy", {
+          strategyId: s.id,
+          params: {
+            run_mode: "live",
+            execution_mode: s.execution_mode || "semi_auto",
+            capital: s.allocated_capital,
+            account_id: s.account_id,
+          },
+        });
+        message.success("已启动实盘");
+        await loadStrategies();
+      } catch (e: any) { message.error("启动失败: " + (e.message || e)); }
+    } else {
+      openStartModal(s);
+    }
+  };
+
+  const openStartModal = (s: any) => {
+    startTarget.value = s;
+    startExecutionMode.value = "semi_auto";
+    startCapital.value = s.allocated_capital > 0 ? parseFloat(s.allocated_capital) : 1000000;
+    startAccountId.value = s.account_id || null;
+    loadAccounts();
+    showStartModal.value = true;
+  };
+
+  const confirmStart = async () => {
+    if (!startTarget.value) return;
+    try {
+      await store.dispatch("strategy/startStrategy", {
+        strategyId: startTarget.value.id,
+        params: {
+          run_mode: "live",
+          execution_mode: startExecutionMode.value,
+          capital: startCapital.value,
+          account_id: startAccountId.value,
+        },
+      });
+      message.success(
+        startExecutionMode.value === "semi_auto" ? "已启动实盘（半自动）" : "已启动实盘（全自动）"
+      );
+      showStartModal.value = false;
+      await loadStrategies();
+    } catch (e: any) {
+      message.error("启动失败: " + (e.message || e));
+    }
+  };
+
+  const stopStrategy = async (s: any) => {
+    try {
+      await store.dispatch("strategy/stopStrategy", s.id);
+      message.success("已停止");
+      await loadStrategies();
+    } catch (e: any) { message.error("停止失败: " + e.message); }
+  };
+const cloneStrategy = async (s: any) => {
   try {
-    if (s.status === "running") await store.dispatch("strategy/stopStrategy", s.id);
-    else await store.dispatch("strategy/startStrategy", { strategyId: s.id });
-    message.success(s.status === "running" ? "已停止" : "已启动");
-  } catch (e: any) { message.error("操作失败: " + e.message); }
+    await store.dispatch("strategy/cloneStrategy", { id: s.id, newName: s.name + "_副本" });
+    message.success(`已克隆`); loadStrategies();
+  } catch (e: any) { message.error("克隆失败: " + (e.message || e)); }
+};
+const handleClone = cloneStrategy;
+const deleteStrategy = (s: any) => {
+  dialog.warning({
+    title: "删除确认", content: `确定删除"${s.name}"？不可撤销。`, positiveText: "删除", negativeText: "取消",
+    onPositiveClick: async () => {
+      try { await store.dispatch("strategy/deleteStrategy", s.id); message.success("已删除"); loadStrategies(); }
+      catch (e: any) { message.error("删除失败"); }
+    },
+  });
 };
 
-// 批量操作
 const batchBacktest = () => { if (checkedKeys.value.length) router.push(`/backtest?strategies=${checkedKeys.value.join(",")}`); };
-const batchStart = async () => {
-  for (const id of checkedKeys.value) { try { await store.dispatch("strategy/startStrategy", { strategyId: id }); } catch { /* skip */ } }
-  message.success(`已启动 ${checkedKeys.value.length} 个策略`); checkedKeys.value = []; loadStrategies();
-};
-const batchStop = async () => {
-  for (const id of checkedKeys.value) { try { await store.dispatch("strategy/stopStrategy", id); } catch { /* skip */ } }
-  message.success(`已停止 ${checkedKeys.value.length} 个策略`); checkedKeys.value = []; loadStrategies();
-};
 const batchDelete = () => {
   dialog.warning({
-    title: "批量删除", content: `确定删除 ${checkedKeys.value.length} 个策略？不可撤销。`,
-    positiveText: "删除", negativeText: "取消",
+    title: "批量删除", content: `确定删除 ${checkedKeys.value.length} 个策略？`, positiveText: "删除", negativeText: "取消",
     onPositiveClick: async () => {
-      for (const id of checkedKeys.value) { try { await store.dispatch("strategy/deleteStrategy", id); } catch { /* skip */ } }
+      for (const id of checkedKeys.value) { try { await store.dispatch("strategy/deleteStrategy", id); } catch { } }
       message.success("已删除"); checkedKeys.value = []; loadStrategies();
     },
   });
 };
 
-// 对话框
-const createStrategy = () => { currentStrategy.value = { id: null, name: "", description: "", type: "trend", className: "", parameters: {}, status: "draft" }; isEditing.value = false; showDialog.value = true; };
-const editStrategy = (s: any) => { currentStrategy.value = { ...s }; isEditing.value = true; showDialog.value = true; };
 const saveStrategy = async () => {
   try {
     if (isEditing.value) await store.dispatch("strategy/updateStrategy", currentStrategy.value);
     else await store.dispatch("strategy/createStrategy", currentStrategy.value);
-    showDialog.value = false; message.success("保存成功");
-  } catch (e: any) { message.error("保存失败: " + e.message); }
+    showDialog.value = false; loadStrategies(); message.success("保存成功");
+  } catch (e: any) { message.error("保存失败"); }
 };
-const cloneStrategy = (s: any) => { currentStrategy.value = { ...s, id: null, name: s.name + "_副本" }; isEditing.value = false; showDialog.value = true; };
-const exportStrategy = (s: any) => {
-  const blob = new Blob([JSON.stringify(s, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${s.name}.json`; a.click(); URL.revokeObjectURL(a.href);
-};
-const deleteStrategy = (s: any) => {
-  dialog.warning({
-    title: "删除确认", content: `确定删除"${s.name}"？不可撤销。`, positiveText: "删除", negativeText: "取消",
-    onPositiveClick: async () => { try { await store.dispatch("strategy/deleteStrategy", s.id); message.success("已删除"); loadStrategies(); } catch (e: any) { message.error("删除失败: " + e.message); } },
-  });
+
+const loadTemplates = async () => {
+  try { templatesLoading.value = true; templates.value = await strategyAPI.getTemplates() || []; }
+  catch { templates.value = []; }
+  finally { templatesLoading.value = false; }
 };
 
 const loadStrategies = async () => {
   pageState.value = "loading";
-  try { await store.dispatch("strategy/loadStrategies"); pageState.value = strategies.value.length === 0 ? "empty" : "data"; }
-  catch { pageState.value = "error"; }
+  try {
+    await Promise.all([store.dispatch("strategy/loadStrategies"), loadTemplates()]);
+    pageState.value = "data";
+
+    // 设置默认 Tab：仅首次（无 query）时根据数据引导
+    if (!route.query.tab) {
+      activeTab.value = liveCount.value > 0 ? "live" : "backtest";
+    }
+
+    // 加载运行中策略的持仓
+    const running = strategies.value.filter((s: any) => s.status === "running");
+    if (running.length > 0) {
+      const results = await Promise.allSettled(
+        running.map((s: any) => strategyAPI.getStrategyPositions(s.id).catch(() => []))
+      );
+      results.forEach((r, i) => { if (r.status === "fulfilled") strategyPositions.value[running[i].id] = r.value || []; });
+    }
+
+    // 加载回测结果（显示绩效摘要）
+    const withResults = strategies.value.filter((s: any) => s.run_mode === "backtest" || !s.run_mode);
+    if (withResults.length > 0) {
+      const perfResults = await Promise.allSettled(
+        withResults.map((s: any) =>
+          backtestAPI.getTasks({ strategy_id: s.id, status: "completed", page_size: 1 }).catch(() => [])
+        )
+      );
+      perfResults.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          const tasks: any = r.value;
+          const items = Array.isArray(tasks) ? tasks : (tasks?.data || tasks?.items || []);
+          const latest = items.find((t: any) => t.status === "completed") || items[0];
+          if (latest) {
+            const perf = latest.result?.total_return !== undefined
+              ? { total_return: latest.result.total_return, sharpe_ratio: latest.result.sharpe_ratio || 0 }
+              : latest.total_return !== undefined
+                ? { total_return: latest.total_return, sharpe_ratio: latest.sharpe_ratio || 0 }
+                : null;
+            if (perf) strategyPerf.value[withResults[i].id] = perf;
+          }
+        }
+      });
+    }
+  } catch { pageState.value = "error"; }
 };
 
 onMounted(() => loadStrategies());
@@ -271,18 +461,19 @@ onMounted(() => loadStrategies());
 
 <style lang="scss" scoped>
 .strategy-list { height: 100%; overflow-y: auto; background: transparent; }
-.main-content { padding: 16px 32px 24px; }
+.main-content { padding: 12px 19px 24px; }
 
-/* 空状态 */
 .empty-state { padding: 40px 0; text-align: center; }
-.empty-templates { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
-.empty-tpl-card { padding: 16px 20px; border-radius: 8px; background: var(--color-bg-card, rgba(12,18,32,0.6)); border: 1px solid rgba(255,255,255,0.06); cursor: pointer; text-align: center; width: 140px; transition: all 0.2s;
-  &:hover { border-color: var(--color-primary, #7C3AED); }
-  .et-name { font-size: 13px; font-weight: 600; color: var(--color-text-primary); display: block; margin-top: 8px; }
-  .et-desc { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-top: 2px; }
+
+/* 统计条 — 可点击切换 Tab */
+.stats-bar { display: flex; gap: 0; margin-bottom: 14px; border-radius: 8px; overflow: hidden; background: var(--color-bg-card, rgba(12,18,32,0.5)); }
+.stat-item { flex: 1; text-align: center; padding: 10px 8px; font-size: 13px; color: var(--color-text-tertiary); cursor: pointer; transition: all 0.15s; border-bottom: 2px solid transparent;
+  strong { display: block; font-size: 20px; color: var(--color-text-primary); margin-top: 2px; }
+  &:hover { background: rgba(124,111,247,0.05); color: var(--color-text-secondary); }
+  &.active { color: var(--color-text-primary); border-bottom-color: var(--color-primary, #7C3AED); background: rgba(124,111,247,0.08); }
 }
 
-/* 模板行 */
+/* 模板 */
 .tpl-section { margin-bottom: 14px; }
 .section-title { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 8px; }
 .tpl-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -292,28 +483,35 @@ onMounted(() => loadStrategies());
   .tpl-desc { font-size: 11px; color: var(--color-text-tertiary); }
 }
 
-/* 统计条 */
-.stats-bar { display: flex; gap: 20px; padding: 8px 14px; margin-bottom: 12px; border-radius: 6px; background: var(--color-bg-card, rgba(12,18,32,0.5)); font-size: 13px; color: var(--color-text-secondary);
-  strong { color: var(--color-text-primary); margin-left: 4px; }
-}
-
-/* 卡片网格 */
+/* 卡片 */
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.strategy-card { padding: 14px; border-radius: 8px; cursor: pointer; transition: all 0.15s; position: relative;
+.strategy-card { padding: 14px; border-radius: 8px; cursor: pointer; transition: all 0.15s; position: relative; z-index: 1;
   background: var(--color-bg-card, rgba(12,18,32,0.6)); border: 1px solid rgba(255,255,255,0.05);
   &:hover { border-color: rgba(124,111,247,0.3); }
   &.selected { border-color: var(--color-primary, #7C3AED); background: rgba(124,111,247,0.08); }
 }
-.sc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.sc-top { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .sc-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-type { font-size: 11px; color: var(--color-text-tertiary); }
+
 .sc-perf { margin-top: 8px; display: flex; align-items: baseline; gap: 6px;
   span:first-child { font-size: 16px; font-weight: 700; }
   .sc-perf-label { font-size: 10px; color: var(--color-text-tertiary); }
+  .sc-perf-sub { font-size: 10px; color: var(--color-text-tertiary); margin-left: 4px; }
 }
-.sc-actions { display: flex; gap: 4px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.04); }
 
-/* 批量 */
+.sc-positions { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04);
+  .pos-header { font-size: 10px; color: var(--color-text-tertiary); margin-bottom: 3px; }
+  .pos-item { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+  .pos-qty { font-size: 11px; color: var(--color-text-secondary); }
+}
+
+.sc-runtime { margin-top: 6px;
+  .rt-stat { font-size: 10px; color: var(--color-text-tertiary); }
+}
+
+.sc-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.04); }
+
 .batch-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: var(--color-bg-card, rgba(12,18,32,0.6)); font-size: 13px; color: var(--color-text-secondary); }
 
 .text-up { color: #18a058 !important; }

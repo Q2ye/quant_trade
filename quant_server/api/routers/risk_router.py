@@ -10,7 +10,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -239,6 +239,64 @@ async def update_threshold(
 	except Exception as e:
 		logger.error(f"更新阈值失败: {e}")
 		return error_response(message=str(e), code=500)
+
+
+# ==================== 黑名单管理 ====================
+
+
+@router.get("/blacklist/stocks")
+async def get_blacklist_stocks(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """获取黑名单股票列表"""
+    try:
+        from modules.risk.handlers import get_blacklisted_stocks
+        result = await get_blacklisted_stocks(session)
+        return success_response(data=result)
+    except Exception as e:
+        logger.error(f"获取黑名单失败: {e}")
+        return error_response(message=str(e), code=500)
+
+
+@router.post("/blacklist/stocks")
+async def add_blacklist_stock(
+    body: Dict[str, Any] = Body(...),
+    session: AsyncSession = Depends(get_db_session),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """添加股票到黑名单"""
+    try:
+        from modules.risk.handlers import add_blacklist_stock_entry
+        result = await add_blacklist_stock_entry(session, body, current_user)
+        # 同步注入 RiskEngine
+        engine = await _get_risk_engine()
+        if engine and body.get("ts_code"):
+            engine.add_blacklist_stock(body["ts_code"])
+        return success_response(data=result, message="已加入黑名单")
+    except Exception as e:
+        logger.error(f"添加黑名单失败: {e}")
+        return error_response(message=str(e), code=500)
+
+
+@router.delete("/blacklist/stocks/{entry_id}")
+async def remove_blacklist_stock(
+    entry_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """移除黑名单条目"""
+    try:
+        from modules.risk.handlers import remove_blacklist_stock_entry
+        result = await remove_blacklist_stock_entry(session, entry_id)
+        # 同步更新 RiskEngine
+        engine = await _get_risk_engine()
+        if engine and result and result.get("ts_code"):
+            engine.remove_blacklist_stock(result["ts_code"])
+        return success_response(data=result, message="已移除黑名单")
+    except Exception as e:
+        logger.error(f"移除黑名单失败: {e}")
+        return error_response(message=str(e), code=500)
 
 
 # ==================== 辅助函数 ====================

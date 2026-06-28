@@ -50,16 +50,23 @@ const todayCount = computed(
 );
 
 const columns = [
-  { title: "发生时间", key: "timestamp", width: 170 },
+  {
+    title: "发生时间",
+    key: "timestamp",
+    minWidth: 160,
+    ellipsis: { tooltip: true },
+  },
   {
     title: "触发规则",
     key: "ruleId",
-    width: 150,
+    minWidth: 130,
+    ellipsis: { tooltip: true },
   },
   {
     title: "事件类型",
     key: "type",
-    width: 120,
+    minWidth: 100,
+    ellipsis: { tooltip: true },
     render: (row: any) =>
       h(
         NTag,
@@ -70,7 +77,7 @@ const columns = [
   {
     title: "级别",
     key: "level",
-    width: 80,
+    width: 70,
     render: (row: any) =>
       h(
         NTag,
@@ -91,13 +98,12 @@ const columns = [
   {
     title: "事件描述",
     key: "message",
-    minWidth: 250,
     ellipsis: { tooltip: true },
   },
   {
     title: "操作",
     key: "op",
-    width: 80,
+    width: 70,
     render: (row: any) =>
       h(
         NButton,

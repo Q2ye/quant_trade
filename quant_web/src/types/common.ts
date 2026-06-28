@@ -128,7 +128,6 @@ export enum StrategyStatus {
   STOPPED = "stopped",
   PAUSED = "paused",
   ERROR = "error",
-  DISABLED = "disabled",
 }
 
 export enum StrategyType {
@@ -478,8 +477,7 @@ export const StrategyStatusLabel: Record<string, string> = {
   [StrategyStatus.RUNNING]: "运行中",
   [StrategyStatus.STOPPED]: "已停止",
   [StrategyStatus.PAUSED]: "暂停",
-  [StrategyStatus.ERROR]: "错误",
-  [StrategyStatus.DISABLED]: "禁用",
+  [StrategyStatus.ERROR]: "异常",
 };
 
 export const OrderStatusLabel: Record<string, string> = {

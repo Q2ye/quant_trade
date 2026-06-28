@@ -8,12 +8,13 @@
 import logging
 from typing import Optional, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
 # 导入架构依赖
 from api.dependencies.database import get_db_session
+from api.dependencies.event_engine import get_event_engine
 # 导入策略模块的业务层处理函数
 from modules.strategy.handlers import (
 	get_strategy_list,
@@ -21,11 +22,12 @@ from modules.strategy.handlers import (
 	create_strategy,
 	update_strategy,
 	delete_strategy,
+	clone_strategy_module,
 	start_strategy,
 	stop_strategy,
 	get_strategy_performance,
 	get_strategy_status,
-	compile_strategy,
+	validate_strategy_code,
 	pause_strategy,
 	resume_strategy,
 	check_strategy_module_health,
@@ -240,6 +242,30 @@ async def update_strategy_api (
 		)
 
 
+@router.post("/{strategy_id}/clone")
+async def clone_strategy_api (
+		strategy_id: str,
+		body: Dict = Body(default={}),
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+):
+	"""克隆策略为独立副本，用于调优而不影响原策略的实盘运行"""
+	try:
+		new_name = body.get("new_name") if body else None
+		result = await clone_strategy_module(
+			session=db_session,
+			strategy_id=strategy_id,
+			user_id=current_user.get("id"),
+			new_name=new_name,
+		)
+		return success_response(data=result.get("data"), message="策略已克隆")
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"克隆策略失败: {e}")
+		return error_response(message=str(e), code=500)
+
+
 @router.delete("/{strategy_id}", status_code=204)
 async def delete_strategy_api (
 		strategy_id: str,
@@ -289,18 +315,17 @@ async def delete_strategy_api (
 @router.post("/{strategy_id}/start", response_model=StrategyStatusResponse)
 async def start_strategy_api (
 		strategy_id: str,
-		capital: Optional[float] = None,
-		request: StrategyStartRequest = Depends(),
+		request: StrategyStartRequest,
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
+		db_session: AsyncSession = Depends(get_db_session),
+	event_engine=Depends(get_event_engine),
 ) -> StrategyStatusResponse:
 	"""
 	启动策略
 
 	Args:
 		strategy_id: 策略ID
-		capital: 初始资金（可选，支持query参数或body参数）
-		request: 策略启动请求参数（body）
+		request: 策略启动请求参数（body，含 account_id/capital/run_mode/execution_mode）
 		current_user: 当前登录用户
 		db_session: 数据库会话
 
@@ -308,17 +333,22 @@ async def start_strategy_api (
 		StrategyStatusResponse: 策略状态响应
 	"""
 	try:
-		# 优先使用 query 参数，其次使用 body 参数
-		if capital is None and request.capital is not None:
-			capital = request.capital
-		logger.info(f"用户 {current_user.get('username')} 启动策略 {strategy_id}，资金: {capital}")
+		_capital = request.capital or 1000000.0
+		_run_mode = getattr(request, 'run_mode', 'live')
+		_exec_mode = getattr(request, 'execution_mode', 'semi_auto')
+		_account_id = getattr(request, 'account_id', None)
+		logger.info(
+			f"用户 {current_user.get('username')} 启动策略 {strategy_id}，"
+			f"资金: {_capital}, run_mode={_run_mode}, execution_mode={_exec_mode}, account_id={_account_id}"
+		)
 
 		result = await start_strategy(
 			session=db_session,
 			strategy_id=strategy_id,
 			request=request,
 			user_id=current_user.get("id"),
-			capital=capital
+			capital=_capital,
+			event_engine=event_engine,
 		)
 
 		return result
@@ -345,7 +375,8 @@ async def stop_strategy_api (
 		force: Optional[bool] = None,
 		request: StrategyStopRequest = Depends(),
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
+		db_session: AsyncSession = Depends(get_db_session),
+	event_engine=Depends(get_event_engine),
 ) -> StrategyStatusResponse:
 	"""
 	停止策略
@@ -372,7 +403,8 @@ async def stop_strategy_api (
 			strategy_id=strategy_id,
 			request=request,
 			user_id=current_user.get("id"),
-			force=force
+			force=force,
+			event_engine=event_engine,
 		)
 
 		return result
@@ -547,16 +579,46 @@ async def update_portfolio_weights_api(
 		raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==================== 策略生命周期扩展接口 ====================
+# 策略代码验证接口
 
-@router.post("/{strategy_id}/compile", response_model=StrategyResponse)
-async def compile_strategy_api (
+@router.get("/{strategy_id}/positions")
+async def get_strategy_positions_api (
+		strategy_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session),
+) -> Dict:
+	"""获取策略当前持仓"""
+	try:
+		from shared.database.repositories.trading.position.position_repo import PositionRepository
+		repo = PositionRepository(db_session)
+		positions = await repo.get_by_strategy(strategy_id)
+		result = []
+		for p in positions:
+			result.append({
+				"ts_code": p.ts_code,
+				"volume": p.volume,
+				"available_volume": p.available_volume,
+				"frozen_volume": getattr(p, "frozen_volume", 0),
+				"cost_price": float(p.cost_price) if p.cost_price else 0,
+				"last_price": float(p.last_price) if getattr(p, "last_price", None) else 0,
+				"market_value": float(p.market_value) if getattr(p, "market_value", None) else 0,
+				"pnl": float(p.pnl) if getattr(p, "pnl", None) else 0,
+				"last_update": p.last_update.isoformat() if getattr(p, "last_update", None) else None,
+			})
+		return success_response(data=result)
+	except Exception as e:
+		logger.error(f"获取策略持仓失败: {e}")
+		return error_response(message=str(e), code=500)
+
+
+@router.post("/{strategy_id}/validate", response_model=StrategyResponse)
+async def validate_strategy_code_api (
 		strategy_id: str,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session)
 ) -> StrategyResponse:
 	"""
-	编译策略
+	验证策略代码（v2.1: 语法+依赖检查，不改变状态）
 
 	Args:
 		strategy_id: 策略ID
@@ -564,12 +626,12 @@ async def compile_strategy_api (
 		db_session: 数据库会话
 
 	Returns:
-		StrategyResponse: 编译结果
+		StrategyResponse: 验证结果（含 warnings/unknown_imports）
 	"""
 	try:
-		logger.info(f"用户 {current_user.get('username')} 编译策略 {strategy_id}")
+		logger.info(f"用户 {current_user.get('username')} 验证策略代码 {strategy_id}")
 
-		result = await compile_strategy(
+		result = await validate_strategy_code(
 			session=db_session,
 			strategy_id=strategy_id,
 			user_id=current_user.get("id")
@@ -586,18 +648,18 @@ async def compile_strategy_api (
 			detail=f"策略 {strategy_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"编译策略失败: {str(e)}", exc_info=True)
+		logger.error(f"验证策略代码失败: {str(e)}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"编译策略失败: {str(e)}"
+			detail=f"验证策略代码失败: {str(e)}"
 		)
-
 
 @router.post("/{strategy_id}/pause", response_model=StrategyStatusResponse)
 async def pause_strategy_api (
 		strategy_id: str,
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
+		db_session: AsyncSession = Depends(get_db_session),
+		event_engine=Depends(get_event_engine),
 ) -> StrategyStatusResponse:
 	"""
 	暂停策略
@@ -616,7 +678,8 @@ async def pause_strategy_api (
 		result = await pause_strategy(
 			session=db_session,
 			strategy_id=strategy_id,
-			user_id=current_user.get("id")
+			user_id=current_user.get("id"),
+			event_engine=event_engine,
 		)
 
 		return result
@@ -641,7 +704,8 @@ async def pause_strategy_api (
 async def resume_strategy_api (
 		strategy_id: str,
 		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
+		db_session: AsyncSession = Depends(get_db_session),
+		event_engine=Depends(get_event_engine),
 ) -> StrategyStatusResponse:
 	"""
 	恢复策略
@@ -660,7 +724,8 @@ async def resume_strategy_api (
 		result = await resume_strategy(
 			session=db_session,
 			strategy_id=strategy_id,
-			user_id=current_user.get("id")
+			user_id=current_user.get("id"),
+			event_engine=event_engine,
 		)
 
 		return result

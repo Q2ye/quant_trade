@@ -70,11 +70,13 @@ class RiskEngine(EngineBase):
 
         # 规则实例列表（在 _on_initialize 中加载）
         self._registered_rules: List = []
+        self._registered_rules_map: Dict[str, Any] = {}
         # 规则启用状态（key=rule_name, value=bool）
         self._rule_status: Dict[str, bool] = {}
 
         # 周期巡检
         self._check_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task] = None
         self._last_risk_metrics: Dict[str, Any] = {}
 
     # ==================== EngineBase 生命周期 ====================
@@ -86,6 +88,7 @@ class RiskEngine(EngineBase):
     async def _on_initialize(self) -> None:
         """加载默认规则并恢复启用状态"""
         self._load_default_rules()
+        await self._load_rule_status_from_db()
         logger.info(
             "RiskEngine 初始化完成，已加载 %d 条风控规则",
             len(self._registered_rules),
@@ -94,8 +97,8 @@ class RiskEngine(EngineBase):
     async def _on_start(self) -> None:
         """启动引擎 — 订阅风控事件 + 启动周期巡检任务"""
         # 订阅 trade 模块的风控检查请求事件
-        if self._event_engine:
-            self._event_engine.subscribe(
+        if self.event_engine:
+            self.event_engine.subscribe(
                 "risk.check.requested", self._on_risk_check_requested
             )
             logger.info("RiskEngine 已订阅 risk.check.requested 事件")
@@ -111,6 +114,12 @@ class RiskEngine(EngineBase):
                 name="risk_check_loop",
             )
 
+        # v3.0: 启动事件清理任务（每天凌晨清理 90 天前的旧事件）
+        self._cleanup_task = asyncio.create_task(
+            self._cleanup_loop(),
+            name="risk_cleanup_loop",
+        )
+
     async def _on_risk_check_requested(self, event) -> None:
         """处理风控检查请求（通过 EventEngine 接收，异步处理）"""
         signal_data = event.data.get("signal_data", {})
@@ -122,7 +131,7 @@ class RiskEngine(EngineBase):
                 message=message,
                 signal_data=signal_data,
             )
-            await self._event_engine.put(violation)
+            await self.event_engine.put(violation)
 
     async def _on_stop(self) -> None:
         """停止引擎"""
@@ -134,6 +143,13 @@ class RiskEngine(EngineBase):
             except asyncio.CancelledError:
                 pass
             self._check_task = None
+        if hasattr(self, '_cleanup_task') and self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
         logger.info("RiskEngine 已停止")
 
     async def _on_force_stop(self) -> None:
@@ -224,10 +240,31 @@ class RiskEngine(EngineBase):
 
             for rule in rules:
                 self._registered_rules.append(rule)
+                self._registered_rules_map[rule.get_name()] = rule
                 self._rule_status[rule.get_name()] = True  # 默认全部启用
 
         except ImportError as e:
             logger.warning("加载风控规则失败: %s", e)
+
+    async def _load_rule_status_from_db(self) -> None:
+        """启动时从 DB 恢复规则启用/禁用状态，覆盖默认值（默认全部启用）"""
+        try:
+            from shared.database.session.session_manager import get_session_manager
+            from shared.database.repositories.trading.risk.risk_rule_repo import RiskRuleRepository
+            sm = get_session_manager()
+            async with sm.get_session() as session:
+                repo = RiskRuleRepository(session)
+                db_rules = await repo.get_all()
+                restored = 0
+                for r in db_rules:
+                    if r.rule_name in self._rule_status:
+                        if self._rule_status[r.rule_name] != r.is_active:
+                            self._rule_status[r.rule_name] = r.is_active
+                            restored += 1
+                if restored:
+                    logger.info("从 DB 恢复了 %d 条规则的启停状态", restored)
+        except Exception as e:
+            logger.debug("从 DB 加载规则状态失败（使用默认值）: %s", e)
 
     def get_enabled_rules(self) -> List:
         """获取所有已启用的规则实例"""
@@ -326,7 +363,7 @@ class RiskEngine(EngineBase):
         return False
 
     def update_rule_status(self, rule_name: str, enabled: bool) -> bool:
-        """更新规则启用状态"""
+        """更新规则启用状态（内存 + DB 双写）"""
         if rule_name not in self._rule_status:
             return False
         self._rule_status[rule_name] = enabled
@@ -339,8 +376,78 @@ class RiskEngine(EngineBase):
                 enabled=enabled,
             ))
 
+        # v3.0: 持久化到 risk_rules 表
+        self._schedule_rule_db_sync(rule_name, enabled)
+
         logger.info("规则 %s 已%s", rule_name, "启用" if enabled else "禁用")
         return True
+
+    def _schedule_rule_db_sync(self, rule_name: str, enabled: bool) -> None:
+        """异步同步规则状态到 DB（fire-and-forget，失败不影响主流程）"""
+        async def _sync():
+            try:
+                from shared.database.session.session_manager import get_session_manager
+                from shared.database.repositories.trading.risk.risk_rule_repo import RiskRuleRepository
+                from shared.database.models.business_models import RiskRule
+                from sqlalchemy import select
+                sm = get_session_manager()
+                async with sm.get_session() as session:
+                    repo = RiskRuleRepository(session)
+                    # 按 rule_name 查找已有记录
+                    existing = await repo.get_by_name(rule_name)
+                    if existing:
+                        if enabled:
+                            await repo.enable_rule(str(existing.id))
+                        else:
+                            await repo.disable_rule(str(existing.id))
+                    else:
+                        # 首次：创建 DB 记录
+                        rule = self._registered_rules_map.get(rule_name)
+                        rule_type = self._classify_rule(rule_name) if rule else "unknown"
+                        await repo.create({
+                            "rule_name": rule_name,
+                            "rule_type": rule_type,
+                            "condition": {},
+                            "action": "alert",
+                            "is_active": enabled,
+                        })
+                    await session.commit()
+            except Exception as e:
+                logger.debug("规则状态 DB 同步失败（不影响运行时）: %s", e)
+
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_sync())
+        except RuntimeError:
+            pass
+
+    # ---- 黑名单运行时管理 ----
+
+    def add_blacklist_stock(self, ts_code: str) -> None:
+        """运行时向黑名单规则注入股票代码（同步 DB 黑名单）"""
+        for rule in self._registered_rules:
+            name = rule.get_name()
+            if name == "blacklist" and hasattr(rule, 'blacklist'):
+                if ts_code not in rule.blacklist:
+                    rule.blacklist.append(ts_code)
+                    logger.info("黑名单已添加: %s", ts_code)
+
+    def remove_blacklist_stock(self, ts_code: str) -> None:
+        """运行时从黑名单规则移除股票代码"""
+        for rule in self._registered_rules:
+            name = rule.get_name()
+            if name == "blacklist" and hasattr(rule, 'blacklist'):
+                if ts_code in rule.blacklist:
+                    rule.blacklist.remove(ts_code)
+                    logger.info("黑名单已移除: %s", ts_code)
+
+    def load_blacklist_from_db(self, stocks: List[str]) -> None:
+        """启动时从 DB 批量加载黑名单股票"""
+        for rule in self._registered_rules:
+            if rule.get_name() == "blacklist" and hasattr(rule, 'blacklist'):
+                rule.blacklist = list(set(rule.blacklist + stocks))
+                logger.info("从 DB 加载 %d 只黑名单股票", len(stocks))
 
     @staticmethod
     def _classify_rule(rule_name: str) -> str:
@@ -379,8 +486,8 @@ class RiskEngine(EngineBase):
         """
         检查信号是否符合风控规则。
 
+        v3.0: 分层 severity — info/warning 不阻断，error/critical 阻断。
         v2.0: 唯一路径 — 遍历注册的 RiskRule 实例。
-        不再有内联回退方法。
         """
         if not self.risk_check_enabled:
             return True, "风控检查已禁用"
@@ -391,46 +498,90 @@ class RiskEngine(EngineBase):
             return True, "无启用的风控规则"
 
         violations: List[Dict[str, str]] = []
-        # 初始化内存事件列表（用于快速查询 + 持久化到 DB）
         if not hasattr(self, '_risk_events'):
             self._risk_events: List[Dict[str, Any]] = []
 
+        # 追踪最高 severity
+        max_severity = "info"
+        severity_rank = {"info": 0, "warning": 1, "error": 2, "critical": 3}
+        action_hints: List[str] = []
+
         for rule in enabled_rules:
             try:
-                passed, message = await rule.check(signal_data)
-                if not passed:
+                # v3.0: 优先使用 check_with_severity()
+                if hasattr(rule, 'check_with_severity'):
+                    result = await rule.check_with_severity(signal_data)
+                    passed = result.passed
+                    severity = result.severity
+                    message = result.message
+                    action = result.action
+                else:
+                    passed, message = await rule.check(signal_data)
+                    severity = "error" if not passed else "info"
+                    action = "block" if not passed else "allow"
+
+                severity_idx = severity_rank.get(severity, 2)
+                if severity_idx > severity_rank.get(max_severity, 0):
+                    max_severity = severity
+                if action in ("reduce_size", "block", "kill"):
+                    action_hints.append(action)
+
+                if not passed or severity in ("warning", "error", "critical"):
+                    level = severity if severity in ("warning", "error", "critical") else "warning"
                     violation = {
                         "rule_name": rule.get_name(),
                         "message": message,
                         "signal_data": signal_data,
-                        "level": "warning",
+                        "level": level,
+                        "severity": severity,
+                        "action": action,
                         "event_type": "risk.signal.violation.detected",
                         "created_at": datetime.now(timezone.utc).isoformat(),
                     }
                     violations.append(violation)
-                    # 存入内存事件列表
                     self._risk_events.append(violation)
-                    # 发布违规事件
                     if self.event_engine:
-                        from modules.risk.events.risk_events import (
-                            RiskViolationEvent,
-                        )
+                        from modules.risk.events.risk_events import RiskViolationEvent
                         self.event_engine.put(RiskViolationEvent(
                             rule_name=rule.get_name(),
                             message=message,
                             signal_data=signal_data,
                         ))
-                    # 持久化到 DB
                     await self._persist_risk_event(violation)
             except Exception as e:
                 logger.error("规则 %s 检查异常: %s", rule.get_name(), e)
 
-        if violations:
-            return False, "; ".join(
-                f"[{v['rule_name']}] {v['message']}" for v in violations
-            )
+        # v3.0: 按最高 severity 决定 pass/fail
+        blocking_violations = [v for v in violations
+                               if v.get("severity") in ("error", "critical")]
+        warning_violations = [v for v in violations
+                              if v.get("severity") == "warning"]
+
+        if blocking_violations:
+            msg = "; ".join(f"[{v['rule_name']}] {v['message']}" for v in blocking_violations)
+            if warning_violations:
+                msg += " | 警告: " + "; ".join(v['message'] for v in warning_violations[:2])
+            return False, msg
+
+        if warning_violations:
+            msg = "警告: " + "; ".join(v['message'] for v in warning_violations[:3])
+            return True, msg  # warning 不阻断，通过但携带提示
 
         return True, "所有风控规则检查通过"
+
+    def get_last_check_action_hint(self) -> Optional[str]:
+        """获取最近一次 check_signal 的最高 action 建议（供 SignalEngine 使用）"""
+        if not hasattr(self, '_risk_events') or not self._risk_events:
+            return None
+        recent = self._risk_events[-3:] if len(self._risk_events) >= 3 else self._risk_events
+        actions = [e.get("action", "block") for e in recent]
+        if "kill" in actions:
+            return "kill"
+        if "block" in actions:
+            return "block"
+        if "reduce_size" in actions:
+            return "reduce_size"
+        return None
 
     async def _persist_risk_event(self, event_data: Dict[str, Any]) -> None:
         """持久化风险事件到 DB（如果 session_factory 可用）"""
@@ -465,6 +616,35 @@ class RiskEngine(EngineBase):
             except Exception as e:
                 logger.error("风险巡检异常: %s", e)
                 await asyncio.sleep(min(self._check_interval, 10))
+
+    async def _cleanup_loop(self) -> None:
+        """定时清理过期风险事件（每天执行一次，保留 90 天）"""
+        while self.record.status.value == "running":
+            try:
+                # 首次启动后等 5 分钟再执行，避免影响启动
+                await asyncio.sleep(300)
+                while self.record.status.value == "running":
+                    try:
+                        repo = getattr(self, '_db_session', None)
+                        if repo is None:
+                            try:
+                                from shared.database.repositories.trading.risk.risk_event_repo import RiskEventRepository
+                                from shared.database.session.session_manager import get_session_manager
+                                sm = get_session_manager()
+                                async with sm.get_session() as session:
+                                    repo = RiskEventRepository(session)
+                                    deleted = await repo.cleanup_old_events(days=90)
+                                    logger.info("风险事件清理完成: 删除 %d 条 90 天前的旧记录", deleted)
+                            except Exception:
+                                pass  # DB 不可用时静默跳过
+                        break  # 执行一次后退出内层循环
+                    except Exception as e:
+                        logger.warning("风险事件清理失败: %s", e)
+                    await asyncio.sleep(86400)  # 每天清理一次
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(3600)  # 异常时 1 小时后重试
 
     async def _run_risk_check(self) -> Dict[str, Any]:
         """执行一次风险巡检"""

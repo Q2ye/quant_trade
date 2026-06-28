@@ -41,7 +41,14 @@ const router = useRouter();
 const loading = ref(false);
 const error = ref(false);
 const empty = ref(false);
-const accountId = ref("default");
+const accountId = ref("");
+const accounts = ref<any[]>([]);
+const accountOptions = computed(() =>
+  accounts.value.map((a: any) => ({
+    label: `${a.broker ? a.broker + ' ' : ''}${a.account_name || a.account_number || a.id}`,
+    value: a.id,
+  }))
+);
 const performanceData = ref<PerformancePoint[]>([]);
 const positions = ref<Position[]>([]);
 const monthlyReturns = ref<Record<string, number>>({});
@@ -365,8 +372,20 @@ const onPeriodChange = () => {
   loadPerformanceData();
 };
 
-onMounted(() => {
-  loadPerformanceData();
+const loadAccounts = async () => {
+  try {
+    const { default: request } = await import("@/utils/request");
+    const res: any = await request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } });
+    accounts.value = (res?.data?.data || res?.data || []);
+    if (accounts.value.length > 0 && !accountId.value) {
+      accountId.value = accounts.value[0].id;
+    }
+  } catch { accounts.value = []; }
+};
+
+onMounted(async () => {
+  await loadAccounts();
+  if (accountId.value) loadPerformanceData();
 });
 </script>
 
@@ -375,14 +394,14 @@ onMounted(() => {
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">账户绩效</h1>
-          <p class="page-description">资产全景 · 收益分解 · 风险度量</p>
-        </div>
-        <div class="header-actions">
-          <n-button class="action-btn" @click="onPeriodChange" quaternary size="small">刷新</n-button>
-          <n-button class="action-btn" @click="router.push('/performance')" quaternary>
+          <n-button text size="small" @click="router.back()" style="margin-right:8px">
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
+          <h1 class="page-title">账户绩效</h1>
+          <n-select v-model:value="accountId" :options="accountOptions" placeholder="选择账户" size="small" style="width:240px;margin-left:12px" @update:value="loadPerformanceData" />
+        </div>
+        <div class="header-actions">
+          <n-button class="action-btn" @click="loadPerformanceData" quaternary><template #icon><SmartIcon name="Refresh" /></template></n-button>
         </div>
       </div>
     </div>
@@ -419,9 +438,34 @@ onMounted(() => {
         <!-- Period & date selector -->
         <div class="toolbar-row">
           <n-space>
+            <span class="filter-label">周期</span>
             <n-select v-model:value="selectedPeriod" style="width:100px" :options="periodOptions" @update:value="onPeriodChange" size="small" />
             <n-date-picker v-model:formatted-value="dateRange" type="daterange" clearable size="small" @update:formatted-value="loadPerformanceData" />
           </n-space>
+        </div>
+
+        <!-- Account summary bar -->
+        <div class="summary-bar">
+          <div class="summary-item">
+            <span class="summary-label">总资产</span>
+            <span class="summary-value">{{ fmtMoney(performanceMetrics.totalAsset) }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">可用资金</span>
+            <span class="summary-value">{{ fmtMoney(accounts.find((a:any) => a.id === accountId)?.available_balance || 0) }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">当日盈亏</span>
+            <span class="summary-value" :class="performanceMetrics.dailyPnl >= 0 ? 'text-up' : 'text-down'">
+              {{ performanceMetrics.dailyPnl >= 0 ? '+' : '' }}{{ fmtMoney(performanceMetrics.dailyPnl) }}
+            </span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">当日收益率</span>
+            <span class="summary-value" :class="performanceMetrics.dailyReturn >= 0 ? 'text-up' : 'text-down'">
+              {{ fmtPct(performanceMetrics.dailyReturn) }}
+            </span>
+          </div>
         </div>
 
         <!-- Metric cards: 3x3 grid -->
@@ -516,11 +560,29 @@ onMounted(() => {
   overflow-y: auto;
 }
 .main-content {
-  padding: 16px 32px 24px;
+  padding: 16px 19px 24px;
 }
+
+.filter-label { font-size: 12px; color: var(--color-text-tertiary); }
 
 .toolbar-row {
   margin-bottom: 14px;
+}
+
+/* Account summary bar */
+.summary-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.summary-item {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--color-bg-card, rgba(12,18,32,0.72));
+  border: 1px solid rgba(255,255,255,0.06);
+  .summary-label { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-bottom: 4px; }
+  .summary-value { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
 }
 
 .card-title {

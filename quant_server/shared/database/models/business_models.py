@@ -7,6 +7,7 @@ business_models.py
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Column, String, DateTime, Float, Integer, Numeric, Boolean, Text, ForeignKey, JSON, \
     UniqueConstraint, Date, Index, BigInteger
 from sqlalchemy.orm import relationship
@@ -22,7 +23,7 @@ class SysUser(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='用户ID')
     username = Column(String(50), nullable=False, unique=True, index=True, comment='用户名')
-    password = Column(String(100), nullable=False, comment='密码哈希值')
+    password = Column(String(500), nullable=False, comment='密码哈希值')
     email = Column(String(100), comment='邮箱')
     phone = Column(String(20), comment='手机号')
     real_name = Column(String(50), comment='真实姓名')
@@ -143,13 +144,18 @@ class Strategy(Base):
     module_path = Column(String(200), nullable=False, comment='模块路径')
     strategy_type = Column(String(50), comment='策略类型：cta/alpha/ml/dl等')
     code = Column(Text, comment='策略代码')
-    status = Column(String(20), default='stopped', comment='策略状态：stopped, running, paused')
+    status = Column(String(20), default='draft', comment='策略状态：draft/running/paused/stopped/error')
+    run_mode = Column(String(20), default='backtest', comment='运行模式: backtest/live/paper')
+    execution_mode = Column(String(20), nullable=True, comment='执行模式: semi_auto/full_auto，backtest时为null')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='绑定的交易账户ID（实盘启动时指定）')
+    allocated_capital = Column(Numeric(16, 4), default=0, comment='分配资金额度')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), comment='更新时间')
 
     # 关联关系
     user = relationship("SysUser", back_populates="strategies")
+    account = relationship("Account", foreign_keys=[account_id])
     runs = relationship("StrategyRun", back_populates="strategy", cascade="all, delete-orphan")
     signals = relationship("Signal", back_populates="strategy", cascade="all, delete-orphan")
     daily_performance = relationship("StrategyDailyPerformance", back_populates="strategy",
@@ -178,7 +184,12 @@ class StrategyRun(Base):
     started_at = Column(DateTime(timezone=True), nullable=False, comment='开始时间')
     stopped_at = Column(DateTime(timezone=True), comment='停止时间')
     status = Column(String(20), nullable=False, comment='运行状态：running, stopped, error')
+    run_mode = Column(String(20), default='backtest', comment='运行模式: backtest/live/paper')
+    execution_mode = Column(String(20), nullable=True, comment='执行模式: semi_auto/full_auto，backtest时为null')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='启动时绑定的账户ID')
+    allocated_capital = Column(Numeric(16, 4), default=0, comment='启动时分配的资金额度')
     log_path = Column(Text, comment='日志文件路径')
+    state_snapshot = Column(JSONB, nullable=True, comment='策略状态快照（含心跳/持仓/数据日期）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
@@ -228,13 +239,21 @@ class Signal(Base):
     reason = Column(Text, comment='信号理由')
     status = Column(String(20), default='pending',
                     comment='信号状态：pending/approved/rejected/executed')
+    signal_status = Column(String(20), default='pending_manual',
+                           comment='人工确认状态: pending_manual/confirmed/partial/cancelled/rejected/expired')
+    price_limit_low = Column(Numeric(10, 4), comment='可接受最低成交价')
+    price_limit_high = Column(Numeric(10, 4), comment='可接受最高成交价')
+    max_slippage_pct = Column(Numeric(5, 4), default=0.02, comment='最大可接受滑点比例')
+    order_type = Column(String(20), default='limit_range', comment='订单类型: limit/limit_range/market')
     order_id = Column(String(36), comment='关联订单ID（执行后回写）')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='关联的交易账户ID')
     reviewed_at = Column(DateTime(timezone=True), comment='审核时间')
     reviewed_by = Column(String(36), comment='审核人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
     strategy = relationship("Strategy", back_populates="signals")
+    account = relationship("Account", foreign_keys=[account_id])
 
     # 索引
     __table_args__ = (
@@ -610,6 +629,7 @@ class Position(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='持仓ID')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
+    strategy_id = Column(String(36), comment='策略ID（多策略同票隔离）')
     ts_code = Column(String(12), nullable=False, index=True, comment='股票代码')
     volume = Column(Integer, nullable=False, default=0, comment='总持仓量')
     available_volume = Column(Integer, nullable=False, default=0, comment='可用持仓量')

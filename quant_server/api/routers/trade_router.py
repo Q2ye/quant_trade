@@ -6,9 +6,9 @@
 交易模块路由
 """
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -629,9 +629,9 @@ async def review_signal_api (
 
 @router.get("/statistics")
 async def get_trade_statistics_api(
-    start_date: str = Query(default=None, description="开始日期"),
-    end_date: str = Query(default=None, description="结束日期"),
-    strategy_id: str = Query(default=None, description="策略ID"),
+    start_date: Optional[str] = Query(default=None, description="开始日期"),
+    end_date: Optional[str] = Query(default=None, description="结束日期"),
+    strategy_id: Optional[str] = Query(default=None, description="策略ID"),
     current_user: Dict = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session),
 ):

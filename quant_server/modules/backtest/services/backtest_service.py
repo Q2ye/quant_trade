@@ -855,12 +855,17 @@ class BacktestService:
 				raise ValueError(f"回测任务不存在: {task_id}")
 			if task.user_id != user_id:
 				raise ValueError("无权限访问该回测任务")
-			# ---- 2. 返回结果（completed=绩效, failed=错误信息） ----
+			# ---- 2. 返回结果（completed=绩效, failed=错误信息, 其他=进行中状态） ----
 			if task.status == "completed":
 				return task.result or {}
 			if task.status == "failed":
 				return task.result or {"error": "回测执行失败，未获取到错误详情"}
-			raise ValueError(f"任务状态为 {task.status}，尚未完成")
+			# 任务进行中（running/pending/cancelled 等），正常返回状态信息，不抛异常
+			return {
+				"status": task.status,
+				"message": f"任务状态为 {task.status}，尚未完成",
+				"progress": task.progress if hasattr(task, "progress") and task.progress else None,
+			}
 		except Exception as e:
 			logger.error(f"获取回测结果失败: {str(e)}")
 			raise

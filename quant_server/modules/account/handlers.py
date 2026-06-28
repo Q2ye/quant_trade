@@ -305,6 +305,9 @@ async def get_account_detail (session: AsyncSession, account_id: str, _user_id: 
 
 
 async def create_account (session: AsyncSession, request, _user_id: str):
+	# 前端不传 user_id 时，由认证上下文注入
+	if not getattr(request, 'user_id', None):
+		request.user_id = _user_id
 	handler = AccountHandler(session)
 	account = await handler.create_account(request)
 	return {"success": True, "data": account.model_dump()}

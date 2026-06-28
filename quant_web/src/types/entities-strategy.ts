@@ -12,7 +12,11 @@ export interface Strategy extends BaseEntity {
   description: string; // 策略描述
   class_name: string; // 策略类名（Python类名）
   module_path: string; // 策略文件路径
-  status: "running" | "stopped" | "error"; // 运行状态
+  status: "draft" | "running" | "paused" | "stopped" | "error"; // 运行状态（v2.1: 5 状态）
+  run_mode: "backtest" | "live" | "paper"; // v2.0: 运行模式 (去掉了simulation)
+  execution_mode?: "semi_auto" | "full_auto"; // v2.0: 执行模式 (实盘时选择)
+  account_id?: string; // v2.2: 绑定的交易账户ID
+  allocated_capital?: number; // v2.2: 分配资金额度
   parameters: Record<string, any>; // 策略参数（JSON格式）
   version?: string; // 策略版本
   category?: string; // 策略分类

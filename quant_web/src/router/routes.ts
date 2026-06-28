@@ -431,6 +431,12 @@ export const routes: RouteRecordRaw[] = [
     path: "/signals/timeline",
     redirect: "/signals",
   },
+  {
+    path: "/signals/confirm",
+    name: "SignalConfirm",
+    component: () => import("@/views/Signal/SignalConfirm.vue"),
+    meta: { menu: "signals", layout: "main", title: "信号确认" },
+  },
 
   // 系统管理
   {

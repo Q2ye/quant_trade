@@ -259,18 +259,19 @@ const riskModule: Module<RiskState, RootState> = {
     async fetchBlacklist({ commit }: any) {
       commit("SET_LOADING", { blacklist: true });
       try {
-        const result = await riskAPI.getRiskRules();
-        const blacklistRule = (result.rules || []).find(
-          (r: RiskRule) => r.rule_type === "blacklist" || r.rule_type === "market_blacklist" || r.rule_type === "sector_blacklist"
-        );
-        // 黑名单股票存储在规则的 condition.symbols 中
-        const symbols: string[] = blacklistRule ? [] : [];
-        const stocks = symbols.map((symbol: string) => ({
-          symbol,
-          name: symbol,  // 名称由视图层从股票 API 查询
-          reason: blacklistRule?.rule_type || "blacklist",
-          addedDate: new Date().toISOString().split("T")[0],
-          enabled: blacklistRule?.enabled ?? true,
+        const result = await riskAPI.getBlacklistStocks();
+        const stocks = (result || []).map((entry: any) => ({
+          id: entry.id,
+          symbol: entry.target_id,
+          name: entry.target_name || entry.target_id,
+          reason: entry.reason || "",
+          listType: entry.list_type,
+          expireDate: entry.expire_date,
+          isActive: entry.is_active,
+          addedDate: entry.created_at
+            ? new Date(entry.created_at).toISOString().split("T")[0]
+            : new Date().toISOString().split("T")[0],
+          enabled: entry.is_active ?? true,
         }));
         commit("SET_BLACKLIST", stocks);
         return stocks;
@@ -280,6 +281,18 @@ const riskModule: Module<RiskState, RootState> = {
       } finally {
         commit("SET_LOADING", { blacklist: false });
       }
+    },
+
+    async addToBlacklist({ dispatch }: any, data: {
+      ts_code: string; target_name?: string; list_type?: string; reason?: string;
+    }) {
+      await riskAPI.addBlacklistStock(data);
+      await dispatch("fetchBlacklist");
+    },
+
+    async removeFromBlacklist({ dispatch }: any, entryId: string) {
+      await riskAPI.removeBlacklistStock(entryId);
+      await dispatch("fetchBlacklist");
     },
 
     // ==================== 客户端事件触发（供 WS 和本地使用） ====================

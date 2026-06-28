@@ -13,6 +13,7 @@ from core.engines.system import EventEngine
 from core.engines.types.enums import EngineType
 from modules.trade.engines.execution_engine import ExecutionEngine
 from modules.trade.engines.risk_engine import RiskEngine
+from modules.strategy.constants import ExecutionMode
 
 
 class SignalEngine(EngineBase):
@@ -162,9 +163,29 @@ class SignalEngine(EngineBase):
         # 保存信号
         self.signals[signal_id] = signal
 
-        # 持久化到数据库
+        # 持久化到数据库（v2.0: 含价格范围字段）
         db_signal_id = await self._persist_signal(signal)
 
+        # v2.0: 实盘模式 → 推送交易信号通知
+        run_mode = signal_data.get("run_mode", "backtest")
+        execution_mode = signal_data.get("execution_mode", "semi_auto")
+        if run_mode in ("live",):
+            await self._send_signal_notification(signal_data, signal_id)
+
+        # v2.0: 根据执行模式分支
+        if execution_mode == "semi_auto" or execution_mode == ExecutionMode.SEMI_AUTO:
+            # 半自动：信号状态设为 pending_manual，等待人工确认
+            signal["status"] = "pending_manual"
+            signal["message"] = "信号已生成，等待人工确认成交"
+            self.processed_signals.append(signal)
+            self._update_signal_status(db_signal_id, "pending_manual")
+            logger.info(
+                "半自动信号 pending_manual: %s %s %s @ %.2f",
+                signal_id, signal.get("ts_code"), signal.get("direction"), signal.get("price", 0)
+            )
+            return signal
+
+        # 全自动：走风控→执行链路
         try:
             # 发布风控检查请求事件（异步通知，不阻塞）
             if self._event_engine:
@@ -176,10 +197,12 @@ class SignalEngine(EngineBase):
                 except Exception as e:
                     logger.debug(f"发布风控检查事件失败（不影响主流程）: {e}")
 
-            # 同步风控检查（保持请求-响应语义）
+            # 同步风控检查（v3.0：分层 severity）
             is_valid, message = await self.risk_engine.check_signal(signal)
+            action_hint = self.risk_engine.get_last_check_action_hint()
+
             if not is_valid:
-                # 发布违规事件
+                # error/critical 违规 — 阻断下单
                 if self._event_engine:
                     try:
                         from modules.risk.events.risk_events import RiskViolationEvent
@@ -197,6 +220,15 @@ class SignalEngine(EngineBase):
                 self.processed_signals.append(signal)
                 self._update_signal_status(db_signal_id, "rejected")
                 return signal
+
+            # v3.0: warning 级违规 — 缩减订单量但不阻断
+            if action_hint == "reduce_size" and signal.get("quantity"):
+                original_qty = signal["quantity"]
+                signal["quantity"] = max(int(original_qty * 0.5), 100)  # 至少保留 100 股
+                logger.info(
+                    "风控 warning — 订单量缩减: %s -> %s (ts_code=%s)",
+                    original_qty, signal["quantity"], signal.get("ts_code")
+                )
 
             # 执行信号
             execution_result = await self.execution_engine.execute_signal(signal)
@@ -226,6 +258,39 @@ class SignalEngine(EngineBase):
         
         return signal
     
+    async def _send_signal_notification(
+        self, signal_data: Dict[str, Any], signal_id: str
+    ) -> None:
+        """v2.0: 推送交易信号到微信/钉钉通知"""
+        if not self._event_engine:
+            return
+        try:
+            from core.events.base import BaseEvent
+            event = BaseEvent(
+                module="trade",
+                event_type="monitor.trading.signal",
+                data={
+                    "signal_id": signal_id,
+                    "strategy_name": signal_data.get("strategy_name", ""),
+                    "ts_code": signal_data.get("ts_code", ""),
+                    "signal_direction": signal_data.get("signal_direction", signal_data.get("direction", "")),
+                    "signal_type": signal_data.get("signal_type", ""),
+                    "price": signal_data.get("price", 0),
+                    "price_limit_low": signal_data.get("price_limit_low"),
+                    "price_limit_high": signal_data.get("price_limit_high"),
+                    "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
+                    "order_type": signal_data.get("order_type", "limit_range"),
+                    "quantity": signal_data.get("quantity", 0),
+                    "confidence": signal_data.get("confidence", 1.0),
+                    "reason": signal_data.get("reason", ""),
+                    "timestamp": signal_data.get("timestamp", signal_data.get("generation_time", "")),
+                },
+            )
+            self._event_engine.put(event)
+            logger.info(f"交易信号通知已发布: {signal_id}")
+        except Exception as e:
+            logger.warning(f"发布交易信号通知失败: {e}")
+
     async def _update_signal_status(self, db_id: Optional[str], status: str, order_id: str = None):
         """回写信号状态到数据库"""
         if not db_id or not self._session_factory:

@@ -25,10 +25,11 @@ logger = logging.getLogger(__name__)
 class StrategyHandler:
 	"""策略API处理器"""
 
-	def __init__ (self, db: AsyncSession):
+	def __init__ (self, db: AsyncSession, event_engine=None):
 		self.db = db
+		self.event_engine = event_engine
 		self.strategy_service = StrategyService(db)
-		self.execution_service = ExecutionService(db)
+		self.execution_service = ExecutionService(db, event_engine=event_engine)
 
 	async def get_strategy_list (
 			self,
@@ -235,6 +236,23 @@ class StrategyHandler:
 			logger.error(f"删除策略失败: {e}")
 			raise HTTPException(status_code=500, detail=str(e))
 
+	async def clone_strategy(
+			self, strategy_id: str, user_id: str, new_name: str = None,
+	) -> Dict[str, Any]:
+		"""克隆策略为独立副本"""
+		try:
+			result = await self.strategy_service.clone_strategy(
+				strategy_id=strategy_id, user_id=user_id, new_name=new_name,
+			)
+			if not result.get("success"):
+				raise HTTPException(status_code=400, detail=result.get("error", "克隆失败"))
+			return {"success": True, "data": result["data"]}
+		except HTTPException:
+			raise
+		except Exception as e:
+			logger.error(f"克隆策略失败: {e}")
+			raise HTTPException(status_code=500, detail=str(e))
+
 	async def start_strategy (
 			self,
 			strategy_id: str,
@@ -264,12 +282,22 @@ class StrategyHandler:
 			if hasattr(request, 'parameters') and request.parameters:
 				parameters = request.parameters
 
+			run_mode_str = getattr(request, 'run_mode', None) or "live"
+			from modules.strategy.constants import RunMode as RM
+			run_mode = getattr(RM, run_mode_str.upper(), RM.LIVE)
+
+			execution_mode_str = getattr(request, 'execution_mode', None) or "semi_auto"
+			from modules.strategy.constants import ExecutionMode as EM
+			execution_mode = getattr(EM, execution_mode_str.upper(), EM.SEMI_AUTO)
+
 			result = await self.execution_service.start_strategy(
 				strategy_id=strategy_id,
 				user_id=user_id,
 				capital=capital,
 				parameters=parameters,
-				run_mode=RunMode.SIMULATION,
+				run_mode=run_mode,
+				execution_mode=execution_mode,
+				account_id=getattr(request, 'account_id', None),
 			)
 
 			return result
@@ -473,19 +501,20 @@ class StrategyHandler:
 			return {"success": False, "error": str(e)}
 
 	
-	async def compile_strategy(
+	async def validate_strategy_code(
 			self,
 			strategy_id: str,
 			user_id: str
 	) -> Dict[str, Any]:
-		"""编译策略"""
+		"""验证策略代码（v2.1: 不改变状态，仅做语法+依赖检查）"""
 		try:
-			return await self.strategy_service.compile_strategy(
+			return await self.strategy_service.validate_strategy_code(
 				strategy_id=strategy_id,
 				user_id=user_id,
 			)
 		except Exception as e:
-			logger.error(f"编译策略失败: {e}")
+			logger.error(f"验证策略代码失败: {e}")
+			return {"success": False, "error": str(e)}
 			return {"success": False, "error": str(e)}
 	async def pause_strategy(
 			self,
@@ -688,13 +717,17 @@ async def delete_strategy (session: AsyncSession, strategy_id: str, user_id: str
 	return await handler.delete_strategy(strategy_id, user_id)
 
 
-async def start_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, capital: float = None):
-	handler = StrategyHandler(session)
+async def clone_strategy_module(session: AsyncSession, strategy_id: str, user_id: str, new_name: str = None):
+		handler = StrategyHandler(session)
+		return await handler.clone_strategy(strategy_id, user_id, new_name)
+
+async def start_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, capital: float = None, event_engine=None):
+	handler = StrategyHandler(session, event_engine=event_engine)
 	return await handler.start_strategy(strategy_id, request, user_id, capital)
 
 
-async def stop_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, force: bool = None):
-	handler = StrategyHandler(session)
+async def stop_strategy (session: AsyncSession, strategy_id: str, request, user_id: str, force: bool = None, event_engine=None):
+	handler = StrategyHandler(session, event_engine=event_engine)
 	return await handler.stop_strategy(strategy_id, request, user_id, force)
 
 
@@ -709,18 +742,18 @@ async def get_strategy_status (session: AsyncSession, strategy_id: str, user_id:
 
 
 
-async def compile_strategy(session: AsyncSession, strategy_id: str, user_id: str):
+async def validate_strategy_code(session: AsyncSession, strategy_id: str, user_id: str):
 	handler = StrategyHandler(session)
-	return await handler.compile_strategy(strategy_id, user_id)
+	return await handler.validate_strategy_code(strategy_id, user_id)
 
 
-async def pause_strategy(session: AsyncSession, strategy_id: str, user_id: str):
-	handler = StrategyHandler(session)
+async def pause_strategy(session: AsyncSession, strategy_id: str, user_id: str, event_engine=None):
+	handler = StrategyHandler(session, event_engine=event_engine)
 	return await handler.pause_strategy(strategy_id, user_id)
 
 
-async def resume_strategy(session: AsyncSession, strategy_id: str, user_id: str):
-	handler = StrategyHandler(session)
+async def resume_strategy(session: AsyncSession, strategy_id: str, user_id: str, event_engine=None):
+	handler = StrategyHandler(session, event_engine=event_engine)
 	return await handler.resume_strategy(strategy_id, user_id)
 
 

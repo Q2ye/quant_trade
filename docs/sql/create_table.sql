@@ -659,7 +659,11 @@ CREATE TABLE strategies (
     module_path VARCHAR(200) NOT NULL,
     strategy_type VARCHAR(50),
     code TEXT,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'compiled', 'deployed', 'running', 'paused', 'stopped', 'error', 'archived')),
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'stopped', 'error')),
+    run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
+    execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
+    account_id VARCHAR(36) REFERENCES accounts(id),
+    allocated_capital NUMERIC(16,4) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -673,7 +677,9 @@ COMMENT ON COLUMN strategies.class_name IS '策略类名（Python类名）';
 COMMENT ON COLUMN strategies.module_path IS '策略文件路径（相对路径）';
 COMMENT ON COLUMN strategies.strategy_type IS '策略类型：cta/alpha/ml/dl等';
 COMMENT ON COLUMN strategies.code IS '策略代码';
-COMMENT ON COLUMN strategies.status IS '策略状态：draft-草稿, compiled-已编译, deployed-已部署, running-运行中, paused-已暂停, stopped-已停止, error-异常, archived-已归档';
+COMMENT ON COLUMN strategies.status IS '策略状态：draft-草稿, running-运行中, paused-已暂停, stopped-已停止, error-异常';
+COMMENT ON COLUMN strategies.account_id IS '绑定的交易账户ID（实盘启动时指定）';
+COMMENT ON COLUMN strategies.allocated_capital IS '分配资金额度（实盘启动时指定，≤账户可用余额）';
 
 -- 策略运行记录表
 CREATE TABLE strategy_runs (
@@ -682,9 +688,18 @@ CREATE TABLE strategy_runs (
     started_at TIMESTAMPTZ NOT NULL,
     stopped_at TIMESTAMPTZ,
     status VARCHAR(20) NOT NULL,
+    run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
+    execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
+    account_id VARCHAR(36) REFERENCES accounts(id),
+    allocated_capital NUMERIC(16,4) DEFAULT 0,
     log_path TEXT,
+    state_snapshot JSONB,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+COMMENT ON COLUMN strategy_runs.account_id IS '启动时绑定的账户ID';
+COMMENT ON COLUMN strategy_runs.allocated_capital IS '启动时分配的资金额度';
+COMMENT ON COLUMN strategy_runs.state_snapshot IS '策略状态快照（含心跳/持仓/数据日期）';
 
 COMMENT ON TABLE strategy_runs IS '策略运行历史记录表';
 COMMENT ON COLUMN strategy_runs.strategy_id IS '外键，关联策略ID';
@@ -871,6 +886,7 @@ CREATE TABLE positions (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
+    strategy_id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     volume INT NOT NULL DEFAULT 0,
     available_volume INT NOT NULL DEFAULT 0,
@@ -881,12 +897,13 @@ CREATE TABLE positions (
     pnl NUMERIC(16, 4) DEFAULT 0,
     pnl_rate NUMERIC(10, 6) DEFAULT 0,
     last_update TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (account_id, ts_code)
+    UNIQUE (account_id, ts_code, strategy_id)
 );
 
-COMMENT ON TABLE positions IS '用户持仓表';
+COMMENT ON TABLE positions IS '用户持仓表（按策略维度隔离）';
 COMMENT ON COLUMN positions.user_id IS '用户ID';
 COMMENT ON COLUMN positions.account_id IS '账户ID';
+COMMENT ON COLUMN positions.strategy_id IS '策略ID（多策略同票隔离）';
 COMMENT ON COLUMN positions.ts_code IS '股票代码';
 COMMENT ON COLUMN positions.volume IS '持仓总数量';
 COMMENT ON COLUMN positions.available_volume IS '可用数量（考虑T+1交易制度）';
@@ -3192,27 +3209,45 @@ CREATE TABLE signals (
     id VARCHAR(36),
     strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
     ts_code VARCHAR(12) NOT NULL,
+    direction VARCHAR(10) DEFAULT 'buy',
     signal_type VARCHAR(10) NOT NULL CHECK (signal_type IN ('buy', 'sell', 'hold')),
     signal_time TIMESTAMPTZ NOT NULL,
     price NUMERIC(10,4),
+    quantity INT DEFAULT 0,
+    price_limit_low NUMERIC(10,4),
+    price_limit_high NUMERIC(10,4),
+    max_slippage_pct NUMERIC(5,4) DEFAULT 0.02,
+    order_type VARCHAR(20) DEFAULT 'limit_range' CHECK (order_type IN ('limit', 'limit_range', 'market')),
     strength NUMERIC(5,2),
+    confidence NUMERIC(5,4) DEFAULT 1.0,
     reason TEXT,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'executed')),
+    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'partial', 'cancelled', 'rejected', 'expired')),
     order_id VARCHAR(36),
     reviewed_at TIMESTAMPTZ,
     reviewed_by VARCHAR(36),
+    account_id VARCHAR(36) REFERENCES accounts(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON TABLE signals IS '策略交易信号记录表（TimescaleDB超表）';
 COMMENT ON COLUMN signals.strategy_id IS '策略ID';
+COMMENT ON COLUMN signals.account_id IS '关联的交易账户ID';
 COMMENT ON COLUMN signals.ts_code IS '股票代码';
+COMMENT ON COLUMN signals.direction IS '交易方向：buy-买入, sell-卖出';
 COMMENT ON COLUMN signals.signal_type IS '信号类型：buy-买入, sell-卖出, hold-持有';
 COMMENT ON COLUMN signals.signal_time IS '信号时间';
-COMMENT ON COLUMN signals.price IS '信号价格';
+COMMENT ON COLUMN signals.price IS '参考价格（触发时的收盘价）';
+COMMENT ON COLUMN signals.quantity IS '建议数量（股）';
+COMMENT ON COLUMN signals.price_limit_low IS '可接受最低成交价';
+COMMENT ON COLUMN signals.price_limit_high IS '可接受最高成交价';
+COMMENT ON COLUMN signals.max_slippage_pct IS '最大可接受滑点（默认2%）';
+COMMENT ON COLUMN signals.order_type IS '订单类型：limit-限价, limit_range-限价区间, market-市价';
 COMMENT ON COLUMN signals.strength IS '信号强度（0-100）';
+COMMENT ON COLUMN signals.confidence IS '置信度（0-1）';
 COMMENT ON COLUMN signals.reason IS '信号产生原因';
-COMMENT ON COLUMN signals.status IS '信号状态：pending-待审核, approved-已采纳, rejected-已拒绝, executed-已执行';
+COMMENT ON COLUMN signals.status IS '系统状态：pending-待处理, approved-已批准, rejected-已拒绝, executed-已执行';
+COMMENT ON COLUMN signals.signal_status IS '人工确认状态：pending_manual-待确认, confirmed-已成交, partial-部分成交, cancelled-已取消, rejected-风控拒绝, expired-已过期';
 COMMENT ON COLUMN signals.order_id IS '关联订单ID（信号执行后回写）';
 COMMENT ON COLUMN signals.reviewed_at IS '审核时间';
 COMMENT ON COLUMN signals.reviewed_by IS '审核人ID';
@@ -5018,3 +5053,9 @@ COMMENT ON COLUMN index_factor_pro_daily.xsii_td1_bfq IS '薛斯通道II TD1';
 COMMENT ON COLUMN index_factor_pro_daily.xsii_td2_bfq IS '薛斯通道II TD2';
 COMMENT ON COLUMN index_factor_pro_daily.xsii_td3_bfq IS '薛斯通道II TD3';
 COMMENT ON COLUMN index_factor_pro_daily.xsii_td4_bfq IS '薛斯通道II TD4';
+
+
+COMMENT ON COLUMN strategies.run_mode IS '运行模式: backtest/live/paper';
+COMMENT ON COLUMN strategies.execution_mode IS '执行模式: semi_auto-半自动, full_auto-全自动';
+COMMENT ON COLUMN strategy_runs.run_mode IS '运行模式: backtest/live/paper';
+COMMENT ON COLUMN strategy_runs.execution_mode IS '执行模式: semi_auto-半自动, full_auto-全自动';

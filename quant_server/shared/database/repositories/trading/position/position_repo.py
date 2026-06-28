@@ -66,6 +66,20 @@ class PositionRepository(BaseRepository[Position]):
 		except Exception as e:
 			raise RepositoryError(f"获取用户持仓失败: {str(e)}")
 
+	async def get_by_strategy(
+			self, strategy_id: str, include_zero: bool = False
+	) -> List[Position]:
+		"""获取指定策略的所有持仓（按 strategy_id 隔离）"""
+		try:
+			query = select(Position).where(Position.strategy_id == strategy_id)
+			if not include_zero:
+				query = query.where(Position.volume > 0)
+			query = query.order_by(Position.ts_code.asc())
+			result = await self.session.execute(query)
+			return result.scalars().all()
+		except Exception as e:
+			raise RepositoryError(f"获取策略持仓失败: {str(e)}")
+
 	async def get_account_positions (
 			self,
 			account_id: str,

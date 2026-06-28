@@ -175,7 +175,14 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
         from modules.strategy.engines.strategy_manager import StrategyManager
         from modules.strategy.engines.engine_factory import EngineFactory
 
-        strategy_manager = StrategyManager(event_engine=event_engine)
+        # v2.0: 传入 session_factory 使 StrategyManager 能加载策略详情
+        from shared.database.session.session_manager import get_session_manager
+        session_factory = get_session_manager().get_session
+
+        strategy_manager = StrategyManager(
+            event_engine=event_engine,
+            session_factory=session_factory,
+        )
         engine_factory = EngineFactory(event_engine=event_engine)
 
         # 注册到主引擎（供其他模块通过 main_engine 获取）

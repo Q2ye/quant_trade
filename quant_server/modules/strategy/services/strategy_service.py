@@ -477,14 +477,12 @@ class StrategyService:
 					"error_code": ErrorCode.STRATEGY_NOT_RUNNING
 				}
 
-			# 删除参数
+			# 删除参数（策略参数 ORM 未设 cascade，需手动逐表清理）
 			await self.param_repo.delete_by_strategy_id(strategy_id)
 
-			# 删除版本
-			# await self.version_repo.delete_by_strategy_id(strategy_id)
-
-			# 删除策略
-			await self.strategy_repo.delete(strategy_id)
+			# 用 ORM session.delete() 触发 cascade，删除策略及关联的 versions/backtest_tasks/signals/orders/runs
+			await self.session.delete(strategy)
+			await self.session.flush()
 
 			await self.session.commit()
 
@@ -502,20 +500,62 @@ class StrategyService:
 				"error": str(e)
 			}
 
-	async def compile_strategy (
+	async def clone_strategy(
+			self, strategy_id: str, user_id: str, new_name: str = None,
+	) -> Dict[str, Any]:
+		"""克隆策略为独立副本，用于调优而不影响原策略的实盘运行。"""
+		try:
+			original = await self.strategy_repo.get_by_id(strategy_id)
+			if not original:
+				return {"success": False, "error": f"策略 {strategy_id} 不存在"}
+			if original.user_id != user_id:
+				return {"success": False, "error": "无权克隆此策略"}
+
+			params = await self.param_repo.get_by_strategy_id(strategy_id)
+			param_dict = {p.name: p.value for p in params} if params else {}
+
+			clone_data = {
+				"name": new_name or f"{original.name}_副本",
+				"description": f"克隆自 {original.name}",
+				"code": original.code,
+				"strategy_type": original.strategy_type,
+				"class_name": getattr(original, "class_name", "") or "",
+				"module_path": getattr(original, "module_path", "") or "",
+				"user_id": user_id,
+				"status": "draft",
+			}
+			clone = await self.strategy_repo.create(clone_data)
+			await self.session.flush()
+
+			for pname, pval in param_dict.items():
+				await self.param_repo.create({
+					"strategy_id": clone.id,
+					"name": pname,
+					"value": str(pval),
+				})
+
+			await self.session.commit()
+			logger.info("策略 %s 已克隆为 %s", strategy_id, clone.id)
+			return {"success": True, "data": {"id": str(clone.id), "name": clone_data["name"]}}
+		except Exception as e:
+			logger.error("克隆策略失败: %s", e)
+			await self.session.rollback()
+			return {"success": False, "error": str(e)}
+
+	async def validate_strategy_code(
 			self,
 			strategy_id: str,
 			user_id: str,
 	) -> Dict[str, Any]:
 		"""
-		编译策略
+		验证策略代码（v2.1: 不再改变状态，仅做语法检查和依赖审计）
 
 		Args:
 			strategy_id: 策略ID
 			user_id: 用户ID
 
 		Returns:
-			编译结果
+			验证结果（含 warnings/unknown_imports）
 		"""
 		try:
 			strategy = await self.strategy_repo.get_by_id(strategy_id)
@@ -531,7 +571,6 @@ class StrategyService:
 					"error": "无权操作此策略"
 				}
 
-			# 验证代码
 			validation_result = await self._validate_strategy_code(strategy.code)
 			if not validation_result["valid"]:
 				return {
@@ -539,25 +578,18 @@ class StrategyService:
 					"error": validation_result["error"]
 				}
 
-			# 更新状态为已编译
-			await self.strategy_repo.update(strategy_id, {
-				"status": str(StrategyLifecycleStatus.COMPILED.value),
-				"updated_at": datetime.now()
-			})
-
-			await self.session.commit()
-
 			return {
 				"success": True,
-				"data": {"id": strategy_id, "status": StrategyLifecycleStatus.COMPILED.value}
+				"data": {
+					"id": strategy_id,
+					"status": strategy.status,
+					"warnings": validation_result.get("warnings"),
+					"unknown_imports": validation_result.get("unknown_imports"),
+				},
 			}
 		except Exception as e:
-			logger.error(f"编译策略失败: {e}")
-			await self.session.rollback()
-			return {
-				"success": False,
-				"error": str(e)
-			}
+			logger.error(f"验证策略代码失败: {e}")
+			return {"success": False, "error": str(e)}
 
 	# ---- 策略运行环境白名单 ----
 	# 不在白名单中的 import 会在保存时给出警告，但仍允许保存
@@ -679,13 +711,19 @@ class StrategyService:
 
 	@staticmethod
 	def _to_dict (strategy) -> Dict[str, Any]:
-		"""转换为字典"""
+		"""转换为字典 — v2.0: 包含 execution_mode"""
 		return {
 			"id": strategy.id,
 			"name": strategy.name,
 			"description": strategy.description,
+			"class_name": getattr(strategy, "class_name", ""),
 			"strategy_type": strategy.strategy_type,
 			"status": strategy.status,
+			"run_mode": getattr(strategy, "run_mode", "backtest"),
+			"execution_mode": getattr(strategy, "execution_mode", None),
+			"account_id": getattr(strategy, "account_id", None),
+			"allocated_capital": float(strategy.allocated_capital) if getattr(strategy, "allocated_capital", None) else 0,
+
 			"created_at": strategy.created_at.isoformat() if strategy.created_at else None,
 			"updated_at": strategy.updated_at.isoformat() if strategy.updated_at else None,
 		}

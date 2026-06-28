@@ -51,15 +51,19 @@ class StrategyType(str, Enum):
 
 # ==================== 策略状态 ====================
 class StrategyLifecycleStatus(str, Enum):
-    """策略生命周期状态枚举"""
-    # 草稿
+    """策略生命周期状态枚举（5 状态简化模型）
+
+    状态流转:
+        DRAFT ──start──→ RUNNING ⇄ PAUSED
+                           │  ↓
+                           │ ERROR（自动，handle_bar_batch 大面积异常）
+                           ↓
+                         STOPPED
+
+    v2.1: 移除 COMPILED/DEPLOYED/ARCHIVED（无实际行为差异或零实现）
+    """
+    # 草稿（初始态）
     DRAFT = "draft"
-
-    # 已编译
-    COMPILED = "compiled"
-
-    # 已部署
-    DEPLOYED = "deployed"
 
     # 运行中
     RUNNING = "running"
@@ -67,14 +71,28 @@ class StrategyLifecycleStatus(str, Enum):
     # 已暂停
     PAUSED = "paused"
 
-    # 已停止
+    # 已停止（终态）
     STOPPED = "stopped"
 
-    # 错误
+    # 错误（自动触发，handle_bar_batch error_rate > 50%）
     ERROR = "error"
 
-    # 已归档
-    ARCHIVED = "archived"
+    @classmethod
+    def allowed_transitions(cls, from_status: "StrategyLifecycleStatus") -> set:
+        """返回 from_status 允许转换到的状态集合"""
+        _map = {
+            cls.DRAFT:   {cls.RUNNING},
+            cls.RUNNING: {cls.PAUSED, cls.STOPPED, cls.ERROR},
+            cls.PAUSED:  {cls.RUNNING, cls.STOPPED, cls.ERROR},
+            cls.STOPPED: {cls.RUNNING},   # STOP/ERROR 可直接启动
+            cls.ERROR:   {cls.RUNNING},
+        }
+        return _map.get(from_status, set())
+
+    @classmethod
+    def is_terminal(cls, status: "StrategyLifecycleStatus") -> bool:
+        """是否为终态（不再自动处理 bar）"""
+        return status in (cls.STOPPED, cls.ERROR)
 
 
 # ==================== 信号方向 ====================
@@ -115,20 +133,38 @@ class SignalType(str, Enum):
     REBALANCE = "rebalance"
 
 
+# ==================== 信号状态 ====================
+class SignalStatus(str, Enum):
+    """信号确认状态（实盘人工确认流程）"""
+    PENDING_MANUAL = "pending_manual"   # 等待人工确认（实盘模式默认）
+    CONFIRMED = "confirmed"             # 人工已确认成交
+    PARTIAL = "partial"                 # 部分成交
+    CANCELLED = "cancelled"             # 人工取消
+    REJECTED = "rejected"               # 风控拒绝
+    EXPIRED = "expired"                 # 过期（超过有效交易日）
+
+
 # ==================== 运行模式 ====================
 class RunMode(str, Enum):
     """策略运行模式"""
     # 回测模式
     BACKTEST = "backtest"
 
-    # 模拟交易
-    SIMULATION = "simulation"
-
     # 实盘交易
     LIVE = "live"
 
-    # paper trading (模拟盘)
+    # paper trading (模拟盘，预留)
     PAPER = "paper"
+
+
+# ==================== 执行模式（实盘子模式） ====================
+class ExecutionMode(str, Enum):
+    """实盘执行模式"""
+    # 半自动：策略生成信号 → 人工在券商端买卖 → 回系统确认成交
+    SEMI_AUTO = "semi_auto"
+
+    # 全自动：策略生成信号 → 系统直接调券商接口执行
+    FULL_AUTO = "full_auto"
 
 
 # ==================== 持仓方向 ====================

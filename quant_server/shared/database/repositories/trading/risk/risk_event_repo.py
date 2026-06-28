@@ -20,6 +20,7 @@ class RiskEventRepository(HyperRepositoryBase):
 
 	def __init__ (self, session: AsyncSession):
 		super().__init__(session, RiskEvent)
+		self.time_column = "created_at"  # RiskEvent 表的时间列
 
 	async def get_recent_events (
 			self,
@@ -398,18 +399,27 @@ class RiskEventRepository(HyperRepositoryBase):
 
 	async def cleanup_old_events (self, days: int = 90) -> int:
 		"""
-		清理旧的风险事件记录（超表专用方法）
+		清理旧的风险事件记录。
 
 		Args:
-			days: 保留天数
+			days: 保留天数（删除 days 天之前的记录）
 
 		Returns:
 			int: 删除的记录数
 		"""
+		from datetime import datetime, timedelta
+		from sqlalchemy import delete
+
 		cutoff_date = datetime.now() - timedelta(days=days)
 
-		# 使用超表的分区删除功能
-		return await self.delete_by_time_range(
-			start_time=cutoff_date,
-			end_time=datetime.now()
-		)
+		try:
+			stmt = (
+				delete(self.model)
+				.where(getattr(self.model, self.time_column) < cutoff_date)
+			)
+			result = await self.session.execute(stmt)
+			await self.session.commit()
+			return result.rowcount or 0
+		except Exception as e:
+			await self.session.rollback()
+			raise RepositoryError(f"清理旧事件失败: {str(e)}")

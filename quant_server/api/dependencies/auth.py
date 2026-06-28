@@ -79,7 +79,7 @@ class AuthDependencies:
 			try:
 				user_repository = user_repo.UserRepository(db_session)
 				result = await db_session.execute(
-					select(SysUser).where(SysUser.role.in_(("admin", "super_admin"))).limit(1)
+					select(SysUser).where(SysUser.role == "admin").limit(1)
 				)
 				user = result.scalar_one_or_none()
 				if user:
@@ -102,12 +102,12 @@ class AuthDependencies:
 				dev_id = str(uuid.uuid4())
 				dev_user = SysUser(
 					id=dev_id,
-					username="developer",
+					username="superadmin",
 					password="dev-no-auth-mode",
 					email="dev@quant-trade.local",
 					real_name="开发者",
 					phone="",
-					role="super_admin",
+					role="admin",
 					is_active=True,
 					created_at=datetime.now(timezone.utc),
 				)
@@ -131,7 +131,7 @@ class AuthDependencies:
 			except Exception as e:
 				logger.warning(f"Auth disabled but DB user lookup/creation failed: {e}")
 				return {
-					"id": "dev-user",
+					"id": "cd2f4a88-2139-4708-aee5-23dbfd953b20",
 					"username": "developer",
 					"email": "dev@quant-trade.local",
 					"real_name": "开发者",

@@ -370,6 +370,7 @@ class ModulesSettings(BaseSettings):
 	monitor: Dict[str, Any] = {}
 	system: Dict[str, Any] = {}
 	risk: Dict[str, Any] = {}
+	market: Dict[str, Any] = {}
 
 	model_config = SettingsConfigDict(extra="ignore")
 

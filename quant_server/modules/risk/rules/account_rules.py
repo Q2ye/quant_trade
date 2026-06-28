@@ -1,7 +1,7 @@
 # account_rules.py      # 账户规则
 
 from typing import Dict, Any, Tuple
-from .base_rule import RiskRule
+from .base_rule import RiskRule, RiskCheckResult
 
 
 class AccountBalanceRule(RiskRule):
@@ -76,6 +76,23 @@ class LossLimitRule(RiskRule):
         
         return True, "亏损限制检查通过"
 
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        total_asset = data.get("total_asset", 0)
+        initial_capital = data.get("initial_capital", total_asset)
+        if initial_capital <= 0:
+            return RiskCheckResult(True, "info", "初始资金为0，跳过检查", "allow", self.name)
+        loss_pct = (initial_capital - total_asset) / initial_capital
+        if loss_pct > self.max_loss_percent * 1.5:
+            return RiskCheckResult(False, "critical",
+                f"账户亏损严重超标: {loss_pct:.2%} > {self.max_loss_percent * 1.5:.2%}，触发紧急平仓", "kill", self.name)
+        if loss_pct > self.max_loss_percent:
+            return RiskCheckResult(False, "error",
+                f"账户亏损已达上限: {loss_pct:.2%} > {self.max_loss_percent:.2%}，阻断下单", "block", self.name)
+        if loss_pct > self.max_loss_percent * 0.6:
+            return RiskCheckResult(True, "warning",
+                f"账户亏损接近上限: {loss_pct:.2%} (阈值 {self.max_loss_percent:.2%})，建议缩减规模", "reduce_size", self.name)
+        return RiskCheckResult(True, "info", "亏损检查通过", "allow", self.name)
+
 
 class DrawdownLimitRule(RiskRule):
     """回撤限制规则"""
@@ -116,6 +133,23 @@ class DrawdownLimitRule(RiskRule):
         
         return True, "回撤限制检查通过"
 
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        total_asset = data.get("total_asset", 0)
+        peak_asset = data.get("peak_asset", total_asset)
+        if peak_asset <= 0:
+            return RiskCheckResult(True, "info", "峰值资产为0，跳过检查", "allow", self.name)
+        dd_pct = (peak_asset - total_asset) / peak_asset
+        if dd_pct > self.max_drawdown_percent * 1.5:
+            return RiskCheckResult(False, "critical",
+                f"账户回撤严重超标: {dd_pct:.2%} > {self.max_drawdown_percent * 1.5:.2%}，触发紧急平仓", "kill", self.name)
+        if dd_pct > self.max_drawdown_percent:
+            return RiskCheckResult(False, "error",
+                f"账户回撤已达上限: {dd_pct:.2%} > {self.max_drawdown_percent:.2%}，阻断下单", "block", self.name)
+        if dd_pct > self.max_drawdown_percent * 0.6:
+            return RiskCheckResult(True, "warning",
+                f"账户回撤接近上限: {dd_pct:.2%} (阈值 {self.max_drawdown_percent:.2%})，建议缩减规模", "reduce_size", self.name)
+        return RiskCheckResult(True, "info", "回撤检查通过", "allow", self.name)
+
 
 class TradeCountRule(RiskRule):
     """日交易次数限制规则"""
@@ -132,6 +166,16 @@ class TradeCountRule(RiskRule):
         if daily_trade_count >= self.max_daily_trades:
             return False, f"日交易次数已达上限: {daily_trade_count} >= {self.max_daily_trades}"
         return True, "交易次数检查通过"
+
+    async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+        count = data.get("daily_trade_count", 0)
+        if count >= self.max_daily_trades:
+            return RiskCheckResult(False, "error",
+                f"日交易次数已达上限: {count} >= {self.max_daily_trades}", "block", self.name)
+        if count >= self.max_daily_trades * 0.8:
+            return RiskCheckResult(True, "warning",
+                f"日交易次数接近上限: {count}/{self.max_daily_trades}", "reduce_size", self.name)
+        return RiskCheckResult(True, "info", "交易次数检查通过", "allow", self.name)
 
 
 class CapitalChangeRule(RiskRule):

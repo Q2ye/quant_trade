@@ -1,7 +1,37 @@
 # base_rule.py         # 规则基类
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Any, Tuple, Optional
+
+
+@dataclass
+class RiskCheckResult:
+	"""风控规则检查结果
+
+	Attributes:
+		passed: 是否通过
+		severity: 严重级别 (info | warning | error | critical)
+		message: 检查消息
+		action: 建议动作 (allow | reduce_size | block | kill)
+		rule_name: 规则名称
+	"""
+	passed: bool
+	severity: str = "error"
+	message: str = ""
+	action: str = "block"
+	rule_name: str = ""
+
+	def __post_init__(self):
+		"""根据 severity 自动推导 action（如未显式指定）"""
+		if self.action == "block" and self.severity != "error":
+			_severity_action_map = {
+				"info": "allow",
+				"warning": "reduce_size",
+				"error": "block",
+				"critical": "kill",
+			}
+			self.action = _severity_action_map.get(self.severity, "block")
 
 
 class RiskRule(ABC):
@@ -21,7 +51,7 @@ class RiskRule(ABC):
 	@abstractmethod
 	async def check (self, data: Dict[str, Any]) -> Tuple[bool, str]:
 		"""
-		检查规则
+		检查规则（二元 pass/fail，向后兼容）
 
 		Args:
 			data: 检查数据
@@ -30,6 +60,27 @@ class RiskRule(ABC):
 			(是否通过, 消息)
 		"""
 		pass
+
+	async def check_with_severity(self, data: Dict[str, Any]) -> RiskCheckResult:
+		"""
+		带严重级别的规则检查（子类可覆盖以返回非默认 severity）
+
+		默认行为：调用 check()，根据 passed 映射 severity=error/空。
+		子类覆盖此方法可返回 info/warning/error/critical。
+
+		Args:
+			data: 检查数据
+
+		Returns:
+			RiskCheckResult
+		"""
+		passed, message = await self.check(data)
+		return RiskCheckResult(
+			passed=passed,
+			severity="error" if not passed else "info",
+			message=message,
+			rule_name=self.name,
+		)
 
 	def get_name (self) -> str:
 		"""获取规则名称"""

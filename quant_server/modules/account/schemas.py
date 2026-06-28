@@ -20,7 +20,7 @@ from .constants import (
 class AccountCreateRequest(BaseModel):
 	"""账户创建请求模型"""
 
-	user_id: str = Field(..., description="用户ID")
+	user_id: Optional[str] = Field(default=None, description="用户ID（后端通过认证上下文注入）")
 	account_name: str = Field(..., max_length=MAX_ACCOUNT_NAME_LENGTH, description="账户名称")
 	account_type: str = Field(..., description="账户类型")
 	initial_balance: Decimal = Field(

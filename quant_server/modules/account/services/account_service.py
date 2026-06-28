@@ -158,14 +158,9 @@ class AccountService:
 			if not user:
 				raise ValueError(f"用户不存在: {user_id}")
 
-			# 2. 验证输入数据
-			validate_account_data({
-				"account_name": account_name,
-				"account_type": account_type,
-				"initial_balance": float(initial_balance),
-				"broker": broker,
-				"broker_account_id": broker_account_id
-			})
+			# 2. 验证输入数据（Pydantic schema 已在 API 层校验，此处仅做业务规则补充）
+			if not account_name or not account_name.strip():
+				raise ValueError("账户名称不能为空")
 
 			# 3. 生成账户号
 			account_number = await self._generate_account_number(user_id)

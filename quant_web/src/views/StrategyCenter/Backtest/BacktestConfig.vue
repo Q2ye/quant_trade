@@ -87,12 +87,15 @@
               <h3>股票池</h3>
               <div class="stock-pool">
                 <n-select
+                  :key="stockPoolSelectKey"
                   v-model:value="stockPool"
                   multiple
                   filterable
+                  virtual-scroll
                   placeholder="添加股票到回测池"
                   :options="stockSelectOptions"
                   style="margin-bottom: 15px"
+                  @update:value="onStockPoolChange"
                 />
                 <div class="selected-stocks">
                   <n-tag
@@ -315,6 +318,11 @@ const backtestStatusText = computed(() => {
 const activeTab = ref("basic");
 const selectedStrategy = ref<any>(null);
 const stockPool = ref<string[]>([]);
+const stockPoolSelectKey = ref(0);
+const onStockPoolChange = (val: string[]) => {
+  stockPool.value = val;
+  stockPoolSelectKey.value++;
+};
 const tradeRestrictions = ref<string[]>([]);
 
 // 从 API 加载的策略列表
