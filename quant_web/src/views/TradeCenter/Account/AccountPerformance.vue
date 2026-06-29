@@ -394,13 +394,11 @@ onMounted(async () => {
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <n-button text size="small" @click="router.back()" style="margin-right:8px">
-            <template #icon><SmartIcon name="ArrowLeft" /></template>
-          </n-button>
           <h1 class="page-title">账户绩效</h1>
-          <n-select v-model:value="accountId" :options="accountOptions" placeholder="选择账户" size="small" style="width:240px;margin-left:12px" @update:value="loadPerformanceData" />
+          <p class="page-description">净值、收益、风险指标与持仓分布一览</p>
         </div>
         <div class="header-actions">
+          <n-select v-model:value="accountId" :options="accountOptions" placeholder="选择账户" size="small" style="width:200px" @update:value="loadPerformanceData" />
           <n-button class="action-btn" @click="loadPerformanceData" quaternary><template #icon><SmartIcon name="Refresh" /></template></n-button>
         </div>
       </div>
@@ -446,21 +444,21 @@ onMounted(async () => {
 
         <!-- Account summary bar -->
         <div class="summary-bar">
-          <div class="summary-item">
+          <div class="summary-item card-surface">
             <span class="summary-label">总资产</span>
             <span class="summary-value">{{ fmtMoney(performanceMetrics.totalAsset) }}</span>
           </div>
-          <div class="summary-item">
+          <div class="summary-item card-surface">
             <span class="summary-label">可用资金</span>
             <span class="summary-value">{{ fmtMoney(accounts.find((a:any) => a.id === accountId)?.available_balance || 0) }}</span>
           </div>
-          <div class="summary-item">
+          <div class="summary-item card-surface">
             <span class="summary-label">当日盈亏</span>
             <span class="summary-value" :class="performanceMetrics.dailyPnl >= 0 ? 'text-up' : 'text-down'">
               {{ performanceMetrics.dailyPnl >= 0 ? '+' : '' }}{{ fmtMoney(performanceMetrics.dailyPnl) }}
             </span>
           </div>
-          <div class="summary-item">
+          <div class="summary-item card-surface">
             <span class="summary-label">当日收益率</span>
             <span class="summary-value" :class="performanceMetrics.dailyReturn >= 0 ? 'text-up' : 'text-down'">
               {{ fmtPct(performanceMetrics.dailyReturn) }}
@@ -470,7 +468,7 @@ onMounted(async () => {
 
         <!-- Metric cards: 3x3 grid -->
         <div class="metric-cards">
-          <div v-for="(card, idx) in metricCards" :key="idx" class="metric-card" :class="tokens.surface.card">
+          <div v-for="(card, idx) in metricCards" :key="idx" class="metric-card card-surface">
             <span class="mc-label">{{ card.label }}</span>
             <span class="mc-value" :class="card.color">{{ card.value }}</span>
           </div>
@@ -579,8 +577,6 @@ onMounted(async () => {
 .summary-item {
   padding: 12px 16px;
   border-radius: 8px;
-  background: var(--color-bg-card, rgba(12,18,32,0.72));
-  border: 1px solid rgba(255,255,255,0.06);
   .summary-label { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-bottom: 4px; }
   .summary-value { font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
 }
@@ -600,14 +596,11 @@ onMounted(async () => {
 .metric-card {
   padding: 14px 18px;
   border-radius: 8px;
-  background: var(--color-bg-card, rgba(12,18,32,0.72));
-  border: 1px solid rgba(255,255,255,0.06);
-  backdrop-filter: blur(8px);
   .mc-label { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-bottom: 6px; }
   .mc-value { font-size: 20px; font-weight: 700; color: var(--color-text-primary); display: block; }
 }
-.text-up { color: #18a058 !important; }
-.text-down { color: #d03050 !important; }
+.text-up { color: var(--color-stock-up) !important; }
+.text-down { color: var(--color-stock-down) !important; }
 
 /* Two-column layout */
 .dual-row {

@@ -152,7 +152,8 @@ class TradeRecordService:
         fees = self._calculate_fees(direction, price, quantity, ts_code, user_fees)
 
         # 所有写入在一个事务内完成，确保数据一致性
-        async with self._session.begin():
+        # 使用 begin_nested 兼容外部已有事务（如 FastAPI 依赖注入的 session 已通过查询隐式开启事务）
+        async with self._session.begin_nested():
             # ---- 3. 创建 Order (已成交) ----
             order_id = uuid.uuid4().hex[:32]
             now = datetime.now(timezone.utc)

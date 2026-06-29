@@ -776,3 +776,93 @@ async def check_strategy_module_health (session: AsyncSession) -> Dict[str, Any]
 			"error": str(e),
 			"timestamp": datetime.now().isoformat()
 		}
+
+
+async def get_builtin_strategies() -> Dict[str, Any]:
+	"""v2.3: 返回 Registry 中所有已注册内置策略的元信息（含默认参数）"""
+	from modules.strategy.engines.strategy_registry import StrategyRegistry
+	registry = StrategyRegistry()
+	entries = registry.list_all()
+	result = []
+	for entry in entries:
+		# 尝试获取策略类的默认参数
+		default_params = {}
+		try:
+			cls_name = entry.get("class_name", "")
+			for st, classes in registry._registry.items():
+				for cls in classes:
+					if cls.__name__ == cls_name:
+						tmp = cls()
+						if hasattr(tmp, "get_parameters"):
+							default_params = tmp.get_parameters()
+						if hasattr(tmp, "name"):
+							entry["display_name"] = tmp.name
+						break
+				break  # only first match
+		except Exception:
+			pass
+
+		# v2.3: read source code of strategy class
+		module_path = entry.get("module", "")
+		source_code = ""
+		try:
+			import importlib, inspect
+			mod = importlib.import_module(module_path)
+			for st, classes in registry._registry.items():
+				for cls in classes:
+					if cls.__name__ == entry.get("class_name", ""):
+						source_code = inspect.getsource(cls)
+						break
+		except Exception:
+			pass
+
+		result.append({
+			"class_name": entry.get("class_name", ""),
+			"strategy_type": entry.get("strategy_type", ""),
+			"display_name": entry.get("display_name", entry.get("class_name", "")),
+			"module": module_path,
+			"default_parameters": default_params,
+			"source_code": source_code,
+		})
+	return {"success": True, "data": result}
+
+
+async def trigger_strategy(
+	strategy_id: str,
+	request,
+	main_engine=None,
+) -> Dict[str, Any]:
+	"""手动触发策略在指定交易日执行（v2.3 开发调试工具）"""
+	from datetime import date as date_type
+
+	if main_engine is None:
+		return {"success": False, "error": "MainEngine 未注入"}
+
+	strategy_manager = None
+	if hasattr(main_engine, "_module_engines"):
+		strategy_manager = main_engine._module_engines.get("strategy_manager")
+
+	if strategy_manager is None:
+		return {"success": False, "error": "StrategyManager 未找到"}
+
+	if not hasattr(strategy_manager, "trigger_strategy"):
+		return {"success": False, "error": "StrategyManager 版本过低，不支持手动触发"}
+
+	trade_date_str = getattr(request, "trade_date", None) if request else None
+	if trade_date_str:
+		trade_date = date_type.fromisoformat(trade_date_str)
+	else:
+		trade_date = date_type.today()
+
+	symbols = getattr(request, "symbols", None) if request else None
+	skip_pending_check = getattr(request, "skip_pending_check", False) if request else False
+	end_date_str = getattr(request, "end_date", None) if request else None
+	end_date = date_type.fromisoformat(end_date_str) if end_date_str else None
+
+	return await strategy_manager.trigger_strategy(
+		strategy_id=strategy_id,
+		trade_date=trade_date,
+		end_date=end_date,
+		symbols=symbols,
+		skip_pending_check=skip_pending_check,
+	)

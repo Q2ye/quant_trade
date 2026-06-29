@@ -17,6 +17,8 @@ from modules.strategy.events.types import StrategyEventType
 class StrategyStartedEvent(BaseEvent):
     """策略启动事件 — v2.0"""
 
+    event_type: str = StrategyEventType.STARTED.value
+
     def __init__(
         self,
         strategy_id: str,

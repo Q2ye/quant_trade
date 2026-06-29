@@ -98,8 +98,8 @@ const loadAllData = async () => {
     }
 
     positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
-    const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
-    orders.value = orderItems as Order[];
+    const orderData = (orderRes as any)?.data ?? (Array.isArray(orderRes) ? orderRes : []);
+    orders.value = (Array.isArray(orderData) ? orderData : []) as Order[];
     baskets.value = (basketRes as any)?.baskets ?? ([] as Basket[]);
 
     const sigData = (sigRes as any)?.data ?? (Array.isArray(sigRes) ? sigRes : []);
@@ -115,12 +115,12 @@ const loadAllData = async () => {
 const refreshAfterTrade = async () => {
   const [posRes, orderRes, acctRes2] = await Promise.all([
     tradeAPI.getPositions().catch(() => []),
-    tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => ({ items: [], total: 0 })),
+    tradeAPI.getOrders({ pageSize: 50 } as any).catch(() => ({ data: [], total: 0 })),
     request.get("/quantTrade/account/list", { params: { page: 1, page_size: 100 } }).catch(() => ({ data: { data: [] } })),
   ]);
   positions.value = (Array.isArray(posRes) ? posRes : []) as Position[];
-  const orderItems = (orderRes as any)?.items ?? (Array.isArray(orderRes) ? orderRes : []);
-  orders.value = orderItems as Order[];
+  const orderData2 = (orderRes as any)?.data ?? (Array.isArray(orderRes) ? orderRes : []);
+  orders.value = (Array.isArray(orderData2) ? orderData2 : []) as Order[];
   const acctList2 = (acctRes2 as any)?.data?.data || (acctRes2 as any)?.data || [];
   accounts.value = (Array.isArray(acctList2) ? acctList2 : []).map((a: any) => ({
     ...a,

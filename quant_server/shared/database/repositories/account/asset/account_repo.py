@@ -833,6 +833,41 @@ class AccountRepository(BaseRepository[Account]):
 		await self.session.flush()
 		return stmt
 
+	async def get_daily_snapshots (
+			self,
+			account_id: str,
+			start_date: Optional[date] = None,
+			end_date: Optional[date] = None
+	) -> List[Any]:
+		"""
+		获取账户在指定日期范围内的每日资产快照
+
+		从 account_daily_performance 表读取每日总资产/现金/市值快照，
+		用于构建账户净值曲线。
+
+		Args:
+			account_id: 账户 ID
+			start_date: 起始日期（None 表示不限制下限）
+			end_date: 结束日期（None 表示不限制上限）
+
+		Returns:
+			AccountDailyPerformance 对象列表，按 trade_date 升序排列
+		"""
+		from shared.database.models.business_models import AccountDailyPerformance
+
+		conditions = [AccountDailyPerformance.account_id == account_id]
+		if start_date is not None:
+			conditions.append(AccountDailyPerformance.trade_date >= start_date)
+		if end_date is not None:
+			conditions.append(AccountDailyPerformance.trade_date <= end_date)
+
+		query = select(AccountDailyPerformance).where(
+			and_(*conditions)
+		).order_by(AccountDailyPerformance.trade_date.asc())
+
+		result = await self.session.execute(query)
+		return list(result.scalars().all())
+
 	async def create_asset_snapshot (self, snapshot_data: Dict[str, Any]) -> Any:
 		"""
 		创建资产快照 → 写入 account_daily_performance 表
@@ -847,10 +882,12 @@ class AccountRepository(BaseRepository[Account]):
 		from shared.database.models.business_models import AccountDailyPerformance
 		from decimal import Decimal
 
-		account = await self.get(snapshot_data["account_id"])
+		account_id = snapshot_data["account_id"]
+		account = await self.get(account_id)
 		user_id = account.user_id if account else ""
 
 		perf = AccountDailyPerformance(
+			account_id=account_id,
 			user_id=user_id,
 			trade_date=snapshot_data["trading_day"],
 			total_asset=Decimal(str(snapshot_data.get("total_asset", 0))),

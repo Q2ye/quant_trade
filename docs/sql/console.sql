@@ -229,4 +229,12 @@ drop table factor_definitions
 DELETE FROM factor_definitions;
 
 
+SELECT trade_date, COUNT(*) FROM stock_daily
+GROUP BY trade_date ORDER BY trade_date DESC LIMIT 20;
+
+SELECT * FROM account_daily_performance WHERE user_id =
+                                              (SELECT user_id FROM accounts WHERE id = '938ed1b6-fc5f-4db3-9ee5-69fdf5fb7c1d') ORDER BY trade_date;
+ALTER TABLE account_daily_performance
+ADD COLUMN account_id VARCHAR(36) REFERENCES accounts(id);
+
 

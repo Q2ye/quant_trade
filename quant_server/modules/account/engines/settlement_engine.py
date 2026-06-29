@@ -11,7 +11,7 @@
 
 import asyncio
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
 
 from core.engines.base.engine_base import EngineBase
@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 class SettlementEngine(EngineBase):
     """结算引擎 — 编排结算流程，消费结算开始事件，发布结算完成事件"""
+
+    # 防抖窗口：同一账户在此时间内的重复请求将被合并
+    DEBOUNCE_SECONDS = 300  # 5 分钟
 
     def __init__(
         self,
@@ -48,6 +51,11 @@ class SettlementEngine(EngineBase):
         self._db_session_factory = db_session_factory
         self._event_queue: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._process_task: Optional[asyncio.Task] = None
+
+        # 防抖追踪：account_id → 最近一次结算触发时间
+        self._last_settlement: Dict[str, datetime] = {}
+        # 防抖定时器：account_id → 待执行的延时任务
+        self._debounce_timers: Dict[str, asyncio.Task] = {}
 
     @property
     def engine_type(self) -> EngineType:
@@ -94,8 +102,56 @@ class SettlementEngine(EngineBase):
                 logger.exception("结算事件处理异常")
 
     async def _handle_settlement_started(self, event: AccountSettlementStartedEvent) -> None:
-        """处理结算开始事件，放入队列异步执行"""
-        await self._event_queue.put(event.data)
+        """处理结算开始事件，带 5 分钟防抖：同一账户的重复请求合并为一次"""
+        event_data = event.data
+        account_ids = event_data.get("account_ids", [])
+
+        # 全局结算（无 account_ids 过滤）直接入队，不走防抖
+        if not account_ids:
+            await self._event_queue.put(event_data)
+            return
+
+        now = datetime.now()
+        deduped_ids: list = []
+        for aid in account_ids:
+            last = self._last_settlement.get(aid)
+            if last and (now - last).total_seconds() < self.DEBOUNCE_SECONDS:
+                # 取消已有的延时任务，更新为新的
+                old_task = self._debounce_timers.pop(aid, None)
+                if old_task and not old_task.done():
+                    old_task.cancel()
+                logger.debug(f"结算防抖: 账户 {aid} 的重复请求已合并")
+            else:
+                deduped_ids.append(aid)
+
+        if not deduped_ids:
+            # 所有请求均被防抖合并，延时 5 分钟后统一执行
+            merged_ids = list(account_ids)
+            self._debounce_timers[",".join(merged_ids)] = asyncio.create_task(
+                self._delayed_settlement(event_data.get("settlement_type", "daily"),
+                                         event_data.get("settlement_date"),
+                                         merged_ids)
+            )
+            return
+
+        # 更新防抖时间戳并正常入队
+        for aid in deduped_ids:
+            self._last_settlement[aid] = now
+
+        event_data["account_ids"] = deduped_ids
+        await self._event_queue.put(event_data)
+
+    async def _delayed_settlement(
+        self, settlement_type: str, settlement_date: Optional[str], account_ids: list
+    ) -> None:
+        """防抖延时后执行结算"""
+        await asyncio.sleep(self.DEBOUNCE_SECONDS)
+        event_data = {
+            "settlement_type": settlement_type,
+            "settlement_date": settlement_date,
+            "account_ids": account_ids,
+        }
+        await self._event_queue.put(event_data)
 
     async def _run_settlement(self, settlement_type: str, trading_day: Optional[date]) -> None:
         """执行结算任务并发布完成事件"""
@@ -111,6 +167,9 @@ class SettlementEngine(EngineBase):
                 result = await tasks.monthly_settlement_task(trading_day)
             else:
                 result = await tasks.daily_settlement_task(trading_day)
+
+            # 提交事务，确保持久化
+            await session.commit()
 
             if self.event_engine:
                 # 统计结果
@@ -128,5 +187,9 @@ class SettlementEngine(EngineBase):
                     settlement_statistics=result,
                     duration_seconds=0,
                 ))
+        except Exception:
+            logger.exception("结算执行异常，事务已回滚")
+            await session.rollback()
+            raise
         finally:
             await session.close()

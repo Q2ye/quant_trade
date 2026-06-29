@@ -126,9 +126,9 @@ class AlertDeliveryLogRepository(BaseRepository[AlertDeliveryLog]):
 			update_data = {'status': status}
 
 			if status == 'sent':
-				update_data['sent_at'] = datetime.now().isoformat()
+				update_data['sent_at'] = datetime.now()
 			elif status == 'delivered':
-				update_data['delivered_at'] = datetime.now().isoformat()
+				update_data['delivered_at'] = datetime.now()
 
 			if error_message:
 				update_data['error_message'] = error_message

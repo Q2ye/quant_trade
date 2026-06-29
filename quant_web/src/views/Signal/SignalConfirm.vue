@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from "vue";
+import { useRouter } from "vue-router";
 import { NTag, NButton, NModal, NForm, NFormItem, NInput, NInputNumber, NSpace, NDataTable, NCard, NEmpty, useMessage } from "naive-ui";
 import strategyAPI from "@/api/strategy";
 
+const router = useRouter();
 const message = useMessage();
 const loading = ref(false);
 const signals = ref<any[]>([]);
@@ -27,34 +29,53 @@ const directionMap: Record<string, string> = {
 };
 
 const columns = [
-  { title: "时间", key: "created_at", width: 140,
-    render: (row: any) => row.signal_time || row.created_at || "" },
-  { title: "策略", key: "strategy_id", minWidth: 120, ellipsis: { tooltip: true } },
+  { title: "时间", key: "created_at", width: 150,
+    render: (row: any) => (row.signal_time || row.created_at || "").toString().slice(0, 16).replace("T", " ") },
   { title: "股票", key: "ts_code", width: 110 },
-  { title: "方向", key: "direction", width: 60,
+  { title: "方向", key: "direction", width: 70,
     render: (row: any) => h(NTag, {
       type: (row.direction === "buy" || row.direction === "long") ? "error" : "info", size: "small",
-    }, { default: () => directionMap[row.direction || row.signal_type] || row.direction }) },
-  { title: "数量", key: "quantity", width: 80 },
-  { title: "参考价", key: "price", width: 80 },
+    }, { default: () => directionMap[row.direction || row.signal_type] || row.direction || "—" }) },
+  { title: "类型", key: "signal_type", width: 70,
+    render: (row: any) => {
+      const m: Record<string, string> = { entry: "入场", exit: "出场", stop_loss: "止损", take_profit: "止盈" };
+      return m[row.signal_type] || row.signal_type || "—";
+    }},
+  { title: "参考价", key: "price", width: 85,
+    render: (row: any) => row.price ? `¥${parseFloat(row.price).toFixed(2)}` : "—" },
   { title: "价格区间", key: "price_range", width: 140,
     render: (row: any) => {
       const lo = parseFloat(row.price_limit_low), hi = parseFloat(row.price_limit_high);
       return lo && hi ? `${lo} ~ ${hi}` : (row.price ? `${row.price} ±2%` : "—");
     }},
+  { title: "数量", key: "quantity", width: 80 },
+  { title: "置信度", key: "confidence", width: 70,
+    render: (row: any) => {
+      const c = parseFloat(row.confidence || row.strength);
+      return !isNaN(c) ? `${(c * 100).toFixed(0)}%` : "—";
+    }},
+  { title: "原因", key: "reason", minWidth: 160, ellipsis: { tooltip: true } },
   { title: "状态", key: "signal_status", width: 80,
     render: (row: any) => {
       const s = signalStatusMap[row.signal_status] || { type: "default", label: row.signal_status || "—" };
       return h(NTag, { type: s.type, size: "small" }, { default: () => s.label });
     }},
-  { title: "操作", key: "op", width: 160,
+  { title: "操作", key: "op", width: 190,
     render: (row: any) => {
-      if (row.signal_status !== "pending_manual") return null;
-      return h(NSpace, { size: 4 }, { default: () => [
-        h(NButton, { size: "tiny", type: "primary", onClick: () => openConfirm(row) }, { default: () => "成交" }),
-        h(NButton, { size: "tiny", quaternary: true, onClick: () => openCancel(row) }, { default: () => "放弃" }),
-      ]});
+      if (row.signal_status === "pending_manual") {
+        return h(NSpace, { size: 4 }, { default: () => [
+          h(NButton, { size: "tiny", type: "primary", onClick: () => openConfirm(row) }, { default: () => "确认成交" }),
+          h(NButton, { size: "tiny", quaternary: true, onClick: () => openCancel(row) }, { default: () => "放弃" }),
+        ]});
+      }
+      if (row.signal_status === "confirmed") {
+        return h(NButton, { size: "tiny", type: "info", onClick: () => {
+          router.push(`/trade/workspace?tab=orders&ts_code=${row.ts_code || ""}&direction=${row.direction || ""}&price=${row.price || row.fill_price || ""}&quantity=${row.quantity || row.fill_quantity || ""}`);
+        }}, { default: () => "录入成交" });
+      }
+      return null;
     }},
+  },
 ];
 
 const fetchSignals = async () => {
@@ -107,11 +128,12 @@ onMounted(() => fetchSignals());
 
 <template>
   <div class="signal-confirm bg-gradient-mesh bg-noise">
-    <div class="page-header">
-      <div class="header-content">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
         <h1 class="page-title">信号确认</h1>
         <p class="page-subtitle">待确认的交易信号列表，请在交易完成后标记结果</p>
       </div>
+      <n-button size="small" @click="fetchSignals" :loading="loading" quaternary>刷新</n-button>
     </div>
 
     <n-card>

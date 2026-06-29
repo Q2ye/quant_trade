@@ -110,7 +110,10 @@ class StrategyManager(EngineBase):
         config: StrategyConfig,
     ) -> StrategyInstance:
         """加载策略 — 通过 registry 获取策略类并实例化"""
+        # v2.3: CTA 本质是 TECHNICAL，DB 存 cta 但注册表只有 technical，统一回退
         strategy_class = self.registry.get_first(strategy_type)
+        if not strategy_class and strategy_type == StrategyType.CTA:
+            strategy_class = self.registry.get_first(StrategyType.TECHNICAL)
         if not strategy_class:
             raise ValueError(f"未注册的策略类型: {strategy_type}")
 
@@ -153,6 +156,8 @@ class StrategyManager(EngineBase):
         if strategy is None:
             strategy_type = strategy_instance.strategy_type
             strategy_class = self.registry.get_first(strategy_type)
+            if not strategy_class and strategy_type == StrategyType.CTA:
+                strategy_class = self.registry.get_first(StrategyType.TECHNICAL)
             if not strategy_class:
                 raise ValueError(f"未注册的策略类型: {strategy_type}")
 
@@ -626,8 +631,10 @@ class StrategyManager(EngineBase):
                     max_slippage_pct=sig_dict.get("max_slippage_pct", 0.02),
                     order_type=sig_dict.get("order_type", "limit_range"),
                     account_id=account_id,
+                    run_mode=getattr(instance, "run_mode", "live") if instance else "live",
+                    execution_mode=getattr(instance, "execution_mode", "semi_auto") if instance else "semi_auto",
                 )
-                self.event_engine.put(event)
+                await self.event_engine.put(event)
 
                 logger.debug(
                     f"信号发布: {strategy_id} {sig_dict.get('ts_code')} "
@@ -720,6 +727,10 @@ class StrategyManager(EngineBase):
                 logger.info("策略管理器已订阅策略生命周期事件")
             except ImportError as e:
                 logger.warning(f"无法订阅策略生命周期事件: {e}")
+
+        # v2.3: 重启恢复 — 将 DB 中 status='running' 的策略重新加载到内存
+        await self._recover_running_strategies()
+
         logger.info("策略管理器启动完成")
 
     async def _on_data_sync_completed(self, event) -> None:
@@ -756,51 +767,165 @@ class StrategyManager(EngineBase):
 
         return await self._run_live_strategies(trade_date, bars)
 
-    async def _load_daily_bars(self, trade_date: date) -> list:
+    async def _load_daily_bars(
+        self, trade_date: date, symbols: Optional[List[str]] = None,
+    ) -> list:
         """
-        加载指定交易日的 BarData（优先复权数据，fallback 原始数据）
+        加载指定交易日的 BarData（优先复权数据，fallback 原始数据）。
 
-        复用 DataFeedEngine 的 SQL 查询模式，使用批量 IN 子句。
+        v2.3: 使用 self.session_factory 获取 DB 会话（修复 self.db 未初始化的 bug）；
+              新增 symbols 参数支持按股票池过滤。
         """
         from sqlalchemy import text
 
+        if self.session_factory is None:
+            logger.error("_load_daily_bars: session_factory 未注入，无法加载数据")
+            return []
+
         try:
-            # 优先查 stock_adjusted_prices (qfq)
-            query = text(
-                "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                "FROM stock_adjusted_prices "
-                "WHERE trade_date = :trade_date "
-                "  AND adj_type = 'qfq' AND freq = 'D' "
-                "ORDER BY ts_code"
-            )
-            result = await self.db.execute(query, {"trade_date": trade_date})
-            rows = result.fetchall()
+            async with self.session_factory() as session:
+                if symbols:
+                    # 按指定股票池加载
+                    query = text(
+                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                        "FROM stock_adjusted_prices "
+                        "WHERE trade_date = :trade_date "
+                        "  AND ts_code = ANY(:symbols) "
+                        "  AND adj_type = 'qfq' AND freq = 'D' "
+                        "ORDER BY ts_code"
+                    )
+                    result = await session.execute(
+                        query, {"trade_date": trade_date, "symbols": symbols},
+                    )
+                else:
+                    # 加载全市场
+                    query = text(
+                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                        "FROM stock_adjusted_prices "
+                        "WHERE trade_date = :trade_date "
+                        "  AND adj_type = 'qfq' AND freq = 'D' "
+                        "ORDER BY ts_code"
+                    )
+                    result = await session.execute(query, {"trade_date": trade_date})
+                rows = result.fetchall()
 
-            if not rows:
-                # Fallback 到 stock_daily
-                query2 = text(
-                    "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                    "FROM stock_daily "
-                    "WHERE trade_date = :trade_date "
-                    "ORDER BY ts_code"
+                if not rows:
+                    # Fallback 到 stock_daily
+                    if symbols:
+                        query2 = text(
+                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                            "FROM stock_daily "
+                            "WHERE trade_date = :trade_date "
+                            "  AND ts_code = ANY(:symbols) "
+                            "ORDER BY ts_code"
+                        )
+                        result2 = await session.execute(
+                            query2, {"trade_date": trade_date, "symbols": symbols},
+                        )
+                    else:
+                        query2 = text(
+                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                            "FROM stock_daily "
+                            "WHERE trade_date = :trade_date "
+                            "ORDER BY ts_code"
+                        )
+                        result2 = await session.execute(query2, {"trade_date": trade_date})
+                    rows = result2.fetchall()
+                    logger.info(
+                        f"_load_daily_bars: {trade_date} 使用 stock_daily fallback, "
+                        f"{len(rows)} 条"
+                    )
+
+                # 转换为 BarData 对象
+                bars = []
+                for row in rows:
+                    bar = self._row_to_bar(row)
+                    if bar:
+                        bars.append(bar)
+
+                logger.info(
+                    f"_load_daily_bars: {trade_date} 加载 {len(bars)} 条 BarData"
+                    + (f" (symbols={len(symbols)} 只)" if symbols else " (全市场)")
                 )
-                result2 = await self.db.execute(query2, {"trade_date": trade_date})
-                rows = result2.fetchall()
-                logger.info(f"_load_daily_bars: {trade_date} 使用 stock_daily fallback, {len(rows)} 条")
-
-            # 转换为 BarData 对象
-            bars = []
-            for row in rows:
-                bar = self._row_to_bar(row)
-                if bar:
-                    bars.append(bar)
-
-            logger.info(f"_load_daily_bars: {trade_date} 加载 {len(bars)} 条 BarData")
-            return bars
+                return bars
 
         except Exception as e:
             logger.error(f"加载 BarData 失败: {trade_date}: {e}")
             return []
+
+    async def _load_daily_bars_range(
+        self, start_date: date, end_date: date, symbols: Optional[List[str]] = None,
+    ) -> Dict[date, list]:
+        """加载日期范围内每日的 BarData，按 trade_date 分组返回"""
+        from sqlalchemy import text
+
+        if self.session_factory is None:
+            return {}
+
+        try:
+            async with self.session_factory() as session:
+                if symbols:
+                    query = text(
+                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                        "FROM stock_adjusted_prices "
+                        "WHERE trade_date BETWEEN :start AND :end "
+                        "  AND ts_code = ANY(:symbols) "
+                        "  AND adj_type = 'qfq' AND freq = 'D' "
+                        "ORDER BY trade_date ASC, ts_code ASC"
+                    )
+                    result = await session.execute(
+                        query, {"start": start_date, "end": end_date, "symbols": symbols},
+                    )
+                else:
+                    query = text(
+                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                        "FROM stock_adjusted_prices "
+                        "WHERE trade_date BETWEEN :start AND :end "
+                        "  AND adj_type = 'qfq' AND freq = 'D' "
+                        "ORDER BY trade_date ASC, ts_code ASC"
+                    )
+                    result = await session.execute(query, {"start": start_date, "end": end_date})
+                rows = result.fetchall()
+
+                if not rows:
+                    # Fallback to stock_daily
+                    if symbols:
+                        query2 = text(
+                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                            "FROM stock_daily "
+                            "WHERE trade_date BETWEEN :start AND :end "
+                            "  AND ts_code = ANY(:symbols) "
+                            "ORDER BY trade_date ASC, ts_code ASC"
+                        )
+                        result2 = await session.execute(
+                            query2, {"start": start_date, "end": end_date, "symbols": symbols},
+                        )
+                    else:
+                        query2 = text(
+                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                            "FROM stock_daily "
+                            "WHERE trade_date BETWEEN :start AND :end "
+                            "ORDER BY trade_date ASC, ts_code ASC"
+                        )
+                        result2 = await session.execute(query2, {"start": start_date, "end": end_date})
+                    rows = result2.fetchall()
+
+                bars_by_date: Dict[date, list] = {}
+                for row in rows:
+                    bar = self._row_to_bar(row)
+                    if bar:
+                        td = row.trade_date
+                        if hasattr(td, "date"):
+                            td = td.date()
+                        if td not in bars_by_date:
+                            bars_by_date[td] = []
+                        bars_by_date[td].append(bar)
+
+                return bars_by_date
+
+        except Exception as e:
+            logger.error(f"加载 BarData 范围失败: {start_date}~{end_date}: {e}")
+            return {}
 
     @staticmethod
     def _row_to_bar(row) -> object:
@@ -822,7 +947,8 @@ class StrategyManager(EngineBase):
             from collections import namedtuple
             SimpleBar = namedtuple(
                 "SimpleBar",
-                ["ts_code", "trade_date", "open", "high", "low", "close", "volume", "amount"]
+                ["ts_code", "trade_date", "open", "high", "low", "close",
+                 "volume", "amount", "trade_time"]
             )
             return SimpleBar(
                 ts_code=row.ts_code,
@@ -833,6 +959,7 @@ class StrategyManager(EngineBase):
                 close=float(row.close) if row.close else 0,
                 volume=float(row.vol) if row.vol else 0,
                 amount=float(row.amount) if row.amount else 0,
+                trade_time=None,
             )
 
     async def _run_live_strategies(
@@ -934,6 +1061,222 @@ class StrategyManager(EngineBase):
         )
         return all_signals
 
+    # ---- v2.3: 手动触发（开发调试工具） ----
+
+    async def trigger_strategy(
+        self,
+        strategy_id: str,
+        trade_date: date,
+        end_date: Optional[date] = None,
+        symbols: Optional[List[str]] = None,
+        skip_pending_check: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        手动触发单个策略在指定交易日执行（开发调试工具）。
+
+        v2.3: 支持 end_date 日期范围，逐日循环触发。
+
+        与 _run_live_strategies 的区别：
+        - 只驱动指定策略，不遍历所有运行中策略
+        - 不检查 run_mode（允许任意模式）
+        - 不执行中断检测和补跑
+        - 可选跳过 pending 检查（便于重复测试同一日期）
+        - 不更新 last_run_date / heartbeat（不干扰正常日终调度）
+        - 使用 session_factory 获取 DB 会话
+
+        Args:
+            strategy_id: 策略 ID
+            trade_date: 交易日
+            symbols: 股票池（可选，默认使用策略参数的 symbols/universe）
+            skip_pending_check: 跳过昨日 pending 过滤（默认 False）
+
+        Returns:
+            {
+                strategy_id, strategy_name, trade_date,
+                bars_loaded, symbols_used, signals_generated,
+                signals: [{ts_code, direction, signal_type, price,
+                           quantity, confidence, reason, status}]
+            }
+        """
+        # 0. 前置校验
+        instance = self.strategies.get(strategy_id)
+        if not instance:
+            return {"success": False, "error": f"策略 {strategy_id} 未加载"}
+
+        strategy = self._strategy_objects.get(strategy_id)
+        if not strategy:
+            return {"success": False, "error": f"策略 {strategy_id} 对象未找到"}
+
+        # 策略股票池解析
+        full_market = False
+        if symbols is None:
+            params = getattr(instance, "parameters", {}) or {}
+            symbols = (
+                list(params.get("symbols") or [])
+                or list(params.get("universe") or [])
+                or list(getattr(strategy, "_universe", []))
+            )
+        if not symbols:
+            # 未指定股票池 → 全市场模式，由策略 on_bar 自行筛选
+            full_market = True
+            symbols = None  # 传 None 给 _load_daily_bars 加载全市场
+
+        strategy_name = instance.name
+
+        # 构建日期列表
+        if end_date is None:
+            end_date = trade_date
+        date_list: List[date] = []
+        d = trade_date
+        while d <= end_date:
+            date_list.append(d)
+            d += timedelta(days=1)
+
+        symbol_desc = f"{len(symbols)} 只" if symbols else "全市场"
+        logger.info(
+            f"手动触发策略: {strategy_id} ({strategy_name}) {trade_date}"
+            + (f" ~ {end_date}" if end_date != trade_date else "")
+            + f", symbols={symbol_desc}, skip_pending={skip_pending_check}"
+        )
+
+        # 1. 预热历史数据（静默回放，不产生信号）
+        # 每次触发前清空上次运行的内存状态，避免重复信号
+        strategy.clear_signals()
+        if hasattr(strategy, "_price_data"):
+            strategy._price_data = strategy._price_data.iloc[0:0]
+        for attr in ("_data_cache", "_last_signal"):
+            if hasattr(strategy, attr):
+                setattr(strategy, attr, None if attr == "_last_signal" else {})
+
+        if symbols:
+            lookback_start = trade_date - timedelta(days=365)
+            warmup_bars = await self._load_daily_bars_range(
+                lookback_start, trade_date - timedelta(days=1), symbols=symbols,
+            )
+            if warmup_bars:
+                warmup_count = sum(len(b) for b in warmup_bars.values())
+                logger.info(
+                    f"手动触发: {strategy_id} 预热 {warmup_count} 条历史 bar, "
+                    f"{len(warmup_bars)} 个交易日"
+                )
+                for dt in sorted(warmup_bars.keys()):
+                    for bar in warmup_bars[dt]:
+                        try:
+                            strategy.on_bar(bar)
+                        except Exception:
+                            pass
+                strategy.clear_signals()
+            del warmup_bars
+
+        total_bars = 0
+        total_signals = 0
+        all_valid_signals: List[TradingSignal] = []
+        daily_results: List[Dict] = []
+
+        for cur_date in date_list:
+            # 2. 加载当日 BarData
+            bars = await self._load_daily_bars(cur_date, symbols=symbols)
+            if not bars:
+                daily_results.append({"trade_date": str(cur_date), "bars": 0, "signals": 0})
+                continue
+
+            # 3. pending 过滤
+            pending_map: Dict[str, Dict] = {}
+            if not skip_pending_check:
+                try:
+                    pending_map = await self._check_yesterday_pending(strategy_id, cur_date)
+                except Exception:
+                    pass
+
+            filtered_bars = []
+            for bar in bars:
+                ts_code = getattr(bar, "ts_code", "") or getattr(bar, "symbol", "")
+                if ts_code not in pending_map:
+                    filtered_bars.append(bar)
+
+            # 4. 逐 bar 驱动策略
+            day_signals: List[TradingSignal] = []
+            bar_error_count = 0
+            for bar in filtered_bars:
+                try:
+                    sigs = strategy.on_bar(bar)
+                    if asyncio.iscoroutine(sigs):
+                        sigs = await sigs
+                    if sigs:
+                        if isinstance(sigs, list):
+                            day_signals.extend(sigs)
+                        else:
+                            day_signals.append(sigs)
+                except Exception as e:
+                    bar_error_count += 1
+
+            # 5. 收集 add_signal() 信号
+            if strategy.signals:
+                day_signals.extend(strategy.signals)
+                strategy.clear_signals()
+
+            # 6. 信号验证
+            valid = [s for s in day_signals if strategy.validate_signal(s) if not isinstance(strategy.validate_signal(s), Exception)]
+
+            valid_day = []
+            for sig in day_signals:
+                try:
+                    if strategy.validate_signal(sig):
+                        valid_day.append(sig)
+                except Exception:
+                    valid_day.append(sig)
+
+            total_bars += len(filtered_bars)
+            total_signals += len(valid_day)
+            all_valid_signals.extend(valid_day)
+
+            daily_results.append({
+                "trade_date": str(cur_date),
+                "bars": len(filtered_bars),
+                "signals": len(valid_day),
+            })
+
+        # 7. 发布所有信号
+        if all_valid_signals:
+            await self._publish_signals(strategy_id, all_valid_signals)
+
+        # 8. 构造信号摘要
+        signal_summaries = []
+        for sig in all_valid_signals:
+            sig_dict = sig.to_dict() if hasattr(sig, "to_dict") else {}
+            signal_summaries.append({
+                "ts_code": sig_dict.get("ts_code", ""),
+                "direction": sig_dict.get("direction", ""),
+                "signal_type": sig_dict.get("signal_type", ""),
+                "price": sig_dict.get("price", 0.0),
+                "quantity": sig_dict.get("quantity", 0),
+                "confidence": sig_dict.get("confidence", 1.0),
+                "reason": sig_dict.get("reason", ""),
+                "status": "pending_manual",
+            })
+
+        logger.info(
+            f"手动触发完成: {strategy_id} {trade_date}"
+            + (f"~{end_date}" if end_date != trade_date else "")
+            + f" | {len(date_list)} 天, bars={total_bars}, signals={total_signals}"
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "strategy_id": strategy_id,
+                "strategy_name": strategy_name,
+                "trade_date": str(trade_date),
+                "end_date": str(end_date) if end_date != trade_date else None,
+                "days_processed": len(date_list),
+                "daily": daily_results,
+                "bars_loaded": total_bars,
+                "symbols_used": symbols if symbols else ["全市场"],
+                "signals_generated": total_signals,
+                "signals": signal_summaries,
+            },
+        }
+
     async def _replay_bars_silent(
         self, strategy_id: str, trade_date: date, bars: list
     ) -> None:
@@ -1002,6 +1345,151 @@ class StrategyManager(EngineBase):
                 logger.info("策略 %s: 从 DB 恢复了 %d 只股票的持仓", strategy_id, restored)
         except Exception as e:
             logger.warning("策略 %s 仓位恢复失败（跳过）: %s", strategy_id, e)
+
+    # ==================== v2.3 重启恢复 ====================
+
+    async def _recover_running_strategies(self) -> None:
+        """
+        重启后从 DB 恢复所有 status='running' 的策略到内存。
+
+        在 _on_start 末尾调用，确保事件订阅就绪后再加载策略。
+        恢复包括：strategy 实例、strategy_run 记录、state_snapshot 状态。
+        """
+        if self.session_factory is None:
+            logger.warning("session_factory 未注入，跳过策略恢复")
+            return
+
+        try:
+            from sqlalchemy import text
+
+            async with self.session_factory() as session:
+                # 查询所有 status='running' 的策略
+                result = await session.execute(
+                    text(
+                        "SELECT id, name, user_id, strategy_type, code, status, "
+                        "run_mode, execution_mode, account_id, allocated_capital "
+                        "FROM strategies WHERE status = 'running'"
+                    )
+                )
+                running_rows = result.fetchall()
+
+                if not running_rows:
+                    logger.info("重启恢复: 没有需要恢复的运行中策略")
+                    return
+
+                logger.info(f"重启恢复: 发现 {len(running_rows)} 个运行中策略，开始恢复...")
+
+                recovered = 0
+                failed = 0
+
+                for row in running_rows:
+                    sid = row[0]
+                    try:
+                        # 检查是否已在内存中（避免重复加载）
+                        if sid in self.strategies:
+                            logger.info(f"重启恢复: 策略 {sid} 已在内存中，跳过")
+                            recovered += 1
+                            continue
+
+
+                        # row: 0=id, 1=name, 2=user_id, 3=strategy_type,
+                        #      4=code, 5=status, 6=run_mode, 7=execution_mode,
+                        #      8=account_id, 9=allocated_capital
+                        strategy_type = StrategyType(row[3]) if row[3] else StrategyType.CTA
+                        run_mode_str = row[6] or "live"
+                        execution_mode_str = row[7] or "semi_auto"
+                        account_id = row[8] or ""
+                        capital = float(row[9]) if row[9] else 1000000.0
+
+                        # 加载策略类 + 实例化
+                        await self.load_strategy(
+                            strategy_id=sid,
+                            name=row[1] or sid,
+                            strategy_type=strategy_type,
+                            code=row[4] or "",
+                            parameters={},
+                            config=StrategyConfig(
+                                user_id=str(row[2]) if row[2] else "0",
+                                initial_capital=capital,
+                            ),
+                        )
+                        # 构建上下文
+                        context = StrategyContext(
+                            strategy_id=sid,
+                            strategy_name=row[1] or sid,
+                            user_id=row[2] or "0",
+                            run_mode=RunMode(run_mode_str) if run_mode_str else RunMode.LIVE,
+                            initial_capital=capital,
+                        )
+
+                        # 注入 callback
+                        StrategyContextBuilder.inject_callbacks(
+                            context=context,
+                            strategy_manager=self,
+                            strategy_id=sid,
+                            run_mode=RunMode(run_mode_str) if run_mode_str else RunMode.LIVE,
+                        )
+
+                        # 初始化 + 启动
+                        await self.initialize_strategy(sid, context)
+                        await self.start_strategy(sid, context)
+
+                        # 设置 run_mode / execution_mode / account_id
+                        from modules.strategy.constants import ExecutionMode
+
+                        instance = self.strategies.get(sid)
+                        if instance:
+                            instance.run_mode = RunMode(run_mode_str) if run_mode_str else RunMode.LIVE
+                            instance.execution_mode = (
+                                ExecutionMode(execution_mode_str)
+                                if execution_mode_str else ExecutionMode.SEMI_AUTO
+                            )
+                            instance.account_id = account_id
+
+                        # 从 state_snapshot 恢复 last_run_date 等运行时状态
+                        run_result = await session.execute(
+                            text(
+                                "SELECT state_snapshot FROM strategy_runs "
+                                "WHERE strategy_id = :sid AND status = 'running' "
+                                "ORDER BY started_at DESC LIMIT 1"
+                            ),
+                            {"sid": sid},
+                        )
+                        run_row = run_result.fetchone()
+                        if run_row and run_row[0]:
+                            import json
+                            snap = run_row[0] if isinstance(run_row[0], dict) else json.loads(run_row[0])
+                            last_date_str = snap.get("last_trade_date")
+                            if last_date_str and str(sid) in self.running_states:
+                                from datetime import date as date_type
+                                try:
+                                    self.running_states[str(sid)].last_run_date = (
+                                        date_type.fromisoformat(last_date_str)
+                                    )
+                                except (ValueError, TypeError):
+                                    pass
+
+                        recovered += 1
+                        logger.info(
+                            f"重启恢复: 策略 {sid} ({row[1]}) 已恢复, "
+                            f"run_mode={run_mode_str}, execution_mode={execution_mode_str}, "
+                            f"capital={capital}"
+                        )
+
+                    except Exception as e:
+                        failed += 1
+                        logger.error(
+                            f"重启恢复: 策略 {sid} 恢复失败: {type(e).__name__}: {e}",
+                            exc_info=True,
+                        )
+
+                logger.info(
+                    f"重启恢复完成: 成功 {recovered}, 失败 {failed}, "
+                    f"总计 {len(running_rows)} 个策略"
+                )
+
+        except Exception as e:
+            logger.error(f"重启恢复异常: {type(e).__name__}: {e}", exc_info=True)
 
     async def _check_yesterday_pending(
         self, strategy_id: str, trade_date: date

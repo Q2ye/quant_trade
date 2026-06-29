@@ -178,6 +178,15 @@ export default {
       .then((data: StrategyStatusResponse) => data.data);
   },
 
+  // ---- 内置策略 API (v2.3) ----
+
+  async getBuiltinStrategies(): Promise<any[]> {
+    return request
+      .get("/quantTrade/strategy/builtin")
+      .then(handleResponse)
+      .then((data: any) => data.data ?? []);
+  },
+
   // ---- 策略模板 API ----
 
   async getTemplates(params?: {

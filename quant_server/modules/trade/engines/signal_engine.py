@@ -124,14 +124,36 @@ class SignalEngine(EngineBase):
                     if not sid:
                         logger.warning("信号缺少 strategy_id，跳过持久化")
                         return None
+                    # 映射 signal_type: event 用 entry/exit/stop_loss/take_profit
+                    # DB CHECK 约束要求 buy/sell/hold，此处做兼容映射
+                    _raw_sig_type = str(signal_data.get("signal_type", signal_data.get("direction", "buy"))).lower()
+                    _sig_type_map = {
+                        "entry": "buy", "exit": "sell",
+                        "stop_loss": "sell", "take_profit": "sell",
+                        "long": "buy", "short": "sell",
+                        "close_long": "sell", "close_short": "buy",
+                    }
+                    _db_signal_type = _sig_type_map.get(_raw_sig_type, _raw_sig_type)
+                    # direction 存储原始 signal_direction (long/short)
+                    _raw_dir = str(signal_data.get("direction", "")).lower()
+                    _dir_map = {"long": "long", "short": "short", "buy": "buy", "sell": "sell"}
+                    _db_direction = _dir_map.get(_raw_dir, _raw_dir)
+
                     signal_record = await repo.create({
                         "strategy_id": sid,
                         "ts_code": signal_data.get("ts_code", ""),
-                        "signal_type": signal_data.get("direction") or signal_data.get("signal_type") or "buy",
+                        "direction": _db_direction,
+                        "signal_type": _db_signal_type,
                         "signal_time": datetime.now(timezone.utc),
                         "price": signal_data.get("price", 0.0),
-                        "strength": signal_data.get("confidence", signal_data.get("strength", 1.0)),
-                        "reason": signal_data.get("reason", signal_data.get("message", "")),
+                        "quantity": signal_data.get("quantity", 0),
+                        "strength": float(signal_data.get("confidence", signal_data.get("strength", 1.0))),
+                        "confidence": float(signal_data.get("confidence", 1.0)),
+                        "reason": signal_data.get("reason", ""),
+                        "price_limit_low": signal_data.get("price_limit_low"),
+                        "price_limit_high": signal_data.get("price_limit_high"),
+                        "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
+                        "order_type": signal_data.get("order_type", "limit_range"),
                     })
                     db_id = signal_record.id
             # 返回 DB id，供 _on_strategy_signal 后续回写 status
@@ -146,14 +168,25 @@ class SignalEngine(EngineBase):
         """处理信号"""
         # 生成信号ID
         signal_id = signal_data.get("signal_id", str(uuid.uuid4()))
-        
+
+        # 从事件 data 中提取所有信号字段（用于持久化和后续处理）
+        sig_direction = signal_data.get("signal_direction", signal_data.get("direction", ""))
+        sig_type = signal_data.get("signal_type", "")
+
         # 补充信号信息
         signal = {
             "signal_id": signal_id,
             "ts_code": signal_data.get("ts_code"),
-            "direction": signal_data.get("direction"),
+            "direction": sig_direction,
+            "signal_type": sig_type,
             "price": signal_data.get("price"),
             "quantity": signal_data.get("quantity"),
+            "confidence": signal_data.get("confidence", 1.0),
+            "reason": signal_data.get("reason", signal_data.get("message", "")),
+            "price_limit_low": signal_data.get("price_limit_low"),
+            "price_limit_high": signal_data.get("price_limit_high"),
+            "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
+            "order_type": signal_data.get("order_type", "limit_range"),
             "strategy_id": signal_data.get("strategy_id", "unknown"),
             "created_at": datetime.now().isoformat(),
             "status": "received",
@@ -188,10 +221,10 @@ class SignalEngine(EngineBase):
         # 全自动：走风控→执行链路
         try:
             # 发布风控检查请求事件（异步通知，不阻塞）
-            if self._event_engine:
+            if self.event_engine:
                 try:
                     from modules.risk.events.risk_events import RiskCheckRequestedEvent
-                    await self._event_engine.put(
+                    await self.event_engine.put(
                         RiskCheckRequestedEvent(signal_data=signal)
                     )
                 except Exception as e:
@@ -203,10 +236,10 @@ class SignalEngine(EngineBase):
 
             if not is_valid:
                 # error/critical 违规 — 阻断下单
-                if self._event_engine:
+                if self.event_engine:
                     try:
                         from modules.risk.events.risk_events import RiskViolationEvent
-                        await self._event_engine.put(
+                        await self.event_engine.put(
                             RiskViolationEvent(
                                 rule_name="signal_check",
                                 message=f"风控检查失败: {message}",
@@ -262,11 +295,12 @@ class SignalEngine(EngineBase):
         self, signal_data: Dict[str, Any], signal_id: str
     ) -> None:
         """v2.0: 推送交易信号到微信/钉钉通知"""
-        if not self._event_engine:
+        if not self.event_engine:
             return
         try:
             from core.events.base import BaseEvent
             event = BaseEvent(
+                source="trade",
                 module="trade",
                 event_type="monitor.trading.signal",
                 data={
@@ -286,7 +320,7 @@ class SignalEngine(EngineBase):
                     "timestamp": signal_data.get("timestamp", signal_data.get("generation_time", "")),
                 },
             )
-            self._event_engine.put(event)
+            await self.event_engine.put(event)
             logger.info(f"交易信号通知已发布: {signal_id}")
         except Exception as e:
             logger.warning(f"发布交易信号通知失败: {e}")

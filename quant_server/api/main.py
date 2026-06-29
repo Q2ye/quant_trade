@@ -52,7 +52,7 @@ def create_app(
     if enabled_modules is None:
         enabled_modules = [
             "data", "strategy", "trade", "basket", "backtest", "account",
-            "analysis", "monitor", "system", "template", "risk", "market",
+            "analysis", "monitor", "system", "risk", "market",
         ]
     if cors_origins is None:
         cors_origins = ["http://localhost:3000", "http://localhost:5173"]
@@ -156,8 +156,8 @@ def create_app(
     # 注册路由（仅注册已启用的模块路由）
     _module_routers = {
         "data": (data_router, "/quantTrade/data"),
-        "strategy": (strategy_router, "/quantTrade/strategy"),
         "template": (template_router, "/quantTrade/strategy/templates"),
+        "strategy": (strategy_router, "/quantTrade/strategy"),
         "trade": (trade_router, "/quantTrade/trade"),
         "backtest": (backtest_router, "/quantTrade/backtest"),
         "account": (account_router, "/quantTrade/account"),

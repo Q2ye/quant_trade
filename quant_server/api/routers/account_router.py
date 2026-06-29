@@ -626,3 +626,50 @@ async def account_module_health_check (
 			},
 			status_code=500
 		)
+
+# ==================== 结算接口 ====================
+
+@router.post("/settlement/daily")
+async def trigger_daily_settlement_api (
+        current_user: Dict = Depends(get_current_user),
+        db_session: AsyncSession = Depends(get_db_session)
+):
+    """
+    手动触发日终结算
+
+    对全部活跃账户执行日终结算，计算盈亏、更新资产、生成快照。
+    """
+    from datetime import date
+    from modules.account.tasks.settlement_tasks import create_settlement_tasks
+
+    try:
+        logger.info(f"用户 {current_user.get('username')} 手动触发日终结算")
+
+        tasks = create_settlement_tasks(db_session)
+        result = await tasks.daily_settlement_task(date.today())
+        await db_session.commit()
+
+        total = result.get("total_accounts", 0)
+        success_count = sum(
+            1 for r in result.get("results", {}).values()
+            if r.get("status") == "success"
+        )
+
+        return success_response(
+            data={
+                "trading_day": str(date.today()),
+                "total_accounts": total,
+                "successful_accounts": success_count,
+                "failed_accounts": total - success_count,
+                "details": result.get("results", {}),
+            },
+            message=f"日终结算完成: {success_count}/{total} 成功"
+        )
+
+    except Exception as e:
+        logger.error(f"日终结算失败: {str(e)}", exc_info=True)
+        await db_session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"日终结算失败: {str(e)}"
+        )

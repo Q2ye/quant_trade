@@ -38,22 +38,25 @@
           </span>
         </div>
 
-        <!-- 模板快速开始（仅回测 Tab 显示） -->
-        <div v-if="activeTab === 'backtest'" class="tpl-section">
-          <h3 class="section-title">从模板快速开始</h3>
-          <div v-if="templatesLoading" class="tpl-row"><n-skeleton :repeat="3" text /></div>
-          <div v-else-if="templates.length > 0" class="tpl-row">
-            <div v-for="tpl in templates" :key="tpl.id" :class="tokens.motion.hover" class="tpl-card"
-              @click="createFromTemplate(tpl)">
-              <SmartIcon :name="tplIcon(tpl.strategy_type)" size="20" :style="{ color: tplColor(tpl.strategy_type) }" />
-              <span class="tpl-name">{{ tpl.name }}</span>
-              <span class="tpl-desc">{{ tpl.description }}</span>
+        <!-- 系统策略（仅回测 Tab 显示） -->
+        <div v-if="activeTab === 'backtest'">
+          <h3 class="section-title">系统策略</h3>
+          <div v-if="builtinLoading"><n-skeleton :repeat="3" text /></div>
+          <div v-else-if="builtinStrategies.length > 0" class="card-grid">
+            <div v-for="tpl in builtinStrategies" :key="tpl.class_name"
+              :class="['strategy-card', 'builtin-card']">
+              <div class="sc-top">
+                <n-tag :type="builtinTypeTag(tpl.strategy_type) as any" size="tiny">{{ builtinTypeLabel(tpl.strategy_type) }}</n-tag>
+              </div>
+              <h4 class="sc-name">{{ builtinDisplayName(tpl) }}</h4>
+              <span class="sc-type">{{ builtinDescription(tpl) }}</span>
+              <div class="sc-actions">
+                <n-button size="tiny" @click.stop="quickBacktestBuiltin(tpl)">回测</n-button>
+                <n-button size="tiny" type="success" quaternary @click.stop="openBuiltinConfig(tpl)">启动</n-button>
+              </div>
             </div>
           </div>
-          <n-empty v-else description="暂无模板" size="small" />
-          <n-button type="primary" size="small" style="margin-top:10px" @click="router.push('/strategies/workspace/new')">
-            + 新建策略
-          </n-button>
+          <n-empty v-else description="暂无内置策略" size="small" />
         </div>
 
         <!-- 策略卡片 -->
@@ -160,6 +163,35 @@
         </n-form-item>
       </n-form>
     </n-modal>
+    <!-- v2.3: 内置策略配置弹窗 -->
+    <n-modal v-model:show="showBuiltinModal" preset="dialog" title="配置系统策略"
+      positive-text="创建并启动" negative-text="取消"
+      @positive-click="confirmBuiltinStart">
+      <n-form label-width="90px" size="small">
+        <n-form-item label="策略名称">
+          <n-input v-model:value="builtinForm.name" placeholder="输入策略名称" />
+        </n-form-item>
+        <n-form-item label="策略类型">
+          <span class="text-secondary">{{ builtinForm.strategy_type }}</span>
+        </n-form-item>
+        <n-form-item label="执行模式" required>
+          <n-radio-group v-model:value="builtinForm.execution_mode">
+            <n-radio value="semi_auto">半自动（信号→人工确认）</n-radio>
+            <n-radio value="full_auto">全自动（信号→直接下单）</n-radio>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item label="分配资金" required>
+          <n-input-number v-model:value="builtinForm.capital" :min="10000" :step="100000" style="width:100%" />
+        </n-form-item>
+        <n-form-item label="股票池">
+          <n-input v-model:value="builtinForm.symbols" placeholder="000001.SZ,600519.SH（逗号分隔）" size="small" />
+        </n-form-item>
+        <n-form-item v-for="(val, key) in builtinForm.parameters" :key="key" :label="builtinForm.paramLabels[key] || key" size="small">
+          <n-input-number v-model:value="builtinForm.parameters[key]" size="tiny" style="width:160px" />
+        </n-form-item>
+      </n-form>
+    </n-modal>
+
 
     <!-- 新建/编辑对话框 -->
     <n-modal v-model:show="showDialog" preset="dialog" :title="dialogTitle" positive-text="保存" negative-text="取消"
@@ -176,7 +208,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h, watch } from "vue";
+import { ref, reactive, computed, onMounted, h, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import { useStore } from "vuex";
@@ -234,29 +266,56 @@ const dialogTitle = computed(() => isEditing.value ? "编辑策略" : "新建策
 const statusMap: Record<string, string> = { running: "success", stopped: "warning", draft: "default", paused: "info", error: "error" };
 const statusText: Record<string, string> = { running: "运行中", stopped: "已停止", draft: "草稿", paused: "暂停", error: "异常" };
 
-// 模板 — 从 API 加载
-const templates = ref<any[]>([]);
-const templatesLoading = ref(false);
+// 系统策略 — 从 Registry 加载
+const builtinStrategies = ref<any[]>([]);
+const builtinLoading = ref(false);
 
-const tplIcon = (type: string) => {
-  const m: Record<string, string> = { cta: "TrendingUpOutline", alpha: "Options", multi_factor: "StatsChart", ml: "PulseOutline" };
-  return m[type] || "CodeOutline";
+// 内置策略中文映射
+const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record<string,string> }> = {
+  MACrossStrategy: { name: '双均线策略', desc: '短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪。',
+    params: { fast_period: '快线周期', slow_period: '慢线周期', volume_ma_period: '成交量均线周期', min_volume: '最小成交量(万)', position_ratio: '每次开仓比例' } },
+  MACDStrategy: { name: 'MACD 策略', desc: '基于 MACD 金叉死叉，结合 DIF/DEA/柱状图判断趋势。',
+    params: { fast_period: '快线周期', slow_period: '慢线周期', signal_period: '信号线周期', position_ratio: '每次开仓比例' } },
+  FactorStrategy: { name: '多因子策略', desc: '多因子模型选股，动量、价值、质量等因子综合打分。',
+    params: { rebalance_freq: '调仓频率(天)', top_n: '持仓数量', momentum_weight: '动量因子权重', value_weight: '价值因子权重', quality_weight: '质量因子权重' } },
+  MeanReversionStrategy: { name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。',
+    params: { lookback_period: '回看周期', entry_threshold: '入场阈值', exit_threshold: '出场阈值', position_ratio: '每次开仓比例' } },
+  MLStrategy: { name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。',
+    params: { model_type: '模型类型', train_window: '训练窗口(天)', predict_window: '预测窗口(天)', top_n: '持仓数量', retrain_freq: '重训频率(天)' } },
+  DLStrategy: { name: '深度学习策略', desc: '基于 LSTM、Transformer 等深度学习模型的交易策略。',
+    params: { model_type: '模型类型(LSTM/Transformer)', seq_len: '序列长度', hidden_dim: '隐藏层维度', epochs: '训练轮数', top_n: '持仓数量' } },
 };
-const tplColor = (type: string) => {
-  const m: Record<string, string> = { cta: "#448AFF", alpha: "#00E676", multi_factor: "#FFC107", ml: "#7C4DFF" };
-  return m[type] || "#448AFF";
+const builtinDisplayName = (tpl: any) => BUILTIN_META[tpl.class_name]?.name || tpl.display_name || tpl.class_name;
+const builtinDescription = (tpl: any) => BUILTIN_META[tpl.class_name]?.desc || tpl.module || '';
+const builtinTypeLabel = (type: string) => {
+  const m: Record<string, string> = { technical: '趋势跟踪', alpha: 'Alpha', multi_factor: '多因子', ml: '机器学习', dl: '深度学习' };
+  return m[type] || type || '未知';
+};
+const builtinTypeTag = (type: string) => {
+  const m: Record<string, string> = { technical: 'success', alpha: 'info', multi_factor: 'warning', ml: 'error', dl: 'error' };
+  return (m[type] || 'default') as any;
 };
 
 const createFromTemplate = async (tpl: any) => {
-  dialog.info({
-    title: `基于模板创建: ${tpl.name}`,
-    content: `策略名称`,
-    positiveText: "创建",
+  const displayName = tpl.display_name || tpl.class_name || tpl.name || '';
+  const name = `${displayName}_${Date.now() % 10000}`;
+  dialog.success({
+    title: `创建系统策略`,
+    content: `将基于「${displayName}」创建策略「${name}」，是否继续？`,
+    positiveText: "创建并打开",
     negativeText: "取消",
     onPositiveClick: async () => {
       try {
-        const result = await strategyAPI.createFromTemplate(tpl.id, `${tpl.name}_${Date.now() % 10000}`);
-        message.success("已创建策略: " + result.name);
+        const params = { ...tpl.default_parameters, symbols: ["000001.SZ", "600519.SH"] };
+        const body = {
+          name,
+          strategy_type: tpl.strategy_type,
+          code: `# 系统策略: ${displayName}\n# 来源: ${tpl.module || ''}`,
+          parameters: params,
+        };
+        const result = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
+        if (!result?.id) { message.error('创建失败'); return; }
+        message.success("策略已创建: " + result.name);
         loadStrategies();
         router.push(`/strategies/workspace/${result.id}`);
       } catch (e: any) { message.error("创建失败: " + (e.message || e)); }
@@ -264,6 +323,81 @@ const createFromTemplate = async (tpl: any) => {
   });
 };
 
+// ---- 内置策略配置弹窗 ----
+const showBuiltinModal = ref(false);
+const builtinTarget = ref<any>(null);
+const builtinForm = reactive({
+  name: '',
+  strategy_type: '',
+  execution_mode: 'semi_auto' as string,
+  capital: 1_000_000,
+  symbols: '000001.SZ,600519.SH',
+  parameters: {} as Record<string, any>,
+  paramLabels: {} as Record<string, string>,
+});
+
+const openBuiltinConfig = (tpl: any) => {
+  builtinTarget.value = tpl;
+  builtinForm.name = `${builtinDisplayName(tpl)}_${Date.now() % 10000}`;
+  builtinForm.strategy_type = tpl.strategy_type;
+  builtinForm.execution_mode = 'semi_auto';
+  builtinForm.capital = 1_000_000;
+  builtinForm.symbols = '000001.SZ,600519.SH';
+  builtinForm.parameters = { ...(tpl.default_parameters || {}) };
+  builtinForm.paramLabels = BUILTIN_META[tpl.class_name]?.params || {};
+  showBuiltinModal.value = true;
+};
+
+const confirmBuiltinStart = async () => {
+  const tpl = builtinTarget.value;
+  if (!tpl) return;
+  try {
+    // 1. 创建策略
+    const symbols = builtinForm.symbols.split(',').map((s: string) => s.trim()).filter(Boolean);
+    const params = { ...builtinForm.parameters, symbols };
+    const body = {
+      name: builtinForm.name,
+      strategy_type: builtinForm.strategy_type,
+      code: `# 系统策略: ${builtinDisplayName(tpl)}\n# 来源: ${tpl.module || ''}`,
+      parameters: params,
+    };
+    const createRes = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
+    if (!createRes?.id) { message.error('创建失败'); return; }
+    const sid = createRes.id;
+    message.success("策略已创建");
+
+    // 2. 启动策略
+    await request.post(`/quantTrade/strategy/${sid}/start`, {
+      capital: builtinForm.capital,
+      run_mode: 'live',
+      execution_mode: builtinForm.execution_mode,
+    });
+    message.success("策略已启动: " + builtinForm.name);
+    showBuiltinModal.value = false;
+    loadStrategies();
+  } catch (e: any) { message.error("启动失败: " + (e.message || e)); }
+};
+
+const quickBacktestBuiltin = async (tpl: any) => {
+  const displayName = builtinDisplayName(tpl);
+  const name = `${displayName}_bt_${Date.now() % 10000}`;
+  const symbols = '000001.SZ,600519.SH';
+  try {
+    // 1. 快速创建策略
+    const body = {
+      name,
+      strategy_type: tpl.strategy_type,
+      code: `# 系统策略: ${displayName}
+# 来源: ${tpl.module || ''}`,
+      parameters: { ...tpl.default_parameters, symbols: symbols.split(',').map((s: string) => s.trim()).filter(Boolean) },
+    };
+    const createRes = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
+    if (!createRes?.id) { message.error('创建失败'); return; }
+    message.success("策略已创建，跳转到回测");
+    // 2. 跳转到回测配置页
+    router.push(`/backtest?strategies=${createRes.id}`);
+  } catch (e: any) { message.error("操作失败: " + (e.message || e)); }
+};
 const handleCardClick = (s: any) => { openWorkspace(s); };
 const toggleCheck = (id: string) => {
   if (checkedKeys.value.includes(id)) checkedKeys.value = checkedKeys.value.filter(k => k !== id);
@@ -403,16 +537,25 @@ const saveStrategy = async () => {
   } catch (e: any) { message.error("保存失败"); }
 };
 
-const loadTemplates = async () => {
-  try { templatesLoading.value = true; templates.value = await strategyAPI.getTemplates() || []; }
-  catch { templates.value = []; }
-  finally { templatesLoading.value = false; }
+const loadBuiltin = async () => {
+  try {
+    builtinLoading.value = true;
+    const res = await strategyAPI.getBuiltinStrategies();
+    console.log('[StrategyList] builtin API 返回:', res);
+    builtinStrategies.value = res || [];
+    console.log('[StrategyList] builtinStrategies:', builtinStrategies.value.length, '条');
+  } catch (e) {
+    console.error('[StrategyList] builtin 加载失败:', e);
+    builtinStrategies.value = [];
+  } finally {
+    builtinLoading.value = false;
+  }
 };
 
 const loadStrategies = async () => {
   pageState.value = "loading";
   try {
-    await Promise.all([store.dispatch("strategy/loadStrategies"), loadTemplates()]);
+    await Promise.all([store.dispatch("strategy/loadStrategies"), loadBuiltin()]);
     pageState.value = "data";
 
     // 设置默认 Tab：仅首次（无 query）时根据数据引导

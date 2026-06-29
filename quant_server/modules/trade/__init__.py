@@ -107,10 +107,15 @@ async def initialize(
                 }
             )
         
-        # 获取 session_factory（从连接池获取 DB 会话）
+        # 获取 session_factory（从 SessionManager 获取 DB 会话）
         session_factory = None
-        if main_engine and hasattr(main_engine, "get_async_session"):
-            session_factory = main_engine.get_async_session()
+        try:
+            from shared.database.session.session_manager import get_session_manager
+            sm = get_session_manager()
+            if sm is not None:
+                session_factory = sm.get_session
+        except Exception:
+            pass
 
         # 初始化持仓引擎
         position_engine = PositionEngine(

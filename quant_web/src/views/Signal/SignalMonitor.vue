@@ -3,10 +3,12 @@ import { ref, computed, onMounted, h } from "vue";
 import {
   NTag, NButton, NProgress, NSpin, NResult, NEmpty,
   NSelect, NDatePicker, NInput, NSpace, NStatistic, NCard,
-  NDataTable, NPopconfirm, useMessage,
+  NDataTable, useMessage,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import tradeAPI from "@/api/trade";
+import SmartIcon from "@/components/common/SmartIcon.vue";
+import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
 
 const message = useMessage();
 
@@ -108,6 +110,29 @@ const handleReview = async (signalId: string, action: string) => {
 };
 
 // ============================================================
+// 录入成交（复用 TradeRecordModal，与驾驶舱一致）
+// ============================================================
+const showRecordModal = ref(false);
+const recordPrefill = ref<any>(null);
+
+const openFill = (row: any) => {
+  recordPrefill.value = {
+    signal_id: row.signal_id || row.id,
+    strategy_id: row.strategy_id,
+    ts_code: row.ts_code,
+    direction: (row.signal_type || row.direction || "").toLowerCase() === "sell" ? "sell" : "buy",
+    price: row.price,
+    quantity: row.quantity,
+  };
+  showRecordModal.value = true;
+};
+
+const handleRecordSubmitted = () => {
+  showRecordModal.value = false;
+  loadSignals();
+};
+
+// ============================================================
 // Filter options
 // ============================================================
 const statusOpts = [
@@ -136,38 +161,82 @@ const statusTag = (status: string) => {
   return map[status] || { text: status, type: "default" as const };
 };
 
+const directionTag = (d: string | undefined) => {
+  const dir = (d || "").toLowerCase();
+  if (dir === "long" || dir === "buy") return { text: "买入", type: "error" as const };
+  if (dir === "short" || dir === "sell") return { text: "卖出", type: "info" as const };
+  return { text: d || "--", type: "default" as const };
+};
+
+const signalTypeLabel: Record<string, string> = {
+  entry: "入场", exit: "出场", stop_loss: "止损", take_profit: "止盈",
+  buy: "买入", sell: "卖出", hold: "持有",
+};
+
 const columns: DataTableColumns<any> = [
   {
-    title: "时间", key: "signal_time", width: 160,
-    render: (row) => row.signal_time?.slice(0, 16) || "--",
+    title: "时间", key: "signal_time", minWidth: 140,
+    render: (row) => (row.signal_time || "").toString().slice(0, 16).replace("T", " ") || "--",
   },
-  { title: "股票", key: "ts_code", width: 110, render: (row) => h("strong", {}, row.ts_code || "--") },
+  { title: "股票", key: "ts_code", minWidth: 100, render: (row) => h("strong", {}, row.ts_code || "--") },
   {
-    title: "类型", key: "signal_type", width: 80,
+    title: "方向", key: "direction", minWidth: 65,
     render: (row) => {
-      const t = (row.signal_type || row.direction || "").toLowerCase();
-      return h(NTag, { type: t === "buy" ? "success" : "error", size: "small", bordered: false }, { default: () => t === "buy" ? "买入" : "卖出" });
+      const d = directionTag(row.direction);
+      return h(NTag, { type: d.type, size: "small", bordered: false }, { default: () => d.text });
     },
   },
-  { title: "价格", key: "price", width: 90, render: (row) => row.price != null ? `¥${Number(row.price).toFixed(2)}` : "--" },
-  { title: "数量", key: "quantity", width: 80, render: (row) => row.quantity ? `${row.quantity}股` : "--" },
   {
-    title: "强度", key: "strength", width: 120,
+    title: "信号类型", key: "signal_type", minWidth: 72,
+    render: (row) => {
+      const label = signalTypeLabel[row.signal_type] || row.signal_type || "--";
+      const sType = (row.signal_type || "").toLowerCase();
+      const type = sType === "entry" || sType === "buy" ? "success"
+        : sType === "exit" || sType === "sell" ? "error"
+        : sType === "stop_loss" ? "warning" : "info";
+      return h(NTag, { type, size: "small", bordered: false }, { default: () => label });
+    },
+  },
+  {
+    title: "参考价", key: "price", minWidth: 80,
+    render: (row) => row.price != null ? `¥${Number(row.price).toFixed(2)}` : "--",
+  },
+  {
+    title: "价格区间", key: "price_range", minWidth: 120,
+    render: (row) => {
+      const lo = parseFloat(row.price_limit_low), hi = parseFloat(row.price_limit_high);
+      return lo && hi ? `${lo} ~ ${hi}` : (row.price ? `${row.price} ±2%` : "--");
+    },
+  },
+  {
+    title: "数量", key: "quantity", minWidth: 70,
+    render: (row) => row.quantity ? `${row.quantity}股` : "--",
+  },
+  {
+    title: "置信度", key: "confidence", minWidth: 70,
+    render: (row) => {
+      const c = parseFloat(row.confidence || row.strength);
+      return !isNaN(c) ? `${(c * 100).toFixed(0)}%` : "--";
+    },
+  },
+  {
+    title: "强度", key: "strength", minWidth: 100,
     render: (row) => {
       const pct = Math.round((row.strength || 0) * 100);
       const color = pct > 70 ? "var(--n-color-success)" : pct > 40 ? "var(--n-color-warning)" : "var(--n-color-error)";
-      return h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [
-        h(NProgress, { percentage: pct, showIndicator: false, height: 6, color, style: { width: "60px" } }),
+      return h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } }, [
+        h(NProgress, { percentage: pct, showIndicator: false, height: 4, color, style: { width: "50px" } }),
         h("span", { style: { fontSize: "12px" } }, `${pct}%`),
       ]);
     },
   },
+  { title: "原因", key: "reason", minWidth: 150, ellipsis: { tooltip: true }, render: (row) => row.reason || "--" },
   {
-    title: "状态", key: "status", width: 80,
+    title: "状态", key: "status", minWidth: 72,
     render: (row) => h(NTag, { type: statusTag(row.status ?? "pending").type, size: "small", bordered: false }, { default: () => statusTag(row.status ?? "pending").text }),
   },
   {
-    title: "操作", key: "actions", width: 160, fixed: "right" as const,
+    title: "操作", key: "actions", width: 140, fixed: "right" as const,
     render: (row) => {
       const sid = row.signal_id || row.id;
       const st = row.status ?? "pending";
@@ -178,7 +247,7 @@ const columns: DataTableColumns<any> = [
         ]);
       }
       if (st === "approved") {
-        return h(NButton, { size: "tiny", type: "primary", onClick: () => message.info("请在驾驶舱中录入成交") }, { default: () => "录入成交" });
+        return h(NButton, { size: "tiny", type: "primary", onClick: () => openFill(row) }, { default: () => "录入成交" });
       }
       return h("span", { style: { fontSize: "12px", color: "var(--n-text-color-3)" } }, "--");
     },
@@ -195,6 +264,11 @@ onMounted(() => loadSignals());
         <div class="title-section">
           <h1 class="page-title">信号管理</h1>
           <p class="page-description">查看、审核、追溯所有策略产生的交易信号</p>
+        </div>
+        <div class="header-actions">
+          <n-button class="action-btn" @click="loadSignals" :loading="loading" quaternary>
+            <template #icon><SmartIcon name="Refresh" /></template>
+          </n-button>
         </div>
       </div>
     </div>
@@ -295,6 +369,13 @@ onMounted(() => loadSignals());
         </n-spin>
       </template>
     </div>
+
+    <!-- ========== 录入成交（复用驾驶舱 TradeRecordModal） ========== -->
+    <TradeRecordModal
+      v-model="showRecordModal"
+      :prefilled="recordPrefill"
+      @submitted="handleRecordSubmitted"
+    />
   </div>
 </template>
 

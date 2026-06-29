@@ -34,9 +34,14 @@ class StrategySignalEvent(BaseEvent):
         max_slippage_pct: float = 0.02,
         order_type: str = "limit_range",
         account_id: str = "",       # v2.2: 绑定的交易账户ID
+        run_mode: str = "live",
+        execution_mode: str = "semi_auto",
         **kwargs
     ):
+        kwargs.pop("run_mode", None)
+        kwargs.pop("execution_mode", None)
         super().__init__(
+            source="strategy",
             module="strategy",
             event_type=SignalEventType.ENTRY.value,
             priority=EventPriority.HIGH,
@@ -68,6 +73,8 @@ class StrategySignalEvent(BaseEvent):
             "target_price": target_price,
             "stop_loss_price": stop_loss_price,
             "account_id": account_id,
+            "run_mode": run_mode,
+            "execution_mode": execution_mode,
             "generation_time": datetime.now().isoformat()
         }
 
@@ -87,6 +94,7 @@ class SignalExecutedEvent(BaseEvent):
         **kwargs
     ):
         super().__init__(
+            source="strategy",
             module="strategy",
             event_type=SignalEventType.EXIT.value,
             priority=EventPriority.NORMAL,
@@ -118,6 +126,7 @@ class SignalCancelledEvent(BaseEvent):
         **kwargs
     ):
         super().__init__(
+            source="strategy",
             module="strategy",
             event_type=SignalEventType.STOP_LOSS.value,
             priority=EventPriority.NORMAL,
@@ -148,6 +157,7 @@ class SignalConfirmedEvent(BaseEvent):
         **kwargs
     ):
         super().__init__(
+            source="strategy",
             module="strategy",
             event_type="strategy.signal.confirmed",
             priority=EventPriority.HIGH,

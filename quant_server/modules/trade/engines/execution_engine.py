@@ -53,9 +53,26 @@ class ExecutionEngine(EngineBase):
 		logger.info("ExecutionEngine 初始化完成")
 
 	async def _on_start(self) -> None:
-		"""引擎特定的启动逻辑 — 连接券商适配器"""
+		"""引擎特定的启动逻辑 — 连接券商适配器 + v2.3 恢复在途订单"""
 		await self.broker_adapter.connect()
+		await self._recover_pending_orders()
 		logger.info("ExecutionEngine 启动成功，券商已连接")
+
+	async def _recover_pending_orders(self) -> None:
+		"""v2.3: 重启后尝试从券商适配器恢复在途订单"""
+		try:
+			if hasattr(self.broker_adapter, "get_pending_orders"):
+				pending = await self.broker_adapter.get_pending_orders()
+				if pending:
+					for order in pending:
+						oid = order.get("order_id", "")
+						if oid:
+							self.orders[oid] = order
+					logger.info(
+						f"ExecutionEngine 恢复 {len(pending)} 个在途订单"
+					)
+		except Exception as e:
+			logger.warning(f"ExecutionEngine 订单恢复失败（不影响启动）: {e}")
 
 	async def _on_stop(self) -> None:
 		"""引擎特定的停止逻辑 — 断开券商连接"""
@@ -106,9 +123,10 @@ class ExecutionEngine(EngineBase):
 			# 保存订单
 			self.orders[order["order_id"]] = order
 
-			# 如果订单成交，更新持仓
+			# 如果订单成交，更新持仓 + 触发结算
 			if order["status"] == "filled":
 				await self.position_engine.update_position()
+				await self._trigger_settlement_after_trade(order)
 
 			# 记录交易
 			if "filled_quantity" in order and order["filled_quantity"] > 0:
@@ -131,6 +149,22 @@ class ExecutionEngine(EngineBase):
 				"status": "failed",
 				"error": str(e)
 			}
+
+	async def _trigger_settlement_after_trade(self, order: Dict[str, Any]) -> None:
+		"""成交后发布结算事件，驱动日终快照写入"""
+		try:
+			if self.event_engine:
+				from datetime import date as _date
+				from modules.account.events.settlement_events import AccountSettlementStartedEvent
+
+				await self.event_engine.put(AccountSettlementStartedEvent(
+					settlement_date=_date.today(),
+					settlement_type="daily",
+					account_ids=[order.get("account_id")] if order.get("account_id") else [],
+				))
+				logger.debug(f"已发布成交后结算事件: order={order.get('order_id')}")
+		except Exception:
+			logger.warning("发布成交后结算事件失败（非致命）", exc_info=True)
 
 	async def cancel_order (self, order_id: str) -> bool:
 		"""取消订单"""

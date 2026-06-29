@@ -347,9 +347,6 @@ class PerformanceService:
                 account_id, start_date, end_date
             )
 
-            if len(snapshots) < 2:
-                raise ValueError("账户快照数据不足（至少需要 2 个数据点）")
-
             # 3. 构建资产曲线
             equity_curve = []
             for snapshot in snapshots:
@@ -359,6 +356,41 @@ class PerformanceService:
                     'cash': snapshot.cash,
                     'market_value': snapshot.market_value
                 })
+
+            # 快照数量不足时返回退化数据（仅资产信息，无收益/风险计算）
+            if len(snapshots) < 2:
+                latest = snapshots[-1] if snapshots else None
+                metrics = PerformanceMetrics(
+                    strategy_id='',
+                    account_id=account_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    total_return=Decimal("0"),
+                    annual_return=Decimal("0"),
+                    cagr=Decimal("0"),
+                    sharpe_ratio=Decimal("0"),
+                    sortino_ratio=Decimal("0"),
+                    calmar_ratio=Decimal("0"),
+                    volatility=Decimal("0"),
+                    max_drawdown=Decimal("0"),
+                    var_95=Decimal("0"),
+                    expected_shortfall=Decimal("0"),
+                    trading_days=len(snapshots),
+                    total_days=(end_date - start_date).days + 1
+                )
+                metrics.daily_returns = []
+                metrics.equity_curve = equity_curve
+                metrics.drawdown_curve = []
+                metrics.monthly_returns = {}
+                # 附加当前资产快照摘要
+                if latest:
+                    metrics.total_asset_snapshot = {
+                        'total_asset': float(latest.total_asset),
+                        'cash': float(latest.cash),
+                        'market_value': float(latest.market_value),
+                        'trade_date': str(latest.trade_date)[:10] if hasattr(latest.trade_date, '__str__') else str(latest.trade_date),
+                    }
+                return metrics
 
             df_equity = pd.DataFrame(equity_curve)
             df_equity['trade_date'] = pd.to_datetime(df_equity['trade_date'])
@@ -400,6 +432,48 @@ class PerformanceService:
                 total_days=(end_date - start_date).days + 1
             )
             metrics.daily_returns = returns.dropna().tolist()
+
+            # 附加当前资产快照（供前端摘要栏使用）
+            latest_snap = snapshots[-1]
+            metrics.total_asset_snapshot = {
+                'total_asset': float(latest_snap.total_asset),
+                'cash': float(latest_snap.cash),
+                'market_value': float(latest_snap.market_value),
+                'daily_pnl': float(latest_snap.daily_pnl),
+                'daily_return': float(latest_snap.daily_return),
+                'trade_date': str(latest_snap.trade_date)[:10] if hasattr(latest_snap.trade_date, '__str__') else str(latest_snap.trade_date),
+            }
+
+            # 序列化净值曲线
+            metrics.equity_curve = [
+                {
+                    'date': str(idx)[:10],
+                    'equity': float(row['equity']),
+                    'cash': float(row.get('cash', 0)),
+                    'market_value': float(row.get('market_value', 0))
+                }
+                for idx, row in df_equity.iterrows()
+            ]
+
+            # 月度收益率
+            if len(df_equity) > 0:
+                monthly_returns = self._calculate_monthly_returns(df_equity)
+                metrics.monthly_returns = {
+                    month: Decimal(str(ret))
+                    for month, ret in monthly_returns.items()
+                }
+
+            # 回撤曲线
+            equity_arr = df_equity['equity'].values
+            peak = np.maximum.accumulate(equity_arr)
+            drawdown_series = (peak - equity_arr) / peak
+            metrics.drawdown_curve = [
+                {
+                    'date': str(df_equity.index[i])[:10],
+                    'drawdown': float(drawdown_series[i])
+                }
+                for i in range(len(df_equity))
+            ]
 
             return metrics
 

@@ -15,6 +15,7 @@ from api.dependencies.auth import get_current_user
 # 导入架构依赖
 from api.dependencies.database import get_db_session
 from api.dependencies.event_engine import get_event_engine
+from api.dependencies.main_engine import MainEngineDep
 # 导入策略模块的业务层处理函数
 from modules.strategy.handlers import (
 	get_strategy_list,
@@ -35,6 +36,8 @@ from modules.strategy.handlers import (
 	get_portfolio_detail,
 	get_portfolio_performance,
 	update_portfolio_weights,
+	trigger_strategy,
+	get_builtin_strategies,
 )
 # 导入策略模块的Pydantic模型
 from modules.strategy.schemas import (
@@ -47,6 +50,7 @@ from modules.strategy.schemas import (
 	StrategyResponse,
 	StrategyStartRequest,
 	StrategyStopRequest,
+	StrategyTriggerRequest,
 	StrategyPerformanceRequest,
 	StrategyPerformanceResponse,
 	StrategyStatusResponse
@@ -66,6 +70,24 @@ router = APIRouter(
 		500: {"description": "服务器内部错误"}
 	}
 )
+
+
+# ==================== 内置策略接口（v2.3） ====================
+# 必须放在 /{strategy_id} 之前，否则 "builtin" 会被当成策略ID
+
+@router.get("/builtin")
+async def builtin_strategies_api():
+	"""
+	获取内置策略列表（从 Registry 直接读取，无需 DB）。
+	"""
+	try:
+		result = await get_builtin_strategies()
+		if result.get("success"):
+			return success_response(data=result.get("data", []))
+		return error_response(message="获取内置策略失败")
+	except Exception as e:
+		logger.error(f"获取内置策略失败: {str(e)}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ==================== 策略管理接口 ====================
@@ -746,6 +768,55 @@ async def resume_strategy_api (
 		)
 
 
+
+# ==================== 手动触发接口（v2.3 开发调试） ====================
+
+@router.post("/{strategy_id}/trigger")
+async def trigger_strategy_api(
+	strategy_id: str,
+	request: StrategyTriggerRequest = Body(StrategyTriggerRequest()),
+	current_user: Dict = Depends(get_current_user),
+	main_engine=MainEngineDep,
+):
+	"""
+	手动触发策略在指定交易日执行（开发调试工具）。
+
+	走完整实盘信号链路：
+	on_bar → StrategySignalEvent → SignalEngine → pending_manual
+	"""
+	try:
+		logger.info(
+			f"用户 {current_user.get('username')} 手动触发策略 {strategy_id}, "
+			f"trade_date={request.trade_date}, symbols={request.symbols}"
+		)
+
+		result = await trigger_strategy(
+			strategy_id=strategy_id,
+			request=request,
+			main_engine=main_engine,
+		)
+
+		if result.get("success"):
+			return success_response(
+				data=result.get("data"),
+				message=f"策略 {strategy_id} 手动触发完成",
+			)
+		else:
+			return error_response(
+				message=result.get("error", "手动触发失败"),
+				code="VALIDATION_ERROR",
+				status_code=400,
+			)
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"手动触发策略失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"手动触发策略失败: {str(e)}",
+		)
+
 # ==================== 模块管理接口 ====================
 
 @router.get("/health")
@@ -785,3 +856,5 @@ async def strategy_module_health_check (
 			},
 			status_code=500
 		)
+
+

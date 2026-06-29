@@ -3165,6 +3165,7 @@ CREATE INDEX idx_index_weight_stock ON index_weight(ts_code);
 -- 账户每日绩效表（TimescaleDB超表）
 CREATE TABLE account_daily_performance (
     id VARCHAR(36),
+    account_id VARCHAR(36) NOT NULL REFERENCES accounts(id),
     user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
     trade_date DATE NOT NULL,
     total_asset NUMERIC(16,4) NOT NULL,
@@ -3176,6 +3177,7 @@ CREATE TABLE account_daily_performance (
 );
 
 COMMENT ON TABLE account_daily_performance IS '账户每日绩效快照表（TimescaleDB超表）';
+COMMENT ON COLUMN account_daily_performance.account_id IS '账户ID';
 COMMENT ON COLUMN account_daily_performance.user_id IS '用户ID';
 COMMENT ON COLUMN account_daily_performance.trade_date IS '交易日期';
 COMMENT ON COLUMN account_daily_performance.total_asset IS '总资产';
@@ -3559,6 +3561,7 @@ CREATE INDEX IF NOT EXISTS idx_index_daily_ts_code ON index_daily (ts_code);
 CREATE INDEX IF NOT EXISTS idx_index_daily_date ON index_daily (trade_date DESC);
 
 -- 补充索引
+CREATE INDEX IF NOT EXISTS idx_account_daily_perf_account_date ON account_daily_performance(account_id, trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_account_daily_perf_user_date ON account_daily_performance(user_id, trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_strategy_daily_perf_strategy_date ON strategy_daily_performance(strategy_id, trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_signals_strategy_time ON signals(strategy_id, signal_time DESC);

@@ -92,7 +92,7 @@ class AlertService:
 			alert_type: str,
 			source_module: str,
 			title: str,
-			within_hours: int = 1,
+			within_hours: int = 0,  # v2.3: 改为 0 不限制，或设正数启用
 	) -> bool:
 		"""检查是否存在重复告警（相同类型+标题+来源，N小时内）"""
 		from shared.database.repositories.analysis.monitor.monitor_alert_repo import MonitorAlertRepository

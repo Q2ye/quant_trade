@@ -662,9 +662,7 @@ class QuantServer:
 				"enable_multi_account": self.config.settings.get_feature("enable_multi_account"),
 			},
 			"monitor": {
-				"email_enabled": self.config.settings.NOTIFICATION.EMAIL_ENABLED,
-				"dingtalk_enabled": self.config.settings.NOTIFICATION.DINGTALK_ENABLED,
-				"wechat_enabled": self.config.settings.NOTIFICATION.WECHAT_ENABLED,
+				# v2.3: 通知开关以 config.yaml 为准
 			},
 			"system": {
 				"secret_key": self.config.settings.API.SECRET_KEY,

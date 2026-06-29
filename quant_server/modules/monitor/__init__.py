@@ -42,7 +42,7 @@ async def initialize(
         bool: 初始化是否成功
     """
     cfg = config or {}
-    monitor_cfg = cfg.get("monitor", {})
+    monitor_cfg = cfg  # config 本身就是 monitor 模块平铺配置
 
     try:
         logger.info("开始初始化监控模块...")
@@ -125,13 +125,23 @@ async def initialize(
 
         # 4. 告警引擎
         try:
+            # v2.3: 注入 session_factory
+            try:
+                from shared.database.session.session_manager import get_session_manager
+                sm = get_session_manager()
+                db_session_factory = sm.get_session if sm else None
+            except Exception:
+                db_session_factory = None
+
             alert_engine = AlertEngine(
                 config={
                     "name": "alert_engine",
                     "max_retries": 3,
                     "retry_delay": 1.0,
+                    "monitor": {"config": monitor_cfg},
                 },
                 event_engine=event_engine,
+                db_session_factory=db_session_factory,
             )
             if main_engine and hasattr(main_engine, '_module_engines'):
                 main_engine._module_engines["alert_engine"] = alert_engine

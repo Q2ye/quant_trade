@@ -90,9 +90,14 @@ class AlertEngine(EngineBase):
 
         cfg = self.config.config if hasattr(self.config, 'config') else {}
         monitor_cfg = cfg.get("monitor", {}).get("config", {})
+        wechat_enabled = monitor_cfg.get("wechat_enabled", False)
+        dingtalk_enabled = monitor_cfg.get("dingtalk_enabled", False)
+        email_enabled = monitor_cfg.get("email_enabled", False)
+        logger.info("_register_alerters: cfg=%s, wechat=%s, dingtalk=%s",
+                    list(cfg.keys()), wechat_enabled, dingtalk_enabled)
 
         # 微信：开关在 config.yaml，webhook_url 在 .env
-        if monitor_cfg.get("wechat_enabled"):
+        if wechat_enabled:
             webhook_url = os.getenv("WECHAT_WEBHOOK_URL", "")
             if webhook_url:
                 try:
@@ -106,7 +111,7 @@ class AlertEngine(EngineBase):
                 logger.warning("wechat_enabled=true 但 .env 中 WECHAT_WEBHOOK_URL 为空，跳过")
 
         # 钉钉：开关在 config.yaml，webhook_url 在 .env
-        if monitor_cfg.get("dingtalk_enabled"):
+        if dingtalk_enabled:
             webhook_url = os.getenv("DINGTALK_WEBHOOK_URL", "")
             if webhook_url:
                 try:
@@ -150,19 +155,11 @@ class AlertEngine(EngineBase):
 
     async def _process_alert(self, alert_data: Dict[str, Any]) -> None:
         """处理单个告警"""
-        session = None
-        if self._db_session_factory:
-            try:
-                session = await self._db_session_factory()
-            except Exception as e:
-                logger.error(f"获取会话失败: {e}")
-                return
-
-        if not session:
+        if not self._db_session_factory:
             logger.warning("无数据库会话，告警无法持久化")
             return
 
-        try:
+        async with self._db_session_factory() as session:
             result = await self._alert_manager.create_and_dispatch(
                 session=session,
                 alert_type=alert_data.get("alert_type", "system_error"),
@@ -197,11 +194,6 @@ class AlertEngine(EngineBase):
                         )
                         await self._publish_event(failed_event.event_type, failed_event.data)
 
-        except Exception as e:
-            logger.error(f"告警处理失败: {e}")
-        finally:
-            pass  # session 生命周期由 factory 管理
-
     async def trigger_alert(
         self,
         alert_type: str,
@@ -218,17 +210,10 @@ class AlertEngine(EngineBase):
         Returns:
             alert_id 或 None（若去重导致跳过）
         """
-        session = None
-        if self._db_session_factory:
-            try:
-                session = await self._db_session_factory()
-            except (OSError, asyncio.TimeoutError):
-                return None
-
-        if not session:
+        if not self._db_session_factory:
             return None
 
-        try:
+        async with self._db_session_factory() as session:
             result = await self._alert_manager.create_and_dispatch(
                 session=session,
                 alert_type=alert_type,
@@ -240,9 +225,6 @@ class AlertEngine(EngineBase):
                 metadata=metadata,
             )
             return result.get("alert_id")
-        except Exception as e:
-            logger.error(f"手动触发告警失败: {e}")
-            return None
 
     async def _handle_risk_alert(self, event) -> None:
         """处理风险告警事件"""
@@ -294,7 +276,7 @@ class AlertEngine(EngineBase):
         # 构建确认 URL
         confirm_url = f"/signals/{signal_id}" if signal_id else ""
 
-        title = f"[info] 交易信号 - {strategy_name}"
+        title = f"[info] 交易信号 - {strategy_name} | {ts_code} {direction} @ {price:.2f}"
         message = (
             f"策略: {strategy_name}\n"
             f"股票: {ts_code}\n"

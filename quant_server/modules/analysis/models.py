@@ -115,6 +115,12 @@ class PerformanceMetrics:
 			"monthly_returns": {k: float(v) for k, v in self.monthly_returns.items()} if self.monthly_returns else {},
 			"daily_returns": self.daily_returns,
 			"benchmark_curve": self.benchmark_curve,
+			# 当前快照摘要（单点数据时填充）
+			"total_asset": getattr(self, "total_asset_snapshot", {}).get("total_asset", 0) if hasattr(self, "total_asset_snapshot") else (
+				float(self.equity_curve[-1]["equity"]) if self.equity_curve else 0
+			),
+			"daily_pnl": getattr(self, "total_asset_snapshot", {}).get("daily_pnl", 0) if hasattr(self, "total_asset_snapshot") else 0,
+			"daily_return": getattr(self, "total_asset_snapshot", {}).get("daily_return", 0) if hasattr(self, "total_asset_snapshot") else 0,
 		}
 		return result
 

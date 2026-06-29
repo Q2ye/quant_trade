@@ -148,6 +148,17 @@ class PnLCalculator:
                 account_id, trade_date
             )
 
+            # 预加载订单方向，避免异步 lazy load
+            direction_map: Dict[str, str] = {}
+            order_ids = list({t.order_id for t in daily_trades if getattr(t, "order_id", None)})
+            if order_ids:
+                from sqlalchemy import select
+                from shared.database.models.business_models import Order
+                result = await self.session.execute(
+                    select(Order.order_id, Order.direction).where(Order.order_id.in_(order_ids))
+                )
+                direction_map = {row[0]: row[1] for row in result.all()}
+
             trade_pnl = Decimal("0")
             trade_volume = 0
             trade_amount = Decimal("0")
@@ -160,7 +171,8 @@ class PnLCalculator:
                 commission += Decimal(str(trade.commission))
                 tax += Decimal(str(trade.tax))
 
-                if trade.order.direction == "sell":
+                direction = direction_map.get(trade.order_id, "buy")
+                if direction == "sell":
                     cost_price = await self._get_cost_price(account_id, trade.ts_code, trade_date)
                     if cost_price:
                         trade_pnl += Decimal(str(trade.volume)) * (

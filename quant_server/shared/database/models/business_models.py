@@ -232,10 +232,13 @@ class Signal(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='信号ID')
     strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
-    signal_type = Column(String(10), nullable=False, comment='信号类型：buy, sell, hold')
+    direction = Column(String(10), default='buy', comment='交易方向：long, short, close_long, close_short')
+    signal_type = Column(String(10), nullable=False, comment='信号类型：entry, exit, stop_loss, take_profit')
     signal_time = Column(DateTime(timezone=True), nullable=False, index=True, comment='信号时间')
     price = Column(Numeric(10, 4), comment='信号价格')
+    quantity = Column(Integer, default=0, comment='建议数量（股）')
     strength = Column(Numeric(5, 2), comment='信号强度')
+    confidence = Column(Numeric(5, 4), default=1.0, comment='置信度（0-1）')
     reason = Column(Text, comment='信号理由')
     status = Column(String(20), default='pending',
                     comment='信号状态：pending/approved/rejected/executed')
@@ -425,6 +428,7 @@ class AccountDailyPerformance(Base):
     __tablename__ = 'account_daily_performance'
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='绩效记录ID')
+    account_id = Column(String(36), ForeignKey('accounts.id'), nullable=False, comment='账户ID')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     trade_date = Column(DateTime, nullable=False, index=True, comment='交易日期')
     total_asset = Column(Numeric(16, 4), nullable=False, comment='总资产')
@@ -435,10 +439,12 @@ class AccountDailyPerformance(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
 
     # 关联关系
+    account = relationship("Account", backref="daily_performance_records")
     user = relationship("SysUser", back_populates="account_performance")
 
     # 索引
     __table_args__ = (
+        Index('idx_account_daily_perf_account_date', 'account_id', 'trade_date'),
         Index('idx_account_daily_performance_user_date', 'user_id', 'trade_date'),
     )
 

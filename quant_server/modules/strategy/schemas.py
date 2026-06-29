@@ -73,6 +73,26 @@ class StrategyStopRequest(BaseModel):
     force: bool = Field(default=False, description="是否强制停止")
 
 
+class StrategyTriggerRequest(BaseModel):
+    """手动触发策略请求（v2.3 开发调试工具）"""
+    trade_date: Optional[str] = Field(
+        default=None,
+        description="起始交易日 YYYY-MM-DD，默认今天",
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        description="结束交易日 YYYY-MM-DD，不传仅触发 trade_date 当天",
+    )
+    symbols: Optional[List[str]] = Field(
+        default=None,
+        description="股票池，默认使用策略参数中的 symbols/universe",
+    )
+    skip_pending_check: bool = Field(
+        default=False,
+        description="跳过昨日 pending 信号过滤（测试用）",
+    )
+
+
 class StrategyPerformanceRequest(BaseModel):
     """策略绩效请求"""
     start_date: Optional[str] = Field(default=None, description="开始日期")

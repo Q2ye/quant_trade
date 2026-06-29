@@ -234,9 +234,10 @@ class PerformanceMetrics:
 class StrategyConfig:
     """策略配置"""
     # 基本配置
-    name: str
+    name: str = ""
     description: str = ""
     strategy_type: StrategyType = StrategyType.CTA
+    user_id: Any = ""  # v2.3: load_strategy 用 hasattr 读取，必须存在
 
     # 初始资金
     initial_capital: float = 1000000.0

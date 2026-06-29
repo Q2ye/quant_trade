@@ -37,6 +37,55 @@ from .schemas import (
 from .handlers import router as account_router
 from .engines.settlement_engine import SettlementEngine
 
+def _register_daily_settlement_schedule(settlement_engine) -> None:
+    """注册交易日 15:30 日终结算调度（APScheduler）
+
+    兜底机制：即使当日无交易信号触发结算，15:30 也会执行一次。
+    """
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+
+        scheduler = AsyncIOScheduler()
+
+        async def _settlement_job():
+            from datetime import date as _date
+            from modules.account.tasks.settlement_tasks import create_settlement_tasks
+
+            db_factory = settlement_engine._db_session_factory
+            if not db_factory:
+                logger.warning("结算调度跳过：db_session_factory 未配置")
+                return
+
+            session = db_factory()
+            try:
+                tasks = create_settlement_tasks(session, event_engine=settlement_engine.event_engine)
+                result = await tasks.daily_settlement_task(_date.today())
+                await session.commit()
+                logger.info(f"日终结算调度完成: {result.get('total_accounts', 0)} 个账户")
+            except Exception:
+                logger.exception("日终结算调度执行失败")
+                await session.rollback()
+            finally:
+                await session.close()
+
+        scheduler.add_job(
+            _settlement_job,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Shanghai"),
+            id="daily_settlement_15_30",
+            name="日终结算(15:30)",
+            max_instances=1,
+            misfire_grace_time=300,
+            coalesce=True,
+        )
+        scheduler.start()
+        logger.info("日终结算调度已注册: 交易日 15:30")
+    except ImportError:
+        logger.info("APScheduler 未安装，跳过日终结算调度注册")
+    except Exception:
+        logger.warning("日终结算调度注册失败（非致命）", exc_info=True)
+
+
 async def shutdown(main_engine=None) -> None:
     """账户模块关闭函数"""
     logger.info("账户模块已关闭")
@@ -106,6 +155,9 @@ async def initialize(
                     main_engine.register_engine("settlement_engine", settlement_engine)
                 await settlement_engine.start()
                 logger.info("SettlementEngine 已注册并启动")
+
+                # 注册日终结算调度（交易日 15:30）
+                _register_daily_settlement_schedule(settlement_engine)
             except Exception as e:
                 logger.warning(f"SettlementEngine 注册失败（非致命）: {e}")
 
