@@ -77,6 +77,19 @@ class DataFeedEngine(EngineBase):
         self._calendar_repo = None
         self._factor_repo = None
         self._adj_price_repo = None
+        self._etf_daily_repo = None
+        self._etf_repo = None
+
+    @staticmethod
+    def _is_etf(ts_code: str) -> bool:
+        """v2.4: 根据代码规则判断是否为 ETF
+
+        A 股 ETF 代码规则:
+        - 上交所 (SH): 以 51 开头 (510050, 510300, 512880 等)
+        - 深交所 (SZ): 以 159 或 16 开头 (159915, 159919 等)
+        """
+        code = ts_code.split(".")[0] if "." in ts_code else ts_code
+        return code.startswith("51") or code.startswith("159") or code.startswith("16")
 
     @property
     def daily_repo(self):
@@ -545,6 +558,24 @@ class DataFeedEngine(EngineBase):
         通过 StockDailyRepository 批量查询。
         """
         return await self.daily_repo.get_batch_by_date_range(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    async def _load_etf_batch(
+        self,
+        symbols: List[str],
+        start_date,
+        end_date,
+    ) -> List[Dict[str, Any]]:
+        """
+        批量加载 ETF 复权日线数据（etf_daily JOIN fund_adj_factor）。
+
+        ETF 没有 stock_adjusted_prices 预计算复权表，需要通过
+        ETFRepository.get_etf_adjusted_daily_batch() 在线 JOIN 计算复权价格。
+        """
+        return await self.etf_repo.get_etf_adjusted_daily_batch(
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,

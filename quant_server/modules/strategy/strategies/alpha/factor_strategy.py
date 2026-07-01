@@ -150,29 +150,53 @@ class FactorStrategy(BaseStrategy):
 
 	def _calculate_stock_scores (self) -> Dict[str, float]:
 		"""
-		计算股票综合得分
+		计算股票综合得分 — v2.4: 添加跨截面 z-score 标准化
+
+		1. 每只股票提取各因子原始值
+		2. 价值因子 (pe/pb) 取负号（越小越好）
+		3. 跨截面 z-score 标准化，消除量纲差异
+		4. 加权求和得综合分
 
 		Returns:
-			股票得分字典
+			股票得分字典 {ts_code: score}
 		"""
+		import numpy as np
+
 		scores = {}
+		# 第一步：收集所有股票的原始因子值
+		raw_values = {fn: [] for fn in self.factors}
+		stock_list = []
 
 		for ts_code, factors in self.factor_data.items():
-			total_score = 0.0
+			stock_list.append(ts_code)
+			for fn in self.factors:
+				raw_values[fn].append(factors.get(fn, 0.0))
 
-			for i, factor_name in enumerate(self.factors):
-				if factor_name in factors:
-					factor_value = factors[factor_name]
+		if not stock_list:
+			return {}
 
-					# 因子标准化处理
-					if factor_name in ['pe', 'pb']:  # 价值因子，越小越好
-						normalized_value = -factor_value
-					else:  # 其他因子，越大越好
-						normalized_value = factor_value
+		# 第二步：价值因子取负
+		for fn in self.factors:
+			arr = np.array(raw_values[fn], dtype=float)
+			if fn in ('pe', 'pb'):
+				arr = -arr
+			raw_values[fn] = arr
 
-					total_score += normalized_value * self.weights[i]
+		# 第三步：跨截面 z-score 标准化
+		z_scores = {}
+		for fn in self.factors:
+			arr = raw_values[fn]
+			std = np.std(arr)
+			if std > 1e-10:
+				z_scores[fn] = (arr - np.mean(arr)) / std
+			else:
+				z_scores[fn] = np.zeros_like(arr)
 
-			scores[ts_code] = total_score
+		# 第四步：加权求和
+		for idx, ts_code in enumerate(stock_list):
+			total_score = sum(z_scores[fn][idx] * self.weights[i]
+			                  for i, fn in enumerate(self.factors))
+			scores[ts_code] = float(total_score)
 
 		return scores
 
@@ -234,7 +258,7 @@ class FactorStrategy(BaseStrategy):
 					if target_weight > current_weight:
 						direction = SignalDirection.LONG
 					else:
-						direction = SignalDirection.SHORT
+						direction = SignalDirection.CLOSE_LONG  # v2.4: 卖出平仓，非做空
 
 					# 创建交易信号
 					signal = TradingSignal(

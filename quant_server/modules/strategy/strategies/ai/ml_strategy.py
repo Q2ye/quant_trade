@@ -46,33 +46,29 @@ class MLStrategy(BaseStrategy):
                 - prediction_horizon: 预测周期
                 - confidence_threshold: 置信度阈值
         """
-        super().__init__(name, StrategyType.ML, parameters)
-        
-        # 机器学习相关属性
-        self.model = None
-        self.feature_scaler = None
-        self.is_model_trained = False
-        
-        # 数据缓存
-        self.feature_data = pd.DataFrame()
-        self.target_data = pd.Series()
-        
-        # 默认参数
-        self.default_params = {
+        # v2.4: 合并默认参数后再调用 super().__init__()（与 MACrossStrategy/MACDStrategy 一致）
+        defaults = {
             'algorithm': 'random_forest',
             'feature_columns': ['open', 'high', 'low', 'close', 'volume'],
-            'target_column': 'future_return',
+            'target_column': 'future_return',  # 保留用于将来自定义目标列
             'lookback_period': 20,
             'prediction_horizon': 1,
             'confidence_threshold': 0.7,
             'min_training_samples': 100,
             'retrain_interval': 100,
         }
-        
-        # 更新参数
-        self.parameters.update(self.default_params)
         if parameters:
-            self.parameters.update(parameters)
+            defaults.update(parameters)
+        super().__init__(name, StrategyType.ML, defaults)
+
+        # 机器学习相关属性
+        self.model = None
+        self.feature_scaler = None
+        self.is_model_trained = False
+
+        # 数据缓存
+        self.feature_data = pd.DataFrame()
+        self.target_data = pd.Series()
 
     def on_init(self) -> None:
         """策略初始化"""

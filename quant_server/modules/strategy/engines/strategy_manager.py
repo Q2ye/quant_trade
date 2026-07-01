@@ -7,17 +7,21 @@ v1.1 重构: 移除硬编码注册，使用 StrategyRegistry；新增 handle_bar
 """
 import asyncio
 import logging
-import uuid
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Any, Optional, Type
 
+from core.engines import BarData
 from core.engines.base.engine_base import EngineBase, EngineConfigEntity
 from core.engines.types.enums import EngineType
+from modules.data.events import DataSyncCompletedEvent
 from modules.strategy.constants import (
     StrategyType,
     StrategyLifecycleStatus,
     RunMode,
 )
+from modules.strategy.events import StrategyStartedEvent, StrategyStoppedEvent, StrategyPausedEvent, \
+	StrategyResumedEvent
+from modules.strategy.events.signal_events import SignalConfirmedEvent
 from modules.strategy.models import (
     StrategyInstance,
     StrategyState,
@@ -27,6 +31,8 @@ from modules.strategy.models import (
 from modules.strategy.strategies.base.base_strategy import BaseStrategy
 from modules.strategy.strategies.base.strategy_context import StrategyContext
 from modules.strategy.engines.strategy_registry import StrategyRegistry
+from modules.trade import OrderFilledEvent
+from shared.database.repositories import strategy
 
 logger = logging.getLogger(__name__)
 
@@ -117,50 +123,54 @@ class StrategyManager(EngineBase):
         """
         try:
             from modules.strategy.strategies.base.base_strategy import BaseStrategy as BS
+            from datetime import datetime as _dt
             from modules.strategy.constants import (
-                StrategyType as ST, SignalDirection, TimeFrame,
+                StrategyType as ST, SignalDirection, SignalType as SigType, TimeFrame, RunMode,
             )
             from modules.strategy.models import TradingSignal, Position
             from core.engines.types.entities import BarData
             import numpy as np
             import pandas as pd
             import typing as _typing
+            import logging as _logging
 
             temp_module: Dict[str, Any] = {
+                "logging": _logging,
+                "logger": _logging.getLogger(__name__),
                 "BaseStrategy": BS,
                 "StrategyType": ST,
                 "SignalDirection": SignalDirection,
+                "SignalType": SigType,
                 "TimeFrame": TimeFrame,
+                "RunMode": RunMode,
                 "TradingSignal": TradingSignal,
                 "Position": Position,
                 "BarData": BarData,
                 "pd": pd,
                 "np": np,
+                "datetime": _dt,
                 "typing": _typing,
             }
+            # v2.4: 注入常用 typing 名称，避免策略代码中裸用 Optional 报 NameError
+            for _tname in ("Optional", "List", "Dict", "Tuple", "Set", "Union", "Any", "Callable", "Type"):
+                if hasattr(_typing, _tname):
+                    temp_module[_tname] = getattr(_typing, _tname)
 
-            # v2.4: exec() 沙箱加固 — 限制 __builtins__ 防止代码注入
-            safe_builtins = {
-                "True": True, "False": False, "None": None,
-                "abs": abs, "all": all, "any": any, "bin": bin,
-                "bool": bool, "dict": dict, "divmod": divmod,
-                "enumerate": enumerate, "filter": filter,
-                "float": float, "format": format, "frozenset": frozenset,
-                "hash": hash, "hex": hex, "int": int, "isinstance": isinstance,
-                "issubclass": issubclass, "iter": iter, "len": len,
-                "list": list, "map": map, "max": max, "min": min,
-                "next": next, "oct": oct, "ord": ord, "pow": pow,
-                "print": print, "range": range, "repr": repr,
-                "reversed": reversed, "round": round, "set": set,
-                "slice": slice, "sorted": sorted, "str": str, "sum": sum,
-                "tuple": tuple, "type": type, "zip": zip,
-                "Exception": Exception, "ValueError": ValueError,
-                "TypeError": TypeError, "KeyError": KeyError,
-                "IndexError": IndexError, "StopIteration": StopIteration,
-            }
+            # v2.4: exec() 沙箱加固 — 全量 builtins，仅移除危险函数
+            import builtins as _b
+            safe_builtins = dict(vars(_b))
+            # 移除可执行任意代码的危险函数
+            for _danger in ("eval", "exec", "compile", "open", "input", "breakpoint"):
+                safe_builtins.pop(_danger, None)
+            safe_builtins["__name__"] = "__main__"
             temp_module["__builtins__"] = safe_builtins
             try:
                 exec(code, temp_module)
+                # 确保 exec 后 logger/logging 可用（策略代码 import logging 可能失败）
+                if "logging" not in temp_module:
+                    temp_module["logging"] = _logging
+                if "logger" not in temp_module:
+                    temp_module["logger"] = _logging.getLogger("strategy")
             except ModuleNotFoundError as e:
                 missing = e.name or str(e)
                 raise ValueError(f"缺少依赖模块: {missing}") from e
@@ -799,9 +809,6 @@ class StrategyManager(EngineBase):
         logger.info("策略管理器启动")
         if self.event_engine:
             try:
-                from modules.data.events.sync_events import DataSyncCompletedEvent
-                from modules.trade.events.order_events import OrderFilledEvent
-                from modules.strategy.events.signal_events import SignalConfirmedEvent
 
                 self.event_engine.subscribe(
                     DataSyncCompletedEvent, self._on_data_sync_completed
@@ -818,10 +825,6 @@ class StrategyManager(EngineBase):
 
             # v2.0: 订阅策略生命周期事件
             try:
-                from modules.strategy.events.lifecycle_events import (
-                    StrategyStartedEvent, StrategyStoppedEvent,
-                    StrategyPausedEvent, StrategyResumedEvent,
-                )
                 self.event_engine.subscribe(
                     StrategyStartedEvent, self._on_strategy_start_requested
                 )
@@ -1128,7 +1131,6 @@ class StrategyManager(EngineBase):
     def _row_to_bar(row) -> object:
         """将数据库行（ORM 对象或 dict）转为 BarData 对象"""
         try:
-            from modules.strategy.strategies.base.bar_data import BarData
 
             if isinstance(row, dict):
                 return BarData(
@@ -2071,65 +2073,51 @@ class StrategyContextBuilder:
             f"StrategyContext callback 注入完成: {strategy_id} run_mode={run_mode}"
         )
 
-    @staticmethod
     async def load_stock_history(
-        ts_code: str, start_date: str, end_date: str
+        self, ts_code: str, start_date: str, end_date: str
     ) -> Optional[list]:
-        """实盘模式：从 DB 加载单只股票的历史 BarData"""
-        from sqlalchemy import text
+        """v2.4: 从 DB 加载单只股票历史 BarData — 使用 Repository 替代裸 SQL + namedtuple"""
+        from datetime import datetime as _dt
+        from shared.database.repositories.market.quote.stock_adjusted_price_repo import StockAdjustedPriceRepository
+        from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+        from core.engines.types.entities import BarData
+
+        if not self.session_factory:
+            logger.warning("session_factory 未注入，无法加载历史数据")
+            return None
 
         try:
-            # 优先查 stock_adjusted_prices
-            query = text(
-                "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                "FROM stock_adjusted_prices "
-                "WHERE ts_code = :ts_code "
-                "  AND trade_date BETWEEN :start AND :end "
-                "  AND adj_type = 'qfq' AND freq = 'D' "
-                "ORDER BY trade_date ASC"
-            )
-            # 延迟获取 db session（由 StrategyManager 持有）
-            db = getattr(strategy_manager, "db", None)
-            if db is None:
-                return None
+            start_dt = _dt.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = _dt.strptime(end_date, "%Y-%m-%d").date()
 
-            result = await db.execute(query, {
-                "ts_code": ts_code,
-                "start": start_date,
-                "end": end_date,
-            })
-            rows = result.fetchall()
-
-            if not rows:
-                # Fallback 到 stock_daily
-                query2 = text(
-                    "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                    "FROM stock_daily "
-                    "WHERE ts_code = :ts_code "
-                    "  AND trade_date BETWEEN :start AND :end "
-                    "ORDER BY trade_date ASC"
+            async with self.session_factory() as session:
+                # 优先查复权价格
+                adj_repo = StockAdjustedPriceRepository(session)
+                rows = await adj_repo.get_by_code_and_date_range(
+                    ts_code, start_dt, end_dt, adj_type="qfq", freq="D", limit=5000
                 )
-                result2 = await db.execute(query2, {
-                    "ts_code": ts_code,
-                    "start": start_date,
-                    "end": end_date,
-                })
-                rows = result2.fetchall()
 
-            from collections import namedtuple
-            SimpleBar = namedtuple(
-                "SimpleBar",
-                ["ts_code", "trade_date", "open", "high", "low", "close", "volume", "amount"]
-            )
-            return [SimpleBar(
-                ts_code=r.ts_code, trade_date=r.trade_date,
-                open=float(r.open) if r.open else 0,
-                high=float(r.high) if r.high else 0,
-                low=float(r.low) if r.low else 0,
-                close=float(r.close) if r.close else 0,
-                volume=float(r.vol) if r.vol else 0,
-                amount=float(r.amount) if r.amount else 0,
-            ) for r in rows]
+                if not rows:
+                    # Fallback 到原始日行情
+                    daily_repo = StockDailyRepository(session)
+                    rows = await daily_repo.get_quotes_by_date_range(
+                        str(start_dt), str(end_dt), limit=5000
+                    )
+                    rows = [r for r in rows if getattr(r, 'ts_code', '') == ts_code]
+
+                return [
+                    BarData(
+                        ts_code=getattr(r, 'ts_code', ts_code),
+                        trade_date=str(getattr(r, 'trade_date', ''))[:10],
+                        open=float(getattr(r, 'open', 0) or 0),
+                        high=float(getattr(r, 'high', 0) or 0),
+                        low=float(getattr(r, 'low', 0) or 0),
+                        close=float(getattr(r, 'close', 0) or 0),
+                        volume=float(getattr(r, 'vol', getattr(r, 'volume', 0)) or 0),
+                        amount=float(getattr(r, 'amount', 0) or 0),
+                    )
+                    for r in rows
+                ]
 
         except Exception as e:
             logger.error(f"load_stock_history 失败: {ts_code}: {e}")

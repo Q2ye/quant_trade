@@ -33,13 +33,11 @@ from modules.data.constants import (
 )
 from shared.cache.redis_cache import RedisCache
 # 导入共享层组件
-from shared.database.repositories import (
-	StockBasicRepository,
-	StockDailyRepository,
-	TradeCalendarRepository,
-	FactorDataRepository,
-	IndexBasicRepository,
-)
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
+from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+from shared.database.repositories.market.reference.trade_calendar_repo import TradeCalendarRepository
+from shared.database.repositories.analysis.factor.factor_data_repo import FactorDataRepository
+from shared.database.repositories.market.basic.index_repo import IndexBasicRepository
 from utils.core_utils.data_utils.data_transformer import DataTransformerPipeline
 # 导入工具类
 from utils.core_utils.time_utils.trading_calendar import TradingCalendar

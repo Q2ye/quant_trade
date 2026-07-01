@@ -178,6 +178,20 @@ class TemplateService:
             }
 
             strategy = await self.strategy_repo.create(strategy_data)
+            # v2.4: 复制模板的默认参数到 strategy_parameters 表
+            if template.default_parameters:
+                from shared.database.repositories.strategy.management.strategy_parameter_repo import StrategyParameterRepository
+                param_repo = StrategyParameterRepository(self.session)
+                for key, value in self._parse_parameters(template.default_parameters).items():
+                    await param_repo.create({
+                        "strategy_id": strategy.id,
+                        "param_name": key,
+                        "param_type": type(value).__name__,
+                        "param_value": value,
+                        "is_required": False,
+                    })
+
+            await self.session.commit()
 
             logger.info(f"基于模板创建策略: {name}, 模板: {template_id}")
 
@@ -495,6 +509,20 @@ class TemplateService:
             }
 
             strategy = await self.strategy_repo.create(strategy_data)
+
+            # v2.4: 复制模板的默认参数到 strategy_parameters 表
+            if template.default_parameters:
+                from shared.database.repositories.strategy.management.strategy_parameter_repo import StrategyParameterRepository
+                param_repo = StrategyParameterRepository(self.session)
+                for key, value in self._parse_parameters(template.default_parameters).items():
+                    await param_repo.create({
+                        "strategy_id": strategy.id,
+                        "param_name": key,
+                        "param_type": type(value).__name__,
+                        "param_value": value,
+                        "is_required": False,
+                    })
+
             await self.session.commit()
 
             return {

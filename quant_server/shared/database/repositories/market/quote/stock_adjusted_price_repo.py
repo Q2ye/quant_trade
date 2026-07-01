@@ -11,6 +11,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import select, and_, desc, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.database import RepositoryError
 from shared.database.models.data_models import StockAdjustedPrices, StockAdjFactor
 from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 
@@ -131,36 +132,36 @@ class StockAdjustedPriceRepository(HyperRepositoryBase[StockAdjustedPrices]):
 			return result.scalar_one_or_none()
 		return result.scalars().all()
 
-		# ==================== 批量查询方法 ====================
+	# ==================== 批量查询方法 ====================
 
-		async def get_batch_by_date_range(
-				self,
-				symbols: List[str],
-				start_date: date,
-				end_date: date,
-				adj_type: str = "qfq",
-				freq: str = "D",
-				limit: int = 100_000,
-		) -> List[StockAdjustedPrices]:
-			"""
-			批量获取多只股票在时间范围内的复权价格（一次 SQL IN 查询）。
-			"""
-			try:
-				query = (
-					select(self.model)
-					.where(
-						self.model.ts_code.in_(symbols),
-						self.model.adj_type == adj_type,
-						self.model.freq == freq,
-						self.model.trade_date.between(start_date, end_date),
-					)
-					.order_by(self.model.trade_date, self.model.ts_code)
-					.limit(limit)
+	async def get_batch_by_date_range(
+			self,
+			symbols: List[str],
+			start_date: date,
+			end_date: date,
+			adj_type: str = "qfq",
+			freq: str = "D",
+			limit: int = 100_000,
+	) -> List[StockAdjustedPrices]:
+		"""
+		批量获取多只股票在时间范围内的复权价格（一次 SQL IN 查询）。
+		"""
+		try:
+			query = (
+				select(self.model)
+				.where(
+					self.model.ts_code.in_(symbols),
+					self.model.adj_type == adj_type,
+					self.model.freq == freq,
+					self.model.trade_date.between(start_date, end_date),
 				)
-				result = await self.session.execute(query)
-				return list(result.scalars().all())
-			except Exception as e:
-				raise RepositoryError(f"批量查询复权价格失败: {e}")
+				.order_by(self.model.trade_date, self.model.ts_code)
+				.limit(limit)
+			)
+			result = await self.session.execute(query)
+			return list(result.scalars().all())
+		except Exception as e:
+			raise RepositoryError(f"批量查询复权价格失败: {e}")
 
 	# ==================== 批量操作方法 ====================
 

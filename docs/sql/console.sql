@@ -240,3 +240,9 @@ ALTER TABLE account_daily_performance
 ADD COLUMN account_id VARCHAR(36) REFERENCES accounts(id);
 
 
+ALTER TABLE backtest_trades
+    ALTER COLUMN direction TYPE VARCHAR(10);
+
+-- 2. orders.direction: VARCHAR(4) → VARCHAR(10)
+ALTER TABLE orders
+    ALTER COLUMN direction TYPE VARCHAR(10);

@@ -51,7 +51,17 @@ class DLStrategy(BaseStrategy):
 				- batch_size: 批次大小
 				- epochs: 训练轮数
 		"""
-		super().__init__(name, StrategyType.DL, parameters)
+		# v2.4: 合并默认参数后再调用 super().__init__()
+		defaults = {
+			'model_type': 'lstm', 'sequence_length': 30, 'hidden_units': 64,
+			'num_layers': 2, 'dropout_rate': 0.2, 'learning_rate': 0.001,
+			'batch_size': 32, 'epochs': 50, 'min_training_sequences': 100,
+			'retrain_interval': 200, 'confidence_threshold': 0.7,
+			'prediction_horizon': 1, 'd_model': 64, 'nhead': 8,
+		}
+		if parameters:
+			defaults.update(parameters)
+		super().__init__(name, StrategyType.DL, defaults)
 
 		# 深度学习相关属性
 		self.model = None
@@ -61,27 +71,6 @@ class DLStrategy(BaseStrategy):
 		# 数据缓存
 		self.sequence_data = []
 		self.target_data = []
-
-		# 默认参数
-		self.default_params = {
-			'model_type': 'lstm',
-			'sequence_length': 30,
-			'hidden_units': 64,
-			'num_layers': 2,
-			'dropout_rate': 0.2,
-			'learning_rate': 0.001,
-			'batch_size': 32,
-			'epochs': 50,
-			'min_training_sequences': 100,
-			'retrain_interval': 200,
-			'confidence_threshold': 0.7,
-			'prediction_horizon': 1,
-		}
-
-		# 更新参数
-		self.parameters.update(self.default_params)
-		if parameters:
-			self.parameters.update(parameters)
 
 	def on_init (self) -> None:
 		"""策略初始化"""
@@ -122,36 +111,49 @@ class DLStrategy(BaseStrategy):
 		return signals
 
 	def _initialize_model (self) -> None:
-		"""初始化深度学习模型"""
+		"""初始化深度学习模型 — v2.4: 修复维度硬编码，改为动态计算"""
 		model_type = self.parameters['model_type']
 
-		try:
+		# 计算实际特征维度（OHLCV=5 + 技术指标）
+		feature_dim = 5 + len(self._calculate_technical_features(
+			BarData(ts_code='', trade_date='', open=1, high=1, low=1, close=1, volume=1)
+		)) if not hasattr(self, '_feature_dim') else self._feature_dim
+		# 首次调用 after init -> _calculate_technical_features 依赖 sequence_data 可能为空
+		# 延迟到首次 on_bar 后再初始化模型
+		if feature_dim <= 5:
+			feature_dim = 12  # 合理默认值 (OHLCV + MA5/MA10/MA20 + ratios + vol)
 
+		self._feature_dim = feature_dim
+
+		try:
 			# 根据模型类型选择架构
 			if model_type == 'lstm':
 				self.model = LSTMModel(
-					input_size=5,  # OHLCV
+					input_size=feature_dim,
 					hidden_size=self.parameters['hidden_units'],
 					num_layers=self.parameters['num_layers'],
 					dropout=self.parameters['dropout_rate'],
-					output_size=3  # 3类：上涨、下跌、持平
+					output_size=3
 				)
 			elif model_type == 'cnn':
 				self.model = CNNModel(
-					input_channels=1,
+					input_channels=feature_dim,
 					sequence_length=self.parameters['sequence_length'],
-					output_size=3
+					output_size=3,
+					dropout=self.parameters['dropout_rate'],
 				)
 			elif model_type == 'transformer':
 				self.model = TransformerModel(
-					d_model=64,
-					nhead=8,
+					input_size=feature_dim,
+					d_model=self.parameters.get('d_model', 64),
+					nhead=self.parameters.get('nhead', 8),
 					num_layers=self.parameters['num_layers'],
+					dropout=self.parameters['dropout_rate'],
 					output_size=3
 				)
 			elif model_type == 'gru':
 				self.model = GRUModel(
-					input_size=5,
+					input_size=feature_dim,
 					hidden_size=self.parameters['hidden_units'],
 					num_layers=self.parameters['num_layers'],
 					dropout=self.parameters['dropout_rate'],
@@ -445,9 +447,9 @@ if _TORCH_AVAILABLE:
             return self.fc(self.dropout(last_output))
 
     class CNNModel(torch.nn.Module):
-        """CNN模型"""
+        """CNN模型 — v2.4: 动态 input_channels，添加 dropout 参数"""
 
-        def __init__(self, input_channels, sequence_length, output_size):
+        def __init__(self, input_channels, sequence_length, output_size, dropout=0.2):
             super(CNNModel, self).__init__()
             self.conv1 = torch.nn.Conv1d(input_channels, 32, kernel_size=3, padding=1)
             self.conv2 = torch.nn.Conv1d(32, 64, kernel_size=3, padding=1)
@@ -455,7 +457,7 @@ if _TORCH_AVAILABLE:
             conv_output_size = sequence_length // 2 // 2
             self.fc1 = torch.nn.Linear(64 * conv_output_size, 128)
             self.fc2 = torch.nn.Linear(128, output_size)
-            self.dropout = torch.nn.Dropout(0.2)
+            self.dropout = torch.nn.Dropout(dropout)
 
         def forward(self, x):
             x = x.transpose(1, 2)
@@ -470,13 +472,16 @@ if _TORCH_AVAILABLE:
             return x
 
     class TransformerModel(torch.nn.Module):
-        """Transformer模型"""
+        """Transformer模型 — v2.4: input_size 动态，添加 dropout"""
 
-        def __init__(self, d_model, nhead, num_layers, output_size):
+        def __init__(self, input_size, d_model, nhead, num_layers, dropout, output_size):
             super(TransformerModel, self).__init__()
-            self.embedding = torch.nn.Linear(5, d_model)
+            self.embedding = torch.nn.Linear(input_size, d_model)  # v2.4: 动态特征维度
             self.pos_encoding = PositionalEncoding(d_model)
-            encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=4 * d_model)
+            self.dropout = torch.nn.Dropout(dropout)
+            encoder_layer = torch.nn.TransformerEncoderLayer(
+                d_model=d_model, nhead=nhead, dim_feedforward=4 * d_model, dropout=dropout
+            )
             self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
             self.fc = torch.nn.Linear(d_model, output_size)
 

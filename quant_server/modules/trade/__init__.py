@@ -125,7 +125,6 @@ async def initialize(
             config=trade_config,
             broker_adapter=broker_adapter,
             event_engine=event_engine,
-	            trade_manager=trade_manager
         )
 
         # 初始化风险引擎

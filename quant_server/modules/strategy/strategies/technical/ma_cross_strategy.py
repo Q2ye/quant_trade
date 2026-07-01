@@ -51,6 +51,8 @@ class MACrossStrategy(TechnicalStrategy):
 			"volume_ma_period": 20,  # 成交量均线周期
 			"min_volume": 1000000,  # 最小成交量
 			"position_ratio": 0.1,  # 每次开仓比例
+			"stop_loss": 0.05,  # v2.4: 止损比例
+			"take_profit": 0.15,  # v2.4: 止盈比例
 		}
 
 		# 合并参数
@@ -152,7 +154,7 @@ class MACrossStrategy(TechnicalStrategy):
 			pnl_rate = (bar.close - current_position.avg_cost) / current_position.avg_cost
 
 			# 止损
-			if pnl_rate <= -0.05:  # 5%止损
+			if pnl_rate <= -self.parameters.get("stop_loss", 0.05):  # 止损
 				signal = self._create_signal(
 					ts_code=bar.ts_code,
 					direction=SignalDirection.CLOSE_LONG,
@@ -164,7 +166,7 @@ class MACrossStrategy(TechnicalStrategy):
 				signals.append(signal)
 
 			# 止盈
-			elif pnl_rate >= 0.15:  # 15%止盈
+			elif pnl_rate >= self.parameters.get("take_profit", 0.15):  # 止盈
 				signal = self._create_signal(
 					ts_code=bar.ts_code,
 					direction=SignalDirection.CLOSE_LONG,

@@ -1278,52 +1278,55 @@ class BacktestService:
 		try:
 			# ---- B1. 构建 exec 沙箱环境 ----
 			from modules.strategy.strategies.base.base_strategy import BaseStrategy
-			from modules.strategy.constants import StrategyType as ST, SignalDirection, TimeFrame
+			from datetime import datetime as _dt
+			from modules.strategy.constants import StrategyType as ST, SignalDirection, TimeFrame, SignalType as SigType, RunMode
 			from modules.strategy.models import TradingSignal, Position
 			from core.engines.types.entities import BarData
 			import numpy as np
+			import logging as _logging
 
 			# temp_module 是 exec 的全局命名空间字典，exec 执行后其中将包含策略类定义
 			temp_module = {
+				'logging': _logging,
+				'logger': _logging.getLogger(__name__),
 				'BaseStrategy': BaseStrategy,
 				'StrategyType': ST,
 				'SignalDirection': SignalDirection,
+				'SignalType': SigType,
 				'TimeFrame': TimeFrame,
+				'RunMode': RunMode,
 				'TradingSignal': TradingSignal,
 				'Position': Position,
 				'BarData': BarData,
 				'pd': pd,
 				'np': np,
+				'datetime': _dt,
 			}
 
 			# 注入 typing 模块，避免用户在代码中使用 "import List" 等错误写法时
 			# 因找不到模块而报 ModuleNotFoundError（常见误写会在下方捕获并给出提示）
 			import typing as _typing
 			temp_module["typing"] = _typing
+			# v2.4: 注入常用 typing 名称，避免策略代码中裸用 Optional 报 NameError
+			for _tname in ("Optional", "List", "Dict", "Tuple", "Set", "Union", "Any", "Callable", "Type"):
+				if hasattr(_typing, _tname):
+					temp_module[_tname] = getattr(_typing, _tname)
 
-			# v2.4: exec() 沙箱加固 — 限制 __builtins__ 防止代码注入
-			temp_module["__builtins__"] = {
-				"True": True, "False": False, "None": None,
-				"abs": abs, "all": all, "any": any, "bin": bin,
-				"bool": bool, "dict": dict, "divmod": divmod,
-				"enumerate": enumerate, "filter": filter,
-				"float": float, "format": format, "frozenset": frozenset,
-				"hash": hash, "hex": hex, "int": int, "isinstance": isinstance,
-				"issubclass": issubclass, "iter": iter, "len": len,
-				"list": list, "map": map, "max": max, "min": min,
-				"next": next, "oct": oct, "ord": ord, "pow": pow,
-				"print": print, "range": range, "repr": repr,
-				"reversed": reversed, "round": round, "set": set,
-				"slice": slice, "sorted": sorted, "str": str, "sum": sum,
-				"tuple": tuple, "type": type, "zip": zip,
-				"Exception": Exception, "ValueError": ValueError,
-				"TypeError": TypeError, "KeyError": KeyError,
-				"IndexError": IndexError, "StopIteration": StopIteration,
-			}
+			# v2.4: exec() 沙箱加固 — 全量 builtins，仅移除危险函数
+			import builtins as _b
+			temp_module["__builtins__"] = dict(vars(_b))
+			for _danger in ("eval", "exec", "compile", "open", "input", "breakpoint"):
+				temp_module["__builtins__"].pop(_danger, None)
+			temp_module["__builtins__"]["__name__"] = "__main__"
 
 			# ---- B2. 执行策略代码 ----
 			try:
 				exec(strategy.code, temp_module)
+				# 确保 exec 后 logger/logging 可用
+				if "logging" not in temp_module:
+					temp_module["logging"] = _logging
+				if "logger" not in temp_module:
+					temp_module["logger"] = _logging.getLogger("strategy")
 			except ModuleNotFoundError as e:
 				# 策略代码中 import 了 exec 沙箱未提供的模块
 				missing = e.name or str(e)

@@ -59,7 +59,7 @@
           <n-empty v-if="Object.keys(strategyParams).length === 0" description="无参数" size="small" style="padding:12px 0" />
           <div v-else class="params-list">
             <div v-for="(val, key) in strategyParams" :key="key" class="param-row">
-              <span class="param-label">{{ key }}</span>
+              <span class="param-label">{{ paramLabel(key) }}</span>
               <n-input-number :value="val" size="small" style="width:100%" :disabled="isLive"
                 @update:value="(v: number | null) => { if (v !== null) strategyParams[key] = v; }" />
             </div>
@@ -192,6 +192,28 @@ const {
   btSummary, btEquityCurve, btBenchmark, btDrawdown, btMonthlyReturns, btDailyReturns, btDailyTurnover, btTrades, btResultLoading,
   loadStrategy, saveStrategy, submitBacktest, loadBacktestResult, loadBacktestHistory, clearPolling,
 } = useStrategyWorkspace();
+
+// v2.4: 参数中英文映射标签
+const PARAM_LABELS: Record<string, string> = {
+  fast_period: '快线周期', slow_period: '慢线周期', signal_period: '信号线周期',
+  volume_ma_period: '成交量均线周期', min_volume: '最小成交量(万)',
+  position_ratio: '每次开仓比例', lookback_period: '回看周期',
+  entry_threshold: '入场阈值', exit_threshold: '出场阈值',
+  rebalance_freq: '调仓频率(天)', top_n: '持仓数量',
+  momentum_weight: '动量因子权重', value_weight: '价值因子权重', quality_weight: '质量因子权重',
+  model_type: '模型类型', train_window: '训练窗口(天)', predict_window: '预测窗口(天)',
+  retrain_freq: '重训频率(天)', seq_len: '序列长度', hidden_dim: '隐藏层维度', epochs: '训练轮数',
+  universe: '候选 ETF 池', momentum_windows: '动量窗口', rank_weights: '窗口权重',
+  rebalance_frequency: '调仓频率(天)', min_history: '最低数据条数',
+  stop_loss: '止损比例(%)', take_profit: '止盈比例(%)', algorithm: '算法类型',
+  feature_columns: '特征列', prediction_horizon: '预测周期(天)',
+  confidence_threshold: '置信度阈值', retrain_interval: '重训间隔(天)',
+  min_training_samples: '最小训练样本数', min_training_sequences: '最小训练序列数',
+  batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
+  hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
+  target_column: '目标列', d_model: '模型维度', nhead: '注意力头数',
+};
+const paramLabel = (key: string) => PARAM_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 // ---- 实盘运行时状态 ----
 const isLive = computed(() => {
@@ -399,8 +421,9 @@ onBeforeUnmount(() => { clearPolling(); });
 
 /* ---- 参数列表 ---- */
 .params-list {
-  .param-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;
-    .param-label { font-size: 11px; color: var(--color-text-tertiary); font-weight: 500; font-family: monospace; }
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  .param-row { display: flex; flex-direction: column; gap: 4px;
+    .param-label { font-size: 11px; color: var(--color-text-tertiary); font-weight: 500; }
   }
 }
 

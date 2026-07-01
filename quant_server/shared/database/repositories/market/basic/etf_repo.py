@@ -339,13 +339,12 @@ class ETFRepository:
 				"basic_info": {
 					"ts_code": etf_basic.ts_code,
 					"name": etf_basic.name,
-					"short_name": etf_basic.name,
-					"exchange": etf_basic.market,
+					"market": etf_basic.market,
 					"fund_type": etf_basic.fund_type,
-					"manager": etf_basic.management,
-					"setup_date": etf_basic.found_date,
-					"list_date": etf_basic.list_date,
-					"management_fee": etf_basic.m_fee
+					"management": etf_basic.management,
+					"found_date": str(etf_basic.found_date)[:10] if etf_basic.found_date else None,
+					"list_date": str(etf_basic.list_date)[:10] if etf_basic.list_date else None,
+					"m_fee": etf_basic.m_fee
 				},
 				"index_info": {
 					"index_code": index_info.ts_code if index_info else None,
@@ -466,8 +465,8 @@ class ETFRepository:
 
 		# 获取指数信息
 		index_info = None
-		if etf_basic.index_code:
-			index_info = await self.get_etf_index(etf_basic.index_code)
+		if etf_basic.ts_code:
+			index_info = await self.get_etf_index(etf_basic.ts_code)
 
 		return {
 			"basic_info": {
@@ -523,66 +522,66 @@ class ETFRepository:
 
 		# ==================== 批量复权查询 ====================
 
-		async def get_etf_adjusted_daily_batch(
-				self,
-				symbols: List[str],
-				start_date: date,
-				end_date: date,
-				limit: int = 100_000,
-		) -> List[Dict[str, Any]]:
-			"""
-			批量获取 ETF 前复权日线数据（etf_daily JOIN fund_adj_factor）。
+	async def get_etf_adjusted_daily_batch(
+			self,
+			symbols: List[str],
+			start_date: date,
+			end_date: date,
+			limit: int = 100_000,
+	) -> List[Dict[str, Any]]:
+		"""
+		批量获取 ETF 前复权日线数据（etf_daily JOIN fund_adj_factor）。
 
-			ETF 没有 stock_adjusted_prices 那样的预计算复权表，需要
-			在线 JOIN fund_adj_factor 计算复权价格。
+		ETF 没有 stock_adjusted_prices 那样的预计算复权表，需要
+		在线 JOIN fund_adj_factor 计算复权价格。
 
-			Returns:
-				[{"ts_code": ..., "trade_date": ..., "open": ..., "high": ...,
-				  "low": ..., "close": ..., "volume": ..., "amount": ...}, ...]
-			"""
-			from sqlalchemy import text
+		Returns:
+			[{"ts_code": ..., "trade_date": ..., "open": ..., "high": ...,
+			  "low": ..., "close": ..., "volume": ..., "amount": ...}, ...]
+		"""
+		from sqlalchemy import text
 
-			try:
-				query = text("""
-					SELECT
-						e.ts_code,
-						e.trade_date,
-						ROUND(CAST(e.open   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS open,
-						ROUND(CAST(e.high   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS high,
-						ROUND(CAST(e.low    * COALESCE(f.adj_factor, 1) AS numeric), 4) AS low,
-						ROUND(CAST(e.close  * COALESCE(f.adj_factor, 1) AS numeric), 4) AS close,
-						e.vol AS volume,
-						ROUND(CAST(e.amount AS numeric), 4) AS amount
-					FROM etf_daily e
-					LEFT JOIN fund_adj_factor f
-						ON e.ts_code = f.ts_code AND e.trade_date = f.trade_date
-					WHERE e.ts_code = ANY(:symbols)
-					  AND e.trade_date BETWEEN :start AND :end
-					ORDER BY e.trade_date ASC, e.ts_code ASC
-					LIMIT :limit
-				""")
-				result = await self.session.execute(query, {
-					"symbols": symbols,
-					"start": start_date,
-					"end": end_date,
-					"limit": limit,
-				})
-				rows = result.fetchall()
-				return [
-					{
-						"ts_code": r.ts_code,
-						"trade_date": r.trade_date,
-						"open": float(r.open) if r.open else 0.0,
-						"high": float(r.high) if r.high else 0.0,
-						"low": float(r.low) if r.low else 0.0,
-						"close": float(r.close) if r.close else 0.0,
-						"volume": float(r.volume) if r.volume else 0.0,
-						"amount": float(r.amount) if r.amount else 0.0,
-					}
-					for r in rows
-				]
-			except Exception as e:
-				raise RepositoryError(f"批量查询 ETF 复权日线数据失败: {e}")
+		try:
+			query = text("""
+				SELECT
+					e.ts_code,
+					e.trade_date,
+					ROUND(CAST(e.open   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS open,
+					ROUND(CAST(e.high   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS high,
+					ROUND(CAST(e.low    * COALESCE(f.adj_factor, 1) AS numeric), 4) AS low,
+					ROUND(CAST(e.close  * COALESCE(f.adj_factor, 1) AS numeric), 4) AS close,
+					e.vol AS volume,
+					ROUND(CAST(e.amount AS numeric), 4) AS amount
+				FROM etf_daily e
+				LEFT JOIN fund_adj_factor f
+					ON e.ts_code = f.ts_code AND e.trade_date = f.trade_date
+				WHERE e.ts_code = ANY(:symbols)
+				  AND e.trade_date BETWEEN :start AND :end
+				ORDER BY e.trade_date ASC, e.ts_code ASC
+				LIMIT :limit
+			""")
+			result = await self.session.execute(query, {
+				"symbols": symbols,
+				"start": start_date,
+				"end": end_date,
+				"limit": limit,
+			})
+			rows = result.fetchall()
+			return [
+				{
+					"ts_code": r.ts_code,
+					"trade_date": r.trade_date,
+					"open": float(r.open) if r.open else 0.0,
+					"high": float(r.high) if r.high else 0.0,
+					"low": float(r.low) if r.low else 0.0,
+					"close": float(r.close) if r.close else 0.0,
+					"volume": float(r.volume) if r.volume else 0.0,
+					"amount": float(r.amount) if r.amount else 0.0,
+				}
+				for r in rows
+			]
+		except Exception as e:
+			raise RepositoryError(f"批量查询 ETF 复权日线数据失败: {e}")
 
 	# ==================== 基本CRUD操作 ====================
 

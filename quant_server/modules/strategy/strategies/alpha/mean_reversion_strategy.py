@@ -49,7 +49,8 @@ class MeanReversionStrategy(BaseStrategy):
 		self.rsi_period = self.parameters.get('rsi_period', 14)
 		self.rsi_oversold = self.parameters.get('rsi_oversold', 30)
 		self.rsi_overbought = self.parameters.get('rsi_overbought', 70)
-		self.position_size = self.parameters.get('position_size', 0.1)
+		self.entry_threshold = self.parameters.get('entry_threshold', 2.0)  # v2.4: 入场z-score阈值
+		self.exit_threshold = self.parameters.get('exit_threshold', 0.5)   # v2.4: 出场z-score阈值
 		self.stop_loss = self.parameters.get('stop_loss', 0.05)
 		self.take_profit = self.parameters.get('take_profit', 0.1)
 
@@ -346,7 +347,7 @@ class MeanReversionStrategy(BaseStrategy):
 			ma = self.ma_cache[bar.ts_code]
 			price_deviation = abs(current_price - ma) / ma
 
-			if price_deviation < 0.01:  # 价格回到均值1%以内
+			if price_deviation < self.exit_threshold:  # v2.4: 价格回到均值阈值以内出场
 				return self._create_exit_signal(bar, "价格回归均值")
 
 		# RSI回归中性条件

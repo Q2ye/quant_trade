@@ -168,7 +168,8 @@ class MACDStrategy(TechnicalStrategy):
 				and prev_row["histogram"] < 0
 				and current_row["histogram"] > 0
 		):
-			if not current_position:
+			# v2.4: 加持仓方向检查 — 无持仓或持有空头时可开多
+			if not current_position or current_position.side.value == "short":
 				signal = self._create_signal(
 					ts_code=bar.ts_code,
 					direction=SignalDirection.LONG,
