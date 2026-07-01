@@ -173,6 +173,9 @@ class PerformanceService:
                 )
 
             # 5. 计算核心绩效指标 — 委托 FinancialCalculator
+            if df_equity is None or df_equity.empty:
+                logger.warning("净值曲线数据为空，无法计算收益")
+                return {}
             start_value = float(df_equity['equity'].iloc[0])
             end_value = float(df_equity['equity'].iloc[-1])
             years = (end_date - start_date).days / 365.25

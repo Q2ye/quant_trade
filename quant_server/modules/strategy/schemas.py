@@ -40,6 +40,7 @@ class StrategyCreateRequest(BaseModel):
     description: Optional[str] = Field(default=None, description="策略描述")
     strategy_type: str = Field(default="cta", description="策略类型，默认 cta")
     code: Optional[str] = Field(default=None, description="策略代码")
+    class_name: Optional[str] = Field(default=None, description="策略类名（内置策略去重用）")
     parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="策略参数")
 
 

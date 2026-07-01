@@ -521,6 +521,69 @@ class ETFRepository:
 			data_list=factors_data
 		)
 
+		# ==================== 批量复权查询 ====================
+
+		async def get_etf_adjusted_daily_batch(
+				self,
+				symbols: List[str],
+				start_date: date,
+				end_date: date,
+				limit: int = 100_000,
+		) -> List[Dict[str, Any]]:
+			"""
+			批量获取 ETF 前复权日线数据（etf_daily JOIN fund_adj_factor）。
+
+			ETF 没有 stock_adjusted_prices 那样的预计算复权表，需要
+			在线 JOIN fund_adj_factor 计算复权价格。
+
+			Returns:
+				[{"ts_code": ..., "trade_date": ..., "open": ..., "high": ...,
+				  "low": ..., "close": ..., "volume": ..., "amount": ...}, ...]
+			"""
+			from sqlalchemy import text
+
+			try:
+				query = text("""
+					SELECT
+						e.ts_code,
+						e.trade_date,
+						ROUND(CAST(e.open   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS open,
+						ROUND(CAST(e.high   * COALESCE(f.adj_factor, 1) AS numeric), 4) AS high,
+						ROUND(CAST(e.low    * COALESCE(f.adj_factor, 1) AS numeric), 4) AS low,
+						ROUND(CAST(e.close  * COALESCE(f.adj_factor, 1) AS numeric), 4) AS close,
+						e.vol AS volume,
+						ROUND(CAST(e.amount AS numeric), 4) AS amount
+					FROM etf_daily e
+					LEFT JOIN fund_adj_factor f
+						ON e.ts_code = f.ts_code AND e.trade_date = f.trade_date
+					WHERE e.ts_code = ANY(:symbols)
+					  AND e.trade_date BETWEEN :start AND :end
+					ORDER BY e.trade_date ASC, e.ts_code ASC
+					LIMIT :limit
+				""")
+				result = await self.session.execute(query, {
+					"symbols": symbols,
+					"start": start_date,
+					"end": end_date,
+					"limit": limit,
+				})
+				rows = result.fetchall()
+				return [
+					{
+						"ts_code": r.ts_code,
+						"trade_date": r.trade_date,
+						"open": float(r.open) if r.open else 0.0,
+						"high": float(r.high) if r.high else 0.0,
+						"low": float(r.low) if r.low else 0.0,
+						"close": float(r.close) if r.close else 0.0,
+						"volume": float(r.volume) if r.volume else 0.0,
+						"amount": float(r.amount) if r.amount else 0.0,
+					}
+					for r in rows
+				]
+			except Exception as e:
+				raise RepositoryError(f"批量查询 ETF 复权日线数据失败: {e}")
+
 	# ==================== 基本CRUD操作 ====================
 
 	async def create (self, etf_data: Dict[str, Any]) -> EtfBasic:

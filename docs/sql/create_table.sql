@@ -664,11 +664,15 @@ CREATE TABLE strategies (
     execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
     account_id VARCHAR(36) REFERENCES accounts(id),
     allocated_capital NUMERIC(16,4) DEFAULT 0,
+    template_id VARCHAR(36) REFERENCES strategy_templates(id) ON DELETE SET NULL,  -- v3.0: 关联模板
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_strategies_template_id ON strategies(template_id);
+
 COMMENT ON TABLE strategies IS '策略实例表';
+COMMENT ON COLUMN strategies.template_id IS '关联的策略模板ID（v3.0重构，可空兼容旧数据）';
 COMMENT ON COLUMN strategies.id IS '策略唯一标识（建议使用UUID）';
 COMMENT ON COLUMN strategies.name IS '策略名称';
 COMMENT ON COLUMN strategies.user_id IS '策略创建者用户ID';
@@ -746,12 +750,20 @@ CREATE TABLE strategy_templates (
     default_parameters JSONB NOT NULL DEFAULT '{}'::JSONB,
     category VARCHAR(50),
     is_public BOOLEAN DEFAULT TRUE,
+    is_builtin BOOLEAN DEFAULT FALSE,                                           -- v3.0: 内置模板标记
+    source_template_id VARCHAR(36) REFERENCES strategy_templates(id),           -- v3.0: fork来源
     created_by VARCHAR(36) REFERENCES sys_users(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_strategy_templates_is_builtin ON strategy_templates(is_builtin);
+-- 防止重复内置模板（每个模板名只有一个内置版本）
+CREATE UNIQUE INDEX IF NOT EXISTS uq_builtin_template_name ON strategy_templates(template_name) WHERE is_builtin = TRUE;
+
 COMMENT ON TABLE strategy_templates IS '策略模板表';
+COMMENT ON COLUMN strategy_templates.is_builtin IS 'v3.0: 是否为内置模板（不可删除、不可编辑）';
+COMMENT ON COLUMN strategy_templates.source_template_id IS 'v3.0: fork来源模板ID（链式追溯）';
 COMMENT ON COLUMN strategy_templates.template_name IS '模板名称';
 COMMENT ON COLUMN strategy_templates.template_type IS '模板类型：alpha/cta/ai/custom';
 COMMENT ON COLUMN strategy_templates.description IS '模板描述';
@@ -826,7 +838,7 @@ CREATE TABLE orders (
     signal_id VARCHAR(36),
     ts_code VARCHAR(12) NOT NULL,
     order_type VARCHAR(10) NOT NULL CHECK (order_type IN ('limit', 'market', 'stop')),
-    direction VARCHAR(4) NOT NULL CHECK (direction IN ('buy', 'sell')),
+    direction VARCHAR(5) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover'))  -- v2.4: 扩展支持做空/平仓,
     price NUMERIC(10, 4),
     volume INT NOT NULL,
     filled_volume INT DEFAULT 0,
@@ -1200,7 +1212,7 @@ CREATE TABLE backtest_trades (
     task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     trade_time TIMESTAMPTZ NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
-    direction VARCHAR(4) NOT NULL CHECK (direction IN ('buy', 'sell')),
+    direction VARCHAR(5) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover'))  -- v2.4: 扩展支持做空/平仓,
     price NUMERIC(10, 4) NOT NULL,
     volume INT NOT NULL,
     value NUMERIC(16, 4) NOT NULL,

@@ -119,7 +119,7 @@ class BaostockSource(BaseDataSource):
                 return []
 
             df = pd.DataFrame(data_list, columns=rs.fields)
-            return df.to_dict('records')
+            from utils.core_utils.data_utils.sanitizer import df_to_safe_records; return df_to_safe_records(df)
 
         return await asyncio.to_thread(_fetch)
 

@@ -62,7 +62,8 @@ class StrategyInstance:
             StrategyLifecycleStatus.DRAFT,
             StrategyLifecycleStatus.PAUSED,
             StrategyLifecycleStatus.STOPPED,
-            StrategyLifecycleStatus.ERROR,
+            StrategyLifecycleStatus.RUNNING,  # v2.4: 重启恢复
+	            StrategyLifecycleStatus.ERROR,
         ]
 
     def can_stop(self) -> bool:
@@ -70,7 +71,8 @@ class StrategyInstance:
         return self.status in [
             StrategyLifecycleStatus.RUNNING,
             StrategyLifecycleStatus.PAUSED,
-            StrategyLifecycleStatus.ERROR,
+            StrategyLifecycleStatus.RUNNING,  # v2.4: 重启恢复
+	            StrategyLifecycleStatus.ERROR,
         ]
 
 

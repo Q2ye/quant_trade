@@ -16,7 +16,7 @@ from datetime import datetime, date
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
 
 import pandas as pd
-from sqlalchemy import select, delete, func, and_, desc, asc
+from sqlalchemy import select, delete, func, and_, desc, asc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import Select
@@ -332,8 +332,7 @@ class BaseRepository(Generic[T]):
 				data['updated_at'] = data.get('updated_at', datetime.now())
 
 			# 构建查询
-			from sqlalchemy import update as sql_update
-			query = sql_update(self.model)
+			query = update(self.model)
 
 			for attr, value in filters.items():
 				if hasattr(self.model, attr):

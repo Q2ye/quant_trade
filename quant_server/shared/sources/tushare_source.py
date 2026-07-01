@@ -64,7 +64,7 @@ class TushareSource(BaseDataSource):
 		          'list_date,delist_date,is_hs')
 		try:
 			df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
-			return df.to_dict('records') if df is not None else []
+			from utils.core_utils.data_utils.sanitizer import df_to_safe_records; return df_to_safe_records(df)
 		except Exception as e:
 			logger.error(f"获取股票基本信息失败: {e}")
 			return []

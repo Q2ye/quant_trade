@@ -89,8 +89,8 @@ class FeeService:
 			trade_amount = price * volume
 
 			# 计算佣金（这里使用规则）
-			# todo 实际实现中需要根据券商费率计算
-			commission_rate = Decimal("0.0001")  # 万一免五
+			# v2.4: 费率已与 CostCalculator 统一（万三佣金）
+			commission_rate = Decimal("0.0003")  # v2.4: 万三，与 CostCalculator 统一
 			commission = trade_amount * commission_rate
 
 			# 最低佣金5元

@@ -46,119 +46,29 @@
 
       <template v-else-if="pageState === 'data'">
         <div class="section-block">
-          <n-grid :x-gap="16" :cols="3" class="filter-row">
+          <n-grid :x-gap="16" :cols="1" class="filter-row">
             <n-grid-item>
-              <n-input
-                v-model:value="searchKeyword"
-                placeholder="搜索策略模板..."
-                clearable
-              >
-                <template #prefix
-                  ><n-icon><SmartIcon name="Search" /></n-icon
-                ></template>
+              <n-input v-model:value="searchKeyword" placeholder="搜索策略模板..." clearable>
+                <template #prefix><n-icon><SmartIcon name="Search" /></n-icon></template>
               </n-input>
-            </n-grid-item>
-            <n-grid-item>
-              <n-select
-                v-model:value="filterCategory"
-                placeholder="策略类别"
-                clearable
-                :options="categoryOptions"
-              />
-            </n-grid-item>
-            <n-grid-item>
-              <n-select
-                v-model:value="filterComplexity"
-                placeholder="复杂度"
-                clearable
-                :options="complexityOptions"
-              />
             </n-grid-item>
           </n-grid>
 
-          <n-grid
-            :x-gap="16"
-            :y-gap="16"
-            :cols="4"
-            responsive="screen"
-            class="templates-grid"
-          >
-            <n-grid-item
-              v-for="template in filteredTemplates"
-              :key="template.id"
-            >
-              <n-card class="template-card">
+          <n-grid :x-gap="16" :y-gap="16" :cols="4" responsive="screen" class="templates-grid">
+            <n-grid-item v-for="tpl in filteredTemplates" :key="tpl.id">
+              <n-card class="template-card" @click="useTemplate(tpl)">
                 <template #header>
                   <div class="template-header">
-                    <span class="template-name">{{ template.name }}</span>
-                    <n-tag
-                      :type="getComplexityTag(template.complexity) as any"
-                      size="small"
-                    >
-                      {{ template.complexity }}
-                    </n-tag>
+                    <span class="template-name">{{ tplDisplayName(tpl) }}</span>
+                    <n-tag size="small" type="info">{{ tpl.template_type || '策略' }}</n-tag>
                   </div>
                 </template>
-
                 <div class="template-content">
-                  <p class="template-desc">{{ template.description }}</p>
-
-                  <div class="template-meta">
-                    <div class="meta-item">
-                      <SmartIcon name="ChartLine" />
-                      <span
-                        :class="
-                          template.performance.annualReturn >= 0
-                            ? 'text-up'
-                            : 'text-down'
-                        "
-                        >年化收益:
-                        {{ template.performance.annualReturn }}%</span
-                      >
-                    </div>
-                    <div class="meta-item">
-                      <SmartIcon name="ChartTrending" />
-                      <span class="text-down"
-                        >最大回撤: {{ template.performance.maxDrawdown }}%</span
-                      >
-                    </div>
-                    <div class="meta-item">
-                      <SmartIcon name="ShieldCheckmark" />
-                      <span
-                        :class="
-                          template.performance.sharpeRatio >= 1
-                            ? 'text-up'
-                            : 'text-down'
-                        "
-                        >夏普比率: {{ template.performance.sharpeRatio }}</span
-                      >
-                    </div>
-                  </div>
-
-                  <div class="template-tags">
-                    <n-tag
-                      v-for="tag in template.tags"
-                      :key="tag"
-                      size="small"
-                      type="info"
-                      class="tag-item"
-                    >
-                      {{ tag }}
-                    </n-tag>
-                  </div>
+                  <p class="template-desc">{{ tplDescription(tpl) }}</p>
                 </div>
-
                 <template #footer>
                   <div class="template-actions">
-                    <n-button
-                      type="primary"
-                      size="small"
-                      @click="useTemplate(template)"
-                      >使用模板</n-button
-                    >
-                    <n-button size="small" @click="viewDetails(template)"
-                      >查看详情</n-button
-                    >
+                    <n-button type="primary" size="small" @click.stop="useTemplate(tpl)">查看详情</n-button>
                   </div>
                 </template>
               </n-card>
@@ -173,9 +83,9 @@
           <n-modal
             v-model:show="detailVisible"
             preset="dialog"
-            :title="selectedTemplate?.name"
-            positive-text="使用此模板"
-            negative-text="取消"
+            :title="selectedTemplate ? tplDisplayName(selectedTemplate) : ''"
+            positive-text="查看详情"
+            negative-text="关闭"
             style="width: 640px"
             @positive-click="selectedTemplate && useTemplate(selectedTemplate)"
           >
@@ -198,109 +108,62 @@ import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import TemplateDetail from "@/components/strategy/TemplateDetail.vue";
+import request from "@/utils/request";
 
 const message = useMessage();
 const router = useRouter();
 type PageState = "loading" | "error" | "empty" | "data";
 const pageState = ref<PageState>("loading");
 
-interface StrategyTemplate {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  complexity: string;
-  performance: {
-    annualReturn: number;
-    maxDrawdown: number;
-    sharpeRatio: number;
-  };
-  tags: string[];
-}
+// v3.0: 内置策略中文映射
+const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record<string,string> }> = {
+  MACrossStrategy: { name: '双均线策略', desc: '短期均线上穿长期均线买入，下穿卖出。经典趋势跟踪。' },
+  MACDStrategy: { name: 'MACD 策略', desc: '基于 MACD 金叉死叉，结合 DIF/DEA/柱状图判断趋势。' },
+  FactorStrategy: { name: '多因子策略', desc: '多因子模型选股，动量、价值、质量等因子综合打分。' },
+  MeanReversionStrategy: { name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。' },
+  MLStrategy: { name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。' },
+  DLStrategy: { name: '深度学习策略', desc: '基于 LSTM、Transformer 等深度学习模型的交易策略。' },
+  EtfIndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '基于多窗口动量得分排名，定期调仓持有最强行业 ETF。' },
+};
+
+const extractCN = (tpl: any) => {
+  const m = (tpl.code_template || '').match(/class\s+(\w+)\s*[(:]/);
+  return m?.[1] || '';
+};
+const tplDisplayName = (tpl: any) => BUILTIN_META[extractCN(tpl)]?.name || tpl.template_name || tpl.name || '';
+const tplDescription = (tpl: any) => BUILTIN_META[extractCN(tpl)]?.desc || tpl.description || '';
 
 const searchKeyword = ref("");
-const filterCategory = ref("");
-const filterComplexity = ref("");
+const templates = ref<any[]>([]);
 const detailVisible = ref(false);
-const selectedTemplate = ref<StrategyTemplate>();
-
-const categoryOptions = [
-  { label: "趋势跟踪", value: "trend" },
-  { label: "均值回归", value: "mean_reversion" },
-  { label: "因子策略", value: "factor" },
-  { label: "机器学习", value: "ml" },
-];
-const complexityOptions = [
-  { label: "简单", value: "simple" },
-  { label: "中等", value: "medium" },
-  { label: "复杂", value: "complex" },
-];
-
-const templates = ref<StrategyTemplate[]>([
-  {
-    id: "1",
-    name: "双均线策略",
-    description: "基于快速均线和慢速均线的金叉死叉信号进行交易",
-    category: "trend",
-    complexity: "simple",
-    performance: { annualReturn: 15.2, maxDrawdown: -12.5, sharpeRatio: 1.2 },
-    tags: ["趋势跟踪", "均线", "技术指标"],
-  },
-  {
-    id: "2",
-    name: "布林带突破",
-    description: "利用布林带上下轨的突破信号进行趋势交易",
-    category: "trend",
-    complexity: "simple",
-    performance: { annualReturn: 18.7, maxDrawdown: -15.3, sharpeRatio: 1.4 },
-    tags: ["突破", "波动率", "技术指标"],
-  },
-]);
+const selectedTemplate = ref<any>(null);
 
 const filteredTemplates = computed(() =>
   templates.value.filter((t) => {
     const m = searchKeyword.value.toLowerCase();
-    const matchesSearch =
-      !m ||
-      t.name.toLowerCase().includes(m) ||
-      t.description.toLowerCase().includes(m);
-    const matchesCategory =
-      !filterCategory.value || t.category === filterCategory.value;
-    const matchesComplexity =
-      !filterComplexity.value || t.complexity === filterComplexity.value;
-    return matchesSearch && matchesCategory && matchesComplexity;
+    return !m || tplDisplayName(t).toLowerCase().includes(m) || tplDescription(t).toLowerCase().includes(m);
   }),
 );
 
-const getComplexityTag = (c: string) =>
-  (
-    ({ simple: "success", medium: "warning", complex: "error" }) as Record<
-      string,
-      string
-    >
-  )[c] || "default";
-
 const handleBack = () => {
   if (window.history.length > 1) router.go(-1);
-  else router.push("/strategy/build");
+  else router.push("/strategies");
 };
 
 const loadData = async () => {
   pageState.value = "loading";
   try {
-    await new Promise((r) => setTimeout(r, 300));
-    pageState.value = "data";
+    const res = await request.get('/quantTrade/strategy/templates', { params: { is_builtin: true, page_size: 50 } });
+    templates.value = res?.data || [];
+    pageState.value = templates.value.length > 0 ? "data" : "empty";
   } catch {
     pageState.value = "error";
   }
 };
 
-const useTemplate = (template: StrategyTemplate) => {
-  message.success(`正在使用模板: ${template.name}`);
-  router.push({ path: "/strategies/create", query: { template: template.id } });
-};
-const viewDetails = (template: StrategyTemplate) => {
-  selectedTemplate.value = template;
+const useTemplate = (tpl: any) => router.push('/strategies/template/' + tpl.id);
+const viewDetails = (tpl: any) => {
+  selectedTemplate.value = tpl;
   detailVisible.value = true;
 };
 

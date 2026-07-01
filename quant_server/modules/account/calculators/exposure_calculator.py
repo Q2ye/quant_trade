@@ -260,10 +260,13 @@ class ExposureCalculator:
 				)
 				closes = [float(row.close) for row in result.fetchall() if row.close]
 				if len(closes) >= 21:  # 至少1个月数据
-					log_returns = np.diff(np.log(closes))
-					daily_vol = float(np.std(log_returns))
-					position_volatilities[position.ts_code] = daily_vol
-					position_prices[position.ts_code] = closes
+					# v2.4: 防止零/负价格导致 np.log 产生 -inf
+					valid_closes = np.array([c for c in closes if c > 0])
+					if len(valid_closes) >= 2:
+						log_returns = np.diff(np.log(valid_closes))
+						daily_vol = float(np.std(log_returns))
+						position_volatilities[position.ts_code] = daily_vol
+						position_prices[position.ts_code] = closes
 			except BusinessException:
 				pass
 

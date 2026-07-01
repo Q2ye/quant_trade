@@ -148,6 +148,7 @@ class Strategy(Base):
     run_mode = Column(String(20), default='backtest', comment='运行模式: backtest/live/paper')
     execution_mode = Column(String(20), nullable=True, comment='执行模式: semi_auto/full_auto，backtest时为null')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='绑定的交易账户ID（实盘启动时指定）')
+    template_id = Column(String(36), ForeignKey('strategy_templates.id'), nullable=True, comment='关联的模板ID（v3.0重构）')
     allocated_capital = Column(Numeric(16, 4), default=0, comment='分配资金额度')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -172,6 +173,7 @@ class Strategy(Base):
         Index('idx_strategies_user_id', 'user_id'),
         Index('idx_strategies_status', 'status'),
         Index('idx_strategies_name', 'name'),
+        Index('idx_strategies_template_id', 'template_id'),
     )
 
 
@@ -305,6 +307,8 @@ class StrategyTemplate(Base):
     default_parameters = Column(JSON, nullable=False, default=dict, comment='默认参数（JSON格式）')
     category = Column(String(50), comment='分类')
     is_public = Column(Boolean, default=True, comment='是否公开')
+    is_builtin = Column(Boolean, default=False, comment='v3.0: 是否为内置模板（不可删除）')
+    source_template_id = Column(String(36), ForeignKey('strategy_templates.id'), nullable=True, comment='v3.0: fork来源模板ID')
     created_by = Column(String(36), ForeignKey('sys_users.id'), comment='创建人ID')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -312,6 +316,7 @@ class StrategyTemplate(Base):
 
     # 关联关系
     creator = relationship("SysUser")
+    source_template = relationship("StrategyTemplate", remote_side=[id], foreign_keys=[source_template_id])
 
     # 索引
     __table_args__ = (

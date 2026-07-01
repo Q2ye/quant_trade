@@ -102,7 +102,10 @@ class FinancialCalculator:
 			returns = np.insert(returns, 0, np.nan)
 
 		elif return_type == ReturnType.LOG:
-			returns = np.log(prices[1:] / prices[:-1])
+			ratios = prices[1:] / prices[:-1]
+			ratios = np.where(ratios > 0, ratios, np.nan)  # v2.4: 屏蔽 ≤0 的无效比值
+			returns = np.log(ratios)
+			returns = np.where(np.isfinite(returns), returns, 0.0)  # v2.4: 屏蔽 inf
 			returns = np.insert(returns, 0, np.nan)
 
 		elif return_type == ReturnType.TOTAL:

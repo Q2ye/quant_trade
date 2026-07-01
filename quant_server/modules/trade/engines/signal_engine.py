@@ -13,7 +13,7 @@ from core.engines.system import EventEngine
 from core.engines.types.enums import EngineType
 from modules.trade.engines.execution_engine import ExecutionEngine
 from modules.trade.engines.risk_engine import RiskEngine
-from modules.strategy.constants import ExecutionMode
+from modules.trade.constants import ExecutionMode  # v2.4: 消除跨模块依赖
 
 
 class SignalEngine(EngineBase):

@@ -405,6 +405,7 @@ class BacktestEngine(EngineBase):
 		)
 		broker = self.broker or BacktestBroker(config=broker_config)
 		broker.reset(initial_capital)
+		self._data_cache.clear()  # v2.4: 多次回测间释放积压数据，防止内存泄漏
 
 		# =====================================================================
 		# 第 2 步：检查策略注册状态
@@ -1096,8 +1097,10 @@ class BacktestEngine(EngineBase):
 				import uuid
 				trade_records = []
 				for i, t in enumerate(trades):
+					# v2.4: 统一方向映射（修复非LONG全部映射为sell的bug）
+					_DIRECTION_MAP = {"LONG": "buy", "BUY": "buy", "SHORT": "short", "SELL": "sell", "CLOSE_LONG": "sell", "CLOSE_SHORT": "cover"}
 					direction = t.get("direction", "")
-					orm_direction = "buy" if direction == "LONG" else "sell"
+					orm_direction = _DIRECTION_MAP.get(direction.upper(), "buy")  # v2.4: 统一方向映射
 					# 使用 task_id 前缀 + 序号确保全局唯一（Broker 的 trade_id 跨任务会重复）
 					unique_id = f"{result.task_id[:8]}_trade_{i+1:06d}"
 					trade_records.append({

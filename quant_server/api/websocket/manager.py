@@ -141,7 +141,7 @@ class WebSocketManager:
             return
 
         subscribers = list(self._channels[channel])
-        message = json.dumps(data, ensure_ascii=False, default=str)
+        message = json.dumps(data, ensure_ascii=False, default=str, allow_nan=False)
         dead_connections: List[WebSocket] = []
 
         for ws in subscribers:
@@ -161,7 +161,7 @@ class WebSocketManager:
 
     async def broadcast_to_all(self, data: Any) -> None:
         """向所有连接的客户端广播消息"""
-        message = json.dumps(data, ensure_ascii=False, default=str)
+        message = json.dumps(data, ensure_ascii=False, default=str, allow_nan=False)
         dead: List[WebSocket] = []
 
         all_ws: Set[WebSocket] = set()

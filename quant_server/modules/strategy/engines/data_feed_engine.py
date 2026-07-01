@@ -114,6 +114,24 @@ class DataFeedEngine(EngineBase):
             self._adj_price_repo = StockAdjustedPriceRepository(self.db)
         return self._adj_price_repo
 
+    @property
+    def etf_daily_repo(self):
+        if self._etf_daily_repo is None:
+            from shared.database.repositories.market.quote.etf_daily_repo import (
+                EtfDailyRepository,
+            )
+            self._etf_daily_repo = EtfDailyRepository(self.db)
+        return self._etf_daily_repo
+
+    @property
+    def etf_repo(self):
+        if self._etf_repo is None:
+            from shared.database.repositories.market.basic.etf_repo import (
+                ETFRepository,
+            )
+            self._etf_repo = ETFRepository(self.db)
+        return self._etf_repo
+
     # ---- 核心接口 ----
 
     async def load_historical_data(
@@ -153,24 +171,29 @@ class DataFeedEngine(EngineBase):
         if isinstance(end_date, str):
             end_date = _date_class.fromisoformat(end_date)
 
+        # 拆分股票和 ETF（v2.0: 自动按代码类型分派数据源）
+        stock_symbols = [s for s in symbols if not self._is_etf(s)]
+        etf_symbols = [s for s in symbols if self._is_etf(s)]
+
         logger.info(
-            f"开始加载历史数据: {len(symbols)} 只股票, "
+            f"开始加载历史数据: {len(stock_symbols)} 只股票 + {len(etf_symbols)} 只 ETF, "
             f"{start_date} ~ {end_date}, 复权={self.adj_type}"
         )
 
-        all_records = []
+        all_records: List[Dict[str, Any]] = []
 
-        # 使用复权价格（v1.3: 批量查询替代逐只循环）
-        if self.adj_type in ("qfq", "hfq"):
-            try:
-                records = await self._load_adj_batch(
-                    symbols=symbols,
-                    start_date=start_date,
-                    end_date=end_date,
-                    adj_type=self.adj_type,
-                )
-                for r in records:
-                        row = {
+        # ---- 股票：使用复权价格 ----
+        if stock_symbols:
+            if self.adj_type in ("qfq", "hfq"):
+                try:
+                    records = await self._load_adj_batch(
+                        symbols=stock_symbols,
+                        start_date=start_date,
+                        end_date=end_date,
+                        adj_type=self.adj_type,
+                    )
+                    for r in records:
+                        all_records.append({
                             "ts_code": r.ts_code,
                             "trade_date": (
                                 r.trade_date.date()
@@ -183,22 +206,24 @@ class DataFeedEngine(EngineBase):
                             "close": float(r.close) if r.close else None,
                             "volume": float(r.vol) if r.vol else 0.0,
                             "amount": float(r.amount) if r.amount else 0.0,
-                        }
-                        all_records.append(row)
-            except Exception as e:
-                logger.warning(f"批量加载复权价格失败: {e}")
+                        })
+                except Exception as e:
+                    logger.warning(f"批量加载复权价格失败: {e}")
 
-        # 回退到不复权数据（v1.3: 批量查询）
-        if not all_records:
-            logger.info("复权价格数据为空，回退到 stock_daily 原始数据")
-            try:
-                records = await self._load_daily_batch(
-                    symbols=symbols,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-                for r in records:
-                        row = {
+            # 回退到不复权数据
+            if not all_records or not any(
+                r.get("ts_code", "").startswith(tuple(stock_symbols[:1]))
+                for r in all_records[-10:] if all_records
+            ):
+                logger.info("复权价格数据为空，回退到 stock_daily 原始数据")
+                try:
+                    records = await self._load_daily_batch(
+                        symbols=stock_symbols,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                    for r in records:
+                        all_records.append({
                             "ts_code": r.ts_code,
                             "trade_date": (
                                 r.trade_date.date()
@@ -211,10 +236,23 @@ class DataFeedEngine(EngineBase):
                             "close": float(r.close) if r.close else None,
                             "volume": float(r.vol) if r.vol else 0.0,
                             "amount": float(r.amount) if r.amount else 0.0,
-                        }
-                        all_records.append(row)
+                        })
+                except Exception as e:
+                    logger.warning(f"批量加载日线数据失败: {e}")
+
+        # ---- ETF：使用 etf_daily JOIN fund_adj_factor 计算复权价格 ----
+        if etf_symbols:
+            try:
+                etf_records = await self._load_etf_batch(
+                    symbols=etf_symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                # _load_etf_batch 返回的已是 Dict 列表，直接合并
+                all_records.extend(etf_records)
+                logger.info(f"ETF 数据加载: {len(etf_records)} 条")
             except Exception as e:
-                logger.warning(f"批量加载日线数据失败: {e}")
+                logger.warning(f"批量加载 ETF 数据失败: {e}")
 
         if not all_records:
             logger.warning(f"未加载到任何数据: {len(symbols)} 只股票, {start_date}~{end_date}")
@@ -487,23 +525,13 @@ class DataFeedEngine(EngineBase):
         使用 PostgreSQL WHERE ts_code = ANY(:symbols) 批量查询，
         将 N 次 DB 往返减少到 1 次。
         """
-        from sqlalchemy import text
-        query = text(
-            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-            "FROM stock_adjusted_prices "
-            "WHERE ts_code = ANY(:symbols) "
-            "  AND trade_date BETWEEN :start AND :end "
-            "  AND adj_type = :adj_type "
-            "  AND freq = 'D' "
-            "ORDER BY trade_date ASC, ts_code ASC"
+        return await self.adj_price_repo.get_batch_by_date_range(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+            adj_type=adj_type,
+            freq="D",
         )
-        result = await self.db.execute(query, {
-            "symbols": symbols,
-            "start": start_date,
-            "end": end_date,
-            "adj_type": adj_type,
-        })
-        return result.fetchall()
 
     async def _load_daily_batch(
         self,
@@ -514,22 +542,13 @@ class DataFeedEngine(EngineBase):
         """
         批量加载日线数据（fallback：不复权数据）。
 
-        使用 PostgreSQL WHERE ts_code = ANY(:symbols) 批量查询。
+        通过 StockDailyRepository 批量查询。
         """
-        from sqlalchemy import text
-        query = text(
-            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-            "FROM stock_daily "
-            "WHERE ts_code = ANY(:symbols) "
-            "  AND trade_date BETWEEN :start AND :end "
-            "ORDER BY trade_date ASC, ts_code ASC"
+        return await self.daily_repo.get_batch_by_date_range(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
         )
-        result = await self.db.execute(query, {
-            "symbols": symbols,
-            "start": start_date,
-            "end": end_date,
-        })
-        return result.fetchall()
 
     # ---- EngineBase 生命周期 ----
 
@@ -573,6 +592,8 @@ class DataFeedEngine(EngineBase):
         self._calendar_repo = None
         self._factor_repo = None
         self._adj_price_repo = None
+        self._etf_daily_repo = None
+        self._etf_repo = None
         logger.info("DataFeedEngine 已停止，缓存已清理")
 
     async def _on_data_sync_completed(self, event) -> None:

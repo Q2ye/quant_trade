@@ -374,11 +374,10 @@ class BacktestService:
 				"config": {
 					"start_date": request.start_date,
 					"end_date": request.end_date,
-					"initial_capital": request.initial_capital,
-					"commission_rate": request.commission_rate,
-					"slippage_rate": request.slippage_rate,
 					"symbols": request.symbols or [],
 					"benchmark": getattr(request, "benchmark", None),
+					# v2.4: commission_rate/slippage_rate/initial_capital 移入
+					# backtest_parameters 表（单源原则），config 中不再冗余存储
 				},
 				"status": "pending",
 				"user_id": user_id,
@@ -1200,6 +1199,11 @@ class BacktestService:
 		"""
 		config = dict(task.config or {})
 
+		# v2.4: 提供合理默认值（config 中不再冗余存储 cost/capital 参数）
+		config.setdefault("initial_capital", 1000000)
+		config.setdefault("commission_rate", 0.0003)
+		config.setdefault("slippage_rate", 0.0001)
+
 		try:
 			from shared.database.repositories.strategy.backtest.parameter_repo import \
 				BacktestParameterRepository
@@ -1211,7 +1215,7 @@ class BacktestService:
 					config[param.param_name] = param.param_value
 			logger.info(f"从backtest_parameters表获取配置: {len(backtest_params)} 个参数")
 		except Exception as e:
-			logger.warning(f"从backtest_parameters表获取配置失败: {e}")
+			logger.warning(f"从backtest_parameters表获取配置失败，使用默认值: {e}")
 
 		return config
 
@@ -1296,6 +1300,26 @@ class BacktestService:
 			# 因找不到模块而报 ModuleNotFoundError（常见误写会在下方捕获并给出提示）
 			import typing as _typing
 			temp_module["typing"] = _typing
+
+			# v2.4: exec() 沙箱加固 — 限制 __builtins__ 防止代码注入
+			temp_module["__builtins__"] = {
+				"True": True, "False": False, "None": None,
+				"abs": abs, "all": all, "any": any, "bin": bin,
+				"bool": bool, "dict": dict, "divmod": divmod,
+				"enumerate": enumerate, "filter": filter,
+				"float": float, "format": format, "frozenset": frozenset,
+				"hash": hash, "hex": hex, "int": int, "isinstance": isinstance,
+				"issubclass": issubclass, "iter": iter, "len": len,
+				"list": list, "map": map, "max": max, "min": min,
+				"next": next, "oct": oct, "ord": ord, "pow": pow,
+				"print": print, "range": range, "repr": repr,
+				"reversed": reversed, "round": round, "set": set,
+				"slice": slice, "sorted": sorted, "str": str, "sum": sum,
+				"tuple": tuple, "type": type, "zip": zip,
+				"Exception": Exception, "ValueError": ValueError,
+				"TypeError": TypeError, "KeyError": KeyError,
+				"IndexError": IndexError, "StopIteration": StopIteration,
+			}
 
 			# ---- B2. 执行策略代码 ----
 			try:

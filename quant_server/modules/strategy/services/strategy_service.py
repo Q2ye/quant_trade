@@ -542,6 +542,53 @@ class StrategyService:
 			await self.session.rollback()
 			return {"success": False, "error": str(e)}
 
+
+	async def find_or_create_from_builtin(
+			self,
+			name: str,
+			strategy_type: StrategyType,
+			code: str,
+			class_name: str,
+			parameters: Dict[str, Any],
+			user_id: str = "0",
+	) -> Dict[str, Any]:
+		"""查找或创建内置策略。先 update_by 匹配 user_id+class_name，无命中则创建。"""
+		try:
+			rowcount = await self.strategy_repo.update_by(
+				filters={"user_id": user_id, "class_name": class_name},
+				data={"code": code},
+			)
+			if rowcount > 0:
+				# 查出策略 ID 用于参数 upsert
+				strategy_list = await self.strategy_repo.get_many(
+					user_id=user_id, class_name=class_name, limit=1,
+				)
+				strategy = strategy_list[0]
+				if parameters:
+					for key, value in parameters.items():
+						await self.param_repo.batch_upsert(
+							match_fields=["strategy_id", "param_name"],
+							data_list=[{"strategy_id": strategy.id, "param_name": key,
+								"param_type": type(value).__name__,
+								"param_value": str(value) if not isinstance(value, (int, float, str)) else value,
+								"created_at": datetime.now()}],
+						)
+				await self.session.commit()
+				logger.info("内置策略已更新: %s (id=%s)", strategy.name, strategy.id)
+				return {"success": True, "data": {"id": strategy.id, "name": strategy.name, "is_new": False}}
+			result = await self.create_strategy(
+				name=name, strategy_type=strategy_type, code=code,
+				parameters=parameters, user_id=user_id,
+			)
+			if result.get("success"):
+				result["is_new"] = True
+			return result
+		except Exception as e:
+			logger.error("find_or_create 失败: %s", e)
+			await self.session.rollback()
+			return {"success": False, "error": str(e)}
+
+
 	async def validate_strategy_code(
 			self,
 			strategy_id: str,

@@ -1116,6 +1116,49 @@ class SignalType(str, Enum):
     REBALANCE = "rebalance"          # 再平衡信号
     HEDGE = "hedge"                  # 对冲信号
 
+# ==================== 信号方向枚举 v2.4 ====================
+
+class SignalDirection(str, Enum):
+    """
+    信号方向枚举 — 策略层使用，需映射到 OrderDirection 才能写入 DB
+
+    适用场景：策略产生信号时使用的方向语义（做多/做空/平仓）
+    DB 持久化前须通过 SIGNAL_TO_TRADE_DIRECTION 映射为 OrderDirection。
+    """
+
+    LONG = "long"              # 做多/买入 → OrderDirection.BUY
+    SHORT = "short"            # 做空/卖出 → OrderDirection.SHORT
+    CLOSE_LONG = "close_long"  # 平多仓 → OrderDirection.SELL
+    CLOSE_SHORT = "close_short" # 平空仓 → OrderDirection.COVER
+
+# 信号方向 → 交易方向映射（唯一权威映射表）
+SIGNAL_TO_TRADE_DIRECTION = {
+    SignalDirection.LONG: OrderDirection.BUY,
+    SignalDirection.SHORT: OrderDirection.SHORT,
+    SignalDirection.CLOSE_LONG: OrderDirection.SELL,
+    SignalDirection.CLOSE_SHORT: OrderDirection.COVER,
+}
+
+# 反向映射：交易方向 → 信号方向
+TRADE_TO_SIGNAL_DIRECTION = {v: k for k, v in SIGNAL_TO_TRADE_DIRECTION.items()}
+
+def signal_to_order_direction(signal_dir: str) -> str:
+    """v2.4: 将策略信号方向转换为 DB 订单方向
+
+    Args:
+        signal_dir: 信号方向字符串 (long/short/close_long/close_short)
+
+    Returns:
+        DB 订单方向字符串 (buy/sell/short/cover)，无效输入返回 "buy"
+    """
+    mapping = {
+        "long": "buy",
+        "short": "short",
+        "close_long": "sell",
+        "close_short": "cover",
+    }
+    return mapping.get(signal_dir, "buy")
+
 
 # ==================== 数据频率枚举 ====================
 
@@ -1518,6 +1561,9 @@ __all__ = [
 
     # 信号相关枚举
     "SignalType",
+    "SignalDirection",
+    "SIGNAL_TO_TRADE_DIRECTION",
+    "signal_to_order_direction",
 
     # 数据相关枚举
     "DataFrequency",

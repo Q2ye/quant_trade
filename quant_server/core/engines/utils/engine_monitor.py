@@ -639,7 +639,7 @@ class EngineMonitor:
 
         # 收集所有数值型指标
         for metric_name, value in metrics.items():
-            if isinstance(value, (int, float)):
+            if isinstance(value, (int, float)) and value is not None:
                 self._add_metric(engine_name, metric_name, float(value), timestamp)
 
     def _add_metric(self,

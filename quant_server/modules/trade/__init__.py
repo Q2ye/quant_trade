@@ -1,8 +1,11 @@
 # 交易模块
 
+import logging
 from typing import Optional, Dict, Any
 from core.engines.base.engine_base import EngineBase
 from core.engines.system import MainEngine, EventEngine
+
+logger = logging.getLogger(__name__)
 
 # 导入子模块
 from .adapters import *
@@ -81,13 +84,13 @@ async def initialize(
         # 初始化交易管理器
         trade_manager = TradeManager(
             config=trade_config,
-            event_engine=event_engine
+            event_engine=event_engine,
         )
         
         # 初始化风险管理器
         risk_manager = RiskManager(
             config=trade_config,
-            event_engine=event_engine
+            event_engine=event_engine,
         )
         
         # 初始化券商适配器
@@ -121,7 +124,8 @@ async def initialize(
         position_engine = PositionEngine(
             config=trade_config,
             broker_adapter=broker_adapter,
-            event_engine=event_engine
+            event_engine=event_engine,
+	            trade_manager=trade_manager
         )
 
         # 初始化风险引擎
@@ -133,13 +137,14 @@ async def initialize(
             session_factory=session_factory,
         )
 
-        # 初始化执行引擎
+        # 初始化执行引擎 -- v2.4: 注入 trade_manager 用于安全开关检查
         execution_engine = ExecutionEngine(
             config=trade_config,
             broker_adapter=broker_adapter,
             position_engine=position_engine,
             risk_engine=risk_engine,
-            event_engine=event_engine
+            event_engine=event_engine,
+	            trade_manager=trade_manager
         )
 
         # 初始化信号引擎
@@ -166,11 +171,11 @@ async def initialize(
         await execution_engine.start()
         await position_engine.start()
         
-        print("交易模块初始化成功")
+        logger.info("交易模块初始化成功")
         return True
-        
+
     except Exception as e:
-        print(f"交易模块初始化失败: {str(e)}")
+        logger.exception(f"交易模块初始化失败: {str(e)}")
         return False
 
 # 模块关闭函数
@@ -183,10 +188,10 @@ async def shutdown() -> bool:
     """
     try:
         # 这里可以添加关闭逻辑
-        print("交易模块关闭成功")
+        logger.info("交易模块关闭成功")
         return True
     except Exception as e:
-        print(f"交易模块关闭失败: {str(e)}")
+        logger.exception(f"交易模块关闭失败: {str(e)}")
         return False
 
 # 导出所有组件

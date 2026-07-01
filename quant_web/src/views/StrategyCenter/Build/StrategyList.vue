@@ -38,25 +38,23 @@
           </span>
         </div>
 
-        <!-- 系统策略（仅回测 Tab 显示） -->
-        <div v-if="activeTab === 'backtest'">
-          <h3 class="section-title">系统策略</h3>
+        <!-- v3.0: 模板库（内置+用户模板） -->
+        <div>
+          <h3 class="section-title">模板库</h3>
           <div v-if="builtinLoading"><n-skeleton :repeat="3" text /></div>
           <div v-else-if="builtinStrategies.length > 0" class="card-grid">
-            <div v-for="tpl in builtinStrategies" :key="tpl.class_name"
-              :class="['strategy-card', 'builtin-card']">
+            <div v-for="tpl in builtinStrategies" :key="tpl.id"
+              :class="['strategy-card', 'builtin-card']"
+              @click="createFromTemplate(tpl)">
               <div class="sc-top">
-                <n-tag :type="builtinTypeTag(tpl.strategy_type) as any" size="tiny">{{ builtinTypeLabel(tpl.strategy_type) }}</n-tag>
+                <n-tag :type="builtinTypeTag(tpl.template_type || tpl.strategy_type) as any" size="tiny">{{ builtinTypeLabel(tpl.template_type || tpl.strategy_type) }}</n-tag>
               </div>
               <h4 class="sc-name">{{ builtinDisplayName(tpl) }}</h4>
               <span class="sc-type">{{ builtinDescription(tpl) }}</span>
-              <div class="sc-actions">
-                <n-button size="tiny" @click.stop="quickBacktestBuiltin(tpl)">回测</n-button>
-                <n-button size="tiny" type="success" quaternary @click.stop="openBuiltinConfig(tpl)">启动</n-button>
-              </div>
+              <p class="builtin-hint">点击查看详情并创建策略</p>
             </div>
           </div>
-          <n-empty v-else description="暂无内置策略" size="small" />
+          <n-empty v-else description="暂无可用模板" size="small" />
         </div>
 
         <!-- 策略卡片 -->
@@ -281,46 +279,47 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
   MeanReversionStrategy: { name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。',
     params: { lookback_period: '回看周期', entry_threshold: '入场阈值', exit_threshold: '出场阈值', position_ratio: '每次开仓比例' } },
   MLStrategy: { name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。',
-    params: { model_type: '模型类型', train_window: '训练窗口(天)', predict_window: '预测窗口(天)', top_n: '持仓数量', retrain_freq: '重训频率(天)' } },
+    params: { model_type: '模型类型', train_window: '训练窗口(天)', predict_window: '预测窗口(天)',
+      top_n: '持仓数量', retrain_freq: '重训频率(天)', stop_loss: '止损比例(%)',
+      take_profit: '止盈比例(%)', feature_columns: '特征列', prediction_horizon: '预测周期(天)',
+      confidence_threshold: '置信度阈值', min_training_samples: '最小训练样本数' } },
   DLStrategy: { name: '深度学习策略', desc: '基于 LSTM、Transformer 等深度学习模型的交易策略。',
-    params: { model_type: '模型类型(LSTM/Transformer)', seq_len: '序列长度', hidden_dim: '隐藏层维度', epochs: '训练轮数', top_n: '持仓数量' } },
+    params: { model_type: '模型类型(LSTM/Transformer)', seq_len: '序列长度',
+      hidden_dim: '隐藏层维度', epochs: '训练轮数', top_n: '持仓数量',
+      batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
+      hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
+      stop_loss: '止损比例(%)', take_profit: '止盈比例(%)' } },
+  EtfIndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '基于多窗口动量得分排名，定期调仓持有最强行业 ETF。',
+    params: { universe: '候选 ETF 池(逗号分隔)', momentum_windows: '动量窗口(逗号分隔)', rank_weights: '窗口权重(逗号分隔)', top_n: '持仓数量', rebalance_frequency: '调仓频率(天)', min_history: '最低数据条数' } },
 };
-const builtinDisplayName = (tpl: any) => BUILTIN_META[tpl.class_name]?.name || tpl.display_name || tpl.class_name;
-const builtinDescription = (tpl: any) => BUILTIN_META[tpl.class_name]?.desc || tpl.module || '';
+// v3.0: 从模板 code_template 提取 class_name 用于 BUILTIN_META 查表
+const extractClassName = (tpl: any) => {
+  const code = tpl.code_template || '';
+  const m = code.match(/class\s+(\w+)\s*[(:]/);
+  return m?.[1] || tpl.class_name || '';
+};
+const builtinDisplayName = (tpl: any) => {
+  const cn = extractClassName(tpl);
+  return BUILTIN_META[cn]?.name || (tpl.template_name || tpl.name || '').replace(/^内置策略:\s*/, '') || cn;
+};
+const builtinDescription = (tpl: any) => {
+  const cn = extractClassName(tpl);
+  // 优先 BUILTIN_META，其次 DB 描述（去掉"内置策略:"前缀），最后为空
+  const dbDesc = (tpl.description || '').replace(/^内置策略:\s*/, '');
+  return BUILTIN_META[cn]?.desc || dbDesc || tpl.module || '';
+};
 const builtinTypeLabel = (type: string) => {
-  const m: Record<string, string> = { technical: '趋势跟踪', alpha: 'Alpha', multi_factor: '多因子', ml: '机器学习', dl: '深度学习' };
+  const m: Record<string, string> = { technical: '趋势跟踪', alpha: 'Alpha', multi_factor: '多因子', mean_reversion: '均值回归', ml: '机器学习', dl: '深度学习', rotation: '行业轮动' };
   return m[type] || type || '未知';
 };
 const builtinTypeTag = (type: string) => {
-  const m: Record<string, string> = { technical: 'success', alpha: 'info', multi_factor: 'warning', ml: 'error', dl: 'error' };
+  const m: Record<string, string> = { technical: 'success', alpha: 'info', multi_factor: 'warning', mean_reversion: 'info', ml: 'error', dl: 'error', rotation: 'warning' };
   return (m[type] || 'default') as any;
 };
 
-const createFromTemplate = async (tpl: any) => {
-  const displayName = tpl.display_name || tpl.class_name || tpl.name || '';
-  const name = `${displayName}_${Date.now() % 10000}`;
-  dialog.success({
-    title: `创建系统策略`,
-    content: `将基于「${displayName}」创建策略「${name}」，是否继续？`,
-    positiveText: "创建并打开",
-    negativeText: "取消",
-    onPositiveClick: async () => {
-      try {
-        const params = { ...tpl.default_parameters, symbols: ["000001.SZ", "600519.SH"] };
-        const body = {
-          name,
-          strategy_type: tpl.strategy_type,
-          code: `# 系统策略: ${displayName}\n# 来源: ${tpl.module || ''}`,
-          parameters: params,
-        };
-        const result = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
-        if (!result?.id) { message.error('创建失败'); return; }
-        message.success("策略已创建: " + result.name);
-        loadStrategies();
-        router.push(`/strategies/workspace/${result.id}`);
-      } catch (e: any) { message.error("创建失败: " + (e.message || e)); }
-    },
-  });
+const createFromTemplate = (tpl: any) => {
+  // v3.0: 跳转模板详情页，不自动创建
+  router.push('/strategies/template/' + tpl.id);
 };
 
 // ---- 内置策略配置弹窗 ----
@@ -337,34 +336,25 @@ const builtinForm = reactive({
 });
 
 const openBuiltinConfig = (tpl: any) => {
-  builtinTarget.value = tpl;
-  builtinForm.name = `${builtinDisplayName(tpl)}_${Date.now() % 10000}`;
-  builtinForm.strategy_type = tpl.strategy_type;
-  builtinForm.execution_mode = 'semi_auto';
-  builtinForm.capital = 1_000_000;
-  builtinForm.symbols = '000001.SZ,600519.SH';
-  builtinForm.parameters = { ...(tpl.default_parameters || {}) };
-  builtinForm.paramLabels = BUILTIN_META[tpl.class_name]?.params || {};
-  showBuiltinModal.value = true;
+  // v3.0: 跳转模板详情页（"使用"按钮 → 详情页创建实例）
+  router.push('/strategies/template/' + tpl.id);
 };
 
 const confirmBuiltinStart = async () => {
   const tpl = builtinTarget.value;
   if (!tpl) return;
   try {
-    // 1. 创建策略
-    const symbols = builtinForm.symbols.split(',').map((s: string) => s.trim()).filter(Boolean);
-    const params = { ...builtinForm.parameters, symbols };
-    const body = {
+    // v3.0: 统一从模板创建实例
+    const tplId = tpl.id;
+    const createRes = await request.post(`/quantTrade/strategy/templates/${tplId}/create-instance`, {
       name: builtinForm.name,
-      strategy_type: builtinForm.strategy_type,
-      code: `# 系统策略: ${builtinDisplayName(tpl)}\n# 来源: ${tpl.module || ''}`,
-      parameters: params,
-    };
-    const createRes = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
+      account_id: builtinForm.account_id,
+      capital: builtinForm.capital,
+      run_mode: 'live',
+    }).then((r: any) => r.data?.data || r.data);
     if (!createRes?.id) { message.error('创建失败'); return; }
     const sid = createRes.id;
-    message.success("策略已创建");
+    message.success("实例已创建");
 
     // 2. 启动策略
     await request.post(`/quantTrade/strategy/${sid}/start`, {
@@ -378,25 +368,9 @@ const confirmBuiltinStart = async () => {
   } catch (e: any) { message.error("启动失败: " + (e.message || e)); }
 };
 
-const quickBacktestBuiltin = async (tpl: any) => {
-  const displayName = builtinDisplayName(tpl);
-  const name = `${displayName}_bt_${Date.now() % 10000}`;
-  const symbols = '000001.SZ,600519.SH';
-  try {
-    // 1. 快速创建策略
-    const body = {
-      name,
-      strategy_type: tpl.strategy_type,
-      code: `# 系统策略: ${displayName}
-# 来源: ${tpl.module || ''}`,
-      parameters: { ...tpl.default_parameters, symbols: symbols.split(',').map((s: string) => s.trim()).filter(Boolean) },
-    };
-    const createRes = await request.post("/quantTrade/strategy", body).then((r: any) => r.data?.data || r.data);
-    if (!createRes?.id) { message.error('创建失败'); return; }
-    message.success("策略已创建，跳转到回测");
-    // 2. 跳转到回测配置页
-    router.push(`/backtest?strategies=${createRes.id}`);
-  } catch (e: any) { message.error("操作失败: " + (e.message || e)); }
+const quickBacktestBuiltin = (tpl: any) => {
+  // v3.0: 跳转模板详情页
+  router.push('/strategies/template/' + tpl.id);
 };
 const handleCardClick = (s: any) => { openWorkspace(s); };
 const toggleCheck = (id: string) => {
@@ -540,13 +514,20 @@ const saveStrategy = async () => {
 const loadBuiltin = async () => {
   try {
     builtinLoading.value = true;
-    const res = await strategyAPI.getBuiltinStrategies();
-    console.log('[StrategyList] builtin API 返回:', res);
+    // v3.0: 从模板 API 加载（DB 中的 strategy_templates 表）
+    const res = await request.get('/quantTrade/strategy/templates', { params: { is_builtin: true, page_size: 50 } })
+      .then((r: any) => r?.data || []);
+    console.log('[StrategyList] 模板库:', res?.length || 0, '个', res);
     builtinStrategies.value = res || [];
-    console.log('[StrategyList] builtinStrategies:', builtinStrategies.value.length, '条');
   } catch (e) {
-    console.error('[StrategyList] builtin 加载失败:', e);
-    builtinStrategies.value = [];
+    // 回退到旧 builtin API
+    try {
+      const res = await strategyAPI.getBuiltinStrategies();
+      builtinStrategies.value = res || [];
+    } catch (e2) {
+      console.error('[StrategyList] 模板加载失败:', e2);
+      builtinStrategies.value = [];
+    }
   } finally {
     builtinLoading.value = false;
   }
@@ -636,6 +617,7 @@ onMounted(() => loadStrategies());
 .sc-top { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .sc-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-type { font-size: 11px; color: var(--color-text-tertiary); }
+.builtin-hint { margin: 6px 0 0; font-size: 11px; color: var(--color-text-quaternary); opacity: 0.7; }
 
 .sc-perf { margin-top: 8px; display: flex; align-items: baseline; gap: 6px;
   span:first-child { font-size: 16px; font-weight: 700; }

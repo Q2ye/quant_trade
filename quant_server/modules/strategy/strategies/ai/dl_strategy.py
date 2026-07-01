@@ -13,10 +13,9 @@ from modules.strategy.strategies.base.base_strategy import BaseStrategy
 from modules.strategy.constants import StrategyType, SignalDirection, SignalType
 from modules.strategy.models import TradingSignal
 from core.engines.types.entities import BarData
-
-# 导入PyTorch
 import torch
 import torch.nn as nn
+_TORCH_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
 
@@ -427,155 +426,109 @@ class DLStrategy(BaseStrategy):
 
 # ==================== 深度学习模型定义 ====================
 
-class LSTMModel(torch.nn.Module):
-	"""LSTM模型"""
+if _TORCH_AVAILABLE:
 
-	def __init__ (self, input_size, hidden_size, num_layers, dropout, output_size):
-		super(LSTMModel, self).__init__()
-		self.hidden_size = hidden_size
-		self.num_layers = num_layers
+    class LSTMModel(torch.nn.Module):
+        """LSTM模型"""
 
-		self.lstm = torch.nn.LSTM(
-			input_size, hidden_size, num_layers,
-			batch_first=True, dropout=dropout
-		)
-		self.dropout = torch.nn.Dropout(dropout)
-		self.fc = torch.nn.Linear(hidden_size, output_size)
+        def __init__(self, input_size, hidden_size, num_layers, dropout, output_size):
+            super(LSTMModel, self).__init__()
+            self.hidden_size = hidden_size
+            self.num_layers = num_layers
+            self.lstm = torch.nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
+            self.dropout = torch.nn.Dropout(dropout)
+            self.fc = torch.nn.Linear(hidden_size, output_size)
 
-	def forward (self, x):
-		# LSTM前向传播
-		lstm_out, _ = self.lstm(x)
+        def forward(self, x):
+            lstm_out, _ = self.lstm(x)
+            last_output = lstm_out[:, -1, :]
+            return self.fc(self.dropout(last_output))
 
-		# 取最后一个时间步的输出
-		last_output = lstm_out[:, -1, :]
+    class CNNModel(torch.nn.Module):
+        """CNN模型"""
 
-		# 全连接层
-		output = self.fc(self.dropout(last_output))
-		return output
+        def __init__(self, input_channels, sequence_length, output_size):
+            super(CNNModel, self).__init__()
+            self.conv1 = torch.nn.Conv1d(input_channels, 32, kernel_size=3, padding=1)
+            self.conv2 = torch.nn.Conv1d(32, 64, kernel_size=3, padding=1)
+            self.pool = torch.nn.MaxPool1d(kernel_size=2)
+            conv_output_size = sequence_length // 2 // 2
+            self.fc1 = torch.nn.Linear(64 * conv_output_size, 128)
+            self.fc2 = torch.nn.Linear(128, output_size)
+            self.dropout = torch.nn.Dropout(0.2)
 
+        def forward(self, x):
+            x = x.transpose(1, 2)
+            x = torch.relu(self.conv1(x))
+            x = self.pool(x)
+            x = torch.relu(self.conv2(x))
+            x = self.pool(x)
+            x = x.view(x.size(0), -1)
+            x = torch.relu(self.fc1(x))
+            x = self.dropout(x)
+            x = self.fc2(x)
+            return x
 
-class CNNModel(torch.nn.Module):
-	"""CNN模型"""
+    class TransformerModel(torch.nn.Module):
+        """Transformer模型"""
 
-	def __init__ (self, input_channels, sequence_length, output_size):
-		super(CNNModel, self).__init__()
+        def __init__(self, d_model, nhead, num_layers, output_size):
+            super(TransformerModel, self).__init__()
+            self.embedding = torch.nn.Linear(5, d_model)
+            self.pos_encoding = PositionalEncoding(d_model)
+            encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=4 * d_model)
+            self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+            self.fc = torch.nn.Linear(d_model, output_size)
 
-		self.conv1 = torch.nn.Conv1d(input_channels, 32, kernel_size=3, padding=1)
-		self.conv2 = torch.nn.Conv1d(32, 64, kernel_size=3, padding=1)
-		self.pool = torch.nn.MaxPool1d(kernel_size=2)
+        def forward(self, x):
+            x = self.embedding(x)
+            x = self.pos_encoding(x)
+            x = x.transpose(0, 1)
+            x = self.transformer_encoder(x)
+            x = x[-1, :, :]
+            return self.fc(x)
 
-		# 计算全连接层输入大小
-		conv_output_size = sequence_length // 2 // 2  # 经过两次池化
-		self.fc1 = torch.nn.Linear(64 * conv_output_size, 128)
-		self.fc2 = torch.nn.Linear(128, output_size)
-		self.dropout = torch.nn.Dropout(0.2)
+    class GRUModel(torch.nn.Module):
+        """GRU模型"""
 
-	def forward (self, x):
-		# 调整维度: (batch, channels, sequence)
-		x = x.transpose(1, 2)
+        def __init__(self, input_size, hidden_size, num_layers, dropout, output_size):
+            super(GRUModel, self).__init__()
+            self.hidden_size = hidden_size
+            self.num_layers = num_layers
+            self.gru = torch.nn.GRU(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
+            self.dropout = torch.nn.Dropout(dropout)
+            self.fc = torch.nn.Linear(hidden_size, output_size)
 
-		# CNN前向传播
-		x = torch.relu(self.conv1(x))
-		x = self.pool(x)
-		x = torch.relu(self.conv2(x))
-		x = self.pool(x)
+        def forward(self, x):
+            gru_out, _ = self.gru(x)
+            last_output = gru_out[:, -1, :]
+            return self.fc(self.dropout(last_output))
 
-		# 展平
-		x = x.view(x.size(0), -1)
+    class PositionalEncoding(torch.nn.Module):
+        """位置编码"""
 
-		# 全连接层
-		x = torch.relu(self.fc1(x))
-		x = self.dropout(x)
-		x = self.fc2(x)
+        def __init__(self, d_model, max_len=5000):
+            super(PositionalEncoding, self).__init__()
+            pe = torch.zeros(max_len, d_model)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+            pe[:, 0::2] = torch.sin(position * div_term)
+            pe[:, 1::2] = torch.cos(position * div_term)
+            pe = pe.unsqueeze(0).transpose(0, 1)
+            self.register_buffer('pe', pe)
 
-		return x
+        def forward(self, x):
+            return x + self.pe[:x.size(0), :]
 
-
-class TransformerModel(torch.nn.Module):
-	"""Transformer模型"""
-
-	def __init__ (self, d_model, nhead, num_layers, output_size):
-		super(TransformerModel, self).__init__()
-
-		self.embedding = torch.nn.Linear(5, d_model)  # OHLCV -> d_model
-		self.pos_encoding = PositionalEncoding(d_model)
-
-		encoder_layer = torch.nn.TransformerEncoderLayer(
-			d_model=d_model,
-			nhead=nhead,
-			dim_feedforward=4 * d_model
-		)
-		self.transformer_encoder = torch.nn.TransformerEncoder(
-			encoder_layer,
-			num_layers=num_layers
-		)
-
-		self.fc = torch.nn.Linear(d_model, output_size)
-
-	def forward (self, x):
-		# 嵌入层
-		x = self.embedding(x)
-
-		# 位置编码
-		x = self.pos_encoding(x)
-
-		# Transformer编码器 (需要调整维度: seq_len, batch, features)
-		x = x.transpose(0, 1)
-		x = self.transformer_encoder(x)
-
-		# 取最后一个时间步
-		x = x[-1, :, :]
-
-		# 全连接层
-		x = self.fc(x)
-
-		return x
-
-
-class GRUModel(torch.nn.Module):
-	"""GRU模型"""
-
-	def __init__ (self, input_size, hidden_size, num_layers, dropout, output_size):
-		super(GRUModel, self).__init__()
-		self.hidden_size = hidden_size
-		self.num_layers = num_layers
-
-		self.gru = torch.nn.GRU(
-			input_size, hidden_size, num_layers,
-			batch_first=True, dropout=dropout
-		)
-		self.dropout = torch.nn.Dropout(dropout)
-		self.fc = torch.nn.Linear(hidden_size, output_size)
-
-	def forward (self, x):
-		# GRU前向传播
-		gru_out, _ = self.gru(x)
-
-		# 取最后一个时间步的输出
-		last_output = gru_out[:, -1, :]
-
-		# 全连接层
-		output = self.fc(self.dropout(last_output))
-		return output
-
-
-class PositionalEncoding(torch.nn.Module):
-	"""位置编码"""
-
-	def __init__ (self, d_model, max_len=5000):
-		super(PositionalEncoding, self).__init__()
-
-		pe = torch.zeros(max_len, d_model)
-		position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-		div_term = torch.exp(torch.arange(0, d_model, 2).float() *
-		                     (-torch.log(torch.tensor(10000.0)) / d_model))
-
-		pe[:, 0::2] = torch.sin(position * div_term)
-		pe[:, 1::2] = torch.cos(position * div_term)
-		pe = pe.unsqueeze(0).transpose(0, 1)
-
-		self.register_buffer('pe', pe)
-
-	def forward (self, x):
-		x = x + self.pe[:x.size(0), :]
-		return x
+else:
+    # torch 不可用时的占位类（策略可注册但无法训练）
+    class LSTMModel:
+        def __init__(self, *args, **kwargs): pass
+    class CNNModel:
+        def __init__(self, *args, **kwargs): pass
+    class TransformerModel:
+        def __init__(self, *args, **kwargs): pass
+    class GRUModel:
+        def __init__(self, *args, **kwargs): pass
+    class PositionalEncoding:
+        def __init__(self, *args, **kwargs): pass

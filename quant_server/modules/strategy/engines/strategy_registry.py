@@ -13,6 +13,7 @@ _engine_registry dict（EngineFactory）。
 """
 import importlib
 import inspect
+import sys
 import logging
 from typing import Dict, List, Type, Optional
 
@@ -163,7 +164,8 @@ class StrategyRegistry:
         subpackage_type_map = {
             "technical": StrategyType.TECHNICAL,
             "alpha": StrategyType.ALPHA,
-            "ai": StrategyType.ML,  # AI 子包中的类可能需要更细分的类型推断
+            "ai": StrategyType.ML,
+            "rotation": StrategyType.ROTATION,
         }
 
         registered_count = 0
@@ -171,21 +173,40 @@ class StrategyRegistry:
         for subpackage, default_type in subpackage_type_map.items():
             try:
                 full_path = f"{package_path}.{subpackage}"
-                module = importlib.import_module(full_path)
+                logger.info("[auto_discover] 扫描子包: %s", full_path)
+                # 若模块已缓存（如启动时 torch 不可用导致 DLStrategy=None），
+                # 强制重载以获取最新状态
+                if full_path in sys.modules:
+                    logger.info(
+                        "[auto_discover] 模块 %s 已缓存，reload 以刷新状态", full_path,
+                    )
+                    module = importlib.reload(sys.modules[full_path])
+                else:
+                    module = importlib.import_module(full_path)
 
+                found_classes = []
                 for name, obj in inspect.getmembers(module, inspect.isclass):
-                    # 只注册 BaseStrategy 的子类，排除 BaseStrategy 本身
-                    if (
-                        issubclass(obj, BaseStrategy)
-                        and obj is not BaseStrategy
-                        and obj.__module__.startswith(package_path)
-                    ):
-                        # 尝试从策略类推断更精确的类型
-                        inferred_type = self._infer_strategy_type(
-                            obj, default_type
-                        )
+                    try:
+                        is_sub = issubclass(obj, BaseStrategy) and obj is not BaseStrategy
+                    except TypeError:
+                        is_sub = False
+                    if is_sub and obj.__module__.startswith(package_path):
+                        found_classes.append(name)
+                        inferred_type = self._infer_strategy_type(obj, default_type)
                         self.register(inferred_type, obj)
                         registered_count += 1
+                        logger.info(
+                            "[auto_discover] 注册: %s -> type=%s",
+                            name, inferred_type.value,
+                        )
+
+                if found_classes:
+                    logger.info(
+                        "[auto_discover] %s: 发现 %d 个策略 -> %s",
+                        subpackage, len(found_classes), found_classes,
+                    )
+                else:
+                    logger.warning("[auto_discover] %s: 未发现 BaseStrategy 子类", subpackage)
 
             except ImportError as e:
                 logger.warning(f"无法导入策略子包 {subpackage}: {e}")

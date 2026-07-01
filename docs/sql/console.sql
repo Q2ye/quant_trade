@@ -193,6 +193,8 @@ select * from strategy_versions;
 select * from strategy_runs;
 -- 策略参数配置表
 select * from strategy_parameters;
+
+select * from strategy_templates
 --
 -- 同步任务表
 select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';

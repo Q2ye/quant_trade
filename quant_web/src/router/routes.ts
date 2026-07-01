@@ -215,6 +215,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "strategy-templates", layout: "main", title: "策略模板" },
   },
   {
+    path: "/strategies/template/:id",
+    name: "TemplateDetail",
+    component: () =>
+      import("@/views/StrategyCenter/Build/TemplateDetail.vue"),
+    meta: { menu: "strategies", layout: "main", title: "模板详情", hideInMenu: true },
+  },
+  {
     path: "/strategies",
     name: "StrategyList",
     component: () => import("@/views/StrategyCenter/Build/StrategyList.vue"),

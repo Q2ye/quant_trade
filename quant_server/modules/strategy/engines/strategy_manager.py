@@ -98,6 +98,92 @@ class StrategyManager(EngineBase):
         """兼容旧接口"""
         self.register_strategy_class(strategy_type, strategy_class)
 
+    # ---- 动态代码加载（exec 沙箱，v2.4 新增） ----
+
+    def _load_strategy_class_from_code(
+        self, code: str
+    ) -> Optional[Type[BaseStrategy]]:
+        """
+        从用户自定义代码字符串动态加载策略类（exec 沙箱）。
+
+        与 BacktestService._load_strategy_class() 路径 B 逻辑一致，
+        确保实盘模式也能执行用户通过 Web 编辑器保存的策略代码。
+
+        Args:
+            code: 策略源代码字符串（来自 strategies.code 字段）
+
+        Returns:
+            BaseStrategy 子类，未找到返回 None
+        """
+        try:
+            from modules.strategy.strategies.base.base_strategy import BaseStrategy as BS
+            from modules.strategy.constants import (
+                StrategyType as ST, SignalDirection, TimeFrame,
+            )
+            from modules.strategy.models import TradingSignal, Position
+            from core.engines.types.entities import BarData
+            import numpy as np
+            import pandas as pd
+            import typing as _typing
+
+            temp_module: Dict[str, Any] = {
+                "BaseStrategy": BS,
+                "StrategyType": ST,
+                "SignalDirection": SignalDirection,
+                "TimeFrame": TimeFrame,
+                "TradingSignal": TradingSignal,
+                "Position": Position,
+                "BarData": BarData,
+                "pd": pd,
+                "np": np,
+                "typing": _typing,
+            }
+
+            # v2.4: exec() 沙箱加固 — 限制 __builtins__ 防止代码注入
+            safe_builtins = {
+                "True": True, "False": False, "None": None,
+                "abs": abs, "all": all, "any": any, "bin": bin,
+                "bool": bool, "dict": dict, "divmod": divmod,
+                "enumerate": enumerate, "filter": filter,
+                "float": float, "format": format, "frozenset": frozenset,
+                "hash": hash, "hex": hex, "int": int, "isinstance": isinstance,
+                "issubclass": issubclass, "iter": iter, "len": len,
+                "list": list, "map": map, "max": max, "min": min,
+                "next": next, "oct": oct, "ord": ord, "pow": pow,
+                "print": print, "range": range, "repr": repr,
+                "reversed": reversed, "round": round, "set": set,
+                "slice": slice, "sorted": sorted, "str": str, "sum": sum,
+                "tuple": tuple, "type": type, "zip": zip,
+                "Exception": Exception, "ValueError": ValueError,
+                "TypeError": TypeError, "KeyError": KeyError,
+                "IndexError": IndexError, "StopIteration": StopIteration,
+            }
+            temp_module["__builtins__"] = safe_builtins
+            try:
+                exec(code, temp_module)
+            except ModuleNotFoundError as e:
+                missing = e.name or str(e)
+                raise ValueError(f"缺少依赖模块: {missing}") from e
+            except SyntaxError as e:
+                raise ValueError(f"策略代码语法错误: {e}") from e
+
+            # 提取第一个 BaseStrategy 子类
+            for _name, obj in temp_module.items():
+                if (
+                    isinstance(obj, type)
+                    and issubclass(obj, BS)
+                    and obj is not BS
+                ):
+                    logger.info(f"策略类加载成功 (exec 沙箱): {_name}")
+                    return obj
+
+            logger.warning("exec 沙箱中未找到 BaseStrategy 子类")
+            return None
+
+        except Exception as e:
+            logger.error(f"exec 沙箱加载策略类失败: {e}")
+            return None
+
     # ---- 策略生命周期 ----
 
     async def load_strategy(
@@ -109,11 +195,23 @@ class StrategyManager(EngineBase):
         parameters: Dict[str, Any],
         config: StrategyConfig,
     ) -> StrategyInstance:
-        """加载策略 — 通过 registry 获取策略类并实例化"""
-        # v2.3: CTA 本质是 TECHNICAL，DB 存 cta 但注册表只有 technical，统一回退
-        strategy_class = self.registry.get_first(strategy_type)
+        """加载策略 — v3.0: exec(code) 优先，registry 仅作回退。
+
+        所有策略（内置模板创建的实例 + 自定义策略）统一走 exec 沙箱加载。
+        这样用户编辑内置策略代码后，新实例能正确使用编辑后的代码。
+        """
+        strategy_class = None
+
+        # v3.0: exec(code) 优先 — 确保用户编辑的代码生效
+        if code:
+            strategy_class = self._load_strategy_class_from_code(code)
+
+        # 回退：无 code 的旧数据走 registry
+        if not strategy_class:
+            strategy_class = self.registry.get_first(strategy_type)
         if not strategy_class and strategy_type == StrategyType.CTA:
             strategy_class = self.registry.get_first(StrategyType.TECHNICAL)
+
         if not strategy_class:
             raise ValueError(f"未注册的策略类型: {strategy_type}")
 
@@ -683,6 +781,18 @@ class StrategyManager(EngineBase):
         if self.registry.is_empty():
             count = self.registry.auto_discover()
             logger.info(f"自动注册 {count} 个策略类")
+
+        # v3.0: 同步内置策略到 strategy_templates 表（幂等）
+        if self.session_factory:
+            try:
+                async with self.session_factory() as session:
+                    from modules.strategy.services.template_service import TemplateService
+                    svc = TemplateService(session)
+                    result = await svc.seed_builtin_templates()
+                    logger.info(f"内置模板同步完成: {result}")
+            except Exception as e:
+                logger.warning(f"内置模板同步失败（非致命）: {e}")
+
         logger.info("策略管理器初始化完成")
 
     async def _on_start(self):
@@ -773,68 +883,104 @@ class StrategyManager(EngineBase):
         """
         加载指定交易日的 BarData（优先复权数据，fallback 原始数据）。
 
-        v2.3: 使用 self.session_factory 获取 DB 会话（修复 self.db 未初始化的 bug）；
-              新增 symbols 参数支持按股票池过滤。
+        v2.4: 使用 Repository 批量查询替代裸 SQL；支持 ETF 数据自动分派。
         """
-        from sqlalchemy import text
-
         if self.session_factory is None:
             logger.error("_load_daily_bars: session_factory 未注入，无法加载数据")
             return []
 
         try:
             async with self.session_factory() as session:
-                if symbols:
-                    # 按指定股票池加载
-                    query = text(
-                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                        "FROM stock_adjusted_prices "
-                        "WHERE trade_date = :trade_date "
-                        "  AND ts_code = ANY(:symbols) "
-                        "  AND adj_type = 'qfq' AND freq = 'D' "
-                        "ORDER BY ts_code"
-                    )
-                    result = await session.execute(
-                        query, {"trade_date": trade_date, "symbols": symbols},
-                    )
-                else:
-                    # 加载全市场
-                    query = text(
-                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                        "FROM stock_adjusted_prices "
-                        "WHERE trade_date = :trade_date "
-                        "  AND adj_type = 'qfq' AND freq = 'D' "
-                        "ORDER BY ts_code"
-                    )
-                    result = await session.execute(query, {"trade_date": trade_date})
-                rows = result.fetchall()
+                rows = []
+                has_symbols = bool(symbols)
 
-                if not rows:
-                    # Fallback 到 stock_daily
-                    if symbols:
-                        query2 = text(
-                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                            "FROM stock_daily "
-                            "WHERE trade_date = :trade_date "
-                            "  AND ts_code = ANY(:symbols) "
-                            "ORDER BY ts_code"
-                        )
-                        result2 = await session.execute(
-                            query2, {"trade_date": trade_date, "symbols": symbols},
-                        )
-                    else:
-                        query2 = text(
-                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                            "FROM stock_daily "
-                            "WHERE trade_date = :trade_date "
-                            "ORDER BY ts_code"
-                        )
-                        result2 = await session.execute(query2, {"trade_date": trade_date})
-                    rows = result2.fetchall()
-                    logger.info(
-                        f"_load_daily_bars: {trade_date} 使用 stock_daily fallback, "
-                        f"{len(rows)} 条"
+                if has_symbols:
+                    # ---- 按指定股票池：拆分股票 / ETF，走 Repo 批量查询 ----
+                    from shared.database.repositories.market.quote.stock_adjusted_price_repo import (
+                        StockAdjustedPriceRepository,
                     )
+                    from shared.database.repositories.market.quote.stock_daily_repo import (
+                        StockDailyRepository,
+                    )
+                    from shared.database.repositories.market.basic.etf_repo import (
+                        ETFRepository,
+                    )
+
+                    stock_syms = [s for s in symbols if not self._is_etf(s)]
+                    etf_syms = [s for s in symbols if self._is_etf(s)]
+
+                    # 股票：复权价格
+                    if stock_syms:
+                        adj_repo = StockAdjustedPriceRepository(session)
+                        stock_rows = await adj_repo.get_batch_by_date_range(
+                            symbols=stock_syms,
+                            start_date=trade_date,
+                            end_date=trade_date,
+                            adj_type="qfq",
+                            freq="D",
+                        )
+                        if stock_rows:
+                            rows.extend(stock_rows)
+                        else:
+                            daily_repo = StockDailyRepository(session)
+                            rows.extend(
+                                await daily_repo.get_batch_by_date_range(
+                                    symbols=stock_syms,
+                                    start_date=trade_date,
+                                    end_date=trade_date,
+                                )
+                            )
+
+                    # ETF：复权日线
+                    if etf_syms:
+                        etf_repo = ETFRepository(session)
+                        etf_dicts = await etf_repo.get_etf_adjusted_daily_batch(
+                            symbols=etf_syms,
+                            start_date=trade_date,
+                            end_date=trade_date,
+                        )
+                        if etf_dicts:
+                            rows.extend(etf_dicts)
+                else:
+                    # ---- 全市场：用 ORM select 保持类型安全（不写裸 SQL） ----
+                    from shared.database.models.data_models import (
+                        StockAdjustedPrices, StockDaily, EtfDaily, FundAdjFactor,
+                    )
+                    from sqlalchemy import select as sa_select
+
+                    # 股票复权
+                    q = sa_select(StockAdjustedPrices).where(
+                        StockAdjustedPrices.trade_date == trade_date,
+                        StockAdjustedPrices.adj_type == "qfq",
+                        StockAdjustedPrices.freq == "D",
+                    )
+                    result = await session.execute(q)
+                    rows = list(result.scalars().all())
+
+                    if not rows:
+                        q2 = sa_select(StockDaily).where(
+                            StockDaily.trade_date == trade_date,
+                        )
+                        result2 = await session.execute(q2)
+                        rows = list(result2.scalars().all())
+
+                    # ETF 日线 + 复权因子 JOIN（全市场）
+                    q3 = sa_select(
+                        EtfDaily.ts_code, EtfDaily.trade_date,
+                        (EtfDaily.open * FundAdjFactor.adj_factor).label("open"),
+                        (EtfDaily.high * FundAdjFactor.adj_factor).label("high"),
+                        (EtfDaily.low * FundAdjFactor.adj_factor).label("low"),
+                        (EtfDaily.close * FundAdjFactor.adj_factor).label("close"),
+                        EtfDaily.vol, EtfDaily.amount,
+                    ).outerjoin(
+                        FundAdjFactor,
+                        (EtfDaily.ts_code == FundAdjFactor.ts_code)
+                        & (EtfDaily.trade_date == FundAdjFactor.trade_date),
+                    ).where(EtfDaily.trade_date == trade_date)
+                    result3 = await session.execute(q3)
+                    etf_rows = result3.fetchall()
+                    if etf_rows:
+                        rows.extend(etf_rows)
 
                 # 转换为 BarData 对象
                 bars = []
@@ -845,7 +991,7 @@ class StrategyManager(EngineBase):
 
                 logger.info(
                     f"_load_daily_bars: {trade_date} 加载 {len(bars)} 条 BarData"
-                    + (f" (symbols={len(symbols)} 只)" if symbols else " (全市场)")
+                    + (f" (symbols={len(symbols)} 只)" if has_symbols else " (全市场)")
                 )
                 return bars
 
@@ -856,65 +1002,106 @@ class StrategyManager(EngineBase):
     async def _load_daily_bars_range(
         self, start_date: date, end_date: date, symbols: Optional[List[str]] = None,
     ) -> Dict[date, list]:
-        """加载日期范围内每日的 BarData，按 trade_date 分组返回"""
-        from sqlalchemy import text
+        """
+        加载日期范围内每日的 BarData，按 trade_date 分组返回。
 
+        v2.4: 使用 Repository 批量查询替代裸 SQL；支持 ETF 数据。
+        """
         if self.session_factory is None:
             return {}
 
         try:
             async with self.session_factory() as session:
-                if symbols:
-                    query = text(
-                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                        "FROM stock_adjusted_prices "
-                        "WHERE trade_date BETWEEN :start AND :end "
-                        "  AND ts_code = ANY(:symbols) "
-                        "  AND adj_type = 'qfq' AND freq = 'D' "
-                        "ORDER BY trade_date ASC, ts_code ASC"
-                    )
-                    result = await session.execute(
-                        query, {"start": start_date, "end": end_date, "symbols": symbols},
-                    )
-                else:
-                    query = text(
-                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                        "FROM stock_adjusted_prices "
-                        "WHERE trade_date BETWEEN :start AND :end "
-                        "  AND adj_type = 'qfq' AND freq = 'D' "
-                        "ORDER BY trade_date ASC, ts_code ASC"
-                    )
-                    result = await session.execute(query, {"start": start_date, "end": end_date})
-                rows = result.fetchall()
+                rows = []
+                has_symbols = bool(symbols)
 
-                if not rows:
-                    # Fallback to stock_daily
-                    if symbols:
-                        query2 = text(
-                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                            "FROM stock_daily "
-                            "WHERE trade_date BETWEEN :start AND :end "
-                            "  AND ts_code = ANY(:symbols) "
-                            "ORDER BY trade_date ASC, ts_code ASC"
+                if has_symbols:
+                    from shared.database.repositories.market.quote.stock_adjusted_price_repo import (
+                        StockAdjustedPriceRepository,
+                    )
+                    from shared.database.repositories.market.quote.stock_daily_repo import (
+                        StockDailyRepository,
+                    )
+                    from shared.database.repositories.market.basic.etf_repo import (
+                        ETFRepository,
+                    )
+
+                    stock_syms = [s for s in symbols if not self._is_etf(s)]
+                    etf_syms = [s for s in symbols if self._is_etf(s)]
+
+                    if stock_syms:
+                        adj_repo = StockAdjustedPriceRepository(session)
+                        stock_rows = await adj_repo.get_batch_by_date_range(
+                            symbols=stock_syms,
+                            start_date=start_date,
+                            end_date=end_date,
+                            adj_type="qfq",
+                            freq="D",
                         )
-                        result2 = await session.execute(
-                            query2, {"start": start_date, "end": end_date, "symbols": symbols},
+                        if stock_rows:
+                            rows.extend(stock_rows)
+                        else:
+                            daily_repo = StockDailyRepository(session)
+                            rows.extend(
+                                await daily_repo.get_batch_by_date_range(
+                                    symbols=stock_syms,
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                            )
+
+                    if etf_syms:
+                        etf_repo = ETFRepository(session)
+                        etf_dicts = await etf_repo.get_etf_adjusted_daily_batch(
+                            symbols=etf_syms,
+                            start_date=start_date,
+                            end_date=end_date,
                         )
-                    else:
-                        query2 = text(
-                            "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
-                            "FROM stock_daily "
-                            "WHERE trade_date BETWEEN :start AND :end "
-                            "ORDER BY trade_date ASC, ts_code ASC"
+                        if etf_dicts:
+                            rows.extend(etf_dicts)
+                else:
+                    from shared.database.models.data_models import (
+                        StockAdjustedPrices, StockDaily, EtfDaily, FundAdjFactor,
+                    )
+                    from sqlalchemy import select as sa_select
+
+                    q = sa_select(StockAdjustedPrices).where(
+                        StockAdjustedPrices.trade_date.between(start_date, end_date),
+                        StockAdjustedPrices.adj_type == "qfq",
+                        StockAdjustedPrices.freq == "D",
+                    )
+                    result = await session.execute(q)
+                    rows = list(result.scalars().all())
+
+                    if not rows:
+                        q2 = sa_select(StockDaily).where(
+                            StockDaily.trade_date.between(start_date, end_date),
                         )
-                        result2 = await session.execute(query2, {"start": start_date, "end": end_date})
-                    rows = result2.fetchall()
+                        result2 = await session.execute(q2)
+                        rows = list(result2.scalars().all())
+
+                    q3 = sa_select(
+                        EtfDaily.ts_code, EtfDaily.trade_date,
+                        (EtfDaily.open * FundAdjFactor.adj_factor).label("open"),
+                        (EtfDaily.high * FundAdjFactor.adj_factor).label("high"),
+                        (EtfDaily.low * FundAdjFactor.adj_factor).label("low"),
+                        (EtfDaily.close * FundAdjFactor.adj_factor).label("close"),
+                        EtfDaily.vol, EtfDaily.amount,
+                    ).outerjoin(
+                        FundAdjFactor,
+                        (EtfDaily.ts_code == FundAdjFactor.ts_code)
+                        & (EtfDaily.trade_date == FundAdjFactor.trade_date),
+                    ).where(EtfDaily.trade_date.between(start_date, end_date))
+                    result3 = await session.execute(q3)
+                    etf_rows = result3.fetchall()
+                    if etf_rows:
+                        rows.extend(etf_rows)
 
                 bars_by_date: Dict[date, list] = {}
                 for row in rows:
                     bar = self._row_to_bar(row)
                     if bar:
-                        td = row.trade_date
+                        td = row["trade_date"] if isinstance(row, dict) else row.trade_date
                         if hasattr(td, "date"):
                             td = td.date()
                         if td not in bars_by_date:
@@ -928,10 +1115,33 @@ class StrategyManager(EngineBase):
             return {}
 
     @staticmethod
+    def _is_etf(ts_code: str) -> bool:
+        """判断是否为 ETF 代码（与 DataFeedEngine._is_etf 保持一致）。"""
+        if not ts_code:
+            return False
+        return (
+            ts_code.endswith(".OF")
+            or (len(ts_code) >= 6 and ts_code[:2] in ("51", "56", "58", "15"))
+        )
+
+    @staticmethod
     def _row_to_bar(row) -> object:
-        """将数据库行转为 BarData 对象"""
+        """将数据库行（ORM 对象或 dict）转为 BarData 对象"""
         try:
             from modules.strategy.strategies.base.bar_data import BarData
+
+            if isinstance(row, dict):
+                return BarData(
+                    ts_code=row["ts_code"],
+                    trade_date=row.get("trade_date"),
+                    open=float(row["open"]) if row["open"] else 0,
+                    high=float(row["high"]) if row["high"] else 0,
+                    low=float(row["low"]) if row["low"] else 0,
+                    close=float(row["close"]) if row["close"] else 0,
+                    volume=float(row["volume"]) if row.get("volume") else 0,
+                    amount=float(row["amount"]) if row.get("amount") else 0,
+                )
+
             return BarData(
                 ts_code=row.ts_code,
                 trade_date=row.trade_date,
@@ -943,13 +1153,24 @@ class StrategyManager(EngineBase):
                 amount=float(row.amount) if row.amount else 0,
             )
         except (ImportError, AttributeError):
-            # 若 BarData 不可用，返回简单命名元组
             from collections import namedtuple
             SimpleBar = namedtuple(
                 "SimpleBar",
                 ["ts_code", "trade_date", "open", "high", "low", "close",
                  "volume", "amount", "trade_time"]
             )
+            if isinstance(row, dict):
+                return SimpleBar(
+                    ts_code=row["ts_code"],
+                    trade_date=row.get("trade_date"),
+                    open=float(row["open"]) if row["open"] else 0,
+                    high=float(row["high"]) if row["high"] else 0,
+                    low=float(row["low"]) if row["low"] else 0,
+                    close=float(row["close"]) if row["close"] else 0,
+                    volume=float(row["volume"]) if row.get("volume") else 0,
+                    amount=float(row["amount"]) if row.get("amount") else 0,
+                    trade_time=None,
+                )
             return SimpleBar(
                 ts_code=row.ts_code,
                 trade_date=row.trade_date,
@@ -1430,7 +1651,10 @@ class StrategyManager(EngineBase):
                             run_mode=RunMode(run_mode_str) if run_mode_str else RunMode.LIVE,
                         )
 
-                        # 初始化 + 启动
+                        # 初始化 + 启动（恢复时状态已是 RUNNING，先改回 DRAFT 以通过 can_start 检查）
+                        instance_before = self.strategies.get(sid)
+                        if instance_before:
+                            instance_before.status = StrategyLifecycleStatus.DRAFT
                         await self.initialize_strategy(sid, context)
                         await self.start_strategy(sid, context)
 
@@ -1538,10 +1762,9 @@ class StrategyManager(EngineBase):
     async def _warmup_strategy_data(
         self, strategy_id: str, ts_codes: List[str] = None, lookback: int = 200,
     ) -> None:
-        """启动时加载 N 根历史 K 线，静默回放以预热策略指标
+        """启动时加载 N 根历史 K 线，静默回放以预热策略指标。
 
-        从 DataFeedEngine 加载数据，逐日回放 on_bar + clear_signals，
-        确保 MA/MACD/RSI 等指标在首次实盘 on_bar 时已就绪。
+        v2.4: 使用 Repository 批量加载（替代已删除的 data_feed_engine.load_stock_data）。
         """
         strategy = self._strategy_objects.get(strategy_id)
         if not strategy:
@@ -1557,46 +1780,42 @@ class StrategyManager(EngineBase):
             logger.info("策略 %s 无股票池，跳过预热", strategy_id)
             return
 
+        if self.session_factory is None:
+            logger.warning("策略 %s session_factory 未注入，跳过预热", strategy_id)
+            return
+
         end_date = date.today()
         start_date = end_date - timedelta(days=lookback * 2)
 
-        import pandas as pd
+        try:
+            bars_by_date = await self._load_daily_bars_range(
+                start_date, end_date, symbols=ts_codes,
+            )
+        except Exception as e:
+            logger.warning("策略 %s 预热数据加载失败: %s", strategy_id, e)
+            return
+
+        if not bars_by_date:
+            logger.info("策略 %s 预热数据为空，跳过", strategy_id)
+            return
+
         loaded = 0
-        for ts_code in ts_codes:
-            try:
-                bars = await self.data_feed_engine.load_stock_data(
-                    ts_code, start_date.isoformat(), end_date.isoformat()
-                )
-                if bars is None or (hasattr(bars, 'empty') and bars.empty):
-                    continue
-                df = bars if isinstance(bars, pd.DataFrame) else pd.DataFrame(bars)
-                if df.empty:
-                    continue
-                strategy._data_cache[ts_code] = df
-                loaded += 1
+        for dt in sorted(bars_by_date.keys()):
+            for bar in bars_by_date[dt]:
+                try:
+                    result = strategy.on_bar(bar)
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception:
+                    pass
+        strategy.clear_signals()
 
-                # 静默回放，不产生信号
-                from core.engines.types.entities import BarData
-                for _, row in df.iterrows():
-                    bar = BarData(
-                        ts_code=ts_code,
-                        trade_date=row.get("trade_date") or row.name,
-                        open=float(row.get("open", 0)),
-                        high=float(row.get("high", 0)),
-                        low=float(row.get("low", 0)),
-                        close=float(row.get("close", 0)),
-                        volume=float(row.get("volume", 0)),
-                    )
-                    try:
-                        await strategy.on_bar(bar)
-                    except Exception:
-                        pass
-                strategy.clear_signals()
-            except Exception as e:
-                logger.debug("预热 %s 失败: %s", ts_code, e)
-
-        logger.info("策略 %s 预热完成: %d/%d 只股票, lookback=%d",
-                    strategy_id, loaded, len(ts_codes), lookback)
+        n_bars = sum(len(b) for b in bars_by_date.values())
+        n_days = len(bars_by_date)
+        logger.info(
+            "策略 %s 预热完成: %d 个交易日 / %d 条 bar, lookback=%d",
+            strategy_id, n_days, n_bars, lookback,
+        )
 
     async def _save_strategy_state(self, strategy_id: str, heartbeat: dict = None) -> None:
         """盘后保存策略运行摘要到 strategy_runs.state_snapshot"""

@@ -439,22 +439,66 @@ class EventEngine(EngineBase):
 			event_type = event.event_type if not isinstance(event, dict) else event.get('event_type', 'unknown')
 			logger.error(f"事件处理失败: {event_type}, 错误: {e}")
 
-	async def put (self, event: BaseEvent) -> None:
-		"""放入事件
+	async def put (self, event: BaseEvent) -> bool:
+		"""放入事件 — v2.4: 队列满时按优先级丢弃，不再抛异常
 
 		Args:
 			event: 事件对象
 
+		Returns:
+			bool: True 表示事件成功入队，False 表示因队列满被丢弃
+
 		Raises:
-			RuntimeError: 队列已满或引擎未运行
+			RuntimeError: 引擎未运行
 		"""
 		if self.record.status != ComponentStatus.RUNNING:
 			raise RuntimeError("事件引擎未运行")
 
 		async with self._queue_lock:
-			# 检查队列大小
+			dropped_count = self._event_statistics.dropped_events if hasattr(
+				self._event_statistics, 'dropped_events') else 0
+
+			# 检查队列大小 — v2.4: 溢出保护，按优先级分级处理
 			if len(self._event_queue) >= self._max_queue_size:
-				raise RuntimeError(f"事件队列已满: {self._max_queue_size}")
+				# 提取事件优先级（数值越小越紧急）
+				event_priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
+				if isinstance(event_priority, str):
+					event_priority = PriorityLevel.get_priority_value(
+						PriorityLevel(event_priority))
+				elif isinstance(event_priority, PriorityLevel):
+					event_priority = PriorityLevel.get_priority_value(event_priority)
+
+				# CRITICAL/HIGH (1-2): 强制插入，淘汰最低优先级事件
+				if event_priority <= 2:
+					# 找到并移除最低优先级的待处理事件
+					lowest_idx = 0
+					lowest_pri = -1
+					for idx, qe in enumerate(self._event_queue):
+						ep = getattr(qe.event, 'priority', PriorityLevel.NORMAL.value)
+						if isinstance(ep, str):
+							ep = PriorityLevel.get_priority_value(PriorityLevel(ep))
+						elif isinstance(ep, PriorityLevel):
+							ep = PriorityLevel.get_priority_value(ep)
+						if ep > lowest_pri:
+							lowest_pri = ep
+							lowest_idx = idx
+					if lowest_pri > event_priority and lowest_idx < len(self._event_queue):
+						self._event_queue.pop(lowest_idx)
+						heapq.heapify(self._event_queue)
+						dropped_count += 1
+						event_type = event.event_type if not isinstance(event, dict) else event.get("event_type", "unknown")
+						logger.warning(f"队列满，淘汰低优先级事件腾出空间给: {event_type}")
+					else:
+						event_type = event.event_type if not isinstance(event, dict) else event.get("event_type", "unknown")
+						logger.warning(f"队列满，高优先级事件仍无法入队: {event_type}")
+						self._event_statistics.dropped_events = dropped_count + 1
+						return False
+				else:
+					# NORMAL/LOW/BACKGROUND (3-5): 直接丢弃
+					event_type = event.event_type if not isinstance(event, dict) else event.get("event_type", "unknown")
+					logger.warning(f"队列满，丢弃低优先级事件: {event_type}")
+					self._event_statistics.dropped_events = dropped_count + 1
+					return False
 
 			# 创建队列事件
 			queued_event = QueuedEvent(event)
@@ -468,6 +512,7 @@ class EventEngine(EngineBase):
 				self._event_statistics.max_queue_size,
 				self._event_statistics.current_queue_size
 			)
+			self._event_statistics.dropped_events = dropped_count
 
 		# 检查事件是否为字典类型
 		if isinstance(event, dict):
@@ -495,6 +540,7 @@ class EventEngine(EngineBase):
 				logger.warning(f"无法获取事件属性: {e}, 使用默认值")
 				logger.info("事件入队: unknown | 来源: unknown | 优先级: %s", PriorityLevel.NORMAL.value)
 
+				return True  # v2.4: 事件成功入队
 	def subscribe (self,
 	               event_type: Any,
 	               handler: Callable,

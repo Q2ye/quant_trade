@@ -15,6 +15,9 @@ from .technical import (
     MACrossStrategy,
     MACDStrategy,
 )
+from .rotation import (
+    EtfIndustryRotationStrategy,
+)
 
 __all__ = [
     # 基类
@@ -26,4 +29,6 @@ __all__ = [
     # 技术指标策略
     "MACrossStrategy",
     "MACDStrategy",
+    # 轮动策略
+    "EtfIndustryRotationStrategy",
 ]

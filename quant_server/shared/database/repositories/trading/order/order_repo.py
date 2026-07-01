@@ -212,7 +212,7 @@ class OrderRepository(BaseRepository[Order]):
 
 		except Exception as e:
 			raise RepositoryError(f"获取策略订单失败: {str(e)}")
-
+
 	async def get_by_strategy_and_account (
 			self,
 			strategy_id: str,
@@ -872,7 +872,7 @@ class OrderRepository(BaseRepository[Order]):
 			order_updates: List[Dict[str, Any]]
 	) -> int:
 		"""
-		批量更新订单成交信息
+		批量更新订单成交信息 — v2.4: 单条 SQL 批量更新，消除 N+1
 
 		Args:
 			order_updates: 订单更新列表，每个元素包含order_id, filled_volume, filled_amount, avg_price
@@ -884,41 +884,66 @@ class OrderRepository(BaseRepository[Order]):
 			if not order_updates:
 				return 0
 
-			updated_count = 0
+			from sqlalchemy import case, select
 			now = datetime.now()
 
-			for update_data in order_updates:
-				order_id = update_data.get('order_id')
-				if not order_id:
-					continue
+			# 提取所有 order_id 并做有效性过滤
+			valid_updates = [u for u in order_updates if u.get('order_id')]
+			if not valid_updates:
+				return 0
+			order_ids = [u['order_id'] for u in valid_updates]
 
-				# 构建更新数据
-				update_values = {
-					'filled_volume': update_data.get('filled_volume', 0),
-					'filled_amount': update_data.get('filled_amount', 0),
-					'avg_price': update_data.get('avg_price'),
-					'updated_at': now
-				}
+			# 第一步：批量查询订单原始成交量（一次 SQL）
+			orders_map = {}
+			stmt = select(self.model).where(self.model.order_id.in_(order_ids))
+			result = await self.session.execute(stmt)
+			for row in result.scalars():
+				orders_map[row.order_id] = row
 
-				# 判断是否完全成交
-				order = await self.get_by_order_id(order_id)
-				if order and order.volume == update_values['filled_volume']:
-					update_values['status'] = 'filled'
-					update_values['filled_at'] = now
-				elif order and update_values['filled_volume'] > 0:
-					update_values['status'] = 'partial_filled'
+			# 第二步：构建批量 UPDATE 的 CASE WHEN 表达式
+			status_case_data = {}
+			filled_at_case_data = {}
+			volume_case_data = {}
+			amount_case_data = {}
+			price_case_data = {}
 
-				# 执行更新
-				query = (
-					update(self.model)
-					.where(self.model.order_id == order_id)
-					.values(**update_values)
-				)
+			for u in valid_updates:
+				oid = u['order_id']
+				filled_vol = u.get('filled_volume', 0)
+				order = orders_map.get(oid)
 
-				result = await self.session.execute(query)
-				updated_count += result.rowcount or 0
+				# 根据原始成交量判断状态
+				if order and order.volume == filled_vol:
+					status_case_data[oid] = 'filled'
+					filled_at_case_data[oid] = now
+				elif order and filled_vol > 0:
+					status_case_data[oid] = 'partial_filled'
 
-			return updated_count
+				volume_case_data[oid] = filled_vol
+				amount_case_data[oid] = u.get('filled_amount', 0)
+				if u.get('avg_price') is not None:
+					price_case_data[oid] = u['avg_price']
+
+			# 第三步：单条 SQL 批量 UPDATE
+			values = {'updated_at': now}
+			if status_case_data:
+				values['status'] = case(status_case_data, value=self.model.order_id)
+			if filled_at_case_data:
+				values['filled_at'] = case(filled_at_case_data, value=self.model.order_id)
+			if volume_case_data:
+				values['filled_volume'] = case(volume_case_data, value=self.model.order_id)
+			if amount_case_data:
+				values['filled_amount'] = case(amount_case_data, value=self.model.order_id)
+			if price_case_data:
+				values['avg_price'] = case(price_case_data, value=self.model.order_id)
+
+			stmt = (
+				update(self.model)
+				.where(self.model.order_id.in_(order_ids))
+				.values(**values)
+			)
+			result = await self.session.execute(stmt)
+			return result.rowcount or 0
 
 		except Exception as e:
 			await self.session.rollback()

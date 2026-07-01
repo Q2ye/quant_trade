@@ -8,7 +8,7 @@
 import logging
 from typing import Optional, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -38,6 +38,7 @@ from modules.strategy.handlers import (
 	update_portfolio_weights,
 	trigger_strategy,
 	get_builtin_strategies,
+	find_or_create_builtin,
 )
 # 导入策略模块的Pydantic模型
 from modules.strategy.schemas import (
@@ -88,6 +89,125 @@ async def builtin_strategies_api():
 	except Exception as e:
 		logger.error(f"获取内置策略失败: {str(e)}", exc_info=True)
 		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/builtin/find-or-create")
+async def find_or_create_builtin_api(
+	request: StrategyCreateRequest,
+	current_user: Dict = Depends(get_current_user),
+	db_session: AsyncSession = Depends(get_db_session),
+):
+	"""查找或创建内置策略：同 class_name 已存在则更新参数返回。"""
+	try:
+		user_id = current_user.get("id")
+		result = await find_or_create_builtin(
+			session=db_session, request=request, user_id=user_id,
+		)
+		if result.get("success"):
+			return success_response(data=result.get("data", {}))
+		return error_response(message=result.get("error", "操作失败"))
+	except Exception as e:
+		logger.error(f"find_or_create 失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e),
+		)
+
+
+# ==================== v3.0: 模板实例创建 + Fork ====================
+
+@router.post("/templates/{template_id}/create-instance")
+async def create_instance_from_template_api(
+    template_id: str,
+    body: Dict = Body(default={}),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """从模板创建策略实例（替换 find-or-create 和 generic POST）"""
+    try:
+        from modules.strategy.services.template_service import TemplateService
+        svc = TemplateService(db_session)
+        user_id = current_user.get("id", "0")
+        result = await svc.create_instance_from_template(
+            template_id=template_id,
+            user_id=user_id,
+            name=body.get("name", ""),
+            account_id=body.get("account_id"),
+            capital=body.get("capital", 1000000.0),
+            run_mode=body.get("run_mode", "backtest"),
+        )
+        if result.get("success"):
+            return success_response(data=result.get("data", {}))
+        return error_response(message=result.get("error", "创建失败"))
+    except Exception as e:
+        logger.error(f"从模板创建实例失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("/templates/{template_id}/fork")
+async def fork_template_api(
+    template_id: str,
+    body: Dict = Body(default={}),
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """Fork 模板（替换 clone_strategy）"""
+    try:
+        from modules.strategy.services.template_service import TemplateService
+        svc = TemplateService(db_session)
+        result = await svc.fork_template(template_id, body.get("new_name", ""))
+        if result.get("success"):
+            return success_response(data=result.get("data", {}))
+        return error_response(message=result.get("error", "Fork 失败"))
+    except Exception as e:
+        logger.error(f"Fork 模板失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.get("/templates")
+async def list_templates_api(
+    is_builtin: Optional[bool] = Query(None),
+    strategy_type: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """列出模板（内置 + 用户）"""
+    try:
+        from modules.strategy.services.template_service import TemplateService
+        svc = TemplateService(db_session)
+        st_type = None
+        if strategy_type:
+            from modules.strategy.constants import StrategyType
+            st_type = StrategyType(strategy_type)
+        result = await svc.get_template_list(strategy_type=st_type, page=page, page_size=page_size)
+        data = result.get("data", [])
+        if is_builtin is not None:
+            data = [t for t in data if t.get("is_builtin") == is_builtin]
+        return success_response(data=data)
+    except Exception as e:
+        logger.error(f"获取模板列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/templates/{template_id}")
+async def get_template_detail_api(
+    template_id: str,
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """获取模板详情"""
+    try:
+        from modules.strategy.services.template_service import TemplateService
+        svc = TemplateService(db_session)
+        result = await svc.get_template_detail(template_id)
+        if result.get("success"):
+            return success_response(data=result.get("data", {}))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result.get("error", "模板不存在"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取模板详情失败: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+
 
 
 # ==================== 策略管理接口 ====================

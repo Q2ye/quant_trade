@@ -1,8 +1,11 @@
 # trade_manager.py      # 交易管理器
 
+import logging
 from typing import Dict, Any, Optional
 
 from core.engines.system import EventEngine
+
+logger = logging.getLogger(__name__)
 
 
 class TradeManager:
@@ -45,5 +48,5 @@ class TradeManager:
 			self.config.update(config)
 			return True
 		except Exception as e:
-			print(f"更新交易配置失败: {str(e)}")
+			logger.exception(f"更新交易配置失败: {str(e)}")
 			return False

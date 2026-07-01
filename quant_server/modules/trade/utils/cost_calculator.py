@@ -141,3 +141,23 @@ class CostCalculator:
 			"total_stamp_duty": total_stamp_duty,
 			"total_cost": total_cost
 		}
+
+
+# ---- v2.4: 模块级统一入口 ----
+
+# 默认费率常量（A 股标准）
+DEFAULT_COMMISSION_RATE = 0.0003    # 万三佣金
+DEFAULT_MIN_COMMISSION = 5          # 最低 5 元
+DEFAULT_STAMP_DUTY_RATE = 0.001     # 千一印花税（仅卖出）
+DEFAULT_TRANSFER_FEE_RATE = 0.00002 # 十万分之二过户费
+
+# 模块级默认实例，无需重复创建
+_default_calculator = CostCalculator()
+
+
+def calculate_fee(direction: str, price: float, quantity: int, ts_code: str = None):
+    """v2.4: 统一费率计算入口 -- 所有模块通过此函数获取费用，确保一致性
+
+    用法: from modules.trade.utils.cost_calculator import calculate_fee
+    """
+    return _default_calculator.calculate_trade_cost(direction, price, quantity, ts_code)

@@ -45,6 +45,9 @@ class StrategyType(str, Enum):
     # 自定义策略
     CUSTOM = "custom"
 
+    # 轮动策略
+    ROTATION = "rotation"
+
     # 技术指标策略
     TECHNICAL = "technical"
 

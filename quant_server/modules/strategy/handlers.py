@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from modules.strategy.constants import (
 	StrategyType,
 	StrategyLifecycleStatus,
-	RunMode,
 )
 from modules.strategy.services.execution_service import ExecutionService
 from modules.strategy.services.strategy_service import StrategyService
@@ -419,7 +418,6 @@ class StrategyHandler:
 			page = getattr(request, 'page', 1) or 1
 			page_size = getattr(request, 'page_size', 20) or 20
 			if strategy_type:
-				from modules.strategy.constants import StrategyType
 				try:
 					strategy_type = StrategyType(strategy_type)
 				except ValueError:
@@ -443,7 +441,6 @@ class StrategyHandler:
 		"""创建模板"""
 		try:
 			from modules.strategy.services.template_service import TemplateService
-			from modules.strategy.constants import StrategyType
 			svc = TemplateService(self.db)
 			st = StrategyType(request.strategy_type) if hasattr(request, 'strategy_type') and request.strategy_type else StrategyType.CUSTOM
 			return await svc.create_template(
@@ -782,7 +779,18 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 	"""v2.3: 返回 Registry 中所有已注册内置策略的元信息（含默认参数）"""
 	from modules.strategy.engines.strategy_registry import StrategyRegistry
 	registry = StrategyRegistry()
+	# 强制重新扫描：单例可能未包含全部策略，确保最新
+	if registry.get_class_count() < 7:
+		logger.warning(
+			"[get_builtin] registry incomplete (%d classes), triggering auto_discover",
+			registry.get_class_count(),
+		)
+		registry.auto_discover()
 	entries = registry.list_all()
+	logger.info(
+		"[get_builtin] entries=%d types=%s",
+		len(entries), registry.get_registered_types(),
+	)
 	result = []
 	for entry in entries:
 		# 尝试获取策略类的默认参数
@@ -790,15 +798,25 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 		try:
 			cls_name = entry.get("class_name", "")
 			for st, classes in registry._registry.items():
+				found = False
 				for cls in classes:
 					if cls.__name__ == cls_name:
-						tmp = cls()
+						try:
+							tmp = cls()  # 优先用默认名（中文）
+						except TypeError:
+							tmp = cls(name=cls_name)
 						if hasattr(tmp, "get_parameters"):
 							default_params = tmp.get_parameters()
-						if hasattr(tmp, "name"):
-							entry["display_name"] = tmp.name
+						elif hasattr(tmp, "parameters") and tmp.parameters:
+							default_params = dict(tmp.parameters)
+						if not default_params and hasattr(cls, "DEFAULT_PARAMS"):
+							default_params = dict(getattr(cls, "DEFAULT_PARAMS", {}))
+						if hasattr(tmp, "name") and tmp.name:
+							entry["display_name"] = str(tmp.name)
+						found = True
 						break
-				break  # only first match
+				if found:
+					break
 		except Exception:
 			pass
 
@@ -826,6 +844,30 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 		})
 	return {"success": True, "data": result}
 
+
+
+async def find_or_create_builtin(
+    session: AsyncSession,
+    request,
+    user_id: str,
+) -> Dict[str, Any]:
+    """查找或创建内置策略：同 class_name 已存在则更新参数返回，否则新建。"""
+
+    svc = StrategyService(session)
+    strategy_type_str = getattr(request, "strategy_type", "custom")
+    try:
+        strategy_type = StrategyType(strategy_type_str)
+    except ValueError:
+        strategy_type = StrategyType.CUSTOM
+
+    return await svc.find_or_create_from_builtin(
+        name=getattr(request, "name", ""),
+        strategy_type=strategy_type,
+        code=getattr(request, "code", ""),
+        class_name=getattr(request, "class_name", ""),
+        parameters=getattr(request, "parameters", {}) or {},
+        user_id=user_id,
+    )
 
 async def trigger_strategy(
 	strategy_id: str,

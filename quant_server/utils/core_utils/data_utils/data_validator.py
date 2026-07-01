@@ -745,7 +745,10 @@ class DataValidator:
 						elif type_str == "datetime":
 							expected_type = datetime
 						else:
-							expected_type = eval(type_str)
+							_TYPE_WHITELIST = {"int": int, "float": float, "str": str, "bool": bool, "date": date, "datetime": datetime, "Decimal": Decimal, "list": list, "dict": dict}
+							expected_type = _TYPE_WHITELIST.get(type_str)
+							if expected_type is None:
+								raise ValueError(f"不支持的数据类型: {type_str}")
 					else:
 						expected_type = type_str
 
@@ -761,8 +764,11 @@ class DataValidator:
 					# 自定义函数需要特殊处理
 					func_str = rule_params.get("function")
 					if func_str:
-						# 注意：这里使用eval有安全风险，生产环境应使用其他方式
-						rule_params["validation_func"] = eval(func_str)
+						# v2.4: 白名单代替 eval()，安全加固
+						_VALIDATION_WHITELIST = {"is_positive": lambda x: x > 0, "is_non_negative": lambda x: x >= 0, "is_not_empty": lambda x: len(x) > 0 if x else False}
+						rule_params["validation_func"] = _VALIDATION_WHITELIST.get(func_str)
+						if rule_params["validation_func"] is None:
+							raise ValueError(f"不支持的验证函数: {func_str}")
 					rule = CustomRule(field_name, **rule_params)
 				else:
 					continue

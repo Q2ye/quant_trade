@@ -532,6 +532,52 @@ class EtfDailyRepository(HyperRepositoryBase[EtfDaily]):
 			}
 		}
 
+		# ==================== 批量查询方法 ====================
+
+		async def get_batch_by_date_range(
+				self,
+				symbols: List[str],
+				start_date: date,
+				end_date: date,
+				limit: int = 100_000,
+		) -> List[EtfDaily]:
+			"""
+			批量获取多只 ETF 在时间范围内的日线数据（一次 SQL IN 查询）。
+			返回按 trade_date ASC, ts_code ASC 排序。
+			"""
+			try:
+				query = (
+					select(self.model)
+					.where(
+						self.model.ts_code.in_(symbols),
+						self.model.trade_date.between(start_date, end_date),
+					)
+					.order_by(self.model.trade_date, self.model.ts_code)
+					.limit(limit)
+				)
+				result = await self.session.execute(query)
+				return list(result.scalars().all())
+			except Exception as e:
+				raise RepositoryError(f"批量查询 ETF 日线数据失败: {e}")
+
+		async def get_batch_by_trade_date(
+				self,
+				trade_date: date,
+				symbols: Optional[List[str]] = None,
+		) -> List[EtfDaily]:
+			"""
+			批量获取指定交易日多只 ETF 的日线数据。
+			"""
+			try:
+				query = select(self.model).where(self.model.trade_date == trade_date)
+				if symbols:
+					query = query.where(self.model.ts_code.in_(symbols))
+				query = query.order_by(self.model.ts_code)
+				result = await self.session.execute(query)
+				return list(result.scalars().all())
+			except Exception as e:
+				raise RepositoryError(f"批量查询交易日 ETF 日线数据失败: {e}")
+
 	# ==================== 批量操作方法 ====================
 
 	async def batch_insert_etf_daily (

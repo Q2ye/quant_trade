@@ -70,7 +70,7 @@ class RedisCache(CacheBase):
 		entry_dict = entry.to_dict()
 		# 序列化值
 		entry_dict["value"] = await self._serialize_value(entry.value)
-		return json.dumps(entry_dict).encode()
+		return json.dumps(entry_dict, allow_nan=False).encode()
 
 	async def _deserialize_entry (self, data: bytes) -> CacheEntry:
 		"""反序列化缓存条目"""

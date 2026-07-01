@@ -171,7 +171,7 @@ class BaseEvent(ABC):
 
 	def to_json (self) -> str:
 		"""将事件转换为JSON字符串"""
-		return json.dumps(self.to_dict(), ensure_ascii=False, default=str)
+		return json.dumps(self.to_dict(), ensure_ascii=False, default=str, allow_nan=False)
 
 	@classmethod
 	def from_dict (cls, data: Dict[str, Any]) -> "BaseEvent":
