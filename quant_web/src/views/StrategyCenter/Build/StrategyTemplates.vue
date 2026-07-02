@@ -123,7 +123,7 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
   MeanReversionStrategy: { name: '均值回归策略', desc: '基于均值回归原理，适合震荡市，偏离均值时反向操作。' },
   MLStrategy: { name: '机器学习策略', desc: '基于随机森林、XGBoost 等传统 ML 算法的交易策略。' },
   DLStrategy: { name: '深度学习策略', desc: '基于 LSTM、Transformer 等深度学习模型的交易策略。' },
-  EtfIndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '基于多窗口动量得分排名，定期调仓持有最强行业 ETF。' },
+  IndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '申万31行业多因子评分（趋势动量+资金量价+估值空间），板块去重，每周轮动 Top5 行业 ETF。' },
 };
 
 const extractCN = (tpl: any) => {

@@ -780,7 +780,7 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 	from modules.strategy.engines.strategy_registry import StrategyRegistry
 	registry = StrategyRegistry()
 	# 强制重新扫描：单例可能未包含全部策略，确保最新
-	if registry.get_class_count() < 7:
+	if registry.get_class_count() < 3:
 		logger.warning(
 			"[get_builtin] registry incomplete (%d classes), triggering auto_discover",
 			registry.get_class_count(),

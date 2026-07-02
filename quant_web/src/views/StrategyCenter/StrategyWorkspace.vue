@@ -212,6 +212,19 @@ const PARAM_LABELS: Record<string, string> = {
   batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
   hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
   target_column: '目标列', d_model: '模型维度', nhead: '注意力头数',
+  // 行业轮动 V2
+  top_n: '持仓行业数', buffer_rank: '卖出缓冲排名', cooling_period: '冷却期(天)',
+  take_profit_rsi: '止盈RSI阈值', max_sector_limit: '同板块最大持仓',
+  trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
+  momentum_accel_short: '加速短窗口', momentum_accel_long: '加速长窗口', rs_window: '相对强弱窗口', rs_benchmark: '基准指数代码',
+  vol_ratio_short: '量比短窗口', vol_ratio_long: '量比长窗口', vol_price_window: '价量配合窗口',
+  turnover_short: '换手短窗口', turnover_long: '换手长窗口',
+  pe_percentile_years: 'PE分位回溯年数', pb_percentile_years: 'PB分位回溯年数',
+  pe_expansion_window: '估值扩张窗口', valuation_trap_threshold: '价值陷阱PE阈值',
+  entry_rsi_max: '入场RSI上限', entry_vol_ratio_min: '入场量比下限',
+  exit_vol_ratio_min: '出场量比下限', exit_vol_duration: '出场量比持续天数',
+  entry_score_gap: '板块去重得分差', factor_override: '因子覆写', verbose_logging: '详细日志',
+
 };
 const paramLabel = (key: string) => PARAM_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 

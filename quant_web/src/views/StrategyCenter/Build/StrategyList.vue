@@ -289,8 +289,14 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
       hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
       stop_loss: '止损比例(%)', take_profit: '止盈比例(%)' } },
-  EtfIndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '基于多窗口动量得分排名，定期调仓持有最强行业 ETF。',
-    params: { universe: '候选 ETF 池(逗号分隔)', momentum_windows: '动量窗口(逗号分隔)', rank_weights: '窗口权重(逗号分隔)', top_n: '持仓数量', rebalance_frequency: '调仓频率(天)', min_history: '最低数据条数' } },
+    IndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '申万31行业多因子评分（趋势动量+资金量价+估值空间），板块去重，每周轮动 Top5 行业 ETF。',
+    params: { top_n: '持仓行业数', buffer_rank: '卖出缓冲排名', rebalance_frequency: '调仓频率(天)', cooling_period: '冷却期(天)',
+      stop_loss: '止损比例', take_profit: '止盈比例', max_sector_limit: '同板块最大持仓',
+      trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
+      momentum_windows: '动量窗口', momentum_weights: '动量权重',
+      entry_rsi_max: '入场RSI上限', entry_vol_ratio_min: '入场量比下限',
+      exit_vol_duration: '出场量比持续天数', entry_score_gap: '板块去重得分差',
+      factor_override: '因子覆写(调试)', verbose_logging: '详细日志' } },
 };
 // v3.0: 从模板 code_template 提取 class_name 用于 BUILTIN_META 查表
 const extractClassName = (tpl: any) => {

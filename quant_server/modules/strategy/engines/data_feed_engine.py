@@ -79,6 +79,7 @@ class DataFeedEngine(EngineBase):
         self._adj_price_repo = None
         self._etf_daily_repo = None
         self._etf_repo = None
+        self._sw_index_repo = None
 
     @staticmethod
     def _is_etf(ts_code: str) -> bool:
@@ -90,6 +91,18 @@ class DataFeedEngine(EngineBase):
         """
         code = ts_code.split(".")[0] if "." in ts_code else ts_code
         return code.startswith("51") or code.startswith("159") or code.startswith("16")
+
+    @staticmethod
+    def _is_sw_index(ts_code: str) -> bool:
+        """v3.0: 判断是否为申万行业指数代码
+
+        申万行业指数代码规则:
+        - L1: 801XXX.SI (如 801780.SI = 银行)
+        - L2: 801XXX.SI
+        - L3: 850XXX.SI
+        - 万得全A: 881001.WI
+        """
+        return ts_code.endswith(".SI") or ts_code.endswith(".WI")
 
     @property
     def daily_repo(self):
@@ -145,6 +158,16 @@ class DataFeedEngine(EngineBase):
             self._etf_repo = ETFRepository(self.db)
         return self._etf_repo
 
+    @property
+    def sw_index_repo(self):
+        """v3.0: 申万行业日线数据仓库"""
+        if self._sw_index_repo is None:
+            from shared.database.repositories.market.fundamental.index_sw_daily_repo import (
+                IndexSwDailyRepository,
+            )
+            self._sw_index_repo = IndexSwDailyRepository(self.db)
+        return self._sw_index_repo
+
     # ---- 核心接口 ----
 
     async def load_historical_data(
@@ -185,11 +208,13 @@ class DataFeedEngine(EngineBase):
             end_date = _date_class.fromisoformat(end_date)
 
         # 拆分股票和 ETF（v2.0: 自动按代码类型分派数据源）
-        stock_symbols = [s for s in symbols if not self._is_etf(s)]
+        stock_symbols = [s for s in symbols if not self._is_etf(s) and not self._is_sw_index(s)]
         etf_symbols = [s for s in symbols if self._is_etf(s)]
+        sw_symbols = [s for s in symbols if self._is_sw_index(s)]  # v3.0: 申万行业指数
 
         logger.info(
-            f"开始加载历史数据: {len(stock_symbols)} 只股票 + {len(etf_symbols)} 只 ETF, "
+            f"开始加载历史数据: {len(stock_symbols)} 只股票 + {len(etf_symbols)} 只 ETF"
+            f" + {len(sw_symbols)} 个行业指数, "
             f"{start_date} ~ {end_date}, 复权={self.adj_type}"
         )
 
@@ -266,6 +291,19 @@ class DataFeedEngine(EngineBase):
                 logger.info(f"ETF 数据加载: {len(etf_records)} 条")
             except Exception as e:
                 logger.warning(f"批量加载 ETF 数据失败: {e}")
+
+        # ---- 申万行业指数：从 index_sw_daily 加载 ----
+        if sw_symbols:
+            try:
+                sw_records = await self._load_sw_index_batch(
+                    symbols=sw_symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                all_records.extend(sw_records)
+                logger.info(f"申万行业指数数据加载: {len(sw_records)} 条")
+            except Exception as e:
+                logger.warning(f"批量加载申万行业指数数据失败: {e}")
 
         if not all_records:
             logger.warning(f"未加载到任何数据: {len(symbols)} 只股票, {start_date}~{end_date}")
@@ -581,6 +619,53 @@ class DataFeedEngine(EngineBase):
             end_date=end_date,
         )
 
+    async def _load_sw_index_batch(
+        self,
+        symbols: List[str],
+        start_date,
+        end_date,
+    ) -> List[Dict[str, Any]]:
+        """
+        v3.0: 批量加载申万行业指数日线数据。
+
+        从 index_sw_daily 表查询，返回与 stock/ETF 格式一致的记录列表。
+        行业指数数据仅用于策略内部评分，不可交易。
+        """
+        df = await self.sw_index_repo.get_batch_by_industry_codes(
+            industry_codes=symbols,
+            start_date=str(start_date),
+            end_date=str(end_date),
+        )
+
+        if df.empty:
+            return []
+
+        records: List[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            trade_date_val = row["trade_date"]
+            if hasattr(trade_date_val, "date"):
+                trade_date_val = trade_date_val.date()
+            elif hasattr(trade_date_val, "strftime"):
+                trade_date_val = str(trade_date_val)[:10]
+
+            records.append({
+                "ts_code": str(row["ts_code"]),
+                "trade_date": trade_date_val,
+                "open": float(row.get("open") or 0),
+                "high": float(row.get("high") or 0),
+                "low": float(row.get("low") or 0),
+                "close": float(row.get("close") or 0),
+                "volume": float(row.get("vol") or 0),
+                "amount": float(row.get("amount") or 0),
+                "name": str(row.get("name") or ""),
+                "pe": float(row.get("pe") or 0),
+                "pb": float(row.get("pb") or 0),
+                "float_mv": float(row.get("float_mv") or 0),
+                "pct_chg": float(row.get("pct_change") or 0),
+            })
+
+        return records
+
     # ---- EngineBase 生命周期 ----
 
     async def _on_initialize(self) -> None:
@@ -625,6 +710,7 @@ class DataFeedEngine(EngineBase):
         self._adj_price_repo = None
         self._etf_daily_repo = None
         self._etf_repo = None
+        self._sw_index_repo = None
         logger.info("DataFeedEngine 已停止，缓存已清理")
 
     async def _on_data_sync_completed(self, event) -> None:
