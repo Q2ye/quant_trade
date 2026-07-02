@@ -51,7 +51,9 @@
               </div>
               <h4 class="sc-name">{{ builtinDisplayName(tpl) }}</h4>
               <span class="sc-type">{{ builtinDescription(tpl) }}</span>
-              <p class="builtin-hint">点击查看详情并创建策略</p>
+              <div class="sc-footer">
+                <span class="sc-action">使用模板 <SmartIcon name="ArrowRight" /></span>
+              </div>
             </div>
           </div>
           <n-empty v-else description="暂无可用模板" size="small" />
@@ -622,8 +624,12 @@ onMounted(() => loadStrategies());
 }
 .sc-top { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
 .sc-name { font-size: 14px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sc-type { font-size: 11px; color: var(--color-text-tertiary); }
+.sc-type { font-size: 11px; color: var(--color-text-tertiary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; min-height: calc(11px * 1.5 * 3); }
 .builtin-hint { margin: 6px 0 0; font-size: 11px; color: var(--color-text-quaternary); opacity: 0.7; }
+.sc-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: flex-end; }
+.sc-action { font-size: 12px; color: var(--color-text-tertiary); display: inline-flex; align-items: center; gap: 4px; transition: color 0.15s; cursor: pointer;
+  .strategy-card:hover & { color: var(--n-color-primary, #7c6ff7); }
+}
 
 .sc-perf { margin-top: 8px; display: flex; align-items: baseline; gap: 6px;
   span:first-child { font-size: 16px; font-weight: 700; }

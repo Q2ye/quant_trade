@@ -730,18 +730,49 @@ class IndustryRotationStrategy(BaseStrategy):
     def get_parameters(self) -> dict:
         """获取当前策略参数（用于前端展示）"""
         return {
+            # 策略基础
             "top_n": self.top_n,
             "buffer_rank": self.buffer_rank,
             "rebalance_frequency": self.rebalance_frequency,
             "cooling_period": self.cooling_period,
             "min_history": self.min_history,
+            # 风控
             "stop_loss": self.stop_loss,
             "take_profit": self.take_profit,
             "take_profit_rsi": self.take_profit_rsi,
             "max_sector_limit": self.max_sector_limit,
+            # 因子大类权重
             "trend_weight": self.parameters.get("trend_weight", 0.45),
             "volume_weight": self.parameters.get("volume_weight", 0.30),
             "valuation_weight": self.parameters.get("valuation_weight", 0.25),
+            # 趋势动量子参数
+            "momentum_windows": self.parameters.get("momentum_windows", [20, 60, 120, 250]),
+            "momentum_weights": self.parameters.get("momentum_weights", [0.15, 0.25, 0.35, 0.25]),
+            "momentum_accel_short": self.parameters.get("momentum_accel_short", 20),
+            "momentum_accel_long": self.parameters.get("momentum_accel_long", 60),
+            "rs_window": self.parameters.get("rs_window", 60),
+            "rs_benchmark": self.parameters.get("rs_benchmark", "881001.WI"),
+            # 资金量价子参数
+            "vol_ratio_short": self.parameters.get("vol_ratio_short", 5),
+            "vol_ratio_long": self.parameters.get("vol_ratio_long", 60),
+            "vol_price_window": self.parameters.get("vol_price_window", 20),
+            "turnover_short": self.parameters.get("turnover_short", 5),
+            "turnover_long": self.parameters.get("turnover_long", 20),
+            # 估值空间子参数
+            "pe_percentile_years": self.parameters.get("pe_percentile_years", 5),
+            "pb_percentile_years": self.parameters.get("pb_percentile_years", 5),
+            "pe_expansion_window": self.parameters.get("pe_expansion_window", 60),
+            "valuation_trap_threshold": self.parameters.get("valuation_trap_threshold", 0.10),
+            # 入场/出场阈值
+            "entry_rsi_max": self.parameters.get("entry_rsi_max", 75.0),
+            "entry_vol_ratio_min": self.parameters.get("entry_vol_ratio_min", 0.8),
+            "exit_vol_ratio_min": self.parameters.get("exit_vol_ratio_min", 0.5),
+            "exit_vol_duration": self.parameters.get("exit_vol_duration", 3),
+            "entry_score_gap": self.parameters.get("entry_score_gap", 0.05),
+            # 调试
+            "factor_override": self.parameters.get("factor_override", {}),
+            "verbose_logging": self.parameters.get("verbose_logging", False),
+            # 只读信息
             "universe_size": len(self._universe),
         }
 

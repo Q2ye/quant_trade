@@ -59,6 +59,8 @@
           <!-- 策略参数 -->
           <n-card title="策略参数" size="small" v-if="paramEntries.length > 0">
             <n-form label-placement="left" size="small">
+              <n-grid :cols="2" :x-gap="12">
+                <n-form-item-gi v-for="p in paramEntries" :key="p.key" :label="p.label">
                   <n-input-number
                     v-model:value="overrideParams[p.key]"
                     :min="0"
@@ -282,7 +284,7 @@ onMounted(() => { load(); });
   padding: 0 24px 16px;
 }
 .td-body {
-  display: grid; grid-template-columns: 6fr 4fr; gap: 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
   height: 100%; min-height: 0;
   @media (max-width: 900px) { grid-template-columns: 1fr; height: auto; }
 }
