@@ -410,13 +410,16 @@ class TemplateService:
             module_path = entry.get("module", "")
             display_name = entry.get("display_name", class_name)
 
-            # 提取源代码
+            # 提取源代码（v2.5: 读取整个模块源码，含 import，避免 exec 时 NameError）
             source_code = ""
             try:
                 mod = importlib.import_module(module_path)
                 for cls_obj in mod.__dict__.values():
                     if inspect.isclass(cls_obj) and cls_obj.__name__ == class_name:
-                        source_code = inspect.getsource(cls_obj)
+                        try:
+                            source_code = inspect.getsource(inspect.getmodule(cls_obj))
+                        except Exception:
+                            source_code = inspect.getsource(cls_obj)  # 回退：仅类体
                         break
             except Exception:
                 pass

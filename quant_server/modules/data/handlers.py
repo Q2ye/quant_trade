@@ -92,7 +92,7 @@ from modules.data.schemas import (
 	FactorResponse,
 	ResearchRequest,
 	ResearchResponse,
-	FactorMetadata, FactorCategory,
+	FactorMetadata, FactorCategory, SyncTypesMetaResponse, SyncStatusAllResponse, SyncTypeStatus,
 )
 from modules.data.services.quality_service import DataQualityService
 # 服务层组件
@@ -863,7 +863,7 @@ async def get_stock_list (
 				"page_size": request.page_size,
 				"total": total_count,
 				"total_pages": (
-						               total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
+									   total_count + request.get_effective_page_size() - 1) // request.get_effective_page_size()
 			},
 			message="获取股票列表成功"
 		)
@@ -1379,8 +1379,8 @@ async def get_sync_types_meta(
 		DataType.ST_STOCKRISK: ("1", "1.15", "stock_st_risk", 10, "~200条", False),
 		# 2: 财务数据
 		DataType.FINANCIAL_INCOME: ("2", "2.1", "financial_income", 600, "利润表", True),
-        DataType.FINANCIAL_BALANCE: ("2", "2.2", "financial_balance", 600, "资产负债表", True),
-        DataType.FINANCIAL_CASHFLOW: ("2", "2.3", "financial_cashflow", 600, "现金流量表", True),
+		DataType.FINANCIAL_BALANCE: ("2", "2.2", "financial_balance", 600, "资产负债表", True),
+		DataType.FINANCIAL_CASHFLOW: ("2", "2.3", "financial_cashflow", 600, "现金流量表", True),
 		DataType.FORECAST: ("2", "2.4", "stock_forecasts", 120, "~5K条", False),
 		DataType.EXPRESS: ("2", "2.5", "stock_expresses", 120, "~5K条", False),
 		DataType.DIVIDEND: ("2", "2.6", "stock_dividends", 60, "~5K条", False),
@@ -1397,8 +1397,6 @@ async def get_sync_types_meta(
 		DataType.STK_HOLDERTRADE: ("3", "3.7", "stock_stk_holdertrade", 30, "~3K条", False),
 		DataType.SHARE_FLOAT: ("3", "3.8", "stock_share_float", 15, "~500条", False),
 		DataType.FORECAST_PRO: ("3", "3.9", "stock_forecast_pro", 120, "~25K条", False),
-		DataType.INDEX_SW_CLASSIFY: ("3", "3.10", "index_sw_classify", 15, "~400条", False),
-		DataType.INDEX_SW_MEMBER: ("3", "3.11", "index_sw_member", 20, "~5K条", False),
 		# 4: 因子数据
 		DataType.STK_FACTOR: ("4", "4.1", "stock_factor_daily", 600, "~5K条/天", False),
 		DataType.STK_FACTOR_PRO: ("4", "4.2", "stock_factor_pro_daily", 600, "~5K条/天", False),
@@ -1473,8 +1471,8 @@ async def get_sync_types_meta(
 	# 预设任务
 	presets = [
 		SyncPresetMeta(id="daily", name="每日行情（增量）", description="盘前/盘后运行，更新所有行情数据",
-		               recommended=True, estimated_time_seconds=2100,
-		               steps=[{"group_id": "1"}]),
+					   recommended=True, estimated_time_seconds=2100,
+					   steps=[{"group_id": "1"}]),
 	]
 
 	return SyncTypesMetaResponse(groups=groups, presets=presets)
@@ -1484,9 +1482,6 @@ async def get_sync_status_all(
 	session: AsyncSession,
 ) -> "SyncStatusAllResponse":
 	"""获取所有同步类型的状态概览（供前端渲染覆盖度）"""
-	from modules.data.schemas import SyncStatusAllResponse, SyncTypeStatus
-	from modules.data.constants import DataType
-
 	# 复用 get_sync_types_meta 获取元数据
 	meta = await get_sync_types_meta(session)
 	types_status = []
@@ -1660,7 +1655,7 @@ async def get_sync_status (
 						"status": task.status,
 						"created_at": task.created_at.isoformat() if task.created_at else None,
 						"completed_at": task.completed_at.isoformat() if hasattr(task,
-						                                                        "completed_at") and task.completed_at else None
+																				"completed_at") and task.completed_at else None
 					})
 
 			seen_types: set = set()
@@ -1725,70 +1720,70 @@ async def get_sync_status (
 
 
 async def get_sync_tasks(
-        session: AsyncSession,
-        user_id: str,
-        status: Optional[str] = None,
-        group: Optional[str] = None,
-        limit: int = 20,
-        offset: int = 0,
+		session: AsyncSession,
+		user_id: str,
+		status: Optional[str] = None,
+		group: Optional[str] = None,
+		limit: int = 20,
+		offset: int = 0,
 ) -> "SyncTaskListResponse":
-    """
-    获取同步任务历史列表
-    """
-    from modules.data.schemas import SyncTaskRecord, SyncTaskListResponse
-    from modules.data.constants import DataType
+	"""
+	获取同步任务历史列表
+	"""
+	from modules.data.schemas import SyncTaskRecord, SyncTaskListResponse
+	from modules.data.constants import DataType
 
-    # 构建类型标签查找表
-    type_label_map = {dt.value: DataType.get_display_name(dt) for dt in DataType}
+	# 构建类型标签查找表
+	type_label_map = {dt.value: DataType.get_display_name(dt) for dt in DataType}
 
-    try:
-        sync_task_repo = DataSyncTaskRepository(session)
-        tasks = await sync_task_repo.get_by_user_id(
-            user_id=user_id, limit=limit, offset=offset,
-            status=status, parent_only=True,
-        )
-        total = await sync_task_repo.count_by_user(user_id, status)
+	try:
+		sync_task_repo = DataSyncTaskRepository(session)
+		tasks = await sync_task_repo.get_by_user_id(
+			user_id=user_id, limit=limit, offset=offset,
+			status=status, parent_only=True,
+		)
+		total = await sync_task_repo.count_by_user(user_id, status)
 
-        def _to_record(task):
-            return SyncTaskRecord(
-                id=task.id,
-                task_id=task.task_id,
-                task_type=task.task_type,
-                task_label=type_label_map.get(task.task_type, task.task_type),
-                data_types=task.data_types if hasattr(task, "data_types") else None,
-                status=task.status,
-                start_time=task.start_time,
-                end_time=task.end_time,
-                records_processed=task.records_processed or 0,
-                records_succeeded=task.records_succeeded or 0,
-                records_failed=task.records_failed or 0,
-                total_records=task.total_records or 0,
-                parent_task_id=getattr(task, "parent_task_id", None),
-                parameters=task.parameters if hasattr(task, "parameters") else None,
-                error_message=task.error_message,
-                created_at=task.created_at,
-                updated_at=task.updated_at,
-                completed_at=task.completed_at,
-            )
+		def _to_record(task):
+			return SyncTaskRecord(
+				id=task.id,
+				task_id=task.task_id,
+				task_type=task.task_type,
+				task_label=type_label_map.get(task.task_type, task.task_type),
+				data_types=task.data_types if hasattr(task, "data_types") else None,
+				status=task.status,
+				start_time=task.start_time,
+				end_time=task.end_time,
+				records_processed=task.records_processed or 0,
+				records_succeeded=task.records_succeeded or 0,
+				records_failed=task.records_failed or 0,
+				total_records=task.total_records or 0,
+				parent_task_id=getattr(task, "parent_task_id", None),
+				parameters=task.parameters if hasattr(task, "parameters") else None,
+				error_message=task.error_message,
+				created_at=task.created_at,
+				updated_at=task.updated_at,
+				completed_at=task.completed_at,
+			)
 
-        records = []
-        for task in tasks:
-            r = _to_record(task)
-            if task.task_type == "batch":
-                children = await sync_task_repo.get_children(task.task_id)
-                if children:
-                    r.children = [_to_record(c) for c in children]
-            records.append(r)
+		records = []
+		for task in tasks:
+			r = _to_record(task)
+			if task.task_type == "batch":
+				children = await sync_task_repo.get_children(task.task_id)
+				if children:
+					r.children = [_to_record(c) for c in children]
+			records.append(r)
 
-        return SyncTaskListResponse(
-            success=True,
-            tasks=records,
-            total=total,
-        )
+		return SyncTaskListResponse(
+			success=True,
+			tasks=records,
+			total=total,
+		)
 
-    except Exception as e:
-        logger.error(f"获取同步任务列表失败: {str(e)}", exc_info=True)
-        raise BusinessException(f"获取同步任务列表失败: {str(e)}")
+	except Exception as e:
+		logger.error(f"获取同步任务列表失败: {str(e)}", exc_info=True)
+		raise BusinessException(f"获取同步任务列表失败: {str(e)}")
 
 
 async def cancel_sync (
@@ -1850,8 +1845,8 @@ async def cancel_sync (
 			logger.info(f"取消信号已发送: task_id={cancel_target}")
 		else:
 			logger.warning(f"取消信号发送失败（token 未命中）: task_id={task_id}, "
-			               f"parent={getattr(task, 'parent_task_id', None)}, "
-			               f"可能后台任务尚未创建取消令牌或已被清理")
+						   f"parent={getattr(task, 'parent_task_id', None)}, "
+						   f"可能后台任务尚未创建取消令牌或已被清理")
 
 		# 4. 更新任务状态：任务 + 父任务（如有） + 所有子任务
 		from sqlalchemy import text as _sql
@@ -2112,8 +2107,8 @@ def _flatten_research_result (raw_result: Optional[Dict[str, Any]]) -> Optional[
 
 	展平后：
 	  { ic_analysis: {ic_mean: ..., ic_series: [...]}, quantile_analysis: {...},
-	    calculation_result: {...}, summary: {...},
-	    _empty: bool  ← 无分析数据时为 True }
+		calculation_result: {...}, summary: {...},
+		_empty: bool  ← 无分析数据时为 True }
 	"""
 	if not isinstance(raw_result, dict):
 		return raw_result
@@ -2373,30 +2368,30 @@ async def _execute_sync_factor_research (
 
 
 async def _update_progress(
-    research_repo,
-    research_id: str,
-    progress: float,
-    step: str,
-    event_engine,
-    user_id: str
+	research_repo,
+	research_id: str,
+	progress: float,
+	step: str,
+	event_engine,
+	user_id: str
 ):
-    """更新研究进度（DB + 事件）"""
-    try:
-        await research_repo.update_research_progress(
-            research_id=research_id,
-            progress=progress
-        )
-        progress_event = DataResearchProgressEvent(
-            research_id=research_id,
-            progress=progress,
-            current_step=step,
-            user_id=user_id,
-            timestamp=datetime.now(),
-            source="data_module"
-        )
-        await event_engine.put(progress_event)
-    except Exception as e:
-        logger.warning(f"更新进度失败: {e}")
+	"""更新研究进度（DB + 事件）"""
+	try:
+		await research_repo.update_research_progress(
+			research_id=research_id,
+			progress=progress
+		)
+		progress_event = DataResearchProgressEvent(
+			research_id=research_id,
+			progress=progress,
+			current_step=step,
+			user_id=user_id,
+			timestamp=datetime.now(),
+			source="data_module"
+		)
+		await event_engine.put(progress_event)
+	except Exception as e:
+		logger.warning(f"更新进度失败: {e}")
 
 
 async def _try_start_pending_tasks(session, user_id: str, event_engine, max_concurrent: int = 3):

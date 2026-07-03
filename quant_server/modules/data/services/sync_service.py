@@ -116,24 +116,22 @@ from shared.database.models.data_models import (
 )
 from shared.database.models.business_models import DataSyncTask
 # 从统一导出入口导入共享Repository（按领域分组）
-from shared.database.repositories import (
-	# 市场数据领域
-	StockBasicRepository,
-	StockDailyRepository,
-	StockMinuteRepository,
-	StockMoneyflowRepository,
-	StockAdjFactorRepository,
-	StockDailyBasicRepository,
-	TradeCalendarRepository,
-	EtfDailyRepository,
-	EtfMinuteRepository,
-	FundAdjFactorRepository,
-	# 财务数据领域
-	
-	FinancialIncomeRepository, FinancialBalanceRepository, FinancialCashflowRepository,
-	# 运营领域（任务记录）
-	DataSyncTaskRepository, ETFRepository,
-)
+# v2.5: 绕过 shared.database.repositories 顶层包的循环引用
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
+from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
+from shared.database.repositories.market.quote.stock_minute_repo import StockMinuteRepository
+from shared.database.repositories.market.fundamental.stock_moneyflow_repo import StockMoneyflowRepository
+from shared.database.repositories.market.quote.stock_adj_factor_repo import StockAdjFactorRepository
+from shared.database.repositories.market.fundamental.stock_daily_basic_repo import StockDailyBasicRepository
+from shared.database.repositories.market.reference.trade_calendar_repo import TradeCalendarRepository
+from shared.database.repositories.market.quote.etf_daily_repo import EtfDailyRepository
+from shared.database.repositories.market.quote.etf_minute_repo import EtfMinuteRepository
+from shared.database.repositories.market.quote.fund_adj_factor_repo import FundAdjFactorRepository
+from shared.database.repositories.market.fundamental.financial_income_repo import FinancialIncomeRepository
+from shared.database.repositories.market.fundamental.financial_balance_repo import FinancialBalanceRepository
+from shared.database.repositories.market.fundamental.financial_cashflow_repo import FinancialCashflowRepository
+from shared.database.repositories.operation.task.data_sync_task_repo import DataSyncTaskRepository
+from shared.database.repositories.market.basic.etf_repo import ETFRepository
 from shared.database.repositories.market.basic import (
 	EtfBasicRepository, IndexWeightRepository,
 	CompanyRepository, STListRepository,

@@ -31,7 +31,7 @@ from modules.data.events.quality_events import (
 )
 from modules.data.services.quality_service import DataQualityService
 from modules.data.utils.quality_checker import DataQualityChecker, QualityCheckType
-from shared.database.repositories import StockBasicRepository
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
 from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
 
 logger = logging.getLogger(__name__)

@@ -821,6 +821,8 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 			pass
 
 		# v2.3: read source code of strategy class
+		# v2.5: 读取整个模块源码（含 import），而非仅类体，
+		# 避免 exec() 执行策略代码时因缺少 import 导致 NameError
 		module_path = entry.get("module", "")
 		source_code = ""
 		try:
@@ -829,7 +831,10 @@ async def get_builtin_strategies() -> Dict[str, Any]:
 			for st, classes in registry._registry.items():
 				for cls in classes:
 					if cls.__name__ == entry.get("class_name", ""):
-						source_code = inspect.getsource(cls)
+						try:
+							source_code = inspect.getsource(inspect.getmodule(cls))
+						except Exception:
+							source_code = inspect.getsource(cls)  # 回退：仅类体
 						break
 		except Exception:
 			pass

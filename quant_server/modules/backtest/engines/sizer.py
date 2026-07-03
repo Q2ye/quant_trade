@@ -166,10 +166,10 @@ def select_sizer(signal: TradingSignal) -> BaseSizer:
     根据信号特征自动选择 Sizer。
 
     规则：
-    - CLOSE_LONG 且 quantity=0 → CloseAllSizer（平掉全部）
+    - CLOSE_LONG 且 quantity≤0 → CloseAllSizer（平掉全部）
+    - weight 属性 > 0 → WeightSizer（等权重分配）
     - quantity > 0 → QuantitySizer（已有股数）
     - amount > 0 → FixedAmountSizer（固定金额）
-    - weight 属性存在 → WeightSizer（权重分配）
     - 其他 → QuantitySizer（fallback）
     """
     direction = signal.direction
@@ -179,13 +179,15 @@ def select_sizer(signal: TradingSignal) -> BaseSizer:
     if direction in ("CLOSE_LONG", "close_long") and signal.quantity <= 0:
         return CloseAllSizer()
 
+    # v2.5: weight 优先于 quantity，支持等权重仓位分配
+    weight = getattr(signal, "weight", None)
+    if weight is not None and weight > 0:
+        return WeightSizer()
+
     if signal.quantity > 0:
         return QuantitySizer()
 
     if getattr(signal, "amount", 0) > 0:
-        weight = getattr(signal, "weight", None)
-        if weight is not None:
-            return WeightSizer()
         return FixedAmountSizer()
 
     return QuantitySizer()

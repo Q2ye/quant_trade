@@ -171,17 +171,25 @@
                 </n-form-item>
 
                 <n-form-item label="回测周期">
+                  <div class="date-presets">
+                    <n-button size="tiny" :type="cfgDatePreset === '1y' ? 'primary' : 'default'" @click="setCfgDatePreset('1y')">1年</n-button>
+                    <n-button size="tiny" :type="cfgDatePreset === '3y' ? 'primary' : 'default'" @click="setCfgDatePreset('3y')">3年</n-button>
+                    <n-button size="tiny" :type="cfgDatePreset === '5y' ? 'primary' : 'default'" @click="setCfgDatePreset('5y')">5年</n-button>
+                    <n-button size="tiny" :type="cfgDatePreset === 'all' ? 'primary' : 'default'" @click="setCfgDatePreset('all')">全部</n-button>
+                  </div>
                   <n-space :size="8">
                     <n-date-picker
                       v-model:value="backtestSettings.startDate"
                       type="date"
                       placeholder="开始日期"
+                      :input-readonly="false"
                     />
                     <span class="date-separator">至</span>
                     <n-date-picker
                       v-model:value="backtestSettings.endDate"
                       type="date"
                       placeholder="结束日期"
+                      :input-readonly="false"
                     />
                   </n-space>
                 </n-form-item>
@@ -344,6 +352,23 @@ const backtestSettings = ref({
   slippage: 0.001,
   benchmark: "000300.SH",
 });
+
+const cfgDatePreset = ref<string>("3y");
+const setCfgDatePreset = (preset: string) => {
+  cfgDatePreset.value = preset;
+  const now = Date.now();
+  const day = 86400000;
+  const ranges: Record<string, [number, number]> = {
+    "1y": [now - 365 * day, now],
+    "3y": [now - 3 * 365 * day, now],
+    "5y": [now - 5 * 365 * day, now],
+    all: [new Date("2005-01-01").getTime(), now],
+  };
+  if (ranges[preset]) {
+    backtestSettings.value.startDate = ranges[preset][0];
+    backtestSettings.value.endDate = ranges[preset][1];
+  }
+};
 
 const benchmarkOptions = [
   { code: "000001.SH", name: "上证指数" },
@@ -702,6 +727,7 @@ onBeforeUnmount(() => {
   margin-left: 10px;
   color: var(--n-text-color-3);
 }
+.date-presets { display: flex; gap: 4px; margin-bottom: 8px; }
 .date-separator {
   color: var(--n-text-color-3);
 }

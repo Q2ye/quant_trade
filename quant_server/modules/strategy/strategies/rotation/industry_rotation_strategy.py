@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
 """
 行业轮动策略 V2
 
@@ -141,6 +143,7 @@ class IndustryRotationStrategy(BaseStrategy):
 
         # ---- 运行时状态 ----
         self._bar_count: int = 0
+        self._warmup_warned: bool = False  # v2.5: 预热期跳过日志已打印标记
         self._last_rebalance_date: str = ""
         self._current_holdings: Dict[str, str] = {}  # {ETF代码: 行业名}
         self._industry_data_cache: Dict[str, pd.DataFrame] = {}  # {行业代码: DataFrame}
@@ -197,26 +200,100 @@ class IndustryRotationStrategy(BaseStrategy):
         self._scoring_service = IndustryScoringService(cfg)
         self._etf_mapper = EtfIndustryMapper()
 
-        # 设置 universe（所有 ETF 候选代码）
-        self._universe = self._etf_mapper.get_all_etf_codes()
+        # 设置 universe（所有 ETF 候选代码 + SW 行业指数代码）
+        # v2.5: 必须包含 SW L1 代码，数据推送引擎才会加载行业指数日线数据
+        etf_codes = self._etf_mapper.get_all_etf_codes()
+        sw_codes = EtfIndustryMapper.get_all_sw_codes()
+        self._universe = etf_codes + sw_codes
 
         logger.info(
             f"行业轮动策略 {self.name} 初始化完成, "
             f"行业ETF候选={len(self._universe)}只"
         )
 
-    def on_start(self) -> None:
-        """清空状态，准备接收数据"""
+    async def on_start(self) -> None:
+        """启动策略 — v2.5: 从 DB 预热历史数据，解决重启缓存丢失问题"""
         self._bar_count = 0
         self._last_rebalance_date = ""
         self._current_holdings.clear()
         self._industry_data_cache.clear()
+        self._data_cache.clear()
         self._benchmark_cache = None
         self._prev_scores.clear()
         self._cooling_list.clear()
         self._entry_prices.clear()
         self._volume_below_threshold_days.clear()
-        logger.info(f"行业轮动策略 {self.name} 已启动")
+        self._warmup_warned = False
+
+        # v2.5: 从 DB 加载历史数据预热缓存
+        # 回测模式：数据由 data_feed_engine 加载，此处 DB 预加载作为兜底
+        # 实盘模式：重启后必须重新加载，否则需 250 天重新积累
+        loaded = await self._preload_history()
+        if loaded > 0:
+            logger.info(
+                f"行业轮动策略 {self.name} 已启动 — "
+                f"历史预热: {len(self._industry_data_cache)} 个行业 / "
+                f"{len(self._data_cache)} 只 ETF"
+            )
+        else:
+            logger.info(f"行业轮动策略 {self.name} 已启动（等待 bar 累积）")
+
+    async def _preload_history(self) -> int:
+        """v2.5: 从 DB 加载历史数据预热缓存，返回总行数"""
+        session_factory = getattr(self, "_db_session_factory", None)
+        if session_factory is None:
+            return 0
+
+        from datetime import date as _dt, timedelta
+        from modules.strategy.engines.data_feed_engine import DataFeedEngine as _DFE
+
+        end_date = _dt.today()
+        # 覆盖最长动量窗口 + 20% 余量，确保所有短期/中期因子可用
+        max_window = max(self.parameters.get("momentum_windows", [20, 60, 120, 250]))
+        lookback = int(max_window * 1.2) + 1
+        start_date = end_date - timedelta(days=lookback)
+
+        try:
+            async with session_factory() as db:
+                engine = _DFE(db, adj_type="qfq")
+
+                # 加载 SW 行业指数数据
+                sw_symbols = EtfIndustryMapper.get_all_sw_codes()
+                sw_df = await engine.load_historical_data(
+                    symbols=sw_symbols,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
+                if not sw_df.empty:
+                    for ts_code in sw_df["ts_code"].unique():
+                        sub = sw_df[sw_df["ts_code"] == ts_code].copy()
+                        sub = sub.sort_values("trade_date").reset_index(drop=True)
+                        self._industry_data_cache[ts_code] = sub
+
+                # 加载 ETF 数据
+                etf_symbols = self._etf_mapper.get_all_etf_codes()
+                etf_df = await engine.load_historical_data(
+                    symbols=etf_symbols,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
+                if not etf_df.empty:
+                    for ts_code in etf_df["ts_code"].unique():
+                        sub = etf_df[etf_df["ts_code"] == ts_code].copy()
+                        sub = sub.sort_values("trade_date").reset_index(drop=True)
+                        self._data_cache[ts_code] = sub
+
+                total = len(sw_df) + len(etf_df)
+                if total > 0:
+                    logger.info(
+                        f"历史预热完成: {len(sw_df)} 行 SW + {len(etf_df)} 行 ETF, "
+                        f"{start_date} ~ {end_date}"
+                    )
+                return total
+
+        except Exception as e:
+            logger.warning(f"历史预热数据加载失败（非致命，将等待 bar 累积）: {e}")
+            return 0
 
     def on_stop(self) -> None:
         """清理状态"""
@@ -249,6 +326,12 @@ class IndustryRotationStrategy(BaseStrategy):
 
             if is_industry:
                 # ---- 行业指数 bar → 缓存 ----
+                # v2.5: 首次收到行业数据时打印诊断日志
+                if ts_code not in self._industry_data_cache:
+                    logger.info(
+                        f"首次接收行业指数数据: {ts_code}, "
+                        f"close={bar.close}, trade_date={getattr(bar, 'trade_date', '?')}"
+                    )
                 self._append_industry_data(ts_code, bar)
             elif ts_code in self._universe or ts_code == self.parameters.get("rs_benchmark", ""):
                 # ---- ETF / 基准 bar → 缓存 ----
@@ -295,6 +378,24 @@ class IndustryRotationStrategy(BaseStrategy):
             logger.debug("评分服务或行业数据未就绪，跳过调仓")
             return signals
 
+        # v2.5: 预热期检查
+        # ① 数据加载已含 start_date 之前的全部历史（data_feed_engine 一次性加载），
+        #    无需单独"预热取数"；策略从首日即接收 bar 并累积缓存
+        # ② 固定 21 天（最短动量窗口 [20] + 1），长窗口因子退化为 0 不影响
+        min_data_days = 21
+        max_cache_days = max(
+            (len(df) for df in self._industry_data_cache.values()), default=0
+        )
+        if max_cache_days < min_data_days:
+            if not getattr(self, "_warmup_warned", False):
+                logger.info(
+                    f"行业轮动策略 {self.name}: 预热期 — "
+                    f"当前最多 {max_cache_days} 天数据, 需要 {min_data_days} 天, "
+                    f"跳过调仓（后续不再提示）"
+                )
+                self._warmup_warned = True
+            return signals
+
         try:
             # ---- Step 1: 行业评分排名 ----
             industry_scores = self._scoring_service.score_all(
@@ -326,7 +427,10 @@ class IndustryRotationStrategy(BaseStrategy):
             )
 
             # ---- Step 4: 对比持仓生成信号 ----
+            # v2.5: _current_holdings 只记录实际生成买入信号的 ETF,
+            # 避免因入选但未通过入场条件而生成了不存在的卖出信号
             new_etf_set = {s.ts_code for s in selections}
+            new_holdings: Dict[str, str] = {}
 
             # 卖出：当前持有但不在新选中的
             for etf_code, industry_name in list(self._current_holdings.items()):
@@ -339,50 +443,43 @@ class IndustryRotationStrategy(BaseStrategy):
                     ))
                     # 加入冷却期
                     self._cooling_list[industry_name] = self.cooling_period
+                else:
+                    # 仍在选中 → 持有不变
+                    new_holdings[etf_code] = industry_name
 
             # 买入：新选中但未持有
             for sel in selections:
-                if sel.ts_code not in self._current_holdings:
-                    # 冷却期检查
-                    cooling_left = self._cooling_list.get(sel.industry_name, 0)
-                    if cooling_left > 0:
-                        logger.info(
-                            f"行业 {sel.industry_name} 在冷却期（剩余 {cooling_left} 天），跳过"
-                        )
-                        continue
+                if sel.ts_code in self._current_holdings:
+                    continue  # 已在持有中，跳过
 
-                    # 入场条件检查
-                    can_enter, reason = self._check_entry_conditions(sel, industry_scores)
-                    if can_enter:
-                        signals.append(self._make_entry_signal(
-                            sel=sel,
-                            reason=f"进入 Top {self.top_n} — {reason}",
-                        ))
-                    else:
-                        logger.info(f"入场条件不满足: {sel.industry_name} — {reason}")
+                # 冷却期检查
+                cooling_left = self._cooling_list.get(sel.industry_name, 0)
+                if cooling_left > 0:
+                    logger.debug(
+                        f"行业 {sel.industry_name} 在冷却期（剩余 {cooling_left} 天），跳过"
+                    )
+                    continue
 
-            # 更新持仓记录
-            new_holdings = {
-                s.ts_code: s.industry_name
-                for s in selections
-                # 保留冷却期中的旧持仓
-            }
-            for etf, ind in self._current_holdings.items():
-                if etf not in new_holdings:
-                    # 持仓未卖出（缓冲区内），保留
-                    pass
+                # 入场条件检查
+                can_enter, reason = self._check_entry_conditions(sel, industry_scores)
+                if can_enter:
+                    signals.append(self._make_entry_signal(
+                        sel=sel,
+                        reason=f"进入 Top {self.top_n} — {reason}",
+                    ))
+                    new_holdings[sel.ts_code] = sel.industry_name  # ← 只记录实际买入
+                else:
+                    logger.debug(f"入场条件不满足: {sel.industry_name} — {reason}")
+                    # ← 不加入 new_holdings，不生成卖出信号
 
             # 记录买入价
             for s in selections:
-                if s.is_new and s.ts_code not in self._entry_prices:
+                if s.is_new and s.ts_code not in self._entry_prices and s.ts_code in new_holdings:
                     df = self._data_cache.get(s.ts_code)
                     if df is not None and len(df) > 0:
                         self._entry_prices[s.ts_code] = float(df["close"].iloc[-1])
 
-            self._current_holdings = {
-                s.ts_code: s.industry_name
-                for s in selections
-            }
+            self._current_holdings = new_holdings
 
             # ---- Step 5: 止损止盈检查 ----
             for etf_code in list(self._current_holdings.keys()):
@@ -648,11 +745,13 @@ class IndustryRotationStrategy(BaseStrategy):
         reason: str,
         confidence: float = 0.80,
     ) -> TradingSignal:
-        """生成入场信号"""
+        """生成入场信号 — v2.5: 等权重分配，weight 驱动 WeightSizer"""
         df = self._data_cache.get(sel.ts_code)
         price = float(df["close"].iloc[-1]) if df is not None and len(df) > 0 else 0.0
 
-        return TradingSignal(
+        weight = 1.0 / max(self.top_n, 1)  # 等权重: 1/N
+
+        sig = TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
             strategy_name=self.name,
@@ -660,12 +759,14 @@ class IndustryRotationStrategy(BaseStrategy):
             signal_type=SignalType.ENTRY,
             direction=SignalDirection.LONG,
             price=price,
-            quantity=100,
-            amount=price * 100 if price > 0 else 0,
+            quantity=0,                          # v2.5: 由 weight 驱动, 不用固定股数
+            amount=1.0,                          # 占位（select_sizer 以 weight 优先）
             confidence=confidence,
             reason=f"{sel.industry_name}: {reason}",
             timestamp=datetime.now(),
         )
+        sig.weight = weight                      # v2.5: WeightSizer 读取此权重
+        return sig
 
     def _make_exit_signal(
         self,
@@ -675,7 +776,7 @@ class IndustryRotationStrategy(BaseStrategy):
         signal_type: SignalType = SignalType.ENTRY,
         confidence: float = 0.80,
     ) -> TradingSignal:
-        """生成出场信号"""
+        """生成出场信号 — v2.5: quantity=0 触发 CloseAllSizer 全平"""
         df = self._data_cache.get(etf_code)
         price = float(df["close"].iloc[-1]) if df is not None and len(df) > 0 else 0.0
 
@@ -687,8 +788,8 @@ class IndustryRotationStrategy(BaseStrategy):
             signal_type=signal_type,
             direction=SignalDirection.CLOSE_LONG,
             price=price,
-            quantity=100,
-            amount=price * 100 if price > 0 else 0,
+            quantity=0,                          # v2.5: → CloseAllSizer 全平该标的
+            amount=0.0,
             confidence=confidence,
             reason=f"{industry_name}: {reason}",
             timestamp=datetime.now(),

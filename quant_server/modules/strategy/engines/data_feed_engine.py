@@ -86,11 +86,22 @@ class DataFeedEngine(EngineBase):
         """v2.4: 根据代码规则判断是否为 ETF
 
         A 股 ETF 代码规则:
-        - 上交所 (SH): 以 51 开头 (510050, 510300, 512880 等)
-        - 深交所 (SZ): 以 159 或 16 开头 (159915, 159919 等)
+        - 上交所 (SH):
+          - 51xxxx (510050, 510300, 512880 等 — 股票/行业/跨境/商品 ETF)
+          - 56xxxx (561120, 561170 等 — 行业 ETF)
+          - 58xxxx (588000, 588080 等 — 科创 ETF)
+        - 深交所 (SZ):
+          - 159xxx (159915, 159919 等) — 各类 ETF
+          - 16xxxx — LOF/ETF
         """
         code = ts_code.split(".")[0] if "." in ts_code else ts_code
-        return code.startswith("51") or code.startswith("159") or code.startswith("16")
+        return (
+            code.startswith("51")
+            or code.startswith("159")
+            or code.startswith("16")
+            or code.startswith("56")
+            or code.startswith("58")
+        )
 
     @staticmethod
     def _is_sw_index(ts_code: str) -> bool:
@@ -286,9 +297,22 @@ class DataFeedEngine(EngineBase):
                     start_date=start_date,
                     end_date=end_date,
                 )
-                # _load_etf_batch 返回的已是 Dict 列表，直接合并
                 all_records.extend(etf_records)
-                logger.info(f"ETF 数据加载: {len(etf_records)} 条")
+                # v2.5: 诊断日志 — 按标的统计，标记空数据
+                _etf_by_code: Dict[str, int] = {}
+                for r in etf_records:
+                    _etf_by_code[r["ts_code"]] = _etf_by_code.get(r["ts_code"], 0) + 1
+                _etf_empty = [s for s in etf_symbols if s not in _etf_by_code]
+                logger.info(
+                    f"ETF 数据加载: {len(etf_records)} 条 / {len(etf_symbols)} 只, "
+                    f"有数据={len(_etf_by_code)} 只, 无数据={len(_etf_empty)} 只"
+                )
+                if _etf_empty:
+                    logger.warning(
+                        f"ETF 无数据 ({start_date}~{end_date}): "
+                        f"{', '.join(_etf_empty[:10])}"
+                        f"{' ...' if len(_etf_empty) > 10 else ''}"
+                    )
             except Exception as e:
                 logger.warning(f"批量加载 ETF 数据失败: {e}")
 
@@ -301,7 +325,21 @@ class DataFeedEngine(EngineBase):
                     end_date=end_date,
                 )
                 all_records.extend(sw_records)
-                logger.info(f"申万行业指数数据加载: {len(sw_records)} 条")
+                # v2.5: 诊断日志 — 按行业统计
+                _sw_by_code: Dict[str, int] = {}
+                for r in sw_records:
+                    _sw_by_code[r["ts_code"]] = _sw_by_code.get(r["ts_code"], 0) + 1
+                _sw_empty = [s for s in sw_symbols if s not in _sw_by_code]
+                logger.info(
+                    f"SW 行业指数数据加载: {len(sw_records)} 条 / {len(sw_symbols)} 个行业, "
+                    f"有数据={len(_sw_by_code)} 个, 无数据={len(_sw_empty)} 个"
+                )
+                if _sw_empty:
+                    logger.warning(
+                        f"SW 行业指数无数据 ({start_date}~{end_date}): "
+                        f"{', '.join(_sw_empty[:10])}"
+                        f"{' ...' if len(_sw_empty) > 10 else ''}"
+                    )
             except Exception as e:
                 logger.warning(f"批量加载申万行业指数数据失败: {e}")
 
@@ -370,6 +408,12 @@ class DataFeedEngine(EngineBase):
                         volume=float(row.get("volume", 0)),
                         amount=float(row.get("amount", 0)),
                         trade_date=trade_date,
+                        # v2.5: SW 行业指数扩展字段（ETF row 中这些列为 NaN → 默认值 0.0/""）
+                        name=str(row.get("name", "") or ""),
+                        pe=float(row.get("pe", 0) or 0),
+                        pb=float(row.get("pb", 0) or 0),
+                        float_mv=float(row.get("float_mv", 0) or 0),
+                        pct_chg=float(row.get("pct_chg", 0) or 0),
                     )
                     bars.append(bar)
                 except Exception as e:
@@ -643,10 +687,20 @@ class DataFeedEngine(EngineBase):
         records: List[Dict[str, Any]] = []
         for _, row in df.iterrows():
             trade_date_val = row["trade_date"]
-            if hasattr(trade_date_val, "date"):
+            # v2.5: 统一归一化为 date 对象，避免与其他数据源（ETF/stock）
+            # 返回的 date 类型不一致导致 sorted() 报 TypeError
+            if isinstance(trade_date_val, datetime):
                 trade_date_val = trade_date_val.date()
-            elif hasattr(trade_date_val, "strftime"):
-                trade_date_val = str(trade_date_val)[:10]
+            elif isinstance(trade_date_val, date):
+                pass  # 已是 date，不变
+            elif isinstance(trade_date_val, str):
+                trade_date_val = date.fromisoformat(trade_date_val[:10])
+            # 兜底：尝试转换
+            try:
+                if not isinstance(trade_date_val, date):
+                    trade_date_val = date.fromisoformat(str(trade_date_val)[:10])
+            except (ValueError, TypeError):
+                pass
 
             records.append({
                 "ts_code": str(row["ts_code"]),

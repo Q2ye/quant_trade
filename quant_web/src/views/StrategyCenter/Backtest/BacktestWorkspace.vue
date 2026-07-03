@@ -66,10 +66,22 @@
 
           <!-- 回测参数 -->
           <n-collapse-item name="params" title="回测参数">
-            <n-date-picker v-model:value="dateRange" type="daterange" size="small" style="width:100%;margin-bottom:8px" />
-            <n-input-number v-model:value="initialCapital" :min="10000" :step="100000" size="small" style="width:100%;margin-bottom:8px"><template #suffix>元</template></n-input-number>
-            <n-select v-model:value="benchmark" :options="benchmarkOptions" size="small" style="margin-bottom:8px" placeholder="基准" />
-            <n-button type="primary" block @click="runBacktestAll" :loading="isRunning">{{ isRunning ? `回测中 ${progress}%` : '▶ 开始回测' }}</n-button>
+            <div class="date-presets">
+              <n-button size="tiny" :type="datePreset === '1y' ? 'primary' : 'default'" @click="setDatePreset('1y')">1年</n-button>
+              <n-button size="tiny" :type="datePreset === '3y' ? 'primary' : 'default'" @click="setDatePreset('3y')">3年</n-button>
+              <n-button size="tiny" :type="datePreset === '5y' ? 'primary' : 'default'" @click="setDatePreset('5y')">5年</n-button>
+              <n-button size="tiny" :type="datePreset === 'all' ? 'primary' : 'default'" @click="setDatePreset('all')">全部</n-button>
+            </div>
+            <div class="date-row">
+              <n-date-picker v-model:value="dateRange" type="daterange" size="small" :input-readonly="false" style="flex:1;min-width:0" />
+            </div>
+            <div class="param-row">
+              <n-input-number v-model:value="initialCapital" :min="10000" :step="100000" size="small" style="flex:1;min-width:0"><template #suffix>元</template></n-input-number>
+            </div>
+            <div class="param-row">
+              <n-select v-model:value="benchmark" :options="benchmarkOptions" size="small" style="flex:1" placeholder="基准" />
+            </div>
+            <n-button type="primary" block @click="runBacktestAll" :loading="isRunning" class="run-btn">{{ isRunning ? `回测中 ${progress}%` : '▶ 开始回测' }}</n-button>
           </n-collapse-item>
 
           <!-- 任务列表 -->
@@ -222,6 +234,19 @@ const toggleBasket = async (id: string) => {
 
 // ---- 回测参数 ----
 const dateRange = ref<[number, number]>([Date.now() - 365 * 86400000, Date.now()]);
+const datePreset = ref<string>("1y");
+const setDatePreset = (preset: string) => {
+  datePreset.value = preset;
+  const now = Date.now();
+  const day = 86400000;
+  const ranges: Record<string, [number, number]> = {
+    "1y": [now - 365 * day, now],
+    "3y": [now - 3 * 365 * day, now],
+    "5y": [now - 5 * 365 * day, now],
+    all: [new Date("2005-01-01").getTime(), now],
+  };
+  if (ranges[preset]) dateRange.value = ranges[preset];
+};
 const initialCapital = ref(1000000);
 const benchmark = ref("000300.SH");
 const benchmarkReturn = ref(0);
@@ -572,6 +597,10 @@ onMounted(async () => {
   .h-label { font-size: 12px; color: var(--color-text-primary); }
   .h-time { font-size: 11px; color: var(--color-text-tertiary); }
 }
+.date-presets { display: flex; gap: 4px; margin-bottom: 6px; }
+.date-row { margin-bottom: 8px; display: flex; }
+.param-row { margin-bottom: 8px; display: flex; }
+.run-btn { margin-top: 4px; }
 .task-list { max-height: 260px; overflow-y: auto; }
 .task-row { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: all 0.15s;
   &:hover { background: rgba(124,111,247,0.06); }

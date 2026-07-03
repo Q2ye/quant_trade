@@ -1072,6 +1072,25 @@ class BacktestService:
 					symbols = strategy_obj.universe
 					symbol_source = "策略股票池"
 
+			# v2.5: 若策略 universe 含 ETF 标的，自动注入 SW L1 行业指数代码，
+			# 确保 data_feed_engine 加载行业日线数据用于因子评分。
+			# 此逻辑独立于 DB 中可能过期的策略代码，解决策略更新后
+			# DB code 不同步导致 _industry_data_cache 为空的问题。
+			if symbols:
+				_has_etf = any(
+					s.split(".")[0][:2] in ("51", "56", "58") or
+					s.split(".")[0][:3] in ("159", "16")
+					for s in symbols
+				)
+				if _has_etf:
+					from modules.strategy.config.industry_etf_map import SW_L1_INDUSTRY_CODES
+					sw_codes = [c for c in SW_L1_INDUSTRY_CODES if c not in symbols]
+					if sw_codes:
+						symbols = list(symbols) + sw_codes
+						logger.info(
+							f"回测 {task_id}: 自动注入 {len(sw_codes)} 个 SW L1 行业指数代码"
+						)
+
 			if not symbols:
 				# 兜底：取 stock_basic 全市场前 1000 只（防内存溢出）
 				logger.warning(
@@ -1312,6 +1331,30 @@ class BacktestService:
 				if hasattr(_typing, _tname):
 					temp_module[_tname] = getattr(_typing, _tname)
 
+			# v2.5: 注入策略专用依赖（兜底：防止旧策略代码仅含类体、缺少 import 导致 NameError）
+			try:
+				from modules.strategy.services.industry_scoring_service import (
+					IndustryScore, IndustryScoringService, ScoringConfig,
+				)
+				temp_module["IndustryScore"] = IndustryScore
+				temp_module["IndustryScoringService"] = IndustryScoringService
+				temp_module["ScoringConfig"] = ScoringConfig
+			except ImportError:
+				pass
+			try:
+				from modules.strategy.services.etf_industry_mapper import (
+					EtfIndustryMapper, EtfSelection,
+				)
+				temp_module["EtfIndustryMapper"] = EtfIndustryMapper
+				temp_module["EtfSelection"] = EtfSelection
+			except ImportError:
+				pass
+			try:
+				from modules.strategy.enums.sector_groups import get_sector
+				temp_module["get_sector"] = get_sector
+			except ImportError:
+				pass
+
 			# v2.4: exec() 沙箱加固 — 全量 builtins，仅移除危险函数
 			import builtins as _b
 			temp_module["__builtins__"] = dict(vars(_b))
@@ -1320,8 +1363,13 @@ class BacktestService:
 			temp_module["__builtins__"]["__name__"] = "__main__"
 
 			# ---- B2. 执行策略代码 ----
+			# v2.5: 若策略代码不含 from __future__ import annotations，
+			# 则自动注入，避免类型注解（如 List[IndustryScore]）引发 NameError
+			_code_to_exec = strategy.code or ""
+			if "from __future__" not in _code_to_exec[:200]:
+				_code_to_exec = "from __future__ import annotations\n" + _code_to_exec
 			try:
-				exec(strategy.code, temp_module)
+				exec(_code_to_exec, temp_module)
 				# 确保 exec 后 logger/logging 可用
 				if "logging" not in temp_module:
 					temp_module["logging"] = _logging

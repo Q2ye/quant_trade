@@ -156,6 +156,30 @@ class StrategyManager(EngineBase):
                 if hasattr(_typing, _tname):
                     temp_module[_tname] = getattr(_typing, _tname)
 
+            # v2.5: 注入策略专用依赖（兜底：防止旧策略代码仅含类体、缺少 import 导致 NameError）
+            try:
+                from modules.strategy.services.industry_scoring_service import (
+                    IndustryScore, IndustryScoringService, ScoringConfig,
+                )
+                temp_module["IndustryScore"] = IndustryScore
+                temp_module["IndustryScoringService"] = IndustryScoringService
+                temp_module["ScoringConfig"] = ScoringConfig
+            except ImportError:
+                pass
+            try:
+                from modules.strategy.services.etf_industry_mapper import (
+                    EtfIndustryMapper, EtfSelection,
+                )
+                temp_module["EtfIndustryMapper"] = EtfIndustryMapper
+                temp_module["EtfSelection"] = EtfSelection
+            except ImportError:
+                pass
+            try:
+                from modules.strategy.enums.sector_groups import get_sector
+                temp_module["get_sector"] = get_sector
+            except ImportError:
+                pass
+
             # v2.4: exec() 沙箱加固 — 全量 builtins，仅移除危险函数
             import builtins as _b
             safe_builtins = dict(vars(_b))
@@ -165,7 +189,12 @@ class StrategyManager(EngineBase):
             safe_builtins["__name__"] = "__main__"
             temp_module["__builtins__"] = safe_builtins
             try:
-                exec(code, temp_module)
+                # v2.5: 若策略代码不含 from __future__ import annotations，
+                # 则自动注入，避免类型注解（如 List[IndustryScore]）引发 NameError
+                _code_to_exec = code or ""
+                if "from __future__" not in _code_to_exec[:200]:
+                    _code_to_exec = "from __future__ import annotations\n" + _code_to_exec
+                exec(_code_to_exec, temp_module)
                 # 确保 exec 后 logger/logging 可用（策略代码 import logging 可能失败）
                 if "logging" not in temp_module:
                     temp_module["logging"] = _logging
@@ -230,6 +259,9 @@ class StrategyManager(EngineBase):
             strategy_type=strategy_type,
             parameters=parameters,
         )
+        # v2.5: 注入 DB 会话工厂，供策略 on_start 时加载历史预热数据
+        if self.session_factory:
+            strategy._db_session_factory = self.session_factory
 
         instance = StrategyInstance(
             id=strategy_id,
@@ -1135,6 +1167,7 @@ class StrategyManager(EngineBase):
             if isinstance(row, dict):
                 return BarData(
                     ts_code=row["ts_code"],
+                    period="daily",
                     trade_date=row.get("trade_date"),
                     open=float(row["open"]) if row["open"] else 0,
                     high=float(row["high"]) if row["high"] else 0,
@@ -1146,6 +1179,7 @@ class StrategyManager(EngineBase):
 
             return BarData(
                 ts_code=row.ts_code,
+                period="daily",
                 trade_date=row.trade_date,
                 open=float(row.open) if row.open else 0,
                 high=float(row.high) if row.high else 0,

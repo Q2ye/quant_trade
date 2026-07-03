@@ -40,7 +40,7 @@ from modules.analysis.analyzers.attribution.factor_attribution import FactorAttr
 from modules.analysis.models import AttributionAnalysis
 from shared.database.repositories import AccountRepository
 from shared.database.repositories import PositionRepository
-from shared.database.repositories import StockBasicRepository
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
 from shared.database.repositories import StrategyRepository
 from shared.database.repositories.market.quote import StockDailyRepository
 from shared.database.repositories.market.basic import IndexWeightRepository

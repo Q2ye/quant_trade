@@ -227,22 +227,10 @@ select * from factor_definitions
 
 drop table factor_definitions
 
--- 清理旧的大小写重复数据
-DELETE FROM factor_definitions;
-
-
-SELECT trade_date, COUNT(*) FROM stock_daily
-GROUP BY trade_date ORDER BY trade_date DESC LIMIT 20;
-
-SELECT * FROM account_daily_performance WHERE user_id =
-                                              (SELECT user_id FROM accounts WHERE id = '938ed1b6-fc5f-4db3-9ee5-69fdf5fb7c1d') ORDER BY trade_date;
-ALTER TABLE account_daily_performance
-ADD COLUMN account_id VARCHAR(36) REFERENCES accounts(id);
-
-
-ALTER TABLE backtest_trades
-    ALTER COLUMN direction TYPE VARCHAR(10);
-
--- 2. orders.direction: VARCHAR(4) → VARCHAR(10)
-ALTER TABLE orders
-    ALTER COLUMN direction TYPE VARCHAR(10);
+-- 3. 一只典型 ETF 近 20 日 amount 值（确认单位），例如 515170.SH（食品饮料）
+SELECT trade_date, close, vol, amount, pct_chg
+FROM etf_daily
+WHERE ts_code = '515170.SH'
+  AND trade_date BETWEEN '2026-06-01' AND '2026-07-02'
+ORDER BY trade_date DESC
+LIMIT 20;

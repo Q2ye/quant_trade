@@ -366,6 +366,12 @@ class BarData(BaseEntity):
     turnover: float = 0.0                #  turnover
     trade_date: Any = None               # 交易日期
     trade_time: Optional[datetime] = None  # 交易时间
+    # v2.5: SW 行业指数扩展字段（默认值保持向后兼容）
+    name: str = ""                       # 行业/标的名称
+    pe: float = 0.0                      # 市盈率
+    pb: float = 0.0                      # 市净率
+    float_mv: float = 0.0                # 流通市值
+    pct_chg: float = 0.0                 # 涨跌幅
 
 
 @dataclass(frozen=True)

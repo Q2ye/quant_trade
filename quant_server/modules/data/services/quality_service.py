@@ -17,13 +17,13 @@ from core.engines.system.event_engine import EventEngine
 from modules.data.events.types import DataQualityEvent
 from shared.cache.redis_cache import RedisCache
 # 导入共享层组件
-from shared.database.repositories import (
-	StockBasicRepository,
-	FactorDataRepository,
-	TradeCalendarRepository
-)
+# v2.5: 绕过 shared.database.repositories 顶层包的循环引用，
+# 直接从子模块导入，避免 StockBasicRepository 被设为 None
+from shared.database.repositories.market.basic.stock_repo import StockBasicRepository
+from shared.database.repositories.analysis.factor.factor_data_repo import FactorDataRepository
+from shared.database.repositories.market.reference.trade_calendar_repo import TradeCalendarRepository
 from shared.database.repositories.analysis.factor.data_quality_check_repo import DataQualityCheckRepository
-from shared.database.repositories.market.quote import StockDailyRepository
+from shared.database.repositories.market.quote.stock_daily_repo import StockDailyRepository
 
 # 配置日志
 logger = logging.getLogger(__name__)

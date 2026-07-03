@@ -57,11 +57,10 @@
 
         <n-card size="small" title="策略参数" style="margin-top:12px">
           <n-empty v-if="Object.keys(strategyParams).length === 0" description="无参数" size="small" style="padding:12px 0" />
-          <div v-else class="params-list">
+          <div v-else class="params-grid">
             <div v-for="(val, key) in strategyParams" :key="key" class="param-row">
               <span class="param-label">{{ paramLabel(key) }}</span>
-              <n-input-number :value="val" size="small" style="width:100%" :disabled="isLive"
-                @update:value="(v: number | null) => { if (v !== null) strategyParams[key] = v; }" />
+              <span class="param-value">{{ val }}</span>
             </div>
           </div>
         </n-card>
@@ -434,10 +433,13 @@ onBeforeUnmount(() => { clearPolling(); });
 }
 
 /* ---- 参数列表 ---- */
-.params-list {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  .param-row { display: flex; flex-direction: column; gap: 4px;
-    .param-label { font-size: 11px; color: var(--color-text-tertiary); font-weight: 500; }
+.params-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px;
+  .param-row {
+    display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;
+    padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+    .param-label { font-size: 12px; color: var(--color-text-tertiary); text-align: right; }
+    .param-value { font-size: 13px; color: var(--color-text-primary); word-break: break-all; }
   }
 }
 

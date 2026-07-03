@@ -66,9 +66,10 @@ class EtfIndustryMapper:
         selections = mapper.resolve(ranked_industries, current_holdings, etf_data_cache)
     """
 
-    # 流动性门槛
-    MIN_DAILY_AMOUNT: float = 1e7          # 1000 万元
-    MIN_DAILY_AMOUNT_FALLBACK: float = 5e6  # 500 万元（兜底）
+    # 流动性门槛（单位：千元 — 与 etf_daily.amount / index_sw_daily.amount 一致）
+    # Tushare 接口返回的 amount 单位为千元
+    MIN_DAILY_AMOUNT: float = 10000          # 1000 万元
+    MIN_DAILY_AMOUNT_FALLBACK: float = 5000   # 500 万元（兜底）
 
     def __init__(self, industry_etf_map: Optional[Dict[str, Dict[str, str]]] = None):
         """
@@ -133,6 +134,12 @@ class EtfIndustryMapper:
                 if code:
                     codes.add(code)
         return sorted(codes)
+
+    @staticmethod
+    def get_all_sw_codes() -> List[str]:
+        """v2.5: 获取所有申万 L1 行业指数代码"""
+        from modules.strategy.config.industry_etf_map import SW_L1_INDUSTRY_CODES
+        return list(SW_L1_INDUSTRY_CODES)
 
     # -------------------------------------------------------------------------
     # 内部逻辑

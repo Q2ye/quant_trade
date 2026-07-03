@@ -512,7 +512,7 @@ class StrategyService:
 				return {"success": False, "error": "无权克隆此策略"}
 
 			params = await self.param_repo.get_by_strategy_id(strategy_id)
-			param_dict = {p.name: p.value for p in params} if params else {}
+			param_dict = {p.param_name: p.param_value for p in params} if params else {}
 
 			clone_data = {
 				"name": new_name or f"{original.name}_副本",
@@ -552,8 +552,12 @@ class StrategyService:
 			parameters: Dict[str, Any],
 			user_id: str = "0",
 	) -> Dict[str, Any]:
-		"""查找或创建内置策略。先 update_by 匹配 user_id+class_name，无命中则创建。"""
+		"""查找或创建内置策略。v3.0: 合并策略类完整默认参数。"""
 		try:
+			full_params = dict(self._get_strategy_defaults(class_name))
+			if parameters:
+				full_params.update(parameters)
+
 			rowcount = await self.strategy_repo.update_by(
 				filters={"user_id": user_id, "class_name": class_name},
 				data={"code": code},
@@ -564,8 +568,7 @@ class StrategyService:
 					user_id=user_id, class_name=class_name, limit=1,
 				)
 				strategy = strategy_list[0]
-				if parameters:
-					for key, value in parameters.items():
+				for key, value in full_params.items():
 						await self.param_repo.batch_upsert(
 							match_fields=["strategy_id", "param_name"],
 							data_list=[{"strategy_id": strategy.id, "param_name": key,
@@ -578,7 +581,7 @@ class StrategyService:
 				return {"success": True, "data": {"id": strategy.id, "name": strategy.name, "is_new": False}}
 			result = await self.create_strategy(
 				name=name, strategy_type=strategy_type, code=code,
-				parameters=parameters, user_id=user_id,
+				parameters=full_params, user_id=user_id,
 			)
 			if result.get("success"):
 				result["is_new"] = True
@@ -730,7 +733,7 @@ class StrategyService:
 				f"若回测时提示 ModuleNotFoundError，说明该模块未安装。"
 			)
 
-		result = {"valid": True}
+		result: Dict[str, Any] = {"valid": True}
 		if warnings:
 			result["warnings"] = warnings
 		if unknown:
