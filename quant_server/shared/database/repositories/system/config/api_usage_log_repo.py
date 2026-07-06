@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.system_models import ApiUsageLog
-from shared.database.repositories import RepositoryError
+from shared.database.repositories.base.repository_base import RepositoryError
 from shared.database.repositories.base import BaseRepository
 
 

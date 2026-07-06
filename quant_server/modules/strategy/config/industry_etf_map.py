@@ -17,6 +17,17 @@ from typing import Dict, List, Optional
 
 # 行业名 → ETF 映射
 # 格式: { 行业名: {"primary": "主ETF代码", "secondary": "备选ETF代码"} }
+#
+# v2.6 跨行业 ETF 去重规则:
+#   当两个行业映射到同一只 primary ETF 时，高排名行业优先使用 primary，
+#   低排名行业自动降级到 secondary。若 secondary 也为空或被占用 → 跳过该行业。
+#   这可能导致实际持仓 < top_n，但保证了每只 ETF 背后是不同的行业逻辑。
+#
+# 已知 ETF 共享情况（代码层自动处理，无需手动规避）:
+#   159766.SZ ← 商贸零售(primary) > 社会服务(primary) > 美容护理(primary)
+#   516160.SH ← 电力设备(primary) > 石油石化(secondary)
+#   512200.SH ← 房地产(primary) > 商贸零售(secondary)
+#   516950.SH ← 建筑装饰(primary) > 交通运输(secondary)
 INDUSTRY_ETF_MAP: Dict[str, Dict[str, str]] = {
     # ---- 金融 ----
     "银行": {
@@ -85,16 +96,20 @@ INDUSTRY_ETF_MAP: Dict[str, Dict[str, str]] = {
         "primary": "159850.SZ",  # 消费 ETF（含纺织服饰权重）
         "secondary": "",
     },
+    # v2.6: 商贸零售/社会服务/美容护理 共享 159766.SZ
+    # 优先级: 商贸零售(primary) > 社会服务(降级) > 美容护理(降级)
+    # 商贸零售有 secondary 512200.SH，冲突时可降级
+    # 社会服务 & 美容护理 无专属 A 股 ETF，冲突时被跳过（避免假分散）
     "商贸零售": {
         "primary": "159766.SZ",
-        "secondary": "512200.SH",  # 消费 ETF
+        "secondary": "512200.SH",
     },
     "社会服务": {
-        "primary": "159766.SZ",  # 旅游 ETF（社会服务主要权重）
+        "primary": "159766.SZ",  # 无专属 ETF，依赖 159766.SZ
         "secondary": "",
     },
     "美容护理": {
-        "primary": "159766.SZ",  # 消费 ETF（含美容护理权重）
+        "primary": "159766.SZ",  # 无专属 ETF，依赖 159766.SZ
         "secondary": "",
     },
 
@@ -196,7 +211,6 @@ SW_L1_INDUSTRY_CODES: List[str] = [
     "801880.SI",  # 汽车
     "801890.SI",  # 机械设备
     "801950.SI",  # 石油石化
-    "801960.SI",  # 基础化工（细分）
     "801970.SI",  # 环保
     "801980.SI",  # 美容护理
 ]

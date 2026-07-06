@@ -48,7 +48,6 @@ from .models import Base
 from .repositories import (
     BaseRepository,
     HyperRepositoryBase,
-    RepositoryError,
     QueryBuilder,
     PaginationParams,
     PaginationResult,
@@ -56,6 +55,8 @@ from .repositories import (
     RepositoryFactory,
     get_repository_by_domain,
 )
+# RepositoryError 在 repository_base 中定义，直接导入避免循环依赖
+from .repositories.base.repository_base import RepositoryError
 
 __all__ = [
     # 会话管理

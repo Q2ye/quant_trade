@@ -186,7 +186,9 @@ class StrategyManager(EngineBase):
             # 移除可执行任意代码的危险函数
             for _danger in ("eval", "exec", "compile", "open", "input", "breakpoint"):
                 safe_builtins.pop(_danger, None)
-            safe_builtins["__name__"] = "__main__"
+            # v2.6: 使用正确的模块路径作为 __name__，确保策略中
+            # logging.getLogger(__name__) 的日志能沿标准层级传播到 root handler（含文件日志）
+            safe_builtins["__name__"] = "modules.strategy.strategies.custom"
             temp_module["__builtins__"] = safe_builtins
             try:
                 # v2.5: 若策略代码不含 from __future__ import annotations，
@@ -195,11 +197,13 @@ class StrategyManager(EngineBase):
                 if "from __future__" not in _code_to_exec[:200]:
                     _code_to_exec = "from __future__ import annotations\n" + _code_to_exec
                 exec(_code_to_exec, temp_module)
-                # 确保 exec 后 logger/logging 可用（策略代码 import logging 可能失败）
+                # v2.6: 补全 logging 基础设施，logger 名与 __name__ 保持一致
                 if "logging" not in temp_module:
                     temp_module["logging"] = _logging
                 if "logger" not in temp_module:
-                    temp_module["logger"] = _logging.getLogger("strategy")
+                    temp_module["logger"] = _logging.getLogger(
+                        temp_module.get("__name__", "strategy")
+                    )
             except ModuleNotFoundError as e:
                 missing = e.name or str(e)
                 raise ValueError(f"缺少依赖模块: {missing}") from e

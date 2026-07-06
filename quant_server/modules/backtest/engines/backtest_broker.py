@@ -296,7 +296,7 @@ class BacktestBroker(EngineBase):
             if not pos or avail < quantity:
                 raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{avail}")
 
-    def submit_order(
+    async def submit_order(
         self,
         ts_code: str,
         direction: str,
@@ -376,10 +376,8 @@ class BacktestBroker(EngineBase):
                 p.quantity * p.current_price for p in self.positions.values()
             )
 
-            import asyncio
-            loop = asyncio.get_event_loop()
-            passed, msg = loop.run_until_complete(
-                risk_engine.check_signal({
+            # 风控检查（sumbit_order 已改为 async，可以直接 await）
+            passed, msg = await risk_engine.check_signal({
                     "ts_code": ts_code,
                     "direction": "buy" if direction == "LONG" else "sell",
                     "price": price,
@@ -415,7 +413,6 @@ class BacktestBroker(EngineBase):
                     "suspended": False,
                     "daily_trade_count": len(self.trade_history),
                 })
-            )
             if not passed:
                 logger.info("[风控拦截 %s] %s → 拒绝下单", ts_code, msg)
                 # v3.0: 收集违规明细，供回测报告展示
@@ -503,6 +500,14 @@ class BacktestBroker(EngineBase):
 
         self.orders[order_id] = order
         self.pending_orders.append(order)
+
+        # ---- 卖出订单提前释放资金（支持同日卖→买） ----
+        # 回测 T+1 结算导致卖出次日才释放资金，同日买入因 cash 不足被拒。
+        # 此处预释放，标记订单避免 match_orders 重复入账。
+        if direction == "SHORT" and price > 0:
+            estimated_proceeds = price * quantity * (1 - self.config.commission_rate)
+            self.cash += estimated_proceeds
+            order._early_released = True
 
         logger.debug(
             f"订单创建: {order_id} {direction} {ts_code} "
@@ -635,7 +640,13 @@ class BacktestBroker(EngineBase):
                 self.cash -= total_cost
             else:
                 # 卖出：入账（不涉及冻结资金，卖出从不冻结）
-                self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
+                # 注意：如果订单已提前释放资金（_early_released），此处只做差价调整
+                if getattr(order, '_early_released', False):
+                    estimated = order.price * order.quantity * (1 - self.config.commission_rate)
+                    actual = fill_amount - commission - stamp_tax - transfer_fee
+                    self.cash += (actual - estimated)  # 多退少补
+                else:
+                    self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
 
             # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
             self._update_position(order, fill_price, trade_date)

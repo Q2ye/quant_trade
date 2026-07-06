@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.system_models import SystemHealthMetric
-from shared.database.repositories import RepositoryError
+from shared.database.repositories.base.repository_base import RepositoryError
 from shared.database.repositories.base import BaseRepository
 
 

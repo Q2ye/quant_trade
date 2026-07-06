@@ -47,7 +47,7 @@
               :class="['strategy-card', 'builtin-card']"
               @click="createFromTemplate(tpl)">
               <div class="sc-top">
-                <n-tag :type="builtinTypeTag(tpl.template_type || tpl.strategy_type) as any" size="tiny">{{ builtinTypeLabel(tpl.template_type || tpl.strategy_type) }}</n-tag>
+                <n-tag :type="builtinTypeTag(tpl.template_type || tpl.strategy_type)" size="tiny">{{ builtinTypeLabel(tpl.template_type || tpl.strategy_type) }}</n-tag>
               </div>
               <h4 class="sc-name">{{ builtinDisplayName(tpl) }}</h4>
               <span class="sc-type">{{ builtinDescription(tpl) }}</span>
@@ -66,7 +66,7 @@
             :class="['strategy-card', { selected: checkedKeys.includes(s.id) }]"
             @click="handleCardClick(s)">
             <div class="sc-top">
-              <n-tag :type="statusMap[s.status] as any" size="tiny">{{ statusText[s.status] || s.status }}</n-tag>
+              <n-tag :type="statusMap[s.status]" size="tiny">{{ statusText[s.status] || s.status }}</n-tag>
               <n-tag v-if="s.run_mode === 'live'" type="error" size="tiny" :bordered="false">实盘</n-tag>
               <n-tag v-if="s.execution_mode === 'semi_auto'" type="warning" size="tiny" :bordered="false">半自动</n-tag>
               <n-tag v-if="s.execution_mode === 'full_auto'" type="info" size="tiny" :bordered="false">全自动</n-tag>
@@ -291,14 +291,18 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
       hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
       stop_loss: '止损比例(%)', take_profit: '止盈比例(%)' } },
-    IndustryRotationStrategy: { name: 'ETF 行业轮动策略', desc: '申万31行业多因子评分（趋势动量+资金量价+估值空间），板块去重，每周轮动 Top5 行业 ETF。',
-    params: { top_n: '持仓行业数', buffer_rank: '卖出缓冲排名', rebalance_frequency: '调仓频率(天)', cooling_period: '冷却期(天)',
-      stop_loss: '止损比例', take_profit: '止盈比例', max_sector_limit: '同板块最大持仓',
-      trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
+    IndustryRotationStrategy: { name: '主线趋势策略 V4', desc: '申万31行业多因子评分(趋势55%+资金30%+估值15%)，市场三态分类，三层入场确认，趋势断裂+移动止损出场。',
+    params: { rebalance_frequency: '调仓频率(天)', cooling_period: '冷却期(天)', min_history: '最低数据条数', max_sector_limit: '同板块上限',
+      stop_loss: '硬止损比例', trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
       momentum_windows: '动量窗口', momentum_weights: '动量权重',
-      entry_rsi_max: '入场RSI上限', entry_vol_ratio_min: '入场量比下限',
-      exit_vol_duration: '出场量比持续天数', entry_score_gap: '板块去重得分差',
-      factor_override: '因子覆写(调试)', verbose_logging: '详细日志' } },
+      v4_bull_width_min: 'BULL宽度', v4_bear_width_max: 'BEAR宽度',
+      v4_confirm_min_score: '最低得分', v4_confirm_min_trend: '最低趋势分', v4_confirm_max_deviation: '最大MA20偏离',
+      v4_batch_1: '首批仓位', v4_batch_2: '二批仓位', v4_batch_3: '三批仓位',
+      v4_add_threshold_1: '加仓阈值1', v4_add_threshold_2: '加仓阈值2',
+      v4_add_size_1: '加仓量1', v4_add_size_2: '加仓量2', v4_position_max: '仓位上限',
+      v4_trail_stop_ratio: '移动止损', v4_heavy_stop_ratio: '重仓止损',
+      v4_rs_sell_60d: 'RS60阈值', v4_rs_sell_20d: 'RS20阈值',
+      factor_override: '因子覆写', verbose_logging: '详细日志' } },
 };
 // v3.0: 从模板 code_template 提取 class_name 用于 BUILTIN_META 查表
 const extractClassName = (tpl: any) => {

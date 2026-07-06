@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import select, and_, desc, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database import RepositoryError
+from shared.database.repositories.base.repository_base import RepositoryError
 from shared.database.models.data_models import StockAdjustedPrices, StockAdjFactor
 from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
 

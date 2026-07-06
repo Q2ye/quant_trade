@@ -120,9 +120,14 @@ class DailyStrategyRunner:
     async def _step_generate_adjusted_prices(self, trade_date: date) -> dict:
         """Step 2: 生成前复权价格"""
         logger.info(f"开始生成前复权价格: {trade_date}")
-        # 调用 sync_service._sync_adjusted_prices() 生成当日复权数据
-        return {"step": "adjusted_prices", "status": "completed",
-                "detail": f"复权价格生成完成 {trade_date}"}
+        try:
+            from modules.data.services.adjusted_price_generator import generate_adjusted_prices
+            result = await generate_adjusted_prices(self.db, trade_date)
+            return {"step": "adjusted_prices", "status": "completed",
+                    "detail": f"生成 {result.get('inserted_count', 0)} 条复权价格"}
+        except Exception as e:
+            logger.warning(f"复权价格生成失败（非致命: 在线复权兜底）: {e}")
+            return {"step": "adjusted_prices", "status": "warning", "detail": str(e)}
 
     async def _step_expire_stale_signals(self, trade_date: date) -> dict:
         """

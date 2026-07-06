@@ -695,6 +695,37 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 
 		return max(0.0, min(100.0, score))
 
+	async def get_batch_by_date_range (
+			self,
+			symbols: List[str],
+			start_date: date,
+			end_date: date,
+	) -> Dict[str, Dict[date, float]]:
+		"""
+		批量获取多只股票在时间范围内的每日复权因子。
+
+		Args:
+			symbols: 股票 TS 代码列表
+			start_date: 开始日期
+			end_date: 结束日期
+
+		Returns:
+			{ts_code: {trade_date: adj_factor}} — 用于在线计算复权价格
+		"""
+		from collections import defaultdict
+		result: Dict[str, Dict[date, float]] = defaultdict(dict)
+		try:
+			query = select(self.model).where(
+				self.model.ts_code.in_(symbols),
+				self.model.trade_date.between(start_date, end_date),
+			).order_by(self.model.ts_code, self.model.trade_date)
+			rows = await self.session.execute(query)
+			for row in rows.scalars().all():
+				result[row.ts_code][row.trade_date] = float(row.adj_factor)
+		except Exception as e:
+			raise RepositoryError(f"批量查询复权因子失败: {e}")
+		return dict(result)
+
 	# ==================== 批量操作方法 ====================
 
 	async def batch_insert_factors (

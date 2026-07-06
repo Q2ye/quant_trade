@@ -21,7 +21,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.testing.schema import Column
 
 from shared.database.models.business_models import Order, Trade, Account, Strategy, SysUser
-from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.base import BaseRepository, RepositoryError
 from shared.database.repositories.types import (
 	PaginationParams,
 	PaginationResult,

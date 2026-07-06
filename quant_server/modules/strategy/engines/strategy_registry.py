@@ -166,6 +166,7 @@ class StrategyRegistry:
             "alpha": StrategyType.ALPHA,
             "ai": StrategyType.ML,
             "rotation": StrategyType.ROTATION,
+            "reference": StrategyType.CUSTOM,
         }
 
         registered_count = 0

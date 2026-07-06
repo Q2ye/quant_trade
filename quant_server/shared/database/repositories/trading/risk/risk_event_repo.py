@@ -12,7 +12,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.business_models import RiskEvent, RiskRule, Strategy, SysUser
-from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase
+from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
 
 
 class RiskEventRepository(HyperRepositoryBase):

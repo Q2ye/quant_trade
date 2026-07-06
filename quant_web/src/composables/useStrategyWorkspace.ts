@@ -38,7 +38,7 @@ export function useStrategyWorkspace() {
   const saving = ref(false);
   const strategyName = ref("未命名策略");
   const strategyCode = ref("# 在此编写策略代码\n");
-  const strategyParams = ref<Record<string, number>>({});
+  const strategyParams = ref<Record<string, any>>({});
   const strategyStatus = ref("draft");
 
   // ---- 回测状态 ----

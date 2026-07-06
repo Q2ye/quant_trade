@@ -520,7 +520,7 @@ class BacktestEngine(EngineBase):
 				if quantity <= 0:
 					continue
 
-				broker.submit_order(ts_code, direction, price, quantity)
+				await broker.submit_order(ts_code, direction, price, quantity)
 				signal_count += 1
 				day_signals += 1
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----

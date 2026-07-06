@@ -111,9 +111,19 @@ class DataFeedEngine(EngineBase):
         - L1: 801XXX.SI (如 801780.SI = 银行)
         - L2: 801XXX.SI
         - L3: 850XXX.SI
-        - 万得全A: 881001.WI
+
+        v2.6: .WI 后缀（如 881001.WI 万得全A）不走 SW 指数路径，
+        应作为普通指数从 index_daily 加载。
         """
-        return ts_code.endswith(".SI") or ts_code.endswith(".WI")
+        return ts_code.endswith(".SI")
+
+    @staticmethod
+    def _is_general_index(ts_code: str) -> bool:
+        """v2.6: 判断是否为普通指数（非 SW 行业指数，非 ETF）
+
+        如 881001.WI (万得全A) — .WI 后缀，数据在 index_daily 表
+        """
+        return ts_code.endswith(".WI")
 
     @property
     def daily_repo(self):
@@ -218,14 +228,16 @@ class DataFeedEngine(EngineBase):
         if isinstance(end_date, str):
             end_date = _date_class.fromisoformat(end_date)
 
-        # 拆分股票和 ETF（v2.0: 自动按代码类型分派数据源）
-        stock_symbols = [s for s in symbols if not self._is_etf(s) and not self._is_sw_index(s)]
+        # 拆分标的类型（v2.6: 增加 .WI 等普通指数路由）
+        idx_symbols = [s for s in symbols if self._is_general_index(s)]
+        stock_symbols = [s for s in symbols if not self._is_etf(s) and not self._is_sw_index(s) and not self._is_general_index(s)]
         etf_symbols = [s for s in symbols if self._is_etf(s)]
-        sw_symbols = [s for s in symbols if self._is_sw_index(s)]  # v3.0: 申万行业指数
+        sw_symbols = [s for s in symbols if self._is_sw_index(s)]
 
         logger.info(
             f"开始加载历史数据: {len(stock_symbols)} 只股票 + {len(etf_symbols)} 只 ETF"
-            f" + {len(sw_symbols)} 个行业指数, "
+            f" + {len(sw_symbols)} 个行业指数"
+            f" + {len(idx_symbols)} 个普通指数, "
             f"{start_date} ~ {end_date}, 复权={self.adj_type}"
         )
 
@@ -264,14 +276,53 @@ class DataFeedEngine(EngineBase):
                 r.get("ts_code", "").startswith(tuple(stock_symbols[:1]))
                 for r in all_records[-10:] if all_records
             ):
-                logger.info("复权价格数据为空，回退到 stock_daily 原始数据")
+                logger.info("stock_adjusted_prices 表为空，使用 stock_daily + stock_adj_factor 在线前复权")
                 try:
                     records = await self._load_daily_batch(
                         symbols=stock_symbols,
                         start_date=start_date,
                         end_date=end_date,
                     )
+                    # 在线加载复权因子并计算复权价格（替代缺失的预计算表）
+                    adj_factors: Dict[str, Dict[date, float]] = {}
+                    try:
+                        from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+                            StockAdjFactorRepository,
+                        )
+                        adj_repo = StockAdjFactorRepository(self.db)
+                        adj_factors = await adj_repo.get_batch_by_date_range(
+                            symbols=stock_symbols,
+                            start_date=start_date,
+                            end_date=end_date,
+                        )
+                        if adj_factors:
+                            logger.info(f"在线复权: {len(adj_factors)}/ {len(stock_symbols)} 只股票有复权因子")
+                    except Exception:
+                        logger.debug("复权因子加载失败，使用原始价格")
+
                     for r in records:
+                        price_open = float(r.open) if r.open else None
+                        price_high = float(r.high) if r.high else None
+                        price_low = float(r.low) if r.low else None
+                        price_close = float(r.close) if r.close else None
+
+                        # 应用复权因子（前复权：价格 × adj_factor）
+                        if adj_factors and r.ts_code in adj_factors:
+                            af_map = adj_factors[r.ts_code]
+                            td = r.trade_date.date() if hasattr(r.trade_date, "date") else r.trade_date
+                            # 用当日的复权因子
+                            af = af_map.get(td)
+                            # 如果当日没有，用最近的前一个日期
+                            if af is None:
+                                _dates = [d for d in sorted(af_map.keys()) if d <= td]
+                                if _dates:
+                                    af = af_map[_dates[-1]]
+                            if af is not None and af > 0:
+                                if price_open: price_open *= af
+                                if price_high: price_high *= af
+                                if price_low:  price_low  *= af
+                                if price_close: price_close *= af
+
                         all_records.append({
                             "ts_code": r.ts_code,
                             "trade_date": (
@@ -279,15 +330,35 @@ class DataFeedEngine(EngineBase):
                                 if hasattr(r.trade_date, "date")
                                 else r.trade_date
                             ),
-                            "open": float(r.open) if r.open else None,
-                            "high": float(r.high) if r.high else None,
-                            "low": float(r.low) if r.low else None,
-                            "close": float(r.close) if r.close else None,
+                            "open": price_open,
+                            "high": price_high,
+                            "low": price_low,
+                            "close": price_close,
                             "volume": float(r.vol) if r.vol else 0.0,
                             "amount": float(r.amount) if r.amount else 0.0,
                         })
                 except Exception as e:
                     logger.warning(f"批量加载日线数据失败: {e}")
+
+            # v2.6: stock_daily 未命中的标的 → 尝试 index_daily（如 000300.SH 沪深300）
+            _stock_found = {r.get("ts_code", "") for r in all_records if r.get("ts_code", "")}
+            _stock_missed = [s for s in stock_symbols if s not in _stock_found]
+            if _stock_missed:
+                try:
+                    idx_fallback = await self._load_index_batch(
+                        symbols=_stock_missed,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                    if idx_fallback:
+                        all_records.extend(idx_fallback)
+                        _fb_codes = {r["ts_code"] for r in idx_fallback}
+                        logger.info(
+                            f"index_daily 兜底加载: {len(idx_fallback)} 条 / "
+                            f"{len(_fb_codes)} 个指数 ({', '.join(sorted(_fb_codes))})"
+                        )
+                except Exception as e:
+                    logger.debug(f"index_daily 兜底加载失败: {e}")
 
         # ---- ETF：使用 etf_daily JOIN fund_adj_factor 计算复权价格 ----
         if etf_symbols:
@@ -342,6 +413,31 @@ class DataFeedEngine(EngineBase):
                     )
             except Exception as e:
                 logger.warning(f"批量加载申万行业指数数据失败: {e}")
+
+        # ---- v2.6: 普通指数（如 881001.WI）从 index_daily 加载 ----
+        if idx_symbols:
+            try:
+                idx_records = await self._load_index_batch(
+                    symbols=idx_symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                all_records.extend(idx_records)
+                _idx_by_code: Dict[str, int] = {}
+                for r in idx_records:
+                    _idx_by_code[r["ts_code"]] = _idx_by_code.get(r["ts_code"], 0) + 1
+                _idx_empty = [s for s in idx_symbols if s not in _idx_by_code]
+                logger.info(
+                    f"普通指数数据加载: {len(idx_records)} 条 / {len(idx_symbols)} 个, "
+                    f"有数据={len(_idx_by_code)} 个, 无数据={len(_idx_empty)} 个"
+                )
+                if _idx_empty:
+                    logger.warning(
+                        f"普通指数无数据 ({start_date}~{end_date}): "
+                        f"{', '.join(_idx_empty)}"
+                    )
+            except Exception as e:
+                logger.warning(f"批量加载普通指数数据失败: {e}")
 
         if not all_records:
             logger.warning(f"未加载到任何数据: {len(symbols)} 只股票, {start_date}~{end_date}")
@@ -717,6 +813,54 @@ class DataFeedEngine(EngineBase):
                 "float_mv": float(row.get("float_mv") or 0),
                 "pct_chg": float(row.get("pct_change") or 0),
             })
+
+        return records
+
+    # ---- v2.6: 普通指数数据加载 ----
+
+    async def _load_index_batch(
+        self,
+        symbols: List[str],
+        start_date,
+        end_date,
+    ) -> List[Dict[str, Any]]:
+        """
+        v2.6: 从 index_daily 表加载普通指数日线数据。
+
+        适用于 881001.WI (万得全A) 等非 SW 行业指数的普通指数。
+        """
+        from sqlalchemy import text
+
+        records: List[Dict[str, Any]] = []
+        for code in symbols:
+            try:
+                result = await self.db.execute(
+                    text(
+                        "SELECT ts_code, trade_date, open, high, low, close, vol, amount "
+                        "FROM index_daily "
+                        "WHERE ts_code = :code AND trade_date BETWEEN :start AND :end "
+                        "ORDER BY trade_date ASC"
+                    ),
+                    {"code": code, "start": start_date, "end": end_date},
+                )
+                rows = result.fetchall()
+                for row in rows:
+                    records.append({
+                        "ts_code": str(row.ts_code),
+                        "trade_date": (
+                            row.trade_date.date()
+                            if hasattr(row.trade_date, "date")
+                            else row.trade_date
+                        ),
+                        "open": float(row.open) if row.open else 0.0,
+                        "high": float(row.high) if row.high else 0.0,
+                        "low": float(row.low) if row.low else 0.0,
+                        "close": float(row.close) if row.close else 0.0,
+                        "volume": float(row.vol) if row.vol else 0.0,
+                        "amount": float(row.amount) if row.amount else 0.0,
+                    })
+            except Exception as e:
+                logger.warning(f"加载指数 {code} 数据失败: {e}")
 
         return records
 

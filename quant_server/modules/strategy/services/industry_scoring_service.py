@@ -1,15 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-行业多因子评分服务
+行业多因子评分服务 — V4 主线趋势版
 
 对 31 个申万一级行业进行多维度打分，输出排序结果。
 
-因子体系：
-  - 趋势动量 (45%)：多窗口动量 + 加速度 + 相对强弱
-  - 资金量价 (30%)：量比 + 价量配合 + 换手加速度
-  - 估值空间 (25%)：PE/PB 分位 + 估值扩张方向
+因子体系（V4 权重调整）：
+  - 趋势动量 (55%)：多窗口动量 + 加速度 + 相对强弱 → 主线识别核心
+  - 资金量价 (30%)：量比 + 价量配合 + 换手加速度 → 量能确认
+  - 估值空间 (15%)：PE/PB 历史分位 → 仅做过热过滤，不选方向
 
 归一化方法：横截面 z-score → sigmoid 映射到 [0, 1]
+
+V4 变更（2026-07-04）：
+  1. 大类权重 trend/valuation 从 45/25 → 55/15
+  2. 动量窗口从 4 窗(250日)改为 3 窗(120日)，偏重中短期
+  3. 估值因子从"越便宜越高分"改为"中间中性，两头扣分"
+  4. 去掉 C3 估值扩张方向（与主线捕捉无关）
 """
 
 import logging
@@ -31,14 +37,17 @@ logger = logging.getLogger(__name__)
 class ScoringConfig:
     """因子评分配置（所有参数可通过策略参数覆盖）"""
 
-    # 大类权重（之和必须为 1.0）
-    trend_weight: float = 0.45
-    volume_weight: float = 0.30
-    valuation_weight: float = 0.25
+    # —— 大类权重（之和必须为 1.0）——
+    # V4 变动：趋势主导，估值只做过滤
+    trend_weight: float = 0.55      # 从 0.45 → 0.55（主线由动量驱动）
+    volume_weight: float = 0.30     # 不变
+    valuation_weight: float = 0.15  # 从 0.25 → 0.15（只过滤不选方向）
 
-    # 趋势动量 — 子因子权重
-    momentum_windows: List[int] = field(default_factory=lambda: [20, 60, 120, 250])
-    momentum_weights: List[float] = field(default_factory=lambda: [0.15, 0.25, 0.35, 0.25])
+    # —— 趋势动量 ——
+    # A2 动量加速度（R_short − R_long）使用 momentum_windows[0]/[1]
+    # 默认 [10, 30, 60]，A2 用前两个窗口计算"短期加速"
+    momentum_windows: List[int] = field(default_factory=lambda: [10, 30, 60])
+    momentum_weights: List[float] = field(default_factory=lambda: [0.40, 0.35, 0.25])
     momentum_accel_short: int = 20    # 加速度：短期窗口
     momentum_accel_long: int = 60     # 加速度：中期窗口
     rs_window: int = 60               # 相对强弱窗口
@@ -46,7 +55,7 @@ class ScoringConfig:
     sub_weight_a2: float = 0.25       # A2 加速度权重
     sub_weight_a3: float = 0.25       # A3 相对强弱权重
 
-    # 资金量价 — 子因子权重
+    # —— 资金量价 ——
     vol_ratio_short: int = 5          # 量比短期窗口
     vol_ratio_long: int = 60          # 量比长期窗口
     vol_price_window: int = 20        # 价量配合窗口
@@ -56,14 +65,11 @@ class ScoringConfig:
     sub_weight_b2: float = 0.35       # B2 价量配合权重
     sub_weight_b3: float = 0.25       # B3 换手加速度权重
 
-    # 估值空间 — 子因子权重
+    # —— 估值空间（V4：只做过热/价值陷阱过滤）——
     pe_percentile_years: int = 5      # PE 分位回溯年数
     pb_percentile_years: int = 5      # PB 分位回溯年数
-    pe_expansion_window: int = 60     # 估值扩张对比窗口
-    valuation_trap_threshold: float = 0.10  # 价值陷阱：PE 分位低于此但动量 < 0
-    sub_weight_c1: float = 0.40       # C1 PE 分位权重
-    sub_weight_c2: float = 0.35       # C2 PB 分位权重
-    sub_weight_c3: float = 0.25       # C3 估值扩张权重
+    sub_weight_c1: float = 0.55       # C1 PE 分位权重（V4 去掉 C3 后重分配）
+    sub_weight_c2: float = 0.45       # C2 PB 分位权重
 
     # RSI（入场/出场辅助判断）
     rsi_period: int = 14
@@ -83,8 +89,8 @@ class ScoringConfig:
         vsub = self.sub_weight_b1 + self.sub_weight_b2 + self.sub_weight_b3
         if abs(vsub - 1.0) > 0.01:
             errors.append(f"量价子权重之和={vsub:.3f}，应≈1.0")
-        # 估值子权重
-        vasub = self.sub_weight_c1 + self.sub_weight_c2 + self.sub_weight_c3
+        # 估值子权重（V4：只有 C1+C2，没有 C3）
+        vasub = self.sub_weight_c1 + self.sub_weight_c2
         if abs(vasub - 1.0) > 0.01:
             errors.append(f"估值子权重之和={vasub:.3f}，应≈1.0")
         # 动量窗口与权重
@@ -121,8 +127,8 @@ class IndustryScore:
             self.volume_score,
             self.valuation_score,
         ], dtype=np.float64)
-        # 追加子因子
-        for key in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]:
+        # 追加子因子（V4：C3 已移除）
+        for key in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2"]:
             vec = np.append(vec, self.factors.get(key, 0.0))
         self.factor_vector = vec
         return vec
@@ -135,7 +141,7 @@ class IndustryScore:
 
 class IndustryScoringService:
     """
-    申万行业多因子评分引擎。
+    申万行业多因子评分引擎 — V4 版。
 
     无状态纯计算服务。输入各行业日线 DataFrame，输出排序后的 IndustryScore 列表。
 
@@ -163,10 +169,8 @@ class IndustryScoringService:
 
         Args:
             industry_data: {行业代码: DataFrame[close, vol, amount, pe, pb, float_mv]}
-                           index 为 trade_date
-            benchmark_prices: 基准指数日线 DataFrame（用于相对强弱 A3），
-                             columns 含 'close'，index 为 trade_date
-            prev_scores: 上周各行业综合得分 {行业代码: 得分}，用于计算边际变化
+            benchmark_prices: 基准指数日线 DataFrame（用于相对强弱 A3）
+            prev_scores: 上期各行业综合得分 {行业代码: 得分}，用于计算边际变化
             factor_override: 调试用：{行业代码: {因子名: 手动值}} 覆写计算值
 
         Returns:
@@ -189,28 +193,28 @@ class IndustryScoringService:
         self._apply_overrides(valuation_scores, factor_override, "valuation")
 
         # ---- 子因子横截面归一化 ----
-        all_sub_factors: Dict[str, Dict[str, float]] = {}  # {行业代码: {因子名: 归一化值}}
+        all_sub_factors: Dict[str, Dict[str, float]] = {}
 
-        # 收集所有子因子
+        # 收集所有子因子（V4：C3 已去除）
         for industry_code in industry_data:
             tf = trend_scores.get(industry_code, {})
             vf = volume_scores.get(industry_code, {})
             vlf = valuation_scores.get(industry_code, {})
             all_sub_factors[industry_code] = {
-                "A1": tf.get("A1", 0.0),
-                "A2": tf.get("A2", 0.0),
-                "A3": tf.get("A3", 0.0),
-                "B1": vf.get("B1", 0.0),
-                "B2": vf.get("B2", 0.0),
-                "B3": vf.get("B3", 0.0),
-                "C1": vlf.get("C1", 0.0),
-                "C2": vlf.get("C2", 0.0),
-                "C3": vlf.get("C3", 0.0),
+                "A1": tf.get("A1_raw", 0.0),
+                "A2": tf.get("A2_raw", 0.0),
+                "A3": tf.get("A3_raw", 0.0),
+                "B1": vf.get("B1_raw", 0.0),
+                "B2": vf.get("B2_raw", 0.0),
+                "B3": vf.get("B3_raw", 0.0),
+                "C1": vlf.get("C1_raw", 0.0),
+                "C2": vlf.get("C2_raw", 0.0),
             }
 
         # 每个子因子独立横截面归一化
         normalized_factors: Dict[str, Dict[str, float]] = {}
-        for factor_name in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]:
+        # V4：C3 已去除，共 8 个子因子
+        for factor_name in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2"]:
             values = {
                 code: all_sub_factors[code].get(factor_name, 0.0)
                 for code in industry_data
@@ -226,10 +230,10 @@ class IndustryScoringService:
             # 子因子值（归一化后）
             sub = {
                 k: normalized_factors[k].get(industry_code, 0.5)
-                for k in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"]
+                for k in ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2"]
             }
 
-            # 大类得分
+            # 大类得分（V4：C3 已去除）
             cfg = self.config
             trend = (
                 cfg.sub_weight_a1 * sub["A1"]
@@ -244,18 +248,9 @@ class IndustryScoringService:
             valuation = (
                 cfg.sub_weight_c1 * sub["C1"]
                 + cfg.sub_weight_c2 * sub["C2"]
-                + cfg.sub_weight_c3 * sub["C3"]
             )
 
-            # ---- 价值陷阱惩罚 ----
-            pe_percentile_raw = valuation_scores.get(industry_code, {}).get("C1_raw", 0.5)
-            momentum_a1_raw = trend_scores.get(industry_code, {}).get("A1_raw", 0.0)
-            if pe_percentile_raw < cfg.valuation_trap_threshold and momentum_a1_raw < 0:
-                valuation *= 0.3  # 极度便宜但仍在跌 → 估值分打折
-                logger.debug(
-                    f"价值陷阱检测: {name}({industry_code}) PE分位={pe_percentile_raw:.2%} "
-                    f"动量={momentum_a1_raw:.3f} → 估值分打折"
-                )
+            # V4 删除：价值陷阱惩罚（估值不再做方向性判断）
 
             # 综合得分
             composite = (
@@ -282,7 +277,6 @@ class IndustryScoringService:
                 "B3": volume_scores.get(industry_code, {}).get("B3_raw", 0.0),
                 "C1": valuation_scores.get(industry_code, {}).get("C1_raw", 0.0),
                 "C2": valuation_scores.get(industry_code, {}).get("C2_raw", 0.0),
-                "C3": valuation_scores.get(industry_code, {}).get("C3_raw", 0.0),
             }
 
             score = IndustryScore(
@@ -318,12 +312,15 @@ class IndustryScoringService:
     ) -> Dict[str, Dict[str, float]]:
         """
         计算趋势动量子因子：
-          A1: 多窗口加权动量
-          A2: 动量加速度（R_short − R_long）
-          A3: 相对强弱（vs 基准）
+          A1: 多窗口加权动量（当前权重 0，保留备用）
+          A2: 动量加速度（R_short − R_long），IC = +0.0698，唯一强正因子
+          A3: 相对强弱（vs 基准，当前权重 0，保留备用）
+
+        V4：动量窗口从 4 窗改为 3 窗（10/30/60），偏重中短期。
         """
         cfg = self.config
         result: Dict[str, Dict[str, float]] = {}
+        min_window = min(cfg.momentum_windows)
 
         # 基准动量（用于相对强弱）
         benchmark_momentum = 0.0
@@ -335,28 +332,38 @@ class IndustryScoringService:
                 benchmark_momentum = float(bm_curr / bm_prev - 1.0)
 
         for code, df in industry_data.items():
-            closes = df["close"].values
-            if len(closes) < max(cfg.momentum_windows) + 1:
+            closes = df["close"].values.astype(np.float64)
+            if len(closes) < min_window + 1:
                 continue
 
             # A1: 多窗口加权动量
-            momentum_values = []
-            for w in cfg.momentum_windows:
+            available_mvs = []
+            available_ws = []
+            for w, mw in zip(cfg.momentum_windows, cfg.momentum_weights):
                 if len(closes) >= w + 1 and closes[-w - 1] > 0:
-                    momentum_values.append(float(closes[-1] / closes[-w - 1] - 1.0))
-                else:
-                    momentum_values.append(0.0)
-            a1_raw = sum(mv * mw for mv, mw in zip(momentum_values, cfg.momentum_weights))
+                    available_mvs.append(float(closes[-1] / closes[-w - 1] - 1.0))
+                    available_ws.append(mw)
+            if available_ws:
+                total_w = sum(available_ws)
+                a1_raw = sum(mv * w / total_w for mv, w in zip(available_mvs, available_ws))
+            else:
+                a1_raw = 0.0
 
-            # A2: 动量加速度
-            r_short = momentum_values[0] if len(momentum_values) > 0 else 0.0
-            r_long = momentum_values[1] if len(momentum_values) > 1 else 0.0
+            # A2: 动量加速度（R_short − R_long）
+            # IC = +0.0698（10d-30d，整个 2022-2025 区间），是唯一强正因子
+            if len(available_mvs) >= 2:
+                r_short = available_mvs[0]
+                r_long = available_mvs[1] if len(available_mvs) > 1 else 0.0
+            else:
+                r_short = available_mvs[0] if available_mvs else 0.0
+                r_long = 0.0
             a2_raw = r_short - r_long
 
-            # A3: 相对强弱（行业动量 − 基准动量）
+            # A3: 相对强弱
             industry_momentum = 0.0
-            if len(closes) >= cfg.rs_window + 1 and closes[-cfg.rs_window - 1] > 0:
-                industry_momentum = float(closes[-1] / closes[-cfg.rs_window - 1] - 1.0)
+            actual_rs_window = min(cfg.rs_window, len(closes) - 1)
+            if actual_rs_window > 0 and closes[-actual_rs_window - 1] > 0:
+                industry_momentum = float(closes[-1] / closes[-actual_rs_window - 1] - 1.0)
             a3_raw = industry_momentum - benchmark_momentum
 
             result[code] = {
@@ -383,15 +390,17 @@ class IndustryScoringService:
         """
         cfg = self.config
         result: Dict[str, Dict[str, float]] = {}
+        min_window = min(cfg.vol_ratio_short, cfg.turnover_short)
 
         for code, df in industry_data.items():
-            if len(df) < cfg.vol_ratio_long + 1:
+            if len(df) < min_window + 1:
                 continue
 
             # B1: 量比
             vol_arr = df["vol"].values.astype(float)
             short_vol = np.mean(vol_arr[-cfg.vol_ratio_short:]) if len(vol_arr) >= cfg.vol_ratio_short else np.mean(vol_arr)
-            long_vol = np.mean(vol_arr[-cfg.vol_ratio_long:]) if len(vol_arr) >= cfg.vol_ratio_long else 1.0
+            actual_long = min(cfg.vol_ratio_long, len(vol_arr))
+            long_vol = np.mean(vol_arr[-actual_long:]) if actual_long > 0 else 1.0
             b1_raw = float(short_vol / long_vol) if long_vol > 0 else 0.0
 
             # B2: 价量配合度
@@ -431,7 +440,7 @@ class IndustryScoringService:
         return result
 
     # -------------------------------------------------------------------------
-    # 估值空间因子（C 类）
+    # 估值空间因子（C 类）— V4 重写
     # -------------------------------------------------------------------------
 
     def _calc_valuation_factors(
@@ -439,58 +448,64 @@ class IndustryScoringService:
         industry_data: Dict[str, pd.DataFrame],
     ) -> Dict[str, Dict[str, float]]:
         """
-        计算估值空间子因子：
-          C1: PE 历史分位（1 − percentile）— 越低越便宜，得分越高
-          C2: PB 历史分位 — 同上
-          C3: 估值扩张方向（PE 当前 vs 窗口前）
+        计算估值过滤子因子。
+
+        V4 改造（核心变更）：
+          估值不再用于"选方向"，只做两件事：
+            1. PE/PB 历史分位过高（>95%）→ 过热预警（低分）
+            2. PE/PB 过低（<5%）→ 价值陷阱预警（中低分）
+            其他 → 中性分（不额外加分也不扣分）
+
+          原来 C3 估值扩张已移除（与主线捕捉无关）。
         """
-        cfg = self.config
         result: Dict[str, Dict[str, float]] = {}
 
         for code, df in industry_data.items():
             if len(df) < 1:
                 continue
 
-            # 检查 PE/PB 是否存在
             has_pe = "pe" in df.columns and df["pe"].notna().any()
             has_pb = "pb" in df.columns and df["pb"].notna().any()
 
-            # C1: PE 分位
-            c1_raw = 0.5  # 默认中等
-            if has_pe:
-                pe_arr = df["pe"].dropna().values.astype(float)
-                pe_arr = pe_arr[pe_arr > 0]  # 负 PE 无意义
-                if len(pe_arr) > 0:
-                    current_pe = pe_arr[-1]
-                    percentile = np.mean(pe_arr <= current_pe)
-                    c1_raw = float(1.0 - percentile)  # 越低越便宜 → 得分越高
+            # C1: PE 分位 — V4 改为两头扣分逻辑
+            c1_raw = self._calc_percentile_filter(df, "pe") if has_pe else 0.5
 
-            # C2: PB 分位
-            c2_raw = 0.5
-            if has_pb:
-                pb_arr = df["pb"].dropna().values.astype(float)
-                pb_arr = pb_arr[pb_arr > 0]
-                if len(pb_arr) > 0:
-                    current_pb = pb_arr[-1]
-                    percentile = np.mean(pb_arr <= current_pb)
-                    c2_raw = float(1.0 - percentile)
-
-            # C3: 估值扩张（PE 变化方向）
-            c3_raw = 0.0
-            if has_pe:
-                pe_arr = df["pe"].dropna().values.astype(float)
-                pe_arr = pe_arr[pe_arr > 0]
-                window = min(cfg.pe_expansion_window, len(pe_arr) - 1)
-                if window > 0 and len(pe_arr) > window and pe_arr[-window - 1] > 0:
-                    c3_raw = float(pe_arr[-1] / pe_arr[-window - 1] - 1.0)
+            # C2: PB 分位 — 同上
+            c2_raw = self._calc_percentile_filter(df, "pb") if has_pb else 0.5
 
             result[code] = {
                 "C1_raw": c1_raw,
                 "C2_raw": c2_raw,
-                "C3_raw": c3_raw,
             }
 
         return result
+
+    def _calc_percentile_filter(self, df: pd.DataFrame, field: str) -> float:
+        """
+        V4 估值过滤函数：两头扣分，中间中性。
+
+        规则：
+          - 估值 > 历史 95 分位 → 0.2（极贵，过热警告）
+          - 估值 > 历史 90 分位 → 0.4（偏贵，留意）
+          - 估值 < 历史 5 分位 → 0.4（极便宜，价值陷阱警告）
+          - 其余 → 0.6（中性，不给额外加分）
+        """
+        arr = df[field].dropna().values.astype(float)
+        arr = arr[arr > 0]  # 负数无意义
+        if len(arr) < 20:
+            return 0.5
+
+        current = arr[-1]
+        percentile = float(np.mean(arr <= current))
+
+        if percentile > 0.95:
+            return 0.2   # 极贵，过热警告
+        elif percentile > 0.90:
+            return 0.4   # 偏贵
+        elif percentile < 0.05:
+            return 0.4   # 极便宜，价值陷阱警告
+        else:
+            return 0.6   # 合理区间，中性
 
     # -------------------------------------------------------------------------
     # 归一化
@@ -502,12 +517,6 @@ class IndustryScoringService:
         横截面 z-score → sigmoid 归一化到 [0, 1]。
 
         31 个行业同时计算，一个行业偏离均值越多，得分越极端。
-
-        Args:
-            values: {行业代码: 原始因子值}
-
-        Returns:
-            {行业代码: 归一化得分}
         """
         if len(values) < 2:
             return {k: 0.5 for k in values}
@@ -517,13 +526,11 @@ class IndustryScoringService:
         std = np.std(arr)
 
         if std < 1e-8:
-            # 所有值几乎相同 → 全给中等分
             return {k: 0.5 for k in values}
 
         result = {}
         for code, val in values.items():
             z = (val - mean) / std
-            # Clip z 到 [-5, 5] 防止 sigmoid 溢出
             z = max(-5.0, min(5.0, z))
             score = 1.0 / (1.0 + np.exp(-z))
             result[code] = round(float(score), 6)
@@ -553,7 +560,7 @@ class IndustryScoringService:
         if "name" in df.columns:
             names = df["name"].dropna()
             if len(names) > 0:
-                return str(names.iloc[-1])  # 最新一期名称
+                return str(names.iloc[-1])
         return ""
 
     @staticmethod

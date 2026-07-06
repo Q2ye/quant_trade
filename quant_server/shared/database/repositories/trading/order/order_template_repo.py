@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from shared.database.models.business_models import OrderTemplate
-from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.base import BaseRepository, RepositoryError
 from shared.database.repositories.types import (
 	RepositoryError
 )

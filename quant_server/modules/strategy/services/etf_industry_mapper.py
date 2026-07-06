@@ -66,10 +66,9 @@ class EtfIndustryMapper:
         selections = mapper.resolve(ranked_industries, current_holdings, etf_data_cache)
     """
 
-    # 流动性门槛（单位：千元 — 与 etf_daily.amount / index_sw_daily.amount 一致）
-    # Tushare 接口返回的 amount 单位为千元
-    MIN_DAILY_AMOUNT: float = 10000          # 1000 万元
-    MIN_DAILY_AMOUNT_FALLBACK: float = 5000   # 500 万元（兜底）
+    # 流动性门槛（单位：千元 — 与 Tushare etf_daily.amount 一致）
+    MIN_DAILY_AMOUNT: float = 3000           # 300 万元（过滤日均成交 <300万的 ETF）
+    MIN_DAILY_AMOUNT_FALLBACK: float = 1000   # 100 万元（已持仓粘性兜底）
 
     def __init__(self, industry_etf_map: Optional[Dict[str, Dict[str, str]]] = None):
         """
@@ -91,6 +90,9 @@ class EtfIndustryMapper:
         """
         将行业排名转换为 ETF 选择列表。
 
+        v2.6: 增加跨行业 ETF 去重 — 当两个行业映射到同一只 primary ETF 时，
+        低排名行业优先使用 secondary ETF，避免多个行业共用同一只 ETF。
+
         Args:
             ranked_industries: [(行业代码, 行业名, 得分, rank), ...] 已排序
             current_holdings: 当前持有的 ETF 代码集合
@@ -100,6 +102,7 @@ class EtfIndustryMapper:
             EtfSelection 列表（买了哪些 ETF）
         """
         selections: List[EtfSelection] = []
+        used_etf_codes: Set[str] = set()  # v2.6: 本轮已分配的 ETF 代码
 
         for industry_code, industry_name, score, rank in ranked_industries:
             sel = self._select_etf(
@@ -109,9 +112,11 @@ class EtfIndustryMapper:
                 rank=rank,
                 current_holdings=current_holdings,
                 etf_data_cache=etf_data_cache,
+                used_etf_codes=used_etf_codes,  # v2.6: 传递已用 ETF 集合
             )
             if sel:
                 selections.append(sel)
+                used_etf_codes.add(sel.ts_code)
 
         return selections
 
@@ -153,16 +158,21 @@ class EtfIndustryMapper:
         rank: int,
         current_holdings: Set[str],
         etf_data_cache: Dict[str, pd.DataFrame],
+        used_etf_codes: Optional[Set[str]] = None,
     ) -> Optional[EtfSelection]:
         """
         为单个行业选择最优 ETF。
 
+        v2.6: 增加跨行业 ETF 去重 — used_etf_codes 包含本轮已分配给他行业的 ETF，
+        优先使用 secondary ETF 避免多个行业共用同一只 ETF。
+
         优先级:
           1. 当前持仓的 ETF（粘性）→ 只检查流动性是否严重恶化
-          2. primary ETF → 检查流动性
+          2. primary ETF → 检查流动性 + 去重
           3. secondary ETF → 检查流动性
           4. 无可用 ETF → 返回 None
         """
+        used_etf_codes = used_etf_codes or set()
         mapping = self._mapping.get(industry_name, {})
         primary = mapping.get("primary", "")
         secondary = mapping.get("secondary", "")
@@ -190,17 +200,23 @@ class EtfIndustryMapper:
                         f"{industry_name}: 持仓 ETF {held_code} 流动性恶化，尝试切换"
                     )
 
-        # ---- Primary ETF ----
+        # ---- Primary ETF（v2.6: 跨行业去重） ----
         if primary and self._check_liquidity(primary, etf_data_cache):
-            return EtfSelection(
-                industry_name=industry_name,
-                industry_code=industry_code,
-                ts_code=primary,
-                rank=rank,
-                score=score,
-                reason=f"新买入 primary — 排名 #{rank}",
-                is_new=True,
-            )
+            if primary not in used_etf_codes:
+                return EtfSelection(
+                    industry_name=industry_name,
+                    industry_code=industry_code,
+                    ts_code=primary,
+                    rank=rank,
+                    score=score,
+                    reason=f"新买入 primary — 排名 #{rank}",
+                    is_new=True,
+                )
+            else:
+                # Primary 已被其他行业占用 → 降级到 secondary
+                logger.debug(
+                    f"{industry_name}: primary {primary} 已被占用，尝试 secondary"
+                )
 
         # ---- Secondary ETF ----
         if secondary and self._check_liquidity(secondary, etf_data_cache):
@@ -214,10 +230,19 @@ class EtfIndustryMapper:
                 is_new=True,
             )
 
-        # ---- 降级尝试：只要有一点流动性就用 ----
+        # ---- v2.6: 无唯一 ETF 可用 → 跳过（宁可少买，不买重复 ETF） ----
+        if primary and primary in used_etf_codes:
+            logger.info(
+                f"{industry_name}: primary {primary} 已被占用且无可用 secondary，"
+                f" 跳过（排名 #{rank}, 得分={score:.4f}）— 避免假分散"
+            )
+            return None
+
+        # ---- 降级尝试：极低流动性兜底（仅未占用的 ETF） ----
         for code in [primary, secondary]:
-            if code and self._check_liquidity(code, etf_data_cache,
-                                              min_amount=1e6):  # 100 万
+            if code and code not in used_etf_codes and self._check_liquidity(
+                code, etf_data_cache, min_amount=500  # 50 万元极低门槛
+            ):
                 return EtfSelection(
                     industry_name=industry_name,
                     industry_code=industry_code,
@@ -228,7 +253,10 @@ class EtfIndustryMapper:
                     is_new=True,
                 )
 
-        logger.warning(f"{industry_name}: 无可用 ETF（primary={primary}, secondary={secondary}），跳过")
+        logger.warning(
+            f"{industry_name}: 无可用 ETF"
+            f"（primary={primary}, secondary={secondary}），跳过"
+        )
         return None
 
     # -------------------------------------------------------------------------

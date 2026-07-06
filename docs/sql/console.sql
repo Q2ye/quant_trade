@@ -37,14 +37,15 @@ select count(*) from stock_st_list;
 select * from index_basic;
 select count(*) from index_basic;
 -- 指数日线行情数据（TimescaleDB超表）
-select * from index_daily;
+select * from index_daily where ts_code = '159886.SZ';
 select count(*) from index_daily;
+select * from  index_sw_daily  where ts_code = '881001.WI';
 
 -- 指数成分股权重表
 select * from index_weight;
 select count(*) from index_weight;
 -- 复权因子表（TimescaleDB超表）
-select * from stock_adj_factor where ts_code='000030.SZ';
+select * from stock_adj_factor where ts_code='159886.SZ';
 select count(*) from stock_adj_factor;
 delete from stock_adj_factor;
 -- 交易日历史表
@@ -52,19 +53,19 @@ select * from trade_calendar;
 select count(*) from trade_calendar;
 
 -- ETF基础信息表
-select * from etf_basic where ts_code like '589980.SH';
+select * from etf_basic where ts_code like '159886.SZ';
 select count(*) from etf_basic;
 delete from etf_basic;
 -- ETF份额数据表
-select * from  etf_shares where ts_code = '589980.SH';
+select * from  etf_shares where ts_code = '159886.SZ';
 select count(*) from  etf_shares;
 delete from etf_shares;
 
-SELECT count(*), max(trade_date) FROM etf_shares WHERE ts_code = '159995.SZ';
+SELECT count(*), max(trade_date) FROM etf_shares WHERE ts_code = '159886.SZ';
 SELECT count(*), count(DISTINCT ts_code) FROM etf_shares;
 -- ETF日线行情表（TimescaleDB超表）
 
-select * from  etf_daily where ts_code ='589980.SH';
+select * from  etf_daily where ts_code ='159886.SZ';
 select count(*) from  etf_daily where ts_code ='159 027.SZ';
 delete from etf_daily;
 -- ETF复权因子（TimescaleDB超表）

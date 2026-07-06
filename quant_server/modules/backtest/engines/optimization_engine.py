@@ -259,7 +259,7 @@ class OptimizationEngine(EngineBase):
 							)
 							price = sig.price if hasattr(sig, 'price') else 0.0
 							qty = sig.quantity if hasattr(sig, 'quantity') else 0
-							bkr.submit_order(ts, direction, price, qty)
+							await bkr.submit_order(ts, direction, price, qty)
 
 						bkr.mark_to_market(bar_dict)
 

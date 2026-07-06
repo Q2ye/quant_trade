@@ -1360,7 +1360,8 @@ class BacktestService:
 			temp_module["__builtins__"] = dict(vars(_b))
 			for _danger in ("eval", "exec", "compile", "open", "input", "breakpoint"):
 				temp_module["__builtins__"].pop(_danger, None)
-			temp_module["__builtins__"]["__name__"] = "__main__"
+			# v2.6: 使用正确的模块路径，确保策略日志能传播到 root 的文件 handler
+			temp_module["__builtins__"]["__name__"] = "modules.strategy.strategies.custom"
 
 			# ---- B2. 执行策略代码 ----
 			# v2.5: 若策略代码不含 from __future__ import annotations，

@@ -60,7 +60,16 @@
           <div v-else class="params-grid">
             <div v-for="(val, key) in strategyParams" :key="key" class="param-row">
               <span class="param-label">{{ paramLabel(key) }}</span>
-              <span class="param-value">{{ val }}</span>
+              <!-- v2.6: 类型感知输入 — boolean -->
+              <n-switch v-if="typeof val === 'boolean'" :value="val" @update:value="(v: boolean) => setParam(key, v)" size="small" />
+              <!-- v2.6: 类型感知输入 — integer -->
+              <n-input-number v-else-if="typeof val === 'number' && Number.isInteger(val)" :value="val" @update:value="(v: number | null) => { if (v !== null) setParam(key, v) }" size="small" :step="1" style="width:180px" />
+              <!-- v2.6: 类型感知输入 — float -->
+              <n-input-number v-else-if="typeof val === 'number'" :value="val" @update:value="(v: number | null) => { if (v !== null) setParam(key, v) }" size="small" :step="0.01" style="width:180px" />
+              <!-- v2.6: 类型感知输入 — array/object → JSON 文本 -->
+              <n-input v-else-if="typeof val === 'object' && val !== null" :value="getJsonText(key, val)" @update:value="(v: string) => { jsonTexts[key] = v }" @blur="() => parseComplexParam(key)" size="small" style="width:180px" placeholder="JSON" />
+              <!-- v2.6: 类型感知输入 — string -->
+              <n-input v-else :value="val" @update:value="(v: string) => setParam(key, v)" size="small" style="width:180px" />
             </div>
           </div>
         </n-card>
@@ -164,10 +173,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
-  NButton, NTag, NInput, NInputNumber, NSpin, NProgress,
+  NButton, NTag, NInput, NInputNumber, NSpin, NProgress, NSwitch,
   NEmpty, NSelect, NModal, NForm, NFormItem, NDatePicker, NDynamicTags, NDropdown, NCard,
   useMessage, useDialog,
 } from "naive-ui";
@@ -211,22 +220,50 @@ const PARAM_LABELS: Record<string, string> = {
   batch_size: '批次大小', num_layers: '网络层数', dropout_rate: 'Dropout 比率',
   hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
   target_column: '目标列', d_model: '模型维度', nhead: '注意力头数',
-  // 行业轮动 V2
-  top_n: '持仓行业数', buffer_rank: '卖出缓冲排名', cooling_period: '冷却期(天)',
-  take_profit_rsi: '止盈RSI阈值', max_sector_limit: '同板块最大持仓',
+  // V4 主线趋势策略参数
+  top_n: '持仓行业数', cooling_period: '冷却期(天)', min_history: '最低数据条数',
+  max_sector_limit: '同板块上限',
   trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
-  momentum_weights: '动量窗口权重', momentum_accel_short: '加速短窗口', momentum_accel_long: '加速长窗口', rs_window: '相对强弱窗口', rs_benchmark: '基准指数代码',
+  momentum_weights: '动量窗口权重', momentum_accel_short: '加速短窗口',
+  momentum_accel_long: '加速长窗口', rs_window: '相对强弱窗口', rs_benchmark: '基准指数代码',
   vol_ratio_short: '量比短窗口', vol_ratio_long: '量比长窗口', vol_price_window: '价量配合窗口',
   turnover_short: '换手短窗口', turnover_long: '换手长窗口',
   pe_percentile_years: 'PE分位回溯年数', pb_percentile_years: 'PB分位回溯年数',
-  pe_expansion_window: '估值扩张窗口', valuation_trap_threshold: '价值陷阱PE阈值',
-  entry_rsi_max: '入场RSI上限', entry_vol_ratio_min: '入场量比下限',
-  exit_vol_ratio_min: '出场量比下限', exit_vol_duration: '出场量比持续天数',
-  entry_score_gap: '板块去重得分差', factor_override: '因子覆写', verbose_logging: '详细日志',
+  factor_override: '因子覆写', verbose_logging: '详细日志',
   universe_size: 'ETF 候选数量',
-
-};
+  v4_bull_width_min: 'BULL宽度', v4_bear_width_max: 'BEAR宽度',
+  v4_confirm_min_score: '最低得分', v4_confirm_min_trend: '最低趋势分',
+  v4_confirm_max_deviation: '最大MA20偏离', v4_confirm_stability_days: '稳定性回溯天数',
+  v4_batch_1: '首批仓位', v4_batch_2: '二批仓位', v4_batch_3: '三批仓位',
+  v4_batch_2_tolerance: '二批偏离容忍',
+  v4_add_threshold_1: '加仓阈值1', v4_add_threshold_2: '加仓阈值2',
+  v4_add_size_1: '加仓量1', v4_add_size_2: '加仓量2', v4_position_max: '仓位上限',
+  v4_trail_stop_ratio: '移动止损', v4_heavy_stop_ratio: '重仓止损',
+  v4_rs_sell_60d: 'RS60阈值', v4_rs_sell_20d: 'RS20阈值',
+  v4_exit_cooldown_stop: '止损冷却',};
 const paramLabel = (key: string) => PARAM_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+// v2.6: 类型感知参数编辑
+const setParam = (key: string, value: any) => {
+  strategyParams.value = { ...strategyParams.value, [key]: value };
+};
+const jsonTexts = reactive<Record<string, string>>({});
+const getJsonText = (key: string, val: any) => {
+  if (!(key in jsonTexts)) jsonTexts[key] = JSON.stringify(val);
+  return jsonTexts[key];
+};
+const parseComplexParam = (key: string) => {
+  const raw = jsonTexts[key];
+  if (!raw || !raw.trim()) return;
+  try {
+    const parsed = JSON.parse(raw);
+    strategyParams.value = { ...strategyParams.value, [key]: parsed };
+    jsonTexts[key] = JSON.stringify(parsed); // normalize
+  } catch {
+    // JSON 格式错误 → 回退到旧值
+    jsonTexts[key] = JSON.stringify(strategyParams.value[key]);
+  }
+};
 
 // ---- 实盘运行时状态 ----
 const isLive = computed(() => {
@@ -439,7 +476,6 @@ onBeforeUnmount(() => { clearPolling(); });
     display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;
     padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
     .param-label { font-size: 12px; color: var(--color-text-tertiary); text-align: right; }
-    .param-value { font-size: 13px; color: var(--color-text-primary); word-break: break-all; }
   }
 }
 

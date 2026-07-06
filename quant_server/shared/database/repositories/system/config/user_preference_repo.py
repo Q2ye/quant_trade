@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.system_models import UserPreference
-from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.base import BaseRepository, RepositoryError
 from shared.database.repositories.types import (
 	RepositoryError
 )

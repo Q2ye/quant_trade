@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import AuthenticationException
 from shared.database.models.business_models import RiskRule, RiskEvent
-from shared.database.repositories import RepositoryError
+from shared.database.repositories.base.repository_base import RepositoryError
 from shared.database.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)

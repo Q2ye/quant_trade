@@ -21,7 +21,7 @@ from sqlalchemy import select, update, delete, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.models.business_models import WorkflowTask
-from shared.database.repositories.base import BaseRepository
+from shared.database.repositories.base import BaseRepository, RepositoryError
 
 
 class WorkflowTaskRepository(BaseRepository[WorkflowTask]):
