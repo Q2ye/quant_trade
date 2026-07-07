@@ -139,6 +139,24 @@ class CloseAllSizer(BaseSizer):
         return self._round_lot(current_position_qty)
 
 
+class HalfCloseSizer(BaseSizer):
+    """
+    半仓卖出模式：CLOSE_LONG → 卖出一半当前持仓。
+
+    适用场景：动态再平衡时，浮盈过大的持仓强制卖半仓锁定利润。
+    """
+
+    def calculate(
+        self,
+        signal: TradingSignal,
+        bar: BarData,
+        available_cash: float,
+        current_position_qty: int = 0,
+    ) -> int:
+        half = current_position_qty // 2
+        return self._round_lot(half)
+
+
 class QuantitySizer(BaseSizer):
     """
     固定数量模式：直接使用 signal.quantity（已有值则不变）。
@@ -177,6 +195,9 @@ def select_sizer(signal: TradingSignal) -> BaseSizer:
         direction = direction.value
 
     if direction in ("CLOSE_LONG", "close_long") and signal.quantity <= 0:
+        # v6.0: 支持半仓卖出（动态再平衡）
+        if getattr(signal, 'half_exit', False):
+            return HalfCloseSizer()
         return CloseAllSizer()
 
     # v2.5: weight 优先于 quantity，支持等权重仓位分配

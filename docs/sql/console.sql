@@ -235,3 +235,6 @@ WHERE ts_code = '515170.SH'
   AND trade_date BETWEEN '2026-06-01' AND '2026-07-02'
 ORDER BY trade_date DESC
 LIMIT 20;
+
+
+SELECT trade_date, close, open, high, low, vol FROM index_daily WHERE ts_code = '000905.SH' ORDER BY trade_date ASC

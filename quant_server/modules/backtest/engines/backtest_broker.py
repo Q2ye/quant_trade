@@ -292,9 +292,9 @@ class BacktestBroker(EngineBase):
                 raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
         if direction in ("SHORT", "CLOSE_LONG"):
             pos = self.positions.get(ts_code)
-            avail = pos.available_quantity if pos else 0
-            if not pos or avail < quantity:
-                raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{avail}")
+            total = pos.quantity if pos else 0
+            if not pos or total < quantity:
+                raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{total}")
 
     async def submit_order(
         self,

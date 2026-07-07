@@ -57,7 +57,7 @@ class SessionManager:
 			await session.commit()
 		except Exception as e:
 			await session.rollback()
-			logger.error(f"数据库操作失败，已回滚: {str(e)}", exc_info=True)
+			logger.warning(f"数据库操作失败，已回滚: {str(e)}")
 			raise
 		finally:
 			await session.close()

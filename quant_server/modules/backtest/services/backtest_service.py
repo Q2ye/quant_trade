@@ -253,9 +253,17 @@ class BacktestService:
 
 		# ---- 策略注册表 + 管理器 ----
 		self.strategy_registry = StrategyRegistry()
+		# 获取 session_factory（供策略 on_start 通过 IndexDailyRepository 加载中证500数据）
+		_csi500_factory = None
+		try:
+			from shared.database.session.connection_pool import get_connection_pool
+			_csi500_factory = get_connection_pool().get_session_factory()
+		except Exception:
+			_csi500_factory = None
 		self.strategy_manager = StrategyManager(
 			event_engine=self.event_engine,
 			registry=self.strategy_registry,
+			session_factory=_csi500_factory,
 		)
 
 		# ---- 回测券商模拟器（含交易成本配置） ----
