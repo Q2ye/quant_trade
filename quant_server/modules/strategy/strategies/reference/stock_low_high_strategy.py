@@ -73,8 +73,8 @@ class StockLowHighStrategy(BaseStrategy):
         "csi500_sideways_pct": 0.03,    # 震荡市判定：近N日涨跌幅 ≤ 3%
 
         # —— 下跌市风控（收紧止损+降至1只，不停买） ——
-        "bear_max_pos": 1,              # 下跌市最多 1 只
-        "bear_stop_loss": -0.025,       # 下跌市止损收紧至 -2.5%
+        "bear_max_pos": 2,              # 下跌市最多 1 只
+        "bear_stop_loss": -0.04,        # 下跌市止损（与上涨市统一）
 
         # —— 震荡市风控 ——
         "sideways_max_pos": 2,          # 震荡市最多 2 只
@@ -84,6 +84,11 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 动态再平衡 ——
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
+
+        # —— 行情判定来源 ——
+        # "bullish_pct" = 全市场多头占比（方案B，历史最优）
+        # "csi500" = 中证500指数MA判定（方案C）
+        "regime_source": "bullish_pct",
 
         # —— 调试 ——
         "verbose_logging": False,
@@ -264,12 +269,12 @@ class StockLowHighStrategy(BaseStrategy):
         elif regime == "震荡市":
             regime_max_pos = int(self.parameters.get("sideways_max_pos", 2))
             regime_stop_loss = float(self.parameters.get("stop_loss", -0.04))
-            regime_no_new_buy = False
+            regime_no_new_buy = False 
         else:
             regime = "下跌市"
             regime_max_pos = int(self.parameters.get("bear_max_pos", 1))
             regime_stop_loss = float(self.parameters.get("bear_stop_loss", -0.025))
-            regime_no_new_buy = False
+            regime_no_new_buy = True 
 
         effective_max_pos = regime_max_pos
 
@@ -421,6 +426,19 @@ class StockLowHighStrategy(BaseStrategy):
             (regime_name, bullish_pct) — regime_name 用于仓位决策，bullish_pct 用于日志
         """
         bullish_pct = self._calc_bullish_pct()
+
+        # --- v6.1: regime_source 参数控制行情判定来源 ---
+        regime_source = str(self.parameters.get("regime_source", "bullish_pct"))
+        if regime_source == "bullish_pct":
+            # 直接用 bullish_pct 三档（方案B，历史三年期最优 +47%）
+            up_th = float(self.parameters.get("csi500_upper_fallback", 0.25))
+            dn_th = float(self.parameters.get("csi500_lower_fallback", 0.10))
+            if bullish_pct > up_th:
+                return "上涨市", bullish_pct
+            elif bullish_pct > dn_th:
+                return "震荡市", bullish_pct
+            else:
+                return "下跌市", bullish_pct
 
         # 数据不足时回退到 bullish_pct 代理
         if self._csi500_cache.empty or len(self._csi500_cache) < 65:
