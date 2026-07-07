@@ -240,7 +240,23 @@ const PARAM_LABELS: Record<string, string> = {
   v4_add_size_1: '加仓量1', v4_add_size_2: '加仓量2', v4_position_max: '仓位上限',
   v4_trail_stop_ratio: '移动止损', v4_heavy_stop_ratio: '重仓止损',
   v4_rs_sell_60d: 'RS60阈值', v4_rs_sell_20d: 'RS20阈值',
-  v4_exit_cooldown_stop: '止损冷却',};
+  v4_exit_cooldown_stop: '止损冷却',
+  // 低吸轮动策略参数
+  min_daily_volume: '近5日均量(手)', min_yesterday_rise: '昨日最低涨幅',
+  min_volume_ratio: '最低量比', roc_threshold: 'ROC阈值',
+  buy_below_high_rate: '低吸比率(低于20日新高)', new_stock_days: '新股过滤天数',
+  lookback_days: '选股回溯天数', max_positions: '最大持仓数',
+  csi500_ma_short: '中证500短期均线', csi500_ma_long: '中证500长期均线',
+  csi500_sideways_pct: '震荡市判定阈值',
+  bear_max_pos: '下跌市最大持仓', bear_stop_loss: '下跌市止损比例',
+  sideways_max_pos: '震荡市最大持仓', rebalance_threshold: '再平衡浮盈阈值',
+  regime_source: '行情判定来源',
+  // 多资产ETF轮动策略参数
+  etf_pool: 'ETF候选池', momentum_days: '动量回归窗口(天)',
+  rsrs_window: 'RSRS计算窗口', rsrs_lookback: 'RSRS Beta回溯天数',
+  rsrs_beta_window: 'RSRS Beta滚动窗口', volume_check_days: '量异常检测周期(天)',
+  volume_threshold: '量异常阈值(倍)', intraday_stop_loss: '日内止损比例',
+};
 const paramLabel = (key: string) => PARAM_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 // v2.6: 类型感知参数编辑

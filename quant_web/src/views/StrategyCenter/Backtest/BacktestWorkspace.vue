@@ -372,7 +372,7 @@ const loadTaskList = async () => {
       created_at: t.created_at,
       updated_at: t.updated_at,
       config: t.config,
-    }));
+    })).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   } catch { /* skip */ } finally { taskListLoading.value = false; }
 };
 
@@ -458,8 +458,9 @@ const runBacktestAll = async () => {
   const ids: string[] = [];
   for (const sid of selectedStrategyIds.value) {
     try {
+      const strategyLabel = strategySelectOptions.value.find((s: any) => s.value === sid)?.label || sid;
       const res = await backtestAPI.createTask({
-        name: `对比回测_${sid}_${start}`,
+        name: `${strategyLabel}_回测_${start}`,
         strategy_id: sid, start_date: start, end_date: end,
         initial_capital: initialCapital.value,
         symbols: effectiveStocks,

@@ -54,6 +54,7 @@ class StockLowHighStrategy(BaseStrategy):
 
     DEFAULT_PARAMS: Dict[str, Any] = {
         # —— 选股 ——
+        "universe": "all_market",       # 股票池："all_market"=全A股主板(00/60开头)
         "min_daily_volume": 500,        # 近5日日均成交量 ≥ 500 手
         "min_yesterday_rise": 0.007,    # 昨日涨幅 ≥ 0.7%
         "min_volume_ratio": 1.2,        # 当日成交量 ≥ 近20日均量 1.2 倍

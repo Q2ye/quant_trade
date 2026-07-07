@@ -1594,13 +1594,29 @@ class StrategyManager(EngineBase):
             for pos in db_positions:
                 qty = pos.volume
                 if qty > 0:
+                    avg_price = float(pos.cost_price) if pos.cost_price else 0
                     strategy.update_position(
                         ts_code=pos.ts_code,
                         side="long",
                         quantity=qty,
-                        avg_price=float(pos.cost_price) if pos.cost_price else 0,
+                        avg_price=avg_price,
                     )
                     restored += 1
+
+                    # v3.2: 同步恢复策略内部的 _holdings 字典（低吸轮动等策略依赖此字典决策）
+                    # 注：quantity 使用权重归一化值 1.0 而非 DB 中的实际股数(pos.volume)。
+                    # 策略内部模型以"资金权重"追踪持仓（如 max_positions=3 意味着 3 个等权仓位），
+                    # 所有盈亏/回撤/半仓轮动计算均基于权重而非股数，故归一化值在数学上等价。
+                    # _track_high 初始设为 avg_price（成本价），重启恢复流程中
+                    # _recover_running_strategies 会用 state_snapshot 中的精确历史高点覆盖。
+                    if hasattr(strategy, "_holdings"):
+                        strategy._holdings[pos.ts_code] = {
+                            "entry_price": avg_price,
+                            "quantity": 1.0,
+                            "locked": False,
+                        }
+                    if hasattr(strategy, "_track_high"):
+                        strategy._track_high[pos.ts_code] = avg_price
 
             if restored:
                 logger.info("策略 %s: 从 DB 恢复了 %d 只股票的持仓", strategy_id, restored)
@@ -1733,6 +1749,38 @@ class StrategyManager(EngineBase):
                                 except (ValueError, TypeError):
                                     pass
 
+                            # v3.2: 恢复策略累积状态（防 phantom drawdown + 回撤连续性）
+                            strategy_obj = self._strategy_objects.get(sid)
+                            if strategy_obj:
+                                if hasattr(strategy_obj, "_exited_entry_value"):
+                                    strategy_obj._exited_entry_value = float(
+                                        snap.get("_exited_entry_value", 0)
+                                    )
+                                if hasattr(strategy_obj, "_exited_cash_value"):
+                                    strategy_obj._exited_cash_value = float(
+                                        snap.get("_exited_cash_value", 0)
+                                    )
+                                if hasattr(strategy_obj, "_peak_return"):
+                                    strategy_obj._peak_return = float(
+                                        snap.get("_peak_return", -999.0)
+                                    )
+                                # 恢复 _track_high（覆盖 _restore_positions_from_db 设置的 avg_price 兜底值）
+                                if hasattr(strategy_obj, "_track_high") and snap.get("_track_high"):
+                                    for ts_code, high_val in snap["_track_high"].items():
+                                        strategy_obj._track_high[ts_code] = float(high_val)
+                                    logger.info(
+                                        "重启恢复: 策略 %s 恢复了 %d 只股票的 _track_high 历史高点",
+                                        sid, len(snap["_track_high"]),
+                                    )
+                                logger.info(
+                                    "重启恢复: 策略 %s 累积状态已恢复 "
+                                    "(exited_entry=%.2f, exited_cash=%.2f, peak=%.4f)",
+                                    sid,
+                                    getattr(strategy_obj, "_exited_entry_value", 0),
+                                    getattr(strategy_obj, "_exited_cash_value", 0),
+                                    getattr(strategy_obj, "_peak_return", -999.0),
+                                )
+
                         recovered += 1
                         logger.info(
                             f"重启恢复: 策略 {sid} ({row[1]}) 已恢复, "
@@ -1820,6 +1868,11 @@ class StrategyManager(EngineBase):
             logger.info("策略 %s 无股票池，跳过预热", strategy_id)
             return
 
+        # v3.2: 全市场策略快速预热 — 直接填充 _data_cache 而不触发 on_bar/rebalance
+        if ts_codes == ["all_market"] or "all_market" in ts_codes:
+            await self._warmup_all_market(strategy_id, strategy)
+            return
+
         if self.session_factory is None:
             logger.warning("策略 %s session_factory 未注入，跳过预热", strategy_id)
             return
@@ -1857,6 +1910,127 @@ class StrategyManager(EngineBase):
             strategy_id, n_days, n_bars, lookback,
         )
 
+    async def _warmup_all_market(self, strategy_id: str, strategy) -> None:
+        """
+        v3.2: 全市场策略快速预热。
+
+        全市场扫描类策略（如 StockLowHighStrategy）的股票池为动态全 A 股，
+        无法通过逐条 on_bar() 回放来预热（每根 bar 触发 _run_rebalance 会导致
+        O(N²) 全市场扫描，5000 股 × 60 天 ~ 30 万次完整扫描不可接受）。
+
+        此方法直接查询 DB → 按 ts_code 分组构造 DataFrame → 写入 _data_cache，
+        绕过 on_bar/rebalance，实现 O(N) 时间的数据预填充。
+
+        预热后 _data_cache 直接可用，策略首个交易日即可正常选股。
+        """
+        if self.session_factory is None:
+            logger.warning("策略 %s session_factory 未注入，跳过全市场预热", strategy_id)
+            return
+
+        from datetime import date as date_type, timedelta
+        from sqlalchemy import text
+        import pandas as pd
+
+        # 从策略对象参数获取回看天数（默认 60）
+        # 注意：使用 strategy.parameters（策略实例的合并参数）而非 instance.parameters（包装器参数，
+        # 重启恢复时包装器参数可能为空字典）
+        params = getattr(strategy, "parameters", {}) or {}
+        lookback = int(params.get("lookback_days", 60))
+
+        end_date = date_type.today()
+        start_date = end_date - timedelta(days=lookback * 2)  # 留余量覆盖非交易日
+
+        try:
+            async with self.session_factory() as session:
+                from shared.database.repositories.market.quote.stock_adjusted_price_repo import (
+                    StockAdjustedPriceRepository,
+                )
+                from shared.database.repositories.market.quote.stock_daily_repo import (
+                    StockDailyRepository,
+                )
+
+                # 1. 获取全 A 股主板代码（00/60 开头）
+                all_codes_result = await session.execute(
+                    text(
+                        "SELECT DISTINCT ts_code FROM stock_basic "
+                        "WHERE (ts_code LIKE '000%' OR ts_code LIKE '002%' "
+                        "   OR ts_code LIKE '600%' OR ts_code LIKE '601%' "
+                        "   OR ts_code LIKE '603%' OR ts_code LIKE '605%')"
+                    )
+                )
+                all_codes = [r[0] for r in all_codes_result.fetchall()]
+                if not all_codes:
+                    logger.warning("策略 %s 全市场预热: 未找到主板股票代码", strategy_id)
+                    return
+
+                logger.info(
+                    "策略 %s 全市场预热: 加载 %d 只股票, lookback=%d 天...",
+                    strategy_id, len(all_codes), lookback,
+                )
+
+                # 2. 批量加载日线数据
+                adj_repo = StockAdjustedPriceRepository(session)
+                rows = await adj_repo.get_batch_by_date_range(
+                    symbols=all_codes,
+                    start_date=start_date,
+                    end_date=end_date,
+                    adj_type="qfq",
+                    freq="D",
+                )
+                if not rows:
+                    daily_repo = StockDailyRepository(session)
+                    rows = await daily_repo.get_batch_by_date_range(
+                        symbols=all_codes,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+
+                if not rows:
+                    logger.warning("策略 %s 全市场预热: 日线数据为空", strategy_id)
+                    return
+
+                # 3. 按 ts_code 分组，直接构造 DataFrame 写入 _data_cache
+                rows_by_code: dict = {}
+                for r in rows:
+                    code = r.ts_code if hasattr(r, "ts_code") else r["ts_code"]
+                    td = r.trade_date if hasattr(r, "trade_date") else r["trade_date"]
+                    if code not in rows_by_code:
+                        rows_by_code[code] = []
+                    rows_by_code[code].append({
+                        "trade_date": td,
+                        "close": float(r.close if hasattr(r, "close") else r["close"] or 0),
+                        "open": float(r.open if hasattr(r, "open") else r["open"] or 0),
+                        "high": float(r.high if hasattr(r, "high") else r["high"] or 0),
+                        "low": float(r.low if hasattr(r, "low") else r["low"] or 0),
+                        "volume": float(r.vol if hasattr(r, "vol") else (r["vol"] or r.get("volume", 0) or 0)),
+                        "amount": float(r.amount if hasattr(r, "amount") else (r.get("amount", 0) or 0)),
+                    })
+
+                populated = 0
+                for code, recs in rows_by_code.items():
+                    if len(recs) < 2:
+                        continue
+                    df = pd.DataFrame(recs)
+                    df = df.sort_values("trade_date").reset_index(drop=True)
+                    df = df[["close", "volume", "amount", "open", "high", "low"]]
+                    # 限制缓存行数（与 _append_data 的 tail(250) 一致）
+                    if len(df) > 250:
+                        df = df.tail(250).reset_index(drop=True)
+                    strategy._data_cache[code] = df
+                    populated += 1
+
+                logger.info(
+                    "策略 %s 全市场预热完成: %d/%d 只股票已填充数据缓存 "
+                    "(lookback=%d 天, 总行数=%d)",
+                    strategy_id, populated, len(all_codes), lookback, len(rows),
+                )
+
+        except Exception as e:
+            logger.warning(
+                "策略 %s 全市场预热失败（跳过，策略将自然积累数据）: %s",
+                strategy_id, e,
+            )
+
     async def _save_strategy_state(self, strategy_id: str, heartbeat: dict = None) -> None:
         """盘后保存策略运行摘要到 strategy_runs.state_snapshot"""
         strategy = self._strategy_objects.get(strategy_id)
@@ -1883,6 +2057,26 @@ class StrategyManager(EngineBase):
             },
             "updated_at": datetime.now().isoformat(),
         }
+
+        # v3.2: 持久化策略自定义持仓字典（低吸轮动等策略使用 _holdings 而非 positions）
+        if hasattr(strategy, "_holdings") and strategy._holdings:
+            snapshot["_holdings"] = {
+                ts_code: {
+                    "entry_price": h.get("entry_price", 0),
+                    "quantity": h.get("quantity", 0),
+                    "locked": h.get("locked", False),
+                }
+                for ts_code, h in strategy._holdings.items()
+            }
+        if hasattr(strategy, "_track_high") and strategy._track_high:
+            snapshot["_track_high"] = dict(strategy._track_high)
+        # v3.2: 持久化累积状态（防 phantom drawdown + 回撤计算连续性）
+        if hasattr(strategy, "_exited_entry_value"):
+            snapshot["_exited_entry_value"] = strategy._exited_entry_value
+        if hasattr(strategy, "_exited_cash_value"):
+            snapshot["_exited_cash_value"] = strategy._exited_cash_value
+        if hasattr(strategy, "_peak_return"):
+            snapshot["_peak_return"] = strategy._peak_return
 
         try:
             sm = get_session_manager()

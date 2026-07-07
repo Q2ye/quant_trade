@@ -257,6 +257,51 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       verbose_logging: '详细日志'
     }
   },
+  StockLowHighStrategy: {
+    name: '低吸轮动策略',
+    desc: '沪深主板强势股低吸轮动，全市场扫描选股+三档行情风控+半仓轮动。',
+    params: {
+      universe: '股票池范围',
+      min_daily_volume: '近5日均量(手)',
+      min_yesterday_rise: '昨日最低涨幅',
+      min_volume_ratio: '最低量比',
+      roc_threshold: 'ROC阈值',
+      buy_below_high_rate: '低吸比率(低于20日新高)',
+      new_stock_days: '新股过滤天数',
+      lookback_days: '选股回溯天数',
+      max_positions: '最大持仓数',
+      rebalance_frequency: '调仓频率(天)',
+      csi500_ma_short: '中证500短期均线',
+      csi500_ma_long: '中证500长期均线',
+      csi500_sideways_pct: '震荡市判定阈值',
+      bear_max_pos: '下跌市最大持仓',
+      bear_stop_loss: '下跌市止损比例',
+      sideways_max_pos: '震荡市最大持仓',
+      stop_loss: '止损比例',
+      rebalance_threshold: '再平衡浮盈阈值',
+      regime_source: '行情判定来源',
+      verbose_logging: '详细日志',
+    }
+  },
+  MultiAssetRotationStrategy: {
+    name: '多资产ETF轮动',
+    desc: 'A股宽基+跨境+商品+债券 ETF轮动，对数线性回归动量×R²选最强ETF，全仓持有一只。',
+    params: {
+      etf_pool: 'ETF候选池',
+      momentum_days: '动量回归窗口(天)',
+      rsrs_window: 'RSRS计算窗口',
+      rsrs_lookback: 'RSRS Beta回溯天数',
+      rsrs_beta_window: 'RSRS Beta滚动窗口',
+      volume_check_days: '量异常检测周期(天)',
+      volume_threshold: '量异常阈值(倍)',
+      rebalance_frequency: '调仓频率(天)',
+      top_n: '持仓数量',
+      stop_loss: '止损比例',
+      intraday_stop_loss: '日内止损比例',
+      cooling_period: '止损冷却期(天)',
+      verbose_logging: '详细日志',
+    }
+  },
 };
 
 // 从模板代码中提取 class_name 用于匹配 BUILTIN_META
@@ -362,6 +407,22 @@ const FLAT_PARAM_LABELS: Record<string, string> = {
   v4_trail_stop_ratio: '移动止损回撤比例', v4_heavy_stop_ratio: '重仓回撤比例',
   v4_rs_sell_60d: 'RS卖出60日阈值', v4_rs_sell_20d: 'RS卖出20日阈值',
   v4_exit_cooldown_stop: '止损出场冷却天数',
+  // 低吸轮动策略参数
+  min_daily_volume: '近5日均量(手)', min_yesterday_rise: '昨日最低涨幅',
+  min_volume_ratio: '最低量比', roc_threshold: 'ROC阈值',
+  buy_below_high_rate: '低吸比率(低于20日新高)', new_stock_days: '新股过滤天数',
+  lookback_days: '选股回溯天数', max_positions: '最大持仓数',
+  csi500_ma_short: '中证500短期均线', csi500_ma_long: '中证500长期均线',
+  csi500_sideways_pct: '震荡市判定阈值',
+  bear_max_pos: '下跌市最大持仓', bear_stop_loss: '下跌市止损比例',
+  sideways_max_pos: '震荡市最大持仓', rebalance_threshold: '再平衡浮盈阈值',
+  regime_source: '行情判定来源',
+  // 多资产ETF轮动策略参数
+  etf_pool: 'ETF候选池', momentum_days: '动量回归窗口(天)',
+  rsrs_window: 'RSRS计算窗口', rsrs_lookback: 'RSRS Beta回溯天数',
+  rsrs_beta_window: 'RSRS Beta滚动窗口', volume_check_days: '量异常检测周期(天)',
+  volume_threshold: '量异常阈值(倍)', intraday_stop_loss: '日内止损比例',
+  cooling_period: '止损冷却期(天)',
 };
 
 const builtinTypeLabel = (type: string) => {

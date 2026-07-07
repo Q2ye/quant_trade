@@ -239,9 +239,35 @@ class BaseStrategy(ABC):
 		"""获取持仓"""
 		return self.positions.get(ts_code)
 
-	def update_position (self, position: Position) -> None:
-		"""更新持仓"""
-		self.positions[position.ts_code] = position
+	def update_position(self, position: Position = None, **kwargs) -> None:
+		"""
+		更新持仓。
+
+		支持两种调用方式：
+		  1. update_position(position: Position)          — 传入 Position 对象
+		  2. update_position(ts_code="xxx", side="long", quantity=100, avg_price=10.5)
+		     — 传入关键字参数，内部构造 Position 对象
+		"""
+		if position is not None:
+			self.positions[position.ts_code] = position
+		elif kwargs:
+			ts_code = kwargs.get("ts_code", "")
+			if ts_code:
+				from modules.strategy.constants import PositionSide
+				side_str = kwargs.get("side", "long")
+				side = PositionSide.LONG if side_str == "long" else PositionSide.SHORT
+				avg_price = float(kwargs.get("avg_price", kwargs.get("avg_cost", 0)))
+				quantity = int(kwargs.get("quantity", 0))
+				pos = Position(
+					id=f"{self.name}_{ts_code}",
+					strategy_id=self.name,
+					ts_code=ts_code,
+					side=side,
+					quantity=quantity,
+					avg_cost=avg_price,
+					current_price=avg_price,
+				)
+				self.positions[ts_code] = pos
 
 	def clear_position (self, ts_code: str) -> None:
 		"""清除持仓"""
