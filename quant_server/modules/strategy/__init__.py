@@ -97,10 +97,11 @@ async def initialize (
 
         # 获取数据库会话 - 使用正确的上下文管理器方式
         if main_engine and hasattr(main_engine, 'get_async_session'):
-            session = main_engine.get_async_session()
-            init_result = await _initialize_strategy_module(
-                session, main_engine, event_engine, config or {}
-            )
+            factory = main_engine.get_async_session()
+            async with factory() as session:
+                init_result = await _initialize_strategy_module(
+                    session, main_engine, event_engine, config or {}
+                )
             success = init_result.get('status') != 'failed'
         else:
             from shared.database.session import get_session_manager

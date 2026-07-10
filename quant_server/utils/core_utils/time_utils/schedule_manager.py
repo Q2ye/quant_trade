@@ -201,7 +201,7 @@ class ScheduleManager:
 			self.scheduler_jobs[job.job_id] = scheduler_job
 
 			# 更新下次执行时间
-			job.next_execution = scheduler_job.next_run_time
+			job.next_execution = getattr(scheduler_job, "next_run_time", None)
 
 			logger.info(f"任务添加成功: {job.job_id} - {job.name}")
 			return True
@@ -283,8 +283,10 @@ class ScheduleManager:
 			for attempt in range(job.max_retries + 1):
 				try:
 					# 检查调度条件
-					if not self._check_schedule_condition(job):
-						logger.debug(f"跳过执行 {job.job_id} - 不满足调度条件")
+					condition = self._check_schedule_condition(job)
+					if not condition:
+						logger.warning("跳过执行 %s - 不满足调度条件 (type=%s, result=%s)",
+                               job.job_id, job.schedule_type.value, condition)
 						return
 
 					# 执行任务
@@ -325,7 +327,12 @@ class ScheduleManager:
 		"""
 		now = datetime.now()
 
-		if job.schedule_type == ScheduleType.TRADING_DAY:
+		if job.schedule_type in (ScheduleType.CRON, ScheduleType.INTERVAL, ScheduleType.POST_MARKET):
+			# 这些类型由 APScheduler 的 CronTrigger/IntervalTrigger 控制时间，
+			# 无需额外条件检查
+			return True
+
+		elif job.schedule_type == ScheduleType.TRADING_DAY:
 			# 检查是否为交易日
 			if not self.trading_calendar.is_trading_day(now):
 				return False

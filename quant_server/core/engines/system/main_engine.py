@@ -129,6 +129,9 @@ class MainEngine(EngineBase):
         # 模块引擎映射
         self._module_engines: Dict[str, EngineBase] = {}
 
+        # 日终调度管理器
+        self._schedule_manager = None
+
         # 事件处理器
         self._event_handlers: Dict[str, List[str]] = {}
 
@@ -184,9 +187,91 @@ class MainEngine(EngineBase):
                 f"模式: {self._system_config.mode if self._system_config else 'unknown'}"
             )
 
+            # 启动日终调度器（架构设计：阶段四 盘后处理）
+            await self._start_daily_scheduler()
+
         except Exception as e:
             logger.error(f"主引擎启动失败: {e}")
             raise
+
+    async def _start_daily_scheduler(self) -> None:
+        """
+        启动日终调度器。
+
+        按架构设计，调度由 MainEngine 通过 ScheduleManager 集中管理。
+        交易日 16:00 触发数据同步（4 类核心数据），DataSyncService 内部
+        发布 DataSyncCompletedEvent → StrategyManager 自动驱动所有 LIVE 策略。
+        """
+        try:
+            from utils.core_utils.time_utils.schedule_manager import (
+                ScheduleManager, ScheduleJob, ScheduleType,
+            )
+
+            self._schedule_manager = ScheduleManager()
+
+            async def _daily_sync_job():
+                """16:00 同步核心数据，全部完成后再驱动策略"""
+                from datetime import date as _date
+                from shared.database.session import get_session_manager
+                from modules.data.services.sync_service import DataSyncService
+                from modules.data.constants import DataType
+
+                today = _date.today()
+                logger.info("日终数据同步开始: %s", today)
+
+                # Step 1: 同步全部每日行情分组数据（start_date=None 启用增量推断，
+                # 每只股票从 DB 最新日期+1 开始，已有今日数据的股票自动跳过）
+                sm = get_session_manager()
+                sync_ok = True
+                async with sm.get_session() as session:
+                    svc = DataSyncService(session=session)
+                    for dt in (
+                        DataType.DAILY_QUOTES,
+                        DataType.DAILY_BASIC,
+                        DataType.ADJ_FACTOR,
+                        DataType.INDEX_DAILY,
+                    ):
+                        try:
+                            result = await svc.sync_market_data(dt, start_date=None, end_date=today)
+                            logger.info(
+                                "日终同步 %s 完成: records=%s",
+                                dt.value,
+                                result.get("records_processed", 0) if isinstance(result, dict) else "?",
+                            )
+                        except Exception as sync_err:
+                            logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
+                            sync_ok = False
+
+                if not sync_ok:
+                    logger.warning("日终数据同步部分失败，仍尝试驱动策略")
+
+                # Step 2: 全部数据同步完成 → 驱动实盘策略
+                logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
+                try:
+                    strategy_mgr = await self.get_module_engine("strategy_manager")
+                    if strategy_mgr and hasattr(strategy_mgr, "run_daily_strategies"):
+                        signals = await strategy_mgr.run_daily_strategies(today)
+                        logger.info("日终策略驱动完成: %d 个信号", len(signals) if signals else 0)
+                    else:
+                        logger.warning("StrategyManager 未就绪，跳过策略驱动")
+                except Exception as e:
+                    logger.exception("日终策略驱动失败: %s", e)
+
+            job = ScheduleJob(
+                job_id="daily_data_sync",
+                name="日终数据同步+策略驱动(16:00)",
+                schedule_type=ScheduleType.POST_MARKET,
+                schedule_config={"hour": 16, "minute": 0},
+                # schedule_config={"hour": 21, "minute": 12},  # 测试流程，临时修改时间
+                func=_daily_sync_job,
+                description="交易日16:00同步daily_quotes/daily_basic/adj_factor/index_daily，完成后自动驱动策略",
+                max_retries=1,
+            )
+            await self._schedule_manager.add_job(job)
+            await self._schedule_manager.start()
+            logger.info("日终调度器已启动: 交易日 16:00 数据同步+策略驱动")
+        except Exception as e:
+            logger.warning("日终调度器启动失败（非致命）: %s", e)
 
     async def _on_stop(self) -> None:
         """主引擎停止逻辑"""
@@ -206,6 +291,11 @@ class MainEngine(EngineBase):
 
             # 注销事件处理器
             await self._unregister_event_handlers()
+
+            # 停止日终调度器
+            if self._schedule_manager and self._schedule_manager.is_running:
+                await self._schedule_manager.stop()
+                logger.info("日终调度器已停止")
 
             # 清理资源
             self._module_engines.clear()
@@ -701,6 +791,20 @@ class MainEngine(EngineBase):
             Optional[EngineBase]: 引擎实例
         """
         return self._module_engines.get(module_name)
+
+    def get_async_session(self):
+        """
+        获取异步数据库会话工厂。
+
+        供各模块（account/data/strategy）的定时任务（APScheduler/Celery）使用。
+        这些任务在 FastAPI 请求上下文之外运行，无法使用 Depends(get_db)。
+        返回的是 session_manager.get_session 可调用对象（async context manager factory）。
+
+        Returns:
+            Callable: 异步会话工厂，用法: async with factory() as session: ...
+        """
+        from shared.database.session import get_session_manager
+        return get_session_manager().get_session
 
     def get_all_engines(self) -> List[EngineBase]:
         """获取所有引擎实例

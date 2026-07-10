@@ -150,13 +150,9 @@ async def initialize (
 		# 获取数据库会话 - 使用正确的上下文管理器方式
 		if main_engine and hasattr(main_engine, 'get_async_session'):
 			# 如果主引擎提供会话，使用主引擎的会话
-			session = main_engine.get_async_session()
-
-			# 调用原有的初始化函数
-			init_result = await initialize_data_module(
-				session=session
-			)
-
+			factory = main_engine.get_async_session()
+			async with factory() as session:
+				init_result = await initialize_data_module(session=session)
 			success = init_result.get('status') != 'failed'
 		else:
 			# 使用共享层的会话管理器，通过上下文管理器正确获取

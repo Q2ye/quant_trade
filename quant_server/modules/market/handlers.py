@@ -212,8 +212,8 @@ async def do_save_watchlist(session: AsyncSession, user_id: str, codes: list) ->
     await session.execute(
         text("""
             INSERT INTO user_preferences (user_id, display_settings)
-            VALUES (:uid, :ds::jsonb)
-            ON CONFLICT (user_id) DO UPDATE SET display_settings = :ds::jsonb
+            VALUES (:uid, CAST(:ds AS jsonb))
+            ON CONFLICT (user_id) DO UPDATE SET display_settings = CAST(:ds AS jsonb)
         """),
         {"uid": user_id, "ds": json.dumps(ds)},
     )

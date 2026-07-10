@@ -634,7 +634,8 @@ class RiskEngine(EngineBase):
                                 async with sm.get_session() as session:
                                     repo = RiskEventRepository(session)
                                     deleted = await repo.cleanup_old_events(days=90)
-                                    logger.info("风险事件清理完成: 删除 %d 条 90 天前的旧记录", deleted)
+                                    if deleted > 0:
+                                        logger.info("风险事件清理完成: 删除 %d 条 90 天前的旧记录", deleted)
                             except Exception:
                                 pass  # DB 不可用时静默跳过
                         break  # 执行一次后退出内层循环

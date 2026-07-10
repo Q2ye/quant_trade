@@ -530,8 +530,9 @@ class StrategyService:
 			for pname, pval in param_dict.items():
 				await self.param_repo.create({
 					"strategy_id": clone.id,
-					"name": pname,
-					"value": str(pval),
+					"param_name": pname,
+					"param_type": type(pval).__name__,
+					"param_value": str(pval) if not isinstance(pval, (int, float, str)) else pval,
 				})
 
 			await self.session.commit()

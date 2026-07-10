@@ -66,6 +66,8 @@ class StockLowHighStrategy(BaseStrategy):
         # —— 持仓 ——
         "max_positions": 3,             # 最大持仓数
         "rebalance_frequency": 1,       # 每天调仓
+        "allocated_capital": 100000,    # 分配资金（回退默认值，优先从 context 读取）
+        "min_lot_size": 100,            # 最小交易股数（A 股 1 手=100 股）
 
         # —— 三档行情风控（方案C：中证500指数）——
         # 判定依据：中证500（000905.SH）收盘价与均线位置
@@ -120,7 +122,7 @@ class StockLowHighStrategy(BaseStrategy):
         self._first_screen_done: bool = False
 
         # 手动持仓跟踪（回测引擎不将 Broker 持仓同步回策略，必须自己管理）
-        # {ts_code: {"entry_price": float, "quantity": float, "locked": bool}}
+        # {ts_code: {"entry_price": float, "weight": float, "shares": int, "locked": bool}}
         self._holdings: Dict[str, Dict] = {}
         self._track_high: Dict[str, float] = {}    # {ts_code: 持仓期间最高价}
         self._exit_pending: Set[str] = set()        # {ts_code: 待确认卖出的股票}
@@ -223,9 +225,10 @@ class StockLowHighStrategy(BaseStrategy):
 
             self._bar_count += 1
 
-            # 每 N 根 bar 执行一次调仓
+            # 每 N 根 bar 执行一次调仓（仅在数据充足时触发，避免首根 bar
+            # 就标记 _last_rebalance_date 导致后续所有 bar 被跳过）
             freq = int(self.parameters.get("rebalance_frequency", 1))
-            if self._bar_count % freq == 0:
+            if self._bar_count % freq == 0 and len(self._data_cache) >= 10:
                 signals = self._run_rebalance()
                 self._last_rebalance_date = trade_date
                 self._first_screen_done = True
@@ -351,12 +354,21 @@ class StockLowHighStrategy(BaseStrategy):
         if slots <= 0 or not new_stocks:
             return signals
 
+        # 优先从 context 获取实际分配资金，回退到参数默认值
+        capital = float(getattr(self.context, "initial_capital", 0) or
+                        self.parameters.get("allocated_capital", 100000))
+        lot_size = int(self.parameters.get("min_lot_size", 100))
+
         targets = new_stocks[:slots]
 
         for target in targets:
             price = self._get_price(target)
             if price <= 0:
                 continue
+
+            weight = 1.0 / effective_max_pos
+            amount = capital * weight
+            shares = max(int(amount / price / lot_size) * lot_size, lot_size)
 
             sig = TradingSignal(
                 id=self._gen_id(),
@@ -366,16 +378,16 @@ class StockLowHighStrategy(BaseStrategy):
                 signal_type=SignalType.ENTRY,
                 direction=SignalDirection.LONG,
                 price=price,
-                quantity=0,
-                amount=1.0 / effective_max_pos,
+                quantity=shares,
+                amount=amount,
                 confidence=0.75,
-                reason=f"低吸轮动买入: {target}",
+                reason=f"低吸轮动买入: {target}（{weight:.0%}仓位≈{shares}股）",
                 timestamp=datetime.now(),
             )
-            sig.weight = 1.0 / effective_max_pos
+            sig.weight = weight
             signals.append(sig)
             self._holdings[target] = {
-                "entry_price": price, "quantity": 1.0 / effective_max_pos,
+                "entry_price": price, "weight": weight, "shares": shares,
             }
             self._track_high[target] = price
 
@@ -515,9 +527,9 @@ class StockLowHighStrategy(BaseStrategy):
             current = self._get_price(code)
             if current <= 0:
                 continue
-            qty = holding.get("quantity", 1.0)
-            total_entry += entry * qty
-            total_current += current * qty
+            w = holding.get("weight", 1.0)
+            total_entry += entry * w
+            total_current += current * w
 
         if total_entry <= 0:
             return 0.0
@@ -808,11 +820,11 @@ class StockLowHighStrategy(BaseStrategy):
         for code in list(self._exit_pending):
             if code in self._holdings:
                 entry = self._holdings[code].get("entry_price", 0)
-                qty = self._holdings[code].get("quantity", 1.0)
+                w = self._holdings[code].get("weight", 1.0)
                 exit_price = self._get_price(code)
                 if entry > 0 and exit_price > 0:
-                    entry_val = entry * qty
-                    exit_val = exit_price * qty
+                    entry_val = entry * w
+                    exit_val = exit_price * w
                     self._exited_entry_value += entry_val
                     self._exited_cash_value += exit_val
                 del self._holdings[code]
@@ -863,12 +875,12 @@ class StockLowHighStrategy(BaseStrategy):
             # ---- 动态再平衡（在止损前执行，防集中度风险）----
             rebalance_th = float(self.parameters.get("rebalance_threshold", 1.0))
             if pnl >= rebalance_th:
-                old_qty = self._holdings[code]["quantity"]
-                half_qty = old_qty / 2
-                self._holdings[code]["quantity"] = half_qty  # 保留半仓
-                # 另外半仓生成卖出信号（带 half_exit 标记）
+                old_shares = self._holdings[code].get("shares", 0)
+                half_shares = max(int(old_shares / 2 / 100) * 100, 100)
+                self._holdings[code]["shares"] = old_shares - half_shares
+                self._holdings[code]["weight"] = self._holdings[code].get("weight", 1.0) / 2
                 sig = self._make_exit_signal(
-                    code, reason=f"动态再平衡: 浮盈{pnl:.1%}>={rebalance_th:.0%}，减半仓",
+                    code, reason=f"动态再平衡: 浮盈{pnl:.1%}>={rebalance_th:.0%}，减半仓({old_shares}→{old_shares-half_shares}股)",
                     signal_type=SignalType.TAKE_PROFIT,
                 )
                 sig.half_exit = True
@@ -876,7 +888,7 @@ class StockLowHighStrategy(BaseStrategy):
                 if self.verbose_logging:
                     logger.info(
                         f"动态再平衡: {code} 浮盈{pnl:.1%}>={rebalance_th:.0%}，"
-                        f"减半仓({old_qty}→{half_qty})"
+                        f"减半仓({old_shares}→{old_shares - half_shares}股)"
                     )
                 # 重置最高价（减半仓后重新追踪）
                 self._track_high[code] = current_price
@@ -990,6 +1002,8 @@ class StockLowHighStrategy(BaseStrategy):
         signal_type: SignalType = SignalType.EXIT,
     ) -> TradingSignal:
         price = self._get_price(ts_code)
+        holding = self._holdings.get(ts_code, {})
+        shares = holding.get("shares", 0)
         return TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -998,8 +1012,8 @@ class StockLowHighStrategy(BaseStrategy):
             signal_type=signal_type,
             direction=SignalDirection.CLOSE_LONG,
             price=price,
-            quantity=0,
-            amount=0.0,
+            quantity=shares,
+            amount=price * shares,
             confidence=0.80,
             reason=reason,
             timestamp=datetime.now(),

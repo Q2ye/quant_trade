@@ -157,39 +157,34 @@ class SettlementEngine(EngineBase):
         """执行结算任务并发布完成事件"""
         from modules.account.tasks.settlement_tasks import create_settlement_tasks
 
-        session = self._db_session_factory()
         try:
-            tasks = create_settlement_tasks(session, event_engine=self.event_engine)
+            async with self._db_session_factory() as session:
+                tasks = create_settlement_tasks(session, event_engine=self.event_engine)
 
-            if settlement_type == "weekly":
-                result = await tasks.weekly_settlement_task(trading_day)
-            elif settlement_type == "monthly":
-                result = await tasks.monthly_settlement_task(trading_day)
-            else:
-                result = await tasks.daily_settlement_task(trading_day)
+                if settlement_type == "weekly":
+                    result = await tasks.weekly_settlement_task(trading_day)
+                elif settlement_type == "monthly":
+                    result = await tasks.monthly_settlement_task(trading_day)
+                else:
+                    result = await tasks.daily_settlement_task(trading_day)
 
-            # 提交事务，确保持久化
-            await session.commit()
+                await session.commit()
 
-            if self.event_engine:
-                # 统计结果
-                results = result.get("results", {})
-                total = len(results)
-                success = sum(1 for r in results.values() if r.get("status") == "success")
-                failed = total - success
+                if self.event_engine:
+                    results = result.get("results", {})
+                    total = len(results)
+                    success_count = sum(1 for r in results.values() if r.get("status") == "success")
+                    failed = total - success_count
 
-                await self.event_engine.put(AccountSettlementCompletedEvent(
-                    settlement_date=trading_day or date.today(),
-                    settlement_type=settlement_type,
-                    total_accounts=total,
-                    successful_accounts=success,
-                    failed_accounts=failed,
-                    settlement_statistics=result,
-                    duration_seconds=0,
-                ))
+                    await self.event_engine.put(AccountSettlementCompletedEvent(
+                        settlement_date=trading_day or date.today(),
+                        settlement_type=settlement_type,
+                        total_accounts=total,
+                        successful_accounts=success_count,
+                        failed_accounts=failed,
+                        settlement_statistics=result,
+                        duration_seconds=0,
+                    ))
         except Exception:
             logger.exception("结算执行异常，事务已回滚")
-            await session.rollback()
             raise
-        finally:
-            await session.close()

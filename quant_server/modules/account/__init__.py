@@ -57,17 +57,14 @@ def _register_daily_settlement_schedule(settlement_engine) -> None:
                 logger.warning("结算调度跳过：db_session_factory 未配置")
                 return
 
-            session = db_factory()
             try:
-                tasks = create_settlement_tasks(session, event_engine=settlement_engine.event_engine)
-                result = await tasks.daily_settlement_task(_date.today())
-                await session.commit()
-                logger.info(f"日终结算调度完成: {result.get('total_accounts', 0)} 个账户")
+                async with db_factory() as session:
+                    tasks = create_settlement_tasks(session, event_engine=settlement_engine.event_engine)
+                    result = await tasks.daily_settlement_task(_date.today())
+                    await session.commit()
+                    logger.info(f"日终结算调度完成: {result.get('total_accounts', 0)} 个账户")
             except Exception:
                 logger.exception("日终结算调度执行失败")
-                await session.rollback()
-            finally:
-                await session.close()
 
         scheduler.add_job(
             _settlement_job,
@@ -132,9 +129,9 @@ async def initialize(
 
         # 获取数据库会话
         if main_engine and hasattr(main_engine, "get_async_session"):
-            session_factory = main_engine.get_async_session()
-            session = session_factory() if callable(session_factory) else session_factory
-            result = await _do_initialize(session)
+            factory = main_engine.get_async_session()
+            async with factory() as session:
+                result = await _do_initialize(session)
         else:
             from shared.database.session import get_session_manager
 
@@ -145,7 +142,13 @@ async def initialize(
         # 注册 SettlementEngine
         if main_engine and event_engine:
             try:
-                db_factory = main_engine.get_async_session() if hasattr(main_engine, "get_async_session") else None
+                # v3.2: 优先从 main_engine 获取 session factory（MainEngine.get_async_session），
+                # 回退到全局 session_manager。修复此前 hasattr 永远为 False 导致 db_factory=None 的问题。
+                if main_engine and hasattr(main_engine, "get_async_session"):
+                    db_factory = main_engine.get_async_session()
+                else:
+                    from shared.database.session import get_session_manager
+                    db_factory = get_session_manager().get_session
                 settlement_engine = SettlementEngine(
                     config={"name": "settlement_engine"},
                     event_engine=event_engine,

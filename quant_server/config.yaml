@@ -158,7 +158,7 @@ ENGINES:
   # value: 最大并发数（0 = 不限流）
   # ------------------------------------------------------------------
   sync_rate_limits:
-    daily: 3                 # 日线行情（daily，800次/分钟）
+    daily: 2                 # 日线行情（daily，800次/分钟）
     daily_basic: 2           # 每日指标（daily_basic，500次/分钟，保守2并发）
     adj_factor: 2            # 复权因子（adj_factor，500次/分钟）
     moneyflow: 2             # 个股资金流向（moneyflow，600次/分钟）
@@ -176,7 +176,7 @@ ENGINES:
     rewards: 3               # 管理层薪酬持股（stk_rewards）
     etf_daily: 2             # ETF日线（fund_daily，800次/分钟）
     etf_adj: 2               # ETF复权因子（fund_adj，500次/分钟）
-    index_daily: 2           # 指数日线（index_daily，500次/分钟）
+    index_daily: 1           # 指数日线（index_daily，500次/分钟）
     stk_factor: 3             # 股票技术因子（stk_factor，500次/分钟@8000积分）
     stk_factor_pro: 2         # 股票技术因子专业版（stk_factor_pro，500次/分钟@8000积分）
     idx_factor_pro: 2         # 指数技术因子专业版（idx_factor_pro，500次/分钟）

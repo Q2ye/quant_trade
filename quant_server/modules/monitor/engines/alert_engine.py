@@ -276,12 +276,15 @@ class AlertEngine(EngineBase):
         # 构建确认 URL
         confirm_url = f"/signals/{signal_id}" if signal_id else ""
 
-        title = f"[info] 交易信号 - {strategy_name} | {ts_code} {direction} @ {price:.2f}"
+        direction_cn = {"long": "买入", "short": "做空", "close_long": "卖出", "close_short": "买入平空"}.get(direction, direction)
+        signal_type_cn = {"entry": "入场", "exit": "出场", "stop_loss": "止损", "take_profit": "止盈", "rebalance": "调仓"}.get(signal_type, signal_type)
+
+        title = f"[info] 交易信号 - {strategy_name} | {ts_code} {direction_cn} @ {price:.2f}"
         message = (
             f"策略: {strategy_name}\n"
             f"股票: {ts_code}\n"
-            f"方向: {direction}\n"
-            f"信号类型: {signal_type}\n"
+            f"方向: {direction_cn}\n"
+            f"信号类型: {signal_type_cn}\n"
             f"参考价格: {price}\n"
             f"价格区间: {price_low} ~ {price_high}\n"
             f"最大滑点: {slippage * 100:.1f}%\n"

@@ -82,8 +82,9 @@ async def initialize(
 
         # 获取 session
         if main_engine and hasattr(main_engine, 'get_async_session'):
-            session = main_engine.get_async_session()
-            init_result = await _initialize_system_module(session, config or {})
+            factory = main_engine.get_async_session()
+            async with factory() as session:
+                init_result = await _initialize_system_module(session, config or {})
             success = init_result.get('status') != 'failed'
         else:
             from shared.database.session import get_session_manager

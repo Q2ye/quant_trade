@@ -81,9 +81,9 @@ async def initialize(
         logger.info("开始初始化回测模块...")
 
         if main_engine and hasattr(main_engine, "get_async_session"):
-            session_factory = main_engine.get_async_session()
-            session = session_factory() if callable(session_factory) else session_factory
-            result = await _do_initialize(session)
+            factory = main_engine.get_async_session()
+            async with factory() as session:
+                result = await _do_initialize(session)
         else:
             from shared.database.session import get_session_manager
 

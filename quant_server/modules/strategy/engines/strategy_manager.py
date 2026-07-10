@@ -367,7 +367,10 @@ class StrategyManager(EngineBase):
         strategy_instance.started_at = datetime.now()
 
         # v3.0: 仅实盘/仿真模式预热历史数据 + 恢复持仓（回测不需要）
-        if getattr(strategy_instance, "run_mode", RunMode.BACKTEST) in (RunMode.LIVE):
+        # 注意：strategy_instance.run_mode 在调用方 start_strategy() 返回后才设置，
+        # 因此必须从 context.run_mode 读取，否则预热永远被跳过。
+        _run_mode = getattr(context, "run_mode", None) or getattr(strategy_instance, "run_mode", RunMode.BACKTEST)
+        if _run_mode in (RunMode.LIVE,):
             await self._restore_positions_from_db(strategy_id)
             await self._warmup_strategy_data(strategy_id)
 
@@ -1295,11 +1298,12 @@ class StrategyManager(EngineBase):
             state.last_run_date = trade_date
 
             # v3.1: 心跳 — 记录每个策略每日运行摘要
+            strategy_obj = self._strategy_objects.get(strategy_id)
             heartbeat = {
                 "trade_date": str(trade_date),
                 "signals_count": len(signals),
-                "positions_count": len(strategy.positions) if hasattr(strategy, "positions") else 0,
-                "data_cached": len(getattr(strategy, "_data_cache", {})),
+                "positions_count": len(strategy_obj.positions) if strategy_obj and hasattr(strategy_obj, "positions") else 0,
+                "data_cached": len(getattr(strategy_obj, "_data_cache", {})) if strategy_obj else 0,
                 "updated_at": datetime.now().isoformat(),
             }
             state.today_trades += len(signals)
@@ -1372,11 +1376,14 @@ class StrategyManager(EngineBase):
         full_market = False
         if symbols is None:
             params = getattr(instance, "parameters", {}) or {}
-            symbols = (
-                list(params.get("symbols") or [])
-                or list(params.get("universe") or [])
-                or list(getattr(strategy, "_universe", []))
-            )
+            raw_symbols = list(params.get("symbols") or [])
+            raw_universe = params.get("universe") or []
+            # 避免字符串（如 "all_market"）被 list() 拆成单个字符
+            if isinstance(raw_universe, str):
+                raw_universe = [raw_universe]
+            else:
+                raw_universe = list(raw_universe)
+            symbols = raw_symbols or raw_universe or list(getattr(strategy, "_universe", []))
         if not symbols:
             # 未指定股票池 → 全市场模式，由策略 on_bar 自行筛选
             full_market = True
@@ -1604,15 +1611,14 @@ class StrategyManager(EngineBase):
                     restored += 1
 
                     # v3.2: 同步恢复策略内部的 _holdings 字典（低吸轮动等策略依赖此字典决策）
-                    # 注：quantity 使用权重归一化值 1.0 而非 DB 中的实际股数(pos.volume)。
-                    # 策略内部模型以"资金权重"追踪持仓（如 max_positions=3 意味着 3 个等权仓位），
-                    # 所有盈亏/回撤/半仓轮动计算均基于权重而非股数，故归一化值在数学上等价。
+                    # weight=1.0 代表满仓权重，shares=qty 为 DB 中的实际股数。
                     # _track_high 初始设为 avg_price（成本价），重启恢复流程中
                     # _recover_running_strategies 会用 state_snapshot 中的精确历史高点覆盖。
                     if hasattr(strategy, "_holdings"):
                         strategy._holdings[pos.ts_code] = {
                             "entry_price": avg_price,
-                            "quantity": 1.0,
+                            "weight": 1.0,
+                            "shares": qty,
                             "locked": False,
                         }
                     if hasattr(strategy, "_track_high"):
@@ -1860,9 +1866,18 @@ class StrategyManager(EngineBase):
 
         if ts_codes is None:
             instance = self.strategies.get(strategy_id)
+            params = {}
             if instance and hasattr(instance, "parameters"):
                 params = instance.parameters or {}
-                ts_codes = list(params.get("symbols") or params.get("universe") or [])
+            # v3.2: instance.parameters 在恢复时可能为空，回退到策略对象的合并参数
+            if not params:
+                params = getattr(strategy, "parameters", {}) or {}
+            raw = params.get("symbols") or params.get("universe") or []
+            # 避免 list("all_market") → ['a','l','l','_',...] 的拆字 Bug
+            if isinstance(raw, str):
+                ts_codes = [raw]
+            else:
+                ts_codes = list(raw)
 
         if not ts_codes:
             logger.info("策略 %s 无股票池，跳过预热", strategy_id)
@@ -2031,6 +2046,20 @@ class StrategyManager(EngineBase):
                 strategy_id, e,
             )
 
+    @staticmethod
+    def _safe_last_date(df):
+        """安全获取 DataFrame 最后一条数据的日期字符串，兼容 RangeIndex 和 DatetimeIndex。"""
+        try:
+            last_val = df.index[-1]
+            if hasattr(last_val, 'date'):
+                return str(last_val.date())
+            # RangeIndex → 回退到 trade_date 列或行数
+            if 'trade_date' in df.columns:
+                return str(df['trade_date'].iloc[-1])
+            return f'rows={len(df)}'
+        except Exception:
+            return 'unknown'
+
     async def _save_strategy_state(self, strategy_id: str, heartbeat: dict = None) -> None:
         """盘后保存策略运行摘要到 strategy_runs.state_snapshot"""
         strategy = self._strategy_objects.get(strategy_id)
@@ -2051,7 +2080,7 @@ class StrategyManager(EngineBase):
                 for ts_code, p in strategy.positions.items() if p.quantity > 0
             },
             "latest_data_dates": {
-                ts_code: str(df.index[-1].date())
+                ts_code: self._safe_last_date(df)
                 for ts_code, df in strategy._data_cache.items()
                 if hasattr(df, 'index') and len(df) > 0
             },
@@ -2063,7 +2092,8 @@ class StrategyManager(EngineBase):
             snapshot["_holdings"] = {
                 ts_code: {
                     "entry_price": h.get("entry_price", 0),
-                    "quantity": h.get("quantity", 0),
+                    "weight": h.get("weight", 1.0),
+                    "shares": h.get("shares", 0),
                     "locked": h.get("locked", False),
                 }
                 for ts_code, h in strategy._holdings.items()
@@ -2082,7 +2112,7 @@ class StrategyManager(EngineBase):
             sm = get_session_manager()
             async with sm.get_session() as session:
                 await session.execute(text("""
-                    UPDATE strategy_runs SET state_snapshot = :snap::jsonb
+                    UPDATE strategy_runs SET state_snapshot = CAST(:snap AS jsonb)
                     WHERE strategy_id = :sid AND status = 'running'
                 """), {"sid": str(strategy_id), "snap": json.dumps(snapshot)})
                 await session.commit()
@@ -2102,9 +2132,9 @@ class StrategyManager(EngineBase):
                 await session.execute(text("""
                     UPDATE strategy_runs
                     SET state_snapshot = jsonb_set(
-                        coalesce(state_snapshot, '{}'::jsonb),
+                        coalesce(state_snapshot, CAST('{}' AS jsonb)),
                         '{last_heartbeat}',
-                        :hb::jsonb,
+                        CAST(:hb AS jsonb),
                         true
                     )
                     WHERE strategy_id = :sid AND status = 'running'
