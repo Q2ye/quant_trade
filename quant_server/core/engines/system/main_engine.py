@@ -261,7 +261,7 @@ class MainEngine(EngineBase):
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动(16:00)",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 16, "minute": 0},
+                schedule_config={"hour": 20, "minute": 0},
                 # schedule_config={"hour": 21, "minute": 12},  # 测试流程，临时修改时间
                 func=_daily_sync_job,
                 description="交易日16:00同步daily_quotes/daily_basic/adj_factor/index_daily，完成后自动驱动策略",
@@ -269,7 +269,7 @@ class MainEngine(EngineBase):
             )
             await self._schedule_manager.add_job(job)
             await self._schedule_manager.start()
-            logger.info("日终调度器已启动: 交易日 16:00 数据同步+策略驱动")
+            logger.info("日终调度器已启动: 交易日 20:00 数据同步+策略驱动")
         except Exception as e:
             logger.warning("日终调度器启动失败（非致命）: %s", e)
 
