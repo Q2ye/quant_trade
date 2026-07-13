@@ -359,6 +359,24 @@ const statusLabel = (s: string) => {
 };
 
 const loadTaskList = async () => {
+  // v3.3: 检查 URL 是否带有 task 参数（从快速回测跳转来）
+  const urlTaskId = route.query.task as string;
+  if (urlTaskId && !scenarioTaskFromUrl.value) {
+    scenarioTaskFromUrl.value = urlTaskId;
+    // 自动加载该任务的结果
+    setTimeout(async () => {
+      try {
+        const tr: any = await backtestAPI.getResult(urlTaskId);
+        const r = tr?.data || tr;
+        if (r) {
+          activeTaskName.value = '快速回测';
+          activeTaskId.value = urlTaskId;
+          loadResultDetails(urlTaskId);
+          hasResults.value = true;
+        }
+      } catch { }
+    }, 2000);
+  }
   taskListLoading.value = true;
   try {
     const res = await backtestAPI.getTasks({ page_size: 50 }) as any;
@@ -544,6 +562,8 @@ const exportCSV = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "backtest_trades.csv"; a.click(); URL.revokeObjectURL(a.href);
 };
 
+// v3.3: 处理从快速回测跳转来的 task_id
+const scenarioTaskFromUrl = ref('');
 onMounted(async () => {
   await Promise.all([loadOptions(), loadTaskList()]);
   // 默认加载最近完成的回测结果

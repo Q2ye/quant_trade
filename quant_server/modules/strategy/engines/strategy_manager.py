@@ -472,6 +472,25 @@ class StrategyManager(EngineBase):
                     ),
                 )
 
+                # v3.3: 检查代码默认参数与 DB 参数是否冲突
+                instance = self.strategies.get(strategy_id)
+                if instance and hasattr(instance, 'DEFAULT_PARAMS'):
+                    try:
+                        from shared.database.repositories.strategy.management.strategy_parameter_repo import (
+                            StrategyParameterRepository
+                        )
+                        param_repo = StrategyParameterRepository(session)
+                        db_params = await param_repo.get_by_strategy_id(strategy_id)
+                        db_dict = {p.param_name: p.param_value for p in db_params}
+                        for key, default_val in instance.DEFAULT_PARAMS.items():
+                            if key in db_dict and db_dict[key] != default_val:
+                                logger.info(
+                                    f"策略 {strategy_id}: 参数 '{key}' DB值={db_dict[key]} "
+                                    f"≠ 代码默认值={default_val}。使用DB值。如需更新为默认值，请删除此参数后重新保存。"
+                                )
+                    except Exception:
+                        pass
+
                 # 构建上下文
                 from modules.strategy.strategies.base.strategy_context import StrategyContext
                 context = StrategyContext(
@@ -756,6 +775,8 @@ class StrategyManager(EngineBase):
             instance = self.strategies.get(strategy_id)
             # v2.2: 从策略实例读取绑定的账户ID
             account_id = getattr(instance, "account_id", "") if instance else ""
+            # v3.1: 读取当前使用的策略版本ID，用于溯源
+            version_id = getattr(instance, "current_version_id", "") if instance else ""
 
             for sig in signals:
                 # v2.0: 使用 sig.to_dict() 获取完整数据（含价格范围自动计算）
@@ -764,6 +785,7 @@ class StrategyManager(EngineBase):
                 event = StrategySignalEvent(
                     strategy_id=strategy_id,
                     strategy_name=instance.name if instance else "",
+                    strategy_version_id=version_id,  # v3.1: 溯源用
                     ts_code=sig_dict.get("ts_code", ""),
                     signal_type=sig_dict.get("signal_type", ""),
                     signal_direction=sig_dict.get("direction", ""),
@@ -1270,6 +1292,11 @@ class StrategyManager(EngineBase):
 
             # v3.0: 运行前恢复持仓 + 检查昨日 pending
             await self._restore_positions_from_db(strategy_id)
+            # v3.4: 注入实盘状态——必须在实际策略对象上调用（非 wrapper）
+            strategy_obj = self._strategy_objects.get(strategy_id)
+            if strategy_obj and hasattr(strategy_obj, 'load_live_state') and self.session_factory:
+                async with self.session_factory() as _db:
+                    await strategy_obj.load_live_state(_db, strategy_id=str(strategy_id))
             pending_map = await self._check_yesterday_pending(strategy_id, trade_date)
 
             # 过滤：昨天 pending 的同方向股票跳过，避免重复发信号
@@ -1302,7 +1329,10 @@ class StrategyManager(EngineBase):
             heartbeat = {
                 "trade_date": str(trade_date),
                 "signals_count": len(signals),
-                "positions_count": len(strategy_obj.positions) if strategy_obj and hasattr(strategy_obj, "positions") else 0,
+                "positions_count": (
+                    len(strategy_obj.positions) +
+                    len(getattr(strategy_obj, "_active_positions", {}))
+                ) if strategy_obj else 0,
                 "data_cached": len(getattr(strategy_obj, "_data_cache", {})) if strategy_obj else 0,
                 "updated_at": datetime.now().isoformat(),
             }
@@ -2190,13 +2220,31 @@ class StrategyManager(EngineBase):
             logger.info(f"持仓新增: {strategy_id} {ts_code} x{fill_quantity} @ {fill_price}")
 
     async def _on_order_filled(self, event) -> None:
-        """订单成交 → 更新策略持仓"""
+        """v3.3: 订单成交 → 更新策略持仓（修复 list 被当 dict 用的 bug）"""
         logger.info(f"订单成交: {event.data.get('order_id')}，更新策略持仓")
         for strategy_id, state in self.running_states.items():
             if state.is_running:
-                symbol = event.data.get("symbol")
-                if symbol and symbol in state.positions:
-                    state.positions[symbol] += event.data.get("filled_volume", 0)
+                symbol = event.data.get("symbol") or event.data.get("ts_code", "")
+                if not symbol:
+                    continue
+                filled_vol = int(event.data.get("filled_volume", 0) or 0)
+                # state.positions 是 List[Position]，遍历找到对应的持仓
+                found = False
+                for pos in state.positions:
+                    if pos.ts_code == symbol:
+                        pos.quantity += filled_vol
+                        found = True
+                        break
+                if not found and filled_vol > 0:
+                    # 新持仓
+                    from modules.strategy.models import Position, PositionSide
+                    state.positions.append(Position(
+                        strategy_id=strategy_id,
+                        ts_code=symbol,
+                        side=PositionSide.LONG,
+                        quantity=filled_vol,
+                        avg_cost=float(event.data.get("price", 0)),
+                    ))
 
     async def _on_stop(self):
         logger.info("策略管理器停止")

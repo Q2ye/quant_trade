@@ -43,6 +43,8 @@ from modules.backtest.schemas import (
 	BacktestResultResponse,
 	BacktestOptimizeRequest,
 	BacktestOptimizeResponse,
+		ScenarioRunRequest,
+		ScenarioPromoteRequest,
 	BacktestCreateRequest
 )
 # 导入响应格式化工具
@@ -606,3 +608,90 @@ async def backtest_module_health_check(
 			},
 			status_code=500
 		)
+
+
+# =============================================================================
+# v3.3: 独立场景回测 + 晋升
+# =============================================================================
+
+@router.post("/run-scenario", response_model=BacktestCreateResponse, status_code=201)
+async def run_scenario_backtest(
+		request: ScenarioRunRequest,
+		background_tasks: BackgroundTasks,
+		current_user: dict = Depends(get_current_user),
+		db: AsyncSession = Depends(get_db_session),
+):
+	"""
+	独立场景回测（v3.3）：不依赖策略，直接用代码+参数运行回测。
+
+	Args:
+		request: 场景回测请求（name, code, parameters, config）
+		current_user: 当前用户
+		db: 数据库会话
+
+	Returns:
+		{"scenario_id": str, "task_id": str}
+	"""
+	try:
+		from modules.backtest.services.backtest_service import BacktestService
+
+		service = BacktestService(db)
+		result = await service.run_scenario(
+			user_id=current_user.get("id", ""),
+			name=request.name,
+			code=request.code,
+			parameters=request.parameters,
+			config=request.config,
+			template_id=getattr(request, "template_id", None),
+			source_strategy_id=getattr(request, "source_strategy_id", None),
+		)
+
+		# 启动回测
+		background_tasks.add_task(
+			BacktestService(db).run_backtest,
+			task_id=result["task_id"],
+			user_id=current_user.get("id", ""),
+		)
+
+		return success_response(
+			data=result,
+			message="场景回测已创建并开始执行"
+		)
+	except Exception as e:
+		logger.error(f"场景回测创建失败: {str(e)}", exc_info=True)
+		return error_response(message=str(e), status_code=500)
+
+
+@router.post("/promote-scenario", status_code=201)
+async def promote_scenario(
+		request: ScenarioPromoteRequest,
+		current_user: dict = Depends(get_current_user),
+		db: AsyncSession = Depends(get_db_session),
+):
+	"""
+	场景晋升为策略（v3.3）：将验证通过的独立场景保存为正式策略。
+
+	Args:
+		request: 晋升请求（scenario_id, strategy_name）
+		current_user: 当前用户
+		db: 数据库会话
+
+	Returns:
+		{"strategy_id": str}
+	"""
+	try:
+		from modules.backtest.services.backtest_service import BacktestService
+
+		service = BacktestService(db)
+		result = await service.promote_scenario_to_strategy(
+			scenario_id=request.scenario_id,
+			user_id=current_user.get("id", ""),
+			strategy_name=getattr(request, "strategy_name", None),
+		)
+		return success_response(
+			data=result,
+			message="场景已晋升为策略"
+		)
+	except Exception as e:
+		logger.error(f"场景晋升失败: {str(e)}", exc_info=True)
+		return error_response(message=str(e), status_code=500)

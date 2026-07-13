@@ -196,6 +196,9 @@ select * from strategy_runs;
 select * from strategy_parameters;
 
 select * from strategy_templates
+select * from positions
+UPDATE positions SET strategy_id = '2db2c525-502e-489d-8d74-43f89e35a49e'
+WHERE strategy_id IS NULL;
 --
 -- 同步任务表
 select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';
@@ -236,5 +239,16 @@ WHERE ts_code = '515170.SH'
 ORDER BY trade_date DESC
 LIMIT 20;
 
+-- 检查 financial_disclosure_dates 表是否有数据
+SELECT COUNT(*), MIN(actual_date), MAX(actual_date)
+FROM financial_disclosure_dates;
 
+SELECT COUNT(*) FROM financial_disclosure_dates;
+
+SELECT research_id, factor_code, status, progress, started_at
+FROM factor_research
+WHERE status = 'running'
+ORDER BY created_at DESC;
+
+SELECT * from backtest_equity_curves where task_id ='a9797c8f-0879-4c85-9eec-e597375ae563'
 SELECT trade_date, close, open, high, low, vol FROM index_daily WHERE ts_code = '000905.SH' ORDER BY trade_date ASC

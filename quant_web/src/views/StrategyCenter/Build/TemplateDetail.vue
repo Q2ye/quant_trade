@@ -131,10 +131,20 @@
                   block
                   :loading="creating"
                   @click="handleCreateInstance"
+                  style="margin-bottom:8px"
               >
                 创建策略实例
               </n-button>
-              <p class="td-hint">创建后可在工作区独立编辑代码和参数，不影响原始模板。</p>
+              <n-button
+                  type="info"
+                  block
+                  secondary
+                  :loading="quickBacktesting"
+                  @click="handleQuickBacktest"
+              >
+                ⚡ 快速回测
+              </n-button>
+              <p class="td-hint">快速回测不创建策略，验证效果满意后再保存为正式策略。</p>
             </n-card>
           </div>
         </div>
@@ -158,6 +168,7 @@ const message = useMessage();
 const loading = ref(true);
 const error = ref('');
 const creating = ref(false);
+const quickBacktesting = ref(false);
 const template = ref<any>(null);
 const instanceName = ref('');
 const overrideParams = ref<Record<string, any>>({});
@@ -481,6 +492,42 @@ const handleCreateInstance = async () => {
     message.error('创建失败: ' + (e?.message || '未知错误'));
   } finally {
     creating.value = false;
+  }
+};
+
+const handleQuickBacktest = async () => {
+  if (quickBacktesting.value) return;
+  const id = route.params.id as string;
+  if (!id) return;
+  quickBacktesting.value = true;
+  try {
+    // 收集参数覆写值
+    const overrides: Record<string, any> = {};
+    if (currentTemplate.value?.params) {
+      for (const [key, spec] of Object.entries(currentTemplate.value.params)) {
+        const val = overridesRef.value?.[key] ?? spec.default;
+        if (val !== spec.default) overrides[key] = val;
+      }
+    }
+    const res = await request.post('/quantTrade/backtest/run-scenario', {
+      name: (instanceName.value || currentTemplate.value?.name || '快速回测'),
+      code: currentTemplate.value?.code_template || '',
+      parameters: overrides,
+      config: {
+        start_date: '2023-01-01',
+        end_date: '2024-12-31',
+        initial_capital: 1000000,
+      },
+      template_id: id,
+    });
+    if (res?.data?.task_id) {
+      message.success('回测已启动');
+      router.push('/backtest?task=' + res.data.task_id);
+    }
+  } catch (e: any) {
+    message.error('快速回测失败: ' + (e?.message || '未知错误'));
+  } finally {
+    quickBacktesting.value = false;
   }
 };
 

@@ -375,10 +375,28 @@ class BacktestService:
 			except Exception as e:
 				logger.error(f"获取策略参数失败: {str(e)}")
 
-			# ---- 2. 创建回测任务主记录 ----
+			# ---- 2. v3.3: 获取策略版本 + 参数快照 ----
+			strategy_version_id = None
+			try:
+				from shared.database.repositories.strategy.management.strategy_version_repo import StrategyVersionRepository
+				version_repo = StrategyVersionRepository(self.db)
+				ver = await version_repo.get_current_version(str(request.strategy_id))
+				if ver:
+					strategy_version_id = ver.id
+			except Exception as _ve:
+				logger.debug(f"版本查找跳过: {_ve}")
+			try:
+				from modules.strategy.services.strategy_service import StrategyService
+				snap = StrategyService(self.db, None)
+				await snap.snapshot_strategy_version(str(request.strategy_id), "backtest")
+			except Exception as _se:
+				logger.debug(f"参数快照跳过: {_se}")
+
+			# ---- 3. 创建回测任务主记录 ----
 			task = await self.task_repo.create({
 				"name": request.name,
 				"strategy_id": str(request.strategy_id),
+				"strategy_version_id": strategy_version_id,
 				"config": {
 					"start_date": request.start_date,
 					"end_date": request.end_date,
@@ -392,7 +410,7 @@ class BacktestService:
 				"created_at": datetime.now()
 			})
 
-			# ---- 3. 保存回测参数到 backtest_parameters 表（分类存储） ----
+			# ---- 4. 保存回测参数到 backtest_parameters 表（分类存储） ----
 			try:
 				from shared.database.repositories.strategy.backtest.parameter_repo import \
 					BacktestParameterRepository
@@ -681,7 +699,7 @@ class BacktestService:
 					peak = eq
 				dd = (peak - eq) / peak if peak > 0 else 0.0
 				data.append({
-					"date": curve.trade_date,
+					"trade_date": curve.trade_date,
 					"equity": eq,
 					"drawdown": round(dd, 4),
 				})
@@ -723,7 +741,7 @@ class BacktestService:
 			if task.user_id != user_id:
 				raise ValueError("无权限访问该回测任务")
 
-			# ---- 2. 获取交易记录（优先从 result JSON 读取含 PnL 的数据） ----
+			# ---- 2. 获取交易记录（v3.3: 优先从规范化表 backtest_trades 读取（JSONB 不再含明细）） ----
 			data = []
 			if task.result and task.result.get("trades"):
 				for t in task.result["trades"]:
@@ -1650,6 +1668,82 @@ class BacktestService:
 		except Exception as e:
 			logger.error(f"参数优化失败: {str(e)}")
 			raise
+
+	# =========================================================================
+	# v3.3: 独立场景回测 + 晋升逻辑
+	# =========================================================================
+
+	async def run_scenario(
+		self, user_id, name, code, parameters=None, config=None,
+		template_id=None, source_strategy_id=None,
+	):
+		"""独立场景回测：不依赖策略，直接用代码+参数运行回测。"""
+		try:
+			from shared.database.repositories.strategy.backtest.scenario_repo import BacktestScenarioRepository
+			scenario_repo = BacktestScenarioRepository(self.db)
+			scenario = await scenario_repo.create({
+				"scenario_name": name, "code": code,
+				"parameters": parameters or {}, "market_conditions": config or {},
+				"template_id": template_id, "source_strategy_id": source_strategy_id,
+				"created_by": user_id, "status": "draft", "created_at": datetime.now(),
+			})
+			await self.db.commit()
+			task = await self.task_repo.create({
+				"name": name, "scenario_id": scenario.id,
+				"config": config or {}, "status": "pending",
+				"user_id": user_id, "created_at": datetime.now(),
+			})
+			await self.db.commit()
+			return {"scenario_id": scenario.id, "task_id": task.id}
+		except Exception as e:
+			logger.error(f"场景回测创建失败: {e}")
+			raise
+
+	async def promote_scenario_to_strategy(self, scenario_id, user_id, strategy_name=None):
+		"""场景晋升为策略"""
+		try:
+			import re as _re
+			from shared.database.repositories.strategy.backtest.scenario_repo import BacktestScenarioRepository
+			from shared.database.repositories.strategy.management.strategy_repo import StrategyRepository
+			from shared.database.repositories.strategy.management.strategy_parameter_repo import StrategyParameterRepository
+			from shared.database.repositories.strategy.management.strategy_version_repo import StrategyVersionRepository
+			from modules.strategy.constants import StrategyType
+			scenario_repo = BacktestScenarioRepository(self.db)
+			scenario = await scenario_repo.get_by_id(scenario_id)
+			if not scenario:
+				return {"success": False, "error": "场景不存在"}
+			m = _re.search(r'class\s+(\w+)\s*\(', scenario.code or '')
+			class_name = m.group(1) if m else "CustomStrategy"
+			strategy_repo = StrategyRepository(self.db)
+			strategy = await strategy_repo.create({
+				"name": strategy_name or getattr(scenario, "scenario_name", name) or "未命名",
+				"code": scenario.code, "class_name": class_name,
+				"module_path": f"strategies.user_{user_id}.{class_name.lower()}",
+				"strategy_type": StrategyType.CUSTOM.value,
+				"status": "backtested", "user_id": user_id,
+				"promoted_from_scenario_id": scenario_id,
+				"created_at": datetime.now(), "updated_at": datetime.now(),
+			})
+			params = scenario.parameters or {}
+			param_repo = StrategyParameterRepository(self.db)
+			for key, value in params.items():
+				await param_repo.create({"strategy_id": strategy.id, "param_name": key,
+					"param_type": type(value).__name__, "param_value": value})
+			version_repo = StrategyVersionRepository(self.db)
+			await version_repo.create({"strategy_id": strategy.id, "version_number": "1.0.0",
+				"code_content": scenario.code or "", "parameters": params,
+				"is_current": True, "description": f"从场景 {scenario_id} 晋升", "created_at": datetime.now()})
+			from sqlalchemy import update as _up, text as _txt
+			await self.db.execute(_up(_txt("backtest_tasks")).where(_txt("scenario_id = :sid"))
+				.values(strategy_id=strategy.id), {"sid": scenario_id})
+			await scenario_repo.update_by({"id": scenario_id}, {"status": "promoted"})
+			await self.db.commit()
+			return {"success": True, "strategy_id": strategy.id}
+		except Exception as e:
+			logger.error(f"场景晋升失败: {e}")
+			await self.db.rollback()
+			raise
+
 
 	# =========================================================================
 	# 静态工具方法

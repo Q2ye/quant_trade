@@ -16,8 +16,7 @@ from .technical import (
     MACDStrategy,
 )
 from .rotation import (
-    IndustryRotationStrategy,
-    MultiAssetRotationStrategy,
+	MultiAssetTrendStrategy,
 )
 from .reference import (
     StockLowHighStrategy,
@@ -34,8 +33,7 @@ __all__ = [
     "MACrossStrategy",
     "MACDStrategy",
     # 轮动策略
-    "IndustryRotationStrategy",
-    "MultiAssetRotationStrategy",
+	MultiAssetTrendStrategy,
     # 参考策略移植
     "StockLowHighStrategy",
 ]

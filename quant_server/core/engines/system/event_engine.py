@@ -519,8 +519,9 @@ class EventEngine(EngineBase):
 			event_type = event.get('event_type', 'unknown')
 			priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
 			source = event.get('source', 'unknown')
-			# 引擎内部事件（engine.*）降级为 DEBUG，仅业务事件保持 INFO
-			_log = logger.debug if str(event_type).startswith('engine.') else logger.info
+			# 引擎内部事件和进度轮询事件降级为 DEBUG，仅关键业务事件保持 INFO
+			_et = str(event_type)
+			_log = logger.debug if _et.startswith('engine.') or _et.endswith('.progress') else logger.info
 			_log("事件入队: %s | 来源: %s | 优先级: %s", event_type, source, priority)
 		else:
 			# 安全访问event_type和priority
@@ -533,8 +534,9 @@ class EventEngine(EngineBase):
 				else:
 					# 尝试从event对象本身获取priority
 					priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
-				# 引擎内部事件（engine.*）降级为 DEBUG，仅业务事件保持 INFO
-				_log = logger.debug if str(event_type).startswith('engine.') else logger.info
+				# 引擎内部事件和进度轮询事件降级为 DEBUG，仅关键业务事件保持 INFO
+				_et = str(event_type)
+				_log = logger.debug if _et.startswith('engine.') or _et.endswith('.progress') else logger.info
 				_log("事件入队: %s | 来源: %s | 优先级: %s", event_type, source, priority)
 			except AttributeError as e:
 				logger.warning(f"无法获取事件属性: {e}, 使用默认值")

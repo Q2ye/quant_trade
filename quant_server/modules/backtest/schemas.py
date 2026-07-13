@@ -103,3 +103,20 @@ class BacktestOptimizeResponse(BaseModel):
 	"""参数优化响应"""
 	success: bool = Field(default=True)
 	data: Optional[Dict[str, Any]] = Field(default=None)
+
+
+# v3.3: 独立场景回测
+class ScenarioRunRequest(BaseModel):
+	"""独立场景回测请求"""
+	name: str = Field(..., description="场景名称")
+	code: str = Field(..., description="策略代码")
+	parameters: Optional[Dict[str, Any]] = Field(default={}, description="参数覆写")
+	config: Optional[Dict[str, Any]] = Field(default={}, description="回测配置 (start_date/end_date/initial_capital/benchmark)")
+	template_id: Optional[str] = Field(default=None, description="来源模板ID")
+	source_strategy_id: Optional[str] = Field(default=None, description="来源策略ID")
+
+
+class ScenarioPromoteRequest(BaseModel):
+	"""场景晋升请求"""
+	scenario_id: str = Field(..., description="场景ID")
+	strategy_name: Optional[str] = Field(default=None, description="策略名称（不填则用场景名）")

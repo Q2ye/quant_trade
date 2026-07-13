@@ -13,9 +13,14 @@ from modules.strategy.strategies.base.base_strategy import BaseStrategy
 from modules.strategy.constants import StrategyType, SignalDirection, SignalType
 from modules.strategy.models import TradingSignal
 from core.engines.types.entities import BarData
-import torch
-import torch.nn as nn
-_TORCH_AVAILABLE = True
+try:
+    import torch
+    import torch.nn as nn
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore
+    nn = None  # type: ignore
+    _TORCH_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,7 @@ class DLStrategy(BaseStrategy):
 	def __init__ (
 			self,
 			name: str,
+			strategy_type: StrategyType = StrategyType.DL,
 			parameters: Optional[Dict[str, Any]] = None,
 	):
 		"""
@@ -61,7 +67,7 @@ class DLStrategy(BaseStrategy):
 		}
 		if parameters:
 			defaults.update(parameters)
-		super().__init__(name, StrategyType.DL, defaults)
+		super().__init__(name=name, strategy_type=strategy_type, parameters=defaults)
 
 		# 深度学习相关属性
 		self.model = None

@@ -28,18 +28,27 @@
       </div>
 
       <template v-else-if="pageState === 'data'">
-        <!-- 统计条 — v2.0: 去掉仿真，只保留实盘和回测 -->
+        <!-- v3.3: 按策略生命周期状态筛选 -->
         <div class="stats-bar">
-          <span class="stat-item" :class="{ active: activeTab === 'live' }" @click="activeTab = 'live'">
-            🚀 实盘 <strong>{{ liveCount }}</strong>
+          <span class="stat-item" :class="{ active: statusFilter === 'all' }" @click="statusFilter = 'all'">
+            全部 <strong>{{ strategies.length }}</strong>
           </span>
-          <span class="stat-item" :class="{ active: activeTab === 'backtest' }" @click="activeTab = 'backtest'">
-            🔬 回测调试 <strong>{{ backtestCount }}</strong>
+          <span class="stat-item" :class="{ active: statusFilter === 'draft' }" @click="statusFilter = 'draft'">
+            📝 草稿 <strong>{{ statusCounts.draft }}</strong>
+          </span>
+          <span class="stat-item" :class="{ active: statusFilter === 'backtested' }" @click="statusFilter = 'backtested'">
+            ✅ 已验证 <strong>{{ statusCounts.backtested }}</strong>
+          </span>
+          <span class="stat-item" :class="{ active: statusFilter === 'running' }" @click="statusFilter = 'running'">
+            🟢 运行中 <strong>{{ statusCounts.running }}</strong>
+          </span>
+          <span class="stat-item" :class="{ active: statusFilter === 'stopped' }" @click="statusFilter = 'stopped'">
+            ⬜ 已停止 <strong>{{ statusCounts.stopped }}</strong>
           </span>
         </div>
 
-        <!-- v3.0: 模板库（内置+用户模板） -->
-        <div>
+        <!-- v3.0: 模板库（仅在"全部"时显示） -->
+        <div v-if="statusFilter === 'all'">
           <h3 class="section-title">模板库</h3>
           <div v-if="builtinLoading"><n-skeleton :repeat="3" text /></div>
           <div v-else-if="builtinStrategies.length > 0" class="card-grid">
@@ -102,16 +111,17 @@
             </div>
 
             <div class="sc-actions">
-              <template v-if="s.status === 'running'">
-                <n-button size="tiny" @click.stop="handleClone(s)">克隆</n-button>
-                <n-button size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
-                <n-button size="tiny" quaternary @click.stop="viewReport(s)">报告</n-button>
-              </template>
-              <template v-else>
-                <n-button size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
-                <n-button size="tiny" quaternary @click.stop="handleClone(s)">克隆</n-button>
-                <n-button size="tiny" type="success" quaternary @click.stop="quickStart(s)">启动</n-button>
-                <n-button size="tiny" quaternary @click.stop="deleteStrategy(s)">删除</n-button>
+              <!-- v3.3: 按状态显示操作按钮 -->
+              <template v-for="action in getActions(s.status)" :key="action">
+                <n-button v-if="action === 'edit'" size="tiny" @click.stop="editStrategy(s)">编辑</n-button>
+                <n-button v-else-if="action === 'backtest'" size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
+                <n-button v-else-if="action === 'startLive'" size="tiny" type="success" quaternary @click.stop="quickStart(s)">启动实盘</n-button>
+                <n-button v-else-if="action === 'monitor'" size="tiny" quaternary @click.stop="viewReport(s)">监控</n-button>
+                <n-button v-else-if="action === 'pause'" size="tiny" type="warning" quaternary @click.stop="pauseStrategy(s)">暂停</n-button>
+                <n-button v-else-if="action === 'resume'" size="tiny" type="success" quaternary @click.stop="resumeStrategy(s)">恢复</n-button>
+                <n-button v-else-if="action === 'stop'" size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
+                <n-button v-else-if="action === 'delete'" size="tiny" quaternary @click.stop="deleteStrategy(s)">删除</n-button>
+                <n-button v-else-if="action === 'viewLog'" size="tiny" quaternary @click.stop="viewLog(s)">查看日志</n-button>
               </template>
             </div>
           </div>
@@ -215,6 +225,7 @@ import { useStore } from "vuex";
 import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import { STRATEGY_TYPE_OPTIONS } from "./constants";
+import { STATUS_TYPE_MAP, STATUS_LABEL_MAP, STATUS_ACTIONS } from "@/constants/strategyMeta";
 import backtestAPI from "@/api/backtest";
 import strategyAPI from "@/api/strategy";
 import request from "@/utils/request";
@@ -224,12 +235,6 @@ const dialog = useDialog();
 const router = useRouter();
 const route = useRoute();
 const store = useStore<any>();
-
-// 从 URL query 恢复 tab 状态，避免返回时跳回默认 tab
-const activeTab = ref<"live" | "backtest">(
-  (route.query.tab as string) === "backtest" ? "backtest" : "live"
-);
-watch(activeTab, (v) => router.replace({ query: { tab: v } }));
 
 type PageState = "loading" | "error" | "empty" | "data";
 const pageState = ref<PageState>("loading");
@@ -244,27 +249,33 @@ const positionsLoading = ref(false);
 
 const strategies = computed(() => store.state.strategy?.strategies || []);
 
-// Tab 过滤 — v2.0: 去掉 simulation
-const liveStrategies = computed(() => strategies.value.filter((s: any) => s.run_mode === "live"));
-const backtestStrategies = computed(() => strategies.value.filter((s: any) => !s.run_mode || s.run_mode === "backtest"));
-
-const filteredStrategies = computed(() => {
-  if (activeTab.value === "live") return liveStrategies.value;
-  return backtestStrategies.value;
+// v3.3: 按策略生命周期状态筛选（替代旧的 live/backtest Tab）
+const statusFilter = ref<string>("all");
+const statusCounts = computed(() => {
+  const c: Record<string, number> = { draft: 0, backtested: 0, running: 0, paused: 0, stopped: 0, error: 0 };
+  for (const s of strategies.value) { const st = s.status || "draft"; c[st] = (c[st] || 0) + 1; }
+  return c;
 });
+const filteredStrategies = computed(() => {
+  if (statusFilter.value === "all") return strategies.value;
+  if (statusFilter.value === "stopped") return strategies.value.filter((s: any) => s.status === "stopped" || s.status === "paused");
+  return strategies.value.filter((s: any) => s.status === statusFilter.value);
+});
+const getActions = (status: string) => STATUS_ACTIONS[status] || [];
 
-const liveCount = computed(() => liveStrategies.value.length);
-const backtestCount = computed(() => backtestStrategies.value.length);
-
+const liveCount = computed(() => strategies.value.filter((s: any) => s.run_mode === "live").length);
+const backtestCount = computed(() => strategies.value.filter((s: any) => !s.run_mode || s.run_mode === "backtest").length);
+// v3.3: 兼容旧模板引用
+const activeTab = computed(() => statusFilter.value === "running" ? "live" : "backtest");
 const tabLabel = computed(() => {
-  if (activeTab.value === "live") return "实盘运行中";
-  return "回测调试";
+  if (statusFilter.value === "running" || statusFilter.value === "paused") return "实盘运行中";
+  return statusFilter.value === "all" ? "策略列表" : STATUS_LABEL_MAP[statusFilter.value] || "策略";
 });
 
 const dialogTitle = computed(() => isEditing.value ? "编辑策略" : "新建策略");
 
-const statusMap: Record<string, string> = { running: "success", stopped: "warning", draft: "default", paused: "info", error: "error" };
-const statusText: Record<string, string> = { running: "运行中", stopped: "已停止", draft: "草稿", paused: "暂停", error: "异常" };
+const statusMap = STATUS_TYPE_MAP;
+const statusText = STATUS_LABEL_MAP;
 
 // 系统策略 — 从 Registry 加载
 const builtinStrategies = ref<any[]>([]);
@@ -523,6 +534,18 @@ const deleteStrategy = (s: any) => {
   });
 };
 
+// v3.3 新增：状态流转操作
+const editStrategy = (s: any) => router.push(`/strategies/workspace/${s.id}`);
+const pauseStrategy = async (s: any) => {
+  try { await request.post(`/quantTrade/strategy/${s.id}/pause`); message.success('已暂停'); await loadStrategies(); }
+  catch { message.error('暂停失败'); }
+};
+const resumeStrategy = async (s: any) => {
+  try { await request.post(`/quantTrade/strategy/${s.id}/resume`); message.success('已恢复'); await loadStrategies(); }
+  catch { message.error('恢复失败'); }
+};
+const viewLog = (s: any) => { message.info('日志查看功能开发中'); };
+
 const batchBacktest = () => { if (checkedKeys.value.length) router.push(`/backtest?strategies=${checkedKeys.value.join(",")}`); };
 const batchDelete = () => {
   dialog.warning({
@@ -572,7 +595,7 @@ const loadStrategies = async () => {
 
     // 设置默认 Tab：仅首次（无 query）时根据数据引导
     if (!route.query.tab) {
-      activeTab.value = liveCount.value > 0 ? "live" : "backtest";
+      statusFilter.value = liveCount.value > 0 ? "running" : "all";
     }
 
     // 加载运行中策略的持仓

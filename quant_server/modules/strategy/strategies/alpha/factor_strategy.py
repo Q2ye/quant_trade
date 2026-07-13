@@ -142,6 +142,15 @@ class FactorStrategy(BaseStrategy):
 		self._calculate_price_factors(ts_code)
 
 		# Fundamental factors: use injected data when available
+		# v3.3: 首次检测到基本面因子缺失时告警，防止静默降级
+		if not hasattr(self, '_warned_fundamental_missing'):
+			if not self._fundamental_cache:
+				logger.warning(
+					"多因子策略: 基本面因子缓存为空 (PE/PB/ROE)。"
+					"请确认 update_fundamental_factor() 已被数据管道调用。"
+					"当前策略仅使用价格动量因子，结果可能不完整。"
+				)
+				self._warned_fundamental_missing = True
 		for factor_name in ['pe', 'pb', 'roe']:
 			if factor_name not in self.factor_data[ts_code]:
 				val = self._fundamental_cache.get(ts_code, {}).get(factor_name)

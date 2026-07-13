@@ -397,7 +397,8 @@ class IndustryScoringService:
                 continue
 
             # B1: 量比
-            vol_arr = df["vol"].values.astype(float)
+            vol_col = "volume" if "volume" in df.columns else "vol"
+            vol_arr = df[vol_col].values.astype(float)
             short_vol = np.mean(vol_arr[-cfg.vol_ratio_short:]) if len(vol_arr) >= cfg.vol_ratio_short else np.mean(vol_arr)
             actual_long = min(cfg.vol_ratio_long, len(vol_arr))
             long_vol = np.mean(vol_arr[-actual_long:]) if actual_long > 0 else 1.0

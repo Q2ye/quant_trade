@@ -2504,6 +2504,63 @@ async def _process_research_completion (
 		logger.warning(f"启动排队任务失败: {_e}")
 
 
+async def _start_next_pending_research(
+		user_id: str,
+		event_engine: EventEngine,
+) -> None:
+	"""
+	当前任务完成后，自动启动该用户下一个 pending 状态的研究任务（v3.2）
+
+	解决多因子批量研究中，超出并发上限的 overflow 任务只创建 pending 记录
+	但从未自动启动的问题。
+	"""
+	try:
+		session_manager = get_session_manager()
+		async with session_manager.get_session() as session:
+			research_repo = FactorResearchRepository(session)
+			pending_result = await research_repo.get_user_research_tasks(
+				user_id=user_id, status="pending"
+			)
+			if not pending_result.success or not pending_result.data:
+				return
+			pending_tasks = (
+				pending_result.data.items
+				if hasattr(pending_result.data, "items")
+				else []
+			)
+			if not pending_tasks:
+				return
+
+			next_task = pending_tasks[0]
+			research_id = next_task.research_id
+			factor_code = next_task.factor_code
+			params = getattr(next_task, "parameters", None) or {}
+
+			await research_repo.update_research_status(research_id, "running")
+			await session.commit()
+
+			next_request = ResearchRequest(
+				factor_names=[factor_code],
+				universe=params.get("universe"),
+				start_date=getattr(next_task, "start_date", None),
+				end_date=getattr(next_task, "end_date", None),
+				frequency=params.get("frequency"),
+				group_count=params.get("group_count", 5),
+				analysis_type=getattr(next_task, "analysis_type", "ic_analysis"),
+			)
+			asyncio.create_task(_execute_async_factor_research(
+				research_id=research_id,
+				request=next_request,
+				event_engine=event_engine,
+				user_id=user_id,
+			))
+			logger.info(
+				f"自动启动下一个 pending 研究: {research_id} ({factor_code})"
+			)
+	except Exception as _sn_e:
+		logger.warning(f"自动启动 pending 研究失败: {_sn_e}")
+
+
 async def _execute_async_factor_research (
 		research_id: str,
 		request: ResearchRequest,
@@ -2605,6 +2662,9 @@ async def _execute_async_factor_research (
 			)
 			logger.info(f"异步因子研究完成: {research_id}")
 
+		# v3.2: 自动启动下一个 pending 研究任务
+		asyncio.create_task(_start_next_pending_research(user_id, event_engine))
+
 		cleanup_cancel_token(research_id)
 
 
@@ -2625,6 +2685,12 @@ async def _execute_async_factor_research (
 				)
 		except Exception as err_e:
 			logger.error(f"更新失败状态时出错: {err_e}")
+
+		# v3.2: 即使当前任务失败，也尝试启动下一个 pending 任务
+		try:
+			asyncio.create_task(_start_next_pending_research(user_id, event_engine))
+		except Exception:
+			pass
 
 		# 发布失败事件
 		fail_event = DataResearchProgressEvent(

@@ -31,6 +31,7 @@ class MLStrategy(BaseStrategy):
     def __init__(
         self,
         name: str,
+        strategy_type: StrategyType = StrategyType.ML,
         parameters: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -59,7 +60,7 @@ class MLStrategy(BaseStrategy):
         }
         if parameters:
             defaults.update(parameters)
-        super().__init__(name, StrategyType.ML, defaults)
+        super().__init__(name=name, strategy_type=strategy_type, parameters=defaults)
 
         # 机器学习相关属性
         self.model = None

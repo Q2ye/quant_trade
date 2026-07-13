@@ -439,9 +439,10 @@ def _calculate_ps(
     if (financial_data is not None
             and 'revenue' in financial_data.columns
             and 'float_shares' in financial_data.columns):
-        # PS = (close × total_shares) / revenue
+        # PS = (close × total_shares / 10000) / revenue
+        # v3.2: 市值改为万元单位，避免 NUMERIC(18,6) 溢出
         # pandas 自动按 index 对齐 df 和 financial_data
-        mkt_cap = df['close'] * financial_data['float_shares']
+        mkt_cap = df['close'] * financial_data['float_shares'] / 10000
         ps = mkt_cap / financial_data['revenue'].replace(0, np.nan)
         return ps
     else:
@@ -827,7 +828,10 @@ def _calculate_market_cap(
 
     if financial_data is not None and 'float_shares' in financial_data.columns:
         float_shares = financial_data['float_shares']
-        market_cap = df['close'] * float_shares
+        # v3.2: 市值单位改为万元（元 → 万），避免 NUMERIC(18,6) 溢出
+        # 原始值 = close(元) × float_shares(股) → 元
+        # 万元值 = 元 / 10000
+        market_cap = df['close'] * float_shares / 10000
         return market_cap
     else:
         return pd.Series(dtype=float, index=df.index)

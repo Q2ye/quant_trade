@@ -245,9 +245,7 @@ export const routes: RouteRecordRaw[] = [
   { path: "/strategies/edit/:id", redirect: (to: any) => `/strategies/workspace/${to.params.id}` },
   {
     path: "/strategies/portfolio",
-    name: "PortfolioBuilder",
-    component: () => import("@/views/StrategyCenter/Build/PortfolioBuilder.vue"),
-    meta: { menu: "strategies", layout: "main", title: "策略组合" },
+    redirect: "/strategies",
   },
   {
     path: "/strategies/risk/:id?",
@@ -266,10 +264,7 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: "/backtest/config",
-    name: "BacktestConfig",
-    component: () =>
-      import("@/views/StrategyCenter/Backtest/BacktestConfig.vue"),
-    meta: { menu: "backtest", layout: "main", title: "回测配置" },
+    redirect: "/backtest",
   },
   // 交易工作台（统一集成篮子/订单/持仓/账户）
   {

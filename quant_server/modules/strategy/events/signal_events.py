@@ -34,6 +34,7 @@ class StrategySignalEvent(BaseEvent):
         max_slippage_pct: float = 0.02,
         order_type: str = "limit_range",
         account_id: str = "",       # v2.2: 绑定的交易账户ID
+        strategy_version_id: str = "",  # v3.1: 策略版本ID，用于溯源
         run_mode: str = "live",
         execution_mode: str = "semi_auto",
         **kwargs
@@ -59,6 +60,7 @@ class StrategySignalEvent(BaseEvent):
         self.data = {
             "strategy_id": strategy_id,
             "strategy_name": strategy_name,
+            "strategy_version_id": strategy_version_id,  # v3.1: 溯源用
             "ts_code": ts_code,
             "signal_type": signal_type,
             "signal_direction": signal_direction,

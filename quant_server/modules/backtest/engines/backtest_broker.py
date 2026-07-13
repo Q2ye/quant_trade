@@ -130,6 +130,20 @@ class BrokerPosition:
 
 
 @dataclass
+class PositionSnapshot:
+    """单只股票在某个交易日的持仓快照"""
+
+    ts_code: str                  # 股票代码
+    quantity: int                 # 持仓数量（股）
+    available_quantity: int       # 可用数量（T+1 解锁后）
+    avg_cost: float               # 持仓均价
+    current_price: float          # 当日收盘价
+    market_value: float           # 当日市值 = quantity × close
+    pnl: float                    # 当日浮动盈亏
+    pnl_rate: float               # 浮动盈亏率 = (close - avg_cost) / avg_cost
+
+
+@dataclass
 class AccountSnapshot:
     """
     每日账户快照 — 记录每个交易日结束后的账户状态。
@@ -139,7 +153,7 @@ class AccountSnapshot:
     """
 
     trade_date: date              # 交易日
-    total_assets: float           # 总资产 = cash + frozen_cash + 持仓市值
+    total_assets: float           # 总资产 = cash + frozen_cash + 持仓市值 - 提前释放现金
     available_cash: float         # 可用资金（可立即用于新买入）
     frozen_cash: float            # 冻结资金（已提交买单但尚未成交的预扣款）
     market_value: float           # 持仓总市值
@@ -147,6 +161,11 @@ class AccountSnapshot:
     daily_pnl: float              # 当日浮动盈亏合计
     cumulative_return: float      # 累计收益率 = (total_assets - initial_capital) / initial_capital
     max_drawdown: float = 0.0     # 截至当日的最大回撤（滚动追踪历史峰值）
+    positions: list = None        # v2.0: 当日持仓明细快照列表 List[PositionSnapshot]
+
+    def __post_init__(self):
+        if self.positions is None:
+            self.positions = []
 
 
 # =============================================================================
@@ -248,6 +267,10 @@ class BacktestBroker(EngineBase):
         self.initial_capital: float = self.config.initial_capital
         self.cash: float = self.config.initial_capital    # 可用资金
         self.frozen_cash: float = 0.0                      # 冻结资金（已下单未成交的预扣款）
+        # 已提前释放现金但对应卖出持仓尚未撮合成交的累计金额。
+        # 卖出下单当日即把预估所得打入 self.cash（支持同日卖→买），
+        # 但持仓要到次日撮合才移除；总资产计算须扣除此项，避免重复计价（净值幻影）。
+        self._early_released_cash: float = 0.0
 
         # ---- 持仓管理 {ts_code: BrokerPosition} ----
         self.positions: Dict[str, BrokerPosition] = {}
@@ -371,7 +394,7 @@ class BacktestBroker(EngineBase):
             # 计算总资产和持仓市值
             total_asset = self.cash + self.frozen_cash + sum(
                 p.quantity * p.current_price for p in self.positions.values()
-            )
+            ) - self._early_released_cash
             position_value = sum(
                 p.quantity * p.current_price for p in self.positions.values()
             )
@@ -504,10 +527,14 @@ class BacktestBroker(EngineBase):
         # ---- 卖出订单提前释放资金（支持同日卖→买） ----
         # 回测 T+1 结算导致卖出次日才释放资金，同日买入因 cash 不足被拒。
         # 此处预释放，标记订单避免 match_orders 重复入账。
+        # 同步累计到 _early_released_cash：持仓此刻尚未移除，总资产计算须扣除此金额
+        # 避免重复计价；成交/过期时按 order._early_released_amount 精确回冲。
         if direction == "SHORT" and price > 0:
             estimated_proceeds = price * quantity * (1 - self.config.commission_rate)
             self.cash += estimated_proceeds
+            self._early_released_cash += estimated_proceeds
             order._early_released = True
+            order._early_released_amount = estimated_proceeds
 
         logger.debug(
             f"订单创建: {order_id} {direction} {ts_code} "
@@ -572,6 +599,11 @@ class BacktestBroker(EngineBase):
                     if order.direction == "LONG":
                         self.cash += order.price * order.quantity
                         self.frozen_cash -= order.price * order.quantity
+                    elif getattr(order, '_early_released', False):
+                        # 卖单过期取消：回滚下单时提前释放的现金，并解除幻影累计额
+                        released = getattr(order, '_early_released_amount', 0.0)
+                        self.cash -= released
+                        self._early_released_cash -= released
                     continue
                 continue
 
@@ -622,21 +654,47 @@ class BacktestBroker(EngineBase):
             )
             transfer_fee = fill_amount * self.config.transfer_fee_rate  # 过户费双向
 
-            # ---- 更新订单状态为已成交 ----
-            order.status = "filled"
-            order.fill_date = trade_date
-            order.fill_price = fill_price
-            order.commission = commission
-            order.stamp_tax = stamp_tax
-            order.transfer_fee = transfer_fee
-
-            # ---- 资金结算 ----
+            # ---- 资金结算（在标记成交之前，LONG 方向可能需要缩减/取消） ----
             total_cost = fill_amount + commission + stamp_tax + transfer_fee
             if order.direction == "LONG":
                 # 解冻预扣资金（按委托价估算的金额）→ 按实际成交价扣款
                 estimated = order.price * order.quantity
                 self.frozen_cash -= estimated
                 self.cash += estimated
+                # ---- v2.0: 现金充足性校验 ----
+                # 原逻辑直接 self.cash -= total_cost，若实际成交价远高于委托价
+                #（开盘跳空），现金可能变为负数 → total_assets 虚增 → 净值幻影。
+                if self.cash < total_cost:
+                    # 资金不足 → 按实际可用现金缩减买入量
+                    affordable_qty = int(
+                        self.cash / (fill_price * (1 + self.config.commission_rate))
+                        // self.config.lot_size * self.config.lot_size
+                    )
+                    if affordable_qty <= 0:
+                        # 一股都买不起 → 取消订单，退还冻结资金
+                        logger.warning(
+                            f"资金不足取消买入: {order.ts_code} "
+                            f"需要={total_cost:,.0f} 可用={self.cash:,.0f}"
+                        )
+                        self.cash -= estimated  # 退还（因为现金已加回 estimated）
+                        self.frozen_cash += estimated
+                        order.status = "cancelled"
+                        continue  # 不加入 remaining_orders，直接丢弃
+                    # 按可负担量重算：缩减 fill_amount / commission / stamp_tax / transfer_fee
+                    fill_amount = fill_price * affordable_qty
+                    commission = max(fill_amount * self.config.commission_rate, self.config.min_commission)
+                    stamp_tax = 0.0  # 买入无印花税
+                    transfer_fee = fill_amount * self.config.transfer_fee_rate
+                    total_cost = fill_amount + commission + stamp_tax + transfer_fee
+                    order.quantity = affordable_qty
+                    order.fill_price = fill_price
+                    order.commission = commission
+                    order.stamp_tax = stamp_tax
+                    order.transfer_fee = transfer_fee
+                    logger.info(
+                        f"买入量缩减: {order.ts_code} {order.quantity}股 "
+                        f"@ {fill_price:.2f} (资金不足, 缩减至可负担量)"
+                    )
                 self.cash -= total_cost
             else:
                 # 卖出：入账（不涉及冻结资金，卖出从不冻结）
@@ -645,8 +703,18 @@ class BacktestBroker(EngineBase):
                     estimated = order.price * order.quantity * (1 - self.config.commission_rate)
                     actual = fill_amount - commission - stamp_tax - transfer_fee
                     self.cash += (actual - estimated)  # 多退少补
+                    # 幻影解除：持仓即将随成交移除，回冲提前释放的累计额（精确按下单时存额）
+                    self._early_released_cash -= getattr(order, '_early_released_amount', estimated)
                 else:
                     self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
+
+            # ---- 标记成交状态 ----
+            order.status = "filled"
+            order.fill_date = trade_date
+            order.fill_price = fill_price
+            order.commission = commission
+            order.stamp_tax = stamp_tax
+            order.transfer_fee = transfer_fee
 
             # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
             self._update_position(order, fill_price, trade_date)
@@ -735,11 +803,15 @@ class BacktestBroker(EngineBase):
                 total_market_value += (pos.market_value - old_mv)
                 total_pnl += pos.pnl
 
-        # 总资产 = 可用资金 + 冻结资金 + 持仓市值
+        # 总资产 = 可用资金 + 冻结资金 + 持仓市值 - 提前释放现金
         # 注：冻结资金本质仍是账户资产（已下单未成交），计入总资产
-        total_assets = self.cash + self.frozen_cash + total_market_value
-
-        # ---- v1.4: 持仓市值一致性校验 ----
+        # 扣除 _early_released_cash：卖单当日已把预估所得计入 cash，但持仓尚未移除，
+        # 若不扣除则该笔被 cash 与 market_value 重复计价（净值幻影，见 __init__ 说明）。
+        total_assets = (
+            self.cash + self.frozen_cash + total_market_value
+            - self._early_released_cash
+        )
+# ---- v1.4: 持仓市值一致性校验 ----
         for ts_code, pos in self.positions.items():
             computed_mv = pos.quantity * pos.current_price
             if abs(pos.market_value - computed_mv) > 0.01:
@@ -773,6 +845,21 @@ class BacktestBroker(EngineBase):
             )
 
         # ---- 记录快照 ----
+        # v2.0: 收集当日持仓明细快照，用于事后分析持仓变化
+        position_snapshots = []
+        for ts_code, pos in self.positions.items():
+            if pos.quantity > 0:
+                position_snapshots.append(PositionSnapshot(
+                    ts_code=ts_code,
+                    quantity=pos.quantity,
+                    available_quantity=pos.available_quantity,
+                    avg_cost=pos.avg_cost,
+                    current_price=pos.current_price,
+                    market_value=pos.market_value,
+                    pnl=pos.pnl,
+                    pnl_rate=pos.pnl_rate,
+                ))
+
         snapshot = AccountSnapshot(
             trade_date=trade_date or self._trade_date,
             total_assets=total_assets,
@@ -783,6 +870,7 @@ class BacktestBroker(EngineBase):
             daily_pnl=total_pnl,
             cumulative_return=cumulative_return,
             max_drawdown=max_drawdown,
+            positions=position_snapshots,
         )
         self.snapshots.append(snapshot)
 
@@ -874,7 +962,7 @@ class BacktestBroker(EngineBase):
                 cash:               当前可用资金
                 frozen_cash:        冻结资金
                 market_value:       持仓总市值
-                total_assets:       总资产 = cash + frozen + 市值
+                total_assets:       总资产 = cash + frozen + 市值 - 提前释放现金
                 total_return:       累计收益率
                 trade_date:         当前交易日
                 position_count:     持仓数
@@ -883,7 +971,7 @@ class BacktestBroker(EngineBase):
             }
         """
         total_mv = sum(p.market_value for p in self.positions.values())
-        total_assets = self.cash + self.frozen_cash + total_mv
+        total_assets = self.cash + self.frozen_cash + total_mv - self._early_released_cash
         return {
             "initial_capital": self.initial_capital,
             "cash": self.cash,
@@ -924,6 +1012,7 @@ class BacktestBroker(EngineBase):
 
         self.cash = self.initial_capital
         self.frozen_cash = 0.0
+        self._early_released_cash = 0.0
         self.positions.clear()
         self.orders.clear()
         self.pending_orders.clear()
@@ -1078,6 +1167,7 @@ class BacktestBroker(EngineBase):
         self.trade_history.clear()
         self.positions.clear()
         self.cash = self.initial_capital
+        self._early_released_cash = 0.0
         self._commission_total = 0.0
         self._stamp_tax_total = 0.0
         if self._event_engine:
@@ -1097,5 +1187,6 @@ class BacktestBroker(EngineBase):
         logger.info(
             f"BacktestBroker 已停止: "
             f"总成交 {len(self.trade_history)} 笔, "
-            f"最终资产 {self.cash + sum(p.market_value for p in self.positions.values()):,.2f}"
+            f"最终资产 "
+            f"{self.cash + self.frozen_cash + sum(p.market_value for p in self.positions.values()) - self._early_released_cash:,.2f}"
         )

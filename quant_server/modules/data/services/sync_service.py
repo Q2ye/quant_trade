@@ -4813,12 +4813,13 @@ class DataSyncService:
 			ts_codes: Optional[List[str]], task_id: str,
 			user_id: Optional[str] = None, **_kwargs
 	) -> Dict[str, Any]:
-		"""同步财报披露日期（financial_disclosure_dates 表，按报告期拉取）。
+		"""同步财报披露日期（financial_disclosure_dates 表，按报告期分批拉取）。
 
-		默认拉取最近 4 个季度的披露计划。
+		v2.1 修复：改为按季度分批拉取（每季度一次 API 调用），避免单次无参调用
+		返回截断数据集。覆盖范围：1990-Q1 ~ 当前季度。
 
 		Args:
-			start_date: 起始报告期（None → 当前季度-4）
+			start_date: 起始报告期（None → 1990-Q1 全量）
 			end_date: 结束报告期（None → 当前季度）
 			ts_codes: 未使用（全市场拉取）
 			task_id: 任务 ID
@@ -4826,35 +4827,85 @@ class DataSyncService:
 
 		Returns:
 			Dict: {records_added, records_updated, records_failed, total_items, message}"""
+		import calendar as _cal
 		source = self.source_factory.get_source(DataSource.TUSHARE)
-		records_added = 0; records_failed = 0
-		try:
-			df = await self._cancellable_run_in_executor(source.get_disclosure_date)
-			if df.empty:
-				return {"records_added": 0, "records_updated": 0, "records_failed": 0,
-				        "total_items": 0, "message": "财报披露日期同步完成（无数据）"}
-			data = _convert_records_datetime(df.to_dict('records'))
-			_preprocess_records(data, date_fields=('ann_date', 'end_date', 'pre_date', 'actual_date'))
-			if hasattr(self.disclosure_date_repo, "bulk_upsert"):
-				records_added += await self.disclosure_date_repo.bulk_upsert(data)
-			else:
-				for item in data:
-					try:
-						await self.disclosure_date_repo.create(item); records_added += 1
-					except Exception:
-						try:
-							await self.disclosure_date_repo.update_by(
-								{"ts_code": item["ts_code"], "end_date": item["end_date"]}, item)
-						except Exception as _ue:
-							logger.warning(f'记录唯一键冲突但更新失败: {_ue}')
-							records_failed += 1
-			await self.session.commit()
-			return {"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
-			        "total_items": records_added + records_failed, "message": "财报披露日期同步完成"}
-		except Exception as e:
-			logger.error(f"财报披露日期同步失败: {_fmt_err(e, 150)}")
-			return {"records_added": 0, "records_updated": 0, "records_failed": 1, "total_items": 0,
-			        "message": f"财报披露日期同步失败: {str(e)}"}
+		records_added = 0; records_failed = 0; total_quarters = 0
+		# v2.1: 按季度分批拉取，确保覆盖完整历史数据
+		current_year = datetime.now().year
+		current_quarter = (datetime.now().month - 1) // 3 + 1
+		start_year = 1990
+		start_quarter = 1
+		if start_date is not None:
+			start_year = start_date.year
+			start_quarter = (start_date.month - 1) // 3 + 1
+		end_year = current_year
+		end_quarter = current_quarter
+		if end_date is not None:
+			end_year = end_date.year
+			end_quarter = (end_date.month - 1) // 3 + 1
+
+		quarter_count = (end_year - start_year) * 4 + (end_quarter - start_quarter) + 1
+		logger.info(
+			f"财报披露日期分批同步: {start_year}Q{start_quarter} → {end_year}Q{end_quarter} "
+			f"(共 {quarter_count} 个季度)"
+		)
+
+		for year in range(start_year, end_year + 1):
+			q_start = start_quarter if year == start_year else 1
+			q_end = end_quarter if year == end_year else 4
+			for q in range(q_start, q_end + 1):
+				last_day = _cal.monthrange(year, q * 3)[1]
+				end_date_str = f"{year}{q*3:02d}{last_day}"
+				total_quarters += 1
+				try:
+					df = await self._cancellable_run_in_executor(
+						source.get_disclosure_date, end_date=end_date_str
+					)
+					if df is None or df.empty:
+						# 进度日志（每 10 个季度或首批）
+						if total_quarters % 10 == 1:
+							logger.info(
+								f"财报披露日期同步进度: {total_quarters}/{quarter_count} "
+								f"({end_date_str}), 已入库 {records_added} 条"
+							)
+						continue
+					data = _convert_records_datetime(df.to_dict('records'))
+					_preprocess_records(data, date_fields=('ann_date', 'end_date', 'pre_date', 'actual_date'))
+					if hasattr(self.disclosure_date_repo, "bulk_upsert"):
+						batch_added = await self.disclosure_date_repo.bulk_upsert(data)
+					else:
+						batch_added = 0
+						for item in data:
+							try:
+								await self.disclosure_date_repo.create(item); batch_added += 1
+							except Exception:
+								try:
+									await self.disclosure_date_repo.update_by(
+										{"ts_code": item["ts_code"], "end_date": item["end_date"]}, item)
+									batch_added += 1
+								except Exception as _ue:
+									logger.debug(f'记录唯一键冲突但更新失败: {_ue}')
+									records_failed += 1
+					records_added += batch_added
+					if batch_added > 0:
+						await self.session.commit()
+					# 进度日志（每 10 个季度输出一次）
+					if total_quarters % 10 == 0 or batch_added > 0:
+						logger.info(
+							f"财报披露日期同步进度: {total_quarters}/{quarter_count} "
+							f"({end_date_str}), 本批 {batch_added} 条, 累计 {records_added} 条"
+						)
+					# 每季度间隔 0.3s，避免 Tushare 限流
+					await asyncio.sleep(0.3)
+				except Exception as e:
+					logger.warning(f"同步 {end_date_str} 披露日期失败: {_fmt_err(e, 80)}")
+					records_failed += 1
+
+		return {
+			"records_added": records_added, "records_updated": 0, "records_failed": records_failed,
+			"total_items": records_added + records_failed,
+			"message": f"财报披露日期分批同步完成（{total_quarters} 个季度，{records_added} 条）"
+		}
 
 	async def _sync_share_float(
 			self, start_date: Optional[date], end_date: Optional[date],

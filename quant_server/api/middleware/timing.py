@@ -10,6 +10,8 @@ logger = logging.getLogger("api.timing")
 # 轮询类接口、健康检查等高频请求不打印日志
 # 支持精确路径（字符串）和路径前缀（以 * 结尾则用 startswith 匹配）
 _SKIP_PATHS: set[str] = {
+    "/",                                     # 根路径 404（前端/Vite 代理探测）
+    "/favicon.ico",                          # 浏览器图标请求
     "/quantTrade/data/sync/status",
     "/quantTrade/data/factors/research/status",   # 研究进度轮询
     "/quantTrade/system/health",

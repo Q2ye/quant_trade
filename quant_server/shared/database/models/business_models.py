@@ -233,6 +233,7 @@ class Signal(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='信号ID')
     strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_version_id = Column(String(36), nullable=True, comment='策略版本ID（v3.1: 溯源信号对应的策略版本）')
     ts_code = Column(String(12), nullable=False, comment='股票代码')
     direction = Column(String(10), default='buy', comment='交易方向：long, short, close_long, close_short')
     signal_type = Column(String(10), nullable=False, comment='信号类型：entry, exit, stop_loss, take_profit')
@@ -658,9 +659,11 @@ class Position(Base):
     account = relationship("Account", back_populates="positions")
     adjustments = relationship("PositionAdjustment", back_populates="position", cascade="all, delete-orphan")
 
-    # 复合唯一索引，确保同一账户、同一证券只有一个持仓记录
+    # 复合唯一索引，确保同一账户、同一证券、同一策略只有一个持仓记录
+    # 与 DDL (create_table.sql) 对齐：UNIQUE (account_id, ts_code, strategy_id)
+    # strategy_id 参与唯一键，支持"同一账户同一只票被多个策略分别持有"
     __table_args__ = (
-        UniqueConstraint('account_id', 'ts_code', name='uq_position_account_tscode'),
+        UniqueConstraint('account_id', 'ts_code', 'strategy_id', name='uq_position_account_tscode'),
         Index('idx_positions_user_account', 'user_id', 'account_id'),
         Index('idx_positions_last_update', 'last_update'),
     )
@@ -1051,6 +1054,7 @@ class BacktestTask(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment='回测任务ID（UUID）')
     user_id = Column(String(36), ForeignKey('sys_users.id'), nullable=False, comment='用户ID')
     strategy_id = Column(String(36), ForeignKey('strategies.id'), nullable=False, comment='策略ID')
+    strategy_version_id = Column(String(36), ForeignKey('strategy_versions.id'), nullable=True, comment='策略版本ID（v3.3: 回测时锁定策略版本，用于溯源）')
     name = Column(String(100), nullable=False, comment='回测任务名称')
     description = Column(Text, comment='任务描述')
     status = Column(String(20), nullable=False, default='pending',
@@ -1068,6 +1072,7 @@ class BacktestTask(Base):
     # 关联关系
     user = relationship("SysUser", back_populates="backtest_tasks")
     strategy = relationship("Strategy", back_populates="backtest_tasks")
+    strategy_version = relationship("StrategyVersion")  # v3.3: 回测时锁定的策略版本
     equity_curve = relationship("BacktestEquityCurve", back_populates="task", cascade="all, delete-orphan")
     trades = relationship("BacktestTrade", back_populates="task", cascade="all, delete-orphan")
     positions = relationship("BacktestPosition", back_populates="task", cascade="all, delete-orphan")

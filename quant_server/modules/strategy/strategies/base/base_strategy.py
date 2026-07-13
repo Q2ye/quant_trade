@@ -3,6 +3,7 @@
 策略基类
 所有具体策略的父类，定义策略的通用接口和方法
 """
+import logging
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -17,8 +18,8 @@ from modules.strategy.constants import (
 	SignalDirection,
 )
 from modules.strategy.models import TradingSignal, Position
-from modules.strategy.strategies.base.strategy_context import StrategyContext
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class MarketData:
@@ -32,6 +33,39 @@ class MarketData:
 	amount: float = 0.0
 	trade_date: Any = None
 	trade_time: Optional[datetime] = None
+
+
+# =============================================================================
+# v3.4: 实盘状态注入 — 策略通过框架获取持仓/信号/账户信息，不自己查 DB
+# =============================================================================
+
+@dataclass
+class LivePosition:
+    """实盘持仓状态（由框架从 positions 表加载并注入策略）"""
+    ts_code: str
+    quantity: int = 0
+    available_quantity: int = 0
+    cost_price: float = 0.0
+    last_price: float = 0.0
+    market_value: float = 0.0
+    pnl_rate: float = 0.0
+
+
+@dataclass
+class LiveSignal:
+    """实盘信号状态（由框架从 signals 表加载并注入策略）"""
+    ts_code: str
+    direction: str = "LONG"
+    signal_type: str = "entry"
+    status: str = "pending_manual"
+
+
+@dataclass
+class LiveAccount:
+    """实盘账户状态（由框架从 accounts 表加载并注入策略）"""
+    total_assets: float = 0.0
+    available_cash: float = 0.0
+    market_value: float = 0.0
 
 
 class BaseStrategy(ABC):
@@ -79,6 +113,11 @@ class BaseStrategy(ABC):
 
 		# 策略上下文（运行时由外部注入）
 		self.context: Optional['StrategyContext'] = None
+
+		# v3.4: 实盘状态注入（由 load_live_state 填充，回测模式为空）
+		self._active_positions: Dict[str, 'LivePosition'] = {}
+		self._pending_signals: Dict[str, 'LiveSignal'] = {}
+		self._account_snapshot: Optional['LiveAccount'] = None
 
 		# 股票池 — 策略在 on_start 中可从 DB 加载，外部通过 universe property 读取
 		self._universe: List[str] = []
@@ -149,6 +188,47 @@ class BaseStrategy(ABC):
 		if asyncio.iscoroutine(result):
 			await result
 		self._is_running = False
+
+	async def load_live_state(self, db, strategy_id: str = "") -> None:
+		"""从DB加载实盘持仓/待确认信号/账户状态（仅实盘调用）"""
+		from sqlalchemy import text
+		sid = strategy_id or self.name  # 优先用 UUID，回退到名称
+		logger.info("%s: load_live_state strategy_id=%s", self.name, sid)
+
+		# 1. 持仓
+		try:
+			result = await db.execute(text(
+				"SELECT ts_code, volume, available_volume, cost_price, last_price, "
+				"market_value, pnl_rate FROM positions WHERE strategy_id = :sid AND volume > 0"
+			), {"sid": sid})
+			rows = result.fetchall()
+			for row in rows:
+				self._active_positions[row[0]] = LivePosition(
+					ts_code=row[0], quantity=row[1], available_quantity=row[2],
+					cost_price=float(row[3] or 0), last_price=float(row[4] or 0),
+					market_value=float(row[5] or 0), pnl_rate=float(row[6] or 0),
+				)
+			logger.info("%s: positions=%d %s", self.name, len(rows),
+				[(r[0], r[1]) for r in rows])
+		except Exception as e:
+			logger.warning("%s: positions load failed: %s", self.name, e)
+
+		# 2. 待处理信号
+		try:
+			result = await db.execute(text(
+				"SELECT ts_code, direction, signal_type, signal_status FROM signals "
+				"WHERE strategy_id = :sid AND direction = 'long' "
+				"AND signal_status IN ('pending','pending_manual','confirmed')"
+			), {"sid": sid})
+			rows = result.fetchall()
+			for row in rows:
+				self._pending_signals[row[0]] = LiveSignal(
+					ts_code=row[0], direction=row[1] or "LONG",
+					signal_type=row[2] or "entry", status=row[3] or "pending_manual")
+			logger.info("%s: pending_signals=%d %s", self.name, len(rows),
+				[(r[0], r[3]) for r in rows])
+		except Exception as e:
+			logger.warning("%s: signals load failed: %s", self.name, e)
 
 	def on_init (self) -> None:
 		"""

@@ -741,6 +741,55 @@ class StrategyService:
 			result["unknown_imports"] = unknown
 		return result
 
+	async def snapshot_strategy_version(
+		self, strategy_id: str, change_reason: str = "manual"
+	) -> Optional[str]:
+		"""
+		v3.3: 为当前策略创建版本快照（代码 + 参数）。
+
+		回测和启动策略前自动调用，确保每次回测/运行的参数可追溯。
+
+		Returns:
+			新版本 ID，失败时返回 None
+		"""
+		try:
+			strategy = await self.strategy_repo.get_by_id(strategy_id)
+			if not strategy:
+				return None
+			params = await self.param_repo.get_by_strategy_id(strategy_id)
+			param_dict = {p.param_name: p.param_value for p in params}
+
+			last_ver = await self.version_repo.get_latest_version_number(strategy_id)
+			new_ver = self._increment_version(last_ver)
+
+			version = await self.version_repo.create({
+				"strategy_id": strategy_id,
+				"version_number": new_ver,
+				"code_content": strategy.code or "",
+				"parameters": param_dict,
+				"is_current": True,
+				"description": f"Auto-snapshot: {change_reason}",
+				"created_at": datetime.now(),
+			})
+			await self.version_repo.unset_current_except(strategy_id, version.id)
+			logger.info(f"策略版本快照: {strategy_id} v{new_ver} ({change_reason})")
+			return version.id
+		except Exception as e:
+			logger.warning(f"策略版本快照失败（非致命）: {e}")
+			return None
+
+	@staticmethod
+	def _increment_version(last_ver: Optional[str]) -> str:
+		"""版本号递增: '1.3' → '1.4', None → '1.0'"""
+		if not last_ver:
+			return "1.0"
+		try:
+			parts = last_ver.split(".")
+			minor = int(parts[-1]) + 1
+			return ".".join(parts[:-1] + [str(minor)])
+		except (ValueError, IndexError):
+			return "1.0"
+
 	@staticmethod
 	def _extract_class_name_from_code (code: str) -> str:
 		"""

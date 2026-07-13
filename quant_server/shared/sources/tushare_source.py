@@ -6,6 +6,7 @@ Tushare数据源实现
 文档: https://tushare.pro/document/2
 """
 import logging
+import time
 import os
 from datetime import datetime
 from typing import List, Dict
@@ -96,7 +97,7 @@ class TushareSource(BaseDataSource):
 				df = df.sort_values('trade_date')
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取日线行情失败: {e}")
+			logger.warning(f"获取日线行情失败: {e}")
 			return pd.DataFrame()
 
 	def get_weekly (self, symbol: str = '', trade_date: str = '',
@@ -238,13 +239,14 @@ class TushareSource(BaseDataSource):
 			end_date: 结束日期
 		"""
 		try:
+			time.sleep(0.15)  # rate limit: 500/min
 			df = self.pro.adj_factor(ts_code=symbol, start_date=start_date,
 			                         end_date=end_date)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取复权因子失败: {e}")
+			logger.warning(f"获取复权因子失败: {e}")
 			return pd.DataFrame()
 
 	def get_suspended (self, start_date: str = '', end_date: str = '') -> pd.DataFrame:
@@ -313,6 +315,7 @@ class TushareSource(BaseDataSource):
 		包含: PE/PB/总市值/流通市值/换手率/成交量/成交额等
 		"""
 		try:
+			time.sleep(0.15)  # rate limit: 500/min
 			df = self.pro.daily_basic(ts_code=symbol, trade_date=trade_date,
 			                          start_date=start_date, end_date=end_date)
 			if df is not None and not df.empty:
@@ -320,7 +323,7 @@ class TushareSource(BaseDataSource):
 				df = df.sort_values('trade_date')
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取每日指标失败: {e}")
+			logger.warning(f"获取每日指标失败: {e}")
 			return pd.DataFrame()
 
 	def get_index_constituents (self, index_code: str) -> list:

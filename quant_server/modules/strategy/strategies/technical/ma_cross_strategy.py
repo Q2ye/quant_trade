@@ -72,8 +72,8 @@ class MACrossStrategy(TechnicalStrategy):
 		self.position_ratio = default_params["position_ratio"]
 
 		# 内部状态
-		self._price_data: pd.DataFrame = pd.DataFrame()
-		self._last_signal: Optional[str] = None  # 'long' or 'short'
+		self._price_data: dict = {}  # v3.3: per-ts_code DataFrame fix P0-1
+		self._last_signal: dict = {}  # v3.3: per-ts_code fix P0-1
 
 	def on_init (self) -> None:
 		"""策略初始化"""
@@ -94,12 +94,13 @@ class MACrossStrategy(TechnicalStrategy):
 		# 更新数据
 		self._update_price_data(bar)
 
-		# 检查数据是否足够
-		if len(self._price_data) < self.slow_period:
+		# v3.3: 获取该股票的专属 DataFrame
+		ts = bar.ts_code
+		if ts not in self._price_data or len(self._price_data[ts]) < self.slow_period:
 			return signals
 
 		# 计算均线
-		df = self._price_data.copy()
+		df = self._price_data[ts].copy()
 		df[f"ma_fast"] = df["close"].rolling(window=self.fast_period).mean()
 		df[f"ma_slow"] = df["close"].rolling(window=self.slow_period).mean()
 		df[f"volume_ma"] = df["volume"].rolling(window=self.volume_ma_period).mean()
@@ -130,7 +131,7 @@ class MACrossStrategy(TechnicalStrategy):
 							confidence=0.8,
 						)
 						signals.append(signal)
-						self._last_signal = "long"
+						self._last_signal[ts] = "long"
 
 			# 死叉：短期均线从上方穿过长期均线
 			elif (
@@ -147,7 +148,7 @@ class MACrossStrategy(TechnicalStrategy):
 						confidence=0.8,
 					)
 					signals.append(signal)
-					self._last_signal = "short"
+					self._last_signal[ts] = "short"
 
 		# 止盈止损检查
 		if current_position:
@@ -180,10 +181,15 @@ class MACrossStrategy(TechnicalStrategy):
 		return signals
 
 	def _update_price_data (self, bar: BarData) -> None:
-		"""更新价格数据"""
-		# 创建新行
+		"""v3.3: 按 ts_code 分离存储，修复多股票数据混用 bug"""
+		ts = bar.ts_code
+		if ts not in self._price_data:
+			self._price_data[ts] = pd.DataFrame(columns=[
+				"ts_code", "trade_date", "open", "high", "low", "close", "volume", "amount"
+			])
+		df = self._price_data[ts]
 		new_row = pd.DataFrame([{
-			"ts_code": bar.ts_code,
+			"ts_code": ts,
 			"trade_date": bar.trade_date,
 			"trade_time": bar.trade_time,
 			"open": bar.open,
@@ -193,14 +199,10 @@ class MACrossStrategy(TechnicalStrategy):
 			"volume": bar.volume,
 			"amount": bar.amount,
 		}])
-
-		# 追加到数据框
-		self._price_data = pd.concat([self._price_data, new_row], ignore_index=True)
-
-		# 保持数据量在合理范围
+		self._price_data[ts] = pd.concat([df, new_row], ignore_index=True)
 		max_bars = self.slow_period * 3
-		if len(self._price_data) > max_bars:
-			self._price_data = self._price_data.tail(max_bars).reset_index(drop=True)
+		if len(self._price_data[ts]) > max_bars:
+			self._price_data[ts] = self._price_data[ts].tail(max_bars).reset_index(drop=True)
 
 	def _create_signal (
 			self,
@@ -221,7 +223,7 @@ class MACrossStrategy(TechnicalStrategy):
 
 		signal = TradingSignal(
 			id=f"{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
-			strategy_id=self.context.strategy_id if self.context else 0,
+			strategy_id=str(self.context.strategy_id) if self.context else "",
 			strategy_name=self.name,
 			ts_code=ts_code,
 			signal_type=signal_type,

@@ -288,8 +288,8 @@ class StockLowHighStrategy(BaseStrategy):
                 f"上限={regime_max_pos}, 止损={regime_stop_loss:.1%})"
             )
 
-        # ---- 2. 获取当前持仓 ----
-        current_holdings = set(self._holdings.keys())
+        # ---- 2. 获取当前持仓（v3.4: 合并框架注入的_active_positions） ----
+        current_holdings = set(self._holdings.keys()) | set(self._active_positions.keys())
         effective_count = len(current_holdings - self._exit_pending)
 
         # ---- 3. 提前选股（在止盈止损之前，获得今日选股池用于 P0）----
@@ -568,8 +568,11 @@ class StockLowHighStrategy(BaseStrategy):
 
         for code, df in self._data_cache.items():
             try:
-                # 跳过已持仓
-                if code in current_holdings:
+                # v3.4: 跳过已持仓（本地_holdings + 框架注入_active_positions）
+                if code in current_holdings or code in self._active_positions:
+                    continue
+                # v3.4: 跳过已有待确认买入信号的股票
+                if code in self._pending_signals:
                     continue
 
                 # 基本过滤

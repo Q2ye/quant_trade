@@ -59,7 +59,8 @@ logger = logging.getLogger(__name__)
 
 # factor_data 表 factor_value 列定义为 NUMERIC(18,6)
 # 精度 18，小数位 6 → 整数部分最多 12 位 → 绝对值上限 ≈ 10^12
-# 设置安全上限为 9.99×10^11（略低于 DB 上限，避免 NumericValueOutOfRangeError）
+# 设置安全上限为 9.99×10^11（略低于 DB 上限）
+# v3.2: MC/PS 因子已改为万元单位，正常值不会触发此上限
 _MAX_FACTOR_VALUE = 9.99e11
 
 
@@ -321,6 +322,14 @@ class FactorResearchService:
 					"rsi_14": "rsi", "pe_ttm": "pe", "kdj_k": "kdj",
 					"volume_ratio_5d": "volume_ratio", "turnover_5d": "turnover_rate",
 					"gross_margin": "gm", "operating_margin": "om", "debt_ratio": "dr",
+					# v3.2 新增别名（覆盖 seed_factor_definitions.sql 全部 34 个定义）
+					"pb_ttm": "pb", "ps_ttm": "ps",
+					"roe_ttm": "roe", "roa_ttm": "roa",
+					"current_ratio": "current_ratio", "quick_ratio": "quick_ratio",
+					"market_cap": "mc", "total_market_cap": "mc",
+					"circulating_market_cap": "mc",
+					"beta_60d": "beta", "sharpe_ratio_60d": "sharpe_ratio",
+					"atr_14": "atr",
 				}
 				alias = _FACTOR_ALIASES.get(factor_name.lower())
 				if alias:
@@ -1069,6 +1078,14 @@ class FactorResearchService:
 					"rsi_14": "rsi", "pe_ttm": "pe", "kdj_k": "kdj",
 					"volume_ratio_5d": "volume_ratio", "turnover_5d": "turnover_rate",
 					"gross_margin": "gm", "operating_margin": "om", "debt_ratio": "dr",
+					# v3.2 新增别名（覆盖 seed_factor_definitions.sql 全部 34 个定义）
+					"pb_ttm": "pb", "ps_ttm": "ps",
+					"roe_ttm": "roe", "roa_ttm": "roa",
+					"current_ratio": "current_ratio", "quick_ratio": "quick_ratio",
+					"market_cap": "mc", "total_market_cap": "mc",
+					"circulating_market_cap": "mc",
+					"beta_60d": "beta", "sharpe_ratio_60d": "sharpe_ratio",
+					"atr_14": "atr",
 				}
 				alias = _FACTOR_ALIASES.get(factor_name.lower())
 				if alias:
@@ -1266,6 +1283,113 @@ class FactorResearchService:
 			# 默认返回空序列
 			return pd.Series(dtype=float)
 	# ==================== 因子分析方法实现 ====================
+	async def _compute_cross_sectional_stats(
+			self,
+			factor_name: str,
+			factor_data_items: List[Dict],
+	) -> Dict[str, Any]:
+		"""
+		逐日横截面标准化：计算 z_score / percentile / rank（v3.2 新增）
+
+		对每只股票 per-trade_date 的 factor_value，在全市场横截面上做标准化：
+		- z_score = (winsorized_value - mean) / std   （5%/95% Winsorize）
+		- percentile = rank / N                        （值越大 percentile 越接近 1）
+		- rank = 1-based rank（值最大=1）
+
+		Args:
+			factor_name: 因子代码
+			factor_data_items: calculate_factor 返回的原始数据列表
+				[{ts_code, trade_date, factor_value}]
+
+		Returns:
+			{trade_dates: int, updated_rows: int}
+		"""
+		import numpy as np
+		import pandas as pd
+		from sqlalchemy import update as _sql_update
+		from shared.database.models.data_models import FactorData as _FD
+
+		if not factor_data_items:
+			return {"trade_dates": 0, "updated_rows": 0}
+
+		df = pd.DataFrame(factor_data_items)
+		if df.empty or "factor_value" not in df.columns:
+			return {"trade_dates": 0, "updated_rows": 0}
+
+		updated_rows = 0
+		trade_dates_processed = 0
+
+		for trade_date, group in df.groupby("trade_date"):
+			values = group["factor_value"].values.astype(float)
+			valid_mask = ~np.isnan(values)
+			n_valid = valid_mask.sum()
+
+			if n_valid < 10:
+				continue  # 样本太少，跨截面无统计意义
+
+			# Winsorize (5%/95%)
+			lo, hi = np.percentile(values[valid_mask], [5, 95])
+			winsorized = np.clip(values.copy(), lo, hi)
+
+			# z_score
+			mu = np.mean(winsorized[valid_mask])
+			sigma = np.std(winsorized[valid_mask])
+			safe_sigma = sigma if sigma > 1e-12 else 1e-12
+			z_scores = np.full_like(values, np.nan)
+			z_scores[valid_mask] = (winsorized[valid_mask] - mu) / safe_sigma
+
+			# rank (1 = 最大值，ascending=False 的效果)
+			ranks = np.full(len(values), np.nan)
+			rank_order = np.argsort(np.argsort(-values[valid_mask]))
+			ranks[valid_mask] = rank_order.astype(float) + 1.0
+
+			# percentile
+			percentiles = np.full_like(values, np.nan)
+			percentiles[valid_mask] = ranks[valid_mask] / n_valid
+
+			# 批量更新 DB
+			codes = group["ts_code"].values
+			batch_updated = 0
+			try:
+				for i, ts in enumerate(codes):
+					if not valid_mask[i]:
+						continue
+					stmt = (
+						_sql_update(_FD)
+						.where(
+							_FD.ts_code == ts,
+							_FD.factor_name == factor_name,
+							_FD.trade_date == trade_date,
+						)
+						.values(
+							z_score=round(float(z_scores[i]), 6),
+							percentile=round(float(percentiles[i]), 6),
+							rank=int(ranks[i]),
+						)
+					)
+					result = await self.session.execute(stmt)
+					batch_updated += result.rowcount
+			except Exception as _up_e:
+				logger.warning(
+					f"更新 {factor_name} {trade_date} 横截面统计失败: {_up_e}"
+				)
+				continue
+
+			updated_rows += batch_updated
+			trade_dates_processed += 1
+
+		if updated_rows > 0:
+			await self.session.commit()
+			logger.info(
+				f"横截面标准化完成: {factor_name} "
+				f"{trade_dates_processed} 个交易日, {updated_rows} 行已更新"
+			)
+
+		return {
+			"trade_dates": trade_dates_processed,
+			"updated_rows": updated_rows,
+		}
+
 	@staticmethod
 	async def _perform_ic_analysis (
 			factor_data: DataFrame,
@@ -1285,10 +1409,9 @@ class FactorResearchService:
 		"""
 		if factor_data.empty:
 			logger.warning(
-				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"factor_data 为空，无法执行分析 — 因子数据表中无数据，"
 				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
-				factor_name, analysis_type
-			)
+				)
 			return {
 				"ic_mean": 0,
 				"ic_std": 0,
@@ -1351,9 +1474,13 @@ class FactorResearchService:
 
 						if len(valid_stocks) >= 10:  # 至少需要10只股票
 							try:
-								corr_coef = np.corrcoef(factor_values[valid_stocks], forward_returns[valid_stocks])[
-									0, 1]
-								ic_series.append(corr_coef if not np.isnan(corr_coef) else 0)
+								# v3.2: Rank IC (Spearman)
+								from scipy.stats import spearmanr as _spearmanr
+								rank_ic, _ = _spearmanr(
+									factor_values[valid_stocks],
+									forward_returns[valid_stocks]
+								)
+								ic_series.append(rank_ic if not np.isnan(rank_ic) else 0)
 							except (ValueError, TypeError):
 								ic_series.append(0)
 						else:
@@ -1427,10 +1554,9 @@ class FactorResearchService:
 		"""
 		if factor_data.empty:
 			logger.warning(
-				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"factor_data 为空，无法执行分析 — 因子数据表中无数据，"
 				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
-				factor_name, analysis_type
-			)
+				)
 			return {
 				"quantile_returns": [],
 				"top_minus_bottom": 0,
@@ -1523,6 +1649,7 @@ class FactorResearchService:
 			                                   range(len(avg_quantile_returns) - 1)) else "non_monotonic"
 		}
 
+	@staticmethod
 	async def _perform_correlation_analysis (
 			self,
 			factor_data: DataFrame,
@@ -1544,10 +1671,9 @@ class FactorResearchService:
 		"""
 		if factor_data.empty:
 			logger.warning(
-				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"factor_data 为空，无法执行分析 — 因子数据表中无数据，"
 				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
-				factor_name, analysis_type
-			)
+				)
 			return {
 				"correlation_matrix": [],
 				"mean_correlation": 0,
@@ -1628,10 +1754,9 @@ class FactorResearchService:
 		"""
 		if factor_data.empty:
 			logger.warning(
-				"因子分析失败 [%s / %s]: factor_data 为空 — 因子数据表中无数据，"
+				"factor_data 为空，无法执行分析 — 因子数据表中无数据，"
 				"请确认 calculate_factor 已写入成功且 factor_code 匹配正确",
-				factor_name, analysis_type
-			)
+				)
 			return {
 				"stability_score": 0,
 				"period_consistency": [],
@@ -2147,14 +2272,17 @@ class FactorResearchService:
 				logger.warning("financial_repo 未初始化，无法获取财务数据")
 				return None
 
-			# 使用 SQLAlchemy select 直接查询 — BaseRepository.get_by
-			# 内部使用 scalar_one_or_none，每只股票有多期财报时
-			# 会抛出 MultipleResultsFound，导致静默返回 None
+			# v2.1 PIT 修复：按 f_ann_date（实际公告日）过滤，消除未来函数
+			# end_date 参数表示查询时点（当前 bar 日期），
+			# 只获取在该日期之前已实际公告的财报数据
+			query_date = end_date  # end_date 在此上下文中为查询时点
+
 			try:
 				from sqlalchemy import select as _sel_fi
 				from shared.database.models.data_models import FinancialIncome
 				fi_stmt = _sel_fi(FinancialIncome).where(
-					FinancialIncome.ts_code == ts_code
+					FinancialIncome.ts_code == ts_code,
+					FinancialIncome.f_ann_date <= query_date,  # PIT 关键：只取已披露的
 				)
 				fi_result = await self.session.execute(fi_stmt)
 				financial_statements = fi_result.scalars().all()
@@ -2213,6 +2341,7 @@ class FactorResearchService:
 					FinancialBalance.ts_code == ts_code,
 					FinancialBalance.end_date >= start_date,
 					FinancialBalance.end_date <= end_date,
+					FinancialBalance.f_ann_date <= query_date,  # PIT 关键：只取已披露的
 				)
 				bs_result = await self.session.execute(bs_stmt)
 				bs_records = bs_result.scalars().all()
@@ -2559,6 +2688,19 @@ class FactorResearchService:
 			cancel_token=cancel_token,
 			progress_callback=progress_callback,
 		)
+
+		# v3.2: 横截面标准化 — 计算 z_score / percentile / rank
+		if calculation_result.get("calculated_count", 0) > 0:
+			try:
+				if progress_callback:
+					await progress_callback("横截面标准化(z_score/percentile/rank)", 0.35)
+				cs_result = await self._compute_cross_sectional_stats(
+					factor_name=factor_name,
+					factor_data_items=calculation_result.get("factor_data", []),
+				)
+				calculation_result["cross_sectional_stats"] = cs_result
+			except Exception as _cs_e:
+				logger.warning(f"横截面标准化失败（非致命）: {_cs_e}")
 
 		# 分析因子表现
 		analysis_results = {}
@@ -3030,26 +3172,36 @@ class FactorResearchService:
 
 			stock_codes = [stock.ts_code for stock in stocks]
 
-			# 批量获取因子数据
-			for factor_name in factor_names:
-				for stock_code in stock_codes:
-					# 从数据库获取因子数据
-					factor_items = await self.factor_repo.get_by_ts_code_and_date_range(
-						ts_code=stock_code,
-						factor_name=factor_name,
-						start_date=start_date_obj,
-						end_date=end_date_obj
-					)
-					if factor_items:
-						for factor_item in factor_items:
-							factor_data.append({
-								'symbol': stock_code,
-								'factor_name': factor_name,
-								'factor_value': factor_item.factor_value,
-								'date': factor_item.trade_date.isoformat()
-							})
+			# v3.2: 批量查询（修复 N+1），一次 SQL 替代嵌套循环
+			try:
+				from sqlalchemy import select as _sel_fd
+				from shared.database.models.data_models import FactorData as _FD
 
-			return factor_data
+				conditions = [
+					_FD.factor_name.in_(factor_names),
+					_FD.ts_code.in_(stock_codes),
+				]
+				if start_date_obj:
+					conditions.append(_FD.trade_date >= start_date_obj)
+				if end_date_obj:
+					conditions.append(_FD.trade_date <= end_date_obj)
+
+				stmt = _sel_fd(_FD).where(*conditions)
+				result = await self.session.execute(stmt)
+				rows = result.scalars().all()
+
+				for row in rows:
+					factor_data.append({
+						'symbol': row.ts_code,
+						'factor_name': getattr(row, 'factor_name', ''),
+						'factor_value': row.factor_value,
+						'date': row.trade_date.isoformat() if row.trade_date else '',
+					})
+			except Exception as _fd_e:
+				logger.error(f"批量获取因子数据失败: {_fd_e}")
+				return []
+
+				return factor_data
 
 		except Exception as e:
 			logger.error(f"获取因子数据失败: {str(e)}")

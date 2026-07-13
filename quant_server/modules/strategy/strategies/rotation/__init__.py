@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 轮动策略模块
-提供基于申万行业多因子评分的 ETF 行业轮动策略
 
-V1: EtfIndustryRotationStrategy — 基于 ETF 动量排名的轮动（已移除，见 git history）
-V2: IndustryRotationStrategy — 基于申万31行业多因子评分的轮动（推荐使用）
-V3: MultiAssetRotationStrategy — 基于多资产 ETF 池的动量轮动（移植聚宽参考策略）
+V1: MultiAssetTrendStrategy — 融合多资产动量+行业轮动，仅需OHLCV（推荐使用）
+V2: IndustryRotationStrategy — 申万31行业多因子评分（需PE/PB数据）
+V3: MultiAssetRotationStrategy — 多资产ETF动量轮动（移植聚宽）
 """
 
-from .industry_rotation_strategy import IndustryRotationStrategy
-from .multi_asset_rotation_strategy import MultiAssetRotationStrategy
+from .multi_asset_trend_strategy import MultiAssetTrendStrategy
 
 __all__ = [
-    "IndustryRotationStrategy",
-    "MultiAssetRotationStrategy",
+    "MultiAssetTrendStrategy",
 ]

@@ -659,12 +659,14 @@ CREATE TABLE strategies (
     module_path VARCHAR(200) NOT NULL,
     strategy_type VARCHAR(50),
     code TEXT,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'stopped', 'error')),
+    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'backtested', 'running', 'paused', 'stopped', 'error'))  -- v3.3: +backtested,
     run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
     execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
     account_id VARCHAR(36) REFERENCES accounts(id),
+    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
     allocated_capital NUMERIC(16,4) DEFAULT 0,
-    template_id VARCHAR(36) REFERENCES strategy_templates(id) ON DELETE SET NULL,  -- v3.0: 关联模板
+    template_id VARCHAR(36) REFERENCES strategy_templates(id) ON DELETE SET NULL,
+    promoted_from_scenario_id VARCHAR(36),  -- v3.3: 从场景晋升而来  -- v3.0: 关联模板
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -673,6 +675,7 @@ CREATE INDEX IF NOT EXISTS idx_strategies_template_id ON strategies(template_id)
 
 COMMENT ON TABLE strategies IS '策略实例表';
 COMMENT ON COLUMN strategies.template_id IS '关联的策略模板ID（v3.0重构，可空兼容旧数据）';
+COMMENT ON COLUMN strategies.promoted_from_scenario_id IS 'v3.3: 从哪个场景晋升而来';
 COMMENT ON COLUMN strategies.id IS '策略唯一标识（建议使用UUID）';
 COMMENT ON COLUMN strategies.name IS '策略名称';
 COMMENT ON COLUMN strategies.user_id IS '策略创建者用户ID';
@@ -695,15 +698,19 @@ CREATE TABLE strategy_runs (
     run_mode VARCHAR(20) DEFAULT 'backtest' CHECK (run_mode IN ('backtest', 'live', 'paper')),
     execution_mode VARCHAR(20) CHECK (execution_mode IN ('semi_auto', 'full_auto')),
     account_id VARCHAR(36) REFERENCES accounts(id),
+    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
     allocated_capital NUMERIC(16,4) DEFAULT 0,
     log_path TEXT,
     state_snapshot JSONB,
+    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
+    strategy_version_id VARCHAR(36),         -- v3.1: 运行使用的策略版本ID
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON COLUMN strategy_runs.account_id IS '启动时绑定的账户ID';
 COMMENT ON COLUMN strategy_runs.allocated_capital IS '启动时分配的资金额度';
 COMMENT ON COLUMN strategy_runs.state_snapshot IS '策略状态快照（含心跳/持仓/数据日期）';
+COMMENT ON COLUMN strategy_runs.strategy_version_id IS 'v3.1: 本次运行使用的策略版本ID，用于溯源';
 
 COMMENT ON TABLE strategy_runs IS '策略运行历史记录表';
 COMMENT ON COLUMN strategy_runs.strategy_id IS '外键，关联策略ID';
@@ -1178,7 +1185,8 @@ COMMENT ON COLUMN etf_basic.benchmark IS '业绩基准';
 CREATE TABLE backtest_tasks (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL REFERENCES sys_users(id),
-    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),           -- v3.3: 改为可选
+    scenario_id VARCHAR(36),                                     -- v3.3: 独立回测场景
     name VARCHAR(100) NOT NULL,
     description TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
@@ -1188,6 +1196,7 @@ CREATE TABLE backtest_tasks (
     error_message TEXT,
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
+    strategy_version_id VARCHAR(36),                             -- v3.3: 回测使用的策略版本ID
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1195,7 +1204,8 @@ CREATE TABLE backtest_tasks (
 COMMENT ON TABLE backtest_tasks IS '回测任务表';
 COMMENT ON COLUMN backtest_tasks.id IS '任务唯一标识';
 COMMENT ON COLUMN backtest_tasks.user_id IS '发起回测的用户ID';
-COMMENT ON COLUMN backtest_tasks.strategy_id IS '被回测的策略ID';
+COMMENT ON COLUMN backtest_tasks.strategy_id IS 'v3.3: 关联策略（可选，独立回测可为 NULL)';
+COMMENT ON COLUMN backtest_tasks.scenario_id IS 'v3.3: 关联回测场景（独立回测模式）';
 COMMENT ON COLUMN backtest_tasks.name IS '回测任务名称';
 COMMENT ON COLUMN backtest_tasks.description IS '回测任务描述';
 COMMENT ON COLUMN backtest_tasks.status IS '任务状态：pending-等待中, running-运行中, completed-完成, failed-失败, cancelled-已取消';
@@ -1205,11 +1215,12 @@ COMMENT ON COLUMN backtest_tasks.result IS '回测结果（JSON格式，包含�
 COMMENT ON COLUMN backtest_tasks.error_message IS '错误信息（如果任务失败）';
 COMMENT ON COLUMN backtest_tasks.started_at IS '任务开始时间';
 COMMENT ON COLUMN backtest_tasks.completed_at IS '任务完成时间';
+COMMENT ON COLUMN backtest_tasks.strategy_version_id IS 'v3.1: 关联的策略版本ID，用于溯源回测使用的策略版本';
 
 -- 回测交易记录表
 CREATE TABLE backtest_trades (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
     trade_time TIMESTAMPTZ NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     direction VARCHAR(10) NOT NULL CHECK (direction IN ('buy', 'sell', 'short', 'cover'))  -- v2.4: 扩展支持做空/平仓,
@@ -1235,7 +1246,7 @@ COMMENT ON COLUMN backtest_trades.tax IS '交易税费';
 -- 回测持仓快照表
 CREATE TABLE backtest_positions (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
     trade_date DATE NOT NULL,
     ts_code VARCHAR(12) NOT NULL,
     volume INT NOT NULL DEFAULT 0,
@@ -1256,7 +1267,7 @@ COMMENT ON COLUMN backtest_positions.market_value IS '持仓市值';
 -- 回测参数配置表
 CREATE TABLE backtest_parameters (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
     param_category VARCHAR(50) NOT NULL,
     param_name VARCHAR(100) NOT NULL,
     param_value JSONB NOT NULL,
@@ -1276,6 +1287,13 @@ CREATE INDEX IF NOT EXISTS idx_backtest_parameters_task_id ON backtest_parameter
 -- 回测场景表
 CREATE TABLE backtest_scenarios (
     id VARCHAR(36) PRIMARY KEY,
+    code TEXT,                                              -- v3.3: 策略代码（独立于strategies）
+    parameters JSONB DEFAULT '{}'::JSONB,                   -- v3.3: 参数快照
+    template_id VARCHAR(36),                                -- v3.3: 来源模板
+    source_strategy_id VARCHAR(36),                          -- v3.3: 来源策略
+    status VARCHAR(20) DEFAULT 'draft',                     -- v3.3: 场景状态
+    archived_at TIMESTAMPTZ,                                -- v3.3: 归档时间
+    discarded_at TIMESTAMPTZ,                               -- v3.3: 丢弃时间
     scenario_id VARCHAR(36) NOT NULL UNIQUE,
     scenario_name VARCHAR(100) NOT NULL,
     description TEXT,
@@ -1327,7 +1345,7 @@ CREATE INDEX idx_backtest_comparisons_name ON backtest_comparisons(comparison_na
 -- 回测资源使用表
 CREATE TABLE backtest_resource_usage (
     id VARCHAR(36) PRIMARY KEY,
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE,
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,
     resource_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(100) NOT NULL,
     metric_value NUMERIC(18,6) NOT NULL,
@@ -3201,12 +3219,14 @@ COMMENT ON COLUMN account_daily_performance.daily_return IS '当日收益率（%
 -- 策略每日绩效表（TimescaleDB超表）
 CREATE TABLE strategy_daily_performance (
     id VARCHAR(36),
-    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),
     trade_date DATE NOT NULL,
-    daily_return NUMERIC(10,6) NOT NULL,
-    total_return NUMERIC(10,6) NOT NULL,
-    max_drawdown NUMERIC(10,6) NOT NULL,
+    daily_return NUMERIC(10,6),                              -- v3.3: 改为可选（初始日无前值时为 0）
+    total_return NUMERIC(10,6),                              -- v3.3: 改为可选
+    max_drawdown NUMERIC(10,6),                              -- v3.3: 改为可选
     sharpe_ratio NUMERIC(10,6),
+    total_assets NUMERIC(16,4),                              -- v3.3: 当日总资产
+    strategy_run_id VARCHAR(36),                             -- v3.3: 关联 strategy_runs.id
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -3221,7 +3241,7 @@ COMMENT ON COLUMN strategy_daily_performance.sharpe_ratio IS '夏普比率';
 -- 信号记录表（TimescaleDB超表）
 CREATE TABLE signals (
     id VARCHAR(36),
-    strategy_id VARCHAR(36) NOT NULL REFERENCES strategies(id),
+    strategy_id VARCHAR(36) REFERENCES strategies(id),  -- v3.3: 改为可选
     ts_code VARCHAR(12) NOT NULL,
     direction VARCHAR(10) DEFAULT 'buy',
     signal_type VARCHAR(10) NOT NULL CHECK (signal_type IN ('buy', 'sell', 'hold')),
@@ -3236,17 +3256,20 @@ CREATE TABLE signals (
     confidence NUMERIC(5,4) DEFAULT 1.0,
     reason TEXT,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'executed')),
-    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'partial', 'cancelled', 'rejected', 'expired')),
+    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'executed', 'partial', 'cancelled', 'rejected', 'expired', 'approved'))  -- v3.3: +executed,+approved,
     order_id VARCHAR(36),
     reviewed_at TIMESTAMPTZ,
     reviewed_by VARCHAR(36),
     account_id VARCHAR(36) REFERENCES accounts(id),
+    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
+    strategy_version_id VARCHAR(36),         -- v3.1: 生成该信号的策略版本ID
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON TABLE signals IS '策略交易信号记录表（TimescaleDB超表）';
 COMMENT ON COLUMN signals.strategy_id IS '策略ID';
 COMMENT ON COLUMN signals.account_id IS '关联的交易账户ID';
+COMMENT ON COLUMN signals.strategy_version_id IS 'v3.1: 生成该信号的策略版本ID，用于溯源';
 COMMENT ON COLUMN signals.ts_code IS '股票代码';
 COMMENT ON COLUMN signals.direction IS '交易方向：buy-买入, sell-卖出';
 COMMENT ON COLUMN signals.signal_type IS '信号类型：buy-买入, sell-卖出, hold-持有';
@@ -3269,7 +3292,7 @@ COMMENT ON COLUMN signals.reviewed_by IS '审核人ID';
 -- 回测净值曲线表（TimescaleDB超表）
 CREATE TABLE backtest_equity_curves (
     id VARCHAR(36),
-    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id),
+    task_id VARCHAR(36) NOT NULL REFERENCES backtest_tasks(id) ON DELETE CASCADE -- v3.3 ON DELETE CASCADE,  -- v3.3: cascade
     trade_date DATE NOT NULL,
     equity NUMERIC(16,4) NOT NULL,
     cash NUMERIC(16,4) NOT NULL,
@@ -3318,7 +3341,7 @@ CREATE TABLE factor_data (
     trade_date DATE NOT NULL,
     factor_value NUMERIC(18,6),
     z_score NUMERIC(10,6),
-    percentile NUMERIC(18,6)
+    percentile NUMERIC(18,6),
     rank INT,
     universe_rank INT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -3356,6 +3379,32 @@ COMMENT ON COLUMN trade_calendar.exchange IS '交易所代码：SSE-上交所, S
 COMMENT ON COLUMN trade_calendar.cal_date IS '日历日期';
 COMMENT ON COLUMN trade_calendar.is_open IS '是否交易日';
 COMMENT ON COLUMN trade_calendar.pretrade_date IS '前一交易日';
+
+-- 每日市场状态标签表（v3.1 新增，TimescaleDB超表）
+CREATE TABLE market_state_daily (
+    trade_date      DATE NOT NULL,
+    regime          VARCHAR(20) NOT NULL,
+    trend_strength  NUMERIC(6,4),
+    momentum_score  NUMERIC(6,4),
+    breadth_ratio   NUMERIC(6,4),
+    volume_ratio    NUMERIC(6,4),
+    volatility_pct  NUMERIC(8,4),
+    classified_by   VARCHAR(50) NOT NULL DEFAULT 'unknown',
+    extra           JSONB DEFAULT '{}'::JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trade_date, classified_by)
+);
+
+COMMENT ON TABLE market_state_daily IS '每日市场状态分类标签（v3.1），用于策略选择与绩效归因';
+COMMENT ON COLUMN market_state_daily.trade_date IS '交易日';
+COMMENT ON COLUMN market_state_daily.regime IS '市场状态分类：BULL / NEUTRAL / BEAR';
+COMMENT ON COLUMN market_state_daily.trend_strength IS '趋势强度（0~1）';
+COMMENT ON COLUMN market_state_daily.momentum_score IS '动量得分（0~1）';
+COMMENT ON COLUMN market_state_daily.breadth_ratio IS '市场宽度（上涨家数/总家数）';
+COMMENT ON COLUMN market_state_daily.volume_ratio IS '成交量比值（当日量/20日均量）';
+COMMENT ON COLUMN market_state_daily.volatility_pct IS '波动率百分比';
+COMMENT ON COLUMN market_state_daily.classified_by IS '分类器标识（策略名或版本）';
+COMMENT ON COLUMN market_state_daily.extra IS '扩展字段：各策略特有的判定细节（JSONB）';
 
 -- ============================================================
 -- 第三部分：TimescaleDB超表转换
@@ -3544,6 +3593,14 @@ SELECT create_hypertable(
     if_not_exists => TRUE
 );
 
+-- 每日市场状态标签转换为超表（v3.1 新增）
+SELECT create_hypertable(
+    'market_state_daily',
+    'trade_date',
+    chunk_time_interval => INTERVAL '90 days',
+    if_not_exists => TRUE
+);
+
 -- ============================================================
 -- 第四部分：索引优化
 -- ============================================================
@@ -3587,6 +3644,10 @@ CREATE INDEX IF NOT EXISTS idx_factor_data_date ON factor_data(trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_factor_data_factor_code_date ON factor_data(factor_code, trade_date);
 CREATE INDEX IF NOT EXISTS idx_trade_calendar_date ON trade_calendar(cal_date DESC);
 CREATE INDEX IF NOT EXISTS idx_trade_calendar_exchange ON trade_calendar(exchange);
+
+-- v3.1: 市场状态标签索引
+CREATE INDEX IF NOT EXISTS idx_market_state_regime ON market_state_daily(trade_date, regime);
+CREATE INDEX IF NOT EXISTS idx_market_state_classifier ON market_state_daily(classified_by, trade_date);
 
 -- 外键索引（优化关联查询）
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
@@ -3898,13 +3959,20 @@ BEGIN
         RAISE WARNING '⚠ analysis_reports 表缺失';
     END IF;
 
+    PERFORM 1 FROM information_schema.tables WHERE table_name = 'market_state_daily';
+    IF FOUND THEN
+        RAISE NOTICE '✓ market_state_daily 表存在（v3.1）';
+    ELSE
+        RAISE WARNING '⚠ market_state_daily 表缺失';
+    END IF;
+
     RAISE NOTICE '===================================================';
     RAISE NOTICE '量化交易系统数据库创建完成！';
     RAISE NOTICE '数据库名称: quant_trading';
     RAISE NOTICE 'PostgreSQL版本: 14+';
     RAISE NOTICE 'TimescaleDB版本: 2.10+';
     RAISE NOTICE '创建表数量: %张表（包含关系表和时序表）', actual_tables;
-    RAISE NOTICE '超表数量: 20+ 张（已启用TimescaleDB分区）';
+    RAISE NOTICE '超表数量: 21 张（含 v3.1 market_state_daily）';
     RAISE NOTICE '===================================================';
     RAISE NOTICE '重要提醒:';
     RAISE NOTICE '1. 请根据实际硬件配置调整分区间隔和压缩策略';

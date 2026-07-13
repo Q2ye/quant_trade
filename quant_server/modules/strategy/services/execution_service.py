@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from modules.strategy.services.strategy_service import StrategyService
 from modules.strategy.constants import (
     StrategyLifecycleStatus,
     RunMode,
@@ -137,6 +138,19 @@ class ExecutionService:
                     "error_code": ErrorCode.STRATEGY_INSUFFICIENT_CAPITAL,
                 }
 
+            # v3.3: 获取当前策略版本用于溯源
+            strategy_version_id = None
+            try:
+                from shared.database.repositories.strategy.management.strategy_version_repo import (
+                    StrategyVersionRepository
+                )
+                version_repo = StrategyVersionRepository(self.session)
+                current_version = await version_repo.get_current_version(strategy_id)
+                if current_version:
+                    strategy_version_id = current_version.id
+            except Exception:
+                pass
+
             # 创建策略运行记录
             run_data = {
                 "strategy_id": strategy_id,
@@ -146,8 +160,18 @@ class ExecutionService:
                 "allocated_capital": capital,
                 "status": "running",
                 "started_at": datetime.now(),
+                "strategy_version_id": strategy_version_id,
             }
             run_record = await self.strategy_run_repo.create(run_data)
+
+            # v3.3: 实盘启动前校验回测验证状态（仅告警，不阻塞）
+            if run_mode == RunMode.LIVE and strategy.status not in (
+                StrategyLifecycleStatus.BACKTESTED.value,
+                StrategyLifecycleStatus.STOPPED.value,
+            ):
+                logger.warning(
+                    f"策略 {strategy_id} 未回测验证 (status={strategy.status})，建议先运行回测"
+                )
 
             # 更新策略状态 + 绑定账户 + 记录分配资金
             strategy.status = StrategyLifecycleStatus.RUNNING.value

@@ -43,6 +43,37 @@ class PositionRepository(BaseRepository[Position]):
 		result = await self.session.execute(query)
 		return result.scalar_one_or_none()
 
+	async def get_user_position_by_strategy (
+			self,
+			user_id: str,
+			account_id: str,
+			ts_code: str,
+			strategy_id: Optional[str] = None,
+	) -> Optional[Position]:
+		"""
+		获取用户特定股票在指定策略维度下的持仓。
+
+		持仓唯一约束为 (account_id, ts_code, strategy_id)，同一账户同一只票
+		可被多个策略分别持有。upsert 时必须带 strategy_id 定位，否则会误更新
+		其他策略的持仓，或在多行存在时抛 MultipleResultsFound。
+
+		strategy_id 为 None 时匹配 strategy_id IS NULL 的历史/手工持仓
+		（SQL 中 `= NULL` 恒不成立，必须用 IS NULL）。
+		"""
+		query = self.build_query()
+		conditions = [
+			Position.user_id == user_id,
+			Position.account_id == account_id,
+			Position.ts_code == ts_code,
+		]
+		if strategy_id is None:
+			conditions.append(Position.strategy_id.is_(None))
+		else:
+			conditions.append(Position.strategy_id == strategy_id)
+		query = query.where(and_(*conditions))
+		result = await self.session.execute(query)
+		return result.scalar_one_or_none()
+
 	async def get_user_positions (
 			self,
 			user_id: str,

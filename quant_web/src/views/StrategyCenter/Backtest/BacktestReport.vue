@@ -435,7 +435,10 @@ const loadReport = async () => {
     ]);
 
     const r: Record<string, any> = result || {};
-    const eq = Array.isArray(equity) ? equity : [];
+    // Fallback: 如果独立 equity API 为空，使用 result.equity_curve（v3.3 to_dict 中包含）
+    const rawEq = Array.isArray(equity) && equity.length > 0
+      ? equity
+      : (Array.isArray(r.equity_curve) ? r.equity_curve : []);
     const tr = Array.isArray(trades) ? trades : [];
 
     report.value = {
@@ -449,7 +452,7 @@ const loadReport = async () => {
         tradesCount: r.num_trades ?? tr.length,
         avgTradeReturn: r.avg_trade_return ?? 0,
       },
-      equityCurve: eq.map((p: any) => ({
+      equityCurve: rawEq.map((p: any) => ({
         date: p.trade_date || p.date,
         value: p.total_assets || p.equity || 0,
       })),

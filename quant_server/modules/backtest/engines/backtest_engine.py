@@ -1120,6 +1120,79 @@ class BacktestEngine(EngineBase):
 				logger.info(
 					f"交易明细已持久化: {result.task_id} ({len(trade_records)} 笔)"
 				)
+			# 2.5 提前提交净值曲线+交易明细（避免后续步骤3/4的异常导致回滚）
+			try:
+				await db.commit()
+			except Exception as _ce:
+				logger.error(f"净值曲线+交易明细提交失败: {_ce}", exc_info=True)
+				try:
+					await db.rollback()
+				except Exception:
+					pass
+				# 不 return，继续尝试保存持仓快照和绩效（best-effort）
+
+
+			# 3. 写入持仓快照（v3.3 新增 — 字段已对齐 BacktestPosition 模型）
+			try:
+				from shared.database.repositories.strategy.backtest.position_repo import (
+					BacktestPositionRepository,
+				)
+				position_repo = BacktestPositionRepository(db)
+				position_records = []
+				if self.broker is not None:
+					for snap in self.broker.snapshots:
+						if snap.positions:
+							for ps in snap.positions:
+								position_records.append({
+									"trade_date": snap.trade_date,
+									"ts_code": ps.ts_code,
+									"volume": ps.quantity,
+									"cost_price": ps.avg_cost,
+									"market_value": ps.market_value,
+								})
+				if position_records:
+					await position_repo.batch_create_positions(result.task_id, position_records)
+					logger.info(
+						f"持仓快照已持久化: {result.task_id} ({len(position_records)} 条)"
+					)
+			except Exception as _pos_e:
+				logger.warning(f"持仓快照持久化跳过（非致命）: {_pos_e}")
+
+			# 4. 写入 strategy_daily_performance（v3.3 新增 — 字段已对齐 StrategyDailyPerformance 模型）
+			try:
+				from modules.strategy.services.performance_service import PerformanceService
+				import numpy as np
+				perf_svc = PerformanceService(db)
+				if not equity_df.empty:
+					initial = float(equity_df.iloc[0]["total_assets"])
+					peak = initial
+					daily_returns = []
+					perf_records = []
+					for _, row in equity_df.iterrows():
+						total = float(row["total_assets"])
+						ret = (total - initial) / initial if initial > 0 else 0.0
+						prev_ret = float(perf_records[-1]["total_return"]) if perf_records else 0.0
+						daily_ret = (ret - prev_ret) / (1 + prev_ret) if (1 + prev_ret) > 0 else 0.0
+						peak = max(peak, total)
+						dd = (peak - total) / peak if peak > 0 else 0.0
+						daily_returns.append(daily_ret)
+						sharpe = None
+						if len(daily_returns) >= 5:
+							arr = np.array(daily_returns)
+							sharpe = float(np.mean(arr) / np.std(arr) * np.sqrt(252)) if np.std(arr) > 0 else None
+						perf_records.append({
+							"strategy_id": result.strategy_id,
+							"trade_date": row["trade_date"],
+							"daily_return": round(daily_ret, 6),
+							"total_return": round(ret, 6),
+							"max_drawdown": round(dd, 6),
+							"sharpe_ratio": round(sharpe, 6) if sharpe else None,
+							"created_at": datetime.now(),
+						})
+					written = await perf_svc.batch_save(perf_records)
+					logger.info(f"策略绩效已持久化: {result.task_id} ({written} 条)")
+			except Exception as _pe:
+				logger.warning(f"策略绩效持久化跳过（非致命）: {_pe}")
 
 			# 3. Commit
 			await db.commit()

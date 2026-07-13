@@ -75,7 +75,7 @@ class MACDStrategy(TechnicalStrategy):
 		self.take_profit = default_params["take_profit"]
 
 		# 内部状态
-		self._price_data: pd.DataFrame = pd.DataFrame()
+		self._price_data: dict = {}  # v3.3: per-ts_code DataFrame fix P0-1
 		self._last_macd: float = 0.0  # 上一个MACD值
 
 	def on_init (self) -> None:
@@ -106,7 +106,7 @@ class MACDStrategy(TechnicalStrategy):
 			return signals
 
 		# 计算MACD
-		df = self._price_data.copy()
+		df = self._price_data[ts].copy()
 		df["ema_fast"] = df["close"].ewm(span=self.fast_period, adjust=False).mean()
 		df["ema_slow"] = df["close"].ewm(span=self.slow_period, adjust=False).mean()
 		df["macd"] = df["ema_fast"] - df["ema_slow"]
@@ -273,7 +273,7 @@ class MACDStrategy(TechnicalStrategy):
 
 		signal = TradingSignal(
 			id=f"{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
-			strategy_id=self.context.strategy_id if self.context else 0,
+			strategy_id=str(self.context.strategy_id) if self.context else "",
 			strategy_name=self.name,
 			ts_code=ts_code,
 			signal_type=signal_type,

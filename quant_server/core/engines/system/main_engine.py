@@ -261,7 +261,7 @@ class MainEngine(EngineBase):
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动(16:00)",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 20, "minute": 0},
+                schedule_config={"hour": 20, "minute": 00},
                 # schedule_config={"hour": 21, "minute": 12},  # 测试流程，临时修改时间
                 func=_daily_sync_job,
                 description="交易日16:00同步daily_quotes/daily_basic/adj_factor/index_daily，完成后自动驱动策略",

@@ -141,6 +141,7 @@ class SignalEngine(EngineBase):
 
                     signal_record = await repo.create({
                         "strategy_id": sid,
+                        "strategy_version_id": signal_data.get("strategy_version_id") or None,
                         "ts_code": signal_data.get("ts_code", ""),
                         "direction": _db_direction,
                         "signal_type": _db_signal_type,
@@ -154,9 +155,10 @@ class SignalEngine(EngineBase):
                         "price_limit_high": signal_data.get("price_limit_high"),
                         "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
                         "order_type": signal_data.get("order_type", "limit_range"),
+                        "signal_status": "pending_manual",  # v3.3: 统一用 signal_status
                     })
                     db_id = signal_record.id
-            # 返回 DB id，供 _on_strategy_signal 后续回写 status
+            # 返回 DB id（status 列已废弃 v3.3，统一用 signal_status）
             return db_id
         except ImportError as e:
             logger.warning(f"SignalRepository 不可用: {e}")

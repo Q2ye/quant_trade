@@ -175,6 +175,7 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
         # 3. 创建 Eager Manager — StrategyManager（常驻运行，订阅数据事件）
         from modules.strategy.engines.strategy_manager import StrategyManager
         from modules.strategy.engines.engine_factory import EngineFactory
+        from modules.strategy.engines.performance_tracker import PerformanceTrackerEngine
 
         # v2.0: 传入 session_factory 使 StrategyManager 能加载策略详情
         from shared.database.session.session_manager import get_session_manager
@@ -186,16 +187,26 @@ async def _initialize_strategy_module(session, main_engine, event_engine, config
         )
         engine_factory = EngineFactory(event_engine=event_engine)
 
+        # v3.3: 绩效追踪引擎 — 订阅日终事件，自动计算每日绩效
+        performance_tracker = PerformanceTrackerEngine(
+            event_engine=event_engine,
+        )
+        # 注入 session_factory（EngineBase 子类通过 _session_factory 属性访问）
+        performance_tracker._session_factory = session_factory
+
         # 注册到主引擎（供其他模块通过 main_engine 获取）
         if main_engine:
             main_engine.register_engine("strategy_manager", strategy_manager)
             main_engine.register_engine("engine_factory", engine_factory)
+            main_engine.register_engine("performance_tracker", performance_tracker)
 
         # 启动 StrategyManager（触发 _on_start → 订阅 DataSyncCompletedEvent 等）
         await strategy_manager.start()
+        # 启动绩效追踪（订阅 settlement.completed 事件）
+        await performance_tracker.start()
 
         # 4. 加载可用策略类型
-        logger.info("策略模块初始化完成（Eager Manager + Lazy Engine 模式）")
+        logger.info("策略模块初始化完成（Eager Manager + Lazy Engine 模式 + 绩效追踪）")
 
         return {
             "status": "success",

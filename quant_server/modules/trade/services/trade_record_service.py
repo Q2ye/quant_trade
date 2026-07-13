@@ -210,7 +210,8 @@ class TradeRecordService:
 
             # ---- 6. 更新 Position ----
             position = await self._upsert_position(
-                user_id, account.id, ts_code, direction, price, quantity
+                user_id, account.id, ts_code, direction, price, quantity,
+                strategy_id=strategy_id,
             )
 
             # ---- 7. 更新 Account 余额 ----
@@ -294,10 +295,16 @@ class TradeRecordService:
         direction: str,
         price: Decimal,
         quantity: int,
+        strategy_id: Optional[str] = None,
     ) -> Position:
-        """创建或更新持仓（加权平均成本）"""
-        position = await self._position_repo.get_user_position(
-            user_id=user_id, account_id=account_id, ts_code=ts_code
+        """创建或更新持仓（加权平均成本）。
+
+        持仓按 (account_id, ts_code, strategy_id) 维度隔离，故查找/新建/返回
+        均须带 strategy_id，避免误更新其他策略的同票持仓。
+        """
+        position = await self._position_repo.get_user_position_by_strategy(
+            user_id=user_id, account_id=account_id, ts_code=ts_code,
+            strategy_id=strategy_id,
         )
 
         now = datetime.now(timezone.utc)
@@ -311,6 +318,7 @@ class TradeRecordService:
             position_data = {
                 "user_id": user_id,
                 "account_id": account_id,
+                "strategy_id": strategy_id,
                 "ts_code": ts_code,
                 "volume": quantity,
                 "available_volume": quantity,
@@ -362,8 +370,9 @@ class TradeRecordService:
         })
 
         # 重新查询返回最新数据
-        return await self._position_repo.get_user_position(
-            user_id=user_id, account_id=account_id, ts_code=ts_code
+        return await self._position_repo.get_user_position_by_strategy(
+            user_id=user_id, account_id=account_id, ts_code=ts_code,
+            strategy_id=strategy_id,
         )
 
     async def _update_account_balance(
