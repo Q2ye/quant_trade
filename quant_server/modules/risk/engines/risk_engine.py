@@ -584,8 +584,20 @@ class RiskEngine(EngineBase):
         return None
 
     async def _persist_risk_event(self, event_data: Dict[str, Any]) -> None:
-        """持久化风险事件到 DB（如果 session_factory 可用）"""
+        """持久化风险事件到 DB（如果 session_factory 可用）。
+
+        risk_events.rule_id / user_id 均为 NOT NULL 外键（→ risk_rules / sys_users）。
+        内置规则（如 limit_up_down/suspension）无对应 DB 规则行、回测场景无用户上下文，
+        此时缺失必填外键 → 直接跳过落库（事件仍保留在 _risk_events 内存并经 EventEngine
+        广播，回测报告另有 _risk_violations 收集），避免向超表插入违反 NOT NULL/FK 的记录
+        导致事务回滚刷屏、并静默丢失。
+        """
         if not self._session_factory:
+            return
+        # 必填外键守卫：缺 rule_id/user_id（内置规则/回测）→ 不落库
+        rule_id = event_data.get("rule_id")
+        user_id = event_data.get("user_id")
+        if not rule_id or not user_id:
             return
         try:
             from shared.database.repositories.trading.risk.risk_event_repo import (
@@ -594,10 +606,13 @@ class RiskEngine(EngineBase):
             async with self._session_factory() as session:
                 repo = RiskEventRepository(session)
                 await repo.create({
+                    "rule_id": rule_id,
+                    "user_id": user_id,
+                    "strategy_id": event_data.get("strategy_id"),
                     "event_type": event_data.get("event_type", "risk.event"),
                     "event_message": event_data.get("message", ""),
                     "trigger_value": event_data.get("signal_data", {}),
-                    "action_taken": "alert",
+                    "action_taken": event_data.get("action", "alert"),
                     "created_at": event_data.get("created_at"),
                 })
         except Exception as e:

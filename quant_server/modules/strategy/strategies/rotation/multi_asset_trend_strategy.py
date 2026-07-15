@@ -2,6 +2,9 @@
 """
 多资产趋势轮动策略 V1 — 融合行业轮动 V4 + 多资产 ETF 轮动
 
+
+做全球轮动
+
 设计来源：
   - 行业轮动 V4（industry_rotation_strategy.py）：市场状态三分类 + 移动止损 + 冷却期
   - 多资产 ETF 轮动（multi_asset_rotation_strategy.py）：对数回归动量 + RSRS 阻速线

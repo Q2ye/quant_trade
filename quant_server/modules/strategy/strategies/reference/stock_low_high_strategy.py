@@ -19,9 +19,13 @@
 适配说明（与聚宽原版的区别）：
   - 原版有 9:40/9:51/9:52 时间节点分批执行
     系统策略改为单次 rebalance 中完成（9:40 初筛 → 9:51 复检一次完成）
-  - 原版使用 talib，改为 numpy 实现
+  - 原版使用 talib，改为 numpy/pandas 实现
   - 原版使用 get_price/attribute_history，改为策略内 DataFrame 缓存
   - 原版有半仓轮动逻辑，系统回测中通过 Broker 资金管理自动实现
+  - v6.2: 调仓在 on_bar_batch_end（当日全部 bar 推送完毕后由框架调用）执行，
+    确保全市场缓存统一包含当日数据，"今日/昨日"语义一致；信号 T+1 撮合，无前视。
+    注意：旧接口 BacktestEngine.run_backtest()（仅单元测试用）逐股推送、
+    不触发该 hook，本策略在该路径下不产生调仓信号。
 """
 
 import logging
@@ -75,8 +79,8 @@ class StockLowHighStrategy(BaseStrategy):
         "csi500_ma_long": 60,           # 长期均线周期
         "csi500_sideways_pct": 0.03,    # 震荡市判定：近N日涨跌幅 ≤ 3%
 
-        # —— 下跌市风控（收紧止损+降至1只，不停买） ——
-        "bear_max_pos": 2,              # 下跌市最多 1 只
+        # —— 下跌市风控（暂停新买入，存量持仓按统一止损管理） ——
+        "bear_max_pos": 2,              # 下跌市持仓上限（当前下跌市暂停新买入，仅在恢复买入逻辑时生效）
         "bear_stop_loss": -0.04,        # 下跌市止损（与上涨市统一）
 
         # —— 震荡市风控 ——
@@ -87,6 +91,9 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 动态再平衡 ——
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
+
+        # —— 组合回撤保护 ——
+        "portfolio_dd_limit": 0.0,      # 组合回撤保护阈值（0=关闭；>0 时回撤超阈值暂停新买入）
 
         # —— 行情判定来源 ——
         # "bullish_pct" = 全市场多头占比（方案B，历史最优）
@@ -113,6 +120,7 @@ class StockLowHighStrategy(BaseStrategy):
         # —— 数据缓存 ——
         # {ts_code: DataFrame[close, volume, high, low, open]}
         self._data_cache: Dict[str, pd.DataFrame] = {}
+        self._bar_dates: Dict[str, str] = {}       # {ts_code: 最后一根实时 bar 的日期}（新鲜度守卫）
         self._st_stocks: Set[str] = set()         # ST 股票代码集合
         self._listing_dates: Dict[str, str] = {}   # {ts_code: 上市日期}
         self._stock_pool: List[str] = []           # 当前 A 股代码列表
@@ -145,6 +153,7 @@ class StockLowHighStrategy(BaseStrategy):
     async def on_start(self) -> None:
         """重置状态 + 加载 ST 列表"""
         self._data_cache.clear()
+        self._bar_dates.clear()
         self._listing_dates.clear()
         self._track_high.clear()
         self._holdings.clear()
@@ -163,17 +172,17 @@ class StockLowHighStrategy(BaseStrategy):
         if session_factory:
             try:
                 from shared.database.repositories.market.basic.index_repo import IndexDailyRepository
-                from datetime import date, timedelta
                 async with session_factory() as db:
                     idx_repo = IndexDailyRepository(db)
-                    # 加载全部可用数据（策略起始需向前取足够天数计算 MA20/MA60）
-                    # 查询范围为回测起始日往前推 90 天到结束日
-                    today = date.today()
-                    start = today - timedelta(days=800)  # 覆盖约 3 年
-                    records = await idx_repo.get_by_date_range('000905.SH', start, today)
+                    # v6.2 防前视：固定早期起点加载全量历史（单指数数据量小），
+                    # 实际判定时在 _calc_csi500_regime 中按当前回测日截断，
+                    # 避免用 date.today() 的"最新行情"判定历史回测日的 regime。
+                    start = date(2018, 1, 1)
+                    records = await idx_repo.get_by_date_range('000905.SH', start, date.today())
                     if records:
                         df = pd.DataFrame([{
-                            "trade_date": r.trade_date,
+                            # 统一为 ISO 字符串（与 _last_trade_date 同格式，便于截断比较）
+                            "trade_date": str(r.trade_date)[:10],
                             "close": float(r.close or 0),
                             "open": float(r.open or 0),
                             "high": float(r.high or 0),
@@ -189,10 +198,46 @@ class StockLowHighStrategy(BaseStrategy):
         else:
             logger.info("DB 会话不可用，行情判定将使用 bullish_pct 代理")
 
+        # ---- 加载策略自有股票池：全 A 股主板（00/60 开头、L 在市股）----
+        # 回测 backtest_service Step7 经 strategy.universe 读取 → 喂满全主板，
+        # 取代"全市场兜底 1000 只"，使 bullish_pct 成为真实市场宽度、选股覆盖全市场。
+        # v6.2: 同时填充 _st_stocks（ST 过滤生效）与 _listing_dates（新股真实日期过滤）。
+        if session_factory:
+            try:
+                from shared.database.repositories.market.basic.stock_repo import (
+                    StockBasicRepository,
+                )
+                async with session_factory() as db:
+                    all_stocks = await StockBasicRepository(db).get_active_stocks()
+                universe: List[str] = []
+                for s in all_stocks:
+                    code = s.ts_code
+                    if not self._is_tradable(code):
+                        continue
+                    # ST 过滤：按当前名称判定（保守方向——历史回测会误杀
+                    # "当时未 ST 现已 ST"的个股；精确判定需名称变更历史表）
+                    stock_name = str(getattr(s, "name", "") or "")
+                    if "ST" in stock_name.upper():
+                        self._st_stocks.add(code)
+                        continue
+                    # 真实上市日期（供 _is_new_stock 过滤，取代缓存行数近似）
+                    list_dt = getattr(s, "list_date", None)
+                    if list_dt:
+                        self._listing_dates[code] = str(list_dt)[:10]
+                    universe.append(code)
+                self._universe = universe
+                logger.info(
+                    f"低吸轮动股票池已加载: {len(self._universe)} 只主板股 "
+                    f"(剔除 ST {len(self._st_stocks)} 只)"
+                )
+            except Exception as e:
+                logger.warning(f"股票池加载失败（回退→回测走兜底 1000）: {e}")
+
         logger.info(f"低吸轮动策略已启动: 数据缓存={len(self._data_cache)}")
 
     def on_stop(self) -> None:
         self._data_cache.clear()
+        self._bar_dates.clear()
         self._track_high.clear()
         self._holdings.clear()
         self._exit_pending.clear()
@@ -204,37 +249,56 @@ class StockLowHighStrategy(BaseStrategy):
         logger.info("低吸轮动策略已停止")
 
     # =============================================================================
-    # 核心入口：on_bar
+    # 核心入口：on_bar（仅缓存） + on_bar_batch_end（调仓）
     # =============================================================================
 
     def on_bar(self, bar: BarData) -> List[TradingSignal]:
-        signals: List[TradingSignal] = []
-        ts_code = bar.ts_code
+        """
+        v6.2: on_bar 仅负责缓存数据，不再触发调仓。
 
+        调仓移至 on_bar_batch_end —— 由框架在当日全部 bar 推送完毕后调用，
+        确保全市场缓存统一包含当日数据（修复旧版"当日第一根 bar 触发调仓、
+        其余股票数据仍停留在 T-1"的数据不齐问题）。
+        """
         try:
-            # 缓存所有传入 bar 的数据（选股时通过 _is_tradable 过滤）
-            self._append_data(ts_code, bar)
+            self._append_data(bar.ts_code, bar)
 
             trade_date = getattr(bar, "trade_date", "") or getattr(bar, "datetime", "")
-            if isinstance(trade_date, str) and len(trade_date) >= 10:
-                trade_date = trade_date[:10]
-            self._last_trade_date = trade_date
+            trade_date = str(trade_date)[:10] if trade_date else ""
+            if trade_date:
+                self._last_trade_date = trade_date
+        except Exception as e:
+            logger.error(f"低吸轮动 on_bar 异常: {bar.ts_code}: {e}", exc_info=True)
 
-            if self._last_rebalance_date and trade_date == self._last_rebalance_date:
+        return []
+
+    def on_bar_batch_end(self, trade_date: Any = None) -> List[TradingSignal]:
+        """
+        当日批次结束回调（strategy_manager.handle_bar_batch / optimization_engine 调用）。
+
+        此时所有股票的缓存均已包含当日数据："今日"= closes[-1]，"昨日"= closes[-2]，
+        与聚宽原版盘中决策语义对齐；信号经引擎 T+1 撮合成交，无前视。
+        """
+        signals: List[TradingSignal] = []
+        try:
+            td = str(trade_date)[:10] if trade_date else self._last_trade_date
+            if td:
+                self._last_trade_date = td
+
+            if self._last_rebalance_date and td == self._last_rebalance_date:
                 return signals
 
+            # 按交易日计数，每 N 个交易日调仓一次（数据不足时不计为已调仓，
+            # 避免首日就标记 _last_rebalance_date 导致后续被跳过）
             self._bar_count += 1
-
-            # 每 N 根 bar 执行一次调仓（仅在数据充足时触发，避免首根 bar
-            # 就标记 _last_rebalance_date 导致后续所有 bar 被跳过）
             freq = int(self.parameters.get("rebalance_frequency", 1))
             if self._bar_count % freq == 0 and len(self._data_cache) >= 10:
                 signals = self._run_rebalance()
-                self._last_rebalance_date = trade_date
+                self._last_rebalance_date = td
                 self._first_screen_done = True
 
         except Exception as e:
-            logger.error(f"低吸轮动 on_bar 异常: {ts_code}: {e}", exc_info=True)
+            logger.error(f"低吸轮动 on_bar_batch_end 异常: {trade_date}: {e}", exc_info=True)
 
         return signals
 
@@ -246,9 +310,10 @@ class StockLowHighStrategy(BaseStrategy):
         """
         主调仓流程（对应原版 9:40 初筛 + 9:51 二次筛选 + 9:52 买入）。
 
-        v6.0（源策略对齐版）：
+        v6.2（问题修复版，on_bar_batch_end 中调用）：
           0. 【结算待卖出】
-          1. 【大盘环境 + 组合回撤】→ 确定 effective_max_pos
+          1. 【大盘环境】三档行情 → 确定 effective_max_pos / 止损 / 是否停买
+          1b.【组合回撤保护】portfolio_dd_limit > 0 时，回撤超阈值暂停新买入
           2. 【提前选股】→ 获得今日选股池（供池内池外止盈 + 半仓轮动使用）
           3. 【P0 池内池外止盈】池内股只止损，池外股止损+抛物线止盈
           4. 【差异三 两步复检】用今日 bar 重新验证候选股
@@ -273,14 +338,26 @@ class StockLowHighStrategy(BaseStrategy):
         elif regime == "震荡市":
             regime_max_pos = int(self.parameters.get("sideways_max_pos", 2))
             regime_stop_loss = float(self.parameters.get("stop_loss", -0.04))
-            regime_no_new_buy = False 
+            regime_no_new_buy = False
         else:
+            # 下跌市：暂停新买入（存量持仓按统一止损管理）
             regime = "下跌市"
-            regime_max_pos = int(self.parameters.get("bear_max_pos", 1))
-            regime_stop_loss = float(self.parameters.get("bear_stop_loss", -0.025))
-            regime_no_new_buy = True 
+            regime_max_pos = int(self.parameters.get("bear_max_pos", 2))
+            regime_stop_loss = float(self.parameters.get("bear_stop_loss", -0.04))
+            regime_no_new_buy = True
 
         effective_max_pos = regime_max_pos
+
+        # ---- 1b. 组合回撤保护（portfolio_dd_limit=0 时关闭，不影响既有行为）----
+        dd_limit = float(self.parameters.get("portfolio_dd_limit", 0.0))
+        if dd_limit > 0:
+            port_dd = self._check_portfolio_drawdown()
+            if port_dd >= dd_limit and not regime_no_new_buy:
+                regime_no_new_buy = True
+                if self.verbose_logging:
+                    logger.info(
+                        f"组合回撤保护: 回撤{port_dd:.1%} ≥ {dd_limit:.0%}，暂停新买入"
+                    )
 
         if self.verbose_logging:
             logger.info(
@@ -453,8 +530,15 @@ class StockLowHighStrategy(BaseStrategy):
             else:
                 return "下跌市", bullish_pct
 
+        # --- v6.2 防前视：只使用当前回测日（_last_trade_date）及之前的指数数据 ---
+        # 缓存在 on_start 一次性加载到真实"今天"，历史回测日必须截断后再判定，
+        # 否则 closes[-1] 恒为最新真实行情 → regime 全程静态且引入未来数据。
+        cache = self._csi500_cache
+        if not cache.empty and self._last_trade_date:
+            cache = cache[cache["trade_date"].astype(str) <= self._last_trade_date]
+
         # 数据不足时回退到 bullish_pct 代理
-        if self._csi500_cache.empty or len(self._csi500_cache) < 65:
+        if cache.empty or len(cache) < 65:
             up_th = float(self.parameters.get("csi500_upper_fallback", 0.25))
             dn_th = float(self.parameters.get("csi500_lower_fallback", 0.10))
             if bullish_pct > up_th:
@@ -464,7 +548,7 @@ class StockLowHighStrategy(BaseStrategy):
             else:
                 return "下跌市", bullish_pct
 
-        closes = self._csi500_cache["close"].values.astype(np.float64)
+        closes = cache["close"].values.astype(np.float64)
         ma_short = int(self.parameters.get("csi500_ma_short", 20))
         ma_long = int(self.parameters.get("csi500_ma_long", 60))
         sideways_pct = float(self.parameters.get("csi500_sideways_pct", 0.03))
@@ -579,6 +663,13 @@ class StockLowHighStrategy(BaseStrategy):
                 if not self._is_tradable(code):
                     continue
                 if code in self._st_stocks:
+                    continue
+
+                # v6.3 幽灵持仓修复：仅"当日有新 bar"的股票可成为候选。
+                # 缓存中存在（如全市场预热注入）但引擎未推送当日数据的股票，
+                # 买入后订单永不成交、价格冻结 → 永久占用持仓槽（幽灵持仓）；
+                # 同时天然排除当日停牌股。bullish_pct 市场宽度不受此守卫影响。
+                if self._bar_dates.get(code) != self._last_trade_date:
                     continue
 
                 # 新股过滤
@@ -765,45 +856,25 @@ class StockLowHighStrategy(BaseStrategy):
     @staticmethod
     def _check_macd_bullish(closes: np.ndarray) -> bool:
         """
-        MACD 金叉检查：DIF > DEA（DIF 在信号线上方），确认上升趋势。
+        MACD 多头检查：DIF > DEA（DIF 在信号线上方）且 DIF > 0，确认上升趋势。
         比原版仅 DIF > 0 更严格，避免高位钝化时误入。
-        计算量允许范围内使用多期 DIF 值计算 DEA（信号线）。
+
+        v6.2: 用 pandas ewm 标准递推（adjust=False，与 talib 一致）向量化计算
+        DIF 全序列与 DEA，修复旧版滑窗切片长度不足导致 DEA 恒为死代码、
+        实际退化为 DIF > 0 的问题。
         """
-        if len(closes) < 35:   # 需要 26 期 EMA + 9 期 DEA 缓存
+        if len(closes) < 35:   # 26 期 EMA 收敛 + 9 期 DEA
             return False
 
-        def _ema(data: np.ndarray, period: int) -> float:
-            n = len(data)
-            if n < period:
-                return float(np.mean(data))
-            multiplier = 2.0 / (period + 1)
-            result = float(data[0])
-            for i in range(1, n):
-                result = (data[i] - result) * multiplier + result
-            return result
-
-        # DIF = EMA12 - EMA26
-        recent26 = closes[-26:]
-        ema12 = _ema(recent26, 12)
-        ema26 = _ema(recent26, 26)
+        s = pd.Series(closes, dtype="float64")
+        ema12 = s.ewm(span=12, adjust=False).mean()
+        ema26 = s.ewm(span=26, adjust=False).mean()
         dif = ema12 - ema26
+        dea = dif.ewm(span=9, adjust=False).mean()
 
-        # 计算 DEA（DIF 的 9 期 EMA）
-        # 从每个有效窗口计算 DIF 值构成序列
-        dif_values = []
-        for i in range(len(closes) - 26, len(closes)):
-            segment = closes[i:i + 26]
-            if len(segment) == 26:
-                e12 = _ema(segment, 12)
-                e26 = _ema(segment, 26)
-                dif_values.append(e12 - e26)
-
-        if len(dif_values) < 9:
-            return dif > 0   # 数据不足时回退到原版检查
-
-        dea = _ema(np.array(dif_values), 9)
-
-        return dif > dea and dif > 0
+        dif_now = float(dif.iloc[-1])
+        dea_now = float(dea.iloc[-1])
+        return dif_now > dea_now and dif_now > 0
 
     # =============================================================================
     # 止盈止损（v2.0 纯净版 — -4% 止损 + 抛物线止盈）
@@ -957,12 +1028,27 @@ class StockLowHighStrategy(BaseStrategy):
         return any(stock_code.startswith(p) for p in st_prefixes)
 
     def _is_new_stock(self, code: str) -> bool:
-        """判断是否为新股（上市不满 30 个交易日）"""
+        """
+        判断是否为新股（上市不满 new_stock_days 个交易日）。
+
+        v6.2: 优先用真实上市日期（on_start 从 stock_basic 填充 _listing_dates）
+        与当前回测日比较；30 个交易日按 1.5 倍折算自然日（≈45 天）。
+        无上市日期数据时回退到缓存行数近似（数据越少上市越晚）。
+        """
+        new_days = int(self.parameters.get("new_stock_days", 30))
+
+        list_date = self._listing_dates.get(code)
+        if list_date and self._last_trade_date:
+            try:
+                d0 = date.fromisoformat(str(list_date)[:10])
+                d1 = date.fromisoformat(str(self._last_trade_date)[:10])
+                return (d1 - d0).days < int(new_days * 1.5)
+            except ValueError:
+                pass  # 日期格式异常 → 回退缓存行数近似
+
         df = self._data_cache.get(code)
         if df is None or len(df) < 2:
             return True
-        # 用缓存中的 data 行数近似判断（数据越少上市越晚）
-        new_days = int(self.parameters.get("new_stock_days", 30))
         return len(df) < new_days
 
     def _get_price(self, code: str) -> float:
@@ -972,6 +1058,12 @@ class StockLowHighStrategy(BaseStrategy):
         return 0.0
 
     def _append_data(self, ts_code: str, bar: BarData) -> None:
+        # 新鲜度守卫：记录每只股票最后一根实时 bar 的日期。
+        # 预热数据直接写 _data_cache 不经过此方法 → 无记录 = 不新鲜。
+        bar_date = str(getattr(bar, "trade_date", "") or getattr(bar, "datetime", ""))[:10]
+        if bar_date:
+            self._bar_dates[ts_code] = bar_date
+
         if ts_code not in self._data_cache:
             self._data_cache[ts_code] = pd.DataFrame(
                 columns=["close", "volume", "amount", "open", "high", "low"]
@@ -1005,8 +1097,10 @@ class StockLowHighStrategy(BaseStrategy):
         signal_type: SignalType = SignalType.EXIT,
     ) -> TradingSignal:
         price = self._get_price(ts_code)
-        holding = self._holdings.get(ts_code, {})
-        shares = holding.get("shares", 0)
+        # 卖出数量交由引擎 Sizer 按 Broker 真实持仓计算：
+        #   quantity=0 → select_sizer 选 CloseAllSizer（全平, 卖出 pos.quantity）
+        #   quantity=0 且 half_exit=True → HalfCloseSizer（卖出真实持仓一半）
+        # 策略不再自算股数, 从根上消除"意图股数 ≠ 实际持仓"发散（买多少即卖多少）。
         return TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -1015,8 +1109,8 @@ class StockLowHighStrategy(BaseStrategy):
             signal_type=signal_type,
             direction=SignalDirection.CLOSE_LONG,
             price=price,
-            quantity=shares,
-            amount=price * shares,
+            quantity=0,
+            amount=0.0,
             confidence=0.80,
             reason=reason,
             timestamp=datetime.now(),

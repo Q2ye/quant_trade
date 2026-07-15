@@ -644,6 +644,28 @@ class StrategyManager(EngineBase):
                     strategy.clear_signals() if strategy else None
                     continue
 
+            # v6.2: 批次结束 hook — 当日全部 bar 推送完毕后调用（可选实现）。
+            # 供需要"全市场当日数据就绪后统一决策"的策略（如低吸轮动全市场选股）
+            # 使用：on_bar 仅缓存数据，调仓在此 hook 中执行，确保各股票缓存
+            # 均已包含当日数据（信号仍走 T+1 撮合，无前视）。
+            batch_end = getattr(strategy, "on_bar_batch_end", None)
+            if callable(batch_end):
+                try:
+                    end_sigs = batch_end(trade_date)
+                    if asyncio.iscoroutine(end_sigs):
+                        end_sigs = await end_sigs
+                    if end_sigs:
+                        if isinstance(end_sigs, list):
+                            strategy_signals.extend(end_sigs)
+                        else:
+                            strategy_signals.append(end_sigs)
+                except Exception as e:
+                    logger.error(
+                        f"策略 {strategy_id} on_bar_batch_end 失败 @ {trade_date}: "
+                        f"{type(e).__name__}: {e}",
+                        exc_info=True,
+                    )
+
             # v1.3: 同时收集通过 add_signal() / context.submit_order() 添加的信号
             if strategy.signals:
                 strategy_signals.extend(strategy.signals)

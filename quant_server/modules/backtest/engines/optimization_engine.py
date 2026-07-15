@@ -249,6 +249,20 @@ class OptimizationEngine(EngineBase):
 							except Exception as exc:
 								logger.debug(f"on_bar error: {exc}")
 
+						# v6.2: 批次结束 hook（与 strategy_manager.handle_bar_batch 对齐）
+						# 供"当日全部 bar 就绪后统一决策"的策略产生调仓信号
+						batch_end = getattr(strategy_obj, "on_bar_batch_end", None)
+						if callable(batch_end):
+							try:
+								end_sigs = batch_end(trade_date)
+								if end_sigs:
+									if isinstance(end_sigs, list):
+										signals.extend(end_sigs)
+									else:
+										signals.append(end_sigs)
+							except Exception as exc:
+								logger.debug(f"on_bar_batch_end error: {exc}")
+
 						# 信号转订单
 						for sig in signals:
 							ts = sig.ts_code if hasattr(sig, 'ts_code') else ts_code
