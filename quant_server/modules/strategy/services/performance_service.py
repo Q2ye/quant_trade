@@ -1,0 +1,182 @@
+# -*- coding: utf-8 -*-
+"""
+策略每日绩效计算服务（v3.3 新增）
+
+无状态纯计算服务，负责：
+1. 获取活跃策略列表
+2. 计算单策略每日绩效指标
+3. 写入 strategy_daily_performance 表
+"""
+import logging
+from datetime import date, datetime
+from typing import Dict, List, Optional
+
+import numpy as np
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+class PerformanceService:
+    """策略每日绩效计算服务"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_active_strategies(self) -> list:
+        """获取所有运行中/暂停中的策略"""
+        from shared.database.repositories.strategy.management.strategy_repo import (
+            StrategyRepository,
+        )
+        repo = StrategyRepository(self.session)
+        running = await repo.get_by_status("running")
+        paused = await repo.get_by_status("paused")
+        return (running or []) + (paused or [])
+
+    async def _get_active_run(self, strategy_id: str):
+        """获取策略当前的 active run"""
+        from shared.database.repositories.strategy.management.strategy_run_repo import (
+            StrategyRunRepository,
+        )
+        repo = StrategyRunRepository(self.session)
+        runs = await repo.get_active_runs()
+        for r in (runs or []):
+            if getattr(r, "strategy_id", "") == strategy_id:
+                return r
+        return None
+
+    async def _get_previous_performance(self, strategy_id: str):
+        """获取该策略最近一条绩效记录"""
+        from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
+            StrategyDailyPerformanceRepository,
+        )
+        repo = StrategyDailyPerformanceRepository(self.session)
+        records = await repo.get_latest_performance(strategy_id, days=1)
+        return records[0] if records else None
+
+    async def _get_run_daily_returns(self, strategy_id: str, run_id: Optional[str]) -> List[float]:
+        """获取指定 run 的历史日收益序列"""
+        from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
+            StrategyDailyPerformanceRepository,
+        )
+        repo = StrategyDailyPerformanceRepository(self.session)
+        records = await repo.get_latest_performance(strategy_id, days=365)
+        if run_id:
+            records = [r for r in records if getattr(r, "strategy_run_id", "") == run_id]
+        return [float(r.daily_return) for r in records if getattr(r, "daily_return", None) is not None]
+
+    async def calculate_daily_performance(
+        self, strategy_id: str, trade_date: date, total_assets: float = None,
+    ) -> Optional[Dict]:
+        """
+        计算单个策略的当日绩效。
+
+        Args:
+            strategy_id: 策略ID
+            trade_date: 交易日期
+            total_assets: 当日总资产（外部传入，省略时默认为0）
+
+        Returns:
+            绩效记录 dict or None
+        """
+        try:
+            if total_assets is None or total_assets <= 0:
+                total_assets = 0.0
+
+            prev = await self._get_previous_performance(strategy_id)
+            active_run = await self._get_active_run(strategy_id)
+
+            if prev and getattr(prev, "total_assets", None):
+                prev_assets = float(prev.total_assets)
+                daily_returns = await self._get_run_daily_returns(
+                    strategy_id, getattr(active_run, "id", None) if active_run else None
+                )
+                run_initial = float(
+                    getattr(active_run, "allocated_capital", prev_assets) or prev_assets
+                )
+            else:
+                prev_assets = float(
+                    getattr(active_run, "allocated_capital", total_assets)
+                    if active_run else total_assets
+                )
+                run_initial = prev_assets if prev_assets > 0 else total_assets
+                daily_returns = []
+
+            # 计算指标
+            daily_return = (
+                (total_assets - prev_assets) / prev_assets if prev_assets > 0 else 0.0
+            )
+            total_return = (
+                (total_assets - run_initial) / run_initial if run_initial > 0 else 0.0
+            )
+
+            # 最大回撤
+            peak = max(
+                float(getattr(prev, "total_assets", total_assets) or total_assets),
+                total_assets,
+            )
+            dd = (peak - total_assets) / peak if peak > 0 else 0.0
+            max_dd = max(
+                float(getattr(prev, "max_drawdown", 0) or 0),
+                dd,
+            )
+
+            # 夏普比率
+            returns = daily_returns + [daily_return]
+            sharpe = None
+            if len(returns) >= 5:
+                arr = np.array(returns, dtype=float)
+                std = float(np.std(arr))
+                if std > 1e-12:
+                    sharpe = float(np.mean(arr)) / std * np.sqrt(252)
+
+            return {
+                "strategy_id": strategy_id,
+                "trade_date": trade_date,
+                "daily_return": round(daily_return, 6),
+                "total_return": round(total_return, 6),
+                "max_drawdown": round(max_dd, 6),
+                "sharpe_ratio": round(sharpe, 6) if sharpe is not None else None,
+                "total_assets": round(total_assets, 4),
+                "strategy_run_id": active_run.id if active_run else None,
+                "created_at": datetime.now(),
+            }
+        except Exception as e:
+            logger.warning(f"策略 {strategy_id} 绩效计算失败: {e}")
+            return None
+
+    async def save_daily_performance(self, perf: Dict) -> bool:
+        """保存一条每日绩效记录"""
+        try:
+            from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
+                StrategyDailyPerformanceRepository,
+            )
+            repo = StrategyDailyPerformanceRepository(self.session)
+            await repo.create(perf)
+            return True
+        except Exception as e:
+            logger.warning(f"绩效记录保存失败: {e}")
+            return False
+
+    async def batch_save(self, records: List[Dict]) -> int:
+        """批量保存绩效记录（回测用）"""
+        try:
+            from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
+                StrategyDailyPerformanceRepository,
+            )
+            repo = StrategyDailyPerformanceRepository(self.session)
+            written = 0
+            for rec in records:
+                try:
+                    await repo.create(rec)
+                    written += 1
+                except Exception as _e:
+                    # 第一个失败时记录详细信息，后续同类错误仅计数
+                    if written == 0:
+                        logger.warning(f"绩效记录写入失败(首条): {_e}")
+            if written < len(records):
+                logger.warning(f"绩效记录写入: {written}/{len(records)} 成功")
+            return written
+        except Exception as e:
+            logger.warning(f"批量绩效保存失败: {e}")
+            return 0

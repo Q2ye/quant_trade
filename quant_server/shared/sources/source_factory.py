@@ -86,10 +86,16 @@ class DataSourceFactory:
 		# 检查是否启用模拟数据模式
 		data_mode = self.settings.DATA_SOURCE.DATA_MODE.lower() if hasattr(self.settings, 'DATA_SOURCE') and self.settings.DATA_SOURCE.DATA_MODE else os.getenv("DATA_MODE", "simulated").lower()
 
-		# 如果请求的是 tushare 但配置为模拟模式，则使用 mock
+		# v2 硬闸（2026-07-17 mock 污染事故修复）：严禁静默降级。
+		# simulated 模式下请求真实数据源直接报错 —— 此前静默替换为 MockSource
+		# 导致日终同步向 stock_daily/stock_adj_factor 写入 2.5 万行模拟数据。
+		# MockSource 仅允许通过显式 source_type='mock' 获取（测试用途）。
 		if source_key == 'tushare' and data_mode == 'simulated':
-			source_key = 'mock'
-			logger.info("DATA_MODE=simulated, 使用 MockSource 替代 TushareSource")
+			raise UnsupportedDataSourceError(
+				"DATA_MODE=simulated 时禁止获取 TushareSource（防止模拟数据写入真实库）。"
+				"请在 .env 配置 DEV_DATA_MODE=real / PROD_DATA_MODE=real 后重启服务；"
+				"如确需模拟数据源请显式使用 source_type='mock'"
+			)
 
 		# 返回缓存的实例
 		if source_key in self._instances:

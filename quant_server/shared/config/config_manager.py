@@ -16,6 +16,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# v2.1 修复（2026-07-17 mock 数据污染事故）：
+# 本模块多处 validator 用 os.getenv 读取 DEV_*/PROD_* 配置，但 .env 文件
+# 只被 pydantic-settings 读入模型字段、不会进入进程环境变量 —— 若启动器
+# （如裸命令行）未注入 .env，os.getenv 恒为 None，DATA_MODE 回退危险默认值
+# "simulated" → 日终同步用 MockSource 向真实库写入模拟数据。
+# 此处显式将 quant_server/.env 载入进程环境（override=False：IDE/shell 已
+# 注入的环境变量优先），保证任何启动方式下 os.getenv 读到同一份配置。
+# ---------------------------------------------------------------------------
+try:
+	from dotenv import load_dotenv
+
+	_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+	if _ENV_FILE.exists():
+		load_dotenv(_ENV_FILE, override=False)
+except ImportError:  # python-dotenv 缺失时不阻断启动，但同步侧已有硬闸兜底
+	logger.warning("python-dotenv 未安装，.env 不会注入进程环境变量")
+
 
 class Environment(str, Enum):
 	"""环境类型枚举"""

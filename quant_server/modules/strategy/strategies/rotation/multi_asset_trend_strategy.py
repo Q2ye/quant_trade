@@ -145,6 +145,10 @@ class MultiAssetTrendStrategy(BaseStrategy):
         "stop_loss": -0.12,          # 硬止损线（-12% 兜底）
         "min_hold_days": 25,          # 最低持有天数（v1.4: 20→25）
 
+        # —— 替换机制（v1.5.2: 阈值参数化，供 Phase3 敏感性扫描） ——
+        "replace_min_diff_abs": 0.15,   # 替换所需最小得分差（绝对下限）
+        "replace_min_diff_pct": 0.30,   # 替换所需最小相对提升（|worst|×pct）
+
         # —— Layer 0: 市场状态 ——
         "v1_bull_width_min": 8,      # BULL：至少 N 个 ETF 多头排列
         "v1_bear_width_max": 4,      # BEAR：最多 N 个 ETF 多头排列
@@ -203,6 +207,10 @@ class MultiAssetTrendStrategy(BaseStrategy):
         # 数据缓存
         self._data_cache: Dict[str, pd.DataFrame] = {}       # {ETF代码: DataFrame}
         self._benchmark_cache: Optional[pd.DataFrame] = None
+        # v1.5: 每标的缓存最后日期（时序守卫——预热数据晚于回测 bar 时重置，
+        # 修复"date.today() 预热在前、回测 bar 追加在后"的时序错乱污染）
+        self._cache_last_date: Dict[str, str] = {}
+        self._reset_warned: Set[str] = set()
 
         # 评分缓存
         self._prev_scores: Dict[str, float] = {}     # 上期动量得分
@@ -245,6 +253,8 @@ class MultiAssetTrendStrategy(BaseStrategy):
         self._current_holdings.clear()
         self._holding_weights.clear()
         self._data_cache.clear()
+        self._cache_last_date.clear()
+        self._reset_warned.clear()
         self._benchmark_cache = None
         self._prev_scores.clear()
         self._cooling_list.clear()
@@ -271,12 +281,14 @@ class MultiAssetTrendStrategy(BaseStrategy):
         if session_factory is None:
             return 0
 
-        from datetime import date as _dt, timedelta
+        from datetime import date as _dt
         from modules.strategy.engines.data_feed_engine import DataFeedEngine as _DFE
 
         end_date = _dt.today()
-        lookback = int(self.parameters.get("momentum_days", 25) * 1.5) + 30
-        start_date = end_date - timedelta(days=lookback)
+        # v1.5.1: 预热起点固定 2018-01-01（30只ETF日线约6万行，成本可忽略）。
+        # 回测模式下时序守卫会把晚于回测起点的部分截掉，保留其之前的历史作预热
+        # → 任意回测起点都有充足预热（RSRS 250 日从首日即满血）且无前视。
+        start_date = _dt(2018, 1, 1)
 
         try:
             async with session_factory() as db:
@@ -296,6 +308,8 @@ class MultiAssetTrendStrategy(BaseStrategy):
                         sub = df[df["ts_code"] == ts_code].copy()
                         sub = sub.sort_values("trade_date").reset_index(drop=True)
                         self._data_cache[ts_code] = sub
+                        # v1.5: 记录预热末日期（时序守卫用）
+                        self._cache_last_date[ts_code] = str(sub["trade_date"].iloc[-1])[:10]
                     logger.info(
                         f"ETF 历史预热完成: {len(df)} 行, {start_date} ~ {end_date}"
                     )
@@ -307,6 +321,8 @@ class MultiAssetTrendStrategy(BaseStrategy):
     def on_stop(self) -> None:
         """清理状态"""
         self._data_cache.clear()
+        self._cache_last_date.clear()
+        self._reset_warned.clear()
         self._prev_scores.clear()
         self._current_holdings.clear()
         self._holding_weights.clear()
@@ -319,39 +335,58 @@ class MultiAssetTrendStrategy(BaseStrategy):
         logger.info("多资产趋势轮动V1 已停止")
 
     # =========================================================================
-    # 核心入口：on_bar
+    # 核心入口：on_bar（仅缓存） + on_bar_batch_end（调仓）
     # =========================================================================
 
     def on_bar(self, bar: BarData) -> List[TradingSignal]:
-        """接收一根 K 线，缓存数据 + 定期调仓"""
-        signals: List[TradingSignal] = []
-        ts_code = bar.ts_code
+        """
+        v1.5: on_bar 仅缓存数据，调仓移至 on_bar_batch_end。
 
+        修复旧版两个问题：
+          1. 当日第一批 bar 内即触发调仓，其余 ~29 只 ETF 数据停在 T-1；
+          2. _bar_count 按 bar 计数，30 只 ETF/日 × %rebalance_frequency(10)
+             → 实际每天都调仓，"每 N 天调仓"参数语义失效。
+        """
         try:
-            if ts_code not in self._universe:
-                return signals
+            if bar.ts_code not in self._universe:
+                return []
 
-            self._append_data(ts_code, bar)
+            self._append_data(bar.ts_code, bar)
 
             trade_date = getattr(bar, "trade_date", "") or getattr(bar, "datetime", "")
-            if isinstance(trade_date, str) and len(trade_date) >= 10:
-                trade_date = trade_date[:10]
-            self._last_trade_date = trade_date
+            trade_date = str(trade_date)[:10] if trade_date else ""
+            if trade_date:
+                self._last_trade_date = trade_date
+        except Exception as e:
+            logger.error(
+                f"多资产趋势轮动V1 on_bar 异常: {bar.ts_code}: {e}", exc_info=True
+            )
+        return []
 
-            if self._last_rebalance_date and trade_date == self._last_rebalance_date:
+    def on_bar_batch_end(self, trade_date: Any = None) -> List[TradingSignal]:
+        """
+        当日批次结束回调（框架在全部 bar 推送完毕后调用）。
+
+        此时所有 ETF 缓存统一包含当日数据；_bar_count 按交易日计数，
+        rebalance_frequency 恢复"每 N 个交易日调仓"的真实语义。
+        """
+        signals: List[TradingSignal] = []
+        try:
+            td = str(trade_date)[:10] if trade_date else self._last_trade_date
+            if td:
+                self._last_trade_date = td
+
+            if self._last_rebalance_date and td == self._last_rebalance_date:
                 return signals
 
             self._bar_count += 1
-
             if self._bar_count % self.rebalance_frequency == 0:
                 signals = self._run_rebalance()
-                self._last_rebalance_date = trade_date
-
+                self._last_rebalance_date = td
         except Exception as e:
             logger.error(
-                f"多资产趋势轮动V1 on_bar 异常: {ts_code}: {e}", exc_info=True
+                f"多资产趋势轮动V1 on_bar_batch_end 异常: {trade_date}: {e}", exc_info=True
             )
-
         return signals
 
     # =========================================================================
@@ -1032,8 +1067,11 @@ class MultiAssetTrendStrategy(BaseStrategy):
         if worst_code is None:
             return
 
-        # v1.3: 替换阈值提高——要求 30% 以上相对提升
-        min_diff = max(0.15, abs(worst_score) * 0.30)
+        # v1.5.2: 替换阈值参数化（原 v1.3 硬编码 max(0.15, |worst|×0.30)）
+        min_diff = max(
+            float(self.parameters.get("replace_min_diff_abs", 0.15)),
+            abs(worst_score) * float(self.parameters.get("replace_min_diff_pct", 0.30)),
+        )
         if best_score <= worst_score + min_diff:
             return
 
@@ -1091,7 +1129,37 @@ class MultiAssetTrendStrategy(BaseStrategy):
     # =========================================================================
 
     def _append_data(self, ts_code: str, bar: BarData) -> None:
-        """缓存 ETF bar 数据"""
+        """缓存 ETF bar 数据（v1.5: 含时序守卫）"""
+        bar_date = str(getattr(bar, "trade_date", "") or getattr(bar, "datetime", ""))[:10]
+
+        # v1.5.1 时序守卫（截断式）：新 bar 日期 <= 缓存末日期（预热数据包含
+        # 回测起点之后的"未来"部分）→ 截断至新 bar 之前：保留更早历史作预热，
+        # 砍掉未来部分防前视。无 trade_date 列（bar 累积数据）时退化为全量重置。
+        # 实盘/模拟模式 bar 单调递增，不会触发。
+        last = self._cache_last_date.get(ts_code)
+        if last and bar_date and bar_date <= last:
+            df_old = self._data_cache.get(ts_code)
+            if df_old is not None and "trade_date" in df_old.columns:
+                kept = df_old[df_old["trade_date"].astype(str).str[:10] < bar_date]
+                self._data_cache[ts_code] = kept.reset_index(drop=True)
+                self._cache_last_date[ts_code] = (
+                    str(kept["trade_date"].iloc[-1])[:10] if len(kept) else ""
+                )
+                if ts_code not in self._reset_warned:
+                    self._reset_warned.add(ts_code)
+                    logger.info(
+                        f"时序守卫: {ts_code} 截断至 {bar_date} 之前 "
+                        f"(保留预热 {len(kept)} 行, 原 {len(df_old)} 行)"
+                    )
+            else:
+                self._data_cache.pop(ts_code, None)
+                self._cache_last_date.pop(ts_code, None)
+                if ts_code not in self._reset_warned:
+                    self._reset_warned.add(ts_code)
+                    logger.info(
+                        f"时序守卫: {ts_code} 缓存末日 {last} >= 新bar {bar_date}，已重置缓存"
+                    )
+
         if ts_code not in self._data_cache:
             self._data_cache[ts_code] = pd.DataFrame(
                 columns=["close", "volume", "amount", "open", "high", "low"]
@@ -1107,9 +1175,11 @@ class MultiAssetTrendStrategy(BaseStrategy):
             "low": getattr(bar, "low", bar.close),
         }])
         self._data_cache[ts_code] = pd.concat([df, new_row], ignore_index=True)
+        if bar_date:
+            self._cache_last_date[ts_code] = bar_date
 
-        # 限制缓存大小
-        max_rows = self.parameters.get("momentum_days", 25) * 4 + 300
+        # 限制缓存大小（v1.5: 按 RSRS 回溯需求修正，原 momentum_days 键不存在恒取 25×4+300）
+        max_rows = max(int(self.parameters.get("rsrs_lookback", 250)) + 150, 400)
         if len(self._data_cache[ts_code]) > max_rows:
             self._data_cache[ts_code] = (
                 self._data_cache[ts_code].tail(max_rows).reset_index(drop=True)

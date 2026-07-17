@@ -56,6 +56,18 @@ class StockLowHighStrategy(BaseStrategy):
     ALLOW_PREFIX: Tuple[str, ...] = ('000', '002', '600', '603', '601', '605')
     FORBID_PREFIX: Tuple[str, ...] = ('300', '688', '8', '4', '001', '003')
 
+    # v6.8 regime ETF 宽度门数据池（与多资产趋势轮动 DEFAULT_ETF_POOL 一致；
+    # 刻意复制而非 import——本策略代码经 DB exec 部署，须自包含）
+    REGIME_ETF_POOL: Tuple[str, ...] = (
+        "510050.SH", "510300.SH", "510500.SH", "159915.SZ", "588000.SH", "512100.SH",
+        "512880.SH", "512660.SH", "512800.SH", "512690.SH", "516110.SH", "512980.SH",
+        "159825.SZ", "515210.SH", "516950.SH", "512480.SH", "515050.SH", "512170.SH",
+        "512710.SH", "159996.SZ", "512580.SH",
+        "513100.SH", "513520.SH", "513020.SH", "159941.SZ",
+        "518880.SH", "501018.SH",
+        "511090.SH", "511260.SH",
+    )
+
     DEFAULT_PARAMS: Dict[str, Any] = {
         # —— 选股 ——
         "universe": "all_market",       # 股票池："all_market"=全A股主板(00/60开头)
@@ -92,13 +104,26 @@ class StockLowHighStrategy(BaseStrategy):
         # —— 动态再平衡 ——
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
 
-        # —— 组合回撤保护 ——
-        "portfolio_dd_limit": 0.0,      # 组合回撤保护阈值（0=关闭；>0 时回撤超阈值暂停新买入）
+        # —— 组合回撤保护（0=关闭；>0 时组合回撤超过阈值暂停新买入） ——
+        "portfolio_dd_limit": 0.0,
+        "dd_recovery_days": 10,         # 刹车恢复：触发后空仓满 N 个交易日，以当前净值为新基准重启
 
         # —— 行情判定来源 ——
         # "bullish_pct" = 全市场多头占比（方案B，历史最优）
         # "csi500" = 中证500指数MA判定（方案C）
         "regime_source": "bullish_pct",
+
+        # —— v6.8 上涨市附加门（默认 0=关闭，不改变既有行为） ——
+        # 针对 5 年期验证失败根因：MA 结构无法区分"低效率熊市反弹"与"牛市启动"
+        "csi500_min_ef": 0.0,       # EF效率门：CSI500 近 N 日效率比 ≥ 阈值才确认上涨市
+        "csi500_ef_window": 20,     # EF 计算窗口
+        "regime_width_min": 0.0,    # ETF宽度门：多头排列(MA20>MA60) ETF 占比 ≥ 阈值才确认上涨市
+
+        # —— v6.9 年线门（Phase1 预注册测试B；默认关闭） ——
+        # Phase1 教训：20-60日尺度指标无法区分熊市反弹与牛市启动（1a/1b 双败），
+        # 且"降级震荡市"力度不足。年线门用年线级尺度 + 直接停买：
+        # CSI500 收盘 < MA250 → 强制下跌市。规则标准无可调阈值。
+        "csi500_annual_gate": False,
 
         # —— 调试 ——
         "verbose_logging": False,
@@ -136,11 +161,14 @@ class StockLowHighStrategy(BaseStrategy):
         self._exit_pending: Set[str] = set()        # {ts_code: 待确认卖出的股票}
         # 中证500指数日线数据缓存（方案C：用于行情判定，通过 IndexDailyRepository 加载）
         self._csi500_cache: pd.DataFrame = pd.DataFrame()
-        # 已结算持仓的累积"现金价值"（权重空间），用于组合回撤计算防 phantom drawdown
-        # 盈利股退出后其贡献不会消失 → 无 phantom drawdown
-        self._exited_entry_value: float = 0.0   # 已结算持仓的总投入（权重）
-        self._exited_cash_value: float = 0.0    # 已结算持仓的总退出价值（权重）
+        # v6.8 regime ETF 宽度门数据缓存 {ts_code: DataFrame[trade_date(str), close]}
+        self._etf_width_cache: Dict[str, pd.DataFrame] = {}
+        # 组合复利净值乘数（已结算回合按 1 + pnl×weight 连乘；v6.4 取代
+        # 旧"累计投入/回收账本"——旧算法按笔数稀释，返回平均单笔收益而非复利净值，
+        # 导致 portfolio_dd_limit 回撤保护实际失效）
+        self._nav_realized: float = 1.0
         self._peak_return: float = -999.0       # 组合收益峰值（回撤计算用）
+        self._dd_flat_days: int = 0             # 回撤刹车触发后连续空仓天数（恢复机制用）
 
     # =============================================================================
     # 生命周期
@@ -158,10 +186,11 @@ class StockLowHighStrategy(BaseStrategy):
         self._track_high.clear()
         self._holdings.clear()
         self._exit_pending.clear()
-        self._exited_entry_value = 0.0
-        self._exited_cash_value = 0.0
+        self._nav_realized = 1.0
         self._peak_return = -999.0
+        self._dd_flat_days = 0
         self._csi500_cache = pd.DataFrame()
+        self._etf_width_cache.clear()
         self._bar_count = 0
         self._last_rebalance_date = ""
         self._first_screen_done = False
@@ -197,6 +226,30 @@ class StockLowHighStrategy(BaseStrategy):
                 logger.warning(f"中证500指数数据加载失败（非致命，回退到 bullish_pct）: {e}")
         else:
             logger.info("DB 会话不可用，行情判定将使用 bullish_pct 代理")
+
+        # ---- v6.8 ETF 宽度门数据加载（仅在宽度门启用时加载，判定时按回测日截断防前视）----
+        if float(self.parameters.get("regime_width_min", 0.0)) > 0 and session_factory:
+            try:
+                from modules.strategy.engines.data_feed_engine import DataFeedEngine as _DFE
+                async with session_factory() as db:
+                    engine = _DFE(db)
+                    df = await engine.load_historical_data(
+                        symbols=list(self.REGIME_ETF_POOL),
+                        start_date="2018-01-01",
+                        end_date=date.today().isoformat(),
+                    )
+                if df is not None and not df.empty:
+                    for code in df["ts_code"].unique():
+                        sub = df[df["ts_code"] == code][["trade_date", "close"]].copy()
+                        sub["trade_date"] = sub["trade_date"].astype(str).str[:10]
+                        self._etf_width_cache[code] = (
+                            sub.sort_values("trade_date").reset_index(drop=True)
+                        )
+                    logger.info(f"regime ETF宽度数据已加载: {len(self._etf_width_cache)} 只")
+                else:
+                    logger.warning("regime ETF宽度数据为空，宽度门将不生效")
+            except Exception as e:
+                logger.warning(f"regime ETF宽度数据加载失败（宽度门降级不生效）: {e}")
 
         # ---- 加载策略自有股票池：全 A 股主板（00/60 开头、L 在市股）----
         # 回测 backtest_service Step7 经 strategy.universe 读取 → 喂满全主板，
@@ -241,10 +294,11 @@ class StockLowHighStrategy(BaseStrategy):
         self._track_high.clear()
         self._holdings.clear()
         self._exit_pending.clear()
-        self._exited_entry_value = 0.0
-        self._exited_cash_value = 0.0
+        self._nav_realized = 1.0
         self._peak_return = -999.0
+        self._dd_flat_days = 0
         self._csi500_cache = pd.DataFrame()
+        self._etf_width_cache.clear()
         self._st_stocks.clear()
         logger.info("低吸轮动策略已停止")
 
@@ -352,6 +406,22 @@ class StockLowHighStrategy(BaseStrategy):
         dd_limit = float(self.parameters.get("portfolio_dd_limit", 0.0))
         if dd_limit > 0:
             port_dd = self._check_portfolio_drawdown()
+
+            # v6.5 刹车恢复机制：回撤触发且已完全空仓（亏损全部兑现）连续
+            # dd_recovery_days 日后，以当前净值为新基准重启——把每轮亏损
+            # 战役深度限制在 dd_limit 附近，而非永久停机（单向自杀开关）。
+            if port_dd >= dd_limit and not self._holdings and not self._exit_pending:
+                self._dd_flat_days += 1
+                recovery_days = int(self.parameters.get("dd_recovery_days", 10))
+                if self._dd_flat_days >= recovery_days:
+                    self._peak_return = self._calc_portfolio_return()
+                    self._dd_flat_days = 0
+                    port_dd = 0.0
+                    if self.verbose_logging:
+                        logger.info(f"回撤刹车重启: 空仓{recovery_days}日, 峰值重置为当前净值")
+            else:
+                self._dd_flat_days = 0
+
             if port_dd >= dd_limit and not regime_no_new_buy:
                 regime_no_new_buy = True
                 if self.verbose_logging:
@@ -375,8 +445,13 @@ class StockLowHighStrategy(BaseStrategy):
         else:
             buy_list = []
 
-        # P0：today_pool 包含「新候选股」+「当前有效持仓（未标记卖出）」
-        today_pool = (set(buy_list) if buy_list else set()) | (current_holdings - self._exit_pending)
+        # P0（v6.7 趋势健康度判定）：today_pool = 新候选股 + 「趋势仍健康的持仓」。
+        # 持仓只用 _holding_in_pool（MA5≥MA20 / MACD多头 / 未深跌），不拷问入场时机
+        # （条件1/3/4/6）→ 均线未死叉就让它跑；趋势破位 → 抛物线止盈锁盈。
+        held_active = current_holdings - self._exit_pending
+        today_pool = (set(buy_list) if buy_list else set()) | {
+            c for c in held_active if self._holding_in_pool(c)
+        }
 
         # ---- 4. P0 池内池外区分止盈（传入动态止损参数）----
         exit_signals = self._check_all_stop_profit(today_pool=today_pool, stop_loss=regime_stop_loss)
@@ -517,6 +592,10 @@ class StockLowHighStrategy(BaseStrategy):
         """
         bullish_pct = self._calc_bullish_pct()
 
+        # --- v6.9 年线门（预注册测试B）：优先于一切判定来源，命中即停买 ---
+        if self._annual_line_gate():
+            return "下跌市", bullish_pct
+
         # --- v6.1: regime_source 参数控制行情判定来源 ---
         regime_source = str(self.parameters.get("regime_source", "bullish_pct"))
         if regime_source == "bullish_pct":
@@ -524,7 +603,7 @@ class StockLowHighStrategy(BaseStrategy):
             up_th = float(self.parameters.get("csi500_upper_fallback", 0.25))
             dn_th = float(self.parameters.get("csi500_lower_fallback", 0.10))
             if bullish_pct > up_th:
-                return "上涨市", bullish_pct
+                return self._apply_uptrend_gates(), bullish_pct
             elif bullish_pct > dn_th:
                 return "震荡市", bullish_pct
             else:
@@ -542,7 +621,7 @@ class StockLowHighStrategy(BaseStrategy):
             up_th = float(self.parameters.get("csi500_upper_fallback", 0.25))
             dn_th = float(self.parameters.get("csi500_lower_fallback", 0.10))
             if bullish_pct > up_th:
-                return "上涨市", bullish_pct
+                return self._apply_uptrend_gates(), bullish_pct
             elif bullish_pct > dn_th:
                 return "震荡市", bullish_pct
             else:
@@ -570,7 +649,7 @@ class StockLowHighStrategy(BaseStrategy):
 
         # 上涨市：close > MA20 > MA60, MA20斜率正
         if close_now > ma20 > ma60 and ma20_slope > 0:
-            return "上涨市", bullish_pct
+            return self._apply_uptrend_gates(), bullish_pct
         # 下跌市：close < MA20 < MA60, MA20斜率为负
         if close_now < ma20 < ma60 and ma20_slope < 0:
             return "下跌市", bullish_pct
@@ -579,10 +658,112 @@ class StockLowHighStrategy(BaseStrategy):
             return "震荡市", bullish_pct
         # 兜底
         if close_now > ma20:
-            return "上涨市", bullish_pct
+            return self._apply_uptrend_gates(), bullish_pct
         elif close_now < ma20:
             return "下跌市", bullish_pct
         return "震荡市", bullish_pct
+
+    # =============================================================================
+    # v6.8 上涨市附加门（EF 效率门 + ETF 宽度门）
+    # =============================================================================
+
+    @staticmethod
+    def _efficiency_ratio(closes: np.ndarray, window: int = 20) -> float:
+        """
+        市场效率比（两仪四象 EF 改进版）：max(区间振幅, |净位移|) / Σ|日变动|。
+
+        ≈1 = 近似直线的纯净趋势；≈0 = 原地打转的宽幅震荡。
+        分子取 max(振幅, 净位移)：V 形走势净位移≈0 但振幅大，不误判为低效率。
+        数据不足或路径为 0 时返回 1.0（门失效开——不拦）。
+        """
+        if len(closes) < window + 1:
+            return 1.0
+        seg = closes[-(window + 1):]
+        path = float(np.sum(np.abs(np.diff(seg))))
+        if path <= 0:
+            return 1.0
+        span = float(np.max(seg) - np.min(seg))
+        net = abs(float(seg[-1] - seg[0]))
+        return min(1.0, max(span, net) / path)
+
+    def _calc_etf_width_pct(self) -> Optional[float]:
+        """
+        多资产池多头排列（MA20>MA60）ETF 占比。
+
+        分母 = 截至当前回测日已有 ≥60 日数据的 ETF 数（占比制——部分 ETF
+        上市晚，绝对数阈值在早期永远不达标）。可用 ETF <5 或数据未加载
+        时返回 None（门降级不生效）。
+        """
+        if not self._etf_width_cache or not self._last_trade_date:
+            return None
+        total = 0
+        bullish = 0
+        for code, df in self._etf_width_cache.items():
+            closes = df.loc[
+                df["trade_date"] <= self._last_trade_date, "close"
+            ].values.astype(np.float64)
+            if len(closes) < 60:
+                continue
+            total += 1
+            if float(np.mean(closes[-20:])) > float(np.mean(closes[-60:])):
+                bullish += 1
+        if total < 5:
+            return None
+        return bullish / total
+
+    def _annual_line_gate(self) -> bool:
+        """
+        v6.9 年线门（Phase1 预注册测试B）：CSI500 收盘 < MA250 → 强制下跌市（停买）。
+
+        年线是公认牛熊分界，无可调阈值：2022 全年 CSI500 运行于年线下方
+        （反弹从未站上），2021H2 与 2024-10 后在上方——恰好切分 5 年期的
+        亏损段与盈利段。数据不足 250 日或门未启用时返回 False（失效开）。
+        """
+        if not bool(self.parameters.get("csi500_annual_gate", False)):
+            return False
+        cache = self._csi500_cache
+        if cache.empty or not self._last_trade_date:
+            return False
+        sliced = cache[cache["trade_date"].astype(str) <= self._last_trade_date]
+        closes = sliced["close"].values.astype(np.float64)
+        if len(closes) < 250:
+            return False
+        return bool(closes[-1] < float(np.mean(closes[-250:])))
+
+    def _apply_uptrend_gates(self) -> str:
+        """
+        v6.8: 上涨市判定的两道附加门，任一不达标降级为震荡市。
+
+        针对 5 年期验证失败根因——2022 高波动熊市反弹中 MA 结构走牛但
+        趋势纯净度/市场宽度不足。默认参数（0）下两门均关闭，行为与 v6.7 一致。
+        所有数据不可用场景均失效开（不拦），确保门是收紧项而非故障点。
+        """
+        # 门1: EF 效率门
+        min_ef = float(self.parameters.get("csi500_min_ef", 0.0))
+        if min_ef > 0 and not self._csi500_cache.empty and self._last_trade_date:
+            sliced = self._csi500_cache[
+                self._csi500_cache["trade_date"].astype(str) <= self._last_trade_date
+            ]
+            if len(sliced) > 0:
+                ef = self._efficiency_ratio(
+                    sliced["close"].values.astype(np.float64),
+                    int(self.parameters.get("csi500_ef_window", 20)),
+                )
+                if ef < min_ef:
+                    if self.verbose_logging:
+                        logger.info(f"EF效率门拦截: EF={ef:.2f} < {min_ef:.2f} → 降级震荡市")
+                    return "震荡市"
+
+        # 门2: ETF 宽度门
+        width_min = float(self.parameters.get("regime_width_min", 0.0))
+        if width_min > 0:
+            width = self._calc_etf_width_pct()
+            if width is not None and width < width_min:
+                if self.verbose_logging:
+                    logger.info(f"ETF宽度门拦截: {width:.0%} < {width_min:.0%} → 降级震荡市")
+                return "震荡市"
+
+        return "上涨市"
 
     # =============================================================================
     # 组合回撤保护（累计退出价值法，无 phantom drawdown）
@@ -590,20 +771,16 @@ class StockLowHighStrategy(BaseStrategy):
 
     def _calc_portfolio_return(self) -> float:
         """
-        计算组合近似 NAV 收益率。
+        计算组合复利净值收益率。
 
-        算法：维护一个"虚拟账本"— _exited_cash_value 代表已退出持仓的
-        累积回收价值（类似现金），_exited_entry_value 代表对应的总投入。
-        当前持仓按实时市价计算。
+        v6.4: _nav_realized 为已结算回合的复利净值乘数（_finalize_exits 中
+        每笔按 1 + pnl×weight 连乘），当前持仓的浮动盈亏在其基础上继续连乘。
 
-        NAV 代理 = (已退出持仓的退出价值 + 当前持仓市值) / (总投入) - 1
-
-        关键：已兑现的利润不会消失 → 无 phantom drawdown。
-        不受持仓数量变化影响（总投入是固定的，不会被稀释）。
+        修复旧算法缺陷：旧版按"累计投入/累计回收"计算，分母随交易笔数增长
+        而稀释，返回的是历次交易的平均单笔收益率（长期徘徊在 ±4% 内），
+        而非组合复利收益 → 基于它的回撤保护几乎永不触发。
         """
-        total_entry = self._exited_entry_value
-        total_current = self._exited_cash_value
-
+        nav = self._nav_realized
         for code, holding in self._holdings.items():
             entry = holding.get("entry_price", 0)
             if entry <= 0:
@@ -612,12 +789,8 @@ class StockLowHighStrategy(BaseStrategy):
             if current <= 0:
                 continue
             w = holding.get("weight", 1.0)
-            total_entry += entry * w
-            total_current += current * w
-
-        if total_entry <= 0:
-            return 0.0
-        return total_current / total_entry - 1.0
+            nav *= 1.0 + (current - entry) / entry * w
+        return nav - 1.0
 
     def _check_portfolio_drawdown(self) -> float:
         """
@@ -639,6 +812,90 @@ class StockLowHighStrategy(BaseStrategy):
     # 选股引擎
     # =============================================================================
 
+    def _passes_screen(self, code: str) -> bool:
+        """
+        今日选股条件检查（v6.6：新候选筛选与持仓池内判定共用同一套条件）。
+
+        六大条件 + 基本过滤，与原版 9:40 初筛一致。持仓股每日用本方法
+        判定是否"仍在今日选股池"：跌出池（动量衰竭/涨至新高/回落过深）
+        → _check_all_stop_profit 启用池外抛物线止盈。
+        """
+        df = self._data_cache.get(code)
+        if df is None:
+            return False
+        try:
+            # 基本过滤
+            if not self._is_tradable(code):
+                return False
+            if code in self._st_stocks:
+                return False
+
+            # v6.3 幽灵持仓修复：仅"当日有新 bar"的股票可在池内。
+            # 缓存中存在（如全市场预热注入）但引擎未推送当日数据的股票，
+            # 买入后订单永不成交、价格冻结 → 永久占用持仓槽（幽灵持仓）；
+            # 同时天然排除当日停牌股。bullish_pct 市场宽度不受此守卫影响。
+            if self._bar_dates.get(code) != self._last_trade_date:
+                return False
+
+            # 新股过滤
+            if self._is_new_stock(code):
+                return False
+
+            closes = df["close"].values.astype(np.float64)
+            volumes = df["volume"].values.astype(np.float64)
+            opens = df["open"].values.astype(np.float64) if "open" in df.columns else closes
+
+            if len(closes) < 25:
+                return False
+
+            # ---- 条件1: 昨日收阳 + 涨幅 >= 0.7% ----
+            close_yest = closes[-2]
+            open_yest = opens[-2]
+            close_pre = closes[-3] if len(closes) >= 3 else close_yest
+            if close_pre <= 0:
+                return False
+
+            is_up_bar = close_yest > open_yest
+            rise_rate = (close_yest - close_pre) / close_pre
+            if not (is_up_bar and rise_rate >= float(self.parameters.get("min_yesterday_rise", 0.007))):
+                return False
+
+            # ---- 条件2: MA5 > MA20（多头） ----
+            ma5 = float(np.mean(closes[-5:]))
+            ma20 = float(np.mean(closes[-20:]))
+            if ma5 < ma20:
+                return False
+
+            # ---- 条件3: 量比 >= 1.2 ----
+            avg_vol_20 = float(np.mean(volumes[-20:]))
+            last_vol = float(volumes[-1])
+            if avg_vol_20 > 0 and last_vol / avg_vol_20 < float(self.parameters.get("min_volume_ratio", 1.2)):
+                return False
+
+            # ---- 条件4: ROC(10) > 5 ----
+            roc_10 = (closes[-1] - closes[-11]) / closes[-11] * 100 if len(closes) >= 11 else 0
+            if roc_10 < float(self.parameters.get("roc_threshold", 5.0)):
+                return False
+
+            # ---- 条件5: MACD 金叉（简化：DIF > DEA） ----
+            if not self._check_macd_bullish(closes):
+                return False
+
+            # ---- 条件6: 价格低于 20 日新高 >= 0.15% ----
+            hhv_20 = float(np.max(closes[-20:]))
+            if hhv_20 <= 0:
+                return False
+            below_high = (hhv_20 - closes[-1]) / hhv_20
+            if below_high < float(self.parameters.get("buy_below_high_rate", 0.0015)):
+                return False
+            # P1: 买入价下限——不买从 20 日新高跌超 8% 的（不接飞刀）
+            if closes[-1] < hhv_20 * 0.92:
+                return False
+
+            return True
+        except Exception:
+            return False
+
     def _screen_stocks(self, current_holdings: Set[str]) -> List[str]:
         """
         全市场选股（合并原版 9:40 初筛 + 9:51 二次筛选）。
@@ -646,93 +903,16 @@ class StockLowHighStrategy(BaseStrategy):
         返回按 成交额降序 排列的候选股票代码列表。
         """
         candidates: List[str] = []
-        min_vol_ratio = float(self.parameters.get("min_volume_ratio", 1.2))
-        roc_th = float(self.parameters.get("roc_threshold", 5.0))
-        below_rate = float(self.parameters.get("buy_below_high_rate", 0.0015))
 
-        for code, df in self._data_cache.items():
-            try:
-                # v3.4: 跳过已持仓（本地_holdings + 框架注入_active_positions）
-                if code in current_holdings or code in self._active_positions:
-                    continue
-                # v3.4: 跳过已有待确认买入信号的股票
-                if code in self._pending_signals:
-                    continue
-
-                # 基本过滤
-                if not self._is_tradable(code):
-                    continue
-                if code in self._st_stocks:
-                    continue
-
-                # v6.3 幽灵持仓修复：仅"当日有新 bar"的股票可成为候选。
-                # 缓存中存在（如全市场预热注入）但引擎未推送当日数据的股票，
-                # 买入后订单永不成交、价格冻结 → 永久占用持仓槽（幽灵持仓）；
-                # 同时天然排除当日停牌股。bullish_pct 市场宽度不受此守卫影响。
-                if self._bar_dates.get(code) != self._last_trade_date:
-                    continue
-
-                # 新股过滤
-                if self._is_new_stock(code):
-                    continue
-
-                closes = df["close"].values.astype(np.float64)
-                volumes = df["volume"].values.astype(np.float64)
-                opens = df["open"].values.astype(np.float64) if "open" in df.columns else closes
-
-                if len(closes) < 25:
-                    continue
-
-                # ---- 条件1: 昨日收阳 + 涨幅 >= 0.7% ----
-                close_yest = closes[-2]
-                open_yest = opens[-2]
-                close_pre = closes[-3] if len(closes) >= 3 else close_yest
-                if close_pre <= 0:
-                    continue
-
-                is_up_bar = close_yest > open_yest
-                rise_rate = (close_yest - close_pre) / close_pre
-                if not (is_up_bar and rise_rate >= self.parameters.get("min_yesterday_rise", 0.007)):
-                    continue
-
-                # ---- 条件2: MA5 > MA20（多头） ----
-                ma5 = float(np.mean(closes[-5:]))
-                ma20 = float(np.mean(closes[-20:]))
-                if ma5 < ma20:
-                    continue
-
-                # ---- 条件3: 量比 >= 1.2 ----
-                avg_vol_20 = float(np.mean(volumes[-20:]))
-                last_vol = float(volumes[-1])
-                if avg_vol_20 > 0 and last_vol / avg_vol_20 < min_vol_ratio:
-                    continue
-
-                # ---- 条件4: ROC(10) > 5 ----
-                roc_10 = (closes[-1] - closes[-11]) / closes[-11] * 100 if len(closes) >= 11 else 0
-                if roc_10 < roc_th:
-                    continue
-
-                # ---- 条件5: MACD 金叉（简化：DIF > DEA） ----
-                macd_bullish = self._check_macd_bullish(closes)
-                if not macd_bullish:
-                    continue
-
-                # ---- 条件6: 价格低于 20 日新高 >= 0.15% ----
-                hhv_20 = float(np.max(closes[-20:]))
-                if hhv_20 <= 0:
-                    continue
-                below_high = (hhv_20 - closes[-1]) / hhv_20
-                if below_high < below_rate:
-                    continue
-                # P1: 买入价下限——不买从 20 日新高跌超 8% 的（不接飞刀）
-                if closes[-1] < hhv_20 * 0.92:
-                    continue
-
-                # 全部条件通过
-                candidates.append(code)
-
-            except Exception:
+        for code in self._data_cache.keys():
+            # v3.4: 跳过已持仓（本地_holdings + 框架注入_active_positions）
+            if code in current_holdings or code in self._active_positions:
                 continue
+            # v3.4: 跳过已有待确认买入信号的股票
+            if code in self._pending_signals:
+                continue
+            if self._passes_screen(code):
+                candidates.append(code)
 
         # 按成交量降序排列（流动机优先）
         candidates.sort(
@@ -746,6 +926,51 @@ class StockLowHighStrategy(BaseStrategy):
             logger.info(f"低吸轮动选股: {len(candidates)} 只通过筛选")
 
         return candidates
+
+    def _holding_in_pool(self, code: str) -> bool:
+        """
+        趋势健康度复检（v6.7）：持仓股只用趋势条件判定"池内/池外"，不拷问入场时机。
+
+        保留（趋势破位的信号）：
+          - 条件2: MA5 >= MA20（均线未死叉）
+          - 条件5: MACD DIF > DEA 且 DIF > 0（动量未衰竭）
+          - P1:   未从 20 日高点回落 > 8%（非暴力反转）
+
+        剔除（入场时机条件——持仓一根阴线就因条件1被踢出池、抛物线止盈
+        天天在岗，是实验5 右尾灭绝的直接原因）：
+          - 条件1 昨日收阳 + 涨幅 >= 0.7%
+          - 条件3 量比 >= 1.2
+          - 条件4 ROC > 5
+          - 条件6 低吸位 <= 0.15%
+        """
+        df = self._data_cache.get(code)
+        if df is None:
+            return False
+        try:
+            # 新鲜度：当天无 bar（停牌等）仍可视为在池，避免误杀。
+            # 选股时已有幽灵持仓守卫保证买入只在当日有 bar 的股票上发生。
+            closes = df["close"].values.astype(np.float64)
+            if len(closes) < 25:
+                return True  # 数据不足时偏向"在池"
+
+            # 条件2: MA5 >= MA20
+            ma5 = float(np.mean(closes[-5:]))
+            ma20 = float(np.mean(closes[-20:]))
+            if ma5 < ma20:
+                return False
+
+            # 条件5: MACD 多头
+            if not self._check_macd_bullish(closes):
+                return False
+
+            # P1: 未从 20 日新高回落 > 8%
+            hhv_20 = float(np.max(closes[-20:]))
+            if hhv_20 > 0 and closes[-1] < hhv_20 * 0.92:
+                return False
+
+            return True
+        except Exception:
+            return True  # 异常时偏向"在池"，让止损兜底
 
     # =============================================================================
     # 两步合一步复检（差异三：用今日 bar 数据二次验证候选股）
@@ -884,12 +1109,9 @@ class StockLowHighStrategy(BaseStrategy):
         """
         结算前一日标记为待卖出的股票。
 
-        将已确认卖出的股票从 _holdings 中移除，并将退出时的
-        投入价值和回收价值累加到 _exited_entry/cash_value 中。
-        这使得组合回撤计算能感知已兑现利润 → 无 phantom drawdown。
-
-        关键设计：退出利润以"现金"形式保留在 NAV 代理中，
-        不会被后续新入场的持仓稀释。
+        将已确认卖出的股票从 _holdings 中移除，并将该回合的收益按
+        1 + pnl×weight 复利进 _nav_realized（v6.4）——已兑现利润
+        以复利净值形式保留，组合回撤计算无 phantom drawdown、不被笔数稀释。
         """
         for code in list(self._exit_pending):
             if code in self._holdings:
@@ -897,10 +1119,8 @@ class StockLowHighStrategy(BaseStrategy):
                 w = self._holdings[code].get("weight", 1.0)
                 exit_price = self._get_price(code)
                 if entry > 0 and exit_price > 0:
-                    entry_val = entry * w
-                    exit_val = exit_price * w
-                    self._exited_entry_value += entry_val
-                    self._exited_cash_value += exit_val
+                    pnl = (exit_price - entry) / entry
+                    self._nav_realized *= 1.0 + pnl * w
                 del self._holdings[code]
             if code in self._track_high:
                 del self._track_high[code]
@@ -914,7 +1134,7 @@ class StockLowHighStrategy(BaseStrategy):
         池外股（已跌出选股池）→ 止损 + 抛物线止盈（原版逻辑）
 
         Args:
-            today_pool: 今日选股池（包含候选股 + 当前有效持仓）
+            today_pool: 今日选股池（新候选股 + 仍通过今日筛选条件的持仓，v6.6）
             stop_loss: 动态止损比例（由三档行情决定，上涨市 -4%，下跌市 -2.5%）
         """
         signals: List[TradingSignal] = []
