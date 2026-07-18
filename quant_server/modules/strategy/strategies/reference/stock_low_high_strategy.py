@@ -105,13 +105,16 @@ class StockLowHighStrategy(BaseStrategy):
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
 
         # —— 组合回撤保护（0=关闭；>0 时组合回撤超过阈值暂停新买入） ——
-        "portfolio_dd_limit": 0.0,
+        "portfolio_dd_limit": 0.12,
         "dd_recovery_days": 10,         # 刹车恢复：触发后空仓满 N 个交易日，以当前净值为新基准重启
 
         # —— 行情判定来源 ——
         # "bullish_pct" = 全市场多头占比（方案B，历史最优）
-        # "csi500" = 中证500指数MA判定（方案C）
-        "regime_source": "bullish_pct",
+        # "csi500" = 中证500指数MA判定（方案C，v6.9 定稿）
+        "regime_source": "csi500",
+
+        # —— 震荡市跌入阈值（regime_source=bullish_pct 时生效） ——
+        "csi500_lower_fallback": 0.18,  # 多头占比低于此值→下跌市（收窄震荡档防误判）
 
         # —— v6.8 上涨市附加门（默认 0=关闭，不改变既有行为） ——
         # 针对 5 年期验证失败根因：MA 结构无法区分"低效率熊市反弹"与"牛市启动"
@@ -119,14 +122,16 @@ class StockLowHighStrategy(BaseStrategy):
         "csi500_ef_window": 20,     # EF 计算窗口
         "regime_width_min": 0.0,    # ETF宽度门：多头排列(MA20>MA60) ETF 占比 ≥ 阈值才确认上涨市
 
-        # —— v6.9 年线门（Phase1 预注册测试B；默认关闭） ——
+        # —— v6.9 年线门（Phase1 预注册测试B通过，定稿默认开启） ——
         # Phase1 教训：20-60日尺度指标无法区分熊市反弹与牛市启动（1a/1b 双败），
         # 且"降级震荡市"力度不足。年线门用年线级尺度 + 直接停买：
         # CSI500 收盘 < MA250 → 强制下跌市。规则标准无可调阈值。
-        "csi500_annual_gate": False,
+        # 5年+47.5%/3年+41.7% 的跨周期生存关键机制，关闭前请阅读
+        # docs/进攻防御双策略体系验证报告-2026-07.md（关闭后5年期=-53%）。
+        "csi500_annual_gate": True,
 
-        # —— 调试 ——
-        "verbose_logging": False,
+        # —— 调试 —— :日志会输出行情判定、选股/复检数量、每次止盈止损的触发原因，方便你复盘确认策略行为是否符合预期。
+        "verbose_logging": True,
     }
 
     def __init__(
