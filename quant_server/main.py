@@ -347,7 +347,7 @@ class QuantServer:
 		)
 		# 设置与控制台一致的格式化器（复用上方已 import 的 _logging）
 		file_handler.setFormatter(_logging.Formatter(
-			'%(asctime)s | %(process)-6d | %(levelname)-8s | %(name)s | %(message)s',
+			'%(asctime)s | %(process)-6d | %(threadName)-20s | %(levelname)-8s | %(name)s | %(message)s',
 			datefmt='%Y-%m-%d %H:%M:%S'
 		))
 		root_logger = get_logger("")
@@ -429,6 +429,9 @@ class QuantServer:
 				# 3. 初始化事件引擎
 				if self.config.auto_start_event_engine:
 					await self._initialize_event_engine()
+
+				# 3.5 初始化后台任务执行器（依赖事件引擎用于跨线程桥接）
+				await self._initialize_background_executor()
 
 				# 4. 初始化主引擎
 				if self.config.auto_start_main_engine:
@@ -534,7 +537,33 @@ class QuantServer:
 				logger.exception("事件引擎初始化失败", exception=e)
 				raise
 
+	async def _initialize_background_executor(self) -> None:
+		"""初始化后台任务执行器（多池线程池）"""
+		try:
+			from shared.utils.background_executor import (
+				BackgroundTaskExecutor, set_background_executor,
+			)
+			bg_cfg = self.config.config_manager.get("engines.background_executor", {}) or {}
+			pools_cfg = bg_cfg.get("pools", {})
+			executor = BackgroundTaskExecutor(
+				pools_config=pools_cfg,
+				event_engine=self.event_engine,
+			)
+			await executor.start()
+			set_background_executor(executor)
+			stats = executor.get_all_stats()
+			logger.info(
+				"后台任务执行器初始化完成",
+				extra={"pools": {n: s["max_workers"] for n, s in stats.items()}},
+			)
+		except Exception as e:
+			logger.warning(
+				"后台任务执行器初始化失败（非致命），回退到同步模式",
+				extra={"error": str(e)},
+			)
+
 	@log_performance(operation="initialize_main_engine", level=LogLevel.DEBUG)
+
 	async def _initialize_main_engine(self) -> None:
 		"""初始化主引擎"""
 		with get_context_manager().context_manager(
@@ -801,6 +830,9 @@ class QuantServer:
 				# 关闭所有模块
 				await self._shutdown_modules()
 
+				# 关闭后台任务执行器
+				await self._shutdown_background_executor()
+
 				# 关闭主引擎
 				if self.main_engine:
 					await self.main_engine.stop()
@@ -853,7 +885,22 @@ class QuantServer:
 		self.loaded_modules.clear()
 		logger.info("所有模块关闭完成")
 
+	async def _shutdown_background_executor(self) -> None:
+		"""关闭后台任务执行器"""
+		try:
+			from shared.utils.background_executor import get_background_executor
+			executor = get_background_executor()
+			if executor is not None:
+				await executor.shutdown(timeout=60)
+				logger.info("后台任务执行器已关闭")
+		except Exception as e:
+			logger.warning(
+				"后台任务执行器关闭失败",
+				extra={"error": str(e)},
+			)
+
 	@log_performance(operation="start_server", level=LogLevel.INFO)
+
 	async def start_server(self) -> None:
 		"""启动服务器"""
 		if not self.app:

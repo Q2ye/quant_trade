@@ -474,9 +474,13 @@ class DataSyncEngine(EngineBase):
 
                     # 执行任务
                     self.active_tasks.add(task_id)
-                    self.create_background_task(
-                        self._execute_sync_task(task_info)
-                    )
+                    try:
+                        self.create_background_task(
+                            self._execute_sync_task(task_info)
+                        )
+                    except Exception:
+                        self.active_tasks.discard(task_id)
+                        raise
 
                 except asyncio.TimeoutError:
                     # 队列为空，继续循环

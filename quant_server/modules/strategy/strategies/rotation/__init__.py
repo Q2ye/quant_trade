@@ -2,13 +2,11 @@
 """
 轮动策略模块
 
-V1: MultiAssetTrendStrategy — 融合多资产动量+行业轮动，仅需OHLCV（推荐使用）
-V2: IndustryRotationStrategy — 申万31行业多因子评分（需PE/PB数据）
-V3: MultiAssetRotationStrategy — 多资产ETF动量轮动（移植聚宽）
+V2: GlobalRotationV2Strategy — 双动量骨架月频轮动（V1 已退役删除）
 """
 
-from .multi_asset_trend_strategy import MultiAssetTrendStrategy
+from .global_rotation_v2_strategy import GlobalRotationV2Strategy
 
 __all__ = [
-    "MultiAssetTrendStrategy",
+    "GlobalRotationV2Strategy",
 ]

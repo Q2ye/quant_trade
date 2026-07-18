@@ -210,7 +210,12 @@ class MainEngine(EngineBase):
             self._schedule_manager = ScheduleManager()
 
             async def _daily_sync_job():
-                """16:00 同步核心数据，全部完成后再驱动策略"""
+                """20:00 同步核心数据，全部完成后再驱动策略。
+
+                日终调度保留在主事件循环中执行（不通过 BackgroundTaskExecutor）：
+                - 执行时间 20:00，通常无用户并发请求，不会阻塞用户体验
+                - 避免线程池跨 event loop 的 DB session 管理复杂性
+                """
                 from datetime import date as _date
                 from shared.database.session import get_session_manager
                 from modules.data.services.sync_service import DataSyncService
@@ -219,22 +224,17 @@ class MainEngine(EngineBase):
                 today = _date.today()
                 logger.info("日终数据同步开始: %s", today)
 
-                # Step 1: 同步全部每日行情分组数据（start_date=None 启用增量推断，
-                # 每只股票从 DB 最新日期+1 开始，已有今日数据的股票自动跳过）
                 sm = get_session_manager()
                 sync_ok = True
                 async with sm.get_session() as session:
                     svc = DataSyncService(session=session)
                     for dt in (
-                        DataType.DAILY_QUOTES,
-                        DataType.DAILY_BASIC,
-                        DataType.ADJ_FACTOR,
-                        DataType.INDEX_DAILY,
+                        DataType.DAILY_QUOTES, DataType.DAILY_BASIC,
+                        DataType.ADJ_FACTOR, DataType.INDEX_DAILY,
                     ):
                         try:
                             result = await svc.sync_market_data(dt, start_date=None, end_date=today)
-                            logger.info(
-                                "日终同步 %s 完成: records=%s",
+                            logger.info("日终同步 %s 完成: records=%s",
                                 dt.value,
                                 result.get("records_processed", 0) if isinstance(result, dict) else "?",
                             )
@@ -245,7 +245,6 @@ class MainEngine(EngineBase):
                 if not sync_ok:
                     logger.warning("日终数据同步部分失败，仍尝试驱动策略")
 
-                # Step 2: 全部数据同步完成 → 驱动实盘策略
                 logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
                 try:
                     strategy_mgr = await self.get_module_engine("strategy_manager")

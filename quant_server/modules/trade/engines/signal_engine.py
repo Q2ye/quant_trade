@@ -136,7 +136,8 @@ class SignalEngine(EngineBase):
                     _db_signal_type = _sig_type_map.get(_raw_sig_type, _raw_sig_type)
                     # direction 存储原始 signal_direction (long/short)
                     _raw_dir = str(signal_data.get("direction", "")).lower()
-                    _dir_map = {"long": "long", "short": "short", "buy": "buy", "sell": "sell"}
+                    _dir_map = {"long": "long", "short": "short", "buy": "buy", "sell": "sell",
+                                "close_long": "sell", "close_short": "cover"}
                     _db_direction = _dir_map.get(_raw_dir, _raw_dir)
 
                     signal_record = await repo.create({
@@ -336,7 +337,7 @@ class SignalEngine(EngineBase):
                 async with session.begin():
                     from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
                     repo = SignalRepository(session)
-                    update_data = {"status": status}
+                    update_data = {"signal_status": status}
                     if order_id:
                         update_data["order_id"] = order_id
                     await repo.update(db_id, update_data)

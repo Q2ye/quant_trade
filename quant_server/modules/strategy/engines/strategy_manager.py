@@ -690,6 +690,9 @@ class StrategyManager(EngineBase):
                 state.pending_signals.extend(strategy_signals)
                 await self._publish_signals(strategy_id, strategy_signals)
                 all_signals.extend(strategy_signals)
+                # 发布后清除 pending 缓存，防止内存泄漏
+                state.pending_signals = [s for s in state.pending_signals
+                                          if s not in strategy_signals]
 
         return all_signals
 
@@ -781,33 +784,49 @@ class StrategyManager(EngineBase):
         signals: List[TradingSignal],
     ) -> None:
         """
-        将策略生成的信号通过 EventEngine 发布
+        将策略生成的信号通过 EventEngine 发布。
 
         数据流:
         1. 创建 StrategySignalEvent（v2.0 含价格范围）
-        2. 调用 self.event_engine.put(event)
+        2. 检测是否在后台线程中运行：
+           - 主线程 → 直接 self.event_engine.put(event)
+           - 后台线程 → bridge_queue.put(event) → 主线程 _bridge_pump() → event_engine.put(event)
         3. SignalEngine 订阅 → 写入 signals 超表 + WebSocket 推送
         """
-        if not self.event_engine or not signals:
+        if not signals:
+            return
+
+        # 检测跨线程路径（仅实盘/仿真模式走 bridge；回测信号不发布到实盘管线）
+        instance = self.strategies.get(strategy_id)
+        run_mode = getattr(instance, "run_mode", "backtest") if instance else "backtest"
+        if str(run_mode).lower() in ("live", "paper"):
+            try:
+                from shared.utils.background_executor import get_bridge_queue
+                bq = get_bridge_queue()
+            except ImportError:
+                bq = None
+            if bq is not None:
+                self._publish_via_bridge(bq, strategy_id, signals)
+                return
+
+        # 主线程 → 直接发布
+        if not self.event_engine:
             return
 
         try:
             from modules.strategy.events.signal_events import StrategySignalEvent
 
             instance = self.strategies.get(strategy_id)
-            # v2.2: 从策略实例读取绑定的账户ID
             account_id = getattr(instance, "account_id", "") if instance else ""
-            # v3.1: 读取当前使用的策略版本ID，用于溯源
             version_id = getattr(instance, "current_version_id", "") if instance else ""
 
             for sig in signals:
-                # v2.0: 使用 sig.to_dict() 获取完整数据（含价格范围自动计算）
                 sig_dict = sig.to_dict() if hasattr(sig, "to_dict") else {}
 
                 event = StrategySignalEvent(
                     strategy_id=strategy_id,
                     strategy_name=instance.name if instance else "",
-                    strategy_version_id=version_id,  # v3.1: 溯源用
+                    strategy_version_id=version_id,
                     ts_code=sig_dict.get("ts_code", ""),
                     signal_type=sig_dict.get("signal_type", ""),
                     signal_direction=sig_dict.get("direction", ""),
@@ -837,6 +856,54 @@ class StrategyManager(EngineBase):
             logger.warning(f"无法导入 StrategySignalEvent: {e}")
         except Exception as e:
             logger.error(f"信号发布失败: {e}")
+
+    def _publish_via_bridge(self, bq, strategy_id: str, signals: list) -> None:
+        """后台线程路径 — 通过 bridge queue 将信号事件跨线程发布到主线程 EventEngine。
+
+        不依赖 self.event_engine（asyncio.Lock 绑定了主线程 event loop）。
+        """
+        try:
+            from modules.strategy.events.signal_events import StrategySignalEvent
+
+            instance = self.strategies.get(strategy_id)
+            account_id = getattr(instance, "account_id", "") if instance else ""
+            version_id = getattr(instance, "current_version_id", "") if instance else ""
+
+            for sig in signals:
+                sig_dict = sig.to_dict() if hasattr(sig, "to_dict") else {}
+
+                event = StrategySignalEvent(
+                    strategy_id=strategy_id,
+                    strategy_name=instance.name if instance else "",
+                    strategy_version_id=version_id,
+                    ts_code=sig_dict.get("ts_code", ""),
+                    signal_type=sig_dict.get("signal_type", ""),
+                    signal_direction=sig_dict.get("direction", ""),
+                    price=sig_dict.get("price", 0.0),
+                    quantity=sig_dict.get("quantity", 0),
+                    reason=sig_dict.get("reason", ""),
+                    confidence=sig_dict.get("confidence", 1.0),
+                    target_price=sig_dict.get("target_price"),
+                    stop_loss_price=sig_dict.get("stop_loss_price"),
+                    price_limit_low=sig_dict.get("price_limit_low"),
+                    price_limit_high=sig_dict.get("price_limit_high"),
+                    max_slippage_pct=sig_dict.get("max_slippage_pct", 0.02),
+                    order_type=sig_dict.get("order_type", "limit_range"),
+                    account_id=account_id,
+                    run_mode=getattr(instance, "run_mode", "live") if instance else "live",
+                    execution_mode=getattr(instance, "execution_mode", "semi_auto") if instance else "semi_auto",
+                )
+                bq.put(event)
+
+                logger.debug(
+                    "信号入桥: %s %s %s %s",
+                    strategy_id, sig_dict.get("ts_code"),
+                    sig_dict.get("direction"), sig_dict.get("signal_type"),
+                )
+        except ImportError as e:
+            logger.warning("无法导入 StrategySignalEvent (bridge): %s", e)
+        except Exception as e:
+            logger.error("信号桥接发布失败: %s", e)
 
     # ---- 查询方法 ----
 
@@ -1327,7 +1394,7 @@ class StrategyManager(EngineBase):
                 ts_code = getattr(bar, "ts_code", "") or getattr(bar, "symbol", "")
                 if ts_code in pending_map:
                     prev = pending_map[ts_code]
-                    if prev.get("direction", "") == "buy":
+                    if prev.get("direction", "") in ("long", "buy"):
                         logger.info(
                             "策略 %s 股票 %s 昨日买入信号仍 pending，跳过今日信号",
                             strategy_id, ts_code,
@@ -1654,9 +1721,10 @@ class StrategyManager(EngineBase):
                 qty = pos.volume
                 if qty > 0:
                     avg_price = float(pos.cost_price) if pos.cost_price else 0
+                    side = getattr(pos, "side", "long") or "long"
                     strategy.update_position(
                         ts_code=pos.ts_code,
-                        side="long",
+                        side=side,
                         quantity=qty,
                         avg_price=avg_price,
                     )
@@ -1887,7 +1955,7 @@ class StrategyManager(EngineBase):
                 """), {
                     "sid": str(strategy_id),
                     "since": since,
-                    "until": yesterday + timedelta(days=1),
+                    "until": yesterday,  # 严格昨天及之前，不含今天
                 })
 
                 pending = {}
@@ -2199,12 +2267,13 @@ class StrategyManager(EngineBase):
             logger.warning("心跳更新失败（跳过）: %s", e)
 
     async def _on_signal_confirmed(self, event) -> None:
-        """v2.0: 人工确认成交 → 同步策略持仓"""
+        """v2.0: 人工确认成交 → 同步策略持仓（支持买入和卖出）"""
         data = event.data if hasattr(event, 'data') else {}
         strategy_id = data.get("strategy_id", "")
         ts_code = data.get("ts_code", "")
-        fill_price = data.get("fill_price", 0)
-        fill_quantity = data.get("fill_quantity", 0)
+        direction = data.get("direction", "")
+        fill_price = float(data.get("fill_price", 0))
+        fill_quantity = int(data.get("fill_quantity", 0))
 
         if not strategy_id or not ts_code:
             return
@@ -2214,16 +2283,32 @@ class StrategyManager(EngineBase):
             logger.debug(f"策略 {strategy_id} 不在运行中，跳过持仓同步")
             return
 
+        # 判断是否为卖出/平仓方向
+        is_sell = direction in ("sell", "close_long")
+        if is_sell:
+            fill_quantity = -fill_quantity  # 卖出方向 → 减少持仓
+
         # 查找或创建持仓
         existing_pos = state.get_position(ts_code)
         if existing_pos:
-            # 加仓：更新均价和数量
-            total_cost = existing_pos.avg_cost * existing_pos.quantity + fill_price * fill_quantity
-            existing_pos.quantity += fill_quantity
-            existing_pos.avg_cost = total_cost / existing_pos.quantity if existing_pos.quantity > 0 else 0
+            if fill_quantity > 0:
+                # 买入/加仓：更新均价和数量
+                total_cost = existing_pos.avg_cost * existing_pos.quantity + fill_price * fill_quantity
+                existing_pos.quantity += fill_quantity
+                existing_pos.avg_cost = total_cost / existing_pos.quantity if existing_pos.quantity > 0 else 0
+            else:
+                # 卖出/减仓：只减数量，均价不变
+                existing_pos.quantity += fill_quantity  # fill_quantity 已为负值
             existing_pos.update_time = datetime.now()
-            logger.info(f"持仓更新: {strategy_id} {ts_code} x{existing_pos.quantity} avg={existing_pos.avg_cost:.2f}")
+            if existing_pos.quantity <= 0:
+                state.positions = [p for p in state.positions if p.ts_code != ts_code]
+                logger.info(f"持仓清空: {strategy_id} {ts_code}")
+            else:
+                logger.info(f"持仓更新: {strategy_id} {ts_code} x{existing_pos.quantity} avg={existing_pos.avg_cost:.2f}")
         else:
+            if fill_quantity <= 0:
+                logger.warning(f"尝试卖出不存在的持仓: {strategy_id} {ts_code}，跳过")
+                return
             # 新建持仓
             from modules.strategy.models import Position
             from modules.strategy.constants import PositionSide
@@ -2242,14 +2327,18 @@ class StrategyManager(EngineBase):
             logger.info(f"持仓新增: {strategy_id} {ts_code} x{fill_quantity} @ {fill_price}")
 
     async def _on_order_filled(self, event) -> None:
-        """v3.3: 订单成交 → 更新策略持仓（修复 list 被当 dict 用的 bug）"""
+        """v3.3: 订单成交 → 更新策略持仓（支持买入和卖出方向）"""
         logger.info(f"订单成交: {event.data.get('order_id')}，更新策略持仓")
+        direction = str(event.data.get("direction", "")).lower()
+        is_sell = direction in ("sell", "close_long")
         for strategy_id, state in self.running_states.items():
             if state.is_running:
                 symbol = event.data.get("symbol") or event.data.get("ts_code", "")
                 if not symbol:
                     continue
                 filled_vol = int(event.data.get("filled_volume", 0) or 0)
+                if is_sell:
+                    filled_vol = -filled_vol  # 卖出方向 → 减少持仓
                 # state.positions 是 List[Position]，遍历找到对应的持仓
                 found = False
                 for pos in state.positions:
@@ -2257,8 +2346,10 @@ class StrategyManager(EngineBase):
                         pos.quantity += filled_vol
                         found = True
                         break
+                if found and pos.quantity <= 0:
+                    state.positions = [p for p in state.positions if p.ts_code != symbol]
                 if not found and filled_vol > 0:
-                    # 新持仓
+                    # 新持仓（仅买入方向）
                     from modules.strategy.models import Position, PositionSide
                     state.positions.append(Position(
                         strategy_id=strategy_id,

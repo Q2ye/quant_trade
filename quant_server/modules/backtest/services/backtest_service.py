@@ -1192,6 +1192,21 @@ class BacktestService:
 				f"耗时={elapsed:.1f}s"
 			)
 
+		except asyncio.CancelledError:
+			# =================================================================
+			# 用户取消 — 标记任务为 cancelled
+			# =================================================================
+			elapsed = (datetime.now() - start_ts).total_seconds()
+			logger.info(f"回测 {task_id}: 已取消 (耗时={elapsed:.1f}s)")
+			try:
+				await self.task_repo.update(task_id, {
+					"status": "cancelled",
+					"result": {"message": "用户取消"},
+					"updated_at": datetime.now()
+				})
+				await self.db.commit()
+			except Exception:
+				await self.db.rollback()
 		except Exception as e:
 			# =================================================================
 			# 异常处理：标记任务失败，记录错误信息

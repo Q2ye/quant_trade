@@ -153,8 +153,9 @@ class SignalConfirmedEvent(BaseEvent):
         strategy_id: str,
         signal_id: str,
         ts_code: str,
-        fill_price: float,
-        fill_quantity: int,
+        direction: str = "",
+        fill_price: float = 0.0,
+        fill_quantity: int = 0,
         fill_time: Optional[str] = None,
         **kwargs
     ):
@@ -170,6 +171,7 @@ class SignalConfirmedEvent(BaseEvent):
             "strategy_id": strategy_id,
             "signal_id": signal_id,
             "ts_code": ts_code,
+            "direction": direction,
             "fill_price": fill_price,
             "fill_quantity": fill_quantity,
             "fill_time": fill_time or datetime.now().isoformat(),

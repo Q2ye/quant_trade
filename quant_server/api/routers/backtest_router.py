@@ -208,7 +208,7 @@ async def cancel_backtest_api(
 	"""
 	try:
 		logger.info(f"用户 {current_user.get('username')} 取消回测任务 {task_id}")
-
+		# 通知 BackgroundTaskExecutor 取消（如在线程池中运行）		try:			from shared.utils.background_executor import get_background_executor			executor = get_background_executor()			if executor is not None:				executor.cancel(task_id)		except ImportError:			pass
 		result = await cancel_backtest_task(
 			session=db_session,
 			task_id=task_id,
@@ -646,12 +646,31 @@ async def run_scenario_backtest(
 			source_strategy_id=getattr(request, "source_strategy_id", None),
 		)
 
-		# 启动回测
-		background_tasks.add_task(
-			BacktestService(db).run_backtest,
-			task_id=result["task_id"],
-			user_id=current_user.get("id", ""),
-		)
+		# 启动回测 — 提交到独立线程池
+		try:
+			from shared.utils.background_executor import (
+				get_background_executor, TaskPriority,
+			)
+			from modules.backtest.handlers import _run_backtest_in_thread
+			executor = get_background_executor()
+			if executor is not None:
+				await executor.submit(
+					"backtest", result["task_id"],
+					coro_factory=lambda: _run_backtest_in_thread(result["task_id"]),
+					priority=TaskPriority.BACKGROUND,
+				)
+			else:
+				background_tasks.add_task(
+					BacktestService(db).run_backtest,
+					task_id=result["task_id"],
+					user_id=current_user.get("id", ""),
+				)
+		except ImportError:
+			background_tasks.add_task(
+				BacktestService(db).run_backtest,
+				task_id=result["task_id"],
+				user_id=current_user.get("id", ""),
+			)
 
 		return success_response(
 			data=result,

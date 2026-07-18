@@ -103,13 +103,17 @@ class SimBrokerAdapter(BrokerAdapter):
         quantity = order["filled_quantity"]
         
         # 更新资金
-        if direction == "buy":
+        if direction in ("buy", "close_short"):  # 买入开多 / 买入平空 → 扣资金
             cost = price * quantity
             self.capital -= cost
-        else:
+        elif direction in ("sell", "close_long"):  # 卖出平多 → 加资金
             revenue = price * quantity
             self.capital += revenue
-        
+        else:
+            logger.warning(f"未知交易方向: {direction}，按卖出处理")
+            revenue = price * quantity
+            self.capital += revenue
+
         # 更新持仓
         if ts_code not in self.positions:
             self.positions[ts_code] = {
@@ -118,14 +122,14 @@ class SimBrokerAdapter(BrokerAdapter):
                 "current_price": price,
                 "pnl": 0
             }
-        
+
         pos_data = self.positions[ts_code]
-        if direction == "buy":
+        if direction in ("buy",):  # 开多：持仓增加
             total_cost = pos_data["cost_price"] * pos_data["quantity"] + price * quantity
             total_quantity = pos_data["quantity"] + quantity
             pos_data["cost_price"] = total_cost / total_quantity if total_quantity > 0 else 0
             pos_data["quantity"] = total_quantity
-        else:
+        elif direction in ("sell", "close_long"):  # 平多：持仓减少
             pos_data["quantity"] -= quantity
             if pos_data["quantity"] <= 0:
                 del self.positions[ts_code]

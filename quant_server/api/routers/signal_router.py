@@ -50,13 +50,13 @@ async def confirm_signal(signal_id: str, body: ConfirmSignalRequest, event_engin
     async with sm.get_session() as session:
         # 先获取信号元数据
         r = await session.execute(
-            text('SELECT strategy_id, ts_code FROM signals WHERE id = :sid'),
+            text('SELECT strategy_id, ts_code, direction FROM signals WHERE id = :sid'),
             {'sid': signal_id},
         )
         row = r.fetchone()
         if not row:
             raise HTTPException(404, f"信号 {signal_id} 不存在")
-        strategy_id, ts_code = row[0], row[1]
+        strategy_id, ts_code, direction = row[0], row[1], row[2]
 
         # 更新信号状态
         await update_signal_status(
@@ -74,6 +74,7 @@ async def confirm_signal(signal_id: str, body: ConfirmSignalRequest, event_engin
                 strategy_id=strategy_id,
                 signal_id=signal_id,
                 ts_code=ts_code,
+                direction=direction or "",
                 fill_price=body.fill_price,
                 fill_quantity=body.fill_quantity,
                 fill_time=body.fill_time,

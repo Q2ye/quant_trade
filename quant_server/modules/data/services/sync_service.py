@@ -510,6 +510,25 @@ def _retry_on_rate_limit(max_retries=5, base_delay=2.0, max_delay=60.0):
     return decorator
 
 
+
+# ==== rate-limit config cache (avoid repeated disk reads) ====
+_rate_limit_cache: dict = {}
+def _get_cached_rate_limit(rate_key: str) -> int:
+    if rate_key in _rate_limit_cache:
+        return _rate_limit_cache[rate_key]
+    import yaml, os
+    try:
+        _cfg_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'config.yaml')
+        with open(_cfg_path, 'r', encoding='utf-8') as _f:
+            _cfg_yaml = yaml.safe_load(_f)
+        _limits = _cfg_yaml.get('ENGINES', {}).get('sync_rate_limits', {})
+        val = _limits.get(rate_key, 0)
+        _rate_limit_cache[rate_key] = val
+        return val
+    except Exception:
+        _rate_limit_cache[rate_key] = 0
+        return 0
+# ================================================================
 class DataSyncService:
 	"""
 	数据同步服务（无状态 Service）。
@@ -933,7 +952,7 @@ class DataSyncService:
 
 		except Exception as e:
 			logger.error(
-				f"[{data_type.value if hasattr(data_type, chr(39) + chr(118) + chr(97) + chr(108) + chr(117) + chr(101) + chr(39)) else data_type}] 市场数据同步失败: {str(e)}",
+				f"[{data_type.value if hasattr(data_type, 'value') else data_type}] 市场数据同步失败: {str(e)}",
 				exc_info=True)
 
 			if task_id:
@@ -1106,7 +1125,7 @@ class DataSyncService:
 		try:
 			coros = [_sync_one(task, i) for i, task in enumerate(tasks)]
 			results = await asyncio.gather(*coros)
-			shared_executor.shutdown(wait=False)  # 不等待未完成任务，它们已经 gather 完成
+			shared_executor.shutdown(wait=True)  # 不等待未完成任务，它们已经 gather 完成
 
 			# 汇总子任务结果到父任务
 			total_ok = sum(r.get("records_added",0)+r.get("records_updated",0) for r in results)
@@ -1636,16 +1655,7 @@ class DataSyncService:
 
 		_rate_limit = 0
 		if rate_key:
-			import yaml, os
-			try:
-				_cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.yaml")
-				with open(_cfg_path, "r", encoding="utf-8") as _f:
-					_cfg_yaml = yaml.safe_load(_f)
-				_limits = _cfg_yaml.get("ENGINES", {}).get("sync_rate_limits", {})
-				_rate_limit = _limits.get(rate_key, 0)
-			except Exception:
-				pass  # 配置文件不存在或格式错误时降级为不限流
-
+			_rate_limit = _get_cached_rate_limit(rate_key)
 		limiter = asyncio.Semaphore(_rate_limit) if _rate_limit > 0 else None
 
 		sem = asyncio.Semaphore(max_concurrency)
@@ -2075,15 +2085,7 @@ class DataSyncService:
 		# per-type 限流（config.yaml sync_rate_limits.daily，800次/分钟）
 		_rate_limit = 0
 		if rate_key:
-			import yaml, os
-			try:
-				_cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.yaml")
-				with open(_cfg_path, "r", encoding="utf-8") as _f:
-					_cfg_yaml = yaml.safe_load(_f)
-				_limits = _cfg_yaml.get("ENGINES", {}).get("sync_rate_limits", {})
-				_rate_limit = _limits.get(rate_key, 0)
-			except Exception:
-				pass
+			_rate_limit = _get_cached_rate_limit(rate_key)
 		limiter = asyncio.Semaphore(_rate_limit) if _rate_limit > 0 else None
 
 		sem = asyncio.Semaphore(max_concurrency)  # 控制并发数

@@ -24,10 +24,13 @@ class ConnectionPoolManager:
 	"""数据库连接池管理器"""
 
 	def __init__ (self):
+		import threading as _threading
 		self._engine: Optional[AsyncEngine] = None
 		self._session_factory: Optional[async_sessionmaker] = None
 		self._pool_size: int = config.settings.DATABASE.POOL_SIZE
 		self._max_overflow: int = config.settings.DATABASE.MAX_OVERFLOW
+		self._main_thread_id: int = _threading.current_thread().ident
+		# 后台线程独立 pool（避免 "Future attached to a different loop"）
 
 	async def initialize (self) -> bool:
 		"""初始化连接池"""
@@ -105,7 +108,63 @@ class ConnectionPoolManager:
 			raise ValueError(f"不支持的数据库类型: {db_type}")
 
 	def get_session_factory (self) -> async_sessionmaker:
-		"""获取会话工厂"""
+		"""获取会话工厂。
+
+		如果在后台线程中调用（threading.current_thread() != main_thread），
+		自动为当前线程创建独立的 AsyncEngine + session factory，
+		避免 asyncpg "Future attached to a different loop" 错误。
+
+		v3.5 修复：线程级 engine 绑定当前 event loop。BackgroundTaskExecutor
+		每个任务创建新 event loop，线程复用时旧 engine 的连接池绑定到
+		已关闭的旧 loop → 后续所有 DB 操作崩溃。现在检测 loop 变更后
+		自动 dispose 旧 engine 并重建。
+		"""
+		import threading as _threading
+		current_tid = _threading.current_thread().ident
+		main_tid = getattr(self, "_main_thread_id", current_tid)
+
+		if current_tid != main_tid:
+			# 后台线程 → 线程独立 engine（绑定当前 event loop）
+			try:
+				_loop = asyncio.get_running_loop()
+			except RuntimeError:
+				_loop = None
+
+			loop_id = id(_loop) if _loop is not None else 0
+
+			try:
+				_cached_factory, _cached_loop_id = self._thread_pools[current_tid]
+			except AttributeError:
+				self._thread_pools: Dict[int, tuple] = {}
+			except KeyError:
+				pass
+			else:
+				if _cached_loop_id == loop_id:
+					return _cached_factory
+				# loop 已变更（线程复用）→ dispose 旧 engine 并重建
+				_old_engine = _cached_factory.kw.get("bind")
+				if _old_engine is not None:
+					try:
+						# 同步 dispose（旧 loop 可能已关闭，不能 await）
+						import concurrent.futures
+						_fut = _old_engine.dispose()
+					except Exception:
+						pass
+				logger.info(
+					"Worker 线程 (tid=%s) event loop 变更 (%s→%s)，重建 DB 池",
+					current_tid, _cached_loop_id, loop_id,
+				)
+
+			db_url = self._build_database_url()
+			_engine = create_async_engine(
+				db_url, pool_size=2, max_overflow=1,
+				pool_recycle=3600, pool_pre_ping=True,
+			)
+			_factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+			self._thread_pools[current_tid] = (_factory, loop_id)
+			logger.info("Worker 线程独立 DB 池已创建 (tid=%s, loop=%s)", current_tid, loop_id)
+			return _factory
+
 		if not self._session_factory:
 			raise RuntimeError("数据库连接池未初始化")
 		return self._session_factory

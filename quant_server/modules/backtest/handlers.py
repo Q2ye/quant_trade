@@ -3,12 +3,31 @@
 回测模块API处理函数
 负责处理HTTP请求，调用服务层完成业务逻辑
 """
+import logging
 from typing import Dict, Any
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.backtest.services.backtest_service import BacktestService
+
+logger = logging.getLogger(__name__)
+
+
+async def _run_backtest_in_thread(task_id: str) -> None:
+    """在后台线程池中运行回测。
+
+    ConnectionPoolManager.get_session_factory() 已支持线程检测——
+    后台线程中自动创建独立 AsyncEngine，无需在此手动管理。
+    """
+    from shared.database.session.connection_pool import get_connection_pool
+    session_factory = get_connection_pool().get_session_factory()
+    db = session_factory()
+    service = BacktestService(db)
+    try:
+        await service.run_backtest(task_id)
+    finally:
+        await db.close()
 
 
 class BacktestHandler:
@@ -22,8 +41,31 @@ class BacktestHandler:
 		"""创建回测任务"""
 		try:
 			result = await self.backtest_service.create_backtest_task(request, user_id)
-			# 添加后台任务执行回测
-			background_tasks.add_task(self.backtest_service.run_backtest, result["task_id"])
+			task_id = result["task_id"]
+
+			# 提交回测到独立线程池（不再使用 BackgroundTasks，避免阻塞事件循环）
+			try:
+				from shared.utils.background_executor import (
+					get_background_executor, TaskPriority,
+				)
+				executor = get_background_executor()
+				if executor is not None:
+					await executor.submit(
+						"backtest", task_id,
+						coro_factory=lambda tid=task_id: _run_backtest_in_thread(tid),
+						priority=TaskPriority.BACKGROUND,
+					)
+				else:
+					# 回退：executor 未初始化时使用原有 BackgroundTasks
+					logger.warning("BackgroundTaskExecutor 未就绪，回退到 BackgroundTasks")
+					background_tasks.add_task(
+						self.backtest_service.run_backtest, task_id
+					)
+			except ImportError:
+				background_tasks.add_task(
+					self.backtest_service.run_backtest, task_id
+				)
+
 			return {
 				"success": True,
 				"data": result

@@ -187,16 +187,30 @@ class BacktestResult:
 			"num_trades": self.num_trades,
 			"avg_trade_return": self._sanitize_float(self.avg_trade_return),
 			"volatility": self._sanitize_float(self.volatility),
-			"equity_curve": self.equity_curve,
-			"drawdown_curve": self.drawdown_curve,
-			"trades": self.trades,
-			"monthly_returns": self.monthly_returns or [],
-			"benchmark_curve": self.benchmark_curve or [],
-			"daily_returns": self.daily_returns or [],
-		"daily_turnover": self.daily_turnover or [],
+			"equity_curve": self._sanitize_json(self.equity_curve),
+			"drawdown_curve": self._sanitize_json(self.drawdown_curve),
+			"trades": self._sanitize_json(self.trades),
+			"monthly_returns": self._sanitize_json(self.monthly_returns or []),
+			"benchmark_curve": self._sanitize_json(self.benchmark_curve or []),
+			"daily_returns": self._sanitize_json(self.daily_returns or []),
+		"daily_turnover": self._sanitize_json(self.daily_turnover or []),
 		"excess_metrics": self.excess_metrics or {},
-			"risk_violations": self.risk_violations or [],
+			"risk_violations": self._sanitize_json(self.risk_violations or []),
 		}
+
+	@staticmethod
+	def _sanitize_json(obj):
+		"""递归转换 date/datetime 为 ISO 字符串，确保 JSONB 兼容。"""
+		from datetime import date, datetime as dt
+		if isinstance(obj, (dt, date)):
+			return obj.isoformat()
+		if isinstance(obj, dict):
+			return {k: BacktestResult._sanitize_json(v) for k, v in obj.items()}
+		if isinstance(obj, list):
+			return [BacktestResult._sanitize_json(i) for i in obj]
+		if isinstance(obj, float):
+			return BacktestResult._sanitize_float(obj)
+		return obj
 
 	@staticmethod
 	def _sanitize_float(v):

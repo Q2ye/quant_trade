@@ -86,6 +86,14 @@ class ExecutionEngine(EngineBase):
 				async with self.session_factory() as session:
 					repo = OrderRepository(session)
 					pending = await repo.get_by_status("submitted")
+					# 也恢复部分成交和已接受的订单（重启时这些也是在途的）
+					for extra_status in ("partial_filled", "accepted"):
+						try:
+							extra = await repo.get_by_status(extra_status)
+							if extra:
+								pending.extend(extra)
+						except Exception:
+							pass
 					for order in pending:
 						od = order.to_dict() if hasattr(order, 'to_dict') else order
 						oid = od.get("order_id", "")
@@ -164,9 +172,9 @@ class ExecutionEngine(EngineBase):
 				oid = order_data.get("order_id", str(uuid.uuid4()))
 				order_data["order_id"] = oid
 				order_data["status"] = "filled"
-				order_data["filled_volume"] = order_data.get("volume", 0)
+				order_data["filled_volume"] = order_data.get("quantity", 0)
 				order_data["filled_price"] = order_data.get("price", 0)
-				order_data["filled_amount"] = order_data.get("filled_volume", 0) * order_data.get("filled_price", 0)
+				order_data["filled_amount"] = order_data["filled_volume"] * order_data.get("filled_price", 0)
 				self.orders[oid] = order_data
 				logger.info(f"[SIM] 模拟交易成交: order_id={oid}, ts_code={order_data.get('ts_code')}, "
 				            f"direction={order_data.get('direction')}, volume={order_data.get('volume')}")
@@ -176,14 +184,14 @@ class ExecutionEngine(EngineBase):
 					await self.position_engine.update_position()
 					await self._trigger_settlement_after_trade(order_data)
 
-				if "filled_quantity" in order_data and order_data["filled_quantity"] > 0:
+				if order_data.get("filled_volume", 0) > 0:
 					trade = {
 						"trade_id": str(uuid.uuid4()),
 						"order_id": order_data["order_id"],
 						"ts_code": order_data["ts_code"],
 						"direction": order_data["direction"],
 						"price": order_data["filled_price"],
-						"quantity": order_data["filled_quantity"],
+						"quantity": order_data["filled_volume"],
 						"trade_time": datetime.now().isoformat()
 					}
 					self.trades.append(trade)
@@ -203,6 +211,7 @@ class ExecutionEngine(EngineBase):
 				await self._trigger_settlement_after_trade(order)
 
 			# 记录交易
+			trade = None
 			if "filled_quantity" in order and order["filled_quantity"] > 0:
 				trade = {
 					"trade_id": str(uuid.uuid4()),
@@ -222,7 +231,7 @@ class ExecutionEngine(EngineBase):
 						from shared.database.repositories.trading.order import OrderRepository
 						order_repo = OrderRepository(session)
 						await order_repo.create(order)
-						if trade:
+						if trade is not None:
 							await order_repo.session.commit()
 					logger.debug(f"订单已持久化到 DB: {order.get('order_id')}")
 				except Exception as pe:
@@ -306,22 +315,18 @@ class ExecutionEngine(EngineBase):
 		return [trade for trade in self.trades if trade.get("ts_code") == ts_code]
 
 	async def execute_signal (self, signal_data: Dict[str, Any]) -> Dict[str, Any]:
-		"""执行信号"""
-		# 检查信号是否符合风控规则
-		is_valid, message = await self.risk_engine.check_signal(signal_data)
-		if not is_valid:
-			return {
-				"success": False,
-				"message": message
-			}
-
-		# 生成订单数据
+		"""执行信号 — 风控检查已在 SignalEngine.process_signal() 中完成，此处不再重复"""
+		# 生成订单数据（补全信号中的全部交易字段）
 		order_data = {
 			"ts_code": signal_data.get("ts_code"),
 			"direction": signal_data.get("direction"),
 			"price": signal_data.get("price"),
 			"quantity": signal_data.get("quantity"),
-			"order_type": signal_data.get("order_type", "limit")
+			"order_type": signal_data.get("order_type", "limit_range"),
+			"account_id": signal_data.get("account_id"),
+			"price_limit_low": signal_data.get("price_limit_low"),
+			"price_limit_high": signal_data.get("price_limit_high"),
+			"max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
 		}
 
 		# 执行订单
