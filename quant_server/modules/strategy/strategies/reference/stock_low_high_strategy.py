@@ -42,7 +42,7 @@ from modules.strategy.strategies.base.base_strategy import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
-class IndustryV3LHL(BaseStrategy):
+class StockLowHighStrategy(BaseStrategy):
     """
     沪深主板强势股低吸轮动策略 — 行业黑名单v3。
 

@@ -19,7 +19,7 @@ from .rotation import (
     GlobalRotationV2Strategy,
 )
 from .reference import (
-    StockLowHighStrategy,
+	StockLowHighStrategy,
 )
 
 __all__ = [

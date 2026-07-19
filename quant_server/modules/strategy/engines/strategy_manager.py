@@ -366,6 +366,18 @@ class StrategyManager(EngineBase):
         strategy_instance.status = StrategyLifecycleStatus.RUNNING
         strategy_instance.started_at = datetime.now()
 
+        # 同步状态到 DB（修复：之前只更新内存，前端看不到状态变更）
+        if self.session_factory:
+            try:
+                async with self.session_factory() as session:
+                    from shared.database.repositories.strategy.management import StrategyRepository
+                    await StrategyRepository(session).update(
+                        strategy_id,
+                        {"status": StrategyLifecycleStatus.RUNNING.value, "updated_at": datetime.now()},
+                    )
+            except Exception as e:
+                logger.warning(f"策略状态同步到DB失败: {e}")
+
         # v3.0: 仅实盘/仿真模式预热历史数据 + 恢复持仓（回测不需要）
         # 注意：strategy_instance.run_mode 在调用方 start_strategy() 返回后才设置，
         # 因此必须从 context.run_mode 读取，否则预热永远被跳过。
