@@ -165,6 +165,7 @@ class StrategyRegistry:
             "technical": StrategyType.TECHNICAL,
             "alpha": StrategyType.ALPHA,
             "ai": StrategyType.ML,
+            "etf": StrategyType.ML,
             "rotation": StrategyType.ROTATION,
             "reference": StrategyType.CUSTOM,
         }

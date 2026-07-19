@@ -244,6 +244,12 @@ export const routes: RouteRecordRaw[] = [
   { path: "/strategies/create", redirect: "/strategies/workspace/new" },
   { path: "/strategies/edit/:id", redirect: (to: any) => `/strategies/workspace/${to.params.id}` },
   {
+    path: "/strategies/train",
+    name: "ModelTraining",
+    component: () => import("@/views/StrategyCenter/Build/ModelTraining.vue"),
+    meta: { menu: "strategies", layout: "main", title: "模型训练" },
+  },
+  {
     path: "/strategies/portfolio",
     redirect: "/strategies",
   },

@@ -882,6 +882,7 @@ class ResearchRequest(BaseModel):
 	frequency: str = Field(default="M", description="频率: D日度 W周度 M月度")
 	group_count: int = Field(default=5, ge=2, le=10, description="分组数量")
 	basket_ids: Optional[List[str]] = Field(default=None, description="篮子ID列表，自动展开为股票代码")
+	data_source: str = Field(default="stock", description="数据源: stock=个股stock_daily, etf=ETF etf_daily")
 	analysis_type: str = Field(
 		default="ic_analysis",
 		description="分析类型: ic_analysis/quantile_analysis/correlation_analysis"

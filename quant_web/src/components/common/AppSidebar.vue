@@ -156,6 +156,12 @@ export default defineComponent({
           h(NIcon, null, { default: () => h(SmartIcon, { name: "Cube" }) }),
       },
       {
+        label: "模型训练",
+        key: "strategy-train",
+        icon: () =>
+          h(NIcon, null, { default: () => h(SmartIcon, { name: "Cog" }) }),
+      },
+      {
         label: "回测验证",
         key: "strategy-backtest",
         icon: () =>
@@ -268,6 +274,7 @@ export default defineComponent({
       "strategy-risk": "/strategies/risk",
       "strategy-factors": "/strategy/factors",
       "strategy-build": "/strategy/build",
+      "strategy-train": "/strategies/train",
       "strategy-backtest": "/strategy/backtest",
       "trading-workspace": "/trade/workspace",
       signals: "/signals",

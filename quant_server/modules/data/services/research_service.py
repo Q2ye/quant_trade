@@ -45,6 +45,8 @@ from shared.database.repositories import (
 	FactorResearchRepository,
 	FinancialIncomeRepository,
 )
+from shared.database.repositories.market.quote.etf_daily_repo import EtfDailyRepository
+from shared.database.repositories.market.basic.etf_repo import ETFRepository
 # 导入工具类
 from utils.core_utils.math_utils import StatisticalCalculator
 from modules.data.factor_calculators import (
@@ -124,6 +126,9 @@ class FactorResearchService:
 		self.factor_def_repo = FactorDefinitionRepository(session)
 		self.research_repo = FactorResearchRepository(session)
 		self.financial_repo = FinancialIncomeRepository(session)
+		# ETF 数据源（v3.4 新增）
+		self.etf_basic_repo = ETFRepository(session)
+		self.etf_daily_repo = EtfDailyRepository(session)
 		# 初始化计算工具
 		self.stat_calculator = StatisticalCalculator()
 
@@ -282,13 +287,14 @@ class FactorResearchService:
 			user_id: Optional[str] = None,
 			cancel_token = None,        # asyncio.Event or None
 			progress_callback = None,   # callable(step_name, progress_float) or None
+			data_source: str = "stock", # "stock" | "etf" (v3.4)
 	) -> Dict[str, Any]:
 		"""
 		计算因子数据
 
 		Args:
 			factor_name: 因子名称
-			ts_codes: 股票代码列表，不指定则计算所有股票
+			ts_codes: 股票代码列表，不指定则计算所有股票（或全部 ETF）
 			start_date: 开始日期
 			end_date: 结束日期
 			parameters: 计算参数
@@ -296,6 +302,7 @@ class FactorResearchService:
 			user_id: 用户ID
 			cancel_token: asyncio.Event 取消令牌
 			progress_callback: 进度回调 callable(step, progress_0_1)
+			data_source: 数据源 ("stock"=个股stock_daily, "etf"=ETF etf_daily)
 
 		Returns:
 			Dict: 计算结果，包含：
@@ -363,22 +370,27 @@ class FactorResearchService:
 							f"可用: {list(self._factor_calculators.keys())[:15]}"
 						)
 
-			# 获取股票列表（universe 已在上游 _resolve_universe 中解析）
+			# 获取标的列表（universe 已在上游 _resolve_universe 中解析）
 			if not ts_codes:
-				# 获取所有活跃股票（按市场查询）
-				stocks = await self.stock_repo.get_by_market("主板", active_only=True)
-				# 也获取创业板和科创板
-				try:
-					stocks_china = await self.stock_repo.get_by_market("创业板", active_only=True)
-					stocks.extend(stocks_china)
-				except Exception as e:
-					logger.warning(f"获取创业板股票失败: {str(e)}")
-				try:
-					stocks_star = await self.stock_repo.get_by_market("科创板", active_only=True)
-					stocks.extend(stocks_star)
-				except Exception as e:
-					logger.warning(f"获取科创板股票失败: {str(e)}")
-				ts_codes = [stock.ts_code for stock in stocks]
+				if data_source == "etf":
+					# ETF 模式：从 etf_basic 获取所有上市 ETF
+					etfs = await self.etf_basic_repo.get_all()
+					ts_codes = [etf.ts_code for etf in etfs if getattr(etf, 'list_status', None) == 'L']
+					logger.info("ETF 模式：从 etf_basic 加载 %d 只 ETF", len(ts_codes))
+				else:
+					# 个股模式：获取所有活跃股票（按市场查询）
+					stocks = await self.stock_repo.get_by_market("主板", active_only=True)
+					try:
+						stocks_china = await self.stock_repo.get_by_market("创业板", active_only=True)
+						stocks.extend(stocks_china)
+					except Exception as e:
+						logger.warning(f"获取创业板股票失败: {str(e)}")
+					try:
+						stocks_star = await self.stock_repo.get_by_market("科创板", active_only=True)
+						stocks.extend(stocks_star)
+					except Exception as e:
+						logger.warning(f"获取科创板股票失败: {str(e)}")
+					ts_codes = [stock.ts_code for stock in stocks]
 
 			if not ts_codes:
 				return {
@@ -415,7 +427,8 @@ class FactorResearchService:
 						ts_code=ts_code,
 						start_date=datetime.combine(start_date, datetime.min.time()),
 						end_date=datetime.combine(end_date, datetime.min.time()),
-						parameters=parameters
+						parameters=parameters,
+						data_source=data_source,
 					)
 					if result:
 						try:
@@ -972,17 +985,19 @@ class FactorResearchService:
 			ts_code: str,
 			start_date: datetime,
 			end_date: datetime,
-			parameters: Optional[Dict[str, Any]] = None
+			parameters: Optional[Dict[str, Any]] = None,
+			data_source: str = "stock",
 	) -> List[Dict[str, Any]]:
 		"""
-		计算单只股票的因子
+		计算单只股票/ETF 的因子
 
 		Args:
 			factor_name: 因子名称
-			ts_code: 股票代码
+			ts_code: 股票/ETF 代码
 			start_date: 开始日期
 			end_date: 结束日期
 			parameters: 计算参数
+			data_source: "stock"=stock_daily, "etf"=etf_daily
 
 		Returns:
 			List[Dict]: 因子值列表，每个元素包含：
@@ -1037,12 +1052,19 @@ class FactorResearchService:
 							f"可用: {list(self._factor_calculators.keys())[:15]}"
 						)
 
-			# 获取股票数据
-			quotes = await self.quote_repo.get_by_code_and_date_range(
-				ts_code=ts_code,
-				start_date=start_date,
-				end_date=end_date
-			)
+			# 获取行情数据 — 根据 data_source 选择数据表
+			if data_source == "etf":
+				quotes = await self.etf_daily_repo.get_by_code_and_date_range(
+					ts_code=ts_code,
+					start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
+					end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
+				)
+			else:
+				quotes = await self.quote_repo.get_by_code_and_date_range(
+					ts_code=ts_code,
+					start_date=start_date,
+					end_date=end_date
+				)
 
 			if not quotes:
 				return []

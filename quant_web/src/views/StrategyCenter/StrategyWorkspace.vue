@@ -15,7 +15,16 @@
             size="small"
             :style="{ maxWidth: '300px', fontWeight: 600, fontSize: '16px' }"
           />
-          <n-tag :type="statusTagType" size="small" style="margin-left:8px">{{ strategyStatus }}</n-tag>
+          <n-select
+            v-model:value="strategyStatus"
+            size="small"
+            style="width:160px;margin-left:8px"
+            :options="[
+              { label: '📝 草稿', value: 'draft' },
+              { label: '✅ 已验证', value: 'backtested' },
+              { label: '⬜ 已停止', value: 'stopped' },
+            ]"
+          />
         </div>
         <div class="header-actions">
           <template v-if="isLive">

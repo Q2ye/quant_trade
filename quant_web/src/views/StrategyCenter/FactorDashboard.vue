@@ -44,6 +44,15 @@
           style="min-width:140px;max-width:220px;flex:0.6"
           size="small"
         />
+        <n-select
+          v-model:value="researchConfig.dataSource"
+          :options="[
+            { label: '个股', value: 'stock' },
+            { label: 'ETF', value: 'etf' },
+          ]"
+          style="width:80px"
+          size="small"
+        />
         <n-date-picker
           v-model:formatted-value="researchConfig.dateRange"
           type="daterange"
@@ -270,8 +279,13 @@ const researchConfig = reactive({
   selectedFactors: [] as string[],
   dateRange: null as [string, string] | null,
   basketIds: [] as string[],
+  dataSource: "stock" as string,  // v3.4: stock | etf
 });
 const showFactorDialog = ref(false);
+const dataSourceOptions = [
+  { label: '个股', value: 'stock' },
+  { label: 'ETF', value: 'etf' },
+];
 const onFactorCreated = () => { loadMetadata(); };
 
 const universeSelectKey = ref(0);
@@ -280,6 +294,7 @@ const factorSelectKey = ref(0);
 const universeLoading = ref(false);
 const universeOptions = ref<Array<{ label: string; value: string }>>([
   { label: "全部A股", value: "all" },
+
   { label: "沪深300", value: "000300.SH" },
   { label: "中证500", value: "000905.SH" },
 ]);
@@ -304,6 +319,7 @@ async function loadUniverseOptions() {
         .map((idx: any) => ({ label: `${idx.name} (${idx.ts_code})`, value: idx.ts_code }));
       universeOptions.value = [
         { label: "全部A股", value: "all" },
+
         ...extra,
       ];
     }
@@ -524,7 +540,7 @@ const startResearch = async () => {
     const defaultEnd = today.toISOString().slice(0, 10);
     const params: any = {
       factor_names: researchConfig.selectedFactors,
-      universe: researchConfig.universe,
+      universe: researchConfig.dataSource === "etf" ? [] : researchConfig.universe,
       basket_ids: researchConfig.basketIds.length > 0 ? researchConfig.basketIds : undefined,
       start_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[0] : defaultStart,
       end_date: dr && Array.isArray(dr) && dr.length === 2 ? dr[1] : defaultEnd,

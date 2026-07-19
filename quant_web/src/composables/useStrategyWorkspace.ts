@@ -209,6 +209,7 @@ export function useStrategyWorkspace() {
           description: "",
           code: strategyCode.value,
           parameters: strategyParams.value,
+          status: strategyStatus.value,
         });
         if (!created?.id) {
           message.error("创建失败：未获取到策略 ID");
@@ -227,6 +228,7 @@ export function useStrategyWorkspace() {
           name: strategyName.value,
           code: strategyCode.value,
           parameters: strategyParams.value,
+          status: strategyStatus.value,
         });
         message.success("策略已保存");
       }

@@ -8,7 +8,7 @@
 import logging
 from typing import Optional, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query,BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
@@ -978,3 +978,74 @@ async def strategy_module_health_check (
 		)
 
 
+
+# ==================== 特征集 API (v3.4) ====================
+
+@router.get("/feature-sets")
+async def get_feature_sets_api(
+    category: Optional[str] = None,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """获取特征集列表，支持按 category 筛选"""
+    logger.info("feature-sets: 开始查询, category=%s", category)
+    from sqlalchemy import text
+    import json as _json
+    try:
+        rows = await db_session.execute(
+            text("SELECT id::text, name, description, category, feature_columns::text FROM feature_sets ORDER BY category, name"),
+        )
+        result = []
+        for row in rows:
+            cols_raw = row[4]
+            cols = _json.loads(cols_raw) if isinstance(cols_raw, str) and cols_raw else []
+            result.append({
+                "id": row[0], "name": row[1], "description": row[2] or "",
+                "category": row[3], "feature_columns": cols, "count": len(cols),
+            })
+        logger.info("feature-sets: 查询完成, %d条", len(result))
+        return success_response(data=result)
+    except Exception as e:
+        logger.exception("feature-sets: 查询失败")
+        return error_response(message=str(e))
+
+
+# ==================== 模型训练端点 (v3.4) ====================
+
+from pydantic import BaseModel, Field
+from modules.strategy.services.training_service import TrainingService
+
+class LgbTrainRequest(BaseModel):
+    feature_set_ids: list = Field(default_factory=list)
+    feature_codes: list = Field(default_factory=list)
+    etf_pool: list = Field(default_factory=list)
+    label_N: int = Field(default=10, ge=1, le=30)
+    label_X: float = Field(default=0.03, ge=0.01, le=0.15)
+    label_Y: float = Field(default=-0.05, ge=-0.15, le=-0.01)
+    num_leaves: int = Field(default=31, ge=7, le=255)
+    max_depth: int = Field(default=5, ge=2, le=15)
+    learning_rate: float = Field(default=0.05, ge=0.005, le=0.3)
+    n_estimators: int = Field(default=500, ge=50, le=3000)
+    reg_alpha: float = Field(default=0.5, ge=0.0, le=5.0)
+    reg_lambda: float = Field(default=1.0, ge=0.0, le=5.0)
+
+@router.post("/train/lgb")
+async def train_lgb_model_api(request: LgbTrainRequest, background_tasks: BackgroundTasks, current_user = Depends(get_current_user)):
+    """训练 LightGBM ETF 底部策略模型"""
+    svc = TrainingService()
+    async def _train():
+        result = await svc.run(
+            feature_set_ids=request.feature_set_ids or None,
+            feature_codes=request.feature_codes or None,
+            etf_pool=request.etf_pool or None,
+            label_N=request.label_N, label_X=request.label_X, label_Y=request.label_Y,
+            lgb_params={"num_leaves": request.num_leaves, "max_depth": request.max_depth,
+                "learning_rate": request.learning_rate, "n_estimators": request.n_estimators,
+                "reg_alpha": request.reg_alpha, "reg_lambda": request.reg_lambda,
+                "objective": "binary", "metric": "auc", "boosting_type": "gbdt",
+                "verbosity": -1, "subsample": 0.8, "colsample_bytree": 0.7, "random_state": 42},
+        )
+        logger.info(f"训练完成: {result['model_path']} AUC={result['auc_test']:.4f}")
+        return result
+    background_tasks.add_task(_train)
+    return success_response(data={"status": "training_started"}, message="训练任务已提交")

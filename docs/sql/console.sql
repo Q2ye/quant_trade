@@ -208,6 +208,10 @@ select * from  accounts;
 select * from orders
 select * from trades
 select * from signals
+delete  from  signals
+  select * from       account_daily_performance
+
+  SELECT * FROM feature_sets
 -- 交易相关表
 select * from accounts;
 SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 1;

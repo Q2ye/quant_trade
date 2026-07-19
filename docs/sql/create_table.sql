@@ -1792,6 +1792,25 @@ CREATE INDEX idx_alert_delivery_logs_status ON alert_delivery_logs(status);
 -- 1.11 因子相关表
 -- ------------------------------------------------------------
 
+-- 特征集管理表 (v3.4)
+CREATE TABLE IF NOT EXISTS feature_sets (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            VARCHAR(128) NOT NULL,
+    description     TEXT,
+    category        VARCHAR(32) DEFAULT 'custom',
+    feature_columns JSONB NOT NULL DEFAULT '[]',
+    strategy_types  JSONB DEFAULT '["ml","dl"]',
+    is_public       BOOLEAN DEFAULT TRUE,
+    created_by      VARCHAR(36),
+    created_at      TIMESTAMP DEFAULT NOW(),
+    updated_at      TIMESTAMP DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feature_sets_name ON feature_sets(name);
+
+COMMENT ON TABLE feature_sets IS '特征集管理表 — 预设因子组合，供 ML/DL 策略训练时引用';
+COMMENT ON COLUMN feature_sets.category IS '分类: momentum/value/volatility/quality/volume/etf_bottom/custom';
+COMMENT ON COLUMN feature_sets.feature_columns IS '因子代码列表 (JSONB array)';
+
 -- 因子定义表
 CREATE TABLE factor_definitions (
     id VARCHAR(36) PRIMARY KEY,

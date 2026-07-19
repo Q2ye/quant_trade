@@ -212,6 +212,14 @@
         <n-form-item label="类型">
           <n-select v-model:value="currentStrategy.type" :options="STRATEGY_TYPE_OPTIONS" />
         </n-form-item>
+        <n-form-item label="状态">
+          <n-select v-model:value="currentStrategy.status" :options="[
+            { label: '📝 草稿', value: 'draft' },
+            { label: '✅ 已验证(可实盘)', value: 'backtested' },
+            { label: '🟢 运行中', value: 'running' },
+            { label: '⬜ 已停止', value: 'stopped' },
+          ]" />
+        </n-form-item>
       </n-form>
     </n-modal>
   </div>

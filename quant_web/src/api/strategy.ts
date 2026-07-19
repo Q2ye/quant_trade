@@ -28,6 +28,7 @@ export interface UpdateStrategyRequest {
   description?: string;
   code?: string;
   parameters?: Record<string, any>;
+  status?: string;
   category?: string;
   tags?: string[];
 }
@@ -308,5 +309,42 @@ export default {
       .get(`/quantTrade/strategy/${strategyId}/positions`)
       .then(handleResponse)
       .then((res: any) => res.data || []);
+  },
+
+  // ---- 特征集 API (v3.4) ----
+
+  async getFeatureSets(params?: { category?: string }): Promise<any[]> {
+    return request
+      .get("/quantTrade/strategy/feature-sets", { params: { page: 1, page_size: 50, ...params } })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? []);
+  },
+
+  async getAvailableFactors(): Promise<any[]> {
+    return request
+      .get("/quantTrade/strategy/available-factors")
+      .then(handleResponse)
+      .then((res: any) => res.data ?? []);
+  },
+
+  // ---- 模型训练 API (v3.4) ----
+
+  async trainLgbModel(params: {
+    feature_set_ids?: string[];
+    feature_codes?: string[];
+    etf_pool?: string[];
+    label_N?: number;
+    label_X?: number;
+    label_Y?: number;
+    num_leaves?: number;
+    max_depth?: number;
+    learning_rate?: number;
+    n_estimators?: number;
+    reg_alpha?: number;
+    reg_lambda?: number;
+  }): Promise<any> {
+    return request
+      .post("/quantTrade/strategy/train/lgb", params)
+      .then(handleResponse);
   },
 };

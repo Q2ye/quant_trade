@@ -1848,3 +1848,473 @@ def _calculate_atr(
 
     atr = true_range.rolling(window=period).mean()
     return atr
+
+
+# ============================================================
+#  ETF 抄底策略专用因子 (LightGBM ETF Bottom Fishing)
+#  类别: etf_bottom
+# ============================================================
+
+# ---------- A组: 简单窗口计算 (纯 OHLCV) ----------
+
+@register_factor(
+    name="drawdown_20d",
+    display_name="20日回撤",
+    description="(close - max(high,20)) / max(high,20)，负值越大→超跌",
+    category="etf_bottom",
+    formula="(close - max_high_20) / max_high_20",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 20},
+)
+def _calc_drawdown_20d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """20日滚动回撤"""
+    w = (parameters or {}).get("window", 20)
+    roll_max = df.groupby('ts_code')['high'].transform(
+        lambda x: x.rolling(w, min_periods=max(5, w // 4)).max())
+    return (df['close'] - roll_max) / roll_max
+
+
+@register_factor(
+    name="drawdown_60d",
+    display_name="60日回撤",
+    description="(close - max(high,60)) / max(high,60)",
+    category="etf_bottom",
+    formula="(close - max_high_60) / max_high_60",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 60},
+)
+def _calc_drawdown_60d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 60)
+    roll_max = df.groupby('ts_code')['high'].transform(
+        lambda x: x.rolling(w, min_periods=max(10, w // 6)).max())
+    return (df['close'] - roll_max) / roll_max
+
+
+@register_factor(
+    name="drawdown_120d",
+    display_name="120日回撤",
+    description="(close - max(high,120)) / max(high,120)",
+    category="etf_bottom",
+    formula="(close - max_high_120) / max_high_120",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 120},
+)
+def _calc_drawdown_120d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 120)
+    roll_max = df.groupby('ts_code')['high'].transform(
+        lambda x: x.rolling(w, min_periods=max(20, w // 6)).max())
+    return (df['close'] - roll_max) / roll_max
+
+
+@register_factor(
+    name="rsi_28",
+    display_name="28日RSI",
+    description="28日相对强弱指标",
+    category="etf_bottom",
+    formula="RSI(period=28)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 28},
+)
+def _calc_rsi_28(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """28日 RSI"""
+    period = (parameters or {}).get("period", 28)
+    delta = df.groupby('ts_code')['close'].transform(lambda x: x.diff())
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    avg_loss = loss.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+@register_factor(
+    name="rsi_low_days",
+    display_name="RSI低位持续天数",
+    description="RSI(14)<30 的连续天数",
+    category="etf_bottom",
+    formula="count(rsi_14 < 30, rolling_lookback)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"threshold": 30, "lookback": 60},
+)
+def _calc_rsi_low_days(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """RSI 低于阈值持续天数"""
+    threshold = (parameters or {}).get("threshold", 30)
+    lookback = (parameters or {}).get("lookback", 60)
+    # 复用 RSI(14) 计算
+    period = 14
+    delta = df.groupby('ts_code')['close'].transform(lambda x: x.diff())
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    avg_loss = loss.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    below = (rsi < threshold).astype(int)
+    # 连续低于阈值天数
+    result = below.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(lookback, min_periods=1).sum())
+    return result
+
+
+@register_factor(
+    name="ma_disparity_20",
+    display_name="20日均线偏离",
+    description="(close - MA20) / MA20",
+    category="etf_bottom",
+    formula="(close - MA20) / MA20",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 20},
+)
+def _calc_ma_disparity_20(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 20)
+    ma = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(w, min_periods=5).mean())
+    return (df['close'] - ma) / ma
+
+
+@register_factor(
+    name="ma_disparity_60",
+    display_name="60日均线偏离",
+    description="(close - MA60) / MA60",
+    category="etf_bottom",
+    formula="(close - MA60) / MA60",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 60},
+)
+def _calc_ma_disparity_60(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 60)
+    ma = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(w, min_periods=10).mean())
+    return (df['close'] - ma) / ma
+
+
+@register_factor(
+    name="ma_disparity_120",
+    display_name="120日均线偏离",
+    description="(close - MA120) / MA120",
+    category="etf_bottom",
+    formula="(close - MA120) / MA120",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 120},
+)
+def _calc_ma_disparity_120(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 120)
+    ma = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(w, min_periods=20).mean())
+    return (df['close'] - ma) / ma
+
+
+@register_factor(
+    name="close_to_low_20d",
+    display_name="收盘相对20日低点",
+    description="(close - min(low,20)) / close，接近0→靠近低点",
+    category="etf_bottom",
+    formula="(close - min_low_20) / close",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_close_to_low_20d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    roll_min = df.groupby('ts_code')['low'].transform(
+        lambda x: x.rolling(20, min_periods=5).min())
+    return (df['close'] - roll_min) / df['close']
+
+
+@register_factor(
+    name="price_position_250d",
+    display_name="250日价格位置",
+    description="(close-min(low,250))/(max(high,250)-min(low,250))，值越低→在低位",
+    category="etf_bottom",
+    formula="(close - low_250) / (high_250 - low_250)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 250},
+)
+def _calc_price_position_250d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 250)
+    lo = df.groupby('ts_code')['low'].transform(lambda x: x.rolling(w, min_periods=20).min())
+    hi = df.groupby('ts_code')['high'].transform(lambda x: x.rolling(w, min_periods=20).max())
+    denom = hi - lo
+    denom = denom.replace(0, np.nan)
+    return (df['close'] - lo) / denom
+
+
+@register_factor(
+    name="momentum_5d",
+    display_name="5日动量",
+    description="close / close_5d_ago - 1",
+    category="etf_bottom",
+    formula="close / lag(close,5) - 1",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 5},
+)
+def _calc_momentum_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 5)
+    lag = df.groupby('ts_code')['close'].transform(lambda x: x.shift(w))
+    return df['close'] / lag - 1
+
+
+@register_factor(
+    name="consecutive_down_days",
+    display_name="连续下跌天数",
+    description="连续 close < pre_close 的天数",
+    category="etf_bottom",
+    formula="sum(close < pre_close, consecutive)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_consecutive_down_days(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """连续下跌天数"""
+    down = (df['close'] < df.groupby('ts_code')['pre_close'].transform(lambda x: x))
+    result = down.groupby(df['ts_code']).transform(
+        lambda x: x.astype(int).groupby((x != x.shift()).cumsum()).cumsum())
+    return result.astype(float)
+
+
+@register_factor(
+    name="atr_ratio_20",
+    display_name="ATR相对值",
+    description="ATR(14) / close，值越高→波动相对大",
+    category="etf_bottom",
+    formula="ATR14 / close",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_atr_ratio_20(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """ATR相对价格"""
+    high, low, close = df['high'], df['low'], df['close']
+    prev_close = close.groupby(df['ts_code']).transform(lambda x: x.shift(1))
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr14 = tr.groupby(df['ts_code']).transform(lambda x: x.rolling(14, min_periods=5).mean())
+    return atr14 / close
+
+
+@register_factor(
+    name="amplitude_5d",
+    display_name="5日平均振幅",
+    description="mean((high-low)/pre_close, 5)",
+    category="etf_bottom",
+    formula="mean((h-l)/pre_close, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_amplitude_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    amp = (df['high'] - df['low']) / df['pre_close']
+    return amp.groupby(df['ts_code']).transform(lambda x: x.rolling(5, min_periods=2).mean())
+
+
+@register_factor(
+    name="max_dd_duration",
+    display_name="最大回撤持续天数",
+    description="从近期高点至今的持续天数",
+    category="etf_bottom",
+    formula="days_since_rolling_peak(60)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_max_dd_duration(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """从60日高点的天数"""
+    roll_peak = df.groupby('ts_code')['close'].transform(
+        lambda x: x.rolling(60, min_periods=10).max())
+    peak_dates = df.groupby('ts_code')['close'].transform(
+        lambda x: x.rolling(60, min_periods=10).apply(lambda y: y.argmax(), raw=False))
+    # 简化：当前是否低于60日高点 + 持续天数
+    below_peak = (df['close'] < roll_peak.shift(1)).astype(int)
+    return below_peak.groupby(df['ts_code']).transform(
+        lambda x: x.groupby((x != x.shift()).cumsum()).cumsum())
+
+
+# ---------- 量价因子 ----------
+
+@register_factor(
+    name="volume_shrink_5d",
+    display_name="5日缩量比",
+    description="vol / mean(vol,5)，<0.6→供应衰竭",
+    category="etf_bottom",
+    formula="vol / MA(vol, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_volume_shrink_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    ma5 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(5, min_periods=3).mean())
+    return df['vol'] / ma5
+
+
+@register_factor(
+    name="volume_shrink_20d",
+    display_name="20日缩量比",
+    description="vol / mean(vol,20)",
+    category="etf_bottom",
+    formula="vol / MA(vol, 20)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_volume_shrink_20d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
+    return df['vol'] / ma20
+
+
+@register_factor(
+    name="vol_decline_corr",
+    display_name="量价下跌相关性",
+    description="近20日成交量与收益率的相关系数",
+    category="etf_bottom",
+    formula="rolling_corr(vol, ret, 20)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 20},
+)
+def _calc_vol_decline_corr(df: pd.DataFrame, parameters=None) -> pd.Series:
+    w = (parameters or {}).get("window", 20)
+    ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+    return df.groupby('ts_code').apply(
+        lambda g: g['vol'].rolling(w).corr(ret.loc[g.index]),
+        include_groups=False,
+    ).reset_index(level=0, drop=True)
+
+
+@register_factor(
+    name="vol_spike_count",
+    display_name="放量下跌次数",
+    description="近10日放量(>1.5x均量)+下跌的天数",
+    category="etf_bottom",
+    formula="count(vol > 1.5*MA20 AND ret < 0, 10)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_vol_spike_count(df: pd.DataFrame, parameters=None) -> pd.Series:
+    ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
+    ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+    spike = ((df['vol'] > 1.5 * ma20) & (ret < 0)).astype(int)
+    return spike.groupby(df['ts_code']).transform(lambda x: x.rolling(10, min_periods=1).sum())
+
+
+@register_factor(
+    name="turnover_change_5d",
+    display_name="换手率变化",
+    description="turnover / mean(turnover, 5)",
+    category="etf_bottom",
+    formula="turnover / MA(turnover, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_turnover_change_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    if 'turnover_rate' not in df.columns:
+        return pd.Series(np.nan, index=df.index)
+    ma5 = df.groupby('ts_code')['turnover_rate'].transform(lambda x: x.rolling(5, min_periods=3).mean())
+    return df['turnover_rate'] / ma5
+
+
+@register_factor(
+    name="amount_change_5d",
+    display_name="成交额变化",
+    description="amount / mean(amount, 5)",
+    category="etf_bottom",
+    formula="amount / MA(amount, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_amount_change_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    if 'amount' not in df.columns:
+        return pd.Series(np.nan, index=df.index)
+    ma5 = df.groupby('ts_code')['amount'].transform(lambda x: x.rolling(5, min_periods=3).mean())
+    return df['amount'] / ma5
+
+
+@register_factor(
+    name="high_vol_days_5d",
+    display_name="高波动天数",
+    description="近5日vol>1.5x均量天数",
+    category="etf_bottom",
+    formula="count(vol > 1.5*MA20, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_high_vol_days_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
+    high = (df['vol'] > 1.5 * ma20).astype(int)
+    return high.groupby(df['ts_code']).transform(lambda x: x.rolling(5, min_periods=1).sum())
+
+
+@register_factor(
+    name="pct_chg_abs_mean_5d",
+    display_name="5日绝对涨跌幅均值",
+    description="mean(|pct_chg|, 5)",
+    category="etf_bottom",
+    formula="mean(abs(pct_chg), 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_pct_chg_abs_mean_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    if 'pct_chg' not in df.columns:
+        ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+        abs_ret = ret.abs()
+    else:
+        abs_ret = df['pct_chg'].abs()
+    return abs_ret.groupby(df['ts_code']).transform(lambda x: x.rolling(5, min_periods=2).mean())
+
+
+@register_factor(
+    name="boll_pct_b",
+    display_name="布林带%B",
+    description="(close - BOLL_lower) / (BOLL_upper - BOLL_lower)",
+    category="etf_bottom",
+    formula="(close - lower) / (upper - lower)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 20, "nbdev": 2},
+)
+def _calc_boll_pct_b(df: pd.DataFrame, parameters=None) -> pd.Series:
+    period = (parameters or {}).get("period", 20)
+    nbdev = (parameters or {}).get("nbdev", 2)
+    mid = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(period).mean())
+    std = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(period).std())
+    upper = mid + nbdev * std
+    lower = mid - nbdev * std
+    denom = upper - lower
+    denom = denom.replace(0, np.nan)
+    return (df['close'] - lower) / denom
+
+
+# ============================================================
+#  Convenience: factor name → calculator function mapping
+#  (used by LightGBMBottomStrategy for on_bar prediction)
+# ============================================================
+FACTOR_CALCULATORS_MAP = {
+    "drawdown_20d": _calc_drawdown_20d,
+    "drawdown_60d": _calc_drawdown_60d,
+    "drawdown_120d": _calc_drawdown_120d,
+    "rsi_28": _calc_rsi_28,
+    "rsi_low_days": _calc_rsi_low_days,
+    "ma_disparity_20": _calc_ma_disparity_20,
+    "ma_disparity_60": _calc_ma_disparity_60,
+    "ma_disparity_120": _calc_ma_disparity_120,
+    "close_to_low_20d": _calc_close_to_low_20d,
+    "price_position_250d": _calc_price_position_250d,
+    "momentum_5d": _calc_momentum_5d,
+    "consecutive_down_days": _calc_consecutive_down_days,
+    "atr_ratio_20": _calc_atr_ratio_20,
+    "amplitude_5d": _calc_amplitude_5d,
+    "max_dd_duration": _calc_max_dd_duration,
+    "volume_shrink_5d": _calc_volume_shrink_5d,
+    "volume_shrink_20d": _calc_volume_shrink_20d,
+    "vol_decline_corr": _calc_vol_decline_corr,
+    "vol_spike_count": _calc_vol_spike_count,
+    "amount_change_5d": _calc_amount_change_5d,
+    "pct_chg_abs_mean_5d": _calc_pct_chg_abs_mean_5d,
+    "high_vol_days_5d": _calc_high_vol_days_5d,
+    "boll_pct_b": _calc_boll_pct_b,
+    "turnover_change_5d": _calc_turnover_change_5d,
+}

@@ -116,7 +116,7 @@ async def initialize(
         return success
 
     except Exception as e:
-        print(f"❌ 系统模块初始化失败: {str(e)}")
+        pass  # logged below
         logger.exception("系统模块初始化失败")
         return False
 

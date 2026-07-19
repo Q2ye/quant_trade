@@ -96,6 +96,7 @@ class TradingSignal:
     price_limit_high: Optional[float] = None      # 可接受最高成交价
     max_slippage_pct: float = 0.02                # 最大可接受滑点（默认 2%）
     order_type: str = "limit_range"               # limit / limit_range / market
+    weight: float = 1.0                           # 仓位权重 [0, 1]，策略层→交易层仓位映射
     target_price: Optional[float] = None          # 目标价格
     stop_loss_price: Optional[float] = None       # 止损价格
 

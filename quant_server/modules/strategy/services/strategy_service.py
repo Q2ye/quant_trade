@@ -48,6 +48,17 @@ class StrategyService:
 		self.param_repo = StrategyParameterRepository(session)
 		self.position_repo = PositionRepository(session)
 
+	def _get_strategy_defaults(self, class_name: str):
+		"""从 StrategyRegistry 获取策略类的默认参数"""
+		from modules.strategy.engines.strategy_registry import StrategyRegistry
+		registry = StrategyRegistry()
+		for st, classes in registry._registry.items():
+			for cls in classes:
+				if cls.__name__ == class_name:
+					if hasattr(cls, 'DEFAULT_PARAMS'):
+						return dict(getattr(cls, 'DEFAULT_PARAMS', {}))
+		return {}
+
 	async def get_strategy_list (
 			self,
 			user_id: str,
@@ -552,9 +563,32 @@ class StrategyService:
 			class_name: str,
 			parameters: Dict[str, Any],
 			user_id: str = "0",
+			module_path: str = "",
 	) -> Dict[str, Any]:
 		"""查找或创建内置策略。v3.0: 合并策略类完整默认参数。"""
 		try:
+			# auto-fill code from module if empty (v3.4)
+			if not code and module_path:
+				import importlib, inspect, os as _os
+				try:
+					mod = importlib.import_module(module_path)
+					src_file = getattr(mod, '__file__', '')
+					if src_file and src_file.endswith('__init__.py'):
+						# Package init — read the main strategy file instead
+						pkg_dir = _os.path.dirname(src_file)
+						for fname in _os.listdir(pkg_dir):
+							if fname.endswith('.py') and fname != '__init__.py':
+								fpath = _os.path.join(pkg_dir, fname)
+								with open(fpath, 'r', encoding='utf-8') as _f:
+									code = _f.read()
+								break
+					elif src_file and src_file.endswith('.py'):
+						with open(src_file, 'r', encoding='utf-8') as _f:
+							code = _f.read()
+					if not code:
+						code = inspect.getsource(mod)
+				except Exception:
+					pass
 			full_params = dict(self._get_strategy_defaults(class_name))
 			if parameters:
 				full_params.update(parameters)
@@ -668,6 +702,7 @@ class StrategyService:
 		"xtquant": "迅投 QMT SDK，请确认环境配置。",
 	}
 
+	@staticmethod
 	@staticmethod
 	async def _validate_strategy_code(code: str) -> Dict[str, Any]:
 		"""

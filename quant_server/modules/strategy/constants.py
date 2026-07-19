@@ -54,7 +54,7 @@ class StrategyType(str, Enum):
 
 # ==================== 策略状态 ====================
 class StrategyLifecycleStatus(str, Enum):
-    """策略生命周期状态枚举（5 状态简化模型）
+    """策略生命周期状态枚举
 
     状态流转:
         DRAFT ──start──→ RUNNING ⇄ PAUSED
@@ -63,10 +63,16 @@ class StrategyLifecycleStatus(str, Enum):
                            ↓
                          STOPPED
 
+        DRAFT ──backtest──→ BACKTESTED ──start──→ RUNNING
+
     v2.1: 移除 COMPILED/DEPLOYED/ARCHIVED（无实际行为差异或零实现）
+    v3.5: 新增 BACKTESTED 状态（回测验证通过，可启动实盘）
     """
     # 草稿（初始态）
     DRAFT = "draft"
+
+    # 回测验证通过（可启动实盘）
+    BACKTESTED = "backtested"
 
     # 运行中
     RUNNING = "running"
@@ -84,7 +90,8 @@ class StrategyLifecycleStatus(str, Enum):
     def allowed_transitions(cls, from_status: "StrategyLifecycleStatus") -> set:
         """返回 from_status 允许转换到的状态集合"""
         _map = {
-            cls.DRAFT:   {cls.RUNNING},
+            cls.DRAFT:   {cls.RUNNING, cls.BACKTESTED},
+            cls.BACKTESTED: {cls.RUNNING, cls.STOPPED},
             cls.RUNNING: {cls.PAUSED, cls.STOPPED, cls.ERROR},
             cls.PAUSED:  {cls.RUNNING, cls.STOPPED, cls.ERROR},
             cls.STOPPED: {cls.RUNNING},   # STOP/ERROR 可直接启动
