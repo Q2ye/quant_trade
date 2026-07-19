@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-沪深主板强势股低吸轮动策略 — 移植自聚宽高抛低吸策略
+沪深主板强势股低吸轮动策略 — 行业黑名单v3 — 移植自聚宽高抛低吸策略
 
 聚宽原文: https://www.joinquant.com/post/75503
 
@@ -42,9 +42,9 @@ from modules.strategy.strategies.base.base_strategy import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
-class StockLowHighStrategy(BaseStrategy):
+class IndustryV3LHL(BaseStrategy):
     """
-    沪深主板强势股低吸轮动策略。
+    沪深主板强势股低吸轮动策略 — 行业黑名单v3。
 
     策略类型：CUSTOM
     全市场扫描选股 + 半仓轮动。
@@ -176,6 +176,10 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 调试 —— :日志会输出行情判定、选股/复检数量、每次止盈止损的触发原因，方便你复盘确认策略行为是否符合预期。
         "verbose_logging": True,
+
+        # —— 行业黑名单 ——
+        "industry_blacklist": ["商贸零售", "汽车", "建筑装饰", "钢铁", "电力设备"],
+
     }
 
     def __init__(
@@ -207,7 +211,8 @@ class StockLowHighStrategy(BaseStrategy):
         # {ts_code: {"entry_price": float, "weight": float, "shares": int, "locked": bool}}
         self._holdings: Dict[str, Dict] = {}
         self._track_high: Dict[str, float] = {}    # {ts_code: 持仓期间最高价}
-        self._exit_pending: Set[str] = set()        # {ts_code: 待确认卖出的股票}
+        self._exit_pending: Set[str] = set()
+        self._industry_map: Dict[str, str] = {}    # {ts_code: l1_name}
         # 中证500指数日线数据缓存（方案C：用于行情判定，通过 IndexDailyRepository 加载）
         self._csi500_cache: pd.DataFrame = pd.DataFrame()
         # v6.8 regime ETF 宽度门数据缓存 {ts_code: DataFrame[trade_date(str), close]}
@@ -304,6 +309,24 @@ class StockLowHighStrategy(BaseStrategy):
         # 回测 backtest_service Step7 经 strategy.universe 读取 → 喂满全主板，
         # 取代"全市场兜底 1000 只"，使 bullish_pct 成为真实市场宽度、选股覆盖全市场。
         # v6.2: 同时填充 _st_stocks（ST 过滤生效）与 _listing_dates（新股真实日期过滤）。
+        # ---- 加载行业映射 ----
+        blacklist = self.parameters.get("industry_blacklist", [])
+        if blacklist and session_factory:
+            try:
+                from sqlalchemy import select
+                from shared.database.models.data_models import IndexSwMember
+                async with session_factory() as db:
+                    result = await db.execute(
+                        select(IndexSwMember.ts_code, IndexSwMember.l1_name)
+                        .where(IndexSwMember.out_date == None)
+                    )
+                    rows = result.fetchall()
+                    self._industry_map = {r[0]: r[1] for r in rows}
+                logger.info(f"行业映射已加载: {len(self._industry_map)} 只, 黑名单: {blacklist}")
+            except Exception as e:
+                logger.warning(f"行业映射加载失败({e}), 黑名单不生效")
+
+        # ---- 加载策略自有股票池 ----
         if session_factory:
             try:
                 from shared.database.repositories.market.basic.stock_repo import (
@@ -349,6 +372,7 @@ class StockLowHighStrategy(BaseStrategy):
         self._csi500_cache = pd.DataFrame()
         self._etf_width_cache.clear()
         self._st_stocks.clear()
+        self._industry_map.clear()
         logger.info("低吸轮动策略已停止")
 
     # =============================================================================
@@ -878,6 +902,13 @@ class StockLowHighStrategy(BaseStrategy):
                 return False
             if code in self._st_stocks:
                 return False
+
+            # 行业黑名单过滤
+            blacklist = self.parameters.get("industry_blacklist", [])
+            if blacklist and self._industry_map:
+                ind = self._industry_map.get(code)
+                if ind is not None and ind in blacklist:
+                    return False
 
             # v6.3 幽灵持仓修复：仅"当日有新 bar"的股票可在池内。
             # 缓存中存在（如全市场预热注入）但引擎未推送当日数据的股票，
