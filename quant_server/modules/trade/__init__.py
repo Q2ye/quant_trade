@@ -170,6 +170,13 @@ async def initialize(
         await execution_engine.start()
         await position_engine.start()
         
+        # 绑定盯市处理器（数据同步完成后自动更新持仓浮动盈亏）
+        try:
+            from modules.trade.services.mark_to_market import bind_mark_to_market
+            bind_mark_to_market(event_engine, session_factory)
+        except Exception as _e:
+            logger.warning("盯市绑定跳过（非致命）: %s", _e)
+
         logger.info("交易模块初始化成功")
         return True
 

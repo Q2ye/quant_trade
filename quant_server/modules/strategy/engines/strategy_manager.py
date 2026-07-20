@@ -1539,15 +1539,19 @@ class StrategyManager(EngineBase):
         )
 
         # 1. 预热历史数据（静默回放，不产生信号）
-        # 每次触发前清空上次运行的内存状态，避免重复信号
-        strategy.clear_signals()
-        if hasattr(strategy, "_price_data"):
-            strategy._price_data = strategy._price_data.iloc[0:0]
-        for attr in ("_data_cache", "_last_signal"):
-            if hasattr(strategy, attr):
-                setattr(strategy, attr, None if attr == "_last_signal" else {})
+        # v3.5: 若策略已有足够缓存数据（实盘运行中），跳过预热直接使用
+        data_cache = getattr(strategy, "_data_cache", None)
+        cache_ready = data_cache and len(data_cache) >= 100  # 已缓存 ≥100 只股票
 
-        if symbols:
+        if not cache_ready:
+            strategy.clear_signals()
+            if hasattr(strategy, "_price_data"):
+                strategy._price_data = strategy._price_data.iloc[0:0]
+            for attr in ("_data_cache", "_last_signal"):
+                if hasattr(strategy, attr):
+                    setattr(strategy, attr, None if attr == "_last_signal" else {})
+
+        if not cache_ready and symbols:
             lookback_start = trade_date - timedelta(days=365)
             warmup_bars = await self._load_daily_bars_range(
                 lookback_start, trade_date - timedelta(days=1), symbols=symbols,
@@ -1566,6 +1570,11 @@ class StrategyManager(EngineBase):
                             pass
                 strategy.clear_signals()
             del warmup_bars
+        elif cache_ready:
+            strategy.clear_signals()  # 只清信号，不清缓存
+            logger.info(
+                f"手动触发: {strategy_id} 跳过预热（已有 {len(data_cache)} 只股票缓存）"
+            )
 
         total_bars = 0
         total_signals = 0
@@ -1609,7 +1618,20 @@ class StrategyManager(EngineBase):
                 except Exception as e:
                     bar_error_count += 1
 
-            # 5. 收集 add_signal() 信号
+            # 5. 调用 on_bar_batch_end（部分策略在此生成信号，如 StockLowHighStrategy）
+            batch_end = getattr(strategy, "on_bar_batch_end", None)
+            if batch_end:
+                try:
+                    batch_sigs = batch_end(cur_date)
+                    if batch_sigs:
+                        if isinstance(batch_sigs, list):
+                            day_signals.extend(batch_sigs)
+                        else:
+                            day_signals.append(batch_sigs)
+                except Exception as e:
+                    logger.warning(f"trigger_strategy on_bar_batch_end 失败: {e}")
+
+            # 6. 收集 add_signal() 信号
             if strategy.signals:
                 day_signals.extend(strategy.signals)
                 strategy.clear_signals()
@@ -2052,10 +2074,24 @@ class StrategyManager(EngineBase):
 
         n_bars = sum(len(b) for b in bars_by_date.values())
         n_days = len(bars_by_date)
+
+        # 显式释放预热临时数据
+        bars_by_date.clear()
+        del bars_by_date
+
         logger.info(
             "策略 %s 预热完成: %d 个交易日 / %d 条 bar, lookback=%d",
             strategy_id, n_days, n_bars, lookback,
         )
+
+        # 强制 GC + 尝试归还内存给 OS（降低进程 RSS）
+        import gc as _gc
+        _gc.collect()
+        try:
+            import ctypes
+            ctypes.CDLL("ucrtbase").malloc_trim(0)
+        except Exception:
+            pass
 
     async def _warmup_all_market(self, strategy_id: str, strategy) -> None:
         """
@@ -2160,9 +2196,9 @@ class StrategyManager(EngineBase):
                     df = pd.DataFrame(recs)
                     df = df.sort_values("trade_date").reset_index(drop=True)
                     df = df[["close", "volume", "amount", "open", "high", "low"]]
-                    # 限制缓存行数（与 _append_data 的 tail(250) 一致）
-                    if len(df) > 250:
-                        df = df.tail(250).reset_index(drop=True)
+                    # 限制缓存行数（与 _append_data 的 tail(120) 一致）
+                    if len(df) > 120:
+                        df = df.tail(120).reset_index(drop=True)
                     strategy._data_cache[code] = df
                     populated += 1
 
@@ -2171,6 +2207,17 @@ class StrategyManager(EngineBase):
                     "(lookback=%d 天, 总行数=%d)",
                     strategy_id, populated, len(all_codes), lookback, len(rows),
                 )
+
+                # 释放临时构建数据并归还内存给 OS
+                rows_by_code.clear()
+                del rows_by_code, rows, all_codes
+                import gc as _gc
+                _gc.collect()
+                try:
+                    import ctypes
+                    ctypes.CDLL("ucrtbase").malloc_trim(0)
+                except Exception:
+                    pass
 
         except Exception as e:
             logger.warning(

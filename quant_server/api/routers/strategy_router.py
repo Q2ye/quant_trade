@@ -894,6 +894,7 @@ async def resume_strategy_api (
 @router.post("/{strategy_id}/trigger")
 async def trigger_strategy_api(
 	strategy_id: str,
+	background_tasks: BackgroundTasks,
 	request: StrategyTriggerRequest = Body(StrategyTriggerRequest()),
 	current_user: Dict = Depends(get_current_user),
 	main_engine=MainEngineDep,
@@ -903,6 +904,8 @@ async def trigger_strategy_api(
 
 	走完整实盘信号链路：
 	on_bar → StrategySignalEvent → SignalEngine → pending_manual
+
+	v3.5: 改为后台执行，不阻塞 API 响应。
 	"""
 	try:
 		logger.info(
@@ -910,24 +913,24 @@ async def trigger_strategy_api(
 			f"trade_date={request.trade_date}, symbols={request.symbols}"
 		)
 
-		result = await trigger_strategy(
-			strategy_id=strategy_id,
-			request=request,
-			main_engine=main_engine,
+		async def _run_trigger():
+			result = await trigger_strategy(
+				strategy_id=strategy_id,
+				request=request,
+				main_engine=main_engine,
+			)
+			signals = result.get("data", {}).get("signals", []) if result.get("data") else []
+			logger.info(
+				f"手动触发完成: {strategy_id} trade_date={request.trade_date} "
+				f"signals={len(signals)}, success={result.get('success')}"
+			)
+
+		background_tasks.add_task(_run_trigger)
+
+		return success_response(
+			message=f"手动触发已提交（{request.trade_date}），请查看日志或信号列表",
+			data={"strategy_id": strategy_id, "trade_date": str(request.trade_date), "status": "running"},
 		)
-
-		if result.get("success"):
-			return success_response(
-				data=result.get("data"),
-				message=f"策略 {strategy_id} 手动触发完成",
-			)
-		else:
-			return error_response(
-				message=result.get("error", "手动触发失败"),
-				code="VALIDATION_ERROR",
-				status_code=400,
-			)
-
 	except HTTPException:
 		raise
 	except Exception as e:

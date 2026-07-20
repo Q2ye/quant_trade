@@ -38,9 +38,10 @@ from .handlers import router as account_router
 from .engines.settlement_engine import SettlementEngine
 
 def _register_daily_settlement_schedule(settlement_engine) -> None:
-    """注册交易日 15:30 日终结算调度（APScheduler）
+    """注册交易日 21:00 日终结算调度（APScheduler）
 
-    兜底机制：即使当日无交易信号触发结算，15:30 也会执行一次。
+    兜底机制：即使当日无交易信号触发结算，21:00 也会执行一次。
+    半自动模式下，21:00 确保人工确认交易信号的时间窗口已关闭后再结算。
     """
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -68,15 +69,15 @@ def _register_daily_settlement_schedule(settlement_engine) -> None:
 
         scheduler.add_job(
             _settlement_job,
-            trigger=CronTrigger(day_of_week="mon-fri", hour=15, minute=30, timezone="Asia/Shanghai"),
-            id="daily_settlement_15_30",
-            name="日终结算(15:30)",
+            trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=0, timezone="Asia/Shanghai"),
+            id="daily_settlement_21_00",
+            name="日终结算(21:00)",
             max_instances=1,
             misfire_grace_time=300,
             coalesce=True,
         )
         scheduler.start()
-        logger.info("日终结算调度已注册: 交易日 15:30")
+        logger.info("日终结算调度已注册: 交易日 21:00")
     except ImportError:
         logger.info("APScheduler 未安装，跳过日终结算调度注册")
     except Exception:
@@ -159,7 +160,7 @@ async def initialize(
                 await settlement_engine.start()
                 logger.info("SettlementEngine 已注册并启动")
 
-                # 注册日终结算调度（交易日 15:30）
+                # 注册日终结算调度（交易日 21:00）
                 _register_daily_settlement_schedule(settlement_engine)
             except Exception as e:
                 logger.warning(f"SettlementEngine 注册失败（非致命）: {e}")

@@ -190,6 +190,7 @@ class StrategyRun(Base):
     execution_mode = Column(String(20), nullable=True, comment='执行模式: semi_auto/full_auto，backtest时为null')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='启动时绑定的账户ID')
     allocated_capital = Column(Numeric(16, 4), default=0, comment='启动时分配的资金额度')
+    strategy_version_id = Column(String(36), nullable=True, comment='策略版本ID（v3.3: 溯源信号对应的策略版本）')
     log_path = Column(Text, comment='日志文件路径')
     state_snapshot = Column(JSONB, nullable=True, comment='策略状态快照（含心跳/持仓/数据日期）')
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment='创建时间')
