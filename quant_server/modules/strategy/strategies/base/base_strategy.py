@@ -195,6 +195,10 @@ class BaseStrategy(ABC):
 		sid = strategy_id or self.name  # 优先用 UUID，回退到名称
 		logger.info("%s: load_live_state strategy_id=%s", self.name, sid)
 
+		# v3.5: 先清空再加载，避免 DB 中已清除但内存残留脏数据
+		self._active_positions.clear()
+		self._pending_signals.clear()
+
 		# 1. 持仓
 		try:
 			result = await db.execute(text(

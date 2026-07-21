@@ -17,7 +17,7 @@
   3. 风控：通用止损 4%，非池内止盈（从高点回落 2%）
 
 适配说明（与聚宽原版的区别）：
-  - 原版有 9:40/9:51/9:52 时间节点分批执行
+  - 你
     系统策略改为单次 rebalance 中完成（9:40 初筛 → 9:51 复检一次完成）
   - 原版使用 talib，改为 numpy/pandas 实现
   - 原版使用 get_price/attribute_history，改为策略内 DataFrame 缓存
@@ -176,6 +176,16 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 调试 —— :日志会输出行情判定、选股/复检数量、每次止盈止损的触发原因，方便你复盘确认策略行为是否符合预期。
         "verbose_logging": True,
+
+        # —— 拉高出货检测（多信号模型，防连板陷阱） ——
+        # ⚠️ v6.10 5年回测: +45.86% vs 基线+86.77%，拦截大赢家→收益腰斩。默认关闭。
+        "pump_dump_filter_enabled": False,             # 开启拉高出货过滤（不推荐）
+        "pd_vol_climax_ratio": 1.5,                    # 放量见顶：末次涨停量 / 前几次均量 > 此值
+        "pd_distribution_vol_ratio": 1.5,              # 出货日：量 > 20日均量 × 此值
+        "pd_distribution_range_pct": 0.05,             # 出货日：振幅 > 此值
+        "pd_parabolic_consecutive": 3,                 # 连续涨停 ≥ 此数 → 抛物线衰竭
+        "pd_parabolic_dd_threshold": 0.05,             # 高位回落 > 此值 → 确认衰竭
+        "pd_signal_threshold": 2,                      # 命中 ≥ 此数信号 → 拦截（1=记录, 2+=拦截）
 
         # —— 行业黑名单 ——
         "industry_blacklist": ["商贸零售", "汽车", "建筑装饰", "钢铁", "电力设备"],
@@ -971,6 +981,13 @@ class StockLowHighStrategy(BaseStrategy):
             # P1: 买入价下限——不买从 20 日新高跌超 8% 的（不接飞刀）
             if closes[-1] < hhv_20 * 0.92:
                 return False
+            # P2: 拉高出货检测（多信号模型）——命中 ≥ pd_signal_threshold 个信号 → 拦截
+            pump_score, pump_reasons = self._detect_pump_and_dump(code)
+            threshold = int(self.parameters.get("pd_signal_threshold", 2))
+            if pump_score >= threshold:
+                if self.verbose_logging and pump_score >= 2:
+                    logger.info(f"P2拦截 {code}: {', '.join(pump_reasons)}")
+                return False
 
             return True
         except Exception:
@@ -1350,6 +1367,156 @@ class StockLowHighStrategy(BaseStrategy):
         if df is None or len(df) < 2:
             return True
         return len(df) < new_days
+
+    # =============================================================================
+    # v6.10 拉高出货检测（多信号模型）
+    # =============================================================================
+    #
+    # 四个独立信号，每个基于不同的数据维度：
+    #
+    #   S1 — 放量见顶 (Volume Climax):
+    #     最后一次涨停的成交量是否显著放大（相对于前几次涨停均量）。
+    #     逻辑：真正的强势股放量均匀，出货股在最后一根涨停上倾泻筹码。
+    #
+    #   S2 — 出货日 (Distribution Day):
+    #     连板后是否出现放量下跌 + 大振幅的出货日。
+    #     逻辑：拉高后必然有出货动作——高量 + 收阴 + 宽振幅是标准出货特征。
+    #
+    #   S3 — 抛物线衰竭 (Parabolic Exhaustion):
+    #     是否有 ≥3 个连续涨停（抛物线式上涨），且当前已从高位回落。
+    #     逻辑：连续涨停是不可持续的，回落确认了衰竭而非健康回调。
+    #
+    #   S4 — 高位异常量 (High-Position Volume Anomaly):
+    #     近 5 日的日均换手（以量代理）是否为近 60 日最高的区间。
+    #     逻辑：高位异常放量 ≈ 聪明钱在出货给追涨的散户。
+    #
+    # 决策表:
+    #   0 信号 → 正常候选，放行
+    #   1 信号 → 边缘情况，放行但 verbose 日志记录
+    #   2+ 信号 → 拉高出货确认，拦截
+    #
+    # 与旧版 _count_recent_limit_ups 的区别:
+    #   旧版: count(涨幅>=9.5%) >= 2 → 拦截（单维度，一刀切）
+    #   新版: 4 维度 × 独立阈值 → 需多数信号交叉确认才拦截
+    #   效果: 不会误杀"2 个涨停 + 健康回调"的强势股，但精准拦截出货股
+    # =============================================================================
+
+    def _detect_pump_and_dump(self, code: str):
+        """
+        多信号拉高出货检测。
+
+        Returns:
+            (score, reasons): score ∈ [0, 4], reasons = 命中的信号描述列表。
+            调用方按 pd_signal_threshold（默认 2）决定是否拦截。
+        """
+        if not bool(self.parameters.get("pump_dump_filter_enabled", True)):
+            return 0, []
+
+        df = self._data_cache.get(code)
+        if df is None or len(df) < 25:
+            return 0, []
+
+        try:
+            closes = df["close"].values.astype(np.float64)
+            volumes = df["vol"].values.astype(np.float64)
+            opens = df["open"].values.astype(np.float64)
+            highs = df["high"].values.astype(np.float64)
+
+            score = 0
+            reasons: List[str] = []
+
+            # ---- 标记近 10 日的涨停日（索引从末尾倒数）----
+            limit_up_indices = []
+            for i in range(-10, 0):
+                prev_c = closes[i - 1]
+                cur_c = closes[i]
+                if prev_c > 0 and (cur_c / prev_c - 1.0) >= 0.095:
+                    limit_up_indices.append(i)
+
+            # 没有涨停 → 不触发任何信号
+            if not limit_up_indices:
+                return 0, []
+
+            # ============================================================
+            # S1: 放量见顶 — 末次涨停量是否异常放大
+            # ============================================================
+            if len(limit_up_indices) >= 2:
+                last_up_idx = limit_up_indices[-1]  # 最近一次涨停
+                prev_up_indices = limit_up_indices[:-1]  # 之前的涨停
+                last_up_vol = volumes[last_up_idx]
+                prev_up_vols = [volumes[i] for i in prev_up_indices]
+                avg_prev_vol = float(np.mean(prev_up_vols)) if prev_up_vols else last_up_vol
+
+                ratio = float(self.parameters.get("pd_vol_climax_ratio", 1.5))
+                if avg_prev_vol > 0 and last_up_vol / avg_prev_vol > ratio:
+                    score += 1
+                    reasons.append(f"S1:放量见顶(末次量/前均={last_up_vol/avg_prev_vol:.1f})")
+
+            # ============================================================
+            # S2: 出货日 — 连板后出现放量下跌 + 大振幅
+            # ============================================================
+            avg_vol_20 = float(np.mean(volumes[-20:])) if len(volumes) >= 20 else 0
+            last_up_idx = limit_up_indices[-1]
+            # 检查最后一次涨停之后的所有交易日
+            for i in range(last_up_idx + 1, 0):  # 从涨停次日到今天
+                day_vol = volumes[i]
+                day_close = closes[i]
+                day_open = opens[i]
+                day_high = highs[i]
+                day_range = (day_high - day_close) / day_close if day_close > 0 else 0
+
+                vol_ratio = float(self.parameters.get("pd_distribution_vol_ratio", 1.5))
+                range_pct = float(self.parameters.get("pd_distribution_range_pct", 0.05))
+
+                if (avg_vol_20 > 0 and day_vol > avg_vol_20 * vol_ratio
+                        and day_close < day_open
+                        and day_range > range_pct):
+                    score += 1
+                    reasons.append(f"S2:出货日(量{day_vol/avg_vol_20:.1f}x 振幅{day_range:.1%})")
+                    break  # 一个出货日就够
+
+            # ============================================================
+            # S3: 抛物线衰竭 — 连续 ≥N 个涨停 + 从高点回落 > 阈值
+            # ============================================================
+            consecutive_needed = int(self.parameters.get("pd_parabolic_consecutive", 3))
+            # 找最近的连续涨停序列
+            streak = 1
+            for j in range(len(limit_up_indices) - 1, 0, -1):
+                if limit_up_indices[j] == limit_up_indices[j - 1] + 1:
+                    streak += 1
+                else:
+                    break
+
+            if streak >= consecutive_needed:
+                # 计算从这段涨停的最高点的回落
+                streak_start = limit_up_indices[-streak] if streak <= len(limit_up_indices) else limit_up_indices[0]
+                # 涨停期间的最高价
+                peak_in_streak = float(np.max(highs[streak_start:]))
+                current = closes[-1]
+                dd_from_peak = (peak_in_streak - current) / peak_in_streak if peak_in_streak > 0 else 0
+
+                dd_threshold = float(self.parameters.get("pd_parabolic_dd_threshold", 0.05))
+                if dd_from_peak > dd_threshold:
+                    score += 1
+                    reasons.append(f"S3:抛物线衰竭({streak}连板 回落{dd_from_peak:.1%})")
+
+            # ============================================================
+            # S4: 高位异常量 — 近 5 日均量是否为近 60 日最高区间
+            # ============================================================
+            if len(volumes) >= 60 and limit_up_indices:
+                recent_avg_vol = float(np.mean(volumes[-5:]))
+                historical_vols = volumes[-60:-5]  # 排除最近 5 天
+                pct_rank = float(np.mean(historical_vols < recent_avg_vol)) if len(historical_vols) > 0 else 0
+
+                # 近 5 日均量处于近 60 日的 top 10% → 异常
+                if pct_rank > 0.90:
+                    score += 1
+                    reasons.append(f"S4:高位异常量(量能分位{pct_rank:.0%})")
+
+            return score, reasons
+
+        except Exception:
+            return 0, []
 
     def _get_price(self, code: str) -> float:
         df = self._data_cache.get(code)

@@ -40,7 +40,8 @@ DB_CONFIG = {
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "storage" / "models"
 
-ETF_POOL = [
+# 核心池：流动性最好的宽基+行业ETF（必须包含，不受过滤影响）
+CORE_ETFS = [
     "510050.SH", "510300.SH", "510500.SH", "159919.SZ", "510880.SH",
     "512880.SH", "512660.SH", "512690.SH", "512800.SH", "512100.SH",
     "159915.SZ", "159949.SZ", "518880.SH", "513100.SH", "513050.SH",
@@ -49,58 +50,130 @@ ETF_POOL = [
     "159840.SZ", "512400.SH",
 ]
 
+# 扩展池配置
+ETF_POOL = None           # None=动态发现 + 核心池
+ETF_MIN_VOL = 0.005       # 最低日波动率（过滤货币/债券ETF，<0.5%=不适合抄底）
+ETF_MAX_POOL = 80         # 总ETF数上限（核心27 + 动态Top53）
+
 FEATURE_CODES = [
-    # oversold (22)
+    # ── oversold + volume/flow (36) — from OHLCV ──
     "drawdown_20d", "drawdown_60d", "drawdown_120d",
-    "rsi_28", "rsi_low_days",
+    "rsi_6", "rsi_14", "rsi_28", "rsi_low_days",
     "ma_disparity_20", "ma_disparity_60", "ma_disparity_120",
     "close_to_low_20d", "price_position_250d",
-    "momentum_5d", "consecutive_down_days",
-    "atr_ratio_20", "amplitude_5d", "max_dd_duration",
-    "volume_shrink_5d", "volume_shrink_20d",
-    "vol_decline_corr", "vol_spike_count",
+    "momentum_3d", "momentum_5d", "consecutive_down_days",
+    "atr_14", "atr_ratio_20", "atr_ratio", "amplitude_5d", "max_dd_duration",
+    "std_20d", "boll_width", "boll_pct_b",
+    "volume_shrink_5d", "volume_shrink_20d", "volume_ma20_ratio",
+    "vol_trend", "vol_decline_corr", "vol_spike_count",
     "amount_change_5d", "pct_chg_abs_mean_5d",
-    "high_vol_days_5d", "boll_pct_b",
-    # valuation (16)
-    "pe_ttm", "pb", "pe_percentile_5y", "pb_percentile_5y",
-    "pe_percentile_1y", "pb_percentile_1y",
-    "erp", "total_mv_log", "turnover_rate_idx",
-    "pe_region", "pb_region",
-    "m_fee", "fund_age_days",
-    # market_regime (5)
+    "high_vol_days_5d",
+    "volume_dry_up", "vwap_distance", "obv_divergence",
+    # ── market_regime (5) — all 27 ETFs ──
     "market_regime", "breadth_ratio", "trend_strength",
     "momentum_score", "volatility_pct",
+    # ── static (2) — all 27 ETFs ──
+    "m_fee", "fund_age_days",
+    # NOTE: etf_shares 因子 (share_change_*, fund_size_change_*)
+    # 暂不加入 — date 对齐问题导致高 NaN 率。待数据管线完善后加入。
 ]
 
-# 标签参数 — 方案A: 年化25%
-LABEL_N = 20          # 未来 20 个交易日
-LABEL_X = 0.08        # 目标涨幅 8%
-LABEL_Y = -0.05       # 最大回撤容忍 -5%
+# 标签参数 — P1优化: 放宽回撤约束（底部抄底允许短暂破位，赔率优先）
+LABEL_N = 10          # 未来 10 个交易日
+LABEL_X = 0.05        # 目标涨幅 5%
+LABEL_Y = -0.08       # 最大回撤容忍 -8%（放宽自-5%，与策略止损-5%脱钩：
+                      #   标签只看"是否涨到位"，不要求路径完美；
+                      #   实盘中止损-5%会提前截断，所以放宽标签条件）
 
-# 训练参数
+# 训练参数 — v1.3: 降低复杂度 + 加强正则化 (防快速过拟合)
 LGB_PARAMS = {
     "objective": "binary",
     "metric": "auc",
     "boosting_type": "gbdt",
     "num_leaves": 31,
     "max_depth": 5,
-    "learning_rate": 0.05,
-    "n_estimators": 500,
+    "learning_rate": 0.03,
+    "n_estimators": 1000,
     "subsample": 0.8,
     "colsample_bytree": 0.7,
     "reg_alpha": 0.5,
     "reg_lambda": 1.0,
+    "scale_pos_weight": 2.5,
     "random_state": 42,
     "verbosity": -1,
 }
+
+
+async def _discover_etf_pool(conn: asyncpg.Connection, min_days: int = 250) -> List[str]:
+    """动态发现符合条件的 ETF 池：核心池 + 高流动性高波动 ETF。
+
+    策略：
+    1. 核心池（CORE_ETFS）始终包含
+    2. 按日均成交额排序，取前 N 只高流动性 ETF
+    3. 过滤日波动率 < ETF_MIN_VOL 的品种（货币/债券类无法抄底）
+    4. 最终池 = 核心池 ∪ (Top流动性 ∩ 高波动)，上限 ETF_MAX_POOL
+    """
+    # 1. 动态发现：高流动性 + 高波动 ETF
+    #    (分两层查询：先算日收益，再聚合波动率，避免窗口函数与聚合函数混用)
+    rows = await conn.fetch(f"""
+        WITH daily_ret AS (
+            SELECT ts_code, trade_date, vol,
+                   close / LAG(close) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1 AS ret
+            FROM etf_daily
+            WHERE trade_date >= '2024-01-01'
+        ),
+        etf_vol AS (
+            SELECT ts_code,
+                   AVG(vol) AS avg_vol,
+                   STDDEV(ret) AS daily_vol,
+                   COUNT(*) AS n_days
+            FROM daily_ret
+            WHERE ret IS NOT NULL
+            GROUP BY ts_code
+            HAVING COUNT(*) >= 200
+        ),
+        etf_with_factors AS (
+            SELECT f.ts_code
+            FROM factor_data f
+            WHERE f.factor_code = ANY(ARRAY['drawdown_20d','rsi_14','atr_14']::varchar[])
+              AND f.trade_date >= '2020-01-01'
+            GROUP BY f.ts_code
+            HAVING COUNT(DISTINCT f.trade_date) >= {min_days}
+        )
+        SELECT v.ts_code, v.daily_vol, v.avg_vol, v.n_days
+        FROM etf_vol v
+        JOIN etf_with_factors ef ON v.ts_code = ef.ts_code
+        WHERE v.daily_vol >= {ETF_MIN_VOL}
+        ORDER BY v.avg_vol DESC
+        LIMIT {ETF_MAX_POOL}
+    """)
+    dynamic_pool = [r["ts_code"] for r in rows]
+
+    # 2. 合并核心池（去重，核心池优先）
+    core_set = set(CORE_ETFS)
+    pool = list(dict.fromkeys(CORE_ETFS + [e for e in dynamic_pool if e not in core_set]))
+
+    # 3. 上限截断
+    pool = pool[:ETF_MAX_POOL]
+
+    n_core_found = len([e for e in pool if e in core_set])
+    n_dynamic = len(pool) - n_core_found
+    logger.info(
+        "  动态发现 %d 只 ETF (核心%d + 扩展%d, 日波动>=%.1f%%, 按成交额排序)",
+        len(pool), n_core_found, n_dynamic, ETF_MIN_VOL * 100
+    )
+    return pool
 
 
 async def load_factor_matrix(conn: asyncpg.Connection) -> pd.DataFrame:
     """从 factor_data 加载全量特征矩阵 (ETF × trade_date × features)"""
     logger.info("加载因子数据...")
     factor_list = "','".join(FEATURE_CODES)
-    etf_list = "','".join(ETF_POOL)
 
+    # 动态发现 ETF 池
+    etf_pool = ETF_POOL or await _discover_etf_pool(conn)
+
+    etf_list = "','".join(etf_pool)
     rows = await conn.fetch(f"""
         SELECT ts_code, trade_date, factor_code, factor_value
         FROM factor_data
@@ -123,13 +196,13 @@ async def load_factor_matrix(conn: asyncpg.Connection) -> pd.DataFrame:
     df = df.reindex(columns=FEATURE_CODES)  # ensure column order
     logger.info("  特征矩阵: %d 行 × %d 列 (NaN ratio: %.1f%%)",
                 len(df), len(FEATURE_CODES), df.isna().mean().mean() * 100)
-    return df
+    return df, etf_pool
 
 
-async def load_etf_future_returns(conn: asyncpg.Connection) -> pd.DataFrame:
+async def load_etf_future_returns(conn: asyncpg.Connection, etf_pool: List[str]) -> pd.DataFrame:
     """加载 ETF 未来 N 日最高/最低，用于标签构造"""
     logger.info("加载未来收益数据...")
-    etf_list = "','".join(ETF_POOL)
+    etf_list = "','".join(etf_pool)
 
     rows = await conn.fetch(f"""
         SELECT ts_code, trade_date, high, low, close
@@ -211,7 +284,7 @@ def train_model(X_train, y_train, X_val, y_val):
         X_train, y_train,
         eval_set=[(X_val, y_val)],
         eval_metric="auc",
-        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(50)],
+        callbacks=[lgb.early_stopping(100), lgb.log_evaluation(50)],
     )
     return model
 
@@ -253,15 +326,16 @@ def optimize_threshold(model, X_val, y_val):
 
 async def main():
     logger.info("=" * 56)
-    logger.info("LightGBM ETF 底部策略 — 离线训练")
-    logger.info("特征: %d, ETF: %d, 标签: N=%d X=%.0f%% Y=%.0f%%",
-                len(FEATURE_CODES), len(ETF_POOL), LABEL_N, LABEL_X * 100, LABEL_Y * 100)
+    logger.info("LightGBM ETF 底部策略 — 离线训练（动态 ETF 池）")
+    logger.info("特征: %d, 标签: N=%d X=%.0f%% Y=%.0f%%",
+                len(FEATURE_CODES), LABEL_N, LABEL_X * 100, LABEL_Y * 100)
 
     conn = await asyncpg.connect(**DB_CONFIG)
     try:
-        # 1. 加载数据
-        features = await load_factor_matrix(conn)
-        labels = await load_etf_future_returns(conn)
+        # 1. 加载数据（动态发现 ETF 池）
+        features, etf_pool = await load_factor_matrix(conn)
+        logger.info("ETF 池: %d 只", len(etf_pool))
+        labels = await load_etf_future_returns(conn, etf_pool)
 
         # 2. 准备训练数据
         X, y, dates = prepare_train_data(features, labels)

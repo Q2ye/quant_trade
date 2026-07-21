@@ -1850,6 +1850,141 @@ def _calculate_atr(
     return atr
 
 
+# -------------------- ADX (Average Directional Index) --------------------
+
+
+def _calc_directional_movement(
+    high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14
+):
+    """计算 +DI / -DI / ADX（Wilder 平滑法，标准定义）。
+
+    返回值: (+DI, -DI, ADX) — 三个 pd.Series
+    """
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+    prev_close = close.shift(1)
+
+    up_move = high - prev_high
+    down_move = prev_low - low
+
+    # +DM: 上涨幅度 > 下跌幅度 且 上涨幅度 > 0
+    pos_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    # -DM: 下跌幅度 > 上涨幅度 且 下跌幅度 > 0
+    neg_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    # True Range = max(H-L, |H-C_prev|, |L-C_prev|)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+
+    # Wilder's smoothing (alpha = 1/period)
+    atr = tr.ewm(alpha=1.0 / period, adjust=False).mean()
+    smoothed_pos_dm = pos_dm.ewm(alpha=1.0 / period, adjust=False).mean()
+    smoothed_neg_dm = neg_dm.ewm(alpha=1.0 / period, adjust=False).mean()
+
+    # +DI / -DI（分母保护：ATR 为 0 时设为 NaN）
+    atr_safe = atr.replace(0, np.nan)
+    plus_di = 100.0 * smoothed_pos_dm / atr_safe
+    minus_di = 100.0 * smoothed_neg_dm / atr_safe
+
+    # DX = |+DI - -DI| / (+DI + -DI) * 100
+    di_sum = plus_di + minus_di
+    dx = (100.0 * (plus_di - minus_di).abs() / di_sum.replace(0, np.nan))
+
+    # ADX = Wilder's EMA of DX
+    adx = dx.ewm(alpha=1.0 / period, adjust=False).mean()
+
+    return plus_di, minus_di, adx
+
+
+@register_factor(
+    name="ADX",
+    display_name="平均趋向指数",
+    description="Average Directional Index，衡量趋势强度(>25趋势,<20震荡)，Wilder平滑",
+    category=FactorCategoryCode.TECHNICAL,
+    formula="+DM/-DM → +DI/-DI → DX → ADX (Wilder EMA, 14)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calculate_adx(
+    df: DataFrame,
+    parameters: Optional[Dict] = None,
+) -> pd.Series:
+    """计算 ADX（Average Directional Index）。
+
+    Wilder's Method (标准定义):
+        +DM_t = H_t - H_{t-1}  (if positive and > -DM)
+        -DM_t = L_{t-1} - L_t  (if positive and > +DM)
+        +DI = 100 * EMA(+DM, 1/N) / ATR
+        -DI = 100 * EMA(-DM, 1/N) / ATR
+        DX  = 100 * |+DI - -DI| / (+DI + -DI)
+        ADX = EMA(DX, 1/N)
+
+    默认 N=14。ADX > 25 趋势市，ADX < 20 震荡市。
+
+    Edge Cases
+    ~~~~~~~~~~
+    - 缺 high/low → 返回带 NaN 的 Series（index 与 df 对齐）
+    - ATR=0（一字板）→ +DI/-DI 为 NaN，ADX 随之 NaN
+    - +DI + -DI = 0 → DX 为 NaN
+    """
+    required_cols = ['high', 'low', 'close']
+    if not all(col in df.columns for col in required_cols):
+        return pd.Series(np.nan, index=df.index, dtype=float)
+
+    period = parameters.get("period", 14) if parameters else 14
+    _, _, adx = _calc_directional_movement(df['high'], df['low'], df['close'], period)
+    return adx
+
+
+@register_factor(
+    name="PLUS_DI",
+    display_name="上升动向指标",
+    description="Positive Directional Indicator (+DI)，衡量多头力量",
+    category=FactorCategoryCode.TECHNICAL,
+    formula="100 * EMA(+DM, 1/N) / ATR",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calculate_plus_di(
+    df: DataFrame,
+    parameters: Optional[Dict] = None,
+) -> pd.Series:
+    """计算 +DI（上升动向指标）。"""
+    required_cols = ['high', 'low', 'close']
+    if not all(col in df.columns for col in required_cols):
+        return pd.Series(np.nan, index=df.index, dtype=float)
+
+    period = parameters.get("period", 14) if parameters else 14
+    plus_di, _, _ = _calc_directional_movement(df['high'], df['low'], df['close'], period)
+    return plus_di
+
+
+@register_factor(
+    name="MINUS_DI",
+    display_name="下降动向指标",
+    description="Negative Directional Indicator (-DI)，衡量空头力量",
+    category=FactorCategoryCode.TECHNICAL,
+    formula="100 * EMA(-DM, 1/N) / ATR",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calculate_minus_di(
+    df: DataFrame,
+    parameters: Optional[Dict] = None,
+) -> pd.Series:
+    """计算 -DI（下降动向指标）。"""
+    required_cols = ['high', 'low', 'close']
+    if not all(col in df.columns for col in required_cols):
+        return pd.Series(np.nan, index=df.index, dtype=float)
+
+    period = parameters.get("period", 14) if parameters else 14
+    _, minus_di, _ = _calc_directional_movement(df['high'], df['low'], df['close'], period)
+    return minus_di
+
+
 # ============================================================
 #  ETF 抄底策略专用因子 (LightGBM ETF Bottom Fishing)
 #  类别: etf_bottom
@@ -2102,6 +2237,28 @@ def _calc_atr_ratio_20(df: pd.DataFrame, parameters=None) -> pd.Series:
 
 
 @register_factor(
+    name="atr_ratio",
+    display_name="多周期ATR比率",
+    description="ATR(5) / ATR(20)，短期波动放大=regime转换领先信号；值>1→波动扩张(趋势启动)，<1→波动收缩(震荡)",
+    category="etf_bottom",
+    formula="ATR(5) / ATR(20)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_atr_ratio(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """多周期 ATR 比率：短期波动 / 长期波动，预报 regime 转换"""
+    high, low, close = df['high'], df['low'], df['close']
+    prev_close = close.groupby(df['ts_code']).transform(lambda x: x.shift(1))
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr5 = tr.groupby(df['ts_code']).transform(lambda x: x.rolling(5, min_periods=5).mean())
+    atr20 = tr.groupby(df['ts_code']).transform(lambda x: x.rolling(20, min_periods=20).mean())
+    return atr5 / atr20.replace(0, np.nan)
+
+
+@register_factor(
     name="amplitude_5d",
     display_name="5日平均振幅",
     description="mean((high-low)/pre_close, 5)",
@@ -2164,6 +2321,22 @@ def _calc_volume_shrink_5d(df: pd.DataFrame, parameters=None) -> pd.Series:
 def _calc_volume_shrink_20d(df: pd.DataFrame, parameters=None) -> pd.Series:
     ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
     return df['vol'] / ma20
+
+
+@register_factor(
+    name="vol_trend",
+    display_name="量能趋势",
+    description="MA(vol, 5) / MA(vol, 20)，放量→资金进场/趋势启动信号；值>1.2→显著放量，<0.8→缩量",
+    category="etf_bottom",
+    formula="MA(vol, 5) / MA(vol, 20)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_vol_trend(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """量能趋势：短周期均量 / 长周期均量"""
+    ma5 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(5, min_periods=3).mean())
+    ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
+    return ma5 / ma20.replace(0, np.nan)
 
 
 @register_factor(
@@ -2288,6 +2461,214 @@ def _calc_boll_pct_b(df: pd.DataFrame, parameters=None) -> pd.Series:
     return (df['close'] - lower) / denom
 
 
+# ---------- B组: 量价高级因子 ----------
+
+@register_factor(
+    name="volume_dry_up",
+    display_name="缩量止跌信号",
+    description="连续下跌5天 + 最后3天量递减 → 供应衰竭",
+    category="etf_bottom",
+    formula="down5 AND vol_dec3",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_volume_dry_up(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """缩量止跌：跌≥5天 且 最后3天量递减 → 1.0，否则 0.0"""
+    ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+    down = (ret < 0).astype(int)
+    # 连续下跌 ≥5 天
+    down_streak = down.groupby(df['ts_code']).transform(
+        lambda x: x.groupby((x != x.shift()).cumsum()).cumsum())
+    # 近3天量递减
+    vol = df['vol']
+    vol_dec = (
+        (vol < vol.groupby(df['ts_code']).transform(lambda x: x.shift(1))) &
+        (vol.groupby(df['ts_code']).transform(lambda x: x.shift(1)) <
+         vol.groupby(df['ts_code']).transform(lambda x: x.shift(2)))
+    ).astype(int)
+    result = ((down_streak >= 5) & (vol_dec == 1)).astype(float)
+    return result
+
+
+@register_factor(
+    name="vwap_distance",
+    display_name="VWAP偏离",
+    description="(close - VWAP_20) / VWAP_20，负值→低于均价",
+    category="etf_bottom",
+    formula="(close - vwap_20) / vwap_20",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"window": 20},
+)
+def _calc_vwap_distance(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """20日 VWAP 偏离度"""
+    w = (parameters or {}).get("window", 20)
+    if 'amount' not in df.columns:
+        return pd.Series(np.nan, index=df.index)
+    tp = (df['high'] + df['low'] + df['close']) / 3
+    vp = tp * df['vol']
+    cum_vp = vp.groupby(df['ts_code']).transform(lambda x: x.rolling(w, min_periods=5).sum())
+    cum_vol = df['vol'].groupby(df['ts_code']).transform(lambda x: x.rolling(w, min_periods=5).sum())
+    vwap = cum_vp / cum_vol.replace(0, np.nan)
+    return (df['close'] - vwap) / vwap
+
+
+@register_factor(
+    name="volume_ma20_ratio",
+    display_name="量比MA20",
+    description="vol / MA(vol, 20)",
+    category="etf_bottom",
+    formula="vol / MA(vol, 20)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_volume_ma20_ratio(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """成交量与20日均量之比"""
+    ma20 = df.groupby('ts_code')['vol'].transform(lambda x: x.rolling(20, min_periods=5).mean())
+    return df['vol'] / ma20
+
+
+@register_factor(
+    name="obv_divergence",
+    display_name="OBV背离信号",
+    description="close创20日新低 但 OBV未创新低 → 背离=1.0",
+    category="etf_bottom",
+    formula="close_new_low_20 AND NOT obv_new_low_20",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_obv_divergence(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """OBV 底背离：价格新低但 OBV 不创新低"""
+    ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+    obv_sign = ret.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    obv_inc = (obv_sign * df['vol']).groupby(df['ts_code']).transform(
+        lambda x: x.cumsum())
+    close_20_low = df.groupby('ts_code')['close'].transform(
+        lambda x: x.rolling(20, min_periods=10).min())
+    obv_20_low = obv_inc.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(20, min_periods=10).min())
+    close_at_low = (df['close'] <= close_20_low * 1.01).astype(int)
+    obv_not_at_low = (obv_inc > obv_20_low * 1.02).astype(int)
+    return (close_at_low & obv_not_at_low).astype(float)
+
+
+# ---------- C组: 补充技术因子 (对标 stock_factor_pro_daily，从 OHLCV 计算) ----------
+
+@register_factor(
+    name="rsi_6",
+    display_name="6日RSI",
+    description="6日相对强弱指标，短期超卖信号",
+    category="etf_bottom",
+    formula="RSI(period=6)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 6},
+)
+def _calc_rsi_6(df: pd.DataFrame, parameters=None) -> pd.Series:
+    period = (parameters or {}).get("period", 6)
+    delta = df.groupby('ts_code')['close'].transform(lambda x: x.diff())
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    avg_loss = loss.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+@register_factor(
+    name="rsi_14",
+    display_name="14日RSI",
+    description="14日相对强弱指标，经典超买超卖",
+    category="etf_bottom",
+    formula="RSI(period=14)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 14},
+)
+def _calc_rsi_14(df: pd.DataFrame, parameters=None) -> pd.Series:
+    period = (parameters or {}).get("period", 14)
+    delta = df.groupby('ts_code')['close'].transform(lambda x: x.diff())
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    avg_loss = loss.groupby(df['ts_code']).transform(
+        lambda x: x.rolling(period, min_periods=period).mean())
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+@register_factor(
+    name="boll_width",
+    display_name="布林带宽",
+    description="(BOLL_upper - BOLL_lower) / BOLL_mid，高值→高波动",
+    category="etf_bottom",
+    formula="(upper - lower) / mid",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 20, "nbdev": 2},
+)
+def _calc_boll_width(df: pd.DataFrame, parameters=None) -> pd.Series:
+    period = (parameters or {}).get("period", 20)
+    nbdev = (parameters or {}).get("nbdev", 2)
+    mid = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(period).mean())
+    std = df.groupby('ts_code')['close'].transform(lambda x: x.rolling(period).std())
+    upper = mid + nbdev * std
+    lower = mid - nbdev * std
+    return (upper - lower) / mid
+
+
+@register_factor(
+    name="momentum_3d",
+    display_name="3日动量",
+    description="close / lag(close,3) - 1，短期急跌识别",
+    category="etf_bottom",
+    formula="close / lag(close,3) - 1",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_momentum_3d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    lag = df.groupby('ts_code')['close'].transform(lambda x: x.shift(3))
+    return df['close'] / lag - 1
+
+
+@register_factor(
+    name="std_20d",
+    display_name="20日波动率",
+    description="20日收益率标准差，衡量波动水平",
+    category="etf_bottom",
+    formula="std(ret, 20)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_std_20d(df: pd.DataFrame, parameters=None) -> pd.Series:
+    ret = df.groupby('ts_code')['close'].transform(lambda x: x.pct_change())
+    return ret.groupby(df['ts_code']).transform(lambda x: x.rolling(20, min_periods=5).std())
+
+
+@register_factor(
+    name="atr_14",
+    display_name="ATR(14)",
+    description="14日平均真实波幅，衡量绝对波动幅度",
+    category="etf_bottom",
+    formula="ATR(period=14)",
+    data_source="market",
+    update_frequency="daily",
+    parameters={"period": 14},
+)
+def _calc_atr_14(df: pd.DataFrame, parameters=None) -> pd.Series:
+    period = (parameters or {}).get("period", 14)
+    high, low, close = df['high'], df['low'], df['close']
+    prev_close = close.groupby(df['ts_code']).transform(lambda x: x.shift(1))
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.groupby(df['ts_code']).transform(lambda x: x.rolling(period, min_periods=5).mean())
+
+
 # ============================================================
 #  Convenience: factor name → calculator function mapping
 #  (used by LightGBMBottomStrategy for on_bar prediction)
@@ -2317,4 +2698,16 @@ FACTOR_CALCULATORS_MAP = {
     "high_vol_days_5d": _calc_high_vol_days_5d,
     "boll_pct_b": _calc_boll_pct_b,
     "turnover_change_5d": _calc_turnover_change_5d,
+    "volume_dry_up": _calc_volume_dry_up,
+    "vwap_distance": _calc_vwap_distance,
+    "volume_ma20_ratio": _calc_volume_ma20_ratio,
+    "obv_divergence": _calc_obv_divergence,
+    "rsi_6": _calc_rsi_6,
+    "rsi_14": _calc_rsi_14,
+    "boll_width": _calc_boll_width,
+    "momentum_3d": _calc_momentum_3d,
+    "std_20d": _calc_std_20d,
+    "atr_14": _calc_atr_14,
+    "atr_ratio": _calc_atr_ratio,
+    "vol_trend": _calc_vol_trend,
 }

@@ -1745,6 +1745,15 @@ class StrategyManager(EngineBase):
             from shared.database.session.session_manager import get_session_manager
             from shared.database.repositories.trading.position.position_repo import PositionRepository
 
+            # v3.5: 先清理内存中的旧持仓数据，确保 DB 是唯一真相源。
+            # 否则手动卖出后 DB 已清空但内存字典仍保留脏数据，
+            # 导致策略误判当前持仓数量（current_holdings = _holdings | _active_positions）。
+            strategy.positions.clear()
+            if hasattr(strategy, "_holdings"):
+                strategy._holdings.clear()
+            if hasattr(strategy, "_track_high"):
+                strategy._track_high.clear()
+
             sm = get_session_manager()
             async with sm.get_session() as session:
                 repo = PositionRepository(session)

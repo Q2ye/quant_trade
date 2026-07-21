@@ -21,6 +21,9 @@ from .rotation import (
 from .reference import (
 	StockLowHighStrategy,
 )
+from .etf import (
+    LightGBMBottomStrategy,
+)
 
 __all__ = [
     # 基类
@@ -36,4 +39,6 @@ __all__ = [
     "GlobalRotationV2Strategy",
     # 参考策略移植
     "StockLowHighStrategy",
+    # ETF 策略
+    "LightGBMBottomStrategy",
 ]

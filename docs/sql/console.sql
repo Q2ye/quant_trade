@@ -34,7 +34,7 @@ select * from stock_st_list;
 select count(*) from stock_st_list;
 
 -- 指数基本信息表
-select * from index_basic;
+select * from index_basic where ts_code = '000905.SH';
 select count(*) from index_basic;
 -- 指数日线行情数据（TimescaleDB超表）
 select * from index_daily where ts_code = '159886.SZ';

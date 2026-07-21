@@ -460,25 +460,47 @@ const loadDashboardData = async () => {
       selectedSymbol.value = routeSymbol.value;
     }
     const [acctRes, posRes, sigRes] = await Promise.all([
-      tradeAPI.getAccountInfo().catch(() => []),
+      tradeAPI.getAccountInfo().catch(() => null),
       tradeAPI.getPositions().catch(() => []),
       signalsAPI.getRealtimeSignals().catch(() => []),
     ]);
 
-    accounts.value = (Array.isArray(acctRes) ? acctRes : []).map((a: any) => ({
-      ...a,
-      id: String(a.id ?? a.account_id ?? ""),
-    }));
+    // ── 账户数据 ──
+    // 后端 /account 返回 AccountSummaryResponse { success, data: {total_asset, cash, market_value, pnl, pnl_rate} }
+    // 经 handleResponse → data.data 是单对象（非数组），需包成数组
+    if (acctRes && typeof acctRes === "object" && !Array.isArray(acctRes)) {
+      const a = acctRes as Record<string, any>;
+      accounts.value = [{
+        id: "1",
+        account_name: "主账户",
+        total_asset: a.total_asset ?? 0,
+        available_cash: a.cash ?? 0,
+        market_value: a.market_value ?? 0,
+        daily_pnl: a.pnl ?? 0,
+        daily_return: a.pnl_rate ?? 0,
+      }];
+    } else if (Array.isArray(acctRes)) {
+      accounts.value = acctRes.map((a: any) => ({
+        ...a,
+        id: String(a.id ?? a.account_id ?? ""),
+        available_cash: a.available_cash ?? a.cash ?? 0,
+        daily_pnl: a.daily_pnl ?? a.dailyPnl ?? a.pnl ?? 0,
+        daily_return: a.daily_return ?? a.dailyReturn ?? a.pnl_rate ?? 0,
+      }));
+    }
     if (accounts.value.length > 0) {
       selectedAccountId.value = String(accounts.value[0].id);
       const acc = accounts.value[0];
-      dailyPnl.value = acc.daily_pnl ?? acc.dailyPnl ?? 0;
-      dailyPnlRatio.value = acc.daily_return ?? acc.dailyReturn ?? 0;
+      dailyPnl.value = acc.daily_pnl ?? 0;
+      dailyPnlRatio.value = acc.daily_return ?? 0;
     }
 
+    // ── 持仓数据 ──
+    // 后端 /positions 字段: symbol / volume / cost_price / current_price / pnl / pnl_rate
+    // 注意: 后端不返回 name，用 symbol 做 fallback
     positions.value = (Array.isArray(posRes) ? posRes : []).map((p: any) => ({
-      symbol: p.ts_code ?? p.symbol ?? "",
-      name: p.name ?? p.stock_name ?? "",
+      symbol: p.symbol ?? p.ts_code ?? "",
+      name: p.name ?? p.stock_name ?? p.symbol ?? "",
       volume: p.volume ?? p.quantity ?? 0,
       costPrice: p.cost_price ?? p.avg_cost ?? 0,
       currentPrice: p.current_price ?? p.price ?? 0,

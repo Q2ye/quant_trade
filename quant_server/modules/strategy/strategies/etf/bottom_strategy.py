@@ -6,7 +6,7 @@ LightGBM ETF 底部抄底策略
 在 on_bar 中实时预测底部概率，生成交易信号。
 
 策略类型: StrategyType.ML
-数据需求: etf_daily + factor_data (预计算65因子) + market_state_daily
+数据需求: etf_daily + factor_data (预计算因子) + market_state_daily
 预热需求: at least 60 bars per ETF (rolling indicators)
 """
 
@@ -17,9 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 import joblib
-import psycopg2
 import numpy as np
-from sqlalchemy.dialects.postgresql import asyncpg
 
 from core.engines.types.entities import BarData
 from modules.strategy.constants import StrategyType, SignalDirection, SignalType
@@ -43,23 +41,30 @@ class LightGBMBottomStrategy(BaseStrategy):
 
     出场条件:
       1. 硬止损: pnl < stop_loss
-      2. 止盈: pnl ≥ take_profit
-      3. 时间止损: 持有 > max_hold_days
+      2. Trailing stop: 浮盈>trail_activate 后从高点回落>trail_distance
+      3. 时间止损: 持有 > max_hold_days（0=关闭）
     """
 
     strategy_type = StrategyType.ML
 
     DEFAULT_PARAMS = {
         "model_path": "",              # 训练好的模型文件路径
-        "threshold": 0.30,             # 概率阈值（激进：宁错勿漏）
-        "max_single_position": 0.35,   # 单 ETF 最大仓位（集中火力）
-        "stop_loss": -0.08,            # 硬止损线 -8%（给波动空间）
-        "trail_activate": 0.05,        # trailing stop 启动阈值：浮盈>5%后启动
-        "trail_distance": 0.03,        # trailing stop 回撤距离：从高点回落3%离场
-        "max_hold_days": 0,            # 最大持有天数（0=不限制，让趋势走完）
-        "cooling_days": 2,             # 出场后冷却天数（激进：快速再入场）
+        "threshold": 0.30,             # 概率阈值（激进：赔率优先，宁错勿漏）
+        "max_single_position": 0.40,   # 单 ETF 最大仓位（集中火力）
+        "max_positions": 5,            # 最大同时持仓数
+        "stop_loss": -0.05,            # 硬止损线 -5%（快刀斩乱麻）
+        "trail_activate": 0.03,        # trailing stop 启动阈值：浮盈>3%后启动
+        "trail_distance": 0.05,        # trailing stop 回撤距离：从高点回落5%离场
+        "max_hold_days": 15,           # 最大持有天数（15天不涨就撤）
+        "cooling_days": 2,             # 出场后冷却天数
         "min_warmup_bars": 60,         # 最少需要的历史 bar 数
         "feature_list": [],            # 特征列表（空=从模型 artifact 读取）
+        "etf_pool": [],                # ETF 候选池（空=动态跟踪，非空=预加载因子缓存）
+        # ── P3: 波动率过滤 ──
+        "vol_filter_enabled": True,
+        "vol_filter_atr_min": 0.015,   # ATR(14)/close >= 1.5% 才入场
+        # ── P4: 入场确认延迟 ──
+        "confirm_enabled": True,       # 信号日不入场，等次日 close > 信号日 low 才确认
         "db_host": "localhost",
         "db_port": 5432,
         "db_user": "postgres",
@@ -79,31 +84,35 @@ class LightGBMBottomStrategy(BaseStrategy):
         self.scaler_mu: List[float] = []
         self.scaler_sigma: List[float] = []
 
+        # 因子缓存: {ts_code: {trade_date_str: {factor_code: value}}}
+        self._factor_cache: Dict[str, Dict[str, Dict[str, float]]] = {}
+
         # 持仓追踪
         self._data_cache: Dict[str, List[BarData]] = {}
         self._position_entry: Dict[str, tuple] = {}  # ts_code → (entry_date, entry_price)
         self._track_high: Dict[str, float] = {}       # ts_code → 持仓期间最高价 (trailing stop用)
         self._cooling: Dict[str, int] = {}            # ts_code → remaining_days
 
-        # DB 连接
-        self._db_pool = None
+        # P4: 待确认信号 {ts_code: {proba, signal_date, signal_low, weight}}
+        self._pending_signals: Dict[str, dict] = {}
 
     # ── Lifecycle ─────────────────────────────────────────
 
     def on_init(self) -> None:
-        """加载模型 artifact"""
+        """加载模型 artifact + 预加载因子缓存"""
         model_path = self.parameters["model_path"]
         if not model_path:
             logger.warning("[%s] model_path 为空，策略无法预测", self.name)
             return
 
+        # 1. 加载模型 artifact
         artifact = joblib.load(model_path)
         self.model = artifact["model"]
         self.feature_names = artifact.get("feature_names", [])
         scaler = artifact.get("scaler_params", {})
         self.scaler_mu = scaler.get("mu", [])
         self.scaler_sigma = scaler.get("sigma", [])
-        # Use saved threshold if not overridden
+        # 使用 artifact 中保存的阈值（如果用户未显式覆盖）
         saved_t = artifact.get("threshold")
         if saved_t is not None and self.parameters["threshold"] == self.DEFAULT_PARAMS["threshold"]:
             self.parameters["threshold"] = float(saved_t)
@@ -114,50 +123,52 @@ class LightGBMBottomStrategy(BaseStrategy):
             len(self.feature_names), self.parameters["threshold"],
         )
 
-        # Initialize DB connection pool for factor queries (v3.4)
-        import psycopg2.pool
-                # 预加载所有 ETF 的因子数据到内存缓存 (v3.5)
-        self._factor_cache = {}  # {ts_code: {trade_date_str: {factor_code: value}}}
+        # 2. 预加载因子数据到内存缓存（避免 on_bar 逐条查 DB）
+        etf_pool = self.parameters.get("etf_pool") or []
+        if etf_pool and self.feature_names:
+            self._load_factor_cache(etf_pool)
+        elif not etf_pool:
+            logger.info("[%s] etf_pool 为空，因子缓存将在首次 bar 时按需查询", self.name)
+
+    # ── Factor Cache Loading ──────────────────────────────
+
+    def _load_factor_cache(self, etf_pool: list) -> None:
+        """从 factor_data 表加载全部 ETF 因子到内存缓存（同步，仅 on_init 调用一次）"""
+        import psycopg2
+        db_cfg = {
+            "host": self.parameters.get("db_host", "localhost"),
+            "port": self.parameters.get("db_port", 5432),
+            "user": self.parameters.get("db_user", "postgres"),
+            "password": self.parameters.get("db_password", "123456"),
+            "database": self.parameters.get("db_name", "quant_signals_dev"),
+        }
         try:
-            conn = self._db_pool.getconn()
+            conn = psycopg2.connect(**db_cfg)
             cur = conn.cursor()
-            for etf in self.parameters.get('etf_pool', []) or []:
+            for etf in etf_pool:
                 cur.execute(
-                    "SELECT factor_code, trade_date::text, factor_value FROM factor_data WHERE ts_code=%s AND factor_code = ANY(%s) AND trade_date >= '2019-01-01'",
-                    (etf, self.feature_names)
+                    "SELECT factor_code, trade_date::text, factor_value "
+                    "FROM factor_data "
+                    "WHERE ts_code = %s AND factor_code = ANY(%s) "
+                    "  AND trade_date >= '2019-01-01' "
+                    "ORDER BY trade_date",
+                    (etf, self.feature_names),
                 )
-                cache = {}
-                for row in cur.fetchall():
-                    fc, td, fv = row[0], row[1][:10], row[2]
+                cache: Dict[str, Dict[str, float]] = {}
+                for fc, td, fv in cur.fetchall():
+                    td = td[:10]
                     if td not in cache:
                         cache[td] = {}
-                    cache[td][fc] = float(fv) if fv is not None else None
-                self._factor_cache[etf] = cache
+                    cache[td][fc] = float(fv) if fv is not None else np.nan
+                if cache:
+                    self._factor_cache[etf] = cache
             cur.close()
-            # factor_cache used — no DB call per bar
-            logger.info('[%s] 因子缓存加载完成: %d ETFs', self.name, len(self._factor_cache))
+            conn.close()
+            logger.info("[%s] 因子缓存加载完成: %d ETFs × %d features",
+                        self.name, len(self._factor_cache), len(self.feature_names))
         except Exception as e:
-            logger.warning('[%s] 因子缓存加载失败, 回退到实时查询: %s', self.name, str(e)[:100])
-
-            1, 4,
-            host=self.parameters.get('db_host','localhost'),
-            port=self.parameters.get('db_port',5432),
-            user=self.parameters.get('db_user','postgres'),
-            password=self.parameters.get('db_password','123456'),
-            database=self.parameters.get('db_name','quant_signals_dev'),
-
-
-    async def _ensure_db(self):
-        """懒加载 DB 连接池"""
-        if self._db_pool is None:
-            self._db_pool = await asyncpg.create_pool(
-                host=self.parameters["db_host"],
-                port=self.parameters["db_port"],
-                user=self.parameters["db_user"],
-                password=self.parameters["db_password"],
-                database=self.parameters["db_name"],
-                min_size=1, max_size=4,
-            )
+            logger.warning("[%s] 因子缓存加载失败，策略将在 on_bar 中跳过预测: %s",
+                           self.name, str(e)[:150])
 
     # ── Bar Processing ──────────────────────────────────
 
@@ -188,6 +199,8 @@ class LightGBMBottomStrategy(BaseStrategy):
             self._cooling[ts_code] -= 1
             if self._cooling[ts_code] <= 0:
                 del self._cooling[ts_code]
+            # P4: 冷却期也清理 pending 信号
+            self._pending_signals.pop(ts_code, None)
             return signals
 
         # 4. 检查已有持仓 → 出场检查
@@ -197,7 +210,38 @@ class LightGBMBottomStrategy(BaseStrategy):
                 signals.append(exit_signal)
             return signals
 
-        # 5. 检查入场
+        # 5. 持仓上限检查
+        max_positions = self.parameters.get("max_positions", 5)
+        if len(self._position_entry) >= max_positions:
+            self._pending_signals.pop(ts_code, None)
+            return signals
+
+        # 6. P4: 处理昨日待确认信号
+        confirm_enabled = self.parameters.get("confirm_enabled", False)
+        if confirm_enabled and ts_code in self._pending_signals:
+            pinfo = self._pending_signals.pop(ts_code)
+            # 确认条件: 今日 close > 信号日 low（没有继续创新低）
+            if bar.close > pinfo["signal_low"]:
+                signal = TradingSignal(
+                    id=str(uuid.uuid4()),
+                    strategy_id=self.name,
+                    strategy_name=self.name,
+                    ts_code=ts_code,
+                    signal_type=SignalType.ENTRY,
+                    direction=SignalDirection.LONG,
+                    price=bar.close,
+                    confidence=float(pinfo["proba"]),
+                    reason=f"底部概率 {pinfo['proba']:.1%}, 权重 {pinfo['weight']:.0%} [P4确认]",
+                    weight=pinfo["weight"],
+                    timestamp=bar.trade_time if bar.trade_time else datetime.now(),
+                )
+                self._position_entry[ts_code] = (bar.trade_date, bar.close)
+                self._track_high[ts_code] = bar.close
+                signals.append(signal)
+            # 未确认 → 静默丢弃
+            return signals
+
+        # 7. 检查入场
         try:
             proba = self._predict(ts_code, bar.trade_date)
             if proba is None:
@@ -207,10 +251,27 @@ class LightGBMBottomStrategy(BaseStrategy):
             if proba < threshold:
                 return signals
 
-            # 6. 仓位映射
+            # P3: 波动率过滤 — 低波动环境不抄底
+            if self.parameters.get("vol_filter_enabled", False):
+                atr_ratio = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
+                vol_min = self.parameters.get("vol_filter_atr_min", 0.015)
+                if atr_ratio is None or atr_ratio < vol_min:
+                    return signals
+
+            # 8. 仓位映射: proba 越高 → 仓位越重
             max_pos = self.parameters["max_single_position"]
             weight = max(0.01, (proba - threshold) / (1.0 - threshold)) * max_pos
 
+            if confirm_enabled:
+                # P4: 不立即入场，存入 pending 等待次日确认
+                self._pending_signals[ts_code] = {
+                    "proba": proba,
+                    "signal_low": bar.low,
+                    "weight": weight,
+                }
+                return signals
+
+            # 直接入场（P4 关闭时）
             signal = TradingSignal(
                 id=str(uuid.uuid4()),
                 strategy_id=self.name,
@@ -235,12 +296,28 @@ class LightGBMBottomStrategy(BaseStrategy):
 
     # ── Prediction ──────────────────────────────────────
 
-    # ── Prediction ──────────────────────────────────────
+    def _get_factor_value(self, ts_code: str, trade_date_val, factor_code: str) -> Optional[float]:
+        """从因子缓存读取单个因子值（最近交易日 ≤ trade_date）。"""
+        cache = self._factor_cache.get(ts_code, {})
+        if not cache:
+            return None
+        if hasattr(trade_date_val, 'strftime'):
+            td_str = trade_date_val.strftime('%Y-%m-%d')
+        elif hasattr(trade_date_val, 'isoformat'):
+            td_str = trade_date_val.isoformat()[:10]
+        else:
+            td_str = str(trade_date_val)[:10]
+        all_dates = sorted(cache.keys(), reverse=True)
+        for d in all_dates:
+            if d <= td_str:
+                val = cache[d].get(factor_code)
+                return float(val) if val is not None and not (isinstance(val, float) and np.isnan(val)) else None
+        return None
 
     def _predict(self, ts_code: str, trade_date_val) -> Optional[float]:
-        """从 factor_data 表读取预计算特征 → 模型预测 (v3.4)"""
+        """从因子缓存读取预计算特征 → 模型预测"""
         try:
-            td_str = None
+            # 标准化 trade_date 为 'YYYY-MM-DD' 字符串
             if hasattr(trade_date_val, 'strftime'):
                 td_str = trade_date_val.strftime('%Y-%m-%d')
             elif hasattr(trade_date_val, 'isoformat'):
@@ -248,8 +325,15 @@ class LightGBMBottomStrategy(BaseStrategy):
             else:
                 td_str = str(trade_date_val)[:10]
 
-            # 从内存缓存读取特征 (v3.5)
+            # 从内存缓存读取特征
             cache = self._factor_cache.get(ts_code, {})
+            if not cache:
+                # 缓存未命中：尝试按需加载单个 ETF 的因子
+                etf_pool = self.parameters.get("etf_pool") or []
+                if ts_code not in etf_pool and self.feature_names:
+                    self._load_factor_cache([ts_code])
+                    cache = self._factor_cache.get(ts_code, {})
+
             # 找最近交易日 <= td_str
             all_dates = sorted(cache.keys(), reverse=True)
             nearest_date = None
@@ -259,9 +343,12 @@ class LightGBMBottomStrategy(BaseStrategy):
                     break
             if nearest_date is None:
                 return None
+
             row = cache[nearest_date]
-            feature_vals = [row.get(fn) if row.get(fn) is not None else np.nan for fn in self.feature_names]
-            # factor_cache used — no DB call per bar
+            feature_vals = [
+                row.get(fn) if row.get(fn) is not None else np.nan
+                for fn in self.feature_names
+            ]
 
             features = np.array(feature_vals, dtype=np.float64).reshape(1, -1)
 
@@ -283,7 +370,6 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.error("[%s] 预测失败: %s", self.name, str(e)[:200])
             return None
 
-
     # ── Exit Logic ──────────────────────────────────────
 
     def _check_exit(self, ts_code: str, bar: BarData) -> Optional[TradingSignal]:
@@ -302,28 +388,44 @@ class LightGBMBottomStrategy(BaseStrategy):
         high = self._track_high[ts_code]
         drawdown_from_high = (high - bar.close) / high if high > 0 else 0
 
-        # ① 硬止损 -8%
+        # ① 硬止损
         if pnl < self.parameters["stop_loss"]:
             return self._make_exit(ts_code, bar, f"硬止损 {pnl:.1%}", SignalType.STOP_LOSS)
 
         # ② 时间止损（0=关闭）
         max_days = self.parameters.get("max_hold_days", 0)
         if max_days > 0:
-            hold_days = (bar.trade_date - entry_date).days if hasattr(bar.trade_date, "days") else 0
+            hold_days = self._compute_hold_days(entry_date, bar.trade_date)
             if hold_days >= max_days:
                 return self._make_exit(ts_code, bar, f"时间止损 {hold_days}天", SignalType.EXIT)
 
-        # ③ Trailing stop: 浮盈>5%后启动，从高点回落3%离场
+        # ③ Trailing stop: 浮盈>启动阈值 后从高点回落>回撤距离 则离场
         trail_activate = self.parameters.get("trail_activate", 0.05)
         trail_distance = self.parameters.get("trail_distance", 0.03)
         if (high - entry_price) / entry_price >= trail_activate and drawdown_from_high >= trail_distance:
             return self._make_exit(
                 ts_code, bar,
-                f"Trailing止盈: 浮盈{high/entry_price-1:.1%}→回落{drawdown_from_high:.1%}",
+                f"Trailing止盈: 浮盈{high / entry_price - 1:.1%}→回落{drawdown_from_high:.1%}",
                 SignalType.TAKE_PROFIT,
             )
 
         return None
+
+    @staticmethod
+    def _compute_hold_days(entry_date, current_date) -> int:
+        """安全计算持仓天数（兼容 date / datetime / string）"""
+        try:
+            if hasattr(current_date, 'date'):
+                current_date = current_date.date()
+            if hasattr(entry_date, 'date'):
+                entry_date = entry_date.date()
+            if isinstance(entry_date, str):
+                entry_date = date.fromisoformat(entry_date[:10])
+            if isinstance(current_date, str):
+                current_date = date.fromisoformat(current_date[:10])
+            return (current_date - entry_date).days
+        except Exception:
+            return 0
 
     def _make_exit(self, ts_code, bar, reason, signal_type) -> TradingSignal:
         """生成出场信号并设置冷却期"""
