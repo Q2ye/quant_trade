@@ -88,15 +88,12 @@ class FeeService:
 			# 计算交易金额
 			trade_amount = price * volume
 
-			# 计算佣金（这里使用规则）
-			# v2.4: 费率已与 CostCalculator 统一（万三佣金）
-			commission_rate = Decimal("0.0003")  # v2.4: 万三，与 CostCalculator 统一
+			# 计算佣金（万一免五）
+			# v2.5: 费率统一为万分之一（万一免五）
+			commission_rate = Decimal("0.0001")  # 万分之一佣金
 			commission = trade_amount * commission_rate
 
-			# 最低佣金5元
-			min_commission = Decimal("5.00")
-			if commission < min_commission:
-				commission = min_commission
+			# 免五：无最低佣金限制
 
 			# 计算印花税（仅卖出时收取）
 			stamp_tax = Decimal("0.00")

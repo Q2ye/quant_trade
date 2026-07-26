@@ -342,7 +342,7 @@ class BacktestEngine(EngineBase):
 			end_date: str,
 			initial_capital: float = 1_000_000,
 			parameters: Dict[str, Any] = None,
-			commission_rate: float = 0.0003,
+			commission_rate: float = 0.0001,
 			slippage: float = 0.001,
 			benchmark_ts_code: str = None,
 	) -> BacktestResult:
@@ -390,7 +390,7 @@ class BacktestEngine(EngineBase):
 			end_date: 回测结束日期（YYYY-MM-DD）。
 			initial_capital: 初始资金，默认 100 万。
 			parameters: 策略参数字典（传递给策略实例），默认 None。
-			commission_rate: 佣金费率，默认万三（0.0003）。
+			commission_rate: 佣金费率，默认万一（0.0001），万一免五。
 			slippage: 滑点比例，默认千一（0.001）。
 
 		Returns:
@@ -534,18 +534,19 @@ class BacktestEngine(EngineBase):
 				if quantity <= 0:
 					continue
 
-				await broker.submit_order(ts_code, direction, price, quantity)
+				reason = getattr(sig, "reason", "") or ""
+				await broker.submit_order(ts_code, direction, price, quantity, reason=reason)
 				signal_count += 1
 				day_signals += 1
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----
 			broker.mark_to_market(bar_dict, trade_date=trade_date)
 
-			# ---- 当日信号摘要日志 ----
-			if day_signals:
+			# ---- 当日信号（仅DEBUG级别，里程碑用INFO） ----
+			if day_signals and logger.isEnabledFor(logging.DEBUG):
 				snap = broker.get_account_snapshot()
-				logger.info(
+				logger.debug(
 					f"回测 {task_id}: [{trade_date}] "
-					f"信号={day_signals}, 权益={snap['total_assets']:,.0f}, "
+					f"信号={len(day_signals)}, 权益={snap['total_assets']:,.0f}, "
 					f"收益={snap['total_return']:+.2%}"
 				)
 

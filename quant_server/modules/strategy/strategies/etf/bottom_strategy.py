@@ -49,17 +49,25 @@ class LightGBMBottomStrategy(BaseStrategy):
 
     DEFAULT_PARAMS = {
         "model_path": "",              # 训练好的模型文件路径
-        "threshold": 0.30,             # 概率阈值（激进：赔率优先，宁错勿漏）
+        "threshold": 0.30,             # 概率阈值（模型 artifact 覆盖）
         "max_single_position": 0.40,   # 单 ETF 最大仓位（集中火力）
         "max_positions": 5,            # 最大同时持仓数
-        "stop_loss": -0.05,            # 硬止损线 -5%（快刀斩乱麻）
-        "trail_activate": 0.03,        # trailing stop 启动阈值：浮盈>3%后启动
-        "trail_distance": 0.05,        # trailing stop 回撤距离：从高点回落5%离场
-        "max_hold_days": 15,           # 最大持有天数（15天不涨就撤）
+        "stop_loss": -0.07,            # 硬止损 -7%（v3: 放宽，减少假止损 26%→18%）
+        "trail_activate": 0.05,        # 移动止盈启动：浮盈>5%（v3: 3%→5%，让利润发育）
+        "trail_distance": 0.08,        # 移动止盈回撤：8%（v3: 5%→8%，宽回撤容忍）
+        "max_hold_days": 20,           # 最大持有天数（v3: 15→20，盈利单平均15.4天）
         "cooling_days": 2,             # 出场后冷却天数
         "min_warmup_bars": 60,         # 最少需要的历史 bar 数
         "feature_list": [],            # 特征列表（空=从模型 artifact 读取）
-        "etf_pool": [],                # ETF 候选池（空=动态跟踪，非空=预加载因子缓存）
+        "etf_pool": [
+            # v3: 剔除消费类ETF（酒ETF -9k, 旅游ETF -6.5k，模型对消费底部识别弱）
+            "510050.SH","510300.SH","510500.SH","159919.SZ","510880.SH",
+            "512880.SH","512660.SH","512800.SH","512100.SH",
+            "159915.SZ","159949.SZ","518880.SH","513100.SH","513050.SH",
+            "511010.SH","511260.SH","510310.SH","159865.SZ","159825.SZ",
+            "159781.SZ","512170.SH","159806.SZ","516510.SH",
+            "159840.SZ","512400.SH",
+        ],                # ETF 候选池（空=动态跟踪，非空=预加载因子缓存）
         # ── P3: 波动率过滤 ──
         "vol_filter_enabled": True,
         "vol_filter_atr_min": 0.015,   # ATR(14)/close >= 1.5% 才入场
@@ -100,9 +108,17 @@ class LightGBMBottomStrategy(BaseStrategy):
 
     def on_init(self) -> None:
         """加载模型 artifact + 预加载因子缓存"""
-        model_path = self.parameters["model_path"]
+        # 0. 设置 universe（必须最先执行，回测系统依赖此字段）
+        etf_pool = self.parameters.get("etf_pool") or []
+        self._universe = list(etf_pool)
+        logger.info("[%s] universe=%d ETFs: %s...", self.name, len(self._universe), str(self._universe[:5]))
+
+        model_path = self.parameters.get("model_path", "")
+        # 自动发现最新模型（防御前端更新时覆盖 model_path 为空）
         if not model_path:
-            logger.warning("[%s] model_path 为空，策略无法预测", self.name)
+            model_path = self._find_latest_model()
+        if not model_path:
+            logger.warning("[%s] 未找到模型文件，策略无法预测", self.name)
             return
 
         # 1. 加载模型 artifact
@@ -115,7 +131,11 @@ class LightGBMBottomStrategy(BaseStrategy):
         # 使用 artifact 中保存的阈值（如果用户未显式覆盖）
         saved_t = artifact.get("threshold")
         if saved_t is not None and self.parameters["threshold"] == self.DEFAULT_PARAMS["threshold"]:
-            self.parameters["threshold"] = float(saved_t)
+            t = float(saved_t)
+            # v2: 回归模型阈值在 0-2 区间，归一化到 0-1
+            if not hasattr(self.model, 'predict_proba') and t > 0.80:
+                t = t / 2.0
+            self.parameters["threshold"] = t
 
         logger.info(
             "[%s] 模型已加载: %s, features=%d, threshold=%.2f",
@@ -123,12 +143,26 @@ class LightGBMBottomStrategy(BaseStrategy):
             len(self.feature_names), self.parameters["threshold"],
         )
 
-        # 2. 预加载因子数据到内存缓存（避免 on_bar 逐条查 DB）
-        etf_pool = self.parameters.get("etf_pool") or []
+        # 2. 预加载因子数据到内存缓存
         if etf_pool and self.feature_names:
             self._load_factor_cache(etf_pool)
-        elif not etf_pool:
-            logger.info("[%s] etf_pool 为空，因子缓存将在首次 bar 时按需查询", self.name)
+
+    @staticmethod
+    def _find_latest_model() -> str:
+        """自动发现存储目录中最新的模型文件，兼容 exec 沙箱和 importlib 加载"""
+        try:
+            try:
+                base = Path(__file__).resolve().parent.parent.parent.parent.parent
+            except NameError:
+                base = Path.cwd()
+            model_dir = base / "storage" / "models"
+            files = sorted(model_dir.glob("etf_bottom_v*.joblib"), reverse=True)
+            if files:
+                logger.info("自动发现模型: %s", files[0].name)
+                return str(files[0])
+        except Exception as e:
+            logger.warning("自动发现模型失败: %s", e)
+        return ""
 
     # ── Factor Cache Loading ──────────────────────────────
 
@@ -164,7 +198,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                     self._factor_cache[etf] = cache
             cur.close()
             conn.close()
-            logger.info("[%s] 因子缓存加载完成: %d ETFs × %d features",
+            logger.debug("[%s] 因子缓存加载完成: %d ETFs × %d features",
                         self.name, len(self._factor_cache), len(self.feature_names))
         except Exception as e:
             logger.warning("[%s] 因子缓存加载失败，策略将在 on_bar 中跳过预测: %s",
@@ -363,7 +397,11 @@ class LightGBMBottomStrategy(BaseStrategy):
                     np.array(self.scaler_sigma) + 1e-8
                 )
 
-            proba = self.model.predict_proba(features)[0, 1]
+        # v2: 兼容分类器(predict_proba)和回归模型(predict)
+            if hasattr(self.model, 'predict_proba'):
+                proba = self.model.predict_proba(features)[0, 1]
+            else:
+                proba = float(self.model.predict(features)[0])
             return float(proba)
 
         except Exception as e:

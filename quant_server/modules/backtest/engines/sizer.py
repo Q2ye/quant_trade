@@ -117,7 +117,9 @@ class WeightSizer(BaseSizer):
         if weight is None or weight <= 0:
             return 0
 
-        target_value = weight * available_cash
+        # 预留 0.5% 给佣金 + 滑点 + 过户费，避免 broker 端触发自动数量缩减
+        fee_buffer = 0.995
+        target_value = weight * available_cash * fee_buffer
         qty = int(target_value / price)
         return self._round_lot(qty)
 

@@ -11,18 +11,14 @@ from .base import (
     BarData,
     StrategyContext,
 )
-from .technical import (
-    MACrossStrategy,
-    MACDStrategy,
-)
-from .rotation import (
-    GlobalRotationV2Strategy,
-)
-from .reference import (
-	StockLowHighStrategy,
-)
 from .etf import (
     LightGBMBottomStrategy,
+)
+from .reference import (
+    StockLowHighStrategy,
+)
+from .rotation import (
+    GlobalRotationV2AggressiveStrategy,
 )
 
 __all__ = [
@@ -32,13 +28,10 @@ __all__ = [
     "MarketData",
     "BarData",
     "StrategyContext",
-    # 技术指标策略
-    "MACrossStrategy",
-    "MACDStrategy",
-    # 轮动策略
-    "GlobalRotationV2Strategy",
-    # 参考策略移植
-    "StockLowHighStrategy",
     # ETF 策略
     "LightGBMBottomStrategy",
+    # 参考策略移植
+    "StockLowHighStrategy",
+    # 轮动策略
+    "GlobalRotationV2AggressiveStrategy",
 ]

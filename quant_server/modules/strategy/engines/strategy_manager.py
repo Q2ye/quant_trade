@@ -2035,12 +2035,18 @@ class StrategyManager(EngineBase):
             # v3.2: instance.parameters 在恢复时可能为空，回退到策略对象的合并参数
             if not params:
                 params = getattr(strategy, "parameters", {}) or {}
-            raw = params.get("symbols") or params.get("universe") or []
+            raw = params.get("symbols") or params.get("universe") or params.get("etf_pool") or []
             # 避免 list("all_market") → ['a','l','l','_',...] 的拆字 Bug
             if isinstance(raw, str):
                 ts_codes = [raw]
             else:
                 ts_codes = list(raw)
+
+        # 如果 instance.parameters 中没有，回退到策略对象的 universe property
+        if not ts_codes:
+            strategy_obj = self._strategy_objects.get(strategy_id)
+            if strategy_obj and strategy_obj.universe:
+                ts_codes = list(strategy_obj.universe)
 
         if not ts_codes:
             logger.info("策略 %s 无股票池，跳过预热", strategy_id)
@@ -2393,6 +2399,20 @@ class StrategyManager(EngineBase):
                 open_date=datetime.now(),
             ))
             logger.info(f"持仓新增: {strategy_id} {ts_code} x{fill_quantity} @ {fill_price}")
+
+        # 同步策略对象内部持仓追踪（防止策略反复为同一标的生成买入信号）
+        strategy_obj = self._strategy_objects.get(str(strategy_id))
+        if strategy_obj and hasattr(strategy_obj, '_position_entry'):
+            if is_sell:
+                strategy_obj._position_entry.pop(ts_code, None)
+                if hasattr(strategy_obj, '_track_high'):
+                    strategy_obj._track_high.pop(ts_code, None)
+                logger.info(f"策略持仓已清除: {strategy_id} {ts_code}")
+            else:
+                strategy_obj._position_entry[ts_code] = (datetime.now().date(), fill_price)
+                if hasattr(strategy_obj, '_track_high'):
+                    strategy_obj._track_high[ts_code] = fill_price
+                logger.info(f"策略持仓已同步: {strategy_id} {ts_code}")
 
     async def _on_order_filled(self, event) -> None:
         """v3.3: 订单成交 → 更新策略持仓（支持买入和卖出方向）"""

@@ -17,7 +17,7 @@ class CostSimulator:
 	负责模拟交易成本
 	"""
 
-	def __init__ (self, commission_rate: float = 0.0003, min_commission: float = 5, slippage_rate: float = 0.0001,
+	def __init__ (self, commission_rate: float = 0.0001, min_commission: float = 0.0, slippage_rate: float = 0.0001,
 	              tax_rate: float = 0.001):
 		"""
 		初始化成本模拟器

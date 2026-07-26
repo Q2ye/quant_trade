@@ -176,7 +176,7 @@ class OptimizationEngine(EngineBase):
 			start_date = meta.get('_start_date', '2024-01-01')
 			end_date = meta.get('_end_date', '2024-12-31')
 			initial_capital = float(meta.get('_initial_capital', 1_000_000))
-			commission_rate = float(meta.get('_commission_rate', 0.0003))
+			commission_rate = float(meta.get('_commission_rate', 0.0001))
 			slippage = float(meta.get('_slippage', 0.001))
 
 			# 预加载历史数据（所有优化迭代共享）

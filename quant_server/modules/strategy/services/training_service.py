@@ -89,7 +89,13 @@ class TrainingService:
         etf_pool: List[str], N: int, X: float, Y: float,
         start: date, end: date,
     ) -> pd.DataFrame:
-        """从 etf_daily 构造标签"""
+        """从 etf_daily 构造标签 (v2: 三分标签)
+
+        标签定义:
+          2 = 高质量底: 未来 N 日内反弹 ≥X% 且最大跌幅 ≥Y（买入体验好，反弹确定性强）
+          1 = 低质量底: 未来 N 日内反弹 ≥X% 但最大跌幅 <Y（买在了更低点，扛了深跌才反弹）
+          0 = 不是底: 未来 N 日内反弹 <X%（反弹动力不足，不值得参与）
+        """
         etf_list = "','".join(etf_pool)
         rows = await conn.fetch(f"""
             SELECT ts_code, trade_date, high, low, close
@@ -116,7 +122,11 @@ class TrainingService:
                 cur = closes[i]
                 mx = (fh - cur) / cur
                 mn = (fl - cur) / cur
-                target = 1 if (mx >= X and mn >= Y) else 0
+                # v2: 三分标签
+                if mx >= X:
+                    target = 2 if mn >= Y else 1  # 高质量底 vs 低质量底（扛了深跌）
+                else:
+                    target = 0  # 不是底
                 labels.append({
                     "ts_code": ts_code,
                     "trade_date": grp["trade_date"].iloc[i],
@@ -134,10 +144,10 @@ class TrainingService:
         label_X: float = 0.03,
         label_Y: float = -0.05,
         lgb_params: dict = None,
-        train_end: date = date(2022, 12, 31),
-        val_end: date = date(2023, 12, 31),
+        train_end: date = date(2024, 12, 31),
+        val_end: date = date(2025, 6, 30),
         data_start: date = date(2020, 1, 1),
-        data_end: date = date(2025, 6, 30),
+        data_end: date = date(2026, 7, 25),
         progress_callback=None,
     ) -> Dict[str, Any]:
         """
@@ -156,13 +166,14 @@ class TrainingService:
         Returns:
             Dict: {model_path, auc_val, auc_test, threshold, features_n, ...}
         """
-        # 默认 LightGBM 参数
+        # 默认 LightGBM 参数 (v2: 二分类，加强正则化对抗74特征)
         default_lgb = {
             "objective": "binary", "metric": "auc",
-            "boosting_type": "gbdt", "num_leaves": 31, "max_depth": 5,
-            "learning_rate": 0.05, "n_estimators": 500,
-            "subsample": 0.8, "colsample_bytree": 0.7,
-            "reg_alpha": 0.5, "reg_lambda": 1.0,
+            "boosting_type": "gbdt", "num_leaves": 15, "max_depth": 4,
+            "learning_rate": 0.03, "n_estimators": 2000,
+            "subsample": 0.7, "colsample_bytree": 0.5,
+            "reg_alpha": 2.0, "reg_lambda": 5.0,
+            "min_child_samples": 50,
             "random_state": 42, "verbosity": -1,
         }
         lgb_params = lgb_params or default_lgb
@@ -193,14 +204,16 @@ class TrainingService:
             feats["trade_date"] = pd.to_datetime(feats["trade_date"])
             labels["trade_date"] = pd.to_datetime(labels["trade_date"])
             merged = feats.merge(labels, on=["ts_code", "trade_date"], how="inner")
-            logger.info("合并样本: %d (正样本率 %.1f%%)", len(merged), merged["target"].mean() * 100)
+            # v2: 三分标签合并为二分（高质量底+低质量底 = 正样本）
+            y = (merged["target"].values >= 1).astype(int)
+            logger.info("合并样本: %d (正样本率 %.1f%%)", len(merged), y.mean() * 100)
 
             # 缺失值
             X = merged[feature_codes].copy()
             for col in feature_codes:
                 X[col] = merged.groupby("ts_code")[col].transform(lambda x: x.ffill().bfill())
             X = X.fillna(X.median())
-            y = merged["target"].values.astype(int)
+            # y already set above (ternary→binary)
             date_arr = pd.to_datetime(merged["trade_date"])
 
             # 4. 数据划分
@@ -259,6 +272,7 @@ class TrainingService:
                 "feature_names": feature_codes,
                 "scaler_params": {"mu": scaler.mean_.tolist(), "sigma": scaler.scale_.tolist()},
                 "threshold": float(best_t),
+                "label_type": "binary_merged",
                 "metadata": {
                     "train_end": str(train_end), "val_end": str(val_end),
                     "auc_val": float(model.best_score_["valid_0"]["auc"]) if model.best_score_ else 0,
@@ -293,7 +307,7 @@ class TrainingService:
         conn = await asyncpg.connect(**self.db_config)
         try:
             rows = await conn.fetch(
-                "SELECT feature_columns FROM feature_sets WHERE id::text = ANY($1::text[])",
+                "SELECT feature_columns FROM feature_sets WHERE id::text = ANY($1)",
                 feature_set_ids,
             )
             codes = []

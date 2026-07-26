@@ -22,7 +22,7 @@ class BacktestConfig:
     start_date: date
     end_date: date
     initial_capital: Decimal = Decimal("1000000.00")
-    commission_rate: Decimal = Decimal("0.0003")
+    commission_rate: Decimal = Decimal("0.0001")
     slippage_rate: Decimal = Decimal("0.0001")
     parameters: Dict[str, Any] = field(default_factory=dict)
 

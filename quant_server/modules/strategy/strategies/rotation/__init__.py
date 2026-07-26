@@ -2,11 +2,11 @@
 """
 轮动策略模块
 
-V2: GlobalRotationV2Strategy — 双动量骨架月频轮动（V1 已退役删除）
+  GlobalRotationV2AggressiveStrategy  — 双动量激进版，极致集中（6只高弹性，1×100%）
 """
 
-from .global_rotation_v2_strategy import GlobalRotationV2Strategy
+from .GlobalRotationV2AggressiveStrategy import GlobalRotationV2AggressiveStrategy
 
 __all__ = [
-    "GlobalRotationV2Strategy",
+    "GlobalRotationV2AggressiveStrategy",
 ]

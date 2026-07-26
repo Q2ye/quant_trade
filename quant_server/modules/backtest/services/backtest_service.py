@@ -243,7 +243,7 @@ class BacktestService:
 
 		默认参数（可通过回测配置覆盖）：
 			- initial_capital: 1,000,000（100万）
-			- commission_rate: 0.0003（万三佣金）
+			- commission_rate: 0.0001（万分之一佣金（万一免五））
 			- slippage: 0.001（千一滑点）
 		"""
 		_session = db or self.db
@@ -269,7 +269,7 @@ class BacktestService:
 		# ---- 回测券商模拟器（含交易成本配置） ----
 		broker_config = BacktestBrokerConfig(
 			initial_capital=1_000_000,  # 初始资金 100 万
-			commission_rate=0.0003,  # 佣金费率 万三
+			commission_rate=0.0001,  # 佣金费率 万三
 			slippage=0.001,  # 滑点 千一
 		)
 		self.broker = BacktestBroker(config=broker_config, event_engine=self.event_engine)
@@ -1042,7 +1042,7 @@ class BacktestService:
 			strategy_config = StrategyConfigModel(
 				name=strategy.name,
 				initial_capital=float(config.get('initial_capital', 1_000_000)),
-				commission_rate=float(config.get('commission_rate', 0.0003)),
+				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
 			)
 
@@ -1067,7 +1067,7 @@ class BacktestService:
 				strategy_name=strategy.name,
 				user_id=task.user_id,
 				initial_capital=float(config.get('initial_capital', 1_000_000)),
-				commission_rate=float(config.get('commission_rate', 0.0003)),
+				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
 			)
 			await self.strategy_manager.start_strategy(task.strategy_id, context)
@@ -1165,7 +1165,7 @@ class BacktestService:
 				end_date=config.get('end_date', ''),
 				initial_capital=float(config.get('initial_capital', 1000000)),
 				parameters=parameters,
-				commission_rate=float(config.get('commission_rate', 0.0003)),
+				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
 				benchmark_ts_code=config.get('benchmark') or '000300.SH',
 				# TODO: progress_callback 待 BacktestEngine 支持后启用
@@ -1261,7 +1261,7 @@ class BacktestService:
 
 		# v2.4: 提供合理默认值（config 中不再冗余存储 cost/capital 参数）
 		config.setdefault("initial_capital", 1000000)
-		config.setdefault("commission_rate", 0.0003)
+		config.setdefault("commission_rate", 0.0001)
 		config.setdefault("slippage_rate", 0.0001)
 
 		try:
@@ -1484,7 +1484,16 @@ class BacktestService:
 		"""
 		try:
 			params_list = await self.param_repo.get_by_strategy_id(strategy_id)
-			params = {p.param_name: p.param_value for p in params_list}
+			params = {}
+			for p in params_list:
+				val = p.param_value
+				if isinstance(val, str) and (val.startswith('[') or val.startswith('{')):
+					try:
+						import json
+						val = json.loads(val)
+					except json.JSONDecodeError:
+						pass
+				params[p.param_name] = val
 			logger.info(f"获取策略参数: {len(params)} 个")
 			return params
 		except Exception as e:

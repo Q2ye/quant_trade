@@ -424,7 +424,7 @@ class BaseStrategy(ABC):
 		"""
 		if signal.ts_code is None or signal.ts_code == "":
 			return False
-		if signal.confidence < 0 or signal.confidence > 1:
+		if signal.confidence < 0 or signal.confidence > 2.0:  # v2: regression 0-2 range
 			return False
 		return True
 

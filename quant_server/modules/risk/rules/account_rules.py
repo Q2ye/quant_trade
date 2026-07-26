@@ -31,8 +31,10 @@ class AccountBalanceRule(RiskRule):
         available_cash = data.get("available_cash", 0)
         
         if direction == "buy":
-            if trade_amount > available_cash:
-                return False, f"账户余额不足: 需要 {trade_amount:.2f}, 可用 {available_cash:.2f}"
+            # v2.5: 资金不足检查已由 Broker 三层防护处理
+            # （_validate_order + submit_order 自动缩减 + match_orders 二次校验），
+            # 风控层不做冗余拦截，避免误杀调仓中的 buy-after-sell 模式
+            pass
         
         return True, "账户余额检查通过"
 

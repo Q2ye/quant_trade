@@ -98,6 +98,7 @@ class BrokerOrder:
     order_type: str                          # 订单类型：market(市价) / limit(限价)
     status: str                              # 状态：pending(挂单中) / filled(已成交) / cancelled(已取消)
     create_date: date                        # 订单创建日期（挂单日）
+    reason: str = ""                         # 信号原因（如"底部概率 65%, 权重 32%"）
     fill_date: Optional[date] = None         # 成交日期（T+1），未成交时为 None
     fill_price: Optional[float] = None       # 实际成交价（考虑滑点后的开盘价）
     commission: float = 0.0                  # 佣金（成交时计算）
@@ -184,8 +185,8 @@ class BacktestBrokerConfig:
     initial_capital: float = 1_000_000    # 初始资金（默认 100 万）
 
     # ---- 费率（A 股标准） ----
-    commission_rate: float = 0.0003       # 佣金费率 万分之三（0.03%）
-    min_commission: float = 5.0           # 最低佣金 5 元/笔（A 股规定）
+    commission_rate: float = 0.0001       # 佣金费率 万分之一（0.01%），万一免五
+    min_commission: float = 0.0           # 最低佣金 0 元（免五，无最低限制）
     stamp_tax: float = 0.001              # 印花税 千分之一（0.1%），仅卖出方向征收
     transfer_fee_rate: float = 0.00002    # 过户费 十万分之二（0.002%），买卖双向
 
@@ -310,8 +311,12 @@ class BacktestBroker(EngineBase):
         if quantity <= 0:
             raise ValueError(f"[{ts_code}] 数量无效: {quantity}")
         if direction == "LONG":
-            estimated = price * quantity * (1 + self.config.commission_rate)
-            if estimated > self.cash:
+            # v1.6: 估算成本 = 成交金额 + 佣金 + 滑点。
+            # 允许 ≤1% 微小超支通过验证 — submit_order 会触发自动数量缩减，
+            # match_orders 依据实际开盘价做最终资金校验，不会产生负现金。
+            estimated = price * quantity * (1 + self.config.commission_rate
+                                            + self.config.slippage)
+            if estimated > self.cash * 1.01:
                 raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
         if direction in ("SHORT", "CLOSE_LONG"):
             pos = self.positions.get(ts_code)
@@ -326,6 +331,7 @@ class BacktestBroker(EngineBase):
         price: float,
         quantity: int,
         order_type: str = "market",
+        reason: str = "",
     ) -> BrokerOrder:
         """
         接收策略信号 → 创建订单并加入 T+1 挂单队列。
@@ -519,6 +525,7 @@ class BacktestBroker(EngineBase):
             order_type=order_type,
             status="pending",
             create_date=self._trade_date or date.today(),
+            reason=reason,
         )
 
         self.orders[order_id] = order
@@ -716,6 +723,12 @@ class BacktestBroker(EngineBase):
             order.stamp_tax = stamp_tax
             order.transfer_fee = transfer_fee
 
+            # ---- v1.6: 保存入场均价（_update_position 会删除卖出持仓，须提前取值） ----
+            is_exit = order.direction in ("SHORT", "CLOSE_LONG", "close_long")
+            entry_avg_cost = None
+            if is_exit and order.ts_code in self.positions:
+                entry_avg_cost = self.positions[order.ts_code].avg_cost
+
             # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
             self._update_position(order, fill_price, trade_date)
 
@@ -736,10 +749,24 @@ class BacktestBroker(EngineBase):
             trades.append(trade_record)
             self.trade_history.append(trade_record)
 
-            logger.debug(
-                f"成交: {order.ts_code} {order.direction} "
+            # 计算该笔交易的 PnL（平仓时从预先保存的入场均价推算）
+            trade_pnl_str = ""
+            if is_exit:
+                if entry_avg_cost is None:
+                    trade_pnl_str = "PnL=N/A(pos_gone)"
+                elif entry_avg_cost <= 0:
+                    trade_pnl_str = f"PnL=N/A(avg_cost={entry_avg_cost})"
+                else:
+                    trade_pnl = (fill_price - entry_avg_cost) / entry_avg_cost
+                    trade_pnl_str = f"PnL={trade_pnl:+.2%}"
+
+            pnl_display = f" {trade_pnl_str}" if trade_pnl_str else ""
+            label = "卖出" if is_exit else "买入"
+            reason_str = f" | {order.reason}" if getattr(order, 'reason', '') else ""
+            logger.info(
+                f"  [{order.create_date}] {label} {order.ts_code} "
                 f"{order.quantity}股 @ {fill_price:.2f} "
-                f"费用={commission + stamp_tax + transfer_fee:.2f}"
+                f"费用={commission + stamp_tax + transfer_fee:.2f}{pnl_display}{reason_str}"
             )
 
         # ---- 更新挂单队列（移除已成交的） ----
@@ -1158,7 +1185,7 @@ class BacktestBroker(EngineBase):
         logger.info(
             f"BacktestBroker 初始化完成: "
             f"初始资金={self.initial_capital:,.0f}, "
-            f"佣金={self.config.commission_rate:.4%}, "
+            f"佣金={self.config.commission_rate:.4%} (万一免五), "
             f"印花税={self.config.stamp_tax:.3%}"
         )
 
