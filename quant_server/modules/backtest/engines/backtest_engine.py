@@ -675,6 +675,232 @@ class BacktestEngine(EngineBase):
 			except Exception as e:
 				logger.error(f"多策略回测 [{cfg.get('strategy_id')}] 失败: {e}")
 		return results
+	# =========================================================================
+	# 组合回测 — 多策略共享资金池 + CapitalAllocator 动态分配
+	# =========================================================================
+
+	async def run_composite(
+		self,
+		task_id: str,
+		strategy_configs: List[Dict],
+		symbols: List[str],
+		start_date: str,
+		end_date: str,
+		initial_capital: float = 1_000_000,
+		commission_rate: float = 0.0001,
+		slippage: float = 0.001,
+		benchmark_ts_code: str = None,
+		allocator_params: Dict[str, Any] = None,
+		force_regime: int = None,
+	) -> "BacktestResult":
+		"""
+		多策略组合回测 — 所有策略共享一个 Broker，按 Regime 动态分配资金。
+
+		与 run_multi() 的核心区别：
+		- run_multi: 每个策略独立 Broker，各自生成净值曲线（并行但隔离）
+		- run_composite: 所有策略共享一个 Broker，一条净值曲线（真正的组合）
+
+		逐日循环:
+		  match_orders → allocator.rebalance() → handle_bar_batch
+		  → allocator.scale_signals() → submit_order → mark_to_market
+
+		Args:
+			task_id: 回测任务 ID。
+			strategy_configs: 策略配置列表，每项包含:
+				- strategy_id: 策略 ID
+				- allocator_id: 分配器中的权重键
+				- parameters: 策略参数字典（可选）
+			symbols: 股票代码列表（合并所有策略的 Universe）。
+			start_date / end_date: 回测区间。
+			initial_capital: 共享初始资金。
+			allocator_params: CapitalAllocator 参数。
+			force_regime: P0 固定 Regime（None=默认RANGE）。
+
+		Returns:
+			BacktestResult — 组合净值曲线的完整绩效指标。
+		"""
+		from modules.backtest.engines.backtest_broker import (
+			BacktestBroker,
+			BacktestBrokerConfig,
+		)
+		from modules.strategy.engines.capital_allocator import CapitalAllocator
+
+		broker_config = BacktestBrokerConfig(
+			initial_capital=initial_capital,
+			commission_rate=commission_rate,
+			slippage=slippage,
+		)
+		broker = self.broker or BacktestBroker(config=broker_config)
+		broker.reset(initial_capital)
+		self._data_cache.clear()
+
+		manager = self.strategy_manager
+		if not manager:
+			raise RuntimeError("StrategyManager 未注入，无法运行组合回测")
+
+		strategy_ids = []
+		allocator_id_map: Dict[str, str] = {}
+		for cfg in strategy_configs:
+			sid = cfg["strategy_id"]
+			aid = cfg.get("allocator_id", sid)
+			strategy_ids.append(sid)
+			allocator_id_map[sid] = aid
+			if sid not in manager.strategies:
+				logger.warning(
+					f"策略 {sid} 未注册, 请在上游完成注册"
+				)
+
+		alloc_ids = list(dict.fromkeys(allocator_id_map.values()))
+		allocator = CapitalAllocator(
+			strategy_ids=alloc_ids,
+			allocator_params=allocator_params,
+			force_regime=force_regime,
+		)
+		logger.info(
+			f"组合回测 {task_id}: {len(strategy_ids)} 策略, "
+			f"allocator_ids={alloc_ids}, force_regime={force_regime}"
+		)
+
+		if not self.data_feed:
+			logger.error("DataFeedEngine 未注入")
+			return BacktestResult(task_id=task_id, strategy_id="composite")
+
+		df = await self.data_feed.load_historical_data(
+			symbols=symbols,
+			start_date=start_date,
+			end_date=end_date,
+		)
+
+		bm_df = None
+		if benchmark_ts_code:
+			bm_df = await self._load_benchmark_data(
+				benchmark_ts_code, start_date, end_date
+			)
+
+		if df.empty:
+			logger.warning(f"组合回测数据为空")
+			return BacktestResult(task_id=task_id, strategy_id="composite")
+
+		trading_days = sorted(df["trade_date"].unique())
+		total_days = len(trading_days)
+		logger.info(
+			f"组合回测 {task_id}: {len(symbols)} 标的, "
+			f"{df.shape[0]} 行, {total_days} 交易日"
+		)
+
+		day_idx = 0
+		progress_milestones = {
+			int(total_days * p) for p in (0.1, 0.25, 0.5, 0.75, 0.9)
+		}
+		signal_count = 0
+
+		async for trade_date, bars in self.data_feed.iter_bars(df):
+			cancel_event = getattr(self, "_cancel_event", None)
+			if cancel_event and cancel_event.is_set():
+				raise asyncio.CancelledError(f"组合回测 {task_id} 被取消")
+			day_idx += 1
+
+			bar_dict = {b.ts_code: b for b in bars}
+
+			broker.match_orders(trade_date, bar_dict)
+			allocator.rebalance(trade_date, bar_dict)
+			signals = await manager.handle_bar_batch(trade_date, bars)
+
+			# ---- 信号权重缩放 + 统计 ----
+			scale_stats: Dict[str, int] = {}
+			for sig in signals:
+				sid = getattr(sig, "strategy_id", "")
+				if sid and sid in allocator_id_map:
+					aid = allocator_id_map[sid]
+					w = allocator.get_weight(aid)
+					orig_w = getattr(sig, "weight", 1.0) or 1.0
+					sig.weight = orig_w * w
+					scale_stats[aid] = scale_stats.get(aid, 0) + 1
+
+			# ---- 每日信号日志（首日或有信号时 INFO） ----
+			if scale_stats:
+				snap = broker.get_account_snapshot()
+				logger.info(
+					f"组合 {task_id} [{trade_date}] "
+					f"regime={allocator.regime} alloc={allocator.allocation} "
+					f"信号={scale_stats} 现金={broker.cash:,.0f} 权益={snap['total_assets']:,.0f}"
+				)
+
+			from modules.backtest.engines.sizer import select_sizer
+			day_signals = 0
+			for sig in signals:
+				ts_code = getattr(sig, "ts_code", "")
+				direction = (
+					sig.direction.value
+					if hasattr(sig, "direction")
+					and hasattr(sig.direction, "value")
+					else str(sig.direction)
+				)
+				price = getattr(sig, "price", 0.0) or 0.0
+				if price <= 0 and ts_code in bar_dict:
+					price = float(bar_dict[ts_code].close or 0.0)
+				if price <= 0:
+					continue
+				sizer = select_sizer(sig)
+				current_qty = 0
+				pos = broker.positions.get(ts_code)
+				if pos:
+					current_qty = pos.quantity
+				quantity = sizer.calculate(
+					sig, bar_dict.get(ts_code), broker.cash, current_qty
+				)
+				if quantity <= 0:
+					continue
+				reason = getattr(sig, "reason", "") or ""
+				await broker.submit_order(
+					ts_code, direction, price, quantity, reason=reason
+				)
+				signal_count += 1
+				day_signals += 1
+
+			broker.mark_to_market(bar_dict, trade_date=trade_date)
+
+			if day_idx in progress_milestones:
+				pct = day_idx * 100 // total_days
+				snap = broker.get_account_snapshot()
+				logger.info(
+					f"组合回测 {task_id}: {pct}% ({day_idx}/{total_days}), "
+					f"权益={snap['total_assets']:,.0f}, "
+					f"信号={signal_count}, regime={allocator.regime}, "
+					f"alloc={allocator.allocation}"
+				)
+				await self._update_task_progress(task_id, pct)
+
+		equity_df = broker.get_equity_curve()
+		trades = broker.get_trade_list()
+		composite_id = "composite_" + "_".join(strategy_ids)
+		result = self._calculate_metrics_from_broker(
+			task_id=task_id,
+			strategy_id=composite_id,
+			equity_df=equity_df,
+			trades=trades,
+			initial_capital=initial_capital,
+		)
+
+		if bm_df is not None and not bm_df.empty:
+			result.benchmark_curve = self._build_benchmark_curve(
+				bm_df=bm_df, initial_capital=initial_capital
+			)
+
+		if self.broker:
+			result.risk_violations = self.broker.get_risk_violations()
+		await self._save_results(result, equity_df, trades)
+
+		logger.info(
+			f"组合回测完成: {task_id} "
+			f"收益={result.total_return:.2%} "
+			f"夏普={result.sharpe_ratio:.2f} "
+			f"回撤={result.max_drawdown:.2%}"
+		)
+
+		return result
+
+
 
 	# =========================================================================
 	# 绩效计算（v1.1 — 从 Broker 的 equity_curve + trades 计算）
@@ -1569,8 +1795,10 @@ class BacktestEngine(EngineBase):
 						buy_matched_pnl[buy_idx] = buy_matched_pnl.get(buy_idx, 0) + buy_match_profit
 
 						if buy_qty > match_qty:
+							# v6.11: 部分成交时按比例缩减费用，避免后续匹配重复计入
+							remain_ratio = (buy_qty - match_qty) / buy_qty
 							buy_queue[0] = (buy_idx, buy_price, buy_qty - match_qty,
-							               buy_comm, buy_stamp, buy_tf)
+							               buy_comm * remain_ratio, buy_stamp * remain_ratio, buy_tf * remain_ratio)
 						else:
 							buy_queue.pop(0)
 

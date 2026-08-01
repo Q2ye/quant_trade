@@ -70,6 +70,15 @@ export interface BacktestCreateParams {
   symbols?: string[];
   benchmark?: string;
   parameters?: Record<string, any>;
+  /** 组合回测参数 */
+  strategy_configs?: Array<{
+    strategy_id: string;
+    allocator_id?: string;
+    parameters?: Record<string, any>;
+  }>;
+  /** P0 固定 Regime */
+  force_regime?: number;
+  allocator_params?: Record<string, any>;
 }
 
 export default {
@@ -92,6 +101,31 @@ export default {
         symbols: config.symbols,
         benchmark: config.benchmark,
         parameters: config.parameters,
+      })
+      .then(handleResponse)
+      .then((res: any) => res.data ?? res);
+  },
+
+  /**
+   * 创建组合回测任务 — 多策略共享资金池
+   * POST /quantTrade/backtest/composite
+   */
+  async createCompositeTask(
+    config: BacktestCreateParams,
+  ): Promise<{ task_id: string }> {
+    return request
+      .post(`${BASE}/composite`, {
+        name: config.name,
+        strategy_configs: config.strategy_configs,
+        start_date: config.start_date,
+        end_date: config.end_date,
+        initial_capital: config.initial_capital,
+        commission_rate: config.commission_rate,
+        slippage_rate: config.slippage_rate,
+        symbols: config.symbols,
+        benchmark: config.benchmark,
+        force_regime: config.force_regime,
+        allocator_params: config.allocator_params,
       })
       .then(handleResponse)
       .then((res: any) => res.data ?? res);

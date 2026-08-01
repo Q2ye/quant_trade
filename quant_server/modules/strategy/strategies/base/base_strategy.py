@@ -428,6 +428,16 @@ class BaseStrategy(ABC):
 			return False
 		return True
 
+	def get_daily_diagnostic(self) -> Optional[dict]:
+		"""
+		返回当日运行诊断信息（可选覆写）。
+
+		策略子类可覆写此方法以提供策略专属的运行摘要，
+		strategy_manager 在每日 bar 处理完成后自动调用。
+		返回 None 表示无诊断信息。
+		"""
+		return None
+
 
 class TechnicalStrategy(BaseStrategy):
 	"""

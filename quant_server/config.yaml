@@ -174,8 +174,8 @@ ENGINES:
     financial_statement: 3   # 三张财务报表（income/balance/cashflow）
     managers: 3              # 管理层信息（stk_managers）
     rewards: 3               # 管理层薪酬持股（stk_rewards）
-    etf_daily: 2             # ETF日线（fund_daily，800次/分钟）
-    etf_adj: 2               # ETF复权因子（fund_adj，500次/分钟）
+    etf_daily: 1             # ETF日线（fund_daily，Tushare限500次/分钟，1并发≈120-300次/分）
+    etf_adj: 1               # ETF复权因子（fund_adj，Tushare限500次/分钟）
     index_daily: 1           # 指数日线（index_daily，500次/分钟）
     stk_factor: 3             # 股票技术因子（stk_factor，500次/分钟@8000积分）
     stk_factor_pro: 2         # 股票技术因子专业版（stk_factor_pro，500次/分钟@8000积分）

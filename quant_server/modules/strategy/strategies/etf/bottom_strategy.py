@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-LightGBM ETF 底部抄底策略
-=========================
-基于 LightGBM 离线训练的 ETF 底部识别模型，从 factor_data 加载特征，
-在 on_bar 中实时预测底部概率，生成交易信号。
-
-策略类型: StrategyType.ML
-数据需求: etf_daily + factor_data (预计算因子) + market_state_daily
-预热需求: at least 60 bars per ETF (rolling indicators)
+LightGBM ETF 底部抄底策略 v4
+============================
+P1: 分市场自适应参数（牛/熊/震荡）
+P2: 凯利公式仓位管理
+P3: 量能确认 + 智能时间止损
 """
-
 import logging
 import uuid
 from datetime import date, datetime
@@ -28,55 +24,43 @@ logger = logging.getLogger(__name__)
 
 
 class LightGBMBottomStrategy(BaseStrategy):
-    """
-    LightGBM ETF 底部抄底策略
-
-    离线训练好 LightGBM 模型 → on_init 加载 → on_bar 预测 → 生成信号。
-
-    入场条件:
-      1. model.predict_proba(features) ≥ threshold
-      2. 不在冷却期
-      3. 未持有该 ETF
-      4. 持仓数 < max_positions
-
-    出场条件:
-      1. 硬止损: pnl < stop_loss
-      2. Trailing stop: 浮盈>trail_activate 后从高点回落>trail_distance
-      3. 时间止损: 持有 > max_hold_days（0=关闭）
-    """
-
     strategy_type = StrategyType.ML
 
     DEFAULT_PARAMS = {
-        "model_path": "",              # 训练好的模型文件路径
-        "threshold": 0.30,             # 概率阈值（模型 artifact 覆盖）
-        "max_single_position": 0.40,   # 单 ETF 最大仓位（集中火力）
-        "max_positions": 5,            # 最大同时持仓数
-        "stop_loss": -0.07,            # 硬止损 -7%（v3: 放宽，减少假止损 26%→18%）
-        "trail_activate": 0.05,        # 移动止盈启动：浮盈>5%（v3: 3%→5%，让利润发育）
-        "trail_distance": 0.08,        # 移动止盈回撤：8%（v3: 5%→8%，宽回撤容忍）
-        "max_hold_days": 20,           # 最大持有天数（v3: 15→20，盈利单平均15.4天）
-        "cooling_days": 2,             # 出场后冷却天数
-        "min_warmup_bars": 60,         # 最少需要的历史 bar 数
-        "feature_list": [],            # 特征列表（空=从模型 artifact 读取）
+        "model_path": "",
+        "threshold": 0.30,
+        "max_single_position": 0.40,
+        "max_positions": 5,
+        "stop_loss": -0.07,
+        "trail_activate": 0.05,
+        "trail_distance": 0.08,
+        "max_hold_days": 20,
+        "cooling_days": 2,
+        "min_warmup_bars": 60,
+        "feature_list": [],
         "etf_pool": [
-            # v3: 剔除消费类ETF（酒ETF -9k, 旅游ETF -6.5k，模型对消费底部识别弱）
             "510050.SH","510300.SH","510500.SH","159919.SZ","510880.SH",
             "512880.SH","512660.SH","512800.SH","512100.SH",
             "159915.SZ","159949.SZ","518880.SH","513100.SH","513050.SH",
             "511010.SH","511260.SH","510310.SH","159865.SZ","159825.SZ",
             "159781.SZ","512170.SH","159806.SZ","516510.SH",
             "159840.SZ","512400.SH",
-        ],                # ETF 候选池（空=动态跟踪，非空=预加载因子缓存）
-        # ── P3: 波动率过滤 ──
+        ],
         "vol_filter_enabled": True,
-        "vol_filter_atr_min": 0.015,   # ATR(14)/close >= 1.5% 才入场
-        # ── P4: 入场确认延迟 ──
-        "confirm_enabled": True,       # 信号日不入场，等次日 close > 信号日 low 才确认
-        "db_host": "localhost",
-        "db_port": 5432,
-        "db_user": "postgres",
-        "db_password": "123456",
+        "vol_filter_atr_min": 0.015,
+        "confirm_enabled": True,
+        # v4: 分市场参数 (0=BEAR, 1=RANGE, 2=BULL)
+        "regime_threshold_adj": {0: -0.02, 1: 0.04, 2: -0.06},
+        "regime_max_positions":  {0: 5, 1: 3, 2: 4},
+        "regime_stop_loss":     {0: -0.08, 1: -0.06, 2: -0.07},
+        "regime_trail_act":     {0: 0.06, 1: 0.04, 2: 0.05},
+        "regime_trail_dist":    {0: 0.10, 1: 0.06, 2: 0.08},
+        "regime_max_hold":      {0: 25, 1: 14, 2: 20},
+        # P3: 量能确认
+        "vol_confirm_enabled": True,
+        # DB
+        "db_host": "localhost", "db_port": 5432,
+        "db_user": "postgres", "db_password": "123456",
         "db_name": "quant_signals_dev",
     }
 
@@ -85,71 +69,68 @@ class LightGBMBottomStrategy(BaseStrategy):
         if parameters:
             defaults.update(parameters)
         super().__init__(name=name, strategy_type=strategy_type or StrategyType.ML, parameters=defaults)
-
-        # 模型相关
         self.model = None
         self.feature_names: List[str] = []
         self.scaler_mu: List[float] = []
         self.scaler_sigma: List[float] = []
-
-        # 因子缓存: {ts_code: {trade_date_str: {factor_code: value}}}
         self._factor_cache: Dict[str, Dict[str, Dict[str, float]]] = {}
-
-        # 持仓追踪
         self._data_cache: Dict[str, List[BarData]] = {}
-        self._position_entry: Dict[str, tuple] = {}  # ts_code → (entry_date, entry_price)
-        self._track_high: Dict[str, float] = {}       # ts_code → 持仓期间最高价 (trailing stop用)
-        self._cooling: Dict[str, int] = {}            # ts_code → remaining_days
+        self._position_entry: Dict[str, tuple] = {}
+        self._track_high: Dict[str, float] = {}
+        self._cooling: Dict[str, int] = {}
+        self._p4_buffer: Dict[str, dict] = {}  # v3.4: P4 确认缓冲区，独立于 BaseStrategy._pending_signals
+        # v3.4: 每日诊断计数器
+        self._diag = self._reset_diag()
 
-        # P4: 待确认信号 {ts_code: {proba, signal_date, signal_low, weight}}
-        self._pending_signals: Dict[str, dict] = {}
+    def _reset_diag(self) -> dict:
+        return {
+            "bars_processed": 0, "in_pool": 0, "warmup_skip": 0,
+            "no_model": 0, "cooling": 0, "in_position": 0,
+            "max_positions": 0, "p4_pending": 0, "p4_confirmed": 0,
+            "proba_none": 0, "proba_below": 0, "vol_filter": 0,
+            "weight_zero": 0, "p4_buffered": 0, "entry_generated": 0,
+            "top_probas": [],  # [(ts_code, proba, regime), ...]
+        }
 
-    # ── Lifecycle ─────────────────────────────────────────
+    def get_daily_diagnostic(self) -> dict:
+        d = dict(self._diag)
+        # 只保留 top 5 proba
+        d["top_probas"] = sorted(d["top_probas"], key=lambda x: -x[1])[:5]
+        self._diag = self._reset_diag()
+        return d
 
     def on_init(self) -> None:
-        """加载模型 artifact + 预加载因子缓存"""
-        # 0. 设置 universe（必须最先执行，回测系统依赖此字段）
         etf_pool = self.parameters.get("etf_pool") or []
         self._universe = list(etf_pool)
-        logger.info("[%s] universe=%d ETFs: %s...", self.name, len(self._universe), str(self._universe[:5]))
-
+        logger.info("[%s] universe=%d ETFs", self.name, len(self._universe))
         model_path = self.parameters.get("model_path", "")
-        # 自动发现最新模型（防御前端更新时覆盖 model_path 为空）
         if not model_path:
             model_path = self._find_latest_model()
         if not model_path:
-            logger.warning("[%s] 未找到模型文件，策略无法预测", self.name)
+            logger.warning("[%s] 未找到模型文件", self.name)
             return
-
-        # 1. 加载模型 artifact
         artifact = joblib.load(model_path)
         self.model = artifact["model"]
         self.feature_names = artifact.get("feature_names", [])
-        scaler = artifact.get("scaler_params", {})
-        self.scaler_mu = scaler.get("mu", [])
-        self.scaler_sigma = scaler.get("sigma", [])
-        # 使用 artifact 中保存的阈值（如果用户未显式覆盖）
+        s = artifact.get("scaler_params", {})
+        self.scaler_mu = s.get("mu", [])
+        self.scaler_sigma = s.get("sigma", [])
         saved_t = artifact.get("threshold")
         if saved_t is not None and self.parameters["threshold"] == self.DEFAULT_PARAMS["threshold"]:
             t = float(saved_t)
-            # v2: 回归模型阈值在 0-2 区间，归一化到 0-1
             if not hasattr(self.model, 'predict_proba') and t > 0.80:
                 t = t / 2.0
             self.parameters["threshold"] = t
-
-        logger.info(
-            "[%s] 模型已加载: %s, features=%d, threshold=%.2f",
-            self.name, Path(model_path).name,
-            len(self.feature_names), self.parameters["threshold"],
-        )
-
-        # 2. 预加载因子数据到内存缓存
+        logger.info("[%s] 模型已加载: %s, features=%d, threshold=%.2f",
+                    self.name, Path(model_path).name,
+                    len(self.feature_names), self.parameters["threshold"])
         if etf_pool and self.feature_names:
             self._load_factor_cache(etf_pool)
+        # 标记 P4 确认缓冲区待恢复（延迟到 load_live_state 之后执行）
+        self._confirm_restored = False
 
     @staticmethod
     def _find_latest_model() -> str:
-        """自动发现存储目录中最新的模型文件，兼容 exec 沙箱和 importlib 加载"""
         try:
             try:
                 base = Path(__file__).resolve().parent.parent.parent.parent.parent
@@ -164,12 +145,32 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.warning("自动发现模型失败: %s", e)
         return ""
 
-    # ── Factor Cache Loading ──────────────────────────────
+    def _restore_confirm_buffer(self) -> None:
+        """从历史数据重建 P4 确认缓冲区（启动后/重启后调用）
 
-    def _load_factor_cache(self, etf_pool: list) -> None:
-        """从 factor_data 表加载全部 ETF 因子到内存缓存（同步，仅 on_init 调用一次）"""
+        P4 确认缓冲区保存「昨日通过概率阈值、等待今日收盘价确认」的 ETF。
+        重启导致内存丢失后，从 DB 历史 bar + factor 数据重建，
+        避免当日 0 信号。
+        此方法由 on_bar 首次调用时延迟执行，确保 load_live_state 已注入持仓。
+
+        v3.5: 回测模式下跳过恢复，避免实盘 P4 缓冲区状态泄露到历史回测起点。
+        """
+        # 回测模式下 P4 缓冲区应从空开始，由回测数据逐日累积
+        if self.context and self.context.run_mode.value == "backtest":
+            logger.info("[%s] 回测模式，跳过 P4 确认缓冲区恢复", self.name)
+            return
+        if not self.parameters.get("confirm_enabled", False):
+            logger.info('[TRACE] _restore_confirm_buffer: confirm_enabled=False, skip')
+            return
+        etf_pool = self.parameters.get("etf_pool") or []
+        if not etf_pool or self.model is None:
+            logger.info('[TRACE] _restore_confirm_buffer: pool=%s model=%s, skip',
+                        'empty' if not etf_pool else 'ok', 'yes' if self.model else 'no')
+            return
+        logger.info('[TRACE] _restore_confirm_buffer 开始: pool=%d model=yes', len(etf_pool))
+
         import psycopg2
-        db_cfg = {
+        cfg = {
             "host": self.parameters.get("db_host", "localhost"),
             "port": self.parameters.get("db_port", 5432),
             "user": self.parameters.get("db_user", "postgres"),
@@ -177,313 +178,343 @@ class LightGBMBottomStrategy(BaseStrategy):
             "database": self.parameters.get("db_name", "quant_signals_dev"),
         }
         try:
-            conn = psycopg2.connect(**db_cfg)
+            conn = psycopg2.connect(**cfg)
+            cur = conn.cursor()
+            # 1. 从因子缓存中找到最近有因子数据的交易日（而非 etf_daily 最新日期）
+            _sample_cache = self._factor_cache.get(etf_pool[0], {}) if etf_pool else {}
+            _cache_dates = sorted(_sample_cache.keys()) if _sample_cache else []
+            if not _cache_dates:
+                cur.close(); conn.close()
+                logger.warning("[%s] P4恢复: 因子缓存为空，跳过", self.name)
+                return
+            yesterday = _cache_dates[-1]  # 缓存中最新的日期
+            # 转为 date 对象（缓存 key 是 'YYYY-MM-DD' 字符串）
+            if isinstance(yesterday, str):
+                from datetime import datetime as _dt
+                yesterday = _dt.strptime(yesterday, "%Y-%m-%d").date()
+
+            # 2. 昨日 bar 的 low（ETF 在 etf_daily 表）
+            cur.execute(
+                "SELECT ts_code, low FROM etf_daily "
+                "WHERE ts_code = ANY(%s) AND trade_date = %s",
+                (etf_pool, yesterday),
+            )
+            bar_map = {r[0]: float(r[1]) for r in cur.fetchall()}
+            cur.close(); conn.close()
+
+            if not bar_map:
+                logger.warning("[%s] P4恢复: 昨日(%s) 无 bar 数据", self.name, yesterday)
+                return
+
+            # 3. 遍历 ETF pool，预测 → 筛选 → 填入确认缓冲区
+            # 日终因子可能在启动后才有 → 强制刷新缓存
+            self._load_factor_cache(etf_pool)
+            # 检查缓存是否刷新到最新
+            _sample = etf_pool[0]
+            _cache = self._factor_cache.get(_sample, {})
+            _dates = sorted(_cache.keys()) if _cache else []
+            logger.info('[%s] P4恢复: 因子缓存刷新后 %s 最新日期=%s 总天数=%d',
+                        self.name, _sample, _dates[-1] if _dates else 'EMPTY', len(_dates))
+            held = set(self._active_positions.keys())
+            restored = 0
+            skip_none = skip_thr = skip_vol = skip_wt = skip_bar = 0
+            for ts_code in etf_pool:
+                if ts_code in held or ts_code in self._position_entry:
+                    continue
+                proba = self._predict(ts_code, yesterday)
+                if proba is None:
+                    skip_none += 1; continue
+                regime = self._get_regime(ts_code, yesterday)
+                base_t = self.parameters["threshold"]
+                radj = self.parameters.get("regime_threshold_adj", {}).get(regime, 0.0)
+                day_t = base_t + radj
+                if proba < day_t:
+                    skip_thr += 1; continue
+                if self.parameters.get("vol_filter_enabled", False):
+                    ar = self._get_factor_value(ts_code, yesterday, "atr_ratio_20")
+                    if ar is None or ar < self.parameters.get("vol_filter_atr_min", 0.015):
+                        skip_vol += 1; continue
+                weight = self._calc_weight(proba, day_t)
+                if weight <= 0.0:
+                    skip_wt += 1; continue
+                low = bar_map.get(ts_code)
+                if low is None:
+                    skip_bar += 1; continue
+                self._p4_buffer[ts_code] = {
+                    "proba": proba, "signal_low": low, "weight": weight,
+                }
+                restored += 1
+
+            if restored:
+                logger.info(
+                    "[%s] P4确认缓冲区已恢复: %d 只 ETF (昨日=%s)",
+                    self.name, restored, yesterday,
+                )
+            else:
+                logger.info(
+                    "[%s] P4恢复: 0只 (昨日=%s) | 跳过: none=%d thr=%d vol=%d wt=%d bar=%d held=%d",
+                    self.name, yesterday, skip_none, skip_thr, skip_vol, skip_wt, skip_bar, len(held),
+                )
+        except Exception as e:
+            logger.warning("[%s] P4确认缓冲区恢复失败: %s", self.name, str(e)[:200])
+
+    def _load_factor_cache(self, etf_pool: list) -> None:
+        import psycopg2
+        cfg = {
+            "host": self.parameters.get("db_host", "localhost"),
+            "port": self.parameters.get("db_port", 5432),
+            "user": self.parameters.get("db_user", "postgres"),
+            "password": self.parameters.get("db_password", "123456"),
+            "database": self.parameters.get("db_name", "quant_signals_dev"),
+        }
+        try:
+            conn = psycopg2.connect(**cfg)
             cur = conn.cursor()
             for etf in etf_pool:
                 cur.execute(
                     "SELECT factor_code, trade_date::text, factor_value "
-                    "FROM factor_data "
-                    "WHERE ts_code = %s AND factor_code = ANY(%s) "
-                    "  AND trade_date >= '2019-01-01' "
-                    "ORDER BY trade_date",
-                    (etf, self.feature_names),
-                )
+                    "FROM factor_data WHERE ts_code=%s AND factor_code=ANY(%s) "
+                    "AND trade_date>='2019-01-01' ORDER BY trade_date",
+                    (etf, self.feature_names))
                 cache: Dict[str, Dict[str, float]] = {}
                 for fc, td, fv in cur.fetchall():
                     td = td[:10]
-                    if td not in cache:
-                        cache[td] = {}
-                    cache[td][fc] = float(fv) if fv is not None else np.nan
+                    cache.setdefault(td, {})[fc] = float(fv) if fv is not None else np.nan
                 if cache:
                     self._factor_cache[etf] = cache
-            cur.close()
-            conn.close()
-            logger.debug("[%s] 因子缓存加载完成: %d ETFs × %d features",
+            cur.close(); conn.close()
+            logger.debug("[%s] 因子缓存: %d ETFs x %d features",
                         self.name, len(self._factor_cache), len(self.feature_names))
         except Exception as e:
-            logger.warning("[%s] 因子缓存加载失败，策略将在 on_bar 中跳过预测: %s",
-                           self.name, str(e)[:150])
-
-    # ── Bar Processing ──────────────────────────────────
-
-    def on_bar(self, bar: BarData) -> List[TradingSignal]:
-        """处理每个 bar，生成交易信号"""
-        signals = []
-        ts_code = bar.ts_code
-
-        # 1. 缓存 bar
-        if ts_code not in self._data_cache:
-            self._data_cache[ts_code] = []
-        self._data_cache[ts_code].append(bar)
-
-        # 控制缓存大小
-        if len(self._data_cache[ts_code]) > 600:
-            self._data_cache[ts_code] = self._data_cache[ts_code][-600:]
-
-        # 2. 预热检查
-        min_bars = self.parameters["min_warmup_bars"]
-        if len(self._data_cache[ts_code]) < min_bars:
-            return signals
-
-        if self.model is None:
-            return signals
-
-        # 3. 更新冷却期
-        if ts_code in self._cooling:
-            self._cooling[ts_code] -= 1
-            if self._cooling[ts_code] <= 0:
-                del self._cooling[ts_code]
-            # P4: 冷却期也清理 pending 信号
-            self._pending_signals.pop(ts_code, None)
-            return signals
-
-        # 4. 检查已有持仓 → 出场检查
-        if ts_code in self._position_entry:
-            exit_signal = self._check_exit(ts_code, bar)
-            if exit_signal:
-                signals.append(exit_signal)
-            return signals
-
-        # 5. 持仓上限检查
-        max_positions = self.parameters.get("max_positions", 5)
-        if len(self._position_entry) >= max_positions:
-            self._pending_signals.pop(ts_code, None)
-            return signals
-
-        # 6. P4: 处理昨日待确认信号
-        confirm_enabled = self.parameters.get("confirm_enabled", False)
-        if confirm_enabled and ts_code in self._pending_signals:
-            pinfo = self._pending_signals.pop(ts_code)
-            # 确认条件: 今日 close > 信号日 low（没有继续创新低）
-            if bar.close > pinfo["signal_low"]:
-                signal = TradingSignal(
-                    id=str(uuid.uuid4()),
-                    strategy_id=self.name,
-                    strategy_name=self.name,
-                    ts_code=ts_code,
-                    signal_type=SignalType.ENTRY,
-                    direction=SignalDirection.LONG,
-                    price=bar.close,
-                    confidence=float(pinfo["proba"]),
-                    reason=f"底部概率 {pinfo['proba']:.1%}, 权重 {pinfo['weight']:.0%} [P4确认]",
-                    weight=pinfo["weight"],
-                    timestamp=bar.trade_time if bar.trade_time else datetime.now(),
-                )
-                self._position_entry[ts_code] = (bar.trade_date, bar.close)
-                self._track_high[ts_code] = bar.close
-                signals.append(signal)
-            # 未确认 → 静默丢弃
-            return signals
-
-        # 7. 检查入场
-        try:
-            proba = self._predict(ts_code, bar.trade_date)
-            if proba is None:
-                return signals
-
-            threshold = self.parameters["threshold"]
-            if proba < threshold:
-                return signals
-
-            # P3: 波动率过滤 — 低波动环境不抄底
-            if self.parameters.get("vol_filter_enabled", False):
-                atr_ratio = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
-                vol_min = self.parameters.get("vol_filter_atr_min", 0.015)
-                if atr_ratio is None or atr_ratio < vol_min:
-                    return signals
-
-            # 8. 仓位映射: proba 越高 → 仓位越重
-            max_pos = self.parameters["max_single_position"]
-            weight = max(0.01, (proba - threshold) / (1.0 - threshold)) * max_pos
-
-            if confirm_enabled:
-                # P4: 不立即入场，存入 pending 等待次日确认
-                self._pending_signals[ts_code] = {
-                    "proba": proba,
-                    "signal_low": bar.low,
-                    "weight": weight,
-                }
-                return signals
-
-            # 直接入场（P4 关闭时）
-            signal = TradingSignal(
-                id=str(uuid.uuid4()),
-                strategy_id=self.name,
-                strategy_name=self.name,
-                ts_code=ts_code,
-                signal_type=SignalType.ENTRY,
-                direction=SignalDirection.LONG,
-                price=bar.close,
-                confidence=float(proba),
-                reason=f"底部概率 {proba:.1%}, 权重 {weight:.0%}",
-                weight=weight,
-                timestamp=bar.trade_time if bar.trade_time else datetime.now(),
-            )
-            self._position_entry[ts_code] = (bar.trade_date, bar.close)
-            self._track_high[ts_code] = bar.close  # 初始化最高价
-            signals.append(signal)
-
-        except Exception as e:
-            logger.error("[%s] on_bar 异常: %s", self.name, str(e)[:100])
-
-        return signals
-
-    # ── Prediction ──────────────────────────────────────
+            logger.warning("[%s] 因子缓存加载失败: %s", self.name, str(e)[:150])
 
     def _get_factor_value(self, ts_code: str, trade_date_val, factor_code: str) -> Optional[float]:
-        """从因子缓存读取单个因子值（最近交易日 ≤ trade_date）。"""
         cache = self._factor_cache.get(ts_code, {})
-        if not cache:
-            return None
-        if hasattr(trade_date_val, 'strftime'):
-            td_str = trade_date_val.strftime('%Y-%m-%d')
-        elif hasattr(trade_date_val, 'isoformat'):
-            td_str = trade_date_val.isoformat()[:10]
-        else:
-            td_str = str(trade_date_val)[:10]
-        all_dates = sorted(cache.keys(), reverse=True)
-        for d in all_dates:
+        if not cache: return None
+        if hasattr(trade_date_val, 'strftime'): td_str = trade_date_val.strftime('%Y-%m-%d')
+        elif hasattr(trade_date_val, 'isoformat'): td_str = trade_date_val.isoformat()[:10]
+        else: td_str = str(trade_date_val)[:10]
+        for d in sorted(cache.keys(), reverse=True):
             if d <= td_str:
-                val = cache[d].get(factor_code)
-                return float(val) if val is not None and not (isinstance(val, float) and np.isnan(val)) else None
+                v = cache[d].get(factor_code)
+                return float(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else None
         return None
 
-    def _predict(self, ts_code: str, trade_date_val) -> Optional[float]:
-        """从因子缓存读取预计算特征 → 模型预测"""
-        try:
-            # 标准化 trade_date 为 'YYYY-MM-DD' 字符串
-            if hasattr(trade_date_val, 'strftime'):
-                td_str = trade_date_val.strftime('%Y-%m-%d')
-            elif hasattr(trade_date_val, 'isoformat'):
-                td_str = trade_date_val.isoformat()[:10]
-            else:
-                td_str = str(trade_date_val)[:10]
+    def _get_regime(self, ts_code: str, trade_date_val) -> int:
+        val = self._get_factor_value(ts_code, trade_date_val, "market_regime")
+        return max(0, min(2, int(val))) if val is not None else 1
 
-            # 从内存缓存读取特征
+    def _predict(self, ts_code: str, trade_date_val) -> Optional[float]:
+        try:
+            if hasattr(trade_date_val, 'strftime'): td_str = trade_date_val.strftime('%Y-%m-%d')
+            elif hasattr(trade_date_val, 'isoformat'): td_str = trade_date_val.isoformat()[:10]
+            else: td_str = str(trade_date_val)[:10]
             cache = self._factor_cache.get(ts_code, {})
             if not cache:
-                # 缓存未命中：尝试按需加载单个 ETF 的因子
                 etf_pool = self.parameters.get("etf_pool") or []
                 if ts_code not in etf_pool and self.feature_names:
                     self._load_factor_cache([ts_code])
                     cache = self._factor_cache.get(ts_code, {})
-
-            # 找最近交易日 <= td_str
             all_dates = sorted(cache.keys(), reverse=True)
-            nearest_date = None
+            nearest = None
             for d in all_dates:
-                if d <= td_str:
-                    nearest_date = d
-                    break
-            if nearest_date is None:
-                return None
-
-            row = cache[nearest_date]
-            feature_vals = [
-                row.get(fn) if row.get(fn) is not None else np.nan
-                for fn in self.feature_names
-            ]
-
-            features = np.array(feature_vals, dtype=np.float64).reshape(1, -1)
-
-            # 缺失值填充
-            nan_mask = np.isnan(features[0])
-            if nan_mask.any():
-                features[0, nan_mask] = 0.0
-
-            # 标准化
+                if d <= td_str: nearest = d; break
+            if nearest is None: return None
+            row = cache[nearest]
+            fv = [row.get(fn) if row.get(fn) is not None else np.nan for fn in self.feature_names]
+            features = np.array(fv, dtype=np.float64).reshape(1, -1)
+            nmask = np.isnan(features[0])
+            if nmask.any(): features[0, nmask] = 0.0
             if self.scaler_mu and self.scaler_sigma:
-                features[0] = (features[0] - np.array(self.scaler_mu)) / (
-                    np.array(self.scaler_sigma) + 1e-8
-                )
-
-        # v2: 兼容分类器(predict_proba)和回归模型(predict)
+                features[0] = (features[0] - np.array(self.scaler_mu)) / (np.array(self.scaler_sigma) + 1e-8)
             if hasattr(self.model, 'predict_proba'):
-                proba = self.model.predict_proba(features)[0, 1]
-            else:
-                proba = float(self.model.predict(features)[0])
-            return float(proba)
-
+                return float(self.model.predict_proba(features)[0, 1])
+            return float(self.model.predict(features)[0])
         except Exception as e:
             logger.error("[%s] 预测失败: %s", self.name, str(e)[:200])
             return None
 
-    # ── Exit Logic ──────────────────────────────────────
+    def _calc_weight(self, proba: float, threshold: float) -> float:
+        """v5: 线性仓位映射（替代凯利——实际盈亏分布非二元，凯利低估赔率）"""
+        mp = self.parameters.get("max_single_position", 0.40)
+        return max(0.01, (proba - threshold) / (1.0 - threshold)) * mp
+
+    def on_bar(self, bar: BarData) -> List[TradingSignal]:
+        # P4 确认缓冲区延迟恢复
+        if not getattr(self, '_confirm_restored', False):
+            self._confirm_restored = True
+            self._restore_confirm_buffer()
+
+        signals: List[TradingSignal] = []
+        ts_code = bar.ts_code
+        # v6.10: 非 ETF 标的快速跳过——避免在组合回测中处理 5000+ 无关 bar
+        _etf_pool_set = getattr(self, '_etf_pool_set', None)
+        if _etf_pool_set is None:
+            _etf_pool_set = set(self.parameters.get('etf_pool') or [])
+            self._etf_pool_set = _etf_pool_set
+        if ts_code not in _etf_pool_set:
+            return signals
+        if not getattr(self, '_trace_once', False):
+            self._trace_once = True
+            logger.info('[TRACE] on_bar首次执行: ts=%s p4buf=%d pos=%d model=%s pool=%d',
+                        ts_code, len(self._p4_buffer), len(self._position_entry),
+                        'yes' if self.model else 'no', len(self.parameters.get('etf_pool') or []))
+        if ts_code not in self._data_cache:
+            self._data_cache[ts_code] = []
+        self._data_cache[ts_code].append(bar)
+        if len(self._data_cache[ts_code]) > 600:
+            self._data_cache[ts_code] = self._data_cache[ts_code][-600:]
+
+        d = self._diag
+        d["bars_processed"] += 1
+        _pool = self.parameters.get('etf_pool') or []
+        if ts_code in _pool and d['bars_processed'] == 1:
+            logger.info('[BAR/START] %s: 首次on_bar, p4_buffer=%d, pos=%d, pool=%d',
+                        ts_code, len(self._p4_buffer), len(self._position_entry), len(_pool))
+        if len(self._data_cache[ts_code]) < self.parameters["min_warmup_bars"]:
+            d["warmup_skip"] += 1; return signals
+        if self.model is None:
+            d["no_model"] += 1; return signals
+        if ts_code in self._cooling:
+            d["cooling"] += 1
+            self._cooling[ts_code] -= 1
+            if self._cooling[ts_code] <= 0: del self._cooling[ts_code]
+            self._p4_buffer.pop(ts_code, None)
+            return signals
+        if ts_code in self._position_entry:
+            d["in_position"] += 1
+            es = self._check_exit(ts_code, bar)
+            if es: signals.append(es)
+            return signals
+
+        regime = self._get_regime(ts_code, bar.trade_date)
+        rmax_pos = self.parameters.get("regime_max_positions", {}).get(regime, 5)
+        if len(self._position_entry) >= rmax_pos:
+            d["max_positions"] += 1
+            self._p4_buffer.pop(ts_code, None)
+            return signals
+
+        # P4 确认：昨日通过阈值、今日确认收盘价
+        if self.parameters.get("confirm_enabled", False) and ts_code in self._p4_buffer:
+            d["p4_pending"] += 1
+            pinfo = self._p4_buffer.pop(ts_code)
+            logger.info('[P4/入] %s close=%.4f low=%.4f proba=%.3f → 检查确认',
+                        ts_code, bar.close, pinfo['signal_low'], pinfo['proba'])
+            if bar.close > pinfo["signal_low"]:
+                if self.parameters.get("vol_confirm_enabled", True):
+                    vr = self._get_factor_value(ts_code, bar.trade_date, "volume_ma20_ratio")
+                    if vr is not None and vr < 1.0:
+                        return signals
+                d["p4_confirmed"] += 1
+                s = self._make_entry(ts_code, bar, pinfo["proba"], pinfo["weight"], regime)
+                signals.append(s)
+                logger.info('[P4/SIG] %s ✓确认入场 proba=%.3f wt=%.3f 信号id=%s',
+                            ts_code, pinfo['proba'], pinfo['weight'], s.id)
+            return signals
+
+        # 新预测
+        try:
+            d["in_pool"] += 1
+            proba = self._predict(ts_code, bar.trade_date)
+            if proba is None:
+                d["proba_none"] += 1; return signals
+            base_t = self.parameters["threshold"]
+            radj = self.parameters.get("regime_threshold_adj", {}).get(regime, 0.0)
+            day_t = base_t + radj
+            d["top_probas"].append((ts_code, round(proba, 4), regime, round(day_t, 3)))
+            if proba < day_t:
+                d["proba_below"] += 1; return signals
+            if self.parameters.get("vol_filter_enabled", False):
+                ar = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
+                if ar is None or ar < self.parameters.get("vol_filter_atr_min", 0.015):
+                    d["vol_filter"] += 1; return signals
+            weight = self._calc_weight(proba, day_t)
+            if weight <= 0.0:
+                d["weight_zero"] += 1; return signals
+            if self.parameters.get("confirm_enabled", False):
+                d["p4_buffered"] += 1
+                self._p4_buffer[ts_code] = {
+                    "proba": proba, "signal_low": bar.low, "weight": weight}
+                logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认',
+                            ts_code, proba, day_t, regime)
+                return signals
+            d["entry_generated"] += 1
+            s = self._make_entry(ts_code, bar, proba, weight, regime)
+            signals.append(s)
+        except Exception as e:
+            logger.error("[%s] on_bar error: %s", self.name, str(e)[:100])
+        return signals
+
+    def _on_bar_trace(self, ts_code: str, signals: list) -> list:
+        if signals:
+            logger.info('[BAR/OUT] %s → %d 个信号', ts_code, len(signals))
+        return signals
+
+    def _make_entry(self, ts_code, bar, proba, weight, regime):
+        self._position_entry[ts_code] = (bar.trade_date, bar.close)
+        self._track_high[ts_code] = bar.close
+        rn = {0: "熊", 1: "震", 2: "牛"}
+        return TradingSignal(
+            id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
+            ts_code=ts_code, signal_type=SignalType.ENTRY,
+            direction=SignalDirection.LONG, price=bar.close,
+            confidence=float(proba),
+            reason=f"底{proba:.1%} 仓{weight:.0%} [{rn.get(regime,'?')}]",
+            weight=weight,
+            timestamp=bar.trade_time if bar.trade_time else datetime.now())
 
     def _check_exit(self, ts_code: str, bar: BarData) -> Optional[TradingSignal]:
-        """检查出场条件 — trailing stop 版"""
         entry_date, entry_price = self._position_entry.get(ts_code, (None, None))
-        if entry_price is None:
-            return None
-
+        if entry_price is None: return None
         pnl = bar.close / entry_price - 1
-
-        # 更新持仓最高价
+        regime = self._get_regime(ts_code, bar.trade_date)
         if ts_code not in self._track_high:
             self._track_high[ts_code] = bar.close
         else:
             self._track_high[ts_code] = max(self._track_high[ts_code], bar.close)
         high = self._track_high[ts_code]
-        drawdown_from_high = (high - bar.close) / high if high > 0 else 0
-
-        # ① 硬止损
-        if pnl < self.parameters["stop_loss"]:
-            return self._make_exit(ts_code, bar, f"硬止损 {pnl:.1%}", SignalType.STOP_LOSS)
-
-        # ② 时间止损（0=关闭）
-        max_days = self.parameters.get("max_hold_days", 0)
-        if max_days > 0:
-            hold_days = self._compute_hold_days(entry_date, bar.trade_date)
-            if hold_days >= max_days:
-                return self._make_exit(ts_code, bar, f"时间止损 {hold_days}天", SignalType.EXIT)
-
-        # ③ Trailing stop: 浮盈>启动阈值 后从高点回落>回撤距离 则离场
-        trail_activate = self.parameters.get("trail_activate", 0.05)
-        trail_distance = self.parameters.get("trail_distance", 0.03)
-        if (high - entry_price) / entry_price >= trail_activate and drawdown_from_high >= trail_distance:
-            return self._make_exit(
-                ts_code, bar,
-                f"Trailing止盈: 浮盈{high / entry_price - 1:.1%}→回落{drawdown_from_high:.1%}",
-                SignalType.TAKE_PROFIT,
-            )
-
+        dd = (high - bar.close) / high if high > 0 else 0
+        base_stop = self.parameters.get("regime_stop_loss", {}).get(regime, -0.07)
+        ar = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
+        dyn_stop = max(base_stop, -2.5 * ar) if ar and ar > 0 else base_stop
+        if pnl < dyn_stop:
+            rn = {0: "熊", 1: "震", 2: "牛"}
+            return self._make_exit(ts_code, bar,
+                f"止损{pnl:.1%} [ATR={ar:.1%} {rn.get(regime,'?')}]",
+                SignalType.STOP_LOSS)
+        max_d = self.parameters.get("regime_max_hold", {}).get(regime, 20)
+        hd = self._compute_hold_days(entry_date, bar.trade_date)
+        if hd >= max_d and pnl <= 0.02:
+            return self._make_exit(ts_code, bar,
+                f"到期{hd}d pnl={pnl:.1%}", SignalType.EXIT)
+        ta = self.parameters.get("regime_trail_act", {}).get(regime, 0.05)
+        td = self.parameters.get("regime_trail_dist", {}).get(regime, 0.08)
+        if (high - entry_price) / entry_price >= ta and dd >= td:
+            return self._make_exit(ts_code, bar,
+                f"止盈{high/entry_price-1:.1%}→回落{dd:.1%}",
+                SignalType.TAKE_PROFIT)
         return None
 
     @staticmethod
     def _compute_hold_days(entry_date, current_date) -> int:
-        """安全计算持仓天数（兼容 date / datetime / string）"""
         try:
-            if hasattr(current_date, 'date'):
-                current_date = current_date.date()
-            if hasattr(entry_date, 'date'):
-                entry_date = entry_date.date()
-            if isinstance(entry_date, str):
-                entry_date = date.fromisoformat(entry_date[:10])
-            if isinstance(current_date, str):
-                current_date = date.fromisoformat(current_date[:10])
+            if hasattr(current_date, 'date'): current_date = current_date.date()
+            if hasattr(entry_date, 'date'): entry_date = entry_date.date()
+            if isinstance(entry_date, str): entry_date = date.fromisoformat(entry_date[:10])
+            if isinstance(current_date, str): current_date = date.fromisoformat(current_date[:10])
             return (current_date - entry_date).days
-        except Exception:
-            return 0
+        except Exception: return 0
 
     def _make_exit(self, ts_code, bar, reason, signal_type) -> TradingSignal:
-        """生成出场信号并设置冷却期"""
         self._position_entry.pop(ts_code, None)
         self._track_high.pop(ts_code, None)
         self._cooling[ts_code] = self.parameters["cooling_days"]
-
         return TradingSignal(
-            id=str(uuid.uuid4()),
-            strategy_id=self.name,
-            strategy_name=self.name,
-            ts_code=ts_code,
-            signal_type=signal_type,
-            direction=SignalDirection.CLOSE_LONG,
-            price=bar.close,
-            confidence=1.0,
-            reason=reason,
-            weight=0.0,  # 出场信号无仓位
-            timestamp=bar.trade_time if bar.trade_time else datetime.now(),
-        )
+            id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
+            ts_code=ts_code, signal_type=signal_type,
+            direction=SignalDirection.CLOSE_LONG, price=bar.close,
+            confidence=1.0, reason=reason, weight=0.0,
+            timestamp=bar.trade_time if bar.trade_time else datetime.now())
 
     def get_parameters(self) -> Dict[str, Any]:
         return dict(self.parameters)

@@ -1414,7 +1414,14 @@ class DataSyncService:
 				future.cancel()
 				return pd.DataFrame()
 			except Exception as _e:
-				logger.error(f"[_cancellable_run_in_executor] wait_for 异常: {_e}", exc_info=True)
+				_msg = str(_e)
+				if "频率超限" in _msg or "每秒请求" in _msg:
+					logger.warning("[Tushare] 频率超限(限流中): %s", _msg[:150])
+				else:
+					logger.error(
+						"[_cancellable_run_in_executor] wait_for 异常: %s",
+						_msg[:300], exc_info=True,
+					)
 				raise
 
 		try:

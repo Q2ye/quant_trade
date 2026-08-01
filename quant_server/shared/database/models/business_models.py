@@ -244,8 +244,6 @@ class Signal(Base):
     strength = Column(Numeric(5, 2), comment='信号强度')
     confidence = Column(Numeric(5, 4), default=1.0, comment='置信度（0-1）')
     reason = Column(Text, comment='信号理由')
-    status = Column(String(20), default='pending',
-                    comment='信号状态：pending/approved/rejected/executed')
     signal_status = Column(String(20), default='pending_manual',
                            comment='人工确认状态: pending_manual/confirmed/partial/cancelled/rejected/expired')
     price_limit_low = Column(Numeric(10, 4), comment='可接受最低成交价')

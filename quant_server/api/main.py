@@ -16,7 +16,7 @@ from .middleware.timing import timing_middleware
 from .routers import (
     data_router, strategy_router, trade_router, basket_router, backtest_router,
     account_router, analysis_router, monitor_router, system_router, risk_router,
-    health_router, market_router, template_router,
+    health_router, market_router, template_router, composite_router,
 )
 from .routers.signal_router import router as signal_router
 from .websocket import websocket_router
@@ -166,6 +166,7 @@ def create_app(
         "system": (system_router, "/quantTrade/system"),
         "risk": (risk_router, "/quantTrade/risk"),
         "market": (market_router, "/quantTrade/market"),
+        "composite": (composite_router, "/quantTrade"),
     }
     for module_name, (router, prefix) in _module_routers.items():
         if module_name in enabled_modules:

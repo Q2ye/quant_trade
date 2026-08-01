@@ -297,6 +297,7 @@ class BacktestBroker(EngineBase):
         # ---- 交易日追踪 ----
         self._trade_date: Optional[date] = None
         self._peak_equity: float = self.initial_capital  # v1.4: O(1) 峰值追踪
+        self._prev_day_equity: float = self.initial_capital  # v6.11: 前日权益（供风控日亏损规则）
 
     # =========================================================================
     # 订单处理 — 信号 → 订单
@@ -320,7 +321,7 @@ class BacktestBroker(EngineBase):
                 raise ValueError(f"[{ts_code}] 资金不足: 需{estimated:.0f}, 可用{self.cash:.0f}")
         if direction in ("SHORT", "CLOSE_LONG"):
             pos = self.positions.get(ts_code)
-            total = pos.quantity if pos else 0
+            total = pos.quantity if pos else 0  # 验证用总持仓（T+1 由 match_orders 次日执行时自然满足）
             if not pos or total < quantity:
                 raise ValueError(f"[{ts_code}] 持仓不足: 需{quantity}, 可用{total}")
 
@@ -508,8 +509,8 @@ class BacktestBroker(EngineBase):
                 quantity = max_qty
                 logger.info(f"资金不足，调整数量: {ts_code} → {quantity} 股")
 
-        # ---- 4. 冻结资金（买入方向预扣） ----
-        estimated_cost = price * quantity
+        # ---- 4. 冻结资金（买入方向预扣，v6.11: 含佣金+过户费避免 settlement 时资金缺口） ----
+        estimated_cost = price * quantity * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
         if direction == "LONG":
             self.frozen_cash += estimated_cost
             self.cash -= estimated_cost
@@ -590,9 +591,15 @@ class BacktestBroker(EngineBase):
         self._trade_date = trade_date
         trades = []
 
-        # ---- 更新前收价缓存（供涨跌停判断使用） ----
-        for ts_code, bar in bars.items():
-            self._prev_close[ts_code] = bar.close
+        # ---- v6.11: 前收价用于涨跌停——应在今日 close 更新前使用昨日值。
+        # _prev_close 在 mark_to_market() 末尾更新，此处不再覆盖。
+
+        # ---- NaN 防护：过滤无效价格 ----
+        for ts_code, bar in list(bars.items()):
+            if hasattr(bar, 'open') and (bar.open is None or bar.open != bar.open):
+                logger.warning(f"match_orders: {ts_code} open 为 NaN/None, 跳过")
+                del bars[ts_code]
+        # _prev_close 在 mark_to_market() 末尾更新，此处不再覆盖。
 
         # ---- 逐笔撮合昨日挂单 ----
         remaining_orders = []
@@ -604,14 +611,18 @@ class BacktestBroker(EngineBase):
                 if age > 20:
                     logger.warning(f"订单过期取消: {order.order_id} {order.ts_code}")
                     if order.direction == "LONG":
-                        self.cash += order.price * order.quantity
-                        self.frozen_cash -= order.price * order.quantity
+                        # v6.11: 解冻金额须与 freeze 一致（含佣金+过户费）
+                        refund = order.price * order.quantity * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
+                        self.cash += refund
+                        self.frozen_cash -= refund
                     elif getattr(order, '_early_released', False):
-                        # 卖单过期取消：回滚下单时提前释放的现金，并解除幻影累计额
                         released = getattr(order, '_early_released_amount', 0.0)
                         self.cash -= released
                         self._early_released_cash -= released
+                    order.status = "cancelled"
                     continue
+                # v6.11: 停牌/无数据但未过期 → 保留挂单到下一交易日
+                remaining_orders.append(order)
                 continue
 
             # ---- 涨跌停检查 ----
@@ -664,8 +675,8 @@ class BacktestBroker(EngineBase):
             # ---- 资金结算（在标记成交之前，LONG 方向可能需要缩减/取消） ----
             total_cost = fill_amount + commission + stamp_tax + transfer_fee
             if order.direction == "LONG":
-                # 解冻预扣资金（按委托价估算的金额）→ 按实际成交价扣款
-                estimated = order.price * order.quantity
+                # 解冻预扣资金（按委托价+费用估算）→ 按实际成交价扣款
+                estimated = order.price * order.quantity * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
                 self.frozen_cash -= estimated
                 self.cash += estimated
                 # ---- v2.0: 现金充足性校验 ----
@@ -678,13 +689,12 @@ class BacktestBroker(EngineBase):
                         // self.config.lot_size * self.config.lot_size
                     )
                     if affordable_qty <= 0:
-                        # 一股都买不起 → 取消订单，退还冻结资金
+                        # 一股都买不起 → 取消订单。
+                        # 资金已在 lines 680-681 解冻，不重新冻结（订单已作废）。
                         logger.warning(
                             f"资金不足取消买入: {order.ts_code} "
                             f"需要={total_cost:,.0f} 可用={self.cash:,.0f}"
                         )
-                        self.cash -= estimated  # 退还（因为现金已加回 estimated）
-                        self.frozen_cash += estimated
                         order.status = "cancelled"
                         continue  # 不加入 remaining_orders，直接丢弃
                     # 按可负担量重算：缩减 fill_amount / commission / stamp_tax / transfer_fee
@@ -763,7 +773,7 @@ class BacktestBroker(EngineBase):
             pnl_display = f" {trade_pnl_str}" if trade_pnl_str else ""
             label = "卖出" if is_exit else "买入"
             reason_str = f" | {order.reason}" if getattr(order, 'reason', '') else ""
-            logger.info(
+            logger.debug(
                 f"  [{order.create_date}] {label} {order.ts_code} "
                 f"{order.quantity}股 @ {fill_price:.2f} "
                 f"费用={commission + stamp_tax + transfer_fee:.2f}{pnl_display}{reason_str}"
@@ -810,6 +820,9 @@ class BacktestBroker(EngineBase):
 
         # ---- 逐只股票重估持仓 + T+1 锁定释放 ----
         for ts_code, bar in bars.items():
+            # v6.11: NaN 防护
+            if hasattr(bar, 'close') and (bar.close is None or bar.close != bar.close):
+                continue
             # v1.3: T+1 解锁 — 昨日买入今日可卖
             if ts_code in self.positions:
                 pos = self.positions[ts_code]
@@ -900,6 +913,11 @@ class BacktestBroker(EngineBase):
             positions=position_snapshots,
         )
         self.snapshots.append(snapshot)
+
+        # ---- v6.11: 更新前收价 + 前日权益（供次日涨跌停判定和风控规则使用） ----
+        for ts_code, bar in bars.items():
+            self._prev_close[ts_code] = bar.close
+        self._prev_day_equity = total_assets
 
     # =========================================================================
     # 查询接口 — 供 BacktestEngine 和前端 API 调用
@@ -1049,6 +1067,7 @@ class BacktestBroker(EngineBase):
         self._prev_close.clear()
         self._trade_date = None
         self._peak_equity = self.initial_capital  # v1.4: 重置峰值
+        self._prev_day_equity = self.initial_capital  # v6.11
         # v1.3: 重置 ST/科创板识别集合（后续可从 DB 加载）
         self._star_market_stocks = set()
         self._st_stocks = set()
@@ -1097,8 +1116,12 @@ class BacktestBroker(EngineBase):
                 pos.avg_cost = total_cost / pos.quantity if pos.quantity > 0 else 0.0
 
                 # T+1 制度：当日买入部分锁定为不可卖
+                # v6.11: 用 min 避免同一日多次买入时误放大可用量
                 if self.config.t_plus_1:
-                    pos.available_quantity = pos.quantity - order.quantity
+                    pos.available_quantity = min(
+                        pos.available_quantity,
+                        pos.quantity - order.quantity
+                    )
                 else:
                     pos.available_quantity = pos.quantity
             else:

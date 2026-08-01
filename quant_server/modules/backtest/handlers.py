@@ -196,7 +196,54 @@ class BacktestHandler:
 			raise HTTPException(status_code=500, detail=f"参数优化失败: {str(e)}")
 
 
+	async def create_composite_task(self, request, user_id: str, background_tasks) -> Dict[str, Any]:
+			"""创建组合回测任务"""
+			try:
+				result = await self.backtest_service.create_composite_task(request, user_id)
+				task_id = result["task_id"]
+
+				try:
+					from shared.utils.background_executor import (
+						get_background_executor, TaskPriority,
+					)
+					executor = get_background_executor()
+					if executor is not None:
+						await executor.submit(
+							"backtest", task_id,
+							coro_factory=lambda tid=task_id: _run_composite_in_thread(tid),
+							priority=TaskPriority.BACKGROUND,
+						)
+					else:
+						logger.warning("BackgroundTaskExecutor 未就绪，回退到 BackgroundTasks")
+						background_tasks.add_task(
+							self.backtest_service.run_composite_backtest, task_id
+						)
+				except ImportError:
+					background_tasks.add_task(
+						self.backtest_service.run_composite_backtest, task_id
+					)
+
+				return {
+					"success": True,
+					"data": result
+				}
+			except Exception as e:
+				raise HTTPException(status_code=500, detail=f"创建组合回测失败: {str(e)}")
+
+
 # 导出函数供router使用
+async def _run_composite_in_thread(task_id: str) -> None:
+	"""在后台线程池中运行组合回测"""
+	from shared.database.session.connection_pool import get_connection_pool
+	session_factory = get_connection_pool().get_session_factory()
+	db = session_factory()
+	service = BacktestService(db)
+	try:
+		await service.run_composite_backtest(task_id)
+	finally:
+		await db.close()
+
+
 async def export_backtest_report(session: AsyncSession, task_id: str, user_id: str, report_format: str = 'json'):
 	handler = BacktestHandler(session)
 	return await handler.export_report(task_id, user_id, report_format)
@@ -205,6 +252,11 @@ async def export_backtest_report(session: AsyncSession, task_id: str, user_id: s
 async def quick_backtest(session: AsyncSession, request, user_id: str):
 	handler = BacktestHandler(session)
 	return await handler.quick_backtest(request, user_id)
+
+
+async def create_composite_task(session: AsyncSession, request, user_id: str, background_tasks):
+	handler = BacktestHandler(session)
+	return await handler.create_composite_task(request, user_id, background_tasks)
 
 
 async def delete_backtest_task(session: AsyncSession, task_id: str, user_id: str):

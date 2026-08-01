@@ -606,6 +606,14 @@ class StrategyManager(EngineBase):
             strategy = self._strategy_objects.get(strategy_id)
             if not strategy:
                 continue
+            if 'BottomStrategy' in type(strategy).__name__:
+                logger.debug(
+                    '[HBB/OBJ] strategy_id=%s type=%s id=%s hasP4=%s p4buf=%d restored=%s',
+                    str(strategy_id)[:8], type(strategy).__name__, id(strategy),
+                    hasattr(strategy, '_p4_buffer'),
+                    len(getattr(strategy, '_p4_buffer', {})),
+                    getattr(strategy, '_confirm_restored', '?'),
+                )
 
             strategy_signals: List[TradingSignal] = []
             bar_error_count = 0
@@ -622,6 +630,11 @@ class StrategyManager(EngineBase):
                             strategy_signals.extend(sigs)
                         else:
                             strategy_signals.append(sigs)
+                        if 'BottomStrategy' in type(strategy).__name__:
+                            logger.debug('[on_bar返回] %s -> %d 个信号 %s',
+                                getattr(bar, 'ts_code', '?'),
+                                len(sigs) if isinstance(sigs, list) else 1,
+                                [getattr(s, 'ts_code', '?') for s in (sigs if isinstance(sigs, list) else [sigs])])
                 except Exception as e:
                     bar_error_count += 1
                     logger.error(
@@ -699,6 +712,11 @@ class StrategyManager(EngineBase):
             strategy_signals = valid_signals
 
             if strategy_signals:
+                logger.info(
+                    "[信号收集] 策略 %s @ %s: %d 个信号 ts=%s",
+                    str(strategy_id)[:8], trade_date, len(strategy_signals),
+                    [getattr(s, "ts_code", "?") for s in strategy_signals[:5]],
+                )
                 state.pending_signals.extend(strategy_signals)
                 await self._publish_signals(strategy_id, strategy_signals)
                 all_signals.extend(strategy_signals)
@@ -706,6 +724,10 @@ class StrategyManager(EngineBase):
                 state.pending_signals = [s for s in state.pending_signals
                                           if s not in strategy_signals]
 
+        logger.info(
+            "[handle_bar_batch] %s 完成: %d 个信号, %d 个策略",
+            trade_date, len(all_signals), len(self.running_states),
+        )
         return all_signals
 
     async def handle_bar(
@@ -1444,11 +1466,18 @@ class StrategyManager(EngineBase):
             await self._save_strategy_state(strategy_id, heartbeat)
             await self._update_heartbeat(strategy_id, heartbeat)
 
+            # v3.4: 策略诊断（所有策略自动启用，子类覆写 get_daily_diagnostic 提供详情）
+            diag = None
+            if strategy_obj and hasattr(strategy_obj, "get_daily_diagnostic"):
+                diag = strategy_obj.get_daily_diagnostic()
+
             logger.info(
                 "策略每日运行: %s @ %s | 信号: %d | 持仓: %d | 数据缓存: %d 只",
                 strategy_id, trade_date, len(signals),
                 heartbeat["positions_count"], heartbeat["data_cached"],
             )
+            if diag:
+                logger.info("[策略诊断] %s: %s", str(strategy_id)[:8], diag)
 
         logger.info(
             f"_run_live_strategies: {trade_date} 完成, "
@@ -1715,6 +1744,15 @@ class StrategyManager(EngineBase):
 
         # 清除补跑过程中可能产生的信号
         strategy.clear_signals()
+        # v3.4: 静默回放后重置策略状态，避免污染今日正式处理
+        if hasattr(strategy, "_reset_diag"):
+            strategy._diag = strategy._reset_diag()
+        for attr in ("_position_entry", "_p4_buffer", "_track_high", "_cooling"):
+            if hasattr(strategy, attr):
+                getattr(strategy, attr).clear()
+        # P4 确认缓冲区在回放中被消费掉了，重置标志让今天正式 bar 触发重建
+        if hasattr(strategy, "_confirm_restored"):
+            strategy._confirm_restored = False
 
     def _get_missed_trading_days(
         self, last_date: date, current_date: date
@@ -1848,11 +1886,17 @@ class StrategyManager(EngineBase):
                         capital = float(row[9]) if row[9] else 1000000.0
 
                         # 加载策略类 + 实例化
+                        _code_to_load = row[4] or ""
+                        logger.info(
+                            '[BOOT/CODE] 策略 %s code=%d字节 hasTRACE=%s',
+                            sid, len(_code_to_load),
+                            '[TRACE]' in _code_to_load,
+                        )
                         await self.load_strategy(
                             strategy_id=sid,
                             name=row[1] or sid,
                             strategy_type=strategy_type,
-                            code=row[4] or "",
+                            code=_code_to_load,
                             parameters={},
                             config=StrategyConfig(
                                 user_id=str(row[2]) if row[2] else "0",

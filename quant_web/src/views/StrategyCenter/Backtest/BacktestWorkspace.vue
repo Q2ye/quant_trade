@@ -412,9 +412,8 @@ const cancelTask = async (taskId: string) => {
 };
 
 const rerunTask = async (task: TaskListItem) => {
-  if (selectedStrategyIds.value.length === 0 && task.strategy_id) {
-    selectedStrategyIds.value = [task.strategy_id];
-  }
+  // 始终清空旧选择并用当前任务的策略替换，避免旧的多策略选择被误用于单策略回测
+  selectedStrategyIds.value = task.strategy_id ? [task.strategy_id] : [];
   await runBacktestAll();
 };
 
@@ -459,34 +458,66 @@ const loadOptions = async () => {
 };
 
 // ---- 回测执行 ----
+const isComposite = computed(() => selectedStrategyIds.value.length >= 2);
+
 const runBacktestAll = async () => {
   if (selectedStrategyIds.value.length === 0) { msg.warning("请选择至少一个策略"); return; }
   const effectiveStocks = stockPool.value.filter(Boolean);
-  if (effectiveStocks.length === 0) {
-    msg.info("未选择股票池，将由策略自身的 universe 决定股票范围");
-  }
 
   isRunning.value = true; progress.value = 0; compareResults.value = [];
   const start = new Date(dateRange.value[0]).toISOString().slice(0, 10);
   const end = new Date(dateRange.value[1]).toISOString().slice(0, 10);
 
-  // 停止上一轮未清理的轮询
   stopBatchPolling();
 
   const ids: string[] = [];
-  for (const sid of selectedStrategyIds.value) {
+
+  // ≥2 个策略 → 组合回测（共享资金池 + CapitalAllocator）
+  if (selectedStrategyIds.value.length >= 2) {
     try {
-      const strategyLabel = strategySelectOptions.value.find((s: any) => s.value === sid)?.label || sid;
-      const res = await backtestAPI.createTask({
-        name: `${strategyLabel}_回测_${start}`,
-        strategy_id: sid, start_date: start, end_date: end,
+      const labels = selectedStrategyIds.value
+        .map(sid => strategySelectOptions.value.find((s: any) => s.value === sid)?.label || sid)
+        .join('+');
+      const res = await backtestAPI.createCompositeTask({
+        name: `组合_${labels}_${start}`,
+        strategy_configs: selectedStrategyIds.value.map(sid => {
+          const opt = strategySelectOptions.value.find((s: any) => s.value === sid);
+          const label = (opt?.label || '').toLowerCase();
+          // 根据策略标签推断 allocator_id（匹配 CapitalAllocator.REGIME_BASE_ALLOCATION 的 key）
+          const aid = label.includes('lightgbm') || label.includes('bottom') || label.includes('etf') ? 'etf_bottom'
+            : label.includes('stocklowhigh') || label.includes('低吸') || label.includes('轮动') ? 'stock_low_high'
+            : sid;
+          return { strategy_id: sid, allocator_id: aid };
+        }),
+        start_date: start, end_date: end,
         initial_capital: initialCapital.value,
-        symbols: effectiveStocks,
-        parameters: { benchmark: benchmark.value },
+        symbols: effectiveStocks.length > 0 ? effectiveStocks : undefined,
+        benchmark: benchmark.value || undefined,
+        // P0: 默认 RANGE=1，后续前端加选项
+        force_regime: 1,
       });
-      ids.push(res.task_id);
-    } catch { /* skip */ }
+      if (res?.task_id) ids.push(res.task_id);
+      msg.success(`组合回测已提交 (${selectedStrategyIds.value.length}个策略共享资金池)`);
+    } catch (e: any) {
+      msg.error("组合回测提交失败: " + (e?.message || e));
+    }
+  } else {
+    // 单策略 → 现有路径
+    for (const sid of selectedStrategyIds.value) {
+      try {
+        const strategyLabel = strategySelectOptions.value.find((s: any) => s.value === sid)?.label || sid;
+        const res = await backtestAPI.createTask({
+          name: `${strategyLabel}_回测_${start}`,
+          strategy_id: sid, start_date: start, end_date: end,
+          initial_capital: initialCapital.value,
+          symbols: effectiveStocks,
+          parameters: { benchmark: benchmark.value },
+        });
+        ids.push(res.task_id);
+      } catch { /* skip */ }
+    }
   }
+
   if (ids.length === 0) { msg.error("所有回测提交失败"); isRunning.value = false; return; }
 
   batchTaskIds.value = ids;

@@ -65,6 +65,7 @@ v1.0: 初始版本 — 回测 CRUD + 执行 + 结果查询
 import asyncio
 import importlib
 import logging
+import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -87,7 +88,7 @@ from modules.backtest.engines.simulation_engine import SimulationEngine
 # 共享基础设施导入
 # ---------------------------------------------------------------------------
 from modules.data.services.market_service import MarketDataService
-from modules.strategy.constants import StrategyType
+from modules.strategy.constants import RunMode, StrategyType
 # ---------------------------------------------------------------------------
 # 策略模块导入 — 策略管理、注册、上下文
 # ---------------------------------------------------------------------------
@@ -488,6 +489,194 @@ class BacktestService:
 			}
 		except Exception as e:
 			logger.error(f"创建回测任务失败: {str(e)}")
+			raise
+
+	async def create_composite_task(self, request, user_id: str) -> Dict[str, Any]:
+		"""
+		创建组合回测任务 — 多策略共享资金池。
+
+		Args:
+			request: BacktestCompositeCreateRequest
+		"""
+		try:
+			sids = []
+			for cfg in request.strategy_configs:
+				sid = str(cfg.strategy_id)
+				strategy = await self.strategy_repo.get_by_id(sid)
+				if not strategy:
+					raise ValueError(f"策略不存在: {sid}")
+				sids.append(sid)
+
+			if len(set(sids)) < len(sids):
+				raise ValueError("策略列表中有重复 ID")
+
+			config_dict = {
+				"start_date": request.start_date,
+				"end_date": request.end_date,
+				"symbols": request.symbols or [],
+				"benchmark": getattr(request, "benchmark", None),
+				"initial_capital": request.initial_capital,
+				"commission_rate": request.commission_rate,
+				"slippage_rate": request.slippage_rate,
+				"strategy_configs": [
+					{
+						"strategy_id": str(cfg.strategy_id),
+						"allocator_id": cfg.allocator_id or str(cfg.strategy_id),
+						"parameters": cfg.parameters,
+					}
+					for cfg in request.strategy_configs
+				],
+				"force_regime": request.force_regime,
+				"allocator_params": request.allocator_params,
+			}
+
+			task = await self.task_repo.create({
+				"name": request.name,
+				"strategy_id": None,  # 组合任务无单一策略，FK 允许 NULL
+				"config": config_dict,
+				"status": "pending",
+				"user_id": user_id,
+			})
+			await self.db.commit()
+
+			logger.info(
+				f"创建组合回测成功: {task.id}, {request.name}, "
+				f"策略={sids}, force_regime={request.force_regime}"
+			)
+			return {"task_id": task.id, "status": task.status}
+		except Exception as e:
+			logger.error(f"创建组合回测失败: {str(e)}")
+			raise
+
+	async def run_composite_backtest(self, task_id: str) -> None:
+		"""
+		执行组合回测 — 调用 BacktestEngine.run_composite()。
+		与 run_backtest 复用相同的策略加载、引擎初始化、股票池解析逻辑。
+		"""
+		start_ts = datetime.now()
+		try:
+			# ---- Step 1-2: 加载任务 + 更新状态 ----
+			task = await self.task_repo.get_by_task_id(task_id)
+			if not task:
+				raise ValueError(f"回测任务不存在: {task_id}")
+			config = task.config or {}
+
+			await self.task_repo.update(task_id, {
+				"status": "running",
+				"updated_at": datetime.now()
+			})
+			await self.db.commit()
+
+			# ---- Step 3: 初始化引擎 ----
+			self._init_engines(db=self.db)
+			self.backtest_engine.set_db_session(self.db)  # v6.11: 注入 DB 会话，使 _save_results 可持久化
+
+			strategy_configs = config.get("strategy_configs", [])
+			if len(strategy_configs) < 2:
+				raise ValueError("组合回测至少需要 2 个策略")
+
+			# ---- Step 4: 加载各个策略到 StrategyManager ----
+			for cfg in strategy_configs:
+				sid = str(cfg["strategy_id"])
+				db_strategy = await self.strategy_repo.get_by_id(sid)
+				if not db_strategy:
+					raise ValueError(f"策略不存在: {sid}")
+
+				strategy_class = await self._load_strategy_class(db_strategy)
+				self.strategy_manager.register_strategy_class(
+					StrategyType.CUSTOM, strategy_class
+				)
+
+				params = cfg.get("parameters") or await self._get_strategy_params(sid)
+
+				strategy_cfg = StrategyConfigModel(
+					name=db_strategy.name,
+					initial_capital=float(config.get("initial_capital", 1_000_000)),
+					commission_rate=float(config.get("commission_rate", 0.0001)),
+					slippage=float(config.get("slippage_rate", 0.0001)),
+				)
+				await self.strategy_manager.load_strategy(
+					strategy_id=sid,
+					name=db_strategy.name,
+					strategy_type=StrategyType.CUSTOM,
+					code=db_strategy.code,
+					parameters=params,
+					config=strategy_cfg,
+				)
+
+				context = StrategyContext(
+					strategy_id=sid,
+					strategy_name=db_strategy.name,
+					user_id=task.user_id,
+					run_mode=RunMode.BACKTEST,
+					initial_capital=float(config.get("initial_capital", 1_000_000)),
+					commission_rate=float(config.get("commission_rate", 0.0001)),
+					slippage=float(config.get("slippage_rate", 0.0001)),
+				)
+				await self.strategy_manager.start_strategy(sid, context)
+
+			# ---- Step 5: 解析股票池 ----
+			symbols = config.get("symbols", [])
+			if not symbols:
+				all_s = set()
+				for cfg in strategy_configs:
+					sid = str(cfg["strategy_id"])
+					strategy_obj = self.strategy_manager.get_strategy_object(sid)
+					if strategy_obj:
+						universe = getattr(strategy_obj, "_universe", [])
+						all_s.update(universe or [])
+				symbols = list(all_s)
+			if not symbols:
+				from modules.data.services.market_service import MarketDataService
+				market_svc = MarketDataService(self.db)
+				stocks = await market_svc.get_stock_list(limit=1000)
+				symbols = [s.ts_code for s in stocks]
+
+			logger.info(
+				f"组合回测 {task_id}: 策略={[c['strategy_id'] for c in strategy_configs]}, "
+				f"symbols={len(symbols)}只"
+			)
+
+			# ---- Step 6: 执行 ----
+			result = await self.backtest_engine.run_composite(
+				task_id=task_id,
+				strategy_configs=strategy_configs,
+				symbols=symbols,
+				start_date=config.get("start_date", ""),
+				end_date=config.get("end_date", ""),
+				initial_capital=float(config.get("initial_capital", 1000000)),
+				commission_rate=float(config.get("commission_rate", 0.0001)),
+				slippage=float(config.get("slippage_rate", 0.0001)),
+				benchmark_ts_code=config.get("benchmark") or "000300.SH",
+				allocator_params=config.get("allocator_params"),
+				force_regime=config.get("force_regime"),
+			)
+
+			backtest_result = result.to_dict()
+			await self.task_repo.update(task_id, {
+				"status": "completed",
+				"result": backtest_result,
+				"updated_at": datetime.now()
+			})
+			await self.db.commit()
+
+			elapsed = (datetime.now() - start_ts).total_seconds()
+			logger.info(
+				f"组合回测完成: {task_id} "
+				f"总收益={result.total_return:.2%} 夏普={result.sharpe_ratio:.2f} "
+				f"耗时={elapsed:.1f}s"
+			)
+		except Exception as e:
+			logger.error(f"组合回测 {task_id} 失败: {type(e).__name__}: {e}", exc_info=True)
+			try:
+				await self.task_repo.update(task_id, {
+					"status": "failed",
+					"error_message": str(e),
+					"updated_at": datetime.now()
+				})
+				await self.db.commit()
+			except Exception:
+				pass
 			raise
 
 	async def get_backtest_task(self, task_id: str, user_id: str) -> Dict[str, Any]:
@@ -1030,6 +1219,17 @@ class BacktestService:
 
 			# ---- 获取策略参数 ----
 			parameters = await self._get_strategy_params(task.strategy_id)
+			# v2.5: 单策略回测时，用 initial_capital 覆盖 DB 中的 allocated_capital，
+			# 避免策略仅部署少量资金而闲置大部分本金。
+			_initial_cap = float(config.get('initial_capital', 1_000_000))
+			if parameters and 'allocated_capital' in parameters:
+				_db_alloc = parameters.get('allocated_capital')
+				if _db_alloc and float(_db_alloc) != _initial_cap:
+					logger.info(
+						f"回测 {task_id}: allocated_capital 从 DB 值 {_db_alloc} "
+						f"覆盖为 initial_capital {_initial_cap}"
+					)
+				parameters['allocated_capital'] = _initial_cap
 			if parameters:
 				logger.info(f"回测 {task_id}: 策略参数 — {parameters}")
 
@@ -1041,7 +1241,7 @@ class BacktestService:
 			# =================================================================
 			strategy_config = StrategyConfigModel(
 				name=strategy.name,
-				initial_capital=float(config.get('initial_capital', 1_000_000)),
+				initial_capital=_initial_cap,
 				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
 			)
@@ -1066,6 +1266,7 @@ class BacktestService:
 				strategy_id=task.strategy_id,
 				strategy_name=strategy.name,
 				user_id=task.user_id,
+				run_mode=RunMode.BACKTEST,
 				initial_capital=float(config.get('initial_capital', 1_000_000)),
 				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),

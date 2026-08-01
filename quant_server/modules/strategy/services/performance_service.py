@@ -137,8 +137,6 @@ class PerformanceService:
                 "total_return": round(total_return, 6),
                 "max_drawdown": round(max_dd, 6),
                 "sharpe_ratio": round(sharpe, 6) if sharpe is not None else None,
-                "total_assets": round(total_assets, 4),
-                "strategy_run_id": active_run.id if active_run else None,
                 "created_at": datetime.now(),
             }
         except Exception as e:

@@ -202,6 +202,7 @@ WHERE strategy_id IS NULL;
 --
 -- 同步任务表
 select * from data_sync_tasks where id = 'fb91ee7a-d0a7-4a58-9e87-280a6e4ea730';
+select * from data_sync_tasks where status = 'running';
 -- 用户
 select * from sys_users;
 select * from  accounts;
@@ -253,6 +254,51 @@ SELECT research_id, factor_code, status, progress, started_at
 FROM factor_research
 WHERE status = 'running'
 ORDER BY created_at DESC;
-
+SELECT * from strategies
 SELECT * from backtest_equity_curves where task_id ='a9797c8f-0879-4c85-9eec-e597375ae563'
 SELECT trade_date, close, open, high, low, vol FROM index_daily WHERE ts_code = '000905.SH' ORDER BY trade_date ASC
+-- 策略代码同步到 DB（路径因环境而异，执行前确认）
+UPDATE strategies
+SET code = pg_read_file('E:/QuantitativeTrading/quant_trade/quant_server/modules/strategy/strategies/etf/bottom_strategy.py')::text,
+    updated_at = NOW()
+WHERE id = '5277a1fc-a747-4f33-bb95-8056d1e56e24';
+
+select * from  strategies
+WHERE id = '5277a1fc-a747-4f33-bb95-8056d1e56e24';
+
+
+-- 确认 etf_daily 条数是否够
+SELECT COUNT(DISTINCT ts_code), MAX(trade_date) FROM etf_daily WHERE trade_date >= '2026-07-27';
+
+SELECT MAX(trade_date) FROM etf_daily;
+
+-- v3.3: status 列已删除，统一使用 signal_status
+UPDATE signals SET signal_status = 'executed'
+WHERE ts_code IN ('601988.SH', '601939.SH')
+  AND strategy_id = '1b6b57a8-d58c-499f-a5fe-7d8c0c91f5a7'
+  AND signal_status = 'pending_manual';
+
+-- =============================================================================
+-- 组合实盘 — 数据库 DDL
+--
+-- composite_groups: 组合分组（哪些策略属于同一组合 + 分配器配置）
+-- composite_account_snapshots: 账户级每日快照（净值曲线 + 策略归因）
+--
+-- 执行方式: psql -U postgres -d quant_signals_dev -f docs/sql/composite_tables.sql
+-- =============================================================================
+
+-- 组合分组表
+CREATE TABLE IF NOT EXISTS composite_groups (
+    id              VARCHAR(36) PRIMARY KEY,
+    name            VARCHAR(200) NOT NULL,
+    account_id      VARCHAR(36),                -- 关联券商账户（可选）
+    strategy_ids    JSONB NOT NULL DEFAULT '[]', -- [{"strategy_id":"...","allocator_id":"etf_bottom"}]
+    allocator_config JSONB NOT NULL DEFAULT '{}',-- REGIME_BASE_ALLOCATION + params
+    current_regime  INT DEFAULT 1,
+    current_allocation JSONB,                   -- {"etf_bottom":0.5,"stock_low_high":0.5}
+    status          VARCHAR(20) DEFAULT 'active', -- active / stopped / error
+    last_rebalance_at TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+

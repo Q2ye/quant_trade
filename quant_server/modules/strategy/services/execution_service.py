@@ -227,6 +227,32 @@ class ExecutionService:
             await self.session.rollback()
             return {"success": False, "error": str(e)}
 
+    async def update_allocated_capital(
+            self, strategy_id: str, new_capital: float, user_id: str = "",
+    ) -> Dict[str, Any]:
+        """运行时调整策略的 allocated_capital。"""
+        try:
+            strategy = await self.strategy_repo.get_by_id(strategy_id)
+            if not strategy:
+                return {"success": False, "error": f"策略不存在: {strategy_id}"}
+
+            if new_capital < 10000:
+                return {"success": False, "error": "allocated_capital 不低于 10,000"}
+
+            old_capital = float(getattr(strategy, "allocated_capital", 0) or 0)
+            strategy.allocated_capital = new_capital
+            strategy.updated_at = datetime.now()
+            await self.session.commit()
+
+            logger.info(
+                f"策略 {strategy_id} allocated_capital: {old_capital:,.0f} -> {new_capital:,.0f}"
+            )
+            return {"success": True, "old_capital": old_capital, "new_capital": new_capital}
+        except Exception as e:
+            logger.error(f"更新 allocated_capital 失败: {e}")
+            await self.session.rollback()
+            return {"success": False, "error": str(e)}
+
     async def stop_strategy(
             self,
             strategy_id: str,

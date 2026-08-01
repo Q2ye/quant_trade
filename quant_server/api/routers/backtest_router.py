@@ -45,7 +45,8 @@ from modules.backtest.schemas import (
 	BacktestOptimizeResponse,
 		ScenarioRunRequest,
 		ScenarioPromoteRequest,
-	BacktestCreateRequest
+	BacktestCreateRequest,
+	BacktestCompositeCreateRequest,
 )
 # 导入响应格式化工具
 from utils.api_utils.response_formatter import success_response, error_response
@@ -104,6 +105,52 @@ async def create_backtest_api(
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"创建回测任务失败: {str(e)}"
+		)
+
+
+@router.post("/composite", response_model=BacktestCreateResponse, status_code=201)
+async def create_composite_backtest_api(
+		request: BacktestCompositeCreateRequest,
+		background_tasks: BackgroundTasks,
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> BacktestCreateResponse:
+	"""
+	创建组合回测任务 — 多策略共享资金池 + CapitalAllocator 动态分配
+
+	Args:
+		request: 组合回测创建请求（strategy_configs, 区间, 资金, force_regime等）
+		background_tasks: 后台任务
+		current_user: 当前登录用户
+		db_session: 数据库会话
+
+	Returns:
+		BacktestCreateResponse: { task_id, status }
+	"""
+	try:
+		from modules.backtest.handlers import create_composite_task
+
+		logger.info(
+			f"用户 {current_user.get('username')} 创建组合回测, "
+			f"策略数={len(request.strategy_configs)}, "
+			f"regime={request.force_regime}"
+		)
+
+		result = await create_composite_task(
+			session=db_session,
+			request=request,
+			user_id=current_user.get("id"),
+			background_tasks=background_tasks
+		)
+		return result
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"创建组合回测失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"创建组合回测失败: {str(e)}"
 		)
 
 

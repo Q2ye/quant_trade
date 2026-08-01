@@ -255,7 +255,7 @@ class AccountService:
 
 				if changed_fields and self.audit_logger:
 					await self.audit_logger.log_simple(
-						action="account_update",
+						action="update",
 						user_id=account.user_id,
 						resource_type="account",
 						resource_id=str(account_id),

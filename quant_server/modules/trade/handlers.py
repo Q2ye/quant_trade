@@ -587,12 +587,17 @@ class TradeHandler:
 			if not signal:
 				raise HTTPException(status_code=404, detail="信号不存在")
 
-			if signal.status != "pending":
-				raise HTTPException(status_code=400, detail=f"信号状态为 {signal.status}，不可重复审核")
+			# v3.3: signal_status 是唯一的信号状态字段
+			_current_status = getattr(signal, "signal_status", "pending_manual")
+			if _current_status not in ("pending", "pending_manual"):
+				raise HTTPException(
+					status_code=400,
+					detail=f"信号状态为 {_current_status}，不可重复审核",
+				)
 
 			now = datetime.now(timezone.utc)
 			await SignalRepository(self.db).update(signal_id, {
-				"status": request.action,
+				"signal_status": request.action,
 				"reviewed_at": now,
 				"reviewed_by": user_id,
 			})
@@ -628,8 +633,10 @@ class TradeHandler:
 			query = signal_repo.build_query()
 
 			if request.status:
-				if hasattr(SignalModel, "status"):
-					query = query.where(getattr(SignalModel, "status") == request.status)
+				# v3.3: 统一用 signal_status，兼容前端传旧 status 值
+				_status_map = {"pending": "pending_manual", "approved": "confirmed"}
+				_mapped = _status_map.get(request.status, request.status)
+				query = query.where(SignalModel.signal_status == _mapped)
 			if request.signal_type:
 				query = query.where(SignalModel.signal_type == request.signal_type)
 
@@ -656,7 +663,6 @@ class TradeHandler:
 					"price_limit_high": float(s.price_limit_high) if getattr(s, "price_limit_high", None) else None,
 					"max_slippage_pct": float(getattr(s, "max_slippage_pct", None) or 0.02),
 					"signal_time": s.signal_time.isoformat() if s.signal_time else None,
-					"status": getattr(s, "status", "pending"),
 					"signal_status": getattr(s, "signal_status", None),
 					"order_id": getattr(s, "order_id", None),
 				}

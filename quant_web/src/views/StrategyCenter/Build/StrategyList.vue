@@ -120,7 +120,7 @@
                 <n-button v-else-if="action === 'pause'" size="tiny" type="warning" quaternary @click.stop="pauseStrategy(s)">暂停</n-button>
                 <n-button v-else-if="action === 'resume'" size="tiny" type="success" quaternary @click.stop="resumeStrategy(s)">恢复</n-button>
                 <n-button v-else-if="action === 'stop'" size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
-                <n-button v-else-if="action === 'delete'" size="tiny" quaternary @click.stop="deleteStrategy(s)">删除</n-button>
+                <n-button v-else-if="action === 'delete'" size="tiny" quaternary @click.stop="deleteStrategy(s)" :loading="deleting.has(s.id)" :disabled="deleting.has(s.id)">{{ deleting.has(s.id) ? '删除中' : '删除' }}</n-button>
                 <n-button v-else-if="action === 'viewLog'" size="tiny" quaternary @click.stop="viewLog(s)">查看日志</n-button>
               </template>
             </div>
@@ -259,6 +259,7 @@ const strategies = computed(() => store.state.strategy?.strategies || []);
 
 // v3.3: 按策略生命周期状态筛选（替代旧的 live/backtest Tab）
 const statusFilter = ref<string>("all");
+const _filterInitialized = ref(false);
 const statusCounts = computed(() => {
   const c: Record<string, number> = { draft: 0, backtested: 0, running: 0, paused: 0, stopped: 0, error: 0 };
   for (const s of strategies.value) { const st = s.status || "draft"; c[st] = (c[st] || 0) + 1; }
@@ -532,12 +533,18 @@ const cloneStrategy = async (s: any) => {
   } catch (e: any) { message.error("克隆失败: " + (e.message || e)); }
 };
 const handleClone = cloneStrategy;
+const deleting = ref<Set<string>>(new Set());
 const deleteStrategy = (s: any) => {
-  dialog.warning({
+  // 防止重复点击：已在删除中则直接返回
+  if (deleting.value.has(s.id)) return;
+  const dlg = dialog.warning({
     title: "删除确认", content: `确定删除"${s.name}"？不可撤销。`, positiveText: "删除", negativeText: "取消",
     onPositiveClick: async () => {
+      dlg.destroy();  // 立即关闭弹窗，避免用户重复点击
+      deleting.value.add(s.id);
       try { await store.dispatch("strategy/deleteStrategy", s.id); message.success("已删除"); loadStrategies(); }
       catch (e: any) { message.error("删除失败"); }
+      finally { deleting.value.delete(s.id); }
     },
   });
 };
@@ -556,9 +563,10 @@ const viewLog = (s: any) => { message.info('日志查看功能开发中'); };
 
 const batchBacktest = () => { if (checkedKeys.value.length) router.push(`/backtest?strategies=${checkedKeys.value.join(",")}`); };
 const batchDelete = () => {
-  dialog.warning({
+  const dlg = dialog.warning({
     title: "批量删除", content: `确定删除 ${checkedKeys.value.length} 个策略？`, positiveText: "删除", negativeText: "取消",
     onPositiveClick: async () => {
+      dlg.destroy();
       for (const id of checkedKeys.value) { try { await store.dispatch("strategy/deleteStrategy", id); } catch { } }
       message.success("已删除"); checkedKeys.value = []; loadStrategies();
     },
@@ -601,9 +609,10 @@ const loadStrategies = async () => {
     await Promise.all([store.dispatch("strategy/loadStrategies"), loadBuiltin()]);
     pageState.value = "data";
 
-    // 设置默认 Tab：仅首次（无 query）时根据数据引导
-    if (!route.query.tab) {
+    // 设置默认 Tab：仅首次加载时根据数据引导，后续（删除/刷新）保持当前筛选
+    if (!route.query.tab && !_filterInitialized.value) {
       statusFilter.value = liveCount.value > 0 ? "running" : "all";
+      _filterInitialized.value = true;
     }
 
     // 加载运行中策略的持仓

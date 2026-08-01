@@ -24,6 +24,28 @@ class BacktestCreateRequest(BaseModel):
 	parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="回测参数，包含市场参数和策略参数")
 
 
+class StrategyCompositeConfig(BaseModel):
+	"""组合回测 — 单个策略配置"""
+	strategy_id: str = Field(..., description="策略ID")
+	allocator_id: str = Field(default="", description="分配器中的权重键，默认等于 strategy_id")
+	parameters: Optional[Dict[str, Any]] = Field(default=None, description="策略参数覆写")
+
+
+class BacktestCompositeCreateRequest(BaseModel):
+	"""组合回测创建请求 — 多策略共享资金池"""
+	name: str = Field(..., description="回测名称")
+	strategy_configs: List[StrategyCompositeConfig] = Field(..., min_length=2, description="策略配置列表（≥2个）")
+	start_date: str = Field(..., description="开始日期")
+	end_date: str = Field(..., description="结束日期")
+	initial_capital: float = Field(default=1000000.0, description="初始资金")
+	commission_rate: float = Field(default=0.0001, description="佣金费率")
+	slippage_rate: float = Field(default=0.0001, description="滑点费率")
+	symbols: Optional[List[str]] = Field(default=None, description="股票代码列表")
+	benchmark: Optional[str] = Field(default=None, description="基准指数代码")
+	force_regime: Optional[int] = Field(default=None, ge=0, le=2, description="P0 固定Regime: 0=BEAR 1=RANGE 2=BULL，不填默认RANGE")
+	allocator_params: Optional[Dict[str, Any]] = Field(default=None, description="CapitalAllocator参数")
+
+
 class BacktestCreateResponse(BaseModel):
 	"""回测创建响应"""
 	success: bool = Field(default=True)

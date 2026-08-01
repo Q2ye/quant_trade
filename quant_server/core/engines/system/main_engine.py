@@ -228,9 +228,21 @@ class MainEngine(EngineBase):
                 sync_ok = True
                 async with sm.get_session() as session:
                     svc = DataSyncService(session=session)
+                    # 日终必须同步的类型（策略依赖 + 风控必需）
                     for dt in (
-                        DataType.DAILY_QUOTES, DataType.DAILY_BASIC,
-                        DataType.ADJ_FACTOR, DataType.INDEX_DAILY,
+                        # 股票（策略核心数据）
+                        DataType.DAILY_QUOTES,      # 股票日线行情
+                        DataType.DAILY_BASIC,       # 股票每日指标（PE/PB/换手率等）
+                        DataType.ADJ_FACTOR,        # 股票复权因子
+                        # ETF（ETF策略 & 全市场扫描必需）
+                        DataType.ETF_DAILY,         # ETF日线行情
+                        DataType.FUND_ADJ_FACTOR,   # 基金复权因子
+                        # 指数
+                        DataType.INDEX_DAILY,       # 指数日线行情
+                        DataType.INDEX_DAILYBASIC,  # 大盘指数每日指标
+                        # 风控
+                        DataType.DAILY_LIMIT,       # 涨跌停价格（行情判定）
+                        DataType.SUSPEND,           # 每日停复牌（风控过滤）
                     ):
                         try:
                             result = await svc.sync_market_data(dt, start_date=None, end_date=today)
@@ -245,6 +257,19 @@ class MainEngine(EngineBase):
                 if not sync_ok:
                     logger.warning("日终数据同步部分失败，仍尝试驱动策略")
 
+                # v3.4: 计算 ETF 因子（依赖 ETF_DAYLY 同步完成）
+                try:
+                    from modules.data.services.etf_factor_daily import (
+                        compute_etf_factors_daily,
+                    )
+                    factor_result = await compute_etf_factors_daily(trade_date=today)
+                    logger.info(
+                        "日终 ETF 因子计算完成: %s",
+                        factor_result.get("message", "?"),
+                    )
+                except Exception as factor_err:
+                    logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
+
                 logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
                 try:
                     strategy_mgr = await self.get_module_engine("strategy_manager")
@@ -256,19 +281,19 @@ class MainEngine(EngineBase):
                 except Exception as e:
                     logger.exception("日终策略驱动失败: %s", e)
 
+            # FIXME: 合入 master 前将 schedule_config 改回收盘后时间 (如 16:30)
             job = ScheduleJob(
                 job_id="daily_data_sync",
-                name="日终数据同步+策略驱动(16:00)",
+                name="日终数据同步+策略驱动",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 20, "minute": 00},
-                # schedule_config={"hour": 21, "minute": 12},  # 测试流程，临时修改时间
+                schedule_config={"hour": 22, "minute": 42},
                 func=_daily_sync_job,
-                description="交易日16:00同步daily_quotes/daily_basic/adj_factor/index_daily，完成后自动驱动策略",
+                description="盘后：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,
             )
             await self._schedule_manager.add_job(job)
             await self._schedule_manager.start()
-            logger.info("日终调度器已启动: 交易日 20:00 数据同步+策略驱动")
+            logger.info("日终调度器已启动: 交易日 22:42 数据同步+策略驱动")
         except Exception as e:
             logger.warning("日终调度器启动失败（非致命）: %s", e)
 

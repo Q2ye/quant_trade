@@ -208,6 +208,9 @@ class StockLowHighStrategy(BaseStrategy):
         # —— 数据缓存 ——
         # {ts_code: DataFrame[close, volume, high, low, open]}
         self._data_cache: Dict[str, pd.DataFrame] = {}
+        # v6.10: 原始 bar 缓存（list of tuples），避免逐 bar pd.concat 的 O(n²) 拷贝
+        # 在 rebalance 时一次转为 DataFrame
+        self._raw_cache: Dict[str, list] = {}
         self._bar_dates: Dict[str, str] = {}       # {ts_code: 最后一根实时 bar 的日期}（新鲜度守卫）
         self._st_stocks: Set[str] = set()         # ST 股票代码集合
         self._listing_dates: Dict[str, str] = {}   # {ts_code: 上市日期}
@@ -428,6 +431,11 @@ class StockLowHighStrategy(BaseStrategy):
             # 按交易日计数，每 N 个交易日调仓一次（数据不足时不计为已调仓，
             # 避免首日就标记 _last_rebalance_date 导致后续被跳过）
             self._bar_count += 1
+            # v6.11: 先将 raw_cache 转为 DataFrame，避免鸡生蛋死锁——
+            # _run_rebalance 内部也调 _build_dataframe_cache，但只有
+            # _data_cache 非空时才会进入 _run_rebalance。首次运行时
+            # _data_cache 为空，必须在此先构建后方可突破死锁。
+            self._build_dataframe_cache()
             freq = int(self.parameters.get("rebalance_frequency", 1))
             if self._bar_count % freq == 0 and len(self._data_cache) >= 10:
                 signals = self._run_rebalance()
@@ -458,6 +466,8 @@ class StockLowHighStrategy(BaseStrategy):
           6. 【买入】用动态上限计算
         """
         signals: List[TradingSignal] = []
+        # v6.10: 将 raw_cache 转为 DataFrame（一次性构建，替代逐 bar pd.concat）
+        self._build_dataframe_cache()
         if len(self._data_cache) < 10:
             return signals
 
@@ -1523,34 +1533,45 @@ class StockLowHighStrategy(BaseStrategy):
         if df is not None and len(df) > 0:
             return float(df["close"].iloc[-1])
         return 0.0
+    def _build_dataframe_cache(self) -> None:
+        """将 raw_cache 中的原始 bar 数据一次性转为 DataFrame。
+
+        v6.10: 替代逐 bar pd.concat，消除 O(n²) 内存拷贝。
+        仅处理有新数据且未转为 DataFrame 的股票。
+        """
+        if not self._raw_cache:
+            return
+        cols = ["close", "volume", "amount", "open", "high", "low"]
+        for ts_code, rows in self._raw_cache.items():
+            if not rows:
+                continue
+            df = pd.DataFrame(rows, columns=cols)
+            if ts_code in self._data_cache and len(self._data_cache[ts_code]) > 0:
+                # 已有 DataFrame（预热数据），追加
+                existing = self._data_cache[ts_code]
+                df = pd.concat([existing, df], ignore_index=True)
+            self._data_cache[ts_code] = df
+        self._raw_cache.clear()  # 清空原始缓存，下次 bar 会重新累积
 
     def _append_data(self, ts_code: str, bar: BarData) -> None:
         # 新鲜度守卫：记录每只股票最后一根实时 bar 的日期。
-        # 预热数据直接写 _data_cache 不经过此方法 → 无记录 = 不新鲜。
         bar_date = str(getattr(bar, "trade_date", "") or getattr(bar, "datetime", ""))[:10]
         if bar_date:
             self._bar_dates[ts_code] = bar_date
 
-        if ts_code not in self._data_cache:
-            self._data_cache[ts_code] = pd.DataFrame(
-                columns=["close", "volume", "amount", "open", "high", "low"]
-            )
-        df = self._data_cache[ts_code]
-        new_row = pd.DataFrame([{
-            "close": bar.close,
-            "volume": bar.volume,
-            "amount": bar.amount,
-            "open": getattr(bar, "open", bar.close),
-            "high": getattr(bar, "high", bar.close),
-            "low": getattr(bar, "low", bar.close),
-        }])
-        self._data_cache[ts_code] = pd.concat([df, new_row], ignore_index=True)
-
+        # v6.10: 原始数据存入 list of tuples，避免逐 bar pd.concat 的 O(n^2) 拷贝。
+        # 在 _build_dataframe_cache() 中一次性转为 DataFrame。
+        if ts_code not in self._raw_cache:
+            self._raw_cache[ts_code] = []
+        self._raw_cache[ts_code].append((
+            float(bar.close), float(bar.volume), float(bar.amount or 0),
+            float(getattr(bar, "open", bar.close)),
+            float(getattr(bar, "high", bar.close)),
+            float(getattr(bar, "low", bar.close)),
+        ))
         # 限制缓存（最多保留 250 行）
-        if len(self._data_cache[ts_code]) > 250:
-            self._data_cache[ts_code] = (
-                self._data_cache[ts_code].tail(250).reset_index(drop=True)
-            )
+        if len(self._raw_cache[ts_code]) > 250:
+            self._raw_cache[ts_code] = self._raw_cache[ts_code][-250:]
 
     @staticmethod
     def _gen_id() -> str:

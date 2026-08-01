@@ -2669,6 +2669,44 @@ def _calc_atr_14(df: pd.DataFrame, parameters=None) -> pd.Series:
     return tr.groupby(df['ts_code']).transform(lambda x: x.rolling(period, min_periods=5).mean())
 
 
+@register_factor(
+    name="drawdown_accel",
+    display_name="回撤加速度",
+    description="20日回撤的5日变化: drawdown_20d - drawdown_20d_5d_ago，负值=加速下跌",
+    category="etf_bottom",
+    formula="drawdown_20d - shift(drawdown_20d, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_drawdown_accel(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """回撤加速度：正=缓解，负=加速下跌"""
+    g = df.groupby('ts_code')
+    roll_max = g['high'].transform(lambda x: x.rolling(20, min_periods=5).max())
+    dd20 = (df['close'] - roll_max) / roll_max
+    dd20_5d_ago = g['close'].transform(lambda x: x.shift(5))
+    roll_max_5d = g['high'].transform(lambda x: x.shift(5).rolling(20, min_periods=5).max())
+    prev_dd20 = (dd20_5d_ago - roll_max_5d) / roll_max_5d
+    return dd20 - prev_dd20
+
+
+@register_factor(
+    name="vol_contraction",
+    display_name="波动率收缩",
+    description="20日波动率相对5日前的收缩比: 1 - std_20d/std_20d_5d，正值=波动收缩=底部信号",
+    category="etf_bottom",
+    formula="1 - std_20d / shift(std_20d, 5)",
+    data_source="market",
+    update_frequency="daily",
+)
+def _calc_vol_contraction(df: pd.DataFrame, parameters=None) -> pd.Series:
+    """波动率收缩：正值越大→波动收缩越明显"""
+    g = df.groupby('ts_code')
+    ret = g['close'].transform(lambda x: x.pct_change())
+    std20 = ret.groupby(df['ts_code']).transform(lambda x: x.rolling(20, min_periods=5).std())
+    std20_5d_ago = std20.groupby(df['ts_code']).transform(lambda x: x.shift(5))
+    return 1.0 - std20 / (std20_5d_ago + 1e-8)
+
+
 # ============================================================
 #  Convenience: factor name → calculator function mapping
 #  (used by LightGBMBottomStrategy for on_bar prediction)
@@ -2710,4 +2748,6 @@ FACTOR_CALCULATORS_MAP = {
     "atr_14": _calc_atr_14,
     "atr_ratio": _calc_atr_ratio,
     "vol_trend": _calc_vol_trend,
+    "drawdown_accel": _calc_drawdown_accel,
+    "vol_contraction": _calc_vol_contraction,
 }

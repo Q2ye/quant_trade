@@ -18,6 +18,63 @@ from .base_source import BaseDataSource
 
 logger = logging.getLogger(__name__)
 
+# Tushare 免费版各接口频次限制（次/分钟）
+_RATE_LIMITS = {
+    "fund_daily": 500,
+    "fund_adj": 500,
+    "index_daily": 500,
+    "index_dailybasic": 500,
+    "daily": 800,
+    "daily_basic": 500,
+    "adj_factor": 500,
+    "moneyflow": 600,
+}
+
+_last_call_times: dict = {}  # key → list of timestamps for sliding window
+
+
+def _check_rate_limit(api_name: str, max_calls: int = 500) -> None:
+    """简单本地限流：滑动窗口 60 秒内不超过 max_calls 次。超过则 sleep 到窗口滑出。"""
+    now = time.monotonic()
+    times = _last_call_times.setdefault(api_name, [])
+    # 清理 60 秒前的记录
+    cutoff = now - 60
+    while times and times[0] < cutoff:
+        times.pop(0)
+    if len(times) >= max_calls:
+        wait = times[0] + 60 - now + 0.1
+        if wait > 0:
+            time.sleep(wait)
+            # 清理过期
+            cutoff2 = time.monotonic() - 60
+            while times and times[0] < cutoff2:
+                times.pop(0)
+    times.append(time.monotonic())
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """检测是否为 Tushare 频率限制错误"""
+    msg = str(exc)
+    return "频率超限" in msg or "每秒请求次数" in msg or "访问受限" in msg
+
+
+def _is_tushare_transient_error(exc: Exception) -> bool:
+    """检测是否为 Tushare 临时性错误（限流/空响应/网络抖动）"""
+    msg = str(exc)
+    return any(kw in msg for kw in (
+        "频率超限", "每秒请求", "访问受限",
+        "Expecting value", "JSONDecodeError", "json",
+        "ConnectionError", "Timeout", "timeout",
+    ))
+
+
+def _log_tushare_error(api_name: str, exc: Exception, detail: str = "") -> None:
+    """统一日志：临时性错误→WARNING，其他→ERROR"""
+    if _is_tushare_transient_error(exc):
+        logger.warning("Tushare %s 暂时失败: %s %s", api_name, str(exc)[:120], detail)
+    else:
+        logger.error("Tushare %s 失败: %s %s", api_name, str(exc)[:200], detail)
+
 
 class TushareSource(BaseDataSource):
 	"""Tushare数据源实现
@@ -469,18 +526,24 @@ class TushareSource(BaseDataSource):
 	def get_etf_daily (self, etf_code: str, start_date: str = '',
 	                   end_date: str = '') -> pd.DataFrame:
 		"""获取ETF日线行情（Tushare fund_daily 接口）"""
-		return self.pro.fund_daily(ts_code=etf_code, start_date=start_date, end_date=end_date)
+		_check_rate_limit("fund_daily", max_calls=450)
+		try:
+			return self.pro.fund_daily(ts_code=etf_code, start_date=start_date, end_date=end_date)
+		except Exception as e:
+			_log_tushare_error("fund_daily", e, f"etf={etf_code}")
+			return pd.DataFrame()
 
 	def get_etf_adj_factor (self, etf_code: str, start_date: str = '',
 	                        end_date: str = '') -> pd.DataFrame:
 		"""获取ETF复权因子（Tushare fund_adj 接口）"""
+		_check_rate_limit("fund_adj", max_calls=450)
 		try:
 			df = self.pro.fund_adj(ts_code=etf_code, start_date=start_date, end_date=end_date)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取ETF复权因子失败 {etf_code}: {e}")
+			_log_tushare_error("fund_adj", e, f"etf={etf_code}")
 			return pd.DataFrame()
 
 	def get_etf_share_scale (self, etf_code: str = '',
@@ -769,6 +832,7 @@ class TushareSource(BaseDataSource):
 		Tushare接口: index_daily
 		用于同步指数日线行情到 index_daily 表
 		"""
+		_check_rate_limit("index_daily", max_calls=450)
 		try:
 			df = self.pro.index_daily(ts_code=ts_code, start_date=start_date,
 			                          end_date=end_date)
@@ -777,7 +841,7 @@ class TushareSource(BaseDataSource):
 				df = df.sort_values('trade_date')
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取指数日线行情失败: {e}")
+			_log_tushare_error("index_daily", e, f"idx={ts_code}")
 			return pd.DataFrame()
 
 	def get_namechange (self, ts_code: str = '', start_date: str = '',
@@ -1105,7 +1169,7 @@ class TushareSource(BaseDataSource):
 					df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.error(f"获取大盘指数每日指标失败: {e}")
+			_log_tushare_error("index_dailybasic", e)
 			return pd.DataFrame()
 
 	def get_report_rc(self, ts_code: str = '', start_date: str = '',

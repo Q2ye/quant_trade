@@ -229,7 +229,7 @@ class TradeRecordService:
             # ---- 8. 回写 Signal ----
             if signal_id:
                 await self._signal_repo.update(signal_id, {
-                    "status": "executed",
+                    "signal_status": "executed",
                     "order_id": order_id,
                 })
 

@@ -3274,8 +3274,7 @@ CREATE TABLE signals (
     strength NUMERIC(5,2),
     confidence NUMERIC(5,4) DEFAULT 1.0,
     reason TEXT,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'executed')),
-    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'executed', 'partial', 'cancelled', 'rejected', 'expired', 'approved'))  -- v3.3: +executed,+approved,
+    signal_status VARCHAR(20) DEFAULT 'pending_manual' CHECK (signal_status IN ('pending_manual', 'confirmed', 'executed', 'partial', 'cancelled', 'rejected', 'expired', 'approved')),  -- v3.3: 统一信号状态字段
     order_id VARCHAR(36),
     reviewed_at TIMESTAMPTZ,
     reviewed_by VARCHAR(36),
@@ -3302,8 +3301,7 @@ COMMENT ON COLUMN signals.order_type IS '订单类型：limit-限价, limit_rang
 COMMENT ON COLUMN signals.strength IS '信号强度（0-100）';
 COMMENT ON COLUMN signals.confidence IS '置信度（0-1）';
 COMMENT ON COLUMN signals.reason IS '信号产生原因';
-COMMENT ON COLUMN signals.status IS '系统状态：pending-待处理, approved-已批准, rejected-已拒绝, executed-已执行';
-COMMENT ON COLUMN signals.signal_status IS '人工确认状态：pending_manual-待确认, confirmed-已成交, partial-部分成交, cancelled-已取消, rejected-风控拒绝, expired-已过期';
+COMMENT ON COLUMN signals.signal_status IS '信号状态: pending_manual-待人工确认, confirmed-已确认成交, executed-已执行, partial-部分成交, cancelled-已取消, rejected-已拒绝, expired-已过期, approved-已批准';
 COMMENT ON COLUMN signals.order_id IS '关联订单ID（信号执行后回写）';
 COMMENT ON COLUMN signals.reviewed_at IS '审核时间';
 COMMENT ON COLUMN signals.reviewed_by IS '审核人ID';
@@ -5161,3 +5159,45 @@ COMMENT ON COLUMN strategies.run_mode IS '运行模式: backtest/live/paper';
 COMMENT ON COLUMN strategies.execution_mode IS '执行模式: semi_auto-半自动, full_auto-全自动';
 COMMENT ON COLUMN strategy_runs.run_mode IS '运行模式: backtest/live/paper';
 COMMENT ON COLUMN strategy_runs.execution_mode IS '执行模式: semi_auto-半自动, full_auto-全自动';
+
+-- ============================================================
+-- 组合实盘表（v3.5）
+-- ============================================================
+-- NOTE: composite_groups.strategy_ids (JSONB) 是策略→组合关系的单一数据源。
+-- strategies.composite_group_id 是反向引用的冗余缓存列，由应用层维护一致性。
+-- 查询"组合包含哪些策略"时，以 composite_groups.strategy_ids 为准。
+
+-- 组合分组
+CREATE TABLE IF NOT EXISTS composite_groups (
+    id              VARCHAR(36) PRIMARY KEY,
+    name            VARCHAR(200) NOT NULL,
+    account_id      VARCHAR(36),
+    strategy_ids    JSONB NOT NULL DEFAULT '[]',  -- 单一数据源: [{"strategy_id":"...","allocator_id":"..."}]
+    allocator_config JSONB NOT NULL DEFAULT '{}',
+    current_regime  INT DEFAULT 1,
+    current_allocation JSONB,
+    status          VARCHAR(20) DEFAULT 'active',
+    last_rebalance_at TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 策略表反向引用
+ALTER TABLE strategies ADD COLUMN IF NOT EXISTS composite_group_id VARCHAR(36);
+CREATE INDEX IF NOT EXISTS idx_strategies_composite_group ON strategies(composite_group_id);
+
+-- 账户级每日快照（净值曲线 + 策略归因）
+CREATE TABLE IF NOT EXISTS composite_account_snapshots (
+    id                VARCHAR(36) PRIMARY KEY,
+    composite_group_id VARCHAR(36) NOT NULL REFERENCES composite_groups(id) ON DELETE CASCADE,
+    trade_date        DATE NOT NULL,
+    total_nav         NUMERIC(16,4),
+    daily_return      NUMERIC(10,6),
+    cash              NUMERIC(16,4),
+    market_value      NUMERIC(16,4),
+    per_strategy      JSONB,
+    regime            INT,
+    allocation        JSONB,
+    created_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(composite_group_id, trade_date)
+);
