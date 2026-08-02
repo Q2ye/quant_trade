@@ -141,6 +141,9 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 震荡市风控 ——
         "sideways_max_pos": 2,          # 震荡市最多 2 只
+        # v6.11: 单票仓位上限（防震荡市 max_pos=2 → 50% 仓位过重）。
+        # 震荡市 weight 从 1/2 降到 1/3：单笔止损损失 2%→1.3%，降低磨损。
+        "max_single_position": 0.33,    # 单票权重上限（默认 1/3）
 
         # —— 风控（上涨市默认） ——
         "stop_loss": -0.04,             # 个股止损 -4%
@@ -631,7 +634,9 @@ class StockLowHighStrategy(BaseStrategy):
             if price <= 0:
                 continue
 
-            weight = 1.0 / effective_max_pos
+            # v6.11: 单票仓位上限（震荡市 1/2 → 1/3，防仓位过重磨损）
+            _max_w = float(self.parameters.get("max_single_position", 0.33))
+            weight = min(1.0 / effective_max_pos, _max_w)
             # v6.11: Model B — 候选入池，次日收盘确认后再买入。
             # 不再立即发买入信号/加入 _holdings，由 _confirm_pending_buys 处理，
             # 避免"策略以为已买、broker 未成交"的状态脱节。
@@ -709,7 +714,12 @@ class StockLowHighStrategy(BaseStrategy):
                         )
                     continue
 
-            weight = float(pinfo.get("weight", 1.0 / max(effective_max_pos, 1)))
+            # v6.11: 单票仓位上限兜底（与入池时一致）
+            _max_w = float(self.parameters.get("max_single_position", 0.33))
+            weight = min(
+                float(pinfo.get("weight", 1.0 / max(effective_max_pos, 1))),
+                _max_w,
+            )
             amount = capital * weight
             shares = max(int(amount / price / lot_size) * lot_size, lot_size)
 
