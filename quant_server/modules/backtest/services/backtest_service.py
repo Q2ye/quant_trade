@@ -66,7 +66,7 @@ import asyncio
 import importlib
 import logging
 import uuid
-from datetime import datetime
+from datetime import date as date_type, datetime
 from typing import Dict, List, Any, Optional
 
 import pandas as pd
@@ -613,7 +613,8 @@ class BacktestService:
 					commission_rate=float(config.get("commission_rate", 0.0001)),
 					slippage=float(config.get("slippage_rate", 0.0001)),
 				)
-				await self.strategy_manager.start_strategy(sid, context)
+				_warmup_end = config.get("start_date") and datetime.strptime(config["start_date"], "%Y-%m-%d").date()
+				await self.strategy_manager.start_strategy(sid, context, warmup_end_date=_warmup_end)
 
 			# ---- Step 5: 解析股票池 ----
 			symbols = config.get("symbols", [])
@@ -1271,7 +1272,8 @@ class BacktestService:
 				commission_rate=float(config.get('commission_rate', 0.0001)),
 				slippage=float(config.get('slippage_rate', 0.0001)),
 			)
-			await self.strategy_manager.start_strategy(task.strategy_id, context)
+			_warmup_end = config.get('start_date') and datetime.strptime(config['start_date'], "%Y-%m-%d").date()
+			await self.strategy_manager.start_strategy(task.strategy_id, context, warmup_end_date=_warmup_end)
 
 			# =================================================================
 			# Step 7: 解析股票池（三级优先级降级策略）

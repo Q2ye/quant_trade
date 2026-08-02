@@ -324,9 +324,14 @@ class StrategyManager(EngineBase):
         self,
         strategy_id: str,
         context: StrategyContext,
+        warmup_end_date: Optional[date] = None,
     ) -> None:
         """
         启动策略（v1.1 增强：注入 context callback）
+
+        Args:
+            warmup_end_date: 预热数据的截止日期（不含）。
+                             回测时传入 start_date，实盘时传 None（默认 date.today()）。
 
         Args:
             strategy_id: 策略ID
@@ -378,13 +383,14 @@ class StrategyManager(EngineBase):
             except Exception as e:
                 logger.warning(f"策略状态同步到DB失败: {e}")
 
-        # v3.0: 仅实盘/仿真模式预热历史数据 + 恢复持仓（回测不需要）
-        # 注意：strategy_instance.run_mode 在调用方 start_strategy() 返回后才设置，
-        # 因此必须从 context.run_mode 读取，否则预热永远被跳过。
+        # v6.11: 预热历史数据，回测和实盘分别处理
+        # 回测: warmup_end_date = 回测开始日期，加载该日期之前的历史数据
+        # 实盘: warmup_end_date = None，使用 date.today()，加载最近 N 天数据
         _run_mode = getattr(context, "run_mode", None) or getattr(strategy_instance, "run_mode", RunMode.BACKTEST)
         if _run_mode in (RunMode.LIVE,):
             await self._restore_positions_from_db(strategy_id)
-            await self._warmup_strategy_data(strategy_id)
+        if _run_mode in (RunMode.LIVE,) or warmup_end_date is not None:
+            await self._warmup_strategy_data(strategy_id, end_date=warmup_end_date)
 
         logger.info(f"策略启动成功: {strategy_id}")
 
@@ -2062,10 +2068,12 @@ class StrategyManager(EngineBase):
 
     async def _warmup_strategy_data(
         self, strategy_id: str, ts_codes: List[str] = None, lookback: int = 200,
+        end_date: Optional[date] = None,
     ) -> None:
         """启动时加载 N 根历史 K 线，静默回放以预热策略指标。
 
         v2.4: 使用 Repository 批量加载（替代已删除的 data_feed_engine.load_stock_data）。
+        v6.11: 支持 end_date 参数。回测传 start_date，实盘传 None（默认 date.today()）。
         """
         strategy = self._strategy_objects.get(strategy_id)
         if not strategy:
@@ -2098,15 +2106,15 @@ class StrategyManager(EngineBase):
 
         # v3.2: 全市场策略快速预热 — 直接填充 _data_cache 而不触发 on_bar/rebalance
         if ts_codes == ["all_market"] or "all_market" in ts_codes:
-            await self._warmup_all_market(strategy_id, strategy)
+            await self._warmup_all_market(strategy_id, strategy, end_date=end_date)
             return
 
         if self.session_factory is None:
             logger.warning("策略 %s session_factory 未注入，跳过预热", strategy_id)
             return
 
-        end_date = date.today()
-        start_date = end_date - timedelta(days=lookback * 2)
+        _end = end_date if end_date is not None else date.today()
+        start_date = _end - timedelta(days=lookback * 2)
 
         try:
             bars_by_date = await self._load_daily_bars_range(
@@ -2152,7 +2160,8 @@ class StrategyManager(EngineBase):
         except Exception:
             pass
 
-    async def _warmup_all_market(self, strategy_id: str, strategy) -> None:
+    async def _warmup_all_market(self, strategy_id: str, strategy,
+                                  end_date: Optional[date] = None) -> None:
         """
         v3.2: 全市场策略快速预热。
 
@@ -2179,8 +2188,8 @@ class StrategyManager(EngineBase):
         params = getattr(strategy, "parameters", {}) or {}
         lookback = int(params.get("lookback_days", 60))
 
-        end_date = date_type.today()
-        start_date = end_date - timedelta(days=lookback * 2)  # 留余量覆盖非交易日
+        _end = end_date if end_date is not None else date_type.today()
+        start_date = _end - timedelta(days=lookback * 2)
 
         try:
             async with self.session_factory() as session:
@@ -2219,6 +2228,8 @@ class StrategyManager(EngineBase):
                     adj_type="qfq",
                     freq="D",
                 )
+                # v6.11: 在线复权因子缓存（仅当回退到原始数据时加载）
+                adj_factors: dict = {}
                 if not rows:
                     daily_repo = StockDailyRepository(session)
                     rows = await daily_repo.get_batch_by_date_range(
@@ -2226,6 +2237,21 @@ class StrategyManager(EngineBase):
                         start_date=start_date,
                         end_date=end_date,
                     )
+                    # 原始数据 → 应用与前复权实盘数据馈送(data_feed_engine)一致的
+                    # 复权因子（price × adj_factor），避免"预热原始价 + 实盘 qfq 价"
+                    # 混合污染 MA/MACD 指标与选股信号。
+                    try:
+                        from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+                            StockAdjFactorRepository,
+                        )
+                        _adj_repo = StockAdjFactorRepository(session)
+                        adj_factors = await _adj_repo.get_batch_by_date_range(
+                            symbols=all_codes,
+                            start_date=start_date,
+                            end_date=end_date,
+                        )
+                    except Exception:
+                        adj_factors = {}
 
                 if not rows:
                     logger.warning("策略 %s 全市场预热: 日线数据为空", strategy_id)
@@ -2238,12 +2264,33 @@ class StrategyManager(EngineBase):
                     td = r.trade_date if hasattr(r, "trade_date") else r["trade_date"]
                     if code not in rows_by_code:
                         rows_by_code[code] = []
+
+                    _c = float(r.close if hasattr(r, "close") else r["close"] or 0)
+                    _o = float(r.open if hasattr(r, "open") else r["open"] or 0)
+                    _h = float(r.high if hasattr(r, "high") else r["high"] or 0)
+                    _l = float(r.low if hasattr(r, "low") else r["low"] or 0)
+
+                    # 应用复权因子（与 data_feed_engine 一致：price × adj_factor）
+                    if adj_factors and code in adj_factors:
+                        _af_map = adj_factors[code]
+                        _td = td.date() if hasattr(td, "date") else td
+                        _af = _af_map.get(_td)
+                        if _af is None:
+                            _dates = [d for d in sorted(_af_map.keys()) if d <= _td]
+                            if _dates:
+                                _af = _af_map[_dates[-1]]
+                        if _af is not None and _af > 0:
+                            _c = _c * _af if _c else _c
+                            _o = _o * _af if _o else _o
+                            _h = _h * _af if _h else _h
+                            _l = _l * _af if _l else _l
+
                     rows_by_code[code].append({
                         "trade_date": td,
-                        "close": float(r.close if hasattr(r, "close") else r["close"] or 0),
-                        "open": float(r.open if hasattr(r, "open") else r["open"] or 0),
-                        "high": float(r.high if hasattr(r, "high") else r["high"] or 0),
-                        "low": float(r.low if hasattr(r, "low") else r["low"] or 0),
+                        "close": _c,
+                        "open": _o,
+                        "high": _h,
+                        "low": _l,
                         "volume": float(r.vol if hasattr(r, "vol") else (r["vol"] or r.get("volume", 0) or 0)),
                         "amount": float(r.amount if hasattr(r, "amount") else (r.get("amount", 0) or 0)),
                     })

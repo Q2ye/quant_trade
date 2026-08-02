@@ -99,6 +99,12 @@ class TradingSignal:
     weight: float = 1.0                           # 仓位权重 [0, 1]，策略层→交易层仓位映射
     target_price: Optional[float] = None          # 目标价格
     stop_loss_price: Optional[float] = None       # 止损价格
+    # v6.11: 执行模式
+    #   "open"    — 次日开盘价成交（默认，T+1 传统撮合）
+    #   "close"   — 当日收盘价成交（收盘确认买入）
+    #   "trigger" — 当日触发价成交（日内止损，盘中触及 trigger_price 即成交）
+    order_mode: str = "open"
+    trigger_price: Optional[float] = None         # trigger 模式的触发价（如止损价）
 
     # 数量信息
     quantity: int = 0

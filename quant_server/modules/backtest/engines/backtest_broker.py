@@ -104,6 +104,12 @@ class BrokerOrder:
     commission: float = 0.0                  # 佣金（成交时计算）
     stamp_tax: float = 0.0                   # 印花税（仅卖出方向，成交时计算）
     transfer_fee: float = 0.0                # 过户费（买卖双向，成交时计算）
+    # v6.11: 执行模式
+    #   "open"    — 次日开盘价成交（默认，T+1 传统撮合）
+    #   "close"   — 当日收盘价成交（收盘确认买入）
+    #   "trigger" — 当日触发价成交（日内止损：盘中触及 trigger_price 即成交）
+    order_mode: str = "open"
+    trigger_price: Optional[float] = None    # trigger 模式的触发价（如止损价 = entry × (1 + stop_loss)）
 
 
 @dataclass
@@ -333,6 +339,8 @@ class BacktestBroker(EngineBase):
         quantity: int,
         order_type: str = "market",
         reason: str = "",
+        order_mode: str = "open",
+        trigger_price: Optional[float] = None,
     ) -> BrokerOrder:
         """
         接收策略信号 → 创建订单并加入 T+1 挂单队列。
@@ -359,6 +367,9 @@ class BacktestBroker(EngineBase):
                 - 卖出方向：平掉全部可用持仓
             order_type: 订单类型，"market"（市价单，次日 open 无条件成交）
                         或 "limit"（限价单，需 check 价格触及）。
+            order_mode: 执行模式，"open"（次日开盘成交）/ "close"（当日收盘成交）/
+                        "trigger"（当日触发价成交，盘中触及 trigger_price 即成交）。
+            trigger_price: order_mode="trigger" 时的触发价。
 
         Returns:
             创建的 BrokerOrder 对象，或 None（资金不足 / 无可用持仓 等拒绝下单场景）。
@@ -407,6 +418,15 @@ class BacktestBroker(EngineBase):
             )
 
             # 风控检查（sumbit_order 已改为 async，可以直接 await）
+            # v6.11: 回测中排除账户级日终监控规则 + limit_up_down。
+            # - 账户级规则（capital_change 等）用盘中不一致快照误杀正常卖单（幽灵持仓根因）。
+            # - limit_up_down 若在此处丢弃订单，跌停时的止损卖单会被永久丢弃（订单不重试），
+            #   而策略 _finalize_exits 仍会把持仓从 _holdings 清除 → 孤儿持仓。
+            #   涨跌停改由 broker 的 _can_trade 在 match_orders/settle 中挂起重试。
+            _account_rules = (
+                "account_balance", "loss_limit", "drawdown_limit",
+                "capital_change", "trade_count", "limit_up_down",
+            )
             passed, msg = await risk_engine.check_signal({
                     "ts_code": ts_code,
                     "direction": "buy" if direction == "LONG" else "sell",
@@ -442,7 +462,7 @@ class BacktestBroker(EngineBase):
                     "market_status": "normal",
                     "suspended": False,
                     "daily_trade_count": len(self.trade_history),
-                })
+                }, exclude_rules=_account_rules)
             if not passed:
                 logger.info("[风控拦截 %s] %s → 拒绝下单", ts_code, msg)
                 # v3.0: 收集违规明细，供回测报告展示
@@ -527,6 +547,8 @@ class BacktestBroker(EngineBase):
             status="pending",
             create_date=self._trade_date or date.today(),
             reason=reason,
+            order_mode=order_mode,
+            trigger_price=trigger_price,
         )
 
         self.orders[order_id] = order
@@ -625,8 +647,26 @@ class BacktestBroker(EngineBase):
                 remaining_orders.append(order)
                 continue
 
-            # ---- 涨跌停检查 ----
-            if self.config.price_limit:
+            # ---- v6.11: trigger-mode（日内止损/止盈，触发价成交） ----
+            # 止损单在盘中触及 trigger_price 即成交，无需等到次日开盘，
+            # 用当日 bar 的 low/high 判断触发（决策时戳 = 成交时戳，无未来函数）。
+            _trigger_mode = (order.order_mode == "trigger")
+            if _trigger_mode:
+                _tp = order.trigger_price
+                if (order.direction == "SHORT" and _tp and _tp > 0
+                        and bar.low is not None and bar.low <= _tp):
+                    # 多头止损触发：开盘已跳穿止损 → 按更差的开盘价；否则按止损价
+                    _raw = _tp
+                    if bar.open is not None and bar.open > 0 and bar.open < _raw:
+                        _raw = bar.open
+                    fill_price = _raw * (1 - self.config.slippage)  # 卖出向下滑点
+                else:
+                    # 未触发 → 保留挂单到下一交易日
+                    remaining_orders.append(order)
+                    continue
+
+            # ---- 涨跌停检查（trigger 模式跳过：盘中触及即视为有对手盘） ----
+            if self.config.price_limit and not _trigger_mode:
                 if not self._can_trade(order.ts_code, order.direction, bar.open):
                     logger.debug(
                         f"涨跌停限制，无法成交: {order.ts_code} "
@@ -635,13 +675,16 @@ class BacktestBroker(EngineBase):
                     remaining_orders.append(order)
                     continue
 
-            # ---- 确定成交价 = 开盘价（考虑滑点） ----
-            fill_price = bar.open
-            if self.config.slippage > 0:
-                if order.direction == "LONG":
-                    fill_price *= (1 + self.config.slippage)  # 买入：向上滑点（买得更贵）
-                else:
-                    fill_price *= (1 - self.config.slippage)  # 卖出：向下滑点（卖得更便宜）
+            # ---- 确定成交价 = 开盘价（考虑滑点；trigger 模式已在上面确定） ----
+            if _trigger_mode:
+                pass  # fill_price 已在 trigger 分支计算
+            else:
+                fill_price = bar.open
+                if self.config.slippage > 0:
+                    if order.direction == "LONG":
+                        fill_price *= (1 + self.config.slippage)  # 买入：向上滑点（买得更贵）
+                    else:
+                        fill_price *= (1 - self.config.slippage)  # 卖出：向下滑点（卖得更便宜）
 
             # ---- 限价单额外检查 ----
             if order.order_type == "limit":
@@ -655,131 +698,216 @@ class BacktestBroker(EngineBase):
                     continue
 
             # ================================================================
-            # 以下：订单满足成交条件，执行撮合
+            # 以下：订单满足成交条件，执行撮合（v6.11 抽为 _execute_fill 复用）
             # ================================================================
-
-            fill_amount = fill_price * order.quantity
-
-            # ---- 计算交易费用 ----
-            commission = max(
-                fill_amount * self.config.commission_rate,
-                self.config.min_commission,    # A 股最低佣金 5 元
-            )
-            stamp_tax = (
-                fill_amount * self.config.stamp_tax
-                if order.direction == "SHORT"   # 印花税仅卖出方向征收
-                else 0.0
-            )
-            transfer_fee = fill_amount * self.config.transfer_fee_rate  # 过户费双向
-
-            # ---- 资金结算（在标记成交之前，LONG 方向可能需要缩减/取消） ----
-            total_cost = fill_amount + commission + stamp_tax + transfer_fee
-            if order.direction == "LONG":
-                # 解冻预扣资金（按委托价+费用估算）→ 按实际成交价扣款
-                estimated = order.price * order.quantity * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
-                self.frozen_cash -= estimated
-                self.cash += estimated
-                # ---- v2.0: 现金充足性校验 ----
-                # 原逻辑直接 self.cash -= total_cost，若实际成交价远高于委托价
-                #（开盘跳空），现金可能变为负数 → total_assets 虚增 → 净值幻影。
-                if self.cash < total_cost:
-                    # 资金不足 → 按实际可用现金缩减买入量
-                    affordable_qty = int(
-                        self.cash / (fill_price * (1 + self.config.commission_rate))
-                        // self.config.lot_size * self.config.lot_size
-                    )
-                    if affordable_qty <= 0:
-                        # 一股都买不起 → 取消订单。
-                        # 资金已在 lines 680-681 解冻，不重新冻结（订单已作废）。
-                        logger.warning(
-                            f"资金不足取消买入: {order.ts_code} "
-                            f"需要={total_cost:,.0f} 可用={self.cash:,.0f}"
-                        )
-                        order.status = "cancelled"
-                        continue  # 不加入 remaining_orders，直接丢弃
-                    # 按可负担量重算：缩减 fill_amount / commission / stamp_tax / transfer_fee
-                    fill_amount = fill_price * affordable_qty
-                    commission = max(fill_amount * self.config.commission_rate, self.config.min_commission)
-                    stamp_tax = 0.0  # 买入无印花税
-                    transfer_fee = fill_amount * self.config.transfer_fee_rate
-                    total_cost = fill_amount + commission + stamp_tax + transfer_fee
-                    order.quantity = affordable_qty
-                    order.fill_price = fill_price
-                    order.commission = commission
-                    order.stamp_tax = stamp_tax
-                    order.transfer_fee = transfer_fee
-                    logger.info(
-                        f"买入量缩减: {order.ts_code} {order.quantity}股 "
-                        f"@ {fill_price:.2f} (资金不足, 缩减至可负担量)"
-                    )
-                self.cash -= total_cost
-            else:
-                # 卖出：入账（不涉及冻结资金，卖出从不冻结）
-                # 注意：如果订单已提前释放资金（_early_released），此处只做差价调整
-                if getattr(order, '_early_released', False):
-                    estimated = order.price * order.quantity * (1 - self.config.commission_rate)
-                    actual = fill_amount - commission - stamp_tax - transfer_fee
-                    self.cash += (actual - estimated)  # 多退少补
-                    # 幻影解除：持仓即将随成交移除，回冲提前释放的累计额（精确按下单时存额）
-                    self._early_released_cash -= getattr(order, '_early_released_amount', estimated)
-                else:
-                    self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
-
-            # ---- 标记成交状态 ----
-            order.status = "filled"
-            order.fill_date = trade_date
-            order.fill_price = fill_price
-            order.commission = commission
-            order.stamp_tax = stamp_tax
-            order.transfer_fee = transfer_fee
-
-            # ---- v1.6: 保存入场均价（_update_position 会删除卖出持仓，须提前取值） ----
-            is_exit = order.direction in ("SHORT", "CLOSE_LONG", "close_long")
-            entry_avg_cost = None
-            if is_exit and order.ts_code in self.positions:
-                entry_avg_cost = self.positions[order.ts_code].avg_cost
-
-            # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
-            self._update_position(order, fill_price, trade_date)
-
-            # ---- 记录成交 ----
-            trade_record = {
-                "trade_id": f"trade_{len(self.trade_history) + 1:06d}",
-                "order_id": order.order_id,
-                "ts_code": order.ts_code,
-                "direction": order.direction,
-                "price": fill_price,
-                "quantity": order.quantity,
-                "amount": fill_amount,
-                "commission": commission,
-                "stamp_tax": stamp_tax,
-                "transfer_fee": transfer_fee,
-                "trade_date": trade_date,
-            }
-            trades.append(trade_record)
-            self.trade_history.append(trade_record)
-
-            # 计算该笔交易的 PnL（平仓时从预先保存的入场均价推算）
-            trade_pnl_str = ""
-            if is_exit:
-                if entry_avg_cost is None:
-                    trade_pnl_str = "PnL=N/A(pos_gone)"
-                elif entry_avg_cost <= 0:
-                    trade_pnl_str = f"PnL=N/A(avg_cost={entry_avg_cost})"
-                else:
-                    trade_pnl = (fill_price - entry_avg_cost) / entry_avg_cost
-                    trade_pnl_str = f"PnL={trade_pnl:+.2%}"
-
-            pnl_display = f" {trade_pnl_str}" if trade_pnl_str else ""
-            label = "卖出" if is_exit else "买入"
-            reason_str = f" | {order.reason}" if getattr(order, 'reason', '') else ""
-            logger.debug(
-                f"  [{order.create_date}] {label} {order.ts_code} "
-                f"{order.quantity}股 @ {fill_price:.2f} "
-                f"费用={commission + stamp_tax + transfer_fee:.2f}{pnl_display}{reason_str}"
-            )
+            rec = self._execute_fill(order, fill_price, trade_date)
+            if rec is not None:
+                trades.append(rec)
 
         # ---- 更新挂单队列（移除已成交的） ----
+        self.pending_orders = remaining_orders
+        return trades
+
+    def _execute_fill(
+        self,
+        order: "BrokerOrder",
+        fill_price: float,
+        trade_date: date,
+    ) -> Optional[Dict[str, Any]]:
+        """按成交价执行订单撮合（费用计算 / 资金结算 / 持仓更新 / 成交记录）。
+
+        v6.11: 从 match_orders 抽出的公共撮合逻辑，供 match_orders（open 成交）
+        和 settle_intraday_orders（close/trigger 成交）复用。
+
+        Returns:
+            trade_record（成交记录 dict），或 None（资金不足取消，订单作废）。
+        """
+        fill_amount = fill_price * order.quantity
+
+        # ---- 计算交易费用 ----
+        commission = max(
+            fill_amount * self.config.commission_rate,
+            self.config.min_commission,    # A 股最低佣金 5 元
+        )
+        stamp_tax = (
+            fill_amount * self.config.stamp_tax
+            if order.direction == "SHORT"   # 印花税仅卖出方向征收
+            else 0.0
+        )
+        transfer_fee = fill_amount * self.config.transfer_fee_rate  # 过户费双向
+
+        # ---- 资金结算（在标记成交之前，LONG 方向可能需要缩减/取消） ----
+        total_cost = fill_amount + commission + stamp_tax + transfer_fee
+        if order.direction == "LONG":
+            # 解冻预扣资金（按委托价+费用估算）→ 按实际成交价扣款
+            estimated = order.price * order.quantity * (1 + self.config.commission_rate + self.config.transfer_fee_rate)
+            self.frozen_cash -= estimated
+            self.cash += estimated
+            # ---- v2.0: 现金充足性校验 ----
+            # 原逻辑直接 self.cash -= total_cost，若实际成交价远高于委托价
+            #（开盘跳空），现金可能变为负数 → total_assets 虚增 → 净值幻影。
+            if self.cash < total_cost:
+                # 资金不足 → 按实际可用现金缩减买入量
+                affordable_qty = int(
+                    self.cash / (fill_price * (1 + self.config.commission_rate))
+                    // self.config.lot_size * self.config.lot_size
+                )
+                if affordable_qty <= 0:
+                    # 一股都买不起 → 取消订单。
+                    # 资金已在上面解冻，不重新冻结（订单已作废）。
+                    logger.warning(
+                        f"资金不足取消买入: {order.ts_code} "
+                        f"需要={total_cost:,.0f} 可用={self.cash:,.0f}"
+                    )
+                    order.status = "cancelled"
+                    return None  # 不加入挂单队列，直接丢弃
+                # 按可负担量重算：缩减 fill_amount / commission / stamp_tax / transfer_fee
+                fill_amount = fill_price * affordable_qty
+                commission = max(fill_amount * self.config.commission_rate, self.config.min_commission)
+                stamp_tax = 0.0  # 买入无印花税
+                transfer_fee = fill_amount * self.config.transfer_fee_rate
+                total_cost = fill_amount + commission + stamp_tax + transfer_fee
+                order.quantity = affordable_qty
+                order.fill_price = fill_price
+                order.commission = commission
+                order.stamp_tax = stamp_tax
+                order.transfer_fee = transfer_fee
+                logger.info(
+                    f"买入量缩减: {order.ts_code} {order.quantity}股 "
+                    f"@ {fill_price:.2f} (资金不足, 缩减至可负担量)"
+                )
+            self.cash -= total_cost
+        else:
+            # 卖出：入账（不涉及冻结资金，卖出从不冻结）
+            # 注意：如果订单已提前释放资金（_early_released），此处只做差价调整
+            if getattr(order, '_early_released', False):
+                estimated = order.price * order.quantity * (1 - self.config.commission_rate)
+                actual = fill_amount - commission - stamp_tax - transfer_fee
+                self.cash += (actual - estimated)  # 多退少补
+                # 幻影解除：持仓即将随成交移除，回冲提前释放的累计额（精确按下单时存额）
+                self._early_released_cash -= getattr(order, '_early_released_amount', estimated)
+            else:
+                self.cash += (fill_amount - commission - stamp_tax - transfer_fee)
+
+        # ---- 标记成交状态 ----
+        order.status = "filled"
+        order.fill_date = trade_date
+        order.fill_price = fill_price
+        order.commission = commission
+        order.stamp_tax = stamp_tax
+        order.transfer_fee = transfer_fee
+
+        # ---- v1.6: 保存入场均价（_update_position 会删除卖出持仓，须提前取值） ----
+        is_exit = order.direction in ("SHORT", "CLOSE_LONG", "close_long")
+        entry_avg_cost = None
+        if is_exit and order.ts_code in self.positions:
+            entry_avg_cost = self.positions[order.ts_code].avg_cost
+
+        # ---- 更新持仓（T+1 制度下的 available_quantity 调整） ----
+        self._update_position(order, fill_price, trade_date)
+
+        # ---- 记录成交 ----
+        trade_record = {
+            "trade_id": f"trade_{len(self.trade_history) + 1:06d}",
+            "order_id": order.order_id,
+            "ts_code": order.ts_code,
+            "direction": order.direction,
+            "price": fill_price,
+            "quantity": order.quantity,
+            "amount": fill_amount,
+            "commission": commission,
+            "stamp_tax": stamp_tax,
+            "transfer_fee": transfer_fee,
+            "trade_date": trade_date,
+        }
+        self.trade_history.append(trade_record)
+
+        # 计算该笔交易的 PnL（平仓时从预先保存的入场均价推算）
+        trade_pnl_str = ""
+        if is_exit:
+            if entry_avg_cost is None:
+                trade_pnl_str = "PnL=N/A(pos_gone)"
+            elif entry_avg_cost <= 0:
+                trade_pnl_str = f"PnL=N/A(avg_cost={entry_avg_cost})"
+            else:
+                trade_pnl = (fill_price - entry_avg_cost) / entry_avg_cost
+                trade_pnl_str = f"PnL={trade_pnl:+.2%}"
+
+        pnl_display = f" {trade_pnl_str}" if trade_pnl_str else ""
+        label = "卖出" if is_exit else "买入"
+        reason_str = f" | {order.reason}" if getattr(order, 'reason', '') else ""
+        logger.debug(
+            f"  [{order.create_date}] {label} {order.ts_code} "
+            f"{order.quantity}股 @ {fill_price:.2f} "
+            f"费用={commission + stamp_tax + transfer_fee:.2f}{pnl_display}{reason_str}"
+        )
+
+        return trade_record
+
+    def settle_intraday_orders(
+        self,
+        bars: Dict[str, BarData],
+        trade_date: date = None,
+    ) -> List[Dict[str, Any]]:
+        """v6.11: 处理当日提交的 close/trigger 模式订单。
+
+        调用时机：handle_bar_batch（策略生成信号并 submit_order）之后、
+        mark_to_market 之前。
+
+        - close 模式（收盘确认买入，Model B）：按当日收盘价成交
+        - trigger 模式（日内止损，Model A）：当日 low 触及触发价即成交
+
+        match_orders 处理"昨日挂单"（open 成交 + 跨日 trigger 检查）；
+        本方法处理"今日新提交"的 close/trigger 单，两者互补、互不重复。
+        决策时戳 = 成交时戳（当日 close/low 触发 → 当日成交），无未来函数。
+        """
+        trades: List[Dict[str, Any]] = []
+        if not bars:
+            return trades
+
+        remaining_orders = []
+        for order in self.pending_orders:
+            # 仅处理今日提交的 close/trigger 单；open 单留给下一日 match_orders
+            if order.create_date != trade_date or order.order_mode in ("open", None):
+                remaining_orders.append(order)
+                continue
+
+            bar = bars.get(order.ts_code)
+            if bar is None:
+                remaining_orders.append(order)
+                continue
+
+            # ---- v6.11: close/trigger 模式无条件当日成交（不设涨跌停门） ----
+            # limit_up_down 规则已从 submit_order 风控排除。此处 close/trigger 单
+            # 一律成交，防止"跌停卖单被挂起/丢弃 → 孤儿持仓巨亏"（000681 曾 -49%）。
+            # - trigger（止损）：按 min(open, trigger) 立即成交，快速斩断亏损。
+            # - close（买入确认/轮动/止盈）：按当日收盘价成交。
+            # open 模式（次日开盘）仍由 match_orders 的 _can_trade 挂起涨跌停重试。
+            fill_price = None
+            if order.order_mode == "close":
+                # 收盘确认买入：按当日收盘价成交（买入向上滑点）
+                if bar.close is not None and bar.close > 0:
+                    fill_price = bar.close
+                    if self.config.slippage > 0:
+                        fill_price *= (1 + self.config.slippage)
+            elif order.order_mode == "trigger":
+                # 日内止损：low 触及触发价即成交（开盘跳穿 → 按开盘价）
+                _tp = order.trigger_price
+                if (order.direction == "SHORT" and _tp and _tp > 0
+                        and bar.low is not None and bar.low <= _tp):
+                    _raw = _tp
+                    if bar.open is not None and bar.open > 0 and bar.open < _raw:
+                        _raw = bar.open
+                    fill_price = _raw * (1 - self.config.slippage)
+
+            if fill_price is None or fill_price <= 0:
+                remaining_orders.append(order)
+                continue
+
+            rec = self._execute_fill(order, fill_price, trade_date)
+            if rec is not None:
+                trades.append(rec)
+
         self.pending_orders = remaining_orders
         return trades
 

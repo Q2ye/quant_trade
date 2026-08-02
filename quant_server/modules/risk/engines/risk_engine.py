@@ -15,7 +15,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.engines import EngineConfigEntity
 from core.engines.base.engine_base import EngineBase
@@ -481,13 +481,15 @@ class RiskEngine(EngineBase):
     # ==================== 信号级风控检查 ====================
 
     async def check_signal(
-        self, signal_data: Dict[str, Any]
+        self, signal_data: Dict[str, Any],
+        exclude_rules: Optional[Iterable[str]] = None,
     ) -> Tuple[bool, str]:
         """
         检查信号是否符合风控规则。
 
         v3.0: 分层 severity — info/warning 不阻断，error/critical 阻断。
         v2.0: 唯一路径 — 遍历注册的 RiskRule 实例。
+        v6.11: 新增 exclude_rules — 按规则名排除（如回测中跳过账户级日终监控规则）。
         """
         if not self.risk_check_enabled:
             return True, "风控检查已禁用"
@@ -496,6 +498,10 @@ class RiskEngine(EngineBase):
         if not enabled_rules:
             logger.warning("无启用的风控规则")
             return True, "无启用的风控规则"
+
+        if exclude_rules:
+            exclude_set = set(exclude_rules)
+            enabled_rules = [r for r in enabled_rules if r.get_name() not in exclude_set]
 
         violations: List[Dict[str, str]] = []
         if not hasattr(self, '_risk_events'):

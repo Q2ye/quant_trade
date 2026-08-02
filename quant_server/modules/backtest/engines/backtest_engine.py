@@ -535,9 +535,16 @@ class BacktestEngine(EngineBase):
 					continue
 
 				reason = getattr(sig, "reason", "") or ""
-				await broker.submit_order(ts_code, direction, price, quantity, reason=reason)
+				order_mode = getattr(sig, "order_mode", "open") or "open"
+				trigger_price = getattr(sig, "trigger_price", None)
+				await broker.submit_order(
+					ts_code, direction, price, quantity,
+					reason=reason, order_mode=order_mode, trigger_price=trigger_price,
+				)
 				signal_count += 1
 				day_signals += 1
+			# ---- v6.11: 结算当日 close/trigger 单（收盘确认买入 / 日内止损） ----
+			broker.settle_intraday_orders(bar_dict, trade_date=trade_date)
 			# ---- 4d. 盯市计价（按当日收盘价重估持仓，更新净值曲线） ----
 			broker.mark_to_market(bar_dict, trade_date=trade_date)
 
@@ -852,12 +859,16 @@ class BacktestEngine(EngineBase):
 				if quantity <= 0:
 					continue
 				reason = getattr(sig, "reason", "") or ""
+				order_mode = getattr(sig, "order_mode", "open") or "open"
+				trigger_price = getattr(sig, "trigger_price", None)
 				await broker.submit_order(
-					ts_code, direction, price, quantity, reason=reason
+					ts_code, direction, price, quantity,
+					reason=reason, order_mode=order_mode, trigger_price=trigger_price,
 				)
 				signal_count += 1
 				day_signals += 1
 
+			broker.settle_intraday_orders(bar_dict, trade_date=trade_date)
 			broker.mark_to_market(bar_dict, trade_date=trade_date)
 
 			if day_idx in progress_milestones:

@@ -144,6 +144,10 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 风控（上涨市默认） ——
         "stop_loss": -0.04,             # 个股止损 -4%
+        # v6.11: 收盘确认买入的低点过滤 — 确认日盘中最低价相对信号价的允许跌幅。
+        # 若确认日 low < 信号价×(1-buy_confirm_max_drop)（盘中深跌/触及跌停），
+        # 放弃买入（不接飞刀）。0=关闭。默认 3%。
+        "buy_confirm_max_drop": 0.03,
 
         # —— 动态再平衡 ——
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
@@ -225,6 +229,10 @@ class StockLowHighStrategy(BaseStrategy):
         self._holdings: Dict[str, Dict] = {}
         self._track_high: Dict[str, float] = {}    # {ts_code: 持仓期间最高价}
         self._exit_pending: Set[str] = set()
+        # v6.11: 待确认买入候选（Model B — 收盘确认）
+        # {ts_code: {"signal_price": float, "weight": float}}
+        # Day T 选股入池 → Day T+1 收盘确认（close > signal_price）→ 买入（收盘成交）
+        self._buy_pending: Dict[str, dict] = {}
         self._industry_map: Dict[str, str] = {}    # {ts_code: l1_name}
         # 中证500指数日线数据缓存（方案C：用于行情判定，通过 IndexDailyRepository 加载）
         self._csi500_cache: pd.DataFrame = pd.DataFrame()
@@ -528,6 +536,18 @@ class StockLowHighStrategy(BaseStrategy):
                 f"上限={regime_max_pos}, 止损={regime_stop_loss:.1%})"
             )
 
+        # ---- v6.11: 确认昨日待买候选（Model B — 收盘确认买入） ----
+        # Day T 选股入池 _buy_pending（signal_price=当日收盘），Day T+1 在此确认：
+        # close[T+1] > signal_price → 发买入信号（order_mode="close"，当日收盘成交）。
+        # 下跌市/暂停买入 → 放弃全部待确认候选。
+        if effective_max_pos > 0 and not regime_no_new_buy:
+            signals.extend(self._confirm_pending_buys(effective_max_pos))
+        else:
+            if self._buy_pending:
+                if self.verbose_logging:
+                    logger.info(f"暂停买入/下跌市: 放弃 {len(self._buy_pending)} 只待确认候选")
+                self._buy_pending.clear()
+
         # ---- 2. 获取当前持仓（v3.4: 合并框架注入的_active_positions） ----
         current_holdings = set(self._holdings.keys()) | set(self._active_positions.keys())
         effective_count = len(current_holdings - self._exit_pending)
@@ -575,9 +595,13 @@ class StockLowHighStrategy(BaseStrategy):
 
         # 差异二：无空位但有新标时，清仓最差池内股腾位
         if slots <= 0 and new_stocks:
+            # v6.11: 排除当日新确认买入的持仓（T+1 锁定 + 买单尚未结算，
+            # 同日卖单会因"持仓不足"被拒 → 孤儿持仓）。仅可轮动昨日及更早的持仓。
+            _today_str = str(self._last_trade_date)[:10]
             hold_in_pool = [
                 s for s in current_holdings
                 if s in today_pool and s not in self._exit_pending
+                and self._holdings.get(s, {}).get("entry_date", "") != _today_str
             ]
             if hold_in_pool:
                 def _pool_pnl(code):
@@ -590,19 +614,15 @@ class StockLowHighStrategy(BaseStrategy):
                 self._exit_pending.add(worst)
                 signals.append(self._make_exit_signal(
                     worst, reason=f"半仓轮动: 清仓弱势池内股为新标{new_stocks[0]}腾位(pnl={_pool_pnl(worst):.1%})",
+                    order_mode="close",
                 ))
                 slots = 1
                 if self.verbose_logging:
                     logger.info(f"半仓轮动: 清仓{worst}为新标{new_stocks[0]}腾位")
 
-        # 买入
+        # 买入（v6.11: Model B — 候选入池，次日收盘确认后再买入）
         if slots <= 0 or not new_stocks:
             return signals
-
-        # 优先从 context 获取实际分配资金，回退到参数默认值
-        capital = float(getattr(self.context, "initial_capital", 0) or
-                        self.parameters.get("allocated_capital", 100000))
-        lot_size = int(self.parameters.get("min_lot_size", 100))
 
         targets = new_stocks[:slots]
 
@@ -612,6 +632,84 @@ class StockLowHighStrategy(BaseStrategy):
                 continue
 
             weight = 1.0 / effective_max_pos
+            # v6.11: Model B — 候选入池，次日收盘确认后再买入。
+            # 不再立即发买入信号/加入 _holdings，由 _confirm_pending_buys 处理，
+            # 避免"策略以为已买、broker 未成交"的状态脱节。
+            self._buy_pending[target] = {
+                "signal_price": price,
+                "weight": weight,
+            }
+
+            if self.verbose_logging:
+                logger.info(
+                    f"低吸轮动候选入池: {target}, 信号价={price:.2f}, "
+                    f"仓位={weight:.0%}（待次日收盘确认）"
+                )
+
+        return signals
+
+    def _confirm_pending_buys(self, effective_max_pos: int) -> List[TradingSignal]:
+        """v6.11: 确认昨日待买候选（Model B — 收盘确认买入）。
+
+        Day T 选股入池 _buy_pending（signal_price = 当日收盘价），Day T+1 在此确认：
+        若 close[T+1] > signal_price（净确认，过滤假突破/低开走弱）→ 发买入信号
+        （order_mode="close"，broker 当日收盘价成交）；否则放弃。
+
+        决策时戳（close[T+1]）= 成交时戳（当日收盘），无未来函数。
+        确认后即加入 _holdings（entry_date=今日），当日止损检查被 T+1 锁定守卫跳过。
+
+        Args:
+            effective_max_pos: 当前行情下的最大持仓数（用于仓位上限保护）。
+
+        Returns:
+            确认通过的买入信号列表。
+        """
+        signals: List[TradingSignal] = []
+        if not self._buy_pending:
+            return signals
+
+        today = str(self._last_trade_date)[:10]
+        lot_size = int(self.parameters.get("min_lot_size", 100))
+        capital = float(
+            getattr(self.context, "initial_capital", 0)
+            or self.parameters.get("allocated_capital", 100000)
+        )
+
+        pending = dict(self._buy_pending)
+        self._buy_pending.clear()
+
+        for code, pinfo in pending.items():
+            if len(self._holdings) >= effective_max_pos:
+                break
+            price = self._get_price(code)  # close[T+1]
+            if price <= 0:
+                continue
+            signal_price = float(pinfo["signal_price"])
+            # 净确认：收盘价必须高于信号价（上涨确认）
+            if price <= signal_price:
+                if self.verbose_logging:
+                    logger.info(
+                        f"买入确认失败: {code} 收盘{price:.2f} ≤ 信号价{signal_price:.2f}，放弃"
+                    )
+                continue
+
+            # v6.11: 低点过滤 — 确认日盘中最低价不能深跌过多（避免买入"盘中触跌停、
+            # 收盘回升"的飞刀）。确认日 low < 信号价×(1-max_drop) → 放弃。
+            _max_drop = float(self.parameters.get("buy_confirm_max_drop", 0.03))
+            _df = self._data_cache.get(code)
+            if _max_drop > 0 and _df is not None and len(_df) > 0 and "low" in _df.columns:
+                _day_low = float(_df["low"].iloc[-1])
+                _floor = signal_price * (1 - _max_drop)
+                if _day_low < _floor:
+                    if self.verbose_logging:
+                        logger.info(
+                            f"买入确认失败(低点过滤): {code} 当日最低{_day_low:.2f} "
+                            f"< 信号价{signal_price:.2f}×{(1-_max_drop):.2f}={_floor:.2f}，"
+                            f"盘中深跌不接飞刀"
+                        )
+                    continue
+
+            weight = float(pinfo.get("weight", 1.0 / max(effective_max_pos, 1)))
             amount = capital * weight
             shares = max(int(amount / price / lot_size) * lot_size, lot_size)
 
@@ -619,25 +717,30 @@ class StockLowHighStrategy(BaseStrategy):
                 id=self._gen_id(),
                 strategy_id=self.name,
                 strategy_name=self.name,
-                ts_code=target,
+                ts_code=code,
                 signal_type=SignalType.ENTRY,
                 direction=SignalDirection.LONG,
                 price=price,
                 quantity=shares,
                 amount=amount,
                 confidence=0.75,
-                reason=f"低吸轮动买入: {target}（{weight:.0%}仓位≈{shares}股）",
+                reason=f"低吸轮动买入(收盘确认): {code} 收盘{price:.2f} > 信号价{signal_price:.2f}",
                 timestamp=datetime.now(),
+                order_mode="close",
             )
             sig.weight = weight
             signals.append(sig)
-            self._holdings[target] = {
+            self._holdings[code] = {
                 "entry_price": price, "weight": weight, "shares": shares,
+                "entry_date": today,
             }
-            self._track_high[target] = price
+            self._track_high[code] = price
 
             if self.verbose_logging:
-                logger.info(f"低吸轮动买入: {target}, 仓位={sig.weight:.0%}")
+                logger.info(
+                    f"低吸轮动买入(收盘确认): {code}, 收盘{price:.2f} > 信号价{signal_price:.2f}, "
+                    f"仓位={weight:.0%}"
+                )
 
         return signals
 
@@ -1228,6 +1331,8 @@ class StockLowHighStrategy(BaseStrategy):
                 if entry > 0 and exit_price > 0:
                     pnl = (exit_price - entry) / entry
                     self._nav_realized *= 1.0 + pnl * w
+                if self.verbose_logging:
+                    logger.info(f"结算出场: {code} entry={entry:.2f} exit={exit_price:.2f} pnl={pnl:.1%}")
                 del self._holdings[code]
             if code in self._track_high:
                 del self._track_high[code]
@@ -1283,6 +1388,7 @@ class StockLowHighStrategy(BaseStrategy):
                 sig = self._make_exit_signal(
                     code, reason=f"动态再平衡: 浮盈{pnl:.1%}>={rebalance_th:.0%}，减半仓({old_shares}→{old_shares-half_shares}股)",
                     signal_type=SignalType.TAKE_PROFIT,
+                    order_mode="close",
                 )
                 sig.half_exit = True
                 signals.append(sig)
@@ -1296,13 +1402,36 @@ class StockLowHighStrategy(BaseStrategy):
                 continue
 
             # ---- 止损（所有持仓统一执行）----
-            if pnl < stop_loss:
+            # v6.11: 日内止损 — 用当日 low 判定（盘中触及止损价即触发，而非只看收盘价）。
+            # 出场信号携带 trigger_price=止损价，broker 按触发价当日成交（Model A）。
+            day_low = float(df["low"].iloc[-1]) if "low" in df.columns else current_price
+            low_pnl = (day_low - entry) / entry if entry > 0 else 0.0
+
+            # 同日买入的持仓（entry_date == 今日）不触发止损（T+1 锁定，当日无法卖）
+            _same_day_buy = (
+                self._holdings[code].get("entry_date", "")
+                == str(self._last_trade_date)[:10]
+            )
+
+            if (low_pnl < stop_loss or pnl < stop_loss) and not _same_day_buy:
                 self._exit_pending.add(code)
+                stop_price = entry * (1 + stop_loss)
+                if self.verbose_logging:
+                    logger.info(
+                        f"止损触发: {code} entry={entry:.2f} low={day_low:.2f} "
+                        f"low_pnl={low_pnl:.1%} close_pnl={pnl:.1%} stop={stop_loss:.1%} "
+                        f"trigger={stop_price:.2f}"
+                    )
                 signals.append(self._make_exit_signal(
-                    code, reason=f"止损: 亏损{pnl:.1%}",
+                    code,
+                    reason=f"止损: 日内最低{low_pnl:.1%} 收盘{pnl:.1%} < {stop_loss:.1%}",
                     signal_type=SignalType.STOP_LOSS,
+                    order_mode="trigger",
+                    trigger_price=stop_price,
                 ))
                 continue
+            elif self.verbose_logging and (low_pnl < stop_loss or pnl < stop_loss) and _same_day_buy:
+                logger.info(f"止损跳过(同日买入): {code} low_pnl={low_pnl:.1%} < {stop_loss:.1%}")
 
             # ---- 池内股：只止损，不止盈，跳过所有止盈逻辑 ----
             # 集中度风险由「动态再平衡」（浮盈≥100%卖半仓）处理，更精准
@@ -1310,6 +1439,7 @@ class StockLowHighStrategy(BaseStrategy):
                 continue
 
             # ---- 池外股：抛物线止盈（原版）----
+            # v6.11: 当日收盘价成交（order_mode="close"），与止损同日内完成
             tp_drawdown = 0.0
             if pnl >= 0.80:
                 tp_drawdown = 0.02
@@ -1325,6 +1455,7 @@ class StockLowHighStrategy(BaseStrategy):
                 signals.append(self._make_exit_signal(
                     code, reason=f"池外止盈: 浮盈{pnl:.1%} 高点回落{dd:.1%}>{tp_drawdown:.0%}",
                     signal_type=SignalType.TAKE_PROFIT,
+                    order_mode="close",
                 ))
 
         return signals
@@ -1583,12 +1714,18 @@ class StockLowHighStrategy(BaseStrategy):
         ts_code: str,
         reason: str = "",
         signal_type: SignalType = SignalType.EXIT,
+        order_mode: str = "open",
+        trigger_price: Optional[float] = None,
     ) -> TradingSignal:
         price = self._get_price(ts_code)
         # 卖出数量交由引擎 Sizer 按 Broker 真实持仓计算：
         #   quantity=0 → select_sizer 选 CloseAllSizer（全平, 卖出 pos.quantity）
         #   quantity=0 且 half_exit=True → HalfCloseSizer（卖出真实持仓一半）
         # 策略不再自算股数, 从根上消除"意图股数 ≠ 实际持仓"发散（买多少即卖多少）。
+        #
+        # v6.11 执行模式：
+        #   - 止损 (STOP_LOSS) → order_mode="trigger", trigger_price=止损价（日内触及即成交）
+        #   - 其他出场 (止盈/半仓轮动/到期) → order_mode="close"（当日收盘价成交）
         return TradingSignal(
             id=self._gen_id(),
             strategy_id=self.name,
@@ -1602,4 +1739,6 @@ class StockLowHighStrategy(BaseStrategy):
             confidence=0.80,
             reason=reason,
             timestamp=datetime.now(),
+            order_mode=order_mode,
+            trigger_price=trigger_price,
         )

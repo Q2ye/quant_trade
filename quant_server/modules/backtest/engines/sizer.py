@@ -202,13 +202,17 @@ def select_sizer(signal: TradingSignal) -> BaseSizer:
             return HalfCloseSizer()
         return CloseAllSizer()
 
-    # v2.5: weight 优先于 quantity，支持等权重仓位分配
+    # v6.11: 策略显式给出股数时优先用 quantity（QuantitySizer）。
+    # 原逻辑 weight 优先会导致 WeightSizer 用 `weight × available_cash` 重算股数，
+    # 忽略策略已计算的 shares → 仓位超出意图（如 33% 仓位买到 48%）。
+    # weight 仅作为无 quantity 时的兜底（等权重策略）。
+    if signal.quantity > 0:
+        return QuantitySizer()
+
+    # v2.5: weight 兜底，支持等权重仓位分配
     weight = getattr(signal, "weight", None)
     if weight is not None and weight > 0:
         return WeightSizer()
-
-    if signal.quantity > 0:
-        return QuantitySizer()
 
     if getattr(signal, "amount", 0) > 0:
         return FixedAmountSizer()
