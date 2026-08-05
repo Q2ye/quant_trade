@@ -41,6 +41,23 @@ DB_CONFIG = {
     "database": "quant_signals_dev",
 }
 
+
+def _get_db_config() -> dict:
+    """优先从应用配置读取 DB 连接，失败时回退硬编码默认值。
+
+    应用流水线（每日同步）调用时使用真实环境配置，独立手动运行不受影响。
+    """
+    try:
+        from shared.config.config_manager import config
+        db = config.settings.DATABASE
+        return {
+            "host": db.HOST, "port": int(db.PORT),
+            "user": db.USER, "password": db.PASSWORD,
+            "database": db.NAME,
+        }
+    except Exception:
+        return dict(DB_CONFIG)
+
 # 基准指数 for regime classification
 BENCHMARK_INDICES = ["000300.SH", "000905.SH"]  # 沪深300 + 中证500
 CLASSIFIED_BY = "v1.0_ma_regime"
@@ -126,7 +143,7 @@ def _calc_volume_ratio(volumes: List[float], window: int = 20) -> List[float]:
 
 async def classify_and_populate():
     """主入口：分类市场状态并写入 market_state_daily"""
-    conn = await asyncpg.connect(**DB_CONFIG)
+    conn = await asyncpg.connect(**_get_db_config())
     try:
         # 1. 加载基准指数数据
         logger.info("加载指数日线...")
@@ -243,7 +260,7 @@ async def main():
     n = await classify_and_populate()
 
     # 打印分布
-    conn = await asyncpg.connect(**DB_CONFIG)
+    conn = await asyncpg.connect(**_get_db_config())
     try:
         rows = await conn.fetch(
             "SELECT regime, COUNT(*) n, "

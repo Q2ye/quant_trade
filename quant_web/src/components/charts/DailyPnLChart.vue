@@ -30,7 +30,7 @@ const emit = defineEmits<{ retry: [] }>();
 const hasData = computed(() => props.data.length > 0);
 
 const chartOption = computed(() => {
-  if (!props.data.length) return null;
+  if (!props.data.length) return undefined;
   const dates = props.data.map((d) => d.trade_date?.slice(5) ?? "");
   const pnls = props.data.map((d) => d.daily_pnl ?? 0);
   return {

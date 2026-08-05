@@ -166,7 +166,6 @@ def create_app(
         "system": (system_router, "/quantTrade/system"),
         "risk": (risk_router, "/quantTrade/risk"),
         "market": (market_router, "/quantTrade/market"),
-        "composite": (composite_router, "/quantTrade"),
     }
     for module_name, (router, prefix) in _module_routers.items():
         if module_name in enabled_modules:
@@ -174,6 +173,7 @@ def create_app(
     # 始终注册的路由（不依赖模块初始化）
     app.include_router(health_router, prefix="/health")
     app.include_router(basket_router, prefix="/quantTrade/basket")
+    app.include_router(composite_router, prefix="/quantTrade")
     # WebSocket 路由始终注册
     app.include_router(websocket_router, prefix="/api")
     # 信号确认路由（自带 /quantTrade/signals 前缀）

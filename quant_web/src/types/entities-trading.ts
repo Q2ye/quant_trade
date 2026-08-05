@@ -64,6 +64,8 @@ export interface Position extends BaseEntity {
   market_value: number; // 持仓市值
   profit: number; // 浮动盈亏
   profit_rate: number; // 盈亏比例
+  pnl?: number; // 浮动盈亏（后端字段）
+  pnl_rate?: number; // 盈亏比例（后端字段）
   last_update: string; // 最后更新时间
   industry?: string; // 行业
 }
@@ -74,6 +76,9 @@ export interface Position extends BaseEntity {
 export interface Account extends BaseEntity {
   id: string; // 账户ID
   user_id: string; // 用户ID
+  account_number?: string; // 账户号（后端字段）
+  account_name?: string; // 账户名称（后端字段）
+  broker?: string; // 券商（后端字段）
   total_asset: number; // 总资产
   cash: number; // 现金余额
   available_cash: number; // 可用现金

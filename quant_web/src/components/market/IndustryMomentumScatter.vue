@@ -42,7 +42,7 @@ const windowLabels: Record<string, string> = {
 };
 
 const scatterOption = computed(() => {
-  if (!props.data.length) return null;
+  if (!props.data.length) return undefined;
 
   const items = props.data.map((d) => {
     const x = (d[xWindow.value] as number) ?? 0;

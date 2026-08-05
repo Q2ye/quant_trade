@@ -35,7 +35,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ retry: [] }>();
 const hasData = computed(() => props.equity.length > 0);
 const chartOption = computed(() => {
-  if (!props.equity.length) return null;
+  if (!props.equity.length) return undefined;
 
   // 收集所有日期，构建统一X轴
   const dateSet = new Set<string>();

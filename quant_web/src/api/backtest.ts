@@ -61,7 +61,7 @@ export interface BacktestTaskResult {
 /** 创建回测任务参数 */
 export interface BacktestCreateParams {
   name?: string;
-  strategy_id: string;
+  strategy_id?: string;
   start_date: string;
   end_date: string;
   initial_capital?: number;

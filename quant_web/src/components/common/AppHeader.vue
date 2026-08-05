@@ -134,7 +134,7 @@
     <div class="user-section">
       <n-dropdown
         :show="userMenuVisible"
-        :on-update:show="(v: boolean) => userMenuVisible = v"
+        :on-update:show="(v) => userMenuVisible = v"
         placement="bottom-end"
         :options="userMenuOptions"
         @select="handleCommand"

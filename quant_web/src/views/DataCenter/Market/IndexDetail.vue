@@ -466,7 +466,7 @@ const weightColumns = [
   },
 ];
 const valOption = computed(() => {
-  if (!indexValuation.value.length) return null;
+  if (!indexValuation.value.length) return undefined;
   const items = [...indexValuation.value].reverse();
   const dates = items.map((d: any) => d.trade_date?.slice(5) ?? "");
   const peVals = items.map((d: any) => d.pe ?? 0);
@@ -529,7 +529,7 @@ const valOption = computed(() => {
 });
 
 const sectorExposureOption = computed(() => {
-  if (!sectorExposure.value.length) return null;
+  if (!sectorExposure.value.length) return undefined;
   const data = sectorExposure.value.map((d: any) => ({
     name: d.name || d.sector_name || d.industry || "",
     value: Math.abs(d.weight_pct ?? d.weight ?? d.exposure ?? 0),

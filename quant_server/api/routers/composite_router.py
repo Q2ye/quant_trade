@@ -14,6 +14,7 @@ from modules.strategy.composite_schemas import (
 	CompositeTriggerRequest,
 	CompositeRebalanceRequest,
 	CapitalAdjustRequest,
+	CompositeAddStrategyRequest,
 )
 from modules.strategy.services.composite_service import CompositeService
 from utils.api_utils.response_formatter import success_response
@@ -132,6 +133,66 @@ async def delete_composite_group(
 		svc = _get_service(db)
 		await svc.delete_group(group_id)
 		return success_response(message="组合已删除")
+	except ValueError as e:
+		raise HTTPException(status_code=404, detail=str(e))
+
+
+# =============================================================================
+# v6.13: 组合成员管理 + 净值
+# =============================================================================
+
+@router.post("/composite/groups/{group_id}/strategies")
+async def add_strategy_to_group(
+		group_id: str,
+		request: CompositeAddStrategyRequest,
+		current_user: Dict = Depends(get_current_user),
+		db: AsyncSession = Depends(get_db_session),
+):
+	"""组合添加策略（含权重缩放 + 初始化资金）"""
+	try:
+		svc = _get_service(db)
+		result = await svc.add_strategy(
+			group_id, request.strategy_id, request.allocator_id,
+			request.w0, request.w1, request.w2,
+		)
+		return success_response(data=result, message="策略已加入组合")
+	except ValueError as e:
+		raise HTTPException(status_code=400, detail=str(e))
+	except Exception as e:
+		logger.error(f"组合添加策略失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/composite/groups/{group_id}/strategies/{strategy_id}")
+async def remove_strategy_from_group(
+		group_id: str,
+		strategy_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db: AsyncSession = Depends(get_db_session),
+):
+	"""组合移除策略"""
+	try:
+		svc = _get_service(db)
+		result = await svc.remove_strategy(group_id, strategy_id)
+		return success_response(data=result, message="策略已移出组合")
+	except ValueError as e:
+		raise HTTPException(status_code=400, detail=str(e))
+	except Exception as e:
+		logger.error(f"组合移除策略失败: {e}", exc_info=True)
+		raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/composite/groups/{group_id}/nav")
+async def get_composite_nav(
+		group_id: str,
+		current_user: Dict = Depends(get_current_user),
+		db: AsyncSession = Depends(get_db_session),
+):
+	"""组合净值序列"""
+	try:
+		svc = _get_service(db)
+		result = await svc.get_nav(group_id)
+		return success_response(data=result)
 	except ValueError as e:
 		raise HTTPException(status_code=404, detail=str(e))
 

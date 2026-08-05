@@ -324,8 +324,8 @@ const actions = {
       const response = await request.get(
         `/quantTrade/strategy/templates/${templateName}`
       );
-      commit("SET_CURRENT_CODE", response.code || response.data?.code);
-      commit("SET_PARAMETERS", response.parameters || response.data?.parameters || []);
+      commit("SET_CURRENT_CODE", response.data?.code);
+      commit("SET_PARAMETERS", response.data?.parameters || []);
       return response;
     } catch (error) {
       console.error("加载策略模板失败:", error);
@@ -444,7 +444,7 @@ const actions = {
         responseType: "stream",
       });
 
-      const reader = response.body?.getReader();
+      const reader = (response as any).body?.getReader();
       if (!reader) throw new Error("无法读取优化结果");
 
       while (true) {

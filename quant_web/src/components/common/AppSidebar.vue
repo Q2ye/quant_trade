@@ -199,6 +199,14 @@ export default defineComponent({
             default: () => h(SmartIcon, { name: "AnalyticsOutline" }),
           }),
       },
+      {
+        label: "组合实盘",
+        key: "trade-composite",
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(SmartIcon, { name: "WalletOutline" }),
+          }),
+      },
     ];
 
     /** 风险监控菜单 — 4 项 */
@@ -277,6 +285,7 @@ export default defineComponent({
       "strategy-train": "/strategies/train",
       "strategy-backtest": "/strategy/backtest",
       "trading-workspace": "/trade/workspace",
+      "trade-composite": "/trade/composite",
       signals: "/signals",
       "risk-rules": "/risk/rules",
       "risk-monitor": "/risk/monitor",

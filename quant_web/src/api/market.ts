@@ -21,7 +21,9 @@ import type {
   IndustryNode,
   IndustryDetail,
   IndustryHeatmapItem,
+  IndustryTrendResponse,
 } from "@/types/entities/market";
+import type { SignalMarker } from "@/components/charts/LightweightKLine.vue";
 
 export interface StockListResult {
   stocks: StockBasic[];

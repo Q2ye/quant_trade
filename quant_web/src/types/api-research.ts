@@ -56,6 +56,7 @@ export interface ResearchSummary {
 }
 
 export interface ResearchTaskDetail extends ResearchTaskSummary {
+  factor_code?: string
   calculated_count: number
   total_stocks: number
   start_date: string | null

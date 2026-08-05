@@ -15,7 +15,7 @@ const confirmForm = ref({ fill_price: 0, fill_quantity: 0, fill_time: "" });
 const cancelReason = ref("");
 const submitting = ref(false);
 
-const signalStatusMap: Record<string, { type: string; label: string }> = {
+const signalStatusMap: Record<string, { type: "default" | "error" | "info" | "success" | "warning" | "primary"; label: string }> = {
   pending_manual: { type: "warning", label: "待确认" },
   confirmed: { type: "success", label: "已成交" },
   partial: { type: "info", label: "部分成交" },
@@ -75,7 +75,6 @@ const columns = [
       }
       return null;
     }},
-  },
 ];
 
 const fetchSignals = async () => {

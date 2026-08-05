@@ -1410,41 +1410,10 @@ class BacktestEngine(EngineBase):
 			except Exception as _pos_e:
 				logger.warning(f"持仓快照持久化跳过（非致命）: {_pos_e}")
 
-			# 4. 写入 strategy_daily_performance（v3.3 新增 — 字段已对齐 StrategyDailyPerformance 模型）
-			try:
-				from modules.strategy.services.performance_service import PerformanceService
-				import numpy as np
-				perf_svc = PerformanceService(db)
-				if not equity_df.empty:
-					initial = float(equity_df.iloc[0]["total_assets"])
-					peak = initial
-					daily_returns = []
-					perf_records = []
-					for _, row in equity_df.iterrows():
-						total = float(row["total_assets"])
-						ret = (total - initial) / initial if initial > 0 else 0.0
-						prev_ret = float(perf_records[-1]["total_return"]) if perf_records else 0.0
-						daily_ret = (ret - prev_ret) / (1 + prev_ret) if (1 + prev_ret) > 0 else 0.0
-						peak = max(peak, total)
-						dd = (peak - total) / peak if peak > 0 else 0.0
-						daily_returns.append(daily_ret)
-						sharpe = None
-						if len(daily_returns) >= 5:
-							arr = np.array(daily_returns)
-							sharpe = float(np.mean(arr) / np.std(arr) * np.sqrt(252)) if np.std(arr) > 0 else None
-						perf_records.append({
-							"strategy_id": result.strategy_id,
-							"trade_date": row["trade_date"],
-							"daily_return": round(daily_ret, 6),
-							"total_return": round(ret, 6),
-							"max_drawdown": round(dd, 6),
-							"sharpe_ratio": round(sharpe, 6) if sharpe else None,
-							"created_at": datetime.now(),
-						})
-					written = await perf_svc.batch_save(perf_records)
-					logger.info(f"策略绩效已持久化: {result.task_id} ({written} 条)")
-			except Exception as _pe:
-				logger.warning(f"策略绩效持久化跳过（非致命）: {_pe}")
+			# 4. (v6.13 移除) 回测结果不再写入 strategy_daily_performance —
+			# 该表是实盘策略每日绩效（由 performance_service/performance_tracker 写入）。
+			# 回测写它会污染实盘收益曲线（混入 +35% 回测 / -100% 幽灵）。
+			# 回测结果只持久化到 backtest_equity_curves / backtest_trades / backtest_positions。
 
 			# 3. Commit
 			await db.commit()

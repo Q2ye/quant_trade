@@ -259,6 +259,15 @@ class MainEngine(EngineBase):
 
                 # v3.4: 计算 ETF 因子（依赖 ETF_DAYLY 同步完成）
                 try:
+                    # 先确保 market_state_daily 新鲜（ETF 因子的 market_regime 等市场状态因子依赖它）
+                    from modules.data.services.market_state_classifier import (
+                        classify_and_populate,
+                    )
+                    await classify_and_populate()
+                except Exception as msc_err:
+                    logger.warning("market_state_daily 更新失败（非致命）: %s", msc_err)
+
+                try:
                     from modules.data.services.etf_factor_daily import (
                         compute_etf_factors_daily,
                     )
@@ -271,8 +280,20 @@ class MainEngine(EngineBase):
                     logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
 
                 logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
+
+                strategy_mgr = await self.get_module_engine("strategy_manager")
+
+                # v6.13: 组合每日 rebalance（在策略驱动前，让各策略用更新后的 allocated_capital）
                 try:
-                    strategy_mgr = await self.get_module_engine("strategy_manager")
+                    from modules.strategy.services.composite_service import CompositeService
+                    async with sm.get_session() as _cs:
+                        svc = CompositeService(session=_cs, strategy_manager=strategy_mgr)
+                        result = await svc.run_daily_rebalance()
+                        logger.info("组合每日 rebalance 完成: %s", result.get("processed", 0))
+                except Exception as e:
+                    logger.warning("组合每日 rebalance 失败（非致命）: %s", e)
+
+                try:
                     if strategy_mgr and hasattr(strategy_mgr, "run_daily_strategies"):
                         signals = await strategy_mgr.run_daily_strategies(today)
                         logger.info("日终策略驱动完成: %d 个信号", len(signals) if signals else 0)
@@ -286,7 +307,7 @@ class MainEngine(EngineBase):
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 22, "minute": 42},
+                schedule_config={"hour": 23, "minute": 7},
                 func=_daily_sync_job,
                 description="盘后：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,

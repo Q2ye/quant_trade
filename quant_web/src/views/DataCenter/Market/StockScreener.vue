@@ -47,9 +47,9 @@ function doBatchBasket() {
     return;
   }
   // 批量模式：打开篮子弹窗，把选中的第一只股票带入（后续可扩展批量 ADD）
-  const first = stocks.value.find((s: any) => checkedRowKeys.value.includes(s.id || s.ts_code));
+  const first = stocks.value.find((s: any) => checkedRowKeys.value.includes(s.ts_code));
   if (first) {
-    basketStock.value = { symbol: first.ts_code || first.id, name: first.name || first.ts_code };
+    basketStock.value = { symbol: first.ts_code, name: first.name || first.ts_code };
     basketDialogShow.value = true;
   }
 }

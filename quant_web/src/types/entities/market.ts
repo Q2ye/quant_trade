@@ -57,6 +57,8 @@ export interface TopMoneyflowItem {
   sell_lg_amount?: number | null;
   buy_md_amount?: number | null;
   sell_md_amount?: number | null;
+  buy_sm_amount?: number | null;
+  sell_sm_amount?: number | null;
 }
 
 export interface HsgtFlowItem {

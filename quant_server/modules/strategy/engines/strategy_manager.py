@@ -966,6 +966,22 @@ class StrategyManager(EngineBase):
     def get_strategy_state(self, strategy_id: str) -> Optional[StrategyState]:
         return self.running_states.get(str(strategy_id))
 
+    def update_strategy_capital(self, strategy_id: str, capital: float) -> bool:
+        """v6.13: 同步运行中策略的 allocated_capital 到 context（组合 rebalance 用）。
+
+        策略 sizing 读取 context.initial_capital，组合 allocator 每日重算各策略
+        allocated_capital 后，需实时同步到运行中策略的 context，否则重启才生效。
+        """
+        context = self._contexts.get(strategy_id)
+        if context is None:
+            logger.warning(f"策略 {strategy_id} 未运行，无法同步资本")
+            return False
+        context.initial_capital = float(capital)
+        context.available_capital = float(capital)
+        context.total_assets = float(capital)
+        logger.info(f"更新策略 {strategy_id} 运行资本: {capital:,.0f}（组合 rebalance）")
+        return True
+
     def get_all_running_strategies(self) -> List[StrategyState]:
         return list(self.running_states.values())
 
@@ -2118,7 +2134,7 @@ class StrategyManager(EngineBase):
 
         try:
             bars_by_date = await self._load_daily_bars_range(
-                start_date, end_date, symbols=ts_codes,
+                start_date, _end, symbols=ts_codes,
             )
         except Exception as e:
             logger.warning("策略 %s 预热数据加载失败: %s", strategy_id, e)
@@ -2190,6 +2206,10 @@ class StrategyManager(EngineBase):
 
         _end = end_date if end_date is not None else date_type.today()
         start_date = _end - timedelta(days=lookback * 2)
+        logger.info(
+            "全市场预热 DIAG: end_date=%s start_date=%s lookback=%s",
+            _end, start_date, lookback,
+        )
 
         try:
             async with self.session_factory() as session:
@@ -2224,19 +2244,25 @@ class StrategyManager(EngineBase):
                 rows = await adj_repo.get_batch_by_date_range(
                     symbols=all_codes,
                     start_date=start_date,
-                    end_date=end_date,
+                    end_date=_end,
                     adj_type="qfq",
                     freq="D",
                 )
+                logger.info("全市场预热 DIAG: 复权查询 %d 行", len(rows))
                 # v6.11: 在线复权因子缓存（仅当回退到原始数据时加载）
                 adj_factors: dict = {}
                 if not rows:
                     daily_repo = StockDailyRepository(session)
-                    rows = await daily_repo.get_batch_by_date_range(
-                        symbols=all_codes,
-                        start_date=start_date,
-                        end_date=end_date,
-                    )
+                    try:
+                        rows = await daily_repo.get_batch_by_date_range(
+                            symbols=all_codes,
+                            start_date=start_date,
+                            end_date=_end,
+                        )
+                    except Exception as _preheat_daily_err:
+                        logger.warning("全市场预热 DIAG: stock_daily fallback 异常: %r", _preheat_daily_err)
+                        raise
+                    logger.info("全市场预热 DIAG: stock_daily fallback %d 行", len(rows))
                     # 原始数据 → 应用与前复权实盘数据馈送(data_feed_engine)一致的
                     # 复权因子（price × adj_factor），避免"预热原始价 + 实盘 qfq 价"
                     # 混合污染 MA/MACD 指标与选股信号。
@@ -2248,13 +2274,16 @@ class StrategyManager(EngineBase):
                         adj_factors = await _adj_repo.get_batch_by_date_range(
                             symbols=all_codes,
                             start_date=start_date,
-                            end_date=end_date,
+                            end_date=_end,
                         )
                     except Exception:
                         adj_factors = {}
 
                 if not rows:
-                    logger.warning("策略 %s 全市场预热: 日线数据为空", strategy_id)
+                    logger.warning(
+                        "策略 %s 全市场预热: 日线数据为空 (start=%s end=%s codes=%d)",
+                        strategy_id, start_date, _end, len(all_codes),
+                    )
                     return
 
                 # 3. 按 ts_code 分组，直接构造 DataFrame 写入 _data_cache

@@ -443,7 +443,7 @@ onMounted(load);
           <n-button
             size="tiny"
             quaternary
-            @click="basketStock = { symbol: tsCode, name: data?.name || tsCode }; basketDialogShow = true"
+            @click="basketStock = { symbol: tsCode, name: data?.basic?.name || tsCode }; basketDialogShow = true"
             >加入篮子</n-button
           >
           <n-button size="tiny" quaternary @click="addToWatchlist"

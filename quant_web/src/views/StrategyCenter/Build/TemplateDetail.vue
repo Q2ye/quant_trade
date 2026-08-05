@@ -433,7 +433,6 @@ const FLAT_PARAM_LABELS: Record<string, string> = {
   rsrs_window: 'RSRS计算窗口', rsrs_lookback: 'RSRS Beta回溯天数',
   rsrs_beta_window: 'RSRS Beta滚动窗口', volume_check_days: '量异常检测周期(天)',
   volume_threshold: '量异常阈值(倍)', intraday_stop_loss: '日内止损比例',
-  cooling_period: '止损冷却期(天)',
 };
 
 const builtinTypeLabel = (type: string) => {
@@ -503,15 +502,15 @@ const handleQuickBacktest = async () => {
   try {
     // 收集参数覆写值
     const overrides: Record<string, any> = {};
-    if (currentTemplate.value?.params) {
-      for (const [key, spec] of Object.entries(currentTemplate.value.params)) {
-        const val = overridesRef.value?.[key] ?? spec.default;
+    if (template.value?.params) {
+      for (const [key, spec] of Object.entries(template.value.params)) {
+        const val = overrideParams.value?.[key] ?? spec.default;
         if (val !== spec.default) overrides[key] = val;
       }
     }
     const res = await request.post('/quantTrade/backtest/run-scenario', {
-      name: (instanceName.value || currentTemplate.value?.name || '快速回测'),
-      code: currentTemplate.value?.code_template || '',
+      name: (instanceName.value || template.value?.name || '快速回测'),
+      code: template.value?.code_template || '',
       parameters: overrides,
       config: {
         start_date: '2023-01-01',

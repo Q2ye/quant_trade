@@ -55,6 +55,7 @@ export interface TradeQueryParams extends PaginationParams, TimeRangeParams {
   symbol?: string; // 标的代码筛选
   direction?: "buy" | "sell"; // 买卖方向筛选
   orderId?: string; // 订单ID筛选
+  limit?: number; // 记录条数限制
 }
 
 /**

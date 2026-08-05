@@ -127,9 +127,12 @@ class ExecutionService:
                     "error_code": ErrorCode.STRATEGY_INVALID_PARAMETER,
                 }
 
-            # 获取或设置初始资金
+            # 获取或设置初始资金（v6.13: 默认用 DB allocated_capital，而非硬编码 100 万。
+            # 原 bug：实盘策略 allocated_capital=1万，但未传 capital 时默认 100 万 →
+            # 策略按 100 万算仓位，10k 账户下仓位过大无法成交。）
             if capital is None:
-                capital = 1000000.0
+                _db_cap = float(getattr(strategy, "allocated_capital", 0) or 0)
+                capital = _db_cap if _db_cap > 0 else 1000000.0
 
             if capital <= 0:
                 return {

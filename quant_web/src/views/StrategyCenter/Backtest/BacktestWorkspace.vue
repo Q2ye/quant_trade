@@ -42,7 +42,7 @@
             <template #header-extra>
               <span class="collapse-extra">{{ stockMode === 'stocks' ? stockPool.length + '只' : selectedBasketIds.length + '个篮子' }}</span>
             </template>
-            <n-radio-group v-model:value="stockMode" size="tiny" style="margin-bottom:6px">
+            <n-radio-group v-model:value="stockMode" size="small" style="margin-bottom:6px">
               <n-radio-button value="stocks">股票</n-radio-button>
               <n-radio-button value="baskets">篮子</n-radio-button>
             </n-radio-group>
@@ -390,7 +390,7 @@ const loadTaskList = async () => {
       created_at: t.created_at,
       updated_at: t.updated_at,
       config: t.config,
-    })).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    })).sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || ''));
   } catch { /* skip */ } finally { taskListLoading.value = false; }
 };
 

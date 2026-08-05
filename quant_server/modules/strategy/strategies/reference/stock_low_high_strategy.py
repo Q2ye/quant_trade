@@ -121,6 +121,10 @@ class StockLowHighStrategy(BaseStrategy):
         "roc_threshold": 5.0,           # ROC(10) > 5
         "buy_below_high_rate": 0.0015,  # 价格低于20日新高 >= 0.15%
         "new_stock_days": 30,           # 新股过滤：上市不足 N 个交易日
+        # v6.12: 方案B 已验证有害，回退关闭（entry_close_in_range=0）。
+        # 5y 实测：收盘位置过滤与"低吸"逻辑矛盾——回调日通常收盘软弱，
+        # 过滤后只剩追涨票 → 2026 从 +34% 崩到 -0.1%、2023 新增 -12.8% 亏损。
+        "entry_close_in_range": 0,      # 0=关闭（默认，方案B不生效）
         "lookback_days": 60,            # 选股回溯天数（预加载）
 
         # —— 持仓 ——
@@ -145,8 +149,12 @@ class StockLowHighStrategy(BaseStrategy):
         # 震荡市 weight 从 1/2 降到 1/3：单笔止损损失 2%→1.3%，降低磨损。
         "max_single_position": 0.33,    # 单票权重上限（默认 1/3）
 
-        # —— 风控（上涨市默认） ——
+        # —— 风控 ——
+        # v6.13 分行情止损实验已回退：5y 实测 +0.97%（最差），比全 -4%（+33.58%）和
+        # 全 -6%（+21.57%）都差——regime 翻转导致止损跳变、行为不一致。
+        # 恢复基线：全行情统一 -4% 止损。
         "stop_loss": -0.04,             # 个股止损 -4%
+        "sideways_stop_loss": -0.04,    # 震荡市止损（与上涨市统一）
         # v6.11: 收盘确认买入的低点过滤 — 确认日盘中最低价相对信号价的允许跌幅。
         # 若确认日 low < 信号价×(1-buy_confirm_max_drop)（盘中深跌/触及跌停），
         # 放弃买入（不接飞刀）。0=关闭。默认 3%。
@@ -154,6 +162,14 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 动态再平衡 ——
         "rebalance_threshold": 1.0,     # 持仓浮盈超过 100% 时强制卖半仓
+        # v6.12: 池外抛物线止盈（方案C 已验证有害，回退原版紧阈值）。
+        # 5y 实测：放宽止盈（8-15%）毁掉右尾（15-30天长持 +58.6万→+13.1万），
+        # 因赢家回落过深才卖、资金被占无法再入场。恢复紧止盈（2-8%）：
+        # 涨40%回落4%即卖 → 锁定+36% → 释放资金再入场，右尾反而更大。
+        "tp_dd_80": 0.02,               # 浮盈≥80% 回落 2% 卖
+        "tp_dd_40": 0.04,               # 浮盈≥40% 回落 4% 卖
+        "tp_dd_20": 0.06,               # 浮盈≥20% 回落 6% 卖
+        "tp_dd_10": 0.08,               # 浮盈≥10% 回落 8% 卖
 
         # —— 组合回撤保护（0=关闭；>0 时组合回撤超过阈值暂停新买入） ——
         "portfolio_dd_limit": 0.12,
@@ -495,7 +511,8 @@ class StockLowHighStrategy(BaseStrategy):
             regime_no_new_buy = False
         elif regime == "震荡市":
             regime_max_pos = int(self.parameters.get("sideways_max_pos", 2))
-            regime_stop_loss = float(self.parameters.get("stop_loss", -0.04))
+            # v6.13 分行情止损已回退：震荡市与上涨市统一 -4%
+            regime_stop_loss = float(self.parameters.get("sideways_stop_loss", -0.04))
             regime_no_new_buy = False
         else:
             # 下跌市：暂停新买入（存量持仓按统一止损管理）
@@ -1057,9 +1074,29 @@ class StockLowHighStrategy(BaseStrategy):
             closes = df["close"].values.astype(np.float64)
             volumes = df["volume"].values.astype(np.float64)
             opens = df["open"].values.astype(np.float64) if "open" in df.columns else closes
+            highs = df["high"].values.astype(np.float64) if "high" in df.columns else closes
+            lows = df["low"].values.astype(np.float64) if "low" in df.columns else closes
 
             if len(closes) < 25:
                 return False
+
+            # ---- 条件0: 方案B 收盘位置确认（过滤弱势收盘） ----
+            # (close - low)/(high - low) 偏低 → 当日收盘软弱（接近最低），
+            # 说明买盘未承接，次日继续跌概率高（假低吸）。
+            _range_min = float(self.parameters.get("entry_close_in_range", 0.0))
+            if _range_min > 0:
+                _rng = highs[-1] - lows[-1]
+                if _rng > 0:
+                    _pos = (closes[-1] - lows[-1]) / _rng
+                    if _pos < _range_min:
+                        if self.verbose_logging:
+                            logger.debug(
+                                f"收盘位置过滤: {code} 收盘位{_pos:.2f} < {_range_min:.2f}"
+                            )
+                        return False
+                else:
+                    # 一字板（high==low）无法判定位 → 视为满足
+                    pass
 
             # ---- 条件1: 昨日收阳 + 涨幅 >= 0.7% ----
             close_yest = closes[-2]
@@ -1448,17 +1485,17 @@ class StockLowHighStrategy(BaseStrategy):
             if is_in_pool:
                 continue
 
-            # ---- 池外股：抛物线止盈（原版）----
+            # ---- 池外股：抛物线止盈（v6.12 放宽阈值，让右尾跑更久）----
             # v6.11: 当日收盘价成交（order_mode="close"），与止损同日内完成
             tp_drawdown = 0.0
             if pnl >= 0.80:
-                tp_drawdown = 0.02
+                tp_drawdown = float(self.parameters.get("tp_dd_80", 0.08))
             elif pnl >= 0.40:
-                tp_drawdown = 0.04
+                tp_drawdown = float(self.parameters.get("tp_dd_40", 0.12))
             elif pnl >= 0.20:
-                tp_drawdown = 0.06
+                tp_drawdown = float(self.parameters.get("tp_dd_20", 0.14))
             elif pnl >= 0.10:
-                tp_drawdown = 0.08
+                tp_drawdown = float(self.parameters.get("tp_dd_10", 0.15))
 
             if tp_drawdown > 0 and dd >= tp_drawdown:
                 self._exit_pending.add(code)

@@ -88,6 +88,21 @@ class CapitalAllocator:
         self._strategy_ids = list(strategy_ids)
         self._params = {**self.DEFAULT_PARAMS, **(allocator_params or {})}
 
+        # v6.13: 支持组合分组配置自定义 REGIME_BASE_ALLOCATION（覆盖类常量）。
+        # 这样新增策略时只需改 composite_groups.allocator_config，无需改代码。
+        # 注意 JSON 存储的 key 是字符串，需归一化为 int。
+        _cfg_base = (allocator_params or {}).get("REGIME_BASE_ALLOCATION")
+        if _cfg_base:
+            try:
+                self._base_allocation = {
+                    int(k): dict(v) for k, v in _cfg_base.items()
+                }
+            except Exception:
+                logger.warning("allocator_config.REGIME_BASE_ALLOCATION 解析失败，用类常量")
+                self._base_allocation = self.REGIME_BASE_ALLOCATION
+        else:
+            self._base_allocation = self.REGIME_BASE_ALLOCATION
+
         # Regime 状态
         if force_regime is not None and force_regime not in (0, 1, 2):
             logger.warning(
@@ -180,7 +195,7 @@ class CapitalAllocator:
         if not self._strategy_ids:
             return {}
 
-        base_raw = self.REGIME_BASE_ALLOCATION.get(self._regime)
+        base_raw = self._base_allocation.get(self._regime)
         if base_raw is None:
             # 未知 Regime → 均分
             n = len(self._strategy_ids)

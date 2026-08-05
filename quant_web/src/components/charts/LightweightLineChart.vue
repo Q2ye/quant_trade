@@ -54,8 +54,8 @@ const legendItems = computed(() => {
   return items;
 });
 
-function toTime(d: string): Time {
-  return (Math.floor(new Date((d?.slice(0,10)||d)+"T00:00:00Z").getTime()/1000)) as Time;
+function toTime(d: string): number {
+  return Math.floor(new Date((d?.slice(0,10)||d)+"T00:00:00Z").getTime()/1000);
 }
 
 function build() {
@@ -144,7 +144,7 @@ function build() {
         .map(p=>({t:toTime(p.time),v:p.value as number}))
         .filter(p=>{ if(seen.has(p.t))return false; seen.add(p.t);return true; })
         .sort((a,b)=>a.t-b.t);
-      (s as ISeriesApi<"Line",Time>).setData(pts.map(p=>({time:p.t,value:p.v})));
+      (s as ISeriesApi<"Line",Time>).setData(pts.map(p=>({time:p.t as Time,value:p.v})));
     }
     for (const def of props.barSeries) {
       const id = "B:"+def.name; wanted.add(id);
@@ -156,7 +156,7 @@ function build() {
         .map(p=>({t:toTime(p.time),v:p.value as number,c:p.color}))
         .filter(p=>{ if(seen.has(p.t))return false; seen.add(p.t);return true; })
         .sort((a,b)=>a.t-b.t);
-      (s as ISeriesApi<"Histogram",Time>).setData(pts.map(p=>({time:p.t,value:p.v,color:p.c})));
+      (s as ISeriesApi<"Histogram",Time>).setData(pts.map(p=>({time:p.t as Time,value:p.v,color:p.c})));
     }
     for (const [id,s] of store) { if(!wanted.has(id)){try{chart!.removeSeries(s)}catch{/* */}store.delete(id);} }
     if (wanted.size>0) chart.timeScale().fitContent();

@@ -48,6 +48,7 @@ interface SyncRecord {
   created_at?: string;
   updated_at?: string;
   completed_at?: string;
+  task_label?: string;
 }
 
 type PageState = "loading" | "error" | "empty" | "data";
@@ -610,7 +611,7 @@ watch(
                   t.closest('.n-tag')
                 )
                   return;
-                if (isAnyPopupOpen.value) return;
+                if (isAnyPopupOpen) return;
                 showDetails(row);
               },
             })

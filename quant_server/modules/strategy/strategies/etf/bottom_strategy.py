@@ -62,6 +62,8 @@ class LightGBMBottomStrategy(BaseStrategy):
         "db_host": "localhost", "db_port": 5432,
         "db_user": "postgres", "db_password": "123456",
         "db_name": "quant_signals_dev",
+        # 调试：默认关闭逐 bar 的 P4 缓冲/确认日志（P4/SIG 真实信号不受影响）
+        "trace": False,
     }
 
     def __init__(self, name, strategy_type=None, parameters=None):
@@ -398,8 +400,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         if self.parameters.get("confirm_enabled", False) and ts_code in self._p4_buffer:
             d["p4_pending"] += 1
             pinfo = self._p4_buffer.pop(ts_code)
-            logger.info('[P4/入] %s close=%.4f low=%.4f proba=%.3f → 检查确认',
-                        ts_code, bar.close, pinfo['signal_low'], pinfo['proba'])
+            if self.parameters.get("trace", False):
+                logger.info('[P4/入] %s close=%.4f low=%.4f proba=%.3f → 检查确认',
+                            ts_code, bar.close, pinfo['signal_low'], pinfo['proba'])
             if bar.close > pinfo["signal_low"]:
                 if self.parameters.get("vol_confirm_enabled", True):
                     vr = self._get_factor_value(ts_code, bar.trade_date, "volume_ma20_ratio")
@@ -435,8 +438,9 @@ class LightGBMBottomStrategy(BaseStrategy):
                 d["p4_buffered"] += 1
                 self._p4_buffer[ts_code] = {
                     "proba": proba, "signal_low": bar.low, "weight": weight}
-                logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认',
-                            ts_code, proba, day_t, regime)
+                if self.parameters.get("trace", False):
+                    logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认',
+                                ts_code, proba, day_t, regime)
                 return signals
             d["entry_generated"] += 1
             s = self._make_entry(ts_code, bar, proba, weight, regime)
@@ -454,6 +458,15 @@ class LightGBMBottomStrategy(BaseStrategy):
         self._position_entry[ts_code] = (bar.trade_date, bar.close)
         self._track_high[ts_code] = bar.close
         rn = {0: "熊", 1: "震", 2: "牛"}
+        # 买入数量 = 可用资金 × 权重 / 价格，按 100 股/手向下取整（至少 1 手）
+        # 修复：原实现不设 quantity → 信号数量恒为 0（TradingSignal.quantity 默认 0）
+        capital = float(getattr(self.context, "available_capital", 0) or 0) if self.context else 0.0
+        amount = max(capital * float(weight), 0.0)
+        price = float(bar.close) if bar.close else 0.0
+        quantity = 0
+        if price > 0 and amount > 0:
+            lot = 100  # A股/ETF 一手 = 100 份
+            quantity = max(int(amount / price / lot) * lot, lot)
         return TradingSignal(
             id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
             ts_code=ts_code, signal_type=SignalType.ENTRY,
@@ -461,6 +474,8 @@ class LightGBMBottomStrategy(BaseStrategy):
             confidence=float(proba),
             reason=f"底{proba:.1%} 仓{weight:.0%} [{rn.get(regime,'?')}]",
             weight=weight,
+            quantity=quantity,
+            amount=amount,
             timestamp=bar.trade_time if bar.trade_time else datetime.now())
 
     def _check_exit(self, ts_code: str, bar: BarData) -> Optional[TradingSignal]:

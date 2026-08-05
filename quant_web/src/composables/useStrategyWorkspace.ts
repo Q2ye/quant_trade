@@ -209,7 +209,6 @@ export function useStrategyWorkspace() {
           description: "",
           code: strategyCode.value,
           parameters: strategyParams.value,
-          status: strategyStatus.value,
         });
         if (!created?.id) {
           message.error("创建失败：未获取到策略 ID");
@@ -261,7 +260,7 @@ export function useStrategyWorkspace() {
     try {
       const res = await backtestAPI.createTask({
         name: `${strategyName.value}_回测_${config.startDate}`,
-        strategy_id: strategyId.value,
+        strategy_id: strategyId.value ?? undefined,
         start_date: config.startDate,
         end_date: config.endDate,
         initial_capital: config.initialCapital,

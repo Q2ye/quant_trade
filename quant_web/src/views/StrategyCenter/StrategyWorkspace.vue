@@ -230,7 +230,7 @@ const PARAM_LABELS: Record<string, string> = {
   hidden_units: '隐藏单元数', learning_rate: '学习率', sequence_length: '序列长度',
   target_column: '目标列', d_model: '模型维度', nhead: '注意力头数',
   // V4 主线趋势策略参数
-  top_n: '持仓行业数', cooling_period: '冷却期(天)', min_history: '最低数据条数',
+  cooling_period: '冷却期(天)',
   max_sector_limit: '同板块上限',
   trend_weight: '趋势权重', volume_weight: '量价权重', valuation_weight: '估值权重',
   momentum_weights: '动量窗口权重', momentum_accel_short: '加速短窗口',

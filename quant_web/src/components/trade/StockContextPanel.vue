@@ -27,7 +27,7 @@ let chart: echarts.ECharts | null = null;
 const chartPeriod = ref<"1D" | "1W" | "1M">("1D");
 
 const pnlColor = computed(() =>
-  (props.position?.profit_loss ?? 0) >= 0
+  (props.position?.pnl ?? props.position?.profit ?? 0) >= 0
     ? "var(--color-stock-up)"
     : "var(--color-stock-down)",
 );
@@ -166,7 +166,7 @@ onUnmounted(() => {
           <div class="ps-item">
             <span class="ps-label">浮盈</span>
             <span class="ps-value" :style="{ color: pnlColor }">
-              ¥{{ (position.profit_loss ?? 0).toLocaleString() }}
+              ¥{{ ((position.pnl ?? position.profit ?? 0)).toLocaleString() }}
             </span>
           </div>
         </div>

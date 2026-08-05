@@ -331,6 +331,13 @@ export const routes: RouteRecordRaw[] = [
     path: "/trade",
     redirect: "/trade/workspace",
   },
+  // 组合实盘（v6.13 新增）
+  {
+    path: "/trade/composite",
+    name: "CompositeCenter",
+    component: () => import("@/views/TradeCenter/CompositeCenter.vue"),
+    meta: { menu: "trade-composite", layout: "main", title: "组合实盘" },
+  },
 
   // 监控中心
   {

@@ -920,7 +920,7 @@ const batchEnable = async (enabled: boolean) => {
   for (const r of targets) {
     try {
       const { default: riskAPI } = await import("@/api/risk");
-      await riskAPI.toggleRiskRule(r.name, enabled);
+      await riskAPI.toggleRiskRule(r.name, { enabled });
       r.enabled = enabled;
       success++;
     } catch {
@@ -945,7 +945,7 @@ const handleRuleCheck = (keys: number[]) => {
 const toggleRuleStatus = async (rule: RiskRule, v: boolean) => {
   try {
     const { default: riskAPI } = await import("@/api/risk");
-    await riskAPI.toggleRiskRule(rule.name, v);
+    await riskAPI.toggleRiskRule(rule.name, { enabled: v });
     rule.enabled = v;
     message.success(`「${rule.name}」已${v ? "启用" : "禁用"}`);
   } catch {

@@ -35,7 +35,7 @@ const sectorData = ref<any[]>([]);
 const direction = ref("net_inflow");
 
 const hsgtOption = computed(() => {
-  if (!hsgtData.value.length) return null;
+  if (!hsgtData.value.length) return undefined;
   const items = [...hsgtData.value].reverse();
   let cum = 0;
   const cumData = items.map((d: any) => {
@@ -167,7 +167,7 @@ function onSectorClick(params: any) {
   if (name) router.push("/market/industry?focus=" + encodeURIComponent(name));
 }
 const sectorOption = computed(() => {
-  if (!sectorData.value.length) return null;
+  if (!sectorData.value.length) return undefined;
   const items = [...sectorData.value];
   return {
     grid: { top: 5, right: 60, bottom: 5, left: 100 },
@@ -206,7 +206,7 @@ const sectorOption = computed(() => {
 
 // order-size aggregation
 const orderSummary = computed(() => {
-  if (!topData.value.length) return null;
+  if (!topData.value.length) return undefined;
   let elg = 0,
     lg = 0,
     md = 0,

@@ -409,6 +409,23 @@ class SettlementTasks:
 
         await self.account_repo.create_asset_snapshot(asset_snapshot)
 
+        # v6.13: 同时写入 account_daily_performance（前端收益曲线读取的表）。
+        # 之前该表由已废弃的 account_manager.process_daily_settlement 写入（死代码，
+        # 无人调用 → 曲线恒为 0）。此处用结算计算出的正确 total_asset 落库。
+        try:
+            from decimal import Decimal as _Dec
+            await self.account_service.record_daily_settlement(
+                account_id=account_id,
+                trade_date=trading_day,
+                total_asset=_Dec(str(total_asset)),
+                cash=_Dec(str(cash_balance)),
+                market_value=_Dec(str(market_value)),
+                daily_pnl=_Dec(str(pnl_amount)),
+                daily_return=_Dec(str(float(daily_pnl.get("pnl_rate", 0)))),
+            )
+        except Exception as _pe:
+            logger.warning(f"写入账户日绩效失败(非致命): {_pe}")
+
         return updated_assets
 
     async def _update_position_cost(self, account_id: str) -> List:
