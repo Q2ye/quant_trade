@@ -380,6 +380,7 @@ const builtinForm = reactive({
   name: '',
   strategy_type: '',
   execution_mode: 'semi_auto' as string,
+  account_id: '',
   capital: 1_000_000,
   symbols: '000001.SZ,600519.SH',
   parameters: {} as Record<string, any>,
@@ -621,7 +622,7 @@ const loadStrategies = async () => {
       const results = await Promise.allSettled(
         running.map((s: any) => strategyAPI.getStrategyPositions(s.id).catch(() => []))
       );
-      results.forEach((r, i) => { if (r.status === "fulfilled") strategyPositions.value[running[i].id] = r.value || []; });
+      results.forEach((r: any, i: number) => { if (r.status === "fulfilled") strategyPositions.value[running[i].id] = r.value || []; });
     }
 
     // 加载回测结果（显示绩效摘要）
@@ -632,7 +633,7 @@ const loadStrategies = async () => {
           backtestAPI.getTasks({ strategy_id: s.id, status: "completed", page_size: 1 }).catch(() => [])
         )
       );
-      perfResults.forEach((r, i) => {
+      perfResults.forEach((r: any, i: number) => {
         if (r.status === "fulfilled") {
           const tasks: any = r.value;
           const items = Array.isArray(tasks) ? tasks : (tasks?.data || tasks?.items || []);

@@ -68,6 +68,18 @@ class StrategyContext:
 	# 缓存
 	_data_cache: Dict[str, pd.DataFrame] = field(default_factory=dict)
 
+	def __post_init__(self) -> None:
+		"""同步资金字段。
+
+		原 bug：available_capital/total_assets 默认 100 万，创建 context 只传
+		initial_capital（如 allocated_capital=2 万）时不会联动 → 策略按 100 万
+		算仓位，实际账户只有 2 万 → 建议数量过大。
+		"""
+		if self.available_capital == StrategyContext.available_capital:
+			self.available_capital = self.initial_capital
+		if self.total_assets == StrategyContext.total_assets:
+			self.total_assets = self.initial_capital
+
 	def initialize (self) -> None:
 		"""初始化上下文"""
 		self.is_initialized = True

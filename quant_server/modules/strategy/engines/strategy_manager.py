@@ -1131,12 +1131,16 @@ class StrategyManager(EngineBase):
                         if stock_rows:
                             rows.extend(stock_rows)
                         else:
+                            # 预计算表为空 → 在线前复权（price × factor / latest_factor）
                             daily_repo = StockDailyRepository(session)
+                            _raw = await daily_repo.get_batch_by_date_range(
+                                symbols=stock_syms,
+                                start_date=trade_date,
+                                end_date=trade_date,
+                            )
                             rows.extend(
-                                await daily_repo.get_batch_by_date_range(
-                                    symbols=stock_syms,
-                                    start_date=trade_date,
-                                    end_date=trade_date,
+                                await self._apply_online_stock_qfq(
+                                    session, _raw, stock_syms, trade_date, trade_date,
                                 )
                             )
 
@@ -1155,7 +1159,7 @@ class StrategyManager(EngineBase):
                     from shared.database.models.data_models import (
                         StockAdjustedPrices, StockDaily, EtfDaily, FundAdjFactor,
                     )
-                    from sqlalchemy import select as sa_select
+                    from sqlalchemy import select as sa_select, func as sa_func
 
                     # 股票复权
                     q = sa_select(StockAdjustedPrices).where(
@@ -1173,18 +1177,35 @@ class StrategyManager(EngineBase):
                         result2 = await session.execute(q2)
                         rows = list(result2.scalars().all())
 
-                    # ETF 日线 + 复权因子 JOIN（全市场）
+                    # ETF 日线 + 复权因子 JOIN（全市场），
+                    # 统一 qfq 归一化：price × factor / latest_factor（最新价 = 实价）
+                    _max_dates = (
+                        sa_select(FundAdjFactor.ts_code, sa_func.max(FundAdjFactor.trade_date).label("md"))
+                        .group_by(FundAdjFactor.ts_code)
+                        .subquery()
+                    )
+                    _latest_f = (
+                        sa_select(FundAdjFactor.ts_code, FundAdjFactor.adj_factor.label("latest_factor"))
+                        .join(
+                            _max_dates,
+                            (FundAdjFactor.ts_code == _max_dates.c.ts_code)
+                            & (FundAdjFactor.trade_date == _max_dates.c.md),
+                        )
+                        .subquery()
+                    )
                     q3 = sa_select(
                         EtfDaily.ts_code, EtfDaily.trade_date,
-                        (EtfDaily.open * FundAdjFactor.adj_factor).label("open"),
-                        (EtfDaily.high * FundAdjFactor.adj_factor).label("high"),
-                        (EtfDaily.low * FundAdjFactor.adj_factor).label("low"),
-                        (EtfDaily.close * FundAdjFactor.adj_factor).label("close"),
+                        (EtfDaily.open * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("open"),
+                        (EtfDaily.high * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("high"),
+                        (EtfDaily.low * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("low"),
+                        (EtfDaily.close * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("close"),
                         EtfDaily.vol, EtfDaily.amount,
                     ).outerjoin(
                         FundAdjFactor,
                         (EtfDaily.ts_code == FundAdjFactor.ts_code)
                         & (EtfDaily.trade_date == FundAdjFactor.trade_date),
+                    ).outerjoin(
+                        _latest_f, _latest_f.c.ts_code == EtfDaily.ts_code,
                     ).where(EtfDaily.trade_date == trade_date)
                     result3 = await session.execute(q3)
                     etf_rows = result3.fetchall()
@@ -1250,12 +1271,16 @@ class StrategyManager(EngineBase):
                         if stock_rows:
                             rows.extend(stock_rows)
                         else:
+                            # 预计算表为空 → 在线前复权（price × factor / latest_factor）
                             daily_repo = StockDailyRepository(session)
+                            _raw = await daily_repo.get_batch_by_date_range(
+                                symbols=stock_syms,
+                                start_date=start_date,
+                                end_date=end_date,
+                            )
                             rows.extend(
-                                await daily_repo.get_batch_by_date_range(
-                                    symbols=stock_syms,
-                                    start_date=start_date,
-                                    end_date=end_date,
+                                await self._apply_online_stock_qfq(
+                                    session, _raw, stock_syms, start_date, end_date,
                                 )
                             )
 
@@ -1272,7 +1297,7 @@ class StrategyManager(EngineBase):
                     from shared.database.models.data_models import (
                         StockAdjustedPrices, StockDaily, EtfDaily, FundAdjFactor,
                     )
-                    from sqlalchemy import select as sa_select
+                    from sqlalchemy import select as sa_select, func as sa_func
 
                     q = sa_select(StockAdjustedPrices).where(
                         StockAdjustedPrices.trade_date.between(start_date, end_date),
@@ -1289,17 +1314,35 @@ class StrategyManager(EngineBase):
                         result2 = await session.execute(q2)
                         rows = list(result2.scalars().all())
 
+                    # ETF 日线 + 复权因子 JOIN（全市场），
+                    # 统一 qfq 归一化：price × factor / latest_factor（最新价 = 实价）
+                    _max_dates = (
+                        sa_select(FundAdjFactor.ts_code, sa_func.max(FundAdjFactor.trade_date).label("md"))
+                        .group_by(FundAdjFactor.ts_code)
+                        .subquery()
+                    )
+                    _latest_f = (
+                        sa_select(FundAdjFactor.ts_code, FundAdjFactor.adj_factor.label("latest_factor"))
+                        .join(
+                            _max_dates,
+                            (FundAdjFactor.ts_code == _max_dates.c.ts_code)
+                            & (FundAdjFactor.trade_date == _max_dates.c.md),
+                        )
+                        .subquery()
+                    )
                     q3 = sa_select(
                         EtfDaily.ts_code, EtfDaily.trade_date,
-                        (EtfDaily.open * FundAdjFactor.adj_factor).label("open"),
-                        (EtfDaily.high * FundAdjFactor.adj_factor).label("high"),
-                        (EtfDaily.low * FundAdjFactor.adj_factor).label("low"),
-                        (EtfDaily.close * FundAdjFactor.adj_factor).label("close"),
+                        (EtfDaily.open * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("open"),
+                        (EtfDaily.high * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("high"),
+                        (EtfDaily.low * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("low"),
+                        (EtfDaily.close * FundAdjFactor.adj_factor / _latest_f.c.latest_factor).label("close"),
                         EtfDaily.vol, EtfDaily.amount,
                     ).outerjoin(
                         FundAdjFactor,
                         (EtfDaily.ts_code == FundAdjFactor.ts_code)
                         & (EtfDaily.trade_date == FundAdjFactor.trade_date),
+                    ).outerjoin(
+                        _latest_f, _latest_f.c.ts_code == EtfDaily.ts_code,
                     ).where(EtfDaily.trade_date.between(start_date, end_date))
                     result3 = await session.execute(q3)
                     etf_rows = result3.fetchall()
@@ -1332,6 +1375,71 @@ class StrategyManager(EngineBase):
             ts_code.endswith(".OF")
             or (len(ts_code) >= 6 and ts_code[:2] in ("51", "56", "58", "15"))
         )
+
+    async def _apply_online_stock_qfq(
+        self,
+        session,
+        raw_rows,
+        symbols,
+        start_date,
+        end_date,
+    ) -> list:
+        """
+        对原始 StockDaily 行应用在线前复权（price × factor / latest_factor）。
+
+        当 stock_adjusted_prices 预计算表为空时使用，保证实盘/预热与回测
+        使用同一归一化基准（全局最新因子，最新价 = 真实市场价）。
+
+        Args:
+            session: 异步 DB 会话
+            raw_rows: StockDaily ORM 行列表
+            symbols: 股票 TS 代码列表
+            start_date / end_date: 加载区间（用于取区间内因子）
+
+        Returns:
+            归一化后的 dict 列表（供 _row_to_bar 消费，键 volume 而非 vol）
+        """
+        from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+            StockAdjFactorRepository,
+        )
+
+        adj_repo = StockAdjFactorRepository(session)
+        factors = await adj_repo.get_batch_by_date_range(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        latest = await adj_repo.get_latest_factors(symbols)
+
+        out = []
+        for r in raw_rows:
+            code = getattr(r, "ts_code", "")
+            td = getattr(r, "trade_date", None)
+            if td is not None and hasattr(td, "date"):
+                td = td.date()
+            ratio = 1.0
+            if code in factors and td is not None:
+                af_map = factors[code]
+                af = af_map.get(td)
+                if af is None:
+                    _dates = [d for d in sorted(af_map.keys()) if d <= td]
+                    if _dates:
+                        af = af_map[_dates[-1]]
+                if af is not None and af > 0:
+                    _latest = latest.get(code)
+                    if _latest and _latest > 0:
+                        ratio = af / _latest
+            out.append({
+                "ts_code": code,
+                "trade_date": td,
+                "open": float(r.open) * ratio if getattr(r, "open", None) else 0.0,
+                "high": float(r.high) * ratio if getattr(r, "high", None) else 0.0,
+                "low": float(r.low) * ratio if getattr(r, "low", None) else 0.0,
+                "close": float(r.close) * ratio if getattr(r, "close", None) else 0.0,
+                "volume": float(r.vol) if getattr(r, "vol", None) else 0.0,
+                "amount": float(r.amount) if getattr(r, "amount", None) else 0.0,
+            })
+        return out
 
     @staticmethod
     def _row_to_bar(row) -> object:
@@ -2264,7 +2372,7 @@ class StrategyManager(EngineBase):
                         raise
                     logger.info("全市场预热 DIAG: stock_daily fallback %d 行", len(rows))
                     # 原始数据 → 应用与前复权实盘数据馈送(data_feed_engine)一致的
-                    # 复权因子（price × adj_factor），避免"预热原始价 + 实盘 qfq 价"
+                    # 复权因子（price × factor / latest_factor），避免"预热原始价 + 实盘 qfq 价"
                     # 混合污染 MA/MACD 指标与选股信号。
                     try:
                         from shared.database.repositories.market.quote.stock_adj_factor_repo import (
@@ -2276,8 +2384,11 @@ class StrategyManager(EngineBase):
                             start_date=start_date,
                             end_date=_end,
                         )
+                        # 全局最新复权因子（qfq 归一化基准：最新价 = 真实市场价）
+                        _latest_factors = await _adj_repo.get_latest_factors(all_codes)
                     except Exception:
                         adj_factors = {}
+                        _latest_factors = {}
 
                 if not rows:
                     logger.warning(
@@ -2299,7 +2410,7 @@ class StrategyManager(EngineBase):
                     _h = float(r.high if hasattr(r, "high") else r["high"] or 0)
                     _l = float(r.low if hasattr(r, "low") else r["low"] or 0)
 
-                    # 应用复权因子（与 data_feed_engine 一致：price × adj_factor）
+                    # 应用复权因子（与 data_feed_engine 一致：price × factor / latest_factor）
                     if adj_factors and code in adj_factors:
                         _af_map = adj_factors[code]
                         _td = td.date() if hasattr(td, "date") else td
@@ -2309,10 +2420,12 @@ class StrategyManager(EngineBase):
                             if _dates:
                                 _af = _af_map[_dates[-1]]
                         if _af is not None and _af > 0:
-                            _c = _c * _af if _c else _c
-                            _o = _o * _af if _o else _o
-                            _h = _h * _af if _h else _h
-                            _l = _l * _af if _l else _l
+                            _latest = _latest_factors.get(code)
+                            _ratio = (_af / _latest) if (_latest and _latest > 0) else 1.0
+                            _c = _c * _ratio if _c else _c
+                            _o = _o * _ratio if _o else _o
+                            _h = _h * _ratio if _h else _h
+                            _l = _l * _ratio if _l else _l
 
                     rows_by_code[code].append({
                         "trade_date": td,

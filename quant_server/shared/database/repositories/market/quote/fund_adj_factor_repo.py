@@ -183,6 +183,48 @@ class FundAdjFactorRepository(HyperRepositoryBase[FundAdjFactor]):
 		except Exception as e:
 			raise RepositoryError(f"批量获取最新交易日期失败: {str(e)}")
 
+	async def get_latest_factors (
+			self,
+			ts_codes: List[str],
+	) -> Dict[str, Optional[float]]:
+		"""
+		批量获取多只基金（含 ETF）的最新复权因子（全局最新，MAX(trade_date)）。
+
+		作为前复权在线归一化的基准因子：
+		qfq_price = raw_price × (factor / latest_factor)，使最新价 = 真实市场价。
+
+		Args:
+			ts_codes: 基金 TS 代码列表
+
+		Returns:
+			{ts_code: latest_fund_adj_factor 或 None}，无因子数据的标的行为 None
+		"""
+		from sqlalchemy import func as _func
+
+		if not ts_codes:
+			return {}
+		max_dates = (
+			select(self.model.ts_code, _func.max(self.model.trade_date).label("md"))
+			.where(self.model.ts_code.in_(ts_codes))
+			.group_by(self.model.ts_code)
+			.subquery()
+		)
+		query = (
+			select(self.model.ts_code, self.model.adj_factor)
+			.join(
+				max_dates,
+				(self.model.ts_code == max_dates.c.ts_code)
+				& (self.model.trade_date == max_dates.c.md),
+			)
+		)
+		result = await self.session.execute(query)
+		mapping: Dict[str, Optional[float]] = {
+			row[0]: float(row[1]) for row in result.fetchall()
+		}
+		for code in ts_codes:
+			mapping.setdefault(code, None)
+		return mapping
+
 	async def get_latest_by_code (
 			self,
 			ts_code: str,

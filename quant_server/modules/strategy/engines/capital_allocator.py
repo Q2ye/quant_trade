@@ -77,6 +77,7 @@ class CapitalAllocator:
         strategy_ids: List[str],
         allocator_params: Optional[Dict] = None,
         force_regime: Optional[int] = None,
+        csi500_closes: Optional[Dict] = None,
     ):
         """
         Args:
@@ -84,6 +85,8 @@ class CapitalAllocator:
             allocator_params: 分配器参数字典（覆盖 DEFAULT_PARAMS）
             force_regime: P0 固定 Regime 值。合法值 0/1/2，超出钳制为 1。
                           None 时默认 RANGE=1。
+            csi500_closes: {trade_date: close} — 回测/实盘传入 CSI500 历史，
+                           force_regime 为 None 时据此动态判定 regime（P1）。
         """
         self._strategy_ids = list(strategy_ids)
         self._params = {**self.DEFAULT_PARAMS, **(allocator_params or {})}
@@ -110,6 +113,7 @@ class CapitalAllocator:
             )
             force_regime = 1
         self._force_regime = force_regime
+        self._csi500_closes = csi500_closes or {}
         self._regime = force_regime if force_regime is not None else 1
         self._prev_regime: Optional[int] = None
 
@@ -170,12 +174,23 @@ class CapitalAllocator:
         """
         获取当前市场 Regime。
 
-        P0: 返回构造时传入的 force_regime，默认 RANGE=1。
-        P1: 从 bar_dict 中的 CSI500 计算 MA 判定（动态）。
+        - force_regime 显式传入 → 用固定值（用户覆盖）
+        - 否则用 csi500_closes 动态判定（P1，对齐实盘 _compute_regime：close vs MA250 带 3% 带）
+        - 数据不足 → 默认 RANGE=1
         """
         if self._force_regime is not None:
             return self._force_regime
-        # P1: 动态判定（TODO）
+        if self._csi500_closes:
+            dates = sorted(d for d in self._csi500_closes if d <= trade_date)
+            if len(dates) >= 250:
+                closes = [self._csi500_closes[d] for d in dates[-250:]]
+                ma250 = sum(closes) / len(closes)
+                close = closes[-1]
+                if close < ma250 * 0.97:
+                    return 0
+                elif close > ma250 * 1.03:
+                    return 2
+                return 1
         return 1  # 默认 RANGE
 
     # =========================================================================

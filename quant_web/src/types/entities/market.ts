@@ -236,16 +236,16 @@ export interface StockFullResponse {
 export interface ScreenerParams {
   market?: string[];
   industry?: string[];
-  pe_min?: number;
-  pe_max?: number;
-  pb_min?: number;
-  pb_max?: number;
-  mv_min?: number;
-  mv_max?: number;
-  roe_min?: number;
-  pct_chg_min?: number;
-  pct_chg_max?: number;
-  turnover_min?: number;
+  pe_min?: number | null;
+  pe_max?: number | null;
+  pb_min?: number | null;
+  pb_max?: number | null;
+  mv_min?: number | null;
+  mv_max?: number | null;
+  roe_min?: number | null;
+  pct_chg_min?: number | null;
+  pct_chg_max?: number | null;
+  turnover_min?: number | null;
   sort_by?: string;
   sort_dir?: string;
   page?: number;

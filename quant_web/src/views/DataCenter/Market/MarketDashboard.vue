@@ -192,7 +192,7 @@ const volumeCols: DataTableColumns<TopVolumeItem> = [
     key: "pct_chg",
     width: 65,
     render: (r) =>
-      h("span", { style: { color: pctColor(r.pct_chg) } }, pctText(r.pct_chg)),
+      h("span", { style: { color: pctColor(r.pct_chg ?? null) } }, pctText(r.pct_chg ?? null)),
   },
   {
     title: "成交额",
@@ -221,7 +221,7 @@ const flowCols: DataTableColumns<TopMoneyflowItem> = [
     key: "pct_chg",
     width: 65,
     render: (r) =>
-      h("span", { style: { color: pctColor(r.pct_chg) } }, pctText(r.pct_chg)),
+      h("span", { style: { color: pctColor(r.pct_chg ?? null) } }, pctText(r.pct_chg ?? null)),
   },
   {
     title: "净流入",

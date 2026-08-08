@@ -28,7 +28,7 @@ use([
   LegendComponent,
 ]);
 
-import type { IndustryTrendResponse } from "@/types/entities/market";
+import type { IndustryTrendResponse, IndustryTrendSeries } from "@/types/entities/market";
 
 const props = withDefaults(
   defineProps<{
@@ -71,7 +71,8 @@ function toCumulative(data: (number | null)[]): (number | null)[] {
 const chartOption = computed(() => {
   if (!props.data?.series?.length || !props.data?.dates?.length) return null;
 
-  let series = [...props.data.series];
+  type _Series = IndustryTrendSeries & { _lastVal?: number };
+  let series: _Series[] = [...props.data.series];
 
   // Filter top/bottom 5 based on latest cumulative return
   if (filter.value !== "all") {

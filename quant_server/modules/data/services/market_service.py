@@ -1500,6 +1500,7 @@ class MarketDataService:
 
 		# 从数据库获取真实复权因子
 		adj_factors = {}
+		latest_factors = {}
 		try:
 			from sqlalchemy import text
 
@@ -1517,6 +1518,17 @@ class MarketDataService:
 				for row in result.fetchall():
 					key = (row.ts_code, row.trade_date)
 					adj_factors[key] = float(row.adj_factor)
+				# 每只股票的最新复权因子（qfq 归一化基准：最新价 = 真实市场价）
+				latest_result = self.session.execute(
+					text(
+						f"SELECT af.ts_code, af.adj_factor FROM stock_adj_factor af "
+						f"INNER JOIN (SELECT ts_code, MAX(trade_date) AS md FROM stock_adj_factor "
+						f"WHERE ts_code IN ({placeholders}) GROUP BY ts_code) x "
+						f"ON af.ts_code = x.ts_code AND af.trade_date = x.md"
+					)
+				)
+				for row in latest_result.fetchall():
+					latest_factors[row[0]] = float(row[1])
 		except Exception as e:
 			logger.warning(f"获取复权因子失败，使用不复权数据: {e}")
 
@@ -1524,18 +1536,21 @@ class MarketDataService:
 			ts_code = getattr(quote, 'ts_code', '')
 			trade_date = getattr(quote, 'trade_date', None)
 			factor = adj_factors.get((ts_code, trade_date), 1.0)
+			# 统一前复权基准：price × factor / latest_factor（最新价 = 真实市场价）
+			_latest = latest_factors.get(ts_code, 1.0)
+			_ratio = (factor / _latest) if (_latest and _latest > 0) else factor
 
-			if adj_type == AdjustType.PRE and factor != 1.0:
+			if adj_type == AdjustType.PRE and _ratio != 1.0:
 				if hasattr(quote, 'open') and quote.open:
-					quote.open *= factor
+					quote.open *= _ratio
 				if hasattr(quote, 'high') and quote.high:
-					quote.high *= factor
+					quote.high *= _ratio
 				if hasattr(quote, 'low') and quote.low:
-					quote.low *= factor
+					quote.low *= _ratio
 				if hasattr(quote, 'close') and quote.close:
-					quote.close *= factor
+					quote.close *= _ratio
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close *= factor
+					quote.pre_close *= _ratio
 			elif adj_type == AdjustType.POST and factor != 1.0:
 				if hasattr(quote, 'open') and quote.open:
 					quote.open /= factor

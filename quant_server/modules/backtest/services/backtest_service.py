@@ -510,6 +510,17 @@ class BacktestService:
 			if len(set(sids)) < len(sids):
 				raise ValueError("策略列表中有重复 ID")
 
+			# v6.14: allocator_id 由后端从策略组合成员关系解析，替代前端按名称猜测
+			resolved_configs = []
+			for cfg in request.strategy_configs:
+				sid = str(cfg.strategy_id)
+				aid = cfg.allocator_id or await self._resolve_allocator_id(sid)
+				resolved_configs.append({
+					"strategy_id": sid,
+					"allocator_id": aid,
+					"parameters": cfg.parameters,
+				})
+
 			config_dict = {
 				"start_date": request.start_date,
 				"end_date": request.end_date,
@@ -518,14 +529,7 @@ class BacktestService:
 				"initial_capital": request.initial_capital,
 				"commission_rate": request.commission_rate,
 				"slippage_rate": request.slippage_rate,
-				"strategy_configs": [
-					{
-						"strategy_id": str(cfg.strategy_id),
-						"allocator_id": cfg.allocator_id or str(cfg.strategy_id),
-						"parameters": cfg.parameters,
-					}
-					for cfg in request.strategy_configs
-				],
+				"strategy_configs": resolved_configs,
 				"force_regime": request.force_regime,
 				"allocator_params": request.allocator_params,
 			}
@@ -547,6 +551,31 @@ class BacktestService:
 		except Exception as e:
 			logger.error(f"创建组合回测失败: {str(e)}")
 			raise
+
+	async def _resolve_allocator_id(self, sid: str) -> str:
+		"""从策略的组合成员关系解析 allocator_id（替代前端按名称猜）。
+
+		策略在组合里 → 用该组合 strategy_ids 中该策略的 allocator_id。
+		否则回退到 strategy_id 本身（后端兜底）。
+		"""
+		try:
+			from sqlalchemy import text
+			row = (await self.db.execute(
+				text("SELECT composite_group_id FROM strategies WHERE id=:sid"),
+				{"sid": sid},
+			)).first()
+			if row and row[0]:
+				grp = (await self.db.execute(
+					text("SELECT strategy_ids FROM composite_groups WHERE id=:g"),
+					{"g": row[0]},
+				)).first()
+				if grp and grp[0]:
+					for m in grp[0]:
+						if m.get("strategy_id") == sid:
+							return m.get("allocator_id") or sid
+		except Exception:
+			pass
+		return sid
 
 	async def run_composite_backtest(self, task_id: str) -> None:
 		"""

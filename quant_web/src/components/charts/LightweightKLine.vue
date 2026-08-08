@@ -493,7 +493,7 @@ onBeforeUnmount(() => {
 defineExpose({
   fitContent() {
     // 使用时间等比模式，避免等距间距导致十字星漂移
-    const data = chart?.series()[0]?.data();
+    const data = (chart as any)?.series()[0]?.data();
     if (data && data.length > 0) {
       const last = data[data.length - 1];
       chart?.timeScale().setVisibleRange({ from: data[0].time, to: last.time });

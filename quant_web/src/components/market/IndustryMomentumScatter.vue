@@ -41,7 +41,7 @@ const windowLabels: Record<string, string> = {
   pct_60d: "60日",
 };
 
-const scatterOption = computed(() => {
+const scatterOption = computed<any>(() => {
   if (!props.data.length) return undefined;
 
   const items = props.data.map((d) => {

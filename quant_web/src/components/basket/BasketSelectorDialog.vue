@@ -174,22 +174,22 @@ watch(
           </n-button>
         </div>
       </div>
-
-      <!-- Footer -->
-      <template v-if="!loading && !error && baskets.length > 0" #footer>
-        <div class="modal-footer">
-          <n-button @click="emit('update:show', false)">取消</n-button>
-          <n-button
-            type="primary"
-            :disabled="!selectedId"
-            :loading="adding"
-            @click="handleAddToBasket"
-          >
-            确认添加
-          </n-button>
-        </div>
-      </template>
     </n-spin>
+
+    <!-- Footer -->
+    <template v-if="!loading && !error && baskets.length > 0" #footer>
+      <div class="modal-footer">
+        <n-button @click="emit('update:show', false)">取消</n-button>
+        <n-button
+          type="primary"
+          :disabled="!selectedId"
+          :loading="adding"
+          @click="handleAddToBasket"
+        >
+          确认添加
+        </n-button>
+      </div>
+    </template>
   </n-modal>
 </template>
 

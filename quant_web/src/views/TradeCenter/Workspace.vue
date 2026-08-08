@@ -144,8 +144,8 @@ const accountStats = computed(() => {
 });
 
 const signalCounts = computed(() => ({
-  pending: signals.value.filter((s) => (s.status ?? "pending") === "pending").length,
-  approved: signals.value.filter((s) => s.status === "approved").length,
+  pending: signals.value.filter((s) => signalStatus(s) === "pending").length,
+  approved: signals.value.filter((s) => signalStatus(s) === "approved").length,
   total: signals.value.length,
 }));
 
@@ -153,10 +153,10 @@ const signalCounts = computed(() => ({
 // Signal actions
 // ============================================================
 const handleReviewSignal = async (signalId: string, action: string) => {
-  // 乐观更新：先改 UI
+  // 乐观更新：先改 UI（后端字段为 signal_status）
   const found = signals.value.find((s) => s.signal_id === signalId || s.id === signalId);
-  const prevStatus = found?.status;
-  if (found) found.status = action;
+  const prevStatus = found?.signal_status;
+  if (found) found.signal_status = action;
 
   signalReviewing.value.add(signalId);
   try {
@@ -164,7 +164,7 @@ const handleReviewSignal = async (signalId: string, action: string) => {
     message.success(action === "approved" ? "已采纳" : "已拒绝");
   } catch (e: any) {
     // 失败回滚
-    if (found) found.status = prevStatus;
+    if (found) found.signal_status = prevStatus;
     message.error(e?.response?.data?.detail || "操作失败");
   } finally {
     signalReviewing.value.delete(signalId);
@@ -193,16 +193,28 @@ const handleRecordSubmitted = () => {
 const statusTag = (status: string) => {
   const map: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
     pending: { text: "待审核", type: "warning" },
+    pending_confirm: { text: "待确认", type: "warning" },
+    pending_manual: { text: "待审核", type: "warning" },
     approved: { text: "已采纳", type: "success" },
+    promoted: { text: "已转正", type: "success" },
     rejected: { text: "已拒绝", type: "default" },
+    expired: { text: "已过期", type: "default" },
     executed: { text: "已执行", type: "info" },
   };
   return map[status] || { text: status, type: "default" as const };
 };
 
+// 后端 signal_status → 前端展示/过滤状态归一化（后端字段为 signal_status）
+const signalStatus = (s: any): string => {
+  const raw = s?.signal_status ?? s?.status ?? "pending";
+  if (raw === "pending" || raw === "pending_manual") return "pending";
+  if (raw === "confirmed") return "approved";
+  return raw; // approved / rejected / executed / failed / error
+};
+
 const filteredSignals = computed(() => {
   if (signalFilter.value === "all") return signals.value;
-  return signals.value.filter((s) => (s.status ?? "pending") === signalFilter.value);
+  return signals.value.filter((s) => signalStatus(s) === signalFilter.value);
 });
 
 // ============================================================
@@ -579,7 +591,7 @@ onMounted(() => loadAllData());
                     v-for="s in filteredSignals"
                     :key="s.signal_id || s.id"
                     class="signal-card card-surface"
-                    :class="{ 'signal-rejected': s.status === 'rejected' }"
+                    :class="{ 'signal-rejected': signalStatus(s) === 'rejected' }"
                     @click="handleSelectStock(s.ts_code, s.ts_code)"
                   >
                     <div class="signal-left">
@@ -591,8 +603,8 @@ onMounted(() => loadAllData());
                           {{ (s.signal_type || s.direction) === 'buy' ? '买' : '卖' }}
                         </n-tag>
                         <span class="signal-code">{{ s.ts_code }}</span>
-                        <n-tag :type="statusTag(s.status ?? 'pending').type" size="tiny" :bordered="false">
-                          {{ statusTag(s.status ?? 'pending').text }}
+                        <n-tag :type="statusTag(signalStatus(s)).type" size="tiny" :bordered="false">
+                          {{ statusTag(signalStatus(s)).text }}
                         </n-tag>
                       </div>
                       <div class="signal-mid-row">
@@ -605,7 +617,7 @@ onMounted(() => loadAllData());
                       <div v-if="s.reason" class="signal-reason">{{ s.reason }}</div>
                     </div>
                     <div class="signal-actions">
-                      <template v-if="(s.status ?? 'pending') === 'pending'">
+                      <template v-if="signalStatus(s) === 'pending'">
                         <n-button
                           size="tiny" type="success" :loading="signalReviewing.has(s.signal_id || s.id)"
                           @click.stop="handleReviewSignal(s.signal_id || s.id, 'approved')"
@@ -615,11 +627,11 @@ onMounted(() => loadAllData());
                           @click.stop="handleReviewSignal(s.signal_id || s.id, 'rejected')"
                         >拒绝</n-button>
                       </template>
-                      <template v-else-if="s.status === 'approved'">
+                      <template v-else-if="signalStatus(s) === 'approved'">
                         <n-tag type="success" size="small" :bordered="false">已采纳 ✓</n-tag>
                         <n-button size="tiny" type="primary" @click.stop="handleRecordFromSignal(s)">录入成交</n-button>
                       </template>
-                      <template v-else-if="s.status === 'executed'">
+                      <template v-else-if="signalStatus(s) === 'executed'">
                         <n-tag type="info" size="small" :bordered="false">已执行 ✓</n-tag>
                       </template>
                     </div>

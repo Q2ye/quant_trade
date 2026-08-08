@@ -32,13 +32,21 @@ const reviewing = ref<Set<string>>(new Set());
 // ============================================================
 // Stats
 // ============================================================
+// 后端 signal_status → 前端展示/过滤状态归一化（后端字段为 signal_status）
+const signalStatus = (x: any): string => {
+  const raw = x?.signal_status ?? x?.status ?? "pending";
+  if (raw === "pending" || raw === "pending_manual") return "pending";
+  if (raw === "confirmed") return "approved";
+  return raw; // approved / rejected / executed / failed / error
+};
+
 const stats = computed(() => {
   const s = signals.value;
   return {
-    pending: s.filter((x) => (x.status ?? "pending") === "pending").length,
-    approved: s.filter((x) => x.status === "approved").length,
-    executed: s.filter((x) => x.status === "executed").length,
-    rejected: s.filter((x) => x.status === "rejected").length,
+    pending: s.filter((x) => signalStatus(x) === "pending").length,
+    approved: s.filter((x) => signalStatus(x) === "approved").length,
+    executed: s.filter((x) => signalStatus(x) === "executed").length,
+    rejected: s.filter((x) => signalStatus(x) === "rejected").length,
     total: s.length,
   };
 });
@@ -94,15 +102,15 @@ const handlePageChange = (page: number) => {
 // ============================================================
 const handleReview = async (signalId: string, action: string) => {
   const found = signals.value.find((s) => (s.signal_id || s.id) === signalId);
-  const prevStatus = found?.status;
-  if (found) found.status = action;
+  const prevStatus = found?.signal_status;
+  if (found) found.signal_status = action;
 
   reviewing.value.add(signalId);
   try {
     await tradeAPI.reviewSignal(signalId, action);
     message.success(action === "approved" ? "已采纳" : "已拒绝");
   } catch (e: any) {
-    if (found) found.status = prevStatus;
+    if (found) found.signal_status = prevStatus;
     message.error(e?.response?.data?.detail || "操作失败");
   } finally {
     reviewing.value.delete(signalId);
@@ -137,10 +145,13 @@ const handleRecordSubmitted = () => {
 // ============================================================
 const statusOpts = [
   { label: "全部状态", value: null },
+  { label: "待确认", value: "pending_confirm" },
   { label: "待审核", value: "pending" },
+  { label: "已转正", value: "promoted" },
   { label: "已采纳", value: "approved" },
   { label: "已执行", value: "executed" },
   { label: "已拒绝", value: "rejected" },
+  { label: "已过期", value: "expired" },
 ];
 const typeOpts = [
   { label: "全部类型", value: null },
@@ -154,9 +165,13 @@ const typeOpts = [
 const statusTag = (status: string) => {
   const map: Record<string, { text: string; type: "info" | "warning" | "success" | "default" | "error" }> = {
     pending: { text: "待审核", type: "warning" },
+    pending_confirm: { text: "待确认", type: "warning" },
+    pending_manual: { text: "待审核", type: "warning" },
     approved: { text: "已采纳", type: "success" },
+    promoted: { text: "已转正", type: "success" },
     executed: { text: "已执行", type: "info" },
     rejected: { text: "已拒绝", type: "default" },
+    expired: { text: "已过期", type: "default" },
   };
   return map[status] || { text: status, type: "default" as const };
 };
@@ -233,13 +248,13 @@ const columns: DataTableColumns<any> = [
   { title: "原因", key: "reason", minWidth: 150, ellipsis: { tooltip: true }, render: (row) => row.reason || "--" },
   {
     title: "状态", key: "status", minWidth: 72,
-    render: (row) => h(NTag, { type: statusTag(row.status ?? "pending").type, size: "small", bordered: false }, { default: () => statusTag(row.status ?? "pending").text }),
+    render: (row) => h(NTag, { type: statusTag(signalStatus(row)).type, size: "small", bordered: false }, { default: () => statusTag(signalStatus(row)).text }),
   },
   {
     title: "操作", key: "actions", width: 140, fixed: "right" as const,
     render: (row) => {
       const sid = row.signal_id || row.id;
-      const st = row.status ?? "pending";
+      const st = signalStatus(row);
       if (st === "pending") {
         return h("div", { style: { display: "flex", gap: "4px" } }, [
           h(NButton, { size: "tiny", type: "success", loading: reviewing.value.has(sid), onClick: () => handleReview(sid, "approved") }, { default: () => "采纳" }),

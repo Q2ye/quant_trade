@@ -758,10 +758,24 @@ class BacktestEngine(EngineBase):
 				)
 
 		alloc_ids = list(dict.fromkeys(allocator_id_map.values()))
+
+		# v6.14: 加载 CSI500 历史，供 allocator 动态判定 regime（force_regime 为空时）
+		csi500_closes: Dict = {}
+		try:
+			csi_df = await self._load_benchmark_data("000905.SH", start_date, end_date)
+			if not csi_df.empty:
+				csi500_closes = {
+					r["trade_date"]: float(r["close"])
+					for _, r in csi_df.iterrows()
+				}
+		except Exception as e:
+			logger.warning(f"组合回测加载 CSI500 失败（regime 回退 RANGE）: {e}")
+
 		allocator = CapitalAllocator(
 			strategy_ids=alloc_ids,
 			allocator_params=allocator_params,
 			force_regime=force_regime,
+			csi500_closes=csi500_closes or None,
 		)
 		logger.info(
 			f"组合回测 {task_id}: {len(strategy_ids)} 策略, "

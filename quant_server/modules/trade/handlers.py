@@ -633,8 +633,9 @@ class TradeHandler:
 			query = signal_repo.build_query()
 
 			if request.status:
-				# v3.3: 统一用 signal_status，兼容前端传旧 status 值
-				_status_map = {"pending": "pending_manual", "approved": "confirmed"}
+				# v3.3: 统一用 signal_status，兼容前端传旧 status 值。
+				# review_signal 存 approved/rejected，故只映射 pending，其余透传。
+				_status_map = {"pending": "pending_manual"}
 				_mapped = _status_map.get(request.status, request.status)
 				query = query.where(SignalModel.signal_status == _mapped)
 			if request.signal_type:

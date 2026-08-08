@@ -540,6 +540,12 @@ class ETFRepository:
 			  "low": ..., "close": ..., "volume": ..., "amount": ...}, ...]
 		"""
 		from sqlalchemy import text
+		from shared.database.repositories.market.quote.fund_adj_factor_repo import (
+			FundAdjFactorRepository as SharedFundAdjFactorRepo,
+		)
+
+		# 全局最新复权因子（qfq 归一化基准，最新价 = 真实市场价）
+		latest_map = await SharedFundAdjFactorRepo(self.session).get_latest_factors(symbols)
 
 		try:
 			query = text("""
@@ -571,10 +577,10 @@ class ETFRepository:
 				{
 					"ts_code": r.ts_code,
 					"trade_date": r.trade_date,
-					"open": float(r.open) if r.open else 0.0,
-					"high": float(r.high) if r.high else 0.0,
-					"low": float(r.low) if r.low else 0.0,
-					"close": float(r.close) if r.close else 0.0,
+					"open": self._norm_etf_price(r.open, latest_map.get(r.ts_code)),
+					"high": self._norm_etf_price(r.high, latest_map.get(r.ts_code)),
+					"low": self._norm_etf_price(r.low, latest_map.get(r.ts_code)),
+					"close": self._norm_etf_price(r.close, latest_map.get(r.ts_code)),
 					"volume": float(r.volume) if r.volume else 0.0,
 					"amount": float(r.amount) if r.amount else 0.0,
 				}
@@ -582,6 +588,13 @@ class ETFRepository:
 			]
 		except Exception as e:
 			raise RepositoryError(f"批量查询 ETF 复权日线数据失败: {e}")
+
+	@staticmethod
+	def _norm_etf_price(price, latest_factor) -> float:
+		"""ETF 复权价归一化：raw × factor / latest_factor（最新价 = 实价）。"""
+		if price and latest_factor and latest_factor > 0:
+			return float(price) / latest_factor
+		return float(price) if price else 0.0
 
 	# ==================== 基本CRUD操作 ====================
 

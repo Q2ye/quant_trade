@@ -166,7 +166,7 @@ const loadVersions = async () => {
     if (data) {
       strategyName.value = (data as any).name || strategyId.value;
     }
-    const vers = await strategyAPI.getStrategyVersions?.(strategyId.value).catch(() => []) ?? [];
+    const vers = await (strategyAPI as any).getStrategyVersions?.(strategyId.value).catch(() => []) ?? [];
     versions.value = Array.isArray(vers) ? vers : [];
   } catch {
     error.value = true;

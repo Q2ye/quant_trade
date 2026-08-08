@@ -272,6 +272,130 @@ class StockLowHighStrategy(BaseStrategy):
         """初始化（不设置 _universe，让 BacktestEngine 或用户配置决定候选池）"""
         logger.info(f"低吸轮动策略初始化: {self.name}, 最大持仓={self.parameters.get('max_positions', 3)}")
 
+    # =========================================================================
+    # v6.12: 候选池持久化（signals 表 pending_confirm 状态，跨重启保留）
+    # 生命周期: 候选入池(pending_confirm) → 次日确认 → 转正(promoted)/丢弃(expired)
+    # =========================================================================
+
+    def _is_live_mode(self) -> bool:
+        """判断是否实盘/模拟盘模式（仅实盘持久化候选，回测不写 signals 表）。"""
+        rm = getattr(getattr(self, "context", None), "run_mode", None)
+        return rm in ("live", "paper")
+
+    def _fire_db(self, coro) -> None:
+        """在同步策略方法中调度异步 DB 写任务（fire-and-forget）。
+
+        策略 on_bar_batch_end 为同步方法，DB 会话为异步；用事件循环
+        调度后台任务执行 DB 写入，避免把整条信号链改为 async。
+        """
+        try:
+            import asyncio
+            asyncio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            logger.debug("事件循环未运行，跳过候选 DB 写入")
+
+    async def _persist_candidate(self, code: str, pinfo: dict) -> None:
+        """将单个候选写/更新到 signals 表（signal_status='pending_confirm'）。"""
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf or not self._is_live_mode():
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        sig_id = pinfo.get("signal_id")
+        if not sid or not sig_id:
+            return
+        try:
+            from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            async with sf() as db:
+                repo = SignalRepository(db)
+                # signal_time 用交易日（候选生成日），而非落库时刻，保证恢复后 signal_date 正确
+                _td = getattr(self, "_last_trade_date", None)
+                if hasattr(_td, "date"):
+                    _td = _td.date()
+                _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
+                data = {
+                    "strategy_id": sid,
+                    "ts_code": code,
+                    "direction": "long",
+                    "signal_type": "buy",
+                    "signal_time": _sig_time,
+                    "price": float(pinfo.get("signal_price", 0) or 0),
+                    "strength": float(pinfo.get("weight", 0.33) or 0.33),
+                    "signal_status": "pending_confirm",
+                    "reason": "低吸候选，待次日收盘确认",
+                }
+                existing = await repo.get(sig_id)
+                if not existing:
+                    # 幂等：同代码已存在 pending_confirm 候选 → 复用其行，防重复触发建重复行
+                    _dups = await repo.get_by_stock(ts_code=code, strategy_id=sid, limit=20)
+                    for _d in _dups:
+                        if _d.signal_status == "pending_confirm":
+                            sig_id = _d.id
+                            pinfo["signal_id"] = sig_id
+                            existing = _d
+                            break
+                if existing:
+                    await repo.update(sig_id, data)
+                else:
+                    data["id"] = sig_id
+                    await repo.create(data)
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"候选持久化失败: {code}: {e}")
+
+    async def _restore_buy_pending_from_db(self) -> None:
+        """从 signals 表读回 pending_confirm 候选，重建 _buy_pending（重启恢复）。
+
+        过期的候选（距 signal_date 超 5 天，错过确认窗口）直接标记 expired。
+        """
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf:
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        if not sid:
+            return
+        try:
+            from sqlalchemy import select
+            from shared.database.models.business_models import Signal
+            async with sf() as db:
+                rows = (await db.execute(select(Signal).where(
+                    Signal.strategy_id == sid,
+                    Signal.signal_status == "pending_confirm",
+                ))).scalars().all()
+                restored = 0
+                for r in rows:
+                    _sd = r.signal_time.strftime("%Y-%m-%d") if r.signal_time else ""
+                    if _sd:
+                        try:
+                            if (date.today() - date.fromisoformat(_sd)).days > 5:
+                                await self._mark_candidate_status(r.id, "expired", "过期未确认")
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    self._buy_pending[r.ts_code] = {
+                        "signal_price": float(r.price or 0),
+                        "weight": float(r.strength or 0.33) if getattr(r, "strength", None) else 0.33,
+                        "signal_id": r.id,
+                        "signal_date": _sd,
+                    }
+                    restored += 1
+                if restored:
+                    logger.info(f"重启恢复: 候选池 {restored} 只 (pending_confirm)")
+        except Exception as e:
+            logger.warning(f"候选池恢复失败: {e}")
+
+    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "") -> None:
+        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。"""
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf or not sig_id:
+            return
+        try:
+            from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            async with sf() as db:
+                await SignalRepository(db).update(sig_id, {"signal_status": status})
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"候选状态更新失败({status}): {e}")
+
     async def on_start(self) -> None:
         """重置状态 + 加载 ST 列表"""
         self._data_cache.clear()
@@ -289,6 +413,10 @@ class StockLowHighStrategy(BaseStrategy):
         self._last_rebalance_date = ""
         self._first_screen_done = False
         self._st_stocks = set()
+        # v6.12: 候选池持久化 — 实盘重启后从 signals 表恢复 pending_confirm 候选
+        self._buy_pending.clear()
+        if self._is_live_mode():
+            await self._restore_buy_pending_from_db()
 
         # 从 DB 加载中证500指数数据（通过 IndexDailyRepository，非原始 SQL）
         session_factory = getattr(self, "_db_session_factory", None)
@@ -566,6 +694,9 @@ class StockLowHighStrategy(BaseStrategy):
             if self._buy_pending:
                 if self.verbose_logging:
                     logger.info(f"暂停买入/下跌市: 放弃 {len(self._buy_pending)} 只待确认候选")
+                # v6.12: 门控清空 → DB 候选标记 expired
+                for _c, _p in list(self._buy_pending.items()):
+                    self._fire_db(self._mark_candidate_status(_p.get("signal_id"), "expired", "暂停买入/下跌市"))
                 self._buy_pending.clear()
 
         # ---- 2. 获取当前持仓（v3.4: 合并框架注入的_active_positions） ----
@@ -660,7 +791,11 @@ class StockLowHighStrategy(BaseStrategy):
             self._buy_pending[target] = {
                 "signal_price": price,
                 "weight": weight,
+                "signal_date": str(self._last_trade_date)[:10],
+                "signal_id": self._gen_id(),
             }
+            # v6.12: 候选落库（signals 表 pending_confirm，跨重启保留）
+            self._fire_db(self._persist_candidate(target, self._buy_pending[target]))
 
             if self.verbose_logging:
                 logger.info(
@@ -701,6 +836,26 @@ class StockLowHighStrategy(BaseStrategy):
         self._buy_pending.clear()
 
         for code, pinfo in pending.items():
+            # v6.12: 过期守卫 — 距 signal_date 超 5 天视为错过确认窗口 → expired；
+            # 同日/未来（gap<=0）未到确认窗口 → 保留候选待次日（防重启同日重跑误过期）
+            _sd = pinfo.get("signal_date", "")
+            if _sd:
+                try:
+                    _today_d = self._last_trade_date
+                    if hasattr(_today_d, "date"):
+                        _today_d = _today_d.date()
+                    if _today_d:
+                        _gap = (_today_d - date.fromisoformat(_sd)).days
+                        if _gap <= 0:
+                            self._buy_pending[code] = pinfo
+                            continue
+                        if _gap > 5:
+                            self._fire_db(self._mark_candidate_status(pinfo.get("signal_id"), "expired", "过期未确认"))
+                            if self.verbose_logging:
+                                logger.info(f"买入确认过期: {code} 候选日期{_sd}，放弃")
+                            continue
+                except (ValueError, TypeError):
+                    pass
             if len(self._holdings) >= effective_max_pos:
                 break
             price = self._get_price(code)  # close[T+1]
@@ -709,6 +864,7 @@ class StockLowHighStrategy(BaseStrategy):
             signal_price = float(pinfo["signal_price"])
             # 净确认：收盘价必须高于信号价（上涨确认）
             if price <= signal_price:
+                self._fire_db(self._mark_candidate_status(pinfo.get("signal_id"), "expired", "收盘确认失败"))
                 if self.verbose_logging:
                     logger.info(
                         f"买入确认失败: {code} 收盘{price:.2f} ≤ 信号价{signal_price:.2f}，放弃"
@@ -723,6 +879,7 @@ class StockLowHighStrategy(BaseStrategy):
                 _day_low = float(_df["low"].iloc[-1])
                 _floor = signal_price * (1 - _max_drop)
                 if _day_low < _floor:
+                    self._fire_db(self._mark_candidate_status(pinfo.get("signal_id"), "expired", "低点过滤"))
                     if self.verbose_logging:
                         logger.info(
                             f"买入确认失败(低点过滤): {code} 当日最低{_day_low:.2f} "
@@ -762,6 +919,8 @@ class StockLowHighStrategy(BaseStrategy):
                 "entry_date": today,
             }
             self._track_high[code] = price
+            # v6.12: 转正 — 候选行标记 promoted
+            self._fire_db(self._mark_candidate_status(pinfo.get("signal_id"), "promoted", "收盘确认转正"))
 
             if self.verbose_logging:
                 logger.info(

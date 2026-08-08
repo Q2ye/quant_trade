@@ -280,7 +280,7 @@ onMounted(() => load());
             size="small" style="width: 100px" @update:value="onFilterChange"
           />
           <n-select
-            v-model:value="filterType" :options="typeOptions" placeholder="类型"
+            v-model:value="filterType" :options="typeOptions as any" placeholder="类型"
             clearable size="small" style="width: 110px" @update:value="onFilterChange"
           />
           <n-input

@@ -480,21 +480,12 @@ const runBacktestAll = async () => {
         .join('+');
       const res = await backtestAPI.createCompositeTask({
         name: `组合_${labels}_${start}`,
-        strategy_configs: selectedStrategyIds.value.map(sid => {
-          const opt = strategySelectOptions.value.find((s: any) => s.value === sid);
-          const label = (opt?.label || '').toLowerCase();
-          // 根据策略标签推断 allocator_id（匹配 CapitalAllocator.REGIME_BASE_ALLOCATION 的 key）
-          const aid = label.includes('lightgbm') || label.includes('bottom') || label.includes('etf') ? 'etf_bottom'
-            : label.includes('stocklowhigh') || label.includes('低吸') || label.includes('轮动') ? 'stock_low_high'
-            : sid;
-          return { strategy_id: sid, allocator_id: aid };
-        }),
+        strategy_configs: selectedStrategyIds.value.map(sid => ({ strategy_id: sid })),
         start_date: start, end_date: end,
         initial_capital: initialCapital.value,
         symbols: effectiveStocks.length > 0 ? effectiveStocks : undefined,
         benchmark: benchmark.value || undefined,
-        // P0: 默认 RANGE=1，后续前端加选项
-        force_regime: 1,
+        // v6.14: 不传 force_regime → 后端按 CSI500 历史动态判定 regime
       });
       if (res?.task_id) ids.push(res.task_id);
       msg.success(`组合回测已提交 (${selectedStrategyIds.value.length}个策略共享资金池)`);

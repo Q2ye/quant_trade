@@ -285,6 +285,7 @@ class DataFeedEngine(EngineBase):
                     )
                     # 在线加载复权因子并计算复权价格（替代缺失的预计算表）
                     adj_factors: Dict[str, Dict[date, float]] = {}
+                    latest_factors: Dict[str, Optional[float]] = {}
                     try:
                         from shared.database.repositories.market.quote.stock_adj_factor_repo import (
                             StockAdjFactorRepository,
@@ -295,6 +296,8 @@ class DataFeedEngine(EngineBase):
                             start_date=start_date,
                             end_date=end_date,
                         )
+                        # 全局最新复权因子（qfq 归一化基准：最新价 = 真实市场价）
+                        latest_factors = await adj_repo.get_latest_factors(stock_symbols)
                         if adj_factors:
                             logger.info(f"在线复权: {len(adj_factors)}/ {len(stock_symbols)} 只股票有复权因子")
                     except Exception:
@@ -306,7 +309,8 @@ class DataFeedEngine(EngineBase):
                         price_low = float(r.low) if r.low else None
                         price_close = float(r.close) if r.close else None
 
-                        # 应用复权因子（前复权：价格 × adj_factor）
+                        # 应用复权因子（前复权 qfq：price × factor / latest_factor，
+                        # 归一化到最新价 = 真实市场价，与 stock_adjusted_prices 预计算表语义一致）
                         if adj_factors and r.ts_code in adj_factors:
                             af_map = adj_factors[r.ts_code]
                             td = r.trade_date.date() if hasattr(r.trade_date, "date") else r.trade_date
@@ -318,10 +322,12 @@ class DataFeedEngine(EngineBase):
                                 if _dates:
                                     af = af_map[_dates[-1]]
                             if af is not None and af > 0:
-                                if price_open: price_open *= af
-                                if price_high: price_high *= af
-                                if price_low:  price_low  *= af
-                                if price_close: price_close *= af
+                                _latest = latest_factors.get(r.ts_code)
+                                _ratio = (af / _latest) if (_latest and _latest > 0) else 1.0
+                                if price_open: price_open *= _ratio
+                                if price_high: price_high *= _ratio
+                                if price_low:  price_low  *= _ratio
+                                if price_close: price_close *= _ratio
 
                         all_records.append({
                             "ts_code": r.ts_code,

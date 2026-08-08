@@ -503,7 +503,7 @@ const handleQuickBacktest = async () => {
     // 收集参数覆写值
     const overrides: Record<string, any> = {};
     if (template.value?.params) {
-      for (const [key, spec] of Object.entries(template.value.params)) {
+      for (const [key, spec] of Object.entries(template.value.params) as [string, any][]) {
         const val = overrideParams.value?.[key] ?? spec.default;
         if (val !== spec.default) overrides[key] = val;
       }
