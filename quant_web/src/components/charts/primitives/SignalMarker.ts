@@ -45,6 +45,7 @@ function drawShape(ctx: CanvasRenderingContext2D, s: SignalShape, x: number, y: 
 
 export class SignalMarkerPrimitive implements ISeriesPrimitive<Time> {
   _chart: import("lightweight-charts").IChartApi | null = null;
+  _series: import("lightweight-charts").ISeriesApi<"Line", Time> | null = null;
   _data: SignalMarkerData;
   private _requestUpdate: (() => void) | null = null;
 
@@ -54,10 +55,12 @@ export class SignalMarkerPrimitive implements ISeriesPrimitive<Time> {
 
   attached(params: SeriesAttachedParameter<Time>): void {
     this._chart = params.chart;
+    // @ts-expect-error series 在 attached 参数中提供（v5.2）
+    this._series = params.series as any;
     this._requestUpdate = params.requestUpdate;
   }
 
-  detached(): void { this._chart = null; this._requestUpdate = null; }
+  detached(): void { this._chart = null; this._series = null; this._requestUpdate = null; }
   updateAllViews(): void { this._requestUpdate?.(); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,12 +69,13 @@ export class SignalMarkerPrimitive implements ISeriesPrimitive<Time> {
     return [{
       zOrder: () => "top" as const,
       renderer: () => ({
-        draw(target: any, priceConverter: PriceToCoordinateConverter, _isHovered: boolean, _hitTestData?: unknown): void {
+        draw(target: any, _utils?: unknown): void {
           const chart = self._chart;
+          const series = self._series;
           const data = self._data;
-          if (!chart) return;
+          if (!chart || !series) return;
           const x = chart.timeScale().timeToCoordinate(data.time);
-          const y = priceConverter(data.price);
+          const y = series.priceToCoordinate(data.price);
           if (x === null || y === null) return;
           const cw = chart.timeScale().width();
           if ((x as number) < 0 || (x as number) > cw) return;

@@ -42,7 +42,7 @@ class AccountBalanceRule(RiskRule):
 class LossLimitRule(RiskRule):
     """亏损限制规则"""
     
-    def __init__(self, max_loss_percent: float = 0.05):
+    def __init__(self, max_loss_percent: float = 0.15):
         """
         初始化亏损限制规则
         
@@ -99,7 +99,7 @@ class LossLimitRule(RiskRule):
 class DrawdownLimitRule(RiskRule):
     """回撤限制规则"""
     
-    def __init__(self, max_drawdown_percent: float = 0.1):
+    def __init__(self, max_drawdown_percent: float = 0.25):
         """
         初始化回撤限制规则
         

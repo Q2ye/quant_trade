@@ -64,7 +64,7 @@ class PositionLimitRule(RiskRule):
 class SinglePositionLimitRule(RiskRule):
     """单个仓位限制规则"""
     
-    def __init__(self, max_single_position_ratio: float = 0.3):
+    def __init__(self, max_single_position_ratio: float = 0.5):
         """
         初始化单个仓位限制规则
         

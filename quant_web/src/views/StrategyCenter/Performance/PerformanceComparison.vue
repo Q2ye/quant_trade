@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, h, nextTick } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import VChart from "vue-echarts";
 import { tokens } from "@/styles/design-tokens";
@@ -13,6 +13,7 @@ import * as echarts from "echarts";
 
 import strategyAPI from "@/api/strategy";
 import performanceAPI from "@/api/performance";
+import backtestAPI from "@/api/backtest";
 
 interface MetricRow {
   metric: string;
@@ -24,6 +25,7 @@ const loading = ref(false);
 const error = ref(false);
 const empty = ref(false);
 const router = useRouter();
+const route = useRoute();
 const comparisonMetrics = ref<MetricRow[]>([]);
 const selectedStrategies = ref<string[]>([]);
 const dateRange = ref<[string, string] | null>(null);
@@ -71,48 +73,79 @@ const formatMetricVal = (metric: string, v: number) => {
 // Determine "best" value per row — lower is better for drawdown/volatility
 const LOWER_IS_BETTER = ["最大回撤", "波动率"];
 
-const buildMetricsAndChart = (data: any) => {
-  if (!data || !data.strategies || data.strategies.length === 0) {
-    empty.value = true;
-    return;
+// 后端 StrategyComparison.to_dict() 返回 performance_comparison（dict keyed by sid）
+// + rankings/correlations/statistics，无 strategies 数组、无 equity_curves。
+// 前端适配：指标从 performance_comparison 读；净值曲线经回测接口按策略拉取。
+const metricDefs = [
+  { key: "total_return", label: "累计收益" },
+  { key: "annual_return", label: "年化收益" },
+  { key: "sharpe_ratio", label: "夏普比率" },
+  { key: "sortino_ratio", label: "Sortino比率" },
+  { key: "calmar_ratio", label: "Calmar比率" },
+  { key: "max_drawdown", label: "最大回撤" },
+  { key: "volatility", label: "波动率" },
+  { key: "win_rate", label: "胜率" },
+  { key: "profit_factor", label: "利润因子" },
+  { key: "alpha", label: "Alpha" },
+  { key: "beta", label: "Beta" },
+  // 注：后端 PerformanceMetrics 无 total_trades 字段，已移除该指标
+];
+
+const buildMetrics = (data: any) => {
+  if (!data || !data.performance_comparison || Object.keys(data.performance_comparison).length === 0) {
+    return false;
   }
+  const pc = data.performance_comparison as Record<string, Record<string, any>>;
+  const sids = (data.strategy_ids && data.strategy_ids.length > 0)
+    ? data.strategy_ids as string[]
+    : Object.keys(pc);
 
-  const strategies = data.strategies as any[];
-  const sids = strategies.map((s: any) => s.strategy_id || s.id);
-  strategyNames.value = {};
-  strategies.forEach((s: any) => {
-    strategyNames.value[s.strategy_id || s.id] = s.strategy_name || s.name || s.strategy_id;
-  });
-
-  // Build equity curve data for chart (long format)
-  let eqData: Array<Record<string, any>> = [];
-  if (data.equity_curves) {
-    // { dates: [...], curves: { sid: [...], ... } }
-    const dates = data.equity_curves.dates || [];
-    const curves = data.equity_curves.curves || {};
-    eqData = dates.map((d: string, i: number) => {
-      const row: any = { date: d };
-      sids.forEach((sid: string) => {
-        row[sid] = curves[sid]?.[i] ?? null;
-      });
-      return row;
+  const metrics: MetricRow[] = [];
+  metricDefs.forEach((def) => {
+    const values: Record<string, number | string> = {};
+    sids.forEach((sid) => {
+      const m = pc[sid] || {};
+      values[sid] = m[def.key] ?? "--";
     });
-  } else {
-    // Fallback: each strategy has its own equity_curve
-    strategies.forEach((s: any) => {
-      const sid = s.strategy_id || s.id;
-      const ec = s.equity_curve || [];
-      ec.forEach((pt: any, i: number) => {
-        const date = pt.date || pt.trade_date || `T${i}`;
+    // Find best
+    let bestIdx = -1;
+    const numericVals = sids.map((sid, i) => ({ i, v: Number(values[sid]) })).filter((x) => !isNaN(x.v));
+    if (numericVals.length > 0) {
+      bestIdx = LOWER_IS_BETTER.includes(def.label)
+        ? numericVals.reduce((a, b) => (b.v < a.v ? b : a)).i
+        : numericVals.reduce((a, b) => (b.v > a.v ? b : a)).i;
+    }
+    metrics.push({ metric: def.label, values, highlightIndex: bestIdx });
+  });
+  comparisonMetrics.value = metrics;
+  return true;
+};
+
+const fetchEquityCurves = async (sids: string[]) => {
+  // 与 StrategyPerformance 一致：取各策略最新完成回测的净值曲线 → 累计收益率%
+  const eqData: Array<Record<string, any>> = [];
+  for (const sid of sids) {
+    try {
+      const tasks: any = await backtestAPI.getTasks({ strategy_id: sid, status: "completed", page_size: 1 }).catch(() => []);
+      const items = Array.isArray(tasks) ? tasks : (tasks?.data || tasks?.items || []);
+      const task = items[0];
+      if (!task) continue;
+      const taskId = task.task_id || task.id;
+      const eq = await backtestAPI.getEquityCurve(taskId).catch(() => []);
+      const first = (eq[0] as any)?.equity || (eq[0] as any)?.total_assets || 1;
+      (eq as any[]).forEach((p, i) => {
+        const date = p.trade_date || p.date || `T${i}`;
         let row = eqData.find((r) => r.date === date);
         if (!row) { row = { date }; eqData.push(row); }
-        row[sid] = pt.equity ?? pt.nav ?? pt.value;
+        row[sid] = (((p.equity ?? p.total_assets ?? 0) / first) - 1) * 100;
       });
-    });
+    } catch { /* 单策略曲线失败跳过 */ }
   }
   equityCurveData.value = eqData;
+  return eqData;
+};
 
-  // Build ECharts line option
+const buildLineOption = (eqData: Array<Record<string, any>>, sids: string[]) => {
   const dates = eqData.map((r) => r.date);
   const series = sids.map((sid: string, idx: number) => {
     const colors = ["#5470c6", "#18a058", "#f0a020", "#d03050", "#7c3aed", "#ff6d00"];
@@ -149,45 +182,6 @@ const buildMetricsAndChart = (data: any) => {
     series,
     dataZoom: dates.length > 60 ? [{ type: "inside" }, { type: "slider", bottom: 24 }] : undefined,
   };
-
-  // Build metrics comparison table
-  const metricDefs = [
-    { key: "total_return", label: "累计收益" },
-    { key: "annual_return", label: "年化收益" },
-    { key: "sharpe_ratio", label: "夏普比率" },
-    { key: "sortino_ratio", label: "Sortino比率" },
-    { key: "calmar_ratio", label: "Calmar比率" },
-    { key: "max_drawdown", label: "最大回撤" },
-    { key: "volatility", label: "波动率" },
-    { key: "win_rate", label: "胜率" },
-    { key: "profit_factor", label: "利润因子" },
-    { key: "alpha", label: "Alpha" },
-    { key: "beta", label: "Beta" },
-    { key: "total_trades", label: "总交易次数" },
-  ];
-
-  const metrics: MetricRow[] = [];
-  metricDefs.forEach((def) => {
-    const values: Record<string, number | string> = {};
-    sids.forEach((sid: string) => {
-      const s = strategies.find((x: any) => (x.strategy_id || x.id) === sid);
-      if (s?.performance) {
-        values[sid] = s.performance[def.key] ?? "--";
-      } else {
-        values[sid] = (s as any)?.[def.key] ?? "--";
-      }
-    });
-    // Find best
-    let bestIdx = -1;
-    const numericVals = sids.map((sid, i) => ({ i, v: Number(values[sid]) })).filter((x) => !isNaN(x.v));
-    if (numericVals.length > 0) {
-      bestIdx = LOWER_IS_BETTER.includes(def.label)
-        ? numericVals.reduce((a, b) => (b.v < a.v ? b : a)).i
-        : numericVals.reduce((a, b) => (b.v > a.v ? b : a)).i;
-    }
-    metrics.push({ metric: def.label, values, highlightIndex: bestIdx });
-  });
-  comparisonMetrics.value = metrics;
 };
 
 const loadComparisonData = async () => {
@@ -195,13 +189,17 @@ const loadComparisonData = async () => {
   error.value = false;
   empty.value = false;
   try {
-    // Load strategy list for selector
+    // Load strategy list for selector + 策略名称映射
     const strategies = await strategyAPI.getStrategies().catch(() => []);
     const stratList = Array.isArray(strategies) ? strategies : [];
     strategyOptions.value = stratList.map((s: any) => ({
       label: s.name || s.strategy_name || s.id,
       value: s.id || s.name,
     }));
+    strategyNames.value = {};
+    stratList.forEach((s: any) => {
+      strategyNames.value[s.id || s.name] = s.name || s.strategy_name || s.id;
+    });
 
     // Load comparison data
     if (selectedStrategies.value.length > 0) {
@@ -210,15 +208,19 @@ const loadComparisonData = async () => {
         params.start_date = dateRange.value[0];
         params.end_date = dateRange.value[1];
       }
-      const res = await performanceAPI.comparePerformance(
+      const res: any = await performanceAPI.comparePerformance(
         selectedStrategies.value,
         params,
       );
-      if (res) {
-        buildMetricsAndChart(res);
-      } else {
+      if (!res || !buildMetrics(res)) {
         empty.value = true;
+        return;
       }
+      const sids = (res.strategy_ids && res.strategy_ids.length > 0)
+        ? res.strategy_ids
+        : Object.keys(res.performance_comparison || {});
+      const eq = await fetchEquityCurves(sids);
+      buildLineOption(eq, sids);
     }
   } catch (err) {
     console.error("加载对比数据失败:", err);
@@ -239,6 +241,11 @@ const onSelectionChange = () => {
 };
 
 onMounted(() => {
+  // 从策略绩效页「加入对比」跳转时自动预选该策略
+  const qid = route.query.strategy_id as string | undefined;
+  if (qid && !selectedStrategies.value.includes(qid)) {
+    selectedStrategies.value = [qid];
+  }
   loadComparisonData();
 });
 </script>
@@ -252,7 +259,7 @@ onMounted(() => {
           <p class="page-description">多策略净值曲线对比与关键指标横向分析</p>
         </div>
         <div class="header-actions">
-          <n-button class="action-btn" @click="router.back()" quaternary>
+          <n-button class="action-btn" @click="router.push('/performance')" quaternary>
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
         </div>
@@ -371,6 +378,6 @@ onMounted(() => {
   overflow-y: auto;
 }
 .main-content {
-  padding: 16px 32px 24px;
+  padding: 0 19px 24px;
 }
 </style>

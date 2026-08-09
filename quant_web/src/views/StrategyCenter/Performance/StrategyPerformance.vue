@@ -28,6 +28,16 @@
             <h1 class="page-title">策略绩效</h1>
           </div>
           <div class="header-actions">
+            <n-segmented
+              v-model:value="viewMode"
+              :options="[
+                { label: '回测绩效', value: 'backtest' },
+                { label: '实盘绩效', value: 'live' },
+              ]"
+              size="small"
+              style="margin-right: 10px"
+              @update:value="loadPerformanceData"
+            />
             <n-select
               v-model:value="selectedStrategy"
               placeholder="选择策略"
@@ -46,10 +56,10 @@
             <n-button @click="exportReport">
               <Icon icon="ep:download" /> 导出报告
             </n-button>
-            <n-button size="small" @click="router.push('/performance/comparison')" quaternary>
+            <n-button size="small" @click="router.push({ path: '/performance/comparison', query: { strategy_id: selectedStrategy } })" quaternary>
               加入对比
             </n-button>
-            <n-button size="small" @click="router.push('/performance/attribution')" quaternary>
+            <n-button size="small" @click="router.push({ path: '/performance/attribution', query: { strategy_id: selectedStrategy } })" quaternary>
               归因分析
             </n-button>
             <n-button class="action-btn" @click="router.push('/performance')" quaternary>
@@ -138,6 +148,7 @@ const error = ref(false);
 const empty = ref(false);
 const selectedStrategy = ref("");
 const dateRange = ref<any>(null);
+const viewMode = ref<"backtest" | "live">("backtest"); // 回测绩效 / 实盘绩效 双视图
 const heatmapChart = ref<HTMLElement>();
 
 const monthlyReturnsData = ref<Record<string, number>>({});
@@ -231,6 +242,130 @@ const metricsColumns = computed(() => [
   },
 ]);
 
+// 共享：从回测结果或实盘分析数据构建「详细绩效指标」表
+const buildMetricsTable = (data: any) => {
+  const metricsList: any[] = [
+    { metric: "累计收益率", value: performance.totalReturn, description: "策略从开始到现在的总收益率", benchmark: data.benchmark_return ?? "--" },
+    { metric: "年化收益率", value: performance.annualReturn, description: "折算成年度的收益率", benchmark: data.benchmark_annual_return ?? "--" },
+    { metric: "最大回撤", value: performance.maxDrawdown, description: "策略净值从最高点到最低点的最大跌幅", benchmark: "--" },
+    { metric: "夏普比率", value: performance.sharpeRatio, description: "每承受一单位风险产生的超额收益", benchmark: data.benchmark_sharpe ?? "--" },
+    { metric: "Sortino 比率", value: data.sortino_ratio ?? 0, description: "下行风险调整后的收益", benchmark: "--" },
+    { metric: "Calmar 比率", value: data.calmar_ratio ?? 0, description: "年化收益与最大回撤的比值", benchmark: "--" },
+    { metric: "波动率", value: data.volatility ?? 0, description: "收益率的标准差", benchmark: "--" },
+    { metric: "胜率", value: performance.winRate, description: "盈利交易次数占总交易次数的比例", benchmark: "--" },
+    { metric: "利润因子", value: performance.profitFactor, description: "总盈利与总亏损的比值", benchmark: "--" },
+    { metric: "总交易次数", value: data.total_trades ?? data.num_trades ?? 0, description: "策略执行的总交易次数", benchmark: "--" },
+  ];
+  if (data.alpha !== undefined || data.beta !== undefined) {
+    metricsList.push(
+      { metric: "Alpha", value: data.alpha ?? 0, description: "超额收益（相对基准）", benchmark: "--" },
+      { metric: "Beta", value: data.beta ?? 0, description: "系统性风险暴露", benchmark: "--" },
+      { metric: "信息比率", value: data.information_ratio ?? 0, description: "主动管理效率", benchmark: "--" },
+    );
+  }
+  performanceMetrics.value = metricsList;
+};
+
+// 回测视图：指标 + 图表全部来自最新完成回测任务
+const loadBacktestMode = async (params: any) => {
+  const tasksRes: any = await backtestAPI.getTasks({
+    strategy_id: selectedStrategy.value, status: "completed", page_size: 1,
+  }).catch(() => null);
+  const items = Array.isArray(tasksRes) ? tasksRes : (tasksRes?.data || tasksRes?.items || []);
+  const task = items[0];
+  if (!task) { empty.value = true; return; }
+  const taskId = task.task_id || task.id;
+  const [btResult, btEquity] = await Promise.all([
+    backtestAPI.getResult(taskId).catch(() => null),
+    backtestAPI.getEquityCurve(taskId).catch(() => []),
+  ]);
+  const r: Record<string, any> = btResult || {};
+  const eq = Array.isArray(btEquity) ? btEquity : [];
+  if (!r.total_return && !eq.length) { empty.value = true; return; }
+
+  // 指标卡 ← 回测结果
+  performance.totalReturn = r.total_return ?? 0;
+  performance.annualReturn = r.annual_return ?? 0;
+  performance.maxDrawdown = r.max_drawdown ?? 0;
+  performance.sharpeRatio = r.sharpe_ratio ?? 0;
+  performance.winRate = r.win_rate ?? 0;
+  performance.profitFactor = r.profit_factor ?? 0;
+
+  // 图表 ← 回测（BacktestSubplots 格式）
+  const firstEq = (eq[0] as any)?.equity || (eq[0] as any)?.total_assets || 1000000;
+  btEquityPct.value = (eq as any[]).map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: ((p.equity ?? p.total_assets ?? 0) / firstEq - 1) * 100,
+  }));
+  const bm = r.benchmark_curve || [];
+  const firstBm = bm[0]?.total_assets || firstEq;
+  btBenchmarkPct.value = bm.map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: ((p.total_assets || 0) / firstBm - 1) * 100,
+  }));
+  btBenchmarkLen.value = bm.length;
+  btDailyPnL.value = (r.daily_returns || []).map((p: any) => ({
+    trade_date: p.trade_date || p.date || "",
+    daily_return: p.daily_return ?? p.return ?? 0,
+    daily_pnl: p.daily_pnl ?? p.pnl ?? 0,
+  }));
+  btDailyTurnover.value = (r.daily_turnover || []).map((p: any) => ({
+    trade_date: p.trade_date || p.date || "",
+    turnover: p.turnover ?? 0,
+  }));
+  btDrawdown.value = (r.drawdown_curve || []).map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: p.drawdown ?? 0,
+  }));
+  monthlyReturnsData.value = Array.isArray(r.monthly_returns)
+    ? Object.fromEntries(r.monthly_returns.map((m: any) => [m.month || m.trade_date?.slice(0, 7) || "", m.return ?? 0]))
+    : (r.monthly_returns || {});
+  analysisData.value = r;
+  buildMetricsTable(r);
+};
+
+// 实盘视图：指标 + 图表全部来自分析端点（trade_repo 实盘交易重建净值）
+const loadLiveMode = async (params: any) => {
+  const data: any = await performanceAPI.getStrategyPerformance(selectedStrategy.value, params);
+  if (data === null || Object.keys(data).length === 0 || !data.equity_curve || data.equity_curve.length === 0) {
+    empty.value = true;
+    return;
+  }
+
+  // 指标卡 ← 实盘
+  performance.totalReturn = data.total_return ?? data.totalReturn ?? 0;
+  performance.annualReturn = data.annual_return ?? data.annualReturn ?? 0;
+  performance.maxDrawdown = data.max_drawdown ?? data.maxDrawdown ?? 0;
+  performance.sharpeRatio = data.sharpe_ratio ?? data.sharpeRatio ?? 0;
+  performance.winRate = data.win_rate ?? data.winRate ?? 0;
+  performance.profitFactor = data.profit_factor ?? data.profitFactor ?? 0;
+
+  // 图表 ← 实盘分析数据（equity_curve / benchmark_curve / drawdown_curve / monthly_returns）
+  const eq = data.equity_curve || [];
+  const firstEq = eq[0]?.equity || eq[0]?.total_assets || 1;
+  btEquityPct.value = eq.map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: ((p.equity ?? p.total_assets ?? 0) / firstEq - 1) * 100,
+  }));
+  const bm = data.benchmark_curve || [];
+  const firstBm = bm[0]?.total_assets || firstEq;
+  btBenchmarkPct.value = bm.map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: ((p.total_assets || 0) / firstBm - 1) * 100,
+  }));
+  btBenchmarkLen.value = bm.length;
+  // 实盘无逐笔盈亏/成交额子图 → 置空（BacktestSubplots 显示空子图）
+  btDailyPnL.value = [];
+  btDailyTurnover.value = [];
+  btDrawdown.value = (data.drawdown_curve || []).map((p: any) => ({
+    date: p.trade_date || p.date,
+    value: p.drawdown ?? 0,
+  }));
+  monthlyReturnsData.value = data.monthly_returns || {};
+  analysisData.value = data;
+  buildMetricsTable(data);
+};
+
 const loadPerformanceData = async () => {
   if (!selectedStrategy.value) {
     message.warning("请选择策略");
@@ -248,153 +383,10 @@ const loadPerformanceData = async () => {
       if (start) params.start_date = new Date(start).toISOString().split("T")[0];
       if (end) params.end_date = new Date(end).toISOString().split("T")[0];
     }
-    // 1. 分析 API → 绩效指标
-    const data: any = await performanceAPI.getStrategyPerformance(
-      selectedStrategy.value,
-      params,
-    );
-    if (data === null) {
-      error.value = true; return;
-    }
-
-    // 2. 回测 API → 图表数据（与 BacktestReport 完全一致的加载方式）
-    try {
-      const tasksRes: any = await backtestAPI.getTasks({
-        strategy_id: selectedStrategy.value, status: "completed", page_size: 1,
-      }).catch(() => null);
-      const items = Array.isArray(tasksRes) ? tasksRes : (tasksRes?.data || tasksRes?.items || []);
-      const task = items[0];
-      if (task) {
-        const taskId = task.task_id || task.id;
-        const [btResult, btEquity] = await Promise.all([
-          backtestAPI.getResult(taskId).catch(() => null),
-          backtestAPI.getEquityCurve(taskId).catch(() => []),
-        ]);
-        const r: Record<string, any> = btResult || {};
-        const eq = Array.isArray(btEquity) ? btEquity : [];
-
-        // BacktestSubplots 格式：净值→累计收益率%（eq 字段为 {date, equity, drawdown}）
-        const firstEq = (eq[0] as any)?.equity || (eq[0] as any)?.total_assets || 1000000;
-        btEquityPct.value = (eq as any[]).map((p: any) => ({
-          date: p.trade_date || p.date,
-          value: ((p.equity ?? p.total_assets ?? 0) / firstEq - 1) * 100,
-        }));
-        // 基准→累计收益率%
-        const bm = r.benchmark_curve || [];
-        const firstBm = bm[0]?.total_assets || firstEq;
-        btBenchmarkPct.value = bm.map((p: any) => ({
-          date: p.trade_date || p.date,
-          value: ((p.total_assets || 0) / firstBm - 1) * 100,
-        }));
-        btBenchmarkLen.value = bm.length;
-        // 每日盈亏
-        btDailyPnL.value = (r.daily_returns || []).map((p: any) => ({
-          trade_date: p.trade_date || p.date || "",
-          daily_return: p.daily_return ?? p.return ?? 0,
-          daily_pnl: p.daily_pnl ?? p.pnl ?? 0,
-        }));
-        // 每日成交额
-        btDailyTurnover.value = (r.daily_turnover || []).map((p: any) => ({
-          trade_date: p.trade_date || p.date || "",
-          turnover: p.turnover ?? 0,
-        }));
-        // 回撤
-        btDrawdown.value = (r.drawdown_curve || []).map((p: any) => ({
-          date: p.trade_date || p.date,
-          value: p.drawdown ?? 0,
-        }));
-        monthlyReturnsData.value = Array.isArray(r.monthly_returns)
-          ? Object.fromEntries(r.monthly_returns.map((m: any) => [m.month || m.trade_date?.slice(0, 7) || "", m.return ?? 0]))
-          : (r.monthly_returns || {});
-        analysisData.value = r;
-      }
-    } catch { /* chart data fallback silent */ }
-
-    if (data && Object.keys(data).length > 0) {
-      performance.totalReturn = data.total_return ?? data.totalReturn ?? 0;
-      performance.annualReturn = data.annual_return ?? data.annualReturn ?? 0;
-      performance.maxDrawdown = data.max_drawdown ?? data.maxDrawdown ?? 0;
-      performance.sharpeRatio = data.sharpe_ratio ?? data.sharpeRatio ?? 0;
-      performance.winRate = data.win_rate ?? data.winRate ?? 0;
-      performance.profitFactor = data.profit_factor ?? data.profitFactor ?? 0;
-
-      // Build metrics table from rich response
-      const metricsList: any[] = [
-        {
-          metric: "累计收益率",
-          value: performance.totalReturn,
-          description: "策略从开始到现在的总收益率",
-          benchmark: data.benchmark_return ?? "--",
-        },
-        {
-          metric: "年化收益率",
-          value: performance.annualReturn,
-          description: "折算成年度的收益率",
-          benchmark: data.benchmark_annual_return ?? "--",
-        },
-        {
-          metric: "最大回撤",
-          value: performance.maxDrawdown,
-          description: "策略净值从最高点到最低点的最大跌幅",
-          benchmark: "--",
-        },
-        {
-          metric: "夏普比率",
-          value: performance.sharpeRatio,
-          description: "每承受一单位风险产生的超额收益",
-          benchmark: data.benchmark_sharpe ?? "--",
-        },
-        {
-          metric: "Sortino 比率",
-          value: data.sortino_ratio ?? 0,
-          description: "下行风险调整后的收益",
-          benchmark: "--",
-        },
-        {
-          metric: "Calmar 比率",
-          value: data.calmar_ratio ?? 0,
-          description: "年化收益与最大回撤的比值",
-          benchmark: "--",
-        },
-        {
-          metric: "波动率",
-          value: data.volatility ?? 0,
-          description: "收益率的标准差",
-          benchmark: "--",
-        },
-        {
-          metric: "胜率",
-          value: performance.winRate,
-          description: "盈利交易次数占总交易次数的比例",
-          benchmark: "--",
-        },
-        {
-          metric: "利润因子",
-          value: performance.profitFactor,
-          description: "总盈利与总亏损的比值",
-          benchmark: "--",
-        },
-        {
-          metric: "总交易次数",
-          value: data.total_trades ?? data.totalTrades ?? 0,
-          description: "策略执行的总交易次数",
-          benchmark: "--",
-        },
-      ];
-      if (data.alpha !== undefined || data.beta !== undefined) {
-        metricsList.push(
-          { metric: "Alpha", value: data.alpha ?? 0, description: "超额收益（相对基准）", benchmark: "--" },
-          { metric: "Beta", value: data.beta ?? 0, description: "系统性风险暴露", benchmark: "--" },
-          { metric: "信息比率", value: data.information_ratio ?? 0, description: "主动管理效率", benchmark: "--" },
-        );
-      }
-      performanceMetrics.value = metricsList;
-
-      if (!data.equity_curve || data.equity_curve.length === 0) {
-        empty.value = true;
-      }
+    if (viewMode.value === "backtest") {
+      await loadBacktestMode(params);
     } else {
-      empty.value = true;
+      await loadLiveMode(params);
     }
   } catch {
     error.value = true;
@@ -485,13 +477,18 @@ onMounted(async () => {
     return;
   }
 
-  // 选择器模式：加载全量列表
+  // 选择器模式：加载全量列表，自动选第一个有已完成回测的策略（避免空态）
   try {
     const strategies = await strategyAPI.getStrategies();
     strategyList.value = Array.isArray(strategies) ? strategies : [];
   } catch { strategyList.value = []; }
   if (strategyList.value.length > 0) {
-    selectedStrategy.value = String(strategyList.value[0].id);
+    const tasksRes: any = await backtestAPI.getTasks({ status: "completed", page_size: 200 }).catch(() => null);
+    const items = Array.isArray(tasksRes) ? tasksRes : (tasksRes?.data || tasksRes?.items || []);
+    const completedSids = new Set(items.map((t: any) => t.strategy_id).filter(Boolean));
+    const firstWithBt = strategyList.value.find((s: any) => completedSids.has(String(s.id)));
+    selectedStrategy.value = String((firstWithBt || strategyList.value[0]).id);
+    await loadPerformanceData();
   }
 });
 

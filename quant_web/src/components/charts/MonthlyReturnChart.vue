@@ -145,6 +145,7 @@ defineExpose({
 <style lang="scss" scoped>
 .monthly-return-wrapper {
   width: 100%;
+  zoom: 1.25; /* 抵消 html { zoom: 0.8 }，恢复 chart 内部坐标系统与 OS 鼠标一致 */
 }
 .chart-header {
   margin-bottom: 8px;

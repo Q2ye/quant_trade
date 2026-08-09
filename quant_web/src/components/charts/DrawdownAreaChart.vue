@@ -76,7 +76,20 @@ function renderChart() {
 
   const isNew = !chart;
   if (isNew) {
-    chart = createChartInstance();
+    // 时间轴更密集刻度 + 格式化日期（提升信息密度）
+    chart = createChartInstance({
+      timeScale: {
+        timeVisible: false,
+        minBarSpacing: 8,
+        rightOffset: 4,
+        tickMarkFormatter: (time: Time) => {
+          const d = new Date((time as number) * 1000);
+          const m = d.getUTCMonth() + 1;
+          const y = d.getUTCFullYear();
+          return `${m}月` + (m === 1 ? `\n${y}` : "");
+        },
+      },
+    });
     if (!chart) return;
 
     ddSeries = chart.addSeries(LineSeries, {
@@ -94,7 +107,11 @@ function renderChart() {
 
     // 绑定 primitive manager（首次创建时）
     primitiveManager.bind(ddSeries, () => {
-      // requestUpdate 回调：驱使图表重绘而不改变可视范围
+      // requestUpdate 回调：强制图表重绘（原语增删/切换开关后生效，不改可视范围）
+      if (chart) {
+        const r = chart.timeScale().getVisibleLogicalRange();
+        if (r) chart.timeScale().setVisibleLogicalRange(r);
+      }
     });
     // ⚠️ 关键修复：chart 创建后立即同步外部传入的 primitives
     if (props.primitives && props.primitives.length > 0) {
@@ -107,6 +124,7 @@ function renderChart() {
   }
 
   const ddData = toLineData(props.data);
+  _currentDDData = ddData; // 供 viewport handler 做缩小限制
   ddSeries!.setData(ddData);
   // ⚠️ 用 setVisibleRange 替代 fitContent，保持时间等比模式
   if (ddData.length > 0) {
@@ -115,6 +133,7 @@ function renderChart() {
 }
 
 // ---- 视口变化订阅（幂等） ----
+let _currentDDData: LineData[] = [];
 let _viewportHandler: ((range: any) => void) | null = null;
 
 function setupViewportListener() {
@@ -125,6 +144,20 @@ function setupViewportListener() {
   }
   _viewportHandler = (range: any) => {
     if (range) {
+      // 限制缩小：可视范围超过完整数据跨度时，复位到完整数据
+      const data = _currentDDData;
+      if (data.length >= 2) {
+        const firstT = data[0].time as number;
+        const lastT = data[data.length - 1].time as number;
+        const fromT = typeof range.from === "number" ? range.from : 0;
+        const toT = typeof range.to === "number" ? range.to : 0;
+        const dataSpan = lastT - firstT;
+        const visSpan = toT - fromT;
+        if (dataSpan > 0 && visSpan > dataSpan * 1.05) {
+          c.timeScale().setVisibleRange({ from: firstT as any, to: lastT as any });
+          return;
+        }
+      }
       markDirty();
       updateCache(range, c.timeScale().width());
     }

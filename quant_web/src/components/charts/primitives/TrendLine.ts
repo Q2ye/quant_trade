@@ -21,6 +21,7 @@ function lineStyleToDash(style: LineStyle): number[] {
 
 export class TrendLinePrimitive implements ISeriesPrimitive<Time> {
   _chart: import("lightweight-charts").IChartApi | null = null;
+  _series: import("lightweight-charts").ISeriesApi<"Line", Time> | null = null;
   _data: TrendLineData;
   private _requestUpdate: (() => void) | null = null;
 
@@ -30,11 +31,14 @@ export class TrendLinePrimitive implements ISeriesPrimitive<Time> {
 
   attached(params: SeriesAttachedParameter<Time>): void {
     this._chart = params.chart;
+    // @ts-expect-error series 在 attached 参数中提供（v5.2）
+    this._series = params.series as any;
     this._requestUpdate = params.requestUpdate;
   }
 
   detached(): void {
     this._chart = null;
+    this._series = null;
     this._requestUpdate = null;
   }
 
@@ -50,21 +54,20 @@ export class TrendLinePrimitive implements ISeriesPrimitive<Time> {
       renderer: () => ({
         draw(
           target: any,
-          priceConverter: PriceToCoordinateConverter,
-          _isHovered: boolean,
-          _hitTestData?: unknown,
+          _utils?: unknown,
         ): void {
           const chart = self._chart;
+          const series = self._series;
           const data = self._data;
-          if (!chart) return;
+          if (!chart || !series) return;
 
           const timeScale = chart.timeScale();
           const chartWidth = timeScale.width();
 
           const x1 = timeScale.timeToCoordinate(data.startTime);
-          const y1 = priceConverter(data.startPrice);
+          const y1 = series.priceToCoordinate(data.startPrice);
           const x2 = timeScale.timeToCoordinate(data.endTime);
-          const y2 = priceConverter(data.endPrice);
+          const y2 = series.priceToCoordinate(data.endPrice);
 
           if (x1 === null || y1 === null || x2 === null || y2 === null) return;
 

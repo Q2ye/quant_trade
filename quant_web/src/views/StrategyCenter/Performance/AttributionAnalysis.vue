@@ -28,7 +28,7 @@
           <n-button type="primary" @click="runAttributionAnalysis">
             <SmartIcon name="Search" /> 分析
           </n-button>
-          <n-button class="action-btn" @click="router.back()" quaternary>
+          <n-button class="action-btn" @click="router.push('/performance')" quaternary>
             <template #icon><SmartIcon name="ArrowLeft" /></template>
           </n-button>
         </div>
@@ -74,6 +74,7 @@
         <n-card :class="tokens.surface.card" size="small" style="flex:1">
           <template #header><span class="card-title">风格因子暴露</span></template>
           <v-chart v-if="radarOption" :option="radarOption" autoresize style="height: 280px" />
+          <n-empty v-else description="该模型不输出因子暴露" size="small" style="padding:40px 0" />
         </n-card>
       </div>
 
@@ -100,6 +101,7 @@
           </n-tab-pane>
           <n-tab-pane name="timeseries" tab="时序归因">
             <v-chart v-if="tsOption" :option="tsOption" autoresize style="height: 320px" />
+            <n-empty v-else description="暂无时序归因数据（后端暂未计算）" size="small" style="padding:40px" />
           </n-tab-pane>
         </n-tabs>
       </n-card>
@@ -164,7 +166,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, h, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import VChart from "vue-echarts";
 import { NCard, NButton, NSelect, NDatePicker, NDataTable, NTabs, NTabPane, NTag, NSkeleton, NResult, NEmpty, useMessage } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
@@ -174,6 +176,7 @@ import performanceAPI from "@/api/performance";
 
 const message = useMessage();
 const router = useRouter();
+const route = useRoute();
 
 // State
 const loading = ref(false);
@@ -199,7 +202,7 @@ const C = {
 const analysisConfig = reactive({
   strategy: "" as string | number,
   dateRange: null as any,
-  attributionModel: "brinson",
+  attributionModel: "multi-factor",
 });
 
 const strategyList = ref<any[]>([]);
@@ -272,12 +275,23 @@ const pieOption = computed(() => ({
     itemStyle: { borderRadius: 6, borderColor: "rgba(0,0,0,0.3)", borderWidth: 2 },
     label: { show: false },
     emphasis: { label: { show: true, fontSize: 16, fontWeight: "bold" } },
-    data: [
-      { value: 45.6, name: "选股效应", itemStyle: { color: C.purple } },
-      { value: 26.9, name: "配置效应", itemStyle: { color: C.green } },
-      { value: 9.6, name: "交互效应", itemStyle: { color: C.yellow } },
-      { value: 17.9, name: "不可解释", itemStyle: { color: C.red } },
-    ],
+    data: (() => {
+      const s = attributionSummary;
+      const selec = s.selectionContribution * 100;
+      const alloc = s.allocationContribution * 100;
+      const inter = s.interactionContribution * 100;
+      const total = s.totalExcessReturn * 100;
+      const unexplained = total - (selec + alloc + inter);
+      const items: any[] = [
+        { value: +selec.toFixed(2), name: "选股效应", itemStyle: { color: C.purple } },
+        { value: +alloc.toFixed(2), name: "配置效应", itemStyle: { color: C.green } },
+        { value: +inter.toFixed(2), name: "交互效应", itemStyle: { color: C.yellow } },
+      ];
+      if (Math.abs(unexplained) > 0.01) {
+        items.push({ value: +unexplained.toFixed(2), name: "不可解释", itemStyle: { color: C.red } });
+      }
+      return items;
+    })(),
   }],
 }));
 
@@ -320,105 +334,48 @@ const barOption = computed(() => {
   };
 });
 
-const radarOption = computed(() => ({
-  backgroundColor: C.bgTransparent,
-  tooltip: { backgroundColor: "rgba(20,20,40,0.92)", borderColor: "rgba(255,255,255,0.08)", textStyle: { color: C.textLight, fontSize: 12 } },
-  legend: {
-    data: ["策略暴露", "基准暴露"],
-    bottom: 0,
-    textStyle: { color: C.text, fontSize: 11 },
-  },
-  radar: {
-    center: ["50%", "48%"],
-    radius: "65%",
-    indicator: [
-      { name: "市值", max: 0.3 },
-      { name: "价值", max: 0.3 },
-      { name: "动量", max: 0.3 },
-      { name: "质量", max: 0.3 },
-      { name: "波动率", max: 0.3 },
-      { name: "成长", max: 0.3 },
+// 风格因子暴露雷达图：仅多因子模型有 factor_attribution.exposures 数据；
+// Brinson 模型无该维度 → 返回 null，模板显示空态提示
+const radarOption = computed(() => {
+  const fac = factorAttribution.value;
+  if (!fac || fac.length === 0) return null;
+  const strategyVals = fac.map((f) => f.exposure || 0);
+  const maxAbs = Math.max(...strategyVals.map((v) => Math.abs(v)), 0.1);
+  const max = +(maxAbs * 1.2).toFixed(2);
+  return {
+    backgroundColor: C.bgTransparent,
+    tooltip: { backgroundColor: "rgba(20,20,40,0.92)", borderColor: "rgba(255,255,255,0.08)", textStyle: { color: C.textLight, fontSize: 12 } },
+    legend: {
+      data: ["策略暴露"],
+      bottom: 0,
+      textStyle: { color: C.text, fontSize: 11 },
+    },
+    radar: {
+      center: ["50%", "50%"],
+      radius: "65%",
+      indicator: fac.map((f) => ({ name: f.factor, max })),
+      axisName: { color: C.textLight, fontSize: 10 },
+      splitArea: { areaStyle: { color: ["rgba(124,58,237,0.02)", "rgba(124,58,237,0.04)"] } },
+      splitLine: { lineStyle: { color: C.gridLine } },
+      axisLine: { lineStyle: { color: C.gridLine } },
+    },
+    series: [
+      {
+        name: "策略暴露",
+        type: "radar",
+        data: [{ value: strategyVals, name: "策略暴露" }],
+        areaStyle: { color: "rgba(124,58,237,0.25)" },
+        lineStyle: { color: C.purple, width: 2 },
+        itemStyle: { color: C.purple },
+        symbol: "circle",
+        symbolSize: 4,
+      },
     ],
-    axisName: { color: C.textLight, fontSize: 10 },
-    splitArea: { areaStyle: { color: ["rgba(124,58,237,0.02)", "rgba(124,58,237,0.04)"] } },
-    splitLine: { lineStyle: { color: C.gridLine } },
-    axisLine: { lineStyle: { color: C.gridLine } },
-  },
-  series: [
-    {
-      name: "策略暴露",
-      type: "radar",
-      data: [{ value: [0.234, 0.189, 0.156, 0.278, 0.134, 0.167], name: "策略暴露" }],
-      areaStyle: { color: "rgba(124,58,237,0.25)" },
-      lineStyle: { color: C.purple, width: 2 },
-      itemStyle: { color: C.purple },
-      symbol: "circle",
-      symbolSize: 4,
-    },
-    {
-      name: "基准暴露",
-      type: "radar",
-      data: [{ value: [0.156, 0.234, 0.123, 0.189, 0.167, 0.145], name: "基准暴露" }],
-      areaStyle: { color: "rgba(24,160,88,0.25)" },
-      lineStyle: { color: C.green, width: 2, type: "dashed" },
-      itemStyle: { color: C.green },
-      symbol: "diamond",
-      symbolSize: 4,
-    },
-  ],
-}));
+  };
+});
 
-const tsOption = computed(() => ({
-  backgroundColor: C.bgTransparent,
-  tooltip: {
-    trigger: "axis" as const,
-    backgroundColor: "rgba(20,20,40,0.92)",
-    borderColor: "rgba(255,255,255,0.08)",
-    textStyle: { color: C.textLight, fontSize: 12 },
-  },
-  legend: {
-    data: ["累计超额收益", "配置效应", "选股效应", "交互效应"],
-    bottom: 0,
-    textStyle: { color: C.text, fontSize: 11 },
-  },
-  grid: { left: "3%", right: "4%", bottom: "12%", top: "8%", containLabel: true },
-  xAxis: {
-    type: "category",
-    data: ["Q1", "Q2", "Q3", "Q4"],
-    axisLabel: { color: C.text, fontSize: 11 },
-    axisLine: { lineStyle: { color: C.gridLine } },
-  },
-  yAxis: {
-    type: "value",
-    axisLabel: { color: C.text, formatter: "{value}%", fontSize: 10 },
-    splitLine: { lineStyle: { color: C.gridLine } },
-  },
-  series: [
-    {
-      name: "累计超额收益",
-      type: "line",
-      data: [1.2, 2.8, 3.5, 4.6],
-      smooth: true,
-      lineStyle: { color: C.purple, width: 3 },
-      itemStyle: { color: C.purple },
-      symbol: "circle",
-      symbolSize: 6,
-      areaStyle: { color: "rgba(124,58,237,0.12)" },
-    },
-    {
-      name: "配置效应", type: "bar", data: [0.8, 1.2, 1.0, 1.3],
-      itemStyle: { color: C.green, borderRadius: [3, 3, 0, 0] }, barWidth: "25%", barGap: "10%",
-    },
-    {
-      name: "选股效应", type: "bar", data: [0.3, 1.4, 2.2, 2.9],
-      itemStyle: { color: C.yellow, borderRadius: [3, 3, 0, 0] }, barWidth: "25%", barGap: "10%",
-    },
-    {
-      name: "交互效应", type: "bar", data: [0.1, 0.2, 0.3, 0.4],
-      itemStyle: { color: C.orange, borderRadius: [3, 3, 0, 0] }, barWidth: "25%", barGap: "10%",
-    },
-  ],
-}));
+// 时序归因：后端当前不计算 time_series_attribution（为空），始终显示空态提示
+const tsOption = computed(() => null);
 
 // ---- Table columns ----
 const brinsonColumns = computed(() => [
@@ -482,47 +439,54 @@ const runAttributionAnalysis = async () => {
     }
     const res = await performanceAPI.getAttribution(String(analysisConfig.strategy), params);
     if (res) {
-      // Populate summary
-      if (res.summary) {
-        Object.assign(attributionSummary, {
-          totalExcessReturn: res.summary.totalExcessReturn ?? res.summary.total_excess_return ?? attributionSummary.totalExcessReturn,
-          allocationContribution: res.summary.allocationContribution ?? res.summary.allocation_contribution ?? attributionSummary.allocationContribution,
-          selectionContribution: res.summary.selectionContribution ?? res.summary.selection_contribution ?? attributionSummary.selectionContribution,
-          interactionContribution: res.summary.interactionContribution ?? res.summary.interaction_contribution ?? attributionSummary.interactionContribution,
-          rSquared: res.summary.rSquared ?? res.summary.r_squared ?? attributionSummary.rSquared,
-          informationRatio: res.summary.informationRatio ?? res.summary.information_ratio ?? attributionSummary.informationRatio,
-          activeShare: res.summary.activeShare ?? res.summary.active_share ?? attributionSummary.activeShare,
-          activeRisk: res.summary.activeRisk ?? res.summary.active_risk ?? attributionSummary.activeRisk,
-          beta: res.summary.beta ?? attributionSummary.beta,
-          alpha: res.summary.alpha ?? attributionSummary.alpha,
-        });
-      }
-      // Populate Brinson data
-      if (res.brinson && Array.isArray(res.brinson) && res.brinson.length > 0) {
-        brinsonAttribution.value = res.brinson.map((b: any) => ({
-          category: b.category || b.industry || "",
-          allocationEffect: b.allocationEffect ?? b.allocation_effect ?? 0,
-          selectionEffect: b.selectionEffect ?? b.selection_effect ?? 0,
-          interactionEffect: b.interactionEffect ?? b.interaction_effect ?? 0,
-          totalEffect: b.totalEffect ?? b.total_effect ?? 0,
-        }));
-      }
-      // Populate factor attributions
-      if (res.factorAttributions && Array.isArray(res.factorAttributions) && res.factorAttributions.length > 0) {
-        factorAttribution.value = res.factorAttributions.map((f: any) => ({
-          factor: f.factor || f.name || "",
-          exposure: f.exposure ?? 0,
-          factorReturn: f.factorReturn ?? f.factor_return ?? 0,
-          attribution: f.attribution ?? 0,
-          tStat: f.tStat ?? f.t_stat ?? 0,
-          significance: Math.abs(f.tStat ?? f.t_stat ?? 0) >= 2 ? "显著" : "不显著",
-        }));
-      }
+      // 适配后端 AttributionAnalysis.to_dict() 结构：
+      // { return_decomposition, brinson_attribution, factor_attribution,
+      //   sector_attribution, stock_attribution, quality_metrics }
+      const rd = res.return_decomposition || {};
+      const ba = res.brinson_attribution || {};
+      const qm = res.quality_metrics || {};
+      const active = rd.active_return ?? rd.total_return ?? 0;
+      const alloc = ba.allocation_effect ?? 0;
+      const selec = ba.selection_effect ?? 0;
+      const inter = ba.interaction_effect ?? 0;
+
+      Object.assign(attributionSummary, {
+        totalExcessReturn: active,
+        allocationContribution: alloc,
+        selectionContribution: selec,
+        interactionContribution: inter,
+        rSquared: qm.attribution_r_squared ?? 0,
+        trackingError: qm.tracking_error_explained ?? 0,
+      });
+
+      // Brinson 表/柱图 ← sector/stock attributions（dict {sector: effect}）
+      const secAttrib = res.sector_attribution?.attributions
+        || res.stock_attribution?.attributions || {};
+      brinsonAttribution.value = Object.entries(secAttrib).map(([category, v]) => ({
+        category,
+        allocationEffect: alloc,
+        selectionEffect: selec,
+        interactionEffect: inter,
+        totalEffect: Number(v) || 0,
+      }));
+
+      // 因子归因表 ← factor_attribution.attributions（dict {factor: value}）
+      const facAttrib = res.factor_attribution?.attributions || {};
+      const facExpo = res.factor_attribution?.exposures || {};
+      factorAttribution.value = Object.entries(facAttrib).map(([factor, v]) => ({
+        factor,
+        exposure: Number(facExpo[factor] ?? 0),
+        factorReturn: 0,
+        attribution: Number(v) || 0,
+        tStat: 0,
+        significance: "—",
+      }));
+
       analysisRun.value = true;
-      // Check if any data was populated
-      if (!res.summary && !res.brinson && !res.factorAttributions) {
-        empty.value = true;
-      }
+      const hasData = Object.keys(rd).length > 0
+        || Object.keys(secAttrib).length > 0
+        || Object.keys(facAttrib).length > 0;
+      if (!hasData) empty.value = true;
     } else {
       empty.value = true;
     }
@@ -538,13 +502,24 @@ onMounted(async () => {
     const strategies = await strategyAPI.getStrategies();
     strategyList.value = Array.isArray(strategies) ? strategies : [];
   } catch { strategyList.value = []; }
-  if (strategyList.value.length > 0) analysisConfig.strategy = String(strategyList.value[0].id);
+  const qid = route.query.strategy_id as string | undefined;
+  if (strategyList.value.length > 0) {
+    if (qid && strategyList.value.some((s: any) => String(s.id) === qid)) {
+      analysisConfig.strategy = qid;
+    } else {
+      analysisConfig.strategy = String(strategyList.value[0].id);
+    }
+  }
+  // 带 strategy_id 进入时自动执行分析，避免再手动点「分析」
+  if (qid && analysisConfig.strategy) {
+    await runAttributionAnalysis();
+  }
 });
 </script>
 
 <style lang="scss" scoped>
 .attribution-page { height: 100%; overflow-y: auto; }
-.main-content { padding: 16px 32px 24px; }
+.main-content { padding: 0 19px 24px; }
 
 .card-title { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
 

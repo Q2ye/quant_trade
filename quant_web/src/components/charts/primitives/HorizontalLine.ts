@@ -18,16 +18,20 @@ const LP = 4; // label padding
 
 export class HorizontalLinePrimitive implements ISeriesPrimitive<Time> {
   _chart: import("lightweight-charts").IChartApi | null = null;
+  _series: import("lightweight-charts").ISeriesApi<"Line", Time> | null = null;
   _data: HorizontalLineData;
   private _requestUpdate: (() => void) | null = null;
 
   constructor(data: HorizontalLineData) { this._data = { ...data }; }
 
   attached(params: SeriesAttachedParameter<Time>): void {
-    this._chart = params.chart; this._requestUpdate = params.requestUpdate;
+    this._chart = params.chart;
+    // @ts-expect-error series 在 attached 参数中提供（v5.2）
+    this._series = params.series as any;
+    this._requestUpdate = params.requestUpdate;
   }
 
-  detached(): void { this._chart = null; this._requestUpdate = null; }
+  detached(): void { this._chart = null; this._series = null; this._requestUpdate = null; }
   updateAllViews(): void { this._requestUpdate?.(); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,13 +40,14 @@ export class HorizontalLinePrimitive implements ISeriesPrimitive<Time> {
     return [{
       zOrder: () => "normal" as const,
       renderer: () => ({
-        draw(target: any, priceConverter: PriceToCoordinateConverter, _isHovered: boolean, _hitTestData?: unknown): void {
+        draw(target: any, _utils?: unknown): void {
           const chart = self._chart;
+          const series = self._series;
           const data = self._data;
-          if (!chart) return;
+          if (!chart || !series) return;
           const ts = chart.timeScale();
           const cw = ts.width();
-          const y = priceConverter(data.price);
+          const y = series.priceToCoordinate(data.price);
           if (y === null) return;
 
           let x1 = 0; let x2 = cw;

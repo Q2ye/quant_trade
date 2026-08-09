@@ -16,16 +16,20 @@ function lineStyleToDash(style: LineStyle): number[] {
 
 export class VerticalLinePrimitive implements ISeriesPrimitive<Time> {
   _chart: import("lightweight-charts").IChartApi | null = null;
+  _series: import("lightweight-charts").ISeriesApi<"Line", Time> | null = null;
   _data: VerticalLineData;
   private _requestUpdate: (() => void) | null = null;
 
   constructor(data: VerticalLineData) { this._data = { ...data }; }
 
   attached(params: SeriesAttachedParameter<Time>): void {
-    this._chart = params.chart; this._requestUpdate = params.requestUpdate;
+    this._chart = params.chart;
+    // @ts-expect-error series 在 attached 参数中提供（v5.2）
+    this._series = params.series as any;
+    this._requestUpdate = params.requestUpdate;
   }
 
-  detached(): void { this._chart = null; this._requestUpdate = null; }
+  detached(): void { this._chart = null; this._series = null; this._requestUpdate = null; }
   updateAllViews(): void { this._requestUpdate?.(); }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,10 +38,11 @@ export class VerticalLinePrimitive implements ISeriesPrimitive<Time> {
     return [{
       zOrder: () => "normal" as const,
       renderer: () => ({
-        draw(target: any, priceConverter: PriceToCoordinateConverter, _isHovered: boolean, _hitTestData?: unknown): void {
+        draw(target: any, _utils?: unknown): void {
           const chart = self._chart;
+          const series = self._series;
           const data = self._data;
-          if (!chart) return;
+          if (!chart || !series) return;
           const ts = chart.timeScale();
           const x = ts.timeToCoordinate(data.time);
           if (x === null) return;
@@ -45,8 +50,8 @@ export class VerticalLinePrimitive implements ISeriesPrimitive<Time> {
           if ((x as number) < 0 || (x as number) > cw) return;
 
           let y1 = -10000; let y2 = 10000;
-          if (data.startPrice !== undefined) { const sy = priceConverter(data.startPrice); if (sy !== null) y1 = sy as number; }
-          if (data.endPrice !== undefined) { const ey = priceConverter(data.endPrice); if (ey !== null) y2 = ey as number; }
+          if (data.startPrice !== undefined) { const sy = series.priceToCoordinate(data.startPrice); if (sy !== null) y1 = sy as number; }
+          if (data.endPrice !== undefined) { const ey = series.priceToCoordinate(data.endPrice); if (ey !== null) y2 = ey as number; }
 
           target.useBitmapCoordinateSpace((scope: { context: CanvasRenderingContext2D }) => {
             const ctx = scope.context;

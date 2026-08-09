@@ -1,5 +1,5 @@
 <template>
-  <n-spin :show="loading" class="backtest-report-page">
+  <n-spin :show="loading" class="backtest-report-page bg-gradient-mesh bg-noise">
     <n-result
       v-if="error"
       status="500"
@@ -9,11 +9,24 @@
       <template #footer><n-button @click="loadReport">重试</n-button></template>
     </n-result>
 
-    <ReportLayout v-else>
-      <template #header>
-        <div class="report-header">
-          <h2>{{ strategy.name }} - 回测报告</h2>
-          <div class="summary-stats">
+    <template v-else>
+      <div class="page-header">
+        <div class="header-content">
+          <div class="title-section">
+            <h1 class="page-title">{{ strategyName }} · 回测报告</h1>
+            <p class="page-description">{{ rangeLabel }}</p>
+          </div>
+          <div class="header-actions">
+            <n-button class="action-btn" @click="router.back()" quaternary>
+              <template #icon><SmartIcon name="ArrowLeft" /></template>
+            </n-button>
+          </div>
+        </div>
+      </div>
+      <div class="main-content">
+        <div class="report-body">
+          <div class="report-header">
+            <div class="summary-stats">
             <StatCard
               title="年化收益"
               :value="`${(report.summary.annualReturn * 100).toFixed(2)}%`"
@@ -37,6 +50,9 @@
               title="胜率"
               :value="`${(report.summary.winRate * 100).toFixed(1)}%`"
             />
+            <StatCard title="波动率" :value="`${(report.summary.volatility * 100).toFixed(1)}%`" />
+            <StatCard title="盈亏比" :value="report.summary.profitFactor ? report.summary.profitFactor.toFixed(2) : '--'" />
+            <StatCard title="平均单笔" :value="report.summary.avgTradeReturn ? `${(report.summary.avgTradeReturn * 100).toFixed(2)}%` : '--'" />
           </div>
           <div
             v-if="report.excessMetrics && report.excessMetrics.aligned_days"
@@ -71,9 +87,17 @@
             </div>
           </div>
         </div>
-      </template>
-
-      <template #content>
+        <div class="report-sections">
+        <n-alert
+          v-if="report.riskViolations.length > 0"
+          type="warning"
+          title="风控违规记录"
+          style="margin-bottom: 12px"
+        >
+          <div v-for="(rv, i) in report.riskViolations" :key="i" style="font-size: 12px">
+            {{ rv.rule_name || rv.message || JSON.stringify(rv) }}
+          </div>
+        </n-alert>
         <div class="section">
           <div class="section-header-row">
             <h3>净值曲线</h3>
@@ -99,7 +123,6 @@
             <h3>回撤分析</h3>
             <DrawdownAreaChart
               :data="report.drawdown"
-              title="回撤分析"
               :height="260"
               :primitives="drawdownPrimitives"
             />
@@ -137,9 +160,7 @@
             </n-tab-pane>
           </n-tabs>
         </div>
-      </template>
-
-      <template #footer>
+        </div>
         <div class="report-footer">
           <n-space justify="center" :size="12">
             <n-button type="primary" @click="saveReport">保存报告</n-button>
@@ -147,18 +168,19 @@
             <n-button @click="addToBasket">加入股票篮子</n-button>
           </n-space>
         </div>
-      </template>
-    </ReportLayout>
+        </div>
+      </div>
+    </template>
   </n-spin>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useMessage, NResult, NSpin, NEmpty, NSwitch, NSpace } from "naive-ui";
 import { type ISeriesPrimitive, type Time } from "lightweight-charts";
-import ReportLayout from "@/layouts/ReportLayout.vue";
+import SmartIcon from "@/components/common/SmartIcon.vue";
 import EquityCurveChart from "@/components/charts/EquityCurveChart.vue";
 import DrawdownAreaChart from "@/components/charts/DrawdownAreaChart.vue";
 import MonthlyReturnChart from "@/components/charts/MonthlyReturnChart.vue";
@@ -168,10 +190,12 @@ import TradeRecordChart from "@/components/charts/TradeRecordChart.vue";
 import TradeTable from "@/components/data/TradeTable.vue";
 import StatCard from "@/components/common/StatCard.vue";
 import backtestAPI from "@/api/backtest";
+import strategyAPI from "@/api/strategy";
 import { SignalMarkerPrimitive } from "@/components/charts/primitives/SignalMarker";
 import { TrendLinePrimitive } from "@/components/charts/primitives/TrendLine";
 import type { SignalMarkerData, TrendLineData } from "@/components/charts/primitives/types";
 const route = useRoute();
+const router = useRouter();
 const message = useMessage();
 const store = useStore<any>();
 
@@ -200,6 +224,14 @@ function buildTradeMarkers(
     const d = (p.date?.slice(0, 10) || p.date);
     equityMap.set(d, p.value);
   }
+  // 记录每只股票的最近买入价（用于卖出标记显示成本价）
+  const entryMap = new Map<string, number>();
+  for (const t of trades) {
+    if (t.direction === "buy") {
+      const sym = (t.symbol || "").slice(0, 6);
+      if (sym && t.price > 0) entryMap.set(sym, t.price);
+    }
+  }
 
   return trades.map((t, i) => {
     const isBuy = t.direction === "buy";
@@ -207,6 +239,12 @@ function buildTradeMarkers(
     // 查找交易当日净值，若找不到则取最近净值
     const equityValue = equityMap.get(tradeDate);
     const finalEquityValue = equityValue ?? equityCurve[equityCurve.length - 1]?.value ?? 0;
+    const sym = (t.symbol || "").slice(0, 6);
+
+    // 文本：买入/卖出 + 股票代码；卖出标记再显示该股买入价
+    const text = `${isBuy ? "买入" : "卖出"} ${sym}`;
+    const entryPrice = entryMap.get(sym);
+    const strategyName = (!isBuy && entryPrice) ? `买价 ${entryPrice.toFixed(2)}` : "";
 
     const data: SignalMarkerData = {
       id: `trade-marker-g${_markerGeneration}-${i}`,
@@ -216,8 +254,8 @@ function buildTradeMarkers(
       direction: isBuy ? "buy" : "sell",
       shape: isBuy ? "arrowUp" : "arrowDown",
       color: isBuy ? "#ef5350" : "#26a69a",
-      text: isBuy ? "买入" : "卖出",
-      strategyName: t.symbol?.slice(0, 6),
+      text,
+      strategyName,
     };
     return new SignalMarkerPrimitive(data);
   });
@@ -356,7 +394,8 @@ const aggregateProfitDistribution = (trades: any[]) => {
 
   for (const t of trades) {
     const key = t.ts_code || t.symbol;
-    const dir = t.direction === "LONG" || t.direction === "buy" ? "buy" : "sell";
+    const rawDir = t.side || t.direction || "";
+    const dir = rawDir === "LONG" || rawDir === "buy" ? "buy" : "sell";
     const price = Number(t.price || 0);
     const qty = Number(t.quantity || 0);
     if (dir === "buy") {
@@ -405,6 +444,7 @@ const report = ref({
     profitFactor: 0,
     tradesCount: 0,
     avgTradeReturn: 0,
+    volatility: 0,
   },
   equityCurve: [] as any[],
   benchmark: [] as any[],
@@ -415,11 +455,16 @@ const report = ref({
   profitDistribution: { bins: [] as number[], counts: [] as number[] },
   trades: [] as any[],
   excessMetrics: null as Record<string, any> | null,
+  riskViolations: [] as any[],
 });
 
 const strategy = computed(
   () => store.state.strategy?.currentStrategy || { name: "未知策略" },
 );
+
+// 页头标题：优先用 strategy_id 拉真实策略名（不依赖 Vuex store）
+const strategyName = ref("回测");
+const rangeLabel = ref("");
 
 const loadReport = async () => {
   const taskId = route.params.taskId as string;
@@ -435,6 +480,12 @@ const loadReport = async () => {
     ]);
 
     const r: Record<string, any> = result || {};
+    // 策略名：从 result.strategy_id 拉取（替代 Vuex store，直接导航也能显示）
+    if (r.strategy_id) {
+      strategyAPI.getStrategy(r.strategy_id).then((s: any) => {
+        if (s?.name) strategyName.value = s.name;
+      }).catch(() => {});
+    }
     // Fallback: 如果独立 equity API 为空，使用 result.equity_curve（v3.3 to_dict 中包含）
     const rawEq = Array.isArray(equity) && equity.length > 0
       ? equity
@@ -451,6 +502,7 @@ const loadReport = async () => {
         profitFactor: r.profit_factor ?? 0,
         tradesCount: r.num_trades ?? tr.length,
         avgTradeReturn: r.avg_trade_return ?? 0,
+        volatility: r.volatility ?? 0,
       },
       equityCurve: rawEq.map((p: any) => ({
         date: p.trade_date || p.date,
@@ -501,7 +553,14 @@ const loadReport = async () => {
           fee: commission + stampTax + transferFee,
         };
       }),
+      riskViolations: Array.isArray(r.risk_violations) ? r.risk_violations : [],
     };
+
+    // 回测区间标签（页头副标题）
+    const eqD = report.value.equityCurve;
+    if (eqD.length >= 2) {
+      rangeLabel.value = `${String(eqD[0].date).slice(0, 10)} ~ ${String(eqD[eqD.length - 1].date).slice(0, 10)}`;
+    }
   } catch {
     error.value = true;
   } finally {
@@ -522,9 +581,9 @@ const addToBasket = () => {
   const taskId = route.params.taskId as string;
   store.dispatch("basket/createBasketFromReport", {
     reportId: taskId,
-    basketName: `${strategy.value.name}_股票池`,
+    basketName: `${strategyName.value}_股票池`,
   });
-  message.success(`已创建股票篮子: ${strategy.value.name}_股票池`);
+  message.success(`已创建股票篮子: ${strategyName.value}_股票池`);
 };
 
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null)
@@ -560,6 +619,17 @@ onUnmounted(() => {
 }
 .report-header h2 {
   color: var(--n-text-color-1);
+}
+.report-header-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.report-body {
+  padding: 20px;
+}
+.report-sections {
+  margin-top: 20px;
 }
 .summary-stats {
   display: grid;

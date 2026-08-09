@@ -400,6 +400,9 @@ onMounted(async () => {
         <div class="header-actions">
           <n-select v-model:value="accountId" :options="accountOptions" placeholder="选择账户" size="small" style="width:200px" @update:value="loadPerformanceData" />
           <n-button class="action-btn" @click="loadPerformanceData" quaternary><template #icon><SmartIcon name="Refresh" /></template></n-button>
+          <n-button class="action-btn" @click="router.push('/performance')" quaternary>
+            <template #icon><SmartIcon name="ArrowLeft" /></template>
+          </n-button>
         </div>
       </div>
     </div>
@@ -558,7 +561,7 @@ onMounted(async () => {
   overflow-y: auto;
 }
 .main-content {
-  padding: 16px 19px 24px;
+  padding: 0 19px 24px;
 }
 
 .filter-label { font-size: 12px; color: var(--color-text-tertiary); }

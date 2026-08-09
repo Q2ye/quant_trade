@@ -266,7 +266,7 @@ export const routes: RouteRecordRaw[] = [
     component: () =>
       import("@/views/StrategyCenter/Backtest/BacktestReport.vue"),
     props: true,
-    meta: { menu: "backtest", layout: "report", title: "回测报告" },
+    meta: { menu: "backtest", layout: "main", title: "回测报告" },
   },
   {
     path: "/backtest/config",
@@ -373,38 +373,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { menu: "blacklist", layout: "main", title: "黑名单管理" },
   },
 
-  // 绩效分析
+  // 绩效分析（简化：仅回测总览 + 账户绩效；策略详情复用回测报告，对比/归因已砍）
   {
     path: "/performance",
     name: "PerformanceHub",
     component: () =>
       import("@/views/StrategyCenter/Performance/PerformanceHub.vue"),
     meta: { menu: "performance-hub", layout: "main", title: "绩效总览" },
-  },
-  {
-    path: "/performance/strategy/:id?",
-    name: "StrategyPerformance",
-    component: () =>
-      import("@/views/StrategyCenter/Performance/StrategyPerformance.vue"),
-    props: true,
-    meta: {
-      menu: "strategy-performance",
-      layout: "main",
-      title: "策略绩效",
-      hideInMenu: true,
-    },
-  },
-  {
-    path: "/performance/attribution",
-    name: "AttributionAnalysis",
-    component: () =>
-      import("@/views/StrategyCenter/Performance/AttributionAnalysis.vue"),
-    meta: {
-      menu: "attribution",
-      layout: "main",
-      title: "归因分析",
-      hideInMenu: true,
-    },
   },
   {
     path: "/performance/account",
@@ -415,18 +390,6 @@ export const routes: RouteRecordRaw[] = [
       menu: "account-performance",
       layout: "main",
       title: "账户绩效",
-      hideInMenu: true,
-    },
-  },
-  {
-    path: "/performance/comparison",
-    name: "PerformanceComparison",
-    component: () =>
-      import("@/views/StrategyCenter/Performance/PerformanceComparison.vue"),
-    meta: {
-      menu: "performance-comparison",
-      layout: "main",
-      title: "绩效对比",
       hideInMenu: true,
     },
   },
