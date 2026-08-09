@@ -19,6 +19,7 @@ from .reference import (
 )
 from .rotation import (
     GlobalRotationV2AggressiveStrategy,
+    HighVolMomentumStrategy,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "StockLowHighStrategy",
     # 轮动策略
     "GlobalRotationV2AggressiveStrategy",
+    "HighVolMomentumStrategy",
 ]

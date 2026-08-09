@@ -271,78 +271,42 @@ class DataFeedEngine(EngineBase):
                 except Exception as e:
                     logger.warning(f"批量加载复权价格失败: {e}")
 
-            # 回退到不复权数据
+            # 回退到 SQL JOIN 在线复权（替代 Python 逐行循环，性能关键）
             if not all_records or not any(
                 r.get("ts_code", "").startswith(tuple(stock_symbols[:1]))
                 for r in all_records[-10:] if all_records
             ):
-                logger.info("stock_adjusted_prices 表为空，使用 stock_daily + stock_adj_factor 在线前复权")
+                logger.info("stock_adjusted_prices 表为空，使用 stock_daily JOIN stock_adj_factor SQL 在线复权")
                 try:
-                    records = await self._load_daily_batch(
+                    from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+                        StockAdjFactorRepository,
+                    )
+                    adj_repo = StockAdjFactorRepository(self.db)
+                    records = await adj_repo.get_adjusted_daily_batch(
                         symbols=stock_symbols,
                         start_date=start_date,
                         end_date=end_date,
+                        adj_type=self.adj_type,
                     )
-                    # 在线加载复权因子并计算复权价格（替代缺失的预计算表）
-                    adj_factors: Dict[str, Dict[date, float]] = {}
-                    latest_factors: Dict[str, Optional[float]] = {}
-                    try:
-                        from shared.database.repositories.market.quote.stock_adj_factor_repo import (
-                            StockAdjFactorRepository,
-                        )
-                        adj_repo = StockAdjFactorRepository(self.db)
-                        adj_factors = await adj_repo.get_batch_by_date_range(
-                            symbols=stock_symbols,
-                            start_date=start_date,
-                            end_date=end_date,
-                        )
-                        # 全局最新复权因子（qfq 归一化基准：最新价 = 真实市场价）
-                        latest_factors = await adj_repo.get_latest_factors(stock_symbols)
-                        if adj_factors:
-                            logger.info(f"在线复权: {len(adj_factors)}/ {len(stock_symbols)} 只股票有复权因子")
-                    except Exception:
-                        logger.debug("复权因子加载失败，使用原始价格")
-
                     for r in records:
-                        price_open = float(r.open) if r.open else None
-                        price_high = float(r.high) if r.high else None
-                        price_low = float(r.low) if r.low else None
-                        price_close = float(r.close) if r.close else None
-
-                        # 应用复权因子（前复权 qfq：price × factor / latest_factor，
-                        # 归一化到最新价 = 真实市场价，与 stock_adjusted_prices 预计算表语义一致）
-                        if adj_factors and r.ts_code in adj_factors:
-                            af_map = adj_factors[r.ts_code]
-                            td = r.trade_date.date() if hasattr(r.trade_date, "date") else r.trade_date
-                            # 用当日的复权因子
-                            af = af_map.get(td)
-                            # 如果当日没有，用最近的前一个日期
-                            if af is None:
-                                _dates = [d for d in sorted(af_map.keys()) if d <= td]
-                                if _dates:
-                                    af = af_map[_dates[-1]]
-                            if af is not None and af > 0:
-                                _latest = latest_factors.get(r.ts_code)
-                                _ratio = (af / _latest) if (_latest and _latest > 0) else 1.0
-                                if price_open: price_open *= _ratio
-                                if price_high: price_high *= _ratio
-                                if price_low:  price_low  *= _ratio
-                                if price_close: price_close *= _ratio
-
                         all_records.append({
-                            "ts_code": r.ts_code,
+                            "ts_code": r["ts_code"],
                             "trade_date": (
-                                r.trade_date.date()
-                                if hasattr(r.trade_date, "date")
-                                else r.trade_date
+                                r["trade_date"].date()
+                                if hasattr(r["trade_date"], "date")
+                                else r["trade_date"]
                             ),
-                            "open": price_open,
-                            "high": price_high,
-                            "low": price_low,
-                            "close": price_close,
-                            "volume": float(r.vol) if r.vol else 0.0,
-                            "amount": float(r.amount) if r.amount else 0.0,
+                            "open": r["open"],
+                            "high": r["high"],
+                            "low": r["low"],
+                            "close": r["close"],
+                            "volume": r["volume"],
+                            "amount": r["amount"],
                         })
+                    logger.info(
+                        f"SQL JOIN 在线复权完成: {len(all_records)} 行 / {len(stock_symbols)} 只股票 "
+                        f"(adj_type={self.adj_type})"
+                    )
                 except Exception as e:
                     logger.warning(f"批量加载日线数据失败: {e}")
 

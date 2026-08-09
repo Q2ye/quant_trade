@@ -769,6 +769,83 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			mapping.setdefault(code, None)
 		return mapping
 
+	async def get_adjusted_daily_batch (
+			self,
+			symbols: List[str],
+			start_date: date,
+			end_date: date,
+			adj_type: str = "qfq",
+	) -> List[Dict[str, Any]]:
+		"""
+		SQL JOIN 一次性计算复权日线（替代 Python 逐行循环，性能关键）。
+
+		算法与在线复权一致：
+		    qfq: adj_price = raw_price × factor / latest_factor（归一化最新价=真实价）
+		    hfq: adj_price = raw_price / factor × latest_factor
+
+		一次 SQL 查询完成 stock_daily JOIN stock_adj_factor JOIN latest_factor，
+		复权计算下推到 PostgreSQL 向量化执行，Python 零循环。
+
+		Args:
+			symbols: 股票 TS 代码列表
+			start_date: 开始日期
+			end_date: 结束日期
+			adj_type: "qfq"(前复权) / "hfq"(后复权)
+
+		Returns:
+			[{ts_code, trade_date, open, high, low, close, volume, amount}]
+		"""
+		if not symbols:
+			return []
+		from sqlalchemy import text
+		if adj_type == "hfq":
+			ratio_expr = "1.0 * f.adj_factor / lf.latest_factor"  # hfq: /factor × latest
+		else:
+			ratio_expr = "f.adj_factor / lf.latest_factor"         # qfq: ×factor / latest
+
+		sql = f"""
+			SELECT d.ts_code, d.trade_date,
+			       ROUND(d.open  * {ratio_expr}::numeric, 4) AS open,
+			       ROUND(d.high  * {ratio_expr}::numeric, 4) AS high,
+			       ROUND(d.low   * {ratio_expr}::numeric, 4) AS low,
+			       ROUND(d.close * {ratio_expr}::numeric, 4) AS close,
+			       d.vol AS volume, d.amount
+			FROM stock_daily d
+			JOIN stock_adj_factor f
+			    ON d.ts_code = f.ts_code AND d.trade_date = f.trade_date
+			JOIN (
+			    SELECT ts_code, MAX(adj_factor) AS latest_factor
+			    FROM stock_adj_factor
+			    WHERE ts_code = ANY(:symbols)
+			    GROUP BY ts_code
+			) lf ON d.ts_code = lf.ts_code
+			WHERE d.ts_code = ANY(:symbols)
+			  AND d.trade_date BETWEEN :start_date AND :end_date
+			  AND lf.latest_factor > 0
+			ORDER BY d.trade_date, d.ts_code
+		"""
+		try:
+			result = await self.session.execute(
+				text(sql),
+				{"symbols": symbols, "start_date": start_date, "end_date": end_date},
+			)
+			rows = result.fetchall()
+			return [
+				{
+					"ts_code": r[0],
+					"trade_date": r[1].date() if hasattr(r[1], "date") else r[1],
+					"open": float(r[2]) if r[2] is not None else None,
+					"high": float(r[3]) if r[3] is not None else None,
+					"low": float(r[4]) if r[4] is not None else None,
+					"close": float(r[5]) if r[5] is not None else None,
+					"volume": float(r[6]) if r[6] is not None else 0.0,
+					"amount": float(r[7]) if r[7] is not None else 0.0,
+				}
+				for r in rows
+			]
+		except Exception as e:
+			raise RepositoryError(f"SQL JOIN 复权查询失败: {e}")
+
 	# ==================== 批量操作方法 ====================
 
 	async def batch_insert_factors (

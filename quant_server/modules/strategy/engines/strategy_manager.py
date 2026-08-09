@@ -2209,9 +2209,15 @@ class StrategyManager(EngineBase):
             if instance and hasattr(instance, "parameters"):
                 params = instance.parameters or {}
             # v3.2: instance.parameters 在恢复时可能为空，回退到策略对象的合并参数
-            if not params:
-                params = getattr(strategy, "parameters", {}) or {}
-            raw = params.get("symbols") or params.get("universe") or params.get("etf_pool") or []
+            # v5.0: instance.parameters 可能非空但缺 universe（如仅存部分参数），
+            # 必须回退到 strategy.parameters（含 DEFAULT_PARAMS）才能识别 all_market。
+            # 合并两个来源，策略对象参数优先（含 DEFAULT_PARAMS 默认值）。
+            strategy_params = getattr(strategy, "parameters", {}) or {}
+            merged_params = dict(strategy_params)
+            if params:
+                merged_params.update(params)
+            raw = (merged_params.get("symbols") or merged_params.get("universe")
+                   or merged_params.get("etf_pool") or [])
             # 避免 list("all_market") → ['a','l','l','_',...] 的拆字 Bug
             if isinstance(raw, str):
                 ts_codes = [raw]
@@ -2321,13 +2327,6 @@ class StrategyManager(EngineBase):
 
         try:
             async with self.session_factory() as session:
-                from shared.database.repositories.market.quote.stock_adjusted_price_repo import (
-                    StockAdjustedPriceRepository,
-                )
-                from shared.database.repositories.market.quote.stock_daily_repo import (
-                    StockDailyRepository,
-                )
-
                 # 1. 获取全 A 股主板代码（00/60 开头）
                 all_codes_result = await session.execute(
                     text(
@@ -2347,52 +2346,22 @@ class StrategyManager(EngineBase):
                     strategy_id, len(all_codes), lookback,
                 )
 
-                # 2. 批量加载日线数据
-                adj_repo = StockAdjustedPriceRepository(session)
-                rows = await adj_repo.get_batch_by_date_range(
+                # 2. 批量加载复权日线数据 — SQL JOIN 在线复权（替代读预计算表 + Python 逐行复权）
+                from shared.database.repositories.market.quote.stock_adj_factor_repo import (
+                    StockAdjFactorRepository,
+                )
+                _adj_repo = StockAdjFactorRepository(session)
+                rows = await _adj_repo.get_adjusted_daily_batch(
                     symbols=all_codes,
                     start_date=start_date,
                     end_date=_end,
                     adj_type="qfq",
-                    freq="D",
                 )
-                logger.info("全市场预热 DIAG: 复权查询 %d 行", len(rows))
-                # v6.11: 在线复权因子缓存（仅当回退到原始数据时加载）
-                adj_factors: dict = {}
-                if not rows:
-                    daily_repo = StockDailyRepository(session)
-                    try:
-                        rows = await daily_repo.get_batch_by_date_range(
-                            symbols=all_codes,
-                            start_date=start_date,
-                            end_date=_end,
-                        )
-                    except Exception as _preheat_daily_err:
-                        logger.warning("全市场预热 DIAG: stock_daily fallback 异常: %r", _preheat_daily_err)
-                        raise
-                    logger.info("全市场预热 DIAG: stock_daily fallback %d 行", len(rows))
-                    # 原始数据 → 应用与前复权实盘数据馈送(data_feed_engine)一致的
-                    # 复权因子（price × factor / latest_factor），避免"预热原始价 + 实盘 qfq 价"
-                    # 混合污染 MA/MACD 指标与选股信号。
-                    try:
-                        from shared.database.repositories.market.quote.stock_adj_factor_repo import (
-                            StockAdjFactorRepository,
-                        )
-                        _adj_repo = StockAdjFactorRepository(session)
-                        adj_factors = await _adj_repo.get_batch_by_date_range(
-                            symbols=all_codes,
-                            start_date=start_date,
-                            end_date=_end,
-                        )
-                        # 全局最新复权因子（qfq 归一化基准：最新价 = 真实市场价）
-                        _latest_factors = await _adj_repo.get_latest_factors(all_codes)
-                    except Exception:
-                        adj_factors = {}
-                        _latest_factors = {}
+                logger.info("全市场预热 DIAG: SQL JOIN 复权查询 %d 行", len(rows))
 
                 if not rows:
                     logger.warning(
-                        "策略 %s 全市场预热: 日线数据为空 (start=%s end=%s codes=%d)",
+                        "策略 %s 全市场预热: 复权日线为空 (start=%s end=%s codes=%d)",
                         strategy_id, start_date, _end, len(all_codes),
                     )
                     return
@@ -2400,41 +2369,19 @@ class StrategyManager(EngineBase):
                 # 3. 按 ts_code 分组，直接构造 DataFrame 写入 _data_cache
                 rows_by_code: dict = {}
                 for r in rows:
-                    code = r.ts_code if hasattr(r, "ts_code") else r["ts_code"]
-                    td = r.trade_date if hasattr(r, "trade_date") else r["trade_date"]
+                    code = r["ts_code"]
+                    td = r["trade_date"]
                     if code not in rows_by_code:
                         rows_by_code[code] = []
 
-                    _c = float(r.close if hasattr(r, "close") else r["close"] or 0)
-                    _o = float(r.open if hasattr(r, "open") else r["open"] or 0)
-                    _h = float(r.high if hasattr(r, "high") else r["high"] or 0)
-                    _l = float(r.low if hasattr(r, "low") else r["low"] or 0)
-
-                    # 应用复权因子（与 data_feed_engine 一致：price × factor / latest_factor）
-                    if adj_factors and code in adj_factors:
-                        _af_map = adj_factors[code]
-                        _td = td.date() if hasattr(td, "date") else td
-                        _af = _af_map.get(_td)
-                        if _af is None:
-                            _dates = [d for d in sorted(_af_map.keys()) if d <= _td]
-                            if _dates:
-                                _af = _af_map[_dates[-1]]
-                        if _af is not None and _af > 0:
-                            _latest = _latest_factors.get(code)
-                            _ratio = (_af / _latest) if (_latest and _latest > 0) else 1.0
-                            _c = _c * _ratio if _c else _c
-                            _o = _o * _ratio if _o else _o
-                            _h = _h * _ratio if _h else _h
-                            _l = _l * _ratio if _l else _l
-
                     rows_by_code[code].append({
                         "trade_date": td,
-                        "close": _c,
-                        "open": _o,
-                        "high": _h,
-                        "low": _l,
-                        "volume": float(r.vol if hasattr(r, "vol") else (r["vol"] or r.get("volume", 0) or 0)),
-                        "amount": float(r.amount if hasattr(r, "amount") else (r.get("amount", 0) or 0)),
+                        "close": float(r["close"] or 0),
+                        "open": float(r["open"] or 0),
+                        "high": float(r["high"] or 0),
+                        "low": float(r["low"] or 0),
+                        "volume": float(r["volume"] or 0),
+                        "amount": float(r["amount"] or 0),
                     })
 
                 populated = 0
@@ -2444,9 +2391,11 @@ class StrategyManager(EngineBase):
                     df = pd.DataFrame(recs)
                     df = df.sort_values("trade_date").reset_index(drop=True)
                     df = df[["close", "volume", "amount", "open", "high", "low"]]
-                    # 限制缓存行数（与 _append_data 的 tail(120) 一致）
-                    if len(df) > 120:
-                        df = df.tail(120).reset_index(drop=True)
+                    # 限制缓存行数（按策略 lookback 适配：MA200 需 250 天，
+                    # 低吸轮动等 60 天策略保持 120。下限 120 防极短。）
+                    _max_rows = max(lookback + 60, 120)
+                    if len(df) > _max_rows:
+                        df = df.tail(_max_rows).reset_index(drop=True)
                     strategy._data_cache[code] = df
                     populated += 1
 
