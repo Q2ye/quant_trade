@@ -116,6 +116,9 @@ class TradingSignal:
     # 原因
     reason: str = ""
 
+    # v3.4: 父信号ID（候选→买入信号链路关联，用于全链路追溯）
+    parent_id: Optional[str] = None
+
     # 时间
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -150,6 +153,7 @@ class TradingSignal:
             "amount": self.amount,
             "confidence": self.confidence,
             "reason": self.reason,
+            "parent_id": self.parent_id,   # v3.4: 父信号ID
             "timestamp": self.timestamp.isoformat(),
             "is_executed": self.is_executed,
             "executed_at": self.executed_at.isoformat() if self.executed_at else None,

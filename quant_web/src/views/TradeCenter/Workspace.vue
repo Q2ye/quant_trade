@@ -3,8 +3,8 @@ import { ref, reactive, computed, onMounted, h } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import {
   NTabs, NTabPane, NCard, NDataTable, NButton, NTag, NSpin,
-  NResult, NEmpty, NModal, NForm, NFormItem, NInput, NSelect,
-  NProgress, NBadge, NAlert, useMessage, NSpace,
+  NResult, NEmpty, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect,
+  NProgress, NBadge, NAlert, useMessage, useDialog, NSpace,
 } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import SmartIcon from "@/components/common/SmartIcon.vue";
@@ -19,6 +19,7 @@ import basketAPI from "@/api/basket";
 const router = useRouter();
 const route = useRoute();
 const message = useMessage();
+const dialog = useDialog();
 
 // WebSocket: VITE_WS_URL 为 ws://host:port/api/ws 格式时才启用
 const wsUrl = import.meta.env.VITE_WS_URL as string | undefined;
@@ -83,7 +84,7 @@ const loadAllData = async () => {
       }).catch(() => {}),
     ]);
 
-    // 账户列表 API 返回 { success: true, data: [...] }
+    // 账户列表 API 返回 { success: true, data: [...] }（v2.6 起含 daily_pnl/daily_return）
     const acctList = (acctRes as any)?.data?.data || (acctRes as any)?.data || [];
     accounts.value = (Array.isArray(acctList) ? acctList : []).map((a: any) => ({
       ...a,
@@ -92,6 +93,8 @@ const loadAllData = async () => {
       available_cash: a.available_balance ?? a.available_cash ?? 0,
       market_value: a.market_value ?? 0,
       total_pnl: a.total_pnl ?? a.pnl ?? 0,
+      daily_pnl: a.daily_pnl ?? 0,
+      daily_return: a.daily_return ?? 0,
     }));
     if (accounts.value.length > 0 && !selectedAccountId.value) {
       selectedAccountId.value = String(accounts.value[0].id);
@@ -130,6 +133,7 @@ const refreshAfterTrade = async () => {
 
 // ============================================================
 // Account summary (top bar)
+// 当日盈亏/收益率取日终结算快照字段（daily_pnl/daily_return），非累计 pnl
 // ============================================================
 const accountStats = computed(() => {
   if (accounts.value.length === 0) return { totalAsset: 0, availableCash: 0, marketValue: 0, pnl: 0, pnlRate: 0 };
@@ -138,8 +142,8 @@ const accountStats = computed(() => {
     totalAsset: (a as any).total_asset ?? 0,
     availableCash: (a as any).available_cash ?? 0,
     marketValue: (a as any).market_value ?? 0,
-    pnl: (a as any).total_pnl ?? 0,
-    pnlRate: (a as any).pnl_rate ?? 0,
+    pnl: (a as any).daily_pnl ?? 0,
+    pnlRate: (a as any).daily_return ?? 0,
   };
 });
 
@@ -186,6 +190,50 @@ const handleRecordFromSignal = (signal: any) => {
 const handleRecordSubmitted = () => {
   refreshAfterTrade();
 };
+
+// ============================================================
+// 买入订单 → 快捷卖出
+// ============================================================
+// 对已成交/部成的买入订单提供"卖出"快捷入口，预填卖出方向 + 标的 + 价格/数量
+const handleQuickSell = (order: any) => {
+  const ts_code = order.ts_code || order.symbol || "";
+  const pos = getPositionByTsCode(ts_code);
+  recordPrefill.value = {
+    ts_code,
+    direction: "sell",
+    price: pos?.current_price ?? order.price ?? null,
+    quantity: pos?.available_volume ?? pos?.volume ?? order.volume ?? null,
+  };
+  showRecordModal.value = true;
+};
+
+// ============================================================
+// 买卖 FIFO 配对追溯
+// ============================================================
+const showRoundTripModal = ref(false);
+const roundTrips = ref<any>(null);
+const roundTripLoading = ref(false);
+
+const openRoundTrips = async () => {
+  const accountId = selectedAccountId.value;
+  if (!accountId) {
+    message.warning("请先选择账户");
+    return;
+  }
+  roundTripLoading.value = true;
+  showRoundTripModal.value = true;
+  roundTrips.value = null;
+  try {
+    roundTrips.value = await tradeAPI.getRoundTrips(accountId);
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || "加载配对失败");
+  } finally {
+    roundTripLoading.value = false;
+  }
+};
+
+const roundTripStocks = computed(() => roundTrips.value?.stocks ?? []);
+const roundTripSummary = computed(() => roundTrips.value?.summary ?? null);
 
 // ============================================================
 // Signal tab columns
@@ -331,6 +379,20 @@ const orderColumns: DataTableColumns<Order> = [
     title: "状态", key: "status", width: 80,
     render: (row: any) => h(NTag, { type: statusMap[row.status]?.type || "default", size: "small", bordered: false }, { default: () => statusMap[row.status]?.text || row.status }),
   },
+  {
+    title: "操作", key: "actions", width: 80, fixed: "right",
+    render: (row: any) => {
+      const canQuickSell =
+        row.direction === "buy" &&
+        (row.status === "filled" || row.status === "partial_filled");
+      if (!canQuickSell) return null;
+      return h(
+        NButton,
+        { size: "tiny", type: "error", onClick: () => handleQuickSell(row) },
+        { default: () => "卖出" },
+      );
+    },
+  },
 ];
 
 // ============================================================
@@ -417,9 +479,12 @@ const accountColumns: DataTableColumns<Account> = [
     },
   },
   {
-    title: "操作", key: "actions", width: 100,
+    title: "操作", key: "actions", width: 230,
     render: (row) => h("div", { style: { display: "flex", gap: "4px" } }, [
       h(NButton, { size: "tiny", onClick: () => openAccountEditor(row) }, { default: () => "编辑" }),
+      h(NButton, { size: "tiny", type: "success", onClick: () => openFundModal(row, "deposit") }, { default: () => "入金" }),
+      h(NButton, { size: "tiny", type: "warning", onClick: () => openFundModal(row, "withdraw") }, { default: () => "出金" }),
+      h(NButton, { size: "tiny", type: "error", onClick: () => confirmDeleteAccount(row) }, { default: () => "删除" }),
     ]),
   },
 ];
@@ -451,10 +516,13 @@ async function handleSaveAccount() {
     const payload: any = {
       account_name: accountForm.account_name,
       account_type: accountForm.account_type,
-      initial_balance: accountForm.initial_balance,
       broker: accountForm.broker,
       broker_account_id: accountForm.broker_account_id,
     };
+    // 初始资金仅在创建时提交；编辑时后端无该字段，避免误导
+    if (!editingAccountId.value) {
+      payload.initial_balance = accountForm.initial_balance;
+    }
     if (editingAccountId.value) {
       await request.put(`/quantTrade/account/${editingAccountId.value}`, payload);
       message.success("账户已更新");
@@ -478,6 +546,59 @@ async function handleDeleteAccount(id: string) {
     message.success("账户已删除");
   } catch (e: any) {
     message.error(e?.response?.data?.detail || "删除失败");
+  }
+}
+
+function confirmDeleteAccount(account: any) {
+  const name = account.account_name || account.account_number || String(account.id);
+  dialog.warning({
+    title: "删除账户",
+    content: `确定删除账户「${name}」？有持仓或未完成订单时后端会拒绝删除。`,
+    positiveText: "删除",
+    negativeText: "取消",
+    onPositiveClick: () => handleDeleteAccount(String(account.id)),
+  });
+}
+
+// ============================================================
+// 入金 / 出金
+// ============================================================
+const showFundModal = ref(false);
+const fundAccount = ref<any>(null);
+const fundType = ref<"deposit" | "withdraw">("deposit");
+const fundAmount = ref<number | null>(null);
+const fundSubmitting = ref(false);
+
+function openFundModal(account: any, type: "deposit" | "withdraw") {
+  fundAccount.value = account;
+  fundType.value = type;
+  fundAmount.value = null;
+  showFundModal.value = true;
+}
+
+async function handleFundSubmit() {
+  if (!fundAccount.value || !fundAmount.value || fundAmount.value <= 0) {
+    message.warning("请输入有效金额");
+    return;
+  }
+  const id = String(fundAccount.value.id);
+  const url =
+    fundType.value === "deposit"
+      ? `/quantTrade/account/${id}/deposit`
+      : `/quantTrade/account/${id}/withdraw`;
+  fundSubmitting.value = true;
+  try {
+    await request.post(url, { amount: fundAmount.value });
+    message.success(fundType.value === "deposit" ? "入金成功" : "出金成功");
+    showFundModal.value = false;
+    await loadAllData();
+  } catch (e: any) {
+    message.error(
+      e?.response?.data?.detail ||
+        (fundType.value === "deposit" ? "入金失败" : "出金失败"),
+    );
+  } finally {
+    fundSubmitting.value = false;
   }
 }
 
@@ -671,6 +792,9 @@ onMounted(() => loadAllData());
               <n-spin :show="loading">
                 <div class="tab-toolbar">
                   <n-select v-model:value="orderFilter" :options="orderFilterOptions" size="small" style="width: 120px" />
+                  <n-button size="small" type="primary" @click="openRoundTrips">
+                    平仓配对
+                  </n-button>
                 </div>
                 <n-data-table
                   v-if="filteredOrders.length > 0"
@@ -787,12 +911,101 @@ onMounted(() => loadAllData());
       </template>
     </n-modal>
 
+    <!-- 入金 / 出金 Modal -->
+    <n-modal
+      v-model:show="showFundModal"
+      preset="card"
+      :title="fundType === 'deposit' ? '账户入金' : '账户出金'"
+      style="width: 380px"
+      :mask-closable="false"
+    >
+      <n-form label-placement="left" label-width="80px">
+        <n-form-item :label="fundType === 'deposit' ? '入金金额' : '出金金额'">
+          <n-input-number
+            v-model:value="fundAmount"
+            :min="0.01"
+            :precision="2"
+            style="width: 100%"
+            placeholder="输入金额（元）"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showFundModal = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="fundSubmitting"
+            @click="handleFundSubmit"
+          >
+            确认
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
     <!-- Trade Record Modal -->
     <TradeRecordModal
       v-model="showRecordModal"
       :prefilled="recordPrefill"
       @submitted="handleRecordSubmitted"
     />
+
+    <!-- 买卖 FIFO 配对追溯 Modal -->
+    <n-modal
+      v-model:show="showRoundTripModal"
+      preset="card"
+      title="买卖配对追溯（FIFO）"
+      style="width: 720px; max-width: 92vw"
+    >
+      <n-spin :show="roundTripLoading">
+        <div v-if="roundTripSummary" class="rt-summary">
+          <span class="rt-summary-item">
+            已实现盈亏
+            <b :class="roundTripSummary.total_realized_pnl >= 0 ? 'text-up' : 'text-down'">
+              ¥{{ roundTripSummary.total_realized_pnl.toLocaleString() }}
+            </b>
+          </span>
+          <span class="rt-summary-item">平仓 <b>{{ roundTripSummary.closed_count }}</b> 笔</span>
+          <span class="rt-summary-item">未平仓 <b>{{ roundTripSummary.open_count }}</b> 只</span>
+        </div>
+
+        <n-empty
+          v-if="!roundTripLoading && roundTripStocks.length === 0"
+          description="暂无成交配对数据"
+        />
+
+        <div v-for="st in roundTripStocks" :key="st.ts_code" class="rt-stock">
+          <div class="rt-stock-head">
+            <span class="rt-code">{{ st.ts_code }}</span>
+            <span class="rt-pnl" :class="st.realized_pnl >= 0 ? 'text-up' : 'text-down'">
+              累计 ¥{{ st.realized_pnl.toFixed(2) }}
+            </span>
+          </div>
+
+          <!-- 平仓明细 -->
+          <div v-for="(c, ci) in st.closed" :key="ci" class="rt-closed">
+            <div class="rt-sell-line">
+              卖出 {{ c.sell_volume }} 股 @ ¥{{ c.sell_price }}
+              <span class="rt-sell-pnl" :class="c.total_realized_pnl >= 0 ? 'text-up' : 'text-down'">
+                {{ c.total_realized_pnl >= 0 ? "+" : "" }}¥{{ c.total_realized_pnl.toFixed(2) }}
+              </span>
+            </div>
+            <div v-for="(m, mi) in c.matched_buys" :key="mi" class="rt-buy-line">
+              ← 买入 {{ m.matched_volume }} 股 @ ¥{{ m.buy_price }}（持有 {{ m.holding_days }} 天）
+              <span class="rt-buy-pnl" :class="m.realized_pnl >= 0 ? 'text-up' : 'text-down'">
+                {{ m.realized_pnl >= 0 ? "+" : "" }}¥{{ m.realized_pnl.toFixed(2) }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 未平仓 -->
+          <div v-if="st.open && st.open.remaining_volume > 0" class="rt-open">
+            持仓 {{ st.open.remaining_volume }} 股，成本 ¥{{ st.open.cost_price.toFixed(4) }}
+          </div>
+        </div>
+      </n-spin>
+    </n-modal>
   </div>
 </template>
 
@@ -966,5 +1179,78 @@ onMounted(() => loadAllData());
 }
 .text-secondary {
   color: var(--n-text-color-3);
+}
+
+// ---- 买卖配对追溯 Modal ----
+.rt-summary {
+  display: flex;
+  gap: 24px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: var(--n-card-color);
+  border: 1px solid var(--n-border-color);
+  border-radius: var(--n-border-radius);
+  .rt-summary-item {
+    font-size: 13px;
+    color: var(--n-text-color-2);
+    b {
+      margin-left: 4px;
+      font-size: 14px;
+      color: var(--n-text-color-1);
+    }
+  }
+}
+.rt-stock {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--n-border-color);
+  border-radius: var(--n-border-radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.rt-stock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  .rt-code {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--n-text-color-1);
+    font-family: monospace;
+  }
+  .rt-pnl {
+    font-size: 13px;
+    font-weight: 600;
+  }
+}
+.rt-closed {
+  padding: 6px 0 6px 8px;
+  border-left: 2px solid var(--n-color-target);
+  margin-bottom: 6px;
+}
+.rt-sell-line {
+  font-size: 13px;
+  color: var(--n-text-color-1);
+  display: flex;
+  justify-content: space-between;
+  .rt-sell-pnl {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+}
+.rt-buy-line {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+  margin-top: 2px;
+  display: flex;
+  justify-content: space-between;
+  .rt-buy-pnl {
+    font-variant-numeric: tabular-nums;
+  }
+}
+.rt-open {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--n-text-color-2);
 }
 </style>

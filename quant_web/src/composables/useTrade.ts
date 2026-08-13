@@ -200,14 +200,14 @@ export function useTrade() {
   ) => {
     const amount = price * volume;
 
-    // 佣金: 万分之三，最低5元
-    const commission = Math.max(amount * 0.0003, 5);
+    // 佣金: 万一免五
+    const commission = amount * 0.0001;
 
-    // 印花税: 卖出时千分之一
-    const tax = direction === "sell" ? amount * 0.001 : 0;
+    // 印花税: 卖出时 0.05%（2023-08-28 起）
+    const tax = direction === "sell" ? amount * 0.0005 : 0;
 
-    // 过户费: 万分之零点二
-    const transferFee = amount * 0.00002;
+    // 过户费: 万0.1（沪深两市、买卖双向）
+    const transferFee = amount * 0.0001;
 
     return {
       commission,

@@ -97,9 +97,10 @@ class AccountRepository(BaseRepository[Account]):
 		Returns:
 			账户列表，按创建时间倒序排列
 		"""
-		# 构建查询
+		# 构建查询（默认排除软删除账户，避免已删除账户仍显示/参与业务）
 		query = self.build_query()
 		query = query.where(Account.user_id == user_id)
+		query = query.where(Account.is_deleted == 0)
 		query = query.order_by(desc(Account.created_at))
 		query = query.offset(skip).limit(limit)
 
@@ -815,15 +816,21 @@ class AccountRepository(BaseRepository[Account]):
 		from decimal import Decimal
 
 		assets = settlement_data.get("assets_snapshot", {}) or {}
+		# v2.6: 修正字段错位 —— opening 用昨日总资产、total_trades 用当日成交笔数（原为 pnl）
+		net_deposit = Decimal(str(settlement_data.get("net_deposit", 0) or 0))
 		stmt = AccountStatement(
 			account_id=settlement_data["account_id"],
 			statement_date=settlement_data["trading_day"],
 			statement_period=settlement_data.get("settlement_type", "daily"),
-			opening_balance=Decimal(str(assets.get("total_asset", 0))),
+			opening_balance=Decimal(str(settlement_data.get("opening_balance", assets.get("total_asset", 0)))),
 			closing_balance=Decimal(str(assets.get("total_asset", 0))),
-			total_trades=Decimal(str(settlement_data.get("pnl", 0))),
+			total_deposits=net_deposit if net_deposit > 0 else Decimal("0"),
+			total_withdrawals=(-net_deposit) if net_deposit < 0 else Decimal("0"),
+			total_trades=Decimal(str(settlement_data.get("total_trades", 0))),
+			total_fees=Decimal(str(settlement_data.get("total_fees", 0))),
 			statement_data={
 				"pnl": settlement_data.get("pnl", 0),
+				"net_deposit": float(net_deposit),
 				"assets": assets,
 				"statement_path": settlement_data.get("statement_path", ""),
 				"status": settlement_data.get("status", "completed"),

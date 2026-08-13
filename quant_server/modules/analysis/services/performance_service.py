@@ -350,9 +350,11 @@ class PerformanceService:
                 account_id, start_date, end_date
             )
 
-            # 3. 构建资产曲线
+            # 3. 构建资产曲线（过滤 total_asset<=0 的历史错误快照，避免 pct_change 产生 inf/NaN 导致 DivisionUndefined）
             equity_curve = []
             for snapshot in snapshots:
+                if snapshot.total_asset is None or float(snapshot.total_asset) <= 0:
+                    continue
                 equity_curve.append({
                     'trade_date': snapshot.trade_date,
                     'equity': snapshot.total_asset,
@@ -360,8 +362,8 @@ class PerformanceService:
                     'market_value': snapshot.market_value
                 })
 
-            # 快照数量不足时返回退化数据（仅资产信息，无收益/风险计算）
-            if len(snapshots) < 2:
+            # 有效快照数量不足时返回退化数据（仅资产信息，无收益/风险计算）
+            if len(equity_curve) < 2:
                 latest = snapshots[-1] if snapshots else None
                 metrics = PerformanceMetrics(
                     strategy_id='',
@@ -378,7 +380,7 @@ class PerformanceService:
                     max_drawdown=Decimal("0"),
                     var_95=Decimal("0"),
                     expected_shortfall=Decimal("0"),
-                    trading_days=len(snapshots),
+                    trading_days=len(equity_curve),
                     total_days=(end_date - start_date).days + 1
                 )
                 metrics.daily_returns = []

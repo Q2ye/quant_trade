@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.trade.utils.cost_calculator import CostCalculator
+from modules.trade.utils.cost_calculator import calculate_fee
 from shared.database.models.business_models import (
     Account, Order, Position, Signal, Trade, TradeFee,
 )
@@ -75,12 +75,6 @@ class TradeRecordService:
     这是一个无状态服务，不持有事件引擎引用，被 TradeHandler 调用。
     """
 
-    # A股费率常量
-    COMMISSION_RATE = Decimal("0.0003")  # 佣金 0.03%
-    MIN_COMMISSION = Decimal("5.00")     # 最低佣金 5 元
-    STAMP_DUTY_RATE = Decimal("0.001")   # 印花税 0.1%（仅卖出）
-    TRANSFER_FEE_RATE = Decimal("0.00002")  # 过户费 0.002%
-
     def __init__(self, session: AsyncSession):
         self._session = session
         self._order_repo = OrderRepository(session)
@@ -89,7 +83,6 @@ class TradeRecordService:
         self._position_repo = PositionRepository(session)
         self._account_repo = AccountRepository(session)
         self._signal_repo = SignalRepository(session)
-        self._cost_calc = CostCalculator()
 
     # ==================== 核心方法：单笔成交录入 ====================
 
@@ -223,7 +216,7 @@ class TradeRecordService:
                 cash_change = trade_amount - total_fee_amount
 
             updated_account = await self._update_account_balance(
-                account, cash_change, price, quantity, direction
+                account, cash_change, price, quantity, direction, total_fee_amount
             )
 
             # ---- 8. 回写 Signal ----
@@ -251,41 +244,34 @@ class TradeRecordService:
         price: Decimal,
         quantity: int,
         ts_code: str,
-        user_fees: Optional[Dict[str, Decimal]] = None,
+        user_fees: Optional[Dict[str, Optional[Decimal]]] = None,
     ) -> List[Tuple[str, Decimal]]:
         """
         计算交易费用。
 
-        优先使用用户手动填的费用；若未填，则按 A 股标准费率自动计算。
+        以统一费率入口 `calculate_fee`（万一免五、印花税 0.05%、过户费万0.1 沪深双边）
+        计算基准费用；用户手动填写的费用项覆盖对应项，未填写（None/缺省）的项
+        保留自动计算值，避免"只填佣金漏算印花税/过户费"。
         """
-        # 如果用户提供了完整费用，直接使用
-        if user_fees and any(v > 0 for v in user_fees.values()):
-            fees = []
+        base = calculate_fee(
+            direction=direction,
+            price=float(price),
+            quantity=quantity,
+            ts_code=ts_code,
+        )
+        fee_map: Dict[str, Decimal] = {
+            "commission": Decimal(str(base["commission"])),
+            "stamp_duty": Decimal(str(base["stamp_duty"])),
+            "transfer_fee": Decimal(str(base["transfer_fee"])),
+        }
+
+        if user_fees:
             for fee_type in ("commission", "stamp_duty", "transfer_fee"):
-                amount = user_fees.get(fee_type, Decimal("0"))
-                if amount > 0:
-                    fees.append((fee_type, amount))
-            return fees
+                user_val = user_fees.get(fee_type)
+                if user_val is not None:
+                    fee_map[fee_type] = Decimal(str(user_val))
 
-        # 自动计算
-        trade_amount = price * quantity
-        fees = []
-
-        # 佣金：0.03%，最低 5 元
-        commission = max(trade_amount * self.COMMISSION_RATE, self.MIN_COMMISSION)
-        fees.append(("commission", commission))
-
-        # 印花税：仅卖出 0.1%
-        if direction == "sell":
-            stamp = trade_amount * self.STAMP_DUTY_RATE
-            fees.append(("stamp_duty", stamp))
-
-        # 过户费：0.002%，仅沪市
-        if ts_code.startswith("6"):
-            transfer = max(trade_amount * self.TRANSFER_FEE_RATE, Decimal("1.00"))
-            fees.append(("transfer_fee", transfer))
-
-        return fees
+        return [(fee_type, amount) for fee_type, amount in fee_map.items() if amount > 0]
 
     async def _upsert_position(
         self,
@@ -382,16 +368,22 @@ class TradeRecordService:
         price: Decimal,
         quantity: int,
         direction: str,
+        fee_amount: Decimal,
     ) -> Account:
-        """更新账户余额和市值"""
-        old_balance = Decimal(str(account.total_balance)) if account.total_balance else Decimal("0")
+        """更新账户余额和市值。
+
+        总资产 = 现金 + 持仓市值。买卖是现金↔持仓的内部转换，不改变总资产，
+        总资产只随费用减少（修复：原实现把总资产当现金扣，导致账户数据失真）。
+        市值按成交价近似，日终结算会按收盘价重估校正。
+        """
         old_available = Decimal(str(account.available_balance)) if account.available_balance else Decimal("0")
         old_market_value = Decimal(str(account.market_value)) if account.market_value else Decimal("0")
+        old_balance = Decimal(str(account.total_balance)) if account.total_balance else Decimal("0")
 
-        new_balance = old_balance + cash_change
         new_available = old_available + cash_change
+        new_balance = old_balance - fee_amount
 
-        # 更新市值（买入增加，卖出减少）
+        # 市值（买入增加，卖出减少）
         position_value_change = price * quantity
         if direction == "buy":
             new_market_value = old_market_value + position_value_change

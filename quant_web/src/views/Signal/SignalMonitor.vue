@@ -9,6 +9,7 @@ import type { DataTableColumns } from "naive-ui";
 import tradeAPI from "@/api/trade";
 import SmartIcon from "@/components/common/SmartIcon.vue";
 import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
+import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const message = useMessage();
 
@@ -100,6 +101,14 @@ const handlePageChange = (page: number) => {
 // ============================================================
 // Actions
 // ============================================================
+// v3.4: 信号链路追溯
+const showTrace = ref(false);
+const traceSignalId = ref("");
+const openTrace = (row: any) => {
+  traceSignalId.value = row.signal_id || row.id;
+  showTrace.value = true;
+};
+
 const handleReview = async (signalId: string, action: string) => {
   const found = signals.value.find((s) => (s.signal_id || s.id) === signalId);
   const prevStatus = found?.signal_status;
@@ -172,6 +181,7 @@ const statusTag = (status: string) => {
     executed: { text: "已执行", type: "info" },
     rejected: { text: "已拒绝", type: "default" },
     expired: { text: "已过期", type: "default" },
+    cancelled: { text: "已取消", type: "default" },
   };
   return map[status] || { text: status, type: "default" as const };
 };
@@ -251,20 +261,25 @@ const columns: DataTableColumns<any> = [
     render: (row) => h(NTag, { type: statusTag(signalStatus(row)).type, size: "small", bordered: false }, { default: () => statusTag(signalStatus(row)).text }),
   },
   {
-    title: "操作", key: "actions", width: 140, fixed: "right" as const,
+    title: "操作", key: "actions", width: 200, fixed: "right" as const,
     render: (row) => {
       const sid = row.signal_id || row.id;
       const st = signalStatus(row);
+      const traceBtn = () => h(NButton, { size: "tiny", quaternary: true, onClick: () => openTrace(row) }, { default: () => "追溯" });
       if (st === "pending") {
         return h("div", { style: { display: "flex", gap: "4px" } }, [
           h(NButton, { size: "tiny", type: "success", loading: reviewing.value.has(sid), onClick: () => handleReview(sid, "approved") }, { default: () => "采纳" }),
           h(NButton, { size: "tiny", type: "error", loading: reviewing.value.has(sid), onClick: () => handleReview(sid, "rejected") }, { default: () => "拒绝" }),
+          traceBtn(),
         ]);
       }
       if (st === "approved") {
-        return h(NButton, { size: "tiny", type: "primary", onClick: () => openFill(row) }, { default: () => "录入成交" });
+        return h("div", { style: { display: "flex", gap: "4px" } }, [
+          h(NButton, { size: "tiny", type: "primary", onClick: () => openFill(row) }, { default: () => "录入成交" }),
+          traceBtn(),
+        ]);
       }
-      return h("span", { style: { fontSize: "12px", color: "var(--n-text-color-3)" } }, "--");
+      return traceBtn();
     },
   },
 ];
@@ -390,6 +405,13 @@ onMounted(() => loadSignals());
       v-model="showRecordModal"
       :prefilled="recordPrefill"
       @submitted="handleRecordSubmitted"
+    />
+
+    <!-- v3.4: 信号链路追溯 -->
+    <SignalTraceModal
+      :show="showTrace"
+      :signal-id="traceSignalId"
+      @update:show="showTrace = $event"
     />
   </div>
 </template>

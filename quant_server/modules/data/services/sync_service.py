@@ -73,6 +73,7 @@ import asyncio
 import json
 import logging
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional, Tuple
@@ -528,6 +529,57 @@ def _get_cached_rate_limit(rate_key: str) -> int:
     except Exception:
         _rate_limit_cache[rate_key] = 0
         return 0
+
+# ==== per-interface token bucket (Tushare rate limit, shared across types) ====
+class _TokenBucket:
+    """按接口频率的令牌桶限流器（Tushare 各接口独立限频，跨类型/实例共享）。
+
+    固定 sleep 0.5s（并发 8 → 960/min）会打爆 500/min 的接口（如 adj_factor），
+    触发限流重试导致同步 20+ 分钟。令牌桶按接口限流值（80% 余量）全局限速。
+    """
+    def __init__(self, rate_per_min: float):
+        # 80% 安全余量，避免打满触限触发重试
+        self.rate = max(rate_per_min * 0.8 / 60.0, 0.5)  # 请求/秒
+        self.capacity = max(self.rate, 1.0)
+        self.tokens = self.capacity
+        self.updated = time.monotonic()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self):
+        async with self.lock:
+            now = time.monotonic()
+            self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
+            self.updated = now
+            if self.tokens < 1.0:
+                wait = (1.0 - self.tokens) / self.rate
+                self.tokens = 0.0
+                self.updated = now + wait
+                await asyncio.sleep(wait)
+            else:
+                self.tokens -= 1.0
+
+
+_rate_buckets: dict = {}
+
+def _get_bucket(rate_key: str) -> Optional[_TokenBucket]:
+    """获取指定接口的令牌桶（用 Tushare 接口真实频率，非 config 并发值）。
+
+    config sync_rate_limits 的值为并发数（Semaphore 用），不是频率；
+    令牌桶必须用 tushare_source._RATE_LIMITS 的真实接口频率（次/分钟）。
+    """
+    if not rate_key:
+        return None
+    try:
+        from shared.sources.tushare_source import _RATE_LIMITS
+        rate = _RATE_LIMITS.get(rate_key, 0)
+    except Exception:
+        rate = 0
+    if rate <= 0:
+        return None
+    if rate_key not in _rate_buckets:
+        _rate_buckets[rate_key] = _TokenBucket(rate)
+    return _rate_buckets[rate_key]
+
 # ================================================================
 class DataSyncService:
 	"""
@@ -1697,8 +1749,12 @@ class DataSyncService:
 								await s.rollback()
 								logger.error(f"[{label}] {ts_code} worker error: {_fmt_err(_we, 200)}")
 								result = {"added": 0, "updated": 0, "failed": True}
-				# 限流节流：每次调用后短暂冷却，防止响应太快打爆 Tushare 频率限制
-				await asyncio.sleep(0.5)
+				# 限流节流：按接口频率令牌桶限流（替代固定 0.5s，避免打爆 Tushare 限频）
+				_bucket = _get_bucket(rate_key)
+				if _bucket:
+					await _bucket.acquire()
+				else:
+					await asyncio.sleep(0.5)
 			else:
 				async with sem:
 					if await self._is_cancelled():
@@ -1763,6 +1819,105 @@ class DataSyncService:
 		_preprocess_records(data, date_fields=['trade_date'])  # 批量转换，替代逐条遍历
 		count = await repo.bulk_upsert(data)
 		return count, 0
+
+	async def _sync_by_date_batch(
+			self,
+			ts_codes: List[str],
+			end_date: date,
+			latest_dates_map: Dict[str, Optional[date]],
+			repo,
+			fetch_fn,
+			data_type_label: str,
+			max_dates: int = 250,
+	) -> Optional[Dict[str, Any]]:
+		"""按交易日批量拉取全市场（trade_date 一次调用返回全市场当日数据）。
+
+		当需要补的交易日数量在 1..max_dates 之间时启用（日常增量通常 1 天），
+		将 N 次逐股 HTTP 请求降为 M 次（M = 缺的交易日数），从 46min+ 降到分钟级。
+		不适用时返回 None → 调用方退回逐股路径（逐股路径对已是最新的股票跳过，
+		不产生 HTTP 请求，只在多数股票都缺当日数据时慢——正是本方法解决的情形）。
+
+		Args:
+			ts_codes: 活跃股票列表（用于过滤全市场响应到本系统跟踪的股票）
+			end_date: 目标交易日（通常今天）
+			latest_dates_map: {ts_code: 最新已同步日期}
+			repo: 目标表 Repository（需有 ``bulk_upsert``）
+			fetch_fn: 同步函数 ``(trade_date: str) -> pd.DataFrame``，返回全市场当日数据
+			data_type_label: 日志用数据类型名
+			max_dates: 需要补的交易日上限，超过则退回逐股
+		"""
+		# 归一化为 date（DateTime 列可能返回 datetime）
+		dated = sorted({
+			d.date() if hasattr(d, 'date') else d
+			for d in latest_dates_map.values() if d
+		})
+		if not dated:
+			return None
+		# 用 90 分位作为"主市场最新"基准：避免个别长期停牌/滞后股票（如 000638.SZ
+		# 停在 04-13）把 min_latest 拉低，导致每天重复拉取 87 个历史交易日并全量 upsert。
+		# 落后于基准的少数股票由调用方的逐股路径补齐（逐股会跳过已最新的股票）。
+		ref_date = dated[min(len(dated) - 1, int(len(dated) * 0.9))]
+		if end_date <= ref_date:
+			return None  # 主市场已是最新，无需同步
+
+		# 需要补的自然日（跳过周末；节假日由 API 空响应兜底）
+		needed: List[date] = []
+		cur = ref_date + timedelta(days=1)
+		while cur <= end_date:
+			if cur.weekday() < 5:
+				needed.append(cur)
+			cur += timedelta(days=1)
+		if not needed or len(needed) > max_dates:
+			return None
+
+		mode_summary = {"full": 0, "incremental": len(needed), "overlap": 0, "up_to_date": 0}
+		total_added = 0
+		failed_dates = 0
+		ts_set = set(ts_codes)
+		async with SyncTimingLogger(logger, data_type_label, slow_threshold=10.0) as timer:
+			for d in needed:
+				try:
+					async with timer.node(SyncTimingLogger.NODE_HTTP_FETCH, str(d)):
+						df = await self._cancellable_run_in_executor(
+							fetch_fn, trade_date=d.strftime("%Y%m%d"),
+						)
+					if df is None or df.empty:
+						continue  # 非交易日或停市
+					# 只保留本系统跟踪的股票，与逐股路径口径一致
+					if ts_set:
+						df = df[df["ts_code"].isin(ts_set)]
+					if df.empty:
+						continue
+					async with timer.node(SyncTimingLogger.NODE_CONVERT, str(d)):
+						data = _convert_records_datetime(df.to_dict("records"))
+					async with timer.node(SyncTimingLogger.NODE_DB_UPSERT, str(d)):
+						_preprocess_records(data, date_fields=["trade_date"])
+						count = await repo.bulk_upsert(data)
+					total_added += int(count or 0)
+				except Exception as e:
+					logger.error(f"[{data_type_label}] 批量同步 {d} 失败: {_fmt_err(e, 150)}")
+					failed_dates += 1
+
+		if total_added == 0 and failed_dates == 0:
+			# 零写入且零失败：可能是批量接口不可用（空响应）或全部为非交易日。
+			# 退回逐股路径，避免静默跳过当天数据（逐股对已最新股票跳过，无多余 HTTP）。
+			logger.warning(
+				f"[{data_type_label}] 批量同步未写入任何数据（日期={len(needed)}），退回逐股路径"
+			)
+			return None
+
+		logger.info(
+			f"[{data_type_label}] 按交易日批量同步完成: 日期={len(needed)}, 写入={total_added}, 失败={failed_dates}"
+		)
+		return {
+			"records_added": total_added,
+			"records_updated": 0,
+			"records_skipped": 0,
+			"records_failed": failed_dates,
+			"total_items": len(ts_codes) * len(needed),
+			"mode_summary": mode_summary,
+			"message": f"{data_type_label} 按交易日批量同步完成",
+		}
 
 	async def _create_sync_task(
 			self,
@@ -2080,6 +2235,20 @@ class DataSyncService:
 		# 一次 SQL 查询获取 {ts_code → latest_trade_date}，避免每个 worker 逐股查询
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_daily_repo.get_latest_trade_dates_batch(ts_codes)
+
+		# ===== 步骤 2.5：按交易日批量拉取全市场（首选路径） =====
+		# 日常增量只需补 1 天时，一次 trade_date 调用返回全市场，避免 5531 次逐股 HTTP
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.stock_daily_repo,
+			fetch_fn=_source.get_daily,
+			data_type_label="日行情(daily_quotes)",
+		)
+		if _batch_result is not None:
+			return _batch_result
 
 		# ===== 步骤 3：配置并发参数 =====
 		# 默认 8 并发，可通过配置文件 settings.ENGINES.sync_concurrency 调整
@@ -2442,6 +2611,19 @@ class DataSyncService:
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
+		# 步骤 2.5：按交易日批量拉取全市场（首选路径，避免 5531 次逐股 HTTP）
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.stock_adj_factor_repo,
+			fetch_fn=_source.get_adj_factor,
+			data_type_label="复权因子(adj_factor)",
+		)
+		if _batch_result is not None:
+			return _batch_result
+
 		async with SyncTimingLogger(logger, "复权因子(adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
@@ -2512,6 +2694,19 @@ class DataSyncService:
 		# 步骤 2：批量预加载所有股票的最新日期（一次 SQL 替代 N 次逐股查询）
 		stock_list_date_map = {s.ts_code: s.list_date for s in stocks}
 		latest_dates_map = await self.stock_daily_basic_repo.get_latest_trade_dates_batch(ts_codes)
+
+		# 步骤 2.5：按交易日批量拉取全市场（首选路径，避免 5531 次逐股 HTTP）
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.stock_daily_basic_repo,
+			fetch_fn=_source.get_daily_basic,
+			data_type_label="每日指标(daily_basic)",
+		)
+		if _batch_result is not None:
+			return _batch_result
 
 		async with SyncTimingLogger(logger, "每日指标(daily_basic)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -2703,6 +2898,19 @@ class DataSyncService:
 		# 步骤 2：批量预加载所有 ETF 的最新日期（一次 SQL 替代 N 次逐 ETF 查询）
 		stock_list_date_map = {etf.ts_code: etf.list_date for etf in etfs if getattr(etf, 'list_date', None)}
 		latest_dates_map = await self.etf_daily_repo.get_latest_trade_dates_batch(ts_codes)
+
+		# 步骤 2.5：按交易日批量拉取全市场 ETF（首选路径，避免逐 ETF HTTP）
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.etf_daily_repo,
+			fetch_fn=_source.get_etf_daily,
+			data_type_label="ETF日线(etf_daily)",
+		)
+		if _batch_result is not None:
+			return _batch_result
 
 		async with SyncTimingLogger(logger, "ETF日线(etf_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
@@ -3486,6 +3694,19 @@ class DataSyncService:
 		stock_list_date_map = {etf.ts_code: etf.list_date for etf in etfs if getattr(etf, 'list_date', None)}
 		latest_dates_map = await self.fund_adj_factor_repo.get_latest_trade_dates_batch(ts_codes)
 
+		# 步骤 2.5：按交易日批量拉取全市场 ETF 复权（首选路径，避免逐 ETF HTTP）
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.fund_adj_factor_repo,
+			fetch_fn=_source.get_etf_adj_factor,
+			data_type_label="基金复权(fund_adj_factor)",
+		)
+		if _batch_result is not None:
+			return _batch_result
+
 		async with SyncTimingLogger(logger, "基金复权(fund_adj_factor)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):
 				"""处理单只标的：日期推断 > HTTP拉取 > 转换 > upsert。"""
@@ -4129,6 +4350,19 @@ class DataSyncService:
 
 		# 步骤 2：批量预加载所有指数的最新日期（一次 SQL 替代 N 次逐指数查询）
 		latest_dates_map = await self.index_daily_repo.get_latest_trade_dates_batch(ts_codes)
+
+		# 步骤 2.5：按交易日批量拉取全市场指数（首选路径，避免逐指数 HTTP）
+		_source = self.source_factory.get_source(DataSource.TUSHARE)
+		_batch_result = await self._sync_by_date_batch(
+			ts_codes=ts_codes,
+			end_date=end_date or datetime.now().date(),
+			latest_dates_map=latest_dates_map,
+			repo=self.index_daily_repo,
+			fetch_fn=_source.get_index_daily,
+			data_type_label="指数日线(index_daily)",
+		)
+		if _batch_result is not None:
+			return _batch_result
 
 		async with SyncTimingLogger(logger, "指数日线(index_daily)", slow_threshold=10.0) as timer:
 			async def _process_one(session, ts_code):

@@ -496,9 +496,8 @@ class AuditLogger:
 	async def _init_repository (self):
 		"""初始化仓库（延迟加载）—— 使用独立 session_factory 避免生命周期冲突"""
 		try:
-			from shared.database.session.session_manager import get_session_manager
-			session_mgr = get_session_manager()
-			self._audit_session_factory = session_mgr.create_async_session_factory()
+			from shared.database.session.connection_pool import get_connection_pool
+			self._audit_session_factory = get_connection_pool().get_session_factory()
 
 			# 验证 session 可用性
 			from sqlalchemy import text as sa_text
@@ -594,7 +593,7 @@ def audit_log (
 				await audit_logger.log_simple(
 					user_id=user_id,
 					username=username,
-					action=f"{action}_start",
+					action=action,
 					resource_type=resource_type,
 					resource_id=resource_id,
 					description=f"开始执行: {func.__name__}",

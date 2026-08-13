@@ -108,10 +108,10 @@ class AccountSummaryResponse(BaseModel):
 # ==================== 手动成交录入 ====================
 
 class TradeFeeItem(BaseModel):
-	"""单笔费用"""
-	commission: float = Field(default=0.0, description="佣金")
-	stamp_duty: float = Field(default=0.0, description="印花税")
-	transfer_fee: float = Field(default=0.0, description="过户费")
+	"""单笔费用（未填项为 null，由后端按统一费率自动计算）"""
+	commission: Optional[float] = Field(default=None, description="佣金")
+	stamp_duty: Optional[float] = Field(default=None, description="印花税")
+	transfer_fee: Optional[float] = Field(default=None, description="过户费")
 
 
 class TradeRecordRequest(BaseModel):
@@ -174,3 +174,16 @@ class SignalListResponse(BaseModel):
 	success: bool = Field(default=True)
 	data: List[Dict[str, Any]] = Field(default_factory=list)
 	pagination: Dict[str, int] = Field(default_factory=dict)
+
+
+class RoundTripRequest(BaseModel):
+	"""买卖配对追溯请求"""
+	account_id: str = Field(..., description="账户ID")
+	ts_code: Optional[str] = Field(default=None, description="证券代码（可选，不传返回全部）")
+
+
+class RoundTripResponse(BaseModel):
+	"""买卖配对追溯响应"""
+	success: bool = Field(default=True)
+	data: Optional[Dict[str, Any]] = Field(default=None)
+	message: Optional[str] = Field(default=None)

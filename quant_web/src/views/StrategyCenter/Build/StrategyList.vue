@@ -28,11 +28,8 @@
       </div>
 
       <template v-else-if="pageState === 'data'">
-        <!-- v3.3: 按策略生命周期状态筛选 -->
+        <!-- v4.0: 按策略生命周期状态筛选（取消全部，已停止+已淘汰 → 已归档） -->
         <div class="stats-bar">
-          <span class="stat-item" :class="{ active: statusFilter === 'all' }" @click="statusFilter = 'all'">
-            全部 <strong>{{ strategies.length }}</strong>
-          </span>
           <span class="stat-item" :class="{ active: statusFilter === 'draft' }" @click="statusFilter = 'draft'">
             📝 草稿 <strong>{{ statusCounts.draft }}</strong>
           </span>
@@ -40,15 +37,15 @@
             ✅ 已验证 <strong>{{ statusCounts.backtested }}</strong>
           </span>
           <span class="stat-item" :class="{ active: statusFilter === 'running' }" @click="statusFilter = 'running'">
-            🟢 运行中 <strong>{{ statusCounts.running }}</strong>
+            🟢 运行中 <strong>{{ statusCounts.running + (statusCounts.paused || 0) }}</strong>
           </span>
-          <span class="stat-item" :class="{ active: statusFilter === 'stopped' }" @click="statusFilter = 'stopped'">
-            ⬜ 已停止 <strong>{{ statusCounts.stopped }}</strong>
+          <span class="stat-item" :class="{ active: statusFilter === 'archived' }" @click="statusFilter = 'archived'">
+            📦 已归档 <strong>{{ statusCounts.archived }}</strong>
           </span>
         </div>
 
-        <!-- v3.0: 模板库（仅在"全部"时显示） -->
-        <div v-if="statusFilter === 'all'">
+        <!-- v4.0: 模板库（仅在"草稿"Tab 显示，新策略起点） -->
+        <div v-if="statusFilter === 'draft'">
           <h3 class="section-title">模板库</h3>
           <div v-if="builtinLoading"><n-skeleton :repeat="3" text /></div>
           <div v-else-if="builtinStrategies.length > 0" class="card-grid">
@@ -68,64 +65,75 @@
           <n-empty v-else description="暂无可用模板" size="small" />
         </div>
 
-        <!-- 策略卡片 -->
+        <!-- v4.0: 策略卡片（版本分组） -->
         <h3 class="section-title">{{ tabLabel }} ({{ filteredStrategies.length }})</h3>
-        <div v-if="filteredStrategies.length > 0" class="card-grid">
-          <div v-for="s in filteredStrategies" :key="s.id"
-            :class="['strategy-card', { selected: checkedKeys.includes(s.id) }]"
-            @click="handleCardClick(s)">
-            <div class="sc-top">
-              <n-tag :type="statusMap[s.status]" size="tiny">{{ statusText[s.status] || s.status }}</n-tag>
-              <n-tag v-if="s.run_mode === 'live'" type="error" size="tiny" :bordered="false">实盘</n-tag>
-              <n-tag v-if="s.execution_mode === 'semi_auto'" type="warning" size="tiny" :bordered="false">半自动</n-tag>
-              <n-tag v-if="s.execution_mode === 'full_auto'" type="info" size="tiny" :bordered="false">全自动</n-tag>
+        <template v-if="filteredStrategies.length > 0">
+          <!-- 单组版本（组内 >1 时显示组标题；单版本不分组） -->
+          <div v-for="(group, cls) in groupStrategies" :key="cls" class="strategy-group">
+            <div v-if="group.length > 1" class="group-header" @click="toggleGroup(cls)">
+              <span class="group-toggle">{{ collapsedGroups.has(cls) ? '▸' : '▾' }}</span>
+              <span class="group-name">{{ BUILTIN_DISPLAY[cls] || cls }}</span>
+              <span class="group-count">({{ group.length }})</span>
             </div>
-            <h4 class="sc-name">{{ s.name || s.id }}</h4>
-            <span class="sc-type">{{ s.className || s.strategy_type || '自定义' }}</span>
+            <div v-if="!collapsedGroups.has(cls)" class="card-grid">
+              <div v-for="s in group" :key="s.id"
+                :class="['strategy-card', { selected: checkedKeys.includes(s.id), 'latest-card': isLatestInGroup(group, s) }]"
+                @click="handleCardClick(s)">
+                <div class="sc-top">
+                  <n-tag :type="statusMap[s.status]" size="tiny">{{ statusText[s.status] || s.status }}</n-tag>
+                  <n-tag v-if="group.length > 1 && isLatestInGroup(group, s)" type="success" size="tiny" :bordered="false">🆕 最新</n-tag>
+                  <n-tag v-if="s.run_mode === 'live'" type="error" size="tiny" :bordered="false">实盘</n-tag>
+                  <n-tag v-if="s.execution_mode === 'semi_auto'" type="warning" size="tiny" :bordered="false">半自动</n-tag>
+                  <n-tag v-if="s.execution_mode === 'full_auto'" type="info" size="tiny" :bordered="false">全自动</n-tag>
+                </div>
+                <h4 class="sc-name">{{ s.name || s.id }}</h4>
+                <span class="sc-type">{{ s.className || s.strategy_type || '自定义' }}</span>
 
-            <!-- 回测绩效摘要 -->
-            <div v-if="strategyPerf[s.id]?.total_return !== undefined" class="sc-perf">
-              <span :class="strategyPerf[s.id].total_return >= 0 ? 'text-up' : 'text-down'">
-                {{ (strategyPerf[s.id].total_return * 100).toFixed(1) }}%
-              </span>
-              <span class="sc-perf-label">总收益</span>
-              <span class="sc-perf-sub">
-                夏普 {{ strategyPerf[s.id].sharpe_ratio?.toFixed(2) || '—' }}
-              </span>
-            </div>
+                <!-- 回测绩效摘要 -->
+                <div v-if="strategyPerf[s.id]?.total_return !== undefined" class="sc-perf">
+                  <span :class="strategyPerf[s.id].total_return >= 0 ? 'text-up' : 'text-down'">
+                    {{ (strategyPerf[s.id].total_return * 100).toFixed(1) }}%
+                  </span>
+                  <span class="sc-perf-label">总收益</span>
+                  <span class="sc-perf-sub">
+                    夏普 {{ strategyPerf[s.id].sharpe_ratio?.toFixed(2) || '—' }}
+                  </span>
+                </div>
 
-            <!-- 持仓摘要 -->
-            <div v-if="s.status === 'running' && strategyPositions[s.id]?.length" class="sc-positions">
-              <div class="pos-header">当前持仓</div>
-              <div v-for="p in strategyPositions[s.id].slice(0, 3)" :key="p.ts_code || p.symbol" class="pos-item">
-                <n-tag size="tiny" style="font-size:10px" :bordered="false">{{ p.ts_code || p.symbol }}</n-tag>
-                <span class="pos-qty">{{ p.volume || p.quantity || 0 }}股</span>
+                <!-- 持仓摘要 -->
+                <div v-if="s.status === 'running' && strategyPositions[s.id]?.length" class="sc-positions">
+                  <div class="pos-header">当前持仓</div>
+                  <div v-for="p in strategyPositions[s.id].slice(0, 3)" :key="p.ts_code || p.symbol" class="pos-item">
+                    <n-tag size="tiny" style="font-size:10px" :bordered="false">{{ p.ts_code || p.symbol }}</n-tag>
+                    <span class="pos-qty">{{ p.volume || p.quantity || 0 }}股</span>
+                  </div>
+                </div>
+
+                <!-- 实盘/仿真运行中额外信息 -->
+                <div v-if="s.status === 'running' && s.run_mode === 'live'" class="sc-runtime">
+                  <div class="rt-stat" title="策略启动时间">
+                    🕐 {{ s.started_at ? new Date(s.started_at).toLocaleDateString() : '—' }}
+                  </div>
+                </div>
+
+                <div class="sc-actions">
+                  <!-- v3.3: 按状态显示操作按钮 -->
+                  <template v-for="action in getActions(s.status)" :key="action">
+                    <n-button v-if="action === 'edit'" size="tiny" @click.stop="editStrategy(s)">编辑</n-button>
+                    <n-button v-else-if="action === 'backtest'" size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
+                    <n-button v-else-if="action === 'startLive'" size="tiny" type="success" quaternary @click.stop="quickStart(s)">启动实盘</n-button>
+                    <n-button v-else-if="action === 'monitor'" size="tiny" quaternary @click.stop="viewReport(s)">监控</n-button>
+                    <n-button v-else-if="action === 'pause'" size="tiny" type="warning" quaternary @click.stop="pauseStrategy(s)">暂停</n-button>
+                    <n-button v-else-if="action === 'resume'" size="tiny" type="success" quaternary @click.stop="resumeStrategy(s)">恢复</n-button>
+                    <n-button v-else-if="action === 'stop'" size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
+                    <n-button v-else-if="action === 'delete'" size="tiny" quaternary @click.stop="deleteStrategy(s)" :loading="deleting.has(s.id)" :disabled="deleting.has(s.id)">{{ deleting.has(s.id) ? '删除中' : '删除' }}</n-button>
+                    <n-button v-else-if="action === 'viewLog'" size="tiny" quaternary @click.stop="viewLog(s)">查看日志</n-button>
+                  </template>
+                </div>
               </div>
-            </div>
-
-            <!-- 实盘/仿真运行中额外信息 -->
-            <div v-if="s.status === 'running' && s.run_mode === 'live'" class="sc-runtime">
-              <div class="rt-stat" title="策略启动时间">
-                🕐 {{ s.started_at ? new Date(s.started_at).toLocaleDateString() : '—' }}
-              </div>
-            </div>
-
-            <div class="sc-actions">
-              <!-- v3.3: 按状态显示操作按钮 -->
-              <template v-for="action in getActions(s.status)" :key="action">
-                <n-button v-if="action === 'edit'" size="tiny" @click.stop="editStrategy(s)">编辑</n-button>
-                <n-button v-else-if="action === 'backtest'" size="tiny" @click.stop="quickBacktest(s)">回测</n-button>
-                <n-button v-else-if="action === 'startLive'" size="tiny" type="success" quaternary @click.stop="quickStart(s)">启动实盘</n-button>
-                <n-button v-else-if="action === 'monitor'" size="tiny" quaternary @click.stop="viewReport(s)">监控</n-button>
-                <n-button v-else-if="action === 'pause'" size="tiny" type="warning" quaternary @click.stop="pauseStrategy(s)">暂停</n-button>
-                <n-button v-else-if="action === 'resume'" size="tiny" type="success" quaternary @click.stop="resumeStrategy(s)">恢复</n-button>
-                <n-button v-else-if="action === 'stop'" size="tiny" type="warning" quaternary @click.stop="stopStrategy(s)">停止</n-button>
-                <n-button v-else-if="action === 'delete'" size="tiny" quaternary @click.stop="deleteStrategy(s)" :loading="deleting.has(s.id)" :disabled="deleting.has(s.id)">{{ deleting.has(s.id) ? '删除中' : '删除' }}</n-button>
-                <n-button v-else-if="action === 'viewLog'" size="tiny" quaternary @click.stop="viewLog(s)">查看日志</n-button>
-              </template>
             </div>
           </div>
-        </div>
+        </template>
         <n-empty v-else :description="`暂无${tabLabel}`" />
 
         <!-- 批量操作栏（仅回测 Tab） -->
@@ -233,7 +241,7 @@ import { useStore } from "vuex";
 import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import { tokens } from "@/styles/design-tokens";
 import { STRATEGY_TYPE_OPTIONS } from "./constants";
-import { STATUS_TYPE_MAP, STATUS_LABEL_MAP, STATUS_ACTIONS } from "@/constants/strategyMeta";
+import { STATUS_TYPE_MAP, STATUS_LABEL_MAP, STATUS_ACTIONS, ARCHIVED_STATUSES } from "@/constants/strategyMeta";
 import backtestAPI from "@/api/backtest";
 import strategyAPI from "@/api/strategy";
 import request from "@/utils/request";
@@ -257,18 +265,28 @@ const positionsLoading = ref(false);
 
 const strategies = computed(() => store.state.strategy?.strategies || []);
 
-// v3.3: 按策略生命周期状态筛选（替代旧的 live/backtest Tab）
-const statusFilter = ref<string>("all");
+// v4.0: 按策略生命周期状态筛选（取消"全部"，草稿默认；已停止+已淘汰 → 已归档）
+const statusFilter = ref<string>("draft");
 const _filterInitialized = ref(false);
 const statusCounts = computed(() => {
-  const c: Record<string, number> = { draft: 0, backtested: 0, running: 0, paused: 0, stopped: 0, error: 0 };
-  for (const s of strategies.value) { const st = s.status || "draft"; c[st] = (c[st] || 0) + 1; }
+  const c: Record<string, number> = { draft: 0, backtested: 0, running: 0, paused: 0, stopped: 0, error: 0, archived: 0, retired: 0 };
+  for (const s of strategies.value) {
+    const st = s.status || "draft";
+    c[st] = (c[st] || 0) + 1;
+    if (ARCHIVED_STATUSES.includes(st)) c.archived = (c.archived || 0) + 1;
+  }
   return c;
 });
 const filteredStrategies = computed(() => {
-  if (statusFilter.value === "all") return strategies.value;
-  if (statusFilter.value === "stopped") return strategies.value.filter((s: any) => s.status === "stopped" || s.status === "paused");
-  return strategies.value.filter((s: any) => s.status === statusFilter.value);
+  const list = strategies.value;
+  switch (statusFilter.value) {
+    case "archived":
+      return list.filter((s: any) => ARCHIVED_STATUSES.includes(s.status));
+    case "running":
+      return list.filter((s: any) => s.status === "running" || s.status === "paused");
+    default:
+      return list.filter((s: any) => s.status === statusFilter.value);
+  }
 });
 const getActions = (status: string) => STATUS_ACTIONS[status] || [];
 
@@ -277,9 +295,39 @@ const backtestCount = computed(() => strategies.value.filter((s: any) => !s.run_
 // v3.3: 兼容旧模板引用
 const activeTab = computed(() => statusFilter.value === "running" ? "live" : "backtest");
 const tabLabel = computed(() => {
-  if (statusFilter.value === "running" || statusFilter.value === "paused") return "实盘运行中";
-  return statusFilter.value === "all" ? "策略列表" : STATUS_LABEL_MAP[statusFilter.value] || "策略";
+  if (statusFilter.value === "archived") return "已归档";
+  return STATUS_LABEL_MAP[statusFilter.value] || "策略";
 });
+
+// v4.0: 版本分组 — 按 class_name 分组，最新版 🆕 徽标，组内可折叠
+const versionNum = (s: any): number => {
+  const m = (s.name || "").match(/[-_]v?(\d+(?:\.\d+)*)/i);
+  return m ? parseFloat(m[1]) : 0;
+};
+const isLatestInGroup = (group: any[], s: any): boolean => {
+  return group.every((g: any) => new Date(s.created_at) >= new Date(g.created_at));
+};
+const groupStrategies = computed(() => {
+  const groups: Record<string, any[]> = {};
+  for (const s of filteredStrategies.value) {
+    const key = (s as any).class_name || (s as any).className || "未分类";
+    (groups[key] = groups[key] || []).push(s);
+  }
+  // 组内按版本号降序，再按 created_at 降序
+  for (const key in groups) {
+    groups[key].sort((a: any, b: any) =>
+      versionNum(b) - versionNum(a) ||
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+  return groups;
+});
+const collapsedGroups = ref<Set<string>>(new Set());
+const toggleGroup = (key: string) => {
+  const next = new Set(collapsedGroups.value);
+  next.has(key) ? next.delete(key) : next.add(key);
+  collapsedGroups.value = next;
+};
 
 const dialogTitle = computed(() => isEditing.value ? "编辑策略" : "新建策略");
 
@@ -343,6 +391,10 @@ const BUILTIN_META: Record<string, { name: string; desc: string; params?: Record
       intraday_stop_loss: '日内止损比例', cooling_period: '止损冷却期(天)',
       verbose_logging: '详细日志' } },
 };
+// v4.0: class_name → 组标题中文名（复用 BUILTIN_META，未命中回退类名）
+const BUILTIN_DISPLAY: Record<string, string> = Object.fromEntries(
+  Object.entries(BUILTIN_META).map(([cls, meta]: [string, any]) => [cls, meta.name])
+);
 // v3.0: 从模板 code_template 提取 class_name 用于 BUILTIN_META 查表
 const extractClassName = (tpl: any) => {
   const code = tpl.code_template || '';
@@ -610,9 +662,9 @@ const loadStrategies = async () => {
     await Promise.all([store.dispatch("strategy/loadStrategies"), loadBuiltin()]);
     pageState.value = "data";
 
-    // 设置默认 Tab：仅首次加载时根据数据引导，后续（删除/刷新）保持当前筛选
+    // v4.0: 默认选中"草稿"Tab（新策略起点 + 模板引导）；有运行中时切运行中
     if (!route.query.tab && !_filterInitialized.value) {
-      statusFilter.value = liveCount.value > 0 ? "running" : "all";
+      statusFilter.value = liveCount.value > 0 ? "running" : "draft";
       _filterInitialized.value = true;
     }
 
@@ -717,4 +769,14 @@ onMounted(() => loadStrategies());
 
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+
+/* v4.0: 版本分组 */
+.strategy-group { margin-bottom: 12px; }
+.group-header { display: flex; align-items: center; gap: 6px; padding: 8px 4px; cursor: pointer; user-select: none; font-size: 13px; color: var(--color-text-primary); transition: color 0.15s;
+  &:hover { color: var(--color-primary, #7C3AED); }
+}
+.group-toggle { font-size: 11px; color: var(--color-text-tertiary); width: 12px; }
+.group-name { font-weight: 600; }
+.group-count { font-size: 11px; color: var(--color-text-tertiary); }
+.latest-card { border-color: var(--color-primary, #7C3AED) !important; }
 </style>

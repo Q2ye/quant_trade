@@ -251,6 +251,8 @@ class Signal(Base):
     max_slippage_pct = Column(Numeric(5, 4), default=0.02, comment='最大可接受滑点比例')
     order_type = Column(String(20), default='limit_range', comment='订单类型: limit/limit_range/market')
     order_id = Column(String(36), comment='关联订单ID（执行后回写）')
+    parent_id = Column(String(36), ForeignKey('signals.id'), nullable=True,
+                       comment='v3.4: 父信号ID（候选→买入信号链路关联，用于全链路追溯）')
     account_id = Column(String(36), ForeignKey('accounts.id'), nullable=True, comment='关联的交易账户ID')
     reviewed_at = Column(DateTime(timezone=True), comment='审核时间')
     reviewed_by = Column(String(36), comment='审核人ID')

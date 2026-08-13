@@ -3,7 +3,7 @@
 交易模块API处理函数
 负责处理HTTP请求，调用服务层完成业务逻辑
 """
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from modules.trade.schemas import (
 	BatchTradeRecordRequest, BatchTradeRecordResponse,
 	SignalReviewRequest, SignalReviewResponse,
 	SignalListRequest, SignalListResponse,
+	RoundTripRequest, RoundTripResponse,
 )
 from shared.database.repositories.account.asset.account_repo import AccountRepository
 from shared.database.repositories.trading.order.order_repo import OrderRepository
@@ -417,6 +418,7 @@ class TradeHandler:
 				)
 
 			# 计算总资产、现金和市值
+			# v2.6: total_balance 语义 = 总资产（现金+持仓市值），成交录入已修正不再当现金扣
 			total_asset = 0
 			total_cash = 0
 			total_market_value = 0
@@ -432,18 +434,50 @@ class TradeHandler:
 			total_pnl = total_asset - total_initial_balance
 			total_pnl_rate = (total_pnl / total_initial_balance * 100) if total_initial_balance > 0 else 0
 
+			# v2.6: 当日盈亏/收益率取自最近一次日终结算快照（account_daily_performance）
+			daily_pnl, daily_return = await self._get_latest_daily_perf(
+				[a.id for a in accounts if getattr(a, "id", None)]
+			)
+
 			# 转换为响应格式
 			account_data = {
 				"total_asset": total_asset,
 				"cash": total_cash,
 				"market_value": total_market_value,
 				"pnl": total_pnl,
-				"pnl_rate": total_pnl_rate
+				"pnl_rate": total_pnl_rate,
+				"daily_pnl": daily_pnl,
+				"daily_return": daily_return,
 			}
 
 			return AccountSummaryResponse(success=True, data=account_data)
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=f"获取账户概览失败: {str(e)}")
+
+	async def _get_latest_daily_perf(self, account_ids: list) -> tuple:
+		"""聚合所有账户最近一条日终结算快照的当日盈亏与当日收益率（未结算时为 0）"""
+		if not account_ids:
+			return 0.0, 0.0
+		from sqlalchemy import text
+		result = await self.db.execute(
+			text(
+				"SELECT DISTINCT ON (account_id) account_id, daily_pnl, total_asset "
+				"FROM account_daily_performance "
+				"WHERE account_id = ANY(:ids) "
+				"ORDER BY account_id, trade_date DESC"
+			),
+			{"ids": account_ids},
+		)
+		rows = result.fetchall()
+		if not rows:
+			return 0.0, 0.0
+
+		daily_pnl = sum(float(r.daily_pnl or 0) for r in rows)
+		total_asset = sum(float(r.total_asset or 0) for r in rows)
+		# 收益率按"当日盈亏 / (今日总资产 - 当日盈亏)"近似昨日基数
+		base = total_asset - daily_pnl
+		daily_return = (daily_pnl / base) if base and base != 0 else 0.0
+		return daily_pnl, daily_return
 
 	async def check_trade_module_health (self) -> Dict:
 		"""检查交易模块健康状态"""
@@ -485,13 +519,13 @@ class TradeHandler:
 			trade_date = datetime.strptime(request.trade_date, "%Y-%m-%d")
 			trade_date = trade_date.replace(tzinfo=timezone.utc)
 
-			# 构建用户费用
+			# 构建用户费用（null 项表示未填，由后端统一费率自动计算）
 			user_fees = None
 			if request.fees:
 				user_fees = {
-					"commission": Decimal(str(request.fees.commission)),
-					"stamp_duty": Decimal(str(request.fees.stamp_duty)),
-					"transfer_fee": Decimal(str(request.fees.transfer_fee)),
+					"commission": Decimal(str(request.fees.commission)) if request.fees.commission is not None else None,
+					"stamp_duty": Decimal(str(request.fees.stamp_duty)) if request.fees.stamp_duty is not None else None,
+					"transfer_fee": Decimal(str(request.fees.transfer_fee)) if request.fees.transfer_fee is not None else None,
 				}
 
 			service = TradeRecordService(self.db)
@@ -538,9 +572,9 @@ class TradeHandler:
 					user_fees = None
 					if trade_req.fees:
 						user_fees = {
-							"commission": Decimal(str(trade_req.fees.commission)),
-							"stamp_duty": Decimal(str(trade_req.fees.stamp_duty)),
-							"transfer_fee": Decimal(str(trade_req.fees.transfer_fee)),
+							"commission": Decimal(str(trade_req.fees.commission)) if trade_req.fees.commission is not None else None,
+							"stamp_duty": Decimal(str(trade_req.fees.stamp_duty)) if trade_req.fees.stamp_duty is not None else None,
+							"transfer_fee": Decimal(str(trade_req.fees.transfer_fee)) if trade_req.fees.transfer_fee is not None else None,
 						}
 
 					result = await service.record_filled_trade(
@@ -968,6 +1002,18 @@ async def review_signal (session: AsyncSession, signal_id: str, request: SignalR
 async def get_signal_list (session: AsyncSession, request: SignalListRequest, user_id: str) -> SignalListResponse:
 	handler = TradeHandler(session)
 	return await handler.get_signal_list(request, user_id)
+
+
+async def get_round_trips (session: AsyncSession, account_id: str, ts_code: Optional[str] = None) -> RoundTripResponse:
+	"""买卖 FIFO 配对追溯（实时计算，不落库）。"""
+	from modules.trade.services.round_trip_service import TradeRoundTripService
+	service = TradeRoundTripService(session)
+	try:
+		data = await service.get_round_trips(account_id=account_id, ts_code=ts_code)
+		return RoundTripResponse(success=True, data=data)
+	except Exception as e:
+		logger.error(f"买卖配对追溯失败: {str(e)}", exc_info=True)
+		raise
 
 
 # ==================== BasketHandler 包装函数 ====================

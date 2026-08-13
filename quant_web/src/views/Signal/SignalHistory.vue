@@ -4,6 +4,7 @@ import { NTag, NButton, NSpin, NEmpty } from "naive-ui";
 import { useMessage } from "naive-ui";
 import type { TradingSignal as Signal } from "@/types";
 import signalsAPI from "@/api/signals";
+import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const message = useMessage();
 const signals = ref<Signal[]>([]);
@@ -26,8 +27,10 @@ const columns = [
   {
     title: "信号时间",
     key: "signal_time",
-    width: 180,
-    render: (row: Signal) => new Date(row.signal_time).toLocaleString(),
+    width: 150,
+    // 修复: new Date().toLocaleString() 受浏览器时区/locale 影响 + 格式与其它页不一致；
+    // 统一为 ISO 字符串 slice（+08 本地时间），与 SignalMonitor/Confirm 一致
+    render: (row: Signal) => (row.signal_time || "").toString().slice(0, 16).replace("T", " ") || "--",
   },
   { title: "策略ID", key: "strategy_id", width: 150 },
   { title: "股票代码", key: "ts_code", width: 120 },
@@ -72,7 +75,23 @@ const columns = [
     width: 120,
     render: () => h("span", { style: { color: "#10B981" } }, "+2.5%"),
   },
+  // v3.4: 操作列（追溯链路）
+  {
+    title: "操作",
+    key: "actions",
+    width: 90,
+    render: (row: any) =>
+      h(NButton, { size: "tiny", quaternary: true, onClick: () => openTrace(row) }, { default: () => "追溯" }),
+  },
 ];
+
+// v3.4: 信号链路追溯
+const showTrace = ref(false);
+const traceSignalId = ref("");
+const openTrace = (row: any) => {
+  traceSignalId.value = row.signal_id || row.id;
+  showTrace.value = true;
+};
 
 const fetchSignalHistory = async () => {
   loading.value = true;
@@ -174,6 +193,13 @@ onMounted(() => {
       :data="signals"
       :bordered="false"
       size="small"
+    />
+
+    <!-- v3.4: 信号链路追溯 -->
+    <SignalTraceModal
+      :show="showTrace"
+      :signal-id="traceSignalId"
+      @update:show="showTrace = $event"
     />
   </div>
 </template>

@@ -212,10 +212,10 @@ const rules: FormRules = {
 const previewInfo = computed(() => {
   if (!form.price || !form.quantity) return null;
   const tradeAmount = form.price * form.quantity;
-  // 简单预估：佣金万三最低5元，卖出印花税千一，过户费沪市万0.2
-  let commission = form.fees.commission ?? Math.max(tradeAmount * 0.0003, 5);
-  let stamp = form.fees.stamp_duty ?? (form.direction === "sell" ? tradeAmount * 0.001 : 0);
-  let transfer = form.fees.transfer_fee ?? (form.ts_code.startsWith("6") ? Math.max(tradeAmount * 0.00002, 1) : 0);
+  // 简单预估：佣金万一免五、卖出印花税 0.05%、过户费万0.1（沪深双边）
+  let commission = form.fees.commission ?? tradeAmount * 0.0001;
+  let stamp = form.fees.stamp_duty ?? (form.direction === "sell" ? tradeAmount * 0.0005 : 0);
+  let transfer = form.fees.transfer_fee ?? tradeAmount * 0.0001;
   const estFees = commission + stamp + transfer;
   const netAmount = form.direction === "buy" ? tradeAmount + estFees : tradeAmount - estFees;
   return { tradeAmount, estFees, netAmount };
@@ -237,16 +237,12 @@ async function handleSubmit() {
 
   submitting.value = true;
   try {
-    const hasFees =
-      form.fees.commission !== null ||
-      form.fees.stamp_duty !== null ||
-      form.fees.transfer_fee !== null;
-
-    // 只发送用户明确填写的费用，未填的由后端自动计算
-    const feesPayload: any = {};
-    if (form.fees.commission !== null) feesPayload.commission = form.fees.commission;
-    if (form.fees.stamp_duty !== null) feesPayload.stamp_duty = form.fees.stamp_duty;
-    if (form.fees.transfer_fee !== null) feesPayload.transfer_fee = form.fees.transfer_fee;
+    // 未填的费用项置 null，由后端按统一费率自动计算（只填佣金时印花税/过户费仍自动算）
+    const feesPayload: any = {
+      commission: form.fees.commission ?? null,
+      stamp_duty: form.fees.stamp_duty ?? null,
+      transfer_fee: form.fees.transfer_fee ?? null,
+    };
 
     await tradeAPI.recordTrade({
       ts_code: form.ts_code,
@@ -256,7 +252,7 @@ async function handleSubmit() {
       trade_date: form.trade_date,
       signal_id: form.signal_id || undefined,
       strategy_id: form.strategy_id || undefined,
-      fees: hasFees ? feesPayload : undefined,
+      fees: feesPayload,
     });
 
     message.success("成交录入成功");

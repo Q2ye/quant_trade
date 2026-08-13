@@ -272,9 +272,12 @@ class DataFeedEngine(EngineBase):
                     logger.warning(f"批量加载复权价格失败: {e}")
 
             # 回退到 SQL JOIN 在线复权（替代 Python 逐行循环，性能关键）
-            if not all_records or not any(
-                r.get("ts_code", "").startswith(tuple(stock_symbols[:1]))
-                for r in all_records[-10:] if all_records
+            # P1 修复：原条件 startswith(tuple(stock_symbols[:1])) 仅当"首个 symbol 恰在最后 10 条"才不触发，
+            # 对任何其他 symbol 恒 False → 多标的频繁误回退；改为"复权表完全为空 或 未覆盖任何目标 symbol"
+            _target_set = set(stock_symbols or [])
+            if not all_records or (
+                _target_set
+                and not any(r.get("ts_code") in _target_set for r in all_records)
             ):
                 logger.info("stock_adjusted_prices 表为空，使用 stock_daily JOIN stock_adj_factor SQL 在线复权")
                 try:

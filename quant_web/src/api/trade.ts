@@ -178,4 +178,22 @@ export default {
       .then(handleResponse)
       .then((data: ApiResponse<any>) => data);
   },
+
+  // v3.4: 信号链路追溯（候选→信号→订单→成交）
+  async getSignalTrace(signalId: string): Promise<any> {
+    return request
+      .get(`/quantTrade/signals/${signalId}/trace`)
+      .then(handleResponse)
+      .then((data: any) => data?.data ?? data);
+  },
+
+  // 买卖 FIFO 配对追溯
+  async getRoundTrips(accountId: string, tsCode?: string): Promise<any> {
+    return request
+      .get("/quantTrade/trade/round-trips", {
+        params: { account_id: accountId, ts_code: tsCode },
+      })
+      .then(handleResponse)
+      .then((data: ApiResponse<any>) => data?.data ?? data);
+  },
 };

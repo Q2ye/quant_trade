@@ -190,6 +190,52 @@ class AccountTransactionRepository(BaseRepository[AccountTransaction]):
 		await self.session.flush()
 		return instance
 
+	async def add_ledger_entry (
+			self,
+			account_id: str,
+			transaction_type: str,
+			amount: Decimal,
+			description: str = "",
+			reference_id: Optional[str] = None,
+			reference_type: Optional[str] = None,
+			transaction_date: Optional[datetime] = None,
+			balance_before: Optional[Decimal] = None,
+	) -> AccountTransaction:
+		"""仅写入流水（不更新账户余额，余额由调用方维护）
+
+		用于存款/取款等资金变动记账，保证日终结算可统计当日净出入金。
+		balance_before 应传资金变动前的可用余额；未传时用当前余额兜底。
+		"""
+		from shared.database.models.business_models import Account
+
+		acct_result = await self.session.execute(
+			select(Account).where(Account.id == account_id)
+		)
+		acct = acct_result.scalar_one_or_none()
+		if not acct:
+			raise ValueError(f"Account {account_id} not found")
+
+		amount_dec = Decimal(str(amount))
+		if balance_before is None:
+			balance_before = acct.available_balance
+		balance_after = Decimal(str(balance_before)) + amount_dec
+
+		txn = self.model(
+			account_id=account_id,
+			transaction_type=transaction_type,
+			transaction_date=transaction_date or datetime.now(),
+			amount=amount_dec,
+			balance_before=balance_before,
+			balance_after=balance_after,
+			description=description,
+			reference_id=reference_id,
+			reference_type=reference_type,
+			created_at=datetime.now(),
+		)
+		self.session.add(txn)
+		await self.session.flush()
+		return txn
+
 	async def search_transactions (self, account_id: str, keyword: Optional[str] = None,
 	                               min_amount: Optional[Decimal] = None,
 	                               max_amount: Optional[Decimal] = None,

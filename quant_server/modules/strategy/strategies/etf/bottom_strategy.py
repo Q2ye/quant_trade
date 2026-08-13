@@ -341,11 +341,150 @@ class LightGBMBottomStrategy(BaseStrategy):
         mp = self.parameters.get("max_single_position", 0.40)
         return max(0.01, (proba - threshold) / (1.0 - threshold)) * mp
 
+    # ==================== v6.x 候选落库（与进攻实盘候选一致） ====================
+    def _is_live_mode(self) -> bool:
+        """判断是否实盘/模拟盘模式（仅实盘持久化候选，回测不写 signals 表）。"""
+        rm = getattr(getattr(self, "context", None), "run_mode", None)
+        if rm is None:
+            return False
+        v = rm.value if hasattr(rm, "value") else rm
+        return v in ("live", "paper")
+
+    def _fire_db(self, coro) -> None:
+        """在同步策略方法中调度异步 DB 写任务（fire-and-forget）。"""
+        try:
+            import asyncio
+            asyncio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            logger.debug("事件循环未运行，跳过候选 DB 写入")
+
+    async def _mark_candidate_status(self, sig_id, status: str, reason: str = "") -> None:
+        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。
+
+        P1 修复：加 _is_live_mode 检查——回测中候选为内存 signal_id（未落库），
+        状态更新是无意义 DB 写，堆积导致 QueuePool 连接超时。
+        """
+        if not self._is_live_mode():
+            return
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf or not sig_id:
+            return
+        try:
+            from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            async with sf() as db:
+                await SignalRepository(db).update(sig_id, {"signal_status": status, "reason": reason})
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"候选状态更新失败({status}): {e}")
+
+    async def _persist_candidate(self, code: str, pinfo: dict) -> None:
+        """ETF 候选落库：signals 表 pending_confirm（与进攻实盘候选一致，跨重启保留）。"""
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf or not self._is_live_mode():
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        sig_id = pinfo.get("signal_id")
+        if not sid or not sig_id:
+            return
+        try:
+            from shared.database.repositories.strategy.signal.signal_repo import SignalRepository
+            async with sf() as db:
+                repo = SignalRepository(db)
+                _td = getattr(self, "_last_trade_date", None)
+                if isinstance(_td, str):
+                    try:
+                        _td = date.fromisoformat(_td[:10])
+                    except ValueError:
+                        _td = None
+                elif hasattr(_td, "date"):
+                    _td = _td.date()
+                _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
+                data = {
+                    "strategy_id": sid,
+                    "ts_code": code,
+                    "direction": "long",
+                    "signal_type": "buy",
+                    "signal_time": _sig_time,
+                    "price": float(pinfo.get("signal_low", 0) or 0),
+                    "strength": float(pinfo.get("proba", 0) or 0),
+                    "signal_status": "pending_confirm",
+                    "reason": "ETF底部候选，待次日收盘确认",
+                }
+                existing = await repo.get(sig_id)
+                if not existing:
+                    # 幂等：同代码已存在 pending_confirm 候选 → 复用其行
+                    _dups = await repo.get_by_stock(ts_code=code, strategy_id=sid, limit=20)
+                    for _d in _dups:
+                        if getattr(_d, "signal_status", None) == "pending_confirm":
+                            sig_id = _d.id
+                            pinfo["signal_id"] = sig_id
+                            existing = _d
+                            break
+                if existing:
+                    await repo.update(sig_id, data)
+                else:
+                    data["id"] = sig_id
+                    await repo.create(data)
+                await db.commit()
+        except Exception as e:
+            logger.warning(f"ETF候选持久化失败: {code}: {e}")
+
+    async def _restore_candidates_from_db(self, db=None) -> None:
+        """从 signals 表读回 pending_confirm 候选，重建 _p4_buffer（重启恢复）。"""
+        sf = getattr(self, "_db_session_factory", None)
+        if not sf:
+            return
+        sid = getattr(getattr(self, "context", None), "strategy_id", "") or self.name
+        if not sid:
+            return
+        try:
+            from sqlalchemy import select
+            from shared.database.models.business_models import Signal
+            async with sf() as db_session:
+                rows = (await db_session.execute(select(Signal).where(
+                    Signal.strategy_id == sid,
+                    Signal.signal_status == "pending_confirm",
+                ))).scalars().all()
+                restored = 0
+                for r in rows:
+                    _sd = r.signal_time.strftime("%Y-%m-%d") if r.signal_time else ""
+                    # 过期守卫：距候选日超 5 天 → expired
+                    if _sd:
+                        try:
+                            if (date.today() - date.fromisoformat(_sd)).days > 5:
+                                await self._mark_candidate_status(r.id, "expired", "过期未确认")
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    _proba = float(r.strength or self.parameters["threshold"])
+                    self._p4_buffer[r.ts_code] = {
+                        "proba": _proba,
+                        "signal_low": float(r.price or 0),
+                        "weight": self._calc_weight(_proba, self.parameters["threshold"]),
+                        "signal_id": r.id,
+                        "signal_date": _sd,
+                    }
+                    restored += 1
+                if restored:
+                    logger.info(f"[{self.name}] 重启恢复候选 {restored} 只 (pending_confirm)")
+        except Exception as e:
+            logger.warning(f"ETF候选恢复失败: {e}")
+
+    async def load_live_state(self, db, strategy_id=None, **kwargs):
+        """覆写：注入实盘状态后，从 DB 恢复 pending_confirm 候选（重启不丢候选）。"""
+        await super().load_live_state(db, strategy_id=strategy_id, **kwargs)
+        try:
+            await self._restore_candidates_from_db()
+        except Exception as e:
+            logger.warning(f"[{self.name}] 候选恢复失败: {e}")
+
     def on_bar(self, bar: BarData) -> List[TradingSignal]:
-        # P4 确认缓冲区延迟恢复
+        # P4 确认缓冲区延迟恢复：实盘候选已由 load_live_state 从 DB 恢复（含 signal_id）；
+        # 仅在 _p4_buffer 为空（回测/恢复失败）时历史重建兜底
         if not getattr(self, '_confirm_restored', False):
             self._confirm_restored = True
-            self._restore_confirm_buffer()
+            if not self._p4_buffer:
+                self._restore_confirm_buffer()
 
         signals: List[TradingSignal] = []
         ts_code = bar.ts_code
@@ -409,7 +548,12 @@ class LightGBMBottomStrategy(BaseStrategy):
                     if vr is not None and vr < 1.0:
                         return signals
                 d["p4_confirmed"] += 1
-                s = self._make_entry(ts_code, bar, pinfo["proba"], pinfo["weight"], regime)
+                # v6.x: 候选转正（promoted）+ 买入信号关联 parent_id（与进攻实盘候选一致）
+                _cand_sid = pinfo.get("signal_id")
+                # P1 修复: 重放(silent replay)时不转正——重放仅为追平状态，非真实确认
+                if _cand_sid and not getattr(self, "_replaying", False):
+                    self._fire_db(self._mark_candidate_status(_cand_sid, "promoted", "收盘确认转正"))
+                s = self._make_entry(ts_code, bar, pinfo["proba"], pinfo["weight"], regime, parent_id=_cand_sid)
                 signals.append(s)
                 logger.info('[P4/SIG] %s ✓确认入场 proba=%.3f wt=%.3f 信号id=%s',
                             ts_code, pinfo['proba'], pinfo['weight'], s.id)
@@ -436,10 +580,15 @@ class LightGBMBottomStrategy(BaseStrategy):
                 d["weight_zero"] += 1; return signals
             if self.parameters.get("confirm_enabled", False):
                 d["p4_buffered"] += 1
+                # v6.x: 候选 signal_id + 落库（与进攻实盘候选一致），跨重启保留
+                _sid = str(uuid.uuid4())
                 self._p4_buffer[ts_code] = {
-                    "proba": proba, "signal_low": bar.low, "weight": weight}
+                    "proba": proba, "signal_low": bar.low, "weight": weight, "signal_id": _sid}
+                # P1 修复: 重放(silent replay)时不落库候选——重放仅为追平状态，非真实当日
+                if not getattr(self, "_replaying", False):
+                    self._fire_db(self._persist_candidate(ts_code, self._p4_buffer[ts_code]))
                 if self.parameters.get("trace", False):
-                    logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认',
+                    logger.info('[P4/BUF] %s proba=%.4f > thr=%.3f rc=%d → 缓冲待确认(已落库)',
                                 ts_code, proba, day_t, regime)
                 return signals
             d["entry_generated"] += 1
@@ -454,7 +603,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.info('[BAR/OUT] %s → %d 个信号', ts_code, len(signals))
         return signals
 
-    def _make_entry(self, ts_code, bar, proba, weight, regime):
+    def _make_entry(self, ts_code, bar, proba, weight, regime, parent_id=None):
         self._position_entry[ts_code] = (bar.trade_date, bar.close)
         self._track_high[ts_code] = bar.close
         rn = {0: "熊", 1: "震", 2: "牛"}
@@ -467,7 +616,7 @@ class LightGBMBottomStrategy(BaseStrategy):
         if price > 0 and amount > 0:
             lot = 100  # A股/ETF 一手 = 100 份
             quantity = max(int(amount / price / lot) * lot, lot)
-        return TradingSignal(
+        sig = TradingSignal(
             id=str(uuid.uuid4()), strategy_id=self.name, strategy_name=self.name,
             ts_code=ts_code, signal_type=SignalType.ENTRY,
             direction=SignalDirection.LONG, price=bar.close,
@@ -477,6 +626,9 @@ class LightGBMBottomStrategy(BaseStrategy):
             quantity=quantity,
             amount=amount,
             timestamp=bar.trade_time if bar.trade_time else datetime.now())
+        if parent_id:
+            sig.parent_id = parent_id  # v6.x: 候选→买入信号 链路关联
+        return sig
 
     def _check_exit(self, ts_code: str, bar: BarData) -> Optional[TradingSignal]:
         entry_date, entry_price = self._position_entry.get(ts_code, (None, None))

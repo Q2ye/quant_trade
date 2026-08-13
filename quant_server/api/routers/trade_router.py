@@ -30,6 +30,7 @@ from modules.trade.handlers import (
 	record_batch_trades,
 	review_signal,
 	get_signal_list,
+	get_round_trips,
 )
 # 导入交易模块的Pydantic模型
 from modules.trade.schemas import (
@@ -54,6 +55,8 @@ from modules.trade.schemas import (
 	SignalReviewResponse,
 	SignalListRequest,
 	SignalListResponse,
+	RoundTripRequest,
+	RoundTripResponse,
 )
 # 导入响应格式化工具
 from utils.api_utils.response_formatter import success_response, error_response
@@ -621,6 +624,41 @@ async def review_signal_api (
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail=f"信号审核失败: {str(e)}"
+		)
+
+
+# ==================== 买卖配对追溯接口 ====================
+
+@router.get("/round-trips", response_model=RoundTripResponse)
+async def get_round_trips_api (
+		account_id: str = Query(..., description="账户ID"),
+		ts_code: Optional[str] = Query(default=None, description="证券代码（可选）"),
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+) -> RoundTripResponse:
+	"""
+	获取买卖配对追溯（FIFO）
+
+	返回每笔卖出吃掉哪些买入、已实现盈亏，以及当前持仓由哪些买入构成。
+	实时计算，不落库。
+	"""
+	try:
+		logger.info(f"用户 {current_user.get('username')} 请求买卖配对追溯: account={account_id}, ts_code={ts_code}")
+
+		result = await get_round_trips(
+			session=db_session,
+			account_id=account_id,
+			ts_code=ts_code,
+		)
+		return result
+
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"买卖配对追溯失败: {str(e)}", exc_info=True)
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"买卖配对追溯失败: {str(e)}"
 		)
 
 

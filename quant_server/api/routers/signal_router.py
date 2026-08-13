@@ -140,8 +140,126 @@ async def list_pending_signals(
                 "quantity": s.quantity if getattr(s, "quantity", None) else 0,
                 "confidence": float(getattr(s, "confidence", 1.0)),
                 "reason": getattr(s, "reason", ""),
+                "signal_time": s.signal_time.isoformat() if getattr(s, "signal_time", None) else None,
                 "created_at": s.created_at.isoformat() if s.created_at else None,
             }
             for s in signals
         ],
     }
+
+
+# ═══════════════════════════════════════════════════════════
+# v3.4: 信号链路追溯 — 聚合 候选→信号→订单→成交
+# ═══════════════════════════════════════════════════════════
+
+
+@router.get("/{signal_id}/trace")
+async def get_signal_trace(signal_id: str):
+    """
+    信号链路追溯：聚合 候选(parent) → 信号 → 订单 → 成交 完整链路。
+
+    从任意信号 ID 出发，双向展开：
+      - 顺向：该信号的下游（parent_id=该信号 的子信号）
+      - 逆向：该信号的上游（parent_id 指向的父信号）
+      - 订单：signals.order_id → orders
+      - 成交：orders → trades
+
+    Returns:
+        {signal, parent, children, order, trades} — 各环节可为 null
+    """
+    from shared.database.session.session_manager import get_session_manager
+    from sqlalchemy import text
+
+    sm = get_session_manager()
+    async with sm.get_session() as session:
+        # 1. 当前信号
+        cur = (await session.execute(
+            text("""SELECT id, strategy_id, ts_code, signal_type, direction, signal_status,
+                           price, quantity, reason, order_id, parent_id, signal_time, created_at
+                    FROM signals WHERE id = :sid"""),
+            {"sid": signal_id})).fetchone()
+        if not cur:
+            raise HTTPException(status_code=404, detail=f"信号 {signal_id} 不存在")
+
+        def _sig_row(r):
+            return {
+                "id": r[0], "strategy_id": r[1], "ts_code": r[2],
+                "signal_type": r[3], "direction": r[4], "signal_status": r[5],
+                "price": float(r[6]) if r[6] else None,
+                "quantity": r[7] if r[7] else 0,
+                "reason": r[8] or "",
+                "order_id": r[9], "parent_id": r[10],
+                "signal_time": r[11].isoformat() if r[11] else None,
+                "created_at": r[12].isoformat() if r[12] else None,
+            }
+
+        signal = _sig_row(cur)
+
+        # 2. 逆向：父信号（候选）
+        parent = None
+        if cur[10]:  # parent_id
+            p = (await session.execute(
+                text("""SELECT id, strategy_id, ts_code, signal_type, direction, signal_status,
+                               price, quantity, reason, order_id, parent_id, signal_time, created_at
+                        FROM signals WHERE id = :pid"""),
+                {"pid": cur[10]})).fetchone()
+            if p:
+                parent = _sig_row(p)
+
+        # 3. 顺向：子信号（parent_id = 当前信号）
+        children = []
+        ch = (await session.execute(
+            text("""SELECT id, strategy_id, ts_code, signal_type, direction, signal_status,
+                           price, quantity, reason, order_id, parent_id, signal_time, created_at
+                    FROM signals WHERE parent_id = :sid ORDER BY signal_time LIMIT 100"""),
+            {"sid": signal_id})).fetchall()
+        for c in ch:
+            children.append(_sig_row(c))
+
+        # 4. 订单（当前信号 order_id）
+        order = None
+        if cur[9]:
+            o = (await session.execute(
+                text("""SELECT order_id, ts_code, direction, price, volume,
+                               filled_volume, filled_amount, avg_price, status,
+                               submitted_at, filled_at
+                        FROM orders WHERE order_id = :oid"""),
+                {"oid": cur[9]})).fetchone()
+            if o:
+                order = {
+                    "order_id": o[0], "ts_code": o[1], "direction": o[2],
+                    "price": float(o[3]) if o[3] else None,
+                    "volume": o[4] if o[4] else 0,
+                    "filled_volume": o[5] if o[5] else 0,
+                    "filled_amount": float(o[6]) if o[6] else 0,
+                    "avg_price": float(o[7]) if o[7] else None,
+                    "status": o[8],
+                    "submitted_at": o[9].isoformat() if o[9] else None,
+                    "filled_at": o[10].isoformat() if o[10] else None,
+                }
+
+        # 5. 成交（订单 → trades）
+        trades = []
+        if cur[9]:
+            tr = (await session.execute(
+                text("""SELECT trade_id, order_id, ts_code, price, volume, trade_time
+                        FROM trades WHERE order_id = :oid ORDER BY trade_time LIMIT 100"""),
+                {"oid": cur[9]})).fetchall()
+            for t in tr:
+                trades.append({
+                    "trade_id": t[0], "order_id": t[1], "ts_code": t[2],
+                    "price": float(t[3]) if t[3] else None,
+                    "volume": t[4] if t[4] else 0,
+                    "trade_time": t[5].isoformat() if t[5] else None,
+                })
+
+        return {
+            "success": True,
+            "data": {
+                "signal": signal,
+                "parent": parent,
+                "children": children,
+                "order": order,
+                "trades": trades,
+            },
+        }

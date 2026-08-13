@@ -466,8 +466,9 @@ const loadDashboardData = async () => {
     ]);
 
     // ── 账户数据 ──
-    // 后端 /account 返回 AccountSummaryResponse { success, data: {total_asset, cash, market_value, pnl, pnl_rate} }
-    // 经 handleResponse → data.data 是单对象（非数组），需包成数组
+    // 后端 /account 返回 { success, data: {total_asset, cash, market_value, pnl, pnl_rate, daily_pnl, daily_return} }
+    // daily_pnl/daily_return 来自日终结算快照（未结算为 0）；经 handleResponse → data.data 是单对象（非数组）
+    // 注意：daily_pnl/daily_return 是"当日"，pnl/pnl_rate 是自开户累计，勿混用
     if (acctRes && typeof acctRes === "object" && !Array.isArray(acctRes)) {
       const a = acctRes as Record<string, any>;
       accounts.value = [{
@@ -476,16 +477,16 @@ const loadDashboardData = async () => {
         total_asset: a.total_asset ?? 0,
         available_cash: a.cash ?? 0,
         market_value: a.market_value ?? 0,
-        daily_pnl: a.pnl ?? 0,
-        daily_return: a.pnl_rate ?? 0,
+        daily_pnl: a.daily_pnl ?? 0,
+        daily_return: a.daily_return ?? 0,
       }];
     } else if (Array.isArray(acctRes)) {
       accounts.value = acctRes.map((a: any) => ({
         ...a,
         id: String(a.id ?? a.account_id ?? ""),
         available_cash: a.available_cash ?? a.cash ?? 0,
-        daily_pnl: a.daily_pnl ?? a.dailyPnl ?? a.pnl ?? 0,
-        daily_return: a.daily_return ?? a.dailyReturn ?? a.pnl_rate ?? 0,
+        daily_pnl: a.daily_pnl ?? a.dailyPnl ?? 0,
+        daily_return: a.daily_return ?? a.dailyReturn ?? 0,
       }));
     }
     if (accounts.value.length > 0) {

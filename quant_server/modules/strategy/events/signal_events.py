@@ -35,6 +35,7 @@ class StrategySignalEvent(BaseEvent):
         order_type: str = "limit_range",
         account_id: str = "",       # v2.2: 绑定的交易账户ID
         strategy_version_id: str = "",  # v3.1: 策略版本ID，用于溯源
+        parent_id: Optional[str] = None,  # v3.4: 父信号ID（候选→买入信号链路关联）
         run_mode: str = "live",
         execution_mode: str = "semi_auto",
         **kwargs
@@ -75,6 +76,7 @@ class StrategySignalEvent(BaseEvent):
             "target_price": target_price,
             "stop_loss_price": stop_loss_price,
             "account_id": account_id,
+            "parent_id": parent_id,   # v3.4: 父信号ID
             "run_mode": run_mode,
             "execution_mode": execution_mode,
             "generation_time": datetime.now().isoformat()

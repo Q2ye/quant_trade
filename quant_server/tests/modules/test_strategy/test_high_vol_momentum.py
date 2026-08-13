@@ -226,10 +226,162 @@ class TestPositionSize:
 class TestGetParameters:
     """查询接口"""
 
-    def test_version_v5(self):
+    def test_version_v7(self):
         cls = _load_strategy_class()
         s = cls(name="test")
         params = s.get_parameters()
-        assert params["strategy_version"] == "v5.0"
+        assert params["strategy_version"] == "v7.1"
         assert params["max_positions"] == 2
         assert params["max_single_weight"] == 0.5
+        # v7.0 熊市参数默认值
+        assert s.bear_max_positions == 1
+        assert s.bear_single_weight == 0.25
+        assert s.bear_vol_ratio == 2.0
+        assert s.bear_mom60_max == 0.05
+
+
+class TestBearMarketScreen:
+    """v7.0 熊市温和放量启动选股"""
+
+    def _make_strategy(self):
+        cls = _load_strategy_class()
+        return cls(name="test", parameters={"verbose_logging": False})
+
+    def _seed_bear_series(self, s, code, base_price=100, mild=True):
+        """构造熊市温和启动序列：低位横盘后温和放量突破"""
+        n = 100
+        # 前 80 天横盘（close=100，60日动量≈0），末 20 天缓升（总 +2%），末天 +2.5% 创新高
+        closes = [base_price] * 80
+        for k in range(1, 20):
+            closes.append(base_price * (1 + 0.001 * k))     # 缓升到 1.019
+        closes.append(closes[-1] * 1.025)                    # 末天 +2.5% → 1.044
+        vols = [1e6] * (n - 1) + [2.5e6]
+        _seed_history(s, code, closes, vols=vols,
+                      highs=[c * 1.001 for c in closes])
+        s._last_trade_date = s._bar_dates[code]
+
+    def test_mild_breakout_scores(self):
+        """温和放量启动应通过熊市选股"""
+        s = self._make_strategy()
+        self._seed_bear_series(s, "600030.SH")
+        score = s._score_bear_candidate("600030.SH")
+        assert score is not None
+
+    def test_high_momentum_rejected(self):
+        """已暴涨的高动量股应被熊市选股拒绝"""
+        s = self._make_strategy()
+        n = 100
+        # 前期暴涨（60日动量高）
+        closes = [50 * (1.02 ** i) for i in range(n)]
+        vols = [1e6] * (n - 1) + [2.5e6]
+        _seed_history(s, "600030.SH", closes, vols=vols)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        assert s._score_bear_candidate("600030.SH") is None
+
+    def test_no_volume_surge_rejected(self):
+        """未放量突破应被拒绝"""
+        s = self._make_strategy()
+        n = 100
+        closes = [100 * (1 + 0.001 * i) for i in range(n)]
+        vols = [1e6] * n  # 无放量
+        _seed_history(s, "600030.SH", closes, vols=vols)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        assert s._score_bear_candidate("600030.SH") is None
+
+    def test_not_breakout_rejected(self):
+        """未创新高应被拒绝"""
+        s = self._make_strategy()
+        n = 100
+        # 高位横盘：不创新高
+        closes = [100.0] * 60 + [99.0] * 40
+        vols = [1e6] * (n - 1) + [2.5e6]
+        _seed_history(s, "600030.SH", closes, vols=vols)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        assert s._score_bear_candidate("600030.SH") is None
+
+    def test_bear_params_in_rebalance(self):
+        """熊市时用降仓参数（1×25%）"""
+        cls = _load_strategy_class()
+        s = cls(name="test", parameters={"verbose_logging": False})
+        # 手动模拟熊市：构造 CSI500 在年线下
+        import datetime as _dt
+        base = _dt.date(2015, 1, 1)
+        dates = [(base + _dt.timedelta(days=i)).isoformat() for i in range(300)]
+        closes = [100 * (0.99 ** i) for i in range(300)]  # 单边下跌
+        s._csi500_cache = pd.DataFrame({"trade_date": dates, "close": closes})
+        s._last_trade_date = dates[-1]
+        assert s._annual_line_gate() is True
+
+
+class TestBearWideStop:
+    """v7.1 熊市独立宽止损"""
+
+    def test_bear_params_default(self):
+        cls = _load_strategy_class()
+        s = cls(name="test")
+        assert s.bear_atr_trailing_mult == 3.5
+        assert s.bear_atr_stop_mult == 2.5
+
+    def test_bear_position_uses_wide_stop(self):
+        """熊市持仓(is_bear=True)应触发宽止损而非2×ATR"""
+        cls = _load_strategy_class()
+        s = cls(name="test", parameters={"verbose_logging": False})
+        # 构造持仓 + 低波动数据（ATR小）
+        closes = [100.0] * 40
+        _seed_history(s, "600030.SH", closes)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        s._holdings["600030.SH"] = {
+            "entry_price": 100.0, "weight": 0.25, "shares": 100,
+            "entry_date": "2023-01-01", "peak_high": 100.0, "is_bear": True,
+        }
+        atr = s._calc_atr("600030.SH")
+        # 熊市硬止损 = 100 - 2.5×ATR，现价应低于它触发（熊市宽止损）
+        # 构造现价 = 100 - 2.2×ATR（在牛市2.0×ATR内、但低于熊市2.5×ATR）
+        if atr > 0:
+            # 覆盖 close 为 100 - 2.2×ATR
+            df = s._data_cache["600030.SH"]
+            df.loc[df.index[-1], "close"] = 100.0 - 2.2 * atr
+            sigs = s._check_stops_and_trailing()
+            # 熊市用 2.5×ATR 止损，100-2.2×ATR > 100-2.5×ATR，不应触发
+            assert not any(x.ts_code == "600030.SH" for x in sigs), \
+                "熊市持仓在2.2×ATR回撤内不应触发2.5×ATR硬止损"
+
+    def test_bear_wide_trailing_not_trigger_early(self):
+        """熊市移动止损3.5×ATR应比牛市2.0×ATR更宽（不易误触发）"""
+        cls = _load_strategy_class()
+        s = cls(name="test", parameters={"verbose_logging": False})
+        closes = [100.0] * 40
+        _seed_history(s, "600030.SH", closes)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        s._holdings["600030.SH"] = {
+            "entry_price": 100.0, "weight": 0.25, "shares": 100,
+            "entry_date": "2023-01-01", "peak_high": 105.0, "is_bear": True,
+        }
+        atr = s._calc_atr("600030.SH")
+        if atr > 0:
+            # 现价 = 105 - 2.5×ATR（在牛市2.0×ATR移动止损内已触发，但熊市3.5×ATR内不触发）
+            df = s._data_cache["600030.SH"]
+            df.loc[df.index[-1], "close"] = 105.0 - 2.5 * atr
+            sigs = s._check_stops_and_trailing()
+            assert not any(x.ts_code == "600030.SH" for x in sigs), \
+                "熊市3.5×ATR移动止损不应在2.5×ATR回撤触发"
+
+    def test_bull_position_uses_original_stop(self):
+        """牛市持仓(is_bear=False)仍用2×ATR"""
+        cls = _load_strategy_class()
+        s = cls(name="test", parameters={"verbose_logging": False})
+        closes = [100.0] * 40
+        _seed_history(s, "600030.SH", closes)
+        s._last_trade_date = s._bar_dates["600030.SH"]
+        s._holdings["600030.SH"] = {
+            "entry_price": 100.0, "weight": 0.5, "shares": 100,
+            "entry_date": "2023-01-01", "peak_high": 105.0, "is_bear": False,
+        }
+        atr = s._calc_atr("600030.SH")
+        if atr > 0:
+            # 现价 = 105 - 2.5×ATR（牛市2.0×ATR移动止损应触发）
+            df = s._data_cache["600030.SH"]
+            df.loc[df.index[-1], "close"] = 105.0 - 2.5 * atr
+            sigs = s._check_stops_and_trailing()
+            assert any(x.ts_code == "600030.SH" for x in sigs), \
+                "牛市2.0×ATR移动止损应在2.5×ATR回撤触发"

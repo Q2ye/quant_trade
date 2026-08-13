@@ -1541,6 +1541,36 @@ CREATE INDEX idx_sys_operation_logs_user_id ON sys_operation_logs(user_id);
 CREATE INDEX idx_sys_operation_logs_module ON sys_operation_logs(module);
 CREATE INDEX idx_sys_operation_logs_created_at ON sys_operation_logs(created_at DESC);
 
+-- 通用审计日志表（AuditLog 模型 / AuditRepository 写入，Shared 层 AuditLogger 使用）
+CREATE TABLE audit_logs (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) REFERENCES sys_users(id),
+    username VARCHAR(100),
+    action_type VARCHAR(50) NOT NULL,
+    resource_type VARCHAR(100) NOT NULL,
+    resource_id VARCHAR(100),
+    resource_name VARCHAR(255),
+    old_values JSONB,
+    new_values JSONB,
+    changed_fields JSONB,
+    ip_address VARCHAR(50),
+    user_agent TEXT,
+    status VARCHAR(20) DEFAULT 'success',
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE audit_logs IS '通用审计日志表';
+COMMENT ON COLUMN audit_logs.action_type IS '操作类型：login/logout/create/read/update/delete/execute/access/authorize/config_change/security_event/system_event';
+COMMENT ON COLUMN audit_logs.resource_type IS '资源类型';
+COMMENT ON COLUMN audit_logs.new_values IS '新值（JSON格式）';
+COMMENT ON COLUMN audit_logs.status IS '操作状态：success/failure/partial';
+
+CREATE INDEX idx_audit_logs_action_type ON audit_logs(action_type);
+CREATE INDEX idx_audit_logs_resource_type ON audit_logs(resource_type);
+CREATE INDEX idx_audit_logs_created_at_user ON audit_logs(created_at, user_id);
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+
 -- 审计日志表
 CREATE TABLE sys_audit_logs (
     id VARCHAR(36) PRIMARY KEY,
@@ -3279,8 +3309,8 @@ CREATE TABLE signals (
     reviewed_at TIMESTAMPTZ,
     reviewed_by VARCHAR(36),
     account_id VARCHAR(36) REFERENCES accounts(id),
-    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK
-    strategy_version_id VARCHAR(36),         -- v3.1: 生成该信号的策略版本ID
+    strategy_version_id VARCHAR(36) REFERENCES strategy_versions(id) ON DELETE SET NULL,  -- v3.3: FK（生成该信号的策略版本ID）
+    parent_id VARCHAR(36),  -- v3.4: 父信号ID（候选→买入信号 链路关联）。FK REFERENCES signals(id) 受 TimescaleDB 超表约束（signals.id 无单列唯一索引），实库以 ALTER TABLE 添加
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -3288,6 +3318,7 @@ COMMENT ON TABLE signals IS '策略交易信号记录表（TimescaleDB超表）'
 COMMENT ON COLUMN signals.strategy_id IS '策略ID';
 COMMENT ON COLUMN signals.account_id IS '关联的交易账户ID';
 COMMENT ON COLUMN signals.strategy_version_id IS 'v3.1: 生成该信号的策略版本ID，用于溯源';
+COMMENT ON COLUMN signals.parent_id IS 'v3.4: 父信号ID。候选(promoted)→买入信号(pending_manual)链路关联，用于全链路追溯';
 COMMENT ON COLUMN signals.ts_code IS '股票代码';
 COMMENT ON COLUMN signals.direction IS '交易方向：buy-买入, sell-卖出';
 COMMENT ON COLUMN signals.signal_type IS '信号类型：buy-买入, sell-卖出, hold-持有';
@@ -3577,6 +3608,9 @@ SELECT create_hypertable(
     chunk_time_interval => INTERVAL '7 days',
     if_not_exists => TRUE
 );
+
+-- 信号追溯：parent_id 索引（候选→买入信号 双向查询加速，v3.4）
+CREATE INDEX IF NOT EXISTS idx_signals_parent_id ON signals(parent_id);
 
 -- 回测净值曲线转换为超表
 SELECT create_hypertable(

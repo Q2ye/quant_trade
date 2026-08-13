@@ -867,6 +867,7 @@ class StrategyManager(EngineBase):
                     strategy_id=strategy_id,
                     strategy_name=instance.name if instance else "",
                     strategy_version_id=version_id,
+                    parent_id=sig_dict.get("parent_id") or getattr(sig, "parent_id", None),  # v3.4: 父信号ID
                     ts_code=sig_dict.get("ts_code", ""),
                     signal_type=sig_dict.get("signal_type", ""),
                     signal_direction=sig_dict.get("direction", ""),
@@ -916,6 +917,7 @@ class StrategyManager(EngineBase):
                     strategy_id=strategy_id,
                     strategy_name=instance.name if instance else "",
                     strategy_version_id=version_id,
+                    parent_id=sig_dict.get("parent_id") or getattr(sig, "parent_id", None),  # v3.4: 父信号ID
                     ts_code=sig_dict.get("ts_code", ""),
                     signal_type=sig_dict.get("signal_type", ""),
                     signal_direction=sig_dict.get("direction", ""),
@@ -1171,11 +1173,20 @@ class StrategyManager(EngineBase):
                     rows = list(result.scalars().all())
 
                     if not rows:
+                        # P1 修复：全市场回退也走在线复权（与指定池分支一致），避免 raw 未复权量纲断裂
                         q2 = sa_select(StockDaily).where(
                             StockDaily.trade_date == trade_date,
                         )
                         result2 = await session.execute(q2)
-                        rows = list(result2.scalars().all())
+                        raw_rows = list(result2.scalars().all())
+                        if raw_rows:
+                            _all_codes = list({
+                                getattr(r, "ts_code", "") for r in raw_rows
+                                if getattr(r, "ts_code", "")
+                            })
+                            rows = await self._apply_online_stock_qfq(
+                                session, raw_rows, _all_codes, trade_date, trade_date,
+                            )
 
                     # ETF 日线 + 复权因子 JOIN（全市场），
                     # 统一 qfq 归一化：price × factor / latest_factor（最新价 = 实价）
@@ -1308,11 +1319,20 @@ class StrategyManager(EngineBase):
                     rows = list(result.scalars().all())
 
                     if not rows:
+                        # P1 修复：全市场回退也走在线复权（与指定池分支一致），避免 raw 未复权量纲断裂
                         q2 = sa_select(StockDaily).where(
                             StockDaily.trade_date.between(start_date, end_date),
                         )
                         result2 = await session.execute(q2)
-                        rows = list(result2.scalars().all())
+                        raw_rows = list(result2.scalars().all())
+                        if raw_rows:
+                            _all_codes = list({
+                                getattr(r, "ts_code", "") for r in raw_rows
+                                if getattr(r, "ts_code", "")
+                            })
+                            rows = await self._apply_online_stock_qfq(
+                                session, raw_rows, _all_codes, start_date, end_date,
+                            )
 
                     # ETF 日线 + 复权因子 JOIN（全市场），
                     # 统一 qfq 归一化：price × factor / latest_factor（最新价 = 实价）
@@ -1866,11 +1886,18 @@ class StrategyManager(EngineBase):
         if not state or not strategy:
             return
 
-        for bar in bars:
-            try:
-                await strategy.on_bar(bar)
-            except Exception as e:
-                logger.debug(f"补跑 bar 异常 (忽略): {strategy_id} {trade_date}: {e}")
+        # P1 修复: 重放期间标记策略，抑制策略内部 DB 落库（候选/转正）。
+        # 重放只是追平状态，非真实当日运行——若策略 on_bar 内 fire_db 落库候选，
+        # 会绕过本方法的信号抑制，产生大量脏候选（如 ETF P4 缓冲落库）。
+        setattr(strategy, "_replaying", True)
+        try:
+            for bar in bars:
+                try:
+                    await strategy.on_bar(bar)
+                except Exception as e:
+                    logger.debug(f"补跑 bar 异常 (忽略): {strategy_id} {trade_date}: {e}")
+        finally:
+            setattr(strategy, "_replaying", False)
 
         # 清除补跑过程中可能产生的信号
         strategy.clear_signals()
@@ -2414,7 +2441,8 @@ class StrategyManager(EngineBase):
                     import ctypes
                     ctypes.CDLL("ucrtbase").malloc_trim(0)
                 except Exception:
-                    pass
+                    # P1 修复: 非 Windows 环境无 ucrtbase → malloc_trim 不可用，正常忽略，记 debug
+                    logger.debug("malloc_trim 不可用（非 Windows 环境），跳过内存回收")
 
         except Exception as e:
             logger.warning(

@@ -14,13 +14,13 @@ class CostCalculator:
 			config: 成本计算配置
 		"""
 		self.config = config or {}
-		# 默认费率配置
+		# 默认费率配置（v2.6 统一费率：万一免五 / 印花税 0.05% / 过户费万0.1 沪深双边无最低）
 		self.default_rates = {
-			"commission_rate": 0.0003,  # 佣金费率
-			"min_commission": 5,  # 最低佣金
-			"stamp_duty_rate": 0.001,  # 印花税费率
-			"transfer_fee_rate": 0.00002,  # 过户费费率
-			"min_transfer_fee": 1,  # 最低过户费
+			"commission_rate": 0.0001,  # 佣金费率（万一）
+			"min_commission": 0,  # 免五：无最低佣金
+			"stamp_duty_rate": 0.0005,  # 印花税 0.05%（仅卖出，2023-08-28 起减半）
+			"transfer_fee_rate": 0.0001,  # 过户费 万0.1（沪深两市、买卖双向，2022-04-29 起）
+			"min_transfer_fee": 0,  # 过户费无最低
 		}
 		# 合并配置
 		self.rates = {**self.default_rates, **self.config.get("rates", {})}
@@ -46,11 +46,8 @@ class CostCalculator:
 		commission = amount * self.rates["commission_rate"]
 		commission = max(commission, self.rates["min_commission"])
 
-		# 计算过户费（仅上海股票）
-		transfer_fee = 0
-		if ts_code and ts_code.endswith("SH"):
-			transfer_fee = amount * self.rates["transfer_fee_rate"]
-			transfer_fee = max(transfer_fee, self.rates["min_transfer_fee"])
+		# 计算过户费（沪深两市、买卖双向收取，无最低）
+		transfer_fee = amount * self.rates["transfer_fee_rate"]
 
 		# 计算印花税（仅卖出）
 		stamp_duty = 0
@@ -145,11 +142,11 @@ class CostCalculator:
 
 # ---- v2.4: 模块级统一入口 ----
 
-# 默认费率常量（A 股标准）
-DEFAULT_COMMISSION_RATE = 0.0003    # 万三佣金
-DEFAULT_MIN_COMMISSION = 5          # 最低 5 元
-DEFAULT_STAMP_DUTY_RATE = 0.001     # 千一印花税（仅卖出）
-DEFAULT_TRANSFER_FEE_RATE = 0.00002 # 十万分之二过户费
+# 默认费率常量（A 股标准，v2.6 统一）
+DEFAULT_COMMISSION_RATE = 0.0001    # 万一佣金（免五）
+DEFAULT_MIN_COMMISSION = 0          # 免五：无最低佣金
+DEFAULT_STAMP_DUTY_RATE = 0.0005    # 印花税 0.05%（仅卖出）
+DEFAULT_TRANSFER_FEE_RATE = 0.0001  # 过户费万0.1（沪深两市、买卖双向）
 
 # 模块级默认实例，无需重复创建
 _default_calculator = CostCalculator()

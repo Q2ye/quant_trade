@@ -289,9 +289,33 @@ async def get_account_list (session: AsyncSession, request, user_id: str):
 		limit=page_size
 	)
 	accounts = await handler.get_accounts(filter_params)
+	data = [a.model_dump() for a in accounts]
+
+	# v2.6: 附加每个账户最近一次日终结算的当日盈亏/收益率（前端账户概览展示用）
+	try:
+		ids = [a.get("id") for a in data if a.get("id")]
+		if ids:
+			from sqlalchemy import text as _text
+			rows = (await session.execute(
+				_text(
+					"SELECT DISTINCT ON (account_id) account_id, daily_pnl, daily_return "
+					"FROM account_daily_performance "
+					"WHERE account_id = ANY(:ids) "
+					"ORDER BY account_id, trade_date DESC"
+				),
+				{"ids": ids},
+			)).fetchall()
+			perf_map = {r.account_id: r for r in rows}
+			for a in data:
+				p = perf_map.get(a.get("id"))
+				a["daily_pnl"] = float(p.daily_pnl) if p and p.daily_pnl is not None else 0.0
+				a["daily_return"] = float(p.daily_return) if p and p.daily_return is not None else 0.0
+	except Exception as _pe:
+		logger.warning(f"附加账户日绩效失败（非致命）: {_pe}")
+
 	return {
 		"success": True,
-		"data": [a.model_dump() for a in accounts],
+		"data": data,
 		"pagination": {"page": page, "page_size": page_size, "total": len(accounts)}
 	}
 

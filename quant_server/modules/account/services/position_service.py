@@ -316,7 +316,7 @@ class PositionService:
 				# 记录审计日志
 				if self.audit_logger:
 					await self.audit_logger.log_simple(
-						action="position_update",
+						action="update",
 						user_id=account.user_id,
 						resource_type="position",
 						resource_id=str(position_id),
@@ -419,7 +419,7 @@ class PositionService:
 				account = await self.account_repo.get(account_id)
 				if account and self.audit_logger:
 					await self.audit_logger.log_simple(
-						action="position_freeze",
+						action="execute",
 						user_id=account.user_id,
 						resource_type="position",
 						resource_id=str(position.id),
@@ -517,7 +517,7 @@ class PositionService:
 				account = await self.account_repo.get(account_id)
 				if account and self.audit_logger:
 					await self.audit_logger.log_simple(
-						action="position_unfreeze",
+						action="execute",
 						user_id=account.user_id,
 						resource_type="position",
 						resource_id=str(position.id),

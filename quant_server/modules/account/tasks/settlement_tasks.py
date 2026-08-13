@@ -8,6 +8,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import BusinessException
@@ -16,7 +17,10 @@ from modules.account.calculators.pnl_calculator import PnLCalculator
 from modules.account.events.settlement_events import AccountSettlementCompletedEvent
 from modules.account.services.account_service import AccountService
 from modules.account.services.asset_service import AssetService
+from shared.database.models.business_models import AccountDailyPerformance
 from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.account.settlement.transaction_repo import AccountTransactionRepository
+from shared.database.repositories.market.quote import StockDailyRepository
 from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
 
@@ -60,6 +64,10 @@ class SettlementTasks:
         self.pnl_calculator = PnLCalculator(session=account_repo.session)
         self.asset_calculator = AssetCalculator(session=account_repo.session)
 
+        # 结算辅助仓库
+        self.stock_daily_repo = StockDailyRepository(account_repo.session)
+        self.transaction_repo = AccountTransactionRepository(account_repo.session)
+
     async def daily_settlement_task(self, trading_day: Optional[date] = None) -> Dict:
         """
         日终结算任务
@@ -77,44 +85,37 @@ class SettlementTasks:
         logger.info(f"开始执行日终结算任务，交易日: {trading_day}")
 
         try:
-            # 1. 获取当日所有账户
-            accounts = await self.account_repo.get_all(status="active")
+            # 1. 获取当日所有活跃账户（用 get_active_accounts，避免不存在的 get_all）
+            accounts = await self.account_repo.get_active_accounts(limit=100000)
 
             results = {}
             for account in accounts:
-                account_id = getattr(account, 'account_id', str(getattr(account, 'id', 'unknown')))
+                account_id = str(getattr(account, 'id', 'unknown'))
                 logger.info(f"处理账户 {account_id} 的日终结算")
 
                 try:
-                    # 2. 计算当日盈亏
+                    # 2. 计算当日盈亏（资产差分法，含市值重估）
                     daily_pnl = await self._calculate_daily_pnl(account_id, trading_day)
 
-                    # 3. 更新账户资产
+                    # 3. 回写账户资产 + 写单条日绩效快照
                     updated_assets = await self._update_account_assets(
                         account_id,
                         daily_pnl,
                         trading_day
                     )
 
-                    # 4. 更新持仓成本
-                    updated_positions = await self._update_position_cost(account_id)
-
-                    # 5. 生成日终对账单
-                    statement = await self._generate_daily_statement(
-                        account_id,
-                        trading_day,
-                        daily_pnl,
-                        updated_assets
-                    )
-
-                    # 6. 记录结算结果
+                    # 4. 记录结算结果（对账单仅落库 account_statements，不再生成 PDF 文件）
                     settlement_record = await self.account_repo.create_settlement_record({
                         'account_id': account_id,
                         'trading_day': trading_day,
                         'settlement_type': 'daily',
                         'pnl': float(daily_pnl['total_pnl']),
                         'assets_snapshot': updated_assets,
-                        'statement_path': statement['file_path'],
+                        'opening_balance': daily_pnl.get('yesterday_total_asset', 0),
+                        'net_deposit': daily_pnl.get('net_deposit', 0),
+                        'total_trades': daily_pnl.get('trade_count', 0),
+                        'total_fees': daily_pnl.get('total_fees', 0),
+                        'statement_path': '',
                         'status': 'completed'
                     })
 
@@ -122,12 +123,12 @@ class SettlementTasks:
                         'status': 'success',
                         'daily_pnl': daily_pnl,
                         'updated_assets': updated_assets,
-                        'updated_positions': len(updated_positions),
-                        'statement': statement,
+                        'updated_positions': 0,
+                        'statement': {'file_path': '', 'statement_data': daily_pnl},
                         'settlement_id': settlement_record.id
                     }
 
-                    logger.info(f"账户 {account_id} 日终结算完成")
+                    logger.info(f"账户 {account_id} 日终结算完成: 当日盈亏={daily_pnl.get('total_pnl')}")
 
                 except Exception as e:
                     logger.error(f"账户 {account_id} 日终结算失败: {str(e)}", exc_info=True)
@@ -186,12 +187,12 @@ class SettlementTasks:
             # 获取本周所有交易日
             week_start_date = week_end_date - timedelta(days=4)
 
-            # 获取所有账户
-            accounts = await self.account_repo.get_all(status="active")
+            # 获取所有活跃账户
+            accounts = await self.account_repo.get_active_accounts(limit=100000)
 
             results = {}
             for account in accounts:
-                account_id = getattr(account, 'account_id', str(getattr(account, 'id', 'unknown')))
+                account_id = str(getattr(account, 'id', 'unknown'))
 
                 try:
                     # 计算周度盈亏
@@ -265,11 +266,11 @@ class SettlementTasks:
             # 计算月初日期
             month_start_date = date(month_end_date.year, month_end_date.month, 1)
 
-            accounts = await self.account_repo.get_all(status="active")
+            accounts = await self.account_repo.get_active_accounts(limit=100000)
 
             results = {}
             for account in accounts:
-                account_id = getattr(account, 'account_id', str(getattr(account, 'id', 'unknown')))
+                account_id = str(getattr(account, 'id', 'unknown'))
 
                 try:
                     # 计算月度盈亏
@@ -324,38 +325,164 @@ class SettlementTasks:
 
     async def _calculate_daily_pnl(self, account_id: str, trading_day: date) -> Dict:
         """
-        计算账户当日盈亏
+        计算账户当日盈亏（资产差分法）。
 
-        Args:
-            account_id: 账户ID
-            trading_day: 交易日
+            当日盈亏 = 今日总资产 - 昨日总资产 - 当日净出入金
+            今日总资产 = 可用资金 + 冻结资金 + 持仓市值（按 trading_day 收盘价重估）
+            昨日总资产 = 前一结算日快照（无历史快照时用初始资金兜底）
 
-        Returns:
-            Dict: 盈亏计算结果
+        修复点：
+        - B1: 原实现把"累计浮盈"当"当日持仓变动"，混档已实现/未实现
+        - B2: 原 total_asset 读取为 None → pnl_rate 恒 0
+        - B4: 结算结果不回写账户表
         """
-        daily_summary = await self.pnl_calculator.calculate_daily_pnl(account_id, trading_day)
+        account = await self.account_repo.get(account_id)
+        if not account:
+            raise ValueError(f"账户不存在: {account_id}")
 
-        total_asset = Decimal("0")
-        try:
-            assets = await self.asset_service.get_account_assets(account_id)
-            total_asset = assets.get("total_asset", Decimal("0")) if isinstance(assets, dict) else Decimal("0")
-        except BusinessException:
-            pass
+        # 今日资产（市值按 trading_day 收盘价重估）
+        market_value = await self._mark_to_market(account_id, trading_day)
+        available = Decimal(str(account.available_balance or 0))
+        frozen = Decimal(str(account.frozen_balance or 0))
+        cash = available + frozen
+        today_total = cash + market_value
 
-        pnl_rate = float(daily_summary.total_pnl / total_asset) if total_asset and float(total_asset) != 0 else 0.0
+        yesterday_total = await self._get_yesterday_total_asset(account_id, trading_day)
+        net_deposit = await self._get_net_deposit(account_id, trading_day)
+
+        daily_pnl = today_total - yesterday_total - net_deposit
+        pnl_rate = (daily_pnl / yesterday_total) if yesterday_total and yesterday_total != Decimal("0") else Decimal("0")
+
+        # 当日成交明细（对账单/统计用）
+        trade_summary = await self._get_day_trade_summary(account_id, trading_day)
 
         return {
-            "total_pnl": float(daily_summary.total_pnl),
-            "pnl_rate": pnl_rate,
+            "total_pnl": float(daily_pnl),
+            "pnl_rate": float(pnl_rate),
             "detail": {
-                "trade_pnl": float(daily_summary.trade_pnl),
-                "position_pnl_change": float(daily_summary.position_pnl_change),
-                "trade_volume": daily_summary.trade_volume,
-                "trade_amount": float(daily_summary.trade_amount),
-                "commission": float(daily_summary.commission),
-                "tax": float(daily_summary.tax),
+                "trade_pnl": float(trade_summary["realized_pnl"]),
+                "position_pnl_change": float(daily_pnl - trade_summary["realized_pnl"]),
+                "trade_volume": trade_summary["volume"],
+                "trade_amount": float(trade_summary["amount"]),
+                "commission": float(trade_summary["commission"]),
+                "tax": float(trade_summary["tax"]),
             },
+            "today_assets": {
+                "total_asset": today_total,
+                "cash_balance": cash,
+                "available_cash": available,
+                "frozen_cash": frozen,
+                "market_value": market_value,
+            },
+            "yesterday_total_asset": float(yesterday_total),
+            "net_deposit": float(net_deposit),
+            "trade_count": trade_summary["count"],
+            "total_fees": float(trade_summary["commission"] + trade_summary["tax"]),
         }
+
+    async def _mark_to_market(self, account_id: str, trading_day: date) -> Decimal:
+        """按 trading_day 收盘价重估持仓市值（当日行情缺失用持仓 last_price 兜底）"""
+        positions = await self.position_repo.get_account_positions(account_id)
+        if not positions:
+            return Decimal("0")
+        symbols = [p.ts_code for p in positions if p.volume and p.volume > 0]
+        if not symbols:
+            return Decimal("0")
+        # 一次 IN 批量查询当日收盘价，避免 N+1
+        rows = await self.stock_daily_repo.get_batch_by_date_range(symbols, trading_day, trading_day)
+        close_map = {r.ts_code: Decimal(str(r.close)) for r in rows if getattr(r, "close", None) is not None}
+        market_value = Decimal("0")
+        for p in positions:
+            if not p.volume or p.volume <= 0:
+                continue
+            close = close_map.get(p.ts_code)
+            if close is None:
+                close = Decimal(str(p.last_price)) if p.last_price else Decimal("0")
+            market_value += Decimal(str(p.volume)) * close
+        return market_value
+
+    async def _get_yesterday_total_asset(self, account_id: str, trading_day: date) -> Decimal:
+        """取前一结算日总资产；无历史快照时用初始资金兜底"""
+        result = await self.account_repo.session.execute(
+            select(AccountDailyPerformance)
+            .where(
+                AccountDailyPerformance.account_id == account_id,
+                AccountDailyPerformance.trade_date < trading_day,
+            )
+            .order_by(AccountDailyPerformance.trade_date.desc())
+            .limit(1)
+        )
+        rec = result.scalars().first()
+        if rec and rec.total_asset is not None:
+            return Decimal(str(rec.total_asset))
+        account = await self.account_repo.get(account_id)
+        return Decimal(str(account.initial_balance)) if account and account.initial_balance else Decimal("0")
+
+    async def _get_net_deposit(self, account_id: str, trading_day: date) -> Decimal:
+        """当日净出入金（存款 +，取款 -）
+
+        注：transaction_repo.get_transactions_by_date_range 的 end_date 会转午夜零点，
+        会漏掉当日 00:00 之后的流水，这里自建整天时间范围查询。
+        """
+        from shared.database.models.business_models import AccountTransaction
+
+        start_dt = datetime.combine(trading_day, datetime.min.time())
+        end_dt = datetime.combine(trading_day, datetime.max.time())
+        result = await self.account_repo.session.execute(
+            select(AccountTransaction).where(
+                AccountTransaction.account_id == account_id,
+                AccountTransaction.transaction_date >= start_dt,
+                AccountTransaction.transaction_date <= end_dt,
+            )
+        )
+        net = Decimal("0")
+        for t in result.scalars().all():
+            if t.transaction_type in ("deposit", "withdrawal"):
+                net += Decimal(str(t.amount))
+        return net
+
+    async def _get_day_trade_summary(self, account_id: str, trading_day: date) -> Dict:
+        """当日成交汇总：已实现盈亏（卖出用当前持仓成本近似）、成交量额、费用"""
+        from shared.database.models.business_models import Order
+
+        trades = await self.trade_repo.get_trades_by_account_and_date(account_id, trading_day)
+        if not trades:
+            return {"realized_pnl": Decimal("0"), "volume": 0, "amount": Decimal("0"),
+                    "commission": Decimal("0"), "tax": Decimal("0"), "count": 0}
+
+        order_ids = list({t.order_id for t in trades if getattr(t, "order_id", None)})
+        direction_map: Dict[str, str] = {}
+        if order_ids:
+            result = await self.account_repo.session.execute(
+                select(Order.order_id, Order.direction).where(Order.order_id.in_(order_ids))
+            )
+            direction_map = {row[0]: row[1] for row in result.all()}
+
+        realized = Decimal("0")
+        volume = 0
+        amount = Decimal("0")
+        commission = Decimal("0")
+        tax = Decimal("0")
+        for t in trades:
+            volume += int(t.volume)
+            amount += Decimal(str(t.volume)) * Decimal(str(t.price))
+            commission += Decimal(str(t.commission or 0))
+            tax += Decimal(str(t.tax or 0))
+            if direction_map.get(t.order_id) == "sell":
+                cost = await self._get_position_cost(account_id, t.ts_code)
+                if cost:
+                    realized += Decimal(str(t.volume)) * (Decimal(str(t.price)) - cost)
+
+        return {"realized_pnl": realized, "volume": volume, "amount": amount,
+                "commission": commission, "tax": tax, "count": len(trades)}
+
+    async def _get_position_cost(self, account_id: str, ts_code: str) -> Optional[Decimal]:
+        """取某证券当前持仓成本价（无持仓返回 None）"""
+        positions = await self.position_repo.get_account_positions(account_id)
+        for pos in positions:
+            if pos.ts_code == ts_code and pos.volume and pos.volume > 0:
+                return Decimal(str(pos.cost_price))
+        return None
 
     async def _update_account_assets(
             self,
@@ -364,202 +491,86 @@ class SettlementTasks:
             trading_day: date
     ) -> Dict:
         """
-        更新账户资产
+        回写账户资产并写单条日绩效快照。
 
-        Args:
-            account_id: 账户ID
-            daily_pnl: 当日盈亏
-            trading_day: 交易日
-
-        Returns:
-            Dict: 更新后的资产快照
+        - 回写 accounts 表：市值重估 + 总资产（现金+市值），与结算口径一致（修复 B4 不回写）
+        - 单条 upsert account_daily_performance（修复 B3：原 create_asset_snapshot +
+          record_daily_settlement 双写导致每日两条重复记录）
         """
-        current_assets = await self.asset_service.get_account_assets(account_id)
-        if not isinstance(current_assets, dict):
-            current_assets = {}
+        today = daily_pnl.get("today_assets", {})
+        total_asset = Decimal(str(today.get("total_asset", 0)))
+        cash_balance = Decimal(str(today.get("cash_balance", 0)))
+        available_cash = Decimal(str(today.get("available_cash", 0)))
+        frozen_cash = Decimal(str(today.get("frozen_cash", 0)))
+        market_value = Decimal(str(today.get("market_value", 0)))
+        pnl_amount = Decimal(str(daily_pnl.get("total_pnl", 0)))
+        pnl_rate = Decimal(str(daily_pnl.get("pnl_rate", 0)))
 
-        cash_balance = float(current_assets.get("available_cash", 0) or 0)
-        frozen_cash = float(current_assets.get("frozen_cash", 0) or 0)
-        market_value = float(current_assets.get("market_value", 0) or 0)
-        total_asset = cash_balance + frozen_cash + market_value
-
-        pnl_amount = float(daily_pnl.get("total_pnl", 0))
-        cash_balance += pnl_amount
-        total_asset += pnl_amount
-
-        updated_assets = {
-            "total_asset": total_asset,
-            "cash_balance": cash_balance,
+        # 回写账户：市值重估 + 总资产（现金+市值）
+        await self.account_repo.update(account_id, {
             "market_value": market_value,
-            "available_cash": cash_balance,
-            "frozen_cash": frozen_cash,
+            "total_balance": total_asset,
+            "last_trade_date": trading_day,
+        })
+
+        # 单条 upsert 日绩效（幂等）
+        await self._upsert_daily_performance(
+            account_id=account_id,
+            trading_day=trading_day,
+            total_asset=total_asset,
+            cash=cash_balance,
+            market_value=market_value,
+            daily_pnl=pnl_amount,
+            daily_return=pnl_rate,
+        )
+
+        return {
+            "total_asset": float(total_asset),
+            "cash_balance": float(cash_balance),
+            "available_cash": float(available_cash),
+            "frozen_cash": float(frozen_cash),
+            "market_value": float(market_value),
         }
 
-        asset_snapshot = {
-            "account_id": account_id,
-            "trading_day": trading_day,
-            "total_asset": total_asset,
-            "cash_balance": cash_balance,
-            "market_value": market_value,
-            "available_cash": cash_balance,
-            "frozen_cash": frozen_cash,
-            "pnl": pnl_amount,
-            "pnl_rate": float(daily_pnl.get("pnl_rate", 0)),
-        }
-
-        await self.account_repo.create_asset_snapshot(asset_snapshot)
-
-        # v6.13: 同时写入 account_daily_performance（前端收益曲线读取的表）。
-        # 之前该表由已废弃的 account_manager.process_daily_settlement 写入（死代码，
-        # 无人调用 → 曲线恒为 0）。此处用结算计算出的正确 total_asset 落库。
-        try:
-            from decimal import Decimal as _Dec
-            await self.account_service.record_daily_settlement(
-                account_id=account_id,
-                trade_date=trading_day,
-                total_asset=_Dec(str(total_asset)),
-                cash=_Dec(str(cash_balance)),
-                market_value=_Dec(str(market_value)),
-                daily_pnl=_Dec(str(pnl_amount)),
-                daily_return=_Dec(str(float(daily_pnl.get("pnl_rate", 0)))),
-            )
-        except Exception as _pe:
-            logger.warning(f"写入账户日绩效失败(非致命): {_pe}")
-
-        return updated_assets
-
-    async def _update_position_cost(self, account_id: str) -> List:
-        """
-        更新持仓成本（均价法）
-
-        买入时：新均价 = (旧数量×旧成本 + 买入量×买入价) / 新总量
-        卖出时：只减数量，均价不变
-
-        Args:
-            account_id: 账户ID
-
-        Returns:
-            List: 更新的持仓列表
-        """
-        from sqlalchemy import select
-        from shared.database.models.business_models import Order
-
-        today = datetime.now().date()
-        trades = await self.trade_repo.get_trades_by_account_and_date(account_id, today)
-
-        if not trades:
-            return []
-
-        positions = await self.position_repo.get_account_positions(account_id)
-        pos_map: Dict[str, Dict[str, float]] = {}
-        for p in positions:
-            pos_map[p.ts_code] = {
-                "volume": float(p.volume or 0),
-                "cost_price": float(p.cost_price or 0),
-            }
-
-        order_ids = list({t.order_id for t in trades if hasattr(t, "order_id")})
-        orders: Dict[str, Any] = {}
-        if order_ids:
-            order_query = select(Order).where(Order.order_id.in_(order_ids))
-            result = await self.account_repo.session.execute(order_query)
-            orders = {o.order_id: o for o in result.scalars().all()}
-
-        position_updates = []
-        for trade in trades:
-            ts_code = getattr(trade, "ts_code", "unknown")
-            order = orders.get(getattr(trade, "order_id", None))
-            direction = getattr(order, "direction", None) if order else None
-
-            current = pos_map.get(ts_code, {"volume": 0.0, "cost_price": 0.0})
-
-            if direction == "buy":
-                new_volume = current["volume"] + float(trade.volume)
-                new_cost = (
-                        (current["volume"] * current["cost_price"] + float(trade.volume) * float(trade.price))
-                        / new_volume
-                ) if new_volume > 0 else float(trade.price)
-                current["volume"] = new_volume
-                current["cost_price"] = new_cost
-            elif direction == "sell":
-                current["volume"] = max(0.0, current["volume"] - float(trade.volume))
-
-            pos_map[ts_code] = current
-
-        for ts_code, info in pos_map.items():
-            position_updates.append({
-                "security_id": ts_code,
-                "cost_price": info["cost_price"],
-                "volume": info["volume"],
-                "update_time": datetime.now(),
-            })
-
-        return position_updates
-
-    async def _generate_daily_statement(
+    async def _upsert_daily_performance(
             self,
             account_id: str,
             trading_day: date,
-            daily_pnl: Dict,
-            assets: Dict
-    ) -> Dict:
-        """
-        生成日终对账单
+            total_asset: Decimal,
+            cash: Decimal,
+            market_value: Decimal,
+            daily_pnl: Decimal,
+            daily_return: Decimal,
+    ) -> None:
+        """幂等写入 account_daily_performance（(account_id, trade_date) 存在则更新）"""
+        account = await self.account_repo.get(account_id)
+        user_id = account.user_id if account else ""
 
-        Args:
-            account_id: 账户ID
-            trading_day: 交易日
-            daily_pnl: 当日盈亏
-            assets: 资产信息
-
-        Returns:
-            Dict: 对账单信息
-        """
-        from modules.account.utils.statement_generator import StatementGenerator
-
-        generator = StatementGenerator()
-
-        # 获取当日交易明细
-        trades = await self.trade_repo.get_trades_by_account_and_date(
-            account_id,
-            trading_day
+        result = await self.account_repo.session.execute(
+            select(AccountDailyPerformance).where(
+                AccountDailyPerformance.account_id == account_id,
+                AccountDailyPerformance.trade_date == trading_day,
+            )
         )
-
-        # 获取持仓明细
-        positions = await self.position_repo.get_current_positions(account_id)
-
-        # 转换 trades 为字典列表
-        trade_dicts = []
-        for trade in trades:
-            trade_dicts.append({
-                'trade_id': getattr(trade, 'trade_id', 'unknown'),
-                'security_id': getattr(trade, 'security_id', getattr(trade, 'ts_code', 'unknown')),
-                'price': trade.price,
-                'volume': trade.volume,
-                'trade_time': trade.trade_time
-            })
-
-        # 转换 positions 为字典列表
-        position_dicts = []
-        for position in positions:
-            position_dicts.append({
-                'security_id': getattr(position, 'ts_code', 'unknown'),
-                'quantity': position.volume,
-                'cost_price': position.cost_price,
-                'current_price': float(position.last_price) if getattr(position, 'last_price', None) else 0.0,
-            })
-
-        # 生成对账单
-        statement = generator.generate_daily_statement(
-            account_id=account_id,
-            trading_day=trading_day,
-            trades=trade_dicts,
-            positions=position_dicts,
-            daily_pnl=daily_pnl,
-            assets=assets
-        )
-
-        return statement
+        rec = result.scalars().first()
+        if rec:
+            rec.total_asset = total_asset
+            rec.cash = cash
+            rec.market_value = market_value
+            rec.daily_pnl = daily_pnl
+            rec.daily_return = daily_return
+        else:
+            self.account_repo.session.add(AccountDailyPerformance(
+                account_id=account_id,
+                user_id=user_id,
+                trade_date=trading_day,
+                total_asset=total_asset,
+                cash=cash,
+                market_value=market_value,
+                daily_pnl=daily_pnl,
+                daily_return=daily_return,
+            ))
+        await self.account_repo.session.flush()
 
     async def _calculate_period_pnl(
             self,

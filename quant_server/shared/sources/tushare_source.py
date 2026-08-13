@@ -18,6 +18,30 @@ from .base_source import BaseDataSource
 
 logger = logging.getLogger(__name__)
 
+
+class _RateLimitLogFilter(logging.Filter):
+    """全局频率超限日志节流：60 秒窗口内只放行第一条含'频率超限'的日志。
+
+    批量同步数百股票遇 500 次/分钟限流时，各接口（daily/weekly/minutes 等）
+    每个 symbol 失败都打日志 → 同一秒刷屏。此过滤器统一拦截，只留诊断线索。
+    """
+    def __init__(self, interval: float = 60.0):
+        super().__init__()
+        self._interval = interval
+        self._last = 0.0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "频率超限" not in record.getMessage():
+            return True
+        now = time.monotonic()
+        if now - self._last >= self._interval:
+            self._last = now
+            return True
+        return False
+
+
+logger.addFilter(_RateLimitLogFilter())
+
 # Tushare 免费版各接口频次限制（次/分钟）
 _RATE_LIMITS = {
     "fund_daily": 500,
@@ -28,6 +52,8 @@ _RATE_LIMITS = {
     "daily_basic": 500,
     "adj_factor": 500,
     "moneyflow": 600,
+    "etf_daily": 500,    # ETF日线（fund_daily 频率）
+    "etf_share": 500,    # ETF份额（fund_share 频率）
 }
 
 _last_call_times: dict = {}  # key → list of timestamps for sliding window
@@ -74,6 +100,25 @@ def _log_tushare_error(api_name: str, exc: Exception, detail: str = "") -> None:
         logger.warning("Tushare %s 暂时失败: %s %s", api_name, str(exc)[:120], detail)
     else:
         logger.error("Tushare %s 失败: %s %s", api_name, str(exc)[:200], detail)
+
+
+_rate_limit_last_log = 0.0
+_RATE_LIMIT_LOG_INTERVAL = 60.0  # 秒：频率超限告警节流窗口
+
+
+def _log_rate_limited(api_name: str, exc: Exception) -> None:
+    """频率超限告警节流：60 秒窗口内只打一次 WARNING，其余降为 DEBUG，避免批量失败刷屏。
+
+    批量同步（数百只股票并发）遇 500 次/分钟限流时，每个 symbol 都会失败打印，
+    同一秒可刷 5+ 条相同告警。节流后仅每 60 秒提示一次限流状态，可诊断又不刷屏。
+    """
+    global _rate_limit_last_log
+    now = time.monotonic()
+    if now - _rate_limit_last_log >= _RATE_LIMIT_LOG_INTERVAL:
+        _rate_limit_last_log = now
+        logger.warning("Tushare %s 频率超限(节流，60s内不再重复): %s", api_name, str(exc)[:120])
+    else:
+        logger.debug("Tushare %s 频率超限(忽略): %s", api_name, str(exc)[:120])
 
 
 class TushareSource(BaseDataSource):
@@ -147,14 +192,19 @@ class TushareSource(BaseDataSource):
 			end_date: 结束日期
 		"""
 		try:
-			df = self.pro.daily(ts_code=symbol, trade_date=trade_date,
-			                    start_date=start_date, end_date=end_date)
+			# symbol 为空 + trade_date 指定 → 返回全市场当日数据（批量同步用）
+			df = self.pro.daily(ts_code=symbol or None, trade_date=trade_date or None,
+			                    start_date=start_date or None, end_date=end_date or None)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 				df = df.sort_values('trade_date')
 			return df if df is not None else pd.DataFrame()
 		except Exception as e:
-			logger.warning(f"获取日线行情失败: {e}")
+			if _is_rate_limit_error(e):
+				# 频率超限 → 节流日志（批量同步限流刷屏）
+				_log_rate_limited("daily", e)
+			else:
+				logger.warning(f"获取日线行情失败: {e}")
 			return pd.DataFrame()
 
 	def get_weekly (self, symbol: str = '', trade_date: str = '',
@@ -286,19 +336,20 @@ class TushareSource(BaseDataSource):
 		logger.debug(f"大单成交数据查询（未实现）: {symbol} {trade_date}")
 		return pd.DataFrame()
 
-	def get_adj_factor (self, symbol: str, start_date: str = '',
-	                    end_date: str = '') -> pd.DataFrame:
+	def get_adj_factor (self, symbol: str = '', start_date: str = '',
+	                    end_date: str = '', trade_date: str = '') -> pd.DataFrame:
 		"""获取复权因子
 
 		Args:
-			symbol: 股票代码
+			symbol: 股票代码（空 + trade_date 指定 → 返回全市场当日复权因子）
 			start_date: 开始日期
 			end_date: 结束日期
+			trade_date: 交易日期 (YYYYMMDD)，批量拉取全市场当日数据时用
 		"""
 		try:
 			time.sleep(0.15)  # rate limit: 500/min
-			df = self.pro.adj_factor(ts_code=symbol, start_date=start_date,
-			                         end_date=end_date)
+			df = self.pro.adj_factor(ts_code=symbol or None, trade_date=trade_date or None,
+			                         start_date=start_date or None, end_date=end_date or None)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
@@ -373,8 +424,9 @@ class TushareSource(BaseDataSource):
 		"""
 		try:
 			time.sleep(0.15)  # rate limit: 500/min
-			df = self.pro.daily_basic(ts_code=symbol, trade_date=trade_date,
-			                          start_date=start_date, end_date=end_date)
+			# symbol 为空 + trade_date 指定 → 返回全市场当日指标（批量同步用）
+			df = self.pro.daily_basic(ts_code=symbol or None, trade_date=trade_date or None,
+			                          start_date=start_date or None, end_date=end_date or None)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 				df = df.sort_values('trade_date')
@@ -523,22 +575,30 @@ class TushareSource(BaseDataSource):
 			logger.error(f"获取ETF实时日线失败: {e}")
 			return pd.DataFrame()
 
-	def get_etf_daily (self, etf_code: str, start_date: str = '',
-	                   end_date: str = '') -> pd.DataFrame:
-		"""获取ETF日线行情（Tushare fund_daily 接口）"""
+	def get_etf_daily (self, etf_code: str = '', start_date: str = '',
+	                   end_date: str = '', trade_date: str = '') -> pd.DataFrame:
+		"""获取ETF日线行情（Tushare fund_daily 接口）
+
+		etf_code 为空 + trade_date 指定 → 返回全市场 ETF 当日数据（批量同步用）
+		"""
 		_check_rate_limit("fund_daily", max_calls=450)
 		try:
-			return self.pro.fund_daily(ts_code=etf_code, start_date=start_date, end_date=end_date)
+			return self.pro.fund_daily(ts_code=etf_code or None, trade_date=trade_date or None,
+			                           start_date=start_date or None, end_date=end_date or None)
 		except Exception as e:
 			_log_tushare_error("fund_daily", e, f"etf={etf_code}")
 			return pd.DataFrame()
 
-	def get_etf_adj_factor (self, etf_code: str, start_date: str = '',
-	                        end_date: str = '') -> pd.DataFrame:
-		"""获取ETF复权因子（Tushare fund_adj 接口）"""
+	def get_etf_adj_factor (self, etf_code: str = '', start_date: str = '',
+	                        end_date: str = '', trade_date: str = '') -> pd.DataFrame:
+		"""获取ETF复权因子（Tushare fund_adj 接口）
+
+		etf_code 为空 + trade_date 指定 → 返回全市场 ETF 当日复权因子（批量同步用）
+		"""
 		_check_rate_limit("fund_adj", max_calls=450)
 		try:
-			df = self.pro.fund_adj(ts_code=etf_code, start_date=start_date, end_date=end_date)
+			df = self.pro.fund_adj(ts_code=etf_code or None, trade_date=trade_date or None,
+			                       start_date=start_date or None, end_date=end_date or None)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 			return df if df is not None else pd.DataFrame()
@@ -826,16 +886,18 @@ class TushareSource(BaseDataSource):
 			return pd.DataFrame()
 
 	def get_index_daily (self, ts_code: str = '', start_date: str = '',
-	                     end_date: str = '') -> pd.DataFrame:
+	                     end_date: str = '', trade_date: str = '') -> pd.DataFrame:
 		"""获取指数日线行情
 
 		Tushare接口: index_daily
 		用于同步指数日线行情到 index_daily 表
+
+		ts_code 为空 + trade_date 指定 → 返回全市场指数当日数据（批量同步用）
 		"""
 		_check_rate_limit("index_daily", max_calls=450)
 		try:
-			df = self.pro.index_daily(ts_code=ts_code, start_date=start_date,
-			                          end_date=end_date)
+			df = self.pro.index_daily(ts_code=ts_code or None, trade_date=trade_date or None,
+			                          start_date=start_date or None, end_date=end_date or None)
 			if df is not None and not df.empty:
 				df['trade_date'] = pd.to_datetime(df['trade_date'])
 				df = df.sort_values('trade_date')

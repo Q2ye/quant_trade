@@ -156,6 +156,7 @@ class SignalEngine(EngineBase):
                         "price_limit_high": signal_data.get("price_limit_high"),
                         "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
                         "order_type": signal_data.get("order_type", "limit_range"),
+                        "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID
                         "signal_status": "pending_manual",  # v3.3: 统一用 signal_status
                     })
                     db_id = signal_record.id
@@ -190,6 +191,7 @@ class SignalEngine(EngineBase):
             "price_limit_high": signal_data.get("price_limit_high"),
             "max_slippage_pct": signal_data.get("max_slippage_pct", 0.02),
             "order_type": signal_data.get("order_type", "limit_range"),
+            "parent_id": signal_data.get("parent_id"),  # v3.4: 父信号ID透传（P0 修复：此前重建 dict 缺此键导致追溯链路断裂）
             "strategy_id": signal_data.get("strategy_id", "unknown"),
             "created_at": datetime.now().isoformat(),
             "status": "received",

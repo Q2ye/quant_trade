@@ -14,6 +14,7 @@ from shared.cache.base import CacheBase
 from shared.database.models.business_models import Account
 from shared.database.repositories.account.asset.account_performance_repo import AccountDailyPerformanceRepository
 from shared.database.repositories.account.asset.account_repo import AccountRepository
+from shared.database.repositories.account.settlement.transaction_repo import AccountTransactionRepository
 from shared.database.repositories.system.auth.user_repo import UserRepository
 from shared.database.repositories.trading.order.order_repo import OrderRepository
 from shared.database.repositories.trading.position.position_repo import PositionRepository
@@ -34,6 +35,7 @@ class AccountService:
 		self.position_repo = PositionRepository(db)
 		self.order_repo = OrderRepository(db)
 		self.performance_repo = AccountDailyPerformanceRepository(db)
+		self.transaction_repo = AccountTransactionRepository(db)
 		self.audit_logger = AuditLogger(db)
 
 	async def get_account (self, account_id: str) -> Optional[AccountDomain]:
@@ -109,17 +111,16 @@ class AccountService:
 			账户列表
 		"""
 		try:
-			# 构建查询条件
-			conditions = [Account.user_id == user_id]
-			if not include_closed:
-				conditions.append(Account.status != "closed")
+			# 查询账户（get_many 只支持等值过滤，无法表达 != closed，
+			# 故查回后内存过滤软删除/已关闭，避免已删除账户泄露到列表）
+			accounts = await self.account_repo.get_many_by_user_id(user_id)
 
-			# 查询账户
-			accounts = await self.account_repo.get_many(skip=0, limit=100, **{c.left.name: c.right.value for c in conditions})
-
-			# 转换为领域对象
 			account_domains = []
 			for account in accounts:
+				if getattr(account, 'is_deleted', 0) != 0:
+					continue
+				if not include_closed and getattr(account, 'status', '') == "closed":
+					continue
 				account_domain = await self._to_account_domain(account)
 				account_domains.append(account_domain)
 
@@ -316,10 +317,10 @@ class AccountService:
 			updated_account = await self.account_repo.update(account_id, update_data)
 			success = updated_account is not None
 
-			# 4. 记录审计日志
+			# 4. 记录审计日志（action 需为 AuditAction 枚举合法值）
 			if success and self.audit_logger:
 				await self.audit_logger.log_simple(
-					action="account_delete",
+					action="delete",
 					user_id=account.user_id,
 					resource_type="account",
 					resource_id=str(account_id),
@@ -361,8 +362,8 @@ class AccountService:
 			账户列表
 		"""
 		try:
-			# 构建查询条件
-			conditions = {}
+			# 构建查询条件（默认排除软删除账户，避免已删除账户仍显示在列表）
+			conditions = {"is_deleted": 0}
 
 			if user_id:
 				conditions['user_id'] = user_id
@@ -444,7 +445,7 @@ class AccountService:
 			# 记录审计日志
 			if success and self.audit_logger:
 				await self.audit_logger.log_simple(
-					action="account_balance_adjust",
+					action="update",
 					user_id=account.user_id,
 					resource_type="account",
 					resource_id=str(account_id),
@@ -490,8 +491,10 @@ class AccountService:
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
-			# 计算新可用资金
-			new_available = Decimal(str(account.available_balance)) + amount
+			# 计算新可用资金（先捕获旧值，避免 update 后 identity map 刷新污染 old_balance）
+			old_available = Decimal(str(account.available_balance))
+			old_total = Decimal(str(account.total_balance))
+			new_available = old_available + amount
 
 			if new_available < 0:
 				raise ValueError("调整后可用资金不能为负")
@@ -499,7 +502,7 @@ class AccountService:
 			# 更新可用资金和总资产
 			update_data = {
 				"available_balance": new_available,
-				"total_balance": Decimal(str(account.total_balance)) + amount
+				"total_balance": old_total + amount
 			}
 
 			updated_account = await self.account_repo.update(account_id, update_data)
@@ -508,14 +511,14 @@ class AccountService:
 			# 记录审计日志
 			if success and self.audit_logger:
 				await self.audit_logger.log_simple(
-					action="account_balance_adjust",
+					action="update",
 					user_id=account.user_id,
 					resource_type="account",
 					resource_id=str(account_id),
 					details={
 						"adjustment_type": "available_balance",
 						"amount": float(amount),
-						"old_balance": float(account.available_balance),
+						"old_balance": float(old_available),
 						"new_balance": float(new_available),
 						"reason": reason
 					}
@@ -554,8 +557,10 @@ class AccountService:
 			if not account:
 				raise ValueError(f"账户不存在: {account_id}")
 
-			# 计算新冻结资金
-			new_frozen = Decimal(str(account.frozen_balance)) + amount
+			# 计算新冻结资金（先捕获旧值，避免 update 后 identity map 刷新污染 old_balance）
+			old_frozen = Decimal(str(account.frozen_balance))
+			old_total = Decimal(str(account.total_balance))
+			new_frozen = old_frozen + amount
 
 			if new_frozen < 0:
 				raise ValueError("调整后冻结资金不能为负")
@@ -563,7 +568,7 @@ class AccountService:
 			# 更新冻结资金和总资产
 			update_data = {
 				"frozen_balance": new_frozen,
-				"total_balance": Decimal(str(account.total_balance)) + amount
+				"total_balance": old_total + amount
 			}
 
 			updated_account = await self.account_repo.update(account_id, update_data)
@@ -572,14 +577,14 @@ class AccountService:
 			# 记录审计日志
 			if success and self.audit_logger:
 				await self.audit_logger.log_simple(
-					action="account_balance_adjust",
+					action="update",
 					user_id=account.user_id,
 					resource_type="account",
 					resource_id=str(account_id),
 					details={
 						"adjustment_type": "frozen_balance",
 						"amount": float(amount),
-						"old_balance": float(account.frozen_balance),
+						"old_balance": float(old_frozen),
 						"new_balance": float(new_frozen),
 						"reason": reason
 					}
@@ -660,12 +665,26 @@ class AccountService:
 			# 转换为Decimal
 			deposit_amount = Decimal(str(amount))
 
+			# 调整前可用余额（流水 balance_before 用）
+			_account = await self.account_repo.get(account_id)
+			old_available = Decimal(str(_account.available_balance)) if _account and _account.available_balance else Decimal("0")
+
 			# 调用调整可用资金方法
-			return await self.adjust_available_balance(
+			success = await self.adjust_available_balance(
 				account_id=account_id,
 				amount=deposit_amount,
 				reason="用户存款"
 			)
+			if success:
+				# 写资金流水（供日终结算统计当日净入金）
+				await self.transaction_repo.add_ledger_entry(
+					account_id=account_id,
+					transaction_type="deposit",
+					amount=deposit_amount,
+					description="用户存款",
+					balance_before=old_available,
+				)
+			return success
 
 		except Exception as e:
 			logger.error(f"存款失败: {str(e)}")
@@ -686,12 +705,26 @@ class AccountService:
 			# 转换为Decimal
 			withdraw_amount = Decimal(str(amount))
 
+			# 调整前可用余额（流水 balance_before 用）
+			_account = await self.account_repo.get(account_id)
+			old_available = Decimal(str(_account.available_balance)) if _account and _account.available_balance else Decimal("0")
+
 			# 调用调整可用资金方法（负数表示减少）
-			return await self.adjust_available_balance(
+			success = await self.adjust_available_balance(
 				account_id=account_id,
 				amount=-withdraw_amount,
 				reason="用户取款"
 			)
+			if success:
+				# 写资金流水（供日终结算统计当日净出入金）
+				await self.transaction_repo.add_ledger_entry(
+					account_id=account_id,
+					transaction_type="withdrawal",
+					amount=-withdraw_amount,
+					description="用户取款",
+					balance_before=old_available,
+				)
+			return success
 
 		except Exception as e:
 			logger.error(f"取款失败: {str(e)}")

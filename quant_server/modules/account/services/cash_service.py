@@ -118,7 +118,7 @@ class CashService:
 
 				# 记录审计日志
 				await self.audit_logger.log_simple(
-					action="cash_deposit",
+					action="execute",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
@@ -209,7 +209,7 @@ class CashService:
 
 				# 记录审计日志
 				await self.audit_logger.log_simple(
-					action="cash_withdrawal",
+					action="execute",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
@@ -300,7 +300,7 @@ class CashService:
 
 				# 记录审计日志
 				await self.audit_logger.log_simple(
-					action="cash_freeze",
+					action="execute",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
@@ -396,7 +396,7 @@ class CashService:
 
 				# 记录审计日志
 				await self.audit_logger.log_simple(
-					action="cash_unfreeze",
+					action="execute",
 					user_id=account.user_id,
 					resource_type="events",
 					resource_id=account_id,
@@ -521,7 +521,7 @@ class CashService:
 
 			# 记录审计日志
 			await self.audit_logger.log_simple(
-				action="cash_transfer",
+				action="execute",
 				user_id=from_account.user_id,
 				resource_type="events",
 				resource_id=from_account_id,

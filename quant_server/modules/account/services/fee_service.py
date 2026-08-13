@@ -14,7 +14,6 @@ from shared.database.models.business_models import TradeFee
 from shared.database.repositories.account.asset.account_repo import AccountRepository
 from shared.database.repositories.trading.order.trade_repo import TradeRepository
 from shared.database.repositories.trading.support.trade_fee_repo import TradeFeeRepository
-from utils.core_utils.data_utils.validation import validate_amount
 
 logger = logging.getLogger(__name__)
 
@@ -52,96 +51,6 @@ class FeeService:
 		self.trade_repo = TradeRepository(db)
 		self.fee_repo = TradeFeeRepository(db)
 		self.account_repo = AccountRepository(db)
-
-	@staticmethod
-	async def calculate_trading_fees (
-			account_id: str,
-			ts_code: str,
-			price: Decimal,
-			volume: int,
-			direction: str,
-			market: str = "SH"
-	) -> Dict[str, Any]:
-		"""
-		计算交易费用
-
-		Args:
-			account_id: 账户ID
-			ts_code: 证券代码
-			price: 价格
-			volume: 数量
-			direction: 方向（buy/sell）
-			market: 市场（SH/SZ）
-
-		Returns:
-			费用计算结果
-		"""
-		try:
-			# 验证输入
-			validate_amount(price, min_value=Decimal("0.01"))
-			if volume <= 0:
-				raise ValueError("交易数量必须大于0")
-
-			if direction not in ["buy", "sell"]:
-				raise ValueError("交易方向必须是buy或sell")
-
-			# 计算交易金额
-			trade_amount = price * volume
-
-			# 计算佣金（万一免五）
-			# v2.5: 费率统一为万分之一（万一免五）
-			commission_rate = Decimal("0.0001")  # 万分之一佣金
-			commission = trade_amount * commission_rate
-
-			# 免五：无最低佣金限制
-
-			# 计算印花税（仅卖出时收取）
-			stamp_tax = Decimal("0.00")
-			stamp_tax_rate = Decimal("0.00")
-			if direction == "sell":
-				stamp_tax_rate = Decimal("0.001")  # 0.1%
-				stamp_tax = trade_amount * stamp_tax_rate
-
-			# 计算过户费（仅沪市，双向收取）
-			transfer_fee = Decimal("0.00")
-			transfer_fee_rate = Decimal("0.00")
-			if market == "SH":
-				transfer_fee_rate = Decimal("0.00002")  # 0.002%
-				transfer_fee = trade_amount * transfer_fee_rate
-
-			# 计算监管费
-			regulation_fee = trade_amount * Decimal("0.00002")  # 0.002%
-
-			# 计算总费用
-			total_fee = commission + stamp_tax + transfer_fee + regulation_fee
-
-			return {
-				"account_id": account_id,
-				"ts_code": ts_code,
-				"direction": direction,
-				"price": float(price),
-				"volume": volume,
-				"trade_amount": float(trade_amount),
-				"fees": {
-					"commission": float(commission),
-					"stamp_tax": float(stamp_tax),
-					"transfer_fee": float(transfer_fee),
-					"regulation_fee": float(regulation_fee),
-					"total_fee": float(total_fee)
-				},
-				"fee_rates": {
-					"commission_rate": float(commission_rate),
-					"stamp_tax_rate": float(stamp_tax_rate) if direction == "sell" else 0,
-					"transfer_fee_rate": float(transfer_fee_rate) if market == "SH" else 0,
-					"regulation_fee_rate": float(Decimal("0.00002"))
-				},
-				"market": market,
-				"calculated_at": datetime.now().isoformat()
-			}
-
-		except Exception as e:
-			logger.error(f"计算交易费用失败: {str(e)}")
-			raise
 
 	async def record_trade_fees (
 			self,

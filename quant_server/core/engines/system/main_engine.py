@@ -279,6 +279,58 @@ class MainEngine(EngineBase):
                 except Exception as factor_err:
                     logger.warning("日终 ETF 因子计算失败（非致命）: %s", factor_err)
 
+                # v2.6: 日终账户结算（依赖当日行情重估市值，产出单日盈亏 + 日绩效快照）。
+                # 紧随数据同步执行；触发时间随本 job 的 schedule_config 调整。
+                try:
+                    from modules.account.tasks.settlement_tasks import (
+                        create_settlement_tasks,
+                    )
+                    async with sm.get_session() as _settle_session:
+                        _st = create_settlement_tasks(_settle_session)
+                        _sres = await _st.daily_settlement_task(today)
+                        _sok = sum(
+                            1 for r in _sres.get("results", {}).values()
+                            if r.get("status") == "success"
+                        )
+                        logger.info(
+                            "日终账户结算完成: 共 %s 账户, 成功 %s",
+                            _sres.get("total_accounts", 0),
+                            _sok,
+                        )
+                except Exception as settle_err:
+                    logger.error("日终账户结算失败: %s", settle_err, exc_info=True)
+
+                # v6.14: 数据完整性校验——当日行情未同步完整则跳过策略驱动，防止用旧数据产生假信号。
+                # 600833 事故根因：8-11 行情缺失（Tushare 限流/网络断）+ 复权表空，
+                # 策略用 8-10 旧数据触发假止损（收盘 11.01 vs 实际 12.11）。
+                _drive_ok = True
+                try:
+                    from sqlalchemy import text as _text
+                    async with sm.get_session() as _ds:
+                        _r = await _ds.execute(_text("SELECT MAX(trade_date) FROM stock_daily"))
+                        _max_d = _r.scalar()
+                        _c = await _ds.execute(_text(
+                            "SELECT COUNT(*) FROM stock_daily WHERE trade_date=:d"), {"d": today})
+                        _n = _c.scalar() or 0
+                    if not _max_d or str(_max_d) != str(today):
+                        logger.warning(
+                            f"数据完整性校验失败: stock_daily 最新交易日={_max_d}, 目标={today}"
+                            f" → 跳过实盘策略驱动（防止旧数据假信号）")
+                        _drive_ok = False
+                    elif _n < 4000:
+                        logger.warning(
+                            f"数据完整性校验失败: 当日仅 {_n} 条行情（A股全市场约5000+）"
+                            f" → 跳过实盘策略驱动（数据不完整）")
+                        _drive_ok = False
+                    else:
+                        logger.info(f"数据完整性校验通过: stock_daily 最新={_max_d}, 当日 {_n} 条")
+                except Exception as _de:
+                    logger.warning(f"数据完整性校验异常: {_de} → 保守跳过实盘策略驱动")
+                    _drive_ok = False
+
+                if not _drive_ok:
+                    return  # 数据不完整，跳过本次实盘策略驱动
+
                 logger.info("日终数据同步完成，开始驱动实盘策略: %s", today)
 
                 strategy_mgr = await self.get_module_engine("strategy_manager")
@@ -307,7 +359,7 @@ class MainEngine(EngineBase):
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 19, "minute": 30},
+                schedule_config={"hour": 19, "minute": 20},
                 func=_daily_sync_job,
                 description="盘后：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,

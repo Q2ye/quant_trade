@@ -129,6 +129,7 @@ class StockLowHighStrategy(BaseStrategy):
 
         # —— 持仓 ——
         "max_positions": 3,             # 最大持仓数
+        "max_candidates": 2,            # v6.14: 持仓满时仍产生的候选上限（转正时决定替换）
         "rebalance_frequency": 1,       # 每天调仓
         "allocated_capital": 100000,    # 分配资金（回退默认值，优先从 context 读取）
         "min_lot_size": 100,            # 最小交易股数（A 股 1 手=100 股）
@@ -309,7 +310,13 @@ class StockLowHighStrategy(BaseStrategy):
                 repo = SignalRepository(db)
                 # signal_time 用交易日（候选生成日），而非落库时刻，保证恢复后 signal_date 正确
                 _td = getattr(self, "_last_trade_date", None)
-                if hasattr(_td, "date"):
+                # 实盘 _last_trade_date 是 "YYYY-MM-DD" 字符串，需转 date 供 combine
+                if isinstance(_td, str):
+                    try:
+                        _td = date.fromisoformat(_td[:10])
+                    except ValueError:
+                        _td = None
+                elif hasattr(_td, "date"):
                     _td = _td.date()
                 _sig_time = datetime.combine(_td, datetime.min.time()) if _td else datetime.now()
                 data = {
@@ -384,7 +391,13 @@ class StockLowHighStrategy(BaseStrategy):
             logger.warning(f"候选池恢复失败: {e}")
 
     async def _mark_candidate_status(self, sig_id, status: str, reason: str = "") -> None:
-        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。"""
+        """更新候选信号行的状态（promoted 转正 / expired 丢弃）。
+
+        P1 修复：加 _is_live_mode 检查——回测中候选为内存 signal_id（未落库），
+        状态更新是无意义 DB 写，堆积导致 QueuePool 连接超时。
+        """
+        if not self._is_live_mode():
+            return
         sf = getattr(self, "_db_session_factory", None)
         if not sf or not sig_id:
             return
@@ -621,6 +634,11 @@ class StockLowHighStrategy(BaseStrategy):
           6. 【买入】用动态上限计算
         """
         signals: List[TradingSignal] = []
+        # v6.13: 非交易日守卫 — 周末/节假日手动运行不触发调仓/确认，
+        # 避免候选在非交易日被误判过期或确认（8-08 周末候选误判根因）。
+        if not self._is_trading_day(self._last_trade_date):
+            return signals
+
         # v6.10: 将 raw_cache 转为 DataFrame（一次性构建，替代逐 bar pd.concat）
         self._build_dataframe_cache()
         if len(self._data_cache) < 10:
@@ -737,45 +755,20 @@ class StockLowHighStrategy(BaseStrategy):
         if regime == "震荡市" and confirmed:
             confirmed = self._filter_sideways_volume(confirmed)
 
-        # ---- 7. + 8. 半仓轮动 + 买入 ----
+        # ---- 7. 候选入池（v6.14: 持仓满也产生候选，转正时决定保留/替换）----
+        # 持仓上限不再阻断候选产生：持仓有空位 → 入池到持仓上限；持仓满 →
+        # 仍入池 max_candidates 个候选（供次日 _confirm_pending_buys 转正时替换决策）。
         if effective_max_pos <= 0 or regime_no_new_buy:
             return signals
 
         new_stocks = [s for s in confirmed if s not in current_holdings and s not in self._exit_pending]
-        slots = effective_max_pos - effective_count
-
-        # 差异二：无空位但有新标时，清仓最差池内股腾位
-        if slots <= 0 and new_stocks:
-            # v6.11: 排除当日新确认买入的持仓（T+1 锁定 + 买单尚未结算，
-            # 同日卖单会因"持仓不足"被拒 → 孤儿持仓）。仅可轮动昨日及更早的持仓。
-            _today_str = str(self._last_trade_date)[:10]
-            hold_in_pool = [
-                s for s in current_holdings
-                if s in today_pool and s not in self._exit_pending
-                and self._holdings.get(s, {}).get("entry_date", "") != _today_str
-            ]
-            if hold_in_pool:
-                def _pool_pnl(code):
-                    entry = self._holdings.get(code, {}).get("entry_price", 0)
-                    cur = self._get_price(code)
-                    if entry <= 0 or cur <= 0:
-                        return 999.0
-                    return (cur - entry) / entry
-                worst = min(hold_in_pool, key=_pool_pnl)
-                self._exit_pending.add(worst)
-                signals.append(self._make_exit_signal(
-                    worst, reason=f"半仓轮动: 清仓弱势池内股为新标{new_stocks[0]}腾位(pnl={_pool_pnl(worst):.1%})",
-                    order_mode="close",
-                ))
-                slots = 1
-                if self.verbose_logging:
-                    logger.info(f"半仓轮动: 清仓{worst}为新标{new_stocks[0]}腾位")
-
-        # 买入（v6.11: Model B — 候选入池，次日收盘确认后再买入）
-        if slots <= 0 or not new_stocks:
+        if not new_stocks:
             return signals
 
-        targets = new_stocks[:slots]
+        slots = effective_max_pos - effective_count
+        max_candidates = int(self.parameters.get("max_candidates", 2))
+        target_limit = max(slots, 1) if slots > 0 else max_candidates
+        targets = new_stocks[:target_limit]
 
         for target in targets:
             price = self._get_price(target)
@@ -804,6 +797,23 @@ class StockLowHighStrategy(BaseStrategy):
                 )
 
         return signals
+
+    def _find_replaceable_holding(self) -> Optional[str]:
+        """v6.14: 持仓满时，找可替换的弱势持仓（供转正替换决策）。
+
+        规则：
+          - 排除待卖出（_exit_pending）与当日新买入（T+1 锁定）
+          - 优先趋势破位（not _holding_in_pool）；无破位持仓 → 返回 None
+            （不强制替换健康持仓，保留当前持仓）
+        """
+        today = str(self._last_trade_date)[:10]
+        candidates = [
+            c for c in self._holdings
+            if c not in self._exit_pending
+            and self._holdings.get(c, {}).get("entry_date", "") != today
+        ]
+        broken = [c for c in candidates if not self._holding_in_pool(c)]
+        return broken[0] if broken else None
 
     def _confirm_pending_buys(self, effective_max_pos: int) -> List[TradingSignal]:
         """v6.11: 确认昨日待买候选（Model B — 收盘确认买入）。
@@ -842,7 +852,10 @@ class StockLowHighStrategy(BaseStrategy):
             if _sd:
                 try:
                     _today_d = self._last_trade_date
-                    if hasattr(_today_d, "date"):
+                    # 实盘 _last_trade_date 是 "YYYY-MM-DD" 字符串，统一转 date
+                    if isinstance(_today_d, str):
+                        _today_d = date.fromisoformat(_today_d[:10])
+                    elif hasattr(_today_d, "date"):
                         _today_d = _today_d.date()
                     if _today_d:
                         _gap = (_today_d - date.fromisoformat(_sd)).days
@@ -856,8 +869,30 @@ class StockLowHighStrategy(BaseStrategy):
                             continue
                 except (ValueError, TypeError):
                     pass
+            # v6.14: 持仓满时，转正评估替换（不再 break 丢弃候选）
             if len(self._holdings) >= effective_max_pos:
-                break
+                victim = self._find_replaceable_holding()
+                if victim is None:
+                    # 持仓健康无弱势可替换 → 候选放弃（不强制替换健康持仓）
+                    self._fire_db(self._mark_candidate_status(pinfo.get("signal_id"), "expired", "持仓健康无可替换"))
+                    if self.verbose_logging:
+                        logger.info(f"买入确认放弃: {code} 持仓满且无弱势持仓可替换")
+                    continue
+                # 转正替换：立即结算弱势持仓收益并腾位（与 _finalize_exits 同逻辑），再买入新候选
+                _ventry = self._holdings.get(victim, {}).get("entry_price", 0)
+                _vw = self._holdings.get(victim, {}).get("weight", 1.0)
+                _vprice = self._get_price(victim)
+                if _ventry > 0 and _vprice > 0:
+                    self._nav_realized *= 1.0 + ((_vprice - _ventry) / _ventry) * _vw
+                if victim in self._track_high:
+                    del self._track_high[victim]
+                del self._holdings[victim]
+                signals.append(self._make_exit_signal(
+                    victim, reason=f"转正替换: 新候选{code}确认，清仓弱势持仓{victim}",
+                    order_mode="close",
+                ))
+                if self.verbose_logging:
+                    logger.info(f"转正替换: 清仓{victim}，买入{code}")
             price = self._get_price(code)  # close[T+1]
             if price <= 0:
                 continue
@@ -913,6 +948,8 @@ class StockLowHighStrategy(BaseStrategy):
                 order_mode="close",
             )
             sig.weight = weight
+            # v3.4: 父信号ID = 候选 signal_id，串起 候选→买入信号 链路
+            sig.parent_id = pinfo.get("signal_id")
             signals.append(sig)
             self._holdings[code] = {
                 "entry_price": price, "weight": weight, "shares": shares,
@@ -1690,6 +1727,35 @@ class StockLowHighStrategy(BaseStrategy):
         stock_code = code.split(".")[0]
         st_prefixes = ("ST", "*ST", "SST", "S*ST")
         return any(stock_code.startswith(p) for p in st_prefixes)
+
+    def _is_trading_day(self, d: Any) -> bool:
+        """
+        v6.13: 判断日期是否为交易日（排除周末 + 节假日）。
+
+        周末/节假日手动运行策略时，不触发调仓/候选确认，避免候选在非交易日被误判过期。
+        快速路径：先判周末（无需 DB），再走 TradingCalendar（节假日）。
+
+        Args:
+            d: 日期（str "YYYY-MM-DD" / date / datetime / None）
+
+        Returns:
+            True = 交易日；数据缺失/解析失败时 fail-open（True），不阻塞回测。
+        """
+        if not d:
+            return True
+        try:
+            if isinstance(d, str):
+                d = date.fromisoformat(d[:10])
+            elif hasattr(d, "date"):
+                d = d.date()
+            # 快速路径：周末直接 False，避免 TradingCalendar 实例化开销
+            if d.weekday() >= 5:
+                return False
+            from utils.core_utils.time_utils.trading_calendar import TradingCalendar
+            return TradingCalendar().is_trading_day(d)
+        except Exception:
+            # 回测环境无交易日历或解析失败 → fail-open，不阻塞
+            return True
 
     def _is_new_stock(self, code: str) -> bool:
         """

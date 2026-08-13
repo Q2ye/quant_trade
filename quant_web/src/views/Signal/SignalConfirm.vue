@@ -3,6 +3,7 @@ import { ref, onMounted, h } from "vue";
 import { useRouter } from "vue-router";
 import { NTag, NButton, NModal, NForm, NFormItem, NInput, NInputNumber, NSpace, NDataTable, NCard, NEmpty, useMessage } from "naive-ui";
 import strategyAPI from "@/api/strategy";
+import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const router = useRouter();
 const message = useMessage();
@@ -10,6 +11,13 @@ const loading = ref(false);
 const signals = ref<any[]>([]);
 const showConfirm = ref(false);
 const showCancel = ref(false);
+// v3.4: 信号链路追溯
+const showTrace = ref(false);
+const traceSignalId = ref("");
+const openTrace = (row: any) => {
+  traceSignalId.value = row.signal_id || row.id;
+  showTrace.value = true;
+};
 const currentSignal = ref<any>(null);
 const confirmForm = ref({ fill_price: 0, fill_quantity: 0, fill_time: "" });
 const cancelReason = ref("");
@@ -29,7 +37,7 @@ const directionMap: Record<string, string> = {
 };
 
 const columns = [
-  { title: "时间", key: "created_at", width: 150,
+  { title: "时间", key: "signal_time", width: 150,
     render: (row: any) => (row.signal_time || row.created_at || "").toString().slice(0, 16).replace("T", " ") },
   { title: "股票", key: "ts_code", width: 110 },
   { title: "方向", key: "direction", width: 70,
@@ -60,20 +68,25 @@ const columns = [
       const s = signalStatusMap[row.signal_status] || { type: "default", label: row.signal_status || "—" };
       return h(NTag, { type: s.type, size: "small" }, { default: () => s.label });
     }},
-  { title: "操作", key: "op", width: 190,
+  { title: "操作", key: "op", width: 240,
     render: (row: any) => {
+      const traceBtn = () => h(NButton, { size: "tiny", quaternary: true, onClick: () => openTrace(row) }, { default: () => "追溯" });
       if (row.signal_status === "pending_manual") {
         return h(NSpace, { size: 4 }, { default: () => [
           h(NButton, { size: "tiny", type: "primary", onClick: () => openConfirm(row) }, { default: () => "确认成交" }),
           h(NButton, { size: "tiny", quaternary: true, onClick: () => openCancel(row) }, { default: () => "放弃" }),
+          traceBtn(),
         ]});
       }
       if (row.signal_status === "confirmed") {
-        return h(NButton, { size: "tiny", type: "info", onClick: () => {
-          router.push(`/trade/workspace?tab=orders&ts_code=${row.ts_code || ""}&direction=${row.direction || ""}&price=${row.price || row.fill_price || ""}&quantity=${row.quantity || row.fill_quantity || ""}`);
-        }}, { default: () => "录入成交" });
+        return h(NSpace, { size: 4 }, { default: () => [
+          h(NButton, { size: "tiny", type: "info", onClick: () => {
+            router.push(`/trade/workspace?tab=orders&ts_code=${row.ts_code || ""}&direction=${row.direction || ""}&price=${row.price || row.fill_price || ""}&quantity=${row.quantity || row.fill_quantity || ""}`);
+          }}, { default: () => "录入成交" }),
+          traceBtn(),
+        ]});
       }
-      return null;
+      return traceBtn();
     }},
 ];
 
@@ -174,6 +187,13 @@ onMounted(() => fetchSignals());
         </n-space>
       </template>
     </n-modal>
+
+    <!-- v3.4: 信号链路追溯 -->
+    <SignalTraceModal
+      :show="showTrace"
+      :signal-id="traceSignalId"
+      @update:show="showTrace = $event"
+    />
   </div>
 </template>
 

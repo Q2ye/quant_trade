@@ -799,9 +799,9 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			return []
 		from sqlalchemy import text
 		if adj_type == "hfq":
-			ratio_expr = "1.0 * f.adj_factor / lf.latest_factor"  # hfq: /factor × latest
+			ratio_expr = "1.0 * lf.latest_factor / f.adj_factor"  # hfq: raw/factor × latest（P1 修复：此前与 qfq 同式方向颠倒）
 		else:
-			ratio_expr = "f.adj_factor / lf.latest_factor"         # qfq: ×factor / latest
+			ratio_expr = "f.adj_factor / lf.latest_factor"         # qfq: raw × factor / latest
 
 		sql = f"""
 			SELECT d.ts_code, d.trade_date,
@@ -814,10 +814,10 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			JOIN stock_adj_factor f
 			    ON d.ts_code = f.ts_code AND d.trade_date = f.trade_date
 			JOIN (
-			    SELECT ts_code, MAX(adj_factor) AS latest_factor
+			    SELECT DISTINCT ON (ts_code) ts_code, adj_factor AS latest_factor
 			    FROM stock_adj_factor
 			    WHERE ts_code = ANY(:symbols)
-			    GROUP BY ts_code
+			    ORDER BY ts_code, trade_date DESC
 			) lf ON d.ts_code = lf.ts_code
 			WHERE d.ts_code = ANY(:symbols)
 			  AND d.trade_date BETWEEN :start_date AND :end_date

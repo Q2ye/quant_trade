@@ -91,9 +91,6 @@ delete from stock_moneyflow;
 ALTER TABLE stock_moneyflow
 ADD CONSTRAINT uq_stock_moneyflow_code_date UNIQUE (ts_code, trade_date);
 -- 财务报表主表 利润表 现金流量表
--- 财务报表主表
-select * from  financial_statements;
-select count(*) from financial_statements;
 -- 业绩预告数据表
 select * from  stock_forecasts;
 select count(*) from  stock_forecasts;
@@ -176,7 +173,6 @@ select * from  stock_factor_pro_daily;
 select * from backtest_tasks;
 -- 回测参数
 select * from backtest_parameters;
-select * from backtest_result;
 
 -- 因子
 select * from factor_definitions;
@@ -195,8 +191,8 @@ select * from strategy_runs;
 -- 策略参数配置表
 select * from strategy_parameters;
 
-select * from strategy_templates
-select * from positions
+select * from strategy_templates;
+select * from positions;
 UPDATE positions SET strategy_id = '2db2c525-502e-489d-8d74-43f89e35a49e'
 WHERE strategy_id IS NULL;
 --
@@ -206,13 +202,26 @@ select * from data_sync_tasks where status = 'running';
 -- 用户
 select * from sys_users;
 select * from  accounts;
-select * from orders
-select * from trades
-select * from signals
-delete  from  signals
-  select * from       account_daily_performance
+select * from orders;
+select * from trades;
+select * from signals where ts_code = '002688.SZ';
+select * from  account_daily_performance;
 
-  SELECT * FROM feature_sets
+
+  -- 候选 → 买入信号（子查询）
+SELECT * FROM signals WHERE parent_id = '<候选id>';
+
+-- 买入信号 → 候选（父查询）
+SELECT * FROM signals WHERE id = '<买入信号.parent_id>';
+
+-- 完整链路：候选 → 信号 → 订单
+SELECT c.id AS candidate_id, c.signal_status AS candidate_status,
+       s.id AS signal_id, s.signal_status, s.order_id
+FROM signals c
+LEFT JOIN signals s ON s.parent_id = c.id
+WHERE c.id = '<候选id>';
+
+
 -- 交易相关表
 select * from accounts;
 SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 1;
@@ -224,6 +233,9 @@ SELECT * FROM accounts WHERE user_id='...';
 
 ALTER TABLE data_sync_tasks DROP CONSTRAINT IF EXISTS data_sync_tasks_status_check;
 
+
+
+
 ALTER TABLE data_sync_tasks ADD CONSTRAINT data_sync_tasks_status_check
 CHECK (status = ANY (ARRAY['pending', 'running', 'completed', 'failed', 'cancelled']));
 
@@ -232,9 +244,8 @@ FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表
 select * from data_quality_checks where id='63270bf1-2d49-484d-8e82-cf34e6360d3a';
 
-select * from factor_definitions
+select * from factor_definitions;
 
-drop table factor_definitions
 
 -- 3. 一只典型 ETF 近 20 日 amount 值（确认单位），例如 515170.SH（食品饮料）
 SELECT trade_date, close, vol, amount, pct_chg
@@ -254,9 +265,9 @@ SELECT research_id, factor_code, status, progress, started_at
 FROM factor_research
 WHERE status = 'running'
 ORDER BY created_at DESC;
-SELECT * from strategies
-SELECT * from backtest_equity_curves where task_id ='a9797c8f-0879-4c85-9eec-e597375ae563'
-SELECT trade_date, close, open, high, low, vol FROM index_daily WHERE ts_code = '000905.SH' ORDER BY trade_date ASC
+SELECT * from strategies;
+SELECT * from backtest_equity_curves where task_id ='a9797c8f-0879-4c85-9eec-e597375ae563';
+SELECT trade_date, close, open, high, low, vol FROM index_daily WHERE ts_code = '000905.SH' ORDER BY trade_date ASC;
 -- 策略代码同步到 DB（路径因环境而异，执行前确认）
 UPDATE strategies
 SET code = pg_read_file('E:/QuantitativeTrading/quant_trade/quant_server/modules/strategy/strategies/etf/bottom_strategy.py')::text,
@@ -279,26 +290,41 @@ WHERE ts_code IN ('601988.SH', '601939.SH')
   AND signal_status = 'pending_manual';
 
 -- =============================================================================
--- 组合实盘 — 数据库 DDL
---
--- composite_groups: 组合分组（哪些策略属于同一组合 + 分配器配置）
--- composite_account_snapshots: 账户级每日快照（净值曲线 + 策略归因）
---
--- 执行方式: psql -U postgres -d quant_signals_dev -f docs/sql/composite_tables.sql
--- =============================================================================
 
--- 组合分组表
-CREATE TABLE IF NOT EXISTS composite_groups (
-    id              VARCHAR(36) PRIMARY KEY,
-    name            VARCHAR(200) NOT NULL,
-    account_id      VARCHAR(36),                -- 关联券商账户（可选）
-    strategy_ids    JSONB NOT NULL DEFAULT '[]', -- [{"strategy_id":"...","allocator_id":"etf_bottom"}]
-    allocator_config JSONB NOT NULL DEFAULT '{}',-- REGIME_BASE_ALLOCATION + params
-    current_regime  INT DEFAULT 1,
-    current_allocation JSONB,                   -- {"etf_bottom":0.5,"stock_low_high":0.5}
-    status          VARCHAR(20) DEFAULT 'active', -- active / stopped / error
-    last_rebalance_at TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
+-- ============================================================
+-- 账户日绩效去重 (account_daily_performance)
+-- 目标: 每个 (account_id, trade_date) 保留最新一条，删除其余
+-- 执行顺序: 0)校验 → 1)去重 → 2)复查；随后跑一次日终结算刷新为正确值
+-- ============================================================
+
+-- 0) 校验：确认重复组数与将删除条数
+SELECT COUNT(*) AS duplicate_groups,
+       SUM(c - 1) AS rows_to_delete
+FROM (
+    SELECT account_id, trade_date, COUNT(*) AS c
+    FROM account_daily_performance
+    GROUP BY account_id, trade_date
+    HAVING COUNT(*) > 1
+) t;
+
+-- 1) 去重：每个 (account_id, trade_date) 保留 created_at 最新的一条
+--    （同 created_at 时按 id 排序兜底，保证幂等）
+WITH ranked AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+               PARTITION BY account_id, trade_date
+               ORDER BY created_at DESC, id DESC
+           ) AS rn
+    FROM account_daily_performance
+)
+DELETE FROM account_daily_performance
+WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+
+-- 2) 复查：应返回 0 行
+SELECT account_id, trade_date, COUNT(*) AS c
+FROM account_daily_performance
+GROUP BY account_id, trade_date
+HAVING COUNT(*) > 1;
+
+
 
