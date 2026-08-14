@@ -98,8 +98,9 @@ class AccountManager:
 			)
 
 			# 3. 初始化账户资金
-			if initial_balance > 0:
-				await self.cash_service.deposit(account.id, initial_balance, "初始资金", "account_creation")
+			# 修复 2026-08（A6）：account_service.create_account 已设置 total/available_balance=initial_balance，
+			# 此处再 deposit 一次导致初始资金双倍入账，删除重复入账。
+			# （初始资金流水记录缺失问题另行处理：后续在 create_account 内记 cash_flow，单一事实源）
 
 			# 4. 发布账户创建事件
 			if self.message_producer:

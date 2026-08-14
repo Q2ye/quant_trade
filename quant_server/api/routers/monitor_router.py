@@ -218,7 +218,10 @@ async def create_alert_rule_api(
     """创建警报规则"""
     try:
         logger.info(f"用户 {current_user.get('username')} 创建警报规则")
-        if not current_user.get("can_manage_alerts", False):
+        if not (
+            current_user.get("role") in ("admin", "super_admin", "superadmin")
+            or "*:*" in current_user.get("permissions", [])
+        ):  # 修复 2026-08（A27）：can_manage_alerts 字段不存在恒 False，改用 role/permissions 判断
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="用户没有管理警报权限",
@@ -249,7 +252,10 @@ async def update_alert_rule_api(
     """更新警报规则"""
     try:
         logger.info(f"用户 {current_user.get('username')} 更新警报规则 {rule_id}")
-        if not current_user.get("can_manage_alerts", False):
+        if not (
+            current_user.get("role") in ("admin", "super_admin", "superadmin")
+            or "*:*" in current_user.get("permissions", [])
+        ):  # 修复 2026-08（A27）：can_manage_alerts 字段不存在恒 False，改用 role/permissions 判断
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="用户没有管理警报权限",
@@ -286,7 +292,10 @@ async def delete_alert_rule_api(
     """删除警报规则"""
     try:
         logger.info(f"用户 {current_user.get('username')} 删除警报规则 {rule_id}")
-        if not current_user.get("can_manage_alerts", False):
+        if not (
+            current_user.get("role") in ("admin", "super_admin", "superadmin")
+            or "*:*" in current_user.get("permissions", [])
+        ):  # 修复 2026-08（A27）：can_manage_alerts 字段不存在恒 False，改用 role/permissions 判断
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="用户没有管理警报权限",

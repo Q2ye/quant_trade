@@ -676,23 +676,28 @@ async def get_trade_statistics_api(
     """获取交易统计数据（总笔数、成功笔数、成交量、成交额）"""
     try:
         from sqlalchemy import text
-        params = {}
+        params = {"user_id": current_user.get("id", "")}
         conditions = []
         if start_date:
-            conditions.append("created_at >= :start_date")
+            conditions.append("t.created_at >= :start_date")
             params["start_date"] = start_date
         if end_date:
-            conditions.append("created_at <= :end_date")
+            conditions.append("t.created_at <= :end_date")
             params["end_date"] = end_date
+        if strategy_id:
+            conditions.append("o.strategy_id = :strategy_id")
+            params["strategy_id"] = strategy_id
         where = " AND ".join(conditions) if conditions else "1=1"
 
-        # 从 trade_records 表聚合统计
+        # 修复 2026-08（A28）：原 SQL 查不存在的 trade_records 表且无 user_id 过滤；
+        # trades 表无 user_id/status 列，需 JOIN orders 过滤归属与成交状态
         query = text(
             f"SELECT COUNT(*) as total_trades, "
-            "COALESCE(SUM(CASE WHEN status = 'filled' THEN 1 ELSE 0 END), 0) as successful_trades, "
-            "COALESCE(SUM(volume), 0) as total_volume, "
-            "COALESCE(SUM(amount), 0) as total_amount "
-            "FROM trade_records WHERE {where}"
+            "COALESCE(SUM(CASE WHEN o.status = 'filled' THEN 1 ELSE 0 END), 0) as successful_trades, "
+            "COALESCE(SUM(t.volume), 0) as total_volume, "
+            "COALESCE(SUM(t.price * t.volume), 0) as total_amount "
+            "FROM trades t JOIN orders o ON t.order_id = o.order_id "
+            "WHERE o.user_id = :user_id AND {where}"
         )
         result = await db_session.execute(query, params)
         row = result.fetchone()

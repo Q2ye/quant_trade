@@ -99,11 +99,10 @@ async def _query_top_volume(session: AsyncSession, latest_date=None, limit: int 
 
 
 async def _query_top_flow(session: AsyncSession, latest_date=None, limit: int = 10) -> list:
-    # 预取 stock_moneyflow 最新日期，避免主查询中重复计算 MAX
-    mf_latest = latest_date  # stock_daily 的 latest_date 通常比 moneyflow 更新
-    if mf_latest is None:
-        row = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_moneyflow", {})
-        mf_latest = row["d"] if row else None
+    # 修复 2026-08（A32）：moneyflow 与 stock_daily 日期基准不同，必须独立查最新日期，
+    # 此前复用 stock_daily 日期导致 moneyflow 恒空
+    row = await _first(session, "SELECT MAX(trade_date) AS d FROM stock_moneyflow", {})
+    mf_latest = row["d"] if row else None
     return await _all(session, """
         SELECT m.ts_code, b.name, m.net_mf_amount,
                m.buy_elg_amount, m.sell_elg_amount,
@@ -111,11 +110,11 @@ async def _query_top_flow(session: AsyncSession, latest_date=None, limit: int = 
                q.close, q.pct_chg
         FROM stock_moneyflow m
         JOIN stock_basic b ON m.ts_code = b.ts_code
-        LEFT JOIN stock_daily q ON q.ts_code = m.ts_code AND q.trade_date = :ld
+        LEFT JOIN stock_daily q ON q.ts_code = m.ts_code AND q.trade_date = :mf_ld
         WHERE m.trade_date = :mf_ld
         ORDER BY m.net_mf_amount DESC
         LIMIT :lim
-    """, {"ld": latest_date, "mf_ld": mf_latest, "lim": limit})
+    """, {"mf_ld": mf_latest, "lim": limit})
 
 
 async def _query_hsgt(session: AsyncSession) -> Optional[dict]:

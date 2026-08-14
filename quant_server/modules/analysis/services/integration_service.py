@@ -21,7 +21,7 @@
 
 事件发布：
 ---------
-分析完成后发布以下事件（通过 event_engine.publish）：
+分析完成后发布以下事件（通过 event_engine.put，修复 2026-08 A16）：
 - PerformanceAnalysisCompletedEvent — 策略绩效分析完成
 - RiskAnalysisCompletedEvent — 策略风险分析完成
 - AttributionAnalysisCompletedEvent — 投资组合归因分析完成
@@ -124,7 +124,7 @@ class AnalysisIntegrationService:
 
             # 发布分析完成事件
             if self.event_engine:
-                self.event_engine.publish(PerformanceAnalysisCompletedEvent(
+                self.event_engine.put(PerformanceAnalysisCompletedEvent(
                     strategy_id=strategy_id,
                     start_date=start_date,
                     end_date=end_date,
@@ -202,7 +202,7 @@ class AnalysisIntegrationService:
 
             # 发布风险分析完成事件
             if self.event_engine:
-                self.event_engine.publish(RiskAnalysisCompletedEvent(
+                self.event_engine.put(RiskAnalysisCompletedEvent(
                     strategy_id=strategy_id,
                     start_date=start_date,
                     end_date=end_date,
@@ -290,7 +290,7 @@ class AnalysisIntegrationService:
                     attribution_model=attribution_model,
                     result=result
                 )
-                self.event_engine.publish(completed_event)
+                await self.event_engine.put(completed_event)  # 修复 2026-08（A16）：EventEngine 无 publish 方法
 
             return result
 

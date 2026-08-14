@@ -26,6 +26,16 @@ class FileStorage:
 		self.base_path = os.path.join(os.getcwd(), "storage")
 		os.makedirs(self.base_path, exist_ok=True)
 
+	def _resolve_path (self, path: str) -> str:
+		"""解析并校验路径，防止路径穿越（修复 2026-08 A9）"""
+		if not path or not isinstance(path, str):
+			raise ValueError("非法路径")
+		base = os.path.realpath(self.base_path)
+		full = os.path.realpath(os.path.join(base, path))
+		if not (full == base or full.startswith(base + os.sep)):
+			raise ValueError("路径越界")
+		return full
+
 	def upload (
 			self,
 			content: bytes,
@@ -45,7 +55,7 @@ class FileStorage:
 		"""
 		try:
 			# 构建完整的文件路径
-			file_path = os.path.join(self.base_path, path)
+			file_path = self._resolve_path(path)
 
 			# 确保目录存在
 			os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -72,7 +82,7 @@ class FileStorage:
 			Optional[bytes]: 文件内容
 		"""
 		try:
-			file_path = os.path.join(self.base_path, path)
+			file_path = self._resolve_path(path)
 
 			if not os.path.exists(file_path):
 				return None
@@ -95,7 +105,7 @@ class FileStorage:
 			bool: 是否删除成功
 		"""
 		try:
-			file_path = os.path.join(self.base_path, path)
+			file_path = self._resolve_path(path)
 
 			if os.path.exists(file_path):
 				os.remove(file_path)
@@ -118,7 +128,7 @@ class FileStorage:
 			bool: 文件是否存在
 		"""
 		try:
-			file_path = os.path.join(self.base_path, path)
+			file_path = self._resolve_path(path)
 			return os.path.exists(file_path)
 
 		except Exception as e:

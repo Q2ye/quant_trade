@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 # sim_adapter.py        # 模拟交易适配器
 
 import uuid
@@ -110,7 +113,7 @@ class SimBrokerAdapter(BrokerAdapter):
             revenue = price * quantity
             self.capital += revenue
         else:
-            logger.warning(f"未知交易方向: {direction}，按卖出处理")
+            logger.warning(f"未知交易方向: {direction}，按卖出处理")  # 修复 2026-08（A18）：补模块级 logger 见文件头
             revenue = price * quantity
             self.capital += revenue
 

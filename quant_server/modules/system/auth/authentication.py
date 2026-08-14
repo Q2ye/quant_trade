@@ -93,11 +93,10 @@ class AuthenticationManager:
         if not is_valid:
             return False
 
-        # 如果旧密码从 AES 迁移到了 bcrypt，使用迁移版本
-        new_encrypted = (
-            migrated if migrated
-            else self._pwd.encrypt_password(new_password)
-        )
+        # 修复 2026-08（A7）：migrated 是旧密码（AES）的 bcrypt 迁移值，旧实现在此误用为
+        # 新密码密文——改密后存的是旧密码 bcrypt，新密码登录必失败。
+        # 改密必须始终加密新密码；旧密码的 AES→bcrypt 迁移由登录流程（:42）独立处理
+        new_encrypted = self._pwd.encrypt_password(new_password)
         return await self._user_repo.update_password(user_id, new_encrypted)
 
     async def validate_password_strength(self, password: str):

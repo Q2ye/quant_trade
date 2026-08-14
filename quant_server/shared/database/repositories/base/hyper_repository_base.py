@@ -245,9 +245,10 @@ class HyperRepositoryBase(BaseRepository[T]):
 			if symbol and hasattr(self.model, 'symbol'):
 				conditions.append(self.model.symbol == symbol)
 
-			# 应用所有条件
+			# 应用所有条件（修复：where() 返回新语句对象，必须接收返回值，
+			# 否则执行的是无条件 DELETE 全表——灾难级 bug）
 			if conditions:
-				query.where(and_(*conditions))
+				query = query.where(and_(*conditions))
 
 			result = await self.session.execute(query)
 			return result.rowcount or 0

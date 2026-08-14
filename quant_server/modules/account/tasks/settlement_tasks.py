@@ -104,20 +104,32 @@ class SettlementTasks:
                         trading_day
                     )
 
-                    # 4. 记录结算结果（对账单仅落库 account_statements，不再生成 PDF 文件）
-                    settlement_record = await self.account_repo.create_settlement_record({
-                        'account_id': account_id,
-                        'trading_day': trading_day,
-                        'settlement_type': 'daily',
-                        'pnl': float(daily_pnl['total_pnl']),
-                        'assets_snapshot': updated_assets,
-                        'opening_balance': daily_pnl.get('yesterday_total_asset', 0),
-                        'net_deposit': daily_pnl.get('net_deposit', 0),
-                        'total_trades': daily_pnl.get('trade_count', 0),
-                        'total_fees': daily_pnl.get('total_fees', 0),
-                        'statement_path': '',
-                        'status': 'completed'
-                    })
+                    # 4. 记录结算结果（修复 2026-08（A34）：幂等——同账户同日同类型已存在则复用，避免重复结算重复落库）
+                    from sqlalchemy import select as _select
+                    from shared.database.models.business_models import AccountStatement as _AS
+                    _existing = await self.account_repo.session.execute(_select(_AS).where(
+                        _AS.account_id == account_id,
+                        _AS.statement_date == trading_day,
+                        _AS.statement_period == 'daily',
+                    ).limit(1))
+                    _stmt = _existing.scalars().first()
+                    if _stmt is not None:
+                        settlement_record = _stmt
+                        logger.info("账户 %s 当日结算记录已存在，复用（幂等）", account_id)
+                    else:
+                        settlement_record = await self.account_repo.create_settlement_record({
+                            'account_id': account_id,
+                            'trading_day': trading_day,
+                            'settlement_type': 'daily',
+                            'pnl': float(daily_pnl['total_pnl']),
+                            'assets_snapshot': updated_assets,
+                            'opening_balance': daily_pnl.get('yesterday_total_asset', 0),
+                            'net_deposit': daily_pnl.get('net_deposit', 0),
+                            'total_trades': daily_pnl.get('trade_count', 0),
+                            'total_fees': daily_pnl.get('total_fees', 0),
+                            'statement_path': '',
+                            'status': 'completed'
+                        })
 
                     results[account_id] = {
                         'status': 'success',

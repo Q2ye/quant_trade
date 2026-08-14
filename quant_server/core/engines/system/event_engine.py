@@ -49,16 +49,31 @@ class QueuedEvent:
 		Args:
 			event: 事件对象
 		"""
-		# 统一从 BaseEvent.metadata.priority 获取优先级
+		# 修复 2026-08（A20）：priority 原为字符串名（如 'critical'），dataclass(order=True)
+		# 按字母序排序 → 'background' < 'critical' < 'high' < 'normal'，BACKGROUND 反而最先出队。
+		# 改为数值（1=CRITICAL 最紧急 … 5=BACKGROUND），数值越小越先出队。
+		def _to_value(p):
+			try:
+				if isinstance(p, str):
+					return PriorityLevel.get_priority_value(PriorityLevel(p))
+				if isinstance(p, PriorityLevel):
+					return PriorityLevel.get_priority_value(p)
+				if isinstance(p, int):
+					return p
+			except (ValueError, KeyError):
+				pass
+			return PriorityLevel.get_priority_value(PriorityLevel.NORMAL)
+
 		if isinstance(event, BaseEvent):
-			prio = event.metadata.priority
-			self.priority = prio.name.lower() if hasattr(prio, 'name') else str(prio)
+			prio = getattr(getattr(event, 'metadata', None), 'priority', PriorityLevel.NORMAL)
+			self.priority = _to_value(prio)
 		elif isinstance(event, dict):
-			self.priority = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
+			p = event.get('metadata', {}).get('priority', PriorityLevel.NORMAL.value)
+			self.priority = _to_value(p)
 		elif hasattr(event, 'priority'):
-			self.priority = event.priority
+			self.priority = _to_value(event.priority)
 		else:
-			self.priority = PriorityLevel.NORMAL.value
+			self.priority = _to_value(PriorityLevel.NORMAL)
 
 		self.timestamp = time.time()
 		self.event = event
@@ -461,7 +476,12 @@ class EventEngine(EngineBase):
 			# 检查队列大小 — v2.4: 溢出保护，按优先级分级处理
 			if len(self._event_queue) >= self._max_queue_size:
 				# 提取事件优先级（数值越小越紧急）
-				event_priority = getattr(event, 'priority', PriorityLevel.NORMAL.value)
+				# 修复 2026-08（A21）：BaseEvent 优先级在 metadata.priority，此前 getattr 取默认 NORMAL
+				# 导致 CRITICAL 事件被当作 NORMAL 直接丢弃
+				_meta = getattr(event, 'metadata', None)
+				event_priority = getattr(_meta, 'priority', None) if _meta else None
+				if event_priority is None:
+					event_priority = getattr(event, 'priority', PriorityLevel.NORMAL)
 				if isinstance(event_priority, str):
 					event_priority = PriorityLevel.get_priority_value(
 						PriorityLevel(event_priority))
@@ -474,11 +494,8 @@ class EventEngine(EngineBase):
 					lowest_idx = 0
 					lowest_pri = -1
 					for idx, qe in enumerate(self._event_queue):
-						ep = getattr(qe.event, 'priority', PriorityLevel.NORMAL.value)
-						if isinstance(ep, str):
-							ep = PriorityLevel.get_priority_value(PriorityLevel(ep))
-						elif isinstance(ep, PriorityLevel):
-							ep = PriorityLevel.get_priority_value(ep)
+						# 修复 2026-08（A21）：QueuedEvent.priority 已为数值，直接使用
+						ep = qe.priority if isinstance(qe.priority, int) else PriorityLevel.get_priority_value(PriorityLevel.NORMAL)
 						if ep > lowest_pri:
 							lowest_pri = ep
 							lowest_idx = idx

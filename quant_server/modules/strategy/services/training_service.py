@@ -10,6 +10,7 @@ API 端点: POST /api/strategy/train/lgb
 
 import asyncio
 import logging
+import os
 import math
 import uuid
 from datetime import date, datetime
@@ -29,10 +30,13 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "models"
 
 # ── 数据库配置（从系统配置读取，这里给默认值）──
+# 修复 2026-08（A10）：移除硬编码明文密码，改从环境变量读取（与 config 体系一致）
 DB_CONFIG = {
-    "host": "localhost", "port": 5432,
-    "user": "postgres", "password": "123456",
-    "database": "quant_signals_dev",
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": int(os.environ.get("DB_PORT", "5432")),
+    "user": os.environ.get("DB_USER", "postgres"),
+    "password": os.environ.get("DB_PASSWORD", ""),
+    "database": os.environ.get("DB_NAME", "quant_signals_dev"),
 }
 
 # ── 默认 ETF 池 ──
@@ -59,17 +63,15 @@ class TrainingService:
         start: date, end: date,
     ) -> pd.DataFrame:
         """从 factor_data 加载特征矩阵"""
-        etf_list = "','".join(etf_pool)
-        factor_list = "','".join(feature_codes)
-
-        rows = await conn.fetch(f"""
+        # 修复 2026-08（A10）：f-string 拼接数组进 SQL 存在注入风险，改参数化数组
+        rows = await conn.fetch("""
             SELECT ts_code, trade_date, factor_code, factor_value
             FROM factor_data
-            WHERE ts_code = ANY(ARRAY['{etf_list}']::varchar[])
-              AND factor_code = ANY(ARRAY['{factor_list}']::varchar[])
+            WHERE ts_code = ANY($3::varchar[])
+              AND factor_code = ANY($4::varchar[])
               AND trade_date >= $1 AND trade_date <= $2
             ORDER BY ts_code, trade_date
-        """, start, end)
+        """, start, end, etf_pool, feature_codes)
 
         data = {}
         for r in rows:
@@ -96,14 +98,14 @@ class TrainingService:
           1 = 低质量底: 未来 N 日内反弹 ≥X% 但最大跌幅 <Y（买在了更低点，扛了深跌才反弹）
           0 = 不是底: 未来 N 日内反弹 <X%（反弹动力不足，不值得参与）
         """
-        etf_list = "','".join(etf_pool)
-        rows = await conn.fetch(f"""
+        # 修复 2026-08（A10）：参数化数组
+        rows = await conn.fetch("""
             SELECT ts_code, trade_date, high, low, close
             FROM etf_daily
-            WHERE ts_code = ANY(ARRAY['{etf_list}']::varchar[])
+            WHERE ts_code = ANY($3::varchar[])
               AND trade_date >= $1 AND trade_date <= $2
             ORDER BY ts_code, trade_date
-        """, start, end)
+        """, start, end, etf_pool)
 
         df = pd.DataFrame([dict(r) for r in rows])
         for c in ["high", "low", "close"]:

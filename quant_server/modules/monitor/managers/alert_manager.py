@@ -49,7 +49,17 @@ class AlertManager:
 		Returns:
 			{"alert_id": str, "results": {channel: bool}}
 		"""
-		channels = channels or ["email"]
+		# 修复 2026-08（A35）：默认渠道不再写死 email（email 未注册时必全 skipped），
+		# 改为取已注册且启用的渠道；全部未注册时显式告警（fail loud）
+		if channels:
+			channels = [c for c in channels if c in self._alerters]
+		else:
+			channels = [c for c, a in self._alerters.items() if getattr(a, 'enabled', False)]
+		if not channels:
+			logger.warning(
+				f"告警 {alert_id} 无可用通知渠道（已注册: {list(self._alerters.keys())}），仅落库不通知"
+			)
+			return {"alert_id": alert_id, "results": {}, "warning": "no_channel_registered"}
 		valid_channels = AlertUtils.validate_channels(channels)
 		results: Dict[str, Any] = {}
 

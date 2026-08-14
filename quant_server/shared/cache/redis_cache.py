@@ -2,14 +2,13 @@
 Redis缓存实现
 """
 
-import json
 from datetime import datetime, timedelta
 from typing import Any, Optional, List, Dict
 
 import redis.asyncio as redis
 
 from .base import CacheBase, CacheEntry, CacheError
-from .serializers import SerializerBase, PickleSerializer
+from .serializers import SerializerBase, PickleSerializer, SerializerError
 
 
 class RedisCache(CacheBase):
@@ -66,25 +65,16 @@ class RedisCache(CacheBase):
 		return self.serializer.deserialize(data)
 
 	async def _serialize_entry (self, entry: CacheEntry) -> bytes:
-		"""序列化缓存条目"""
-		entry_dict = entry.to_dict()
-		# 序列化值
-		entry_dict["value"] = await self._serialize_value(entry.value)
-		return json.dumps(entry_dict, allow_nan=False).encode()
+		"""序列化缓存条目（修复：整体 pickle 序列化——旧实现把 value 序列化为 bytes
+		后塞入 json.dumps，bytes 不可 JSON 序列化，Redis 启用后每次写入必抛 TypeError）"""
+		return self.serializer.serialize(entry)
 
 	async def _deserialize_entry (self, data: bytes) -> CacheEntry:
-		"""反序列化缓存条目"""
-		entry_dict = json.loads(data.decode())
-		# 反序列化值
-		entry_dict["value"] = await self._deserialize_value(entry_dict["value"])
-
-		# 转换时间字段
-		if entry_dict["created_at"]:
-			entry_dict["created_at"] = datetime.fromisoformat(entry_dict["created_at"])
-		if entry_dict["expires_at"]:
-			entry_dict["expires_at"] = datetime.fromisoformat(entry_dict["expires_at"])
-
-		return CacheEntry(**entry_dict)
+		"""反序列化缓存条目（整体 pickle，datetime 由 pickle 原生保留，无需手工转换）"""
+		entry = self.serializer.deserialize(data)
+		if not isinstance(entry, CacheEntry):
+			raise ValueError(f"反序列化结果类型错误: {type(entry)}")
+		return entry
 
 	async def get (self, key: str, default: Any = None) -> Any:
 		"""获取缓存值"""
@@ -167,7 +157,7 @@ class RedisCache(CacheBase):
 					entry = await self._deserialize_entry(data)
 					if entry.tags:
 						await self._remove_key_from_tags(cache_key, entry.tags)
-				except (json.JSONDecodeError, redis.RedisError):
+				except (SerializerError, redis.RedisError):
 					pass
 
 			# 删除缓存键
@@ -250,7 +240,7 @@ class RedisCache(CacheBase):
 						result[key] = None
 					else:
 						result[key] = entry.value
-				except (json.JSONDecodeError, redis.RedisError):
+				except (SerializerError, redis.RedisError):
 					result[key] = None
 
 			return result

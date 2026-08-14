@@ -89,7 +89,7 @@ class ReconciliationTasks:
 
 			results = {}
 			for account in accounts:
-				account_id = account.account_id
+				account_id = account.id  # 修复 2026-08（A5）：Account 主键为 id，无 account_id 属性，此前 AttributeError 导致对账 100% 失败
 				logger.info(f"对账账户: {account_id}")
 
 				try:

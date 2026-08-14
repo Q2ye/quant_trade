@@ -159,7 +159,7 @@ class RiskRuleStatusChangedEvent(BaseEvent):
     def __init__(
         self,
         rule_name: str,
-        enabled: bool,
+        enabled: Optional[bool] = None,  # 修复 2026-08（A17）：参数更新场景无 enabled，此前必填致 TypeError
         operator_id: str = "",
         **kwargs,
     ):

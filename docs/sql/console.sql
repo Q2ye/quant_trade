@@ -221,7 +221,8 @@ FROM signals c
 LEFT JOIN signals s ON s.parent_id = c.id
 WHERE c.id = '<候选id>';
 
-
+ALTER TABLE data_sync_tasks ADD COLUMN IF NOT EXISTS parent_task_id VARCHAR(36);
+CREATE INDEX IF NOT EXISTS idx_data_sync_tasks_parent ON data_sync_tasks(parent_task_id);
 -- 交易相关表
 select * from accounts;
 SELECT * FROM orders ORDER BY submitted_at DESC LIMIT 1;

@@ -355,10 +355,15 @@ class RiskEngine(EngineBase):
                     from modules.risk.events.risk_events import (
                         RiskRuleStatusChangedEvent,
                     )
-                    self.event_engine.put(RiskRuleStatusChangedEvent(
-                        rule_name=rule_name,
-                        message=f"规则参数已更新: {params}",
-                    ))
+                    # 修复 2026-08（A15）：put 为 async，未 await 则事件永不发布；
+                    # 同步方法内用 create_task 派发（无运行 loop 时跳过并告警）
+                    try:
+                        asyncio.create_task(self.event_engine.put(RiskRuleStatusChangedEvent(
+                            rule_name=rule_name,
+                            message=f"规则参数已更新: {params}",
+                        )))
+                    except RuntimeError:
+                        logger.warning("无运行事件循环，规则变更事件未发布")
                 return True
         return False
 
@@ -371,10 +376,14 @@ class RiskEngine(EngineBase):
         # 发布规则状态变更事件
         if self.event_engine:
             from modules.risk.events.risk_events import RiskRuleStatusChangedEvent
-            self.event_engine.put(RiskRuleStatusChangedEvent(
-                rule_name=rule_name,
-                enabled=enabled,
-            ))
+            # 修复 2026-08（A15）：async put 未 await 则事件永不发布，create_task 派发
+            try:
+                asyncio.create_task(self.event_engine.put(RiskRuleStatusChangedEvent(
+                    rule_name=rule_name,
+                    enabled=enabled,
+                )))
+            except RuntimeError:
+                logger.warning("无运行事件循环，规则状态事件未发布")
 
         # v3.0: 持久化到 risk_rules 表
         self._schedule_rule_db_sync(rule_name, enabled)

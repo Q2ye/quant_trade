@@ -510,13 +510,21 @@ async def change_password_api (
 
 @router.post("/auth/logout", response_model=MessageResponse)
 async def logout_api(
+		request: Request,
 		current_user: Dict = Depends(get_current_user),
 		db_session: AsyncSession = Depends(get_db_session),
 ):
 	"""登出 —— 将 access_token 加入黑名单"""
 	try:
-		from modules.system.auth.jwt_handler import get_token_from_header
-		token = "unknown"
+		# 修复 2026-08（A8）：此前 token 写死 "unknown" 导致登出黑名单记录错误 token，登出失效。
+		# 改为从 Authorization: Bearer 头提取真实 token
+		auth_header = request.headers.get("Authorization", "")
+		token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+		if not token:
+			raise HTTPException(
+				status_code=status.HTTP_401_UNAUTHORIZED,
+				detail="未提供认证凭证",
+			)
 		result = await logout(
 			session=db_session,
 			token=token,

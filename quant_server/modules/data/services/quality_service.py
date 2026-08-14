@@ -11,6 +11,7 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text, func
 
 # 导入核心基础设施
 from core.engines.system.event_engine import EventEngine
@@ -289,21 +290,12 @@ class DataQualityService:
 				start_date = end_date - timedelta(days=30)
 
 			# 使用StockDailyRepository的数据完整性检查
+			# 修复 2026-08（A12）：ts_code 为空时不再返回硬编码假指标，改为全市场真实聚合统计
 			integrity_result = await self.quote_repo.check_data_integrity(
-				ts_code=ts_code if ts_code else "000001.SZ",  # 示例代码
+				ts_code=ts_code,
 				start_date=start_date,
 				end_date=end_date
-			) if ts_code else {
-				"expected_trading_days": 30,
-				"actual_data_days": 28,
-				"missing_count": 2,
-				"data_quality": {
-					"total_records": 28,
-					"null_close_count": 0,
-					"zero_volume_count": 1,
-					"quality_score": 0.96
-				}
-			}
+			) if ts_code else await self._check_market_wide_integrity(start_date, end_date)
 
 			# 填充指标
 			metrics.update({
@@ -349,15 +341,70 @@ class DataQualityService:
 				"invalid_records": 0
 			})
 
+	async def _check_market_wide_integrity (self, start_date: date, end_date: date) -> Dict[str, Any]:
+		"""全市场完整性真实聚合（修复 2026-08 A12：替代硬编码假数据）"""
+		try:
+			# 理论交易日数
+			cal = await self.session.execute(text(
+				"SELECT COUNT(*) FROM trade_calendar WHERE cal_date BETWEEN :s AND :e AND is_open = true"
+			), {"s": start_date, "e": end_date})
+			expected_days = cal.scalar() or 0
+
+			# 区间内全市场总记录数 / 去重股票数 / 零成交量记录数
+			agg = await self.session.execute(text("""
+				SELECT COUNT(*) AS total_records,
+				       COUNT(DISTINCT ts_code) AS stock_count,
+				       SUM(CASE WHEN vol <= 0 THEN 1 ELSE 0 END) AS zero_volume_count,
+				       SUM(CASE WHEN close IS NULL THEN 1 ELSE 0 END) AS null_close_count
+				FROM stock_daily
+				WHERE trade_date BETWEEN :s AND :e
+			"""), {"s": start_date, "e": end_date})
+			row = agg.first()
+			total_records = row.total_records or 0
+			stock_count = row.stock_count or 0
+			zero_volume = row.zero_volume_count or 0
+			null_close = row.null_close_count or 0
+
+			# 平均每股覆盖天数；质量分 = 平均覆盖 / 理论交易日
+			avg_coverage = (total_records / stock_count) if stock_count else 0
+			quality_score = round(min(avg_coverage / expected_days, 1.0), 4) if expected_days else 0
+			return {
+				"expected_trading_days": expected_days,
+				"actual_data_days": round(avg_coverage, 2),
+				"missing_count": max(int(expected_days - avg_coverage) * stock_count, 0),
+				"data_quality": {
+					"total_records": total_records,
+					"null_close_count": null_close,
+					"zero_volume_count": zero_volume,
+					"quality_score": quality_score
+				}
+			}
+		except Exception as e:
+			logger.warning("全市场完整性统计失败: %s", str(e), exc_info=True)
+			return {
+				"expected_trading_days": 0, "actual_data_days": 0, "missing_count": 0,
+				"data_quality": {"total_records": 0, "null_close_count": 0,
+				                 "zero_volume_count": 0, "quality_score": 0}
+			}
+
 	async def _check_stock_list_quality (self, metrics: Dict[str, Any]):
 		"""检查股票列表质量"""
 		try:
 			total_stocks = await self.stock_repo.count()
 			metrics["total_records"] = total_stocks
-			# 假设98%的股票数据有效
-			metrics["valid_records"] = int(total_stocks * 0.98)
-			metrics["invalid_records"] = total_stocks - metrics["valid_records"]
-			logger.info("股票列表质量检查完成: 总数=%s", total_stocks)
+			# 修复 2026-08（A12）：不再硬编码 "98% 有效"，改为真实统计最近 30 日有日行情的股票数
+			try:
+				_active = await self.session.execute(text(
+					"SELECT COUNT(DISTINCT ts_code) FROM stock_daily "
+					"WHERE trade_date >= :since"
+				), {"since": datetime.now().date() - timedelta(days=30)})
+				_active_count = _active.scalar() or 0
+			except Exception:
+				logger.warning("活跃股票统计失败，降级为总数", exc_info=True)
+				_active_count = total_stocks
+			metrics["valid_records"] = _active_count
+			metrics["invalid_records"] = max(total_stocks - _active_count, 0)
+			logger.info("股票列表质量检查完成: 总数=%s, 近30日活跃=%s", total_stocks, _active_count)
 
 		except Exception as e:
 			logger.error(f"检查股票列表质量失败: {str(e)}")

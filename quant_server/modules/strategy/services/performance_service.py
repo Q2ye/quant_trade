@@ -33,6 +33,19 @@ class PerformanceService:
         paused = await repo.get_by_status("paused")
         return (running or []) + (paused or [])
 
+    async def _get_total_account_assets(self) -> float:
+        """全账户总资产合计（修复 2026-08 A30：绩效计算资产基准）"""
+        try:
+            from sqlalchemy import text
+            r = await self.session.execute(text(
+                "SELECT COALESCE(SUM(total_balance), 0) FROM accounts"
+            ))
+            val = r.scalar()
+            return float(val) if val else 0.0
+        except Exception as e:
+            logger.warning("查询账户总资产失败: %s", str(e))
+            return 0.0
+
     async def _get_active_run(self, strategy_id: str):
         """获取策略当前的 active run"""
         from shared.database.repositories.strategy.management.strategy_run_repo import (
@@ -80,8 +93,13 @@ class PerformanceService:
             绩效记录 dict or None
         """
         try:
-            if total_assets is None or total_assets <= 0:
-                total_assets = 0.0
+            # 修复 2026-08（A30）：total_assets 未传时自动取全账户总资产合计，
+            # 此前恒置 0 导致每日绩效写成 -100% 幽灵数据
+            if total_assets is None:
+                total_assets = await self._get_total_account_assets()
+            if total_assets <= 0:
+                logger.info("策略 %s 无有效资产数据，跳过绩效写入", strategy_id)
+                return None
 
             prev = await self._get_previous_performance(strategy_id)
             active_run = await self._get_active_run(strategy_id)

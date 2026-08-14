@@ -147,12 +147,14 @@ class RiskManager:
         if self.event_engine:
             try:
                 from modules.risk.events.risk_events import RiskAlertTriggeredEvent
-                self.event_engine.put(RiskAlertTriggeredEvent(
+                import asyncio
+                # 修复 2026-08（A15）：async put 未 await 则事件永不发布，create_task 派发
+                asyncio.create_task(self.event_engine.put(RiskAlertTriggeredEvent(
                     risk_type=event.get("risk_type", "unknown"),
                     message=event.get("message", ""),
                     metadata=event,
-                ))
-            except ImportError:
+                )))
+            except (ImportError, RuntimeError):
                 pass
 
     def get_risk_events(self, level: Optional[str] = None) -> List[Dict[str, Any]]:

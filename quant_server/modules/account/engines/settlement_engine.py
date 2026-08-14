@@ -91,6 +91,13 @@ class SettlementEngine(EngineBase):
                 event_data = await asyncio.wait_for(self._event_queue.get(), timeout=60.0)
                 settlement_type = event_data.get("settlement_type", "daily")
                 trading_day = event_data.get("settlement_date")
+                # 修复 2026-08（A4）：事件数据中 settlement_date 为字符串（如 "2026-08-14"），
+                # 下游 settlement_tasks 用 datetime.combine 需要 date 对象，
+                # 此前字符串在此抛 TypeError，导致成交触发结算全失败
+                if isinstance(trading_day, str):
+                    trading_day = date.fromisoformat(trading_day[:10])
+                elif isinstance(trading_day, datetime):
+                    trading_day = trading_day.date()
 
                 if self._db_session_factory:
                     await self._run_settlement(settlement_type, trading_day)

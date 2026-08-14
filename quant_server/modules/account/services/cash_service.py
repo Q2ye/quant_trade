@@ -594,7 +594,10 @@ class CashService:
 
 			# 构建查询
 			query = self.cash_flow_repo.build_query()
-			query = query.where(self.cash_flow_repo.model.user_id == account_id)
+			# 修复 2026-08（A33）：cash_flows 表无 account_id 列，参数需先解析为 user_id，
+			# 此前直接用 account_id 值过滤 user_id 列导致恒空
+			_acct = await self._get_account(account_id, require_active=False)
+			query = query.where(self.cash_flow_repo.model.user_id == _acct.user_id)
 
 			if flow_type:
 				query = query.where(self.cash_flow_repo.model.flow_type == flow_type)

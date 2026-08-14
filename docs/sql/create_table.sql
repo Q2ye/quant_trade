@@ -1396,6 +1396,7 @@ COMMENT ON COLUMN risk_rules.is_active IS '规则是否启用';
 CREATE TABLE data_sync_tasks (
     id VARCHAR(36) PRIMARY KEY,
     task_id VARCHAR(64) NOT NULL UNIQUE,
+    parent_task_id VARCHAR(36),  -- 修复 2026-08：batch/child 两层任务体系关联列（ORM business_models.py 已有，此处补建）
     task_type VARCHAR(50) NOT NULL,
     user_id VARCHAR(36) REFERENCES sys_users(id),
     data_types JSON,
@@ -1413,6 +1414,13 @@ CREATE TABLE data_sync_tasks (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMPTZ
 );
+
+-- 索引：parent_only 任务列表查询（parent_task_id IS NULL / = 查询）
+CREATE INDEX IF NOT EXISTS idx_data_sync_tasks_parent ON data_sync_tasks(parent_task_id);
+
+-- 迁移语句（已建库环境执行）：
+-- ALTER TABLE data_sync_tasks ADD COLUMN IF NOT EXISTS parent_task_id VARCHAR(36);
+-- CREATE INDEX IF NOT EXISTS idx_data_sync_tasks_parent ON data_sync_tasks(parent_task_id);
 
 COMMENT ON TABLE data_sync_tasks IS '数据同步任务记录表';
 COMMENT ON COLUMN data_sync_tasks.task_id IS '任务唯一标识符（如 sync_abc12345）';
@@ -3481,6 +3489,12 @@ SELECT create_hypertable(
     chunk_time_interval => INTERVAL '1 day',
     if_not_exists => TRUE
 );
+
+
+-- 唯一约束：防止重复同步产生重复分钟数据（修复 2026-08 A11）
+-- 注意：已存在重复数据的库需先去重再建索引：
+--   DELETE FROM stock_minutes WHERE id NOT IN (SELECT MIN(id) FROM stock_minutes GROUP BY ts_code, freq, trade_time);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_minutes_ts_freq_time ON stock_minutes (ts_code, freq, trade_time);
 
 -- 按股票代码和频率分区
 SELECT add_dimension(

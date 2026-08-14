@@ -69,7 +69,7 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 				'message': message,
 				'status': 'active',
 				'source_id': source_id,
-				'metadata': metadata or {},
+				'metainfo': metadata or {},  # 修复 2026-08（A13）：ORM 列名为 metainfo，旧键 metadata 导致详情静默丢失
 				'notification_channels': notification_channels or ["email", "wechat"],
 				'notification_sent': False
 			}
@@ -131,11 +131,11 @@ class MonitorAlertRepository(BaseRepository[MonitorAlert]):
 			List[MonitorAlert]: 最近报警记录列表
 		"""
 		try:
-			time_threshold = datetime.now() - timedelta(hours=hours)
-
-			query = select(self.model).where(
-				self.model.created_at >= time_threshold
-			)
+			# 修复 2026-08（A14）：hours<=0 时不加时间过滤（旧实现 hours=0 → created_at>=now 恒不命中，去重完全失效）
+			query = select(self.model)
+			if hours and hours > 0:
+				time_threshold = datetime.now() - timedelta(hours=hours)
+				query = query.where(self.model.created_at >= time_threshold)
 
 			if alert_type:
 				query = query.where(self.model.alert_type == alert_type)

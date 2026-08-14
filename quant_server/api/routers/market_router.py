@@ -337,7 +337,7 @@ async def style_rotation_api(days: int = Query(default=60, ge=5, le=250),
 @router.get("/user/watchlist")
 async def get_watchlist_api(current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
     try:
-        r = await do_get_watchlist(db_session, current_user.get("user_id", ""))
+        r = await do_get_watchlist(db_session, current_user.get("id", ""))  # A26: user_id->id
         return {"success": True, "data": r}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -351,7 +351,7 @@ async def save_watchlist_api(
 ):
     try:
         codes = body.get("codes", [])
-        r = await do_save_watchlist(db_session, current_user.get("user_id", ""), codes)
+        r = await do_save_watchlist(db_session, current_user.get("id", ""), codes)  # A26: user_id->id
         return {"success": True, "data": r}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

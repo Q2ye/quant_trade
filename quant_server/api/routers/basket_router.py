@@ -135,6 +135,7 @@ async def update_basket(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# DELETE /basket/batch   — 批量删除篮子
 # ============================================================
 # DELETE /basket/{id}   — 删除篮子
 # ============================================================
@@ -256,7 +257,6 @@ async def get_performance(
 
 
 # ============================================================
-# DELETE /basket/batch   — 批量删除篮子
 # ============================================================
 @router.delete("/batch")
 async def delete_baskets_batch(

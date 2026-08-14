@@ -497,14 +497,34 @@ class StrategyRepository(BaseRepository[Strategy]):
 		if not strategy:
 			return {'error': '策略不存在'}
 
-		# 这里只是示例，实际需要查询绩效数据
+		# 修复 2026-08（A36）：不再返回写死的 0，改为查 strategy_daily_performance 最新一条
+		try:
+			from shared.database.repositories.account.asset.strategy_daily_performance_repo import (
+				StrategyDailyPerformanceRepository,
+			)
+			perf_repo = StrategyDailyPerformanceRepository(self.session)
+			records = await perf_repo.get_latest_performance(strategy_id, days=365)
+			if records:
+				from datetime import date as _date
+				latest = max(records, key=lambda r: getattr(r, "trade_date", None) or _date.min)
+				return {
+					'strategy_id': strategy_id,
+					'strategy_name': strategy.name,
+					'total_return': float(getattr(latest, "total_return", 0) or 0),
+					'sharpe_ratio': float(getattr(latest, "sharpe_ratio", 0) or 0),
+					'max_drawdown': float(getattr(latest, "max_drawdown", 0) or 0),
+					'win_rate': float(getattr(latest, "win_rate", 0) or 0),
+					'has_performance_data': True
+				}
+		except Exception as e:
+			logger.warning("查询策略绩效摘要失败: %s", str(e))
 		return {
 			'strategy_id': strategy_id,
 			'strategy_name': strategy.name,
-			'total_return': 0,  # 实际需要计算
-			'sharpe_ratio': 0,  # 实际需要计算
-			'max_drawdown': 0,  # 实际需要计算
-			'win_rate': 0,  # 实际需要计算
+			'total_return': 0,
+			'sharpe_ratio': 0,
+			'max_drawdown': 0,
+			'win_rate': 0,
 			'has_performance_data': False
 		}
 

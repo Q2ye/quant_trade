@@ -591,7 +591,9 @@ class StrategyHandler:
 				page=1, page_size=1,
 			)
 			if tasks and tasks[0].result:
-				metrics = tasks[0].result.get("metrics", {})
+				# 修复 2026-08（A31）：result 可能为扁平结构（指标直接在顶层），兼容两种
+				_res = tasks[0].result or {}
+				metrics = _res.get("metrics") if isinstance(_res.get("metrics"), dict) else _res
 				return {
 					"total_return": metrics.get("total_return", 0.0),
 					"annual_return": metrics.get("annual_return",
