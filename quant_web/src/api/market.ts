@@ -340,4 +340,16 @@ export default {
       .then(handleResponse)
       .then((d: any) => d.data);
   },
+  async getMarketState(days = 60): Promise<any> {
+    return request
+      .get("/quantTrade/market/dashboard/state", { params: { days } })
+      .then(handleResponse)
+      .then((d: any) => d.data);
+  },
+  async getStyleRotation(days = 60): Promise<any> {
+    return request
+      .get("/quantTrade/market/dashboard/style", { params: { days } })
+      .then(handleResponse)
+      .then((d: any) => d.data);
+  },
 };

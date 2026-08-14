@@ -12,6 +12,7 @@ from modules.market.services.industry_service import (
     get_industry_tree, get_industry_heatmap, get_industry_heatmap_multi_window,
     get_industry_detail, get_industry_history, get_industry_trend,
 )
+from modules.market.services.market_state_service import get_market_state, get_style_rotation
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,16 @@ async def do_style_factors(session: AsyncSession) -> list:
 async def do_sector_turnover(session: AsyncSession) -> dict:
     from modules.market.services.dashboard_service import get_sector_turnover
     return await get_sector_turnover(session)
+
+
+async def do_market_state(session: AsyncSession, days: int = 60) -> dict:
+    """大盘状态雷达数据"""
+    return await get_market_state(session, days)
+
+
+async def do_style_rotation(session: AsyncSession, days: int = 60) -> dict:
+    """风格轮动数据"""
+    return await get_style_rotation(session, days)
 
 
 async def do_get_watchlist(session: AsyncSession, user_id: str) -> list:

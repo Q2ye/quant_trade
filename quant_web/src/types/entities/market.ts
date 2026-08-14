@@ -289,3 +289,31 @@ export interface IndustryDetail {
     amount?: number;
   }[];
 }
+
+export interface MarketStateResponse {
+  dates: string[];
+  regime_series: string[];
+  breadth: number[];
+  volatility: number[];
+  momentum: number[];
+  trend: number[];
+  limit_dates: string[];
+  limit_up: number[];
+  limit_down: number[];
+  latest: {
+    regime: string;
+    year_line_pct: number | null;
+    volatility_pctl: number | null;
+    breadth: number | null;
+    volatility: number | null;
+    momentum: number | null;
+    trend: number | null;
+  };
+}
+
+export interface StyleRotationResponse {
+  index_dates: string[];
+  index_series: Record<string, number[]>;
+  index_names: Record<string, string>;
+  industry_strength: { name: string; ret_30d: number }[];
+}

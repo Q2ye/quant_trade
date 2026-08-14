@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from "vue";
+import { useRouter } from "vue-router";
 import { NTag, NButton, NSpin, NEmpty } from "naive-ui";
 import { useMessage } from "naive-ui";
 import type { TradingSignal as Signal } from "@/types";
@@ -7,6 +8,7 @@ import signalsAPI from "@/api/signals";
 import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const message = useMessage();
+const router = useRouter();
 const signals = ref<Signal[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -33,7 +35,22 @@ const columns = [
     render: (row: Signal) => (row.signal_time || "").toString().slice(0, 16).replace("T", " ") || "--",
   },
   { title: "策略ID", key: "strategy_id", width: 150 },
-  { title: "股票代码", key: "ts_code", width: 120 },
+  {
+    title: "股票代码",
+    key: "ts_code",
+    width: 120,
+    render: (row: Signal) =>
+      h(
+        "a",
+        {
+          class: "stock-link",
+          style: { color: "var(--n-color-primary)", cursor: "pointer" },
+          onClick: () => router.push(`/market/stock/${row.ts_code}`),
+        },
+        row.ts_code,
+      ),
+  },
+  { title: "名称", key: "name", width: 110, render: (row: Signal) => (row as any).name || "--" },
   {
     title: "信号类型",
     key: "signal_type",

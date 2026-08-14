@@ -23,6 +23,8 @@ import type {
   TopMoneyflowItem,
 } from "@/types/entities/market";
 import SmartIcon from "@/components/common/SmartIcon.vue";
+import MarketStateRadar from "@/components/market/MarketStateRadar.vue";
+import StyleRotation from "@/components/market/StyleRotation.vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
@@ -552,6 +554,12 @@ onMounted(load);
             >
           </n-tag>
         </div>
+        <!-- 大盘状态雷达（决策层） -->
+        <MarketStateRadar />
+
+        <!-- 风格轮动 -->
+        <StyleRotation />
+
         <!-- Row 1: 核心指数(3) + 涨跌统计(1) + 北向(1) -->
         <n-grid
           :x-gap="16"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, h } from "vue";
+import { useRouter } from "vue-router";
 import {
   NTag, NButton, NProgress, NSpin, NResult, NEmpty,
   NSelect, NDatePicker, NInput, NSpace, NStatistic, NCard,
@@ -12,6 +13,7 @@ import TradeRecordModal from "@/components/trade/TradeRecordModal.vue";
 import SignalTraceModal from "@/components/trade/SignalTraceModal.vue";
 
 const message = useMessage();
+const router = useRouter();
 
 // ============================================================
 // State
@@ -203,7 +205,14 @@ const columns: DataTableColumns<any> = [
     title: "时间", key: "signal_time", minWidth: 140,
     render: (row) => (row.signal_time || "").toString().slice(0, 16).replace("T", " ") || "--",
   },
-  { title: "股票", key: "ts_code", minWidth: 100, render: (row) => h("strong", {}, row.ts_code || "--") },
+  {
+    title: "股票", key: "ts_code", minWidth: 100,
+    render: (row) => h("a", {
+      style: { color: "var(--n-color-primary)", cursor: "pointer", fontWeight: 600 },
+      onClick: () => router.push(`/market/stock/${row.ts_code}`),
+    }, row.ts_code || "--"),
+  },
+  { title: "名称", key: "name", minWidth: 110, render: (row) => row.name || "--" },
   {
     title: "方向", key: "direction", minWidth: 65,
     render: (row) => {

@@ -17,7 +17,7 @@ from modules.market.handlers import (
     do_stock_signals, do_stock_factor_scores, do_limit_analysis,
     do_style_factors, do_sector_turnover,
     do_get_watchlist, do_save_watchlist,
-    do_stock_kline_range,
+    do_stock_kline_range, do_market_state, do_style_rotation,
 )
 
 logger = __import__("logging").getLogger(__name__)
@@ -305,6 +305,30 @@ async def style_factors_api(current_user=Depends(get_current_user), db_session=D
 async def sector_turnover_api(current_user=Depends(get_current_user), db_session=Depends(get_db_session)):
     try:
         r = await do_sector_turnover(db_session)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/state")
+async def market_state_api(days: int = Query(default=60, ge=5, le=250),
+                           current_user=Depends(get_current_user),
+                           db_session=Depends(get_db_session)):
+    """大盘状态雷达：market_state_daily + 涨跌停家数 + 年线门"""
+    try:
+        r = await do_market_state(db_session, days)
+        return {"success": True, "data": r}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/style")
+async def style_rotation_api(days: int = Query(default=60, ge=5, le=250),
+                             current_user=Depends(get_current_user),
+                             db_session=Depends(get_db_session)):
+    """风格轮动：三大指数相对强弱 + 行业强度"""
+    try:
+        r = await do_style_rotation(db_session, days)
         return {"success": True, "data": r}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -681,12 +681,24 @@ class TradeHandler:
 			result = await signal_repo.session.execute(query)
 			signals = result.scalars().all()
 
+			# 批量查股票中文名（一次 SQL，避免 N+1）
+			_ts_codes = list({s.ts_code for s in signals if s.ts_code})
+			name_map = {}
+			if _ts_codes:
+				from sqlalchemy import select as _select
+				from shared.database.models.data_models import StockBasic
+				_r = await self.db.execute(
+					_select(StockBasic.ts_code, StockBasic.name).where(StockBasic.ts_code.in_(_ts_codes))
+				)
+				name_map = {row[0]: row[1] for row in _r.all()}
+
 			signal_data = []
 			for s in signals:
 				item = {
 					"signal_id": s.id,
 					"strategy_id": s.strategy_id,
 					"ts_code": s.ts_code,
+					"name": name_map.get(s.ts_code, ""),
 					"direction": getattr(s, "direction", ""),
 					"signal_type": s.signal_type,
 					"price": float(s.price) if s.price else 0.0,

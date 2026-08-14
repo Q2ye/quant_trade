@@ -245,7 +245,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                         self._listing_dates[code] = str(list_dt)[:10]
                     universe.append(code)
                 self._universe = universe
-                logger.info(f"v7.1 全市场股票池已加载: {len(self._universe)} 只主板股 "
+                logger.info(f"{self.name} 全市场股票池已加载: {len(self._universe)} 只主板股 "
                             f"(剔除 ST {len(self._st_stocks)} 只)")
             except Exception as e:
                 logger.warning(f"股票池加载失败: {e}")
@@ -272,7 +272,7 @@ class HighVolMomentumStrategy(BaseStrategy):
             if td:
                 self._last_trade_date = td
         except Exception as e:
-            logger.error(f"v7.1 on_bar 异常: {bar.ts_code}: {e}", exc_info=True)
+            logger.error(f"{self.name} on_bar 异常: {bar.ts_code}: {e}", exc_info=True)
         return []
 
     def on_bar_batch_end(self, trade_date: Any = None) -> List[TradingSignal]:
@@ -290,7 +290,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                 self._last_rebalance_date = td
                 self._first_screen_done = True
         except Exception as e:
-            logger.error(f"v7.1 on_bar_batch_end 异常: {trade_date}: {e}", exc_info=True)
+            logger.error(f"{self.name} on_bar_batch_end 异常: {trade_date}: {e}", exc_info=True)
         return signals
 
     # =========================================================================
@@ -310,7 +310,7 @@ class HighVolMomentumStrategy(BaseStrategy):
         eff_max_pos = self.bear_max_positions if bear else self.max_positions
         eff_weight = self.bear_single_weight if bear else self.max_single_weight
         if self.verbose_logging:
-            logger.info(f"v7.1 调仓: {'熊市' if bear else '牛市'} 持仓={len(self._holdings)} "
+            logger.info(f"{self.name} 调仓: {'熊市' if bear else '牛市'} 持仓={len(self._holdings)} "
                         f"上限={eff_max_pos} 权重={eff_weight:.0%}")
 
         # 2. 日频风控（对持仓）：2×ATR 硬止损 + 2×ATR 移动止损 + 趋势破坏
@@ -347,7 +347,7 @@ class HighVolMomentumStrategy(BaseStrategy):
             if not getattr(self, "_replaying", False):
                 self._fire_db(self._persist_candidate(target, self._buy_pending[target]))
             if self.verbose_logging:
-                logger.info(f"v7.1 候选入池: {target}, 信号价={price:.2f}, 仓位={eff_weight:.0%}")
+                logger.info(f"{self.name} 候选入池: {target}, 信号价={price:.2f}, 仓位={eff_weight:.0%}")
 
         return signals
 
@@ -380,7 +380,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                 scored.append((code, score))
         scored.sort(key=lambda x: x[1], reverse=True)
         if self.verbose_logging:
-            logger.info(f"v7.1 选股: {len(scored)} 只通过, Top3={[(c, f'{s:.2%}') for c, s in scored[:3]]}")
+            logger.info(f"{self.name} 选股: {len(scored)} 只通过, Top3={[(c, f'{s:.2%}') for c, s in scored[:3]]}")
         return [c for c, _ in scored]
 
     def _screen_bear_market(self) -> List[str]:
@@ -406,7 +406,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                 scored.append((code, score))
         scored.sort(key=lambda x: x[1], reverse=True)
         if self.verbose_logging:
-            logger.info(f"v7.1 熊市选股: {len(scored)} 只温和启动, Top3={[(c, f'{s:.2%}') for c, s in scored[:3]]}")
+            logger.info(f"{self.name} 熊市选股: {len(scored)} 只温和启动, Top3={[(c, f'{s:.2%}') for c, s in scored[:3]]}")
         return [c for c, _ in scored]
 
     def _score_bear_candidate(self, code: str) -> Optional[float]:
@@ -622,7 +622,7 @@ class HighVolMomentumStrategy(BaseStrategy):
                 "is_bear": is_bear,   # v7.1: 标记熊市持仓，止损用宽参数
             }
             if self.verbose_logging:
-                logger.info(f"v7.1 买入(收盘确认): {code}, 收盘{price:.2f}, 仓位={weight:.0%}, "
+                logger.info(f"{self.name} 买入(收盘确认): {code}, 收盘{price:.2f}, 仓位={weight:.0%}, "
                             f"{'熊市' if is_bear else '牛市'}")
         return signals
 

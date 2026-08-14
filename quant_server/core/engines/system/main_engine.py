@@ -359,7 +359,7 @@ class MainEngine(EngineBase):
                 job_id="daily_data_sync",
                 name="日终数据同步+策略驱动",
                 schedule_type=ScheduleType.POST_MARKET,
-                schedule_config={"hour": 19, "minute": 20},
+                schedule_config={"hour": 21, "minute": 20},
                 func=_daily_sync_job,
                 description="盘后：同步9类数据 → 计算ETF因子 → 驱动策略，全自动流水线",
                 max_retries=1,

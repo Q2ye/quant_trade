@@ -723,7 +723,11 @@ onMounted(() => loadAllData());
                         >
                           {{ (s.signal_type || s.direction) === 'buy' ? '买' : '卖' }}
                         </n-tag>
-                        <span class="signal-code">{{ s.ts_code }}</span>
+                        <span
+                          class="signal-code"
+                          @click.stop="router.push(`/market/stock/${s.ts_code}`)"
+                        >{{ s.ts_code }}</span>
+                        <span v-if="s.name || s.symbolName" class="signal-name">{{ s.name || s.symbolName }}</span>
                         <n-tag :type="statusTag(signalStatus(s)).type" size="tiny" :bordered="false">
                           {{ statusTag(signalStatus(s)).text }}
                         </n-tag>
@@ -1131,6 +1135,15 @@ onMounted(() => loadAllData());
   font-weight: 600;
   font-size: 14px;
   color: var(--n-text-color-1);
+  cursor: pointer;
+  transition: color 0.15s;
+  &:hover {
+    color: var(--n-color-primary);
+  }
+}
+.signal-name {
+  font-size: 12px;
+  color: var(--n-text-color-3);
 }
 .signal-mid-row {
   display: flex;
