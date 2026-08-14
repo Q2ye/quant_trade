@@ -52,6 +52,7 @@ quant_web/.env
 quant_web/.env.local
 quant_web/.next
 quant_web/out
+quant_server/logs
 
 *.egg-info/
 

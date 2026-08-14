@@ -198,15 +198,23 @@ class OptimizationEngine(EngineBase):
 				try:
 					strategy_obj = self.backtest_engine._strategy_instances.get(strategy_id)
 					if strategy_obj is None:
-						# 尝试通过注册表创建
-						strategy_class = self.backtest_engine._strategy_registry.get(
-							StrategyType.CUSTOM
-						)
+						# 修复 2026-08（A29）：backtest_engine 内部注册表恒空，
+						# 导致 objective 恒返回 -inf。改为从全局 StrategyRegistry 获取策略类。
+						from modules.strategy.engines.strategy_registry import StrategyRegistry
+						_reg = StrategyRegistry()
+						if _reg.is_empty():
+							_reg.auto_discover()
+						strategy_class = None
+						for _t in _reg.get_registered_types():
+							_cls = _reg.get_first(_t)
+							if _cls is not None:
+								strategy_class = _cls
+								break
 						if strategy_class is None:
 							return -float('inf')
 						strategy_obj = strategy_class(
 							name="optimization",
-							strategy_type=StrategyType.CUSTOM,
+							strategy_type=getattr(strategy_class, 'strategy_type', StrategyType.CUSTOM),
 							parameters=params,
 						)
 

@@ -104,8 +104,15 @@ request.interceptors.response.use(
     switch (status) {
       case 401:
         errorMessage = "登录已过期，请重新登录";
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        clearAuth();
+        // 修复 2026-08（A38）：同步清理 Vuex store（此前只清 localStorage，
+        // 登录态残留导致 UI 状态与后端不一致）
+        import("@/store")
+          .then((m) => {
+            const store = m.default;
+            store.dispatch("user/logout").catch(() => {});
+          })
+          .catch(() => {});
         // 使用 setTimeout 避免在请求上下文中直接跳转
         setTimeout(() => {
           if (window.location.pathname !== "/login") {
