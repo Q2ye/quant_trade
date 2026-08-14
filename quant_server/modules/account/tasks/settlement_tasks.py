@@ -437,7 +437,9 @@ class SettlementTasks:
         )
         net = Decimal("0")
         for t in result.scalars().all():
-            if t.transaction_type in ("deposit", "withdrawal"):
+            # deposit/withdrawal 为外部出入金，transfer 为账户间划转（转入+，转出-），
+            # 均视为资金变动，需从当日盈亏中扣除，避免划转金额被误算成收益
+            if t.transaction_type in ("deposit", "withdrawal", "transfer"):
                 net += Decimal(str(t.amount))
         return net
 

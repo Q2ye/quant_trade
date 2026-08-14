@@ -38,7 +38,7 @@ src/
 ├── components/                   # 组件库（charts / common / data / editors / strategy / trade / ui）
 ├── composables/                  # Vue3 组合式逻辑
 ├── router/                       # 路由（routes.ts + guard.ts）
-├── store/                        # Pinia 状态
+├── store/                        # Vuex 4 状态
 ├── types/                        # TS 类型定义
 ├── utils/                        # 工具函数
 ├── styles/  assets/  locales/  plugins/  directives/  layouts/

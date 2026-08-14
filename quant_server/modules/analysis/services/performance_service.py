@@ -400,6 +400,9 @@ class PerformanceService:
             df_equity = pd.DataFrame(equity_curve)
             df_equity['trade_date'] = pd.to_datetime(df_equity['trade_date'])
             df_equity.set_index('trade_date', inplace=True)
+            # equity 为 Decimal（Numeric 列），pct_change 后仍是 Decimal，
+            # 传给 fin_calc 的 np.isnan 会报 ufunc 'isnan' not supported → 先转 float
+            df_equity['equity'] = df_equity['equity'].astype(float)
 
             returns = df_equity['equity'].pct_change().dropna()
 
