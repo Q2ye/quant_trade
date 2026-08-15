@@ -12,13 +12,11 @@
 
 from .backtest_engine import BacktestEngine
 from .optimization_engine import OptimizationEngine
-from .report_engine import ReportEngine
 from .backtest_broker import BacktestBroker, BacktestBrokerConfig
 
 __all__ = [
     "BacktestEngine",
     "OptimizationEngine",
-    "ReportEngine",
     "BacktestBroker",
     "BacktestBrokerConfig",
 ]

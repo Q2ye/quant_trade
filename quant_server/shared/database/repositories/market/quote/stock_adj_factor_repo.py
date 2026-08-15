@@ -15,6 +15,18 @@ from shared.database.models.data_models import StockAdjFactor
 from shared.database.repositories.base.hyper_repository_base import HyperRepositoryBase, RepositoryError
 
 
+# ==================== 复权比率纯函数（2026-08 C17：口径统一，供 Python 路径与测试复用） ====================
+
+def qfq_ratio (factor: float, latest_factor: float) -> float:
+	"""前复权比率：raw × factor / latest_factor（最新价 = 真实市场价）。"""
+	return factor / latest_factor
+
+
+def hfq_ratio (factor: float, earliest_factor: float) -> float:
+	"""后复权比率：raw × factor / earliest_factor（以全局最早因子日为基准，含历史分红累计）。"""
+	return factor / earliest_factor
+
+
 class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 	"""
 	股票复权因子数据仓库 - 继承HyperRepositoryBase
@@ -779,11 +791,11 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 		"""
 		SQL JOIN 一次性计算复权日线（替代 Python 逐行循环，性能关键）。
 
-		算法与在线复权一致：
+		算法与在线复权一致（2026-08 C17 口径统一）：
 		    qfq: adj_price = raw_price × factor / latest_factor（归一化最新价=真实价）
-		    hfq: adj_price = raw_price / factor × latest_factor
+		    hfq: adj_price = raw_price × factor / earliest_factor（以最早因子日为基准，含历史分红）
 
-		一次 SQL 查询完成 stock_daily JOIN stock_adj_factor JOIN latest_factor，
+		一次 SQL 查询完成 stock_daily JOIN stock_adj_factor JOIN latest_factor JOIN earliest_factor，
 		复权计算下推到 PostgreSQL 向量化执行，Python 零循环。
 
 		Args:
@@ -799,7 +811,7 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			return []
 		from sqlalchemy import text
 		if adj_type == "hfq":
-			ratio_expr = "1.0 * lf.latest_factor / f.adj_factor"  # hfq: raw/factor × latest（P1 修复：此前与 qfq 同式方向颠倒）
+			ratio_expr = "1.0 * f.adj_factor / ef.earliest_factor"  # 2026-08 C17: hfq = raw × factor / earliest
 		else:
 			ratio_expr = "f.adj_factor / lf.latest_factor"         # qfq: raw × factor / latest
 
@@ -819,9 +831,16 @@ class StockAdjFactorRepository(HyperRepositoryBase[StockAdjFactor]):
 			    WHERE ts_code = ANY(:symbols)
 			    ORDER BY ts_code, trade_date DESC
 			) lf ON d.ts_code = lf.ts_code
+			JOIN (
+			    SELECT DISTINCT ON (ts_code) ts_code, adj_factor AS earliest_factor
+			    FROM stock_adj_factor
+			    WHERE ts_code = ANY(:symbols)
+			    ORDER BY ts_code, trade_date ASC
+			) ef ON d.ts_code = ef.ts_code
 			WHERE d.ts_code = ANY(:symbols)
 			  AND d.trade_date BETWEEN :start_date AND :end_date
 			  AND lf.latest_factor > 0
+			  AND ef.earliest_factor > 0
 			ORDER BY d.trade_date, d.ts_code
 		"""
 		try:

@@ -250,6 +250,97 @@ async def get_strategies_api (
 		)
 
 
+@router.get("/health")
+async def strategy_module_health_check (
+		current_user: Dict = Depends(get_current_user),
+		db_session: AsyncSession = Depends(get_db_session)
+):
+	"""
+	策略模块健康检查
+
+	Args:
+		current_user: 当前登录用户
+		db_session: 数据库会话
+
+	Returns:
+		JSONResponse: 健康状态
+	"""
+	try:
+		logger.debug(f"用户 {current_user.get('username')} 请求策略模块健康检查")
+
+		health_status = await check_strategy_module_health(
+			session=db_session,
+		)
+
+		return success_response(
+			data=health_status,
+			message="策略模块健康检查完成"
+		)
+
+	except Exception as e:
+		logger.error(f"策略模块健康检查失败: {'服务器内部错误'}", exc_info=True)
+		return error_response(
+			message="策略模块健康检查失败",
+			data={
+				"status": "unhealthy",
+				"error": str(e)
+			},
+			status_code=500
+		)
+
+
+
+# ==================== 特征集 API (v3.4) ====================
+
+@router.get("/feature-sets")
+async def get_feature_sets_api(
+    category: Optional[str] = None,
+    current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """获取特征集列表，支持按 category 筛选"""
+    logger.info("feature-sets: 开始查询, category=%s", category)
+    from sqlalchemy import text
+    import json as _json
+    try:
+        rows = await db_session.execute(
+            text("SELECT id::text, name, description, category, feature_columns::text FROM feature_sets ORDER BY category, name"),
+        )
+        result = []
+        for row in rows:
+            cols_raw = row[4]
+            cols = _json.loads(cols_raw) if isinstance(cols_raw, str) and cols_raw else []
+            result.append({
+                "id": row[0], "name": row[1], "description": row[2] or "",
+                "category": row[3], "feature_columns": cols, "count": len(cols),
+            })
+        logger.info("feature-sets: 查询完成, %d条", len(result))
+        return success_response(data=result)
+    except Exception as e:
+        logger.exception("feature-sets: 查询失败")
+        return error_response(message=str(e))
+
+
+# ==================== 模型训练端点 (v3.4) ====================
+
+from pydantic import BaseModel, Field
+from modules.strategy.services.training_service import TrainingService
+
+class LgbTrainRequest(BaseModel):
+    feature_set_ids: list = Field(default_factory=list)
+    feature_codes: list = Field(default_factory=list)
+    etf_pool: list = Field(default_factory=list)
+    label_N: int = Field(default=10, ge=1, le=30)
+    label_X: float = Field(default=0.03, ge=0.01, le=0.15)
+    label_Y: float = Field(default=-0.05, ge=-0.15, le=-0.01)
+    num_leaves: int = Field(default=31, ge=7, le=255)
+    max_depth: int = Field(default=5, ge=2, le=15)
+    learning_rate: float = Field(default=0.05, ge=0.005, le=0.3)
+    n_estimators: int = Field(default=500, ge=50, le=3000)
+    reg_alpha: float = Field(default=0.5, ge=0.0, le=5.0)
+    reg_lambda: float = Field(default=1.0, ge=0.0, le=5.0)
+
+
 @router.get("/{strategy_id}", response_model=StrategyDetailResponse)
 async def get_strategy_detail_api (
 		strategy_id: str,
@@ -942,95 +1033,6 @@ async def trigger_strategy_api(
 
 # ==================== 模块管理接口 ====================
 
-@router.get("/health")
-async def strategy_module_health_check (
-		current_user: Dict = Depends(get_current_user),
-		db_session: AsyncSession = Depends(get_db_session)
-):
-	"""
-	策略模块健康检查
-
-	Args:
-		current_user: 当前登录用户
-		db_session: 数据库会话
-
-	Returns:
-		JSONResponse: 健康状态
-	"""
-	try:
-		logger.debug(f"用户 {current_user.get('username')} 请求策略模块健康检查")
-
-		health_status = await check_strategy_module_health(
-			session=db_session,
-		)
-
-		return success_response(
-			data=health_status,
-			message="策略模块健康检查完成"
-		)
-
-	except Exception as e:
-		logger.error(f"策略模块健康检查失败: {'服务器内部错误'}", exc_info=True)
-		return error_response(
-			message="策略模块健康检查失败",
-			data={
-				"status": "unhealthy",
-				"error": str(e)
-			},
-			status_code=500
-		)
-
-
-
-# ==================== 特征集 API (v3.4) ====================
-
-@router.get("/feature-sets")
-async def get_feature_sets_api(
-    category: Optional[str] = None,
-    current_user: Dict = Depends(get_current_user),
-    db_session: AsyncSession = Depends(get_db_session),
-):
-    """获取特征集列表，支持按 category 筛选"""
-    logger.info("feature-sets: 开始查询, category=%s", category)
-    from sqlalchemy import text
-    import json as _json
-    try:
-        rows = await db_session.execute(
-            text("SELECT id::text, name, description, category, feature_columns::text FROM feature_sets ORDER BY category, name"),
-        )
-        result = []
-        for row in rows:
-            cols_raw = row[4]
-            cols = _json.loads(cols_raw) if isinstance(cols_raw, str) and cols_raw else []
-            result.append({
-                "id": row[0], "name": row[1], "description": row[2] or "",
-                "category": row[3], "feature_columns": cols, "count": len(cols),
-            })
-        logger.info("feature-sets: 查询完成, %d条", len(result))
-        return success_response(data=result)
-    except Exception as e:
-        logger.exception("feature-sets: 查询失败")
-        return error_response(message=str(e))
-
-
-# ==================== 模型训练端点 (v3.4) ====================
-
-from pydantic import BaseModel, Field
-from modules.strategy.services.training_service import TrainingService
-
-class LgbTrainRequest(BaseModel):
-    feature_set_ids: list = Field(default_factory=list)
-    feature_codes: list = Field(default_factory=list)
-    etf_pool: list = Field(default_factory=list)
-    label_N: int = Field(default=10, ge=1, le=30)
-    label_X: float = Field(default=0.03, ge=0.01, le=0.15)
-    label_Y: float = Field(default=-0.05, ge=-0.15, le=-0.01)
-    num_leaves: int = Field(default=31, ge=7, le=255)
-    max_depth: int = Field(default=5, ge=2, le=15)
-    learning_rate: float = Field(default=0.05, ge=0.005, le=0.3)
-    n_estimators: int = Field(default=500, ge=50, le=3000)
-    reg_alpha: float = Field(default=0.5, ge=0.0, le=5.0)
-    reg_lambda: float = Field(default=1.0, ge=0.0, le=5.0)
 
 @router.post("/train/lgb")
 async def train_lgb_model_api(request: LgbTrainRequest, background_tasks: BackgroundTasks, current_user = Depends(get_current_user)):

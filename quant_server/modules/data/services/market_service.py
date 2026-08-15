@@ -1501,6 +1501,7 @@ class MarketDataService:
 		# 从数据库获取真实复权因子
 		adj_factors = {}
 		latest_factors = {}
+		earliest_factors = {}
 		try:
 			from sqlalchemy import text
 
@@ -1529,6 +1530,17 @@ class MarketDataService:
 				)
 				for row in latest_result.fetchall():
 					latest_factors[row[0]] = float(row[1])
+				# 每只股票的最早复权因子（2026-08 C17：hfq 基准 = 全局最早因子日）
+				earliest_result = self.session.execute(
+					text(
+						f"SELECT af.ts_code, af.adj_factor FROM stock_adj_factor af "
+						f"INNER JOIN (SELECT ts_code, MIN(trade_date) AS md FROM stock_adj_factor "
+						f"WHERE ts_code IN ({placeholders}) GROUP BY ts_code) x "
+						f"ON af.ts_code = x.ts_code AND af.trade_date = x.md"
+					)
+				)
+				for row in earliest_result.fetchall():
+					earliest_factors[row[0]] = float(row[1])
 		except Exception as e:
 			logger.warning(f"获取复权因子失败，使用不复权数据: {e}")
 
@@ -1536,32 +1548,36 @@ class MarketDataService:
 			ts_code = getattr(quote, 'ts_code', '')
 			trade_date = getattr(quote, 'trade_date', None)
 			factor = adj_factors.get((ts_code, trade_date), 1.0)
-			# 统一前复权基准：price × factor / latest_factor（最新价 = 真实市场价）
+			# 统一复权基准（2026-08 C17）：
+			#   qfq: price × factor / latest_factor（最新价 = 真实市场价）
+			#   hfq: price × factor / earliest_factor（最早因子日为基准，含历史分红）
 			_latest = latest_factors.get(ts_code, 1.0)
-			_ratio = (factor / _latest) if (_latest and _latest > 0) else factor
+			_earliest = earliest_factors.get(ts_code, 1.0)
+			_ratio_pre = (factor / _latest) if (_latest and _latest > 0) else factor
+			_ratio_post = (factor / _earliest) if (_earliest and _earliest > 0) else factor
 
-			if adj_type == AdjustType.PRE and _ratio != 1.0:
+			if adj_type == AdjustType.PRE and _ratio_pre != 1.0:
 				if hasattr(quote, 'open') and quote.open:
-					quote.open *= _ratio
+					quote.open *= _ratio_pre
 				if hasattr(quote, 'high') and quote.high:
-					quote.high *= _ratio
+					quote.high *= _ratio_pre
 				if hasattr(quote, 'low') and quote.low:
-					quote.low *= _ratio
+					quote.low *= _ratio_pre
 				if hasattr(quote, 'close') and quote.close:
-					quote.close *= _ratio
+					quote.close *= _ratio_pre
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close *= _ratio
-			elif adj_type == AdjustType.POST and factor != 1.0:
+					quote.pre_close *= _ratio_pre
+			elif adj_type == AdjustType.POST and _ratio_post != 1.0:
 				if hasattr(quote, 'open') and quote.open:
-					quote.open /= factor
+					quote.open *= _ratio_post
 				if hasattr(quote, 'high') and quote.high:
-					quote.high /= factor
+					quote.high *= _ratio_post
 				if hasattr(quote, 'low') and quote.low:
-					quote.low /= factor
+					quote.low *= _ratio_post
 				if hasattr(quote, 'close') and quote.close:
-					quote.close /= factor
+					quote.close *= _ratio_post
 				if hasattr(quote, 'pre_close') and quote.pre_close:
-					quote.pre_close /= factor
+					quote.pre_close *= _ratio_post
 
 			if not hasattr(quote, 'adj_factor'):
 				quote.adj_factor = factor

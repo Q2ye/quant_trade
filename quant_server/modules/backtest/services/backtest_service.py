@@ -82,7 +82,6 @@ from modules.backtest.engines.backtest_broker import BacktestBroker, BacktestBro
 # ---------------------------------------------------------------------------
 from modules.backtest.engines.backtest_engine import BacktestEngine, BacktestResult
 from modules.backtest.engines.optimization_engine import OptimizationEngine
-from modules.backtest.engines.report_engine import ReportEngine
 # ---------------------------------------------------------------------------
 # 共享基础设施导入
 # ---------------------------------------------------------------------------
@@ -217,7 +216,6 @@ class BacktestService:
 		self.broker: Optional[BacktestBroker] = None
 		self.backtest_engine: Optional[BacktestEngine] = None
 		self.optimization_engine: Optional[OptimizationEngine] = None
-		self.report_engine: Optional[ReportEngine] = None
 		self.market_service: Optional[MarketDataService] = None
 
 	def _init_engines(self, db: AsyncSession = None) -> None:
@@ -227,7 +225,6 @@ class BacktestService:
 		初始化以下引擎并建立依赖关系：
 		DataFeedEngine → StrategyManager → BacktestBroker → BacktestEngine
 		                          → OptimizationEngine
-		                          → ReportEngine
 
 		重要变更 (v1.3): 每次调用均创建全新引擎实例，不再复用。
 		- 原因 1: 后台任务拥有独立的 DB 会话，HTTP 请求的 session 已关闭，
@@ -287,9 +284,6 @@ class BacktestService:
 			EngineConfigEntity(name="OptimizationEngine", engine_type="optimization"),
 			event_engine=self.event_engine,
 			db=_session,
-		)
-		self.report_engine = ReportEngine(
-			EngineConfigEntity(name="ReportEngine", engine_type="report")
 		)
 		self.market_service = MarketDataService(_session)
 

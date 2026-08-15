@@ -293,15 +293,6 @@ export default {
       .then((d: any) => d.data || [])
       .catch(() => []);
   },
-  async getStockFactorScores(
-    code: string,
-  ): Promise<Record<string, { value: number; percentile: number }> | null> {
-    return request
-      .get(`/quantTrade/market/stocks/${code}/factor-scores`)
-      .then(handleResponse)
-      .then((d: any) => d.data)
-      .catch(() => null);
-  },
   async getStyleFactors(): Promise<any[]> {
     return request
       .get("/quantTrade/market/dashboard/style-factors")

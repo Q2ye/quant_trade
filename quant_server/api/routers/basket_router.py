@@ -139,6 +139,39 @@ async def update_basket(
 # ============================================================
 # DELETE /basket/{id}   — 删除篮子
 # ============================================================
+@router.delete("/batch")
+async def delete_baskets_batch(
+    body: Dict,
+    _current_user: Dict = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        ids: list = body.get("ids", [])
+        if not ids:
+            raise HTTPException(status_code=400, detail="ids 不能为空")
+        deleted = 0
+        for basket_id in ids:
+            try:
+                await delete_basket_item(session=db_session, basket_id=basket_id)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"删除篮子 {basket_id} 失败: {e}")
+        return success_response(
+            message=f"已删除 {deleted} 个篮子",
+            data={"deleted": deleted, "total": len(ids)},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量删除失败: {e}")
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
+
+
+# ============================================================
+# POST /basket/{id}/duplicate — 复制篮子
+# ============================================================
+
+
 @router.delete("/{basket_id}")
 async def delete_basket(
     basket_id: str,
@@ -257,37 +290,6 @@ async def get_performance(
 
 
 # ============================================================
-# ============================================================
-@router.delete("/batch")
-async def delete_baskets_batch(
-    body: Dict,
-    _current_user: Dict = Depends(get_current_user),
-    db_session: AsyncSession = Depends(get_db_session),
-):
-    try:
-        ids: list = body.get("ids", [])
-        if not ids:
-            raise HTTPException(status_code=400, detail="ids 不能为空")
-        deleted = 0
-        for basket_id in ids:
-            try:
-                await delete_basket_item(session=db_session, basket_id=basket_id)
-                deleted += 1
-            except Exception as e:
-                logger.warning(f"删除篮子 {basket_id} 失败: {e}")
-        return success_response(
-            message=f"已删除 {deleted} 个篮子",
-            data={"deleted": deleted, "total": len(ids)},
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"批量删除失败: {e}")
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
-
-
-# ============================================================
-# POST /basket/{id}/duplicate — 复制篮子
 # ============================================================
 @router.post("/{basket_id}/duplicate", status_code=201)
 async def duplicate_basket(

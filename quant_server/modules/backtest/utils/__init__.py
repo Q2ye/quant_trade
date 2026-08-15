@@ -1,15 +1,2 @@
-"""
-回测工具模块
-
-提供回测相关的工具函数和辅助方法
-
-主要组件：
-1. chart_generator：图表生成工具，用于生成回测结果的可视化图表
-2. data_loader：数据加载工具，用于加载回测所需的历史数据
-"""
-
-from .chart_generator import ChartGenerator
-
-__all__ = [
-    "ChartGenerator",
-]
+# 2026-08 D 批清理：data_loader/chart_generator 零引用已删
+__all__ = []

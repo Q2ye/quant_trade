@@ -391,34 +391,6 @@ const actions = {
       throw error;
     }
   },
-
-  /**
-   * 监控策略性能
-   */
-  startStrategyMonitoring({ commit, state }: any, strategyId: string) {
-    const interval = setInterval(async () => {
-      if (state.activeStrategies.has(strategyId)) {
-        try {
-          const performance =
-            await strategyAPI.getStrategyPerformance(strategyId);
-          commit("UPDATE_STRATEGY_PERFORMANCE", { strategyId, performance });
-        } catch (error) {
-          console.error("获取策略性能失败:", error);
-        }
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  },
-
-  /**
-   * 定期清理旧信号
-   */
-  startSignalCleanup({ commit }: any) {
-    setInterval(() => {
-      commit("CLEANUP_OLD_SIGNALS");
-    }, 3600000); // 每小时清理一次
-  },
 };
 
 const getters = {

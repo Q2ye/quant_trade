@@ -10,11 +10,8 @@
 """
 
 from .backtest_service import BacktestService
-from .optimization_service import OptimizationService
-from .report_service import ReportService
 
 __all__ = [
     "BacktestService",
-    "OptimizationService",
     "ReportService"
 ]
