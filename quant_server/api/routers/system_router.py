@@ -143,10 +143,10 @@ async def get_system_status_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取系统状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取系统状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取系统状态失败: {str(e)}"
+			detail=f"获取系统状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -178,10 +178,10 @@ async def get_system_resources_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取系统资源失败: {str(e)}", exc_info=True)
+		logger.error(f"获取系统资源失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取系统资源失败: {str(e)}"
+			detail=f"获取系统资源失败: {'服务器内部错误'}"
 		)
 
 
@@ -213,10 +213,10 @@ async def get_connections_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取连接状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取连接状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取连接状态失败: {str(e)}"
+			detail=f"获取连接状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -248,10 +248,10 @@ async def get_database_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取数据库状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取数据库状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取数据库状态失败: {str(e)}"
+			detail=f"获取数据库状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -288,10 +288,10 @@ async def get_system_logs_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取系统日志失败: {str(e)}", exc_info=True)
+		logger.error(f"获取系统日志失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取系统日志失败: {str(e)}"
+			detail=f"获取系统日志失败: {'服务器内部错误'}"
 		)
 
 
@@ -325,10 +325,10 @@ async def get_settings_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取系统设置失败: {str(e)}", exc_info=True)
+		logger.error(f"获取系统设置失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取系统设置失败: {str(e)}"
+			detail=f"获取系统设置失败: {'服务器内部错误'}"
 		)
 
 
@@ -370,10 +370,10 @@ async def update_settings_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"更新系统设置失败: {str(e)}", exc_info=True)
+		logger.error(f"更新系统设置失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"更新系统设置失败: {str(e)}"
+			detail=f"更新系统设置失败: {'服务器内部错误'}"
 		)
 
 
@@ -407,7 +407,7 @@ async def system_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"系统模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"系统模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="系统模块健康检查失败",
 			data={
@@ -455,8 +455,8 @@ async def login_api (
 		_hist.append(datetime.now().timestamp())
 		raise HTTPException(status_code=401, detail=str(e))
 	except Exception as e:
-		logger.error(f"登录失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"登录失败: {str(e)}")
+		logger.error(f"登录失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"登录失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/register", response_model=AuthResponse)
@@ -478,8 +478,8 @@ async def register_api (
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
-		logger.error(f"注册失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"注册失败: {str(e)}")
+		logger.error(f"注册失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"注册失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/refresh", response_model=AuthResponse)
@@ -497,8 +497,8 @@ async def refresh_token_api (
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
-		logger.error(f"刷新 token 失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"刷新 token 失败: {str(e)}")
+		logger.error(f"刷新 token 失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"刷新 token 失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/change-password", response_model=AuthResponse)
@@ -519,8 +519,8 @@ async def change_password_api (
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
-		logger.error(f"修改密码失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"修改密码失败: {str(e)}")
+		logger.error(f"修改密码失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"修改密码失败: {'服务器内部错误'}")
 
 # ==================== 登出与 Token 管理接口 ====================
 
@@ -551,10 +551,10 @@ async def logout_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"登出失败: {str(e)}", exc_info=True)
+		logger.error(f"登出失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"登出失败: {str(e)}"
+			detail=f"登出失败: {'服务器内部错误'}"
 		)
 
 
@@ -592,8 +592,8 @@ async def token_info_api(
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
-		logger.error(f"获取 token 信息失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取 token 信息失败: {str(e)}")
+		logger.error(f"获取 token 信息失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取 token 信息失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/password/reset-request", response_model=MessageResponse)
@@ -609,10 +609,10 @@ async def request_password_reset_api(
 		)
 		return result
 	except Exception as e:
-		logger.error(f"密码重置请求失败: {str(e)}", exc_info=True)
+		logger.error(f"密码重置请求失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"处理失败: {str(e)}"
+			detail=f"处理失败: {'服务器内部错误'}"
 		)
 
 
@@ -632,8 +632,8 @@ async def confirm_password_reset_api(
 	except NotImplementedError as e:
 		raise HTTPException(status_code=501, detail=str(e))
 	except Exception as e:
-		logger.error(f"密码重置确认失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+		logger.error(f"密码重置确认失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"处理失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/email/verify", response_model=MessageResponse)
@@ -651,8 +651,8 @@ async def verify_email_api(
 	except NotImplementedError as e:
 		raise HTTPException(status_code=501, detail=str(e))
 	except Exception as e:
-		logger.error(f"邮箱验证失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"邮箱验证失败: {str(e)}")
+		logger.error(f"邮箱验证失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"邮箱验证失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/email/resend-verification", response_model=MessageResponse)
@@ -670,8 +670,8 @@ async def resend_verification_api(
 	except NotImplementedError as e:
 		raise HTTPException(status_code=501, detail=str(e))
 	except Exception as e:
-		logger.error(f"重新发送验证邮件失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"重新发送验证邮件失败: {str(e)}")
+		logger.error(f"重新发送验证邮件失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"重新发送验证邮件失败: {'服务器内部错误'}")
 
 
 @router.post("/auth/tokens/cleanup", response_model=MessageResponse)
@@ -687,8 +687,8 @@ async def cleanup_tokens_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"清理 token 失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+		logger.error(f"清理 token 失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"清理失败: {'服务器内部错误'}")
 
 
 # ==================== 系统运维接口 ====================
@@ -707,7 +707,7 @@ async def clear_cache_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"清理缓存失败: {str(e)}", exc_info=True)
+		logger.error(f"清理缓存失败: {'服务器内部错误'}", exc_info=True)
 		return {"cleared": False, "message": str(e)}
 
 
@@ -727,8 +727,8 @@ async def restart_service_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"重启服务失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"重启服务失败: {str(e)}")
+		logger.error(f"重启服务失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"重启服务失败: {'服务器内部错误'}")
 
 
 	# ==================== 用户管理接口 ====================
@@ -760,8 +760,8 @@ async def list_users_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取用户列表失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取用户列表失败: {str(e)}")
+		logger.error(f"获取用户列表失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取用户列表失败: {'服务器内部错误'}")
 
 
 @router.get("/users/statistics", response_model=UserStatisticsResponse)
@@ -777,8 +777,8 @@ async def user_statistics_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取用户统计失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取用户统计失败: {str(e)}")
+		logger.error(f"获取用户统计失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取用户统计失败: {'服务器内部错误'}")
 
 
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
@@ -797,8 +797,8 @@ async def get_user_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取用户详情失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取用户详情失败: {str(e)}")
+		logger.error(f"获取用户详情失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取用户详情失败: {'服务器内部错误'}")
 
 
 @router.post("/users", response_model=UserDetailResponse, status_code=201)
@@ -821,8 +821,8 @@ async def create_user_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建用户失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"创建用户失败: {str(e)}")
+		logger.error(f"创建用户失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"创建用户失败: {'服务器内部错误'}")
 
 
 @router.put("/users/{user_id}", response_model=UserDetailResponse)
@@ -846,8 +846,8 @@ async def update_user_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"更新用户失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"更新用户失败: {str(e)}")
+		logger.error(f"更新用户失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"更新用户失败: {'服务器内部错误'}")
 
 
 @router.delete("/users/{user_id}", response_model=AuthResponse)
@@ -869,8 +869,8 @@ async def delete_user_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"删除用户失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"删除用户失败: {str(e)}")
+		logger.error(f"删除用户失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"删除用户失败: {'服务器内部错误'}")
 
 
 # ==================== 角色管理接口 ====================
@@ -889,8 +889,8 @@ async def list_roles_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取角色列表失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取角色列表失败: {str(e)}")
+		logger.error(f"获取角色列表失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取角色列表失败: {'服务器内部错误'}")
 
 
 @router.get("/roles/{role_id}", response_model=RoleDetailResponse)
@@ -909,8 +909,8 @@ async def get_role_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取角色详情失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"获取角色详情失败: {str(e)}")
+		logger.error(f"获取角色详情失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"获取角色详情失败: {'服务器内部错误'}")
 
 
 @router.post("/roles", response_model=RoleDetailResponse, status_code=201)
@@ -932,8 +932,8 @@ async def create_role_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建角色失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"创建角色失败: {str(e)}")
+		logger.error(f"创建角色失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"创建角色失败: {'服务器内部错误'}")
 
 
 @router.put("/roles/{role_id}", response_model=RoleDetailResponse)
@@ -954,8 +954,8 @@ async def update_role_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"更新角色失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"更新角色失败: {str(e)}")
+		logger.error(f"更新角色失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"更新角色失败: {'服务器内部错误'}")
 
 
 @router.delete("/roles/{role_id}", response_model=AuthResponse)
@@ -974,5 +974,5 @@ async def delete_role_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"删除角色失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail=f"删除角色失败: {str(e)}")
+		logger.error(f"删除角色失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail=f"删除角色失败: {'服务器内部错误'}")

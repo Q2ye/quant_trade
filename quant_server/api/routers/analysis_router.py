@@ -120,10 +120,10 @@ async def get_strategy_performance_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取策略绩效失败: {str(e)}", exc_info=True)
+		logger.error(f"获取策略绩效失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取策略绩效失败: {str(e)}"
+			detail=f"获取策略绩效失败: {'服务器内部错误'}"
 		)
 
 
@@ -161,10 +161,10 @@ async def get_account_performance_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取账户绩效失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户绩效失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户绩效失败: {str(e)}"
+			detail=f"获取账户绩效失败: {'服务器内部错误'}"
 		)
 
 
@@ -204,10 +204,10 @@ async def get_strategy_risk_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取风险指标失败: {str(e)}", exc_info=True)
+		logger.error(f"获取风险指标失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取风险指标失败: {str(e)}"
+			detail=f"获取风险指标失败: {'服务器内部错误'}"
 		)
 
 
@@ -245,10 +245,10 @@ async def get_portfolio_risk_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取投资组合风险失败: {str(e)}", exc_info=True)
+		logger.error(f"获取投资组合风险失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取投资组合风险失败: {str(e)}"
+			detail=f"获取投资组合风险失败: {'服务器内部错误'}"
 		)
 
 
@@ -283,10 +283,10 @@ async def stress_test_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"执行压力测试失败: {str(e)}", exc_info=True)
+		logger.error(f"执行压力测试失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"执行压力测试失败: {str(e)}"
+			detail=f"执行压力测试失败: {'服务器内部错误'}"
 		)
 
 
@@ -323,10 +323,10 @@ async def compare_strategies_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"策略对比失败: {str(e)}", exc_info=True)
+		logger.error(f"策略对比失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"策略对比失败: {str(e)}"
+			detail=f"策略对比失败: {'服务器内部错误'}"
 		)
 
 
@@ -364,10 +364,10 @@ async def compare_benchmark_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"基准对比失败: {str(e)}", exc_info=True)
+		logger.error(f"基准对比失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"基准对比失败: {str(e)}"
+			detail=f"基准对比失败: {'服务器内部错误'}"
 		)
 
 
@@ -402,10 +402,10 @@ async def correlation_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"相关性分析失败: {str(e)}", exc_info=True)
+		logger.error(f"相关性分析失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"相关性分析失败: {str(e)}"
+			detail=f"相关性分析失败: {'服务器内部错误'}"
 		)
 
 
@@ -445,10 +445,10 @@ async def strategy_attribution_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取归因分析失败: {str(e)}", exc_info=True)
+		logger.error(f"获取归因分析失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取归因分析失败: {str(e)}"
+			detail=f"获取归因分析失败: {'服务器内部错误'}"
 		)
 
 
@@ -486,10 +486,10 @@ async def portfolio_attribution_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取归因分析失败: {str(e)}", exc_info=True)
+		logger.error(f"获取归因分析失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取归因分析失败: {str(e)}"
+			detail=f"获取归因分析失败: {'服务器内部错误'}"
 		)
 
 
@@ -527,10 +527,10 @@ async def available_metrics_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取可用指标失败: {str(e)}", exc_info=True)
+		logger.error(f"获取可用指标失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取可用指标失败: {str(e)}"
+			detail=f"获取可用指标失败: {'服务器内部错误'}"
 		)
 
 
@@ -567,10 +567,10 @@ async def equity_curve_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取资产曲线失败: {str(e)}", exc_info=True)
+		logger.error(f"获取资产曲线失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取资产曲线失败: {str(e)}"
+			detail=f"获取资产曲线失败: {'服务器内部错误'}"
 		)
 
 
@@ -607,10 +607,10 @@ async def export_report_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"导出报告失败: {str(e)}", exc_info=True)
+		logger.error(f"导出报告失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"导出报告失败: {str(e)}"
+			detail=f"导出报告失败: {'服务器内部错误'}"
 		)
 
 
@@ -644,7 +644,7 @@ async def analysis_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"分析模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"分析模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="分析模块健康检查失败",
 			data={

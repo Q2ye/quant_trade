@@ -54,10 +54,12 @@ class QueuedEvent:
 		# 改为数值（1=CRITICAL 最紧急 … 5=BACKGROUND），数值越小越先出队。
 		def _to_value(p):
 			try:
-				if isinstance(p, str):
-					return PriorityLevel.get_priority_value(PriorityLevel(p))
+				# 修复 2026-08（A20b）：PriorityLevel 是 str 子类，必须先判枚举成员，
+				# 否则 PriorityLevel(成员) 对 str 枚举抛 ValueError 落入默认 NORMAL
 				if isinstance(p, PriorityLevel):
 					return PriorityLevel.get_priority_value(p)
+				if isinstance(p, str):
+					return PriorityLevel.get_priority_value(PriorityLevel(p))
 				if isinstance(p, int):
 					return p
 			except (ValueError, KeyError):
@@ -525,6 +527,10 @@ class EventEngine(EngineBase):
 
 			# 更新统计
 			self._event_statistics.current_queue_size = len(self._event_queue)
+			# 修复 2026-08（B13）：队列水位监控——80% 时告警
+			_qsize = len(self._event_queue)
+			if _qsize >= self._max_queue_size * 0.8:
+				logger.warning("事件队列水位告警: %d/%d (80%%)", _qsize, self._max_queue_size)
 			self._event_statistics.max_queue_size = max(
 				self._event_statistics.max_queue_size,
 				self._event_statistics.current_queue_size

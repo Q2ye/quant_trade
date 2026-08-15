@@ -97,10 +97,10 @@ async def get_accounts_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取账户列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户列表失败: {str(e)}"
+			detail=f"获取账户列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -138,10 +138,10 @@ async def get_user_accounts_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取用户账户列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取用户账户列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取用户账户列表失败: {str(e)}"
+			detail=f"获取用户账户列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -176,16 +176,16 @@ async def get_account_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+		logger.warning(f"账户不存在: {account_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"账户 {account_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取账户详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户详情失败: {str(e)}"
+			detail=f"获取账户详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -220,10 +220,10 @@ async def create_account_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建账户失败: {str(e)}", exc_info=True)
+		logger.error(f"创建账户失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建账户失败: {str(e)}"
+			detail=f"创建账户失败: {'服务器内部错误'}"
 		)
 
 
@@ -261,16 +261,16 @@ async def update_account_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+		logger.warning(f"账户不存在: {account_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"账户 {account_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"更新账户失败: {str(e)}", exc_info=True)
+		logger.error(f"更新账户失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"更新账户失败: {str(e)}"
+			detail=f"更新账户失败: {'服务器内部错误'}"
 		)
 
 
@@ -305,16 +305,16 @@ async def delete_account_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"账户不存在或无法删除: {account_id}, 错误: {str(e)}")
+		logger.warning(f"账户不存在或无法删除: {account_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"删除账户失败: {str(e)}", exc_info=True)
+		logger.error(f"删除账户失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"删除账户失败: {str(e)}"
+			detail=f"删除账户失败: {'服务器内部错误'}"
 		)
 
 
@@ -351,16 +351,16 @@ async def get_account_balance_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+		logger.warning(f"账户不存在: {account_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"账户 {account_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取账户资金余额失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户资金余额失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户资金余额失败: {str(e)}"
+			detail=f"获取账户资金余额失败: {'服务器内部错误'}"
 		)
 
 
@@ -398,10 +398,10 @@ async def deposit_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"存款失败: {str(e)}", exc_info=True)
+		logger.error(f"存款失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"存款失败: {str(e)}"
+			detail=f"存款失败: {'服务器内部错误'}"
 		)
 
 
@@ -439,16 +439,16 @@ async def withdraw_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"取款失败: {str(e)}")
+		logger.warning(f"取款失败: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"取款失败: {str(e)}", exc_info=True)
+		logger.error(f"取款失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"取款失败: {str(e)}"
+			detail=f"取款失败: {'服务器内部错误'}"
 		)
 
 
@@ -487,10 +487,10 @@ async def get_account_positions_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取持仓列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取持仓列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取持仓列表失败: {str(e)}"
+			detail=f"获取持仓列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -528,16 +528,16 @@ async def get_position_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"持仓不存在: {ts_code}, 错误: {str(e)}")
+		logger.warning(f"持仓不存在: {ts_code}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"持仓 {ts_code} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取持仓详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取持仓详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取持仓详情失败: {str(e)}"
+			detail=f"获取持仓详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -574,16 +574,16 @@ async def get_account_summary_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"账户不存在: {account_id}, 错误: {str(e)}")
+		logger.warning(f"账户不存在: {account_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"账户 {account_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取账户概览失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户概览失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户概览失败: {str(e)}"
+			detail=f"获取账户概览失败: {'服务器内部错误'}"
 		)
 
 
@@ -617,7 +617,7 @@ async def account_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"账户模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"账户模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="账户模块健康检查失败",
 			data={
@@ -667,9 +667,9 @@ async def trigger_daily_settlement_api (
         )
 
     except Exception as e:
-        logger.error(f"日终结算失败: {str(e)}", exc_info=True)
+        logger.error(f"日终结算失败: {'服务器内部错误'}", exc_info=True)
         await db_session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"日终结算失败: {str(e)}"
+            detail=f"日终结算失败: {'服务器内部错误'}"
         )

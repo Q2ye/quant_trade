@@ -239,7 +239,7 @@ class AuthDependencies:
 			return user_info
 
 		except (TokenExpiredError, InvalidTokenError) as e:
-			logger.error(f"JWT验证失败: {str(e)}")
+			logger.error(f"JWT验证失败: {'服务器内部错误'}")
 			raise HTTPException(
 				status_code=status.HTTP_401_UNAUTHORIZED,
 				detail="无效的令牌",
@@ -248,7 +248,7 @@ class AuthDependencies:
 		except HTTPException:
 			raise
 		except Exception as e:
-			logger.error(f"获取用户信息失败: {str(e)}", exc_info=True)
+			logger.error(f"获取用户信息失败: {'服务器内部错误'}", exc_info=True)
 			raise HTTPException(
 				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 				detail="服务器内部错误",

@@ -96,10 +96,10 @@ async def get_system_metrics_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取系统监控指标失败: {str(e)}", exc_info=True)
+        logger.error(f"获取系统监控指标失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取系统监控指标失败: {str(e)}",
+            detail=f"获取系统监控指标失败: {'服务器内部错误'}",
         )
 
 
@@ -121,10 +121,10 @@ async def get_health_status_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取健康状态失败: {str(e)}", exc_info=True)
+        logger.error(f"获取健康状态失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取健康状态失败: {str(e)}",
+            detail=f"获取健康状态失败: {'服务器内部错误'}",
         )
 
 
@@ -149,10 +149,10 @@ async def get_business_metrics_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取业务监控指标失败: {str(e)}", exc_info=True)
+        logger.error(f"获取业务监控指标失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取业务监控指标失败: {str(e)}",
+            detail=f"获取业务监控指标失败: {'服务器内部错误'}",
         )
 
 
@@ -174,10 +174,10 @@ async def get_performance_stats_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取性能统计失败: {str(e)}", exc_info=True)
+        logger.error(f"获取性能统计失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取性能统计失败: {str(e)}",
+            detail=f"获取性能统计失败: {'服务器内部错误'}",
         )
 
 
@@ -202,10 +202,10 @@ async def get_alert_history_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取警报历史失败: {str(e)}", exc_info=True)
+        logger.error(f"获取警报历史失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取警报历史失败: {str(e)}",
+            detail=f"获取警报历史失败: {'服务器内部错误'}",
         )
 
 
@@ -235,10 +235,10 @@ async def create_alert_rule_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"创建警报规则失败: {str(e)}", exc_info=True)
+        logger.error(f"创建警报规则失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"创建警报规则失败: {str(e)}",
+            detail=f"创建警报规则失败: {'服务器内部错误'}",
         )
 
 
@@ -270,16 +270,16 @@ async def update_alert_rule_api(
     except HTTPException:
         raise
     except ValueError as e:
-        logger.warning(f"警报规则不存在: {rule_id}, 错误: {str(e)}")
+        logger.warning(f"警报规则不存在: {rule_id}, 错误: {'服务器内部错误'}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"警报规则 {rule_id} 不存在",
         )
     except Exception as e:
-        logger.error(f"更新警报规则失败: {str(e)}", exc_info=True)
+        logger.error(f"更新警报规则失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新警报规则失败: {str(e)}",
+            detail=f"更新警报规则失败: {'服务器内部错误'}",
         )
 
 
@@ -312,16 +312,16 @@ async def delete_alert_rule_api(
     except HTTPException:
         raise
     except ValueError as e:
-        logger.warning(f"警报规则不存在: {rule_id}, 错误: {str(e)}")
+        logger.warning(f"警报规则不存在: {rule_id}, 错误: {'服务器内部错误'}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"警报规则 {rule_id} 不存在",
         )
     except Exception as e:
-        logger.error(f"删除警报规则失败: {str(e)}", exc_info=True)
+        logger.error(f"删除警报规则失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"删除警报规则失败: {str(e)}",
+            detail=f"删除警报规则失败: {'服务器内部错误'}",
         )
 
 
@@ -353,10 +353,10 @@ async def trigger_manual_alert_api(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"触发手动警报失败: {str(e)}", exc_info=True)
+        logger.error(f"触发手动警报失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"触发手动警报失败: {str(e)}",
+            detail=f"触发手动警报失败: {'服务器内部错误'}",
         )
 
 
@@ -382,7 +382,7 @@ async def get_monitor_dashboard(
             data=result,
         )
     except Exception as e:
-        logger.error(f"获取监控仪表板失败: {str(e)}", exc_info=True)
+        logger.error(f"获取监控仪表板失败: {'服务器内部错误'}", exc_info=True)
         return error_response(
             message="获取监控仪表板失败",
             data={"error": str(e)},
@@ -407,7 +407,7 @@ async def monitor_module_health_check(
             message="监控模块健康检查完成",
         )
     except Exception as e:
-        logger.error(f"监控模块健康检查失败: {str(e)}", exc_info=True)
+        logger.error(f"监控模块健康检查失败: {'服务器内部错误'}", exc_info=True)
         return error_response(
             message="监控模块健康检查失败",
             data={"status": "unhealthy", "error": str(e)},

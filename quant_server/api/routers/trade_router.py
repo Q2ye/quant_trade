@@ -119,10 +119,10 @@ async def get_orders_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取订单列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取订单列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取订单列表失败: {str(e)}"
+			detail=f"获取订单列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -157,16 +157,16 @@ async def get_order_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"订单不存在: {order_id}, 错误: {str(e)}")
+		logger.warning(f"订单不存在: {order_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"订单 {order_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取订单详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取订单详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取订单详情失败: {str(e)}"
+			detail=f"获取订单详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -208,10 +208,10 @@ async def create_order_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建订单失败: {str(e)}", exc_info=True)
+		logger.error(f"创建订单失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建订单失败: {str(e)}"
+			detail=f"创建订单失败: {'服务器内部错误'}"
 		)
 
 
@@ -249,16 +249,16 @@ async def cancel_order_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"订单不存在或无法撤销: {order_id}, 错误: {str(e)}")
+		logger.warning(f"订单不存在或无法撤销: {order_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"撤销订单失败: {str(e)}", exc_info=True)
+		logger.error(f"撤销订单失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"撤销订单失败: {str(e)}"
+			detail=f"撤销订单失败: {'服务器内部错误'}"
 		)
 
 
@@ -295,10 +295,10 @@ async def get_positions_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取持仓列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取持仓列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取持仓列表失败: {str(e)}"
+			detail=f"获取持仓列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -333,16 +333,16 @@ async def get_position_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"持仓不存在: {ts_code}, 错误: {str(e)}")
+		logger.warning(f"持仓不存在: {ts_code}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"持仓 {ts_code} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取持仓详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取持仓详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取持仓详情失败: {str(e)}"
+			detail=f"获取持仓详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -386,10 +386,10 @@ async def execute_signal_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"执行交易信号失败: {str(e)}", exc_info=True)
+		logger.error(f"执行交易信号失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"执行交易信号失败: {str(e)}"
+			detail=f"执行交易信号失败: {'服务器内部错误'}"
 		)
 
 
@@ -426,10 +426,10 @@ async def get_trade_history_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取交易历史失败: {str(e)}", exc_info=True)
+		logger.error(f"获取交易历史失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取交易历史失败: {str(e)}"
+			detail=f"获取交易历史失败: {'服务器内部错误'}"
 		)
 
 
@@ -463,10 +463,10 @@ async def get_account_summary_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取账户概览失败: {str(e)}", exc_info=True)
+		logger.error(f"获取账户概览失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取账户概览失败: {str(e)}"
+			detail=f"获取账户概览失败: {'服务器内部错误'}"
 		)
 
 
@@ -504,10 +504,10 @@ async def record_trade_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"成交录入失败: {str(e)}", exc_info=True)
+		logger.error(f"成交录入失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"成交录入失败: {str(e)}"
+			detail=f"成交录入失败: {'服务器内部错误'}"
 		)
 
 
@@ -542,10 +542,10 @@ async def record_batch_trades_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"批量成交录入失败: {str(e)}", exc_info=True)
+		logger.error(f"批量成交录入失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"批量成交录入失败: {str(e)}"
+			detail=f"批量成交录入失败: {'服务器内部错误'}"
 		)
 
 
@@ -576,10 +576,10 @@ async def get_signals_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取信号列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取信号列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取信号列表失败: {str(e)}"
+			detail=f"获取信号列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -614,16 +614,16 @@ async def review_signal_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"信号审核参数错误: {str(e)}")
+		logger.warning(f"信号审核参数错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"信号审核失败: {str(e)}", exc_info=True)
+		logger.error(f"信号审核失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"信号审核失败: {str(e)}"
+			detail=f"信号审核失败: {'服务器内部错误'}"
 		)
 
 
@@ -655,10 +655,10 @@ async def get_round_trips_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"买卖配对追溯失败: {str(e)}", exc_info=True)
+		logger.error(f"买卖配对追溯失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"买卖配对追溯失败: {str(e)}"
+			detail=f"买卖配对追溯失败: {'服务器内部错误'}"
 		)
 
 
@@ -716,10 +716,10 @@ async def get_trade_statistics_api(
             },
         }
     except Exception as e:
-        logger.error(f"获取交易统计失败: {str(e)}", exc_info=True)
+        logger.error(f"获取交易统计失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取交易统计失败: {str(e)}",
+            detail=f"获取交易统计失败: {'服务器内部错误'}",
         )
 
 
@@ -753,7 +753,7 @@ async def trade_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"交易模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"交易模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="交易模块健康检查失败",
 			data={

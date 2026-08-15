@@ -134,6 +134,16 @@ class WebSocketManager:
             if websocket in self._ws_subscriptions:
                 self._ws_subscriptions[websocket].discard(channel)
 
+    async def _send_one(self, ws: WebSocket, message: str):
+        """单客户端安全发送（修复 2026-08 B14）：5 秒超时，断线返回 False 不抛出"""
+        import asyncio
+        try:
+            if ws.client_state == WebSocketState.CONNECTED:
+                await asyncio.wait_for(ws.send_text(message), timeout=5.0)
+            return True
+        except Exception:
+            return False
+
     async def broadcast(self, channel: str, data: Any) -> None:
         """向指定频道的所有客户端广播消息"""
         if channel not in self._channels:
@@ -144,16 +154,21 @@ class WebSocketManager:
         message = json.dumps(data, ensure_ascii=False, default=str, allow_nan=False)
         dead_connections: List[WebSocket] = []
 
-        for ws in subscribers:
-            try:
-                if ws.client_state == WebSocketState.CONNECTED:
-                    await ws.send_text(message)
-            except BusinessException:
-                dead_connections.append(ws)
+        # 修复 2026-08（B14）：并发发送 + 每客户端超时 + 异常隔离，
+        # 慢客户端不再阻塞整个频道广播；异常捕获扩展（原仅 BusinessException）
+        import asyncio
+        ok_flags = await asyncio.gather(
+            *[self._send_one(ws, message) for ws in subscribers],
+            return_exceptions=True,
+        )
+        for ws, ok in zip(subscribers, ok_flags):
+            if ok is True:
+                continue
+            dead_connections.append(ws)
 
         sent = len(subscribers) - len(dead_connections)
         if sent > 0:
-            logger.info("WS 推送成功: channel=%s, 发送=%d/%d", channel, sent, len(subscribers))
+            logger.debug("WS 推送: channel=%s, 发送=%d/%d", channel, sent, len(subscribers))
 
         # 清理断开的连接
         for ws in dead_connections:

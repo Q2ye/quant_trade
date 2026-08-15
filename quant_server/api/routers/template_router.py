@@ -65,7 +65,7 @@ async def list_templates_api(
         return result
     except Exception as e:
         logger.error(f"获取模板列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/{template_id}", response_model=TemplateDetailResponse)
@@ -84,7 +84,7 @@ async def get_template_detail_api(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"获取模板详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.post("", response_model=TemplateResponse, status_code=201)
@@ -101,7 +101,7 @@ async def create_template_api(
         return result
     except Exception as e:
         logger.error(f"创建模板失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.put("/{template_id}", response_model=TemplateResponse)
@@ -121,7 +121,7 @@ async def update_template_api(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"更新模板失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.delete("/{template_id}", status_code=204)
@@ -138,7 +138,7 @@ async def delete_template_api(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"删除模板失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 # ==================== 基于模板创建策略 ====================
@@ -163,4 +163,4 @@ async def create_strategy_from_template_api(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"基于模板创建策略失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")

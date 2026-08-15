@@ -469,13 +469,19 @@ const accountColumns: DataTableColumns<Account> = [
     render: (row: any) => {
       const bound = boundStrategies.value[row.id] || [];
       if (bound.length === 0) return h("span", { style: { color: "var(--color-text-tertiary)", fontSize: "11px" } }, "无");
-      return h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } },
-        bound.map((s: any) =>
-          h(NTag, { size: "tiny", bordered: false, type: s.status === "running" ? "success" : "default" }, {
+      // 只显示运行中策略；停止/淘汰的收敛为一个灰标（保留关联，重启可见）
+      const running = bound.filter((s: any) => s.status === "running" || s.status === "paused");
+      const stoppedCount = bound.length - running.length;
+      return h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } }, [
+        ...running.map((s: any) =>
+          h(NTag, { size: "tiny", bordered: false, type: "success" }, {
             default: () => s.name || s.id?.slice(0, 8) || "—"
           })
-        )
-      );
+        ),
+        stoppedCount > 0
+          ? h(NTag, { size: "tiny", bordered: false, type: "default" }, { default: () => `已停止 ${stoppedCount}` })
+          : null,
+      ]);
     },
   },
   {

@@ -87,8 +87,8 @@ async def builtin_strategies_api():
 			return success_response(data=result.get("data", []))
 		return error_response(message="获取内置策略失败")
 	except Exception as e:
-		logger.error(f"获取内置策略失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"获取内置策略失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 
 @router.post("/builtin/find-or-create")
@@ -107,9 +107,9 @@ async def find_or_create_builtin_api(
 			return success_response(data=result.get("data", {}))
 		return error_response(message=result.get("error", "操作失败"))
 	except Exception as e:
-		logger.error(f"find_or_create 失败: {str(e)}", exc_info=True)
+		logger.error(f"find_or_create 失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
-			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志,
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试",
 		)
 
 
@@ -140,7 +140,7 @@ async def create_instance_from_template_api(
         return error_response(message=result.get("error", "创建失败"))
     except Exception as e:
         logger.error(f"从模板创建实例失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 @router.post("/templates/{template_id}/fork")
 async def fork_template_api(
@@ -159,7 +159,7 @@ async def fork_template_api(
         return error_response(message=result.get("error", "Fork 失败"))
     except Exception as e:
         logger.error(f"Fork 模板失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 @router.get("/templates")
 async def list_templates_api(
@@ -184,7 +184,7 @@ async def list_templates_api(
         return success_response(data=data)
     except Exception as e:
         logger.error(f"获取模板列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/templates/{template_id}")
@@ -204,7 +204,7 @@ async def get_template_detail_api(
         raise
     except Exception as e:
         logger.error(f"获取模板详情失败: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 
 
@@ -243,10 +243,10 @@ async def get_strategies_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取策略列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取策略列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取策略列表失败: {str(e)}"
+			detail=f"获取策略列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -284,16 +284,16 @@ async def get_strategy_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"策略 {strategy_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取策略详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取策略详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取策略详情失败: {str(e)}"
+			detail=f"获取策略详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -329,10 +329,10 @@ async def create_strategy_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建策略失败: {str(e)}", exc_info=True)
+		logger.error(f"创建策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建策略失败: {str(e)}"
+			detail=f"创建策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -371,16 +371,16 @@ async def update_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"策略 {strategy_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"更新策略失败: {str(e)}", exc_info=True)
+		logger.error(f"更新策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"更新策略失败: {str(e)}"
+			detail=f"更新策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -439,16 +439,16 @@ async def delete_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"策略 {strategy_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"删除策略失败: {str(e)}", exc_info=True)
+		logger.error(f"删除策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"删除策略失败: {str(e)}"
+			detail=f"删除策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -498,16 +498,16 @@ async def start_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在或无法启动: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在或无法启动: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"启动策略失败: {str(e)}", exc_info=True)
+		logger.error(f"启动策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"启动策略失败: {str(e)}"
+			detail=f"启动策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -554,16 +554,16 @@ async def stop_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在或无法停止: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在或无法停止: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"停止策略失败: {str(e)}", exc_info=True)
+		logger.error(f"停止策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"停止策略失败: {str(e)}"
+			detail=f"停止策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -603,10 +603,10 @@ async def get_strategy_performance_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取策略绩效失败: {str(e)}", exc_info=True)
+		logger.error(f"获取策略绩效失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取策略绩效失败: {str(e)}"
+			detail=f"获取策略绩效失败: {'服务器内部错误'}"
 		)
 
 
@@ -641,10 +641,10 @@ async def get_strategy_status_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取策略状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取策略状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取策略状态失败: {str(e)}"
+			detail=f"获取策略状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -667,8 +667,8 @@ async def create_portfolio_api(
 		)
 		return result
 	except Exception as e:
-		logger.error(f"创建组合失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"创建组合失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/portfolio/{portfolio_id}", response_model=StrategyResponse)
@@ -682,8 +682,8 @@ async def get_portfolio_detail_api(
 		result = await get_portfolio_detail(session=db_session, portfolio_id=portfolio_id)
 		return result
 	except Exception as e:
-		logger.error(f"获取组合详情失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"获取组合详情失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/portfolio/{portfolio_id}/performance", response_model=StrategyPerformanceResponse)
@@ -697,8 +697,8 @@ async def get_portfolio_performance_api(
 		result = await get_portfolio_performance(session=db_session, portfolio_id=portfolio_id)
 		return result
 	except Exception as e:
-		logger.error(f"获取组合绩效失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"获取组合绩效失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.put("/portfolio/{portfolio_id}/weights", response_model=StrategyResponse)
@@ -717,8 +717,8 @@ async def update_portfolio_weights_api(
 		)
 		return result
 	except Exception as e:
-		logger.error(f"更新权重失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"更新权重失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 # 策略代码验证接口
@@ -784,16 +784,16 @@ async def validate_strategy_code_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"策略 {strategy_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"验证策略代码失败: {str(e)}", exc_info=True)
+		logger.error(f"验证策略代码失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"验证策略代码失败: {str(e)}"
+			detail=f"验证策略代码失败: {'服务器内部错误'}"
 		)
 
 @router.post("/{strategy_id}/pause", response_model=StrategyStatusResponse)
@@ -829,16 +829,16 @@ async def pause_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在或无法暂停: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在或无法暂停: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"暂停策略失败: {str(e)}", exc_info=True)
+		logger.error(f"暂停策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"暂停策略失败: {str(e)}"
+			detail=f"暂停策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -875,16 +875,16 @@ async def resume_strategy_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"策略不存在或无法恢复: {strategy_id}, 错误: {str(e)}")
+		logger.warning(f"策略不存在或无法恢复: {strategy_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"恢复策略失败: {str(e)}", exc_info=True)
+		logger.error(f"恢复策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"恢复策略失败: {str(e)}"
+			detail=f"恢复策略失败: {'服务器内部错误'}"
 		)
 
 
@@ -934,10 +934,10 @@ async def trigger_strategy_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"手动触发策略失败: {str(e)}", exc_info=True)
+		logger.error(f"手动触发策略失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"手动触发策略失败: {str(e)}",
+			detail=f"手动触发策略失败: {'服务器内部错误'}",
 		)
 
 # ==================== 模块管理接口 ====================
@@ -970,7 +970,7 @@ async def strategy_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"策略模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"策略模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="策略模块健康检查失败",
 			data={

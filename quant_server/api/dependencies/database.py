@@ -80,7 +80,7 @@ class APIDatabaseDependencies:
             return True
 
         except Exception as e:
-            logger.error(f"API数据库依赖初始化失败: {str(e)}", exc_info=True)
+            logger.error(f"API数据库依赖初始化失败: {'服务器内部错误'}", exc_info=True)
             self._initialized = False
             return False
 
@@ -111,7 +111,7 @@ class APIDatabaseDependencies:
                 yield session
 
         except Exception as e:
-            logger.error(f"数据库会话获取异常: {str(e)}", exc_info=True)
+            logger.error(f"数据库会话获取异常: {'服务器内部错误'}", exc_info=True)
 
             # 根据错误类型返回不同的HTTP状态码
             if "connection" in str(e).lower() or "connect" in str(e).lower():
@@ -175,10 +175,10 @@ class APIDatabaseDependencies:
                     yield session
 
             except Exception as e:
-                logger.error(f"事务执行失败: {str(e)}", exc_info=True)
+                logger.error(f"事务执行失败: {'服务器内部错误'}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"事务操作失败: {str(e)}"
+                    detail=f"事务操作失败: {'服务器内部错误'}"
                 )
 
     @staticmethod
@@ -208,7 +208,7 @@ class APIDatabaseDependencies:
             return health_info
 
         except Exception as e:
-            logger.error(f"数据库健康检查失败: {str(e)}")
+            logger.error(f"数据库健康检查失败: {'服务器内部错误'}")
             return {
                 "healthy": False,
                 "status": "error",

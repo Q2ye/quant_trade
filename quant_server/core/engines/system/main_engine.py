@@ -229,7 +229,7 @@ class MainEngine(EngineBase):
                 async with sm.get_session() as session:
                     svc = DataSyncService(session=session)
                     # 日终必须同步的类型（策略依赖 + 风控必需）
-                    for dt in (
+                    _daily_types = (
                         # 股票（策略核心数据）
                         DataType.DAILY_QUOTES,      # 股票日线行情
                         DataType.DAILY_BASIC,       # 股票每日指标（PE/PB/换手率等）
@@ -243,16 +243,30 @@ class MainEngine(EngineBase):
                         # 风控
                         DataType.DAILY_LIMIT,       # 涨跌停价格（行情判定）
                         DataType.SUSPEND,           # 每日停复牌（风控过滤）
-                    ):
-                        try:
-                            result = await svc.sync_market_data(dt, start_date=None, end_date=today)
-                            logger.info("日终同步 %s 完成: records=%s",
-                                dt.value,
-                                result.get("records_processed", 0) if isinstance(result, dict) else "?",
-                            )
-                        except Exception as sync_err:
-                            logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
-                            sync_ok = False
+                    )
+                    # 修复 2026-08（B11）：9 类型并发同步（信号量限并发 3，避免串行数小时，
+                    # 同时避免压垮 Tushare 限流；sync_service 内部 _session_lock 保证会话安全）
+                    import asyncio as _asyncio
+                    _sem = _asyncio.Semaphore(3)
+
+                    async def _sync_one(dt):
+                        async with _sem:
+                            try:
+                                result = await svc.sync_market_data(dt, start_date=None, end_date=today)
+                                logger.info("日终同步 %s 完成: records=%s",
+                                    dt.value,
+                                    result.get("records_processed", 0) if isinstance(result, dict) else "?",
+                                )
+                                return True
+                            except Exception as sync_err:
+                                logger.error("日终同步 %s 失败: %s", dt.value, sync_err)
+                                return False
+
+                    _sync_results = await _asyncio.gather(
+                        *[_sync_one(dt) for dt in _daily_types],
+                        return_exceptions=True,
+                    )
+                    sync_ok = all(r is True for r in _sync_results)
 
                 if not sync_ok:
                     logger.warning("日终数据同步部分失败，仍尝试驱动策略")

@@ -101,10 +101,10 @@ async def create_backtest_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建回测任务失败: {str(e)}", exc_info=True)
+		logger.error(f"创建回测任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建回测任务失败: {str(e)}"
+			detail=f"创建回测任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -147,10 +147,10 @@ async def create_composite_backtest_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建组合回测失败: {str(e)}", exc_info=True)
+		logger.error(f"创建组合回测失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建组合回测失败: {str(e)}"
+			detail=f"创建组合回测失败: {'服务器内部错误'}"
 		)
 
 
@@ -185,10 +185,10 @@ async def get_backtest_list_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测任务列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测任务列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测任务列表失败: {str(e)}"
+			detail=f"获取回测任务列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -223,16 +223,16 @@ async def get_backtest_detail_api(
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"回测任务不存在: {task_id}, 错误: {str(e)}")
+		logger.warning(f"回测任务不存在: {task_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"回测任务 {task_id} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取回测任务详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测任务详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测任务详情失败: {str(e)}"
+			detail=f"获取回测任务详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -274,16 +274,16 @@ async def cancel_backtest_api(
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"回测任务不存在或无法取消: {task_id}, 错误: {str(e)}")
+		logger.warning(f"回测任务不存在或无法取消: {task_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"取消回测任务失败: {str(e)}", exc_info=True)
+		logger.error(f"取消回测任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"取消回测任务失败: {str(e)}"
+			detail=f"取消回测任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -318,16 +318,16 @@ async def delete_backtest_api(
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"回测任务不存在: {task_id}, 错误: {str(e)}")
+		logger.warning(f"回测任务不存在: {task_id}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"删除回测任务失败: {str(e)}", exc_info=True)
+		logger.error(f"删除回测任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"删除回测任务失败: {str(e)}"
+			detail=f"删除回测任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -364,10 +364,10 @@ async def get_backtest_equity_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测净值曲线失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测净值曲线失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测净值曲线失败: {str(e)}"
+			detail=f"获取回测净值曲线失败: {'服务器内部错误'}"
 		)
 
 
@@ -402,10 +402,10 @@ async def get_backtest_trades_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测交易记录（分页）失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测交易记录（分页）失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测交易记录（分页）失败: {str(e)}"
+			detail=f"获取回测交易记录（分页）失败: {'服务器内部错误'}"
 		)
 
 
@@ -443,10 +443,10 @@ async def get_backtest_positions_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测持仓快照失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测持仓快照失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测持仓快照失败: {str(e)}"
+			detail=f"获取回测持仓快照失败: {'服务器内部错误'}"
 		)
 
 
@@ -481,10 +481,10 @@ async def get_backtest_result_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取回测结果失败: {str(e)}", exc_info=True)
+		logger.error(f"获取回测结果失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取回测结果失败: {str(e)}"
+			detail=f"获取回测结果失败: {'服务器内部错误'}"
 		)
 
 
@@ -526,10 +526,10 @@ async def get_batch_task_results_api(
             "timestamp": datetime.now(timezone.utc),
         }
     except Exception as e:
-        logger.error(f"批量获取回测结果失败: {str(e)}", exc_info=True)
+        logger.error(f"批量获取回测结果失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"批量获取回测结果失败: {str(e)}"
+            detail=f"批量获取回测结果失败: {'服务器内部错误'}"
         )
 
 
@@ -553,8 +553,8 @@ async def quick_backtest_api(
 		)
 		return result
 	except Exception as e:
-		logger.error(f"快速回测失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"快速回测失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 # ==================== 报告导出接口 ====================
@@ -584,8 +584,8 @@ async def export_report_api(
 	except ValueError as e:
 		raise HTTPException(status_code=404, detail=str(e))
 	except Exception as e:
-		logger.error(f"导出报告失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"导出报告失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 # ==================== 参数优化接口 ====================
@@ -620,10 +620,10 @@ async def optimize_parameters_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"参数优化失败: {str(e)}", exc_info=True)
+		logger.error(f"参数优化失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"参数优化失败: {str(e)}"
+			detail=f"参数优化失败: {'服务器内部错误'}"
 		)
 
 
@@ -653,7 +653,7 @@ async def backtest_module_health_check(
 		)
 
 	except Exception as e:
-		logger.error(f"回测模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"回测模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="回测模块健康检查失败",
 			data={
@@ -750,7 +750,7 @@ async def run_scenario_backtest(
 			message="场景回测已创建并开始执行"
 		)
 	except Exception as e:
-		logger.error(f"场景回测创建失败: {str(e)}", exc_info=True)
+		logger.error(f"场景回测创建失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(message=str(e), status_code=500)
 
 
@@ -785,5 +785,5 @@ async def promote_scenario(
 			message="场景已晋升为策略"
 		)
 	except Exception as e:
-		logger.error(f"场景晋升失败: {str(e)}", exc_info=True)
+		logger.error(f"场景晋升失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(message=str(e), status_code=500)

@@ -155,16 +155,16 @@ async def get_stocks_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"参数错误: {str(e)}")
+		logger.warning(f"参数错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"获取股票列表失败: {str(e)}", exc_info=True)
+		logger.error(f"获取股票列表失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取股票列表失败: {str(e)}"
+			detail=f"获取股票列表失败: {'服务器内部错误'}"
 		)
 
 
@@ -203,16 +203,16 @@ async def get_stock_detail_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"股票不存在: {ts_code}, 错误: {str(e)}")
+		logger.warning(f"股票不存在: {ts_code}, 错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_404_NOT_FOUND,
 			detail=f"股票 {ts_code} 不存在"
 		)
 	except Exception as e:
-		logger.error(f"获取股票详情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取股票详情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取股票详情失败: {str(e)}"
+			detail=f"获取股票详情失败: {'服务器内部错误'}"
 		)
 
 
@@ -248,7 +248,7 @@ async def get_indexes_api(
 		return IndexListResponse(indexes=items)
 	except Exception as e:
 		logger.error(f"获取指数列表失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/indexes/{code}", response_model=IndexDetailResponse)
@@ -315,7 +315,7 @@ async def get_index_detail_api(
 		raise
 	except Exception as e:
 		logger.error(f"获取指数详情失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 def _infer_etf_category(name: str, benchmark: str = "") -> str:
@@ -501,7 +501,7 @@ async def get_etfs_api(
 		return {"etfs": items, "total": total, "page": page}
 	except Exception as e:
 		logger.error(f"获取ETF列表失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 @router.get("/etfs/{code}", response_model=ETFDetailResponse)
 async def get_etf_detail_api(
@@ -559,7 +559,7 @@ async def get_etf_detail_api(
 		raise
 	except Exception as e:
 		logger.error(f"获取ETF详情失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 
@@ -603,7 +603,7 @@ async def get_etf_history_api(
 		return {"success": True, "data": items}
 	except Exception as e:
 		logger.error(f"获取ETF K线数据失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 @router.get("/sectors", response_model=SectorListResponse)
 async def get_sectors_api(
@@ -623,7 +623,7 @@ async def get_sectors_api(
 		return SectorListResponse(sectors=sectors)
 	except Exception as e:
 		logger.error(f"获取板块列表失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/stocks/{code}/history", response_model=StockHistoryResponse)
@@ -665,7 +665,7 @@ async def get_stock_history_api(
 		return StockHistoryResponse(historical=items)
 	except Exception as e:
 		logger.error(f"获取股票K线数据失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/stocks/{code}/financial", response_model=StockFinancialResponse)
@@ -707,7 +707,7 @@ async def get_stock_financial_api(
 		return StockFinancialResponse(financial=items)
 	except Exception as e:
 		logger.error(f"获取财务数据失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/quotes/historical", response_model=HistoricalQuotesResponse)
@@ -742,16 +742,16 @@ async def get_historical_quotes_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"参数错误: {str(e)}")
+		logger.warning(f"参数错误: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"获取历史行情失败: {str(e)}", exc_info=True)
+		logger.error(f"获取历史行情失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取历史行情失败: {str(e)}"
+			detail=f"获取历史行情失败: {'服务器内部错误'}"
 		)
 
 
@@ -802,10 +802,10 @@ async def batch_sync_data_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"批量数据同步失败: {str(e)}", exc_info=True)
+		logger.error(f"批量数据同步失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"批量数据同步失败: {str(e)}"
+			detail=f"批量数据同步失败: {'服务器内部错误'}"
 		)
 
 
@@ -854,10 +854,10 @@ async def quick_sync_data_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"快速数据同步失败: {str(e)}", exc_info=True)
+		logger.error(f"快速数据同步失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"快速数据同步失败: {str(e)}"
+			detail=f"快速数据同步失败: {'服务器内部错误'}"
 		)
 
 
@@ -889,10 +889,10 @@ async def get_sync_status_api (
 		return result
 
 	except Exception as e:
-		logger.error(f"获取同步状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取同步状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取同步状态失败: {str(e)}"
+			detail=f"获取同步状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -916,10 +916,10 @@ async def get_sync_tasks_api(
             offset=offset,
         )
     except Exception as e:
-        logger.error(f"获取同步任务列表失败: {str(e)}", exc_info=True)
+        logger.error(f"获取同步任务列表失败: {'服务器内部错误'}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取同步任务列表失败: {str(e)}"
+            detail=f"获取同步任务列表失败: {'服务器内部错误'}"
         )
 
 
@@ -961,10 +961,10 @@ async def cancel_current_sync_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"取消同步任务失败: {str(e)}", exc_info=True)
+		logger.error(f"取消同步任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"取消同步任务失败: {str(e)}"
+			detail=f"取消同步任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -976,8 +976,8 @@ async def get_sync_types_api(
 	try:
 		return await get_sync_types_meta(session=db_session)
 	except Exception as e:
-		logger.error(f"获取同步类型元数据失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"获取同步类型元数据失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/sync/status/all", response_model=SyncStatusAllResponse)
@@ -988,8 +988,8 @@ async def get_sync_status_all_api(
 	try:
 		return await get_sync_status_all(session=db_session)
 	except Exception as e:
-		logger.error(f"获取同步状态概览失败: {str(e)}", exc_info=True)
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"获取同步状态概览失败: {'服务器内部错误'}", exc_info=True)
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 @router.post("/sync/{task_id}/cancel")
 async def cancel_sync_api (
@@ -1029,16 +1029,16 @@ async def cancel_sync_api (
 	except HTTPException:
 		raise
 	except ValueError as e:
-		logger.warning(f"取消同步任务失败: {str(e)}")
+		logger.warning(f"取消同步任务失败: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
 			detail=str(e)
 		)
 	except Exception as e:
-		logger.error(f"取消同步任务失败: {str(e)}", exc_info=True)
+		logger.error(f"取消同步任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"取消同步任务失败: {str(e)}"
+			detail=f"取消同步任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -1153,10 +1153,10 @@ async def delete_sync_tasks_batch_api (
 		)
 		return JSONResponse(content=result)
 	except Exception as e:
-		logger.error(f"批量删除同步任务失败: {str(e)}", exc_info=True)
+		logger.error(f"批量删除同步任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"批量删除同步任务失败: {str(e)}"
+			detail=f"批量删除同步任务失败: {'服务器内部错误'}"
 		)
 
 
@@ -1179,10 +1179,10 @@ async def delete_sync_task_api (
 		)
 		return JSONResponse(content=result)
 	except Exception as e:
-		logger.error(f"删除同步任务失败: {str(e)}", exc_info=True)
+		logger.error(f"删除同步任务失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"删除同步任务失败: {str(e)}"
+			detail=f"删除同步任务失败: {'服务器内部错误'}"
 		)
 
 # ==================== 数据质量检查接口 ====================
@@ -1220,10 +1220,10 @@ async def get_data_quality_api (
 		return result
 
 	except Exception as e:
-		logger.error(f"获取数据质量报告失败: {str(e)}", exc_info=True)
+		logger.error(f"获取数据质量报告失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取数据质量报告失败: {str(e)}"
+			detail=f"获取数据质量报告失败: {'服务器内部错误'}"
 		)
 
 
@@ -1249,8 +1249,8 @@ async def delete_quality_records_api(
 		logger.info(f"用户 {current_user.get('username')} 删除了 {count} 条质量检查记录")
 		return success_response(message=f"已删除 {count} 条记录", data={"deleted": count})
 	except Exception as e:
-		logger.error(f"删除质量记录失败: {str(e)}")
-		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"删除质量记录失败: {'服务器内部错误'}")
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误，请稍后重试")
 
 
 # ==================== 因子数据接口 ====================
@@ -1287,10 +1287,10 @@ async def get_factor_data_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取因子数据失败: {str(e)}", exc_info=True)
+		logger.error(f"获取因子数据失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取因子数据失败: {str(e)}"
+			detail=f"获取因子数据失败: {'服务器内部错误'}"
 		)
 
 
@@ -1373,10 +1373,10 @@ async def get_factor_metadata_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取因子元数据失败: {str(e)}", exc_info=True)
+		logger.error(f"获取因子元数据失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取因子元数据失败: {str(e)}"
+			detail=f"获取因子元数据失败: {'服务器内部错误'}"
 		)
 
 
@@ -1418,10 +1418,10 @@ async def research_factor_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"因子研究失败: {str(e)}", exc_info=True)
+		logger.error(f"因子研究失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"因子研究失败: {str(e)}"
+			detail=f"因子研究失败: {'服务器内部错误'}"
 		)
 
 
@@ -1461,10 +1461,10 @@ async def get_research_status_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"获取研究状态失败: {str(e)}", exc_info=True)
+		logger.error(f"获取研究状态失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取研究状态失败: {str(e)}"
+			detail=f"获取研究状态失败: {'服务器内部错误'}"
 		)
 
 
@@ -1486,8 +1486,8 @@ async def cancel_factor_research_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"取消因子研究失败: {str(e)}")
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"取消因子研究失败: {'服务器内部错误'}")
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.post("/factors/definition", response_model=FactorDefinitionResponse)
@@ -1550,8 +1550,8 @@ async def delete_factor_research_api(
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"删除因子研究失败: {str(e)}")
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		logger.error(f"删除因子研究失败: {'服务器内部错误'}")
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/health")
@@ -1583,7 +1583,7 @@ async def data_module_health_check (
 		)
 
 	except Exception as e:
-		logger.error(f"数据模块健康检查失败: {str(e)}", exc_info=True)
+		logger.error(f"数据模块健康检查失败: {'服务器内部错误'}", exc_info=True)
 		return error_response(
 			message="数据模块健康检查失败",
 			data={
@@ -1633,10 +1633,10 @@ async def initialize_data_module_api (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"数据模块初始化失败: {str(e)}", exc_info=True)
+		logger.error(f"数据模块初始化失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"数据模块初始化失败: {str(e)}"
+			detail=f"数据模块初始化失败: {'服务器内部错误'}"
 		)
 
 
@@ -1751,10 +1751,10 @@ async def get_data_statistics (
 		)
 
 	except Exception as e:
-		logger.error(f"获取数据统计失败: {str(e)}", exc_info=True)
+		logger.error(f"获取数据统计失败: {'服务器内部错误'}", exc_info=True)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"获取数据统计失败: {str(e)}"
+			detail=f"获取数据统计失败: {'服务器内部错误'}"
 		)
 
 
@@ -1801,8 +1801,8 @@ async def subscribe_data_events (
 	except HTTPException:
 		raise
 	except Exception as e:
-		logger.error(f"创建事件订阅失败: {str(e)}")
+		logger.error(f"创建事件订阅失败: {'服务器内部错误'}")
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"创建事件订阅失败: {str(e)}"
+			detail=f"创建事件订阅失败: {'服务器内部错误'}"
 		)

@@ -69,7 +69,7 @@ async def liveness_probe () -> JSONResponse:
 			}
 		)
 	except Exception as e:
-		logger.error(f"存活探针检查失败: {str(e)}")
+		logger.error(f"存活探针检查失败: {'服务器内部错误'}")
 		return error_response(
 			message="应用不存活",
 			data={"error": str(e)},
@@ -104,9 +104,9 @@ async def readiness_probe (
 		await db_session.execute(text("SELECT 1"))
 		checks["database"] = {"status": "healthy", "message": "数据库连接正常"}
 	except Exception as e:
-		checks["database"] = {"status": "unhealthy", "message": f"数据库连接失败: {str(e)}"}
+		checks["database"] = {"status": "unhealthy", "message": f"数据库连接失败: {'服务器内部错误'}"}
 		all_healthy = False
-		logger.error(f"数据库健康检查失败: {str(e)}")
+		logger.error(f"数据库健康检查失败: {'服务器内部错误'}")
 
 	try:
 		# 检查主引擎
@@ -121,9 +121,9 @@ async def readiness_probe (
 			checks["main_engine"] = {"status": "unhealthy", "message": "主引擎未初始化"}
 			all_healthy = False
 	except Exception as e:
-		checks["main_engine"] = {"status": "unhealthy", "message": f"主引擎检查失败: {str(e)}"}
+		checks["main_engine"] = {"status": "unhealthy", "message": f"主引擎检查失败: {'服务器内部错误'}"}
 		all_healthy = False
-		logger.error(f"主引擎健康检查失败: {str(e)}")
+		logger.error(f"主引擎健康检查失败: {'服务器内部错误'}")
 
 	try:
 		# 检查事件引擎
@@ -133,9 +133,9 @@ async def readiness_probe (
 			checks["event_engine"] = {"status": "unhealthy", "message": "事件引擎未初始化"}
 			all_healthy = False
 	except Exception as e:
-		checks["event_engine"] = {"status": "unhealthy", "message": f"事件引擎检查失败: {str(e)}"}
+		checks["event_engine"] = {"status": "unhealthy", "message": f"事件引擎检查失败: {'服务器内部错误'}"}
 		all_healthy = False
-		logger.error(f"事件引擎健康检查失败: {str(e)}")
+		logger.error(f"事件引擎健康检查失败: {'服务器内部错误'}")
 
 	# 返回检查结果
 	if all_healthy:
@@ -318,7 +318,7 @@ async def version_info () -> JSONResponse:
 			}
 		)
 	except Exception as e:
-		logger.error(f"获取版本信息失败: {str(e)}")
+		logger.error(f"获取版本信息失败: {'服务器内部错误'}")
 		return error_response(
 			message="获取版本信息失败",
 			data={"error": str(e)},

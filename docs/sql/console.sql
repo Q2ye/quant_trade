@@ -232,13 +232,6 @@ SELECT * FROM positions WHERE ts_code='000001.SZ';
 SELECT * FROM accounts WHERE user_id='...';
 
 
-ALTER TABLE data_sync_tasks DROP CONSTRAINT IF EXISTS data_sync_tasks_status_check;
-
-
-
-ALTER TABLE data_sync_tasks ADD CONSTRAINT data_sync_tasks_status_check
-CHECK (status = ANY (ARRAY['pending', 'running', 'completed', 'failed', 'cancelled']));
-
 SELECT conname, pg_get_constraintdef(oid)
 FROM pg_constraint WHERE conname = 'data_sync_tasks_status_check';
 -- 数据质量检查记录表

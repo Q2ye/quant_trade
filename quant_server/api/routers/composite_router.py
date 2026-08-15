@@ -74,7 +74,7 @@ async def create_composite_group(
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
 		logger.error(f"创建组合失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/composite/groups")
@@ -88,7 +88,7 @@ async def list_composite_groups(
 		result = await svc.list_groups()
 		return success_response(data=result)
 	except Exception as e:
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/composite/groups/{group_id}")
@@ -160,7 +160,7 @@ async def add_strategy_to_group(
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
 		logger.error(f"组合添加策略失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.delete("/composite/groups/{group_id}/strategies/{strategy_id}")
@@ -179,7 +179,7 @@ async def remove_strategy_from_group(
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
 		logger.error(f"组合移除策略失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.get("/composite/groups/{group_id}/nav")
@@ -222,7 +222,7 @@ async def trigger_composite(
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
 		logger.error(f"组合触发失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.post("/composite/rebalance")
@@ -240,7 +240,7 @@ async def rebalance_composite(
 		raise HTTPException(status_code=400, detail=str(e))
 	except Exception as e:
 		logger.error(f"Rebalance 失败: {e}", exc_info=True)
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")
 
 
 @router.post("/composite/strategies/{strategy_id}/capital")
@@ -265,4 +265,4 @@ async def adjust_capital(
 	except HTTPException:
 		raise
 	except Exception as e:
-		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试"  # B3: 异常信息仅入日志)
+		raise HTTPException(status_code=500, detail="服务器内部错误，请稍后重试")

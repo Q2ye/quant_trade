@@ -272,9 +272,12 @@ async function selectGroup(g: CompositeGroup) {
   try {
     const detail = await compositeAPI.getGroup(g.id);
     selected.value = detail;
+    // merge 策略状态（运行中/已停止），供成员表格状态列展示
+    const statusMap = new Map(strategies.value.map((s) => [s.id, s.status]));
     members.value = (detail.strategy_ids || []).map((c: any) => ({
       strategy_id: c.strategy_id,
       allocator_id: c.allocator_id || c.strategy_id,
+      status: statusMap.get(c.strategy_id) || "stopped",
       // 从 current_allocation 或 allocator_config 取权重（简化：显示当前分配）
       weight: (detail.current_allocation || {})[c.allocator_id || c.strategy_id] ?? 0,
     }));
@@ -392,6 +395,13 @@ const navOption = computed(() => ({
 const memberColumns = [
   { title: "策略 ID", key: "strategy_id", ellipsis: { tooltip: true } },
   { title: "allocator_id", key: "allocator_id" },
+  {
+    title: "状态", key: "status", width: 80,
+    render: (row: any) =>
+      row.status === "running"
+        ? h(NTag, { size: "tiny", type: "success", bordered: false }, { default: () => "运行中" })
+        : h(NTag, { size: "tiny", type: "default", bordered: false }, { default: () => "已停止" }),
+  },
   { title: "当前权重", key: "weight", render: (row: any) => `${((row.weight || 0) * 100).toFixed(0)}%` },
   {
     title: "操作",

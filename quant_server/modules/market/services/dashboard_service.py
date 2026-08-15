@@ -183,7 +183,17 @@ async def _get_latest_date(session):
     return row["d"] if row else None
 
 
+# 修复 2026-08（B12）：dashboard 概览结果缓存（60s），减少 8-session 并发查询频次
+_dashboard_cache: dict = {}
+_DASHBOARD_CACHE_TTL = 60.0
+
+
 async def get_dashboard_overview(session: AsyncSession) -> Dict[str, Any]:
+    import time as _time
+    _cached = _dashboard_cache.get("overview")
+    if _cached and (_time.time() - _cached[0]) < _DASHBOARD_CACHE_TTL:
+        return _cached[1]
+
     t0 = __import__("time").perf_counter()
     latest_date = await _get_latest_date(session)
     if latest_date:
@@ -218,7 +228,7 @@ async def get_dashboard_overview(session: AsyncSession) -> Dict[str, Any]:
     else:
         data_date = None
 
-    return {
+    _result = {
         "data_date": data_date,
         "indices": indices if not isinstance(indices, Exception) else [],
         "industry_heatmap": heatmap if not isinstance(heatmap, Exception) else [],
@@ -231,6 +241,8 @@ async def get_dashboard_overview(session: AsyncSession) -> Dict[str, Any]:
         "sw_heatmap": sw_heatmap if not isinstance(sw_heatmap, Exception) else [],
         "macro_latest": macro_latest if not isinstance(macro_latest, Exception) else {},
     }
+    _dashboard_cache["overview"] = (_time.time(), _result)
+    return _result
 
 
 async def get_style_factors(session: AsyncSession) -> list:
