@@ -54,6 +54,10 @@
             <StatCard title="盈亏比" :value="report.summary.profitFactor ? report.summary.profitFactor.toFixed(2) : '--'" />
             <StatCard title="平均单笔" :value="report.summary.avgTradeReturn ? `${(report.summary.avgTradeReturn * 100).toFixed(2)}%` : '--'" />
           </div>
+          <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+          <div class="metric-footnote">
+            口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+          </div>
           <div
             v-if="report.excessMetrics && report.excessMetrics.aligned_days"
             class="benchmark-stats"
@@ -684,5 +688,11 @@ onUnmounted(() => {
   margin-top: 30px;
   padding-top: 20px;
   border-top: 1px solid var(--n-border-color);
+}
+.metric-footnote {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--n-text-color-3);
+  line-height: 1.6;
 }
 </style>

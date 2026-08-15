@@ -78,6 +78,10 @@
           <StatCard title="夏普比率" :value="performance.sharpeRatio ? performance.sharpeRatio.toFixed(2) : '--'" />
           <StatCard title="胜率" :value="performance.winRate ? fmtPct(performance.winRate) : '--'" />
         </div>
+        <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+        <div class="metric-footnote">
+          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+        </div>
 
         <!-- 基准对比行 -->
         <div v-if="btBenchmarkLen > 0" class="stat-grid" style="margin-top:8px">
@@ -566,5 +570,11 @@ watch(heatmapChart, (el) => {
 .metrics-card,
 .heatmap-card {
   margin-bottom: 20px;
+}
+.metric-footnote {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: var(--n-text-color-3);
+  line-height: 1.6;
 }
 </style>

@@ -98,6 +98,10 @@
           </div>
         </NGridItem>
       </NGrid>
+      <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+      <div class="metric-footnote">
+        口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+      </div>
     </div>
 
     <div class="detail-section">
@@ -386,4 +390,5 @@ const getRiskLevel = (complexity: string) => {
   border-radius: 6px;
   color: var(--n-text-color-2);
 }
+.metric-footnote { margin: 10px 0 0; font-size: 12px; color: var(--n-text-color-3); line-height: 1.6; }
 </style>

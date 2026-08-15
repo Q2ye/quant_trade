@@ -58,6 +58,9 @@ class LightGBMBottomStrategy(BaseStrategy):
         "regime_max_hold":      {0: 25, 1: 14, 2: 20},
         # P3: 量能确认
         "vol_confirm_enabled": True,
+        # v9: 大盘 regime 目标仓位（防守策略：熊/震生效，牛市空仓让位进攻）
+        "use_market_gate": True,
+        "market_target_position": {0: 0.55, 1: 0.75, 2: 0.0},
         # DB
         "db_host": "localhost", "db_port": 5432,
         "db_user": "postgres", "db_password": "123456",
@@ -83,6 +86,8 @@ class LightGBMBottomStrategy(BaseStrategy):
         self._p4_buffer: Dict[str, dict] = {}  # v3.4: P4 确认缓冲区，独立于 BaseStrategy._pending_signals
         # v3.4: 每日诊断计数器
         self._diag = self._reset_diag()
+        self.use_market_gate = bool(self.parameters.get("use_market_gate", True))
+        self._csi500_cache: List[tuple] = []  # [(trade_date, close)] 大盘 regime
 
     def _reset_diag(self) -> dict:
         return {
@@ -130,6 +135,7 @@ class LightGBMBottomStrategy(BaseStrategy):
             self._load_factor_cache(etf_pool)
         # 标记 P4 确认缓冲区待恢复（延迟到 load_live_state 之后执行）
         self._confirm_restored = False
+        self._load_csi500_cache()
 
     @staticmethod
     def _find_latest_model() -> str:
@@ -236,7 +242,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                     ar = self._get_factor_value(ts_code, yesterday, "atr_ratio_20")
                     if ar is None or ar < self.parameters.get("vol_filter_atr_min", 0.015):
                         skip_vol += 1; continue
-                weight = self._calc_weight(proba, day_t)
+                weight = self._calc_weight(regime)
                 if weight <= 0.0:
                     skip_wt += 1; continue
                 low = bar_map.get(ts_code)
@@ -260,6 +266,29 @@ class LightGBMBottomStrategy(BaseStrategy):
         except Exception as e:
             logger.warning("[%s] P4确认缓冲区恢复失败: %s", self.name, str(e)[:200])
 
+    def _load_csi500_cache(self) -> None:
+        """加载 CSI500 日线（大盘 regime 判定用，psycopg2 同步）"""
+        import psycopg2
+        cfg = {
+            "host": self.parameters.get("db_host", "localhost"),
+            "port": self.parameters.get("db_port", 5432),
+            "user": self.parameters.get("db_user", "postgres"),
+            "password": self.parameters.get("db_password", "123456"),
+            "database": self.parameters.get("db_name", "quant_signals_dev"),
+        }
+        try:
+            conn = psycopg2.connect(**cfg)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT trade_date::text, close FROM index_daily "
+                "WHERE ts_code='000905.SH' AND trade_date>='2016-01-01' ORDER BY trade_date"
+            )
+            rows = [(r[0][:10], float(r[1])) for r in cur.fetchall()]
+            cur.close(); conn.close()
+            self._csi500_cache = rows
+            logger.info("[%s] CSI500缓存: %d 行", self.name, len(rows))
+        except Exception as e:
+            logger.warning("[%s] CSI500加载失败（大盘门降级）: %s", self.name, str(e)[:150])
     def _load_factor_cache(self, etf_pool: list) -> None:
         import psycopg2
         cfg = {
@@ -290,6 +319,26 @@ class LightGBMBottomStrategy(BaseStrategy):
         except Exception as e:
             logger.warning("[%s] 因子缓存加载失败: %s", self.name, str(e)[:150])
 
+    def _market_regime(self, trade_date_val) -> int:
+        """大盘 regime：CSI500 收盘 vs MA250 ±3% → 0熊/1震荡/2牛（与组合层同口径）"""
+        if not self.use_market_gate:
+            return 1
+        if hasattr(trade_date_val, 'strftime'): td_str = trade_date_val.strftime('%Y-%m-%d')
+        elif hasattr(trade_date_val, 'isoformat'): td_str = trade_date_val.isoformat()[:10]
+        else: td_str = str(trade_date_val)[:10]
+        cached = self._csi500_cache
+        if not cached:
+            return 1
+        closes = [c for d, c in cached if d <= td_str]
+        if len(closes) < 250:
+            return 1
+        ma250 = sum(closes[-250:]) / 250.0
+        close = closes[-1]
+        if close < ma250 * 0.97:
+            return 0
+        elif close > ma250 * 1.03:
+            return 2
+        return 1
     def _get_factor_value(self, ts_code: str, trade_date_val, factor_code: str) -> Optional[float]:
         cache = self._factor_cache.get(ts_code, {})
         if not cache: return None
@@ -336,12 +385,15 @@ class LightGBMBottomStrategy(BaseStrategy):
             logger.error("[%s] 预测失败: %s", self.name, str(e)[:200])
             return None
 
-    def _calc_weight(self, proba: float, threshold: float) -> float:
-        """v5: 线性仓位映射（替代凯利——实际盈亏分布非二元，凯利低估赔率）"""
-        mp = self.parameters.get("max_single_position", 0.40)
-        return max(0.01, (proba - threshold) / (1.0 - threshold)) * mp
-
-    # ==================== v6.x 候选落库（与进攻实盘候选一致） ====================
+    def _calc_weight(self, regime: int) -> float:
+        """v9: 目标仓位框架——regime 目标总仓位均分给候选（替代 v5 概率边际，解决资金闲置）"""
+        if not self.use_market_gate:
+            return 0.05  # 未启用大盘门：保守固定 5%（接近旧概率边际的低仓）
+        target = self.parameters.get("market_target_position", {}).get(regime, 0.0)
+        if target <= 0:
+            return 0.0
+        rmax = self.parameters.get("regime_max_positions", {}).get(regime, 3)
+        return target / max(rmax, 1)
     def _is_live_mode(self) -> bool:
         """判断是否实盘/模拟盘模式（仅实盘持久化候选，回测不写 signals 表）。"""
         rm = getattr(getattr(self, "context", None), "run_mode", None)
@@ -460,7 +512,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                     self._p4_buffer[r.ts_code] = {
                         "proba": _proba,
                         "signal_low": float(r.price or 0),
-                        "weight": self._calc_weight(_proba, self.parameters["threshold"]),
+                        "weight": self._calc_weight(self._get_regime(r.ts_code, date.today())),
                         "signal_id": r.id,
                         "signal_date": _sd,
                     }
@@ -529,6 +581,10 @@ class LightGBMBottomStrategy(BaseStrategy):
             return signals
 
         regime = self._get_regime(ts_code, bar.trade_date)
+        # 大盘牛市：防守空仓让位（已有持仓照常退出，组合层资金给进攻策略）
+        if self.use_market_gate and self._market_regime(bar.trade_date) == 2:
+            self._p4_buffer.pop(ts_code, None)
+            return signals
         rmax_pos = self.parameters.get("regime_max_positions", {}).get(regime, 5)
         if len(self._position_entry) >= rmax_pos:
             d["max_positions"] += 1
@@ -575,7 +631,7 @@ class LightGBMBottomStrategy(BaseStrategy):
                 ar = self._get_factor_value(ts_code, bar.trade_date, "atr_ratio_20")
                 if ar is None or ar < self.parameters.get("vol_filter_atr_min", 0.015):
                     d["vol_filter"] += 1; return signals
-            weight = self._calc_weight(proba, day_t)
+            weight = self._calc_weight(regime)
             if weight <= 0.0:
                 d["weight_zero"] += 1; return signals
             if self.parameters.get("confirm_enabled", False):

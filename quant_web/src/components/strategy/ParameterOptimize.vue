@@ -52,7 +52,7 @@ const availableParameters = [
 const availableMetrics = [
   { value: "sharpeRatio", label: "夏普比率", maximize: true },
   { value: "annualReturn", label: "年化收益率", maximize: true },
-  { value: "maxDrawdown", label: "最大回撤", maximize: false },
+  { value: "maxDrawdown", label: "最大回撤", maximize: true }, // 2026-08 C4：回撤统一负值存储，数值越大（越接近 0）= 回撤越小
   { value: "winRate", label: "胜率", maximize: true },
 ];
 

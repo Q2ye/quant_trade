@@ -76,6 +76,7 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 		"min_history": 25,                # 预热最少天数
 		"use_absolute_momentum": False,   # 默认关闭绝对动量门，永远满仓进攻
 		"use_open_crash_filter": False,   # 默认关闭开盘暴跌过滤，激进做多
+		"use_market_gate": True,               # 大盘熊市退守防御（CSI500<MA250×0.97）
 		"rebalance_frequency": 3,         # 每3个交易日调仓一次
 		"verbose_logging": False,
 	}
@@ -105,6 +106,7 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 		self.min_history: int = int(merged["min_history"])
 		self.use_absolute_momentum: bool = bool(merged.get("use_absolute_momentum", False))
 		self.use_open_crash_filter: bool = bool(merged.get("use_open_crash_filter", False))
+		self.use_market_gate: bool = bool(merged.get("use_market_gate", True))
 		self.rebalance_frequency = merged.get("rebalance_frequency", 3)
 		self.verbose_logging: bool = bool(merged.get("verbose_logging", False))
 
@@ -116,6 +118,7 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 		self._peak_highs: Dict[str, float] = {}         # 持仓阶段最高价，用于移动止盈
 		self._data_cache: Dict[str, pd.DataFrame] = {}
 		self._cache_last_date: Dict[str, str] = {}
+		self._csi500_cache: pd.DataFrame = pd.DataFrame()   # 大盘 regime（CSI500 年线门）
 		self._stopped_today: Set[str] = set()           # 当日止损/止盈黑名单
 		self._bar_count: int = 0
 		self._warmup_warned: bool = False
@@ -163,6 +166,20 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 		from modules.strategy.engines.data_feed_engine import DataFeedEngine as _DFE
 		end_date = _dt.today()
 		start_date = _dt(2018, 1, 1)
+		# 大盘 regime（CSI500 年线门）
+		try:
+			from shared.database.repositories.market.basic.index_repo import IndexDailyRepository
+			async with session_factory() as db:
+				idx_repo = IndexDailyRepository(db)
+				records = await idx_repo.get_by_date_range("000905.SH", start_date, end_date)
+				if records:
+					self._csi500_cache = pd.DataFrame([{
+						"trade_date": str(r.trade_date)[:10],
+						"close": float(r.close or 0),
+					} for r in records]).sort_values("trade_date").reset_index(drop=True)
+					logger.info(f"中证500缓存: {len(self._csi500_cache)} 行")
+		except Exception as e:
+			logger.warning(f"中证500加载失败（大盘门降级）: {e}")
 		try:
 			async with session_factory() as db:
 				engine = _DFE(db)
@@ -307,43 +324,47 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 				logger.info(f"预热期: {max_days}/{self.min_history}天")
 			return signals
 
-		# Step1: 动量排名
-		rankings = self._calc_momentum_rankings()
-		if not rankings:
-			logger.warning("无有效动量排名，跳过调仓")
-			return signals
-
-		# Step2: 绝对动量基准（统一使用对数回归口径）
-		cash_score = self._calc_log_regression_momentum(self.CASH_ANCHOR) or 0.0
-
-		# Step3: 确定防御资产
-		defense_code = self._get_defense_asset(cash_score)
-
-		# Step4: 生成目标仓位
-		n_candidates = min(self.max_holdings, len(rankings))
-		raw_slots: Dict[str, float] = {}
-
-		for i in range(n_candidates):
-			code, score = rankings[i]
-			# 当日已止损/止盈 → 退守防御
-			if code in self._stopped_today:
-				raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
-				continue
-			# 开盘暴跌过滤（默认关闭）
-			if self.use_open_crash_filter and self._is_open_crash(code):
-				raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
-				continue
-			# 数据新鲜度检查
-			if not self._is_fresh(code):
-				raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
-				continue
-			# 绝对动量门
-			if self.use_absolute_momentum and score <= cash_score:
-				raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
-				continue
-			# 入选
-			raw_slots[code] = raw_slots.get(code, 0.0) + 1.0
-
+		# 大盘熊市防御门（CSI500 < MA250×0.97 → 强制退守防御，与防守策略互补）
+		if self.use_market_gate and self._market_regime() == 0:
+			cash_score = self._calc_log_regression_momentum(self.CASH_ANCHOR) or 0.0
+			defense_code = self._get_defense_asset(cash_score)
+			raw_slots = {defense_code: 1.0}
+			logger.warning("大盘熊市，强制退守防御资产")
+		else:
+			# Step1: 动量排名
+			rankings = self._calc_momentum_rankings()
+			# Step2: 绝对动量基准（统一使用对数回归口径）
+			cash_score = self._calc_log_regression_momentum(self.CASH_ANCHOR) or 0.0
+			# Step3: 确定防御资产
+			defense_code = self._get_defense_asset(cash_score)
+			# Step4: 生成目标仓位
+			if not rankings:
+				# 无有效动量排名 → 退守防御（修复：原提前 return 冻结旧满仓）
+				raw_slots = {defense_code: 1.0}
+				logger.warning("无有效动量排名，退守防御资产")
+			else:
+				n_candidates = min(self.max_holdings, len(rankings))
+				raw_slots: Dict[str, float] = {}
+				for i in range(n_candidates):
+					code, score = rankings[i]
+					# 当日已止损/止盈 → 退守防御
+					if code in self._stopped_today:
+						raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
+						continue
+					# 开盘暴跌过滤（默认关闭）
+					if self.use_open_crash_filter and self._is_open_crash(code):
+						raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
+						continue
+					# 数据新鲜度检查
+					if not self._is_fresh(code):
+						raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
+						continue
+					# 绝对动量门
+					if self.use_absolute_momentum and score <= cash_score:
+						raw_slots[defense_code] = raw_slots.get(defense_code, 0.0) + 1.0
+						continue
+					# 入选
+					raw_slots[code] = raw_slots.get(code, 0.0) + 1.0
 		# 兜底：全被过滤则全仓防御
 		if sum(raw_slots.values()) <= 0:
 			raw_slots = {defense_code: 1.0}
@@ -658,6 +679,23 @@ class GlobalRotationV2AggressiveStrategy(BaseStrategy):
 	def get_holdings(self) -> List[str]:
 		return sorted(self._current_holdings.keys())
 
+	def _market_regime(self, trade_date: str = "") -> int:
+		"""CSI500 收盘 vs MA250 ±3% → 0熊/1震荡/2牛（与组合层同口径）"""
+		td = trade_date or self._last_trade_date
+		cache = getattr(self, "_csi500_cache", None)
+		if cache is None or cache.empty or not td:
+			return 1  # 数据缺失 → 默认震荡（不阻断）
+		sliced = cache[cache["trade_date"].astype(str) <= str(td)[:10]]
+		closes = sliced["close"].values.astype(np.float64)
+		if len(closes) < 250:
+			return 1
+		ma250 = float(np.mean(closes[-250:]))
+		close = float(closes[-1])
+		if close < ma250 * 0.97:
+			return 0
+		elif close > ma250 * 1.03:
+			return 2
+		return 1
 	def get_parameters(self) -> dict:
 		return {
 			"strategy_version": "V2-Aggressive",

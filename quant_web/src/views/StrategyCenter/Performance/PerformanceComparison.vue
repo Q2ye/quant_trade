@@ -70,8 +70,9 @@ const formatMetricVal = (metric: string, v: number) => {
   return v.toFixed(4);
 };
 
-// Determine "best" value per row — lower is better for drawdown/volatility
-const LOWER_IS_BETTER = ["最大回撤", "波动率"];
+// Determine "best" value per row — lower is better for volatility;
+// 最大回撤已按 C4 负值口径（-15% = 回撤 15%），越大（越接近 0）越好
+const LOWER_IS_BETTER = ["波动率"];
 
 // 后端 StrategyComparison.to_dict() 返回 performance_comparison（dict keyed by sid）
 // + rankings/correlations/statistics，无 strategies 数组、无 equity_curves。
@@ -321,6 +322,10 @@ onMounted(() => {
                   :single-line="false"
                 />
                 <n-empty v-else description="暂无指标数据" style="padding:40px" />
+                <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+                <div class="metric-footnote">
+                  口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+                </div>
               </n-tab-pane>
 
               <n-tab-pane name="risk" tab="风险收益散点图">
@@ -377,6 +382,7 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
 }
+.metric-footnote { margin: 6px 0 0; font-size: 12px; color: var(--n-text-color-3); line-height: 1.6; }
 .main-content {
   padding: 0 19px 24px;
 }

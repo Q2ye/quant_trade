@@ -476,6 +476,10 @@ onMounted(async () => {
             <span class="mc-value" :class="card.color">{{ card.value }}</span>
           </div>
         </div>
+        <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+        <div class="metric-footnote">
+          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+        </div>
 
         <!-- Equity + Drawdown dual-axis chart -->
         <n-card :class="tokens.surface.card" size="small" style="margin-top:12px">
@@ -602,6 +606,7 @@ onMounted(async () => {
   .mc-label { font-size: 11px; color: var(--color-text-tertiary); display: block; margin-bottom: 6px; }
   .mc-value { font-size: 20px; font-weight: 700; color: var(--color-text-primary); display: block; }
 }
+.metric-footnote { margin: 2px 0 0; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 .text-up { color: var(--color-stock-up) !important; }
 .text-down { color: var(--color-stock-down) !important; }
 

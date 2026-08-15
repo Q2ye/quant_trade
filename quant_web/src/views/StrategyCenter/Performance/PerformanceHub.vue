@@ -59,6 +59,10 @@
             </div>
           </div>
         </n-card>
+        <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+        <div class="metric-footnote">
+          口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+        </div>
       </template>
     </div>
   </div>
@@ -258,4 +262,5 @@ onMounted(() => loadData());
 
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+.metric-footnote { margin: 6px 0 0; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 </style>

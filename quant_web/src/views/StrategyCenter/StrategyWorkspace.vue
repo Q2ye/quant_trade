@@ -160,6 +160,10 @@
                 <div class="metric-item"><span class="metric-label">胜率</span><span class="metric-value">{{ (btSummary.winRate * 100).toFixed(1) }}%</span></div>
                 <div class="metric-item"><span class="metric-label">交易笔数</span><span class="metric-value">{{ btSummary.tradesCount }}</span></div>
               </div>
+              <!-- 口径标注（2026-08 C4：绩效口径统一） -->
+              <div class="metric-footnote">
+                口径：夏普 = 日频超额收益 × √252（无风险利率 2%）；年化 = 252 交易日几何复合；最大回撤以负值表示（-15% = 回撤 15%）
+              </div>
               <BacktestSubplots :equity="btEquityPct" :benchmark="btBenchmarkPct" :dailyReturns="btDailyReturns" :dailyTurnover="btDailyTurnover" :drawdown="btDrawdown" :height="720" />
             </n-card>
           </n-spin>
@@ -523,6 +527,7 @@ onBeforeUnmount(() => { clearPolling(); });
 
 .text-up { color: #18a058 !important; }
 .text-down { color: #d03050 !important; }
+.metric-footnote { margin: 2px 0 10px; font-size: 12px; color: var(--color-text-tertiary); line-height: 1.6; }
 
 /* ---- 实盘运行时网格 ---- */
 .runtime-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
