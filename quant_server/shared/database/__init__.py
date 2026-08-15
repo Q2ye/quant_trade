@@ -7,7 +7,7 @@
 
 导入指南：
   会话管理    → from shared.database import get_db_session, DBSessionDep
-  事务管理    → from shared.database import atomic, transaction_scope
+  事务管理    → from shared.database import transaction_scope
   数据模型    → from shared.database.models import StockBasic, Order, ...
   数据仓库    → from shared.database.repositories import OrderRepository, ...
 """
@@ -21,7 +21,6 @@ from .session import (
     get_db_session,
     DBSessionDep,
     with_transaction,
-    SessionScope,
     ConnectionPoolManager,
     get_connection_pool,
     initialize_database,
@@ -36,9 +35,7 @@ from .session import (
     TransactionManager,
     TransactionError,
     IsolationLevel,
-    atomic,
     transaction_scope,
-    NestedTransaction,
 )
 
 # ============================================
@@ -48,7 +45,6 @@ from .models import Base
 from .repositories import (
     BaseRepository,
     HyperRepositoryBase,
-    QueryBuilder,
     PaginationParams,
     PaginationResult,
     repository_factory,
@@ -65,7 +61,6 @@ __all__ = [
     "get_db_session",
     "DBSessionDep",
     "with_transaction",
-    "SessionScope",
 
     # 连接池
     "ConnectionPoolManager",
@@ -75,9 +70,7 @@ __all__ = [
     "TransactionManager",
     "TransactionError",
     "IsolationLevel",
-    "atomic",
     "transaction_scope",
-    "NestedTransaction",
 
     # 生命周期
     "initialize_database",
@@ -89,7 +82,6 @@ __all__ = [
     "BaseRepository",
     "HyperRepositoryBase",
     "RepositoryError",
-    "QueryBuilder",
     "PaginationParams",
     "PaginationResult",
 
@@ -98,6 +90,3 @@ __all__ = [
     "RepositoryFactory",
     "get_repository_by_domain",
 ]
-
-__version__ = "1.0.0"
-__author__ = "量化交易系统团队"

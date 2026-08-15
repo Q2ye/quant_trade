@@ -27,10 +27,6 @@ from .base import (
     HyperRepositoryBase,
     PaginationParams,
     PaginationResult,
-    QueryBuilder,
-    FilterCondition,
-    SortCondition,
-    QueryParams,
     RepositoryError
 )
 from .types import (
@@ -57,17 +53,13 @@ from .utils import (
     fetch_paginated,
     fetch_dict,
     fetch_scalar,
-    batch_insert,
     batch_update,
     batch_upsert,
     batch_delete,
-    model_to_dict,
     dict_to_model,
-    rows_to_dict_list,
     result_to_repository_result,
     ensure_date,
     ensure_datetime,
-    QueryCache,
     NotFoundError,
     AlreadyExistsError,
     ValidationError,
@@ -79,16 +71,12 @@ __all__ = [
     # 基类
     'BaseRepository',
     'HyperRepositoryBase',
-    'QueryBuilder',
 
     # 类型定义
     'RepositoryResult',
     'PaginationParams',
     'PaginationResult',
     'FilterOperator',
-    'FilterCondition',
-    'SortCondition',
-    'QueryParams',
     'DateRange',
     'DateTimeRange',
     'DatabaseConfig',
@@ -110,17 +98,13 @@ __all__ = [
     'fetch_paginated',
     'fetch_dict',
     'fetch_scalar',
-    'batch_insert',
     'batch_update',
     'batch_upsert',
     'batch_delete',
-    'model_to_dict',
     'dict_to_model',
-    'rows_to_dict_list',
     'result_to_repository_result',
     'ensure_date',
     'ensure_datetime',
-    'QueryCache',
 
     # 异常类
     'RepositoryError',
@@ -559,9 +543,7 @@ try:
     from .strategy import (
         BacktestParameterRepository,
         BacktestEquityCurveRepository,
-        BacktestComparisonRepository,
         BacktestPositionRepository,
-        BacktestResourceUsageRepository,
         BacktestScenarioRepository,
         BacktestTaskRepository,
         BacktestTradeRepository,
@@ -577,9 +559,7 @@ try:
     STRATEGY_REPOSITORIES = {
         'backtest_parameter_repo': BacktestParameterRepository,
         'backtest_equity_curve_repo': BacktestEquityCurveRepository,
-        'backtest_comparison_repo': BacktestComparisonRepository,
         'backtest_position_repo': BacktestPositionRepository,
-        'backtest_resource_repo': BacktestResourceUsageRepository,
         'backtest_scenario_repo': BacktestScenarioRepository,
         'backtest_task_repo': BacktestTaskRepository,
         'backtest_trade_repo': BacktestTradeRepository,
@@ -594,9 +574,7 @@ try:
     __all__.extend([
         'BacktestParameterRepository',
         'BacktestEquityCurveRepository',
-        'BacktestComparisonRepository',
         'BacktestPositionRepository',
-        'BacktestResourceUsageRepository',
         'BacktestScenarioRepository',
         'BacktestTaskRepository',
         'BacktestTradeRepository',
@@ -614,9 +592,7 @@ except ImportError as e:
     # 定义默认值，避免导入错误时出现未定义变量
     BacktestParameterRepository = None
     BacktestEquityCurveRepository = None
-    BacktestComparisonRepository = None
     BacktestPositionRepository = None
-    BacktestResourceUsageRepository = None
     BacktestScenarioRepository = None
     BacktestTaskRepository = None
     BacktestTradeRepository = None
@@ -760,69 +736,6 @@ except ImportError as e:
     RiskRuleRepository = None
     RiskEventRepository = None
     BlacklistRepository = None
-
-# ============================================
-# 缓存数据领域 (cache/)
-# ============================================
-try:
-    from .cache import (
-        CacheRepository,
-        DistributedLockRepository
-    )
-
-    # 导出缓存数据领域的所有Repository
-    CACHE_REPOSITORIES = {
-        'cache_repo': CacheRepository,
-        'distributed_lock_repo': DistributedLockRepository
-    }
-
-    __all__.extend([
-        'CacheRepository',
-        'DistributedLockRepository'
-    ])
-
-except ImportError as e:
-    print(f"Warning: Failed to import cache repositories: {e}")
-    CACHE_REPOSITORIES = {}
-    # 定义默认值，避免导入错误时出现未定义变量
-    CacheRepository = None
-    DistributedLockRepository = None
-
-# ============================================
-# 超表管理领域 (hyper_tables/)
-# ============================================
-try:
-    from .hyper_tables import (
-        HyperTableManager,
-        TimeBucketManager,
-        RetentionPolicyManager,
-        ChunkManager
-    )
-
-    # 导出超表管理领域的所有Repository
-    HYPER_TABLE_REPOSITORIES = {
-        'hyper_table_manager': HyperTableManager,
-        'time_bucket_manager': TimeBucketManager,
-        'retention_policy_manager': RetentionPolicyManager,
-        'chunk_manager': ChunkManager
-    }
-
-    __all__.extend([
-        'HyperTableManager',
-        'TimeBucketManager',
-        'RetentionPolicyManager',
-        'ChunkManager'
-    ])
-
-except ImportError as e:
-    print(f"Warning: Failed to import hyper table repositories: {e}")
-    HYPER_TABLE_REPOSITORIES = {}
-    # 定义默认值，避免导入错误时出现未定义变量
-    HyperTableManager = None
-    TimeBucketManager = None
-    RetentionPolicyManager = None
-    ChunkManager = None
-
 # ============================================
 # Repository工厂函数
 # ============================================
@@ -845,8 +758,6 @@ def get_repository_by_domain(domain: str) -> dict:
         'strategy': STRATEGY_REPOSITORIES,
         'system': SYSTEM_REPOSITORIES,
         'trading': TRADING_REPOSITORIES,
-        'cache': CACHE_REPOSITORIES,
-        'hyper_tables': HYPER_TABLE_REPOSITORIES
     }
 
     return domain_mapping.get(domain, {})
@@ -873,8 +784,6 @@ class RepositoryFactory:
         self._repositories.update(STRATEGY_REPOSITORIES)
         self._repositories.update(SYSTEM_REPOSITORIES)
         self._repositories.update(TRADING_REPOSITORIES)
-        self._repositories.update(CACHE_REPOSITORIES)
-        self._repositories.update(HYPER_TABLE_REPOSITORIES)
 
     def create_repository(self, repo_name: str, session) -> BaseRepository:
         """
@@ -925,8 +834,6 @@ OperationRepositories = type('OperationRepositories', (), OPERATION_REPOSITORIES
 StrategyRepositories = type('StrategyRepositories', (), STRATEGY_REPOSITORIES)
 SystemRepositories = type('SystemRepositories', (), SYSTEM_REPOSITORIES)
 TradingRepositories = type('TradingRepositories', (), TRADING_REPOSITORIES)
-CacheRepositories = type('CacheRepositories', (), CACHE_REPOSITORIES)
-HyperTableRepositories = type('HyperTableRepositories', (), HYPER_TABLE_REPOSITORIES)
 
 # 添加到导出列表
 __all__.extend([
@@ -937,7 +844,5 @@ __all__.extend([
     'StrategyRepositories',
     'SystemRepositories',
     'TradingRepositories',
-    'CacheRepositories',
-    'HyperTableRepositories',
     "get_repository_by_domain"
 ])

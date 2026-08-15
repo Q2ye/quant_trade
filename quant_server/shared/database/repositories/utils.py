@@ -428,58 +428,6 @@ async def fetch_scalar (session: AsyncSession, query: Select) -> Optional[Any]:
 	return result.scalar()
 
 
-# ==================== 批量操作工具 ====================
-
-async def batch_insert (session: AsyncSession, model: Type[T],
-                        data_list: List[Dict[str, Any]],
-                        return_ids: bool = False) -> Union[List[T], List[int]]:
-	"""
-	批量插入数据
-
-	Args:
-		session: 数据库会话
-		model: SQLAlchemy模型类
-		data_list: 数据列表
-		return_ids: 是否返回ID
-
-	Returns:
-		Union[List[T], List[int]]: 插入的记录或ID列表
-	"""
-	if not data_list:
-		return []
-
-	try:
-		# 添加时间戳
-		now = datetime.now()
-		for data in data_list:
-			if hasattr(model, 'created_at'):
-				data['created_at'] = data.get('created_at', now)
-			if hasattr(model, 'updated_at'):
-				data['updated_at'] = data.get('updated_at', now)
-
-		# 执行批量插入
-		await session.execute(
-			insert(model),
-			data_list
-		)
-		await session.flush()
-
-		# 获取插入的ID（需要数据库支持RETURNING）
-		if return_ids:
-			# 这里只是一个示例，实际实现需要根据数据库调整
-			# 可能需要执行额外的查询来获取ID
-			pass
-
-		# 重新查询插入的数据
-		# 这里只是一个简单实现，实际可能需要更复杂的逻辑
-		return []
-
-	except SQLAlchemyError as e:
-		logger.error(f"批量插入失败: {e}")
-		await session.rollback()
-		raise
-
-
 async def batch_update (session: AsyncSession, model: Type[T],
                         data_list: List[Dict[str, Any]],
                         match_fields: List[str]) -> List[T]:
@@ -633,53 +581,6 @@ async def batch_delete (session: AsyncSession, model: Type[T],
 	return result.rowcount or 0
 
 
-# ==================== 数据转换工具 ====================
-
-def model_to_dict (instance: Any, exclude: Optional[List[str]] = None,
-                   include: Optional[List[str]] = None) -> Dict[str, Any]:
-	"""
-	将模型实例转换为字典
-
-	Args:
-		instance: 模型实例
-		exclude: 排除字段列表
-		include: 包含字段列表
-
-	Returns:
-		Dict[str, Any]: 字典
-	"""
-	if exclude is None:
-		exclude = []
-	if include is None:
-		include = []
-
-	result = {}
-
-	for column in instance.__table__.columns:
-		column_name = column.name
-
-		# 应用包含/排除规则
-		if include and column_name not in include:
-			continue
-		if exclude and column_name in exclude:
-			continue
-
-		value = getattr(instance, column_name)
-
-		# 处理特殊类型
-		if isinstance(value, datetime):
-			result[column_name] = value.isoformat()
-		elif isinstance(value, date):
-			result[column_name] = value.isoformat()
-		elif isinstance(value, Decimal):
-			result[column_name] = float(value)
-		elif hasattr(value, '__dict__'):
-			# 处理关联对象
-			result[column_name] = model_to_dict(value)
-		else:
-			result[column_name] = value
-
-	return result
 
 
 def dict_to_model (model: Type[T], data: Dict[str, Any],
@@ -706,18 +607,6 @@ def dict_to_model (model: Type[T], data: Dict[str, Any],
 	return model(**filtered_data)
 
 
-def rows_to_dict_list (rows: List[Any], exclude: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-	"""
-	将行列表转换为字典列表
-
-	Args:
-		rows: 行列表
-		exclude: 排除字段列表
-
-	Returns:
-		List[Dict[str, Any]]: 字典列表
-	"""
-	return [model_to_dict(row, exclude=exclude) for row in rows]
 
 
 def result_to_repository_result (result: Any, error: Optional[str] = None,
@@ -862,48 +751,6 @@ def get_datetime_range (start_time: Optional[datetime] = None,
 	return start_time, end_time
 
 
-# ==================== 字符串工具 ====================
-
-def safe_like (value: str) -> str:
-	"""
-	安全地构建LIKE查询值
-
-	Args:
-		value: 原始字符串
-
-	Returns:
-		str: 安全的LIKE字符串
-	"""
-	# 转义SQL LIKE特殊字符
-	value = value.replace('%', '\\%')
-	value = value.replace('_', '\\_')
-	value = value.replace('\\', '\\\\')
-
-	return f"%{value}%"
-
-
-def build_search_conditions (model: Type[T], keyword: str,
-                             search_fields: List[str]) -> List[Any]:
-	"""
-	构建搜索条件
-
-	Args:
-		model: SQLAlchemy模型类
-		keyword: 搜索关键词
-		search_fields: 搜索字段列表
-
-	Returns:
-		List[Any]: 搜索条件列表
-	"""
-	conditions = []
-
-	for field in search_fields:
-		if hasattr(model, field):
-			conditions.append(
-				getattr(model, field).ilike(safe_like(keyword))
-			)
-
-	return conditions
 
 
 def camel_to_snake (name: str) -> str:
@@ -980,133 +827,6 @@ def validate_sort (model: Type[T], sort_by: str,
 	return None
 
 
-# ==================== 缓存工具 ====================
-
-class QueryCache:
-	"""查询缓存管理器"""
-
-	def __init__ (self, cache_provider=None, ttl: int = 300):
-		"""
-		初始化缓存管理器
-
-		Args:
-			cache_provider: 缓存提供者（如Redis客户端）
-			ttl: 缓存生存时间（秒）
-		"""
-		self.cache_provider = cache_provider
-		self.ttl = ttl
-		self._local_cache = {}
-
-	async def get (self, key: str) -> Optional[Any]:
-		"""
-		获取缓存值
-
-		Args:
-			key: 缓存键
-
-		Returns:
-			Optional[Any]: 缓存值或None
-		"""
-		# 先检查本地缓存
-		if key in self._local_cache:
-			value, expiry = self._local_cache[key]
-			if datetime.now() < expiry:
-				return value
-
-		# 检查外部缓存
-		if self.cache_provider:
-			try:
-				value = await self.cache_provider.get(key)
-				if value is not None:
-					# 更新本地缓存
-					self._local_cache[key] = (
-						value,
-						datetime.now() + timedelta(seconds=self.ttl)
-					)
-				return value
-			except Exception as e:
-				logger.warning(f"缓存获取失败: {e}")
-
-		return None
-
-	async def set (self, key: str, value: Any) -> bool:
-		"""
-		设置缓存值
-
-		Args:
-			key: 缓存键
-			value: 缓存值
-
-		Returns:
-			bool: 是否成功
-		"""
-		# 更新本地缓存
-		self._local_cache[key] = (
-			value,
-			datetime.now() + timedelta(seconds=self.ttl)
-		)
-
-		# 更新外部缓存
-		if self.cache_provider:
-			try:
-				await self.cache_provider.set(key, value, ex=self.ttl)
-				return True
-			except Exception as e:
-				logger.warning(f"缓存设置失败: {e}")
-				return False
-
-		return True
-
-	async def delete (self, key: str) -> bool:
-		"""
-		删除缓存值
-
-		Args:
-			key: 缓存键
-
-		Returns:
-			bool: 是否成功
-		"""
-		# 删除本地缓存
-		self._local_cache.pop(key, None)
-
-		# 删除外部缓存
-		if self.cache_provider:
-			try:
-				await self.cache_provider.delete(key)
-				return True
-			except Exception as e:
-				logger.warning(f"缓存删除失败: {e}")
-				return False
-
-		return True
-
-	def clear_local (self) -> None:
-		"""清空本地缓存"""
-		self._local_cache.clear()
-
-	@staticmethod
-	def generate_key (prefix: str, *args, **kwargs) -> str:
-		"""
-		生成缓存键
-
-		Args:
-			prefix: 键前缀
-			*args: 位置参数
-			**kwargs: 关键字参数
-
-		Returns:
-			str: 缓存键
-		"""
-		key_parts = [prefix]
-
-		for arg in args:
-			key_parts.append(str(arg))
-
-		for k, v in sorted(kwargs.items()):
-			key_parts.append(f"{k}:{v}")
-
-		return ":".join(key_parts)
 
 
 # ==================== 错误处理工具 ====================

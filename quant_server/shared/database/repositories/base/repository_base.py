@@ -788,22 +788,6 @@ class BaseRepository(Generic[T]):
 		except Exception as e:
 			raise RepositoryError(f"执行自定义查询失败: {str(e)}")
 
-	async def execute_scalar (self, query: Select) -> Any:
-		"""
-		执行标量查询
-
-		Args:
-			query: 查询对象
-
-		Returns:
-			标量结果
-		"""
-		try:
-			result = await self.session.execute(query)
-			return result.scalar()
-
-		except Exception as e:
-			raise RepositoryError(f"执行标量查询失败: {str(e)}")
 
 	# ==================== 事务支持 ====================
 

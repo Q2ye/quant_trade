@@ -74,6 +74,14 @@ class LightGBMBottomStrategy(BaseStrategy):
         if parameters:
             defaults.update(parameters)
         super().__init__(name=name, strategy_type=strategy_type or StrategyType.ML, parameters=defaults)
+        # v9.1 修复：API JSON 参数 dict key 为字符串，统一转 int
+        # （否则 .get(regime) 用整数 key 匹配字符串 key dict 全落默认值 → 0 信号）
+        for _reg_key in ("market_target_position", "regime_max_positions",
+            "regime_stop_loss", "regime_threshold_adj",
+            "regime_trail_act", "regime_trail_dist", "regime_max_hold"):
+            _reg_dict = self.parameters.get(_reg_key)
+            if isinstance(_reg_dict, dict):
+                self.parameters[_reg_key] = {int(_rk): _rv for _rk, _rv in _reg_dict.items()}
         self.model = None
         self.feature_names: List[str] = []
         self.scaler_mu: List[float] = []

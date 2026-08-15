@@ -10,7 +10,6 @@ from .config_manager import (
     validate_config,
     detect_environment,
     reload_config,
-    load_config_with_fallback,
     config
 )
 
@@ -39,9 +38,8 @@ __all__ = [
     "validate_config",
     "detect_environment",
     "reload_config",
-    "load_config_with_fallback",
     "config",
-    
+
     # Constants
     "ErrorCode",
     "OrderStatus",

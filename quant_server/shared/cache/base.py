@@ -160,18 +160,6 @@ class CacheBase(abc.ABC):
 		"""批量设置缓存值"""
 		pass
 
-	async def get_or_set (
-			self,
-			key: str,
-			default_func: Callable,
-			ttl: Optional[int] = None
-	) -> Any:
-		"""获取缓存，如果不存在则设置"""
-		value = await self.get(key)
-		if value is None:
-			value = default_func()
-			await self.set(key, value, ttl)
-		return value
 
 	async def increment (self, key: str, amount: int = 1) -> int:
 		"""原子递增"""

@@ -5,9 +5,7 @@
 
 from .backtest.parameter_repo import BacktestParameterRepository
 from .backtest.backtest_equity_curve_repo import BacktestEquityCurveRepository
-from .backtest.comparison_repo import BacktestComparisonRepository
 from .backtest.position_repo import BacktestPositionRepository
-from .backtest.resource_repo import BacktestResourceUsageRepository
 from .backtest.scenario_repo import BacktestScenarioRepository
 from .backtest.task_repo import BacktestTaskRepository
 from .backtest.trade_repo import BacktestTradeRepository
@@ -24,9 +22,7 @@ from .signal.signal_repo import SignalRepository
 __all__ = [
     "BacktestParameterRepository",
     "BacktestEquityCurveRepository",
-    "BacktestComparisonRepository",
     "BacktestPositionRepository",
-    "BacktestResourceUsageRepository",
     "BacktestScenarioRepository",
 	'BacktestTaskRepository',
 	'BacktestTradeRepository',

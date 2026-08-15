@@ -14,7 +14,6 @@ from .serializers import (
 	PickleSerializer,
 	JSONSerializer,
 	MsgPackSerializer,
-	CompressedSerializer
 )
 from .decorators import cache_result, cached_property
 
@@ -34,7 +33,6 @@ __all__ = [
 	"PickleSerializer",
 	"JSONSerializer",
 	"MsgPackSerializer",
-	"CompressedSerializer",
 
 	# 装饰器
 	"cache_result",

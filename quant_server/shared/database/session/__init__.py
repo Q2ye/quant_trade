@@ -24,15 +24,12 @@ from .session_manager import (
 	get_db_session,
 	DBSessionDep,
 	with_transaction,
-	SessionScope,
 )
 from .transaction import (
 	TransactionManager,
 	TransactionError,
 	IsolationLevel,
-	atomic,
 	transaction_scope,
-	NestedTransaction,
 )
 
 # 导出公共接口
@@ -48,15 +45,12 @@ __all__ = [
 	"get_db_session",
 	"DBSessionDep",
 	"with_transaction",
-	"SessionScope",
 
 	# 事务管理
 	"TransactionManager",
 	"TransactionError",
 	"IsolationLevel",
-	"atomic",
 	"transaction_scope",
-	"NestedTransaction",
 
 	# 初始化函数
 	"initialize_database",

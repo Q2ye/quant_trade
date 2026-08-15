@@ -24,6 +24,7 @@ class RepositoryError(Exception):
         self.original_error = original_error
         super().__init__(message)
 
+
 # 泛型类型变量
 T = TypeVar('T')
 R = TypeVar('R')

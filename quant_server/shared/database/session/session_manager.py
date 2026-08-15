@@ -133,20 +133,3 @@ def with_transaction (func):
 				raise
 
 	return wrapper
-
-
-# 回话作用域管理器（用于非FastAPI环境）
-class SessionScope:
-	"""会话作用域管理器"""
-
-	def __init__ (self):
-		self.session_manager = get_session_manager()
-		self.session = None
-
-	async def __aenter__ (self) -> AsyncSession:
-		self.session = await self.session_manager.get_session().__aenter__()
-		return self.session
-
-	async def __aexit__ (self, exc_type, exc_val, exc_tb):
-		if self.session:
-			await self.session_manager.get_session().__aexit__(exc_type, exc_val, exc_tb)

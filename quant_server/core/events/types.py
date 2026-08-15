@@ -120,110 +120,13 @@ class EventType:
 		"""
 		return f"{module}.{domain}.{action}.{status}"
 
-	@staticmethod
-	def parse (event_type: str) -> Dict[str, str]:
-		"""
-		解析事件类型字符串
-
-		Args:
-			event_type: 事件类型字符串
-
-		Returns:
-			解析后的组件字典
-
-		Raises:
-			ValueError: 事件类型格式不正确
-		"""
-		parts = event_type.split(".")
-		if len(parts) < 3:
-			raise ValueError(f"事件类型格式不正确: {event_type}")
-
-		result = {"full": event_type}
-
-		if len(parts) >= 1:
-			result["module"] = parts[0]
-		if len(parts) >= 2:
-			result["domain"] = parts[1]
-		if len(parts) >= 3:
-			result["action"] = parts[2]
-		if len(parts) >= 4:
-			result["status"] = parts[3]
-
-		# 处理可能的额外部分
-		if len(parts) > 4:
-			result["extra"] = ".".join(parts[4:])
-
-		return result
-
-	@staticmethod
-	def get_module (event_type: str) -> str:
-		"""获取事件类型中的模块名"""
-		try:
-			parsed = EventType.parse(event_type)
-			return parsed.get("module", "")
-		except ValueError:
-			return ""
-
-	@staticmethod
-	def get_domain (event_type: str) -> str:
-		"""获取事件类型中的领域名"""
-		try:
-			parsed = EventType.parse(event_type)
-			return parsed.get("domain", "")
-		except ValueError:
-			return ""
-
-	@staticmethod
-	def is_system_event (event_type: str) -> bool:
-		"""判断是否为系统事件"""
-		return event_type.startswith("system.")
-
-	@staticmethod
-	def is_business_event (event_type: str) -> bool:
-		"""判断是否为业务事件"""
-		return not EventType.is_system_event(event_type)
 
 
-# 常用事件类型常量（不包含具体业务事件）
-class CommonEventTypes:
-	"""通用事件类型常量"""
 
-	# 系统事件
-	SYSTEM_STARTED = "system.started"
-	SYSTEM_STOPPED = "system.stopped"
-	SYSTEM_HEARTBEAT = "system.heartbeat"
-	SYSTEM_ALERT = "system.alert"
-
-	# 模块事件
-	MODULE_STARTED = "module.started"
-	MODULE_STOPPED = "module.stopped"
-	MODULE_READY = "module.ready"
-	MODULE_ERROR = "module.error"
-
-	# 生命周期事件
-	PROCESS_STARTED = "process.started"
-	PROCESS_COMPLETED = "process.completed"
-	PROCESS_FAILED = "process.failed"
-
-	# 监控事件
-	HEALTH_CHECK = "health.check"
-	METRIC_UPDATE = "metric.update"
-	PERFORMANCE_ALERT = "performance.alert"
-
-	# 审计事件
-	USER_LOGIN = "audit.user.login"
-	USER_LOGOUT = "audit.user.logout"
-	OPERATION_LOG = "audit.operation.log"
-
-
-# 事件过滤器类型定义
-EventFilterFunc = Any  # 类型提示占位符
 
 __all__ = [
 	"EventPriority",
 	"EventStatus",
 	"EventCategory",
 	"EventType",
-	"CommonEventTypes",
-	"EventFilterFunc",
 ]
