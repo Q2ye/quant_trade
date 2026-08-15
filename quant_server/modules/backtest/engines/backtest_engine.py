@@ -94,6 +94,9 @@ from modules.strategy.strategies.base.strategy_context import StrategyContext
 
 logger = logging.getLogger(__name__)
 
+# A 股无风险利率（review 披露口径）：1 年期国债 ~2%，与账户层 account_performance_repo/pnl_calculator 一致
+RISK_FREE_RATE = 0.02
+
 
 # =============================================================================
 # BacktestResult — 回测结果数据结构
@@ -1022,9 +1025,10 @@ class BacktestEngine(EngineBase):
 			daily_returns = equity_df["total_assets"].pct_change().dropna()
 			if len(daily_returns) > 1:
 				result.volatility = float(daily_returns.std())
+				rf_daily = RISK_FREE_RATE / 252
 				if result.volatility > 0:
 					result.sharpe_ratio = float(
-						daily_returns.mean() / result.volatility * np.sqrt(252)
+						(daily_returns.mean() - rf_daily) / result.volatility * np.sqrt(252)
 					)
 
 		# ---- 最大回撤（Broker 在 mark_to_market 中已实时追踪） ----
@@ -1289,7 +1293,8 @@ class BacktestEngine(EngineBase):
 			bm_annual = (1 + bm_total) ** (252 / trading_days) - 1 if bm_total > -1 else -1.0
 
 			# ---- Alpha = strategy_annual - beta × benchmark_annual ----
-			alpha = annual_return - beta * bm_annual
+			rf_daily = RISK_FREE_RATE / 252
+			alpha = (annual_return - rf_daily) - beta * (bm_annual - rf_daily)
 
 			# ---- 超额收益日序列 → 跟踪误差 / 信息比率 ----
 			excess = s_arr - b_arr

@@ -1,4 +1,4 @@
-# quant_server/utils/api_utils/response_formatter.py
+﻿# quant_server/utils/api_utils/response_formatter.py
 """
 统一响应格式化模块
 
@@ -555,64 +555,3 @@ def paginated_response (
 		status_code=status_code,
 		headers=headers
 	)
-
-
-class ResponseMiddleware:
-	"""响应中间件（用于包装所有响应）"""
-
-	async def __call__ (self, request, call_next):
-		"""
-		中间件处理
-
-		Args:
-			request: FastAPI请求对象
-			call_next: 下一个中间件或端点
-
-		Returns:
-			Response: 处理后的响应
-		"""
-		try:
-			# 调用下一个中间件或端点
-			response = await call_next(request)
-
-			# 包装响应
-			if isinstance(response, JSONResponse):
-				# 对于JSON响应，确保使用标准格式
-				try:
-					content = json.loads(response.body.decode())
-
-					# 如果响应已经是标准格式，不需要处理
-					if 'code' in content and 'message' in content:
-						return response
-
-					# 否则包装为标准格式
-					wrapped_response = success_response(
-						message="操作成功",
-						data=content,
-						status_code=response.status_code,
-						headers=dict(response.headers)
-					)
-
-					return wrapped_response
-
-				except (json.JSONDecodeError, UnicodeDecodeError):
-					# 如果不是JSON响应，直接返回
-					return _formatter.wrap_response(response)
-			else:
-				# 非JSON响应，只添加标准头
-				return _formatter.wrap_response(response)
-
-		except BaseAPIException as e:
-			# 处理已知的API异常
-			logger.warning(f"API异常: {e.code} - {e.message}")
-			return _formatter.from_exception(e, status_code=e.status_code)
-
-		except Exception as e:
-			# 处理未知异常
-			logger.error(f"未知异常: {str(e)}", exc_info=True)
-			return error_response(
-				code=ErrorCode.INTERNAL_ERROR,
-				message="服务器内部错误",
-				detail={"error": str(e)} if logger.isEnabledFor(logging.DEBUG) else None,
-				status_code=500
-			)

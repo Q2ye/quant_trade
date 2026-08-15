@@ -12,7 +12,7 @@ Version: 1.0.0
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -254,119 +254,8 @@ class AuthDependencies:
 				detail="服务器内部错误",
 			)
 
-	async def optional_auth (
-			self,
-			credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
-			db_session: AsyncSession = Depends(get_db_session)
-	) -> Optional[Dict[str, Any]]:
-		"""
-		可选认证依赖
-
-		当令牌存在时返回用户信息，不存在时返回None
-		适用于公开和私有混合的API端点
-
-		Args:
-			credentials: HTTP授权凭证
-			db_session: 数据库会话
-
-		Returns:
-			Optional[Dict[str, Any]]: 用户信息或None
-		"""
-		if not credentials:
-			return None
-
-		try:
-			return await self.get_current_user(credentials, db_session)
-		except HTTPException:
-			# 认证失败时返回None，而不是抛出异常
-			return None
-
-	@staticmethod
-	async def require_permission (
-			permission_codes: List[str],
-			current_user: Dict[str, Any] = Depends(get_current_user)
-	) -> Dict[str, Any]:
-		"""
-		检查用户是否拥有指定权限
-
-		Args:
-			permission_codes: 需要的权限代码列表
-			current_user: 当前用户信息
-
-		Returns:
-			Dict[str, Any]: 用户信息（如果权限检查通过）
-
-		Raises:
-			HTTPException: 403 - 权限不足
-		"""
-		user_permissions = current_user.get("permissions", [])
-
-		# 检查是否拥有所有需要的权限
-		missing_permissions = []
-		for perm_code in permission_codes:
-			if perm_code not in user_permissions:
-				missing_permissions.append(perm_code)
-
-		if missing_permissions:
-			logger.warning(
-				f"用户 {current_user['username']} 缺少权限: {missing_permissions}"
-			)
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail=f"权限不足，缺少: {', '.join(missing_permissions)}",
-			)
-
-		logger.debug(
-			f"用户 {current_user['username']} 权限检查通过: {permission_codes}"
-		)
-		return current_user
-
-	@staticmethod
-	async def require_superuser (
-			current_user: Dict[str, Any] = Depends(get_current_user)
-	) -> Dict[str, Any]:
-		"""
-		要求超级用户权限
-
-		Args:
-			current_user: 当前用户信息
-
-		Returns:
-			Dict[str, Any]: 用户信息（如果是超级用户）
-
-		Raises:
-			HTTPException: 403 - 需要超级用户权限
-		"""
-		# 检查用户角色是否为超级用户
-		user_role = current_user.get("role", "")
-		if user_role not in ("super_admin", "superadmin"):
-			logger.warning(f"用户 {current_user['username']} 不是超级用户，角色: {user_role}")
-			raise HTTPException(
-				status_code=status.HTTP_403_FORBIDDEN,
-				detail="需要超级用户权限",
-			)
-
-		logger.debug(f"超级用户权限检查通过: {current_user['username']}")
-		return current_user
-
-
 	# 创建全局依赖实例
 _auth_deps = AuthDependencies()
 
 # 导出依赖函数（FastAPI可以直接使用这些函数）
 get_current_user = _auth_deps.get_current_user
-require_permission = _auth_deps.require_permission
-require_superuser = _auth_deps.require_superuser
-optional_auth = _auth_deps.optional_auth
-
-# 导出类型注解（供其他模块使用）
-CurrentUser = Depends(get_current_user)
-
-# 修复PermissionRequired的定义
-def PermissionRequired(*perms):
-	async def _require_permission():
-		return await _auth_deps.require_permission(list(perms))
-	return Depends(_require_permission)
-
-SuperuserRequired = Depends(require_superuser)
-OptionalAuth = Depends(optional_auth)

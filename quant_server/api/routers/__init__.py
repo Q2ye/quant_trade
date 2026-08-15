@@ -10,7 +10,6 @@ from .strategy_router import router as strategy_router
 from .trade_router import router as trade_router
 from .basket_router import router as basket_router
 from .backtest_router import router as backtest_router
-from .template_router import router as template_router
 from .account_router import router as account_router
 from .analysis_router import router as analysis_router
 from .monitor_router import router as monitor_router
@@ -27,7 +26,6 @@ __all__ = [
     "trade_router",
     "basket_router",
     "backtest_router",
-    "template_router",
     "account_router",
     "analysis_router",
     "monitor_router",
@@ -36,22 +34,4 @@ __all__ = [
     "health_router",
     "market_router",
     "composite_router",
-]
-
-# 路由注册顺序（影响 API 文档中的路由展示顺序）
-ROUTERS = [
-    data_router,
-    strategy_router,
-    trade_router,
-    basket_router,
-    backtest_router,
-    template_router,
-    account_router,
-    analysis_router,
-    monitor_router,
-    system_router,
-    risk_router,
-    health_router,
-    market_router,
-    composite_router,
 ]

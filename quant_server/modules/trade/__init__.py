@@ -205,7 +205,6 @@ __all__ = [
     # 适配器
     "BrokerAdapter",
     "SimBrokerAdapter",
-    "XTPBrokerAdapter",
     # 引擎
     "SignalEngine",
     "RiskEngine",

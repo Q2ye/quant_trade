@@ -22,7 +22,6 @@ _EVENT_CHANNEL_MAP: Dict[str, str] = {
     "order_cancelled": "order:status",
     "order_create": "order:status",
     "order_submit": "order:status",
-    "order_update": "order:status",
     "order_fill": "order:status",
     "order_reject": "order:status",
     # 成交回报
@@ -62,12 +61,6 @@ _EVENT_CHANNEL_MAP: Dict[str, str] = {
     "system.alert": "events:status",
     "system.started": "events:status",
     "system.stopped": "events:status",
-    # 数据同步（EngineLifecycleEvent 前缀 — sync_engine.py 发布路径）
-    "engine.data_sync_started": "events:sync",
-    "engine.data_sync_progress": "events:sync",
-    "engine.data_sync_completed": "events:sync",
-    "engine.data_sync_failed": "events:sync",
-    "engine.data_sync_cancelled": "events:sync",
     # 数据同步（DataEventType 直接事件 — handlers.py 发布路径）
     "data.sync.started": "events:sync",
     "data.sync.progress": "events:sync",

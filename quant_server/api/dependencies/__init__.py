@@ -7,13 +7,13 @@ API 依赖注入模块 — 统一薄接线层
 """
 
 # ── 认证 ──
-from .auth import get_current_user, require_permission, require_superuser, optional_auth
+from .auth import get_current_user
 
 # ── 数据库会话 ──
 from .database import get_db_session
 
 # ── 事件引擎 ──
-from .event_engine import get_event_engine, set_event_engine, EventPriority, publish_system_event
+from .event_engine import get_event_engine, set_event_engine
 
 # ── 主引擎 ──
 from .main_engine import get_main_engine, set_main_engine
@@ -23,14 +23,9 @@ from .config import get_settings
 
 __all__ = [
     "get_current_user",
-    "require_permission",
-    "require_superuser",
-    "optional_auth",
     "get_db_session",
     "get_event_engine",
     "set_event_engine",
-    "EventPriority",
-    "publish_system_event",
     "get_main_engine",
     "set_main_engine",
     "get_settings",

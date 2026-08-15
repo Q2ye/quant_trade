@@ -41,14 +41,8 @@ dependencies = [
     "tushare>=1.2.89",
     "baostock>=0.8.9",
 
-    # UI (如果后端不需要可以移除或标记为可选)
-    "pyqt5>=5.15.9",
-    "qdarkstyle>=3.1",
-    "qt-material>=2.14",
-
     # 报告与可视化
     "matplotlib>=3.7.1",
-    "seaborn>=0.12.2",
     "reportlab>=4.0.4",  # PDF报告
 
     # 系统监控
@@ -81,12 +75,6 @@ api = [
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",  # JWT支持
     "passlib[bcrypt]>=1.7.4",            # 密码哈希
-]
-
-ui = [
-    "pyqt5>=5.15.9",
-    "qdarkstyle>=3.1",
-    "qt-material>=2.14",
 ]
 
 [tool.setuptools.packages.find]

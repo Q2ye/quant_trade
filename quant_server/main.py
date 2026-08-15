@@ -5,8 +5,6 @@ quant_server/main.py
 使用结构化日志工具包，提供完整的上下文感知日志记录
 """
 import logging
-import os
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import asyncio
 import contextvars
